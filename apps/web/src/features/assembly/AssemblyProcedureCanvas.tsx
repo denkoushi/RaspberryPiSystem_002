@@ -2,12 +2,23 @@ import clsx from 'clsx';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { useProtectedImageBlobUrl } from '../../hooks/useProtectedImageBlobUrl';
+import {
+  ImageMarkerCalloutOverlay,
+  pointerClientToZoomedImageRatios,
+  shouldConfirmImageCanvasTap,
+  useZoomedImageCanvasLayout
+} from '../kiosk/image-canvas';
 
 import { computeContainSize } from './computeContainSize';
 
 import type { MouseEvent, ReactNode, RefObject } from 'react';
 
-export type AssemblyCanvasBolt = {
+type AssemblyCanvasCallout = {
+  calloutTipXRatio?: number | null;
+  calloutTipYRatio?: number | null;
+};
+
+export type AssemblyCanvasBolt = AssemblyCanvasCallout & {
   id: string;
   markerNo: number;
   xRatio: number;
@@ -16,7 +27,7 @@ export type AssemblyCanvasBolt = {
   status?: 'pending' | 'current' | 'ok' | 'ng' | 'ignored';
 };
 
-export type AssemblyCanvasCheckItem = {
+export type AssemblyCanvasCheckItem = AssemblyCanvasCallout & {
   id: string;
   markerNo: number;
   xRatio: number;
@@ -37,7 +48,11 @@ type Props = {
   onToggleCheckItem?: (id: string) => void;
   onAddBolt?: (xRatio: number, yRatio: number) => void;
   onAddCheckItem?: (xRatio: number, yRatio: number) => void;
+  onPlaceCallout?: (xRatio: number, yRatio: number) => void;
   placementMode?: 'bolt' | 'check';
+  placementAction?: 'place' | 'callout';
+  zoom?: number;
+  fitGeneration?: number;
   className?: string;
 };
 
@@ -75,8 +90,19 @@ export function AssemblyMarkerOverlay({
   | 'onSelectCheckItem'
   | 'onToggleCheckItem'
 >) {
+  const callouts = [
+    ...bolts.map((bolt) => ({ ...bolt, tone: 'amber' as const })),
+    ...checkItems.map((item) => ({ ...item, tone: 'lime' as const }))
+  ];
   return (
     <>
+      <ImageMarkerCalloutOverlay
+        items={callouts}
+        selectedId={selectedBoltId ?? selectedCheckItemId}
+        image={{ offsetX: 0, offsetY: 0, width: 100, height: 100 }}
+        contentWidth={100}
+        contentHeight={100}
+      />
       {bolts.map((bolt) => (
         <button
           key={`bolt-${bolt.id}`}
@@ -86,8 +112,9 @@ export function AssemblyMarkerOverlay({
             event.stopPropagation();
             onSelectBolt?.(bolt.id);
           }}
+          onPointerDown={(event) => event.stopPropagation()}
           className={clsx(
-            'absolute flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-sm font-bold shadow-lg',
+            'absolute z-10 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-sm font-bold shadow-lg',
             boltMarkerClass(bolt.status, selectedBoltId === bolt.id)
           )}
           style={{ left: `${bolt.xRatio * 100}%`, top: `${bolt.yRatio * 100}%` }}
@@ -108,8 +135,9 @@ export function AssemblyMarkerOverlay({
             }
             onSelectCheckItem?.(item.id);
           }}
+          onPointerDown={(event) => event.stopPropagation()}
           className={clsx(
-            'absolute flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-xs font-bold shadow-lg',
+            'absolute z-10 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-xs font-bold shadow-lg',
             checkMarkerClass(item, selectedCheckItemId === item.id)
           )}
           style={{ left: `${item.xRatio * 100}%`, top: `${item.yRatio * 100}%` }}
@@ -188,25 +216,94 @@ export function AssemblyProcedureCanvas({
   onToggleCheckItem,
   onAddBolt,
   onAddCheckItem,
+  onPlaceCallout,
   placementMode = 'bolt',
+  placementAction = 'place',
+  zoom = 1,
+  fitGeneration = 0,
   className
 }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null);
-  const imageRef = useRef<HTMLImageElement>(null);
   const [natural, setNatural] = useState({ width: 0, height: 0 });
-  const fitted = useContainFitBox(viewportRef, natural.width, natural.height);
+  const pendingPointerRef = useRef<{
+    pointerId: number;
+    startClientX: number;
+    startClientY: number;
+    maxMovementPx: number;
+  } | null>(null);
+  const layout = useZoomedImageCanvasLayout(
+    viewportRef,
+    { w: natural.width, h: natural.height },
+    zoom
+  );
   const { blobUrl, error } = useProtectedImageBlobUrl(imageRelativePath);
 
-  const handleClick = (event: MouseEvent<HTMLDivElement>) => {
-    const addHandler = placementMode === 'check' ? onAddCheckItem : onAddBolt;
-    if (!addHandler) return;
-    const img = imageRef.current;
-    if (!img) return;
-    const rect = img.getBoundingClientRect();
-    const xRatio = (event.clientX - rect.left) / rect.width;
-    const yRatio = (event.clientY - rect.top) / rect.height;
-    if (xRatio < 0 || xRatio > 1 || yRatio < 0 || yRatio > 1) return;
-    addHandler(xRatio, yRatio);
+  useLayoutEffect(() => {
+    viewportRef.current?.scrollTo({ left: 0, top: 0, behavior: 'instant' });
+  }, [fitGeneration, imageRelativePath]);
+
+  useLayoutEffect(() => {
+    setNatural({ width: 0, height: 0 });
+    pendingPointerRef.current = null;
+  }, [blobUrl]);
+
+  const placementHandler = placementAction === 'callout'
+    ? onPlaceCallout
+    : placementMode === 'check'
+      ? onAddCheckItem
+      : onAddBolt;
+
+  const clearPendingPointer = (pointerId: number) => {
+    const viewport = viewportRef.current;
+    if (pendingPointerRef.current?.pointerId === pointerId) {
+      pendingPointerRef.current = null;
+    }
+    if (viewport?.hasPointerCapture(pointerId)) {
+      try {
+        viewport.releasePointerCapture(pointerId);
+      } catch {
+        // Pointer capture may already have been released by the browser.
+      }
+    }
+  };
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || !placementHandler || !layout) return;
+    pendingPointerRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      maxMovementPx: 0
+    };
+    viewportRef.current?.setPointerCapture(event.pointerId);
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const pending = pendingPointerRef.current;
+    if (!pending || pending.pointerId !== event.pointerId) return;
+    pending.maxMovementPx = Math.max(
+      pending.maxMovementPx,
+      Math.hypot(event.clientX - pending.startClientX, event.clientY - pending.startClientY)
+    );
+  };
+
+  const handlePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    const pending = pendingPointerRef.current;
+    if (!pending || pending.pointerId !== event.pointerId) return;
+    const maxMovementPx = pending.maxMovementPx;
+    clearPendingPointer(event.pointerId);
+    if (!shouldConfirmImageCanvasTap(maxMovementPx) || !placementHandler || !layout) return;
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const ratios = pointerClientToZoomedImageRatios(
+      event.clientX,
+      event.clientY,
+      viewport.getBoundingClientRect(),
+      viewport.scrollLeft,
+      viewport.scrollTop,
+      layout
+    );
+    if (ratios) placementHandler(ratios.xRatio, ratios.yRatio);
   };
 
   if (!imageRelativePath) {
@@ -228,19 +325,51 @@ export function AssemblyProcedureCanvas({
   return (
     <div
       ref={viewportRef}
-      className={clsx('flex min-h-0 items-center justify-center overflow-hidden bg-slate-950 p-2', className)}
+      data-testid="assembly-procedure-canvas"
+      className={clsx(
+        'relative min-h-0 overflow-auto bg-slate-950',
+        zoom > 1 ? 'touch-pan-x touch-pan-y' : 'touch-none',
+        className
+      )}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={(event) => clearPendingPointer(event.pointerId)}
     >
       {blobUrl ? (
-        <div
-          className="relative shrink-0"
-          style={fitted.width > 0 ? { width: fitted.width, height: fitted.height } : { maxWidth: '100%', maxHeight: '100%' }}
-          onClick={handleClick}
-        >
+        layout ? (
+          <div className="relative" style={{ width: layout.contentWidth, height: layout.contentHeight }}>
+            <div
+              className="absolute"
+              style={{
+                left: layout.image.offsetX,
+                top: layout.image.offsetY,
+                width: layout.image.width,
+                height: layout.image.height
+              }}
+            >
+              <img
+                src={blobUrl}
+                alt=""
+                className="pointer-events-none block h-full w-full select-none"
+                draggable={false}
+              />
+              <AssemblyMarkerOverlay
+                bolts={bolts}
+                checkItems={checkItems}
+                selectedBoltId={selectedBoltId}
+                selectedCheckItemId={selectedCheckItemId}
+                onSelectBolt={onSelectBolt}
+                onSelectCheckItem={onSelectCheckItem}
+                onToggleCheckItem={onToggleCheckItem}
+              />
+            </div>
+          </div>
+        ) : (
           <img
-            ref={imageRef}
             src={blobUrl}
             alt=""
-            className="block h-full w-full select-none object-contain"
+            className="pointer-events-none absolute inset-0 h-full w-full select-none object-contain opacity-0"
             draggable={false}
             onLoad={(event) => {
               const img = event.currentTarget;
@@ -249,16 +378,7 @@ export function AssemblyProcedureCanvas({
               }
             }}
           />
-          <AssemblyMarkerOverlay
-            bolts={bolts}
-            checkItems={checkItems}
-            selectedBoltId={selectedBoltId}
-            selectedCheckItemId={selectedCheckItemId}
-            onSelectBolt={onSelectBolt}
-            onSelectCheckItem={onSelectCheckItem}
-            onToggleCheckItem={onToggleCheckItem}
-          />
-        </div>
+        )
       ) : (
         <div className="flex h-80 w-[42rem] max-w-full items-center justify-center text-sm text-white/60">読み込み中</div>
       )}

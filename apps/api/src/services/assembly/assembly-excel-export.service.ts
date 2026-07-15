@@ -62,7 +62,7 @@ export class AssemblyExcelExportService {
     const rows = [
       ['作業ID', session.id],
       ['状態', session.status],
-      ['形番/FHINCD', session.template.modelCode],
+      ['型番/FHINCD', session.template.modelCode],
       ['手順パターン', session.template.procedurePattern],
       ['テンプレート名', `${session.template.name} v${session.template.version}`],
       ['製番/M番号', session.productNo],

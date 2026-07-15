@@ -45,21 +45,15 @@ function TemplateTablePane({
           aria-label={`組立テンプレート ${label} ${rangeLabel(startIndex, templates.length)}`}
         >
           <colgroup>
-            <col className="w-[18%]" />
-            <col className="w-[18%]" />
             <col className="w-[28%]" />
-            <col className="w-[9%]" />
-            <col className="w-[10%]" />
-            <col className="w-[17%]" />
+            <col className="w-[24%]" />
+            <col className="w-[48%]" />
           </colgroup>
           <thead className="sticky top-0 bg-slate-900 text-[0.72rem] text-white/70">
             <tr className="border-b border-white/10">
-              <th className="px-2 py-1.5 font-bold">形番</th>
+              <th className="px-2 py-1.5 font-bold">型番</th>
               <th className="px-2 py-1.5 font-bold">手順</th>
               <th className="px-2 py-1.5 font-bold">手順書</th>
-              <th className="px-2 py-1.5 font-bold">工程</th>
-              <th className="px-2 py-1.5 font-bold">締付</th>
-              <th className="px-2 py-1.5 text-right font-bold">更新</th>
             </tr>
           </thead>
           <tbody>
@@ -75,20 +69,18 @@ function TemplateTablePane({
                   <td className="truncate px-2 pb-0.5 pt-1.5 font-semibold text-white/90" title={template.procedureDocumentName}>
                     {template.procedureDocumentName}
                   </td>
-                  <td className="whitespace-nowrap px-2 pb-0.5 pt-1.5 text-white/80">{template.areaCount}</td>
-                  <td className="whitespace-nowrap px-2 pb-0.5 pt-1.5 font-semibold text-white/80">{template.boltCount}</td>
-                  <td className="whitespace-nowrap px-2 pb-0.5 pt-1.5 text-right font-semibold text-white/65">
-                    {formatAssemblyTimestamp(template.updatedAt)}
-                  </td>
                 </tr>
                 <tr className="border-b border-white/10 last:border-b-0">
-                  <td colSpan={6} className="px-2 pb-1 pt-0 text-[0.68rem] text-white/55">
+                  <td colSpan={3} className="px-2 pb-1 pt-0 text-[0.68rem] text-white/55">
                     <div className="flex min-w-0 items-center gap-1 overflow-hidden">
+                      <span className="min-w-0 truncate font-semibold text-white/75" title={template.name}>{template.name}</span>
                       <span className="shrink-0 font-semibold">v{template.version}</span>
                       <span className={template.isActive ? 'shrink-0 text-emerald-200' : 'shrink-0 text-amber-200'}>
                         {template.isActive ? '有効' : '旧版'}
                       </span>
-                      <span className="truncate">{template.name}</span>
+                      <span className="shrink-0">工程 {template.areaCount}</span>
+                      <span className="shrink-0">締付 {template.boltCount}</span>
+                      <span className="shrink-0">更新 {formatAssemblyTimestamp(template.updatedAt)}</span>
                       <div className="ml-auto flex w-[10.5rem] shrink-0 justify-end gap-0.5">
                         <Link
                           to={kioskAssemblyTemplateEditPath(template.id)}
