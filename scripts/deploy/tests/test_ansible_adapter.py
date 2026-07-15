@@ -69,6 +69,39 @@ class SelectedHostsTest(unittest.TestCase):
         self.assertEqual(runtime.calls[0][1]['cwd'], runtime.ANSIBLE_DIRECTORY)
 
 
+class ServerConfigConvergenceTest(unittest.TestCase):
+    def test_uses_host_config_only_mode_and_immutable_revision(self):
+        runtime = Runtime("")
+
+        ansible.converge_server_config(
+            "inventory.yml",
+            "pi5",
+            "a" * 40,
+            "run-1",
+            runtime=runtime,
+        )
+
+        command, options = runtime.calls[0]
+        self.assertEqual(
+            command,
+            [
+                "ansible-playbook",
+                "-i",
+                "inventory.yml",
+                "/ansible/playbooks/deploy-staged.yml",
+                "--limit",
+                "pi5",
+                "-e",
+                "release_orchestrated=true release_rollback=false "
+                "server_release_mode=host-config-only",
+            ],
+        )
+        self.assertEqual(options["cwd"], runtime.ANSIBLE_DIRECTORY)
+        self.assertEqual(options["env"]["ANSIBLE_REPO_VERSION"], "a" * 40)
+        self.assertEqual(options["env"]["RUN_ID"], "run-1")
+        self.assertEqual(options["env"]["RELEASE_ORCHESTRATED"], "1")
+
+
 class AnsibleConfigResolutionTest(unittest.TestCase):
     @unittest.skipUnless(
         shutil.which('ansible-inventory') and shutil.which('ansible-vault'),

@@ -269,6 +269,18 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             state.payload["fleetGeneration"] = fleet_state["generation"]
             state.save()
 
+            # Converge host-owned configuration before candidate build,
+            # migration, or Blue/Green switching.  The adapter selects the
+            # server role's host-config-only mode, whose runtime executors are
+            # all fail-closed behind explicit guards.
+            runtime.converge_server_config(
+                inventory,
+                server["host"],
+                server["desiredSha"],
+                args.run_id,
+            )
+            token.checkpoint("after-pi5-host-config")
+
             # The five-minute Blue/Green switch monitor and cleanup form one
             # atomic safety window. Cancellation is observed only after it.
             runtime.ensure_pi5_release(server["desiredSha"], state)

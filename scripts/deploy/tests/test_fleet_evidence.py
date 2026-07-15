@@ -104,10 +104,20 @@ class TerminalEvidenceTest(unittest.TestCase):
 class Pi5Runtime:
     FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
-    def __init__(self, project: Path, *, sha=SHA, image_sha=SHA):
+    def __init__(
+        self,
+        project: Path,
+        *,
+        sha=SHA,
+        image_sha=SHA,
+        runtime_config_status="verified",
+        runtime_config_digest="sha256:" + "f" * 64,
+    ):
         self.PROJECT = project
         self.sha = sha
         self.image_sha = image_sha
+        self.runtime_config_status = runtime_config_status
+        self.runtime_config_digest = runtime_config_digest
         self.calls = []
 
     def run(self, command, **kwargs):
@@ -120,6 +130,8 @@ class Pi5Runtime:
         suffix = "-0123456789ab"
         return {
             "runtimeStatus": "consistent",
+            "runtimeConfigStatus": self.runtime_config_status,
+            "runtimeConfigDigest": self.runtime_config_digest,
             "activeSlot": "green",
             "previousSlot": None,
             "candidateSlot": None,
@@ -175,6 +187,7 @@ class Pi5EvidenceTest(unittest.TestCase):
         self.assertEqual(observed["activeSlot"], "green")
         self.assertTrue(observed["apiImage"].startswith("raspi/api:" + SHA))
         self.assertRegex(observed["configDigest"], r"^sha256:[0-9a-f]{64}$")
+        self.assertEqual(observed["runtimeConfigDigest"], "sha256:" + "f" * 64)
         self.assertRegex(observed["migrationDigest"], r"^sha256:[0-9a-f]{64}$")
         self.assertIn(
             (["systemctl", "is-active", "status-agent.timer"], {"capture": True}),
@@ -201,6 +214,29 @@ class Pi5EvidenceTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "cannot be attributed"):
                 evidence.observe_pi5(
                     None, runtime=Pi5Runtime(project, sha=SHA, image_sha=old_sha)
+                )
+
+    def test_runtime_configuration_must_be_live_verified(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Path(temporary)
+            self.project(project)
+            with self.assertRaisesRegex(RuntimeError, "environment is not verified"):
+                evidence.observe_pi5(
+                    SHA,
+                    runtime=Pi5Runtime(
+                        project,
+                        runtime_config_status="mismatch",
+                        runtime_config_digest=None,
+                    ),
+                )
+            with self.assertRaisesRegex(RuntimeError, "digest is malformed"):
+                evidence.observe_pi5(
+                    SHA,
+                    runtime=Pi5Runtime(
+                        project,
+                        runtime_config_status="verified",
+                        runtime_config_digest="sha256:not-a-digest",
+                    ),
                 )
 
 

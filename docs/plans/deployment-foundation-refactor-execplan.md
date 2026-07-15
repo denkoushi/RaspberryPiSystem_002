@@ -83,6 +83,7 @@ This work exists because the current release path has accumulated two coordinato
 - [x] (2026-07-15 06:29Z) Diagnosed the first hosted `lint-build-unit` failure: Actions checked out its PR merge SHA but a legacy smoke invoked `--print-plan` for `main` and the production inventory, so the new exact-checkout guard correctly rejected it. Removed that unsafe live-inventory workflow call rather than pointing it at `HEAD`, and added a static contract that hosted workflows never invoke the public deploy entrypoint against either production inventory. The fixture/unit plan coverage and local single-entrypoint contract pass.
 - [x] (2026-07-15 06:52Z) Completed refreshed hosted validation for PR #1009 and merged it under explicit approval as `deab7d5e`; its final implementation head is `5441065e`. No real-device action occurred.
 - [x] (2026-07-15 07:32Z) Started PR 6 locally from exact merged base `deab7d5e` on `agent/deploy-executor-health-rollback`. Two independently reviewed commits replace the shadow client lifecycle with build/recreate/no-build selection and bind ready acknowledgements to an immutable full release SHA. A third, uncommitted Pi5 host-configuration slice passes 325 deploy tests but is not accepted: fresh review found one P1 and two P2 issues around genre-image preservation, post-switch environment evidence, and contract-test coverage.
+- [x] (2026-07-15 09:15Z) Corrected and independently reviewed the Pi5 host-configuration findings locally. Host-only convergence now rescues stopped-container genre images through a traversal-safe, non-overwriting archive merge; the actual server play execution graph is covered by a multiline-aware AST safety contract; candidate and final evidence require the exact image-default-plus-Compose API environment including unset semantics; and active-run-bound expired prior-release cleanup alone uses structural health so an intentional config change cannot block candidate creation. The deploy Python suite passes 344 tests, the Blue/Green lifecycle and Ansible safety contracts pass, focused archive tests pass 9/9, and two post-fix reviews report no remaining P1/P2.
 - [ ] Complete and publish PR 6: add terminal-side SHA emitters and coordinator ACK gate, terminal authenticated health, run-manifest-only rollback ownership, and the consolidated Pi5 migration/load/executor behavior.
 - [ ] Implement and publish PR 7, conditional CI enforcement and the `main` ruleset.
 - [ ] Complete the separately approved production acceptance sequence, including the initial full fleet and the same-SHA no-op proof.
@@ -154,6 +155,10 @@ This work exists because the current release path has accumulated two coordinato
   Evidence: the first `host-config-only` guard also skipped the extraction. A later cleanup could then delete the sole copy, so review classified this as P1 and the slice was withheld from commit.
 - Observation: hashing `.env` proves desired file bytes, not that the active API container received them.
   Evidence: guarding the legacy API environment check out of `host-config-only` left no equivalent post-switch evidence in the coordinator path. PR 6 health work must verify the selected candidate container before fleet evidence becomes `verified`.
+- Observation: desired-config verification cannot be reused unchanged for the outgoing slot during prior-release recovery.
+  Evidence: after checkout and host configuration change, the old active container is expected to differ. Normal `status` must reject that drift for same-SHA skipping, but handoff inspection and expired cleanup must first prove only image, scheduler, Web, gateway, and durable-state structure so the new candidate can be created.
+- Observation: comparing only desired environment keys misses deletions.
+  Evidence: a container retaining a removed optional key passed the first verifier. PR 6 now derives the exact expected environment from image `Config.Env` overlaid by effective Compose configuration and rejects missing, changed, and unexpected keys without printing values.
 
 ## Decision Log
 
@@ -232,6 +237,9 @@ This work exists because the current release path has accumulated two coordinato
 - Decision: Preserve the historical full server role by default and select `host-config-only` only from the coordinator adapter.
   Rationale: existing non-coordinator playbooks retain their behavior, while the coordinator remains the sole owner of candidate build, migration, runtime health, and Blue/Green switching.
   Date/Author: 2026-07-15 / Codex
+- Decision: Permit structural-only Pi5 status and cleanup only for recovering an already-expired prior handoff; never use it for same-SHA skip, candidate readiness, stability monitoring, or fleet verification.
+  Rationale: a newly desired environment should not invalidate the old rollback slot before a candidate exists, but no host may become `verified` without exact live configuration evidence.
+  Date/Author: 2026-07-15 / Codex
 
 ## Outcomes & Retrospective
 
@@ -245,7 +253,7 @@ Merged PR 5 adds the durable release authority and conservative default minimiza
 
 Local PR 6 currently has two accepted commits. Client lifecycle decisions use the real pre-sync Git revision and choose build, force-recreate without build, or no-build. Deploy-status exposes `verifying` and accepts ready only for a matching immutable 40-character release SHA, while preserving notice and maintenance behavior. Both fresh reviews report no P1/P2, focused tests pass, and commit lint hooks pass.
 
-The uncommitted Pi5 host-configuration slice demonstrates the intended pre-candidate ordering and its complete deploy Python suite passes 325 tests, but fresh review found one P1 and two P2 issues. It must keep genre-image preservation active, move API environment proof into candidate health before verified evidence, and broaden the safety and terminal-continuation regressions. Terminal emitters, coordinator ready gating, stronger health, manifest rollback, and final Pi5 executor/load/migration unification are also pending; therefore PR 6 is not ready to publish.
+The Pi5 host-configuration slice now resolves its review findings locally. A stopped outgoing API container is searched before runtime handoff and its genre-image archive is validated before an atomic non-overwriting merge. Runtime configuration evidence compares the complete image-plus-Compose environment and is required by normal status, same-SHA skip, candidate health, monitoring, and final fleet evidence; only an active coordinator-owned expired prior-release recovery has a structural path. The actual server play graph and multiline commands are audited. The full deploy suite now passes 344 tests, the Blue/Green, Ansible safety, archive, syntax, and diff contracts pass, and two post-fix reviews report no P1/P2. Terminal emitters, coordinator ready gating, stronger terminal health, manifest rollback, and Pi5 executor/load/migration unification remain; PR 6 is not ready to publish.
 
 No product deployment, real-device mutation, or production acceptance action has occurred. Only the explicitly approved repository merges #1007, #1004, #1005, #1006, #1008, and #1009 have occurred. Draft PR #1003 remains open, untouched, and unmerged at head `0f19936a` for provenance only.
 
@@ -556,9 +564,9 @@ Current replacement map at this revision:
     PR 6:
       branch/base -> agent/deploy-executor-health-rollback from merged deab7d5e
       accepted commits -> client lifecycle selection 629933e1; release-bound ready acknowledgement 6a1869c1
-      local evidence -> 325 deploy Python tests, deploy safety contract, client lifecycle executable fixture, API normalization 6/6, deploy-status helper 10/10, lint hooks, and two no-P1/P2 reviews
-      uncommitted reviewed WIP -> Pi5 host-config-only convergence; blocked by genre-image preservation P1, candidate environment-evidence P2, and regression-coverage P2
-      remaining -> correct those findings, then terminal SHA emitters/coordinator ACK gate, authenticated terminal health, run-manifest-only rollback, consolidated migration/load/Pi5 executor behavior
+      local evidence -> 344 deploy Python tests, Blue/Green lifecycle, deploy AST safety contract, archive helper 9/9, Ansible/Python/Bash syntax, diff check, API normalization 6/6, deploy-status helper 10/10, and two post-fix no-P1/P2 reviews
+      corrected uncommitted WIP -> Pi5 host-config-only convergence, stopped-container genre rescue, exact live API environment/unset evidence, active-run-bound structural expired-handoff recovery, full server-play graph and multiline classifier, expanded failure/cancel contracts
+      remaining -> commit this accepted slice, terminal SHA emitters/coordinator ACK gate, authenticated terminal health, run-manifest-only rollback, consolidated migration/load/Pi5 executor behavior
       publication -> not pushed and no PR opened
     PR 7-PR 8: pending in approved order
     Product reconstruction: pending deployment-foundation production acceptance
@@ -673,3 +681,5 @@ Revision note (2026-07-15, 06:03Z): Recorded the final PR 5 hardening and valida
 Revision note (2026-07-15, 06:29Z): Recorded Draft PR #1009 publication at implementation head `23c5f763` and the first hosted failure. The failure proved the exact-checkout guard: a legacy CI smoke combined the PR merge checkout with branch `main`. It was removed because changing it to `HEAD` would let hosted CI attempt a real production-inventory SSH plan; a new static contract prohibits that class of workflow call. Refreshed hosted validation remains pending. No SSH, product deployment, real-device mutation, production acceptance, merge, or change to Draft PR #1003 occurred.
 
 Revision note (2026-07-15, 07:32Z): Recorded the refreshed PR #1009 success and approved merge as `deab7d5e`, then the first local PR 6 checkpoint. Client build/recreate selection and release-bound ready ACK state are committed after no-P1/P2 reviews. The uncommitted Pi5 host-config slice passes 325 deploy tests but fresh review found one P1 and two P2 issues: preserve outgoing-container genre images, prove candidate environment application before verified evidence, and strengthen safety/continuation regressions. These findings plus the unfinished health, emitters, manifest rollback, migration, load, and executor slices are the exact restart point. No SSH, production action, push, PR publication, or change to Draft PR #1003 occurred.
+
+Revision note (2026-07-15, 09:15Z): Recorded local correction and two clean post-fix reviews of the PR 6 Pi5 host-config slice. Genre images are rescued fail-closed from stopped legacy containers without overwriting host files; exact active API environment evidence binds image defaults, Compose values, and unset semantics; only an active coordinator-owned expired handoff can use structural recovery; and AST plus continuation tests cover the full server play graph, multiline runtime commands, host-config failure, and cancellation. The deploy Python suite passes 344 tests and all focused shell, Ansible, helper, syntax, and diff checks pass. The remaining terminal, rollback, migration, load, and executor slices are pending. No SSH, production action, push, PR publication, or change to Draft PR #1003 occurred.

@@ -100,6 +100,93 @@ assert_contains "$status_output" '"runtimeStatus": "stale"'
 cmp -s "$STATE_ACTIVE_CONTAINERS_ABSENT" "$STATE_ACTIVE_CONTAINERS_ABSENT_BEFORE" \
   || fail "status mutated state while reporting absent active containers"
 
+# A live slot with the expected images but stale effective environment must
+# make status fail closed. pi5_already_current treats this non-zero status as
+# not current, so a same-SHA configuration drift cannot take the skip path.
+STATE_RUNTIME_DRIFT="$TMP/state-runtime-drift.json"
+STATE_RUNTIME_DRIFT_BEFORE="$TMP/state-runtime-drift-before.json"
+cp "$STATE1" "$STATE_RUNTIME_DRIFT"
+cp "$STATE1" "$STATE_RUNTIME_DRIFT_BEFORE"
+RUNTIME_DRIFT_STUB="$TMP/runtime-drift-stub"
+mkdir -p "$RUNTIME_DRIFT_STUB"
+cat >"$RUNTIME_DRIFT_STUB/docker" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == compose ]]; then
+  service="${!#}"
+  case "$service" in
+    api-green) printf 'api-green-cid\n' ;;
+    web-green) printf 'web-green-cid\n' ;;
+  esac
+  exit 0
+fi
+if [[ "${1:-}" == inspect ]]; then
+  container="${!#}"
+  case "$container" in
+    api-green-cid) printf '%s\n' "${EXPECTED_API_IMAGE:?}" ;;
+    web-green-cid) printf '%s\n' "${EXPECTED_WEB_IMAGE:?}" ;;
+    *) exit 1 ;;
+  esac
+  exit 0
+fi
+exit 1
+SH
+cat >"$RUNTIME_DRIFT_STUB/runtime-config-verifier" <<'SH'
+#!/usr/bin/env bash
+echo 'ERROR: runtime API environment does not match effective Compose: LOCAL_LLM_MODEL' >&2
+exit 1
+SH
+chmod +x "$RUNTIME_DRIFT_STUB/docker" "$RUNTIME_DRIFT_STUB/runtime-config-verifier"
+if runtime_drift_output="$(env "${common[@]}" PI5_BLUE_GREEN_DRY_RUN=0 \
+  PI5_BLUE_GREEN_STATE_FILE="$STATE_RUNTIME_DRIFT" \
+  PI5_RUNTIME_CONFIG_VERIFIER="$RUNTIME_DRIFT_STUB/runtime-config-verifier" \
+  EXPECTED_API_IMAGE="$NEW_API" EXPECTED_WEB_IMAGE="$NEW_WEB" \
+  PATH="$RUNTIME_DRIFT_STUB:$PATH" "$SCRIPT" status 2>&1)"; then
+  fail "status accepted same-SHA active images with mismatched runtime environment"
+fi
+assert_contains "$runtime_drift_output" 'runtime API environment does not match effective Compose'
+assert_contains "$runtime_drift_output" '"runtimeConfigStatus": "mismatch"'
+assert_contains "$runtime_drift_output" '"runtimeStatus": "stale"'
+cmp -s "$STATE_RUNTIME_DRIFT" "$STATE_RUNTIME_DRIFT_BEFORE" \
+  || fail "runtime environment drift status mutated durable state"
+
+# Prior-release handoff inspection must remain available after a desired
+# configuration change. It proves structure only and never grants release
+# verification; the normal status path above remains fail-closed. The mode is
+# hidden and bound to the active coordinator-owned fleet run.
+FLEET_RUNTIME_DRIFT="$TMP/fleet-runtime-drift.json"
+cat >"$FLEET_RUNTIME_DRIFT" <<'JSON'
+{"activeRun":{"runId":"run-1","status":"running"}}
+JSON
+if env "${common[@]}" PI5_BLUE_GREEN_DRY_RUN=0 \
+  PI5_BLUE_GREEN_STATE_FILE="$STATE_RUNTIME_DRIFT" \
+  PI5_RUNTIME_CONFIG_VERIFIER="$RUNTIME_DRIFT_STUB/runtime-config-verifier" \
+  EXPECTED_API_IMAGE="$NEW_API" EXPECTED_WEB_IMAGE="$NEW_WEB" \
+  PATH="$RUNTIME_DRIFT_STUB:$PATH" "$SCRIPT" status --structural-only >/dev/null 2>&1; then
+  fail "public CLI accepted the internal structural recovery option"
+fi
+if env "${common[@]}" PI5_BLUE_GREEN_DRY_RUN=0 \
+  PI5_BLUE_GREEN_STATE_FILE="$STATE_RUNTIME_DRIFT" \
+  PI5_PRIOR_HANDOFF_RECOVERY_RUN_ID=run-1 \
+  PI5_FLEET_STATE_FILE="$TMP/missing-fleet-state.json" \
+  ROLLING_RELEASE_PROTOCOL=2 ROLLING_RELEASE_UNIT=raspi-release-run-1.service \
+  INVOCATION_ID=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+  EXPECTED_API_IMAGE="$NEW_API" EXPECTED_WEB_IMAGE="$NEW_WEB" \
+  PATH="$RUNTIME_DRIFT_STUB:$PATH" "$SCRIPT" status >/dev/null 2>&1; then
+  fail "structural recovery accepted a missing active fleet run"
+fi
+structural_output="$(env "${common[@]}" PI5_BLUE_GREEN_DRY_RUN=0 \
+  PI5_BLUE_GREEN_STATE_FILE="$STATE_RUNTIME_DRIFT" \
+  PI5_PRIOR_HANDOFF_RECOVERY_RUN_ID=run-1 \
+  PI5_FLEET_STATE_FILE="$FLEET_RUNTIME_DRIFT" \
+  ROLLING_RELEASE_PROTOCOL=2 ROLLING_RELEASE_UNIT=raspi-release-run-1.service \
+  INVOCATION_ID=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+  PI5_RUNTIME_CONFIG_VERIFIER="$RUNTIME_DRIFT_STUB/runtime-config-verifier" \
+  EXPECTED_API_IMAGE="$NEW_API" EXPECTED_WEB_IMAGE="$NEW_WEB" \
+  PATH="$RUNTIME_DRIFT_STUB:$PATH" "$SCRIPT" status)"
+assert_contains "$structural_output" '"runtimeConfigStatus": "not-checked"'
+assert_contains "$structural_output" '"runtimeStatus": "consistent"'
+
 STATE2="$TMP/state-resource.json"
 if env "${common[@]}" PI5_BLUE_GREEN_STATE_FILE="$STATE2" PI5_BLUE_GREEN_TEST_MEMORY_MB=512 "$SCRIPT" bootstrap --confirm-bootstrap --allow-legacy-scheduler-handoff --api-image "$OLD_API" --web-image "$OLD_WEB" >/dev/null 2>&1; then
   fail "resource guard accepted insufficient memory"
@@ -214,6 +301,12 @@ grep -Fq 'refusing compose up (possible rewritten state)' "$SCRIPT" || fail "rec
 grep -Fq 'legacy_compose_restore' "$SCRIPT" || fail "legacy restore does not use captured images"
 grep -Fq 'ensure_gateway_maintenance' "$SCRIPT" || fail "bootstrap failure path lacks gateway maintenance retention"
 grep -Fq 'spawn_stability_monitor' "$SCRIPT" || fail "reboot/reconcile monitor resume helper is missing"
+grep -Fq 'verify_slot_runtime_config "$slot" >/dev/null && \' "$SCRIPT" \
+  || fail "slot readiness does not use the canonical runtime configuration verifier"
+grep -Fq 'runtime_config_digest="$(verify_slot_runtime_config "$ACTIVE_SLOT")"' "$SCRIPT" \
+  || fail "status does not reuse the canonical runtime configuration verifier"
+grep -Fq 'slot_structural_ready "$ACTIVE_SLOT" standby' "$SCRIPT" \
+  || fail "prior-release cleanup lacks a structural-only readiness boundary"
 grep -Fq 'migration_gate_validate' "$SCRIPT" || fail "migration ledger gate is missing"
 grep -Fq 'finished_at IS NOT NULL AND rolled_back_at IS NULL' "$SCRIPT" \
   || fail "migration recovery guard does not restrict checksums to completed, non-rolled-back rows"

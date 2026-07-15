@@ -6,6 +6,7 @@ behaviors are deliberately revised only in PR 6.
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Protocol
 
 
@@ -43,7 +44,12 @@ class Runtime(Protocol):
         self, phase3: Any, candidate: dict[str, str]
     ) -> bool: ...
 
-    def phase3_status(self) -> dict[str, Any]: ...
+    def phase3_status(
+        self,
+        *,
+        structural_only: bool = False,
+        recovery_run_id: str | None = None,
+    ) -> dict[str, Any]: ...
 
     def normalized_pi5_phase3_state(self, phase3: dict[str, Any]) -> bool: ...
 
@@ -200,7 +206,16 @@ def marker_candidate_for_sha(
 
 
 def phase3_matches_marker_candidate(phase3: Any, candidate: dict[str, str]) -> bool:
-    if not isinstance(phase3, dict) or phase3.get("runtimeStatus") != "consistent":
+    if (
+        not isinstance(phase3, dict)
+        or phase3.get("runtimeStatus") != "consistent"
+        or phase3.get("runtimeConfigStatus") != "verified"
+        or not isinstance(phase3.get("runtimeConfigDigest"), str)
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}", phase3["runtimeConfigDigest"]
+        )
+        is None
+    ):
         return False
     active_slot = phase3.get("activeSlot")
     if active_slot not in {"blue", "green"}:
@@ -238,8 +253,33 @@ def pi5_already_current(sha: str, *, runtime: Runtime) -> bool:
     return runtime.phase3_matches_marker_candidate(phase3, candidate)
 
 
-def phase3_status(*, runtime: Runtime) -> dict[str, Any]:
-    payload = runtime.json.loads(runtime.run([str(runtime.PHASE3), "status"], capture=True))
+def _prior_handoff_recovery_environment(
+    run_id: Any, *, runtime: Runtime
+) -> dict[str, str]:
+    if not isinstance(run_id, str) or runtime.re.fullmatch(
+        r"[A-Za-z0-9][A-Za-z0-9_-]{2,79}", run_id
+    ) is None:
+        raise RuntimeError("prior-handoff recovery run ID is malformed")
+    environment = runtime.os.environ.copy()
+    environment["PI5_PRIOR_HANDOFF_RECOVERY_RUN_ID"] = run_id
+    return environment
+
+
+def phase3_status(
+    *,
+    runtime: Runtime,
+    structural_only: bool = False,
+    recovery_run_id: str | None = None,
+) -> dict[str, Any]:
+    command = [str(runtime.PHASE3), "status"]
+    options: dict[str, Any] = {"capture": True}
+    if structural_only:
+        options["env"] = _prior_handoff_recovery_environment(
+            recovery_run_id, runtime=runtime
+        )
+    elif recovery_run_id is not None:
+        raise RuntimeError("recovery run ID is valid only for structural status")
+    payload = runtime.json.loads(runtime.run(command, **options))
     if not isinstance(payload, dict):
         raise RuntimeError("Pi5 Blue/Green status is malformed")
     return payload
@@ -273,7 +313,17 @@ def normalized_pi5_phase3_state(phase3: dict[str, Any]) -> bool:
 
 
 def recover_expired_pi5_handoff(state: Any, *, runtime: Runtime) -> bool:
-    phase3 = runtime.phase3_status()
+    # A new checkout/config convergence may intentionally differ from the old
+    # active container.  Prior-release handoff recovery therefore proves only
+    # image, scheduler, Web, gateway, and durable-state structure.  Candidate
+    # readiness and final fleet evidence still require exact live config.
+    recovery_run_id = state.payload.get("runId")
+    recovery_environment = _prior_handoff_recovery_environment(
+        recovery_run_id, runtime=runtime
+    )
+    phase3 = runtime.phase3_status(
+        structural_only=True, recovery_run_id=recovery_run_id
+    )
     if phase3.get("state") == "not-initialized":
         return False
     if phase3.get("runtimeStatus") != "consistent":
@@ -309,8 +359,14 @@ def recover_expired_pi5_handoff(state: Any, *, runtime: Runtime) -> bool:
         raise RuntimeError("Pi5 prior stability window is still active; refusing new release preflight")
 
     print("Pi5 prior handoff is expired and consistent; completing cleanup before new candidate build")
-    runtime.run([str(runtime.PHASE3), "cleanup"])
-    if not runtime.normalized_pi5_phase3_state(runtime.phase3_status()):
+    runtime.run(
+        [str(runtime.PHASE3), "cleanup"], env=recovery_environment
+    )
+    if not runtime.normalized_pi5_phase3_state(
+        runtime.phase3_status(
+            structural_only=True, recovery_run_id=recovery_run_id
+        )
+    ):
         raise RuntimeError("Pi5 cleanup did not produce a normalized Phase 3 state")
     state.payload["pi5HandoffRecovery"] = {
         "state": "expired-handoff-cleaned",

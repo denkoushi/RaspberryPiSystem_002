@@ -49,6 +49,20 @@ def config_digest(project: Path) -> str:
     )
 
 
+def verified_config_digest(project: Path, runtime_digest: str) -> str:
+    """Bind source configuration identity to a proven live environment."""
+
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", runtime_digest) is None:
+        raise RuntimeError("Pi5 runtime configuration digest is malformed")
+    source_digest = config_digest(project)
+    digest = hashlib.sha256()
+    digest.update(b"source\0")
+    digest.update(source_digest.encode("ascii"))
+    digest.update(b"\0runtime\0")
+    digest.update(runtime_digest.encode("ascii"))
+    return "sha256:" + digest.hexdigest()
+
+
 def migration_digest(project: Path) -> str:
     migration_root = project / "apps/api/prisma/migrations"
     paths = [path.relative_to(project) for path in migration_root.glob("*/migration.sql")]
@@ -122,6 +136,11 @@ def observe_pi5(
     phase3 = runtime.phase3_status()
     if not runtime.normalized_pi5_phase3_state(phase3):
         raise RuntimeError("Pi5 Blue/Green runtime is not normalized")
+    runtime_config_digest = phase3.get("runtimeConfigDigest")
+    if phase3.get("runtimeConfigStatus") != "verified":
+        raise RuntimeError("Pi5 active API environment is not verified")
+    if not isinstance(runtime_config_digest, str):
+        raise RuntimeError("Pi5 runtime configuration digest is unavailable")
     active_slot = phase3.get("activeSlot")
     slots = phase3.get("slots")
     active = slots.get(active_slot) if isinstance(slots, dict) else None
@@ -156,6 +175,9 @@ def observe_pi5(
         "activeSlot": active_slot,
         "apiImage": api_image,
         "webImage": web_image,
-        "configDigest": config_digest(runtime.PROJECT),
+        "configDigest": verified_config_digest(
+            runtime.PROJECT, runtime_config_digest
+        ),
+        "runtimeConfigDigest": runtime_config_digest,
         "migrationDigest": migration_digest(runtime.PROJECT),
     }

@@ -141,6 +141,44 @@ def remote_previous_sha(inventory: str, host: str, *, runtime: Runtime) -> str:
     raise RuntimeError(f"could not resolve previous SHA for {host}: {output}")
 
 
+def converge_server_config(
+    inventory: str,
+    host: str,
+    revision: str,
+    run_id: str,
+    *,
+    runtime: Runtime,
+) -> None:
+    """Converge Pi5 host configuration without invoking a runtime executor."""
+
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "ANSIBLE_REPO_VERSION": revision,
+            "RUN_ID": run_id,
+            "RELEASE_ORCHESTRATED": "1",
+        }
+    )
+    extra = (
+        "release_orchestrated=true release_rollback=false "
+        "server_release_mode=host-config-only"
+    )
+    runtime.run(
+        [
+            "ansible-playbook",
+            "-i",
+            inventory,
+            str(runtime.ANSIBLE_DIRECTORY / "playbooks/deploy-staged.yml"),
+            "--limit",
+            host,
+            "-e",
+            extra,
+        ],
+        cwd=runtime.ANSIBLE_DIRECTORY,
+        env=environment,
+    )
+
+
 def playbook(
     inventory: str,
     host: str,

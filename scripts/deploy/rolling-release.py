@@ -587,6 +587,14 @@ def remote_previous_sha(inventory: str, host: str) -> str:
     return ansible_backend.remote_previous_sha(inventory, host, runtime=_runtime())
 
 
+def converge_server_config(
+    inventory: str, host: str, revision: str, run_id: str
+) -> None:
+    return ansible_backend.converge_server_config(
+        inventory, host, revision, run_id, runtime=_runtime()
+    )
+
+
 def playbook(
     inventory: str,
     host: str,
@@ -695,8 +703,16 @@ def pi5_already_current(sha: str) -> bool:
     return pi5_backend.pi5_already_current(sha, runtime=_runtime())
 
 
-def phase3_status() -> dict[str, Any]:
-    return pi5_backend.phase3_status(runtime=_runtime())
+def phase3_status(
+    *,
+    structural_only: bool = False,
+    recovery_run_id: str | None = None,
+) -> dict[str, Any]:
+    return pi5_backend.phase3_status(
+        runtime=_runtime(),
+        structural_only=structural_only,
+        recovery_run_id=recovery_run_id,
+    )
 
 
 def normalized_pi5_phase3_state(phase3: dict[str, Any]) -> bool:

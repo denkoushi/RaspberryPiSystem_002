@@ -12,6 +12,7 @@ PHASE3_COMPOSE="${PI5_PHASE3_COMPOSE:-${PROJECT_DIR}/infrastructure/docker/docke
 ENV_FILE="${PI5_ENV_FILE:-${PROJECT_DIR}/infrastructure/docker/.env}"
 PHASE2_STATE_FILE="${PI5_PHASE2_STATE_FILE:-${PROJECT_DIR}/logs/deploy/pi5-image-deploy-state.json}"
 STATE_FILE="${PI5_BLUE_GREEN_STATE_FILE:-${PROJECT_DIR}/logs/deploy/pi5-blue-green-state.json}"
+FLEET_STATE_FILE="${PI5_FLEET_STATE_FILE:-${PROJECT_DIR}/logs/deploy/fleet-release-state.json}"
 LOCK_FILE="${PI5_BLUE_GREEN_LOCK_FILE:-${PROJECT_DIR}/logs/.pi5-blue-green.lock}"
 CONFIG_DIR="${PI5_BLUE_GREEN_CONFIG_DIR:-${PROJECT_DIR}/logs/deploy/bluegreen}"
 ALERT_DIR="${PI5_BLUE_GREEN_ALERT_DIR:-${PROJECT_DIR}/logs/alerts}"
@@ -48,11 +49,13 @@ GATEWAY_READY_INTERVAL="${PI5_BLUE_GREEN_GATEWAY_READY_INTERVAL:-1}"
 DRY_RUN="${PI5_BLUE_GREEN_DRY_RUN:-${DRY_RUN:-0}}"
 HTTP_ONLY="${PI5_BLUE_GREEN_HTTP_ONLY:-0}"
 MIGRATION_BASE_REF="${PI5_BLUE_GREEN_MIGRATION_BASE_REF:-}"
+RUNTIME_CONFIG_VERIFIER="${PI5_RUNTIME_CONFIG_VERIFIER:-${PROJECT_DIR}/scripts/deploy/pi5-runtime-config-verifier.py}"
 
 COMMAND="${1:-}"
 CONFIRM_BOOTSTRAP=0
 ALLOW_LEGACY_HANDOFF=0
 RESTORE_LEGACY=0
+STRUCTURAL_ONLY=0
 API_IMAGE=""
 WEB_IMAGE=""
 ROLLBACK_REASON=""
@@ -135,6 +138,33 @@ esac
 ((RESTORE_LEGACY == 0)) || [[ "$COMMAND" == reconcile ]] || die '--restore-legacy is valid only with reconcile'
 [[ "$GATEWAY_READY_RETRIES" =~ ^[1-9][0-9]*$ ]] || die 'gateway readiness retries must be a positive integer'
 [[ "$GATEWAY_READY_INTERVAL" =~ ^[0-9]+([.][0-9]+)?$ ]] || die 'gateway readiness interval must be a non-negative number'
+
+enable_prior_handoff_recovery_mode() {
+  local run_id="${PI5_PRIOR_HANDOFF_RECOVERY_RUN_ID:-}"
+  [[ -n "$run_id" ]] || return 0
+  [[ "$COMMAND" == status || "$COMMAND" == cleanup ]] || die 'prior-handoff recovery mode is valid only for status or cleanup'
+  [[ "$run_id" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$ ]] || die 'prior-handoff recovery run ID is malformed'
+  [[ "${ROLLING_RELEASE_PROTOCOL:-}" == 2 ]] || die 'prior-handoff recovery requires the rolling-release protocol'
+  [[ "${ROLLING_RELEASE_UNIT:-}" == "raspi-release-${run_id}.service" ]] || die 'prior-handoff recovery unit identity does not match'
+  [[ "${INVOCATION_ID:-}" =~ ^[0-9a-fA-F]{32}$ ]] || die 'prior-handoff recovery invocation identity is missing'
+  python3 - "$FLEET_STATE_FILE" "$run_id" <<'PY' || die 'prior-handoff recovery is not owned by the active fleet run'
+import json, sys
+path, run_id = sys.argv[1:]
+try:
+    with open(path, encoding='utf-8') as stream:
+        state = json.load(stream)
+except (OSError, json.JSONDecodeError):
+    raise SystemExit(1)
+active = state.get('activeRun') if isinstance(state, dict) else None
+if not isinstance(active, dict):
+    raise SystemExit(1)
+if active.get('runId') != run_id or active.get('status') != 'running':
+    raise SystemExit(1)
+PY
+  STRUCTURAL_ONLY=1
+}
+
+enable_prior_handoff_recovery_mode
 
 lock_cleanup() {
   if ((LOCK_FALLBACK == 1)) && [[ -n "$LOCK_DIR" ]]; then
@@ -584,6 +614,24 @@ ensure_gateway_maintenance() {
 slot_container_id() { compose_current ps -q "$1" 2>/dev/null || true; }
 docker_running() { [[ "$DRY_RUN" == 1 ]] && return 0; [[ "$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null || true)" == true ]]; }
 container_image() { [[ "$DRY_RUN" == 1 ]] && printf 'dry-run-image\n' || docker inspect -f '{{.Config.Image}}' "$1"; }
+verify_slot_runtime_config() {
+  local slot="$1" service container_id image_id
+  is_slot "$slot" || return 1
+  [[ "$DRY_RUN" == 1 ]] && { printf 'sha256:%064d\n' 0; return 0; }
+  service="api-${slot}"
+  container_id="$(slot_container_id "$service")"
+  [[ -n "$container_id" ]] || return 1
+  image_id="$(docker inspect -f '{{.Image}}' "$container_id")"
+  [[ -n "$image_id" ]] || return 1
+  # Process substitution keeps effective and observed values out of argv,
+  # temporary files, logs, and durable state.  The verifier emits only a
+  # canonical digest on success and key names (never values) on failure.
+  python3 "$RUNTIME_CONFIG_VERIFIER" \
+    --service "$service" \
+    --compose-json <(compose_current config --format json) \
+    --image-env-json <(docker image inspect -f '{{json .Config.Env}}' "$image_id") \
+    --inspect-json <(docker inspect -f '{{json .Config.Env}}' "$container_id")
+}
 verify_slot_identity() {
   local slot="$1" api_id web_id
   [[ "$DRY_RUN" == 1 ]] && return 0
@@ -628,9 +676,15 @@ slot_web_validate() {
   docker exec "$cid" caddy validate --config /srv/Caddyfile.slot >/dev/null
 }
 
-slot_ready() {
+slot_structural_ready() {
   local slot="$1" role="$2"
   slot_runtime_ready "$slot" "$role" && slot_web_validate "$slot"
+}
+
+slot_ready() {
+  local slot="$1" role="$2"
+  verify_slot_runtime_config "$slot" >/dev/null && \
+    slot_structural_ready "$slot" "$role"
 }
 
 slot_up() {
@@ -1040,7 +1094,11 @@ cleanup() {
   local now previous; now="$(date +%s)"; previous="$PREVIOUS_SLOT"
   is_slot "$previous" || { log 'no previous slot to clean'; return 0; }
   [[ "$STABLE_UNTIL" =~ ^[0-9]+$ && "$now" -ge "$STABLE_UNTIL" ]] || die 'previous slot is still inside five-minute stability window'
-  slot_ready "$ACTIVE_SLOT" standby || die 'public slot is not healthy standby before cleanup handoff'
+  if ((STRUCTURAL_ONLY == 1)); then
+    slot_structural_ready "$ACTIVE_SLOT" standby || die 'prior-release public slot is not structurally healthy before cleanup handoff'
+  else
+    slot_ready "$ACTIVE_SLOT" standby || die 'public slot is not healthy standby before cleanup handoff'
+  fi
   slot_runtime_ready "$previous" leader || die 'previous slot is not leader before cleanup handoff'
   compose_current stop "api-${previous}" || die 'could not stop previous leader API'
   slot_runtime_ready "$ACTIVE_SLOT" leader || { compose_current up -d "api-${previous}" || true; die 'new slot did not become leader; old slot retained/restored'; }
@@ -1109,7 +1167,7 @@ reconcile() {
 status_report() {
   if [[ ! -f "$STATE_FILE" ]]; then printf '{"state":"not-initialized"}\n'; return 0; fi
   state_assert
-  local stale=0 slot expected
+  local stale=0 slot expected runtime_config_status=not-checked runtime_config_digest=''
   load_state_context
   if [[ "$DRY_RUN" != 1 ]]; then
     if ! is_slot "$ACTIVE_SLOT" || [[ -z "$(slot_container_id "api-${ACTIVE_SLOT}")" || -z "$(slot_container_id "web-${ACTIVE_SLOT}")" ]]; then
@@ -1119,14 +1177,27 @@ status_report() {
       if [[ -n "$(slot_container_id "api-${slot}")" || -n "$(slot_container_id "web-${slot}")" ]]; then verify_slot_identity "$slot" || stale=1; fi
     done
     if [[ "$GATEWAY_MODE" == application ]] && is_slot "$GATEWAY_SLOT"; then gateway_points_to "$GATEWAY_SLOT" || stale=1; fi
+    if ((STRUCTURAL_ONLY == 0)) && is_slot "$ACTIVE_SLOT"; then
+      if runtime_config_digest="$(verify_slot_runtime_config "$ACTIVE_SLOT")"; then
+        runtime_config_status=verified
+      else
+        runtime_config_status=mismatch
+        runtime_config_digest=''
+        stale=1
+      fi
+    elif ! is_slot "$ACTIVE_SLOT"; then
+      runtime_config_status=unavailable
+    fi
   fi
   expected=leader
   [[ "$STABLE_UNTIL" =~ ^[0-9]+$ && $(date +%s) -lt STABLE_UNTIL && -n "$PREVIOUS_SLOT" ]] && expected=standby
-  python3 - "$STATE_FILE" "$stale" "$expected" <<'PY'
+  python3 - "$STATE_FILE" "$stale" "$expected" "$runtime_config_status" "$runtime_config_digest" <<'PY'
 import json,sys
 with open(sys.argv[1],encoding='utf-8') as f:s=json.load(f)
 s['runtimeStatus']='stale' if sys.argv[2]=='1' else 'consistent'
 s['expectedActiveSchedulerRole']=sys.argv[3]
+s['runtimeConfigStatus']=sys.argv[4]
+s['runtimeConfigDigest']=sys.argv[5] or None
 print(json.dumps(s,ensure_ascii=False,indent=2,sort_keys=True))
 PY
   ((stale == 0))

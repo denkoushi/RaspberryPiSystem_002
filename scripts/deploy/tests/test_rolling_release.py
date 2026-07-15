@@ -135,6 +135,7 @@ def fleet_execution_contract(targets, classification, inventory):
             )
         )
         stack.enter_context(patch.object(MODULE, 'build_fleet_scope', side_effect=build_scope))
+        stack.enter_context(patch.object(MODULE, 'converge_server_config'))
         stack.enter_context(patch.object(MODULE, 'ensure_pi5_release', ensure))
         stack.enter_context(
             patch.object(MODULE, 'observe_pi5_evidence', return_value=pi5_observation)
@@ -491,6 +492,8 @@ class Pi5IdempotentSkipTest(unittest.TestCase):
         candidate = self.marker()['candidate']
         status = {
             'runtimeStatus': 'consistent',
+            'runtimeConfigStatus': 'verified',
+            'runtimeConfigDigest': 'sha256:' + 'f' * 64,
             'activeSlot': 'blue',
             'gateway': {'mode': 'application', 'slot': 'blue'},
             'slots': {
@@ -590,6 +593,19 @@ class Pi5IdempotentSkipTest(unittest.TestCase):
                 patch.object(MODULE, 'run', return_value=json.dumps(status)):
             self.assertFalse(MODULE.pi5_already_current(self.sha))
 
+    def test_pi5_already_current_requires_verified_runtime_configuration(self):
+        for overrides in (
+            {'runtimeConfigStatus': 'mismatch'},
+            {'runtimeConfigStatus': 'not-checked'},
+            {'runtimeConfigDigest': None},
+            {'runtimeConfigDigest': 'sha256:not-a-digest'},
+        ):
+            with self.subTest(overrides=overrides):
+                status = self.phase3_status(**overrides)
+                with patch.object(MODULE, 'read_pi5_release_current', return_value=self.marker()), \
+                        patch.object(MODULE, 'run', return_value=json.dumps(status)):
+                    self.assertFalse(MODULE.pi5_already_current(self.sha))
+
     def test_pi5_already_current_fail_closed_on_status_error(self):
         with patch.object(MODULE, 'read_pi5_release_current', return_value={'sha': self.sha}), \
                 patch.object(MODULE, 'run', side_effect=RuntimeError('status unavailable')):
@@ -599,8 +615,17 @@ class Pi5IdempotentSkipTest(unittest.TestCase):
 class Pi5ExpiredHandoffPreflightTest(unittest.TestCase):
     def setUp(self):
         self.sha = 'a' * 40
-        self.state = MODULE.ReleaseState(Path('/tmp/unused-release-state.json'), {})
+        self.state = MODULE.ReleaseState(
+            Path('/tmp/unused-release-state.json'), {'runId': 'run-1'}
+        )
         self.state.save = Mock()
+
+    def assert_structural_call(self, call, operation, *, capture):
+        self.assertEqual(call.args[0], [str(MODULE.PHASE3), operation])
+        self.assertEqual(call.kwargs.get('capture', False), capture)
+        self.assertEqual(
+            call.kwargs['env']['PI5_PRIOR_HANDOFF_RECOVERY_RUN_ID'], 'run-1'
+        )
 
     @staticmethod
     def normal_status():
@@ -637,12 +662,12 @@ class Pi5ExpiredHandoffPreflightTest(unittest.TestCase):
     def test_normal_single_slot_state_is_a_noop(self):
         with patch.object(MODULE, 'run', return_value=json.dumps(self.normal_status())) as command:
             self.assertFalse(MODULE.recover_expired_pi5_handoff(self.state))
-        command.assert_called_once_with([str(MODULE.PHASE3), 'status'], capture=True)
+        self.assert_structural_call(command.call_args, 'status', capture=True)
 
     def test_not_initialized_state_is_a_noop(self):
         with patch.object(MODULE, 'run', return_value=json.dumps({'state': 'not-initialized'})) as command:
             self.assertFalse(MODULE.recover_expired_pi5_handoff(self.state))
-        command.assert_called_once_with([str(MODULE.PHASE3), 'status'], capture=True)
+        self.assert_structural_call(command.call_args, 'status', capture=True)
 
     def test_expired_consistent_handoff_is_cleaned_before_new_candidate_build(self):
         events = []
@@ -672,9 +697,9 @@ class Pi5ExpiredHandoffPreflightTest(unittest.TestCase):
             [call.args[0][1] for call in command.call_args_list[:3]],
             ['status', 'cleanup', 'status'],
         )
-        self.assertTrue(command.call_args_list[0].kwargs['capture'])
-        self.assertNotIn('capture', command.call_args_list[1].kwargs)
-        self.assertTrue(command.call_args_list[2].kwargs['capture'])
+        self.assert_structural_call(command.call_args_list[0], 'status', capture=True)
+        self.assert_structural_call(command.call_args_list[1], 'cleanup', capture=False)
+        self.assert_structural_call(command.call_args_list[2], 'status', capture=True)
         release.assert_called_once_with(self.sha, self.state)
         wait.assert_called_once_with(self.state)
         record.assert_not_called()
@@ -703,13 +728,13 @@ class Pi5ExpiredHandoffPreflightTest(unittest.TestCase):
         with patch.object(MODULE, 'run', return_value=json.dumps(stale)) as command:
             with self.assertRaisesRegex(RuntimeError, 'not consistent'):
                 MODULE.recover_expired_pi5_handoff(self.state)
-        command.assert_called_once_with([str(MODULE.PHASE3), 'status'], capture=True)
+        self.assert_structural_call(command.call_args, 'status', capture=True)
 
     def test_status_error_fails_closed_without_cleanup(self):
         with patch.object(MODULE, 'run', side_effect=RuntimeError('status unavailable')) as command:
             with self.assertRaisesRegex(RuntimeError, 'status unavailable'):
                 MODULE.recover_expired_pi5_handoff(self.state)
-        command.assert_called_once_with([str(MODULE.PHASE3), 'status'], capture=True)
+        self.assert_structural_call(command.call_args, 'status', capture=True)
 
     def test_cleanup_error_does_not_retry_or_start_candidate_build(self):
         failure = subprocess.CalledProcessError(1, [str(MODULE.PHASE3), 'cleanup'])

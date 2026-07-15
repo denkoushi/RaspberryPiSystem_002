@@ -112,6 +112,7 @@ class FakeRuntime:
         self.playbook_error = None
         self.rollback_ok = True
         self.terminal_observation_error = None
+        self.host_config_error = None
         self.deployed_sha = {}
         self.pi5_release_sha = None
         self.pi5_marker_sha = None
@@ -245,6 +246,11 @@ class FakeRuntime:
             else self.deployed_sha.get(host, NEW_SHA)
         )
         return {"currentSha": current, "services": ["required.service"]}
+
+    def converge_server_config(self, _inventory, host, sha, _run_id):
+        self.events.append(f"pi5:host-config:{host}:{sha}")
+        if self.host_config_error is not None:
+            raise self.host_config_error
 
     def ensure_pi5_release(self, sha, state):
         self.events.append("pi5:ensure")
@@ -496,7 +502,19 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         self.assertTrue(runtime.scope_kwargs["full_fleet"])
         self.assertLess(
             runtime.events.index("fleet:unknown:pi5"),
+            runtime.events.index(f"pi5:host-config:pi5:{NEW_SHA}"),
+        )
+        self.assertLess(
+            runtime.events.index(f"pi5:host-config:pi5:{NEW_SHA}"),
             runtime.events.index("pi5:ensure"),
+        )
+        unknown = runtime.events.index("fleet:unknown:pi5")
+        host_config = runtime.events.index(f"pi5:host-config:pi5:{NEW_SHA}")
+        self.assertTrue(
+            any(
+                event.startswith("legacy:save:running:preparing")
+                for event in runtime.events[unknown + 1 : host_config]
+            )
         )
         self.assertLess(
             runtime.events.index(f"fleet:verified:pi5:{NEW_SHA}"),
@@ -523,6 +541,114 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             len(runtime.events) - 1,
         )
         self.assertEqual(runtime.fleet["fleet"]["kiosk-a"]["evidence"], "verified")
+
+    def test_pi5_host_config_failure_stops_before_candidate_and_terminals(self):
+        terminal = {
+            "host": "kiosk-a",
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "a",
+        }
+        server = decision("pi5", "server")
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", OLD_SHA),
+                "kiosk-a": host_record("kiosk", OLD_SHA),
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan={
+                "pi5Required": True,
+                "hosts": [server, decision("kiosk-a", "kiosk")],
+            },
+            targets=[terminal],
+        )
+        runtime.host_config_error = RuntimeError("host config failed")
+
+        with self.assertRaisesRegex(RuntimeError, "host config failed"):
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            )
+
+        self.assertIn(f"pi5:host-config:pi5:{NEW_SHA}", runtime.events)
+        self.assertNotIn("pi5:ensure", runtime.events)
+        self.assertFalse(
+            any(event.startswith("observe:server:") for event in runtime.events)
+        )
+        self.assertEqual(runtime.fleet["fleet"]["pi5"]["evidence"], "unknown")
+        self.assertEqual(
+            runtime.fleet["fleet"]["kiosk-a"], host_record("kiosk", OLD_SHA)
+        )
+        target = runtime.states[-1].target("kiosk-a")
+        self.assertEqual(target["state"], "pending")
+        self.assertEqual(target["currentSha"], OLD_SHA)
+        self.assertEqual(target["evidence"], "verified")
+        for forbidden in (
+            "fleet:unknown:kiosk-a",
+            "terminal:previous:kiosk-a",
+            "playbook:kiosk-a",
+            "observe:terminal:kiosk-a",
+            "rollback:kiosk-a",
+            "signage:prestage",
+        ):
+            self.assertNotIn(forbidden, runtime.events)
+        self.assertFalse(any(event.startswith("status:") for event in runtime.events))
+        self.assertNotIn("kiosk-a", runtime.deployed_sha)
+        self.assertIn("fleet:finish:failed", runtime.events)
+
+    def test_cancel_after_pi5_host_config_never_starts_candidate_or_terminals(self):
+        terminal = {
+            "host": "kiosk-a",
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "a",
+        }
+        server = decision("pi5", "server")
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", OLD_SHA),
+                "kiosk-a": host_record("kiosk", OLD_SHA),
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan={
+                "pi5Required": True,
+                "hosts": [server, decision("kiosk-a", "kiosk")],
+            },
+            targets=[terminal],
+        )
+
+        result = coordinator.execute(
+            args(),
+            runtime=runtime,
+            token=FakeToken(runtime.events, cancel_at="after-pi5-host-config"),
+        )
+
+        self.assertEqual(result, 130)
+        self.assertIn(f"pi5:host-config:pi5:{NEW_SHA}", runtime.events)
+        self.assertNotIn("pi5:ensure", runtime.events)
+        self.assertEqual(
+            runtime.fleet["fleet"]["kiosk-a"], host_record("kiosk", OLD_SHA)
+        )
+        target = runtime.states[-1].target("kiosk-a")
+        self.assertEqual(target["state"], "pending")
+        self.assertEqual(target["currentSha"], OLD_SHA)
+        self.assertEqual(target["evidence"], "verified")
+        for forbidden in (
+            "fleet:unknown:kiosk-a",
+            "terminal:previous:kiosk-a",
+            "playbook:kiosk-a",
+            "observe:terminal:kiosk-a",
+            "rollback:kiosk-a",
+            "signage:prestage",
+        ):
+            self.assertNotIn(forbidden, runtime.events)
+        status_events = [
+            event for event in runtime.events if event.startswith("status:")
+        ]
+        self.assertEqual(
+            status_events, ["status:remove-run:--run-id:run-1"]
+        )
+        self.assertNotIn("kiosk-a", runtime.deployed_sha)
+        self.assertIn("fleet:finish:cancelled", runtime.events)
 
     def test_verified_rollback_is_observed_then_run_finishes_failed(self):
         terminal = {
@@ -783,6 +909,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             0,
         )
         self.assertEqual(runtime.fleet["fleet"]["pi5"]["previousSha"], OLD_SHA)
+        self.assertIn(f"pi5:host-config:pi5:{NEW_SHA}", runtime.events)
 
 
 if __name__ == "__main__":
