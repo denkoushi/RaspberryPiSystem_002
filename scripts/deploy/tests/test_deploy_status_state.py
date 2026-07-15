@@ -22,6 +22,10 @@ class DeployStatusStateTest(unittest.TestCase):
             run('put', '--run-id', 'b', '--clients', 'three')
             stored = json.loads(path.read_text())
             stored['acknowledgements'] = {'a': {'one': {'acknowledgedAt': 'now'}}, 'b': {'three': {'acknowledgedAt': 'now'}}}
+            stored['canaryHolds'] = {
+                'a': {'state': 'waiting-verification'},
+                'b': {'state': 'approved'},
+            }
             path.write_text(json.dumps(stored))
             run('set-phase', '--run-id', 'a', '--phase', 'failed')
             data = json.loads(path.read_text())['kioskByClient']
@@ -33,6 +37,8 @@ class DeployStatusStateTest(unittest.TestCase):
             stored = json.loads(path.read_text())
             self.assertNotIn('a', stored['acknowledgements'])
             self.assertIn('b', stored['acknowledgements'])
+            self.assertNotIn('a', stored['canaryHolds'])
+            self.assertIn('b', stored['canaryHolds'])
 
     def test_remove_client_keeps_other_targets_in_the_same_run(self):
         with tempfile.TemporaryDirectory() as directory:
