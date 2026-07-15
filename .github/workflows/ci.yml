@@ -90,7 +90,6 @@ jobs:
           python3 scripts/deploy/tests/test-client-agent-lifecycle-baseline.py
           bash scripts/deploy/tests/test-signage-deploy-maintenance.sh
           bash scripts/deploy/tests/test-deploy-status-postgres.sh
-          bash scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan
 
       - name: Run lint
         run: pnpm lint --max-warnings=0

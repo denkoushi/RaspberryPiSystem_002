@@ -35,7 +35,7 @@ validation:
   - read-only plans for both production inventories before any approved release
   - one explicitly approved full-fleet acceptance per inventory, followed by a same-SHA no-op plan
 open_items:
-  - publish and validate PR 5, then implement PR 6 through PR 8 only in sequence from the updated origin/main
+  - complete hosted validation for Draft PR #1009, then implement PR 6 through PR 8 only in sequence from the updated origin/main
   - obtain separate per-inventory approval before any production mutation
   - reintroduce the deferred product work only after deployment-foundation production acceptance
 supersedes: []
@@ -78,7 +78,9 @@ This work exists because the current release path has accumulated two coordinato
 - [x] (2026-07-15 03:57Z) Published PR 4 as Draft PR #1008 at exact head `c22da822`, completed the hosted suite with 12 successes and one neutral auxiliary CodeQL skip, then merged it under explicit approval as `ccdc624a`. No real-device action occurred.
 - [x] (2026-07-15 04:22Z) Implemented and independently hardened PR 5 locally from merged `ccdc624a`: strict generation-checked fleet state, pre-checkout fleet lock plus compatibility lock, live-evidence seeding, default host-specific minimization, `--full-fleet`, warning-only `--auto-minimize`, new-state-first dual writes, and Pi4 recovery on the same state/lock. Review corrections make service probes independent, prohibit `--limit` from excluding unknown evidence, restrict legacy-marker fallback to genuinely pre-fleet state, bind Pi5 source digests to the matching checkout release, classify both sides of renames, and require the fleet-capable v2 bootstrap protocol. The deploy Python suite passes 295 tests and all isolated deployment shell contracts pass.
 - [x] (2026-07-15 06:03Z) Closed the final PR 5 review findings before publication: launch and plan require the exact resolved target checkout, a non-secret inventory `status_agent_client_id` binds every Pi5 operation to the intended site before state or Git mutation, an active run makes a read-only plan conservatively report the entire inventory as unknown, and deploy-status now has one Python writer protected by a crash-safe kernel lock. Pi4 recovery is an explicit per-host capability for the five standard Tailscale kiosks and remains unavailable at Talkplaza. The final local evidence is 321/321 deploy tests, 16/16 shell contracts plus lifecycle and maintenance checks, 10/10 isolated PostgreSQL API tests, API lint/type checks, and two final reviews with no P1/P2.
-- [ ] Publish PR 5 and complete hosted validation without any real-device action.
+- [x] (2026-07-15 06:25Z) Published PR 5 as Draft PR #1009 at implementation head `23c5f763`, based exactly on merged PR 4 commit `ccdc624a`; #1003 remains open, draft, and untouched at `0f19936a`.
+- [x] (2026-07-15 06:29Z) Diagnosed the first hosted `lint-build-unit` failure: Actions checked out its PR merge SHA but a legacy smoke invoked `--print-plan` for `main` and the production inventory, so the new exact-checkout guard correctly rejected it. Removed that unsafe live-inventory workflow call rather than pointing it at `HEAD`, and added a static contract that hosted workflows never invoke the public deploy entrypoint against either production inventory. The fixture/unit plan coverage and local single-entrypoint contract pass.
+- [ ] Complete refreshed hosted validation for Draft PR #1009 without any real-device action.
 - [ ] Implement and publish PR 6, unified Pi5 and terminal executors, health checks, acknowledgements, and rollback.
 - [ ] Implement and publish PR 7, conditional CI enforcement and the `main` ruleset.
 - [ ] Complete the separately approved production acceptance sequence, including the initial full fleet and the same-SHA no-op proof.
@@ -213,7 +215,7 @@ This work exists because the current release path has accumulated two coordinato
 
 ## Outcomes & Retrospective
 
-The program is in progress. The living ExecPlan in #1007, migration ledger safety in #1004, CI/deploy-contract shadowing in #1005, critical inventory/rollback/checkout-lock safety in #1006, and single-coordinator foundation in #1008 are merged in the approved order. PR 5 is locally implemented and validated; PR 5 publication and PR 6 through PR 8 remain pending.
+The program is in progress. The living ExecPlan in #1007, migration ledger safety in #1004, CI/deploy-contract shadowing in #1005, critical inventory/rollback/checkout-lock safety in #1006, and single-coordinator foundation in #1008 are merged in the approved order. PR 5 is published as Draft PR #1009 and locally validated; refreshed hosted validation and PR 6 through PR 8 remain pending.
 
 Merged PR 1 validates the complete candidate commit-object ledger, enforces addition-only migration diffs, and applies a quote-aware conservative SQL allow-list. Its 22 focused tests, real 144-base/146-candidate ledger check, adversarial matrix, two independent reviews, and both hosted suites passed. Merged PR 2 proves pull-request-only feature-branch CI, stable required-check names, the shadow classifier, and the client-lifecycle baseline/merge-base contract; its refreshed suite passed with no duplicate feature-branch push run. Merged PR 3 delivers canonical inventory groups, exact-run rollback selection, and checkout-before-lock prevention; final hosted run `29379111287` passed completely after the approved isolated audit-client repair.
 
@@ -526,7 +528,7 @@ Current replacement map at this revision:
       transitions -> begin/abandon, pre-mutation unknown, post-observation verified, rollback drift, and new-state-first success/failed/cancelled/interrupted finalization
       compatibility -> legacy Pi5 marker and per-run snapshot written only after fleet state; bootstrap and Pi4 recovery hold fleet then compatibility lock
       local evidence -> 321 deploy Python tests, 16 shell contracts plus lifecycle and maintenance checks, 10 isolated PostgreSQL API tests, API lint/type checks, both real inventories parsed with strict release-host ordering, Python syntax, diff check, and two final reviews with no P1/P2
-      publication/hosted state -> pending
+      publication/hosted state -> Draft PR #1009; first run 29394157999 exposed and removed an unsafe production-inventory print-plan smoke, refreshed validation pending
     PR 6-PR 8: pending in approved order
     Product reconstruction: pending deployment-foundation production acceptance
 
@@ -636,3 +638,5 @@ Revision note (2026-07-15, 03:57Z): Recorded PR #1008 exact head `c22da822`, its
 Revision note (2026-07-15, 04:22Z): Recorded the PR 5 independent-review corrections: independent service probes, fail-closed limits for unknown evidence, pre-fleet-only marker fallback, exact inventory server authority for recovery, source-digest release attribution, rename-safe classification, canonical print-plan SSH behavior, safety-error propagation, and a fleet-capable v2 target protocol. The deploy Python suite now passes 295 tests and all isolated deployment shell contracts pass. Publication remains pending; no SSH, product deployment, real-device mutation, production acceptance, or change to Draft PR #1003 occurred.
 
 Revision note (2026-07-15, 06:03Z): Recorded the final PR 5 hardening and validation: exact target-tree binding, non-secret Pi5 site identity, conservative active-run planning, absent-only evidence seeding, one crash-safe deploy-status writer with strict notice-duration validation, explicit per-host Pi4 recovery capability, 321/321 deploy tests, all shell contracts, and 10/10 isolated PostgreSQL API tests. Two final reviews report no P1/P2. Publication remains pending; no SSH, product deployment, real-device mutation, production acceptance, or change to Draft PR #1003 occurred.
+
+Revision note (2026-07-15, 06:29Z): Recorded Draft PR #1009 publication at implementation head `23c5f763` and the first hosted failure. The failure proved the exact-checkout guard: a legacy CI smoke combined the PR merge checkout with branch `main`. It was removed because changing it to `HEAD` would let hosted CI attempt a real production-inventory SSH plan; a new static contract prohibits that class of workflow call. Refreshed hosted validation remains pending. No SSH, product deployment, real-device mutation, production acceptance, merge, or change to Draft PR #1003 occurred.
