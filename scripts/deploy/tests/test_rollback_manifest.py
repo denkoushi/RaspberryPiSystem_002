@@ -75,6 +75,32 @@ class RollbackManifestTest(unittest.TestCase):
             encoding="utf-8",
         )
 
+    def git(self, repository: Path, *arguments: str) -> str:
+        completed = subprocess.run(
+            ["git", "-C", str(repository), *arguments],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return completed.stdout.strip()
+
+    def create_repository(self) -> tuple[Path, str]:
+        repository = self.filesystem_root / "srv" / "terminal-app"
+        repository.mkdir(parents=True)
+        self.git(repository, "init", "--quiet")
+        self.git(repository, "config", "user.name", "Rollback Test")
+        self.git(repository, "config", "user.email", "rollback@example.invalid")
+        (repository / "tracked.txt").write_text("prior release\n", encoding="utf-8")
+        self.git(repository, "add", "tracked.txt")
+        self.git(repository, "commit", "--quiet", "-m", "prior release")
+        return repository, self.git(repository, "rev-parse", "HEAD")
+
+    def commit_deployed_repository(self, repository: Path) -> str:
+        (repository / "tracked.txt").write_text("deployed release\n", encoding="utf-8")
+        self.git(repository, "add", "tracked.txt")
+        self.git(repository, "commit", "--quiet", "-m", "deployed release")
+        return self.git(repository, "rev-parse", "HEAD")
+
     def test_regular_file_capture_records_metadata_and_restores_atomically(self):
         service = self.config_directory / "kiosk-browser.service"
         unrelated = self.config_directory / "unrelated.service"
@@ -167,6 +193,17 @@ class RollbackManifestTest(unittest.TestCase):
 
         self.assertFalse(missing.exists())
         self.assertEqual(unrelated.read_text(encoding="utf-8"), "keep\n")
+
+    def test_absent_file_under_absent_parent_can_be_sealed_before_onboarding(self):
+        missing = self.filesystem_root / "home" / "new-user" / ".config" / "new.conf"
+        captured = self.capture(missing, missing)
+        self.assertEqual(captured["previousState"], "absent")
+
+        missing.parent.mkdir(parents=True)
+        missing.write_text("created by failed release\n", encoding="utf-8")
+        self.restore(captured["manifestSha256"])
+
+        self.assertFalse(missing.exists())
 
     def test_duplicate_destination_is_rejected_after_normalisation(self):
         first = self.config_directory / "first.service"
@@ -435,6 +472,315 @@ class RollbackManifestTest(unittest.TestCase):
         with mock.patch.object(MODULE, "_restore_regular", corrupt_after_replace):
             with self.assertRaisesRegex(MODULE.ManifestError, "post-restore.*checksum"):
                 self.restore(captured["manifestSha256"])
+
+    def test_capture_set_seals_one_explicit_manifest_in_request_order(self):
+        first = self.config_directory / "set-first.service"
+        second = self.config_directory / "set-second.service"
+        first.write_text("first\n", encoding="utf-8")
+        second.write_text("second\n", encoding="utf-8")
+
+        result = MODULE.capture_set(
+            root=self.storage_root,
+            run_id=self.run_id,
+            host=self.host,
+            paths=[first, second],
+            filesystem_root=self.filesystem_root,
+        )
+
+        self.assertEqual(result["count"], 2)
+        self.assertEqual(result["destinations"], [str(first), str(second)])
+        self.assertEqual(
+            result["manifestSha256"], self.read_manifest()["manifestSha256"]
+        )
+        with self.assertRaisesRegex(MODULE.ManifestError, "at least one"):
+            MODULE.capture_set(
+                root=self.storage_root,
+                run_id="empty-set",
+                host=self.host,
+                paths=[],
+                filesystem_root=self.filesystem_root,
+            )
+
+    def test_capture_set_restores_exact_repository_head_and_preserves_untracked_files(self):
+        service = self.config_directory / "repository.service"
+        service.write_text("prior service\n", encoding="utf-8")
+        repository, prior_head = self.create_repository()
+        secret = repository / ".env"
+        secret.write_text("LOCAL_SECRET=preserve-me\n", encoding="utf-8")
+
+        captured = MODULE.capture_set(
+            root=self.storage_root,
+            run_id=self.run_id,
+            host=self.host,
+            paths=[service, secret],
+            repository=repository,
+            expected_head=prior_head,
+            filesystem_root=self.filesystem_root,
+        )
+
+        manifest = self.read_manifest()
+        self.assertEqual(manifest["version"], 2)
+        self.assertEqual(
+            manifest["repository"], {"path": str(repository), "head": prior_head}
+        )
+        self.assertEqual(captured["repository"], manifest["repository"])
+        deployed_head = self.commit_deployed_repository(repository)
+        self.assertNotEqual(deployed_head, prior_head)
+        service.write_text("deployed service\n", encoding="utf-8")
+        secret.write_text("LOCAL_SECRET=deployed-value\n", encoding="utf-8")
+
+        with self.assertRaisesRegex(MODULE.ManifestError, "expected sealed digest"):
+            self.restore("0" * 64)
+        self.assertEqual(service.read_text(encoding="utf-8"), "deployed service\n")
+        self.assertEqual(
+            secret.read_text(encoding="utf-8"), "LOCAL_SECRET=deployed-value\n"
+        )
+        self.assertEqual(self.git(repository, "rev-parse", "HEAD"), deployed_head)
+
+        restored = self.restore(captured["manifestSha256"])
+
+        self.assertEqual(restored["repository"], manifest["repository"])
+        self.assertEqual(service.read_text(encoding="utf-8"), "prior service\n")
+        self.assertEqual(self.git(repository, "rev-parse", "HEAD"), prior_head)
+        self.assertEqual(
+            (repository / "tracked.txt").read_text(encoding="utf-8"),
+            "prior release\n",
+        )
+        self.assertEqual(
+            secret.read_text(encoding="utf-8"), "LOCAL_SECRET=preserve-me\n"
+        )
+
+    def test_repository_capture_requires_paired_path_and_exact_current_head(self):
+        service = self.config_directory / "repository-capture.service"
+        service.write_text("prior\n", encoding="utf-8")
+        repository, prior_head = self.create_repository()
+        common = {
+            "root": self.storage_root,
+            "host": self.host,
+            "paths": [service],
+            "filesystem_root": self.filesystem_root,
+        }
+
+        for run_id, supplied_repository, supplied_head, error in (
+            ("missing-head", repository, None, "provided together"),
+            ("missing-repository", None, prior_head, "provided together"),
+            ("uppercase-head", repository, prior_head.upper(), "lowercase 40-hex"),
+            ("wrong-head", repository, "0" * 40, "does not match"),
+        ):
+            with self.subTest(run_id=run_id), self.assertRaisesRegex(
+                MODULE.ManifestError, error
+            ):
+                MODULE.capture_set(
+                    **common,
+                    run_id=run_id,
+                    repository=supplied_repository,
+                    expected_head=supplied_head,
+                )
+            self.assertFalse(
+                (self.storage_root / run_id / self.host / "manifest.json").exists()
+            )
+
+    def test_repository_path_must_be_absolute_in_root_and_have_real_git_directory(self):
+        service = self.config_directory / "repository-path.service"
+        service.write_text("prior\n", encoding="utf-8")
+        repository, prior_head = self.create_repository()
+        outside = self.base / "outside-repository"
+        outside.mkdir()
+        not_git = self.filesystem_root / "srv" / "not-git"
+        not_git.mkdir()
+        repository_link = self.filesystem_root / "srv" / "repository-link"
+        repository_link.symlink_to(repository, target_is_directory=True)
+
+        for run_id, supplied_repository, error in (
+            ("relative-repository", Path("relative-repository"), "must be absolute"),
+            ("outside-repository", outside, "escapes the filesystem root"),
+            ("not-git-repository", not_git, r"\.git must be a real"),
+            ("symlink-repository", repository_link, "real existing directory"),
+        ):
+            with self.subTest(run_id=run_id), self.assertRaisesRegex(
+                MODULE.ManifestError, error
+            ):
+                MODULE.capture_set(
+                    root=self.storage_root,
+                    run_id=run_id,
+                    host=self.host,
+                    paths=[service],
+                    repository=supplied_repository,
+                    expected_head=prior_head,
+                    filesystem_root=self.filesystem_root,
+                )
+
+        with self.assertRaisesRegex(MODULE.ManifestError, "repository metadata"):
+            MODULE.capture_set(
+                root=self.storage_root,
+                run_id="git-metadata-entry",
+                host=self.host,
+                paths=[repository / ".git" / "config"],
+                repository=repository,
+                expected_head=prior_head,
+                filesystem_root=self.filesystem_root,
+            )
+
+    def test_manifest_version_is_strict_before_restore_mutation(self):
+        service = self.config_directory / "strict-version.service"
+        service.write_text("prior\n", encoding="utf-8")
+        self.capture(service, service)
+        service.write_text("deployed\n", encoding="utf-8")
+        manifest = self.read_manifest()
+        manifest["version"] = 1
+        self.write_resealed_manifest(manifest)
+
+        with self.assertRaisesRegex(MODULE.ManifestError, "version is unsupported"):
+            self.restore(self.read_manifest()["manifestSha256"])
+        self.assertEqual(service.read_text(encoding="utf-8"), "deployed\n")
+
+    def test_repository_schema_tamper_and_missing_object_fail_before_file_restore(self):
+        service = self.config_directory / "repository-schema.service"
+        service.write_text("prior\n", encoding="utf-8")
+        repository, prior_head = self.create_repository()
+        captured = MODULE.capture_set(
+            root=self.storage_root,
+            run_id=self.run_id,
+            host=self.host,
+            paths=[service],
+            repository=repository,
+            expected_head=prior_head,
+            filesystem_root=self.filesystem_root,
+        )
+        deployed_head = self.commit_deployed_repository(repository)
+        service.write_text("deployed\n", encoding="utf-8")
+
+        manifest = self.read_manifest()
+        manifest["repository"]["unexpected"] = True
+        self.write_resealed_manifest(manifest)
+        with self.assertRaisesRegex(MODULE.ManifestError, "repository fields"):
+            self.restore(self.read_manifest()["manifestSha256"])
+        self.assertEqual(service.read_text(encoding="utf-8"), "deployed\n")
+        self.assertEqual(self.git(repository, "rev-parse", "HEAD"), deployed_head)
+
+        manifest = self.read_manifest()
+        manifest["repository"] = {"path": str(repository), "head": "f" * 40}
+        manifest.pop("manifestSha256")
+        self.write_resealed_manifest(manifest)
+        with self.assertRaisesRegex(MODULE.ManifestError, "commit object is unavailable"):
+            self.restore(self.read_manifest()["manifestSha256"])
+        self.assertEqual(service.read_text(encoding="utf-8"), "deployed\n")
+        self.assertEqual(self.git(repository, "rev-parse", "HEAD"), deployed_head)
+        self.assertNotEqual(captured["manifestSha256"], self.read_manifest()["manifestSha256"])
+
+    def test_missing_repository_and_index_lock_fail_before_file_restore(self):
+        for scenario in ("missing-repository", "index-lock"):
+            with self.subTest(scenario=scenario):
+                run_id = f"run-{scenario}"
+                service = self.config_directory / f"{scenario}.service"
+                service.write_text("prior\n", encoding="utf-8")
+                repository = self.filesystem_root / "srv" / scenario
+                repository.mkdir(parents=True)
+                self.git(repository, "init", "--quiet")
+                self.git(repository, "config", "user.name", "Rollback Test")
+                self.git(repository, "config", "user.email", "rollback@example.invalid")
+                (repository / "tracked.txt").write_text("prior\n", encoding="utf-8")
+                self.git(repository, "add", "tracked.txt")
+                self.git(repository, "commit", "--quiet", "-m", "prior")
+                head = self.git(repository, "rev-parse", "HEAD")
+                captured = MODULE.capture_set(
+                    root=self.storage_root,
+                    run_id=run_id,
+                    host=self.host,
+                    paths=[service],
+                    repository=repository,
+                    expected_head=head,
+                    filesystem_root=self.filesystem_root,
+                )
+                service.write_text("deployed\n", encoding="utf-8")
+                if scenario == "missing-repository":
+                    repository.rename(repository.with_name(repository.name + "-moved"))
+                    error = "real existing directory"
+                else:
+                    (repository / ".git" / "index.lock").write_text(
+                        "locked\n", encoding="utf-8"
+                    )
+                    error = "index lock"
+
+                with self.assertRaisesRegex(MODULE.ManifestError, error):
+                    MODULE.restore(
+                        root=self.storage_root,
+                        run_id=run_id,
+                        host=self.host,
+                        expected_manifest_sha256=captured["manifestSha256"],
+                        filesystem_root=self.filesystem_root,
+                    )
+                self.assertEqual(service.read_text(encoding="utf-8"), "deployed\n")
+
+    def test_repository_head_is_verified_after_reset(self):
+        service = self.config_directory / "repository-postflight.service"
+        service.write_text("prior\n", encoding="utf-8")
+        repository, prior_head = self.create_repository()
+        captured = MODULE.capture_set(
+            root=self.storage_root,
+            run_id=self.run_id,
+            host=self.host,
+            paths=[service],
+            repository=repository,
+            expected_head=prior_head,
+            filesystem_root=self.filesystem_root,
+        )
+        deployed_head = self.commit_deployed_repository(repository)
+        service.write_text("deployed\n", encoding="utf-8")
+        real_run_git = MODULE._run_git
+
+        def skip_reset(path, arguments):
+            if arguments and arguments[0] == "reset":
+                return ""
+            return real_run_git(path, arguments)
+
+        with mock.patch.object(MODULE, "_run_git", skip_reset):
+            with self.assertRaisesRegex(
+                MODULE.ManifestError, "post-restore repository HEAD"
+            ):
+                self.restore(captured["manifestSha256"])
+        self.assertEqual(self.git(repository, "rev-parse", "HEAD"), deployed_head)
+
+    def test_ansible_marker_is_single_line_base64_json(self):
+        service = self.config_directory / "marker.service"
+        service.write_text("marker\n", encoding="utf-8")
+        repository, prior_head = self.create_repository()
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "capture-set",
+                "--root",
+                str(self.storage_root),
+                "--run-id",
+                self.run_id,
+                "--host",
+                self.host,
+                "--filesystem-root",
+                str(self.filesystem_root),
+                "--ansible-marker",
+                "--path",
+                str(service),
+                "--repository",
+                str(repository),
+                "--expected-head",
+                prior_head,
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        prefix = "ROLLBACK_MANIFEST_RESULT:"
+        self.assertTrue(completed.stdout.startswith(prefix))
+        decoded = __import__("base64").urlsafe_b64decode(
+            completed.stdout.removeprefix(prefix).strip()
+        )
+        result = json.loads(decoded)
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["destinations"], [str(service)])
+        self.assertEqual(
+            result["repository"], {"path": str(repository), "head": prior_head}
+        )
 
     def test_cli_capture_and_restore(self):
         service = self.config_directory / "cli.service"

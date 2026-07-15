@@ -3,12 +3,14 @@
 
 The helper deliberately has no general-purpose copy or delete interface.
 ``capture`` records one explicit source/destination pair under a run/host
-directory. ``restore`` accepts only that run/host identity and mutates only
-the destinations sealed into its manifest.
+directory. ``capture-set`` can additionally seal one repository's exact prior
+HEAD. ``restore`` accepts only that run/host identity and mutates only the
+destinations and repository sealed into its manifest.
 """
 from __future__ import annotations
 
 import argparse
+import base64
 import fcntl
 import hashlib
 import hmac
@@ -17,6 +19,7 @@ import os
 import re
 import secrets
 import stat
+import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
@@ -24,10 +27,11 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 
-MANIFEST_VERSION = 1
+MANIFEST_VERSION = 2
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$")
 HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 PAYLOAD_RE = re.compile(r"^payload/[0-9]{6}\.bin$")
 EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 MAX_MANIFEST_BYTES = 1024 * 1024
@@ -159,6 +163,23 @@ def _require_parent_within_filesystem(path: Path, context: ManifestContext) -> N
         raise ManifestError(f"managed path parent escapes the filesystem root: {path}")
 
 
+def _require_existing_ancestor_within_filesystem(
+    path: Path, context: ManifestContext
+) -> None:
+    ancestor = path.parent
+    while _lstat(ancestor) is None:
+        if ancestor == context.filesystem_root or ancestor == ancestor.parent:
+            break
+        ancestor = ancestor.parent
+    metadata = _lstat(ancestor)
+    if metadata is None or not stat.S_ISDIR(metadata.st_mode):
+        raise ManifestError(f"managed path ancestor is not a real directory: {ancestor}")
+    resolved_ancestor = Path(os.path.realpath(ancestor))
+    resolved_root = Path(os.path.realpath(context.filesystem_root))
+    if not _is_within(resolved_ancestor, resolved_root):
+        raise ManifestError(f"managed path ancestor escapes the filesystem root: {path}")
+
+
 def _normalise_managed_path(
     value: os.PathLike[str] | str,
     *,
@@ -175,7 +196,151 @@ def _normalise_managed_path(
         raise ManifestError(f"{label} does not name a restorable object")
     if require_parent:
         _require_parent_within_filesystem(path, context)
+    else:
+        _require_existing_ancestor_within_filesystem(path, context)
     return path
+
+
+def _validate_git_sha(value: Any, label: str) -> str:
+    if not isinstance(value, str) or GIT_SHA_RE.fullmatch(value) is None:
+        raise ManifestError(f"{label} must be an exact lowercase 40-hex commit SHA")
+    return value
+
+
+def _git_environment() -> dict[str, str]:
+    environment = {
+        key: value for key, value in os.environ.items() if not key.startswith("GIT_")
+    }
+    environment.update(
+        {
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_TERMINAL_PROMPT": "0",
+            "LC_ALL": "C",
+        }
+    )
+    return environment
+
+
+def _run_git(repository: Path, arguments: list[str]) -> str:
+    command = [
+        "git",
+        "-c",
+        f"safe.directory={repository}",
+        "-C",
+        os.fspath(repository),
+        *arguments,
+    ]
+    try:
+        completed = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="strict",
+            env=_git_environment(),
+            timeout=30,
+        )
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, UnicodeError) as error:
+        operation = arguments[0] if arguments else "operation"
+        raise ManifestError(f"repository git {operation} failed") from error
+    output = completed.stdout.strip()
+    if len(output) > 4096:
+        raise ManifestError("repository git output exceeds its safety limit")
+    return output
+
+
+def _require_repository_layout(repository: Path) -> Path:
+    metadata = _lstat(repository)
+    if metadata is None or not stat.S_ISDIR(metadata.st_mode):
+        raise ManifestError("repository must be a real existing directory")
+    resolved_repository = Path(os.path.realpath(repository))
+
+    git_directory = repository / ".git"
+    git_metadata = _lstat(git_directory)
+    if git_metadata is None or not stat.S_ISDIR(git_metadata.st_mode):
+        raise ManifestError("repository .git must be a real existing directory")
+    resolved_git_directory = Path(os.path.realpath(git_directory))
+    if resolved_git_directory != resolved_repository / ".git":
+        raise ManifestError("repository .git must not contain symlinks")
+
+    top_level = _run_git(repository, ["rev-parse", "--show-toplevel"])
+    absolute_git_directory = _run_git(repository, ["rev-parse", "--absolute-git-dir"])
+    if Path(os.path.realpath(top_level)) != resolved_repository:
+        raise ManifestError("repository top level does not match its sealed path")
+    if Path(os.path.realpath(absolute_git_directory)) != resolved_git_directory:
+        raise ManifestError("repository git directory is not its sealed .git directory")
+    return git_directory
+
+
+def _normalise_repository_path(
+    value: os.PathLike[str] | str, *, context: ManifestContext
+) -> Path:
+    repository = _normalise_managed_path(
+        value,
+        label="repository",
+        context=context,
+        require_parent=True,
+    )
+    _require_repository_layout(repository)
+    return repository
+
+
+def _read_repository_head(repository: Path) -> str:
+    head = _run_git(repository, ["rev-parse", "--verify", "HEAD^{commit}"])
+    return _validate_git_sha(head, "repository HEAD")
+
+
+def _capture_repository(
+    repository: os.PathLike[str] | str,
+    expected_head: str,
+    *,
+    context: ManifestContext,
+) -> dict[str, str]:
+    path = _normalise_repository_path(repository, context=context)
+    expected = _validate_git_sha(expected_head, "expected repository HEAD")
+    actual = _read_repository_head(path)
+    if not hmac.compare_digest(actual, expected):
+        raise ManifestError("repository HEAD does not match the expected prior SHA")
+    return {"path": os.fspath(path), "head": actual}
+
+
+def _preflight_repository(
+    repository: Mapping[str, str] | None, context: ManifestContext
+) -> Path | None:
+    if repository is None:
+        return None
+    path = _normalise_repository_path(repository["path"], context=context)
+    head = _validate_git_sha(repository["head"], "manifest repository HEAD")
+    git_directory = _require_repository_layout(path)
+    if _lstat(git_directory / "index.lock") is not None:
+        raise ManifestError("repository index lock exists before rollback")
+    _read_repository_head(path)
+    try:
+        object_type = _run_git(path, ["cat-file", "-t", head])
+        resolved = _run_git(path, ["rev-parse", "--verify", f"{head}^{{commit}}"])
+    except ManifestError as error:
+        raise ManifestError("sealed repository commit object is unavailable") from error
+    if object_type != "commit" or not hmac.compare_digest(resolved, head):
+        raise ManifestError("sealed repository object is not the exact captured commit")
+    return path
+
+
+def _restore_repository(repository: Mapping[str, str], path: Path) -> None:
+    expected_head = repository["head"]
+    _run_git(
+        path,
+        ["reset", "--quiet", "--hard", "--no-recurse-submodules", expected_head],
+    )
+    actual_head = _read_repository_head(path)
+    if not hmac.compare_digest(actual_head, expected_head):
+        raise ManifestError("post-restore repository HEAD does not match the manifest")
+
+
+def _entry_overlaps_repository_metadata(path: Path, repository: Mapping[str, str]) -> bool:
+    return _is_within(path, Path(repository["path"]) / ".git")
 
 
 class _HostLock:
@@ -335,6 +500,7 @@ def _new_manifest(context: ManifestContext) -> dict[str, Any]:
         "runId": context.run_id,
         "host": context.host,
         "filesystemRoot": os.fspath(context.filesystem_root),
+        "repository": None,
         "entries": [],
     }
 
@@ -391,7 +557,7 @@ def _validate_entry(
         value.get("destination"),
         label="manifest destination",
         context=context,
-        require_parent=True,
+        require_parent=False,
     )
     if os.fspath(source) != value["source"] or os.fspath(destination) != value["destination"]:
         raise ManifestError("manifest paths are not normalised")
@@ -416,6 +582,20 @@ def _validate_entry(
         _validate_integer(value.get("uid"), "manifest uid")
         _validate_integer(value.get("gid"), "manifest gid")
     return dict(value)
+
+
+def _validate_manifest_repository(
+    value: Any, *, context: ManifestContext
+) -> dict[str, str] | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict) or set(value) != {"path", "head"}:
+        raise ManifestError("manifest repository fields are malformed")
+    path = _normalise_repository_path(value.get("path"), context=context)
+    if os.fspath(path) != value["path"]:
+        raise ManifestError("manifest repository path is not normalised")
+    head = _validate_git_sha(value.get("head"), "manifest repository HEAD")
+    return {"path": os.fspath(path), "head": head}
 
 
 def _payload_path(context: ManifestContext, relative: str) -> Path:
@@ -467,6 +647,7 @@ def _validate_manifest(value: dict[str, Any], context: ManifestContext) -> dict[
         "runId",
         "host",
         "filesystemRoot",
+        "repository",
         "entries",
         "manifestSha256",
     }
@@ -483,6 +664,7 @@ def _validate_manifest(value: dict[str, Any], context: ManifestContext) -> dict[
         raise ManifestError("manifest integrity checksum is malformed")
     if not hmac.compare_digest(digest, _manifest_digest(value)):
         raise ManifestError("manifest integrity checksum does not match")
+    repository = _validate_manifest_repository(value.get("repository"), context=context)
     raw_entries = value.get("entries")
     if not isinstance(raw_entries, list) or len(raw_entries) > MAX_ENTRIES:
         raise ManifestError("manifest entries are malformed")
@@ -496,8 +678,13 @@ def _validate_manifest(value: dict[str, Any], context: ManifestContext) -> dict[
         if destination in destinations:
             raise ManifestError("manifest contains a duplicate destination")
         destinations.add(destination)
+        if repository is not None and (
+            _entry_overlaps_repository_metadata(Path(entry["source"]), repository)
+            or _entry_overlaps_repository_metadata(Path(destination), repository)
+        ):
+            raise ManifestError("manifest file entry overlaps sealed repository metadata")
     _validate_payload_directory(context, entries)
-    return {**value, "entries": entries}
+    return {**value, "repository": repository, "entries": entries}
 
 
 def _load_manifest(
@@ -635,15 +822,21 @@ def capture(
         create=True,
     )
     source_path = _normalise_managed_path(
-        source, label="source", context=context, require_parent=True
+        source, label="source", context=context, require_parent=False
     )
     destination_path = _normalise_managed_path(
-        destination, label="destination", context=context, require_parent=True
+        destination, label="destination", context=context, require_parent=False
     )
     with _HostLock(context.lock_path):
         manifest, _payloads = _load_manifest(context, required=False)
         if any(entry["destination"] == os.fspath(destination_path) for entry in manifest["entries"]):
             raise ManifestError("destination is already sealed into this manifest")
+        repository = manifest.get("repository")
+        if repository is not None and (
+            _entry_overlaps_repository_metadata(source_path, repository)
+            or _entry_overlaps_repository_metadata(destination_path, repository)
+        ):
+            raise ManifestError("captured file overlaps sealed repository metadata")
         if len(manifest["entries"]) >= MAX_ENTRIES:
             raise ManifestError("rollback manifest entry limit reached")
 
@@ -701,14 +894,165 @@ def capture(
             "previousState": previous_state,
             "sha256": checksum,
             "manifestSha256": sealed_manifest["manifestSha256"],
+            "repository": sealed_manifest["repository"],
         }
+
+
+def capture_set(
+    *,
+    root: os.PathLike[str] | str,
+    run_id: str,
+    host: str,
+    paths: Iterable[os.PathLike[str] | str],
+    repository: os.PathLike[str] | str | None = None,
+    expected_head: str | None = None,
+    filesystem_root: os.PathLike[str] | str = "/",
+) -> dict[str, Any]:
+    """Capture an explicit destination set before any release mutation."""
+
+    requested = list(paths)
+    if not requested:
+        raise ManifestError("capture set must contain at least one path")
+    if (repository is None) != (expected_head is None):
+        raise ManifestError("repository and expected HEAD must be provided together")
+
+    context = _build_context(
+        root=root,
+        run_id=run_id,
+        host=host,
+        filesystem_root=filesystem_root,
+        create=True,
+    )
+    requested_repository = (
+        _capture_repository(repository, expected_head, context=context)
+        if repository is not None and expected_head is not None
+        else None
+    )
+    requested_paths = [
+        _normalise_managed_path(
+            path,
+            label="capture-set path",
+            context=context,
+            require_parent=False,
+        )
+        for path in requested
+    ]
+
+    with _HostLock(context.lock_path):
+        manifest, _payloads = _load_manifest(context, required=False)
+        sealed_repository = manifest.get("repository")
+        if requested_repository is not None:
+            if sealed_repository is not None and sealed_repository != requested_repository:
+                raise ManifestError("manifest already seals a different repository")
+            sealed_repository = requested_repository
+
+        existing_destinations = {
+            entry["destination"] for entry in manifest["entries"]
+        }
+        destinations = [os.fspath(path) for path in requested_paths]
+        if len(set(destinations)) != len(destinations):
+            raise ManifestError("capture set contains a duplicate destination")
+        if existing_destinations.intersection(destinations):
+            raise ManifestError("capture set destination is already sealed")
+        if len(manifest["entries"]) + len(requested_paths) > MAX_ENTRIES:
+            raise ManifestError("rollback manifest entry limit reached")
+        if sealed_repository is not None:
+            if any(
+                _entry_overlaps_repository_metadata(path, sealed_repository)
+                for path in requested_paths
+            ):
+                raise ManifestError(
+                    "capture-set file overlaps sealed repository metadata"
+                )
+
+        entries = list(manifest["entries"])
+        written_payloads: list[Path] = []
+        try:
+            for path in requested_paths:
+                previous_state, payload, metadata = _read_source(path, context)
+                if previous_state == "symlink" and payload is not None:
+                    _validate_symlink_target(
+                        payload,
+                        destination_parent=path.parent,
+                        context=context,
+                    )
+                index = len(entries)
+                relative_payload: str | None = None
+                checksum = EMPTY_SHA256
+                size = 0
+                if payload is not None:
+                    relative_payload = f"payload/{index:06d}.bin"
+                    payload_path = _payload_path(context, relative_payload)
+                    if _lstat(payload_path) is not None:
+                        raise ManifestError("rollback payload destination already exists")
+                    _atomic_write(payload_path, payload)
+                    written_payloads.append(payload_path)
+                    payload_metadata = _secure_file_metadata(
+                        payload_path, "rollback payload"
+                    )
+                    if stat.S_IMODE(payload_metadata.st_mode) != 0o600:
+                        raise ManifestError(
+                            "rollback payload was not persisted with mode 0600"
+                        )
+                    checksum = hashlib.sha256(payload).hexdigest()
+                    size = len(payload)
+                entries.append(
+                    {
+                        "source": os.fspath(path),
+                        "destination": os.fspath(path),
+                        "previousState": previous_state,
+                        "payload": relative_payload,
+                        "sha256": checksum,
+                        "size": size,
+                        "mode": metadata["mode"],
+                        "uid": metadata["uid"],
+                        "gid": metadata["gid"],
+                    }
+                )
+
+            if sealed_repository is not None:
+                sealed_repository = _capture_repository(
+                    sealed_repository["path"],
+                    sealed_repository["head"],
+                    context=context,
+                )
+            updated = {
+                key: value
+                for key, value in manifest.items()
+                if key != "manifestSha256"
+            }
+            updated["repository"] = sealed_repository
+            updated["entries"] = entries
+            sealed_manifest = _write_manifest(context, updated)
+        except BaseException:
+            for payload_path in reversed(written_payloads):
+                try:
+                    payload_path.unlink()
+                except FileNotFoundError:
+                    pass
+            if written_payloads:
+                _fsync_directory(context.payload_directory)
+            raise
+
+    return {
+        "captured": True,
+        "manifest": os.fspath(context.manifest_path),
+        "manifestSha256": sealed_manifest["manifestSha256"],
+        "count": len(destinations),
+        "destinations": destinations,
+        "repository": sealed_manifest["repository"],
+    }
 
 
 def _preflight_destinations(entries: Iterable[Mapping[str, Any]], context: ManifestContext) -> None:
     for entry in entries:
         destination = Path(entry["destination"])
-        _require_parent_within_filesystem(destination, context)
         metadata = _lstat(destination)
+        if metadata is None and entry.get("previousState") == "absent":
+            # A failed deployment may not have created the formerly absent
+            # parent at all. There is then nothing to remove.
+            continue
+        _require_parent_within_filesystem(destination, context)
         if metadata is not None and not (
             stat.S_ISREG(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode)
         ):
@@ -888,7 +1232,11 @@ def restore(
         ):
             raise ManifestError("manifest checksum does not match the expected sealed digest")
         entries = manifest["entries"]
+        repository = manifest["repository"]
+        repository_path = _preflight_repository(repository, context)
         _preflight_destinations(entries, context)
+        if repository is not None and repository_path is not None:
+            _restore_repository(repository, repository_path)
         for entry in reversed(entries):
             previous_state = entry["previousState"]
             if previous_state == "regular":
@@ -898,12 +1246,19 @@ def restore(
             else:
                 _restore_absent(entry)
         _verify_restored_entries(entries, payloads)
+        if repository is not None and repository_path is not None:
+            actual_head = _read_repository_head(repository_path)
+            if not hmac.compare_digest(actual_head, repository["head"]):
+                raise ManifestError(
+                    "post-restore repository HEAD changed after file restoration"
+                )
         return {
             "restored": True,
             "manifest": os.fspath(context.manifest_path),
             "manifestSha256": manifest["manifestSha256"],
             "count": len(entries),
             "destinations": [entry["destination"] for entry in entries],
+            "repository": repository,
         }
 
 
@@ -912,6 +1267,7 @@ def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--host", required=True)
     parser.add_argument("--filesystem-root", type=Path, default=Path("/"))
+    parser.add_argument("--ansible-marker", action="store_true")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -921,6 +1277,11 @@ def main(argv: list[str] | None = None) -> int:
     _add_common_arguments(capture_parser)
     capture_parser.add_argument("--source", type=Path, required=True)
     capture_parser.add_argument("--destination", type=Path, required=True)
+    capture_set_parser = subparsers.add_parser("capture-set")
+    _add_common_arguments(capture_set_parser)
+    capture_set_parser.add_argument("--path", action="append", type=Path, required=True)
+    capture_set_parser.add_argument("--repository", type=Path)
+    capture_set_parser.add_argument("--expected-head")
     restore_parser = subparsers.add_parser("restore")
     _add_common_arguments(restore_parser)
     restore_parser.add_argument("--expected-manifest-sha256", required=True)
@@ -935,6 +1296,16 @@ def main(argv: list[str] | None = None) -> int:
                 destination=args.destination,
                 filesystem_root=args.filesystem_root,
             )
+        elif args.command == "capture-set":
+            result = capture_set(
+                root=args.root,
+                run_id=args.run_id,
+                host=args.host,
+                paths=args.path,
+                repository=args.repository,
+                expected_head=args.expected_head,
+                filesystem_root=args.filesystem_root,
+            )
         else:
             result = restore(
                 root=args.root,
@@ -946,7 +1317,12 @@ def main(argv: list[str] | None = None) -> int:
     except (ManifestError, OSError) as error:
         print(f"rollback manifest failed: {error}", file=sys.stderr)
         return 1
-    print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+    encoded = json.dumps(result, ensure_ascii=False, sort_keys=True)
+    if args.ansible_marker:
+        marker = base64.urlsafe_b64encode(encoded.encode("utf-8")).decode("ascii")
+        print("ROLLBACK_MANIFEST_RESULT:" + marker)
+    else:
+        print(encoded)
     return 0
 
 
