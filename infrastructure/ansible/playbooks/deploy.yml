@@ -11,12 +11,6 @@
     repo_version: "{{ lookup('env', 'ANSIBLE_REPO_VERSION') | default('main', true) }}"
     git_deploy_key: "{{ lookup('env', 'RASPI_SYSTEM_DEPLOY_KEY') | default('', true) }}"
     git_environment: "{{ {} if (git_deploy_key | trim) == '' else {'GIT_SSH_COMMAND': 'ssh -i ' ~ git_deploy_key ~ ' -o StrictHostKeyChecking=no'} }}"
-    backup_dir: /opt/backups/configs
-    backup_service_files:
-      - status-agent.service
-      - status-agent.timer
-      - kiosk-browser.service
-      - signage-lite.service
     # デフォルトのサービスリスト（ホスト変数で上書き可能）
     # 注意: ホスト変数で定義されていない場合のみ使用される
     server_services_to_restart:
@@ -118,7 +112,7 @@
     - name: Run resource guard checks
       ansible.builtin.include_tasks: "../tasks/resource-guard.yml"
 
-    - name: Execute deployment with automatic rollback
+    - name: Execute deployment under coordinator rollback ownership
       block:
         - name: Apply server-specific deployment tasks
           ansible.builtin.import_role:
@@ -151,15 +145,11 @@
             deployment_failed: true
             deployment_failure_message: "{{ ansible_failed_result.msg | default('unknown error') }}"
 
-        - name: Run rollback tasks on clients
-          ansible.builtin.include_tasks: "../tasks/rollback-configs.yml"
-          when:
-            - '"server" not in group_names'
-
-        - name: Fail host after rollback
+        - name: Fail host for coordinator-managed recovery
           ansible.builtin.fail:
             msg: >
-              Deployment failed on {{ inventory_hostname }}. Rollback executed.
+              Deployment failed on {{ inventory_hostname }}.
+              The rolling-release coordinator owns terminal rollback.
 
   handlers:
     - name: restart pcscd

@@ -7,58 +7,6 @@
     group: "{{ ansible_user }}"
     mode: '0755'
 
-- name: Generate backup timestamp
-  ansible.builtin.set_fact:
-    backup_timestamp: "{{ lookup('pipe', 'date +%Y%m%d_%H%M%S') }}"
-  when: '"server" not in group_names'
-
-- name: Ensure backup directory exists
-  ansible.builtin.file:
-    path: "{{ backup_dir }}"
-    state: directory
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
-    mode: '0755'
-  when: '"server" not in group_names'
-
-- name: Check existing polkit rule
-  ansible.builtin.stat:
-    path: /etc/polkit-1/rules.d/50-pcscd-allow-all.rules
-  register: polkit_rule_stat
-  when: '"server" not in group_names'
-
-- name: Backup polkit rule before deployment
-  ansible.builtin.copy:
-    src: /etc/polkit-1/rules.d/50-pcscd-allow-all.rules
-    dest: "{{ backup_dir }}/polkit-50-pcscd-allow-all.rules.{{ backup_timestamp }}"
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
-    mode: '0644'
-    remote_src: true
-  when:
-    - '"server" not in group_names'
-    - polkit_rule_stat.stat.exists
-
-- name: Check systemd service files to back up
-  ansible.builtin.stat:
-    path: "/etc/systemd/system/{{ item }}"
-  loop: "{{ backup_service_files }}"
-  register: service_backup_stats
-  when: '"server" not in group_names'
-
-- name: Backup systemd service units before deployment
-  ansible.builtin.copy:
-    src: "/etc/systemd/system/{{ item.item }}"
-    dest: "{{ backup_dir }}/{{ item.item }}.{{ backup_timestamp }}"
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
-    mode: '0644'
-    remote_src: true
-  loop: "{{ service_backup_stats.results | default([]) }}"
-  when:
-    - '"server" not in group_names'
-    - item.stat.exists
-
 - name: Check if repository exists
   ansible.builtin.stat:
     path: "{{ repo_path }}/.git"

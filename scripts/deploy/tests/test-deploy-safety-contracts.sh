@@ -5,7 +5,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 MAIN_INVENTORY="${ROOT_DIR}/infrastructure/ansible/inventory.yml"
 TALKPLAZA_INVENTORY="${ROOT_DIR}/infrastructure/ansible/inventory-talkplaza.yml"
 PLAYBOOK="${ROOT_DIR}/infrastructure/ansible/playbooks/deploy-staged.yml"
+LEGACY_DEPLOY_PLAYBOOK="${ROOT_DIR}/infrastructure/ansible/playbooks/deploy.yml"
+STANDALONE_ROLLBACK_PLAYBOOK="${ROOT_DIR}/infrastructure/ansible/playbooks/rollback.yml"
 ROLLBACK_TASKS="${ROOT_DIR}/infrastructure/ansible/tasks/rollback-configs.yml"
+COMMON_TASKS="${ROOT_DIR}/infrastructure/ansible/roles/common/tasks/main.yml"
 ORCHESTRATION_GUARD="${ROOT_DIR}/infrastructure/ansible/tasks/assert-release-orchestration.yml"
 SERVER_DEFAULTS="${ROOT_DIR}/infrastructure/ansible/roles/server/defaults/main.yml"
 SERVER_TASKS="${ROOT_DIR}/infrastructure/ansible/roles/server/tasks/main.yml"
@@ -631,103 +634,83 @@ assert 'legacy API health' in runtime_reasons(
 )
 PY
 
-BACKUP_DIR="${TMP_DIR}/backups"
-UNIT_DIR="${TMP_DIR}/systemd"
-POLKIT_DEST="${TMP_DIR}/polkit/50-pcscd-allow-all.rules"
-mkdir -p "${BACKUP_DIR}" "${UNIT_DIR}" "$(dirname "${POLKIT_DEST}")"
+python3 - "${PLAYBOOK}" "${LEGACY_DEPLOY_PLAYBOOK}" "${COMMON_TASKS}" \
+  "${UPDATE_CLIENTS_CORE}" "${ROLLBACK_TASKS}" "${STANDALONE_ROLLBACK_PLAYBOOK}" <<'PY'
+import sys
+from pathlib import Path
 
-write_backup() {
-  local name="$1"
-  local content="$2"
-  printf '%s\n' "${content}" > "${BACKUP_DIR}/${name}"
-}
+import yaml
 
-for unit in status-agent.service status-agent.timer kiosk-browser.service signage-lite.service; do
-  write_backup "${unit}.20260715_010101" "old:${unit}"
-done
-write_backup "polkit-50-pcscd-allow-all.rules.20260715_010101" "old:polkit"
+staged_path, legacy_path, common_path, update_path, rollback_tasks_path, rollback_playbook_path = map(
+    Path, sys.argv[1:]
+)
+staged_text = staged_path.read_text(encoding='utf-8')
+legacy_text = legacy_path.read_text(encoding='utf-8')
+common_text = common_path.read_text(encoding='utf-8')
+update_text = update_path.read_text(encoding='utf-8')
+rollback_text = rollback_tasks_path.read_text(encoding='utf-8')
+rollback_playbook_text = rollback_playbook_path.read_text(encoding='utf-8')
 
-for unit in status-agent.service status-agent.timer kiosk-browser.service; do
-  write_backup "${unit}.20260715_020202" "selected:${unit}"
-done
-write_backup "polkit-50-pcscd-allow-all.rules.20260715_020202" "selected:polkit"
+# Terminal task failures must escape directly to the rolling-release
+# coordinator. Server may retain its record-and-fail rescue block.
+staged = yaml.safe_load(staged_text) or []
+terminal_plays = [play for play in staged if play.get('hosts') in {'kiosk', 'signage'}]
+assert {play.get('hosts') for play in terminal_plays} == {'kiosk', 'signage'}
+for play in terminal_plays:
+    for task in play.get('tasks') or []:
+        assert 'rescue' not in task, f"{play['hosts']}: terminal rescue is forbidden"
 
-# These look newer but are not complete YYYYMMDD_HHMMSS backup-set names.
-write_backup "status-agent.service.20260715_999999.extra" "malformed:status-agent.service"
-write_backup "signage-lite.service.latest" "malformed:signage-lite.service"
-write_backup "unmanaged.service.20990101_010101" "unmanaged:newer-set"
-write_backup "polkit-50-pcscd-allow-all.rules.20990101_010101" "unmanaged:newer-polkit"
+for path, text in ((staged_path, staged_text), (legacy_path, legacy_text)):
+    assert 'rollback-configs.yml' not in text, f'{path}: Ansible must not own terminal rollback'
+    assert 'backup_timestamp' not in text, f'{path}: timestamp rollback state is retired'
+    assert 'backup_service_files' not in text, f'{path}: timestamp backup sets are retired'
 
-for unit in status-agent.service status-agent.timer kiosk-browser.service signage-lite.service; do
-  printf 'sentinel:%s\n' "${unit}" > "${UNIT_DIR}/${unit}"
-done
-printf 'sentinel:polkit\n' > "${POLKIT_DEST}"
+for path, text in ((common_path, common_text), (update_path, update_text)):
+    assert 'backup_timestamp' not in text, f'{path}: timestamp backup generation is retired'
+    assert 'backup: true' not in text, f'{path}: unmanaged Ansible backups are forbidden'
 
-ROLLBACK_PLAYBOOK="${TMP_DIR}/rollback-test.yml"
-python3 - "${ROLLBACK_PLAYBOOK}" "${ROLLBACK_TASKS}" "${BACKUP_DIR}" "${UNIT_DIR}" \
-  "${POLKIT_DEST}" "$(id -un)" "$(id -gn)" <<'PY'
+# The old standalone entrypoint is deliberately disabled until the coordinator
+# supplies an exact run-specific manifest restore adapter. It must never search
+# for, select, or restore a "latest" timestamp set.
+for forbidden in (
+    'ansible.builtin.find',
+    'backup_timestamp',
+    'rollback_backup_timestamp',
+    'backup_service_files',
+    'sort(reverse=true)',
+):
+    assert forbidden not in rollback_text, f'{rollback_tasks_path}: found {forbidden}'
+rollback_tasks = yaml.safe_load(rollback_text) or []
+assert len(rollback_tasks) == 1
+assert 'ansible.builtin.fail' in rollback_tasks[0]
+message = str(rollback_tasks[0]['ansible.builtin.fail'].get('msg', ''))
+assert 'rolling-release coordinator' in message
+assert 'run-specific manifest' in message
+assert 'backup_dir' not in rollback_playbook_text
+assert 'rollback-configs.yml' in rollback_playbook_text
+PY
+
+RETIRED_ROLLBACK_TEST="${TMP_DIR}/retired-rollback-test.yml"
+python3 - "${RETIRED_ROLLBACK_TEST}" "${ROLLBACK_TASKS}" <<'PY'
 import json
 import sys
 from pathlib import Path
 
-path, tasks, backup, units, polkit, owner, group = sys.argv[1:]
-content = f'''---
-- name: Exercise rollback backup-set selection
+path, tasks = sys.argv[1:]
+Path(path).write_text(f'''---
+- name: Exercise retired standalone rollback guard
   hosts: localhost
   connection: local
   gather_facts: false
-  vars:
-    backup_dir: {json.dumps(backup)}
-    backup_service_files:
-      - status-agent.service
-      - status-agent.timer
-      - kiosk-browser.service
-      - signage-lite.service
-    systemd_unit_dir: {json.dumps(units)}
-    rollback_polkit_path: {json.dumps(polkit)}
-    rollback_unit_owner: {json.dumps(owner)}
-    rollback_unit_group: {json.dumps(group)}
-    rollback_reload_systemd: false
   tasks:
     - ansible.builtin.include_tasks: {json.dumps(tasks)}
-  handlers:
-    - name: restart pcscd
-      ansible.builtin.debug:
-        msg: test handler
-'''
-Path(path).write_text(content, encoding='utf-8')
+''', encoding='utf-8')
 PY
 
-env -u ANSIBLE_CONFIG ansible-playbook -i localhost, "${ROLLBACK_PLAYBOOK}" >/dev/null
-
-test "$(cat "${UNIT_DIR}/status-agent.service")" = "selected:status-agent.service"
-test "$(cat "${UNIT_DIR}/status-agent.timer")" = "selected:status-agent.timer"
-test "$(cat "${UNIT_DIR}/kiosk-browser.service")" = "selected:kiosk-browser.service"
-test "$(cat "${UNIT_DIR}/signage-lite.service")" = "sentinel:signage-lite.service"
-test "$(cat "${POLKIT_DEST}")" = "selected:polkit"
-
-# Automatic rescue must restore its own timestamp even if a newer valid set exists.
-for unit in status-agent.service status-agent.timer kiosk-browser.service signage-lite.service; do
-  write_backup "${unit}.20260715_030303" "newer:${unit}"
-  printf 'reset:%s\n' "${unit}" > "${UNIT_DIR}/${unit}"
-done
-write_backup "polkit-50-pcscd-allow-all.rules.20260715_030303" "newer:polkit"
-printf 'reset:polkit\n' > "${POLKIT_DEST}"
-
-env -u ANSIBLE_CONFIG ansible-playbook -i localhost, "${ROLLBACK_PLAYBOOK}" \
-  -e backup_timestamp=20260715_010101 >/dev/null
-
-for unit in status-agent.service status-agent.timer kiosk-browser.service signage-lite.service; do
-  test "$(cat "${UNIT_DIR}/${unit}")" = "old:${unit}"
-done
-test "$(cat "${POLKIT_DEST}")" = "old:polkit"
-
-NO_MANAGED_SET="${TMP_DIR}/no-managed-set"
-mkdir -p "${NO_MANAGED_SET}"
-printf 'polkit-only\n' > "${NO_MANAGED_SET}/polkit-50-pcscd-allow-all.rules.20990101_010101"
-if env -u ANSIBLE_CONFIG ansible-playbook -i localhost, "${ROLLBACK_PLAYBOOK}" \
-  -e "backup_dir=${NO_MANAGED_SET}" >/dev/null 2>&1; then
-  echo "[ERROR] rollback accepted a set with no configured service/timer backup" >&2
+if env -u ANSIBLE_CONFIG ansible-playbook -i localhost, "${RETIRED_ROLLBACK_TEST}" \
+  -e backup_timestamp=20260715_010101 \
+  -e backup_dir="${TMP_DIR}/legacy-backups" >/dev/null 2>&1; then
+  echo "[ERROR] retired timestamp rollback was accepted" >&2
   exit 1
 fi
 

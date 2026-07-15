@@ -17,12 +17,6 @@
     repo_version: "{{ lookup('env', 'ANSIBLE_REPO_VERSION') | default('main', true) }}"
     git_deploy_key: "{{ lookup('env', 'RASPI_SYSTEM_DEPLOY_KEY') | default('', true) }}"
     git_environment: "{{ {} if (git_deploy_key | trim) == '' else {'GIT_SSH_COMMAND': 'ssh -i ' ~ git_deploy_key ~ ' -o StrictHostKeyChecking=no'} }}"
-    backup_dir: /opt/backups/configs
-    backup_service_files:
-      - status-agent.service
-      - status-agent.timer
-      - kiosk-browser.service
-      - signage-lite.service
     server_services_to_restart:
       - docker
   pre_tasks:
@@ -158,12 +152,6 @@
     repo_version: "{{ lookup('env', 'ANSIBLE_REPO_VERSION') | default('main', true) }}"
     git_deploy_key: "{{ lookup('env', 'RASPI_SYSTEM_DEPLOY_KEY') | default('', true) }}"
     git_environment: "{{ {} if (git_deploy_key | trim) == '' else {'GIT_SSH_COMMAND': 'ssh -i ' ~ git_deploy_key ~ ' -o StrictHostKeyChecking=no'} }}"
-    backup_dir: /opt/backups/configs
-    backup_service_files:
-      - status-agent.service
-      - status-agent.timer
-      - kiosk-browser.service
-      - signage-lite.service
   pre_tasks:
     - name: Require canonical rolling release context
       ansible.builtin.import_tasks: "../tasks/assert-release-orchestration.yml"
@@ -187,36 +175,21 @@
     - name: Run resource guard checks
       ansible.builtin.include_tasks: "../tasks/resource-guard.yml"
 
-    - name: Execute deployment with automatic rollback (kiosk)
-      block:
-        - name: Apply client-specific deployment tasks
-          ansible.builtin.import_role:
-            name: client
+    - name: Apply client-specific deployment tasks
+      ansible.builtin.import_role:
+        name: client
 
-        - name: Apply kiosk-specific deployment tasks
-          ansible.builtin.import_role:
-            name: kiosk
-          when: manage_kiosk_browser | default(false) | bool
+    - name: Apply kiosk-specific deployment tasks
+      ansible.builtin.import_role:
+        name: kiosk
+      when: manage_kiosk_browser | default(false) | bool
 
-        - name: Apply signage-specific deployment tasks (if enabled)
-          ansible.builtin.import_role:
-            name: signage
-          when: manage_signage_lite | default(false) | bool
+    - name: Apply signage-specific deployment tasks (if enabled)
+      ansible.builtin.import_role:
+        name: signage
+      when: manage_signage_lite | default(false) | bool
 
-        - ansible.builtin.include_tasks: "../tasks/update-clients-core.yml"
-      rescue:
-        - name: Record deployment failure reason
-          ansible.builtin.set_fact:
-            deployment_failed: true
-            deployment_failure_message: "{{ ansible_failed_result.msg | default('unknown error') }}"
-
-        - name: Run rollback tasks on clients
-          ansible.builtin.include_tasks: "../tasks/rollback-configs.yml"
-
-        - name: Fail host after rollback (kiosk)
-          ansible.builtin.fail:
-            msg: >
-              Deployment failed on {{ inventory_hostname }}. Rollback executed.
+    - ansible.builtin.include_tasks: "../tasks/update-clients-core.yml"
 
   handlers:
     - name: restart pcscd
@@ -248,12 +221,6 @@
     repo_version: "{{ lookup('env', 'ANSIBLE_REPO_VERSION') | default('main', true) }}"
     git_deploy_key: "{{ lookup('env', 'RASPI_SYSTEM_DEPLOY_KEY') | default('', true) }}"
     git_environment: "{{ {} if (git_deploy_key | trim) == '' else {'GIT_SSH_COMMAND': 'ssh -i ' ~ git_deploy_key ~ ' -o StrictHostKeyChecking=no'} }}"
-    backup_dir: /opt/backups/configs
-    backup_service_files:
-      - status-agent.service
-      - status-agent.timer
-      - kiosk-browser.service
-      - signage-lite.service
   pre_tasks:
     - name: Require canonical rolling release context
       ansible.builtin.import_tasks: "../tasks/assert-release-orchestration.yml"
@@ -277,36 +244,21 @@
     - name: Run resource guard checks
       ansible.builtin.include_tasks: "../tasks/resource-guard.yml"
 
-    - name: Execute deployment with automatic rollback (signage)
-      block:
-        - name: Apply client-specific deployment tasks
-          ansible.builtin.import_role:
-            name: client
+    - name: Apply client-specific deployment tasks
+      ansible.builtin.import_role:
+        name: client
 
-        - name: Apply signage-specific deployment tasks
-          ansible.builtin.import_role:
-            name: signage
-          when: manage_signage_lite | default(false) | bool
+    - name: Apply signage-specific deployment tasks
+      ansible.builtin.import_role:
+        name: signage
+      when: manage_signage_lite | default(false) | bool
 
-        - name: Apply kiosk-specific deployment tasks (if enabled)
-          ansible.builtin.import_role:
-            name: kiosk
-          when: manage_kiosk_browser | default(false) | bool
+    - name: Apply kiosk-specific deployment tasks (if enabled)
+      ansible.builtin.import_role:
+        name: kiosk
+      when: manage_kiosk_browser | default(false) | bool
 
-        - ansible.builtin.include_tasks: "../tasks/update-clients-core.yml"
-      rescue:
-        - name: Record deployment failure reason
-          ansible.builtin.set_fact:
-            deployment_failed: true
-            deployment_failure_message: "{{ ansible_failed_result.msg | default('unknown error') }}"
-
-        - name: Run rollback tasks on clients
-          ansible.builtin.include_tasks: "../tasks/rollback-configs.yml"
-
-        - name: Fail host after rollback (signage)
-          ansible.builtin.fail:
-            msg: >
-              Deployment failed on {{ inventory_hostname }}. Rollback executed.
+    - ansible.builtin.include_tasks: "../tasks/update-clients-core.yml"
 
   handlers:
     - name: restart pcscd
