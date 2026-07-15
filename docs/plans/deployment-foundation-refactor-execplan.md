@@ -74,8 +74,9 @@ This work exists because the current release path has accumulated two coordinato
 - [x] (2026-07-14 23:55Z) Refreshed PR 2 from merge commit `d9abaa6e`, reran every hosted check successfully at head `50e3eeaa` with no feature-branch push duplicate, and merged PR #1005 with merge commit `bf238688`.
 - [x] (2026-07-15 00:04Z) Refreshed PR 3 from that main and hardened the successful outer-lock path at `f3d39012`: the transitional lock parent is created only after the kernel lock, and a Linux regression now exercises a fresh checkout with no pre-existing `logs` directory.
 - [x] (2026-07-15 00:23Z) Diagnosed the refreshed PR 3 hosted failure as npm's retired legacy audit endpoint returning HTTP 410 to pnpm 9; every deployment, Linux lock, inventory, Ansible, API, E2E, CodeQL, gitleaks, Docker, and non-audit check passed. With explicit approval, replaced only the audit client with pinned pnpm 11.4 on Node 22 so the required critical gate uses the bulk advisory endpoint without `--ignore-registry-errors`.
-- [ ] Refresh and merge PR 3 under the same explicit approval without force-pushing or changing PR #1003.
-- [ ] Implement and publish PR 4, the single coordinator and execution backend.
+- [x] (2026-07-15 00:40Z) Reran PR 3 at exact head `f98aebf2`; hosted run `29379111287` passed every deployment, Linux lock, inventory, Ansible, API, E2E, CodeQL, gitleaks, audit, and Docker check, then PR #1006 merged as `0b24be7f` under the user's ordered approval.
+- [x] (2026-07-15 02:14Z) Implemented PR 4 locally from merged `origin/main`: one strict shell wrapper, one package coordinator, transient-systemd foreground/detach/control lifecycle, atomic per-run state/control, cooperative cancellation, legacy run-status read compatibility, and refusal stubs for four alternate deployment entrances. The complete deploy Python suite passes 222 tests; the single-entrypoint and Ansible safety contracts also pass, and three independent reviews report no remaining Blocker/P1/P2.
+- [ ] Publish PR 4 and complete hosted validation without any real-device action.
 - [ ] Implement and publish PR 5, durable fleet state and default target minimization.
 - [ ] Implement and publish PR 6, unified Pi5 and terminal executors, health checks, acknowledgements, and rollback.
 - [ ] Implement and publish PR 7, conditional CI enforcement and the `main` ruleset.
@@ -94,6 +95,10 @@ This work exists because the current release path has accumulated two coordinato
   Evidence: `rg --files scripts infrastructure apps | rg 'client-agent-lifecycle'` returns no path on the baseline, while commits `85fe6198` and `1f64d5b4` contain the later behavior to reconstruct.
 - Observation: the public shell entry point contains a hidden legacy coordinator behind `ROLLING_RELEASE_V2`, so two implementations and two option interpretations coexist.
   Evidence: `scripts/update-all-clients.sh` executes `scripts/deploy/rolling-release.py` only when `ROLLING_RELEASE_V2` is `1`, then retains more than two thousand lines of legacy shell behavior.
+- Observation: four additional executable paths can bypass coordinator policy, locking, and rollback ownership; one legacy dry-run path can even evaluate an operator-supplied rollback command.
+  Evidence: pre-PR-4 `scripts/server/deploy.sh`, `scripts/server/deploy-detached.sh`, `scripts/deploy/deploy-executor.sh`, and `scripts/deploy/deploy-all.sh` contain direct Git, Docker, systemd/nohup, Ansible, and `ROLLBACK_CMD` execution outside the public coordinator.
+- Observation: HEAD equality alone does not prove that the remote runner bytes belong to the immutable release because Git can retain dirty tracked files or untracked package shadows across a same-SHA checkout.
+  Evidence: an isolated real Git fixture kept a modified `scripts/deploy/rolling-release.py` while `rev-parse HEAD` still matched; PR 4 now refuses dirty state both before fetch and after checkout.
 - Observation: the current remote command fetches and checks out the target SHA before the remote Python coordinator owns its release lock.
   Evidence: `scripts/deploy/rolling-release.py` builds a remote command containing `git fetch` and `git checkout --detach` before `--remote-run`; the remote-run lock is acquired afterward.
 - Observation: Talkplaza places terminals directly under `clients.hosts`, but the staged playbook targets the `kiosk` and `signage` groups.
@@ -158,14 +163,28 @@ This work exists because the current release path has accumulated two coordinato
 - Decision: Keep the workspace install and build toolchain on Node 20 with packageManager-pinned pnpm 9, but run the security audit after all build work with pinned pnpm 11.4 on Node 22 from outside the repository.
   Rationale: npm permanently retired the endpoint used by pnpm 9, while pnpm 11 uses the bulk advisory endpoint and requires Node 22. Isolating that read-only client restores the critical gate without a broad package-manager migration or a fail-open registry flag.
   Date/Author: 2026-07-15 / Codex
+- Decision: Run every PR 4 release as one system-manager transient unit, started and inspected through non-interactive `sudo -n`, with an explicit unprivileged deploy user, `Type=exec`, and a unit name derived only from the validated run ID.
+  Rationale: start, wait, status, and signal must address one durable execution identity; `InvocationID` and `MainPID` verification prevents forged environment variables from impersonating that unit.
+  Date/Author: 2026-07-15 / Codex
+- Decision: Make the fsynced control JSON the sole cancellation authority and use SIGUSR1 only as a wake-up; keep progress state and control in separate files under a per-run kernel lock.
+  Rationale: a signal alone cannot authorize cancellation, concurrent progress writes cannot erase an operator reason, and terminal-state versus cancel races have one linearized outcome.
+  Date/Author: 2026-07-15 / Codex
+- Decision: Require a clean remote worktree before fetch and after checkout, plus an exact protocol marker in the target SHA, before the bootstrap may exec the coordinator.
+  Rationale: immutable HEAD and global lock ownership are insufficient if dirty or pre-PR-4 runner bytes can execute after checkout.
+  Date/Author: 2026-07-15 / Codex
+- Decision: Retain explicit read-only adapters for unlocked pre-PR-4 run JSON and the older `ansible-update-*.status.json` format until PR 8, while validating locked current-format records strictly.
+  Rationale: existing run IDs must remain inspectable during migration, but legacy tolerance must never weaken the new state/control corruption checks or create files during status reads.
+  Date/Author: 2026-07-15 / Codex
 
 ## Outcomes & Retrospective
 
-The program is in progress. The living ExecPlan in #1007, migration ledger safety in #1004, and CI/deploy-contract shadowing in #1005 are merged. Critical inventory, rollback, and checkout-lock safety in #1006 is refreshed from that main and is being revalidated. PR 4 through PR 8 remain paused until the ordered merge gate finishes.
+The program is in progress. The living ExecPlan in #1007, migration ledger safety in #1004, CI/deploy-contract shadowing in #1005, and critical inventory/rollback/checkout-lock safety in #1006 are merged in the approved order. PR 4 is implemented and locally validated but not yet published; PR 5 through PR 8 remain pending.
 
-Merged PR 1 validates the complete candidate commit-object ledger, enforces addition-only migration diffs, and applies a quote-aware conservative SQL allow-list. Its 22 focused tests, real 144-base/146-candidate ledger check, adversarial matrix, two independent reviews, and both hosted suites passed. Merged PR 2 proves pull-request-only feature-branch CI, stable required-check names, the shadow classifier, and the client-lifecycle baseline/merge-base contract; its refreshed suite passed with no duplicate feature-branch push run. PR 3 contains three focused safety commits plus post-refresh successful-lock-path hardening, now based on merge commit `bf238688`. Its first refreshed hosted run proved all deployment and Linux lock contracts but exposed the unrelated retired pnpm 9 audit endpoint; the approved pinned bulk-audit bridge is locally green and awaiting a fresh hosted run. Cancel, detach, and job operations remain fail-closed until PR 4 supplies their common systemd execution identity.
+Merged PR 1 validates the complete candidate commit-object ledger, enforces addition-only migration diffs, and applies a quote-aware conservative SQL allow-list. Its 22 focused tests, real 144-base/146-candidate ledger check, adversarial matrix, two independent reviews, and both hosted suites passed. Merged PR 2 proves pull-request-only feature-branch CI, stable required-check names, the shadow classifier, and the client-lifecycle baseline/merge-base contract; its refreshed suite passed with no duplicate feature-branch push run. Merged PR 3 delivers canonical inventory groups, exact-run rollback selection, and checkout-before-lock prevention; final hosted run `29379111287` passed completely after the approved isolated audit-client repair.
 
-No product deployment, real-device mutation, or production acceptance action has occurred. Only the explicitly approved repository merges #1007, #1004, and #1005 have occurred. Draft PR #1003 remains open, untouched, and unmerged at head `0f19936a` for provenance only.
+PR 4 removes the 2,000-line hidden shell coordinator and all four alternate mutating entrances, while preserving the public wrapper and legacy status reads. A systemd-owned bootstrap locks before every Git operation, refuses dirty or old-protocol targets, verifies the exact systemd invocation, then execs the package coordinator. Foreground, detach, status, approval, and cooperative cancellation share one state/control model. Local evidence is 222 deploy Python tests plus the single-entrypoint and Ansible safety contracts; three independent final reviews found no remaining Blocker/P1/P2.
+
+No product deployment, real-device mutation, or production acceptance action has occurred. Only the explicitly approved repository merges #1007, #1004, #1005, and #1006 have occurred. Draft PR #1003 remains open, untouched, and unmerged at head `0f19936a` for provenance only.
 
 At each major merge, update this section with the observable behavior delivered, the checks that passed, any time saved or regression found, and the remaining risk. After the seven-day CI observation, compare actual latency and runner-minute evidence against the thresholds in `Validation and Acceptance`. After PR 8, state whether the old marker, lock, and run formats were fully removed and whether the accepted same-SHA plan is a no-op.
 
@@ -450,8 +469,18 @@ Current replacement map at this revision:
       successful-lock-path hardening -> f3d39012, including missing-parent creation after kernel lock and a fresh-checkout Linux regression
       test state -> first refreshed hosted run passed rolling release 78 with no Linux skip, deploy safety, all three API shards, E2E, CodeQL, gitleaks, and both Docker jobs; only the retired pnpm 9 audit endpoint failed
       audit recovery -> pinned pnpm 11.4 bulk client on Node 22, critical required and high informational, no registry fail-open; local bulk audit found 2 low / 10 moderate / 0 high-critical
-      deferred interface state -> cancel, detach, and job operations fail closed before mutation until PR 4
-    PR 4-PR 8: paused at the explicit merge gate
+      final PR head -> f98aebf2; merged -> 0b24be7f
+      final hosted state -> run 29379111287 fully green across ci-required, deployment/Linux lock, inventory/Ansible, API/E2E, CodeQL, gitleaks, audit, and Docker checks
+    PR 4:
+      branch -> agent/deploy-single-coordinator, based on merged 0b24be7f
+      public entrypoint -> strict argument-preserving exec into scripts/deploy/rolling-release.py; no ROLLING_RELEASE_V2 or shell coordinator body
+      execution identity -> raspi-release-<runId>.service, Type=exec, system manager via sudo -n, explicit deploy user, verified InvocationID and MainPID
+      bootstrap -> non-waiting global flock, clean check before fetch and after checkout, immutable SHA plus protocol marker, inherited exact lock FD
+      state/control -> separate atomic JSON files, per-run flock, first cancel reason immutable, terminal/cancel race linearized, read-only legacy status adapters retained
+      retired paths -> server deploy, detached deploy, deploy-executor, and deploy-all are side-effect-free exit-2 refusal stubs; direct Ansible emergency bypass removed
+      local evidence -> 222 deploy Python tests, single-entrypoint contract, Ansible/inventory safety contract, Python/Bash syntax, and three independent reviews with no remaining Blocker/P1/P2
+      publication/hosted state -> pending
+    PR 5-PR 8: pending in approved order
     Product reconstruction: pending deployment-foundation production acceptance
 
 An example fleet state shape is:
@@ -548,3 +577,5 @@ Revision note (2026-07-14, 23:56Z): Recorded the refreshed 11-of-11 hosted succe
 Revision note (2026-07-15, 00:04Z): Aligned the PR 2 client-lifecycle and PR 3 cancellation milestones with the recorded decisions, then hardened PR #1006's successful outer-lock path at `f3d39012` so a fresh checkout creates the transitional lock parent only after acquiring the kernel lock. The refreshed local suite passes; hosted Linux validation is pending.
 
 Revision note (2026-07-15, 00:23Z): Recorded the first refreshed PR #1006 hosted run. Every deployment and Linux lock contract passed, but npm's retired legacy endpoint returned HTTP 410 to pnpm 9 and correctly failed `lint-build-unit` plus `ci-required`. After explicit approval, isolated the audit on pinned pnpm 11.4 and Node 22, retained the required critical gate and high advisory, added a static no-fail-open contract, and verified the bulk audit locally with no high or critical advisory.
+
+Revision note (2026-07-15, 02:14Z): Recorded the fully green final PR #1006 run `29379111287` and merge at `0b24be7f`, then documented the locally complete PR 4 single-coordinator implementation. PR 4 now has one systemd execution identity, atomic state/control, cooperative cancellation, strict immutable-target checks, explicit legacy status compatibility, no alternate mutating entrypoint, 222 passing deploy Python tests, passing shell/Ansible safety contracts, and three independent reviews with no remaining Blocker/P1/P2. No product deployment, real-device mutation, or change to Draft PR #1003 occurred.
