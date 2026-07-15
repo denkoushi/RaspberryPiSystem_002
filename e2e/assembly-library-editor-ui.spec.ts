@@ -5,15 +5,32 @@ const viewports = [
   { width: 1920, height: 1080 }
 ] as const;
 
-async function mockKioskApis(page: Page): Promise<void> {
+async function mockKioskApis(page: Page, deployNotice = false): Promise<void> {
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path.startsWith('/src/api/')) {
       await route.continue();
       return;
     }
+    if (path.includes('/system/deploy-status/ack')) {
+      await route.fulfill({
+        json: {
+          acknowledged: true,
+          scheduledAt: new Date(Date.now() + 60_000).toISOString()
+        }
+      });
+      return;
+    }
     if (path.includes('/system/deploy-status')) {
-      await route.fulfill({ json: { isMaintenance: false } });
+      await route.fulfill({
+        json: deployNotice
+          ? {
+              isMaintenance: false,
+              runId: 'assembly-ui-e2e',
+              preNotice: { scheduledAt: new Date(Date.now() + 60_000).toISOString() }
+            }
+          : { isMaintenance: false }
+      });
       return;
     }
     if (path.includes('/kiosk/config')) {
@@ -29,9 +46,9 @@ async function mockKioskApis(page: Page): Promise<void> {
 }
 
 for (const viewport of viewports) {
-  test(`assembly library is two-row and opens registration at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+  test(`assembly library is two-row and deploy notice stays movable/non-blocking at ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport);
-    await mockKioskApis(page);
+    await mockKioskApis(page, true);
     await page.goto('/dev/kiosk-assembly-library', { waitUntil: 'networkidle' });
 
     const procedureTable = page.getByRole('table', { name: '手順書ライブラリ' });
@@ -43,6 +60,13 @@ for (const viewport of viewports) {
     await combo.click();
     await page.getByRole('option', { name: 'CSPBTLD ストッパー取付 手順書' }).click();
     await expect(combo).toHaveValue('CSPBTLD ストッパー取付 手順書');
+
+    const notice = page.getByTestId('kiosk-deploy-pre-notice');
+    await expect(notice).toBeVisible();
+    const beforeTransform = await notice.evaluate((element) => (element as HTMLElement).style.transform);
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(() => notice.evaluate((element) => (element as HTMLElement).style.transform))
+      .not.toBe(beforeTransform);
 
     await page.getByRole('button', { name: '登録' }).click();
     await expect(page.getByRole('dialog', { name: '手順書を登録' })).toBeVisible();
