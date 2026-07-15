@@ -4,31 +4,44 @@ permissions:
   contents: read
 
 concurrency:
-  # Unblock when a prior run is stuck queued on the same group (GitHub Actions incident).
+  # Supersede stale PR heads, but let every main/merge-queue/full-suite run finish.
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-v2
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+  merge_group:
   workflow_dispatch:
+  schedule:
+    # 02:30 JST is 17:30 UTC on the previous calendar day.
+    - cron: '30 17 * * *'
 
 jobs:
   change-classification:
     name: change-classification
     runs-on: ubuntu-latest
+    outputs:
+      repo_policy: ${{ steps.classify.outputs.repo_policy }}
+      workspace_quality: ${{ steps.classify.outputs.workspace_quality }}
+      api: ${{ steps.classify.outputs.api }}
+      web: ${{ steps.classify.outputs.web }}
+      db_infra: ${{ steps.classify.outputs.db_infra }}
+      deploy_contract: ${{ steps.classify.outputs.deploy_contract }}
+      client: ${{ steps.classify.outputs.client }}
+      e2e: ${{ steps.classify.outputs.e2e }}
+      docker_security: ${{ steps.classify.outputs.docker_security }}
+      full_suite: ${{ steps.classify.outputs.full_suite }}
     steps:
       - name: Checkout code with history
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Test change classifier
-        run: python3 -m unittest discover -s scripts/ci/tests -p 'test_*.py'
-
-      - name: Report shadow change classification
+      - name: Classify changes
+        id: classify
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -39,8 +52,8 @@ jobs:
           trap 'rm -f "$changes_file"' EXIT
 
           force_full_reason=""
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            force_full_reason="workflow_dispatch has no stable diff base"
+          if [[ "$EVENT_NAME" != "pull_request" ]]; then
+            force_full_reason="$EVENT_NAME always runs the full suite"
           elif [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
             force_full_reason="event has no stable diff base"
           elif ! python3 scripts/ci/collect_changed_files.py \
@@ -51,45 +64,43 @@ jobs:
             force_full_reason="stable diff base is unavailable"
           fi
 
+          classifier_args=()
           if [[ -n "$force_full_reason" ]]; then
-            python3 scripts/ci/classify_changes.py \
-              --format markdown \
-              --force-full-reason "$force_full_reason" \
-              < "$changes_file" >> "$GITHUB_STEP_SUMMARY"
-          else
-            python3 scripts/ci/classify_changes.py \
-              --format markdown \
-              < "$changes_file" >> "$GITHUB_STEP_SUMMARY"
+            classifier_args+=(--force-full-reason "$force_full_reason")
           fi
+          python3 scripts/ci/classify_changes.py \
+            --format github-output \
+            "${classifier_args[@]}" \
+            < "$changes_file" >> "$GITHUB_OUTPUT"
+          python3 scripts/ci/classify_changes.py \
+            --format markdown \
+            "${classifier_args[@]}" \
+            < "$changes_file" >> "$GITHUB_STEP_SUMMARY"
 
-  # Fast feedback: lint, workspace builds, package-level tests (no Docker DB)
-  lint-build-unit:
+  repo-policy:
+    name: repo-policy
+    needs: change-classification
+    if: ${{ needs.change-classification.outputs.repo_policy == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
-        with:
-          # test-pi5-image-deploy.sh validates migration impact against HEAD^.
-          fetch-depth: 2
+
+      - name: Test classifier and workflow contracts
+        run: python3 -m unittest discover -s scripts/ci/tests -p 'test_*.py'
+
+  # Fast feedback shared by API, Web, and shared-package changes.
+  workspace-quality:
+    name: workspace-quality
+    needs: change-classification
+    if: ${{ needs.change-classification.outputs.workspace_quality == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
 
       - name: Setup pnpm workspace
         uses: ./.github/actions/setup-pnpm-monorepo
-
-      - name: Validate deployment scripts
-        run: |
-          bash -n scripts/update-all-clients.sh
-          bash -n scripts/server/deploy.sh
-          bash -n scripts/server/deploy-detached.sh
-          bash scripts/deploy/tests/test-single-deploy-entrypoint.sh
-          bash -n scripts/deploy/pi5-blue-green.sh
-          bash -n scripts/deploy/pi5-candidate-build.sh
-          bash scripts/deploy/tests/test-pi5-image-deploy.sh
-          bash scripts/deploy/tests/test-pi5-blue-green.sh
-          bash scripts/deploy/tests/test-pi5-blue-green-maintenance-container.sh
-          python3 -m unittest discover -s scripts/deploy/tests -p 'test_*.py'
-          python3 scripts/deploy/tests/test-client-agent-lifecycle-selection.py
-          bash scripts/deploy/tests/test-signage-deploy-maintenance.sh
-          bash scripts/deploy/tests/test-deploy-status-postgres.sh
 
       - name: Run lint
         run: pnpm lint --max-warnings=0
@@ -105,20 +116,6 @@ jobs:
 
       - name: Run shelf-layout-core tests
         run: pnpm --filter @raspi-system/shelf-layout-core test
-
-      - name: Generate Prisma Client
-        run: pnpm --filter @raspi-system/api exec prisma generate
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
-
-      - name: Build API
-        run: pnpm --filter @raspi-system/api build
-
-      - name: Run web tests
-        run: pnpm --filter @raspi-system/web test
-
-      - name: Build Web
-        run: pnpm --filter @raspi-system/web build
 
       # pnpm 9 uses npm's retired audit endpoint. Keep the workspace toolchain
       # unchanged and isolate the bulk-advisory client after all Node 20 work.
@@ -160,23 +157,15 @@ jobs:
             exit 0
           }
 
-  # API + PostgreSQL + 統合テスト + 運用スクリプト（開始直後から並列実行）
-  api-db-and-infra:
-    name: api-db-and-infra (${{ matrix.shard }})
+  api:
+    name: api (${{ matrix.shard }})
+    needs: change-classification
+    if: ${{ needs.change-classification.outputs.api == 'true' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - shard: 1/3
-            shard-id: 1-of-3
-            run-infra: true
-          - shard: 2/3
-            shard-id: 2-of-3
-            run-infra: false
-          - shard: 3/3
-            shard-id: 3-of-3
-            run-infra: false
+        include: ${{ fromJSON(github.event_name == 'pull_request' && '[{"shard":"all","shard_id":"all","coverage":false,"build":true}]' || '[{"shard":"1/3","shard_id":"1-of-3","coverage":true,"build":true},{"shard":"2/3","shard_id":"2-of-3","coverage":true,"build":false},{"shard":"3/3","shard_id":"3-of-3","coverage":true,"build":false}]') }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -196,9 +185,7 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
       - name: Build API
-        # The production build remains a required gate in lint-build-unit. Only the
-        # shard that starts the production server needs to repeat it here.
-        if: matrix.run-infra
+        if: matrix.build
         run: pnpm --filter @raspi-system/api build
 
       - name: Start PostgreSQL
@@ -225,7 +212,25 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
-      - name: Run API tests (coverage, single pass)
+      - name: Run API tests (PR, no coverage)
+        if: ${{ !matrix.coverage }}
+        run: |
+          cd apps/api
+          docker exec postgres-test psql -U postgres -d borrow_return -c "SELECT 1;"
+          BACKUP_CONFIG_PATH=/tmp/test-backup.json PROJECT_ROOT=$(pwd) \
+            pnpm test -- --fileParallelism=true --maxWorkers=1
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+          JWT_ACCESS_SECRET: test-access-secret-1234567890
+          JWT_REFRESH_SECRET: test-refresh-secret-1234567890
+          CAMERA_TYPE: mock
+          PHOTO_STORAGE_DIR: /tmp/test-photo-storage
+          BACKUP_STORAGE_DIR: /tmp/test-backups
+          NODE_ENV: test
+          PERF_RESPONSE_TIME_THRESHOLD_MS: '1800'
+
+      - name: Run API tests (coverage shard)
+        if: matrix.coverage
         run: |
           cd apps/api
           docker exec postgres-test psql -U postgres -d borrow_return -c "SELECT 1;"
@@ -242,36 +247,108 @@ jobs:
           PERF_RESPONSE_TIME_THRESHOLD_MS: '1800'
 
       - name: Upload API coverage artifact
-        if: always()
+        if: ${{ always() && matrix.coverage }}
         uses: actions/upload-artifact@v6
         with:
-          name: api-coverage-${{ matrix.shard-id }}
+          name: api-coverage-${{ matrix.shard_id }}
           path: apps/api/coverage/
           retention-days: 7
 
+      - name: Cleanup PostgreSQL
+        if: always()
+        run: docker stop postgres-test && docker rm postgres-test || true
+
+  web:
+    name: web
+    needs: change-classification
+    if: ${{ needs.change-classification.outputs.web == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm workspace
+        uses: ./.github/actions/setup-pnpm-monorepo
+
+      - name: Build shared packages
+        run: |
+          pnpm --filter @raspi-system/shared-types build
+          pnpm --filter @raspi-system/part-search-core build
+          pnpm --filter @raspi-system/shelf-layout-core build
+
+      - name: Run Web tests
+        run: pnpm --filter @raspi-system/web test
+
+      - name: Build Web
+        run: pnpm --filter @raspi-system/web build
+
+  db-infra:
+    name: db-infra
+    needs: change-classification
+    if: ${{ needs.change-classification.outputs.db_infra == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm workspace
+        uses: ./.github/actions/setup-pnpm-monorepo
+
+      - name: Build shared packages
+        run: |
+          pnpm --filter @raspi-system/shared-types build
+          pnpm --filter @raspi-system/part-search-core build
+          pnpm --filter @raspi-system/shelf-layout-core build
+
+      - name: Generate Prisma Client
+        run: pnpm --filter @raspi-system/api exec prisma generate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+
+      - name: Start PostgreSQL
+        run: |
+          docker run -d \
+            --name postgres-test \
+            -e POSTGRES_PASSWORD=postgres \
+            -e POSTGRES_DB=borrow_return \
+            -p 5432:5432 \
+            --health-cmd="pg_isready -U postgres" \
+            --health-interval=10s \
+            --health-timeout=5s \
+            --health-retries=5 \
+            pgvector/pgvector:pg15
+
+      - name: Wait for PostgreSQL
+        run: |
+          chmod +x scripts/ci/wait-for-postgres.sh
+          scripts/ci/wait-for-postgres.sh postgres-test 60
+
+      - name: Run and verify Prisma migrations
+        run: |
+          pnpm --filter @raspi-system/api exec prisma migrate deploy
+          pnpm --filter @raspi-system/api exec prisma migrate status
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+
+      - name: Build API
+        run: pnpm --filter @raspi-system/api build
+
       - name: Start API server for monitoring tests
-        if: matrix.run-infra
         run: |
           cd apps/api
           NODE_ENV=production pnpm start > /tmp/api-server.log 2>&1 &
           API_PID=$!
           echo "API_PID=$API_PID" >> "$GITHUB_ENV"
-          echo "API server started with PID: $API_PID"
-          sleep 2
-          head -50 /tmp/api-server.log || echo "No log file yet"
           timeout=30
           elapsed=0
           until curl -s http://localhost:8080/api/system/health > /dev/null 2>&1; do
-            if [ $elapsed -ge $timeout ]; then
-              echo "API server failed to start within $timeout seconds"
+            if [ "$elapsed" -ge "$timeout" ]; then
               cat /tmp/api-server.log || true
               exit 1
             fi
-            echo "Waiting for API server... ($elapsed/$timeout seconds)"
             sleep 1
             elapsed=$((elapsed + 1))
           done
-          echo "API server is ready!"
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
           JWT_ACCESS_SECRET: ci-prod-access-secret-0123456789-abcdefghijklmnopqrstuvwxyz
@@ -279,14 +356,56 @@ jobs:
           PORT: 8080
           HOST: 0.0.0.0
 
-      - name: Test backup/restore scripts
-        if: matrix.run-infra
+      - name: Test backup and restore scripts
+        run: bash scripts/test/backup-restore.test.sh
+
+      - name: Test monitoring scripts
         run: |
-          docker ps | grep postgres-test
-          bash scripts/test/backup-restore.test.sh
+          API_URL=http://localhost:8080/api pnpm test:monitor || {
+            cat /tmp/api-server.log || true
+            exit 1
+          }
+
+      - name: Cleanup DB/infra services
+        if: always()
+        run: |
+          if [ -n "${API_PID:-}" ]; then
+            kill "$API_PID" || true
+          fi
+          docker stop postgres-test || true
+          docker rm postgres-test || true
+
+  deploy-contract:
+    name: deploy-contract
+    needs: change-classification
+    if: ${{ needs.change-classification.outputs.deploy_contract == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code with migration base
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Setup pnpm workspace
+        uses: ./.github/actions/setup-pnpm-monorepo
+
+      - name: Validate deployment contracts
+        run: |
+          bash -n scripts/update-all-clients.sh
+          bash -n scripts/server/deploy.sh
+          bash -n scripts/server/deploy-detached.sh
+          bash scripts/deploy/tests/test-single-deploy-entrypoint.sh
+          bash -n scripts/deploy/pi5-blue-green.sh
+          bash -n scripts/deploy/pi5-candidate-build.sh
+          bash scripts/deploy/tests/test-pi5-image-deploy.sh
+          bash scripts/deploy/tests/test-pi5-blue-green.sh
+          bash scripts/deploy/tests/test-pi5-blue-green-maintenance-container.sh
+          python3 -m unittest discover -s scripts/deploy/tests -p 'test_*.py'
+          python3 scripts/deploy/tests/test-client-agent-lifecycle-selection.py
+          bash scripts/deploy/tests/test-signage-deploy-maintenance.sh
+          bash scripts/deploy/tests/test-deploy-status-postgres.sh
 
       - name: Install Ansible
-        if: matrix.run-infra
         run: |
           set -euo pipefail
           python3 -m pip install --user ansible-core
@@ -294,129 +413,77 @@ jobs:
           command -v ansible-playbook
 
       - name: Cache Ansible collections
-        if: matrix.run-infra
         uses: actions/cache@v5
         with:
           path: ~/.ansible/collections
           key: ansible-collections-${{ runner.os }}-community-general-v1
 
       - name: Validate deploy safety contracts
-        if: matrix.run-infra
         run: bash scripts/deploy/tests/test-deploy-safety-contracts.sh
 
-      - name: Ansible syntax check
-        if: matrix.run-infra
+      - name: Validate inventories and Ansible playbooks
         run: |
           set -euo pipefail
           cd infrastructure/ansible
           ansible-galaxy collection install community.general
-          cp ansible.cfg /tmp/ansible.cfg.backup || true
-          sed 's/^vault_password_file = .vault-pass/# vault_password_file = .vault-pass (disabled for CI syntax check)/' ansible.cfg > /tmp/ansible-ci.cfg
+          sed 's/^vault_password_file = .vault-pass/# vault_password_file = .vault-pass (disabled for CI)/' ansible.cfg > /tmp/ansible-ci.cfg
           export ANSIBLE_CONFIG=/tmp/ansible-ci.cfg
           export ANSIBLE_ROLES_PATH="$(pwd)/roles"
           PLAYBOOKS=(
-            "playbooks/deploy.yml"
-            "playbooks/deploy-staged.yml"
-            "playbooks/server-config-release.yml"
-            "playbooks/update-clients.yml"
-            "playbooks/health-check.yml"
-            "playbooks/manage-system-configs.yml"
-            "playbooks/manage-app-configs.yml"
-            "playbooks/rollback.yml"
-            "playbooks/restart-services.yml"
-            "playbooks/ping.yml"
-            "playbooks/recover-pi4.yml"
-            "playbooks/recover-pi4-verify.yml"
+            playbooks/deploy.yml
+            playbooks/deploy-staged.yml
+            playbooks/server-config-release.yml
+            playbooks/update-clients.yml
+            playbooks/health-check.yml
+            playbooks/manage-system-configs.yml
+            playbooks/manage-app-configs.yml
+            playbooks/rollback.yml
+            playbooks/restart-services.yml
+            playbooks/ping.yml
+            playbooks/recover-pi4.yml
+            playbooks/recover-pi4-verify.yml
           )
           python3 ../../scripts/deploy/tests/test_recover_pi4.py
-
           for inventory in inventory.yml inventory-talkplaza.yml; do
-            echo "Parsing inventory $inventory..."
             ansible-inventory -i "$inventory" --list > "/tmp/${inventory%.yml}.json"
             python3 -m json.tool "/tmp/${inventory%.yml}.json" > /dev/null
           done
-
-          FAILED=0
           for playbook in "${PLAYBOOKS[@]}"; do
-            echo "Checking syntax for $playbook..."
-            if ansible-playbook --syntax-check "$playbook" -i inventory.yml > /tmp/ansible-syntax-check.log 2>&1; then
-              echo "OK $playbook"
-            else
-              if grep -qE "(vault password|ERROR.*vault)" /tmp/ansible-syntax-check.log && ! grep -qE "(syntax error|YAML|parse error)" /tmp/ansible-syntax-check.log; then
-                echo "WARN $playbook skipped (vault decrypt only)"
-              else
-                echo "FAIL $playbook"
-                cat /tmp/ansible-syntax-check.log
-                FAILED=1
-              fi
-            fi
+            ansible-playbook --syntax-check "$playbook" -i inventory.yml
           done
-          echo "Checking deploy-staged.yml with inventory-talkplaza.yml..."
-          if ansible-playbook --syntax-check playbooks/deploy-staged.yml -i inventory-talkplaza.yml > /tmp/ansible-syntax-check.log 2>&1; then
-            echo "OK playbooks/deploy-staged.yml (inventory-talkplaza.yml)"
-          else
-            if grep -qE "(vault password|ERROR.*vault)" /tmp/ansible-syntax-check.log && ! grep -qE "(syntax error|YAML|parse error)" /tmp/ansible-syntax-check.log; then
-              echo "WARN playbooks/deploy-staged.yml skipped (vault decrypt only)"
-            else
-              echo "FAIL playbooks/deploy-staged.yml (inventory-talkplaza.yml)"
-              cat /tmp/ansible-syntax-check.log
-              FAILED=1
-            fi
-          fi
-          if [ $FAILED -eq 1 ]; then
-            exit 1
-          fi
-
-      - name: Ansible dry-run check (deploy playbook only)
-        if: matrix.run-infra
-        run: |
-          set -euo pipefail
-          cd infrastructure/ansible
-          ansible-galaxy collection install community.general
-          sed 's/^vault_password_file = .vault-pass/# vault_password_file = .vault-pass (disabled for CI dry-run check)/' ansible.cfg > /tmp/ansible-ci.cfg
-          export ANSIBLE_CONFIG=/tmp/ansible-ci.cfg
-          export ANSIBLE_ROLES_PATH="$(pwd)/roles"
-          ansible-playbook --check --diff playbooks/deploy.yml -i inventory.yml --limit nonexistent_host 2>&1 | tee /tmp/ansible-dryrun.log || true
-          if grep -qE "(No hosts matched|leaves us with no hosts to target)" /tmp/ansible-dryrun.log; then
-            echo "deploy.yml dry-run OK (no hosts matched)"
-          elif grep -qE "(ERROR|error)" /tmp/ansible-dryrun.log && ! grep -qE "(No hosts matched|leaves us with no hosts|vault password)" /tmp/ansible-dryrun.log; then
-            echo "deploy.yml dry-run failed"
-            cat /tmp/ansible-dryrun.log
-            exit 1
-          else
-            echo "deploy.yml dry-run OK"
-          fi
+          ansible-playbook --syntax-check playbooks/deploy-staged.yml -i inventory-talkplaza.yml
           ansible-playbook --check \
             -i ../../scripts/deploy/tests/fixtures/recovery-check-inventory.yml \
             playbooks/recover-pi4-verify.yml \
             -e recovery_authorized=true
 
-      - name: Test monitoring scripts
-        if: matrix.run-infra
+  client:
+    name: client
+    needs: change-classification
+    if: ${{ needs.change-classification.outputs.client == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install client test runner
+        run: python3 -m pip install --user pytest==8.4.2
+
+      - name: Validate client scripts and tests
+        env:
+          PYTHONPATH: clients/haizen-agent:clients/nfc-agent
         run: |
-          API_URL=http://localhost:8080/api pnpm test:monitor || {
-            cat /tmp/api-server.log || true
-            exit 1
-          }
+          bash -n scripts/client/setup-kiosk.sh
+          bash -n scripts/client/setup-nfc-agent.sh
+          bash -n scripts/client/setup-signage-lite.sh
+          bash -n scripts/client/setup-signage.sh
+          python3 -m pytest clients/haizen-agent/tests clients/nfc-agent/tests
+          python3 -m unittest discover -s clients/status-agent/tests -p 'test_*.py'
 
-      - name: Stop API server
-        if: always()
-        run: |
-          if [ -n "${API_PID:-}" ]; then
-            kill "$API_PID" || true
-            sleep 2
-            kill -9 "$API_PID" 2>/dev/null || true
-          fi
-          pkill -f "node dist/main.js" || true
-          pkill -f "pnpm start" || true
-
-      - name: Cleanup PostgreSQL
-        if: always()
-        run: docker stop postgres-test && docker rm postgres-test || true
-
-  # セキュリティスキャンと Docker イメージビルド（開始直後から並列実行）
-  security-docker:
-    name: security-docker (${{ matrix.image }})
+  docker-security:
+    name: docker-security (${{ matrix.image }})
+    needs: change-classification
+    if: ${{ needs.change-classification.outputs.docker_security == 'true' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -471,6 +538,9 @@ jobs:
           trivyignores: '.trivyignore'
 
   e2e-smoke:
+    name: e2e-smoke
+    needs: change-classification
+    if: ${{ needs.change-classification.outputs.e2e == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -535,6 +605,9 @@ jobs:
         run: docker stop postgres-e2e-smoke && docker rm postgres-e2e-smoke || true
 
   e2e-tests:
+    name: e2e-tests
+    needs: change-classification
+    if: ${{ needs.change-classification.outputs.e2e == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -625,34 +698,53 @@ jobs:
     if: ${{ always() }}
     needs:
       - change-classification
-      - lint-build-unit
-      - api-db-and-infra
-      - security-docker
+      - repo-policy
+      - workspace-quality
+      - api
+      - web
+      - db-infra
+      - deploy-contract
+      - client
+      - docker-security
       - e2e-smoke
       - e2e-tests
     runs-on: ubuntu-latest
     steps:
-      - name: Require every CI job to pass
+      - name: Checkout aggregate validator
+        uses: actions/checkout@v6
+
+      - name: Require every selected CI job to pass
         env:
           CHANGE_CLASSIFICATION: ${{ needs['change-classification'].result }}
-          LINT_BUILD_UNIT: ${{ needs['lint-build-unit'].result }}
-          API_DB_AND_INFRA: ${{ needs['api-db-and-infra'].result }}
-          SECURITY_DOCKER: ${{ needs['security-docker'].result }}
+          REPO_POLICY_SELECTED: ${{ needs['change-classification'].outputs.repo_policy }}
+          REPO_POLICY_RESULT: ${{ needs['repo-policy'].result }}
+          WORKSPACE_QUALITY_SELECTED: ${{ needs['change-classification'].outputs.workspace_quality }}
+          WORKSPACE_QUALITY_RESULT: ${{ needs['workspace-quality'].result }}
+          API_SELECTED: ${{ needs['change-classification'].outputs.api }}
+          API_RESULT: ${{ needs.api.result }}
+          WEB_SELECTED: ${{ needs['change-classification'].outputs.web }}
+          WEB_RESULT: ${{ needs.web.result }}
+          DB_INFRA_SELECTED: ${{ needs['change-classification'].outputs.db_infra }}
+          DB_INFRA_RESULT: ${{ needs['db-infra'].result }}
+          DEPLOY_CONTRACT_SELECTED: ${{ needs['change-classification'].outputs.deploy_contract }}
+          DEPLOY_CONTRACT_RESULT: ${{ needs['deploy-contract'].result }}
+          CLIENT_SELECTED: ${{ needs['change-classification'].outputs.client }}
+          CLIENT_RESULT: ${{ needs.client.result }}
+          DOCKER_SECURITY_SELECTED: ${{ needs['change-classification'].outputs.docker_security }}
+          DOCKER_SECURITY_RESULT: ${{ needs['docker-security'].result }}
+          E2E_SELECTED: ${{ needs['change-classification'].outputs.e2e }}
           E2E_SMOKE: ${{ needs['e2e-smoke'].result }}
           E2E_TESTS: ${{ needs['e2e-tests'].result }}
         run: |
-          set -euo pipefail
-          failed=0
-          for result in \
-            "change-classification=$CHANGE_CLASSIFICATION" \
-            "lint-build-unit=$LINT_BUILD_UNIT" \
-            "api-db-and-infra=$API_DB_AND_INFRA" \
-            "security-docker=$SECURITY_DOCKER" \
-            "e2e-smoke=$E2E_SMOKE" \
-            "e2e-tests=$E2E_TESTS"; do
-            echo "$result"
-            if [[ "${result#*=}" != "success" ]]; then
-              failed=1
-            fi
-          done
-          exit "$failed"
+          python3 scripts/ci/validate_required_results.py \
+            --classification-result "$CHANGE_CLASSIFICATION" \
+            "repo-policy=$REPO_POLICY_SELECTED:$REPO_POLICY_RESULT" \
+            "workspace-quality=$WORKSPACE_QUALITY_SELECTED:$WORKSPACE_QUALITY_RESULT" \
+            "api=$API_SELECTED:$API_RESULT" \
+            "web=$WEB_SELECTED:$WEB_RESULT" \
+            "db-infra=$DB_INFRA_SELECTED:$DB_INFRA_RESULT" \
+            "deploy-contract=$DEPLOY_CONTRACT_SELECTED:$DEPLOY_CONTRACT_RESULT" \
+            "client=$CLIENT_SELECTED:$CLIENT_RESULT" \
+            "docker-security=$DOCKER_SECURITY_SELECTED:$DOCKER_SECURITY_RESULT" \
+            "e2e-smoke=$E2E_SELECTED:$E2E_SMOKE" \
+            "e2e-tests=$E2E_SELECTED:$E2E_TESTS"

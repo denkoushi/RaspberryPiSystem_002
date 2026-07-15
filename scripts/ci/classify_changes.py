@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Classify a git name-status stream without changing CI execution.
+"""Classify a git name-status stream for staged CI execution.
 
 The classifier is intentionally independent from git and GitHub Actions. It
 accepts the NUL-delimited output of ``git diff --name-status -z`` on stdin and
-prints either JSON or a Markdown summary. PR 2 consumes only the Markdown
-summary; later CI staging can consume the same deterministic classification.
+prints JSON, a Markdown summary, or GitHub Actions outputs. Unknown inputs and
+changes that can hide removed build dependencies select the full suite.
 """
 
 from __future__ import annotations
@@ -157,7 +157,7 @@ def classify_changes(
 
     return {
         "schemaVersion": 1,
-        "mode": "shadow",
+        "mode": "enforced",
         "fileCount": len(classified),
         "fullSuite": selected == set(FULL_SUITE),
         "categories": {category: category in selected for category in CATEGORIES},
@@ -216,9 +216,9 @@ def render_markdown(result: dict[str, object]) -> str:
     assert isinstance(reasons, list)
 
     lines = [
-        "## Change classification (shadow)",
+        "## Change classification (enforced)",
         "",
-        "This result is informational; every CI job still runs.",
+        "Selected categories control which pull-request jobs run. Full-suite events ignore path minimization.",
         "",
         f"Changed files: **{result['fileCount']}**  ",
         f"Full suite classification: **{'yes' if result['fullSuite'] else 'no'}**",
@@ -236,9 +236,25 @@ def render_markdown(result: dict[str, object]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def render_github_output(result: dict[str, object]) -> str:
+    """Render stable lowercase booleans for ``GITHUB_OUTPUT``."""
+    categories = result["categories"]
+    assert isinstance(categories, dict)
+    lines = [
+        f"{category}={'true' if categories[category] else 'false'}"
+        for category in CATEGORIES
+    ]
+    lines.append(f"full_suite={'true' if result['fullSuite'] else 'false'}")
+    return "\n".join(lines) + "\n"
+
+
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--format", choices=("json", "markdown"), default="json")
+    parser.add_argument(
+        "--format",
+        choices=("json", "markdown", "github-output"),
+        default="json",
+    )
     parser.add_argument(
         "--force-full-reason",
         help="Select every category when no stable diff base is available.",
@@ -256,6 +272,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     result = classify_changes(changes, force_full_reason=args.force_full_reason)
     if args.format == "markdown":
         sys.stdout.write(render_markdown(result))
+    elif args.format == "github-output":
+        sys.stdout.write(render_github_output(result))
     else:
         json.dump(result, sys.stdout, indent=2, sort_keys=True)
         sys.stdout.write("\n")

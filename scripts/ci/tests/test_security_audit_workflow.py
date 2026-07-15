@@ -25,10 +25,10 @@ class SecurityAuditWorkflowTests(unittest.TestCase):
         self.assertNotIn("--ignore-registry-errors", text)
         self.assertNotIn("pnpm audit --audit-level=critical", text)
 
-        build_web = text.index("- name: Build Web")
+        shared_tests = text.index("- name: Run shelf-layout-core tests")
         setup_bulk_audit = text.index("- name: Setup Node.js for bulk advisory audit")
         run_bulk_audit = text.index("- name: Security scan (pnpm bulk audit)")
-        self.assertLess(build_web, setup_bulk_audit)
+        self.assertLess(shared_tests, setup_bulk_audit)
         self.assertLess(setup_bulk_audit, run_bulk_audit)
 
 
