@@ -64,6 +64,20 @@
     path: "{{ repo_path }}/.git"
   register: repo_git_stat
 
+- name: Fix .git directory ownership before reading the current revision
+  ansible.builtin.file:
+    path: "{{ repo_path }}/.git"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    recurse: true
+    state: directory
+  when:
+    - repo_git_stat.stat.exists | default(false)
+    - ansible_user is defined
+  changed_when: false
+  # The previous revision must be readable before sync. If it is not, the
+  # agent classifier cannot compute a diff and safely falls back to --build.
+
 - name: Check host_vars directory exists
   ansible.builtin.stat:
     path: "{{ repo_path }}/infrastructure/ansible/host_vars"
@@ -103,7 +117,7 @@
     git rev-parse HEAD
   args:
     executable: /bin/bash
-  register: repo_prev_head
+  register: repo_prev_head_result
   changed_when: false
   failed_when: false
   when: repo_git_stat.stat.exists | default(false)
@@ -142,42 +156,78 @@
     git rev-parse HEAD
   args:
     executable: /bin/bash
-  register: repo_new_head
+  register: repo_new_head_result
   changed_when: false
 
 - name: Determine if repo changed
   ansible.builtin.set_fact:
-    repo_prev_head: "{{ repo_prev_head.stdout | default('') }}"
-    repo_new_head: "{{ repo_new_head.stdout | default('') }}"
-    repo_changed: "{{ (repo_prev_head.stdout | default('')) != (repo_new_head.stdout | default('')) }}"
+    repo_prev_head: "{{ repo_prev_head_result.stdout | default('') }}"
+    repo_new_head: "{{ repo_new_head_result.stdout | default('') }}"
+    repo_changed: >-
+      {{
+        (repo_prev_head_result.stdout | default(''))
+        != (repo_new_head_result.stdout | default(''))
+      }}
 
 - name: Collect repo diff file list (for docker build decision)
   ansible.builtin.shell: |
     set -euo pipefail
     cd "{{ repo_path }}"
-    git diff --name-only "{{ repo_prev_head.stdout }}" "{{ repo_new_head.stdout }}"
+    git diff --name-only "{{ repo_prev_head }}" "{{ repo_new_head }}"
   args:
     executable: /bin/bash
   register: repo_diff_files_raw
   changed_when: false
   failed_when: false
   when:
-    - (repo_prev_head.stdout | default('')) != ''
-    - (repo_new_head.stdout | default('')) != ''
+    - (repo_prev_head | default('')) != ''
+    - (repo_new_head | default('')) != ''
 
 - name: Determine if docker build is needed on server
   ansible.builtin.set_fact:
     repo_changed_files: "{{ repo_diff_files_raw.stdout_lines | default([]) }}"
     repo_diff_unavailable: >-
       {{
-        (repo_prev_head.stdout | default('')) == ''
-        or (repo_new_head.stdout | default('')) == ''
+        (repo_prev_head | default('')) == ''
+        or (repo_new_head | default('')) == ''
         or (repo_diff_files_raw.rc | default(0)) != 0
+      }}
+
+- name: Classify client agent image changes
+  ansible.builtin.set_fact:
+    nfc_agent_image_build_needed: >-
+      {{
+        repo_diff_unavailable | bool
+        or (repo_changed_files | select('match', '^clients/nfc-agent/') | list | length > 0)
+        or (repo_changed_files | select('match', '^infrastructure/docker/Dockerfile\.nfc-agent$') | list | length > 0)
+        or (repo_changed_files | select('match', '^infrastructure/docker/docker-compose\.client\.yml$') | list | length > 0)
+      }}
+    barcode_agent_image_build_needed: >-
+      {{
+        repo_diff_unavailable | bool
+        or (repo_changed_files | select('match', '^clients/barcode-agent/') | list | length > 0)
+        or (repo_changed_files | select('match', '^infrastructure/docker/Dockerfile\.barcode-agent$') | list | length > 0)
+        or (repo_changed_files | select('match', '^infrastructure/docker/docker-compose\.client\.yml$') | list | length > 0)
+      }}
+
+- name: Classify client agent runtime changes
+  ansible.builtin.set_fact:
+    nfc_agent_runtime_recreate_needed: >-
+      {{
+        nfc_agent_image_build_needed | bool
+        or (repo_changed_files | select('match', '^infrastructure/ansible/(roles/client/(tasks/nfc-agent|templates/.*nfc|handlers)|group_vars/).*') | list | length > 0)
+        or (repo_changed_files | select('match', '^\.env') | list | length > 0)
+      }}
+    barcode_agent_runtime_recreate_needed: >-
+      {{
+        barcode_agent_image_build_needed | bool
+        or (repo_changed_files | select('match', '^infrastructure/ansible/(roles/client/(tasks/barcode-agent|templates/.*barcode|handlers)|group_vars/).*') | list | length > 0)
+        or (repo_changed_files | select('match', '^\.env') | list | length > 0)
       }}
     server_docker_build_needed: >-
       {{
-        (repo_prev_head.stdout | default('')) == ''
-        or (repo_new_head.stdout | default('')) == ''
+        (repo_prev_head | default('')) == ''
+        or (repo_new_head | default('')) == ''
         or (repo_diff_files_raw.rc | default(0)) != 0
         or (repo_diff_files_raw.stdout_lines | default([]) | select('match', '^apps/(api|web)/') | list | length > 0)
         or (repo_diff_files_raw.stdout_lines | default([]) | select('match', '^packages/') | list | length > 0)
@@ -187,20 +237,6 @@
         or (repo_diff_files_raw.stdout_lines | default([]) | select('match', '^infrastructure/docker/') | list | length > 0)
         or (repo_diff_files_raw.stdout_lines | default([]) | select('match', '^apps/api/prisma/') | list | length > 0)
       }}
-
-- name: Fix .git directory ownership (prevent detached execution failures)
-  ansible.builtin.file:
-    path: "{{ repo_path }}/.git"
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
-    recurse: true
-    state: directory
-  when:
-    - repo_git_stat.stat.exists | default(false)
-    - ansible_user is defined
-  changed_when: false
-  # Note: This task ensures .git directory is owned by ansible_user to prevent
-  # permission errors during detached execution (KB-219)
 
 - name: Remove unnecessary documentation directory to save storage
   ansible.builtin.file:
