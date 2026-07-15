@@ -87,7 +87,7 @@ jobs:
           bash scripts/deploy/tests/test-pi5-blue-green.sh
           bash scripts/deploy/tests/test-pi5-blue-green-maintenance-container.sh
           python3 -m unittest discover -s scripts/deploy/tests -p 'test_*.py'
-          python3 scripts/deploy/tests/test-client-agent-lifecycle-baseline.py
+          python3 scripts/deploy/tests/test-client-agent-lifecycle-selection.py
           bash scripts/deploy/tests/test-signage-deploy-maintenance.sh
           bash scripts/deploy/tests/test-deploy-status-postgres.sh
 
@@ -317,6 +317,7 @@ jobs:
           PLAYBOOKS=(
             "playbooks/deploy.yml"
             "playbooks/deploy-staged.yml"
+            "playbooks/server-config-release.yml"
             "playbooks/update-clients.yml"
             "playbooks/health-check.yml"
             "playbooks/manage-system-configs.yml"

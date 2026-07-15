@@ -5,6 +5,21 @@
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
     mode: "0755"
+  when: terminal_release_mode | default('full') == 'full'
+
+- name: Check ibus autostart directory before release
+  ansible.builtin.stat:
+    path: "/home/{{ ansible_user }}/.config/autostart"
+  register: ibus_autostart_directory
+  when: terminal_release_mode | default('full') == 'release-only'
+
+- name: Require ibus autostart directory before release
+  ansible.builtin.assert:
+    that:
+      - ibus_autostart_directory.stat.exists | default(false)
+      - ibus_autostart_directory.stat.isdir | default(false)
+    fail_msg: IBus autostart directory is missing; provision the kiosk before release.
+  when: terminal_release_mode | default('full') == 'release-only'
 
 - name: Deploy ibus autostart desktop file
   ansible.builtin.template:
@@ -76,5 +91,24 @@
   register: ibus_owner_result
   changed_when: "'changed:ibus-owner' in ibus_owner_result.stdout"
   when:
+    - terminal_release_mode | default('full') == 'full'
     - ibus_single_owner_enabled | bool
     - ibus_reconcile_on_deploy | bool
+
+- name: Verify IBus process ownership without reconciling it
+  ansible.builtin.shell: |
+    set -euo pipefail
+    processes="$(pgrep -x -a ibus-daemon || true)"
+    desired_signature={{ ibus_desired_daemon_flag_signature | quote }}
+    competing_pattern={{ ibus_competing_daemon_pattern | quote }}
+    desired_count="$(printf '%s\n' "${processes}" | awk -v pattern="${desired_signature}" 'index($0, pattern) { count++ } END { print count + 0 }')"
+    competing_count="$(printf '%s\n' "${processes}" | awk -v pattern="${competing_pattern}" 'index($0, pattern) { count++ } END { print count + 0 }')"
+    test "${desired_count}" -eq 1
+    test "${competing_count}" -eq 0
+  args:
+    executable: /bin/bash
+  become_user: "{{ ansible_user }}"
+  changed_when: false
+  when:
+    - terminal_release_mode | default('full') == 'release-only'
+    - ibus_single_owner_enabled | bool

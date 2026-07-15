@@ -30,6 +30,78 @@ describe('normalizeDeployStatusResponse', () => {
       .toEqual({ isMaintenance: true });
   });
 
+  it('returns verifying and its immutable desired release SHA backward-compatibly', () => {
+    const desiredReleaseSha = 'a'.repeat(40);
+    const verificationId = '1'.repeat(32);
+    expect(normalizeDeployStatusResponse({
+      kioskByClient: {
+        kiosk1: {
+          maintenance: true,
+          runId: 'run-verifying',
+          phase: 'verifying',
+          desiredReleaseSha,
+          verificationMode: 'release',
+          verificationId
+        }
+      }
+    }, 'kiosk1')).toEqual({
+      isMaintenance: true,
+      runId: 'run-verifying',
+      phase: 'verifying',
+      desiredReleaseSha,
+      verificationCycle: 'release',
+      verificationId
+    });
+  });
+
+  it('exposes a rollback verification as a distinct ready cycle', () => {
+    const desiredReleaseSha = 'b'.repeat(40);
+    const verificationId = '2'.repeat(32);
+    expect(normalizeDeployStatusResponse({
+      kioskByClient: {
+        kiosk1: {
+          maintenance: true,
+          runId: 'run-verifying',
+          phase: 'verifying',
+          desiredReleaseSha,
+          verificationMode: 'rollback',
+          verificationId
+        }
+      }
+    }, 'kiosk1')).toEqual({
+      isMaintenance: true,
+      runId: 'run-verifying',
+      phase: 'verifying',
+      desiredReleaseSha,
+      verificationCycle: 'rollback',
+      verificationId
+    });
+  });
+
+  it('does not expose a malformed desired release SHA', () => {
+    expect(normalizeDeployStatusResponse({
+      kioskByClient: {
+        kiosk1: {
+          maintenance: true,
+          phase: 'verifying',
+          desiredReleaseSha: 'A'.repeat(40)
+        }
+      }
+    }, 'kiosk1')).toEqual({ isMaintenance: true, phase: 'verifying' });
+  });
+
+  it('does not expose stale desired release identity outside verification', () => {
+    expect(normalizeDeployStatusResponse({
+      kioskByClient: {
+        kiosk1: {
+          maintenance: true,
+          phase: 'failed',
+          desiredReleaseSha: 'a'.repeat(40)
+        }
+      }
+    }, 'kiosk1')).toEqual({ isMaintenance: true, phase: 'failed' });
+  });
+
   it('returns a non-blocking pre-notice only for the matching notice client', () => {
     const raw = {
       version: 2,

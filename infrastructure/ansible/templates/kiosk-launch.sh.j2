@@ -19,10 +19,6 @@ export GTK_IM_MODULE=ibus
 export XMODIFIERS=@im=ibus
 export QT_IM_MODULE=ibus
 
-# 画面上部のパネルを非表示にする（labwc + wf-panel-pi）
-pkill -f "lwrespawn /usr/bin/wf-panel-pi" || true
-pkill -x wf-panel-pi || true
-
 BROWSER_ENGINE="{{ kiosk_browser_engine | default('chromium') | lower }}"
 BROWSER_MODE="{{ kiosk_browser_mode | default('app-like') | lower }}"
 BROWSER_BIN="{{ kiosk_browser_exec_path | default(kiosk_browser_chromium_binary | default('/usr/bin/chromium-browser')) }}"
@@ -30,22 +26,6 @@ BROWSER_BIN="{{ kiosk_browser_exec_path | default(kiosk_browser_chromium_binary 
 KIOSK_FF_MINIMIZE="{% if kiosk_firefox_minimize_chrome_enabled | default(true) | bool %}1{% else %}0{% endif %}"
 FF_PROFILE="/home/{{ ansible_user }}/.mozilla/firefox/{{ kiosk_firefox_profile_dirname | default('kiosk-system') }}"
 REPO_PATH="{{ repo_path | default('/opt/RaspberryPiSystem_002') }}"
-
-clear_firefox_session_restore() {
-  if [[ ! -d "${FF_PROFILE}" ]]; then
-    return 0
-  fi
-
-  # Firefox can restore a previous /kiosk/* tab before the SPA sees /kiosk.
-  # Remove only session restore state; keep localStorage/cookies/profile prefs.
-  rm -f \
-    "${FF_PROFILE}/sessionstore.jsonlz4" \
-    "${FF_PROFILE}/sessionstore-backups/recovery.jsonlz4" \
-    "${FF_PROFILE}/sessionstore-backups/recovery.baklz4" \
-    "${FF_PROFILE}/sessionstore-backups/previous.jsonlz4" \
-    "${FF_PROFILE}/sessionstore-backups/upgrade.jsonlz4-"*
-  mkdir -p "${FF_PROFILE}/sessionstore-backups"
-}
 
 # Pi5 上の Web SPA 更新を Pi4 Firefox に届ける（clientKey だけでは URL が不変でキャッシュされ得る）
 KIOSK_TARGET_URL="{{ kiosk_url }}"
@@ -75,7 +55,6 @@ if [[ "${BROWSER_ENGINE}" == "chromium" ]]; then
   )
   exec "${BROWSER_BIN}" "${CHROMIUM_FLAGS[@]}"
 elif [[ "${BROWSER_ENGINE}" == "firefox" ]]; then
-  clear_firefox_session_restore
   FIREFOX_FLAGS=(
 {% if (kiosk_browser_mode | default('app-like') | lower) == 'kiosk' %}
 {% for flag in kiosk_browser_flags_firefox_kiosk | default(['--kiosk']) %}

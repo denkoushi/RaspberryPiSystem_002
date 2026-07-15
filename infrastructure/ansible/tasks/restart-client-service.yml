@@ -1,4 +1,41 @@
 ---
+- name: Require restart target to be sealed by the terminal runtime manifest
+  ansible.builtin.assert:
+    that:
+      - >-
+        service_name in
+        (
+          [
+            'lightdm.service',
+            'status-agent.service',
+            'status-agent.timer',
+            'haizen-agent.service'
+          ]
+          + (
+            ['kiosk-browser.service']
+            if manage_kiosk_browser | default(false) | bool
+            else []
+          )
+          + (
+            [
+              'signage-lite.service',
+              'signage-lite-update.service',
+              'signage-lite-update.timer',
+              'signage-lite-watchdog.service',
+              'signage-lite-watchdog.timer',
+              'signage-daily-reboot.service',
+              'signage-daily-reboot.timer'
+            ]
+            if manage_signage_lite | default(false) | bool
+            else []
+          )
+        )
+    fail_msg: >-
+      {{ service_name }} is outside the coordinator's sealed runtime-unit
+      contract for {{ inventory_hostname }}. Provision or extend the manifest
+      contract before retrying this release.
+  when: terminal_release_mode | default('full') == 'release-only'
+
 - name: Check if {{ service_name }} exists
   ansible.builtin.command: "systemctl list-unit-files {{ service_name }} --no-pager"
   register: service_exists_check
@@ -18,7 +55,18 @@
       ansible.builtin.systemd:
         name: "{{ service_name }}"
         enabled: true
-      when: service_enabled_check.rc != 0
+      when:
+        - terminal_release_mode | default('full') == 'full'
+        - service_enabled_check.rc != 0 or service_enabled_check.stdout | trim != 'enabled'
+
+    - name: Fail release when {{ service_name }} is not enabled
+      ansible.builtin.fail:
+        msg: >-
+          {{ service_name }} is disabled. Persistent enablement is provisioning-only;
+          provision {{ inventory_hostname }} before retrying this release.
+      when:
+        - terminal_release_mode | default('full') == 'release-only'
+        - service_enabled_check.rc != 0 or service_enabled_check.stdout | trim != 'enabled'
 
     - name: Restart {{ service_name }} on client
       ansible.builtin.systemd:

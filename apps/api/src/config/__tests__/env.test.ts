@@ -13,6 +13,25 @@ afterEach(() => {
 });
 
 describe('env secret policy', () => {
+  it.each([
+    ['true', true],
+    ['1', true],
+    ['false', false],
+    ['0', false],
+  ])('parses SIGNAGE_RENDER_ENABLED=%s strictly', async (raw, expected) => {
+    process.env.SIGNAGE_RENDER_ENABLED = raw;
+
+    const { env } = await loadEnvModule();
+
+    expect(env.SIGNAGE_RENDER_ENABLED).toBe(expected);
+  });
+
+  it('rejects ambiguous SIGNAGE_RENDER_ENABLED values', async () => {
+    process.env.SIGNAGE_RENDER_ENABLED = 'yes';
+
+    await expect(loadEnvModule()).rejects.toThrow(/SIGNAGE_RENDER_ENABLED|boolean/i);
+  });
+
   it('allows defaults outside production', async () => {
     process.env.NODE_ENV = 'development';
     delete process.env.JWT_ACCESS_SECRET;

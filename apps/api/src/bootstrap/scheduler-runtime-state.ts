@@ -7,6 +7,7 @@ export type SchedulerRuntimeSnapshot = {
   enabled: boolean;
   role: SchedulerRole;
   databaseConnection: SchedulerDatabaseConnection;
+  transitionGeneration: number;
   lastTransitionAt?: string;
   errors: {
     last60Seconds: number;
@@ -35,12 +36,14 @@ export function createSchedulerRuntimeState(): SchedulerRuntimeState {
   let enabled = false;
   let role: SchedulerRole = 'stopped';
   let databaseConnection: SchedulerDatabaseConnection = 'not-used';
+  let transitionGeneration = 0;
   let lastTransitionAt: string | undefined;
   let lastError: Error | undefined;
   let totalErrors = 0;
   const errorTimestamps: number[] = [];
 
   const markTransition = () => {
+    transitionGeneration += 1;
     lastTransitionAt = new Date().toISOString();
   };
 
@@ -59,6 +62,7 @@ export function createSchedulerRuntimeState(): SchedulerRuntimeState {
         enabled,
         role,
         databaseConnection,
+        transitionGeneration,
         ...(lastTransitionAt ? { lastTransitionAt } : {}),
         errors: {
           last60Seconds: errorTimestamps.length,

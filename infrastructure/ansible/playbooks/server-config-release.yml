@@ -1,0 +1,96 @@
+---
+- name: Converge the Pi5 release environment without changing its runtime
+  hosts: server
+  gather_facts: false
+  become: true
+  serial: 1
+  order: inventory
+  vars:
+    repo_path: /opt/RaspberryPiSystem_002
+    repo_version: "{{ lookup('env', 'ANSIBLE_REPO_VERSION') }}"
+    server_release_mode: host-config-only
+
+  pre_tasks:
+    - name: Require canonical rolling release context
+      ansible.builtin.import_tasks: "../tasks/assert-release-orchestration.yml"
+
+    - name: Require the immutable host-config mutation profile
+      ansible.builtin.assert:
+        that:
+          - server_release_mode == 'host-config-only'
+          - repo_version is match('^[0-9a-f]{40}$')
+        fail_msg: >-
+          Pi5 host-config convergence requires host-config-only mode and an
+          immutable lowercase 40-hex release SHA.
+
+    - name: Inspect the existing Pi5 repository
+      ansible.builtin.stat:
+        path: "{{ repo_path }}/.git"
+      register: server_config_repository
+
+    - name: Require an existing Pi5 repository
+      ansible.builtin.assert:
+        that:
+          - server_config_repository.stat.exists | default(false)
+          - server_config_repository.stat.isdir | default(false)
+        fail_msg: >-
+          Pi5 host-config convergence never clones or repairs a repository.
+          Provision the expected repository before retrying the release.
+
+    - name: Verify exact clean Pi5 release checkout
+      ansible.builtin.shell: |
+        set -euo pipefail
+        repository={{ repo_path | quote }}
+        expected={{ repo_version | quote }}
+        safe_home="$(/usr/bin/getent passwd {{ ansible_user | quote }} | /usr/bin/cut -d: -f6)"
+        [[ "${safe_home}" == /* && -d "${safe_home}" ]]
+        git() {
+          /usr/bin/env -i \
+            PATH=/usr/bin:/bin \
+            HOME="${safe_home}" \
+            LANG=C \
+            LC_ALL=C \
+            GIT_CONFIG_NOSYSTEM=1 \
+            GIT_CONFIG_GLOBAL=/dev/null \
+            GIT_ATTR_NOSYSTEM=1 \
+            GIT_TERMINAL_PROMPT=0 \
+            GIT_OPTIONAL_LOCKS=0 \
+            /usr/bin/git \
+              -c "safe.directory=${repository}" \
+              -c core.fsmonitor=false \
+              -c core.ignoreStat=false \
+              -c core.trustctime=true \
+              -c core.hooksPath=/dev/null \
+              -c maintenance.auto=false \
+              -C "${repository}" \
+              "$@"
+        }
+        git ls-files -v -z | /usr/bin/python3 -c '
+        import sys
+        entries = sys.stdin.buffer.read().split(b"\0")
+        bad = [entry for entry in entries if entry and (entry[:1] == b"S" or entry[:1].islower())]
+        if bad:
+            print("Pi5 repository contains hidden index flags", file=sys.stderr)
+            raise SystemExit(1)
+        '
+        git ls-files -u -z | /usr/bin/python3 -c '
+        import sys
+        if sys.stdin.buffer.read(1):
+            print("Pi5 repository contains unmerged entries", file=sys.stderr)
+            raise SystemExit(1)
+        '
+        git diff --quiet
+        git diff --cached --quiet
+        test -z "$(git status --porcelain --untracked-files=all)"
+        head="$(git rev-parse --verify HEAD^{commit})"
+        [[ "${head}" =~ ^[0-9a-f]{40}$ ]]
+        [[ "${head}" == "${expected}" ]]
+      args:
+        executable: /bin/bash
+      become_user: "{{ ansible_user }}"
+      changed_when: false
+
+  tasks:
+    - name: Apply the bounded Pi5 release environment transaction
+      ansible.builtin.import_role:
+        name: server

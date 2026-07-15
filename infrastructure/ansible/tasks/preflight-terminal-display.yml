@@ -1,0 +1,30 @@
+---
+# A terminal release restarts display-bound services. Provisioning may repair a
+# missing display manager, but release-only execution must never mutate a host
+# whose graphical baseline is already unavailable.
+
+- name: Require lightdm unit to be loaded before terminal release
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - show
+      - --property=LoadState
+      - --value
+      - lightdm.service
+  register: terminal_lightdm_load_state
+  changed_when: false
+  failed_when: >-
+    terminal_lightdm_load_state.rc != 0
+    or terminal_lightdm_load_state.stdout | trim != 'loaded'
+
+- name: Require lightdm to be active before terminal release
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - lightdm.service
+  register: terminal_lightdm_active_state
+  changed_when: false
+  failed_when: >-
+    terminal_lightdm_active_state.rc != 0
+    or terminal_lightdm_active_state.stdout | trim != 'active'

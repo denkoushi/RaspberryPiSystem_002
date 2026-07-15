@@ -1,43 +1,19 @@
 ---
-- name: Pause signage-lite workload before deployment
-  block:
-    - name: Stop and disable signage-lite update timer (prevent auto-restart)
-      ansible.builtin.systemd:
-        name: signage-lite-update.timer
-        state: stopped
-        enabled: false
-      register: signage_timer_stopped
+# Full provisioning quiesces only the unit files that already exist in
+# prestage-signage-runtime.yml. This role can therefore create a fresh unit set.
 
-    - name: Stop and disable signage-lite watchdog timer
-      ansible.builtin.systemd:
-        name: signage-lite-watchdog.timer
-        state: stopped
-        enabled: false
-      ignore_errors: true
-
-    - name: Stop and disable signage-daily-reboot timer
-      ansible.builtin.systemd:
-        name: signage-daily-reboot.timer
-        state: stopped
-        enabled: false
-      ignore_errors: true
-
-    - name: Disable signage-lite service to prevent auto-restart
-      ansible.builtin.systemd:
-        name: signage-lite.service
-        enabled: false
-      register: signage_service_disabled
-
-    - name: Stop signage-lite service
-      ansible.builtin.systemd:
-        name: signage-lite.service
-        state: stopped
-      register: signage_service_stopped
-
-    - name: Wait for signage-lite to fully stop
-      ansible.builtin.pause:
-        seconds: 3
-      when: signage_service_stopped.changed | default(false)
+- name: Stop signage runtime temporarily for release
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+  loop:
+    - signage-lite-update.timer
+    - signage-lite-watchdog.timer
+    - signage-daily-reboot.timer
+    - signage-lite-update.service
+    - signage-lite-watchdog.service
+    - signage-lite.service
+  when: terminal_release_mode | default('full') == 'release-only'
 
 # NOTE:
 # - Pi3/Pi4のsignage-liteは feh + shell scripts で動作するため、pnpm依存のインストールは不要。
@@ -57,20 +33,32 @@
   failed_when: false
   become: false
   become_user: "{{ ansible_user }}"
-  when: signage_lite_client_deps_enabled | default(false) | bool
+  when:
+    - terminal_release_mode | default('full') == 'full'
+    - signage_lite_client_deps_enabled | default(false) | bool
 
 - name: Install tmpfiles configuration for /run/signage
   ansible.builtin.template:
     src: signage-lite.tmpfiles.conf.j2
     dest: /etc/tmpfiles.d/signage-lite.conf
+    owner: root
+    group: root
     mode: '0644'
-  notify: systemd-tmpfiles
 
 - name: Install renderer for the signage maintenance screen
   ansible.builtin.apt:
     name: librsvg2-bin
     state: present
     update_cache: true
+  when: terminal_release_mode | default('full') == 'full'
+
+- name: Verify signage maintenance renderer is installed before release
+  ansible.builtin.command:
+    argv:
+      - rsvg-convert
+      - --version
+  changed_when: false
+  when: terminal_release_mode | default('full') == 'release-only'
 
 - name: Deploy signage maintenance screen source
   ansible.builtin.template:
@@ -83,8 +71,27 @@
 - name: Ensure /run/signage directory exists (via tmpfiles)
   ansible.builtin.command:
     cmd: systemd-tmpfiles --create /etc/tmpfiles.d/signage-lite.conf
-    creates: /run/signage
   changed_when: true
+  when: terminal_release_mode | default('full') == 'full'
+
+- name: Check signage runtime directory before release
+  ansible.builtin.stat:
+    path: /run/signage
+  register: signage_runtime_directory
+  when: terminal_release_mode | default('full') == 'release-only'
+
+- name: Require signage runtime directory before release
+  ansible.builtin.assert:
+    that:
+      - signage_runtime_directory.stat.exists | default(false)
+      - signage_runtime_directory.stat.isdir | default(false)
+      - signage_runtime_directory.stat.pw_name | default('') == ansible_user
+      - signage_runtime_directory.stat.gr_name | default('') == ansible_user
+      - signage_runtime_directory.stat.mode | default('') == '0755'
+    fail_msg: >-
+      /run/signage must already exist with the provisioned owner, group, and
+      0755 mode; run full provisioning before retrying this release.
+  when: terminal_release_mode | default('full') == 'release-only'
 
 - name: Deploy signage-update.sh script
   ansible.builtin.template:
@@ -176,27 +183,50 @@
   register: unmask_result
   changed_when: unmask_result.rc == 0
   failed_when: false
+  when: terminal_release_mode | default('full') == 'full'
   # Note: systemctl unmask removes both runtime and persistent masks
 
 - name: Re-enable signage-lite service (ensure enabled state convergence)
   ansible.builtin.systemd:
     name: signage-lite.service
     enabled: true
+  when: terminal_release_mode | default('full') == 'full'
 
 - name: Re-enable signage-lite update timer (ensure enabled state convergence)
   ansible.builtin.systemd:
     name: signage-lite-update.timer
     enabled: true
+  when: terminal_release_mode | default('full') == 'full'
 
 - name: Re-enable signage-lite watchdog timer (ensure enabled state convergence)
   ansible.builtin.systemd:
     name: signage-lite-watchdog.timer
     enabled: true
+  when: terminal_release_mode | default('full') == 'full'
 
 - name: Re-enable signage-daily-reboot timer (ensure enabled state convergence)
   ansible.builtin.systemd:
     name: signage-daily-reboot.timer
     enabled: true
+  when: terminal_release_mode | default('full') == 'full'
+
+- name: Require persistent signage units to be enabled before release
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-enabled
+      - "{{ item }}"
+  loop:
+    - signage-lite.service
+    - signage-lite-update.timer
+    - signage-lite-watchdog.timer
+    - signage-daily-reboot.timer
+  register: signage_enabled_unit
+  changed_when: false
+  failed_when: >-
+    signage_enabled_unit.rc != 0
+    or signage_enabled_unit.stdout | trim != 'enabled'
+  when: terminal_release_mode | default('full') == 'release-only'
 
 # Pi3のメモリ節約のためlightdmを停止している場合、サービス起動はスキップ
 # post_tasksでPi3を再起動した後、サービスは自動的に起動する

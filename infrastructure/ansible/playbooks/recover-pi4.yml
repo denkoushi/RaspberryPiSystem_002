@@ -8,6 +8,7 @@
   become: true
   vars:
     repo_path: /opt/RaspberryPiSystem_002
+    terminal_release_mode: full
     repo_remote: "{{ lookup('env', 'RASPI_SYSTEM_REPO') | default('https://github.com/denkoushi/RaspberryPiSystem_002.git', true) }}"
     git_deploy_key: "{{ lookup('env', 'RASPI_SYSTEM_DEPLOY_KEY') | default('', true) }}"
     git_environment: "{{ {} if (git_deploy_key | trim) == '' else {'GIT_SSH_COMMAND': 'ssh -i ' ~ git_deploy_key ~ ' -o StrictHostKeyChecking=no'} }}"

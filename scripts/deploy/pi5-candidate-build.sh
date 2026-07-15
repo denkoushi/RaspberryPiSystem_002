@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   cat >&2 <<'EOF'
-Usage: pi5-candidate-build.sh --ref FULL_SHA [--dry-run]
+Usage: pi5-candidate-build.sh --ref FULL_SHA --run-id RUN_ID [--resource-evidence FILE] [--dry-run]
 
 Build and validate immutable API/Web candidate images without changing the
 legacy Compose services or the Blue/Green gateway.

@@ -275,6 +275,24 @@ class FleetStateStoreTest(unittest.TestCase):
         )
         self.assertEqual(state["fleet"]["raspberrypi5"]["activeSlot"], "blue")
 
+        run_scoped = json.loads(json.dumps(state))
+        run_digest = "9" * 64
+        run_scoped["fleet"]["raspberrypi5"]["apiImage"] = (
+            f"api:{SHA_A}-aaaaaaaaaaaa-{run_digest}"
+        )
+        run_scoped["fleet"]["raspberrypi5"]["webImage"] = (
+            f"web:{SHA_A}-bbbbbbbbbbbb-{run_digest}"
+        )
+        self.assertEqual(
+            fleet_state_module.validate_fleet_state(run_scoped), run_scoped
+        )
+        malformed = json.loads(json.dumps(run_scoped))
+        malformed["fleet"]["raspberrypi5"]["apiImage"] = (
+            f"api:{SHA_A}-aaaaaaaaaaaa-{'9' * 63}"
+        )
+        with self.assertRaisesRegex(FleetStateCorruptError, "does not match"):
+            fleet_state_module.validate_fleet_state(malformed)
+
     def test_terminal_role_rejects_pi5_only_fields_before_mutation(self):
         state = self.begin()
         with self.assertRaisesRegex(ValueError, "server role"):

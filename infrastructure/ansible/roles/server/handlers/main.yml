@@ -7,6 +7,7 @@
     docker compose -f docker-compose.server.yml up -d --force-recreate api
   args:
     executable: /bin/bash
+  when: server_release_mode | default('full') == 'full'
 
 - name: restart web
   ansible.builtin.shell: |
@@ -16,6 +17,7 @@
     docker compose -f docker-compose.server.yml up -d --force-recreate web
   args:
     executable: /bin/bash
+  when: server_release_mode | default('full') == 'full'
 
 - name: restart docker compose services
   ansible.builtin.shell: |
@@ -26,6 +28,7 @@
   args:
     executable: /bin/bash
   ignore_errors: true
+  when: server_release_mode | default('full') == 'full'
 
 - name: restart fail2ban
   ansible.builtin.systemd:

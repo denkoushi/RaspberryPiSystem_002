@@ -352,6 +352,28 @@ class RecoverPi4Test(unittest.TestCase):
         self.assertEqual(plan.release.sha, SHA)
         self.assertEqual(plan.release.source, 'fleet-state')
 
+    def test_plan_accepts_run_scoped_active_pi5_image_tags(self):
+        temporary, project, inventory_path = self.make_project()
+        self.addCleanup(temporary.cleanup)
+        status = bluegreen_status(
+            active_image_suffix='0123456789ab-' + '9' * 64
+        )
+        payload = fleet_payload()
+        payload['fleet']['raspberrypi5']['apiImage'] = (
+            status['slots']['blue']['images']['api']
+        )
+        payload['fleet']['raspberrypi5']['webImage'] = (
+            status['slots']['blue']['images']['web']
+        )
+        write_fleet_state(project, payload)
+        runner = FakeRunner(project, inventory_payload(), status)
+
+        plan = self.coordinator(project, inventory_path, runner).build_plan(
+            'raspi4-demo', '192.168.10.55'
+        )
+
+        self.assertEqual(plan.release.sha, SHA)
+
     def test_plan_rejects_host_without_explicit_recovery_capability(self):
         temporary, project, inventory_path = self.make_project()
         self.addCleanup(temporary.cleanup)

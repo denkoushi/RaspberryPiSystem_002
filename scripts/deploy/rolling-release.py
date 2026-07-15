@@ -60,6 +60,8 @@ ANSIBLE_DIRECTORY = PROJECT / "infrastructure/ansible"
 STATUS_TOOL = PROJECT / "scripts/deploy/deploy-status-state.py"
 PHASE3 = PROJECT / "scripts/deploy/pi5-blue-green.sh"
 CANDIDATE_BUILD = PROJECT / "scripts/deploy/pi5-candidate-build.sh"
+PI5_CANDIDATE_RECONCILE = PROJECT / "scripts/deploy/pi5-candidate-reconcile.sh"
+PI5_LIVE_MIGRATION_EVIDENCE = PROJECT / "scripts/deploy/pi5-live-migration-evidence.sh"
 RUN_DIRECTORY = PROJECT / "logs/deploy/release-runs"
 PI5_RELEASE_CURRENT = PROJECT / "logs/deploy/pi5-release-current.json"
 FLEET_RELEASE_STATE = PROJECT / "logs/deploy/fleet-release-state.json"
@@ -67,9 +69,11 @@ FLEET_RELEASE_LOCK = PROJECT / "logs/deploy/fleet-release-state.lock"
 OPERATOR_CANARY_APPROVAL_CLIENT = "operator-canary-approval"
 DEFAULT_CANARY_HOLD_TIMEOUT = release_cli.DEFAULT_CANARY_HOLD_TIMEOUT
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+VERIFICATION_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 CLEANUP_LOCK_CONFLICT = "another Pi5 Blue/Green operation is running"
 CLEANUP_LOCK_RETRY_TIMEOUT = 30
 CLEANUP_LOCK_RETRY_INTERVAL = 2
+READY_ACK_TIMEOUT_SECONDS = 90
 KIOSK_SCOPE_COMPONENTS = release_policy.KIOSK_SCOPE_COMPONENTS
 _ACTIVE_CANCELLATION_TOKEN: CancellationToken | None = None
 _ACTIVE_FLEET_LEASE: FleetLease | None = None
@@ -288,8 +292,12 @@ def fleet_finish_run(run_id: str, status: str) -> dict[str, Any]:
     )
 
 
-def observe_terminal_evidence(inventory: str, host: str, role: str) -> dict[str, Any]:
-    return evidence_backend.observe_terminal(inventory, host, role, runtime=_runtime())
+def observe_terminal_evidence(
+    inventory: str, host: str, role: str, client_id: str
+) -> dict[str, Any]:
+    return evidence_backend.observe_terminal(
+        inventory, host, role, client_id, runtime=_runtime()
+    )
 
 
 def observe_pi5_evidence(expected_sha: str | None) -> dict[str, Any]:
@@ -347,6 +355,10 @@ def status_file(run_id: str) -> Path:
     return RUN_DIRECTORY / f"{run_id}.json"
 
 
+def read_release_run(run_id: str) -> dict[str, Any] | None:
+    return RunStateStore(RUN_DIRECTORY, clock=utc_now).read_state(run_id)
+
+
 def inventory_json(path: str) -> dict[str, Any]:
     return ansible_backend.inventory_json(path, runtime=_runtime())
 
@@ -383,16 +395,68 @@ def acknowledgement_record(run_id: str, client_id: str) -> dict[str, Any] | None
     return record if isinstance(record, dict) else None
 
 
+def active_verification_id(
+    run_id: str,
+    client_id: str,
+    *,
+    release_sha: str,
+    rollback: bool,
+) -> str:
+    """Read the exact verification challenge installed by the state writer."""
+
+    if FULL_SHA_RE.fullmatch(release_sha) is None:
+        raise ValueError("active verification requires an immutable release SHA")
+    try:
+        value = json.loads(
+            (PROJECT / "config/deploy-status.json").read_text(encoding="utf-8")
+        )
+    except (FileNotFoundError, json.JSONDecodeError) as error:
+        raise RuntimeError("active terminal verification is unavailable") from error
+    entry = ((value.get("kioskByClient") or {}).get(client_id) or {})
+    expected_mode = "rollback" if rollback else "release"
+    verification_id = entry.get("verificationId")
+    if (
+        entry.get("runId") != run_id
+        or entry.get("maintenance") is not True
+        or entry.get("phase") != "verifying"
+        or entry.get("desiredReleaseSha") != release_sha
+        or entry.get("verificationMode") != expected_mode
+        or not isinstance(verification_id, str)
+        or VERIFICATION_ID_RE.fullmatch(verification_id) is None
+    ):
+        raise RuntimeError("active terminal verification does not match the rollout")
+    return verification_id
+
+
 def acknowledgement_received(
-    run_id: str, client_id: str, *, phase: str = "maintenance"
+    run_id: str,
+    client_id: str,
+    *,
+    phase: str = "maintenance",
+    release_sha: str | None = None,
+    verification_id: str | None = None,
 ) -> bool:
+    if phase == "ready" and (
+        release_sha is None or FULL_SHA_RE.fullmatch(release_sha) is None
+        or verification_id is None
+        or VERIFICATION_ID_RE.fullmatch(verification_id) is None
+    ):
+        raise ValueError(
+            "ready acknowledgement requires an immutable release SHA and verification ID"
+        )
     record = acknowledgement_record(run_id, client_id)
     if record is None:
         return False
     if phase == "maintenance" and isinstance(record.get("acknowledgedAt"), str):
         return True
-    return isinstance(record.get(phase), dict) and isinstance(
-        record[phase].get("acknowledgedAt"), str
+    phase_record = record.get(phase)
+    if not isinstance(phase_record, dict) or not isinstance(
+        phase_record.get("acknowledgedAt"), str
+    ):
+        return False
+    return phase != "ready" or (
+        phase_record.get("releaseSha") == release_sha
+        and phase_record.get("verificationId") == verification_id
     )
 
 
@@ -402,15 +466,40 @@ def wait_for_ack(
     timeout: int = 30,
     *,
     phase: str = "maintenance",
+    release_sha: str | None = None,
+    verification_id: str | None = None,
+    cancellable: bool = True,
 ) -> bool:
+    if phase == "ready" and (
+        release_sha is None or FULL_SHA_RE.fullmatch(release_sha) is None
+        or verification_id is None
+        or VERIFICATION_ID_RE.fullmatch(verification_id) is None
+    ):
+        raise ValueError(
+            "ready acknowledgement requires an immutable release SHA and verification ID"
+        )
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        _cancellation_checkpoint(f"wait-{phase}-ack:{client_id}")
-        if acknowledgement_received(run_id, client_id, phase=phase):
+        if cancellable:
+            _cancellation_checkpoint(f"wait-{phase}-ack:{client_id}")
+        if acknowledgement_received(
+            run_id,
+            client_id,
+            phase=phase,
+            release_sha=release_sha,
+            verification_id=verification_id,
+        ):
             return True
         time.sleep(5)
-    _cancellation_checkpoint(f"wait-{phase}-ack:{client_id}")
-    return acknowledgement_received(run_id, client_id, phase=phase)
+    if cancellable:
+        _cancellation_checkpoint(f"wait-{phase}-ack:{client_id}")
+    return acknowledgement_received(
+        run_id,
+        client_id,
+        phase=phase,
+        release_sha=release_sha,
+        verification_id=verification_id,
+    )
 
 
 def notice_scheduled_at(run_id: str, client_id: str) -> str | None:
@@ -587,6 +676,110 @@ def remote_previous_sha(inventory: str, host: str) -> str:
     return ansible_backend.remote_previous_sha(inventory, host, runtime=_runtime())
 
 
+def prepare_terminal_repository(inventory: str, host: str) -> dict[str, Any]:
+    return ansible_backend.prepare_terminal_repository(
+        inventory, host, runtime=_runtime()
+    )
+
+
+def capture_terminal_manifest(
+    inventory: str,
+    target_spec: dict[str, str],
+    run_id: str,
+    previous_sha: str,
+) -> dict[str, Any]:
+    return ansible_backend.capture_terminal_manifest(
+        inventory,
+        target_spec,
+        run_id,
+        previous_sha,
+        runtime=_runtime(),
+    )
+
+
+def probe_terminal_identity(
+    inventory: str, host: str, client_id: str
+) -> dict[str, Any]:
+    return ansible_backend.probe_terminal_identity(
+        inventory, host, client_id, runtime=_runtime()
+    )
+
+
+def probe_signage_endpoints(inventory: str, host: str) -> dict[str, Any]:
+    return ansible_backend.probe_signage_endpoints(
+        inventory, host, runtime=_runtime()
+    )
+
+
+def probe_kiosk_agents(inventory: str, host: str) -> dict[str, Any]:
+    return ansible_backend.probe_kiosk_agents(
+        inventory, host, runtime=_runtime()
+    )
+
+
+def refresh_signage_after_maintenance(
+    inventory: str, host: str, run_id: str
+) -> dict[str, Any]:
+    return ansible_backend.refresh_signage_after_maintenance(
+        inventory, host, run_id, runtime=_runtime()
+    )
+
+
+def prove_signage_ready(
+    inventory: str,
+    host: str,
+    run_id: str,
+    client_id: str,
+    release_sha: str,
+    verification_id: str,
+) -> None:
+    return ansible_backend.prove_signage_ready(
+        inventory,
+        host,
+        run_id,
+        client_id,
+        release_sha,
+        verification_id,
+        runtime=_runtime(),
+    )
+
+
+def capture_server_config_manifest(
+    inventory: str, host: str, run_id: str
+) -> dict[str, Any]:
+    return ansible_backend.capture_server_config_manifest(
+        inventory, host, run_id, runtime=_runtime()
+    )
+
+
+def restore_server_config_manifest(
+    inventory: str,
+    host: str,
+    run_id: str,
+    manifest: dict[str, Any],
+) -> dict[str, Any]:
+    return ansible_backend.restore_server_config_manifest(
+        inventory, host, run_id, manifest, runtime=_runtime()
+    )
+
+
+def converge_server_config(
+    inventory: str,
+    host: str,
+    revision: str,
+    run_id: str,
+    rollback_manifest: dict[str, Any],
+) -> None:
+    return ansible_backend.converge_server_config(
+        inventory,
+        host,
+        revision,
+        run_id,
+        rollback_manifest,
+        runtime=_runtime(),
+    )
+
+
 def playbook(
     inventory: str,
     host: str,
@@ -608,6 +801,23 @@ def rollback_terminal(
 ) -> bool:
     return ansible_backend.rollback_terminal(
         inventory, target_spec, target, run_id, runtime=_runtime()
+    )
+
+
+def cleanup_terminal_rollback(
+    inventory: str,
+    target_spec: dict[str, str],
+    target: dict[str, Any],
+    run_id: str,
+    outcome: str,
+) -> dict[str, Any]:
+    return ansible_backend.cleanup_terminal_rollback(
+        inventory,
+        target_spec,
+        target,
+        run_id,
+        outcome,
+        runtime=_runtime(),
     )
 
 
@@ -691,12 +901,35 @@ def phase3_matches_marker_candidate(
     return pi5_backend.phase3_matches_marker_candidate(phase3, candidate)
 
 
+def verify_pi5_live_migrations(sha: str) -> str:
+    if not isinstance(sha, str) or FULL_SHA_RE.fullmatch(sha) is None:
+        raise RuntimeError("Pi5 live migration evidence requires a full Git SHA")
+    digest = run(
+        [str(PI5_LIVE_MIGRATION_EVIDENCE), "--ref", sha], capture=True
+    ).strip()
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", digest) is None:
+        raise RuntimeError("Pi5 live migration evidence returned a malformed digest")
+    return digest
+
+
+def reconcile_pi5_candidate_workload() -> None:
+    run([str(PI5_CANDIDATE_RECONCILE)])
+
+
 def pi5_already_current(sha: str) -> bool:
     return pi5_backend.pi5_already_current(sha, runtime=_runtime())
 
 
-def phase3_status() -> dict[str, Any]:
-    return pi5_backend.phase3_status(runtime=_runtime())
+def phase3_status(
+    *,
+    structural_only: bool = False,
+    recovery_run_id: str | None = None,
+) -> dict[str, Any]:
+    return pi5_backend.phase3_status(
+        runtime=_runtime(),
+        structural_only=structural_only,
+        recovery_run_id=recovery_run_id,
+    )
 
 
 def normalized_pi5_phase3_state(phase3: dict[str, Any]) -> bool:

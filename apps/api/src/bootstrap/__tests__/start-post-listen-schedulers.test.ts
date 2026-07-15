@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { SchedulerStartupCleanupError } from '../scheduler-errors.js';
+import {
+  SchedulerStartupCleanupError,
+  SchedulerStepStateAmbiguousError,
+} from '../scheduler-errors.js';
 import {
   listPostListenSchedulerNames,
   startSchedulerStepGroup,
@@ -94,6 +97,31 @@ describe('start-post-listen-schedulers fail-closed group', () => {
 
     await expect(startSchedulerStepGroup(definitions)).rejects.toThrow('c failed to start');
     expect(stopOrder).toEqual(['b', 'a']);
+  });
+
+  it('promotes a step-owned ambiguous startup failure even when prior steps stop cleanly', async () => {
+    const { definitions, stopOrder } = trackedSteps(['a', 'b']);
+    definitions.push({
+      name: 'signage-render',
+      start: async () => {
+        throw new SchedulerStepStateAmbiguousError('signage-render', [
+          new Error('worker readiness failed'),
+          new Error('worker stop timed out'),
+        ]);
+      },
+      stop: () => undefined,
+    });
+
+    await expect(startSchedulerStepGroup(definitions)).rejects.toSatisfy((error: unknown) => {
+      expect(error).toBeInstanceOf(SchedulerStartupCleanupError);
+      const cleanup = error as SchedulerStartupCleanupError;
+      expect(cleanup.causeErrors.map((entry) => entry.message)).toEqual([
+        'worker readiness failed',
+        'worker stop timed out',
+      ]);
+      expect(stopOrder).toEqual(['b', 'a']);
+      return true;
+    });
   });
 });
 

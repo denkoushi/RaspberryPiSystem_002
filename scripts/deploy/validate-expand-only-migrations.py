@@ -342,12 +342,34 @@ def validate_sql(raw: bytes, label: str) -> None:
 
 
 def _run_git(repository: pathlib.Path, arguments: list[str]) -> bytes:
+    environment = {
+        "HOME": "/nonexistent",
+        "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "LANG": "C",
+        "LC_ALL": "C",
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_CONFIG_NOSYSTEM": "1",
+    }
     try:
         result = subprocess.run(
-            ["git", "-C", str(repository), *arguments],
+            [
+                "/usr/bin/git",
+                "-c",
+                "core.fsmonitor=false",
+                "-c",
+                "core.ignorestat=false",
+                "-c",
+                "core.trustctime=true",
+                "-c",
+                "extensions.worktreeConfig=false",
+                "-C",
+                str(repository),
+                *arguments,
+            ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
+            env=environment,
         )
     except OSError as error:
         raise ValueError(f"could not execute git: {error}") from error
@@ -460,6 +482,7 @@ def validate_repository(
     candidate_ref: str,
     migration_root: str,
     applied: dict[str, str],
+    require_all_candidate_applied: bool = False,
 ) -> None:
     root = pathlib.PurePosixPath(migration_root)
     if root.is_absolute() or ".." in root.parts or str(root) in ("", "."):
@@ -486,6 +509,8 @@ def validate_repository(
                 file=sys.stderr,
             )
             continue
+        if require_all_candidate_applied:
+            raise ValueError(f"candidate migration is not applied: {migration.name}")
         validate_sql(migration.content, migration.path)
 
 
@@ -500,6 +525,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--base-ref", required=True)
     parser.add_argument("--candidate-ref", required=True)
     parser.add_argument("--migration-root", default=MIGRATION_ROOT)
+    parser.add_argument(
+        "--require-all-candidate-applied",
+        action="store_true",
+        help="Require every candidate migration and checksum in the applied ledger",
+    )
     return parser.parse_args()
 
 
@@ -517,6 +547,7 @@ def main() -> int:
             args.candidate_ref,
             args.migration_root,
             applied,
+            args.require_all_candidate_applied,
         )
     except (OSError, UnicodeError, ValueError) as error:
         print(error, file=sys.stderr)

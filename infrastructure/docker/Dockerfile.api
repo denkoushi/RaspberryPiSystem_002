@@ -37,6 +37,10 @@ RUN pnpm run build
 
 FROM node:20-bookworm-slim AS api
 WORKDIR /app
+ARG BUILD_COMMIT=unknown
+ARG BUILD_CONFIG_HASH=unknown
+LABEL org.opencontainers.image.revision=${BUILD_COMMIT}
+LABEL org.opencontainers.image.config-hash=${BUILD_CONFIG_HASH}
 ARG NDLOCR_LITE_COMMIT=89f815899f0e85d236a1a90e75da012ca932dc7b
 # Bump the date to invalidate the cached apt layer; otherwise the CI build
 # cache keeps stale OS packages and Trivy fails on already-fixed Debian CVEs.

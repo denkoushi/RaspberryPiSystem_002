@@ -5,6 +5,20 @@
     name: python3-evdev
     state: present
   when:
+    - terminal_release_mode | default('full') == 'full'
+    - haizen_agent_install_evdev | default(true) | bool
+    - (haizen_agent_hid_device | default('') | length) > 0
+
+- name: Verify python3-evdev is installed before release
+  ansible.builtin.shell: |
+    set -euo pipefail
+    dpkg-query -W -f='${Status}\n' python3-evdev \
+      | grep -qx '^install ok installed$'
+  args:
+    executable: /bin/bash
+  changed_when: false
+  when:
+    - terminal_release_mode | default('full') == 'release-only'
     - haizen_agent_install_evdev | default(true) | bool
     - (haizen_agent_hid_device | default('') | length) > 0
 
@@ -39,3 +53,24 @@
     enabled: true
     state: started
     daemon_reload: true
+  when: terminal_release_mode | default('full') == 'full'
+
+- name: Require haizen-agent to be enabled before release
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-enabled
+      - haizen-agent.service
+  register: haizen_agent_enabled_state
+  changed_when: false
+  failed_when: >-
+    haizen_agent_enabled_state.rc != 0
+    or haizen_agent_enabled_state.stdout | trim != 'enabled'
+  when: terminal_release_mode | default('full') == 'release-only'
+
+- name: Start haizen-agent after release file convergence
+  ansible.builtin.systemd:
+    name: haizen-agent.service
+    state: started
+    daemon_reload: true
+  when: terminal_release_mode | default('full') == 'release-only'

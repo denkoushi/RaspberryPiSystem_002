@@ -28,20 +28,25 @@ export async function getNetworkModeStatus() {
 export interface DeployStatus {
   isMaintenance: boolean;
   runId?: string;
-  phase?: 'preparing' | 'deploying' | 'failed';
+  phase?: 'preparing' | 'deploying' | 'verifying' | 'failed';
   startedAt?: string;
+  desiredReleaseSha?: string;
+  verificationCycle?: 'release' | 'rollback';
+  verificationId?: string;
   preNotice?: {
     scheduledAt?: string;
   };
 }
 
-export type DeployAcknowledgementPhase = 'notice' | 'maintenance';
+export type DeployAcknowledgementPhase = 'notice' | 'maintenance' | 'ready';
 
 export interface DeployAcknowledgement {
   acknowledged: true;
   runId: string;
   phase: DeployAcknowledgementPhase;
   scheduledAt?: string;
+  releaseSha?: string;
+  verificationId?: string;
 }
 
 export async function getDeployStatus(): Promise<DeployStatus> {
@@ -49,10 +54,26 @@ export async function getDeployStatus(): Promise<DeployStatus> {
   return data;
 }
 
+export function acknowledgeDeployStatus(
+  runId: string,
+  phase: 'ready',
+  releaseSha: string,
+  verificationId: string
+): Promise<DeployAcknowledgement>;
+export function acknowledgeDeployStatus(
+  runId: string,
+  phase?: 'notice' | 'maintenance'
+): Promise<DeployAcknowledgement>;
 export async function acknowledgeDeployStatus(
   runId: string,
-  phase: DeployAcknowledgementPhase = 'maintenance'
+  phase: DeployAcknowledgementPhase = 'maintenance',
+  releaseSha?: string,
+  verificationId?: string
 ): Promise<DeployAcknowledgement> {
-  const { data } = await api.post<DeployAcknowledgement>('/system/deploy-status/ack', { runId, phase });
+  const { data } = await api.post<DeployAcknowledgement>('/system/deploy-status/ack', {
+    runId,
+    phase,
+    ...(phase === 'ready' ? { releaseSha, verificationId } : {})
+  });
   return data;
 }

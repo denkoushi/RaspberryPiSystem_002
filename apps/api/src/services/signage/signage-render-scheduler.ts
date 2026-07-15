@@ -4,6 +4,9 @@ import { fileURLToPath } from 'node:url';
 import { SignageRenderer } from './signage.renderer.js';
 import { logger } from '../../lib/logger.js';
 import { env } from '../../config/env.js';
+import { SchedulerStepStateAmbiguousError } from '../../bootstrap/scheduler-errors.js';
+
+export const SIGNAGE_RENDER_WORKER_READY = 'signage-render-worker-ready';
 
 /**
  * サイネージレンダリングの定期実行を管理するクラス
@@ -12,6 +15,9 @@ export class SignageRenderScheduler {
   private renderer: SignageRenderer;
   private cronJob: cron.ScheduledTask | null = null;
   private worker: ChildProcess | null = null;
+  private workerExited: Promise<void> | null = null;
+  private workerReady: Promise<void> | null = null;
+  private deployOperationTail: Promise<void> = Promise.resolve();
   private readonly defaultIntervalSeconds: number;
   private isRendering = false;
   private skipCount = 0;
@@ -40,8 +46,8 @@ export class SignageRenderScheduler {
     if (env.SIGNAGE_RENDER_RUNNER === 'worker') {
       try {
         const workerPath = fileURLToPath(new URL('./signage-render-worker.js', import.meta.url));
-        this.worker = fork(workerPath, [], {
-          stdio: 'inherit',
+        const worker = fork(workerPath, [], {
+          stdio: ['inherit', 'inherit', 'inherit', 'ipc'],
           env: {
             ...process.env,
             // 子プロセス側は自分自身でレンダリング実行するため in_process 固定
@@ -49,20 +55,81 @@ export class SignageRenderScheduler {
             SIGNAGE_RENDER_INTERVAL_SECONDS: String(interval),
           },
         });
-        logger.info(
-          { intervalSeconds: interval, pid: this.worker.pid },
-          'Started signage render worker'
-        );
-        startedWorker = true;
-
-        this.worker.once('exit', (code, signal) => {
+        this.worker = worker;
+        let resolveWorkerExited: (() => void) | undefined;
+        let workerTerminalSettled = false;
+        const workerExited = new Promise<void>((resolve) => {
+          resolveWorkerExited = resolve;
+        });
+        const settleWorkerTerminal = () => {
+          if (workerTerminalSettled) return;
+          workerTerminalSettled = true;
+          if (this.worker === worker) {
+            this.worker = null;
+            this.workerExited = null;
+            this.workerReady = null;
+          }
+          resolveWorkerExited?.();
+        };
+        worker.on('error', (error) => {
+          logger.error({ err: error, pid: worker.pid }, 'Signage render worker process error');
+          // Node does not guarantee an `exit` event when spawning fails. In
+          // that case `pid` remains undefined, so settle immediately instead
+          // of leaving deploy pause blocked on a promise that can never end.
+          if (worker.pid === undefined) settleWorkerTerminal();
+        });
+        worker.once('exit', (code, signal) => {
           logger.warn(
             { code, signal },
             'Signage render worker exited'
           );
-          // 表示・APIは継続させたいので、ここでは自動再起動しない（運用判断で再起動/デプロイ）
-          this.worker = null;
+          settleWorkerTerminal();
         });
+        // `close` follows either normal exit or a spawn error. Keep it as the
+        // final fallback while making terminal settlement idempotent.
+        worker.once('close', settleWorkerTerminal);
+        this.workerExited = workerExited;
+        const workerReady = new Promise<void>((resolve, reject) => {
+          const cleanup = () => {
+            worker.off('message', onMessage);
+            worker.off('error', onError);
+            worker.off('exit', onExitBeforeReady);
+          };
+          const onMessage = (message: unknown) => {
+            if (
+              typeof message !== 'object'
+              || message === null
+              || (message as { type?: unknown }).type !== SIGNAGE_RENDER_WORKER_READY
+            ) {
+              return;
+            }
+            cleanup();
+            resolve();
+          };
+          const onError = (error: Error) => {
+            cleanup();
+            reject(error);
+          };
+          const onExitBeforeReady = (code: number | null, signal: NodeJS.Signals | null) => {
+            cleanup();
+            reject(new Error(
+              `Signage render worker exited before readiness (code=${String(code)}, signal=${String(signal)})`
+            ));
+          };
+          worker.on('message', onMessage);
+          worker.once('error', onError);
+          worker.once('exit', onExitBeforeReady);
+        });
+        // start() remains a public compatibility method. Keep a rejection
+        // observer attached even when a caller does not use the deploy-aware
+        // resumeAfterDeploy() readiness contract.
+        void workerReady.catch(() => undefined);
+        this.workerReady = workerReady;
+        logger.info(
+          { intervalSeconds: interval, pid: worker.pid },
+          'Started signage render worker'
+        );
+        startedWorker = true;
       } catch (error) {
         logger.error({ err: error }, 'Failed to start signage render worker; falling back to in-process renderer');
         // フォールバック: worker 起動に失敗した場合は従来通り in-process で継続
@@ -72,6 +139,8 @@ export class SignageRenderScheduler {
     if (startedWorker) {
       return;
     }
+
+    this.workerReady = null;
 
     // cron式を生成（例: 30秒ごと = "*/30 * * * * *"）
     const cronExpression = `*/${interval} * * * * *`;
@@ -104,9 +173,120 @@ export class SignageRenderScheduler {
       } catch {
         // ignore
       }
-      this.worker = null;
       logger.info('Stopped signage render worker');
     }
+  }
+
+  /** Stop new work and wait until the current renderer process/job is quiescent. */
+  pauseForDeploy(timeoutMs = 120_000): Promise<void> {
+    return this.runDeployOperation(() => this.pauseForDeployUnlocked(timeoutMs));
+  }
+
+  private async pauseForDeployUnlocked(timeoutMs: number): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    const workerExited = this.workerExited;
+    this.stop();
+    while (this.isRendering && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if (this.isRendering) throw new Error('Timed out waiting for in-process signage rendering to stop');
+    if (workerExited) {
+      await this.waitForWorkerExit(workerExited, deadline);
+    }
+  }
+
+  resumeAfterDeploy(timeoutMs = 10_000): Promise<void> {
+    return this.runDeployOperation(() => this.resumeAfterDeployUnlocked(timeoutMs));
+  }
+
+  private async resumeAfterDeployUnlocked(timeoutMs: number): Promise<void> {
+    if (this.isRunning()) {
+      const existingWorkerReady = this.workerReady;
+      if (existingWorkerReady) {
+        try {
+          await this.waitForWorkerReadiness(existingWorkerReady, timeoutMs);
+        } catch (error) {
+          await this.stopAfterReadinessFailure(error, timeoutMs);
+        }
+      }
+      if (!this.isRunning()) {
+        throw new Error('Signage render scheduler stopped while confirming readiness');
+      }
+      return;
+    }
+
+    // A synchronous stop marks ChildProcess.killed before the terminal event
+    // arrives. Never fork a replacement until that exact worker is gone.
+    const stoppingWorkerExited = this.workerExited;
+    if (stoppingWorkerExited) {
+      await this.waitForWorkerExit(stoppingWorkerExited, Date.now() + timeoutMs);
+    }
+
+    this.start();
+    const workerReady = this.workerReady;
+    if (workerReady) {
+      try {
+        await this.waitForWorkerReadiness(workerReady, timeoutMs);
+      } catch (error) {
+        await this.stopAfterReadinessFailure(error, timeoutMs);
+      }
+    }
+    if (!this.isRunning()) {
+      throw new Error('Signage render scheduler did not become active');
+    }
+  }
+
+  private async stopAfterReadinessFailure(readinessError: unknown, timeoutMs: number): Promise<never> {
+    try {
+      await this.pauseForDeployUnlocked(timeoutMs);
+    } catch (cleanupError) {
+      throw new SchedulerStepStateAmbiguousError(
+        'signage-render',
+        [readinessError, cleanupError]
+      );
+    }
+    throw readinessError;
+  }
+
+  private async waitForWorkerExit(workerExited: Promise<void>, deadline: number): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error('Timed out waiting for signage worker to stop')),
+        Math.max(1, deadline - Date.now())
+      );
+      void workerExited.then(() => {
+        clearTimeout(timer);
+        resolve();
+      }, (error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+    });
+  }
+
+  private async waitForWorkerReadiness(workerReady: Promise<void>, timeoutMs: number): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error('Timed out waiting for signage worker readiness')),
+        timeoutMs
+      );
+      void workerReady.then(() => {
+        clearTimeout(timer);
+        resolve();
+      }, (error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+    });
+  }
+
+  private runDeployOperation<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.deployOperationTail.then(operation, operation);
+    this.deployOperationTail = result.then(
+      () => undefined,
+      () => undefined
+    );
+    return result;
   }
 
   /**
@@ -170,4 +350,3 @@ export class SignageRenderScheduler {
     }
   }
 }
-

@@ -1,17 +1,8 @@
 ---
-- name: Rollback system configuration files
+- name: Reject retired standalone terminal rollback
   hosts: clients
   gather_facts: false
   become: true
-  vars:
-    backup_dir: /opt/backups/configs
 
   tasks:
     - ansible.builtin.include_tasks: "../tasks/rollback-configs.yml"
-
-  handlers:
-    - name: restart pcscd
-      ansible.builtin.systemd:
-        name: pcscd
-        state: restarted
-

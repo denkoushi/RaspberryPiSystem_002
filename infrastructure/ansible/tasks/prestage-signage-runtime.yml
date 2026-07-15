@@ -1,0 +1,70 @@
+---
+# Provisioning-only runtime preparation. The rolling-release coordinator owns
+# terminal runtime state during release-only execution.
+
+- name: Require full provisioning mode for signage runtime preparation
+  ansible.builtin.assert:
+    that:
+      - terminal_release_mode | default('full') == 'full'
+    fail_msg: prestage-signage-runtime.yml is forbidden in release-only mode.
+
+- name: Determine signage device type for provisioning
+  ansible.builtin.set_fact:
+    device_type: "{{ device_type | default('default') }}"
+    device_config: >-
+      {{
+        device_type_defaults[device_type | default('default')]
+        | default(device_type_defaults['default'])
+      }}
+
+- name: Expand signage runtime preparation configuration
+  ansible.builtin.set_fact:
+    memory_required_mb: "{{ device_config.memory_required_mb }}"
+    stop_lightdm: "{{ device_config.stop_lightdm }}"
+    services_to_stop: "{{ device_config.services_to_stop }}"
+
+- name: Discover existing signage services and timers for provisioning
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - show
+      - --property=LoadState
+      - --value
+      - "{{ item }}"
+  loop: "{{ services_to_stop }}"
+  register: signage_provisioning_unit_load_state
+  changed_when: false
+
+- name: Stop and disable existing signage services and timers for provisioning
+  ansible.builtin.systemd:
+    name: "{{ item.item }}"
+    state: stopped
+    enabled: false
+    no_block: true
+  loop: "{{ signage_provisioning_unit_load_state.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - item.rc | default(1) == 0
+    - item.stdout | default('') | trim == 'loaded'
+
+- name: Mask signage-lite service for this boot during provisioning
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - mask
+      - --runtime
+      - signage-lite.service
+  register: signage_runtime_mask
+  changed_when: "'Created symlink' in (signage_runtime_mask.stdout | default(''))"
+
+- name: Stop lightdm to free memory during provisioning
+  ansible.builtin.systemd:
+    name: lightdm
+    state: stopped
+  register: lightdm_stopped
+  when: stop_lightdm | default(false) | bool
+
+- name: Wait for signage workloads to stop gracefully
+  ansible.builtin.pause:
+    seconds: 3

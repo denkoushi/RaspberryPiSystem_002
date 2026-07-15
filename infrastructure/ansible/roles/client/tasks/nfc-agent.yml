@@ -24,6 +24,21 @@
     path: "{{ repo_path }}/clients/nfc-agent"
     state: directory
     mode: '0755'
+  when: terminal_release_mode | default('full') == 'full'
+
+- name: Check NFC agent directory before release
+  ansible.builtin.stat:
+    path: "{{ repo_path }}/clients/nfc-agent"
+  register: nfc_agent_directory
+  when: terminal_release_mode | default('full') == 'release-only'
+
+- name: Require NFC agent directory before release
+  ansible.builtin.assert:
+    that:
+      - nfc_agent_directory.stat.exists | default(false)
+      - nfc_agent_directory.stat.isdir | default(false)
+    fail_msg: nfc-agent directory is missing; provision the terminal before release.
+  when: terminal_release_mode | default('full') == 'release-only'
 
 - name: Deploy NFC agent environment variables
   ansible.builtin.template:
@@ -34,3 +49,11 @@
     mode: '0600'
   register: nfc_agent_env_result
   notify: restart nfc-agent
+
+- name: Include NFC environment changes in lifecycle selection
+  ansible.builtin.set_fact:
+    nfc_agent_runtime_recreate_needed: >-
+      {{
+        nfc_agent_runtime_recreate_needed | default(true) | bool
+        or nfc_agent_env_result.changed | default(false) | bool
+      }}

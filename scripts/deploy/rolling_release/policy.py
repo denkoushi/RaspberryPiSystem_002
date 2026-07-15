@@ -10,6 +10,11 @@ import re
 from collections.abc import Mapping
 from typing import Any, Iterable
 
+try:  # Normal package import.
+    from .image_refs import image_matches_release
+except ImportError:  # Direct pure-module contract tests load this file by path.
+    from rolling_release.image_refs import image_matches_release
+
 
 # Kiosk-scoped components used by the existing opt-in minimization policy.
 # Default minimization and durable fleet evidence belong to PR 5; PR 4 only
@@ -196,14 +201,7 @@ def _server_evidence_complete(record: Mapping[str, Any]) -> bool:
     current = _valid_sha(record.get('currentSha'))
 
     def image_matches(value: Any) -> bool:
-        if not current or not isinstance(value, str):
-            return False
-        repository, separator, tag = value.rpartition(':')
-        return bool(
-            repository
-            and separator
-            and re.fullmatch(re.escape(current) + r'-[0-9a-f]{12}', tag)
-        )
+        return bool(current and image_matches_release(value, current))
 
     return bool(
         record.get('activeSlot') in {'blue', 'green'}

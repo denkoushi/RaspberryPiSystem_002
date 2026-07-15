@@ -1,12 +1,15 @@
 import ast
 import copy
 import importlib.util
+import sys
 import unittest
 from pathlib import Path
 from unittest.mock import Mock
 
 
 DEPLOY_DIRECTORY = Path(__file__).parents[1]
+if str(DEPLOY_DIRECTORY) not in sys.path:
+    sys.path.insert(0, str(DEPLOY_DIRECTORY))
 
 
 def load_module(name: str, relative_path: str):
@@ -39,7 +42,7 @@ def classification(**overrides):
     return value
 
 
-def verified_record(role, *, current=CURRENT_SHA, desired=None):
+def verified_record(role, *, current=CURRENT_SHA, desired=None, run_scoped=False):
     value = {
         'role': role,
         'desiredSha': current if desired is None else desired,
@@ -50,10 +53,11 @@ def verified_record(role, *, current=CURRENT_SHA, desired=None):
         'lastRunId': RUN_ID,
     }
     if role == 'server':
+        run_suffix = ('-' + '9' * 64) if run_scoped else ''
         value.update({
             'activeSlot': 'blue',
-            'apiImage': f'raspisys-api:{current}-aaaaaaaaaaaa',
-            'webImage': f'raspisys-web:{current}-bbbbbbbbbbbb',
+            'apiImage': f'raspisys-api:{current}-aaaaaaaaaaaa{run_suffix}',
+            'webImage': f'raspisys-web:{current}-bbbbbbbbbbbb{run_suffix}',
             'configDigest': DIGEST,
             'migrationDigest': DIGEST,
         })
@@ -257,6 +261,20 @@ class ReleasePolicyTest(unittest.TestCase):
         self.assertTrue(server['targeted'])
         self.assertEqual(server['evidence'], 'unknown')
         self.assertEqual(server['targetReason'], 'verified evidence incomplete')
+
+    def test_run_scoped_server_images_remain_complete_verified_evidence(self):
+        server_record = verified_record(
+            'server', current=RELEASE_SHA, run_scoped=True
+        )
+        decision = POLICY.plan_target_decisions(
+            [self.hosts[0]],
+            {'server-a': server_record},
+            RELEASE_SHA,
+            {},
+            self.inventory,
+        )[0]
+        self.assertFalse(decision['targeted'])
+        self.assertEqual(decision['evidence'], 'verified')
 
     def test_role_specific_impact_targets_only_affected_verified_hosts(self):
         fleet = {
