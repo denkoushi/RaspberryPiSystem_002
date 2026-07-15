@@ -13,6 +13,8 @@ from classify_changes import (  # noqa: E402
     Change,
     classify_changes,
     parse_name_status_z,
+    render_github_output,
+    render_markdown,
 )
 
 
@@ -100,6 +102,28 @@ class ClassifyChangesTests(unittest.TestCase):
         result = classify_changes([], force_full_reason="no stable diff base")
         self.assertEqual(self.selected(result), set(CATEGORIES))
         self.assertEqual(result["failClosedReasons"], ["no stable diff base"])
+
+    def test_enforced_outputs_are_stable_lowercase_booleans(self) -> None:
+        result = self.classify(Change("M", "apps/api/src/main.ts"))
+        self.assertEqual(result["mode"], "enforced")
+        self.assertEqual(
+            render_github_output(result).splitlines(),
+            [
+                "repo_policy=true",
+                "workspace_quality=true",
+                "api=true",
+                "web=false",
+                "db_infra=false",
+                "deploy_contract=false",
+                "client=false",
+                "e2e=false",
+                "docker_security=false",
+                "full_suite=false",
+            ],
+        )
+        markdown = render_markdown(result)
+        self.assertIn("Change classification (enforced)", markdown)
+        self.assertNotIn("informational", markdown)
 
     def test_malformed_name_status_input_is_rejected(self) -> None:
         with self.assertRaisesRegex(ValueError, "missing path"):

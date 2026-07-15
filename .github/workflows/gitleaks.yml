@@ -5,14 +5,18 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  merge_group:
   workflow_dispatch:
+  schedule:
+    # 02:30 JST is 17:30 UTC on the previous calendar day.
+    - cron: '30 17 * * *'
 
 permissions:
   contents: read
 
 concurrency:
   group: gitleaks-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   gitleaks:
