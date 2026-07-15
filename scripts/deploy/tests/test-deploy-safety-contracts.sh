@@ -6,6 +6,7 @@ MAIN_INVENTORY="${ROOT_DIR}/infrastructure/ansible/inventory.yml"
 TALKPLAZA_INVENTORY="${ROOT_DIR}/infrastructure/ansible/inventory-talkplaza.yml"
 PLAYBOOK="${ROOT_DIR}/infrastructure/ansible/playbooks/deploy-staged.yml"
 ROLLBACK_TASKS="${ROOT_DIR}/infrastructure/ansible/tasks/rollback-configs.yml"
+ORCHESTRATION_GUARD="${ROOT_DIR}/infrastructure/ansible/tasks/assert-release-orchestration.yml"
 
 command -v ansible-inventory >/dev/null 2>&1 || {
   echo "[ERROR] ansible-inventory is required" >&2
@@ -33,6 +34,35 @@ render_inventory_contract() {
 
 render_inventory_contract main "${MAIN_INVENTORY}"
 render_inventory_contract talkplaza "${TALKPLAZA_INVENTORY}"
+
+GUARD_PLAYBOOK="${TMP_DIR}/orchestration-guard-test.yml"
+python3 - "${GUARD_PLAYBOOK}" "${ORCHESTRATION_GUARD}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path, guard = sys.argv[1:]
+Path(path).write_text(f'''---
+- name: Exercise direct deployment guard
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - ansible.builtin.include_tasks: {json.dumps(guard)}
+''', encoding='utf-8')
+PY
+
+if env -u ANSIBLE_CONFIG ansible-playbook -i localhost, "${GUARD_PLAYBOOK}" >/dev/null 2>&1; then
+  echo "[ERROR] direct deployment guard accepted an unorchestrated run" >&2
+  exit 1
+fi
+if env -u ANSIBLE_CONFIG ansible-playbook -i localhost, "${GUARD_PLAYBOOK}" \
+  -e release_emergency_override=true >/dev/null 2>&1; then
+  echo "[ERROR] emergency policy bypassed the rolling-release coordinator" >&2
+  exit 1
+fi
+env -u ANSIBLE_CONFIG ansible-playbook -i localhost, "${GUARD_PLAYBOOK}" \
+  -e release_orchestrated=true >/dev/null
 
 python3 - "${TMP_DIR}" <<'PY'
 import json
