@@ -338,7 +338,6 @@
         echo "lightdm.service did not become active within 60 seconds"
         exit 1
       register: lightdm_check
-      failed_when: false
       changed_when: false
       when:
         - manage_signage_lite | default(false) | bool
@@ -371,7 +370,6 @@
         echo "signage-lite.service did not become active within 60 seconds"
         exit 1
       register: signage_check
-      failed_when: false
       changed_when: false
       when:
         - manage_signage_lite | default(false) | bool

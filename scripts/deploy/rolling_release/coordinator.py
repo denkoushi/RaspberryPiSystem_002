@@ -7,10 +7,14 @@ transition.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
 from .cancellation import CancellationRequested, CancellationToken
+
+
+FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 def _host_needs_seed(record: Any, role: str) -> bool:
@@ -68,7 +72,9 @@ def _seed_unverified_hosts(
             observation = (
                 runtime.observe_pi5_evidence(None)
                 if role == "server"
-                else runtime.observe_terminal_evidence(inventory, host, role)
+                else runtime.observe_terminal_evidence(
+                    inventory, host, role, host_spec["clientId"]
+                )
             )
         except Exception as error:
             failures.append({"host": host, "error": str(error)})
@@ -137,6 +143,133 @@ def _pi5_marker_candidate(observation: dict[str, Any]) -> dict[str, Any]:
         "api": observation.get("apiImage"),
         "web": observation.get("webImage"),
     }
+
+
+def _terminal_ready_sha(
+    state: Any,
+    target_spec: dict[str, str],
+    target: dict[str, Any],
+) -> str:
+    """Return the immutable artifact SHA the terminal must actually render."""
+
+    if target_spec["terminalType"] == "signage":
+        expected = target.get("desiredSha")
+    else:
+        server = next(
+            (
+                record
+                for record in state.payload.get("hosts") or []
+                if record.get("role") == "server"
+            ),
+            None,
+        )
+        if not isinstance(server, dict) or server.get("evidence") != "verified":
+            raise RuntimeError("Kiosk Web release has no verified Pi5 evidence")
+        expected = server.get("currentSha")
+    if not isinstance(expected, str) or FULL_SHA_RE.fullmatch(expected) is None:
+        raise RuntimeError("terminal ready release SHA is unavailable")
+    return expected
+
+
+def _rollback_ready_sha(
+    state: Any,
+    target_spec: dict[str, str],
+    target: dict[str, Any],
+) -> str:
+    if target_spec["terminalType"] == "signage":
+        expected = target.get("previousSha")
+        if not isinstance(expected, str) or FULL_SHA_RE.fullmatch(expected) is None:
+            raise RuntimeError("signage rollback release SHA is unavailable")
+        return expected
+    return _terminal_ready_sha(state, target_spec, target)
+
+
+def _verify_terminal_ready(
+    *,
+    runtime: Any,
+    state: Any,
+    inventory: str,
+    run_id: str,
+    target_spec: dict[str, str],
+    target: dict[str, Any],
+    expected_sha: str,
+    rollback: bool,
+) -> None:
+    target["state"] = "rollback-verifying" if rollback else "verifying"
+    expected_key = "expectedRollbackReadySha" if rollback else "expectedReadySha"
+    target[expected_key] = expected_sha
+    state.payload["phase"] = "rolling-back" if rollback else "verifying"
+    state.save()
+    command = [
+        "set-phase",
+        "--run-id",
+        run_id,
+        "--client",
+        target_spec["clientId"],
+        "--phase",
+        "verifying",
+        "--desired-release-sha",
+        expected_sha,
+    ]
+    if rollback:
+        command.append("--rollback")
+    runtime.state_command(*command)
+    verification_id = runtime.active_verification_id(
+        run_id,
+        target_spec["clientId"],
+        release_sha=expected_sha,
+        rollback=rollback,
+    )
+    expected_verification_key = (
+        "expectedRollbackReadyVerificationId"
+        if rollback
+        else "expectedReadyVerificationId"
+    )
+    target[expected_verification_key] = verification_id
+    state.save()
+    if target_spec["terminalType"] == "signage":
+        runtime.trigger_signage_ready_check(inventory, target_spec["host"])
+    wait_options = {
+        "phase": "ready",
+        "release_sha": expected_sha,
+        "verification_id": verification_id,
+        **({"cancellable": False} if rollback else {}),
+    }
+    if not runtime.wait_for_ack(
+        run_id,
+        target_spec["clientId"],
+        runtime.READY_ACK_TIMEOUT_SECONDS,
+        **wait_options,
+    ):
+        qualifier = "rollback " if rollback else ""
+        raise RuntimeError(
+            f"{qualifier}ready acknowledgement timed out for {target_spec['host']}"
+        )
+    ready_record = runtime.acknowledgement_record(
+        run_id, target_spec["clientId"]
+    )
+    ready = ready_record.get("ready") if isinstance(ready_record, dict) else None
+    if (
+        not isinstance(ready, dict)
+        or ready.get("releaseSha") != expected_sha
+        or ready.get("verificationId") != verification_id
+        or not isinstance(ready.get("acknowledgedAt"), str)
+    ):
+        qualifier = "rollback " if rollback else ""
+        raise RuntimeError(
+            f"{qualifier}ready acknowledgement disappeared for {target_spec['host']}"
+        )
+    release_key = "rollbackReadyReleaseSha" if rollback else "readyReleaseSha"
+    verification_key = (
+        "rollbackReadyVerificationId" if rollback else "readyVerificationId"
+    )
+    acknowledged_key = (
+        "rollbackReadyAcknowledgedAt" if rollback else "readyAcknowledgedAt"
+    )
+    target[release_key] = ready["releaseSha"]
+    target[verification_key] = ready["verificationId"]
+    target[acknowledged_key] = ready["acknowledgedAt"]
+    state.save()
 
 
 def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
@@ -387,7 +520,13 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             target["state"] = "deploying"
             state.save()
             runtime.state_command(
-                "set-phase", "--run-id", args.run_id, "--phase", "deploying"
+                "set-phase",
+                "--run-id",
+                args.run_id,
+                "--client",
+                target_spec["clientId"],
+                "--phase",
+                "deploying",
             )
             try:
                 # Ansible is not killed mid-operation.  Verification happens
@@ -395,43 +534,29 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                 runtime.playbook(
                     inventory, host, target["desiredSha"], args.run_id
                 )
-                observation = runtime.observe_terminal_evidence(inventory, host, role)
+                expected_ready_sha = _terminal_ready_sha(
+                    state, target_spec, target
+                )
+                _verify_terminal_ready(
+                    runtime=runtime,
+                    state=state,
+                    inventory=inventory,
+                    run_id=args.run_id,
+                    target_spec=target_spec,
+                    target=target,
+                    expected_sha=expected_ready_sha,
+                    rollback=False,
+                )
+                observation = runtime.observe_terminal_evidence(
+                    inventory,
+                    host,
+                    role,
+                    target_spec["clientId"],
+                )
                 if observation.get("currentSha") != target["desiredSha"]:
                     raise RuntimeError(
                         f"terminal HEAD does not match desired release: {host}"
                     )
-                # Removing maintenance is part of successful evidence. Keep
-                # fleet evidence unknown until cleanup succeeds so a crash
-                # cannot leave a verified-but-maintained host excluded later.
-                runtime.state_command(
-                    "remove-client",
-                    "--run-id",
-                    args.run_id,
-                    "--client",
-                    target_spec["clientId"],
-                )
-                fleet_state = runtime.fleet_mark_verified(
-                    host,
-                    role,
-                    target["desiredSha"],
-                    observation["currentSha"],
-                    args.run_id,
-                    previous_sha=target["previousSha"],
-                    observation=observation,
-                )
-                target["newSha"] = observation["currentSha"]
-                target["currentSha"] = observation["currentSha"]
-                target["evidence"] = "verified"
-                target["state"] = "success"
-                target["completedAt"] = runtime.utc_now()
-                _set_host_status(
-                    state,
-                    host,
-                    current_sha=observation["currentSha"],
-                    evidence="verified",
-                )
-                state.payload["fleetGeneration"] = fleet_state["generation"]
-                state.save()
             except Exception as error:
                 # Rollback is itself a mutation, so it gets a fresh unknown
                 # transition even if target verification had just succeeded.
@@ -448,13 +573,33 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                 state.save()
 
                 # Rollback wins over cancellation and is never interrupted.
-                rollback_ok = runtime.rollback_terminal(
-                    inventory, target_spec, target, args.run_id
-                )
+                try:
+                    rollback_ok = runtime.rollback_terminal(
+                        inventory, target_spec, target, args.run_id
+                    )
+                except Exception as rollback_error:
+                    rollback_ok = False
+                    target["rollback"] = f"failed: {rollback_error}"
                 if rollback_ok:
                     try:
+                        rollback_ready_sha = _rollback_ready_sha(
+                            state, target_spec, target
+                        )
+                        _verify_terminal_ready(
+                            runtime=runtime,
+                            state=state,
+                            inventory=inventory,
+                            run_id=args.run_id,
+                            target_spec=target_spec,
+                            target=target,
+                            expected_sha=rollback_ready_sha,
+                            rollback=True,
+                        )
                         rollback_observation = runtime.observe_terminal_evidence(
-                            inventory, host, role
+                            inventory,
+                            host,
+                            role,
+                            target_spec["clientId"],
                         )
                         if (
                             rollback_observation.get("currentSha")
@@ -463,6 +608,16 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                             raise RuntimeError(
                                 f"rollback HEAD does not match previous release: {host}"
                             )
+                        # Cleanup is part of rollback evidence.  Never promote
+                        # a host while maintenance remains active.
+                        runtime.state_command(
+                            "remove-client",
+                            "--run-id",
+                            args.run_id,
+                            "--client",
+                            target_spec["clientId"],
+                        )
+                        target["maintenanceClearedAt"] = runtime.utc_now()
                         fleet_state = runtime.fleet_mark_verified(
                             host,
                             role,
@@ -486,12 +641,108 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                         target["rollbackEvidence"] = (
                             f"unknown: {rollback_evidence_error}"
                         )
+                        try:
+                            runtime.state_command(
+                                "set-phase",
+                                "--run-id",
+                                args.run_id,
+                                "--client",
+                                target_spec["clientId"],
+                                "--phase",
+                                "failed",
+                            )
+                        except Exception as phase_error:
+                            target["rollbackPhaseError"] = str(phase_error)
+                else:
+                    try:
+                        runtime.state_command(
+                            "set-phase",
+                            "--run-id",
+                            args.run_id,
+                            "--client",
+                            target_spec["clientId"],
+                            "--phase",
+                            "failed",
+                        )
+                    except Exception as phase_error:
+                        target["rollbackPhaseError"] = str(phase_error)
                 target["state"] = "failed"
                 target["completedAt"] = runtime.utc_now()
                 state.save()
+                if isinstance(error, CancellationRequested):
+                    raise error
                 raise RuntimeError(
                     f"rollout stopped after {host} failed"
                 ) from error
+
+            # Health and exact ready evidence are complete. Finalization is a
+            # commit boundary, not another deployment operation: if cleanup or
+            # durable fleet persistence fails, stop with conservative evidence
+            # and never mutate the healthy terminal again via rollback.
+            fleet_promoted = False
+            try:
+                runtime.state_command(
+                    "remove-client",
+                    "--run-id",
+                    args.run_id,
+                    "--client",
+                    target_spec["clientId"],
+                )
+                target["maintenanceClearedAt"] = runtime.utc_now()
+                fleet_state = runtime.fleet_mark_verified(
+                    host,
+                    role,
+                    target["desiredSha"],
+                    observation["currentSha"],
+                    args.run_id,
+                    previous_sha=target["previousSha"],
+                    observation=observation,
+                )
+                fleet_promoted = True
+                target["newSha"] = observation["currentSha"]
+                target["currentSha"] = observation["currentSha"]
+                target["evidence"] = "verified"
+                target["state"] = "success"
+                target["completedAt"] = runtime.utc_now()
+                _set_host_status(
+                    state,
+                    host,
+                    current_sha=observation["currentSha"],
+                    evidence="verified",
+                )
+                state.payload["fleetGeneration"] = fleet_state["generation"]
+                state.save()
+            except Exception as finalization_error:
+                target["state"] = "failed"
+                target["completedAt"] = runtime.utc_now()
+                target["finalizationFailure"] = str(finalization_error)
+                if not fleet_promoted:
+                    target["currentSha"] = None
+                    target["evidence"] = "unknown"
+                    _set_host_status(
+                        state, host, current_sha=None, evidence="unknown"
+                    )
+                if "maintenanceClearedAt" not in target:
+                    try:
+                        runtime.state_command(
+                            "set-phase",
+                            "--run-id",
+                            args.run_id,
+                            "--client",
+                            target_spec["clientId"],
+                            "--phase",
+                            "failed",
+                        )
+                    except Exception as phase_error:
+                        target["finalizationPhaseError"] = str(phase_error)
+                state.payload["phase"] = "terminal-finalization-failed"
+                try:
+                    state.save()
+                except Exception as state_error:
+                    target["finalizationStateError"] = str(state_error)
+                raise RuntimeError(
+                    f"terminal finalization failed for {host}"
+                ) from finalization_error
 
             token.checkpoint(f"after-playbook:{host}")
             if runtime.should_hold_after_canary(
@@ -510,15 +761,33 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
         # Removing deploy-status entries is safe only at a phase boundary;
         # Blue/Green, Ansible, and rollback return before reaching one.
         cleanup: dict[str, Any]
-        try:
-            runtime.state_command("remove-run", "--run-id", args.run_id)
-            cleanup = {"state": "success", "completedAt": runtime.utc_now()}
-        except Exception as cleanup_error:
+        unresolved_maintenance = bool(
+            state is not None
+            and any(
+                target.get("maintenanceStartedAt")
+                and not target.get("maintenanceClearedAt")
+                and target.get("state") in {"rolling-back", "failed"}
+                for target in state.payload.get("targets") or []
+            )
+        )
+        if unresolved_maintenance:
+            # A failed or unverifiable rollback must remain visibly in
+            # maintenance even though the operator-requested run is cancelled.
             cleanup = {
-                "state": "failed",
-                "failedAt": runtime.utc_now(),
-                "error": str(cleanup_error),
+                "state": "retained",
+                "reason": "terminal rollback evidence is unknown",
+                "completedAt": runtime.utc_now(),
             }
+        else:
+            try:
+                runtime.state_command("remove-run", "--run-id", args.run_id)
+                cleanup = {"state": "success", "completedAt": runtime.utc_now()}
+            except Exception as cleanup_error:
+                cleanup = {
+                    "state": "failed",
+                    "failedAt": runtime.utc_now(),
+                    "error": str(cleanup_error),
+                }
         cleanup_failed = cleanup["state"] == "failed"
         terminal_state = "failed" if cleanup_failed else "cancelled"
         fleet_finish_error: Exception | None = None

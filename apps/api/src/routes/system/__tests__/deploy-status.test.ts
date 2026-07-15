@@ -11,8 +11,12 @@ process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-1234567890';
 const TEST_CONFIG_DIR = join(process.cwd(), 'test-config');
 const TEST_DEPLOY_STATUS_FILE = join(TEST_CONFIG_DIR, 'deploy-status.json');
 const TEST_CLIENT_KEY = 'test-only-deploy-status-api-key';
+const TEST_OTHER_CLIENT_KEY = 'test-only-deploy-status-other-api-key';
+const TEST_UNBOUND_CLIENT_KEY = 'test-only-deploy-status-unbound-api-key';
+const TEST_MALFORMED_CLIENT_KEY = 'test-only-deploy-status-malformed-api-key';
 const DESIRED_RELEASE_SHA = 'a'.repeat(40);
 const OTHER_RELEASE_SHA = 'b'.repeat(40);
+const VERIFICATION_ID = '1'.repeat(32);
 
 describe('GET /api/system/deploy-status', () => {
   let closeServer: (() => Promise<void>) | null = null;
@@ -32,6 +36,36 @@ describe('GET /api/system/deploy-status', () => {
         statusClientId: 'raspberrypi4-kiosk1'
       }
     });
+    await prisma.clientDevice.upsert({
+      where: { apiKey: TEST_OTHER_CLIENT_KEY },
+      update: { name: 'deploy-status-api-test-other', statusClientId: 'talkplaza-signage01' },
+      create: {
+        id: 'deploy-status-api-test-other-device',
+        name: 'deploy-status-api-test-other',
+        apiKey: TEST_OTHER_CLIENT_KEY,
+        statusClientId: 'talkplaza-signage01'
+      }
+    });
+    await prisma.clientDevice.upsert({
+      where: { apiKey: TEST_UNBOUND_CLIENT_KEY },
+      update: { name: 'deploy-status-api-test-unbound', statusClientId: null },
+      create: {
+        id: 'deploy-status-api-test-unbound-device',
+        name: 'deploy-status-api-test-unbound',
+        apiKey: TEST_UNBOUND_CLIENT_KEY,
+        statusClientId: null
+      }
+    });
+    await prisma.clientDevice.upsert({
+      where: { apiKey: TEST_MALFORMED_CLIENT_KEY },
+      update: { name: 'deploy-status-api-test-malformed', statusClientId: '   ' },
+      create: {
+        id: 'deploy-status-api-test-malformed-device',
+        name: 'deploy-status-api-test-malformed',
+        apiKey: TEST_MALFORMED_CLIENT_KEY,
+        statusClientId: '   '
+      }
+    });
   });
 
   afterAll(async () => {
@@ -48,7 +82,140 @@ describe('GET /api/system/deploy-status', () => {
     } else {
       delete process.env.DEPLOY_STATUS_FILE_PATH;
     }
-    await prisma.clientDevice.deleteMany({ where: { apiKey: TEST_CLIENT_KEY } });
+    await prisma.clientDevice.deleteMany({
+      where: {
+        apiKey: {
+          in: [
+            TEST_CLIENT_KEY,
+            TEST_OTHER_CLIENT_KEY,
+            TEST_UNBOUND_CLIENT_KEY,
+            TEST_MALFORMED_CLIENT_KEY
+          ]
+        }
+      }
+    });
+  });
+
+  it('returns the authenticated deploy-status identity without mutating state', async () => {
+    const state = JSON.stringify({
+      version: 2,
+      kioskByClient: {
+        'raspberrypi4-kiosk1': { maintenance: true, runId: 'identity-state' }
+      }
+    });
+    await writeFile(TEST_DEPLOY_STATUS_FILE, state);
+
+    const app = await buildServer();
+    closeServer = async () => {
+      await app.close();
+    };
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/system/deploy-status/identity',
+      headers: { 'x-client-key': TEST_CLIENT_KEY }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      authenticated: true,
+      statusClientId: 'raspberrypi4-kiosk1'
+    });
+    expect(await readFile(TEST_DEPLOY_STATUS_FILE, 'utf-8')).toBe(state);
+  });
+
+  it('binds deploy-status identity to the client key statusClientId', async () => {
+    const app = await buildServer();
+    closeServer = async () => {
+      await app.close();
+    };
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/system/deploy-status/identity',
+      headers: { 'x-client-key': TEST_OTHER_CLIENT_KEY }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      authenticated: true,
+      statusClientId: 'talkplaza-signage01'
+    });
+  });
+
+  it('fails identity closed for missing, invalid, ambiguous, or malformed client bindings', async () => {
+    await writeFile(TEST_DEPLOY_STATUS_FILE, 'malformed deploy status state');
+    const app = await buildServer();
+    closeServer = async () => {
+      await app.close();
+    };
+    const requests = [
+      app.inject({ method: 'GET', url: '/api/system/deploy-status/identity' }),
+      app.inject({
+        method: 'GET',
+        url: '/api/system/deploy-status/identity',
+        headers: { 'x-client-key': 'invalid-secret-client-key' }
+      }),
+      app.inject({
+        method: 'GET',
+        url: '/api/system/deploy-status/identity',
+        headers: { 'x-client-key': [TEST_CLIENT_KEY, TEST_OTHER_CLIENT_KEY] }
+      }),
+      app.inject({
+        method: 'GET',
+        url: '/api/system/deploy-status/identity',
+        headers: { 'x-client-key': TEST_UNBOUND_CLIENT_KEY }
+      }),
+      app.inject({
+        method: 'GET',
+        url: '/api/system/deploy-status/identity',
+        headers: { 'x-client-key': TEST_MALFORMED_CLIENT_KEY }
+      })
+    ];
+
+    for (const response of await Promise.all(requests)) {
+      expect(response.statusCode).toBe(401);
+      expect(response.json()).toEqual({ code: 'CLIENT_KEY_INVALID' });
+      expect(response.body).not.toContain('client-key');
+    }
+  });
+
+  it('preserves the legacy deploy-status GET fallback contract', async () => {
+    await writeFile(
+      TEST_DEPLOY_STATUS_FILE,
+      JSON.stringify({
+        version: 2,
+        kioskByClient: { 'raspberrypi4-kiosk1': { maintenance: true } }
+      })
+    );
+    const app = await buildServer();
+    closeServer = async () => {
+      await app.close();
+    };
+
+    const missingIdentity = await app.inject({
+      method: 'GET',
+      url: '/api/system/deploy-status/identity'
+    });
+    const missingLegacy = await app.inject({ method: 'GET', url: '/api/system/deploy-status' });
+    const invalidLegacy = await app.inject({
+      method: 'GET',
+      url: '/api/system/deploy-status',
+      headers: { 'x-client-key': 'invalid-secret-client-key' }
+    });
+    const validLegacy = await app.inject({
+      method: 'GET',
+      url: '/api/system/deploy-status',
+      headers: { 'x-client-key': TEST_CLIENT_KEY }
+    });
+
+    expect(missingIdentity.statusCode).toBe(401);
+    expect(missingLegacy.statusCode).toBe(200);
+    expect(missingLegacy.json()).toEqual({ isMaintenance: false });
+    expect(invalidLegacy.statusCode).toBe(200);
+    expect(invalidLegacy.json()).toEqual({ isMaintenance: false });
+    expect(validLegacy.statusCode).toBe(200);
+    expect(validLegacy.json()).toEqual({ isMaintenance: true });
   });
 
   it('should return isMaintenance: false when file does not exist', async () => {
@@ -288,7 +455,9 @@ describe('GET /api/system/deploy-status', () => {
             maintenance: true,
             runId: 'run-verifying',
             phase: 'verifying',
-            desiredReleaseSha: DESIRED_RELEASE_SHA
+            desiredReleaseSha: DESIRED_RELEASE_SHA,
+            verificationMode: 'release',
+            verificationId: VERIFICATION_ID
           }
         }
       })
@@ -308,14 +477,68 @@ describe('GET /api/system/deploy-status', () => {
       isMaintenance: true,
       runId: 'run-verifying',
       phase: 'verifying',
-      desiredReleaseSha: DESIRED_RELEASE_SHA
+      desiredReleaseSha: DESIRED_RELEASE_SHA,
+      verificationCycle: 'release',
+      verificationId: VERIFICATION_ID
     });
 
     const invalidCases: Array<[string, Record<string, unknown>, number]> = [
       ['missing SHA', { runId: 'run-verifying', phase: 'ready' }, 400],
-      ['short SHA', { runId: 'run-verifying', phase: 'ready', releaseSha: 'abc123' }, 400],
-      ['uppercase SHA', { runId: 'run-verifying', phase: 'ready', releaseSha: DESIRED_RELEASE_SHA.toUpperCase() }, 400],
-      ['mismatched SHA', { runId: 'run-verifying', phase: 'ready', releaseSha: OTHER_RELEASE_SHA }, 409]
+      [
+        'short SHA',
+        {
+          runId: 'run-verifying',
+          phase: 'ready',
+          releaseSha: 'abc123',
+          verificationId: VERIFICATION_ID
+        },
+        400
+      ],
+      [
+        'uppercase SHA',
+        {
+          runId: 'run-verifying',
+          phase: 'ready',
+          releaseSha: DESIRED_RELEASE_SHA.toUpperCase(),
+          verificationId: VERIFICATION_ID
+        },
+        400
+      ],
+      [
+        'mismatched SHA',
+        {
+          runId: 'run-verifying',
+          phase: 'ready',
+          releaseSha: OTHER_RELEASE_SHA,
+          verificationId: VERIFICATION_ID
+        },
+        409
+      ],
+      [
+        'missing verification ID',
+        { runId: 'run-verifying', phase: 'ready', releaseSha: DESIRED_RELEASE_SHA },
+        400
+      ],
+      [
+        'malformed verification ID',
+        {
+          runId: 'run-verifying',
+          phase: 'ready',
+          releaseSha: DESIRED_RELEASE_SHA,
+          verificationId: 'not-a-verification-id'
+        },
+        400
+      ],
+      [
+        'stale verification ID',
+        {
+          runId: 'run-verifying',
+          phase: 'ready',
+          releaseSha: DESIRED_RELEASE_SHA,
+          verificationId: '2'.repeat(32)
+        },
+        409
+      ]
     ];
     for (const [name, payload, statusCode] of invalidCases) {
       const before = await readFile(TEST_DEPLOY_STATUS_FILE, 'utf-8');
@@ -333,20 +556,27 @@ describe('GET /api/system/deploy-status', () => {
       method: 'POST',
       url: '/api/system/deploy-status/ack',
       headers: { 'x-client-key': TEST_CLIENT_KEY },
-      payload: { runId: 'run-verifying', phase: 'ready', releaseSha: DESIRED_RELEASE_SHA }
+      payload: {
+        runId: 'run-verifying',
+        phase: 'ready',
+        releaseSha: DESIRED_RELEASE_SHA,
+        verificationId: VERIFICATION_ID
+      }
     });
     expect(ready.statusCode).toBe(200);
     expect(ready.json()).toEqual({
       acknowledged: true,
       runId: 'run-verifying',
       phase: 'ready',
-      releaseSha: DESIRED_RELEASE_SHA
+      releaseSha: DESIRED_RELEASE_SHA,
+      verificationId: VERIFICATION_ID
     });
     const stored = JSON.parse(await readFile(TEST_DEPLOY_STATUS_FILE, 'utf-8'));
     expect(stored.acknowledgements['run-verifying']['raspberrypi4-kiosk1'].ready).toMatchObject({
       acknowledgedAt: expect.any(String),
       source: 'controller',
-      releaseSha: DESIRED_RELEASE_SHA
+      releaseSha: DESIRED_RELEASE_SHA,
+      verificationId: VERIFICATION_ID
     });
   });
 
@@ -375,7 +605,12 @@ describe('GET /api/system/deploy-status', () => {
       method: 'POST',
       url: '/api/system/deploy-status/ack',
       headers: { 'x-client-key': TEST_CLIENT_KEY },
-      payload: { runId: 'run-deploying', phase: 'ready', releaseSha: DESIRED_RELEASE_SHA }
+      payload: {
+        runId: 'run-deploying',
+        phase: 'ready',
+        releaseSha: DESIRED_RELEASE_SHA,
+        verificationId: VERIFICATION_ID
+      }
     });
 
     expect(response.statusCode).toBe(409);

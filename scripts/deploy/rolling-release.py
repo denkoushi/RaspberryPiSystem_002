@@ -67,9 +67,11 @@ FLEET_RELEASE_LOCK = PROJECT / "logs/deploy/fleet-release-state.lock"
 OPERATOR_CANARY_APPROVAL_CLIENT = "operator-canary-approval"
 DEFAULT_CANARY_HOLD_TIMEOUT = release_cli.DEFAULT_CANARY_HOLD_TIMEOUT
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+VERIFICATION_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 CLEANUP_LOCK_CONFLICT = "another Pi5 Blue/Green operation is running"
 CLEANUP_LOCK_RETRY_TIMEOUT = 30
 CLEANUP_LOCK_RETRY_INTERVAL = 2
+READY_ACK_TIMEOUT_SECONDS = 90
 KIOSK_SCOPE_COMPONENTS = release_policy.KIOSK_SCOPE_COMPONENTS
 _ACTIVE_CANCELLATION_TOKEN: CancellationToken | None = None
 _ACTIVE_FLEET_LEASE: FleetLease | None = None
@@ -288,8 +290,12 @@ def fleet_finish_run(run_id: str, status: str) -> dict[str, Any]:
     )
 
 
-def observe_terminal_evidence(inventory: str, host: str, role: str) -> dict[str, Any]:
-    return evidence_backend.observe_terminal(inventory, host, role, runtime=_runtime())
+def observe_terminal_evidence(
+    inventory: str, host: str, role: str, client_id: str
+) -> dict[str, Any]:
+    return evidence_backend.observe_terminal(
+        inventory, host, role, client_id, runtime=_runtime()
+    )
 
 
 def observe_pi5_evidence(expected_sha: str | None) -> dict[str, Any]:
@@ -383,16 +389,68 @@ def acknowledgement_record(run_id: str, client_id: str) -> dict[str, Any] | None
     return record if isinstance(record, dict) else None
 
 
+def active_verification_id(
+    run_id: str,
+    client_id: str,
+    *,
+    release_sha: str,
+    rollback: bool,
+) -> str:
+    """Read the exact verification challenge installed by the state writer."""
+
+    if FULL_SHA_RE.fullmatch(release_sha) is None:
+        raise ValueError("active verification requires an immutable release SHA")
+    try:
+        value = json.loads(
+            (PROJECT / "config/deploy-status.json").read_text(encoding="utf-8")
+        )
+    except (FileNotFoundError, json.JSONDecodeError) as error:
+        raise RuntimeError("active terminal verification is unavailable") from error
+    entry = ((value.get("kioskByClient") or {}).get(client_id) or {})
+    expected_mode = "rollback" if rollback else "release"
+    verification_id = entry.get("verificationId")
+    if (
+        entry.get("runId") != run_id
+        or entry.get("maintenance") is not True
+        or entry.get("phase") != "verifying"
+        or entry.get("desiredReleaseSha") != release_sha
+        or entry.get("verificationMode") != expected_mode
+        or not isinstance(verification_id, str)
+        or VERIFICATION_ID_RE.fullmatch(verification_id) is None
+    ):
+        raise RuntimeError("active terminal verification does not match the rollout")
+    return verification_id
+
+
 def acknowledgement_received(
-    run_id: str, client_id: str, *, phase: str = "maintenance"
+    run_id: str,
+    client_id: str,
+    *,
+    phase: str = "maintenance",
+    release_sha: str | None = None,
+    verification_id: str | None = None,
 ) -> bool:
+    if phase == "ready" and (
+        release_sha is None or FULL_SHA_RE.fullmatch(release_sha) is None
+        or verification_id is None
+        or VERIFICATION_ID_RE.fullmatch(verification_id) is None
+    ):
+        raise ValueError(
+            "ready acknowledgement requires an immutable release SHA and verification ID"
+        )
     record = acknowledgement_record(run_id, client_id)
     if record is None:
         return False
     if phase == "maintenance" and isinstance(record.get("acknowledgedAt"), str):
         return True
-    return isinstance(record.get(phase), dict) and isinstance(
-        record[phase].get("acknowledgedAt"), str
+    phase_record = record.get(phase)
+    if not isinstance(phase_record, dict) or not isinstance(
+        phase_record.get("acknowledgedAt"), str
+    ):
+        return False
+    return phase != "ready" or (
+        phase_record.get("releaseSha") == release_sha
+        and phase_record.get("verificationId") == verification_id
     )
 
 
@@ -402,15 +460,40 @@ def wait_for_ack(
     timeout: int = 30,
     *,
     phase: str = "maintenance",
+    release_sha: str | None = None,
+    verification_id: str | None = None,
+    cancellable: bool = True,
 ) -> bool:
+    if phase == "ready" and (
+        release_sha is None or FULL_SHA_RE.fullmatch(release_sha) is None
+        or verification_id is None
+        or VERIFICATION_ID_RE.fullmatch(verification_id) is None
+    ):
+        raise ValueError(
+            "ready acknowledgement requires an immutable release SHA and verification ID"
+        )
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        _cancellation_checkpoint(f"wait-{phase}-ack:{client_id}")
-        if acknowledgement_received(run_id, client_id, phase=phase):
+        if cancellable:
+            _cancellation_checkpoint(f"wait-{phase}-ack:{client_id}")
+        if acknowledgement_received(
+            run_id,
+            client_id,
+            phase=phase,
+            release_sha=release_sha,
+            verification_id=verification_id,
+        ):
             return True
         time.sleep(5)
-    _cancellation_checkpoint(f"wait-{phase}-ack:{client_id}")
-    return acknowledgement_received(run_id, client_id, phase=phase)
+    if cancellable:
+        _cancellation_checkpoint(f"wait-{phase}-ack:{client_id}")
+    return acknowledgement_received(
+        run_id,
+        client_id,
+        phase=phase,
+        release_sha=release_sha,
+        verification_id=verification_id,
+    )
 
 
 def notice_scheduled_at(run_id: str, client_id: str) -> str | None:
@@ -585,6 +668,20 @@ def prestage_signage_maintenance(
 
 def remote_previous_sha(inventory: str, host: str) -> str:
     return ansible_backend.remote_previous_sha(inventory, host, runtime=_runtime())
+
+
+def probe_terminal_identity(
+    inventory: str, host: str, client_id: str
+) -> dict[str, Any]:
+    return ansible_backend.probe_terminal_identity(
+        inventory, host, client_id, runtime=_runtime()
+    )
+
+
+def trigger_signage_ready_check(inventory: str, host: str) -> None:
+    return ansible_backend.trigger_signage_ready_check(
+        inventory, host, runtime=_runtime()
+    )
 
 
 def converge_server_config(

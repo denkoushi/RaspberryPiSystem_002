@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
@@ -12,6 +12,27 @@ function deployStatusFilePath(): string {
 const DEPLOY_STATUS_HELPER_TIMEOUT_MS = 15_000;
 const DEPLOY_STATUS_HELPER_OUTPUT_LIMIT = 64 * 1024;
 const FULL_RELEASE_SHA_PATTERN = /^[0-9a-f]{40}$/;
+const VERIFICATION_ID_PATTERN = /^[0-9a-f]{32}$/;
+const MAX_STATUS_CLIENT_ID_LENGTH = 255;
+
+const DEPLOY_STATUS_IDENTITY_RESPONSE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['authenticated', 'statusClientId'],
+  properties: {
+    authenticated: { type: 'boolean', const: true },
+    statusClientId: { type: 'string', minLength: 1, maxLength: MAX_STATUS_CLIENT_ID_LENGTH }
+  }
+} as const;
+
+const DEPLOY_STATUS_IDENTITY_ERROR_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['code'],
+  properties: {
+    code: { type: 'string', const: 'CLIENT_KEY_INVALID' }
+  }
+} as const;
 
 function deployStatusStateHelperPath(): string {
   if (process.env.DEPLOY_STATUS_STATE_HELPER_PATH) {
@@ -99,6 +120,8 @@ interface DeployStatusRawV2 {
     noticeDurationSeconds?: number;
     scheduledAt?: string;
     desiredReleaseSha?: string;
+    verificationMode?: string;
+    verificationId?: string;
   }>;
   acknowledgements?: Record<string, Record<string, {
     acknowledgedAt?: string;
@@ -115,7 +138,14 @@ export interface DeployStatusResponse {
   phase?: 'preparing' | 'deploying' | 'verifying' | 'failed';
   startedAt?: string;
   desiredReleaseSha?: string;
+  verificationCycle?: 'release' | 'rollback';
+  verificationId?: string;
   preNotice?: { scheduledAt?: string };
+}
+
+export interface DeployStatusIdentityResponse {
+  authenticated: true;
+  statusClientId: string;
 }
 
 type DeployAcknowledgementPhase = 'notice' | 'maintenance' | 'ready';
@@ -123,6 +153,7 @@ type DeployAcknowledgementPhase = 'notice' | 'maintenance' | 'ready';
 interface DeployAcknowledgementResult {
   scheduledAt?: string;
   releaseSha?: string;
+  verificationId?: string;
 }
 
 /**
@@ -131,6 +162,43 @@ interface DeployAcknowledgementResult {
  */
 async function resolveStatusClientId(rawClientKey: unknown): Promise<string | null> {
   return resolveStatusClientIdFromRawKey(rawClientKey);
+}
+
+function hasOneClientKeyHeader(request: FastifyRequest): boolean {
+  let headerCount = 0;
+  const rawHeaders = request.raw.rawHeaders;
+  for (let index = 0; index < rawHeaders.length; index += 2) {
+    if (rawHeaders[index]?.toLowerCase() === 'x-client-key') headerCount += 1;
+  }
+  return headerCount === 1 && typeof request.headers['x-client-key'] === 'string';
+}
+
+function containsControlCharacter(value: string): boolean {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0);
+    if (codePoint !== undefined && (codePoint <= 31 || codePoint === 127)) return true;
+  }
+  return false;
+}
+
+function isValidStatusClientId(statusClientId: string | null): statusClientId is string {
+  return typeof statusClientId === 'string'
+    && statusClientId.length > 0
+    && statusClientId.length <= MAX_STATUS_CLIENT_ID_LENGTH
+    && statusClientId === statusClientId.trim()
+    && !containsControlCharacter(statusClientId);
+}
+
+async function resolveDeployStatusIdentity(request: FastifyRequest): Promise<DeployStatusIdentityResponse | null> {
+  if (!hasOneClientKeyHeader(request)) return null;
+  try {
+    const statusClientId = await resolveStatusClientId(request.headers['x-client-key']);
+    if (!isValidStatusClientId(statusClientId)) return null;
+    return { authenticated: true, statusClientId };
+  } catch {
+    // Authentication and binding failures are intentionally indistinguishable.
+    return null;
+  }
 }
 
 /**
@@ -180,12 +248,23 @@ export function normalizeDeployStatusResponse(raw: DeployStatusRawV2 | null, sta
     && FULL_RELEASE_SHA_PATTERN.test(entry.desiredReleaseSha)
     ? entry.desiredReleaseSha
     : undefined;
+  const verificationCycle = phase === 'verifying'
+    && (entry.verificationMode === 'release' || entry.verificationMode === 'rollback')
+    ? entry.verificationMode
+    : undefined;
+  const verificationId = phase === 'verifying'
+    && typeof entry.verificationId === 'string'
+    && VERIFICATION_ID_PATTERN.test(entry.verificationId)
+    ? entry.verificationId
+    : undefined;
   return {
     isMaintenance: true,
     ...(entry.runId ? { runId: entry.runId } : {}),
     ...(phase ? { phase } : {}),
     ...(entry.startedAt ? { startedAt: entry.startedAt } : {}),
-    ...(desiredReleaseSha ? { desiredReleaseSha } : {})
+    ...(desiredReleaseSha ? { desiredReleaseSha } : {}),
+    ...(verificationCycle ? { verificationCycle } : {}),
+    ...(verificationId ? { verificationId } : {})
   };
 }
 
@@ -193,10 +272,16 @@ async function writeAcknowledgement(
   runId: string,
   statusClientId: string,
   phase: DeployAcknowledgementPhase,
-  releaseSha?: string
+  releaseSha?: string,
+  verificationId?: string
 ): Promise<DeployAcknowledgementResult> {
   const arguments_ = ['ack', '--run-id', runId, '--client', statusClientId, '--phase', phase];
-  if (phase === 'ready' && releaseSha) arguments_.push('--release-sha', releaseSha);
+  if (phase === 'ready' && releaseSha && verificationId) {
+    arguments_.push(
+      '--release-sha', releaseSha,
+      '--verification-id', verificationId
+    );
+  }
   const result = await runDeployStatusState(arguments_);
   if (!result || typeof result !== 'object') throw new Error('DEPLOY_STATUS_HELPER_FAILED');
   const acknowledgement = result as Record<string, unknown>;
@@ -209,8 +294,11 @@ async function writeAcknowledgement(
       phase === 'ready'
       && (
         typeof releaseSha !== 'string'
+        || typeof verificationId !== 'string'
         || acknowledgement.releaseSha !== releaseSha
+        || acknowledgement.verificationId !== verificationId
         || !FULL_RELEASE_SHA_PATTERN.test(releaseSha)
+        || !VERIFICATION_ID_PATTERN.test(verificationId)
       )
     )
   ) {
@@ -220,7 +308,7 @@ async function writeAcknowledgement(
     ...(typeof acknowledgement.scheduledAt === 'string'
       ? { scheduledAt: acknowledgement.scheduledAt }
       : {}),
-    ...(phase === 'ready' ? { releaseSha } : {})
+    ...(phase === 'ready' ? { releaseSha, verificationId } : {})
   };
 }
 
@@ -232,10 +320,32 @@ export function registerDeployStatusRoute(app: FastifyInstance): void {
     return reply.send(normalizeDeployStatusResponse(raw, statusClientId));
   });
 
+  app.get(
+    '/system/deploy-status/identity',
+    {
+      schema: {
+        response: {
+          200: DEPLOY_STATUS_IDENTITY_RESPONSE_SCHEMA,
+          401: DEPLOY_STATUS_IDENTITY_ERROR_SCHEMA
+        }
+      }
+    },
+    async (request, reply) => {
+      const identity = await resolveDeployStatusIdentity(request);
+      if (!identity) return reply.code(401).send({ code: 'CLIENT_KEY_INVALID' });
+      return reply.send(identity);
+    }
+  );
+
   app.post('/system/deploy-status/ack', async (request, reply) => {
     const statusClientId = await resolveStatusClientId(request.headers['x-client-key']);
     if (!statusClientId) return reply.code(401).send({ code: 'CLIENT_KEY_INVALID' });
-    const body = request.body as { runId?: unknown; phase?: unknown; releaseSha?: unknown } | null;
+    const body = request.body as {
+      runId?: unknown;
+      phase?: unknown;
+      releaseSha?: unknown;
+      verificationId?: unknown;
+    } | null;
     const runId = typeof body?.runId === 'string'
       ? body.runId.trim()
       : '';
@@ -251,6 +361,7 @@ export function registerDeployStatusRoute(app: FastifyInstance): void {
     }
     const phase: DeployAcknowledgementPhase = requestedPhase ?? 'maintenance';
     let releaseSha: string | undefined;
+    let verificationId: string | undefined;
     if (phase === 'ready') {
       if (body?.releaseSha === undefined) {
         return reply.code(400).send({ code: 'DEPLOY_ACK_RELEASE_SHA_REQUIRED' });
@@ -259,9 +370,25 @@ export function registerDeployStatusRoute(app: FastifyInstance): void {
         return reply.code(400).send({ code: 'DEPLOY_ACK_RELEASE_SHA_INVALID' });
       }
       releaseSha = body.releaseSha;
+      if (body.verificationId === undefined) {
+        return reply.code(400).send({ code: 'DEPLOY_ACK_VERIFICATION_ID_REQUIRED' });
+      }
+      if (
+        typeof body.verificationId !== 'string'
+        || !VERIFICATION_ID_PATTERN.test(body.verificationId)
+      ) {
+        return reply.code(400).send({ code: 'DEPLOY_ACK_VERIFICATION_ID_INVALID' });
+      }
+      verificationId = body.verificationId;
     }
     try {
-      const result = await writeAcknowledgement(runId, statusClientId, phase, releaseSha);
+      const result = await writeAcknowledgement(
+        runId,
+        statusClientId,
+        phase,
+        releaseSha,
+        verificationId
+      );
       return reply.send({ acknowledged: true, runId, phase, ...result });
     } catch {
       return reply.code(409).send({ code: 'DEPLOY_ACK_RUN_MISMATCH' });

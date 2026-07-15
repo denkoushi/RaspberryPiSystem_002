@@ -2,19 +2,31 @@
 set -euo pipefail
 
 SERVER_URL="{{ signage_server_url | default('https://192.168.128.131') }}"
-CLIENT_KEY="{{ signage_client_key | default('') }}"
+IMAGE_CLIENT_KEY="{{ signage_client_key | default('') }}"
+STATUS_CLIENT_ID="{{ status_agent_client_id | default('') }}"
+STATUS_CLIENT_KEY="{{ status_agent_client_key | default('') }}"
+REPO_PATH="{{ repo_path | default('/opt/RaspberryPiSystem_002') }}"
 IMAGE_URL="${SERVER_URL%/}/api/signage/current-image"
 DEPLOY_STATUS_URL="${SERVER_URL%/}/api/system/deploy-status"
 DEPLOY_ACK_URL="${SERVER_URL%/}/api/system/deploy-status/ack"
-CACHE_DIR="/run/signage"
+CACHE_DIR="${SIGNAGE_CACHE_DIR:-/run/signage}"
 CURRENT_IMAGE="${CACHE_DIR}/current.jpg"
 TEMP_IMAGE="${CACHE_DIR}/current.tmp.jpg"
-MAINTENANCE_SVG="/usr/local/share/signage-maintenance.svg"
+MAINTENANCE_SVG="${SIGNAGE_MAINTENANCE_SVG:-/usr/local/share/signage-maintenance.svg}"
 {% if signage_allow_insecure_tls | default(true) %}
-CURL_OPTIONS="-s -f -k"
+CURL_OPTIONS=(-sS -f -k)
 {% else %}
-CURL_OPTIONS="-s -f"
+CURL_OPTIONS=(-sS -f)
 {% endif %}
+
+curl_with_client_key() {
+  local client_key="$1"
+  shift
+  [[ "${client_key}" != *$'\n'* && "${client_key}" != *$'\r'* ]] || return 2
+  # Read the credential from stdin so it never appears in curl's argv or logs.
+  printf 'x-client-key: %s\n' "${client_key}" |
+    curl "${CURL_OPTIONS[@]}" --header @- "$@"
+}
 
 render_maintenance() {
   [[ -r "${MAINTENANCE_SVG}" ]] || return 1
@@ -28,30 +40,97 @@ render_maintenance() {
   fi
 }
 
-maintenance_run_id() {
-  local body
-  body="$(curl ${CURL_OPTIONS} -H "x-client-key: ${CLIENT_KEY}" --max-time 10 --connect-timeout 5 "${DEPLOY_STATUS_URL}" 2>/dev/null || true)"
-  python3 - <<'PY' "${body}"
-import json, sys
+parse_deploy_status() {
+  python3 -c '
+import json, re, sys
 try:
-    value = json.loads(sys.argv[1])
+    value = json.load(sys.stdin)
 except Exception:
     raise SystemExit(0)
-if value.get('isMaintenance') is True and isinstance(value.get('runId'), str):
-    print(value['runId'])
+run_id = value.get("runId")
+if value.get("isMaintenance") is not True:
+    raise SystemExit(0)
+if not isinstance(run_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{2,79}", run_id):
+    raise SystemExit(0)
+phase = value.get("phase") if value.get("phase") in {"preparing", "deploying", "verifying", "failed"} else ""
+desired = value.get("desiredReleaseSha")
+if not isinstance(desired, str) or not re.fullmatch(r"[0-9a-f]{40}", desired):
+    desired = ""
+verification_id = value.get("verificationId")
+if not isinstance(verification_id, str) or not re.fullmatch(r"[0-9a-f]{32}", verification_id):
+    verification_id = ""
+print("|".join((run_id, phase, desired, verification_id)))
+'
+}
+
+fetch_deploy_status() {
+  # The API resolves this status-agent key to STATUS_CLIENT_ID server-side.
+  # The independent signage image credential must never be used for deploy ACKs.
+  [[ -n "${STATUS_CLIENT_ID}" && -n "${STATUS_CLIENT_KEY}" ]] || return 1
+  curl_with_client_key "${STATUS_CLIENT_KEY}" \
+    --max-time 10 --connect-timeout 5 "${DEPLOY_STATUS_URL}"
+}
+
+ack_payload() {
+  python3 - "$@" <<'PY'
+import json, sys
+payload = {"runId": sys.argv[1], "phase": sys.argv[2]}
+if len(sys.argv) == 5:
+    payload["releaseSha"] = sys.argv[3]
+    payload["verificationId"] = sys.argv[4]
+elif len(sys.argv) != 3:
+    raise SystemExit("ready acknowledgement requires release SHA and verification ID")
+print(json.dumps(payload, separators=(",", ":")))
 PY
 }
 
 acknowledge_maintenance() {
   local run_id="$1"
-  curl ${CURL_OPTIONS} -X POST -H "Content-Type: application/json" -H "x-client-key: ${CLIENT_KEY}" \
-    --data "{\"runId\":\"${run_id}\"}" --max-time 10 --connect-timeout 5 "${DEPLOY_ACK_URL}" >/dev/null
+  local payload
+  payload="$(ack_payload "${run_id}" maintenance)"
+  curl_with_client_key "${STATUS_CLIENT_KEY}" -X POST -H "Content-Type: application/json" \
+    --data-binary "${payload}" --max-time 10 --connect-timeout 5 "${DEPLOY_ACK_URL}" >/dev/null
+}
+
+local_release_sha() {
+  local release_sha
+  release_sha="$(git -C "${REPO_PATH}" rev-parse --verify HEAD 2>/dev/null)" || return 1
+  [[ "${release_sha}" =~ ^[0-9a-f]{40}$ ]] || return 1
+  printf '%s\n' "${release_sha}"
+}
+
+acknowledge_ready_if_matching() {
+  local run_id="$1"
+  local phase="$2"
+  local desired_release_sha="$3"
+  local verification_id="$4"
+  local current_release_sha payload
+  [[ "${phase}" == "verifying" ]] || return 0
+  [[ "${desired_release_sha}" =~ ^[0-9a-f]{40}$ ]] || return 0
+  [[ "${verification_id}" =~ ^[0-9a-f]{32}$ ]] || return 0
+  current_release_sha="$(local_release_sha)" || return 0
+  [[ "${current_release_sha}" == "${desired_release_sha}" ]] || return 0
+  payload="$(ack_payload "${run_id}" ready "${current_release_sha}" "${verification_id}")"
+  curl_with_client_key "${STATUS_CLIENT_KEY}" -X POST -H "Content-Type: application/json" \
+    --data-binary "${payload}" --max-time 10 --connect-timeout 5 "${DEPLOY_ACK_URL}" >/dev/null
 }
 
 mkdir -p "${CACHE_DIR}"
-if RUN_ID="$(maintenance_run_id)" && [[ -n "${RUN_ID}" ]]; then
+RUN_ID=""
+DEPLOY_PHASE=""
+DESIRED_RELEASE_SHA=""
+VERIFICATION_ID=""
+if DEPLOY_STATUS_BODY="$(fetch_deploy_status 2>/dev/null)"; then
+  DEPLOY_STATUS_LINE="$(printf '%s' "${DEPLOY_STATUS_BODY}" | parse_deploy_status)"
+  IFS='|' read -r RUN_ID DEPLOY_PHASE DESIRED_RELEASE_SHA VERIFICATION_ID <<< "${DEPLOY_STATUS_LINE}"
+fi
+if [[ -n "${RUN_ID}" ]]; then
   if render_maintenance; then
     acknowledge_maintenance "${RUN_ID}" || true
+    if ! acknowledge_ready_if_matching \
+      "${RUN_ID}" "${DEPLOY_PHASE}" "${DESIRED_RELEASE_SHA}" "${VERIFICATION_ID}"; then
+      echo "$(date): Ready acknowledgement failed for ${RUN_ID}" >&2
+    fi
     echo "$(date): Deploy maintenance screen displayed for ${RUN_ID}"
     exit 0
   fi
@@ -60,7 +139,7 @@ if RUN_ID="$(maintenance_run_id)" && [[ -n "${RUN_ID}" ]]; then
 fi
 
 # 画像を取得（失敗時は既存画像を保持）
-if curl ${CURL_OPTIONS} -H "x-client-key: ${CLIENT_KEY}" \
+if curl_with_client_key "${IMAGE_CLIENT_KEY}" \
   -o "${TEMP_IMAGE}" \
   --max-time 10 \
   --connect-timeout 5 \

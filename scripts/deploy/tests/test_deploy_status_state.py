@@ -250,14 +250,21 @@ class DeployStatusStateTest(unittest.TestCase):
                     capture_output=True,
                 )
 
-            run('put', '--run-id', 'release-1', '--clients', 'kiosk', '--terminal-type', 'kiosk')
+            run('put', '--run-id', 'release-1', '--clients', 'kiosk,other', '--terminal-type', 'kiosk')
 
             for name, arguments in (
-                ('missing desired SHA', ('set-phase', '--run-id', 'release-1', '--phase', 'verifying')),
+                (
+                    'missing exact client',
+                    (
+                        'set-phase', '--run-id', 'release-1', '--phase', 'verifying',
+                        '--desired-release-sha', DESIRED_RELEASE_SHA,
+                    ),
+                ),
+                ('missing desired SHA', ('set-phase', '--run-id', 'release-1', '--client', 'kiosk', '--phase', 'verifying')),
                 (
                     'uppercase desired SHA',
                     (
-                        'set-phase', '--run-id', 'release-1', '--phase', 'verifying',
+                        'set-phase', '--run-id', 'release-1', '--client', 'kiosk', '--phase', 'verifying',
                         '--desired-release-sha', DESIRED_RELEASE_SHA.upper(),
                     ),
                 ),
@@ -269,7 +276,7 @@ class DeployStatusStateTest(unittest.TestCase):
                     self.assertEqual(path.read_bytes(), before)
 
             run(
-                'set-phase', '--run-id', 'release-1', '--phase', 'verifying',
+                'set-phase', '--run-id', 'release-1', '--client', 'kiosk', '--phase', 'verifying',
                 '--desired-release-sha', DESIRED_RELEASE_SHA,
             )
             verifying = json.loads(path.read_text(encoding='utf-8'))
@@ -277,18 +284,21 @@ class DeployStatusStateTest(unittest.TestCase):
             self.assertTrue(entry['maintenance'])
             self.assertEqual(entry['phase'], 'verifying')
             self.assertEqual(entry['desiredReleaseSha'], DESIRED_RELEASE_SHA)
+            other = verifying['kioskByClient']['other']
+            self.assertEqual(other['phase'], 'preparing')
+            self.assertNotIn('desiredReleaseSha', other)
 
             # The desired SHA is immutable once the run enters verification.
             # Re-entering with the same SHA is idempotent; changing it is a
             # byte-preserving failure before any acknowledgement exists.
             before = path.read_bytes()
             run(
-                'set-phase', '--run-id', 'release-1', '--phase', 'verifying',
+                'set-phase', '--run-id', 'release-1', '--client', 'kiosk', '--phase', 'verifying',
                 '--desired-release-sha', DESIRED_RELEASE_SHA,
             )
             self.assertEqual(path.read_bytes(), before)
             completed = run(
-                'set-phase', '--run-id', 'release-1', '--phase', 'verifying',
+                'set-phase', '--run-id', 'release-1', '--client', 'kiosk', '--phase', 'verifying',
                 '--desired-release-sha', OTHER_RELEASE_SHA,
                 check=False,
             )
@@ -302,16 +312,19 @@ class DeployStatusStateTest(unittest.TestCase):
             self.assertEqual(rebound['desiredReleaseSha'], DESIRED_RELEASE_SHA)
             before = path.read_bytes()
             completed = run(
-                'set-phase', '--run-id', 'release-1', '--phase', 'verifying',
+                'set-phase', '--run-id', 'release-1', '--client', 'kiosk', '--phase', 'verifying',
                 '--desired-release-sha', OTHER_RELEASE_SHA,
                 check=False,
             )
             self.assertNotEqual(completed.returncode, 0)
             self.assertEqual(path.read_bytes(), before)
             run(
-                'set-phase', '--run-id', 'release-1', '--phase', 'verifying',
+                'set-phase', '--run-id', 'release-1', '--client', 'kiosk', '--phase', 'verifying',
                 '--desired-release-sha', DESIRED_RELEASE_SHA,
             )
+            verification_id = json.loads(
+                path.read_text(encoding='utf-8')
+            )['kioskByClient']['kiosk']['verificationId']
 
             invalid_ready_cases = (
                 ('missing SHA', ('ack', '--run-id', 'release-1', '--client', 'kiosk', '--phase', 'ready')),
@@ -320,6 +333,7 @@ class DeployStatusStateTest(unittest.TestCase):
                     (
                         'ack', '--run-id', 'release-1', '--client', 'kiosk', '--phase', 'ready',
                         '--release-sha', 'abc123',
+                        '--verification-id', verification_id,
                     ),
                 ),
                 (
@@ -327,6 +341,7 @@ class DeployStatusStateTest(unittest.TestCase):
                     (
                         'ack', '--run-id', 'release-1', '--client', 'kiosk', '--phase', 'ready',
                         '--release-sha', DESIRED_RELEASE_SHA.upper(),
+                        '--verification-id', verification_id,
                     ),
                 ),
                 (
@@ -334,6 +349,22 @@ class DeployStatusStateTest(unittest.TestCase):
                     (
                         'ack', '--run-id', 'release-1', '--client', 'kiosk', '--phase', 'ready',
                         '--release-sha', OTHER_RELEASE_SHA,
+                        '--verification-id', verification_id,
+                    ),
+                ),
+                (
+                    'missing verification ID',
+                    (
+                        'ack', '--run-id', 'release-1', '--client', 'kiosk', '--phase', 'ready',
+                        '--release-sha', DESIRED_RELEASE_SHA,
+                    ),
+                ),
+                (
+                    'mismatched verification ID',
+                    (
+                        'ack', '--run-id', 'release-1', '--client', 'kiosk', '--phase', 'ready',
+                        '--release-sha', DESIRED_RELEASE_SHA,
+                        '--verification-id', 'f' * 32,
                     ),
                 ),
             )
@@ -347,6 +378,7 @@ class DeployStatusStateTest(unittest.TestCase):
             acknowledged = run(
                 'ack', '--run-id', 'release-1', '--client', 'kiosk', '--phase', 'ready',
                 '--release-sha', DESIRED_RELEASE_SHA,
+                '--verification-id', verification_id,
             )
             self.assertEqual(
                 json.loads(acknowledged.stdout),
@@ -355,17 +387,19 @@ class DeployStatusStateTest(unittest.TestCase):
                     'runId': 'release-1',
                     'phase': 'ready',
                     'releaseSha': DESIRED_RELEASE_SHA,
+                    'verificationId': verification_id,
                 },
             )
             ready = json.loads(path.read_text(encoding='utf-8'))['acknowledgements']['release-1']['kiosk']['ready']
             self.assertEqual(ready['releaseSha'], DESIRED_RELEASE_SHA)
+            self.assertEqual(ready['verificationId'], verification_id)
             self.assertEqual(ready['source'], 'controller')
             self.assertIsInstance(ready['acknowledgedAt'], str)
 
             # An accepted ready ACK cannot be rebound to a different release.
             before = path.read_bytes()
             completed = run(
-                'set-phase', '--run-id', 'release-1', '--phase', 'verifying',
+                'set-phase', '--run-id', 'release-1', '--client', 'kiosk', '--phase', 'verifying',
                 '--desired-release-sha', OTHER_RELEASE_SHA,
                 check=False,
             )
@@ -375,6 +409,7 @@ class DeployStatusStateTest(unittest.TestCase):
             repeated = run(
                 'ack', '--run-id', 'release-1', '--client', 'kiosk', '--phase', 'ready',
                 '--release-sha', DESIRED_RELEASE_SHA,
+                '--verification-id', verification_id,
             )
             self.assertEqual(json.loads(repeated.stdout), json.loads(acknowledged.stdout))
             repeated_ready = json.loads(
@@ -394,6 +429,7 @@ class DeployStatusStateTest(unittest.TestCase):
             completed = run(
                 'ack', '--run-id', 'release-1', '--client', 'kiosk', '--phase', 'ready',
                 '--release-sha', DESIRED_RELEASE_SHA,
+                '--verification-id', verification_id,
                 check=False,
             )
             self.assertNotEqual(completed.returncode, 0)
@@ -403,10 +439,12 @@ class DeployStatusStateTest(unittest.TestCase):
             # previous ready record must not satisfy it without a fresh ACK.
             run('put', '--run-id', 'release-1', '--clients', 'kiosk', '--terminal-type', 'kiosk')
             run(
-                'set-phase', '--run-id', 'release-1', '--phase', 'verifying',
+                'set-phase', '--run-id', 'release-1', '--client', 'kiosk', '--phase', 'verifying',
                 '--desired-release-sha', DESIRED_RELEASE_SHA,
             )
             retried = json.loads(path.read_text(encoding='utf-8'))
+            retried_verification_id = retried['kioskByClient']['kiosk']['verificationId']
+            self.assertNotEqual(retried_verification_id, verification_id)
             self.assertNotIn(
                 'ready',
                 retried.get('acknowledgements', {}).get('release-1', {}).get('kiosk', {}),
@@ -414,8 +452,165 @@ class DeployStatusStateTest(unittest.TestCase):
             fresh = run(
                 'ack', '--run-id', 'release-1', '--client', 'kiosk', '--phase', 'ready',
                 '--release-sha', DESIRED_RELEASE_SHA,
+                '--verification-id', retried_verification_id,
             )
             self.assertEqual(json.loads(fresh.stdout)['releaseSha'], DESIRED_RELEASE_SHA)
+
+    def test_rollback_verification_rebinds_sha_without_exposing_the_client(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'status.json'
+
+            def run(*args, check=True):
+                return subprocess.run(
+                    ['python3', str(SCRIPT), '--file', str(path), *args],
+                    check=check,
+                    text=True,
+                    capture_output=True,
+                )
+
+            run('put', '--run-id', 'release-1', '--clients', 'signage', '--terminal-type', 'signage')
+            run(
+                'set-phase', '--run-id', 'release-1', '--client', 'signage',
+                '--phase', 'deploying',
+            )
+            run(
+                'set-phase', '--run-id', 'release-1', '--client', 'signage',
+                '--phase', 'verifying', '--desired-release-sha', DESIRED_RELEASE_SHA,
+            )
+            forward_verification_id = json.loads(
+                path.read_text(encoding='utf-8')
+            )['kioskByClient']['signage']['verificationId']
+            run(
+                'ack', '--run-id', 'release-1', '--client', 'signage',
+                '--phase', 'ready', '--release-sha', DESIRED_RELEASE_SHA,
+                '--verification-id', forward_verification_id,
+            )
+
+            run(
+                'set-phase', '--run-id', 'release-1', '--client', 'signage',
+                '--phase', 'verifying', '--desired-release-sha', OTHER_RELEASE_SHA,
+                '--rollback',
+            )
+            state = json.loads(path.read_text(encoding='utf-8'))
+            entry = state['kioskByClient']['signage']
+            self.assertTrue(entry['maintenance'])
+            self.assertEqual(entry['phase'], 'verifying')
+            self.assertEqual(entry['verificationMode'], 'rollback')
+            self.assertEqual(entry['desiredReleaseSha'], OTHER_RELEASE_SHA)
+            rollback_verification_id = entry['verificationId']
+            self.assertNotEqual(rollback_verification_id, forward_verification_id)
+            self.assertNotIn(
+                'ready',
+                state.get('acknowledgements', {}).get('release-1', {}).get('signage', {}),
+            )
+
+            # Once rollback verification is active, its mode, SHA and nonce
+            # are immutable. A delayed forward command or a second rollback
+            # targeting another SHA must be a byte-preserving failure.
+            immutable_rollback = path.read_bytes()
+            for arguments in (
+                (
+                    'set-phase', '--run-id', 'release-1', '--client', 'signage',
+                    '--phase', 'verifying', '--desired-release-sha', OTHER_RELEASE_SHA,
+                ),
+                (
+                    'set-phase', '--run-id', 'release-1', '--client', 'signage',
+                    '--phase', 'verifying', '--desired-release-sha', DESIRED_RELEASE_SHA,
+                    '--rollback',
+                ),
+            ):
+                rejected_rebind = run(*arguments, check=False)
+                self.assertNotEqual(rejected_rebind.returncode, 0)
+                self.assertEqual(path.read_bytes(), immutable_rollback)
+
+            # Retrying the exact rollback command is idempotent and preserves
+            # the active challenge.
+            run(
+                'set-phase', '--run-id', 'release-1', '--client', 'signage',
+                '--phase', 'verifying', '--desired-release-sha', OTHER_RELEASE_SHA,
+                '--rollback',
+            )
+            self.assertEqual(path.read_bytes(), immutable_rollback)
+
+            before = path.read_bytes()
+            rejected = run(
+                'ack', '--run-id', 'release-1', '--client', 'signage',
+                '--phase', 'ready', '--release-sha', DESIRED_RELEASE_SHA,
+                '--verification-id', rollback_verification_id,
+                check=False,
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertEqual(path.read_bytes(), before)
+            delayed_forward = run(
+                'ack', '--run-id', 'release-1', '--client', 'signage',
+                '--phase', 'ready', '--release-sha', OTHER_RELEASE_SHA,
+                '--verification-id', forward_verification_id,
+                check=False,
+            )
+            self.assertNotEqual(delayed_forward.returncode, 0)
+            self.assertEqual(path.read_bytes(), before)
+            accepted = run(
+                'ack', '--run-id', 'release-1', '--client', 'signage',
+                '--phase', 'ready', '--release-sha', OTHER_RELEASE_SHA,
+                '--verification-id', rollback_verification_id,
+            )
+            self.assertEqual(json.loads(accepted.stdout)['releaseSha'], OTHER_RELEASE_SHA)
+
+            # Kiosk rollback can target the same Pi5 Web SHA as the failed
+            # forward cycle. The explicit mode change must still invalidate
+            # the former ACK so the browser proves readiness again.
+            run('put', '--run-id', 'release-3', '--clients', 'kiosk', '--terminal-type', 'kiosk')
+            run(
+                'set-phase', '--run-id', 'release-3', '--client', 'kiosk',
+                '--phase', 'deploying',
+            )
+            run(
+                'set-phase', '--run-id', 'release-3', '--client', 'kiosk',
+                '--phase', 'verifying', '--desired-release-sha', DESIRED_RELEASE_SHA,
+            )
+            kiosk_forward_id = json.loads(
+                path.read_text(encoding='utf-8')
+            )['kioskByClient']['kiosk']['verificationId']
+            run(
+                'ack', '--run-id', 'release-3', '--client', 'kiosk',
+                '--phase', 'ready', '--release-sha', DESIRED_RELEASE_SHA,
+                '--verification-id', kiosk_forward_id,
+            )
+            run(
+                'set-phase', '--run-id', 'release-3', '--client', 'kiosk',
+                '--phase', 'verifying', '--desired-release-sha', DESIRED_RELEASE_SHA,
+                '--rollback',
+            )
+            same_sha_rollback = json.loads(path.read_text(encoding='utf-8'))
+            self.assertEqual(
+                same_sha_rollback['kioskByClient']['kiosk']['verificationMode'],
+                'rollback',
+            )
+            kiosk_rollback_id = same_sha_rollback['kioskByClient']['kiosk']['verificationId']
+            self.assertNotEqual(kiosk_rollback_id, kiosk_forward_id)
+            self.assertNotIn(
+                'ready',
+                same_sha_rollback.get('acknowledgements', {}).get('release-3', {}).get('kiosk', {}),
+            )
+            before = path.read_bytes()
+            delayed_forward = run(
+                'ack', '--run-id', 'release-3', '--client', 'kiosk',
+                '--phase', 'ready', '--release-sha', DESIRED_RELEASE_SHA,
+                '--verification-id', kiosk_forward_id,
+                check=False,
+            )
+            self.assertNotEqual(delayed_forward.returncode, 0)
+            self.assertEqual(path.read_bytes(), before)
+
+            run('put', '--run-id', 'release-2', '--clients', 'pending', '--terminal-type', 'signage')
+            before = path.read_bytes()
+            rejected = run(
+                'set-phase', '--run-id', 'release-2', '--client', 'pending',
+                '--phase', 'verifying', '--desired-release-sha', OTHER_RELEASE_SHA,
+                '--rollback', check=False,
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertEqual(path.read_bytes(), before)
 
     def test_canary_approval_requires_pending_gate_and_never_uses_generic_ack(self):
         with tempfile.TemporaryDirectory() as directory:

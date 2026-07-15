@@ -10,6 +10,13 @@ ORCHESTRATION_GUARD="${ROOT_DIR}/infrastructure/ansible/tasks/assert-release-orc
 SERVER_DEFAULTS="${ROOT_DIR}/infrastructure/ansible/roles/server/defaults/main.yml"
 SERVER_TASKS="${ROOT_DIR}/infrastructure/ansible/roles/server/tasks/main.yml"
 SERVER_HANDLERS="${ROOT_DIR}/infrastructure/ansible/roles/server/handlers/main.yml"
+UPDATE_CLIENTS_CORE="${ROOT_DIR}/infrastructure/ansible/tasks/update-clients-core.yml"
+
+if grep -Eq 'status_code:[[:space:]]*\[[^]]*401|until:.*401|failed_when:[[:space:]]*false.*401' \
+  "${UPDATE_CLIENTS_CORE}"; then
+  echo "[ERROR] terminal endpoint health must fail closed on HTTP 401" >&2
+  exit 1
+fi
 
 command -v ansible-inventory >/dev/null 2>&1 || {
   echo "[ERROR] ansible-inventory is required" >&2

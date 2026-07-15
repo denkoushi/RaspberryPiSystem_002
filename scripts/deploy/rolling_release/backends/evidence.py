@@ -16,6 +16,10 @@ class Runtime(Protocol):
 
     def remote_previous_sha(self, inventory: str, host: str) -> str: ...
 
+    def probe_terminal_identity(
+        self, inventory: str, host: str, client_id: str
+    ) -> dict[str, Any]: ...
+
     def phase3_status(self) -> dict[str, Any]: ...
 
     def normalized_pi5_phase3_state(self, phase3: dict[str, Any]) -> bool: ...
@@ -85,6 +89,7 @@ def observe_terminal(
     inventory: str,
     host: str,
     role: str,
+    client_id: str,
     *,
     runtime: Runtime,
 ) -> dict[str, Any]:
@@ -94,9 +99,20 @@ def observe_terminal(
     if not runtime.FULL_SHA_RE.fullmatch(sha):
         raise RuntimeError(f"terminal HEAD is not immutable: {host}")
     services = (
-        ["kiosk-browser.service", "status-agent.timer"]
+        [
+            "lightdm.service",
+            "kiosk-browser.service",
+            "status-agent.timer",
+        ]
         if role == "kiosk"
-        else ["signage-lite.service", "status-agent.timer"]
+        else [
+            "lightdm.service",
+            "signage-lite.service",
+            "signage-lite-update.timer",
+            "signage-lite-watchdog.timer",
+            "signage-daily-reboot.timer",
+            "status-agent.timer",
+        ]
     )
     # systemctl returns success for a multi-unit query when at least one unit
     # is active. Probe each required unit independently so either failure
@@ -117,7 +133,35 @@ def observe_terminal(
             cwd=runtime.ANSIBLE_DIRECTORY,
             capture=True,
         )
-    return {"currentSha": sha, "services": services}
+    # status-agent.service is Type=oneshot and normally inactive after a
+    # successful run. Its last invocation must nevertheless have succeeded;
+    # the active timer alone is insufficient terminal-health evidence.
+    runtime.run(
+        [
+            "ansible",
+            "-i",
+            inventory,
+            host,
+            "-b",
+            "-m",
+            "shell",
+            "-a",
+            'test "$(systemctl show --property=Result --value '
+            'status-agent.service)" = success',
+        ],
+        cwd=runtime.ANSIBLE_DIRECTORY,
+        capture=True,
+    )
+    identity = runtime.probe_terminal_identity(inventory, host, client_id)
+    if identity != {"authenticated": True, "statusClientId": client_id}:
+        raise RuntimeError(f"terminal identity is not authenticated: {host}")
+    return {
+        "currentSha": sha,
+        "services": services,
+        "oneshotServices": ["status-agent.service"],
+        "authenticatedEndpoint": True,
+        "statusClientId": client_id,
+    }
 
 
 def observe_pi5(

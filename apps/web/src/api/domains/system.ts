@@ -31,6 +31,8 @@ export interface DeployStatus {
   phase?: 'preparing' | 'deploying' | 'verifying' | 'failed';
   startedAt?: string;
   desiredReleaseSha?: string;
+  verificationCycle?: 'release' | 'rollback';
+  verificationId?: string;
   preNotice?: {
     scheduledAt?: string;
   };
@@ -44,6 +46,7 @@ export interface DeployAcknowledgement {
   phase: DeployAcknowledgementPhase;
   scheduledAt?: string;
   releaseSha?: string;
+  verificationId?: string;
 }
 
 export async function getDeployStatus(): Promise<DeployStatus> {
@@ -54,7 +57,8 @@ export async function getDeployStatus(): Promise<DeployStatus> {
 export function acknowledgeDeployStatus(
   runId: string,
   phase: 'ready',
-  releaseSha: string
+  releaseSha: string,
+  verificationId: string
 ): Promise<DeployAcknowledgement>;
 export function acknowledgeDeployStatus(
   runId: string,
@@ -63,12 +67,13 @@ export function acknowledgeDeployStatus(
 export async function acknowledgeDeployStatus(
   runId: string,
   phase: DeployAcknowledgementPhase = 'maintenance',
-  releaseSha?: string
+  releaseSha?: string,
+  verificationId?: string
 ): Promise<DeployAcknowledgement> {
   const { data } = await api.post<DeployAcknowledgement>('/system/deploy-status/ack', {
     runId,
     phase,
-    ...(phase === 'ready' ? { releaseSha } : {})
+    ...(phase === 'ready' ? { releaseSha, verificationId } : {})
   });
   return data;
 }

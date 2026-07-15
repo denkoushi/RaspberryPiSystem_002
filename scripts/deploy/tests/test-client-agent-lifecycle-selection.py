@@ -9,6 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 CLIENT_TASKS = ROOT / "infrastructure/ansible/roles/client/tasks"
+TALKPLAZA_INVENTORY = ROOT / "infrastructure/ansible/inventory-talkplaza.yml"
 
 
 def task_block(text: str, name: str) -> str:
@@ -260,6 +261,36 @@ def assert_agent_scope_and_health_contracts() -> None:
     if "--build" in barcode_handler:
         raise AssertionError("barcode config handler must not rebuild the image")
 
+    health = task_block(main, "Verify restarted client services and timers are healthy")
+    require("status-agent.service", health, "status-agent oneshot health")
+    require(
+        'systemctl show --property=Result --value "${unit}"',
+        health,
+        "status-agent oneshot health",
+    )
+    require('== "success"', health, "status-agent oneshot health")
+    require(
+        "select('match', '\\\\.(service|timer)$')",
+        health,
+        "client service and timer health",
+    )
+    if health.index('[[ "${unit}" == "status-agent.service" ]]') >= health.index(
+        'systemctl is-active --quiet "${unit}"'
+    ):
+        raise AssertionError("status-agent.service must bypass is-active before the generic health gate")
+
+
+def assert_talkplaza_kiosk_credential_binding() -> None:
+    inventory = TALKPLAZA_INVENTORY.read_text(encoding="utf-8")
+    kiosk_start = inventory.index("                talkplaza-pi4:\n")
+    signage_start = inventory.index("                talkplaza-signage01:\n")
+    kiosk = inventory[kiosk_start:signage_start]
+    require(
+        'kiosk_url: "{{ kiosk_full_url }}?clientKey={{ status_agent_client_key }}"',
+        kiosk,
+        "Talkplaza kiosk URL",
+    )
+
 
 def command_template(name: str) -> str:
     path = ROOT / "infrastructure/ansible/roles/client/tasks" / name
@@ -308,6 +339,7 @@ def main() -> None:
     assert_repo_revision_is_readable_before_classification()
     assert_pre_sync_diff_fixture()
     assert_agent_scope_and_health_contracts()
+    assert_talkplaza_kiosk_credential_binding()
     for filename, agent in (
         ("nfc-agent-lifecycle.yml", "nfc_agent"),
         ("barcode-agent-lifecycle.yml", "barcode_agent"),

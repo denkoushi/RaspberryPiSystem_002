@@ -33,7 +33,17 @@ common_env=(
 sha="$(git -C "$ROOT" rev-parse HEAD)"
 output="$(env "${common_env[@]}" "$SCRIPT" prepare --ref "$sha")"
 assert_contains "$output" "candidate prepared"
+assert_contains "$output" "VITE_RELEASE_SHA=$sha"
 [[ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["event"])' "$TMP/state.json")" == prepared ]] || fail "state is not prepared"
+
+grep -Fq 'VITE_RELEASE_SHA: ${VITE_RELEASE_SHA:-}' \
+  "$ROOT/infrastructure/docker/docker-compose.server.yml" \
+  || fail "server Compose does not forward the immutable Web release SHA"
+grep -Fq 'ARG VITE_RELEASE_SHA=' "$ROOT/infrastructure/docker/Dockerfile.web" \
+  || fail "Web image does not declare the late release SHA build argument"
+grep -Fq 'VITE_RELEASE_SHA="$VITE_RELEASE_SHA" pnpm run build' \
+  "$ROOT/infrastructure/docker/Dockerfile.web" \
+  || fail "Web image does not bind its release SHA to the Vite build"
 
 status="$(env "${common_env[@]}" "$SCRIPT" status)"
 assert_contains "$status" '"event": "prepared"'

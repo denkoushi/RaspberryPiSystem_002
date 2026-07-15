@@ -23,6 +23,7 @@ import {
   KIOSK_IMMERSIVE_HEADER_VISIBLE_TRANSFORM_CLASS
 } from '../features/kiosk/kioskImmersiveHeaderChrome';
 import { usesKioskImmersiveLayout } from '../features/kiosk/kioskImmersiveLayoutPolicy';
+import { resolveKioskReadyChallenge } from '../features/kiosk/kioskReleaseIdentity';
 import { useKioskBottomCenterHeaderReveal } from '../hooks/useKioskBottomCenterHeaderReveal';
 
 export function KioskLayout() {
@@ -31,12 +32,18 @@ export function KioskLayout() {
   const selfClientId = callTargetsQuery.data?.selfClientId ?? '';
   const { data: kioskConfig } = useKioskConfig();
   const { data: deployStatus } = useDeployStatus();
+  const deployRunId = deployStatus?.runId;
+  const deployIsMaintenance = deployStatus?.isMaintenance === true;
+  const deployPhase = deployStatus?.phase;
+  const deployDesiredReleaseSha = deployStatus?.desiredReleaseSha;
+  const deployVerificationId = deployStatus?.verificationId;
   const location = useLocation();
   const [showSupportModal, setShowSupportModal] = useState(false);
   const acknowledgedRunIdRef = useRef<Record<'notice' | 'maintenance', string | null>>({
     notice: null,
     maintenance: null
   });
+  const acknowledgedReadyRef = useRef<string | null>(null);
   const [noticeScheduledAt, setNoticeScheduledAt] = useState<{ runId: string; scheduledAt: string } | null>(null);
   const immersiveKioskLayout = usesKioskImmersiveLayout(location.pathname);
   const headerReveal = useKioskBottomCenterHeaderReveal(immersiveKioskLayout);
@@ -80,6 +87,49 @@ export function KioskLayout() {
         acknowledgedRunIdRef.current.notice = null;
       });
   }, [deployStatus?.preNotice, deployStatus?.runId]);
+
+  useEffect(() => {
+    const challenge = resolveKioskReadyChallenge({
+      isMaintenance: deployIsMaintenance,
+      phase: deployPhase,
+      desiredReleaseSha: deployDesiredReleaseSha,
+      verificationId: deployVerificationId
+    });
+    const runId = deployRunId;
+    if (!runId || !challenge) {
+      acknowledgedReadyRef.current = null;
+      return;
+    }
+    const { releaseSha, verificationId } = challenge;
+    const acknowledgementKey = `${runId}:${verificationId}:${releaseSha}`;
+    if (acknowledgedReadyRef.current === acknowledgementKey) return;
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let retryAttempt = 0;
+    const acknowledge = () => {
+      if (cancelled) return;
+      acknowledgedReadyRef.current = acknowledgementKey;
+      void acknowledgeDeployStatus(runId, 'ready', releaseSha, verificationId)
+        .catch(() => {
+          if (cancelled || acknowledgedReadyRef.current !== acknowledgementKey) return;
+          acknowledgedReadyRef.current = null;
+          const delay = Math.min(1000 * (2 ** retryAttempt), 10_000);
+          retryAttempt += 1;
+          retryTimer = setTimeout(acknowledge, delay);
+        });
+    };
+    acknowledge();
+    return () => {
+      cancelled = true;
+      if (retryTimer !== undefined) clearTimeout(retryTimer);
+    };
+  }, [
+    deployDesiredReleaseSha,
+    deployIsMaintenance,
+    deployPhase,
+    deployRunId,
+    deployVerificationId
+  ]);
 
   // メンテナンス中はメンテナンス画面を表示
   if (deployStatus?.isMaintenance) {

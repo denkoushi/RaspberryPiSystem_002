@@ -13,6 +13,7 @@ from scripts.deploy.rolling_release.backends import ansible
 
 class Runtime:
     ANSIBLE_DIRECTORY = Path('/ansible')
+    PROJECT = Path('/project')
     def __init__(self, result):
         self.result = result
         self.calls = []
@@ -100,6 +101,62 @@ class ServerConfigConvergenceTest(unittest.TestCase):
         self.assertEqual(options["env"]["ANSIBLE_REPO_VERSION"], "a" * 40)
         self.assertEqual(options["env"]["RUN_ID"], "run-1")
         self.assertEqual(options["env"]["RELEASE_ORCHESTRATED"], "1")
+
+
+class TerminalHealthAdapterTest(unittest.TestCase):
+    def test_identity_probe_executes_on_terminal_without_key_in_command(self):
+        runtime = Runtime(
+            'host | CHANGED => {"stdout":"TERMINAL_IDENTITY_OK:terminal-a",'
+            '"stdout_lines":["TERMINAL_IDENTITY_OK:terminal-a"]}\n'
+        )
+
+        result = ansible.probe_terminal_identity(
+            "inventory.yml", "kiosk-a", "terminal-a", runtime=runtime
+        )
+
+        self.assertEqual(
+            result, {"authenticated": True, "statusClientId": "terminal-a"}
+        )
+        command, options = runtime.calls[0]
+        self.assertEqual(command[0:5], ["ansible", "-i", "inventory.yml", "kiosk-a", "-b"])
+        self.assertEqual(command[5:7], ["-m", "script"])
+        self.assertIn("/project/scripts/deploy/terminal-identity-probe.py", command[-1])
+        self.assertIn("--expected-client-id terminal-a", command[-1])
+        self.assertNotIn("CLIENT_KEY", " ".join(command))
+        self.assertTrue(options["capture"])
+
+    def test_wrong_or_missing_identity_marker_fails_closed(self):
+        for output in ("", "TERMINAL_IDENTITY_OK:other\n"):
+            with self.subTest(output=output):
+                with self.assertRaisesRegex(RuntimeError, "could not be verified"):
+                    ansible.probe_terminal_identity(
+                        "inventory.yml",
+                        "kiosk-a",
+                        "terminal-a",
+                        runtime=Runtime(output),
+                    )
+
+    def test_signage_ready_check_starts_the_oneshot_explicitly(self):
+        runtime = Runtime("")
+        ansible.trigger_signage_ready_check(
+            "inventory.yml", "signage-a", runtime=runtime
+        )
+        command, options = runtime.calls[0]
+        self.assertEqual(
+            command,
+            [
+                "ansible",
+                "-i",
+                "inventory.yml",
+                "signage-a",
+                "-b",
+                "-m",
+                "command",
+                "-a",
+                "systemctl start signage-lite-update.service",
+            ],
+        )
+        self.assertEqual(options["cwd"], runtime.ANSIBLE_DIRECTORY)
 
 
 class AnsibleConfigResolutionTest(unittest.TestCase):

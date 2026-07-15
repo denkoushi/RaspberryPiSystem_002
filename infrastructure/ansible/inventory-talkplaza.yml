@@ -57,7 +57,7 @@ all:
                   status_agent_client_id: talkplaza-pi4-kiosk01
                   status_agent_client_key: "{{ vault_talkplaza_pi4_status_agent_client_key | default('client-key-talkplaza-pi4-kiosk01') }}"
                   status_agent_location: "トークプラザ - Pi4キオスク01"
-                  kiosk_url: "{{ kiosk_full_url }}"
+                  kiosk_url: "{{ kiosk_full_url }}?clientKey={{ status_agent_client_key }}"
                   manage_kiosk_browser: true
                   services_to_restart:
                     - kiosk-browser.service

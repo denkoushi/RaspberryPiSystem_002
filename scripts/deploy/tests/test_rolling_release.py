@@ -23,6 +23,8 @@ SPEC.loader.exec_module(MODULE)
 
 TARGET_SHA = 'a' * 40
 BASE_SHA = 'b' * 40
+FORWARD_VERIFICATION_ID = '1' * 32
+ROLLBACK_VERIFICATION_ID = '2' * 32
 
 
 def _verified_fleet_record(role, sha=BASE_SHA):
@@ -115,6 +117,29 @@ def fleet_execution_contract(targets, classification, inventory):
         'configDigest': 'sha256:' + 'e' * 64,
         'migrationDigest': 'sha256:' + 'f' * 64,
     }
+    terminal_type_by_client = {
+        target['clientId']: target['terminalType'] for target in terminal_targets
+    }
+    kiosk_ready_sha = (
+        TARGET_SHA
+        if classification is None or classification.get('server') is True
+        else BASE_SHA
+    )
+
+    def acknowledgement_record(_run_id, client_id):
+        release_sha = (
+            TARGET_SHA
+            if terminal_type_by_client[client_id] == 'signage'
+            else kiosk_ready_sha
+        )
+        return {
+            'ready': {
+                'acknowledgedAt': '2026-07-12T00:00:00Z',
+                'releaseSha': release_sha,
+                'verificationId': FORWARD_VERIFICATION_ID,
+            }
+        }
+
     ensure = Mock()
     with ExitStack() as stack:
         stack.enter_context(
@@ -144,12 +169,29 @@ def fleet_execution_contract(targets, classification, inventory):
             patch.object(
                 MODULE,
                 'observe_terminal_evidence',
-                side_effect=lambda _inventory, _host, _role: {
+                side_effect=lambda _inventory, _host, _role, client_id: {
                     'currentSha': TARGET_SHA,
                     'services': ['required.service'],
+                    'authenticatedEndpoint': True,
+                    'statusClientId': client_id,
                 },
             )
         )
+        stack.enter_context(
+            patch.object(
+                MODULE,
+                'acknowledgement_record',
+                side_effect=acknowledgement_record,
+            )
+        )
+        stack.enter_context(
+            patch.object(
+                MODULE,
+                'active_verification_id',
+                return_value=FORWARD_VERIFICATION_ID,
+            )
+        )
+        stack.enter_context(patch.object(MODULE, 'trigger_signage_ready_check'))
         stack.enter_context(patch.object(MODULE, 'record_pi5_release_current'))
         yield ensure
 
@@ -393,24 +435,134 @@ class Pi5StabilityMonitorTest(unittest.TestCase):
 
 
 class RollbackStateTest(unittest.TestCase):
-    def test_successful_rollback_clears_only_the_recovered_terminal(self):
+    def test_successful_rollback_waits_for_coordinator_health_before_cleanup(self):
         target = {'state': 'rolling-back', 'previousSha': 'old-sha'}
         target_spec = {'host': 'kiosk-a', 'clientId': 'client-a', 'terminalType': 'kiosk'}
         with patch.object(MODULE, 'playbook') as playbook, patch.object(MODULE, 'state_command') as command:
             self.assertTrue(MODULE.rollback_terminal('inventory.yml', target_spec, target, 'run-1'))
         playbook.assert_called_once_with('inventory.yml', 'kiosk-a', 'old-sha', 'run-1', rollback=True)
-        command.assert_called_once_with('remove-client', '--run-id', 'run-1', '--client', 'client-a')
+        command.assert_not_called()
         self.assertEqual(target['rollback'], 'success')
-        self.assertIn('maintenanceClearedAt', target)
+        self.assertNotIn('maintenanceClearedAt', target)
 
     def test_failed_rollback_keeps_only_the_failed_terminal_in_maintenance(self):
         target = {'state': 'rolling-back', 'previousSha': 'old-sha'}
         target_spec = {'host': 'kiosk-a', 'clientId': 'client-a', 'terminalType': 'kiosk'}
         with patch.object(MODULE, 'playbook', side_effect=RuntimeError('rollback unavailable')), patch.object(MODULE, 'state_command') as command:
             self.assertFalse(MODULE.rollback_terminal('inventory.yml', target_spec, target, 'run-1'))
-        command.assert_called_once_with('set-phase', '--run-id', 'run-1', '--phase', 'failed')
+        command.assert_not_called()
         self.assertEqual(target['rollback'], 'failed: rollback unavailable')
         self.assertNotIn('maintenanceClearedAt', target)
+
+
+class ReadyAcknowledgementWaitTest(unittest.TestCase):
+    def test_rollback_wait_ignores_cancellation_but_keeps_exact_sha_binding(self):
+        release_sha = 'a' * 40
+        with patch.object(MODULE.time, 'monotonic', side_effect=[0, 1]), \
+                patch.object(MODULE, '_cancellation_checkpoint', side_effect=AssertionError('rollback wait was cancelled')) as checkpoint, \
+                patch.object(MODULE, 'acknowledgement_received', return_value=True) as received:
+            self.assertTrue(
+                MODULE.wait_for_ack(
+                    'run-1',
+                    'client-a',
+                    phase='ready',
+                    release_sha=release_sha,
+                    verification_id=ROLLBACK_VERIFICATION_ID,
+                    cancellable=False,
+                )
+            )
+        checkpoint.assert_not_called()
+        received.assert_called_once_with(
+            'run-1', 'client-a', phase='ready', release_sha=release_sha,
+            verification_id=ROLLBACK_VERIFICATION_ID,
+        )
+
+    def test_ready_wait_rejects_a_missing_or_malformed_binding_before_polling(self):
+        invalid_bindings = (
+            (None, FORWARD_VERIFICATION_ID),
+            ('short', FORWARD_VERIFICATION_ID),
+            ('A' * 40, FORWARD_VERIFICATION_ID),
+            ('a' * 40, None),
+            ('a' * 40, 'short'),
+            ('a' * 40, 'F' * 32),
+        )
+        for release_sha, verification_id in invalid_bindings:
+            with self.subTest(
+                release_sha=release_sha, verification_id=verification_id
+            ), patch.object(
+                MODULE.time, 'monotonic'
+            ) as monotonic:
+                with self.assertRaisesRegex(ValueError, 'verification ID'):
+                    MODULE.wait_for_ack(
+                        'run-1',
+                        'client-a',
+                        phase='ready',
+                        release_sha=release_sha,
+                        verification_id=verification_id,
+                    )
+                monotonic.assert_not_called()
+
+    def test_ready_ack_rejects_a_stale_cycle_for_the_same_release_sha(self):
+        release_sha = 'a' * 40
+        stale = {
+            'ready': {
+                'acknowledgedAt': '2026-07-15T00:00:00Z',
+                'releaseSha': release_sha,
+                'verificationId': FORWARD_VERIFICATION_ID,
+            }
+        }
+        with patch.object(MODULE, 'acknowledgement_record', return_value=stale):
+            self.assertFalse(
+                MODULE.acknowledgement_received(
+                    'run-1',
+                    'client-a',
+                    phase='ready',
+                    release_sha=release_sha,
+                    verification_id=ROLLBACK_VERIFICATION_ID,
+                )
+            )
+
+    def test_active_verification_id_requires_the_exact_lowercase_challenge(self):
+        release_sha = 'a' * 40
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Path(temporary)
+            config = project / 'config'
+            config.mkdir()
+            status = config / 'deploy-status.json'
+            entry = {
+                'maintenance': True,
+                'runId': 'run-1',
+                'phase': 'verifying',
+                'desiredReleaseSha': release_sha,
+                'verificationMode': 'rollback',
+                'verificationId': ROLLBACK_VERIFICATION_ID,
+            }
+            status.write_text(
+                json.dumps({'kioskByClient': {'client-a': entry}}),
+                encoding='utf-8',
+            )
+            with patch.object(MODULE, 'PROJECT', project):
+                self.assertEqual(
+                    MODULE.active_verification_id(
+                        'run-1',
+                        'client-a',
+                        release_sha=release_sha,
+                        rollback=True,
+                    ),
+                    ROLLBACK_VERIFICATION_ID,
+                )
+                entry['verificationId'] = 'F' * 32
+                status.write_text(
+                    json.dumps({'kioskByClient': {'client-a': entry}}),
+                    encoding='utf-8',
+                )
+                with self.assertRaisesRegex(RuntimeError, 'does not match'):
+                    MODULE.active_verification_id(
+                        'run-1',
+                        'client-a',
+                        release_sha=release_sha,
+                        rollback=True,
+                    )
 
 
 class TerminalNoticeTest(unittest.TestCase):

@@ -4,6 +4,7 @@ import fcntl
 import json
 import os
 import re
+import secrets
 import stat
 import tempfile
 import time
@@ -13,6 +14,7 @@ from pathlib import Path
 
 OPERATOR_CANARY_APPROVAL_CLIENT = 'operator-canary-approval'
 FULL_RELEASE_SHA_RE = re.compile(r'[0-9a-f]{40}')
+VERIFICATION_ID_RE = re.compile(r'[0-9a-f]{32}')
 
 
 def now():
@@ -30,6 +32,10 @@ def notice_schedule(timestamp, duration_seconds):
 
 def is_full_release_sha(value):
     return isinstance(value, str) and FULL_RELEASE_SHA_RE.fullmatch(value) is not None
+
+
+def is_verification_id(value):
+    return isinstance(value, str) and VERIFICATION_ID_RE.fullmatch(value) is not None
 
 
 def acknowledgements_for(data, run_id, client):
@@ -173,8 +179,10 @@ def main():
     notice.add_argument('--duration-seconds', type=int, required=True)
     phase = sub.add_parser('set-phase')
     phase.add_argument('--run-id', required=True)
+    phase.add_argument('--client')
     phase.add_argument('--phase', required=True, choices=['preparing', 'deploying', 'verifying', 'failed'])
     phase.add_argument('--desired-release-sha')
+    phase.add_argument('--rollback', action='store_true')
     remove = sub.add_parser('remove-run')
     remove.add_argument('--run-id', required=True)
     remove_client = sub.add_parser('remove-client')
@@ -185,6 +193,7 @@ def main():
     acknowledge.add_argument('--client', required=True)
     acknowledge.add_argument('--phase', choices=['notice', 'maintenance', 'ready'], default='maintenance')
     acknowledge.add_argument('--release-sha')
+    acknowledge.add_argument('--verification-id')
     approve = sub.add_parser('approve')
     approve.add_argument('--run-id', required=True)
     approve.add_argument('--client', required=True)
@@ -244,11 +253,18 @@ def main():
                     **desired_release,
                 }
         elif args.command == 'set-phase':
+            if args.rollback and args.phase != 'verifying':
+                raise ValueError('rollback verification is only valid for the verifying phase')
+            if args.phase == 'verifying' and not args.client:
+                raise ValueError('verifying phase requires an exact client')
             matching_entries = [
                 (client, entry)
                 for client, entry in entries.items()
                 if entry.get('runId') == args.run_id
+                and (args.client is None or client == args.client)
             ]
+            if args.client is not None and not matching_entries:
+                raise ValueError('phase update does not match an active terminal entry')
             if args.phase == 'verifying':
                 if not is_full_release_sha(args.desired_release_sha):
                     raise ValueError('verifying phase requires a full lowercase desired release SHA')
@@ -256,13 +272,40 @@ def main():
                     raise ValueError('verifying phase does not match an active terminal entry')
                 run_acknowledgements = (data.get('acknowledgements') or {}).get(args.run_id) or {}
                 for client, entry in matching_entries:
+                    if (
+                        entry.get('phase') == 'verifying'
+                        and entry.get('verificationMode') == 'rollback'
+                        and (
+                            not args.rollback
+                            or entry.get('desiredReleaseSha') != args.desired_release_sha
+                        )
+                    ):
+                        raise ValueError('active rollback verification is immutable')
+                    if args.rollback and (
+                        entry.get('maintenance') is not True
+                        or entry.get('phase') not in {'deploying', 'verifying', 'failed'}
+                    ):
+                        raise ValueError('rollback verification does not match an active deployment')
                     existing_sha = entry.get('desiredReleaseSha')
-                    if existing_sha is not None and existing_sha != args.desired_release_sha:
+                    if (
+                        not args.rollback
+                        and existing_sha is not None
+                        and existing_sha != args.desired_release_sha
+                    ):
                         raise ValueError('desired release SHA is immutable for an active run')
                     ready = (run_acknowledgements.get(client) or {}).get('ready')
-                    if ready is not None and (
+                    same_active_verification = (
+                        not args.rollback
+                        and entry.get('phase') == 'verifying'
+                        and entry.get('maintenance') is True
+                        and entry.get('desiredReleaseSha') == args.desired_release_sha
+                        and entry.get('verificationMode') == 'release'
+                        and is_verification_id(entry.get('verificationId'))
+                    )
+                    if same_active_verification and ready is not None and (
                         not isinstance(ready, dict)
                         or ready.get('releaseSha') != args.desired_release_sha
+                        or ready.get('verificationId') != entry.get('verificationId')
                     ):
                         raise ValueError('stored ready acknowledgement conflicts with desired release SHA')
             elif args.desired_release_sha is not None:
@@ -273,6 +316,10 @@ def main():
                     and entry.get('phase') == 'verifying'
                     and entry.get('maintenance') is True
                     and entry.get('desiredReleaseSha') == args.desired_release_sha
+                    and entry.get('verificationMode') == (
+                        'rollback' if args.rollback else 'release'
+                    )
+                    and is_verification_id(entry.get('verificationId'))
                 )
                 if same_verification_cycle:
                     continue
@@ -299,6 +346,16 @@ def main():
                         if args.phase == 'verifying'
                         else {}
                     ),
+                    **(
+                        {'verificationMode': 'rollback' if args.rollback else 'release'}
+                        if args.phase == 'verifying'
+                        else {}
+                    ),
+                    **(
+                        {'verificationId': secrets.token_hex(16)}
+                        if args.phase == 'verifying'
+                        else {}
+                    ),
                 })
         elif args.command == 'ack':
             entry = entries.get(args.client)
@@ -318,19 +375,33 @@ def main():
             elif args.phase == 'ready':
                 if not is_full_release_sha(args.release_sha):
                     raise ValueError('ready acknowledgement requires a full lowercase release SHA')
+                if not is_verification_id(args.verification_id):
+                    raise ValueError('ready acknowledgement requires an exact verification ID')
                 if entry.get('maintenance') is not True or entry.get('phase') != 'verifying':
                     raise ValueError('ready acknowledgement does not match an active verifying entry')
                 desired_release_sha = entry.get('desiredReleaseSha')
                 if not is_full_release_sha(desired_release_sha) or args.release_sha != desired_release_sha:
                     raise ValueError('ready acknowledgement does not match the desired release SHA')
+                if args.verification_id != entry.get('verificationId'):
+                    raise ValueError('ready acknowledgement does not match the active verification cycle')
             acknowledgements, record = acknowledgements_for(data, args.run_id, args.client)
             record.setdefault(args.phase, {
                 'acknowledgedAt': timestamp,
                 'source': 'controller',
-                **({'releaseSha': args.release_sha} if args.phase == 'ready' else {}),
+                **(
+                    {
+                        'releaseSha': args.release_sha,
+                        'verificationId': args.verification_id,
+                    }
+                    if args.phase == 'ready'
+                    else {}
+                ),
             })
-            if args.phase == 'ready' and record[args.phase].get('releaseSha') != args.release_sha:
-                raise ValueError('stored ready acknowledgement does not match the desired release SHA')
+            if args.phase == 'ready' and (
+                record[args.phase].get('releaseSha') != args.release_sha
+                or record[args.phase].get('verificationId') != args.verification_id
+            ):
+                raise ValueError('stored ready acknowledgement does not match the active verification cycle')
             data['acknowledgements'] = acknowledgements
             output = json.dumps({
                 'acknowledged': True,
@@ -342,7 +413,10 @@ def main():
                     else {}
                 ),
                 **(
-                    {'releaseSha': record[args.phase]['releaseSha']}
+                    {
+                        'releaseSha': record[args.phase]['releaseSha'],
+                        'verificationId': record[args.phase]['verificationId'],
+                    }
                     if args.phase == 'ready'
                     else {}
                 ),

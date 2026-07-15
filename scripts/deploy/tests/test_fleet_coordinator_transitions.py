@@ -16,6 +16,8 @@ from rolling_release.cancellation import CancellationRequested  # noqa: E402
 
 OLD_SHA = "1" * 40
 NEW_SHA = "2" * 40
+FORWARD_VERIFICATION_ID = "a" * 32
+ROLLBACK_VERIFICATION_ID = "b" * 32
 UNSET = object()
 
 
@@ -94,6 +96,7 @@ class FakeReleaseState:
 
 class FakeRuntime:
     ANSIBLE_DIRECTORY = Path("/ansible")
+    READY_ACK_TIMEOUT_SECONDS = 90
 
     def __init__(self, *, fleet, hosts, plan, targets):
         self.events = []
@@ -117,6 +120,12 @@ class FakeRuntime:
         self.pi5_release_sha = None
         self.pi5_marker_sha = None
         self.cancel_at_finish = False
+        self.ready_acknowledgements = {}
+        self.ready_ack_error = None
+        self.ready_ack_release_override = None
+        self.ready_ack_verification_override = None
+        self.active_verification_ids = {}
+        self.fleet_verified_error_host = None
 
     def _snapshot(self):
         return copy.deepcopy(self.fleet)
@@ -171,6 +180,8 @@ class FakeRuntime:
         observation=None,
     ):
         self.events.append(f"fleet:verified:{host}:{current_sha}")
+        if host == self.fleet_verified_error_host:
+            raise RuntimeError("fleet persistence unavailable")
         prior = self.fleet["fleet"].get(host) or {}
         if previous_sha is UNSET:
             previous_sha = prior.get("currentSha") or prior.get("previousSha")
@@ -236,7 +247,7 @@ class FakeRuntime:
             "migrationDigest": "sha256:" + "d" * 64,
         }
 
-    def observe_terminal_evidence(self, _inventory, host, _role):
+    def observe_terminal_evidence(self, _inventory, host, _role, client_id):
         self.events.append(f"observe:terminal:{host}")
         if self.terminal_observation_error is not None:
             raise self.terminal_observation_error
@@ -245,7 +256,12 @@ class FakeRuntime:
             if any(event == f"rollback:{host}" for event in self.events)
             else self.deployed_sha.get(host, NEW_SHA)
         )
-        return {"currentSha": current, "services": ["required.service"]}
+        return {
+            "currentSha": current,
+            "services": ["required.service"],
+            "authenticatedEndpoint": True,
+            "statusClientId": client_id,
+        }
 
     def converge_server_config(self, _inventory, host, sha, _run_id):
         self.events.append(f"pi5:host-config:{host}:{sha}")
@@ -283,8 +299,47 @@ class FakeRuntime:
     def prestage_signage_maintenance(self, *_args):
         self.events.append("signage:prestage")
 
-    def wait_for_ack(self, *_args, **_kwargs):
+    def trigger_signage_ready_check(self, _inventory, host):
+        self.events.append(f"signage:ready-check:{host}")
+
+    def active_verification_id(
+        self, run_id, client_id, *, release_sha, rollback
+    ):
+        verification_id = (
+            ROLLBACK_VERIFICATION_ID if rollback else FORWARD_VERIFICATION_ID
+        )
+        self.active_verification_ids[(run_id, client_id)] = verification_id
+        self.events.append(
+            f"status:verification:{client_id}:{release_sha}:{verification_id}"
+        )
+        return verification_id
+
+    def wait_for_ack(self, run_id, client_id, *_args, **kwargs):
+        if kwargs.get("phase") == "ready":
+            if (
+                self.ready_ack_error is not None
+                and kwargs.get("cancellable", True)
+            ):
+                raise self.ready_ack_error
+            self.ready_acknowledgements[(run_id, client_id)] = {
+                "ready": {
+                    "acknowledgedAt": "2026-07-15T00:00:00Z",
+                    "releaseSha": (
+                        self.ready_ack_release_override
+                        or kwargs["release_sha"]
+                    ),
+                    "verificationId": (
+                        self.ready_ack_verification_override
+                        or kwargs["verification_id"]
+                    ),
+                }
+            }
         return True
+
+    def acknowledgement_record(self, run_id, client_id):
+        return copy.deepcopy(
+            self.ready_acknowledgements.get((run_id, client_id))
+        )
 
     def playbook(self, _inventory, host, sha, _run_id):
         self.events.append(f"playbook:{host}")
@@ -379,7 +434,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
     def test_seed_promotes_only_successful_live_observation(self):
         hosts = [
             {"host": "pi5", "role": "server"},
-            {"host": "kiosk-a", "role": "kiosk"},
+            {"host": "kiosk-a", "role": "kiosk", "clientId": "a"},
         ]
         runtime = FakeRuntime(fleet={}, hosts=hosts, plan={}, targets=[])
         original_observer = runtime.observe_terminal_evidence
@@ -413,7 +468,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
     def test_seed_never_repromotes_an_existing_authoritative_record(self):
         stale = host_record("kiosk", OLD_SHA)
         stale["desiredSha"] = NEW_SHA
-        hosts = [{"host": "kiosk-a", "role": "kiosk"}]
+        hosts = [{"host": "kiosk-a", "role": "kiosk", "clientId": "a"}]
         runtime = FakeRuntime(
             fleet={"kiosk-a": stale}, hosts=hosts, plan={}, targets=[]
         )
@@ -448,7 +503,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
                 "lastRunId": "failed-maintenance-run",
             }
         )
-        hosts = [{"host": "kiosk-a", "role": "kiosk"}]
+        hosts = [{"host": "kiosk-a", "role": "kiosk", "clientId": "a"}]
         runtime = FakeRuntime(
             fleet={"kiosk-a": unknown}, hosts=hosts, plan={}, targets=[]
         )
@@ -526,6 +581,16 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         )
         self.assertLess(
             runtime.events.index("playbook:kiosk-a"),
+            runtime.events.index(
+                "status:set-phase:--run-id:run-1:--client:a:--phase:verifying:"
+                f"--desired-release-sha:{NEW_SHA}"
+            ),
+        )
+        self.assertLess(
+            runtime.events.index(
+                "status:set-phase:--run-id:run-1:--client:a:--phase:verifying:"
+                f"--desired-release-sha:{NEW_SHA}"
+            ),
             runtime.events.index("observe:terminal:kiosk-a"),
         )
         self.assertLess(
@@ -541,6 +606,97 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             len(runtime.events) - 1,
         )
         self.assertEqual(runtime.fleet["fleet"]["kiosk-a"]["evidence"], "verified")
+        target_state = runtime.states[-1].target("kiosk-a")
+        self.assertEqual(target_state["readyReleaseSha"], NEW_SHA)
+        self.assertEqual(target_state["expectedReadySha"], NEW_SHA)
+        self.assertEqual(
+            target_state["expectedReadyVerificationId"],
+            FORWARD_VERIFICATION_ID,
+        )
+        self.assertEqual(
+            target_state["readyVerificationId"], FORWARD_VERIFICATION_ID
+        )
+
+    def test_terminal_only_kiosk_acks_the_verified_web_release(self):
+        terminal = {
+            "host": "kiosk-a",
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "a",
+        }
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", OLD_SHA),
+                "kiosk-a": host_record("kiosk", OLD_SHA),
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan={
+                "pi5Required": False,
+                "hosts": [
+                    decision("pi5", "server", targeted=False),
+                    decision("kiosk-a", "kiosk"),
+                ],
+            },
+            targets=[terminal],
+        )
+
+        self.assertEqual(
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            ),
+            0,
+        )
+
+        target = runtime.states[-1].target("kiosk-a")
+        self.assertEqual(target["newSha"], NEW_SHA)
+        self.assertEqual(target["expectedReadySha"], OLD_SHA)
+        self.assertEqual(target["readyReleaseSha"], OLD_SHA)
+        self.assertEqual(target["readyVerificationId"], FORWARD_VERIFICATION_ID)
+        self.assertIn(
+            "status:set-phase:--run-id:run-1:--client:a:--phase:verifying:"
+            f"--desired-release-sha:{OLD_SHA}",
+            runtime.events,
+        )
+
+    def test_post_health_fleet_failure_never_rolls_the_exposed_terminal_back(self):
+        terminal = {
+            "host": "kiosk-a",
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "a",
+        }
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", OLD_SHA),
+                "kiosk-a": host_record("kiosk", OLD_SHA),
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan={
+                "pi5Required": False,
+                "hosts": [
+                    decision("pi5", "server", targeted=False),
+                    decision("kiosk-a", "kiosk"),
+                ],
+            },
+            targets=[terminal],
+        )
+        runtime.fleet_verified_error_host = "kiosk-a"
+
+        with self.assertRaisesRegex(RuntimeError, "terminal finalization failed"):
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            )
+
+        self.assertIn(
+            "status:remove-client:--run-id:run-1:--client:a", runtime.events
+        )
+        self.assertNotIn("rollback:kiosk-a", runtime.events)
+        target = runtime.states[-1].target("kiosk-a")
+        self.assertIn("maintenanceClearedAt", target)
+        self.assertEqual(target["evidence"], "unknown")
+        self.assertIn("fleet persistence unavailable", target["finalizationFailure"])
+        self.assertEqual(runtime.fleet["fleet"]["kiosk-a"]["evidence"], "unknown")
+        self.assertIn("fleet:finish:failed", runtime.events)
 
     def test_pi5_host_config_failure_stops_before_candidate_and_terminals(self):
         terminal = {
@@ -685,8 +841,24 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             runtime.events.index("rollback:kiosk-a"),
             runtime.events.index("observe:terminal:kiosk-a"),
         )
+        self.assertIn(
+            "status:set-phase:--run-id:run-1:--client:a:--phase:verifying:"
+            f"--desired-release-sha:{OLD_SHA}:--rollback",
+            runtime.events,
+        )
         self.assertEqual(runtime.fleet["fleet"]["kiosk-a"]["currentSha"], OLD_SHA)
         self.assertEqual(runtime.fleet["fleet"]["kiosk-a"]["evidence"], "verified")
+        target = runtime.states[-1].target("kiosk-a")
+        self.assertEqual(target["expectedRollbackReadySha"], OLD_SHA)
+        self.assertEqual(target["rollbackReadyReleaseSha"], OLD_SHA)
+        self.assertEqual(
+            target["expectedRollbackReadyVerificationId"],
+            ROLLBACK_VERIFICATION_ID,
+        )
+        self.assertEqual(
+            target["rollbackReadyVerificationId"], ROLLBACK_VERIFICATION_ID
+        )
+        self.assertIn("maintenanceClearedAt", target)
         self.assertIn("fleet:finish:failed", runtime.events)
 
     def test_execution_uses_each_hosts_role_specific_desired_sha(self):
@@ -791,7 +963,116 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         self.assertEqual(runtime.fleet["fleet"]["kiosk-a"]["evidence"], "unknown")
         target = runtime.states[-1].target("kiosk-a")
         self.assertIn("host unreachable", target["rollbackEvidence"])
+        self.assertNotIn("maintenanceClearedAt", target)
+        self.assertNotIn(
+            "status:remove-client:--run-id:run-1:--client:a",
+            runtime.events,
+        )
         self.assertIn("fleet:finish:failed", runtime.events)
+
+    def test_cancel_during_ready_wait_rolls_back_before_cancel_finishes(self):
+        terminal = {
+            "host": "kiosk-a",
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "a",
+        }
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", OLD_SHA),
+                "kiosk-a": host_record("kiosk", OLD_SHA),
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan={
+                "pi5Required": False,
+                "hosts": [
+                    decision("pi5", "server", targeted=False),
+                    decision("kiosk-a", "kiosk"),
+                ],
+            },
+            targets=[terminal],
+        )
+        runtime.ready_ack_error = CancellationRequested(
+            "operator stop", "wait-ready-ack:a"
+        )
+
+        result = coordinator.execute(
+            args(), runtime=runtime, token=FakeToken(runtime.events)
+        )
+
+        self.assertEqual(result, 130)
+        target = runtime.states[-1].target("kiosk-a")
+        self.assertEqual(target["rollbackEvidence"], "verified")
+        self.assertEqual(target["currentSha"], OLD_SHA)
+        self.assertEqual(target["rollbackReadyReleaseSha"], OLD_SHA)
+        self.assertEqual(
+            target["rollbackReadyVerificationId"], ROLLBACK_VERIFICATION_ID
+        )
+        self.assertNotEqual(
+            target["expectedReadyVerificationId"],
+            target["rollbackReadyVerificationId"],
+        )
+        self.assertIn("maintenanceClearedAt", target)
+        self.assertIn(
+            "status:set-phase:--run-id:run-1:--client:a:--phase:verifying:"
+            f"--desired-release-sha:{OLD_SHA}:--rollback",
+            runtime.events,
+        )
+        self.assertLess(
+            runtime.events.index("rollback:kiosk-a"),
+            runtime.events.index("fleet:finish:cancelled"),
+        )
+        self.assertIn(
+            "status:remove-run:--run-id:run-1", runtime.events
+        )
+        self.assertEqual(
+            runtime.states[-1].payload["cancellation"]["checkpoint"],
+            "wait-ready-ack:a",
+        )
+
+    def test_cancel_with_unknown_rollback_keeps_terminal_maintenance(self):
+        terminal = {
+            "host": "kiosk-a",
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "a",
+        }
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", OLD_SHA),
+                "kiosk-a": host_record("kiosk", OLD_SHA),
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan={
+                "pi5Required": False,
+                "hosts": [
+                    decision("pi5", "server", targeted=False),
+                    decision("kiosk-a", "kiosk"),
+                ],
+            },
+            targets=[terminal],
+        )
+        runtime.ready_ack_error = CancellationRequested(
+            "operator stop", "wait-ready-ack:a"
+        )
+        runtime.terminal_observation_error = RuntimeError("health unavailable")
+
+        result = coordinator.execute(
+            args(), runtime=runtime, token=FakeToken(runtime.events)
+        )
+
+        self.assertEqual(result, 130)
+        target = runtime.states[-1].target("kiosk-a")
+        self.assertIn("health unavailable", target["rollbackEvidence"])
+        self.assertNotIn("maintenanceClearedAt", target)
+        self.assertEqual(
+            runtime.states[-1].payload["cancellationCleanup"]["state"],
+            "retained",
+        )
+        self.assertNotIn(
+            "status:remove-run:--run-id:run-1", runtime.events
+        )
+        self.assertEqual(runtime.fleet["fleet"]["kiosk-a"]["evidence"], "unknown")
 
     def test_cancellation_finishes_fleet_before_legacy_terminal_state(self):
         plan = {
@@ -847,7 +1128,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
     def test_abandoned_run_hosts_are_not_seed_promoted(self):
         stranded = host_record("kiosk", NEW_SHA)
         stranded["lastRunId"] = "abandoned-run"
-        hosts = [{"host": "kiosk-a", "role": "kiosk"}]
+        hosts = [{"host": "kiosk-a", "role": "kiosk", "clientId": "a"}]
         runtime = FakeRuntime(
             fleet={"kiosk-a": stranded}, hosts=hosts, plan={}, targets=[]
         )

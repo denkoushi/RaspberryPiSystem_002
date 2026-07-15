@@ -53,7 +53,7 @@ while (($#)); do
 done
 
 compose() {
-  PI5_API_IMAGE="$1" PI5_WEB_IMAGE="$2" docker compose --env-file "$ENV_FILE" -f "$BASE_COMPOSE" -f "$PHASE2_COMPOSE" "${@:3}"
+  VITE_RELEASE_SHA="${REF:-}" PI5_API_IMAGE="$1" PI5_WEB_IMAGE="$2" docker compose --env-file "$ENV_FILE" -f "$BASE_COMPOSE" -f "$PHASE2_COMPOSE" "${@:3}"
 }
 
 atomic_state() {
@@ -159,11 +159,11 @@ prepare() {
   api="${API_REPOSITORY}:${tag}"; web="${WEB_REPOSITORY}:${tag}"; candidate_name="pi5-api-candidate-${REF:0:12}"
   log "building candidate images while production remains active"
   if [[ "$DRY_RUN" == "1" ]]; then
-    printf 'DRY-RUN: PI5_API_IMAGE=%q PI5_WEB_IMAGE=%q docker compose --env-file %q -f %q -f %q build api web\n' "$api" "$web" "$ENV_FILE" "$BASE_COMPOSE" "$PHASE2_COMPOSE"
+    printf 'DRY-RUN: VITE_RELEASE_SHA=%q PI5_API_IMAGE=%q PI5_WEB_IMAGE=%q docker compose --env-file %q -f %q -f %q build api web\n' "$REF" "$api" "$web" "$ENV_FILE" "$BASE_COMPOSE" "$PHASE2_COMPOSE"
   else
     compose "$api" "$web" build api web
   fi
-  run env PI5_API_IMAGE="$api" PI5_WEB_IMAGE="$web" docker compose --env-file "$ENV_FILE" -f "$BASE_COMPOSE" -f "$PHASE2_COMPOSE" config --quiet
+  run env VITE_RELEASE_SHA="$REF" PI5_API_IMAGE="$api" PI5_WEB_IMAGE="$web" docker compose --env-file "$ENV_FILE" -f "$BASE_COMPOSE" -f "$PHASE2_COMPOSE" config --quiet
   run docker run --rm \
     -v "$PROJECT_DIR/certs:/srv/certs:ro" \
     "$web" sh -ec 'envsubst < /srv/Caddyfile.local.template > /tmp/Caddyfile && caddy validate --config /tmp/Caddyfile'

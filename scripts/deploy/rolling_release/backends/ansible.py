@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import shlex
 import subprocess
 from typing import Any, Protocol
 
@@ -141,6 +143,63 @@ def remote_previous_sha(inventory: str, host: str, *, runtime: Runtime) -> str:
     raise RuntimeError(f"could not resolve previous SHA for {host}: {output}")
 
 
+def probe_terminal_identity(
+    inventory: str,
+    host: str,
+    client_id: str,
+    *,
+    runtime: Runtime,
+) -> dict[str, Any]:
+    """Prove the terminal's configured key is accepted without transporting it."""
+
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", client_id) is None:
+        raise ValueError("terminal client identity is malformed")
+    source = runtime.PROJECT / "scripts/deploy/terminal-identity-probe.py"
+    output = runtime.run(
+        [
+            "ansible",
+            "-i",
+            inventory,
+            host,
+            "-b",
+            "-m",
+            "script",
+            "-a",
+            f"{source} --expected-client-id {shlex.quote(client_id)}",
+        ],
+        cwd=runtime.ANSIBLE_DIRECTORY,
+        capture=True,
+    )
+    identities = re.findall(
+        r"TERMINAL_IDENTITY_OK:([A-Za-z0-9][A-Za-z0-9._:-]{0,127})",
+        output,
+    )
+    # Ansible callbacks can render the same stdout in both ``stdout`` and
+    # ``stdout_lines``. Every rendered proof must nevertheless be exact.
+    if not identities or any(identity != client_id for identity in identities):
+        raise RuntimeError(f"terminal identity could not be verified: {host}")
+    return {"authenticated": True, "statusClientId": client_id}
+
+
+def trigger_signage_ready_check(
+    inventory: str, host: str, *, runtime: Runtime
+) -> None:
+    runtime.run(
+        [
+            "ansible",
+            "-i",
+            inventory,
+            host,
+            "-b",
+            "-m",
+            "command",
+            "-a",
+            "systemctl start signage-lite-update.service",
+        ],
+        cwd=runtime.ANSIBLE_DIRECTORY,
+    )
+
+
 def converge_server_config(
     inventory: str,
     host: str,
@@ -226,16 +285,7 @@ def rollback_terminal(
             rollback=True,
         )
         target["rollback"] = "success"
-        runtime.state_command(
-            "remove-client",
-            "--run-id",
-            run_id,
-            "--client",
-            target_spec["clientId"],
-        )
-        target["maintenanceClearedAt"] = runtime.utc_now()
         return True
     except Exception as rollback_error:
         target["rollback"] = f"failed: {rollback_error}"
-        runtime.state_command("set-phase", "--run-id", run_id, "--phase", "failed")
         return False

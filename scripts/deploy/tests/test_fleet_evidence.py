@@ -32,19 +32,26 @@ class TerminalRuntime:
             raise self.failure
         return "active\nactive\n"
 
+    def probe_terminal_identity(self, inventory, host, client_id):
+        self.calls.append(("identity", inventory, host, client_id))
+        return {"authenticated": True, "statusClientId": client_id}
+
 
 class TerminalEvidenceTest(unittest.TestCase):
     def test_kiosk_requires_exact_head_and_required_services(self):
         runtime = TerminalRuntime()
         observed = evidence.observe_terminal(
-            "inventory.yml", "kiosk-a", "kiosk", runtime=runtime
+            "inventory.yml", "kiosk-a", "kiosk", "client-a", runtime=runtime
         )
 
         self.assertEqual(observed["currentSha"], SHA)
         self.assertEqual(
             observed["services"],
-            ["kiosk-browser.service", "status-agent.timer"],
+            ["lightdm.service", "kiosk-browser.service", "status-agent.timer"],
         )
+        self.assertTrue(observed["authenticatedEndpoint"])
+        self.assertEqual(observed["statusClientId"], "client-a")
+        self.assertEqual(observed["oneshotServices"], ["status-agent.service"])
         self.assertTrue(
             all(
                 call[2]['cwd'] == runtime.ANSIBLE_DIRECTORY
@@ -53,16 +60,42 @@ class TerminalEvidenceTest(unittest.TestCase):
             )
         )
         commands = [call[1] for call in runtime.calls if call[0] == "run"]
-        self.assertEqual(len(commands), 2)
+        self.assertEqual(len(commands), 4)
         self.assertTrue(
             all(command[:4] == ["ansible", "-i", "inventory.yml", "kiosk-a"] for command in commands)
         )
         self.assertEqual(
             [command[-1] for command in commands],
             [
+                "systemctl is-active --quiet lightdm.service",
                 "systemctl is-active --quiet kiosk-browser.service",
                 "systemctl is-active --quiet status-agent.timer",
+                'test "$(systemctl show --property=Result --value '
+                'status-agent.service)" = success',
             ],
+        )
+
+    def test_signage_requires_display_and_every_operational_timer(self):
+        runtime = TerminalRuntime()
+        observed = evidence.observe_terminal(
+            "inventory.yml", "signage-a", "signage", "client-s", runtime=runtime
+        )
+
+        self.assertEqual(
+            observed["services"],
+            [
+                "lightdm.service",
+                "signage-lite.service",
+                "signage-lite-update.timer",
+                "signage-lite-watchdog.timer",
+                "signage-daily-reboot.timer",
+                "status-agent.timer",
+            ],
+        )
+        commands = [call[1] for call in runtime.calls if call[0] == "run"]
+        self.assertEqual(
+            [command[-1] for command in commands[:-1]],
+            [f"systemctl is-active --quiet {service}" for service in observed["services"]],
         )
 
     def test_each_required_service_must_succeed_independently(self):
@@ -80,9 +113,24 @@ class TerminalEvidenceTest(unittest.TestCase):
         runtime.run = fail_second_service
         with self.assertRaises(subprocess.CalledProcessError):
             evidence.observe_terminal(
-                "inventory.yml", "kiosk-a", "kiosk", runtime=runtime
+                "inventory.yml", "kiosk-a", "kiosk", "client-a", runtime=runtime
             )
         self.assertEqual(service_calls, 2)
+
+    def test_status_agent_oneshot_result_must_be_success(self):
+        runtime = TerminalRuntime()
+        original_run = runtime.run
+
+        def fail_oneshot(command, **kwargs):
+            if command[5:7] == ["-m", "shell"]:
+                raise subprocess.CalledProcessError(1, command)
+            return original_run(command, **kwargs)
+
+        runtime.run = fail_oneshot
+        with self.assertRaises(subprocess.CalledProcessError):
+            evidence.observe_terminal(
+                "inventory.yml", "kiosk-a", "kiosk", "client-a", runtime=runtime
+            )
 
     def test_signage_service_failure_and_non_sha_head_fail_closed(self):
         runtime = TerminalRuntime(
@@ -90,15 +138,26 @@ class TerminalEvidenceTest(unittest.TestCase):
         )
         with self.assertRaises(subprocess.CalledProcessError):
             evidence.observe_terminal(
-                "inventory.yml", "signage-a", "signage", runtime=runtime
+                "inventory.yml", "signage-a", "signage", "client-s", runtime=runtime
             )
 
         malformed = TerminalRuntime(sha="main")
         with self.assertRaisesRegex(RuntimeError, "not immutable"):
             evidence.observe_terminal(
-                "inventory.yml", "kiosk-a", "kiosk", runtime=malformed
+                "inventory.yml", "kiosk-a", "kiosk", "client-a", runtime=malformed
             )
         self.assertEqual(malformed.calls, [("head", "inventory.yml", "kiosk-a")])
+
+    def test_authenticated_endpoint_must_return_the_expected_identity(self):
+        runtime = TerminalRuntime()
+        runtime.probe_terminal_identity = lambda *_args: {
+            "authenticated": True,
+            "statusClientId": "other-client",
+        }
+        with self.assertRaisesRegex(RuntimeError, "not authenticated"):
+            evidence.observe_terminal(
+                "inventory.yml", "kiosk-a", "kiosk", "client-a", runtime=runtime
+            )
 
 
 class Pi5Runtime:

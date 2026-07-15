@@ -149,18 +149,24 @@
   loop_control:
     loop_var: service_name
 
-- name: Verify restarted client services are healthy
+- name: Verify restarted client services and timers are healthy
   ansible.builtin.shell: |
     set -euo pipefail
     sleep 2
-    systemctl is-active {{ item }}
-    if systemctl is-failed {{ item }} >/dev/null; then
-      echo "{{ item }} is in failed state"
+    unit={{ item | quote }}
+    if [[ "${unit}" == "status-agent.service" ]]; then
+      # status-agent is Type=oneshot, so a successful invocation is inactive.
+      [[ "$(systemctl show --property=Result --value "${unit}")" == "success" ]]
+      exit 0
+    fi
+    systemctl is-active --quiet "${unit}"
+    if systemctl is-failed --quiet "${unit}"; then
+      echo "${unit} is in failed state"
       exit 1
     fi
   args:
     executable: /bin/bash
-  loop: "{{ services_to_restart_filtered | select('match', '\\.service$') | list }}"
+  loop: "{{ services_to_restart_filtered | select('match', '\\.(service|timer)$') | list }}"
   loop_control:
     label: "{{ item }}"
   register: client_service_health
