@@ -662,15 +662,33 @@ except (json.JSONDecodeError, TypeError):
 action=sys.argv[2]
 if not isinstance(document, dict) or document.get('action') != action:
     raise SystemExit(1)
+signage=document.get('signage')
+if not isinstance(signage, dict):
+    raise SystemExit(1)
 enabled=document.get('enabled')
 resume_required=document.get('resumeRequired')
-if not isinstance(enabled, bool) or not isinstance(resume_required, bool):
-    raise SystemExit(1)
-if not isinstance(document.get('signage'), dict):
-    raise SystemExit(1)
-if action == 'pause-signage' and resume_required != enabled:
-    raise SystemExit(1)
-if action == 'resume-signage' and resume_required:
+if isinstance(enabled, bool) and isinstance(resume_required, bool):
+    if action == 'pause-signage' and resume_required != enabled:
+        raise SystemExit(1)
+    if action == 'resume-signage' and resume_required:
+        raise SystemExit(1)
+elif set(document) == {'action', 'signage'}:
+    # The immediately preceding API contract returned only action + telemetry.
+    # Accept it only when the observed scheduler state proves the requested
+    # transition. A legacy pause is conservatively owned until a matching
+    # legacy resume positively proves that rendering is active again.
+    is_running=signage.get('isRunning')
+    if not isinstance(is_running, bool):
+        raise SystemExit(1)
+    if action == 'pause-signage':
+        if is_running:
+            raise SystemExit(1)
+        resume_required=True
+    else:
+        if not is_running:
+            raise SystemExit(1)
+        resume_required=False
+else:
     raise SystemExit(1)
 print('1' if resume_required else '0')
 PY
