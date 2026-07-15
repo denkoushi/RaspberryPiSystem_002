@@ -458,6 +458,41 @@ PY
   [[ -e "$IMAGE_DIR/api" && -e "$IMAGE_DIR/web" ]] \
     || fail 'Blue/Green tag exclusion mutated an active reference'
 
+  # The first PR6 rollout encounters a legacy candidate-state record without
+  # run-scoped ownership fields. The exact pair may be retained only when the
+  # Blue/Green state proves that both tags remain referenced.
+  python3 - "$STATE_FILE" <<'PY'
+import json,sys
+path=sys.argv[1]
+state=json.load(open(path))
+state.pop('runId', None); state.pop('desiredSha', None)
+state['candidate'].pop('imageIds', None)
+json.dump(state,open(path,'w'))
+PY
+  cleanup_owned_candidate_image_tags \
+    || fail 'legacy Blue/Green-owned candidate tags blocked first takeover'
+  [[ -e "$IMAGE_DIR/api" && -e "$IMAGE_DIR/web" ]] \
+    || fail 'legacy Blue/Green ownership mutated an active reference'
+
+  python3 - "$BLUE_GREEN_STATE_FILE" <<'PY'
+import json,sys
+json.dump({'slots':{'blue':{'images':{'api':'api:current','web':'web:current'}},
+                    'green':{'images':{'api':None,'web':None}}}},open(sys.argv[1],'w'))
+PY
+  if cleanup_owned_candidate_image_tags; then
+    fail 'unreferenced legacy candidate state was accepted'
+  fi
+  [[ -e "$IMAGE_DIR/api" && -e "$IMAGE_DIR/web" ]] \
+    || fail 'unreferenced legacy state mutated candidate tags'
+
+  python3 - "$STATE_FILE" "$owner" "$owned_sha" "$api" "$web" "$api_id" "$web_id" <<'PY'
+import json,sys
+path,owner,sha,api,web,api_id,web_id=sys.argv[1:]
+json.dump({'event':'building','runId':owner,'desiredSha':sha,
+           'candidate':{'api':api,'web':web,'imageIds':{'api':api_id,'web':web_id}}},
+          open(path,'w'))
+PY
+
   python3 - "$BLUE_GREEN_STATE_FILE" "$api" "$web" <<'PY'
 import json,sys
 json.dump({'slots':{'blue':{'images':{'api':'api:current','web':'web:current'}},

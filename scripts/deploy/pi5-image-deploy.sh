@@ -821,7 +821,11 @@ except (OSError, json.JSONDecodeError):
     raise SystemExit(1)
 candidate=state.get('candidate')
 ids=candidate.get('imageIds') if isinstance(candidate, dict) else None
-values=(state.get('runId'), state.get('desiredSha'),
+owner=state.get('runId')
+sha=state.get('desiredSha')
+if owner is None: owner=''
+if sha is None: sha=''
+values=(owner, sha,
         candidate.get('api') if isinstance(candidate, dict) else None,
         candidate.get('web') if isinstance(candidate, dict) else None,
         ids.get('api') if isinstance(ids, dict) else '',
@@ -833,26 +837,6 @@ for name, value in zip(('owner','sha','api','web','api_id','web_id'), values):
 PY
 )" || return 1
   eval "$metadata"
-  [[ "$owner" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$ \
-    && "$sha" =~ ^[0-9a-f]{40}$ \
-    && ( -z "$api_id" || "$api_id" =~ ^sha256:[0-9a-f]{64}$ ) \
-    && ( -z "$web_id" || "$web_id" =~ ^sha256:[0-9a-f]{64}$ ) \
-    && ( ( -z "$api_id" && -z "$web_id" ) \
-      || ( -n "$api_id" && -n "$web_id" ) ) ]] || return 1
-  run_digest="$(python3 - "$owner" <<'PY'
-import hashlib, sys
-print(hashlib.sha256(sys.argv[1].encode()).hexdigest())
-PY
-)"
-  expected_tag="${sha}-[0-9a-f]{12}-${run_digest}"
-  api_repository="${api%:*}"; api_tag="${api##*:}"
-  web_repository="${web%:*}"; web_tag="${web##*:}"
-  [[ "$api_repository" == "$API_REPOSITORY" \
-    && "$web_repository" == "$WEB_REPOSITORY" \
-    && "$api_tag" =~ ^${expected_tag}$ \
-    && "$web_tag" =~ ^${expected_tag}$ ]] || return 1
-  [[ "$owner" != "$RUN_ID" || "$sha" != "$REF" ]] || return 0
-
   if [[ -f "$BLUE_GREEN_STATE_FILE" ]]; then
     local phase3_ownership
     phase3_ownership="$(python3 - "$BLUE_GREEN_STATE_FILE" "$api" "$web" <<'PY'
@@ -887,6 +871,30 @@ PY
       *) return 1 ;;
     esac
   fi
+
+  # A deployed pre-run-scoped state has no runId, desiredSha, or imageIds.
+  # It is safe to leave that state alone only when Blue/Green proves that the
+  # complete candidate pair is still an active/rollback reference. Anything
+  # unreferenced must satisfy the strict run-scoped ownership contract below.
+  [[ "$owner" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$ \
+    && "$sha" =~ ^[0-9a-f]{40}$ \
+    && ( -z "$api_id" || "$api_id" =~ ^sha256:[0-9a-f]{64}$ ) \
+    && ( -z "$web_id" || "$web_id" =~ ^sha256:[0-9a-f]{64}$ ) \
+    && ( ( -z "$api_id" && -z "$web_id" ) \
+      || ( -n "$api_id" && -n "$web_id" ) ) ]] || return 1
+  run_digest="$(python3 - "$owner" <<'PY'
+import hashlib, sys
+print(hashlib.sha256(sys.argv[1].encode()).hexdigest())
+PY
+)"
+  expected_tag="${sha}-[0-9a-f]{12}-${run_digest}"
+  api_repository="${api%:*}"; api_tag="${api##*:}"
+  web_repository="${web%:*}"; web_tag="${web##*:}"
+  [[ "$api_repository" == "$API_REPOSITORY" \
+    && "$web_repository" == "$WEB_REPOSITORY" \
+    && "$api_tag" =~ ^${expected_tag}$ \
+    && "$web_tag" =~ ^${expected_tag}$ ]] || return 1
+  [[ "$owner" != "$RUN_ID" || "$sha" != "$REF" ]] || return 0
 
   local containers container image expected_id observed_id revision config_hash tag_config
   containers="$(docker ps -aq 2>/dev/null)" || return 1
