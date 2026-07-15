@@ -73,6 +73,7 @@ This work exists because the current release path has accumulated two coordinato
 - [x] (2026-07-14 23:36Z) Refreshed PR 1 from that main, reran 11 of 11 checks successfully at head `83fbb379`, and merged PR #1004 with merge commit `d9abaa6e` under the user's explicit ordered-merge approval.
 - [x] (2026-07-14 23:55Z) Refreshed PR 2 from merge commit `d9abaa6e`, reran every hosted check successfully at head `50e3eeaa` with no feature-branch push duplicate, and merged PR #1005 with merge commit `bf238688`.
 - [x] (2026-07-15 00:04Z) Refreshed PR 3 from that main and hardened the successful outer-lock path at `f3d39012`: the transitional lock parent is created only after the kernel lock, and a Linux regression now exercises a fresh checkout with no pre-existing `logs` directory.
+- [x] (2026-07-15 00:23Z) Diagnosed the refreshed PR 3 hosted failure as npm's retired legacy audit endpoint returning HTTP 410 to pnpm 9; every deployment, Linux lock, inventory, Ansible, API, E2E, CodeQL, gitleaks, Docker, and non-audit check passed. With explicit approval, replaced only the audit client with pinned pnpm 11.4 on Node 22 so the required critical gate uses the bulk advisory endpoint without `--ignore-registry-errors`.
 - [ ] Refresh and merge PR 3 under the same explicit approval without force-pushing or changing PR #1003.
 - [ ] Implement and publish PR 4, the single coordinator and execution backend.
 - [ ] Implement and publish PR 5, durable fleet state and default target minimization.
@@ -154,12 +155,15 @@ This work exists because the current release path has accumulated two coordinato
 - Decision: Require PR 1 to validate every candidate migration from the immutable candidate commit object, parse SQL comments and statement boundaries with ASCII- and Unicode-aware quote boundaries, allow only built-in types for nullable constraint-free `ADD COLUMN`, and reject every migration-file Git change except A status.
   Rationale: an added-path-only allow-list, regex comment stripping, or a user-defined domain can let `migrate deploy` execute unreviewed, hidden, or implicitly constrained SQL even when checks are green.
   Date/Author: 2026-07-15 / Codex
+- Decision: Keep the workspace install and build toolchain on Node 20 with packageManager-pinned pnpm 9, but run the security audit after all build work with pinned pnpm 11.4 on Node 22 from outside the repository.
+  Rationale: npm permanently retired the endpoint used by pnpm 9, while pnpm 11 uses the bulk advisory endpoint and requires Node 22. Isolating that read-only client restores the critical gate without a broad package-manager migration or a fail-open registry flag.
+  Date/Author: 2026-07-15 / Codex
 
 ## Outcomes & Retrospective
 
 The program is in progress. The living ExecPlan in #1007, migration ledger safety in #1004, and CI/deploy-contract shadowing in #1005 are merged. Critical inventory, rollback, and checkout-lock safety in #1006 is refreshed from that main and is being revalidated. PR 4 through PR 8 remain paused until the ordered merge gate finishes.
 
-Merged PR 1 validates the complete candidate commit-object ledger, enforces addition-only migration diffs, and applies a quote-aware conservative SQL allow-list. Its 22 focused tests, real 144-base/146-candidate ledger check, adversarial matrix, two independent reviews, and both hosted suites passed. Merged PR 2 proves pull-request-only feature-branch CI, stable required-check names, the shadow classifier, and the client-lifecycle baseline/merge-base contract; its refreshed suite passed with no duplicate feature-branch push run. PR 3 contains three focused safety commits plus post-refresh successful-lock-path hardening, now based on merge commit `bf238688`; its refreshed hosted suite is pending. Cancel, detach, and job operations remain fail-closed until PR 4 supplies their common systemd execution identity.
+Merged PR 1 validates the complete candidate commit-object ledger, enforces addition-only migration diffs, and applies a quote-aware conservative SQL allow-list. Its 22 focused tests, real 144-base/146-candidate ledger check, adversarial matrix, two independent reviews, and both hosted suites passed. Merged PR 2 proves pull-request-only feature-branch CI, stable required-check names, the shadow classifier, and the client-lifecycle baseline/merge-base contract; its refreshed suite passed with no duplicate feature-branch push run. PR 3 contains three focused safety commits plus post-refresh successful-lock-path hardening, now based on merge commit `bf238688`. Its first refreshed hosted run proved all deployment and Linux lock contracts but exposed the unrelated retired pnpm 9 audit endpoint; the approved pinned bulk-audit bridge is locally green and awaiting a fresh hosted run. Cancel, detach, and job operations remain fail-closed until PR 4 supplies their common systemd execution identity.
 
 No product deployment, real-device mutation, or production acceptance action has occurred. Only the explicitly approved repository merges #1007, #1004, and #1005 have occurred. Draft PR #1003 remains open, untouched, and unmerged at head `0f19936a` for provenance only.
 
@@ -444,7 +448,8 @@ Current replacement map at this revision:
       reviewed implementation head -> e33ecadb
       refreshed from main bf238688 -> merge commit 01ae9ffc
       successful-lock-path hardening -> f3d39012, including missing-parent creation after kernel lock and a fresh-checkout Linux regression
-      test state -> refreshed local classifier 9, migration 22, rolling release 78 with two Linux-only macOS skips, Pi5 suites, and deploy safety contracts green; refreshed hosted rerun pending
+      test state -> first refreshed hosted run passed rolling release 78 with no Linux skip, deploy safety, all three API shards, E2E, CodeQL, gitleaks, and both Docker jobs; only the retired pnpm 9 audit endpoint failed
+      audit recovery -> pinned pnpm 11.4 bulk client on Node 22, critical required and high informational, no registry fail-open; local bulk audit found 2 low / 10 moderate / 0 high-critical
       deferred interface state -> cancel, detach, and job operations fail closed before mutation until PR 4
     PR 4-PR 8: paused at the explicit merge gate
     Product reconstruction: pending deployment-foundation production acceptance
@@ -541,3 +546,5 @@ Revision note (2026-07-14, 23:36Z): Recorded the user's ordered-merge approval, 
 Revision note (2026-07-14, 23:56Z): Recorded the refreshed 11-of-11 hosted success and merge of CI baseline PR #1005 at `bf238688`, including the absence of a feature-branch push duplicate. PR #1006 is now refreshed from that main at `01ae9ffc`; no product deployment, real-device mutation, or change to Draft PR #1003 occurred.
 
 Revision note (2026-07-15, 00:04Z): Aligned the PR 2 client-lifecycle and PR 3 cancellation milestones with the recorded decisions, then hardened PR #1006's successful outer-lock path at `f3d39012` so a fresh checkout creates the transitional lock parent only after acquiring the kernel lock. The refreshed local suite passes; hosted Linux validation is pending.
+
+Revision note (2026-07-15, 00:23Z): Recorded the first refreshed PR #1006 hosted run. Every deployment and Linux lock contract passed, but npm's retired legacy endpoint returned HTTP 410 to pnpm 9 and correctly failed `lint-build-unit` plus `ci-required`. After explicit approval, isolated the audit on pinned pnpm 11.4 and Node 22, retained the required critical gate and high advisory, added a static no-fail-open contract, and verified the bulk audit locally with no high or critical advisory.
