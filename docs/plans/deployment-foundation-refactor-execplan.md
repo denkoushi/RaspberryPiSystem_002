@@ -35,8 +35,8 @@ validation:
   - read-only plans for both production inventories before any approved release
   - one explicitly approved full-fleet acceptance per inventory, followed by a same-SHA no-op plan
 open_items:
-  - complete PR 6 from the accepted lifecycle, protocol, Pi5 host-convergence, and terminal-readiness slices by replacing the known unsafe terminal rollback with an exact run manifest and then consolidating the Pi5 executor, migration guard, and load evidence
-  - implement PR 7 and PR 8 only in sequence from their updated origin/main bases
+  - complete PR 7 hosted validation, enable and read back the main ruleset, then merge only after the fixed checks pass
+  - perform the approval-gated production acceptance before implementing PR 8 from its updated origin/main base
   - obtain separate per-inventory approval before any production mutation
   - reintroduce the deferred product work only after deployment-foundation production acceptance
 supersedes: []
@@ -88,8 +88,8 @@ This work exists because the current release path has accumulated two coordinato
 - [x] (2026-07-15 14:22Z) Completed PR 6 locally at implementation commit `1af8f1ab`. Terminal changes now use one sealed file/repository/runtime manifest and coordinator-owned rollback; Pi5 uses one migration plan/live-ledger verifier, one candidate/Blue-Green executor, run-scoped image identities, reusable load evidence, durable hard-kill recovery, and a bounded host-config transaction. The final local evidence is 540/540 deploy Python tests, all three Pi5 shell lifecycles, terminal lifecycle and signage-maintenance contracts, 41/41 focused API tests, API lint/build, both-inventory server-config syntax checks, and the deployment safety contract.
 - [x] (2026-07-15 20:20Z) Published the explicitly approved branch as Draft PR #1010, `refactor(deploy): unify Pi5 and terminal execution`, from clean local head `be1634a8`; CI, CodeQL, and gitleaks started without any SSH or real-device action.
 - [x] (2026-07-15 20:32Z) Completed Draft PR #1010 hosted validation at head `f86e51fc`: CI run `29448017438`, CodeQL `29448017389`, and Secret scan `29448017406` all succeeded. `ci-required`, fixed-name `codeql`, `gitleaks`, three API shards, lint/build, E2E, and both Docker jobs are green; only the intentionally neutral auxiliary `CodeQL` aggregator is non-success.
-- [ ] Merge Draft PR #1010 only after its validation record commit receives the same required green checks.
-- [ ] Implement and publish PR 7, conditional CI enforcement and the `main` ruleset.
+- [x] (2026-07-15 20:42Z) Revalidated PR #1010 at final head `f29ec691`, marked it ready, and merged it as `0efcbb34`; merge-commit CI `29449339822`, CodeQL `29449339819`, Secret scan `29449339758`, and Pages `29449338992` all completed successfully. No SSH, database mutation, or real-device action occurred.
+- [ ] (2026-07-15 21:24Z) Implement PR 7 from exact merged base `0efcbb34` on `agent/ci-staged-enforcement-ruleset` (completed: implementation commit `350c6d68`, enforced classifier outputs, ten conditional job contracts, PR non-coverage API/full-event coverage shards, strict `ci-required`, full-suite events, fixed security workflow triggers, ruleset documentation, 20 CI tests, actionlint, workspace/API/Web/client/deploy local validation; remaining: hosted representative PR, ruleset enable/read-back, merge).
 - [ ] Complete the separately approved production acceptance sequence, including the initial full fleet and the same-SHA no-op proof.
 - [ ] Implement PR 8 only after production acceptance, then remove compatibility fallbacks and shorten the deployment and recovery documentation.
 - [ ] Reconstruct the deferred product changes as three new pull requests only after deployment-foundation production acceptance.
@@ -171,6 +171,10 @@ This work exists because the current release path has accumulated two coordinato
   Evidence: planning solely from fleet evidence would skip executor cleanup. The coordinator now reconciles labelled candidate containers, signage pause authority, candidate tags, and incomplete Pi5 stage state before beginning fleet state or accepting a no-op.
 - Observation: migration-source files alone cannot prove the live database ledger.
   Evidence: an applied migration may be missing or have a different checksum even when the checkout matches. PR 6 reads completed, non-rolled-back Prisma rows from the active API, reuses the PR 1 canonical verifier for zero-new and new-migration cases, and binds final fleet evidence to the verified live ledger without down migration.
+- Observation: the repository had neither a repository ruleset nor legacy branch protection on `main` when PR 7 started.
+  Evidence: `GET /repos/denkoushi/RaspberryPiSystem_002/rulesets` returned an empty array and the branch-protection endpoint returned HTTP 404, so PR 7 can create one canonical ruleset without merging two competing policies.
+- Observation: a conditional aggregate must distinguish an intentional skip from an unexpected success as well as from failure or cancellation.
+  Evidence: `scripts/ci/validate_required_results.py` accepts only selected=`true` with result=`success` or selected=`false` with result=`skipped`; 20 CI unit tests cover classification, full-suite fallback, workflow wiring, and aggregate fail-closed cases.
 
 ## Decision Log
 
@@ -270,10 +274,16 @@ This work exists because the current release path has accumulated two coordinato
 - Decision: Sample load for about forty seconds before and after candidate build, reuse the sealed post-build evidence in Phase 3, and retain the separate five-minute post-switch stability monitor.
   Rationale: this removes the duplicate Phase 3 load wait (about 120 seconds to about 80 seconds total) without weakening the accepted five-minute runtime observation.
   Date/Author: 2026-07-15 / Codex
+- Decision: Cancel only superseded pull-request workflow runs; allow every `main`, merge-group, manual, and scheduled full-suite run to finish.
+  Rationale: a path-independent full-suite trigger is not meaningful if a later push can cancel its evidence, while stale PR heads should still release runner capacity quickly.
+  Date/Author: 2026-07-15 / Codex
+- Decision: Keep `ci-required`, `codeql`, and `gitleaks` as the only ruleset status checks and add `merge_group` to all three producing workflows.
+  Rationale: GitHub required checks are matched by check name rather than conditional-job intent; requiring a skippable name can deadlock a valid PR or merge queue.
+  Date/Author: 2026-07-15 / User and Codex
 
 ## Outcomes & Retrospective
 
-The program is in progress. The living ExecPlan in #1007, migration ledger safety in #1004, CI/deploy-contract shadowing in #1005, critical inventory/rollback/checkout-lock safety in #1006, single-coordinator foundation in #1008, and durable fleet state in #1009 are merged in the approved order. PR 6 is published as Draft PR #1010 from merged base `deab7d5e` and its implementation head passed hosted validation; the validation-record refresh, merge, PR 7, production acceptance, and PR 8 remain pending.
+The program is in progress. The living ExecPlan in #1007, migration ledger safety in #1004, CI/deploy-contract shadowing in #1005, critical inventory/rollback/checkout-lock safety in #1006, single-coordinator foundation in #1008, durable fleet state in #1009, and unified executor/health/rollback in #1010 are merged in the approved order. PR 7 is implemented locally from merge commit `0efcbb34`; hosted validation, ruleset activation/read-back, merge, production acceptance, and PR 8 remain pending.
 
 Merged PR 1 validates the complete candidate commit-object ledger, enforces addition-only migration diffs, and applies a quote-aware conservative SQL allow-list. Its 22 focused tests, real 144-base/146-candidate ledger check, adversarial matrix, two independent reviews, and both hosted suites passed. Merged PR 2 proves pull-request-only feature-branch CI, stable required-check names, the shadow classifier, and the client-lifecycle baseline/merge-base contract; its refreshed suite passed with no duplicate feature-branch push run. Merged PR 3 delivers canonical inventory groups, exact-run rollback selection, and checkout-before-lock prevention; final hosted run `29379111287` passed completely after the approved isolated audit-client repair.
 
@@ -281,11 +291,11 @@ Merged PR 4 removes the 2,000-line hidden shell coordinator and all four alterna
 
 Merged PR 5 adds the durable release authority and conservative default minimization described above. Its refreshed branch head `5441065e` passed hosted validation and merged as `deab7d5e` without touching production.
 
-Local PR 6 now implements the full accepted milestone. Client lifecycle uses the real pre-sync revision; ready ACKs are bound to one verification cycle and release SHA; terminal mutation is captured in exact file, repository, systemd, and Docker manifests; rollback and crash takeover restore only that authority before authenticated readiness proof. Pi5 host configuration uses a dedicated bounded playbook and durable manifest state. Candidate build, migration planning/application/live-ledger verification, Blue/Green switch, five-minute monitor, cleanup, and rollback are coordinated by one owner. Run-scoped image tags and IDs prevent later retargeting, and the post-build load proof is reused instead of repeated.
+Merged PR 6 implements the full accepted milestone. Client lifecycle uses the real pre-sync revision; ready ACKs are bound to one verification cycle and release SHA; terminal mutation is captured in exact file, repository, systemd, and Docker manifests; rollback and crash takeover restore only that authority before authenticated readiness proof. Pi5 host configuration uses a dedicated bounded playbook and durable manifest state. Candidate build, migration planning/application/live-ledger verification, Blue/Green switch, five-minute monitor, cleanup, and rollback are coordinated by one owner. Run-scoped image tags and IDs prevent later retargeting, and the post-build load proof is reused instead of repeated.
 
-The final local suite passes 540 deploy Python tests, Pi5 image/Blue-Green/migration shell lifecycles, terminal lifecycle and signage maintenance, the deployment safety graph, 41 focused API tests, API lint/build, Python/Bash syntax, both-inventory server-config syntax checks, and diff checks. Independent terminal and Pi5 audits found and closed the remaining hard-kill, partial-ownership, host-config graph, bootstrap deletion, scheduler-resume, and candidate-tag issues. Publication and hosted CI remain separate approval-gated steps; no production evidence has been claimed.
+PR 6's final local and hosted suites passed, followed by a successful full `main` suite at merge commit `0efcbb34`. Independent terminal and Pi5 audits found and closed the remaining hard-kill, partial-ownership, host-config graph, bootstrap deletion, scheduler-resume, and candidate-tag issues. No production evidence has been claimed.
 
-No product deployment, real-device mutation, or production acceptance action has occurred. Only the explicitly approved repository merges #1007, #1004, #1005, #1006, #1008, and #1009 have occurred. Draft PR #1003 remains open, untouched, and unmerged at head `0f19936a` for provenance only.
+No product deployment, real-device mutation, or production acceptance action has occurred. Only the explicitly approved repository merges #1007, #1004, #1005, #1006, #1008, #1009, and #1010 have occurred. Draft PR #1003 remains open, untouched, and unmerged at head `0f19936a` for provenance only.
 
 At each major merge, update this section with the observable behavior delivered, the checks that passed, any time saved or regression found, and the remaining risk. After the seven-day CI observation, compare actual latency and runner-minute evidence against the thresholds in `Validation and Acceptance`. After PR 8, state whether the old marker, lock, and run formats were fully removed and whether the accepted same-SHA plan is a no-op.
 
@@ -596,9 +606,14 @@ Current replacement map at this revision:
       accepted commits -> client lifecycle selection 629933e1; release-bound ready acknowledgement 6a1869c1; Pi5 host convergence and live config evidence b1c98f32; terminal readiness and authenticated health 6e9ad694; manifest and interrupted-terminal recovery c12ff20a through 4e8f0253; final unified executor/health/rollback 1af8f1ab
       final behavior -> exact terminal file/repository/runtime manifest rollback; controller-owned legacy-signage and Kiosk readiness; dedicated Pi5 host-config transaction; canonical migration plan/live-ledger gate; run-scoped candidate identities and bounded retirement; durable bootstrap/prepare/switch/monitor/cleanup recovery; reusable post-build load evidence
       local evidence -> 540 deploy Python tests, Pi5 image/Blue-Green/migration shell contracts, terminal lifecycle and signage maintenance, deployment safety graph, focused API 41/41, API lint/build, Ansible both-inventory syntax, Python/Bash syntax, diff check, commit lint hook, and final terminal/Pi5 audits with no reported blocker
-      remaining -> publication, hosted checks, and later approval-gated production acceptance only
-      publication -> Draft PR #1010; implementation head f86e51fc passed CI 29448017438, CodeQL 29448017389, and Secret scan 29448017406; validation-record refresh pending
-    PR 7-PR 8: pending in approved order
+      publication -> PR #1010 final head f29ec691 passed fixed and constituent checks; merged as 0efcbb34
+      main verification -> CI 29449339822, CodeQL 29449339819, Secret scan 29449339758, and Pages 29449338992 all succeeded
+    PR 7:
+      branch/base -> agent/ci-staged-enforcement-ruleset from merged 0efcbb34
+      local behavior -> enforced fail-closed classifier outputs; conditional repo/workspace/API/Web/DB/deploy/client/E2E/Docker jobs; PR full API without coverage; non-PR coverage in three shards; exact aggregate result validator; full push/merge-group/manual/scheduled suite; fixed codeql/gitleaks merge-group triggers
+      local evidence -> 20 CI unit/contract tests, actionlint 1.7.12, YAML parse, client 30 tests, deploy 540 tests, Pi5/terminal shell contracts, deploy safety, workspace lint/shared tests, Web tests/build, API build, and diff check
+      implementation commit -> 350c6d68; representative hosted PR, ruleset activation/read-back, merge, and seven-day observation remain
+    PR 8: pending production acceptance
     Product reconstruction: pending deployment-foundation production acceptance
 
 An example fleet state shape is:
@@ -721,3 +736,5 @@ Revision note (2026-07-15, 14:22Z): Recorded local PR 6 implementation completio
 Revision note (2026-07-15, 20:20Z): Recorded explicit approval, branch publication, and Draft PR #1010 creation from head `be1634a8`. GitHub created CI, CodeQL, and gitleaks checks immediately. Hosted validation remains pending; no merge, SSH, real-device deployment, database mutation, production acceptance, or change to Draft PR #1003 occurred.
 
 Revision note (2026-07-15, 20:32Z): Recorded the fully green hosted result for Draft PR #1010 implementation head `f86e51fc`. CI run `29448017438`, CodeQL `29448017389`, and Secret scan `29448017406` succeeded; all eleven executable PR jobs including `ci-required`, fixed-name `codeql`, `gitleaks`, three API shards, E2E, lint/build, and Docker API/Web are green. The auxiliary `CodeQL` aggregator is intentionally neutral. The user explicitly approved completion through merge after CI success; this documentation-only validation record must receive the same required checks first. No merge, SSH, real-device deployment, database mutation, production acceptance, or change to Draft PR #1003 occurred.
+
+Revision note (2026-07-15, 21:24Z): Recorded PR #1010 final-head validation, approved merge as `0efcbb34`, and successful merge-commit CI, CodeQL, Secret scan, and Pages workflows. Started PR 7 from that exact base with enforced fail-closed classification, ten conditional job contracts, a strict fixed aggregate, full non-PR events, and merge-group-safe security checks. Local CI, actionlint, workspace, API/Web, client, deploy, and Pi5/terminal contracts pass. The repository currently has no competing ruleset or branch protection; ruleset mutation remains gated on a successful representative PR. No SSH, production action, database mutation, or change to Draft PR #1003 occurred.

@@ -1,81 +1,30 @@
-# CI必須化とブランチ保護設定ガイド
+# 段階型CIと`main` rulesetガイド
 
 ## 概要
 
-このドキュメントでは、CIテストの必須化とブランチ保護ルールの設定方法について説明します。
+このドキュメントでは、変更内容に応じて実行jobを絞る段階型CIと、`main`を保護するGitHub rulesetの契約を説明します。
 
 ## 背景
 
-以前、CIテストが失敗してもマージが進んでしまう問題がありました。これを防ぐため、以下の対策を実施します：
+すべてのPRで全jobを実行するとfeedbackが遅くなります。一方、条件付きjobそのものをrequired checkにすると、正しくskipされたPRがmerge不能になります。そのため次の三層に分けます。
 
-1. **CIテストの必須化**: `continue-on-error: true`を削除し、すべてのテストを必須化
-2. **ブランチ保護ルールの設定**: GitHubのブランチ保護機能を使用して、テストがパスしない限りマージできないようにする
+1. `scripts/ci/classify_changes.py`が変更pathを分類し、必要なjobだけを実行する
+2. 常に存在する`ci-required`が、選択jobの成功と非選択jobのskipを検証する
+3. rulesetは固定名`ci-required`、`codeql`、`gitleaks`だけをrequiredにする
 
-## CI必須化の実装
+## 段階型CI
 
-### 1. GitHub Actionsワークフローの修正
+PRでは`repo-policy`、`workspace-quality`、`api`、`web`、`db-infra`、`deploy-contract`、`client`、`e2e-smoke`、`e2e-tests`、`docker-security`から必要なものを並列実行します。docsとroot Markdownだけの変更は`repo-policy`だけです。未知path、rename、delete、workflow、action、CI classifier変更はfail-closedでfull suiteになります。
 
-**変更内容**:
-- `.github/workflows/ci.yml`から`continue-on-error: true`を削除
-- すべてのテストジョブが失敗時に`exit-code: 1`を返すように設定
+`push main`、`merge_group`、`workflow_dispatch`、毎日02:30 JSTのscheduleはpathに関係なくfull suiteです。PRのAPI testはcoverageなしで全件を1回実行し、full-suite eventではcoverage付き3 shardを実行します。
 
-**実施済み**:
-- ✅ `e2e-tests`ジョブから`continue-on-error: true`を削除（2025-12-15）
-- ✅ `e2e-tests`ジョブのコメントを修正（「non-blocking」→「blocking」に変更、2025-12-15）
-- ✅ `imports-dropbox`テストをCIワークフローに追加（2025-12-15）
+## `main` ruleset
 
-**⚠️ 重要**: ブランチ保護ルールの設定は**手動で実施する必要があります**。設定手順は [`.github/BRANCH_PROTECTION_SETUP.md`](../../.github/BRANCH_PROTECTION_SETUP.md) を参照してください。
+representative PRで`ci-required`、`codeql`、`gitleaks`が成功した後に、default branchだけを対象とするactive rulesetを設定します。PRを必須にし、必要承認数は`0`、required checkはこの3件だけです。force-pushとbranch deletionは禁止し、branch must be up to dateは無効にします。
 
-### 2. 必須チェックの一覧
+条件付きjob名をrequiredへ追加してはいけません。GitHubはrequired status checkをworkflowやeventごとに区別しないため、skipされるjobをrequiredにするとmergeが停止します。`merge_group`でも3つの固定checkが生成されるよう、対応workflowはすべて`merge_group` eventを持ちます。
 
-GitHub の必須ステータス名は **ワークフロー内のジョブ名**（`jobs.<id>.name` があればその文字列）と一致させる。現行の主なチェックは以下：
-
-- `lint-build-unit`: リント・単体・ビルド・pnpm audit（`.github/workflows/ci.yml`）
-- `api-db-and-infra`: API 統合テスト・DB・Ansible 構文等
-- `security-docker`: Trivy・Docker イメージビルド
-- `e2e-smoke`: Playwright スモーク
-- `e2e-tests`: Playwright 本番相当 E2E
-- `codeql`: CodeQL 静的解析（`.github/workflows/codeql.yml`）
-- `gitleaks`: 秘密情報スキャン（`.github/workflows/gitleaks.yml`）
-
-**廃止**: `lint-and-test` / `docker-build` は過去名。ブランチ保護に残っていると **実質ゲートが掛からない**。
-
-**将来（未マージの Phase 用ジョブが追加されたら）**: `imports-dropbox-tests` 等をこの一覧に追記する。
-
-## ブランチ保護ルールの設定
-
-### GitHubでの設定手順
-
-1. **リポジトリの設定ページにアクセス**
-   - GitHubリポジトリのページで「Settings」をクリック
-   - 左メニューから「Branches」を選択
-
-2. **ブランチ保護ルールの追加**
-   - 「Add branch protection rule」をクリック
-   - 「Branch name pattern」に`main`を入力
-
-3. **必須チェックの設定**
-   - 「Require status checks to pass before merging」にチェック
-   - 「Require branches to be up to date before merging」にチェック
-   - 「Status checks that are required」で以下のチェックを選択：
-     - `lint-build-unit`
-     - `api-db-and-infra`
-     - `security-docker`
-     - `e2e-smoke`
-     - `e2e-tests`
-     - `codeql`
-     - `gitleaks`
-
-4. **管理者のスルーを禁止**
-   - 「Do not allow bypassing the above settings」にチェック
-   - これにより、管理者でもテストをスルーできなくなります
-
-5. **設定の保存**
-   - 「Create」をクリックして設定を保存
-
-### 同様に`develop`ブランチにも設定
-
-`develop`ブランチにも同様の保護ルールを設定することを推奨します。
+設定値と確認方法の短い一覧は[`.github/BRANCH_PROTECTION_SETUP.md`](../../.github/BRANCH_PROTECTION_SETUP.md)を参照してください。このrepositoryには`develop` branchがないため、対象は`main`だけです。
 
 ## テストの安定化対策
 
@@ -143,20 +92,21 @@ expect(processingTime).toBeLessThan(maxTime);
 3. リトライロジックを実装
 4. テストの独立性を確認
 
-### 問題: ブランチ保護ルールが機能しない
+### 問題: rulesetが機能しない
 
 **確認事項**:
-1. ブランチ保護ルールが正しく設定されているか
-2. 必須チェックの名前が正しいか（GitHub Actionsのジョブ名と一致しているか）
-3. 「Do not allow bypassing the above settings」が有効になっているか
+1. rulesetのenforcementがactiveか
+2. 対象がdefault branchか
+3. required checkが`ci-required`、`codeql`、`gitleaks`の3件だけか
+4. 最新PR headで3件が成功しているか
 
-### 問題: 緊急時にマージが必要だがテストが失敗している
+### 問題: path分類漏れで`main`だけ失敗した
 
 **対応**:
-1. まず、テストが失敗している原因を特定
-2. 可能であれば、テストを修正してからマージ
-3. 緊急の場合は、一時的にブランチ保護ルールを無効化（ただし、後で必ず有効化する）
-4. マージ後、失敗したテストを修正して再マージ
+1. 失敗pathをclassifier fixtureとして追加する
+2. conditional jobの`if`だけを一時的に無効化し、PRをfull suiteへ戻す
+3. `ci-required`とrulesetは維持する
+4. fixtureと修正後のrepresentative PRが成功してから条件分岐を再有効化する
 
 ## 関連ドキュメント
 
@@ -166,5 +116,6 @@ expect(processingTime).toBeLessThan(maxTime);
 
 ## 更新履歴
 
+- 2026-07-16: 段階型CI、固定`ci-required`、default-branch ruleset契約へ更新
 - 2026-04-21: 必須チェック名を現行ワークフロー（`lint-build-unit` 等）と `codeql` / `gitleaks` に同期
 - 2025-12-15: 初版作成、`continue-on-error`削除を実施
