@@ -56,6 +56,8 @@ export type AssemblyTemplateBoltInput = {
   markerNo: number;
   xRatio: number;
   yRatio: number;
+  calloutTipXRatio?: number | null;
+  calloutTipYRatio?: number | null;
   boltSpec: string;
   nominalTorque: number;
   lowerLimit: number;
@@ -72,6 +74,8 @@ export type AssemblyTemplateCheckItemInput = {
   required?: boolean;
   xRatio: number;
   yRatio: number;
+  calloutTipXRatio?: number | null;
+  calloutTipYRatio?: number | null;
   sortOrder: number;
   kioskDocumentId?: string | null;
   assemblyProcedureDocumentId?: string | null;
@@ -108,6 +112,24 @@ function clampRatio(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
+function normalizeCalloutTip(
+  xRatio: number | null | undefined,
+  yRatio: number | null | undefined
+): { calloutTipXRatio: number | null; calloutTipYRatio: number | null } {
+  const bothOmitted = xRatio === undefined && yRatio === undefined;
+  const bothNull = xRatio === null && yRatio === null;
+  if (bothOmitted || bothNull) {
+    return { calloutTipXRatio: null, calloutTipYRatio: null };
+  }
+  if (typeof xRatio !== 'number' || typeof yRatio !== 'number') {
+    throw new ApiError(400, '矢視先端座標はX/Yを両方指定してください');
+  }
+  if (!Number.isFinite(xRatio) || !Number.isFinite(yRatio) || xRatio < 0 || xRatio > 1 || yRatio < 0 || yRatio > 1) {
+    throw new ApiError(400, '矢視先端座標は0から1の範囲で指定してください');
+  }
+  return { calloutTipXRatio: xRatio, calloutTipYRatio: yRatio };
+}
+
 function normalizeCheckItems(checkItems: AssemblyTemplateCheckItemInput[]): AssemblyTemplateCheckItemInput[] {
   const markerNos = new Set<number>();
   const sortOrders = new Set<number>();
@@ -124,8 +146,10 @@ function normalizeCheckItems(checkItems: AssemblyTemplateCheckItemInput[]): Asse
       }
       markerNos.add(markerNo);
       sortOrders.add(sortOrder);
+      const calloutTip = normalizeCalloutTip(item.calloutTipXRatio, item.calloutTipYRatio);
       return {
         ...item,
+        ...calloutTip,
         markerNo,
         sortOrder,
         label: item.label?.trim() || null,
@@ -159,8 +183,10 @@ function normalizeAreas(areas: AssemblyTemplateAreaInput[]): AssemblyTemplateAre
             if (bolt.lowerLimit > bolt.upperLimit) {
               throw new ApiError(400, `${bolt.tighteningId || boltIndex + 1}: 下限が上限を超えています`);
             }
+            const calloutTip = normalizeCalloutTip(bolt.calloutTipXRatio, bolt.calloutTipYRatio);
             return {
               ...bolt,
+              ...calloutTip,
               sortOrder: boltIndex,
               tighteningId: normalizeKey(bolt.tighteningId, '締付ID').slice(0, 120),
               markerNo: Math.max(1, Math.trunc(bolt.markerNo)),
@@ -351,7 +377,7 @@ export class AssemblyTemplateService {
   }
 
   async create(input: AssemblyTemplateUpsertInput): Promise<AssemblyTemplateDetail> {
-    const modelCode = normalizeKey(input.modelCode, '形番/FHINCD').slice(0, 120);
+    const modelCode = normalizeKey(input.modelCode, '型番/FHINCD').slice(0, 120);
     const procedurePattern = normalizeKey(input.procedurePattern, '手順パターン').slice(0, 120);
     const name = normalizeKey(input.name, 'テンプレート名').slice(0, 200);
     const areas = normalizeAreas(input.areas);
@@ -397,6 +423,8 @@ export class AssemblyTemplateService {
                 required: item.required ?? true,
                 xRatio: item.xRatio,
                 yRatio: item.yRatio,
+                calloutTipXRatio: item.calloutTipXRatio,
+                calloutTipYRatio: item.calloutTipYRatio,
                 sortOrder: item.sortOrder,
                 kioskDocumentId: pageRef.kioskDocumentId,
                 assemblyProcedureDocumentId: pageRef.assemblyProcedureDocumentId,
@@ -428,6 +456,8 @@ export class AssemblyTemplateService {
                     markerNo: bolt.markerNo,
                     xRatio: bolt.xRatio,
                     yRatio: bolt.yRatio,
+                    calloutTipXRatio: bolt.calloutTipXRatio,
+                    calloutTipYRatio: bolt.calloutTipYRatio,
                     boltSpec: bolt.boltSpec,
                     nominalTorque: bolt.nominalTorque,
                     lowerLimit: bolt.lowerLimit,
@@ -465,6 +495,8 @@ export class AssemblyTemplateService {
           markerNo: bolt.markerNo,
           xRatio: Number(bolt.xRatio),
           yRatio: Number(bolt.yRatio),
+          calloutTipXRatio: bolt.calloutTipXRatio == null ? null : Number(bolt.calloutTipXRatio),
+          calloutTipYRatio: bolt.calloutTipYRatio == null ? null : Number(bolt.calloutTipYRatio),
           boltSpec: bolt.boltSpec,
           nominalTorque: Number(bolt.nominalTorque),
           lowerLimit: Number(bolt.lowerLimit),
@@ -483,6 +515,8 @@ export class AssemblyTemplateService {
         required: item.required,
         xRatio: item.xRatio,
         yRatio: item.yRatio,
+        calloutTipXRatio: item.calloutTipXRatio,
+        calloutTipYRatio: item.calloutTipYRatio,
         sortOrder: item.sortOrder,
         kioskDocumentId: item.kioskDocumentId,
         assemblyProcedureDocumentId: item.assemblyProcedureDocumentId,

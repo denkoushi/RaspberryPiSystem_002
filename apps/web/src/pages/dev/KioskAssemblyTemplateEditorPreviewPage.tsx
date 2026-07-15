@@ -1,6 +1,14 @@
 import { useState } from 'react';
 
-import { AssemblyProcedureCanvas, draftToCanvasBolts, emptyAssemblyArea } from '../../features/assembly';
+import {
+  AssemblyProcedureCanvas,
+  createAssemblyBoltAt,
+  draftToCanvasBolts,
+  emptyAssemblyArea
+} from '../../features/assembly';
+import { ImageCanvasZoomControls, useImageCanvasZoom } from '../../features/kiosk/image-canvas';
+
+import type { AssemblyCanvasCheckItem } from '../../features/assembly';
 
 const PREVIEW_PROCEDURE_IMAGE = `data:image/svg+xml,${encodeURIComponent(`
 <svg xmlns="http://www.w3.org/2000/svg" width="900" height="620" viewBox="0 0 900 620">
@@ -17,7 +25,8 @@ const PREVIEW_PROCEDURE_IMAGE = `data:image/svg+xml,${encodeURIComponent(`
 `)}`;
 
 export function KioskAssemblyTemplateEditorPreviewPage() {
-  const [area] = useState(() => {
+  const canvasZoom = useImageCanvasZoom();
+  const [area, setArea] = useState(() => {
     const draft = emptyAssemblyArea();
     draft.bolts = [
       {
@@ -27,6 +36,8 @@ export function KioskAssemblyTemplateEditorPreviewPage() {
         markerNo: 1,
         xRatio: 0.32,
         yRatio: 0.42,
+        calloutTipXRatio: 0.2,
+        calloutTipYRatio: 0.2,
         boltSpec: 'M6x30',
         nominalTorque: 90,
         lowerLimit: 81,
@@ -49,6 +60,19 @@ export function KioskAssemblyTemplateEditorPreviewPage() {
     ];
     return draft;
   });
+  const [checkItems] = useState<AssemblyCanvasCheckItem[]>([
+    {
+      id: 'check-1',
+      markerNo: 1,
+      xRatio: 0.68,
+      yRatio: 0.6,
+      calloutTipXRatio: 0.82,
+      calloutTipYRatio: 0.78,
+      label: '目視確認',
+      required: true,
+      checked: false
+    }
+  ]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 bg-slate-800 p-2 text-white">
@@ -59,17 +83,39 @@ export function KioskAssemblyTemplateEditorPreviewPage() {
         <section className="rounded border border-white/15 bg-slate-900/70 p-3">
           <h2 className="text-[1.02rem] font-bold">基本</h2>
           <div className="mt-3 grid gap-2 text-sm text-white/80">
-            <div>形番/FHINCD: FH-20A</div>
+            <div>型番/FHINCD: FH-20A</div>
             <div>手順パターン: 手順7</div>
             <div>工程: {area.processNo}-{area.areaCode}</div>
           </div>
         </section>
         <section className="flex min-h-[32rem] flex-col overflow-hidden rounded border border-white/15 bg-slate-900/70 xl:min-h-0">
           <div className="shrink-0 border-b border-white/10 p-3">
-            <h2 className="text-[1.02rem] font-bold">手順書 / 丸数字</h2>
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-[1.02rem] font-bold">手順書 / マーカー</h2>
+              <ImageCanvasZoomControls
+                enabled
+                onZoomIn={canvasZoom.zoomIn}
+                onZoomOut={canvasZoom.zoomOut}
+                onFitToView={canvasZoom.fitToView}
+                controlsClassName="rounded bg-slate-950/70 p-1"
+              />
+            </div>
           </div>
           <div className="min-h-0 flex-1">
-            <AssemblyProcedureCanvas imageRelativePath={PREVIEW_PROCEDURE_IMAGE} bolts={draftToCanvasBolts([area])} className="h-full" />
+            <AssemblyProcedureCanvas
+              imageRelativePath={PREVIEW_PROCEDURE_IMAGE}
+              bolts={draftToCanvasBolts([area])}
+              checkItems={checkItems}
+              onAddBolt={(xRatio, yRatio) => {
+                setArea((current) => ({
+                  ...current,
+                  bolts: [...current.bolts, createAssemblyBoltAt(current, xRatio, yRatio)]
+                }));
+              }}
+              zoom={canvasZoom.zoom}
+              fitGeneration={canvasZoom.fitGeneration}
+              className="h-full"
+            />
           </div>
         </section>
         <section className="rounded border border-white/15 bg-slate-900/70 p-3">

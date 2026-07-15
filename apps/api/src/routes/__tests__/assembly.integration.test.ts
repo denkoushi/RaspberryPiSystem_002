@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
+import ExcelJS from 'exceljs';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildServer } from '../../app.js';
@@ -510,6 +511,147 @@ describe('assembly torque management API', () => {
     expect(exported.statusCode).toBe(200);
     expect(exported.headers['content-type']).toContain('spreadsheetml.sheet');
     expect(exported.rawPayload.length).toBeGreaterThan(1000);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(exported.rawPayload);
+    const summaryRows = workbook.getWorksheet('概要')?.getColumn(1).values ?? [];
+    expect(summaryRows).toContain('型番/FHINCD');
+  });
+
+  it('round-trips optional bolt/check callouts, copies them on revision, and rejects invalid pairs', async () => {
+    const client = await createTestClientDevice();
+    const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
+    const document = await uploadPublishedProcedureDocument(app, headers, '矢視付き手順書');
+    const base = buildTemplatePayload(document.id, {
+      modelCode: 'CALLOUT-01',
+      procedurePattern: '標準',
+      name: '矢視付きテンプレート'
+    });
+    const payload = {
+      ...base,
+      areas: base.areas.map((area) => ({
+        ...area,
+        bolts: area.bolts.map((bolt) => ({
+          ...bolt,
+          calloutTipXRatio: 0.82,
+          calloutTipYRatio: 0.18
+        }))
+      })),
+      checkItems: [
+        {
+          markerNo: 1,
+          label: '目視確認',
+          required: true,
+          xRatio: 0.4,
+          yRatio: 0.5,
+          calloutTipXRatio: 0.12,
+          calloutTipYRatio: 0.88,
+          sortOrder: 0,
+          assemblyProcedureDocumentId: document.id,
+          pageIndex: 0
+        }
+      ]
+    };
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload
+    });
+    expect(created.statusCode).toBe(200);
+    const template = created.json().template;
+    expect(Number(template.areas[0].bolts[0].calloutTipXRatio)).toBeCloseTo(0.82);
+    expect(Number(template.areas[0].bolts[0].calloutTipYRatio)).toBeCloseTo(0.18);
+    expect(template.checkItems[0]).toMatchObject({
+      calloutTipXRatio: 0.12,
+      calloutTipYRatio: 0.88
+    });
+
+    const revised = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/templates/${template.id}/revise`,
+      headers,
+      payload: { name: '矢視コピー確認' }
+    });
+    expect(revised.statusCode).toBe(200);
+    const revisedTemplate = revised.json().template;
+    expect(Number(revisedTemplate.areas[0].bolts[0].calloutTipXRatio)).toBeCloseTo(0.82);
+    expect(revisedTemplate.checkItems[0].calloutTipYRatio).toBeCloseTo(0.88);
+
+    const sessionRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/work-sessions',
+      headers,
+      payload: {
+        templateId: revisedTemplate.id,
+        productNo: 'CALLOUT-PRODUCT',
+        serialNo: 'CALLOUT-SERIAL',
+        operatorNameSnapshot: '矢視確認者',
+        targetUnit: 'CALLOUT-01',
+        torqueWrenchId: 'CALLOUT-WRENCH'
+      }
+    });
+    expect(sessionRes.statusCode).toBe(200);
+    expect(Number(sessionRes.json().session.template.areas[0].bolts[0].calloutTipXRatio)).toBeCloseTo(0.82);
+    expect(sessionRes.json().session.checkItems[0]).toMatchObject({
+      calloutTipXRatio: 0.12,
+      calloutTipYRatio: 0.88
+    });
+
+    const invalidPairPayload = structuredClone(payload);
+    delete invalidPairPayload.areas[0]!.bolts[0]!.calloutTipYRatio;
+    const invalidPair = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload: invalidPairPayload
+    });
+    expect(invalidPair.statusCode).toBe(400);
+
+    const mixedNullPayload = structuredClone(payload);
+    mixedNullPayload.checkItems[0]!.calloutTipXRatio = null as unknown as number;
+    delete mixedNullPayload.checkItems[0]!.calloutTipYRatio;
+    const mixedNull = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload: mixedNullPayload
+    });
+    expect(mixedNull.statusCode).toBe(400);
+
+    const outOfRangePayload = structuredClone(payload);
+    outOfRangePayload.checkItems[0]!.calloutTipXRatio = 1.01;
+    const outOfRange = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload: outOfRangePayload
+    });
+    expect(outOfRange.statusCode).toBe(400);
+
+    const nonFiniteJson = JSON.stringify(payload).replace(
+      '"calloutTipXRatio":0.82',
+      '"calloutTipXRatio":1e400'
+    );
+    const nonFinite = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload: nonFiniteJson
+    });
+    expect(nonFinite.statusCode).toBe(400);
+
+    const explicitNullPayload = structuredClone(payload);
+    explicitNullPayload.areas[0]!.bolts[0]!.calloutTipXRatio = null as unknown as number;
+    explicitNullPayload.areas[0]!.bolts[0]!.calloutTipYRatio = null as unknown as number;
+    const explicitNull = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload: explicitNullPayload
+    });
+    expect(explicitNull.statusCode).toBe(200);
+    expect(explicitNull.json().template.areas[0].bolts[0].calloutTipXRatio).toBeNull();
   });
 
   it('returns procedure and template summaries for library management', async () => {
@@ -646,6 +788,138 @@ describe('assembly torque management API', () => {
       headers
     });
     expect(imageAfterDelete.statusCode).toBe(404);
+  });
+
+  it('returns complete, pane-scoped, case-insensitive library filter options', async () => {
+    const client = await createTestClientDevice();
+    const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
+    const alpha = await uploadPublishedProcedureDocument(app, headers, 'Alpha Manual');
+    const alphaCaseVariant = await uploadPublishedProcedureDocument(app, headers, 'alpha manual');
+    const inactiveDocument = await uploadPublishedProcedureDocument(app, headers, 'Inactive Procedure Only');
+
+    const activeA = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload: buildTemplatePayload(alpha.id, {
+        modelCode: 'FILTER-X',
+        procedurePattern: '標準',
+        name: 'Filter active A'
+      })
+    });
+    expect(activeA.statusCode).toBe(200);
+    const activeCaseVariant = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload: buildTemplatePayload(alphaCaseVariant.id, {
+        modelCode: 'filter-x',
+        procedurePattern: '別手順',
+        name: 'Filter active B'
+      })
+    });
+    expect(activeCaseVariant.statusCode).toBe(200);
+    const inactiveTemplate = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload: buildTemplatePayload(inactiveDocument.id, {
+        modelCode: 'INACTIVE-ONLY',
+        procedurePattern: '標準',
+        name: 'Inactive filter template'
+      })
+    });
+    expect(inactiveTemplate.statusCode).toBe(200);
+    const retired = await app.inject({
+      method: 'DELETE',
+      url: `/api/assembly/templates/${inactiveTemplate.json().template.id}`,
+      headers: { 'x-client-key': client.apiKey }
+    });
+    expect(retired.statusCode).toBe(204);
+    await prisma.assemblyProcedureDocument.update({
+      where: { id: inactiveDocument.id },
+      data: { isActive: false }
+    });
+    await prisma.assemblyTemplate.createMany({
+      data: Array.from({ length: 205 }, (_, index) => ({
+        modelCode: `TAIL-${String(index).padStart(3, '0')}`,
+        procedurePattern: '候補全件確認',
+        name: `候補全件確認 ${index}`,
+        procedureDocumentId: alpha.id
+      }))
+    });
+
+    const modelOptions = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/library/filter-options?field=templateModelCode&q=filter',
+      headers
+    });
+    expect(modelOptions.statusCode).toBe(200);
+    expect(modelOptions.json().options).toHaveLength(1);
+    expect(modelOptions.json().options[0].toLowerCase()).toBe('filter-x');
+
+    const beyondSummaryLimit = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/library/filter-options?field=templateModelCode&q=TAIL-204',
+      headers
+    });
+    expect(beyondSummaryLimit.statusCode).toBe(200);
+    expect(beyondSummaryLimit.json().options).toEqual(['TAIL-204']);
+
+    const inactiveModels = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/library/filter-options?field=templateModelCode&includeInactive=true',
+      headers
+    });
+    expect(inactiveModels.statusCode).toBe(200);
+    expect(inactiveModels.json().options).toContain('INACTIVE-ONLY');
+
+    const templateDocumentOptions = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/library/filter-options?field=templateProcedureDocumentName&q=manual',
+      headers
+    });
+    expect(templateDocumentOptions.statusCode).toBe(200);
+    expect(templateDocumentOptions.json().options).toHaveLength(1);
+
+    const procedureOptions = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/library/filter-options?field=procedureDocumentName',
+      headers
+    });
+    expect(procedureOptions.statusCode).toBe(200);
+    expect(procedureOptions.json().options).not.toContain('Inactive Procedure Only');
+
+    const procedureOptionsWithInactiveFlag = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/library/filter-options?field=procedureDocumentName&includeInactive=true',
+      headers
+    });
+    expect(procedureOptionsWithInactiveFlag.statusCode).toBe(200);
+    expect(procedureOptionsWithInactiveFlag.json().options).not.toContain('Inactive Procedure Only');
+
+    const limited = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/library/filter-options?field=procedureDocumentName&limit=1',
+      headers
+    });
+    expect(limited.statusCode).toBe(200);
+    expect(limited.json().options).toHaveLength(1);
+
+    const renamed = await app.inject({
+      method: 'PATCH',
+      url: `/api/assembly/procedure-documents/${alpha.id}`,
+      headers,
+      payload: { name: 'Renamed Assembly Manual' }
+    });
+    expect(renamed.statusCode).toBe(200);
+    const renamedOptions = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/library/filter-options?field=templateProcedureDocumentName&q=renamed',
+      headers
+    });
+    expect(renamedOptions.statusCode).toBe(200);
+    expect(renamedOptions.json().options).toEqual(['Renamed Assembly Manual']);
   });
 
   it('searches assembly seiban candidates with machine names and active template match', async () => {

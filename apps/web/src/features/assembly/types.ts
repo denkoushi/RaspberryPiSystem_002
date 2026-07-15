@@ -30,6 +30,8 @@ export type AssemblyTemplateBoltDto = {
   markerNo: number;
   xRatio: string;
   yRatio: string;
+  calloutTipXRatio?: string | null;
+  calloutTipYRatio?: string | null;
   boltSpec: string;
   nominalTorque: string;
   lowerLimit: string;
@@ -49,6 +51,8 @@ export type AssemblyTemplateCheckItemDto = {
   required: boolean;
   xRatio: number;
   yRatio: number;
+  calloutTipXRatio?: number | null;
+  calloutTipYRatio?: number | null;
   sortOrder: number;
   kioskDocumentId: string | null;
   assemblyProcedureDocumentId: string | null;
@@ -370,6 +374,8 @@ export type AssemblyTemplateBoltInput = {
   markerNo: number;
   xRatio: number;
   yRatio: number;
+  calloutTipXRatio?: number | null;
+  calloutTipYRatio?: number | null;
   boltSpec: string;
   nominalTorque: number;
   lowerLimit: number;
@@ -386,6 +392,8 @@ export type AssemblyTemplateCheckItemInput = {
   required?: boolean;
   xRatio: number;
   yRatio: number;
+  calloutTipXRatio?: number | null;
+  calloutTipYRatio?: number | null;
   sortOrder: number;
   kioskDocumentId?: string | null;
   assemblyProcedureDocumentId?: string | null;
