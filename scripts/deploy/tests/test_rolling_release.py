@@ -191,7 +191,18 @@ def fleet_execution_contract(targets, classification, inventory):
                 return_value=FORWARD_VERIFICATION_ID,
             )
         )
-        stack.enter_context(patch.object(MODULE, 'trigger_signage_ready_check'))
+        stack.enter_context(
+            patch.object(
+                MODULE,
+                'capture_terminal_manifest',
+                return_value={
+                    'path': '/var/lib/raspi-release/rollback-manifests/run-1/host/manifest.json',
+                    'manifestSha256': 'c' * 64,
+                    'count': 1,
+                },
+            )
+        )
+        stack.enter_context(patch.object(MODULE, 'prove_signage_ready'))
         stack.enter_context(patch.object(MODULE, 'record_pi5_release_current'))
         yield ensure
 
@@ -435,23 +446,38 @@ class Pi5StabilityMonitorTest(unittest.TestCase):
 
 
 class RollbackStateTest(unittest.TestCase):
-    def test_successful_rollback_waits_for_coordinator_health_before_cleanup(self):
-        target = {'state': 'rolling-back', 'previousSha': 'old-sha'}
+    def test_rollback_facade_delegates_to_the_manifest_adapter_only(self):
+        target = {
+            'state': 'rolling-back',
+            'previousSha': BASE_SHA,
+            'rollbackManifest': {
+                'path': '/var/lib/raspi-release/rollback-manifests/run-1/kiosk-a/manifest.json',
+                'manifestSha256': 'c' * 64,
+                'count': 1,
+            },
+        }
         target_spec = {'host': 'kiosk-a', 'clientId': 'client-a', 'terminalType': 'kiosk'}
-        with patch.object(MODULE, 'playbook') as playbook, patch.object(MODULE, 'state_command') as command:
+        with patch.object(
+            MODULE.ansible_backend, 'rollback_terminal', return_value=True
+        ) as restore, patch.object(MODULE, 'state_command') as command:
             self.assertTrue(MODULE.rollback_terminal('inventory.yml', target_spec, target, 'run-1'))
-        playbook.assert_called_once_with('inventory.yml', 'kiosk-a', 'old-sha', 'run-1', rollback=True)
+        restore.assert_called_once_with(
+            'inventory.yml', target_spec, target, 'run-1', runtime=MODULE
+        )
         command.assert_not_called()
-        self.assertEqual(target['rollback'], 'success')
         self.assertNotIn('maintenanceClearedAt', target)
 
-    def test_failed_rollback_keeps_only_the_failed_terminal_in_maintenance(self):
-        target = {'state': 'rolling-back', 'previousSha': 'old-sha'}
+    def test_failed_manifest_adapter_result_is_not_hidden_by_the_facade(self):
+        target = {'state': 'rolling-back', 'previousSha': BASE_SHA}
         target_spec = {'host': 'kiosk-a', 'clientId': 'client-a', 'terminalType': 'kiosk'}
-        with patch.object(MODULE, 'playbook', side_effect=RuntimeError('rollback unavailable')), patch.object(MODULE, 'state_command') as command:
+        with patch.object(
+            MODULE.ansible_backend, 'rollback_terminal', return_value=False
+        ) as restore, patch.object(MODULE, 'state_command') as command:
             self.assertFalse(MODULE.rollback_terminal('inventory.yml', target_spec, target, 'run-1'))
+        restore.assert_called_once_with(
+            'inventory.yml', target_spec, target, 'run-1', runtime=MODULE
+        )
         command.assert_not_called()
-        self.assertEqual(target['rollback'], 'failed: rollback unavailable')
         self.assertNotIn('maintenanceClearedAt', target)
 
 

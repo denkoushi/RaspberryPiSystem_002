@@ -228,7 +228,17 @@ def _verify_terminal_ready(
     target[expected_verification_key] = verification_id
     state.save()
     if target_spec["terminalType"] == "signage":
-        runtime.trigger_signage_ready_check(inventory, target_spec["host"])
+        # The restored signage script may predate release-bound ACKs.  Run the
+        # controller-owned probe on the terminal for both forward and rollback
+        # verification so readiness does not depend on the deployed version.
+        runtime.prove_signage_ready(
+            inventory,
+            target_spec["host"],
+            run_id,
+            target_spec["clientId"],
+            expected_sha,
+            verification_id,
+        )
     wait_options = {
         "phase": "ready",
         "release_sha": expected_sha,
@@ -270,6 +280,183 @@ def _verify_terminal_ready(
     target[verification_key] = ready["verificationId"]
     target[acknowledged_key] = ready["acknowledgedAt"]
     state.save()
+
+
+def _recover_interrupted_terminals(
+    *,
+    runtime: Any,
+    state: Any,
+    inventory: str,
+    run_id: str,
+    desired_sha: str,
+    abandoned_run_id: str | None,
+    all_hosts: list[dict[str, str]],
+    fleet_state: dict[str, Any],
+) -> dict[str, Any]:
+    """Reconcile an orphaned run before a partial host becomes a baseline.
+
+    The prior run record is the only controller-side authority that binds a
+    terminal to its sealed remote manifest.  Completed terminals are observed
+    in place; terminals that crossed the durable maintenance boundary are
+    restored from that exact manifest.  Recovery is deliberately
+    non-cancellable and finishes before ordinary planning.
+    """
+
+    if abandoned_run_id is None:
+        return fleet_state
+    terminal_specs = {
+        host["host"]: host
+        for host in all_hosts
+        if host.get("role") in {"kiosk", "signage"}
+    }
+    affected = [
+        (host, record)
+        for host, record in (fleet_state.get("fleet") or {}).items()
+        if host in terminal_specs
+        and isinstance(record, dict)
+        and record.get("lastRunId") == abandoned_run_id
+    ]
+    if not affected:
+        return fleet_state
+
+    prior = runtime.read_release_run(abandoned_run_id)
+    if not isinstance(prior, dict):
+        raise RuntimeError(
+            "interrupted terminal run record is unavailable; refusing to "
+            "capture a partial host as the new rollback baseline"
+        )
+    prior_targets = prior.get("targets")
+    if not isinstance(prior_targets, list):
+        raise RuntimeError("interrupted terminal run has malformed target state")
+    indexed: dict[str, dict[str, Any]] = {}
+    for candidate in prior_targets:
+        if not isinstance(candidate, dict) or not isinstance(candidate.get("host"), str):
+            raise RuntimeError("interrupted terminal run has malformed target state")
+        host = candidate["host"]
+        if host in indexed:
+            raise RuntimeError("interrupted terminal run contains duplicate targets")
+        indexed[host] = candidate
+
+    recovery_records: list[dict[str, Any]] = []
+    state.payload["phase"] = "recovering-interrupted-run"
+    state.payload["interruptedRecovery"] = {
+        "runId": abandoned_run_id,
+        "targets": recovery_records,
+    }
+    state.save()
+
+    current_state = fleet_state
+    for host, fleet_record in affected:
+        target_spec = terminal_specs[host]
+        prior_target = indexed.get(host)
+        if not isinstance(prior_target, dict):
+            raise RuntimeError(
+                f"interrupted terminal target state is missing for {host}"
+            )
+        if (
+            prior_target.get("role") != target_spec.get("role")
+            or prior_target.get("terminalType") != target_spec.get("terminalType")
+            or prior_target.get("clientId") != target_spec.get("clientId")
+        ):
+            raise RuntimeError(
+                f"interrupted terminal identity no longer matches inventory: {host}"
+            )
+        record = dict(prior_target)
+        recovery_records.append(record)
+        state.save()
+
+        maintenance_needs_cleanup = bool(
+            prior_target.get("maintenanceStartedAt")
+            and not prior_target.get("maintenanceClearedAt")
+        )
+        if maintenance_needs_cleanup:
+            previous_sha = prior_target.get("previousSha")
+            manifest = prior_target.get("rollbackManifest")
+            if (
+                not isinstance(previous_sha, str)
+                or FULL_SHA_RE.fullmatch(previous_sha) is None
+                or not isinstance(manifest, dict)
+            ):
+                raise RuntimeError(
+                    f"interrupted terminal has no sealed rollback authority: {host}"
+                )
+            record["state"] = "rolling-back"
+            state.save()
+            if not runtime.rollback_terminal(
+                inventory, target_spec, record, abandoned_run_id
+            ):
+                raise RuntimeError(
+                    f"interrupted terminal manifest restore failed: {host}"
+                )
+            _verify_terminal_ready(
+                runtime=runtime,
+                state=state,
+                inventory=inventory,
+                run_id=abandoned_run_id,
+                target_spec=target_spec,
+                target=record,
+                expected_sha=previous_sha,
+                rollback=True,
+            )
+            expected_sha = previous_sha
+            recovered = "manifest-restored"
+        else:
+            # No uncleared maintenance boundary means either the terminal was
+            # fully committed or no device mutation had begun.  Prove the
+            # corresponding durable SHA instead of guessing from HEAD alone.
+            if prior_target.get("maintenanceClearedAt"):
+                expected_sha = prior_target.get("currentSha") or prior_target.get(
+                    "newSha"
+                )
+                recovered = "completed-live-verified"
+            else:
+                expected_sha = prior_target.get("previousSha") or fleet_record.get(
+                    "previousSha"
+                )
+                recovered = "pre-mutation-live-verified"
+            if (
+                not isinstance(expected_sha, str)
+                or FULL_SHA_RE.fullmatch(expected_sha) is None
+            ):
+                raise RuntimeError(
+                    f"interrupted terminal has no provable live SHA: {host}"
+                )
+
+        observation = runtime.observe_terminal_evidence(
+            inventory,
+            host,
+            target_spec["role"],
+            target_spec["clientId"],
+        )
+        if observation.get("currentSha") != expected_sha:
+            raise RuntimeError(
+                f"interrupted terminal recovery HEAD does not match: {host}"
+            )
+        if maintenance_needs_cleanup:
+            runtime.state_command(
+                "remove-client",
+                "--run-id",
+                abandoned_run_id,
+                "--client",
+                target_spec["clientId"],
+            )
+            record["maintenanceClearedAt"] = runtime.utc_now()
+        current_state = runtime.fleet_mark_verified(
+            host,
+            target_spec["role"],
+            desired_sha,
+            expected_sha,
+            run_id,
+            previous_sha=fleet_record.get("previousSha"),
+            observation=observation,
+        )
+        record["state"] = "recovered"
+        record["recovery"] = recovered
+        record["currentSha"] = expected_sha
+        record["evidence"] = "verified"
+        state.payload["fleetGeneration"] = current_state["generation"]
+        state.save()
+    return current_state
 
 
 def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
@@ -351,6 +538,20 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
         state = runtime.ReleaseState(runtime.status_file(args.run_id), initial)
         state.save()
         token.checkpoint("state-initialized")
+
+        # A process crash can leave a terminal between checkout and health.
+        # Reconcile its old, sealed authority before evidence seeding or a new
+        # manifest capture can accept that partial state as a baseline.
+        fleet_state = _recover_interrupted_terminals(
+            runtime=runtime,
+            state=state,
+            inventory=inventory,
+            run_id=args.run_id,
+            desired_sha=args.sha,
+            abandoned_run_id=abandoned_run_id,
+            all_hosts=all_hosts,
+            fleet_state=fleet_state,
+        )
 
         fleet_state, seed_failures = _seed_unverified_hosts(
             all_hosts,
@@ -469,6 +670,16 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             state.save()
 
             target["previousSha"] = runtime.remote_previous_sha(inventory, host)
+            # Seal every release-owned destination and the exact repository
+            # HEAD before notices, maintenance, prestaging, checkout, or
+            # service changes.  A capture failure is therefore mutation-free.
+            target["rollbackManifest"] = runtime.capture_terminal_manifest(
+                inventory,
+                target_spec,
+                args.run_id,
+                target["previousSha"],
+            )
+            state.save()
             if runtime.should_issue_terminal_notice(
                 terminal_type=target_spec["terminalType"],
                 emergency_override=args.emergency_override,
@@ -488,47 +699,51 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                 state.save()
             token.checkpoint(f"after-notice:{host}")
 
-            target["state"] = "maintenance-requested"
-            target["maintenanceStartedAt"] = runtime.utc_now()
-            state.payload["phase"] = "deploying"
-            state.save()
-            runtime.state_command(
-                "put",
-                "--run-id",
-                args.run_id,
-                "--clients",
-                target_spec["clientId"],
-                "--terminal-type",
-                target_spec["terminalType"],
-            )
-            token.checkpoint(f"after-maintenance:{host}")
-            if target_spec["terminalType"] == "signage":
-                runtime.prestage_signage_maintenance(
-                    inventory, host, args.run_id, target_spec["clientId"]
-                )
-            if not runtime.wait_for_ack(
-                args.run_id, target_spec["clientId"], phase="maintenance"
-            ):
-                if not args.emergency_override:
-                    raise RuntimeError(
-                        f"maintenance acknowledgement timed out for {host}"
-                    )
-                target["ackOverrideReason"] = args.reason
-            target["acknowledgedAt"] = runtime.utc_now()
-            token.checkpoint(f"before-playbook:{host}")
-
-            target["state"] = "deploying"
-            state.save()
-            runtime.state_command(
-                "set-phase",
-                "--run-id",
-                args.run_id,
-                "--client",
-                target_spec["clientId"],
-                "--phase",
-                "deploying",
-            )
             try:
+                # From this point a failed command may have changed remote
+                # state even when its transport reports an error.  Every
+                # failure and cancellation therefore passes through the one
+                # manifest-owned rollback below.
+                target["state"] = "maintenance-requested"
+                target["maintenanceStartedAt"] = runtime.utc_now()
+                state.payload["phase"] = "deploying"
+                state.save()
+                runtime.state_command(
+                    "put",
+                    "--run-id",
+                    args.run_id,
+                    "--clients",
+                    target_spec["clientId"],
+                    "--terminal-type",
+                    target_spec["terminalType"],
+                )
+                token.checkpoint(f"after-maintenance:{host}")
+                if target_spec["terminalType"] == "signage":
+                    runtime.prestage_signage_maintenance(
+                        inventory, host, args.run_id, target_spec["clientId"]
+                    )
+                if not runtime.wait_for_ack(
+                    args.run_id, target_spec["clientId"], phase="maintenance"
+                ):
+                    if not args.emergency_override:
+                        raise RuntimeError(
+                            f"maintenance acknowledgement timed out for {host}"
+                        )
+                    target["ackOverrideReason"] = args.reason
+                target["acknowledgedAt"] = runtime.utc_now()
+                token.checkpoint(f"before-playbook:{host}")
+
+                target["state"] = "deploying"
+                state.save()
+                runtime.state_command(
+                    "set-phase",
+                    "--run-id",
+                    args.run_id,
+                    "--client",
+                    target_spec["clientId"],
+                    "--phase",
+                    "deploying",
+                )
                 # Ansible is not killed mid-operation.  Verification happens
                 # before the next cancellation checkpoint.
                 runtime.playbook(

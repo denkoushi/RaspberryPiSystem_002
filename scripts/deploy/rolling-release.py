@@ -353,6 +353,10 @@ def status_file(run_id: str) -> Path:
     return RUN_DIRECTORY / f"{run_id}.json"
 
 
+def read_release_run(run_id: str) -> dict[str, Any] | None:
+    return RunStateStore(RUN_DIRECTORY, clock=utc_now).read_state(run_id)
+
+
 def inventory_json(path: str) -> dict[str, Any]:
     return ansible_backend.inventory_json(path, runtime=_runtime())
 
@@ -670,6 +674,21 @@ def remote_previous_sha(inventory: str, host: str) -> str:
     return ansible_backend.remote_previous_sha(inventory, host, runtime=_runtime())
 
 
+def capture_terminal_manifest(
+    inventory: str,
+    target_spec: dict[str, str],
+    run_id: str,
+    previous_sha: str,
+) -> dict[str, Any]:
+    return ansible_backend.capture_terminal_manifest(
+        inventory,
+        target_spec,
+        run_id,
+        previous_sha,
+        runtime=_runtime(),
+    )
+
+
 def probe_terminal_identity(
     inventory: str, host: str, client_id: str
 ) -> dict[str, Any]:
@@ -681,6 +700,25 @@ def probe_terminal_identity(
 def trigger_signage_ready_check(inventory: str, host: str) -> None:
     return ansible_backend.trigger_signage_ready_check(
         inventory, host, runtime=_runtime()
+    )
+
+
+def prove_signage_ready(
+    inventory: str,
+    host: str,
+    run_id: str,
+    client_id: str,
+    release_sha: str,
+    verification_id: str,
+) -> None:
+    return ansible_backend.prove_signage_ready(
+        inventory,
+        host,
+        run_id,
+        client_id,
+        release_sha,
+        verification_id,
+        runtime=_runtime(),
     )
 
 
