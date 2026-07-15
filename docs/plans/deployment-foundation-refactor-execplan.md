@@ -35,7 +35,7 @@ validation:
   - read-only plans for both production inventories before any approved release
   - one explicitly approved full-fleet acceptance per inventory, followed by a same-SHA no-op plan
 open_items:
-  - "merge PRs 1005 and 1006 in order under the user's explicit approval of #1007 and #1004 -> #1005 -> #1006"
+  - "merge PR 1006 under the user's explicit approval of #1007 and #1004 -> #1005 -> #1006"
   - implement PR 4 through PR 8 only in sequence from the updated origin/main
   - obtain separate per-inventory approval before any production mutation
   - reintroduce the deferred product work only after deployment-foundation production acceptance
@@ -71,7 +71,10 @@ This work exists because the current release path has accumulated two coordinato
 - [x] (2026-07-14 23:10Z) Hardened PR 1 at head `d755a679`: the gate now validates the candidate-wide commit-object ledger, permits only A-status migration changes, uses quote-aware SQL parsing plus a built-in type allow-list, passes 22 focused tests and two independent reviews with no P1/P2 blocker, and has a green 11-of-11 hosted rerun with zero failures or skips.
 - [x] (2026-07-14 23:27Z) Merged the living ExecPlan PR #1007 with merge commit `3ea5d442` after 11 of 11 checks passed; the docs-only run took 8m23s wall time and about 39m46s of summed reported check time.
 - [x] (2026-07-14 23:36Z) Refreshed PR 1 from that main, reran 11 of 11 checks successfully at head `83fbb379`, and merged PR #1004 with merge commit `d9abaa6e` under the user's explicit ordered-merge approval.
-- [ ] Merge PR 2 and PR 3 in dependency-safe order under the same explicit approval, refreshing each branch from the latest `origin/main` without force-pushing PR #1003.
+- [x] (2026-07-14 23:55Z) Refreshed PR 2 from merge commit `d9abaa6e`, reran every hosted check successfully at head `50e3eeaa` with no feature-branch push duplicate, and merged PR #1005 with merge commit `bf238688`.
+- [x] (2026-07-15 00:04Z) Refreshed PR 3 from that main and hardened the successful outer-lock path at `f3d39012`: the transitional lock parent is created only after the kernel lock, and a Linux regression now exercises a fresh checkout with no pre-existing `logs` directory.
+- [x] (2026-07-15 00:23Z) Diagnosed the refreshed PR 3 hosted failure as npm's retired legacy audit endpoint returning HTTP 410 to pnpm 9; every deployment, Linux lock, inventory, Ansible, API, E2E, CodeQL, gitleaks, Docker, and non-audit check passed. With explicit approval, replaced only the audit client with pinned pnpm 11.4 on Node 22 so the required critical gate uses the bulk advisory endpoint without `--ignore-registry-errors`.
+- [ ] Refresh and merge PR 3 under the same explicit approval without force-pushing or changing PR #1003.
 - [ ] Implement and publish PR 4, the single coordinator and execution backend.
 - [ ] Implement and publish PR 5, durable fleet state and default target minimization.
 - [ ] Implement and publish PR 6, unified Pi5 and terminal executors, health checks, acknowledgements, and rollback.
@@ -152,14 +155,17 @@ This work exists because the current release path has accumulated two coordinato
 - Decision: Require PR 1 to validate every candidate migration from the immutable candidate commit object, parse SQL comments and statement boundaries with ASCII- and Unicode-aware quote boundaries, allow only built-in types for nullable constraint-free `ADD COLUMN`, and reject every migration-file Git change except A status.
   Rationale: an added-path-only allow-list, regex comment stripping, or a user-defined domain can let `migrate deploy` execute unreviewed, hidden, or implicitly constrained SQL even when checks are green.
   Date/Author: 2026-07-15 / Codex
+- Decision: Keep the workspace install and build toolchain on Node 20 with packageManager-pinned pnpm 9, but run the security audit after all build work with pinned pnpm 11.4 on Node 22 from outside the repository.
+  Rationale: npm permanently retired the endpoint used by pnpm 9, while pnpm 11 uses the bulk advisory endpoint and requires Node 22. Isolating that read-only client restores the critical gate without a broad package-manager migration or a fail-open registry flag.
+  Date/Author: 2026-07-15 / Codex
 
 ## Outcomes & Retrospective
 
-The program is in progress. The living ExecPlan in #1007 and migration ledger safety in #1004 are merged. CI/deploy-contract shadowing in #1005 and critical inventory, rollback, and checkout-lock safety in #1006 remain open while they are refreshed and revalidated in that order. PR 4 through PR 8 remain paused until the ordered merge gate finishes.
+The program is in progress. The living ExecPlan in #1007, migration ledger safety in #1004, and CI/deploy-contract shadowing in #1005 are merged. Critical inventory, rollback, and checkout-lock safety in #1006 is refreshed from that main and is being revalidated. PR 4 through PR 8 remain paused until the ordered merge gate finishes.
 
-Merged PR 1 validates the complete candidate commit-object ledger, enforces addition-only migration diffs, and applies a quote-aware conservative SQL allow-list. Its 22 focused tests, real 144-base/146-candidate ledger check, adversarial matrix, two independent reviews, and both hosted suites passed. PR 2 proves pull-request-only feature-branch CI, stable required-check names, and the client-lifecycle baseline/merge-base contract; it is being refreshed from merge commit `d9abaa6e`. PR 3 remains published as three focused commits at head `e33ecadb`; local, real Ansible inventory/playbook, isolated Linux critical lock tests, and its complete hosted suite pass. Cancel, detach, and job operations remain fail-closed until PR 4 supplies their common systemd execution identity.
+Merged PR 1 validates the complete candidate commit-object ledger, enforces addition-only migration diffs, and applies a quote-aware conservative SQL allow-list. Its 22 focused tests, real 144-base/146-candidate ledger check, adversarial matrix, two independent reviews, and both hosted suites passed. Merged PR 2 proves pull-request-only feature-branch CI, stable required-check names, the shadow classifier, and the client-lifecycle baseline/merge-base contract; its refreshed suite passed with no duplicate feature-branch push run. PR 3 contains three focused safety commits plus post-refresh successful-lock-path hardening, now based on merge commit `bf238688`. Its first refreshed hosted run proved all deployment and Linux lock contracts but exposed the unrelated retired pnpm 9 audit endpoint; the approved pinned bulk-audit bridge is locally green and awaiting a fresh hosted run. Cancel, detach, and job operations remain fail-closed until PR 4 supplies their common systemd execution identity.
 
-No product deployment, real-device mutation, or production acceptance action has occurred. Only the explicitly approved repository merges #1007 and #1004 have occurred. Draft PR #1003 remains open, untouched, and unmerged at head `0f19936a` for provenance only.
+No product deployment, real-device mutation, or production acceptance action has occurred. Only the explicitly approved repository merges #1007, #1004, and #1005 have occurred. Draft PR #1003 remains open, untouched, and unmerged at head `0f19936a` for provenance only.
 
 At each major merge, update this section with the observable behavior delivered, the checks that passed, any time saved or regression found, and the remaining risk. After the seven-day CI observation, compare actual latency and runner-minute evidence against the thresholds in `Validation and Acceptance`. After PR 8, state whether the old marker, lock, and run formats were fully removed and whether the accepted same-SHA plan is a no-op.
 
@@ -209,7 +215,7 @@ On branch `agent/ci-deploy-contract-shadow`, change feature, fix, refactor, and 
 
 Create the pure standard-library classifier at `scripts/ci/classify_changes.py` with tests under `scripts/ci/tests`. It must classify the PR diff and publish the result in the GitHub Actions step summary, but PR 2 must not conditionally skip any existing job. This is shadow mode: classification is observable while the old full PR suite remains authoritative. Record enough output to distinguish docs/root Markdown, API, Web, shared packages, migrations, deployment/Ansible, clients, Docker/security, workflows/CI, unknown paths, and rename/delete events.
 
-Connect the existing `scripts/deploy/tests/test-pi5-image-deploy.sh` to hosted CI. Parse both `infrastructure/ansible/inventory.yml` and `infrastructure/ansible/inventory-talkplaza.yml`, and syntax-check `infrastructure/ansible/playbooks/deploy-staged.yml` in the hosted environment. Do not invent a skipped or static client lifecycle check: that executable behavior does not exist on `origin/main`; PR 6 will add its real test and connect it immediately.
+Connect the existing `scripts/deploy/tests/test-pi5-image-deploy.sh` to hosted CI. Parse both `infrastructure/ansible/inventory.yml` and `infrastructure/ansible/inventory-talkplaza.yml`, and syntax-check `infrastructure/ansible/playbooks/deploy-staged.yml` in the hosted environment. Add an executable client-lifecycle baseline contract for the behavior already present in the client roles, while leaving the final build/recreate/no-build executor behavior and its expanded contract to PR 6.
 
 Add an always-present `ci-required` job. It must depend on every current PR job, use `if: always()`, inspect dependency results, and fail if any job unexpectedly failed or was cancelled. In shadow mode all existing jobs still run, so a skipped result is unexpected unless the workflow itself explicitly documents it. The check name must remain exactly `ci-required` from this PR onward.
 
@@ -225,7 +231,7 @@ Correct `infrastructure/ansible/tasks/rollback-configs.yml` so service restorati
 
 Move the remote non-waiting kernel `flock` ahead of every Pi5 `git fetch`, `git checkout`, and release-state mutation. A later run must fail immediately and must leave remote HEAD, state files, and services unchanged. Use an isolated temporary Git repository and stubbed adapters to prove two concurrent runs cannot both reach checkout.
 
-Add an internal cooperative cancel contract now, even though PR 4 exposes the final public `--cancel` CLI. Every phase must check cancellation before a mutating transition. A run already marked for cancellation must not fetch or check out a new revision. A regression must snapshot HEAD, request cancellation, execute the runner, and prove HEAD is identical afterward.
+Keep `--cancel`, `--detach`, and `--job` fail-closed before any mutation until PR 4 supplies the transient-systemd execution identity and cooperative control record. A regression must snapshot HEAD, invoke the disabled cancellation path, and prove that no Git, SSH, or signal operation occurred and HEAD is identical afterward.
 
 Acceptance is passing inventory/playbook consistency, exact backup-name, concurrent-run, and cancel-with-unchanged-HEAD tests. No test may require an actual Raspberry Pi or production inventory connection.
 
@@ -434,12 +440,16 @@ Current replacement map at this revision:
       CI baseline and deploy-contract shadow -> f0cadcdd
       hosted history-depth correction -> 98c3dae4
       reviewed implementation head -> efa93df4, including client-lifecycle baseline and merge-base diff coverage
-      refreshed from main d9abaa6e -> merge commit 5b1744aa
-      hosted state -> pre-refresh ci-required, codeql, gitleaks, and every constituent check green; refreshed rerun pending
+      refreshed branch head -> 50e3eeaa, including main integration commit 5b1744aa and the living-plan record
+      merged -> bf238688
+      hosted state -> refreshed ci-required, codeql, gitleaks, and every constituent check green; API shards 8m05s / 7m36s / 7m33s, lint and deploy-contract 4m31s, no feature-branch push duplicate
     PR 3 / #1006:
       three focused commits -> canonical inventory groups, exact-set rollback, pre-checkout flock
-      latest head -> e33ecadb
-      test state -> local, real Ansible inventory/playbook, isolated Linux critical, CodeQL, three API shards, lint, E2E, gitleaks, and Docker checks green; infrastructure shard completed in 9m05s
+      reviewed implementation head -> e33ecadb
+      refreshed from main bf238688 -> merge commit 01ae9ffc
+      successful-lock-path hardening -> f3d39012, including missing-parent creation after kernel lock and a fresh-checkout Linux regression
+      test state -> first refreshed hosted run passed rolling release 78 with no Linux skip, deploy safety, all three API shards, E2E, CodeQL, gitleaks, and both Docker jobs; only the retired pnpm 9 audit endpoint failed
+      audit recovery -> pinned pnpm 11.4 bulk client on Node 22, critical required and high informational, no registry fail-open; local bulk audit found 2 low / 10 moderate / 0 high-critical
       deferred interface state -> cancel, detach, and job operations fail closed before mutation until PR 4
     PR 4-PR 8: paused at the explicit merge gate
     Product reconstruction: pending deployment-foundation production acceptance
@@ -532,3 +542,9 @@ Revision note (2026-07-14, 22:45Z): Recorded the independent PR #1004 migration-
 Revision note (2026-07-14, 23:10Z): Recorded resolution of the PR #1004 review blocker at head `d755a679`. The candidate-wide immutable ledger, A-only migration diff, quote-aware ASCII/Unicode boundaries, and built-in type allow-list pass 22 focused tests, two independent reviews, and a hosted rerun with 11 of 11 checks successful and no failures or skips. Merge and real-device gates remain unchanged.
 
 Revision note (2026-07-14, 23:36Z): Recorded the user's ordered-merge approval, the merge of ExecPlan PR #1007 at `3ea5d442`, and the refresh, 11-of-11 hosted rerun, and merge of migration PR #1004 at `d9abaa6e`. PR #1005 is now refreshing from that main; no product deployment, real-device mutation, or change to Draft PR #1003 occurred.
+
+Revision note (2026-07-14, 23:56Z): Recorded the refreshed 11-of-11 hosted success and merge of CI baseline PR #1005 at `bf238688`, including the absence of a feature-branch push duplicate. PR #1006 is now refreshed from that main at `01ae9ffc`; no product deployment, real-device mutation, or change to Draft PR #1003 occurred.
+
+Revision note (2026-07-15, 00:04Z): Aligned the PR 2 client-lifecycle and PR 3 cancellation milestones with the recorded decisions, then hardened PR #1006's successful outer-lock path at `f3d39012` so a fresh checkout creates the transitional lock parent only after acquiring the kernel lock. The refreshed local suite passes; hosted Linux validation is pending.
+
+Revision note (2026-07-15, 00:23Z): Recorded the first refreshed PR #1006 hosted run. Every deployment and Linux lock contract passed, but npm's retired legacy endpoint returned HTTP 410 to pnpm 9 and correctly failed `lint-build-unit` plus `ci-required`. After explicit approval, isolated the audit on pinned pnpm 11.4 and Node 22, retained the required critical gate and high advisory, added a static no-fail-open contract, and verified the bulk audit locally with no high or critical advisory.

@@ -94,27 +94,6 @@ jobs:
           bash scripts/deploy/tests/test-deploy-status-postgres.sh
           bash scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan
 
-      - name: Security scan (pnpm audit)
-        run: |
-          set -euo pipefail
-          echo "=== pnpm audit: critical+ (required gate) ==="
-          for attempt in 1 2 3; do
-            if pnpm audit --audit-level=critical; then
-              break
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              echo "pnpm audit (critical+) failed after retries"
-              exit 1
-            fi
-            echo "pnpm audit (critical+) failed (attempt ${attempt}/3); retrying..."
-            sleep 20
-          done
-          echo "=== pnpm audit: high+ (informational; fix tracked separately) ==="
-          pnpm audit --audit-level=high || {
-            echo "::warning::pnpm audit reported high severity issues; see log above"
-            exit 0
-          }
-
       - name: Run lint
         run: pnpm lint --max-warnings=0
 
@@ -143,6 +122,46 @@ jobs:
 
       - name: Build Web
         run: pnpm --filter @raspi-system/web build
+
+      # pnpm 9 uses npm's retired audit endpoint. Keep the workspace toolchain
+      # unchanged and isolate the bulk-advisory client after all Node 20 work.
+      - name: Setup Node.js for bulk advisory audit
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Security scan (pnpm bulk audit)
+        env:
+          AUDIT_PNPM_VERSION: '11.4.0'
+        run: |
+          set -euo pipefail
+          run_audit() {
+            (
+              # Running outside the repository prevents pnpm 11 from switching
+              # back to the packageManager-pinned pnpm 9 audit client.
+              cd /tmp
+              npx --yes "pnpm@${AUDIT_PNPM_VERSION}" with "${AUDIT_PNPM_VERSION}" \
+                --dir "$GITHUB_WORKSPACE" audit "$@"
+            )
+          }
+
+          echo "=== pnpm bulk audit: critical+ (required gate) ==="
+          for attempt in 1 2 3; do
+            if run_audit --audit-level=critical; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "pnpm bulk audit (critical+) failed after retries"
+              exit 1
+            fi
+            echo "pnpm bulk audit (critical+) failed (attempt ${attempt}/3); retrying..."
+            sleep 20
+          done
+          echo "=== pnpm bulk audit: high+ (informational; fix tracked separately) ==="
+          run_audit --audit-level=high || {
+            echo "::warning::pnpm bulk audit reported high severity issues; see log above"
+            exit 0
+          }
 
   # API + PostgreSQL + 統合テスト + 運用スクリプト（開始直後から並列実行）
   api-db-and-infra:
@@ -283,6 +302,10 @@ jobs:
         with:
           path: ~/.ansible/collections
           key: ansible-collections-${{ runner.os }}-community-general-v1
+
+      - name: Validate deploy safety contracts
+        if: matrix.run-infra
+        run: bash scripts/deploy/tests/test-deploy-safety-contracts.sh
 
       - name: Ansible syntax check
         if: matrix.run-infra

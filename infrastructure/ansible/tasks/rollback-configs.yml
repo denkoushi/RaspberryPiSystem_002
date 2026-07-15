@@ -3,67 +3,143 @@
     path: "{{ backup_dir }}"
   register: backup_dir_stat
 
-- name: Find latest polkit backup
+- name: Require rollback backup directory
+  ansible.builtin.assert:
+    that:
+      - backup_dir_stat.stat.exists
+      - backup_dir_stat.stat.isdir | default(false)
+    fail_msg: "Rollback backup directory does not exist: {{ backup_dir }}"
+
+- name: Select systemd service units eligible for rollback
+  ansible.builtin.set_fact:
+    rollback_service_files: >-
+      {{
+        backup_service_files
+        | default([
+          'status-agent.service',
+          'status-agent.timer',
+          'kiosk-browser.service',
+          'signage-lite.service'
+        ])
+      }}
+
+- name: Find valid backup sets for managed systemd units
   ansible.builtin.find:
     paths: "{{ backup_dir }}"
-    patterns: "polkit-50-pcscd-allow-all.rules.*"
+    patterns: "^{{ item | regex_escape }}\\.[0-9]{8}_[0-9]{6}$"
+    use_regex: true
+    file_type: file
+  loop: "{{ rollback_service_files }}"
+  loop_control:
+    label: "{{ item }}"
+  register: rollback_unit_backup_candidates
+
+- name: Select one rollback backup set
+  ansible.builtin.set_fact:
+    rollback_backup_timestamp: >-
+      {{
+        backup_timestamp
+        if backup_timestamp is defined
+        else (
+          rollback_unit_backup_candidates.results
+          | default([])
+          | map(attribute='files')
+          | flatten
+          | map(attribute='path')
+          | map('basename')
+          | map('regex_replace', '^.*\.([0-9]{8}_[0-9]{6})$', '\1')
+          | sort(reverse=true)
+          | list
+          | first
+          | default('')
+        )
+      }}
+
+- name: Require a valid managed-unit backup set
+  ansible.builtin.assert:
+    that:
+      - rollback_backup_timestamp is match('^[0-9]{8}_[0-9]{6}$')
+    fail_msg: >-
+      No valid YYYYMMDD_HHMMSS rollback set exists for the configured
+      service/timer units in {{ backup_dir }}.
+
+- name: Find systemd backups from selected set
+  ansible.builtin.find:
+    paths: "{{ backup_dir }}"
+    patterns: "^{{ item | regex_escape }}\\.{{ rollback_backup_timestamp }}$"
+    use_regex: true
+    file_type: file
+  loop: "{{ rollback_service_files }}"
+  loop_control:
+    label: "{{ item }}"
+  register: service_backup_candidates
+
+- name: Count managed units in selected rollback set
+  ansible.builtin.set_fact:
+    rollback_selected_unit_count: >-
+      {{
+        service_backup_candidates.results
+        | default([])
+        | map(attribute='matched')
+        | map('int')
+        | sum
+      }}
+
+- name: Require the selected rollback set to contain a managed unit
+  ansible.builtin.assert:
+    that:
+      - rollback_selected_unit_count | int > 0
+    fail_msg: >-
+      Rollback set {{ rollback_backup_timestamp }} contains no configured
+      service/timer backup in {{ backup_dir }}.
+
+- name: Find polkit backup from selected set
+  ansible.builtin.find:
+    paths: "{{ backup_dir }}"
+    patterns: "^polkit-50-pcscd-allow-all\\.rules\\.{{ rollback_backup_timestamp }}$"
+    use_regex: true
     file_type: file
   register: polkit_backups
-  when: backup_dir_stat.stat.exists
-
-- name: Get latest polkit backup path
-  ansible.builtin.set_fact:
-    latest_polkit_backup: "{{ polkit_backups.files | sort(attribute='mtime', reverse=true) | list | first | default({}) }}"
-  when:
-    - backup_dir_stat.stat.exists
-    - polkit_backups.matched > 0
 
 - name: Restore polkit configuration from backup
   ansible.builtin.copy:
-    src: "{{ latest_polkit_backup.path }}"
-    dest: /etc/polkit-1/rules.d/50-pcscd-allow-all.rules
-    owner: root
-    group: root
+    src: "{{ polkit_backups.files[0].path }}"
+    dest: "{{ rollback_polkit_path | default('/etc/polkit-1/rules.d/50-pcscd-allow-all.rules') }}"
+    owner: "{{ rollback_unit_owner | default('root') }}"
+    group: "{{ rollback_unit_group | default('root') }}"
     mode: '0644'
     remote_src: true
   when:
-    - backup_dir_stat.stat.exists
-    - polkit_backups.matched > 0
-    - latest_polkit_backup is defined
-    - latest_polkit_backup.path is defined
+    - (polkit_backups.matched | default(0) | int) == 1
   register: polkit_restore_result
   notify: restart pcscd
 
-- name: Find latest systemd service backups
-  ansible.builtin.find:
-    paths: "{{ backup_dir }}"
-    patterns: "*.service.*"
-    file_type: file
-  register: service_backups
-  when: backup_dir_stat.stat.exists
-
 - name: Restore systemd services from backup
   ansible.builtin.copy:
-    src: "{{ item.path }}"
-    dest: "/etc/systemd/system/{{ item.path | basename | regex_replace('\\.[0-9]+$', '') }}"
-    owner: root
-    group: root
+    src: "{{ item.files[0].path }}"
+    dest: "{{ systemd_unit_dir | default('/etc/systemd/system') }}/{{ item.item }}"
+    owner: "{{ rollback_unit_owner | default('root') }}"
+    group: "{{ rollback_unit_group | default('root') }}"
     mode: '0644'
     remote_src: true
-  loop: "{{ service_backups.files | sort(attribute='mtime', reverse=true) | list }}"
+  loop: "{{ service_backup_candidates.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item }}"
   when:
-    - backup_dir_stat.stat.exists
-    - service_backups.matched > 0
+    - (item.matched | default(0) | int) == 1
   register: service_restore_result
 
 - name: Reload systemd daemon if services restored
   ansible.builtin.systemd:
     daemon_reload: true
-  when: service_restore_result.changed | default(false)
+  when:
+    - service_restore_result.changed | default(false)
+    - rollback_reload_systemd | default(true) | bool
 
 - name: Display rollback summary
   ansible.builtin.debug:
     msg:
       - "Rollback completed"
+      - "Backup set: {{ rollback_backup_timestamp | default('none') }}"
       - "Polkit restored: {{ polkit_restore_result.changed | default(false) }}"
       - "Services restored: {{ service_restore_result.changed | default(false) }}"
