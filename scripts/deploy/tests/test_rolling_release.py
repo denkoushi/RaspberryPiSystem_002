@@ -1298,6 +1298,7 @@ class RollingReleaseKernelLockTest(unittest.TestCase):
         self.assertLess(lock_position, command.index('git fetch'))
         self.assertLess(lock_position, command.index('git checkout'))
         self.assertLess(lock_position, command.index('--remote-run'))
+        self.assertLess(lock_position, command.index('mkdir -p'))
         self.assertLess(command.index('mkdir -p'), command.index('mkdir "$legacy_lock"'))
         self.assertLess(command.index('mkdir'), command.index('git fetch'))
         self.assertLess(command.index('.rolling-terminal-release.lock.d'), command.index('git fetch'))
@@ -1432,6 +1433,7 @@ class RollingReleaseKernelLockTest(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertEqual(after, before)
             self.assertEqual(after_remote, before_remote)
+            self.assertFalse((checkout / 'logs').exists())
             self.assertFalse(
                 (checkout / 'logs/deploy/release-runs/run-contender.json').exists(),
             )
