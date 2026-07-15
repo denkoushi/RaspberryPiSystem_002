@@ -11,6 +11,8 @@ process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-1234567890';
 const TEST_CONFIG_DIR = join(process.cwd(), 'test-config');
 const TEST_DEPLOY_STATUS_FILE = join(TEST_CONFIG_DIR, 'deploy-status.json');
 const TEST_CLIENT_KEY = 'test-only-deploy-status-api-key';
+const DESIRED_RELEASE_SHA = 'a'.repeat(40);
+const OTHER_RELEASE_SHA = 'b'.repeat(40);
 
 describe('GET /api/system/deploy-status', () => {
   let closeServer: (() => Promise<void>) | null = null;
@@ -274,6 +276,110 @@ describe('GET /api/system/deploy-status', () => {
       expect(stored.kioskByClient['raspberrypi4-kiosk1'].scheduledAt, name).toBeUndefined();
       expect(stored.acknowledgements, name).toBeUndefined();
     }
+  });
+
+  it('acknowledges ready only for the active verifying release SHA', async () => {
+    await writeFile(
+      TEST_DEPLOY_STATUS_FILE,
+      JSON.stringify({
+        version: 2,
+        kioskByClient: {
+          'raspberrypi4-kiosk1': {
+            maintenance: true,
+            runId: 'run-verifying',
+            phase: 'verifying',
+            desiredReleaseSha: DESIRED_RELEASE_SHA
+          }
+        }
+      })
+    );
+    const app = await buildServer();
+    closeServer = async () => {
+      await app.close();
+    };
+
+    const getResponse = await app.inject({
+      method: 'GET',
+      url: '/api/system/deploy-status',
+      headers: { 'x-client-key': TEST_CLIENT_KEY }
+    });
+    expect(getResponse.statusCode).toBe(200);
+    expect(getResponse.json()).toMatchObject({
+      isMaintenance: true,
+      runId: 'run-verifying',
+      phase: 'verifying',
+      desiredReleaseSha: DESIRED_RELEASE_SHA
+    });
+
+    const invalidCases: Array<[string, Record<string, unknown>, number]> = [
+      ['missing SHA', { runId: 'run-verifying', phase: 'ready' }, 400],
+      ['short SHA', { runId: 'run-verifying', phase: 'ready', releaseSha: 'abc123' }, 400],
+      ['uppercase SHA', { runId: 'run-verifying', phase: 'ready', releaseSha: DESIRED_RELEASE_SHA.toUpperCase() }, 400],
+      ['mismatched SHA', { runId: 'run-verifying', phase: 'ready', releaseSha: OTHER_RELEASE_SHA }, 409]
+    ];
+    for (const [name, payload, statusCode] of invalidCases) {
+      const before = await readFile(TEST_DEPLOY_STATUS_FILE, 'utf-8');
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/system/deploy-status/ack',
+        headers: { 'x-client-key': TEST_CLIENT_KEY },
+        payload
+      });
+      expect(response.statusCode, name).toBe(statusCode);
+      expect(await readFile(TEST_DEPLOY_STATUS_FILE, 'utf-8'), name).toBe(before);
+    }
+
+    const ready = await app.inject({
+      method: 'POST',
+      url: '/api/system/deploy-status/ack',
+      headers: { 'x-client-key': TEST_CLIENT_KEY },
+      payload: { runId: 'run-verifying', phase: 'ready', releaseSha: DESIRED_RELEASE_SHA }
+    });
+    expect(ready.statusCode).toBe(200);
+    expect(ready.json()).toEqual({
+      acknowledged: true,
+      runId: 'run-verifying',
+      phase: 'ready',
+      releaseSha: DESIRED_RELEASE_SHA
+    });
+    const stored = JSON.parse(await readFile(TEST_DEPLOY_STATUS_FILE, 'utf-8'));
+    expect(stored.acknowledgements['run-verifying']['raspberrypi4-kiosk1'].ready).toMatchObject({
+      acknowledgedAt: expect.any(String),
+      source: 'controller',
+      releaseSha: DESIRED_RELEASE_SHA
+    });
+  });
+
+  it('does not accept ready outside the verifying phase', async () => {
+    await writeFile(
+      TEST_DEPLOY_STATUS_FILE,
+      JSON.stringify({
+        version: 2,
+        kioskByClient: {
+          'raspberrypi4-kiosk1': {
+            maintenance: true,
+            runId: 'run-deploying',
+            phase: 'deploying',
+            desiredReleaseSha: DESIRED_RELEASE_SHA
+          }
+        }
+      })
+    );
+    const app = await buildServer();
+    closeServer = async () => {
+      await app.close();
+    };
+    const before = await readFile(TEST_DEPLOY_STATUS_FILE, 'utf-8');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/system/deploy-status/ack',
+      headers: { 'x-client-key': TEST_CLIENT_KEY },
+      payload: { runId: 'run-deploying', phase: 'ready', releaseSha: DESIRED_RELEASE_SHA }
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(await readFile(TEST_DEPLOY_STATUS_FILE, 'utf-8')).toBe(before);
   });
 
   it('ignores the obsolete mkdir lock and uses a persistent kernel lock', async () => {

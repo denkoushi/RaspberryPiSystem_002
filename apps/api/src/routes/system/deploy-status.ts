@@ -11,6 +11,7 @@ function deployStatusFilePath(): string {
 
 const DEPLOY_STATUS_HELPER_TIMEOUT_MS = 15_000;
 const DEPLOY_STATUS_HELPER_OUTPUT_LIMIT = 64 * 1024;
+const FULL_RELEASE_SHA_PATTERN = /^[0-9a-f]{40}$/;
 
 function deployStatusStateHelperPath(): string {
   if (process.env.DEPLOY_STATUS_STATE_HELPER_PATH) {
@@ -97,11 +98,13 @@ interface DeployStatusRawV2 {
     phase?: string;
     noticeDurationSeconds?: number;
     scheduledAt?: string;
+    desiredReleaseSha?: string;
   }>;
   acknowledgements?: Record<string, Record<string, {
     acknowledgedAt?: string;
     notice?: { acknowledgedAt: string };
     maintenance?: { acknowledgedAt: string };
+    ready?: { acknowledgedAt: string; releaseSha: string };
   }>>;
 }
 
@@ -109,15 +112,17 @@ interface DeployStatusRawV2 {
 export interface DeployStatusResponse {
   isMaintenance: boolean;
   runId?: string;
-  phase?: 'preparing' | 'deploying' | 'failed';
+  phase?: 'preparing' | 'deploying' | 'verifying' | 'failed';
   startedAt?: string;
+  desiredReleaseSha?: string;
   preNotice?: { scheduledAt?: string };
 }
 
-type DeployAcknowledgementPhase = 'notice' | 'maintenance';
+type DeployAcknowledgementPhase = 'notice' | 'maintenance' | 'ready';
 
 interface DeployAcknowledgementResult {
   scheduledAt?: string;
+  releaseSha?: string;
 }
 
 /**
@@ -167,20 +172,32 @@ export function normalizeDeployStatusResponse(raw: DeployStatusRawV2 | null, sta
     };
   }
   if (entry.maintenance !== true) return { isMaintenance: false };
-  const phase = ['preparing', 'deploying', 'failed'].includes(entry.phase ?? '')
+  const phase = ['preparing', 'deploying', 'verifying', 'failed'].includes(entry.phase ?? '')
     ? (entry.phase as DeployStatusResponse['phase'])
     : undefined;
-  return { isMaintenance: true, ...(entry.runId ? { runId: entry.runId } : {}), ...(phase ? { phase } : {}), ...(entry.startedAt ? { startedAt: entry.startedAt } : {}) };
+  const desiredReleaseSha = phase === 'verifying'
+    && typeof entry.desiredReleaseSha === 'string'
+    && FULL_RELEASE_SHA_PATTERN.test(entry.desiredReleaseSha)
+    ? entry.desiredReleaseSha
+    : undefined;
+  return {
+    isMaintenance: true,
+    ...(entry.runId ? { runId: entry.runId } : {}),
+    ...(phase ? { phase } : {}),
+    ...(entry.startedAt ? { startedAt: entry.startedAt } : {}),
+    ...(desiredReleaseSha ? { desiredReleaseSha } : {})
+  };
 }
 
 async function writeAcknowledgement(
   runId: string,
   statusClientId: string,
-  phase: DeployAcknowledgementPhase
+  phase: DeployAcknowledgementPhase,
+  releaseSha?: string
 ): Promise<DeployAcknowledgementResult> {
-  const result = await runDeployStatusState([
-    'ack', '--run-id', runId, '--client', statusClientId, '--phase', phase
-  ]);
+  const arguments_ = ['ack', '--run-id', runId, '--client', statusClientId, '--phase', phase];
+  if (phase === 'ready' && releaseSha) arguments_.push('--release-sha', releaseSha);
+  const result = await runDeployStatusState(arguments_);
   if (!result || typeof result !== 'object') throw new Error('DEPLOY_STATUS_HELPER_FAILED');
   const acknowledgement = result as Record<string, unknown>;
   if (
@@ -188,12 +205,23 @@ async function writeAcknowledgement(
     || acknowledgement.runId !== runId
     || acknowledgement.phase !== phase
     || (acknowledgement.scheduledAt !== undefined && typeof acknowledgement.scheduledAt !== 'string')
+    || (
+      phase === 'ready'
+      && (
+        typeof releaseSha !== 'string'
+        || acknowledgement.releaseSha !== releaseSha
+        || !FULL_RELEASE_SHA_PATTERN.test(releaseSha)
+      )
+    )
   ) {
     throw new Error('DEPLOY_STATUS_HELPER_FAILED');
   }
-  return typeof acknowledgement.scheduledAt === 'string'
-    ? { scheduledAt: acknowledgement.scheduledAt }
-    : {};
+  return {
+    ...(typeof acknowledgement.scheduledAt === 'string'
+      ? { scheduledAt: acknowledgement.scheduledAt }
+      : {}),
+    ...(phase === 'ready' ? { releaseSha } : {})
+  };
 }
 
 export function registerDeployStatusRoute(app: FastifyInstance): void {
@@ -207,17 +235,33 @@ export function registerDeployStatusRoute(app: FastifyInstance): void {
   app.post('/system/deploy-status/ack', async (request, reply) => {
     const statusClientId = await resolveStatusClientId(request.headers['x-client-key']);
     if (!statusClientId) return reply.code(401).send({ code: 'CLIENT_KEY_INVALID' });
-    const runId = typeof (request.body as { runId?: unknown } | null)?.runId === 'string'
-      ? (request.body as { runId: string }).runId.trim()
+    const body = request.body as { runId?: unknown; phase?: unknown; releaseSha?: unknown } | null;
+    const runId = typeof body?.runId === 'string'
+      ? body.runId.trim()
       : '';
     if (!runId) return reply.code(400).send({ code: 'DEPLOY_ACK_RUN_ID_REQUIRED' });
-    const requestedPhase = (request.body as { phase?: unknown } | null)?.phase;
-    if (requestedPhase !== undefined && requestedPhase !== 'notice' && requestedPhase !== 'maintenance') {
+    const requestedPhase = body?.phase;
+    if (
+      requestedPhase !== undefined
+      && requestedPhase !== 'notice'
+      && requestedPhase !== 'maintenance'
+      && requestedPhase !== 'ready'
+    ) {
       return reply.code(400).send({ code: 'DEPLOY_ACK_PHASE_INVALID' });
     }
     const phase: DeployAcknowledgementPhase = requestedPhase ?? 'maintenance';
+    let releaseSha: string | undefined;
+    if (phase === 'ready') {
+      if (body?.releaseSha === undefined) {
+        return reply.code(400).send({ code: 'DEPLOY_ACK_RELEASE_SHA_REQUIRED' });
+      }
+      if (typeof body.releaseSha !== 'string' || !FULL_RELEASE_SHA_PATTERN.test(body.releaseSha)) {
+        return reply.code(400).send({ code: 'DEPLOY_ACK_RELEASE_SHA_INVALID' });
+      }
+      releaseSha = body.releaseSha;
+    }
     try {
-      const result = await writeAcknowledgement(runId, statusClientId, phase);
+      const result = await writeAcknowledgement(runId, statusClientId, phase, releaseSha);
       return reply.send({ acknowledged: true, runId, phase, ...result });
     } catch {
       return reply.code(409).send({ code: 'DEPLOY_ACK_RUN_MISMATCH' });
