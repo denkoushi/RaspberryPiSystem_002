@@ -1,12 +1,45 @@
 ---
+- name: Validate manifest-backed client destinations for release
+  ansible.builtin.assert:
+    that:
+      - ansible_user is match('^[a-z_][a-z0-9_-]{0,31}$')
+      - client_sudo_user == ansible_user
+      - client_sudoers_services_file == ansible_user ~ '-client-services'
+    fail_msg: >-
+      release-only supports only the coordinator manifest destinations derived
+      from ansible_user. Use full provisioning for custom sudoers paths.
+  when: terminal_release_mode | default('full') == 'release-only'
+
+- name: Verify NetworkManager release baseline
+  ansible.builtin.import_tasks: network-preflight.yml
+  when: terminal_release_mode | default('full') == 'release-only'
+
 - name: Ensure client restart summary fact exists
   ansible.builtin.set_fact:
     client_restart_results: "{{ client_restart_results | default([]) }}"
 
-- name: Ensure status-agent configuration directory exists
-  ansible.builtin.file:
-    path: /etc
-    state: directory
+- name: Hide desktop panel during full terminal provisioning
+  ansible.builtin.shell: |
+    set -euo pipefail
+    changed=false
+    if /usr/bin/pgrep -f '^lwrespawn /usr/bin/wf-panel-pi( |$)' >/dev/null 2>&1; then
+      /usr/bin/pkill -f '^lwrespawn /usr/bin/wf-panel-pi( |$)'
+      changed=true
+    fi
+    if /usr/bin/pgrep -x wf-panel-pi >/dev/null 2>&1; then
+      /usr/bin/pkill -x wf-panel-pi
+      changed=true
+    fi
+    printf '%s\n' "${changed}"
+  args:
+    executable: /bin/bash
+  register: terminal_panel_provisioning
+  changed_when: terminal_panel_provisioning.stdout | trim == 'true'
+  when:
+    - terminal_release_mode | default('full') == 'full'
+    - >-
+      manage_kiosk_browser | default(false) | bool
+      or manage_signage_lite | default(false) | bool
 
 - name: Create status-agent configuration file
   ansible.builtin.template:
@@ -50,12 +83,41 @@
     state: started
     daemon_reload: true
   register: status_agent_timer_enable_result
+  when: terminal_release_mode | default('full') == 'full'
+
+- name: Require status-agent timer to be enabled before release
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-enabled
+      - status-agent.timer
+  register: status_agent_timer_enabled
+  changed_when: false
+  failed_when: >-
+    status_agent_timer_enabled.rc != 0
+    or status_agent_timer_enabled.stdout | trim != 'enabled'
+  when: terminal_release_mode | default('full') == 'release-only'
 
 - name: Ensure polkit rules directory exists
   ansible.builtin.file:
     path: /etc/polkit-1/rules.d
     state: directory
     mode: '0755'
+  when: terminal_release_mode | default('full') == 'full'
+
+- name: Check polkit rules directory before release
+  ansible.builtin.stat:
+    path: /etc/polkit-1/rules.d
+  register: client_polkit_rules_dir
+  when: terminal_release_mode | default('full') == 'release-only'
+
+- name: Require polkit rules directory before release
+  ansible.builtin.assert:
+    that:
+      - client_polkit_rules_dir.stat.exists | default(false)
+      - client_polkit_rules_dir.stat.isdir | default(false)
+    fail_msg: /etc/polkit-1/rules.d is missing; provision the terminal before release.
+  when: terminal_release_mode | default('full') == 'release-only'
 
 - name: Deploy polkit rule for pcscd access
   ansible.builtin.template:
@@ -129,19 +191,17 @@
     services_to_restart: "{{ client_default_services_to_restart }}"
   when: services_to_restart is not defined
 
-# lightdm停止時（Pi3デプロイ時）はsignage関連サービスの再起動をスキップ
-# これらは signage ロール + post_tasks（lightdm 復帰後）で起動する
-# NOTE: lightdm が既に停止していると systemd の changed が false になり得るため、
-# stop_lightdm（device_type_defaults）で判定する
-- name: Filter out signage services when lightdm is stopped
+# Signage unit lifecycle belongs to the signage role. In particular, a fresh
+# provisioning host has no unit files until that role installs them.
+- name: Filter out signage services for signage role convergence
   ansible.builtin.set_fact:
     services_to_restart_filtered: "{{ services_to_restart | reject('match', 'signage-lite.*') | list }}"
-  when: stop_lightdm | default(false) | bool
+  when: manage_signage_lite | default(false) | bool
 
-- name: Use original services list when lightdm is not stopped
+- name: Use original services list on non-signage terminals
   ansible.builtin.set_fact:
     services_to_restart_filtered: "{{ services_to_restart }}"
-  when: not (stop_lightdm | default(false) | bool)
+  when: not (manage_signage_lite | default(false) | bool)
 
 - name: Restart required services (clients) with retry
   ansible.builtin.include_tasks: "{{ playbook_dir }}/../tasks/restart-client-service.yml"
@@ -176,3 +236,4 @@
 
 - name: Configure NetworkManager to prevent WiFi password dialogs
   ansible.builtin.import_tasks: network.yml
+  when: terminal_release_mode | default('full') == 'full'

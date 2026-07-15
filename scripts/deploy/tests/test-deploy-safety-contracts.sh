@@ -5,21 +5,122 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 MAIN_INVENTORY="${ROOT_DIR}/infrastructure/ansible/inventory.yml"
 TALKPLAZA_INVENTORY="${ROOT_DIR}/infrastructure/ansible/inventory-talkplaza.yml"
 PLAYBOOK="${ROOT_DIR}/infrastructure/ansible/playbooks/deploy-staged.yml"
+SERVER_CONFIG_PLAYBOOK="${ROOT_DIR}/infrastructure/ansible/playbooks/server-config-release.yml"
 LEGACY_DEPLOY_PLAYBOOK="${ROOT_DIR}/infrastructure/ansible/playbooks/deploy.yml"
 STANDALONE_ROLLBACK_PLAYBOOK="${ROOT_DIR}/infrastructure/ansible/playbooks/rollback.yml"
 ROLLBACK_TASKS="${ROOT_DIR}/infrastructure/ansible/tasks/rollback-configs.yml"
 COMMON_TASKS="${ROOT_DIR}/infrastructure/ansible/roles/common/tasks/main.yml"
 ORCHESTRATION_GUARD="${ROOT_DIR}/infrastructure/ansible/tasks/assert-release-orchestration.yml"
+TERMINAL_RELEASE_GUARD="${ROOT_DIR}/infrastructure/ansible/tasks/assert-terminal-release-mode.yml"
 SERVER_DEFAULTS="${ROOT_DIR}/infrastructure/ansible/roles/server/defaults/main.yml"
 SERVER_TASKS="${ROOT_DIR}/infrastructure/ansible/roles/server/tasks/main.yml"
 SERVER_HANDLERS="${ROOT_DIR}/infrastructure/ansible/roles/server/handlers/main.yml"
 UPDATE_CLIENTS_CORE="${ROOT_DIR}/infrastructure/ansible/tasks/update-clients-core.yml"
+RESTART_CLIENT_SERVICE="${ROOT_DIR}/infrastructure/ansible/tasks/restart-client-service.yml"
+TERMINAL_DISPLAY_PREFLIGHT="${ROOT_DIR}/infrastructure/ansible/tasks/preflight-terminal-display.yml"
+SIGNAGE_PRESTAGE="${ROOT_DIR}/infrastructure/ansible/tasks/prestage-signage-runtime.yml"
+CLIENT_TASKS="${ROOT_DIR}/infrastructure/ansible/roles/client/tasks/main.yml"
+KIOSK_FIREFOX_TASKS="${ROOT_DIR}/infrastructure/ansible/roles/kiosk/tasks/firefox-chrome.yml"
+SIGNAGE_TASKS="${ROOT_DIR}/infrastructure/ansible/roles/signage/tasks/main.yml"
+KIOSK_LAUNCH_TEMPLATE="${ROOT_DIR}/infrastructure/ansible/templates/kiosk-launch.sh.j2"
+SIGNAGE_DISPLAY_TEMPLATES=(
+  "${ROOT_DIR}/infrastructure/ansible/templates/signage-display.sh.j2"
+  "${ROOT_DIR}/infrastructure/ansible/roles/signage/templates/signage-display.sh.j2"
+)
+
+python3 - "${ROOT_DIR}" <<'PY'
+import importlib.util
+import re
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+facade_path = root / 'scripts/deploy/rolling-release.py'
+wrapper_path = root / 'scripts/deploy/pi5-candidate-reconcile.sh'
+executor_path = root / 'scripts/deploy/pi5-image-deploy.sh'
+
+spec = importlib.util.spec_from_file_location('rolling_release_contract', facade_path)
+assert spec is not None and spec.loader is not None
+facade = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = facade
+spec.loader.exec_module(facade)
+
+calls = []
+facade.run = lambda command, **options: calls.append((command, options))
+facade.reconcile_pi5_candidate_workload()
+assert calls == [([str(facade.PI5_CANDIDATE_RECONCILE)], {})], (
+    'pre-plan Pi5 reconcile facade no longer invokes its dedicated adapter exactly once'
+)
+
+wrapper = ' '.join(
+    wrapper_path.read_text(encoding='utf-8').replace('\\\n', '').split()
+)
+assert wrapper.endswith(
+    'exec env PI5_DEPLOY_SKIP_PHASE3_LEGACY_GUARD=1 '
+    '"${SCRIPT_DIR}/pi5-image-deploy.sh" reconcile-workload'
+), 'candidate reconcile wrapper lost its env-scoped exec boundary'
+
+executor = executor_path.read_text(encoding='utf-8')
+assert 'reconcile-workload) reconcile_candidate_build_residue ;;' in executor, (
+    'reconcile-workload no longer dispatches to candidate residue recovery'
+)
+match = re.search(
+    r'^reconcile_candidate_build_residue\(\) \{\n(?P<body>.*?)^\}',
+    executor,
+    flags=re.MULTILINE | re.DOTALL,
+)
+assert match is not None, 'candidate residue recovery function is unavailable'
+body = match.group('body')
+owner = body.index('reconcile_signage_pause_owner')
+containers = body.index('cleanup_orphan_candidate_validation_containers')
+assert owner < containers, (
+    'signage pause ownership must reconcile before orphan candidate cleanup'
+)
+PY
 
 if grep -Eq 'status_code:[[:space:]]*\[[^]]*401|until:.*401|failed_when:[[:space:]]*false.*401' \
   "${UPDATE_CLIENTS_CORE}"; then
   echo "[ERROR] terminal endpoint health must fail closed on HTTP 401" >&2
   exit 1
 fi
+
+python3 - "${RESTART_CLIENT_SERVICE}" "${ROOT_DIR}" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+import yaml
+
+path = Path(sys.argv[1])
+repository_root = Path(sys.argv[2])
+tasks = yaml.safe_load(path.read_text(encoding='utf-8')) or []
+guard = tasks[0]
+assert guard.get('name') == (
+    'Require restart target to be sealed by the terminal runtime manifest'
+)
+assert "terminal_release_mode | default('full') == 'release-only'" in guard['when']
+contract = ' '.join(str(value) for value in guard['ansible.builtin.assert']['that'])
+for unit in (
+    'lightdm.service', 'status-agent.service', 'status-agent.timer',
+    'haizen-agent.service', 'kiosk-browser.service', 'signage-lite.service',
+    'signage-lite-update.service', 'signage-lite-update.timer',
+    'signage-lite-watchdog.service', 'signage-lite-watchdog.timer',
+    'signage-daily-reboot.service', 'signage-daily-reboot.timer',
+):
+    assert unit in contract, f'{path}: runtime manifest restart guard lost {unit}'
+assert 'manage_kiosk_browser' in contract
+assert 'manage_signage_lite' in contract
+sys.path.insert(0, str(repository_root))
+from scripts.deploy.rolling_release.backends import ansible as deploy_ansible
+
+guard_units = set(re.findall(r'[A-Za-z0-9_-]+\.(?:service|timer)', contract))
+kiosk_units, _ = deploy_ansible._terminal_runtime_contract('kiosk')
+signage_units, _ = deploy_ansible._terminal_runtime_contract('signage')
+assert guard_units == set(kiosk_units) | set(signage_units), (
+    'Ansible restart allowlist and coordinator runtime manifest disagree: '
+    f'{sorted(guard_units ^ (set(kiosk_units) | set(signage_units)))}'
+)
+PY
 
 command -v ansible-inventory >/dev/null 2>&1 || {
   echo "[ERROR] ansible-inventory is required" >&2
@@ -77,6 +178,49 @@ fi
 env -u ANSIBLE_CONFIG ansible-playbook -i localhost, "${GUARD_PLAYBOOK}" \
   -e release_orchestrated=true >/dev/null
 
+TERMINAL_GUARD_PLAYBOOK="${TMP_DIR}/terminal-release-guard-test.yml"
+python3 - "${TERMINAL_GUARD_PLAYBOOK}" "${TERMINAL_RELEASE_GUARD}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path, guard = sys.argv[1:]
+Path(path).write_text(f'''---
+- name: Exercise terminal release mutation-profile guard
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - ansible.builtin.include_tasks: {json.dumps(guard)}
+''', encoding='utf-8')
+PY
+
+FULL_SHA=1111111111111111111111111111111111111111
+if env -u ANSIBLE_CONFIG RELEASE_ORCHESTRATED=1 \
+  ansible-playbook -i localhost, "${TERMINAL_GUARD_PLAYBOOK}" \
+  -e release_orchestrated=true -e repo_version="${FULL_SHA}" >/dev/null 2>&1; then
+  echo "[ERROR] terminal release guard accepted an omitted mutation profile" >&2
+  exit 1
+fi
+if env -u ANSIBLE_CONFIG RELEASE_ORCHESTRATED=1 \
+  ansible-playbook -i localhost, "${TERMINAL_GUARD_PLAYBOOK}" \
+  -e release_orchestrated=true -e terminal_release_mode=full \
+  -e repo_version="${FULL_SHA}" >/dev/null 2>&1; then
+  echo "[ERROR] terminal release guard accepted provisioning mode" >&2
+  exit 1
+fi
+if env -u ANSIBLE_CONFIG RELEASE_ORCHESTRATED=1 \
+  ansible-playbook -i localhost, "${TERMINAL_GUARD_PLAYBOOK}" \
+  -e release_orchestrated=true -e terminal_release_mode=release-only \
+  -e repo_version=main >/dev/null 2>&1; then
+  echo "[ERROR] terminal release guard accepted a mutable repository target" >&2
+  exit 1
+fi
+env -u ANSIBLE_CONFIG RELEASE_ORCHESTRATED=1 \
+  ansible-playbook -i localhost, "${TERMINAL_GUARD_PLAYBOOK}" \
+  -e release_orchestrated=true -e terminal_release_mode=release-only \
+  -e repo_version="${FULL_SHA}" >/dev/null
+
 python3 - "${TMP_DIR}" <<'PY'
 import json
 import re
@@ -126,7 +270,7 @@ assert talkplaza['signage']['hosts'] == ['talkplaza-signage01']
 PY
 
 python3 - "${SERVER_DEFAULTS}" "${SERVER_TASKS}" "${SERVER_HANDLERS}" \
-  "${PLAYBOOK}" "${ROOT_DIR}/infrastructure/ansible" <<'PY'
+  "${SERVER_CONFIG_PLAYBOOK}" "${ROOT_DIR}/infrastructure/ansible" <<'PY'
 import re
 import sys
 from pathlib import Path
@@ -142,6 +286,11 @@ tasks = tasks_path.read_text(encoding='utf-8')
 
 assert re.search(r'^server_release_mode:\s*full\s*$', defaults, re.MULTILINE)
 assert "server_release_mode in ['full', 'host-config-only']" in tasks
+assert 'Reject retired Ansible-owned Pi5 release executors' in tasks
+assert 'pi5-image-deploy.sh' not in tasks
+assert 'pi5-candidate-build.sh' not in tasks
+assert 'pi5-blue-green.sh prepare' not in tasks
+assert 'pi5-blue-green.sh switch' not in tasks
 
 tasks_dir = tasks_path.parent.resolve()
 task_paths = {path.resolve() for path in tasks_dir.glob('*.yml')}
@@ -275,7 +424,16 @@ def runtime_reasons(task, module, module_value):
         reasons.add('Docker Compose lifecycle')
     if DOCKER_LIFECYCLE.search(command_payload):
         reasons.add('Docker lifecycle')
-    if DEPLOY_ENTRYPOINT.search(command_payload):
+    read_only_signage_proof = (
+        task.get('name')
+        == 'Verify authenticated signage endpoints with the host-local credential'
+        and command_payload.endswith(
+            'scripts/deploy/signage-runtime-proof.py --check-endpoints'
+        )
+        and '--refresh-image' not in command_payload
+        and '--seal-maintenance-image' not in command_payload
+    )
+    if DEPLOY_ENTRYPOINT.search(command_payload) and not read_only_signage_proof:
         reasons.add('deploy script entrypoint')
     if PRISMA.search(command_payload):
         reasons.add('Prisma migration')
@@ -447,12 +605,35 @@ handler_document = yaml.safe_load(handlers_path.read_text(encoding='utf-8')) or 
 scanned_paths.add(handlers_path.resolve())
 walk_tasks(handler_document, handlers_path.resolve(), False)
 
-# Audit the real server play execution graph as well as the server role.  The
-# host-config-only adapter invokes deploy-staged.yml, so common/preflight/
-# post-task additions must not become an unguarded second Pi5 runtime executor.
+# Audit the dedicated host-config graph as well as the full server role.  This
+# playbook must never inherit common fetch/reset, update-clients, provisioning,
+# post-marker, or runtime lifecycle behavior.
 graph_visited = set()
 graph_paths = set()
 graph_roles = set()
+HOST_CONFIG_FILE_MODULES = {
+    'ansible.builtin.copy', 'ansible.builtin.file', 'ansible.builtin.template',
+    'copy', 'file', 'template',
+}
+HOST_CONFIG_ALLOWED_PATHS = {
+    '{{ repo_path }}/apps/api',
+    '{{ repo_path }}/apps/api/.env',
+    '{{ repo_path }}/apps/web',
+    '{{ repo_path }}/apps/web/.env',
+    '{{ repo_path }}/infrastructure/docker',
+    '{{ repo_path }}/infrastructure/docker/.env',
+    '{{ repo_path }}/storage/part-measurement-drawings',
+    '{{ repo_path }}/storage/assembly-procedure-images',
+    '{{ repo_path }}/storage/measuring-instrument-genres',
+    '{{ repo_path }}/storage/pallet-machine-illustrations',
+}
+HOST_CONFIG_SHELL_TASKS = {
+    'Verify exact clean Pi5 release checkout',
+    'Validate API .env syntax',
+    'Validate Web .env syntax',
+    'Validate Docker Compose .env syntax',
+    RESCUE_TASK_NAME,
+}
 
 
 def assert_inside_ansible(path, source):
@@ -521,6 +702,20 @@ def walk_graph_tasks(task_list, source, inherited_full):
                 walk_graph_file(imported, effective_full)
                 continue
 
+            if module in HOST_CONFIG_FILE_MODULES and not effective_full:
+                assert isinstance(module_value, dict), (
+                    f'{source}:{name} uses an uninspectable host-config file mutation'
+                )
+                destination = module_value.get('dest', module_value.get('path'))
+                assert destination in HOST_CONFIG_ALLOWED_PATHS, (
+                    f'{source}:{name} expands host-config mutation scope to '
+                    f'{destination!r}'
+                )
+            if module in {'ansible.builtin.shell', 'shell'} and not effective_full:
+                assert name in HOST_CONFIG_SHELL_TASKS, (
+                    f'{source}:{name} adds an unaudited host-config shell action'
+                )
+
             reasons = runtime_reasons(task, module, module_value)
             if reasons and not effective_full:
                 if name == RESCUE_TASK_NAME:
@@ -541,21 +736,44 @@ server_plays = [
     play for play in playbook_document
     if isinstance(play, dict) and play.get('hosts') == 'server'
 ]
-assert len(server_plays) == 1, 'deploy-staged must contain exactly one server play'
+assert len(server_plays) == 1, (
+    'server-config release playbook must contain exactly one server play'
+)
 server_play = server_plays[0]
 for section in ('pre_tasks', 'tasks', 'post_tasks', 'handlers'):
     if section in server_play:
         walk_graph_tasks(server_play[section], playbook_path.resolve(), False)
 
-assert {'common', 'server'} <= graph_roles, (
-    f'server play graph lost required roles: {sorted(graph_roles)}'
+assert graph_roles == {'server'}, (
+    f'server-config playbook may import only the server role: {sorted(graph_roles)}'
 )
 update_clients_core = (ansible_root / 'tasks/update-clients-core.yml').resolve()
-assert update_clients_core in graph_paths, (
-    'server play graph no longer audits update-clients-core.yml'
+assert update_clients_core not in graph_paths, (
+    'server-config playbook must not run update-clients-core.yml'
 )
-assert (ansible_root / 'roles/common/tasks/main.yml').resolve() in graph_paths
+assert (ansible_root / 'roles/common/tasks/main.yml').resolve() not in graph_paths
 assert tasks_path.resolve() in graph_paths
+
+playbook_text = playbook_path.read_text(encoding='utf-8')
+for forbidden in (
+    'name: common',
+    'update-clients-core.yml',
+    'server-deployment-completed.json',
+    'git fetch',
+    'git reset --hard',
+):
+    assert forbidden not in playbook_text, (
+        f'server-config playbook contains forbidden behavior: {forbidden}'
+    )
+for required in (
+    'server_release_mode: host-config-only',
+    'git status --porcelain --untracked-files=all',
+    'git diff --cached --quiet',
+    '[[ "${head}" == "${expected}" ]]',
+):
+    assert required in playbook_text, (
+        f'server-config checkout proof lost {required}'
+    )
 
 assert scanned_paths >= task_paths | {handlers_path.resolve()}, (
     'every server task file and the handler file must be audited'
@@ -574,7 +792,10 @@ assert isinstance(reconcile, dict), f'{reconcile_source}: reconcile must use sys
 assert reconcile.get('name') == 'pi5-blue-green-reconcile.service'
 assert reconcile.get('enabled') is True
 assert 'state' not in reconcile, (
-    'host-config convergence may enable reconcile for boot, but must not start/restart it'
+    'full provisioning may enable reconcile for boot, but must not start/restart it'
+)
+assert has_full_guard(reconcile_task), (
+    'host-config-only must not mutate the reconcile unit'
 )
 
 required_reasons = {
@@ -634,6 +855,659 @@ assert 'legacy API health' in runtime_reasons(
 )
 PY
 
+python3 - "${PLAYBOOK}" "${ROOT_DIR}/infrastructure/ansible" "${ROOT_DIR}" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+import yaml
+
+playbook_path = Path(sys.argv[1]).resolve()
+ansible_root = Path(sys.argv[2]).resolve()
+repository_root = Path(sys.argv[3]).resolve()
+roles_root = ansible_root / 'roles'
+playbooks_root = ansible_root / 'playbooks'
+
+FULL_GUARDS = {
+    "terminal_release_mode == 'full'",
+    "terminal_release_mode | default('full') == 'full'",
+}
+ROLE_IMPORTS = {
+    'ansible.builtin.import_role', 'ansible.builtin.include_role',
+    'import_role', 'include_role',
+}
+TASK_IMPORTS = {
+    'ansible.builtin.import_tasks', 'ansible.builtin.include_tasks',
+    'import_tasks', 'include_tasks',
+}
+FILE_MODULES = {
+    'ansible.builtin.blockinfile', 'ansible.builtin.copy',
+    'ansible.builtin.file', 'ansible.builtin.lineinfile',
+    'ansible.builtin.replace', 'ansible.builtin.template',
+    'blockinfile', 'copy', 'file', 'lineinfile', 'replace', 'template',
+}
+PROVISIONING_MODULES = {
+    'ansible.builtin.apt', 'ansible.builtin.apt_repository',
+    'ansible.builtin.cron', 'ansible.builtin.find',
+    'ansible.builtin.package', 'ansible.builtin.pip',
+    'apt', 'apt_repository', 'cron', 'find', 'package', 'pip',
+}
+SYSTEMD_MODULES = {
+    'ansible.builtin.service', 'ansible.builtin.systemd',
+    'ansible.builtin.systemd_service', 'service', 'systemd', 'systemd_service',
+}
+SHELL_MODULES = {'ansible.builtin.shell', 'shell'}
+COMMAND_MODULES = {'ansible.builtin.command', 'command'}
+SCRIPT_MODULES = {'ansible.builtin.script', 'script'}
+URI_MODULES = {'ansible.builtin.uri', 'uri'}
+
+ALLOWED_RELEASE_FILE_DESTINATIONS = {
+    '/etc/raspi-status-agent.conf',
+    '/etc/systemd/system/status-agent.service',
+    '/etc/systemd/system/status-agent.timer',
+    '/etc/polkit-1/rules.d/50-pcscd-allow-all.rules',
+    '{{ repo_path }}/clients/nfc-agent/.env',
+    '{{ repo_path }}/clients/barcode-agent/.env',
+    '/etc/raspi-haizen-agent.conf',
+    '/etc/systemd/system/haizen-agent.service',
+    '/etc/sudoers.d/{{ client_sudo_user }}',
+    '/etc/sudoers.d/{{ client_sudoers_services_file }}',
+    '/home/{{ ansible_user }}/.config/autostart/ibus.desktop',
+    '/home/{{ ansible_user }}/.config/autostart/ibus-owner.desktop',
+    '/home/{{ ansible_user }}/.config/autostart/{{ item }}',
+    '/home/{{ ansible_user }}/.config/autostart/ibus-engine.desktop',
+    '{{ kiosk_firefox_profile_abs }}/chrome/userChrome.css',
+    '{{ kiosk_firefox_profile_abs }}/user.js',
+    '/usr/local/bin/kiosk-launch.sh',
+    '/etc/systemd/system/kiosk-browser.service',
+    '/usr/local/bin/show-kiosk-panel.sh',
+    '/usr/local/bin/clamav-kiosk-scan.sh',
+    '/usr/local/bin/rkhunter-kiosk-scan.sh',
+    '/home/{{ ansible_user }}/.config/labwc/rc.xml',
+    '/usr/local/bin/ibus-kiosk-init.sh',
+    '{{ ibus_process_owner_script_path }}',
+    '/etc/tmpfiles.d/signage-lite.conf',
+    '/usr/local/share/signage-maintenance.svg',
+    '/usr/local/bin/signage-update.sh',
+    '/usr/local/bin/signage-display.sh',
+    '/usr/local/bin/signage-stop.sh',
+    '/usr/local/bin/signage-lite-watchdog.sh',
+    '/etc/systemd/system/signage-lite.service',
+    '/etc/systemd/system/signage-lite-update.service',
+    '/etc/systemd/system/signage-lite-update.timer',
+    '/etc/systemd/system/signage-lite-watchdog.service',
+    '/etc/systemd/system/signage-lite-watchdog.timer',
+    '/etc/systemd/system/signage-daily-reboot.service',
+    '/etc/systemd/system/signage-daily-reboot.timer',
+}
+
+MUTATING_SHELL = re.compile(
+    r'(?:\b(?:apt(?:-get)?|chmod|chown|kill|ln|mkdir|mv|pkill|pnpm\s+install|'
+    r'rm|sed\s+-i|systemd-tmpfiles\s+--create|tailscale\s+up|touch|truncate)\b|'
+    r'\bgsettings\s+set\b|\bgit\s+(?:clone|remote\s+set-url|reset)\b|'
+    r'\bcrontab\b(?!\s+-u\s+[A-Za-z0-9_-]+\s+-l\b)|'
+    r'\binstall\s+(?:-|/)|'
+    r'\bsystemctl\s+(?:disable|enable|mask|reload|restart|start|stop|unmask)\b|'
+    r'\s>>?\s*(?!/dev/null\b)(?:/|~|\{\{))',
+    re.IGNORECASE,
+)
+DOCKER_LIFECYCLE = re.compile(
+    r'\bdocker\s+compose\b[^\n]*(?:\bup\b|\brestart\b)', re.IGNORECASE
+)
+DOCKER_MUTATION = re.compile(
+    r'\bdocker\s+(?:(?:compose\b[^\n]*\b(?:build|create|down|kill|pull|push|'
+    r'restart|rm|run|start|stop|up)\b)|(?:build|commit|cp|create|exec|image\s+rm|'
+    r'kill|load|pull|push|rename|restart|rm|run|start|stop|tag|update)\b)',
+    re.IGNORECASE,
+)
+READ_ONLY_COMMAND = re.compile(
+    r'^(?:docker\s+--version|ip\s+-brief|rsvg-convert\s+--version|'
+    r'systemctl\s+(?:is-|list-unit-files|show|status)|'
+    r'systemd-analyze\s+verify|tailscale\s+status|which\s+)',
+    re.IGNORECASE,
+)
+
+
+def normalized(value):
+    return ' '.join(str(value).split())
+
+
+def when_items(task):
+    value = task.get('when', [])
+    return [value] if isinstance(value, str) else list(value or [])
+
+
+def has_full_guard(task):
+    return any(normalized(item) in FULL_GUARDS for item in when_items(task))
+
+
+def role_name(value):
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        return value.get('name')
+    return None
+
+
+def task_target(value):
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        return value.get('file')
+    return None
+
+
+def resolve_task_file(source, target):
+    assert isinstance(target, str), f'{source}: task import is not static'
+    target = target.replace('{{ playbook_dir }}', str(playbooks_root))
+    assert '{{' not in target, f'{source}: uninspectable task import {target!r}'
+    path = Path(target)
+    if not path.is_absolute():
+        path = source.parent / path
+    path = path.resolve()
+    path.relative_to(ansible_root)
+    assert path.is_file(), f'{source}: imported task file missing: {path}'
+    return path
+
+
+def command_text(value):
+    if isinstance(value, str):
+        return normalized(value)
+    if isinstance(value, dict):
+        if isinstance(value.get('argv'), list):
+            return normalized(' '.join(str(item) for item in value['argv']))
+        return normalized(value.get('cmd', value.get('_raw_params', '')))
+    return normalized(value)
+
+
+def destination(module_value):
+    if not isinstance(module_value, dict):
+        return None
+    return module_value.get('dest', module_value.get('path'))
+
+
+visited = set()
+scanned = set()
+release_destinations = set()
+docker_exceptions = []
+
+
+def audit_file(path, inherited_full=False):
+    key = (path.resolve(), inherited_full)
+    if key in visited:
+        return
+    visited.add(key)
+    scanned.add(path.resolve())
+    document = yaml.safe_load(path.read_text(encoding='utf-8')) or []
+    assert isinstance(document, list), f'{path}: expected task list'
+    audit_tasks(document, path, inherited_full)
+
+
+def audit_tasks(tasks, source, inherited_full):
+    assert isinstance(tasks, list), f'{source}: expected task list'
+    for task in tasks:
+        assert isinstance(task, dict), f'{source}: expected task mapping'
+        name = str(task.get('name', '<unnamed>'))
+        effective_full = inherited_full or has_full_guard(task)
+
+        for module, value in task.items():
+            if module in ROLE_IMPORTS:
+                role = role_name(value)
+                assert isinstance(role, str) and re.fullmatch(r'[A-Za-z0-9_.-]+', role), (
+                    f'{source}:{name}: uninspectable role import {role!r}'
+                )
+                main = (roles_root / role / 'tasks/main.yml').resolve()
+                main.relative_to(ansible_root)
+                assert main.is_file(), f'{source}:{name}: role missing {role}'
+                audit_file(main, effective_full)
+                handlers = roles_root / role / 'handlers/main.yml'
+                if handlers.is_file():
+                    # A handler may be notified by another release-reachable task.
+                    audit_file(handlers.resolve(), False)
+                continue
+
+            if module in TASK_IMPORTS:
+                audit_file(resolve_task_file(source, task_target(value)), effective_full)
+                continue
+
+            if effective_full:
+                continue
+
+            if module in PROVISIONING_MODULES:
+                raise AssertionError(
+                    f'{source}:{name}: provisioning module {module} is release-reachable'
+                )
+
+            if module in SYSTEMD_MODULES and isinstance(value, dict):
+                assert 'enabled' not in value, (
+                    f'{source}:{name}: persistent unit enablement is release-reachable'
+                )
+                state = normalized(value.get('state', ''))
+                if state == 'stopped':
+                    assert (
+                        source.resolve() == (roles_root / 'signage/tasks/main.yml').resolve()
+                        and name == 'Stop signage runtime temporarily for release'
+                        and task.get('loop') == [
+                            'signage-lite-update.timer',
+                            'signage-lite-watchdog.timer',
+                            'signage-daily-reboot.timer',
+                            'signage-lite-update.service',
+                            'signage-lite-watchdog.service',
+                            'signage-lite.service',
+                        ]
+                    ), f'{source}:{name}: uncontrolled release stop set'
+                else:
+                    assert state in {'', 'started', 'restarted', 'reloaded'}, (
+                        f'{source}:{name}: uncontrolled systemd state {state!r}'
+                    )
+
+            if module in FILE_MODULES:
+                dest = destination(value)
+                if module.endswith('file') and isinstance(value, dict):
+                    assert value.get('state', 'file') != 'directory', (
+                        f'{source}:{name}: release may not create/change directories'
+                    )
+                    assert not value.get('recurse', False), (
+                        f'{source}:{name}: recursive ownership is release-reachable'
+                    )
+                assert isinstance(dest, str), f'{source}:{name}: file destination is dynamic'
+                release_destinations.add(dest)
+                assert dest in ALLOWED_RELEASE_FILE_DESTINATIONS, (
+                    f'{source}:{name}: destination is not manifest-backed: {dest}'
+                )
+
+            if module in SHELL_MODULES:
+                payload = command_text(value)
+                if DOCKER_MUTATION.search(payload):
+                    allowed_source = source.resolve() in {
+                        (roles_root / 'client/tasks/nfc-agent-lifecycle.yml').resolve(),
+                        (roles_root / 'client/tasks/barcode-agent-lifecycle.yml').resolve(),
+                        (roles_root / 'client/handlers/main.yml').resolve(),
+                    }
+                    assert (
+                        DOCKER_LIFECYCLE.search(payload)
+                        and allowed_source
+                        and 'docker-compose.client.yml' in payload
+                    ), (
+                        f'{source}:{name}: unowned Docker lifecycle in terminal release'
+                    )
+                    docker_exceptions.append((source, name))
+                elif MUTATING_SHELL.search(payload):
+                    assert (
+                        source.resolve() == (roles_root / 'common/tasks/main.yml').resolve()
+                        and name == 'Fetch and reset existing terminal repository to immutable release'
+                        and 'git fetch --no-tags origin' in payload
+                        and 'git reset --hard' in payload
+                    ), f'{source}:{name}: mutating shell is not an approved release adapter'
+
+            if module in COMMAND_MODULES:
+                payload = command_text(value)
+                assert READ_ONLY_COMMAND.match(payload), (
+                    f'{source}:{name}: command is not a recognized read-only preflight: {payload}'
+                )
+
+            if module in SCRIPT_MODULES:
+                payload = command_text(value)
+                approved_diagnostic = 'scripts/kiosk/diagnose-ime.sh' in payload
+                approved_signage_proof = (
+                    source.resolve() == (ansible_root / 'tasks/update-clients-core.yml').resolve()
+                    and name == 'Verify authenticated signage endpoints with the host-local credential'
+                    and payload.endswith(
+                        'scripts/deploy/signage-runtime-proof.py --check-endpoints'
+                    )
+                    and '--refresh-image' not in payload
+                    and '--seal-maintenance-image' not in payload
+                )
+                assert approved_diagnostic or approved_signage_proof, (
+                    f'{source}:{name}: opaque script execution is release-reachable'
+                )
+
+            if module in URI_MODULES and isinstance(value, dict):
+                assert normalized(value.get('method', 'GET')).upper() == 'GET', (
+                    f'{source}:{name}: non-GET URI call is release-reachable'
+                )
+
+        for section in ('block', 'rescue', 'always'):
+            if section in task:
+                audit_tasks(task[section], source, effective_full)
+
+
+document = yaml.safe_load(playbook_path.read_text(encoding='utf-8')) or []
+plays = {play.get('hosts'): play for play in document if isinstance(play, dict)}
+assert {'server', 'kiosk', 'signage'} <= set(plays)
+assert all(
+    task.get('name') != 'Require terminal release-only mode before shared tasks'
+    for task in plays['server'].get('pre_tasks', [])
+)
+for group in ('kiosk', 'signage'):
+    pre_tasks = plays[group].get('pre_tasks') or []
+    names = [task.get('name') for task in pre_tasks]
+    guard_index = names.index('Require terminal release-only mode before shared tasks')
+    display_index = names.index(
+        'Require an active display manager before kiosk release'
+        if group == 'kiosk'
+        else 'Require an active display manager before signage release'
+    )
+    common_index = names.index('Run common shared preparation tasks')
+    assert guard_index < display_index < common_index, (
+        f'{group}: release and display preflights must run before common mutations'
+    )
+    for section in ('pre_tasks', 'tasks', 'post_tasks', 'handlers'):
+        audit_tasks(plays[group].get(section) or [], playbook_path, False)
+
+common_text = (roles_root / 'common/tasks/main.yml').read_text(encoding='utf-8')
+assert 'Remove unnecessary documentation directory' not in common_text
+assert '{{ repo_path }}/docs' not in common_text
+assert 'git fetch --no-tags origin' in common_text
+assert 'git reset --hard "${target}"' in common_text
+assert 'git status --porcelain --untracked-files=all' in common_text
+for fragment in (
+    '/usr/bin/env -i',
+    'GIT_CONFIG_NOSYSTEM=1',
+    'GIT_CONFIG_GLOBAL=/dev/null',
+    'GIT_ATTR_NOSYSTEM=1',
+    'GIT_OPTIONAL_LOCKS=0',
+    '-c core.fsmonitor=false',
+    '-c core.ignoreStat=false',
+    'git ls-files -v -z',
+    'git ls-files -u -z',
+    'skip-worktree or assume-unchanged',
+    'unmerged index entries',
+):
+    assert fragment in common_text, f'fixed Git/index release guard lost {fragment!r}'
+
+common_tasks = yaml.safe_load(common_text) or []
+release_checkout = next(
+    task for task in common_tasks
+    if task.get('name') == 'Fetch and reset existing terminal repository to immutable release'
+)
+release_checkout_shell = release_checkout['ansible.builtin.shell']
+fetch_offset = release_checkout_shell.index('git fetch --no-tags origin')
+pre_reset_policy_offset = release_checkout_shell.rindex('verify_index_policy')
+reset_offset = release_checkout_shell.index('git reset --hard "${target}"')
+assert fetch_offset < pre_reset_policy_offset < reset_offset, (
+    'terminal index policy must be rechecked after fetch and immediately before reset'
+)
+between_policy_and_reset = release_checkout_shell[pre_reset_policy_offset:reset_offset]
+assert 'git fetch' not in between_policy_and_reset
+assert 'git checkout' not in between_policy_and_reset
+
+exact_preflight_fragments = {
+    roles_root / 'client/tasks/main.yml': (
+        "status_agent_timer_enabled.stdout | trim != 'enabled'",
+    ),
+    roles_root / 'client/tasks/network-preflight.yml': (
+        'main_count == 1 && auth_count == 1 && desired_count == 1',
+        'is-active',
+        'NetworkManager.service',
+    ),
+    roles_root / 'kiosk/tasks/security.yml': (
+        "item.stat.mode | default('') == '0755'",
+        "grep -Fxc -- '#Ansible: Weekly ClamAV scan (kiosk)'",
+        "grep -Fxc -- '#Ansible: Weekly rkhunter scan (kiosk)'",
+        "grep -Fc -- '/usr/local/bin/clamav-kiosk-scan.sh'",
+        "grep -Fc -- '/usr/local/bin/rkhunter-kiosk-scan.sh'",
+    ),
+    roles_root / 'signage/tasks/main.yml': (
+        "signage_enabled_unit.stdout | trim != 'enabled'",
+        'Stop signage runtime temporarily for release',
+    ),
+}
+for path, fragments in exact_preflight_fragments.items():
+    text = path.read_text(encoding='utf-8')
+    for fragment in fragments:
+        assert fragment in text, f'{path}: exact release preflight lost {fragment!r}'
+
+docker_sources = [source.resolve() for source, _name in docker_exceptions]
+for lifecycle in ('nfc-agent-lifecycle.yml', 'barcode-agent-lifecycle.yml'):
+    source = (roles_root / 'client/tasks' / lifecycle).resolve()
+    assert docker_sources.count(source) == 1, (
+        f'{lifecycle}: release-only must execute exactly one Compose mutation'
+    )
+
+for path in ansible_root.rglob('*.yml'):
+    text = path.read_text(encoding='utf-8')
+    assert 'kill -9' not in text, f'{path}: force-kill is forbidden in Ansible release paths'
+
+required_scanned = {
+    (roles_root / 'common/tasks/main.yml').resolve(),
+    (roles_root / 'client/tasks/main.yml').resolve(),
+    (roles_root / 'client/tasks/network-preflight.yml').resolve(),
+    (roles_root / 'kiosk/tasks/main.yml').resolve(),
+    (roles_root / 'kiosk/tasks/security.yml').resolve(),
+    (roles_root / 'signage/tasks/main.yml').resolve(),
+    (ansible_root / 'tasks/preflight-terminal-display.yml').resolve(),
+    (ansible_root / 'tasks/preflight-signage.yml').resolve(),
+    (ansible_root / 'tasks/preflight-tailscale.yml').resolve(),
+    (ansible_root / 'tasks/update-clients-core.yml').resolve(),
+}
+assert required_scanned <= scanned, (
+    f'terminal recursive audit missed {sorted(str(path) for path in required_scanned - scanned)}'
+)
+assert (ansible_root / 'tasks/prestage-signage-runtime.yml').resolve() not in scanned, (
+    'provisioning-only signage runtime preparation entered the release graph'
+)
+
+# Resolve every release-reachable file destination through the exact default
+# path constraints asserted by the roles, then require it in the coordinator's
+# capture set. This makes adding a new allowlisted Ansible mutation fail until
+# rollback authority is extended in the same change.
+sys.path.insert(0, str(repository_root))
+from scripts.deploy.rolling_release.backends import ansible as deploy_ansible
+
+
+def concrete_destination(value):
+    replacements = (
+        ('{{ repo_path }}', '/opt/RaspberryPiSystem_002'),
+        ('{{ kiosk_firefox_profile_abs }}', '/home/tools03/.mozilla/firefox/kiosk-system'),
+        ('{{ ibus_process_owner_script_path }}', '/usr/local/bin/ibus-process-owner.sh'),
+        ('{{ client_sudoers_services_file }}', 'tools03-client-services'),
+        ('{{ client_sudo_user }}', 'tools03'),
+        ('{{ ansible_user }}', 'tools03'),
+        ('{{ item }}', 'im-launch.desktop'),
+    )
+    result = value
+    for source, destination_value in replacements:
+        result = result.replace(source, destination_value)
+    assert '{{' not in result, f'unresolved release destination: {value}'
+    return result
+
+
+captured_destinations = set(
+    deploy_ansible._terminal_manifest_paths(
+        'kiosk', 'tools03', '/home/tools03', 'contract-run'
+    )
+) | set(
+    deploy_ansible._terminal_manifest_paths(
+        'signage', 'signageras3', '/home/signageras3', 'contract-run'
+    )
+)
+concrete_release_destinations = {
+    concrete_destination(value) for value in release_destinations
+}
+assert concrete_release_destinations <= captured_destinations, (
+    'release mutation destinations missing from rollback manifest: '
+    f'{sorted(concrete_release_destinations - captured_destinations)}'
+)
+PY
+
+python3 - "${LEGACY_DEPLOY_PLAYBOOK}" "${SIGNAGE_PRESTAGE}" \
+  "${TERMINAL_DISPLAY_PREFLIGHT}" "${CLIENT_TASKS}" "${KIOSK_FIREFOX_TASKS}" \
+  "${SIGNAGE_TASKS}" "${KIOSK_LAUNCH_TEMPLATE}" "${SIGNAGE_DISPLAY_TEMPLATES[@]}" <<'PY'
+import sys
+from pathlib import Path
+
+import yaml
+
+(
+    deploy_path,
+    prestage_path,
+    display_path,
+    client_path,
+    firefox_path,
+    signage_path,
+    kiosk_template_path,
+    *signage_template_paths,
+) = map(Path, sys.argv[1:])
+
+deploy = yaml.safe_load(deploy_path.read_text(encoding='utf-8')) or []
+assert len(deploy) == 1
+deploy_tasks = deploy[0].get('tasks') or []
+by_name = {task.get('name'): task for task in deploy_tasks}
+signage_preflight = by_name['Run signage preflight checks']
+signage_prestage = by_name['Prepare signage runtime for provisioning']
+assert "terminal_release_mode | default('full') == 'release-only'" in signage_preflight['when']
+assert "terminal_release_mode == 'full'" in signage_prestage['when']
+
+prestage = yaml.safe_load(prestage_path.read_text(encoding='utf-8')) or []
+prestage_names = [task.get('name') for task in prestage]
+discover_index = prestage_names.index(
+    'Discover existing signage services and timers for provisioning'
+)
+stop_index = prestage_names.index(
+    'Stop and disable existing signage services and timers for provisioning'
+)
+assert discover_index < stop_index
+assert 'ignore_errors' not in prestage[discover_index]
+assert 'failed_when' not in prestage[discover_index]
+stop_task = prestage[stop_index]
+assert "item.stdout | default('') | trim == 'loaded'" in stop_task['when']
+assert 'ignore_errors' not in stop_task and 'failed_when' not in stop_task
+
+display = yaml.safe_load(display_path.read_text(encoding='utf-8')) or []
+assert [task.get('name') for task in display] == [
+    'Require lightdm unit to be loaded before terminal release',
+    'Require lightdm to be active before terminal release',
+]
+assert "stdout | trim != 'loaded'" in display[0]['failed_when']
+assert "stdout | trim != 'active'" in display[1]['failed_when']
+
+client_text = client_path.read_text(encoding='utf-8')
+assert 'Hide desktop panel during full terminal provisioning' in client_text
+assert "terminal_release_mode | default('full') == 'full'" in client_text
+assert "pkill -f '^lwrespawn /usr/bin/wf-panel-pi( |$)'" in client_text
+assert 'Filter out signage services for signage role convergence' in client_text
+assert 'when: manage_signage_lite | default(false) | bool' in client_text
+
+firefox_text = firefox_path.read_text(encoding='utf-8')
+for fragment in (
+    'Remove stale Firefox session restore files during full provisioning',
+    'Converge Firefox session restore directory during full provisioning',
+    'Find stale Firefox upgrade session restore files during full provisioning',
+    "terminal_release_mode | default('full') == 'full'",
+):
+    assert fragment in firefox_text, fragment
+
+signage_text = signage_path.read_text(encoding='utf-8')
+assert 'Pause signage-lite workload before deployment' not in signage_text
+tmpfiles_task = next(
+    task for task in yaml.safe_load(signage_text) or []
+    if task.get('name') == 'Ensure /run/signage directory exists (via tmpfiles)'
+)
+assert 'creates' not in tmpfiles_task.get('args', {})
+for fragment in (
+    "signage_runtime_directory.stat.pw_name | default('') == ansible_user",
+    "signage_runtime_directory.stat.gr_name | default('') == ansible_user",
+    "signage_runtime_directory.stat.mode | default('') == '0755'",
+):
+    assert fragment in signage_text, fragment
+
+for template_path in (kiosk_template_path, *signage_template_paths):
+    template = template_path.read_text(encoding='utf-8')
+    for forbidden in ('pkill ', 'rm -f', 'mkdir -p', 'sessionstore.jsonlz4'):
+        assert forbidden not in template, (
+            f'{template_path}: release-launched runtime side effect remains: {forbidden}'
+        )
+PY
+
+python3 - "${COMMON_TASKS}" "${TMP_DIR}/terminal-index-policy" <<'PY'
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+import yaml
+
+common_path = Path(sys.argv[1])
+root = Path(sys.argv[2])
+seed = root / 'seed'
+remote = root / 'remote.git'
+home = root / 'home'
+root.mkdir(parents=True)
+home.mkdir()
+
+
+def git(*args, cwd=None):
+    return subprocess.run(
+        ('/usr/bin/git', *args),
+        cwd=cwd,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+
+git('init', str(seed))
+git('config', 'user.name', 'deploy-contract-test', cwd=seed)
+git('config', 'user.email', 'deploy-contract@example.invalid', cwd=seed)
+(seed / 'tracked.txt').write_text('base\n', encoding='utf-8')
+git('add', 'tracked.txt', cwd=seed)
+git('commit', '-m', 'base', cwd=seed)
+base_sha = git('rev-parse', 'HEAD', cwd=seed).stdout.strip()
+(seed / 'tracked.txt').write_text('target\n', encoding='utf-8')
+git('commit', '-am', 'target', cwd=seed)
+target_sha = git('rev-parse', 'HEAD', cwd=seed).stdout.strip()
+git('clone', '--bare', str(seed), str(remote))
+
+tasks = yaml.safe_load(common_path.read_text(encoding='utf-8')) or []
+checkout_template = next(
+    task['ansible.builtin.shell']
+    for task in tasks
+    if task.get('name') == 'Fetch and reset existing terminal repository to immutable release'
+)
+
+for flag in ('--assume-unchanged', '--skip-worktree'):
+    work = root / flag.removeprefix('--')
+    git('clone', str(remote), str(work))
+    git('checkout', base_sha, cwd=work)
+    git('update-index', flag, 'tracked.txt', cwd=work)
+    (work / 'tracked.txt').write_text('local state\n', encoding='utf-8')
+
+    checkout = checkout_template.replace(
+        'safe_home="$(/usr/bin/getent passwd {{ ansible_user | quote }} | /usr/bin/cut -d: -f6)"',
+        'safe_home="${HOME}"',
+    )
+    checkout = checkout.replace(
+        "{{ git_environment.GIT_SSH_COMMAND | default('') | quote }}",
+        "''",
+    )
+    checkout = checkout.replace('{{ repo_path }}', str(work))
+    checkout = checkout.replace('{{ repo_version | quote }}', repr(target_sha))
+    checkout = checkout.replace(
+        '{{ repo_prev_head_release_result.stdout | quote }}',
+        repr(base_sha),
+    )
+    assert '{{' not in checkout and '{%' not in checkout
+
+    poisoned_environment = os.environ.copy()
+    poisoned_environment.update(
+        HOME=str(home),
+        GIT_DIR='/nonexistent/poisoned-git-dir',
+        GIT_WORK_TREE='/nonexistent/poisoned-work-tree',
+        GIT_CONFIG_GLOBAL='/nonexistent/poisoned-git-config',
+    )
+    result = subprocess.run(
+        ('/bin/bash', '-c', checkout),
+        text=True,
+        capture_output=True,
+        env=poisoned_environment,
+    )
+    assert result.returncode != 0, f'{flag}: hidden index bit reached reset'
+    assert 'skip-worktree or assume-unchanged' in result.stderr, result.stderr
+    assert git('rev-parse', 'HEAD', cwd=work).stdout.strip() == base_sha
+    assert (work / 'tracked.txt').read_text(encoding='utf-8') == 'local state\n'
+PY
+
 python3 - "${PLAYBOOK}" "${LEGACY_DEPLOY_PLAYBOOK}" "${COMMON_TASKS}" \
   "${UPDATE_CLIENTS_CORE}" "${ROLLBACK_TASKS}" "${STANDALONE_ROLLBACK_PLAYBOOK}" <<'PY'
 import sys
@@ -659,6 +1533,14 @@ assert {play.get('hosts') for play in terminal_plays} == {'kiosk', 'signage'}
 for play in terminal_plays:
     for task in play.get('tasks') or []:
         assert 'rescue' not in task, f"{play['hosts']}: terminal rescue is forbidden"
+
+staged_lower = staged_text.lower()
+for misleading in ('automatic rollback', 'after rollback'):
+    assert misleading not in staged_lower, (
+        f'{staged_path}: misleading local rollback label remains: {misleading}'
+    )
+assert 'coordinator rollback ownership' in staged_lower
+assert 'coordinator owns rollback' in staged_lower
 
 for path, text in ((staged_path, staged_text), (legacy_path, legacy_text)):
     assert 'rollback-configs.yml' not in text, f'{path}: Ansible must not own terminal rollback'

@@ -11,6 +11,7 @@
     repo_version: "{{ lookup('env', 'ANSIBLE_REPO_VERSION') | default('main', true) }}"
     git_deploy_key: "{{ lookup('env', 'RASPI_SYSTEM_DEPLOY_KEY') | default('', true) }}"
     git_environment: "{{ {} if (git_deploy_key | trim) == '' else {'GIT_SSH_COMMAND': 'ssh -i ' ~ git_deploy_key ~ ' -o StrictHostKeyChecking=no'} }}"
+    terminal_release_mode: full
     # デフォルトのサービスリスト（ホスト変数で上書き可能）
     # 注意: ホスト変数で定義されていない場合のみ使用される
     server_services_to_restart:
@@ -108,6 +109,14 @@
       when:
         - '"server" not in group_names'
         - manage_signage_lite | default(false) | bool
+        - terminal_release_mode | default('full') == 'release-only'
+
+    - name: Prepare signage runtime for provisioning
+      ansible.builtin.include_tasks: "../tasks/prestage-signage-runtime.yml"
+      when:
+        - '"server" not in group_names'
+        - manage_signage_lite | default(false) | bool
+        - terminal_release_mode == 'full'
 
     - name: Run resource guard checks
       ansible.builtin.include_tasks: "../tasks/resource-guard.yml"

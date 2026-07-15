@@ -32,6 +32,7 @@
 
 - name: Include SSH loopback authorized_keys guard (Pi5 self-SSH / ansible preflight)
   ansible.builtin.import_tasks: ssh-loopback-authorized.yml
+  when: server_release_mode == 'full'
 
 - name: Ensure API .env directory exists
   ansible.builtin.file:
@@ -151,6 +152,7 @@
     mode: '0755'
   register: power_actions_dir_result
   notify: restart api
+  when: server_release_mode == 'full'
 
 - name: Ensure part measurement drawing storage directory exists
   ansible.builtin.file:
@@ -437,15 +439,19 @@
 
 - name: Apply server security hardening
   ansible.builtin.import_tasks: security.yml
+  when: server_release_mode == 'full'
 
 - name: Configure wayvnc VNC server
   ansible.builtin.import_tasks: wayvnc.yml
+  when: server_release_mode == 'full'
 
 - name: Apply malware protection tasks
   ansible.builtin.import_tasks: malware.yml
+  when: server_release_mode == 'full'
 
 - name: Configure security monitoring
   ansible.builtin.import_tasks: monitoring.yml
+  when: server_release_mode == 'full'
 
 # 計測機器ジャンル画像は compose 永続化前はコンテナ書き込み層にのみ存在し得る。api 再作成で失われるため、
 # coordinatorのruntime handoff前にホストのbind先へ退避する（既存ホストファイルは上書きしない）。
@@ -567,108 +573,18 @@
     - not (pi5_blue_green_deploy_enabled | default(false) | bool)
     - (force_docker_rebuild | default(false) | bool) or (server_docker_build_needed | default(repo_changed) | bool)
 
-- name: Prepare and switch prebuilt Pi5 images when minimal-downtime deployment is enabled
-  block:
-    - name: Resolve deployed Git commit SHA
-      ansible.builtin.command: git -C {{ repo_path }} rev-parse HEAD
-      register: pi5_candidate_sha_result
-      changed_when: false
-
-    - name: Prepare immutable Pi5 candidate images while current services remain active
-      ansible.builtin.command:
-        argv:
-          - "{{ repo_path }}/scripts/deploy/pi5-image-deploy.sh"
-          - prepare
-          - --ref
-          - "{{ pi5_candidate_sha_result.stdout }}"
-      environment:
-        PI5_MIGRATION_BASE_REF: "{{ repo_prev_head | default(pi5_candidate_sha_result.stdout + '^') }}"
-      register: pi5_candidate_prepare_result
-      changed_when: true
-
-    - name: Switch Pi5 API and Web to prepared images
-      ansible.builtin.command:
-        argv:
-          - "{{ repo_path }}/scripts/deploy/pi5-image-deploy.sh"
-          - switch
-          - --ref
-          - "{{ pi5_candidate_sha_result.stdout }}"
-      environment:
-        PI5_MIGRATION_BASE_REF: "{{ repo_prev_head | default(pi5_candidate_sha_result.stdout + '^') }}"
-      register: pi5_candidate_switch_result
-      changed_when: true
-
-    - name: Record minimal-downtime Docker switch success
-      ansible.builtin.set_fact:
-        docker_restart_summary: >-
-          {{ docker_restart_summary + [
-            {
-              'status': 'ok',
-              'mode': 'pi5-minimal-downtime',
-              'sha': pi5_candidate_sha_result.stdout
-            }
-          ] }}
-  rescue:
-    - name: Capture Pi5 image deployment state after failure
-      ansible.builtin.command: "{{ repo_path }}/scripts/deploy/pi5-image-deploy.sh status"
-      register: pi5_image_deploy_failure_state
-      changed_when: false
-      failed_when: false
-
-    - name: Fail current host due to minimal-downtime deployment failure
-      ansible.builtin.fail:
-        msg: >-
-          Pi5 minimal-downtime deployment failed. The lifecycle command attempted automatic rollback.
-          State: {{ pi5_image_deploy_failure_state.stdout | default('unavailable') }}
+- name: Reject retired Ansible-owned Pi5 release executors
+  ansible.builtin.fail:
+    msg: >-
+      pi5_minimal_downtime_deploy_enabled and pi5_blue_green_deploy_enabled no
+      longer authorize Ansible to build, migrate, switch, or roll back Pi5.
+      Run the canonical rolling-release coordinator, which supplies the sealed
+      run ID, migration plan, resource evidence, and sole rollback authority.
   when:
     - server_release_mode == 'full'
-    - pi5_minimal_downtime_deploy_enabled | default(false) | bool
-    - not (pi5_blue_green_deploy_enabled | default(false) | bool)
     - >-
-      (force_docker_rebuild | default(false) | bool)
-      or (server_docker_build_needed | default(repo_changed) | bool)
-      or (docker_env_result.changed | default(false))
-
-- name: Prepare and switch Pi5 Blue/Green candidate when canonical release enables Phase 3
-  block:
-    - name: Resolve immutable release SHA
-      ansible.builtin.command: git -C {{ repo_path }} rev-parse HEAD
-      register: pi5_bluegreen_sha
-      changed_when: false
-
-    - name: Build and validate immutable Phase 3 candidate
-      ansible.builtin.command:
-        argv:
-          - "{{ repo_path }}/scripts/deploy/pi5-candidate-build.sh"
-          - --ref
-          - "{{ pi5_bluegreen_sha.stdout }}"
-      environment:
-        PI5_MIGRATION_BASE_REF: "{{ repo_prev_head | default(pi5_bluegreen_sha.stdout + '^') }}"
-
-    - name: Prepare inactive Blue/Green slot
-      ansible.builtin.command: "{{ repo_path }}/scripts/deploy/pi5-blue-green.sh prepare"
-
-    - name: Switch prepared Blue/Green slot
-      ansible.builtin.command: "{{ repo_path }}/scripts/deploy/pi5-blue-green.sh switch"
-  rescue:
-    - name: Capture Phase 3 state after release failure
-      ansible.builtin.command: "{{ repo_path }}/scripts/deploy/pi5-blue-green.sh status"
-      register: pi5_bluegreen_failure_state
-      changed_when: false
-      failed_when: false
-
-    - name: Fail safely after Phase 3 release failure
-      ansible.builtin.fail:
-        msg: >-
-          Pi5 Blue/Green release failed. State:
-          {{ pi5_bluegreen_failure_state.stdout | default('unavailable') }}
-  when:
-    - server_release_mode == 'full'
-    - pi5_blue_green_deploy_enabled | default(false) | bool
-    - >-
-      (force_docker_rebuild | default(false) | bool)
-      or (server_docker_build_needed | default(repo_changed) | bool)
-      or (docker_env_result.changed | default(false))
+      (pi5_minimal_downtime_deploy_enabled | default(false) | bool)
+      or (pi5_blue_green_deploy_enabled | default(false) | bool)
 
 - name: Force recreate api when Docker .env changed
   ansible.builtin.shell: |
@@ -841,6 +757,7 @@
 
 - name: Apply status-agent configuration and systemd units
   ansible.builtin.import_tasks: status-agent.yml
+  when: server_release_mode == 'full'
 
 
 - name: Resolve deploy user groups for Blue/Green reconcile Docker access
@@ -849,6 +766,7 @@
   register: pi5_bluegreen_deploy_user_groups
   changed_when: false
   check_mode: false
+  when: server_release_mode == 'full'
 
 - name: Assert deploy user is in the docker group for Blue/Green reconcile
   ansible.builtin.assert:
@@ -857,6 +775,7 @@
     fail_msg: >-
       Blue/Green reconcile runs as {{ ansible_user }} with SupplementaryGroups=docker.
       Add {{ ansible_user }} to the docker group before enabling pi5-blue-green-reconcile.service.
+  when: server_release_mode == 'full'
 
 - name: Deploy Pi5 Blue/Green boot reconciliation service
   ansible.builtin.template:
@@ -865,12 +784,14 @@
     owner: root
     group: root
     mode: '0644'
+  when: server_release_mode == 'full'
 
 - name: Enable Pi5 Blue/Green boot reconciliation service
   ansible.builtin.systemd:
     name: pi5-blue-green-reconcile.service
     enabled: true
     daemon_reload: true
+  when: server_release_mode == 'full'
 
 - name: Deploy Pi5 power dispatcher script
   ansible.builtin.template:
@@ -879,6 +800,7 @@
     owner: root
     group: root
     mode: '0755'
+  when: server_release_mode == 'full'
 
 - name: Deploy Pi5 power dispatcher systemd service
   ansible.builtin.template:
@@ -887,6 +809,7 @@
     owner: root
     group: root
     mode: '0644'
+  when: server_release_mode == 'full'
 
 - name: Deploy Pi5 power dispatcher systemd path
   ansible.builtin.template:
@@ -895,13 +818,16 @@
     owner: root
     group: root
     mode: '0644'
+  when: server_release_mode == 'full'
 
 - name: Reload systemd for power dispatcher units
   ansible.builtin.systemd:
     daemon_reload: true
+  when: server_release_mode == 'full'
 
 - name: Enable and start power dispatcher path
   ansible.builtin.systemd:
     name: pi5-power-dispatcher.path
     enabled: true
     state: started
+  when: server_release_mode == 'full'

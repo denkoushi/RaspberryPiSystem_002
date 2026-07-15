@@ -82,3 +82,23 @@
   become_user: "{{ ansible_user }}"
   changed_when: "'changed:ibus-settings' in ibus_settings_result.stdout"
   register: ibus_settings_result
+  when: terminal_release_mode | default('full') == 'full'
+
+- name: Verify IBus settings without changing the active session
+  ansible.builtin.shell: |
+    set -euo pipefail
+    uid="$(id -u)"
+    runtime_dir="/run/user/${uid}"
+    bus="${runtime_dir}/bus"
+    test -S "${bus}"
+    export XDG_RUNTIME_DIR="${runtime_dir}"
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=${bus}"
+    test "$(gsettings get org.freedesktop.ibus.general engines-order)" = {{ ibus_engines_order | quote }}
+    test "$(gsettings get org.freedesktop.ibus.general.hotkey triggers)" = {{ ibus_hotkey_triggers | quote }}
+    test "$(gsettings get org.freedesktop.ibus.panel show-im-name)" = {{ ibus_panel_show_im_name | ternary('true', 'false') | quote }}
+    test "$(gsettings get org.freedesktop.ibus.panel show)" = {{ (ibus_panel_show | string) | quote }}
+  args:
+    executable: /bin/bash
+  become_user: "{{ ansible_user }}"
+  changed_when: false
+  when: terminal_release_mode | default('full') == 'release-only'

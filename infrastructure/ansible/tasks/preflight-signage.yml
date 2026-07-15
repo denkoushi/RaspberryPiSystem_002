@@ -1,97 +1,71 @@
 ---
-# Preflight tasks for signage deployment (device-type agnostic)
-# These tasks ensure signage device is in a safe state before deployment:
-# - Stop and disable services/timers to free memory
-# - Mask services to prevent auto-restart
-# - Clean up stale Ansible processes
-# - Verify sufficient memory is available
-#
-# Device-specific settings are loaded from device_type_defaults based on device_type variable.
-# If device_type is not set, 'default' configuration is used.
+# Read-only signage release preflight. Runtime quiescing belongs to the
+# coordinator (release-only) or prestage-signage-runtime.yml (provisioning).
 
-- name: Determine device type and load defaults
+- name: Determine signage device type and load defaults
   ansible.builtin.set_fact:
     device_type: "{{ device_type | default('default') }}"
-    device_config: "{{ device_type_defaults[device_type] | default(device_type_defaults['default']) }}"
+    device_config: >-
+      {{
+        device_type_defaults[device_type | default('default')]
+        | default(device_type_defaults['default'])
+      }}
 
-- name: Expand device config for preflight checks
+- name: Expand signage preflight configuration
   ansible.builtin.set_fact:
     memory_required_mb: "{{ device_config.memory_required_mb }}"
     stop_lightdm: "{{ device_config.stop_lightdm }}"
     services_to_stop: "{{ device_config.services_to_stop }}"
 
-- name: Preflight checks for signage deployment
-  block:
-    - name: Stop and disable signage services and timers
-      ansible.builtin.systemd:
-        name: "{{ item }}"
-        state: stopped
-        enabled: false
-        no_block: true
-      loop: "{{ services_to_stop }}"
-      ignore_errors: true
+- name: Check required signage unit files without changing service state
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - show
+      - --property=LoadState
+      - --value
+      - "{{ item }}"
+  loop: >-
+    {{
+      (
+        services_to_stop
+        + [
+          'signage-lite-update.service',
+          'signage-lite-watchdog.service',
+          'signage-daily-reboot.service',
+          'signage-daily-reboot.timer'
+        ]
+      ) | unique | list
+    }}
+  register: signage_unit_preflight
+  changed_when: false
+  failed_when: >-
+    signage_unit_preflight.rc != 0
+    or signage_unit_preflight.stdout | trim != 'loaded'
 
-    - name: Mask signage-lite service (runtime only, prevents auto-restart)
-      ansible.builtin.shell: systemctl mask --runtime signage-lite.service
-      register: mask_result
-      changed_when: mask_result.rc == 0
-      failed_when: false
-      # Note: --runtime mask does not conflict with existing service files
-      # It creates a runtime-only symlink that prevents auto-restart during deployment
+- name: Require daily reboot service to be inactive during release
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - signage-daily-reboot.service
+  register: signage_daily_reboot_preflight
+  changed_when: false
+  failed_when: signage_daily_reboot_preflight.stdout | trim != 'inactive'
 
-    # lightdm停止はデバイスタイプごとに条件分岐
-    # Pi3やPi Zero 2Wなど、メモリが限られているデバイスではlightdmを停止して
-    # 約100MBのメモリを確保する。デプロイ完了後に再起動してGUIを復活させる。
-    - name: Stop lightdm to free memory for deployment
-      ansible.builtin.systemd:
-        name: lightdm
-        state: stopped
-      register: lightdm_stopped
-      ignore_errors: true
-      when: stop_lightdm | default(false)
+- name: Check available memory without stopping workloads
+  ansible.builtin.shell: free -m | awk '/^Mem:/ {print $7}'
+  register: available_memory_mb_raw
+  changed_when: false
 
-    - name: Wait for services to fully stop
-      ansible.builtin.pause:
-        seconds: 3
+- name: Extract available memory value
+  ansible.builtin.set_fact:
+    available_memory_mb: "{{ available_memory_mb_raw.stdout | trim | int }}"
 
-    - name: Clean up stale Ansible processes (AnsiballZ older than 120 seconds)
-      ansible.builtin.shell: |
-        set -euo pipefail
-        ps aux | grep -E 'AnsiballZ_.*\.py' | grep -v grep | while read line; do
-          pid=$(echo "$line" | awk '{print $2}')
-          etimes=$(ps -o etimes= -p "$pid" 2>/dev/null || echo "0")
-          if [ "$etimes" -gt 120 ]; then
-            echo "Killing stale Ansible process: PID=$pid, etimes=${etimes}s"
-            kill -9 "$pid" 2>/dev/null || true
-          fi
-        done
-      register: cleanup_result
-      changed_when: cleanup_result.stdout | length > 0
-      failed_when: false
-
-    - name: Check available memory
-      ansible.builtin.shell: free -m | awk '/^Mem:/ {print $7}'
-      register: available_memory_mb_raw
-      changed_when: false
-
-    - name: Extract available memory value
-      ansible.builtin.set_fact:
-        available_memory_mb: "{{ available_memory_mb_raw.stdout | trim | int }}"
-
-    - name: Fail if insufficient memory available
-      ansible.builtin.fail:
-        msg: >
-          CRITICAL: Insufficient memory available on {{ inventory_hostname }}.
-          Available: {{ available_memory_mb }}MB (required: >= {{ memory_required_mb }}MB)
-          Device type: {{ device_type }}
-          
-          To free memory, manually stop the following services:
-          {% for service in services_to_stop %}
-          - sudo systemctl stop {{ service }}
-          {% endfor %}
-          {% if stop_lightdm %}
-          - sudo systemctl stop lightdm
-          {% endif %}
-          
-          Then wait a few seconds and retry deployment.
-      when: available_memory_mb | default(0) < memory_required_mb
+- name: Fail if signage release has insufficient memory
+  ansible.builtin.fail:
+    msg: >-
+      CRITICAL: {{ inventory_hostname }} has {{ available_memory_mb }}MB available;
+      the read-only release preflight requires at least {{ memory_required_mb }}MB.
+      Quiesce the host through the coordinator or provision it separately.
+  when: available_memory_mb | default(0) < memory_required_mb

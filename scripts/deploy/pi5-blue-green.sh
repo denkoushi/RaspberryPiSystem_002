@@ -5,6 +5,7 @@
 set -euo pipefail
 
 SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+# shellcheck source=lib/migration-gate.sh
 source "$(dirname "$SCRIPT_PATH")/lib/migration-gate.sh"
 PROJECT_DIR="${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}"
 BASE_COMPOSE="${PI5_BASE_COMPOSE:-${PROJECT_DIR}/infrastructure/docker/docker-compose.server.yml}"
@@ -37,6 +38,9 @@ MIN_ERROR_SAMPLES="${PI5_BLUE_GREEN_MIN_ERROR_SAMPLES:-20}"
 MIN_MEMORY_MB="${PI5_BLUE_GREEN_MIN_MEMORY_MB:-1536}"
 MIN_DISK_GB="${PI5_BLUE_GREEN_MIN_DISK_GB:-10}"
 MAX_LOAD_AVG="${PI5_BLUE_GREEN_MAX_LOAD_AVG:-}"
+EVIDENCE_MIN_MEMORY_MB="${PI5_CANDIDATE_EVIDENCE_MIN_MEMORY_MB:-768}"
+EVIDENCE_MIN_DISK_GB="${PI5_CANDIDATE_EVIDENCE_MIN_DISK_GB:-10}"
+EVIDENCE_MAX_LOAD_AVG="${PI5_CANDIDATE_MAX_LOAD_AVG:-}"
 STABLE_SECONDS="${PI5_BLUE_GREEN_STABLE_SECONDS:-300}"
 MONITOR_INTERVAL="${PI5_BLUE_GREEN_MONITOR_INTERVAL:-2}"
 READINESS_RETRIES="${PI5_BLUE_GREEN_READINESS_RETRIES:-45}"
@@ -48,8 +52,8 @@ GATEWAY_READY_RETRIES="${PI5_BLUE_GREEN_GATEWAY_READY_RETRIES:-60}"
 GATEWAY_READY_INTERVAL="${PI5_BLUE_GREEN_GATEWAY_READY_INTERVAL:-1}"
 DRY_RUN="${PI5_BLUE_GREEN_DRY_RUN:-${DRY_RUN:-0}}"
 HTTP_ONLY="${PI5_BLUE_GREEN_HTTP_ONLY:-0}"
-MIGRATION_BASE_REF="${PI5_BLUE_GREEN_MIGRATION_BASE_REF:-}"
 RUNTIME_CONFIG_VERIFIER="${PI5_RUNTIME_CONFIG_VERIFIER:-${PROJECT_DIR}/scripts/deploy/pi5-runtime-config-verifier.py}"
+RELEASE_EVIDENCE_HELPER="${PROJECT_DIR}/scripts/deploy/pi5-release-evidence.py"
 
 COMMAND="${1:-}"
 CONFIRM_BOOTSTRAP=0
@@ -59,9 +63,27 @@ STRUCTURAL_ONLY=0
 API_IMAGE=""
 WEB_IMAGE=""
 ROLLBACK_REASON=""
+RUN_ID=""
+MIGRATION_PLAN_FILE=""
+RESOURCE_EVIDENCE_FILE=""
+CANDIDATE_API_IMAGE_ID=""
+CANDIDATE_WEB_IMAGE_ID=""
+BLUE_API_IMAGE_ID=""
+BLUE_WEB_IMAGE_ID=""
+GREEN_API_IMAGE_ID=""
+GREEN_WEB_IMAGE_ID=""
+RETIRED_API_IMAGE=""
+RETIRED_WEB_IMAGE=""
+RETIRED_API_IMAGE_ID=""
+RETIRED_WEB_IMAGE_ID=""
+RELEASE_RUN_ID=""
+RELEASE_DESIRED_SHA=""
+RELEASE_RESOURCE_EVIDENCE=""
+RELEASE_RESOURCE_EVIDENCE_SHA256=""
 LOCK_DIR=""
 LOCK_FALLBACK=0
 BOOTSTRAP_RECOVERY_ARMED=0
+PREPARE_RECOVERY_ARMED=0
 
 ACTIVE_SLOT=""
 CANDIDATE_SLOT=""
@@ -92,6 +114,8 @@ LEGACY_API_QUARANTINED=0
 LEGACY_WEB_QUARANTINED=0
 LEGACY_API_REMOVED=0
 LEGACY_WEB_REMOVED=0
+LEGACY_API_REMOVE_INTENT=0
+LEGACY_WEB_REMOVE_INTENT=0
 LEGACY_WEB_MAINTENANCE=0
 LEGACY_NORMAL_CONFIG_B64=""
 LEGACY_CADDY_CONFIG_PATH=""
@@ -111,6 +135,9 @@ Usage: pi5-blue-green.sh <status|bootstrap|prepare|switch|rollback|cleanup|recon
   --allow-legacy-scheduler-handoff     required for first scheduler handoff
   --restore-legacy                     reconcile only: restore captured legacy services
   --reason TEXT                        operator rollback reason
+  --run-id RUN_ID                      owning rolling-release run
+  --migration-plan FILE                sealed migration-plan evidence
+  --resource-evidence FILE             sealed candidate resource evidence
   --dry-run                            suppress Docker mutations; retain guards/state/rendering
 EOF
 }
@@ -125,6 +152,9 @@ while (($#)); do
     --allow-legacy-scheduler-handoff) ALLOW_LEGACY_HANDOFF=1; shift ;;
     --restore-legacy) RESTORE_LEGACY=1; shift ;;
     --reason) [[ $# -ge 2 ]] || die '--reason requires a value'; ROLLBACK_REASON="$2"; shift 2 ;;
+    --run-id) [[ $# -ge 2 ]] || die '--run-id requires a value'; RUN_ID="$2"; shift 2 ;;
+    --migration-plan) [[ $# -ge 2 ]] || die '--migration-plan requires a value'; MIGRATION_PLAN_FILE="$2"; shift 2 ;;
+    --resource-evidence) [[ $# -ge 2 ]] || die '--resource-evidence requires a value'; RESOURCE_EVIDENCE_FILE="$2"; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown argument: $1" ;;
@@ -132,17 +162,71 @@ while (($#)); do
 done
 
 case "$COMMAND" in
-  status|bootstrap|prepare|switch|rollback|cleanup|reconcile|monitor) ;;
+  status|bootstrap|prepare|switch|rollback|cleanup|reconcile|monitor|seal-image-ids|migration-ledger|restart-monitor) ;;
   *) usage; exit 2 ;;
 esac
 ((RESTORE_LEGACY == 0)) || [[ "$COMMAND" == reconcile ]] || die '--restore-legacy is valid only with reconcile'
 [[ "$GATEWAY_READY_RETRIES" =~ ^[1-9][0-9]*$ ]] || die 'gateway readiness retries must be a positive integer'
 [[ "$GATEWAY_READY_INTERVAL" =~ ^[0-9]+([.][0-9]+)?$ ]] || die 'gateway readiness interval must be a non-negative number'
 
+validate_fixed_safety_policy() {
+  local production=0 name value control_name
+  [[ "$DRY_RUN" == 1 && "${ROLLING_RELEASE_PROTOCOL:-}" != 2 ]] || production=1
+  if ((production == 1)); then
+    [[ "$STABLE_SECONDS" == 300 ]] || die 'production Blue/Green stability hold is fixed at 300 seconds'
+    [[ "$MONITOR_INTERVAL" == 2 ]] || die 'production Blue/Green monitor interval is fixed at 2 seconds'
+    if [[ "${ROLLING_RELEASE_PROTOCOL:-}" == 2 ]]; then
+      [[ "$MAX_ERROR_RATE" == 0.05 ]] || die 'rolling-release maximum error rate is fixed at 0.05'
+      [[ "$MIN_ERROR_SAMPLES" == 20 ]] || die 'rolling-release minimum error samples are fixed at 20'
+      [[ "$MIN_MEMORY_MB" == 1536 ]] || die 'rolling-release Blue/Green memory threshold is fixed at 1536MB'
+      [[ "$MIN_DISK_GB" == 10 ]] || die 'rolling-release Blue/Green disk threshold is fixed at 10GB'
+      [[ -z "$MAX_LOAD_AVG" ]] || die 'rolling-release Blue/Green load threshold is derived from online CPUs'
+      [[ "$EVIDENCE_MIN_MEMORY_MB" == 768 ]] || die 'rolling-release evidence memory threshold is fixed at 768MB'
+      [[ "$EVIDENCE_MIN_DISK_GB" == 10 ]] || die 'rolling-release evidence disk threshold is fixed at 10GB'
+      [[ -z "$EVIDENCE_MAX_LOAD_AVG" ]] || die 'rolling-release evidence load threshold is derived from online CPUs'
+      [[ "$READINESS_RETRIES" == 45 && "$READINESS_INTERVAL" == 2 ]] \
+        || die 'rolling-release slot readiness timing is fixed at 45 attempts / 2 seconds'
+      [[ "$GATEWAY_READY_RETRIES" == 60 && "$GATEWAY_READY_INTERVAL" == 1 ]] \
+        || die 'rolling-release gateway readiness timing is fixed at 60 attempts / 1 second'
+      for control_name in DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_DEFAULT_PLATFORM \
+        BUILDKIT_HOST BUILDX_CONFIG COMPOSE_FILE COMPOSE_PROJECT_NAME COMPOSE_PROFILES \
+        COMPOSE_ENV_FILES COMPOSE_PATH_SEPARATOR; do
+        [[ -z "${!control_name:-}" ]] \
+          || die "Docker/Compose control environment is forbidden under rolling-release: ${control_name}"
+      done
+    fi
+    if [[ "$COMMAND" != status ]]; then
+      for name in \
+        PI5_BLUE_GREEN_TEST_MEMORY_MB \
+        PI5_BLUE_GREEN_TEST_DISK_GB \
+        PI5_BLUE_GREEN_TEST_LOAD_AVG \
+        PI5_BLUE_GREEN_TEST_ALLOW_MISSING_RELEASE_EVIDENCE \
+        PI5_BLUE_GREEN_SKIP_RESOURCE_GUARD; do
+        value="${!name:-}"
+        [[ -z "$value" ]] || die "test-only environment is forbidden in production: ${name}"
+      done
+    fi
+  else
+    [[ "$STABLE_SECONDS" =~ ^[0-9]+$ ]] || die 'test stability hold must be a non-negative integer'
+    [[ "$MONITOR_INTERVAL" =~ ^[0-9]+([.][0-9]+)?$ ]] || die 'test monitor interval is invalid'
+  fi
+  python3 - "$MAX_ERROR_RATE" <<'PY' || die 'maximum error rate must be finite and between 0 and 1'
+import math, sys
+try: value=float(sys.argv[1])
+except ValueError: raise SystemExit(1)
+raise SystemExit(0 if math.isfinite(value) and 0 <= value <= 1 else 1)
+PY
+  [[ "$MIN_ERROR_SAMPLES" =~ ^[1-9][0-9]*$ ]] || die 'minimum error sample count must be a positive integer'
+}
+
+validate_fixed_safety_policy
+
 enable_prior_handoff_recovery_mode() {
   local run_id="${PI5_PRIOR_HANDOFF_RECOVERY_RUN_ID:-}"
   [[ -n "$run_id" ]] || return 0
-  [[ "$COMMAND" == status || "$COMMAND" == cleanup ]] || die 'prior-handoff recovery mode is valid only for status or cleanup'
+  [[ "$COMMAND" == status || "$COMMAND" == cleanup || "$COMMAND" == seal-image-ids \
+    || "$COMMAND" == rollback || "$COMMAND" == monitor || "$COMMAND" == restart-monitor ]] \
+    || die 'prior-handoff recovery mode is invalid for this command'
   [[ "$run_id" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$ ]] || die 'prior-handoff recovery run ID is malformed'
   [[ "${ROLLING_RELEASE_PROTOCOL:-}" == 2 ]] || die 'prior-handoff recovery requires the rolling-release protocol'
   [[ "${ROLLING_RELEASE_UNIT:-}" == "raspi-release-${run_id}.service" ]] || die 'prior-handoff recovery unit identity does not match'
@@ -230,12 +314,64 @@ for name in ('blue','green'):
     images = slots[name].get('images') if isinstance(slots[name], dict) else None
     if not isinstance(images, dict) or not all(x in images for x in ('api','web')):
         raise SystemExit(f'Blue/Green state has malformed {name} images')
+    image_ids = slots[name].get('imageIds')
+    if image_ids is not None:
+        if not isinstance(image_ids, dict) or set(image_ids) != {'api','web'}:
+            raise SystemExit(f'Blue/Green state has malformed {name} image IDs')
+        values = (image_ids.get('api'), image_ids.get('web'))
+        if any(value is not None and not isinstance(value, str) for value in values):
+            raise SystemExit(f'Blue/Green state has malformed {name} image IDs')
+        if any(value is not None and not __import__('re').fullmatch(r'sha256:[0-9a-f]{64}', value) for value in values):
+            raise SystemExit(f'Blue/Green state has malformed {name} image IDs')
+        if (values[0] is None) != (values[1] is None):
+            raise SystemExit(f'Blue/Green state has partial {name} image IDs')
+retired = s.get('retiredImages')
+if retired is not None:
+    if not isinstance(retired, dict) or set(retired) != {'images', 'imageIds'}:
+        raise SystemExit('Blue/Green state has malformed retired image ownership')
+    images, image_ids = retired.get('images'), retired.get('imageIds')
+    if (not isinstance(images, dict) or set(images) != {'api', 'web'}
+            or not isinstance(image_ids, dict) or set(image_ids) != {'api', 'web'}):
+        raise SystemExit('Blue/Green state has malformed retired image pair')
+    tag_pattern = __import__('re').compile(
+        r'^[A-Za-z0-9][A-Za-z0-9._:/-]{0,254}:'
+        r'[0-9a-f]{40}-[0-9a-f]{12}-[0-9a-f]{64}$'
+    )
+    if any(not isinstance(images.get(key), str) or tag_pattern.fullmatch(images[key]) is None
+           for key in ('api', 'web')):
+        raise SystemExit('Blue/Green state has unsafe retired image tag')
+    if any(not isinstance(image_ids.get(key), str)
+           or __import__('re').fullmatch(r'sha256:[0-9a-f]{64}', image_ids[key]) is None
+           for key in ('api', 'web')):
+        raise SystemExit('Blue/Green state has unsafe retired image ID')
+release = s.get('releaseEvidence')
+if release is not None:
+    if not isinstance(release, dict) or set(release) != {'runId','desiredSha','resourceEvidence'}:
+        raise SystemExit('Blue/Green state has malformed release evidence')
+    resource = release.get('resourceEvidence')
+    if (not isinstance(release.get('runId'), str)
+            or not __import__('re').fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{2,79}', release['runId'])
+            or not isinstance(release.get('desiredSha'), str)
+            or not __import__('re').fullmatch(r'[0-9a-f]{40}', release['desiredSha'])
+            or not isinstance(resource, dict) or set(resource) != {'path','sha256'}
+            or not isinstance(resource.get('path'), str) or not resource['path'].startswith('/')
+            or not isinstance(resource.get('sha256'), str)
+            or not __import__('re').fullmatch(r'sha256:[0-9a-f]{64}', resource['sha256'])):
+        raise SystemExit('Blue/Green state has malformed release evidence')
 for key in ('legacy','monitor','migration','gateway'):
     if not isinstance(s.get(key), dict):
         raise SystemExit(f'Blue/Green state has malformed {key} metadata')
 legacy_path = s['legacy'].get('caddyConfigPath')
 if legacy_path not in (None, '/srv/Caddyfile', '/srv/Caddyfile.local', '/srv/Caddyfile.production'):
     raise SystemExit('Blue/Green state has an unsafe legacy Caddyfile path')
+for service in ('api', 'web'):
+    legacy_service = s['legacy'].get(service)
+    if not isinstance(legacy_service, dict):
+        raise SystemExit(f'Blue/Green state has malformed legacy {service} metadata')
+    for field in ('removed', 'removeIntent'):
+        value = legacy_service.get(field, False)
+        if not isinstance(value, bool):
+            raise SystemExit(f'Blue/Green state has malformed legacy {service} {field}')
 for key in ('activeSlot','candidateSlot','previousSlot'):
     if s.get(key) not in (None,'blue','green'):
         raise SystemExit(f'Blue/Green state has invalid {key}')
@@ -278,17 +414,25 @@ state_save() {
     "$LEGACY_API_ID" "$LEGACY_WEB_ID" "$LEGACY_API_IMAGE" "$LEGACY_WEB_IMAGE" \
     "$LEGACY_API_RESTART" "$LEGACY_WEB_RESTART" "$LEGACY_API_WAS_RUNNING" "$LEGACY_WEB_WAS_RUNNING" \
     "$LEGACY_API_QUARANTINED" "$LEGACY_WEB_QUARANTINED" "$LEGACY_API_REMOVED" "$LEGACY_WEB_REMOVED" \
-    "$LEGACY_WEB_MAINTENANCE" "$LEGACY_NORMAL_CONFIG_B64" "$LEGACY_CADDY_CONFIG_PATH" "$MIGRATION_BASE_COMMIT" \
-    "$MIGRATION_CANDIDATE_COMMIT" "$MIGRATION_STATUS" "$MIGRATION_CHECKED_AT" "$MIGRATION_APPLIED_AT" <<'PY'
+    "$LEGACY_API_REMOVE_INTENT" "$LEGACY_WEB_REMOVE_INTENT" "$LEGACY_WEB_MAINTENANCE" \
+    "$LEGACY_NORMAL_CONFIG_B64" "$LEGACY_CADDY_CONFIG_PATH" "$MIGRATION_BASE_COMMIT" \
+    "$MIGRATION_CANDIDATE_COMMIT" "$MIGRATION_STATUS" "$MIGRATION_CHECKED_AT" "$MIGRATION_APPLIED_AT" \
+    "$BLUE_API_IMAGE_ID" "$BLUE_WEB_IMAGE_ID" "$GREEN_API_IMAGE_ID" "$GREEN_WEB_IMAGE_ID" \
+    "$RELEASE_RUN_ID" "$RELEASE_DESIRED_SHA" "$RELEASE_RESOURCE_EVIDENCE" \
+    "$RELEASE_RESOURCE_EVIDENCE_SHA256" "$RETIRED_API_IMAGE" "$RETIRED_WEB_IMAGE" \
+    "$RETIRED_API_IMAGE_ID" "$RETIRED_WEB_IMAGE_ID" <<'PY'
 import json, os, sys, tempfile
 from datetime import datetime, timezone
 (path,event,active,candidate,previous,blue_api,blue_web,green_api,green_web,
  gateway_mode,gateway_slot,stable,monitor_active,monitor_rollback,reason,result,
  legacy_api_id,legacy_web_id,legacy_api_image,legacy_web_image,legacy_api_restart,
  legacy_web_restart,legacy_api_running,legacy_web_running,legacy_api_quarantined,
- legacy_web_quarantined,legacy_api_removed,legacy_web_removed,legacy_maintenance,
+ legacy_web_quarantined,legacy_api_removed,legacy_web_removed,legacy_api_remove_intent,
+ legacy_web_remove_intent,legacy_maintenance,
  legacy_config,legacy_caddy_path,migration_base,migration_candidate,migration_status,migration_checked,
- migration_applied) = sys.argv[1:]
+ migration_applied,blue_api_id,blue_web_id,green_api_id,green_web_id,release_run_id,
+ release_sha,resource_evidence,resource_evidence_sha256,retired_api,retired_web,
+ retired_api_id,retired_web_id) = sys.argv[1:]
 def maybe(v): return v or None
 def flag(v): return v == '1'
 def epoch(v): return int(v) if v.isdigit() else None
@@ -300,8 +444,14 @@ state = {
   'candidateSlot': maybe(candidate),
   'previousSlot': maybe(previous),
   'slots': {
-    'blue': {'images': {'api': maybe(blue_api), 'web': maybe(blue_web)}},
-    'green': {'images': {'api': maybe(green_api), 'web': maybe(green_web)}},
+    'blue': {
+      'images': {'api': maybe(blue_api), 'web': maybe(blue_web)},
+      'imageIds': {'api': maybe(blue_api_id), 'web': maybe(blue_web_id)},
+    },
+    'green': {
+      'images': {'api': maybe(green_api), 'web': maybe(green_web)},
+      'imageIds': {'api': maybe(green_api_id), 'web': maybe(green_web_id)},
+    },
   },
   'gateway': {'mode': gateway_mode, 'slot': maybe(gateway_slot)},
   'stableUntil': epoch(stable),
@@ -314,10 +464,12 @@ state = {
   'legacy': {
     'api': {'id': maybe(legacy_api_id), 'image': maybe(legacy_api_image),
             'restart': legacy_api_restart, 'wasRunning': flag(legacy_api_running),
-            'quarantined': flag(legacy_api_quarantined), 'removed': flag(legacy_api_removed)},
+            'quarantined': flag(legacy_api_quarantined), 'removed': flag(legacy_api_removed),
+            'removeIntent': flag(legacy_api_remove_intent)},
     'web': {'id': maybe(legacy_web_id), 'image': maybe(legacy_web_image),
             'restart': legacy_web_restart, 'wasRunning': flag(legacy_web_running),
             'quarantined': flag(legacy_web_quarantined), 'removed': flag(legacy_web_removed),
+            'removeIntent': flag(legacy_web_remove_intent),
             'maintenance': flag(legacy_maintenance)},
     'normalConfigB64': maybe(legacy_config),
     'caddyConfigPath': maybe(legacy_caddy_path),
@@ -325,10 +477,22 @@ state = {
   'rollbackReason': maybe(reason),
   'result': maybe(result),
 }
+if retired_api or retired_web or retired_api_id or retired_web_id:
+  state['retiredImages'] = {
+    'images': {'api': maybe(retired_api), 'web': maybe(retired_web)},
+    'imageIds': {'api': maybe(retired_api_id), 'web': maybe(retired_web_id)},
+  }
+if release_run_id or release_sha or resource_evidence or resource_evidence_sha256:
+  state['releaseEvidence'] = {
+    'runId': release_run_id,
+    'desiredSha': release_sha,
+    'resourceEvidence': {'path': resource_evidence, 'sha256': resource_evidence_sha256},
+  }
 fd,tmp=tempfile.mkstemp(prefix='.pi5-blue-green-', dir=os.path.dirname(path))
 with os.fdopen(fd,'w',encoding='utf-8') as f:
     json.dump(state,f,ensure_ascii=False,separators=(',',':')); f.write('\n'); f.flush(); os.fsync(f.fileno())
 os.replace(tmp,path)
+os.chmod(path,0o600)
 PY
 }
 
@@ -354,6 +518,8 @@ def g(*keys, default=''):
 slots = state.get('slots') or {}
 blue = (slots.get('blue') or {}).get('images') or (slots.get('blue') or {})
 green = (slots.get('green') or {}).get('images') or (slots.get('green') or {})
+blue_ids = (slots.get('blue') or {}).get('imageIds') or {}
+green_ids = (slots.get('green') or {}).get('imageIds') or {}
 # Support both slots.blue.images.api and slots.blue.api shapes.
 if 'api' in (slots.get('blue') or {}) and 'images' not in (slots.get('blue') or {}):
     blue = slots.get('blue') or {}
@@ -365,6 +531,11 @@ migration = state.get('migration') or {}
 legacy = state.get('legacy') or {}
 legacy_api = legacy.get('api') or {}
 legacy_web = legacy.get('web') or {}
+release = state.get('releaseEvidence') or {}
+resource_evidence = release.get('resourceEvidence') or {}
+retired = state.get('retiredImages') or {}
+retired_images = retired.get('images') or {}
+retired_ids = retired.get('imageIds') or {}
 
 pairs = {
     'ACTIVE_SLOT': g('activeSlot'),
@@ -374,6 +545,18 @@ pairs = {
     'BLUE_WEB_IMAGE': blue.get('web') or '',
     'GREEN_API_IMAGE': green.get('api') or '',
     'GREEN_WEB_IMAGE': green.get('web') or '',
+    'BLUE_API_IMAGE_ID': blue_ids.get('api') or '',
+    'BLUE_WEB_IMAGE_ID': blue_ids.get('web') or '',
+    'GREEN_API_IMAGE_ID': green_ids.get('api') or '',
+    'GREEN_WEB_IMAGE_ID': green_ids.get('web') or '',
+    'RETIRED_API_IMAGE': retired_images.get('api') or '',
+    'RETIRED_WEB_IMAGE': retired_images.get('web') or '',
+    'RETIRED_API_IMAGE_ID': retired_ids.get('api') or '',
+    'RETIRED_WEB_IMAGE_ID': retired_ids.get('web') or '',
+    'RELEASE_RUN_ID': release.get('runId') or '',
+    'RELEASE_DESIRED_SHA': release.get('desiredSha') or '',
+    'RELEASE_RESOURCE_EVIDENCE': resource_evidence.get('path') or '',
+    'RELEASE_RESOURCE_EVIDENCE_SHA256': resource_evidence.get('sha256') or '',
     'GATEWAY_MODE': gateway.get('mode') or 'offline',
     'GATEWAY_SLOT': gateway.get('slot') or '',
     'STABLE_UNTIL': g('stableUntil'),
@@ -396,6 +579,8 @@ pairs = {
     'LEGACY_WEB_QUARANTINED': '1' if legacy_web.get('quarantined') else '0',
     'LEGACY_API_REMOVED': '1' if legacy_api.get('removed') else '0',
     'LEGACY_WEB_REMOVED': '1' if legacy_web.get('removed') else '0',
+    'LEGACY_API_REMOVE_INTENT': '1' if legacy_api.get('removeIntent') else '0',
+    'LEGACY_WEB_REMOVE_INTENT': '1' if legacy_web.get('removeIntent') else '0',
     'LEGACY_WEB_MAINTENANCE': '1' if (legacy_web.get('maintenance') or legacy.get('webMaintenance')) else '0',
     'LEGACY_NORMAL_CONFIG_B64': legacy.get('normalConfigB64') or '',
     'LEGACY_CADDY_CONFIG_PATH': legacy.get('caddyConfigPath') or '',
@@ -408,6 +593,76 @@ PY
 
 slot_api_image() { [[ "$1" == blue ]] && printf '%s\n' "$BLUE_API_IMAGE" || printf '%s\n' "$GREEN_API_IMAGE"; }
 slot_web_image() { [[ "$1" == blue ]] && printf '%s\n' "$BLUE_WEB_IMAGE" || printf '%s\n' "$GREEN_WEB_IMAGE"; }
+slot_api_image_id() { [[ "$1" == blue ]] && printf '%s\n' "$BLUE_API_IMAGE_ID" || printf '%s\n' "$GREEN_API_IMAGE_ID"; }
+slot_web_image_id() { [[ "$1" == blue ]] && printf '%s\n' "$BLUE_WEB_IMAGE_ID" || printf '%s\n' "$GREEN_WEB_IMAGE_ID"; }
+set_slot_image_ids() {
+  local slot="$1" api_id="$2" web_id="$3"
+  if [[ "$slot" == blue ]]; then
+    BLUE_API_IMAGE_ID="$api_id"; BLUE_WEB_IMAGE_ID="$web_id"
+  else
+    GREEN_API_IMAGE_ID="$api_id"; GREEN_WEB_IMAGE_ID="$web_id"
+  fi
+}
+
+persist_current_state() {
+  local result="$1" event reason
+  event="$(state_get event)"; reason="$(state_get rollbackReason)"
+  [[ -n "$event" ]] || return 1
+  state_save "$event" "$ACTIVE_SLOT" "$CANDIDATE_SLOT" "$PREVIOUS_SLOT" \
+    "$BLUE_API_IMAGE" "$BLUE_WEB_IMAGE" "$GREEN_API_IMAGE" "$GREEN_WEB_IMAGE" \
+    "$GATEWAY_MODE" "$GATEWAY_SLOT" "$STABLE_UNTIL" "$MONITOR_ACTIVE_SLOT" \
+    "$MONITOR_ROLLBACK_SLOT" "$reason" "$result"
+}
+
+run_scoped_image_tag() {
+  [[ "${1:-}" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]{0,254}:[0-9a-f]{40}-[0-9a-f]{12}-[0-9a-f]{64}$ ]]
+}
+
+retired_image_absent() {
+  local image="$1"
+  if docker image inspect "$image" >/dev/null 2>&1; then return 1; fi
+  docker info >/dev/null 2>&1
+}
+
+cleanup_retired_images() {
+  [[ -n "$RETIRED_API_IMAGE" || -n "$RETIRED_WEB_IMAGE" \
+    || -n "$RETIRED_API_IMAGE_ID" || -n "$RETIRED_WEB_IMAGE_ID" ]] || return 0
+  run_scoped_image_tag "$RETIRED_API_IMAGE" \
+    && run_scoped_image_tag "$RETIRED_WEB_IMAGE" \
+    && [[ "$RETIRED_API_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ \
+      && "$RETIRED_WEB_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+    || return 1
+  local current container containers image expected_id observed_id
+  for current in "$BLUE_API_IMAGE" "$BLUE_WEB_IMAGE" "$GREEN_API_IMAGE" "$GREEN_WEB_IMAGE"; do
+    [[ "$current" != "$RETIRED_API_IMAGE" && "$current" != "$RETIRED_WEB_IMAGE" ]] \
+      || return 1
+  done
+  if [[ "$DRY_RUN" != 1 ]]; then
+    containers="$(docker ps -aq 2>/dev/null)" || return 1
+    for container in $containers; do
+      observed_id="$(docker inspect -f '{{.Image}}' "$container" 2>/dev/null)" \
+        || return 1
+      [[ "$observed_id" != "$RETIRED_API_IMAGE_ID" \
+        && "$observed_id" != "$RETIRED_WEB_IMAGE_ID" ]] || return 1
+    done
+    for image in "$RETIRED_API_IMAGE" "$RETIRED_WEB_IMAGE"; do
+      if [[ "$image" == "$RETIRED_API_IMAGE" ]]; then expected_id="$RETIRED_API_IMAGE_ID"
+      else expected_id="$RETIRED_WEB_IMAGE_ID"
+      fi
+      if ! retired_image_absent "$image"; then
+        observed_id="$(docker image inspect -f '{{.Id}}' "$image" 2>/dev/null)" \
+          || return 1
+        [[ "$observed_id" == "$expected_id" ]] || return 1
+        docker image rm "$image" >/dev/null 2>&1 \
+          || retired_image_absent "$image" || return 1
+        retired_image_absent "$image" || return 1
+      fi
+    done
+  fi
+  RETIRED_API_IMAGE=''; RETIRED_WEB_IMAGE=''
+  RETIRED_API_IMAGE_ID=''; RETIRED_WEB_IMAGE_ID=''
+  persist_current_state retired-image-tags-cleaned
+}
 
 image_commit() {
   python3 - "$1" <<'PY'
@@ -462,25 +717,92 @@ resource_value() {
   esac
 }
 
+maximum_load_policy() {
+  local cpu_count
+  if [[ -n "$MAX_LOAD_AVG" ]]; then printf '%s\n' "$MAX_LOAD_AVG"; return; fi
+  cpu_count="$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || true)"
+  [[ "$cpu_count" =~ ^[1-9][0-9]*$ ]] || die 'online CPU count could not be read'
+  awk "BEGIN {printf \"%.2f\", $cpu_count * 0.75}"
+}
+
+maximum_evidence_load_policy() {
+  local cpu_count
+  if [[ -n "$EVIDENCE_MAX_LOAD_AVG" ]]; then printf '%s\n' "$EVIDENCE_MAX_LOAD_AVG"; return; fi
+  cpu_count="$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || true)"
+  [[ "$cpu_count" =~ ^[1-9][0-9]*$ ]] || die 'online CPU count could not be read'
+  awk "BEGIN {printf \"%.2f\", $cpu_count * 0.75}"
+}
+
 resource_guard() {
-  [[ "${PI5_BLUE_GREEN_SKIP_RESOURCE_GUARD:-0}" == 1 ]] && return 0
+  [[ "$DRY_RUN" == 1 && "${PI5_BLUE_GREEN_SKIP_RESOURCE_GUARD:-0}" == 1 ]] && return 0
   local memory disk load max_load cpu_count
   memory="$(resource_value memory)"; disk="$(resource_value disk)"; load="$(resource_value load)"
   [[ "$memory" =~ ^[0-9]+$ ]] || die 'available memory could not be read'
   [[ "$disk" =~ ^[0-9]+$ ]] || die 'free disk could not be read'
   [[ "$load" =~ ^[0-9]+([.][0-9]+)?$ ]] || die 'load average could not be read'
-  if [[ -n "$MAX_LOAD_AVG" ]]; then
-    max_load="$MAX_LOAD_AVG"
-  else
-    cpu_count="$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || true)"
-    [[ "$cpu_count" =~ ^[1-9][0-9]*$ ]] || die 'online CPU count could not be read'
-    max_load="$(awk "BEGIN {printf \"%.2f\", $cpu_count * 0.75}")"
-  fi
+  max_load="$(maximum_load_policy)"
   [[ "$max_load" =~ ^[0-9]+([.][0-9]+)?$ ]] || die 'maximum load average is invalid'
   awk "BEGIN {exit !($load < $max_load)}" || die "load average ${load} is not below ${max_load}"
   ((memory >= MIN_MEMORY_MB)) || die "available memory ${memory}MB is below ${MIN_MEMORY_MB}MB; use Phase 2"
   ((disk >= MIN_DISK_GB)) || die "free disk ${disk}GB is below ${MIN_DISK_GB}GB; use Phase 2"
   log "resource gate passed: memory=${memory}MB disk=${disk}GB load=${load}/${max_load}"
+}
+
+validate_resource_evidence() {
+  if [[ "$DRY_RUN" == 1 && "${PI5_BLUE_GREEN_TEST_ALLOW_MISSING_RELEASE_EVIDENCE:-0}" == 1 ]]; then
+    resource_guard
+    return 0
+  fi
+  [[ "$RUN_ID" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$ ]] || die '--run-id is required for candidate preparation'
+  [[ -n "$RESOURCE_EVIDENCE_FILE" ]] || die '--resource-evidence is required for candidate preparation'
+  local desired_sha api_id web_id maximum
+  desired_sha="$(image_commit "$API_IMAGE")" || die 'candidate API image does not contain one immutable commit SHA'
+  [[ "$(image_commit "$WEB_IMAGE")" == "$desired_sha" ]] || die 'candidate images do not share the desired SHA'
+  api_id="$(docker image inspect -f '{{.Id}}' "$API_IMAGE")"
+  web_id="$(docker image inspect -f '{{.Id}}' "$WEB_IMAGE")"
+  maximum="$(maximum_evidence_load_policy)"
+  python3 "$RELEASE_EVIDENCE_HELPER" verify-resource \
+    --path "$RESOURCE_EVIDENCE_FILE" --run-id "$RUN_ID" --sha "$desired_sha" \
+    --api-image "$API_IMAGE" --web-image "$WEB_IMAGE" \
+    --api-image-id "$api_id" --web-image-id "$web_id" \
+    --min-memory-mb "$EVIDENCE_MIN_MEMORY_MB" --min-disk-gb "$EVIDENCE_MIN_DISK_GB" \
+    --max-load "$maximum" >/dev/null \
+    || die 'candidate resource evidence is stale, tampered, or belongs to another release'
+  CANDIDATE_API_IMAGE_ID="$api_id"
+  CANDIDATE_WEB_IMAGE_ID="$web_id"
+  RELEASE_RUN_ID="$RUN_ID"
+  RELEASE_DESIRED_SHA="$desired_sha"
+  RELEASE_RESOURCE_EVIDENCE="$RESOURCE_EVIDENCE_FILE"
+  RELEASE_RESOURCE_EVIDENCE_SHA256="$(python3 - "$RESOURCE_EVIDENCE_FILE" <<'PY'
+import hashlib, pathlib, sys
+print('sha256:' + hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())
+PY
+)"
+  # The build stage owns the bounded load wait. Phase 3 only performs this
+  # cheap current-condition recheck before it mutates DB/runtime state.
+  resource_guard
+}
+
+verify_durable_release_evidence() {
+  local slot="$1" observed_hash maximum
+  [[ "$DRY_RUN" == 1 ]] && return 0
+  [[ "$RELEASE_RUN_ID" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$ \
+    && "$RELEASE_DESIRED_SHA" =~ ^[0-9a-f]{40}$ \
+    && -f "$RELEASE_RESOURCE_EVIDENCE" \
+    && "$RELEASE_RESOURCE_EVIDENCE_SHA256" =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
+  observed_hash="$(python3 - "$RELEASE_RESOURCE_EVIDENCE" <<'PY'
+import hashlib, pathlib, sys
+print('sha256:' + hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())
+PY
+)" || return 1
+  [[ "$observed_hash" == "$RELEASE_RESOURCE_EVIDENCE_SHA256" ]] || return 1
+  maximum="$(maximum_evidence_load_policy)" || return 1
+  python3 "$RELEASE_EVIDENCE_HELPER" verify-resource \
+    --path "$RELEASE_RESOURCE_EVIDENCE" --run-id "$RELEASE_RUN_ID" --sha "$RELEASE_DESIRED_SHA" \
+    --api-image "$(slot_api_image "$slot")" --web-image "$(slot_web_image "$slot")" \
+    --api-image-id "$(slot_api_image_id "$slot")" --web-image-id "$(slot_web_image_id "$slot")" \
+    --min-memory-mb "$EVIDENCE_MIN_MEMORY_MB" --min-disk-gb "$EVIDENCE_MIN_DISK_GB" \
+    --max-load "$maximum" >/dev/null
 }
 
 secret_guard() {
@@ -588,12 +910,22 @@ gateway_smoke_url() {
   done
   return 1
 }
+gateway_smoke_once() {
+  local url="$1"
+  [[ "$DRY_RUN" == 1 ]] && return 0
+  curl -kfsS --max-time 5 "$url" >/dev/null
+}
 maintenance_smoke() { gateway_smoke_url "$WEB_URL"; }
 external_smoke() {
   [[ "$DRY_RUN" == 1 ]] && return 0
   gateway_smoke_url "$API_HEALTH_URL" || return 1
   gateway_smoke_url "$WEB_URL" || return 1
   [[ -z "$KIOSK_HEALTH_URL" ]] || gateway_smoke_url "$KIOSK_HEALTH_URL" || return 1
+}
+external_smoke_once() {
+  gateway_smoke_once "$API_HEALTH_URL" || return 1
+  gateway_smoke_once "$WEB_URL" || return 1
+  [[ -z "$KIOSK_HEALTH_URL" ]] || gateway_smoke_once "$KIOSK_HEALTH_URL" || return 1
 }
 gateway_points_to() {
   local slot="$1"
@@ -612,6 +944,10 @@ ensure_gateway_maintenance() {
 }
 
 slot_container_id() { compose_current ps -q "$1" 2>/dev/null || true; }
+slot_any_container_id() {
+  [[ "$DRY_RUN" == 1 ]] && return 0
+  compose_current ps -a -q "$1" 2>/dev/null || true
+}
 docker_running() { [[ "$DRY_RUN" == 1 ]] && return 0; [[ "$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null || true)" == true ]]; }
 container_image() { [[ "$DRY_RUN" == 1 ]] && printf 'dry-run-image\n' || docker inspect -f '{{.Config.Image}}' "$1"; }
 verify_slot_runtime_config() {
@@ -633,12 +969,137 @@ verify_slot_runtime_config() {
     --inspect-json <(docker inspect -f '{{json .Config.Env}}' "$container_id")
 }
 verify_slot_identity() {
-  local slot="$1" api_id web_id
+  local slot="$1" api_id web_id expected_api_id expected_web_id
   [[ "$DRY_RUN" == 1 ]] && return 0
   api_id="$(slot_container_id "api-${slot}")"; web_id="$(slot_container_id "web-${slot}")"
   [[ -n "$api_id" && -n "$web_id" ]] || return 1
   [[ "$(container_image "$api_id")" == "$(slot_api_image "$slot")" ]] || return 1
-  [[ "$(container_image "$web_id")" == "$(slot_web_image "$slot")" ]]
+  [[ "$(container_image "$web_id")" == "$(slot_web_image "$slot")" ]] || return 1
+  expected_api_id="$(slot_api_image_id "$slot")"; expected_web_id="$(slot_web_image_id "$slot")"
+  [[ "$expected_api_id" =~ ^sha256:[0-9a-f]{64}$ && "$expected_web_id" =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
+  [[ "$(docker inspect -f '{{.Image}}' "$api_id")" == "$expected_api_id" ]] || return 1
+  [[ "$(docker inspect -f '{{.Image}}' "$web_id")" == "$expected_web_id" ]] || return 1
+}
+
+# During committed cleanup the previous API may be stopped and either previous
+# container may already have been removed. Any container that still exists
+# must nevertheless match both the durable tag and immutable image ID.
+verify_present_slot_identity() {
+  local slot="$1" kind container expected_image expected_id
+  [[ "$DRY_RUN" == 1 ]] && return 0
+  is_slot "$slot" || return 1
+  for kind in api web; do
+    container="$(slot_any_container_id "${kind}-${slot}")"
+    [[ -n "$container" ]] || continue
+    if [[ "$kind" == api ]]; then
+      expected_image="$(slot_api_image "$slot")"
+      expected_id="$(slot_api_image_id "$slot")"
+    else
+      expected_image="$(slot_web_image "$slot")"
+      expected_id="$(slot_web_image_id "$slot")"
+    fi
+    [[ -n "$expected_image" && "$expected_id" =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
+    [[ "$(container_image "$container")" == "$expected_image" ]] || return 1
+    [[ "$(docker inspect -f '{{.Image}}' "$container")" == "$expected_id" ]] || return 1
+  done
+}
+
+seal_active_slot_image_ids() {
+  local slot="$ACTIVE_SLOT" api_container web_container api_id web_id
+  [[ "$DRY_RUN" == 1 ]] && return 0
+  if [[ "$(slot_api_image_id "$slot")" =~ ^sha256:[0-9a-f]{64}$ \
+    && "$(slot_web_image_id "$slot")" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+    return 0
+  fi
+  api_container="$(slot_container_id "api-${slot}")"; web_container="$(slot_container_id "web-${slot}")"
+  [[ -n "$api_container" && -n "$web_container" ]] || die 'active slot containers are unavailable for one-time image identity sealing'
+  [[ "$(container_image "$api_container")" == "$(slot_api_image "$slot")" \
+    && "$(container_image "$web_container")" == "$(slot_web_image "$slot")" ]] \
+    || die 'active slot tags do not match durable state during image identity sealing'
+  scheduler_readiness "$slot" leader || die 'active slot is not a scheduler leader during image identity sealing'
+  verify_slot_runtime_config "$slot" >/dev/null || die 'active slot runtime configuration is not verified during image identity sealing'
+  api_id="$(docker inspect -f '{{.Image}}' "$api_container")"
+  web_id="$(docker inspect -f '{{.Image}}' "$web_container")"
+  [[ "$api_id" =~ ^sha256:[0-9a-f]{64}$ && "$web_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
+    || die 'active slot image identity is malformed'
+  [[ "$(docker image inspect -f '{{.Id}}' "$(slot_api_image "$slot")")" == "$api_id" \
+    && "$(docker image inspect -f '{{.Id}}' "$(slot_web_image "$slot")")" == "$web_id" ]] \
+    || die 'active slot image tag was retargeted during identity sealing'
+  set_slot_image_ids "$slot" "$api_id" "$web_id"
+}
+
+seal_legacy_state_image_ids() {
+  if [[ ! -f "$STATE_FILE" ]]; then
+    log 'Blue/Green state is not initialized; no image identities need sealing'
+    return 0
+  fi
+  load_state_context
+  local slot referenced api_container web_container api_id web_id changed=0
+  local event reason result
+  event="$(state_get event)"
+  for slot in blue green; do
+    referenced=0
+    for value in "$ACTIVE_SLOT" "$CANDIDATE_SLOT" "$PREVIOUS_SLOT" \
+      "$MONITOR_ACTIVE_SLOT" "$MONITOR_ROLLBACK_SLOT"; do
+      [[ "$value" == "$slot" ]] && referenced=1
+    done
+    [[ "$GATEWAY_MODE" != application || "$GATEWAY_SLOT" != "$slot" ]] || referenced=1
+    ((referenced == 1)) || continue
+
+    if [[ "$(slot_api_image_id "$slot")" =~ ^sha256:[0-9a-f]{64}$ \
+      && "$(slot_web_image_id "$slot")" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+      if [[ "$event" == bootstrap-preparing || "$event" == bootstrapping \
+        || "$event" == bootstrap-failed ]]; then
+        if [[ "$DRY_RUN" != 1 ]]; then
+          [[ "$(docker image inspect -f '{{.Id}}' "$(slot_api_image "$slot")" 2>/dev/null || true)" == "$(slot_api_image_id "$slot")" \
+            && "$(docker image inspect -f '{{.Id}}' "$(slot_web_image "$slot")" 2>/dev/null || true)" == "$(slot_web_image_id "$slot")" ]] \
+            || die "sealed bootstrap ${slot} image tag was retargeted"
+        fi
+        verify_present_slot_identity "$slot" \
+          || die "bootstrap ${slot} image identities do not match remaining containers"
+      elif [[ "$event" == cleanup-handoff && "$slot" == "$PREVIOUS_SLOT" \
+        || ( "$event" == preparing || "$event" == prepare-failed ) \
+          && "$slot" == "$CANDIDATE_SLOT" ]]; then
+        verify_present_slot_identity "$slot" \
+          || die "sealed cleanup-slot image identities do not match the remaining containers"
+      else
+        verify_slot_identity "$slot" \
+          || die "sealed ${slot} image identities do not match the live containers"
+      fi
+      continue
+    fi
+
+    api_container="$(slot_container_id "api-${slot}")"
+    web_container="$(slot_container_id "web-${slot}")"
+    [[ -n "$api_container" && -n "$web_container" ]] \
+      || die "legacy ${slot} containers are unavailable for one-time image identity sealing"
+    docker_running "$api_container" && docker_running "$web_container" \
+      || die "legacy ${slot} containers are not running during image identity sealing"
+    [[ "$(container_image "$api_container")" == "$(slot_api_image "$slot")" \
+      && "$(container_image "$web_container")" == "$(slot_web_image "$slot")" ]] \
+      || die "legacy ${slot} container tags do not match durable state"
+    api_id="$(docker inspect -f '{{.Image}}' "$api_container")"
+    web_id="$(docker inspect -f '{{.Image}}' "$web_container")"
+    [[ "$api_id" =~ ^sha256:[0-9a-f]{64}$ && "$web_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
+      || die "legacy ${slot} image identities are malformed"
+    [[ "$(docker image inspect -f '{{.Id}}' "$(slot_api_image "$slot")")" == "$api_id" \
+      && "$(docker image inspect -f '{{.Id}}' "$(slot_web_image "$slot")")" == "$web_id" ]] \
+      || die "legacy ${slot} image tag was retargeted before one-time sealing"
+    set_slot_image_ids "$slot" "$api_id" "$web_id"
+    changed=1
+  done
+
+  ((changed == 1)) || { log 'Blue/Green image identities are already sealed'; return 0; }
+  if [[ "$GATEWAY_MODE" == application ]]; then
+    is_slot "$GATEWAY_SLOT" && gateway_points_to "$GATEWAY_SLOT" \
+      || die 'gateway state is not consistent during one-time image identity sealing'
+  fi
+  reason="$(state_get rollbackReason)"; result="$(state_get result)"
+  state_save "$event" "$ACTIVE_SLOT" "$CANDIDATE_SLOT" "$PREVIOUS_SLOT" \
+    "$BLUE_API_IMAGE" "$BLUE_WEB_IMAGE" "$GREEN_API_IMAGE" "$GREEN_WEB_IMAGE" \
+    "$GATEWAY_MODE" "$GATEWAY_SLOT" "$STABLE_UNTIL" "$MONITOR_ACTIVE_SLOT" \
+    "$MONITOR_ROLLBACK_SLOT" "$reason" "${result:-image-identities-sealed}"
+  log 'sealed legacy schema-v2 slot image identities'
 }
 
 scheduler_readiness() {
@@ -777,10 +1238,22 @@ legacy_stop_web() {
   # 80/443 publication metadata. Remove it after its image and exact normal
   # Caddyfile have been captured so the fixed gateway becomes the sole port
   # owner. legacy_restore recreates it from the captured image on any failure.
-  [[ "$DRY_RUN" == 1 ]] && { LEGACY_WEB_REMOVED=1; return 0; }
+  # Persist deletion authority first. If SIGKILL lands after `docker rm` but
+  # before the completion save, reconcile can prove absence against a live
+  # daemon and recreate the exact captured image instead of wedging forever.
+  LEGACY_WEB_REMOVE_INTENT=1
+  persist_legacy_cleanup_progress legacy-web-removal-intent || return 1
+  if [[ "$DRY_RUN" == 1 ]]; then
+    LEGACY_WEB_REMOVED=1
+    persist_legacy_cleanup_progress legacy-web-removal-complete
+    return
+  fi
   docker stop "$LEGACY_WEB_ID" >/dev/null || return 1
-  docker rm "$LEGACY_WEB_ID" >/dev/null || return 1
+  docker rm "$LEGACY_WEB_ID" >/dev/null 2>&1 \
+    || legacy_container_absent "$LEGACY_WEB_ID" || return 1
+  legacy_container_absent "$LEGACY_WEB_ID" || return 1
   LEGACY_WEB_REMOVED=1
+  persist_legacy_cleanup_progress legacy-web-removal-complete
 }
 wait_host_ports_free() {
   [[ "$DRY_RUN" == 1 ]] && return 0
@@ -810,7 +1283,17 @@ legacy_restore_normal_web_config() {
 
 legacy_restore() {
   local rc=0
-  [[ "$DRY_RUN" == 1 ]] && { LEGACY_API_QUARANTINED=0; LEGACY_WEB_QUARANTINED=0; LEGACY_WEB_MAINTENANCE=0; return 0; }
+  [[ "$DRY_RUN" == 1 ]] && { LEGACY_API_QUARANTINED=0; LEGACY_WEB_QUARANTINED=0; LEGACY_API_REMOVED=0; LEGACY_WEB_REMOVED=0; LEGACY_API_REMOVE_INTENT=0; LEGACY_WEB_REMOVE_INTENT=0; LEGACY_WEB_MAINTENANCE=0; return 0; }
+  if ((LEGACY_API_REMOVE_INTENT == 1 && LEGACY_API_REMOVED == 0)); then
+    [[ -n "$LEGACY_API_ID" ]] || return 1
+    legacy_container_absent "$LEGACY_API_ID" && LEGACY_API_REMOVED=1 \
+      || docker inspect "$LEGACY_API_ID" >/dev/null 2>&1 || return 1
+  fi
+  if ((LEGACY_WEB_REMOVE_INTENT == 1 && LEGACY_WEB_REMOVED == 0)); then
+    [[ -n "$LEGACY_WEB_ID" ]] || return 1
+    legacy_container_absent "$LEGACY_WEB_ID" && LEGACY_WEB_REMOVED=1 \
+      || docker inspect "$LEGACY_WEB_ID" >/dev/null 2>&1 || return 1
+  fi
   if ((LEGACY_API_REMOVED == 1 || LEGACY_WEB_REMOVED == 1)); then
     [[ -n "$LEGACY_API_IMAGE" && -n "$LEGACY_WEB_IMAGE" ]] || return 1
     if ((LEGACY_API_REMOVED == 1)); then
@@ -829,7 +1312,11 @@ legacy_restore() {
   docker update --restart "${LEGACY_WEB_RESTART:-always}" "$LEGACY_WEB_ID" >/dev/null || rc=1
   if ((LEGACY_API_WAS_RUNNING == 1)); then docker_running "$LEGACY_API_ID" || docker start "$LEGACY_API_ID" >/dev/null || rc=1; wait_legacy_api || rc=1; fi
   if ((LEGACY_WEB_WAS_RUNNING == 1)); then docker_running "$LEGACY_WEB_ID" || docker start "$LEGACY_WEB_ID" >/dev/null || rc=1; legacy_restore_normal_web_config || rc=1; fi
-  if ((rc == 0)); then LEGACY_API_QUARANTINED=0; LEGACY_WEB_QUARANTINED=0; LEGACY_WEB_MAINTENANCE=0; fi
+  if ((rc == 0)); then
+    LEGACY_API_QUARANTINED=0; LEGACY_WEB_QUARANTINED=0
+    LEGACY_API_REMOVE_INTENT=0; LEGACY_WEB_REMOVE_INTENT=0
+    LEGACY_WEB_MAINTENANCE=0
+  fi
   return "$rc"
 }
 
@@ -864,38 +1351,82 @@ migration_applied_checksums() {
     'PGCONNECT_TIMEOUT=10 psql "$DATABASE_URL" -X -q -v ON_ERROR_STOP=1 -AtF "|" -c "SELECT migration_name, checksum FROM \"_prisma_migrations\" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name"'
 }
 
-migration_guard() {
-  local base_image="$1" candidate="$2" candidate_image base_ref candidate_ref
+# Hidden, read-only observation used by the coordinator's fleet evidence path.
+# It deliberately requires a normalized live release and queries the active API
+# container instead of trusting migration files from the mutable checkout.
+live_migration_ledger() {
+  [[ "$DRY_RUN" != 1 ]] || die 'live migration evidence is unavailable in dry-run mode'
+  require_active_state
+  [[ -z "$CANDIDATE_SLOT" && -z "$PREVIOUS_SLOT" && -z "$STABLE_UNTIL" \
+    && -z "$MONITOR_ACTIVE_SLOT" && -z "$MONITOR_ROLLBACK_SLOT" ]] \
+    || die 'live migration evidence requires normalized Blue/Green state'
+  [[ "$GATEWAY_MODE" == application && "$GATEWAY_SLOT" == "$ACTIVE_SLOT" ]] \
+    || die 'live migration evidence requires the active application gateway'
+  verify_slot_identity "$ACTIVE_SLOT" \
+    || die 'live migration evidence requires the sealed active slot'
+  slot_runtime_ready "$ACTIVE_SLOT" leader \
+    || die 'live migration evidence requires a healthy scheduler leader'
+  local container
+  container="$(slot_container_id "api-${ACTIVE_SLOT}")"
+  [[ -n "$container" ]] || die 'active API container is unavailable for migration evidence'
+  docker exec "$container" sh -lc \
+    'PGCONNECT_TIMEOUT=10 psql "$DATABASE_URL" -X -q -v ON_ERROR_STOP=1 -AtF "|" -c "SELECT migration_name, checksum FROM \"_prisma_migrations\" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name"' \
+    || die 'could not read the live applied Prisma migration ledger'
+}
+
+verify_migration_plan() {
+  local candidate="$1" base_image="$2" candidate_image candidate_ref base_ref ledger plan_data
   candidate_image="$(slot_api_image "$candidate")"
-  if [[ "$DRY_RUN" == 1 ]]; then
-    MIGRATION_BASE_COMMIT="$(image_commit "$base_image" 2>/dev/null || true)"
+  if [[ "$DRY_RUN" == 1 && "${PI5_BLUE_GREEN_TEST_ALLOW_MISSING_RELEASE_EVIDENCE:-0}" == 1 ]]; then
     MIGRATION_CANDIDATE_COMMIT="$(image_commit "$candidate_image" 2>/dev/null || true)"
+    MIGRATION_BASE_COMMIT="$MIGRATION_CANDIDATE_COMMIT"
     MIGRATION_STATUS=checked
     MIGRATION_CHECKED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
     MIGRATION_APPLIED_AT=''
     return 0
   fi
+  [[ "$RUN_ID" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$ ]] || die '--run-id is required for migration verification'
+  [[ -n "$MIGRATION_PLAN_FILE" ]] || die '--migration-plan is required for migration verification'
   candidate_ref="$(image_commit "$candidate_image")" || die 'candidate image tag is not an immutable commit/config tag'
-  base_ref="${MIGRATION_BASE_REF:-}"; [[ -n "$base_ref" ]] || base_ref="$(image_commit "$base_image" || true)"
-  MIGRATION_BASE_COMMIT="$base_ref"; MIGRATION_CANDIDATE_COMMIT="$candidate_ref"
+  base_ref="$(image_commit "$base_image")" || die 'live compatibility image is not bound to an immutable base commit'
+  ledger="$(mktemp "${TMPDIR:-/tmp}/pi5-blue-green-ledger.XXXXXX")"
+  chmod 600 "$ledger"
+  if ! migration_applied_checksums "$candidate" >"$ledger"; then
+    rm -f "$ledger"
+    die 'could not re-read the applied migration ledger'
+  fi
+  if ! plan_data="$(python3 "$RELEASE_EVIDENCE_HELPER" verify-migration \
+    --path "$MIGRATION_PLAN_FILE" --run-id "$RUN_ID" --sha "$candidate_ref" --ledger "$ledger")"; then
+    rm -f "$ledger"
+    die 'migration plan is stale, tampered, or the applied ledger changed'
+  fi
+  rm -f "$ledger"
+  MIGRATION_BASE_COMMIT="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["baseSha"])' <<<"$plan_data")"
+  [[ "$MIGRATION_BASE_COMMIT" == "$base_ref" ]] \
+    || die 'migration plan base no longer matches the live compatibility image'
+  MIGRATION_CANDIDATE_COMMIT="$candidate_ref"
   MIGRATION_STATUS=checked; MIGRATION_CHECKED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"; MIGRATION_APPLIED_AT=''
-  [[ "$base_ref" =~ ^[0-9a-f]{40}$ ]] || die 'migration base commit is unknown'
-  git -C "$PROJECT_DIR" cat-file -e "${base_ref}^{commit}" 2>/dev/null || die "migration base commit unavailable: $base_ref"
-  git -C "$PROJECT_DIR" cat-file -e "${candidate_ref}^{commit}" 2>/dev/null || die "candidate commit unavailable: $candidate_ref"
-  migration_gate_validate \
-    "$PROJECT_DIR" "$base_ref" "$candidate_ref" migration_applied_checksums "$candidate" \
-    || die 'migration ledger or SQL is outside the Expand-only contract'
 }
 
 migration_apply_and_verify() {
   local candidate="$1" base_image="$2" compatibility_slot="$3"
-  migration_guard "$base_image" "$candidate" || return 1
+  local applied_ledger
+  verify_migration_plan "$candidate" "$base_image" || return 1
   if [[ "$DRY_RUN" != 1 ]]; then
     # The API image has `node dist/main.js` as its default command.  Use an
     # explicit shell and the installed Prisma binary so Compose does not try to
     # execute `npx` through that Node command during bootstrap/prepare.
     compose_current run --rm --no-deps "api-${candidate}" sh -lc './node_modules/.bin/prisma migrate deploy' || return 1
     compose_current run --rm --no-deps "api-${candidate}" sh -lc './node_modules/.bin/prisma migrate status' || return 1
+    applied_ledger="$(mktemp "${TMPDIR:-/tmp}/pi5-blue-green-applied.XXXXXX")" || return 1
+    chmod 600 "$applied_ledger"
+    if ! migration_applied_checksums "$candidate" >"$applied_ledger" \
+      || ! migration_gate_verify_applied_ledger \
+        "$PROJECT_DIR" "$MIGRATION_BASE_COMMIT" "$MIGRATION_CANDIDATE_COMMIT" "$applied_ledger"; then
+      rm -f "$applied_ledger"
+      return 1
+    fi
+    rm -f "$applied_ledger"
     if [[ "$compatibility_slot" == legacy ]]; then legacy_scheduler_readiness || return 1
     else slot_runtime_ready "$compatibility_slot" leader || return 1
     fi
@@ -916,13 +1447,20 @@ assert_running_slot_images_match_state() {
 }
 
 assert_slot_state_images_trusted() {
-  local slot api_image web_image
+  local slot api_image web_image api_id web_id
   for slot in "$@"; do
     is_slot "$slot" || die "invalid state slot while validating images: ${slot}"
     api_image="$(slot_api_image "$slot")"; web_image="$(slot_web_image "$slot")"
     [[ -n "$api_image" && -n "$web_image" ]] || die "state has incomplete ${slot} image pair; refusing compose up"
     validate_image_pair "$api_image" "$web_image"
-    [[ "$DRY_RUN" == 1 ]] || docker image inspect "$api_image" "$web_image" >/dev/null || die "state image pair is unavailable locally for ${slot}; refusing compose up"
+    if [[ "$DRY_RUN" != 1 ]]; then
+      api_id="$(slot_api_image_id "$slot")"; web_id="$(slot_web_image_id "$slot")"
+      [[ "$api_id" =~ ^sha256:[0-9a-f]{64}$ && "$web_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
+        || die "state has no sealed ${slot} image IDs; refusing compose up"
+      [[ "$(docker image inspect -f '{{.Id}}' "$api_image" 2>/dev/null || true)" == "$api_id" \
+        && "$(docker image inspect -f '{{.Id}}' "$web_image" 2>/dev/null || true)" == "$web_id" ]] \
+        || die "state image tag was retargeted for ${slot}; refusing compose up"
+    fi
   done
 }
 
@@ -932,6 +1470,23 @@ arm_bootstrap_recovery() {
   trap 'if ((BOOTSTRAP_RECOVERY_ARMED==1)); then bootstrap_failure "bootstrap interrupted by signal"; fi' INT TERM HUP
 }
 disarm_bootstrap_recovery() { BOOTSTRAP_RECOVERY_ARMED=0; trap - ERR INT TERM HUP; }
+
+arm_prepare_recovery() {
+  PREPARE_RECOVERY_ARMED=1
+  trap 'rc=$?; if ((PREPARE_RECOVERY_ARMED==1)); then prepare_failure "unexpected prepare exit (${rc})"; fi' ERR
+  trap 'if ((PREPARE_RECOVERY_ARMED==1)); then prepare_failure "prepare interrupted by signal"; fi' INT TERM HUP
+}
+disarm_prepare_recovery() { PREPARE_RECOVERY_ARMED=0; trap - ERR INT TERM HUP; }
+
+prepare_failure() {
+  local reason="$1"
+  trap - ERR EXIT INT TERM HUP; PREPARE_RECOVERY_ARMED=0; set +e
+  alert ERROR "Blue/Green candidate preparation failed: ${reason}; durable candidate cleanup is required"
+  state_save prepare-failed "$ACTIVE_SLOT" "$CANDIDATE_SLOT" "$PREVIOUS_SLOT" \
+    "$BLUE_API_IMAGE" "$BLUE_WEB_IMAGE" "$GREEN_API_IMAGE" "$GREEN_WEB_IMAGE" \
+    application "$ACTIVE_SLOT" '' '' '' "$reason" prepare-failed || true
+  lock_cleanup; set -e; die "candidate prepare failed: $reason"
+}
 
 bootstrap_failure() {
   local reason="$1" restored=0 gateway_mode=offline
@@ -956,18 +1511,34 @@ require_no_stability_window() {
 bootstrap() {
   ((CONFIRM_BOOTSTRAP == 1)) || die 'first bootstrap requires --confirm-bootstrap'
   ((ALLOW_LEGACY_HANDOFF == 1)) || die 'first bootstrap requires --allow-legacy-scheduler-handoff'
-  if [[ -f "$STATE_FILE" ]]; then state_assert; [[ "$(state_get event)" == bootstrap-failed ]] || die 'Blue/Green state already exists; use reconcile or status'; fi
-  resolve_images; resource_guard; secret_guard
+  if [[ -f "$STATE_FILE" ]]; then
+    state_assert
+    [[ "$(state_get event)" == bootstrap-failed || "$(state_get event)" == legacy-restored ]] \
+      || die 'Blue/Green state already exists; use reconcile or status'
+  fi
+  resolve_images; validate_resource_evidence; secret_guard
   BLUE_API_IMAGE="$API_IMAGE"; BLUE_WEB_IMAGE="$WEB_IMAGE"; GREEN_API_IMAGE=''; GREEN_WEB_IMAGE=''
+  BLUE_API_IMAGE_ID="$CANDIDATE_API_IMAGE_ID"; BLUE_WEB_IMAGE_ID="$CANDIDATE_WEB_IMAGE_ID"
+  GREEN_API_IMAGE_ID=''; GREEN_WEB_IMAGE_ID=''
   ACTIVE_SLOT=''; CANDIDATE_SLOT=blue; PREVIOUS_SLOT=''; GATEWAY_MODE=offline; GATEWAY_SLOT=''
-  render_gateway maintenance; gateway_config_validate
   legacy_capture || die 'legacy API/Web containers are missing; bootstrap refused'
   ((LEGACY_API_WAS_RUNNING == 1 && LEGACY_WEB_WAS_RUNNING == 1)) || die 'legacy API/Web must both be running before bootstrap'
   assert_legacy_port_ownership || die '80/443 are not owned exclusively by legacy Web'
   legacy_scheduler_readiness || die 'legacy API is not a healthy scheduler leader'
-  migration_apply_and_verify blue "$LEGACY_API_IMAGE" legacy || { MIGRATION_STATUS=failed; die 'candidate migration or compatibility failed'; }
-  slot_up blue standby || { phase3_stop_for_recovery || true; die 'Blue candidate did not become scheduler standby'; }
+  MIGRATION_BASE_COMMIT=''; MIGRATION_CANDIDATE_COMMIT=''; MIGRATION_STATUS=not-checked
+  MIGRATION_CHECKED_AT=''; MIGRATION_APPLIED_AT=''
+  # Seal recovery authority before migration or any inactive-slot container is
+  # started. SIGKILL cannot run traps, so takeover must be state-driven.
+  state_save bootstrap-preparing '' blue '' "$BLUE_API_IMAGE" "$BLUE_WEB_IMAGE" '' '' \
+    offline '' '' '' '' '' bootstrap-recovery-authority-sealed
   arm_bootstrap_recovery
+  render_gateway maintenance || bootstrap_failure 'gateway maintenance configuration could not be rendered'
+  gateway_config_validate || bootstrap_failure 'gateway maintenance configuration is invalid'
+  migration_apply_and_verify blue "$LEGACY_API_IMAGE" legacy \
+    || { MIGRATION_STATUS=failed; bootstrap_failure 'candidate migration or compatibility failed'; }
+  slot_up blue standby \
+    || { phase3_stop_for_recovery || true; bootstrap_failure 'Blue candidate did not become scheduler standby'; }
+  GATEWAY_MODE=maintenance; GATEWAY_SLOT=''
   state_save bootstrapping '' blue '' "$BLUE_API_IMAGE" "$BLUE_WEB_IMAGE" '' '' maintenance '' '' '' '' '' preflight-complete
   legacy_enable_maintenance || bootstrap_failure 'legacy Web maintenance page did not become reachable'
   state_save bootstrapping '' blue '' "$BLUE_API_IMAGE" "$BLUE_WEB_IMAGE" '' '' maintenance '' '' '' '' '' legacy-maintenance-verified
@@ -979,21 +1550,70 @@ bootstrap() {
   gateway_start || bootstrap_failure 'gateway did not start'; maintenance_smoke || bootstrap_failure 'gateway maintenance page failed smoke'
   render_gateway application blue; gateway_config_validate; gateway_reload || bootstrap_failure 'gateway application reload failed'
   gateway_points_to blue && external_smoke || bootstrap_failure 'gateway application activation smoke failed'
+  GATEWAY_MODE=application; GATEWAY_SLOT=blue
   state_save active blue '' '' "$BLUE_API_IMAGE" "$BLUE_WEB_IMAGE" '' '' application blue '' '' '' '' bootstrap-success
   disarm_bootstrap_recovery
   log 'Blue/Green bootstrap completed; blue is active and legacy services are quarantined'
 }
 
 prepare() {
-  require_active_state; require_no_stability_window; resource_guard; secret_guard; resolve_images
+  require_active_state; require_no_stability_window
+  cleanup_retired_images \
+    || die 'previous run-scoped image retirement is incomplete; refusing another candidate'
+  secret_guard; resolve_images; validate_resource_evidence
+  seal_active_slot_image_ids
   verify_slot_identity "$ACTIVE_SLOT" || die 'active slot image does not match state; run reconcile'
   slot_runtime_ready "$ACTIVE_SLOT" leader || die 'active slot is not a healthy scheduler leader'
-  local candidate; candidate="$(other_slot "$ACTIVE_SLOT")"
-  if [[ "$candidate" == blue ]]; then BLUE_API_IMAGE="$API_IMAGE"; BLUE_WEB_IMAGE="$WEB_IMAGE"; else GREEN_API_IMAGE="$API_IMAGE"; GREEN_WEB_IMAGE="$WEB_IMAGE"; fi
-  migration_apply_and_verify "$candidate" "$(slot_api_image "$ACTIVE_SLOT")" "$ACTIVE_SLOT" || { MIGRATION_STATUS=failed; die 'candidate migration or compatibility failed'; }
-  slot_up "$candidate" standby || { alert ERROR "candidate ${candidate} readiness failed"; die 'candidate slot is not a healthy scheduler standby'; }
+  local candidate displaced_api displaced_web displaced_api_id displaced_web_id
+  candidate="$(other_slot "$ACTIVE_SLOT")"
+  displaced_api="$(slot_api_image "$candidate")"
+  displaced_web="$(slot_web_image "$candidate")"
+  displaced_api_id="$(slot_api_image_id "$candidate")"
+  displaced_web_id="$(slot_web_image_id "$candidate")"
+  if [[ "$candidate" == blue ]]; then
+    BLUE_API_IMAGE="$API_IMAGE"; BLUE_WEB_IMAGE="$WEB_IMAGE"
+  else
+    GREEN_API_IMAGE="$API_IMAGE"; GREEN_WEB_IMAGE="$WEB_IMAGE"
+  fi
+  set_slot_image_ids "$candidate" "$CANDIDATE_API_IMAGE_ID" "$CANDIDATE_WEB_IMAGE_ID"
+  if [[ -n "$displaced_api" || -n "$displaced_web" \
+    || -n "$displaced_api_id" || -n "$displaced_web_id" ]]; then
+    if run_scoped_image_tag "$displaced_api" \
+      || run_scoped_image_tag "$displaced_web"; then
+      run_scoped_image_tag "$displaced_api" \
+        && run_scoped_image_tag "$displaced_web" \
+        && [[ "$displaced_api_id" =~ ^sha256:[0-9a-f]{64}$ \
+          && "$displaced_web_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
+        || die 'displaced run-scoped image ownership is incomplete'
+      if [[ "$displaced_api" == "$API_IMAGE" || "$displaced_web" == "$WEB_IMAGE" ]]; then
+        [[ "$displaced_api" == "$API_IMAGE" && "$displaced_web" == "$WEB_IMAGE" \
+          && "$displaced_api_id" == "$CANDIDATE_API_IMAGE_ID" \
+          && "$displaced_web_id" == "$CANDIDATE_WEB_IMAGE_ID" ]] \
+          || die 'candidate would retarget a durable run-scoped slot tag'
+      else
+        RETIRED_API_IMAGE="$displaced_api"; RETIRED_WEB_IMAGE="$displaced_web"
+        RETIRED_API_IMAGE_ID="$displaced_api_id"; RETIRED_WEB_IMAGE_ID="$displaced_web_id"
+      fi
+    fi
+  fi
   CANDIDATE_SLOT="$candidate"
+  MIGRATION_BASE_COMMIT=''; MIGRATION_CANDIDATE_COMMIT=''; MIGRATION_STATUS=not-checked
+  MIGRATION_CHECKED_AT=''; MIGRATION_APPLIED_AT=''
+  # Candidate identity and cleanup authority become durable before the first
+  # migration command or Compose start. A crash can therefore be taken over
+  # without guessing which inactive workload belongs to this release.
+  state_save preparing "$ACTIVE_SLOT" "$CANDIDATE_SLOT" '' \
+    "$BLUE_API_IMAGE" "$BLUE_WEB_IMAGE" "$GREEN_API_IMAGE" "$GREEN_WEB_IMAGE" \
+    application "$ACTIVE_SLOT" '' '' '' '' prepare-recovery-authority-sealed
+  arm_prepare_recovery
+  cleanup_retired_images \
+    || prepare_failure 'displaced run-scoped image tags remain referenced or unverifiable'
+  migration_apply_and_verify "$candidate" "$(slot_api_image "$ACTIVE_SLOT")" "$ACTIVE_SLOT" \
+    || { MIGRATION_STATUS=failed; prepare_failure 'candidate migration or compatibility failed'; }
+  slot_up "$candidate" standby \
+    || prepare_failure "candidate ${candidate} is not a healthy scheduler standby"
   state_save prepared "$ACTIVE_SLOT" "$CANDIDATE_SLOT" "$PREVIOUS_SLOT" "$BLUE_API_IMAGE" "$BLUE_WEB_IMAGE" "$GREEN_API_IMAGE" "$GREEN_WEB_IMAGE" application "$ACTIVE_SLOT" '' '' '' '' candidate-prepared
+  disarm_prepare_recovery
   log "candidate prepared in ${candidate} slot"
 }
 
@@ -1015,61 +1635,158 @@ switch_candidate() {
   local candidate="$CANDIDATE_SLOT" previous="$ACTIVE_SLOT" started now stable
   is_slot "$candidate" || die 'candidate slot is missing; run prepare'
   [[ "$candidate" != "$previous" ]] || die 'candidate is already active'
+  verify_durable_release_evidence "$candidate" \
+    || die 'candidate release evidence changed or expired before traffic switch'
   verify_slot_identity "$previous" && verify_slot_identity "$candidate" || die 'slot images do not match durable state'
   slot_runtime_ready "$previous" leader || die 'previous slot is not scheduler leader'
   slot_ready "$candidate" standby || die 'candidate is not scheduler standby'
   started="$(date +%s)"
   state_save switching "$previous" "$candidate" "$previous" "$BLUE_API_IMAGE" "$BLUE_WEB_IMAGE" "$GREEN_API_IMAGE" "$GREEN_WEB_IMAGE" application "$previous" '' '' '' '' switching
-  render_gateway application "$candidate" && gateway_config_validate && gateway_reload && gateway_points_to "$candidate" && external_smoke || { rollback_internal "$previous" "$candidate" 'gateway or external smoke failed' || true; die 'switch failed'; }
+  if ! render_gateway application "$candidate" \
+    || ! gateway_config_validate \
+    || ! gateway_reload \
+    || ! gateway_points_to "$candidate" \
+    || ! external_smoke; then
+    state_save switch-failed "$previous" "$candidate" "$previous" \
+      "$BLUE_API_IMAGE" "$BLUE_WEB_IMAGE" "$GREEN_API_IMAGE" "$GREEN_WEB_IMAGE" \
+      application "$previous" '' '' '' 'gateway or external smoke failed' switchback-required \
+      || alert CRITICAL 'switch failed and failure evidence could not be persisted'
+    die 'switch failed; coordinator switchback is required'
+  fi
   now="$(date +%s)"; stable=$((now + STABLE_SECONDS))
   ACTIVE_SLOT="$candidate"; CANDIDATE_SLOT="$previous"; PREVIOUS_SLOT="$previous"
   STABLE_UNTIL="$stable"; MONITOR_ACTIVE_SLOT="$candidate"; MONITOR_ROLLBACK_SLOT="$previous"; GATEWAY_SLOT="$candidate"
   if ! state_save active "$ACTIVE_SLOT" "$CANDIDATE_SLOT" "$PREVIOUS_SLOT" "$BLUE_API_IMAGE" "$BLUE_WEB_IMAGE" "$GREEN_API_IMAGE" "$GREEN_WEB_IMAGE" application "$ACTIVE_SLOT" "$STABLE_UNTIL" "$MONITOR_ACTIVE_SLOT" "$MONITOR_ROLLBACK_SLOT" '' "success:$((now-started))s"; then
-    alert CRITICAL 'gateway switched but durable state save failed; attempting rollback to previous slot'
-    if ! rollback_internal "$previous" "$candidate" 'post-switch state save failed'; then
-      alert CRITICAL 'rollback after state-save failure also failed; moving gateway to maintenance'
-      ensure_gateway_maintenance || alert CRITICAL 'post-switch failure left gateway state unproven'
-    fi
-    die 'switch failed after gateway cutover because durable state could not be saved'
+    alert CRITICAL 'gateway switched but durable state save failed; coordinator switchback is required'
+    die 'switch failed after gateway cutover because durable state could not be saved; coordinator switchback is required'
   fi
   log "switch completed; ${candidate} is public standby and ${previous} remains scheduler leader until ${stable}"
-  spawn_stability_monitor
 }
 
 rollback() {
   require_active_state
-  is_slot "$PREVIOUS_SLOT" || die 'no previous slot is recorded'
-  rollback_internal "$PREVIOUS_SLOT" "$ACTIVE_SLOT" "${ROLLBACK_REASON:-manual rollback}" || { alert CRITICAL 'manual rollback failed; routing left unchanged'; die 'manual rollback failed'; }
+  local event target failed
+  event="$(state_get event)"
+  [[ "$event" != cleanup-handoff ]] \
+    || die 'scheduler handoff is committed; only idempotent cleanup may continue'
+  if [[ "$event" == switching || "$event" == switch-failed ]]; then
+    target="$ACTIVE_SLOT"
+    failed="$CANDIDATE_SLOT"
+    [[ "$PREVIOUS_SLOT" == "$target" ]] || die 'switchback authority is malformed'
+  else
+    target="$PREVIOUS_SLOT"
+    failed="$ACTIVE_SLOT"
+  fi
+  is_slot "$target" && is_slot "$failed" && [[ "$target" != "$failed" ]] \
+    || die 'no complete switchback authority is recorded'
+  rollback_internal "$target" "$failed" "${ROLLBACK_REASON:-coordinator runtime switchback}" \
+    || { alert CRITICAL 'coordinator-requested switchback failed; routing left unchanged'; die 'runtime switchback failed'; }
 }
 
 monitor_checks() {
   local active="$1" rollback_slot="$2" samples="$3" error_rate
-  slot_ready "$active" standby || return 1
+  if ((STRUCTURAL_ONLY == 1)); then
+    slot_structural_ready "$active" standby || return 1
+  else
+    slot_ready "$active" standby || return 1
+  fi
   slot_runtime_ready "$rollback_slot" leader || return 1
   external_smoke || return 1
   if [[ -n "$ERROR_RATE_URL" && "$samples" -ge "$MIN_ERROR_SAMPLES" && "$DRY_RUN" != 1 ]]; then
-    error_rate="$(curl -kfsS --max-time 5 "$ERROR_RATE_URL" | python3 -c 'import json,sys;d=json.load(sys.stdin);print(float(d.get("errorRate",d.get("error_rate",1))))')" || return 1
+    error_rate="$(curl -kfsS --max-time 5 "$ERROR_RATE_URL" | python3 -c '
+import json, math, sys
+def pairs(items):
+    result={}
+    for key,value in items:
+        if key in result: raise ValueError("duplicate JSON key")
+        result[key]=value
+    return result
+d=json.load(sys.stdin, object_pairs_hook=pairs, parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)))
+value=d.get("errorRate",d.get("error_rate")) if isinstance(d,dict) else None
+if type(value) not in (int,float) or not math.isfinite(value) or not 0 <= value <= 1: raise SystemExit(1)
+print(value)
+')" || return 1
     awk "BEGIN {exit !($error_rate <= $MAX_ERROR_RATE)}" || return 1
   fi
 }
 
 monitor() {
   [[ -f "$STATE_FILE" ]] || return 0
-  local deadline active rollback_slot samples=0
+  local deadline active rollback_slot event samples=0 now
   while :; do
     load_state_context
+    event="$(state_get event)"
+    case "$event" in
+      active|reconciled) ;;
+      monitor-passed) return 0 ;;
+      monitor-failed) return 1 ;;
+      *) return 1 ;;
+    esac
     deadline="$STABLE_UNTIL"; active="$MONITOR_ACTIVE_SLOT"; rollback_slot="$MONITOR_ROLLBACK_SLOT"
     [[ "$deadline" =~ ^[0-9]+$ ]] || return 0
     is_slot "$active" && is_slot "$rollback_slot" || return 0
-    (( $(date +%s) < deadline )) || return 0
+    now="$(date +%s)"
+    if ((now >= deadline)); then
+      samples=$((samples + 1))
+      if ! monitor_checks "$active" "$rollback_slot" "$samples"; then
+        alert CRITICAL "stability monitor failed for ${active}; coordinator switchback is required"
+        state_save monitor-failed "$ACTIVE_SLOT" "$CANDIDATE_SLOT" "$PREVIOUS_SLOT" \
+          "$BLUE_API_IMAGE" "$BLUE_WEB_IMAGE" "$GREEN_API_IMAGE" "$GREEN_WEB_IMAGE" \
+          application "$GATEWAY_SLOT" "$STABLE_UNTIL" "$MONITOR_ACTIVE_SLOT" "$MONITOR_ROLLBACK_SLOT" \
+          'stability monitor final sample failure' switchback-required \
+          || alert CRITICAL 'monitor failure evidence could not be persisted'
+        return 1
+      fi
+      state_save monitor-passed "$ACTIVE_SLOT" "$CANDIDATE_SLOT" "$PREVIOUS_SLOT" \
+        "$BLUE_API_IMAGE" "$BLUE_WEB_IMAGE" "$GREEN_API_IMAGE" "$GREEN_WEB_IMAGE" \
+        application "$GATEWAY_SLOT" "$STABLE_UNTIL" "$MONITOR_ACTIVE_SLOT" "$MONITOR_ROLLBACK_SLOT" \
+        '' stability-monitor-complete
+      return 0
+    fi
     samples=$((samples + 1))
     if ! monitor_checks "$active" "$rollback_slot" "$samples"; then
-      alert CRITICAL "stability monitor failed for ${active}; attempting rollback"
-      rollback_internal "$rollback_slot" "$active" 'automatic monitor threshold failure' || alert CRITICAL 'automatic rollback failed; routing unchanged'
+      alert CRITICAL "stability monitor failed for ${active}; coordinator switchback is required"
+      state_save monitor-failed "$ACTIVE_SLOT" "$CANDIDATE_SLOT" "$PREVIOUS_SLOT" \
+        "$BLUE_API_IMAGE" "$BLUE_WEB_IMAGE" "$GREEN_API_IMAGE" "$GREEN_WEB_IMAGE" \
+        application "$GATEWAY_SLOT" "$STABLE_UNTIL" "$MONITOR_ACTIVE_SLOT" "$MONITOR_ROLLBACK_SLOT" \
+        'stability monitor threshold failure' switchback-required \
+        || alert CRITICAL 'monitor failure evidence could not be persisted'
       return 1
     fi
     sleep "$MONITOR_INTERVAL"
   done
+}
+
+# A coordinator takeover cannot count an interval in which its monitor was not
+# known to be alive. Restart a complete five-minute window, durably, before the
+# recovery coordinator invokes `monitor` synchronously.
+restart_stability_window() {
+  ((STRUCTURAL_ONLY == 1)) \
+    || die 'stability monitor restart is reserved for coordinator recovery'
+  require_active_state
+  local event previous stable
+  event="$(state_get event)"; previous="$PREVIOUS_SLOT"
+  [[ "$event" == active || "$event" == reconciled ]] \
+    || die 'only an interrupted active stability window can be restarted'
+  is_slot "$previous" && [[ "$previous" != "$ACTIVE_SLOT" \
+    && "$CANDIDATE_SLOT" == "$previous" \
+    && "$MONITOR_ACTIVE_SLOT" == "$ACTIVE_SLOT" \
+    && "$MONITOR_ROLLBACK_SLOT" == "$previous" ]] \
+    || die 'interrupted stability window state is malformed'
+  [[ "$GATEWAY_MODE" == application && "$GATEWAY_SLOT" == "$ACTIVE_SLOT" ]] \
+    || die 'interrupted stability window gateway is malformed'
+  slot_structural_ready "$ACTIVE_SLOT" standby \
+    || die 'active candidate is not a healthy standby during monitor takeover'
+  slot_runtime_ready "$previous" leader \
+    || die 'previous scheduler leader is unhealthy during monitor takeover'
+  external_smoke || die 'public smoke failed during monitor takeover'
+  stable=$(($(date +%s) + STABLE_SECONDS))
+  STABLE_UNTIL="$stable"
+  state_save active "$ACTIVE_SLOT" "$CANDIDATE_SLOT" "$PREVIOUS_SLOT" \
+    "$BLUE_API_IMAGE" "$BLUE_WEB_IMAGE" "$GREEN_API_IMAGE" "$GREEN_WEB_IMAGE" \
+    application "$ACTIVE_SLOT" "$STABLE_UNTIL" "$MONITOR_ACTIVE_SLOT" \
+    "$MONITOR_ROLLBACK_SLOT" '' recovery-stability-window-restarted
+  log "restarted continuous stability monitor until ${stable}"
 }
 
 spawn_stability_monitor() {
@@ -1081,42 +1798,212 @@ spawn_stability_monitor() {
   log "stability monitor (re)started until ${STABLE_UNTIL}"
 }
 
+legacy_container_absent() {
+  local container="$1"
+  if docker inspect "$container" >/dev/null 2>&1; then
+    return 1
+  fi
+  # `inspect` also fails when the daemon is unavailable. Prove the daemon is
+  # responsive before classifying a missing immutable container ID as already
+  # removed after a crash.
+  docker info >/dev/null 2>&1
+}
+
+persist_legacy_cleanup_progress() {
+  local result="$1" event reason
+  event="$(state_get event)"; reason="$(state_get rollbackReason)"
+  [[ -n "$event" ]] || return 1
+  state_save "$event" "$ACTIVE_SLOT" "$CANDIDATE_SLOT" "$PREVIOUS_SLOT" \
+    "$BLUE_API_IMAGE" "$BLUE_WEB_IMAGE" "$GREEN_API_IMAGE" "$GREEN_WEB_IMAGE" \
+    "$GATEWAY_MODE" "$GATEWAY_SLOT" "$STABLE_UNTIL" "$MONITOR_ACTIVE_SLOT" \
+    "$MONITOR_ROLLBACK_SLOT" "$reason" "$result"
+}
+
+remove_legacy_container_once() {
+  local kind="$1" container removed result
+  case "$kind" in
+    api) container="$LEGACY_API_ID"; removed="$LEGACY_API_REMOVED" ;;
+    web) container="$LEGACY_WEB_ID"; removed="$LEGACY_WEB_REMOVED" ;;
+    *) return 2 ;;
+  esac
+  ((removed == 0)) || return 0
+  [[ -n "$container" ]] || return 1
+
+  if ! legacy_container_absent "$container"; then
+    # A daemon disconnect can lose the successful `rm` response. Resolve the
+    # boundary from live absence instead of wedging on the command result.
+    docker rm "$container" >/dev/null 2>&1 || legacy_container_absent "$container" || return 1
+    legacy_container_absent "$container" || return 1
+  fi
+  if [[ "$kind" == api ]]; then LEGACY_API_REMOVED=1
+  else LEGACY_WEB_REMOVED=1
+  fi
+  result="legacy-${kind}-cleanup-complete"
+  persist_legacy_cleanup_progress "$result"
+}
+
 cleanup_legacy() {
-  [[ "$DRY_RUN" == 1 ]] && { LEGACY_API_REMOVED=1; LEGACY_WEB_REMOVED=1; return 0; }
-  local rc=0
-  if ((LEGACY_API_REMOVED == 0)) && [[ -n "$LEGACY_API_ID" ]]; then docker rm "$LEGACY_API_ID" >/dev/null && LEGACY_API_REMOVED=1 || rc=1; fi
-  if ((LEGACY_WEB_REMOVED == 0)) && [[ -n "$LEGACY_WEB_ID" ]]; then docker rm "$LEGACY_WEB_ID" >/dev/null && LEGACY_WEB_REMOVED=1 || rc=1; fi
-  return "$rc"
+  if [[ "$DRY_RUN" == 1 ]]; then
+    LEGACY_API_REMOVED=1; LEGACY_WEB_REMOVED=1
+    return 0
+  fi
+  # Stop at the first unpersisted boundary. A retry treats a missing container
+  # ID as the already-completed removal, then durably records it before moving
+  # to the next service.
+  remove_legacy_container_once api || return 1
+  remove_legacy_container_once web
+}
+
+# Persist the cleanup transaction before stopping the previous scheduler
+# leader. The same transaction can then resume after a crash at any subsequent
+# stop/rm/state-save boundary without pretending the removed slot is still a
+# rollback target.
+cleanup_previous_slot_transaction() {
+  local previous="$1" event previous_web
+  event="$(state_get event)"
+  if [[ "$event" != cleanup-handoff ]]; then
+    CANDIDATE_SLOT="$previous"; PREVIOUS_SLOT="$previous"
+    STABLE_UNTIL=''; MONITOR_ACTIVE_SLOT=''; MONITOR_ROLLBACK_SLOT=''
+    state_save cleanup-handoff "$ACTIVE_SLOT" "$CANDIDATE_SLOT" "$PREVIOUS_SLOT" \
+      "$BLUE_API_IMAGE" "$BLUE_WEB_IMAGE" "$GREEN_API_IMAGE" "$GREEN_WEB_IMAGE" \
+      application "$ACTIVE_SLOT" '' '' '' '' cleanup-handoff-started || return 1
+  else
+    [[ "$CANDIDATE_SLOT" == "$previous" && "$PREVIOUS_SLOT" == "$previous" \
+      && -z "$STABLE_UNTIL" && -z "$MONITOR_ACTIVE_SLOT" && -z "$MONITOR_ROLLBACK_SLOT" ]] \
+      || return 1
+  fi
+
+  if verify_slot_identity "$previous" && scheduler_readiness "$previous" leader; then
+    if ((STRUCTURAL_ONLY == 1)); then
+      slot_structural_ready "$ACTIVE_SLOT" standby || return 1
+    else
+      slot_ready "$ACTIVE_SLOT" standby || return 1
+    fi
+    compose_current stop "api-${previous}" || return 1
+    if ! slot_runtime_ready "$ACTIVE_SLOT" leader; then
+      compose_current up -d "api-${previous}" >/dev/null 2>&1 || true
+      slot_runtime_ready "$previous" leader \
+        || alert CRITICAL 'new leader failed and previous scheduler leader could not be restored'
+      return 1
+    fi
+  else
+    # A prior attempt may already have stopped/removed the old API. In that
+    # case only a fully healthy active leader grants authority to continue.
+    if ((STRUCTURAL_ONLY == 1)); then
+      slot_structural_ready "$ACTIVE_SLOT" leader || return 1
+    else
+      slot_ready "$ACTIVE_SLOT" leader || return 1
+    fi
+  fi
+
+  verify_present_slot_identity "$previous" || return 1
+  state_save cleanup-handoff "$ACTIVE_SLOT" "$CANDIDATE_SLOT" "$PREVIOUS_SLOT" \
+    "$BLUE_API_IMAGE" "$BLUE_WEB_IMAGE" "$GREEN_API_IMAGE" "$GREEN_WEB_IMAGE" \
+    application "$ACTIVE_SLOT" '' '' '' '' cleanup-leader-handoff-complete || return 1
+
+  previous_web="$(slot_container_id "web-${previous}")"
+  [[ -z "$previous_web" ]] || compose_current stop "web-${previous}" || return 1
+  compose_current rm -f "api-${previous}" "web-${previous}" || return 1
+  [[ -z "$(slot_any_container_id "api-${previous}")" \
+    && -z "$(slot_any_container_id "web-${previous}")" ]] || return 1
+
+  if ! cleanup_legacy; then
+    alert ERROR 'legacy cleanup was partial; cleanup handoff remains resumable'
+    state_save cleanup-handoff "$ACTIVE_SLOT" "$CANDIDATE_SLOT" "$PREVIOUS_SLOT" \
+      "$BLUE_API_IMAGE" "$BLUE_WEB_IMAGE" "$GREEN_API_IMAGE" "$GREEN_WEB_IMAGE" \
+      application "$ACTIVE_SLOT" '' '' '' '' legacy-cleanup-partial || true
+    return 1
+  fi
+
+  PREVIOUS_SLOT=''; CANDIDATE_SLOT=''; STABLE_UNTIL=''; MONITOR_ACTIVE_SLOT=''; MONITOR_ROLLBACK_SLOT=''
+  state_save cleaned "$ACTIVE_SLOT" '' '' "$BLUE_API_IMAGE" "$BLUE_WEB_IMAGE" \
+    "$GREEN_API_IMAGE" "$GREEN_WEB_IMAGE" application "$ACTIVE_SLOT" '' '' '' '' cleanup-complete
+}
+
+discard_prepared_candidate() {
+  local candidate="$CANDIDATE_SLOT" kind service
+  is_slot "$ACTIVE_SLOT" && is_slot "$candidate" && [[ "$candidate" != "$ACTIVE_SLOT" \
+    && -z "$PREVIOUS_SLOT" && -z "$STABLE_UNTIL" \
+    && -z "$MONITOR_ACTIVE_SLOT" && -z "$MONITOR_ROLLBACK_SLOT" ]] \
+    || return 1
+  [[ "$GATEWAY_MODE" == application && "$GATEWAY_SLOT" == "$ACTIVE_SLOT" ]] \
+    || return 1
+  if ((STRUCTURAL_ONLY == 1)); then
+    slot_structural_ready "$ACTIVE_SLOT" leader || return 1
+  else
+    slot_ready "$ACTIVE_SLOT" leader || return 1
+  fi
+  verify_present_slot_identity "$candidate" || return 1
+  for kind in api web; do
+    service="${kind}-${candidate}"
+    [[ -z "$(slot_container_id "$service")" ]] \
+      || compose_current stop "$service" || return 1
+    [[ -z "$(slot_any_container_id "$service")" ]] \
+      || compose_current rm -f "$service" || return 1
+  done
+  [[ -z "$(slot_any_container_id "api-${candidate}")" \
+    && -z "$(slot_any_container_id "web-${candidate}")" ]] || return 1
+  CANDIDATE_SLOT=''; PREVIOUS_SLOT=''; STABLE_UNTIL=''; MONITOR_ACTIVE_SLOT=''; MONITOR_ROLLBACK_SLOT=''
+  state_save candidate-discarded "$ACTIVE_SLOT" '' '' \
+    "$BLUE_API_IMAGE" "$BLUE_WEB_IMAGE" "$GREEN_API_IMAGE" "$GREEN_WEB_IMAGE" \
+    application "$ACTIVE_SLOT" '' '' '' '' prepared-candidate-discarded
 }
 
 cleanup() {
   require_active_state
-  local now previous; now="$(date +%s)"; previous="$PREVIOUS_SLOT"
+  cleanup_retired_images \
+    || die 'run-scoped image retirement is incomplete but remains resumable'
+  local now previous event; now="$(date +%s)"; previous="$PREVIOUS_SLOT"; event="$(state_get event)"
+  case "$event" in
+    preparing|prepare-failed|prepared|candidate-prepared)
+      discard_prepared_candidate \
+        || die 'prepared candidate cleanup is incomplete but remains resumable'
+      log 'discarded prepared candidate; active slot remains unchanged'
+      return 0
+      ;;
+    switching|switch-failed|monitor-failed)
+      die 'coordinator switchback is required before cleanup'
+      ;;
+    rolled-back)
+      is_slot "$previous" && [[ "$previous" != "$ACTIVE_SLOT" ]] \
+        || die 'rolled-back state has no failed slot to clean'
+      slot_runtime_ready "$ACTIVE_SLOT" leader || die 'restored slot is not leader before rollback cleanup'
+      verify_present_slot_identity "$previous" || die 'failed slot identity is unknown; refusing rollback cleanup'
+      [[ -z "$(slot_container_id "api-${previous}")" ]] \
+        || compose_current stop "api-${previous}" || die 'could not stop failed API after switchback'
+      [[ -z "$(slot_container_id "web-${previous}")" ]] \
+        || compose_current stop "web-${previous}" || die 'could not stop failed Web after switchback'
+      compose_current rm -f "api-${previous}" "web-${previous}" || die 'could not remove failed slot after switchback'
+      [[ -z "$(slot_any_container_id "api-${previous}")" \
+        && -z "$(slot_any_container_id "web-${previous}")" ]] \
+        || die 'failed slot containers remain after rollback cleanup'
+      if ! cleanup_legacy; then
+        state_save rolled-back "$ACTIVE_SLOT" "$previous" "$previous" \
+          "$BLUE_API_IMAGE" "$BLUE_WEB_IMAGE" "$GREEN_API_IMAGE" "$GREEN_WEB_IMAGE" \
+          application "$ACTIVE_SLOT" '' '' '' '' rollback-legacy-cleanup-partial || true
+        die 'legacy cleanup was partial after switchback; rollback cleanup remains resumable'
+      fi
+      PREVIOUS_SLOT=''; CANDIDATE_SLOT=''; STABLE_UNTIL=''; MONITOR_ACTIVE_SLOT=''; MONITOR_ROLLBACK_SLOT=''
+      state_save rollback-cleaned "$ACTIVE_SLOT" '' '' "$BLUE_API_IMAGE" "$BLUE_WEB_IMAGE" "$GREEN_API_IMAGE" "$GREEN_WEB_IMAGE" application "$ACTIVE_SLOT" '' '' '' '' rollback-cleanup-complete
+      log "rollback cleanup completed; ${ACTIVE_SLOT} remains scheduler leader"
+      return 0
+      ;;
+  esac
   is_slot "$previous" || { log 'no previous slot to clean'; return 0; }
-  [[ "$STABLE_UNTIL" =~ ^[0-9]+$ && "$now" -ge "$STABLE_UNTIL" ]] || die 'previous slot is still inside five-minute stability window'
-  if ((STRUCTURAL_ONLY == 1)); then
-    slot_structural_ready "$ACTIVE_SLOT" standby || die 'prior-release public slot is not structurally healthy before cleanup handoff'
-  else
-    slot_ready "$ACTIVE_SLOT" standby || die 'public slot is not healthy standby before cleanup handoff'
+  if [[ "$event" != cleanup-handoff ]]; then
+    [[ "$STABLE_UNTIL" =~ ^[0-9]+$ && "$now" -ge "$STABLE_UNTIL" ]] \
+      || die 'previous slot is still inside five-minute stability window'
   fi
-  slot_runtime_ready "$previous" leader || die 'previous slot is not leader before cleanup handoff'
-  compose_current stop "api-${previous}" || die 'could not stop previous leader API'
-  slot_runtime_ready "$ACTIVE_SLOT" leader || { compose_current up -d "api-${previous}" || true; die 'new slot did not become leader; old slot retained/restored'; }
-  compose_current stop "web-${previous}" || die 'could not stop previous Web'
-  compose_current rm -f "api-${previous}" "web-${previous}" || die 'could not remove previous slot containers'
-  PREVIOUS_SLOT=''; CANDIDATE_SLOT=''; STABLE_UNTIL=''; MONITOR_ACTIVE_SLOT=''; MONITOR_ROLLBACK_SLOT=''
-  if ! cleanup_legacy; then
-    alert ERROR 'legacy cleanup was partial; durable removed flags record the completed service removals'
-    state_save cleanup-partial "$ACTIVE_SLOT" '' '' "$BLUE_API_IMAGE" "$BLUE_WEB_IMAGE" "$GREEN_API_IMAGE" "$GREEN_WEB_IMAGE" application "$ACTIVE_SLOT" '' '' '' '' legacy-cleanup-partial
-    die 'legacy cleanup was partial; captured images remain available to legacy_compose_restore'
-  fi
-  state_save cleaned "$ACTIVE_SLOT" '' '' "$BLUE_API_IMAGE" "$BLUE_WEB_IMAGE" "$GREEN_API_IMAGE" "$GREEN_WEB_IMAGE" application "$ACTIVE_SLOT" '' '' '' '' cleanup-complete
+  cleanup_previous_slot_transaction "$previous" \
+    || die 'cleanup handoff is incomplete but remains resumable'
   log "cleaned ${previous} slot; ${ACTIVE_SLOT} confirmed scheduler leader; old containers removed and images retained"
 }
 
 reconcile() {
   load_state_context
   local event; event="$(state_get event)"
+  cleanup_retired_images \
+    || die 'run-scoped image retirement is incomplete but remains resumable'
   if ((RESTORE_LEGACY == 1)); then
     restore_legacy_after_phase3_stop || die 'legacy restore failed during reconcile; gateway maintenance was attempted'
     ACTIVE_SLOT=''; CANDIDATE_SLOT=''; PREVIOUS_SLOT=''; GATEWAY_MODE=offline; GATEWAY_SLOT=''; STABLE_UNTIL=''; MONITOR_ACTIVE_SLOT=''; MONITOR_ROLLBACK_SLOT=''
@@ -1124,7 +2011,7 @@ reconcile() {
     alert WARNING 'legacy API/Web restored and Phase 3 services stopped by reconcile --restore-legacy'
     return 0
   fi
-  if [[ "$event" == bootstrapping || "$event" == bootstrap-failed ]]; then
+  if [[ "$event" == bootstrap-preparing || "$event" == bootstrapping || "$event" == bootstrap-failed ]]; then
     alert WARNING "reconcile recovering incomplete bootstrap (event=${event})"
     if restore_legacy_after_phase3_stop; then
       ACTIVE_SLOT=''; CANDIDATE_SLOT=''; PREVIOUS_SLOT=''; GATEWAY_MODE=offline; GATEWAY_SLOT=''; STABLE_UNTIL=''; MONITOR_ACTIVE_SLOT=''; MONITOR_ROLLBACK_SLOT=''
@@ -1137,6 +2024,19 @@ reconcile() {
     alert CRITICAL 'legacy restore failed after incomplete bootstrap; gateway maintenance retained'
     return 0
   fi
+  if [[ "$event" == preparing || "$event" == prepare-failed \
+    || "$event" == prepared || "$event" == candidate-prepared ]]; then
+    alert WARNING "reconcile discarding interrupted inactive candidate (event=${event})"
+    discard_prepared_candidate \
+      || die 'interrupted candidate cleanup is incomplete but remains resumable'
+    log 'interrupted inactive candidate discarded; active release remains unchanged'
+    return 0
+  fi
+  case "$event" in
+    switching|switch-failed|monitor-failed)
+      die 'coordinator switchback is required; reconcile will not finalize an unverified candidate'
+      ;;
+  esac
   is_slot "$ACTIVE_SLOT" || die 'no active Phase 3 slot; use reconcile --restore-legacy'
   resource_guard
   assert_running_slot_images_match_state
@@ -1167,14 +2067,34 @@ reconcile() {
 status_report() {
   if [[ ! -f "$STATE_FILE" ]]; then printf '{"state":"not-initialized"}\n'; return 0; fi
   state_assert
-  local stale=0 slot expected runtime_config_status=not-checked runtime_config_digest=''
+  local stale=0 slot expected=leader event live_health_status=verified
+  local runtime_config_status=not-checked runtime_config_digest=''
   load_state_context
+  event="$(state_get event)"
+  case "$event" in
+    active|monitor-passed|monitor-failed|reconciled)
+      if [[ -n "$PREVIOUS_SLOT" ]]; then
+        if [[ "$STABLE_UNTIL" =~ ^[0-9]+$ && $(date +%s) -ge STABLE_UNTIL ]]; then
+          expected=transitioning
+        else
+          expected=standby
+        fi
+      fi
+      ;;
+    cleanup-handoff)
+      expected=transitioning
+      ;;
+  esac
   if [[ "$DRY_RUN" != 1 ]]; then
     if ! is_slot "$ACTIVE_SLOT" || [[ -z "$(slot_container_id "api-${ACTIVE_SLOT}")" || -z "$(slot_container_id "web-${ACTIVE_SLOT}")" ]]; then
       stale=1
     fi
     for slot in blue green; do
-      if [[ -n "$(slot_container_id "api-${slot}")" || -n "$(slot_container_id "web-${slot}")" ]]; then verify_slot_identity "$slot" || stale=1; fi
+      if [[ "$event" == cleanup-handoff && "$slot" == "$PREVIOUS_SLOT" ]]; then
+        verify_present_slot_identity "$slot" || stale=1
+      elif [[ -n "$(slot_container_id "api-${slot}")" || -n "$(slot_container_id "web-${slot}")" ]]; then
+        verify_slot_identity "$slot" || stale=1
+      fi
     done
     if [[ "$GATEWAY_MODE" == application ]] && is_slot "$GATEWAY_SLOT"; then gateway_points_to "$GATEWAY_SLOT" || stale=1; fi
     if ((STRUCTURAL_ONLY == 0)) && is_slot "$ACTIVE_SLOT"; then
@@ -1188,16 +2108,43 @@ status_report() {
     elif ! is_slot "$ACTIVE_SLOT"; then
       runtime_config_status=unavailable
     fi
+
+    if is_slot "$ACTIVE_SLOT"; then
+      if [[ "$expected" == transitioning ]]; then
+        if scheduler_readiness "$ACTIVE_SLOT" leader; then
+          expected=leader
+        elif scheduler_readiness "$ACTIVE_SLOT" standby \
+          && is_slot "$PREVIOUS_SLOT" \
+          && scheduler_readiness "$PREVIOUS_SLOT" leader; then
+          expected=standby
+        else live_health_status=failed
+        fi
+      elif ! scheduler_readiness "$ACTIVE_SLOT" "$expected"; then
+        live_health_status=failed
+      fi
+      if [[ "$expected" == standby && "$event" != cleanup-handoff ]] \
+        && { ! is_slot "$PREVIOUS_SLOT" || ! scheduler_readiness "$PREVIOUS_SLOT" leader; }; then
+        live_health_status=failed
+      fi
+      if [[ "$GATEWAY_MODE" != application || "$GATEWAY_SLOT" != "$ACTIVE_SLOT" ]] \
+        || ! slot_web_validate "$ACTIVE_SLOT" \
+        || ! external_smoke_once; then
+        live_health_status=failed
+      fi
+    else
+      live_health_status=failed
+    fi
+    [[ "$live_health_status" == verified ]] || stale=1
   fi
-  expected=leader
-  [[ "$STABLE_UNTIL" =~ ^[0-9]+$ && $(date +%s) -lt STABLE_UNTIL && -n "$PREVIOUS_SLOT" ]] && expected=standby
-  python3 - "$STATE_FILE" "$stale" "$expected" "$runtime_config_status" "$runtime_config_digest" <<'PY'
+  python3 - "$STATE_FILE" "$stale" "$expected" "$runtime_config_status" \
+    "$runtime_config_digest" "$live_health_status" <<'PY'
 import json,sys
 with open(sys.argv[1],encoding='utf-8') as f:s=json.load(f)
 s['runtimeStatus']='stale' if sys.argv[2]=='1' else 'consistent'
 s['expectedActiveSchedulerRole']=sys.argv[3]
 s['runtimeConfigStatus']=sys.argv[4]
 s['runtimeConfigDigest']=sys.argv[5] or None
+s['liveHealthStatus']=sys.argv[6]
 print(json.dumps(s,ensure_ascii=False,indent=2,sort_keys=True))
 PY
   ((stale == 0))
@@ -1360,11 +2307,12 @@ PY
 # - status: exclusive locking applies only to mutating commands.
 # - status: no operation invokes a remote deployment or image push.
 # -----------------------------------------------------------------------------
-# Observation commands intentionally never hold the exclusive mutation lock.
-# This keeps status and the five-minute monitor available during operator work.
+# Status intentionally never holds the exclusive mutation lock. The monitor
+# does hold it because it persists pass/fail evidence; this also prevents two
+# recovery monitors from racing a failure into a false success.
 mkdir -p "$(dirname "$LOCK_FILE")"
 case "$COMMAND" in
-  status|monitor) ;;
+  status) ;;
   *)
     if command -v flock >/dev/null 2>&1; then
       exec 9>"$LOCK_FILE"; flock -n 9 || die 'another Pi5 Blue/Green operation is running'
@@ -1384,4 +2332,7 @@ case "$COMMAND" in
   cleanup) cleanup ;;
   reconcile) reconcile ;;
   monitor) monitor ;;
+  seal-image-ids) seal_legacy_state_image_ids ;;
+  migration-ledger) live_migration_ledger ;;
+  restart-monitor) restart_stability_window ;;
 esac

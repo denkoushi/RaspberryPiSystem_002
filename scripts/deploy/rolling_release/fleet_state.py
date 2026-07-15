@@ -22,6 +22,8 @@ from pathlib import Path
 from types import TracebackType
 from typing import Any
 
+from .image_refs import image_matches_release
+
 
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -249,10 +251,8 @@ def _validate_host_record(host: str, value: Any) -> None:
             )
         if verified:
             current_sha = value["currentSha"]
-            expected_tag = re.compile(re.escape(current_sha) + r"-[0-9a-f]{12}")
             for image_field in ("apiImage", "webImage"):
-                _repository, separator, tag = value[image_field].rpartition(":")
-                if not _repository or not separator or not expected_tag.fullmatch(tag):
+                if not image_matches_release(value[image_field], current_sha):
                     raise FleetStateCorruptError(
                         f"fleet.{host}.{image_field} does not match currentSha"
                     )

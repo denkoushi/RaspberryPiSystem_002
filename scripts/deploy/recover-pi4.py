@@ -35,6 +35,7 @@ from rolling_release.fleet_state import (
 )
 from rolling_release.bootstrap import read_local_server_client_id
 from rolling_release.lock import RunLock, RunLockBusyError, RunLockError
+from rolling_release.image_refs import image_matches_release
 
 
 PROJECT = Path(__file__).resolve().parents[2]
@@ -198,14 +199,7 @@ def redact_error(error: Exception) -> str:
 
 
 def image_matches_sha(image: Any, sha: str) -> bool:
-    if not isinstance(image, str):
-        return False
-    _repository, separator, tag = image.rpartition(':')
-    return bool(
-        _repository
-        and separator
-        and re.fullmatch(re.escape(sha) + r'-[0-9a-f]{12}', tag),
-    )
+    return image_matches_release(image, sha)
 
 
 class RecoveryCoordinator:

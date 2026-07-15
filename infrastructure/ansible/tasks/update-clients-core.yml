@@ -1,47 +1,3 @@
-# signage-update.shのIPアドレスを自動更新（ネットワーク変更時の再発防止）
-- name: Update signage-update.sh server URL
-  ansible.builtin.replace:
-    path: /usr/local/bin/signage-update.sh
-    regexp: 'SERVER_URL=https?://[0-9.]+'
-    replace: "SERVER_URL={{ signage_server_url }}"
-  when:
-    - '"server" not in group_names'
-    - signage_server_url is defined
-    - manage_signage_lite | default(false) | bool
-  register: signage_update_script_result
-
-- name: Re-enable signage-lite service before restart
-  ansible.builtin.systemd:
-    name: signage-lite.service
-    enabled: true
-  when:
-    - '"server" not in group_names'
-    - manage_signage_lite | default(false) | bool
-
-- name: Re-enable signage-lite update timer before restart
-  ansible.builtin.systemd:
-    name: signage-lite-update.timer
-    enabled: true
-  when:
-    - '"server" not in group_names'
-    - manage_signage_lite | default(false) | bool
-
-- name: Start signage-lite update timer
-  ansible.builtin.systemd:
-    name: signage-lite-update.timer
-    state: started
-  when:
-    - '"server" not in group_names'
-    - manage_signage_lite | default(false) | bool
-
-- name: Start signage-lite service
-  ansible.builtin.systemd:
-    name: signage-lite.service
-    state: started
-  when:
-    - '"server" not in group_names'
-    - manage_signage_lite | default(false) | bool
-
 # journalctl 出力に無効なUTF-8（サロゲート等）が含まれると Ansible の MODULE_STRICT_UTF8 で失敗する。
 # raspi4-robodrill01 で再発（KB-291, miscellaneous.md）。iconv -c で無効文字を除去する。
 - name: Collect health check info
@@ -67,18 +23,16 @@
   ansible.builtin.debug:
     var: health_info.stdout_lines
 
-- name: Verify signage status endpoint is reachable
-  ansible.builtin.uri:
-    url: "{{ signage_server_url }}/api/signage/render/status"
-    method: GET
-    validate_certs: false
-    status_code: [200]
-    headers:
-      x-client-key: "{{ signage_client_key | default('') }}"
+- name: Verify authenticated signage endpoints with the host-local credential
+  ansible.builtin.script:
+    cmd: >-
+      {{ playbook_dir }}/../../../scripts/deploy/signage-runtime-proof.py
+      --check-endpoints
+  changed_when: false
   register: signage_health
   retries: 3
   delay: 3
-  until: signage_health.status == 200
+  until: signage_health.rc == 0
   when:
     - '"server" not in group_names'
     - signage_server_url is defined

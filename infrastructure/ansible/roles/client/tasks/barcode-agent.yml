@@ -8,6 +8,21 @@
     path: "{{ repo_path }}/clients/barcode-agent"
     state: directory
     mode: '0755'
+  when: terminal_release_mode | default('full') == 'full'
+
+- name: Check barcode agent directory before release
+  ansible.builtin.stat:
+    path: "{{ repo_path }}/clients/barcode-agent"
+  register: barcode_agent_directory
+  when: terminal_release_mode | default('full') == 'release-only'
+
+- name: Require barcode agent directory before release
+  ansible.builtin.assert:
+    that:
+      - barcode_agent_directory.stat.exists | default(false)
+      - barcode_agent_directory.stat.isdir | default(false)
+    fail_msg: barcode-agent directory is missing; provision the terminal before release.
+  when: terminal_release_mode | default('full') == 'release-only'
 
 - name: Deploy barcode agent environment variables
   ansible.builtin.template:
@@ -18,3 +33,11 @@
     mode: '0600'
   register: barcode_agent_env_result
   notify: restart barcode-agent
+
+- name: Include barcode environment changes in lifecycle selection
+  ansible.builtin.set_fact:
+    barcode_agent_runtime_recreate_needed: >-
+      {{
+        barcode_agent_runtime_recreate_needed | default(true) | bool
+        or barcode_agent_env_result.changed | default(false) | bool
+      }}

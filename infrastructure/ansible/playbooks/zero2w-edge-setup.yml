@@ -21,6 +21,7 @@
     repo_version: "{{ lookup('env', 'ANSIBLE_REPO_VERSION') | default('main', true) }}"
     git_deploy_key: "{{ lookup('env', 'RASPI_SYSTEM_DEPLOY_KEY') | default('', true) }}"
     git_environment: "{{ {} if (git_deploy_key | trim) == '' else {'GIT_SSH_COMMAND': 'ssh -i ' ~ git_deploy_key ~ ' -o StrictHostKeyChecking=no'} }}"
+    terminal_release_mode: full
     backup_dir: /opt/backups/configs
     backup_service_files:
       - status-agent.service

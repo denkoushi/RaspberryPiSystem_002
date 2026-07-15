@@ -1,4 +1,13 @@
 ---
+- name: Validate terminal release mutation profile
+  ansible.builtin.assert:
+    that:
+      - terminal_release_mode | default('full') in ['full', 'release-only']
+      - terminal_release_mode | default('full') != 'release-only' or 'server' not in group_names
+    fail_msg: >-
+      terminal_release_mode must be full for provisioning/server convergence or
+      release-only for one coordinator-owned terminal release.
+
 - name: Ensure repository parent directory exists
   ansible.builtin.file:
     path: "{{ repo_path }}"
@@ -6,11 +15,30 @@
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
     mode: '0755'
+  when: terminal_release_mode | default('full') == 'full'
+
+- name: Check repository directory
+  ansible.builtin.stat:
+    path: "{{ repo_path }}"
+  register: repo_path_stat
 
 - name: Check if repository exists
   ansible.builtin.stat:
     path: "{{ repo_path }}/.git"
   register: repo_git_stat
+
+- name: Require an existing repository for a terminal release
+  ansible.builtin.assert:
+    that:
+      - repo_path_stat.stat.exists | default(false)
+      - repo_path_stat.stat.isdir | default(false)
+      - repo_git_stat.stat.exists | default(false)
+      - repo_git_stat.stat.isdir | default(false)
+      - repo_version is match('^[0-9a-f]{40}$')
+    fail_msg: >-
+      release-only requires an existing Git repository and an immutable
+      lowercase 40-hex repo_version. Provision the host separately before retrying.
+  when: terminal_release_mode | default('full') == 'release-only'
 
 - name: Fix .git directory ownership before reading the current revision
   ansible.builtin.file:
@@ -20,6 +48,7 @@
     recurse: true
     state: directory
   when:
+    - terminal_release_mode | default('full') == 'full'
     - repo_git_stat.stat.exists | default(false)
     - ansible_user is defined
   changed_when: false
@@ -30,7 +59,9 @@
   ansible.builtin.stat:
     path: "{{ repo_path }}/infrastructure/ansible/host_vars"
   register: host_vars_stat
-  when: repo_git_stat.stat.exists | default(false)
+  when:
+    - terminal_release_mode | default('full') == 'full'
+    - repo_git_stat.stat.exists | default(false)
 
 - name: Find vault.yml files in host_vars
   ansible.builtin.find:
@@ -39,6 +70,7 @@
     file_type: file
   register: vault_files
   when:
+    - terminal_release_mode | default('full') == 'full'
     - repo_git_stat.stat.exists | default(false)
     - host_vars_stat.stat.exists | default(false)
 
@@ -52,25 +84,88 @@
   loop_control:
     label: "{{ item.path }}"
   when:
+    - terminal_release_mode | default('full') == 'full'
     - repo_git_stat.stat.exists | default(false)
     - host_vars_stat.stat.exists | default(false)
     - (vault_files.matched | default(0)) | int > 0
     - ansible_user is defined
   become: true
 
-- name: Capture current repo HEAD (if exists)
+- name: Capture current repo HEAD for provisioning
   ansible.builtin.shell: |
     set -euo pipefail
     cd "{{ repo_path }}"
     git rev-parse HEAD
   args:
     executable: /bin/bash
-  register: repo_prev_head_result
+  register: repo_prev_head_full_result
   changed_when: false
   failed_when: false
-  when: repo_git_stat.stat.exists | default(false)
+  when:
+    - terminal_release_mode | default('full') == 'full'
+    - repo_git_stat.stat.exists | default(false)
 
-- name: Sync repository to desired state (with retries)
+- name: Verify terminal repository is clean and capture current HEAD
+  ansible.builtin.shell: |
+    set -euo pipefail
+    safe_home="$(/usr/bin/getent passwd {{ ansible_user | quote }} | /usr/bin/cut -d: -f6)"
+    [[ "${safe_home}" == /* && -d "${safe_home}" ]]
+    ssh_command={{ git_environment.GIT_SSH_COMMAND | default('') | quote }}
+    git() {
+      local -a safe_environment=(
+        "PATH=/usr/bin:/bin"
+        "HOME=${safe_home}"
+        "LANG=C"
+        "LC_ALL=C"
+        "GIT_CONFIG_NOSYSTEM=1"
+        "GIT_CONFIG_GLOBAL=/dev/null"
+        "GIT_ATTR_NOSYSTEM=1"
+        "GIT_TERMINAL_PROMPT=0"
+        "GIT_OPTIONAL_LOCKS=0"
+      )
+      if [[ -n "${ssh_command}" ]]; then
+        safe_environment+=("GIT_SSH_COMMAND=${ssh_command}")
+      fi
+      /usr/bin/env -i "${safe_environment[@]}" /usr/bin/git \
+        -c core.fsmonitor=false \
+        -c core.ignoreStat=false \
+        -c core.trustctime=true \
+        -c core.hooksPath=/dev/null \
+        -c maintenance.auto=false \
+        "$@"
+    }
+    verify_index_policy() {
+      git ls-files -v -z | /usr/bin/python3 -c '
+    import sys
+    entries = sys.stdin.buffer.read().split(b"\0")
+    bad = [entry for entry in entries if entry and (entry[:1] == b"S" or entry[:1].islower())]
+    if bad:
+        print("terminal repository contains skip-worktree or assume-unchanged entries", file=sys.stderr)
+        raise SystemExit(1)
+    '
+      git ls-files -u -z | /usr/bin/python3 -c '
+    import sys
+    if sys.stdin.buffer.read(1):
+        print("terminal repository contains unmerged index entries", file=sys.stderr)
+        raise SystemExit(1)
+    '
+    }
+    cd "{{ repo_path }}"
+    verify_index_policy
+    git diff --quiet
+    git diff --cached --quiet
+    test -z "$(git status --porcelain --untracked-files=all)"
+    head="$(git rev-parse --verify HEAD)"
+    [[ "${head}" =~ ^[0-9a-f]{40}$ ]]
+    printf '%s\n' "${head}"
+  args:
+    executable: /bin/bash
+  become_user: "{{ ansible_user }}"
+  register: repo_prev_head_release_result
+  changed_when: false
+  when: terminal_release_mode | default('full') == 'release-only'
+
+- name: Sync repository for provisioning (with retries)
   ansible.builtin.shell: |
     set -euo pipefail
     if [ ! -d "{{ repo_path }}/.git" ]; then
@@ -92,10 +187,94 @@
   args:
     executable: /bin/bash
   environment: "{{ git_environment }}"
-  register: git_result
+  register: git_full_result
   retries: 3
   delay: 10
-  until: git_result.rc == 0
+  until: git_full_result.rc == 0
+  when: terminal_release_mode | default('full') == 'full'
+
+- name: Fetch and reset existing terminal repository to immutable release
+  ansible.builtin.shell: |
+    set -euo pipefail
+    safe_home="$(/usr/bin/getent passwd {{ ansible_user | quote }} | /usr/bin/cut -d: -f6)"
+    [[ "${safe_home}" == /* && -d "${safe_home}" ]]
+    ssh_command={{ git_environment.GIT_SSH_COMMAND | default('') | quote }}
+    git() {
+      local -a safe_environment=(
+        "PATH=/usr/bin:/bin"
+        "HOME=${safe_home}"
+        "LANG=C"
+        "LC_ALL=C"
+        "GIT_CONFIG_NOSYSTEM=1"
+        "GIT_CONFIG_GLOBAL=/dev/null"
+        "GIT_ATTR_NOSYSTEM=1"
+        "GIT_TERMINAL_PROMPT=0"
+        "GIT_OPTIONAL_LOCKS=0"
+      )
+      if [[ -n "${ssh_command}" ]]; then
+        safe_environment+=("GIT_SSH_COMMAND=${ssh_command}")
+      fi
+      /usr/bin/env -i "${safe_environment[@]}" /usr/bin/git \
+        -c core.fsmonitor=false \
+        -c core.ignoreStat=false \
+        -c core.trustctime=true \
+        -c core.hooksPath=/dev/null \
+        -c maintenance.auto=false \
+        "$@"
+    }
+    verify_index_policy() {
+      git ls-files -v -z | /usr/bin/python3 -c '
+    import sys
+    entries = sys.stdin.buffer.read().split(b"\0")
+    bad = [entry for entry in entries if entry and (entry[:1] == b"S" or entry[:1].islower())]
+    if bad:
+        print("terminal repository contains skip-worktree or assume-unchanged entries", file=sys.stderr)
+        raise SystemExit(1)
+    '
+      git ls-files -u -z | /usr/bin/python3 -c '
+    import sys
+    if sys.stdin.buffer.read(1):
+        print("terminal repository contains unmerged index entries", file=sys.stderr)
+        raise SystemExit(1)
+    '
+    }
+    cd "{{ repo_path }}"
+    target={{ repo_version | quote }}
+    git fetch --no-tags origin "${target}"
+    git cat-file -e "${target}^{commit}"
+    resolved="$(git rev-parse "${target}^{commit}")"
+    [[ "${resolved}" == "${target}" ]]
+    expected_head={{ repo_prev_head_release_result.stdout | quote }}
+    [[ "$(git rev-parse --verify HEAD)" == "${expected_head}" ]]
+    git diff --quiet
+    git diff --cached --quiet
+    test -z "$(git status --porcelain --untracked-files=all)"
+    verify_index_policy
+    git reset --hard "${target}"
+    [[ "$(git rev-parse --verify HEAD)" == "${target}" ]]
+  args:
+    executable: /bin/bash
+  become_user: "{{ ansible_user }}"
+  register: git_release_result
+  retries: 3
+  delay: 10
+  until: git_release_result.rc == 0
+  when: terminal_release_mode | default('full') == 'release-only'
+
+- name: Select repository synchronization result
+  ansible.builtin.set_fact:
+    repo_prev_head_result: >-
+      {{
+        repo_prev_head_release_result
+        if terminal_release_mode | default('full') == 'release-only'
+        else repo_prev_head_full_result
+      }}
+    git_result: >-
+      {{
+        git_release_result
+        if terminal_release_mode | default('full') == 'release-only'
+        else git_full_result
+      }}
 
 - name: Capture repo HEAD after sync
   ansible.builtin.shell: |
@@ -104,6 +283,7 @@
     git rev-parse HEAD
   args:
     executable: /bin/bash
+  become_user: "{{ ansible_user }}"
   register: repo_new_head_result
   changed_when: false
 
@@ -186,15 +366,8 @@
         or (repo_diff_files_raw.stdout_lines | default([]) | select('match', '^apps/api/prisma/') | list | length > 0)
       }}
 
-- name: Remove unnecessary documentation directory to save storage
-  ansible.builtin.file:
-    path: "{{ repo_path }}/docs"
-    state: absent
-  register: docs_removal_result
-  changed_when: docs_removal_result.path is defined
-  when:
-    - "'server' not in group_names"
-
 - name: Configure Tailscale when enabled
   ansible.builtin.import_tasks: tailscale.yml
-  when: tailscale_enabled | default(false)
+  when:
+    - terminal_release_mode | default('full') == 'full'
+    - tailscale_enabled | default(false)

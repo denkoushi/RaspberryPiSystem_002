@@ -16,6 +16,7 @@
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
         mode: '0700'
+      when: terminal_release_mode | default('full') == 'full'
 
     - name: Ensure Firefox kiosk profile chrome directory exists
       ansible.builtin.file:
@@ -24,6 +25,63 @@
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
         mode: '0700'
+      when: terminal_release_mode | default('full') == 'full'
+
+    - name: Remove stale Firefox session restore files during full provisioning
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ kiosk_firefox_profile_abs }}/sessionstore.jsonlz4"
+        - "{{ kiosk_firefox_profile_abs }}/sessionstore-backups/recovery.jsonlz4"
+        - "{{ kiosk_firefox_profile_abs }}/sessionstore-backups/recovery.baklz4"
+        - "{{ kiosk_firefox_profile_abs }}/sessionstore-backups/previous.jsonlz4"
+      when: terminal_release_mode | default('full') == 'full'
+
+    - name: Converge Firefox session restore directory during full provisioning
+      ansible.builtin.file:
+        path: "{{ kiosk_firefox_profile_abs }}/sessionstore-backups"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0700'
+      when: terminal_release_mode | default('full') == 'full'
+
+    - name: Find stale Firefox upgrade session restore files during full provisioning
+      ansible.builtin.find:
+        paths: "{{ kiosk_firefox_profile_abs }}/sessionstore-backups"
+        patterns: "upgrade.jsonlz4-*"
+        file_type: file
+        recurse: false
+      register: kiosk_firefox_upgrade_session_files
+      when: terminal_release_mode | default('full') == 'full'
+
+    - name: Remove stale Firefox upgrade session restore files during full provisioning
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ kiosk_firefox_upgrade_session_files.files | default([]) }}"
+      loop_control:
+        label: "{{ item.path }}"
+      when: terminal_release_mode | default('full') == 'full'
+
+    - name: Check Firefox kiosk profile directories before release
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ kiosk_firefox_profile_abs }}"
+        - "{{ kiosk_firefox_profile_abs }}/chrome"
+      register: kiosk_firefox_profile_directories
+      when: terminal_release_mode | default('full') == 'release-only'
+
+    - name: Require Firefox kiosk profile directories before release
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists | default(false)
+          - item.stat.isdir | default(false)
+        fail_msg: Firefox kiosk profile directories are provisioning-only.
+      loop: "{{ kiosk_firefox_profile_directories.results | default([]) }}"
+      when: terminal_release_mode | default('full') == 'release-only'
 
     - name: Deploy Firefox userChrome.css (kiosk minimize chrome)
       ansible.builtin.template:

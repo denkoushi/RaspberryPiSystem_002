@@ -228,6 +228,10 @@ def _run_git(repository: Path, arguments: list[str]) -> str:
         "git",
         "-c",
         f"safe.directory={repository}",
+        "-c",
+        "core.fsmonitor=false",
+        "-c",
+        "core.ignorestat=false",
         "-C",
         os.fspath(repository),
         *arguments,
@@ -250,6 +254,54 @@ def _run_git(repository: Path, arguments: list[str]) -> str:
     if len(output) > 4096:
         raise ManifestError("repository git output exceeds its safety limit")
     return output
+
+
+def _run_git_bytes(repository: Path, arguments: list[str]) -> bytes:
+    command = [
+        "git",
+        "-c",
+        f"safe.directory={repository}",
+        "-c",
+        "core.fsmonitor=false",
+        "-c",
+        "core.ignorestat=false",
+        "-C",
+        os.fspath(repository),
+        *arguments,
+    ]
+    try:
+        completed = subprocess.run(
+            command,
+            check=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=_git_environment(),
+            timeout=30,
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+        operation = arguments[0] if arguments else "operation"
+        raise ManifestError(f"repository git {operation} failed") from error
+    if len(completed.stdout) > 8 * 1024 * 1024:
+        raise ManifestError("repository git output exceeds its safety limit")
+    return completed.stdout
+
+
+def _require_real_directory_chain(
+    path: Path, *, root: Path, label: str
+) -> None:
+    try:
+        relative = path.relative_to(root)
+    except ValueError as error:
+        raise ManifestError(f"{label} escapes the filesystem root") from error
+    current = root
+    for component in relative.parts:
+        current /= component
+        metadata = _lstat(current)
+        if metadata is None or not stat.S_ISDIR(metadata.st_mode):
+            raise ManifestError(
+                f"{label} must be a real existing directory without symlink components"
+            )
 
 
 def _require_repository_layout(repository: Path) -> Path:
@@ -284,6 +336,11 @@ def _normalise_repository_path(
         context=context,
         require_parent=True,
     )
+    _require_real_directory_chain(
+        repository,
+        root=context.filesystem_root,
+        label="repository",
+    )
     _require_repository_layout(repository)
     return repository
 
@@ -291,6 +348,30 @@ def _normalise_repository_path(
 def _read_repository_head(repository: Path) -> str:
     head = _run_git(repository, ["rev-parse", "--verify", "HEAD^{commit}"])
     return _validate_git_sha(head, "repository HEAD")
+
+
+def _require_plain_repository_index(repository: Path) -> None:
+    raw = _run_git_bytes(repository, ["ls-files", "-v", "-z"])
+    if raw and not raw.endswith(b"\0"):
+        raise ManifestError("repository index flag output is malformed")
+    records = raw[:-1].split(b"\0") if raw else []
+    if any(not record.startswith(b"H ") for record in records):
+        raise ManifestError(
+            "repository index contains assume-unchanged, skip-worktree, "
+            "or non-stage-zero entries"
+        )
+    if _run_git_bytes(repository, ["ls-files", "-u", "-z"]):
+        raise ManifestError("repository index contains unmerged entries")
+
+
+def _require_clean_repository(repository: Path) -> None:
+    _require_plain_repository_index(repository)
+    status = _run_git(
+        repository,
+        ["status", "--porcelain=v1", "--untracked-files=all"],
+    )
+    if status:
+        raise ManifestError("repository worktree is not clean")
 
 
 def _capture_repository(
@@ -304,6 +385,7 @@ def _capture_repository(
     actual = _read_repository_head(path)
     if not hmac.compare_digest(actual, expected):
         raise ManifestError("repository HEAD does not match the expected prior SHA")
+    _require_clean_repository(path)
     return {"path": os.fspath(path), "head": actual}
 
 
@@ -318,6 +400,7 @@ def _preflight_repository(
     if _lstat(git_directory / "index.lock") is not None:
         raise ManifestError("repository index lock exists before rollback")
     _read_repository_head(path)
+    _require_clean_repository(path)
     try:
         object_type = _run_git(path, ["cat-file", "-t", head])
         resolved = _run_git(path, ["rev-parse", "--verify", f"{head}^{{commit}}"])
@@ -330,6 +413,13 @@ def _preflight_repository(
 
 def _restore_repository(repository: Mapping[str, str], path: Path) -> None:
     expected_head = repository["head"]
+    git_directory = _require_repository_layout(path)
+    if _lstat(git_directory / "index.lock") is not None:
+        raise ManifestError("repository index lock exists before rollback")
+    before_head = _read_repository_head(path)
+    _require_clean_repository(path)
+    if not hmac.compare_digest(_read_repository_head(path), before_head):
+        raise ManifestError("repository HEAD changed immediately before rollback")
     _run_git(
         path,
         ["reset", "--quiet", "--hard", "--no-recurse-submodules", expected_head],
@@ -688,14 +778,27 @@ def _validate_manifest(value: dict[str, Any], context: ManifestContext) -> dict[
 
 
 def _load_manifest(
-    context: ManifestContext, *, required: bool
+    context: ManifestContext, *, required: bool, recover_unsealed_payloads: bool = False
 ) -> tuple[dict[str, Any], dict[str, bytes]]:
     metadata = _lstat(context.manifest_path)
     if metadata is None:
         if required:
             raise ManifestError("rollback manifest does not exist")
-        if any(context.payload_directory.iterdir()):
+        unsealed = list(context.payload_directory.iterdir())
+        if unsealed and not recover_unsealed_payloads:
             raise ManifestError("rollback payload exists without a manifest")
+        if unsealed:
+            # A coordinator cannot begin terminal mutation until the atomically
+            # written manifest result exists. Owner-only regular files in this
+            # otherwise empty authority directory are therefore incomplete
+            # capture output, never valid rollback authority. Removing them
+            # under the host lock makes process/power loss before manifest
+            # publication safely retryable.
+            for path in unsealed:
+                _secure_file_metadata(path, "unsealed rollback payload")
+            for path in unsealed:
+                path.unlink()
+            _fsync_directory(context.payload_directory)
         return _new_manifest(context), {}
     raw = _read_secure_file(
         context.manifest_path, label="rollback manifest", maximum=MAX_MANIFEST_BYTES
@@ -828,7 +931,9 @@ def capture(
         destination, label="destination", context=context, require_parent=False
     )
     with _HostLock(context.lock_path):
-        manifest, _payloads = _load_manifest(context, required=False)
+        manifest, _payloads = _load_manifest(
+            context, required=False, recover_unsealed_payloads=True
+        )
         if any(entry["destination"] == os.fspath(destination_path) for entry in manifest["entries"]):
             raise ManifestError("destination is already sealed into this manifest")
         repository = manifest.get("repository")
@@ -939,7 +1044,9 @@ def capture_set(
     ]
 
     with _HostLock(context.lock_path):
-        manifest, _payloads = _load_manifest(context, required=False)
+        manifest, _payloads = _load_manifest(
+            context, required=False, recover_unsealed_payloads=True
+        )
         sealed_repository = manifest.get("repository")
         if requested_repository is not None:
             if sealed_repository is not None and sealed_repository != requested_repository:
@@ -952,6 +1059,21 @@ def capture_set(
         destinations = [os.fspath(path) for path in requested_paths]
         if len(set(destinations)) != len(destinations):
             raise ManifestError("capture set contains a duplicate destination")
+        existing_order = [entry["destination"] for entry in manifest["entries"]]
+        if existing_order:
+            if (
+                existing_order != destinations
+                or sealed_repository != requested_repository
+            ):
+                raise ManifestError("manifest already seals a different capture set")
+            return {
+                "captured": True,
+                "manifest": os.fspath(context.manifest_path),
+                "manifestSha256": manifest["manifestSha256"],
+                "count": len(destinations),
+                "destinations": destinations,
+                "repository": manifest["repository"],
+            }
         if existing_destinations.intersection(destinations):
             raise ManifestError("capture set destination is already sealed")
         if len(manifest["entries"]) + len(requested_paths) > MAX_ENTRIES:

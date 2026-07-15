@@ -13,7 +13,11 @@ import { getAlertsIngestor } from '../services/alerts/alerts-ingestor.js';
 import { loadAlertsDispatcherConfig } from '../services/alerts/alerts-config.js';
 import { getPhotoToolLabelScheduler } from '../services/tools/photo-tool-label/photo-tool-label.scheduler.js';
 import { getPartMeasurementDrawingOcrScheduler } from '../services/part-measurement/part-measurement-drawing-ocr.scheduler.js';
-import { errorForLog, SchedulerStartupCleanupError } from './scheduler-errors.js';
+import {
+  errorForLog,
+  isSchedulerStepStateAmbiguousError,
+  SchedulerStartupCleanupError,
+} from './scheduler-errors.js';
 
 export type SchedulerStep = {
   name: string;
@@ -69,30 +73,43 @@ export async function startSchedulerStepGroup(
     }
     return steps;
   } catch (startError) {
+    const startErrors = isSchedulerStepStateAmbiguousError(startError)
+      ? startError.causeErrors
+      : [errorForLog(startError)];
     try {
       await stopSchedulerStepGroup(steps);
     } catch (cleanupError) {
-      throw new SchedulerStartupCleanupError([errorForLog(startError), ...asErrors(cleanupError)]);
+      throw new SchedulerStartupCleanupError([...startErrors, ...asErrors(cleanupError)]);
+    }
+    if (isSchedulerStepStateAmbiguousError(startError)) {
+      throw new SchedulerStartupCleanupError(startErrors);
     }
     throw startError;
   }
 }
 
 export function buildPostListenSchedulerDefinitions(app: FastifyInstance): SchedulerStepDefinition[] {
-  return [
-    {
+  const definitions: SchedulerStepDefinition[] = [];
+  if (env.SIGNAGE_RENDER_ENABLED) {
+    definitions.push({
       name: 'signage-render',
-      start: () => {
-        app.signageRenderScheduler.start();
+      start: async () => {
+        await app.signageRenderScheduler.resumeAfterDeploy();
         logger.info(
           { intervalSeconds: env.SIGNAGE_RENDER_INTERVAL_SECONDS, runner: env.SIGNAGE_RENDER_RUNNER },
           'Signage render scheduler started'
         );
       },
-      stop: () => {
-        app.signageRenderScheduler.stop();
+      stop: async () => {
+        await app.signageRenderScheduler.pauseForDeploy();
       },
-    },
+    });
+  } else {
+    logger.info('Signage render scheduler is disabled by environment');
+  }
+
+  return [
+    ...definitions,
     {
       name: 'backup',
       start: async () => {

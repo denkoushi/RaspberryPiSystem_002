@@ -145,6 +145,7 @@ def fleet_execution_contract(targets, classification, inventory):
         stack.enter_context(
             patch.object(MODULE, 'fleet_begin_run', return_value=(initial_fleet, None))
         )
+        stack.enter_context(patch.object(MODULE, 'reconcile_pi5_candidate_workload'))
         stack.enter_context(patch.object(MODULE, 'fleet_mark_unknown', side_effect=transition))
         stack.enter_context(patch.object(MODULE, 'fleet_mark_verified', side_effect=transition))
         stack.enter_context(patch.object(MODULE, 'fleet_finish_run', side_effect=transition))
@@ -160,6 +161,35 @@ def fleet_execution_contract(targets, classification, inventory):
             )
         )
         stack.enter_context(patch.object(MODULE, 'build_fleet_scope', side_effect=build_scope))
+        stack.enter_context(
+            patch.object(
+                MODULE,
+                'capture_server_config_manifest',
+                return_value={
+                    'path': (
+                        '/var/lib/raspi-release/rollback-manifests/'
+                        'run-1/raspberrypi5/manifest.json'
+                    ),
+                    'manifestSha256': 'e' * 64,
+                    'count': 3,
+                },
+            )
+        )
+        stack.enter_context(
+            patch.object(
+                MODULE,
+                'restore_server_config_manifest',
+                return_value={
+                    'restored': True,
+                    'manifest': (
+                        '/var/lib/raspi-release/rollback-manifests/'
+                        'run-1/raspberrypi5/manifest.json'
+                    ),
+                    'manifestSha256': 'e' * 64,
+                    'count': 3,
+                },
+            )
+        )
         stack.enter_context(patch.object(MODULE, 'converge_server_config'))
         stack.enter_context(patch.object(MODULE, 'ensure_pi5_release', ensure))
         stack.enter_context(
@@ -199,10 +229,51 @@ def fleet_execution_contract(targets, classification, inventory):
                     'path': '/var/lib/raspi-release/rollback-manifests/run-1/host/manifest.json',
                     'manifestSha256': 'c' * 64,
                     'count': 1,
+                    'runtime': {
+                        'path': '/var/lib/raspi-release/rollback-runtime/run-1/host/manifest.json',
+                        'manifestSha256': 'd' * 64,
+                        'unitCount': 5,
+                        'dockerCount': 2,
+                    },
+                },
+            )
+        )
+        stack.enter_context(
+            patch.object(
+                MODULE,
+                'cleanup_terminal_rollback',
+                return_value={
+                    'cleaned': True,
+                    'alreadyClean': False,
+                    'manifestSha256': 'd' * 64,
+                    'tagCount': 2,
+                    'outcome': 'committed',
+                },
+            )
+        )
+        stack.enter_context(
+            patch.object(
+                MODULE,
+                'prepare_terminal_repository',
+                return_value={
+                    'head': BASE_SHA,
+                    'repairedLegacyDocs': False,
+                    'count': 0,
                 },
             )
         )
         stack.enter_context(patch.object(MODULE, 'prove_signage_ready'))
+        stack.enter_context(
+            patch.object(
+                MODULE,
+                'refresh_signage_after_maintenance',
+                return_value={
+                    'signageEndpointAuthenticated': True,
+                    'signageImageSha256': 'e' * 64,
+                    'maintenanceArtifactReplaced': True,
+                },
+            )
+        )
         stack.enter_context(patch.object(MODULE, 'record_pi5_release_current'))
         yield ensure
 
@@ -367,14 +438,39 @@ class Pi5StabilityMonitorTest(unittest.TestCase):
         state.save = Mock()
         future = 1_800_000_005
         with patch.object(MODULE, 'run', side_effect=[
-            json.dumps({'runtimeStatus': 'consistent', 'stableUntil': future}),
+            '',
             json.dumps({'runtimeStatus': 'consistent', 'stableUntil': future}),
             '',
-        ]) as command, patch.object(MODULE.time, 'time', side_effect=[1_800_000_000, 1_800_000_000, future]), patch.object(MODULE.time, 'sleep') as sleep:
+        ]) as command, patch.object(MODULE.time, 'time', return_value=future), patch.object(MODULE.time, 'sleep') as sleep:
             MODULE.wait_for_pi5_stability(state)
-        sleep.assert_called_once_with(5)
-        self.assertEqual(command.call_args_list[-1].args[0][1], 'cleanup')
+        sleep.assert_not_called()
+        self.assertEqual(
+            [call.args[0][1] for call in command.call_args_list],
+            ['monitor', 'status', 'cleanup'],
+        )
         self.assertEqual(state.payload['pi5']['state'], 'stable')
+        self.assertEqual(state.save.call_count, 2)
+
+    def test_cleanup_failure_is_forward_only_and_never_reclassified_as_rollback(self):
+        state = MODULE.ReleaseState(
+            Path('/tmp/unused-release-state.json'),
+            {'pi5': {'state': 'stability-monitoring'}},
+        )
+        state.save = Mock()
+        failure = subprocess.CalledProcessError(
+            1,
+            [str(MODULE.PHASE3), 'cleanup'],
+            stderr='resumable cleanup fault',
+        )
+        with patch.object(MODULE, 'run', side_effect=[
+            '',
+            json.dumps({'runtimeStatus': 'consistent', 'stableUntil': 1_800_000_000}),
+            failure,
+        ]), patch.object(MODULE.time, 'time', return_value=1_800_000_001), \
+                patch('builtins.print'):
+            with self.assertRaises(subprocess.CalledProcessError):
+                MODULE.wait_for_pi5_stability(state)
+        self.assertEqual(state.payload['pi5']['state'], 'cleanup')
         state.save.assert_called_once()
 
     def test_cleanup_lock_conflict_exhausts_the_bounded_retry_window(self):
@@ -454,6 +550,12 @@ class RollbackStateTest(unittest.TestCase):
                 'path': '/var/lib/raspi-release/rollback-manifests/run-1/kiosk-a/manifest.json',
                 'manifestSha256': 'c' * 64,
                 'count': 1,
+                'runtime': {
+                    'path': '/var/lib/raspi-release/rollback-runtime/run-1/kiosk-a/manifest.json',
+                    'manifestSha256': 'd' * 64,
+                    'unitCount': 5,
+                    'dockerCount': 2,
+                },
             },
         }
         target_spec = {'host': 'kiosk-a', 'clientId': 'client-a', 'terminalType': 'kiosk'}
@@ -466,6 +568,49 @@ class RollbackStateTest(unittest.TestCase):
         )
         command.assert_not_called()
         self.assertNotIn('maintenanceClearedAt', target)
+
+    def test_cleanup_facade_delegates_to_the_runtime_manifest_adapter(self):
+        target = {
+            'rollbackManifest': {
+                'runtime': {
+                    'path': '/var/lib/raspi-release/rollback-runtime/run-1/kiosk-a/manifest.json',
+                    'manifestSha256': 'd' * 64,
+                    'unitCount': 5,
+                    'dockerCount': 2,
+                },
+            },
+        }
+        target_spec = {
+            'host': 'kiosk-a',
+            'clientId': 'client-a',
+            'terminalType': 'kiosk',
+        }
+        expected = {
+            'cleaned': True,
+            'alreadyClean': False,
+            'manifestSha256': 'd' * 64,
+            'tagCount': 2,
+            'outcome': 'restored',
+        }
+        with patch.object(
+            MODULE.ansible_backend,
+            'cleanup_terminal_rollback',
+            return_value=expected,
+        ) as cleanup:
+            self.assertEqual(
+                MODULE.cleanup_terminal_rollback(
+                    'inventory.yml', target_spec, target, 'run-1', 'restored'
+                ),
+                expected,
+            )
+        cleanup.assert_called_once_with(
+            'inventory.yml',
+            target_spec,
+            target,
+            'run-1',
+            'restored',
+            runtime=MODULE,
+        )
 
     def test_failed_manifest_adapter_result_is_not_hidden_by_the_facade(self):
         target = {'state': 'rolling-back', 'previousSha': BASE_SHA}
@@ -670,13 +815,25 @@ class Pi5IdempotentSkipTest(unittest.TestCase):
         candidate = self.marker()['candidate']
         status = {
             'runtimeStatus': 'consistent',
+            'liveHealthStatus': 'verified',
             'runtimeConfigStatus': 'verified',
             'runtimeConfigDigest': 'sha256:' + 'f' * 64,
             'activeSlot': 'blue',
             'gateway': {'mode': 'application', 'slot': 'blue'},
+            'migration': {
+                'status': 'applied',
+                'candidateCommit': self.sha,
+                'appliedAt': '2026-07-15T00:00:00Z',
+            },
             'slots': {
-                'blue': {'images': candidate},
-                'green': {'images': {'api': 'registry/api:previous', 'web': 'registry/web:previous'}},
+                'blue': {
+                    'images': candidate,
+                    'imageIds': {'api': 'sha256:' + '1' * 64, 'web': 'sha256:' + '2' * 64},
+                },
+                'green': {
+                    'images': {'api': 'registry/api:previous', 'web': 'registry/web:previous'},
+                    'imageIds': {'api': 'sha256:' + '3' * 64, 'web': 'sha256:' + '4' * 64},
+                },
             },
         }
         status.update(overrides)
@@ -738,9 +895,67 @@ class Pi5IdempotentSkipTest(unittest.TestCase):
 
     def test_pi5_already_current_requires_exact_marker_candidate_and_live_slot_match(self):
         with patch.object(MODULE, 'read_pi5_release_current', return_value=self.marker()), \
-                patch.object(MODULE, 'run', return_value=json.dumps(self.phase3_status())) as command:
+                patch.object(MODULE, 'run', return_value=json.dumps(self.phase3_status())) as command, \
+                patch.object(
+                    MODULE,
+                    'verify_pi5_live_migrations',
+                    return_value='sha256:' + 'e' * 64,
+                ) as migrations:
             self.assertTrue(MODULE.pi5_already_current(self.sha))
         self.assertEqual(command.call_args.args[0], [str(MODULE.PHASE3), 'status'])
+        migrations.assert_called_once_with(self.sha)
+
+    def test_pi5_already_current_accepts_run_scoped_marker_and_live_slot_match(self):
+        run_digest = '9' * 64
+        candidate = {
+            'api': f'registry/api:{self.sha}-0123456789ab-{run_digest}',
+            'web': f'registry/web:{self.sha}-0123456789ab-{run_digest}',
+        }
+        status = self.phase3_status()
+        status['slots']['blue']['images'] = candidate
+        with patch.object(
+                MODULE, 'read_pi5_release_current', return_value=self.marker(candidate=candidate)
+            ), patch.object(MODULE, 'run', return_value=json.dumps(status)), patch.object(
+                MODULE,
+                'verify_pi5_live_migrations',
+                return_value='sha256:' + 'e' * 64,
+            ):
+            self.assertTrue(MODULE.pi5_already_current(self.sha))
+
+    def test_pi5_already_current_requires_applied_live_migration_ledger(self):
+        for migration, verification_error in (
+            ({'status': 'checked', 'candidateCommit': self.sha, 'appliedAt': None}, None),
+            (
+                {
+                    'status': 'applied',
+                    'candidateCommit': 'b' * 40,
+                    'appliedAt': '2026-07-15T00:00:00Z',
+                },
+                None,
+            ),
+            (self.phase3_status()['migration'], RuntimeError('missing applied migration')),
+            (self.phase3_status()['migration'], RuntimeError('checksum mismatch')),
+        ):
+            with self.subTest(migration=migration, error=verification_error):
+                status = self.phase3_status(migration=migration)
+                verifier = Mock(
+                    side_effect=verification_error,
+                    return_value='sha256:' + 'e' * 64,
+                )
+                with patch.object(MODULE, 'read_pi5_release_current', return_value=self.marker()), \
+                        patch.object(MODULE, 'run', return_value=json.dumps(status)), \
+                        patch.object(MODULE, 'verify_pi5_live_migrations', verifier):
+                    self.assertFalse(MODULE.pi5_already_current(self.sha))
+
+    def test_pi5_already_current_accepts_zero_new_migration_after_full_live_verification(self):
+        with patch.object(MODULE, 'read_pi5_release_current', return_value=self.marker()), \
+                patch.object(MODULE, 'run', return_value=json.dumps(self.phase3_status())), \
+                patch.object(
+                    MODULE,
+                    'verify_pi5_live_migrations',
+                    return_value='sha256:' + 'd' * 64,
+                ):
+            self.assertTrue(MODULE.pi5_already_current(self.sha))
 
     def test_pi5_already_current_rejects_malformed_marker_without_status_call(self):
         malformed = {'sha': self.sha, 'candidate': {'api': f'registry/api:{self.sha}-0123456789ab'}}
@@ -784,6 +999,17 @@ class Pi5IdempotentSkipTest(unittest.TestCase):
                         patch.object(MODULE, 'run', return_value=json.dumps(status)):
                     self.assertFalse(MODULE.pi5_already_current(self.sha))
 
+    def test_pi5_already_current_requires_verified_live_health(self):
+        for value in (None, 'failed', 'not-checked'):
+            with self.subTest(value=value), \
+                    patch.object(MODULE, 'read_pi5_release_current', return_value=self.marker()), \
+                    patch.object(
+                        MODULE,
+                        'run',
+                        return_value=json.dumps(self.phase3_status(liveHealthStatus=value)),
+                    ):
+                self.assertFalse(MODULE.pi5_already_current(self.sha))
+
     def test_pi5_already_current_fail_closed_on_status_error(self):
         with patch.object(MODULE, 'read_pi5_release_current', return_value={'sha': self.sha}), \
                 patch.object(MODULE, 'run', side_effect=RuntimeError('status unavailable')):
@@ -797,6 +1023,11 @@ class Pi5ExpiredHandoffPreflightTest(unittest.TestCase):
             Path('/tmp/unused-release-state.json'), {'runId': 'run-1'}
         )
         self.state.save = Mock()
+        reconcile = patch.object(
+            MODULE, 'reconcile_pi5_candidate_workload', return_value=None
+        )
+        reconcile.start()
+        self.addCleanup(reconcile.stop)
 
     def assert_structural_call(self, call, operation, *, capture):
         self.assertEqual(call.args[0], [str(MODULE.PHASE3), operation])
@@ -805,10 +1036,15 @@ class Pi5ExpiredHandoffPreflightTest(unittest.TestCase):
             call.kwargs['env']['PI5_PRIOR_HANDOFF_RECOVERY_RUN_ID'], 'run-1'
         )
 
+    def assert_seal_call(self, call):
+        self.assert_structural_call(call, 'seal-image-ids', capture=False)
+
     @staticmethod
     def normal_status():
         return {
+            'event': 'cleaned',
             'runtimeStatus': 'consistent',
+            'liveHealthStatus': 'verified',
             'activeSlot': 'green',
             'previousSlot': None,
             'candidateSlot': None,
@@ -816,15 +1052,23 @@ class Pi5ExpiredHandoffPreflightTest(unittest.TestCase):
             'gateway': {'mode': 'application', 'slot': 'green'},
             'monitor': {'activeSlot': None, 'rollbackSlot': None},
             'slots': {
-                'green': {'images': {'api': 'registry/api:current', 'web': 'registry/web:current'}},
-                'blue': {'images': {'api': 'registry/api:previous', 'web': 'registry/web:previous'}},
+                'green': {
+                    'images': {'api': 'registry/api:current', 'web': 'registry/web:current'},
+                    'imageIds': {'api': 'sha256:' + '1' * 64, 'web': 'sha256:' + '2' * 64},
+                },
+                'blue': {
+                    'images': {'api': 'registry/api:previous', 'web': 'registry/web:previous'},
+                    'imageIds': {'api': 'sha256:' + '3' * 64, 'web': 'sha256:' + '4' * 64},
+                },
             },
         }
 
     @staticmethod
     def expired_status(stable_until=1_800_000_000):
         return {
+            'event': 'active',
             'runtimeStatus': 'consistent',
+            'liveHealthStatus': 'verified',
             'activeSlot': 'green',
             'previousSlot': 'blue',
             'candidateSlot': 'blue',
@@ -832,36 +1076,91 @@ class Pi5ExpiredHandoffPreflightTest(unittest.TestCase):
             'gateway': {'mode': 'application', 'slot': 'green'},
             'monitor': {'activeSlot': 'green', 'rollbackSlot': 'blue'},
             'slots': {
-                'green': {'images': {'api': 'registry/api:current', 'web': 'registry/web:current'}},
-                'blue': {'images': {'api': 'registry/api:previous', 'web': 'registry/web:previous'}},
+                'green': {
+                    'images': {'api': 'registry/api:current', 'web': 'registry/web:current'},
+                    'imageIds': {'api': 'sha256:' + '1' * 64, 'web': 'sha256:' + '2' * 64},
+                },
+                'blue': {
+                    'images': {'api': 'registry/api:previous', 'web': 'registry/web:previous'},
+                    'imageIds': {'api': 'sha256:' + '3' * 64, 'web': 'sha256:' + '4' * 64},
+                },
             },
         }
+
+    @classmethod
+    def cleanup_handoff_status(cls):
+        status = cls.expired_status(stable_until=None)
+        status['event'] = 'cleanup-handoff'
+        status['monitor'] = {'activeSlot': None, 'rollbackSlot': None}
+        return status
+
+    @classmethod
+    def monitor_passed_status(cls):
+        status = cls.expired_status()
+        status['event'] = 'monitor-passed'
+        return status
+
+    @classmethod
+    def prepared_status(cls):
+        status = cls.normal_status()
+        status.update({
+            'event': 'prepared',
+            'activeSlot': 'blue',
+            'candidateSlot': 'green',
+            'gateway': {'mode': 'application', 'slot': 'blue'},
+        })
+        return status
+
+    @classmethod
+    def switching_status(cls, event='switching'):
+        status = cls.prepared_status()
+        status.update({'event': event, 'previousSlot': 'blue'})
+        return status
+
+    @classmethod
+    def rolled_back_status(cls):
+        status = cls.switching_status('rolled-back')
+        status.update({
+            'candidateSlot': 'green',
+            'previousSlot': 'green',
+            'gateway': {'mode': 'application', 'slot': 'blue'},
+        })
+        return status
 
     def test_normal_single_slot_state_is_a_noop(self):
         with patch.object(MODULE, 'run', return_value=json.dumps(self.normal_status())) as command:
             self.assertFalse(MODULE.recover_expired_pi5_handoff(self.state))
+        self.assert_seal_call(command.call_args_list[0])
         self.assert_structural_call(command.call_args, 'status', capture=True)
 
     def test_not_initialized_state_is_a_noop(self):
         with patch.object(MODULE, 'run', return_value=json.dumps({'state': 'not-initialized'})) as command:
             self.assertFalse(MODULE.recover_expired_pi5_handoff(self.state))
+        self.assert_seal_call(command.call_args_list[0])
         self.assert_structural_call(command.call_args, 'status', capture=True)
 
-    def test_expired_consistent_handoff_is_cleaned_before_new_candidate_build(self):
+    def test_interrupted_window_restarts_full_monitor_before_cleanup_and_build(self):
         events = []
+        completed = self.monitor_passed_status()
         responses = iter([
+            '',
             json.dumps(self.expired_status()),
+            '',
+            '',
+            json.dumps(completed),
             '',
             json.dumps(self.normal_status()),
         ])
 
         def run(command_line, **_kwargs):
+            if command_line[1] in {'restart-monitor', 'monitor', 'cleanup'}:
+                events.append(command_line[1])
             if command_line[1] == 'cleanup':
-                events.append('cleanup')
+                pass
             return next(responses)
 
         def released(_sha, _state):
-            self.assertEqual(events, ['cleanup'])
+            self.assertEqual(events, ['restart-monitor', 'monitor', 'cleanup'])
             events.append('release')
 
         with patch.object(MODULE, 'pi5_already_current', return_value=False), \
@@ -872,65 +1171,171 @@ class Pi5ExpiredHandoffPreflightTest(unittest.TestCase):
                 patch.object(MODULE, 'record_pi5_release_current') as record:
             MODULE.ensure_pi5_release(self.sha, self.state)
         self.assertEqual(
-            [call.args[0][1] for call in command.call_args_list[:3]],
-            ['status', 'cleanup', 'status'],
+            [call.args[0][1] for call in command.call_args_list[:7]],
+            ['seal-image-ids', 'status', 'restart-monitor', 'monitor', 'status', 'cleanup', 'status'],
         )
-        self.assert_structural_call(command.call_args_list[0], 'status', capture=True)
-        self.assert_structural_call(command.call_args_list[1], 'cleanup', capture=False)
-        self.assert_structural_call(command.call_args_list[2], 'status', capture=True)
+        self.assert_seal_call(command.call_args_list[0])
+        self.assert_structural_call(command.call_args_list[1], 'status', capture=True)
+        self.assert_structural_call(command.call_args_list[2], 'restart-monitor', capture=False)
+        self.assert_structural_call(command.call_args_list[3], 'monitor', capture=False)
         release.assert_called_once_with(self.sha, self.state)
         wait.assert_called_once_with(self.state)
         record.assert_not_called()
-        self.assertEqual(events, ['cleanup', 'release'])
+        self.assertEqual(events, ['restart-monitor', 'monitor', 'cleanup', 'release'])
         self.assertEqual(self.state.payload['pi5HandoffRecovery'], {
-            'state': 'expired-handoff-cleaned',
+            'state': 'interrupted-window-reverified',
             'activeSlot': 'green',
             'previousSlot': 'blue',
             'completedAt': unittest.mock.ANY,
         })
         self.state.save.assert_called_once()
 
-    def test_active_prior_window_fails_before_cleanup_or_candidate_build(self):
-        with patch.object(MODULE, 'pi5_already_current') as already, \
-                patch.object(MODULE, 'run', return_value=json.dumps(self.expired_status(stable_until=1_800_000_002))), \
-                patch.object(MODULE.time, 'time', return_value=1_800_000_001), \
-                patch.object(MODULE, 'phase3_release') as release:
-            with self.assertRaisesRegex(RuntimeError, 'stability window is still active'):
-                MODULE.ensure_pi5_release(self.sha, self.state)
-        already.assert_not_called()
-        release.assert_not_called()
+    def test_partial_cleanup_handoff_is_resumed_before_new_candidate_build(self):
+        responses = iter([
+            '',
+            json.dumps(self.cleanup_handoff_status()),
+            '',
+            json.dumps(self.normal_status()),
+        ])
+        with patch.object(MODULE, 'run', side_effect=lambda *_args, **_kwargs: next(responses)) as command:
+            self.assertTrue(MODULE.recover_expired_pi5_handoff(self.state))
+        self.assertEqual(
+            [call.args[0][1] for call in command.call_args_list],
+            ['seal-image-ids', 'status', 'cleanup', 'status'],
+        )
+        self.assertEqual(self.state.payload['pi5HandoffRecovery'], {
+            'state': 'cleanup-handoff-resumed',
+            'activeSlot': 'green',
+            'previousSlot': 'blue',
+            'completedAt': unittest.mock.ANY,
+        })
+        self.state.save.assert_called_once()
+
+    def test_forward_cleanup_requires_exact_live_gateway_and_slot_health(self):
+        for status in (self.cleanup_handoff_status(), self.monitor_passed_status()):
+            for drift in ('stale-gateway', 'stale-slot'):
+                with self.subTest(event=status['event'], drift=drift):
+                    observed = json.loads(json.dumps(status))
+                    observed['runtimeStatus'] = 'stale'
+                    observed['liveHealthStatus'] = 'failed'
+                    if drift == 'stale-gateway':
+                        observed['gateway']['slot'] = observed['previousSlot']
+                    else:
+                        observed['slots'][observed['activeSlot']]['imageIds']['api'] = (
+                            'sha256:' + '9' * 64
+                        )
+                    with patch.object(
+                        MODULE,
+                        'run',
+                        side_effect=['', json.dumps(observed)],
+                    ) as command:
+                        with self.assertRaisesRegex(
+                            RuntimeError,
+                            'malformed|incomplete or unsafe|cleanup authority',
+                        ):
+                            MODULE.recover_expired_pi5_handoff(self.state)
+                    self.assertEqual(
+                        [call.args[0][1] for call in command.call_args_list],
+                        ['seal-image-ids', 'status'],
+                    )
+
+    def test_prepared_candidate_is_discarded_idempotently_before_planning(self):
+        normal = self.normal_status()
+        normal.update({'activeSlot': 'blue', 'gateway': {'mode': 'application', 'slot': 'blue'}})
+        responses = iter(['', json.dumps(self.prepared_status()), '', json.dumps(normal)])
+        with patch.object(MODULE, 'run', side_effect=lambda *_args, **_kwargs: next(responses)) as command:
+            self.assertTrue(MODULE.recover_expired_pi5_handoff(self.state))
+        self.assertEqual(
+            [call.args[0][1] for call in command.call_args_list],
+            ['seal-image-ids', 'status', 'cleanup', 'status'],
+        )
+        self.assertEqual(
+            self.state.payload['pi5HandoffRecovery']['state'],
+            'prepared-candidate-discarded',
+        )
+
+    def test_interrupted_candidate_preparation_boundaries_are_discarded(self):
+        normal = self.normal_status()
+        normal.update({'activeSlot': 'blue', 'gateway': {'mode': 'application', 'slot': 'blue'}})
+        for event in ('preparing', 'prepare-failed', 'candidate-prepared'):
+            with self.subTest(event=event):
+                interrupted = self.prepared_status()
+                interrupted['event'] = event
+                responses = iter(['', json.dumps(interrupted), '', json.dumps(normal)])
+                self.state.payload.pop('pi5HandoffRecovery', None)
+                self.state.save.reset_mock()
+                with patch.object(
+                    MODULE, 'run', side_effect=lambda *_args, **_kwargs: next(responses)
+                ) as command:
+                    self.assertTrue(MODULE.recover_expired_pi5_handoff(self.state))
+                self.assertEqual(
+                    [call.args[0][1] for call in command.call_args_list],
+                    ['seal-image-ids', 'status', 'cleanup', 'status'],
+                )
+                self.assertEqual(
+                    self.state.payload['pi5HandoffRecovery']['state'],
+                    'prepared-candidate-discarded',
+                )
+
+    def test_switching_and_switch_failed_are_durably_switched_back(self):
+        normal = self.normal_status()
+        normal.update({'activeSlot': 'blue', 'gateway': {'mode': 'application', 'slot': 'blue'}})
+        for event in ('switching', 'switch-failed'):
+            with self.subTest(event=event):
+                responses = iter([
+                    '',
+                    json.dumps(self.switching_status(event)),
+                    '',
+                    json.dumps(self.rolled_back_status()),
+                    '',
+                    json.dumps(normal),
+                ])
+                with patch.object(
+                    MODULE, 'run', side_effect=lambda *_args, **_kwargs: next(responses)
+                ) as command:
+                    self.assertTrue(MODULE.recover_expired_pi5_handoff(self.state))
+                self.assertEqual(
+                    [call.args[0][1] for call in command.call_args_list],
+                    ['seal-image-ids', 'status', 'rollback', 'status', 'cleanup', 'status'],
+                )
+                self.assertEqual(
+                    self.state.payload['pi5HandoffRecovery']['state'],
+                    'interrupted-handoff-rolled-back',
+                )
 
     def test_stale_status_fails_closed_without_cleanup(self):
         stale = self.expired_status()
         stale['runtimeStatus'] = 'stale'
         with patch.object(MODULE, 'run', return_value=json.dumps(stale)) as command:
-            with self.assertRaisesRegex(RuntimeError, 'not consistent'):
+            with self.assertRaisesRegex(RuntimeError, 'switchback lacks exact'):
                 MODULE.recover_expired_pi5_handoff(self.state)
+        self.assert_seal_call(command.call_args_list[0])
         self.assert_structural_call(command.call_args, 'status', capture=True)
 
     def test_status_error_fails_closed_without_cleanup(self):
         with patch.object(MODULE, 'run', side_effect=RuntimeError('status unavailable')) as command:
             with self.assertRaisesRegex(RuntimeError, 'status unavailable'):
                 MODULE.recover_expired_pi5_handoff(self.state)
-        self.assert_structural_call(command.call_args, 'status', capture=True)
+        self.assert_seal_call(command.call_args)
 
     def test_cleanup_error_does_not_retry_or_start_candidate_build(self):
         failure = subprocess.CalledProcessError(1, [str(MODULE.PHASE3), 'cleanup'])
         with patch.object(MODULE, 'pi5_already_current') as already, \
-                patch.object(MODULE, 'run', side_effect=[json.dumps(self.expired_status()), failure]) as command, \
+                patch.object(MODULE, 'run', side_effect=['', json.dumps(self.monitor_passed_status()), failure]) as command, \
                 patch.object(MODULE.time, 'time', return_value=1_800_000_001), \
                 patch.object(MODULE, 'phase3_release') as release:
             with self.assertRaises(subprocess.CalledProcessError):
                 MODULE.ensure_pi5_release(self.sha, self.state)
-        self.assertEqual([call.args[0][1] for call in command.call_args_list], ['status', 'cleanup'])
+        self.assertEqual([call.args[0][1] for call in command.call_args_list], ['seal-image-ids', 'status', 'cleanup'])
         already.assert_not_called()
         release.assert_not_called()
 
     def test_postcleanup_state_must_be_normalized_before_candidate_build(self):
-        postcleanup = self.expired_status()
+        postcleanup = self.monitor_passed_status()
         with patch.object(MODULE, 'pi5_already_current') as already, \
                 patch.object(MODULE, 'run', side_effect=[
-                    json.dumps(self.expired_status()),
+                    '',
+                    json.dumps(self.monitor_passed_status()),
                     '',
                     json.dumps(postcleanup),
                 ]) as command, \
@@ -938,7 +1343,7 @@ class Pi5ExpiredHandoffPreflightTest(unittest.TestCase):
                 patch.object(MODULE, 'phase3_release') as release:
             with self.assertRaisesRegex(RuntimeError, 'did not produce a normalized'):
                 MODULE.ensure_pi5_release(self.sha, self.state)
-        self.assertEqual([call.args[0][1] for call in command.call_args_list], ['status', 'cleanup', 'status'])
+        self.assertEqual([call.args[0][1] for call in command.call_args_list], ['seal-image-ids', 'status', 'cleanup', 'status'])
         already.assert_not_called()
         release.assert_not_called()
 

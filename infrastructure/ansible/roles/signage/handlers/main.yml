@@ -6,4 +6,4 @@
 - name: systemd-tmpfiles
   ansible.builtin.command:
     cmd: systemd-tmpfiles --create /etc/tmpfiles.d/signage-lite.conf
-
+  when: terminal_release_mode | default('full') == 'full'

@@ -8,6 +8,18 @@
     state: present
     update_cache: yes
   become: yes
+  when: terminal_release_mode | default('full') == 'full'
+
+- name: Verify Japanese input packages are installed before release
+  ansible.builtin.shell: |
+    set -euo pipefail
+    dpkg-query -W -f='${Status}\n' ibus-mozc ibus-gtk ibus-gtk3 ibus-gtk4 \
+      | grep -c '^install ok installed$' \
+      | grep -qx '4'
+  args:
+    executable: /bin/bash
+  changed_when: false
+  when: terminal_release_mode | default('full') == 'release-only'
 
 - name: Apply IBus process owner control
   ansible.builtin.import_tasks: ibus-process-owner.yml

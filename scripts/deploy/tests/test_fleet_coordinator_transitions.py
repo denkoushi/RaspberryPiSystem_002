@@ -56,6 +56,37 @@ def decision(host, role, *, current=OLD_SHA, targeted=True, reason="role impact"
     }
 
 
+def rollback_manifest(run_id, host, terminal_type="kiosk"):
+    return {
+        "path": (
+            "/var/lib/raspi-release/rollback-manifests/"
+            f"{run_id}/{host}/manifest.json"
+        ),
+        "manifestSha256": "c" * 64,
+        "count": 12,
+        "runtime": {
+            "path": (
+                "/var/lib/raspi-release/rollback-runtime/"
+                f"{run_id}/{host}/manifest.json"
+            ),
+            "manifestSha256": "d" * 64,
+            "unitCount": 5 if terminal_type == "kiosk" else 11,
+            "dockerCount": 2 if terminal_type == "kiosk" else 0,
+        },
+    }
+
+
+def server_config_manifest(run_id, host="pi5"):
+    return {
+        "path": (
+            "/var/lib/raspi-release/rollback-manifests/"
+            f"{run_id}/{host}/manifest.json"
+        ),
+        "manifestSha256": "e" * 64,
+        "count": 3,
+    }
+
+
 class FakeToken:
     def __init__(self, events, cancel_at=None):
         self.events = events
@@ -115,7 +146,10 @@ class FakeRuntime:
         self.playbook_error = None
         self.rollback_ok = True
         self.terminal_observation_error = None
+        self.terminal_observation_failures = None
         self.host_config_error = None
+        self.server_config_capture_error = None
+        self.server_config_restore_error = None
         self.deployed_sha = {}
         self.pi5_release_sha = None
         self.pi5_marker_sha = None
@@ -127,7 +161,11 @@ class FakeRuntime:
         self.active_verification_ids = {}
         self.fleet_verified_error_host = None
         self.manifest_capture_error = None
+        self.repository_baseline_result = None
+        self.runtime_cleanup_error = None
+        self.pi5_reconcile_error = None
         self.prestage_error = None
+        self.signage_refresh_error = None
         self.maintenance_ack = True
         self.abandoned_run_id = None
         self.prior_runs = {}
@@ -240,6 +278,11 @@ class FakeRuntime:
     def release_hosts(self, _inventory):
         return copy.deepcopy(self.hosts)
 
+    def reconcile_pi5_candidate_workload(self):
+        self.events.append("pi5:reconcile-candidate")
+        if self.pi5_reconcile_error is not None:
+            raise self.pi5_reconcile_error
+
     def build_fleet_scope(self, **kwargs):
         self.scope_kwargs = kwargs
         return copy.deepcopy(self.plan), copy.deepcopy(self.targets), {}, []
@@ -258,7 +301,17 @@ class FakeRuntime:
 
     def observe_terminal_evidence(self, _inventory, host, _role, client_id):
         self.events.append(f"observe:terminal:{host}")
-        if self.terminal_observation_error is not None:
+        if (
+            self.terminal_observation_error is not None
+            and self.terminal_observation_failures is not None
+            and self.terminal_observation_failures > 0
+        ):
+            self.terminal_observation_failures -= 1
+            raise self.terminal_observation_error
+        if (
+            self.terminal_observation_error is not None
+            and self.terminal_observation_failures is None
+        ):
             raise self.terminal_observation_error
         current = (
             OLD_SHA
@@ -272,7 +325,26 @@ class FakeRuntime:
             "statusClientId": client_id,
         }
 
-    def converge_server_config(self, _inventory, host, sha, _run_id):
+    def capture_server_config_manifest(self, _inventory, host, run_id):
+        self.events.append(f"pi5:config-capture:{host}:{run_id}")
+        if self.server_config_capture_error is not None:
+            raise self.server_config_capture_error
+        return server_config_manifest(run_id, host)
+
+    def restore_server_config_manifest(self, _inventory, host, run_id, manifest):
+        self.events.append(f"pi5:config-restore:{host}:{run_id}")
+        if self.server_config_restore_error is not None:
+            raise self.server_config_restore_error
+        return {
+            "restored": True,
+            "manifest": manifest["path"],
+            "manifestSha256": manifest["manifestSha256"],
+            "count": manifest["count"],
+        }
+
+    def converge_server_config(self, _inventory, host, sha, _run_id, manifest):
+        if manifest != server_config_manifest(_run_id, host):
+            raise AssertionError("server config convergence lacks sealed manifest")
         self.events.append(f"pi5:host-config:{host}:{sha}")
         if self.host_config_error is not None:
             raise self.host_config_error
@@ -296,6 +368,13 @@ class FakeRuntime:
         self.events.append(f"terminal:previous:{host}")
         return OLD_SHA
 
+    def prepare_terminal_repository(self, _inventory, host):
+        self.events.append(f"terminal:baseline:{host}")
+        return copy.deepcopy(
+            self.repository_baseline_result
+            or {"head": OLD_SHA, "repairedLegacyDocs": False, "count": 0}
+        )
+
     def capture_terminal_manifest(
         self, _inventory, target_spec, run_id, previous_sha
     ):
@@ -303,11 +382,7 @@ class FakeRuntime:
         self.events.append(f"manifest:capture:{host}:{previous_sha}")
         if self.manifest_capture_error is not None:
             raise self.manifest_capture_error
-        return {
-            "path": f"/var/lib/raspi-release/rollback-manifests/{run_id}/{host}/manifest.json",
-            "manifestSha256": "c" * 64,
-            "count": 12,
-        }
+        return rollback_manifest(run_id, host, target_spec.get("terminalType"))
 
     def should_issue_terminal_notice(self, **_kwargs):
         return False
@@ -336,6 +411,16 @@ class FakeRuntime:
             "signage:ready-proof:"
             f"{host}:{run_id}:{client_id}:{release_sha}:{verification_id}"
         )
+
+    def refresh_signage_after_maintenance(self, _inventory, host, run_id):
+        self.events.append(f"signage:refresh:{host}:{run_id}")
+        if self.signage_refresh_error is not None:
+            raise self.signage_refresh_error
+        return {
+            "signageEndpointAuthenticated": True,
+            "signageImageSha256": "e" * 64,
+            "maintenanceArtifactReplaced": True,
+        }
 
     def active_verification_id(
         self, run_id, client_id, *, release_sha, rollback
@@ -387,6 +472,21 @@ class FakeRuntime:
     def rollback_terminal(self, _inventory, target_spec, _target, _run_id):
         self.events.append(f"rollback:{target_spec['host']}")
         return self.rollback_ok
+
+    def cleanup_terminal_rollback(
+        self, _inventory, target_spec, _target, run_id, outcome
+    ):
+        host = target_spec["host"]
+        self.events.append(f"manifest:cleanup:{host}:{run_id}:{outcome}")
+        if self.runtime_cleanup_error is not None:
+            raise self.runtime_cleanup_error
+        return {
+            "cleaned": True,
+            "alreadyClean": False,
+            "manifestSha256": "d" * 64,
+            "tagCount": 2 if target_spec.get("terminalType") == "kiosk" else 0,
+            "outcome": outcome,
+        }
 
     def should_hold_after_canary(self, *_args, **_kwargs):
         return False
@@ -462,11 +562,28 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
 
         self.assertEqual(result, 0)
         self.assertTrue(runtime.events[0].startswith("inventory:"))
-        self.assertEqual(runtime.events[1], "fleet:begin")
+        self.assertEqual(runtime.events[1], "pi5:reconcile-candidate")
+        self.assertEqual(runtime.events[2], "fleet:begin")
         self.assertFalse(any(event.startswith("observe:") for event in runtime.events))
         finish = runtime.events.index("fleet:finish:success")
         self.assertLess(finish, len(runtime.events) - 1)
         self.assertTrue(runtime.events[-1].startswith("legacy:save:success:completed"))
+
+    def test_candidate_reconcile_failure_precedes_fleet_state_and_noop_planning(self):
+        runtime = FakeRuntime(fleet={}, hosts=[], plan={}, targets=[])
+        runtime.pi5_reconcile_error = RuntimeError("candidate recovery unsafe")
+
+        with self.assertRaisesRegex(RuntimeError, "candidate recovery unsafe"):
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            )
+
+        self.assertEqual(
+            runtime.events,
+            ["inventory:/ansible/inventory.yml", "pi5:reconcile-candidate"],
+        )
+        self.assertEqual(runtime.states, [])
+        self.assertIsNone(runtime.fleet["activeRun"])
 
     def test_seed_promotes_only_successful_live_observation(self):
         hosts = [
@@ -594,6 +711,10 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         self.assertTrue(runtime.scope_kwargs["full_fleet"])
         self.assertLess(
             runtime.events.index("fleet:unknown:pi5"),
+            runtime.events.index("pi5:config-capture:pi5:run-1"),
+        )
+        self.assertLess(
+            runtime.events.index("pi5:config-capture:pi5:run-1"),
             runtime.events.index(f"pi5:host-config:pi5:{NEW_SHA}"),
         )
         self.assertLess(
@@ -612,12 +733,15 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             runtime.events.index(f"fleet:verified:pi5:{NEW_SHA}"),
             runtime.events.index("legacy:pi5-marker"),
         )
+        self.assertEqual(
+            runtime.states[-1].payload["serverConfig"]["state"], "converged"
+        )
         self.assertLess(
             runtime.events.index("fleet:unknown:kiosk-a"),
-            runtime.events.index("terminal:previous:kiosk-a"),
+            runtime.events.index("terminal:baseline:kiosk-a"),
         )
         self.assertLess(
-            runtime.events.index("terminal:previous:kiosk-a"),
+            runtime.events.index("terminal:baseline:kiosk-a"),
             runtime.events.index(f"manifest:capture:kiosk-a:{OLD_SHA}"),
         )
         self.assertLess(
@@ -644,6 +768,12 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         )
         self.assertLess(
             runtime.events.index("status:remove-client:--run-id:run-1:--client:a"),
+            runtime.events.index(
+                "manifest:cleanup:kiosk-a:run-1:committed"
+            ),
+        )
+        self.assertLess(
+            runtime.events.index("manifest:cleanup:kiosk-a:run-1:committed"),
             runtime.events.index(f"fleet:verified:kiosk-a:{NEW_SHA}"),
         )
         self.assertLess(
@@ -663,14 +793,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         )
         self.assertEqual(
             target_state["rollbackManifest"],
-            {
-                "path": (
-                    "/var/lib/raspi-release/rollback-manifests/"
-                    "run-1/kiosk-a/manifest.json"
-                ),
-                "manifestSha256": "c" * 64,
-                "count": 12,
-            },
+            rollback_manifest("run-1", "kiosk-a"),
         )
 
     def test_manifest_capture_failure_precedes_every_terminal_mutation(self):
@@ -702,10 +825,9 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
                 args(), runtime=runtime, token=FakeToken(runtime.events)
             )
 
-        self.assertLess(
-            runtime.events.index(f"manifest:capture:kiosk-a:{OLD_SHA}"),
-            runtime.events.index("fleet:finish:failed"),
-        )
+        self.assertIn(f"manifest:capture:kiosk-a:{OLD_SHA}", runtime.events)
+        self.assertNotIn("fleet:finish:failed", runtime.events)
+        self.assertEqual(runtime.fleet["activeRun"]["runId"], "run-1")
         for forbidden in (
             "playbook:kiosk-a",
             "rollback:kiosk-a",
@@ -719,6 +841,57 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         self.assertNotIn("maintenanceStartedAt", target)
         self.assertNotIn("rollbackManifest", target)
         self.assertEqual(target["evidence"], "unknown")
+
+    def test_cancel_after_manifest_before_maintenance_cleans_runtime_authority(self):
+        terminal = {
+            "host": "kiosk-a",
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "a",
+        }
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", OLD_SHA),
+                "kiosk-a": host_record("kiosk", OLD_SHA),
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan={
+                "pi5Required": False,
+                "hosts": [
+                    decision("pi5", "server", targeted=False),
+                    decision("kiosk-a", "kiosk"),
+                ],
+            },
+            targets=[terminal],
+        )
+
+        result = coordinator.execute(
+            args(),
+            runtime=runtime,
+            token=FakeToken(runtime.events, cancel_at="after-notice:kiosk-a"),
+        )
+
+        self.assertEqual(result, 130)
+        capture = runtime.events.index(f"manifest:capture:kiosk-a:{OLD_SHA}")
+        cleanup = runtime.events.index(
+            "manifest:cleanup:kiosk-a:run-1:committed"
+        )
+        finish = runtime.events.index("fleet:finish:cancelled")
+        self.assertLess(capture, cleanup)
+        self.assertLess(cleanup, finish)
+        self.assertNotIn("rollback:kiosk-a", runtime.events)
+        self.assertNotIn("playbook:kiosk-a", runtime.events)
+        self.assertNotIn(
+            "status:put:--run-id:run-1:--clients:a:--terminal-type:kiosk",
+            runtime.events,
+        )
+        target = runtime.states[-1].target("kiosk-a")
+        self.assertNotIn("maintenanceStartedAt", target)
+        self.assertEqual(
+            target["runtimeFinalization"],
+            {"outcome": "committed", "verifiedSha": OLD_SHA},
+        )
+        self.assertIn("runtimeCleanup", target)
 
     def test_signage_prestage_failure_restores_the_sealed_manifest(self):
         terminal = {
@@ -763,9 +936,108 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             f"{OLD_SHA}:{ROLLBACK_VERIFICATION_ID}",
             runtime.events,
         )
+        self.assertLess(
+            runtime.events.index(
+                "manifest:cleanup:signage-a:run-1:restored"
+            ),
+            runtime.events.index(f"fleet:verified:signage-a:{OLD_SHA}"),
+        )
         target = runtime.states[-1].target("signage-a")
         self.assertEqual(target["rollbackEvidence"], "verified")
         self.assertIn("maintenanceClearedAt", target)
+        remove = runtime.events.index(
+            "status:remove-client:--run-id:run-1:--client:s1"
+        )
+        refresh = runtime.events.index("signage:refresh:signage-a:run-1")
+        cleanup = runtime.events.index(
+            "manifest:cleanup:signage-a:run-1:restored"
+        )
+        self.assertLess(remove, refresh)
+        self.assertLess(refresh, cleanup)
+
+    def test_signage_forward_refreshes_after_remove_before_fleet_promotion(self):
+        terminal = {
+            "host": "signage-a",
+            "role": "signage",
+            "terminalType": "signage",
+            "clientId": "s1",
+        }
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", OLD_SHA),
+                "signage-a": host_record("signage", OLD_SHA),
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan={
+                "pi5Required": False,
+                "hosts": [
+                    decision("pi5", "server", targeted=False),
+                    decision("signage-a", "signage"),
+                ],
+            },
+            targets=[terminal],
+        )
+
+        self.assertEqual(
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            ),
+            0,
+        )
+
+        remove = runtime.events.index(
+            "status:remove-client:--run-id:run-1:--client:s1"
+        )
+        refresh = runtime.events.index("signage:refresh:signage-a:run-1")
+        promote = runtime.events.index(f"fleet:verified:signage-a:{NEW_SHA}")
+        self.assertLess(remove, refresh)
+        self.assertLess(refresh, promote)
+        target = runtime.states[-1].target("signage-a")
+        self.assertTrue(target["signageDisplayProof"]["maintenanceArtifactReplaced"])
+
+    def test_status_ready_success_cannot_mask_signage_image_key_failure(self):
+        terminal = {
+            "host": "signage-a",
+            "role": "signage",
+            "terminalType": "signage",
+            "clientId": "s1",
+        }
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", OLD_SHA),
+                "signage-a": host_record("signage", OLD_SHA),
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan={
+                "pi5Required": False,
+                "hosts": [
+                    decision("pi5", "server", targeted=False),
+                    decision("signage-a", "signage"),
+                ],
+            },
+            targets=[terminal],
+        )
+        runtime.signage_refresh_error = RuntimeError("signage image key rejected")
+
+        with self.assertRaisesRegex(RuntimeError, "terminal finalization failed"):
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            )
+
+        self.assertTrue(
+            any(event.startswith("signage:ready-proof:") for event in runtime.events)
+        )
+        self.assertIn("signage:refresh:signage-a:run-1", runtime.events)
+        self.assertFalse(
+            any(
+                event.startswith("fleet:verified:signage-a:")
+                for event in runtime.events
+            )
+        )
+        self.assertNotIn("rollback:signage-a", runtime.events)
+        target = runtime.states[-1].target("signage-a")
+        self.assertEqual(target["evidence"], "unknown")
+        self.assertIn("signage image key rejected", target["finalizationFailure"])
 
     def test_cancel_after_maintenance_restores_before_run_cancels(self):
         terminal = {
@@ -799,6 +1071,12 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         self.assertEqual(result, 130)
         self.assertLess(
             runtime.events.index("rollback:kiosk-a"),
+            runtime.events.index(
+                "manifest:cleanup:kiosk-a:run-1:restored"
+            ),
+        )
+        self.assertLess(
+            runtime.events.index("manifest:cleanup:kiosk-a:run-1:restored"),
             runtime.events.index("fleet:finish:cancelled"),
         )
         self.assertNotIn("playbook:kiosk-a", runtime.events)
@@ -924,7 +1202,105 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         self.assertEqual(target["evidence"], "unknown")
         self.assertIn("fleet persistence unavailable", target["finalizationFailure"])
         self.assertEqual(runtime.fleet["fleet"]["kiosk-a"]["evidence"], "unknown")
-        self.assertIn("fleet:finish:failed", runtime.events)
+        self.assertNotIn("fleet:finish:failed", runtime.events)
+        self.assertEqual(runtime.fleet["activeRun"]["runId"], "run-1")
+
+    def test_forward_runtime_cleanup_failure_stays_unknown_without_rollback(self):
+        terminal = {
+            "host": "kiosk-a",
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "a",
+        }
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", OLD_SHA),
+                "kiosk-a": host_record("kiosk", OLD_SHA),
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan={
+                "pi5Required": False,
+                "hosts": [
+                    decision("pi5", "server", targeted=False),
+                    decision("kiosk-a", "kiosk"),
+                ],
+            },
+            targets=[terminal],
+        )
+        runtime.runtime_cleanup_error = RuntimeError("runtime cleanup unavailable")
+
+        with self.assertRaisesRegex(RuntimeError, "terminal finalization failed"):
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            )
+
+        self.assertIn(
+            "manifest:cleanup:kiosk-a:run-1:committed", runtime.events
+        )
+        self.assertNotIn("rollback:kiosk-a", runtime.events)
+        self.assertFalse(
+            any(
+                event.startswith("fleet:verified:kiosk-a:")
+                for event in runtime.events
+            )
+        )
+        target = runtime.states[-1].target("kiosk-a")
+        self.assertEqual(
+            target["runtimeFinalization"],
+            {"outcome": "committed", "verifiedSha": NEW_SHA},
+        )
+        self.assertIn("maintenanceClearedAt", target)
+        self.assertIn("runtime cleanup unavailable", target["finalizationFailure"])
+        self.assertEqual(runtime.fleet["fleet"]["kiosk-a"]["evidence"], "unknown")
+
+    def test_rollback_runtime_cleanup_failure_keeps_rollback_evidence_unknown(self):
+        terminal = {
+            "host": "kiosk-a",
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "a",
+        }
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", OLD_SHA),
+                "kiosk-a": host_record("kiosk", OLD_SHA),
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan={
+                "pi5Required": False,
+                "hosts": [
+                    decision("pi5", "server", targeted=False),
+                    decision("kiosk-a", "kiosk"),
+                ],
+            },
+            targets=[terminal],
+        )
+        runtime.playbook_error = RuntimeError("deploy failed")
+        runtime.runtime_cleanup_error = RuntimeError("runtime cleanup unavailable")
+
+        with self.assertRaisesRegex(RuntimeError, "rollout stopped"):
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            )
+
+        self.assertIn("rollback:kiosk-a", runtime.events)
+        self.assertIn(
+            "manifest:cleanup:kiosk-a:run-1:restored", runtime.events
+        )
+        self.assertFalse(
+            any(
+                event.startswith("fleet:verified:kiosk-a:")
+                for event in runtime.events
+            )
+        )
+        target = runtime.states[-1].target("kiosk-a")
+        self.assertIn("runtime cleanup unavailable", target["rollbackEvidence"])
+        self.assertEqual(
+            target["runtimeFinalization"],
+            {"outcome": "restored", "verifiedSha": OLD_SHA},
+        )
+        self.assertIn("maintenanceClearedAt", target)
+        self.assertEqual(runtime.fleet["fleet"]["kiosk-a"]["evidence"], "unknown")
 
     def test_pi5_host_config_failure_stops_before_candidate_and_terminals(self):
         terminal = {
@@ -953,7 +1329,12 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
                 args(), runtime=runtime, token=FakeToken(runtime.events)
             )
 
+        self.assertLess(
+            runtime.events.index("pi5:config-capture:pi5:run-1"),
+            runtime.events.index(f"pi5:host-config:pi5:{NEW_SHA}"),
+        )
         self.assertIn(f"pi5:host-config:pi5:{NEW_SHA}", runtime.events)
+        self.assertIn("pi5:config-restore:pi5:run-1", runtime.events)
         self.assertNotIn("pi5:ensure", runtime.events)
         self.assertFalse(
             any(event.startswith("observe:server:") for event in runtime.events)
@@ -978,6 +1359,144 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         self.assertFalse(any(event.startswith("status:") for event in runtime.events))
         self.assertNotIn("kiosk-a", runtime.deployed_sha)
         self.assertIn("fleet:finish:failed", runtime.events)
+        self.assertIsNone(runtime.fleet["activeRun"])
+        self.assertEqual(
+            runtime.states[-1].payload["serverConfig"]["state"], "restored"
+        )
+
+    def test_pi5_host_config_restore_failure_retains_active_recovery_authority(self):
+        runtime = FakeRuntime(
+            fleet={"pi5": host_record("server", OLD_SHA)},
+            hosts=[{"host": "pi5", "role": "server"}],
+            plan={
+                "pi5Required": True,
+                "hosts": [decision("pi5", "server")],
+            },
+            targets=[],
+        )
+        runtime.host_config_error = RuntimeError("host config failed")
+        runtime.server_config_restore_error = RuntimeError("restore unavailable")
+
+        with self.assertRaisesRegex(
+            RuntimeError, "server config convergence and restore failed"
+        ):
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            )
+
+        self.assertIn("pi5:config-restore:pi5:run-1", runtime.events)
+        self.assertNotIn("fleet:finish:failed", runtime.events)
+        self.assertEqual(runtime.fleet["activeRun"]["runId"], "run-1")
+        config = runtime.states[-1].payload["serverConfig"]
+        self.assertEqual(config["state"], "restore-failed")
+        self.assertIn("restore unavailable", config["restoreFailure"])
+
+    def test_pi5_config_capture_failure_is_mutation_free_and_recoverable(self):
+        runtime = FakeRuntime(
+            fleet={"pi5": host_record("server", OLD_SHA)},
+            hosts=[{"host": "pi5", "role": "server"}],
+            plan={
+                "pi5Required": True,
+                "hosts": [decision("pi5", "server")],
+            },
+            targets=[],
+        )
+        runtime.server_config_capture_error = RuntimeError("capture unavailable")
+
+        with self.assertRaisesRegex(RuntimeError, "capture unavailable"):
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            )
+
+        self.assertIn("pi5:config-capture:pi5:run-1", runtime.events)
+        self.assertNotIn(f"pi5:host-config:pi5:{NEW_SHA}", runtime.events)
+        self.assertNotIn("pi5:config-restore:pi5:run-1", runtime.events)
+        self.assertNotIn("pi5:ensure", runtime.events)
+        self.assertNotIn("fleet:finish:failed", runtime.events)
+        self.assertEqual(runtime.fleet["activeRun"]["runId"], "run-1")
+        self.assertEqual(
+            runtime.states[-1].payload["serverConfig"]["state"],
+            "capture-pending",
+        )
+
+    def test_interrupted_captured_pi5_config_restores_before_noop_planning(self):
+        runtime = FakeRuntime(
+            fleet={"pi5": host_record("server", NEW_SHA)},
+            hosts=[{"host": "pi5", "role": "server"}],
+            plan={
+                "pi5Required": False,
+                "hosts": [
+                    decision("pi5", "server", current=NEW_SHA, targeted=False)
+                ],
+            },
+            targets=[],
+        )
+        runtime.abandoned_run_id = "crashed-run"
+        runtime.prior_runs["crashed-run"] = {
+            "runId": "crashed-run",
+            "inventory": "inventory.yml",
+            "serverConfig": {
+                "state": "captured",
+                "authorityRunId": "crashed-run",
+                "host": "pi5",
+                "sha": NEW_SHA,
+                "rollbackManifest": server_config_manifest("crashed-run"),
+            },
+            "targets": [],
+        }
+
+        self.assertEqual(
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            ),
+            0,
+        )
+
+        restore = runtime.events.index("pi5:config-restore:pi5:crashed-run")
+        self.assertLess(restore, runtime.events.index("fleet:finish:success"))
+        recovery = runtime.states[-1].payload["interruptedServerConfig"]
+        self.assertEqual(recovery["state"], "restored")
+        self.assertEqual(recovery["authorityRunId"], "crashed-run")
+
+    def test_interrupted_capture_pending_recaptures_same_run_before_restore(self):
+        runtime = FakeRuntime(
+            fleet={"pi5": host_record("server", NEW_SHA)},
+            hosts=[{"host": "pi5", "role": "server"}],
+            plan={
+                "pi5Required": False,
+                "hosts": [
+                    decision("pi5", "server", current=NEW_SHA, targeted=False)
+                ],
+            },
+            targets=[],
+        )
+        runtime.abandoned_run_id = "crashed-run"
+        runtime.prior_runs["crashed-run"] = {
+            "runId": "crashed-run",
+            "inventory": "inventory.yml",
+            "serverConfig": {
+                "state": "capture-pending",
+                "authorityRunId": "crashed-run",
+                "host": "pi5",
+                "sha": NEW_SHA,
+            },
+            "targets": [],
+        }
+
+        self.assertEqual(
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            ),
+            0,
+        )
+
+        capture = runtime.events.index("pi5:config-capture:pi5:crashed-run")
+        restore = runtime.events.index("pi5:config-restore:pi5:crashed-run")
+        self.assertLess(capture, restore)
+        self.assertEqual(
+            runtime.states[-1].payload["interruptedServerConfig"]["state"],
+            "restored",
+        )
 
     def test_cancel_after_pi5_host_config_never_starts_candidate_or_terminals(self):
         terminal = {
@@ -1087,7 +1606,54 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             target["rollbackReadyVerificationId"], ROLLBACK_VERIFICATION_ID
         )
         self.assertIn("maintenanceClearedAt", target)
+        self.assertLess(
+            runtime.events.index("manifest:cleanup:kiosk-a:run-1:restored"),
+            runtime.events.index(f"fleet:verified:kiosk-a:{OLD_SHA}"),
+        )
         self.assertIn("fleet:finish:failed", runtime.events)
+
+    def test_kiosk_agent_death_after_playbook_is_caught_by_final_observation(self):
+        terminal = {
+            "host": "kiosk-a",
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "a",
+        }
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", OLD_SHA),
+                "kiosk-a": host_record("kiosk", OLD_SHA),
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan={
+                "pi5Required": False,
+                "hosts": [
+                    decision("pi5", "server", targeted=False),
+                    decision("kiosk-a", "kiosk"),
+                ],
+            },
+            targets=[terminal],
+        )
+        runtime.terminal_observation_error = RuntimeError(
+            "nfc-agent died after playbook"
+        )
+        runtime.terminal_observation_failures = 1
+
+        with self.assertRaisesRegex(RuntimeError, "rollout stopped"):
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            )
+
+        playbook = runtime.events.index("playbook:kiosk-a")
+        first_observe = runtime.events.index("observe:terminal:kiosk-a")
+        rollback = runtime.events.index("rollback:kiosk-a")
+        self.assertLess(playbook, first_observe)
+        self.assertLess(first_observe, rollback)
+        self.assertEqual(runtime.events.count("observe:terminal:kiosk-a"), 2)
+        target = runtime.states[-1].target("kiosk-a")
+        self.assertIn("nfc-agent died after playbook", target["failure"])
+        self.assertEqual(target["rollbackEvidence"], "verified")
+        self.assertEqual(runtime.fleet["fleet"]["kiosk-a"]["currentSha"], OLD_SHA)
 
     def test_execution_uses_each_hosts_role_specific_desired_sha(self):
         terminal = {
@@ -1196,7 +1762,8 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             "status:remove-client:--run-id:run-1:--client:a",
             runtime.events,
         )
-        self.assertIn("fleet:finish:failed", runtime.events)
+        self.assertNotIn("fleet:finish:failed", runtime.events)
+        self.assertEqual(runtime.fleet["activeRun"]["runId"], "run-1")
 
     def test_cancel_during_ready_wait_rolls_back_before_cancel_finishes(self):
         terminal = {
@@ -1248,6 +1815,10 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         )
         self.assertLess(
             runtime.events.index("rollback:kiosk-a"),
+            runtime.events.index("manifest:cleanup:kiosk-a:run-1:restored"),
+        )
+        self.assertLess(
+            runtime.events.index("manifest:cleanup:kiosk-a:run-1:restored"),
             runtime.events.index("fleet:finish:cancelled"),
         )
         self.assertIn(
@@ -1423,14 +1994,9 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
                     "evidence": "unknown",
                     "state": "deploying",
                     "maintenanceStartedAt": "2026-07-14T23:59:00Z",
-                    "rollbackManifest": {
-                        "path": (
-                            "/var/lib/raspi-release/rollback-manifests/"
-                            "crashed-run/kiosk-a/manifest.json"
-                        ),
-                        "manifestSha256": "d" * 64,
-                        "count": 12,
-                    },
+                    "rollbackManifest": rollback_manifest(
+                        "crashed-run", "kiosk-a"
+                    ),
                 }
             ],
         }
@@ -1446,8 +2012,24 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             runtime.events.index("legacy:read:crashed-run"),
             runtime.events.index("rollback:kiosk-a"),
         )
+        recovery_put = (
+            "status:put:--run-id:crashed-run:--clients:a:"
+            "--terminal-type:kiosk:--phase:failed"
+        )
+        self.assertLess(
+            runtime.events.index(recovery_put),
+            runtime.events.index("rollback:kiosk-a"),
+        )
         self.assertLess(
             runtime.events.index("rollback:kiosk-a"),
+            runtime.events.index(
+                "manifest:cleanup:kiosk-a:crashed-run:restored"
+            ),
+        )
+        self.assertLess(
+            runtime.events.index(
+                "manifest:cleanup:kiosk-a:crashed-run:restored"
+            ),
             runtime.events.index(f"fleet:verified:kiosk-a:{OLD_SHA}"),
         )
         self.assertNotIn(f"manifest:capture:kiosk-a:{OLD_SHA}", runtime.events)
@@ -1460,6 +2042,85 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         self.assertIn(
             "status:remove-client:--run-id:crashed-run:--client:a",
             runtime.events,
+        )
+
+    def test_interrupted_signage_recovery_refreshes_after_remove_before_promotion(self):
+        terminal = {
+            "host": "signage-a",
+            "role": "signage",
+            "terminalType": "signage",
+            "clientId": "s1",
+        }
+        interrupted = host_record("signage", OLD_SHA)
+        interrupted.update(
+            {
+                "desiredSha": NEW_SHA,
+                "currentSha": None,
+                "previousSha": OLD_SHA,
+                "evidence": "unknown",
+                "verifiedAt": None,
+                "lastRunId": "crashed-run",
+            }
+        )
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", NEW_SHA),
+                "signage-a": interrupted,
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan={
+                "pi5Required": False,
+                "hosts": [
+                    decision("pi5", "server", current=NEW_SHA, targeted=False),
+                    decision("signage-a", "signage", targeted=False),
+                ],
+            },
+            targets=[],
+        )
+        runtime.abandoned_run_id = "crashed-run"
+        runtime.prior_runs["crashed-run"] = {
+            "version": 1,
+            "runId": "crashed-run",
+            "state": "running",
+            "targets": [
+                {
+                    **terminal,
+                    "desiredSha": NEW_SHA,
+                    "previousSha": OLD_SHA,
+                    "currentSha": None,
+                    "evidence": "unknown",
+                    "state": "deploying",
+                    "maintenanceStartedAt": "2026-07-14T23:59:00Z",
+                    "rollbackManifest": rollback_manifest(
+                        "crashed-run", "signage-a", "signage"
+                    ),
+                }
+            ],
+        }
+
+        self.assertEqual(
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            ),
+            0,
+        )
+
+        remove = runtime.events.index(
+            "status:remove-client:--run-id:crashed-run:--client:s1"
+        )
+        refresh = runtime.events.index(
+            "signage:refresh:signage-a:crashed-run"
+        )
+        cleanup = runtime.events.index(
+            "manifest:cleanup:signage-a:crashed-run:restored"
+        )
+        promote = runtime.events.index(f"fleet:verified:signage-a:{OLD_SHA}")
+        self.assertLess(remove, refresh)
+        self.assertLess(refresh, cleanup)
+        self.assertLess(cleanup, promote)
+        recovery = runtime.states[-1].payload["interruptedRecovery"]["targets"][0]
+        self.assertTrue(
+            recovery["signageDisplayProof"]["maintenanceArtifactReplaced"]
         )
 
     def test_interrupted_target_without_run_record_fails_closed(self):
@@ -1498,7 +2159,8 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         self.assertFalse(
             any(event.startswith("manifest:capture:") for event in runtime.events)
         )
-        self.assertIn("fleet:finish:failed", runtime.events)
+        self.assertNotIn("fleet:finish:failed", runtime.events)
+        self.assertEqual(runtime.fleet["activeRun"]["runId"], "run-1")
 
     def test_completed_terminal_in_abandoned_run_is_live_verified_not_reverted(self):
         terminal = {
@@ -1542,6 +2204,9 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
                     "state": "success",
                     "maintenanceStartedAt": "2026-07-14T23:58:00Z",
                     "maintenanceClearedAt": "2026-07-14T23:59:00Z",
+                    "rollbackManifest": rollback_manifest(
+                        "crashed-run", "kiosk-a"
+                    ),
                 }
             ],
         }
@@ -1558,6 +2223,10 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             "status:remove-client:--run-id:crashed-run:--client:a",
             runtime.events,
         )
+        self.assertIn(
+            "manifest:cleanup:kiosk-a:crashed-run:committed",
+            runtime.events,
+        )
         self.assertEqual(
             runtime.states[-1].payload["interruptedRecovery"]["targets"][0][
                 "recovery"
@@ -1567,6 +2236,338 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         self.assertEqual(
             runtime.fleet["fleet"]["kiosk-a"]["currentSha"], NEW_SHA
         )
+
+    def test_pre_mutation_interruption_recaptures_lost_manifest_result(self):
+        terminal = {
+            "host": "kiosk-a",
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "a",
+        }
+        interrupted = host_record("kiosk", OLD_SHA)
+        interrupted.update(
+            {
+                "desiredSha": NEW_SHA,
+                "currentSha": None,
+                "previousSha": OLD_SHA,
+                "evidence": "unknown",
+                "verifiedAt": None,
+                "lastRunId": "crashed-run",
+            }
+        )
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", NEW_SHA),
+                "kiosk-a": interrupted,
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan={
+                "pi5Required": False,
+                "hosts": [
+                    decision("pi5", "server", current=NEW_SHA, targeted=False),
+                    decision("kiosk-a", "kiosk", current=OLD_SHA, targeted=False),
+                ],
+            },
+            targets=[],
+        )
+        runtime.abandoned_run_id = "crashed-run"
+        runtime.deployed_sha["kiosk-a"] = OLD_SHA
+        runtime.prior_runs["crashed-run"] = {
+            "version": 1,
+            "runId": "crashed-run",
+            "state": "running",
+            "targets": [
+                {
+                    **terminal,
+                    "desiredSha": NEW_SHA,
+                    "previousSha": OLD_SHA,
+                    "currentSha": OLD_SHA,
+                    "evidence": "unknown",
+                    "state": "pending",
+                }
+            ],
+        }
+
+        self.assertEqual(
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            ),
+            0,
+        )
+
+        capture = runtime.events.index(f"manifest:capture:kiosk-a:{OLD_SHA}")
+        cleanup = runtime.events.index(
+            "manifest:cleanup:kiosk-a:crashed-run:committed"
+        )
+        verified = runtime.events.index(f"fleet:verified:kiosk-a:{OLD_SHA}")
+        self.assertLess(capture, cleanup)
+        self.assertLess(cleanup, verified)
+        self.assertNotIn("rollback:kiosk-a", runtime.events)
+        self.assertNotIn(
+            "status:remove-client:--run-id:crashed-run:--client:a",
+            runtime.events,
+        )
+        recovery = runtime.states[-1].payload["interruptedRecovery"]["targets"][0]
+        self.assertEqual(recovery["recovery"], "pre-mutation-live-verified")
+        self.assertEqual(recovery["rollbackAuthorityRunId"], "crashed-run")
+
+    def test_unknown_first_run_recovers_crash_on_either_side_of_repository_baseline(self):
+        terminal = {
+            "host": "kiosk-a",
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "a",
+        }
+        for boundary, repaired, count in (
+            ("before-baseline", True, 1),
+            ("after-baseline-before-persist", False, 0),
+        ):
+            with self.subTest(boundary=boundary):
+                interrupted = {
+                    "role": "kiosk",
+                    "desiredSha": NEW_SHA,
+                    "currentSha": None,
+                    "previousSha": None,
+                    "evidence": "unknown",
+                    "verifiedAt": None,
+                    "lastRunId": "crashed-run",
+                }
+                runtime = FakeRuntime(
+                    fleet={
+                        "pi5": host_record("server", NEW_SHA),
+                        "kiosk-a": interrupted,
+                    },
+                    hosts=[{"host": "pi5", "role": "server"}, terminal],
+                    plan={
+                        "pi5Required": False,
+                        "hosts": [
+                            decision(
+                                "pi5", "server", current=NEW_SHA, targeted=False
+                            ),
+                            decision(
+                                "kiosk-a", "kiosk", current=OLD_SHA, targeted=False
+                            ),
+                        ],
+                    },
+                    targets=[],
+                )
+                runtime.abandoned_run_id = "crashed-run"
+                runtime.deployed_sha["kiosk-a"] = OLD_SHA
+                runtime.repository_baseline_result = {
+                    "head": OLD_SHA,
+                    "repairedLegacyDocs": repaired,
+                    "count": count,
+                }
+                runtime.prior_runs["crashed-run"] = {
+                    "version": 1,
+                    "runId": "crashed-run",
+                    "state": "running",
+                    "targets": [
+                        {
+                            **terminal,
+                            "desiredSha": NEW_SHA,
+                            "currentSha": None,
+                            "evidence": "unknown",
+                            "state": "pending",
+                        }
+                    ],
+                }
+
+                self.assertEqual(
+                    coordinator.execute(
+                        args(), runtime=runtime, token=FakeToken(runtime.events)
+                    ),
+                    0,
+                )
+
+                baseline = runtime.events.index("terminal:baseline:kiosk-a")
+                capture = runtime.events.index(
+                    f"manifest:capture:kiosk-a:{OLD_SHA}"
+                )
+                observe = runtime.events.index("observe:terminal:kiosk-a")
+                self.assertLess(baseline, capture)
+                self.assertLess(capture, observe)
+                recovery = runtime.states[-1].payload["interruptedRecovery"][
+                    "targets"
+                ][0]
+                self.assertEqual(recovery["previousSha"], OLD_SHA)
+                self.assertEqual(
+                    recovery["repositoryBaseline"],
+                    runtime.repository_baseline_result,
+                )
+                self.assertEqual(recovery["recovery"], "pre-mutation-live-verified")
+
+    def test_pre_mutation_recovery_removes_notice_on_either_side_of_notice_put(self):
+        terminal = {
+            "host": "kiosk-a",
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "a",
+        }
+        for boundary, notice_state in (
+            ("before-put-notice", "requested"),
+            ("after-put-notice", "acknowledged"),
+        ):
+            with self.subTest(boundary=boundary):
+                interrupted = host_record("kiosk", OLD_SHA)
+                interrupted.update(
+                    {
+                        "desiredSha": NEW_SHA,
+                        "currentSha": None,
+                        "previousSha": OLD_SHA,
+                        "evidence": "unknown",
+                        "verifiedAt": None,
+                        "lastRunId": "crashed-run",
+                    }
+                )
+                runtime = FakeRuntime(
+                    fleet={
+                        "pi5": host_record("server", NEW_SHA),
+                        "kiosk-a": interrupted,
+                    },
+                    hosts=[{"host": "pi5", "role": "server"}, terminal],
+                    plan={
+                        "pi5Required": False,
+                        "hosts": [
+                            decision(
+                                "pi5", "server", current=NEW_SHA, targeted=False
+                            ),
+                            decision(
+                                "kiosk-a", "kiosk", current=OLD_SHA, targeted=False
+                            ),
+                        ],
+                    },
+                    targets=[],
+                )
+                runtime.abandoned_run_id = "crashed-run"
+                runtime.deployed_sha["kiosk-a"] = OLD_SHA
+                runtime.prior_runs["crashed-run"] = {
+                    "version": 1,
+                    "runId": "crashed-run",
+                    "state": "running",
+                    "targets": [
+                        {
+                            **terminal,
+                            "desiredSha": NEW_SHA,
+                            "previousSha": OLD_SHA,
+                            "currentSha": None,
+                            "evidence": "unknown",
+                            "state": "pending",
+                            "rollbackManifest": rollback_manifest(
+                                "crashed-run", "kiosk-a"
+                            ),
+                            "notice": {
+                                "state": notice_state,
+                                "requestedAt": "2026-07-15T00:00:00Z",
+                            },
+                        }
+                    ],
+                }
+
+                self.assertEqual(
+                    coordinator.execute(
+                        args(), runtime=runtime, token=FakeToken(runtime.events)
+                    ),
+                    0,
+                )
+
+                remove = runtime.events.index(
+                    "status:remove-client:--run-id:crashed-run:--client:a"
+                )
+                observe = runtime.events.index("observe:terminal:kiosk-a")
+                cleanup = runtime.events.index(
+                    "manifest:cleanup:kiosk-a:crashed-run:committed"
+                )
+                self.assertLess(remove, observe)
+                self.assertLess(observe, cleanup)
+                recovery = runtime.states[-1].payload["interruptedRecovery"][
+                    "targets"
+                ][0]
+                self.assertIn("noticeClearedAt", recovery)
+
+    def test_interrupted_cleanup_failure_retries_original_manifest_authority(self):
+        terminal = {
+            "host": "kiosk-a",
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "a",
+        }
+        interrupted = host_record("kiosk", OLD_SHA)
+        interrupted.update(
+            {
+                "desiredSha": NEW_SHA,
+                "currentSha": None,
+                "previousSha": OLD_SHA,
+                "evidence": "unknown",
+                "verifiedAt": None,
+                "lastRunId": "crashed-run",
+            }
+        )
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", NEW_SHA),
+                "kiosk-a": interrupted,
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan={
+                "pi5Required": False,
+                "hosts": [
+                    decision("pi5", "server", current=NEW_SHA, targeted=False),
+                    decision("kiosk-a", "kiosk", current=OLD_SHA, targeted=False),
+                ],
+            },
+            targets=[],
+        )
+        runtime.abandoned_run_id = "crashed-run"
+        runtime.runtime_cleanup_error = RuntimeError("cleanup transport lost")
+        runtime.prior_runs["crashed-run"] = {
+            "version": 1,
+            "runId": "crashed-run",
+            "state": "running",
+            "targets": [
+                {
+                    **terminal,
+                    "desiredSha": NEW_SHA,
+                    "previousSha": OLD_SHA,
+                    "currentSha": None,
+                    "evidence": "unknown",
+                    "state": "deploying",
+                    "maintenanceStartedAt": "2026-07-14T23:59:00Z",
+                    "rollbackManifest": rollback_manifest(
+                        "crashed-run", "kiosk-a"
+                    ),
+                }
+            ],
+        }
+
+        with self.assertRaisesRegex(RuntimeError, "cleanup transport lost"):
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            )
+        failed_recovery = copy.deepcopy(runtime.states[-1].payload)
+        self.assertEqual(runtime.fleet["activeRun"]["runId"], "run-1")
+        self.assertEqual(
+            runtime.fleet["fleet"]["kiosk-a"]["lastRunId"], "run-1"
+        )
+
+        runtime.prior_runs["run-1"] = failed_recovery
+        runtime.abandoned_run_id = "run-1"
+        runtime.runtime_cleanup_error = None
+        self.assertEqual(
+            coordinator.execute(
+                args(run_id="run-2"),
+                runtime=runtime,
+                token=FakeToken(runtime.events),
+            ),
+            0,
+        )
+
+        cleanup_event = "manifest:cleanup:kiosk-a:crashed-run:restored"
+        self.assertEqual(runtime.events.count(cleanup_event), 2)
+        self.assertNotIn("manifest:cleanup:kiosk-a:run-1:restored", runtime.events)
+        self.assertEqual(runtime.events.count("rollback:kiosk-a"), 1)
+        self.assertEqual(runtime.fleet["fleet"]["kiosk-a"]["evidence"], "verified")
+        self.assertEqual(runtime.fleet["fleet"]["kiosk-a"]["lastRunId"], "run-2")
 
     def test_interrupted_manifest_restore_failure_keeps_unknown_and_stops(self):
         terminal = {
@@ -1603,11 +2604,9 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
                     "previousSha": OLD_SHA,
                     "state": "deploying",
                     "maintenanceStartedAt": "2026-07-14T23:59:00Z",
-                    "rollbackManifest": {
-                        "path": "sealed",
-                        "manifestSha256": "d" * 64,
-                        "count": 1,
-                    },
+                    "rollbackManifest": rollback_manifest(
+                        "crashed-run", "kiosk-a"
+                    ),
                 }
             ],
         }
@@ -1623,6 +2622,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             "status:remove-client:--run-id:crashed-run:--client:a",
             runtime.events,
         )
+        self.assertEqual(runtime.fleet["activeRun"]["runId"], "run-1")
 
     def test_unknown_pi5_success_preserves_last_confirmed_sha(self):
         unknown = host_record("server", OLD_SHA)

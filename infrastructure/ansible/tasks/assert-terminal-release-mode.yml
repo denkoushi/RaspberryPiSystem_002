@@ -1,0 +1,13 @@
+---
+- name: Require the terminal release-only mutation profile
+  ansible.builtin.assert:
+    that:
+      - release_orchestrated | default(false) | bool
+      - lookup('env', 'RELEASE_ORCHESTRATED') | default('') == '1'
+      - terminal_release_mode is defined
+      - terminal_release_mode == 'release-only'
+      - repo_version is match('^[0-9a-f]{40}$')
+    fail_msg: >-
+      deploy-staged terminal plays are release executors, not provisioning
+      entrypoints. Invoke them through the rolling-release coordinator with
+      terminal_release_mode=release-only and an immutable 40-hex repo_version.

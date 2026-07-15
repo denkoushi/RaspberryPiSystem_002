@@ -84,14 +84,15 @@ class RollbackManifestTest(unittest.TestCase):
         )
         return completed.stdout.strip()
 
-    def create_repository(self) -> tuple[Path, str]:
-        repository = self.filesystem_root / "srv" / "terminal-app"
+    def create_repository(self, name: str = "terminal-app") -> tuple[Path, str]:
+        repository = self.filesystem_root / "srv" / name
         repository.mkdir(parents=True)
         self.git(repository, "init", "--quiet")
         self.git(repository, "config", "user.name", "Rollback Test")
         self.git(repository, "config", "user.email", "rollback@example.invalid")
         (repository / "tracked.txt").write_text("prior release\n", encoding="utf-8")
-        self.git(repository, "add", "tracked.txt")
+        (repository / ".gitignore").write_text(".env\n", encoding="utf-8")
+        self.git(repository, "add", "tracked.txt", ".gitignore")
         self.git(repository, "commit", "--quiet", "-m", "prior release")
         return repository, self.git(repository, "rev-parse", "HEAD")
 
@@ -501,6 +502,41 @@ class RollbackManifestTest(unittest.TestCase):
                 filesystem_root=self.filesystem_root,
             )
 
+    def test_capture_set_discards_owner_only_payloads_orphaned_before_manifest(self):
+        first = self.config_directory / "crash-first.service"
+        second = self.config_directory / "crash-second.service"
+        first.write_text("first baseline\n", encoding="utf-8")
+        second.write_text("second baseline\n", encoding="utf-8")
+        context = MODULE._build_context(
+            root=self.storage_root,
+            run_id=self.run_id,
+            host=self.host,
+            filesystem_root=self.filesystem_root,
+            create=True,
+        )
+        orphan_payload = context.payload_directory / "000000.bin"
+        orphan_temporary = context.payload_directory / ".000001.bin.crash.tmp"
+        orphan_payload.write_bytes(b"partial prior capture")
+        orphan_temporary.write_bytes(b"partial atomic write")
+        orphan_payload.chmod(0o600)
+        orphan_temporary.chmod(0o600)
+
+        captured = MODULE.capture_set(
+            root=self.storage_root,
+            run_id=self.run_id,
+            host=self.host,
+            paths=[first, second],
+            filesystem_root=self.filesystem_root,
+        )
+
+        self.assertTrue(captured["captured"])
+        self.assertTrue(self.manifest_path.exists())
+        self.assertFalse(orphan_temporary.exists())
+        self.assertEqual(
+            sorted(path.name for path in context.payload_directory.iterdir()),
+            ["000000.bin", "000001.bin"],
+        )
+
     def test_capture_set_restores_exact_repository_head_and_preserves_untracked_files(self):
         service = self.config_directory / "repository.service"
         service.write_text("prior service\n", encoding="utf-8")
@@ -517,6 +553,16 @@ class RollbackManifestTest(unittest.TestCase):
             expected_head=prior_head,
             filesystem_root=self.filesystem_root,
         )
+        repeated = MODULE.capture_set(
+            root=self.storage_root,
+            run_id=self.run_id,
+            host=self.host,
+            paths=[service, secret],
+            repository=repository,
+            expected_head=prior_head,
+            filesystem_root=self.filesystem_root,
+        )
+        self.assertEqual(repeated, captured)
 
         manifest = self.read_manifest()
         self.assertEqual(manifest["version"], 2)
@@ -580,6 +626,182 @@ class RollbackManifestTest(unittest.TestCase):
                 (self.storage_root / run_id / self.host / "manifest.json").exists()
             )
 
+    def test_repository_capture_rejects_dirty_worktree_without_changing_it(self):
+        for scenario in ("tracked", "staged", "untracked"):
+            with self.subTest(scenario=scenario):
+                service = self.config_directory / f"dirty-{scenario}.service"
+                service.write_text("prior\n", encoding="utf-8")
+                repository, head = self.create_repository(f"dirty-{scenario}-repo")
+                if scenario == "tracked":
+                    (repository / "tracked.txt").write_text(
+                        "operator change\n", encoding="utf-8"
+                    )
+                elif scenario == "staged":
+                    (repository / "tracked.txt").write_text(
+                        "operator staged change\n", encoding="utf-8"
+                    )
+                    self.git(repository, "add", "tracked.txt")
+                else:
+                    (repository / "operator-note.txt").write_text(
+                        "do not remove\n", encoding="utf-8"
+                    )
+                before = self.git(repository, "status", "--porcelain=v1")
+
+                with self.assertRaisesRegex(
+                    MODULE.ManifestError, "worktree is not clean"
+                ):
+                    MODULE.capture_set(
+                        root=self.storage_root,
+                        run_id=f"dirty-{scenario}",
+                        host=self.host,
+                        paths=[service],
+                        repository=repository,
+                        expected_head=head,
+                        filesystem_root=self.filesystem_root,
+                    )
+
+                self.assertEqual(
+                    self.git(repository, "status", "--porcelain=v1"), before
+                )
+
+    def test_repository_capture_rejects_hidden_index_flags_without_changing_data(self):
+        for scenario, option in (
+            ("assume-unchanged", "--assume-unchanged"),
+            ("skip-worktree", "--skip-worktree"),
+        ):
+            with self.subTest(scenario=scenario):
+                service = self.config_directory / f"hidden-{scenario}.service"
+                service.write_text("prior\n", encoding="utf-8")
+                repository, head = self.create_repository(f"hidden-{scenario}-repo")
+                self.git(repository, "update-index", option, "tracked.txt")
+                hidden_content = f"hidden operator change: {scenario}\n"
+                (repository / "tracked.txt").write_text(
+                    hidden_content, encoding="utf-8"
+                )
+                self.assertEqual(
+                    self.git(repository, "status", "--porcelain=v1"), ""
+                )
+
+                with self.assertRaisesRegex(
+                    MODULE.ManifestError, "repository index contains"
+                ):
+                    MODULE.capture_set(
+                        root=self.storage_root,
+                        run_id=f"hidden-{scenario}",
+                        host=self.host,
+                        paths=[service],
+                        repository=repository,
+                        expected_head=head,
+                        filesystem_root=self.filesystem_root,
+                    )
+
+                self.assertEqual(
+                    (repository / "tracked.txt").read_text(encoding="utf-8"),
+                    hidden_content,
+                )
+
+    def test_repository_restore_rejects_concurrent_dirty_state_before_file_mutation(self):
+        service = self.config_directory / "dirty-restore.service"
+        service.write_text("prior service\n", encoding="utf-8")
+        repository, prior_head = self.create_repository()
+        captured = MODULE.capture_set(
+            root=self.storage_root,
+            run_id=self.run_id,
+            host=self.host,
+            paths=[service],
+            repository=repository,
+            expected_head=prior_head,
+            filesystem_root=self.filesystem_root,
+        )
+        deployed_head = self.commit_deployed_repository(repository)
+        service.write_text("deployed service\n", encoding="utf-8")
+        (repository / "tracked.txt").write_text(
+            "concurrent operator change\n", encoding="utf-8"
+        )
+
+        with self.assertRaisesRegex(MODULE.ManifestError, "worktree is not clean"):
+            self.restore(captured["manifestSha256"])
+
+        self.assertEqual(service.read_text(encoding="utf-8"), "deployed service\n")
+        self.assertEqual(self.git(repository, "rev-parse", "HEAD"), deployed_head)
+        self.assertEqual(
+            (repository / "tracked.txt").read_text(encoding="utf-8"),
+            "concurrent operator change\n",
+        )
+
+    def test_repository_restore_rechecks_clean_state_at_mutation_boundary(self):
+        service = self.config_directory / "dirty-after-preflight.service"
+        service.write_text("prior service\n", encoding="utf-8")
+        repository, prior_head = self.create_repository()
+        captured = MODULE.capture_set(
+            root=self.storage_root,
+            run_id=self.run_id,
+            host=self.host,
+            paths=[service],
+            repository=repository,
+            expected_head=prior_head,
+            filesystem_root=self.filesystem_root,
+        )
+        deployed_head = self.commit_deployed_repository(repository)
+        service.write_text("deployed service\n", encoding="utf-8")
+        real_preflight = MODULE._preflight_repository
+
+        def dirty_after_preflight(sealed_repository, context):
+            path = real_preflight(sealed_repository, context)
+            assert path is not None
+            (path / "tracked.txt").write_text(
+                "operator change after preflight\n", encoding="utf-8"
+            )
+            return path
+
+        with mock.patch.object(
+            MODULE, "_preflight_repository", dirty_after_preflight
+        ):
+            with self.assertRaisesRegex(
+                MODULE.ManifestError, "worktree is not clean"
+            ):
+                self.restore(captured["manifestSha256"])
+
+        self.assertEqual(service.read_text(encoding="utf-8"), "deployed service\n")
+        self.assertEqual(self.git(repository, "rev-parse", "HEAD"), deployed_head)
+        self.assertEqual(
+            (repository / "tracked.txt").read_text(encoding="utf-8"),
+            "operator change after preflight\n",
+        )
+
+    def test_repository_restore_rejects_hidden_index_state_before_reset(self):
+        service = self.config_directory / "hidden-restore.service"
+        service.write_text("prior service\n", encoding="utf-8")
+        repository, prior_head = self.create_repository()
+        captured = MODULE.capture_set(
+            root=self.storage_root,
+            run_id=self.run_id,
+            host=self.host,
+            paths=[service],
+            repository=repository,
+            expected_head=prior_head,
+            filesystem_root=self.filesystem_root,
+        )
+        deployed_head = self.commit_deployed_repository(repository)
+        service.write_text("deployed service\n", encoding="utf-8")
+        self.git(repository, "update-index", "--assume-unchanged", "tracked.txt")
+        (repository / "tracked.txt").write_text(
+            "hidden operator change\n", encoding="utf-8"
+        )
+        self.assertEqual(self.git(repository, "status", "--porcelain=v1"), "")
+
+        with self.assertRaisesRegex(
+            MODULE.ManifestError, "repository index contains"
+        ):
+            self.restore(captured["manifestSha256"])
+
+        self.assertEqual(service.read_text(encoding="utf-8"), "deployed service\n")
+        self.assertEqual(self.git(repository, "rev-parse", "HEAD"), deployed_head)
+        self.assertEqual(
+            (repository / "tracked.txt").read_text(encoding="utf-8"),
+            "hidden operator change\n",
+        )
+
     def test_repository_path_must_be_absolute_in_root_and_have_real_git_directory(self):
         service = self.config_directory / "repository-path.service"
         service.write_text("prior\n", encoding="utf-8")
@@ -620,6 +842,56 @@ class RollbackManifestTest(unittest.TestCase):
                 expected_head=prior_head,
                 filesystem_root=self.filesystem_root,
             )
+
+    def test_repository_path_rejects_a_symlink_in_any_ancestor(self):
+        service = self.config_directory / "ancestor-link.service"
+        service.write_text("prior\n", encoding="utf-8")
+        repository, prior_head = self.create_repository("deep/terminal-app")
+        aliased_parent = self.filesystem_root / "aliased-srv"
+        aliased_parent.symlink_to(
+            self.filesystem_root / "srv", target_is_directory=True
+        )
+        aliased_repository = aliased_parent / "deep" / "terminal-app"
+
+        with self.assertRaisesRegex(MODULE.ManifestError, "symlink components"):
+            MODULE.capture_set(
+                root=self.storage_root,
+                run_id="ancestor-link",
+                host=self.host,
+                paths=[service],
+                repository=aliased_repository,
+                expected_head=prior_head,
+                filesystem_root=self.filesystem_root,
+            )
+
+    def test_repository_restore_rejects_ancestor_replaced_by_symlink(self):
+        service = self.config_directory / "retargeted-ancestor.service"
+        service.write_text("prior service\n", encoding="utf-8")
+        repository, prior_head = self.create_repository("deep/terminal-app")
+        captured = MODULE.capture_set(
+            root=self.storage_root,
+            run_id=self.run_id,
+            host=self.host,
+            paths=[service],
+            repository=repository,
+            expected_head=prior_head,
+            filesystem_root=self.filesystem_root,
+        )
+        deployed_head = self.commit_deployed_repository(repository)
+        service.write_text("deployed service\n", encoding="utf-8")
+        original_parent = self.filesystem_root / "srv"
+        relocated_parent = self.filesystem_root / "srv-relocated"
+        original_parent.rename(relocated_parent)
+        original_parent.symlink_to(relocated_parent, target_is_directory=True)
+        relocated_repository = relocated_parent / "deep" / "terminal-app"
+
+        with self.assertRaisesRegex(MODULE.ManifestError, "symlink components"):
+            self.restore(captured["manifestSha256"])
+
+        self.assertEqual(service.read_text(encoding="utf-8"), "deployed service\n")
+        self.assertEqual(
+            self.git(relocated_repository, "rev-parse", "HEAD"), deployed_head
+        )
 
     def test_manifest_version_is_strict_before_restore_mutation(self):
         service = self.config_directory / "strict-version.service"

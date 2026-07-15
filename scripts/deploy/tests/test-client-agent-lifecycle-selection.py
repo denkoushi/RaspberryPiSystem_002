@@ -49,7 +49,7 @@ def assert_change_classification_is_staged() -> None:
         "nfc_agent_image_build_needed | bool",
         "barcode_agent_image_build_needed | bool",
     )
-    classification = text[image_start:text.index("- name: Remove unnecessary documentation directory")]
+    classification = text[image_start:]
     for pattern in expected_patterns:
         if pattern not in classification:
             raise AssertionError(f"client lifecycle classification is missing {pattern!r}")
@@ -59,8 +59,11 @@ def assert_repo_revision_is_readable_before_classification() -> None:
     path = ROOT / "infrastructure/ansible/roles/common/tasks/main.yml"
     text = path.read_text(encoding="utf-8")
     ownership_task = "- name: Fix .git directory ownership before reading the current revision"
-    previous_head_task = "- name: Capture current repo HEAD (if exists)"
-    sync_task = "- name: Sync repository to desired state (with retries)"
+    previous_head_task = "- name: Capture current repo HEAD for provisioning"
+    sync_task = "- name: Sync repository for provisioning (with retries)"
+    release_previous_head_task = "- name: Verify terminal repository is clean and capture current HEAD"
+    release_sync_task = "- name: Fetch and reset existing terminal repository to immutable release"
+    select_result_task = "- name: Select repository synchronization result"
     diff_task = "- name: Collect repo diff file list (for docker build decision)"
     if text.count(ownership_task) != 1:
         raise AssertionError("the pre-sync .git ownership task must occur exactly once")
@@ -71,7 +74,21 @@ def assert_repo_revision_is_readable_before_classification() -> None:
         < text.index(diff_task)
     ):
         raise AssertionError("the previous Git revision must be captured before sync and diff classification")
-    if "register: repo_prev_head_result" not in text or "register: repo_new_head_result" not in text:
+    if not (
+        text.index(release_previous_head_task)
+        < text.index(release_sync_task)
+        < text.index(select_result_task)
+        < text.index(diff_task)
+    ):
+        raise AssertionError("release-only must preserve its previous SHA before immutable reset")
+    for register in (
+        "register: repo_prev_head_full_result",
+        "register: repo_prev_head_release_result",
+        "register: repo_new_head_result",
+    ):
+        if register not in text:
+            raise AssertionError(f"Git revision contract is missing {register}")
+    if "repo_prev_head_result: >-" not in text:
         raise AssertionError("Git command results must remain distinct from normalized SHA facts")
     require(
         'repo_prev_head: "{{ repo_prev_head_result.stdout | default(\'\') }}"',
@@ -230,6 +247,20 @@ def assert_agent_scope_and_health_contracts() -> None:
         require(f"ansible.builtin.include_tasks: {filename}", include, name)
         require(f"when: {condition}", include, name)
 
+    for filename, agent, result in (
+        ("nfc-agent.yml", "NFC", "nfc_agent_env_result"),
+        ("barcode-agent.yml", "barcode", "barcode_agent_env_result"),
+    ):
+        text = (CLIENT_TASKS / filename).read_text(encoding="utf-8")
+        environment = task_block(text, f"Deploy {agent} agent environment variables")
+        if "terminal_release_mode" in environment:
+            raise AssertionError(f"{agent} environment must remain release-reachable")
+        require("notify: restart", environment, f"{agent} environment notification")
+        lifecycle_selection = task_block(
+            text, f"Include {agent} environment changes in lifecycle selection"
+        )
+        require(f"{result}.changed", lifecycle_selection, f"{agent} environment lifecycle")
+
     for filename, agent, docker_register in (
         ("nfc-agent-lifecycle.yml", "nfc-agent", "docker_version_check"),
         ("barcode-agent-lifecycle.yml", "barcode-agent", "barcode_docker_version_check"),
@@ -248,6 +279,8 @@ def assert_agent_scope_and_health_contracts() -> None:
         require("status_code: [200]", readiness, agent)
         require("retries: 5", readiness, agent)
         require(f"until: {agent.replace('-', '_')}_status_check.status == 200", readiness, agent)
+        if "failed_when: false" in readiness:
+            raise AssertionError(f"{agent} readiness must fail closed after retries")
         diagnostics = task_block(
             text, f"Capture docker compose ps for {agent} (diagnostics on failure)"
         )
@@ -258,8 +291,19 @@ def assert_agent_scope_and_health_contracts() -> None:
     ).read_text(encoding="utf-8")
     barcode_handler = task_block(handlers, "restart barcode-agent")
     require("--force-recreate --no-build barcode-agent", barcode_handler, "barcode handler")
+    require(
+        "terminal_release_mode | default('full') == 'full'",
+        barcode_handler,
+        "barcode handler release guard",
+    )
     if "--build" in barcode_handler:
         raise AssertionError("barcode config handler must not rebuild the image")
+    nfc_handler = task_block(handlers, "restart nfc-agent")
+    require(
+        "terminal_release_mode | default('full') == 'full'",
+        nfc_handler,
+        "nfc handler release guard",
+    )
 
     health = task_block(main, "Verify restarted client services and timers are healthy")
     require("status-agent.service", health, "status-agent oneshot health")

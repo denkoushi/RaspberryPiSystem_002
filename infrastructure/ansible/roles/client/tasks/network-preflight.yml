@@ -1,0 +1,28 @@
+---
+- name: Check whether NetworkManager is installed for release preflight
+  ansible.builtin.command: which nmcli
+  register: release_nmcli_check
+  changed_when: false
+
+- name: Require NetworkManager to be active for release
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - NetworkManager.service
+  changed_when: false
+
+- name: Verify NetworkManager policy without changing it
+  ansible.builtin.shell: |
+    set -euo pipefail
+    test -f /etc/NetworkManager/NetworkManager.conf
+    awk '
+      /^\[main\]$/ { main_count++; in_main=1; next }
+      /^\[/ { in_main=0 }
+      /^auth-polkit=/ { auth_count++ }
+      in_main && /^auth-polkit=false$/ { desired_count++ }
+      END { exit(main_count == 1 && auth_count == 1 && desired_count == 1 ? 0 : 1) }
+    ' /etc/NetworkManager/NetworkManager.conf
+  args:
+    executable: /bin/bash
+  changed_when: false

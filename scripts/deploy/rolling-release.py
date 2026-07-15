@@ -60,6 +60,8 @@ ANSIBLE_DIRECTORY = PROJECT / "infrastructure/ansible"
 STATUS_TOOL = PROJECT / "scripts/deploy/deploy-status-state.py"
 PHASE3 = PROJECT / "scripts/deploy/pi5-blue-green.sh"
 CANDIDATE_BUILD = PROJECT / "scripts/deploy/pi5-candidate-build.sh"
+PI5_CANDIDATE_RECONCILE = PROJECT / "scripts/deploy/pi5-candidate-reconcile.sh"
+PI5_LIVE_MIGRATION_EVIDENCE = PROJECT / "scripts/deploy/pi5-live-migration-evidence.sh"
 RUN_DIRECTORY = PROJECT / "logs/deploy/release-runs"
 PI5_RELEASE_CURRENT = PROJECT / "logs/deploy/pi5-release-current.json"
 FLEET_RELEASE_STATE = PROJECT / "logs/deploy/fleet-release-state.json"
@@ -674,6 +676,12 @@ def remote_previous_sha(inventory: str, host: str) -> str:
     return ansible_backend.remote_previous_sha(inventory, host, runtime=_runtime())
 
 
+def prepare_terminal_repository(inventory: str, host: str) -> dict[str, Any]:
+    return ansible_backend.prepare_terminal_repository(
+        inventory, host, runtime=_runtime()
+    )
+
+
 def capture_terminal_manifest(
     inventory: str,
     target_spec: dict[str, str],
@@ -697,9 +705,23 @@ def probe_terminal_identity(
     )
 
 
-def trigger_signage_ready_check(inventory: str, host: str) -> None:
-    return ansible_backend.trigger_signage_ready_check(
+def probe_signage_endpoints(inventory: str, host: str) -> dict[str, Any]:
+    return ansible_backend.probe_signage_endpoints(
         inventory, host, runtime=_runtime()
+    )
+
+
+def probe_kiosk_agents(inventory: str, host: str) -> dict[str, Any]:
+    return ansible_backend.probe_kiosk_agents(
+        inventory, host, runtime=_runtime()
+    )
+
+
+def refresh_signage_after_maintenance(
+    inventory: str, host: str, run_id: str
+) -> dict[str, Any]:
+    return ansible_backend.refresh_signage_after_maintenance(
+        inventory, host, run_id, runtime=_runtime()
     )
 
 
@@ -722,11 +744,39 @@ def prove_signage_ready(
     )
 
 
+def capture_server_config_manifest(
+    inventory: str, host: str, run_id: str
+) -> dict[str, Any]:
+    return ansible_backend.capture_server_config_manifest(
+        inventory, host, run_id, runtime=_runtime()
+    )
+
+
+def restore_server_config_manifest(
+    inventory: str,
+    host: str,
+    run_id: str,
+    manifest: dict[str, Any],
+) -> dict[str, Any]:
+    return ansible_backend.restore_server_config_manifest(
+        inventory, host, run_id, manifest, runtime=_runtime()
+    )
+
+
 def converge_server_config(
-    inventory: str, host: str, revision: str, run_id: str
+    inventory: str,
+    host: str,
+    revision: str,
+    run_id: str,
+    rollback_manifest: dict[str, Any],
 ) -> None:
     return ansible_backend.converge_server_config(
-        inventory, host, revision, run_id, runtime=_runtime()
+        inventory,
+        host,
+        revision,
+        run_id,
+        rollback_manifest,
+        runtime=_runtime(),
     )
 
 
@@ -751,6 +801,23 @@ def rollback_terminal(
 ) -> bool:
     return ansible_backend.rollback_terminal(
         inventory, target_spec, target, run_id, runtime=_runtime()
+    )
+
+
+def cleanup_terminal_rollback(
+    inventory: str,
+    target_spec: dict[str, str],
+    target: dict[str, Any],
+    run_id: str,
+    outcome: str,
+) -> dict[str, Any]:
+    return ansible_backend.cleanup_terminal_rollback(
+        inventory,
+        target_spec,
+        target,
+        run_id,
+        outcome,
+        runtime=_runtime(),
     )
 
 
@@ -832,6 +899,21 @@ def phase3_matches_marker_candidate(
     phase3: Any, candidate: dict[str, str]
 ) -> bool:
     return pi5_backend.phase3_matches_marker_candidate(phase3, candidate)
+
+
+def verify_pi5_live_migrations(sha: str) -> str:
+    if not isinstance(sha, str) or FULL_SHA_RE.fullmatch(sha) is None:
+        raise RuntimeError("Pi5 live migration evidence requires a full Git SHA")
+    digest = run(
+        [str(PI5_LIVE_MIGRATION_EVIDENCE), "--ref", sha], capture=True
+    ).strip()
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", digest) is None:
+        raise RuntimeError("Pi5 live migration evidence returned a malformed digest")
+    return digest
+
+
+def reconcile_pi5_candidate_workload() -> None:
+    run([str(PI5_CANDIDATE_RECONCILE)])
 
 
 def pi5_already_current(sha: str) -> bool:

@@ -2,7 +2,10 @@ import { env } from '../../config/env.js';
 import { logger } from '../../lib/logger.js';
 import { initializeVisualizationModules } from '../visualization/initialize.js';
 import { SignageService } from './index.js';
-import { SignageRenderScheduler } from './signage-render-scheduler.js';
+import {
+  SIGNAGE_RENDER_WORKER_READY,
+  SignageRenderScheduler,
+} from './signage-render-scheduler.js';
 import { SignageRenderer } from './signage.renderer.js';
 import { closeSharedChromium } from './loan-grid/playwright/playwright-browser-pool.js';
 
@@ -31,7 +34,7 @@ scheduler.start();
 const shutdown = async (signal: string) => {
   try {
     logger.info({ signal }, 'Signage render worker shutting down');
-    scheduler.stop();
+    await scheduler.pauseForDeploy();
   } catch (err) {
     logger.warn({ err, signal }, 'Signage render worker shutdown failed');
   }
@@ -50,3 +53,7 @@ process.once('SIGTERM', () => {
   void shutdown('SIGTERM');
 });
 
+if (typeof process.send !== 'function') {
+  throw new Error('Signage render worker IPC readiness channel is unavailable');
+}
+process.send({ type: SIGNAGE_RENDER_WORKER_READY });

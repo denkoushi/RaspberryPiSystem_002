@@ -2,7 +2,19 @@ import './load-dotenv.js';
 
 import { z } from 'zod';
 
+const strictBooleanFromEnvironment = z.preprocess((value) => {
+  if (typeof value !== 'string') return value;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'true' || normalized === '1') return true;
+  if (normalized === 'false' || normalized === '0') return false;
+  return value;
+}, z.boolean());
+
 export const signageEnvShape = {
+  // Candidate validation must not start Chromium/signage work. Production
+  // remains enabled by default; the host-local deploy endpoint may pause the
+  // live scheduler around the bounded candidate build.
+  SIGNAGE_RENDER_ENABLED: strictBooleanFromEnvironment.default(true),
   SIGNAGE_RENDER_INTERVAL_SECONDS: z.coerce.number().min(10).max(3600).default(30),
   // サイネージレンダリングは重い処理になりやすく、APIイベントループを塞ぐとキオスク操作に影響する。
   // 本番はデフォルトで "worker"（別プロセス）に逃がし、開発は従来通り "in_process"。
@@ -21,4 +33,7 @@ export const signageEnvShape = {
   SIGNAGE_LOAN_GRID_ENGINE: z.enum(['svg_legacy', 'playwright_html']).default('svg_legacy'),
   /** Playwright スクリーンショットの deviceScaleFactor（1〜2）。高いほど縁取りが細かいが負荷増 */
   SIGNAGE_PLAYWRIGHT_DEVICE_SCALE_FACTOR: z.coerce.number().min(1).max(2).default(1),
+  // Optional dedicated credential for the host-local deploy endpoint. Existing
+  // installations use the protected access secret during the first rollout.
+  DEPLOY_CONTROL_TOKEN: z.string().min(1).optional(),
 } as const;

@@ -101,7 +101,7 @@
     - name: Run resource guard checks
       ansible.builtin.include_tasks: "../tasks/resource-guard.yml"
 
-    - name: Execute deployment with automatic rollback (server)
+    - name: Execute server deployment under coordinator rollback ownership
       block:
         - name: Apply server-specific deployment tasks
           ansible.builtin.import_role:
@@ -114,10 +114,11 @@
             deployment_failed: true
             deployment_failure_message: "{{ ansible_failed_result.msg | default('unknown error') }}"
 
-        - name: Fail host after rollback (server)
+        - name: Fail server host for coordinator-managed rollback
           ansible.builtin.fail:
             msg: >
               Deployment failed on {{ inventory_hostname }}.
+              The rolling-release coordinator owns rollback for this failure.
 
   handlers:
     - name: restart pcscd
@@ -155,6 +156,12 @@
   pre_tasks:
     - name: Require canonical rolling release context
       ansible.builtin.import_tasks: "../tasks/assert-release-orchestration.yml"
+
+    - name: Require terminal release-only mode before shared tasks
+      ansible.builtin.import_tasks: "../tasks/assert-terminal-release-mode.yml"
+
+    - name: Require an active display manager before kiosk release
+      ansible.builtin.import_tasks: "../tasks/preflight-terminal-display.yml"
 
     - name: Run common shared preparation tasks
       ansible.builtin.import_role:
@@ -224,6 +231,12 @@
   pre_tasks:
     - name: Require canonical rolling release context
       ansible.builtin.import_tasks: "../tasks/assert-release-orchestration.yml"
+
+    - name: Require terminal release-only mode before shared tasks
+      ansible.builtin.import_tasks: "../tasks/assert-terminal-release-mode.yml"
+
+    - name: Require an active display manager before signage release
+      ansible.builtin.import_tasks: "../tasks/preflight-terminal-display.yml"
 
     - name: Run common shared preparation tasks
       ansible.builtin.import_role:

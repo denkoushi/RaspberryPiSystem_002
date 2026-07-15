@@ -38,7 +38,6 @@
   retries: 5
   delay: 3
   until: barcode_agent_status_check.status == 200
-  failed_when: false
 
 - name: Capture docker compose ps for barcode-agent (diagnostics on failure)
   ansible.builtin.shell: |

@@ -6,6 +6,8 @@ import re
 from pathlib import Path
 from typing import Any, Protocol
 
+from ..image_refs import release_sha_from_image
+
 
 class Runtime(Protocol):
     PROJECT: Path
@@ -20,11 +22,21 @@ class Runtime(Protocol):
         self, inventory: str, host: str, client_id: str
     ) -> dict[str, Any]: ...
 
+    def probe_signage_endpoints(
+        self, inventory: str, host: str
+    ) -> dict[str, Any]: ...
+
+    def probe_kiosk_agents(
+        self, inventory: str, host: str
+    ) -> dict[str, Any]: ...
+
     def phase3_status(self) -> dict[str, Any]: ...
 
     def normalized_pi5_phase3_state(self, phase3: dict[str, Any]) -> bool: ...
 
     def candidate_image_matches_sha(self, image: Any, sha: str) -> bool: ...
+
+    def verify_pi5_live_migrations(self, sha: str) -> str: ...
 
 
 def _digest_files(project: Path, relative_paths: list[Path]) -> str:
@@ -67,22 +79,8 @@ def verified_config_digest(project: Path, runtime_digest: str) -> str:
     return "sha256:" + digest.hexdigest()
 
 
-def migration_digest(project: Path) -> str:
-    migration_root = project / "apps/api/prisma/migrations"
-    paths = [path.relative_to(project) for path in migration_root.glob("*/migration.sql")]
-    if not paths:
-        raise RuntimeError("migration evidence is unavailable")
-    return _digest_files(project, paths)
-
-
 def _image_release_sha(image: Any) -> str | None:
-    if not isinstance(image, str):
-        return None
-    _repository, separator, tag = image.rpartition(":")
-    if not separator:
-        return None
-    match = re.fullmatch(r"([0-9a-f]{40})-[0-9a-f]{12}", tag)
-    return match.group(1) if match is not None else None
+    return release_sha_from_image(image)
 
 
 def observe_terminal(
@@ -155,13 +153,53 @@ def observe_terminal(
     identity = runtime.probe_terminal_identity(inventory, host, client_id)
     if identity != {"authenticated": True, "statusClientId": client_id}:
         raise RuntimeError(f"terminal identity is not authenticated: {host}")
-    return {
+    result = {
         "currentSha": sha,
         "services": services,
         "oneshotServices": ["status-agent.service"],
         "authenticatedEndpoint": True,
         "statusClientId": client_id,
     }
+    if role == "kiosk":
+        agents = runtime.probe_kiosk_agents(inventory, host)
+        containers = agents.get("agentContainers") if isinstance(agents, dict) else None
+        endpoints = (
+            agents.get("authenticatedAgentEndpoints")
+            if isinstance(agents, dict)
+            else None
+        )
+        if (
+            not isinstance(containers, list)
+            or any(agent not in {"nfc-agent", "barcode-agent"} for agent in containers)
+            or len(containers) != len(set(containers))
+            or not isinstance(endpoints, list)
+            or len(endpoints) != len(containers)
+            or any(
+                not isinstance(endpoint, dict)
+                or set(endpoint) != {"agent", "port"}
+                or endpoint.get("agent") != containers[index]
+                or isinstance(endpoint.get("port"), bool)
+                or not isinstance(endpoint.get("port"), int)
+                or not 1 <= endpoint["port"] <= 65535
+                for index, endpoint in enumerate(endpoints)
+            )
+            or type(agents.get("pcscdRequired")) is not bool
+        ):
+            raise RuntimeError(f"kiosk agent health evidence is malformed: {host}")
+        result.update(agents)
+    else:
+        signage = runtime.probe_signage_endpoints(inventory, host)
+        if (
+            not isinstance(signage, dict)
+            or signage.get("signageEndpointAuthenticated") is not True
+            or re.fullmatch(
+                r"[0-9a-f]{64}", str(signage.get("signageImageSha256") or "")
+            )
+            is None
+        ):
+            raise RuntimeError(f"signage endpoint is not authenticated: {host}")
+        result.update(signage)
+    return result
 
 
 def observe_pi5(
@@ -180,6 +218,8 @@ def observe_pi5(
     phase3 = runtime.phase3_status()
     if not runtime.normalized_pi5_phase3_state(phase3):
         raise RuntimeError("Pi5 Blue/Green runtime is not normalized")
+    if phase3.get("liveHealthStatus") != "verified":
+        raise RuntimeError("Pi5 active API/Web live health is not verified")
     runtime_config_digest = phase3.get("runtimeConfigDigest")
     if phase3.get("runtimeConfigStatus") != "verified":
         raise RuntimeError("Pi5 active API environment is not verified")
@@ -189,8 +229,18 @@ def observe_pi5(
     slots = phase3.get("slots")
     active = slots.get(active_slot) if isinstance(slots, dict) else None
     images = active.get("images") if isinstance(active, dict) else None
+    image_ids = active.get("imageIds") if isinstance(active, dict) else None
     api_image = images.get("api") if isinstance(images, dict) else None
     web_image = images.get("web") if isinstance(images, dict) else None
+    api_image_id = image_ids.get("api") if isinstance(image_ids, dict) else None
+    web_image_id = image_ids.get("web") if isinstance(image_ids, dict) else None
+    if (
+        not isinstance(api_image_id, str)
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", api_image_id) is None
+        or not isinstance(web_image_id, str)
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", web_image_id) is None
+    ):
+        raise RuntimeError("Pi5 active image IDs are not sealed")
     api_sha = _image_release_sha(api_image)
     web_sha = _image_release_sha(web_image)
     if api_sha is None or web_sha is None or api_sha != web_sha:
@@ -210,6 +260,18 @@ def observe_pi5(
         raise RuntimeError(
             "Pi5 checkout does not match the active release; source digests cannot be attributed"
         )
+    migration = phase3.get("migration")
+    if (
+        not isinstance(migration, dict)
+        or migration.get("status") != "applied"
+        or migration.get("candidateCommit") != current_sha
+        or not isinstance(migration.get("appliedAt"), str)
+        or not migration["appliedAt"]
+    ):
+        raise RuntimeError("Pi5 migration state is not applied for the active release")
+    migration_digest = runtime.verify_pi5_live_migrations(current_sha)
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", migration_digest) is None:
+        raise RuntimeError("Pi5 live migration digest is malformed")
     return {
         # The bootstrap checks out coordinator code before planning, so the
         # live release baseline is the active image SHA.  On post-release
@@ -219,9 +281,11 @@ def observe_pi5(
         "activeSlot": active_slot,
         "apiImage": api_image,
         "webImage": web_image,
+        "apiImageId": api_image_id,
+        "webImageId": web_image_id,
         "configDigest": verified_config_digest(
             runtime.PROJECT, runtime_config_digest
         ),
         "runtimeConfigDigest": runtime_config_digest,
-        "migrationDigest": migration_digest(runtime.PROJECT),
+        "migrationDigest": migration_digest,
     }

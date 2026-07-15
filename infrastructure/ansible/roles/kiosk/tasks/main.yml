@@ -1,4 +1,16 @@
 ---
+- name: Validate manifest-backed kiosk destinations for release
+  ansible.builtin.assert:
+    that:
+      - kiosk_firefox_profile_dirname | default('kiosk-system') == 'kiosk-system'
+      - ibus_process_owner_script_path == '/usr/local/bin/ibus-process-owner.sh'
+      - ibus_competing_autostart_entries == ['im-launch.desktop']
+      - kiosk_browser_chromium_binary | default('/usr/bin/chromium-browser') == '/usr/bin/chromium-browser'
+    fail_msg: >-
+      release-only accepts only the kiosk paths sealed by the coordinator
+      manifest. Apply custom destination changes through full provisioning.
+  when: terminal_release_mode | default('full') == 'release-only'
+
 - name: Apply kiosk IBus settings
   ansible.builtin.import_tasks: ibus.yml
 
@@ -51,10 +63,34 @@
     state: link
     force: true
   when:
+    - terminal_release_mode | default('full') == 'full'
     - manage_kiosk_browser | default(false) | bool
     - kiosk_browser_engine_resolved == 'chromium'
     - chromium_binary_stat is defined
     - chromium_binary_stat.stat.exists
+
+- name: Check chromium-browser compatibility path before release
+  ansible.builtin.stat:
+    path: /usr/bin/chromium-browser
+  register: chromium_compatibility_path
+  when:
+    - terminal_release_mode | default('full') == 'release-only'
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_engine_resolved == 'chromium'
+
+- name: Require chromium-browser compatibility path before release
+  ansible.builtin.assert:
+    that:
+      - chromium_compatibility_path.stat.exists | default(false)
+      - chromium_compatibility_path.stat.islnk | default(false)
+      - chromium_compatibility_path.stat.lnk_source | default('') == '/usr/bin/chromium'
+    fail_msg: >-
+      /usr/bin/chromium-browser must already be a symlink to /usr/bin/chromium.
+      Provision the kiosk before release.
+  when:
+    - terminal_release_mode | default('full') == 'release-only'
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_engine_resolved == 'chromium'
 
 - name: Check firefox-esr binary path for kiosk browser
   ansible.builtin.stat:
@@ -132,16 +168,6 @@
     - kiosk_browser_result.changed
   changed_when: false
 
-- name: Clear Firefox kiosk profile disk cache when launch or profile prefs change
-  ansible.builtin.file:
-    path: "/home/{{ ansible_user }}/.mozilla/firefox/{{ kiosk_firefox_profile_dirname | default('kiosk-system') }}/cache2"
-    state: absent
-  when:
-    - manage_kiosk_browser | default(false) | bool
-    - kiosk_browser_engine_resolved == 'firefox'
-    - (kiosk_launch_script_result is changed) or (kiosk_ff_chrome_userjs is defined and ((kiosk_ff_chrome_userjs['changed'] | default(false)) | bool))
-  register: kiosk_ff_cache_clear_result
-
 # kiosk-launch（URL含む）やservice変更時は再起動して新設定を反映（clientロールの再起動はkioskロールより先に実行されるため）
 - name: Restart kiosk-browser if launch script or service changed
   ansible.builtin.systemd:
@@ -149,7 +175,7 @@
     state: restarted
   when:
     - manage_kiosk_browser | default(false) | bool
-    - (kiosk_launch_script_result is changed) or (kiosk_browser_result is changed) or (kiosk_ff_chrome_userchrome is defined and ((kiosk_ff_chrome_userchrome['changed'] | default(false)) | bool)) or (kiosk_ff_chrome_userjs is defined and ((kiosk_ff_chrome_userjs['changed'] | default(false)) | bool)) or (kiosk_ff_cache_clear_result is defined and ((kiosk_ff_cache_clear_result['changed'] | default(false)) | bool))
+    - (kiosk_launch_script_result is changed) or (kiosk_browser_result is changed) or (kiosk_ff_chrome_userchrome is defined and ((kiosk_ff_chrome_userchrome['changed'] | default(false)) | bool)) or (kiosk_ff_chrome_userjs is defined and ((kiosk_ff_chrome_userjs['changed'] | default(false)) | bool))
 
 - name: Verify kiosk UI is reachable
   ansible.builtin.uri:
@@ -185,13 +211,43 @@
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
     mode: '0755'
-  when: manage_kiosk_browser | default(false) | bool
+  when:
+    - terminal_release_mode | default('full') == 'full'
+    - manage_kiosk_browser | default(false) | bool
+
+- name: Check labwc configuration directory before release
+  ansible.builtin.stat:
+    path: "/home/{{ ansible_user }}/.config/labwc"
+  register: labwc_config_directory
+  when:
+    - terminal_release_mode | default('full') == 'release-only'
+    - manage_kiosk_browser | default(false) | bool
+
+- name: Require labwc configuration directory before release
+  ansible.builtin.assert:
+    that:
+      - labwc_config_directory.stat.exists | default(false)
+      - labwc_config_directory.stat.isdir | default(false)
+    fail_msg: labwc configuration directory is missing; provision the kiosk before release.
+  when:
+    - terminal_release_mode | default('full') == 'release-only'
+    - manage_kiosk_browser | default(false) | bool
 
 - name: Check if labwc user rc.xml exists
   ansible.builtin.stat:
     path: "/home/{{ ansible_user }}/.config/labwc/rc.xml"
   when: manage_kiosk_browser | default(false) | bool
   register: labwc_rc_stat
+
+- name: Require existing labwc rc.xml before release
+  ansible.builtin.assert:
+    that:
+      - labwc_rc_stat.stat.exists | default(false)
+      - labwc_rc_stat.stat.isreg | default(false)
+    fail_msg: labwc rc.xml is missing; provision the kiosk before release.
+  when:
+    - terminal_release_mode | default('full') == 'release-only'
+    - manage_kiosk_browser | default(false) | bool
 
 - name: Copy system labwc rc.xml to user config (first run)
   ansible.builtin.copy:
@@ -202,6 +258,7 @@
     mode: '0644'
     remote_src: true
   when:
+    - terminal_release_mode | default('full') == 'full'
     - manage_kiosk_browser | default(false) | bool
     - labwc_rc_stat is defined
     - not labwc_rc_stat.stat.exists
