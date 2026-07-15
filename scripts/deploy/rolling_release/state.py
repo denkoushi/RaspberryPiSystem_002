@@ -78,6 +78,7 @@ class CancelRequestResult:
 
 
 StateMutator = Callable[[dict[str, Any]], Mapping[str, Any] | None]
+TerminalHook = Callable[[str], Mapping[str, Any] | None]
 Clock = Callable[[], str]
 
 
@@ -239,6 +240,7 @@ class RunStateStore:
         terminal_state: str,
         *,
         changes: Mapping[str, Any] | None = None,
+        before_persist: TerminalHook | None = None,
     ) -> dict[str, Any]:
         """Make a terminal transition that cannot race past cancellation.
 
@@ -268,6 +270,14 @@ class RunStateStore:
             state = copy.deepcopy(current)
             if changes is not None:
                 state.update(copy.deepcopy(dict(changes)))
+            # This hook runs under the same per-run lock used by cancel. The
+            # authoritative fleet state can therefore use the already
+            # arbitrated effective state before this compatibility snapshot is
+            # persisted, without a success/cancel split between the stores.
+            if before_persist is not None:
+                hook_changes = before_persist(effective_state)
+                if hook_changes is not None:
+                    state.update(copy.deepcopy(dict(hook_changes)))
             state['state'] = effective_state
             state = self._normalize_state(run_id, state, paths.state)
             timestamp = self._clock()

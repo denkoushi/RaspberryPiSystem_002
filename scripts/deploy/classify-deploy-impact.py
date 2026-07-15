@@ -132,13 +132,22 @@ def classify(paths):
     return result
 
 
+def changed_paths(base: str, head: str) -> list[str]:
+    # Treat renames as a deletion plus an addition. Otherwise Git's rename
+    # detection reports only the destination to --name-only, and moving a
+    # runtime file into docs could incorrectly classify the removal as neutral.
+    output = subprocess.check_output(
+        ['git', 'diff', '--no-renames', '--name-only', base, head], text=True
+    )
+    return [line for line in output.splitlines() if line]
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--base', required=True)
     parser.add_argument('--head', required=True)
     args = parser.parse_args()
-    output = subprocess.check_output(['git', 'diff', '--name-only', args.base, args.head], text=True)
-    print(json.dumps(classify([line for line in output.splitlines() if line]), ensure_ascii=False))
+    print(json.dumps(classify(changed_paths(args.base, args.head)), ensure_ascii=False))
 
 
 if __name__ == '__main__':

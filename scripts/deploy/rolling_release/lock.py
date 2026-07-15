@@ -9,6 +9,8 @@ import stat
 from pathlib import Path
 from types import TracebackType
 
+from .fleet_state import FleetLease
+
 
 class RunLockError(RuntimeError):
     """Base error for a per-run persistence lock."""
@@ -22,8 +24,14 @@ class InheritedReleaseLockError(RunLockError):
     """Raised before state mutation when the transient unit lock is invalid."""
 
 
-def validate_inherited_release_lock(project: Path) -> int:
-    """Validate and own the bootstrap's kernel lock descriptor.
+def _validate_inherited_lock(
+    expected_path: Path,
+    *,
+    descriptor_variable: str,
+    path_variable: str,
+    label: str,
+) -> int:
+    """Validate one bootstrap-owned kernel lock descriptor.
 
     The descriptor and path must name the same regular inode.  Re-acquiring an
     exclusive non-waiting lock on that descriptor is safe for an inherited
@@ -32,25 +40,24 @@ def validate_inherited_release_lock(project: Path) -> int:
     descriptor open for the entire coordinator lifetime.
     """
 
-    expected_path = Path(project) / '.git/rolling-release.lock'
-    supplied_path = os.environ.get('ROLLING_RELEASE_LOCK_PATH')
-    supplied_fd = os.environ.get('ROLLING_RELEASE_LOCK_FD')
+    supplied_path = os.environ.get(path_variable)
+    supplied_fd = os.environ.get(descriptor_variable)
     if supplied_fd is None or not supplied_fd.isascii() or not supplied_fd.isdigit():
-        raise InheritedReleaseLockError('release lock descriptor is missing or malformed')
+        raise InheritedReleaseLockError(f'{label} descriptor is missing or malformed')
     if supplied_path != str(expected_path):
-        raise InheritedReleaseLockError('release lock path does not match the project checkout')
+        raise InheritedReleaseLockError(f'{label} path does not match the project checkout')
     descriptor = int(supplied_fd)
     if descriptor < 3:
-        raise InheritedReleaseLockError('release lock descriptor cannot use standard input/output')
+        raise InheritedReleaseLockError(f'{label} descriptor cannot use standard input/output')
     try:
         descriptor_status = os.fstat(descriptor)
         path_status = os.lstat(expected_path)
     except OSError as error:
-        raise InheritedReleaseLockError('release lock descriptor or path is unavailable') from error
+        raise InheritedReleaseLockError(f'{label} descriptor or path is unavailable') from error
     if not stat.S_ISREG(descriptor_status.st_mode) or not stat.S_ISREG(path_status.st_mode):
-        raise InheritedReleaseLockError('release lock descriptor and path must be regular files')
+        raise InheritedReleaseLockError(f'{label} descriptor and path must be regular files')
     if (descriptor_status.st_dev, descriptor_status.st_ino) != (path_status.st_dev, path_status.st_ino):
-        raise InheritedReleaseLockError('release lock descriptor does not match the lock path')
+        raise InheritedReleaseLockError(f'{label} descriptor does not match the lock path')
     # First prove that a separate open-file description cannot acquire the
     # inode.  Then re-lock the supplied descriptor: success means this exact
     # inherited open-file description is the owner; failure means another
@@ -58,7 +65,7 @@ def validate_inherited_release_lock(project: Path) -> int:
     try:
         child = os.fork()
     except OSError as error:
-        raise InheritedReleaseLockError('release lock ownership probe could not start') from error
+        raise InheritedReleaseLockError(f'{label} ownership probe could not start') from error
     if child == 0:  # pragma: no cover - outcome is asserted in the parent
         try:
             os.close(descriptor)
@@ -79,27 +86,51 @@ def validate_inherited_release_lock(project: Path) -> int:
     _pid, wait_status = os.waitpid(child, 0)
     probe_status = os.waitstatus_to_exitcode(wait_status)
     if probe_status == 0:
-        raise InheritedReleaseLockError('release lock descriptor is not already locked')
+        raise InheritedReleaseLockError(f'{label} descriptor is not already locked')
     if probe_status != 75:
-        raise InheritedReleaseLockError('release lock ownership probe failed')
+        raise InheritedReleaseLockError(f'{label} ownership probe failed')
     try:
         final_path_status = os.lstat(expected_path)
     except OSError as error:
-        raise InheritedReleaseLockError('release lock path changed during validation') from error
+        raise InheritedReleaseLockError(f'{label} path changed during validation') from error
     if (
         not stat.S_ISREG(final_path_status.st_mode)
         or (descriptor_status.st_dev, descriptor_status.st_ino)
         != (final_path_status.st_dev, final_path_status.st_ino)
     ):
-        raise InheritedReleaseLockError('release lock path changed during validation')
+        raise InheritedReleaseLockError(f'{label} path changed during validation')
     try:
         fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError as error:
         if error.errno in (errno.EACCES, errno.EAGAIN):
-            raise InheritedReleaseLockError('another release owns the kernel lock') from error
-        raise InheritedReleaseLockError('release lock descriptor could not be validated') from error
+            raise InheritedReleaseLockError(f'another process owns the {label}') from error
+        raise InheritedReleaseLockError(f'{label} descriptor could not be validated') from error
     os.set_inheritable(descriptor, False)
     return descriptor
+
+
+def validate_inherited_release_lock(project: Path) -> int:
+    """Validate the compatibility .git lock inherited from the bootstrap."""
+
+    return _validate_inherited_lock(
+        Path(project) / '.git/rolling-release.lock',
+        descriptor_variable='ROLLING_RELEASE_LOCK_FD',
+        path_variable='ROLLING_RELEASE_LOCK_PATH',
+        label='release lock',
+    )
+
+
+def validate_inherited_fleet_lock(project: Path) -> FleetLease:
+    """Return the inherited fleet lease used by all authoritative state writes."""
+
+    expected = Path(project) / 'logs/deploy/fleet-release-state.lock'
+    descriptor = _validate_inherited_lock(
+        expected,
+        descriptor_variable='ROLLING_RELEASE_FLEET_LOCK_FD',
+        path_variable='ROLLING_RELEASE_FLEET_LOCK_PATH',
+        label='fleet lock',
+    )
+    return FleetLease(expected, descriptor, close_on_release=True)
 
 
 class RunLock:

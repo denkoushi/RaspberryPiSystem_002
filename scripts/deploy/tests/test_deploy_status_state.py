@@ -1,15 +1,95 @@
+import importlib.util
 import json
+import os
+import stat
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
 from datetime import datetime
 from pathlib import Path
+from unittest import mock
 
 SCRIPT = Path(__file__).parents[1] / 'deploy-status-state.py'
+SPEC = importlib.util.spec_from_file_location('deploy_status_state', SCRIPT)
+assert SPEC and SPEC.loader
+MODULE = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = MODULE
+SPEC.loader.exec_module(MODULE)
 
 
 class DeployStatusStateTest(unittest.TestCase):
+    def test_kernel_lock_serializes_contenders_and_persists_safe_mode(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'status.json'
+            inherited_umask = os.umask(0o077)
+            try:
+                with MODULE.StatusLock(path):
+                    with self.assertRaises(TimeoutError):
+                        with MODULE.StatusLock(path, timeout_seconds=0.05):
+                            pass
+            finally:
+                os.umask(inherited_umask)
+            with MODULE.StatusLock(path, timeout_seconds=0.05):
+                pass
+            lock = Path(f'{path}.lock')
+            self.assertTrue(lock.is_file())
+            self.assertEqual(lock.stat().st_mode & 0o777, 0o644)
+
+    def test_sigkill_releases_kernel_lock_without_cleanup_or_stale_reclaim(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'status.json'
+            child = subprocess.Popen(
+                [
+                    sys.executable,
+                    '-c',
+                    (
+                        'import runpy,time; '
+                        f'm=runpy.run_path({str(SCRIPT)!r}); '
+                        f'l=m["StatusLock"]({str(path)!r}); '
+                        'l.__enter__(); print("locked", flush=True); time.sleep(60)'
+                    ),
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self.addCleanup(lambda: child.poll() is None and child.kill())
+            self.assertEqual(child.stdout.readline().strip(), 'locked')
+            child.kill()
+            child.wait(timeout=5)
+            child.stdout.close()
+            child.stderr.close()
+
+            with MODULE.StatusLock(path, timeout_seconds=0.2):
+                pass
+
+    def test_save_fsyncs_file_replace_and_parent_directory_in_order(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'status.json'
+            events = []
+            real_fsync = MODULE.os.fsync
+            real_replace = MODULE.os.replace
+
+            def tracked_fsync(descriptor):
+                events.append(
+                    'dir-fsync'
+                    if stat.S_ISDIR(os.fstat(descriptor).st_mode)
+                    else 'file-fsync'
+                )
+                return real_fsync(descriptor)
+
+            def tracked_replace(source, destination):
+                events.append('replace')
+                return real_replace(source, destination)
+
+            with mock.patch.object(MODULE.os, 'fsync', side_effect=tracked_fsync), \
+                    mock.patch.object(MODULE.os, 'replace', side_effect=tracked_replace):
+                MODULE.save(path, {'version': 2, 'kioskByClient': {}})
+
+        self.assertEqual(events, ['file-fsync', 'replace', 'dir-fsync'])
+
     def test_run_scoped_merge_failure_and_remove(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'status.json'
@@ -117,6 +197,43 @@ class DeployStatusStateTest(unittest.TestCase):
             self.assertIn('other-kiosk', after_cancel['kioskByClient'])
             self.assertEqual(after_cancel['kioskByClient']['other-kiosk']['runId'], 'release-2')
             self.assertIn('release-2', after_cancel['acknowledgements'])
+
+    def test_notice_ack_rejects_malformed_duration_without_changing_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'status.json'
+            cases = [
+                ('missing', None, False),
+                ('null', None, True),
+                ('zero', 0, True),
+                ('negative', -1, True),
+                ('fractional', 1.5, True),
+                ('string', '60', True),
+                ('boolean', True, True),
+            ]
+            for name, duration, include_duration in cases:
+                with self.subTest(name=name):
+                    entry = {
+                        'maintenance': False,
+                        'runId': 'release-invalid',
+                        'phase': 'notice',
+                    }
+                    if include_duration:
+                        entry['noticeDurationSeconds'] = duration
+                    original = {'version': 2, 'kioskByClient': {'kiosk': entry}}
+                    path.write_text(json.dumps(original), encoding='utf-8')
+
+                    completed = subprocess.run(
+                        [
+                            'python3', str(SCRIPT), '--file', str(path), 'ack',
+                            '--run-id', 'release-invalid', '--client', 'kiosk',
+                            '--phase', 'notice',
+                        ],
+                        text=True,
+                        capture_output=True,
+                    )
+
+                    self.assertNotEqual(completed.returncode, 0)
+                    self.assertEqual(json.loads(path.read_text(encoding='utf-8')), original)
 
     def test_canary_approval_requires_pending_gate_and_never_uses_generic_ack(self):
         with tempfile.TemporaryDirectory() as directory:

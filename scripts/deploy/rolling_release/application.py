@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import shlex
 from datetime import datetime, timezone
@@ -18,10 +19,32 @@ from .backends.systemd import (
     SystemdBackend,
 )
 from .models import LaunchSpec
+from .policy import server_identity
 from .reconcile import reconcile_status
 
 
 OPERATOR_CANARY_APPROVAL_CLIENT = "operator-canary-approval"
+_REMOTE_CLIENT_ID_PROBE = r'''import os,re,stat,sys
+p="/etc/raspi-status-agent.conf"
+flags=os.O_RDONLY|getattr(os,"O_CLOEXEC",0)|getattr(os,"O_NOFOLLOW",0)
+try:
+ fd=os.open(p,flags)
+ try:
+  if not stat.S_ISREG(os.fstat(fd).st_mode): raise OSError("not regular")
+  data=os.read(fd,65537)
+ finally: os.close(fd)
+ if len(data)>65536: raise OSError("too large")
+ text=data.decode("utf-8")
+ values=[]
+ pattern=re.compile(r'^[ \t]*CLIENT_ID[ \t]*=[ \t]*(?:"([A-Za-z0-9][A-Za-z0-9._:-]{0,127})"|\'([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\'|([A-Za-z0-9][A-Za-z0-9._:-]{0,127}))[ \t]*(?:#.*)?$')
+ for line in text.splitlines():
+  match=pattern.fullmatch(line)
+  if match: values.append(next(value for value in match.groups() if value is not None))
+ if len(values)!=1: raise OSError("CLIENT_ID unavailable")
+ print(values[0])
+except Exception:
+ sys.exit(78)
+'''
 
 
 def new_run_id() -> str:
@@ -37,7 +60,13 @@ def _remote_user_and_host(raw_host: str) -> tuple[str, str]:
     return DEFAULT_REMOTE_USER, f"{DEFAULT_REMOTE_USER}@{raw_host}"
 
 
-def build_backends(runtime: Any) -> tuple[SystemdBackend, RemoteRunControl]:
+def build_server_transport(
+    runtime: Any,
+    *,
+    runner: Any | None = None,
+) -> tuple[str, SshTransport]:
+    """Build the one canonical Pi5 SSH transport used by every local action."""
+
     raw_host = runtime.os.environ.get("RASPI_SERVER_HOST")
     if not raw_host:
         raise RuntimeError("RASPI_SERVER_HOST is required")
@@ -46,7 +75,16 @@ def build_backends(runtime: Any) -> tuple[SystemdBackend, RemoteRunControl]:
     configured = runtime.os.environ.get("RASPI_SERVER_SSH_OPTS")
     if configured:
         options.extend(shlex.split(configured))
-    transport = SshTransport(ssh_host, SubprocessRunner(), ssh_options=options)
+    transport = SshTransport(
+        ssh_host,
+        runner if runner is not None else SubprocessRunner(),
+        ssh_options=options,
+    )
+    return remote_user, transport
+
+
+def build_backends(runtime: Any) -> tuple[SystemdBackend, RemoteRunControl]:
+    remote_user, transport = build_server_transport(runtime)
     remote_home = (
         DEFAULT_REMOTE_HOME
         if remote_user == DEFAULT_REMOTE_USER
@@ -155,6 +193,44 @@ def _require_clean_worktree(*, runtime: Any) -> None:
         raise RuntimeError("local repository has uncommitted or untracked changes; refusing deployment")
 
 
+def require_checkout_sha(sha: str, *, runtime: Any) -> None:
+    """Bind an approved target tree to the operator's exact local checkout."""
+
+    _require_clean_worktree(runtime=runtime)
+    head = runtime.run(
+        ["git", "-C", str(runtime.PROJECT), "rev-parse", "HEAD"], capture=True
+    ).strip()
+    if not runtime.FULL_SHA_RE.fullmatch(head) or head != sha:
+        raise RuntimeError(
+            "local HEAD does not match the resolved target SHA; update the checkout and rerun --print-plan"
+        )
+
+
+def read_remote_server_client_id(*, runtime: Any) -> str:
+    """Read only the public CLIENT_ID field; never return the config or key."""
+
+    _remote_user, transport = build_server_transport(runtime)
+    result = transport.run(["/usr/bin/python3", "-c", _REMOTE_CLIENT_ID_PROBE])
+    value = result.stdout.strip()
+    if (
+        result.returncode != 0
+        or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", value)
+    ):
+        raise RuntimeError("remote Pi5 CLIENT_ID could not be verified")
+    return value
+
+
+def validate_remote_server_identity(
+    inventory_data: dict[str, Any], *, runtime: Any
+) -> dict[str, str]:
+    identity = server_identity(inventory_data)
+    if read_remote_server_client_id(runtime=runtime) != identity["clientId"]:
+        raise RuntimeError(
+            "RASPI_SERVER_HOST does not match the selected inventory server identity"
+        )
+    return identity
+
+
 def launch(args: Any, *, runtime: Any) -> int:
     _require_clean_worktree(runtime=runtime)
     remote_inventory = _remote_inventory(args.inventory, runtime=runtime)
@@ -165,6 +241,11 @@ def launch(args: Any, *, runtime: Any) -> int:
     ).strip()
     if not runtime.FULL_SHA_RE.fullmatch(sha):
         raise RuntimeError("origin branch did not resolve to an immutable SHA")
+    require_checkout_sha(sha, runtime=runtime)
+    inventory_data = runtime.inventory_json(
+        str(runtime.ANSIBLE_DIRECTORY / remote_inventory)
+    )
+    identity = validate_remote_server_identity(inventory_data, runtime=runtime)
 
     run_id = new_run_id()
     spec = LaunchSpec(
@@ -172,12 +253,14 @@ def launch(args: Any, *, runtime: Any) -> int:
         branch=args.branch,
         sha=sha,
         inventory=remote_inventory,
+        expected_server_client_id=identity["clientId"],
         limit=args.limit or "",
         canary_hold_timeout=args.canary_hold_timeout,
         emergency_override=args.emergency_override,
         reason=args.reason,
         skip_canary_hold=args.skip_canary_hold,
         auto_minimize=args.auto_minimize,
+        full_fleet=args.full_fleet,
     ).validate()
     try:
         systemd, control = build_backends(runtime)

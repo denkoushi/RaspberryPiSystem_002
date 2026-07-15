@@ -41,6 +41,7 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--cancel")
     value.add_argument("--print-plan", "--dry-run", action="store_true")
     value.add_argument("--detach", action="store_true")
+    value.add_argument("--full-fleet", action="store_true")
     value.add_argument("--follow", action="store_true")
     value.add_argument("--foreground", action="store_true")
     value.add_argument("--profile", action="store_true")
@@ -52,6 +53,7 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--remote-run", action="store_true", help=argparse.SUPPRESS)
     value.add_argument("--sha", help=argparse.SUPPRESS)
     value.add_argument("--run-id", help=argparse.SUPPRESS)
+    value.add_argument("--expected-server-client-id", help=argparse.SUPPRESS)
     value.add_argument("--skip-canary-hold", action="store_true")
     value.add_argument(
         "--canary-hold-timeout",
@@ -125,9 +127,11 @@ def normalize_arguments(args: argparse.Namespace) -> argparse.Namespace:
                 ("--remote-run", args.remote_run),
                 ("--sha", args.sha is not None),
                 ("--run-id", args.run_id is not None),
+                ("--expected-server-client-id", args.expected_server_client_id is not None),
                 ("--emergency-override", args.emergency_override),
                 ("--skip-canary-hold", args.skip_canary_hold),
                 ("--auto-minimize", args.auto_minimize),
+                ("--full-fleet", args.full_fleet),
                 (
                     "--canary-hold-timeout",
                     args.canary_hold_timeout is not None,
@@ -161,6 +165,10 @@ def normalize_arguments(args: argparse.Namespace) -> argparse.Namespace:
         raise UsageError("--canary-hold-timeout must be greater than zero")
     if args.print_plan and args.detach:
         raise UsageError("--print-plan cannot be combined with --detach")
+    if args.full_fleet and args.auto_minimize:
+        raise UsageError("--full-fleet cannot be combined with the --auto-minimize compatibility alias")
+    if args.full_fleet and args.limit:
+        raise UsageError("--full-fleet cannot be combined with --limit")
     if args.print_plan and (args.emergency_override or args.skip_canary_hold):
         raise UsageError("--print-plan cannot be combined with execution override options")
     if args.print_plan and args.canary_hold_timeout != DEFAULT_CANARY_HOLD_TIMEOUT:
@@ -178,8 +186,14 @@ def normalize_arguments(args: argparse.Namespace) -> argparse.Namespace:
         if not args.run_id:
             raise UsageError("--remote-run requires --run-id")
         validate_run_id(args.run_id)
+        if not args.expected_server_client_id or not re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", args.expected_server_client_id
+        ):
+            raise UsageError("--remote-run requires a safe expected server client ID")
         if args.detach or args.print_plan:
             raise UsageError("--remote-run cannot be combined with --detach or --print-plan")
-    elif args.sha or args.run_id:
-        raise UsageError("--sha and --run-id are internal remote-run options")
+    elif args.sha or args.run_id or args.expected_server_client_id:
+        raise UsageError(
+            "--sha, --run-id and --expected-server-client-id are internal remote-run options"
+        )
     return args

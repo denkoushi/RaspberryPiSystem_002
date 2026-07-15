@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { buildServer } from '../../../app.js';
 import { prisma } from '../../../lib/prisma.js';
@@ -233,5 +233,93 @@ describe('GET /api/system/deploy-status', () => {
       notice: { acknowledgedAt: expect.any(String) },
       maintenance: { acknowledgedAt: expect.any(String) }
     });
+  });
+
+  it('rejects malformed notice durations without storing an acknowledgement', async () => {
+    const app = await buildServer();
+    closeServer = async () => {
+      await app.close();
+    };
+    const cases: Array<[string, unknown, boolean]> = [
+      ['missing', undefined, false],
+      ['null', null, true],
+      ['zero', 0, true],
+      ['negative', -1, true],
+      ['fractional', 1.5, true],
+      ['string', '60', true],
+      ['boolean', true, true]
+    ];
+
+    for (const [name, duration, includeDuration] of cases) {
+      const entry: Record<string, unknown> = {
+        maintenance: false,
+        runId: `run-invalid-${name}`,
+        phase: 'notice'
+      };
+      if (includeDuration) entry.noticeDurationSeconds = duration;
+      await writeFile(
+        TEST_DEPLOY_STATUS_FILE,
+        JSON.stringify({ version: 2, kioskByClient: { 'raspberrypi4-kiosk1': entry } })
+      );
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/system/deploy-status/ack',
+        headers: { 'x-client-key': TEST_CLIENT_KEY },
+        payload: { runId: entry.runId, phase: 'notice' }
+      });
+
+      expect(response.statusCode, name).toBe(409);
+      const stored = JSON.parse(await readFile(TEST_DEPLOY_STATUS_FILE, 'utf-8'));
+      expect(stored.kioskByClient['raspberrypi4-kiosk1'].scheduledAt, name).toBeUndefined();
+      expect(stored.acknowledgements, name).toBeUndefined();
+    }
+  });
+
+  it('ignores the obsolete mkdir lock and uses a persistent kernel lock', async () => {
+    await writeFile(
+      TEST_DEPLOY_STATUS_FILE,
+      JSON.stringify({
+        version: 2,
+        kioskByClient: {
+          'raspberrypi4-kiosk1': {
+            maintenance: true,
+            runId: 'run-after-reboot',
+            phase: 'preparing'
+          }
+        }
+      })
+    );
+    const lockDirectory = `${TEST_DEPLOY_STATUS_FILE}.lock.d`;
+    await rm(lockDirectory, { recursive: true, force: true });
+    await mkdir(lockDirectory);
+    await writeFile(
+      join(lockDirectory, 'owner'),
+      JSON.stringify({
+        version: 1,
+        token: 'prior-boot',
+        pid: process.pid,
+        bootId: '00000000-0000-0000-0000-000000000000',
+        pidNamespace: null,
+        processStart: null,
+        createdAtMs: 0
+      })
+    );
+
+    const app = await buildServer();
+    closeServer = async () => {
+      await app.close();
+    };
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/system/deploy-status/ack',
+      headers: { 'x-client-key': TEST_CLIENT_KEY },
+      payload: { runId: 'run-after-reboot', phase: 'maintenance' }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ acknowledged: true, runId: 'run-after-reboot' });
+    expect(await readFile(join(lockDirectory, 'owner'), 'utf-8')).toContain('prior-boot');
+    expect((await stat(`${TEST_DEPLOY_STATUS_FILE}.lock`)).isFile()).toBe(true);
   });
 });

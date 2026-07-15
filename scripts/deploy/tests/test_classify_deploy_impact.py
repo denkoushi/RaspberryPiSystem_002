@@ -1,4 +1,6 @@
 import importlib.util
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -86,6 +88,57 @@ class ClassifyDeployImpactTest(unittest.TestCase):
         self.assertTrue(result['server'])
         self.assertFalse(result['signage'])
         self.assertEqual(result['components'], ['migration'])
+
+    def test_runtime_file_renamed_into_docs_classifies_both_sides(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = Path(temporary)
+            subprocess.run(['git', 'init', '-q'], cwd=repository, check=True)
+            subprocess.run(
+                ['git', 'config', 'user.email', 'test@example.invalid'],
+                cwd=repository,
+                check=True,
+            )
+            subprocess.run(
+                ['git', 'config', 'user.name', 'Test'], cwd=repository, check=True
+            )
+            source = repository / 'clients/status-agent/service.py'
+            source.parent.mkdir(parents=True)
+            source.write_text('runtime\n', encoding='utf-8')
+            subprocess.run(['git', 'add', '.'], cwd=repository, check=True)
+            subprocess.run(['git', 'commit', '-qm', 'base'], cwd=repository, check=True)
+            base = subprocess.check_output(
+                ['git', 'rev-parse', 'HEAD'], cwd=repository, text=True
+            ).strip()
+            destination = repository / 'docs/service.md'
+            destination.parent.mkdir()
+            source.rename(destination)
+            subprocess.run(['git', 'add', '-A'], cwd=repository, check=True)
+            subprocess.run(['git', 'commit', '-qm', 'rename'], cwd=repository, check=True)
+            head = subprocess.check_output(
+                ['git', 'rev-parse', 'HEAD'], cwd=repository, text=True
+            ).strip()
+
+            paths = subprocess.check_output(
+                [
+                    'python3',
+                    str(SCRIPT),
+                    '--base',
+                    base,
+                    '--head',
+                    head,
+                ],
+                cwd=repository,
+                text=True,
+            )
+            result = __import__('json').loads(paths)
+
+        self.assertEqual(
+            set(result['paths']),
+            {'clients/status-agent/service.py', 'docs/service.md'},
+        )
+        self.assertTrue(result['kiosk'])
+        self.assertTrue(result['signage'])
+        self.assertEqual(result['components'], ['neutral', 'status-agent'])
 
 
 if __name__ == '__main__':

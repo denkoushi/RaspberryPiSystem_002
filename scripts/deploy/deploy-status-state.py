@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 import argparse
+import fcntl
 import json
 import os
+import stat
 import tempfile
 import time
 from datetime import datetime, timedelta, timezone
@@ -76,6 +78,7 @@ def save(path, data):
     except FileNotFoundError:
         pass
     fd, tmp = tempfile.mkstemp(prefix=f'.{target.name}.', dir=target.parent)
+    directory_fd = None
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as handle:
             json.dump(data, handle, ensure_ascii=False, separators=(',', ':'))
@@ -83,37 +86,69 @@ def save(path, data):
             os.fsync(handle.fileno())
         if existing_owner is not None:
             os.chown(tmp, *existing_owner)
+        directory_flags = os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0)
+        directory_fd = os.open(target.parent, directory_flags)
         os.replace(tmp, target)
+        os.fsync(directory_fd)
     finally:
+        if directory_fd is not None:
+            os.close(directory_fd)
         if os.path.exists(tmp):
             os.unlink(tmp)
 
 
 class StatusLock:
-    """Cross-process lock shared with the Node API through an atomic directory."""
+    """Crash-safe kernel lock used by the one deploy-status writer."""
 
     def __init__(self, path, timeout_seconds=10):
-        self.path = Path(f'{path}.lock.d')
+        self.path = Path(f'{path}.lock')
         self.timeout_seconds = timeout_seconds
+        self.descriptor = None
 
     def __enter__(self):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        flags = os.O_RDONLY | os.O_CREAT | getattr(os, 'O_CLOEXEC', 0)
+        flags |= getattr(os, 'O_NOFOLLOW', 0)
+        # This helper is a short-lived single-threaded process. Override its
+        # inherited unit umask only for creation so a root API helper killed
+        # between open and fchmod cannot strand a root:0600 persistent inode.
+        previous_umask = os.umask(0)
+        try:
+            descriptor = os.open(self.path, flags, 0o644)
+        finally:
+            os.umask(previous_umask)
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            os.close(descriptor)
+            raise OSError(f'deploy status lock is not a regular file: {self.path}')
+        try:
+            os.fchmod(descriptor, 0o644)
+        except PermissionError:
+            # A root-created persistent lock remains readable by the Pi5
+            # operator. Non-owners need only open and flock it.
+            pass
         deadline = time.monotonic() + self.timeout_seconds
-        while True:
-            try:
-                self.path.mkdir()
-                (self.path / 'owner').write_text(str(os.getpid()), encoding='utf-8')
-                return self
-            except FileExistsError:
-                if time.monotonic() >= deadline:
-                    raise TimeoutError(f'deploy status is locked: {self.path}')
-                time.sleep(0.05)
+        try:
+            while True:
+                try:
+                    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    self.descriptor = descriptor
+                    return self
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError(f'deploy status is locked: {self.path}')
+                    time.sleep(0.05)
+        except BaseException:
+            os.close(descriptor)
+            raise
 
     def __exit__(self, *_exc):
+        if self.descriptor is None:
+            return
         try:
-            (self.path / 'owner').unlink(missing_ok=True)
-            self.path.rmdir()
-        except OSError:
-            pass
+            fcntl.flock(self.descriptor, fcntl.LOCK_UN)
+        finally:
+            os.close(self.descriptor)
+            self.descriptor = None
 
 
 def main():
@@ -194,13 +229,26 @@ def main():
                 if entry.get('phase') != 'notice' or entry.get('maintenance') is not False:
                     raise ValueError('notice acknowledgement does not match an active notice entry')
                 if not isinstance(entry.get('scheduledAt'), str):
-                    entry['scheduledAt'] = notice_schedule(timestamp, entry.get('noticeDurationSeconds', 0))
+                    duration_seconds = entry.get('noticeDurationSeconds')
+                    if type(duration_seconds) is not int or duration_seconds <= 0:
+                        raise ValueError('notice acknowledgement requires a positive integer duration')
+                    entry['scheduledAt'] = notice_schedule(timestamp, duration_seconds)
                     entry['updatedAt'] = timestamp
             elif entry.get('maintenance') is not True:
                 raise ValueError('maintenance acknowledgement does not match an active terminal maintenance entry')
             acknowledgements, record = acknowledgements_for(data, args.run_id, args.client)
             record.setdefault(args.phase, {'acknowledgedAt': timestamp, 'source': 'controller'})
             data['acknowledgements'] = acknowledgements
+            output = json.dumps({
+                'acknowledged': True,
+                'runId': args.run_id,
+                'phase': args.phase,
+                **(
+                    {'scheduledAt': entry['scheduledAt']}
+                    if args.phase == 'notice' and isinstance(entry.get('scheduledAt'), str)
+                    else {}
+                ),
+            }, ensure_ascii=False)
         elif args.command == 'approve':
             if args.client != OPERATOR_CANARY_APPROVAL_CLIENT:
                 raise ValueError('canary approval client is not allowed')
@@ -268,7 +316,7 @@ def main():
             holds.pop(args.run_id, None)
             if not holds:
                 data.pop('canaryHolds', None)
-        if output is None:
+        if args.command != 'canary-hold-state':
             save(args.file, data)
     if output is not None:
         print(output)

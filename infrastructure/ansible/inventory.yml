@@ -137,6 +137,9 @@ all:
             raspberrypi4:
               ansible_host: "{{ kiosk_ip }}"
               ansible_user: tools03
+              # Recovery is an explicit per-host capability; never inherit it
+              # into a newly-added kiosk or a LAN/DNS-only site.
+              pi4_recovery_enabled: true
               kiosk_browser_engine: "firefox"
               kiosk_browser_mode: "app-like"
               # IBus 単一オーナー化（KB-287: 日本語入力不安定の解消。robodrill01 で有効だった設定を kensakuMain にも適用）
@@ -176,6 +179,7 @@ all:
               # NOTE: group_vars/all.yml の local_network / tailscale_network に raspi4_robodrill01_ip を追加済み
               ansible_host: "{{ current_network.raspi4_robodrill01_ip | default(local_network.raspi4_robodrill01_ip) }}"
               ansible_user: tools04
+              pi4_recovery_enabled: true
               kiosk_browser_engine: "firefox"
               kiosk_browser_mode: "app-like"
               # IBus 単一オーナー化は robodrill 先行で段階導入する
@@ -213,6 +217,7 @@ all:
               # NOTE: group_vars/all.yml の local_network / tailscale_network に raspi4_fjv60_80_ip を定義
               ansible_host: "{{ current_network.raspi4_fjv60_80_ip | default(local_network.raspi4_fjv60_80_ip) }}"
               ansible_user: raspi4-fjv60-80
+              pi4_recovery_enabled: true
               kiosk_browser_engine: "firefox"
               kiosk_browser_mode: "app-like"
               ibus_owner_mode: "single-owner"
@@ -248,6 +253,7 @@ all:
               # NOTE: Pi5 から LAN 直が無い場合は新 Pi4 で Tailscale 参加後、group_vars/all.yml の tailscale_network に 100.x を追加
               ansible_host: "{{ current_network.raspi4_kensaku_stonebase01_ip | default(local_network.raspi4_kensaku_stonebase01_ip) }}"
               ansible_user: raspi4-kensaku-stonebase01
+              pi4_recovery_enabled: true
               kiosk_browser_engine: "firefox"
               kiosk_browser_mode: "app-like"
               ibus_owner_mode: "single-owner"
@@ -288,6 +294,7 @@ all:
               # NOTE: 通常運用は Tailscale、初期セットアップ時のみ local_network にフォールバックする
               ansible_host: "{{ current_network.raspi4_sessaku_01_ip | default(local_network.raspi4_sessaku_01_ip) }}"
               ansible_user: raspi4-sessaku-01
+              pi4_recovery_enabled: true
               kiosk_browser_engine: "firefox"
               kiosk_browser_mode: "app-like"
               ibus_owner_mode: "single-owner"

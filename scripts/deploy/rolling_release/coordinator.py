@@ -1,7 +1,9 @@
-"""Release ordering and cooperative phase control.
+"""Release ordering and authoritative fleet-state transitions.
 
-The facade is injected as ``runtime`` so the long-standing unit tests can
-continue patching command adapters while implementation moves into a package.
+The facade is injected as ``runtime`` so command adapters and durable stores
+remain independently testable.  The fleet record is always written before a
+legacy run snapshot or compatibility marker that describes the same
+transition.
 """
 from __future__ import annotations
 
@@ -11,6 +13,132 @@ from typing import Any
 from .cancellation import CancellationRequested, CancellationToken
 
 
+def _host_needs_seed(record: Any, role: str) -> bool:
+    # Seed is a one-time migration of a host that has never had authoritative
+    # fleet evidence.  An existing ``unknown`` can mean maintenance residue,
+    # timeout, partial configuration, or failed rollback; HEAD/services alone
+    # cannot safely promote it.  It must pass through executor cleanup.
+    return record is None
+
+
+def _seed_unverified_hosts(
+    hosts: list[dict[str, str]],
+    fleet_state: dict[str, Any],
+    *,
+    inventory: str,
+    run_id: str,
+    desired_sha: str,
+    abandoned_run_id: str | None,
+    runtime: Any,
+    token: CancellationToken,
+) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    """Seed only observations confirmed from the live host and services.
+
+    An unreachable or malformed host remains absent/unknown and is therefore
+    targeted by policy.  Observation failures are auditable but do not turn
+    stale data into verified evidence.
+    """
+
+    failures: list[dict[str, str]] = []
+    current_state = fleet_state
+    for host_spec in hosts:
+        host = host_spec["host"]
+        role = host_spec["role"]
+        record = (current_state.get("fleet") or {}).get(host)
+        if (
+            abandoned_run_id is not None
+            and isinstance(record, dict)
+            and record.get("lastRunId") == abandoned_run_id
+        ):
+            # A crashed run may have changed the host or left maintenance in
+            # place. HEAD/services alone cannot prove cleanup, so suppress
+            # seed promotion and force this host through the execution path.
+            current_state = runtime.fleet_mark_unknown(
+                host, role, desired_sha, run_id
+            )
+            failures.append({
+                "host": host,
+                "error": "prior run was interrupted; execution reconciliation required",
+            })
+            continue
+        if not _host_needs_seed(record, role):
+            continue
+        token.checkpoint(f"before-evidence-seed:{host}")
+        try:
+            observation = (
+                runtime.observe_pi5_evidence(None)
+                if role == "server"
+                else runtime.observe_terminal_evidence(inventory, host, role)
+            )
+        except Exception as error:
+            failures.append({"host": host, "error": str(error)})
+            current_state = runtime.fleet_mark_unknown(
+                host, role, desired_sha, run_id
+            )
+        else:
+            current_sha = observation.get("currentSha")
+            current_state = runtime.fleet_mark_verified(
+                host,
+                role,
+                current_sha,
+                current_sha,
+                run_id,
+                previous_sha=None,
+                observation=observation,
+            )
+        token.checkpoint(f"after-evidence-seed:{host}")
+    return current_state, failures
+
+
+def _set_host_status(
+    state: Any,
+    host: str,
+    *,
+    current_sha: str | None,
+    evidence: str,
+) -> None:
+    for record in state.payload.get("hosts") or []:
+        if record.get("host") == host:
+            record["currentSha"] = current_sha
+            record["evidence"] = evidence
+            return
+    raise KeyError(host)
+
+
+def _terminal_run_targets(
+    terminal_targets: list[dict[str, str]], plan: dict[str, Any]
+) -> list[dict[str, Any]]:
+    decisions = {
+        decision["host"]: decision
+        for decision in plan.get("hosts") or []
+        if decision.get("targeted") and decision.get("role") in {"kiosk", "signage"}
+    }
+    result: list[dict[str, Any]] = []
+    for target in terminal_targets:
+        decision = decisions[target["host"]]
+        result.append(
+            {
+                **target,
+                "role": decision["role"],
+                "desiredSha": decision["desiredSha"],
+                "currentSha": decision["currentSha"],
+                "evidence": decision["evidence"],
+                "targetReason": decision["targetReason"],
+                "state": "pending",
+            }
+        )
+    return result
+
+
+def _pi5_marker_candidate(observation: dict[str, Any]) -> dict[str, Any]:
+    """Build the compatibility marker only from verified live evidence."""
+
+    return {
+        "api": observation.get("apiImage"),
+        "web": observation.get("webImage"),
+    }
+
+
 def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
     inventory = str(
         Path(args.inventory)
@@ -18,14 +146,64 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
         else runtime.ANSIBLE_DIRECTORY / args.inventory
     )
     state = None
+    fleet_started = False
+    fleet_finished = False
+
+    def finish_fleet(status: str) -> dict[str, Any] | None:
+        nonlocal fleet_finished
+        if not fleet_started or fleet_finished:
+            return None
+        result = runtime.fleet_finish_run(args.run_id, status)
+        fleet_finished = True
+        return result
+
+    def save_success() -> int:
+        """Arbitrate late cancellation once, then finalize both state formats."""
+
+        assert state is not None
+        state.payload["phase"] = "completed"
+        state.payload["state"] = "success"
+
+        def finish_authoritative(effective_state: str) -> dict[str, Any]:
+            finished = finish_fleet(effective_state)
+            return (
+                {"fleetGeneration": finished["generation"]}
+                if finished is not None
+                else {}
+            )
+
+        state.save(before_terminal_persist=finish_authoritative)
+        return 0 if state.payload["state"] == "success" else 130
+
     try:
+        # Validate the target-tree inventory and the physical Pi5 identity
+        # before the first fleet-state write or any device mutation.
+        inventory_data = runtime.inventory_json(inventory)
+        identity = runtime.inventory_server_identity(inventory_data)
+        if identity["clientId"] != args.expected_server_client_id:
+            raise RuntimeError(
+                "remote Pi5 identity does not match target inventory server"
+            )
+        selected = runtime.selected_hosts(inventory, args.limit)
+        if args.limit and selected == []:
+            raise RuntimeError(f"--limit selected no hosts: {args.limit}")
+        all_hosts = runtime.release_hosts(inventory_data)
+
+        # This is the first durable write.  Any lock-orphaned active run is
+        # recorded as interrupted before the new active run is installed.
+        fleet_state, abandoned_run_id = runtime.fleet_begin_run(
+            args.run_id, args.sha, args.inventory
+        )
+        fleet_started = True
         token.checkpoint("coordinator-start")
+
         initial = {
             "version": 1,
             "runId": args.run_id,
             "branch": args.branch,
             "inventory": args.inventory,
             "limitHosts": args.limit or "",
+            "fullFleet": bool(getattr(args, "full_fleet", False)),
             "releaseSha": args.sha,
             "unitName": runtime.os.environ.get("ROLLING_RELEASE_UNIT"),
             "runner": "systemd-run",
@@ -33,80 +211,126 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             "state": "running",
             "phase": "planning",
             "targets": [],
+            "fleetGeneration": fleet_state["generation"],
         }
+        if abandoned_run_id is not None:
+            initial["abandonedFleetRunId"] = abandoned_run_id
         state = runtime.ReleaseState(runtime.status_file(args.run_id), initial)
         state.save()
         token.checkpoint("state-initialized")
-        inventory_data = runtime.inventory_json(inventory)
-        selected = runtime.selected_hosts(inventory, args.limit)
-        if args.limit and selected == []:
-            raise RuntimeError(f"--limit selected no hosts: {args.limit}")
-        targets = runtime.release_targets(inventory_data, selected)
-        if not targets and not args.limit:
-            raise RuntimeError("no kiosk or signage targets selected")
 
-        classification: dict[str, Any] | None = None
-        minimize_metadata: dict[str, Any] = {
-            "autoMinimize": False,
-            "minimized": False,
-            "excludedHosts": [],
-            "classificationComponents": None,
-        }
-        if args.auto_minimize:
-            classification, _ = runtime.classify_release_impact(
-                args.sha, runtime.read_pi5_release_current()
-            )
-            targets, minimize_metadata = runtime.apply_auto_minimize(
-                targets, inventory_data, classification
-            )
-
-        if classification is not None:
-            pi5_required = runtime.release_policy.requires_pi5_release(classification)
-        else:
-            pi5_required = runtime.pi5_release_required(args.sha)
-
-        plan = runtime.release_planner.build_execution_plan_payload(
-            pi5_required=pi5_required,
-            targets=targets,
-            limit=args.limit,
-            minimize_metadata=minimize_metadata,
+        fleet_state, seed_failures = _seed_unverified_hosts(
+            all_hosts,
+            fleet_state,
+            inventory=inventory,
+            run_id=args.run_id,
+            desired_sha=args.sha,
+            abandoned_run_id=abandoned_run_id,
+            runtime=runtime,
+            token=token,
         )
-        if not targets and not pi5_required and not args.auto_minimize:
-            raise RuntimeError("no kiosk or signage targets selected")
-        state.payload["targets"] = [{**target, "state": "pending"} for target in targets]
+        plan, targets, _classifications, plan_warnings = runtime.build_fleet_scope(
+            sha=args.sha,
+            inventory_data=inventory_data,
+            fleet_state=fleet_state,
+            selected=selected,
+            limit=args.limit,
+            full_fleet=bool(getattr(args, "full_fleet", False)),
+            auto_minimize_alias=bool(getattr(args, "auto_minimize", False)),
+        )
+        if plan_warnings:
+            plan["warnings"] = list(plan_warnings)
+        if seed_failures:
+            state.payload["evidenceSeedFailures"] = seed_failures
+        state.payload["hosts"] = [dict(record) for record in plan["hosts"]]
+        state.payload["targets"] = _terminal_run_targets(targets, plan)
         state.payload["plan"] = plan
+        state.payload["fleetGeneration"] = fleet_state["generation"]
         state.save()
         token.checkpoint("plan-complete")
 
-        if not targets and not pi5_required:
+        pi5_required = bool(plan["pi5Required"])
+        server = next(record for record in plan["hosts"] if record["role"] == "server")
+        if not state.payload["targets"] and not pi5_required:
             state.payload["pi5"] = {"state": "not-required"}
-            state.payload["phase"] = "completed"
-            state.payload["state"] = "success"
-            state.save()
-            return 0 if state.payload["state"] == "success" else 130
+            return save_success()
 
         state.payload["phase"] = "preparing"
-        state.save()
         token.checkpoint("before-pi5")
         if pi5_required:
+            # Unknown is authoritative before Phase 3 or any legacy progress
+            # snapshot can describe the server as changing.
+            fleet_state = runtime.fleet_mark_unknown(
+                server["host"], "server", server["desiredSha"], args.run_id
+            )
+            _set_host_status(
+                state, server["host"], current_sha=None, evidence="unknown"
+            )
+            state.payload["fleetGeneration"] = fleet_state["generation"]
+            state.save()
+
             # The five-minute Blue/Green switch monitor and cleanup form one
-            # atomic safety window.  Cancellation is observed immediately
-            # after it, never by killing or abandoning the monitor.
-            runtime.ensure_pi5_release(args.sha, state)
+            # atomic safety window. Cancellation is observed only after it.
+            runtime.ensure_pi5_release(server["desiredSha"], state)
+            observation = runtime.observe_pi5_evidence(server["desiredSha"])
+            verification_options = {"observation": observation}
+            prior_server_sha = server.get("currentSha")
+            if (
+                isinstance(prior_server_sha, str)
+                and prior_server_sha != observation["currentSha"]
+            ):
+                verification_options["previous_sha"] = prior_server_sha
+            fleet_state = runtime.fleet_mark_verified(
+                server["host"],
+                "server",
+                server["desiredSha"],
+                observation["currentSha"],
+                args.run_id,
+                **verification_options,
+            )
+            # Compatibility marker dual-write is deliberately second.
+            runtime.record_pi5_release_current(
+                server["desiredSha"], _pi5_marker_candidate(observation)
+            )
+            _set_host_status(
+                state,
+                server["host"],
+                current_sha=observation["currentSha"],
+                evidence="verified",
+            )
+            state.payload["fleetGeneration"] = fleet_state["generation"]
+            state.save()
         else:
             state.payload["pi5"] = {"state": "not-required"}
             state.save()
         token.checkpoint("after-pi5-stability")
 
         for index, target_spec in enumerate(targets):
-            token.checkpoint(f'before-terminal:{target_spec["host"]}')
-            target = state.target(target_spec["host"])
-            target["previousSha"] = runtime.remote_previous_sha(inventory, target_spec["host"])
+            host = target_spec["host"]
+            role = target_spec["role"]
+            token.checkpoint(f"before-terminal:{host}")
+            target = state.target(host)
+
+            # An unreachable terminal must become unknown even if the first
+            # read-only HEAD probe fails.  This precedes notices, maintenance,
+            # Ansible, and their legacy snapshots.
+            fleet_state = runtime.fleet_mark_unknown(
+                host, role, target["desiredSha"], args.run_id
+            )
+            target["currentSha"] = None
+            target["evidence"] = "unknown"
+            _set_host_status(state, host, current_sha=None, evidence="unknown")
+            state.payload["fleetGeneration"] = fleet_state["generation"]
+            state.save()
+
+            target["previousSha"] = runtime.remote_previous_sha(inventory, host)
             if runtime.should_issue_terminal_notice(
                 terminal_type=target_spec["terminalType"],
                 emergency_override=args.emergency_override,
             ):
-                runtime.deliver_terminal_notice(state, target_spec, target, args.run_id)
+                runtime.deliver_terminal_notice(
+                    state, target_spec, target, args.run_id
+                )
             else:
                 target["notice"] = {
                     "state": "skipped",
@@ -117,7 +341,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                     "skippedAt": runtime.utc_now(),
                 }
                 state.save()
-            token.checkpoint(f'after-notice:{target_spec["host"]}')
+            token.checkpoint(f"after-notice:{host}")
 
             target["state"] = "maintenance-requested"
             target["maintenanceStartedAt"] = runtime.utc_now()
@@ -132,35 +356,41 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                 "--terminal-type",
                 target_spec["terminalType"],
             )
-            token.checkpoint(f'after-maintenance:{target_spec["host"]}')
+            token.checkpoint(f"after-maintenance:{host}")
             if target_spec["terminalType"] == "signage":
                 runtime.prestage_signage_maintenance(
-                    inventory,
-                    target_spec["host"],
-                    args.run_id,
-                    target_spec["clientId"],
+                    inventory, host, args.run_id, target_spec["clientId"]
                 )
             if not runtime.wait_for_ack(
                 args.run_id, target_spec["clientId"], phase="maintenance"
             ):
                 if not args.emergency_override:
                     raise RuntimeError(
-                        f'maintenance acknowledgement timed out for {target_spec["host"]}'
+                        f"maintenance acknowledgement timed out for {host}"
                     )
                 target["ackOverrideReason"] = args.reason
             target["acknowledgedAt"] = runtime.utc_now()
-            token.checkpoint(f'before-playbook:{target_spec["host"]}')
+            token.checkpoint(f"before-playbook:{host}")
 
             target["state"] = "deploying"
             state.save()
-            runtime.state_command("set-phase", "--run-id", args.run_id, "--phase", "deploying")
+            runtime.state_command(
+                "set-phase", "--run-id", args.run_id, "--phase", "deploying"
+            )
             try:
-                # Ansible is not killed mid-operation.  A control request is
-                # honored at the checkpoint immediately after it returns.
-                runtime.playbook(inventory, target_spec["host"], args.sha, args.run_id)
-                target["newSha"] = args.sha
-                target["state"] = "success"
-                target["completedAt"] = runtime.utc_now()
+                # Ansible is not killed mid-operation.  Verification happens
+                # before the next cancellation checkpoint.
+                runtime.playbook(
+                    inventory, host, target["desiredSha"], args.run_id
+                )
+                observation = runtime.observe_terminal_evidence(inventory, host, role)
+                if observation.get("currentSha") != target["desiredSha"]:
+                    raise RuntimeError(
+                        f"terminal HEAD does not match desired release: {host}"
+                    )
+                # Removing maintenance is part of successful evidence. Keep
+                # fleet evidence unknown until cleanup succeeds so a crash
+                # cannot leave a verified-but-maintained host excluded later.
                 runtime.state_command(
                     "remove-client",
                     "--run-id",
@@ -168,41 +398,105 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                     "--client",
                     target_spec["clientId"],
                 )
+                fleet_state = runtime.fleet_mark_verified(
+                    host,
+                    role,
+                    target["desiredSha"],
+                    observation["currentSha"],
+                    args.run_id,
+                    previous_sha=target["previousSha"],
+                    observation=observation,
+                )
+                target["newSha"] = observation["currentSha"]
+                target["currentSha"] = observation["currentSha"]
+                target["evidence"] = "verified"
+                target["state"] = "success"
+                target["completedAt"] = runtime.utc_now()
+                _set_host_status(
+                    state,
+                    host,
+                    current_sha=observation["currentSha"],
+                    evidence="verified",
+                )
+                state.payload["fleetGeneration"] = fleet_state["generation"]
                 state.save()
             except Exception as error:
+                # Rollback is itself a mutation, so it gets a fresh unknown
+                # transition even if target verification had just succeeded.
+                fleet_state = runtime.fleet_mark_unknown(
+                    host, role, target["desiredSha"], args.run_id
+                )
+                target["currentSha"] = None
+                target["evidence"] = "unknown"
                 target["state"] = "rolling-back"
                 target["failure"] = str(error)
+                _set_host_status(state, host, current_sha=None, evidence="unknown")
+                state.payload["fleetGeneration"] = fleet_state["generation"]
                 state.payload["phase"] = "rolling-back"
                 state.save()
+
                 # Rollback wins over cancellation and is never interrupted.
-                runtime.rollback_terminal(inventory, target_spec, target, args.run_id)
+                rollback_ok = runtime.rollback_terminal(
+                    inventory, target_spec, target, args.run_id
+                )
+                if rollback_ok:
+                    try:
+                        rollback_observation = runtime.observe_terminal_evidence(
+                            inventory, host, role
+                        )
+                        if (
+                            rollback_observation.get("currentSha")
+                            != target["previousSha"]
+                        ):
+                            raise RuntimeError(
+                                f"rollback HEAD does not match previous release: {host}"
+                            )
+                        fleet_state = runtime.fleet_mark_verified(
+                            host,
+                            role,
+                            target["desiredSha"],
+                            rollback_observation["currentSha"],
+                            args.run_id,
+                            previous_sha=target["previousSha"],
+                            observation=rollback_observation,
+                        )
+                        target["currentSha"] = rollback_observation["currentSha"]
+                        target["evidence"] = "verified"
+                        target["rollbackEvidence"] = "verified"
+                        _set_host_status(
+                            state,
+                            host,
+                            current_sha=rollback_observation["currentSha"],
+                            evidence="verified",
+                        )
+                        state.payload["fleetGeneration"] = fleet_state["generation"]
+                    except Exception as rollback_evidence_error:
+                        target["rollbackEvidence"] = (
+                            f"unknown: {rollback_evidence_error}"
+                        )
                 target["state"] = "failed"
                 target["completedAt"] = runtime.utc_now()
                 state.save()
                 raise RuntimeError(
-                    f'rollout stopped after {target_spec["host"]} failed'
+                    f"rollout stopped after {host} failed"
                 ) from error
 
-            token.checkpoint(f'after-playbook:{target_spec["host"]}')
+            token.checkpoint(f"after-playbook:{host}")
             if runtime.should_hold_after_canary(
                 targets, index, skip=args.skip_canary_hold
             ):
                 state.payload["phase"] = "waiting-approval"
                 state.save()
                 runtime.wait_for_canary_hold(
-                    state, args.run_id, target_spec["host"], args.canary_hold_timeout
+                    state, args.run_id, host, args.canary_hold_timeout
                 )
                 token.checkpoint("after-canary-approval")
 
         token.checkpoint("before-success")
-        state.payload["phase"] = "completed"
-        state.payload["state"] = "success"
-        state.save()
-        return 0 if state.payload["state"] == "success" else 130
+        return save_success()
     except CancellationRequested as cancellation:
-        # No Git, checkout, lock deletion, PID kill, or child kill occurs here.
-        # Removing deploy-status entries is safe only at a coordinator phase
-        # boundary; Blue/Green, Ansible, and rollback return before reaching it.
+        # Removing deploy-status entries is safe only at a phase boundary;
+        # Blue/Green, Ansible, and rollback return before reaching one.
         cleanup: dict[str, Any]
         try:
             runtime.state_command("remove-run", "--run-id", args.run_id)
@@ -215,6 +509,16 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             }
         cleanup_failed = cleanup["state"] == "failed"
         terminal_state = "failed" if cleanup_failed else "cancelled"
+        fleet_finish_error: Exception | None = None
+        try:
+            finished = finish_fleet(terminal_state)
+        except Exception as error:
+            fleet_finish_error = error
+            cleanup_failed = True
+            terminal_state = "failed"
+            cleanup["fleetStateError"] = str(error)
+            finished = None
+
         if state is None:
             state = runtime.ReleaseState(
                 runtime.status_file(args.run_id),
@@ -224,6 +528,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                     "branch": args.branch,
                     "inventory": args.inventory,
                     "limitHosts": args.limit or "",
+                    "fullFleet": bool(getattr(args, "full_fleet", False)),
                     "releaseSha": args.sha,
                     "unitName": runtime.os.environ.get("ROLLING_RELEASE_UNIT"),
                     "runner": "systemd-run",
@@ -236,9 +541,13 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
         else:
             state.payload["state"] = terminal_state
             state.payload["phase"] = "completed"
+        if finished is not None:
+            state.payload["fleetGeneration"] = finished["generation"]
         canary_hold = state.payload.get("canaryHold")
         if isinstance(canary_hold, dict):
-            canary_hold.update({"state": "cancelled", "cancelledAt": runtime.utc_now()})
+            canary_hold.update(
+                {"state": "cancelled", "cancelledAt": runtime.utc_now()}
+            )
         state.payload["cancellation"] = {
             "reason": cancellation.reason,
             "checkpoint": cancellation.checkpoint,
@@ -246,13 +555,29 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
         }
         state.payload["cancellationCleanup"] = cleanup
         if cleanup_failed:
-            state.payload["failure"] = f'cancellation cleanup failed: {cleanup["error"]}'
+            state.payload["failure"] = (
+                f"cancellation cleanup failed: {cleanup.get('error') or fleet_finish_error}"
+            )
         state.save()
         return 1 if cleanup_failed else 130
     except Exception as error:
+        fleet_finish_error: Exception | None = None
+        try:
+            finished = finish_fleet("failed")
+        except Exception as finish_error:
+            fleet_finish_error = finish_error
+            finished = None
         if state is not None:
             state.payload["state"] = "failed"
             state.payload["phase"] = "completed"
             state.payload["failure"] = str(error)
+            if finished is not None:
+                state.payload["fleetGeneration"] = finished["generation"]
+            if fleet_finish_error is not None:
+                state.payload["fleetStateFailure"] = str(fleet_finish_error)
             state.save()
+        if fleet_finish_error is not None:
+            raise RuntimeError(
+                f"release failed and fleet finalization failed: {fleet_finish_error}"
+            ) from error
         raise
