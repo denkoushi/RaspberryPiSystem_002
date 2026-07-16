@@ -56,7 +56,7 @@ and is merged only after explicit user approval. The current work is PR 1 only.
 - [x] (2026-07-16 12:36Z) Implemented PR 1's per-command read-only Ansible inventory configuration, inherited Vault-source removal, JSON validation, and secret-safe actionable errors; the normal `ansible.cfg` still fails without `.vault-pass`.
 - [x] (2026-07-16 12:36Z) Classified the full `rolling_release/` package, public/coordinator/recovery entry points, and read-only config as `deploy-control`; known terminal runtime and unknown fail-closed behavior remain covered.
 - [x] (2026-07-16 12:42Z) Completed local validation: 577 Python tests, all CI deployment shell contracts, 20 CI tests, deploy safety contract, both inventories, 12 standard playbooks plus TalkPlaza staged playbook, isolated recovery check, 20 PostgreSQL deploy-status tests, and the exact-head second-factory public read-only plan. The plan at `332b5462` excluded all seven hosts with `targetHosts=[]`, `pi5Required=false`, and no warning.
-- [ ] Publish PR 1 as a draft, wait for hosted CI, report the result, and stop for explicit merge approval.
+- [x] (2026-07-16 12:53Z) Published draft PR #1031. Hosted CI run `29499381896` passed every selected job and `ci-required`; CodeQL run `29499381908` and gitleaks run `29499381893` passed. Stopped before merge and PR 2 for explicit user approval.
 - [ ] Implement PR 2: strict standard-library JSON profile registry and registry-driven change classification.
 - [ ] Implement PR 3: generic planner, inventory validation, and fleet-state use of registered profile identifiers.
 - [ ] Implement PR 4: terminal adapter boundary and generic coordinator with sequential profile approval gates.
@@ -146,8 +146,10 @@ The current diff classifies only as `deploy-control` plus `neutral`, with no
 unknown path and no legacy runtime scope. No physical host has been contacted
 for mutation and no deployment has been started. The second-factory public
 read-only plan at `332b5462` excluded all seven inventory hosts and required no
-Pi5 or terminal action. Remaining PR 1 work is draft PR publication and hosted
-CI.
+Pi5 or terminal action; the pushed documentation-only head at `916d23eb` did the
+same. Draft PR #1031 is open, and hosted CI `29499381896`, CodeQL `29499381908`,
+and gitleaks `29499381893` are green. PR 1 is complete pending explicit user
+approval to merge. PR 2 has not started.
 
 ## Context and Orientation
 
@@ -387,6 +389,6 @@ duplicate and unknown keys, and returns immutable validated profile records.
 Core policy consumes validated profile IDs and adapter objects only; it never
 imports arbitrary paths or executes registry-provided text.
 
-Revision note (2026-07-16 12:42Z): Recorded the exact-head second-factory
-read-only no-op plan and the Ansible host-expression diagnostic. Draft PR
-publication and hosted checks remain.
+Revision note (2026-07-16 12:53Z): Recorded draft PR #1031 and its first fully
+green hosted validation. This documentation-only update requires one final
+exact-head no-op and hosted check confirmation before handoff.
