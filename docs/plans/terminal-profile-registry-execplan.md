@@ -14,7 +14,7 @@ related_docs:
   - docs/guides/deployment.md
   - docs/plans/deployment-foundation-refactor-execplan.md
 validation: local contracts, isolated fault injection, hosted CI, read-only fleet plans
-open_items: PR 4 and PR 5 described below
+open_items: PR 5 and final main validation described below
 supersedes: null
 superseded_by: null
 ---
@@ -27,9 +27,9 @@ date as work proceeds. It is maintained in accordance with `.agent/PLANS.md`.
 
 ## Purpose / Big Picture
 
-The rolling-release system currently understands the fixed terminal names
-`kiosk` and `signage`. Adding another Linux or Raspberry Pi terminal type would
-therefore require edits to central planning, policy, state, and coordination
+The rolling-release system previously understood the fixed terminal names
+`kiosk` and `signage`. Adding another Linux or Raspberry Pi terminal type
+therefore required edits to central planning, policy, state, and coordination
 code. After this program, a terminal type whose behavior fits an existing
 adapter can be added through one strict registry entry plus inventory. A type
 with genuinely different behavior can be added through the registry and one
@@ -78,8 +78,12 @@ safety boundary remains unchanged. The current work is PR 4 only.
 - [x] (2026-07-16 15:00Z) Completed PR 4 local validation: 611 deploy Python tests, 20 CI Python tests, all 19 deploy shell contracts including the isolated 20-test PostgreSQL integration, both inventory parses, syntax checks for the staged and generic terminal playbooks against both inventories, compilation, and diff checks pass. Synthetic `inspection-panel` forward, health, cancel, and exact rollback plus a registry-only unique adapter prove no terminal-name core change is needed.
 - [x] (2026-07-16 15:12Z) Published draft PR #1034 at exact code head `d4541451ae9a9642d1181c441cc6f5fd109a5312`. CI `29509649355`, CodeQL `29509648608`, and gitleaks `29509647951` passed, including `deploy-contract` and `ci-required`.
 - [x] (2026-07-16 15:12Z) Ran the second-factory public read-only plan at exact remote head `d4541451`. It resolved all seven production hosts and their verified evidence without warnings. The accumulated diff includes `global` and `unknown` components, so fail-closed planning correctly targets all seven hosts and both profiles; no state, checkout, service, or device mutation was performed.
-- [ ] Pass the evidence-only final head checks and merge PR 4.
-- [ ] Implement PR 5: registry-driven CI, architecture contracts, acceptance coverage, ADR, and concise new-type documentation.
+- [x] (2026-07-16 15:15Z) PR #1034's final exact head `3d2453da850c814f470dac88912138bca76ea7d2` passed CI `29509983866`, CodeQL `29509983861`, and gitleaks `29509984026`; a repeated exact-head read-only plan resolved all seven verified records without warnings. Marked it ready and merged as `8b3fdf919d5c81c513206d3078d13dbb8f2bfab5`.
+- [x] (2026-07-16 15:16Z) Fetched merged `origin/main` and created the isolated `agent/registry-driven-deploy-contracts` worktree from exact commit `8b3fdf919d5c81c513206d3078d13dbb8f2bfab5`.
+- [x] (2026-07-16 15:28Z) Implemented PR 5's registry-driven contract validator and CI playbook discovery. It validates every adapter operation, inventory topology and presence, selected play, literal `serial: 1`, both orchestration guards, coordinator rollback ownership, and the absence of production profile names from planner, policy, fleet state, and coordinator.
+- [x] (2026-07-16 15:28Z) Added the canonical profile/adapter ADR, updated architecture and deployment guidance with the exact terminal identity rule and short new-Type workflow, and made the TalkPlaza static-only boundary explicit.
+- [x] (2026-07-16 15:32Z) Completed PR 5 local validation: all 617 deploy Python tests, 21 CI Python tests, 19 deploy shell contracts including the isolated PostgreSQL suite, both read-only inventory parses, the dynamic profile contract, four production/TalkPlaza playbook syntax checks, documentation audit, compilation, and diff checks pass. Synthetic registry-only and inventory-only extension plus negative serial, guard, topology, and core-name cases pass without device access.
+- [ ] Complete PR 5 local/hosted validation, exact remote read-only evidence, and merge.
 
 ## Surprises & Discoveries
 
@@ -160,6 +164,20 @@ safety boundary remains unchanged. The current work is PR 4 only.
   and retain the old `playbook(inventory, host, sha, run_id)` shape for test
   runtimes. This kept the large transition suite intact while moving every
   terminal operation out of the coordinator.
+
+- Observation: a profile-selected playbook can be discovered dynamically in CI,
+  but the old terminal plays used configurable Jinja serial expressions.
+  Evidence: both production profile plays resolved to one today through
+  `deploy_serial`, yet a later inventory override could weaken the contract.
+  The plays now declare literal `serial: 1`, which the registry validator can
+  enforce without a YAML library or per-profile workflow logic.
+
+- Observation: the existing Ansible inventory JSON is already the canonical
+  machine-readable input for dynamic CI validation.
+  Evidence: passing both read-only `ansible-inventory --list` results through
+  the same `release_hosts()` topology policy validates Pi5 cardinality, direct
+  `clients` children, exactly-one membership, canaries, registered adapters,
+  and unique client IDs without duplicating those rules in CI.
 
 ## Decision Log
 
@@ -253,6 +271,20 @@ safety boundary remains unchanged. The current work is PR 4 only.
   `--approve RUN_ID`, lock ownership, or existing status readers.
   Date/Author: 2026-07-16 / Codex
 
+- Decision: Registry-selected terminal plays must contain literal `serial: 1`
+  and both release guards. CI obtains their paths from the registry and runs
+  syntax checks for both production and TalkPlaza inventories.
+  Rationale: terminal serialization and canonical-coordinator ownership are
+  safety invariants, not inventory tuning. Dynamic discovery lets a new profile
+  add a playbook without editing the workflow.
+  Date/Author: 2026-07-16 / Codex
+
+- Decision: Enforce core type independence using the production profile IDs
+  read from the registry rather than a hand-maintained Kiosk/Signage deny list.
+  Rationale: the contract must automatically protect future profiles and fail
+  the exact change that would reintroduce a central type branch.
+  Date/Author: 2026-07-16 / Codex
+
 ## Outcomes & Retrospective
 
 PR 1 is merged as `381e022e`. With no `.vault-pass`, both production
@@ -281,6 +313,18 @@ static only. Draft PR #1034's exact code head passed CI `29509649355`, CodeQL
 `29509648608`, and gitleaks `29509647951`; its read-only production plan
 resolved seven verified records without warning and widened safely for the
 global/unknown historical diff.
+
+PR 4 is merged as `8b3fdf91`. Its final exact head passed CI `29509983866`,
+CodeQL `29509983861`, gitleaks `29509984026`, and the repeated seven-host
+read-only plan before merge.
+
+PR 5 makes extension contracts data-driven in CI and records the final
+architecture in ADR-20260716. The validator consumes the same strict registry,
+adapter map, topology policy, and Ansible inventory JSON as production planning;
+the workflow contains no per-profile job or production profile playbook path.
+All 617 deploy Python tests, 21 CI tests, 19 deploy shell contracts, both static
+inventories, registry-driven playbook checks, and documentation checks pass
+locally. Hosted and exact remote read-only final evidence remains to be recorded.
 
 ## Context and Orientation
 
@@ -520,6 +564,7 @@ duplicate and unknown keys, and returns immutable validated profile records.
 Core policy consumes validated profile IDs and adapter objects only; it never
 imports arbitrary paths or executes registry-provided text.
 
-Revision note (2026-07-16 15:12Z): Recorded PR #1034's first exact-head hosted
-success and exact remote read-only plan. This evidence-only update requires one
-final hosted pass before merge.
+Revision note (2026-07-16 15:32Z): Recorded PR 5's complete local validation,
+including the registry-driven dynamic CI contract, canonical ADR, static-only
+TalkPlaza boundary, and literal one-terminal serialization. Hosted and exact
+remote read-only evidence remains.

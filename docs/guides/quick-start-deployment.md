@@ -27,7 +27,7 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach
 scripts/update-all-clients.sh --status RUN_ID
 ```
 
-Pi5後のカナリア承認:
+`human` profileの現在のカナリア承認:
 
 ```bash
 scripts/update-all-clients.sh --approve RUN_ID
@@ -48,10 +48,6 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-
 
 標準では検証済み同一SHAのhostだけを除外し、`unknown` hostは対象に含める。全台再検証が必要な場合だけ `--full-fleet` を使う。
 
-TalkPlaza Pi5は実機が存在しないため、現時点では次のplan確認までに留める。
-
-```bash
-scripts/update-all-clients.sh main infrastructure/ansible/inventory-talkplaza.yml --print-plan
-```
+TalkPlaza Pi5は実機が存在しないため、現時点はローカルのinventory解析、profile contract、playbook syntax-checkだけを行う。公開 `--print-plan`、SSH、実機デプロイは行わない。コマンドは [デプロイメントガイド](./deployment.md#実行前確認) に記載する。
 
 直接のAnsible実行、SSH先checkout、process kill、lock削除、fleet state編集は行わない。詳細は [デプロイメントガイド](./deployment.md)、復旧は [deploy status recovery](../runbooks/deploy-status-recovery.md) を参照する。

@@ -1,7 +1,7 @@
 ---
 # 段階展開（カナリア→ロールアウト）と、全段階直列実行を両立するデプロイPlaybook。
 # - server → kiosk(Pi4) → signage(Pi3) の順で実行
-# - 各段階の並列度は deploy_serial（group_vars）で制御（KB-300: Pi4並列ハング回避のため常時直列）
+# - 各段階は serial: 1 固定（KB-300: Pi4並列ハング回避のため常時直列）
 #
 # 重要: 互換性事故を避けるため、各段階で server も limit に含める運用を推奨。
 
@@ -9,7 +9,7 @@
   hosts: server
   gather_facts: false
   become: true
-  serial: "{{ deploy_serial.server | default(1) }}"
+  serial: 1
   order: inventory
   vars:
     repo_path: /opt/RaspberryPiSystem_002
@@ -145,7 +145,7 @@
   hosts: kiosk
   gather_facts: false
   become: true
-  serial: "{{ deploy_serial.kiosk | default(1) }}"
+  serial: 1
   order: inventory
   vars:
     repo_path: /opt/RaspberryPiSystem_002
@@ -220,7 +220,7 @@
   hosts: signage
   gather_facts: false
   become: true
-  serial: "{{ deploy_serial.signage | default(1) }}"
+  serial: 1
   order: inventory
   vars:
     repo_path: /opt/RaspberryPiSystem_002

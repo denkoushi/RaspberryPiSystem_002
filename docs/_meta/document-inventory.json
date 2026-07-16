@@ -15,17 +15,17 @@
     ]
   },
   "summary": {
-    "documentCount": 522,
-    "totalLines": 150754,
-    "totalBytes": 11271732,
-    "withFrontmatter": 210,
-    "withStatus": 68,
-    "sourceOfTruthDeclared": 40,
+    "documentCount": 523,
+    "totalLines": 150921,
+    "totalBytes": 11284527,
+    "withFrontmatter": 211,
+    "withStatus": 69,
+    "sourceOfTruthDeclared": 41,
     "execPlanReferences": 64,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 23,
-    "localLinkCount": 5527,
+    "localLinkCount": 5531,
     "brokenLocalLinkCount": 90,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -5929,7 +5929,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1969,
-      "byteSize": 337230,
+      "byteSize": 337411,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -6826,6 +6826,11 @@
           "exists": true
         },
         {
+          "href": "./decisions/ADR-20260716-terminal-profile-registry-adapter-boundary.md",
+          "targetPath": "docs/decisions/ADR-20260716-terminal-profile-registry-adapter-boundary.md",
+          "exists": true
+        },
+        {
           "href": "./design-previews/kiosk-assembly-home-table-dense-3col-preview.html",
           "targetPath": "docs/design-previews/kiosk-assembly-home-table-dense-3col-preview.html",
           "exists": true
@@ -7137,6 +7142,11 @@
         },
         {
           "href": "./guides/deployment.md",
+          "targetPath": "docs/guides/deployment.md",
+          "exists": true
+        },
+        {
+          "href": "./guides/deployment.md#linuxpi端末typeを追加する",
           "targetPath": "docs/guides/deployment.md",
           "exists": true
         },
@@ -11540,8 +11550,8 @@
     },
     {
       "path": "docs/architecture/deployment-modules.md",
-      "lineCount": 123,
-      "byteSize": 5924,
+      "lineCount": 128,
+      "byteSize": 6957,
       "hasFrontmatter": true,
       "title": "デプロイ基盤アーキテクチャ",
       "status": "active",
@@ -11553,13 +11563,18 @@
           "exists": true
         },
         {
+          "href": "../decisions/ADR-20260716-terminal-profile-registry-adapter-boundary.md",
+          "targetPath": "docs/decisions/ADR-20260716-terminal-profile-registry-adapter-boundary.md",
+          "exists": true
+        },
+        {
           "href": "../guides/deployment.md",
           "targetPath": "docs/guides/deployment.md",
           "exists": true
         },
         {
-          "href": "../plans/deployment-foundation-refactor-execplan.md",
-          "targetPath": "docs/plans/deployment-foundation-refactor-execplan.md",
+          "href": "../plans/terminal-profile-registry-execplan.md",
+          "targetPath": "docs/plans/terminal-profile-registry-execplan.md",
           "exists": true
         },
         {
@@ -16393,6 +16408,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/decisions/ADR-20260716-terminal-profile-registry-adapter-boundary.md",
+      "lineCount": 103,
+      "byteSize": 4930,
+      "hasFrontmatter": true,
+      "title": "Terminal profile registry and executable adapter boundary",
+      "status": "accepted",
+      "source_of_truth": "true",
+      "localLinks": [],
+      "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/design-previews/README.md",
       "lineCount": 99,
       "byteSize": 19447,
@@ -18033,8 +18063,8 @@
     },
     {
       "path": "docs/guides/deployment.md",
-      "lineCount": 134,
-      "byteSize": 5842,
+      "lineCount": 152,
+      "byteSize": 8325,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -18081,7 +18111,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 194,
+      "inboundCount": 196,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -19830,8 +19860,8 @@
     },
     {
       "path": "docs/guides/quick-start-deployment.md",
-      "lineCount": 57,
-      "byteSize": 1958,
+      "lineCount": 53,
+      "byteSize": 2085,
       "hasFrontmatter": true,
       "title": "デプロイ・クイックスタート",
       "status": "active",
@@ -19839,6 +19869,11 @@
       "localLinks": [
         {
           "href": "./deployment.md",
+          "targetPath": "docs/guides/deployment.md",
+          "exists": true
+        },
+        {
+          "href": "./deployment.md#実行前確認",
           "targetPath": "docs/guides/deployment.md",
           "exists": true
         },
@@ -29681,7 +29716,7 @@
     {
       "path": "docs/knowledge-base/infrastructure/ansible-deployment.md",
       "lineCount": 4368,
-      "byteSize": 281572,
+      "byteSize": 281621,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - Ansible/デプロイ関連",
       "status": null,
@@ -31276,7 +31311,7 @@
       "status": "in-progress",
       "source_of_truth": "docs/plans/deployment-foundation-refactor-execplan.md",
       "localLinks": [],
-      "inboundCount": 5,
+      "inboundCount": 4,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [
@@ -33976,14 +34011,14 @@
     },
     {
       "path": "docs/plans/terminal-profile-registry-execplan.md",
-      "lineCount": 525,
-      "byteSize": 35170,
+      "lineCount": 570,
+      "byteSize": 39162,
       "hasFrontmatter": true,
       "title": "Generalize terminal deployment with a profile registry and adapters",
       "status": "active",
       "source_of_truth": "docs/plans/terminal-profile-registry-execplan.md",
       "localLinks": [],
-      "inboundCount": 1,
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],

@@ -95,6 +95,17 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("  codeql:\n    name: codeql", CODEQL)
         self.assertIn("  gitleaks:\n    name: gitleaks", GITLEAKS)
 
+    def test_deploy_contract_discovers_terminal_profiles_from_registry(self) -> None:
+        deploy = job_block(CI, "deploy-contract")
+        self.assertIn("terminal_profile_contracts.py --list-playbooks", deploy)
+        self.assertIn("terminal_profile_contracts.py \\\n", deploy)
+        self.assertIn("--inventory-json /tmp/inventory.json", deploy)
+        self.assertIn("\"${TERMINAL_PROFILE_PLAYBOOKS[@]}\"", deploy)
+        self.assertNotIn(
+            "ansible-playbook --syntax-check playbooks/deploy-staged.yml",
+            deploy,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

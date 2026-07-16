@@ -24,9 +24,9 @@
 
 - **製番・機種・S/N・進捗を個体カードで統一表示**: `着手前` はロット内S/Nを個別カード化、`仕掛中` / `完了・承認` も同一の閉じた1.5行カードへ統一。上部に登録ロット・仕掛中・承認待ちKPI、カード内の状態ラベルは廃止。右ロット登録とAPI/DBは不変。**正本**: [Plan](./plans/kiosk-assembly-home-unit-cards.md) · [ADR Decision 8](./decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md) · [Preview](./design-previews/kiosk-assembly-home-unit-cards-preview.html)
 
-### 計画（2026-07-16 · Terminal Profile Registry / adapter · PR 1実装中）
+### Terminal Profile Registry / adapter（2026-07-16 · 実装済）
 
-- **Linux/Pi端末TypeのRegistry + adapter汎用化**: 既存CLI・fleet state・Kiosk/Signage挙動を維持し、新Type追加をregistry/inventoryまたはadapterへ閉じ込める5 PR計画。**正本**: [ExecPlan](./plans/terminal-profile-registry-execplan.md)
+- **Linux/Pi端末TypeのRegistry + adapter汎用化**: 既存CLI・fleet state・Kiosk/Signage挙動を維持し、新Type追加をregistry/inventoryまたはadapterへ閉じ込める。**正本**: [ADR](./decisions/ADR-20260716-terminal-profile-registry-adapter-boundary.md) · [Architecture](./architecture/deployment-modules.md) · [Guide](./guides/deployment.md#linuxpi端末typeを追加する) · [ExecPlan](./plans/terminal-profile-registry-execplan.md)
 
 ### 計画（2026-07-12 · デプロイ対象最小化 / カナリア・ホールド · 実装済・本番 shadow 評価待ち）
 
