@@ -138,6 +138,86 @@ def _terminal_run_targets(
     return result
 
 
+def _durable_completed_terminal_sha(
+    record: dict[str, Any], *, host: str
+) -> str | None:
+    """Return a fully committed terminal SHA without probing the host again.
+
+    PR 6 success records already contain the verified runtime commit and its
+    completed cleanup.  An interrupted-recovery run cannot have changed that
+    terminal merely by conservatively marking fleet records unknown.  Reusing
+    this proof avoids turning an unrelated later recovery failure into another
+    live dependency on every terminal that was already committed.
+
+    Older success records do not have both proof objects.  They deliberately
+    return ``None`` and retain the existing live-verification compatibility
+    path.
+    """
+
+    if record.get("state") != "success":
+        return None
+    finalization = record.get("runtimeFinalization")
+    cleanup = record.get("runtimeCleanup")
+    if finalization is None and cleanup is None:
+        return None
+    current_sha = record.get("currentSha")
+    previous_sha = record.get("previousSha")
+    manifest = record.get("rollbackManifest")
+    runtime_manifest = (
+        manifest.get("runtime") if isinstance(manifest, dict) else None
+    )
+    already_clean = (
+        cleanup.get("alreadyClean") if isinstance(cleanup, dict) else None
+    )
+    tag_count = cleanup.get("tagCount") if isinstance(cleanup, dict) else None
+    docker_count = (
+        runtime_manifest.get("dockerCount")
+        if isinstance(runtime_manifest, dict)
+        else None
+    )
+    if (
+        not isinstance(finalization, dict)
+        or set(finalization) != {"outcome", "verifiedSha"}
+        or finalization.get("outcome") != "committed"
+        or not isinstance(cleanup, dict)
+        or set(cleanup)
+        != {
+            "cleaned",
+            "alreadyClean",
+            "manifestSha256",
+            "tagCount",
+            "outcome",
+        }
+        or cleanup.get("cleaned") is not True
+        or type(already_clean) is not bool
+        or cleanup.get("outcome") != "committed"
+        or not isinstance(runtime_manifest, dict)
+        or cleanup.get("manifestSha256") != runtime_manifest.get("manifestSha256")
+        or SHA256_RE.fullmatch(str(cleanup.get("manifestSha256") or "")) is None
+        or isinstance(tag_count, bool)
+        or not isinstance(tag_count, int)
+        or tag_count < 0
+        or isinstance(docker_count, bool)
+        or not isinstance(docker_count, int)
+        or tag_count > docker_count
+        or (already_clean and tag_count != 0)
+        or record.get("evidence") != "verified"
+        or not record.get("maintenanceStartedAt")
+        or not record.get("maintenanceClearedAt")
+        or not isinstance(current_sha, str)
+        or FULL_SHA_RE.fullmatch(current_sha) is None
+        or not isinstance(previous_sha, str)
+        or FULL_SHA_RE.fullmatch(previous_sha) is None
+        or record.get("newSha") != current_sha
+        or record.get("desiredSha") != current_sha
+        or finalization.get("verifiedSha") != current_sha
+    ):
+        raise RuntimeError(
+            f"interrupted completed terminal proof is malformed: {host}"
+        )
+    return current_sha
+
+
 def _pi5_marker_candidate(observation: dict[str, Any]) -> dict[str, Any]:
     """Build the compatibility marker only from verified live evidence."""
 
@@ -544,15 +624,35 @@ def _recover_interrupted_terminals(
         )
 
     current_state = fleet_state
-    for host, _fleet_record, target_spec, _record, _authority in work_items:
+    for host, fleet_record, target_spec, record, authority_run_id in work_items:
+        prior_target = record
+
+        durable_completed_sha = _durable_completed_terminal_sha(
+            prior_target, host=host
+        )
+        if durable_completed_sha is not None:
+            current_state = runtime.fleet_mark_verified(
+                host,
+                target_spec["role"],
+                durable_completed_sha,
+                durable_completed_sha,
+                run_id,
+                previous_sha=prior_target.get("previousSha"),
+            )
+            record["recovery"] = "durable-success-carried-forward"
+            record["recoveryCarriedAt"] = runtime.utc_now()
+            state.payload["fleetGeneration"] = current_state["generation"]
+            state.save()
+            continue
+
+        # Only the host whose recovery is about to execute becomes unknown.
+        # A failure on this host must not erase verified evidence for later,
+        # untouched terminals in the same abandoned run.
         current_state = runtime.fleet_mark_unknown(
             host, target_spec["role"], desired_sha, run_id
         )
-    state.payload["fleetGeneration"] = current_state["generation"]
-    state.save()
-
-    for host, fleet_record, target_spec, record, authority_run_id in work_items:
-        prior_target = record
+        state.payload["fleetGeneration"] = current_state["generation"]
+        state.save()
 
         maintenance_needs_cleanup = bool(
             prior_target.get("maintenanceStartedAt")

@@ -26,6 +26,7 @@ DEPLOY_CONTROL_FILES = frozenset(
     {
         'scripts/deploy/classify-deploy-impact.py',
         'scripts/deploy/rollback-manifest.py',
+        'scripts/deploy/rolling_release/coordinator.py',
         'scripts/deploy/rolling_release/backends/ansible.py',
         'scripts/deploy/terminal-runtime-manifest.py',
     }

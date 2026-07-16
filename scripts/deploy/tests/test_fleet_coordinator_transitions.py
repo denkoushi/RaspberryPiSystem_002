@@ -168,6 +168,7 @@ class FakeRuntime:
         self.prestage_error = None
         self.signage_refresh_error = None
         self.maintenance_ack = True
+        self.state_command_error_once_action = None
         self.abandoned_run_id = None
         self.prior_runs = {}
 
@@ -393,6 +394,9 @@ class FakeRuntime:
 
     def state_command(self, *arguments):
         self.events.append("status:" + ":".join(arguments))
+        if arguments[0] == self.state_command_error_once_action:
+            self.state_command_error_once_action = None
+            raise RuntimeError(f"status {arguments[0]} unavailable")
 
     def prestage_signage_maintenance(self, *_args):
         self.events.append("signage:prestage")
@@ -1173,6 +1177,178 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         target = runtime.states[-1].target("kiosk-a")
         self.assertIn("maintenance acknowledgement timed out", target["failure"])
         self.assertEqual(target["rollbackEvidence"], "verified")
+
+    def test_full_signage_failure_matrix_recovers_before_next_plan(self):
+        terminal = {
+            "host": "signage-a",
+            "role": "signage",
+            "terminalType": "signage",
+            "clientId": "s1",
+        }
+
+        def make_runtime():
+            return FakeRuntime(
+                fleet={
+                    "pi5": host_record("server", OLD_SHA),
+                    "signage-a": host_record("signage", OLD_SHA),
+                },
+                hosts=[{"host": "pi5", "role": "server"}, terminal],
+                plan={
+                    "pi5Required": False,
+                    "hosts": [
+                        decision("pi5", "server", targeted=False),
+                        decision("signage-a", "signage"),
+                    ],
+                },
+                targets=[terminal],
+            )
+
+        cases = (
+            ("status-put", {"state_command_error_once_action": "put"}, False),
+            (
+                "status-set-phase",
+                {"state_command_error_once_action": "set-phase"},
+                False,
+            ),
+            ("prestage", {"prestage_error": RuntimeError("prestage lost")}, False),
+            ("maintenance-ack", {"maintenance_ack": False}, False),
+            ("playbook", {"playbook_error": RuntimeError("deploy failed")}, False),
+            ("ready-ack", {"ready_ack_error": RuntimeError("ready lost")}, False),
+            (
+                "forward-observation",
+                {
+                    "terminal_observation_error": RuntimeError("probe lost"),
+                    "terminal_observation_failures": 1,
+                },
+                False,
+            ),
+            (
+                "forward-remove-maintenance",
+                {"state_command_error_once_action": "remove-client"},
+                True,
+            ),
+            (
+                "forward-signage-refresh",
+                {"signage_refresh_error": RuntimeError("refresh lost")},
+                True,
+            ),
+            (
+                "forward-runtime-cleanup",
+                {"runtime_cleanup_error": RuntimeError("cleanup lost")},
+                True,
+            ),
+            (
+                "forward-fleet-persist",
+                {"fleet_verified_error_host": "signage-a"},
+                True,
+            ),
+            (
+                "rollback-restore",
+                {
+                    "playbook_error": RuntimeError("deploy failed"),
+                    "rollback_ok": False,
+                },
+                True,
+            ),
+            (
+                "rollback-observation",
+                {
+                    "playbook_error": RuntimeError("deploy failed"),
+                    "terminal_observation_error": RuntimeError("probe lost"),
+                    "terminal_observation_failures": 1,
+                },
+                True,
+            ),
+            (
+                "rollback-remove-maintenance",
+                {
+                    "playbook_error": RuntimeError("deploy failed"),
+                    "state_command_error_once_action": "remove-client",
+                },
+                True,
+            ),
+            (
+                "rollback-signage-refresh",
+                {
+                    "playbook_error": RuntimeError("deploy failed"),
+                    "signage_refresh_error": RuntimeError("refresh lost"),
+                },
+                True,
+            ),
+            (
+                "rollback-runtime-cleanup",
+                {
+                    "playbook_error": RuntimeError("deploy failed"),
+                    "runtime_cleanup_error": RuntimeError("cleanup lost"),
+                },
+                True,
+            ),
+            (
+                "rollback-fleet-persist",
+                {
+                    "playbook_error": RuntimeError("deploy failed"),
+                    "fleet_verified_error_host": "signage-a",
+                },
+                True,
+            ),
+        )
+        self.assertEqual(len(cases), 17)
+
+        for name, injected, requires_recovery in cases:
+            with self.subTest(name=name):
+                runtime = make_runtime()
+                for attribute, value in injected.items():
+                    setattr(runtime, attribute, value)
+
+                with self.assertRaises(RuntimeError):
+                    coordinator.execute(
+                        args(), runtime=runtime, token=FakeToken(runtime.events)
+                    )
+
+                active = runtime.fleet["activeRun"]
+                self.assertEqual(active is not None, requires_recovery)
+                if not requires_recovery:
+                    self.assertEqual(
+                        runtime.fleet["fleet"]["signage-a"]["evidence"],
+                        "verified",
+                    )
+                    continue
+
+                failed_state = copy.deepcopy(runtime.states[-1].payload)
+                runtime.prior_runs["run-1"] = failed_state
+                runtime.abandoned_run_id = "run-1"
+                runtime.plan = {
+                    "pi5Required": False,
+                    "hosts": [
+                        decision("pi5", "server", targeted=False),
+                        decision("signage-a", "signage", targeted=False),
+                    ],
+                }
+                runtime.targets = []
+                runtime.prestage_error = None
+                runtime.playbook_error = None
+                runtime.rollback_ok = True
+                runtime.maintenance_ack = True
+                runtime.ready_ack_error = None
+                runtime.terminal_observation_error = None
+                runtime.terminal_observation_failures = None
+                runtime.signage_refresh_error = None
+                runtime.runtime_cleanup_error = None
+                runtime.fleet_verified_error_host = None
+                runtime.state_command_error_once_action = None
+
+                self.assertEqual(
+                    coordinator.execute(
+                        args(run_id="recovery-run"),
+                        runtime=runtime,
+                        token=FakeToken(runtime.events),
+                    ),
+                    0,
+                )
+                recovered = runtime.fleet["fleet"]["signage-a"]
+                self.assertEqual(recovered["evidence"], "verified")
+                self.assertEqual(recovered["lastRunId"], "recovery-run")
+                self.assertIsNone(runtime.fleet["activeRun"])
 
     def test_terminal_only_kiosk_acks_the_verified_web_release(self):
         terminal = {
@@ -2180,6 +2356,255 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         self.assertTrue(
             recovery["signageDisplayProof"]["maintenanceArtifactReplaced"]
         )
+
+    def test_interrupted_failure_does_not_mark_later_completed_terminal_unknown(self):
+        signage = {
+            "host": "signage-a",
+            "role": "signage",
+            "terminalType": "signage",
+            "clientId": "s1",
+        }
+        kiosk = {
+            "host": "kiosk-a",
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "k1",
+        }
+        interrupted = host_record("signage", OLD_SHA)
+        interrupted.update(
+            {
+                "currentSha": None,
+                "previousSha": OLD_SHA,
+                "evidence": "unknown",
+                "verifiedAt": None,
+                "lastRunId": "crashed-run",
+            }
+        )
+        completed = host_record("kiosk", NEW_SHA)
+        completed["lastRunId"] = "crashed-run"
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", NEW_SHA),
+                "signage-a": interrupted,
+                "kiosk-a": completed,
+            },
+            hosts=[{"host": "pi5", "role": "server"}, signage, kiosk],
+            plan={},
+            targets=[],
+        )
+        runtime.abandoned_run_id = "crashed-run"
+        runtime.rollback_ok = False
+        runtime.prior_runs["crashed-run"] = {
+            "version": 1,
+            "runId": "crashed-run",
+            "state": "interrupted",
+            "targets": [
+                {
+                    **signage,
+                    "desiredSha": NEW_SHA,
+                    "previousSha": OLD_SHA,
+                    "state": "rolling-back",
+                    "maintenanceStartedAt": "2026-07-14T23:59:00Z",
+                    "rollbackManifest": rollback_manifest(
+                        "crashed-run", "signage-a", "signage"
+                    ),
+                },
+                {
+                    **kiosk,
+                    "desiredSha": NEW_SHA,
+                    "currentSha": NEW_SHA,
+                    "newSha": NEW_SHA,
+                    "previousSha": OLD_SHA,
+                    "evidence": "verified",
+                    "state": "success",
+                    "maintenanceStartedAt": "2026-07-14T23:55:00Z",
+                    "maintenanceClearedAt": "2026-07-14T23:56:00Z",
+                    "rollbackManifest": rollback_manifest(
+                        "crashed-run", "kiosk-a"
+                    ),
+                },
+            ],
+        }
+
+        with self.assertRaisesRegex(RuntimeError, "manifest restore failed"):
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            )
+
+        kiosk_record = runtime.fleet["fleet"]["kiosk-a"]
+        self.assertEqual(kiosk_record["evidence"], "verified")
+        self.assertEqual(kiosk_record["currentSha"], NEW_SHA)
+        self.assertEqual(kiosk_record["lastRunId"], "crashed-run")
+        self.assertNotIn("observe:terminal:kiosk-a", runtime.events)
+        self.assertNotIn("fleet:unknown:kiosk-a", runtime.events)
+
+    def test_durable_completed_terminal_repairs_batch_unknown_without_live_probe(self):
+        completed_sha = "c" * 40
+        signage = {
+            "host": "signage-a",
+            "role": "signage",
+            "terminalType": "signage",
+            "clientId": "s1",
+        }
+        kiosk = {
+            "host": "kiosk-a",
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "k1",
+        }
+        fleet = {}
+        for terminal in (signage, kiosk):
+            record = host_record(terminal["role"], OLD_SHA)
+            record.update(
+                {
+                    "desiredSha": NEW_SHA,
+                    "currentSha": None,
+                    "previousSha": OLD_SHA,
+                    "evidence": "unknown",
+                    "verifiedAt": None,
+                    "lastRunId": "failed-recovery",
+                }
+            )
+            fleet[terminal["host"]] = record
+        runtime = FakeRuntime(
+            fleet={"pi5": host_record("server", NEW_SHA), **fleet},
+            hosts=[{"host": "pi5", "role": "server"}, signage, kiosk],
+            plan={
+                "pi5Required": False,
+                "hosts": [
+                    decision("pi5", "server", current=NEW_SHA, targeted=False),
+                    decision("signage-a", "signage", current=OLD_SHA, targeted=False),
+                    decision(
+                        "kiosk-a",
+                        "kiosk",
+                        current=completed_sha,
+                        targeted=False,
+                    ),
+                ],
+            },
+            targets=[],
+        )
+        runtime.abandoned_run_id = "failed-recovery"
+        runtime.prior_runs["failed-recovery"] = {
+            "version": 1,
+            "runId": "failed-recovery",
+            "state": "failed",
+            "targets": [
+                {
+                    **signage,
+                    "desiredSha": NEW_SHA,
+                    "previousSha": OLD_SHA,
+                    "state": "rolling-back",
+                    "maintenanceStartedAt": "2026-07-14T23:59:00Z",
+                    "rollbackAuthorityRunId": "original-run",
+                    "rollbackManifest": rollback_manifest(
+                        "original-run", "signage-a", "signage"
+                    ),
+                },
+                {
+                    **kiosk,
+                    "desiredSha": completed_sha,
+                    "currentSha": completed_sha,
+                    "newSha": completed_sha,
+                    "previousSha": OLD_SHA,
+                    "evidence": "verified",
+                    "state": "success",
+                    "maintenanceStartedAt": "2026-07-14T23:55:00Z",
+                    "maintenanceClearedAt": "2026-07-14T23:56:00Z",
+                    "rollbackManifest": rollback_manifest(
+                        "original-run", "kiosk-a"
+                    ),
+                    "runtimeFinalization": {
+                        "outcome": "committed",
+                        "verifiedSha": completed_sha,
+                    },
+                    "runtimeCleanup": {
+                        "outcome": "committed",
+                        "cleaned": True,
+                        "alreadyClean": False,
+                        "manifestSha256": "d" * 64,
+                        "tagCount": 1,
+                    },
+                },
+            ],
+        }
+
+        self.assertEqual(
+            coordinator.execute(
+                args(run_id="repair-run"),
+                runtime=runtime,
+                token=FakeToken(runtime.events),
+            ),
+            0,
+        )
+
+        self.assertNotIn("observe:terminal:kiosk-a", runtime.events)
+        self.assertNotIn("rollback:kiosk-a", runtime.events)
+        self.assertFalse(
+            any(
+                event.startswith("manifest:cleanup:kiosk-a:")
+                for event in runtime.events
+            )
+        )
+        kiosk_record = runtime.scope_kwargs["fleet_state"]["fleet"]["kiosk-a"]
+        self.assertEqual(kiosk_record["evidence"], "verified")
+        self.assertEqual(kiosk_record["currentSha"], completed_sha)
+        self.assertEqual(kiosk_record["desiredSha"], completed_sha)
+        self.assertEqual(kiosk_record["lastRunId"], "repair-run")
+        recovered = runtime.states[-1].payload["interruptedRecovery"]["targets"]
+        kiosk_recovery = next(
+            record for record in recovered if record["host"] == "kiosk-a"
+        )
+        self.assertEqual(kiosk_recovery["recovery"], "durable-success-carried-forward")
+
+    def test_durable_completed_terminal_rejects_malformed_cleanup_proof(self):
+        manifest = rollback_manifest("original-run", "kiosk-a")
+        proof = {
+            "desiredSha": NEW_SHA,
+            "currentSha": NEW_SHA,
+            "newSha": NEW_SHA,
+            "previousSha": OLD_SHA,
+            "evidence": "verified",
+            "state": "success",
+            "maintenanceStartedAt": "2026-07-14T23:55:00Z",
+            "maintenanceClearedAt": "2026-07-14T23:56:00Z",
+            "rollbackManifest": manifest,
+            "runtimeFinalization": {
+                "outcome": "committed",
+                "verifiedSha": NEW_SHA,
+            },
+            "runtimeCleanup": {
+                "cleaned": True,
+                "alreadyClean": False,
+                "manifestSha256": manifest["runtime"]["manifestSha256"],
+                "tagCount": 1,
+                "outcome": "committed",
+            },
+        }
+        corruptions = (
+            {"cleaned": False},
+            {"alreadyClean": "false"},
+            {"manifestSha256": "e" * 64},
+            {"tagCount": -1},
+            {"tagCount": 3},
+            {"alreadyClean": True, "tagCount": 1},
+            {"outcome": "restored"},
+        )
+
+        self.assertEqual(
+            coordinator._durable_completed_terminal_sha(proof, host="kiosk-a"),
+            NEW_SHA,
+        )
+        for corruption in corruptions:
+            with self.subTest(corruption=corruption):
+                malformed = copy.deepcopy(proof)
+                malformed["runtimeCleanup"].update(corruption)
+                with self.assertRaisesRegex(
+                    RuntimeError, "completed terminal proof is malformed"
+                ):
+                    coordinator._durable_completed_terminal_sha(
+                        malformed, host="kiosk-a"
+                    )
 
     def test_interrupted_target_without_run_record_fails_closed(self):
         terminal = {

@@ -126,28 +126,32 @@ class FakeRuntime:
         self.fail_image_rm_service_once: dict[str, int] = {}
         self.fail_image_list_once = 0
         self.fail_image_inspect_once = 0
+        self.mutation_ordinal = 0
+        self.fail_mutation_before: int | None = None
+        self.fail_mutation_after: int | None = None
         self.next_container = 100
+
+    @staticmethod
+    def _is_mutation_call(call: list[str]) -> bool:
+        if call[:2] == ["systemctl", "show"]:
+            return False
+        if call[:2] == ["docker", "ps"]:
+            return False
+        if call[:2] == ["docker", "inspect"]:
+            return False
+        if call[:3] == ["docker", "image", "inspect"]:
+            return False
+        if call[:3] == ["docker", "image", "ls"]:
+            return False
+        if call[:3] == ["docker", "volume", "inspect"]:
+            return False
+        if call[:2] == ["docker", "compose"] and "config" in call:
+            return False
+        return True
 
     @property
     def mutation_calls(self) -> list[list[str]]:
-        result: list[list[str]] = []
-        for call in self.calls:
-            if call[:2] == ["systemctl", "show"]:
-                continue
-            if call[:2] == ["docker", "ps"]:
-                continue
-            if call[:2] == ["docker", "inspect"]:
-                continue
-            if call[:3] == ["docker", "image", "inspect"]:
-                continue
-            if call[:3] == ["docker", "image", "ls"]:
-                continue
-            if call[:3] == ["docker", "volume", "inspect"]:
-                continue
-            if call[:2] == ["docker", "compose"] and "config" in call:
-                continue
-            result.append(call)
-        return result
+        return [call for call in self.calls if self._is_mutation_call(call)]
 
     def clone(self) -> "FakeRuntime":
         cloned = FakeRuntime(compose=self.compose, bind_source=self.bind_source)
@@ -287,6 +291,13 @@ class FakeRuntime:
             raise MODULE.RuntimeManifestError("fake runtime command failed")
         return MODULE.CommandResult(returncode, stdout)
 
+    def _finish_mutation(self, mutation_ordinal: int | None) -> None:
+        if self.fail_mutation_after == mutation_ordinal:
+            self.fail_mutation_after = None
+            raise MODULE.RuntimeManifestError(
+                "injected failure after runtime mutation"
+            )
+
     def _find_container_by_id(self, identifier: str) -> tuple[tuple[str, str], dict]:
         for key, value in self.containers.items():
             if value["id"].startswith(identifier):
@@ -311,6 +322,15 @@ class FakeRuntime:
     ):
         call = list(argv)
         self.calls.append(call)
+        mutation_ordinal: int | None = None
+        if self._is_mutation_call(call):
+            self.mutation_ordinal += 1
+            mutation_ordinal = self.mutation_ordinal
+            if self.fail_mutation_before == mutation_ordinal:
+                self.fail_mutation_before = None
+                raise MODULE.RuntimeManifestError(
+                    "injected failure before runtime mutation"
+                )
 
         if call[:2] == ["systemctl", "show"]:
             state = self.units[call[-1]]
@@ -333,6 +353,7 @@ class FakeRuntime:
             return self._result(0, output, allowed_exit_codes)
         if call[:2] == ["systemctl", "daemon-reload"]:
             self.unit_needs_reload.clear()
+            self._finish_mutation(mutation_ordinal)
             return self._result(0, "", allowed_exit_codes)
         if call[0] == "systemctl":
             action = call[1]
@@ -367,6 +388,7 @@ class FakeRuntime:
                     state["UnitFileState"] = "disabled"
                 if not runtime and state["UnitFileState"] == "enabled":
                     state["UnitFileState"] = "disabled"
+            self._finish_mutation(mutation_ordinal)
             return self._result(0, "", allowed_exit_codes)
 
         if call[:2] == ["docker", "ps"]:
@@ -1071,6 +1093,106 @@ class TerminalRuntimeManifestTest(unittest.TestCase):
         self.assertTrue(
             (self.storage / self.run_id / self.host / "restored.json").exists()
         )
+
+    def test_full_pi3_restore_retries_every_mutation_boundary(self):
+        units = [
+            "lightdm.service",
+            "status-agent.service",
+            "status-agent.timer",
+            "haizen-agent.service",
+            "signage-lite.service",
+            "signage-lite-update.service",
+            "signage-lite-update.timer",
+            "signage-lite-watchdog.service",
+            "signage-lite-watchdog.timer",
+            "signage-daily-reboot.service",
+            "signage-daily-reboot.timer",
+        ]
+        active_services = {"lightdm.service", "signage-lite.service"}
+        timers = {unit for unit in units if unit.endswith(".timer")}
+        transient_oneshots = set(MODULE.TRANSIENT_ONESHOT_UNITS)
+        for unit in units:
+            if unit == "haizen-agent.service":
+                self.fake.add_unit(
+                    unit,
+                    load="not-found",
+                    unit_file="not-found",
+                    active="inactive",
+                )
+            else:
+                self.fake.add_unit(
+                    unit,
+                    unit_file=(
+                        "enabled"
+                        if unit in active_services or unit in timers
+                        else "static"
+                    ),
+                    active=(
+                        "active"
+                        if unit in active_services or unit in timers
+                        else "inactive"
+                    ),
+                )
+        captured = self.capture(
+            units=units,
+            restart_on_restore_units=[
+                "haizen-agent.service",
+                "signage-lite.service",
+            ],
+        )
+
+        # Replay every Pi3 condition observed across the four production
+        # failures at once instead of proving each correction in isolation.
+        self.fake.unit_needs_reload.update(units)
+        self.fake.stop_results_failed.add("signage-lite.service")
+        for oneshot in transient_oneshots:
+            self.fake.units[oneshot]["ActiveState"] = "activating"
+        for oneshot, owner_timer in MODULE.TRANSIENT_ONESHOT_TIMER_BY_UNIT.items():
+            self.fake.timer_start_transitions[owner_timer] = [oneshot]
+        incident_start = self.fake.clone()
+        incident_start.calls.clear()
+
+        golden = incident_start.clone()
+        with mock.patch.object(MODULE, "_run_command", golden.run):
+            restored = self.restore(captured["manifestSha256"])
+        self.assertTrue(restored["restored"])
+        mutation_count = golden.mutation_ordinal
+        self.assertEqual(mutation_count, 18)
+        receipt = self.storage / self.run_id / self.host / "restored.json"
+        receipt.unlink()
+
+        for failure_side in ("before", "after"):
+            for ordinal in range(1, mutation_count + 1):
+                with self.subTest(failure_side=failure_side, ordinal=ordinal):
+                    fake = incident_start.clone()
+                    setattr(fake, f"fail_mutation_{failure_side}", ordinal)
+                    with mock.patch.object(MODULE, "_run_command", fake.run):
+                        with self.assertRaisesRegex(
+                            MODULE.RuntimeManifestError,
+                            f"injected failure {failure_side} runtime mutation",
+                        ):
+                            self.restore(captured["manifestSha256"])
+                        self.assertFalse(receipt.exists())
+
+                        repeated = self.restore(captured["manifestSha256"])
+                        self.assertTrue(repeated["restored"])
+                        self.assertTrue(receipt.exists())
+
+                        # Model normal completion of the timer-owned oneshots,
+                        # then prove the receipt and complete runtime are a
+                        # stable no-reconciliation result.
+                        for oneshot in transient_oneshots:
+                            fake.units[oneshot]["ActiveState"] = "inactive"
+                        preflight = MODULE.preflight_restore(
+                            root=self.storage,
+                            run_id=self.run_id,
+                            host=self.host,
+                            expected_manifest_sha256=captured["manifestSha256"],
+                        )
+                        self.assertTrue(preflight["ready"])
+                        self.assertTrue(preflight["restoredReceipt"])
+                        self.assertFalse(preflight["requiresRuntimeReconciliation"])
+                    receipt.unlink()
 
     def test_restore_rejects_oneshot_transition_without_reactivated_owner_timer(self):
         units = ["status-agent.service", "signage-lite.service"]

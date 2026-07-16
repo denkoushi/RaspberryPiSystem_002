@@ -25,6 +25,7 @@ POLICY = load_module('rolling_release_policy_under_test', 'rolling_release/polic
 PLANNER = load_module('rolling_release_planner_under_test', 'rolling_release/planner.py')
 CURRENT_SHA = 'a' * 40
 RELEASE_SHA = 'b' * 40
+SIGNAGE_PRIOR_SHA = 'd' * 40
 VERIFIED_AT = '2026-07-15T00:00:00Z'
 RUN_ID = '20260715-000000-a1b2c3'
 DIGEST = 'sha256:' + ('c' * 64)
@@ -305,6 +306,38 @@ class ReleasePolicyTest(unittest.TestCase):
         self.assertEqual(by_host['kiosk-b']['targetReason'], 'kiosk impact: nfc-agent')
         self.assertFalse(by_host['signage-a']['targeted'])
         self.assertEqual(by_host['signage-a']['desiredSha'], CURRENT_SHA)
+
+    def test_pi3_recovery_replan_keeps_successful_pi4_and_targets_only_signage(self):
+        fleet = {
+            'server-a': verified_record('server'),
+            'kiosk-b': verified_record('kiosk'),
+            'kiosk-a': verified_record('kiosk'),
+            'signage-a': verified_record('signage', current=SIGNAGE_PRIOR_SHA),
+        }
+        decisions = POLICY.plan_target_decisions(
+            self.hosts,
+            fleet,
+            RELEASE_SHA,
+            {
+                CURRENT_SHA: classification(components=['deploy-control', 'neutral']),
+                SIGNAGE_PRIOR_SHA: classification(
+                    signage=True,
+                    components=['deploy-control', 'neutral', 'signage-role'],
+                ),
+            },
+            self.inventory,
+        )
+        by_host = {decision['host']: decision for decision in decisions}
+
+        self.assertFalse(by_host['server-a']['targeted'])
+        self.assertFalse(by_host['kiosk-b']['targeted'])
+        self.assertFalse(by_host['kiosk-a']['targeted'])
+        self.assertTrue(by_host['signage-a']['targeted'])
+        self.assertEqual(by_host['signage-a']['desiredSha'], RELEASE_SHA)
+        self.assertEqual(
+            by_host['signage-a']['targetReason'],
+            'signage impact: deploy-control,signage-role',
+        )
 
     def test_unknown_host_is_targeted_even_when_role_is_not_impacted(self):
         fleet = {
