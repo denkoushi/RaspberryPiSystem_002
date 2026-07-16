@@ -430,9 +430,9 @@ jobs:
           export ANSIBLE_CONFIG=/tmp/ansible-ci.cfg
           export ANSIBLE_ROLES_PATH="$(pwd)/roles"
           READ_ONLY_ANSIBLE_CONFIG="$(pwd)/ansible-readonly.cfg"
-          PLAYBOOKS=(
+          STATIC_PLAYBOOKS=(
             playbooks/deploy.yml
-            playbooks/deploy-staged.yml
+            playbooks/deploy-terminal-profile.yml
             playbooks/server-config-release.yml
             playbooks/update-clients.yml
             playbooks/health-check.yml
@@ -444,16 +444,24 @@ jobs:
             playbooks/recover-pi4.yml
             playbooks/recover-pi4-verify.yml
           )
+          mapfile -t TERMINAL_PROFILE_PLAYBOOKS < <(
+            python3 ../../scripts/deploy/terminal_profile_contracts.py --list-playbooks
+          )
           python3 ../../scripts/deploy/tests/test_recover_pi4.py
           for inventory in inventory.yml inventory-talkplaza.yml; do
             ANSIBLE_CONFIG="$READ_ONLY_ANSIBLE_CONFIG" \
               ansible-inventory -i "$inventory" --list > "/tmp/${inventory%.yml}.json"
             python3 -m json.tool "/tmp/${inventory%.yml}.json" > /dev/null
           done
-          for playbook in "${PLAYBOOKS[@]}"; do
+          python3 ../../scripts/deploy/terminal_profile_contracts.py \
+            --inventory-json /tmp/inventory.json \
+            --inventory-json /tmp/inventory-talkplaza.json
+          for playbook in "${STATIC_PLAYBOOKS[@]}" "${TERMINAL_PROFILE_PLAYBOOKS[@]}"; do
             ansible-playbook --syntax-check "$playbook" -i inventory.yml
           done
-          ansible-playbook --syntax-check playbooks/deploy-staged.yml -i inventory-talkplaza.yml
+          for playbook in playbooks/deploy-terminal-profile.yml "${TERMINAL_PROFILE_PLAYBOOKS[@]}"; do
+            ansible-playbook --syntax-check "$playbook" -i inventory-talkplaza.yml
+          done
           ansible-playbook --check \
             -i ../../scripts/deploy/tests/fixtures/recovery-check-inventory.yml \
             playbooks/recover-pi4-verify.yml \

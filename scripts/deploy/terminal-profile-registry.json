@@ -145,6 +145,7 @@
     {"match": "exact", "path": "scripts/deploy/rolling-release.py", "component": "deploy-control"},
     {"match": "exact", "path": "scripts/deploy/terminal-profile-registry.json", "component": "deploy-control"},
     {"match": "exact", "path": "scripts/deploy/terminal_profile_registry.py", "component": "deploy-control"},
+    {"match": "exact", "path": "scripts/deploy/terminal_profile_contracts.py", "component": "deploy-control"},
     {"match": "exact", "path": "scripts/deploy/terminal-runtime-manifest.py", "component": "deploy-control"},
     {"match": "prefix", "path": "scripts/deploy/rolling_release/", "component": "deploy-control"},
 

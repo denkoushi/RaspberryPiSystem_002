@@ -24,7 +24,7 @@ scripts/update-all-clients.sh --cancel RUN_ID --reason TEXT
 - 引数なしの通常実行は完了まで待つ。
 - `--detach` は開始後に `runId` を返す。状態は `--status` で確認する。
 - `--dry-run` は `--print-plan` の互換aliasとして使える。
-- Pi5後のカナリア待機は `--approve RUN_ID` で明示承認する。
+- `human` profileのカナリア待機は `--approve RUN_ID` で現在のgateを明示承認する。複数profileでは順番に承認する。
 - 安定化時間を省略できるのは、緊急時に `--emergency-override --reason TEXT` を併用した場合だけである。
 
 ## 対象の決まり方
@@ -36,7 +36,7 @@ scripts/update-all-clients.sh --cancel RUN_ID --reason TEXT
 - Pi5が必要な変更で `--limit` によりPi5を除外することはできない。
 - `--limit` で根拠不明hostを除外することはできない。
 - 全台を明示的に再検証するときだけ `--full-fleet` を使う。
-- 端末はPi4カナリア、残りのPi4、Pi3 Signageの順に、一台ずつ更新する。
+- 端末はregistryのprofile順、profile内canary、残りのinventory順で、一台ずつ更新する。
 
 判断の正本は `logs/deploy/fleet-release-state.json` である。手で編集しない。
 
@@ -55,15 +55,33 @@ scripts/update-all-clients.sh --cancel RUN_ID --reason TEXT
 scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan
 ```
 
-TalkPlazaのinventory:
+TalkPlazaはstatic contractのみを検証する:
 
 ```bash
-scripts/update-all-clients.sh main infrastructure/ansible/inventory-talkplaza.yml --print-plan
+cd infrastructure/ansible
+export ANSIBLE_CONFIG="$(pwd)/ansible-readonly.cfg"
+ansible-inventory -i inventory-talkplaza.yml --list > /tmp/inventory-talkplaza.json
+python3 ../../scripts/deploy/terminal_profile_contracts.py \
+  --inventory-json /tmp/inventory-talkplaza.json
+for playbook in playbooks/deploy-terminal-profile.yml \
+  $(python3 ../../scripts/deploy/terminal_profile_contracts.py --list-playbooks); do
+  ansible-playbook --syntax-check "$playbook" -i inventory-talkplaza.yml
+done
 ```
 
-TalkPlaza Pi5は構想段階で実機が存在しない。現状はplan確認に限定し、Pi5を含む実機デプロイを開始しない。
+TalkPlaza Pi5は構想段階で実機が存在しない。現状はローカルのinventory解析、profile contract、playbook syntax-checkだけに限定する。remote identityを必要とする公開 `--print-plan`、SSH、実機デプロイは行わない。
 
 `--print-plan` はfleet stateを作成・更新せず、checkout、service、database、maintenance表示も変更しない。
+
+## Linux/Pi端末Typeを追加する
+
+端末Typeは端末名、hostname、Raspberry Piの型、hardware `device_type` から推測しない。`scripts/deploy/terminal-profile-registry.json` の安全なprofile IDと、inventoryでそのhostが所属する一つのprofile groupがidentityである。中身の構造はprofileが選ぶadapterとplaybookで決まる。
+
+1. SSH、Ansible、Git、systemd、status-agent、manifest rollbackで足りるなら `generic-systemd` と `playbooks/deploy-terminal-profile.yml` を選ぶ。固有のmaintenance、health、ready、rollbackが必要なら `terminal_adapters.py` と `adapter_registry.py` にadapterを一つ追加し、必要なrepository-owned playbookを用意する。planner、policy、fleet state、coordinatorへType名を追加しない。
+2. registryへrollout順、impact component、adapter/playbook、notice秒、canary group、`human` または `health-only`、systemd unit、rollback path、health probe、`control-plane` または `terminal` ready authorityを明記する。path mappingとcomponent-to-profileも同じ変更で追加する。
+3. 対象inventoryの `clients.children` にprofile groupを追加し、各hostを登録済みgroupの一つだけに所属させる。非空groupにはcanaryをちょうど一台置き、全hostの `status_agent_client_id` を一意にする。
+4. CIの `deploy-contract` を通す。CIはregistryからadapter、group、canary、playbookを動的に読み、`serial: 1`、orchestration guard、rollback ownership、coreのType非依存を検証する。profileごとのworkflow job追加は不要である。
+5. production登録に架空Typeを置かない。実製品変更の `--print-plan` を確認し、通常のhuman canary承認またはhealth-only証跡を使って最初の実機証明を行う。
 
 ## 通常実行
 
@@ -80,7 +98,7 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach
 scripts/update-all-clients.sh --status RUN_ID
 ```
 
-Pi5が対象の場合は、host設定、Expand-only migration、candidate image、Blue/Green切替、load確認、5分間の安定化を完了してから端末へ進む。端末は60秒の通知後に一台ずつ更新する。
+Pi5が対象の場合は、host設定、Expand-only migration、candidate image、Blue/Green切替、load確認、5分間の安定化を完了してから端末へ進む。端末はprofile指定の通知（現在のKioskは60秒）後に一台ずつ更新する。
 
 ## 成功の確認
 
