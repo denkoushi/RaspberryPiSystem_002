@@ -1221,7 +1221,17 @@ release_checkout = next(
     task for task in common_tasks
     if task.get('name') == 'Fetch and reset existing terminal repository to immutable release'
 )
+assert release_checkout.get('become') is True, (
+    'immutable terminal checkout must run as root for root-owned tracked paths'
+)
+assert 'become_user' not in release_checkout, (
+    'immutable terminal checkout must not drop back to the inventory user'
+)
 release_checkout_shell = release_checkout['ansible.builtin.shell']
+assert '-c safe.directory="{{ repo_path }}"' in release_checkout_shell
+assert not re.search(r'\b(?:chown|chmod)\b', release_checkout_shell), (
+    'immutable checkout must not normalize terminal ownership or modes'
+)
 fetch_offset = release_checkout_shell.index('git fetch --no-tags origin')
 pre_reset_policy_offset = release_checkout_shell.rindex('verify_index_policy')
 reset_offset = release_checkout_shell.index('git reset --hard "${target}"')
@@ -1422,6 +1432,7 @@ PY
 
 python3 - "${COMMON_TASKS}" "${TMP_DIR}/terminal-index-policy" <<'PY'
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -1451,10 +1462,13 @@ git('init', str(seed))
 git('config', 'user.name', 'deploy-contract-test', cwd=seed)
 git('config', 'user.email', 'deploy-contract@example.invalid', cwd=seed)
 (seed / 'tracked.txt').write_text('base\n', encoding='utf-8')
-git('add', 'tracked.txt', cwd=seed)
+(seed / 'root-owned').mkdir()
+(seed / 'root-owned' / 'tracked.txt').write_text('base-owned\n', encoding='utf-8')
+git('add', 'tracked.txt', 'root-owned/tracked.txt', cwd=seed)
 git('commit', '-m', 'base', cwd=seed)
 base_sha = git('rev-parse', 'HEAD', cwd=seed).stdout.strip()
 (seed / 'tracked.txt').write_text('target\n', encoding='utf-8')
+(seed / 'root-owned' / 'tracked.txt').write_text('target-owned\n', encoding='utf-8')
 git('commit', '-am', 'target', cwd=seed)
 target_sha = git('rev-parse', 'HEAD', cwd=seed).stdout.strip()
 git('clone', '--bare', str(seed), str(remote))
@@ -1466,13 +1480,8 @@ checkout_template = next(
     if task.get('name') == 'Fetch and reset existing terminal repository to immutable release'
 )
 
-for flag in ('--assume-unchanged', '--skip-worktree'):
-    work = root / flag.removeprefix('--')
-    git('clone', str(remote), str(work))
-    git('checkout', base_sha, cwd=work)
-    git('update-index', flag, 'tracked.txt', cwd=work)
-    (work / 'tracked.txt').write_text('local state\n', encoding='utf-8')
 
+def render_checkout(work):
     checkout = checkout_template.replace(
         'safe_home="$(/usr/bin/getent passwd {{ ansible_user | quote }} | /usr/bin/cut -d: -f6)"',
         'safe_home="${HOME}"',
@@ -1488,6 +1497,16 @@ for flag in ('--assume-unchanged', '--skip-worktree'):
         repr(base_sha),
     )
     assert '{{' not in checkout and '{%' not in checkout
+    return checkout
+
+for flag in ('--assume-unchanged', '--skip-worktree'):
+    work = root / flag.removeprefix('--')
+    git('clone', str(remote), str(work))
+    git('checkout', base_sha, cwd=work)
+    git('update-index', flag, 'tracked.txt', cwd=work)
+    (work / 'tracked.txt').write_text('local state\n', encoding='utf-8')
+
+    checkout = render_checkout(work)
 
     poisoned_environment = os.environ.copy()
     poisoned_environment.update(
@@ -1506,6 +1525,43 @@ for flag in ('--assume-unchanged', '--skip-worktree'):
     assert 'skip-worktree or assume-unchanged' in result.stderr, result.stderr
     assert git('rev-parse', 'HEAD', cwd=work).stdout.strip() == base_sha
     assert (work / 'tracked.txt').read_text(encoding='utf-8') == 'local state\n'
+
+sudo_ready = shutil.which('sudo') is not None and subprocess.run(
+    ('sudo', '-n', 'true'), capture_output=True
+).returncode == 0
+if sudo_ready:
+    work = root / 'root-owned-checkout'
+    git('clone', str(remote), str(work))
+    git('checkout', base_sha, cwd=work)
+    owned_directory = work / 'root-owned'
+    owned_file = owned_directory / 'tracked.txt'
+    subprocess.run(
+        ('sudo', '-n', 'chown', 'root:root', str(owned_directory), str(owned_file)),
+        check=True,
+    )
+    subprocess.run(('sudo', '-n', 'chmod', '0755', str(owned_directory)), check=True)
+    subprocess.run(('sudo', '-n', 'chmod', '0644', str(owned_file)), check=True)
+    try:
+        result = subprocess.run(
+            (
+                'sudo', '-n', '/usr/bin/env', f'HOME={home}',
+                '/bin/bash', '-c', render_checkout(work),
+            ),
+            text=True,
+            capture_output=True,
+        )
+        assert result.returncode == 0, result.stderr
+        assert git('rev-parse', 'HEAD', cwd=work).stdout.strip() == target_sha
+        assert owned_file.read_text(encoding='utf-8') == 'target-owned\n'
+    finally:
+        subprocess.run(
+            (
+                'sudo', '-n', 'chown',
+                f'{os.getuid()}:{os.getgid()}',
+                str(owned_directory), str(owned_file),
+            ),
+            check=True,
+        )
 PY
 
 python3 - "${PLAYBOOK}" "${LEGACY_DEPLOY_PLAYBOOK}" "${COMMON_TASKS}" \

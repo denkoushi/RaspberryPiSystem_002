@@ -374,6 +374,238 @@ def _require_clean_repository(repository: Path) -> None:
         raise ManifestError("repository worktree is not clean")
 
 
+def _validate_relative_git_path(value: bytes, label: str) -> str:
+    if not value or value.startswith(b"/"):
+        raise ManifestError(f"{label} is malformed")
+    components = value.split(b"/")
+    if (
+        any(component in {b"", b".", b".."} for component in components)
+        or components[0] == b".git"
+    ):
+        raise ManifestError(f"{label} is malformed")
+    return os.fsdecode(value)
+
+
+def _repository_status(repository: Path) -> dict[bytes, bytes]:
+    raw = _run_git_bytes(
+        repository,
+        ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+    )
+    if raw and not raw.endswith(b"\0"):
+        raise ManifestError("repository status output is malformed")
+    records = raw[:-1].split(b"\0") if raw else []
+    result: dict[bytes, bytes] = {}
+    allowed = {b" M", b" D", b" T", b"??"}
+    for record in records:
+        if len(record) < 4 or record[2:3] != b" ":
+            raise ManifestError("repository status is not a plain worktree change")
+        state = record[:2]
+        path = record[3:]
+        if state not in allowed:
+            raise ManifestError("repository status is not a plain worktree change")
+        _validate_relative_git_path(path, "repository status path")
+        if path in result:
+            raise ManifestError("repository status contains a duplicate path")
+        result[path] = state
+    return result
+
+
+def _require_exact_commit(repository: Path, value: str, label: str) -> str:
+    commit = _validate_git_sha(value, label)
+    try:
+        object_type = _run_git(repository, ["cat-file", "-t", commit])
+        resolved = _run_git(
+            repository, ["rev-parse", "--verify", f"{commit}^{{commit}}"]
+        )
+    except ManifestError as error:
+        raise ManifestError(f"{label} object is unavailable") from error
+    if object_type != "commit" or not hmac.compare_digest(resolved, commit):
+        raise ManifestError(f"{label} is not the exact requested commit")
+    return commit
+
+
+def _candidate_changed_paths(
+    repository: Path, previous_head: str, candidate_head: str
+) -> set[bytes]:
+    raw = _run_git_bytes(
+        repository,
+        [
+            "diff",
+            "--name-only",
+            "-z",
+            "--no-renames",
+            previous_head,
+            candidate_head,
+        ],
+    )
+    if raw and not raw.endswith(b"\0"):
+        raise ManifestError("candidate repository diff output is malformed")
+    paths = raw[:-1].split(b"\0") if raw else []
+    for path in paths:
+        _validate_relative_git_path(path, "candidate repository diff path")
+    if len(set(paths)) != len(paths):
+        raise ManifestError("candidate repository diff contains a duplicate path")
+    return set(paths)
+
+
+def _candidate_tree_entry(
+    repository: Path, candidate_head: str, relative_path: bytes
+) -> tuple[str, str] | None:
+    path = _validate_relative_git_path(relative_path, "candidate repository path")
+    raw = _run_git_bytes(
+        repository,
+        ["ls-tree", "-z", candidate_head, "--", path],
+    )
+    if not raw:
+        return None
+    if not raw.endswith(b"\0"):
+        raise ManifestError("candidate repository tree output is malformed")
+    records = raw[:-1].split(b"\0")
+    if len(records) != 1 or b"\t" not in records[0]:
+        raise ManifestError("candidate repository tree entry is ambiguous")
+    header, returned_path = records[0].split(b"\t", 1)
+    fields = header.split(b" ")
+    if len(fields) != 3 or returned_path != relative_path:
+        raise ManifestError("candidate repository tree entry is malformed")
+    mode, object_type, object_id = fields
+    if object_type != b"blob" or mode not in {b"100644", b"100755", b"120000"}:
+        raise ManifestError("candidate residue contains an unsupported object type")
+    try:
+        decoded_id = object_id.decode("ascii")
+    except UnicodeDecodeError as error:
+        raise ManifestError("candidate repository blob ID is malformed") from error
+    _validate_git_sha(decoded_id, "candidate repository blob ID")
+    return mode.decode("ascii"), decoded_id
+
+
+def _git_blob_sha1(payload: bytes) -> str:
+    header = f"blob {len(payload)}\0".encode("ascii")
+    return hashlib.sha1(header + payload, usedforsecurity=False).hexdigest()
+
+
+def _require_candidate_worktree_entry(
+    repository: Path, candidate_head: str, relative_path: bytes
+) -> None:
+    relative = _validate_relative_git_path(
+        relative_path, "candidate residue path"
+    )
+    path = repository / relative
+    _require_real_directory_chain(
+        path.parent,
+        root=repository,
+        label="candidate residue parent",
+    )
+    entry = _candidate_tree_entry(repository, candidate_head, relative_path)
+    metadata = _lstat(path)
+    if entry is None:
+        if metadata is not None:
+            raise ManifestError(
+                "repository residue does not match the candidate commit"
+            )
+        return
+    mode, expected_blob = entry
+    if metadata is None:
+        raise ManifestError(
+            "repository residue does not match the candidate commit"
+        )
+    if mode == "120000":
+        if not stat.S_ISLNK(metadata.st_mode):
+            raise ManifestError(
+                "repository residue does not match the candidate commit"
+            )
+        before_identity = (metadata.st_dev, metadata.st_ino, metadata.st_ctime_ns)
+        payload = os.readlink(os.fsencode(path))
+        after = path.lstat()
+        if (after.st_dev, after.st_ino, after.st_ctime_ns) != before_identity:
+            raise ManifestError("candidate residue symlink changed while reading")
+    else:
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ManifestError(
+                "repository residue does not match the candidate commit"
+            )
+        executable = bool(metadata.st_mode & 0o111)
+        if executable != (mode == "100755"):
+            raise ManifestError(
+                "repository residue mode does not match the candidate commit"
+            )
+        payload = _read_regular_source(path, metadata)
+    if not hmac.compare_digest(_git_blob_sha1(payload), expected_blob):
+        raise ManifestError("repository residue does not match the candidate commit")
+
+
+def _require_repository_rollback_state(
+    repository: Path,
+    previous_head: str,
+    candidate_head: str | None,
+) -> None:
+    _require_plain_repository_index(repository)
+    actual_head = _read_repository_head(repository)
+    status = _repository_status(repository)
+    if candidate_head is None:
+        if status:
+            raise ManifestError("repository worktree is not clean")
+        return
+
+    candidate = _require_exact_commit(
+        repository, candidate_head, "candidate repository HEAD"
+    )
+    if not status:
+        if actual_head not in {previous_head, candidate}:
+            raise ManifestError(
+                "clean repository HEAD is outside the rollback transition"
+            )
+        return
+    if not hmac.compare_digest(actual_head, previous_head):
+        raise ManifestError("dirty repository HEAD is not the sealed prior release")
+    try:
+        _run_git(repository, ["diff", "--cached", "--quiet", previous_head])
+    except ManifestError as error:
+        raise ManifestError(
+            "repository index differs from the sealed prior release"
+        ) from error
+    changed_paths = _candidate_changed_paths(repository, previous_head, candidate)
+    if not status.keys() <= changed_paths:
+        raise ManifestError("repository worktree contains non-candidate residue")
+    for path in status:
+        _require_candidate_worktree_entry(repository, candidate, path)
+
+
+def _remove_candidate_untracked_residue(
+    repository: Path,
+    previous_head: str,
+    candidate_head: str | None,
+) -> None:
+    if candidate_head is None:
+        return
+    status = _repository_status(repository)
+    untracked = [path for path, state in status.items() if state == b"??"]
+    if not untracked:
+        return
+    changed_paths = _candidate_changed_paths(
+        repository, previous_head, candidate_head
+    )
+    if not set(untracked) <= changed_paths:
+        raise ManifestError("repository worktree contains non-candidate residue")
+    resolved: list[Path] = []
+    for relative_path in untracked:
+        _require_candidate_worktree_entry(
+            repository, candidate_head, relative_path
+        )
+        relative = _validate_relative_git_path(
+            relative_path, "candidate untracked residue path"
+        )
+        path = repository / relative
+        metadata = _lstat(path)
+        if metadata is None or not (
+            stat.S_ISREG(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode)
+        ):
+            raise ManifestError("candidate untracked residue is not removable")
+        resolved.append(path)
+    for path in resolved:
+        path.unlink()
+        _fsync_directory(path.parent)
+
+
 def _capture_repository(
     repository: os.PathLike[str] | str,
     expected_head: str,
@@ -390,7 +622,9 @@ def _capture_repository(
 
 
 def _preflight_repository(
-    repository: Mapping[str, str] | None, context: ManifestContext
+    repository: Mapping[str, str] | None,
+    context: ManifestContext,
+    candidate_head: str | None = None,
 ) -> Path | None:
     if repository is None:
         return None
@@ -400,26 +634,26 @@ def _preflight_repository(
     if _lstat(git_directory / "index.lock") is not None:
         raise ManifestError("repository index lock exists before rollback")
     _read_repository_head(path)
-    _require_clean_repository(path)
-    try:
-        object_type = _run_git(path, ["cat-file", "-t", head])
-        resolved = _run_git(path, ["rev-parse", "--verify", f"{head}^{{commit}}"])
-    except ManifestError as error:
-        raise ManifestError("sealed repository commit object is unavailable") from error
-    if object_type != "commit" or not hmac.compare_digest(resolved, head):
-        raise ManifestError("sealed repository object is not the exact captured commit")
+    _require_exact_commit(path, head, "sealed repository commit")
+    _require_repository_rollback_state(path, head, candidate_head)
     return path
 
 
-def _restore_repository(repository: Mapping[str, str], path: Path) -> None:
+def _restore_repository(
+    repository: Mapping[str, str],
+    path: Path,
+    candidate_head: str | None = None,
+) -> None:
     expected_head = repository["head"]
     git_directory = _require_repository_layout(path)
     if _lstat(git_directory / "index.lock") is not None:
         raise ManifestError("repository index lock exists before rollback")
     before_head = _read_repository_head(path)
-    _require_clean_repository(path)
+    _require_repository_rollback_state(path, expected_head, candidate_head)
     if not hmac.compare_digest(_read_repository_head(path), before_head):
         raise ManifestError("repository HEAD changed immediately before rollback")
+    _remove_candidate_untracked_residue(path, expected_head, candidate_head)
+    _require_repository_rollback_state(path, expected_head, candidate_head)
     _run_git(
         path,
         ["reset", "--quiet", "--hard", "--no-recurse-submodules", expected_head],
@@ -427,6 +661,7 @@ def _restore_repository(repository: Mapping[str, str], path: Path) -> None:
     actual_head = _read_repository_head(path)
     if not hmac.compare_digest(actual_head, expected_head):
         raise ManifestError("post-restore repository HEAD does not match the manifest")
+    _require_clean_repository(path)
 
 
 def _entry_overlaps_repository_metadata(path: Path, repository: Mapping[str, str]) -> bool:
@@ -1333,6 +1568,7 @@ def restore(
     run_id: str,
     host: str,
     expected_manifest_sha256: str,
+    candidate_head: str | None = None,
     filesystem_root: os.PathLike[str] | str = "/",
 ) -> dict[str, Any]:
     if (
@@ -1355,10 +1591,14 @@ def restore(
             raise ManifestError("manifest checksum does not match the expected sealed digest")
         entries = manifest["entries"]
         repository = manifest["repository"]
-        repository_path = _preflight_repository(repository, context)
+        repository_path = _preflight_repository(
+            repository, context, candidate_head=candidate_head
+        )
         _preflight_destinations(entries, context)
         if repository is not None and repository_path is not None:
-            _restore_repository(repository, repository_path)
+            _restore_repository(
+                repository, repository_path, candidate_head=candidate_head
+            )
         for entry in reversed(entries):
             previous_state = entry["previousState"]
             if previous_state == "regular":
@@ -1407,6 +1647,7 @@ def main(argv: list[str] | None = None) -> int:
     restore_parser = subparsers.add_parser("restore")
     _add_common_arguments(restore_parser)
     restore_parser.add_argument("--expected-manifest-sha256", required=True)
+    restore_parser.add_argument("--candidate-head")
     args = parser.parse_args(argv)
     try:
         if args.command == "capture":
@@ -1434,6 +1675,7 @@ def main(argv: list[str] | None = None) -> int:
                 run_id=args.run_id,
                 host=args.host,
                 expected_manifest_sha256=args.expected_manifest_sha256,
+                candidate_head=args.candidate_head,
                 filesystem_root=args.filesystem_root,
             )
     except (ManifestError, OSError) as error:

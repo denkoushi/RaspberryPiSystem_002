@@ -1336,6 +1336,12 @@ def rollback_terminal(
         host, terminal_type = _validated_terminal_spec(target_spec)
         previous_sha = target.get("previousSha")
         _validated_run_and_sha(run_id, previous_sha)
+        desired_sha = target.get("desiredSha")
+        if (
+            not isinstance(desired_sha, str)
+            or _FULL_SHA_RE.fullmatch(desired_sha) is None
+        ):
+            raise ValueError("desired release SHA is malformed")
         manifest = target.get("rollbackManifest")
         expected_path = _expected_manifest_path(run_id, host)
         if not isinstance(manifest, dict) or set(manifest) != {
@@ -1376,6 +1382,8 @@ def rollback_terminal(
                 host,
                 "--expected-manifest-sha256",
                 digest,
+                "--candidate-head",
+                desired_sha,
             ],
             runtime=runtime,
         )

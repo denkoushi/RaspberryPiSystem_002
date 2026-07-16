@@ -215,6 +215,7 @@
         safe_environment+=("GIT_SSH_COMMAND=${ssh_command}")
       fi
       /usr/bin/env -i "${safe_environment[@]}" /usr/bin/git \
+        -c safe.directory="{{ repo_path }}" \
         -c core.fsmonitor=false \
         -c core.ignoreStat=false \
         -c core.trustctime=true \
@@ -254,7 +255,7 @@
     [[ "$(git rev-parse --verify HEAD)" == "${target}" ]]
   args:
     executable: /bin/bash
-  become_user: "{{ ansible_user }}"
+  become: true
   register: git_release_result
   retries: 3
   delay: 10
