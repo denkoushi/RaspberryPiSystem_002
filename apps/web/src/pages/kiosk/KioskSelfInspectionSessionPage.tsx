@@ -11,6 +11,7 @@ import {
   useSelfInspectionInspectorMeasurementSession,
   useSelfInspectionRegistrationPolicy,
   useSelfInspectionSession,
+  useSaveSelfInspectionInspectorJudgements,
   useUpdateSelfInspectionEntry,
   useUpdateSelfInspectionInspectorEntry,
   useUpsertSelfInspectionDraftEntry
@@ -36,10 +37,7 @@ import {
 import { selfInspectionModeDisplayLabel } from '../../features/part-measurement/selfInspectionEntrySlots';
 import { SelfInspectionKioskButton } from '../../features/part-measurement/SelfInspectionKioskButton';
 import { SelfInspectionNfcRegistrationPanel } from '../../features/part-measurement/SelfInspectionNfcRegistrationPanel';
-import {
-  KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH,
-  kioskSelfInspectionSessionPath
-} from '../../features/part-measurement/selfInspectionRoutes';
+import { kioskSelfInspectionSessionPath } from '../../features/part-measurement/selfInspectionRoutes';
 import {
   hasDirtySelfInspectionDrafts,
   resolveSelfInspectionCompleteActionState,
@@ -147,6 +145,7 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
   const { mutateAsync: upsertDraftEntry } = useUpsertSelfInspectionDraftEntry();
   const createInspectorEntryMutation = useCreateSelfInspectionInspectorEntry();
   const updateInspectorEntryMutation = useUpdateSelfInspectionInspectorEntry();
+  const saveInspectorJudgementsMutation = useSaveSelfInspectionInspectorJudgements();
   const completeSessionMutation = useCompleteSelfInspectionSession();
   const resetSessionMutation = useResetSelfInspectionSession();
   const [resetPhase, setResetPhase] = useState<null | 'destructive' | 'completed'>(null);
@@ -158,6 +157,9 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
   const [savedDraftByEntryIndex, setSavedDraftByEntryIndex] = useState<Record<number, Record<string, string>>>({});
   const [outOfToleranceAcknowledgedByEntryIndex, setOutOfToleranceAcknowledgedByEntryIndex] = useState<
     Record<number, Record<string, boolean>>
+  >({});
+  const [inspectorJudgementsByEntryIndex, setInspectorJudgementsByEntryIndex] = useState<
+    Record<number, Record<string, 'FINAL_OK' | 'FINAL_NG'>>
   >({});
   const [pendingOutOfToleranceCommit, setPendingOutOfToleranceCommit] =
     useState<PendingOutOfToleranceCommit | null>(null);
@@ -292,9 +294,12 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
     const draft = draftValuesByEntryIndex[selectedEntryIndex];
     if (!draft) return;
 
+    const acknowledgedByPointId = outOfToleranceAcknowledgedByEntryIndex[selectedEntryIndex] ?? {};
     const valuesPayload = session.template.items.map((item) => ({
       templateItemId: item.id,
-      value: draft[item.id] ?? ''
+      value: draft[item.id] ?? '',
+      outOfToleranceAcknowledged:
+        acknowledgedByPointId[item.id] === true ? true : undefined
     }));
     const hasAnyValue = valuesPayload.some((row) => String(row.value ?? '').trim().length > 0);
     const existing = session.entries.find((entry) => entry.entryIndex === selectedEntryIndex);
@@ -350,6 +355,7 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
     selectedEntryIndex,
     session,
     sessionEmployeeGateReady,
+    outOfToleranceAcknowledgedByEntryIndex,
     upsertDraftEntry
   ]);
 
@@ -398,7 +404,10 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
     if (!focusedEntry) return;
     const acknowledgedByPointId = Object.fromEntries(
       focusedEntry.values
-        .filter((value) => value.reviewStatus !== 'NOT_REQUIRED')
+        .filter(
+          (value) =>
+            value.reviewStatus !== 'NOT_REQUIRED' || value.outOfToleranceAcknowledgedAt != null
+        )
         .map((value) => [value.templateItemId, true])
     );
     if (Object.keys(acknowledgedByPointId).length === 0) return;
@@ -555,12 +564,31 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
     () => session?.entries.find((entry) => entry.entryIndex === selectedEntryIndex) ?? null,
     [selectedEntryIndex, session?.entries]
   );
+  const selectedInspectorEntry =
+    isInspectorMode && session?.focusedEntry?.entryIndex === selectedEntryIndex
+      ? session.focusedEntry
+      : null;
+  const pendingInspectorJudgementValues = useMemo(
+    () =>
+      selectedInspectorEntry?.values.filter(
+        (value) => value.operatorReviewStatus === 'PENDING'
+      ) ?? [],
+    [selectedInspectorEntry]
+  );
+  const selectedInspectorJudgements = inspectorJudgementsByEntryIndex[selectedEntryIndex] ?? {};
+  const canSaveInspectorJudgements =
+    pendingInspectorJudgementValues.length > 0 &&
+    pendingInspectorJudgementValues.every((value) => {
+      const status = selectedInspectorJudgements[value.templateItemId] ?? value.judgementStatus;
+      return status === 'FINAL_OK' || status === 'FINAL_NG';
+    });
 
   const isSavingEntry =
     createEntryMutation.isPending ||
     updateEntryMutation.isPending ||
     createInspectorEntryMutation.isPending ||
-    updateInspectorEntryMutation.isPending;
+    updateInspectorEntryMutation.isPending ||
+    saveInspectorJudgementsMutation.isPending;
   const isCompletingSession = completeSessionMutation.isPending;
   const isResettingSession = resetSessionMutation.isPending;
   const resetDisabled =
@@ -613,23 +641,39 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
   );
 
   const completeActionState = useMemo(
-    () =>
-      isInspectorMode
-        ? {
-            enabled: Boolean(session && session.inspectorMeasurementState === 'complete'),
-            reason: session?.inspectorMeasurementState === 'complete'
-              ? null
-              : ('incomplete_values' as const)
-          }
-      : sessionActionContext && isSessionIdentityReady
-        ? resolveSelfInspectionCompleteActionState(sessionActionContext)
-        : { enabled: false, reason: 'read_only' as const },
+    () => {
+      if (isInspectorMode) {
+        const measurementsComplete = session?.inspectorMeasurementState === 'complete';
+        const judgementsComplete = (session?.pendingReviewCount ?? 0) === 0;
+        return {
+          enabled: Boolean(session && measurementsComplete && judgementsComplete),
+          reason: !measurementsComplete
+            ? ('incomplete_values' as const)
+            : !judgementsComplete
+              ? ('pending_review' as const)
+              : null
+        };
+      }
+      if (!sessionActionContext || !isSessionIdentityReady) {
+        return { enabled: false, reason: 'read_only' as const };
+      }
+      const state = resolveSelfInspectionCompleteActionState(sessionActionContext);
+      if (
+        session?.decisionWorkflow === 'INSPECTOR_FINAL_JUDGEMENT' &&
+        state.reason === 'record_approval_required'
+      ) {
+        return { enabled: true, reason: null };
+      }
+      return state;
+    },
     [isInspectorMode, isSessionIdentityReady, session, sessionActionContext]
   );
   const completeActionHint = isInspectorMode
     ? completeActionState.enabled
       ? null
-      : '検査員の必要件数をすべて保存すると記録確認へ進めます。'
+      : completeActionState.reason === 'pending_review'
+        ? '測定者側でNGだった全測定点に最終OK／NGを入力してください。'
+        : '検査員の必要件数をすべて保存すると最終判定を確定できます。'
     : selfInspectionActionReasonMessage(completeActionState.reason);
 
   const resumeGuideActionState = useMemo(
@@ -815,7 +859,21 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
       return;
     }
     if (isInspectorMode) {
-      navigate(KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH);
+      setActionError(null);
+      try {
+        await completeSessionMutation.mutateAsync(session.id);
+        navigate('/kiosk/part-measurement/self-inspection');
+      } catch (error: unknown) {
+        setActionError(readApiErrorMessage(error, '最終判定の確定に失敗しました。'));
+      }
+      return;
+    }
+    if (
+      session.decisionWorkflow === 'INSPECTOR_FINAL_JUDGEMENT' &&
+      session.recordApprovalRequiredAt &&
+      !session.recordApproval
+    ) {
+      navigate('/kiosk/part-measurement/self-inspection');
       return;
     }
     setActionError(null);
@@ -823,6 +881,26 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
       await completeSessionMutation.mutateAsync(session.id);
     } catch (error: unknown) {
       setActionError(readApiErrorMessage(error, '完了処理に失敗しました。'));
+    }
+  };
+
+  const saveInspectorJudgements = async () => {
+    if (!session || !selectedInspectorEntry || !canSaveInspectorJudgements) return;
+    setActionError(null);
+    try {
+      await saveInspectorJudgementsMutation.mutateAsync({
+        sessionId: session.id,
+        entryId: selectedInspectorEntry.id,
+        body: {
+          judgements: pendingInspectorJudgementValues.map((value) => ({
+            templateItemId: value.templateItemId,
+            judgementStatus:
+              selectedInspectorJudgements[value.templateItemId] ?? value.judgementStatus!
+          }))
+        }
+      });
+    } catch (error: unknown) {
+      setActionError(readApiErrorMessage(error, '最終判定の保存に失敗しました。'));
     }
   };
 
@@ -1164,6 +1242,58 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
                 {actionError}
               </p>
             ) : null}
+            {isInspectorMode && pendingInspectorJudgementValues.length > 0 ? (
+              <div className="rounded border border-amber-300/40 bg-amber-500/10 p-2">
+                <p className="text-sm font-semibold text-amber-100">測定者NGの最終判定</p>
+                <div className="mt-2 space-y-2">
+                  {pendingInspectorJudgementValues.map((value) => {
+                    const item = session.template.items.find((row) => row.id === value.templateItemId);
+                    const selectedStatus =
+                      selectedInspectorJudgements[value.templateItemId] ?? value.judgementStatus;
+                    return (
+                      <div key={value.templateItemId} className="rounded border border-white/15 bg-slate-950/40 p-2">
+                        <p className="text-xs text-white/75">
+                          {item?.measurementLabel ?? item?.measurementPoint ?? value.templateItemId}
+                          {' / 測定者: '}{value.operatorValueSnapshot ?? '-'}
+                          {' / 検査員: '}{value.value ?? '-'}
+                        </p>
+                        <div className="mt-1 grid grid-cols-2 gap-1">
+                          {(['FINAL_OK', 'FINAL_NG'] as const).map((status) => (
+                            <SelfInspectionKioskButton
+                              key={status}
+                              type="button"
+                              size="actionCompact"
+                              pressed={selectedStatus === status}
+                              disabled={isSavingEntry}
+                              onClick={() => {
+                                setInspectorJudgementsByEntryIndex((previous) => ({
+                                  ...previous,
+                                  [selectedEntryIndex]: {
+                                    ...(previous[selectedEntryIndex] ?? {}),
+                                    [value.templateItemId]: status
+                                  }
+                                }));
+                              }}
+                            >
+                              {status === 'FINAL_OK' ? '最終OK' : '最終NG'}
+                            </SelfInspectionKioskButton>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <SelfInspectionKioskButton
+                  type="button"
+                  size="actionCompact"
+                  disabled={!canSaveInspectorJudgements || isSavingEntry}
+                  highlighted={canSaveInspectorJudgements && !isSavingEntry}
+                  onClick={() => void saveInspectorJudgements()}
+                >
+                  最終判定を保存
+                </SelfInspectionKioskButton>
+              </div>
+            ) : null}
             <div
               className="grid grid-cols-2 gap-1 rounded-md bg-slate-900/50 p-1"
               data-self-inspection-session-actions
@@ -1187,7 +1317,13 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
                 onPointerDownCapture={consumeNextBlurGuideAdvance}
                 onClick={() => void completeSession()}
               >
-                {isInspectorMode ? '記録確認へ' : '自主検査を完了'}
+                {isInspectorMode
+                  ? '最終判定を確定して完了'
+                  : session.decisionWorkflow === 'INSPECTOR_FINAL_JUDGEMENT' &&
+                      session.recordApprovalRequiredAt &&
+                      !session.recordApproval
+                    ? '測定を終了'
+                    : '自主検査を完了'}
               </SelfInspectionKioskButton>
             </div>
             {!actionError && (completeActionState.reason === 'record_approval_required' || isInspectorMode) && completeActionHint ? (

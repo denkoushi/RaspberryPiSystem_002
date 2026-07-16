@@ -107,7 +107,7 @@ import {
   resolveRegistrationPatchForUpdate
 } from './self-inspection/entry-registration.js';
 import { assertSelfInspectionEntryRegistrationTagUids } from './self-inspection-registration-tag-validation.js';
-import { saveInspectorEntry } from './self-inspection/inspector-entry.js';
+import { saveInspectorEntry, saveInspectorJudgements } from './self-inspection/inspector-entry.js';
 import {
   recordInspectorInstrumentPreUseInspection as recordInspectorInstrumentPreUseInspectionOp,
   recordInstrumentPreUseInspection as recordInstrumentPreUseInspectionOp
@@ -261,6 +261,7 @@ export class SelfInspectionService {
         expectedEntryCount,
         clientDeviceId: input.clientDeviceId ?? null,
         startedAt: new Date(),
+        decisionWorkflow: 'INSPECTOR_FINAL_JUDGEMENT',
         recordApprovalWorkflowStartedAt: new Date()
       },
       update: {},
@@ -345,6 +346,7 @@ export class SelfInspectionService {
     const rows = await prisma.selfInspectionSession.findMany({
       where: {
         recordApprovalRequiredAt: { not: null },
+        decisionWorkflow: 'LEGACY_RECORD_APPROVAL',
         ...(productNo ? { productNo: { contains: productNo, mode: 'insensitive' } } : {}),
         ...(resourceCd ? { resourceCd: { equals: resourceCd, mode: 'insensitive' } } : {}),
         ...(query.processGroup ? { processGroup: query.processGroup } : {}),
@@ -374,7 +376,11 @@ export class SelfInspectionService {
       where: { id: sessionId },
       include: recordApprovalSessionInclude
     });
-    if (!session || !session.recordApprovalRequiredAt) {
+    if (
+      !session ||
+      !session.recordApprovalRequiredAt ||
+      session.decisionWorkflow !== 'LEGACY_RECORD_APPROVAL'
+    ) {
       throw new ApiError(404, '検査記録承認対象の自主検査セッションが見つかりません');
     }
     const registrationPolicy = await getSelfInspectionRegistrationPolicy();
@@ -451,6 +457,9 @@ export class SelfInspectionService {
       });
       if (!existing || !existing.recordApprovalRequiredAt) {
         throw new ApiError(404, '検査記録承認対象の自主検査セッションが見つかりません');
+      }
+      if (existing.decisionWorkflow !== 'LEGACY_RECORD_APPROVAL') {
+        throw new ApiError(409, 'この自主検査は検査員が最終判定して完了してください');
       }
       if (existing.recordApproval) {
         throw new ApiError(409, 'この検査記録は既に承認済みです');
@@ -721,6 +730,7 @@ export class SelfInspectionService {
       completedAt: session.completedAt?.toISOString() ?? null,
       recordApprovalRequiredAt: session.recordApprovalRequiredAt?.toISOString() ?? null,
       recordApprovalWorkflowStartedAt: session.recordApprovalWorkflowStartedAt?.toISOString() ?? null,
+      decisionWorkflow: session.decisionWorkflow,
       inspectorRemeasurementRequiredAt: session.inspectorRemeasurementRequiredAt?.toISOString() ?? null,
       inspectorMeasurementState: inspectorMeasurement.state,
       inspectorRequiredEntryCount: inspectorMeasurement.requiredEntryCount,
@@ -783,7 +793,12 @@ export class SelfInspectionService {
               orderBy: { preUseInspectedAt: 'asc' }
             },
             values: {
-              orderBy: { createdAt: 'asc' }
+              orderBy: { createdAt: 'asc' },
+              include: {
+                operatorMeasurementValue: {
+                  select: { reviewStatus: true }
+                }
+              }
             }
           }
         },
@@ -809,7 +824,12 @@ export class SelfInspectionService {
                 orderBy: { preUseInspectedAt: 'asc' }
               },
               values: {
-                orderBy: { createdAt: 'asc' }
+                orderBy: { createdAt: 'asc' },
+                include: {
+                  operatorMeasurementValue: {
+                    select: { reviewStatus: true }
+                  }
+                }
               }
             }
           })
@@ -870,6 +890,7 @@ export class SelfInspectionService {
       completedAt: session.completedAt?.toISOString() ?? null,
       recordApprovalRequiredAt: session.recordApprovalRequiredAt?.toISOString() ?? null,
       recordApprovalWorkflowStartedAt: session.recordApprovalWorkflowStartedAt?.toISOString() ?? null,
+      decisionWorkflow: session.decisionWorkflow,
       inspectorRemeasurementRequiredAt: session.inspectorRemeasurementRequiredAt?.toISOString() ?? null,
       inspectorMeasurementState: inspectorMeasurement.state,
       inspectorRequiredEntryCount: inspectorMeasurement.requiredEntryCount,
@@ -911,6 +932,14 @@ export class SelfInspectionService {
       entryId,
       ifUnmodifiedSince: input.ifUnmodifiedSince
     });
+  }
+
+  async saveInspectorJudgements(
+    sessionId: string,
+    entryId: string,
+    input: { judgements: Array<{ templateItemId: string; judgementStatus: 'FINAL_OK' | 'FINAL_NG' }> }
+  ) {
+    return saveInspectorJudgements(sessionId, entryId, input);
   }
 
   async recordInspectorInstrumentPreUseInspection(
@@ -1329,7 +1358,13 @@ export class SelfInspectionService {
       if (existing.completedAt) {
         return existing;
       }
-      if (existing.recordApprovalRequiredAt && !existing.recordApproval) {
+      const isInspectorFinalization =
+        existing.decisionWorkflow === 'INSPECTOR_FINAL_JUDGEMENT';
+      if (
+        existing.decisionWorkflow === 'LEGACY_RECORD_APPROVAL' &&
+        existing.recordApprovalRequiredAt &&
+        !existing.recordApproval
+      ) {
         throw new ApiError(409, '検査記録承認が未完了のため完了できません');
       }
       assertSessionEntryCountWritable(existing);
@@ -1349,7 +1384,38 @@ export class SelfInspectionService {
         throw new ApiError(409, '必要件数に達していないため完了できません');
       }
       await assertAllEntriesHaveRegistration(tx, sessionId, registrationPolicy);
-      await assertAllEntriesReviewReady(tx, sessionId, existing.template);
+      if (isInspectorFinalization) {
+        const inspectorCompletion = buildInspectorMeasurementCompletion({
+          inspectorRemeasurementRequiredAt: existing.inspectorRemeasurementRequiredAt,
+          recordApproval: existing.recordApproval,
+          completedAt: existing.completedAt,
+          template: {
+            ...templateConfig,
+            itemIds: existing.template.items.map((item) => item.id)
+          },
+          plannedQuantity: existing.plannedQuantity,
+          inspectorEntries: existing.inspectorEntries
+        });
+        if (inspectorCompletion.state !== 'complete') {
+          throw new ApiError(409, '検査員の再測定が未完了のため完了できません');
+        }
+        const unjudgedCount = await tx.selfInspectionMeasurementValue.count({
+          where: {
+            reviewStatus: 'PENDING',
+            entry: { sessionId, ...confirmedWhere },
+            inspectorMeasurements: {
+              none: {
+                judgementStatus: { in: ['FINAL_OK', 'FINAL_NG'] }
+              }
+            }
+          }
+        });
+        if (unjudgedCount > 0) {
+          throw new ApiError(409, '測定者側で公差外となった全測定点を最終判定してください');
+        }
+      } else {
+        await assertAllEntriesReviewReady(tx, sessionId, existing.template);
+      }
       const finalized = await tx.selfInspectionSession.updateMany({
         where: { id: sessionId, completedAt: null },
         data: { completedAt: new Date() }
@@ -1798,6 +1864,7 @@ export class SelfInspectionService {
           expectedEntryCount: restartPayload.expectedEntryCount,
           clientDeviceId: input.clientDeviceId ?? null,
           startedAt: new Date(),
+          decisionWorkflow: 'INSPECTOR_FINAL_JUDGEMENT',
           recordApprovalWorkflowStartedAt: new Date()
         }
       });

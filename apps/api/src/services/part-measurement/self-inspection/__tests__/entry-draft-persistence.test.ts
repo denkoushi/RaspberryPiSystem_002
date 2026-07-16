@@ -71,6 +71,30 @@ describe('validateDraftMeasurementPayload', () => {
     expect(normalized).toHaveLength(1);
   });
 
+  it('keeps an out-of-tolerance acknowledgement in a draft', () => {
+    const normalized = validateDraftMeasurementPayload(template, [
+      {
+        templateItemId: 'item-1',
+        value: '12',
+        outOfToleranceAcknowledged: true
+      }
+    ]);
+    expect(normalized[0]?.reviewStatus).toBe('NOT_REQUIRED');
+    expect(normalized[0]?.outOfToleranceAcknowledgedAt).toBeInstanceOf(Date);
+  });
+
+  it('does not mark an unacknowledged or in-tolerance draft value as acknowledged', () => {
+    const normalized = validateDraftMeasurementPayload(template, [
+      { templateItemId: 'item-1', value: '12' },
+      {
+        templateItemId: 'item-2',
+        value: '10',
+        outOfToleranceAcknowledged: true
+      }
+    ]);
+    expect(normalized.map((row) => row.outOfToleranceAcknowledgedAt)).toEqual([null, null]);
+  });
+
   it('rejects invalid numbers', () => {
     expect(() =>
       validateDraftMeasurementPayload(template, [{ templateItemId: 'item-1', value: 'abc' }])

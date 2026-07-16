@@ -90,6 +90,7 @@ export function makeSelfInspectionSessionDetailForTest(
     completedAt: null,
     recordApprovalRequiredAt: null,
     recordApprovalWorkflowStartedAt: null,
+    decisionWorkflow: 'INSPECTOR_FINAL_JUDGEMENT',
     inspectorRemeasurementRequiredAt: null,
     inspectorMeasurementState: 'not_required',
     inspectorRequiredEntryCount: expectedEntryCount,

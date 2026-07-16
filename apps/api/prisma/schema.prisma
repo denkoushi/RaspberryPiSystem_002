@@ -2058,10 +2058,18 @@ enum SelfInspectionMeasurementReviewStatus {
   NOT_REQUIRED
   PENDING
   APPROVED
+  REJECTED
 }
 
 enum SelfInspectionInspectorMeasurementJudgementStatus {
   NOT_EVALUATED
+  FINAL_OK
+  FINAL_NG
+}
+
+enum SelfInspectionDecisionWorkflow {
+  LEGACY_RECORD_APPROVAL
+  INSPECTOR_FINAL_JUDGEMENT
 }
 
 enum AssemblyWorkSessionStatus {
@@ -2672,6 +2680,7 @@ model SelfInspectionSession {
   recordApprovalRequiredAt DateTime?
   recordApprovalWorkflowStartedAt DateTime?
   inspectorRemeasurementRequiredAt DateTime?
+  decisionWorkflow   SelfInspectionDecisionWorkflow @default(LEGACY_RECORD_APPROVAL)
   createdAt          DateTime                    @default(now())
   updatedAt          DateTime                    @updatedAt
   template           PartMeasurementTemplate     @relation(fields: [templateId], references: [id], onDelete: Restrict)

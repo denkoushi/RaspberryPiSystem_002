@@ -115,12 +115,18 @@ export function presentSelfInspectionSessionRow(
   const inspectorState = session.inspectorMeasurementState;
   const inspectorActive =
     Boolean(session.inspectorRemeasurementRequiredAt) &&
-    (inspectorState === 'pending' || inspectorState === 'in_progress');
+    (inspectorState === 'pending' ||
+      inspectorState === 'in_progress' ||
+      (inspectorState === 'complete' &&
+        session.decisionWorkflow === 'INSPECTOR_FINAL_JUDGEMENT')) &&
+    !session.completedAt;
   const inspectorComplete =
     Boolean(session.inspectorRemeasurementRequiredAt) && inspectorState === 'complete';
   const action = inspectorActive
     ? { kind: 'link' as const, href: kioskSelfInspectionInspectorSessionPath(session.id), label: '検査員測定' }
-    : inspectorComplete && session.recordApprovalRequiredAt
+    : inspectorComplete &&
+        session.recordApprovalRequiredAt &&
+        session.decisionWorkflow === 'LEGACY_RECORD_APPROVAL'
       ? { kind: 'link' as const, href: KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH, label: '記録確認' }
       : { kind: 'link' as const, href: kioskSelfInspectionSessionPath(session.id), label: '再開' };
   const card = presentSelfInspectionWipCard({
@@ -141,9 +147,9 @@ export function presentSelfInspectionSessionRow(
     productNo: session.productNo,
     resourceCd: session.resourceCd,
     statusLabel: inspectorActive
-      ? '検査員待ち'
+      ? inspectorComplete ? '最終判定待ち' : '検査員待ち'
       : inspectorComplete && session.recordApprovalRequiredAt
-        ? '確認待ち'
+        ? '最終判定待ち'
         : selfInspectionStatusLabel(session.status),
     statusTone:
       session.status === 'review_pending' || inspectorActive || inspectorComplete ? 'danger' : 'warning',

@@ -249,6 +249,7 @@ export function serializeResetNewSession(session: {
   expectedEntryCount: number;
   recordApprovalRequiredAt: Date | null;
   recordApprovalWorkflowStartedAt: Date | null;
+  decisionWorkflow: 'LEGACY_RECORD_APPROVAL' | 'INSPECTOR_FINAL_JUDGEMENT';
 }) {
   return {
     id: session.id,
@@ -266,7 +267,8 @@ export function serializeResetNewSession(session: {
     participantEmployeeNames: [],
     participantEmployees: [],
     recordApprovalRequiredAt: session.recordApprovalRequiredAt?.toISOString() ?? null,
-    recordApprovalWorkflowStartedAt: session.recordApprovalWorkflowStartedAt?.toISOString() ?? null
+    recordApprovalWorkflowStartedAt: session.recordApprovalWorkflowStartedAt?.toISOString() ?? null,
+    decisionWorkflow: session.decisionWorkflow
   };
 }
 
@@ -338,6 +340,7 @@ export function serializeSessionSummary(
     completedAt: session.completedAt?.toISOString() ?? null,
     recordApprovalRequiredAt: session.recordApprovalRequiredAt?.toISOString() ?? null,
     recordApprovalWorkflowStartedAt: session.recordApprovalWorkflowStartedAt?.toISOString() ?? null,
+    decisionWorkflow: session.decisionWorkflow,
     inspectorRemeasurementRequiredAt: session.inspectorRemeasurementRequiredAt?.toISOString() ?? null,
     inspectorMeasurementState: inspectorMeasurement.state,
     inspectorRequiredEntryCount: inspectorMeasurement.requiredEntryCount,
@@ -857,7 +860,15 @@ export function serializeInspectorEntryMeta(entry: {
 
 export function serializeInspectorEntry(
   entry: Prisma.SelfInspectionInspectorEntryGetPayload<{
-    include: { values: true };
+    include: {
+      values: {
+        include: {
+          operatorMeasurementValue: {
+            select: { reviewStatus: true };
+          };
+        };
+      };
+    };
   }> & {
     instrumentUsages: Array<Parameters<typeof serializeInstrumentUsage>[0]>;
   }
@@ -880,6 +891,7 @@ export function serializeInspectorEntry(
         value.operatorValueSnapshot != null ? String(value.operatorValueSnapshot) : null,
       differenceValue: value.differenceValue != null ? String(value.differenceValue) : null,
       judgementStatus: value.judgementStatus,
+      operatorReviewStatus: value.operatorMeasurementValue?.reviewStatus ?? null,
       judgedAt: value.judgedAt?.toISOString() ?? null,
       judgementComment: value.judgementComment,
       updatedAt: value.updatedAt.toISOString()
@@ -891,7 +903,17 @@ export async function loadInspectorEntryForSerialization(
   db: Prisma.TransactionClient,
   entryId: string
 ): Promise<
-  Prisma.SelfInspectionInspectorEntryGetPayload<{ include: { values: true } }> & {
+  Prisma.SelfInspectionInspectorEntryGetPayload<{
+    include: {
+      values: {
+        include: {
+          operatorMeasurementValue: {
+            select: { reviewStatus: true };
+          };
+        };
+      };
+    };
+  }> & {
     instrumentUsages: Array<Parameters<typeof serializeInstrumentUsage>[0]>;
   }
 > {
@@ -902,7 +924,12 @@ export async function loadInspectorEntryForSerialization(
         orderBy: { preUseInspectedAt: 'asc' }
       },
       values: {
-        orderBy: { createdAt: 'asc' }
+        orderBy: { createdAt: 'asc' },
+        include: {
+          operatorMeasurementValue: {
+            select: { reviewStatus: true }
+          }
+        }
       }
     }
   });

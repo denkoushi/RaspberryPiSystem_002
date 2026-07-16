@@ -16,6 +16,7 @@ import {
   upsertSelfInspectionDraftEntry,
   createSelfInspectionInspectorEntry,
   updateSelfInspectionInspectorEntry,
+  saveSelfInspectionInspectorJudgements,
   completeSelfInspectionSession,
   approveSelfInspectionOutOfToleranceReview,
   approveSelfInspectionRecordApproval,
@@ -238,6 +239,25 @@ export function useUpdateSelfInspectionInspectorEntry() {
       void queryClient.invalidateQueries({ queryKey: ['self-inspection-inspector-session', variables.sessionId] });
       void queryClient.invalidateQueries({ queryKey: ['self-inspection-record-approvals'] });
       void queryClient.invalidateQueries({ queryKey: ['self-inspection-record-approval-session', variables.sessionId] });
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
+    }
+  });
+}
+
+export function useSaveSelfInspectionInspectorJudgements() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      sessionId,
+      entryId,
+      body
+    }: {
+      sessionId: string;
+      entryId: string;
+      body: Parameters<typeof saveSelfInspectionInspectorJudgements>[2];
+    }) => saveSelfInspectionInspectorJudgements(sessionId, entryId, body),
+    onSuccess: (_entry, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-inspector-session', variables.sessionId] });
       void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
     }
   });

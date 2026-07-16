@@ -138,7 +138,11 @@ export function resolveSelfInspectionSaveActionState(
     context.savedDraftByEntryIndex[context.selectedEntryIndex]
   );
 
-  if (!valuesDirty && !context.entryRegistrationDirty) {
+  const savedEntry = context.session.entries.find(
+    (entry) => entry.entryIndex === context.selectedEntryIndex
+  );
+  // 下書きは再開後に値が同一でも、全項目・確認・登録がそろえば確定保存できる。
+  if (!valuesDirty && !context.entryRegistrationDirty && savedEntry?.persistenceStatus !== 'draft') {
     return disabledState('no_changes');
   }
 

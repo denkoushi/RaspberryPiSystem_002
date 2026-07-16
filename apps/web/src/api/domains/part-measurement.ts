@@ -611,6 +611,27 @@ export async function updateSelfInspectionInspectorEntry(
   return data.entry;
 }
 
+export async function saveSelfInspectionInspectorJudgements(
+  sessionId: string,
+  entryId: string,
+  body: {
+    judgements: Array<{
+      templateItemId: string;
+      judgementStatus: 'FINAL_OK' | 'FINAL_NG';
+    }>;
+  },
+  clientKey?: string
+): Promise<SelfInspectionLotEntryDto> {
+  const { data } = await api.patch<{ entry: SelfInspectionLotEntryDto }>(
+    `/part-measurement/self-inspection/sessions/${sessionId}/inspector-entries/${entryId}/judgements`,
+    body,
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.entry;
+}
+
 export async function recordSelfInspectionInstrumentPreUseInspection(
   sessionId: string,
   entryIndex: number,
