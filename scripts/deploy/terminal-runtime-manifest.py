@@ -1954,12 +1954,29 @@ def _quiesce_unit(record: Mapping[str, Any], current: Mapping[str, Any]) -> bool
     if current["activeState"] not in {"active", "failed"}:
         raise RuntimeManifestError("systemd unit cannot be safely quiesced")
     _run_command(["systemctl", "stop", record["name"]])
+    stopped = _normalise_stopped_unit(record)
+    return True
+
+
+def _normalise_stopped_unit(record: Mapping[str, Any]) -> dict[str, Any]:
+    """Require a stopped unit to reach inactive, clearing only failed state."""
+
     stopped = _systemd_observation(
         record["name"], allow_current_failed=True
     ).state
+    if stopped["activeState"] == "failed":
+        # Long-running display processes can exit from SIGTERM (for example
+        # status 143) during an intentional systemctl stop.  The process is
+        # quiesced, but systemd retains ActiveState=failed until reset-failed.
+        # Clear only that manager bookkeeping before proving the inactive
+        # rollback baseline; never treat a still-active transition as stopped.
+        _run_command(["systemctl", "reset-failed", record["name"]])
+        stopped = _systemd_observation(
+            record["name"], allow_current_failed=True
+        ).state
     if stopped["activeState"] != "inactive":
         raise RuntimeManifestError("systemd unit did not quiesce before rollback")
-    return True
+    return stopped
 
 
 def _unit_file_state_differs(
@@ -2152,13 +2169,7 @@ def restore(
                 ["systemctl", "stop", record["name"]],
                 allowed_exit_codes=(0, 5),
             )
-            stopped = _systemd_observation(
-                record["name"], allow_current_failed=True
-            ).state
-            if stopped["activeState"] != "inactive":
-                raise RuntimeManifestError(
-                    "transient oneshot did not quiesce before rollback"
-                )
+            _normalise_stopped_unit(record)
         for _attempt in range(3):
             current_units = {
                 record["name"]: _systemd_observation(
