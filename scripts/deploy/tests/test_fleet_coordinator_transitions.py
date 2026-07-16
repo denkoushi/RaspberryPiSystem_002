@@ -145,6 +145,7 @@ class FakeRuntime:
         self.scope_kwargs = None
         self.playbook_error = None
         self.rollback_ok = True
+        self.rollback_preflight_by_host = {}
         self.terminal_observation_error = None
         self.terminal_observation_failures = None
         self.host_config_error = None
@@ -472,6 +473,25 @@ class FakeRuntime:
     def rollback_terminal(self, _inventory, target_spec, _target, _run_id):
         self.events.append(f"rollback:{target_spec['host']}")
         return self.rollback_ok
+
+    def preflight_terminal_rollback(
+        self, _inventory, target_spec, _target, _run_id
+    ):
+        host = target_spec["host"]
+        self.events.append(f"rollback:preflight:{host}")
+        selected = self.rollback_preflight_by_host.get(host)
+        if isinstance(selected, Exception):
+            raise selected
+        if selected is not None:
+            return copy.deepcopy(selected)
+        return {
+            "ready": True,
+            "issues": [],
+            "fileManifestReady": True,
+            "runtimeManifestReady": True,
+            "restoredReceipt": False,
+            "requiresRuntimeReconciliation": True,
+        }
 
     def cleanup_terminal_rollback(
         self, _inventory, target_spec, _target, run_id, outcome
@@ -2624,7 +2644,10 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             }
         )
         runtime = FakeRuntime(
-            fleet={"kiosk-a": interrupted},
+            fleet={
+                "pi5": host_record("server", NEW_SHA),
+                "kiosk-a": interrupted,
+            },
             hosts=[{"host": "pi5", "role": "server"}, terminal],
             plan={},
             targets=[],
@@ -2661,6 +2684,101 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             runtime.events,
         )
         self.assertEqual(runtime.fleet["activeRun"]["runId"], "run-1")
+
+    def test_interrupted_preflight_reports_all_hosts_before_any_host_mutation(self):
+        kiosk = {
+            "host": "kiosk-a",
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "a",
+        }
+        signage = {
+            "host": "signage-a",
+            "role": "signage",
+            "terminalType": "signage",
+            "clientId": "s",
+        }
+        fleet = {}
+        prior_targets = []
+        for target in (kiosk, signage):
+            record = host_record(target["role"], OLD_SHA)
+            record.update(
+                {
+                    "currentSha": None,
+                    "previousSha": OLD_SHA,
+                    "evidence": "unknown",
+                    "lastRunId": "crashed-run",
+                }
+            )
+            fleet[target["host"]] = record
+            prior_targets.append(
+                {
+                    **target,
+                    "desiredSha": NEW_SHA,
+                    "previousSha": OLD_SHA,
+                    "state": "deploying",
+                    "maintenanceStartedAt": "2026-07-14T23:59:00Z",
+                    "rollbackManifest": rollback_manifest(
+                        "crashed-run",
+                        target["host"],
+                        target["terminalType"],
+                    ),
+                }
+            )
+        runtime = FakeRuntime(
+            fleet=fleet,
+            hosts=[{"host": "pi5", "role": "server"}, kiosk, signage],
+            plan={},
+            targets=[],
+        )
+        runtime.abandoned_run_id = "crashed-run"
+        runtime.prior_runs["crashed-run"] = {
+            "version": 1,
+            "runId": "crashed-run",
+            "state": "interrupted",
+            "targets": prior_targets,
+        }
+        runtime.rollback_preflight_by_host = {
+            "kiosk-a": {
+                "ready": False,
+                "issues": ["systemd unit requires reconciliation"],
+                "fileManifestReady": True,
+                "runtimeManifestReady": False,
+                "restoredReceipt": True,
+                "requiresRuntimeReconciliation": True,
+            },
+            "signage-a": RuntimeError("sealed image is unavailable"),
+        }
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "kiosk-a: rollback ready identity: Kiosk rollback has no unique Pi5 "
+            "release authority.*kiosk-a: systemd unit requires reconciliation.*"
+            "signage-a: rollback manifests: sealed image is unavailable",
+        ):
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            )
+
+        self.assertIn("rollback:preflight:kiosk-a", runtime.events)
+        self.assertIn("rollback:preflight:signage-a", runtime.events)
+        self.assertFalse(
+            any(event.startswith("fleet:unknown:") for event in runtime.events)
+        )
+        self.assertFalse(
+            any(event.startswith("status:put:") for event in runtime.events)
+        )
+        self.assertFalse(
+            any(
+                event.startswith("rollback:kiosk-a")
+                and event != "rollback:preflight:kiosk-a"
+                for event in runtime.events
+            )
+        )
+        self.assertNotIn("rollback:signage-a", runtime.events)
+        audit = runtime.states[-1].payload["interruptedRecoveryPreflight"]
+        self.assertEqual(audit["state"], "failed")
+        self.assertEqual(len(audit["issues"]), 3)
 
     def test_unknown_pi5_success_preserves_last_confirmed_sha(self):
         unknown = host_record("server", OLD_SHA)

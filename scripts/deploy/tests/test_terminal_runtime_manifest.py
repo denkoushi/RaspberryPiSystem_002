@@ -845,6 +845,31 @@ class TerminalRuntimeManifestTest(unittest.TestCase):
             self.fake.units["kiosk-browser.service"]["ActiveState"], "inactive"
         )
 
+    def test_read_only_preflight_reports_every_missing_rollback_image(self):
+        self.fake.add_container("nfc-agent", image_id("prior-nfc"), running=True)
+        self.fake.add_container(
+            "barcode-agent", image_id("prior-barcode"), running=True
+        )
+        captured = self.capture(services=["nfc-agent", "barcode-agent"])
+        manifest = json.loads(self.manifest_path.read_text(encoding="utf-8"))
+        for record in manifest["docker"]:
+            del self.fake.images[record["rollbackTag"]]
+            self.candidate(record["service"])
+        self.fake.calls.clear()
+
+        result = MODULE.preflight_restore(
+            root=self.storage,
+            run_id=self.run_id,
+            host=self.host,
+            expected_manifest_sha256=captured["manifestSha256"],
+        )
+
+        self.assertFalse(result["ready"])
+        self.assertEqual(len(result["issues"]), 2)
+        self.assertIn("docker nfc-agent", "\n".join(result["issues"]))
+        self.assertIn("docker barcode-agent", "\n".join(result["issues"]))
+        self.assertEqual(self.fake.mutation_calls, [])
+
     def test_systemd_enabled_active_state_and_daemon_reload_are_restored(self):
         self.fake.add_unit("kiosk-browser.service", unit_file="enabled", active="active")
         captured = self.capture(units=["kiosk-browser.service"])
@@ -863,6 +888,44 @@ class TerminalRuntimeManifestTest(unittest.TestCase):
             },
         )
         self.assertIn(["systemctl", "daemon-reload"], self.fake.calls)
+
+    def test_preflight_and_repeat_restore_reconcile_after_durable_receipt(self):
+        self.fake.add_unit(
+            "kiosk-browser.service", unit_file="enabled", active="active"
+        )
+        captured = self.capture(
+            units=["kiosk-browser.service"],
+            restart_on_restore_units=["kiosk-browser.service"],
+        )
+        self.restore(captured["manifestSha256"])
+        receipt = self.storage / self.run_id / self.host / "restored.json"
+        receipt_before = receipt.read_bytes()
+
+        # Replaying the sealed file manifest atomically replaces the unit file.
+        # systemd then reports NeedDaemonReload=yes even though a prior runtime
+        # restore already wrote its durable receipt.
+        self.fake.unit_needs_reload.add("kiosk-browser.service")
+        self.fake.calls.clear()
+
+        preflight = MODULE.preflight_restore(
+            root=self.storage,
+            run_id=self.run_id,
+            host=self.host,
+            expected_manifest_sha256=captured["manifestSha256"],
+        )
+
+        self.assertTrue(preflight["ready"])
+        self.assertTrue(preflight["restoredReceipt"])
+        self.assertTrue(preflight["requiresRuntimeReconciliation"])
+        self.assertEqual(preflight["issues"], [])
+        self.assertEqual(self.fake.mutation_calls, [])
+
+        repeated = self.restore(captured["manifestSha256"])
+
+        self.assertTrue(repeated["restored"])
+        self.assertIn(["systemctl", "daemon-reload"], self.fake.calls)
+        self.assertEqual(receipt.read_bytes(), receipt_before)
+        self.assertNotIn("kiosk-browser.service", self.fake.unit_needs_reload)
 
     def test_capture_normalizes_real_systemd_missing_unit_output(self):
         self.fake.add_unit(

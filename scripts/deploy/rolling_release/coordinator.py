@@ -463,6 +463,86 @@ def _recover_interrupted_terminals(
     state.payload["targets"] = recovery_records
     state.save()
 
+    rollback_ready_shas: dict[str, str] = {}
+    preflight_records: list[dict[str, Any]] = []
+    preflight_issues: list[str] = []
+    for host, _fleet_record, target_spec, record, authority_run_id in work_items:
+        if not (
+            record.get("maintenanceStartedAt")
+            and not record.get("maintenanceClearedAt")
+        ):
+            continue
+        host_issues: list[str] = []
+        rollback_ready_sha: str | None = None
+        preflight: dict[str, Any] | None = None
+        try:
+            previous_sha = record.get("previousSha")
+            if (
+                not isinstance(previous_sha, str)
+                or FULL_SHA_RE.fullmatch(previous_sha) is None
+            ):
+                raise RuntimeError("sealed previous release SHA is unavailable")
+            rollback_ready_sha = _interrupted_rollback_ready_sha(
+                fleet_state, target_spec, previous_sha
+            )
+            rollback_ready_shas[host] = rollback_ready_sha
+        except Exception as error:
+            host_issues.append(f"rollback ready identity: {error}")
+        try:
+            preflight = runtime.preflight_terminal_rollback(
+                inventory, target_spec, record, authority_run_id
+            )
+            if (
+                not isinstance(preflight, dict)
+                or type(preflight.get("ready")) is not bool
+                or not isinstance(preflight.get("issues"), list)
+                or any(
+                    not isinstance(issue, str) or not issue
+                    for issue in preflight.get("issues", [])
+                )
+                or preflight["ready"] != (not preflight["issues"])
+            ):
+                raise RuntimeError("rollback preflight result is malformed")
+            host_issues.extend(preflight["issues"])
+        except Exception as error:
+            preflight = None
+            host_issues.append(f"rollback manifests: {error}")
+        preflight_records.append(
+            {
+                "host": host,
+                "ready": not host_issues,
+                "rollbackReadySha": rollback_ready_sha,
+                "fileManifestReady": (
+                    preflight.get("fileManifestReady") if preflight else None
+                ),
+                "runtimeManifestReady": (
+                    preflight.get("runtimeManifestReady") if preflight else None
+                ),
+                "restoredReceipt": (
+                    preflight.get("restoredReceipt") if preflight else None
+                ),
+                "requiresRuntimeReconciliation": (
+                    preflight.get("requiresRuntimeReconciliation")
+                    if preflight
+                    else None
+                ),
+                "issues": host_issues,
+            }
+        )
+        preflight_issues.extend(f"{host}: {issue}" for issue in host_issues)
+    state.payload["interruptedRecoveryPreflight"] = {
+        "state": "failed" if preflight_issues else "success",
+        "targets": preflight_records,
+        "issues": preflight_issues,
+        "completedAt": runtime.utc_now(),
+    }
+    state.save()
+    if preflight_issues:
+        raise RuntimeError(
+            "interrupted terminal recovery preflight failed: "
+            + "; ".join(preflight_issues)
+        )
+
     current_state = fleet_state
     for host, _fleet_record, target_spec, _record, _authority in work_items:
         current_state = runtime.fleet_mark_unknown(
@@ -515,9 +595,7 @@ def _recover_interrupted_terminals(
                 raise RuntimeError(
                     f"interrupted terminal manifest restore failed: {host}"
                 )
-            rollback_ready_sha = _interrupted_rollback_ready_sha(
-                fleet_state, target_spec, previous_sha
-            )
+            rollback_ready_sha = rollback_ready_shas[host]
             _verify_terminal_ready(
                 runtime=runtime,
                 state=state,

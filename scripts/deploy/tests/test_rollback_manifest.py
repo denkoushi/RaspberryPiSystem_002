@@ -436,6 +436,35 @@ class RollbackManifestTest(unittest.TestCase):
             self.restore()
         self.assertEqual(first.read_text(encoding="utf-8"), "first-deployed\n")
 
+    def test_read_only_preflight_reports_every_unsafe_destination(self):
+        first = self.config_directory / "first-audit.service"
+        second = self.config_directory / "second-audit.service"
+        first.write_text("first-original\n", encoding="utf-8")
+        second.write_text("second-original\n", encoding="utf-8")
+        captured = MODULE.capture_set(
+            root=self.storage_root,
+            run_id=self.run_id,
+            host=self.host,
+            paths=[first, second],
+            filesystem_root=self.filesystem_root,
+        )
+        for path in (first, second):
+            path.unlink()
+            path.mkdir()
+
+        result = MODULE.preflight_restore(
+            root=self.storage_root,
+            run_id=self.run_id,
+            host=self.host,
+            expected_manifest_sha256=captured["manifestSha256"],
+            filesystem_root=self.filesystem_root,
+        )
+
+        self.assertFalse(result["ready"])
+        self.assertEqual(len(result["issues"]), 2)
+        self.assertTrue(first.is_dir())
+        self.assertTrue(second.is_dir())
+
     def test_restore_requires_the_latest_sealed_manifest_digest_before_mutation(self):
         first = self.config_directory / "digest-first.service"
         second = self.config_directory / "digest-second.service"

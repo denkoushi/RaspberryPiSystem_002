@@ -473,6 +473,50 @@ class RollbackManifestAdapterTest(unittest.TestCase):
             "dockerCount": len(docker_services),
         }
 
+    def test_rollback_preflight_collects_file_and_runtime_issues(self):
+        units, docker_services = ansible._terminal_runtime_contract("kiosk")
+        file_result = {
+            "ready": False,
+            "manifest": (
+                "/var/lib/raspi-release/rollback-manifests/"
+                f"{self.RUN_ID}/{self.HOST}/manifest.json"
+            ),
+            "manifestSha256": self.DIGEST,
+            "count": 2,
+            "repository": {
+                "path": "/opt/RaspberryPiSystem_002",
+                "head": self.PREVIOUS_SHA,
+            },
+            "issues": ["repository: index lock exists"],
+        }
+        runtime_result = {
+            "ready": False,
+            "manifestSha256": self.RUNTIME_DIGEST,
+            "unitCount": len(units),
+            "dockerCount": len(docker_services),
+            "restoredReceipt": True,
+            "requiresRuntimeReconciliation": True,
+            "issues": ["docker nfc-agent: sealed image is unavailable"],
+        }
+        runtime = Runtime(
+            [manifest_marker(file_result), runtime_marker(runtime_result)]
+        )
+
+        result = ansible.preflight_terminal_rollback(
+            "inventory.yml",
+            {"host": self.HOST, "terminalType": "kiosk"},
+            self._rollback_target(),
+            self.RUN_ID,
+            runtime=runtime,
+        )
+
+        self.assertFalse(result["ready"])
+        self.assertEqual(len(result["issues"]), 2)
+        self.assertIn("file manifest: repository", result["issues"][0])
+        self.assertIn("runtime manifest: docker nfc-agent", result["issues"][1])
+        self.assertIn(" preflight-restore ", f" {runtime.calls[0][0][-1]} ")
+        self.assertIn(" preflight-restore ", f" {runtime.calls[1][0][-1]} ")
+
     def test_rollback_restores_exact_file_and_runtime_manifests_without_playbook(self):
         runtime = Runtime([
             manifest_marker(self._restore_result()),
