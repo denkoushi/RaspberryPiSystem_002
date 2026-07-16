@@ -18,6 +18,18 @@ SIGNAGE_PREFIXES = (
     'infrastructure/ansible/templates/signage',
     'infrastructure/ansible/tasks/preflight-signage.yml',
 )
+# These files execute from the immutable target checkout on the Pi5
+# coordinator and are transferred to a terminal by the Ansible adapter when
+# needed.  Changing them changes deployment control, not the product/runtime
+# installed on every host, so they must not manufacture fleet-wide work.
+DEPLOY_CONTROL_FILES = frozenset(
+    {
+        'scripts/deploy/classify-deploy-impact.py',
+        'scripts/deploy/rollback-manifest.py',
+        'scripts/deploy/rolling_release/backends/ansible.py',
+    }
+)
+SIGNAGE_RUNTIME_FILES = frozenset({'scripts/deploy/signage-runtime-proof.py'})
 GLOBAL_PREFIXES = (
     'scripts/update-all-clients.sh',
     'infrastructure/ansible/playbooks/',
@@ -25,7 +37,16 @@ GLOBAL_PREFIXES = (
     'infrastructure/ansible/inventory',
 )
 # Provably runtime-irrelevant paths: never require a Pi5 rebuild or terminal work.
-NEUTRAL_PREFIXES = ('docs/', '.cursor/', '.agent/', '.github/', 'AGENTS.md', 'README', 'EXEC_PLAN.md')
+NEUTRAL_PREFIXES = (
+    'docs/',
+    '.cursor/',
+    '.agent/',
+    '.github/',
+    'scripts/deploy/tests/',
+    'AGENTS.md',
+    'README',
+    'EXEC_PLAN.md',
+)
 
 
 def _is_server_path(path: str) -> bool:
@@ -43,6 +64,10 @@ def _is_global_path(path: str) -> bool:
 def _component_for(path: str) -> str:
     if path.startswith(NEUTRAL_PREFIXES):
         return 'neutral'
+    if path in DEPLOY_CONTROL_FILES:
+        return 'deploy-control'
+    if path in SIGNAGE_RUNTIME_FILES:
+        return 'signage-role'
     if path.startswith(MIGRATION_PREFIX):
         return 'migration'
     if _is_server_path(path):
@@ -83,6 +108,9 @@ def classify(paths):
         components.add(component)
 
         if component == 'neutral':
+            continue
+
+        if component == 'deploy-control':
             continue
 
         if component == 'unknown':

@@ -62,6 +62,60 @@ class ClassifyDeployImpactTest(unittest.TestCase):
         self.assertFalse(result['server'])
         self.assertEqual(result['components'], ['signage-role'])
 
+    def test_deploy_control_files_do_not_manufacture_runtime_work(self):
+        result = impact.classify(
+            [
+                'scripts/deploy/classify-deploy-impact.py',
+                'scripts/deploy/rollback-manifest.py',
+                'scripts/deploy/rolling_release/backends/ansible.py',
+            ]
+        )
+        self.assertFalse(result['server'])
+        self.assertFalse(result['kiosk'])
+        self.assertFalse(result['signage'])
+        self.assertFalse(result['migration'])
+        self.assertEqual(result['components'], ['deploy-control'])
+
+    def test_signage_runtime_proof_is_signage_only(self):
+        result = impact.classify(['scripts/deploy/signage-runtime-proof.py'])
+        self.assertFalse(result['server'])
+        self.assertFalse(result['kiosk'])
+        self.assertTrue(result['signage'])
+        self.assertFalse(result['migration'])
+        self.assertEqual(result['components'], ['signage-role'])
+
+    def test_deploy_test_files_are_neutral(self):
+        result = impact.classify(
+            [
+                'scripts/deploy/tests/test_ansible_adapter.py',
+                'scripts/deploy/tests/test_rollback_manifest.py',
+                'scripts/deploy/tests/test_signage_runtime_proof.py',
+            ]
+        )
+        self.assertFalse(result['server'])
+        self.assertFalse(result['kiosk'])
+        self.assertFalse(result['signage'])
+        self.assertFalse(result['migration'])
+        self.assertEqual(result['components'], ['neutral'])
+
+    def test_signage_recovery_fix_targets_only_signage(self):
+        result = impact.classify(
+            [
+                'docs/plans/deployment-foundation-refactor-execplan.md',
+                'scripts/deploy/rollback-manifest.py',
+                'scripts/deploy/rolling_release/backends/ansible.py',
+                'scripts/deploy/signage-runtime-proof.py',
+                'scripts/deploy/tests/test_ansible_adapter.py',
+            ]
+        )
+        self.assertFalse(result['server'])
+        self.assertFalse(result['kiosk'])
+        self.assertTrue(result['signage'])
+        self.assertFalse(result['migration'])
+        self.assertEqual(
+            result['components'], ['deploy-control', 'neutral', 'signage-role']
+        )
+
     def test_docs_only_is_neutral(self):
         result = impact.classify(['docs/guides/deployment.md', 'AGENTS.md', '.github/workflows/ci.yml'])
         self.assertFalse(result['server'])
