@@ -429,6 +429,7 @@ jobs:
           sed 's/^vault_password_file = .vault-pass/# vault_password_file = .vault-pass (disabled for CI)/' ansible.cfg > /tmp/ansible-ci.cfg
           export ANSIBLE_CONFIG=/tmp/ansible-ci.cfg
           export ANSIBLE_ROLES_PATH="$(pwd)/roles"
+          READ_ONLY_ANSIBLE_CONFIG="$(pwd)/ansible-readonly.cfg"
           PLAYBOOKS=(
             playbooks/deploy.yml
             playbooks/deploy-staged.yml
@@ -445,7 +446,8 @@ jobs:
           )
           python3 ../../scripts/deploy/tests/test_recover_pi4.py
           for inventory in inventory.yml inventory-talkplaza.yml; do
-            ansible-inventory -i "$inventory" --list > "/tmp/${inventory%.yml}.json"
+            ANSIBLE_CONFIG="$READ_ONLY_ANSIBLE_CONFIG" \
+              ansible-inventory -i "$inventory" --list > "/tmp/${inventory%.yml}.json"
             python3 -m json.tool "/tmp/${inventory%.yml}.json" > /dev/null
           done
           for playbook in "${PLAYBOOKS[@]}"; do

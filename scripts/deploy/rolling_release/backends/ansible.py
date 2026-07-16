@@ -12,6 +12,7 @@ import os
 import re
 import shlex
 import subprocess
+from pathlib import Path
 from typing import Any, Protocol
 
 
@@ -48,6 +49,13 @@ _TERMINAL_AGENT_MARKER_RE = re.compile(
     r"(?![A-Za-z0-9_-])"
 )
 _MAX_MARKER_BYTES = 2 * 1024 * 1024
+_READ_ONLY_CONFIG_NAME = "ansible-readonly.cfg"
+_READ_ONLY_ENVIRONMENT_REMOVALS = (
+    "ANSIBLE_INVENTORY",
+    "ANSIBLE_VAULT_IDENTITY_LIST",
+    "ANSIBLE_VAULT_ID_MATCH",
+    "ANSIBLE_VAULT_PASSWORD_FILE",
+)
 
 _TERMINAL_REPOSITORY = "/opt/RaspberryPiSystem_002"
 _ROLLBACK_MANIFEST_ROOT = "/var/lib/raspi-release/rollback-manifests"
@@ -165,6 +173,116 @@ def inventory_json(path: str, *, runtime: Runtime) -> dict[str, Any]:
             capture=True,
         )
     )
+
+
+def _read_only_environment(*, runtime: Runtime) -> dict[str, str]:
+    config = Path(runtime.ANSIBLE_DIRECTORY) / _READ_ONLY_CONFIG_NAME
+    try:
+        resolved = config.resolve(strict=True)
+    except (FileNotFoundError, OSError):
+        raise RuntimeError(
+            "read-only Ansible configuration is missing; restore "
+            "infrastructure/ansible/ansible-readonly.cfg and rerun --print-plan"
+        ) from None
+    if not resolved.is_file():
+        raise RuntimeError(
+            "read-only Ansible configuration is invalid; restore "
+            "infrastructure/ansible/ansible-readonly.cfg and rerun --print-plan"
+        )
+
+    environment = os.environ.copy()
+    for name in _READ_ONLY_ENVIRONMENT_REMOVALS:
+        environment.pop(name, None)
+    environment["ANSIBLE_CONFIG"] = str(resolved)
+    return environment
+
+
+def _read_only_inventory_failure() -> RuntimeError:
+    return RuntimeError(
+        "read-only inventory validation failed; check the inventory YAML and "
+        "group variables, plus any --limit pattern, then rerun --print-plan. "
+        "This check intentionally does not use .vault-pass; mutating releases "
+        "still require the normal deployment Vault configuration"
+    )
+
+
+def _run_read_only_inventory_command(
+    command: list[str], *, runtime: Runtime, zero_match_is_empty: bool = False
+) -> str:
+    environment = _read_only_environment(runtime=runtime)
+    try:
+        return runtime.run(
+            command,
+            cwd=runtime.ANSIBLE_DIRECTORY,
+            capture=True,
+            env=environment,
+        )
+    except FileNotFoundError:
+        raise RuntimeError(
+            "ansible-core commands are required for --print-plan; install "
+            "ansible-core and rerun"
+        ) from None
+    except subprocess.CalledProcessError as error:
+        if zero_match_is_empty:
+            combined = "\n".join(
+                value
+                for value in (error.stdout, error.stderr)
+                if isinstance(value, str)
+            )
+            if (
+                "hosts (0)" in combined
+                or "leaves us with no hosts to target" in combined
+            ):
+                return ""
+        raise _read_only_inventory_failure() from None
+    except Exception:
+        # Inventory plugins and future variables may write sensitive values to
+        # stdout/stderr.  The stable operator error deliberately omits both.
+        raise _read_only_inventory_failure() from None
+
+
+def read_only_inventory_json(path: str, *, runtime: Runtime) -> dict[str, Any]:
+    raw = _run_read_only_inventory_command(
+        ["ansible-inventory", "-i", path, "--list"], runtime=runtime
+    )
+    try:
+        value = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        raise RuntimeError(
+            "read-only inventory validation returned invalid JSON; verify the "
+            "installed ansible-core version and rerun --print-plan"
+        ) from None
+    if not isinstance(value, dict):
+        raise RuntimeError(
+            "read-only inventory validation returned an invalid document; "
+            "verify the inventory and rerun --print-plan"
+        )
+    return value
+
+
+def read_only_selected_hosts(
+    path: str, limit: str, *, runtime: Runtime
+) -> list[str] | None:
+    if not limit:
+        return None
+    output = _run_read_only_inventory_command(
+        [
+            "ansible",
+            "-i",
+            path,
+            "server:clients",
+            "--list-hosts",
+            "--limit",
+            limit,
+        ],
+        runtime=runtime,
+        zero_match_is_empty=True,
+    )
+    return [
+        line.strip()
+        for line in output.splitlines()
+        if line.strip() and not line.lstrip().startswith("hosts")
+    ]
 
 
 def selected_hosts(path: str, limit: str, *, runtime: Runtime) -> list[str] | None:
