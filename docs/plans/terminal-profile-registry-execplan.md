@@ -46,7 +46,7 @@ room for them later.
 
 This program is delivered as five ordered pull requests. Each pull request is
 based on the latest merged `origin/main`, receives local and hosted validation,
-and is merged only after explicit user approval. The current work is PR 1 only.
+and is merged only after explicit user approval. The current work is PR 2 only.
 
 ## Progress
 
@@ -57,7 +57,12 @@ and is merged only after explicit user approval. The current work is PR 1 only.
 - [x] (2026-07-16 12:36Z) Classified the full `rolling_release/` package, public/coordinator/recovery entry points, and read-only config as `deploy-control`; known terminal runtime and unknown fail-closed behavior remain covered.
 - [x] (2026-07-16 12:42Z) Completed local validation: 577 Python tests, all CI deployment shell contracts, 20 CI tests, deploy safety contract, both inventories, 12 standard playbooks plus TalkPlaza staged playbook, isolated recovery check, 20 PostgreSQL deploy-status tests, and the exact-head second-factory public read-only plan. The plan at `332b5462` excluded all seven hosts with `targetHosts=[]`, `pi5Required=false`, and no warning.
 - [x] (2026-07-16 12:53Z) Published draft PR #1031. Hosted CI run `29499381896` passed every selected job and `ci-required`; CodeQL run `29499381908` and gitleaks run `29499381893` passed. Stopped before merge and PR 2 for explicit user approval.
-- [ ] Implement PR 2: strict standard-library JSON profile registry and registry-driven change classification.
+- [x] (2026-07-16 13:16Z) Received explicit user approval, marked PR #1031 ready, and merged its fixed head `0066fbc6544354ba03937241f1b8789eb495d691` through merge commit `381e022e2d4c35bf9027e8192704d6b70cabd514` after final-head CI `29500051947`, CodeQL `29500052047`, and gitleaks `29500051938` passed.
+- [x] (2026-07-16 13:17Z) Fetched the merged `origin/main` and created the clean `agent/terminal-profile-registry` worktree from exact commit `381e022e2d4c35bf9027e8192704d6b70cabd514`; the PR 1 and earlier worktrees remain untouched.
+- [x] (2026-07-16 13:29Z) Added the strict schema-versioned standard-library JSON registry, fixed Pi5 control plane, production Kiosk/Signage profiles, ordered path-to-component rules, component-to-profile mappings, and bounded adapter options. Unsafe IDs, duplicate JSON keys, unknown fields, command/shell/import fields, out-of-root playbooks, unsafe systemd units, and unsafe rollback paths fail validation.
+- [x] (2026-07-16 13:29Z) Made deploy-impact classification registry-driven, added deterministic `affectedProfiles`, preserved every legacy field, and kept unknown paths successful but fail-closed across the server and every registered profile. Focused registry/classifier tests pass, a synthetic fourth profile plus unique adapter ID requires no classifier branch, and all 4,242 existing tracked paths have identical legacy results before and after the conversion.
+- [x] (2026-07-16 13:38Z) Completed PR 2 local validation: 594 deploy Python tests, 20 CI classifier tests, all focused Pi5/terminal/deploy-safety shell contracts, 20 isolated PostgreSQL deploy-status tests, read-only parsing of both inventories, syntax checks for both staged playbooks, JSON/compile/diff checks, production runtime-option parity, and the 4,242-path legacy classifier comparison all pass.
+- [ ] Publish the PR 2 draft and wait for hosted checks before requesting merge approval.
 - [ ] Implement PR 3: generic planner, inventory validation, and fleet-state use of registered profile identifiers.
 - [ ] Implement PR 4: terminal adapter boundary and generic coordinator with sequential profile approval gates.
 - [ ] Implement PR 5: registry-driven CI, architecture contracts, acceptance coverage, ADR, and concise new-type documentation.
@@ -98,6 +103,30 @@ and is merged only after explicit user approval. The current work is PR 1 only.
   `group_vars/all.yml` let the public read-only plan complete. The deployment
   CLI already requires `RASPI_SERVER_HOST`; PR 1 does not change that contract.
 
+- Observation: the complete pre-registry classifier behavior can be compared
+  mechanically, not just through hand-picked examples.
+  Evidence: classifying each of the 4,242 tracked repository paths once with
+  the PR 1 implementation and once with the registry implementation produced
+  zero differences in `server`, `kiosk`, `signage`, `migration`, or
+  `components`; only the new additive `affectedProfiles` field is absent from
+  the old result.
+
+- Observation: the existing approval behavior maps cleanly to explicit profile
+  policy without changing execution yet.
+  Evidence: Kiosk has the existing sixty-second notice and human canary hold,
+  while Signage has no separate human hold after its health proof. The
+  production registry therefore declares Kiosk as `human` with 60 seconds and
+  Signage as `health-only` with 0 seconds. PR 4 will consume those values.
+
+- Observation: the production and TalkPlaza inventories both contain the
+  registered `kiosk` and `signage` terminal groups, but only the production
+  inventory currently declares `kiosk_canary` and `signage_canary` groups.
+  Evidence: read-only `ansible-inventory --list` reports 5/1 terminal hosts and
+  1/1 canaries for the production inventory, versus 1/1 terminal hosts and no
+  canary groups for TalkPlaza. PR 3 must add and validate those static groups
+  before it enables generic inventory consumption; no TalkPlaza SSH or deploy
+  is permitted.
+
 ## Decision Log
 
 - Decision: Complete and publish only PR 1, then stop after hosted CI until the
@@ -134,22 +163,36 @@ and is merged only after explicit user approval. The current work is PR 1 only.
   policy-injection mechanism.
   Date/Author: 2026-07-16 / User and Codex
 
+- Decision: Use `generic-systemd` for the production Kiosk profile and a
+  `signage-systemd` adapter ID for the production Signage profile.
+  Rationale: Kiosk fits the common Git/status-agent/systemd/manifest contract,
+  while Signage retains its special prestaging, maintenance image, endpoint
+  proof, timer, and final-display lifecycle. The IDs are data-only references;
+  PR 4 will provide and validate the corresponding adapter implementations.
+  Date/Author: 2026-07-16 / Codex
+
+- Decision: Keep path rule order explicit and reject a rule that is completely
+  shadowed by an earlier prefix.
+  Rationale: specific paths such as database migrations must remain ahead of
+  broader paths such as `apps/api/`; accepting unreachable rules would make a
+  syntactically valid registry silently misclassify impact.
+  Date/Author: 2026-07-16 / Codex
+
 ## Outcomes & Retrospective
 
-PR 1 implementation and local static/isolated validation are complete. With no
-`.vault-pass`, both production inventories resolve through the read-only
-adapter, while the normal Ansible configuration still exits before parsing.
-The deploy Python suite passes 577 tests, CI classifier tests pass 20, every
-deployment shell/safety contract passes, every deployment playbook passes
-syntax validation, and the isolated PostgreSQL deploy-status tests pass 20.
-The current diff classifies only as `deploy-control` plus `neutral`, with no
-unknown path and no legacy runtime scope. No physical host has been contacted
-for mutation and no deployment has been started. The second-factory public
-read-only plan at `332b5462` excluded all seven inventory hosts and required no
-Pi5 or terminal action; the pushed documentation-only head at `916d23eb` did the
-same. Draft PR #1031 is open, and hosted CI `29499381896`, CodeQL `29499381908`,
-and gitleaks `29499381893` are green. PR 1 is complete pending explicit user
-approval to merge. PR 2 has not started.
+PR 1 is merged as `381e022e`. With no `.vault-pass`, both production
+inventories resolve through the read-only adapter, while the normal Ansible
+configuration still exits before parsing. Its final-head CI `29500051947`,
+CodeQL `29500052047`, and gitleaks `29500051938` passed before merge.
+
+PR 2 now has a strict data-only registry and registry-driven classifier in a
+dedicated worktree. Production data contains only Kiosk and Signage, while a
+test-only fourth profile and unique adapter ID prove that classification does
+not require a new terminal-name branch. All 594 deploy Python tests, 20 CI
+tests, existing deploy shell contracts, 20 isolated PostgreSQL deploy-status
+tests, both inventory reads and staged-playbook syntax checks, and the full
+tracked-path legacy comparison pass. Hosted validation is still pending. No
+physical host has been contacted for mutation, and PR 3 has not started.
 
 ## Context and Orientation
 
