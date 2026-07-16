@@ -137,18 +137,6 @@ class FakeRunner:
             else:
                 contender.release()
                 raise AssertionError('recovery command ran without the fleet lock')
-            compatibility = MODULE.RunLock(
-                self.project / '.git/rolling-release.lock', blocking=False
-            )
-            try:
-                compatibility.acquire()
-            except MODULE.RunLockBusyError:
-                pass
-            else:
-                compatibility.release()
-                raise AssertionError(
-                    'recovery command ran without the compatibility lock'
-                )
         self.commands.append(command)
         if command[0] == 'ansible-inventory':
             return json.dumps(self.inventory)
@@ -181,12 +169,6 @@ class RecoverPi4Test(unittest.TestCase):
     def make_project(self):
         temporary = tempfile.TemporaryDirectory()
         project = Path(temporary.name)
-        marker = project / 'logs/deploy/pi5-release-current.json'
-        marker.parent.mkdir(parents=True)
-        marker.write_text(json.dumps({
-            'sha': SHA,
-            'candidate': bluegreen_status()['slots']['blue']['images'],
-        }), encoding='utf-8')
         inventory_path = project / 'infrastructure/ansible/inventory.yml'
         inventory_path.parent.mkdir(parents=True)
         inventory_path.write_text('all: {}\n', encoding='utf-8')
@@ -203,7 +185,7 @@ class RecoverPi4Test(unittest.TestCase):
             server_client_id_reader=lambda: 'raspberrypi5-server',
         )
 
-    def test_plan_requires_approved_fleet_seed_instead_of_compat_marker(self):
+    def test_plan_requires_approved_fleet_seed(self):
         temporary, project, inventory_path = self.make_project()
         self.addCleanup(temporary.cleanup)
         runner = FakeRunner(project, inventory_payload(barcode=True), bluegreen_status())
@@ -271,14 +253,9 @@ class RecoverPi4Test(unittest.TestCase):
 
         self.assertEqual([command[0] for command in runner.commands], ['ansible-inventory'])
 
-    def test_plan_prefers_verified_fleet_server_over_compat_marker(self):
+    def test_plan_uses_verified_fleet_server(self):
         temporary, project, inventory_path = self.make_project()
         self.addCleanup(temporary.cleanup)
-        marker = project / 'logs/deploy/pi5-release-current.json'
-        marker.write_text(json.dumps({
-            'sha': PREVIOUS_SHA,
-            'candidate': bluegreen_status(sha=PREVIOUS_SHA)['slots']['blue']['images'],
-        }), encoding='utf-8')
         write_fleet_state(project, fleet_payload())
         runner = FakeRunner(project, inventory_payload(), bluegreen_status())
 
@@ -290,7 +267,7 @@ class RecoverPi4Test(unittest.TestCase):
         self.assertEqual(plan.release.source, 'fleet-state')
         self.assertFalse((project / 'logs/deploy/fleet-release-state.lock').exists())
 
-    def test_plan_never_replaces_unknown_fleet_server_with_compat_marker(self):
+    def test_plan_rejects_unknown_fleet_server(self):
         temporary, project, inventory_path = self.make_project()
         self.addCleanup(temporary.cleanup)
         payload = fleet_payload()
@@ -561,31 +538,6 @@ class RecoverPi4Test(unittest.TestCase):
 
         self.assertEqual(runner.commands, [])
         self.assertFalse((project / 'logs/recovery/pi4-recovery-busy.json').exists())
-        self.assertTrue((project / 'logs/deploy/fleet-release-state.json').exists())
-
-    def test_run_honours_the_compatibility_lock_during_migration(self):
-        temporary, project, inventory_path = self.make_project()
-        self.addCleanup(temporary.cleanup)
-        runner = FakeRunner(project, inventory_payload(), bluegreen_status())
-        coordinator = self.coordinator(project, inventory_path, runner)
-        compatibility = MODULE.RunLock(
-            project / '.git/rolling-release.lock', blocking=False
-        )
-        compatibility.acquire()
-        self.addCleanup(compatibility.release)
-
-        with self.assertRaisesRegex(MODULE.RecoveryError, 'compatibility rolling release'):
-            coordinator.execute(
-                'raspi4-demo',
-                '192.168.10.55',
-                'SD failure',
-                'pi4-recovery-compat-busy',
-            )
-
-        self.assertEqual(runner.commands, [])
-        self.assertFalse(
-            (project / 'logs/recovery/pi4-recovery-compat-busy.json').exists()
-        )
         self.assertTrue((project / 'logs/deploy/fleet-release-state.json').exists())
 
     def test_stale_run_is_abandoned_and_target_is_unknown_before_legacy_state(self):

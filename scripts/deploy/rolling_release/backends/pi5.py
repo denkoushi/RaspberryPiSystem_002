@@ -28,7 +28,6 @@ class Runtime(Protocol):
     CLEANUP_LOCK_RETRY_TIMEOUT: int
     FULL_SHA_RE: Any
     PHASE3: Any
-    PI5_RELEASE_CURRENT: Any
     PROJECT: Any
     json: Any
     os: Any
@@ -45,14 +44,14 @@ class Runtime(Protocol):
 
     def cleanup_after_pi5_stability(self) -> None: ...
 
-    def read_pi5_release_current(self) -> dict[str, Any] | None: ...
+    def read_verified_pi5_release(self, sha: str | None = None) -> dict[str, Any] | None: ...
 
-    def marker_candidate_for_sha(
-        self, marker: dict[str, Any], sha: str
+    def release_images_for_sha(
+        self, release: dict[str, Any], sha: str
     ) -> dict[str, str] | None: ...
 
-    def phase3_matches_marker_candidate(
-        self, phase3: Any, candidate: dict[str, str]
+    def phase3_matches_release_images(
+        self, phase3: Any, images: dict[str, str]
     ) -> bool: ...
 
     def verify_pi5_live_migrations(self, sha: str) -> str: ...
@@ -75,11 +74,6 @@ class Runtime(Protocol):
     def phase3_release(self, sha: str, state: Any) -> None: ...
 
     def wait_for_pi5_stability(self, state: Any) -> None: ...
-
-    def record_pi5_release_current(
-        self, sha: str, candidate: dict[str, Any] | None
-    ) -> None: ...
-
 
 def phase3_release(sha: str, state: Any, *, runtime: Runtime) -> None:
     run_id = state.payload.get("runId")
@@ -256,46 +250,6 @@ def cleanup_after_pi5_stability(*, runtime: Runtime) -> None:
             )
 
 
-def read_pi5_release_current(*, runtime: Runtime) -> dict[str, Any] | None:
-    try:
-        payload = runtime.json.loads(runtime.PI5_RELEASE_CURRENT.read_text(encoding="utf-8"))
-    except (OSError, runtime.json.JSONDecodeError):
-        return None
-    return payload if isinstance(payload, dict) else None
-
-
-def read_plan_pi5_release_current(*, runtime: Runtime) -> tuple[dict[str, Any] | None, list[str]]:
-    host = runtime.os.environ.get("RASPI_SERVER_HOST")
-    if not host:
-        return None, ["Pi5 release marker unavailable: RASPI_SERVER_HOST is required for classification"]
-    try:
-        result = runtime.subprocess.run(
-            [
-                "ssh",
-                host,
-                "cat /opt/RaspberryPiSystem_002/logs/deploy/pi5-release-current.json",
-            ],
-            check=True,
-            text=True,
-            capture_output=True,
-        )
-        payload = runtime.json.loads(result.stdout)
-    except Exception as error:
-        return None, [f"Pi5 release marker unavailable: {error}"]
-    if not isinstance(payload, dict):
-        return None, ["Pi5 release marker unavailable: marker is not an object"]
-    return payload, []
-
-
-def record_pi5_release_current(
-    sha: str, candidate: dict[str, Any] | None, *, runtime: Runtime
-) -> None:
-    runtime.atomic_json(
-        runtime.PI5_RELEASE_CURRENT,
-        {"sha": sha, "candidate": candidate or {}, "completedAt": runtime.utc_now()},
-    )
-
-
 def candidate_image_matches_sha(image: Any, sha: str, *, runtime: Runtime) -> bool:
     return bool(
         isinstance(sha, str)
@@ -304,13 +258,13 @@ def candidate_image_matches_sha(image: Any, sha: str, *, runtime: Runtime) -> bo
     )
 
 
-def marker_candidate_for_sha(
-    marker: dict[str, Any], sha: str, *, runtime: Runtime
+def release_images_for_sha(
+    release: dict[str, Any], sha: str, *, runtime: Runtime
 ) -> dict[str, str] | None:
-    candidate = marker.get("candidate")
-    if not isinstance(candidate, dict):
+    images = release.get("images")
+    if not isinstance(images, dict):
         return None
-    api, web = candidate.get("api"), candidate.get("web")
+    api, web = images.get("api"), images.get("web")
     if not candidate_image_matches_sha(api, sha, runtime=runtime) or not candidate_image_matches_sha(
         web, sha, runtime=runtime
     ):
@@ -318,7 +272,7 @@ def marker_candidate_for_sha(
     return {"api": api, "web": web}
 
 
-def phase3_matches_marker_candidate(phase3: Any, candidate: dict[str, str]) -> bool:
+def phase3_matches_release_images(phase3: Any, release_images: dict[str, str]) -> bool:
     if (
         not isinstance(phase3, dict)
         or phase3.get("runtimeStatus") != "consistent"
@@ -347,8 +301,8 @@ def phase3_matches_marker_candidate(phase3: Any, candidate: dict[str, str]) -> b
     image_ids = active.get("imageIds") if isinstance(active, dict) else None
     return (
         isinstance(images, dict)
-        and images.get("api") == candidate["api"]
-        and images.get("web") == candidate["web"]
+        and images.get("api") == release_images["api"]
+        and images.get("web") == release_images["web"]
         and isinstance(image_ids, dict)
         and re.fullmatch(r"sha256:[0-9a-f]{64}", str(image_ids.get("api", ""))) is not None
         and re.fullmatch(r"sha256:[0-9a-f]{64}", str(image_ids.get("web", ""))) is not None
@@ -369,15 +323,15 @@ def phase3_migration_matches_release(phase3: Any, sha: str) -> bool:
 def pi5_already_current(sha: str, *, runtime: Runtime) -> bool:
     if not isinstance(sha, str) or not runtime.FULL_SHA_RE.fullmatch(sha):
         return False
-    marker = runtime.read_pi5_release_current()
-    if not isinstance(marker, dict) or marker.get("sha") != sha:
+    release = runtime.read_verified_pi5_release(sha)
+    if not isinstance(release, dict) or release.get("sha") != sha:
         return False
-    candidate = runtime.marker_candidate_for_sha(marker, sha)
-    if candidate is None:
+    release_images = runtime.release_images_for_sha(release, sha)
+    if release_images is None:
         return False
     try:
         phase3 = runtime.json.loads(runtime.run([str(runtime.PHASE3), "status"], capture=True))
-        if not runtime.phase3_matches_marker_candidate(phase3, candidate):
+        if not runtime.phase3_matches_release_images(phase3, release_images):
             return False
         if not phase3_migration_matches_release(phase3, sha):
             return False

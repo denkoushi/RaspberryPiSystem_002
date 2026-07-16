@@ -51,7 +51,6 @@ def release_args(*, detach=False):
         emergency_override=False,
         reason=None,
         skip_canary_hold=False,
-        auto_minimize=False,
         full_fleet=False,
         detach=detach,
     )

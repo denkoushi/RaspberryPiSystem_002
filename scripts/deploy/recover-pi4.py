@@ -34,7 +34,6 @@ from rolling_release.fleet_state import (
     FleetStateStore,
 )
 from rolling_release.bootstrap import read_local_server_client_id
-from rolling_release.lock import RunLock, RunLockBusyError, RunLockError
 from rolling_release.image_refs import image_matches_release
 
 
@@ -249,9 +248,6 @@ class RecoveryCoordinator:
 
     def fleet_store(self) -> FleetStateStore:
         return FleetStateStore(self.fleet_state_path(), lock_path=self.fleet_lock_path())
-
-    def compatibility_lock_path(self) -> Path:
-        return self.project / '.git' / 'rolling-release.lock'
 
     def load_runtime_override(self, target: str) -> dict[str, Any] | None:
         path = self.runtime_override_path(target)
@@ -547,20 +543,6 @@ class RecoveryCoordinator:
         except (FleetStateError, OSError) as error:
             raise RecoveryError('fleet release lock is unavailable; recovery did not start') from error
 
-        compatibility_lock = RunLock(self.compatibility_lock_path(), blocking=False)
-        try:
-            compatibility_lock.acquire()
-        except RunLockBusyError as error:
-            fleet_lock.release()
-            raise RecoveryError(
-                'a compatibility rolling release is already running'
-            ) from error
-        except (RunLockError, OSError) as error:
-            fleet_lock.release()
-            raise RecoveryError(
-                'compatibility release lock is unavailable; recovery did not start'
-            ) from error
-
         legacy_state: RecoveryState | None = None
         fleet_state: dict[str, Any] | None = None
         fleet_active = False
@@ -671,7 +653,6 @@ class RecoveryCoordinator:
                     raise RecoveryError('fleet release state update failed; recovery did not continue') from error
                 raise RecoveryError('recovery command failed; inspect the Pi5 recovery state log') from error
         finally:
-            compatibility_lock.release()
             fleet_lock.release()
 
 

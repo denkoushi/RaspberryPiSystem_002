@@ -158,31 +158,10 @@ class ReleasePolicyTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'duplicated'):
             POLICY.release_hosts(self.inventory, ['kiosk-a', 'kiosk-a'])
 
-    def test_unknown_classification_keeps_scope_and_requires_pi5(self):
-        selected, metadata = POLICY.apply_auto_minimize(
-            self.targets,
-            self.inventory,
-            None,
-        )
-        self.assertEqual(selected, self.targets)
-        self.assertFalse(metadata['minimized'])
-        self.assertEqual(metadata['reason'], 'classification unavailable')
+    def test_unknown_classification_requires_pi5(self):
         self.assertTrue(POLICY.requires_pi5_release(None))
 
-    def test_barcode_only_scope_keeps_only_enabled_kiosks(self):
-        selected, metadata = POLICY.apply_auto_minimize(
-            self.targets,
-            self.inventory,
-            {
-                'server': False,
-                'migration': False,
-                'kiosk': True,
-                'signage': False,
-                'components': ['barcode-agent'],
-            },
-        )
-        self.assertEqual([target['host'] for target in selected], ['kiosk-b'])
-        self.assertEqual(metadata['excludedHosts'], ['kiosk-a', 'signage-a'])
+    def test_terminal_only_classification_does_not_require_pi5(self):
         self.assertFalse(POLICY.requires_pi5_release({
             'server': False,
             'migration': False,
@@ -558,46 +537,10 @@ class ReleasePlannerTest(unittest.TestCase):
         self.assertEqual(payload['excludedHosts'], ['server-a'])
         self.assertFalse(payload['canaryHold'])
 
-    def test_scope_uses_injected_facade_policies(self):
-        targets = [
-            {'host': 'kiosk-a', 'clientId': 'a', 'terminalType': 'kiosk'},
-            {'host': 'signage-a', 'clientId': 's', 'terminalType': 'signage'},
-        ]
-        minimized_targets = [targets[0]]
-        minimize = Mock(return_value=(minimized_targets, {
-            'minimized': True,
-            'excludedHosts': ['signage-a'],
-            'classificationComponents': ['nfc-agent'],
-        }))
-        canary_hold = Mock(return_value=False)
-        classification = {'components': ['nfc-agent']}
-        inventory = {'_meta': {'hostvars': {}}}
-
-        result = PLANNER.plan_terminal_scope(
-            targets,
-            inventory,
-            classification,
-            auto_minimize=True,
-            minimize_policy=minimize,
-            canary_hold_policy=canary_hold,
-        )
-
-        minimize.assert_called_once_with(targets, inventory, classification)
-        canary_hold.assert_called_once_with(minimized_targets, 0, skip=False)
-        self.assertEqual(result, {
-            'terminalTargets': minimized_targets,
-            'canaryHold': False,
-            'autoMinimize': True,
-            'minimized': True,
-            'excludedHosts': ['signage-a'],
-            'classificationComponents': ['nfc-agent'],
-        })
-
     def test_payload_keeps_the_existing_print_plan_contract(self):
         scope = {
             'terminalTargets': None,
             'canaryHold': None,
-            'autoMinimize': False,
             'minimized': False,
             'excludedHosts': [],
             'classificationComponents': None,
@@ -633,7 +576,6 @@ class ReleasePlannerTest(unittest.TestCase):
             {'host': 'signage-a', 'clientId': 's', 'terminalType': 'signage'},
         ]
         metadata = {
-            'autoMinimize': True,
             'minimized': True,
             'excludedHosts': ['kiosk-b'],
             'classificationComponents': ['nfc-agent'],

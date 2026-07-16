@@ -1,3 +1,5 @@
+import contextlib
+import io
 import sys
 import unittest
 from pathlib import Path
@@ -47,13 +49,30 @@ class RollingReleaseCliContractTest(unittest.TestCase):
                 "--limit",
                 "kiosk",
             )
-        with self.assertRaisesRegex(UsageError, "auto-minimize"):
-            parse(
-                "main",
-                "infrastructure/ansible/inventory.yml",
-                "--full-fleet",
-                "--auto-minimize",
-            )
+
+    def test_removed_minimization_alias_exits_two(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as raised:
+                parse(
+                    "main",
+                    "infrastructure/ansible/inventory.yml",
+                    "--auto-minimize",
+                )
+        self.assertEqual(raised.exception.code, 2)
+
+    def test_help_exposes_only_the_current_public_option_set(self):
+        help_text = parser().format_help()
+        for retired in (
+            "--auto-minimize",
+            "--follow",
+            "--foreground",
+            "--profile",
+            "--job",
+            "--attach",
+            "--client-only-compatible",
+        ):
+            with self.subTest(retired=retired):
+                self.assertNotIn(retired, help_text)
 
     def test_retired_options_exit_contract_names_a_replacement(self):
         cases = (
@@ -92,7 +111,6 @@ class RollingReleaseCliContractTest(unittest.TestCase):
         cases = (
             ("--status", "run-42", "--limit", "kiosk"),
             ("--status", "run-42", "--sha", "a" * 40),
-            ("--approve", "run-42", "--auto-minimize"),
             ("--status", "run-42", "--full-fleet"),
             ("--status", "run-42", "--canary-hold-timeout", "1800"),
             (

@@ -20,7 +20,7 @@ class RunLockBusyError(RunLockError):
     """Raised when a non-blocking lock is already owned by another opener."""
 
 
-class InheritedReleaseLockError(RunLockError):
+class InheritedFleetLockError(RunLockError):
     """Raised before state mutation when the transient unit lock is invalid."""
 
 
@@ -43,21 +43,21 @@ def _validate_inherited_lock(
     supplied_path = os.environ.get(path_variable)
     supplied_fd = os.environ.get(descriptor_variable)
     if supplied_fd is None or not supplied_fd.isascii() or not supplied_fd.isdigit():
-        raise InheritedReleaseLockError(f'{label} descriptor is missing or malformed')
+        raise InheritedFleetLockError(f'{label} descriptor is missing or malformed')
     if supplied_path != str(expected_path):
-        raise InheritedReleaseLockError(f'{label} path does not match the project checkout')
+        raise InheritedFleetLockError(f'{label} path does not match the project checkout')
     descriptor = int(supplied_fd)
     if descriptor < 3:
-        raise InheritedReleaseLockError(f'{label} descriptor cannot use standard input/output')
+        raise InheritedFleetLockError(f'{label} descriptor cannot use standard input/output')
     try:
         descriptor_status = os.fstat(descriptor)
         path_status = os.lstat(expected_path)
     except OSError as error:
-        raise InheritedReleaseLockError(f'{label} descriptor or path is unavailable') from error
+        raise InheritedFleetLockError(f'{label} descriptor or path is unavailable') from error
     if not stat.S_ISREG(descriptor_status.st_mode) or not stat.S_ISREG(path_status.st_mode):
-        raise InheritedReleaseLockError(f'{label} descriptor and path must be regular files')
+        raise InheritedFleetLockError(f'{label} descriptor and path must be regular files')
     if (descriptor_status.st_dev, descriptor_status.st_ino) != (path_status.st_dev, path_status.st_ino):
-        raise InheritedReleaseLockError(f'{label} descriptor does not match the lock path')
+        raise InheritedFleetLockError(f'{label} descriptor does not match the lock path')
     # First prove that a separate open-file description cannot acquire the
     # inode.  Then re-lock the supplied descriptor: success means this exact
     # inherited open-file description is the owner; failure means another
@@ -65,7 +65,7 @@ def _validate_inherited_lock(
     try:
         child = os.fork()
     except OSError as error:
-        raise InheritedReleaseLockError(f'{label} ownership probe could not start') from error
+        raise InheritedFleetLockError(f'{label} ownership probe could not start') from error
     if child == 0:  # pragma: no cover - outcome is asserted in the parent
         try:
             os.close(descriptor)
@@ -86,38 +86,27 @@ def _validate_inherited_lock(
     _pid, wait_status = os.waitpid(child, 0)
     probe_status = os.waitstatus_to_exitcode(wait_status)
     if probe_status == 0:
-        raise InheritedReleaseLockError(f'{label} descriptor is not already locked')
+        raise InheritedFleetLockError(f'{label} descriptor is not already locked')
     if probe_status != 75:
-        raise InheritedReleaseLockError(f'{label} ownership probe failed')
+        raise InheritedFleetLockError(f'{label} ownership probe failed')
     try:
         final_path_status = os.lstat(expected_path)
     except OSError as error:
-        raise InheritedReleaseLockError(f'{label} path changed during validation') from error
+        raise InheritedFleetLockError(f'{label} path changed during validation') from error
     if (
         not stat.S_ISREG(final_path_status.st_mode)
         or (descriptor_status.st_dev, descriptor_status.st_ino)
         != (final_path_status.st_dev, final_path_status.st_ino)
     ):
-        raise InheritedReleaseLockError(f'{label} path changed during validation')
+        raise InheritedFleetLockError(f'{label} path changed during validation')
     try:
         fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError as error:
         if error.errno in (errno.EACCES, errno.EAGAIN):
-            raise InheritedReleaseLockError(f'another process owns the {label}') from error
-        raise InheritedReleaseLockError(f'{label} descriptor could not be validated') from error
+            raise InheritedFleetLockError(f'another process owns the {label}') from error
+        raise InheritedFleetLockError(f'{label} descriptor could not be validated') from error
     os.set_inheritable(descriptor, False)
     return descriptor
-
-
-def validate_inherited_release_lock(project: Path) -> int:
-    """Validate the compatibility .git lock inherited from the bootstrap."""
-
-    return _validate_inherited_lock(
-        Path(project) / '.git/rolling-release.lock',
-        descriptor_variable='ROLLING_RELEASE_LOCK_FD',
-        path_variable='ROLLING_RELEASE_LOCK_PATH',
-        label='release lock',
-    )
 
 
 def validate_inherited_fleet_lock(project: Path) -> FleetLease:

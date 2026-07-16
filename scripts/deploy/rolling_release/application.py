@@ -259,7 +259,6 @@ def launch(args: Any, *, runtime: Any) -> int:
         emergency_override=args.emergency_override,
         reason=args.reason,
         skip_canary_hold=args.skip_canary_hold,
-        auto_minimize=args.auto_minimize,
         full_fleet=args.full_fleet,
     ).validate()
     try:

@@ -153,7 +153,6 @@ class FakeRuntime:
         self.server_config_restore_error = None
         self.deployed_sha = {}
         self.pi5_release_sha = None
-        self.pi5_marker_sha = None
         self.cancel_at_finish = False
         self.ready_acknowledgements = {}
         self.ready_ack_error = None
@@ -362,10 +361,6 @@ class FakeRuntime:
             },
         }
 
-    def record_pi5_release_current(self, sha, _candidate):
-        self.events.append("legacy:pi5-marker")
-        self.pi5_marker_sha = sha
-
     def remote_previous_sha(self, _inventory, host):
         self.events.append(f"terminal:previous:{host}")
         return OLD_SHA
@@ -530,7 +525,6 @@ def args(**overrides):
         "reason": None,
         "skip_canary_hold": True,
         "canary_hold_timeout": 60,
-        "auto_minimize": False,
         "full_fleet": False,
         "expected_server_client_id": "raspberrypi5-server",
     }
@@ -732,7 +726,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         self.assertEqual(state["fleet"]["kiosk-a"]["evidence"], "unknown")
         self.assertNotIn("observe:terminal:kiosk-a", runtime.events)
 
-    def test_full_release_orders_authoritative_writes_before_compatibility(self):
+    def test_full_release_orders_authoritative_writes_before_execution(self):
         terminal = {
             "host": "kiosk-a",
             "role": "kiosk",
@@ -784,10 +778,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
                 for event in runtime.events[unknown + 1 : host_config]
             )
         )
-        self.assertLess(
-            runtime.events.index(f"fleet:verified:pi5:{NEW_SHA}"),
-            runtime.events.index("legacy:pi5-marker"),
-        )
+        self.assertIn(f"fleet:verified:pi5:{NEW_SHA}", runtime.events)
         self.assertEqual(
             runtime.states[-1].payload["serverConfig"]["state"], "converged"
         )
@@ -1923,7 +1914,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         self.assertEqual(record["desiredSha"], OLD_SHA)
         self.assertEqual(record["currentSha"], OLD_SHA)
 
-    def test_pi5_execution_and_marker_use_server_specific_desired_sha(self):
+    def test_pi5_execution_uses_server_specific_desired_sha(self):
         server = decision("pi5", "server")
         server.update(
             {
@@ -1945,7 +1936,6 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
 
         self.assertEqual(result, 0)
         self.assertEqual(runtime.pi5_release_sha, OLD_SHA)
-        self.assertEqual(runtime.pi5_marker_sha, OLD_SHA)
         record = runtime.fleet["fleet"]["pi5"]
         self.assertEqual(record["desiredSha"], OLD_SHA)
         self.assertEqual(record["currentSha"], OLD_SHA)
@@ -2687,6 +2677,17 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
                     "state": "success",
                     "maintenanceStartedAt": "2026-07-14T23:58:00Z",
                     "maintenanceClearedAt": "2026-07-14T23:59:00Z",
+                    "runtimeFinalization": {
+                        "outcome": "committed",
+                        "verifiedSha": NEW_SHA,
+                    },
+                    "runtimeCleanup": {
+                        "outcome": "committed",
+                        "cleaned": True,
+                        "alreadyClean": False,
+                        "manifestSha256": "d" * 64,
+                        "tagCount": 1,
+                    },
                     "rollbackManifest": rollback_manifest(
                         "crashed-run", "kiosk-a"
                     ),
@@ -2706,7 +2707,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             "status:remove-client:--run-id:crashed-run:--client:a",
             runtime.events,
         )
-        self.assertIn(
+        self.assertNotIn(
             "manifest:cleanup:kiosk-a:crashed-run:committed",
             runtime.events,
         )
@@ -2714,7 +2715,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             runtime.states[-1].payload["interruptedRecovery"]["targets"][0][
                 "recovery"
             ],
-            "completed-live-verified",
+            "durable-success-carried-forward",
         )
         self.assertEqual(
             runtime.fleet["fleet"]["kiosk-a"]["currentSha"], NEW_SHA

@@ -90,7 +90,6 @@ class LaunchSpec:
     emergency_override: bool = False
     reason: str | None = None
     skip_canary_hold: bool = False
-    auto_minimize: bool = False
     full_fleet: bool = False
 
     @property
@@ -114,12 +113,9 @@ class LaunchSpec:
             raise ValueError('emergency override must be boolean')
         if (
             type(self.skip_canary_hold) is not bool
-            or type(self.auto_minimize) is not bool
             or type(self.full_fleet) is not bool
         ):
             raise ValueError('release flags must be boolean')
-        if self.full_fleet and self.auto_minimize:
-            raise ValueError('full fleet cannot be combined with the auto-minimize alias')
         if self.full_fleet and self.limit:
             raise ValueError('full fleet cannot be combined with a limit')
         if self.reason is not None:
@@ -154,7 +150,6 @@ class LaunchSpec:
             'emergencyOverride': self.emergency_override,
             'reason': self.reason,
             'skipCanaryHold': self.skip_canary_hold,
-            'autoMinimize': self.auto_minimize,
             'fullFleet': self.full_fleet,
         }
 
