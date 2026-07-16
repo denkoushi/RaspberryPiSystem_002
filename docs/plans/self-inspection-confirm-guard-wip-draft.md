@@ -25,6 +25,7 @@ validation:
   - PR #970
   - Inspector final judgement API integration tests (FINAL_OK / FINAL_NG / completion guards / legacy compatibility)
   - API and Web production TypeScript builds, full lint, Prisma validation, and focused Web tests
+  - PR #1036
 ---
 
 # Self-inspection confirm guard + draft WIP
