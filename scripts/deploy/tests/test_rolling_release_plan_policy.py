@@ -3,6 +3,7 @@ import copy
 import importlib.util
 import sys
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -10,6 +11,8 @@ from unittest.mock import Mock
 DEPLOY_DIRECTORY = Path(__file__).parents[1]
 if str(DEPLOY_DIRECTORY) not in sys.path:
     sys.path.insert(0, str(DEPLOY_DIRECTORY))
+
+from terminal_profile_registry import load_registry
 
 
 def load_module(name: str, relative_path: str):
@@ -89,7 +92,9 @@ class ReleasePolicyTest(unittest.TestCase):
     def setUp(self):
         self.inventory = {
             'server': {'hosts': ['server-a']},
+            'clients': {'children': ['kiosk', 'signage']},
             'kiosk_canary': {'hosts': ['kiosk-b']},
+            'signage_canary': {'hosts': ['signage-a']},
             'kiosk': {'hosts': ['kiosk-a', 'kiosk-b']},
             'signage': {'hosts': ['signage-a']},
             '_meta': {'hostvars': {
@@ -448,6 +453,121 @@ class ReleasePolicyTest(unittest.TestCase):
         self.assertEqual(decision['targetReason'], 'desired SHA differs from role-specific plan')
 
 
+class GenericTerminalProfilePolicyTest(unittest.TestCase):
+    @staticmethod
+    def registry():
+        base = load_registry()
+        kiosk, signage = base.profiles
+        inspection = replace(
+            kiosk,
+            id='inspection-panel',
+            inventory_group='inspection_panels',
+            rollout_order=15,
+            impact_component='inspection-panel-role',
+            canary_group='inspection_panel_canary',
+            approval_policy='health-only',
+        )
+        assembly = replace(
+            kiosk,
+            id='assembly-console',
+            inventory_group='assembly_consoles',
+            rollout_order=30,
+            impact_component='assembly-console-role',
+            canary_group='assembly_console_canary',
+        )
+        return replace(
+            base,
+            profiles=(kiosk, inspection, signage, assembly),
+        )
+
+    @staticmethod
+    def inventory():
+        return {
+            'server': {'hosts': ['server-a']},
+            'clients': {'children': [
+                'kiosk',
+                'inspection_panels',
+                'signage',
+                'assembly_consoles',
+            ]},
+            'kiosk': {'hosts': ['kiosk-a', 'kiosk-b']},
+            'kiosk_canary': {'hosts': ['kiosk-b']},
+            'inspection_panels': {'hosts': ['inspection-a']},
+            'inspection_panel_canary': {'hosts': ['inspection-a']},
+            'signage': {'hosts': ['signage-a']},
+            'signage_canary': {'hosts': ['signage-a']},
+            'assembly_consoles': {'hosts': ['assembly-a']},
+            'assembly_console_canary': {'hosts': ['assembly-a']},
+            '_meta': {'hostvars': {
+                'server-a': {'status_agent_client_id': 'server'},
+                'kiosk-a': {'status_agent_client_id': 'kiosk-a'},
+                'kiosk-b': {'status_agent_client_id': 'kiosk-b'},
+                'inspection-a': {'status_agent_client_id': 'inspection-a'},
+                'signage-a': {'status_agent_client_id': 'signage-a'},
+                'assembly-a': {'status_agent_client_id': 'assembly-a'},
+            }},
+        }
+
+    def test_fourth_and_fifth_types_use_registry_order_and_profile_canaries(self):
+        targets = POLICY.release_targets(
+            self.inventory(), registry=self.registry()
+        )
+        self.assertEqual(
+            [(target['terminalType'], target['host']) for target in targets],
+            [
+                ('kiosk', 'kiosk-b'),
+                ('kiosk', 'kiosk-a'),
+                ('inspection-panel', 'inspection-a'),
+                ('signage', 'signage-a'),
+                ('assembly-console', 'assembly-a'),
+            ],
+        )
+
+    def test_affected_profiles_targets_a_synthetic_type_without_core_branch(self):
+        registry = self.registry()
+        inventory = self.inventory()
+        hosts = POLICY.release_hosts(inventory, registry=registry)
+        fleet = {
+            target['host']: verified_record(target['role'])
+            for target in hosts
+        }
+        decisions = POLICY.plan_target_decisions(
+            hosts,
+            fleet,
+            RELEASE_SHA,
+            {
+                CURRENT_SHA: classification(
+                    components=['inspection-panel-role'],
+                    affectedProfiles=['inspection-panel'],
+                )
+            },
+            inventory,
+            registry=registry,
+        )
+        self.assertEqual(
+            [decision['host'] for decision in decisions if decision['targeted']],
+            ['inspection-a'],
+        )
+
+    def test_unavailable_adapter_fails_during_topology_preflight(self):
+        registry = self.registry()
+        bad_profile = replace(
+            registry.profiles[1], adapter_id='synthetic-unavailable'
+        )
+        with self.assertRaisesRegex(RuntimeError, 'unavailable adapters'):
+            POLICY.release_targets(
+                self.inventory(),
+                registry=replace(
+                    registry,
+                    profiles=(
+                        registry.profiles[0],
+                        bad_profile,
+                        *registry.profiles[2:],
+                    ),
+                ),
+            )
+
+
 class ReleasePlannerTest(unittest.TestCase):
     def test_fleet_payload_preserves_decision_order_and_explanations(self):
         decisions = [
@@ -536,6 +656,65 @@ class ReleasePlannerTest(unittest.TestCase):
         self.assertEqual(payload['targets'], [])
         self.assertEqual(payload['excludedHosts'], ['server-a'])
         self.assertFalse(payload['canaryHold'])
+
+    def test_fleet_payload_accepts_a_safe_registered_profile_shape(self):
+        decisions = [
+            {
+                'host': 'server-a',
+                'role': 'server',
+                'desiredSha': RELEASE_SHA,
+                'currentSha': RELEASE_SHA,
+                'evidence': 'verified',
+                'targetReason': 'verified at desired SHA',
+                'targeted': False,
+            },
+            {
+                'host': 'inspection-a',
+                'role': 'inspection-panel',
+                'desiredSha': RELEASE_SHA,
+                'currentSha': CURRENT_SHA,
+                'evidence': 'verified',
+                'targetReason': 'inspection-panel impact: runtime',
+                'targeted': True,
+            },
+        ]
+        canary_hold = Mock(return_value=False)
+
+        payload = PLANNER.build_fleet_plan_payload(
+            release_sha=RELEASE_SHA,
+            decisions=decisions,
+            full_fleet=False,
+            limit='',
+            canary_hold_policy=canary_hold,
+            profile_ids=('kiosk', 'signage', 'inspection-panel'),
+        )
+
+        canary_hold.assert_called_once_with(
+            [{'host': 'inspection-a', 'terminalType': 'inspection-panel'}],
+            0,
+            skip=False,
+        )
+        self.assertEqual(payload['targetHosts'], ['inspection-a'])
+
+    def test_fleet_payload_rejects_an_unregistered_safe_profile(self):
+        decisions = [{
+            'host': 'future-a',
+            'role': 'future-terminal',
+            'desiredSha': RELEASE_SHA,
+            'currentSha': CURRENT_SHA,
+            'evidence': 'verified',
+            'targetReason': 'future impact',
+            'targeted': True,
+        }]
+
+        with self.assertRaisesRegex(ValueError, 'role is unsupported'):
+            PLANNER.build_fleet_plan_payload(
+                release_sha=RELEASE_SHA,
+                decisions=decisions,
+                full_fleet=False,
+                limit='',
+                canary_hold_policy=Mock(),
+            )
 
     def test_payload_keeps_the_existing_print_plan_contract(self):
         scope = {

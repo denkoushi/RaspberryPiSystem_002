@@ -113,6 +113,15 @@ all:
                     - /usr/bin/systemctl start status-agent.timer
                     - /usr/bin/systemctl stop status-agent.timer
                     - /usr/bin/systemctl restart status-agent.timer
+        # Registry profiles require one explicit per-profile canary. These are
+        # static topology declarations only; this change does not authorize a
+        # TalkPlaza connection or deployment.
+        kiosk_canary:
+          hosts:
+            talkplaza-pi4:
+        signage_canary:
+          hosts:
+            talkplaza-signage01:
       vars:
         ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
         ansible_python_interpreter: /usr/bin/python3

@@ -14,7 +14,7 @@ related_docs:
   - docs/guides/deployment.md
   - docs/plans/deployment-foundation-refactor-execplan.md
 validation: local contracts, isolated fault injection, hosted CI, read-only fleet plans
-open_items: PR 1 through PR 5 described below
+open_items: PR 3 through PR 5 described below
 supersedes: null
 superseded_by: null
 ---
@@ -48,7 +48,7 @@ This program is delivered as five ordered pull requests. Each pull request is
 based on the latest merged `origin/main`, receives local and hosted validation,
 and is merged only after its exact head passes the required validation. The
 user has approved autonomous completion through PR 5; the no-production-change
-safety boundary remains unchanged. The current work is PR 2 only.
+safety boundary remains unchanged. The current work is PR 3 only.
 
 ## Progress
 
@@ -66,7 +66,13 @@ safety boundary remains unchanged. The current work is PR 2 only.
 - [x] (2026-07-16 13:38Z) Completed PR 2 local validation: 594 deploy Python tests, 20 CI classifier tests, all focused Pi5/terminal/deploy-safety shell contracts, 20 isolated PostgreSQL deploy-status tests, read-only parsing of both inventories, syntax checks for both staged playbooks, JSON/compile/diff checks, production runtime-option parity, and the 4,242-path legacy classifier comparison all pass.
 - [x] (2026-07-16 13:40Z) Pushed code head `7f56595f5663cdf14270f1b5633d5e20eade3cdf` and ran the second-factory public read-only plan against that exact remote ref. All seven verified hosts were excluded, with `targetHosts=[]`, `pi5Required=false`, no terminal targets, no canary hold, and no warnings. The aggregate historical diff reports Signage impact, but the Pi3 host-specific verified baseline correctly requires no work.
 - [x] (2026-07-16 13:46Z) Published draft PR #1032 at `2776a72cbe737d9011fa0fc4467631dbd9fbd751`. Hosted CI run `29503419077`, CodeQL run `29503418930`, and gitleaks run `29503418989` all passed. The user then authorized autonomous validation and merging through PR 5, with only fatal blockers requiring a stop and with every existing physical-deployment prohibition preserved.
-- [ ] Implement PR 3: generic planner, inventory validation, and fleet-state use of registered profile identifiers.
+- [x] (2026-07-16 13:53Z) Marked PR #1032 ready and merged its exact final head `d35e080c137a21f784ac5c175b93ce342e4650cb` as `658a259bafb1fb92359128d5320de50ff74771fc` after final CI `29503856934`, CodeQL `29503856945`, gitleaks `29503853754`, and a seven-host second-factory read-only no-op all passed.
+- [x] (2026-07-16 13:54Z) Fetched merged `origin/main` and created the isolated `agent/generic-terminal-planner` worktree from exact commit `658a259bafb1fb92359128d5320de50ff74771fc`.
+- [x] (2026-07-16 14:14Z) Implemented PR 3 generic profile ordering, per-profile canaries, strict clients membership and adapter preflight, registered profile roles in durable fleet state without changing its JSON fields, additive plan `affectedProfiles`, and TalkPlaza static canary topology. Local launch and print-plan reject invalid topology before SSH, remote submission, state, or checkout.
+- [x] (2026-07-16 14:14Z) Completed PR 3 local validation: 601 deploy Python tests, 20 CI Python tests, every deploy shell contract including the isolated 20-test PostgreSQL integration, both registry-resolved inventories, both staged-playbook syntax checks, Python compilation, and diff checks pass. Synthetic fourth and fifth types prove profile/canary order, impact, and unchanged fleet JSON without adding a terminal-name branch.
+- [x] (2026-07-16 14:27Z) Published draft PR #1033 at exact code head `ab79b443967785784116b911c30a94c30644a12b`. CI run `29506385437`, CodeQL `29506385515`, and gitleaks `29506385385` all passed; the final deploy Python suite is now 602 tests after adding the planner-level unregistered-profile rejection.
+- [x] (2026-07-16 14:27Z) Ran the second-factory public read-only plan against exact remote branch head `ab79b443`. Inventory, profile membership, canaries, adapter availability, client IDs, and all seven verified evidence records resolved with no warnings. The historical per-host diffs contain a `global` inventory change, so fail-closed planning correctly lists all seven hosts; no release, approval, checkout, or state mutation was performed.
+- [ ] Synchronize this hosted evidence, pass the final exact-head checks, and merge PR 3.
 - [ ] Implement PR 4: terminal adapter boundary and generic coordinator with sequential profile approval gates.
 - [ ] Implement PR 5: registry-driven CI, architecture contracts, acceptance coverage, ADR, and concise new-type documentation.
 
@@ -130,6 +136,12 @@ safety boundary remains unchanged. The current work is PR 2 only.
   before it enables generic inventory consumption; no TalkPlaza SSH or deploy
   is permitted.
 
+- Observation: a new worktree has no installed JavaScript workspace even when
+  the lockfile is unchanged.
+  Evidence: the first all-shell pass stopped at `tsc` before the deploy-status
+  integration; `pnpm install --frozen-lockfile` installed the exact locked
+  workspace, after which the complete shell suite passed from the beginning.
+
 ## Decision Log
 
 - Decision: Complete and publish only PR 1, then stop after hosted CI until the
@@ -190,6 +202,23 @@ safety boundary remains unchanged. The current work is PR 2 only.
   TalkPlaza device operation.
   Date/Author: 2026-07-16 / User
 
+- Decision: A terminal's release type is its validated registry profile ID,
+  selected by membership in that profile's inventory group. Hostname,
+  hardware `device_type`, and legacy `manage_*` variables are not type
+  discriminators; the profile's adapter and playbook define runtime behavior.
+  Rationale: names and hardware alone cannot describe structurally different
+  terminals. This separates identity, topology, hardware facts, and executable
+  behavior while keeping existing `role` and `terminalType` values compatible.
+  Date/Author: 2026-07-16 / User and Codex
+
+- Decision: An inventory may omit a registered profile that has no hosts. A
+  non-empty profile group must be a direct `clients` child and must have
+  exactly one explicit canary; unknown, empty child, direct-client, overlapping,
+  unsafe-ID, duplicate-client-ID, or unavailable-adapter topology fails closed.
+  Rationale: one global registry can serve inventories with different installed
+  product sets without allowing an unregistered terminal to enter planning.
+  Date/Author: 2026-07-16 / Codex
+
 ## Outcomes & Retrospective
 
 PR 1 is merged as `381e022e`. With no `.vault-pass`, both production
@@ -197,18 +226,21 @@ inventories resolve through the read-only adapter, while the normal Ansible
 configuration still exits before parsing. Its final-head CI `29500051947`,
 CodeQL `29500052047`, and gitleaks `29500051938` passed before merge.
 
-PR 2 now has a strict data-only registry and registry-driven classifier in a
-dedicated worktree. Production data contains only Kiosk and Signage, while a
-test-only fourth profile and unique adapter ID prove that classification does
-not require a new terminal-name branch. All 594 deploy Python tests, 20 CI
-tests, existing deploy shell contracts, 20 isolated PostgreSQL deploy-status
-tests, both inventory reads and staged-playbook syntax checks, and the full
-tracked-path legacy comparison pass. The exact pushed code head also produces a
-seven-host second-factory no-op plan. Its first hosted validation set (CI
-`29503419077`, CodeQL `29503418930`, and gitleaks `29503418989`) passed. This
-living-plan-only update now requires one final exact-head hosted and read-only
-confirmation before merge. No physical host has been contacted for mutation,
-and PR 3 has not started.
+PR 2 is merged as `658a259b`. Its exact final head passed CI `29503856934`,
+CodeQL `29503856945`, gitleaks `29503853754`, and the second-factory no-op plan.
+
+PR 3 removes the fixed terminal-role set from inventory planning and fleet
+state. Registered profile groups and canaries produce deterministic order;
+unknown groups, overlapping membership, duplicate identity, and missing
+adapters fail before external work. Synthetic fourth and fifth terminal types
+use the unchanged planner and fleet JSON shape. All 602 deploy Python tests, 20
+CI tests, the full deploy shell suite, both inventories, and both staged
+playbook syntax checks pass locally. Draft PR #1033's first exact code head
+passed CI `29506385437`, CodeQL `29506385515`, and gitleaks `29506385385`; the
+post-review Python total is 602. Its read-only fleet plan resolved all verified
+evidence without warning and safely listed all seven hosts because the diff
+contains a global inventory change. No physical host has been contacted for
+mutation, and PR 4 has not started.
 
 ## Context and Orientation
 
@@ -448,7 +480,7 @@ duplicate and unknown keys, and returns immutable validated profile records.
 Core policy consumes validated profile IDs and adapter objects only; it never
 imports arbitrary paths or executes registry-provided text.
 
-Revision note (2026-07-16 13:46Z): Recorded draft PR #1032, its first fully
-green hosted validation, and the user's authorization to complete PRs 2 through
-5 autonomously. This documentation-only update requires one final exact-head
-no-op and hosted check confirmation before PR 2 merge.
+Revision note (2026-07-16 14:27Z): Recorded draft PR #1033, its first exact-head
+hosted success, the 602-test final local suite, and the read-only second-factory
+result. The global diff correctly widens the observable plan; it was not
+executed. This evidence-only update requires one final exact-head hosted pass.

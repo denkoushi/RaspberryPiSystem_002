@@ -22,6 +22,8 @@ from pathlib import Path
 from types import TracebackType
 from typing import Any
 
+from terminal_profile_registry import RegistryError, load_registry
+
 from .image_refs import image_matches_release
 
 
@@ -54,7 +56,6 @@ COMMON_HOST_FIELDS = frozenset(
 SERVER_HOST_FIELDS = frozenset(
     {"activeSlot", "apiImage", "webImage", "configDigest", "migrationDigest"}
 )
-ROLES = frozenset({"server", "kiosk", "signage"})
 EVIDENCE_VALUES = frozenset({"unknown", "verified"})
 TERMINAL_RUN_STATUSES = frozenset({"success", "failed", "cancelled", "interrupted"})
 RUN_KINDS = frozenset({"release", "pi4-recovery"})
@@ -94,6 +95,17 @@ class FleetLockBusyError(FleetLockError):
 
 Clock = Callable[[], str]
 FleetMutator = Callable[[dict[str, Any]], Mapping[str, Any] | None]
+
+
+def _release_roles() -> frozenset[str]:
+    """Resolve state roles from the same strict registry used by planning."""
+
+    try:
+        return frozenset({"server", *load_registry().profile_ids})
+    except RegistryError as error:
+        raise FleetStateCorruptError(
+            "terminal profile registry is unavailable for fleet validation"
+        ) from error
 
 
 def utc_now() -> str:
@@ -200,7 +212,7 @@ def _validate_host_record(host: str, value: Any) -> None:
     expected_fields = COMMON_HOST_FIELDS | (SERVER_HOST_FIELDS if role == "server" else set())
     if set(value) != expected_fields:
         raise FleetStateCorruptError(f"fleet.{host} fields do not match role {role!r}")
-    if not isinstance(role, str) or role not in ROLES:
+    if not isinstance(role, str) or role not in _release_roles():
         raise FleetStateCorruptError(f"fleet.{host}.role is unsupported")
     _validate_sha(value.get("desiredSha"), field=f"fleet.{host}.desiredSha", optional=True)
     _validate_sha(value.get("currentSha"), field=f"fleet.{host}.currentSha", optional=True)
@@ -605,7 +617,7 @@ class FleetStateStore:
     ) -> dict[str, Any]:
         if not isinstance(host, str) or not HOST_RE.fullmatch(host):
             raise ValueError("fleet host name is malformed")
-        if not isinstance(role, str) or role not in ROLES:
+        if not isinstance(role, str) or role not in _release_roles():
             raise ValueError("fleet role is unsupported")
         if not isinstance(desired_sha, str) or not FULL_SHA_RE.fullmatch(desired_sha):
             raise ValueError("desired SHA must be a full lowercase Git SHA")
@@ -666,7 +678,7 @@ class FleetStateStore:
     ) -> dict[str, Any]:
         if not isinstance(host, str) or not HOST_RE.fullmatch(host):
             raise ValueError("fleet host name is malformed")
-        if not isinstance(role, str) or role not in ROLES:
+        if not isinstance(role, str) or role not in _release_roles():
             raise ValueError("fleet role is unsupported")
         if not isinstance(desired_sha, str) or not FULL_SHA_RE.fullmatch(desired_sha):
             raise ValueError("desired SHA must be a full lowercase Git SHA")
