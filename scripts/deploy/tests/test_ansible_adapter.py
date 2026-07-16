@@ -262,6 +262,7 @@ class RollbackManifestAdapterTest(unittest.TestCase):
         )
         identity_command = runtime.calls[0][0]
         self.assertNotIn("-b", identity_command)
+        self.assertIn("ansible_become=false", identity_command)
         self.assertIn("ROLLBACK_REMOTE_IDENTITY", identity_command[-1])
         command, options = runtime.calls[1]
         self.assertEqual(command[0:7], [
