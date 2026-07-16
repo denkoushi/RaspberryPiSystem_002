@@ -352,6 +352,14 @@ def inventory_json(path: str) -> dict[str, Any]:
     return ansible_backend.inventory_json(path, runtime=_runtime())
 
 
+def read_only_inventory_json(path: str) -> dict[str, Any]:
+    return ansible_backend.read_only_inventory_json(path, runtime=_runtime())
+
+
+def read_only_selected_hosts(path: str, limit: str) -> list[str] | None:
+    return ansible_backend.read_only_selected_hosts(path, limit, runtime=_runtime())
+
+
 def selected_hosts(path: str, limit: str) -> list[str] | None:
     return ansible_backend.selected_hosts(path, limit, runtime=_runtime())
 
@@ -1111,8 +1119,8 @@ def build_print_plan(
         raise RuntimeError(detail)
     validate_print_plan_checkout(sha)
     local_inventory = canonical_print_plan_inventory(inventory)
-    inventory_data = inventory_json(local_inventory)
-    selected = selected_hosts(local_inventory, limit)
+    inventory_data = read_only_inventory_json(local_inventory)
+    selected = read_only_selected_hosts(local_inventory, limit)
     server_identity = validate_print_plan_server_identity(inventory_data)
     fleet_state, fleet_warnings = read_plan_fleet_release_state()
     warnings.extend(fleet_warnings)

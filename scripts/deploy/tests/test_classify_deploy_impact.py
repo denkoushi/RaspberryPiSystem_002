@@ -65,10 +65,25 @@ class ClassifyDeployImpactTest(unittest.TestCase):
     def test_deploy_control_files_do_not_manufacture_runtime_work(self):
         result = impact.classify(
             [
+                'infrastructure/ansible/ansible-readonly.cfg',
+                'scripts/update-all-clients.sh',
                 'scripts/deploy/classify-deploy-impact.py',
+                'scripts/deploy/recover-pi4.py',
                 'scripts/deploy/rollback-manifest.py',
+                'scripts/deploy/rolling-release.py',
+                'scripts/deploy/rolling_release/PROTOCOL',
+                'scripts/deploy/rolling_release/application.py',
+                'scripts/deploy/rolling_release/backends/pi5.py',
                 'scripts/deploy/rolling_release/coordinator.py',
                 'scripts/deploy/rolling_release/backends/ansible.py',
+                'scripts/deploy/rolling_release/bootstrap.py',
+                'scripts/deploy/rolling_release/cli.py',
+                'scripts/deploy/rolling_release/lock.py',
+                'scripts/deploy/rolling_release/models.py',
+                'scripts/deploy/rolling_release/planner.py',
+                'scripts/deploy/rolling_release/policy.py',
+                'scripts/deploy/rolling_release/remote_control.py',
+                'scripts/deploy/rolling_release/state.py',
                 'scripts/deploy/terminal-runtime-manifest.py',
             ]
         )

@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import shutil
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from scripts.deploy.rolling_release.backends import ansible
 
@@ -95,6 +97,96 @@ class SelectedHostsTest(unittest.TestCase):
         )
         self.assertEqual(selected, ["kiosk-b", "kiosk-a"])
         self.assertEqual(runtime.calls[0][1]['cwd'], runtime.ANSIBLE_DIRECTORY)
+
+
+class ReadOnlyInventoryAdapterTest(unittest.TestCase):
+    def _runtime(self, directory, result):
+        config = Path(directory) / 'ansible-readonly.cfg'
+        config.write_text('[defaults]\n', encoding='utf-8')
+        runtime = Runtime(result)
+        runtime.ANSIBLE_DIRECTORY = Path(directory)
+        return runtime, config
+
+    def test_uses_dedicated_config_and_removes_inherited_vault_sources(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime, config = self._runtime(directory, '{"server": {"hosts": []}}')
+            poisoned = {
+                'ANSIBLE_CONFIG': '/tmp/wrong-ansible.cfg',
+                'ANSIBLE_INVENTORY': '/tmp/wrong-inventory.yml',
+                'ANSIBLE_VAULT_IDENTITY_LIST': 'prod@/tmp/vault-client',
+                'ANSIBLE_VAULT_ID_MATCH': 'true',
+                'ANSIBLE_VAULT_PASSWORD_FILE': '/tmp/vault-password',
+            }
+            with mock.patch.dict(os.environ, poisoned, clear=False):
+                value = ansible.read_only_inventory_json(
+                    'inventory.yml', runtime=runtime
+                )
+
+        self.assertEqual(value, {'server': {'hosts': []}})
+        command, options = runtime.calls[0]
+        self.assertEqual(command, ['ansible-inventory', '-i', 'inventory.yml', '--list'])
+        self.assertEqual(options['env']['ANSIBLE_CONFIG'], str(config.resolve()))
+        for name in poisoned:
+            if name != 'ANSIBLE_CONFIG':
+                self.assertNotIn(name, options['env'])
+
+    def test_failure_is_actionable_and_never_repeats_command_output(self):
+        secret = 'DO-NOT-PRINT-INVENTORY-SECRET'
+        error = subprocess.CalledProcessError(
+            1,
+            ['ansible-inventory'],
+            output=f'plugin output {secret}',
+            stderr=f'plugin error {secret}',
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            runtime, _config = self._runtime(directory, error)
+            with self.assertRaisesRegex(
+                RuntimeError, 'check the inventory YAML and group variables'
+            ) as raised:
+                ansible.read_only_inventory_json('inventory.yml', runtime=runtime)
+
+        self.assertNotIn(secret, str(raised.exception))
+        self.assertNotIn(secret, repr(raised.exception))
+
+    def test_missing_config_fails_before_ansible(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = Runtime('{}')
+            runtime.ANSIBLE_DIRECTORY = Path(directory)
+            with self.assertRaisesRegex(RuntimeError, 'configuration is missing'):
+                ansible.read_only_inventory_json('inventory.yml', runtime=runtime)
+        self.assertEqual(runtime.calls, [])
+
+    def test_empty_limit_skips_ansible(self):
+        runtime = Runtime('unused')
+        self.assertIsNone(
+            ansible.read_only_selected_hosts(
+                'inventory.yml', '', runtime=runtime
+            )
+        )
+        self.assertEqual(runtime.calls, [])
+
+    def test_zero_match_limit_is_an_explicit_empty_selection(self):
+        for output, error_output in (
+            ('  hosts (0):\n', 'inventory detail that must stay internal\n'),
+            (
+                '',
+                '[ERROR]: Specified inventory, host pattern and/or --limit '
+                'leaves us with no hosts to target.\n',
+            ),
+        ):
+            with self.subTest(error_output=error_output):
+                error = subprocess.CalledProcessError(
+                    1,
+                    ['ansible'],
+                    output=output,
+                    stderr=error_output,
+                )
+                with tempfile.TemporaryDirectory() as directory:
+                    runtime, _config = self._runtime(directory, error)
+                    selected = ansible.read_only_selected_hosts(
+                        'inventory.yml', 'missing-host', runtime=runtime
+                    )
+                self.assertEqual(selected, [])
 
 
 class TerminalRepositoryBaselineAdapterTest(unittest.TestCase):
@@ -1325,6 +1417,7 @@ class AnsibleConfigResolutionTest(unittest.TestCase):
                         check=True,
                         text=True,
                         capture_output=kwargs.get('capture', False),
+                        env=kwargs.get('env'),
                     )
                     return completed.stdout if kwargs.get('capture', False) else ''
 
@@ -1334,6 +1427,50 @@ class AnsibleConfigResolutionTest(unittest.TestCase):
             json.loads(json.dumps(payload))['_meta']['hostvars']['local-test']['vault_probe'],
             'resolved-secret',
         )
+
+    def test_read_only_config_bypasses_missing_mutating_vault_password_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ansible_directory = Path(directory) / 'ansible'
+            ansible_directory.mkdir()
+            (ansible_directory / 'ansible.cfg').write_text(
+                '[defaults]\n'
+                'vault_password_file = .vault-pass\n',
+                encoding='utf-8',
+            )
+            (ansible_directory / 'ansible-readonly.cfg').write_text(
+                '[defaults]\n', encoding='utf-8'
+            )
+            inventory = ansible_directory / 'inventory.yml'
+            inventory.write_text(
+                'all:\n  hosts:\n    local-test:\n      ansible_connection: local\n',
+                encoding='utf-8',
+            )
+
+            class RealRuntime:
+                ANSIBLE_DIRECTORY = ansible_directory
+
+                @staticmethod
+                def run(command, **kwargs):
+                    environment = os.environ.copy()
+                    environment.pop('ANSIBLE_CONFIG', None)
+                    environment.pop('ANSIBLE_VAULT_PASSWORD_FILE', None)
+                    completed = subprocess.run(
+                        command,
+                        cwd=kwargs.get('cwd'),
+                        check=True,
+                        text=True,
+                        capture_output=kwargs.get('capture', False),
+                        env=kwargs.get('env', environment),
+                    )
+                    return completed.stdout if kwargs.get('capture', False) else ''
+
+            with self.assertRaises(subprocess.CalledProcessError):
+                ansible.inventory_json(str(inventory), runtime=RealRuntime())
+            payload = ansible.read_only_inventory_json(
+                str(inventory), runtime=RealRuntime()
+            )
+
+        self.assertIn('local-test', payload['_meta']['hostvars'])
 
 
 if __name__ == "__main__":

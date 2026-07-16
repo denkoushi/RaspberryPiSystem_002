@@ -18,19 +18,22 @@ SIGNAGE_PREFIXES = (
     'infrastructure/ansible/templates/signage',
     'infrastructure/ansible/tasks/preflight-signage.yml',
 )
-# These files execute from the immutable target checkout on the Pi5
-# coordinator and are transferred to a terminal by the Ansible adapter when
-# needed.  Changing them changes deployment control, not the product/runtime
-# installed on every host, so they must not manufacture fleet-wide work.
+# These files execute from the operator or immutable Pi5 coordinator checkout.
+# Some helpers are transferred transiently by an adapter when needed, but none
+# is installed as product/runtime on every host. Changing them changes deploy
+# control and must not manufacture fleet-wide runtime work.
 DEPLOY_CONTROL_FILES = frozenset(
     {
+        'infrastructure/ansible/ansible-readonly.cfg',
+        'scripts/update-all-clients.sh',
         'scripts/deploy/classify-deploy-impact.py',
+        'scripts/deploy/recover-pi4.py',
         'scripts/deploy/rollback-manifest.py',
-        'scripts/deploy/rolling_release/coordinator.py',
-        'scripts/deploy/rolling_release/backends/ansible.py',
+        'scripts/deploy/rolling-release.py',
         'scripts/deploy/terminal-runtime-manifest.py',
     }
 )
+DEPLOY_CONTROL_PREFIXES = ('scripts/deploy/rolling_release/',)
 SIGNAGE_RUNTIME_FILES = frozenset({'scripts/deploy/signage-runtime-proof.py'})
 GLOBAL_PREFIXES = (
     'scripts/update-all-clients.sh',
@@ -66,7 +69,7 @@ def _is_global_path(path: str) -> bool:
 def _component_for(path: str) -> str:
     if path.startswith(NEUTRAL_PREFIXES):
         return 'neutral'
-    if path in DEPLOY_CONTROL_FILES:
+    if path in DEPLOY_CONTROL_FILES or path.startswith(DEPLOY_CONTROL_PREFIXES):
         return 'deploy-control'
     if path in SIGNAGE_RUNTIME_FILES:
         return 'signage-role'

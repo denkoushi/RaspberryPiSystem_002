@@ -1883,7 +1883,7 @@ class PrintPlanShadowTest(unittest.TestCase):
             MODULE,
             'resolve_release_sha',
             return_value=(None, ['could not resolve SHA for branch main']),
-        ), patch.object(MODULE, 'inventory_json') as inventory:
+        ), patch.object(MODULE, 'read_only_inventory_json') as inventory:
             with self.assertRaisesRegex(RuntimeError, 'could not resolve SHA'):
                 MODULE.local_run(args)
         inventory.assert_not_called()
@@ -1893,7 +1893,7 @@ class PrintPlanShadowTest(unittest.TestCase):
         with patch.object(MODULE, 'resolve_release_sha', return_value=(TARGET_SHA, [])), \
                 patch.object(MODULE, 'validate_print_plan_checkout'), \
                 patch.object(MODULE, 'canonical_print_plan_inventory', return_value='inventory.yml'), \
-                patch.object(MODULE, 'inventory_json', side_effect=RuntimeError('vault unavailable')), \
+                patch.object(MODULE, 'read_only_inventory_json', side_effect=RuntimeError('vault unavailable')), \
                 patch.object(MODULE, 'read_plan_fleet_release_state', fleet_read):
             with self.assertRaisesRegex(RuntimeError, 'vault unavailable'):
                 MODULE.build_print_plan('main', 'inventory.yml', '')
@@ -1911,8 +1911,8 @@ class PrintPlanShadowTest(unittest.TestCase):
         with patch.object(MODULE, 'resolve_release_sha', return_value=(TARGET_SHA, [])), \
                 patch.object(MODULE, 'validate_print_plan_checkout'), \
                 patch.object(MODULE, 'canonical_print_plan_inventory', return_value='inventory.yml'), \
-                patch.object(MODULE, 'inventory_json', return_value=inventory_data), \
-                patch.object(MODULE, 'selected_hosts', return_value=None), \
+                patch.object(MODULE, 'read_only_inventory_json', return_value=inventory_data), \
+                patch.object(MODULE, 'read_only_selected_hosts', return_value=None), \
                 patch.object(
                     MODULE,
                     'validate_print_plan_server_identity',
@@ -1949,8 +1949,8 @@ class PrintPlanShadowTest(unittest.TestCase):
         with patch.object(MODULE, 'resolve_release_sha', return_value=(TARGET_SHA, [])), \
                 patch.object(MODULE, 'validate_print_plan_checkout'), \
                 patch.object(MODULE, 'canonical_print_plan_inventory', return_value='inventory.yml'), \
-                patch.object(MODULE, 'inventory_json', return_value=inventory_data), \
-                patch.object(MODULE, 'selected_hosts', return_value=None), \
+                patch.object(MODULE, 'read_only_inventory_json', return_value=inventory_data), \
+                patch.object(MODULE, 'read_only_selected_hosts', return_value=None), \
                 patch.object(
                     MODULE,
                     'validate_print_plan_server_identity',
@@ -2027,8 +2027,8 @@ class PrintPlanShadowTest(unittest.TestCase):
                     return_value={'host': 'raspberrypi5', 'clientId': 'raspberrypi5-server'},
                 ), \
                 patch.object(MODULE, 'classify_release_impact', return_value=(classification, [])), \
-                patch.object(MODULE, 'inventory_json', return_value=inventory_data), \
-                patch.object(MODULE, 'selected_hosts', return_value=None), \
+                patch.object(MODULE, 'read_only_inventory_json', return_value=inventory_data), \
+                patch.object(MODULE, 'read_only_selected_hosts', return_value=None), \
                 patch.object(MODULE, 'read_plan_fleet_release_state', return_value=(fleet_state, [])), \
                 patch('builtins.print') as printed:
             self.assertEqual(MODULE.local_run(args), 0)
@@ -2179,8 +2179,8 @@ class FleetScopeLimitTest(unittest.TestCase):
                 patch.object(MODULE, 'validate_print_plan_checkout'), \
                 patch.object(MODULE, 'canonical_print_plan_inventory', return_value='inventory.yml'), \
                 patch.object(MODULE, 'validate_print_plan_server_identity', return_value={'host': 'raspberrypi5', 'clientId': 'raspberrypi5-server'}), \
-                patch.object(MODULE, 'inventory_json', return_value=self.INVENTORY), \
-                patch.object(MODULE, 'selected_hosts', return_value=[]), \
+                patch.object(MODULE, 'read_only_inventory_json', return_value=self.INVENTORY), \
+                patch.object(MODULE, 'read_only_selected_hosts', return_value=[]), \
                 patch.object(MODULE, 'read_plan_fleet_release_state', return_value=(self.FLEET, [])):
             with self.assertRaisesRegex(RuntimeError, 'selected no hosts'):
                 MODULE.build_print_plan(
@@ -2199,8 +2199,8 @@ class FleetScopeLimitTest(unittest.TestCase):
                 patch.object(MODULE, 'validate_print_plan_checkout'), \
                 patch.object(MODULE, 'canonical_print_plan_inventory', return_value='inventory.yml'), \
                 patch.object(MODULE, 'validate_print_plan_server_identity', return_value={'host': 'raspberrypi5', 'clientId': 'raspberrypi5-server'}), \
-                patch.object(MODULE, 'inventory_json', return_value=self.INVENTORY), \
-                patch.object(MODULE, 'selected_hosts', return_value=['kiosk-b']), \
+                patch.object(MODULE, 'read_only_inventory_json', return_value=self.INVENTORY), \
+                patch.object(MODULE, 'read_only_selected_hosts', return_value=['kiosk-b']), \
                 patch.object(MODULE, 'read_plan_fleet_release_state', return_value=(self.FLEET, [])), \
                 patch.object(MODULE, 'classify_release_impact', return_value=(classification, [])):
             with self.assertRaisesRegex(RuntimeError, 'excludes required Pi5'):
@@ -2419,8 +2419,8 @@ class AutoMinimizeTest(unittest.TestCase):
                     return_value={'host': 'raspberrypi5', 'clientId': 'raspberrypi5-server'},
                 ), \
                 patch.object(MODULE, 'classify_release_impact', return_value=(classification, [])), \
-                patch.object(MODULE, 'inventory_json', return_value=self.INVENTORY), \
-                patch.object(MODULE, 'selected_hosts', return_value=None), \
+                patch.object(MODULE, 'read_only_inventory_json', return_value=self.INVENTORY), \
+                patch.object(MODULE, 'read_only_selected_hosts', return_value=None), \
                 patch.object(
                     MODULE,
                     'read_plan_fleet_release_state',
