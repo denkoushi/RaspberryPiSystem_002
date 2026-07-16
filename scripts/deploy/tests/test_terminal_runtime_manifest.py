@@ -39,6 +39,7 @@ class FakeRuntime:
         self.calls: list[list[str]] = []
         self.units: dict[str, dict[str, str]] = {}
         self.unit_needs_reload: set[str] = set()
+        self.stop_results_failed: set[str] = set()
         self.timer_persistent: dict[str, bool] = {}
         self.images: dict[str, str] = {}
         self.containers: dict[tuple[str, str], dict] = {}
@@ -151,6 +152,7 @@ class FakeRuntime:
         cloned = FakeRuntime(compose=self.compose, bind_source=self.bind_source)
         cloned.units = copy.deepcopy(self.units)
         cloned.unit_needs_reload = set(self.unit_needs_reload)
+        cloned.stop_results_failed = set(self.stop_results_failed)
         cloned.timer_persistent = copy.deepcopy(self.timer_persistent)
         cloned.images = copy.deepcopy(self.images)
         cloned.containers = copy.deepcopy(self.containers)
@@ -336,6 +338,10 @@ class FakeRuntime:
             if action == "start":
                 state["ActiveState"] = "active"
             elif action == "stop":
+                state["ActiveState"] = (
+                    "failed" if unit in self.stop_results_failed else "inactive"
+                )
+            elif action == "reset-failed" and state["ActiveState"] == "failed":
                 state["ActiveState"] = "inactive"
             elif action == "unmask" and state["UnitFileState"] in {
                 "masked",
@@ -997,6 +1003,38 @@ class TerminalRuntimeManifestTest(unittest.TestCase):
         )
         self.assertEqual(
             self.fake.units["signage-lite-update.timer"]["ActiveState"], "active"
+        )
+
+    def test_restore_clears_failed_state_left_by_intentional_service_stop(self):
+        self.fake.add_unit(
+            "signage-lite.service", unit_file="enabled", active="active"
+        )
+        captured = self.capture(
+            units=["signage-lite.service"],
+            restart_on_restore_units=["signage-lite.service"],
+        )
+        self.fake.unit_needs_reload.add("signage-lite.service")
+        self.fake.stop_results_failed.add("signage-lite.service")
+        self.fake.calls.clear()
+
+        restored = self.restore(captured["manifestSha256"])
+
+        self.assertTrue(restored["restored"])
+        mutations = self.fake.mutation_calls
+        self.assertLess(
+            mutations.index(["systemctl", "stop", "signage-lite.service"]),
+            mutations.index(
+                ["systemctl", "reset-failed", "signage-lite.service"]
+            ),
+        )
+        self.assertLess(
+            mutations.index(
+                ["systemctl", "reset-failed", "signage-lite.service"]
+            ),
+            mutations.index(["systemctl", "daemon-reload"]),
+        )
+        self.assertEqual(
+            self.fake.units["signage-lite.service"]["ActiveState"], "active"
         )
 
     def test_capture_normalizes_real_systemd_missing_unit_output(self):
