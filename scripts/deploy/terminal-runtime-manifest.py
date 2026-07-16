@@ -60,14 +60,13 @@ ALLOWED_UNITS = frozenset(
         "haizen-agent.service",
     }
 )
-TRANSIENT_ONESHOT_UNITS = frozenset(
-    {
-        "status-agent.service",
-        "signage-lite-update.service",
-        "signage-lite-watchdog.service",
-        "signage-daily-reboot.service",
-    }
-)
+TRANSIENT_ONESHOT_TIMER_BY_UNIT = {
+    "status-agent.service": "status-agent.timer",
+    "signage-lite-update.service": "signage-lite-update.timer",
+    "signage-lite-watchdog.service": "signage-lite-watchdog.timer",
+    "signage-daily-reboot.service": "signage-daily-reboot.timer",
+}
+TRANSIENT_ONESHOT_UNITS = frozenset(TRANSIENT_ONESHOT_TIMER_BY_UNIT)
 RESTART_ON_RESTORE_UNITS = frozenset(
     {
         "kiosk-browser.service",
@@ -2267,7 +2266,27 @@ def restore(
         for record in manifest["docker"]:
             _verify_docker_record(record)
         for record in manifest["units"]:
-            if _systemd_state(record["name"]) != record:
+            observation = _systemd_observation(
+                record["name"],
+                allow_transient_oneshot_transition=True,
+            )
+            if observation.needs_daemon_reload:
+                raise RuntimeManifestError("systemd postflight verification failed")
+            observed = observation.state
+            if observation.transitional:
+                # Reactivating a Persistent timer can immediately start its
+                # allowlisted oneshot.  The unit was proven inactive before
+                # timers were restored; while the timer-owned execution is in
+                # flight, compare its durable definition against the sealed
+                # inactive baseline without accepting failed or unrelated
+                # transitional services.
+                owner_timer = TRANSIENT_ONESHOT_TIMER_BY_UNIT[record["name"]]
+                if owner_timer not in transition_unit_names:
+                    raise RuntimeManifestError(
+                        "systemd postflight verification failed"
+                    )
+                observed = {**observed, "activeState": "inactive"}
+            if observed != record:
                 raise RuntimeManifestError("systemd postflight verification failed")
 
         if not restored_receipt_exists:
