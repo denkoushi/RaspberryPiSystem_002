@@ -161,6 +161,7 @@ class ManifestContext:
 class SystemdObservation:
     state: dict[str, Any]
     needs_daemon_reload: bool
+    transitional: bool = False
 
 
 def _run_command(
@@ -493,7 +494,10 @@ def _validate_unit_name(value: Any) -> str:
 
 
 def _systemd_observation(
-    unit: str, *, allow_current_failed: bool = False
+    unit: str,
+    *,
+    allow_current_failed: bool = False,
+    allow_transient_oneshot_transition: bool = False,
 ) -> SystemdObservation:
     safe_unit = _validate_unit_name(unit)
     properties = [
@@ -543,13 +547,21 @@ def _systemd_observation(
         "activeState": values["ActiveState"],
         "persistent": persistent,
     }
+    transitional = (
+        safe_unit in TRANSIENT_ONESHOT_UNITS
+        and values["ActiveState"] in {"activating", "deactivating"}
+    )
     return SystemdObservation(
         state=_validate_unit_record(
             state,
             allow_current_failed=allow_current_failed,
             allow_transient_oneshot_active=True,
+            allow_transient_oneshot_transition=(
+                allow_transient_oneshot_transition
+            ),
         ),
         needs_daemon_reload=needs_daemon_reload == "yes",
+        transitional=transitional,
     )
 
 
@@ -583,6 +595,7 @@ def _validate_unit_record(
     *,
     allow_current_failed: bool = False,
     allow_transient_oneshot_active: bool = False,
+    allow_transient_oneshot_transition: bool = False,
 ) -> dict[str, Any]:
     if not isinstance(value, dict) or set(value) != {
         "name",
@@ -606,8 +619,15 @@ def _validate_unit_record(
         raise RuntimeManifestError("systemd load state is unsupported")
     if unit_file not in ALLOWED_UNIT_FILE_STATES:
         raise RuntimeManifestError("systemd unit-file state is unsupported")
-    if active not in ALLOWED_ACTIVE_STATES and not (
-        allow_current_failed and active == "failed"
+    transition_allowed = (
+        allow_transient_oneshot_transition
+        and name in TRANSIENT_ONESHOT_UNITS
+        and active in {"activating", "deactivating"}
+    )
+    if (
+        active not in ALLOWED_ACTIVE_STATES
+        and not (allow_current_failed and active == "failed")
+        and not transition_allowed
     ):
         raise RuntimeManifestError("systemd unit is not in a stable active/inactive state")
     if (
@@ -2038,12 +2058,18 @@ def preflight_restore(
     for record in manifest["units"]:
         try:
             observation = _systemd_observation(
-                record["name"], allow_current_failed=True
+                record["name"],
+                allow_current_failed=True,
+                allow_transient_oneshot_transition=True,
             )
         except (RuntimeManifestError, OSError) as error:
             issues.append(f"systemd {record['name']}: {error}")
             continue
-        if observation.needs_daemon_reload or observation.state != record:
+        if (
+            observation.transitional
+            or observation.needs_daemon_reload
+            or observation.state != record
+        ):
             requires_reconciliation = True
     for record in manifest["docker"]:
         try:
@@ -2101,6 +2127,38 @@ def restore(
         # timer, and avoids treating unrelated services (notably lightdm) as a
         # reason to tear down a healthy GUI session.
         safety_timer_names: set[str] = set()
+        # Quiesce every active timer before taking the full runtime snapshot.
+        # Otherwise a 30-second signage timer can start a oneshot between the
+        # read-only preflight and this restore, making the snapshot fail on a
+        # legitimate short-lived ``activating`` state before the timer is ever
+        # stopped.  Already-triggered oneshots are then stopped to their sealed
+        # inactive baseline while no timer can start another instance.
+        for record in ordered_units:
+            if not record["name"].endswith(".timer"):
+                continue
+            current_timer = _systemd_observation(
+                record["name"], allow_current_failed=True
+            ).state
+            if current_timer["activeState"] in {"active", "failed"}:
+                _quiesce_unit(record, current_timer)
+                safety_timer_names.add(record["name"])
+        for record in ordered_units:
+            if (
+                record["name"] not in TRANSIENT_ONESHOT_UNITS
+                or record["loadState"] == "not-found"
+            ):
+                continue
+            _run_command(
+                ["systemctl", "stop", record["name"]],
+                allowed_exit_codes=(0, 5),
+            )
+            stopped = _systemd_observation(
+                record["name"], allow_current_failed=True
+            ).state
+            if stopped["activeState"] != "inactive":
+                raise RuntimeManifestError(
+                    "transient oneshot did not quiesce before rollback"
+                )
         for _attempt in range(3):
             current_units = {
                 record["name"]: _systemd_observation(

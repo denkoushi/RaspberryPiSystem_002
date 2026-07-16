@@ -68,6 +68,7 @@ class ClassifyDeployImpactTest(unittest.TestCase):
                 'scripts/deploy/classify-deploy-impact.py',
                 'scripts/deploy/rollback-manifest.py',
                 'scripts/deploy/rolling_release/backends/ansible.py',
+                'scripts/deploy/terminal-runtime-manifest.py',
             ]
         )
         self.assertFalse(result['server'])
