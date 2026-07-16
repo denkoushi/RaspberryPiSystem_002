@@ -927,6 +927,78 @@ class TerminalRuntimeManifestTest(unittest.TestCase):
         self.assertEqual(receipt.read_bytes(), receipt_before)
         self.assertNotIn("kiosk-browser.service", self.fake.unit_needs_reload)
 
+    def test_preflight_treats_periodic_oneshot_transition_as_reconciliation(self):
+        self.fake.add_unit(
+            "status-agent.service", unit_file="enabled", active="inactive"
+        )
+        captured = self.capture(units=["status-agent.service"])
+        self.fake.units["status-agent.service"]["ActiveState"] = "activating"
+        self.fake.calls.clear()
+
+        preflight = MODULE.preflight_restore(
+            root=self.storage,
+            run_id=self.run_id,
+            host=self.host,
+            expected_manifest_sha256=captured["manifestSha256"],
+        )
+
+        self.assertTrue(preflight["ready"])
+        self.assertTrue(preflight["requiresRuntimeReconciliation"])
+        self.assertEqual(preflight["issues"], [])
+        self.assertEqual(self.fake.mutation_calls, [])
+
+    def test_restore_quiesces_timer_before_periodic_oneshot_transition(self):
+        units = [
+            "status-agent.service",
+            "status-agent.timer",
+            "signage-lite-update.service",
+            "signage-lite-update.timer",
+        ]
+        for unit in units:
+            self.fake.add_unit(
+                unit,
+                unit_file=("enabled" if unit.endswith(".timer") else "static"),
+                active=("active" if unit.endswith(".timer") else "inactive"),
+            )
+        captured = self.capture(units=units)
+        self.fake.units["status-agent.service"]["ActiveState"] = "activating"
+        self.fake.units["signage-lite-update.service"][
+            "ActiveState"
+        ] = "activating"
+        self.fake.unit_needs_reload.update(units)
+        self.fake.calls.clear()
+
+        restored = self.restore(captured["manifestSha256"])
+
+        self.assertTrue(restored["restored"])
+        stop_calls = [
+            call[-1]
+            for call in self.fake.mutation_calls
+            if call[:2] == ["systemctl", "stop"]
+        ]
+        self.assertEqual(
+            stop_calls[:4],
+            [
+                "signage-lite-update.timer",
+                "status-agent.timer",
+                "signage-lite-update.service",
+                "status-agent.service",
+            ],
+        )
+        self.assertEqual(
+            self.fake.units["status-agent.service"]["ActiveState"], "inactive"
+        )
+        self.assertEqual(
+            self.fake.units["signage-lite-update.service"]["ActiveState"],
+            "inactive",
+        )
+        self.assertEqual(
+            self.fake.units["status-agent.timer"]["ActiveState"], "active"
+        )
+        self.assertEqual(
+            self.fake.units["signage-lite-update.timer"]["ActiveState"], "active"
+        )
+
     def test_capture_normalizes_real_systemd_missing_unit_output(self):
         self.fake.add_unit(
             "haizen-agent.service",
