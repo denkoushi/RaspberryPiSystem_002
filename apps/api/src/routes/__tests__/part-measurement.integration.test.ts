@@ -3782,6 +3782,7 @@ describe('part-measurement templates API', () => {
     });
     expect(finalOkRes.statusCode).toBe(200);
     expect(finalOkRes.json().entry.values[0]?.judgementStatus).toBe('FINAL_OK');
+    expect(finalOkRes.json().entry.values[0]?.operatorReviewStatus).toBe('APPROVED');
     const editAfterFinalJudgementRes = await app.inject({
       method: 'PATCH',
       url: `/api/part-measurement/self-inspection/sessions/${session.id}/inspector-entries/${inspectorEntryIds[0]}`,
@@ -3817,6 +3818,7 @@ describe('part-measurement templates API', () => {
     });
     expect(finalNgRes.statusCode).toBe(200);
     expect(finalNgRes.json().entry.values[0]?.judgementStatus).toBe('FINAL_NG');
+    expect(finalNgRes.json().entry.values[0]?.operatorReviewStatus).toBe('REJECTED');
 
     const completeRes = await app.inject({
       method: 'POST',
@@ -3832,12 +3834,23 @@ describe('part-measurement templates API', () => {
       where: { entry: { sessionId: session.id } },
       orderBy: { entry: { entryIndex: 'asc' } }
     });
-    expect(operatorValues.map((value) => value.reviewStatus)).toEqual(['APPROVED', 'REJECTED']);
+    expect(operatorValues.map((value) => value.reviewStatus)).toEqual(['PENDING', 'PENDING']);
+    expect(operatorValues.map((value) => value.finalReviewStatus)).toEqual([
+      'APPROVED',
+      'REJECTED'
+    ]);
     const inspectorValues = await prisma.selfInspectionInspectorMeasurementValue.findMany({
       where: { inspectorEntry: { sessionId: session.id } },
       orderBy: { inspectorEntry: { entryIndex: 'asc' } }
     });
-    expect(inspectorValues.map((value) => value.judgementStatus)).toEqual(['FINAL_OK', 'FINAL_NG']);
+    expect(inspectorValues.map((value) => value.judgementStatus)).toEqual([
+      'NOT_EVALUATED',
+      'NOT_EVALUATED'
+    ]);
+    expect(inspectorValues.map((value) => value.finalJudgementStatus)).toEqual([
+      'FINAL_OK',
+      'FINAL_NG'
+    ]);
   });
 
   it('records multiple loan-backed pre-use inspected instruments for one self-inspection entry', async () => {

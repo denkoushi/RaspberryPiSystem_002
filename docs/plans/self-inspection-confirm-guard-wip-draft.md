@@ -71,12 +71,16 @@ for every measurer-side NG point.
    the entry can be confirmed and the measurer can finish with NG values present.
 2. Keep the inspector remeasurement entry unchanged, then require `FINAL_OK` or
    `FINAL_NG` for every measurer-side out-of-tolerance point before completion.
-3. Map final decisions back to the operator measurement as `APPROVED` or
-   `REJECTED`; final NG is a valid completed inspection result.
+3. Preserve the measurer's original `PENDING` result for audit, and store the
+   inspector's final result separately as `APPROVED` or `REJECTED`. The API
+   exposes the final result after judgement; final NG is a valid completed
+   inspection result.
 4. Mark new and reset sessions as `INSPECTOR_FINAL_JUDGEMENT`. Existing sessions
-   default to `LEGACY_RECORD_APPROVAL` and retain the previous approval flow.
-5. Use an Expand-only migration: add enum values and the workflow column without
-   deleting or rewriting existing records.
+   have a null workflow value, which the compatibility boundary exposes as
+   `LEGACY_RECORD_APPROVAL`, and retain the previous approval flow.
+5. Use an Expand-only migration containing only nullable `TEXT` column additions.
+   This satisfies the production migration contract without rewriting existing
+   records or altering PostgreSQL enum types.
 
 ### Validation
 
@@ -87,5 +91,6 @@ for every measurer-side NG point.
 - Draft unit tests: out-of-tolerance acknowledgement survives persistence and an
   unchanged DRAFT entry can still be confirmed.
 - Web tests: action state and WIP routing reflect the new handoff.
-- API/Web TypeScript checks, full lint, Prisma validation, migration deploy on a
-  temporary PostgreSQL database, and `git diff --check` all pass.
+- API/Web TypeScript checks, full lint, Prisma validation, all 148 migrations on
+  a fresh temporary PostgreSQL database, 80 related API tests, and
+  `git diff --check` all pass.

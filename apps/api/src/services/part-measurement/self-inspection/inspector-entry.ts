@@ -112,9 +112,7 @@ export async function saveInspectorEntry(
     if (existingEntry && options?.ifUnmodifiedSince) {
       assertEntryUnmodifiedSince(options.ifUnmodifiedSince, existingEntry.updatedAt);
     }
-    if (
-      existingEntry?.values.some((value) => value.judgementStatus !== 'NOT_EVALUATED')
-    ) {
+    if (existingEntry?.values.some((value) => value.finalJudgementStatus != null)) {
       throw new ApiError(409, '最終判定済みの検査員再測定は変更できません');
     }
 
@@ -218,7 +216,9 @@ export async function saveInspectorJudgements(
       include: {
         values: {
           include: {
-            operatorMeasurementValue: { select: { reviewStatus: true } }
+            operatorMeasurementValue: {
+              select: { reviewStatus: true, finalReviewStatus: true }
+            }
           }
         }
       }
@@ -230,6 +230,15 @@ export async function saveInspectorJudgements(
     );
     if (pendingValues.length === 0) {
       throw new ApiError(409, 'この入力に最終判定が必要な公差外測定値はありません');
+    }
+    if (
+      pendingValues.some(
+        (value) =>
+          value.finalJudgementStatus != null ||
+          value.operatorMeasurementValue?.finalReviewStatus != null
+      )
+    ) {
+      throw new ApiError(409, 'この入力の公差外測定値は最終判定済みです');
     }
     const judgementByItemId = new Map(input.judgements.map((value) => [value.templateItemId, value]));
     if (judgementByItemId.size !== input.judgements.length) {
@@ -252,7 +261,7 @@ export async function saveInspectorJudgements(
         await tx.selfInspectionInspectorMeasurementValue.update({
           where: { id: value.id },
           data: {
-            judgementStatus: judgement.judgementStatus,
+            finalJudgementStatus: judgement.judgementStatus,
             judgedAt,
             judgementComment: null
           }
@@ -261,7 +270,7 @@ export async function saveInspectorJudgements(
           await tx.selfInspectionMeasurementValue.update({
             where: { id: value.operatorMeasurementValueId },
             data: {
-              reviewStatus:
+              finalReviewStatus:
                 judgement.judgementStatus === 'FINAL_OK' ? 'APPROVED' : 'REJECTED',
               approvedAt:
                 judgement.judgementStatus === 'FINAL_OK' ? judgedAt : null,

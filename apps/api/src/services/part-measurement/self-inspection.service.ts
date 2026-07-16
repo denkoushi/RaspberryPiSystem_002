@@ -68,6 +68,7 @@ import {
   requiredRegistrationLabelForPolicy,
   serializeInspectorEntry,
   serializeInspectorEntryMeta,
+  serializeDecisionWorkflow,
   serializeLotEntry,
   serializeLotEntryMeta,
   serializeRecordApproval,
@@ -346,7 +347,10 @@ export class SelfInspectionService {
     const rows = await prisma.selfInspectionSession.findMany({
       where: {
         recordApprovalRequiredAt: { not: null },
-        decisionWorkflow: 'LEGACY_RECORD_APPROVAL',
+        OR: [
+          { decisionWorkflow: null },
+          { decisionWorkflow: 'LEGACY_RECORD_APPROVAL' }
+        ],
         ...(productNo ? { productNo: { contains: productNo, mode: 'insensitive' } } : {}),
         ...(resourceCd ? { resourceCd: { equals: resourceCd, mode: 'insensitive' } } : {}),
         ...(query.processGroup ? { processGroup: query.processGroup } : {}),
@@ -379,7 +383,7 @@ export class SelfInspectionService {
     if (
       !session ||
       !session.recordApprovalRequiredAt ||
-      session.decisionWorkflow !== 'LEGACY_RECORD_APPROVAL'
+      session.decisionWorkflow === 'INSPECTOR_FINAL_JUDGEMENT'
     ) {
       throw new ApiError(404, '検査記録承認対象の自主検査セッションが見つかりません');
     }
@@ -458,7 +462,7 @@ export class SelfInspectionService {
       if (!existing || !existing.recordApprovalRequiredAt) {
         throw new ApiError(404, '検査記録承認対象の自主検査セッションが見つかりません');
       }
-      if (existing.decisionWorkflow !== 'LEGACY_RECORD_APPROVAL') {
+      if (existing.decisionWorkflow === 'INSPECTOR_FINAL_JUDGEMENT') {
         throw new ApiError(409, 'この自主検査は検査員が最終判定して完了してください');
       }
       if (existing.recordApproval) {
@@ -730,7 +734,7 @@ export class SelfInspectionService {
       completedAt: session.completedAt?.toISOString() ?? null,
       recordApprovalRequiredAt: session.recordApprovalRequiredAt?.toISOString() ?? null,
       recordApprovalWorkflowStartedAt: session.recordApprovalWorkflowStartedAt?.toISOString() ?? null,
-      decisionWorkflow: session.decisionWorkflow,
+      decisionWorkflow: serializeDecisionWorkflow(session.decisionWorkflow),
       inspectorRemeasurementRequiredAt: session.inspectorRemeasurementRequiredAt?.toISOString() ?? null,
       inspectorMeasurementState: inspectorMeasurement.state,
       inspectorRequiredEntryCount: inspectorMeasurement.requiredEntryCount,
@@ -796,7 +800,7 @@ export class SelfInspectionService {
               orderBy: { createdAt: 'asc' },
               include: {
                 operatorMeasurementValue: {
-                  select: { reviewStatus: true }
+                  select: { reviewStatus: true, finalReviewStatus: true }
                 }
               }
             }
@@ -827,7 +831,7 @@ export class SelfInspectionService {
                 orderBy: { createdAt: 'asc' },
                 include: {
                   operatorMeasurementValue: {
-                    select: { reviewStatus: true }
+                    select: { reviewStatus: true, finalReviewStatus: true }
                   }
                 }
               }
@@ -890,7 +894,7 @@ export class SelfInspectionService {
       completedAt: session.completedAt?.toISOString() ?? null,
       recordApprovalRequiredAt: session.recordApprovalRequiredAt?.toISOString() ?? null,
       recordApprovalWorkflowStartedAt: session.recordApprovalWorkflowStartedAt?.toISOString() ?? null,
-      decisionWorkflow: session.decisionWorkflow,
+      decisionWorkflow: serializeDecisionWorkflow(session.decisionWorkflow),
       inspectorRemeasurementRequiredAt: session.inspectorRemeasurementRequiredAt?.toISOString() ?? null,
       inspectorMeasurementState: inspectorMeasurement.state,
       inspectorRequiredEntryCount: inspectorMeasurement.requiredEntryCount,
@@ -1361,7 +1365,7 @@ export class SelfInspectionService {
       const isInspectorFinalization =
         existing.decisionWorkflow === 'INSPECTOR_FINAL_JUDGEMENT';
       if (
-        existing.decisionWorkflow === 'LEGACY_RECORD_APPROVAL' &&
+        !isInspectorFinalization &&
         existing.recordApprovalRequiredAt &&
         !existing.recordApproval
       ) {
@@ -1402,12 +1406,8 @@ export class SelfInspectionService {
         const unjudgedCount = await tx.selfInspectionMeasurementValue.count({
           where: {
             reviewStatus: 'PENDING',
+            finalReviewStatus: null,
             entry: { sessionId, ...confirmedWhere },
-            inspectorMeasurements: {
-              none: {
-                judgementStatus: { in: ['FINAL_OK', 'FINAL_NG'] }
-              }
-            }
           }
         });
         if (unjudgedCount > 0) {
