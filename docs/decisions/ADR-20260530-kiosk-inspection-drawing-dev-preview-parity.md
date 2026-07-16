@@ -60,6 +60,6 @@
 - ブランチ: `feat/kiosk-inspection-drawing-preview-parity` · 代表コミット **`ccacef85`**
 - [ExecPlan](../plans/kiosk-inspection-drawing-mvp-execplan.md)
 - [KB-320 §プレビュー本番パリティ](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-preview-parity-2026-05-30)
-- [deployment.md §2026-05-30 プレビュー](../guides/deployment.md#kiosk-inspection-drawing-preview-parity-2026-05-30)
+- [deployment.md §2026-05-30 プレビュー](../archive/deployments/2026-05.md#kiosk-inspection-drawing-preview-parity-2026-05-30)
 - `apps/web/src/pages/dev/KioskInspectionDrawingDevPreviewChrome.tsx`
 - `apps/web/src/features/kiosk/kioskImmersiveLayoutPolicy.ts`

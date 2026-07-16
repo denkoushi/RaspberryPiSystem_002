@@ -89,7 +89,7 @@ pnpm exec playwright test e2e/inspection-drawing-create-header-layout.spec.ts
 
 Pi4 Detach: stonebase **`20260604-075147-21404`** · raspberrypi4 **`20260604-080658-2223`** · robodrill **`20260604-081126-19736`** · fjv **`20260604-081502-25798`**
 
-標準手順: [deployment.md §フラット band](../guides/deployment.md#kiosk-inspection-drawing-create-header-flat-layout-2026-06-04)
+標準手順: [deployment.md §フラット band](../archive/deployments/2026-06.md#kiosk-inspection-drawing-create-header-flat-layout-2026-06-04)
 
 ## Outcomes & Retrospective
 

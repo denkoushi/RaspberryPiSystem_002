@@ -163,7 +163,7 @@ Standard: [deployment.md](../guides/deployment.md) · `update-all-clients.sh` ·
 
 ### Production deploy (8H/10H + rejected ruler stretch, 2026-06-24)
 
-Standard: [deployment.md §2026-06-24](../guides/deployment.md#kiosk-leaderboard-labor-gantt-ruler-stretch-2026-06-24) · branch `feat/production-schedule-split-orders`
+Standard: [deployment.md §2026-06-24](../archive/deployments/2026-06.md#kiosk-leaderboard-labor-gantt-ruler-stretch-2026-06-24) · branch `feat/production-schedule-split-orders`
 
 | Phase | Host group | Detach Run ID | HEAD | Result | Notes |
 |-------|------------|---------------|------|--------|-------|

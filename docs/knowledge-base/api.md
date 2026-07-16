@@ -20,7 +20,7 @@
 - **Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 141s**）
 - **main 再検証（2026-05-09）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**（WARN は `auto-tuning schedulerログ確認` 0 件で、`PUT global-rank/auto-generate=200` により代替正常判定）
 
-**詳細**: [KB-372（詳細）](./KB-372-fkojunst-mail-winner-triple-postgres-bind-chunk.md)·[deployment.md §FKOJUNST mail winner チャンク](../guides/deployment.md#fkojunst-mail-winner-triple-tuple-in-chunk-2026-05-08)
+**詳細**: [KB-372（詳細）](./KB-372-fkojunst-mail-winner-triple-postgres-bind-chunk.md)·[deployment.md §FKOJUNST mail winner チャンク](../archive/deployments/2026-05.md#fkojunst-mail-winner-triple-tuple-in-chunk-2026-05-08)
 
 ---
 
@@ -69,7 +69,7 @@
 - **Detach**: **`20260508-202603-25493`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**·**`--follow` 約 783s**）
 - **Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 134s**）
 
-**詳細**: [KB-371（詳細）](./KB-371-csv-dashboard-dedup-postgres-bind-limit.md)·[deployment.md §CSV DEDUP バインド上限](../guides/deployment.md#csv-dedup-ingest-postgres-bind-limit-2026-05-08)
+**詳細**: [KB-371（詳細）](./KB-371-csv-dashboard-dedup-postgres-bind-limit.md)·[deployment.md §CSV DEDUP バインド上限](../archive/deployments/2026-05.md#csv-dedup-ingest-postgres-bind-limit-2026-05-08)
 
 ---
 
@@ -689,7 +689,7 @@
 - **仕様**: `MeasuringInstrumentLoanInspectionDataSource` は **`計測機器明細`** 列（JSON 配列。空・無効エントリは **除外**）を出す。`row-instrument-entries.ts` は **JSON 優先**、無い場合は **`計測機器名称一覧`** の従来トークン。`layout-mi-instrument-body.ts` で **貸出中**は **管理番号 1 行目→名称 2 行目**、**行間をベース比 1.5 倍**（返却行は 1 行・将来のグレーアウト等は型分岐で拡張可能）。`measuring-instrument-loan-inspection-renderer.ts` は **行ごと**に `font` / `fill`。
 - **本番**: ブランチ **`feature/mi-inspection-signage-body-typography`**・代表 **`6a6b190b`**・**`raspberrypi5` のみ**（**Pi3 は対象外**）・Detach **`20260423-184152-15152`**・Phase12 **PASS 43 / WARN 0 / FAIL 0**（約 **78s**）。
 - **知見**: `apps/api` 変更のため **Docker 再ビルド**。デプロイ前の **未追跡ファイル**は [KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) どおり **fail-fast** し得る。
-- **トラブルシュート**: Pi4 キオスク・Pi3 サイネージへの追加デプロイは **本差分の必須条件ではない**（前項「カード密度」と同趣旨）。Pi3 だけ当てる場合は **専用節**（[deployment.md の Pi3 節](../guides/deployment.md#ラズパイ3サイネージの更新)）に従い **`--limit raspberrypi3` 単体**。
+- **トラブルシュート**: Pi4 キオスク・Pi3 サイネージへの追加デプロイは **本差分の必須条件ではない**（前項「カード密度」と同趣旨）。Pi3 だけ当てる場合は **専用節**（[deployment.md の Pi3 節](../archive/deployments/legacy-operator-guide-through-2026-07.md#ラズパイ3サイネージの更新)）に従い **`--limit raspberrypi3` 単体**。
 
 **追補（2026-04-23・計測機器点検可視化 返却グレーアウト・`返却件数` 列）**:
 - **仕様**: 業務日窓と `snapshotUpperBoundUtc` 内の **持出し**について、**従業員（borrower 正規化名）×管理番号** ごとに **最新の1件**（`eventAt` 降順で先に現れる＝最も遅い持出し）の状態を採用。最新持出しが **返却時刻以降に閉じている**（`最新返却 >= 持出し eventAt`）場合、当該機器は **返却**として扱い、`計測機器明細` JSON に **`kind: "returned"`**、カード本文は **1 行**・`tone: muted`（`measuring-instrument-loan-inspection-renderer` の `resolveBodyFill`）。**貸出中**は従来どおり 2 行（管理番号→名称、1.5 倍）が先。本文行の整列は **`row-instrument-entries` の `normalizeEntryOrder`（active 前・returned 後）**。
@@ -734,7 +734,7 @@
 
 **追補デプロイ（2026-04-22・UI/配信/ウェッジ）**:
 - ブランチ **`feat/pallet-visualization-ui-fixes`**・代表 **`d3c2f7b5`**（イラスト **公開 GET**・キオスク **左独立スクロール**・**パレット番号視認性**・**キーボードウェッジ**・API/Web 回帰テスト）。
-- **順序**: 上記と同じ **6 台直列**（Pi3 は **`--limit raspberrypi3` のみ**・[deployment.md の Pi3 節](../guides/deployment.md#ラズパイ3サイネージの更新)）。
+- **順序**: 上記と同じ **6 台直列**（Pi3 は **`--limit raspberrypi3` のみ**・[deployment.md の Pi3 節](../archive/deployments/legacy-operator-guide-through-2026-07.md#ラズパイ3サイネージの更新)）。
 - **Detach Run ID**: `20260422-150051-25397` → `20260422-152055-3569` → `20260422-152512-6215` → `20260422-152824-13591` → `20260422-153204-7953` → `20260422-153534-30166`。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **30s**）。
 
@@ -855,7 +855,7 @@
 
 **追補（2026-04-23・配膳スマホ パレット可視化 カード・テンキー即時同期・表示項目拡張・Pi5→Pi4×4→Pi3）**:
 - ブランチ **`feat/mobile-pallet-viz-card-and-tenkey`**・代表 **`faa6e6db`**（`pallet-visualization-display-fields`・`pallet-visualization-query.service.ts`・`pallet-visualization-board-data-source`・`resolvePalletNoFromTenkeyDigitsImmediate`・`palletVizListItemMapping`・`usePalletTenkeyNavBusy`・`KioskMobilePalletVisualizationPage` / `PalletVizItemList` 等）。
-- **順序**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01` → `raspberrypi3`**（各 **`--limit` 単体**・**`--detach --follow`**・Pi3 は **他ホストと並列起動しない**・[deployment.md の Pi3 節](../guides/deployment.md#ラズパイ3サイネージの更新)）。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260423-140752-20500`** → **`20260423-141809-14243`** → **`20260423-142223-32575`** → **`20260423-142535-28478`** → **`20260423-143027-7377`** → **`20260423-143404-3250`**。
+- **順序**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01` → `raspberrypi3`**（各 **`--limit` 単体**・**`--detach --follow`**・Pi3 は **他ホストと並列起動しない**・[deployment.md の Pi3 節](../archive/deployments/legacy-operator-guide-through-2026-07.md#ラズパイ3サイネージの更新)）。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260423-140752-20500`** → **`20260423-141809-14243`** → **`20260423-142223-32575`** → **`20260423-142535-28478`** → **`20260423-143027-7377`** → **`20260423-143404-3250`**。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **25s**）。**HTTP スモーク**: `GET https://100.106.158.2/kiosk/mobile-placement/pallet-viz`・`…/kiosk/pallet-visualization` → **各 200**（**`curl` は自己署名のため `curl -k`**）。
 - **仕様**: 可視化ボード item に **正規化済み機種名（`machineNameDisplay`）**・**着手日**・**個数**・**外寸**を追加。`scheduleSnapshot` を拡張し、**既存 CSV 行は `csvDashboardRowId` からフォールバック**。配膳スマホは **テンキー確定で `palletNo` を即同期**（1〜99・純関数化）、リスト行マッピングを **`palletVizListItemMapping`** に集約。UI は **カード高さ固定**・**製番ラベル整理**・**パレット番号は数字のみ**。
 - **知見**: Pi5 で **`api`/`web` コンテナ再ビルド**（差分検知時）。Pi4 は **Git 同期 + `kiosk-browser` 再起動**。Pi3 は本記録で **ヘルス収集時に `signage-lite` が一時 `exit-code`** でも **post_tasks 後 `signage-lite.service is active`**。

@@ -83,7 +83,7 @@ Pi5 backfill 実績:
 
 ## References
 
-- [deployment.md](../guides/deployment.md#fkojunst-mail-winner-triple-tuple-in-chunk-2026-05-08)
+- [deployment.md](../archive/deployments/2026-05.md#fkojunst-mail-winner-triple-tuple-in-chunk-2026-05-08)
 - [KB-371](./KB-371-csv-dashboard-dedup-postgres-bind-limit.md)
 - [KB-369](./KB-369-leader-order-board-api-internal-latency.md#process-change-residual-evidence-persistence2026-06-23--pr-464)
 - [ADR-20260508-fkojunst-status-sole-source](../decisions/ADR-20260508-fkojunst-status-sole-source.md)

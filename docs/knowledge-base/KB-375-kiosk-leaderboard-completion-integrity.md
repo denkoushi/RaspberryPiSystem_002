@@ -79,7 +79,7 @@ update-frequency: medium
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **30s**）
 - **DB 事後**: **`externallyCompletedFromScheduleCsvDisappeared=true` → 0 件**（effective completion は **手動 OR メール `C`/`X`** のみ）
 - **運用スモーク（自動·DB）**: 製番 **BA1S6202** / **`FSIGENCD=035`** で **`csv_disappeared=f`**。**`fk_status=C`** の行は **意図どおりグレー**（5/22 の **`R` + 消失完了** は再現しない）
-- **記録**: [deployment.md §2026-05-26](../guides/deployment.md#kiosk-completion-status-only-2026-05-26)·[ADR-20260526](../decisions/ADR-20260526-production-schedule-completion-status-only.md)
+- **記録**: [deployment.md §2026-05-26](../archive/deployments/2026-05.md#kiosk-completion-status-only-2026-05-26)·[ADR-20260526](../decisions/ADR-20260526-production-schedule-completion-status-only.md)
 
 ## Production（2026-06-01 · **完了後フッタ工程チップ装飾の再同期**） {#production-2026-06-01-completion-decoration-resync}
 
@@ -107,12 +107,12 @@ update-frequency: medium
   - **行だけ完了・チップ未完** → 装飾後取り bundle 未反映 / **`fe31aa99` 未デプロイ** / 強制リロード。
   - **ポーリングごとに decorations POST が数十件** → **代表行 1 件/partKey** 未適用の旧 JS。
   - **他端末完了が即反映されない** → **120s キャッシュ SLA**（仕様）·本 Fix は **自端末の stale 検出**が主目的。
-- **記録**: [deployment.md §2026-06-01](../guides/deployment.md#kiosk-leaderboard-completion-decoration-resync-2026-06-01)·[KB-374 §装飾 stale](./KB-374-leaderboard-board-continue-cursor-contract.md#完了後フッタ工程チップ装飾の再同期2026-06-01--fixkiosk-leaderboard-completion-decoration-resync)·[verification-checklist §6.6.29](../guides/verification-checklist.md#kiosk-leaderboard-completion-decoration-resync-verification-2026-06-01)
+- **記録**: [deployment.md §2026-06-01](../archive/deployments/2026-06.md#kiosk-leaderboard-completion-decoration-resync-2026-06-01)·[KB-374 §装飾 stale](./KB-374-leaderboard-board-continue-cursor-contract.md#完了後フッタ工程チップ装飾の再同期2026-06-01--fixkiosk-leaderboard-completion-decoration-resync)·[verification-checklist §6.6.29](../guides/verification-checklist.md#kiosk-leaderboard-completion-decoration-resync-verification-2026-06-01)
 
 ## References
 
-- [deployment.md §KB-375 本番（2026-05-10）](../guides/deployment.md#kiosk-leaderboard-completion-integrity-2026-05-10)
-- [deployment.md §完了正本限定（2026-05-26）](../guides/deployment.md#kiosk-completion-status-only-2026-05-26)
+- [deployment.md §KB-375 本番（2026-05-10）](../archive/deployments/2026-05.md#kiosk-leaderboard-completion-integrity-2026-05-10)
+- [deployment.md §完了正本限定（2026-05-26）](../archive/deployments/2026-05.md#kiosk-completion-status-only-2026-05-26)
 - [KB-297 §リーダー順位ボード](./KB-297-kiosk-due-management-workflow.md#リーダー順位ボード納期ベース整列手動順-api-反映2026-04-01)
 - [KB-369 順位ボードAPI内部レイテンシ](./KB-369-leader-order-board-api-internal-latency.md)
 - [KB-376 装飾スコープとフッタwinner整合](./KB-376-leaderboard-footer-display-scope-winner-alignment.md)

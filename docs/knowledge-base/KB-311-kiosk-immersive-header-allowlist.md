@@ -92,7 +92,7 @@ category: knowledge-base
 ### 本番反映（2026-05-22・Pi5 + キオスク Pi4 全4台）
 
 - **ブランチ**: `feat/kiosk-bottom-center-header-reveal`（マージ代表 **`cbeb6bbc`**）
-- **標準**: [deployment.md §下端リビール](../guides/deployment.md#kiosk-bottom-center-header-reveal-2026-05-22)
+- **標準**: [deployment.md §下端リビール](../archive/deployments/2026-05.md#kiosk-bottom-center-header-reveal-2026-05-22)
 - **`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`** · `update-all-clients.sh feat/kiosk-bottom-center-header-reveal infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**1 台ずつ**）
 
 | ホスト | Detach Run ID | PLAY RECAP |
@@ -162,7 +162,7 @@ category: knowledge-base
 ## References
 
 - [`KioskLayout.tsx`](../../apps/web/src/layouts/KioskLayout.tsx)
-- [deployment.md §下端リビール](../guides/deployment.md#kiosk-bottom-center-header-reveal-2026-05-22)
+- [deployment.md §下端リビール](../archive/deployments/2026-05.md#kiosk-bottom-center-header-reveal-2026-05-22)
 - [deploy-status-recovery.md §下端リビール](../runbooks/deploy-status-recovery.md)（検証表）
 - [KB-297 手動順番・沉浸式（2026-03-21）](./KB-297-kiosk-due-management-workflow.md#kiosk-immersive-allowlist-manual-order-row-2026-03-21)
 - PR / ブランチ: `feat/kiosk-bottom-center-header-reveal` · CI **`26262397906`**

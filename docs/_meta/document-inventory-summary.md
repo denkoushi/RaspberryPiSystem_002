@@ -11,40 +11,40 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 
 | Metric | Count |
 |--------|------:|
-| Documents | 465 |
-| Total lines | 143753 |
-| Total bytes | 10615959 |
-| With frontmatter | 167 |
-| With status | 27 |
-| source_of_truth declared | 10 |
-| References to EXEC_PLAN.md | 63 |
+| Documents | 521 |
+| Total lines | 150223 |
+| Total bytes | 11235648 |
+| With frontmatter | 209 |
+| With status | 67 |
+| source_of_truth declared | 39 |
+| References to EXEC_PLAN.md | 64 |
 | Question-mark corruption documents | 1 |
 | Replacement-character documents | 1 |
-| Long-line documents | 20 |
-| Local links | 5302 |
-| Broken local links | 109 |
-| Documents over 1,000 lines | 27 |
-| Documents over 3,000 lines | 7 |
+| Long-line documents | 23 |
+| Local links | 5526 |
+| Broken local links | 90 |
+| Documents over 1,000 lines | 28 |
+| Documents over 3,000 lines | 6 |
 
 ## Largest Documents
 
 | Path | Lines | Bytes |
 |------|------:|------:|
 | `docs/plans/docs-canonicalization-roadmap.md` | 5580 | 232496 |
-| `docs/guides/deployment.md` | 5236 | 791268 |
-| `docs/knowledge-base/api.md` | 4881 | 354497 |
+| `docs/knowledge-base/api.md` | 4881 | 354637 |
 | `EXEC_PLAN.md` | 4660 | 976722 |
 | `docs/knowledge-base/frontend.md` | 4643 | 277726 |
 | `docs/knowledge-base/infrastructure/ansible-deployment.md` | 4368 | 281572 |
-| `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` | 3195 | 433593 |
-| `docs/architecture/deployment-modules.md` | 2523 | 128110 |
-| `docs/knowledge-base/infrastructure/signage.md` | 2196 | 188223 |
-| `docs/knowledge-base/infrastructure/backup-restore.md` | 2190 | 135175 |
-| `docs/INDEX.md` | 1870 | 317342 |
-| `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1749 | 186036 |
-| `docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md` | 1654 | 153339 |
-| `docs/knowledge-base/infrastructure/miscellaneous.md` | 1322 | 74222 |
-| `docs/knowledge-base/infrastructure/security.md` | 1312 | 81480 |
+| `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` | 3195 | 433743 |
+| `docs/archive/deployments/2026-05.md` | 2571 | 499357 |
+| `docs/archive/architecture/deployment-modules-legacy-through-2026-07.md` | 2522 | 128149 |
+| `docs/knowledge-base/infrastructure/backup-restore.md` | 2208 | 137917 |
+| `docs/knowledge-base/infrastructure/signage.md` | 2196 | 188323 |
+| `docs/INDEX.md` | 1965 | 336878 |
+| `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1871 | 206136 |
+| `docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md` | 1654 | 153539 |
+| `docs/archive/deployments/legacy-operator-guide-through-2026-07.md` | 1600 | 108028 |
+| `docs/runbooks/kiosk-part-measurement.md` | 1381 | 114691 |
 
 ## EXEC_PLAN References
 
@@ -60,37 +60,37 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/INDEX.md`
 - `docs/REFACTORING_PLAN.md`
 - `docs/_meta/document-migration-ledger.md`
-- `docs/architecture/deployment-modules.md`
 - `docs/architecture/overview.md`
+- `docs/archive/architecture/deployment-modules-legacy-through-2026-07.md`
+- `docs/archive/deployments/2026-04.md`
+- `docs/archive/deployments/2026-05.md`
 - `docs/decisions/ADR-20260306-lowlevel-observability.md`
 - `docs/decisions/ADR-20260502-dgx-resource-control-targets.md`
 - `docs/decisions/ADR-20260508-leaderboard-board-aggregate-api.md`
 - `docs/guides/ai-handoff.md`
-- `docs/guides/ci-troubleshooting.md`
-- `docs/guides/deployment.md`
 
 ## Long-Line Documents
 
 - `EXEC_PLAN.md` (23:1093, 31:1026, 44:1017)
-- `docs/INDEX.md` (158:1124, 174:1234, 178:1014)
-- `docs/guides/deployment.md` (1434:24994, 2261:1242, 3090:1101)
+- `docs/INDEX.md` (246:1132, 262:1242, 266:1022)
+- `docs/archive/deployments/2026-04.md` (83:1066)
+- `docs/archive/deployments/2026-05.md` (815:25090, 1642:1257, 2471:1119)
+- `docs/decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md` (47:1010)
 - `docs/guides/phase3-token-refresh-test-results.md` (94:1437)
-- `docs/guides/verification-checklist.md` (622:1631)
+- `docs/guides/verification-checklist.md` (623:1641)
 - `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` (214:1414, 216:1048, 225:1224)
 - `docs/knowledge-base/KB-313-kiosk-documents.md` (137:1274, 157:1178)
-- `docs/knowledge-base/KB-320-kiosk-part-measurement.md` (1682:1045, 1689:1213)
+- `docs/knowledge-base/KB-320-kiosk-part-measurement.md` (1804:1045, 1811:1213)
 - `docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md` (13:1164, 295:1220, 297:1290)
-- `docs/knowledge-base/infrastructure/signage.md` (23:1023, 29:1221, 349:1050)
+- `docs/knowledge-base/infrastructure/signage.md` (23:1023, 29:1221, 349:1060)
+- `docs/plans/deployment-foundation-refactor-execplan.md` (99:1226, 822:1025, 828:1002)
 - `docs/plans/dgx-spark-local-llm-migration-execplan.md` (38:1075)
+- `docs/plans/pi5-minimal-downtime-phase2.md` (130:1083)
 - `docs/plans/solid-refactor-phase3-execplan-202607.md` (28:1154, 30:1151)
 - `docs/plans/solid-refactor-phase4-execplan-202607.md` (30:1179, 31:1213, 32:1328)
 - `docs/plans/solid-refactor-phase5-execplan-202607.md` (31:1231, 32:1107, 95:1206)
 - `docs/plans/solid-refactor-phase6-execplan-202607.md` (32:1014, 33:1055, 34:1565)
-- `docs/runbooks/deploy-status-recovery.md` (44:1743, 84:1016, 85:1999)
-- `docs/runbooks/dgx-system-prod-local-llm.md` (46:1202, 126:1193, 139:1684)
-- `docs/runbooks/kiosk-documents.md` (174:1747)
-- `docs/runbooks/mobile-placement-smartphone.md` (3:1780, 16:1012, 26:2108)
-- `docs/runbooks/zero2w-tanaban-edge-setup.md` (77:1038)
+- `docs/runbooks/dgx-system-prod-local-llm.md` (46:1212, 126:1193, 139:1694)
 
 ## Broken Local Links
 
@@ -110,26 +110,6 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/guides/csv-import-export.md` -> `./knowledge-base/frontend.md#kb-112-csvインポート構造改善と計測機器吊具対応` (docs/guides/knowledge-base/frontend.md)
 - `docs/guides/csv-import-export.md` -> `./knowledge-base/frontend.md#kb-113-gmail件名パターンの管理コンソール編集機能` (docs/guides/knowledge-base/frontend.md)
 - `docs/guides/csv-import-history-migration.md` -> `./prisma-migrations.md` (docs/guides/prisma-migrations.md)
-- `docs/guides/deployment.md` -> `./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-board-seiban-list-panel-2026-04-29` (docs/guides/knowledge-base/KB-297-kiosk-due-management-workflow.md)
-- `docs/guides/deployment.md` -> `./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-card-row-emphasis-layout-2026-06-05` (docs/guides/knowledge-base/KB-297-kiosk-due-management-workflow.md)
-- `docs/guides/deployment.md` -> `./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-note-modal-seiban-register-2026-04-29` (docs/guides/knowledge-base/KB-297-kiosk-due-management-workflow.md)
-- `docs/guides/deployment.md` -> `./knowledge-base/KB-320-kiosk-part-measurement.md#self-inspection-session-drawing-blank-2026-06-03` (docs/guides/knowledge-base/KB-320-kiosk-part-measurement.md)
-- `docs/guides/deployment.md` -> `./knowledge-base/KB-320-kiosk-part-measurement.md#検査図面--pdf-取込2026-06-02` (docs/guides/knowledge-base/KB-320-kiosk-part-measurement.md)
-- `docs/guides/deployment.md` -> `./knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-uiux-符号付き公差-2026-06-03` (docs/guides/knowledge-base/KB-320-kiosk-part-measurement.md)
-- `docs/guides/deployment.md` -> `./knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-作成改版ヘッダー-フラット-band-2026-06-04` (docs/guides/knowledge-base/KB-320-kiosk-part-measurement.md)
-- `docs/guides/deployment.md` -> `./knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-作成改版レイアウト-2026-06-03` (docs/guides/knowledge-base/KB-320-kiosk-part-measurement.md)
-- `docs/guides/deployment.md` -> `./knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-戻り先ナビ-2026-06-03` (docs/guides/knowledge-base/KB-320-kiosk-part-measurement.md)
-- `docs/guides/deployment.md` -> `./knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-測定点位置微調整-十字ボタン-2026-06-05` (docs/guides/knowledge-base/KB-320-kiosk-part-measurement.md)
-- `docs/guides/deployment.md` -> `./knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-ガイド-polish-倍率2-0-2026-06-04` (docs/guides/knowledge-base/KB-320-kiosk-part-measurement.md)
-- `docs/guides/deployment.md` -> `./knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション-ガイド付きフォーカス-2026-06-04` (docs/guides/knowledge-base/KB-320-kiosk-part-measurement.md)
-- `docs/guides/deployment.md` -> `./knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション-ボタンui統一-2026-06-05` (docs/guides/knowledge-base/KB-320-kiosk-part-measurement.md)
-- `docs/guides/deployment.md` -> `./knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション操作ボタン活性-2026-06-04` (docs/guides/knowledge-base/KB-320-kiosk-part-measurement.md)
-- `docs/guides/deployment.md` -> `./knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-フルリセット-ガイド試行-2026-06-04` (docs/guides/knowledge-base/KB-320-kiosk-part-measurement.md)
-- `docs/guides/deployment.md` -> `./knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-本番-2026-06-03` (docs/guides/knowledge-base/KB-320-kiosk-part-measurement.md)
-- `docs/guides/deployment.md` -> `./knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#完了後フッタ工程チップ装飾の再同期2026-06-01--fixkiosk-leaderboard-completion-decoration-resync` (docs/guides/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md)
-- `docs/guides/deployment.md` -> `./knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#装飾後取り--初回80continue40--append-スコープ2026-05-19--featkiosk-leaderboard-deferred-decorations-fast-initial` (docs/guides/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md)
-- `docs/guides/deployment.md` -> `./knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md#production-2026-05-10--本番反映実機検証` (docs/guides/knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md)
-- `docs/guides/deployment.md` -> `./knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md#production-2026-06-01-completion-decoration-resync` (docs/guides/knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md)
 - `docs/guides/external-integration-ledger.md` -> `./api/backup.md` (docs/guides/api/backup.md)
 - `docs/guides/external-integration-ledger.md` -> `./knowledge-base/infrastructure/ansible-deployment.md#kb-142-ansibleでenv再生成時にslack-webhook-urlが消失する問題と恒久対策` (docs/guides/knowledge-base/infrastructure/ansible-deployment.md)
 - `docs/guides/external-integration-ledger.md` -> `./knowledge-base/infrastructure/ansible-deployment.md#kb-143-ansibleでenv再生成時にdropbox設定が消失する問題と恒久対策` (docs/guides/knowledge-base/infrastructure/ansible-deployment.md)
@@ -144,3 +124,23 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/guides/verification-checklist.md` -> `./knowledge-base/api.md#kb-118-計測機器uid編集時の複数タグ問題の修正` (docs/guides/knowledge-base/api.md)
 - `docs/guides/verification-checklist.md` -> `./knowledge-base/frontend.md#kb-119-計測機器uid編集時の手動編集フラグ管理` (docs/guides/knowledge-base/frontend.md)
 - `docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md` -> `../EXEC_PLAN.md#キオスク順位ボード--shell-選定-sql-第3弾以降保留2026-05-22--後日参照` (docs/EXEC_PLAN.md)
+- `docs/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md` -> `../EXEC_PLAN.md#cursor-state-db-recovery-2026-06-06` (docs/EXEC_PLAN.md)
+- `docs/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md` -> `../EXEC_PLAN.md#private-pi5-hermes-discord-2026-05-24` (docs/EXEC_PLAN.md)
+- `docs/knowledge-base/api.md` -> `../frontend.md#kb-184-生産スケジュールキオスクページ実装と完了ボタンのグレーアウトトグル機能` (docs/frontend.md)
+- `docs/knowledge-base/api.md` -> `../frontend.md#kb-268-生産スケジュールキオスク操作で間欠的に数秒待つ継続観察` (docs/frontend.md)
+- `docs/knowledge-base/api.md` -> `../frontend.md#kb-282-生産スケジュール登録製番ボタンの3段表示と機種名表示全角半角大文字化` (docs/frontend.md)
+- `docs/knowledge-base/api.md` -> `../frontend.md#kb-285-生産スケジュールアイテム一覧からshアイテムも除外し機種名表示にsh追加` (docs/frontend.md)
+- `docs/knowledge-base/frontend.md` -> `../api.md#kb-209-生産スケジュール検索状態の全キオスク間共有化` (docs/api.md)
+- `docs/knowledge-base/frontend.md` -> `../api.md#kb-269-生産スケジュールprogress別テーブル化csv取り込み時の上書きリスク回避` (docs/api.md)
+- `docs/knowledge-base/frontend.md` -> `../api.md#kb-282-生産スケジュールhistory-progressエンドポイントにmachinename追加` (docs/api.md)
+- `docs/knowledge-base/frontend.md` -> `../api.md#kb-285-生産スケジュールhistory-progressエンドポイントのmachinename取得にsh追加` (docs/api.md)
+- `docs/knowledge-base/frontend.md` -> `../infrastructure/ansible-deployment.md#kb-285-電源操作再起動シャットダウンのボタン押下から発動まで約20秒かかる` (docs/infrastructure/ansible-deployment.md)
+- `docs/knowledge-base/index.md` -> `../EXEC_PLAN.md` (docs/EXEC_PLAN.md)
+- `docs/knowledge-base/infrastructure/ansible-deployment.md` -> `../guides/deployment.md` (docs/knowledge-base/guides/deployment.md)
+- `docs/knowledge-base/infrastructure/ansible-deployment.md` -> `../guides/deployment.md#本番セキュリティ設定2026-02-13追加` (docs/knowledge-base/guides/deployment.md)
+- `docs/knowledge-base/infrastructure/ansible-deployment.md` -> `../plans/security-hardening-execplan.md` (docs/knowledge-base/plans/security-hardening-execplan.md)
+- `docs/knowledge-base/infrastructure/ansible-deployment.md` -> `../runbooks/deploy-status-recovery.md` (docs/knowledge-base/runbooks/deploy-status-recovery.md)
+- `docs/knowledge-base/infrastructure/backup-restore.md` -> `../api/backup.md` (docs/knowledge-base/api/backup.md)
+- `docs/knowledge-base/infrastructure/backup-restore.md` -> `../guides/ansible-ssh-architecture.md` (docs/knowledge-base/guides/ansible-ssh-architecture.md)
+- `docs/knowledge-base/infrastructure/backup-restore.md` -> `../guides/backup-and-restore.md` (docs/knowledge-base/guides/backup-and-restore.md)
+- `docs/knowledge-base/infrastructure/backup-restore.md` -> `../guides/backup-configuration.md` (docs/knowledge-base/guides/backup-configuration.md)

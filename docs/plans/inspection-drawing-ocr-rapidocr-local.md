@@ -81,4 +81,4 @@ Secondary runs when any of:
 - OCR smoke (RapidOCR flag unset/OFF): candidates HTTP 200 (~8.4s / ~2.6s); `rapidocr` import OK in API image
 - Enablement (2026-07-10): flag ON + timeout 20s on Pi5 · Detach **`20260710-101808-6154`** / **`20260710-102238-19166`** · HEAD **`ba1d781a`** · candidates HTTP 200 (~8–16s on weak depth probes)
 - ADR: [ADR-20260710](../decisions/ADR-20260710-inspection-drawing-ocr-rapidocr-local.md)
-- Deployment record: [implementation](../guides/deployment.md#inspection-drawing-ocr-rapidocr-local-2026-07-10) · [enablement](../guides/deployment.md#inspection-drawing-ocr-rapidocr-enabled-2026-07-10)
+- Deployment record: [implementation](../archive/deployments/2026-07.md#inspection-drawing-ocr-rapidocr-local-2026-07-10) · [enablement](../archive/deployments/2026-07.md#inspection-drawing-ocr-rapidocr-enabled-2026-07-10)

@@ -343,7 +343,7 @@ ssh -v denkon5sd02@192.168.128.131
 1. [Tailscale 管理画面](https://login.tailscale.com/admin/machines) で Mac に **`tag:admin`** を付与
 2. Tailscale を再接続後、上記 `ping` が通ることを確認してから `/admin` を開く
 
-**参照**: [tailscale-policy.md](../security/tailscale-policy.md) · [deployment.md §2026-06-03](./deployment.md#kiosk-self-inspection-four-modes-and-tolerance-2026-06-03)
+**参照**: [tailscale-policy.md](../security/tailscale-policy.md) · [deployment.md §2026-06-03](../archive/deployments/2026-06.md#kiosk-self-inspection-four-modes-and-tolerance-2026-06-03)
 
 ### Pi5 が `NeedsLogin` で admin が再び開けない場合（2026-06-03）
 

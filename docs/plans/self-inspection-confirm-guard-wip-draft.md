@@ -43,7 +43,7 @@ Operators saw WIP cards disappear after reopening a session and tapping another 
 - EXPLAIN: Index Scan on `SelfInspectionLotEntry_idx_session_persistence`
 - Temp Postgres container/volume cleaned up
 - Production: Detach Pi5 **`20260711-093400-26223`** · Pi4×5 **`20260711-094015-24272`** · Phase12 **PASS 45** · HEAD **`b52931bd`**
-- Deploy record: [deployment](../guides/deployment.md#self-inspection-confirm-guard-wip-draft-2026-07-11)
+- Deploy record: [deployment](../archive/deployments/2026-07.md#self-inspection-confirm-guard-wip-draft-2026-07-11)
 
 ## Local Notes JA
 

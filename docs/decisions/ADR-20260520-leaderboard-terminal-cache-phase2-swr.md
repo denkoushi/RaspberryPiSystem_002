@@ -69,7 +69,7 @@ Phase 1 は cold start の bootstrap のみが主効果で、製番 OR 切替や
 
 **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **69s**）·**現場（ユーザー）**: **実機検証 OK**。
 
-**手順正本**: [deployment.md §120s 同期改訂](../guides/deployment.md#kiosk-leaderboard-cache-120s-swr-lock-2026-05-20)·[KB-374 §Phase 2 改訂](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#端末キャッシュ-phase-2-改訂120s-同期swr-操作ロック2026-05-20--featkiosk-leaderboard-cache-120s-swr-lock)。
+**手順正本**: [deployment.md §120s 同期改訂](../archive/deployments/2026-05.md#kiosk-leaderboard-cache-120s-swr-lock-2026-05-20)·[KB-374 §Phase 2 改訂](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#端末キャッシュ-phase-2-改訂120s-同期swr-操作ロック2026-05-20--featkiosk-leaderboard-cache-120s-swr-lock)。
 
 ## 実装モジュール
 
@@ -101,7 +101,7 @@ Phase 1 は cold start の bootstrap のみが主効果で、製番 OR 切替や
 
 **知見**: Phase 1 は **Pi5 のみ**だったため、Pi4×4 は **Phase 1 + Phase 2 を同時に初反映**（IDB は端末ローカル）。**初回アクセスは IDB 空**のため体感改善は **continue 完走後の 2 回目以降**で評価する（Phase 1 と同型）。
 
-**手順正本**: [deployment.md §端末キャッシュ Phase 2](../guides/deployment.md#kiosk-leaderboard-terminal-cache-phase2-swr-2026-05-19)·[KB-374 §Phase 2](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#端末キャッシュ-phase-2-swr--書き込み同期2026-05-20)。
+**手順正本**: [deployment.md §端末キャッシュ Phase 2](../archive/deployments/2026-05.md#kiosk-leaderboard-terminal-cache-phase2-swr-2026-05-19)·[KB-374 §Phase 2](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#端末キャッシュ-phase-2-swr--書き込み同期2026-05-20)。
 
 ## 操作即表示との両立（2026-05-20 · `feat/kiosk-leaderboard-mutation-instant-display`）
 
@@ -127,7 +127,7 @@ Phase 1 は cold start の bootstrap のみが主効果で、製番 OR 切替や
 | **対象** | **`raspberrypi5` → `raspi4-kensaku-stonebase01` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80`**（各 1 台ずつ） |
 | **Detach** | **`20260520-131334-15607`** / **`20260520-131843-7879`** / **`20260520-133253-2715`** / **`20260520-133748-7589`** / **`20260520-134139-3491`**（いずれも **`failed=0`**） |
 | **実機** | **実機検証 OK**（ユーザー·2026-05-20） |
-| **手順** | [deployment.md §操作即表示](../guides/deployment.md#kiosk-leaderboard-mutation-instant-display-2026-05-20) |
+| **手順** | [deployment.md §操作即表示](../archive/deployments/2026-05.md#kiosk-leaderboard-mutation-instant-display-2026-05-20) |
 
 **マージ後**: 第2引数 **`main`** で再デプロイすれば同一 bundle（PR マージ前提）。
 

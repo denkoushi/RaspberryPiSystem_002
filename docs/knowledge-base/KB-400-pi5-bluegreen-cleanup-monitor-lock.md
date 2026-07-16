@@ -84,10 +84,10 @@ fails closed. Do not remove a lock or force cleanup manually.
 ## Open Items
 
 - None for this incident. Production shadow evaluation of
-  `--auto-minimize` is tracked separately in the rolling-release plan.
+  target minimization is tracked separately in the rolling-release plan.
 
 ## References
 
 - [Pi5 Blue/Green runbook](../runbooks/pi5-blue-green-deploy.md)
-- [Deployment guide](../guides/deployment.md#pi5-blue-green-phase3)
+- [Deployment guide](../archive/deployments/legacy-operator-guide-through-2026-07.md#pi5-blue-green-phase3)
 - [Rolling release plan](../plans/rolling-terminal-bluegreen-deploy.md)

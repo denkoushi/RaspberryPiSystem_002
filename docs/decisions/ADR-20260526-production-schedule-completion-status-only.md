@@ -26,7 +26,7 @@
 - **マイグレーション**: **`20260526030000_disable_schedule_csv_disappearance_completion`** 適用済
 - **Phase12**: **43/0/0**（約 **30s**）
 - **事後 DB**: **`externallyCompletedFromScheduleCsvDisappeared=true` は 0 件**
-- **記録**: [deployment.md §2026-05-26](../guides/deployment.md#kiosk-completion-status-only-2026-05-26)
+- **記録**: [deployment.md §2026-05-26](../archive/deployments/2026-05.md#kiosk-completion-status-only-2026-05-26)
 
 - **References**:
   - [KB-370 生産スケジュール「実効完了」](../knowledge-base/KB-370-production-schedule-external-completion-triple-source.md)

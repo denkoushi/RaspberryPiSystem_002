@@ -75,7 +75,7 @@ category: knowledge-base
 - **Scope**: API only（`buildMaterializedMaxProductNoWinnerInCondition` · **Prisma migration なし** · **Web 変更なし**）
 - **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4 キオスク 4 台・Pi3 は **デプロイ不要**（Pi5 API 経由で順位ボード取得が復旧する）。
 - **リポジトリ**: ブランチ **`fix/leaderboard-winner-bind-limit`** · 代表 **`f4a93010`**
-- **標準手順**: [`deployment.md` §4161](../guides/deployment.md#macから全クライアントを一括更新) · `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh fix/leaderboard-winner-bind-limit infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+- **標準手順**: [`deployment.md` §4161](../archive/deployments/legacy-operator-guide-through-2026-07.md#macから全クライアントを一括更新) · `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh fix/leaderboard-winner-bind-limit infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
 - **Detach Run ID**: **`20260618-081723-19946`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`** · リモート **`exit 0`** · **`Git: changed`** · **`--follow` 約 393s**）
 - **Pi5 HEAD 確認**: `f4a93010 fix: avoid leaderboard winner bind limit`
 - **広域自動検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 0 / FAIL 1**（約 **79s**）。**FAIL** は `PUT global-rank/auto-generate` **HTTP 400**（本修正の materialized winner 経路とは無関係・**未調査**）。
@@ -347,13 +347,13 @@ category: knowledge-base
 - **ブランチ**: **`perf/leaderboard-board-continue-reuse-totals`**（**`438adb0c`**·Caddy **`ec938f31`**·**PR [#300](https://github.com/denkoushi/RaspberryPiSystem_002/pull/300)**）。
 - **要点**: `leaderboard-board/continue` の **スロット数ぶん COUNT** を、shell 確定時の **`snapshotId` → total** キャッシュで **ヒット時省略**（ミス時は従来 COUNT·同値）。**Web 変更なし**。
 - **本番**: **`raspberrypi5` のみ**·Detach **`20260519-192007-12328`**·**Phase12 43/0/0**·**現場 OK**。
-- **正本**: [KB-374 §continue COUNT 再利用](./KB-374-leaderboard-board-continue-cursor-contract.md#continue-時-count-再利用第1弾--api-のみ--出力不変)·[deployment §COUNT 再利用](../guides/deployment.md#kiosk-leaderboard-continue-count-reuse-2026-05-19)。
+- **正本**: [KB-374 §continue COUNT 再利用](./KB-374-leaderboard-board-continue-cursor-contract.md#continue-時-count-再利用第1弾--api-のみ--出力不変)·[deployment §COUNT 再利用](../archive/deployments/2026-05.md#kiosk-leaderboard-continue-count-reuse-2026-05-19)。
 
 ## Production deploy & verification（2026-05-19 · deltaRows + 表示安定化 + pageSize 80）
 
 - **ブランチ**: **`feat/leaderboard-continue-delta-safe`**（**`371a1ce2`** / **`f627dcb0`** / **`f6a220e0`**）。
 - **要点**: board `continue` の **累積 `rows` 正本は不変**。任意 **`deltaRows`** はクライアント最適化のみ。体感改善の主因は **refetch 巻き戻し防止（Web）** と **`pageSize` 80 による continue 回数削減（Web）**。
-- **本番・検証の正本**: [KB-374 §Production 2026-05-19](./KB-374-leaderboard-board-continue-cursor-contract.md#production-deploy--verification-2026-05-19--featleaderboard-continue-delta-safe)·[deployment §deltaRows](../guides/deployment.md#kiosk-leaderboard-continue-deltarows-dual-payload-2026-05-18)。
+- **本番・検証の正本**: [KB-374 §Production 2026-05-19](./KB-374-leaderboard-board-continue-cursor-contract.md#production-deploy--verification-2026-05-19--featleaderboard-continue-delta-safe)·[deployment §deltaRows](../archive/deployments/2026-05.md#kiosk-leaderboard-continue-deltarows-dual-payload-2026-05-18)。
 
 ## Production deploy & verification（2026-05-18 · output-stable internal optimization）
 

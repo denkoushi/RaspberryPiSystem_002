@@ -119,7 +119,7 @@ ORDER BY "workDate" DESC;
 | Run ID **`20260708-180942-18680`** | 全7ホスト `failed=0 / unreachable=0` |
 | `./scripts/deploy/verify-phase12-real.sh` | **PASS 45 / WARN 0 / FAIL 0** |
 | 配信バンドル新文言 | `/assets/index-DxYaeHkM.js` に「生産実績からロット数を取得できませんでした」「ロット数（手入力）」確認 |
-| デプロイ記録 | [deployment.md §組立トップ ロット数手入力フォールバック](../guides/deployment.md#kiosk-assembly-lot-quantity-manual-fallback-2026-07-08) |
+| デプロイ記録 | [deployment.md §組立トップ ロット数手入力フォールバック](../archive/deployments/2026-07.md#kiosk-assembly-lot-quantity-manual-fallback-2026-07-08) |
 
 ## Open Items
 

@@ -67,5 +67,5 @@ date: 2026-05-27
 - [KB-362 §外注](../knowledge-base/KB-362-kiosk-load-balancing.md#資源cd俯瞰外注候補シミュ--仕様実装正本)
 - [KB-362 §実機検証 契約整合](../knowledge-base/KB-362-kiosk-load-balancing.md#実機検証2026-05-27--外注契約整合--自動選定フロー)
 - [運用ガイド](../guides/kiosk-production-schedule-load-balancing.md)
-- [deployment.md §2026-05-27](../guides/deployment.md#kiosk-load-balancing-ui-p0p1-contract-fix-2026-05-27)
+- [deployment.md §2026-05-27](../archive/deployments/2026-05.md#kiosk-load-balancing-ui-p0p1-contract-fix-2026-05-27)
 - コミット **`cd42ebfe`** · CI **`26504703984`**

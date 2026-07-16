@@ -184,9 +184,9 @@ Prisma モデル（能力・ルール・2026-04-30 マイグレーション）: 
 
 標準手順は [deployment.md](deployment.md)。**Pi5 → Pi4×4 を `--limit` 1 台ずつ**。**Pi3 は除外**。
 
-- 2026-05-27 表示維持: [KB-362 §Production deploy 表示維持](../knowledge-base/KB-362-kiosk-load-balancing.md#production-deploy実績-2026-05-27--自動選定表示維持--pi5pi44) / [deployment.md §2026-05-27](deployment.md#kiosk-load-balancing-auto-plan-reset-fix-2026-05-27)
+- 2026-05-27 表示維持: [KB-362 §Production deploy 表示維持](../knowledge-base/KB-362-kiosk-load-balancing.md#production-deploy実績-2026-05-27--自動選定表示維持--pi5pi44) / [deployment.md §2026-05-27](../archive/deployments/2026-05.md#kiosk-load-balancing-auto-plan-reset-fix-2026-05-27)
 
-- 2026-05-26 実績・Detach ID・検証: [KB-362 §Production deploy](../knowledge-base/KB-362-kiosk-load-balancing.md#production-deploy実績-2026-05-26--機種別月次) / [deployment.md §2026-05-26](deployment.md#kiosk-load-balancing-machine-monthly-view-2026-05-26)
+- 2026-05-26 実績・Detach ID・検証: [KB-362 §Production deploy](../knowledge-base/KB-362-kiosk-load-balancing.md#production-deploy実績-2026-05-26--機種別月次) / [deployment.md §2026-05-26](../archive/deployments/2026-05.md#kiosk-load-balancing-machine-monthly-view-2026-05-26)
 - 2026-04-30 初版: [KB-362](../knowledge-base/KB-362-kiosk-load-balancing.md) / [deployment.md §2026-04-30](deployment.md)
 
 ## 生産システムとの数値突合（重要）
@@ -220,7 +220,7 @@ Prisma モデル（能力・ルール・2026-04-30 マイグレーション）: 
 - 管理は **`siteKey=shared`** に保存しやすいが、キオスクは **`siteKey=工場名`** で読む。
 - キオスク API は **`listLoadBalancing*Resolved`**（5 種）で **`site` 優先 + `shared` 不足分補完**。管理の `replace*` は不変。
 - **症状**: 工程能力がすべて `—` だが `requiredMinutes` は返る → [KB-362 §能力設定](../knowledge-base/KB-362-kiosk-load-balancing.md#能力設定と-shared--sitekey2026-05-27)
-- **本番（Pi5 のみ）**: Detach **`20260527-161741-7843`** — [deployment.md §2026-05-27](deployment.md#kiosk-load-balancing-aggregation-fix-2026-05-27)
+- **本番（Pi5 のみ）**: Detach **`20260527-161741-7843`** — [deployment.md §2026-05-27](../archive/deployments/2026-05.md#kiosk-load-balancing-aggregation-fix-2026-05-27)
 
 **2026-05-27 外注契約整合 + 自動選定フロー**（`cd42ebfe`）:
 
@@ -229,7 +229,7 @@ Prisma モデル（能力・ルール・2026-04-30 マイグレーション）: 
 | 症状 | 「推奨セットを自動選定」無反応・`maxCandidates:500` で 400 |
 | 修正 | policy 単一化 · plan 結果の即チャート反映 · `actionError` · simulate 省略 |
 | 本番（Pi5 のみ） | Detach **`20260527-191646-1476`** · Phase12 **43/0/0** |
-| 詳細 | [KB-362 §実機検証 契約整合](../knowledge-base/KB-362-kiosk-load-balancing.md#実機検証2026-05-27--外注契約整合--自動選定フロー) · [deployment §契約整合](deployment.md#kiosk-load-balancing-ui-p0p1-contract-fix-2026-05-27) |
+| 詳細 | [KB-362 §実機検証 契約整合](../knowledge-base/KB-362-kiosk-load-balancing.md#実機検証2026-05-27--外注契約整合--自動選定フロー) · [deployment §契約整合](../archive/deployments/2026-05.md#kiosk-load-balancing-ui-p0p1-contract-fix-2026-05-27) |
 
 ---
 

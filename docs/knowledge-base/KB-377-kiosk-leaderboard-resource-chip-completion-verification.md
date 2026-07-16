@@ -53,7 +53,7 @@ update-frequency: low
 
 1. UI は **`row.isCompleted`（実効完了）**を忠実に表示しており、**データ上未完ならチップも未完表示**となる。
 2. **メール status `S`** は完了ではないため、それだけではグレーアウトにならない。
-3. **差分消失完了**は **「母集団内の論理キーが現 winner から消えた」とき**に限定され、**キーが残存している限り**消失完了にならない（2026-05-09 改訂の **メール完了（`C`/`X`）以外×`occurredAt` ±3ヶ月窓**は [KB-370](./KB-370-production-schedule-external-completion-triple-source.md)·[deployment.md §消滅窓](../guides/deployment.md#schedule-csv-disappearance-nonc-window-2026-05-09)）。
+3. **差分消失完了**は **「母集団内の論理キーが現 winner から消えた」とき**に限定され、**キーが残存している限り**消失完了にならない（2026-05-09 改訂の **メール完了（`C`/`X`）以外×`occurredAt` ±3ヶ月窓**は [KB-370](./KB-370-production-schedule-external-completion-triple-source.md)·[deployment.md §消滅窓](../archive/deployments/2026-05.md#schedule-csv-disappearance-nonc-window-2026-05-09)）。
 
 ## Fix
 
@@ -96,7 +96,7 @@ update-frequency: low
 | **`FKOJUNST_Status` メールCSV**（`fkmail`・メール経路同期の正） | `PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID` | `b7c8d9e0-f1a2-4b3c-9d4e-5f6a7b8c9d0e` |
 
 - **CSV は 2 系統**: **Gmail 取込ログで「`FKOJUNST_Status` が成功」「ゴミ箱＋`rps_processed`」**は、主に **`PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID` 側の ingest 完了**を示す。**それだけから、同日の本体 CSV ingest 点数や「消失完了が何件」を直接読み替えない**（ダッシュボードが別）。
-- **差分消失由来のフラグ `externallyCompletedFromScheduleCsvDisappeared`** は **`ProductionScheduleExternalCompletion`** と紐づき、論理構造としては **本体スケジュール側の ingest／外部完了同期**（[KB-370](./KB-370-production-schedule-external-completion-triple-source.md)·[deployment 消滅窓項](../guides/deployment.md#schedule-csv-disappearance-nonc-window-2026-05-09)）が主。**Fk Status メール側の点数が多い／少ないことと、同日の disappear カウントは独立**になり得る。
+- **差分消失由来のフラグ `externallyCompletedFromScheduleCsvDisappeared`** は **`ProductionScheduleExternalCompletion`** と紐づき、論理構造としては **本体スケジュール側の ingest／外部完了同期**（[KB-370](./KB-370-production-schedule-external-completion-triple-source.md)·[deployment 消滅窓項](../archive/deployments/2026-05.md#schedule-csv-disappearance-nonc-window-2026-05-09)）が主。**Fk Status メール側の点数が多い／少ないことと、同日の disappear カウントは独立**になり得る。
 
 ### JST で「その日」を切る SQL（ハマり）
 
@@ -141,7 +141,7 @@ SELECT
 - **DB 全体**: **`externallyCompletedFromScheduleCsvDisappeared=true` → 0 件**
 - **BA1S6202 / `FSIGENCD=035`**: **`csv_disappeared=f`**。**`fk_status=C`**・**`mail_cx=t`** → **グレーは Status 正本どおり**（調査時の **`R` + 消失** は解消）
 - **SQL 注意**: `rowData` は **`FSEIBAN` / `FSIGENCD`**（`製番` キーでは 0 件になり得る）
-- **記録**: [deployment.md §2026-05-26](../guides/deployment.md#kiosk-completion-status-only-2026-05-26)·[KB-370 §2026-05-26](./KB-370-production-schedule-external-completion-triple-source.md#production-2026-05-26-schedule-csv-disappearance-disabled)
+- **記録**: [deployment.md §2026-05-26](../archive/deployments/2026-05.md#kiosk-completion-status-only-2026-05-26)·[KB-370 §2026-05-26](./KB-370-production-schedule-external-completion-triple-source.md#production-2026-05-26-schedule-csv-disappearance-disabled)
 
 ## References
 

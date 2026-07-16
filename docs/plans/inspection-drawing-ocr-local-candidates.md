@@ -70,4 +70,4 @@ Improve kiosk inspection-drawing nominal-value OCR candidate accuracy without br
 - Deploy: Pi5+StoneBase **`20260709-223044-17975`**, remaining Pi4×4 **`20260709-224140-20418`**, HEAD **`09a1fe66`**, Pi3 skipped
 - Phase12: **PASS 45 / WARN 0 / FAIL 0**; OCR candidates smoke HTTP 200 (local OCR latency ~6–8s)
 - ADR: [ADR-20260709](../decisions/ADR-20260709-inspection-drawing-ocr-local-candidates.md)
-- Deployment record: [deployment §2026-07-09](../guides/deployment.md#inspection-drawing-ocr-local-candidates-2026-07-09)
+- Deployment record: [deployment §2026-07-09](../archive/deployments/2026-07.md#inspection-drawing-ocr-local-candidates-2026-07-09)
