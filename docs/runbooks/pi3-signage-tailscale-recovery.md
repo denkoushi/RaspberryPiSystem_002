@@ -2,7 +2,7 @@
 
 **対象**: Raspberry Pi 3 サイネージ（`raspberrypi3` / Tailscale `raspberrypi-2` / `tag:signage`）
 
-**関連**: [KB-386](../knowledge-base/infrastructure/signage.md#kb-386-pi3サイネージ非表示tailscale-key-expiryとネットワーク経路) · [ラズパイ3（サイネージ）の更新](../guides/deployment.md#ラズパイ3サイネージの更新) · [signage-client-setup.md](../guides/signage-client-setup.md)
+**関連**: [KB-386](../knowledge-base/infrastructure/signage.md#kb-386-pi3サイネージ非表示tailscale-key-expiryとネットワーク経路) · [ラズパイ3（サイネージ）の更新](../archive/deployments/legacy-operator-guide-through-2026-07.md#ラズパイ3サイネージの更新) · [signage-client-setup.md](../guides/signage-client-setup.md)
 
 ---
 

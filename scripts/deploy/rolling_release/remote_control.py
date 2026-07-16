@@ -65,21 +65,6 @@ def paths(project: Path, run_id: str) -> tuple[Path, Path, Path]:
     )
 
 
-def legacy_shell_state_path(project: Path, run_id: str) -> Path:
-    return project / "logs/deploy" / f"ansible-update-{validate_run_id(run_id)}.status.json"
-
-
-def read_legacy_state(path: Path, *, run_id: str, source: str) -> dict[str, Any] | None:
-    state = read_json(path, run_id=run_id)
-    if state is None:
-        return None
-    result = dict(state)
-    compatibility = dict(result.get("compatibility") or {})
-    compatibility.update({"legacyRunFormat": True, "source": source})
-    result["compatibility"] = compatibility
-    return result
-
-
 def read_json(path: Path, *, run_id: str) -> dict[str, Any] | None:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -199,27 +184,10 @@ def unit_is_active(
 
 def snapshot(project: Path, run_id: str) -> dict[str, Any]:
     state_path, control_path, lock_path = paths(project, run_id)
-    legacy_shell_path = legacy_shell_state_path(project, run_id)
     if not state_path.exists() and not control_path.exists() and not lock_path.exists():
-        return {
-            "state": read_legacy_state(
-                legacy_shell_path,
-                run_id=run_id,
-                source="ansible-update-status",
-            ),
-            "control": None,
-        }
+        return {"state": None, "control": None}
     if not lock_path.exists():
-        if control_path.exists():
-            raise RemoteControlError("control record exists without its per-run lock")
-        return {
-            "state": read_legacy_state(
-                state_path,
-                run_id=run_id,
-                source="unlocked-release-run-state",
-            ),
-            "control": None,
-        }
+        raise RemoteControlError("release-run record exists without its per-run lock")
     descriptor = open_lock(lock_path)
     try:
         return {

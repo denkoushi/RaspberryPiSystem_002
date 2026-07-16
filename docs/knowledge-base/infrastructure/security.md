@@ -951,7 +951,7 @@ update-frequency: medium
 - [KB-277](#kb-277-tailscale経由でのvnc接続問題acl設定不足)（ACL タイムアウトの先例）
 - [tailscale-policy.md](../../security/tailscale-policy.md)
 - [KB-320 §仕様拡張 本番](../KB-320-kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-本番-2026-06-03)
-- [deployment.md §2026-06-03](../../guides/deployment.md#kiosk-self-inspection-four-modes-and-tolerance-2026-06-03)
+- [deployment.md §2026-06-03](../../archive/deployments/2026-06.md#kiosk-self-inspection-four-modes-and-tolerance-2026-06-03)
 
 ---
 
@@ -1024,7 +1024,7 @@ sudo systemctl restart kiosk-browser.service
 **Fix（コード・リポジトリ同期）**:
 
 - Pi4 `/opt/RaspberryPiSystem_002` で **ローカル `git pull` は避ける**（未コミット変更・古い HEAD が残り `_appRef` がずれる）。
-- **`main` + Ansible 標準デプロイ**で Pi5 と揃える（実績: [deployment.md §2026-06-03](../../guides/deployment.md#kiosk-self-inspection-four-modes-and-tolerance-2026-06-03) の `raspberrypi4` 行）。
+- **`main` + Ansible 標準デプロイ**で Pi5 と揃える（実績: [deployment.md §2026-06-03](../../archive/deployments/2026-06.md#kiosk-self-inspection-four-modes-and-tolerance-2026-06-03) の `raspberrypi4` 行）。
 
 ```bash
 export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"

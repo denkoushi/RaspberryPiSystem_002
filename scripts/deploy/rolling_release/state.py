@@ -272,8 +272,8 @@ class RunStateStore:
                 state.update(copy.deepcopy(dict(changes)))
             # This hook runs under the same per-run lock used by cancel. The
             # authoritative fleet state can therefore use the already
-            # arbitrated effective state before this compatibility snapshot is
-            # persisted, without a success/cancel split between the stores.
+            # arbitrated effective state before this run record is persisted,
+            # without a success/cancel split between the stores.
             if before_persist is not None:
                 hook_changes = before_persist(effective_state)
                 if hook_changes is not None:

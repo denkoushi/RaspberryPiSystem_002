@@ -1,9 +1,8 @@
 """Release ordering and authoritative fleet-state transitions.
 
 The facade is injected as ``runtime`` so command adapters and durable stores
-remain independently testable.  The fleet record is always written before a
-legacy run snapshot or compatibility marker that describes the same
-transition.
+remain independently testable. The fleet record is written before the
+per-run state that describes the same transition.
 """
 from __future__ import annotations
 
@@ -216,15 +215,6 @@ def _durable_completed_terminal_sha(
             f"interrupted completed terminal proof is malformed: {host}"
         )
     return current_sha
-
-
-def _pi5_marker_candidate(observation: dict[str, Any]) -> dict[str, Any]:
-    """Build the compatibility marker only from verified live evidence."""
-
-    return {
-        "api": observation.get("apiImage"),
-        "web": observation.get("webImage"),
-    }
 
 
 def _terminal_ready_sha(
@@ -725,12 +715,9 @@ def _recover_interrupted_terminals(
                     expected_sha = finalization.get("verifiedSha")
                     cleanup_outcome = finalization["outcome"]
                 else:
-                    # Compatibility with a pre-PR6 completed run record. It
-                    # still fails closed below if it lacks PR6 runtime authority.
-                    expected_sha = prior_target.get("currentSha") or prior_target.get(
-                        "newSha"
+                    raise RuntimeError(
+                        f"interrupted terminal finalization is missing: {host}"
                     )
-                    cleanup_outcome = "committed"
                 recovered = (
                     "restored-finalization-live-verified"
                     if cleanup_outcome == "restored"
@@ -1118,7 +1105,6 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             selected=selected,
             limit=args.limit,
             full_fleet=bool(getattr(args, "full_fleet", False)),
-            auto_minimize_alias=bool(getattr(args, "auto_minimize", False)),
         )
         if plan_warnings:
             plan["warnings"] = list(plan_warnings)
@@ -1223,10 +1209,6 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                 args.run_id,
                 **verification_options,
             )
-            # Compatibility marker dual-write is deliberately second.
-            runtime.record_pi5_release_current(
-                server["desiredSha"], _pi5_marker_candidate(observation)
-            )
             _set_host_status(
                 state,
                 server["host"],
@@ -1248,7 +1230,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
 
             # An unreachable terminal must become unknown even if the first
             # read-only HEAD probe fails.  This precedes notices, maintenance,
-            # Ansible, and their legacy snapshots.
+            # Ansible, and their per-run progress records.
             fleet_state = runtime.fleet_mark_unknown(
                 host, role, target["desiredSha"], args.run_id
             )

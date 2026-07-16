@@ -19,4 +19,4 @@
   - [KB-297 §FKOJUNST_Status](../knowledge-base/KB-297-kiosk-due-management-workflow.md#fkojunst_status-mail-from-gmail-csv-2026-04-28)
   - [`fkojunst-mail-status-completion.policy.ts`](../../apps/api/src/services/production-schedule/completion/fkojunst-mail-status-completion.policy.ts)
   - [`fkojunst-production-schedule-list-visibility.policy.ts`](../../apps/api/src/services/production-schedule/policies/fkojunst-production-schedule-list-visibility.policy.ts)
-  - [deployment.md（2026-05-08 · FKOJUNST_Status 唯一正本・Pi5）](../guides/deployment.md#fkojunst-status-sole-source-2026-05-08)
+  - [deployment.md（2026-05-08 · FKOJUNST_Status 唯一正本・Pi5）](../archive/deployments/2026-05.md#fkojunst-status-sole-source-2026-05-08)

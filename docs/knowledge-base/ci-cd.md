@@ -41,7 +41,7 @@ update-frequency: high
 
 **関連**:
 - [solid-refactor-phase6-execplan-202607.md](../plans/solid-refactor-phase6-execplan-202607.md)
-- [deployment.md §2026-07-05 Phase6](../guides/deployment.md#solid-refactor-phase6-2026-07-05)
+- [deployment.md §2026-07-05 Phase6](../archive/deployments/2026-07.md#solid-refactor-phase6-2026-07-05)
 
 ---
 
@@ -79,7 +79,7 @@ update-frequency: high
 
 **関連**:
 - [solid-refactor-phase5-execplan-202607.md](../plans/solid-refactor-phase5-execplan-202607.md)
-- [deployment.md §2026-07-05 Phase5](../guides/deployment.md#solid-refactor-phase5-ci-stabilization-2026-07-05)
+- [deployment.md §2026-07-05 Phase5](../archive/deployments/2026-07.md#solid-refactor-phase5-ci-stabilization-2026-07-05)
 
 ---
 
@@ -121,7 +121,7 @@ update-frequency: high
 - デプロイ結果の正本は Pi5 の **`logs/deploy/ansible-update-*.exit`** / **`PLAY RECAP`** で確認する
 
 **関連**:
-- [deployment.md §2026-04-27](../guides/deployment.md#補足2026-04-27-pr-203-マージ後の-pi5-正規追従mainruntime_stop_policy--dgx-ドキュメント同梱)
+- [deployment.md §2026-04-27](../archive/deployments/legacy-operator-guide-through-2026-07.md#補足2026-04-27-pr-203-マージ後の-pi5-正規追従mainruntime_stop_policy--dgx-ドキュメント同梱)
 - `scripts/update-all-clients.sh`（`python3` パイプ箇所）
 
 ---

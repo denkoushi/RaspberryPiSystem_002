@@ -282,9 +282,9 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
 ## References
 
 - [csv-import-export.md](../guides/csv-import-export.md) Gmail スケジュール節
-- [deployment.md §2026-05-22 カード chrome 統一](../guides/deployment.md#rigging-inspection-card-chrome-unify-2026-05-22)
-- [deployment.md §2026-05-22 dedup refresh / idNum / デザイン分離](../guides/deployment.md#rigging-inspection-dedup-refresh-signage-layout-2026-05-22)
-- [deployment.md §2026-05-22 A+B 氏名マッチ](../guides/deployment.md#rigging-inspection-name-match-signage-merge-2026-05-22)
-- [deployment.md §2026-05-22 吊具点検（初回）](../guides/deployment.md#rigging-slings-inspection-gmail-signage-2026-05-22)
+- [deployment.md §2026-05-22 カード chrome 統一](../archive/deployments/2026-05.md#rigging-inspection-card-chrome-unify-2026-05-22)
+- [deployment.md §2026-05-22 dedup refresh / idNum / デザイン分離](../archive/deployments/2026-05.md#rigging-inspection-dedup-refresh-signage-layout-2026-05-22)
+- [deployment.md §2026-05-22 A+B 氏名マッチ](../archive/deployments/2026-05.md#rigging-inspection-name-match-signage-merge-2026-05-22)
+- [deployment.md §2026-05-22 吊具点検（初回）](../archive/deployments/2026-05.md#rigging-slings-inspection-gmail-signage-2026-05-22)
 - `apps/api/src/services/rigging/constants.ts`
 - `apps/api/src/services/visualization/shared/loan-inspection-card/`

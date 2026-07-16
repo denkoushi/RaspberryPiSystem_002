@@ -45,7 +45,6 @@ EXPECTED_KEYS = frozenset({
     'emergencyOverride',
     'reason',
     'skipCanaryHold',
-    'autoMinimize',
     'fullFleet',
 })
 FORBIDDEN_REF_CHARACTERS = frozenset(' ~^:?*[\\')
@@ -134,11 +133,9 @@ def parse_spec(raw: str) -> dict[str, Any]:
     timeout = payload.get('canaryHoldTimeout')
     if type(timeout) is not int or timeout <= 0:
         raise BootstrapConfigError('canaryHoldTimeout must be a positive integer')
-    for key in ('emergencyOverride', 'skipCanaryHold', 'autoMinimize', 'fullFleet'):
+    for key in ('emergencyOverride', 'skipCanaryHold', 'fullFleet'):
         if type(payload.get(key)) is not bool:
             raise BootstrapConfigError(f'{key} must be boolean')
-    if payload['fullFleet'] and payload['autoMinimize']:
-        raise BootstrapConfigError('fullFleet cannot be combined with autoMinimize')
     if payload['fullFleet'] and payload['limit']:
         raise BootstrapConfigError('fullFleet cannot be combined with limit')
     reason = payload.get('reason')
@@ -166,10 +163,6 @@ def control_file(spec: Mapping[str, Any]) -> str:
         'release-runs',
         f'{spec["runId"]}.control.json',
     )
-
-
-def lock_file(spec: Mapping[str, Any]) -> str:
-    return os.path.join(str(spec['project']), '.git', 'rolling-release.lock')
 
 
 def fleet_lock_file(spec: Mapping[str, Any]) -> str:
@@ -218,8 +211,6 @@ def remote_arguments(spec: Mapping[str, Any]) -> list[str]:
         arguments.extend(['--emergency-override', '--reason', str(spec['reason'])])
     if spec['skipCanaryHold']:
         arguments.append('--skip-canary-hold')
-    if spec['autoMinimize']:
-        arguments.append('--auto-minimize')
     if spec['fullFleet']:
         arguments.append('--full-fleet')
     return arguments
@@ -286,9 +277,7 @@ def execute(
     """Own the kernel lock before every fetch, checkout, or coordinator write."""
     project = str(spec['project'])
     cancellation_path = control_file(spec)
-    lock_path = lock_file(spec)
     fleet_lock_path = fleet_lock_file(spec)
-    lock_fd: int | None = None
     fleet_lock_fd: int | None = None
     original_cwd = os.getcwd()
     changed_directory = False
@@ -305,13 +294,9 @@ def execute(
 
     try:
         try:
-            # The fleet lock is the durable authority introduced in PR 5.
-            # The .git lock remains held during the compatibility interval and
-            # is removed only after accepted production migration in PR 8.
             fleet_lock_fd = _open_nonblocking_lock(fleet_lock_path)
-            lock_fd = _open_nonblocking_lock(lock_path)
         except (BlockingIOError, OSError) as error:
-            print(f'[ERROR] could not acquire rolling-release locks: {error}', file=sys.stderr)
+            print(f'[ERROR] could not acquire fleet release lock: {error}', file=sys.stderr)
             return EX_TEMPFAIL
 
         if cancelled():
@@ -410,12 +395,9 @@ def execute(
         if cancelled():
             return EX_CANCELLED
 
-        os.set_inheritable(lock_fd, True)
         os.set_inheritable(fleet_lock_fd, True)
         environment = dict(os.environ if environ is None else environ)
         environment.update({
-            'ROLLING_RELEASE_LOCK_FD': str(lock_fd),
-            'ROLLING_RELEASE_LOCK_PATH': lock_path,
             'ROLLING_RELEASE_FLEET_LOCK_FD': str(fleet_lock_fd),
             'ROLLING_RELEASE_FLEET_LOCK_PATH': fleet_lock_path,
             'ROLLING_RELEASE_CONTROL_FILE': cancellation_path,
@@ -440,11 +422,6 @@ def execute(
             signal.signal(signal.SIGUSR1, pre_exec_signal_handler)
         if changed_directory:
             os.chdir(original_cwd)
-        if lock_fd is not None:
-            try:
-                os.close(lock_fd)
-            except OSError:
-                pass
         if fleet_lock_fd is not None:
             try:
                 os.close(fleet_lock_fd)

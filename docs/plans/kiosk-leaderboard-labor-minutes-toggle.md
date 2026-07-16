@@ -191,7 +191,7 @@ Pi4: SPA from Pi5; `kiosk-browser` restarted per host. Force reload per [verific
 
 ## Operational Notes (not KB)
 
-- Pi5 api/web rebuild may hit transient health-wait retries after memory spike; see [deployment.md §deploy-api-build-cache-health-wait](../guides/deployment.md#deploy-api-build-cache-health-wait-2026-06-17).
+- Pi5 api/web rebuild may hit transient health-wait retries after memory spike; see [deployment.md §deploy-api-build-cache-health-wait](../archive/deployments/2026-06.md#deploy-api-build-cache-health-wait-2026-06-17).
 - Pi4 deploy does **not** rebuild api/web; only client-side refresh matters for this feature.
 
 ## Open Items

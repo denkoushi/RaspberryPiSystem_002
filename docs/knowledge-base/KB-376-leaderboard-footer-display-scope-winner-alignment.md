@@ -67,4 +67,4 @@ update-frequency: medium
 - [ADR-20260508](../decisions/ADR-20260508-leaderboard-board-aggregate-api.md)
 - [KB-374](./KB-374-leaderboard-board-continue-cursor-contract.md)
 - [docs INDEX](../INDEX.md)
-- [deployment.md §KB-376](../guides/deployment.md#leaderboard-footer-display-scope-winner-alignment-2026-05-10)
+- [deployment.md §KB-376](../archive/deployments/2026-05.md#leaderboard-footer-display-scope-winner-alignment-2026-05-10)

@@ -6,10 +6,6 @@ from typing import Any
 
 
 Target = dict[str, str]
-MinimizePolicy = Callable[
-    [list[Target], dict[str, Any], dict[str, Any] | None],
-    tuple[list[Target], dict[str, Any]],
-]
 CanaryHoldPolicy = Callable[..., bool]
 HOST_DECISION_FIELDS = (
     'host',
@@ -106,53 +102,6 @@ def build_fleet_plan_payload(
         'excludedHosts': [decision['host'] for decision in excluded],
         'minimized': bool(excluded),
         'canaryHold': canary_hold,
-    }
-
-
-def plan_terminal_scope(
-    terminal_targets: list[Target] | None,
-    inventory: dict[str, Any],
-    classification: dict[str, Any] | None,
-    *,
-    auto_minimize: bool,
-    minimize_policy: MinimizePolicy,
-    canary_hold_policy: CanaryHoldPolicy,
-) -> dict[str, Any]:
-    """Return the deterministic terminal portion of a print plan.
-
-    The policy callables are injected by the compatibility facade.  Besides
-    keeping this module free of I/O, that preserves existing tests and callers
-    that patch facade attributes while the monolith is split incrementally.
-    """
-    planned_targets = terminal_targets
-    minimized = False
-    excluded_hosts: list[str] = []
-    classification_components = (
-        list(classification.get('components') or []) if classification is not None else None
-    )
-
-    if auto_minimize and planned_targets is not None:
-        planned_targets, minimize_meta = minimize_policy(
-            planned_targets,
-            inventory,
-            classification,
-        )
-        excluded_hosts = list(minimize_meta.get('excludedHosts') or [])
-        minimized = bool(minimize_meta.get('minimized'))
-        classification_components = minimize_meta.get('classificationComponents')
-
-    canary_hold = (
-        None
-        if planned_targets is None
-        else canary_hold_policy(planned_targets, 0, skip=False)
-    )
-    return {
-        'terminalTargets': planned_targets,
-        'canaryHold': canary_hold,
-        'autoMinimize': auto_minimize,
-        'minimized': minimized,
-        'excludedHosts': excluded_hosts,
-        'classificationComponents': classification_components,
     }
 
 

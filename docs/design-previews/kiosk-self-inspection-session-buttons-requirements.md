@@ -230,5 +230,5 @@
 - 調査・議論: チャット（自主検査ボタン統一 · 操作誘導合意）
 - KB 正本: [KB-320 §ボタンUI統一](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション-ボタンui統一-2026-06-05)
 - KB 活性: [KB-320 §セッション操作ボタン活性](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション操作ボタン活性-2026-06-04)
-- デプロイ: [deployment §ボタンUI](../guides/deployment.md#kiosk-self-inspection-session-button-ui-2026-06-05)
+- デプロイ: [deployment §ボタンUI](../archive/deployments/2026-06.md#kiosk-self-inspection-session-button-ui-2026-06-05)
 - Runbook: [§ボタンUI](../runbooks/kiosk-part-measurement.md#自主検査-セッション-ボタンui統一-2026-06-05)

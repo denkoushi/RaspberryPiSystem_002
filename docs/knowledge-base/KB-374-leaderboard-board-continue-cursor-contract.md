@@ -170,7 +170,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml \
 - **付与条件（サーバ）**: 集約続き読みにおいて **全資源スロットとも**、`leaderboard-composite-board-continue-assembly` の **軽量チャンク合成**により「このラウンドで追加された continuation チャンク」が明示できる場合のみ **`deltaRows`** を載せる。いずれかのスロットで **チャンク空・ID ずれ・安全 hydrate フォールバック**等により差分意味を持てないときは **`deltaRows` キーごと省略**する（旧挙動＝ **`rows` 正本**）。
 - **並び**: `deltaRows` は **`boardResourceCds` のスロット順**で、スロット内のcontinuationで増えた行を **順に連結**した配列（スロットに追加チャンクが無いときは **`[]`** のスライス）。
 - **Web**: [`mergeLeaderboardBoardContinueResponse.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/mergeLeaderboardBoardContinueResponse.ts) が **`FSIGENCD`（大文字小文字無視）**で `rows` / `deltaRows` をスロット分割し、`prevRows`＋`deltaRows` の合成が **応答の累積 `rows` と同じ ID 列**になることを検証。失敗時は **サーバの `rows` オブジェクト**をそのまま採る（出力不変・安全側）。
-- **段階導入（完了・2026-05-19）**: **Pi5 API 先行**（`deltaRows`）→ **Pi5 再デプロイ**（表示安定化 + pageSize 80）→ **Pi4×4 順次**（3 機能まとめて Web+API 同梱）。手順・Detach 実績: [deployment.md §deltaRows](../guides/deployment.md#kiosk-leaderboard-continue-deltarows-dual-payload-2026-05-18)·[§表示安定化](../guides/deployment.md#kiosk-leaderboard-display-stability-refetch-2026-05-19)·[§pageSize 80](../guides/deployment.md#kiosk-leaderboard-pagesize-80-phase1-2026-05-19)。
+- **段階導入（完了・2026-05-19）**: **Pi5 API 先行**（`deltaRows`）→ **Pi5 再デプロイ**（表示安定化 + pageSize 80）→ **Pi4×4 順次**（3 機能まとめて Web+API 同梱）。手順・Detach 実績: [deployment.md §deltaRows](../archive/deployments/2026-05.md#kiosk-leaderboard-continue-deltarows-dual-payload-2026-05-18)·[§表示安定化](../archive/deployments/2026-05.md#kiosk-leaderboard-display-stability-refetch-2026-05-19)·[§pageSize 80](../archive/deployments/2026-05.md#kiosk-leaderboard-pagesize-80-phase1-2026-05-19)。
 
 ### Performance note（2026-06-23 · residual evidence / index）
 
@@ -329,7 +329,7 @@ Pi5 503/504 sample:
 | **pageSize 80 より遅い**（Pi5 に本ブランチ反映済） | Network で **初回 `pageSize=10`** と **continue 回数・各応答時間**を確認。サーバログで **continue あたりの装飾時間** | **Pi4 へは展開しない**（2026-05-19 決定）。ロールバックは Pi5 を **`main`（pageSize 80 系）**へ再デプロイ、または定数 **10/40 → 80/80** へ戻して再検証 |
 | 初回は速いが全件揃うまで遅い | **continue ラウンド数**・**prefix 装飾**・**continue あたり COUNT** を疑う | **第1弾 COUNT 再利用**は [§continue COUNT 再利用](#continue-時-count-再利用第1弾--api-のみ--出力不変)（**Pi5 本番・現場 OK**）。残り: prefix 装飾キャッシュ・continue 並列化（[KB-369](./KB-369-leader-order-board-api-internal-latency.md)） |
 | 件数・装飾がおかしい | 統合テスト相当の **完了後 id/total** を単発 GET と照合 | `canAttachDelta` 失敗時は **累積全行装飾**フォールバック（出力不変） |
-| Pi4 が旧挙動のまま | **本ブランチ未デプロイ**（意図どおり） | Pi4 展開する場合は **5 台順次**（[deployment.md §初回10/追補40](../guides/deployment.md#kiosk-leaderboard-initial-10-continue-40-phase1-2026-05-19)）— **現時点では実施しない** |
+| Pi4 が旧挙動のまま | **本ブランチ未デプロイ**（意図どおり） | Pi4 展開する場合は **5 台順次**（[deployment.md §初回10/追補40](../archive/deployments/2026-05.md#kiosk-leaderboard-initial-10-continue-40-phase1-2026-05-19)）— **現時点では実施しない** |
 
 ### ローカル回帰（実装時）
 
@@ -797,7 +797,7 @@ pnpm --filter @raspi-system/web build
 
 ### 本番デプロイ（2026-05-20 · **Pi5→Pi4×4 完了・実機検証 OK**）
 
-**方針**: [deployment.md §操作即表示](../guides/deployment.md#kiosk-leaderboard-mutation-instant-display-2026-05-20) と同型。**1 台ずつ `--limit`**·**Pi3 は `no hosts matched`**。
+**方針**: [deployment.md §操作即表示](../archive/deployments/2026-05.md#kiosk-leaderboard-mutation-instant-display-2026-05-20) と同型。**1 台ずつ `--limit`**·**Pi3 は `no hosts matched`**。
 
 **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-mutation-instant-display infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）。
 
@@ -1051,7 +1051,7 @@ pnpm --filter @raspi-system/web build
 
 - **「出力同値」修正でも UI サブリソース（チップ）**は **別指紋**が必要。board 行と **装飾マップは独立に変化**しうる。
 - **製番 OR** は **board の API `q`** だけでなく、**遅延装飾 hook のキー設計**まで含めて一体で見る（[§製番 OR §装飾](#製番-or-クライアントキャッシュフィルタ2026-05-20) 5 項を更新済み）。
-- **Pi5 先行 → StoneBase01 実機 OK → 残 Pi4×3** の順で、**回帰の切り分けコスト**が小さい（標準 [deployment.md §フッタチップ](../guides/deployment.md#kiosk-leaderboard-footer-chips-terminal-cache-2026-05-20)）。
+- **Pi5 先行 → StoneBase01 実機 OK → 残 Pi4×3** の順で、**回帰の切り分けコスト**が小さい（標準 [deployment.md §フッタチップ](../archive/deployments/2026-05.md#kiosk-leaderboard-footer-chips-terminal-cache-2026-05-20)）。
 
 ## 完了後フッタ工程チップ装飾の再同期（2026-06-01 · `fix/kiosk-leaderboard-completion-decoration-resync`）
 
@@ -1090,7 +1090,7 @@ pnpm --filter @raspi-system/web build
 | 実機（自動） | `verify-phase12-real.sh` **43/0/0**（約 **63s**） |
 | Pi4 / Pi3 | **`no hosts matched`**（SPA 配信は Pi5·**Pi4 順次不要**） |
 
-**記録**: [deployment.md §2026-06-01](../guides/deployment.md#kiosk-leaderboard-completion-decoration-resync-2026-06-01) · [KB-375 §2026-06-01](./KB-375-kiosk-leaderboard-completion-integrity.md#production-2026-06-01-completion-decoration-resync)
+**記録**: [deployment.md §2026-06-01](../archive/deployments/2026-06.md#kiosk-leaderboard-completion-decoration-resync-2026-06-01) · [KB-375 §2026-06-01](./KB-375-kiosk-leaderboard-completion-integrity.md#production-2026-06-01-completion-decoration-resync)
 
 ### Troubleshooting
 
@@ -1366,17 +1366,17 @@ NODE_TLS_REJECT_UNAUTHORIZED=0 node scripts/test/benchmark-leaderboard-continue-
 
 ## References
 
-- **cursor 契約（2026-05-09）**: 代表 **`6bfd2c2b`**（ブランチ **`fix/kiosk-leaderboard-board-continue-cursor`**）·[deployment §cursor](../guides/deployment.md#leaderboard-board-continue-cursor-contract-2026-05-09)。
+- **cursor 契約（2026-05-09）**: 代表 **`6bfd2c2b`**（ブランチ **`fix/kiosk-leaderboard-board-continue-cursor`**）·[deployment §cursor](../archive/deployments/2026-05.md#leaderboard-board-continue-cursor-contract-2026-05-09)。
 - **本件（2026-05-19 · pageSize 80 系）**: **`371a1ce2`** / **`f627dcb0`** / **`f6a220e0`**（ブランチ **`feat/leaderboard-continue-delta-safe`**）·**`main`**: [PR #297](https://github.com/denkoushi/RaspberryPiSystem_002/pull/297) **squash** **`fae56edd`**。
 - **初回10/追補40（2026-05-19）**: **`1e214213`**（ブランチ **`feat/leaderboard-board-initial-10-continue-40`**）·Pi5 Detach **`20260519-125903-25635`**·**`main`**: [PR #298](https://github.com/denkoushi/RaspberryPiSystem_002/pull/298) **squash** **`5c2bceec`**·[§初回10/追補40](#第1段階-pagesize-初回10--追補40--continue-装飾分離2026-05-19--featleaderboard-board-initial-10-continue-40)。
-- **装飾後取り + append スコープ（2026-05-19）**: ブランチ **`feat/kiosk-leaderboard-deferred-decorations-fast-initial`**·tip **`08613580`**·**Pi5→Pi4×4 本番反映・現場 OK**·[§装飾後取り](#装飾後取り--初回80continue40--append-スコープ2026-05-19--featkiosk-leaderboard-deferred-decorations-fast-initial)·[deployment §装飾後取り](../guides/deployment.md#kiosk-leaderboard-deferred-decorations-fast-initial-2026-05-19)。
-- **端末キャッシュ Phase 1（2026-05-19）**: ブランチ **`feat/kiosk-leaderboard-terminal-cache-phase1`**·**`072054f9`** / fix **`3ae93221`**·**Pi5 のみ本番**·Pi4 **未展開**·[§端末キャッシュ](#端末キャッシュ-phase-1-indexeddb--裏同期2026-05-19--featkiosk-leaderboard-terminal-cache-phase1)·[ADR-20260519](../decisions/ADR-20260519-leaderboard-terminal-cache-phase1.md)·[deployment §端末キャッシュ](../guides/deployment.md#kiosk-leaderboard-terminal-cache-phase1-2026-05-19)。
-- **端末キャッシュ Phase 2（2026-05-19 本番）**: **`c581c1e1`** / **`2300da83`**·**Pi5→Pi4×4**·[§Phase 2 SWR](#端末キャッシュ-phase-2-swr--書き込み同期2026-05-20)·[ADR-20260520](../decisions/ADR-20260520-leaderboard-terminal-cache-phase2-swr.md)·[deployment §Phase 2](../guides/deployment.md#kiosk-leaderboard-terminal-cache-phase2-swr-2026-05-19)·[PR #302](https://github.com/denkoushi/RaspberryPiSystem_002/pull/302)。
-- **端末キャッシュ Phase 2 改訂（120s 同期・SWR 操作ロック・2026-05-20）**: **`76e265f2`**·**Pi5 + StoneBase01 部分本番**·実機 **OK**·[§Phase 2 改訂](#端末キャッシュ-phase-2-改訂120s-同期swr-操作ロック2026-05-20--featkiosk-leaderboard-cache-120s-swr-lock)·[deployment §120s 改訂](../guides/deployment.md#kiosk-leaderboard-cache-120s-swr-lock-2026-05-20)·CI **`26133411712`**。
-- **製番 OR クライアントキャッシュフィルタ（2026-05-20）**: **`a65c4600`** / **`84751160`**·**Pi5 + `raspi4-kensaku-stonebase01` 先行本番**·[§製番 OR クライアントキャッシュフィルタ](#製番-or-クライアントキャッシュフィルタ2026-05-20)·[deployment §製番 OR クライアントフィルタ](../guides/deployment.md#kiosk-leaderboard-seiban-or-client-cache-filter-2026-05-20)。
-- **資源CDフッタチップ端末キャッシュ（2026-05-20）**: **`e24d5885`**·**Pi5→Pi4×4 本番・実機 OK**·[§資源CDフッタチップ端末キャッシュ](#資源cdフッタチップ端末キャッシュ永続化2026-05-20--fixkiosk-leaderboard-footer-chips-terminal-cache)·[deployment §フッタチップ](../guides/deployment.md#kiosk-leaderboard-footer-chips-terminal-cache-2026-05-20)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
-- **continue chunk 80/80（2026-05-21）**: **`a2a3c960`** / CI **`12c94486`**·**Pi5→Pi4×4 本番**·Detach **`20260521-083210-21952`** 他 4 台·CI **`26195283245` success**·[§continue 80/80 実装](#continue-chunk-8080-実装web-のみ--2026-05-21--本番反映済み)·[deployment §continue 80](../guides/deployment.md#kiosk-leaderboard-continue-chunk-80-2026-05-21)。
-- **continue chunk 80/160（2026-05-21）**: **`4471a444`**·**PR [#315](https://github.com/denkoushi/RaspberryPiSystem_002/pull/315)**·**Pi5→Pi4×4 本番**·Detach **`20260521-203852-9936`** 他 4 台·CI **`26222962417` success**·[§continue 80/160 実装](#continue-chunk-80160-実装web-のみ--2026-05-21--本番反映済み)·[deployment §continue 80/160](../guides/deployment.md#kiosk-leaderboard-continue-chunk-160-2026-05-21)。
+- **装飾後取り + append スコープ（2026-05-19）**: ブランチ **`feat/kiosk-leaderboard-deferred-decorations-fast-initial`**·tip **`08613580`**·**Pi5→Pi4×4 本番反映・現場 OK**·[§装飾後取り](#装飾後取り--初回80continue40--append-スコープ2026-05-19--featkiosk-leaderboard-deferred-decorations-fast-initial)·[deployment §装飾後取り](../archive/deployments/2026-05.md#kiosk-leaderboard-deferred-decorations-fast-initial-2026-05-19)。
+- **端末キャッシュ Phase 1（2026-05-19）**: ブランチ **`feat/kiosk-leaderboard-terminal-cache-phase1`**·**`072054f9`** / fix **`3ae93221`**·**Pi5 のみ本番**·Pi4 **未展開**·[§端末キャッシュ](#端末キャッシュ-phase-1-indexeddb--裏同期2026-05-19--featkiosk-leaderboard-terminal-cache-phase1)·[ADR-20260519](../decisions/ADR-20260519-leaderboard-terminal-cache-phase1.md)·[deployment §端末キャッシュ](../archive/deployments/2026-05.md#kiosk-leaderboard-terminal-cache-phase1-2026-05-19)。
+- **端末キャッシュ Phase 2（2026-05-19 本番）**: **`c581c1e1`** / **`2300da83`**·**Pi5→Pi4×4**·[§Phase 2 SWR](#端末キャッシュ-phase-2-swr--書き込み同期2026-05-20)·[ADR-20260520](../decisions/ADR-20260520-leaderboard-terminal-cache-phase2-swr.md)·[deployment §Phase 2](../archive/deployments/2026-05.md#kiosk-leaderboard-terminal-cache-phase2-swr-2026-05-19)·[PR #302](https://github.com/denkoushi/RaspberryPiSystem_002/pull/302)。
+- **端末キャッシュ Phase 2 改訂（120s 同期・SWR 操作ロック・2026-05-20）**: **`76e265f2`**·**Pi5 + StoneBase01 部分本番**·実機 **OK**·[§Phase 2 改訂](#端末キャッシュ-phase-2-改訂120s-同期swr-操作ロック2026-05-20--featkiosk-leaderboard-cache-120s-swr-lock)·[deployment §120s 改訂](../archive/deployments/2026-05.md#kiosk-leaderboard-cache-120s-swr-lock-2026-05-20)·CI **`26133411712`**。
+- **製番 OR クライアントキャッシュフィルタ（2026-05-20）**: **`a65c4600`** / **`84751160`**·**Pi5 + `raspi4-kensaku-stonebase01` 先行本番**·[§製番 OR クライアントキャッシュフィルタ](#製番-or-クライアントキャッシュフィルタ2026-05-20)·[deployment §製番 OR クライアントフィルタ](../archive/deployments/2026-05.md#kiosk-leaderboard-seiban-or-client-cache-filter-2026-05-20)。
+- **資源CDフッタチップ端末キャッシュ（2026-05-20）**: **`e24d5885`**·**Pi5→Pi4×4 本番・実機 OK**·[§資源CDフッタチップ端末キャッシュ](#資源cdフッタチップ端末キャッシュ永続化2026-05-20--fixkiosk-leaderboard-footer-chips-terminal-cache)·[deployment §フッタチップ](../archive/deployments/2026-05.md#kiosk-leaderboard-footer-chips-terminal-cache-2026-05-20)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
+- **continue chunk 80/80（2026-05-21）**: **`a2a3c960`** / CI **`12c94486`**·**Pi5→Pi4×4 本番**·Detach **`20260521-083210-21952`** 他 4 台·CI **`26195283245` success**·[§continue 80/80 実装](#continue-chunk-8080-実装web-のみ--2026-05-21--本番反映済み)·[deployment §continue 80](../archive/deployments/2026-05.md#kiosk-leaderboard-continue-chunk-80-2026-05-21)。
+- **continue chunk 80/160（2026-05-21）**: **`4471a444`**·**PR [#315](https://github.com/denkoushi/RaspberryPiSystem_002/pull/315)**·**Pi5→Pi4×4 本番**·Detach **`20260521-203852-9936`** 他 4 台·CI **`26222962417` success**·[§continue 80/160 実装](#continue-chunk-80160-実装web-のみ--2026-05-21--本番反映済み)·[deployment §continue 80/160](../archive/deployments/2026-05.md#kiosk-leaderboard-continue-chunk-160-2026-05-21)。
 - **shell 初回最適化 第1弾（2026-05-21 · API のみ · Pi5 本番・実機 OK）**: winner materialization **リクエスト内 1 回共有**·**`hasMore=false` スロットは COUNT await 省略**·**`143c8814`**·**PR [#316](https://github.com/denkoushi/RaspberryPiSystem_002/pull/316)**·CI **`26226698424` success**·Detach Pi5 **`20260521-221507-30100`**·[§shell 第1弾](#shell-初回最適化-第1弾-api-のみ--2026-05-21--本番反映済み)。
 - **shell 選定 SQL 第2弾（2026-05-22 · API のみ · Pi5 本番·**第2弾までで一旦停止**）**: SQL **共通化 + LATERAL JOIN**·prefix **manual LIMIT / expansion スキップ**·**`fc485fe3`**（PR [#317](https://github.com/denkoushi/RaspberryPiSystem_002/pull/317)）·Detach Pi5 **`20260522-081052-2796`**·[§shell 第2弾](#shell-選定-sql-第2弾api-のみ--2026-05-22--本番反映済み)·[§ロードマップ（保留）](#shell-選定-sql-第3弾以降-ロードマップ-保留-2026-05-22)。
 - 関連: [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·[KB-380](./KB-380-kiosk-leaderboard-network-error-resilience.md)·[KB-297 §製番チップ](./KB-297-kiosk-due-management-workflow.md#leader-board-seiban-or-filter-2026-04-29)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
@@ -1479,7 +1479,7 @@ pnpm --filter @raspi-system/api test -- kiosk-production-schedule.integration.te
 - **対象**: **`raspberrypi5` のみ**（API コンテナ·**Pi4/Pi3 不要**）
 - **Detach Run ID**: **`20260522-081052-2796`**（`ok=134` `changed=4` `failed=0`·**Git changed**·Docker rebuild + **`prisma migrate deploy` ok**）
 - **実機（自動）**: `verify-phase12-real.sh` **43/0/0**（約 **31s**）
-- **手順正本**: [deployment §shell 第2弾](../guides/deployment.md#kiosk-leaderboard-shell-sql-phase2-2026-05-22)
+- **手順正本**: [deployment §shell 第2弾](../archive/deployments/2026-05.md#kiosk-leaderboard-shell-sql-phase2-2026-05-22)
 
 ### Pi5 shell ベンチ（実データ·デプロイ直後·`runs=2`）
 
@@ -1523,7 +1523,7 @@ pnpm --filter @raspi-system/api test -- kiosk-production-schedule.integration.te
 - **stonebase median やや悪化**·**robodrill median run 間分散** — 残コストは **manual 未充足時の unlimited expansion**·**hasMore スロット並列 COUNT**·**Pi5 負荷分散** が混在し、**第3弾単体の ROI が第1・2弾より低い**（詳細は下記 §ロードマップ）。
 - **出力同値・実機 OK** が第2弾時点で確認済み — **追加最適化は計測前提の再開**とし、別優先タスクへリソースを回す。
 
-**再開時の入口**: 本節 §ロードマップ·[EXEC_PLAN §shell 保留](../../EXEC_PLAN.md#キオスク順位ボード--shell-選定-sql-第3弾以降保留2026-05-22--後日参照)·[deployment §shell 第2弾](../guides/deployment.md#kiosk-leaderboard-shell-sql-phase2-2026-05-22)。
+**再開時の入口**: 本節 §ロードマップ·[EXEC_PLAN §shell 保留](../../EXEC_PLAN.md#キオスク順位ボード--shell-選定-sql-第3弾以降保留2026-05-22--後日参照)·[deployment §shell 第2弾](../archive/deployments/2026-05.md#kiosk-leaderboard-shell-sql-phase2-2026-05-22)。
 
 ### ロードマップ（第3弾以降 · **保留 · 後日参照**） {#shell-選定-sql-第3弾以降-ロードマップ-保留-2026-05-22}
 
@@ -1590,11 +1590,11 @@ pnpm --filter @raspi-system/api test -- kiosk-production-schedule.integration.te
 #### 関連ドキュメント索引
 
 - **進捗・決定**: [EXEC_PLAN Decision Log §shell 第2弾打ち切り](../../EXEC_PLAN.md)
-- **デプロイ**: [deployment §shell 第2弾](../guides/deployment.md#kiosk-leaderboard-shell-sql-phase2-2026-05-22)
+- **デプロイ**: [deployment §shell 第2弾](../archive/deployments/2026-05.md#kiosk-leaderboard-shell-sql-phase2-2026-05-22)
 - **API レイテンシ全体**: [KB-369](./KB-369-leader-order-board-api-internal-latency.md)
 - **ベンチ**: [`scripts/test/benchmark-leaderboard-board-shell.mjs`](../../scripts/test/benchmark-leaderboard-board-shell.mjs)
 
-**正本**: [EXEC_PLAN §Next Steps（保留）](../../EXEC_PLAN.md)·[deployment §shell 第2弾](../guides/deployment.md#kiosk-leaderboard-shell-sql-phase2-2026-05-22)
+**正本**: [EXEC_PLAN §Next Steps（保留）](../../EXEC_PLAN.md)·[deployment §shell 第2弾](../archive/deployments/2026-05.md#kiosk-leaderboard-shell-sql-phase2-2026-05-22)
 
 ## 装飾後取り POST バッチ分割（2026-06-16 · `feat/leaderboard-decoration-batches`）
 

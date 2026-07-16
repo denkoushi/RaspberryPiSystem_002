@@ -31,25 +31,12 @@ class RecordingRun:
         self.head = head
         self.dirty = dirty
         self.calls: list[tuple[tuple[str, ...], str, bool]] = []
-        self.lock_was_held: list[bool] = []
         self.fleet_lock_was_held: list[bool] = []
         self.after_call = None
 
     def __call__(self, argv, *, cwd, capture_output=False):
         command = tuple(argv)
         self.calls.append((command, cwd, capture_output))
-        descriptor = os.open(self.project / '.git/rolling-release.lock', os.O_WRONLY)
-        blocked = False
-        try:
-            try:
-                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                blocked = True
-            else:
-                fcntl.flock(descriptor, fcntl.LOCK_UN)
-        finally:
-            os.close(descriptor)
-        self.lock_was_held.append(blocked)
         fleet_descriptor = os.open(
             self.project / 'logs/deploy/fleet-release-state.lock', os.O_WRONLY
         )
@@ -109,7 +96,7 @@ class RemoteBootstrapTest(unittest.TestCase):
         launch = LaunchSpec(**values)
         return launch.bootstrap_payload(str(self.project))
 
-    def test_lock_precedes_every_git_command_and_fd_is_inherited_by_exec(self):
+    def test_fleet_lock_precedes_every_git_command_and_fd_is_inherited_by_exec(self):
         runner = RecordingRun(self.project)
         invoked = {}
         original_handler = signal.getsignal(signal.SIGUSR1)
@@ -117,18 +104,11 @@ class RemoteBootstrapTest(unittest.TestCase):
         def fake_exec(path, argv, environment):
             invoked.update(path=path, argv=list(argv), environment=dict(environment), cwd=Path.cwd())
             invoked['sigusr1_handler'] = signal.getsignal(signal.SIGUSR1)
-            descriptor = int(environment['ROLLING_RELEASE_LOCK_FD'])
-            self.assertTrue(os.get_inheritable(descriptor))
-            self.assertEqual(os.fstat(descriptor).st_ino, os.stat(self.project / '.git/rolling-release.lock').st_ino)
             fleet_descriptor = int(environment['ROLLING_RELEASE_FLEET_LOCK_FD'])
             self.assertTrue(os.get_inheritable(fleet_descriptor))
             self.assertEqual(
                 os.fstat(fleet_descriptor).st_ino,
                 os.stat(self.project / 'logs/deploy/fleet-release-state.lock').st_ino,
-            )
-            self.assertEqual(
-                os.stat(self.project / '.git/rolling-release.lock').st_mode & 0o777,
-                0o600,
             )
             self.assertEqual(
                 os.stat(self.project / 'logs/deploy/fleet-release-state.lock').st_mode & 0o777,
@@ -156,7 +136,6 @@ class RemoteBootstrapTest(unittest.TestCase):
                 ('status', '--porcelain=v1'),
             ],
         )
-        self.assertEqual(runner.lock_was_held, [True] * 6)
         self.assertEqual(runner.fleet_lock_was_held, [True] * 6)
         self.assertEqual(invoked['path'], '/usr/bin/python3')
         self.assertIs(invoked['sigusr1_handler'], signal.SIG_IGN)
@@ -165,10 +144,8 @@ class RemoteBootstrapTest(unittest.TestCase):
         self.assertEqual(Path.cwd().resolve(), self.original_cwd.resolve())
         self.assertNotIn('ROLLING_RELEASE_LOCK_HELD', invoked['environment'])
         self.assertEqual(invoked['environment']['ROLLING_RELEASE_PROTOCOL'], '2')
-        self.assertEqual(
-            invoked['environment']['ROLLING_RELEASE_LOCK_PATH'],
-            str(self.project / '.git/rolling-release.lock'),
-        )
+        self.assertNotIn('ROLLING_RELEASE_LOCK_PATH', invoked['environment'])
+        self.assertNotIn('ROLLING_RELEASE_LOCK_FD', invoked['environment'])
         self.assertEqual(
             invoked['environment']['ROLLING_RELEASE_FLEET_LOCK_PATH'],
             str(self.project / 'logs/deploy/fleet-release-state.lock'),
@@ -181,8 +158,9 @@ class RemoteBootstrapTest(unittest.TestCase):
         self.assertIn('--run-id', invoked['argv'])
         self.assertEqual(invoked['argv'][invoked['argv'].index('--run-id') + 1], RUN_ID)
 
-    def test_lock_contender_cannot_fetch_checkout_exec_or_create_run_state(self):
-        lock_path = self.project / '.git/rolling-release.lock'
+    def test_fleet_lock_contender_cannot_fetch_checkout_exec_or_create_run_state(self):
+        lock_path = self.project / 'logs/deploy/fleet-release-state.lock'
+        lock_path.parent.mkdir(parents=True)
         descriptor = os.open(lock_path, os.O_WRONLY | os.O_CREAT, 0o600)
         runner = RecordingRun(self.project)
         executed = []
@@ -204,7 +182,7 @@ class RemoteBootstrapTest(unittest.TestCase):
         self.assertFalse((self.project / 'logs/deploy/fleet-release-state.json').exists())
         self.assertFalse((self.project / 'logs/deploy/release-runs').exists())
 
-    def test_fleet_lock_contender_stops_before_compatibility_lock_and_git(self):
+    def test_fleet_lock_contender_stops_before_git(self):
         fleet_lock = self.project / 'logs/deploy/fleet-release-state.lock'
         fleet_lock.parent.mkdir(parents=True)
         descriptor = os.open(fleet_lock, os.O_WRONLY | os.O_CREAT, 0o600)
@@ -218,11 +196,11 @@ class RemoteBootstrapTest(unittest.TestCase):
 
         self.assertEqual(result, bootstrap.EX_TEMPFAIL)
         self.assertEqual(runner.calls, [])
-        self.assertFalse((self.project / '.git/rolling-release.lock').exists())
         self.assertFalse((self.project / 'logs/deploy/fleet-release-state.json').exists())
 
-    def test_lock_symlink_fails_before_git_without_modifying_target(self):
-        lock_path = self.project / '.git/rolling-release.lock'
+    def test_fleet_lock_symlink_fails_before_git_without_modifying_target(self):
+        lock_path = self.project / 'logs/deploy/fleet-release-state.lock'
+        lock_path.parent.mkdir(parents=True)
         target = self.project / 'must-not-open'
         target.write_text('unchanged\n', encoding='utf-8')
         lock_path.symlink_to(target)
@@ -261,8 +239,9 @@ class RemoteBootstrapTest(unittest.TestCase):
 
         self.assertEqual(completed.returncode, bootstrap.EX_CANCELLED, completed.stderr)
 
-    def test_exact_source_runs_standalone_and_lock_contention_precedes_git(self):
-        lock_path = self.project / '.git/rolling-release.lock'
+    def test_exact_source_runs_standalone_and_fleet_lock_contention_precedes_git(self):
+        lock_path = self.project / 'logs/deploy/fleet-release-state.lock'
+        lock_path.parent.mkdir(parents=True)
         descriptor = os.open(lock_path, os.O_WRONLY | os.O_CREAT, 0o600)
         source = Path(bootstrap.__file__).read_text(encoding='utf-8')
         try:

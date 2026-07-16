@@ -324,7 +324,7 @@ ssh denkon5sd02@100.106.158.2 \
 | 6 | 背景 | **点線グリッドなし** |
 | 7 | 強制リロード | 旧バンドル（棒潰れ・白ホバー帯）時は §6.6.4 |
 
-**参照**: [deployment.md §overview 棒グラフ 2026-05-28](../guides/deployment.md#kiosk-load-balancing-overview-chart-layout-2026-05-28)
+**参照**: [deployment.md §overview 棒グラフ 2026-05-28](../archive/deployments/2026-05.md#kiosk-load-balancing-overview-chart-layout-2026-05-28)
 
 ## 棒グラフ X 軸レイアウト契約（2026-05-28 · 現行 · `da995573`）
 
@@ -417,7 +417,7 @@ ssh denkon5sd02@100.106.158.2 \
 | 3 | 表示名 | 余白の **下から** **+90°** 縦書き · 帯 **108px** 内 |
 | 4 | 強制リロード | 旧バンドル（`dy:10/28` 単一原点）時は §6.6.4 |
 
-**参照**: [deployment.md §CD下余白 2026-05-28](../guides/deployment.md#kiosk-load-balancing-axis-label-gap-2026-05-28)
+**参照**: [deployment.md §CD下余白 2026-05-28](../archive/deployments/2026-05.md#kiosk-load-balancing-axis-label-gap-2026-05-28)
 
 ## 棒グラフ X 軸レイアウト契約（2026-05-28 · 履歴 · `d0263cce` 世代 · 棒潰れあり）
 
@@ -505,7 +505,7 @@ ssh denkon5sd02@100.106.158.2 \
 | 3 | 棒下端 | 軸線と棒の間に **tickMargin 分の隙間** |
 | 4 | 強制リロード | 旧 `dy:-4` キャッシュ時は §6.6.4 |
 
-**参照**: [deployment.md §パディング 2026-05-28](../guides/deployment.md#kiosk-load-balancing-chart-axis-padding-2026-05-28)
+**参照**: [deployment.md §パディング 2026-05-28](../archive/deployments/2026-05.md#kiosk-load-balancing-chart-axis-padding-2026-05-28)
 
 ## 棒グラフ X 軸レイアウト契約（2026-05-28 · 履歴 · `cb339bfa` 世代）
 
@@ -578,7 +578,7 @@ ssh denkon5sd02@100.106.158.2 \
 | 3 | 資源CD | **`b7288982` 時点は棒側（`dy:-4`）で NG** → **`cb339bfa` 以降は +Y** |
 | 4 | 強制リロード | 旧 `-90°` / `dy:-4` キャッシュ時は §6.6.4 |
 
-**参照**: [deployment.md §軸下方向 2026-05-28](../guides/deployment.md#kiosk-load-balancing-chart-axis-labels-downward-2026-05-28)
+**参照**: [deployment.md §軸下方向 2026-05-28](../archive/deployments/2026-05.md#kiosk-load-balancing-chart-axis-labels-downward-2026-05-28)
 
 ## 棒グラフ X 軸レイアウト契約（2026-05-28 · 履歴 · `b7288982` 世代）
 
@@ -645,7 +645,7 @@ ssh denkon5sd02@100.106.158.2 \
 | 3 | ステップ2チップ | 従来どおり横2行（CD+超過 / 表示名） |
 | 4 | 名称なし CD | 資源CD のみ（表示名行なし） |
 
-**参照**: [deployment.md §棒グラフX軸縦書き 2026-05-28](../guides/deployment.md#kiosk-load-balancing-vertical-chart-axis-2026-05-28)
+**参照**: [deployment.md §棒グラフX軸縦書き 2026-05-28](../archive/deployments/2026-05.md#kiosk-load-balancing-vertical-chart-axis-2026-05-28)
 
 ## 棒グラフ X 軸レイアウト契約（2026-05-28 · 縦書き）
 
@@ -724,7 +724,7 @@ ssh denkon5sd02@100.106.158.2 \
 | 3 | チャート外寸 | 従来と同高（`min(260px,34dvh)`）— 下余白で2行表示 |
 | 4 | Mac 絞込 | `scopeEnabled=false` 時は resources 取得を `pauseRefetch` で抑制 |
 
-**参照**: [deployment.md §表示名2行 2026-05-28](../guides/deployment.md#kiosk-load-balancing-resource-display-lines-2026-05-28)
+**参照**: [deployment.md §表示名2行 2026-05-28](../archive/deployments/2026-05.md#kiosk-load-balancing-resource-display-lines-2026-05-28)
 
 ## UI 表示名契約（2026-05-28）
 
@@ -780,7 +780,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 - [ ] 再確認: キオスク横画面で全幅・凡例位置・棒/表の視認性
 
-**参照**: [deployment.md §全幅 2026-05-28](../guides/deployment.md#kiosk-load-balancing-full-width-layout-2026-05-28)
+**参照**: [deployment.md §全幅 2026-05-28](../archive/deployments/2026-05.md#kiosk-load-balancing-full-width-layout-2026-05-28)
 
 ## UI 全幅契約（2026-05-28）
 
@@ -850,7 +850,7 @@ ssh denkon5sd02@100.106.158.2 \
 - [ ] **左**: 棒グラフ + 試算結果、**右**: 推奨セット表が広いこと（`xl` 以上）
 - [ ] 自動選定後の表示維持（reset 境界は **`95b7f29d` 維持**）
 
-**参照**: [deployment.md §可読性チューニング 2026-05-28](../guides/deployment.md#kiosk-load-balancing-font-layout-tuning-2026-05-28)
+**参照**: [deployment.md §可読性チューニング 2026-05-28](../archive/deployments/2026-05.md#kiosk-load-balancing-font-layout-tuning-2026-05-28)
 
 ## UI ワークスペースレイアウト（2026-05-28 · 可読性チューニング）
 
@@ -918,7 +918,7 @@ curl -sk "${BASE}/api/kiosk/production-schedule/load-balancing/overview?month=20
 - [ ] 超過資源チップ・表・ボタンが **11px 未満に潰れていない**こと
 - [ ] **推奨セットを自動選定** 後、表示維持（reset 境界 **`95b7f29d` 前提**）
 
-**参照**: [deployment.md §UI レイアウト 2026-05-28](../guides/deployment.md#kiosk-load-balancing-ui-layout-2026-05-28)
+**参照**: [deployment.md §UI レイアウト 2026-05-28](../archive/deployments/2026-05.md#kiosk-load-balancing-ui-layout-2026-05-28)
 
 ## UI レイアウト契約（2026-05-28）
 
@@ -1107,7 +1107,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 ./scripts/update-all-clients.sh feat/kiosk-load-balancing-aggregation-fix infrastructure/ansible/inventory.yml --limit <host> --detach --follow
 ```
 
-**参照**: [deployment.md §2026-05-27](../guides/deployment.md#kiosk-load-balancing-aggregation-fix-2026-05-27)
+**参照**: [deployment.md §2026-05-27](../archive/deployments/2026-05.md#kiosk-load-balancing-aggregation-fix-2026-05-27)
 
 ## 実機検証（2026-05-27 · 外注契約整合 + 自動選定フロー）
 
@@ -1149,7 +1149,7 @@ curl -sk -w "\nHTTP %{http_code}\n" -X POST \
 - [x] **資源CD俯瞰** → **推奨セットを自動選定**（応答・一覧·残超過表示）— **reset 修正後（`463aeabb`）に実機 OK**
 - [x] 失敗時 **actionError** 表示（超過資源 0·scope 未選択等）— 仕様どおり
 
-**参照**: [deployment.md §契約整合 2026-05-27](../guides/deployment.md#kiosk-load-balancing-ui-p0p1-contract-fix-2026-05-27)
+**参照**: [deployment.md §契約整合 2026-05-27](../archive/deployments/2026-05.md#kiosk-load-balancing-ui-p0p1-contract-fix-2026-05-27)
 
 ## Production deploy（実績 2026-05-27 · 自動選定表示維持 · Pi5→Pi4×4）
 
@@ -1210,7 +1210,7 @@ curl -sk -X POST "${BASE}/api/kiosk/production-schedule/load-balancing/outsourci
 - [x] **推奨セットを自動選定** 押下後、部品一覧・残超過・`（外注シミュ結果）` が **消えない**
 - [x] 月・device scope・超過資源集合を変えたときのみ試算 state がリセットされる
 
-**参照**: [deployment.md §表示維持 2026-05-27](../guides/deployment.md#kiosk-load-balancing-auto-plan-reset-fix-2026-05-27)
+**参照**: [deployment.md §表示維持 2026-05-27](../archive/deployments/2026-05.md#kiosk-load-balancing-auto-plan-reset-fix-2026-05-27)
 
 ## Troubleshooting
 
@@ -1272,8 +1272,8 @@ curl -sk -X POST "${BASE}/api/kiosk/production-schedule/load-balancing/outsourci
 - [ADR-20260527: 外注上限の単一正本](../decisions/ADR-20260527-load-balancing-outsourcing-limits.md)
 - [KB-363: 生産システム突合（2026-05-27）](./KB-363-load-balancing-production-system-reconciliation.md)
 - [運用ガイド: kiosk-production-schedule-load-balancing.md](../guides/kiosk-production-schedule-load-balancing.md)
-- [deployment.md §集計修正 2026-05-27](../guides/deployment.md#kiosk-load-balancing-aggregation-fix-2026-05-27)
-- [deployment.md §表示維持 2026-05-27](../guides/deployment.md#kiosk-load-balancing-auto-plan-reset-fix-2026-05-27)
-- [deployment.md §機種別月次 2026-05-26](../guides/deployment.md#kiosk-load-balancing-machine-monthly-view-2026-05-26)
+- [deployment.md §集計修正 2026-05-27](../archive/deployments/2026-05.md#kiosk-load-balancing-aggregation-fix-2026-05-27)
+- [deployment.md §表示維持 2026-05-27](../archive/deployments/2026-05.md#kiosk-load-balancing-auto-plan-reset-fix-2026-05-27)
+- [deployment.md §機種別月次 2026-05-26](../archive/deployments/2026-05.md#kiosk-load-balancing-machine-monthly-view-2026-05-26)
 - [PR #350](https://github.com/denkoushi/RaspberryPiSystem_002/pull/350)
 - 初版デプロイ（2026-04-30）: 本ファイル §Production deploy 履歴は [deployment.md §2026-04-30 負荷調整](../guides/deployment.md) 参照

@@ -33,7 +33,7 @@ category: knowledge-base
    - **`statusCode` が `C` または `X`** のとき外部完了（**2026-05-08 改訂**: 旧 **dedupe キー消失**・**`O`/`P` による完了**は廃止。`externallyCompletedFromFkojunstDisappeared` は再計算で **常に false**）
    - **`O` / `P`**: 一覧非表示だが **未完了**（製番進捗 total に残る）
 3. **生産日程CSV取込（消滅完了、2026-05-26 廃止）**
-   - **2026-05-09 改訂**: **「`FKOJUNST` メール同期済み winner のうち **メール由来完了（`C` / `X`）以外**」**（SQL 上は `UPPER(BTRIM("fkmail"."statusCode")) NOT IN ('C','X')` 相当）かつ「`occurredAt` が基準日時の UTC **±3 カ月**」**に入る論理キー**を母集団とし、**母集団 − 現 winner（2026-05-16 以降の正本は下項）の論理キー** を **消滅**とみなして `externallyCompletedFromScheduleCsvDisappeared` を更新する（**`C`/`X` は母集団から除外**・`C` 除外の主因は [KB-373](./KB-373-fkojunst-status-c-key-domain-mismatch.md) の **キー空間不一致**。`X` は **2026-05-18** に **同一カテゴリへ揃え**、CSV 取込漏れ是正後の運用と整合）。**旧仕様（〜2026-05-08 以前）**: 取込直前スナップショットと取込後キーの差分・**`S`/`R` winner に限定**する記述は **本項で置換**（正本は [deployment.md §2026-05-09 消滅窓](../guides/deployment.md#schedule-csv-disappearance-nonc-window-2026-05-09)）。
+   - **2026-05-09 改訂**: **「`FKOJUNST` メール同期済み winner のうち **メール由来完了（`C` / `X`）以外**」**（SQL 上は `UPPER(BTRIM("fkmail"."statusCode")) NOT IN ('C','X')` 相当）かつ「`occurredAt` が基準日時の UTC **±3 カ月**」**に入る論理キー**を母集団とし、**母集団 − 現 winner（2026-05-16 以降の正本は下項）の論理キー** を **消滅**とみなして `externallyCompletedFromScheduleCsvDisappeared` を更新する（**`C`/`X` は母集団から除外**・`C` 除外の主因は [KB-373](./KB-373-fkojunst-status-c-key-domain-mismatch.md) の **キー空間不一致**。`X` は **2026-05-18** に **同一カテゴリへ揃え**、CSV 取込漏れ是正後の運用と整合）。**旧仕様（〜2026-05-08 以前）**: 取込直前スナップショットと取込後キーの差分・**`S`/`R` winner に限定**する記述は **本項で置換**（正本は [deployment.md §2026-05-09 消滅窓](../archive/deployments/2026-05.md#schedule-csv-disappearance-nonc-window-2026-05-09)）。
    - **2026-05-16 改訂（正本Cの current keys・第一段）**: **`ProductionScheduleCanonicalCurrentKeysService`** により **今回バッチで確定した生産日程本体 CSV の dedupe winner** から論理キーを構築し、[`applyPostIngestFromSnapshot`](../../apps/api/src/services/production-schedule/external-completion/production-schedule-csv-ingest-external-completion-sync.service.ts) に渡す。**`FKOJUNST_Status` メールに行が載っていない（FK が無い）ことだけでは**本体 winner を **現集合から落とさない**（過剰な消滅完了を防ぐ）——**2026-05-17 改訂（下項）で「2CSV照合交差」へ拡張**。
    - **2026-05-17 改訂（2CSV 照合・正本C current keys）**: 消滅差分の **現キー集合**は、上記 dedupe winner の **論理キーのうち**、**生産日程CSV取込完了時刻 `tA` 以下で最新完了の `FKOJUNST_Status` ingest run** を **`tB`** として選び、その **原本CSV 1件**（`CsvDashboardIngestRun.csvFilePath`）から復元した Status スナップショット（`FUPDTEDT` 最新で dedupe 済み）と **ADR-20260509** の **3キー（FKOJUN + `FKOTEICD`/`FSIGENCD` + `FSEZONO`/`ProductNo`）** が一致するものに限定する（[`schedule-csv-disappearance-canonical-keys.builder.ts`](../../apps/api/src/services/production-schedule/external-completion/schedule-csv-disappearance-canonical-keys.builder.ts)・[`production-schedule-canonical-current-keys.service.ts`](../../apps/api/src/services/production-schedule/external-completion/production-schedule-canonical-current-keys.service.ts)）。**Status 幕は `dateColumnName` が無く `occurredAt`≈取込時刻**のため、**`tA` は本体CSVの日付列ではなく取込完了時刻**とする。**`tA` 以前に完了 ingest run が無い**、または **原本CSVを正規化しても Status 行が 0 件**のときは **差分消失同期のみスキップ**（手動・メール完了は維持）。**±3ヶ月×（メール完了 `C`/`X` 以外）の母集団**・**空 winner ガード**は変更なし。
    - **空 winner ガード**（`empty_schedule_csv`）は変更なしだった。
@@ -78,7 +78,7 @@ category: knowledge-base
 
 - **対象ホスト**: **`raspberrypi5` のみ**（Pi4／Pi3 **no hosts matched**）。
 - **ブランチ**: **`feat/fkojunst-status-cx-completion`**（代表 **`d12b40de`**）。
-- **標準手順**: [deployment.md §FKOJUNST 唯一正本（2026-05-08）](../guides/deployment.md#fkojunst-status-sole-source-2026-05-08)。
+- **標準手順**: [deployment.md §FKOJUNST 唯一正本（2026-05-08）](../archive/deployments/2026-05.md#fkojunst-status-sole-source-2026-05-08)。
 - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260508-192843-15997`**
   - **`PLAY RECAP`**: `ok=134` `changed=4` `failed=0` `unreachable=0`・リモート **`exit 0`**
   - **新規マイグレーション**: **なし**（`prisma migrate deploy` / `status` は playbook 内 **成功**）
@@ -91,7 +91,7 @@ category: knowledge-base
 
 - **対象ホスト**: **`raspberrypi5` のみ**（Pi4 キオスク／Pi3 **no hosts matched**・**Pi3 専用手順不要**）。
 - **ブランチ**: **`feature/external-completion-schedule-disappearance-non-c`**（代表 **`89086089`**。**`main` マージ後は先端を正**）。
-- **標準手順**: [deployment.md §schedule-csv-disappearance-nonc-window-2026-05-09](../guides/deployment.md#schedule-csv-disappearance-nonc-window-2026-05-09)。
+- **標準手順**: [deployment.md §schedule-csv-disappearance-nonc-window-2026-05-09](../archive/deployments/2026-05.md#schedule-csv-disappearance-nonc-window-2026-05-09)。
 - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260509-170432-1808`**
   - **`PLAY RECAP`**: `ok=134` `changed=4` `failed=0` `unreachable=0`・リモート **`exit 0`**・ローカル **`--follow` 約 705s**・**`Git: changed`**・**Docker 再起動あり**
   - **新規マイグレーション**: **なし**（`prisma migrate deploy` / `status` は playbook 内 **成功**）
@@ -103,7 +103,7 @@ category: knowledge-base
 
 - **対象ホスト**: **`raspberrypi5` のみ**（**`--limit raspberrypi5`・1 台**。Pi4 キオスク／Pi3 **no hosts matched**・Pi3 は **標準 playbook 未適用／専用手順も本変更では不要**）。
 - **ブランチ**: **`feat/canonical-schedule-disappearance-current-keys`**（本体 **`09f06ebf`** **`fix(kiosk): canonicalize schedule disappearance current keys`**·Trivy 抑止 **`0e327378`** **`chore(ci): suppress current caddy trivy findings`**）。
-- **標準手順**: [deployment.md §2026-05-16 正本C・消滅 current keys](../guides/deployment.md#schedule-csv-disappearance-canonical-current-keys-2026-05-16)。
+- **標準手順**: [deployment.md §2026-05-16 正本C・消滅 current keys](../archive/deployments/2026-05.md#schedule-csv-disappearance-canonical-current-keys-2026-05-16)。
 - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260516-181817-25397`**
   - **`PLAY RECAP`**: `ok=131` `changed=3` `failed=0` `unreachable=0`・リモート **`exit 0`**・ローカル **`--follow` 約 286s**・**`Git: changed`**
   - **Docker compose 再起動タスク**: **`skipping`**（当該 run 記録）。**コンテナ稼働確認**と **`prisma migrate deploy` / `status`**: **`ok`**（新規マイグレ **なし**）
@@ -122,7 +122,7 @@ category: knowledge-base
 
 - **対象ホスト**: **`raspberrypi5` のみ**（**`--limit raspberrypi5`・1 台**。Pi4 キオスク／Pi3 **no hosts matched**・**Pi3 専用手順は本変更では不要／未実施で正**）。
 - **ブランチ**: **`fix/kiosk-completion-csv-pairing`**（実装 tip **`ed733bfe`**）。**`main`**: [PR #290](https://github.com/denkoushi/RaspberryPiSystem_002/pull/290) **squash** **`f252793d`**。
-- **標準手順**: [deployment.md §2026-05-17](../guides/deployment.md#schedule-csv-disappearance-2csv-intersection-2026-05-17)。
+- **標準手順**: [deployment.md §2026-05-17](../archive/deployments/2026-05.md#schedule-csv-disappearance-2csv-intersection-2026-05-17)。
 - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260517-151209-29249`**
   - **`PLAY RECAP`**: `ok=131` `changed=3` `failed=0` `unreachable=0`・リモート **`exit 0`**・ローカル **`--follow` 約 302s**・**`Git: changed`**
   - **Docker compose 再ビルド／再起動**: **`skipping`**（当該 run 記録）。**`prisma migrate deploy` / `status`**: **`ok`**（**新規マイグレなし**）
@@ -135,7 +135,7 @@ category: knowledge-base
 
 - **対象ホスト**: **`raspberrypi5` のみ**（**`--limit raspberrypi5`・1 台**。Pi4 キオスク／Pi3 **no hosts matched**・**Pi3 専用手順は不要／未実施で正**）。
 - **ブランチ**: **`fix/kiosk-completion-exclude-x-from-disappearance`**（機能 **`49d19dce`** **`fix: exclude FKOJUNST X from schedule disappearance candidates`**·CI **`2170bb18`** **`fix(ci): suppress current api image libcap2 trivy finding`**）。**`main`**: [PR #294](https://github.com/denkoushi/RaspberryPiSystem_002/pull/294) **squash** **`e2abadce`**。
-- **標準手順**: [deployment.md §2026-05-18](../guides/deployment.md#schedule-csv-disappearance-exclude-x-code-alignment-2026-05-18)。
+- **標準手順**: [deployment.md §2026-05-18](../archive/deployments/2026-05.md#schedule-csv-disappearance-exclude-x-code-alignment-2026-05-18)。
 - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260518-175005-7497`**
   - **`PLAY RECAP`**: `ok=134` `changed=4` `failed=0` `unreachable=0`·リモート **`exit 0`**·ローカル **`--follow` 約 987s**·**Summary success: true**·**`Git: changed`**·**Docker restart** **`ok`**·**`prisma migrate deploy` / `status`**: **`ok`**（**新規マイグレなし**）
   - **補助ファイル**: **`alerts/alert-20260518-175009.json`**・**`alerts/alert-20260518-180620.json`**（**正常完了でも生成され得る**。**正本は recap / summary**）
@@ -223,7 +223,7 @@ category: knowledge-base
 
 - **対象ホスト**: **`raspberrypi5` のみ**（Pi4／Pi3 **no hosts matched**・**Pi3 専用手順不要**）
 - **ブランチ**: **`fix/kiosk-completion-status-only`**（代表 **`a970e795`**）
-- **標準手順**: [deployment.md §2026-05-26](../guides/deployment.md#kiosk-completion-status-only-2026-05-26)
+- **標準手順**: [deployment.md §2026-05-26](../archive/deployments/2026-05.md#kiosk-completion-status-only-2026-05-26)
 - **Detach Run ID**: **`20260526-121604-8450`**
   - **`PLAY RECAP`**: `ok=134` `changed=4` `failed=0` `unreachable=0`・リモート **`exit 0`**
   - **`Run prisma migrate deploy`**: **成功**（**`20260526030000_disable_schedule_csv_disappearance_completion`**）
@@ -248,7 +248,7 @@ category: knowledge-base
 - **実効完了が付かない／期待とずれる**
   - **現行（2026-05-26 以降）**: 実効完了は **手動完了** OR **メール status `C`/`X` のみ**（[ADR-20260526](../decisions/ADR-20260526-production-schedule-completion-status-only.md)・[#production-2026-05-26-schedule-csv-disappearance-disabled](#production-2026-05-26-schedule-csv-disappearance-disabled)）。
   - **メール status**: **`C`/`X` のみ**メール由来完了（`?` / 空 / **`O`/`P`** は **未完了**。**`O`/`P`** は一覧にも出ない）。
-  - **生産日程CSV（消滅・履歴）**: **2026-05-26 に完了判定から廃止**。旧ロジックの調査は [deployment.md 消滅窓項](../guides/deployment.md#schedule-csv-disappearance-nonc-window-2026-05-09) 等を参照。**本番で `csv_disappeared` が true の行が残る**場合は **マイグレ未適用**または **Pi5 が `a970e795` より前**を疑う。
+  - **生産日程CSV（消滅・履歴）**: **2026-05-26 に完了判定から廃止**。旧ロジックの調査は [deployment.md 消滅窓項](../archive/deployments/2026-05.md#schedule-csv-disappearance-nonc-window-2026-05-09) 等を参照。**本番で `csv_disappeared` が true の行が残る**場合は **マイグレ未適用**または **Pi5 が `a970e795` より前**を疑う。
 - **マイグレ未適用**
   - Pi5 で **`prisma migrate status`** が **`20260506150000`** を **Applied** と報告するか（デプロイ playbook の migrate ログが正本）。
 
@@ -256,5 +256,5 @@ category: knowledge-base
 
 - ブランチ: `feat/completion-triple-source-unification`（**`main`**: [PR #263](https://github.com/denkoushi/RaspberryPiSystem_002/pull/263) **squash**・先端 **`4af94e05`** を正とする）
 - **空 winner ガード + axios**: **`fix/schedule-csv-empty-guard`**（**`main`**: [PR #264](https://github.com/denkoushi/RaspberryPiSystem_002/pull/264) **squash**・**`f9b1683e`** を正とする）·デプロイ記録は [deployment.md](../guides/deployment.md)（2026-05-06 · 空 winner ガード 項）
-- デプロイ記録: [deployment.md](../guides/deployment.md)（2026-05-06 · 実効完了3系統OR·**2026-05-09 · 消滅窓** [#schedule-csv-disappearance-nonc-window-2026-05-09](../guides/deployment.md#schedule-csv-disappearance-nonc-window-2026-05-09)·**2026-05-18 · `X` 除外コード整合** [#schedule-csv-disappearance-exclude-x-code-alignment-2026-05-18](../guides/deployment.md#schedule-csv-disappearance-exclude-x-code-alignment-2026-05-18)·**2026-05-16 · 正本C current keys** [#schedule-csv-disappearance-canonical-current-keys-2026-05-16](../guides/deployment.md#schedule-csv-disappearance-canonical-current-keys-2026-05-16)）
+- デプロイ記録: [deployment.md](../guides/deployment.md)（2026-05-06 · 実効完了3系統OR·**2026-05-09 · 消滅窓** [#schedule-csv-disappearance-nonc-window-2026-05-09](../archive/deployments/2026-05.md#schedule-csv-disappearance-nonc-window-2026-05-09)·**2026-05-18 · `X` 除外コード整合** [#schedule-csv-disappearance-exclude-x-code-alignment-2026-05-18](../archive/deployments/2026-05.md#schedule-csv-disappearance-exclude-x-code-alignment-2026-05-18)·**2026-05-16 · 正本C current keys** [#schedule-csv-disappearance-canonical-current-keys-2026-05-16](../archive/deployments/2026-05.md#schedule-csv-disappearance-canonical-current-keys-2026-05-16)）
 - **会話整理（2026-05-17・実装前）**: 本ファイル **Follow-up（2026-05-17 · 未解決残留ケースの会話整理・旧）** 節

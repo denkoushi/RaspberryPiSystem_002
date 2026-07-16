@@ -602,11 +602,11 @@ curl -sk -o /dev/null -w "%{http_code}\n" "https://<Pi5>/api/tools/loans/0000000
 - [ ] （手動・**検査図面 名称・公差種別設定** · 2026-07-06/2026-07-08）管理コンソール `/admin/tools/part-measurement-templates` の **検査図面 名称・公差種別** で `幅=幾何公差` を保存すると、キオスク検査図面の `幅` が `上限値` 入力 + `合格範囲 0〜上限値` 表示になり、候補が `0` / `0.001`〜`0.009` / `0.01` / `0.015` / `0.020` / `0.030` / `0.050` に切り替わること。既定では `直角度` / `面粗度` が幾何公差、`幅` / `厚み` が寸法公差。候補外手入力値は保持されること（[KB-320 §名称・公差種別設定](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-名称-公差種別設定-2026-07-06)）
 - [ ] （手動・**検査図面 UI parity** · 2026-05-30/2026-07-08 · `ccacef85` 以降）一覧フィルタが **折り返し**されること。作成画面で測定点 **名称と基準値/上限値が1行ずつ**、寸法公差は上限/下限2入力、幾何公差は上限値1入力、ツールバーは **保存 → 状態表示 → 保存済み帳票 → 一覧へ戻る** の順、画面下部に旧「図面をタップ…」「一覧プレビューへ」リンクが **ない**こと（[KB-320 §プレビュー](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-preview-parity-2026-05-30)）
 - [ ] （手動・**検査図面 · 一覧フィルタ overflow** · 2026-05-30 · `e19f9b07` 以降）資源 select が工程ボタン・「履歴を含む」に **視覚的に重ならない**こと（強制リロード後）。任意: 新規作成で資源 select が品番等と **同程度の幅（約 10.5rem）**（[KB-320 §overflow](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-library-filter-overflow-2026-05-30) · [Runbook §overflow](../runbooks/kiosk-part-measurement.md#検査図面-一覧フィルタ-overflow-2026-05-30)）
-- [x] （手動・**検査図面 · 測定点位置微調整（方向ボタン）/ 丸数字設定改善** · 2026-06-05/2026-07-08 · **`04bb49fe` · Pi5 + Pi4×5 実機/Phase12 OK**）作成/改版で **点を配置** + 測定点選択時、右ペイン上部の `↑ ↓ ← →` 1行ボタンでマーカーが微調整できること · **テスト入力/ガイド試行では非表示** · 保存後位置維持。選択点カードは背景色を維持したまま枠線/ring で強調され、「この点を削除」横の「全削除」は確認後に全点削除すること。保存状態は `保存済み` / `未保存あり` / `入力不足` 等で表示され、入力有効な未保存変更時だけ保存ボタンが押せること（[KB-320 §丸数字設定改善](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-丸数字設定改善-2026-07-08) · [KB-320 §十字ボタン](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-測定点位置微調整-十字ボタン-2026-06-05) · [Runbook §十字ボタン](../runbooks/kiosk-part-measurement.md#検査図面-測定点位置微調整-十字ボタン-2026-06-05) · [deployment §2026-07-08](../guides/deployment.md#inspection-drawing-marker-settings-save-state-2026-07-08)）
+- [x] （手動・**検査図面 · 測定点位置微調整（方向ボタン）/ 丸数字設定改善** · 2026-06-05/2026-07-08 · **`04bb49fe` · Pi5 + Pi4×5 実機/Phase12 OK**）作成/改版で **点を配置** + 測定点選択時、右ペイン上部の `↑ ↓ ← →` 1行ボタンでマーカーが微調整できること · **テスト入力/ガイド試行では非表示** · 保存後位置維持。選択点カードは背景色を維持したまま枠線/ring で強調され、「この点を削除」横の「全削除」は確認後に全点削除すること。保存状態は `保存済み` / `未保存あり` / `入力不足` 等で表示され、入力有効な未保存変更時だけ保存ボタンが押せること（[KB-320 §丸数字設定改善](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-丸数字設定改善-2026-07-08) · [KB-320 §十字ボタン](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-測定点位置微調整-十字ボタン-2026-06-05) · [Runbook §十字ボタン](../runbooks/kiosk-part-measurement.md#検査図面-測定点位置微調整-十字ボタン-2026-06-05) · [deployment §2026-07-08](../archive/deployments/2026-07.md#inspection-drawing-marker-settings-save-state-2026-07-08)）
 - [ ] （手動・**検査図面 · キャンバスズーム** · 2026-05-30 · `364aa184` 以降）テンプレ作成/編集・記録図面 edit でヘッダー余白に **`−` `＋` `□`**（倍率数字なし）· 拡大後パンで **測定点が増えない** · 短タップで 1 点 · 図面枠の高さが従来どおり（[KB-320 §キャンバスズーム](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-canvas-zoom-2026-05-30) · [Runbook §キャンバスズーム](../runbooks/kiosk-part-measurement.md#検査図面-キャンバスズーム-2026-05-30)）
 - [ ] （手動・**検査図面 DEV プレビュー** · 開発 Mac · 任意）`pnpm dev` → `/dev/kiosk-inspection-drawing-library` と `/dev/kiosk-inspection-drawing-create` が **KioskLayout 配下**で本番と同コンポーネント表示になること（[ADR-20260530](../decisions/ADR-20260530-kiosk-inspection-drawing-dev-preview-parity.md)）
 - [ ] （手動・検査図面・記録）図面付き本番テンプレで **数量=1** の記録が **図面 edit** に遷移すること（`quantity≥2` は表形式）
-- [x] （手動・**検査図面 · PDF プレビュー** · 2026-06-02 · **`8307c995` · Pi5 目視 OK**）作成/編集で PDF 選択後 **1 ページ目 JPEG が表示**されること（空白にならない）。変換中は保存不可。保存後再読込でも測定点位置がずれないこと（[Runbook §PDF/TIFF 取込](../runbooks/kiosk-part-measurement.md#検査図面--pdf-取込2026-06-02) · [KB-320 §PDF/TIFF 取込](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面--pdf-取込2026-06-02) · [deployment §PDF プレビュー](../guides/deployment.md#kiosk-inspection-drawing-pdf-preview-parity-2026-06-02)）
+- [x] （手動・**検査図面 · PDF プレビュー** · 2026-06-02 · **`8307c995` · Pi5 目視 OK**）作成/編集で PDF 選択後 **1 ページ目 JPEG が表示**されること（空白にならない）。変換中は保存不可。保存後再読込でも測定点位置がずれないこと（[Runbook §PDF/TIFF 取込](../runbooks/kiosk-part-measurement.md#検査図面--pdf-取込2026-06-02) · [KB-320 §PDF/TIFF 取込](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面--pdf-取込2026-06-02) · [deployment §PDF プレビュー](../archive/deployments/2026-06.md#kiosk-inspection-drawing-pdf-preview-parity-2026-06-02)）
 - [ ] （手動・**検査図面 · TIFF プレビュー** · 2026-06-10）作成/編集で TIFF/TIF 選択後 **JPEG が表示**されること。変換中は保存不可。保存後再読込でも測定点位置がずれないこと。**Mac 自動**: `part-measurement-drawing-tiff.integration.test.ts`（DB 付き）PASS。**残**: Pi 実機目視（[Runbook §PDF/TIFF 取込](../runbooks/kiosk-part-measurement.md#検査図面--pdf-取込2026-06-02) · [KB-320 §PDF/TIFF 取込](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面--pdf-取込2026-06-02)）
 - [x] （手動・**検査図面 · PDF プレビュー失敗** · 2026-06-02 · Pi5）編集画面で不正 PDF / 変換失敗時、**既存図面が維持**されエラーが表示されること（コードレビュー + 単体テストで担保 · 実機は異常 PDF 投入で任意再確認）
 - [x] （Mac 自動 · 2026-06-02）`pnpm --dir apps/api exec vitest run part-measurement-drawing-preview` · `pnpm --dir apps/web exec vitest run partMeasurementDrawingLocalPreview usePartMeasurementDrawingLocalPreview inspectionDrawingTemplateImageDisplay` が PASS すること（CI **`26812045529`** でも success）
@@ -620,7 +620,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/part-measur
   -d '{"productNo":"x","processGroup":"cutting"}'
 ```
 
-**検証日時**: 2026-03-29（Phase2 全 Pi4 反映後・`main` マージ前に `verify-phase12-real.sh` **PASS 37/0/0** を Mac / Tailscale で再確認／キオスク UI の目視は各現場で推奨）／**2026-03-30**（visual template 本番反映後に同スクリプト **PASS 37/0/0**・約 117s／図面 UI は現場目視推奨）／**2026-04-04**（編集画面上部帯反映後・同スクリプト **PASS 41/0/0**・約 106s）／**2026-04-04**（テンプレ候補選択キオスク・`templates/candidates` スモーク追加後 **PASS 43/0/0**・約 311s・Mac / Tailscale・[KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)）／**2026-04-04**（Pi5 のみ `Dockerfile.web`・Caddy **`go-jose`（CVE-2026-34986）** 反映後の再確認・同スクリプト **PASS 43/0/0**・約 100s・Mac / Tailscale・[ci-cd（Caddy / Trivy 追記）](../knowledge-base/ci-cd.md)）／**2026-04-04**（`feat/part-measurement-template-scope`・Pi5→Pi4×4 順次デプロイ後・同スクリプト **PASS 43/0/0**・約 94s・Mac / Tailscale・Detach Run ID は [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md) Phase12 節）／**2026-04-05**（`feat/part-measurement-fhinmei-partial-match`・Pi5→Pi4×4 順次デプロイ後・同スクリプト **PASS 42/1/0**・約 132s・Pi3 WARN は運用上スキップ可・[KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)）／**2026-04-05**（`feat/part-measurement-multi-sheet-parent`・複数記録表・Pi5→Pi4×4 順次・Pi3 除外後・同スクリプト **PASS 42/1/0**・約 **135s**・Pi3 WARN は運用上スキップ可・[KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)）／**2026-05-30**（検査図面一覧ハブ **`ef78f4dd`**・Pi5 のみデプロイ後・同スクリプト **PASS 42/1/0**・約 **76s**・専用 API 手動/curl は KB-320 参照・Pi4 キオスク目視は未）／**2026-06-02**（検査図面 **PDF プレビュー整合** **`8307c995`** · Pi5 Detach **`20260602-190538-1780`** · 同スクリプト **PASS 41/1/1**・約 **84s** · preview API curl **200/jpeg** · **Pi5 キオスク PDF 目視 OK** · Pi4×4 未 · [deployment §PDF](../guides/deployment.md#kiosk-inspection-drawing-pdf-preview-parity-2026-06-02)）
+**検証日時**: 2026-03-29（Phase2 全 Pi4 反映後・`main` マージ前に `verify-phase12-real.sh` **PASS 37/0/0** を Mac / Tailscale で再確認／キオスク UI の目視は各現場で推奨）／**2026-03-30**（visual template 本番反映後に同スクリプト **PASS 37/0/0**・約 117s／図面 UI は現場目視推奨）／**2026-04-04**（編集画面上部帯反映後・同スクリプト **PASS 41/0/0**・約 106s）／**2026-04-04**（テンプレ候補選択キオスク・`templates/candidates` スモーク追加後 **PASS 43/0/0**・約 311s・Mac / Tailscale・[KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)）／**2026-04-04**（Pi5 のみ `Dockerfile.web`・Caddy **`go-jose`（CVE-2026-34986）** 反映後の再確認・同スクリプト **PASS 43/0/0**・約 100s・Mac / Tailscale・[ci-cd（Caddy / Trivy 追記）](../knowledge-base/ci-cd.md)）／**2026-04-04**（`feat/part-measurement-template-scope`・Pi5→Pi4×4 順次デプロイ後・同スクリプト **PASS 43/0/0**・約 94s・Mac / Tailscale・Detach Run ID は [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md) Phase12 節）／**2026-04-05**（`feat/part-measurement-fhinmei-partial-match`・Pi5→Pi4×4 順次デプロイ後・同スクリプト **PASS 42/1/0**・約 132s・Pi3 WARN は運用上スキップ可・[KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)）／**2026-04-05**（`feat/part-measurement-multi-sheet-parent`・複数記録表・Pi5→Pi4×4 順次・Pi3 除外後・同スクリプト **PASS 42/1/0**・約 **135s**・Pi3 WARN は運用上スキップ可・[KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)）／**2026-05-30**（検査図面一覧ハブ **`ef78f4dd`**・Pi5 のみデプロイ後・同スクリプト **PASS 42/1/0**・約 **76s**・専用 API 手動/curl は KB-320 参照・Pi4 キオスク目視は未）／**2026-06-02**（検査図面 **PDF プレビュー整合** **`8307c995`** · Pi5 Detach **`20260602-190538-1780`** · 同スクリプト **PASS 41/1/1**・約 **84s** · preview API curl **200/jpeg** · **Pi5 キオスク PDF 目視 OK** · Pi4×4 未 · [deployment §PDF](../archive/deployments/2026-06.md#kiosk-inspection-drawing-pdf-preview-parity-2026-06-02)）
 **検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
 
 **6.6.10 デプロイスクリプト多重起動ロック（`update-all-clients.sh`）**
@@ -735,8 +735,8 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 
 - [ ] **回帰（自動）**: `./scripts/deploy/verify-phase12-real.sh` が **PASS 40 / WARN 0 / FAIL 0**（2026-04-02 時点の項目数基準・Tailscale 到達前提）。
 - [ ] **回帰（任意・Mac・Postgres 起動）**: `pnpm test:postgres:start` の後 `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/borrow_return pnpm --filter @raspi-system/api exec prisma migrate deploy` を済ませ、`pnpm --filter @raspi-system/api test -- kiosk-production-schedule.integration.test.ts -t "leaderboard-board continue profile logs"` が成功すること（**continue 完了後の `rows` が単一 GET `leaderboard-board` と id・total 一致**を含む・[KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)）。併せて各 `continue` で **`deltaRows` が配列として存在する**こと（任意・[KB-374](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#dual-payload-deltarows-2026-05-18)）。
-- [x] **表示安定化（2026-05-19・Pi5→Pi4×4 本番反映済）**: 順位ボード表示後 **2 分以上**待機し、行が **一時的に消えて戻る**挙動がないこと（**現場: 表示正常**）。Network で **追補完了後の refetch** でも **`leaderboard-board/continue` が不要に連打されない**こと（[deployment §表示安定化](deployment.md#kiosk-leaderboard-display-stability-refetch-2026-05-19)）。
-- [x] **pageSize 80 第1弾（2026-05-19・Pi5+Pi4 全5台反映済）**: 全行揃うまでの体感が従来より短いこと（**現場: 体感速度維持**）。Network で **`leaderboard-board/continue` 回数が減る**こと。行 ID/件数が単発 GET と矛盾しないこと（[deployment §pageSize 80](deployment.md#kiosk-leaderboard-pagesize-80-phase1-2026-05-19)）。
+- [x] **表示安定化（2026-05-19・Pi5→Pi4×4 本番反映済）**: 順位ボード表示後 **2 分以上**待機し、行が **一時的に消えて戻る**挙動がないこと（**現場: 表示正常**）。Network で **追補完了後の refetch** でも **`leaderboard-board/continue` が不要に連打されない**こと（[deployment §表示安定化](../archive/deployments/2026-05.md#kiosk-leaderboard-display-stability-refetch-2026-05-19)）。
+- [x] **pageSize 80 第1弾（2026-05-19・Pi5+Pi4 全5台反映済）**: 全行揃うまでの体感が従来より短いこと（**現場: 体感速度維持**）。Network で **`leaderboard-board/continue` 回数が減る**こと。行 ID/件数が単発 GET と矛盾しないこと（[deployment §pageSize 80](../archive/deployments/2026-05.md#kiosk-leaderboard-pagesize-80-phase1-2026-05-19)）。
 - [ ] **手動（任意・実機/VNC）**: `/kiosk/production-schedule/leader-order-board` で **左ペイン「両方/未完/完了」**、子行の **✓ 完了切替**、**順位 `-`〜10**（`-` で納期ベース自動並びへ）、**機種名**（MH/SH で空だった行が進捗履歴で補完されうること）を目視。
 - [ ] **手動（任意・Pi4 推奨）**: **資源内順位**変更直後、**数秒待たずに** UI の並び・ドロップダウンが追従すること（**`leaderBoardFastPath`**・大規模一覧の full refetch 省略）。別台キオスクとの占有表示差は **最大ポーリング間隔**まで起こりうる（KB-297 トラブルシュート）。
 - [ ] **手動（任意・UX polish）**: 子行で **FSEIBAN 右横に「◯個」**・**機種名が他画面同様の半角大文字**に見えること。**上端ヘッダー・左ドロワー**および（比較対象あれば）**手動順番下ペイン等のホバー開閉**が従来より素早いこと。[KB-297 §UX polish（leader order board）](../knowledge-base/KB-297-kiosk-due-management-workflow.md#ux-polish-leader-order-board-2026-04-02)。
@@ -797,7 +797,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 
 **6.6.24 キオスク リーダー順位ボード（資源内順位割当 A+α 自動解放）** {#kiosk-leaderboard-order-assignment-auto-release-verification-2026-05-20}
 
-**確認ポイント**（[KB-297 §A+α](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-order-assignment-auto-release-a-alpha-2026-05-20)·[deployment §A+α](./deployment.md#kiosk-leaderboard-order-assignment-auto-release-a-alpha-2026-05-20)）:
+**確認ポイント**（[KB-297 §A+α](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-order-assignment-auto-release-a-alpha-2026-05-20)·[deployment §A+α](../archive/deployments/2026-05.md#kiosk-leaderboard-order-assignment-auto-release-a-alpha-2026-05-20)）:
 
 - [ ] **回帰（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（2026-05-20 本番反映後 **約 76–88s**）。
 - [ ] **Pi5 API ref**: `/opt/RaspberryPiSystem_002` が **`643e4f4b` 以降**（またはマージ後 `main` HEAD）。
@@ -811,7 +811,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 
 **（2026-05-22 以降）**: 全件表示の左縁着色は **撤回**。**現行チェックは [§6.6.28](#kiosk-leaderboard-seiban-accent-no-color-all-items-verification-2026-05-22) を正**とする。本節は **2026-05-20〜2026-05-21 の履歴**。
 
-**確認ポイント**（[KB-297 §24色](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-accent-palette-24-2026-05-20)·[deployment §2026-05-20](./deployment.md#kiosk-leaderboard-seiban-accent-palette-24-2026-05-20)）:
+**確認ポイント**（[KB-297 §24色](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-accent-palette-24-2026-05-20)·[deployment §2026-05-20](../archive/deployments/2026-05.md#kiosk-leaderboard-seiban-accent-palette-24-2026-05-20)）:
 
 - [ ] **回帰（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（2026-05-20 本番反映後 **約 31s**）。
 - [ ] **全件表示（OR フィルタ OFF）**: 異なる製番の行で **左縁色の種類が 8 色時代より増えている**こと（被りは残り得る）。**同一製番**は **資源 CD スロット横断で同色**。
@@ -845,7 +845,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 
 **6.6.30 キオスク リーダー順位ボード（資源カード行 — 強調レイアウト）** {#kiosk-leaderboard-card-row-emphasis-layout-verification-2026-06-05}
 
-**確認ポイント**（[KB-297 §カード行強調](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-card-row-emphasis-layout-2026-06-05)·[deployment §2026-06-05](./deployment.md#kiosk-leaderboard-card-row-emphasis-layout-2026-06-05)）:
+**確認ポイント**（[KB-297 §カード行強調](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-card-row-emphasis-layout-2026-06-05)·[deployment §2026-06-05](../archive/deployments/2026-06.md#kiosk-leaderboard-card-row-emphasis-layout-2026-06-05)）:
 
 - [ ] **回帰（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（2026-06-05 全台反映後 **約 25–29s**）。
 - [ ] **納期**: 従来より **大きく**（**20px 相当**）表示されること。
@@ -864,7 +864,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 
 **6.6.29 キオスク リーダー順位ボード（完了後フッタ工程チップ装飾の再同期）** {#kiosk-leaderboard-completion-decoration-resync-verification-2026-06-01}
 
-**確認ポイント**（[KB-375 §2026-06-01](../knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md#production-2026-06-01-completion-decoration-resync)·[KB-374 §装飾 stale](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#完了後フッタ工程チップ装飾の再同期2026-06-01--fixkiosk-leaderboard-completion-decoration-resync)·[deployment §2026-06-01](./deployment.md#kiosk-leaderboard-completion-decoration-resync-2026-06-01)）:
+**確認ポイント**（[KB-375 §2026-06-01](../knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md#production-2026-06-01-completion-decoration-resync)·[KB-374 §装飾 stale](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#完了後フッタ工程チップ装飾の再同期2026-06-01--fixkiosk-leaderboard-completion-decoration-resync)·[deployment §2026-06-01](../archive/deployments/2026-06.md#kiosk-leaderboard-completion-decoration-resync-2026-06-01)）:
 
 - [ ] **回帰（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（2026-06-01 本番反映後 **約 63s**）。
 - [ ] **手動 ✓ 直後**: 順位ボードで行 **完了** → **行本体のグレーアウト**と **行下フッタの資源CD工程チップ**が **同時に完了表示**（チップだけ未完が残らない）。
@@ -879,7 +879,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 
 **6.6.28 キオスク リーダー順位ボード（製番左縁 — 全件無色・OR フィルタ時のみ色分け）** {#kiosk-leaderboard-seiban-accent-no-color-all-items-verification-2026-05-22}
 
-**確認ポイント**（[KB-297 §全件無色](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-accent-no-color-all-items-2026-05-22)·[deployment §2026-05-22 全件無色](./deployment.md#kiosk-leaderboard-seiban-accent-no-color-all-items-2026-05-22)）:
+**確認ポイント**（[KB-297 §全件無色](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-accent-no-color-all-items-2026-05-22)·[deployment §2026-05-22 全件無色](../archive/deployments/2026-05.md#kiosk-leaderboard-seiban-accent-no-color-all-items-2026-05-22)）:
 
 - [ ] **回帰（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（2026-05-22 本番反映後 **約 139s**）。
 - [ ] **全件表示（OR フィルタ OFF · `OR検索: なし`）**: **すべての行に左縁色が付いていない**こと（`px-2` の均一 padding·`border-l-*` なし）。**製番テキスト行（クラスタ行）は従来どおり表示**。
@@ -895,7 +895,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 
 **6.6.25 キオスク リーダー順位ボード（資源CDスロット「順位」ボタン・製番順評価 ON 時）** {#kiosk-leaderboard-slot-auto-rank-verification-2026-05-22}
 
-**確認ポイント**（[KB-297 §スロット順位](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-slot-auto-rank-2026-05-22)·[deployment §2026-05-22](./deployment.md#kiosk-leaderboard-slot-auto-rank-2026-05-22)）:
+**確認ポイント**（[KB-297 §スロット順位](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-slot-auto-rank-2026-05-22)·[deployment §2026-05-22](../archive/deployments/2026-05.md#kiosk-leaderboard-slot-auto-rank-2026-05-22)）:
 
 - [ ] **回帰（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（2026-05-22 本番反映後 **約 74s**）。
 - [ ] **表示条件**: **製番順評価 ON** のときのみ、各 **資源CDカードタイトル右端**に **「順位」** が出る。**OFF** では非表示。
@@ -918,7 +918,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 
 **6.6.27 キオスク リーダー順位ボード（行内順位ピッカー · 製番順位 UI 統一）** {#kiosk-leaderboard-row-order-rank-picker-verification-2026-05-22}
 
-**確認ポイント**（[KB-297 §行内順位ピッカー](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-row-order-rank-picker-2026-05-22)·[deployment §行内順位](./deployment.md#kiosk-leaderboard-row-order-rank-picker-2026-05-22)）:
+**確認ポイント**（[KB-297 §行内順位ピッカー](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-row-order-rank-picker-2026-05-22)·[deployment §行内順位](../archive/deployments/2026-05.md#kiosk-leaderboard-row-order-rank-picker-2026-05-22)）:
 
 - [x] **回帰（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（2026-05-22·Detach **`20260522-204821-6687`**·約 **116s**）。
 - [x] **UI 種別**: 行内順位は **`<select>` ではなく** タップで **縦リスト Portal**（製番順位ピッカーと同系）。

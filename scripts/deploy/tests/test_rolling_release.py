@@ -103,7 +103,6 @@ def fleet_execution_contract(targets, classification, inventory):
         }
         selected = [target for target in terminal_targets if target['host'] in target_hosts]
         plan['terminalTargets'] = selected
-        plan['autoMinimize'] = kwargs['auto_minimize_alias']
         plan['classificationComponents'] = (
             None if classification is None else sorted(classification.get('components') or [])
         )
@@ -274,7 +273,6 @@ def fleet_execution_contract(targets, classification, inventory):
                 },
             )
         )
-        stack.enter_context(patch.object(MODULE, 'record_pi5_release_current'))
         yield ensure
 
 
@@ -802,17 +800,17 @@ class Pi5IdempotentSkipTest(unittest.TestCase):
         self.state = MODULE.ReleaseState(Path('/tmp/unused-release-state.json'), {})
         self.state.save = Mock()
 
-    def marker(self, **overrides):
-        candidate = {
+    def release(self, **overrides):
+        images = {
             'api': f'registry/api:{self.sha}-0123456789ab',
             'web': f'registry/web:{self.sha}-0123456789ab',
         }
-        marker = {'sha': self.sha, 'candidate': candidate}
-        marker.update(overrides)
-        return marker
+        release = {'sha': self.sha, 'images': images}
+        release.update(overrides)
+        return release
 
     def phase3_status(self, **overrides):
-        candidate = self.marker()['candidate']
+        candidate = self.release()['images']
         status = {
             'runtimeStatus': 'consistent',
             'liveHealthStatus': 'verified',
@@ -839,62 +837,54 @@ class Pi5IdempotentSkipTest(unittest.TestCase):
         status.update(overrides)
         return status
 
-    def test_marker_match_and_consistent_skips_with_already_current_state(self):
+    def test_verified_release_and_consistent_runtime_skip(self):
         with patch.object(MODULE, 'recover_expired_pi5_handoff', return_value=False) as recover, \
                 patch.object(MODULE, 'pi5_already_current', return_value=True) as already, \
                 patch.object(MODULE, 'phase3_release') as release, \
-                patch.object(MODULE, 'wait_for_pi5_stability') as wait, \
-                patch.object(MODULE, 'record_pi5_release_current') as record:
+                patch.object(MODULE, 'wait_for_pi5_stability') as wait:
             MODULE.ensure_pi5_release(self.sha, self.state)
         recover.assert_called_once_with(self.state)
         already.assert_called_once_with(self.sha)
         release.assert_not_called()
         wait.assert_not_called()
-        record.assert_not_called()
         self.assertEqual(self.state.payload['pi5'], {'state': 'already-current', 'sha': self.sha})
         self.state.save.assert_called_once()
 
-    def test_marker_mismatch_runs_blue_green(self):
-        with patch.object(MODULE, 'read_pi5_release_current', return_value={'sha': 'b' * 40}), \
+    def test_release_mismatch_runs_blue_green(self):
+        with patch.object(MODULE, 'read_verified_pi5_release', return_value={'sha': 'b' * 40}), \
                 patch.object(MODULE, 'run') as command, \
                 patch.object(MODULE, 'recover_expired_pi5_handoff', return_value=False), \
                 patch.object(MODULE, 'phase3_release') as release, \
-                patch.object(MODULE, 'wait_for_pi5_stability') as wait, \
-                patch.object(MODULE, 'record_pi5_release_current') as record:
+                patch.object(MODULE, 'wait_for_pi5_stability') as wait:
             self.state.payload['pi5'] = {'candidate': {'api': 'api:tag', 'web': 'web:tag'}, 'state': 'stable'}
             MODULE.ensure_pi5_release(self.sha, self.state)
         command.assert_not_called()
         release.assert_called_once_with(self.sha, self.state)
         wait.assert_called_once_with(self.state)
-        record.assert_not_called()
 
-    def test_missing_marker_runs_blue_green(self):
-        with patch.object(MODULE, 'read_pi5_release_current', return_value=None), \
+    def test_missing_verified_release_runs_blue_green(self):
+        with patch.object(MODULE, 'read_verified_pi5_release', return_value=None), \
                 patch.object(MODULE, 'recover_expired_pi5_handoff', return_value=False), \
                 patch.object(MODULE, 'phase3_release') as release, \
-                patch.object(MODULE, 'wait_for_pi5_stability') as wait, \
-                patch.object(MODULE, 'record_pi5_release_current') as record:
+                patch.object(MODULE, 'wait_for_pi5_stability') as wait:
             self.state.payload['pi5'] = {'candidate': {'api': 'api:tag'}, 'state': 'stable'}
             MODULE.ensure_pi5_release(self.sha, self.state)
         release.assert_called_once_with(self.sha, self.state)
         wait.assert_called_once_with(self.state)
-        record.assert_not_called()
 
     def test_inconsistent_status_runs_blue_green(self):
-        with patch.object(MODULE, 'read_pi5_release_current', return_value={'sha': self.sha}), \
+        with patch.object(MODULE, 'read_verified_pi5_release', return_value={'sha': self.sha}), \
                 patch.object(MODULE, 'run', return_value=json.dumps({'runtimeStatus': 'stale'})), \
                 patch.object(MODULE, 'recover_expired_pi5_handoff', return_value=False), \
                 patch.object(MODULE, 'phase3_release') as release, \
-                patch.object(MODULE, 'wait_for_pi5_stability') as wait, \
-                patch.object(MODULE, 'record_pi5_release_current') as record:
+                patch.object(MODULE, 'wait_for_pi5_stability') as wait:
             self.state.payload['pi5'] = {'candidate': {'api': 'api:tag'}, 'state': 'stable'}
             MODULE.ensure_pi5_release(self.sha, self.state)
         release.assert_called_once_with(self.sha, self.state)
         wait.assert_called_once_with(self.state)
-        record.assert_not_called()
 
-    def test_pi5_already_current_requires_exact_marker_candidate_and_live_slot_match(self):
-        with patch.object(MODULE, 'read_pi5_release_current', return_value=self.marker()), \
+    def test_pi5_already_current_requires_exact_fleet_images_and_live_slot_match(self):
+        with patch.object(MODULE, 'read_verified_pi5_release', return_value=self.release()), \
                 patch.object(MODULE, 'run', return_value=json.dumps(self.phase3_status())) as command, \
                 patch.object(
                     MODULE,
@@ -905,7 +895,7 @@ class Pi5IdempotentSkipTest(unittest.TestCase):
         self.assertEqual(command.call_args.args[0], [str(MODULE.PHASE3), 'status'])
         migrations.assert_called_once_with(self.sha)
 
-    def test_pi5_already_current_accepts_run_scoped_marker_and_live_slot_match(self):
+    def test_pi5_already_current_accepts_run_scoped_images_and_live_slot_match(self):
         run_digest = '9' * 64
         candidate = {
             'api': f'registry/api:{self.sha}-0123456789ab-{run_digest}',
@@ -914,7 +904,7 @@ class Pi5IdempotentSkipTest(unittest.TestCase):
         status = self.phase3_status()
         status['slots']['blue']['images'] = candidate
         with patch.object(
-                MODULE, 'read_pi5_release_current', return_value=self.marker(candidate=candidate)
+                MODULE, 'read_verified_pi5_release', return_value=self.release(images=candidate)
             ), patch.object(MODULE, 'run', return_value=json.dumps(status)), patch.object(
                 MODULE,
                 'verify_pi5_live_migrations',
@@ -942,13 +932,13 @@ class Pi5IdempotentSkipTest(unittest.TestCase):
                     side_effect=verification_error,
                     return_value='sha256:' + 'e' * 64,
                 )
-                with patch.object(MODULE, 'read_pi5_release_current', return_value=self.marker()), \
+                with patch.object(MODULE, 'read_verified_pi5_release', return_value=self.release()), \
                         patch.object(MODULE, 'run', return_value=json.dumps(status)), \
                         patch.object(MODULE, 'verify_pi5_live_migrations', verifier):
                     self.assertFalse(MODULE.pi5_already_current(self.sha))
 
     def test_pi5_already_current_accepts_zero_new_migration_after_full_live_verification(self):
-        with patch.object(MODULE, 'read_pi5_release_current', return_value=self.marker()), \
+        with patch.object(MODULE, 'read_verified_pi5_release', return_value=self.release()), \
                 patch.object(MODULE, 'run', return_value=json.dumps(self.phase3_status())), \
                 patch.object(
                     MODULE,
@@ -957,17 +947,17 @@ class Pi5IdempotentSkipTest(unittest.TestCase):
                 ):
             self.assertTrue(MODULE.pi5_already_current(self.sha))
 
-    def test_pi5_already_current_rejects_malformed_marker_without_status_call(self):
-        malformed = {'sha': self.sha, 'candidate': {'api': f'registry/api:{self.sha}-0123456789ab'}}
-        with patch.object(MODULE, 'read_pi5_release_current', return_value=malformed), \
+    def test_pi5_already_current_rejects_incomplete_fleet_images_without_status_call(self):
+        malformed = {'sha': self.sha, 'images': {'api': f'registry/api:{self.sha}-0123456789ab'}}
+        with patch.object(MODULE, 'read_verified_pi5_release', return_value=malformed), \
                 patch.object(MODULE, 'run') as command:
             self.assertFalse(MODULE.pi5_already_current(self.sha))
         command.assert_not_called()
 
     def test_pi5_already_current_rejects_candidate_tag_for_another_sha(self):
-        candidate = self.marker()['candidate'].copy()
+        candidate = self.release()['images'].copy()
         candidate['web'] = f"registry/web:{'b' * 40}-0123456789ab"
-        with patch.object(MODULE, 'read_pi5_release_current', return_value=self.marker(candidate=candidate)), \
+        with patch.object(MODULE, 'read_verified_pi5_release', return_value=self.release(images=candidate)), \
                 patch.object(MODULE, 'run') as command:
             self.assertFalse(MODULE.pi5_already_current(self.sha))
         command.assert_not_called()
@@ -975,14 +965,14 @@ class Pi5IdempotentSkipTest(unittest.TestCase):
     def test_pi5_already_current_rejects_active_slot_image_mismatch(self):
         status = self.phase3_status()
         status['slots']['blue']['images']['web'] = 'registry/web:other'
-        with patch.object(MODULE, 'read_pi5_release_current', return_value=self.marker()), \
+        with patch.object(MODULE, 'read_verified_pi5_release', return_value=self.release()), \
                 patch.object(MODULE, 'run', return_value=json.dumps(status)):
             self.assertFalse(MODULE.pi5_already_current(self.sha))
 
     def test_pi5_already_current_rejects_gateway_slot_mismatch(self):
         status = self.phase3_status()
         status['gateway']['slot'] = 'green'
-        with patch.object(MODULE, 'read_pi5_release_current', return_value=self.marker()), \
+        with patch.object(MODULE, 'read_verified_pi5_release', return_value=self.release()), \
                 patch.object(MODULE, 'run', return_value=json.dumps(status)):
             self.assertFalse(MODULE.pi5_already_current(self.sha))
 
@@ -995,14 +985,14 @@ class Pi5IdempotentSkipTest(unittest.TestCase):
         ):
             with self.subTest(overrides=overrides):
                 status = self.phase3_status(**overrides)
-                with patch.object(MODULE, 'read_pi5_release_current', return_value=self.marker()), \
+                with patch.object(MODULE, 'read_verified_pi5_release', return_value=self.release()), \
                         patch.object(MODULE, 'run', return_value=json.dumps(status)):
                     self.assertFalse(MODULE.pi5_already_current(self.sha))
 
     def test_pi5_already_current_requires_verified_live_health(self):
         for value in (None, 'failed', 'not-checked'):
             with self.subTest(value=value), \
-                    patch.object(MODULE, 'read_pi5_release_current', return_value=self.marker()), \
+                    patch.object(MODULE, 'read_verified_pi5_release', return_value=self.release()), \
                     patch.object(
                         MODULE,
                         'run',
@@ -1011,7 +1001,7 @@ class Pi5IdempotentSkipTest(unittest.TestCase):
                 self.assertFalse(MODULE.pi5_already_current(self.sha))
 
     def test_pi5_already_current_fail_closed_on_status_error(self):
-        with patch.object(MODULE, 'read_pi5_release_current', return_value={'sha': self.sha}), \
+        with patch.object(MODULE, 'read_verified_pi5_release', return_value=self.release()), \
                 patch.object(MODULE, 'run', side_effect=RuntimeError('status unavailable')):
             self.assertFalse(MODULE.pi5_already_current(self.sha))
 
@@ -1167,8 +1157,7 @@ class Pi5ExpiredHandoffPreflightTest(unittest.TestCase):
                 patch.object(MODULE, 'run', side_effect=run) as command, \
                 patch.object(MODULE.time, 'time', return_value=1_800_000_001), \
                 patch.object(MODULE, 'phase3_release', side_effect=released) as release, \
-                patch.object(MODULE, 'wait_for_pi5_stability') as wait, \
-                patch.object(MODULE, 'record_pi5_release_current') as record:
+                patch.object(MODULE, 'wait_for_pi5_stability') as wait:
             MODULE.ensure_pi5_release(self.sha, self.state)
         self.assertEqual(
             [call.args[0][1] for call in command.call_args_list[:7]],
@@ -1180,7 +1169,6 @@ class Pi5ExpiredHandoffPreflightTest(unittest.TestCase):
         self.assert_structural_call(command.call_args_list[3], 'monitor', capture=False)
         release.assert_called_once_with(self.sha, self.state)
         wait.assert_called_once_with(self.state)
-        record.assert_not_called()
         self.assertEqual(events, ['restart-monitor', 'monitor', 'cleanup', 'release'])
         self.assertEqual(self.state.payload['pi5HandoffRecovery'], {
             'state': 'interrupted-window-reverified',
@@ -1387,10 +1375,10 @@ class DeployClassificationBaselineTest(unittest.TestCase):
         )
         self.assertEqual(command.call_args_list[1].args[0][-4:], ['--base', self.BASE, '--head', self.TARGET])
 
-    def test_missing_or_invalid_marker_fails_closed_before_running_classifier(self):
-        for marker in (None, {}, {'sha': 'not-a-sha'}):
-            with self.subTest(marker=marker), patch.object(MODULE, 'run') as command:
-                classification, warnings = MODULE.classify_release_impact(self.TARGET, marker)
+    def test_missing_or_invalid_baseline_fails_closed_before_running_classifier(self):
+        for baseline in (None, {}, {'sha': 'not-a-sha'}):
+            with self.subTest(baseline=baseline), patch.object(MODULE, 'run') as command:
+                classification, warnings = MODULE.classify_release_impact(self.TARGET, baseline)
             self.assertIsNone(classification)
             self.assertIn('classification unavailable', warnings[0])
             command.assert_not_called()
@@ -1403,7 +1391,7 @@ class DeployClassificationBaselineTest(unittest.TestCase):
         self.assertEqual(warnings, [])
         command.assert_not_called()
 
-    def test_non_ancestor_marker_fails_closed(self):
+    def test_non_ancestor_baseline_fails_closed(self):
         with patch.object(MODULE, 'run', side_effect=RuntimeError('not an ancestor')) as command:
             classification, warnings = MODULE.classify_release_impact(self.TARGET, {'sha': self.BASE})
         self.assertIsNone(classification)
@@ -1413,11 +1401,11 @@ class DeployClassificationBaselineTest(unittest.TestCase):
             capture=True,
         )
 
-    def test_pi5_requirement_is_true_when_marker_is_missing(self):
-        with patch.object(MODULE, 'read_pi5_release_current', return_value=None):
+    def test_pi5_requirement_is_true_when_verified_release_is_missing(self):
+        with patch.object(MODULE, 'read_verified_pi5_release', return_value=None):
             self.assertTrue(MODULE.pi5_release_required(self.TARGET))
 
-    def test_unknown_fleet_server_never_falls_back_to_compat_marker(self):
+    def test_unknown_fleet_server_has_no_verified_release(self):
         unknown = _verified_fleet_record('server', self.BASE)
         unknown.update({
             'evidence': 'unknown',
@@ -1434,10 +1422,8 @@ class DeployClassificationBaselineTest(unittest.TestCase):
             'lastRun': None,
             'fleet': {'raspberrypi5': unknown},
         }
-        with patch.object(MODULE, 'read_fleet_release_state', return_value=fleet_state), \
-                patch.object(MODULE.pi5_backend, 'read_pi5_release_current') as marker:
-            self.assertIsNone(MODULE.read_pi5_release_current())
-        marker.assert_not_called()
+        with patch.object(MODULE, 'read_fleet_release_state', return_value=fleet_state):
+            self.assertIsNone(MODULE.read_verified_pi5_release())
 
     def test_multiple_server_records_disable_skip_without_blocking_repair(self):
         fleet_state = {
@@ -1449,10 +1435,8 @@ class DeployClassificationBaselineTest(unittest.TestCase):
                 'raspberrypi5': _verified_fleet_record('server', self.TARGET),
             },
         }
-        with patch.object(MODULE, 'read_fleet_release_state', return_value=fleet_state), \
-                patch.object(MODULE.pi5_backend, 'read_pi5_release_current') as marker:
-            self.assertIsNone(MODULE.read_pi5_release_current())
-        marker.assert_not_called()
+        with patch.object(MODULE, 'read_fleet_release_state', return_value=fleet_state):
+            self.assertIsNone(MODULE.read_verified_pi5_release())
 
 
 class CanaryHoldTest(unittest.TestCase):
@@ -1475,7 +1459,6 @@ class CanaryHoldTest(unittest.TestCase):
             'reason': None,
             'skip_canary_hold': False,
             'canary_hold_timeout': 60,
-            'auto_minimize': False,
             'full_fleet': False,
             'expected_server_client_id': 'raspberrypi5-server',
         }
@@ -1796,7 +1779,6 @@ class Pi5OnlyRemoteRunTest(unittest.TestCase):
             'reason': None,
             'skip_canary_hold': False,
             'canary_hold_timeout': 60,
-            'auto_minimize': False,
             'expected_server_client_id': 'raspberrypi5-server',
         }
         values.update(overrides)
@@ -2057,7 +2039,6 @@ class PrintPlanShadowTest(unittest.TestCase):
         self.assertEqual(plan['terminalTargets'], [])
         self.assertFalse(plan['canaryHold'])
         self.assertIsNone(plan['limit'])
-        self.assertFalse(plan['autoMinimize'])
         self.assertTrue(plan['minimized'])
         self.assertEqual(plan['excludedHosts'], ['kiosk-canary', 'kiosk-b'])
         self.assertEqual(plan['classificationComponents'], ['server-app'])
@@ -2139,7 +2120,6 @@ class FleetScopeLimitTest(unittest.TestCase):
                     selected=['kiosk-b'],
                     limit='kiosk-b',
                     full_fleet=False,
-                    auto_minimize_alias=False,
                 )
 
     def test_limit_can_narrow_terminals_when_pi5_is_verified_unaffected(self):
@@ -2160,7 +2140,6 @@ class FleetScopeLimitTest(unittest.TestCase):
                 selected=['kiosk-b'],
                 limit='kiosk-b',
                 full_fleet=False,
-                auto_minimize_alias=False,
             )
 
         self.assertEqual([target['host'] for target in targets], ['kiosk-b'])
@@ -2193,7 +2172,6 @@ class FleetScopeLimitTest(unittest.TestCase):
                     selected=['kiosk-b'],
                     limit='kiosk-b',
                     full_fleet=False,
-                    auto_minimize_alias=False,
                 )
 
     def test_print_plan_propagates_zero_match_limit_failure(self):
@@ -2264,7 +2242,7 @@ class AutoMinimizeTest(unittest.TestCase):
             'reason': None,
             'skip_canary_hold': True,
             'canary_hold_timeout': 60,
-            'auto_minimize': True,
+            'full_fleet': False,
             'expected_server_client_id': 'raspberrypi5-server',
         }
         values.update(overrides)
@@ -2310,7 +2288,6 @@ class AutoMinimizeTest(unittest.TestCase):
         )
         self.assertTrue(payload['plan']['minimized'])
         self.assertEqual(payload['plan']['classificationComponents'], ['nfc-agent'])
-        self.assertTrue(payload['plan']['autoMinimize'])
 
     def test_barcode_agent_only_keeps_barcode_enabled_hosts(self):
         classification = {
@@ -2384,19 +2361,15 @@ class AutoMinimizeTest(unittest.TestCase):
         self.assertTrue(payload['plan']['minimized'])
         self.assertEqual(sorted(payload['plan']['excludedHosts']), ['kiosk-a', 'kiosk-b', 'raspberrypi3'])
 
-    def test_default_minimization_does_not_require_the_compatibility_alias(self):
+    def test_default_minimization_is_applied(self):
         classification = {
             'server': False, 'kiosk': True, 'signage': False, 'migration': False,
             'components': ['nfc-agent'],
         }
-        result, played, payload, ensure = self._run_remote(
-            classification=classification,
-            args=self._args(auto_minimize=False),
-        )
+        result, played, payload, ensure = self._run_remote(classification=classification)
         self.assertEqual(result, 0)
         ensure.assert_not_called()
         self.assertEqual(played, ['kiosk-b', 'kiosk-a'])
-        self.assertFalse(payload['plan']['autoMinimize'])
         self.assertTrue(payload['plan']['minimized'])
         self.assertEqual(
             payload['plan']['excludedHosts'],
@@ -2404,7 +2377,7 @@ class AutoMinimizeTest(unittest.TestCase):
         )
         self.assertEqual(payload['plan']['classificationComponents'], ['nfc-agent'])
 
-    def test_auto_minimize_noop_when_no_pi5_and_no_terminals(self):
+    def test_default_minimization_noop_when_no_pi5_and_no_terminals(self):
         classification = {
             'server': False, 'kiosk': False, 'signage': False, 'migration': False,
             'components': ['neutral'],
@@ -2427,20 +2400,7 @@ class AutoMinimizeTest(unittest.TestCase):
         self.assertEqual(payload['targets'], [])
         self.assertFalse(payload['plan']['pi5Required'])
 
-    def test_local_forwards_auto_minimize(self):
-        args = MODULE.normalize_arguments(MODULE.parser().parse_args([
-            'main', 'infrastructure/ansible/inventory.yml', '--auto-minimize',
-        ]))
-        with patch.object(
-            MODULE.release_application, 'launch', return_value=0
-        ) as launch, patch('sys.stderr', new_callable=io.StringIO) as stderr:
-            self.assertEqual(MODULE.local_run(args), 0)
-        launch.assert_called_once_with(args, runtime=MODULE)
-        self.assertTrue(args.auto_minimize)
-        self.assertEqual(stderr.getvalue().count('--auto-minimize'), 1)
-        self.assertIn('minimization is now the default', stderr.getvalue())
-
-    def test_print_plan_auto_minimize_reports_excluded_hosts(self):
+    def test_print_plan_reports_default_minimization(self):
         sha = 'a' * 40
         classification = {
             'server': False, 'kiosk': True, 'signage': False, 'migration': False,
@@ -2448,7 +2408,7 @@ class AutoMinimizeTest(unittest.TestCase):
         }
         targets = list(self.ALL_TARGETS)
         args = MODULE.normalize_arguments(MODULE.parser().parse_args([
-            'main', 'infrastructure/ansible/inventory.yml', '--print-plan', '--auto-minimize',
+            'main', 'infrastructure/ansible/inventory.yml', '--print-plan',
         ]))
         with patch.object(MODULE, 'resolve_release_sha', return_value=(sha, [])), \
                 patch.object(MODULE, 'validate_print_plan_checkout'), \
@@ -2482,7 +2442,6 @@ class AutoMinimizeTest(unittest.TestCase):
                 patch('builtins.print') as printed:
             self.assertEqual(MODULE.local_run(args), 0)
         plan = json.loads(printed.call_args.args[0])
-        self.assertTrue(plan['autoMinimize'])
         self.assertTrue(plan['minimized'])
         self.assertEqual([t['host'] for t in plan['terminalTargets']], ['kiosk-b', 'kiosk-a'])
         self.assertEqual(plan['excludedHosts'], ['raspberrypi5', 'raspberrypi3'])
@@ -2506,10 +2465,6 @@ class RollingReleaseKernelLockTest(unittest.TestCase):
         run_id = 'run-locked'
         with tempfile.TemporaryDirectory() as temporary:
             project = Path(temporary)
-            (project / '.git').mkdir()
-            lock_path = project / '.git/rolling-release.lock'
-            descriptor = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
-            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
             fleet_lock_path = project / 'logs/deploy/fleet-release-state.lock'
             fleet_lock_path.parent.mkdir(parents=True)
             fleet_descriptor = os.open(
@@ -2517,8 +2472,6 @@ class RollingReleaseKernelLockTest(unittest.TestCase):
             )
             fcntl.flock(fleet_descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
             environment = {
-                'ROLLING_RELEASE_LOCK_FD': str(descriptor),
-                'ROLLING_RELEASE_LOCK_PATH': str(lock_path),
                 'ROLLING_RELEASE_FLEET_LOCK_FD': str(fleet_descriptor),
                 'ROLLING_RELEASE_FLEET_LOCK_PATH': str(fleet_lock_path),
                 'ROLLING_RELEASE_CONTROL_FILE': str(
@@ -2539,8 +2492,6 @@ class RollingReleaseKernelLockTest(unittest.TestCase):
                 self.assertEqual(MODULE.remote_run(args), 0)
             identity.assert_called_once_with(run_id, 'a' * 32)
             execute.assert_called_once_with(args)
-            with self.assertRaises(OSError):
-                os.fstat(descriptor)
             with self.assertRaises(OSError):
                 os.fstat(fleet_descriptor)
 

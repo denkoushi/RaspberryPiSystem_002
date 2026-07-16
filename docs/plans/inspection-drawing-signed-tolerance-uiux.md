@@ -127,7 +127,7 @@ pnpm --filter @raspi-system/web build
 | `raspberrypi5` | `20260603-154307-28721` | `6e436cfc` | `failed=0` · `Git: changed` · **Docker web 再ビルド** |
 | `raspi4-kensaku-stonebase01` | `20260603-154818-15503` | `6e436cfc` | `failed=0` · `kiosk-browser` 再起動 |
 
-標準手順: [deployment.md §符号付き公差 UI/UX](../guides/deployment.md#kiosk-inspection-drawing-signed-tolerance-uiux-2026-06-03)
+標準手順: [deployment.md §符号付き公差 UI/UX](../archive/deployments/2026-06.md#kiosk-inspection-drawing-signed-tolerance-uiux-2026-06-03)
 
 ## Outcomes & Retrospective
 

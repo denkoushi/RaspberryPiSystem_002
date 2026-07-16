@@ -371,7 +371,7 @@ update-frequency: high
 - **Phase12** (`./scripts/deploy/verify-phase12-real.sh`): **PASS 43 / WARN 0 / FAIL 0**
 - **Open items**: Confirm **2nd deploy** with unchanged manifests reuses prod install + Chromium layers (cache benefit is primary for routine deploys). Optional: profile_tasks on next Pi5-only deploy to quantify rebuild vs Ansible overhead.
 
-**References**: [deployment.md §deploy-api-build-cache-health-wait](../../guides/deployment.md#deploy-api-build-cache-health-wait-2026-06-17)
+**References**: [deployment.md §deploy-api-build-cache-health-wait](../../archive/deployments/2026-06.md#deploy-api-build-cache-health-wait-2026-06-17)
 
 ---
 

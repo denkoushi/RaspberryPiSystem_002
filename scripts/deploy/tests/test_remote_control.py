@@ -36,7 +36,7 @@ class RemoteControlTest(unittest.TestCase):
         )
         self.assertFalse((self.project / "logs").exists())
 
-    def test_unlocked_pre_pr4_run_state_remains_readable_without_mutation(self):
+    def test_unlocked_run_state_is_rejected_without_mutation(self):
         state_path, _control_path, lock_path = remote_control.paths(self.project, RUN_ID)
         state_path.parent.mkdir(parents=True)
         state_path.write_text(
@@ -44,17 +44,12 @@ class RemoteControlTest(unittest.TestCase):
             encoding="utf-8",
         )
 
-        snapshot = remote_control.snapshot(self.project, RUN_ID)
-
-        self.assertEqual(snapshot["state"]["state"], "success")
-        self.assertEqual(
-            snapshot["state"]["compatibility"]["source"],
-            "unlocked-release-run-state",
-        )
+        with self.assertRaisesRegex(remote_control.RemoteControlError, "without its per-run lock"):
+            remote_control.snapshot(self.project, RUN_ID)
         self.assertFalse(lock_path.exists())
 
-    def test_legacy_shell_status_snapshot_is_an_explicit_read_only_fallback(self):
-        path = remote_control.legacy_shell_state_path(self.project, RUN_ID)
+    def test_retired_shell_status_is_not_read_as_a_release_run(self):
+        path = self.project / "logs/deploy" / f"ansible-update-{RUN_ID}.status.json"
         path.parent.mkdir(parents=True)
         path.write_text(
             json.dumps({"runId": RUN_ID, "state": "failed", "exitCode": "1"}),
@@ -63,14 +58,11 @@ class RemoteControlTest(unittest.TestCase):
 
         snapshot = remote_control.snapshot(self.project, RUN_ID)
 
-        self.assertEqual(snapshot["state"]["state"], "failed")
-        self.assertEqual(
-            snapshot["state"]["compatibility"]["source"],
-            "ansible-update-status",
-        )
+        self.assertIsNone(snapshot["state"])
+        self.assertIsNone(snapshot["control"])
         self.assertFalse(remote_control.paths(self.project, RUN_ID)[2].exists())
 
-    def test_control_without_lock_never_uses_the_legacy_fallback(self):
+    def test_control_without_lock_is_rejected(self):
         _state_path, control_path, _lock_path = remote_control.paths(self.project, RUN_ID)
         control_path.parent.mkdir(parents=True)
         control_path.write_text(json.dumps({"runId": RUN_ID}), encoding="utf-8")

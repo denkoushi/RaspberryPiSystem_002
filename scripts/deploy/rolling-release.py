@@ -48,7 +48,6 @@ from rolling_release.fleet_state import (
 )
 from rolling_release.lock import (
     validate_inherited_fleet_lock,
-    validate_inherited_release_lock,
 )
 from rolling_release.models import unit_name_for
 from rolling_release.state import RunStateStore, TERMINAL_STATES
@@ -63,7 +62,6 @@ CANDIDATE_BUILD = PROJECT / "scripts/deploy/pi5-candidate-build.sh"
 PI5_CANDIDATE_RECONCILE = PROJECT / "scripts/deploy/pi5-candidate-reconcile.sh"
 PI5_LIVE_MIGRATION_EVIDENCE = PROJECT / "scripts/deploy/pi5-live-migration-evidence.sh"
 RUN_DIRECTORY = PROJECT / "logs/deploy/release-runs"
-PI5_RELEASE_CURRENT = PROJECT / "logs/deploy/pi5-release-current.json"
 FLEET_RELEASE_STATE = PROJECT / "logs/deploy/fleet-release-state.json"
 FLEET_RELEASE_LOCK = PROJECT / "logs/deploy/fleet-release-state.lock"
 OPERATOR_CANARY_APPROVAL_CLIENT = "operator-canary-approval"
@@ -74,7 +72,6 @@ CLEANUP_LOCK_CONFLICT = "another Pi5 Blue/Green operation is running"
 CLEANUP_LOCK_RETRY_TIMEOUT = 30
 CLEANUP_LOCK_RETRY_INTERVAL = 2
 READY_ACK_TIMEOUT_SECONDS = 90
-KIOSK_SCOPE_COMPONENTS = release_policy.KIOSK_SCOPE_COMPONENTS
 _ACTIVE_CANCELLATION_TOKEN: CancellationToken | None = None
 _ACTIVE_FLEET_LEASE: FleetLease | None = None
 _PREVIOUS_SHA_UNSET = object()
@@ -125,14 +122,6 @@ def should_hold_after_canary(
     targets: list[dict[str, str]], index: int, *, skip: bool
 ) -> bool:
     return release_policy.should_hold_after_canary(targets, index, skip=skip)
-
-
-def apply_auto_minimize(
-    targets: list[dict[str, str]],
-    inventory: dict[str, Any],
-    classification: dict[str, Any] | None,
-) -> tuple[list[dict[str, str]], dict[str, Any]]:
-    return release_policy.apply_auto_minimize(targets, inventory, classification)
 
 
 def release_hosts(
@@ -844,9 +833,9 @@ def cleanup_after_pi5_stability() -> None:
     return pi5_backend.cleanup_after_pi5_stability(runtime=_runtime())
 
 
-def read_pi5_release_current() -> dict[str, Any] | None:
-    # Fleet evidence is authoritative. The legacy marker remains an explicit
-    # compatibility fallback until PR 8 removes it after production acceptance.
+def read_verified_pi5_release(sha: str | None = None) -> dict[str, Any] | None:
+    """Return the sole verified Pi5 release from authoritative fleet state."""
+
     fleet_state = read_fleet_release_state()
     fleet = fleet_state.get("fleet") or {}
     servers = [
@@ -855,61 +844,37 @@ def read_pi5_release_current() -> dict[str, Any] | None:
         if isinstance(record, dict) and record.get("role") == "server"
     ]
     if len(servers) > 1:
-        # Inventory planning names the current server authority. This legacy
-        # compatibility read has no inventory argument, so competing/stale
-        # records cannot safely prove an idempotent skip. Return no marker and
-        # let the normal live Pi5 execution/verification path repair evidence.
         return None
     if servers and servers[0].get("evidence") == "verified":
         record = servers[0]
+        current_sha = record.get("currentSha")
+        if sha is not None and current_sha != sha:
+            return None
         return {
-            "sha": record.get("currentSha"),
-            "candidate": {
+            "sha": current_sha,
+            "images": {
                 "api": record.get("apiImage"),
                 "web": record.get("webImage"),
             },
-            "completedAt": record.get("verifiedAt"),
-            "compatibility": {"source": "fleet-release-state"},
+            "verifiedAt": record.get("verifiedAt"),
         }
-    # The marker may seed the migration only before fleet state exists. Once
-    # any durable fleet transition or host record exists, absence of verified
-    # server evidence is authoritative and must not be overwritten by it.
-    if not (
-        fleet_state.get("generation") == 0
-        and fleet_state.get("activeRun") is None
-        and fleet_state.get("lastRun") is None
-        and not fleet
-    ):
-        return None
-    marker = pi5_backend.read_pi5_release_current(runtime=_runtime())
-    if isinstance(marker, dict):
-        marker = dict(marker)
-        marker["compatibility"] = {"source": "pi5-release-current"}
-    return marker
-
-
-def read_plan_pi5_release_current() -> tuple[dict[str, Any] | None, list[str]]:
-    return pi5_backend.read_plan_pi5_release_current(runtime=_runtime())
-
-
-def record_pi5_release_current(sha: str, candidate: dict[str, Any] | None) -> None:
-    return pi5_backend.record_pi5_release_current(sha, candidate, runtime=_runtime())
+    return None
 
 
 def candidate_image_matches_sha(image: Any, sha: str) -> bool:
     return pi5_backend.candidate_image_matches_sha(image, sha, runtime=_runtime())
 
 
-def marker_candidate_for_sha(
-    marker: dict[str, Any], sha: str
+def release_images_for_sha(
+    release: dict[str, Any], sha: str
 ) -> dict[str, str] | None:
-    return pi5_backend.marker_candidate_for_sha(marker, sha, runtime=_runtime())
+    return pi5_backend.release_images_for_sha(release, sha, runtime=_runtime())
 
 
-def phase3_matches_marker_candidate(
-    phase3: Any, candidate: dict[str, str]
+def phase3_matches_release_images(
+    phase3: Any, images: dict[str, str]
 ) -> bool:
-    return pi5_backend.phase3_matches_marker_candidate(phase3, candidate)
+    return pi5_backend.phase3_matches_release_images(phase3, images)
 
 
 def verify_pi5_live_migrations(sha: str) -> str:
@@ -1020,7 +985,7 @@ def classify_release_impact(
 
 
 def pi5_release_required(sha: str) -> bool:
-    classification, _ = classify_release_impact(sha, read_pi5_release_current())
+    classification, _ = classify_release_impact(sha, read_verified_pi5_release())
     return release_policy.requires_pi5_release(classification)
 
 
@@ -1065,7 +1030,6 @@ def build_fleet_scope(
     selected: list[str] | None,
     limit: str,
     full_fleet: bool,
-    auto_minimize_alias: bool,
 ) -> tuple[dict[str, Any], list[dict[str, str]], dict[str, dict[str, Any] | None], list[str]]:
     all_hosts = release_hosts(inventory_data)
     classifications, warnings = classify_fleet_baselines(sha, fleet_state)
@@ -1121,7 +1085,6 @@ def build_fleet_scope(
         if decision["targeted"] and decision["role"] in {"kiosk", "signage"}
     ]
     plan["terminalTargets"] = terminal_targets
-    plan["autoMinimize"] = auto_minimize_alias
     components = {
         component
         for classification in classifications.values()
@@ -1138,7 +1101,6 @@ def build_print_plan(
     inventory: str,
     limit: str,
     *,
-    auto_minimize: bool = False,
     full_fleet: bool = False,
 ) -> dict[str, Any]:
     warnings: list[str] = []
@@ -1174,7 +1136,6 @@ def build_print_plan(
         selected=selected,
         limit=limit,
         full_fleet=full_fleet,
-        auto_minimize_alias=auto_minimize,
     )
     warnings.extend(scope_warnings)
     server_record = next(
@@ -1218,11 +1179,9 @@ def _remote_run(args: argparse.Namespace) -> int:
 def remote_run(args: argparse.Namespace) -> int:
     global _ACTIVE_FLEET_LEASE
     fleet_lease = validate_inherited_fleet_lock(PROJECT)
-    descriptor: int | None = None
     previous_fleet_lease = _ACTIVE_FLEET_LEASE
     _ACTIVE_FLEET_LEASE = fleet_lease
     try:
-        descriptor = validate_inherited_release_lock(PROJECT)
         if os.environ.get("ROLLING_RELEASE_PROTOCOL") != "2":
             raise RuntimeError("rolling-release protocol identity is missing")
         expected_unit = unit_name_for(args.run_id)
@@ -1236,8 +1195,6 @@ def remote_run(args: argparse.Namespace) -> int:
         return _remote_run(args)
     finally:
         _ACTIVE_FLEET_LEASE = previous_fleet_lease
-        if descriptor is not None:
-            os.close(descriptor)
         fleet_lease.release()
 
 
@@ -1256,12 +1213,6 @@ def local_run(args: argparse.Namespace) -> int:
         return local_approve(args.approve)
     if args.cancel:
         return local_cancel(args)
-    if args.auto_minimize:
-        print(
-            "[WARN] --auto-minimize is a compatibility alias; "
-            "target minimization is now the default",
-            file=sys.stderr,
-        )
     if args.print_plan:
         print(
             json.dumps(
@@ -1269,7 +1220,6 @@ def local_run(args: argparse.Namespace) -> int:
                     args.branch,
                     args.inventory,
                     args.limit or "",
-                    auto_minimize=args.auto_minimize,
                     full_fleet=args.full_fleet,
                 ),
                 ensure_ascii=False,

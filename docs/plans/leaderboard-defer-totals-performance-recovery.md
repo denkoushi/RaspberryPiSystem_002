@@ -172,7 +172,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 **Mitigation for operators**: After Pi5 api/web rebuild, if PLAY RECAP shows `failed=1` on health wait only, re-check `curl -sk https://<Pi5>/api/system/health` before assuming deploy failure. Transient post-start memory spike on Pi5 can exceed the playbook retry window.
 
-**Permanent fix**: branch **`fix/deploy-api-build-cache-health-wait`** — Dockerfile manifest-first cache + Ansible health wait 24×5s. Details: [deployment.md §deploy-api-build-cache-health-wait](../guides/deployment.md#deploy-api-build-cache-health-wait-2026-06-17) · [KB-389](../knowledge-base/infrastructure/ansible-deployment-performance.md#kb-389-api-docker-build-cache-and-health-wait).
+**Permanent fix**: branch **`fix/deploy-api-build-cache-health-wait`** — Dockerfile manifest-first cache + Ansible health wait 24×5s. Details: [deployment.md §deploy-api-build-cache-health-wait](../archive/deployments/2026-06.md#deploy-api-build-cache-health-wait-2026-06-17) · [KB-389](../knowledge-base/infrastructure/ansible-deployment-performance.md#kb-389-api-docker-build-cache-and-health-wait).
 
 ## Pi5 manual verification (pending)
 

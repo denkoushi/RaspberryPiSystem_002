@@ -42,12 +42,16 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--print-plan", "--dry-run", action="store_true")
     value.add_argument("--detach", action="store_true")
     value.add_argument("--full-fleet", action="store_true")
-    value.add_argument("--follow", action="store_true")
-    value.add_argument("--foreground", action="store_true")
-    value.add_argument("--profile", action="store_true")
-    value.add_argument("--job", action="store_true")
-    value.add_argument("--attach")
-    value.add_argument("--client-only-compatible", action="store_true")
+    value.add_argument("--follow", action="store_true", help=argparse.SUPPRESS)
+    value.add_argument("--foreground", action="store_true", help=argparse.SUPPRESS)
+    value.add_argument("--profile", action="store_true", help=argparse.SUPPRESS)
+    value.add_argument("--job", action="store_true", help=argparse.SUPPRESS)
+    value.add_argument("--attach", help=argparse.SUPPRESS)
+    value.add_argument(
+        "--client-only-compatible",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
     value.add_argument("--emergency-override", action="store_true")
     value.add_argument("--reason")
     value.add_argument("--remote-run", action="store_true", help=argparse.SUPPRESS)
@@ -61,9 +65,6 @@ def parser() -> argparse.ArgumentParser:
         default=None,
         help=argparse.SUPPRESS,
     )
-    # This remains an explicit compatibility option until PR 5 makes target
-    # minimization the default and PR 8 removes the alias.
-    value.add_argument("--auto-minimize", action="store_true")
     return value
 
 
@@ -130,7 +131,6 @@ def normalize_arguments(args: argparse.Namespace) -> argparse.Namespace:
                 ("--expected-server-client-id", args.expected_server_client_id is not None),
                 ("--emergency-override", args.emergency_override),
                 ("--skip-canary-hold", args.skip_canary_hold),
-                ("--auto-minimize", args.auto_minimize),
                 ("--full-fleet", args.full_fleet),
                 (
                     "--canary-hold-timeout",
@@ -165,8 +165,6 @@ def normalize_arguments(args: argparse.Namespace) -> argparse.Namespace:
         raise UsageError("--canary-hold-timeout must be greater than zero")
     if args.print_plan and args.detach:
         raise UsageError("--print-plan cannot be combined with --detach")
-    if args.full_fleet and args.auto_minimize:
-        raise UsageError("--full-fleet cannot be combined with the --auto-minimize compatibility alias")
     if args.full_fleet and args.limit:
         raise UsageError("--full-fleet cannot be combined with --limit")
     if args.print_plan and (args.emergency_override or args.skip_canary_hold):

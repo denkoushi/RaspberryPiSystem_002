@@ -54,6 +54,6 @@ category: knowledge-base
 
 ## References
 
-- [deployment.md](../guides/deployment.md#csv-dedup-ingest-postgres-bind-limit-2026-05-08)
+- [deployment.md](../archive/deployments/2026-05.md#csv-dedup-ingest-postgres-bind-limit-2026-05-08)
 - [csv-import-export.md](../guides/csv-import-export.md)
 - [api.md](./api.md)（索引）

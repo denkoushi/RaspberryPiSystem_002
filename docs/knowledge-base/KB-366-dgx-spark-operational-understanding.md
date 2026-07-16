@@ -12,7 +12,7 @@ category: knowledge-base
 
 2026-05-25 に **`private_ok` 強制停止（`stop-force`）** の本番反映と、その前後の運用確認・議論で整理した **「Spark 上で何が動いているか」** の正本。DGX リソース画面の見方、メモリ KPI の意味、27B/35B の関係、Comfy との両立可否を、後から読んでも迷わないよう **FAQ 形式**で集約する。
 
-**関連**: [KB-365](./KB-365-dgx-resource-phase3-workload-orchestration.md)·[KB-364](./KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)·[Runbook dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)·[deployment §2026-05-25](../guides/deployment.md#dgx-resource-private-ok-strong-stop-force-2026-05-25)·[KB-379](./KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md)
+**関連**: [KB-365](./KB-365-dgx-resource-phase3-workload-orchestration.md)·[KB-364](./KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)·[Runbook dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)·[deployment §2026-05-25](../archive/deployments/2026-05.md#dgx-resource-private-ok-strong-stop-force-2026-05-25)·[KB-379](./KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md)
 
 ---
 
@@ -49,7 +49,7 @@ category: knowledge-base
   - 35B は **VLM 非対応ではない**: `runtimeReadyCapabilities: ["text","vision"]` · **`visionReadyReason: mmproj_detected`**
   - DGX 単体 `/v1/chat/completions`（画像付き）は **HTTP 200**
   - 主因は **35B cold start が `LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS`（本番 900000）を超える**こと（HTTP `/v1/models` ready 待ちの段階）
-- **Fix（Pi5 · 本番 `efe1853f`）**: HTTP ready と **profile スコープ readiness**（active 一致 + `photo_label` 時 vision capability）を分離。業務復帰 Strict Ready に **`model_profile_vision_runtime`**。詳細: [KB-365 §profile-scoped readiness](./KB-365-dgx-resource-phase3-workload-orchestration.md#business-profile-scoped-runtime-readiness) · [deployment §optin-ready](../guides/deployment.md#dgx-business-profile-optin-ready-2026-05-29)
+- **Fix（Pi5 · 本番 `efe1853f`）**: HTTP ready と **profile スコープ readiness**（active 一致 + `photo_label` 時 vision capability）を分離。業務復帰 Strict Ready に **`model_profile_vision_runtime`**。詳細: [KB-365 §profile-scoped readiness](./KB-365-dgx-resource-phase3-workload-orchestration.md#business-profile-scoped-runtime-readiness) · [deployment §optin-ready](../archive/deployments/2026-05.md#dgx-business-profile-optin-ready-2026-05-29)
 - **運用**: KPI **Unified Mem 20 GiB 台**でも 35B green は稼働し得る（メモリだけで「モデル未ロード」と判断しない）。初回失敗時は **ロード完了まで待って再撮影**。
 - **次の改善候補**: `INFERENCE_RUNTIME_START_PROFILE_ENABLED=true` で業務復帰と on-demand の profile を揃えたうえで shadow 確認 · 必要なら timeout / UX（「モデル準備中」）の見直し
 
@@ -69,7 +69,7 @@ inventory 上の正本: `inference_*_provider_id: dgx_primary`・モデル名 **
 
 **誤解しやすい点**: 「用途ごとに 27B が何本もロード」ではない。**1 つの vLLM プロセス（+ KV キャッシュ枠）を共有**する。
 
-**業務復帰で選んだモデルと各機能（2026-05-29 · 本番反映済）**: GUI で選んだ `modelProfileId` は DGX `/start` で正本化される。職場 Pi5 は **`BusinessProfileIntentStore`** に同じ ID を保持し、opt-in 時は photo_label / 要約 / 管理チャット / StackChan の on-demand `/start` に **同一 profile** を載せる。KPI 下段の **Pi5 業務意図** と **Active Model** の一致を確認。**本番**: Pi5 Detach **`20260529-141701-10018`** · Git **`1edebd70`** · 既定 **`INFERENCE_RUNTIME_START_PROFILE_ENABLED=false`**（shadow）。正本: [KB-365 §本番](./KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-29-dgx-business-profile-intent-propagation) · [deployment §2026-05-29](../guides/deployment.md#dgx-business-profile-intent-propagation-2026-05-29)。
+**業務復帰で選んだモデルと各機能（2026-05-29 · 本番反映済）**: GUI で選んだ `modelProfileId` は DGX `/start` で正本化される。職場 Pi5 は **`BusinessProfileIntentStore`** に同じ ID を保持し、opt-in 時は photo_label / 要約 / 管理チャット / StackChan の on-demand `/start` に **同一 profile** を載せる。KPI 下段の **Pi5 業務意図** と **Active Model** の一致を確認。**本番**: Pi5 Detach **`20260529-141701-10018`** · Git **`1edebd70`** · 既定 **`INFERENCE_RUNTIME_START_PROFILE_ENABLED=false`**（shadow）。正本: [KB-365 §本番](./KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-29-dgx-business-profile-intent-propagation) · [deployment §2026-05-29](../archive/deployments/2026-05.md#dgx-business-profile-intent-propagation-2026-05-29)。
 
 ---
 
@@ -221,7 +221,7 @@ docker ps --format '{{.Names}}' | grep -E 'system-prod|trtllm|llama'
 - **症状（修正前）**: 業務復帰 UI のモデル選択が **35B のみ**（API は profiles **2 件**·27B は **`unavailable`**）。
 - **Fix**: DGX registry の **`business_qwen36_27b_nvfp4/manifest.json`** を **`hf-cache/hub/models--…`** に更新（**`scp` のみ**·**再起動不要**）。
 - **検証**: `GET /system/model-profiles` → **両 profile `available`**。管理 UI で **2 件選択可能**。
-- **正本**: [KB-365 §本番 storage path](./KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-model-profile-storage-path)·[Runbook](../runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-28-27b-model-profile-storage-path)·[deployment.md](../guides/deployment.md#dgx-model-profile-storage-path-2026-05-28)。
+- **正本**: [KB-365 §本番 storage path](./KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-model-profile-storage-path)·[Runbook](../runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-28-27b-model-profile-storage-path)·[deployment.md](../archive/deployments/2026-05.md#dgx-model-profile-storage-path-2026-05-28)。
 
 ## Prevention（再発防止・ドキュメント）
 

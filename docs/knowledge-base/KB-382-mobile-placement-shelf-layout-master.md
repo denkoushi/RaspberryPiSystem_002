@@ -322,7 +322,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 **ローカル検証**: `apps/web` で `pnpm exec vitest run src/features/mobile-placement/shelfMaster` → **43 PASS**（`layoutEditorFlow.test.ts` / `layoutEditorConfirmAction` 含む）·`pnpm exec tsc --noEmit` · `pnpm build` PASS
 
-**本番デプロイ（2026-05-24 · Pi5 のみ先行）** — [deployment.md §ドック UX](../guides/deployment.md#kiosk-shelf-layout-editor-dock-confirm-reset-2026-05-24) {#production-deploy--layout-editor-dock-2026-05-24}
+**本番デプロイ（2026-05-24 · Pi5 のみ先行）** — [deployment.md §ドック UX](../archive/deployments/2026-05.md#kiosk-shelf-layout-editor-dock-confirm-reset-2026-05-24) {#production-deploy--layout-editor-dock-2026-05-24}
 
 | ホスト | Detach Run ID | PLAY RECAP | 備考 |
 |--------|---------------|------------|------|
@@ -438,7 +438,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 | 単一マスは直るが複数マスのみ残る | **`6adc89f7` 未満**の選択契約 + 旧 `UNUSED` entity 作成の組み合わせ — 本 Fix **`14e164d6`** を全 5 台へ |
 | レイアウトタブ自体が出ない | [§Root cause（本番検証で確定した例）](#root-cause本番検証で確定した例)（本件とは別） |
 
-**ナレッジ**: [deployment.md §未使用解放](../guides/deployment.md#kiosk-shelf-master-unused-release-merged-cells-2026-05-24)·[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress 先頭
+**ナレッジ**: [deployment.md §未使用解放](../archive/deployments/2026-05.md#kiosk-shelf-master-unused-release-merged-cells-2026-05-24)·[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress 先頭
 
 ### Zero2W インライン割当（2026-05-24 · Web + API） {#zero2w-inline-preset-2026-05-24}
 
@@ -579,10 +579,10 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - ExecPlan: [mobile-placement-shelf-layout-master.md](../plans/mobile-placement-shelf-layout-master.md)
 - API: [mobile-placement.md](../api/mobile-placement.md)（V22 棚レイアウトマスタ節）
 - Runbook: [mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md) §棚レイアウトマスタ
-- Deploy（機能本体）: [deployment.md](../guides/deployment.md#mobile-placement-shelf-layout-master-2026-05-23)
-- Deploy（Dialog コンパクト）: [deployment.md](../guides/deployment.md#kiosk-shelf-master-zone-dialog-compact-2026-05-23)
-- Deploy（複数マス選択解除）: [deployment.md](../guides/deployment.md#kiosk-shelf-master-multi-cell-selection-clear-2026-05-23)
-- Deploy（Zero2W インライン + オーファン）: [deployment.md](../guides/deployment.md#kiosk-shelf-master-zero2w-inline-orphan-2026-05-24)
+- Deploy（機能本体）: [deployment.md](../archive/deployments/2026-05.md#mobile-placement-shelf-layout-master-2026-05-23)
+- Deploy（Dialog コンパクト）: [deployment.md](../archive/deployments/2026-05.md#kiosk-shelf-master-zone-dialog-compact-2026-05-23)
+- Deploy（複数マス選択解除）: [deployment.md](../archive/deployments/2026-05.md#kiosk-shelf-master-multi-cell-selection-clear-2026-05-23)
+- Deploy（Zero2W インライン + オーファン）: [deployment.md](../archive/deployments/2026-05.md#kiosk-shelf-master-zero2w-inline-orphan-2026-05-24)
 - Zero2W インライン: [§zero2w-inline-preset-2026-05-24](#zero2w-inline-preset-2026-05-24)
 - オーファン解除: [§orphan-zero2w-preset-clear-2026-05-24](#orphan-zero2w-preset-clear-2026-05-24)
 - 選択契約実装: [`layoutCellSelection.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/model/layoutCellSelection.ts)

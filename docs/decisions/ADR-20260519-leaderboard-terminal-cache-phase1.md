@@ -97,5 +97,5 @@
 
 - 実装: `apps/web/src/features/kiosk/leaderOrderBoard/cache/`
 - 運用・TS: [KB-374 §端末キャッシュ Phase 1](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#端末キャッシュ-phase-1-indexeddb--裏同期2026-05-19--featkiosk-leaderboard-terminal-cache-phase1)
-- デプロイ: [deployment.md §端末キャッシュ](../guides/deployment.md#kiosk-leaderboard-terminal-cache-phase1-2026-05-19)
+- デプロイ: [deployment.md §端末キャッシュ](../archive/deployments/2026-05.md#kiosk-leaderboard-terminal-cache-phase1-2026-05-19)
 - 背景: [KB-374](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md)
