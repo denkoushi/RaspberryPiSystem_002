@@ -2,103 +2,29 @@
 import argparse
 import json
 import subprocess
+import sys
+from pathlib import Path
 
-SERVER_PREFIXES = ('apps/api/', 'apps/web/', 'packages/', 'infrastructure/docker/')
-SERVER_FILES = frozenset({'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml'})
-MIGRATION_PREFIX = 'apps/api/prisma/migrations/'
-NFC_PREFIX = 'clients/nfc-agent/'
-BARCODE_PREFIX = 'clients/barcode-agent/'
-STATUS_PREFIX = 'clients/status-agent/'
-CLIENT_ROLE_PREFIX = 'infrastructure/ansible/roles/client/'
-KIOSK_ROLE_PREFIX = 'infrastructure/ansible/roles/kiosk/'
-SIGNAGE_ROLE_PREFIX = 'infrastructure/ansible/roles/signage/'
-# Pi3 runtime assets live under the signage role, plus legacy template/preflight copies.
-SIGNAGE_PREFIXES = (
-    SIGNAGE_ROLE_PREFIX,
-    'infrastructure/ansible/templates/signage',
-    'infrastructure/ansible/tasks/preflight-signage.yml',
-)
-# These files execute from the operator or immutable Pi5 coordinator checkout.
-# Some helpers are transferred transiently by an adapter when needed, but none
-# is installed as product/runtime on every host. Changing them changes deploy
-# control and must not manufacture fleet-wide runtime work.
-DEPLOY_CONTROL_FILES = frozenset(
-    {
-        'infrastructure/ansible/ansible-readonly.cfg',
-        'scripts/update-all-clients.sh',
-        'scripts/deploy/classify-deploy-impact.py',
-        'scripts/deploy/recover-pi4.py',
-        'scripts/deploy/rollback-manifest.py',
-        'scripts/deploy/rolling-release.py',
-        'scripts/deploy/terminal-runtime-manifest.py',
-    }
-)
-DEPLOY_CONTROL_PREFIXES = ('scripts/deploy/rolling_release/',)
-SIGNAGE_RUNTIME_FILES = frozenset({'scripts/deploy/signage-runtime-proof.py'})
-GLOBAL_PREFIXES = (
-    'scripts/update-all-clients.sh',
-    'infrastructure/ansible/playbooks/',
-    'infrastructure/ansible/group_vars/',
-    'infrastructure/ansible/inventory',
-)
-# Provably runtime-irrelevant paths: never require a Pi5 rebuild or terminal work.
-NEUTRAL_PREFIXES = (
-    'docs/',
-    '.cursor/',
-    '.agent/',
-    '.github/',
-    'scripts/deploy/tests/',
-    'AGENTS.md',
-    'README',
-    'EXEC_PLAN.md',
+DEPLOY_DIRECTORY = Path(__file__).resolve().parent
+if str(DEPLOY_DIRECTORY) not in sys.path:
+    sys.path.insert(0, str(DEPLOY_DIRECTORY))
+
+from terminal_profile_registry import (  # noqa: E402
+    TerminalProfileRegistry,
+    load_registry,
 )
 
 
-def _is_server_path(path: str) -> bool:
-    return path.startswith(SERVER_PREFIXES) or path in SERVER_FILES
+DEFAULT_REGISTRY = load_registry()
 
 
-def _is_signage_path(path: str) -> bool:
-    return path.startswith(SIGNAGE_PREFIXES)
+def _component_for(
+    path: str, *, registry: TerminalProfileRegistry = DEFAULT_REGISTRY
+) -> str:
+    return registry.component_for(path)
 
 
-def _is_global_path(path: str) -> bool:
-    return path.startswith(GLOBAL_PREFIXES)
-
-
-def _component_for(path: str) -> str:
-    if path.startswith(NEUTRAL_PREFIXES):
-        return 'neutral'
-    if path in DEPLOY_CONTROL_FILES or path.startswith(DEPLOY_CONTROL_PREFIXES):
-        return 'deploy-control'
-    if path in SIGNAGE_RUNTIME_FILES:
-        return 'signage-role'
-    if path.startswith(MIGRATION_PREFIX):
-        return 'migration'
-    if _is_server_path(path):
-        return 'server-app'
-    if path.startswith(NFC_PREFIX):
-        return 'nfc-agent'
-    if path.startswith(BARCODE_PREFIX):
-        return 'barcode-agent'
-    if path.startswith(STATUS_PREFIX):
-        return 'status-agent'
-    if path.startswith(KIOSK_ROLE_PREFIX):
-        return 'kiosk-role'
-    if path.startswith(CLIENT_ROLE_PREFIX):
-        return 'client-role'
-    if _is_signage_path(path):
-        return 'signage-role'
-    if _is_global_path(path):
-        return 'global'
-    return 'unknown'
-
-
-def _mark_all(result: dict) -> None:
-    result['server'] = result['kiosk'] = result['signage'] = True
-
-
-def classify(paths):
+def classify(paths, *, registry: TerminalProfileRegistry = DEFAULT_REGISTRY):
     result = {
         'server': False,
         'kiosk': False,
@@ -106,25 +32,21 @@ def classify(paths):
         'migration': False,
         'paths': paths,
         'components': [],
+        'affectedProfiles': [],
     }
     components = set()
     for path in paths:
-        component = _component_for(path)
+        component = _component_for(path, registry=registry)
         components.add(component)
 
-        if component == 'neutral':
-            continue
-
-        if component == 'deploy-control':
-            continue
-
         if component == 'unknown':
-            # Fail-closed: unclassified paths expand to all terminal scopes.
-            _mark_all(result)
+            # Fail closed without becoming a classifier error. Terminal scope
+            # is expanded below from the complete registered profile set.
+            result['server'] = True
             continue
 
         if component == 'global':
-            _mark_all(result)
+            result['server'] = True
             continue
 
         if component == 'migration':
@@ -135,33 +57,13 @@ def classify(paths):
             result['server'] = True
             continue
 
-        if component == 'nfc-agent':
-            result['kiosk'] = True
-            continue
-
-        if component == 'barcode-agent':
-            result['kiosk'] = True
-            continue
-
-        if component == 'status-agent':
-            # status-agent ships to every terminal (kiosk + signage) via deploy-staged.yml.
-            result['kiosk'] = result['signage'] = True
-            continue
-
-        if component == 'kiosk-role':
-            result['kiosk'] = True
-            continue
-
-        if component == 'client-role':
-            # client role is applied on both kiosk and signage hosts in deploy-staged.yml.
-            result['kiosk'] = result['signage'] = True
-            continue
-
-        if component == 'signage-role':
-            result['signage'] = True
-            continue
-
     result['components'] = sorted(components)
+    affected_profiles = registry.profiles_for_components(components)
+    result['affectedProfiles'] = affected_profiles
+    # Preserve the public compatibility fields while the registered profile
+    # list can grow beyond the two production profiles.
+    result['kiosk'] = 'kiosk' in affected_profiles
+    result['signage'] = 'signage' in affected_profiles
     return result
 
 
