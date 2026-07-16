@@ -62,6 +62,7 @@ and is merged only after explicit user approval. The current work is PR 2 only.
 - [x] (2026-07-16 13:29Z) Added the strict schema-versioned standard-library JSON registry, fixed Pi5 control plane, production Kiosk/Signage profiles, ordered path-to-component rules, component-to-profile mappings, and bounded adapter options. Unsafe IDs, duplicate JSON keys, unknown fields, command/shell/import fields, out-of-root playbooks, unsafe systemd units, and unsafe rollback paths fail validation.
 - [x] (2026-07-16 13:29Z) Made deploy-impact classification registry-driven, added deterministic `affectedProfiles`, preserved every legacy field, and kept unknown paths successful but fail-closed across the server and every registered profile. Focused registry/classifier tests pass, a synthetic fourth profile plus unique adapter ID requires no classifier branch, and all 4,242 existing tracked paths have identical legacy results before and after the conversion.
 - [x] (2026-07-16 13:38Z) Completed PR 2 local validation: 594 deploy Python tests, 20 CI classifier tests, all focused Pi5/terminal/deploy-safety shell contracts, 20 isolated PostgreSQL deploy-status tests, read-only parsing of both inventories, syntax checks for both staged playbooks, JSON/compile/diff checks, production runtime-option parity, and the 4,242-path legacy classifier comparison all pass.
+- [x] (2026-07-16 13:40Z) Pushed code head `7f56595f5663cdf14270f1b5633d5e20eade3cdf` and ran the second-factory public read-only plan against that exact remote ref. All seven verified hosts were excluded, with `targetHosts=[]`, `pi5Required=false`, no terminal targets, no canary hold, and no warnings. The aggregate historical diff reports Signage impact, but the Pi3 host-specific verified baseline correctly requires no work.
 - [ ] Publish the PR 2 draft and wait for hosted checks before requesting merge approval.
 - [ ] Implement PR 3: generic planner, inventory validation, and fleet-state use of registered profile identifiers.
 - [ ] Implement PR 4: terminal adapter boundary and generic coordinator with sequential profile approval gates.
@@ -191,7 +192,8 @@ test-only fourth profile and unique adapter ID prove that classification does
 not require a new terminal-name branch. All 594 deploy Python tests, 20 CI
 tests, existing deploy shell contracts, 20 isolated PostgreSQL deploy-status
 tests, both inventory reads and staged-playbook syntax checks, and the full
-tracked-path legacy comparison pass. Hosted validation is still pending. No
+tracked-path legacy comparison pass. The exact pushed code head also produces a
+seven-host second-factory no-op plan. Hosted validation is still pending. No
 physical host has been contacted for mutation, and PR 3 has not started.
 
 ## Context and Orientation
