@@ -248,6 +248,8 @@ set -e
 
   pause_signage
   [[ "$SIGNAGE_PAUSED" -eq 0 ]] || fail "disabled signage retained resume ownership"
+  grep -Fxq 'exec -i candidate-api node - pause-signage' "$CONTROL_CALL_LOG" \
+    || fail "workload control did not keep docker exec stdin attached"
   resume_signage
   [[ "$(wc -l <"$CONTROL_CALL_LOG" | tr -d ' ')" -eq 1 ]] \
     || fail "disabled signage received an unnecessary resume request"

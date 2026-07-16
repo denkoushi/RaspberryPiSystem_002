@@ -628,7 +628,7 @@ set_signage_state() {
   fi
   [[ -n "$SIGNAGE_CONTAINER_ID" ]] || SIGNAGE_CONTAINER_ID="$(active_api_container)"
   [[ -n "$SIGNAGE_CONTAINER_ID" ]] || { record_signage_event "$action" failed 'active API unavailable'; return 1; }
-  if output="$(docker exec "$SIGNAGE_CONTAINER_ID" node - "$action" <<'JS' 2>&1
+  if output="$(docker exec -i "$SIGNAGE_CONTAINER_ID" node - "$action" <<'JS' 2>&1
 const action=process.argv[2];
 const token=process.env.DEPLOY_CONTROL_TOKEN || process.env.JWT_ACCESS_SECRET;
 if(!token){console.error('deploy control token is missing in the active API container');process.exit(1)}
