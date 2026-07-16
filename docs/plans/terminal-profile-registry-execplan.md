@@ -55,7 +55,7 @@ and is merged only after explicit user approval. The current work is PR 1 only.
 - [x] (2026-07-16 12:24Z) Reproduced PR 1's two defects: the checked-in `ansible.cfg` rejects inventory parsing when `.vault-pass` is absent, and the reported coordinator paths classify as `unknown`, expanding impact to the full fleet.
 - [x] (2026-07-16 12:36Z) Implemented PR 1's per-command read-only Ansible inventory configuration, inherited Vault-source removal, JSON validation, and secret-safe actionable errors; the normal `ansible.cfg` still fails without `.vault-pass`.
 - [x] (2026-07-16 12:36Z) Classified the full `rolling_release/` package, public/coordinator/recovery entry points, and read-only config as `deploy-control`; known terminal runtime and unknown fail-closed behavior remain covered.
-- [ ] Run focused and full deployment contracts, both inventory and playbook checks, a same-SHA read-only no-op plan for the verified factory fleet, and TalkPlaza static validation. (Completed: 577 Python tests, all CI deployment shell contracts, 20 CI tests, deploy safety contract, both inventories, 12 standard playbooks plus TalkPlaza staged playbook, isolated recovery check, and 20 PostgreSQL deploy-status tests. Remaining: exact-head second-factory public read-only plan after push.)
+- [x] (2026-07-16 12:42Z) Completed local validation: 577 Python tests, all CI deployment shell contracts, 20 CI tests, deploy safety contract, both inventories, 12 standard playbooks plus TalkPlaza staged playbook, isolated recovery check, 20 PostgreSQL deploy-status tests, and the exact-head second-factory public read-only plan. The plan at `332b5462` excluded all seven hosts with `targetHosts=[]`, `pi5Required=false`, and no warning.
 - [ ] Publish PR 1 as a draft, wait for hosted CI, report the result, and stop for explicit merge approval.
 - [ ] Implement PR 2: strict standard-library JSON profile registry and registry-driven change classification.
 - [ ] Implement PR 3: generic planner, inventory validation, and fleet-state use of registered profile identifiers.
@@ -90,6 +90,13 @@ and is merged only after explicit user approval. The current work is PR 1 only.
   Evidence: a lockfile-frozen `pnpm install` restored the exact dependencies;
   the single permitted rerun then passed all 20 API tests against an isolated
   PostgreSQL container.
+
+- Observation: Ansible inventory JSON retains nested Jinja in `ansible_host`
+  instead of rendering `{{ server_ip }}` to the selected network address.
+  Evidence: deriving `RASPI_SERVER_HOST` from `_meta.hostvars` produced an
+  invalid hostname, while using the committed standard Tailscale address from
+  `group_vars/all.yml` let the public read-only plan complete. The deployment
+  CLI already requires `RASPI_SERVER_HOST`; PR 1 does not change that contract.
 
 ## Decision Log
 
@@ -137,8 +144,10 @@ deployment shell/safety contract passes, every deployment playbook passes
 syntax validation, and the isolated PostgreSQL deploy-status tests pass 20.
 The current diff classifies only as `deploy-control` plus `neutral`, with no
 unknown path and no legacy runtime scope. No physical host has been contacted
-for mutation and no deployment has been started. Remaining PR 1 work is the
-exact-head second-factory public read-only plan, publication, and hosted CI.
+for mutation and no deployment has been started. The second-factory public
+read-only plan at `332b5462` excluded all seven inventory hosts and required no
+Pi5 or terminal action. Remaining PR 1 work is draft PR publication and hosted
+CI.
 
 ## Context and Orientation
 
@@ -378,6 +387,6 @@ duplicate and unknown keys, and returns immutable validated profile records.
 Core policy consumes validated profile IDs and adapter objects only; it never
 imports arbitrary paths or executes registry-provided text.
 
-Revision note (2026-07-16 12:36Z): Recorded completed PR 1 implementation and
-local validation. Publication, the exact-head second-factory read-only plan, and
-hosted checks remain.
+Revision note (2026-07-16 12:42Z): Recorded the exact-head second-factory
+read-only no-op plan and the Ansible host-expression diagnostic. Draft PR
+publication and hosted checks remain.
