@@ -55,13 +55,18 @@ class RollbackManifestTest(unittest.TestCase):
             filesystem_root=self.filesystem_root,
         )
 
-    def restore(self, expected_manifest_sha256: str | None = None):
+    def restore(
+        self,
+        expected_manifest_sha256: str | None = None,
+        candidate_head: str | None = None,
+    ):
         expected = expected_manifest_sha256 or self.read_manifest()["manifestSha256"]
         return MODULE.restore(
             root=self.storage_root,
             run_id=self.run_id,
             host=self.host,
             expected_manifest_sha256=expected,
+            candidate_head=candidate_head,
             filesystem_root=self.filesystem_root,
         )
 
@@ -583,7 +588,9 @@ class RollbackManifestTest(unittest.TestCase):
         )
         self.assertEqual(self.git(repository, "rev-parse", "HEAD"), deployed_head)
 
-        restored = self.restore(captured["manifestSha256"])
+        restored = self.restore(
+            captured["manifestSha256"], candidate_head=deployed_head
+        )
 
         self.assertEqual(restored["repository"], manifest["repository"])
         self.assertEqual(service.read_text(encoding="utf-8"), "prior service\n")
@@ -729,6 +736,191 @@ class RollbackManifestTest(unittest.TestCase):
             "concurrent operator change\n",
         )
 
+    def test_repository_restore_accepts_only_exact_partial_candidate_residue(self):
+        service = self.config_directory / "partial-candidate.service"
+        service.write_text("prior service\n", encoding="utf-8")
+        repository, prior_head = self.create_repository()
+        captured = MODULE.capture_set(
+            root=self.storage_root,
+            run_id=self.run_id,
+            host=self.host,
+            paths=[service],
+            repository=repository,
+            expected_head=prior_head,
+            filesystem_root=self.filesystem_root,
+        )
+        candidate_head = self.commit_deployed_repository(repository)
+        self.git(repository, "reset", "--hard", prior_head)
+        (repository / "tracked.txt").write_text(
+            "deployed release\n", encoding="utf-8"
+        )
+        service.write_text("candidate service\n", encoding="utf-8")
+
+        restored = self.restore(
+            captured["manifestSha256"], candidate_head=candidate_head
+        )
+
+        self.assertTrue(restored["restored"])
+        self.assertEqual(self.git(repository, "rev-parse", "HEAD"), prior_head)
+        self.assertEqual(self.git(repository, "status", "--porcelain=v1"), "")
+        self.assertEqual(
+            (repository / "tracked.txt").read_text(encoding="utf-8"),
+            "prior release\n",
+        )
+        self.assertEqual(service.read_text(encoding="utf-8"), "prior service\n")
+
+    def test_repository_restore_accepts_candidate_add_and_delete_residue(self):
+        service = self.config_directory / "candidate-add-delete.service"
+        service.write_text("prior service\n", encoding="utf-8")
+        repository, _initial_head = self.create_repository()
+        deleted = repository / "deleted-by-candidate.txt"
+        deleted.write_text("prior file\n", encoding="utf-8")
+        self.git(repository, "add", deleted.name)
+        self.git(repository, "commit", "--quiet", "--amend", "--no-edit")
+        prior_head = self.git(repository, "rev-parse", "HEAD")
+        captured = MODULE.capture_set(
+            root=self.storage_root,
+            run_id=self.run_id,
+            host=self.host,
+            paths=[service],
+            repository=repository,
+            expected_head=prior_head,
+            filesystem_root=self.filesystem_root,
+        )
+        deleted.unlink()
+        added = repository / "added-by-candidate.txt"
+        added.write_text("candidate file\n", encoding="utf-8")
+        self.git(repository, "add", "-A")
+        self.git(repository, "commit", "--quiet", "-m", "candidate add and delete")
+        candidate_head = self.git(repository, "rev-parse", "HEAD")
+        self.git(repository, "reset", "--hard", prior_head)
+        deleted.unlink()
+        added.write_text("candidate file\n", encoding="utf-8")
+        service.write_text("candidate service\n", encoding="utf-8")
+
+        self.restore(captured["manifestSha256"], candidate_head=candidate_head)
+
+        self.assertTrue(deleted.is_file())
+        self.assertFalse(added.exists())
+        self.assertEqual(self.git(repository, "status", "--porcelain=v1"), "")
+        self.assertEqual(service.read_text(encoding="utf-8"), "prior service\n")
+
+    def test_repository_restore_rejects_non_candidate_and_staged_residue(self):
+        for scenario in ("operator-content", "unrelated-untracked", "staged"):
+            with self.subTest(scenario=scenario):
+                run_id = f"candidate-{scenario}"
+                service = self.config_directory / f"{scenario}.service"
+                service.write_text("prior service\n", encoding="utf-8")
+                repository, prior_head = self.create_repository(
+                    f"{scenario}-repository"
+                )
+                captured = MODULE.capture_set(
+                    root=self.storage_root,
+                    run_id=run_id,
+                    host=self.host,
+                    paths=[service],
+                    repository=repository,
+                    expected_head=prior_head,
+                    filesystem_root=self.filesystem_root,
+                )
+                candidate_head = self.commit_deployed_repository(repository)
+                self.git(repository, "reset", "--hard", prior_head)
+                if scenario == "operator-content":
+                    (repository / "tracked.txt").write_text(
+                        "operator content\n", encoding="utf-8"
+                    )
+                elif scenario == "unrelated-untracked":
+                    (repository / "operator-note.txt").write_text(
+                        "preserve me\n", encoding="utf-8"
+                    )
+                else:
+                    (repository / "tracked.txt").write_text(
+                        "deployed release\n", encoding="utf-8"
+                    )
+                    self.git(repository, "add", "tracked.txt")
+                service.write_text("candidate service\n", encoding="utf-8")
+                before = self.git(repository, "status", "--porcelain=v1")
+
+                with self.assertRaises(MODULE.ManifestError):
+                    MODULE.restore(
+                        root=self.storage_root,
+                        run_id=run_id,
+                        host=self.host,
+                        expected_manifest_sha256=captured["manifestSha256"],
+                        candidate_head=candidate_head,
+                        filesystem_root=self.filesystem_root,
+                    )
+
+                self.assertEqual(
+                    self.git(repository, "status", "--porcelain=v1"), before
+                )
+                self.assertEqual(
+                    service.read_text(encoding="utf-8"), "candidate service\n"
+                )
+
+    def test_repository_restore_rejects_candidate_symlink_mismatch(self):
+        service = self.config_directory / "candidate-symlink.service"
+        service.write_text("prior service\n", encoding="utf-8")
+        repository, prior_head = self.create_repository()
+        captured = MODULE.capture_set(
+            root=self.storage_root,
+            run_id=self.run_id,
+            host=self.host,
+            paths=[service],
+            repository=repository,
+            expected_head=prior_head,
+            filesystem_root=self.filesystem_root,
+        )
+        link = repository / "candidate-link"
+        link.symlink_to("expected-target")
+        self.git(repository, "add", link.name)
+        self.git(repository, "commit", "--quiet", "-m", "candidate symlink")
+        candidate_head = self.git(repository, "rev-parse", "HEAD")
+        self.git(repository, "reset", "--hard", prior_head)
+        link.symlink_to("operator-target")
+        service.write_text("candidate service\n", encoding="utf-8")
+
+        with self.assertRaisesRegex(
+            MODULE.ManifestError, "does not match the candidate"
+        ):
+            self.restore(
+                captured["manifestSha256"], candidate_head=candidate_head
+            )
+
+        self.assertTrue(link.is_symlink())
+        self.assertEqual(os.readlink(link), "operator-target")
+        self.assertEqual(service.read_text(encoding="utf-8"), "candidate service\n")
+
+    def test_repository_restore_rejects_clean_head_outside_candidate_transition(self):
+        service = self.config_directory / "outside-transition.service"
+        service.write_text("prior service\n", encoding="utf-8")
+        repository, prior_head = self.create_repository()
+        captured = MODULE.capture_set(
+            root=self.storage_root,
+            run_id=self.run_id,
+            host=self.host,
+            paths=[service],
+            repository=repository,
+            expected_head=prior_head,
+            filesystem_root=self.filesystem_root,
+        )
+        candidate_head = self.commit_deployed_repository(repository)
+        (repository / "tracked.txt").write_text(
+            "unrelated clean release\n", encoding="utf-8"
+        )
+        self.git(repository, "add", "tracked.txt")
+        self.git(repository, "commit", "--quiet", "-m", "unrelated release")
+        unrelated_head = self.git(repository, "rev-parse", "HEAD")
+        service.write_text("candidate service\n", encoding="utf-8")
+
+        with self.assertRaisesRegex(MODULE.ManifestError, "outside the rollback"):
+            self.restore(
+                captured["manifestSha256"], candidate_head=candidate_head
+            )
+
+        self.assertEqual(self.git(repository, "rev-parse", "HEAD"), unrelated_head)
+        self.assertEqual(service.read_text(encoding="utf-8"), "candidate service\n")
+
     def test_repository_restore_rechecks_clean_state_at_mutation_boundary(self):
         service = self.config_directory / "dirty-after-preflight.service"
         service.write_text("prior service\n", encoding="utf-8")
@@ -746,8 +938,12 @@ class RollbackManifestTest(unittest.TestCase):
         service.write_text("deployed service\n", encoding="utf-8")
         real_preflight = MODULE._preflight_repository
 
-        def dirty_after_preflight(sealed_repository, context):
-            path = real_preflight(sealed_repository, context)
+        def dirty_after_preflight(
+            sealed_repository, context, candidate_head=None
+        ):
+            path = real_preflight(
+                sealed_repository, context, candidate_head=candidate_head
+            )
             assert path is not None
             (path / "tracked.txt").write_text(
                 "operator change after preflight\n", encoding="utf-8"

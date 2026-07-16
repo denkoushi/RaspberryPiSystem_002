@@ -173,6 +173,7 @@ class RollbackManifestAdapterTest(unittest.TestCase):
     RUN_ID = "run-123"
     HOST = "kiosk-a"
     PREVIOUS_SHA = "a" * 40
+    DESIRED_SHA = "b" * 40
     DIGEST = "c" * 64
     RUNTIME_DIGEST = "d" * 64
 
@@ -423,6 +424,7 @@ class RollbackManifestAdapterTest(unittest.TestCase):
         return {
             "state": "rolling-back",
             "previousSha": self.PREVIOUS_SHA,
+            "desiredSha": self.DESIRED_SHA,
             "rollbackManifest": {
                 "path": (
                     "/var/lib/raspi-release/rollback-manifests/"
@@ -495,6 +497,7 @@ class RollbackManifestAdapterTest(unittest.TestCase):
         self.assertIn(
             f"--expected-manifest-sha256 {self.DIGEST}", restore_action
         )
+        self.assertIn(f"--candidate-head {self.DESIRED_SHA}", restore_action)
         self.assertNotIn("ansible-playbook", " ".join(runtime.calls[0][0]))
         self.assertIn("rev-parse HEAD", runtime.calls[1][0][-1])
         runtime_restore = runtime.calls[2][0][-1]
@@ -550,6 +553,24 @@ class RollbackManifestAdapterTest(unittest.TestCase):
                 )
                 self.assertEqual(runtime.calls, [])
                 self.assertIn("failed:", target["rollback"])
+
+    def test_rollback_rejects_missing_candidate_sha_without_remote_mutation(self):
+        target = self._rollback_target()
+        target.pop("desiredSha")
+        runtime = Runtime("unused")
+
+        self.assertFalse(
+            ansible.rollback_terminal(
+                "inventory.yml",
+                {"host": self.HOST, "terminalType": "kiosk"},
+                target,
+                self.RUN_ID,
+                runtime=runtime,
+            )
+        )
+
+        self.assertEqual(runtime.calls, [])
+        self.assertIn("failed:", target["rollback"])
 
     def test_rollback_rejects_runtime_restore_result_mismatch(self):
         runtime_result = self._runtime_restore_result()
