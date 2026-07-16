@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 523,
-    "totalLines": 150921,
-    "totalBytes": 11284527,
+    "totalLines": 150924,
+    "totalBytes": 11285232,
     "withFrontmatter": 211,
     "withStatus": 69,
     "sourceOfTruthDeclared": 41,
@@ -34011,8 +34011,8 @@
     },
     {
       "path": "docs/plans/terminal-profile-registry-execplan.md",
-      "lineCount": 570,
-      "byteSize": 39162,
+      "lineCount": 573,
+      "byteSize": 39867,
       "hasFrontmatter": true,
       "title": "Generalize terminal deployment with a profile registry and adapters",
       "status": "active",

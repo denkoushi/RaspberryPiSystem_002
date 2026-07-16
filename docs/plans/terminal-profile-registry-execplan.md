@@ -83,6 +83,8 @@ safety boundary remains unchanged. The current work is PR 4 only.
 - [x] (2026-07-16 15:28Z) Implemented PR 5's registry-driven contract validator and CI playbook discovery. It validates every adapter operation, inventory topology and presence, selected play, literal `serial: 1`, both orchestration guards, coordinator rollback ownership, and the absence of production profile names from planner, policy, fleet state, and coordinator.
 - [x] (2026-07-16 15:28Z) Added the canonical profile/adapter ADR, updated architecture and deployment guidance with the exact terminal identity rule and short new-Type workflow, and made the TalkPlaza static-only boundary explicit.
 - [x] (2026-07-16 15:32Z) Completed PR 5 local validation: all 617 deploy Python tests, 21 CI Python tests, 19 deploy shell contracts including the isolated PostgreSQL suite, both read-only inventory parses, the dynamic profile contract, four production/TalkPlaza playbook syntax checks, documentation audit, compilation, and diff checks pass. Synthetic registry-only and inventory-only extension plus negative serial, guard, topology, and core-name cases pass without device access.
+- [x] (2026-07-16 15:48Z) Published draft PR #1035 at exact code head `9c84ba2d8813d3d3369be905a492af2d2ad022c3`. CI `29512213933`, CodeQL `29512214016`, and gitleaks `29512213862` all passed, including the registry-driven `deploy-contract` and aggregate `ci-required`.
+- [x] (2026-07-16 15:48Z) Ran the second-factory public read-only plan against exact remote head `9c84ba2d`. It resolved all seven production hosts with verified evidence and no warnings. The accumulated global/unknown history correctly widens the plan to both profiles and all seven hosts; no state, checkout, service, approval, or device mutation was performed.
 - [ ] Complete PR 5 local/hosted validation, exact remote read-only evidence, and merge.
 
 ## Surprises & Discoveries
@@ -324,7 +326,9 @@ adapter map, topology policy, and Ansible inventory JSON as production planning;
 the workflow contains no per-profile job or production profile playbook path.
 All 617 deploy Python tests, 21 CI tests, 19 deploy shell contracts, both static
 inventories, registry-driven playbook checks, and documentation checks pass
-locally. Hosted and exact remote read-only final evidence remains to be recorded.
+locally. Draft PR #1035's exact code head passed CI `29512213933`, CodeQL
+`29512214016`, gitleaks `29512213862`, and a seven-host verified read-only plan
+without warnings. The final evidence-only head and merge remain to be recorded.
 
 ## Context and Orientation
 
@@ -564,7 +568,6 @@ duplicate and unknown keys, and returns immutable validated profile records.
 Core policy consumes validated profile IDs and adapter objects only; it never
 imports arbitrary paths or executes registry-provided text.
 
-Revision note (2026-07-16 15:32Z): Recorded PR 5's complete local validation,
-including the registry-driven dynamic CI contract, canonical ADR, static-only
-TalkPlaza boundary, and literal one-terminal serialization. Hosted and exact
-remote read-only evidence remains.
+Revision note (2026-07-16 15:48Z): Recorded PR #1035's first exact-head hosted
+success and exact remote read-only production plan. A final evidence-only hosted
+pass remains before merge.
