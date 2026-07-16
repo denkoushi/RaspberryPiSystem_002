@@ -526,10 +526,20 @@ def _systemd_observation(
         persistent: bool | None = persistent_value == "yes"
     else:
         persistent = None
+    unit_file_state = values["UnitFileState"]
+    if (
+        values["LoadState"] == "not-found"
+        and unit_file_state == ""
+        and values["ActiveState"] == "inactive"
+    ):
+        # systemd reports an empty UnitFileState for a genuinely absent unit.
+        # Keep the sealed manifest canonical without accepting an empty value
+        # for any loaded, masked, or active unit.
+        unit_file_state = "not-found"
     state = {
         "name": safe_unit,
         "loadState": values["LoadState"],
-        "unitFileState": values["UnitFileState"],
+        "unitFileState": unit_file_state,
         "activeState": values["ActiveState"],
         "persistent": persistent,
     }

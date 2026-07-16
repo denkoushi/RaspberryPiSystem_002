@@ -864,6 +864,47 @@ class TerminalRuntimeManifestTest(unittest.TestCase):
         )
         self.assertIn(["systemctl", "daemon-reload"], self.fake.calls)
 
+    def test_capture_normalizes_real_systemd_missing_unit_output(self):
+        self.fake.add_unit(
+            "haizen-agent.service",
+            load="not-found",
+            unit_file="",
+            active="inactive",
+        )
+
+        self.capture(units=["haizen-agent.service"])
+
+        manifest = json.loads(self.manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            manifest["units"],
+            [
+                {
+                    "name": "haizen-agent.service",
+                    "loadState": "not-found",
+                    "unitFileState": "not-found",
+                    "activeState": "inactive",
+                    "persistent": None,
+                }
+            ],
+        )
+        self.assertEqual(self.fake.mutation_calls, [])
+
+    def test_capture_rejects_empty_unit_file_state_for_loaded_unit(self):
+        self.fake.add_unit(
+            "haizen-agent.service",
+            load="loaded",
+            unit_file="",
+            active="inactive",
+        )
+
+        with self.assertRaisesRegex(
+            MODULE.RuntimeManifestError, "unit-file state is unsupported"
+        ):
+            self.capture(units=["haizen-agent.service"])
+
+        self.assertFalse(self.manifest_path.exists())
+        self.assertEqual(self.fake.mutation_calls, [])
+
     def test_unchanged_lightdm_is_not_cycled_when_release_unit_needs_reload(self):
         self.fake.add_unit("lightdm.service", unit_file="enabled", active="active")
         self.fake.add_unit(
