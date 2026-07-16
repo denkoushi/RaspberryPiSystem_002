@@ -329,6 +329,8 @@ def _remote_identity(inventory: str, host: str, *, runtime: Runtime) -> tuple[st
             "-i",
             inventory,
             host,
+            "-e",
+            "ansible_become=false",
             "-m",
             "shell",
             "-a",
