@@ -103,7 +103,7 @@ class SignageRuntimeProofTest(unittest.TestCase):
         )
 
     def _seal(self, image: bytes) -> subprocess.CompletedProcess[str]:
-        temporary = self.cache / "current.tmp.jpg"
+        temporary = self.cache / "release-run-123-maintenance.jpg"
         temporary.write_bytes(image)
         return self._run(
             "--run-id",
@@ -112,6 +112,24 @@ class SignageRuntimeProofTest(unittest.TestCase):
             str(temporary),
             "--ansible-marker",
         )
+
+    def test_seal_is_isolated_from_periodic_updater_temporary_file(self):
+        staged = self.cache / "release-run-123-maintenance.jpg"
+        staged.write_bytes(b"run-scoped maintenance")
+        updater_temporary = self.cache / "current.tmp.jpg"
+        updater_temporary.write_bytes(b"periodic updater")
+        updater_temporary.unlink()
+
+        sealed = self._run(
+            "--run-id",
+            "run-123",
+            "--seal-maintenance-image",
+            str(staged),
+            "--ansible-marker",
+        )
+
+        self.assertEqual(sealed.returncode, 0, sealed.stderr)
+        self.assertIn("SIGNAGE_MAINTENANCE_SEALED:", sealed.stdout)
 
     def test_host_local_key_proves_endpoints_and_replaces_maintenance_image(self):
         maintenance = b"rendered maintenance artifact"

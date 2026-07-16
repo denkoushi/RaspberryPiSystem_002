@@ -546,6 +546,14 @@ def _require_repository_rollback_state(
             raise ManifestError("repository worktree is not clean")
         return
 
+    # A pre-checkout failure can leave the repository exactly at the sealed
+    # prior release before the candidate object has ever been fetched.  That
+    # state is already safe to restore and must not turn a file-only rollback
+    # into an interrupted recovery merely because the absent candidate cannot
+    # be inspected.
+    if not status and hmac.compare_digest(actual_head, previous_head):
+        return
+
     candidate = _require_exact_commit(
         repository, candidate_head, "candidate repository HEAD"
     )

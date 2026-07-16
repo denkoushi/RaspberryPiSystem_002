@@ -294,7 +294,7 @@ def _atomic_write(path: Path, value: bytes, mode: int) -> None:
 
 def _seal_maintenance(cache: Path, run_id: str, image_path: Path) -> str:
     _cache_directory(cache)
-    expected_image = cache / "current.tmp.jpg"
+    expected_image = cache / f"release-{run_id}-maintenance.jpg"
     if image_path != expected_image:
         raise ProofError("maintenance image path is outside the signage cache contract")
     image, _metadata = _read_regular(image_path, _MAX_IMAGE_BYTES)
