@@ -67,6 +67,7 @@ class ClassifyDeployImpactTest(unittest.TestCase):
             [
                 'scripts/deploy/classify-deploy-impact.py',
                 'scripts/deploy/rollback-manifest.py',
+                'scripts/deploy/rolling_release/coordinator.py',
                 'scripts/deploy/rolling_release/backends/ansible.py',
                 'scripts/deploy/terminal-runtime-manifest.py',
             ]
@@ -104,6 +105,7 @@ class ClassifyDeployImpactTest(unittest.TestCase):
             [
                 'docs/plans/deployment-foundation-refactor-execplan.md',
                 'scripts/deploy/rollback-manifest.py',
+                'scripts/deploy/rolling_release/coordinator.py',
                 'scripts/deploy/rolling_release/backends/ansible.py',
                 'scripts/deploy/signage-runtime-proof.py',
                 'scripts/deploy/tests/test_ansible_adapter.py',
