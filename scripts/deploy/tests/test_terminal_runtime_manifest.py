@@ -40,6 +40,7 @@ class FakeRuntime:
         self.units: dict[str, dict[str, str]] = {}
         self.unit_needs_reload: set[str] = set()
         self.stop_results_failed: set[str] = set()
+        self.timer_start_transitions: dict[str, list[str]] = {}
         self.timer_persistent: dict[str, bool] = {}
         self.images: dict[str, str] = {}
         self.containers: dict[tuple[str, str], dict] = {}
@@ -153,6 +154,9 @@ class FakeRuntime:
         cloned.units = copy.deepcopy(self.units)
         cloned.unit_needs_reload = set(self.unit_needs_reload)
         cloned.stop_results_failed = set(self.stop_results_failed)
+        cloned.timer_start_transitions = copy.deepcopy(
+            self.timer_start_transitions
+        )
         cloned.timer_persistent = copy.deepcopy(self.timer_persistent)
         cloned.images = copy.deepcopy(self.images)
         cloned.containers = copy.deepcopy(self.containers)
@@ -337,6 +341,8 @@ class FakeRuntime:
             runtime = "--runtime" in call
             if action == "start":
                 state["ActiveState"] = "active"
+                for triggered_unit in self.timer_start_transitions.get(unit, []):
+                    self.units[triggered_unit]["ActiveState"] = "activating"
             elif action == "stop":
                 state["ActiveState"] = (
                     "failed" if unit in self.stop_results_failed else "inactive"
@@ -1035,6 +1041,63 @@ class TerminalRuntimeManifestTest(unittest.TestCase):
         )
         self.assertEqual(
             self.fake.units["signage-lite.service"]["ActiveState"], "active"
+        )
+
+    def test_restore_accepts_timer_owned_oneshot_postflight_transition(self):
+        units = ["status-agent.service", "status-agent.timer"]
+        self.fake.add_unit(
+            "status-agent.service", unit_file="enabled", active="inactive"
+        )
+        self.fake.add_unit(
+            "status-agent.timer", unit_file="enabled", active="active"
+        )
+        captured = self.capture(units=units)
+        self.fake.unit_needs_reload.update(units)
+        self.fake.timer_start_transitions["status-agent.timer"] = [
+            "status-agent.service"
+        ]
+        self.fake.calls.clear()
+
+        restored = self.restore(captured["manifestSha256"])
+
+        self.assertTrue(restored["restored"])
+        self.assertEqual(
+            self.fake.units["status-agent.service"]["ActiveState"],
+            "activating",
+        )
+        self.assertEqual(
+            self.fake.units["status-agent.timer"]["ActiveState"], "active"
+        )
+        self.assertTrue(
+            (self.storage / self.run_id / self.host / "restored.json").exists()
+        )
+
+    def test_restore_rejects_oneshot_transition_without_reactivated_owner_timer(self):
+        units = ["status-agent.service", "signage-lite.service"]
+        self.fake.add_unit(
+            "status-agent.service", unit_file="enabled", active="inactive"
+        )
+        self.fake.add_unit(
+            "signage-lite.service", unit_file="enabled", active="active"
+        )
+        captured = self.capture(
+            units=units,
+            restart_on_restore_units=["signage-lite.service"],
+        )
+        self.fake.unit_needs_reload.update(units)
+        self.fake.timer_start_transitions["signage-lite.service"] = [
+            "status-agent.service"
+        ]
+        self.fake.calls.clear()
+
+        with self.assertRaisesRegex(
+            MODULE.RuntimeManifestError,
+            "systemd postflight verification failed",
+        ):
+            self.restore(captured["manifestSha256"])
+
+        self.assertFalse(
+            (self.storage / self.run_id / self.host / "restored.json").exists()
         )
 
     def test_capture_normalizes_real_systemd_missing_unit_output(self):
