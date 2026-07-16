@@ -1,8 +1,11 @@
 """Pure composition of observable rolling-release plans."""
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Iterable
+
+from terminal_profile_registry import load_registry
 
 
 Target = dict[str, str]
@@ -16,6 +19,7 @@ HOST_DECISION_FIELDS = (
     'targetReason',
     'targeted',
 )
+PROFILE_ID_RE = re.compile(r'^[a-z][a-z0-9-]{0,62}$')
 
 
 def _public_host_decision(decision: dict[str, Any]) -> dict[str, Any]:
@@ -36,6 +40,7 @@ def build_fleet_plan_payload(
     full_fleet: bool,
     limit: str,
     canary_hold_policy: CanaryHoldPolicy,
+    profile_ids: Iterable[str] | None = None,
 ) -> dict[str, Any]:
     """Compose the fleet-aware public and persisted planning snapshot.
 
@@ -47,6 +52,17 @@ def build_fleet_plan_payload(
         raise TypeError('full_fleet must be boolean')
     if not isinstance(decisions, list):
         raise TypeError('decisions must be a list')
+
+    registered_profiles = frozenset(
+        load_registry().profile_ids if profile_ids is None else profile_ids
+    )
+    if any(
+        not isinstance(profile_id, str)
+        or PROFILE_ID_RE.fullmatch(profile_id) is None
+        or profile_id == 'server'
+        for profile_id in registered_profiles
+    ):
+        raise ValueError('registered profile IDs are malformed')
 
     hosts: list[dict[str, Any]] = []
     targeted: list[dict[str, Any]] = []
@@ -63,7 +79,7 @@ def build_fleet_plan_payload(
         role = original['role']
         if not isinstance(host, str) or not host or host in seen:
             raise ValueError('host decision identity is malformed or duplicated')
-        if role not in {'server', 'kiosk', 'signage'}:
+        if role != 'server' and role not in registered_profiles:
             raise ValueError('host decision role is unsupported')
         if type(original['targeted']) is not bool:
             raise ValueError('host decision target flag must be boolean')
@@ -75,7 +91,7 @@ def build_fleet_plan_payload(
         public = _public_host_decision(decision)
         if decision['targeted']:
             targeted.append(public)
-            if role in {'kiosk', 'signage'}:
+            if role != 'server':
                 terminal_targets.append({'host': host, 'terminalType': role})
         else:
             excluded.append(public)

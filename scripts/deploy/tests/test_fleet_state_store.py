@@ -5,6 +5,7 @@ import stat
 import sys
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -25,6 +26,7 @@ from rolling_release.fleet_state import (  # noqa: E402
     StaleFleetGenerationError,
     empty_fleet_state,
 )
+from terminal_profile_registry import load_registry  # noqa: E402
 
 
 RUN_ID = "20260715-123456-a1b2c3"
@@ -306,6 +308,47 @@ class FleetStateStoreTest(unittest.TestCase):
                 active_slot="blue",
             )
         self.assertEqual(self.store.read_only()["generation"], 1)
+
+    def test_registered_synthetic_profile_uses_the_existing_json_shape(self):
+        base = load_registry()
+        synthetic = replace(
+            base.profiles[0],
+            id="inspection-panel",
+            inventory_group="inspection_panels",
+            rollout_order=15,
+            impact_component="inspection-panel-role",
+            canary_group="inspection_panel_canary",
+        )
+        registry = replace(
+            base,
+            profiles=(base.profiles[0], synthetic, base.profiles[1]),
+        )
+        self.begin()
+
+        with patch.object(
+            fleet_state_module, "load_registry", return_value=registry
+        ):
+            state = self.store.mark_host_unknown(
+                "inspection-a",
+                "inspection-panel",
+                SHA_A,
+                RUN_ID,
+                expected_generation=1,
+            )
+            record = state["fleet"]["inspection-a"]
+            self.assertEqual(record["role"], "inspection-panel")
+            self.assertEqual(
+                set(record),
+                {
+                    "role",
+                    "desiredSha",
+                    "currentSha",
+                    "previousSha",
+                    "evidence",
+                    "verifiedAt",
+                    "lastRunId",
+                },
+            )
 
     def test_finish_moves_active_run_to_last_run_and_abandon_uses_interrupted(self):
         state = self.begin()

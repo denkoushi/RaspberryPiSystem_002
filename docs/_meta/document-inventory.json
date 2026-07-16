@@ -15,17 +15,17 @@
     ]
   },
   "summary": {
-    "documentCount": 521,
-    "totalLines": 150225,
-    "totalBytes": 11236210,
-    "withFrontmatter": 209,
-    "withStatus": 67,
-    "sourceOfTruthDeclared": 39,
+    "documentCount": 522,
+    "totalLines": 150710,
+    "totalBytes": 11267020,
+    "withFrontmatter": 210,
+    "withStatus": 68,
+    "sourceOfTruthDeclared": 40,
     "execPlanReferences": 64,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 23,
-    "localLinkCount": 5526,
+    "localLinkCount": 5527,
     "brokenLocalLinkCount": 90,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -5928,8 +5928,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 1965,
-      "byteSize": 336878,
+      "lineCount": 1969,
+      "byteSize": 337230,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -10481,6 +10481,11 @@
           "exists": true
         },
         {
+          "href": "./plans/terminal-profile-registry-execplan.md",
+          "targetPath": "docs/plans/terminal-profile-registry-execplan.md",
+          "exists": true
+        },
+        {
           "href": "./plans/tool-management-debug-execplan.md",
           "targetPath": "docs/plans/tool-management-debug-execplan.md",
           "exists": true
@@ -11001,95 +11006,95 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 246,
+          "line": 250,
           "length": 1132
         },
         {
-          "line": 262,
+          "line": 266,
           "length": 1242
         },
         {
-          "line": 266,
+          "line": 270,
           "length": 1022
         },
         {
-          "line": 280,
+          "line": 284,
           "length": 1065
         },
         {
-          "line": 328,
+          "line": 332,
           "length": 1165
         },
         {
-          "line": 334,
+          "line": 338,
           "length": 1458
         },
         {
-          "line": 346,
+          "line": 350,
           "length": 1083
         },
         {
-          "line": 360,
+          "line": 364,
           "length": 1398
         },
         {
-          "line": 362,
+          "line": 366,
           "length": 1133
         },
         {
-          "line": 366,
+          "line": 370,
           "length": 1399
         },
         {
-          "line": 368,
+          "line": 372,
           "length": 1008
         },
         {
-          "line": 374,
+          "line": 378,
           "length": 1059
         },
         {
-          "line": 382,
+          "line": 386,
           "length": 1129
         },
         {
-          "line": 386,
+          "line": 390,
           "length": 1135
         },
         {
-          "line": 390,
+          "line": 394,
           "length": 1117
         },
         {
-          "line": 505,
+          "line": 509,
           "length": 1013
         },
         {
-          "line": 691,
+          "line": 695,
           "length": 2038
         },
         {
-          "line": 707,
+          "line": 711,
           "length": 1496
         },
         {
-          "line": 713,
+          "line": 717,
           "length": 1177
         },
         {
-          "line": 1055,
+          "line": 1059,
           "length": 1449
         },
         {
-          "line": 1091,
+          "line": 1095,
           "length": 1136
         },
         {
-          "line": 1093,
+          "line": 1097,
           "length": 1239
         },
         {
-          "line": 1129,
+          "line": 1133,
           "length": 1004
         }
       ],
@@ -33963,6 +33968,21 @@
           "exists": true
         }
       ],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/terminal-profile-registry-execplan.md",
+      "lineCount": 481,
+      "byteSize": 30458,
+      "hasFrontmatter": true,
+      "title": "Generalize terminal deployment with a profile registry and adapters",
+      "status": "active",
+      "source_of_truth": "docs/plans/terminal-profile-registry-execplan.md",
+      "localLinks": [],
       "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,

@@ -245,6 +245,9 @@ def launch(args: Any, *, runtime: Any) -> int:
     inventory_data = runtime.inventory_json(
         str(runtime.ANSIBLE_DIRECTORY / remote_inventory)
     )
+    # Validate the complete target-tree topology before the identity probe
+    # opens SSH or a transient systemd unit can reach remote checkout/state.
+    runtime.release_hosts(inventory_data)
     identity = validate_remote_server_identity(inventory_data, runtime=runtime)
 
     run_id = new_run_id()

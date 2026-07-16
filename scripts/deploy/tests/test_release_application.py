@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from scripts.deploy.rolling_release import application
+from scripts.deploy.rolling_release import policy
 from scripts.deploy.rolling_release.backends.command import CommandResult
 
 
@@ -23,6 +24,7 @@ class Runtime:
     FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
     os = SimpleNamespace(environ={"RASPI_SERVER_HOST": "pi5.example"})
     subprocess = SimpleNamespace(run=lambda *_args, **_kwargs: SimpleNamespace(returncode=0))
+    release_hosts = staticmethod(policy.release_hosts)
 
     @staticmethod
     def run(command, *, capture=False):
@@ -32,6 +34,11 @@ class Runtime:
     def inventory_json(_inventory):
         return {
             "server": {"hosts": ["raspberrypi5"]},
+            "clients": {"children": []},
+            "kiosk": {"hosts": []},
+            "signage": {"hosts": []},
+            "kiosk_canary": {"hosts": []},
+            "signage_canary": {"hosts": []},
             "_meta": {
                 "hostvars": {
                     "raspberrypi5": {
@@ -162,6 +169,27 @@ class ReleaseApplicationTest(unittest.TestCase):
 
         backends.assert_not_called()
         self.assertEqual(systemd.events, [])
+
+    def test_invalid_terminal_topology_stops_before_ssh_and_submission(self):
+        class InvalidRuntime(Runtime):
+            @staticmethod
+            def inventory_json(_inventory):
+                value = Runtime.inventory_json(_inventory)
+                value["clients"] = {"children": ["unregistered_type"]}
+                return value
+
+        identity = Mock()
+        backends = Mock()
+        with patch.object(application, "_require_clean_worktree"), patch.object(
+            application, "_remote_inventory", return_value="inventory.yml"
+        ), patch.object(
+            application, "validate_remote_server_identity", identity
+        ), patch.object(application, "build_backends", backends):
+            with self.assertRaisesRegex(RuntimeError, "unregistered"):
+                application.launch(release_args(), runtime=InvalidRuntime)
+
+        identity.assert_not_called()
+        backends.assert_not_called()
 
     def test_remote_identity_probe_returns_only_client_id_and_never_requests_key(self):
         transport = SimpleNamespace(

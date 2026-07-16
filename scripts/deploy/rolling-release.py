@@ -30,6 +30,7 @@ from terminal_notice import (
     should_issue_terminal_notice,
     terminal_notice_skip_reason,
 )
+from terminal_profile_registry import load_registry
 from rolling_release import application as release_application
 from rolling_release import cli as release_cli
 from rolling_release import coordinator as release_coordinator
@@ -963,6 +964,7 @@ def classify_release_impact(
             "kiosk": False,
             "signage": False,
             "migration": False,
+            "affectedProfiles": [],
             "paths": [],
             "components": ["neutral"],
         }, []
@@ -1090,9 +1092,41 @@ def build_fleet_scope(
     terminal_targets = [
         target_by_host[decision["host"]]
         for decision in decisions
-        if decision["targeted"] and decision["role"] in {"kiosk", "signage"}
+        if decision["targeted"] and decision["role"] != "server"
     ]
     plan["terminalTargets"] = terminal_targets
+    registry = load_registry()
+    profile_ids = set(registry.profile_ids)
+    affected_profiles: set[str] = set()
+    classification_unavailable = not classifications
+    for classification in classifications.values():
+        if not isinstance(classification, dict):
+            classification_unavailable = True
+            continue
+        declared = classification.get("affectedProfiles")
+        if isinstance(declared, list) and all(
+            isinstance(profile_id, str) and profile_id in profile_ids
+            for profile_id in declared
+        ):
+            affected_profiles.update(declared)
+            continue
+        if declared is not None:
+            classification_unavailable = True
+            continue
+        legacy = {
+            profile.id
+            for profile in registry.profiles
+            if classification.get(profile.id) is True
+        }
+        if legacy:
+            affected_profiles.update(legacy)
+        elif set(classification.get("components") or []) & {"unknown", "global"}:
+            classification_unavailable = True
+    if classification_unavailable:
+        affected_profiles.update(profile_ids)
+    plan["affectedProfiles"] = [
+        profile.id for profile in registry.profiles if profile.id in affected_profiles
+    ]
     components = {
         component
         for classification in classifications.values()
@@ -1121,6 +1155,9 @@ def build_print_plan(
     local_inventory = canonical_print_plan_inventory(inventory)
     inventory_data = read_only_inventory_json(local_inventory)
     selected = read_only_selected_hosts(local_inventory, limit)
+    # Fail registry, adapter, membership and client identity errors before the
+    # first SSH or fleet-state read.
+    release_hosts(inventory_data)
     server_identity = validate_print_plan_server_identity(inventory_data)
     fleet_state, fleet_warnings = read_plan_fleet_release_state()
     warnings.extend(fleet_warnings)

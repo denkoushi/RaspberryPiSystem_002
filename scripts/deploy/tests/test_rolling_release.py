@@ -304,47 +304,63 @@ class ReleaseStateReferenceTest(unittest.TestCase):
 
 
 class RollingReleaseTargetOrderTest(unittest.TestCase):
-    def test_canary_then_remaining_kiosks_then_signage(self):
-        inventory = {
-            'kiosk_canary': {'hosts': ['kiosk-b']},
-            'kiosk': {'hosts': ['kiosk-a', 'kiosk-b']},
-            'signage': {'hosts': ['signage-a']},
-            '_meta': {'hostvars': {
-                'kiosk-a': {'manage_kiosk_browser': True, 'status_agent_client_id': 'a'},
-                'kiosk-b': {'manage_kiosk_browser': True, 'status_agent_client_id': 'b'},
-                'signage-a': {'manage_signage_lite': True, 'status_agent_client_id': 's'},
-                'server': {},
-            }},
+    _DEFAULT = object()
+
+    def inventory(
+        self,
+        *,
+        kiosks=('kiosk-a', 'kiosk-b'),
+        signage=('signage-a',),
+        kiosk_canary=_DEFAULT,
+        signage_canary=_DEFAULT,
+        children=None,
+        hostvars=None,
+    ):
+        kiosks = list(kiosks)
+        signage = list(signage)
+        if kiosk_canary is self._DEFAULT:
+            kiosk_canary = {'hosts': [kiosks[-1]]} if kiosks else {'hosts': []}
+        if signage_canary is self._DEFAULT:
+            signage_canary = {'hosts': [signage[0]]} if signage else {'hosts': []}
+        if children is None:
+            children = [
+                group
+                for group, hosts in (('kiosk', kiosks), ('signage', signage))
+                if hosts
+            ]
+        values = {
+            'server': {'status_agent_client_id': 'server-client'},
+            **{
+                host: {'status_agent_client_id': f'client-{host}'}
+                for host in dict.fromkeys([*kiosks, *signage])
+            },
         }
+        if hostvars:
+            for host, overrides in hostvars.items():
+                values.setdefault(host, {}).update(overrides)
+        return {
+            'server': {'hosts': ['server']},
+            'clients': {'children': list(children)},
+            'kiosk_canary': kiosk_canary,
+            'signage_canary': signage_canary,
+            'kiosk': {'hosts': kiosks},
+            'signage': {'hosts': signage},
+            '_meta': {'hostvars': values},
+        }
+
+    def test_canary_then_remaining_kiosks_then_signage(self):
+        inventory = self.inventory()
         self.assertEqual(
             [target['host'] for target in MODULE.release_targets(inventory)],
             ['kiosk-b', 'kiosk-a', 'signage-a'],
         )
 
     def test_limit_never_reintroduces_non_selected_terminal(self):
-        inventory = {
-            'kiosk_canary': {'hosts': ['kiosk-b']},
-            'kiosk': {'hosts': ['kiosk-a', 'kiosk-b']},
-            'signage': {'hosts': ['signage-a']},
-            '_meta': {'hostvars': {
-                'kiosk-a': {'manage_kiosk_browser': True, 'status_agent_client_id': 'a'},
-                'kiosk-b': {'manage_kiosk_browser': True, 'status_agent_client_id': 'b'},
-                'signage-a': {'manage_signage_lite': True, 'status_agent_client_id': 's'},
-            }},
-        }
+        inventory = self.inventory()
         self.assertEqual([item['host'] for item in MODULE.release_targets(inventory, ['signage-a'])], ['signage-a'])
 
     def test_empty_explicit_selection_never_expands_to_all_terminals(self):
-        inventory = {
-            'kiosk_canary': {'hosts': ['kiosk-b']},
-            'kiosk': {'hosts': ['kiosk-a', 'kiosk-b']},
-            'signage': {'hosts': ['signage-a']},
-            '_meta': {'hostvars': {
-                'kiosk-a': {'manage_kiosk_browser': True, 'status_agent_client_id': 'a'},
-                'kiosk-b': {'manage_kiosk_browser': True, 'status_agent_client_id': 'b'},
-                'signage-a': {'manage_signage_lite': True, 'status_agent_client_id': 's'},
-            }},
-        }
+        inventory = self.inventory()
         self.assertEqual(MODULE.release_targets(inventory, []), [])
 
     def test_remote_runner_accepts_named_branch_and_inventory(self):
@@ -356,55 +372,37 @@ class RollingReleaseTargetOrderTest(unittest.TestCase):
         self.assertEqual(args.branch, 'main')
         self.assertEqual(args.inventory, 'inventory.yml')
 
-    def test_group_and_role_claim_mismatch_fails_closed(self):
-        inventory = {
-            'kiosk': {'hosts': ['kiosk-a']},
-            'signage': {'hosts': []},
-            '_meta': {'hostvars': {
-                'kiosk-a': {'manage_signage_lite': True, 'status_agent_client_id': 'a'},
-            }},
-        }
-        with self.assertRaisesRegex(RuntimeError, 'kiosk group does not match'):
-            MODULE.release_targets(inventory)
+    def test_registry_group_not_legacy_manage_flag_defines_terminal_profile(self):
+        inventory = self.inventory(
+            kiosks=('terminal-a',),
+            signage=(),
+            hostvars={'terminal-a': {'manage_signage_lite': True}},
+        )
+        self.assertEqual(
+            MODULE.release_targets(inventory)[0]['terminalType'], 'kiosk'
+        )
 
     def test_duplicate_play_group_membership_fails_closed(self):
-        inventory = {
-            'kiosk': {'hosts': ['terminal-a']},
-            'signage': {'hosts': ['terminal-a']},
-            '_meta': {'hostvars': {
-                'terminal-a': {
-                    'manage_kiosk_browser': True,
-                    'manage_signage_lite': True,
-                    'status_agent_client_id': 'a',
-                },
-            }},
-        }
-        with self.assertRaisesRegex(RuntimeError, 'must be disjoint'):
+        inventory = self.inventory(
+            kiosks=('terminal-a',), signage=('terminal-a',)
+        )
+        with self.assertRaisesRegex(RuntimeError, 'exactly one'):
             MODULE.release_targets(inventory)
 
     def test_duplicate_client_id_on_unselected_host_fails_closed(self):
-        inventory = {
-            'kiosk': {'hosts': ['kiosk-a']},
-            'signage': {'hosts': ['signage-a']},
-            '_meta': {'hostvars': {
-                'kiosk-a': {'manage_kiosk_browser': True, 'status_agent_client_id': 'shared'},
-                'signage-a': {'manage_signage_lite': True, 'status_agent_client_id': 'shared'},
-            }},
-        }
+        inventory = self.inventory(hostvars={
+            'kiosk-a': {'status_agent_client_id': 'shared'},
+            'signage-a': {'status_agent_client_id': 'shared'},
+        })
         with self.assertRaisesRegex(RuntimeError, 'duplicate status_agent_client_id'):
             MODULE.release_targets(inventory, ['kiosk-a'])
 
     def test_kiosk_canary_outside_kiosk_group_fails_closed(self):
-        inventory = {
-            'kiosk_canary': {'hosts': ['server']},
-            'kiosk': {'hosts': ['kiosk-a']},
-            'signage': {'hosts': []},
-            '_meta': {'hostvars': {
-                'kiosk-a': {'manage_kiosk_browser': True, 'status_agent_client_id': 'a'},
-                'server': {},
-            }},
-        }
-        with self.assertRaisesRegex(RuntimeError, 'must belong to the kiosk group'):
+        inventory = self.inventory(
+            kiosks=('kiosk-a',), signage=(),
+            kiosk_canary={'hosts': ['server']},
+        )
+        with self.assertRaisesRegex(RuntimeError, 'must belong to kiosk'):
             MODULE.release_targets(inventory)
 
     def test_malformed_or_duplicate_kiosk_canary_fails_closed(self):
@@ -412,22 +410,19 @@ class RollingReleaseTargetOrderTest(unittest.TestCase):
             ([], 'malformed'),
             ({'hosts': 'kiosk-a'}, 'malformed'),
             ({'hosts': 0}, 'malformed'),
-            ({'hosts': ['kiosk-a', 'kiosk-a']}, 'duplicate'),
+            ({'hosts': ['kiosk-a', 'kiosk-a']}, 'malformed'),
         ):
             with self.subTest(canary=canary):
-                inventory = {
-                    'kiosk_canary': canary,
-                    'kiosk': {'hosts': ['kiosk-a']},
-                    'signage': {'hosts': []},
-                    '_meta': {'hostvars': {
-                        'kiosk-a': {
-                            'manage_kiosk_browser': True,
-                            'status_agent_client_id': 'a',
-                        },
-                    }},
-                }
+                inventory = self.inventory(
+                    kiosks=('kiosk-a',), signage=(), kiosk_canary=canary
+                )
                 with self.assertRaisesRegex(RuntimeError, expected):
                     MODULE.release_targets(inventory)
+
+    def test_unregistered_clients_group_fails_closed(self):
+        inventory = self.inventory(children=['kiosk', 'signage', 'future_type'])
+        with self.assertRaisesRegex(RuntimeError, 'unregistered future_type'):
+            MODULE.release_targets(inventory)
 
 
 class Pi5StabilityMonitorTest(unittest.TestCase):
@@ -1902,10 +1897,14 @@ class PrintPlanShadowTest(unittest.TestCase):
     def test_print_plan_wrong_site_precedes_remote_fleet_read(self):
         inventory_data = {
             'server': {'hosts': ['raspberrypi5']},
+            'clients': {'children': []},
             'kiosk': {'hosts': []},
             'signage': {'hosts': []},
             'kiosk_canary': {'hosts': []},
-            '_meta': {'hostvars': {'raspberrypi5': {}}},
+            'signage_canary': {'hosts': []},
+            '_meta': {'hostvars': {'raspberrypi5': {
+                'status_agent_client_id': 'raspberrypi5-server',
+            }}},
         }
         fleet_read = Mock()
         with patch.object(MODULE, 'resolve_release_sha', return_value=(TARGET_SHA, [])), \
@@ -1926,11 +1925,15 @@ class PrintPlanShadowTest(unittest.TestCase):
     def test_active_run_widens_print_plan_to_all_unknown_hosts(self):
         inventory_data = {
             'server': {'hosts': ['raspberrypi5']},
+            'clients': {'children': ['kiosk']},
             'kiosk': {'hosts': ['kiosk-a']},
             'signage': {'hosts': []},
             'kiosk_canary': {'hosts': ['kiosk-a']},
+            'signage_canary': {'hosts': []},
             '_meta': {'hostvars': {
-                'raspberrypi5': {},
+                'raspberrypi5': {
+                    'status_agent_client_id': 'raspberrypi5-server',
+                },
                 'kiosk-a': {
                     'manage_kiosk_browser': True,
                     'status_agent_client_id': 'kiosk-a',
@@ -1990,11 +1993,15 @@ class PrintPlanShadowTest(unittest.TestCase):
         ]
         inventory_data = {
             'server': {'hosts': ['raspberrypi5']},
+            'clients': {'children': ['kiosk']},
             'kiosk': {'hosts': ['kiosk-canary', 'kiosk-b']},
             'signage': {'hosts': []},
             'kiosk_canary': {'hosts': ['kiosk-canary']},
+            'signage_canary': {'hosts': []},
             '_meta': {'hostvars': {
-                'raspberrypi5': {},
+                'raspberrypi5': {
+                    'status_agent_client_id': 'raspberrypi5-server',
+                },
                 'kiosk-canary': {
                     'manage_kiosk_browser': True,
                     'status_agent_client_id': 'canary',
@@ -2042,6 +2049,7 @@ class PrintPlanShadowTest(unittest.TestCase):
         self.assertTrue(plan['minimized'])
         self.assertEqual(plan['excludedHosts'], ['kiosk-canary', 'kiosk-b'])
         self.assertEqual(plan['classificationComponents'], ['server-app'])
+        self.assertEqual(plan['affectedProfiles'], [])
         self.assertEqual(plan['serverIdentity']['clientId'], 'raspberrypi5-server')
         self.assertEqual(plan['warnings'], [])
 
@@ -2075,11 +2083,15 @@ class PrintPlanShadowTest(unittest.TestCase):
 class FleetScopeLimitTest(unittest.TestCase):
     INVENTORY = {
         'server': {'hosts': ['raspberrypi5']},
+        'clients': {'children': ['kiosk']},
         'kiosk': {'hosts': ['kiosk-a', 'kiosk-b']},
         'signage': {'hosts': []},
         'kiosk_canary': {'hosts': ['kiosk-a']},
+        'signage_canary': {'hosts': []},
         '_meta': {'hostvars': {
-            'raspberrypi5': {},
+            'raspberrypi5': {
+                'status_agent_client_id': 'raspberrypi5-server',
+            },
             'kiosk-a': {
                 'manage_kiosk_browser': True,
                 'status_agent_client_id': 'a',
@@ -2145,6 +2157,7 @@ class FleetScopeLimitTest(unittest.TestCase):
         self.assertEqual([target['host'] for target in targets], ['kiosk-b'])
         self.assertEqual(plan['targetHosts'], ['kiosk-b'])
         self.assertIn('raspberrypi5', plan['excludedHosts'])
+        self.assertEqual(plan['affectedProfiles'], ['kiosk'])
         self.assertEqual(warnings, [])
 
     def test_limit_cannot_exclude_an_unknown_terminal(self):
@@ -2210,11 +2223,15 @@ class FleetScopeLimitTest(unittest.TestCase):
 class AutoMinimizeTest(unittest.TestCase):
     INVENTORY = {
         'server': {'hosts': ['raspberrypi5']},
+        'clients': {'children': ['kiosk', 'signage']},
         'kiosk': {'hosts': ['kiosk-a', 'kiosk-b']},
         'signage': {'hosts': ['raspberrypi3']},
         'kiosk_canary': {'hosts': ['kiosk-b']},
+        'signage_canary': {'hosts': ['raspberrypi3']},
         '_meta': {'hostvars': {
-            'raspberrypi5': {},
+            'raspberrypi5': {
+                'status_agent_client_id': 'raspberrypi5-server',
+            },
             'kiosk-a': {'manage_kiosk_browser': True, 'status_agent_client_id': 'a'},
             'kiosk-b': {
                 'manage_kiosk_browser': True,
