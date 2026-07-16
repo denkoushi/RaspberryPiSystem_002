@@ -515,6 +515,37 @@ def args(**overrides):
 
 
 class FleetCoordinatorTransitionTest(unittest.TestCase):
+    def test_interrupted_ready_identity_uses_verified_pi5_for_kiosk_only(self):
+        fleet = {
+            "fleet": {
+                "pi5": host_record("server", NEW_SHA),
+            }
+        }
+
+        self.assertEqual(
+            coordinator._interrupted_rollback_ready_sha(
+                fleet, {"terminalType": "kiosk"}, OLD_SHA
+            ),
+            NEW_SHA,
+        )
+        self.assertEqual(
+            coordinator._interrupted_rollback_ready_sha(
+                {"fleet": {}}, {"terminalType": "signage"}, OLD_SHA
+            ),
+            OLD_SHA,
+        )
+
+    def test_interrupted_kiosk_ready_identity_rejects_unknown_pi5(self):
+        server = host_record("server", NEW_SHA)
+        server.update({"currentSha": None, "evidence": "unknown"})
+
+        with self.assertRaisesRegex(RuntimeError, "verified Pi5 Web release"):
+            coordinator._interrupted_rollback_ready_sha(
+                {"fleet": {"pi5": server}},
+                {"terminalType": "kiosk"},
+                OLD_SHA,
+            )
+
     def test_target_inventory_identity_mismatch_precedes_fleet_and_devices(self):
         runtime = FakeRuntime(fleet={}, hosts=[], plan={}, targets=[])
 
@@ -2039,6 +2070,13 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         recovery = runtime.states[-1].payload["interruptedRecovery"]
         self.assertEqual(recovery["runId"], "crashed-run")
         self.assertEqual(recovery["targets"][0]["recovery"], "manifest-restored")
+        self.assertEqual(
+            recovery["targets"][0]["expectedRollbackReadySha"], NEW_SHA
+        )
+        self.assertIn(
+            f"status:verification:a:{NEW_SHA}:{ROLLBACK_VERIFICATION_ID}",
+            runtime.events,
+        )
         self.assertIn(
             "status:remove-client:--run-id:crashed-run:--client:a",
             runtime.events,
