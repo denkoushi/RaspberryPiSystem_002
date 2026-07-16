@@ -326,6 +326,12 @@ class RollbackManifestAdapterTest(unittest.TestCase):
         self.assertIn(
             f"--path /run/signage/release-{self.RUN_ID}-maintenance.svg", action
         )
+        self.assertIn(
+            f"--path /run/signage/release-{self.RUN_ID}-maintenance.jpg", action
+        )
+        self.assertIn(
+            f"--path /run/signage/release-{self.RUN_ID}-maintenance.sha256", action
+        )
         self.assertIn("--path /etc/systemd/system/signage-lite.service", action)
         self.assertNotIn("--path /etc/systemd/system/kiosk-browser.service", action)
         runtime_action = runtime.calls[2][0][-1]
@@ -1006,18 +1012,20 @@ class SignageMaintenancePrestageTest(unittest.TestCase):
             "dest=/run/signage/release-run-123-maintenance.svg", copy[-1]
         )
         render = runtime.calls[2][0]
-        self.assertIn("/run/signage/current.tmp.jpg", render[-1])
-        self.assertNotIn("cat /run/signage/current.tmp.jpg", render[-1])
+        staged_image = "/run/signage/release-run-123-maintenance.jpg"
+        self.assertIn(staged_image, render[-1])
+        self.assertNotIn("/run/signage/current.tmp.jpg", render[-1])
         seal = runtime.calls[3][0]
         self.assertEqual(seal[5:7], ["-m", "script"])
         self.assertIn("/project/scripts/deploy/signage-runtime-proof.py", seal[-1])
         self.assertIn("--run-id run-123", seal[-1])
         self.assertIn(
-            "--seal-maintenance-image /run/signage/current.tmp.jpg", seal[-1]
+            f"--seal-maintenance-image {staged_image}", seal[-1]
         )
         self.assertTrue(runtime.calls[3][1]["capture"])
         install = runtime.calls[4][0]
-        self.assertIn("cat /run/signage/current.tmp.jpg", install[-1])
+        self.assertIn(f"cat {staged_image}", install[-1])
+        self.assertNotIn("/run/signage/current.tmp.jpg", install[-1])
         all_commands = "\n".join(
             " ".join(command) for command, _options in runtime.calls
         )

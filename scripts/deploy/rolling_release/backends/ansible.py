@@ -372,7 +372,11 @@ def _terminal_manifest_paths(
         )
         role_paths = _KIOSK_TERMINAL_PATHS
     else:
-        dynamic_role = (f"/run/signage/release-{run_id}-maintenance.svg",)
+        dynamic_role = (
+            f"/run/signage/release-{run_id}-maintenance.svg",
+            f"/run/signage/release-{run_id}-maintenance.jpg",
+            f"/run/signage/release-{run_id}-maintenance.sha256",
+        )
         role_paths = _SIGNAGE_TERMINAL_PATHS
     # Preserve the declared order while making accidental duplicates a single
     # sealed entry (the helper rejects duplicate destinations).
@@ -657,6 +661,7 @@ def prestage_signage_maintenance(
         raise ValueError("terminal client identity is malformed")
     source = runtime.ANSIBLE_DIRECTORY / "roles/signage/templates/signage-maintenance.svg.j2"
     staged_source = f"/run/signage/release-{run_id}-maintenance.svg"
+    staged_image = f"/run/signage/release-{run_id}-maintenance.jpg"
     # Prestage must not install packages or touch a persistent template. The
     # release-only play asserts required host provisioning separately.
     runtime.run(
@@ -688,11 +693,11 @@ def prestage_signage_maintenance(
         cwd=runtime.ANSIBLE_DIRECTORY,
     )
     render_command = (
-        "set -e; "
-        "rm -f /run/signage/current.tmp.jpg; "
+        "set -e; umask 077; "
+        f"rm -f {shlex.quote(staged_image)}; "
         f"rsvg-convert -f png -w 1920 -h 1080 {shlex.quote(staged_source)} "
-        "-o /run/signage/current.tmp.jpg; "
-        "test -s /run/signage/current.tmp.jpg"
+        f"-o {shlex.quote(staged_image)}; "
+        f"test -s {shlex.quote(staged_image)}"
     )
     runtime.run(
         [
@@ -715,7 +720,7 @@ def prestage_signage_maintenance(
             "--run-id",
             run_id,
             "--seal-maintenance-image",
-            "/run/signage/current.tmp.jpg",
+            staged_image,
             "--ansible-marker",
         ]
     )
@@ -740,9 +745,9 @@ def prestage_signage_maintenance(
     install_command = (
         "set -e; "
         "if test -f /run/signage/current.jpg; then "
-        "cat /run/signage/current.tmp.jpg > /run/signage/current.jpg; "
-        "rm -f /run/signage/current.tmp.jpg; "
-        "else mv /run/signage/current.tmp.jpg /run/signage/current.jpg; fi; "
+        f"cat {shlex.quote(staged_image)} > /run/signage/current.jpg; "
+        f"rm -f {shlex.quote(staged_image)}; "
+        f"else mv {shlex.quote(staged_image)} /run/signage/current.jpg; fi; "
         f"rm -f {shlex.quote(staged_source)}"
     )
     runtime.run(

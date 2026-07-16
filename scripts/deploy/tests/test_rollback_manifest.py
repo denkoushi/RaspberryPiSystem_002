@@ -662,6 +662,40 @@ class RollbackManifestTest(unittest.TestCase):
                 (self.storage_root / run_id / self.host / "manifest.json").exists()
             )
 
+    def test_precheckout_restore_does_not_require_unfetched_candidate_object(self):
+        service = self.config_directory / "precheckout.service"
+        service.write_text("prior service\n", encoding="utf-8")
+        repository, prior_head = self.create_repository()
+        captured = MODULE.capture_set(
+            root=self.storage_root,
+            run_id=self.run_id,
+            host=self.host,
+            paths=[service],
+            repository=repository,
+            expected_head=prior_head,
+            filesystem_root=self.filesystem_root,
+        )
+        service.write_text("precheckout mutation\n", encoding="utf-8")
+        unfetched_candidate = "f" * 40
+
+        preflight = MODULE.preflight_restore(
+            root=self.storage_root,
+            run_id=self.run_id,
+            host=self.host,
+            expected_manifest_sha256=captured["manifestSha256"],
+            candidate_head=unfetched_candidate,
+            filesystem_root=self.filesystem_root,
+        )
+        restored = self.restore(
+            captured["manifestSha256"], candidate_head=unfetched_candidate
+        )
+
+        self.assertTrue(preflight["ready"])
+        self.assertEqual(preflight["issues"], [])
+        self.assertTrue(restored["restored"])
+        self.assertEqual(self.git(repository, "rev-parse", "HEAD"), prior_head)
+        self.assertEqual(service.read_text(encoding="utf-8"), "prior service\n")
+
     def test_repository_capture_rejects_dirty_worktree_without_changing_it(self):
         for scenario in ("tracked", "staged", "untracked"):
             with self.subTest(scenario=scenario):
