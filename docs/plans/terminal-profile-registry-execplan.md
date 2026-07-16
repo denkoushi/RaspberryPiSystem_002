@@ -70,7 +70,9 @@ safety boundary remains unchanged. The current work is PR 3 only.
 - [x] (2026-07-16 13:54Z) Fetched merged `origin/main` and created the isolated `agent/generic-terminal-planner` worktree from exact commit `658a259bafb1fb92359128d5320de50ff74771fc`.
 - [x] (2026-07-16 14:14Z) Implemented PR 3 generic profile ordering, per-profile canaries, strict clients membership and adapter preflight, registered profile roles in durable fleet state without changing its JSON fields, additive plan `affectedProfiles`, and TalkPlaza static canary topology. Local launch and print-plan reject invalid topology before SSH, remote submission, state, or checkout.
 - [x] (2026-07-16 14:14Z) Completed PR 3 local validation: 601 deploy Python tests, 20 CI Python tests, every deploy shell contract including the isolated 20-test PostgreSQL integration, both registry-resolved inventories, both staged-playbook syntax checks, Python compilation, and diff checks pass. Synthetic fourth and fifth types prove profile/canary order, impact, and unchanged fleet JSON without adding a terminal-name branch.
-- [ ] Publish PR 3, pass exact-head hosted and second-factory read-only validation, and merge it.
+- [x] (2026-07-16 14:27Z) Published draft PR #1033 at exact code head `ab79b443967785784116b911c30a94c30644a12b`. CI run `29506385437`, CodeQL `29506385515`, and gitleaks `29506385385` all passed; the final deploy Python suite is now 602 tests after adding the planner-level unregistered-profile rejection.
+- [x] (2026-07-16 14:27Z) Ran the second-factory public read-only plan against exact remote branch head `ab79b443`. Inventory, profile membership, canaries, adapter availability, client IDs, and all seven verified evidence records resolved with no warnings. The historical per-host diffs contain a `global` inventory change, so fail-closed planning correctly lists all seven hosts; no release, approval, checkout, or state mutation was performed.
+- [ ] Synchronize this hosted evidence, pass the final exact-head checks, and merge PR 3.
 - [ ] Implement PR 4: terminal adapter boundary and generic coordinator with sequential profile approval gates.
 - [ ] Implement PR 5: registry-driven CI, architecture contracts, acceptance coverage, ADR, and concise new-type documentation.
 
@@ -227,15 +229,18 @@ CodeQL `29500052047`, and gitleaks `29500051938` passed before merge.
 PR 2 is merged as `658a259b`. Its exact final head passed CI `29503856934`,
 CodeQL `29503856945`, gitleaks `29503853754`, and the second-factory no-op plan.
 
-PR 3 now removes the fixed terminal-role set from inventory planning and fleet
+PR 3 removes the fixed terminal-role set from inventory planning and fleet
 state. Registered profile groups and canaries produce deterministic order;
 unknown groups, overlapping membership, duplicate identity, and missing
 adapters fail before external work. Synthetic fourth and fifth terminal types
-use the unchanged planner and fleet JSON shape. All 601 deploy Python tests, 20
+use the unchanged planner and fleet JSON shape. All 602 deploy Python tests, 20
 CI tests, the full deploy shell suite, both inventories, and both staged
-playbook syntax checks pass locally. Publication, exact-head hosted checks, and
-the second-factory read-only no-op remain. No physical host has been contacted
-for mutation, and PR 4 has not started.
+playbook syntax checks pass locally. Draft PR #1033's first exact code head
+passed CI `29506385437`, CodeQL `29506385515`, and gitleaks `29506385385`; the
+post-review Python total is 602. Its read-only fleet plan resolved all verified
+evidence without warning and safely listed all seven hosts because the diff
+contains a global inventory change. No physical host has been contacted for
+mutation, and PR 4 has not started.
 
 ## Context and Orientation
 
@@ -475,7 +480,7 @@ duplicate and unknown keys, and returns immutable validated profile records.
 Core policy consumes validated profile IDs and adapter objects only; it never
 imports arbitrary paths or executes registry-provided text.
 
-Revision note (2026-07-16 14:14Z): Recorded merged PR #1032 and PR 3's generic
-planner, inventory, fleet-state implementation, design decisions, and complete
-local validation. PR 3 still requires publication and exact-head hosted and
-read-only gates.
+Revision note (2026-07-16 14:27Z): Recorded draft PR #1033, its first exact-head
+hosted success, the 602-test final local suite, and the read-only second-factory
+result. The global diff correctly widens the observable plan; it was not
+executed. This evidence-only update requires one final exact-head hosted pass.
