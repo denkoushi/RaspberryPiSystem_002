@@ -58,8 +58,9 @@ _SERVER_CONFIG_PATHS = (
     f"{_TERMINAL_REPOSITORY}/infrastructure/docker/.env",
 )
 _CLIENT_COMPOSE_PROJECT = "docker"
+_CLIENT_COMPOSE_DIRECTORY = f"{_TERMINAL_REPOSITORY}/infrastructure/docker"
 _CLIENT_COMPOSE_FILE = (
-    f"{_TERMINAL_REPOSITORY}/infrastructure/docker/docker-compose.client.yml"
+    f"{_CLIENT_COMPOSE_DIRECTORY}/docker-compose.client.yml"
 )
 
 _COMMON_RUNTIME_UNITS = (
@@ -494,7 +495,7 @@ def _capture_terminal_runtime_manifest(
                 "--compose-project",
                 _CLIENT_COMPOSE_PROJECT,
                 "--compose-working-directory",
-                _TERMINAL_REPOSITORY,
+                _CLIENT_COMPOSE_DIRECTORY,
                 "--compose-config-file",
                 _CLIENT_COMPOSE_FILE,
             )
