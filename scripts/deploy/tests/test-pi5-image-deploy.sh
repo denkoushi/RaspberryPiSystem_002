@@ -199,6 +199,22 @@ set -e
           printf '%s\n' '{"action":"pause-signage","enabled":false,"resumeRequired":false,"signage":{"isRunning":false}}'
           return 0
           ;;
+        legacy-enabled)
+          if [[ "${!#}" == pause-signage ]]; then
+            printf '%s\n' '{"action":"pause-signage","signage":{"isRunning":false}}'
+          else
+            printf '%s\n' '{"action":"resume-signage","signage":{"isRunning":true}}'
+          fi
+          return 0
+          ;;
+        legacy-wrong-state)
+          if [[ "${!#}" == pause-signage ]]; then
+            printf '%s\n' '{"action":"pause-signage","signage":{"isRunning":true}}'
+          else
+            printf '%s\n' '{"action":"resume-signage","signage":{"isRunning":false}}'
+          fi
+          return 0
+          ;;
         http-500)
           printf '%s\n%s\n' 'DEPLOY_WORKLOAD_HTTP_STATUS=500' '{"message":"legacy route returned 404 upstream"}'
           return 1
@@ -235,6 +251,33 @@ set -e
   resume_signage
   [[ "$(wc -l <"$CONTROL_CALL_LOG" | tr -d ' ')" -eq 1 ]] \
     || fail "disabled signage received an unnecessary resume request"
+
+  CONTROL_MODE=legacy-enabled
+  SIGNAGE_CONTROL_EVENTS='[]'
+  SIGNAGE_PAUSED=0
+  SIGNAGE_RESUME_REQUIRED=""
+  : >"$CONTROL_CALL_LOG"
+  pause_signage \
+    || fail "verified legacy pause response was rejected"
+  [[ "$SIGNAGE_PAUSED" -eq 1 && "$SIGNAGE_RESUME_REQUIRED" == 1 ]] \
+    || fail "legacy pause did not retain conservative resume ownership"
+  resume_signage \
+    || fail "verified legacy resume response was rejected"
+  [[ "$SIGNAGE_PAUSED" -eq 0 && "$SIGNAGE_RESUME_REQUIRED" == 0 ]] \
+    || fail "legacy resume did not clear pause ownership"
+  [[ "$(wc -l <"$CONTROL_CALL_LOG" | tr -d ' ')" -eq 2 ]] \
+    || fail "legacy workload control did not make one pause and one resume request"
+
+  CONTROL_MODE=legacy-wrong-state
+  SIGNAGE_CONTROL_EVENTS='[]'
+  SIGNAGE_RESUME_REQUIRED=""
+  : >"$CONTROL_CALL_LOG"
+  if set_signage_state pause-signage >/dev/null 2>&1; then
+    fail "legacy pause response with a running scheduler was accepted"
+  fi
+  if set_signage_state resume-signage >/dev/null 2>&1; then
+    fail "legacy resume response with a stopped scheduler was accepted"
+  fi
 
   CONTROL_MODE=http-500
   SIGNAGE_CONTROL_EVENTS='[]'
