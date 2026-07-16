@@ -804,6 +804,17 @@ def rollback_terminal(
     )
 
 
+def preflight_terminal_rollback(
+    inventory: str,
+    target_spec: dict[str, str],
+    target: dict[str, Any],
+    run_id: str,
+) -> dict[str, Any]:
+    return ansible_backend.preflight_terminal_rollback(
+        inventory, target_spec, target, run_id, runtime=_runtime()
+    )
+
+
 def cleanup_terminal_rollback(
     inventory: str,
     target_spec: dict[str, str],

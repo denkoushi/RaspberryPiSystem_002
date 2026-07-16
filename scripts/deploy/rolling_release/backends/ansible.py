@@ -1324,6 +1324,179 @@ def playbook(
     )
 
 
+def _validated_terminal_rollback_authority(
+    target_spec: dict[str, str], target: dict[str, Any], run_id: str
+) -> dict[str, Any]:
+    host, terminal_type = _validated_terminal_spec(target_spec)
+    previous_sha = target.get("previousSha")
+    _validated_run_and_sha(run_id, previous_sha)
+    desired_sha = target.get("desiredSha")
+    if (
+        not isinstance(desired_sha, str)
+        or _FULL_SHA_RE.fullmatch(desired_sha) is None
+    ):
+        raise ValueError("desired release SHA is malformed")
+    manifest = target.get("rollbackManifest")
+    expected_path = _expected_manifest_path(run_id, host)
+    if not isinstance(manifest, dict) or set(manifest) != {
+        "path",
+        "manifestSha256",
+        "count",
+        "runtime",
+    }:
+        raise RuntimeError("terminal rollback manifest reference is malformed")
+    digest = manifest.get("manifestSha256")
+    count = manifest.get("count")
+    if (
+        manifest.get("path") != expected_path
+        or not isinstance(digest, str)
+        or _SHA256_RE.fullmatch(digest) is None
+        or isinstance(count, bool)
+        or not isinstance(count, int)
+        or count <= 0
+        or count > 4096
+    ):
+        raise RuntimeError("terminal rollback manifest identity is invalid")
+    runtime_manifest = _validated_runtime_manifest_reference(
+        manifest.get("runtime"),
+        run_id=run_id,
+        host=host,
+        terminal_type=terminal_type,
+    )
+    return {
+        "host": host,
+        "terminalType": terminal_type,
+        "previousSha": previous_sha,
+        "desiredSha": desired_sha,
+        "manifest": manifest,
+        "manifestPath": expected_path,
+        "manifestSha256": digest,
+        "count": count,
+        "runtimeManifest": runtime_manifest,
+    }
+
+
+def preflight_terminal_rollback(
+    inventory: str,
+    target_spec: dict[str, str],
+    target: dict[str, Any],
+    run_id: str,
+    *,
+    runtime: Runtime,
+) -> dict[str, Any]:
+    """Read every sealed rollback prerequisite before the first host mutation."""
+
+    authority = _validated_terminal_rollback_authority(target_spec, target, run_id)
+    issues: list[str] = []
+    file_result: dict[str, Any] | None = None
+    runtime_result: dict[str, Any] | None = None
+    try:
+        file_result = _run_manifest_helper(
+            inventory,
+            authority["host"],
+            [
+                "preflight-restore",
+                "--root",
+                _ROLLBACK_MANIFEST_ROOT,
+                "--run-id",
+                run_id,
+                "--host",
+                authority["host"],
+                "--expected-manifest-sha256",
+                authority["manifestSha256"],
+                "--candidate-head",
+                authority["desiredSha"],
+            ],
+            runtime=runtime,
+        )
+        if (
+            set(file_result)
+            != {
+                "ready",
+                "manifest",
+                "manifestSha256",
+                "count",
+                "repository",
+                "issues",
+            }
+            or type(file_result.get("ready")) is not bool
+            or file_result.get("manifest") != authority["manifestPath"]
+            or file_result.get("manifestSha256") != authority["manifestSha256"]
+            or file_result.get("count") != authority["count"]
+            or file_result.get("repository")
+            != {"path": _TERMINAL_REPOSITORY, "head": authority["previousSha"]}
+            or not isinstance(file_result.get("issues"), list)
+            or any(
+                not isinstance(issue, str) or not issue
+                for issue in file_result["issues"]
+            )
+            or file_result["ready"] != (not file_result["issues"])
+        ):
+            raise RuntimeError("terminal file rollback preflight result is invalid")
+        issues.extend(f"file manifest: {issue}" for issue in file_result["issues"])
+    except Exception as error:
+        issues.append(f"file manifest: {error}")
+
+    runtime_manifest = authority["runtimeManifest"]
+    try:
+        runtime_result = _run_runtime_manifest_helper(
+            inventory,
+            authority["host"],
+            [
+                "preflight-restore",
+                "--root",
+                _RUNTIME_MANIFEST_ROOT,
+                "--run-id",
+                run_id,
+                "--host",
+                authority["host"],
+                "--expected-manifest-sha256",
+                runtime_manifest["manifestSha256"],
+            ],
+            runtime=runtime,
+        )
+        if (
+            set(runtime_result)
+            != {
+                "ready",
+                "manifestSha256",
+                "unitCount",
+                "dockerCount",
+                "restoredReceipt",
+                "requiresRuntimeReconciliation",
+                "issues",
+            }
+            or type(runtime_result.get("ready")) is not bool
+            or runtime_result.get("manifestSha256")
+            != runtime_manifest["manifestSha256"]
+            or runtime_result.get("unitCount") != runtime_manifest["unitCount"]
+            or runtime_result.get("dockerCount") != runtime_manifest["dockerCount"]
+            or type(runtime_result.get("restoredReceipt")) is not bool
+            or type(runtime_result.get("requiresRuntimeReconciliation")) is not bool
+            or not isinstance(runtime_result.get("issues"), list)
+            or any(
+                not isinstance(issue, str) or not issue
+                for issue in runtime_result["issues"]
+            )
+            or runtime_result["ready"] != (not runtime_result["issues"])
+        ):
+            raise RuntimeError("terminal runtime rollback preflight result is invalid")
+        issues.extend(f"runtime manifest: {issue}" for issue in runtime_result["issues"])
+    except Exception as error:
+        issues.append(f"runtime manifest: {error}")
+
+    return {
+        "ready": not issues,
+        "issues": issues,
+        "fileManifestReady": bool(file_result and file_result.get("ready")),
+        "runtimeManifestReady": bool(runtime_result and runtime_result.get("ready")),
+        "restoredReceipt": bool(runtime_result and runtime_result.get("restoredReceipt")),
+        "requiresRuntimeReconciliation": bool(
+            runtime_result and runtime_result.get("requiresRuntimeReconciliation")
+        ),
+    }
+
+
 def rollback_terminal(
     inventory: str,
     target_spec: dict[str, str],
@@ -1333,42 +1506,16 @@ def rollback_terminal(
     runtime: Runtime,
 ) -> bool:
     try:
-        host, terminal_type = _validated_terminal_spec(target_spec)
-        previous_sha = target.get("previousSha")
-        _validated_run_and_sha(run_id, previous_sha)
-        desired_sha = target.get("desiredSha")
-        if (
-            not isinstance(desired_sha, str)
-            or _FULL_SHA_RE.fullmatch(desired_sha) is None
-        ):
-            raise ValueError("desired release SHA is malformed")
-        manifest = target.get("rollbackManifest")
-        expected_path = _expected_manifest_path(run_id, host)
-        if not isinstance(manifest, dict) or set(manifest) != {
-            "path",
-            "manifestSha256",
-            "count",
-            "runtime",
-        }:
-            raise RuntimeError("terminal rollback manifest reference is malformed")
-        digest = manifest.get("manifestSha256")
-        count = manifest.get("count")
-        if (
-            manifest.get("path") != expected_path
-            or not isinstance(digest, str)
-            or _SHA256_RE.fullmatch(digest) is None
-            or isinstance(count, bool)
-            or not isinstance(count, int)
-            or count <= 0
-            or count > 4096
-        ):
-            raise RuntimeError("terminal rollback manifest identity is invalid")
-        runtime_manifest = _validated_runtime_manifest_reference(
-            manifest.get("runtime"),
-            run_id=run_id,
-            host=host,
-            terminal_type=terminal_type,
+        authority = _validated_terminal_rollback_authority(
+            target_spec, target, run_id
         )
+        host = authority["host"]
+        previous_sha = authority["previousSha"]
+        desired_sha = authority["desiredSha"]
+        expected_path = authority["manifestPath"]
+        digest = authority["manifestSha256"]
+        count = authority["count"]
+        runtime_manifest = authority["runtimeManifest"]
         result = _run_manifest_helper(
             inventory,
             host,

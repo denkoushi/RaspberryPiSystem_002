@@ -1562,6 +1562,56 @@ def _verify_restored_entries(
             raise ManifestError("post-restore destination checksum does not match")
 
 
+def preflight_restore(
+    *,
+    root: os.PathLike[str] | str,
+    run_id: str,
+    host: str,
+    expected_manifest_sha256: str,
+    candidate_head: str | None = None,
+    filesystem_root: os.PathLike[str] | str = "/",
+) -> dict[str, Any]:
+    """Validate every recoverability boundary without changing the terminal."""
+
+    if (
+        not isinstance(expected_manifest_sha256, str)
+        or SHA256_RE.fullmatch(expected_manifest_sha256) is None
+    ):
+        raise ManifestError("expected manifest checksum is malformed")
+    context = _build_context(
+        root=root,
+        run_id=run_id,
+        host=host,
+        filesystem_root=filesystem_root,
+        create=False,
+    )
+    manifest, _payloads = _load_manifest(context, required=True)
+    if not hmac.compare_digest(
+        manifest["manifestSha256"], expected_manifest_sha256
+    ):
+        raise ManifestError("manifest checksum does not match the expected sealed digest")
+
+    issues: list[str] = []
+    repository = manifest["repository"]
+    try:
+        _preflight_repository(repository, context, candidate_head=candidate_head)
+    except (ManifestError, OSError) as error:
+        issues.append(f"repository: {error}")
+    for entry in manifest["entries"]:
+        try:
+            _preflight_destinations([entry], context)
+        except (ManifestError, OSError) as error:
+            issues.append(f"destination {entry['destination']}: {error}")
+    return {
+        "ready": not issues,
+        "manifest": os.fspath(context.manifest_path),
+        "manifestSha256": manifest["manifestSha256"],
+        "count": len(manifest["entries"]),
+        "repository": repository,
+        "issues": issues,
+    }
+
+
 def restore(
     *,
     root: os.PathLike[str] | str,
@@ -1644,6 +1694,10 @@ def main(argv: list[str] | None = None) -> int:
     capture_set_parser.add_argument("--path", action="append", type=Path, required=True)
     capture_set_parser.add_argument("--repository", type=Path)
     capture_set_parser.add_argument("--expected-head")
+    preflight_parser = subparsers.add_parser("preflight-restore")
+    _add_common_arguments(preflight_parser)
+    preflight_parser.add_argument("--expected-manifest-sha256", required=True)
+    preflight_parser.add_argument("--candidate-head")
     restore_parser = subparsers.add_parser("restore")
     _add_common_arguments(restore_parser)
     restore_parser.add_argument("--expected-manifest-sha256", required=True)
@@ -1667,6 +1721,15 @@ def main(argv: list[str] | None = None) -> int:
                 paths=args.path,
                 repository=args.repository,
                 expected_head=args.expected_head,
+                filesystem_root=args.filesystem_root,
+            )
+        elif args.command == "preflight-restore":
+            result = preflight_restore(
+                root=args.root,
+                run_id=args.run_id,
+                host=args.host,
+                expected_manifest_sha256=args.expected_manifest_sha256,
+                candidate_head=args.candidate_head,
                 filesystem_root=args.filesystem_root,
             )
         else:

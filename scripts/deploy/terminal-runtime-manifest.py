@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Seal and restore terminal systemd and Docker runtime state.
 
-This helper intentionally exposes only three operations: capture an explicit
-allowlist, restore the sealed state, and remove the run-scoped image-retention
-tags after either a verified restore or an explicitly coordinator-committed
-forward success. It never fetches, builds, prunes, or removes volumes, and it
-never serializes container environment variables.
+This helper captures an explicit allowlist, audits or restores the sealed state,
+and removes run-scoped image-retention tags after either a verified restore or
+an explicitly coordinator-committed forward success. It never fetches, builds,
+prunes, or removes volumes, and it never serializes container environment
+variables.
 """
 from __future__ import annotations
 
@@ -2000,6 +2000,71 @@ def _activate_unit(record: Mapping[str, Any]) -> None:
         raise RuntimeManifestError("systemd unit does not match its sealed runtime state")
 
 
+def preflight_restore(
+    *,
+    root: os.PathLike[str] | str,
+    run_id: str,
+    host: str,
+    expected_manifest_sha256: str,
+) -> dict[str, Any]:
+    """Audit all runtime rollback prerequisites without changing the host."""
+
+    if (
+        not isinstance(expected_manifest_sha256, str)
+        or SHA256_RE.fullmatch(expected_manifest_sha256) is None
+    ):
+        raise RuntimeManifestError("expected runtime manifest digest is malformed")
+    context = _build_context(root=root, run_id=run_id, host=host, create=False)
+    manifest = _load_manifest(context, require_paths=True)
+    if not hmac.compare_digest(
+        manifest["manifestSha256"], expected_manifest_sha256
+    ):
+        raise RuntimeManifestError("runtime manifest differs from expected sealed digest")
+    _require_runtime_manifest_open(context, manifest["manifestSha256"], "restore")
+
+    issues: list[str] = []
+    restored_receipt = False
+    try:
+        restored_receipt = _receipt_exists(
+            context.restored_path,
+            context,
+            manifest["manifestSha256"],
+            "restored",
+        )
+    except (RuntimeManifestError, OSError) as error:
+        issues.append(f"restored receipt: {error}")
+
+    requires_reconciliation = not restored_receipt
+    for record in manifest["units"]:
+        try:
+            observation = _systemd_observation(
+                record["name"], allow_current_failed=True
+            )
+        except (RuntimeManifestError, OSError) as error:
+            issues.append(f"systemd {record['name']}: {error}")
+            continue
+        if observation.needs_daemon_reload or observation.state != record:
+            requires_reconciliation = True
+    for record in manifest["docker"]:
+        try:
+            _preflight_docker(record)
+            matches = _docker_record_matches(record)
+        except (RuntimeManifestError, OSError) as error:
+            issues.append(f"docker {record['service']}: {error}")
+            continue
+        if not matches:
+            requires_reconciliation = True
+    return {
+        "ready": not issues,
+        "manifestSha256": manifest["manifestSha256"],
+        "unitCount": len(manifest["units"]),
+        "dockerCount": len(manifest["docker"]),
+        "restoredReceipt": restored_receipt,
+        "requiresRuntimeReconciliation": requires_reconciliation,
+        "issues": issues,
+    }
+
+
 def restore(
     *,
     root: os.PathLike[str] | str,
@@ -2021,25 +2086,12 @@ def restore(
             raise RuntimeManifestError("runtime manifest differs from expected sealed digest")
         _require_runtime_manifest_open(context, manifest["manifestSha256"], "restore")
 
-        if _receipt_exists(
+        restored_receipt_exists = _receipt_exists(
             context.restored_path,
             context,
             manifest["manifestSha256"],
             "restored",
-        ):
-            for record in manifest["docker"]:
-                _verify_docker_record(record)
-            for record in manifest["units"]:
-                if _systemd_state(record["name"]) != record:
-                    raise RuntimeManifestError(
-                        "restored runtime changed after its durable receipt"
-                    )
-            return {
-                "restored": True,
-                "manifestSha256": manifest["manifestSha256"],
-                "unitCount": len(manifest["units"]),
-                "dockerCount": len(manifest["docker"]),
-            }
+        )
 
         ordered_units = list(reversed(manifest["units"]))
         restart_on_restore = set(manifest["restartOnRestore"])
@@ -2070,7 +2122,8 @@ def restore(
                     current_units[record["name"]].state != record
                     or current_units[record["name"]].needs_daemon_reload
                     or (
-                        record["name"] in restart_on_restore
+                        not restored_receipt_exists
+                        and record["name"] in restart_on_restore
                         and record["activeState"] == "active"
                         and current_units[record["name"]].state["activeState"]
                         == "active"
@@ -2148,11 +2201,12 @@ def restore(
             if _systemd_state(record["name"]) != record:
                 raise RuntimeManifestError("systemd postflight verification failed")
 
-        receipt = _receipt_value(
-            context, manifest["manifestSha256"], "restored"
-        )
-        _atomic_json(context.restored_path, receipt)
-        _secure_file(context.restored_path, "runtime restored receipt")
+        if not restored_receipt_exists:
+            receipt = _receipt_value(
+                context, manifest["manifestSha256"], "restored"
+            )
+            _atomic_json(context.restored_path, receipt)
+            _secure_file(context.restored_path, "runtime restored receipt")
     return {
         "restored": True,
         "manifestSha256": manifest["manifestSha256"],
@@ -2291,6 +2345,10 @@ def main(argv: list[str] | None = None) -> int:
     _add_common_arguments(restore_parser)
     restore_parser.add_argument("--expected-manifest-sha256", required=True)
 
+    preflight_parser = subparsers.add_parser("preflight-restore")
+    _add_common_arguments(preflight_parser)
+    preflight_parser.add_argument("--expected-manifest-sha256", required=True)
+
     cleanup_parser = subparsers.add_parser("cleanup")
     _add_common_arguments(cleanup_parser)
     cleanup_parser.add_argument("--expected-manifest-sha256", required=True)
@@ -2311,6 +2369,13 @@ def main(argv: list[str] | None = None) -> int:
                 compose_project=args.compose_project,
                 compose_working_directory=args.compose_working_directory,
                 compose_config_files=args.compose_config_file,
+            )
+        elif args.command == "preflight-restore":
+            result = preflight_restore(
+                root=args.root,
+                run_id=args.run_id,
+                host=args.host,
+                expected_manifest_sha256=args.expected_manifest_sha256,
             )
         elif args.command == "restore":
             result = restore(
