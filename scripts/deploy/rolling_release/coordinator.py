@@ -186,6 +186,33 @@ def _rollback_ready_sha(
     return _terminal_ready_sha(state, target_spec, target)
 
 
+def _interrupted_rollback_ready_sha(
+    fleet_state: dict[str, Any],
+    target_spec: dict[str, str],
+    previous_sha: str,
+) -> str:
+    """Return the artifact identity rendered after an interrupted rollback."""
+
+    if target_spec["terminalType"] == "signage":
+        return previous_sha
+    servers = [
+        record
+        for record in (fleet_state.get("fleet") or {}).values()
+        if isinstance(record, dict) and record.get("role") == "server"
+    ]
+    if len(servers) != 1:
+        raise RuntimeError("Kiosk rollback has no unique Pi5 release authority")
+    server = servers[0]
+    expected = server.get("currentSha")
+    if (
+        server.get("evidence") != "verified"
+        or not isinstance(expected, str)
+        or FULL_SHA_RE.fullmatch(expected) is None
+    ):
+        raise RuntimeError("Kiosk rollback has no verified Pi5 Web release")
+    return expected
+
+
 def _verify_terminal_ready(
     *,
     runtime: Any,
@@ -488,6 +515,9 @@ def _recover_interrupted_terminals(
                 raise RuntimeError(
                     f"interrupted terminal manifest restore failed: {host}"
                 )
+            rollback_ready_sha = _interrupted_rollback_ready_sha(
+                fleet_state, target_spec, previous_sha
+            )
             _verify_terminal_ready(
                 runtime=runtime,
                 state=state,
@@ -495,7 +525,7 @@ def _recover_interrupted_terminals(
                 run_id=authority_run_id,
                 target_spec=target_spec,
                 target=record,
-                expected_sha=previous_sha,
+                expected_sha=rollback_ready_sha,
                 rollback=True,
             )
             expected_sha = previous_sha

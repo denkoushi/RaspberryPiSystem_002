@@ -35,10 +35,10 @@ validation:
   - read-only plans for both production inventories before any approved release
   - one explicitly approved full-fleet acceptance per inventory, followed by a same-SHA no-op plan
 open_items:
-  - complete PR 7 hosted validation, enable and read back the main ruleset, then merge only after the fixed checks pass
-  - perform the approval-gated production acceptance before implementing PR 8 from its updated origin/main base
-  - obtain separate per-inventory approval before any production mutation
+  - complete the already approved second-factory full-fleet acceptance and same-SHA no-op proof
+  - implement PR 8 from the updated origin/main base only after production acceptance
   - reintroduce the deferred product work only after deployment-foundation production acceptance
+  - close Draft PR 1003 as superseded only after every replacement pull request is open
 supersedes: []
 superseded_by: null
 ---
@@ -91,7 +91,8 @@ This work exists because the current release path has accumulated two coordinato
 - [x] (2026-07-15 20:42Z) Revalidated PR #1010 at final head `f29ec691`, marked it ready, and merged it as `0efcbb34`; merge-commit CI `29449339822`, CodeQL `29449339819`, Secret scan `29449339758`, and Pages `29449338992` all completed successfully. No SSH, database mutation, or real-device action occurred.
 - [x] (2026-07-15 21:54Z) Completed PR 7 from exact merged base `0efcbb34`: classifier enforcement, ten conditional jobs, strict `ci-required`, full-suite events, fixed security triggers, and active ruleset `19014580` passed hosted validation and merged as `aad3defd` in PR #1011.
 - [x] (2026-07-16 02:09Z) Merged rollback Compose-context correction PR #1020 as `31ef395a`; its PR checks and main CI `29465507084`, CodeQL `29465507088`, Secret scan `29465507086`, and Pages `29465506530` succeeded.
-- [ ] (2026-07-16 03:15Z) Recover the approved second-factory acceptance run after `20260716-020945-92dca8` stopped at the StoneBase canary. Local branch `fix/terminal-release-ownership-recovery` now runs immutable release Git mutation as root without recursive ownership changes and permits manifest rollback of only byte-for-byte candidate residue. Focused rollback/adapter tests pass 85/85, the deploy safety contract passes, both inventory syntax checks pass, and no new production mutation has occurred; commit, PR, hosted validation, merge, and retry remain.
+- [x] (2026-07-16 03:44Z) Recovered the root-owned StoneBase checkout boundary through PR #1021, merged as `e1584e3d` after green PR and exact-main hosted checks. Run `20260716-034454-3c4881` then proved the sealed file, repository, systemd, and Docker restore succeeds; it stopped safely with maintenance retained because the interrupted-run Kiosk ready challenge incorrectly requested the terminal repository SHA instead of the live Pi5 Web SHA.
+- [ ] (2026-07-16 03:53Z) Complete the focused interrupted-Kiosk ready-identity hotfix from `fix/interrupted-kiosk-ready-sha`. The coordinator now requires the one verified fleet server `currentSha` for Kiosk rollback ACKs while signage continues to use its restored repository SHA. The focused 47 transition tests, 11 deploy-status tests, full deploy unit discovery, Pi5 lifecycle, client lifecycle, signage, single-entrypoint, and deploy safety contracts pass locally; commit, PR, hosted validation, merge, and the approved retry remain.
 - [ ] Complete the separately approved production acceptance sequence, including the initial full fleet and the same-SHA no-op proof.
 - [ ] Implement PR 8 only after production acceptance, then remove compatibility fallbacks and shorten the deployment and recovery documentation.
 - [ ] Reconstruct the deferred product changes as three new pull requests only after deployment-foundation production acceptance.
@@ -167,6 +168,8 @@ This work exists because the current release path has accumulated two coordinato
   Evidence: a container retaining a removed optional key passed the first verifier. PR 6 now derives the exact expected environment from image `Config.Env` overlaid by effective Compose configuration and rejects missing, changed, and unexpected keys without printing values.
 - Observation: terminal repository ownership follows the historical full-provisioning path, but the release-only checkout used a different user.
   Evidence: StoneBase began `git reset --hard` at the sealed prior HEAD, updated the user-writable `.dockerignore`, then failed at root-owned tracked directories. The repository and services remained on the prior release, while the rollback helper correctly refused the resulting dirty worktree. Read-only ownership inspection showed that full provisioning runs Git as root and had created the mixed tracked-tree ownership.
+- Observation: interrupted-run Kiosk rollback restored the terminal repository correctly but challenged the browser with that terminal SHA, even though the browser renders the independently versioned live Pi5 Web bundle.
+  Evidence: StoneBase restored cleanly to `85fe6198`, its Docker and systemd runtime matched the sealed manifest, and its authenticated deploy-status response requested ready SHA `85fe6198`; the verified Pi5 Web image remained `31ef395a`. The Kiosk bundle correctly refused the mismatched challenge and the coordinator timed out without clearing maintenance.
 - Observation: `host-config-only` was not a safe boundary while it still traversed the general server play graph.
   Evidence: the first implementation could reach repository, SSH, security, status-agent, dispatcher, and systemd tasks without a matching rollback manifest. PR 6 now uses a dedicated exact-checkout playbook, restricts the release mutation profile to three environment files plus bounded storage rescue, and records `capture-pending`, `captured`, `converged`, or restored evidence around the coordinator-owned transaction.
 - Observation: a same-SHA/config image tag is not immutable across two coordinator runs.
@@ -259,6 +262,9 @@ This work exists because the current release path has accumulated two coordinato
 - Decision: Preserve the historical full server role by default and select `host-config-only` only from the coordinator adapter.
   Rationale: existing non-coordinator playbooks retain their behavior, while the coordinator remains the sole owner of candidate build, migration, runtime health, and Blue/Green switching.
   Date/Author: 2026-07-15 / Codex
+- Decision: During interrupted rollback, bind a Kiosk ready challenge to the unique verified fleet server `currentSha`; keep signage bound to its restored repository SHA.
+  Rationale: Kiosk readiness proves the compiled Web bundle rendered from Pi5, while signage readiness proves terminal-local release bytes. Reusing the terminal repository SHA for both creates an impossible but superficially valid Kiosk challenge.
+  Date/Author: 2026-07-16 / Codex
 - Decision: Permit structural-only Pi5 status and cleanup only for recovering an already-expired prior handoff; never use it for same-SHA skip, candidate readiness, stability monitoring, or fleet verification.
   Rationale: a newly desired environment should not invalidate the old rollback slot before a candidate exists, but no host may become `verified` without exact live configuration evidence.
   Date/Author: 2026-07-15 / Codex
