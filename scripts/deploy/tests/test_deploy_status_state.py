@@ -678,6 +678,36 @@ class DeployStatusStateTest(unittest.TestCase):
             with self.assertRaises(subprocess.CalledProcessError):
                 run('approve', '--run-id', 'run-42', '--client', 'operator-canary-approval')
 
+    def test_approved_hold_can_be_replaced_by_the_next_profile_gate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'status.json'
+
+            def run(*args):
+                subprocess.run(
+                    ['python3', str(SCRIPT), '--file', str(path), *args],
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+
+            expiry = str(int(time.time()) + 60)
+            run(
+                'open-canary-hold', '--run-id', 'run-42', '--canary', 'kiosk-canary',
+                '--expires-at', expiry,
+            )
+            run('approve', '--run-id', 'run-42', '--client', 'operator-canary-approval')
+            run(
+                'open-canary-hold', '--run-id', 'run-42', '--canary', 'assembly-canary',
+                '--expires-at', expiry,
+            )
+            current = json.loads(path.read_text())['canaryHolds']['run-42']
+            self.assertEqual(current['state'], 'waiting-verification')
+            self.assertEqual(current['canary'], 'assembly-canary')
+            run('approve', '--run-id', 'run-42', '--client', 'operator-canary-approval')
+            approved = json.loads(path.read_text())['canaryHolds']['run-42']
+            self.assertEqual(approved['state'], 'approved')
+            self.assertEqual(approved['canary'], 'assembly-canary')
+
 
 if __name__ == '__main__':
     unittest.main()

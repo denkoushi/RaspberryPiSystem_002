@@ -30,7 +30,7 @@ from terminal_notice import (
     should_issue_terminal_notice,
     terminal_notice_skip_reason,
 )
-from terminal_profile_registry import load_registry
+from terminal_profile_registry import TerminalProfile, load_registry
 from rolling_release import application as release_application
 from rolling_release import cli as release_cli
 from rolling_release import coordinator as release_coordinator
@@ -530,11 +530,13 @@ def deliver_terminal_notice(
     target_spec: dict[str, str],
     target: dict[str, Any],
     run_id: str,
+    *,
+    duration_seconds: int = NOTICE_DURATION_SECONDS,
 ) -> None:
     target["notice"] = {
         "state": "requested",
         "requestedAt": utc_now(),
-        "durationSeconds": NOTICE_DURATION_SECONDS,
+        "durationSeconds": duration_seconds,
     }
     state.save()
     state_command(
@@ -544,9 +546,9 @@ def deliver_terminal_notice(
         "--clients",
         target_spec["clientId"],
         "--terminal-type",
-        "kiosk",
+        target_spec["terminalType"],
         "--duration-seconds",
-        str(NOTICE_DURATION_SECONDS),
+        str(duration_seconds),
     )
     try:
         if not wait_for_ack(
@@ -622,17 +624,29 @@ def wait_for_canary_approval(run_id: str, timeout: int) -> dict[str, Any]:
 
 
 def wait_for_canary_hold(
-    state: ReleaseState, run_id: str, canary_host: str, timeout: int
+    state: ReleaseState,
+    run_id: str,
+    canary_host: str,
+    timeout: int,
+    *,
+    profile_id: str | None = None,
 ) -> None:
     if timeout <= 0:
         raise RuntimeError("canary hold timeout must be greater than zero")
     expires_at = int(time.time()) + timeout
-    state.payload["canaryHold"] = {
+    gate = {
         "state": "waiting-verification",
         "canary": canary_host,
+        "profile": profile_id,
         "since": utc_now(),
         "expiresAt": expires_at,
     }
+    approval_gates = state.payload.setdefault("approvalGates", [])
+    if not isinstance(approval_gates, list):
+        raise RuntimeError("approval gate history is malformed")
+    approval_gates.append(gate)
+    # Backward-compatible view: current while waiting, latest afterwards.
+    state.payload["canaryHold"] = gate
     state.save()
     state_command(
         "open-canary-hold",
@@ -653,12 +667,12 @@ def wait_for_canary_hold(
         # Mirror the authoritative gate transition (notably ``expired``) into
         # the durable run record before the coordinator records failure.
         try:
-            state.payload["canaryHold"].update(canary_hold_record(run_id))
+            gate.update(canary_hold_record(run_id))
             state.save()
         except Exception:
             pass
         raise
-    state.payload["canaryHold"].update(record)
+    gate.update(record)
     state.save()
 
 
@@ -785,10 +799,32 @@ def playbook(
     run_id: str,
     *,
     rollback: bool = False,
+    playbook: str = "playbooks/deploy-staged.yml",
 ) -> None:
     return ansible_backend.playbook(
-        inventory, host, revision, run_id, rollback=rollback, runtime=_runtime()
+        inventory,
+        host,
+        revision,
+        run_id,
+        rollback=rollback,
+        playbook=playbook,
+        runtime=_runtime(),
     )
+
+
+def apply_terminal_profile(
+    inventory: str,
+    host: str,
+    revision: str,
+    run_id: str,
+    profile: TerminalProfile,
+) -> None:
+    """Apply only the strictly validated playbook selected by a profile."""
+
+    if profile.playbook == "playbooks/deploy-staged.yml":
+        playbook(inventory, host, revision, run_id)
+    else:
+        playbook(inventory, host, revision, run_id, playbook=profile.playbook)
 
 
 def rollback_terminal(

@@ -73,8 +73,9 @@ _PROFILE_KEYS = frozenset(
     }
 )
 _ADAPTER_OPTION_KEYS = frozenset(
-    {"systemdUnits", "rollbackPaths", "healthProbeIds"}
+    {"systemdUnits", "rollbackPaths", "healthProbeIds", "readyAuthority"}
 )
+_READY_AUTHORITIES = frozenset({"control-plane", "terminal"})
 _PATH_MAPPING_KEYS = frozenset({"match", "path", "component"})
 
 
@@ -95,6 +96,7 @@ class AdapterOptions:
     systemd_units: tuple[str, ...]
     rollback_paths: tuple[str, ...]
     health_probe_ids: tuple[str, ...]
+    ready_authority: str
 
 
 @dataclass(frozen=True)
@@ -323,6 +325,15 @@ def _parse_adapter_options(value: Any, *, profile_id: str) -> AdapterOptions:
         name=f"terminal profile {profile_id} adapterOptions",
         keys=_ADAPTER_OPTION_KEYS,
     )
+    ready_authority = item["readyAuthority"]
+    if (
+        not isinstance(ready_authority, str)
+        or ready_authority not in _READY_AUTHORITIES
+    ):
+        raise RegistryError(
+            f"terminal profile {profile_id} readyAuthority must be "
+            "control-plane or terminal"
+        )
     return AdapterOptions(
         systemd_units=_unique_string_list(
             item["systemdUnits"],
@@ -342,6 +353,7 @@ def _parse_adapter_options(value: Any, *, profile_id: str) -> AdapterOptions:
             maximum=32,
             validator=_safe_identifier,
         ),
+        ready_authority=ready_authority,
     )
 
 

@@ -15,18 +15,30 @@ NOTICE_ACK_TIMEOUT_SECONDS = 30
 TERMINAL_PRENOTICE_ENABLED = True
 
 
-def should_issue_terminal_notice(*, terminal_type: str, emergency_override: bool) -> bool:
+def should_issue_terminal_notice(
+    *,
+    terminal_type: str,
+    emergency_override: bool,
+    notice_seconds: int | None = None,
+) -> bool:
     """Return whether this terminal must receive the save-work notice."""
+    applicable = terminal_type == 'kiosk' if notice_seconds is None else notice_seconds > 0
     return (
         TERMINAL_PRENOTICE_ENABLED
-        and terminal_type == 'kiosk'
+        and applicable
         and not emergency_override
     )
 
 
-def terminal_notice_skip_reason(*, terminal_type: str, emergency_override: bool) -> str:
+def terminal_notice_skip_reason(
+    *,
+    terminal_type: str,
+    emergency_override: bool,
+    notice_seconds: int | None = None,
+) -> str:
     """Return a durable, operator-readable reason for not showing a notice."""
-    if terminal_type != 'kiosk':
+    applicable = terminal_type == 'kiosk' if notice_seconds is None else notice_seconds > 0
+    if not applicable:
         return 'not-applicable'
     if emergency_override:
         return 'emergency-override'

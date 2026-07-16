@@ -10,12 +10,21 @@ import re
 from pathlib import Path
 from typing import Any
 
+from .adapter_registry import adapter_for_profile
 from .cancellation import CancellationRequested, CancellationToken
+from .terminal_adapters import TerminalAdapter
 
 
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$")
+
+
+def _terminal_adapter(runtime: Any, profile_id: str) -> TerminalAdapter:
+    resolver = getattr(runtime, "terminal_adapter", None)
+    if callable(resolver):
+        return resolver(profile_id)
+    return adapter_for_profile(profile_id, runtime=runtime)
 
 
 def _host_needs_seed(record: Any, role: str) -> bool:
@@ -73,8 +82,8 @@ def _seed_unverified_hosts(
             observation = (
                 runtime.observe_pi5_evidence(None)
                 if role == "server"
-                else runtime.observe_terminal_evidence(
-                    inventory, host, role, host_spec["clientId"]
+                else _terminal_adapter(runtime, role).observe(
+                    inventory, host, host_spec["clientId"]
                 )
             )
         except Exception as error:
@@ -118,7 +127,7 @@ def _terminal_run_targets(
     decisions = {
         decision["host"]: decision
         for decision in plan.get("hosts") or []
-        if decision.get("targeted") and decision.get("role") in {"kiosk", "signage"}
+        if decision.get("targeted") and decision.get("role") != "server"
     }
     result: list[dict[str, Any]] = []
     for target in terminal_targets:
@@ -219,68 +228,30 @@ def _durable_completed_terminal_sha(
 
 def _terminal_ready_sha(
     state: Any,
-    target_spec: dict[str, str],
+    adapter: TerminalAdapter,
     target: dict[str, Any],
 ) -> str:
-    """Return the immutable artifact SHA the terminal must actually render."""
-
-    if target_spec["terminalType"] == "signage":
-        expected = target.get("desiredSha")
-    else:
-        server = next(
-            (
-                record
-                for record in state.payload.get("hosts") or []
-                if record.get("role") == "server"
-            ),
-            None,
-        )
-        if not isinstance(server, dict) or server.get("evidence") != "verified":
-            raise RuntimeError("Kiosk Web release has no verified Pi5 evidence")
-        expected = server.get("currentSha")
-    if not isinstance(expected, str) or FULL_SHA_RE.fullmatch(expected) is None:
-        raise RuntimeError("terminal ready release SHA is unavailable")
-    return expected
+    return adapter.expected_ready_sha(state, target)
 
 
 def _rollback_ready_sha(
     state: Any,
-    target_spec: dict[str, str],
+    adapter: TerminalAdapter,
     target: dict[str, Any],
 ) -> str:
-    if target_spec["terminalType"] == "signage":
-        expected = target.get("previousSha")
-        if not isinstance(expected, str) or FULL_SHA_RE.fullmatch(expected) is None:
-            raise RuntimeError("signage rollback release SHA is unavailable")
-        return expected
-    return _terminal_ready_sha(state, target_spec, target)
+    return adapter.expected_rollback_ready_sha(state, target)
 
 
 def _interrupted_rollback_ready_sha(
     fleet_state: dict[str, Any],
-    target_spec: dict[str, str],
+    adapter: TerminalAdapter | dict[str, str],
     previous_sha: str,
 ) -> str:
     """Return the artifact identity rendered after an interrupted rollback."""
 
-    if target_spec["terminalType"] == "signage":
-        return previous_sha
-    servers = [
-        record
-        for record in (fleet_state.get("fleet") or {}).values()
-        if isinstance(record, dict) and record.get("role") == "server"
-    ]
-    if len(servers) != 1:
-        raise RuntimeError("Kiosk rollback has no unique Pi5 release authority")
-    server = servers[0]
-    expected = server.get("currentSha")
-    if (
-        server.get("evidence") != "verified"
-        or not isinstance(expected, str)
-        or FULL_SHA_RE.fullmatch(expected) is None
-    ):
-        raise RuntimeError("Kiosk rollback has no verified Pi5 Web release")
-    return expected
+    if isinstance(adapter, dict):
+        adapter = adapter_for_profile(adapter["terminalType"], runtime=None)
+    return adapter.interrupted_rollback_ready_sha(fleet_state, previous_sha)
 
 
 def _verify_terminal_ready(
@@ -290,6 +261,7 @@ def _verify_terminal_ready(
     inventory: str,
     run_id: str,
     target_spec: dict[str, str],
+    adapter: TerminalAdapter,
     target: dict[str, Any],
     expected_sha: str,
     rollback: bool,
@@ -326,18 +298,13 @@ def _verify_terminal_ready(
     )
     target[expected_verification_key] = verification_id
     state.save()
-    if target_spec["terminalType"] == "signage":
-        # The restored signage script may predate release-bound ACKs.  Run the
-        # controller-owned probe on the terminal for both forward and rollback
-        # verification so readiness does not depend on the deployed version.
-        runtime.prove_signage_ready(
-            inventory,
-            target_spec["host"],
-            run_id,
-            target_spec["clientId"],
-            expected_sha,
-            verification_id,
-        )
+    adapter.prove_ready(
+        inventory,
+        target_spec,
+        run_id,
+        expected_sha,
+        verification_id,
+    )
     wait_options = {
         "phase": "ready",
         "release_sha": expected_sha,
@@ -381,37 +348,25 @@ def _verify_terminal_ready(
     state.save()
 
 
-def _refresh_signage_display(
+def _finalize_terminal_display(
     *,
     runtime: Any,
     state: Any,
     inventory: str,
     run_id: str,
     target_spec: dict[str, str],
+    adapter: TerminalAdapter,
     target: dict[str, Any],
     observation: dict[str, Any],
 ) -> None:
-    if target_spec["terminalType"] != "signage":
-        return
-    proof = runtime.refresh_signage_after_maintenance(
-        inventory, target_spec["host"], run_id
+    adapter.finalize_after_maintenance(
+        state,
+        inventory,
+        target_spec,
+        target,
+        run_id,
+        observation,
     )
-    if (
-        not isinstance(proof, dict)
-        or proof.get("signageEndpointAuthenticated") is not True
-        or proof.get("maintenanceArtifactReplaced") is not True
-        or not isinstance(proof.get("signageImageSha256"), str)
-        or SHA256_RE.fullmatch(proof["signageImageSha256"]) is None
-    ):
-        raise RuntimeError(
-            f"signage display proof is malformed: {target_spec['host']}"
-        )
-    target["signageDisplayProof"] = {
-        **proof,
-        "verifiedAt": runtime.utc_now(),
-    }
-    observation.update(proof)
-    state.save()
 
 
 def _recover_interrupted_terminals(
@@ -439,7 +394,7 @@ def _recover_interrupted_terminals(
     terminal_specs = {
         host["host"]: host
         for host in all_hosts
-        if host.get("role") in {"kiosk", "signage"}
+        if host.get("role") != "server"
     }
     recovery_run_id = abandoned_run_id
     seen_run_ids: set[str] = set()
@@ -537,6 +492,7 @@ def _recover_interrupted_terminals(
     preflight_records: list[dict[str, Any]] = []
     preflight_issues: list[str] = []
     for host, _fleet_record, target_spec, record, authority_run_id in work_items:
+        adapter = _terminal_adapter(runtime, target_spec["terminalType"])
         if not (
             record.get("maintenanceStartedAt")
             and not record.get("maintenanceClearedAt")
@@ -553,13 +509,13 @@ def _recover_interrupted_terminals(
             ):
                 raise RuntimeError("sealed previous release SHA is unavailable")
             rollback_ready_sha = _interrupted_rollback_ready_sha(
-                fleet_state, target_spec, previous_sha
+                fleet_state, adapter, previous_sha
             )
             rollback_ready_shas[host] = rollback_ready_sha
         except Exception as error:
             host_issues.append(f"rollback ready identity: {error}")
         try:
-            preflight = runtime.preflight_terminal_rollback(
+            preflight = adapter.preflight_rollback(
                 inventory, target_spec, record, authority_run_id
             )
             if (
@@ -615,6 +571,7 @@ def _recover_interrupted_terminals(
 
     current_state = fleet_state
     for host, fleet_record, target_spec, record, authority_run_id in work_items:
+        adapter = _terminal_adapter(runtime, target_spec["terminalType"])
         prior_target = record
 
         durable_completed_sha = _durable_completed_terminal_sha(
@@ -679,7 +636,7 @@ def _recover_interrupted_terminals(
             )
             record["recoveryMaintenanceReassertedAt"] = runtime.utc_now()
             state.save()
-            if not runtime.rollback_terminal(
+            if not adapter.rollback(
                 inventory, target_spec, record, authority_run_id
             ):
                 raise RuntimeError(
@@ -692,6 +649,7 @@ def _recover_interrupted_terminals(
                 inventory=inventory,
                 run_id=authority_run_id,
                 target_spec=target_spec,
+                adapter=adapter,
                 target=record,
                 expected_sha=rollback_ready_sha,
                 rollback=True,
@@ -739,7 +697,7 @@ def _recover_interrupted_terminals(
                     # durable state. That command is idempotent and performs
                     # only the exact allowlisted legacy-doc repair, so rerun it
                     # under the original rollback authority before capture.
-                    repository_baseline = runtime.prepare_terminal_repository(
+                    repository_baseline = adapter.prepare_repository(
                         inventory, host
                     )
                     expected_sha = repository_baseline.get("head")
@@ -768,7 +726,7 @@ def _recover_interrupted_terminals(
                 # Capture is idempotent for this exact abandoned run. This
                 # recovers a lost capture result without accepting a partial
                 # or different baseline.
-                record["rollbackManifest"] = runtime.capture_terminal_manifest(
+                record["rollbackManifest"] = adapter.capture_manifest(
                     inventory,
                     target_spec,
                     authority_run_id,
@@ -788,21 +746,12 @@ def _recover_interrupted_terminals(
                 # ambiguous. Removing only this proven run/client authority is
                 # safe in both cases and prevents a superseded notice from
                 # surviving a subsequent no-op plan.
-                runtime.state_command(
-                    "remove-client",
-                    "--run-id",
-                    authority_run_id,
-                    "--client",
-                    target_spec["clientId"],
-                )
+                adapter.clear_maintenance(target_spec, authority_run_id)
                 record["noticeClearedAt"] = runtime.utc_now()
                 state.save()
 
-        observation = runtime.observe_terminal_evidence(
-            inventory,
-            host,
-            target_spec["role"],
-            target_spec["clientId"],
+        observation = adapter.observe(
+            inventory, host, target_spec["clientId"]
         )
         if observation.get("currentSha") != expected_sha:
             raise RuntimeError(
@@ -817,25 +766,20 @@ def _recover_interrupted_terminals(
         }
         state.save()
         if maintenance_needs_cleanup:
-            runtime.state_command(
-                "remove-client",
-                "--run-id",
-                authority_run_id,
-                "--client",
-                target_spec["clientId"],
-            )
+            adapter.clear_maintenance(target_spec, authority_run_id)
             record["maintenanceClearedAt"] = runtime.utc_now()
             state.save()
-        _refresh_signage_display(
+        _finalize_terminal_display(
             runtime=runtime,
             state=state,
             inventory=inventory,
             run_id=authority_run_id,
             target_spec=target_spec,
+            adapter=adapter,
             target=record,
             observation=observation,
         )
-        record["runtimeCleanup"] = runtime.cleanup_terminal_rollback(
+        record["runtimeCleanup"] = adapter.cleanup(
             inventory,
             target_spec,
             record,
@@ -1022,8 +966,8 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             raise RuntimeError(f"--limit selected no hosts: {args.limit}")
         all_hosts = runtime.release_hosts(inventory_data)
 
-        # A hard-killed prior run can leave a run-labelled validation
-        # container or a paused signage scheduler even when fleet evidence
+        # A hard-killed prior run can leave run-labelled validation workload
+        # or a paused terminal scheduler even when fleet evidence
         # would otherwise produce a no-op plan.  Reconcile that executor-owned
         # residue before cancellation, evidence seeding, or a new active-run
         # record can hide the abandoned authority.
@@ -1225,6 +1169,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
         for index, target_spec in enumerate(targets):
             host = target_spec["host"]
             role = target_spec["role"]
+            adapter = _terminal_adapter(runtime, target_spec["terminalType"])
             token.checkpoint(f"before-terminal:{host}")
             target = state.target(host)
 
@@ -1240,7 +1185,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             state.payload["fleetGeneration"] = fleet_state["generation"]
             state.save()
 
-            repository_baseline = runtime.prepare_terminal_repository(
+            repository_baseline = adapter.prepare_repository(
                 inventory, host
             )
             target["previousSha"] = repository_baseline["head"]
@@ -1253,7 +1198,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             # HEAD before notices, maintenance, prestaging, checkout, or
             # service changes.  A capture failure is therefore mutation-free.
             try:
-                target["rollbackManifest"] = runtime.capture_terminal_manifest(
+                target["rollbackManifest"] = adapter.capture_manifest(
                     inventory,
                     target_spec,
                     args.run_id,
@@ -1269,19 +1214,17 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                 raise
             state.save()
             try:
-                if runtime.should_issue_terminal_notice(
-                    terminal_type=target_spec["terminalType"],
-                    emergency_override=args.emergency_override,
+                if adapter.should_issue_notice(
+                    emergency_override=args.emergency_override
                 ):
-                    runtime.deliver_terminal_notice(
+                    adapter.deliver_notice(
                         state, target_spec, target, args.run_id
                     )
                 else:
                     target["notice"] = {
                         "state": "skipped",
-                        "reason": runtime.terminal_notice_skip_reason(
-                            terminal_type=target_spec["terminalType"],
-                            emergency_override=args.emergency_override,
+                        "reason": adapter.notice_skip_reason(
+                            emergency_override=args.emergency_override
                         ),
                         "skippedAt": runtime.utc_now(),
                     }
@@ -1298,7 +1241,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                 }
                 state.save()
                 try:
-                    target["runtimeCleanup"] = runtime.cleanup_terminal_rollback(
+                    target["runtimeCleanup"] = adapter.cleanup(
                         inventory,
                         target_spec,
                         target,
@@ -1327,20 +1270,9 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                 target["maintenanceStartedAt"] = runtime.utc_now()
                 state.payload["phase"] = "deploying"
                 state.save()
-                runtime.state_command(
-                    "put",
-                    "--run-id",
-                    args.run_id,
-                    "--clients",
-                    target_spec["clientId"],
-                    "--terminal-type",
-                    target_spec["terminalType"],
-                )
+                adapter.enter_maintenance(inventory, target_spec, args.run_id)
                 token.checkpoint(f"after-maintenance:{host}")
-                if target_spec["terminalType"] == "signage":
-                    runtime.prestage_signage_maintenance(
-                        inventory, host, args.run_id, target_spec["clientId"]
-                    )
+                adapter.prestage_maintenance(inventory, target_spec, args.run_id)
                 if not runtime.wait_for_ack(
                     args.run_id, target_spec["clientId"], phase="maintenance"
                 ):
@@ -1365,11 +1297,11 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                 )
                 # Ansible is not killed mid-operation.  Verification happens
                 # before the next cancellation checkpoint.
-                runtime.playbook(
+                adapter.apply(
                     inventory, host, target["desiredSha"], args.run_id
                 )
                 expected_ready_sha = _terminal_ready_sha(
-                    state, target_spec, target
+                    state, adapter, target
                 )
                 _verify_terminal_ready(
                     runtime=runtime,
@@ -1377,15 +1309,13 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                     inventory=inventory,
                     run_id=args.run_id,
                     target_spec=target_spec,
+                    adapter=adapter,
                     target=target,
                     expected_sha=expected_ready_sha,
                     rollback=False,
                 )
-                observation = runtime.observe_terminal_evidence(
-                    inventory,
-                    host,
-                    role,
-                    target_spec["clientId"],
+                observation = adapter.observe(
+                    inventory, host, target_spec["clientId"]
                 )
                 if observation.get("currentSha") != target["desiredSha"]:
                     raise RuntimeError(
@@ -1414,7 +1344,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                 # Rollback wins over cancellation and is never interrupted.
                 rollback_reconciled = False
                 try:
-                    rollback_ok = runtime.rollback_terminal(
+                    rollback_ok = adapter.rollback(
                         inventory, target_spec, target, args.run_id
                     )
                 except Exception as rollback_error:
@@ -1423,7 +1353,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                 if rollback_ok:
                     try:
                         rollback_ready_sha = _rollback_ready_sha(
-                            state, target_spec, target
+                            state, adapter, target
                         )
                         _verify_terminal_ready(
                             runtime=runtime,
@@ -1431,15 +1361,13 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                             inventory=inventory,
                             run_id=args.run_id,
                             target_spec=target_spec,
+                            adapter=adapter,
                             target=target,
                             expected_sha=rollback_ready_sha,
                             rollback=True,
                         )
-                        rollback_observation = runtime.observe_terminal_evidence(
-                            inventory,
-                            host,
-                            role,
-                            target_spec["clientId"],
+                        rollback_observation = adapter.observe(
+                            inventory, host, target_spec["clientId"]
                         )
                         if (
                             rollback_observation.get("currentSha")
@@ -1455,26 +1383,21 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                         state.save()
                         # Cleanup is part of rollback evidence.  Never promote
                         # a host while maintenance remains active.
-                        runtime.state_command(
-                            "remove-client",
-                            "--run-id",
-                            args.run_id,
-                            "--client",
-                            target_spec["clientId"],
-                        )
+                        adapter.clear_maintenance(target_spec, args.run_id)
                         target["maintenanceClearedAt"] = runtime.utc_now()
                         state.save()
-                        _refresh_signage_display(
+                        _finalize_terminal_display(
                             runtime=runtime,
                             state=state,
                             inventory=inventory,
                             run_id=args.run_id,
                             target_spec=target_spec,
+                            adapter=adapter,
                             target=target,
                             observation=rollback_observation,
                         )
                         target["runtimeCleanup"] = (
-                            runtime.cleanup_terminal_rollback(
+                            adapter.cleanup(
                                 inventory,
                                 target_spec,
                                 target,
@@ -1549,25 +1472,20 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             # and never mutate the healthy terminal again via rollback.
             fleet_promoted = False
             try:
-                runtime.state_command(
-                    "remove-client",
-                    "--run-id",
-                    args.run_id,
-                    "--client",
-                    target_spec["clientId"],
-                )
+                adapter.clear_maintenance(target_spec, args.run_id)
                 target["maintenanceClearedAt"] = runtime.utc_now()
                 state.save()
-                _refresh_signage_display(
+                _finalize_terminal_display(
                     runtime=runtime,
                     state=state,
                     inventory=inventory,
                     run_id=args.run_id,
                     target_spec=target_spec,
+                    adapter=adapter,
                     target=target,
                     observation=observation,
                 )
-                target["runtimeCleanup"] = runtime.cleanup_terminal_rollback(
+                target["runtimeCleanup"] = adapter.cleanup(
                     inventory,
                     target_spec,
                     target,
@@ -1639,7 +1557,11 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                 state.payload["phase"] = "waiting-approval"
                 state.save()
                 runtime.wait_for_canary_hold(
-                    state, args.run_id, host, args.canary_hold_timeout
+                    state,
+                    args.run_id,
+                    host,
+                    args.canary_hold_timeout,
+                    profile_id=target_spec["terminalType"],
                 )
                 token.checkpoint("after-canary-approval")
 
@@ -1721,6 +1643,13 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             canary_hold.update(
                 {"state": "cancelled", "cancelledAt": runtime.utc_now()}
             )
+        approval_gates = state.payload.get("approvalGates")
+        if isinstance(approval_gates, list) and approval_gates:
+            latest_gate = approval_gates[-1]
+            if isinstance(latest_gate, dict) and latest_gate.get("state") == "waiting-verification":
+                latest_gate.update(
+                    {"state": "cancelled", "cancelledAt": runtime.utc_now()}
+                )
         state.payload["cancellation"] = {
             "reason": cancellation.reason,
             "checkpoint": cancellation.checkpoint,
