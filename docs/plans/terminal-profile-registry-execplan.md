@@ -46,7 +46,9 @@ room for them later.
 
 This program is delivered as five ordered pull requests. Each pull request is
 based on the latest merged `origin/main`, receives local and hosted validation,
-and is merged only after explicit user approval. The current work is PR 2 only.
+and is merged only after its exact head passes the required validation. The
+user has approved autonomous completion through PR 5; the no-production-change
+safety boundary remains unchanged. The current work is PR 2 only.
 
 ## Progress
 
@@ -63,7 +65,7 @@ and is merged only after explicit user approval. The current work is PR 2 only.
 - [x] (2026-07-16 13:29Z) Made deploy-impact classification registry-driven, added deterministic `affectedProfiles`, preserved every legacy field, and kept unknown paths successful but fail-closed across the server and every registered profile. Focused registry/classifier tests pass, a synthetic fourth profile plus unique adapter ID requires no classifier branch, and all 4,242 existing tracked paths have identical legacy results before and after the conversion.
 - [x] (2026-07-16 13:38Z) Completed PR 2 local validation: 594 deploy Python tests, 20 CI classifier tests, all focused Pi5/terminal/deploy-safety shell contracts, 20 isolated PostgreSQL deploy-status tests, read-only parsing of both inventories, syntax checks for both staged playbooks, JSON/compile/diff checks, production runtime-option parity, and the 4,242-path legacy classifier comparison all pass.
 - [x] (2026-07-16 13:40Z) Pushed code head `7f56595f5663cdf14270f1b5633d5e20eade3cdf` and ran the second-factory public read-only plan against that exact remote ref. All seven verified hosts were excluded, with `targetHosts=[]`, `pi5Required=false`, no terminal targets, no canary hold, and no warnings. The aggregate historical diff reports Signage impact, but the Pi3 host-specific verified baseline correctly requires no work.
-- [ ] Publish the PR 2 draft and wait for hosted checks before requesting merge approval.
+- [x] (2026-07-16 13:46Z) Published draft PR #1032 at `2776a72cbe737d9011fa0fc4467631dbd9fbd751`. Hosted CI run `29503419077`, CodeQL run `29503418930`, and gitleaks run `29503418989` all passed. The user then authorized autonomous validation and merging through PR 5, with only fatal blockers requiring a stop and with every existing physical-deployment prohibition preserved.
 - [ ] Implement PR 3: generic planner, inventory validation, and fleet-state use of registered profile identifiers.
 - [ ] Implement PR 4: terminal adapter boundary and generic coordinator with sequential profile approval gates.
 - [ ] Implement PR 5: registry-driven CI, architecture contracts, acceptance coverage, ADR, and concise new-type documentation.
@@ -179,6 +181,15 @@ and is merged only after explicit user approval. The current work is PR 2 only.
   syntactically valid registry silently misclassify impact.
   Date/Author: 2026-07-16 / Codex
 
+- Decision: Continue autonomously through PR 5, merging each isolated PR after
+  its exact head passes local and hosted validation, and stop only for a fatal
+  blocker.
+  Rationale: the user explicitly granted end-to-end approval for the overnight
+  work after reviewing the architecture. This changes the approval cadence but
+  does not authorize real deployment, mutating SSH, full-fleet rollout, or any
+  TalkPlaza device operation.
+  Date/Author: 2026-07-16 / User
+
 ## Outcomes & Retrospective
 
 PR 1 is merged as `381e022e`. With no `.vault-pass`, both production
@@ -193,8 +204,11 @@ not require a new terminal-name branch. All 594 deploy Python tests, 20 CI
 tests, existing deploy shell contracts, 20 isolated PostgreSQL deploy-status
 tests, both inventory reads and staged-playbook syntax checks, and the full
 tracked-path legacy comparison pass. The exact pushed code head also produces a
-seven-host second-factory no-op plan. Hosted validation is still pending. No
-physical host has been contacted for mutation, and PR 3 has not started.
+seven-host second-factory no-op plan. Its first hosted validation set (CI
+`29503419077`, CodeQL `29503418930`, and gitleaks `29503418989`) passed. This
+living-plan-only update now requires one final exact-head hosted and read-only
+confirmation before merge. No physical host has been contacted for mutation,
+and PR 3 has not started.
 
 ## Context and Orientation
 
@@ -434,6 +448,7 @@ duplicate and unknown keys, and returns immutable validated profile records.
 Core policy consumes validated profile IDs and adapter objects only; it never
 imports arbitrary paths or executes registry-provided text.
 
-Revision note (2026-07-16 12:53Z): Recorded draft PR #1031 and its first fully
-green hosted validation. This documentation-only update requires one final
-exact-head no-op and hosted check confirmation before handoff.
+Revision note (2026-07-16 13:46Z): Recorded draft PR #1032, its first fully
+green hosted validation, and the user's authorization to complete PRs 2 through
+5 autonomously. This documentation-only update requires one final exact-head
+no-op and hosted check confirmation before PR 2 merge.
