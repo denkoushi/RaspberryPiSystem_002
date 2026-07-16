@@ -289,7 +289,14 @@ class RollbackManifestAdapterTest(unittest.TestCase):
                 f"--restart-on-restore-unit {unit}", runtime_action
             )
         self.assertIn(
-            "--compose-working-directory /opt/RaspberryPiSystem_002",
+            "--compose-working-directory "
+            "/opt/RaspberryPiSystem_002/infrastructure/docker",
+            runtime_action,
+        )
+        self.assertIn(
+            "--compose-config-file "
+            "/opt/RaspberryPiSystem_002/infrastructure/docker/"
+            "docker-compose.client.yml",
             runtime_action,
         )
 
