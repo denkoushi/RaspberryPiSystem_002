@@ -2,6 +2,7 @@ import argparse
 import copy
 import sys
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -12,6 +13,8 @@ if str(DEPLOY_DIR) not in sys.path:
 
 from rolling_release import coordinator  # noqa: E402
 from rolling_release.cancellation import CancellationRequested  # noqa: E402
+from rolling_release.terminal_adapters import GenericSystemdAdapter  # noqa: E402
+from terminal_profile_registry import load_registry  # noqa: E402
 
 
 OLD_SHA = "1" * 40
@@ -74,6 +77,22 @@ def rollback_manifest(run_id, host, terminal_type="kiosk"):
             "dockerCount": 2 if terminal_type == "kiosk" else 0,
         },
     }
+
+
+def synthetic_terminal_profile():
+    base = load_registry().profile("kiosk")
+    return replace(
+        base,
+        id="inspection-panel",
+        inventory_group="inspection_panels",
+        impact_component="inspection-panel-role",
+        canary_group="inspection_panel_canary",
+        playbook="playbooks/deploy-terminal-profile.yml",
+        adapter_options=replace(
+            base.adapter_options,
+            ready_authority="terminal",
+        ),
+    )
 
 
 def server_config_manifest(run_id, host="pi5"):
@@ -533,6 +552,71 @@ def args(**overrides):
 
 
 class FleetCoordinatorTransitionTest(unittest.TestCase):
+    def _synthetic_runtime(self):
+        profile = synthetic_terminal_profile()
+        terminal = {
+            "host": "inspection-a",
+            "role": profile.id,
+            "terminalType": profile.id,
+            "clientId": "inspection-a-client",
+        }
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", OLD_SHA),
+                terminal["host"]: host_record(profile.id, OLD_SHA),
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan={
+                "pi5Required": False,
+                "hosts": [
+                    decision("pi5", "server", targeted=False),
+                    decision(terminal["host"], profile.id),
+                ],
+            },
+            targets=[terminal],
+        )
+        runtime.terminal_adapter = lambda profile_id: GenericSystemdAdapter(
+            profile if profile_id == profile.id else load_registry().profile(profile_id),
+            runtime,
+        )
+        return runtime
+
+    def test_synthetic_profile_runs_through_generic_coordinator(self):
+        runtime = self._synthetic_runtime()
+
+        result = coordinator.execute(
+            args(), runtime=runtime, token=FakeToken(runtime.events)
+        )
+
+        self.assertEqual(result, 0)
+        self.assertIn("playbook:inspection-a", runtime.events)
+        self.assertIn("observe:terminal:inspection-a", runtime.events)
+        self.assertIn(
+            f"fleet:verified:inspection-a:{NEW_SHA}", runtime.events
+        )
+
+    def test_synthetic_profile_cancel_uses_exact_adapter_rollback(self):
+        runtime = self._synthetic_runtime()
+        runtime.ready_ack_error = CancellationRequested(
+            "operator stop", "wait-ready-ack:inspection-a-client"
+        )
+
+        result = coordinator.execute(
+            args(), runtime=runtime, token=FakeToken(runtime.events)
+        )
+
+        self.assertEqual(result, 130)
+        target = runtime.states[-1].target("inspection-a")
+        self.assertEqual(target["rollbackEvidence"], "verified")
+        self.assertEqual(target["currentSha"], OLD_SHA)
+        self.assertEqual(target["rollbackReadyReleaseSha"], OLD_SHA)
+        self.assertLess(
+            runtime.events.index("rollback:inspection-a"),
+            runtime.events.index(
+                "manifest:cleanup:inspection-a:run-1:restored"
+            ),
+        )
+
     def test_interrupted_ready_identity_uses_verified_pi5_for_kiosk_only(self):
         fleet = {
             "fleet": {

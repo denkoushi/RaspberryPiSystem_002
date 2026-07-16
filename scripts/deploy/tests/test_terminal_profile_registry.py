@@ -220,6 +220,16 @@ class TerminalProfileRegistryTest(unittest.TestCase):
                 with self.assertRaisesRegex(RegistryError, message):
                     self.load_payload(payload)
 
+    def test_ready_authority_is_a_closed_adapter_option(self):
+        for value in (None, "", "hostname", "shell:reboot"):
+            with self.subTest(value=value):
+                payload = copy.deepcopy(self.payload)
+                payload["terminalProfiles"][0]["adapterOptions"][
+                    "readyAuthority"
+                ] = value
+                with self.assertRaisesRegex(RegistryError, "readyAuthority"):
+                    self.load_payload(payload)
+
     def test_profile_identity_and_order_fields_are_unique(self):
         fields = ("id", "inventoryGroup", "canaryGroup", "rolloutOrder")
         for field in fields:

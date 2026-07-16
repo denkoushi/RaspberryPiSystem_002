@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 from typing import Any, Protocol
 
+from ..adapter_registry import adapter_for_profile
 from ..image_refs import release_sha_from_image
 
 
@@ -91,115 +92,11 @@ def observe_terminal(
     *,
     runtime: Runtime,
 ) -> dict[str, Any]:
-    if role not in {"kiosk", "signage"}:
-        raise ValueError(f"unsupported terminal evidence role: {role}")
-    sha = runtime.remote_previous_sha(inventory, host)
-    if not runtime.FULL_SHA_RE.fullmatch(sha):
-        raise RuntimeError(f"terminal HEAD is not immutable: {host}")
-    services = (
-        [
-            "lightdm.service",
-            "kiosk-browser.service",
-            "status-agent.timer",
-        ]
-        if role == "kiosk"
-        else [
-            "lightdm.service",
-            "signage-lite.service",
-            "signage-lite-update.timer",
-            "signage-lite-watchdog.timer",
-            "signage-daily-reboot.timer",
-            "status-agent.timer",
-        ]
-    )
-    # systemctl returns success for a multi-unit query when at least one unit
-    # is active. Probe each required unit independently so either failure
-    # prevents promotion to verified evidence.
-    for service in services:
-        runtime.run(
-            [
-                "ansible",
-                "-i",
-                inventory,
-                host,
-                "-b",
-                "-m",
-                "command",
-                "-a",
-                f"systemctl is-active --quiet {service}",
-            ],
-            cwd=runtime.ANSIBLE_DIRECTORY,
-            capture=True,
-        )
-    # status-agent.service is Type=oneshot and normally inactive after a
-    # successful run. Its last invocation must nevertheless have succeeded;
-    # the active timer alone is insufficient terminal-health evidence.
-    runtime.run(
-        [
-            "ansible",
-            "-i",
-            inventory,
-            host,
-            "-b",
-            "-m",
-            "shell",
-            "-a",
-            'test "$(systemctl show --property=Result --value '
-            'status-agent.service)" = success',
-        ],
-        cwd=runtime.ANSIBLE_DIRECTORY,
-        capture=True,
-    )
-    identity = runtime.probe_terminal_identity(inventory, host, client_id)
-    if identity != {"authenticated": True, "statusClientId": client_id}:
-        raise RuntimeError(f"terminal identity is not authenticated: {host}")
-    result = {
-        "currentSha": sha,
-        "services": services,
-        "oneshotServices": ["status-agent.service"],
-        "authenticatedEndpoint": True,
-        "statusClientId": client_id,
-    }
-    if role == "kiosk":
-        agents = runtime.probe_kiosk_agents(inventory, host)
-        containers = agents.get("agentContainers") if isinstance(agents, dict) else None
-        endpoints = (
-            agents.get("authenticatedAgentEndpoints")
-            if isinstance(agents, dict)
-            else None
-        )
-        if (
-            not isinstance(containers, list)
-            or any(agent not in {"nfc-agent", "barcode-agent"} for agent in containers)
-            or len(containers) != len(set(containers))
-            or not isinstance(endpoints, list)
-            or len(endpoints) != len(containers)
-            or any(
-                not isinstance(endpoint, dict)
-                or set(endpoint) != {"agent", "port"}
-                or endpoint.get("agent") != containers[index]
-                or isinstance(endpoint.get("port"), bool)
-                or not isinstance(endpoint.get("port"), int)
-                or not 1 <= endpoint["port"] <= 65535
-                for index, endpoint in enumerate(endpoints)
-            )
-            or type(agents.get("pcscdRequired")) is not bool
-        ):
-            raise RuntimeError(f"kiosk agent health evidence is malformed: {host}")
-        result.update(agents)
-    else:
-        signage = runtime.probe_signage_endpoints(inventory, host)
-        if (
-            not isinstance(signage, dict)
-            or signage.get("signageEndpointAuthenticated") is not True
-            or re.fullmatch(
-                r"[0-9a-f]{64}", str(signage.get("signageImageSha256") or "")
-            )
-            is None
-        ):
-            raise RuntimeError(f"signage endpoint is not authenticated: {host}")
-        result.update(signage)
-    return result
+    try:
+        adapter = adapter_for_profile(role, runtime=runtime)
+    except (KeyError, ValueError) as error:
+        raise ValueError(f"unsupported terminal evidence role: {role}") from error
+    return adapter.observe_direct(inventory, host, client_id)
 
 
 def observe_pi5(

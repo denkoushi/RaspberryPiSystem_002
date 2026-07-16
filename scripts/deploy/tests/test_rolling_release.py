@@ -1738,6 +1738,43 @@ class CanaryHoldTest(unittest.TestCase):
             ('status-command', ('open-canary-hold', '--run-id', 'run-1', '--canary', 'kiosk-canary', '--expires-at', '1800000060')),
         )
 
+    def test_profile_gate_history_preserves_two_sequential_approvals(self):
+        state = MODULE.ReleaseState(Path('/tmp/unused-release-state.json'), {})
+        state.save = Mock()
+        approvals = [
+            {
+                'state': 'approved',
+                'canary': 'kiosk-canary',
+                'approvedAt': '2026-07-12T00:01:00Z',
+                'approvedBy': MODULE.OPERATOR_CANARY_APPROVAL_CLIENT,
+            },
+            {
+                'state': 'approved',
+                'canary': 'assembly-canary',
+                'approvedAt': '2026-07-12T00:02:00Z',
+                'approvedBy': MODULE.OPERATOR_CANARY_APPROVAL_CLIENT,
+            },
+        ]
+        with patch.object(MODULE, 'state_command'), \
+                patch.object(MODULE, 'wait_for_canary_approval', side_effect=approvals), \
+                patch.object(MODULE.time, 'time', return_value=1_800_000_000):
+            MODULE.wait_for_canary_hold(
+                state, 'run-1', 'kiosk-canary', 60, profile_id='kiosk'
+            )
+            MODULE.wait_for_canary_hold(
+                state, 'run-1', 'assembly-canary', 60,
+                profile_id='assembly-console',
+            )
+
+        self.assertEqual(
+            [gate['profile'] for gate in state.payload['approvalGates']],
+            ['kiosk', 'assembly-console'],
+        )
+        self.assertTrue(
+            all(gate['state'] == 'approved' for gate in state.payload['approvalGates'])
+        )
+        self.assertEqual(state.payload['canaryHold']['profile'], 'assembly-console')
+
     def test_canary_wait_does_not_consume_legacy_generic_acknowledgements(self):
         approved = {'state': 'approved', 'approvedBy': MODULE.OPERATOR_CANARY_APPROVAL_CLIENT}
         with patch.object(MODULE, 'acknowledgement_received', side_effect=AssertionError('legacy ACK must not be read')), \

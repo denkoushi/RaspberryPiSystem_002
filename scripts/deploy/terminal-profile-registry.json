@@ -55,7 +55,8 @@
           "nfc-agent",
           "barcode-agent",
           "ready-sha"
-        ]
+        ],
+        "readyAuthority": "control-plane"
       }
     },
     {
@@ -121,7 +122,8 @@
           "status-agent",
           "signage-endpoint",
           "ready-sha"
-        ]
+        ],
+        "readyAuthority": "terminal"
       }
     }
   ],

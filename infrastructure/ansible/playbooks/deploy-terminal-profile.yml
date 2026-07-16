@@ -1,0 +1,66 @@
+---
+# Registry-selected release playbook for Linux/Pi terminal profiles whose
+# runtime is covered by the generic Git/status-agent/systemd adapter. The
+# coordinator always supplies one exact host through --limit; serial remains a
+# second, executable guard against concurrent terminal mutation.
+- name: Deploy one registered generic terminal profile
+  hosts: clients
+  gather_facts: false
+  become: true
+  serial: 1
+  order: inventory
+  vars:
+    repo_path: /opt/RaspberryPiSystem_002
+    repo_remote: >-
+      {{ lookup('env', 'RASPI_SYSTEM_REPO') |
+      default('https://github.com/denkoushi/RaspberryPiSystem_002.git', true) }}
+    repo_version: >-
+      {{ lookup('env', 'ANSIBLE_REPO_VERSION') | default('main', true) }}
+    git_deploy_key: >-
+      {{ lookup('env', 'RASPI_SYSTEM_DEPLOY_KEY') | default('', true) }}
+    git_environment: >-
+      {{ {} if (git_deploy_key | trim) == '' else
+      {'GIT_SSH_COMMAND': 'ssh -i ' ~ git_deploy_key ~
+      ' -o StrictHostKeyChecking=no'} }}
+
+  pre_tasks:
+    - name: Require canonical rolling release context
+      ansible.builtin.import_tasks: "../tasks/assert-release-orchestration.yml"
+
+    - name: Require terminal release-only mode before shared tasks
+      ansible.builtin.import_tasks: "../tasks/assert-terminal-release-mode.yml"
+
+    - name: Run common shared release preparation
+      ansible.builtin.import_role:
+        name: common
+
+  tasks:
+    - name: Run Tailscale preflight checks
+      ansible.builtin.include_tasks: "../tasks/preflight-tailscale.yml"
+      when:
+        - network_mode | default('tailscale') == 'tailscale'
+        - tailscale_enabled | default(false) | bool
+
+    - name: Run resource guard checks
+      ansible.builtin.include_tasks: "../tasks/resource-guard.yml"
+
+    - name: Apply generic terminal release under coordinator rollback ownership
+      block:
+        - name: Apply client-specific release tasks
+          ansible.builtin.import_role:
+            name: client
+
+        - name: Collect generic terminal release evidence
+          ansible.builtin.include_tasks: "../tasks/update-clients-core.yml"
+      rescue:
+        - name: Fail for coordinator-managed exact rollback
+          ansible.builtin.fail:
+            msg: >-
+              Generic terminal release failed on {{ inventory_hostname }}.
+              The rolling-release coordinator owns exact rollback.
+
+  handlers:
+    - name: restart pcscd
+      ansible.builtin.systemd:
+        name: pcscd
+        state: restarted

@@ -15,6 +15,8 @@ import subprocess
 from pathlib import Path
 from typing import Any, Protocol
 
+from ..adapter_registry import adapter_for_profile
+
 
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$")
 _HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$")
@@ -422,8 +424,12 @@ def _validated_terminal_spec(target_spec: dict[str, str]) -> tuple[str, str]:
     terminal_type = target_spec.get("terminalType")
     if not isinstance(host, str) or _HOST_RE.fullmatch(host) is None:
         raise ValueError("terminal host is malformed")
-    if terminal_type not in {"kiosk", "signage"}:
+    if not isinstance(terminal_type, str):
         raise ValueError("terminal type is unsupported")
+    try:
+        adapter_for_profile(terminal_type, runtime=None)
+    except (KeyError, ValueError) as error:
+        raise ValueError("terminal type is unsupported") from error
     return host, terminal_type
 
 
@@ -474,33 +480,9 @@ def _remote_identity(inventory: str, host: str, *, runtime: Runtime) -> tuple[st
 def _terminal_manifest_paths(
     terminal_type: str, user: str, home: str, run_id: str
 ) -> list[str]:
-    dynamic_common = (
-        f"/etc/sudoers.d/{user}",
-        f"/etc/sudoers.d/{user}-client-services",
-    )
-    if terminal_type == "kiosk":
-        dynamic_role = (
-            f"{home}/.config/autostart/ibus.desktop",
-            f"{home}/.config/autostart/ibus-owner.desktop",
-            f"{home}/.config/autostart/ibus-engine.desktop",
-            f"{home}/.config/autostart/im-launch.desktop",
-            f"{home}/.mozilla/firefox/kiosk-system/chrome/userChrome.css",
-            f"{home}/.mozilla/firefox/kiosk-system/user.js",
-            f"{home}/.config/labwc/rc.xml",
-        )
-        role_paths = _KIOSK_TERMINAL_PATHS
-    else:
-        dynamic_role = (
-            f"/run/signage/release-{run_id}-maintenance.svg",
-            f"/run/signage/release-{run_id}-maintenance.jpg",
-            f"/run/signage/release-{run_id}-maintenance.sha256",
-        )
-        role_paths = _SIGNAGE_TERMINAL_PATHS
-    # Preserve the declared order while making accidental duplicates a single
-    # sealed entry (the helper rejects duplicate destinations).
     return list(
-        dict.fromkeys(
-            (*_COMMON_TERMINAL_PATHS, *dynamic_common, *role_paths, *dynamic_role)
+        adapter_for_profile(terminal_type, runtime=None).rollback_paths(
+            user, home, run_id
         )
     )
 
@@ -570,21 +552,16 @@ def _expected_runtime_manifest_path(run_id: str, host: str) -> str:
 
 
 def _terminal_runtime_contract(terminal_type: str) -> tuple[list[str], list[str]]:
-    if terminal_type == "kiosk":
-        return (
-            list(dict.fromkeys((*_COMMON_RUNTIME_UNITS, *_KIOSK_RUNTIME_UNITS))),
-            ["nfc-agent", "barcode-agent"],
-        )
-    return (
-        list(dict.fromkeys((*_COMMON_RUNTIME_UNITS, *_SIGNAGE_RUNTIME_UNITS))),
-        [],
-    )
+    adapter = adapter_for_profile(terminal_type, runtime=None)
+    return list(adapter.runtime_units), list(adapter.docker_services)
 
 
 def _terminal_restart_on_restore_contract(terminal_type: str) -> list[str]:
-    if terminal_type == "kiosk":
-        return ["haizen-agent.service", "kiosk-browser.service"]
-    return ["haizen-agent.service", "signage-lite.service"]
+    return list(
+        adapter_for_profile(
+            terminal_type, runtime=None
+        ).restart_on_restore_units
+    )
 
 
 def _capture_terminal_runtime_manifest(
@@ -1417,6 +1394,7 @@ def playbook(
     run_id: str,
     *,
     rollback: bool = False,
+    playbook: str = "playbooks/deploy-staged.yml",
     runtime: Runtime,
 ) -> None:
     if rollback:
@@ -1431,12 +1409,21 @@ def playbook(
         "release_orchestrated=true release_rollback=false "
         "terminal_release_mode=release-only"
     )
+    if (
+        not isinstance(playbook, str)
+        or not playbook.startswith("playbooks/")
+        or ".." in playbook.split("/")
+        or "\\" in playbook
+        or "//" in playbook
+    ):
+        raise ValueError("terminal profile playbook is unavailable")
+    playbook_path = runtime.ANSIBLE_DIRECTORY / playbook
     runtime.run(
         [
             "ansible-playbook",
             "-i",
             inventory,
-            str(runtime.ANSIBLE_DIRECTORY / "playbooks/deploy-staged.yml"),
+            str(playbook_path),
             "--limit",
             host,
             "-e",

@@ -14,10 +14,13 @@ from typing import Any, Iterable
 from terminal_profile_registry import TerminalProfileRegistry, load_registry
 
 try:  # Normal package import.
-    from .adapter_registry import registered_adapter_ids
+    from .adapter_registry import registered_adapter_ids, validate_adapter_profiles
     from .image_refs import image_matches_release
 except ImportError:  # Direct pure-module contract tests load this file by path.
-    from rolling_release.adapter_registry import registered_adapter_ids
+    from rolling_release.adapter_registry import (
+        registered_adapter_ids,
+        validate_adapter_profiles,
+    )
     from rolling_release.image_refs import image_matches_release
 
 
@@ -100,6 +103,7 @@ def _release_topology(
             'terminal profiles reference unavailable adapters: '
             + ', '.join(sorted(set(missing_adapters)))
         )
+    validate_adapter_profiles(profiles.profiles)
 
     metadata = inventory.get('_meta', {})
     if not isinstance(metadata, dict):
@@ -537,10 +541,15 @@ def should_hold_after_canary(
     skip: bool,
     registry: TerminalProfileRegistry | None = None,
 ) -> bool:
-    """Preserve the legacy first gate using the profile's approval policy."""
-    if skip or index != 0 or index + 1 >= len(targets):
+    """Gate the first targeted host of every human-approved profile."""
+    if skip or index < 0 or index >= len(targets) or index + 1 >= len(targets):
         return False
     terminal_type = targets[index].get('terminalType')
+    if any(
+        target.get('terminalType') == terminal_type
+        for target in targets[:index]
+    ):
+        return False
     try:
         return _registry(registry).profile(terminal_type).approval_policy == 'human'
     except (KeyError, TypeError):

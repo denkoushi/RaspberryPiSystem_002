@@ -444,8 +444,14 @@ def main():
             if args.expires_at <= epoch_now():
                 raise ValueError('canary hold expiry must be in the future')
             holds = canary_holds(data)
-            if args.run_id in holds:
+            existing_hold = holds.get(args.run_id)
+            if isinstance(existing_hold, dict) and existing_hold.get('state') == 'waiting-verification':
                 raise ValueError('canary hold already exists for this run')
+            if existing_hold is not None and (
+                not isinstance(existing_hold, dict)
+                or existing_hold.get('state') not in ('approved', 'expired')
+            ):
+                raise ValueError('prior canary hold state is malformed')
             holds[args.run_id] = {
                 'state': 'waiting-verification',
                 'canary': args.canary,

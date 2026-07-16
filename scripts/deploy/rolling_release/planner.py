@@ -98,10 +98,9 @@ def build_fleet_plan_payload(
     if decisions and server_count != 1:
         raise ValueError('fleet plan must contain exactly one server decision')
 
-    canary_hold = (
-        False
-        if not terminal_targets
-        else canary_hold_policy(terminal_targets, 0, skip=False)
+    canary_hold = any(
+        canary_hold_policy(terminal_targets, index, skip=False)
+        for index in range(len(terminal_targets))
     )
     return {
         'desiredSha': release_sha,

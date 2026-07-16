@@ -14,7 +14,7 @@ related_docs:
   - docs/guides/deployment.md
   - docs/plans/deployment-foundation-refactor-execplan.md
 validation: local contracts, isolated fault injection, hosted CI, read-only fleet plans
-open_items: PR 3 through PR 5 described below
+open_items: PR 4 and PR 5 described below
 supersedes: null
 superseded_by: null
 ---
@@ -48,7 +48,7 @@ This program is delivered as five ordered pull requests. Each pull request is
 based on the latest merged `origin/main`, receives local and hosted validation,
 and is merged only after its exact head passes the required validation. The
 user has approved autonomous completion through PR 5; the no-production-change
-safety boundary remains unchanged. The current work is PR 3 only.
+safety boundary remains unchanged. The current work is PR 4 only.
 
 ## Progress
 
@@ -72,8 +72,11 @@ safety boundary remains unchanged. The current work is PR 3 only.
 - [x] (2026-07-16 14:14Z) Completed PR 3 local validation: 601 deploy Python tests, 20 CI Python tests, every deploy shell contract including the isolated 20-test PostgreSQL integration, both registry-resolved inventories, both staged-playbook syntax checks, Python compilation, and diff checks pass. Synthetic fourth and fifth types prove profile/canary order, impact, and unchanged fleet JSON without adding a terminal-name branch.
 - [x] (2026-07-16 14:27Z) Published draft PR #1033 at exact code head `ab79b443967785784116b911c30a94c30644a12b`. CI run `29506385437`, CodeQL `29506385515`, and gitleaks `29506385385` all passed; the final deploy Python suite is now 602 tests after adding the planner-level unregistered-profile rejection.
 - [x] (2026-07-16 14:27Z) Ran the second-factory public read-only plan against exact remote branch head `ab79b443`. Inventory, profile membership, canaries, adapter availability, client IDs, and all seven verified evidence records resolved with no warnings. The historical per-host diffs contain a `global` inventory change, so fail-closed planning correctly lists all seven hosts; no release, approval, checkout, or state mutation was performed.
-- [ ] Synchronize this hosted evidence, pass the final exact-head checks, and merge PR 3.
-- [ ] Implement PR 4: terminal adapter boundary and generic coordinator with sequential profile approval gates.
+- [x] (2026-07-16 14:36Z) Finalized PR #1033 at exact head `2292fb00819015c97f596dde1f2c4c55a62f614e`; CI `29506739473`, CodeQL `29506735529`, and gitleaks `29506735367` passed, then merged it as `10de373be26fbe904720f9e05ee50a1f7f5a380f`.
+- [x] (2026-07-16 14:37Z) Fetched merged `origin/main` and created the isolated `agent/terminal-adapter-coordinator` worktree from exact commit `10de373be26fbe904720f9e05ee50a1f7f5a380f`.
+- [x] (2026-07-16 15:00Z) Implemented PR 4's executable `TerminalAdapter` boundary, `generic-systemd` and Signage compatibility adapters, registry-selected playbooks and ready authority, a serial generic terminal playbook, profile-generic coordinator/evidence/rollback handling, and sequential profile approval-gate history while preserving the legacy current/latest `canaryHold` view.
+- [x] (2026-07-16 15:00Z) Completed PR 4 local validation: 611 deploy Python tests, 20 CI Python tests, all 19 deploy shell contracts including the isolated 20-test PostgreSQL integration, both inventory parses, syntax checks for the staged and generic terminal playbooks against both inventories, compilation, and diff checks pass. Synthetic `inspection-panel` forward, health, cancel, and exact rollback plus a registry-only unique adapter prove no terminal-name core change is needed.
+- [ ] Publish PR 4, run its exact remote read-only plan, pass hosted CI/CodeQL/gitleaks, and merge it.
 - [ ] Implement PR 5: registry-driven CI, architecture contracts, acceptance coverage, ADR, and concise new-type documentation.
 
 ## Surprises & Discoveries
@@ -141,6 +144,20 @@ safety boundary remains unchanged. The current work is PR 3 only.
   Evidence: the first all-shell pass stopped at `tsc` before the deploy-status
   integration; `pnpm install --frozen-lockfile` installed the exact locked
   workspace, after which the complete shell suite passed from the beginning.
+
+- Observation: ready evidence is not inherently tied to a terminal name.
+  Evidence: the existing Kiosk renders the Pi5 control-plane Web SHA while
+  Signage renders its own checked-out SHA. Encoding `readyAuthority` as a
+  validated adapter option preserves both behaviors and lets a synthetic
+  generic terminal choose terminal-owned readiness without a coordinator
+  branch.
+
+- Observation: the existing deploy facade is also a useful compatibility seam
+  for injected test runtimes.
+  Evidence: adapters use the new profile-aware facade operation when present
+  and retain the old `playbook(inventory, host, sha, run_id)` shape for test
+  runtimes. This kept the large transition suite intact while moving every
+  terminal operation out of the coordinator.
 
 ## Decision Log
 
@@ -219,6 +236,21 @@ safety boundary remains unchanged. The current work is PR 3 only.
   product sets without allowing an unregistered terminal to enter planning.
   Date/Author: 2026-07-16 / Codex
 
+- Decision: Declare each profile's rendered release authority explicitly as
+  `control-plane` or `terminal`, and validate it as a closed registry enum.
+  Rationale: structurally different terminals can share the systemd adapter
+  while proving different immutable artifacts; deriving this from the profile
+  name would recreate the coupling the registry is intended to remove.
+  Date/Author: 2026-07-16 / Codex
+
+- Decision: Append each human approval to `approvalGates` and make the legacy
+  `canaryHold` field reference the current or latest gate. Only the first
+  targeted host of a human-approved profile may open a gate, and health-only
+  profiles never do.
+  Rationale: this permits multiple sequential profile gates without changing
+  `--approve RUN_ID`, lock ownership, or existing status readers.
+  Date/Author: 2026-07-16 / Codex
+
 ## Outcomes & Retrospective
 
 PR 1 is merged as `381e022e`. With no `.vault-pass`, both production
@@ -229,18 +261,21 @@ CodeQL `29500052047`, and gitleaks `29500051938` passed before merge.
 PR 2 is merged as `658a259b`. Its exact final head passed CI `29503856934`,
 CodeQL `29503856945`, gitleaks `29503853754`, and the second-factory no-op plan.
 
-PR 3 removes the fixed terminal-role set from inventory planning and fleet
+PR 3 is merged as `10de373b`. It removes the fixed terminal-role set from inventory planning and fleet
 state. Registered profile groups and canaries produce deterministic order;
 unknown groups, overlapping membership, duplicate identity, and missing
 adapters fail before external work. Synthetic fourth and fifth terminal types
-use the unchanged planner and fleet JSON shape. All 602 deploy Python tests, 20
-CI tests, the full deploy shell suite, both inventories, and both staged
-playbook syntax checks pass locally. Draft PR #1033's first exact code head
-passed CI `29506385437`, CodeQL `29506385515`, and gitleaks `29506385385`; the
-post-review Python total is 602. Its read-only fleet plan resolved all verified
-evidence without warning and safely listed all seven hosts because the diff
-contains a global inventory change. No physical host has been contacted for
-mutation, and PR 4 has not started.
+use the unchanged planner and fleet JSON shape. Its final exact head passed CI
+`29506739473`, CodeQL `29506735529`, and gitleaks `29506735367` before merge.
+
+PR 4 now routes manifest, notice, maintenance, application, health, ready proof,
+rollback, cleanup, and final display evidence through validated adapters. The
+coordinator, planner, policy, and fleet state contain no production terminal
+type names. Multiple human gates are sequential and status-compatible. All 611
+deploy Python tests, 20 CI tests, 19 deploy shell contracts, both inventories,
+and both staged and generic terminal playbook syntax checks pass locally. No
+physical host has been contacted for mutation; TalkPlaza validation remains
+static only.
 
 ## Context and Orientation
 
@@ -480,7 +515,6 @@ duplicate and unknown keys, and returns immutable validated profile records.
 Core policy consumes validated profile IDs and adapter objects only; it never
 imports arbitrary paths or executes registry-provided text.
 
-Revision note (2026-07-16 14:27Z): Recorded draft PR #1033, its first exact-head
-hosted success, the 602-test final local suite, and the read-only second-factory
-result. The global diff correctly widens the observable plan; it was not
-executed. This evidence-only update requires one final exact-head hosted pass.
+Revision note (2026-07-16 15:00Z): Recorded PR #1033's final merge and PR 4's
+adapter implementation plus complete local evidence. PR 4 still requires an
+exact remote read-only plan and hosted checks before merge.

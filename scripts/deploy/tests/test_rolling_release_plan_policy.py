@@ -567,6 +567,47 @@ class GenericTerminalProfilePolicyTest(unittest.TestCase):
                 ),
             )
 
+    def test_human_gates_repeat_per_profile_and_health_only_profiles_do_not_gate(self):
+        registry = self.registry()
+        targets = [
+            {'host': 'kiosk-canary', 'terminalType': 'kiosk'},
+            {'host': 'kiosk-rest', 'terminalType': 'kiosk'},
+            {'host': 'inspection-canary', 'terminalType': 'inspection-panel'},
+            {'host': 'inspection-rest', 'terminalType': 'inspection-panel'},
+            {'host': 'assembly-canary', 'terminalType': 'assembly-console'},
+            {'host': 'assembly-rest', 'terminalType': 'assembly-console'},
+            {'host': 'signage-final', 'terminalType': 'signage'},
+        ]
+
+        self.assertEqual(
+            [
+                index
+                for index in range(len(targets))
+                if POLICY.should_hold_after_canary(
+                    targets, index, skip=False, registry=registry
+                )
+            ],
+            [0, 4],
+        )
+
+    def test_adapter_rejects_an_unknown_health_probe_before_execution(self):
+        registry = self.registry()
+        profile = registry.profiles[0]
+        bad_profile = replace(
+            profile,
+            adapter_options=replace(
+                profile.adapter_options,
+                health_probe_ids=(*profile.adapter_options.health_probe_ids, 'future-probe'),
+            ),
+        )
+        bad_registry = replace(
+            registry,
+            profiles=(bad_profile, *registry.profiles[1:]),
+        )
+
+        with self.assertRaisesRegex(ValueError, 'unsupported generic-systemd health probes'):
+            POLICY.release_targets(self.inventory(), registry=bad_registry)
+
 
 class ReleasePlannerTest(unittest.TestCase):
     def test_fleet_payload_preserves_decision_order_and_explanations(self):
