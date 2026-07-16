@@ -76,7 +76,9 @@ safety boundary remains unchanged. The current work is PR 4 only.
 - [x] (2026-07-16 14:37Z) Fetched merged `origin/main` and created the isolated `agent/terminal-adapter-coordinator` worktree from exact commit `10de373be26fbe904720f9e05ee50a1f7f5a380f`.
 - [x] (2026-07-16 15:00Z) Implemented PR 4's executable `TerminalAdapter` boundary, `generic-systemd` and Signage compatibility adapters, registry-selected playbooks and ready authority, a serial generic terminal playbook, profile-generic coordinator/evidence/rollback handling, and sequential profile approval-gate history while preserving the legacy current/latest `canaryHold` view.
 - [x] (2026-07-16 15:00Z) Completed PR 4 local validation: 611 deploy Python tests, 20 CI Python tests, all 19 deploy shell contracts including the isolated 20-test PostgreSQL integration, both inventory parses, syntax checks for the staged and generic terminal playbooks against both inventories, compilation, and diff checks pass. Synthetic `inspection-panel` forward, health, cancel, and exact rollback plus a registry-only unique adapter prove no terminal-name core change is needed.
-- [ ] Publish PR 4, run its exact remote read-only plan, pass hosted CI/CodeQL/gitleaks, and merge it.
+- [x] (2026-07-16 15:12Z) Published draft PR #1034 at exact code head `d4541451ae9a9642d1181c441cc6f5fd109a5312`. CI `29509649355`, CodeQL `29509648608`, and gitleaks `29509647951` passed, including `deploy-contract` and `ci-required`.
+- [x] (2026-07-16 15:12Z) Ran the second-factory public read-only plan at exact remote head `d4541451`. It resolved all seven production hosts and their verified evidence without warnings. The accumulated diff includes `global` and `unknown` components, so fail-closed planning correctly targets all seven hosts and both profiles; no state, checkout, service, or device mutation was performed.
+- [ ] Pass the evidence-only final head checks and merge PR 4.
 - [ ] Implement PR 5: registry-driven CI, architecture contracts, acceptance coverage, ADR, and concise new-type documentation.
 
 ## Surprises & Discoveries
@@ -275,7 +277,10 @@ type names. Multiple human gates are sequential and status-compatible. All 611
 deploy Python tests, 20 CI tests, 19 deploy shell contracts, both inventories,
 and both staged and generic terminal playbook syntax checks pass locally. No
 physical host has been contacted for mutation; TalkPlaza validation remains
-static only.
+static only. Draft PR #1034's exact code head passed CI `29509649355`, CodeQL
+`29509648608`, and gitleaks `29509647951`; its read-only production plan
+resolved seven verified records without warning and widened safely for the
+global/unknown historical diff.
 
 ## Context and Orientation
 
@@ -515,6 +520,6 @@ duplicate and unknown keys, and returns immutable validated profile records.
 Core policy consumes validated profile IDs and adapter objects only; it never
 imports arbitrary paths or executes registry-provided text.
 
-Revision note (2026-07-16 15:00Z): Recorded PR #1033's final merge and PR 4's
-adapter implementation plus complete local evidence. PR 4 still requires an
-exact remote read-only plan and hosted checks before merge.
+Revision note (2026-07-16 15:12Z): Recorded PR #1034's first exact-head hosted
+success and exact remote read-only plan. This evidence-only update requires one
+final hosted pass before merge.
