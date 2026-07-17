@@ -225,6 +225,7 @@ export async function assertAllInspectorEntriesHaveRegistration(
 ) {
   const entries = await db.selfInspectionInspectorEntry.findMany({
     where: { sessionId },
+    orderBy: { entryIndex: 'asc' },
     select: {
       entryIndex: true,
       inspectorEmployeeId: true,
