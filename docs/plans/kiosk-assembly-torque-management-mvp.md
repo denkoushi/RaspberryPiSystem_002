@@ -2,13 +2,13 @@
 title: Kiosk Assembly Torque Management MVP
 id: plan-kiosk-assembly-torque-management-mvp
 status: active
-scope: kiosk assembly torque management, seiban start flow, work-in-progress visibility, procedure library, procedure order settings, PDF procedure viewer, assembly template editor, work session
+scope: kiosk assembly torque management, torque-wrench traceability, seiban start flow, work-in-progress visibility, procedure library, procedure order settings, PDF procedure viewer, assembly template editor, work session
 date: 2026-07-06
 source_of_truth: this file
 related_code: apps/api/src/routes/assembly/index.ts, apps/api/src/routes/kiosk-documents.ts, apps/api/src/routes/kiosk/assembly-procedure-order-auth.ts, apps/api/src/routes/storage/assembly-procedure-images.ts, apps/api/src/services/assembly, apps/web/src/features/assembly, apps/web/src/pages/kiosk/KioskAssemblyHomePage.tsx, apps/web/src/pages/kiosk/KioskAssemblyProcedureOrderSettingsPage.tsx, infrastructure/docker/docker-compose.server.yml, infrastructure/ansible/roles/server/tasks/main.yml
-related_docs: ../INDEX.md, ../guides/deployment.md, ./kiosk-deploy-notice-assembly-ui.md, ../decisions/ADR-20260714-assembly-marker-callout-and-shared-image-canvas.md
-validation: local Docker Postgres, GitHub Actions CI 28642360918 and 28650944516/28650941078, limited deployment run 20260703-183241-22704, user real-device acceptance 2026-07-03, seiban start flow CI/deploy/Phase12, procedure order viewer CI/deploy/Phase12, WIP-first UI CI 28829668364, Pi5/Pi4 deployment 2026-07-07, Phase12 45/0/0, 2026-07-14 callout/library UI isolated DB and local verification
-open_items: Bluetooth torque-agent, PDF viewing completion tracking, NFC serial scan, completed work-session history/search enhancements
+related_docs: ../INDEX.md, ../guides/deployment.md, ./assembly-torque-wrench-traceability-execplan.md, ../runbooks/assembly-torque-agent.md, ../decisions/ADR-20260717-assembly-torque-wrench-traceability.md
+validation: prior deployed MVP evidence below; 2026-07-17 traceability preview approved and local lint/build, disposable-Postgres migration/integration/EXPLAIN, agent, Docker, Compose, and Ansible contracts passed; physical CEM3-BTLA payload remains unverified
+open_items: capture and approve real CEM3-BTLA HOGP fixtures, finalize the production parser profile, perform on-device responsive/hardware acceptance, deploy only after explicit authorization
 ---
 
 # Kiosk Assembly Torque Management MVP
@@ -29,6 +29,13 @@ This is separate from part measurement and self-inspection. The implementation r
 
 ## Current State
 
+- Latest local traceability branch: `feat/assembly-torque-wrench-traceability`, based on `origin/main`; implemented and locally verified on 2026-07-17, not pushed or deployed.
+- The 2026-07-17 additive implementation introduces `LEGACY` and `REQUIRED` templates. Existing templates stay `LEGACY`; new/revised templates use structured fastener conditions, a capability group, template-wide stable marker numbers, server-generated hidden tightening IDs, condition inheritance, and inclusive range copy.
+- REQUIRED work selects and confirms one serial-numbered physical torque wrench backed by `MeasuringInstrument`. The API centrally checks group/fastener match, model membership/range, AVAILABLE or IN_USE state, calibration validity in Asia/Tokyo, latest setting equality after N·m conversion, current work position, and client-device ownership.
+- A confirmation is reused across different marker numbers only while session, physical wrench, normalized tightening condition, and latest setting history remain identical. A wrench/condition/setting change requires reconfirmation.
+- Accepted, NG, and rejected inputs preserve physical serial/model/setting snapshots. Rejected inputs do not advance work. `(clientDeviceId, eventId)` is idempotent and cannot be replayed into another session.
+- `clients/torque-agent` now has explicit HID, parser-registry, work-binding, SQLite outbox/local-audit, API-delivery, and health boundaries. It has no production CEM3-BTLA parser until sanitized real payload fixtures are captured; the only parser is clearly test-only.
+- Canonical implementation detail and validation evidence: [traceability ExecPlan](./assembly-torque-wrench-traceability-execplan.md). Operations: [torque-agent Runbook](../runbooks/assembly-torque-agent.md).
 - Latest local implementation branch: `feat/kiosk-deploy-notice-assembly-ui`, based on `origin/main`; implemented and verified locally on 2026-07-14, not deployed.
 - Latest deployed implementation branch: `feat/kiosk-assembly-wip-first-ui`.
 - Latest deployed runtime commit: `3a8c9e41` (`fix(assembly): prioritize kiosk wip pane`).
@@ -110,6 +117,11 @@ Assembly data is stored in dedicated Prisma models:
 - `AssemblyTemplateCheckItem`: numbered required/optional assembly check marker.
 - `AssemblyWorkSession`: product/session identity and current position.
 - `AssemblyTorqueRecord`: accepted OK, recorded NG, and ignored duplicate inputs.
+- `TorqueWrenchModel`: manufacturer/model measurement range and output-profile metadata.
+- `TorqueWrenchProfile`: one-to-one torque-specific extension of a physical `MeasuringInstrument`, with normalized unique serial number.
+- `TorqueWrenchCapabilityGroup` and its model join: structured fastener condition and one-or-more permitted wrench models.
+- `TorqueWrenchSettingHistory`: append-only physical-wrench setting history in observed and canonical N·m values.
+- `AssemblyTorqueWrenchConfirmation`: operator confirmation of one physical wrench and one immutable setting row for a normalized tightening condition.
 - `AssemblyAreaRestartLog`: area restart history.
 - `AssemblyProcedureOrderSet`: one normalized machine-name key per viewing-order setting.
 - `AssemblyProcedureOrderItem`: ordered references to existing `KioskDocument` PDF documents, with optional display labels such as `X軸` or `X軸-1`.
@@ -118,6 +130,8 @@ Summary-list indexes were added in migration `20260703150000_assembly_summary_in
 The seiban start flow adds migration `20260706170000_assembly_seiban_start_flow` with a normal lookup index on `AssemblyWorkSession(productNo, serialNo, status, updatedAt)`. It intentionally does not add a partial unique constraint because existing data can contain duplicates and the first phase only needs deterministic resume behavior.
 
 The procedure order viewer adds migration `20260706193000_assembly_procedure_order_viewer` with `AssemblyProcedureOrderSet(machineNameKey)` unique lookup and `AssemblyProcedureOrderItem(setId, sortOrder)` ordering indexes. `AssemblyProcedureOrderItem.kioskDocumentId` references `KioskDocument(id)` with `ON DELETE RESTRICT`; the document delete route also returns HTTP 409 before deleting PDF/page files when a document is used by assembly viewing order.
+
+Migration `20260717070000_assembly_torque_wrench_traceability` adds the torque-wrench domain, template traceability mode and structured fields, template-wide `(templateId, markerNo)` uniqueness, confirmations, and nullable audit snapshots. It backfills existing templates as `LEGACY`, preserves old free-text wrench/record values, and aborts rather than renumbering when historical cross-area marker duplicates exist.
 
 Migration `20260714120000_assembly_marker_callout_tips` adds nullable paired callout-tip ratios to both `AssemblyTemplateBolt` and `AssemblyTemplateCheckItem`. Existing markers remain callout-free, no rows are backfilled, and no index is added. Bolt ratios keep the existing decimal/string response convention; check ratios remain floating-point numbers.
 
@@ -128,6 +142,8 @@ Assembly routes live under `/api/assembly/*`:
 - Procedure documents: preview, upload, list, summary, rename, delete-if-unused.
 - Templates: list, summary, detail, create, revise, retire.
 - Work sessions: start, detail, record torque, advance area, restart area, complete, cancel, Excel export.
+- Torque-wrench master: models, physical profiles, append-only settings, capability groups, and compatible-group lookup under `/api/torque-wrench-*` and `/api/torque-wrenches`.
+- REQUIRED work: compatible physical-wrench lookup, confirmation/current reusable confirmation, idempotent agent intake, and ADMIN/MANAGER override under `/api/assembly/work-sessions/:id/*`.
 
 The summary endpoints added for scalable management UI are:
 
@@ -169,6 +185,8 @@ Routes:
 - `/kiosk/assembly/templates/:templateId/edit`: template revision editor.
 - `/kiosk/assembly/work/start?templateId=...`: work start form.
 - `/kiosk/assembly/work-sessions/:sessionId`: torque work session.
+- `/admin/tools/torque-wrenches`: model, physical wrench, storage/calibration/status, current setting/history, and capability-group management.
+- `/admin/tools/assembly-torque-override`: ADMIN/MANAGER-only audited transport fallback; it does not bypass eligibility checks.
 
 The management page follows the inspection drawing management pattern: table-based procedure library, table-based template list, separate template editor, and separate work screen. The operator top page keeps the work-start path short and leaves the vertical screen space for search, serial entry, and WIP visibility.
 
@@ -207,8 +225,21 @@ DEV preview routes:
 - Viewing order does not gate torque progress. If no valid configured PDF sequence is available, the work screen keeps showing the existing single procedure image and torque work continues.
 - Bolt/check callout tips are optional. X/Y must both be numbers in 0–1 or both null/omitted; revisions copy them, and templates without callouts remain compatible.
 - User-facing assembly labels and Excel headings use `型番`; the internal `modelCode`, DB columns, and JSON keys remain unchanged.
+- REQUIRED marker numbers are unique across the whole template, remain stable after deletion, and reuse the smallest missing positive number on the next addition.
+- Condition inheritance/range copy changes only fastener fields, limits, unit, and capability group; marker number, coordinates, page, callout, ordering, DB ID, and internal tightening ID are never copied.
+- A physical-wrench confirmation follows the normalized condition rather than the marker identity. It is reusable across equal conditions and becomes stale after any condition, wrench, or setting-history change.
+- CEM3-BTLA field order, delimiter, judgement, and terminator are not inferred from product prose. A fixture-driven parser is blocked until actual sanitized output is captured and approved.
 
 ## Validation Results
+
+Local traceability validation on 2026-07-17 (not deployed):
+
+- User-approved three-screen interactive preview at FHD and 1366-class viewports.
+- Root lint, Shared Types/API/Web production builds, 7 focused Web checks, 19 API unit checks, 22 API integration checks, 8 torque-agent checks and Ruff, 136 deployment/profile/probe contracts, Compose configuration, Ansible syntax, Docker image build, and live health/CORS check passed.
+- A uniquely named disposable `pgvector/pgvector:pg15` database applied all 149 migrations. A prior-version upgrade preserved representative legacy rows; historical cross-area marker duplication failed with SQLSTATE `P0001` and rolled back unchanged.
+- Integration coverage includes physical serial/settings snapshots, wrong/unknown/stale wrench rejection, same-condition confirmation reuse, reconfirmation after setting change, cross-session event-ID refusal, idempotent retransmission, and ADMIN/MANAGER override auditing.
+- Representative EXPLAIN plans selected the normalized serial, latest setting, fastener/group, device/event idempotency, session timeline, and profile/memory replay indexes. All disposable container, volume, network, and validation image resources were removed after each run.
+- The production CEM3-BTLA parser and real-device acceptance are intentionally not claimed; see [the ExecPlan](./assembly-torque-wrench-traceability-execplan.md).
 
 Local validation before push:
 
@@ -363,13 +394,13 @@ Real-device deployment and smoke:
 - [Assembly procedure order settings page](../../apps/web/src/pages/kiosk/KioskAssemblyProcedureOrderSettingsPage.tsx)
 - [Assembly management page](../../apps/web/src/pages/kiosk/KioskAssemblyPage.tsx)
 - [Template editor page](../../apps/web/src/pages/kiosk/KioskAssemblyTemplateEditorPage.tsx)
-- [Work start page](../../apps/web/src/pages/kiosk/KioskAssemblyWorkStartPage.tsx)
 - [Work session page](../../apps/web/src/pages/kiosk/KioskAssemblyWorkSessionPage.tsx)
 
 ## Open Items
 
-- Add real Bluetooth integration after confirming the exact Tohnichi output mode and pairing/security behavior for the planned tools.
-- Build or deploy the Raspberry Pi side `torque-agent` only after the real device protocol is confirmed.
+- Capture normal, low/high-limit, replay, rapid consecutive, partial, and malformed output from a configured CEM3-BTLA; sanitize it and freeze fixture files before registering a production parser profile.
+- Validate at least two physical serial numbers when two tools are available, then perform Raspberry Pi HID path, exclusive-grab, browser-heartbeat, outage/recovery, and responsive work-screen acceptance.
+- Do not deploy the parser or enable the client Compose `torque` profile until the fixture gate passes and deployment is explicitly authorized. Parser-independent agent/Docker/Ansible contracts are already implemented locally.
 - Add page-viewed/completion audit if procedure viewing itself must become a quality gate.
 - Add NFC serial scan if/when serial identification moves from software keypad to tag scanning.
 - Decide whether Excel output needs full legacy form reproduction or whether the current quality-record workbook is enough.

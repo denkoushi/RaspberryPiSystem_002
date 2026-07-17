@@ -25,6 +25,11 @@ export type TorqueWrenchCandidate = {
   modelTorqueMinNm: Prisma.Decimal.Value;
   modelTorqueMaxNm: Prisma.Decimal.Value;
   capabilityGroupId: string | null;
+  capabilityGroupIsActive: boolean;
+  capabilityGroupNominalDiameter: string;
+  capabilityGroupBoltLengthMm: Prisma.Decimal.Value;
+  capabilityGroupMaterial: string;
+  capabilityGroupStrengthClass: string;
   capabilityModelIds: string[];
   setting:
     | {
@@ -52,14 +57,22 @@ function tokyoDateKey(value: Date): string {
 function requiredConditionMatchesGroup(condition: TorqueCondition, candidate: TorqueWrenchCandidate): boolean {
   return Boolean(
     condition.capabilityGroupId &&
+      condition.nominalDiameter &&
+      condition.boltLengthMm != null &&
+      condition.material &&
+      condition.strengthClass &&
       candidate.capabilityGroupId === condition.capabilityGroupId &&
+      candidate.capabilityGroupIsActive &&
+      normalizeFastenerText(condition.nominalDiameter) === candidate.capabilityGroupNominalDiameter &&
+      new Prisma.Decimal(condition.boltLengthMm).equals(candidate.capabilityGroupBoltLengthMm) &&
+      normalizeFastenerText(condition.material) === candidate.capabilityGroupMaterial &&
+      normalizeFastenerText(condition.strengthClass) === candidate.capabilityGroupStrengthClass &&
       candidate.capabilityModelIds.includes(candidate.modelId)
   );
 }
 
 export function torqueConditionFingerprint(condition: TorqueCondition): string {
   const values = [
-    condition.templateBoltId,
     normalizeFastenerText(condition.nominalDiameter ?? ''),
     condition.boltLengthMm == null ? '' : new Prisma.Decimal(condition.boltLengthMm).toString(),
     normalizeFastenerText(condition.material ?? ''),

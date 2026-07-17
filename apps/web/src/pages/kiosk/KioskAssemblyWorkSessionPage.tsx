@@ -6,6 +6,7 @@ import {
   completeAssemblyWorkSession,
   getAssemblyWorkSession,
   getAssemblyWorkSessionProcedureSequence,
+  listCurrentTorqueWrenchConfirmations,
   listCompatibleTorqueWrenchesForSession,
   confirmAssemblyTorqueWrench,
   recordAssemblyCheck,
@@ -44,6 +45,7 @@ export function KioskAssemblyWorkSessionPage() {
   const [compatibleWrenches, setCompatibleWrenches] = useState<Array<{ profile: TorqueWrenchProfileApi; conditionFingerprint: string }>>([]);
   const [selectedProfileId, setSelectedProfileId] = useState('');
   const [confirmation, setConfirmation] = useState<{ id: string; torqueWrenchProfileId: string; settingHistoryId: string } | null>(null);
+  const [confirmationReused, setConfirmationReused] = useState(false);
   const [agentConnected, setAgentConnected] = useState(false);
 
   useEffect(() => {
@@ -110,15 +112,34 @@ export function KioskAssemblyWorkSessionPage() {
       setCompatibleWrenches([]);
       setSelectedProfileId('');
       setConfirmation(null);
+      setConfirmationReused(false);
       return;
     }
     let cancelled = false;
     setConfirmation(null);
-    void listCompatibleTorqueWrenchesForSession(session.id)
-      .then((items) => {
+    setConfirmationReused(false);
+    setAgentConnected(false);
+    void Promise.all([
+      listCompatibleTorqueWrenchesForSession(session.id),
+      listCurrentTorqueWrenchConfirmations(session.id)
+    ])
+      .then(([items, confirmations]) => {
         if (cancelled) return;
         setCompatibleWrenches(items);
-        setSelectedProfileId(items[0]?.profile.id ?? '');
+        const reusable = confirmations.find((candidate) =>
+          items.some(({ profile }) => profile.id === candidate.torqueWrenchProfileId)
+        );
+        setSelectedProfileId(reusable?.torqueWrenchProfileId ?? items[0]?.profile.id ?? '');
+        setConfirmation(
+          reusable
+            ? {
+                id: reusable.id,
+                torqueWrenchProfileId: reusable.torqueWrenchProfileId,
+                settingHistoryId: reusable.settingHistoryId
+              }
+            : null
+        );
+        setConfirmationReused(Boolean(reusable));
       })
       .catch((error) => {
         if (!cancelled) setMessage(readAssemblyApiErrorMessage(error, '適合トルクレンチを取得できませんでした。'));
@@ -131,6 +152,7 @@ export function KioskAssemblyWorkSessionPage() {
   useEffect(() => {
     if (!session?.id || !traceabilityRequired) return;
     let cancelled = false;
+    setAgentConnected(false);
     const heartbeat = async () => {
       try {
         const response = await fetch('http://127.0.0.1:7073/heartbeat', {
@@ -251,6 +273,7 @@ export function KioskAssemblyWorkSessionPage() {
         physicalDisplayConfirmed: true
       });
       setConfirmation(next);
+      setConfirmationReused(false);
       setMessage('現物の製造番号と設定値を確認済みにしました。トルク入力を待っています。');
     });
 
@@ -382,7 +405,11 @@ export function KioskAssemblyWorkSessionPage() {
                 {confirmation ? '現物確認済み' : '製造番号と現物設定を確認'}
               </Button>
               <div className="rounded bg-slate-950/70 px-3 py-2 text-center text-sm font-semibold">
-                {confirmation ? 'トルク入力待機中' : '現物確認後に入力を受け付けます'}
+                {confirmation
+                  ? confirmationReused
+                    ? '同じ締付条件の確認を引継ぎ・トルク入力待機中'
+                    : '現物確認済み・トルク入力待機中'
+                  : '現物確認後に入力を受け付けます'}
               </div>
             </div>
           ) : (

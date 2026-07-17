@@ -116,6 +116,20 @@ describe('torque wrench traceability API', () => {
         headers: adminHeaders,
         payload: { lowerLimit: 28, nominalTorque: 30, upperLimit: 32, unit: 'N-m', reason: '工程設定' }
       });
+    const futureSetting = await app.inject({
+      method: 'POST',
+      url: `/api/torque-wrenches/${profileId}/settings`,
+      headers: adminHeaders,
+      payload: {
+        lowerLimit: 28,
+        nominalTorque: 30,
+        upperLimit: 32,
+        unit: 'N-m',
+        effectiveAt: '2099-01-01T00:00:00.000Z',
+        reason: '未来の設定は即時の現在値とみなさない'
+      }
+    });
+    expect(futureSetting.statusCode).toBe(400);
     expect((await addSetting()).statusCode).toBe(201);
 
     const secondProfileResponse = await app.inject({
@@ -298,8 +312,55 @@ describe('torque wrench traceability API', () => {
       })
     ).toBe(1);
 
+    const otherSession = await new AssemblyWorkSessionService().start({
+      templateId: template.id,
+      productNo: 'TRACE-PRODUCT-OTHER',
+      serialNo: `TRACE-OTHER-${randomUUID()}`,
+      operatorNameSnapshot: '別作業者',
+      targetUnit: 'TRACE-001',
+      clientDeviceId: client.id
+    });
+    const crossSessionReplay = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${otherSession.id}/record-torque`,
+      headers: kioskHeaders,
+      payload: validPayload
+    });
+    expect(crossSessionReplay.statusCode).toBe(409);
+    expect(crossSessionReplay.json().errorCode).toBe('EVENT_SESSION_MISMATCH');
+
     const secondBoltId = template.areas[0].bolts[1].id;
-    const staleConfirmationId = await confirm(secondBoltId);
+    const reusableConfirmations = await app.inject({
+      method: 'GET',
+      url: `/api/assembly/work-sessions/${session.id}/torque-wrench-confirmations/current`,
+      headers: kioskHeaders
+    });
+    expect(reusableConfirmations.statusCode).toBe(200);
+    expect(reusableConfirmations.json().confirmations).toEqual([
+      expect.objectContaining({
+        id: firstConfirmationId,
+        torqueWrenchProfileId: profileId,
+        markerNo: 2
+      })
+    ]);
+
+    const reusedConfirmation = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${session.id}/record-torque`,
+      headers: kioskHeaders,
+      payload: {
+        sourceEventKey: 'evt-reused-confirmation',
+        expectedTemplateBoltId: secondBoltId,
+        confirmationId: firstConfirmationId,
+        serialNumber: 'SN 00-123',
+        value: 27,
+        unit: 'N-m',
+        rawPayload: { fixture: 'reused-confirmation' }
+      }
+    });
+    expect(reusedConfirmation.statusCode).toBe(200);
+    expect(reusedConfirmation.json().outcome.kind).toBe('recorded_ng');
+
     expect((await addSetting()).statusCode).toBe(201);
     const stale = await app.inject({
       method: 'POST',
@@ -308,7 +369,7 @@ describe('torque wrench traceability API', () => {
       payload: {
         sourceEventKey: 'evt-stale-setting',
         expectedTemplateBoltId: secondBoltId,
-        confirmationId: staleConfirmationId,
+        confirmationId: firstConfirmationId,
         serialNumber: 'SN 00-123',
         value: 30,
         unit: 'N-m',

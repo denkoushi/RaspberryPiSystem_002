@@ -24,8 +24,23 @@
 - **InspectionRecord**: 点検記録（measuringInstrumentId, loanId, employeeId, inspectionItemId, result, inspectedAt）
 - **MeasuringInstrumentTag**: RFIDタグ紐付け（measuringInstrumentId, rfidTagUid）
 - **Loan**: 貸出情報（工具管理モジュールと共通、measuringInstrumentIdを追加）
+- **TorqueWrenchProfile**: `MeasuringInstrument`と1対1のトルクレンチ固有情報（製造番号、型番モデル）
+- **TorqueWrenchSettingHistory**: 物理トルクレンチごとの追記専用設定履歴（下限、規定、上限、単位、N·m換算値）
 
-詳細は [データベース設計](../../architecture/database.md#measuring-instruments-module) を参照してください。
+関連するDB運用知見は[データベース・ナレッジベース](../../knowledge-base/database.md)を参照してください。
+
+## トルクレンチ拡張（2026-07-17）
+
+組立工程のトルクレンチは、保管場所・校正期限・AVAILABLE／IN_USE／MAINTENANCE／RETIRED状態について既存`MeasuringInstrument`を正本として再利用する。メーカー・型番・測定範囲、正規化製造番号、締結対象の適合グループ、設定履歴、組立確認・実績は独立した`torque-wrenches`ドメインへ分離し、汎用計測機器サービスへ組立業務規則を混在させない。
+
+- 管理画面: `/admin/tools/torque-wrenches`
+- 組立で選択するもの: 物理製造番号ではなく、呼び径・長さ・材質・強度区分を表す適合グループ
+- 作業で記録するもの: 実際の物理製造番号、メーカー・型番、当時の最新設定履歴、入力値・単位、受付／拒否理由
+- 校正期限: Asia/Tokyoの当日を含めて有効。未登録・期限切れはREQUIRED作業で拒否
+- 設定値: 過去行を更新せず新しい履歴を追加。追加後は既存の現物確認を失効
+- 廃止: 参照済み資産は物理削除せずRETIRED、型番・適合グループは利用停止
+
+設計・検証の正本は[組立トルクレンチトレーサビリティExecPlan](../../plans/assembly-torque-wrench-traceability-execplan.md)、端末運用は[torque-agent Runbook](../../runbooks/assembly-torque-agent.md)を参照する。
 
 ## 持ち出しフロー
 
@@ -115,11 +130,18 @@ apps/api/src/
 - **バリデーションスキーマの分離**: 各サブディレクトリに`schemas.ts`を配置し、バリデーションロジックを集約
 - **ファイルサイズの抑制**: 1ファイルあたり50-100行程度に収まり、可読性を向上
 
-## 実装状況（2025-12-12時点）
+## 実装状況（2026-07-17時点）
 
 ### 完成度: 95%（TS100統合を除く）
 
 #### ✅ 実装完了機能
+
+**組立トルクレンチ拡張（ローカル実装・未デプロイ）**
+- 型番／物理レンチ／適合グループ／追記専用設定履歴
+- REQUIREDテンプレートの構造化締結条件と物理レンチ適合判定
+- 実績スナップショット、拒否監査、イベント冪等性、管理者例外入力
+- `torque-agent`のHID／SQLite outbox／ローカル監査／配送境界
+- CEM3-BTLA正式パーサーは実機fixture取得待ち
 
 **コア機能**
 - データベーススキーマ（4エンティティ）

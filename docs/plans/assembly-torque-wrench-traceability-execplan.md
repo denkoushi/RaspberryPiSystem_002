@@ -7,8 +7,8 @@ date: 2026-07-17
 source_of_truth: this file
 related_code: apps/api/prisma/schema.prisma, apps/api/src/routes/assembly, apps/api/src/services/assembly, apps/web/src/features/assembly, apps/web/src/pages/kiosk, packages/shared-types, clients/torque-agent
 related_docs: ../decisions/ADR-20260717-assembly-torque-wrench-traceability.md, ../design-previews/assembly-torque-wrench-traceability-preview.html, ./kiosk-assembly-torque-management-mvp.md
-validation: preview approved; lint and affected builds pass; disposable-Postgres migration, upgrade, integration, and EXPLAIN checks pass; agent and deployment contracts pass; physical CEM3-BTLA payload capture remains pending
-open_items: capture real CEM3-BTLA HOGP output and freeze its parser fixtures; rerun Ruff in a Poetry-capable environment; finish canonical operations documentation and final hardware-responsive acceptance
+validation: preview approved; lint and affected builds pass; disposable-Postgres migration, upgrade, integration, and EXPLAIN checks pass; agent, Ruff, Docker, and deployment contracts pass; physical CEM3-BTLA payload capture remains pending
+open_items: capture real CEM3-BTLA HOGP output and freeze its parser fixtures; register and test only the fixture-proven production parser; perform final Raspberry Pi HID and production-screen acceptance
 ---
 
 # Add Physical Torque Wrench Traceability to Assembly Work
@@ -37,7 +37,9 @@ Two explicit gates protect the implementation. First, the user must approve a th
 - [x] (2026-07-17 07:48Z) Implemented work confirmation, agent event intake, rejected-event audit, idempotency, admin override, and Excel traceability.
 - [x] (2026-07-17 07:48Z) Implemented the parser-independent `clients/torque-agent` boundaries and integrated Docker Compose, Ansible, terminal profiles, and health checks.
 - [x] (2026-07-17 07:48Z) Ran focused unit/integration, migration/upgrade, EXPLAIN, agent, Docker-runtime, infrastructure, lint, and build validation using disposable resources only.
-- [ ] Update canonical assembly/measuring-instrument documentation and complete the retrospective.
+- [x] (2026-07-17 09:06Z) Updated the canonical assembly/measuring-instrument documents and added an operator-focused torque-agent runbook.
+- [x] (2026-07-17 09:28Z) Hardened condition-confirmation reuse, runtime eligibility, event idempotency, future-setting handling, local HID-error retention, and loopback CORS; reran final disposable-resource validation.
+- [ ] Capture the real-device fixtures, complete hardware acceptance, and close the final retrospective.
 
 ## Surprises & Discoveries
 
@@ -64,6 +66,18 @@ Two explicit gates protect the implementation. First, the user must approve a th
 
 - Observation: Runtime health testing caught an incorrect Python module working directory in the first agent image.
   Evidence: The Dockerfile was corrected to copy under `/app/torque-agent` and execute there. The rebuilt multi-stage image was 214 MB and returned `{ok: true, queuedEvents: 0, bound: false}` from its loopback health endpoint.
+
+- Observation: The first confirmation fingerprint incorrectly included the template Bolt ID, so identical conditions on successive unique markers could not reuse one physical-display confirmation.
+  Evidence: Resume-time review traced the stale check through policy, API, and Web state. The fingerprint now contains only normalized fastener, capability, and torque condition values; current confirmations search the session and select the latest valid confirmation per physical profile. Integration coverage proves marker ① confirmation is reused at marker ②, while a new setting history immediately makes it stale.
+
+- Observation: Inputs received without a live browser binding or with an invalid payload were only logged and then lost.
+  Evidence: HID ingestion was extracted behind `TorqueEventIngestor`. Such inputs now enter a bounded SQLite `torque_local_audit` with reason, raw text, device path, parser profile, and parse error; they are never guessed into a work session. Agent tests prove audit survival across SQLite reopen and normal bound-event queueing.
+
+- Observation: Binding the loopback heartbeat API with wildcard CORS would allow an unrelated browser page to submit a binding request to `127.0.0.1`.
+  Evidence: The agent now derives the API origin, accepts only explicitly configured additional Web origins, rejects wildcard/non-origin values during configuration, and limits CORS request headers. A live disposable image returned 200 to the configured kiosk origin and 400 without an allow-origin header to an untrusted origin.
+
+- Observation: Keeping the prior confirmation visible while loading the next marker could leave the previous local binding alive for its heartbeat TTL if the compatibility request failed.
+  Evidence: Marker changes now clear the Web confirmation and connection display before fetching reusable confirmation data. An unconfirmed heartbeat explicitly clears the agent binding; a live image test proved the transition `bound=false → true → false`. A same-condition confirmation is then reselected automatically only after the API revalidates it.
 
 ## Decision Log
 
@@ -99,6 +113,22 @@ Two explicit gates protect the implementation. First, the user must approve a th
   Rationale: These are explicit acceptance gates in the approved plan and prevent expensive UI rework or an invented device protocol.
   Date/Author: 2026-07-17 / Codex, confirmed by user.
 
+- Decision: Physical-display confirmation identity excludes marker/Bolt identity and includes the normalized tightening condition, capability group, and canonical torque limits.
+  Rationale: Circle markers are always unique, but the user explicitly requires one set of equal input conditions to be reusable across many markers. Session, physical profile, and latest setting still constrain reuse; any change forces reconfirmation.
+  Date/Author: 2026-07-17 / Codex, derived from the confirmed requirement and verified on resume.
+
+- Decision: Unbound or unparseable HID input is retained in a separate bounded local audit, not the API delivery outbox.
+  Rationale: It prevents measurement loss without inventing a session assignment. Keeping it separate also prevents later automatic delivery of an event that was never safely bound.
+  Date/Author: 2026-07-17 / Codex.
+
+- Decision: The loopback heartbeat endpoint permits the API origin and explicitly configured kiosk Web origins only; wildcard CORS is invalid configuration.
+  Rationale: Loopback limits network reachability but does not by itself stop an unrelated page open in the same browser from attempting a cross-origin request.
+  Date/Author: 2026-07-17 / Codex.
+
+- Decision: Every marker transition disarms the local agent before condition-based confirmation reuse is revalidated.
+  Rationale: A brief disarmed state is safer than displaying or retaining a stale binding during an API failure. Reuse remains automatic after successful validation and does not require another physical check when all reuse keys are unchanged.
+  Date/Author: 2026-07-17 / Codex.
+
 ## Outcomes & Retrospective
 
 The feature branch, living plan, ADR, and interactive three-screen preview now exist on the latest remote main. Browser validation exercised condition inheritance, range copy, all five work states, and both target responsive classes without console errors, outer overflow, or clipped controls. Production behavior, database state, existing Docker resources, and deployed hosts remain unchanged.
@@ -108,6 +138,11 @@ At the preview gate, update this section with the approved/rejected layout and a
 The user approved the preview without requested layout changes on 2026-07-17. Production schema, API, and UI work may now proceed. The separate real-device payload gate still applies to the CEM3-BTLA production parser; parser-independent agent boundaries and durable-delivery behavior may be implemented and tested with an explicitly labeled synthetic profile.
 
 At the 2026-07-17 17:00 JST safety checkpoint, parser-independent production work is implemented on the feature branch. Validation includes 22 focused API integration tests, 6 torque-agent unit tests, 130 deployment/profile/probe tests, root lint with zero warnings, shared/API/Web production builds, full fresh and legacy-upgrade migrations, duplicate-marker rollback, representative EXPLAIN plans, Compose configuration, Ansible syntax, image build, and live container health. The only supported agent parser remains explicitly synthetic; no CEM3-BTLA field order or delimiter has been guessed. Final completion is therefore intentionally held behind the real-device fixture gate and remaining runbook/canonical-document updates.
+
+Work resumed at 17:54 JST. Review corrected condition-based confirmation reuse, safe disarm/rearm across marker transitions, runtime fastener/group revalidation, cross-session event-ID misuse, future-dated setting ambiguity, local preservation of unbound/malformed HID input, and wildcard loopback CORS.
+A final disposable database applied all 149 migrations and passed the 22 combined assembly/traceability integration tests. Unit/UI evidence includes 19 converter/policy checks, 7 focused Web checks, and 8 agent checks with Ruff 0.4.2.
+The final pass also completed zero-warning root lint, Shared Types/API/Web production builds, 136 deployment/profile/probe contracts, Compose configuration, Ansible syntax, and a disposable agent image health/CORS/binding runtime check.
+Every temporary database, volume, network, container, and feature image created by this pass was removed. Canonical assembly, measuring-instrument API/UI, agent README, INDEX, and operations Runbook now describe the implemented/not-deployed state and the remaining hardware gate.
 
 ## Context and Orientation
 
@@ -265,3 +300,7 @@ Revision note 2026-07-17 06:32Z: Created this self-contained execution plan afte
 Revision note 2026-07-17 06:40Z: Recorded the user's preview approval. Opened the production schema/API/UI milestones while retaining the independent real-device payload gate for the final CEM3-BTLA parser profile.
 
 Revision note 2026-07-17 07:48Z: Recorded the production checkpoint, disposable-database migration and EXPLAIN evidence, affected test/build results, and the remaining real-device fixture gate before the requested 17:00 JST safe pause.
+
+Revision note 2026-07-17 09:06Z: After the user resumed work, corrected confirmation reuse and local input-audit behavior, reran disposable-Postgres/API/agent/Ruff/build/lint validation, and completed canonical documentation plus the torque-agent operations Runbook. The real CEM3-BTLA fixture gate remains unchanged.
+
+Revision note 2026-07-17 09:28Z: Completed the resume-time hardening pass, including future-setting rejection and strict loopback CORS, and recorded the final disposable Postgres, image-runtime, build, lint, and deployment-contract results. The real CEM3-BTLA fixture gate remains unchanged.

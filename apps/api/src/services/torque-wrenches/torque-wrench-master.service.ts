@@ -234,6 +234,10 @@ export class TorqueWrenchMasterService {
     if (profile.model.torqueMinNm.gt(lowerLimitNm) || profile.model.torqueMaxNm.lt(upperLimitNm)) {
       throw new ApiError(400, '設定値が型番の測定可能範囲外です');
     }
+    const effectiveAt = input.effectiveAt ?? new Date();
+    if (effectiveAt.getTime() > Date.now()) {
+      throw new ApiError(400, '適用日時に未来の日時は指定できません');
+    }
     return prisma.torqueWrenchSettingHistory.create({
       data: {
         torqueWrenchProfileId: profileId,
@@ -244,7 +248,7 @@ export class TorqueWrenchMasterService {
         lowerLimitNm,
         nominalTorqueNm,
         upperLimitNm,
-        effectiveAt: input.effectiveAt ?? new Date(),
+        effectiveAt,
         actorUserId: input.actorUserId ?? null,
         actorUsername: input.actorUsername?.slice(0, 120) ?? null,
         reason: input.reason?.trim().slice(0, 500) || null

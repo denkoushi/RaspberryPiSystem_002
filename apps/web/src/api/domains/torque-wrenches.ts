@@ -202,6 +202,7 @@ export type CurrentTorqueWrenchConfirmationApi = {
   templateBoltId: string;
   markerNo: number;
   torqueWrenchProfileId: string;
+  settingHistoryId: string;
   serialNumber: string;
   manufacturer: string;
   modelNumber: string;

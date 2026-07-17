@@ -27,6 +27,14 @@ const profileEligibilityInclude = {
 
 type EligibilityProfile = Prisma.TorqueWrenchProfileGetPayload<{ include: typeof profileEligibilityInclude }>;
 
+const capabilityGroupEligibilityInclude = {
+  models: { select: { modelId: true } }
+} satisfies Prisma.TorqueWrenchCapabilityGroupInclude;
+
+type EligibilityCapabilityGroup = Prisma.TorqueWrenchCapabilityGroupGetPayload<{
+  include: typeof capabilityGroupEligibilityInclude;
+}>;
+
 export type TraceabilityOutcome = {
   kind: 'accepted_ok' | 'recorded_ng' | 'rejected';
   torqueRecordId: string;
@@ -69,8 +77,7 @@ function conditionFromBolt(bolt: AssemblyTemplateBolt): TorqueCondition {
 
 function candidateFromProfile(
   profile: EligibilityProfile,
-  capabilityGroupId: string,
-  capabilityModelIds: string[]
+  capabilityGroup: EligibilityCapabilityGroup
 ): TorqueWrenchCandidate {
   const setting = profile.settingHistories[0] ?? null;
   return {
@@ -80,8 +87,13 @@ function candidateFromProfile(
     calibrationExpiryDate: profile.measuringInstrument.calibrationExpiryDate,
     modelTorqueMinNm: profile.model.torqueMinNm,
     modelTorqueMaxNm: profile.model.torqueMaxNm,
-    capabilityGroupId,
-    capabilityModelIds,
+    capabilityGroupId: capabilityGroup.id,
+    capabilityGroupIsActive: capabilityGroup.isActive,
+    capabilityGroupNominalDiameter: capabilityGroup.nominalDiameter,
+    capabilityGroupBoltLengthMm: capabilityGroup.boltLengthMm,
+    capabilityGroupMaterial: capabilityGroup.material,
+    capabilityGroupStrengthClass: capabilityGroup.strengthClass,
+    capabilityModelIds: capabilityGroup.models.map((link) => link.modelId),
     setting: setting
       ? {
           id: setting.id,
@@ -139,12 +151,13 @@ function isUniqueConstraintError(error: unknown): boolean {
 export class AssemblyTorqueTraceabilityService {
   constructor(private readonly policy = new TorqueWrenchEligibilityPolicy()) {}
 
-  private async loadCapabilityModelIds(capabilityGroupId: string): Promise<string[]> {
-    const links = await prisma.torqueWrenchCapabilityGroupModel.findMany({
-      where: { capabilityGroupId },
-      select: { modelId: true }
+  private async loadCapabilityGroup(capabilityGroupId: string): Promise<EligibilityCapabilityGroup> {
+    const group = await prisma.torqueWrenchCapabilityGroup.findUnique({
+      where: { id: capabilityGroupId },
+      include: capabilityGroupEligibilityInclude
     });
-    return links.map((link) => link.modelId);
+    if (!group) throw new ApiError(409, '適合グループが見つかりません', undefined, 'WRONG_CAPABILITY_GROUP');
+    return group;
   }
 
   async listCompatible(sessionId: string, clientDeviceId: string) {
@@ -156,9 +169,9 @@ export class AssemblyTorqueTraceabilityService {
     assertSessionClient(session, clientDeviceId);
     const bolt = findCurrentBolt(session);
     if (!bolt.capabilityGroupId) throw new ApiError(409, '現在の締付箇所に適合グループがありません');
-    const capabilityModelIds = await this.loadCapabilityModelIds(bolt.capabilityGroupId);
+    const capabilityGroup = await this.loadCapabilityGroup(bolt.capabilityGroupId);
     const profiles = await prisma.torqueWrenchProfile.findMany({
-      where: { modelId: { in: capabilityModelIds } },
+      where: { modelId: { in: capabilityGroup.models.map((link) => link.modelId) } },
       include: profileEligibilityInclude,
       orderBy: { serialNumberKey: 'asc' }
     });
@@ -166,7 +179,7 @@ export class AssemblyTorqueTraceabilityService {
     return profiles.flatMap((profile) => {
       const decision = this.policy.evaluate(
         condition,
-        candidateFromProfile(profile, bolt.capabilityGroupId!, capabilityModelIds)
+        candidateFromProfile(profile, capabilityGroup)
       );
       return decision.eligible
         ? [
@@ -203,13 +216,14 @@ export class AssemblyTorqueTraceabilityService {
         include: profileEligibilityInclude
       });
       if (!profile || !bolt.capabilityGroupId) throw new ApiError(404, '物理トルクレンチが見つかりません');
-      const links = await tx.torqueWrenchCapabilityGroupModel.findMany({
-        where: { capabilityGroupId: bolt.capabilityGroupId },
-        select: { modelId: true }
+      const capabilityGroup = await tx.torqueWrenchCapabilityGroup.findUnique({
+        where: { id: bolt.capabilityGroupId },
+        include: capabilityGroupEligibilityInclude
       });
+      if (!capabilityGroup) throw new ApiError(409, '適合グループが見つかりません', undefined, 'WRONG_CAPABILITY_GROUP');
       const decision = this.policy.evaluate(
         conditionFromBolt(bolt),
-        candidateFromProfile(profile, bolt.capabilityGroupId, links.map((link) => link.modelId))
+        candidateFromProfile(profile, capabilityGroup)
       );
       if (!decision.eligible) {
         throw new ApiError(409, 'このトルクレンチは現在の締付条件に適合しません', { reason: decision.reason }, decision.reason);
@@ -232,30 +246,30 @@ export class AssemblyTorqueTraceabilityService {
     });
   }
 
-  async listCurrentConfirmations(sessionId: string) {
+  async listCurrentConfirmations(sessionId: string, clientDeviceId?: string) {
     const session = await prisma.assemblyWorkSession.findUnique({
       where: { id: sessionId },
       include: assemblyWorkSessionDetailInclude
     });
     if (!session) throw new ApiError(404, '作業セッションが見つかりません');
+    if (clientDeviceId) assertSessionClient(session, clientDeviceId);
     const bolt = findCurrentBolt(session);
     if (!bolt.capabilityGroupId) return [];
-    const capabilityModelIds = await this.loadCapabilityModelIds(bolt.capabilityGroupId);
+    const capabilityGroup = await this.loadCapabilityGroup(bolt.capabilityGroupId);
+    const fingerprint = torqueConditionFingerprint(conditionFromBolt(bolt));
     const confirmations = await prisma.assemblyTorqueWrenchConfirmation.findMany({
-      where: { sessionId, templateBoltId: bolt.id },
+      where: { sessionId, conditionFingerprint: fingerprint },
       include: {
         torqueWrenchProfile: { include: profileEligibilityInclude },
         settingHistory: true
       },
       orderBy: { confirmedAt: 'desc' }
     });
-    const fingerprint = torqueConditionFingerprint(conditionFromBolt(bolt));
     const seenProfiles = new Set<string>();
     return confirmations.flatMap((confirmation) => {
       const profile = confirmation.torqueWrenchProfile;
       const latestSetting = profile.settingHistories[0] ?? null;
       if (seenProfiles.has(profile.id)) return [];
-      seenProfiles.add(profile.id);
       if (
         !latestSetting ||
         confirmation.settingHistoryId !== latestSetting.id ||
@@ -265,15 +279,17 @@ export class AssemblyTorqueTraceabilityService {
       }
       const decision = this.policy.evaluate(
         conditionFromBolt(bolt),
-        candidateFromProfile(profile, bolt.capabilityGroupId!, capabilityModelIds)
+        candidateFromProfile(profile, capabilityGroup)
       );
       if (!decision.eligible) return [];
+      seenProfiles.add(profile.id);
       return [{
         id: confirmation.id,
         confirmedAt: confirmation.confirmedAt,
         templateBoltId: bolt.id,
         markerNo: bolt.markerNo,
         torqueWrenchProfileId: profile.id,
+        settingHistoryId: latestSetting.id,
         serialNumber: profile.serialNumber,
         manufacturer: profile.model.manufacturer,
         modelNumber: profile.model.modelNumber,
@@ -376,7 +392,6 @@ export class AssemblyTorqueTraceabilityService {
         const latestSetting = profile.settingHistories[0] ?? null;
         const fingerprint = torqueConditionFingerprint(conditionFromBolt(bolt));
         if (
-          confirmation.templateBoltId !== bolt.id ||
           confirmation.conditionFingerprint !== fingerprint ||
           !latestSetting ||
           confirmation.settingHistoryId !== latestSetting.id
@@ -384,13 +399,14 @@ export class AssemblyTorqueTraceabilityService {
           return this.ignored(tx, session, bolt, input, 'CONFIRMATION_STALE', profile, valueNm);
         }
         if (!bolt.capabilityGroupId) return this.ignored(tx, session, bolt, input, 'WRONG_CAPABILITY_GROUP', profile, valueNm);
-        const links = await tx.torqueWrenchCapabilityGroupModel.findMany({
-          where: { capabilityGroupId: bolt.capabilityGroupId },
-          select: { modelId: true }
+        const capabilityGroup = await tx.torqueWrenchCapabilityGroup.findUnique({
+          where: { id: bolt.capabilityGroupId },
+          include: capabilityGroupEligibilityInclude
         });
+        if (!capabilityGroup) return this.ignored(tx, session, bolt, input, 'WRONG_CAPABILITY_GROUP', profile, valueNm);
         const decision = this.policy.evaluate(
           conditionFromBolt(bolt),
-          candidateFromProfile(profile, bolt.capabilityGroupId, links.map((link) => link.modelId))
+          candidateFromProfile(profile, capabilityGroup)
         );
         if (!decision.eligible) return this.ignored(tx, session, bolt, input, decision.reason, profile, valueNm);
 
@@ -506,7 +522,7 @@ export class AssemblyTorqueTraceabilityService {
           settingHistory: true
         }
       });
-      if (!confirmation || confirmation.sessionId !== session.id || confirmation.templateBoltId !== bolt.id) {
+      if (!confirmation || confirmation.sessionId !== session.id) {
         throw new ApiError(409, '現在の丸数字に有効なレンチ確認がありません', undefined, 'CONFIRMATION_REQUIRED');
       }
       const profile = confirmation.torqueWrenchProfile;
@@ -521,13 +537,16 @@ export class AssemblyTorqueTraceabilityService {
       if (!bolt.capabilityGroupId) {
         throw new ApiError(409, '適合グループがありません', undefined, 'WRONG_CAPABILITY_GROUP');
       }
-      const links = await tx.torqueWrenchCapabilityGroupModel.findMany({
-        where: { capabilityGroupId: bolt.capabilityGroupId },
-        select: { modelId: true }
+      const capabilityGroup = await tx.torqueWrenchCapabilityGroup.findUnique({
+        where: { id: bolt.capabilityGroupId },
+        include: capabilityGroupEligibilityInclude
       });
+      if (!capabilityGroup) {
+        throw new ApiError(409, '適合グループが見つかりません', undefined, 'WRONG_CAPABILITY_GROUP');
+      }
       const decision = this.policy.evaluate(
         conditionFromBolt(bolt),
-        candidateFromProfile(profile, bolt.capabilityGroupId, links.map((link) => link.modelId))
+        candidateFromProfile(profile, capabilityGroup)
       );
       if (!decision.eligible) {
         throw new ApiError(409, '安全条件を満たさないため例外入力できません', { reason: decision.reason }, decision.reason);
@@ -597,8 +616,11 @@ export class AssemblyTorqueTraceabilityService {
 
   private async resultForExisting(
     sessionId: string,
-    record: { id: string; accepted: boolean; judgement: string; ignoredReason: string | null }
+    record: { id: string; sessionId: string; accepted: boolean; judgement: string; ignoredReason: string | null }
   ): Promise<{ session: AssemblyWorkSessionDetail; outcome: TraceabilityOutcome }> {
+    if (record.sessionId !== sessionId) {
+      throw new ApiError(409, '同じ端末イベントIDが別の作業セッションで既に使用されています', undefined, 'EVENT_SESSION_MISMATCH');
+    }
     const session = await prisma.assemblyWorkSession.findUnique({ where: { id: sessionId }, include: assemblyWorkSessionDetailInclude });
     if (!session) throw new ApiError(404, '作業セッションが見つかりません');
     const rejected = record.judgement === 'IGNORED';

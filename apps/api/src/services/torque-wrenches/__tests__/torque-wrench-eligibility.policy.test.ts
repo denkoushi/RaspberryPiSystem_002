@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { TorqueWrenchEligibilityPolicy, type TorqueCondition, type TorqueWrenchCandidate } from '../torque-wrench-eligibility.policy.js';
+import {
+  TorqueWrenchEligibilityPolicy,
+  torqueConditionFingerprint,
+  type TorqueCondition,
+  type TorqueWrenchCandidate
+} from '../torque-wrench-eligibility.policy.js';
 
 const condition: TorqueCondition = {
   templateBoltId: 'bolt-1',
@@ -22,6 +27,11 @@ const candidate: TorqueWrenchCandidate = {
   modelTorqueMinNm: '10',
   modelTorqueMaxNm: '50',
   capabilityGroupId: 'group-1',
+  capabilityGroupIsActive: true,
+  capabilityGroupNominalDiameter: 'M10',
+  capabilityGroupBoltLengthMm: '35',
+  capabilityGroupMaterial: 'SCM435',
+  capabilityGroupStrengthClass: '10.9',
   capabilityModelIds: ['model-1'],
   setting: { id: 'setting-1', lowerLimitNm: '28', nominalTorqueNm: '30', upperLimitNm: '32' }
 };
@@ -40,13 +50,21 @@ describe('TorqueWrenchEligibilityPolicy', () => {
     });
   });
 
+  it('reuses a confirmation across different markers when every tightening condition is identical', () => {
+    expect(torqueConditionFingerprint({ ...condition, templateBoltId: 'bolt-2' })).toBe(
+      torqueConditionFingerprint(condition)
+    );
+  });
+
   it.each([
     [{ ...candidate, status: 'MAINTENANCE' }, 'INSTRUMENT_STATUS_NOT_ELIGIBLE'],
     [{ ...candidate, calibrationExpiryDate: null }, 'CALIBRATION_MISSING'],
     [{ ...candidate, setting: null }, 'SETTING_HISTORY_MISSING'],
     [{ ...candidate, modelTorqueMaxNm: '31' }, 'MODEL_RANGE_NOT_COVERED'],
     [{ ...candidate, setting: { ...candidate.setting!, nominalTorqueNm: '31' } }, 'SETTING_MISMATCH'],
-    [{ ...candidate, capabilityGroupId: 'other' }, 'WRONG_CAPABILITY_GROUP']
+    [{ ...candidate, capabilityGroupId: 'other' }, 'WRONG_CAPABILITY_GROUP'],
+    [{ ...candidate, capabilityGroupNominalDiameter: 'M12' }, 'WRONG_CAPABILITY_GROUP'],
+    [{ ...candidate, capabilityGroupIsActive: false }, 'WRONG_CAPABILITY_GROUP']
   ] as const)('rejects each independent safety failure', (input, reason) => {
     expect(policy.evaluate(condition, input, new Date('2026-07-17T12:00:00+09:00'))).toEqual({ eligible: false, reason });
   });
