@@ -105,94 +105,95 @@ enum MachinePalletEventActionType {
 }
 
 model Employee {
-  id                       String                    @id @default(uuid())
-  employeeCode             String                    @unique
-  displayName              String
-  lastName                 String? // 苗字（CSVインポート用）
-  firstName                String? // 名前（CSVインポート用）
-  nfcTagUid                String?                   @unique
-  department               String? // 部署（例: 製造担当部門）
-  section                  String? // セクション（例: 加工担当部署）
-  contact                  String?
-  status                   EmployeeStatus            @default(ACTIVE)
-  createdAt                DateTime                  @default(now())
-  updatedAt                DateTime                  @updatedAt
-  loans                    Loan[]
-  inspectionRecords        InspectionRecord[]
-  riggingInspectionRecords RiggingInspectionRecord[]
-  transactions             Transaction[]             @relation("EmployeeActor")
-  partMeasurementSheetsWorker   PartMeasurementSheet[] @relation("PartMeasurementSheetWorker")
-  partMeasurementSheetsCreated  PartMeasurementSheet[] @relation("PartMeasurementSheetCreatedBy")
-  partMeasurementSheetsFinalized PartMeasurementSheet[] @relation("PartMeasurementSheetFinalizedBy")
-  selfInspectionLotEntries SelfInspectionLotEntry[]
-  selfInspectionInspectorEntries SelfInspectionInspectorEntry[] @relation("SelfInspectionInspectorEntryEmployee")
-  selfInspectionRecordApprovals SelfInspectionRecordApproval[] @relation("SelfInspectionRecordApprover")
-  assemblyWorkSessionRecordApprovals AssemblyWorkSessionApproval[] @relation("AssemblyWorkSessionRecordApprover")
+  id                                 String                         @id @default(uuid())
+  employeeCode                       String                         @unique
+  displayName                        String
+  lastName                           String? // 苗字（CSVインポート用）
+  firstName                          String? // 名前（CSVインポート用）
+  nfcTagUid                          String?                        @unique
+  department                         String? // 部署（例: 製造担当部門）
+  section                            String? // セクション（例: 加工担当部署）
+  contact                            String?
+  status                             EmployeeStatus                 @default(ACTIVE)
+  createdAt                          DateTime                       @default(now())
+  updatedAt                          DateTime                       @updatedAt
+  loans                              Loan[]
+  inspectionRecords                  InspectionRecord[]
+  riggingInspectionRecords           RiggingInspectionRecord[]
+  transactions                       Transaction[]                  @relation("EmployeeActor")
+  partMeasurementSheetsWorker        PartMeasurementSheet[]         @relation("PartMeasurementSheetWorker")
+  partMeasurementSheetsCreated       PartMeasurementSheet[]         @relation("PartMeasurementSheetCreatedBy")
+  partMeasurementSheetsFinalized     PartMeasurementSheet[]         @relation("PartMeasurementSheetFinalizedBy")
+  selfInspectionLotEntries           SelfInspectionLotEntry[]
+  selfInspectionInspectorEntries     SelfInspectionInspectorEntry[] @relation("SelfInspectionInspectorEntryEmployee")
+  selfInspectionRecordApprovals      SelfInspectionRecordApproval[] @relation("SelfInspectionRecordApprover")
+  assemblyWorkSessionRecordApprovals AssemblyWorkSessionApproval[]  @relation("AssemblyWorkSessionRecordApprover")
 }
 
 model Item {
-  id              String     @id @default(uuid())
-  itemCode        String     @unique
-  name            String
-  description     String?
-  nfcTagUid       String?    @unique
-  category        String?
-  storageLocation String?
-  status          ItemStatus @default(AVAILABLE)
-  notes           String?
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
-  loans           Loan[]
+  id                    String                 @id @default(uuid())
+  itemCode              String                 @unique
+  name                  String
+  description           String?
+  nfcTagUid             String?                @unique
+  category              String?
+  storageLocation       String?
+  status                ItemStatus             @default(AVAILABLE)
+  notes                 String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  loans                 Loan[]
   mobilePlacementEvents MobilePlacementEvent[]
 }
 
 model MeasuringInstrument {
-  id                    String                    @id @default(uuid())
-  name                  String
-  managementNumber      String                    @unique
-  genreId               String?
-  storageLocation       String?
-  department            String? // 管理部署（CSVインポート用）
-  measurementRange      String?
-  calibrationExpiryDate DateTime?
-  status                MeasuringInstrumentStatus @default(AVAILABLE)
-  createdAt             DateTime                  @default(now())
-  updatedAt             DateTime                  @updatedAt
-  genre                 MeasuringInstrumentGenre? @relation(fields: [genreId], references: [id], onDelete: SetNull)
-  inspectionRecords     InspectionRecord[]
-  tags                  MeasuringInstrumentTag[]
-  loans                 Loan[]
-  selfInspectionLotEntries SelfInspectionLotEntry[]
-  selfInspectionLotEntryInstrumentUsages SelfInspectionLotEntryInstrumentUsage[]
-  selfInspectionInspectorEntries SelfInspectionInspectorEntry[]
+  id                                           String                                        @id @default(uuid())
+  name                                         String
+  managementNumber                             String                                        @unique
+  genreId                                      String?
+  storageLocation                              String?
+  department                                   String? // 管理部署（CSVインポート用）
+  measurementRange                             String?
+  calibrationExpiryDate                        DateTime?
+  status                                       MeasuringInstrumentStatus                     @default(AVAILABLE)
+  createdAt                                    DateTime                                      @default(now())
+  updatedAt                                    DateTime                                      @updatedAt
+  genre                                        MeasuringInstrumentGenre?                     @relation(fields: [genreId], references: [id], onDelete: SetNull)
+  inspectionRecords                            InspectionRecord[]
+  tags                                         MeasuringInstrumentTag[]
+  loans                                        Loan[]
+  selfInspectionLotEntries                     SelfInspectionLotEntry[]
+  selfInspectionLotEntryInstrumentUsages       SelfInspectionLotEntryInstrumentUsage[]
+  selfInspectionInspectorEntries               SelfInspectionInspectorEntry[]
   selfInspectionInspectorEntryInstrumentUsages SelfInspectionInspectorEntryInstrumentUsage[]
+  torqueWrenchProfile                          TorqueWrenchProfile?
 
   @@index([genreId])
 }
 
 model MeasuringInstrumentGenre {
-  id                 String               @id @default(uuid())
-  name               String               @unique
-  imageUrlPrimary    String?
-  imageUrlSecondary  String?
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
-  instruments        MeasuringInstrument[]
-  inspectionItems    InspectionItem[]
+  id                String                @id @default(uuid())
+  name              String                @unique
+  imageUrlPrimary   String?
+  imageUrlSecondary String?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  instruments       MeasuringInstrument[]
+  inspectionItems   InspectionItem[]
 }
 
 model InspectionItem {
-  id                    String                   @id @default(uuid())
-  genreId               String
-  name                  String
-  content               String
-  criteria              String
-  method                String
-  order                 Int
-  createdAt             DateTime                 @default(now())
-  updatedAt             DateTime                 @updatedAt
-  genre                 MeasuringInstrumentGenre @relation(fields: [genreId], references: [id], onDelete: Cascade)
-  inspectionRecords     InspectionRecord[]
+  id                String                   @id @default(uuid())
+  genreId           String
+  name              String
+  content           String
+  criteria          String
+  method            String
+  order             Int
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  genre             MeasuringInstrumentGenre @relation(fields: [genreId], references: [id], onDelete: Cascade)
+  inspectionRecords InspectionRecord[]
 
   @@unique([genreId, name])
   @@index([genreId])
@@ -235,6 +236,97 @@ model MeasuringInstrumentTag {
   measuringInstrument   MeasuringInstrument @relation(fields: [measuringInstrumentId], references: [id], onDelete: Cascade)
 
   @@index([measuringInstrumentId])
+}
+
+/// トルクレンチの型番と測定能力。物理資産とは分離して複数台で再利用する。
+model TorqueWrenchModel {
+  id                    String                             @id @default(uuid())
+  manufacturer          String
+  manufacturerKey       String
+  modelNumber           String
+  modelNumberKey        String
+  torqueMinNm           Decimal                            @db.Decimal(18, 6)
+  torqueMaxNm           Decimal                            @db.Decimal(18, 6)
+  resolutionNm          Decimal?                           @db.Decimal(18, 6)
+  communicationType     String                             @default("BLUETOOTH_HOGP")
+  outputProfile         String?
+  isActive              Boolean                            @default(true)
+  createdAt             DateTime                           @default(now())
+  updatedAt             DateTime                           @updatedAt
+  profiles              TorqueWrenchProfile[]
+  capabilityGroupModels TorqueWrenchCapabilityGroupModel[]
+
+  @@unique([manufacturerKey, modelNumberKey], map: "TorqueWrenchModel_unique_manufacturer_model_key")
+  @@index([isActive, manufacturerKey, modelNumberKey], map: "TorqueWrenchModel_idx_active_keys")
+}
+
+/// 製造番号で識別する物理トルクレンチ。校正・保管・状態は MeasuringInstrument を正本とする。
+model TorqueWrenchProfile {
+  id                    String                             @id @default(uuid())
+  measuringInstrumentId String                             @unique
+  modelId               String
+  serialNumber          String
+  serialNumberKey       String                             @unique
+  createdAt             DateTime                           @default(now())
+  updatedAt             DateTime                           @updatedAt
+  measuringInstrument   MeasuringInstrument                @relation(fields: [measuringInstrumentId], references: [id], onDelete: Restrict)
+  model                 TorqueWrenchModel                  @relation(fields: [modelId], references: [id], onDelete: Restrict)
+  settingHistories      TorqueWrenchSettingHistory[]
+  confirmations         AssemblyTorqueWrenchConfirmation[]
+  torqueRecords         AssemblyTorqueRecord[]
+
+  @@index([modelId], map: "TorqueWrenchProfile_idx_model")
+}
+
+/// 呼び径・長さ・材質・強度区分に対して使用可能な型番群。
+model TorqueWrenchCapabilityGroup {
+  id              String                             @id @default(uuid())
+  name            String                             @unique
+  nominalDiameter String
+  boltLengthMm    Decimal                            @db.Decimal(10, 3)
+  material        String
+  strengthClass   String
+  isActive        Boolean                            @default(true)
+  createdAt       DateTime                           @default(now())
+  updatedAt       DateTime                           @updatedAt
+  models          TorqueWrenchCapabilityGroupModel[]
+  templateBolts   AssemblyTemplateBolt[]
+
+  @@index([nominalDiameter, boltLengthMm, material, strengthClass, isActive], map: "TorqueWrenchCapabilityGroup_idx_fastener_active")
+}
+
+model TorqueWrenchCapabilityGroupModel {
+  capabilityGroupId String
+  modelId           String
+  createdAt         DateTime                    @default(now())
+  capabilityGroup   TorqueWrenchCapabilityGroup @relation(fields: [capabilityGroupId], references: [id], onDelete: Cascade)
+  model             TorqueWrenchModel           @relation(fields: [modelId], references: [id], onDelete: Restrict)
+
+  @@id([capabilityGroupId, modelId])
+  @@index([modelId, capabilityGroupId], map: "TorqueWrenchCapabilityGroupModel_idx_model_group")
+}
+
+/// 物理トルクレンチの設定値。上書きせず、最新履歴を現在値として扱う。
+model TorqueWrenchSettingHistory {
+  id                    String                             @id @default(uuid())
+  torqueWrenchProfileId String
+  lowerLimit            Decimal                            @db.Decimal(18, 6)
+  nominalTorque         Decimal                            @db.Decimal(18, 6)
+  upperLimit            Decimal                            @db.Decimal(18, 6)
+  unit                  String
+  lowerLimitNm          Decimal                            @db.Decimal(18, 6)
+  nominalTorqueNm       Decimal                            @db.Decimal(18, 6)
+  upperLimitNm          Decimal                            @db.Decimal(18, 6)
+  effectiveAt           DateTime                           @default(now())
+  actorUserId           String?
+  actorUsername         String?
+  reason                String?
+  createdAt             DateTime                           @default(now())
+  torqueWrenchProfile   TorqueWrenchProfile                @relation(fields: [torqueWrenchProfileId], references: [id], onDelete: Restrict)
+  confirmations         AssemblyTorqueWrenchConfirmation[]
+  torqueRecords         AssemblyTorqueRecord[]
+
+  @@index([torqueWrenchProfileId, effectiveAt(sort: Desc), createdAt(sort: Desc)], map: "TorqueWrenchSettingHistory_idx_profile_effective")
 }
 
 model RiggingGear {
@@ -309,39 +401,39 @@ model Machine {
 }
 
 model ClientDevice {
-  id             String        @id @default(uuid())
-  name           String
-  location       String?
-  apiKey         String        @unique
-  statusClientId String? // ClientStatus.clientId への紐づけ（x-client-key → statusClientId）
-  defaultMode    String?       @default("TAG") // 'PHOTO' | 'TAG'（デフォルト: 'TAG'）
-  kioskInitialRoute String? // 端末ごとのキオスク起動先（borrow_tag | borrow_photo | leader_order_board | assembly。production_schedule は旧互換）
+  id                                 String                         @id @default(uuid())
+  name                               String
+  location                           String?
+  apiKey                             String                         @unique
+  statusClientId                     String? // ClientStatus.clientId への紐づけ（x-client-key → statusClientId）
+  defaultMode                        String?                        @default("TAG") // 'PHOTO' | 'TAG'（デフォルト: 'TAG'）
+  kioskInitialRoute                  String? // 端末ごとのキオスク起動先（borrow_tag | borrow_photo | leader_order_board | assembly。production_schedule は旧互換）
   /// キオスクのサイネージプレビューで参照する `ClientDevice.apiKey`（サイネージ用途端末のみ許可。未設定時は自端末キーでプレビュー）
-  signagePreviewTargetApiKey String?
+  signagePreviewTargetApiKey         String?
   /// Zero2W 棚番エッジ等: 端末に固定する棚番（`西-北-01` 形式・trim 保存）
-  haizenPresetShelfCodeRaw String?
+  haizenPresetShelfCodeRaw           String?
   /// Zero2W / haizen-agent からの配膳スキャン対象端末（キオスク設定・API 抽出の正）
-  haizenEdgeEnabled        Boolean  @default(false)
+  haizenEdgeEnabled                  Boolean                        @default(false)
   /// キオスク棚レイアウト編集（区画フロアプラン・マス割当）を許可する端末
-  shelfLayoutEditEnabled   Boolean  @default(false)
-  lastSeenAt     DateTime?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  loans                   Loan[]
-  transactions            Transaction[]
-  partMeasurementSheets   PartMeasurementSheet[] @relation("PartMeasurementSheetOwningDevice")
-  partMeasurementEditLocks PartMeasurementSheet[] @relation("PartMeasurementSheetEditLock")
-  selfInspectionSessions  SelfInspectionSession[]
-  selfInspectionPaperReports SelfInspectionPaperReport[]
-  selfInspectionInspectorEntries SelfInspectionInspectorEntry[]
-  selfInspectionRecordApprovals SelfInspectionRecordApproval[]
+  shelfLayoutEditEnabled             Boolean                        @default(false)
+  lastSeenAt                         DateTime?
+  createdAt                          DateTime                       @default(now())
+  updatedAt                          DateTime                       @updatedAt
+  loans                              Loan[]
+  transactions                       Transaction[]
+  partMeasurementSheets              PartMeasurementSheet[]         @relation("PartMeasurementSheetOwningDevice")
+  partMeasurementEditLocks           PartMeasurementSheet[]         @relation("PartMeasurementSheetEditLock")
+  selfInspectionSessions             SelfInspectionSession[]
+  selfInspectionPaperReports         SelfInspectionPaperReport[]
+  selfInspectionInspectorEntries     SelfInspectionInspectorEntry[]
+  selfInspectionRecordApprovals      SelfInspectionRecordApproval[]
   assemblyWorkSessionRecordApprovals AssemblyWorkSessionApproval[]
-  mobilePlacementEvents   MobilePlacementEvent[]
-  orderPlacementEvents    OrderPlacementEvent[]
-  mobilePlacementShelvesCreated MobilePlacementShelf[]
-  machinePalletEvents     MachinePalletEvent[]
-  haizenScanEvents        HaizenScanEvent[]
-  haizenCurrentPlacements HaizenCurrentPlacement[] @relation("HaizenCurrentLastDevice")
+  mobilePlacementEvents              MobilePlacementEvent[]
+  orderPlacementEvents               OrderPlacementEvent[]
+  mobilePlacementShelvesCreated      MobilePlacementShelf[]
+  machinePalletEvents                MachinePalletEvent[]
+  haizenScanEvents                   HaizenScanEvent[]
+  haizenCurrentPlacements            HaizenCurrentPlacement[]       @relation("HaizenCurrentLastDevice")
 
   @@index([statusClientId])
 }
@@ -399,38 +491,38 @@ model PalletMachineIllustration {
 
 /// パレット上の現在アイテム（投影）
 model MachinePalletItem {
-  id                 String   @id @default(uuid())
+  id                String   @id @default(uuid())
   /// 資源CD（API 上は machineCd）
-  resourceCd         String   @db.VarChar(20)
-  palletNo           Int
-  displayOrder       Int
-  fhincd             String   @db.VarChar(120)
-  fhinmei            String   @db.VarChar(255)
-  fseiban            String   @db.VarChar(120)
-  machineName        String?  @db.VarChar(255)
-  csvDashboardRowId  String?
-  scheduleSnapshot   Json?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  resourceCd        String   @db.VarChar(20)
+  palletNo          Int
+  displayOrder      Int
+  fhincd            String   @db.VarChar(120)
+  fhinmei           String   @db.VarChar(255)
+  fseiban           String   @db.VarChar(120)
+  machineName       String?  @db.VarChar(255)
+  csvDashboardRowId String?
+  scheduleSnapshot  Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  @@index([resourceCd, palletNo, displayOrder], map: "MachinePalletItem_idx_machine_pallet_order")
   @@unique([resourceCd, palletNo, displayOrder], map: "MachinePalletItem_uidx_machine_pallet_order")
+  @@index([resourceCd, palletNo, displayOrder], map: "MachinePalletItem_idx_machine_pallet_order")
   @@index([resourceCd], map: "MachinePalletItem_idx_resource")
 }
 
 /// パレット可視化イベントログ
 model MachinePalletEvent {
-  id                             String                     @id @default(uuid())
-  clientDeviceId                 String?
-  actionType                     MachinePalletEventActionType
+  id                           String                       @id @default(uuid())
+  clientDeviceId               String?
+  actionType                   MachinePalletEventActionType
   /// 資源CD（API 上は machineCd）
-  resourceCd                     String                     @db.VarChar(20)
-  palletNo                       Int?
-  affectedItemId                 String?
-  manufacturingOrderBarcodeRaw   String?
-  illustrationRelativeUrl        String?                    @db.VarChar(512)
-  scheduleSnapshot               Json?
-  createdAt                      DateTime                   @default(now())
+  resourceCd                   String                       @db.VarChar(20)
+  palletNo                     Int?
+  affectedItemId               String?
+  manufacturingOrderBarcodeRaw String?
+  illustrationRelativeUrl      String?                      @db.VarChar(512)
+  scheduleSnapshot             Json?
+  createdAt                    DateTime                     @default(now())
 
   clientDevice ClientDevice? @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
 
@@ -461,17 +553,17 @@ model MobilePlacementEvent {
 
 /// 部品配膳（製造order番号起点・Item は更新しない）
 model OrderPlacementEvent {
-  id                             String                   @id @default(uuid())
-  clientDeviceId                 String
-  shelfCodeRaw                   String
-  manufacturingOrderBarcodeRaw   String
-  csvDashboardRowId              String?
-  scheduleSnapshot               Json?
+  id                           String                   @id @default(uuid())
+  clientDeviceId               String
+  shelfCodeRaw                 String
+  manufacturingOrderBarcodeRaw String
+  csvDashboardRowId            String?
+  scheduleSnapshot             Json?
   /// 製造order配下の分配枝番号（1 始まり。履歴上は LEGACY も 1）
-  branchNo                       Int                      @default(1)
-  actionType                     OrderPlacementActionType @default(LEGACY)
-  placedAt                       DateTime                 @default(now())
-  createdAt                      DateTime                 @default(now())
+  branchNo                     Int                      @default(1)
+  actionType                   OrderPlacementActionType @default(LEGACY)
+  placedAt                     DateTime                 @default(now())
+  createdAt                    DateTime                 @default(now())
 
   clientDevice ClientDevice @relation(fields: [clientDeviceId], references: [id], onDelete: Restrict)
 
@@ -497,17 +589,17 @@ model OrderPlacementBranchState {
 
 /// 配膳スマホの棚番マスタ（`+` で登録。トップの「登録済み棚番」候補の正本）
 model MobilePlacementShelf {
-  id                      String        @id @default(uuid())
-  shelfCodeRaw            String        @unique
+  id                      String                        @id @default(uuid())
+  shelfCodeRaw            String                        @unique
   /// オペレータ向け表示名（例: Robodrill01南）
   displayLabel            String?
   /// 段（将来 `-1` 運用。初期 NULL）
   tier                    Int?
   /// マクロ区画 ID（nw..se）
   macroZoneId             String?
-  createdAt               DateTime      @default(now())
+  createdAt               DateTime                      @default(now())
   createdByClientDeviceId String?
-  createdBy               ClientDevice? @relation(fields: [createdByClientDeviceId], references: [id], onDelete: SetNull)
+  createdBy               ClientDevice?                 @relation(fields: [createdByClientDeviceId], references: [id], onDelete: SetNull)
   layoutEntities          MobilePlacementLayoutEntity[]
 }
 
@@ -519,15 +611,15 @@ enum MobilePlacementLayoutEntityKind {
 }
 
 model MobilePlacementZoneLayout {
-  id            String   @id @default(uuid())
+  id            String                        @id @default(uuid())
   /// マクロ区画 ID（nw | n | ne | w | c | e | sw | s | se）
-  macroZoneId   String   @unique
+  macroZoneId   String                        @unique
   /// 区画内グリッド（3 または 4）
-  gridSize      Int      @default(3)
+  gridSize      Int                           @default(3)
   /// 次に採番する棚スロット（1..99）
-  nextShelfSlot Int      @default(1)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  nextShelfSlot Int                           @default(1)
+  createdAt     DateTime                      @default(now())
+  updatedAt     DateTime                      @updatedAt
   entities      MobilePlacementLayoutEntity[]
 }
 
@@ -584,20 +676,20 @@ model ClientLog {
 }
 
 model User {
-  id              String         @id @default(uuid())
-  username        String         @unique
-  passwordHash    String
-  role            UserRole       @default(VIEWER)
-  status          UserStatus     @default(ACTIVE)
-  mfaEnabled      Boolean        @default(false)
-  totpSecret      String?
-  mfaBackupCodes  String[]       @default([])
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  transactions    Transaction[]
-  auditLogsActor  RoleAuditLog[] @relation("RoleAuditActor")
-  auditLogsTarget RoleAuditLog[] @relation("RoleAuditTarget")
-  photoToolHumanReviewedLoans Loan[] @relation("PhotoToolHumanReviewer")
+  id                          String         @id @default(uuid())
+  username                    String         @unique
+  passwordHash                String
+  role                        UserRole       @default(VIEWER)
+  status                      UserStatus     @default(ACTIVE)
+  mfaEnabled                  Boolean        @default(false)
+  totpSecret                  String?
+  mfaBackupCodes              String[]       @default([])
+  createdAt                   DateTime       @default(now())
+  updatedAt                   DateTime       @updatedAt
+  transactions                Transaction[]
+  auditLogsActor              RoleAuditLog[] @relation("RoleAuditActor")
+  auditLogsTarget             RoleAuditLog[] @relation("RoleAuditTarget")
+  photoToolHumanReviewedLoans Loan[]         @relation("PhotoToolHumanReviewer")
 }
 
 model RoleAuditLog {
@@ -618,50 +710,51 @@ model RoleAuditLog {
 model Loan {
   /// Active asset uniqueness and terminal-state validity are enforced by raw SQL migration
   /// 20260710170000_loan_concurrency_integrity (Prisma cannot represent partial indexes).
-  id                      String                    @id @default(uuid())
-  itemId                  String?
-  measuringInstrumentId   String?
-  riggingGearId           String?
-  employeeId              String?
-  clientId                String?
-  borrowedAt              DateTime                  @default(now())
-  dueAt                   DateTime?
-  returnedAt              DateTime?
-  cancelledAt             DateTime? // 取消日時（誤スキャン時の取消に使用、ダッシュボードで除外可能）
-  notes                   String?
-  photoUrl                String? // 写真のURL（例: /api/storage/photos/2025/11/20251127_123456_employee-uuid.jpg）
-  photoTakenAt            DateTime? // 撮影日時
-  photoBorrowIdempotencyKey String? @db.Uuid
-  photoBorrowRequestFingerprint String? @db.Char(64)
+  id                                           String                                        @id @default(uuid())
+  itemId                                       String?
+  measuringInstrumentId                        String?
+  riggingGearId                                String?
+  employeeId                                   String?
+  clientId                                     String?
+  borrowedAt                                   DateTime                                      @default(now())
+  dueAt                                        DateTime?
+  returnedAt                                   DateTime?
+  cancelledAt                                  DateTime? // 取消日時（誤スキャン時の取消に使用、ダッシュボードで除外可能）
+  notes                                        String?
+  photoUrl                                     String? // 写真のURL（例: /api/storage/photos/2025/11/20251127_123456_employee-uuid.jpg）
+  photoTakenAt                                 DateTime? // 撮影日時
+  photoBorrowIdempotencyKey                    String?                                       @db.Uuid
+  photoBorrowRequestFingerprint                String?                                       @db.Char(64)
   /// VLM が付与した表示用工具名（写真持出・マスタ Item 非紐づけ）
-  photoToolDisplayName    String?
+  photoToolDisplayName                         String?
   /// 上記表示名を最後のジョブがどの経路で保存したか（人レビュー列とは独立）
-  photoToolVlmLabelProvenance PhotoToolVlmLabelProvenance @default(UNKNOWN)
+  photoToolVlmLabelProvenance                  PhotoToolVlmLabelProvenance                   @default(UNKNOWN)
   /// true の Loan のみバッチがサムネイル推論の対象（リリース後の写真持出で true）
-  photoToolLabelRequested Boolean                   @default(false)
+  photoToolLabelRequested                      Boolean                                       @default(false)
   /// 推論ジョブが処理中として掴んだ時刻（二重実行緩和・スタック回収用）
-  photoToolLabelClaimedAt DateTime?
+  photoToolLabelClaimedAt                      DateTime?
   /// 人が確定した表示用工具名（null の場合は VLM 表示を優先）
-  photoToolHumanDisplayName     String?
-  photoToolHumanQuality         PhotoToolHumanLabelQuality?
-  photoToolHumanReviewedAt      DateTime?
-  photoToolHumanReviewedByUserId String?
+  photoToolHumanDisplayName                    String?
+  photoToolHumanQuality                        PhotoToolHumanLabelQuality?
+  photoToolHumanReviewedAt                     DateTime?
+  photoToolHumanReviewedByUserId               String?
   /// 管理画面から登録した類似ギャラリー教師行（実貸出ではない）
-  photoToolGallerySeed    Boolean                   @default(false)
-  createdAt               DateTime                  @default(now())
-  updatedAt               DateTime                  @updatedAt
-  item                    Item?                     @relation(fields: [itemId], references: [id], onDelete: SetNull)
-  measuringInstrument     MeasuringInstrument?      @relation(fields: [measuringInstrumentId], references: [id], onDelete: SetNull)
-  riggingGear             RiggingGear?              @relation(fields: [riggingGearId], references: [id], onDelete: SetNull)
-  employee                Employee?                 @relation(fields: [employeeId], references: [id], onDelete: SetNull)
-  client                  ClientDevice?             @relation(fields: [clientId], references: [id])
-  photoToolHumanReviewedBy User?                    @relation("PhotoToolHumanReviewer", fields: [photoToolHumanReviewedByUserId], references: [id], onDelete: SetNull)
-  transactions            Transaction[]
-  InspectionRecord        InspectionRecord[]
-  RiggingInspectionRecord RiggingInspectionRecord[]
-  selfInspectionLotEntryInstrumentUsages SelfInspectionLotEntryInstrumentUsage[]
+  photoToolGallerySeed                         Boolean                                       @default(false)
+  createdAt                                    DateTime                                      @default(now())
+  updatedAt                                    DateTime                                      @updatedAt
+  item                                         Item?                                         @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  measuringInstrument                          MeasuringInstrument?                          @relation(fields: [measuringInstrumentId], references: [id], onDelete: SetNull)
+  riggingGear                                  RiggingGear?                                  @relation(fields: [riggingGearId], references: [id], onDelete: SetNull)
+  employee                                     Employee?                                     @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  client                                       ClientDevice?                                 @relation(fields: [clientId], references: [id])
+  photoToolHumanReviewedBy                     User?                                         @relation("PhotoToolHumanReviewer", fields: [photoToolHumanReviewedByUserId], references: [id], onDelete: SetNull)
+  transactions                                 Transaction[]
+  InspectionRecord                             InspectionRecord[]
+  RiggingInspectionRecord                      RiggingInspectionRecord[]
+  selfInspectionLotEntryInstrumentUsages       SelfInspectionLotEntryInstrumentUsage[]
   selfInspectionInspectorEntryInstrumentUsages SelfInspectionInspectorEntryInstrumentUsage[]
 
+  @@unique([clientId, photoBorrowIdempotencyKey], map: "Loan_photo_borrow_idempotency_uidx")
   @@index([itemId])
   @@index([measuringInstrumentId])
   @@index([riggingGearId])
@@ -672,7 +765,6 @@ model Loan {
   @@index([photoTakenAt])
   @@index([photoToolLabelRequested, photoToolDisplayName, photoToolLabelClaimedAt], map: "Loan_photoToolLabel_job_idx")
   @@index([photoToolHumanReviewedByUserId])
-  @@unique([clientId, photoBorrowIdempotencyKey], map: "Loan_photo_borrow_idempotency_uidx")
 }
 
 model Transaction {
@@ -796,20 +888,20 @@ model BackupConfigChange {
 }
 
 model SignageSchedule {
-  id                 String             @id @default(uuid())
-  name               String
-  contentType        SignageContentType
-  pdfId              String?
-  pdf                SignagePdf?        @relation("SchedulePdf", fields: [pdfId], references: [id], onDelete: SetNull)
-  layoutConfig       Json? // レイアウト設定（FULL/SPLIT + slots定義）。nullの場合は旧contentType/pdfIdから合成
-  targetClientKeys   String[]           @default([]) // 空=全端末向け。値ありのときは列挙された apiKey（x-client-key）のみ
-  dayOfWeek          Int[]
-  startTime          String
-  endTime            String
-  priority           Int
-  enabled            Boolean            @default(true)
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  id               String             @id @default(uuid())
+  name             String
+  contentType      SignageContentType
+  pdfId            String?
+  pdf              SignagePdf?        @relation("SchedulePdf", fields: [pdfId], references: [id], onDelete: SetNull)
+  layoutConfig     Json? // レイアウト設定（FULL/SPLIT + slots定義）。nullの場合は旧contentType/pdfIdから合成
+  targetClientKeys String[]           @default([]) // 空=全端末向け。値ありのときは列挙された apiKey（x-client-key）のみ
+  dayOfWeek        Int[]
+  startTime        String
+  endTime          String
+  priority         Int
+  enabled          Boolean            @default(true)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
 
   @@index([enabled])
   @@index([priority])
@@ -937,18 +1029,18 @@ model CsvDashboard {
 }
 
 model CsvDashboardIngestRun {
-  id             String       @id @default(uuid())
+  id             String            @id @default(uuid())
   csvDashboardId String
-  csvDashboard   CsvDashboard @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade)
-  status         ImportStatus @default(PENDING)
+  csvDashboard   CsvDashboard      @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade)
+  status         ImportStatus      @default(PENDING)
   messageId      String? // GmailメッセージID
   messageSubject String? // Gmail件名
   csvFilePath    String? // 取り込んだCSVファイルパス
-  rowsProcessed  Int          @default(0) // 処理行数
-  rowsAdded      Int          @default(0) // 追加行数（dedup時は重複除外後の数）
-  rowsSkipped    Int          @default(0) // スキップ行数（重複など）
+  rowsProcessed  Int               @default(0) // 処理行数
+  rowsAdded      Int               @default(0) // 追加行数（dedup時は重複除外後の数）
+  rowsSkipped    Int               @default(0) // スキップ行数（重複など）
   errorMessage   String? // エラーメッセージ
-  startedAt      DateTime     @default(now())
+  startedAt      DateTime          @default(now())
   completedAt    DateTime?
   sourceRows     CsvDashboardRow[] @relation("CsvDashboardRowSourceIngestRun")
 
@@ -959,27 +1051,27 @@ model CsvDashboardIngestRun {
 }
 
 model CsvDashboardRow {
-  id                         String                              @id @default(uuid())
-  csvDashboardId             String
-  csvDashboard               CsvDashboard                        @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade)
-  occurredAt                 DateTime // 日付列から抽出した日時（表示期間フィルタ用、Asia/Tokyo）
-  dataHash                   String? // データのハッシュ（重複除去用、dedup時のみ使用）
-  rowData                    Json // 正規化された行データ（列マッピング適用後）
-  sourceIngestRunId          String?
-  sourceIngestRun            CsvDashboardIngestRun?              @relation("CsvDashboardRowSourceIngestRun", fields: [sourceIngestRunId], references: [id], onDelete: SetNull)
-  sourceRowOrdinal           Int?
-  sourceIngestRunStartedAt   DateTime?
-  createdAt                  DateTime                            @default(now())
-  updatedAt                  DateTime?                           @updatedAt
-  orderAssignments           ProductionScheduleOrderAssignment[]
-  orderSplits                ProductionScheduleOrderSplit[]
-  rowNotes                   ProductionScheduleRowNote[]
-  productionScheduleProgress ProductionScheduleProgress?
+  id                                   String                                @id @default(uuid())
+  csvDashboardId                       String
+  csvDashboard                         CsvDashboard                          @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade)
+  occurredAt                           DateTime // 日付列から抽出した日時（表示期間フィルタ用、Asia/Tokyo）
+  dataHash                             String? // データのハッシュ（重複除去用、dedup時のみ使用）
+  rowData                              Json // 正規化された行データ（列マッピング適用後）
+  sourceIngestRunId                    String?
+  sourceIngestRun                      CsvDashboardIngestRun?                @relation("CsvDashboardRowSourceIngestRun", fields: [sourceIngestRunId], references: [id], onDelete: SetNull)
+  sourceRowOrdinal                     Int?
+  sourceIngestRunStartedAt             DateTime?
+  createdAt                            DateTime                              @default(now())
+  updatedAt                            DateTime?                             @updatedAt
+  orderAssignments                     ProductionScheduleOrderAssignment[]
+  orderSplits                          ProductionScheduleOrderSplit[]
+  rowNotes                             ProductionScheduleRowNote[]
+  productionScheduleProgress           ProductionScheduleProgress?
   productionScheduleExternalCompletion ProductionScheduleExternalCompletion?
-  globalRowRanks             ProductionScheduleGlobalRowRank[]
-  orderSupplements           ProductionScheduleOrderSupplement[]
-  fkojunstStatus             ProductionScheduleFkojunstStatus?
-  fkojunstMailStatus         ProductionScheduleFkojunstMailStatus?
+  globalRowRanks                       ProductionScheduleGlobalRowRank[]
+  orderSupplements                     ProductionScheduleOrderSupplement[]
+  fkojunstStatus                       ProductionScheduleFkojunstStatus?
+  fkojunstMailStatus                   ProductionScheduleFkojunstMailStatus?
 
   @@index([csvDashboardId])
   @@index([csvDashboardId, occurredAt]) // 表示期間フィルタ用の複合インデックス
@@ -990,22 +1082,22 @@ model CsvDashboardRow {
 }
 
 model ProductionScheduleOrderSupplement {
-  id                 String    @id @default(uuid())
-  csvDashboardId     String
-  csvDashboardRowId  String
-  sourceCsvDashboardId String
-  productNo          String    @db.VarChar(20)
-  resourceCd         String    @db.VarChar(20)
-  processOrder       String    @db.VarChar(20)
-  plannedQuantity    Int?
-  plannedStartDate   DateTime? @db.Date
+  id                          String    @id @default(uuid())
+  csvDashboardId              String
+  csvDashboardRowId           String
+  sourceCsvDashboardId        String
+  productNo                   String    @db.VarChar(20)
+  resourceCd                  String    @db.VarChar(20)
+  processOrder                String    @db.VarChar(20)
+  plannedQuantity             Int?
+  plannedStartDate            DateTime? @db.Date
   /// 現場の手動補正を保護するフラグ（true のとき取込同期で着手日を上書きしない）。
-  plannedStartDateManuallySet Boolean @default(false)
-  plannedEndDate     DateTime? @db.Date
+  plannedStartDateManuallySet Boolean   @default(false)
+  plannedEndDate              DateTime? @db.Date
   /// 直近で CSV 同期に再出現した時刻（差分同期の鮮度管理）。
-  lastSeenAt         DateTime  @default(now())
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  lastSeenAt                  DateTime  @default(now())
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
 
   csvDashboardRow CsvDashboardRow @relation(fields: [csvDashboardRowId], references: [id], onDelete: Cascade)
 
@@ -1246,14 +1338,14 @@ model ProductionScheduleOrderAssignment {
 
 /// 手動順番（キオスク）上ペイン: 端末ごとの資源CD割り当て（複数・優先順）。工場単位で資源の重複は禁止。
 model ProductionScheduleManualOrderResourceAssignment {
-  id               String   @id @default(uuid())
-  csvDashboardId   String
-  siteKey          String
-  deviceScopeKey   String
-  resourceCd       String
-  priority         Int
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id             String   @id @default(uuid())
+  csvDashboardId String
+  siteKey        String
+  deviceScopeKey String
+  resourceCd     String
+  priority       Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@unique([csvDashboardId, siteKey, resourceCd], map: "ps_mo_res_assign_site_resource_cd_key")
   @@unique([csvDashboardId, deviceScopeKey, priority], map: "ps_mo_res_assign_device_priority_key")
@@ -1277,17 +1369,17 @@ model ProductionScheduleProgress {
 /// CSV 由来の外部完了（現行正本は FKOJUNST_Status C/X）を winner 単位で保持する。本体 rowData は変更しない。
 /// `isExternallyCompleted` は後方互換・検索用に同期する（2026-05-26 以降はメール status 完了のみ）。
 model ProductionScheduleExternalCompletion {
-  csvDashboardRowId       String   @id
-  csvDashboardId          String
-  isExternallyCompleted   Boolean  @default(false)
+  csvDashboardRowId                             String   @id
+  csvDashboardId                                String
+  isExternallyCompleted                         Boolean  @default(false)
   /// FKOJUNST_Status メール CSV: 直前スナップショットにあって今回 dedupe キー集合から消えた。
-  externallyCompletedFromFkojunstDisappeared Boolean @default(false)
+  externallyCompletedFromFkojunstDisappeared    Boolean  @default(false)
   /// FKOJUNST メール側 status が完了系（C/X）。S/R/O/P は未完了。
-  externallyCompletedFromFkojunstMailStatus   Boolean @default(false)
+  externallyCompletedFromFkojunstMailStatus     Boolean  @default(false)
   /// 生産日程CSV取込の差分消失完了（2026-05-26 廃止、互換列として保持）。
-  externallyCompletedFromScheduleCsvDisappeared Boolean @default(false)
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+  externallyCompletedFromScheduleCsvDisappeared Boolean  @default(false)
+  createdAt                                     DateTime @default(now())
+  updatedAt                                     DateTime @updatedAt
 
   csvDashboardRow CsvDashboardRow @relation(fields: [csvDashboardRowId], references: [id], onDelete: Cascade)
 
@@ -1443,14 +1535,14 @@ model ProductionScheduleResourceCapacityBase {
 
 /// 資源CDごとの月次能力上書き（分）。yearMonth は YYYY-MM。
 model ProductionScheduleResourceMonthlyCapacity {
-  id                 String   @id @default(uuid())
-  csvDashboardId     String
-  siteKey            String   @db.VarChar(120)
-  resourceCd         String   @db.VarChar(20)
-  yearMonth          String   @db.VarChar(7)
-  availableMinutes   Int
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id               String   @id @default(uuid())
+  csvDashboardId   String
+  siteKey          String   @db.VarChar(120)
+  resourceCd       String   @db.VarChar(20)
+  yearMonth        String   @db.VarChar(7)
+  availableMinutes Int
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   @@unique([csvDashboardId, siteKey, resourceCd, yearMonth], map: "PSResourceMonthlyCapacity_unique")
   @@index([csvDashboardId, siteKey, yearMonth], map: "PSResourceMonthlyCapacity_idx_month")
@@ -1598,14 +1690,14 @@ model ProductionScheduleGlobalRowRank {
 }
 
 model ProductionScheduleGlobalRankTemporaryOverride {
-  id             String   @id @default(uuid())
-  csvDashboardId String
-  targetLocation String
+  id              String   @id @default(uuid())
+  csvDashboardId  String
+  targetLocation  String
   orderedFseibans String[]
-  actorClientKey String?
-  expiresAt      DateTime
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  actorClientKey  String?
+  expiresAt       DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@unique([csvDashboardId, targetLocation], map: "ProductionScheduleGlobalRankTempOverride_unique_target")
   @@index([csvDashboardId, expiresAt], map: "ProductionScheduleGlobalRankTempOverride_idx_expiry")
@@ -1639,31 +1731,31 @@ model ProductionScheduleActualHoursRaw {
 }
 
 model ProductionScheduleActualHoursCanonical {
-  id             String   @id @default(uuid())
-  csvDashboardId String
-  location       String
-  logicalKeyHash String
-  rawId          String
-  sourceFileKey  String
-  sourceMessageId String?
+  id               String   @id @default(uuid())
+  csvDashboardId   String
+  location         String
+  logicalKeyHash   String
+  rawId            String
+  sourceFileKey    String
+  sourceMessageId  String?
   sourceScheduleId String?
-  winnerRule     String   @db.VarChar(40)
-  winnerAt       DateTime
-  rawCreatedAt   DateTime
-  rawUpdatedAt   DateTime
-  workDate       DateTime
-  fseiban        String?  @db.VarChar(20)
-  fhincd         String   @db.VarChar(40)
-  lotNo          String?  @db.VarChar(20)
-  lotQty         Float
-  resourceCd     String   @db.VarChar(20)
-  processOrder   Int?
-  actualMinutes  Float
-  perPieceMinutes Float
-  isExcluded     Boolean  @default(false)
-  excludeReason  String?  @db.VarChar(100)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  winnerRule       String   @db.VarChar(40)
+  winnerAt         DateTime
+  rawCreatedAt     DateTime
+  rawUpdatedAt     DateTime
+  workDate         DateTime
+  fseiban          String?  @db.VarChar(20)
+  fhincd           String   @db.VarChar(40)
+  lotNo            String?  @db.VarChar(20)
+  lotQty           Float
+  resourceCd       String   @db.VarChar(20)
+  processOrder     Int?
+  actualMinutes    Float
+  perPieceMinutes  Float
+  isExcluded       Boolean  @default(false)
+  excludeReason    String?  @db.VarChar(100)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   @@unique([csvDashboardId, location, logicalKeyHash], map: "ProductionScheduleActualHoursCanonical_unique_key")
   @@unique([csvDashboardId, location, rawId], map: "ProductionScheduleActualHoursCanonical_unique_raw")
@@ -1709,33 +1801,33 @@ model DueManagementProposalEvent {
 }
 
 model DueManagementOperatorDecisionEvent {
-  id                    String   @id @default(uuid())
-  csvDashboardId        String
-  location              String
-  sourceType            String   @db.VarChar(20)
-  reasonCode            String?  @db.VarChar(40)
-  orderedFseibans       String[]
+  id                      String   @id @default(uuid())
+  csvDashboardId          String
+  location                String
+  sourceType              String   @db.VarChar(20)
+  reasonCode              String?  @db.VarChar(40)
+  orderedFseibans         String[]
   previousOrderedFseibans String[]
   proposalOrderedFseibans String[]
-  reorderDeltaRatio     Float?
-  payload               Json?
-  createdAt             DateTime @default(now())
+  reorderDeltaRatio       Float?
+  payload                 Json?
+  createdAt               DateTime @default(now())
 
   @@index([csvDashboardId, location, createdAt], map: "DueManagementOperatorDecisionEvent_idx_location_time")
   @@index([csvDashboardId, location, sourceType], map: "DueManagementOperatorDecisionEvent_idx_source")
 }
 
 model DueManagementOutcomeEvent {
-  id              String   @id @default(uuid())
-  csvDashboardId  String
-  location        String
-  eventType       String   @db.VarChar(40)
+  id                String   @id @default(uuid())
+  csvDashboardId    String
+  location          String
+  eventType         String   @db.VarChar(40)
   csvDashboardRowId String
-  fseiban         String?  @db.VarChar(20)
-  isCompleted     Boolean
-  occurredAt      DateTime
-  payload         Json?
-  createdAt       DateTime @default(now())
+  fseiban           String?  @db.VarChar(20)
+  isCompleted       Boolean
+  occurredAt        DateTime
+  payload           Json?
+  createdAt         DateTime @default(now())
 
   @@index([csvDashboardId, location, createdAt], map: "DueManagementOutcomeEvent_idx_location_time")
   @@index([csvDashboardId, location, fseiban], map: "DueManagementOutcomeEvent_idx_fseiban")
@@ -1766,31 +1858,31 @@ model ProductionScheduleDueManagementTuningStableSnapshot {
 }
 
 model ProductionScheduleDueManagementTuningHistory {
-  id             String                         @id @default(uuid())
-  csvDashboardId String
-  location       String
-  status         DueManagementTuningHistoryStatus
-  label          String                         @db.VarChar(60)
+  id              String                           @id @default(uuid())
+  csvDashboardId  String
+  location        String
+  status          DueManagementTuningHistoryStatus
+  label           String                           @db.VarChar(60)
   candidateParams Json
-  baseParams     Json
-  evaluation     Json?
-  guardReason    String?                        @db.VarChar(120)
-  createdAt      DateTime                       @default(now())
+  baseParams      Json
+  evaluation      Json?
+  guardReason     String?                          @db.VarChar(120)
+  createdAt       DateTime                         @default(now())
 
   @@index([csvDashboardId, location, createdAt], map: "ProductionScheduleDueManagementTuningHistory_idx_location_time")
   @@index([csvDashboardId, location, status], map: "ProductionScheduleDueManagementTuningHistory_idx_status")
 }
 
 model ProductionScheduleDueManagementTuningFailureHistory {
-  id                 String   @id @default(uuid())
-  csvDashboardId     String
-  location           String
-  reason             String   @db.VarChar(200)
-  candidateParams    Json?
+  id                   String   @id @default(uuid())
+  csvDashboardId       String
+  location             String
+  reason               String   @db.VarChar(200)
+  candidateParams      Json?
   previousStableParams Json?
-  metrics            Json?
-  failedAt           DateTime
-  createdAt          DateTime @default(now())
+  metrics              Json?
+  failedAt             DateTime
+  createdAt            DateTime @default(now())
 
   @@index([csvDashboardId, location, failedAt], map: "PSDMTuningFailure_idx_time")
 }
@@ -1872,56 +1964,56 @@ enum PartMeasurementDrawingOcrStatus {
 
 /// キオスク「要領書」用PDF（手動アップロード / Gmail取り込み）
 model KioskDocument {
-  id                   String              @id @default(uuid())
-  title                String
-  displayTitle         String?
-  filename             String
-  filePath             String
-  fileHash             String?
-  sourceType           KioskDocumentSource
-  gmailMessageId       String?
-  sourceAttachmentName String?
+  id                          String                         @id @default(uuid())
+  title                       String
+  displayTitle                String?
+  filename                    String
+  filePath                    String
+  fileHash                    String?
+  sourceType                  KioskDocumentSource
+  gmailMessageId              String?
+  sourceAttachmentName        String?
   /// Gmail: 正規化済み添付名。同一キーはより新しいメール（gmailInternalDateMs）で上書き
-  gmailLogicalKey      String?             @unique
+  gmailLogicalKey             String?                        @unique
   /// Gmail API messages.get internalDate（ミリ秒）。上書き判定用
-  gmailInternalDateMs  BigInt?
+  gmailInternalDateMs         BigInt?
   /// Gmail同一添付の再取り込み防止（例: messageId + 元ファイル名のハッシュ）
-  gmailDedupeKey       String?             @unique
-  pageCount            Int?
-  extractedText        String?
-  ocrStatus            KioskDocumentOcrStatus @default(PENDING)
-  ocrEngine            String?
-  ocrStartedAt         DateTime?
-  ocrFinishedAt        DateTime?
-  ocrRetryCount        Int                 @default(0)
-  ocrFailureReason     String?
-  ocrTargetPages       Int?
-  candidateFhincd      String?
-  candidateDrawingNumber String?
-  candidateProcessName String?
-  candidateResourceCd  String?
-  confidenceFhincd     Float?
-  confidenceDrawingNumber Float?
-  confidenceProcessName Float?
-  confidenceResourceCd Float?
-  confirmedFhincd      String?
-  confirmedDrawingNumber String?
-  confirmedProcessName String?
-  confirmedResourceCd  String?
-  documentCategory     String?
+  gmailDedupeKey              String?                        @unique
+  pageCount                   Int?
+  extractedText               String?
+  ocrStatus                   KioskDocumentOcrStatus         @default(PENDING)
+  ocrEngine                   String?
+  ocrStartedAt                DateTime?
+  ocrFinishedAt               DateTime?
+  ocrRetryCount               Int                            @default(0)
+  ocrFailureReason            String?
+  ocrTargetPages              Int?
+  candidateFhincd             String?
+  candidateDrawingNumber      String?
+  candidateProcessName        String?
+  candidateResourceCd         String?
+  confidenceFhincd            Float?
+  confidenceDrawingNumber     Float?
+  confidenceProcessName       Float?
+  confidenceResourceCd        Float?
+  confirmedFhincd             String?
+  confirmedDrawingNumber      String?
+  confirmedProcessName        String?
+  confirmedResourceCd         String?
+  documentCategory            String?
   /// ISO 等の文書番号（OCR 候補・人手確定）
-  candidateDocumentNumber String?
-  confidenceDocumentNumber Float?
-  confirmedDocumentNumber String?
+  candidateDocumentNumber     String?
+  confidenceDocumentNumber    Float?
+  confirmedDocumentNumber     String?
   /// 本文類推用要約（OCR が最大3候補、人手で確定テキストをスナップショット保存）
-  summaryCandidate1    String?
-  summaryCandidate2    String?
-  summaryCandidate3    String?
-  confirmedSummaryText String?
-  enabled              Boolean             @default(true)
-  createdAt            DateTime            @default(now())
-  updatedAt            DateTime            @updatedAt
-  metadataHistories    KioskDocumentMetadataHistory[]
+  summaryCandidate1           String?
+  summaryCandidate2           String?
+  summaryCandidate3           String?
+  confirmedSummaryText        String?
+  enabled                     Boolean                        @default(true)
+  createdAt                   DateTime                       @default(now())
+  updatedAt                   DateTime                       @updatedAt
+  metadataHistories           KioskDocumentMetadataHistory[]
   assemblyProcedureOrderItems AssemblyProcedureOrderItem[]
   assemblyTemplateBolts       AssemblyTemplateBolt[]
   assemblyTemplateCheckItems  AssemblyTemplateCheckItem[]
@@ -1940,24 +2032,24 @@ model KioskDocument {
 }
 
 model KioskDocumentMetadataHistory {
-  id                   String   @id @default(uuid())
-  kioskDocumentId      String
-  actorUserId          String?
-  changedFields        String[]
-  previousDisplayTitle String?
-  nextDisplayTitle     String?
-  previousFhincd       String?
-  nextFhincd           String?
+  id                    String        @id @default(uuid())
+  kioskDocumentId       String
+  actorUserId           String?
+  changedFields         String[]
+  previousDisplayTitle  String?
+  nextDisplayTitle      String?
+  previousFhincd        String?
+  nextFhincd            String?
   previousDrawingNumber String?
-  nextDrawingNumber    String?
-  previousProcessName  String?
-  nextProcessName      String?
-  previousResourceCd   String?
-  nextResourceCd       String?
-  previousCategory     String?
-  nextCategory         String?
-  createdAt            DateTime @default(now())
-  kioskDocument        KioskDocument @relation(fields: [kioskDocumentId], references: [id], onDelete: Cascade)
+  nextDrawingNumber     String?
+  previousProcessName   String?
+  nextProcessName       String?
+  previousResourceCd    String?
+  nextResourceCd        String?
+  previousCategory      String?
+  nextCategory          String?
+  createdAt             DateTime      @default(now())
+  kioskDocument         KioskDocument @relation(fields: [kioskDocumentId], references: [id], onDelete: Cascade)
 
   @@index([kioskDocumentId, createdAt])
   @@index([actorUserId, createdAt])
@@ -2082,6 +2174,11 @@ enum AssemblyTorqueRecordJudgement {
   IGNORED
 }
 
+enum AssemblyTorqueTraceabilityMode {
+  LEGACY
+  REQUIRED
+}
+
 enum AssemblyProcedureDocumentStatus {
   DRAFT
   PUBLISHED
@@ -2092,7 +2189,7 @@ model PartMeasurementSession {
   id           String                      @id @default(uuid())
   productNo    String
   processGroup PartMeasurementProcessGroup
-  resourceCd   String 
+  resourceCd   String
   /// 親としての可算完了（関連記録表が運用ルール上そろった）時刻
   completedAt  DateTime?
   createdAt    DateTime                    @default(now())
@@ -2105,15 +2202,15 @@ model PartMeasurementSession {
 
 /// 図面など表示用。FIHNCD に紐づけず、業務テンプレから参照して再利用する。
 model PartMeasurementVisualTemplate {
-  id                       String                    @id @default(uuid())
+  id                       String                           @id @default(uuid())
   name                     String
   /// 図面名から ASCII 数字だけを連結した検索用派生値。DB CHECK で name との一致を保証する。
   searchDigits             String
   /// 例: /api/storage/part-measurement-drawings/{uuid}.png
   drawingImageRelativePath String
-  isActive                 Boolean                   @default(true)
-  createdAt                DateTime                  @default(now())
-  updatedAt                DateTime                  @updatedAt
+  isActive                 Boolean                          @default(true)
+  createdAt                DateTime                         @default(now())
+  updatedAt                DateTime                         @updatedAt
   businessTemplates        PartMeasurementTemplate[]
   ocrCaches                PartMeasurementDrawingOcrCache[]
 
@@ -2146,7 +2243,7 @@ model PartMeasurementDrawingOcrCache {
   failureReason           String?
   createdAt               DateTime                        @default(now())
   updatedAt               DateTime                        @updatedAt
-  visualTemplate          PartMeasurementVisualTemplate    @relation(fields: [visualTemplateId], references: [id], onDelete: Cascade)
+  visualTemplate          PartMeasurementVisualTemplate   @relation(fields: [visualTemplateId], references: [id], onDelete: Cascade)
 
   @@unique([visualTemplateId, ocrVersion, drawingImageFingerprint], map: "PMDrawingOcrCache_unique_visual_version_hash")
   @@index([visualTemplateId, status], map: "PMDrawingOcrCache_idx_visual_status")
@@ -2158,45 +2255,45 @@ model PartMeasurementDrawingOcrCache {
 /// 検査図面の同時作成・まとめて改版単位。
 /// 業務解決は従来どおり PartMeasurementTemplate の fhincd + processGroup + resourceCd。
 model PartMeasurementTemplateSiblingGroup {
-  id           String                       @id @default(uuid())
+  id           String                      @id @default(uuid())
   displayName  String
   fhincd       String
   processGroup PartMeasurementProcessGroup
-  createdAt    DateTime                     @default(now())
-  updatedAt    DateTime                     @updatedAt
+  createdAt    DateTime                    @default(now())
+  updatedAt    DateTime                    @updatedAt
   templates    PartMeasurementTemplate[]
 
   @@index([fhincd, processGroup], map: "PartMeasurementTemplateSiblingGroup_idx_key")
 }
 
 model PartMeasurementTemplate {
-  id                 String                       @id @default(uuid())
+  id                         String                               @id @default(uuid())
   /// 登録スコープ。既存データは THREE_KEY。
-  templateScope      PartMeasurementTemplateScope  @default(THREE_KEY)
-  fhincd             String
-  processGroup       PartMeasurementProcessGroup
+  templateScope              PartMeasurementTemplateScope         @default(THREE_KEY)
+  fhincd                     String
+  processGroup               PartMeasurementProcessGroup
   /// 資源CD（テンプレート識別キー）。移行前データは __LEGACY__
-  resourceCd         String
+  resourceCd                 String
   /// FHINMEI_ONLY 候補の照合キー（正規化はAPI側）。THREE_KEY / FHINCD_RESOURCE では null。
-  candidateFhinmei   String?
-  name               String
-  version            Int                          @default(1)
-  isActive           Boolean                      @default(true)
-  selfInspectionMode SelfInspectionMode           @default(FULL)
+  candidateFhinmei           String?
+  name                       String
+  version                    Int                                  @default(1)
+  isActive                   Boolean                              @default(true)
+  selfInspectionMode         SelfInspectionMode                   @default(FULL)
   /// 指定数（FIXED_COUNT）。旧 SAMPLE は migration でコピー
-  selfInspectionFixedCount Int?
+  selfInspectionFixedCount   Int?
   /// @deprecated 新規は selfInspectionFixedCount を使用
-  selfInspectionSampleSize Int?
-  visualTemplateId   String?
-  siblingGroupId     String?
-  createdAt          DateTime                     @default(now())
-  updatedAt          DateTime                     @updatedAt
-  items              PartMeasurementTemplateItem[]
-  sheets             PartMeasurementSheet[]
-  selfInspectionSessions SelfInspectionSession[]
+  selfInspectionSampleSize   Int?
+  visualTemplateId           String?
+  siblingGroupId             String?
+  createdAt                  DateTime                             @default(now())
+  updatedAt                  DateTime                             @updatedAt
+  items                      PartMeasurementTemplateItem[]
+  sheets                     PartMeasurementSheet[]
+  selfInspectionSessions     SelfInspectionSession[]
   selfInspectionPaperReports SelfInspectionPaperReport[]
-  visualTemplate     PartMeasurementVisualTemplate? @relation(fields: [visualTemplateId], references: [id], onDelete: SetNull)
-  siblingGroup       PartMeasurementTemplateSiblingGroup? @relation(fields: [siblingGroupId], references: [id], onDelete: SetNull)
+  visualTemplate             PartMeasurementVisualTemplate?       @relation(fields: [visualTemplateId], references: [id], onDelete: SetNull)
+  siblingGroup               PartMeasurementTemplateSiblingGroup? @relation(fields: [siblingGroupId], references: [id], onDelete: SetNull)
 
   @@unique([fhincd, processGroup, resourceCd, version], map: "PartMeasurementTemplate_unique_fhincd_group_resource_version")
   @@index([fhincd, processGroup, resourceCd, isActive], map: "PartMeasurementTemplate_idx_lookup")
@@ -2206,39 +2303,39 @@ model PartMeasurementTemplate {
 }
 
 model PartMeasurementTemplateItem {
-  id               String                    @id @default(uuid())
-  templateId       String
-  sortOrder        Int
-  datumSurface     String
-  measurementPoint String
-  measurementLabel String
+  id                                       String                                    @id @default(uuid())
+  templateId                               String
+  sortOrder                                Int
+  datumSurface                             String
+  measurementPoint                         String
+  measurementLabel                         String
   /// 図面上の番号など表示用（任意）。測定部位の意味は measurementPoint を使用。
-  displayMarker    String?
-  unit             String?
-  allowNegative    Boolean                   @default(true)
+  displayMarker                            String?
+  unit                                     String?
+  allowNegative                            Boolean                                   @default(true)
   /// 小数桁数（0〜6、DBは Decimal(18,6)）
-  decimalPlaces    Int                       @default(6)
+  decimalPlaces                            Int                                       @default(6)
   /// 図面中心UI: 画像内正規化 X（0–1、左上原点）
-  markerXRatio     Decimal?                  @db.Decimal(10, 8)
+  markerXRatio                             Decimal?                                  @db.Decimal(10, 8)
   /// 図面中心UI: 画像内正規化 Y（0–1）
-  markerYRatio     Decimal?                  @db.Decimal(10, 8)
+  markerYRatio                             Decimal?                                  @db.Decimal(10, 8)
   /// 指差し先端: 画像内正規化 X（0–1、任意。null=指差しなし）
-  calloutTipXRatio Decimal?                  @db.Decimal(10, 8)
+  calloutTipXRatio                         Decimal?                                  @db.Decimal(10, 8)
   /// 指差し先端: 画像内正規化 Y（0–1、任意）
-  calloutTipYRatio Decimal?                  @db.Decimal(10, 8)
+  calloutTipYRatio                         Decimal?                                  @db.Decimal(10, 8)
   /// 図面中心UI: 基準値（任意）
-  nominalValue     Decimal?                  @db.Decimal(18, 6)
+  nominalValue                             Decimal?                                  @db.Decimal(18, 6)
   /// 図面中心UI: 下限（任意・OK/NG 判定）
-  lowerLimit       Decimal?                  @db.Decimal(18, 6)
+  lowerLimit                               Decimal?                                  @db.Decimal(18, 6)
   /// 図面中心UI: 上限（任意）
-  upperLimit       Decimal?                  @db.Decimal(18, 6)
+  upperLimit                               Decimal?                                  @db.Decimal(18, 6)
   /// 深さ系: MEASURED=数値公差 / THROUGH=通し（判定スキップ、limits は 0/0 sentinel）
-  depthMode        PartMeasurementDepthMode  @default(MEASURED)
-  createdAt        DateTime                  @default(now())
-  updatedAt        DateTime                  @updatedAt
-  template         PartMeasurementTemplate   @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  results          PartMeasurementResult[]
-  selfInspectionMeasurementValues SelfInspectionMeasurementValue[]
+  depthMode                                PartMeasurementDepthMode                  @default(MEASURED)
+  createdAt                                DateTime                                  @default(now())
+  updatedAt                                DateTime                                  @updatedAt
+  template                                 PartMeasurementTemplate                   @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  results                                  PartMeasurementResult[]
+  selfInspectionMeasurementValues          SelfInspectionMeasurementValue[]
   selfInspectionInspectorMeasurementValues SelfInspectionInspectorMeasurementValue[]
 
   @@index([templateId, sortOrder])
@@ -2255,47 +2352,47 @@ model PartMeasurementInspectionLabelSetting {
 }
 
 model PartMeasurementSheet {
-  id                   String                       @id @default(uuid())
-  status               PartMeasurementSheetStatus   @default(DRAFT)
-  productNo            String
-  fseiban              String
-  fhincd               String
-  fhinmei              String
-  machineName          String?
-  resourceCdSnapshot   String?
-  processGroupSnapshot PartMeasurementProcessGroup
-  sessionId            String
-  session              PartMeasurementSession       @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  id                              String                      @id @default(uuid())
+  status                          PartMeasurementSheetStatus  @default(DRAFT)
+  productNo                       String
+  fseiban                         String
+  fhincd                          String
+  fhinmei                         String
+  machineName                     String?
+  resourceCdSnapshot              String?
+  processGroupSnapshot            PartMeasurementProcessGroup
+  sessionId                       String
+  session                         PartMeasurementSession      @relation(fields: [sessionId], references: [id], onDelete: Restrict)
   /// 下書き中・確定前の作業者（NFC）
-  employeeId           String?
-  employeeNameSnapshot String?
+  employeeId                      String?
+  employeeNameSnapshot            String?
   /// 最初にNFCで紐づけた作業者
-  createdByEmployeeId           String?
-  createdByEmployeeNameSnapshot String?
+  createdByEmployeeId             String?
+  createdByEmployeeNameSnapshot   String?
   /// 確定時点の作業者
   finalizedByEmployeeId           String?
   finalizedByEmployeeNameSnapshot String?
-  quantity             Int?
-  scannedBarcodeRaw    String?
-  templateId           String?
-  clientDeviceId       String?
+  quantity                        Int?
+  scannedBarcodeRaw               String?
+  templateId                      String?
+  clientDeviceId                  String?
   /// 編集ロック保持端末
-  editLockClientDeviceId String?
-  editLockExpiresAt      DateTime?
-  cancelledAt          DateTime?
-  cancelReason         String?
-  invalidatedAt        DateTime?
-  invalidatedReason    String?
-  createdAt            DateTime                     @default(now())
-  updatedAt            DateTime                     @updatedAt
-  finalizedAt          DateTime?
-  template             PartMeasurementTemplate?     @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  employee             Employee?                    @relation("PartMeasurementSheetWorker", fields: [employeeId], references: [id], onDelete: SetNull)
-  createdByEmployee    Employee?                    @relation("PartMeasurementSheetCreatedBy", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
-  finalizedByEmployee  Employee?                    @relation("PartMeasurementSheetFinalizedBy", fields: [finalizedByEmployeeId], references: [id], onDelete: SetNull)
-  clientDevice         ClientDevice?                @relation("PartMeasurementSheetOwningDevice", fields: [clientDeviceId], references: [id], onDelete: SetNull)
-  editLockClientDevice ClientDevice?                @relation("PartMeasurementSheetEditLock", fields: [editLockClientDeviceId], references: [id], onDelete: SetNull)
-  results              PartMeasurementResult[]
+  editLockClientDeviceId          String?
+  editLockExpiresAt               DateTime?
+  cancelledAt                     DateTime?
+  cancelReason                    String?
+  invalidatedAt                   DateTime?
+  invalidatedReason               String?
+  createdAt                       DateTime                    @default(now())
+  updatedAt                       DateTime                    @updatedAt
+  finalizedAt                     DateTime?
+  template                        PartMeasurementTemplate?    @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  employee                        Employee?                   @relation("PartMeasurementSheetWorker", fields: [employeeId], references: [id], onDelete: SetNull)
+  createdByEmployee               Employee?                   @relation("PartMeasurementSheetCreatedBy", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  finalizedByEmployee             Employee?                   @relation("PartMeasurementSheetFinalizedBy", fields: [finalizedByEmployeeId], references: [id], onDelete: SetNull)
+  clientDevice                    ClientDevice?               @relation("PartMeasurementSheetOwningDevice", fields: [clientDeviceId], references: [id], onDelete: SetNull)
+  editLockClientDevice            ClientDevice?               @relation("PartMeasurementSheetEditLock", fields: [editLockClientDeviceId], references: [id], onDelete: SetNull)
+  results                         PartMeasurementResult[]
 
   @@index([status, updatedAt], map: "PartMeasurementSheet_idx_status_updated")
   @@index([fseiban], map: "PartMeasurementSheet_idx_fseiban")
@@ -2311,7 +2408,7 @@ model PartMeasurementResult {
   templateItemId String
   value          Decimal?                    @db.Decimal(18, 6)
   createdAt      DateTime                    @default(now())
-  updatedAt        DateTime                    @updatedAt
+  updatedAt      DateTime                    @updatedAt
   sheet          PartMeasurementSheet        @relation(fields: [sheetId], references: [id], onDelete: Cascade)
   templateItem   PartMeasurementTemplateItem @relation(fields: [templateItemId], references: [id], onDelete: Restrict)
 
@@ -2321,19 +2418,19 @@ model PartMeasurementResult {
 
 /// 組立トルク管理: 手順書画像（先頭ページは imageRelativePath にも保持）。部品測定図面とは保存先・責務を分ける。
 model AssemblyProcedureDocument {
-  id                String                            @id @default(uuid())
-  name              String
+  id                 String                          @id @default(uuid())
+  name               String
   /// 互換用: 先頭ページ（pageIndex=0）と同一画像パス
-  imageRelativePath String
-  status            AssemblyProcedureDocumentStatus   @default(DRAFT)
-  publishedAt       DateTime?
-  isActive          Boolean                           @default(true)
-  createdAt         DateTime                          @default(now())
-  updatedAt         DateTime                          @updatedAt
-  pages             AssemblyProcedureDocumentPage[]
-  templates         AssemblyTemplate[]
-  orderItems        AssemblyProcedureOrderItem[]
-  templateBolts     AssemblyTemplateBolt[]
+  imageRelativePath  String
+  status             AssemblyProcedureDocumentStatus @default(DRAFT)
+  publishedAt        DateTime?
+  isActive           Boolean                         @default(true)
+  createdAt          DateTime                        @default(now())
+  updatedAt          DateTime                        @updatedAt
+  pages              AssemblyProcedureDocumentPage[]
+  templates          AssemblyTemplate[]
+  orderItems         AssemblyProcedureOrderItem[]
+  templateBolts      AssemblyTemplateBolt[]
   templateCheckItems AssemblyTemplateCheckItem[]
 
   @@index([isActive, name], map: "AssemblyProcedureDocument_idx_active_name")
@@ -2368,17 +2465,17 @@ model AssemblyProcedureOrderSet {
 
 /// 組立キオスク: 閲覧順に並べるキオスク要領書PDFまたは組立手順書画像。
 model AssemblyProcedureOrderItem {
-  id                            String                     @id @default(uuid())
-  setId                         String
-  kioskDocumentId               String?
-  assemblyProcedureDocumentId   String?
-  sortOrder                     Int
-  label                         String?
-  createdAt                     DateTime                   @default(now())
-  updatedAt                     DateTime                   @updatedAt
-  set                           AssemblyProcedureOrderSet  @relation(fields: [setId], references: [id], onDelete: Cascade)
-  kioskDocument                 KioskDocument?             @relation(fields: [kioskDocumentId], references: [id], onDelete: Restrict)
-  assemblyProcedureDocument     AssemblyProcedureDocument? @relation(fields: [assemblyProcedureDocumentId], references: [id], onDelete: Restrict)
+  id                          String                     @id @default(uuid())
+  setId                       String
+  kioskDocumentId             String?
+  assemblyProcedureDocumentId String?
+  sortOrder                   Int
+  label                       String?
+  createdAt                   DateTime                   @default(now())
+  updatedAt                   DateTime                   @updatedAt
+  set                         AssemblyProcedureOrderSet  @relation(fields: [setId], references: [id], onDelete: Cascade)
+  kioskDocument               KioskDocument?             @relation(fields: [kioskDocumentId], references: [id], onDelete: Restrict)
+  assemblyProcedureDocument   AssemblyProcedureDocument? @relation(fields: [assemblyProcedureDocumentId], references: [id], onDelete: Restrict)
 
   @@unique([setId, sortOrder], map: "AssemblyProcedureOrderItem_unique_set_sort")
   @@index([setId, sortOrder], map: "AssemblyProcedureOrderItem_idx_set_sort")
@@ -2388,16 +2485,17 @@ model AssemblyProcedureOrderItem {
 
 /// 組立トルク管理: 型番/FHINCD + 手順パターンごとの締付テンプレート。
 model AssemblyTemplate {
-  id                  String                    @id @default(uuid())
+  id                  String                         @id @default(uuid())
   modelCode           String
   procedurePattern    String
   name                String
-  version             Int                       @default(1)
-  isActive            Boolean                   @default(true)
+  version             Int                            @default(1)
+  isActive            Boolean                        @default(true)
   procedureDocumentId String
-  createdAt           DateTime                  @default(now())
-  updatedAt           DateTime                  @updatedAt
-  procedureDocument   AssemblyProcedureDocument @relation(fields: [procedureDocumentId], references: [id], onDelete: Restrict)
+  traceabilityMode    AssemblyTorqueTraceabilityMode @default(LEGACY)
+  createdAt           DateTime                       @default(now())
+  updatedAt           DateTime                       @updatedAt
+  procedureDocument   AssemblyProcedureDocument      @relation(fields: [procedureDocumentId], references: [id], onDelete: Restrict)
   areas               AssemblyTemplateArea[]
   checkItems          AssemblyTemplateCheckItem[]
   workSessions        AssemblyWorkSession[]
@@ -2426,39 +2524,50 @@ model AssemblyTemplateArea {
   bolts                AssemblyTemplateBolt[]
 
   @@unique([templateId, sortOrder], map: "AssemblyTemplateArea_unique_template_sort")
+  @@unique([id, templateId], map: "AssemblyTemplateArea_unique_id_template")
   @@index([templateId], map: "AssemblyTemplateArea_idx_template")
 }
 
 /// 組立トルク管理: 手順書上に丸数字で配置する締付箇所。
 model AssemblyTemplateBolt {
-  id                            String                     @id @default(uuid())
-  areaId                        String
-  sortOrder                     Int
-  tighteningId                  String
-  markerNo                      Int
-  xRatio                        Decimal                    @db.Decimal(10, 8)
-  yRatio                        Decimal                    @db.Decimal(10, 8)
-  calloutTipXRatio              Decimal?                   @db.Decimal(10, 8)
-  calloutTipYRatio              Decimal?                   @db.Decimal(10, 8)
+  id                          String                             @id @default(uuid())
+  areaId                      String
+  templateId                  String
+  sortOrder                   Int
+  tighteningId                String
+  markerNo                    Int
+  xRatio                      Decimal                            @db.Decimal(10, 8)
+  yRatio                      Decimal                            @db.Decimal(10, 8)
+  calloutTipXRatio            Decimal?                           @db.Decimal(10, 8)
+  calloutTipYRatio            Decimal?                           @db.Decimal(10, 8)
   /// 省略/null 時はテンプレート procedureDocument の先頭ページ
-  kioskDocumentId               String?
-  assemblyProcedureDocumentId   String?
-  pageIndex                     Int?
-  boltSpec                      String
-  nominalTorque                 Decimal                    @db.Decimal(18, 6)
-  lowerLimit                    Decimal                    @db.Decimal(18, 6)
-  upperLimit                    Decimal                    @db.Decimal(18, 6)
-  unit                          String
-  createdAt                     DateTime                   @default(now())
-  updatedAt                     DateTime                   @updatedAt
-  area                          AssemblyTemplateArea       @relation(fields: [areaId], references: [id], onDelete: Cascade)
-  kioskDocument                 KioskDocument?             @relation(fields: [kioskDocumentId], references: [id], onDelete: Restrict)
-  assemblyProcedureDocument     AssemblyProcedureDocument? @relation(fields: [assemblyProcedureDocumentId], references: [id], onDelete: Restrict)
-  torqueRecords                 AssemblyTorqueRecord[]
+  kioskDocumentId             String?
+  assemblyProcedureDocumentId String?
+  pageIndex                   Int?
+  boltSpec                    String
+  nominalDiameter             String?
+  boltLengthMm                Decimal?                           @db.Decimal(10, 3)
+  material                    String?
+  strengthClass               String?
+  capabilityGroupId           String?
+  nominalTorque               Decimal                            @db.Decimal(18, 6)
+  lowerLimit                  Decimal                            @db.Decimal(18, 6)
+  upperLimit                  Decimal                            @db.Decimal(18, 6)
+  unit                        String
+  createdAt                   DateTime                           @default(now())
+  updatedAt                   DateTime                           @updatedAt
+  area                        AssemblyTemplateArea               @relation(fields: [areaId, templateId], references: [id, templateId], onDelete: Cascade)
+  capabilityGroup             TorqueWrenchCapabilityGroup?       @relation(fields: [capabilityGroupId], references: [id], onDelete: Restrict)
+  kioskDocument               KioskDocument?                     @relation(fields: [kioskDocumentId], references: [id], onDelete: Restrict)
+  assemblyProcedureDocument   AssemblyProcedureDocument?         @relation(fields: [assemblyProcedureDocumentId], references: [id], onDelete: Restrict)
+  torqueRecords               AssemblyTorqueRecord[]
+  torqueWrenchConfirmations   AssemblyTorqueWrenchConfirmation[]
 
   @@unique([areaId, sortOrder], map: "AssemblyTemplateBolt_unique_area_sort")
   @@unique([areaId, tighteningId], map: "AssemblyTemplateBolt_unique_area_tightening")
+  @@unique([templateId, markerNo], map: "AssemblyTemplateBolt_unique_template_marker")
   @@index([areaId, markerNo], map: "AssemblyTemplateBolt_idx_area_marker")
+  @@index([capabilityGroupId], map: "AssemblyTemplateBolt_idx_capability_group")
   @@index([kioskDocumentId], map: "AssemblyTemplateBolt_idx_kiosk_document")
   @@index([assemblyProcedureDocumentId], map: "AssemblyTemplateBolt_idx_assembly_document")
 }
@@ -2511,7 +2620,7 @@ model AssemblyLot {
   operatorEmployeeId       String?
   operatorNameSnapshot     String
   targetUnit               String
-  torqueWrenchId           String
+  torqueWrenchId           String?
   clientDeviceId           String?
   clientDeviceNameSnapshot String?
   createdAt                DateTime            @default(now())
@@ -2541,35 +2650,36 @@ model AssemblyLotSerial {
 
 /// 組立トルク管理: 製番/シリアル単位の作業実績。
 model AssemblyWorkSession {
-  id                       String                    @id @default(uuid())
-  templateId               String
-  serialRegistryId         String?                   @unique
-  lotSerialId              String?                   @unique
-  status                   AssemblyWorkSessionStatus @default(IN_PROGRESS)
-  productNo                String
-  serialNo                 String
-  nameplateNo              String
-  operatorEmployeeId       String?
-  operatorNameSnapshot     String
-  targetUnit               String
-  torqueWrenchId           String
-  clientDeviceId           String?
-  clientDeviceNameSnapshot String?
-  currentAreaId            String?
-  currentBoltId            String?
-  startedAt                DateTime                  @default(now())
-  completedAt              DateTime?
-  cancelledAt              DateTime?
-  cancelReason             String?
-  createdAt                DateTime                  @default(now())
-  updatedAt                DateTime                  @updatedAt
-  template                 AssemblyTemplate          @relation(fields: [templateId], references: [id], onDelete: Restrict)
-  serialRegistry           AssemblySerialRegistry?   @relation(fields: [serialRegistryId], references: [id], onDelete: Restrict)
-  lotSerial                AssemblyLotSerial?        @relation(fields: [lotSerialId], references: [id], onDelete: SetNull)
-  torqueRecords            AssemblyTorqueRecord[]
-  checkRecords             AssemblyCheckRecord[]
-  restartLogs              AssemblyAreaRestartLog[]
-  approval                 AssemblyWorkSessionApproval?
+  id                        String                             @id @default(uuid())
+  templateId                String
+  serialRegistryId          String?                            @unique
+  lotSerialId               String?                            @unique
+  status                    AssemblyWorkSessionStatus          @default(IN_PROGRESS)
+  productNo                 String
+  serialNo                  String
+  nameplateNo               String
+  operatorEmployeeId        String?
+  operatorNameSnapshot      String
+  targetUnit                String
+  torqueWrenchId            String?
+  clientDeviceId            String?
+  clientDeviceNameSnapshot  String?
+  currentAreaId             String?
+  currentBoltId             String?
+  startedAt                 DateTime                           @default(now())
+  completedAt               DateTime?
+  cancelledAt               DateTime?
+  cancelReason              String?
+  createdAt                 DateTime                           @default(now())
+  updatedAt                 DateTime                           @updatedAt
+  template                  AssemblyTemplate                   @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  serialRegistry            AssemblySerialRegistry?            @relation(fields: [serialRegistryId], references: [id], onDelete: Restrict)
+  lotSerial                 AssemblyLotSerial?                 @relation(fields: [lotSerialId], references: [id], onDelete: SetNull)
+  torqueRecords             AssemblyTorqueRecord[]
+  checkRecords              AssemblyCheckRecord[]
+  restartLogs               AssemblyAreaRestartLog[]
+  approval                  AssemblyWorkSessionApproval?
+  torqueWrenchConfirmations AssemblyTorqueWrenchConfirmation[]
 
   @@index([status, updatedAt], map: "AssemblyWorkSession_idx_status_updated")
   @@index([productNo, status], map: "AssemblyWorkSession_idx_product_status")
@@ -2577,39 +2687,92 @@ model AssemblyWorkSession {
   @@index([templateId, status], map: "AssemblyWorkSession_idx_template_status")
 }
 
+/// 作業者が物理レンチの製造番号と表示設定を確認した履歴。
+model AssemblyTorqueWrenchConfirmation {
+  id                       String                     @id @default(uuid())
+  sessionId                String
+  templateBoltId           String
+  torqueWrenchProfileId    String
+  settingHistoryId         String
+  conditionFingerprint     String
+  operatorEmployeeId       String?
+  operatorNameSnapshot     String
+  clientDeviceId           String?
+  clientDeviceNameSnapshot String?
+  confirmedAt              DateTime                   @default(now())
+  session                  AssemblyWorkSession        @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  templateBolt             AssemblyTemplateBolt       @relation(fields: [templateBoltId], references: [id], onDelete: Restrict)
+  torqueWrenchProfile      TorqueWrenchProfile        @relation(fields: [torqueWrenchProfileId], references: [id], onDelete: Restrict)
+  settingHistory           TorqueWrenchSettingHistory @relation(fields: [settingHistoryId], references: [id], onDelete: Restrict)
+  torqueRecords            AssemblyTorqueRecord[]
+
+  @@index([sessionId, conditionFingerprint, confirmedAt(sort: Desc)], map: "AssemblyTorqueWrenchConfirmation_idx_session_condition")
+  @@index([torqueWrenchProfileId, confirmedAt(sort: Desc)], map: "AssemblyTorqueWrenchConfirmation_idx_profile_confirmed")
+  @@index([settingHistoryId], map: "AssemblyTorqueWrenchConfirmation_idx_setting")
+}
+
 /// 組立トルク管理: トルクレンチ入力の履歴。NGや重複無視も削除せず残す。
 model AssemblyTorqueRecord {
-  id             String                        @id @default(uuid())
-  sessionId      String
-  templateBoltId String
-  attempt        Int
-  inputSource    AssemblyTorqueInputSource     @default(MANUAL)
-  rawPayload     Json?
-  value          Decimal?                      @db.Decimal(18, 6)
-  judgement      AssemblyTorqueRecordJudgement
-  accepted       Boolean                       @default(false)
-  ignoredReason  String?
-  recordedAt     DateTime                      @default(now())
-  createdAt      DateTime                      @default(now())
-  session        AssemblyWorkSession           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  templateBolt   AssemblyTemplateBolt          @relation(fields: [templateBoltId], references: [id], onDelete: Restrict)
+  id                           String                            @id @default(uuid())
+  sessionId                    String
+  templateBoltId               String
+  attempt                      Int
+  inputSource                  AssemblyTorqueInputSource         @default(MANUAL)
+  rawPayload                   Json?
+  value                        Decimal?                          @db.Decimal(18, 6)
+  inputUnit                    String?
+  valueNm                      Decimal?                          @db.Decimal(18, 6)
+  judgement                    AssemblyTorqueRecordJudgement
+  accepted                     Boolean                           @default(false)
+  ignoredReason                String?
+  torqueWrenchProfileId        String?
+  confirmationId               String?
+  settingHistoryId             String?
+  serialNumberSnapshot         String?
+  manufacturerSnapshot         String?
+  modelNumberSnapshot          String?
+  settingLowerLimitSnapshot    Decimal?                          @db.Decimal(18, 6)
+  settingNominalTorqueSnapshot Decimal?                          @db.Decimal(18, 6)
+  settingUpperLimitSnapshot    Decimal?                          @db.Decimal(18, 6)
+  settingUnitSnapshot          String?
+  sourceClientDeviceId         String?
+  sourceEventKey               String?
+  expectedTemplateBoltId       String?
+  deviceRecordedAt             DateTime?
+  deviceMemoryCounter          String?
+  deviceJudgement              String?
+  overrideActorUserId          String?
+  overrideActorUsername        String?
+  overrideReason               String?
+  recordedAt                   DateTime                          @default(now())
+  createdAt                    DateTime                          @default(now())
+  session                      AssemblyWorkSession               @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  templateBolt                 AssemblyTemplateBolt              @relation(fields: [templateBoltId], references: [id], onDelete: Restrict)
+  torqueWrenchProfile          TorqueWrenchProfile?              @relation(fields: [torqueWrenchProfileId], references: [id], onDelete: Restrict)
+  confirmation                 AssemblyTorqueWrenchConfirmation? @relation(fields: [confirmationId], references: [id], onDelete: Restrict)
+  settingHistory               TorqueWrenchSettingHistory?       @relation(fields: [settingHistoryId], references: [id], onDelete: Restrict)
 
   @@unique([sessionId, templateBoltId, attempt], map: "AssemblyTorqueRecord_unique_attempt")
+  @@unique([sourceClientDeviceId, sourceEventKey], map: "AssemblyTorqueRecord_unique_source_event")
   @@index([sessionId, recordedAt], map: "AssemblyTorqueRecord_idx_session_recorded")
   @@index([templateBoltId], map: "AssemblyTorqueRecord_idx_bolt")
+  @@index([torqueWrenchProfileId, recordedAt], map: "AssemblyTorqueRecord_idx_profile_recorded")
+  @@index([torqueWrenchProfileId, deviceMemoryCounter, recordedAt], map: "AssemblyTorqueRecord_idx_profile_memory_recorded")
+  @@index([confirmationId], map: "AssemblyTorqueRecord_idx_confirmation")
+  @@index([settingHistoryId], map: "AssemblyTorqueRecord_idx_setting")
 }
 
 /// 組立トルク管理: 作業セッションごとのチェック項目トグル状態。
 model AssemblyCheckRecord {
-  id                     String                    @id @default(uuid())
-  sessionId              String
-  checkItemId            String
-  checked                Boolean
-  checkedByOperatorName  String?
-  checkedAt              DateTime                  @updatedAt
-  createdAt              DateTime                  @default(now())
-  session                AssemblyWorkSession       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  checkItem              AssemblyTemplateCheckItem @relation(fields: [checkItemId], references: [id], onDelete: Restrict)
+  id                    String                    @id @default(uuid())
+  sessionId             String
+  checkItemId           String
+  checked               Boolean
+  checkedByOperatorName String?
+  checkedAt             DateTime                  @updatedAt
+  createdAt             DateTime                  @default(now())
+  session               AssemblyWorkSession       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  checkItem             AssemblyTemplateCheckItem @relation(fields: [checkItemId], references: [id], onDelete: Restrict)
 
   @@unique([sessionId, checkItemId], map: "AssemblyCheckRecord_unique_session_check_item")
   @@index([sessionId], map: "AssemblyCheckRecord_idx_session")
@@ -2631,21 +2794,21 @@ model AssemblyAreaRestartLog {
 
 /// 組立キオスク: 完了した作業セッションの記録承認。
 model AssemblyWorkSessionApproval {
-  id                            String              @id @default(uuid())
-  sessionId                     String              @unique
-  approvedAt                    DateTime            @default(now())
-  approverEmployeeId            String?
-  approverEmployeeCodeSnapshot  String
-  approverEmployeeNameSnapshot  String
-  approverNfcTagUidSnapshot     String
-  comment                       String?
-  clientDeviceId                String?
-  clientDeviceNameSnapshot      String?
-  createdAt                     DateTime            @default(now())
-  updatedAt                     DateTime            @updatedAt
-  session                       AssemblyWorkSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  approverEmployee              Employee?           @relation("AssemblyWorkSessionRecordApprover", fields: [approverEmployeeId], references: [id], onDelete: SetNull)
-  clientDevice                  ClientDevice?       @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
+  id                           String              @id @default(uuid())
+  sessionId                    String              @unique
+  approvedAt                   DateTime            @default(now())
+  approverEmployeeId           String?
+  approverEmployeeCodeSnapshot String
+  approverEmployeeNameSnapshot String
+  approverNfcTagUidSnapshot    String
+  comment                      String?
+  clientDeviceId               String?
+  clientDeviceNameSnapshot     String?
+  createdAt                    DateTime            @default(now())
+  updatedAt                    DateTime            @updatedAt
+  session                      AssemblyWorkSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  approverEmployee             Employee?           @relation("AssemblyWorkSessionRecordApprover", fields: [approverEmployeeId], references: [id], onDelete: SetNull)
+  clientDevice                 ClientDevice?       @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
 
   @@index([approvedAt], map: "AssemblyWorkSessionApproval_idx_approved_at")
   @@index([approverEmployeeId], map: "AssemblyWorkSessionApproval_idx_approver_employee")
@@ -2653,34 +2816,34 @@ model AssemblyWorkSessionApproval {
 }
 
 model SelfInspectionSession {
-  id                 String                      @id @default(uuid())
-  sessionBusinessKey String                      @unique
-  templateId         String
-  productNo          String
-  processGroup       PartMeasurementProcessGroup
-  resourceCd         String
-  scheduleRowId      String?
-  fseiban            String?
-  fhincd             String
-  fhinmei            String
-  machineName        String?
-  plannedQuantity    Int
-  expectedEntryCount Int
-  clientDeviceId     String?
-  startedAt          DateTime?
-  completedAt        DateTime?
-  recordApprovalRequiredAt DateTime?
-  recordApprovalWorkflowStartedAt DateTime?
+  id                               String                         @id @default(uuid())
+  sessionBusinessKey               String                         @unique
+  templateId                       String
+  productNo                        String
+  processGroup                     PartMeasurementProcessGroup
+  resourceCd                       String
+  scheduleRowId                    String?
+  fseiban                          String?
+  fhincd                           String
+  fhinmei                          String
+  machineName                      String?
+  plannedQuantity                  Int
+  expectedEntryCount               Int
+  clientDeviceId                   String?
+  startedAt                        DateTime?
+  completedAt                      DateTime?
+  recordApprovalRequiredAt         DateTime?
+  recordApprovalWorkflowStartedAt  DateTime?
   inspectorRemeasurementRequiredAt DateTime?
-  decisionWorkflow   String?
-  createdAt          DateTime                    @default(now())
-  updatedAt          DateTime                    @updatedAt
-  template           PartMeasurementTemplate     @relation(fields: [templateId], references: [id], onDelete: Restrict)
-  clientDevice       ClientDevice?               @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
-  entries            SelfInspectionLotEntry[]
-  inspectorEntries   SelfInspectionInspectorEntry[]
-  paperReports       SelfInspectionPaperReport[]
-  recordApproval     SelfInspectionRecordApproval?
+  decisionWorkflow                 String?
+  createdAt                        DateTime                       @default(now())
+  updatedAt                        DateTime                       @updatedAt
+  template                         PartMeasurementTemplate        @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  clientDevice                     ClientDevice?                  @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
+  entries                          SelfInspectionLotEntry[]
+  inspectorEntries                 SelfInspectionInspectorEntry[]
+  paperReports                     SelfInspectionPaperReport[]
+  recordApproval                   SelfInspectionRecordApproval?
 
   @@index([productNo, processGroup, resourceCd], map: "SelfInspectionSession_idx_business_lookup")
   @@index([scheduleRowId], map: "SelfInspectionSession_idx_schedule_row")
@@ -2693,24 +2856,24 @@ model SelfInspectionSession {
 }
 
 model SelfInspectionLotEntry {
-  id                           String                         @id @default(uuid())
-  sessionId                    String
-  entryIndex                   Int
-  entrySlotKind                SelfInspectionEntrySlotKind    @default(FIXED)
-  persistenceStatus            SelfInspectionEntryPersistenceStatus @default(CONFIRMED)
-  createdByEmployeeId          String?
-  createdByEmployeeNameSnapshot String?
-  measuringInstrumentId        String?
+  id                                          String                                  @id @default(uuid())
+  sessionId                                   String
+  entryIndex                                  Int
+  entrySlotKind                               SelfInspectionEntrySlotKind             @default(FIXED)
+  persistenceStatus                           SelfInspectionEntryPersistenceStatus    @default(CONFIRMED)
+  createdByEmployeeId                         String?
+  createdByEmployeeNameSnapshot               String?
+  measuringInstrumentId                       String?
   measuringInstrumentManagementNumberSnapshot String?
-  measuringInstrumentNameSnapshot String?
-  measuringInstrumentTagUidSnapshot String?
-  createdAt                    DateTime                       @default(now())
-  updatedAt                    DateTime                       @updatedAt
-  session                      SelfInspectionSession          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  createdByEmployee            Employee?                      @relation(fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
-  measuringInstrument          MeasuringInstrument?           @relation(fields: [measuringInstrumentId], references: [id], onDelete: SetNull)
-  values                       SelfInspectionMeasurementValue[]
-  instrumentUsages             SelfInspectionLotEntryInstrumentUsage[]
+  measuringInstrumentNameSnapshot             String?
+  measuringInstrumentTagUidSnapshot           String?
+  createdAt                                   DateTime                                @default(now())
+  updatedAt                                   DateTime                                @updatedAt
+  session                                     SelfInspectionSession                   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  createdByEmployee                           Employee?                               @relation(fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  measuringInstrument                         MeasuringInstrument?                    @relation(fields: [measuringInstrumentId], references: [id], onDelete: SetNull)
+  values                                      SelfInspectionMeasurementValue[]
+  instrumentUsages                            SelfInspectionLotEntryInstrumentUsage[]
 
   @@unique([sessionId, entryIndex], map: "SelfInspectionLotEntry_unique_session_entry")
   @@index([sessionId], map: "SelfInspectionLotEntry_idx_session")
@@ -2719,19 +2882,19 @@ model SelfInspectionLotEntry {
 }
 
 model SelfInspectionLotEntryInstrumentUsage {
-  id                                           String                 @id @default(uuid())
-  entryId                                      String
-  measuringInstrumentId                        String?
-  loanId                                       String?
+  id                                          String                 @id @default(uuid())
+  entryId                                     String
+  measuringInstrumentId                       String?
+  loanId                                      String?
   measuringInstrumentManagementNumberSnapshot String
   measuringInstrumentNameSnapshot             String
   measuringInstrumentTagUidSnapshot           String?
-  preUseInspectedAt                            DateTime               @default(now())
-  createdAt                                    DateTime               @default(now())
-  updatedAt                                    DateTime               @updatedAt
-  entry                                        SelfInspectionLotEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
-  measuringInstrument                          MeasuringInstrument?   @relation(fields: [measuringInstrumentId], references: [id], onDelete: SetNull)
-  loan                                         Loan?                  @relation(fields: [loanId], references: [id], onDelete: SetNull)
+  preUseInspectedAt                           DateTime               @default(now())
+  createdAt                                   DateTime               @default(now())
+  updatedAt                                   DateTime               @updatedAt
+  entry                                       SelfInspectionLotEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  measuringInstrument                         MeasuringInstrument?   @relation(fields: [measuringInstrumentId], references: [id], onDelete: SetNull)
+  loan                                        Loan?                  @relation(fields: [loanId], references: [id], onDelete: SetNull)
 
   @@unique([entryId, measuringInstrumentId], map: "SelfInspectionLotEntryInstrumentUsage_unique_entry_instrument")
   @@index([entryId], map: "SelfInspectionLotEntryInstrumentUsage_idx_entry")
@@ -2740,22 +2903,22 @@ model SelfInspectionLotEntryInstrumentUsage {
 }
 
 model SelfInspectionMeasurementValue {
-  id                            String                                  @id @default(uuid())
-  entryId                       String
-  templateItemId                String
-  value                         Decimal?                                @db.Decimal(18, 6)
-  reviewStatus                  SelfInspectionMeasurementReviewStatus   @default(NOT_REQUIRED)
-  finalReviewStatus             String?
-  outOfToleranceAcknowledgedAt  DateTime?
-  approvedAt                    DateTime?
-  approvedByUserId              String?
-  approvedByUsername            String?
-  approvalComment               String?
-  createdAt                     DateTime                                @default(now())
-  updatedAt                     DateTime                                @updatedAt
-  entry                         SelfInspectionLotEntry                  @relation(fields: [entryId], references: [id], onDelete: Cascade)
-  templateItem                  PartMeasurementTemplateItem             @relation(fields: [templateItemId], references: [id], onDelete: Restrict)
-  inspectorMeasurements         SelfInspectionInspectorMeasurementValue[]
+  id                           String                                    @id @default(uuid())
+  entryId                      String
+  templateItemId               String
+  value                        Decimal?                                  @db.Decimal(18, 6)
+  reviewStatus                 SelfInspectionMeasurementReviewStatus     @default(NOT_REQUIRED)
+  finalReviewStatus            String?
+  outOfToleranceAcknowledgedAt DateTime?
+  approvedAt                   DateTime?
+  approvedByUserId             String?
+  approvedByUsername           String?
+  approvalComment              String?
+  createdAt                    DateTime                                  @default(now())
+  updatedAt                    DateTime                                  @updatedAt
+  entry                        SelfInspectionLotEntry                    @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  templateItem                 PartMeasurementTemplateItem               @relation(fields: [templateItemId], references: [id], onDelete: Restrict)
+  inspectorMeasurements        SelfInspectionInspectorMeasurementValue[]
 
   @@unique([entryId, templateItemId], map: "SelfInspectionMeasurementValue_unique_entry_item")
   @@index([entryId], map: "SelfInspectionMeasurementValue_idx_entry")
@@ -2764,28 +2927,28 @@ model SelfInspectionMeasurementValue {
 }
 
 model SelfInspectionInspectorEntry {
-  id                                           String                         @id @default(uuid())
-  sessionId                                    String
-  entryIndex                                   Int
-  entrySlotKind                                SelfInspectionEntrySlotKind    @default(FIXED)
-  inspectorEmployeeId                          String?
-  inspectorEmployeeCodeSnapshot                String?
-  inspectorEmployeeNameSnapshot                String?
-  inspectorEmployeeNfcTagUidSnapshot           String?
-  measuringInstrumentId                        String?
-  measuringInstrumentManagementNumberSnapshot  String?
-  measuringInstrumentNameSnapshot              String?
-  measuringInstrumentTagUidSnapshot            String?
-  clientDeviceId                               String?
-  clientDeviceNameSnapshot                     String?
-  createdAt                                    DateTime                       @default(now())
-  updatedAt                                    DateTime                       @updatedAt
-  session                                      SelfInspectionSession          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  inspectorEmployee                            Employee?                      @relation("SelfInspectionInspectorEntryEmployee", fields: [inspectorEmployeeId], references: [id], onDelete: SetNull)
-  measuringInstrument                          MeasuringInstrument?           @relation(fields: [measuringInstrumentId], references: [id], onDelete: SetNull)
-  clientDevice                                 ClientDevice?                  @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
-  values                                       SelfInspectionInspectorMeasurementValue[]
-  instrumentUsages                             SelfInspectionInspectorEntryInstrumentUsage[]
+  id                                          String                                        @id @default(uuid())
+  sessionId                                   String
+  entryIndex                                  Int
+  entrySlotKind                               SelfInspectionEntrySlotKind                   @default(FIXED)
+  inspectorEmployeeId                         String?
+  inspectorEmployeeCodeSnapshot               String?
+  inspectorEmployeeNameSnapshot               String?
+  inspectorEmployeeNfcTagUidSnapshot          String?
+  measuringInstrumentId                       String?
+  measuringInstrumentManagementNumberSnapshot String?
+  measuringInstrumentNameSnapshot             String?
+  measuringInstrumentTagUidSnapshot           String?
+  clientDeviceId                              String?
+  clientDeviceNameSnapshot                    String?
+  createdAt                                   DateTime                                      @default(now())
+  updatedAt                                   DateTime                                      @updatedAt
+  session                                     SelfInspectionSession                         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  inspectorEmployee                           Employee?                                     @relation("SelfInspectionInspectorEntryEmployee", fields: [inspectorEmployeeId], references: [id], onDelete: SetNull)
+  measuringInstrument                         MeasuringInstrument?                          @relation(fields: [measuringInstrumentId], references: [id], onDelete: SetNull)
+  clientDevice                                ClientDevice?                                 @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
+  values                                      SelfInspectionInspectorMeasurementValue[]
+  instrumentUsages                            SelfInspectionInspectorEntryInstrumentUsage[]
 
   @@unique([sessionId, entryIndex], map: "SelfInspectionInspectorEntry_unique_session_entry")
   @@index([sessionId], map: "SelfInspectionInspectorEntry_idx_session")
@@ -2795,19 +2958,19 @@ model SelfInspectionInspectorEntry {
 }
 
 model SelfInspectionInspectorEntryInstrumentUsage {
-  id                                           String                       @id @default(uuid())
-  entryId                                      String
-  measuringInstrumentId                        String?
-  loanId                                       String?
+  id                                          String                       @id @default(uuid())
+  entryId                                     String
+  measuringInstrumentId                       String?
+  loanId                                      String?
   measuringInstrumentManagementNumberSnapshot String
   measuringInstrumentNameSnapshot             String
   measuringInstrumentTagUidSnapshot           String?
-  preUseInspectedAt                            DateTime                     @default(now())
-  createdAt                                    DateTime                     @default(now())
-  updatedAt                                    DateTime                     @updatedAt
-  entry                                        SelfInspectionInspectorEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
-  measuringInstrument                          MeasuringInstrument?         @relation(fields: [measuringInstrumentId], references: [id], onDelete: SetNull)
-  loan                                         Loan?                        @relation(fields: [loanId], references: [id], onDelete: SetNull)
+  preUseInspectedAt                           DateTime                     @default(now())
+  createdAt                                   DateTime                     @default(now())
+  updatedAt                                   DateTime                     @updatedAt
+  entry                                       SelfInspectionInspectorEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  measuringInstrument                         MeasuringInstrument?         @relation(fields: [measuringInstrumentId], references: [id], onDelete: SetNull)
+  loan                                        Loan?                        @relation(fields: [loanId], references: [id], onDelete: SetNull)
 
   @@unique([entryId, measuringInstrumentId], map: "SelfInspectionInspectorEntryUsage_unique_entry_instrument")
   @@index([entryId], map: "SelfInspectionInspectorEntryUsage_idx_entry")
@@ -2816,22 +2979,22 @@ model SelfInspectionInspectorEntryInstrumentUsage {
 }
 
 model SelfInspectionInspectorMeasurementValue {
-  id                         String                                                @id @default(uuid())
+  id                         String                                            @id @default(uuid())
   inspectorEntryId           String
   templateItemId             String
   operatorMeasurementValueId String?
-  operatorValueSnapshot      Decimal?                                              @db.Decimal(18, 6)
-  inspectorValue             Decimal?                                              @db.Decimal(18, 6)
-  differenceValue            Decimal?                                              @db.Decimal(18, 6)
-  judgementStatus            SelfInspectionInspectorMeasurementJudgementStatus      @default(NOT_EVALUATED)
+  operatorValueSnapshot      Decimal?                                          @db.Decimal(18, 6)
+  inspectorValue             Decimal?                                          @db.Decimal(18, 6)
+  differenceValue            Decimal?                                          @db.Decimal(18, 6)
+  judgementStatus            SelfInspectionInspectorMeasurementJudgementStatus @default(NOT_EVALUATED)
   finalJudgementStatus       String?
   judgedAt                   DateTime?
   judgementComment           String?
-  createdAt                  DateTime                                              @default(now())
-  updatedAt                  DateTime                                              @updatedAt
-  inspectorEntry             SelfInspectionInspectorEntry                           @relation(fields: [inspectorEntryId], references: [id], onDelete: Cascade)
-  templateItem               PartMeasurementTemplateItem                           @relation(fields: [templateItemId], references: [id], onDelete: Restrict)
-  operatorMeasurementValue   SelfInspectionMeasurementValue?                       @relation(fields: [operatorMeasurementValueId], references: [id], onDelete: SetNull)
+  createdAt                  DateTime                                          @default(now())
+  updatedAt                  DateTime                                          @updatedAt
+  inspectorEntry             SelfInspectionInspectorEntry                      @relation(fields: [inspectorEntryId], references: [id], onDelete: Cascade)
+  templateItem               PartMeasurementTemplateItem                       @relation(fields: [templateItemId], references: [id], onDelete: Restrict)
+  operatorMeasurementValue   SelfInspectionMeasurementValue?                   @relation(fields: [operatorMeasurementValueId], references: [id], onDelete: SetNull)
 
   @@unique([inspectorEntryId, templateItemId], map: "SelfInspectionInspectorValue_unique_entry_item")
   @@index([inspectorEntryId], map: "SelfInspectionInspectorValue_idx_entry")
@@ -2841,21 +3004,21 @@ model SelfInspectionInspectorMeasurementValue {
 }
 
 model SelfInspectionRecordApproval {
-  id                            String                 @id @default(uuid())
-  sessionId                     String                 @unique
-  approvedAt                    DateTime               @default(now())
-  approverEmployeeId            String?
-  approverEmployeeCodeSnapshot  String
-  approverEmployeeNameSnapshot  String
+  id                                String                @id @default(uuid())
+  sessionId                         String                @unique
+  approvedAt                        DateTime              @default(now())
+  approverEmployeeId                String?
+  approverEmployeeCodeSnapshot      String
+  approverEmployeeNameSnapshot      String
   approverEmployeeNfcTagUidSnapshot String
-  comment                       String?
-  clientDeviceId                String?
-  clientDeviceNameSnapshot      String?
-  createdAt                     DateTime               @default(now())
-  updatedAt                     DateTime               @updatedAt
-  session                       SelfInspectionSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  approverEmployee              Employee?              @relation("SelfInspectionRecordApprover", fields: [approverEmployeeId], references: [id], onDelete: SetNull)
-  clientDevice                  ClientDevice?          @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
+  comment                           String?
+  clientDeviceId                    String?
+  clientDeviceNameSnapshot          String?
+  createdAt                         DateTime              @default(now())
+  updatedAt                         DateTime              @updatedAt
+  session                           SelfInspectionSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  approverEmployee                  Employee?             @relation("SelfInspectionRecordApprover", fields: [approverEmployeeId], references: [id], onDelete: SetNull)
+  clientDevice                      ClientDevice?         @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
 
   @@index([approvedAt], map: "SelfInspectionRecordApproval_idx_approved_at")
   @@index([approverEmployeeId], map: "SelfInspectionRecordApproval_idx_approver_employee")
@@ -2863,23 +3026,23 @@ model SelfInspectionRecordApproval {
 }
 
 model SelfInspectionPaperReport {
-  id              String                           @id @default(uuid())
+  id              String                          @id @default(uuid())
   sessionId       String
   scheduleRowId   String
   templateId      String
-  status          SelfInspectionPaperReportStatus  @default(ISSUED)
-  issuedAt        DateTime                         @default(now())
+  status          SelfInspectionPaperReportStatus @default(ISSUED)
+  issuedAt        DateTime                        @default(now())
   supersededAt    DateTime?
   importedAt      DateTime?
   cancelledAt     DateTime?
   clientDeviceId  String?
   plannedQuantity Int
   templateVersion Int
-  createdAt       DateTime                         @default(now())
-  updatedAt       DateTime                         @updatedAt
-  session         SelfInspectionSession            @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  template        PartMeasurementTemplate          @relation(fields: [templateId], references: [id], onDelete: Restrict)
-  clientDevice    ClientDevice?                    @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
+  createdAt       DateTime                        @default(now())
+  updatedAt       DateTime                        @updatedAt
+  session         SelfInspectionSession           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  template        PartMeasurementTemplate         @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  clientDevice    ClientDevice?                   @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
   pages           SelfInspectionPaperReportPage[]
   ocrReviews      SelfInspectionPaperOcrReview[]
 

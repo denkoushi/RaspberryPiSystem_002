@@ -10,6 +10,9 @@ import {
 import { convertDrawingUploadToPreviewBuffer } from '../../lib/part-measurement-drawing-preview.js';
 import { AssemblyProcedureImageStorage } from '../../lib/assembly-procedure-image-storage.js';
 import { requireClientDevice } from '../kiosk/shared.js';
+import { requireKioskClientDevice } from '../../services/clients/client-device-auth.service.js';
+import { AssemblyTorqueTraceabilityService } from '../../services/torque-wrenches/index.js';
+import { agentTorqueRecordSchema } from '../torque-wrenches/schemas.js';
 import {
   AssemblyExcelExportService,
   AssemblyLibraryFilterOptionsService,
@@ -68,13 +71,18 @@ function validateCalloutTipPair(
 
 const boltInputSchema = z.object({
   sortOrder: z.coerce.number().int().min(0),
-  tighteningId: z.string().trim().min(1).max(120),
+  tighteningId: z.string().trim().min(1).max(120).optional(),
   markerNo: z.coerce.number().int().min(1).max(999),
   xRatio: z.coerce.number().min(0).max(1),
   yRatio: z.coerce.number().min(0).max(1),
   calloutTipXRatio: z.coerce.number().min(0).max(1).optional().nullable(),
   calloutTipYRatio: z.coerce.number().min(0).max(1).optional().nullable(),
   boltSpec: z.string().trim().min(1).max(200),
+  nominalDiameter: z.string().trim().min(1).max(40).optional().nullable(),
+  boltLengthMm: z.coerce.number().positive().optional().nullable(),
+  material: z.string().trim().min(1).max(80).optional().nullable(),
+  strengthClass: z.string().trim().min(1).max(80).optional().nullable(),
+  capabilityGroupId: z.string().uuid().optional().nullable(),
   nominalTorque: z.coerce.number(),
   lowerLimit: z.coerce.number(),
   upperLimit: z.coerce.number(),
@@ -114,7 +122,8 @@ const templateBodySchema = z.object({
   name: z.string().trim().min(1).max(200),
   procedureDocumentId: z.string().uuid(),
   areas: z.array(areaInputSchema).min(1),
-  checkItems: z.array(checkItemInputSchema).optional()
+  checkItems: z.array(checkItemInputSchema).optional(),
+  traceabilityMode: z.enum(['LEGACY', 'REQUIRED']).optional().default('LEGACY')
 });
 
 const templateReviseBodySchema = templateBodySchema.partial().extend({
@@ -135,7 +144,7 @@ const startSessionBodySchema = z.object({
   operatorEmployeeId: z.string().trim().max(120).optional().nullable(),
   operatorNameSnapshot: z.string().trim().min(1).max(120),
   targetUnit: z.string().trim().min(1).max(120),
-  torqueWrenchId: z.string().trim().min(1).max(120)
+  torqueWrenchId: z.string().trim().min(1).max(120).optional().nullable()
 });
 
 const createAssemblyLotBodySchema = z.object({
@@ -146,7 +155,7 @@ const createAssemblyLotBodySchema = z.object({
   operatorEmployeeId: z.string().trim().max(120).optional().nullable(),
   operatorNameSnapshot: z.string().trim().min(1).max(120),
   targetUnit: z.string().trim().min(1).max(120),
-  torqueWrenchId: z.string().trim().min(1).max(120)
+  torqueWrenchId: z.string().trim().min(1).max(120).optional().nullable()
 });
 
 const procedureOrderItemBodySchema = z
@@ -241,6 +250,7 @@ function serializeTemplateSummary(template: AssemblyTemplateSummary) {
     name: template.name,
     version: template.version,
     isActive: template.isActive,
+    traceabilityMode: template.traceabilityMode,
     procedureDocumentId: template.procedureDocumentId,
     procedureDocumentName: template.procedureDocumentName,
     areaCount: template.areaCount,
@@ -393,6 +403,7 @@ function serializeTemplate(template: AssemblyTemplateDetail) {
     name: template.name,
     version: template.version,
     isActive: template.isActive,
+    traceabilityMode: template.traceabilityMode,
     procedureDocumentId: template.procedureDocumentId,
     createdAt: template.createdAt.toISOString(),
     updatedAt: template.updatedAt.toISOString(),
@@ -427,6 +438,7 @@ function serializeTemplate(template: AssemblyTemplateDetail) {
       bolts: area.bolts.map((bolt) => ({
         id: bolt.id,
         areaId: bolt.areaId,
+        templateId: bolt.templateId,
         sortOrder: bolt.sortOrder,
         tighteningId: bolt.tighteningId,
         markerNo: bolt.markerNo,
@@ -435,6 +447,11 @@ function serializeTemplate(template: AssemblyTemplateDetail) {
         calloutTipXRatio: decimalToString(bolt.calloutTipXRatio),
         calloutTipYRatio: decimalToString(bolt.calloutTipYRatio),
         boltSpec: bolt.boltSpec,
+        nominalDiameter: bolt.nominalDiameter,
+        boltLengthMm: decimalToString(bolt.boltLengthMm),
+        material: bolt.material,
+        strengthClass: bolt.strengthClass,
+        capabilityGroupId: bolt.capabilityGroupId,
         nominalTorque: decimalToString(bolt.nominalTorque),
         lowerLimit: decimalToString(bolt.lowerLimit),
         upperLimit: decimalToString(bolt.upperLimit),
@@ -535,9 +552,29 @@ function serializeSession(session: AssemblyWorkSessionDetail, sessionService: As
       inputSource: record.inputSource.toLowerCase(),
       rawPayload: record.rawPayload,
       value: decimalToString(record.value),
+      inputUnit: record.inputUnit,
+      valueNm: decimalToString(record.valueNm),
       judgement: record.judgement.toLowerCase(),
       accepted: record.accepted,
       ignoredReason: record.ignoredReason,
+      torqueWrenchProfileId: record.torqueWrenchProfileId,
+      confirmationId: record.confirmationId,
+      settingHistoryId: record.settingHistoryId,
+      serialNumberSnapshot: record.serialNumberSnapshot,
+      manufacturerSnapshot: record.manufacturerSnapshot,
+      modelNumberSnapshot: record.modelNumberSnapshot,
+      settingLowerLimitSnapshot: decimalToString(record.settingLowerLimitSnapshot),
+      settingNominalTorqueSnapshot: decimalToString(record.settingNominalTorqueSnapshot),
+      settingUpperLimitSnapshot: decimalToString(record.settingUpperLimitSnapshot),
+      settingUnitSnapshot: record.settingUnitSnapshot,
+      sourceClientDeviceId: record.sourceClientDeviceId,
+      sourceEventKey: record.sourceEventKey,
+      expectedTemplateBoltId: record.expectedTemplateBoltId,
+      deviceRecordedAt: dateToIso(record.deviceRecordedAt),
+      deviceMemoryCounter: record.deviceMemoryCounter,
+      deviceJudgement: record.deviceJudgement,
+      overrideActorUsername: record.overrideActorUsername,
+      overrideReason: record.overrideReason,
       recordedAt: record.recordedAt.toISOString(),
       createdAt: record.createdAt.toISOString(),
       tighteningId: record.templateBolt.tighteningId,
@@ -639,6 +676,7 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
   const libraryFilterOptionsService = new AssemblyLibraryFilterOptionsService();
   const templateService = new AssemblyTemplateService();
   const sessionService = new AssemblyWorkSessionService();
+  const traceabilityService = new AssemblyTorqueTraceabilityService();
   const lotService = new AssemblyLotService(sessionService);
   const recordApprovalService = new AssemblyWorkSessionRecordApprovalService();
   const seibanStartService = new AssemblySeibanStartService();
@@ -976,6 +1014,15 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
 
   app.post('/assembly/work-sessions/:id/record-torque', { preHandler: allowWriteKiosk }, async (request) => {
     const params = idParamSchema.parse(request.params);
+    const agentBody = agentTorqueRecordSchema.safeParse(request.body);
+    if (agentBody.success && 'sourceEventKey' in agentBody.data) {
+      const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
+      return traceabilityService.recordAgent({
+        sessionId: params.id,
+        clientDeviceId: clientDevice.id,
+        ...agentBody.data
+      });
+    }
     const body = recordTorqueBodySchema.parse(request.body);
     const result = await sessionService.recordTorque({
       sessionId: params.id,

@@ -1,6 +1,8 @@
-import type { Prisma } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+import type { AssemblyTorqueTraceabilityMode, Prisma } from '@prisma/client';
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
+import { TorqueUnitConverter, normalizeFastenerText } from '../torque-wrenches/index.js';
 import {
   assertMarkerPageRefValid,
   loadAssemblyPageRefContext,
@@ -42,6 +44,7 @@ export type AssemblyTemplateSummary = {
   name: string;
   version: number;
   isActive: boolean;
+  traceabilityMode: AssemblyTorqueTraceabilityMode;
   procedureDocumentId: string;
   procedureDocumentName: string;
   areaCount: number;
@@ -52,13 +55,18 @@ export type AssemblyTemplateSummary = {
 
 export type AssemblyTemplateBoltInput = {
   sortOrder: number;
-  tighteningId: string;
+  tighteningId?: string;
   markerNo: number;
   xRatio: number;
   yRatio: number;
   calloutTipXRatio?: number | null;
   calloutTipYRatio?: number | null;
   boltSpec: string;
+  nominalDiameter?: string | null;
+  boltLengthMm?: number | null;
+  material?: string | null;
+  strengthClass?: string | null;
+  capabilityGroupId?: string | null;
   nominalTorque: number;
   lowerLimit: number;
   upperLimit: number;
@@ -99,6 +107,7 @@ export type AssemblyTemplateUpsertInput = {
   procedureDocumentId: string;
   areas: AssemblyTemplateAreaInput[];
   checkItems?: AssemblyTemplateCheckItemInput[];
+  traceabilityMode?: AssemblyTorqueTraceabilityMode;
 };
 
 function normalizeKey(value: string, fieldName: string): string {
@@ -160,10 +169,22 @@ function normalizeCheckItems(checkItems: AssemblyTemplateCheckItemInput[]): Asse
     });
 }
 
-function normalizeAreas(areas: AssemblyTemplateAreaInput[]): AssemblyTemplateAreaInput[] {
+function generatedTighteningId(markerNo: number): string {
+  return `TIGHTENING-${markerNo}-${randomUUID()}`;
+}
+
+function normalizeOptionalFastener(value: string | null | undefined): string | null {
+  return value == null || value.trim() === '' ? null : normalizeFastenerText(value);
+}
+
+function normalizeAreas(
+  areas: AssemblyTemplateAreaInput[],
+  traceabilityMode: AssemblyTorqueTraceabilityMode
+): AssemblyTemplateAreaInput[] {
   if (areas.length === 0) {
     throw new ApiError(400, '工程エリアが1件以上必要です');
   }
+  const templateMarkerNos = new Set<number>();
   return [...areas]
     .sort((a, b) => a.sortOrder - b.sortOrder)
     .map((area, areaIndex) => {
@@ -180,24 +201,74 @@ function normalizeAreas(areas: AssemblyTemplateAreaInput[]): AssemblyTemplateAre
         bolts: [...area.bolts]
           .sort((a, b) => a.sortOrder - b.sortOrder)
           .map((bolt, boltIndex) => {
-            if (bolt.lowerLimit > bolt.upperLimit) {
-              throw new ApiError(400, `${bolt.tighteningId || boltIndex + 1}: 下限が上限を超えています`);
+            if (bolt.lowerLimit > bolt.nominalTorque || bolt.nominalTorque > bolt.upperLimit) {
+              throw new ApiError(400, `丸数字${bolt.markerNo || boltIndex + 1}: 下限値 ≤ 規定値 ≤ 上限値にしてください`);
             }
+            const markerNo = Math.max(1, Math.trunc(bolt.markerNo));
+            if (templateMarkerNos.has(markerNo)) {
+              throw new ApiError(400, `丸数字${markerNo}がテンプレート内で重複しています`);
+            }
+            templateMarkerNos.add(markerNo);
             const calloutTip = normalizeCalloutTip(bolt.calloutTipXRatio, bolt.calloutTipYRatio);
+            const nominalDiameter = normalizeOptionalFastener(bolt.nominalDiameter);
+            const material = normalizeOptionalFastener(bolt.material);
+            const strengthClass = normalizeOptionalFastener(bolt.strengthClass);
+            const capabilityGroupId = bolt.capabilityGroupId?.trim() || null;
+            const boltLengthMm = bolt.boltLengthMm == null ? null : Number(bolt.boltLengthMm);
+            if (
+              traceabilityMode === 'REQUIRED' &&
+              (!nominalDiameter || !Number.isFinite(boltLengthMm) || boltLengthMm! <= 0 || !material || !strengthClass || !capabilityGroupId)
+            ) {
+              throw new ApiError(400, `丸数字${markerNo}: 呼び径、長さ、材質、強度区分、適合グループが必要です`);
+            }
+            if (traceabilityMode === 'REQUIRED') {
+              TorqueUnitConverter.canonicalUnit(bolt.unit);
+            }
             return {
               ...bolt,
               ...calloutTip,
               sortOrder: boltIndex,
-              tighteningId: normalizeKey(bolt.tighteningId, '締付ID').slice(0, 120),
-              markerNo: Math.max(1, Math.trunc(bolt.markerNo)),
+              tighteningId:
+                traceabilityMode === 'LEGACY' && bolt.tighteningId
+                  ? normalizeKey(bolt.tighteningId, '締付ID').slice(0, 120)
+                  : generatedTighteningId(markerNo).slice(0, 120),
+              markerNo,
               xRatio: clampRatio(bolt.xRatio),
               yRatio: clampRatio(bolt.yRatio),
               boltSpec: normalizeKey(bolt.boltSpec, 'ボルト仕様').slice(0, 200),
+              nominalDiameter,
+              boltLengthMm,
+              material,
+              strengthClass,
+              capabilityGroupId,
               unit: normalizeKey(bolt.unit, '単位').slice(0, 40)
             };
           })
       };
     });
+}
+
+async function validateRequiredCapabilityGroups(
+  tx: Prisma.TransactionClient,
+  areas: AssemblyTemplateAreaInput[],
+  traceabilityMode: AssemblyTorqueTraceabilityMode
+): Promise<void> {
+  if (traceabilityMode !== 'REQUIRED') return;
+  const ids = [...new Set(areas.flatMap((area) => area.bolts.map((bolt) => bolt.capabilityGroupId!)))];
+  const groups = await tx.torqueWrenchCapabilityGroup.findMany({ where: { id: { in: ids }, isActive: true } });
+  const byId = new Map(groups.map((group) => [group.id, group]));
+  for (const bolt of areas.flatMap((area) => area.bolts)) {
+    const group = byId.get(bolt.capabilityGroupId!);
+    const matches =
+      group &&
+      group.nominalDiameter === bolt.nominalDiameter &&
+      group.boltLengthMm.equals(bolt.boltLengthMm!) &&
+      group.material === bolt.material &&
+      group.strengthClass === bolt.strengthClass;
+    if (!matches) {
+      throw new ApiError(400, `丸数字${bolt.markerNo}: 締結条件と適合グループが一致しません`);
+    }
+  }
 }
 
 function collectMarkerRefs(input: {
@@ -234,7 +305,7 @@ async function validateTemplateMarkerRefs(
           pageIndex: bolt.pageIndex
         },
         context,
-        bolt.tighteningId,
+        bolt.tighteningId ?? `丸数字${bolt.markerNo}`,
         { allowOmitted: true }
       );
     }
@@ -329,6 +400,7 @@ export class AssemblyTemplateService {
         name: true,
         version: true,
         isActive: true,
+        traceabilityMode: true,
         procedureDocumentId: true,
         createdAt: true,
         updatedAt: true,
@@ -357,6 +429,7 @@ export class AssemblyTemplateService {
       name: template.name,
       version: template.version,
       isActive: template.isActive,
+      traceabilityMode: template.traceabilityMode,
       procedureDocumentId: template.procedureDocumentId,
       procedureDocumentName: template.procedureDocument.name,
       areaCount: template.areas.length,
@@ -380,7 +453,8 @@ export class AssemblyTemplateService {
     const modelCode = normalizeKey(input.modelCode, '型番/FHINCD').slice(0, 120);
     const procedurePattern = normalizeKey(input.procedurePattern, '手順パターン').slice(0, 120);
     const name = normalizeKey(input.name, 'テンプレート名').slice(0, 200);
-    const areas = normalizeAreas(input.areas);
+    const traceabilityMode = input.traceabilityMode ?? 'LEGACY';
+    const areas = normalizeAreas(input.areas, traceabilityMode);
     const checkItems = normalizeCheckItems(input.checkItems ?? []);
 
     return prisma.$transaction(async (tx) => {
@@ -390,6 +464,7 @@ export class AssemblyTemplateService {
       if (!doc) throw new ApiError(400, '公開済みで有効な手順書を指定してください');
 
       await validateTemplateMarkerRefs(tx, { areas, checkItems });
+      await validateRequiredCapabilityGroups(tx, areas, traceabilityMode);
 
       const versionAgg = await tx.assemblyTemplate.aggregate({
         where: { modelCode, procedurePattern },
@@ -400,13 +475,14 @@ export class AssemblyTemplateService {
         where: { modelCode, procedurePattern, isActive: true },
         data: { isActive: false }
       });
-      return tx.assemblyTemplate.create({
+      const created = await tx.assemblyTemplate.create({
         data: {
           modelCode,
           procedurePattern,
           name,
           version,
           procedureDocumentId: doc.id,
+          traceabilityMode,
           checkItems: {
             create: checkItems.map((item) => {
               const pageRef = normalizeMarkerPageRef(
@@ -431,49 +507,64 @@ export class AssemblyTemplateService {
                 pageIndex: pageRef.pageIndex ?? 0
               };
             })
-          },
-          areas: {
-            create: areas.map((area) => ({
-              sortOrder: area.sortOrder,
-              processNo: area.processNo,
-              areaCode: area.areaCode,
-              areaName: area.areaName,
-              unitCode: area.unitCode,
-              requireManualAdvance: area.requireManualAdvance ?? true,
-              bolts: {
-                create: area.bolts.map((bolt) => {
-                  const pageRef = normalizeMarkerPageRef(
-                    {
-                      kioskDocumentId: bolt.kioskDocumentId,
-                      assemblyProcedureDocumentId: bolt.assemblyProcedureDocumentId,
-                      pageIndex: bolt.pageIndex
-                    },
-                    { allowOmitted: true }
-                  );
-                  return {
-                    sortOrder: bolt.sortOrder,
-                    tighteningId: bolt.tighteningId,
-                    markerNo: bolt.markerNo,
-                    xRatio: bolt.xRatio,
-                    yRatio: bolt.yRatio,
-                    calloutTipXRatio: bolt.calloutTipXRatio,
-                    calloutTipYRatio: bolt.calloutTipYRatio,
-                    boltSpec: bolt.boltSpec,
-                    nominalTorque: bolt.nominalTorque,
-                    lowerLimit: bolt.lowerLimit,
-                    upperLimit: bolt.upperLimit,
-                    unit: bolt.unit,
-                    kioskDocumentId: pageRef.kioskDocumentId,
-                    assemblyProcedureDocumentId: pageRef.assemblyProcedureDocumentId,
-                    pageIndex: pageRef.pageIndex
-                  };
-                })
-              }
-            }))
           }
-        },
+        }
+      });
+      for (const area of areas) {
+        const createdArea = await tx.assemblyTemplateArea.create({
+          data: {
+            templateId: created.id,
+            sortOrder: area.sortOrder,
+            processNo: area.processNo,
+            areaCode: area.areaCode,
+            areaName: area.areaName,
+            unitCode: area.unitCode,
+            requireManualAdvance: area.requireManualAdvance ?? true
+          }
+        });
+        await tx.assemblyTemplateBolt.createMany({
+          data: area.bolts.map((bolt) => {
+            const pageRef = normalizeMarkerPageRef(
+              {
+                kioskDocumentId: bolt.kioskDocumentId,
+                assemblyProcedureDocumentId: bolt.assemblyProcedureDocumentId,
+                pageIndex: bolt.pageIndex
+              },
+              { allowOmitted: true }
+            );
+            return {
+              areaId: createdArea.id,
+              templateId: created.id,
+              sortOrder: bolt.sortOrder,
+              tighteningId: bolt.tighteningId!,
+              markerNo: bolt.markerNo,
+              xRatio: bolt.xRatio,
+              yRatio: bolt.yRatio,
+              calloutTipXRatio: bolt.calloutTipXRatio,
+              calloutTipYRatio: bolt.calloutTipYRatio,
+              boltSpec: bolt.boltSpec,
+              nominalDiameter: bolt.nominalDiameter,
+              boltLengthMm: bolt.boltLengthMm,
+              material: bolt.material,
+              strengthClass: bolt.strengthClass,
+              capabilityGroupId: bolt.capabilityGroupId,
+              nominalTorque: bolt.nominalTorque,
+              lowerLimit: bolt.lowerLimit,
+              upperLimit: bolt.upperLimit,
+              unit: bolt.unit,
+              kioskDocumentId: pageRef.kioskDocumentId,
+              assemblyProcedureDocumentId: pageRef.assemblyProcedureDocumentId,
+              pageIndex: pageRef.pageIndex
+            };
+          })
+        });
+      }
+      const detail = await tx.assemblyTemplate.findUnique({
+        where: { id: created.id },
         include: assemblyTemplateDetailInclude
       });
+      if (!detail) throw new ApiError(500, '作成したテンプレートを取得できませんでした');
+      return detail;
     });
   }
 
@@ -498,6 +589,11 @@ export class AssemblyTemplateService {
           calloutTipXRatio: bolt.calloutTipXRatio == null ? null : Number(bolt.calloutTipXRatio),
           calloutTipYRatio: bolt.calloutTipYRatio == null ? null : Number(bolt.calloutTipYRatio),
           boltSpec: bolt.boltSpec,
+          nominalDiameter: bolt.nominalDiameter,
+          boltLengthMm: bolt.boltLengthMm == null ? null : Number(bolt.boltLengthMm),
+          material: bolt.material,
+          strengthClass: bolt.strengthClass,
+          capabilityGroupId: bolt.capabilityGroupId,
           nominalTorque: Number(bolt.nominalTorque),
           lowerLimit: Number(bolt.lowerLimit),
           upperLimit: Number(bolt.upperLimit),
@@ -528,7 +624,8 @@ export class AssemblyTemplateService {
       name: input.name ?? source.name,
       procedureDocumentId: input.procedureDocumentId ?? source.procedureDocumentId,
       areas,
-      checkItems
+      checkItems,
+      traceabilityMode: input.traceabilityMode ?? source.traceabilityMode
     });
   }
 

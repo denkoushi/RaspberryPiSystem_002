@@ -4,7 +4,7 @@ set -euo pipefail
 # change-detector: 設定変更とコード変更を検知し、JSONで出力する。
 # - 対象: HEADとの差分 + 未追跡ファイル
 # - 設定: infrastructure/ansible/group_vars/*, inventory.yml
-# - コード: apps/api, apps/web, packages, clients/nfc-agent
+# - コード: apps/api, apps/web, packages, clients/nfc-agent, clients/torque-agent
 # - group_vars/all.yml はトップレベルキーの差分を推定（追加/削除/値変更を検知）
 
 usage() {
@@ -118,7 +118,7 @@ for status, path in status_lines:
         })
         continue
     # コード
-    if path.startswith(("apps/api/", "apps/web/", "packages/", "clients/nfc-agent/")):
+    if path.startswith(("apps/api/", "apps/web/", "packages/", "clients/nfc-agent/", "clients/torque-agent/")):
         code_changes.append({
             "path": path,
             "change_type": change_type
@@ -133,4 +133,3 @@ output = {
 
 print(json.dumps(output, ensure_ascii=False, indent=2))
 PY
-

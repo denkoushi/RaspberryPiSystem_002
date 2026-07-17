@@ -41,7 +41,7 @@ export type AssemblyLotCreateInput = {
   operatorEmployeeId?: string | null;
   operatorNameSnapshot: string;
   targetUnit: string;
-  torqueWrenchId: string;
+  torqueWrenchId?: string | null;
   clientDeviceId?: string | null;
   clientDeviceNameSnapshot?: string | null;
 };
@@ -144,15 +144,17 @@ export class AssemblyLotService {
     ensureUniqueSerials(serialNos);
 
     const operatorNameSnapshot = required(input.operatorNameSnapshot, '作業者名').slice(0, 120);
-    const torqueWrenchId = required(input.torqueWrenchId, '使用トルクレンチ').slice(0, 120);
-
     try {
       const lotId = await prisma.$transaction(async (tx) => {
         const template = await tx.assemblyTemplate.findFirst({
           where: { id: input.templateId, isActive: true },
-          select: { id: true }
+          select: { id: true, traceabilityMode: true }
         });
         if (!template) throw new ApiError(404, '有効な組立テンプレートが見つかりません');
+        const torqueWrenchId =
+          template.traceabilityMode === 'LEGACY'
+            ? required(input.torqueWrenchId ?? '', '使用トルクレンチ').slice(0, 120)
+            : null;
 
         const existingSerials = await tx.assemblySerialRegistry.findMany({
           where: { serialNo: { in: serialNos } },

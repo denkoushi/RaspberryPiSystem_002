@@ -19,7 +19,7 @@ export type AssemblyStartInput = {
   operatorEmployeeId?: string | null;
   operatorNameSnapshot: string;
   targetUnit: string;
-  torqueWrenchId: string;
+  torqueWrenchId?: string | null;
   clientDeviceId?: string | null;
   clientDeviceNameSnapshot?: string | null;
 };
@@ -41,7 +41,7 @@ export type AssemblyWorkSessionSummary = {
   nameplateNo: string;
   operatorNameSnapshot: string;
   targetUnit: string;
-  torqueWrenchId: string;
+  torqueWrenchId: string | null;
   startedAt: Date;
   completedAt: Date | null;
   cancelledAt: Date | null;
@@ -251,7 +251,10 @@ export class AssemblyWorkSessionService {
             operatorEmployeeId: input.operatorEmployeeId?.trim() || null,
             operatorNameSnapshot: required(input.operatorNameSnapshot, '作業者名').slice(0, 120),
             targetUnit: required(normalizeAssemblyUpperIdentifier(input.targetUnit), '機種名').slice(0, 120),
-            torqueWrenchId: required(input.torqueWrenchId, '使用トルクレンチ').slice(0, 120),
+            torqueWrenchId:
+              template.traceabilityMode === 'LEGACY'
+                ? required(input.torqueWrenchId ?? '', '使用トルクレンチ').slice(0, 120)
+                : null,
             clientDeviceId: input.clientDeviceId ?? null,
             clientDeviceNameSnapshot: input.clientDeviceNameSnapshot ?? null,
             currentAreaId: first.areaId,

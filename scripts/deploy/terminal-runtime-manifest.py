@@ -74,7 +74,7 @@ RESTART_ON_RESTORE_UNITS = frozenset(
         "haizen-agent.service",
     }
 )
-ALLOWED_DOCKER_SERVICES = frozenset({"nfc-agent", "barcode-agent"})
+ALLOWED_DOCKER_SERVICES = frozenset({"nfc-agent", "barcode-agent", "torque-agent"})
 ALLOWED_LOAD_STATES = frozenset({"loaded", "masked", "not-found"})
 ALLOWED_UNIT_FILE_STATES = frozenset(
     {

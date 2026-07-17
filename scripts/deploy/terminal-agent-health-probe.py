@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 
-_AGENTS = {"nfc-agent": 7071, "barcode-agent": None}
+_AGENTS = {"nfc-agent": 7071, "barcode-agent": None, "torque-agent": 7073}
 _MAX_RESPONSE_BYTES = 64 * 1024
 _CONTAINER_ID_RE = re.compile(r"^[0-9a-f]{12,64}$")
 
@@ -76,8 +76,9 @@ def _endpoint(agent: str, port: int) -> None:
     opener = urllib.request.build_opener(
         urllib.request.ProxyHandler({}), _NoRedirect(), urllib.request.HTTPHandler()
     )
+    endpoint_path = "/health" if agent == "torque-agent" else "/api/agent/status"
     request = urllib.request.Request(
-        f"http://127.0.0.1:{port}/api/agent/status",
+        f"http://127.0.0.1:{port}{endpoint_path}",
         headers={"Accept": "application/json"},
         method="GET",
     )
@@ -100,6 +101,17 @@ def _endpoint(agent: str, port: int) -> None:
         )
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
         raise ProbeError("kiosk agent status response is malformed") from error
+    if agent == "torque-agent":
+        if (
+            not isinstance(value, dict)
+            or value.get("ok") is not True
+            or isinstance(value.get("queuedEvents"), bool)
+            or not isinstance(value.get("queuedEvents"), int)
+            or value["queuedEvents"] < 0
+            or type(value.get("bound")) is not bool
+        ):
+            raise ProbeError("torque-agent health contract is malformed")
+        return
     if (
         not isinstance(value, dict)
         or type(value.get("readerConnected")) is not bool

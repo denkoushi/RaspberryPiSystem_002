@@ -52,6 +52,19 @@ class ClassifyDeployImpactTest(unittest.TestCase):
         self.assertFalse(result['signage'])
         self.assertEqual(result['components'], ['barcode-agent'])
 
+    def test_torque_agent_is_kiosk(self):
+        result = impact.classify(['clients/torque-agent/torque_agent/main.py'])
+        self.assertTrue(result['kiosk'])
+        self.assertFalse(result['server'])
+        self.assertFalse(result['signage'])
+        self.assertEqual(result['components'], ['torque-agent'])
+
+    def test_torque_agent_dockerfile_is_kiosk(self):
+        result = impact.classify(['infrastructure/docker/Dockerfile.torque-agent'])
+        self.assertTrue(result['kiosk'])
+        self.assertFalse(result['server'])
+        self.assertEqual(result['components'], ['torque-agent'])
+
     def test_status_agent_is_kiosk_and_signage(self):
         result = impact.classify(['clients/status-agent/status-agent.py'])
         self.assertTrue(result['kiosk'])

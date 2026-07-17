@@ -1,0 +1,47 @@
+---
+- name: Validate torque-agent variable contract
+  ansible.builtin.assert:
+    that:
+      - torque_agent_client_key is defined
+      - torque_agent_client_key | length > 0
+      - torque_agent_api_base_url is defined
+      - torque_agent_api_base_url | length > 0
+      - torque_agent_hid_devices is defined
+      - torque_agent_hid_devices | length > 0
+      - torque_agent_hid_devices | map(attribute='path') | select('match', '^/dev/input/by-id/') | list | length == torque_agent_hid_devices | length
+    fail_msg: torque-agent requires an API URL, registered client key, and explicit /dev/input/by-id device profiles.
+
+- name: Ensure torque-agent directory exists
+  ansible.builtin.file:
+    path: "{{ repo_path }}/clients/torque-agent"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0755'
+  when: terminal_release_mode | default('full') == 'full'
+
+- name: Deploy torque-agent environment
+  ansible.builtin.template:
+    src: "{{ role_path }}/../../templates/torque-agent.env.j2"
+    dest: "{{ repo_path }}/clients/torque-agent/.env"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0600'
+  register: torque_agent_env
+
+- name: Build and start torque-agent compose profile
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - -f
+      - "{{ repo_path }}/infrastructure/docker/docker-compose.client.yml"
+      - --profile
+      - torque
+      - up
+      - -d
+      - --build
+      - torque-agent
+  changed_when: true
+  when:
+    - terminal_release_mode | default('full') == 'full' or torque_agent_env.changed

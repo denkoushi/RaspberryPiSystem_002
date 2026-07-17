@@ -47,7 +47,7 @@ _SIGNAGE_RUNTIME_MARKER_RE = re.compile(
     r"SIGNAGE_RUNTIME_PROOF_OK:([0-9a-f]{64})(?![0-9a-f])"
 )
 _TERMINAL_AGENT_MARKER_RE = re.compile(
-    r"TERMINAL_AGENT_HEALTH_OK:(nfc-agent|barcode-agent):([0-9]{1,5})"
+    r"TERMINAL_AGENT_HEALTH_OK:(nfc-agent|barcode-agent|torque-agent):([0-9]{1,5})"
     r"(?![A-Za-z0-9_-])"
 )
 _MAX_MARKER_BYTES = 2 * 1024 * 1024
@@ -110,6 +110,7 @@ _COMMON_TERMINAL_PATHS = (
 )
 
 _KIOSK_TERMINAL_PATHS = (
+    f"{_TERMINAL_REPOSITORY}/clients/torque-agent/.env",
     "/usr/bin/chromium-browser",
     "/usr/local/bin/kiosk-launch.sh",
     "/etc/systemd/system/kiosk-browser.service",
@@ -1080,6 +1081,21 @@ def probe_kiosk_agents(
         agents.append(("nfc-agent", 7071, True))
     if barcode_enabled:
         agents.append(("barcode-agent", barcode_port, False))
+    torque_enabled = values.get("torque_agent_enabled", False)
+    if type(torque_enabled) is not bool:
+        raise RuntimeError(f"kiosk torque inventory contract is malformed: {host}")
+    torque_port = values.get("torque_agent_local_port", 7073)
+    if (
+        torque_enabled
+        and (
+            isinstance(torque_port, bool)
+            or not isinstance(torque_port, int)
+            or torque_port != 7073
+        )
+    ):
+        raise RuntimeError(f"kiosk torque inventory port is malformed: {host}")
+    if torque_enabled:
+        agents.append(("torque-agent", torque_port, False))
 
     source = runtime.PROJECT / "scripts/deploy/terminal-agent-health-probe.py"
     endpoints: list[dict[str, Any]] = []

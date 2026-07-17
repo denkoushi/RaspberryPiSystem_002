@@ -7,8 +7,8 @@ date: 2026-07-17
 source_of_truth: this file
 related_code: apps/api/prisma/schema.prisma, apps/api/src/routes/assembly, apps/api/src/services/assembly, apps/web/src/features/assembly, apps/web/src/pages/kiosk, packages/shared-types, clients/torque-agent
 related_docs: ../decisions/ADR-20260717-assembly-torque-wrench-traceability.md, ../design-previews/assembly-torque-wrench-traceability-preview.html, ./kiosk-assembly-torque-management-mvp.md
-validation: interactive preview rendered and exercised at 1910x1075 plus 1366x769 CSS viewports (browser-scale equivalents of the requested 1920x1080 and 1366x768); user approval and physical CEM3-BTLA payload capture remain pending
-open_items: user approval of the interactive preview, capture of real CEM3-BTLA HOGP output, production implementation and disposable-Postgres validation
+validation: preview approved; lint and affected builds pass; disposable-Postgres migration, upgrade, integration, and EXPLAIN checks pass; agent and deployment contracts pass; physical CEM3-BTLA payload capture remains pending
+open_items: capture real CEM3-BTLA HOGP output and freeze its parser fixtures; rerun Ruff in a Poetry-capable environment; finish canonical operations documentation and final hardware-responsive acceptance
 ---
 
 # Add Physical Torque Wrench Traceability to Assembly Work
@@ -30,13 +30,13 @@ Two explicit gates protect the implementation. First, the user must approve a th
 - [x] (2026-07-17 06:13Z) Re-read repository safety, architecture, documentation, Git, test, UI, and ExecPlan rules.
 - [x] (2026-07-17 06:13Z) Recorded the implementation contract and the preview/payload approval gates in this ExecPlan.
 - [x] (2026-07-17 06:32Z) Created and visually verified the interactive design preview for torque-wrench master, template editor, and work/exception states.
-- [ ] Present the preview evidence and wait for explicit user approval before production code changes. (Evidence is ready; approval is the current gate.)
+- [x] (2026-07-17 06:40Z) Presented the preview evidence and received explicit user approval to proceed with production implementation.
 - [ ] Capture and sanitize real CEM3-BTLA output from required scenarios and freeze parser fixtures.
-- [ ] Implement shared types, additive Prisma schema, safe migration, torque-wrench master services, and eligibility policy.
-- [ ] Implement template condition inheritance, range copy, global marker uniqueness, and hidden server-generated tightening IDs.
-- [ ] Implement work confirmation, agent event intake, rejected-event audit, idempotency, admin override, and Excel traceability.
-- [ ] Implement `clients/torque-agent` and integrate it with Docker Compose, Ansible, terminal profiles, and health checks.
-- [ ] Run unit, integration, migration, EXPLAIN, responsive browser, agent, Docker, and infrastructure tests using only disposable resources.
+- [x] (2026-07-17 07:48Z) Implemented shared types, additive Prisma schema, safe migration, torque-wrench master services, unit conversion, and centralized eligibility policy.
+- [x] (2026-07-17 07:48Z) Implemented template condition inheritance, range copy, global marker uniqueness, and hidden server-generated tightening IDs.
+- [x] (2026-07-17 07:48Z) Implemented work confirmation, agent event intake, rejected-event audit, idempotency, admin override, and Excel traceability.
+- [x] (2026-07-17 07:48Z) Implemented the parser-independent `clients/torque-agent` boundaries and integrated Docker Compose, Ansible, terminal profiles, and health checks.
+- [x] (2026-07-17 07:48Z) Ran focused unit/integration, migration/upgrade, EXPLAIN, agent, Docker-runtime, infrastructure, lint, and build validation using disposable resources only.
 - [ ] Update canonical assembly/measuring-instrument documentation and complete the retrospective.
 
 ## Surprises & Discoveries
@@ -55,6 +55,15 @@ Two explicit gates protect the implementation. First, the user must approve a th
 
 - Observation: The in-app browser's explicit viewport override uses a 0.67 device scale, so integer outer dimensions produce CSS viewports one pixel above or below the requested height.
   Evidence: The responsive pass reported 1366x769 for a 915x515 override and 1919x1081 for a 1286x724-equivalent calculation. The default browser rendered clean screenshots at 1910x1075. Acceptance measurements use the CSS viewport and treat the one-pixel height difference as browser instrumentation, not application overflow.
+
+- Observation: The feature migration safely supports both fresh installation and legacy upgrade, and refuses ambiguous historical marker identity.
+  Evidence: All 149 migrations applied from zero. A database migrated to the prior version retained representative legacy values after the feature migration. A separate database containing a cross-area duplicate marker failed with SQLSTATE `P0001`; the migration rolled back and the original rows remained unchanged.
+
+- Observation: The intended indexes serve the five high-volume traceability lookups.
+  Evidence: With 5,000 profiles, 15,000 settings, 5,000 groups, 10,000 records, `EXPLAIN (ANALYZE, BUFFERS)` selected the serial-key unique index, profile/effective setting index, fastener/group indexes, source-device/event unique index, and session/recorded index respectively. A profile/memory/recorded index was subsequently included in the migration for replay-audit lookup.
+
+- Observation: Runtime health testing caught an incorrect Python module working directory in the first agent image.
+  Evidence: The Dockerfile was corrected to copy under `/app/torque-agent` and execute there. The rebuilt multi-stage image was 214 MB and returned `{ok: true, queuedEvents: 0, bound: false}` from its loopback health endpoint.
 
 ## Decision Log
 
@@ -95,6 +104,10 @@ Two explicit gates protect the implementation. First, the user must approve a th
 The feature branch, living plan, ADR, and interactive three-screen preview now exist on the latest remote main. Browser validation exercised condition inheritance, range copy, all five work states, and both target responsive classes without console errors, outer overflow, or clipped controls. Production behavior, database state, existing Docker resources, and deployed hosts remain unchanged.
 
 At the preview gate, update this section with the approved/rejected layout and any requested changes. At completion, summarize traceable user behavior, migration compatibility, device-capture evidence, test counts, EXPLAIN results, and any deferred operational work.
+
+The user approved the preview without requested layout changes on 2026-07-17. Production schema, API, and UI work may now proceed. The separate real-device payload gate still applies to the CEM3-BTLA production parser; parser-independent agent boundaries and durable-delivery behavior may be implemented and tested with an explicitly labeled synthetic profile.
+
+At the 2026-07-17 17:00 JST safety checkpoint, parser-independent production work is implemented on the feature branch. Validation includes 22 focused API integration tests, 6 torque-agent unit tests, 130 deployment/profile/probe tests, root lint with zero warnings, shared/API/Web production builds, full fresh and legacy-upgrade migrations, duplicate-marker rollback, representative EXPLAIN plans, Compose configuration, Ansible syntax, image build, and live container health. The only supported agent parser remains explicitly synthetic; no CEM3-BTLA field order or delimiter has been guessed. Final completion is therefore intentionally held behind the real-device fixture gate and remaining runbook/canonical-document updates.
 
 ## Context and Orientation
 
@@ -248,3 +261,7 @@ The shared type package will expose `AssemblyTorqueTraceabilityMode`, torque-wre
 The torque agent will define independent ports for HID events, payload parsing, durable outbox persistence, work binding, and API delivery. The CEM3-BTLA parser is one adapter selected by an output-profile identifier derived from captured fixtures. SQLite, evdev, WebSocket, and HTTP are implementation details behind those ports.
 
 Revision note 2026-07-17 06:32Z: Created this self-contained execution plan after branching from fetched `origin/main`, then added the approved-scope interactive preview and responsive browser evidence. The production implementation remains deliberately paused at the user approval gate.
+
+Revision note 2026-07-17 06:40Z: Recorded the user's preview approval. Opened the production schema/API/UI milestones while retaining the independent real-device payload gate for the final CEM3-BTLA parser profile.
+
+Revision note 2026-07-17 07:48Z: Recorded the production checkpoint, disposable-database migration and EXPLAIN evidence, affected test/build results, and the remaining real-device fixture gate before the requested 17:00 JST safe pause.

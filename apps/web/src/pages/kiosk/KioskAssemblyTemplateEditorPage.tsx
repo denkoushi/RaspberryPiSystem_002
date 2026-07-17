@@ -7,6 +7,7 @@ import {
   getAssemblyProcedureOrder,
   getAssemblyTemplate,
   getKioskDocumentDetail,
+  listCompatibleTorqueWrenchCapabilityGroups,
   listAssemblyProcedureDocumentSummaries,
   reviseAssemblyTemplate
 } from '../../api/client';
@@ -14,6 +15,7 @@ import { Button, buttonClassName } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import {
   AssemblyProcedureCanvas,
+  applyAssemblyBoltConditionRange,
   buildAssemblyEditorPageOptions,
   createAssemblyBoltAt,
   createAssemblyCheckItemAt,
@@ -41,6 +43,7 @@ import {
   useImageCanvasZoom
 } from '../../features/kiosk/image-canvas';
 
+import type { TorqueWrenchCapabilityGroupApi } from '../../api/domains/torque-wrenches';
 import type { AssemblyDraftArea, AssemblyDraftBolt, AssemblyDraftCheckItem, AssemblyEditorPageOption } from '../../features/assembly';
 import type { AssemblyProcedureDocumentSummaryDto, AssemblyTemplateDto } from '../../features/assembly/types';
 
@@ -71,6 +74,10 @@ export function KioskAssemblyTemplateEditorPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [inheritCondition, setInheritCondition] = useState(true);
+  const [rangeStart, setRangeStart] = useState(1);
+  const [rangeEnd, setRangeEnd] = useState(35);
+  const [capabilityGroups, setCapabilityGroups] = useState<TorqueWrenchCapabilityGroupApi[]>([]);
   const canvasZoom = useImageCanvasZoom();
   const fitCanvasToView = canvasZoom.fitToView;
 
@@ -83,6 +90,29 @@ export function KioskAssemblyTemplateEditorPage() {
   const selectedBolt = selectedArea?.bolts.find((bolt) => bolt.id === selectedBoltId) ?? null;
   const selectedCheckItem = checkItems.find((item) => item.id === selectedCheckItemId) ?? null;
   const selectedPage = pageOptions.find((option) => option.key === selectedPageKey) ?? pageOptions[0] ?? null;
+
+  useEffect(() => {
+    if (!selectedBolt?.nominalDiameter) {
+      setCapabilityGroups([]);
+      return;
+    }
+    let cancelled = false;
+    void listCompatibleTorqueWrenchCapabilityGroups({
+      nominalDiameter: selectedBolt.nominalDiameter,
+      boltLengthMm: selectedBolt.boltLengthMm,
+      material: selectedBolt.material,
+      strengthClass: selectedBolt.strengthClass
+    })
+      .then((groups) => {
+        if (!cancelled) setCapabilityGroups(groups);
+      })
+      .catch(() => {
+        if (!cancelled) setCapabilityGroups([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedBolt?.boltLengthMm, selectedBolt?.material, selectedBolt?.nominalDiameter, selectedBolt?.strengthClass]);
 
   useEffect(() => {
     fitCanvasToView();
@@ -244,7 +274,7 @@ export function KioskAssemblyTemplateEditorPage() {
         if (area.id !== selectedArea.id) return area;
         const bolts = area.bolts
           .filter((bolt) => bolt.id !== selectedBolt.id)
-          .map((bolt, index) => ({ ...bolt, sortOrder: index, markerNo: index + 1 }));
+          .map((bolt, index) => ({ ...bolt, sortOrder: index }));
         return { ...area, bolts };
       })
     );
@@ -259,10 +289,20 @@ export function KioskAssemblyTemplateEditorPage() {
 
   const addBoltAt = (xRatio: number, yRatio: number) => {
     if (readOnly || !selectedArea || !currentPageRef) return;
-    const next = createAssemblyBoltAt(selectedArea, xRatio, yRatio, currentPageRef);
+    const next = createAssemblyBoltAt(selectedArea, xRatio, yRatio, currentPageRef, {
+      allAreas: areas,
+      inheritFrom: inheritCondition ? selectedBolt : null
+    });
     setAreas((prev) => prev.map((area) => (area.id === selectedArea.id ? { ...area, bolts: [...area.bolts, next] } : area)));
     setSelectedBoltId(next.id);
     setSelectedCheckItemId(null);
+  };
+
+  const applySelectedConditionToRange = () => {
+    if (!selectedBolt) return;
+    const result = applyAssemblyBoltConditionRange(areas, selectedBolt.id, rangeStart, rangeEnd);
+    setAreas(result.areas);
+    setMessage(`締付条件を${result.updatedCount}件へ反映しました。欠番は${result.missingCount}件です。`);
   };
 
   const addCheckItemAt = (xRatio: number, yRatio: number) => {
@@ -300,7 +340,8 @@ export function KioskAssemblyTemplateEditorPage() {
         procedurePattern,
         procedureDocumentId: selectedDocumentId,
         areas: draftAreasToInput(areas),
-        checkItems: draftCheckItemsToInput(checkItems)
+        checkItems: draftCheckItemsToInput(checkItems),
+        traceabilityMode: 'REQUIRED' as const
       };
       const saved = templateId ? await reviseAssemblyTemplate(templateId, payload) : await createAssemblyTemplate(payload);
       navigate(kioskAssemblyTemplateEditPath(saved.id), { replace: true });
@@ -351,7 +392,7 @@ export function KioskAssemblyTemplateEditorPage() {
 
       {message ? <p className="rounded border border-white/15 bg-slate-900/80 px-3 py-2 text-sm font-semibold text-amber-200">{message}</p> : null}
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-auto xl:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)_minmax(20rem,25rem)] xl:overflow-hidden">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-auto xl:grid-cols-[minmax(14rem,18rem)_minmax(0,1fr)_minmax(18rem,22rem)] xl:overflow-hidden">
         <section className="min-h-0 overflow-y-auto rounded border border-white/15 bg-slate-900/70 p-3">
           <h2 className="text-[1.02rem] font-bold">基本</h2>
           <div className="mt-3 grid gap-3">
@@ -443,8 +484,8 @@ export function KioskAssemblyTemplateEditorPage() {
                 controlsClassName="shrink-0 rounded bg-slate-950/70 p-1"
               />
             </div>
-            <div className="mt-2 grid gap-2">
-              <label className="grid gap-1 text-xs font-semibold text-white/70">
+            <div className="mt-2 flex flex-wrap items-end gap-2">
+              <label className="grid min-w-52 flex-1 gap-1 text-xs font-semibold text-white/70">
                 ページ
                 <select
                   className="min-h-9 rounded border border-white/10 bg-slate-950 px-2 text-sm text-white"
@@ -512,7 +553,7 @@ export function KioskAssemblyTemplateEditorPage() {
                   矢視
                 </Button>
               </div>
-              <p className="text-[0.72rem] font-semibold text-white/50">
+              <p className="basis-full text-[0.72rem] font-semibold text-white/50">
                 {placementAction === 'callout'
                   ? '選択中マーカーの矢視先端を手順書上でタップ。'
                   : markerMode === 'bolt'
@@ -583,27 +624,54 @@ export function KioskAssemblyTemplateEditorPage() {
                   <p className="text-xs text-white/55">
                     ページ: {selectedPage ? pageRefKey(currentPageRef!) : '未設定'}
                   </p>
-                  <label className="grid gap-1 text-xs font-semibold text-white/70">
-                    締付ID
-                    <Input value={selectedBolt.tighteningId} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { tighteningId: e.target.value })} />
+                  <label className="flex items-center gap-2 rounded border border-white/10 bg-slate-950/60 px-2 py-2 text-xs font-semibold text-white/80">
+                    <input
+                      type="checkbox"
+                      checked={inheritCondition}
+                      disabled={busy || readOnly}
+                      onChange={(event) => setInheritCondition(event.target.checked)}
+                    />
+                    次の丸数字へこの条件を引き継ぐ
                   </label>
+                  <div className="grid grid-cols-[1fr_1fr_auto] items-end gap-2 rounded border border-cyan-300/20 bg-cyan-950/20 p-2">
+                    <label className="grid gap-1 text-[0.7rem] font-semibold text-white/70">
+                      反映開始
+                      <Input className="max-w-20" type="number" min={1} value={rangeStart} onChange={(e) => setRangeStart(Number(e.target.value))} />
+                    </label>
+                    <label className="grid gap-1 text-[0.7rem] font-semibold text-white/70">
+                      反映終了
+                      <Input className="max-w-20" type="number" min={1} value={rangeEnd} onChange={(e) => setRangeEnd(Number(e.target.value))} />
+                    </label>
+                    <Button type="button" variant="ghostOnDark" className="min-h-9 !px-2 text-xs" disabled={busy || readOnly} onClick={applySelectedConditionToRange}>
+                      条件反映
+                    </Button>
+                  </div>
                   <div className="grid grid-cols-2 gap-2">
                     <label className="grid gap-1 text-xs font-semibold text-white/70">
-                      ボルト
-                      <Input value={selectedBolt.boltSpec} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { boltSpec: e.target.value })} />
+                      呼び径
+                      <Input className="max-w-28" value={selectedBolt.nominalDiameter ?? ''} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { nominalDiameter: e.target.value, capabilityGroupId: null })} />
                     </label>
                     <label className="grid gap-1 text-xs font-semibold text-white/70">
-                      単位
-                      <Input value={selectedBolt.unit} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { unit: e.target.value })} />
+                      長さ (mm)
+                      <Input className="max-w-28" type="number" min={0} value={selectedBolt.boltLengthMm ?? ''} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { boltLengthMm: Number(e.target.value), capabilityGroupId: null })} />
+                    </label>
+                    <label className="grid gap-1 text-xs font-semibold text-white/70">
+                      材質
+                      <Input className="max-w-32" value={selectedBolt.material ?? ''} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { material: e.target.value, capabilityGroupId: null })} />
+                    </label>
+                    <label className="grid gap-1 text-xs font-semibold text-white/70">
+                      強度区分
+                      <Input className="max-w-28" value={selectedBolt.strengthClass ?? ''} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { strengthClass: e.target.value, capabilityGroupId: null })} />
                     </label>
                     {([
-                      ['nominalTorque', '規定'],
                       ['lowerLimit', '下限'],
+                      ['nominalTorque', '規定'],
                       ['upperLimit', '上限']
                     ] as const).map(([key, label]) => (
                       <label key={key} className="grid gap-1 text-xs font-semibold text-white/70">
                         {label}
                         <Input
+                          className="max-w-28"
                           type="number"
                           value={selectedBolt[key]}
                           disabled={busy || readOnly}
@@ -611,6 +679,36 @@ export function KioskAssemblyTemplateEditorPage() {
                         />
                       </label>
                     ))}
+                    <label className="grid gap-1 text-xs font-semibold text-white/70">
+                      単位
+                      <select
+                        className="min-h-10 max-w-32 rounded border border-white/10 bg-slate-950 px-2 text-sm text-white"
+                        value={selectedBolt.unit}
+                        disabled={busy || readOnly}
+                        onChange={(e) => setBoltPatch(selectedBolt.id, { unit: e.target.value })}
+                      >
+                        <option value="N·m">N·m</option>
+                        <option value="kgf·cm">kgf·cm</option>
+                      </select>
+                    </label>
+                    <label className="col-span-2 grid gap-1 text-xs font-semibold text-white/70">
+                      適合トルクレンチグループ
+                      <select
+                        className="min-h-10 w-full rounded border border-white/10 bg-slate-950 px-2 text-sm text-white"
+                        value={selectedBolt.capabilityGroupId ?? ''}
+                        disabled={busy || readOnly}
+                        onChange={(e) => setBoltPatch(selectedBolt.id, { capabilityGroupId: e.target.value || null })}
+                      >
+                        <option value="">締結条件を入力して選択</option>
+                        {capabilityGroups.map((group) => (
+                          <option key={group.id} value={group.id}>{group.name}（{group.models.length}型番）</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="col-span-2 grid gap-1 text-xs font-semibold text-white/70">
+                      表示用ボルト仕様
+                      <Input value={selectedBolt.boltSpec} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { boltSpec: e.target.value })} />
+                    </label>
                   </div>
                 </div>
               ) : (

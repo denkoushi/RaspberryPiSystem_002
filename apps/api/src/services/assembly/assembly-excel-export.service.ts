@@ -88,12 +88,26 @@ export class AssemblyExcelExportService {
       { header: '締付ID', key: 'tighteningId', width: 20 },
       { header: '丸数字', key: 'markerNo', width: 10 },
       { header: 'ボルト仕様', key: 'boltSpec', width: 22 },
+      { header: '呼び径', key: 'nominalDiameter', width: 12 },
+      { header: '長さ(mm)', key: 'boltLengthMm', width: 12 },
+      { header: '材質', key: 'material', width: 14 },
+      { header: '強度区分', key: 'strengthClass', width: 12 },
       { header: '規定', key: 'nominalTorque', width: 12 },
       { header: '下限', key: 'lowerLimit', width: 12 },
       { header: '上限', key: 'upperLimit', width: 12 },
       { header: '単位', key: 'unit', width: 10 },
       { header: '実測値', key: 'value', width: 12 },
+      { header: '実測単位', key: 'inputUnit', width: 12 },
+      { header: '実測値(N·m)', key: 'valueNm', width: 14 },
       { header: '判定', key: 'judgement', width: 10 },
+      { header: '製造番号', key: 'serialNumber', width: 18 },
+      { header: 'メーカー', key: 'manufacturer', width: 18 },
+      { header: '型番', key: 'modelNumber', width: 18 },
+      { header: '設定下限', key: 'settingLower', width: 12 },
+      { header: '設定規定', key: 'settingNominal', width: 12 },
+      { header: '設定上限', key: 'settingUpper', width: 12 },
+      { header: '設定単位', key: 'settingUnit', width: 12 },
+      { header: '管理者例外理由', key: 'overrideReason', width: 28 },
       { header: '締付日時', key: 'recordedAt', width: 22 },
       { header: 'attempt', key: 'attempt', width: 10 }
     ];
@@ -109,12 +123,26 @@ export class AssemblyExcelExportService {
           tighteningId: bolt.tighteningId,
           markerNo: bolt.markerNo,
           boltSpec: bolt.boltSpec,
+          nominalDiameter: bolt.nominalDiameter ?? '',
+          boltLengthMm: decimalNumber(bolt.boltLengthMm),
+          material: bolt.material ?? '',
+          strengthClass: bolt.strengthClass ?? '',
           nominalTorque: decimalNumber(bolt.nominalTorque),
           lowerLimit: decimalNumber(bolt.lowerLimit),
           upperLimit: decimalNumber(bolt.upperLimit),
           unit: bolt.unit,
           value: decimalNumber(record?.value),
+          inputUnit: record?.inputUnit ?? '',
+          valueNm: decimalNumber(record?.valueNm),
           judgement: record?.judgement ?? '未入力',
+          serialNumber: record?.serialNumberSnapshot ?? '',
+          manufacturer: record?.manufacturerSnapshot ?? '',
+          modelNumber: record?.modelNumberSnapshot ?? '',
+          settingLower: decimalNumber(record?.settingLowerLimitSnapshot),
+          settingNominal: decimalNumber(record?.settingNominalTorqueSnapshot),
+          settingUpper: decimalNumber(record?.settingUpperLimitSnapshot),
+          settingUnit: record?.settingUnitSnapshot ?? '',
+          overrideReason: record?.overrideReason ?? '',
           recordedAt: fmtDate(record?.recordedAt),
           attempt: record?.attempt ?? ''
         });
@@ -124,6 +152,7 @@ export class AssemblyExcelExportService {
     sheet.getColumn('lowerLimit').numFmt = '0.000';
     sheet.getColumn('upperLimit').numFmt = '0.000';
     sheet.getColumn('value').numFmt = '0.000';
+    sheet.getColumn('valueNm').numFmt = '0.000000';
   }
 
   private addNgHistorySheet(workbook: ExcelJS.Workbook, session: AssemblyWorkSessionDetail): void {
@@ -134,9 +163,15 @@ export class AssemblyExcelExportService {
       { header: 'エリア', key: 'areaName', width: 22 },
       { header: 'attempt', key: 'attempt', width: 10 },
       { header: '実測値', key: 'value', width: 12 },
+      { header: '実測単位', key: 'inputUnit', width: 12 },
+      { header: '実測値(N·m)', key: 'valueNm', width: 14 },
+      { header: '製造番号', key: 'serialNumber', width: 18 },
+      { header: 'メーカー', key: 'manufacturer', width: 18 },
+      { header: '型番', key: 'modelNumber', width: 18 },
       { header: '判定', key: 'judgement', width: 10 },
       { header: '無視理由', key: 'ignoredReason', width: 24 },
       { header: '入力元', key: 'inputSource', width: 12 },
+      { header: '管理者例外理由', key: 'overrideReason', width: 28 },
       { header: '日時', key: 'recordedAt', width: 22 }
     ];
     styleHeader(sheet.getRow(1));
@@ -148,12 +183,19 @@ export class AssemblyExcelExportService {
         areaName: record.templateBolt.area.areaName,
         attempt: record.attempt,
         value: decimalNumber(record.value),
+        inputUnit: record.inputUnit ?? '',
+        valueNm: decimalNumber(record.valueNm),
+        serialNumber: record.serialNumberSnapshot ?? '',
+        manufacturer: record.manufacturerSnapshot ?? '',
+        modelNumber: record.modelNumberSnapshot ?? '',
         judgement: record.judgement,
         ignoredReason: record.ignoredReason ?? '',
         inputSource: record.inputSource,
+        overrideReason: record.overrideReason ?? '',
         recordedAt: fmtDate(record.recordedAt)
       });
     }
     sheet.getColumn('value').numFmt = '0.000';
+    sheet.getColumn('valueNm').numFmt = '0.000000';
   }
 }

@@ -6,6 +6,8 @@ import {
   completeAssemblyWorkSession,
   getAssemblyWorkSession,
   getAssemblyWorkSessionProcedureSequence,
+  listCompatibleTorqueWrenchesForSession,
+  confirmAssemblyTorqueWrench,
   recordAssemblyCheck,
   recordAssemblyTorque,
   restartAssemblyArea
@@ -25,6 +27,7 @@ import {
   templateToCanvasBolts
 } from '../../features/assembly';
 
+import type { TorqueWrenchProfileApi } from '../../api/domains/torque-wrenches';
 import type { AssemblyProcedureSequencePageDto, AssemblyWorkSessionDto } from '../../features/assembly/types';
 
 export function KioskAssemblyWorkSessionPage() {
@@ -38,6 +41,10 @@ export function KioskAssemblyWorkSessionPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [compatibleWrenches, setCompatibleWrenches] = useState<Array<{ profile: TorqueWrenchProfileApi; conditionFingerprint: string }>>([]);
+  const [selectedProfileId, setSelectedProfileId] = useState('');
+  const [confirmation, setConfirmation] = useState<{ id: string; torqueWrenchProfileId: string; settingHistoryId: string } | null>(null);
+  const [agentConnected, setAgentConnected] = useState(false);
 
   useEffect(() => {
     if (!sessionId) {
@@ -89,6 +96,7 @@ export function KioskAssemblyWorkSessionPage() {
   const checkSummary = useMemo(() => (session ? resolveAssemblyCheckSummary(session) : null), [session]);
   const currentArea = session ? currentAssemblyArea(session) : null;
   const currentBolt = session ? currentAssemblyBolt(session) : null;
+  const traceabilityRequired = session?.template.traceabilityMode === 'REQUIRED';
   const allBoltsComplete = session
     ? session.template.areas.every((area) => area.bolts.every((bolt) => statusByBolt.get(bolt.id) === 'ok'))
     : false;
@@ -96,6 +104,72 @@ export function KioskAssemblyWorkSessionPage() {
   const canComplete = Boolean(session && allBoltsComplete && checksComplete && session.status === 'in_progress');
   const hasConfiguredProcedureSequence =
     procedureSequence?.mode === 'configured' && procedureSequence.documents.length > 0;
+
+  useEffect(() => {
+    if (!session?.id || !session.currentBoltId || !traceabilityRequired) {
+      setCompatibleWrenches([]);
+      setSelectedProfileId('');
+      setConfirmation(null);
+      return;
+    }
+    let cancelled = false;
+    setConfirmation(null);
+    void listCompatibleTorqueWrenchesForSession(session.id)
+      .then((items) => {
+        if (cancelled) return;
+        setCompatibleWrenches(items);
+        setSelectedProfileId(items[0]?.profile.id ?? '');
+      })
+      .catch((error) => {
+        if (!cancelled) setMessage(readAssemblyApiErrorMessage(error, '適合トルクレンチを取得できませんでした。'));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.currentBoltId, session?.id, traceabilityRequired]);
+
+  useEffect(() => {
+    if (!session?.id || !traceabilityRequired) return;
+    let cancelled = false;
+    const heartbeat = async () => {
+      try {
+        const response = await fetch('http://127.0.0.1:7073/heartbeat', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: session.id,
+            currentTemplateBoltId: session.currentBoltId,
+            confirmationId: confirmation?.id ?? null,
+            torqueWrenchProfileId: confirmation?.torqueWrenchProfileId ?? null
+          })
+        });
+        if (!response.ok) throw new Error(`heartbeat ${response.status}`);
+        if (!cancelled) setAgentConnected(true);
+      } catch {
+        if (!cancelled) setAgentConnected(false);
+      }
+    };
+    void heartbeat();
+    const timer = window.setInterval(() => void heartbeat(), 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [confirmation, session?.currentBoltId, session?.id, traceabilityRequired]);
+
+  useEffect(() => {
+    if (!session?.id || !traceabilityRequired || !confirmation) return;
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      void getAssemblyWorkSession(session.id).then((next) => {
+        if (!cancelled) setSession(next);
+      }).catch(() => undefined);
+    }, 1200);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [confirmation, session?.id, traceabilityRequired]);
 
   const fallbackPageRef = useMemo(() => {
     if (!session) return null;
@@ -168,6 +242,18 @@ export function KioskAssemblyWorkSessionPage() {
       }
     });
 
+  const confirmPhysicalWrench = () =>
+    runBusy(async () => {
+      if (!session?.currentBoltId || !selectedProfileId) throw new Error('確認する物理トルクレンチを選択してください。');
+      const next = await confirmAssemblyTorqueWrench(session.id, {
+        expectedTemplateBoltId: session.currentBoltId,
+        torqueWrenchProfileId: selectedProfileId,
+        physicalDisplayConfirmed: true
+      });
+      setConfirmation(next);
+      setMessage('現物の製造番号と設定値を確認済みにしました。トルク入力を待っています。');
+    });
+
   const toggleCheckItem = (checkItemId: string) =>
     runBusy(async () => {
       if (!session) return;
@@ -214,7 +300,7 @@ export function KioskAssemblyWorkSessionPage() {
 
   const currentPositionLabel = procedureSequenceLoading
     ? '要領書を確認中'
-    : currentBolt?.tighteningId ?? (allBoltsComplete ? '全締付完了' : '次工程待ち');
+    : currentBolt ? `丸数字 ${currentBolt.markerNo}` : (allBoltsComplete ? '全締付完了' : '次工程待ち');
   const requiredCheckLabel =
     checkSummary && checkSummary.requiredTotal > 0
       ? `必須 ${checkSummary.requiredCompleted}/${checkSummary.requiredTotal}`
@@ -263,7 +349,7 @@ export function KioskAssemblyWorkSessionPage() {
           <h2 className="text-[1.02rem] font-bold">締付</h2>
           <div className="mt-3 rounded border border-white/10 bg-slate-950 p-3">
             <div className="text-sm text-white/60">現在</div>
-            <div className="mt-1 text-lg font-bold">{currentBolt?.tighteningId ?? (allBoltsComplete ? '全締付完了' : '次工程待ち')}</div>
+            <div className="mt-1 text-lg font-bold">{currentBolt ? `丸数字 ${currentBolt.markerNo}` : (allBoltsComplete ? '全締付完了' : '次工程待ち')}</div>
             <div className="mt-1 text-sm text-white/70">{currentArea?.areaName ?? ''}</div>
             {currentBolt ? (
               <div className="mt-2 text-sm text-white/80">
@@ -279,6 +365,28 @@ export function KioskAssemblyWorkSessionPage() {
               </div>
             </div>
           ) : null}
+          {traceabilityRequired ? (
+            <div className="mt-3 grid gap-3 rounded border border-cyan-300/25 bg-cyan-950/20 p-3">
+              <div className="flex items-center justify-between text-sm"><span className="font-semibold">トルクエージェント</span><span className={agentConnected ? 'text-emerald-300' : 'text-amber-200'}>{agentConnected ? '接続済み' : '未接続'}</span></div>
+              <label className="grid gap-1 text-xs font-semibold text-white/70">
+                使用する物理トルクレンチ
+                <select className="min-h-11 rounded bg-slate-950 px-2 text-sm" value={selectedProfileId} disabled={busy || Boolean(confirmation)} onChange={(e) => setSelectedProfileId(e.target.value)}>
+                  {compatibleWrenches.length === 0 ? <option value="">適合レンチなし</option> : null}
+                  {compatibleWrenches.map(({ profile }) => {
+                    const setting = profile.settingHistories[0];
+                    return <option key={profile.id} value={profile.id}>{profile.serialNumber} / {profile.model.modelNumber}{setting ? ` / ${setting.nominalTorque} ${setting.unit}` : ''}</option>;
+                  })}
+                </select>
+              </label>
+              <Button type="button" variant="primary" disabled={busy || !selectedProfileId || Boolean(confirmation)} onClick={confirmPhysicalWrench}>
+                {confirmation ? '現物確認済み' : '製造番号と現物設定を確認'}
+              </Button>
+              <div className="rounded bg-slate-950/70 px-3 py-2 text-center text-sm font-semibold">
+                {confirmation ? 'トルク入力待機中' : '現物確認後に入力を受け付けます'}
+              </div>
+            </div>
+          ) : (
+          <>
           <div className="mt-3 grid grid-cols-[1fr_6rem] gap-2">
             <input
               className="rounded bg-slate-950 px-3 py-3 text-lg"
@@ -298,6 +406,8 @@ export function KioskAssemblyWorkSessionPage() {
           <Button type="button" variant="primary" disabled={busy || !session.currentBoltId} className="mt-2 min-h-12 w-full" onClick={recordTorque}>
             トルク記録
           </Button>
+          </>
+          )}
           <div className="mt-2 grid grid-cols-2 gap-2">
             <Button
               type="button"
@@ -334,7 +444,7 @@ export function KioskAssemblyWorkSessionPage() {
             {session.torqueRecords.slice().reverse().map((record) => (
               <div key={record.id} className="grid grid-cols-[1fr_4rem_4rem] gap-2 border-b border-white/10 px-3 py-2 text-xs">
                 <div>
-                  <div className="font-semibold">{record.tighteningId}</div>
+                  <div className="font-semibold">丸数字 {record.markerNo}{record.serialNumberSnapshot ? ` / ${record.serialNumberSnapshot}` : ''}</div>
                   <div className="text-white/50">{new Date(record.recordedAt).toLocaleString()}</div>
                 </div>
                 <div>{record.value ?? '-'}</div>

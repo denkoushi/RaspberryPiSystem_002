@@ -27,7 +27,7 @@ _COMMON_RUNTIME_UNITS = frozenset(
         "haizen-agent.service",
     }
 )
-_AGENT_PROBES = ("nfc-agent", "barcode-agent")
+_AGENT_PROBES = ("nfc-agent", "barcode-agent", "torque-agent")
 
 
 def _verified_control_plane_sha(records: Any, *, qualifier: str) -> str:
@@ -364,7 +364,7 @@ class GenericSystemdAdapter(TerminalAdapter):
 
     adapter_id = "generic-systemd"
     supported_health_probe_ids = frozenset(
-        {"display-manager", "status-agent", "nfc-agent", "barcode-agent", "ready-sha"}
+        {"display-manager", "status-agent", "nfc-agent", "barcode-agent", "torque-agent", "ready-sha"}
     )
 
     def rollback_paths(self, user: str, home: str, run_id: str) -> tuple[str, ...]:
