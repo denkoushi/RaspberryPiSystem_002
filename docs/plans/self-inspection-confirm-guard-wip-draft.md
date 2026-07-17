@@ -25,6 +25,8 @@ validation:
   - PR #970
   - Inspector final judgement API integration tests (FINAL_OK / FINAL_NG / completion guards / legacy compatibility)
   - API and Web production TypeScript builds, full lint, Prisma validation, and focused Web tests
+  - Production Pi5 + Pi4×5 at 3e52d7bb; first Pi4 real-device workflow PASS
+  - Inspector registration boundary fix deployed to Pi5 + Pi3 at 72de4add
   - PR #1036
 ---
 
@@ -81,6 +83,10 @@ for every measurer-side NG point.
 5. Use an Expand-only migration containing only nullable `TEXT` column additions.
    This satisfies the production migration contract without rewriting existing
    records or altering PostgreSQL enum types.
+6. At inspector completion, re-evaluate the current measuring-instrument policy.
+   If a now-required inspector registration is missing, return `409` without
+   discarding the saved measurements or final judgements. The inspector can
+   register the instruments and retry completion.
 
 ### Validation
 
@@ -94,3 +100,21 @@ for every measurer-side NG point.
 - API/Web TypeScript checks, full lint, Prisma validation, all 148 migrations on
   a fresh temporary PostgreSQL database, 80 related API tests, and
   `git diff --check` all pass.
+- Registration boundary: after inspector measurements and judgements were saved,
+  changing the policy to require instrument registration blocked completion with
+  `409`; values and judgements remained intact; registration followed by retry
+  completed successfully. The full related API integration file passed 72 tests.
+- GitHub CI: full API suite passed 2,336 tests; required workspace, Web, client,
+  database, deploy-contract, E2E, security, CodeQL, and secret-scan checks passed.
+- Initial production rollout: Pi5 + Pi4×5 completed at `3e52d7bb` in run
+  `20260717-000420-914d65`; maintenance was cleared on every target, and the
+  measurer-to-inspector workflow passed real-device verification on the first Pi4.
+- Boundary-fix rollout: Pi5 + Pi3 completed at `72de4add` in run
+  `20260717-031409-be92ee`; Pi5 remained healthy through the stability hold, Pi3
+  was runtime-verified, and Pi4×5 correctly remained at `3e52d7bb` because the
+  boundary fix had no kiosk impact. A repeat plan selected zero targets.
+- The preceding run `20260717-030044-4549a6` stopped before product updates when
+  the Pi5 checkout contained the untracked runtime `power-actions/` queue. The
+  queue is now ignored and allowed only during the old-checkout preflight; all
+  other dirty-worktree states remain fail-closed. All 619 deploy tests passed,
+  and the successful rerun preserved the queue while leaving the worktree clean.
