@@ -83,6 +83,7 @@ import {
 import {
   assertAllEntriesHaveRegistration,
   assertAllEntriesReviewReady,
+  assertAllInspectorEntriesHaveRegistration,
   assertInspectorRemeasurementNotStarted,
   assertLotEntryValuesMatchPayload,
   assertSessionEntryCountWritable,
@@ -1403,6 +1404,11 @@ export class SelfInspectionService {
         if (inspectorCompletion.state !== 'complete') {
           throw new ApiError(409, '検査員の再測定が未完了のため完了できません');
         }
+        await assertAllInspectorEntriesHaveRegistration(
+          tx,
+          sessionId,
+          registrationPolicy
+        );
         const unjudgedCount = await tx.selfInspectionMeasurementValue.count({
           where: {
             reviewStatus: 'PENDING',

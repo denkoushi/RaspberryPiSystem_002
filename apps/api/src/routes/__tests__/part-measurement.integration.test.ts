@@ -3701,6 +3701,16 @@ describe('part-measurement templates API', () => {
       displayName: 'Final Judgement Inspector',
       nfcTagUid: `EMP-FINAL-INSP-${Date.now()}`
     });
+    const operatorInstrument = await createTestMeasuringInstrumentWithTag({
+      name: 'Final Judgement Operator Caliper',
+      managementNumber: `MI-FINAL-OP-${Date.now()}`,
+      rfidTagUid: `INST-FINAL-OP-${Date.now()}`
+    });
+    const inspectorInstrument = await createTestMeasuringInstrumentWithTag({
+      name: 'Final Judgement Inspector Caliper',
+      managementNumber: `MI-FINAL-INSP-${Date.now()}`,
+      rfidTagUid: `INST-FINAL-INSP-${Date.now()}`
+    });
 
     for (const [entryIndex, value] of ['10.5', '10.6'].entries()) {
       const operatorEntryRes = await app.inject({
@@ -3710,6 +3720,7 @@ describe('part-measurement templates API', () => {
         payload: {
           entryIndex,
           employeeTagUid: operator.nfcTagUid,
+          measuringInstrumentTagUid: operatorInstrument.rfidTagUid,
           values: [
             {
               templateItemId: templateItem.id,
@@ -3819,6 +3830,46 @@ describe('part-measurement templates API', () => {
     expect(finalNgRes.statusCode).toBe(200);
     expect(finalNgRes.json().entry.values[0]?.judgementStatus).toBe('FINAL_NG');
     expect(finalNgRes.json().entry.values[0]?.operatorReviewStatus).toBe('REJECTED');
+
+    const requireInstrumentPolicyRes = await app.inject({
+      method: 'PUT',
+      url: '/api/part-measurement/self-inspection/registration-policy',
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: { requireMeasuringInstrumentTag: true }
+    });
+    expect(requireInstrumentPolicyRes.statusCode).toBe(200);
+
+    const completeWithInspectorRegistrationMissingRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${session.id}/complete`,
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: {}
+    });
+    expect(completeWithInspectorRegistrationMissingRes.statusCode).toBe(409);
+    expect(completeWithInspectorRegistrationMissingRes.json().message).toContain('検査員入力件 1');
+    expect(completeWithInspectorRegistrationMissingRes.json().message).toContain('計測機器');
+
+    const inspectorValuesAfterBlockedCompletion =
+      await prisma.selfInspectionInspectorMeasurementValue.findMany({
+        where: { inspectorEntry: { sessionId: session.id } },
+        orderBy: { inspectorEntry: { entryIndex: 'asc' } }
+      });
+    expect(
+      inspectorValuesAfterBlockedCompletion.map((value) => value.finalJudgementStatus)
+    ).toEqual(['FINAL_OK', 'FINAL_NG']);
+
+    for (const entryIndex of [0, 1]) {
+      const registrationRes = await app.inject({
+        method: 'POST',
+        url: `/api/part-measurement/self-inspection/sessions/${session.id}/inspector-entries/${entryIndex}/instrument-usages/pre-use-inspection`,
+        headers: { 'x-client-key': kioskClient.apiKey },
+        payload: {
+          instrumentTagUid: inspectorInstrument.rfidTagUid,
+          employeeTagUid: inspector.nfcTagUid
+        }
+      });
+      expect(registrationRes.statusCode).toBe(200);
+    }
 
     const completeRes = await app.inject({
       method: 'POST',
