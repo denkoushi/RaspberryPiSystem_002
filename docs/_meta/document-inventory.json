@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 523,
-    "totalLines": 150924,
-    "totalBytes": 11285232,
+    "totalLines": 151020,
+    "totalBytes": 11297197,
     "withFrontmatter": 211,
     "withStatus": 69,
     "sourceOfTruthDeclared": 41,
@@ -31304,8 +31304,8 @@
     },
     {
       "path": "docs/plans/deployment-foundation-refactor-execplan.md",
-      "lineCount": 838,
-      "byteSize": 137106,
+      "lineCount": 865,
+      "byteSize": 144655,
       "hasFrontmatter": true,
       "title": "Refactor the deployment foundation through eight gated pull requests",
       "status": "in-progress",
@@ -31320,19 +31320,19 @@
           "length": 1226
         },
         {
-          "line": 822,
+          "line": 843,
           "length": 1025
         },
         {
-          "line": 828,
+          "line": 849,
           "length": 1002
         },
         {
-          "line": 834,
+          "line": 855,
           "length": 1197
         },
         {
-          "line": 836,
+          "line": 857,
           "length": 1137
         }
       ],
@@ -33664,10 +33664,10 @@
     },
     {
       "path": "docs/plans/self-inspection-confirm-guard-wip-draft.md",
-      "lineCount": 51,
-      "byteSize": 2911,
+      "lineCount": 120,
+      "byteSize": 7327,
       "hasFrontmatter": true,
-      "title": "Self-inspection CONFIRMED demote guard + draft WIP visibility",
+      "title": "Self-inspection confirm guard, draft WIP, and inspector final judgement",
       "status": "implemented",
       "source_of_truth": "true",
       "localLinks": [
