@@ -107,6 +107,7 @@ export const recordApprovalSessionInclude = {
           templateItemId: true,
           value: true,
           reviewStatus: true,
+          finalReviewStatus: true,
           outOfToleranceAcknowledgedAt: true,
           approvedAt: true,
           updatedAt: true
@@ -155,6 +156,7 @@ export const recordApprovalSessionInclude = {
           inspectorValue: true,
           differenceValue: true,
           judgementStatus: true,
+          finalJudgementStatus: true,
           judgedAt: true,
           judgementComment: true,
           updatedAt: true
@@ -213,6 +215,7 @@ export async function loadPendingReviewCountsBySessionIds(
   const rows = await db.selfInspectionMeasurementValue.findMany({
     where: {
       reviewStatus: 'PENDING',
+      finalReviewStatus: null,
       entry: {
         sessionId: { in: uniqueSessionIds },
         ...confirmedWhere
@@ -234,6 +237,14 @@ export async function loadPendingReviewCountsBySessionIds(
   return counts;
 }
 
+export function serializeDecisionWorkflow(
+  value: string | null | undefined
+): 'LEGACY_RECORD_APPROVAL' | 'INSPECTOR_FINAL_JUDGEMENT' {
+  return value === 'INSPECTOR_FINAL_JUDGEMENT'
+    ? 'INSPECTOR_FINAL_JUDGEMENT'
+    : 'LEGACY_RECORD_APPROVAL';
+}
+
 export function serializeResetNewSession(session: {
   id: string;
   templateId: string;
@@ -249,6 +260,7 @@ export function serializeResetNewSession(session: {
   expectedEntryCount: number;
   recordApprovalRequiredAt: Date | null;
   recordApprovalWorkflowStartedAt: Date | null;
+  decisionWorkflow: string | null;
 }) {
   return {
     id: session.id,
@@ -266,7 +278,8 @@ export function serializeResetNewSession(session: {
     participantEmployeeNames: [],
     participantEmployees: [],
     recordApprovalRequiredAt: session.recordApprovalRequiredAt?.toISOString() ?? null,
-    recordApprovalWorkflowStartedAt: session.recordApprovalWorkflowStartedAt?.toISOString() ?? null
+    recordApprovalWorkflowStartedAt: session.recordApprovalWorkflowStartedAt?.toISOString() ?? null,
+    decisionWorkflow: serializeDecisionWorkflow(session.decisionWorkflow)
   };
 }
 
@@ -338,6 +351,7 @@ export function serializeSessionSummary(
     completedAt: session.completedAt?.toISOString() ?? null,
     recordApprovalRequiredAt: session.recordApprovalRequiredAt?.toISOString() ?? null,
     recordApprovalWorkflowStartedAt: session.recordApprovalWorkflowStartedAt?.toISOString() ?? null,
+    decisionWorkflow: serializeDecisionWorkflow(session.decisionWorkflow),
     inspectorRemeasurementRequiredAt: session.inspectorRemeasurementRequiredAt?.toISOString() ?? null,
     inspectorMeasurementState: inspectorMeasurement.state,
     inspectorRequiredEntryCount: inspectorMeasurement.requiredEntryCount,
@@ -628,7 +642,7 @@ export function serializeRecordApprovalEntryDetail(
       lowerLimit: item.lowerLimit != null ? String(item.lowerLimit) : null,
       upperLimit: item.upperLimit != null ? String(item.upperLimit) : null,
       isWithinTolerance: numericValue != null ? isValueWithinTolerance(item, numericValue) : null,
-      reviewStatus: stored?.reviewStatus ?? null,
+      reviewStatus: stored?.finalReviewStatus ?? stored?.reviewStatus ?? null,
       outOfToleranceAcknowledgedAt: stored?.outOfToleranceAcknowledgedAt?.toISOString() ?? null,
       approvedAt: stored?.approvedAt?.toISOString() ?? null,
       updatedAt: stored?.updatedAt.toISOString() ?? null,
@@ -638,7 +652,8 @@ export function serializeRecordApprovalEntryDetail(
         inspectorStored?.operatorValueSnapshot != null ? String(inspectorStored.operatorValueSnapshot) : null,
       differenceValue:
         inspectorStored?.differenceValue != null ? String(inspectorStored.differenceValue) : null,
-      inspectorJudgementStatus: inspectorStored?.judgementStatus ?? null,
+      inspectorJudgementStatus:
+        inspectorStored?.finalJudgementStatus ?? inspectorStored?.judgementStatus ?? null,
       inspectorJudgedAt: inspectorStored?.judgedAt?.toISOString() ?? null,
       inspectorJudgementComment: inspectorStored?.judgementComment ?? null,
       inspectorUpdatedAt: inspectorStored?.updatedAt.toISOString() ?? null
@@ -768,7 +783,7 @@ export function serializeLotEntry(
       id: value.id,
       templateItemId: value.templateItemId,
       value: value.value != null ? String(value.value) : null,
-      reviewStatus: value.reviewStatus,
+      reviewStatus: value.finalReviewStatus ?? value.reviewStatus,
       outOfToleranceAcknowledgedAt: value.outOfToleranceAcknowledgedAt?.toISOString() ?? null,
       approvedAt: value.approvedAt?.toISOString() ?? null,
       approvedByUserId: value.approvedByUserId,
@@ -857,7 +872,15 @@ export function serializeInspectorEntryMeta(entry: {
 
 export function serializeInspectorEntry(
   entry: Prisma.SelfInspectionInspectorEntryGetPayload<{
-    include: { values: true };
+    include: {
+      values: {
+        include: {
+          operatorMeasurementValue: {
+            select: { reviewStatus: true; finalReviewStatus: true };
+          };
+        };
+      };
+    };
   }> & {
     instrumentUsages: Array<Parameters<typeof serializeInstrumentUsage>[0]>;
   }
@@ -879,7 +902,11 @@ export function serializeInspectorEntry(
       operatorValueSnapshot:
         value.operatorValueSnapshot != null ? String(value.operatorValueSnapshot) : null,
       differenceValue: value.differenceValue != null ? String(value.differenceValue) : null,
-      judgementStatus: value.judgementStatus,
+      judgementStatus: value.finalJudgementStatus ?? value.judgementStatus,
+      operatorReviewStatus:
+        value.operatorMeasurementValue?.finalReviewStatus ??
+        value.operatorMeasurementValue?.reviewStatus ??
+        null,
       judgedAt: value.judgedAt?.toISOString() ?? null,
       judgementComment: value.judgementComment,
       updatedAt: value.updatedAt.toISOString()
@@ -891,7 +918,17 @@ export async function loadInspectorEntryForSerialization(
   db: Prisma.TransactionClient,
   entryId: string
 ): Promise<
-  Prisma.SelfInspectionInspectorEntryGetPayload<{ include: { values: true } }> & {
+  Prisma.SelfInspectionInspectorEntryGetPayload<{
+    include: {
+      values: {
+        include: {
+          operatorMeasurementValue: {
+            select: { reviewStatus: true; finalReviewStatus: true };
+          };
+        };
+      };
+    };
+  }> & {
     instrumentUsages: Array<Parameters<typeof serializeInstrumentUsage>[0]>;
   }
 > {
@@ -902,7 +939,12 @@ export async function loadInspectorEntryForSerialization(
         orderBy: { preUseInspectedAt: 'asc' }
       },
       values: {
-        orderBy: { createdAt: 'asc' }
+        orderBy: { createdAt: 'asc' },
+        include: {
+          operatorMeasurementValue: {
+            select: { reviewStatus: true, finalReviewStatus: true }
+          }
+        }
       }
     }
   });

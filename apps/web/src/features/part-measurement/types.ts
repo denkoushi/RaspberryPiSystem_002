@@ -159,7 +159,11 @@ export type PartMeasurementTemplateDto = {
 
 export type SelfInspectionStatus = 'not_started' | 'in_progress' | 'review_pending' | 'completed';
 
-export type SelfInspectionMeasurementReviewStatus = 'NOT_REQUIRED' | 'PENDING' | 'APPROVED';
+export type SelfInspectionMeasurementReviewStatus =
+  | 'NOT_REQUIRED'
+  | 'PENDING'
+  | 'APPROVED'
+  | 'REJECTED';
 
 export type SelfInspectionInspectorMeasurementState =
   | 'not_required'
@@ -167,7 +171,14 @@ export type SelfInspectionInspectorMeasurementState =
   | 'in_progress'
   | 'complete';
 
-export type SelfInspectionInspectorMeasurementJudgementStatus = 'NOT_EVALUATED';
+export type SelfInspectionInspectorMeasurementJudgementStatus =
+  | 'NOT_EVALUATED'
+  | 'FINAL_OK'
+  | 'FINAL_NG';
+
+export type SelfInspectionDecisionWorkflow =
+  | 'LEGACY_RECORD_APPROVAL'
+  | 'INSPECTOR_FINAL_JUDGEMENT';
 
 export type SelfInspectionRecordApprovalState =
   | 'input_incomplete'
@@ -302,6 +313,7 @@ export type SelfInspectionSessionSummaryDto = {
   completedAt: string | null;
   recordApprovalRequiredAt: string | null;
   recordApprovalWorkflowStartedAt: string | null;
+  decisionWorkflow: SelfInspectionDecisionWorkflow;
   inspectorRemeasurementRequiredAt: string | null;
   inspectorMeasurementState: SelfInspectionInspectorMeasurementState;
   inspectorRequiredEntryCount: number;
@@ -330,6 +342,7 @@ export type SelfInspectionMeasurementValueDto = {
   operatorMeasurementValueId?: string | null;
   operatorValueSnapshot?: string | null;
   differenceValue?: string | null;
+  operatorReviewStatus?: SelfInspectionMeasurementReviewStatus | null;
   judgementStatus?: SelfInspectionInspectorMeasurementJudgementStatus;
   judgedAt?: string | null;
   judgementComment?: string | null;

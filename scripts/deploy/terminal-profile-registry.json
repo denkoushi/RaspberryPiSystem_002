@@ -137,6 +137,7 @@
     {"match": "prefix", "path": "README", "component": "neutral"},
     {"match": "exact", "path": "EXEC_PLAN.md", "component": "neutral"},
 
+    {"match": "exact", "path": ".gitignore", "component": "deploy-control"},
     {"match": "exact", "path": "infrastructure/ansible/ansible-readonly.cfg", "component": "deploy-control"},
     {"match": "exact", "path": "scripts/update-all-clients.sh", "component": "deploy-control"},
     {"match": "exact", "path": "scripts/deploy/classify-deploy-impact.py", "component": "deploy-control"},

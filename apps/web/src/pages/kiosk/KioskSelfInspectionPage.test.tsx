@@ -106,6 +106,7 @@ function buildWipSession(
     completedAt: null,
     recordApprovalRequiredAt: null,
     recordApprovalWorkflowStartedAt: null,
+    decisionWorkflow: 'INSPECTOR_FINAL_JUDGEMENT',
     inspectorRemeasurementRequiredAt: null,
     inspectorMeasurementState: 'not_required',
     inspectorRequiredEntryCount: 0,

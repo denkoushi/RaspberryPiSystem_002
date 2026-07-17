@@ -2756,6 +2756,12 @@ describe('part-measurement templates API', () => {
     const sessionId = resolveRes.json().session.id as string;
     expect(resolveRes.json().session.recordApprovalRequiredAt).toBeNull();
     expect(resolveRes.json().session.recordApprovalWorkflowStartedAt).toBeTruthy();
+    expect(resolveRes.json().session.decisionWorkflow).toBe('INSPECTOR_FINAL_JUDGEMENT');
+    // この既存ケースは従来の記録承認フロー全体を回帰確認する。
+    await prisma.selfInspectionSession.update({
+      where: { id: sessionId },
+      data: { decisionWorkflow: 'LEGACY_RECORD_APPROVAL' }
+    });
 
     const kioskClient = await createTestClientDevice();
     const recordApprovalWithoutClientKeyRes = await app.inject({
@@ -3674,6 +3680,228 @@ describe('part-measurement templates API', () => {
     expect(auditRows[0]?.entryCount).toBe(2);
     expect(auditRows[0]?.valueCount).toBe(2);
     expect(auditRows[0]?.completedAtWasSet).toBe(true);
+  });
+
+  it('lets the inspector record measurements and finalize operator NG points as OK or NG', async () => {
+    const suffix = `final-judgement-${Date.now()}`;
+    const { session, templateItem } = await createSelfInspectionSessionFixture({
+      expectedEntryCount: 2,
+      suffix
+    });
+    await prisma.selfInspectionSession.update({
+      where: { id: session.id },
+      data: { decisionWorkflow: 'INSPECTOR_FINAL_JUDGEMENT' }
+    });
+    const kioskClient = await createTestClientDevice();
+    const operator = await createTestEmployee({
+      displayName: 'Final Judgement Operator',
+      nfcTagUid: `EMP-FINAL-OP-${Date.now()}`
+    });
+    const inspector = await createTestEmployee({
+      displayName: 'Final Judgement Inspector',
+      nfcTagUid: `EMP-FINAL-INSP-${Date.now()}`
+    });
+    const operatorInstrument = await createTestMeasuringInstrumentWithTag({
+      name: 'Final Judgement Operator Caliper',
+      managementNumber: `MI-FINAL-OP-${Date.now()}`,
+      rfidTagUid: `INST-FINAL-OP-${Date.now()}`
+    });
+    const inspectorInstrument = await createTestMeasuringInstrumentWithTag({
+      name: 'Final Judgement Inspector Caliper',
+      managementNumber: `MI-FINAL-INSP-${Date.now()}`,
+      rfidTagUid: `INST-FINAL-INSP-${Date.now()}`
+    });
+
+    for (const [entryIndex, value] of ['10.5', '10.6'].entries()) {
+      const operatorEntryRes = await app.inject({
+        method: 'POST',
+        url: `/api/part-measurement/self-inspection/sessions/${session.id}/entries`,
+        headers: { 'x-client-key': kioskClient.apiKey },
+        payload: {
+          entryIndex,
+          employeeTagUid: operator.nfcTagUid,
+          measuringInstrumentTagUid: operatorInstrument.rfidTagUid,
+          values: [
+            {
+              templateItemId: templateItem.id,
+              value,
+              outOfToleranceAcknowledged: true
+            }
+          ]
+        }
+      });
+      expect(operatorEntryRes.statusCode).toBe(200);
+      expect(operatorEntryRes.json().entry.values[0]?.reviewStatus).toBe('PENDING');
+    }
+
+    const inspectorEntryIds: string[] = [];
+    for (const [entryIndex, value] of ['10.1', '10.2'].entries()) {
+      const inspectorEntryRes = await app.inject({
+        method: 'POST',
+        url: `/api/part-measurement/self-inspection/sessions/${session.id}/inspector-entries`,
+        headers: { 'x-client-key': kioskClient.apiKey },
+        payload: {
+          entryIndex,
+          employeeTagUid: inspector.nfcTagUid,
+          values: [{ templateItemId: templateItem.id, value }]
+        }
+      });
+      expect(inspectorEntryRes.statusCode).toBe(200);
+      expect(inspectorEntryRes.json().entry.values[0]?.operatorReviewStatus).toBe('PENDING');
+      expect(inspectorEntryRes.json().entry.values[0]?.judgementStatus).toBe('NOT_EVALUATED');
+      inspectorEntryIds.push(inspectorEntryRes.json().entry.id as string);
+    }
+
+    const listedForLegacyApprovalRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?state=active',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(listedForLegacyApprovalRes.statusCode).toBe(200);
+    expect(
+      (listedForLegacyApprovalRes.json().sessions as Array<{ id: string }>).some(
+        (row) => row.id === session.id
+      )
+    ).toBe(false);
+    const legacyApprovalAttemptRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${session.id}/record-approval/approve`,
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: { approverEmployeeTagUid: inspector.nfcTagUid }
+    });
+    expect(legacyApprovalAttemptRes.statusCode).toBe(409);
+    expect(legacyApprovalAttemptRes.json().message).toContain('検査員');
+
+    const completeBeforeJudgementRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${session.id}/complete`,
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: {}
+    });
+    expect(completeBeforeJudgementRes.statusCode).toBe(409);
+    expect(completeBeforeJudgementRes.json().message).toContain('最終判定');
+
+    const finalOkRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/part-measurement/self-inspection/sessions/${session.id}/inspector-entries/${inspectorEntryIds[0]}/judgements`,
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: {
+        judgements: [
+          { templateItemId: templateItem.id, judgementStatus: 'FINAL_OK' }
+        ]
+      }
+    });
+    expect(finalOkRes.statusCode).toBe(200);
+    expect(finalOkRes.json().entry.values[0]?.judgementStatus).toBe('FINAL_OK');
+    expect(finalOkRes.json().entry.values[0]?.operatorReviewStatus).toBe('APPROVED');
+    const editAfterFinalJudgementRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/part-measurement/self-inspection/sessions/${session.id}/inspector-entries/${inspectorEntryIds[0]}`,
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: {
+        entryIndex: 0,
+        ifUnmodifiedSince: finalOkRes.json().entry.updatedAt,
+        employeeTagUid: inspector.nfcTagUid,
+        values: [{ templateItemId: templateItem.id, value: '10.11' }]
+      }
+    });
+    expect(editAfterFinalJudgementRes.statusCode).toBe(409);
+    expect(editAfterFinalJudgementRes.json().message).toContain('最終判定済み');
+
+    const completeWithOneJudgementMissingRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${session.id}/complete`,
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: {}
+    });
+    expect(completeWithOneJudgementMissingRes.statusCode).toBe(409);
+    expect(completeWithOneJudgementMissingRes.json().message).toContain('最終判定');
+
+    const finalNgRes = await app.inject({
+      method: 'PATCH',
+      url: `/api/part-measurement/self-inspection/sessions/${session.id}/inspector-entries/${inspectorEntryIds[1]}/judgements`,
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: {
+        judgements: [
+          { templateItemId: templateItem.id, judgementStatus: 'FINAL_NG' }
+        ]
+      }
+    });
+    expect(finalNgRes.statusCode).toBe(200);
+    expect(finalNgRes.json().entry.values[0]?.judgementStatus).toBe('FINAL_NG');
+    expect(finalNgRes.json().entry.values[0]?.operatorReviewStatus).toBe('REJECTED');
+
+    const requireInstrumentPolicyRes = await app.inject({
+      method: 'PUT',
+      url: '/api/part-measurement/self-inspection/registration-policy',
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: { requireMeasuringInstrumentTag: true }
+    });
+    expect(requireInstrumentPolicyRes.statusCode).toBe(200);
+
+    const completeWithInspectorRegistrationMissingRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${session.id}/complete`,
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: {}
+    });
+    expect(completeWithInspectorRegistrationMissingRes.statusCode).toBe(409);
+    expect(completeWithInspectorRegistrationMissingRes.json().message).toContain('検査員入力件 1');
+    expect(completeWithInspectorRegistrationMissingRes.json().message).toContain('計測機器');
+
+    const inspectorValuesAfterBlockedCompletion =
+      await prisma.selfInspectionInspectorMeasurementValue.findMany({
+        where: { inspectorEntry: { sessionId: session.id } },
+        orderBy: { inspectorEntry: { entryIndex: 'asc' } }
+      });
+    expect(
+      inspectorValuesAfterBlockedCompletion.map((value) => value.finalJudgementStatus)
+    ).toEqual(['FINAL_OK', 'FINAL_NG']);
+
+    for (const entryIndex of [0, 1]) {
+      const registrationRes = await app.inject({
+        method: 'POST',
+        url: `/api/part-measurement/self-inspection/sessions/${session.id}/inspector-entries/${entryIndex}/instrument-usages/pre-use-inspection`,
+        headers: { 'x-client-key': kioskClient.apiKey },
+        payload: {
+          instrumentTagUid: inspectorInstrument.rfidTagUid,
+          employeeTagUid: inspector.nfcTagUid
+        }
+      });
+      expect(registrationRes.statusCode).toBe(200);
+    }
+
+    const completeRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${session.id}/complete`,
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: {}
+    });
+    expect(completeRes.statusCode).toBe(200);
+    expect(completeRes.json().session.status).toBe('completed');
+    expect(completeRes.json().session.pendingReviewCount).toBe(0);
+
+    const operatorValues = await prisma.selfInspectionMeasurementValue.findMany({
+      where: { entry: { sessionId: session.id } },
+      orderBy: { entry: { entryIndex: 'asc' } }
+    });
+    expect(operatorValues.map((value) => value.reviewStatus)).toEqual(['PENDING', 'PENDING']);
+    expect(operatorValues.map((value) => value.finalReviewStatus)).toEqual([
+      'APPROVED',
+      'REJECTED'
+    ]);
+    const inspectorValues = await prisma.selfInspectionInspectorMeasurementValue.findMany({
+      where: { inspectorEntry: { sessionId: session.id } },
+      orderBy: { inspectorEntry: { entryIndex: 'asc' } }
+    });
+    expect(inspectorValues.map((value) => value.judgementStatus)).toEqual([
+      'NOT_EVALUATED',
+      'NOT_EVALUATED'
+    ]);
+    expect(inspectorValues.map((value) => value.finalJudgementStatus)).toEqual([
+      'FINAL_OK',
+      'FINAL_NG'
+    ]);
   });
 
   it('records multiple loan-backed pre-use inspected instruments for one self-inspection entry', async () => {

@@ -1,8 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  makeSelfInspectionSessionDetailForTest,
+  makeSelfInspectionTemplateItemForTest
+} from './__tests__/selfInspectionSessionTestFixtures';
+import {
+  KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH,
+  kioskSelfInspectionInspectorSessionPath
+} from './selfInspectionRoutes';
+import {
   buildProductFilterOptions,
   buildResourceFilterOptions,
+  presentSelfInspectionSessionRow,
   splitIntoBalancedPanes
 } from './selfInspectionTableModel';
 
@@ -62,5 +71,41 @@ describe('self-inspection filter options', () => {
 
   it('deduplicates resources and excludes blank values', () => {
     expect(buildResourceFilterOptions(rows).map((option) => option.value)).toEqual(['581', '582']);
+  });
+});
+
+describe('self-inspection workflow actions', () => {
+  it('keeps a completed inspector measurement on the inspector screen for final judgement', () => {
+    const session = makeSelfInspectionSessionDetailForTest({
+      items: [makeSelfInspectionTemplateItemForTest({ id: 'p1', sortOrder: 0 })]
+    });
+    session.recordApprovalRequiredAt = session.startedAt;
+    session.inspectorRemeasurementRequiredAt = session.startedAt;
+    session.inspectorMeasurementState = 'complete';
+    session.decisionWorkflow = 'INSPECTOR_FINAL_JUDGEMENT';
+
+    const row = presentSelfInspectionSessionRow(session);
+    expect(row.action).toEqual({
+      kind: 'link',
+      href: kioskSelfInspectionInspectorSessionPath(session.id),
+      label: '検査員測定'
+    });
+    expect(row.statusLabel).toBe('最終判定待ち');
+  });
+
+  it('keeps legacy sessions on the existing record approval screen', () => {
+    const session = makeSelfInspectionSessionDetailForTest({
+      items: [makeSelfInspectionTemplateItemForTest({ id: 'p1', sortOrder: 0 })]
+    });
+    session.recordApprovalRequiredAt = session.startedAt;
+    session.inspectorRemeasurementRequiredAt = session.startedAt;
+    session.inspectorMeasurementState = 'complete';
+    session.decisionWorkflow = 'LEGACY_RECORD_APPROVAL';
+
+    expect(presentSelfInspectionSessionRow(session).action).toEqual({
+      kind: 'link',
+      href: KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH,
+      label: '記録確認'
+    });
   });
 });

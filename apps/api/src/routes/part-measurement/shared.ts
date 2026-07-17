@@ -420,6 +420,15 @@ export const selfInspectionUpdateInspectorEntryBodySchema = z.object({
   values: z.array(selfInspectionEntryValueSchema).min(1).max(200)
 });
 
+export const selfInspectionInspectorJudgementsBodySchema = z.object({
+  judgements: z.array(
+    z.object({
+      templateItemId: z.string().uuid(),
+      judgementStatus: z.enum(['FINAL_OK', 'FINAL_NG'])
+    })
+  ).min(1).max(200)
+});
+
 export const selfInspectionInstrumentPreUseInspectionBodySchema = z.object({
   instrumentTagUid: z.string().min(1).max(200),
   employeeTagUid: z.string().min(1).max(200)

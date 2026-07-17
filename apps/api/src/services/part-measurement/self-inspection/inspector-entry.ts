@@ -23,7 +23,6 @@ import {
   serializeInspectorEntry
 } from './serialization.js';
 
-
 export async function saveInspectorEntry(
   sessionId: string,
   input: {
@@ -113,6 +112,9 @@ export async function saveInspectorEntry(
     if (existingEntry && options?.ifUnmodifiedSince) {
       assertEntryUnmodifiedSince(options.ifUnmodifiedSince, existingEntry.updatedAt);
     }
+    if (existingEntry?.values.some((value) => value.finalJudgementStatus != null)) {
+      throw new ApiError(409, '最終判定済みの検査員再測定は変更できません');
+    }
 
     const values = validateMeasurementPayload(
       session.template,
@@ -190,4 +192,103 @@ export async function saveInspectorEntry(
   });
   resetSelfInspectionMachineBoardScheduleRowCaches();
   return result;
+}
+
+export async function saveInspectorJudgements(
+  sessionId: string,
+  entryId: string,
+  input: {
+    judgements: Array<{
+      templateItemId: string;
+      judgementStatus: 'FINAL_OK' | 'FINAL_NG';
+    }>;
+  }
+) {
+  const result = await prisma.$transaction(async (tx) => {
+    await lockSessionRow(tx, sessionId);
+    const session = await loadSessionForMutation(tx, sessionId);
+    assertSessionEntryCountWritable(session);
+    if (session.decisionWorkflow !== 'INSPECTOR_FINAL_JUDGEMENT') {
+      throw new ApiError(409, 'この自主検査は従来の記録承認フローです');
+    }
+    const entry = await tx.selfInspectionInspectorEntry.findFirst({
+      where: { id: entryId, sessionId },
+      include: {
+        values: {
+          include: {
+            operatorMeasurementValue: {
+              select: { reviewStatus: true, finalReviewStatus: true }
+            }
+          }
+        }
+      }
+    });
+    if (!entry) throw new ApiError(404, '検査員再測定入力が見つかりません');
+
+    const pendingValues = entry.values.filter(
+      (value) => value.operatorMeasurementValue?.reviewStatus === 'PENDING'
+    );
+    if (pendingValues.length === 0) {
+      throw new ApiError(409, 'この入力に最終判定が必要な公差外測定値はありません');
+    }
+    if (
+      pendingValues.some(
+        (value) =>
+          value.finalJudgementStatus != null ||
+          value.operatorMeasurementValue?.finalReviewStatus != null
+      )
+    ) {
+      throw new ApiError(409, 'この入力の公差外測定値は最終判定済みです');
+    }
+    const judgementByItemId = new Map(input.judgements.map((value) => [value.templateItemId, value]));
+    if (judgementByItemId.size !== input.judgements.length) {
+      throw new ApiError(400, '最終判定の測定点が重複しています');
+    }
+    if (
+      judgementByItemId.size !== pendingValues.length ||
+      pendingValues.some((value) => !judgementByItemId.has(value.templateItemId))
+    ) {
+      throw new ApiError(400, '測定者側で公差外となった全測定点を判定してください');
+    }
+    if (pendingValues.some((value) => value.inspectorValue == null)) {
+      throw new ApiError(409, '検査員の再測定値を保存してから最終判定してください');
+    }
+
+    const judgedAt = new Date();
+    await Promise.all(
+      pendingValues.map(async (value) => {
+        const judgement = judgementByItemId.get(value.templateItemId)!;
+        await tx.selfInspectionInspectorMeasurementValue.update({
+          where: { id: value.id },
+          data: {
+            finalJudgementStatus: judgement.judgementStatus,
+            judgedAt,
+            judgementComment: null
+          }
+        });
+        if (value.operatorMeasurementValueId) {
+          await tx.selfInspectionMeasurementValue.update({
+            where: { id: value.operatorMeasurementValueId },
+            data: {
+              finalReviewStatus:
+                judgement.judgementStatus === 'FINAL_OK' ? 'APPROVED' : 'REJECTED',
+              approvedAt:
+                judgement.judgementStatus === 'FINAL_OK' ? judgedAt : null,
+              approvedByUserId:
+                judgement.judgementStatus === 'FINAL_OK' ? entry.inspectorEmployeeId : null,
+              approvedByUsername:
+                judgement.judgementStatus === 'FINAL_OK'
+                  ? entry.inspectorEmployeeNameSnapshot
+                  : null,
+              approvalComment: null
+            }
+          });
+        }
+      })
+    );
+    await tx.selfInspectionSession.update({ where: { id: sessionId }, data: { updatedAt: judgedAt } });
+    return loadInspectorEntryForSerialization(tx, entry.id);
+  });
+  resetSelfInspectionMachineBoardScheduleRowCaches();
+  return serializeInspectorEntry(result);
 }

@@ -10,7 +10,11 @@ import {
   type SelfInspectionSessionActionContext
 } from '../selfInspectionSessionActionState';
 
-import { makeSelfInspectionSessionDetailForTest, makeSelfInspectionTemplateItemForTest } from './selfInspectionSessionTestFixtures';
+import {
+  makeSelfInspectionLotEntryForTest,
+  makeSelfInspectionSessionDetailForTest,
+  makeSelfInspectionTemplateItemForTest
+} from './selfInspectionSessionTestFixtures';
 
 function makeContext(
   overrides: Partial<SelfInspectionSessionActionContext> = {}
@@ -97,6 +101,26 @@ describe('selfInspectionSessionActionState', () => {
     const state = resolveSelfInspectionSaveActionState(makeContext());
     expect(state.enabled).toBe(false);
     expect(state.reason).toBe('no_changes');
+  });
+
+  it('save is enabled for a complete acknowledged draft after reopening without a value change', () => {
+    const context = makeContext();
+    context.session.entries = [
+      makeSelfInspectionLotEntryForTest({
+        entryIndex: 0,
+        persistenceStatus: 'draft'
+      })
+    ];
+    const state = resolveSelfInspectionSaveActionState(
+      makeContext({
+        session: context.session,
+        draftValuesByEntryIndex: { 0: { p1: '10', p2: '99' } },
+        savedDraftByEntryIndex: { 0: { p1: '10', p2: '99' } },
+        outOfToleranceAcknowledgedByEntryIndex: { 0: { p2: true } }
+      })
+    );
+    expect(state.enabled).toBe(true);
+    expect(state.reason).toBeNull();
   });
 
   it('save is disabled when a point is empty', () => {

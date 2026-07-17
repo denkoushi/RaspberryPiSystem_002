@@ -71,6 +71,7 @@ class ClassifyDeployImpactTest(unittest.TestCase):
     def test_deploy_control_files_do_not_manufacture_runtime_work(self):
         result = impact.classify(
             [
+                '.gitignore',
                 'infrastructure/ansible/ansible-readonly.cfg',
                 'scripts/update-all-clients.sh',
                 'scripts/deploy/classify-deploy-impact.py',

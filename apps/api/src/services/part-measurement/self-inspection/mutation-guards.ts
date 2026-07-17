@@ -218,6 +218,45 @@ export async function assertAllEntriesHaveRegistration(
   }
 }
 
+export async function assertAllInspectorEntriesHaveRegistration(
+  db: Prisma.TransactionClient,
+  sessionId: string,
+  registrationPolicy: SelfInspectionRegistrationRequirementPolicy
+) {
+  const entries = await db.selfInspectionInspectorEntry.findMany({
+    where: { sessionId },
+    orderBy: { entryIndex: 'asc' },
+    select: {
+      entryIndex: true,
+      inspectorEmployeeId: true,
+      measuringInstrumentId: true,
+      _count: { select: { instrumentUsages: true } }
+    }
+  });
+  for (const entry of entries) {
+    if (
+      !isSelfInspectionLotEntryRegistrationCompleteForPolicy(
+        {
+          createdByEmployeeId: entry.inspectorEmployeeId,
+          measuringInstrumentId: entry.measuringInstrumentId,
+          measuringInstrumentUsageCount: entry._count.instrumentUsages
+        },
+        registrationPolicy
+      )
+    ) {
+      const missing = entry.inspectorEmployeeId
+        ? '計測機器の使用前点検'
+        : registrationPolicy.requireMeasuringInstrumentTag
+          ? '検査員または計測機器の使用前点検'
+          : '検査員';
+      throw new ApiError(
+        409,
+        `検査員入力件 ${entry.entryIndex + 1} の${missing}が未登録のため完了できません`
+      );
+    }
+  }
+}
+
 export async function assertInspectorRemeasurementNotStarted(
   db: Prisma.TransactionClient,
   sessionId: string

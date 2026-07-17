@@ -27,6 +27,7 @@ EX_CONFIG = 78
 EX_CANCELLED = 130
 PROTOCOL_PATH = Path("scripts/deploy/rolling_release/PROTOCOL")
 PROTOCOL_VALUE = "raspi-rolling-release-v2\n"
+ALLOWED_PRECHECK_UNTRACKED = frozenset({'?? power-actions/'})
 NEW_RUN_ID_RE = re.compile(r'^[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$')
 FULL_SHA_RE = re.compile(r'^[0-9a-f]{40}$')
 UNIT_PREFIX = 'raspi-release-'
@@ -52,6 +53,16 @@ FORBIDDEN_REF_CHARACTERS = frozenset(' ~^:?*[\\')
 
 class BootstrapConfigError(ValueError):
     """The controller supplied a malformed or unsafe bootstrap contract."""
+
+
+def has_blocking_precheckout_changes(raw_status: str) -> bool:
+    """Allow only the known Pi5 runtime queue while the old checkout is active."""
+
+    return any(
+        line not in ALLOWED_PRECHECK_UNTRACKED
+        for line in raw_status.splitlines()
+        if line
+    )
 
 
 class CancellationLatch:
@@ -320,7 +331,7 @@ def execute(
         )
         if getattr(before, 'returncode', 1) != 0:
             return _exit_code(before)
-        if str(getattr(before, 'stdout', '')).strip():
+        if has_blocking_precheckout_changes(str(getattr(before, 'stdout', ''))):
             print('[ERROR] remote worktree is not clean; refusing release checkout', file=sys.stderr)
             return EX_CONFIG
         if cancelled():

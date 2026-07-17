@@ -5,6 +5,7 @@ import {
   assertDecimalPlacesWithinLimit,
   countDecimalPlacesString,
   isBlankValue,
+  isValueWithinTolerance,
   parseDecimal,
   type SelfInspectionMeasurementPayloadValue,
   type SelfInspectionTemplate
@@ -14,7 +15,7 @@ export type NormalizedDraftMeasurementValue = {
   templateItemId: string;
   value: Prisma.Decimal | null;
   reviewStatus: 'NOT_REQUIRED';
-  outOfToleranceAcknowledgedAt: null;
+  outOfToleranceAcknowledgedAt: Date | null;
   approvedAt: null;
   approvedByUserId: null;
   approvedByUsername: null;
@@ -76,7 +77,10 @@ export function validateDraftMeasurementPayload(
       templateItemId: value.templateItemId,
       value: decimalValue,
       reviewStatus: 'NOT_REQUIRED',
-      outOfToleranceAcknowledgedAt: null,
+      outOfToleranceAcknowledgedAt:
+        !isValueWithinTolerance(item, decimalValue) && value.outOfToleranceAcknowledged === true
+          ? new Date()
+          : null,
       approvedAt: null,
       approvedByUserId: null,
       approvedByUsername: null,

@@ -29,6 +29,7 @@ import {
   selfInspectionUpsertDraftEntryBodySchema,
   selfInspectionCreateInspectorEntryBodySchema,
   selfInspectionUpdateInspectorEntryBodySchema,
+  selfInspectionInspectorJudgementsBodySchema,
   selfInspectionInstrumentPreUseInspectionBodySchema,
   selfInspectionResetSessionBodySchema,
   approveSelfInspectionOutOfToleranceReviewBodySchema,
@@ -232,6 +233,13 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
         values: body.values,
         clientDeviceId
       });
+      return { entry };
+    });
+
+    app.patch('/part-measurement/self-inspection/sessions/:id/inspector-entries/:entryId/judgements', { preHandler: allowWriteKiosk }, async (request) => {
+      const params = selfInspectionEntryIdParamsSchema.parse(request.params);
+      const body = selfInspectionInspectorJudgementsBodySchema.parse(request.body);
+      const entry = await selfInspectionService.saveInspectorJudgements(params.id, params.entryId, body);
       return { entry };
     });
 
