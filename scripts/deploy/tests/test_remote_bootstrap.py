@@ -402,6 +402,41 @@ class RemoteBootstrapTest(unittest.TestCase):
         self.assertEqual(executed, [])
         self.assertEqual(runner_path.read_text(encoding='utf-8'), 'tampered coordinator\n')
 
+    def test_power_action_runtime_queue_allows_transition_to_target_ignore(self):
+        runner = RecordingRun(self.project, dirty='?? power-actions/\n')
+
+        def after_call(command):
+            if command[1] == 'checkout':
+                runner.dirty = ''
+
+        def fake_exec(*_arguments):
+            raise ExecIntercept
+
+        runner.after_call = after_call
+
+        with self.assertRaises(ExecIntercept):
+            bootstrap.execute(
+                self.spec(),
+                run_command=runner,
+                execve=fake_exec,
+            )
+
+        self.assertEqual(
+            [call[0][1] for call in runner.calls],
+            ['status', 'fetch', 'cat-file', 'checkout', 'rev-parse', 'status'],
+        )
+
+    def test_tracked_change_below_power_action_queue_still_fails_closed(self):
+        runner = RecordingRun(
+            self.project,
+            dirty=' M power-actions/processed/action.json\n',
+        )
+
+        result = bootstrap.execute(self.spec(), run_command=runner)
+
+        self.assertEqual(result, bootstrap.EX_CONFIG)
+        self.assertEqual([call[0][1] for call in runner.calls], ['status'])
+
     def test_real_git_detects_dirty_coordinator_before_fetch_or_exec(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)

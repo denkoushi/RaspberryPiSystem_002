@@ -46,6 +46,9 @@ certs/
 # Runtime configuration (backup.json, etc.)
 /config/
 
+# Runtime queue used by the Pi5 power dispatcher
+/power-actions/
+
 # Python
 __pycache__/
 *.pyc
