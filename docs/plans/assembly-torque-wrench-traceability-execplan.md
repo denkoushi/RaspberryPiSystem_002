@@ -2,13 +2,13 @@
 title: Assembly Torque Wrench Traceability
 id: plan-assembly-torque-wrench-traceability
 status: active
-scope: assembly template tightening conditions, torque wrench master, physical-tool confirmation, torque-agent, torque audit records, responsive kiosk UI
+scope: assembly template tightening conditions, torque wrench master, physical-tool confirmation, torque-agent, private HID capture tooling, torque audit records, responsive kiosk UI
 date: 2026-07-17
 source_of_truth: this file
 related_code: apps/api/prisma/schema.prisma, apps/api/src/routes/assembly, apps/api/src/services/assembly, apps/web/src/features/assembly, apps/web/src/pages/kiosk, packages/shared-types, clients/torque-agent
 related_docs: ../decisions/ADR-20260717-assembly-torque-wrench-traceability.md, ../design-previews/assembly-torque-wrench-traceability-preview.html, ./kiosk-assembly-torque-management-mvp.md
-validation: preview approved; lint and affected builds pass; disposable-Postgres migration, upgrade, integration, and EXPLAIN checks pass; agent, Ruff, Docker, and deployment contracts pass; physical CEM3-BTLA payload capture remains pending
-open_items: capture real CEM3-BTLA HOGP output and freeze its parser fixtures; register and test only the fixture-proven production parser; perform final Raspberry Pi HID and production-screen acceptance
+validation: preview approved; lint and affected builds pass; disposable-Postgres migration, upgrade, integration, and EXPLAIN checks pass; agent, Ruff, Docker, and deployment contracts pass; offline capture-kit implementation and physical CEM3-BTLA payload capture remain pending
+open_items: implement and validate the offline private-capture/sanitize/replay kit; capture real CEM3-BTLA HOGP output and freeze sanitized parser fixtures; register and test only the fixture-proven production parser; perform final Raspberry Pi HID and production-screen acceptance
 ---
 
 # Add Physical Torque Wrench Traceability to Assembly Work
@@ -22,6 +22,8 @@ After this change, an operator can configure one tightening condition once and r
 The system must refuse an incompatible, unregistered, uncalibrated, expired, wrongly configured, or unexpected wrench without advancing the current marker. It must still retain the input and reason as an audit event. Existing assembly templates and records remain usable in a legacy mode.
 
 Two explicit gates protect the implementation. First, the user must approve a three-screen interactive design preview at 1920x1080 and 1366x768 before production UI, API, or database changes begin. Second, a real CEM3-BTLA HOGP payload must be captured before the production parser contract is fixed. No guessed separator or field order may cross that gate.
+
+The real-device gate does not prevent preparation of a read-only capture kit. Before the wrench is available, the repository can provide a network-free command that records exact Linux HID key events outside Git, replays synthetic events on macOS, sanitizes literal identifiers, and validates fixture coverage. This preparation must not register a CEM3-BTLA parser or create a sample that could be mistaken for observed device output.
 
 ## Progress
 
@@ -39,6 +41,7 @@ Two explicit gates protect the implementation. First, the user must approve a th
 - [x] (2026-07-17 07:48Z) Ran focused unit/integration, migration/upgrade, EXPLAIN, agent, Docker-runtime, infrastructure, lint, and build validation using disposable resources only.
 - [x] (2026-07-17 09:06Z) Updated the canonical assembly/measuring-instrument documents and added an operator-focused torque-agent runbook.
 - [x] (2026-07-17 09:28Z) Hardened condition-confirmation reuse, runtime eligibility, event idempotency, future-setting handling, local HID-error retention, and loopback CORS; reran final disposable-resource validation.
+- [ ] Implement the offline private-capture, replay, sanitization, and fixture-validation kit without a physical wrench.
 - [ ] Capture the real-device fixtures, complete hardware acceptance, and close the final retrospective.
 
 ## Surprises & Discoveries
@@ -78,6 +81,9 @@ Two explicit gates protect the implementation. First, the user must approve a th
 
 - Observation: Keeping the prior confirmation visible while loading the next marker could leave the previous local binding alive for its heartbeat TTL if the compatibility request failed.
   Evidence: Marker changes now clear the Web confirmation and connection display before fetching reusable confirmation data. An unconfirmed heartbeat explicitly clears the agent binding; a live image test proved the transition `bound=false → true → false`. A same-condition confirmation is then reselected automatically only after the API revalidates it.
+
+- Observation: The current `HidLineDecoder` returns only decoded text, discards unsupported key codes, and does not preserve whether TAB or ENTER terminated the frame.
+  Evidence: `clients/torque-agent/torque_agent/hid_line_decoder.py` maps a small key set and returns a string for any configured terminator. For forensic format discovery, the capture path must record exact EV_KEY events and terminators before decoding so an unknown character cannot disappear silently.
 
 ## Decision Log
 
@@ -129,6 +135,14 @@ Two explicit gates protect the implementation. First, the user must approve a th
   Rationale: A brief disarmed state is safer than displaying or retaining a stale binding during an API failure. Reuse remains automatic after successful validation and does not require another physical check when all reuse keys are unchanged.
   Date/Author: 2026-07-17 / Codex.
 
+- Decision: Add one standard-library `torque-capture` CLI with `capture`, `replay`, `sanitize`, and `validate` commands before the physical wrench is available.
+  Rationale: One independently testable boundary keeps device I/O, private evidence, redaction, and committed fixtures separate without adding a dependency or coupling capture to the API/outbox process.
+  Date/Author: 2026-07-17 / Codex, approved by user.
+
+- Decision: Unsanitized payload text and key events must remain outside every Git worktree with directory mode 0700 and file mode 0600; only fail-closed literal-redacted fixtures may enter `tests/fixtures/cem3_btla`.
+  Rationale: Key codes themselves can reconstruct a serial number. Ignoring filenames is only a secondary defense, so the CLI must reject a private output path below a Git root and must never print payload text.
+  Date/Author: 2026-07-17 / Codex, approved by user.
+
 ## Outcomes & Retrospective
 
 The feature branch, living plan, ADR, and interactive three-screen preview now exist on the latest remote main. Browser validation exercised condition inheritance, range copy, all five work states, and both target responsive classes without console errors, outer overflow, or clipped controls. Production behavior, database state, existing Docker resources, and deployed hosts remain unchanged.
@@ -152,6 +166,8 @@ Assembly API routes are registered under `apps/api/src/routes/assembly/index.ts`
 
 The template editor is `apps/web/src/pages/kiosk/KioskAssemblyTemplateEditorPage.tsx`, with draft mutation helpers in `apps/web/src/features/assembly/assemblyTemplateDraft.ts`. The operator work page is `apps/web/src/pages/kiosk/KioskAssemblyWorkSessionPage.tsx`. Existing local agent patterns live under `clients/nfc-agent`, `clients/barcode-agent`, and `clients/haizen-agent`, but none combines durable API acknowledgement with torque-specific parsing.
 
+The parser-independent agent lives under `clients/torque-agent`. `hid_reader.py` is the Linux `evdev` adapter, `hid_line_decoder.py` currently turns a limited set of key-down codes into text, and `parser_registry.py` deliberately registers only a synthetic test profile. The offline capture core must not import `evdev`; the Linux adapter is loaded only by the `capture` command so `replay`, `sanitize`, `validate`, and their tests run on macOS without a physical device.
+
 A capability group is a named fastener condition—nominal diameter, length, material, and strength class—associated with one or more torque-wrench models. A physical wrench is one serial-numbered `MeasuringInstrument` with a torque profile. A confirmation is a work-session record saying the operator compared one physical wrench's display with the latest registered setting for the current condition.
 
 ## Plan of Work
@@ -162,7 +178,15 @@ Create `docs/design-previews/assembly-torque-wrench-traceability-preview.html` a
 
 Serve the directory through a local loopback HTTP server and inspect the actual rendered page at 1920x1080 and 1366x768. Exercise every tab and state, check horizontal and vertical overflow, and capture screenshots. Add a short entry to `docs/design-previews/README.md`. Present the evidence to the user and stop until approval.
 
-### Milestone 2: real device contract
+### Milestone 2A: offline private-capture readiness kit
+
+Add a `torque-capture` console command to `clients/torque-agent` using Python's standard `argparse`. The command has four subcommands. `capture` exclusively opens one explicit `/dev/input/by-id/*` device, records all EV_KEY states, relative timing, frame number, and exact terminator into a private JSONL session, and never initializes the API client, work binding, or SQLite outbox. It requires an output path outside any Git worktree, creates the directory as 0700 and its files as 0600, does not echo payloads, preserves partial data on timeout or interruption, and never stops a running agent automatically.
+
+`replay` feeds saved events through the OS-independent decoder and reports only frame counts, terminators, and unsupported-key counts. `sanitize` reads a 0600 literal-replacement JSON file outside Git, requires every source literal to occur, verifies that no source remains, and emits only sanitized payload text, terminator, scenario, sequence, and observed/derived provenance. `validate` verifies the fixture schema and the observed scenario matrix: normal, below limit, above limit, repeated memory, and rapid consecutive. Partial, missing-field, bad-number, and unsupported-unit fixtures are marked derived and may be added only after the observed payload shape is known. When the operator declares that two devices are available, validation requires two anonymized device aliases.
+
+Refactor the HID decoding boundary so a frame preserves its terminator and any unsupported key codes instead of silently discarding evidence. Keep the existing string callback behavior at the production ingestion boundary, but reject or audit an undecodable frame rather than forwarding altered text. Add a synthetic capture-contract fixture for macOS replay; do not create anything under `tests/fixtures/cem3_btla` during this milestone. Update `.gitignore`, the agent README, and the operations Runbook with private-data handling and commands. This milestone is accepted when its CLI and synthetic tests pass without `evdev` on macOS, the Docker image exposes the command, and no parser named `cem3-btla-hogp-v1` is registered.
+
+### Milestone 2B: real device contract
 
 Configure a physical CEM3-BTLA to send serial number, torque, unit, and memory counter, plus date/time and judgement when available. Use TAB or newline as the final event terminator. Capture normal, below-limit, above-limit, repeated-memory, rapid consecutive, partial, and malformed transmissions. When multiple physical wrenches are available, capture at least two serials.
 
@@ -230,6 +254,20 @@ For production code, use the existing workspace commands and add focused tests b
     poetry run pytest
     poetry run ruff check .
 
+For offline capture-kit verification on macOS, run from `clients/torque-agent`:
+
+    poetry run torque-capture replay --input tests/fixtures/capture_contract/synthetic-key-events.jsonl
+    poetry run torque-capture validate --fixture-root tests/fixtures/capture_contract --expected-device-count 1
+
+On the Raspberry Pi, stop the agent through the approved operational procedure, then capture each observed scenario into a new directory outside the repository. The command refuses `/dev/input/event*`, never offers a non-exclusive mode, and defaults to a 120-second timeout:
+
+    poetry run torque-capture capture --device /dev/input/by-id/<approved-device> --output /var/lib/torque-agent/captures/<capture-id> --scenario normal --expected-frames 3 --firmware <firmware> --output-config <configuration-label>
+
+After all observations, place a 0600 redaction file outside Git, sanitize each capture to a candidate fixture, and validate the complete matrix. The redaction file contains a JSON object whose `literals` array has `{ "source": "<real value>", "replacement": "SERIAL_A" }` rows; do not put a real literal on the command line.
+
+    poetry run torque-capture sanitize --input /var/lib/torque-agent/captures/<capture-id> --redactions /var/lib/torque-agent/private/redactions.json --output tests/fixtures/cem3_btla/<device-alias>/<scenario>.jsonl --device-alias CEM3_A
+    poetry run torque-capture validate --fixture-root tests/fixtures/cem3_btla --expected-device-count 1 --redactions /var/lib/torque-agent/private/redactions.json
+
 Database tests must use a unique temporary container, volume, and network based on one run ID. Do not use the repository helper that owns the fixed `postgres-test-local` name. Bind a random container port only to `127.0.0.1`, export the resulting disposable `DATABASE_URL`, and install an EXIT/INT/TERM trap before migration. Use `pgvector/pgvector:pg15`; pulling the image is allowed. The trap must remove the temporary container, volume, and network, and a final `docker ps`, `docker volume ls`, and `docker network ls` filter must prove the run ID is absent.
 
 Deploy migrations from zero. In a second disposable database, deploy through the migration immediately before this feature, insert representative legacy template/lot/session/record rows with SQL, apply the new migration, and assert the old values and counts remain unchanged. Run relevant integration tests against the same disposable server.
@@ -241,6 +279,8 @@ Load representative master, group, setting, session, and event volumes and run `
 The preview milestone is accepted when all controls work in the standalone mock, all five work states are reachable, the template toolbar occupies no more than two rows, short fields are not stretched, no action is clipped, and the document pane remains the dominant surface at both required viewports. User approval is mandatory.
 
 The device-contract milestone is accepted when sanitized real samples exist and parser tests distinguish complete events, partial input, malformed input, two serials when available, repeat/send, and rapid consecutive events. No parser behavior may rely only on product-page prose.
+
+The offline capture-kit milestone is accepted before hardware when `/dev/input/event0` and Git-contained private output are rejected, synthetic TAB/ENTER/partial/continuous/unsupported-key events replay without loss, interruption releases the device and preserves an incomplete manifest, output permissions are 0700/0600, stdout contains no payload, literal redaction fails closed, incomplete fixture coverage is detected, and all capture tests run on macOS without importing `evdev`.
 
 The domain milestone is accepted when legacy rows migrate unchanged, new required templates enforce structured fields, template-wide marker duplicates fail at both service and database boundaries, and referenced master data cannot be physically deleted.
 
@@ -255,6 +295,8 @@ The agent milestone is accepted when two simulated HID sources, API outage/recov
 All schema work is additive before constraints. Migration tests run only on disposable databases. If existing marker duplicates are found, stop and report the template/marker groups; do not repair them automatically. A later data-remediation plan requires explicit authorization.
 
 The torque agent's outbox makes delivery retryable. Restarting it replays the same event IDs. A 2xx acknowledgement is the only condition that removes a queued event. Parser fixtures are immutable evidence and may only be replaced by a documented new capture/profile.
+
+Every capture uses a new output directory and refuses to overwrite an existing session. It writes a manifest with `in_progress` first and atomically replaces it with `complete`, `timeout`, or `interrupted` at the end. Sanitization also writes to a temporary sibling and atomically replaces only a new target. A failed capture or sanitization is retryable with a new identifier; no command deletes raw evidence or a redaction map automatically.
 
 Preview files and documentation are ordinary feature-branch commits and can be reverted independently from later schema/API commits. No push, merge, deploy, real-host Ansible operation, existing database mutation, or existing Docker-resource deletion is authorized by this plan.
 
@@ -271,6 +313,12 @@ Expected design decision record:
 Expected production parser evidence after the hardware gate:
 
     clients/torque-agent/tests/fixtures/cem3_btla/
+
+Expected synthetic evidence for the capture tool, which must never be described as CEM3-BTLA output:
+
+    clients/torque-agent/tests/fixtures/capture_contract/
+
+Private raw evidence and redaction maps use names matching `*.torque-capture-private.jsonl`, `capture-private/`, or `*.torque-redactions.json`; these patterns are ignored defensively, but the capture command must still reject any destination inside a Git worktree.
 
 Keep screenshots and short validation summaries as artifacts; do not commit transient server logs, SQLite queues, credentials, or raw production identifiers.
 
@@ -295,6 +343,8 @@ The shared type package will expose `AssemblyTorqueTraceabilityMode`, torque-wre
 
 The torque agent will define independent ports for HID events, payload parsing, durable outbox persistence, work binding, and API delivery. The CEM3-BTLA parser is one adapter selected by an output-profile identifier derived from captured fixtures. SQLite, evdev, WebSocket, and HTTP are implementation details behind those ports.
 
+The capture package exposes an OS-independent `CapturedKeyEvent` value with sequence, relative nanoseconds, key code, key state, and frame number; a decoded frame with text, exact terminator, source key codes, and unsupported key codes; an asynchronous event-source protocol; a recorder; a literal sanitizer; and a fixture validator. The Linux event source is the only component allowed to import `evdev`. The CLI returns 0 for success, 2 for usage or safety validation, 3 for timeout/interruption/incomplete capture, and 4 for OS or device failures.
+
 Revision note 2026-07-17 06:32Z: Created this self-contained execution plan after branching from fetched `origin/main`, then added the approved-scope interactive preview and responsive browser evidence. The production implementation remains deliberately paused at the user approval gate.
 
 Revision note 2026-07-17 06:40Z: Recorded the user's preview approval. Opened the production schema/API/UI milestones while retaining the independent real-device payload gate for the final CEM3-BTLA parser profile.
@@ -304,3 +354,5 @@ Revision note 2026-07-17 07:48Z: Recorded the production checkpoint, disposable-
 Revision note 2026-07-17 09:06Z: After the user resumed work, corrected confirmation reuse and local input-audit behavior, reran disposable-Postgres/API/agent/Ruff/build/lint validation, and completed canonical documentation plus the torque-agent operations Runbook. The real CEM3-BTLA fixture gate remains unchanged.
 
 Revision note 2026-07-17 09:28Z: Completed the resume-time hardening pass, including future-setting rejection and strict loopback CORS, and recorded the final disposable Postgres, image-runtime, build, lint, and deployment-contract results. The real CEM3-BTLA fixture gate remains unchanged.
+
+Revision note 2026-07-17 10:00Z: Split the device milestone into offline capture readiness (2A) and physical fixture/parser promotion (2B). Fixed the private evidence format, fail-closed redaction, macOS replay boundary, CLI exit codes, and the rule that no CEM3-BTLA parser or fixture may be invented before observed hardware output.
