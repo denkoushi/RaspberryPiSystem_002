@@ -12,8 +12,8 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Metric | Count |
 |--------|------:|
 | Documents | 523 |
-| Total lines | 151017 |
-| Total bytes | 11296322 |
+| Total lines | 151020 |
+| Total bytes | 11297197 |
 | With frontmatter | 211 |
 | With status | 69 |
 | source_of_truth declared | 41 |
@@ -83,7 +83,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/knowledge-base/KB-320-kiosk-part-measurement.md` (1804:1045, 1811:1213)
 - `docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md` (13:1164, 295:1220, 297:1290)
 - `docs/knowledge-base/infrastructure/signage.md` (23:1023, 29:1221, 349:1060)
-- `docs/plans/deployment-foundation-refactor-execplan.md` (99:1226, 842:1025, 848:1002)
+- `docs/plans/deployment-foundation-refactor-execplan.md` (99:1226, 843:1025, 849:1002)
 - `docs/plans/dgx-spark-local-llm-migration-execplan.md` (38:1075)
 - `docs/plans/pi5-minimal-downtime-phase2.md` (130:1083)
 - `docs/plans/solid-refactor-phase3-execplan-202607.md` (28:1154, 30:1151)
