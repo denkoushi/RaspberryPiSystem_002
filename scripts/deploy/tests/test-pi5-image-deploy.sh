@@ -578,6 +578,78 @@ grep -Fq 'BUILD_COMMIT=${REF}' "$SCRIPT" \
 grep -Fq 'LABEL org.opencontainers.image.revision=${BUILD_COMMIT}' \
   "$ROOT/infrastructure/docker/Dockerfile.api" "$ROOT/infrastructure/docker/Dockerfile.web" \
   || fail "candidate images do not seal their source revision"
+python3 - \
+  "$ROOT/infrastructure/docker/Dockerfile.api" \
+  "$ROOT/infrastructure/docker/Dockerfile.web" <<'PY'
+import pathlib
+import re
+import sys
+
+
+def final_stage_instructions(path: pathlib.Path) -> list[str]:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    stage_starts = [
+        index for index, line in enumerate(lines)
+        if re.match(r"^\s*FROM\s+", line, flags=re.IGNORECASE)
+    ]
+    if not stage_starts:
+        raise AssertionError(f"{path}: Dockerfile has no FROM instruction")
+
+    instructions: list[str] = []
+    current: list[str] = []
+    for raw_line in lines[stage_starts[-1]:]:
+        stripped = raw_line.strip()
+        if not current and (not stripped or stripped.startswith("#")):
+            continue
+        current.append(stripped)
+        if stripped.endswith("\\"):
+            continue
+        instructions.append(" ".join(current))
+        current = []
+    if current:
+        instructions.append(" ".join(current))
+    return instructions
+
+
+for raw_path in sys.argv[1:]:
+    path = pathlib.Path(raw_path)
+    instructions = final_stage_instructions(path)
+    filesystem_indexes = [
+        index for index, instruction in enumerate(instructions)
+        if re.match(r"^(RUN|COPY|ADD)\b", instruction, flags=re.IGNORECASE)
+    ]
+    if not filesystem_indexes:
+        raise AssertionError(f"{path}: final stage has no filesystem-producing instruction")
+    last_filesystem_index = max(filesystem_indexes)
+
+    arg_indexes: dict[str, int] = {}
+    for name in ("BUILD_COMMIT", "BUILD_CONFIG_HASH"):
+        matches = [
+            index for index, instruction in enumerate(instructions)
+            if re.match(rf"^ARG\s+{name}(?:=|\s|$)", instruction, flags=re.IGNORECASE)
+        ]
+        if len(matches) != 1:
+            raise AssertionError(f"{path}: final stage must declare {name} exactly once")
+        arg_indexes[name] = matches[0]
+        if matches[0] <= last_filesystem_index:
+            raise AssertionError(
+                f"{path}: {name} must follow every final-stage RUN/COPY/ADD instruction"
+            )
+
+    required_labels = {
+        "org.opencontainers.image.revision=${BUILD_COMMIT}": arg_indexes["BUILD_COMMIT"],
+        "org.opencontainers.image.config-hash=${BUILD_CONFIG_HASH}": arg_indexes["BUILD_CONFIG_HASH"],
+    }
+    for label, arg_index in required_labels.items():
+        matches = [
+            index for index, instruction in enumerate(instructions)
+            if instruction.upper().startswith("LABEL ") and label in instruction
+        ]
+        if len(matches) != 1 or matches[0] <= arg_index:
+            raise AssertionError(
+                f"{path}: provenance label {label} must occur once after its ARG"
+            )
+PY
 grep -Fq '**/.env' "$ROOT/.dockerignore" || fail ".env files are not excluded from Docker contexts"
 grep -Fq '**/__pycache__' "$ROOT/.dockerignore" || fail "Python caches are not excluded from Docker contexts"
 grep -Fq '**/*.py[cod]' "$ROOT/.dockerignore" || fail "Python bytecode is not excluded from Docker contexts"

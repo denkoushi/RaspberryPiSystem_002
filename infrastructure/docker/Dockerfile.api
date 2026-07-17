@@ -37,10 +37,6 @@ RUN pnpm run build
 
 FROM node:20-bookworm-slim AS api
 WORKDIR /app
-ARG BUILD_COMMIT=unknown
-ARG BUILD_CONFIG_HASH=unknown
-LABEL org.opencontainers.image.revision=${BUILD_COMMIT}
-LABEL org.opencontainers.image.config-hash=${BUILD_CONFIG_HASH}
 ARG NDLOCR_LITE_COMMIT=89f815899f0e85d236a1a90e75da012ca932dc7b
 # Bump the date to invalidate the cached apt layer; otherwise the CI build
 # cache keeps stale OS packages and Trivy fails on already-fixed Debian CVEs.
@@ -104,6 +100,13 @@ RUN mkdir -p /app/storage/photos \
   /app/storage/assembly-procedure-images \
   && rm -rf /usr/local/lib/node_modules/npm \
   && rm -rf /root/.cache/node/corepack
+
+# Release provenance is image metadata only. Keep it after every filesystem
+# mutation so a new release SHA/config hash can reuse unchanged runtime layers.
+ARG BUILD_COMMIT=unknown
+ARG BUILD_CONFIG_HASH=unknown
+LABEL org.opencontainers.image.revision=${BUILD_COMMIT}
+LABEL org.opencontainers.image.config-hash=${BUILD_CONFIG_HASH}
 
 ENV NODE_ENV=production
 ENV DATABASE_URL="postgresql://postgres:postgres@db:5432/borrow_return"

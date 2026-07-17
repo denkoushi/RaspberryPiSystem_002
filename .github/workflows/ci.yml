@@ -533,8 +533,42 @@ jobs:
           push: false
           load: true
           tags: ${{ matrix.tag }}
+          build-args: |
+            BUILD_COMMIT=1111111111111111111111111111111111111111
+            BUILD_CONFIG_HASH=2222222222222222222222222222222222222222222222222222222222222222
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+      - name: Rebuild ${{ matrix.image }} with provenance-only changes
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: false
+          load: true
+          tags: ${{ matrix.tag }}-provenance
+          build-args: |
+            BUILD_COMMIT=3333333333333333333333333333333333333333
+            BUILD_CONFIG_HASH=4444444444444444444444444444444444444444444444444444444444444444
+          cache-from: type=gha,scope=${{ matrix.image }}
+
+      - name: Verify ${{ matrix.image }} provenance does not invalidate filesystem layers
+        env:
+          BASE_IMAGE: ${{ matrix.tag }}
+          PROVENANCE_IMAGE: ${{ matrix.tag }}-provenance
+        run: |
+          set -euo pipefail
+          base_layers="$(docker image inspect "$BASE_IMAGE" --format '{{json .RootFS.Layers}}')"
+          provenance_layers="$(docker image inspect "$PROVENANCE_IMAGE" --format '{{json .RootFS.Layers}}')"
+          test "$base_layers" = "$provenance_layers"
+          test "$(docker image inspect "$BASE_IMAGE" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" \
+            = 1111111111111111111111111111111111111111
+          test "$(docker image inspect "$BASE_IMAGE" --format '{{index .Config.Labels "org.opencontainers.image.config-hash"}}')" \
+            = 2222222222222222222222222222222222222222222222222222222222222222
+          test "$(docker image inspect "$PROVENANCE_IMAGE" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" \
+            = 3333333333333333333333333333333333333333
+          test "$(docker image inspect "$PROVENANCE_IMAGE" --format '{{index .Config.Labels "org.opencontainers.image.config-hash"}}')" \
+            = 4444444444444444444444444444444444444444444444444444444444444444
 
       - name: Security scan (Trivy image ${{ matrix.image }})
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0

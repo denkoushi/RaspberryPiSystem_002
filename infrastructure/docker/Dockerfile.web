@@ -80,10 +80,6 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -mod=mod -trimp
 
 FROM alpine:3.23
 WORKDIR /srv
-ARG BUILD_COMMIT=unknown
-ARG BUILD_CONFIG_HASH=unknown
-LABEL org.opencontainers.image.revision=${BUILD_COMMIT}
-LABEL org.opencontainers.image.config-hash=${BUILD_CONFIG_HASH}
 # envsubst を導入し、CI の Trivy が検出した Alpine の修正版パッケージへ追従する
 RUN apk add --no-cache ca-certificates gettext libcap \
   && apk upgrade --no-cache musl musl-utils openssl libcrypto3 libssl3 zlib libxml2
@@ -99,6 +95,12 @@ COPY infrastructure/docker/Caddyfile.maintenance.http ./Caddyfile.maintenance.ht
 COPY infrastructure/docker/Caddyfile.maintenance.local ./Caddyfile.maintenance.local
 COPY infrastructure/docker/Caddyfile.maintenance.production ./Caddyfile.maintenance.production
 COPY infrastructure/docker/maintenance.html ./phase2-maintenance/index.html
+# Release provenance is image metadata only. Keep it after every filesystem
+# mutation so a new release SHA/config hash can reuse unchanged runtime layers.
+ARG BUILD_COMMIT=unknown
+ARG BUILD_CONFIG_HASH=unknown
+LABEL org.opencontainers.image.revision=${BUILD_COMMIT}
+LABEL org.opencontainers.image.config-hash=${BUILD_CONFIG_HASH}
 # Caddyfileの選択ロジック:
 # 1. USE_LOCAL_CERTS環境変数が設定されている場合 → Caddyfile.local（自己署名証明書）
 # 2. DOMAIN環境変数が設定されている場合 → Caddyfile.production（Let's Encrypt）
