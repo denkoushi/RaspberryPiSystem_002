@@ -7,7 +7,7 @@ date: 2026-07-17
 source_of_truth: this file
 related_code: apps/api/prisma/schema.prisma, apps/api/src/routes/assembly, apps/api/src/services/assembly, apps/web/src/features/assembly, apps/web/src/pages/kiosk, packages/shared-types, clients/torque-agent
 related_docs: ../decisions/ADR-20260717-assembly-torque-wrench-traceability.md, ../design-previews/assembly-torque-wrench-traceability-preview.html, ./kiosk-assembly-torque-management-mvp.md
-validation: preview approved; lint and affected builds pass; disposable-Postgres migration, upgrade, integration, and EXPLAIN checks pass; agent, Ruff, Docker, deployment, offline capture-kit, Trivy, and PR CI-remediation contracts pass locally; physical CEM3-BTLA payload capture remains pending
+validation: preview approved; lint and affected builds pass; disposable-Postgres migration, upgrade, integration, and EXPLAIN checks pass; agent, Ruff, Docker, deployment, offline capture-kit, Trivy, and Draft PR CI-remediation contracts pass; physical CEM3-BTLA payload capture remains pending
 open_items: capture real CEM3-BTLA HOGP output and freeze sanitized parser fixtures; register and test only the fixture-proven production parser; perform final Raspberry Pi HID and production-screen acceptance
 ---
 
@@ -43,6 +43,7 @@ The real-device gate does not prevent preparation of a read-only capture kit. Be
 - [x] (2026-07-17 09:28Z) Hardened condition-confirmation reuse, runtime eligibility, event idempotency, future-setting handling, local HID-error retention, and loopback CORS; reran final disposable-resource validation.
 - [x] (2026-07-17 10:22Z) Implemented and validated the offline private-capture, replay, sanitization, and fixture-validation kit without importing `evdev` on macOS or registering a CEM3-BTLA parser.
 - [x] (2026-07-17 11:20Z) Remediated the first Draft PR CI findings: upgraded the vulnerable FastAPI/Starlette lock, made rate limiting and DOM text construction explicit for CodeQL, and brought torque-agent release lifecycle ownership under the deployment safety contract.
+- [x] (2026-07-17 11:31Z) Pushed remediation commit `3776a953` and confirmed Draft PR #1038 passes every required CI job, including the aggregate `ci-required` gate.
 - [ ] Capture the real-device fixtures, complete hardware acceptance, and close the final retrospective.
 
 ## Surprises & Discoveries
@@ -181,7 +182,7 @@ Every temporary database, volume, network, container, and feature image created 
 
 Milestone 2A completed at 19:22 JST without a physical wrench. The standard-library CLI now records exclusive EV_KEY streams only to new Git-external 0700/0600 sessions, preserves incomplete manifests, replays without payload output, performs fail-closed literal redaction, and validates strict observed/derived fixture contracts. The synthetic `capture_contract` remains explicitly non-CEM evidence, and no `cem3_btla` fixture or production parser was added. Validation passed 20 agent/capture tests, Ruff 0.4.2, zero-warning root lint, document inventory/link audit, and disposable Docker wheel/runtime replay/validation; temporary containers and images were removed.
 
-Draft PR #1038 initially passed the functional API, Web, DB, E2E, and client suites but exposed security and deployment-contract gaps. The approved remediation now passes 21 torque-agent tests, Ruff, API build, zero-warning root lint, 621 deploy regression tests, the release safety audit, four relevant Ansible syntax checks, a targeted Trivy scan with zero findings for `poetry.lock`, and a disposable Linux image build/runtime health check. The disposable container and image were removed. The PR CI rerun remains the final evidence for this remediation; the physical CEM3-BTLA gate is unchanged.
+Draft PR #1038 initially passed the functional API, Web, DB, E2E, and client suites but exposed security and deployment-contract gaps. The approved remediation now passes 21 torque-agent tests, Ruff, API build, zero-warning root lint, 621 deploy regression tests, the release safety audit, four relevant Ansible syntax checks, a targeted Trivy scan with zero findings for `poetry.lock`, and a disposable Linux image build/runtime health check. The disposable container and image were removed. GitHub then passed `docker-security (api)`, `deploy-contract`, the CodeQL workflow, API/Web/DB/E2E, and the aggregate `ci-required` gate for commit `3776a953`; the additional CodeQL alert check completed with no new finding. The physical CEM3-BTLA gate is unchanged.
 
 ## Context and Orientation
 
@@ -385,3 +386,5 @@ Revision note 2026-07-17 10:00Z: Split the device milestone into offline capture
 Revision note 2026-07-17 10:22Z: Completed Milestone 2A with the read-only capture CLI, Linux adapter/OS-independent recorder split, strict decoder/audit boundary, synthetic contract fixtures, fail-closed sanitizer/validator, defensive ignores, Docker console entry, and operator Runbook. Recorded 20 passing tests plus Ruff, root lint, document audit, and disposable image runtime evidence. Milestone 2B remains gated on physical output.
 
 Revision note 2026-07-17 11:20Z: Recorded the approved Draft PR CI remediation: dependency vulnerability removal, explicit rate-limit and safe DOM construction, portable loopback API testing, and torque-agent Ansible lifecycle ownership. Local security, deployment, lint, build, agent, and disposable-image validation pass; GitHub CI rerun remains pending.
+
+Revision note 2026-07-17 11:31Z: Recorded the successful Draft PR #1038 rerun for remediation commit `3776a953`. Every required GitHub Actions job and the `ci-required` aggregate passed; the separate real-device parser gate remains open.
