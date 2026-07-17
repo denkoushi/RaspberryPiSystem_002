@@ -11,6 +11,10 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY clients/torque-agent/pyproject.toml clients/torque-agent/poetry.lock ./
 RUN poetry config virtualenvs.create false \
   && poetry install --only main --no-root --no-interaction
+COPY clients/torque-agent/README.md ./README.md
+COPY clients/torque-agent/torque_agent ./torque_agent
+RUN poetry build --format wheel \
+  && /opt/venv/bin/pip install --no-deps dist/*.whl
 
 FROM python:3.11-slim AS runtime
 WORKDIR /app

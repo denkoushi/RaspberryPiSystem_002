@@ -7,8 +7,8 @@ date: 2026-07-17
 source_of_truth: this file
 related_code: apps/api/prisma/schema.prisma, apps/api/src/routes/assembly, apps/api/src/services/assembly, apps/web/src/features/assembly, apps/web/src/pages/kiosk, packages/shared-types, clients/torque-agent
 related_docs: ../decisions/ADR-20260717-assembly-torque-wrench-traceability.md, ../design-previews/assembly-torque-wrench-traceability-preview.html, ./kiosk-assembly-torque-management-mvp.md
-validation: preview approved; lint and affected builds pass; disposable-Postgres migration, upgrade, integration, and EXPLAIN checks pass; agent, Ruff, Docker, and deployment contracts pass; offline capture-kit implementation and physical CEM3-BTLA payload capture remain pending
-open_items: implement and validate the offline private-capture/sanitize/replay kit; capture real CEM3-BTLA HOGP output and freeze sanitized parser fixtures; register and test only the fixture-proven production parser; perform final Raspberry Pi HID and production-screen acceptance
+validation: preview approved; lint and affected builds pass; disposable-Postgres migration, upgrade, integration, and EXPLAIN checks pass; agent, Ruff, Docker, deployment, and offline capture-kit contracts pass; physical CEM3-BTLA payload capture remains pending
+open_items: capture real CEM3-BTLA HOGP output and freeze sanitized parser fixtures; register and test only the fixture-proven production parser; perform final Raspberry Pi HID and production-screen acceptance
 ---
 
 # Add Physical Torque Wrench Traceability to Assembly Work
@@ -41,7 +41,7 @@ The real-device gate does not prevent preparation of a read-only capture kit. Be
 - [x] (2026-07-17 07:48Z) Ran focused unit/integration, migration/upgrade, EXPLAIN, agent, Docker-runtime, infrastructure, lint, and build validation using disposable resources only.
 - [x] (2026-07-17 09:06Z) Updated the canonical assembly/measuring-instrument documents and added an operator-focused torque-agent runbook.
 - [x] (2026-07-17 09:28Z) Hardened condition-confirmation reuse, runtime eligibility, event idempotency, future-setting handling, local HID-error retention, and loopback CORS; reran final disposable-resource validation.
-- [ ] Implement the offline private-capture, replay, sanitization, and fixture-validation kit without a physical wrench.
+- [x] (2026-07-17 10:22Z) Implemented and validated the offline private-capture, replay, sanitization, and fixture-validation kit without importing `evdev` on macOS or registering a CEM3-BTLA parser.
 - [ ] Capture the real-device fixtures, complete hardware acceptance, and close the final retrospective.
 
 ## Surprises & Discoveries
@@ -82,8 +82,14 @@ The real-device gate does not prevent preparation of a read-only capture kit. Be
 - Observation: Keeping the prior confirmation visible while loading the next marker could leave the previous local binding alive for its heartbeat TTL if the compatibility request failed.
   Evidence: Marker changes now clear the Web confirmation and connection display before fetching reusable confirmation data. An unconfirmed heartbeat explicitly clears the agent binding; a live image test proved the transition `bound=false → true → false`. A same-condition confirmation is then reselected automatically only after the API revalidates it.
 
-- Observation: The current `HidLineDecoder` returns only decoded text, discards unsupported key codes, and does not preserve whether TAB or ENTER terminated the frame.
-  Evidence: `clients/torque-agent/torque_agent/hid_line_decoder.py` maps a small key set and returns a string for any configured terminator. For forensic format discovery, the capture path must record exact EV_KEY events and terminators before decoding so an unknown character cannot disappear silently.
+- Observation: Before Milestone 2A, `HidLineDecoder` returned only decoded text, discarded unsupported key codes, and did not preserve whether TAB or ENTER terminated the frame.
+  Evidence: The pre-kit decoder mapped a small key set and returned a string for any configured terminator. The implemented forensic path now records exact EV_KEY events before decoding and retains unsupported keys and terminators so an unknown character cannot disappear silently.
+
+- Observation: Installing the project root into the Docker builder with Poetry produced an editable console script that referenced the builder-only `/build` path.
+  Evidence: The first disposable runtime image found `/opt/venv/bin/torque-capture` but raised `ModuleNotFoundError: torque_agent`. Building a wheel and installing it non-editably into `/opt/venv` fixed the boundary; the rebuilt image ran help, replay, schema-resource, and fixture-validation checks successfully.
+
+- Observation: Standard HID shift/modifier handling is required to preserve payload text without assuming any CEM3-BTLA field format.
+  Evidence: The decoder now tracks left/right Shift key-down/up state, supports standard keyboard punctuation, and still retains every unsupported key plus the exact terminator. Unknown-key frames are locally audited and are never forwarded as silently altered payloads.
 
 ## Decision Log
 
@@ -157,6 +163,8 @@ Work resumed at 17:54 JST. Review corrected condition-based confirmation reuse, 
 A final disposable database applied all 149 migrations and passed the 22 combined assembly/traceability integration tests. Unit/UI evidence includes 19 converter/policy checks, 7 focused Web checks, and 8 agent checks with Ruff 0.4.2.
 The final pass also completed zero-warning root lint, Shared Types/API/Web production builds, 136 deployment/profile/probe contracts, Compose configuration, Ansible syntax, and a disposable agent image health/CORS/binding runtime check.
 Every temporary database, volume, network, container, and feature image created by this pass was removed. Canonical assembly, measuring-instrument API/UI, agent README, INDEX, and operations Runbook now describe the implemented/not-deployed state and the remaining hardware gate.
+
+Milestone 2A completed at 19:22 JST without a physical wrench. The standard-library CLI now records exclusive EV_KEY streams only to new Git-external 0700/0600 sessions, preserves incomplete manifests, replays without payload output, performs fail-closed literal redaction, and validates strict observed/derived fixture contracts. The synthetic `capture_contract` remains explicitly non-CEM evidence, and no `cem3_btla` fixture or production parser was added. Validation passed 20 agent/capture tests, Ruff 0.4.2, zero-warning root lint, document inventory/link audit, and disposable Docker wheel/runtime replay/validation; temporary containers and images were removed.
 
 ## Context and Orientation
 
@@ -256,8 +264,8 @@ For production code, use the existing workspace commands and add focused tests b
 
 For offline capture-kit verification on macOS, run from `clients/torque-agent`:
 
-    poetry run torque-capture replay --input tests/fixtures/capture_contract/synthetic-key-events.jsonl
-    poetry run torque-capture validate --fixture-root tests/fixtures/capture_contract --expected-device-count 1
+    poetry run torque-capture replay --input tests/fixtures/capture_contract/synthetic-key-events.jsonl --synthetic
+    poetry run torque-capture validate --fixtures tests/fixtures/capture_contract
 
 On the Raspberry Pi, stop the agent through the approved operational procedure, then capture each observed scenario into a new directory outside the repository. The command refuses `/dev/input/event*`, never offers a non-exclusive mode, and defaults to a 120-second timeout:
 
@@ -265,8 +273,8 @@ On the Raspberry Pi, stop the agent through the approved operational procedure, 
 
 After all observations, place a 0600 redaction file outside Git, sanitize each capture to a candidate fixture, and validate the complete matrix. The redaction file contains a JSON object whose `literals` array has `{ "source": "<real value>", "replacement": "SERIAL_A" }` rows; do not put a real literal on the command line.
 
-    poetry run torque-capture sanitize --input /var/lib/torque-agent/captures/<capture-id> --redactions /var/lib/torque-agent/private/redactions.json --output tests/fixtures/cem3_btla/<device-alias>/<scenario>.jsonl --device-alias CEM3_A
-    poetry run torque-capture validate --fixture-root tests/fixtures/cem3_btla --expected-device-count 1 --redactions /var/lib/torque-agent/private/redactions.json
+    poetry run torque-capture sanitize --input /var/lib/torque-agent/captures/<capture-id> --redactions /var/lib/torque-agent/private/cem3.torque-redactions.json --output tests/fixtures/cem3_btla/SERIAL_A/<scenario>.jsonl
+    poetry run torque-capture validate --fixtures tests/fixtures/cem3_btla --available-device-count 1 --redactions /var/lib/torque-agent/private/cem3.torque-redactions.json
 
 Database tests must use a unique temporary container, volume, and network based on one run ID. Do not use the repository helper that owns the fixed `postgres-test-local` name. Bind a random container port only to `127.0.0.1`, export the resulting disposable `DATABASE_URL`, and install an EXIT/INT/TERM trap before migration. Use `pgvector/pgvector:pg15`; pulling the image is allowed. The trap must remove the temporary container, volume, and network, and a final `docker ps`, `docker volume ls`, and `docker network ls` filter must prove the run ID is absent.
 
@@ -356,3 +364,5 @@ Revision note 2026-07-17 09:06Z: After the user resumed work, corrected confirma
 Revision note 2026-07-17 09:28Z: Completed the resume-time hardening pass, including future-setting rejection and strict loopback CORS, and recorded the final disposable Postgres, image-runtime, build, lint, and deployment-contract results. The real CEM3-BTLA fixture gate remains unchanged.
 
 Revision note 2026-07-17 10:00Z: Split the device milestone into offline capture readiness (2A) and physical fixture/parser promotion (2B). Fixed the private evidence format, fail-closed redaction, macOS replay boundary, CLI exit codes, and the rule that no CEM3-BTLA parser or fixture may be invented before observed hardware output.
+
+Revision note 2026-07-17 10:22Z: Completed Milestone 2A with the read-only capture CLI, Linux adapter/OS-independent recorder split, strict decoder/audit boundary, synthetic contract fixtures, fail-closed sanitizer/validator, defensive ignores, Docker console entry, and operator Runbook. Recorded 20 passing tests plus Ruff, root lint, document audit, and disposable image runtime evidence. Milestone 2B remains gated on physical output.

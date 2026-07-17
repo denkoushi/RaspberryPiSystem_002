@@ -1,0 +1,7 @@
+{"schemaVersion":1,"sequence":1,"relativeNs":0,"frameNo":1,"eventType":"EV_KEY","eventCode":30,"eventValue":1,"keyState":"down","keyCodes":["KEY_A"]}
+{"schemaVersion":1,"sequence":2,"relativeNs":1000,"frameNo":1,"eventType":"EV_KEY","eventCode":30,"eventValue":0,"keyState":"up","keyCodes":["KEY_A"]}
+{"schemaVersion":1,"sequence":3,"relativeNs":2000,"frameNo":1,"eventType":"EV_KEY","eventCode":183,"eventValue":1,"keyState":"down","keyCodes":["KEY_F13"]}
+{"schemaVersion":1,"sequence":4,"relativeNs":3000,"frameNo":1,"eventType":"EV_KEY","eventCode":15,"eventValue":1,"keyState":"down","keyCodes":["KEY_TAB"]}
+{"schemaVersion":1,"sequence":5,"relativeNs":4000,"frameNo":2,"eventType":"EV_KEY","eventCode":48,"eventValue":1,"keyState":"down","keyCodes":["KEY_B"]}
+{"schemaVersion":1,"sequence":6,"relativeNs":5000,"frameNo":2,"eventType":"EV_KEY","eventCode":28,"eventValue":1,"keyState":"down","keyCodes":["KEY_ENTER"]}
+{"schemaVersion":1,"sequence":7,"relativeNs":6000,"frameNo":3,"eventType":"EV_KEY","eventCode":46,"eventValue":1,"keyState":"down","keyCodes":["KEY_C"]}

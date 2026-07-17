@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 526,
-    "totalLines": 151670,
-    "totalBytes": 11366853,
+    "totalLines": 151772,
+    "totalBytes": 11374267,
     "withFrontmatter": 212,
     "withStatus": 70,
     "sourceOfTruthDeclared": 42,
@@ -31283,8 +31283,8 @@
     },
     {
       "path": "docs/plans/assembly-torque-wrench-traceability-execplan.md",
-      "lineCount": 358,
-      "byteSize": 43847,
+      "lineCount": 368,
+      "byteSize": 45795,
       "hasFrontmatter": true,
       "title": "Assembly Torque Wrench Traceability",
       "status": "active",
@@ -34564,8 +34564,8 @@
     },
     {
       "path": "docs/runbooks/assembly-torque-agent.md",
-      "lineCount": 127,
-      "byteSize": 6825,
+      "lineCount": 219,
+      "byteSize": 12291,
       "hasFrontmatter": false,
       "title": "組立 torque-agent 運用Runbook",
       "status": null,

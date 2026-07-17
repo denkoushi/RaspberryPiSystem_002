@@ -6,11 +6,33 @@
 
 CEM3-BTLAの実出力フォーマットはまだ固定していません。実機から製造番号、トルク、単位、メモリ番号を含む匿名化fixtureを採取・承認するまでは、CEM3-BTLA用プロファイルを登録しない設計です。`synthetic-delimited-fixture-v1` はテスト専用で、実機形式を推測したものではありません。
 
+## Read-only capture kit
+
+`torque-capture`はAPI、heartbeat、SQLite outboxへ接続しない、実機契約調査専用のCLIです。
+
+- `capture`: Linux上の明示した`/dev/input/by-id/*`を必ず排他取得し、EV_KEYイベントをリポジトリ外へ0700/0600で保全する
+- `replay`: rawイベントをデコーダーへ戻し、本文を出さずフレーム数、終端、未知キー数だけを表示する
+- `sanitize`: Git外の0600置換表で実値を完全一致置換し、最小限の匿名化fixtureを生成する
+- `validate`: fixture schema、由来、シナリオ、連番、終端、匿名化製造番号数を検証する
+
+Macでは、実機形式を表さない`tests/fixtures/capture_contract`だけを使ってCLI境界を確認できます。
+
+```bash
+poetry run torque-capture replay \
+  --input tests/fixtures/capture_contract/synthetic-key-events.jsonl \
+  --synthetic
+poetry run torque-capture validate \
+  --fixtures tests/fixtures/capture_contract
+```
+
+終了コードは成功`0`、引数・安全条件違反`2`、未完了・タイムアウト`3`、機器・OSエラー`4`です。raw payloadは標準出力へ表示しません。実機採取の停止・再起動、匿名化、保全手順はRunbookに従ってください。
+
 ## Safety properties
 
 - 設定した `/dev/input/by-id` のみを開き、`grab()` でブラウザーへのキー漏れを防止します。
 - 有効なブラウザheartbeatがない入力は別作業へ推測割当せず、SQLiteの`torque_local_audit`へ理由付きで残します。
 - 解析できない入力もHID監視を停止させず、原文・機器パス・parser profile・エラーをローカル監査へ残します。
+- 未対応HIDキーを黙って除去せず、実際の終端とキー情報を`HID_DECODE_FAILED`としてローカル監査へ残し、改変されたpayloadを送信しません。
 - イベントIDをSQLiteの主キーにし、2xx応答後だけ削除します。
 - タイムアウト・ネットワーク障害・5xx/4xxは同じイベントIDのまま、最大30秒の上限付きバックオフで再送します。
 - heartbeatのCORSはAPI originと明示許可したキオスクWeb originに限定し、ワイルドカードを拒否します。

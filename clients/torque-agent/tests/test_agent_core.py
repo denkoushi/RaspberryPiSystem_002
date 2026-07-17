@@ -1,11 +1,12 @@
 import asyncio
+import json
 from pathlib import Path
 
 import pytest
 
 from torque_agent.binding import BindingStore
 from torque_agent.config import AgentConfig
-from torque_agent.hid_line_decoder import HidLineDecoder
+from torque_agent.hid_line_decoder import DecodedHidFrame, HidLineDecoder
 from torque_agent.ingestor import TorqueEventIngestor
 from torque_agent.models import WorkBinding
 from torque_agent.parser_registry import ParserRegistry, SyntheticDelimitedFixtureParser
@@ -74,6 +75,36 @@ def test_unbound_and_malformed_hid_input_is_retained_in_local_sqlite_audit(tmp_p
     }
 
 
+def test_unsupported_hid_frame_is_retained_without_forwarding_an_altered_payload(tmp_path: Path) -> None:
+    queue = QueueStore(tmp_path / "events.sqlite3")
+    device_path = Path("/dev/input/by-id/test-wrench")
+    parser = SyntheticDelimitedFixtureParser()
+    ingestor = TorqueEventIngestor(
+        queue=queue,
+        bindings=BindingStore(ttl_seconds=5),
+        parsers={device_path: parser},
+        parser_profiles={device_path: parser.PROFILE},
+        event_id_factory=lambda: "decode-error-1",
+    )
+    frame = DecodedHidFrame(
+        text="partial",
+        terminator="KEY_TAB",
+        key_codes=("KEY_P", "KEY_F13"),
+        unsupported_key_codes=("KEY_F13",),
+    )
+
+    asyncio.run(ingestor.on_decode_error(device_path, frame))
+
+    assert queue.count() == 0
+    error = queue.local_errors()[0]
+    assert error["reason"] == "HID_DECODE_FAILED"
+    assert json.loads(error["raw_text"]) == {
+        "keyCodes": ["KEY_P", "KEY_F13"],
+        "terminator": "KEY_TAB",
+        "unsupportedKeyCodes": ["KEY_F13"],
+    }
+
+
 def test_synthetic_fixture_parser_is_explicit_and_complete() -> None:
     registry = ParserRegistry()
     registry.register(SyntheticDelimitedFixtureParser.PROFILE, SyntheticDelimitedFixtureParser)
@@ -89,9 +120,36 @@ def test_hid_decoder_handles_partial_and_continuous_lines() -> None:
     decoder = HidLineDecoder()
     assert decoder.feed("KEY_A") is None
     assert decoder.feed("KEY_1") is None
-    assert decoder.feed("KEY_ENTER") == "a1"
+    assert decoder.feed("KEY_ENTER") == DecodedHidFrame("a1", "KEY_ENTER", ("KEY_A", "KEY_1"), ())
     assert decoder.feed("KEY_B") is None
-    assert decoder.feed("KEY_TAB") == "b"
+    assert decoder.feed("KEY_TAB") == DecodedHidFrame("b", "KEY_TAB", ("KEY_B",), ())
+
+
+def test_hid_decoder_retains_unknown_keys_and_actual_terminator() -> None:
+    decoder = HidLineDecoder()
+    assert decoder.feed("KEY_A") is None
+    assert decoder.feed("KEY_F13") is None
+    assert decoder.feed("KEY_KPENTER") == DecodedHidFrame(
+        "a",
+        "KEY_KPENTER",
+        ("KEY_A", "KEY_F13"),
+        ("KEY_F13",),
+    )
+
+
+def test_hid_decoder_tracks_standard_shifted_keys_without_guessing_payload_format() -> None:
+    decoder = HidLineDecoder()
+    assert decoder.feed("KEY_LEFTSHIFT", "down") is None
+    assert decoder.feed("KEY_A", "down") is None
+    assert decoder.feed("KEY_A", "up") is None
+    assert decoder.feed("KEY_LEFTSHIFT", "up") is None
+    assert decoder.feed("KEY_SEMICOLON", "down") is None
+    assert decoder.feed("KEY_TAB", "down") == DecodedHidFrame(
+        "A;",
+        "KEY_TAB",
+        ("KEY_LEFTSHIFT", "KEY_A", "KEY_SEMICOLON"),
+        (),
+    )
 
 
 def test_expired_binding_is_not_reused(monkeypatch: pytest.MonkeyPatch) -> None:

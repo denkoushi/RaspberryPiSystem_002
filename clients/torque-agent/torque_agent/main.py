@@ -88,7 +88,10 @@ async def run_agent(config: AgentConfig) -> None:
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=config.local_port, log_level="info"))
     tasks = [asyncio.create_task(OutboxSender(config.api_base_url, config.client_key, queue).run()),
              asyncio.create_task(server.serve())]
-    tasks.extend(asyncio.create_task(read_hid_device(device.path, ingestor.on_line)) for device in config.devices)
+    tasks.extend(
+        asyncio.create_task(read_hid_device(device.path, ingestor.on_line, ingestor.on_decode_error))
+        for device in config.devices
+    )
     await asyncio.gather(*tasks)
 
 

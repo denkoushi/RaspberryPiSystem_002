@@ -20,19 +20,110 @@ readlink -f /dev/input/by-id/<candidate>
 
 `/dev/input/event*`や一般キーボードを設定してはいけない。必ず対象レンチ固有の`/dev/input/by-id/*`を使う。
 
-## 実機fixture採取
+## 実機fixture採取（Milestone 2B）
 
-本番agentを有効化する前に、隔離した入力確認環境で次を採取する。
+実機がない間は、Mac上で読み取り、匿名化、検証の契約を確認できる。
 
-- 正常範囲
-- 下限未満、上限超過
-- 同じメモリ番号の再送
-- 連続入力
-- 途中で分割された入力
-- 欠損・不正形式
-- 可能なら異なる2製造番号
+```bash
+cd clients/torque-agent
+poetry run torque-capture replay \
+  --input tests/fixtures/capture_contract/synthetic-key-events.jsonl \
+  --synthetic
+poetry run torque-capture validate \
+  --fixtures tests/fixtures/capture_contract
+```
 
-原文から実在製造番号などを匿名化し、`clients/torque-agent/tests/fixtures/cem3_btla/`へ固定する。parserのテストは、完全イベント、途中入力、不正入力、連続入力、再送を区別しなければならない。採取前にCEM3-BTLAらしい区切りや順序をコードへ追加してはいけない。
+`capture_contract`はCEM3-BTLA出力を模したものではない。実機由来の匿名化済みfixtureだけを`tests/fixtures/cem3_btla/`へ配置し、実payloadが揃うまでは同ディレクトリも正式parser profileも作らない。
+
+### 1. 採取情報を記録する
+
+採取日ごとに次を手元の作業記録へ残す。実製造番号をGit管理文書へ書かない。
+
+- ファームウェア版
+- 有効にした出力項目とその順序
+- 単位と小数点表記
+- TAB／ENTER等の終端設定
+- 同じメモリを再送する実機操作
+- 利用可能な実機台数
+
+製造番号、トルク値、単位、メモリ番号を必須出力にし、可能なら機器日時と機器判定も有効にする。文字列、区切り、日時、判定表記は事前に仮定しない。
+
+### 2. agentを止めて排他採取する
+
+対象Piでagentだけを停止し、対象`/dev/input/by-id/*`が解放されたことを確認する。CLIが取得失敗した場合もagentを自動停止しない。
+
+```bash
+cd /opt/RaspberryPiSystem_002
+docker compose -f infrastructure/docker/docker-compose.client.yml --profile torque stop torque-agent
+docker compose -f infrastructure/docker/docker-compose.client.yml --profile torque ps torque-agent
+mkdir -p /var/lib/torque-agent/capture-private
+chmod 700 /var/lib/torque-agent/capture-private
+```
+
+以下は`poetry install`済み環境で実行する。各`<capture-id>`は新しいディレクトリ名とし、既存先を再利用しない。標準タイムアウトは120秒で、Ctrl-Cやタイムアウトでも取得済みイベントと`interrupted`／`timeout`状態が残る。
+
+```bash
+cd /opt/RaspberryPiSystem_002/clients/torque-agent
+poetry run torque-capture capture --device /dev/input/by-id/<approved-device> --output /var/lib/torque-agent/capture-private/<normal-id> --scenario normal --expected-frames 3 --firmware '<firmware>' --output-config '<output-config-label>'
+poetry run torque-capture capture --device /dev/input/by-id/<approved-device> --output /var/lib/torque-agent/capture-private/<below-id> --scenario below_limit --expected-frames 3 --firmware '<firmware>' --output-config '<output-config-label>'
+poetry run torque-capture capture --device /dev/input/by-id/<approved-device> --output /var/lib/torque-agent/capture-private/<above-id> --scenario above_limit --expected-frames 3 --firmware '<firmware>' --output-config '<output-config-label>'
+poetry run torque-capture capture --device /dev/input/by-id/<approved-device> --output /var/lib/torque-agent/capture-private/<repeat-id> --scenario repeated_memory --expected-frames 2 --firmware '<firmware>' --output-config '<output-config-label>'
+poetry run torque-capture capture --device /dev/input/by-id/<approved-device> --output /var/lib/torque-agent/capture-private/<rapid-id> --scenario rapid_consecutive --expected-frames 5 --firmware '<firmware>' --output-config '<output-config-label>'
+```
+
+`/dev/input/event*`と一般キーボードは拒否され、`--no-grab`は存在しない。CLIの標準出力にはpayload本文や製造番号が出ず、件数だけが出る。採取後に権限を確認する。
+
+```bash
+find /var/lib/torque-agent/capture-private -type d -exec stat -c '%a %n' {} \;
+find /var/lib/torque-agent/capture-private -type f -exec stat -c '%a %n' {} \;
+```
+
+### 3. replay、匿名化、fixture検証
+
+raw captureと置換表はGit外の安全な場所へ置く。置換表は実値をコマンドラインへ出さず、次の形式で0600にする。
+
+```json
+{
+  "literals": [
+    { "source": "<real-serial-a>", "replacement": "SERIAL_A" }
+  ]
+}
+```
+
+```bash
+chmod 600 /var/lib/torque-agent/private/cem3.torque-redactions.json
+poetry run torque-capture replay \
+  --input /var/lib/torque-agent/capture-private/<normal-id>
+poetry run torque-capture sanitize \
+  --input /var/lib/torque-agent/capture-private/<normal-id> \
+  --redactions /var/lib/torque-agent/private/cem3.torque-redactions.json \
+  --output tests/fixtures/cem3_btla/SERIAL_A/normal.jsonl
+```
+
+`sanitize`は各置換元が1回以上存在し、置換後に実値が残らない場合だけ書き出す。同じ手順で5つの実測シナリオを作る。`partial`、`missing_field`、`bad_number`、`unsupported_unit`は実payloadの契約確定後に作る派生fixtureであり、`provenance=derived`として実測と区別する。
+
+```bash
+poetry run torque-capture validate \
+  --fixtures tests/fixtures/cem3_btla \
+  --available-device-count <1-or-2> \
+  --redactions /var/lib/torque-agent/private/cem3.torque-redactions.json
+git status --short
+git ls-files | rg 'torque-capture-private|torque-redactions|events\.sqlite3' && exit 1 || true
+```
+
+複数実機が利用可能と記録した場合だけ`--available-device-count 2`とし、`SERIAL_A`と`SERIAL_B`の両方を必須にする。raw captureはfixture承認まで保持し、承認後もCLIから自動削除しない。保全期間や削除は別の承認済み運用判断とする。
+
+### 4. agentを再起動する
+
+採取コマンドの終了後は、成功・失敗にかかわらずagentを明示的に戻す。
+
+```bash
+cd /opt/RaspberryPiSystem_002
+docker compose -f infrastructure/docker/docker-compose.client.yml --profile torque start torque-agent
+curl --fail --silent http://127.0.0.1:7073/health
+```
+
+実機fixtureのレビューでは、観測されたフィールド順、区切り、単位、終端だけを正式parserへ許可する。推測による代替形式は追加しない。
 
 ## 端末設定
 
@@ -95,6 +186,7 @@ PY
 - `queuedEvents`が増え続ける: API URL、端末キー、ネットワーク、API応答を確認する。イベントIDを変えたりDB行を消したりしない。
 - `BINDING_MISSING_OR_EXPIRED`: 作業画面、7073到達性、heartbeat TTLを確認する。別セッションへ手動付替えしない。
 - `PAYLOAD_PARSE_FAILED`: 原文をfixture候補として保全し、parser profileと実機出力設定を確認する。推測パーサーを追加しない。
+- `HID_DECODE_FAILED`: 未対応キーを含むため、文字を黙って落としたpayloadはAPIへ送っていない。終端とキー監査を実機fixture調査へ回し、既知文字への推測変換はしない。
 
 ## 安全な再起動
 
