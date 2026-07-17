@@ -1,0 +1,1672 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>組立・トルクレンチ締付トレーサビリティ — 実装前プレビュー</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --page: #0b1220;
+      --shell: #111c2d;
+      --panel: #172337;
+      --panel-2: #1d2b40;
+      --panel-3: #0f1a2a;
+      --line: #35445b;
+      --line-soft: #29384d;
+      --text: #f8fafc;
+      --muted: #a9b5c7;
+      --weak: #718096;
+      --blue: #3b82f6;
+      --blue-dark: #1d4ed8;
+      --cyan: #67e8f9;
+      --green: #34d399;
+      --green-bg: #0e3b34;
+      --amber: #fbbf24;
+      --amber-bg: #493814;
+      --red: #fb7185;
+      --red-bg: #4b1f2a;
+      --violet: #c4b5fd;
+      --violet-bg: #312e5b;
+      --paper: #e8edf3;
+      --ink: #263244;
+      --shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
+      --font: "Hiragino Sans", "Yu Gothic UI", "Noto Sans JP", system-ui, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      width: 100%;
+      min-width: 1180px;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--page);
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    button,
+    input,
+    select,
+    textarea { font: inherit; }
+
+    button { cursor: pointer; }
+
+    button:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible {
+      outline: 3px solid rgba(103, 232, 249, 0.72);
+      outline-offset: 2px;
+    }
+
+    .preview-bar {
+      height: 58px;
+      padding: 8px 12px;
+      display: grid;
+      grid-template-columns: minmax(18rem, auto) auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      background: #07101e;
+      border-bottom: 1px solid #233148;
+    }
+
+    .preview-title { min-width: 0; }
+
+    .preview-title strong {
+      display: block;
+      font-size: 14px;
+      line-height: 1.2;
+    }
+
+    .preview-title span {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .viewport-badge,
+    .preview-note {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel-3);
+      color: var(--muted);
+      padding: 7px 9px;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .preview-note { color: var(--amber); }
+
+    .tabs,
+    .state-tabs {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    .tab,
+    .state-tab {
+      min-height: 34px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--muted);
+      background: #142035;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .tab[aria-selected="true"] {
+      color: #fff;
+      background: var(--blue-dark);
+      border-color: var(--blue);
+    }
+
+    .state-tabs {
+      justify-self: end;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .state-tabs::-webkit-scrollbar { display: none; }
+
+    .state-tab {
+      min-height: 30px;
+      padding: 0 9px;
+      font-size: 11px;
+    }
+
+    .state-tab[aria-selected="true"] {
+      color: #fff;
+      background: #334155;
+      border-color: #64748b;
+    }
+
+    .state-tabs[hidden] { display: none; }
+
+    .app-shell {
+      height: calc(100dvh - 58px);
+      padding: 8px;
+      background: var(--shell);
+    }
+
+    .screen {
+      display: none;
+      height: 100%;
+      min-height: 0;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+      background: #132035;
+      box-shadow: var(--shadow);
+    }
+
+    .screen.active {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .app-header {
+      min-height: 50px;
+      padding: 7px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border-bottom: 1px solid var(--line);
+      background: #0f1b2d;
+      flex-shrink: 0;
+    }
+
+    .title-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .back {
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    h1,
+    h2,
+    h3,
+    p { margin: 0; }
+
+    .app-header h1 {
+      font-size: 17px;
+      line-height: 1.25;
+      white-space: nowrap;
+    }
+
+    .subtitle {
+      max-width: 44rem;
+      color: var(--muted);
+      font-size: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .header-actions,
+    .inline-actions,
+    .button-row,
+    .tag-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      min-height: 34px;
+      padding: 0 11px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #27364b;
+      color: var(--text);
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .btn.primary {
+      border-color: var(--blue);
+      background: var(--blue-dark);
+    }
+
+    .btn.success {
+      border-color: #36a779;
+      background: #17634f;
+    }
+
+    .btn.danger {
+      border-color: #be4258;
+      background: #7f2435;
+    }
+
+    .btn.ghost { background: transparent; }
+
+    .btn.small {
+      min-height: 29px;
+      padding: 0 8px;
+      font-size: 12px;
+    }
+
+    .btn:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-height: 24px;
+      padding: 0 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      background: #162238;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .pill::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--weak);
+    }
+
+    .pill.ok { color: #baf8dc; border-color: #217d61; background: var(--green-bg); }
+    .pill.ok::before { background: var(--green); }
+    .pill.warn { color: #fde68a; border-color: #816520; background: var(--amber-bg); }
+    .pill.warn::before { background: var(--amber); }
+    .pill.bad { color: #fecdd3; border-color: #8f3346; background: var(--red-bg); }
+    .pill.bad::before { background: var(--red); }
+    .pill.info { color: #cffafe; border-color: #29758c; background: #143546; }
+    .pill.info::before { background: var(--cyan); }
+
+    .body-fill {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .panel {
+      min-width: 0;
+      min-height: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      overflow: hidden;
+    }
+
+    .panel-head {
+      min-height: 42px;
+      padding: 7px 9px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      border-bottom: 1px solid var(--line-soft);
+      background: #1a283d;
+    }
+
+    .panel-head h2 { font-size: 14px; }
+
+    .panel-head p {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .panel-body {
+      padding: 9px;
+      overflow: auto;
+    }
+
+    label {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    input,
+    select,
+    textarea {
+      min-width: 0;
+      height: 34px;
+      border: 1px solid #44546b;
+      border-radius: 5px;
+      background: #0e1929;
+      color: var(--text);
+      padding: 0 8px;
+    }
+
+    textarea {
+      height: 58px;
+      padding-top: 7px;
+      resize: none;
+    }
+
+    input::placeholder,
+    textarea::placeholder { color: #627086; }
+
+    .field-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .field-grid .wide { grid-column: 1 / -1; }
+
+    .help {
+      color: var(--weak);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .section-label {
+      margin: 2px 0 7px;
+      color: #d8e1ed;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .divider {
+      height: 1px;
+      margin: 10px 0;
+      background: var(--line-soft);
+    }
+
+    /* Master */
+    .master-summary {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .master-grid {
+      height: 100%;
+      display: grid;
+      grid-template-columns: 330px minmax(0, 1fr);
+      gap: 8px;
+      padding: 8px;
+    }
+
+    .master-form {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .master-form .panel-body { flex: 1; }
+
+    .setting-box {
+      margin-top: 9px;
+      padding: 8px;
+      border: 1px solid #2f6659;
+      border-radius: 7px;
+      background: rgba(14, 59, 52, 0.55);
+    }
+
+    .triple {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .master-list {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .filter-row {
+      padding: 7px 9px;
+      display: grid;
+      grid-template-columns: minmax(12rem, 1fr) 9rem 10rem auto;
+      gap: 6px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+
+    .filter-row input,
+    .filter-row select { height: 31px; }
+
+    .table-wrap {
+      min-height: 0;
+      overflow: auto;
+      flex: 1;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-size: 12px;
+    }
+
+    th,
+    td {
+      padding: 8px 7px;
+      border-bottom: 1px solid var(--line-soft);
+      text-align: left;
+      vertical-align: middle;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #101c2e;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    tr.selected td { background: #233752; }
+    tbody tr:hover td { background: #1d3049; }
+    tr.selected:hover td { background: #29415f; }
+
+    .serial { color: #fff; font-weight: 800; letter-spacing: 0.02em; }
+    .subcell { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; }
+
+    /* Template editor */
+    .editor-meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .editor-meta b { color: var(--text); }
+
+    .editor-grid {
+      height: 100%;
+      display: grid;
+      grid-template-columns: 242px minmax(0, 1fr) 350px;
+      gap: 8px;
+      padding: 8px;
+    }
+
+    .template-rail {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .rail-section {
+      padding: 8px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+
+    .rail-section:last-child { border-bottom: 0; }
+
+    .compact-meta {
+      display: grid;
+      gap: 5px;
+      font-size: 11px;
+    }
+
+    .compact-meta div {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 7px;
+    }
+
+    .compact-meta span { color: var(--muted); }
+
+    .area-list {
+      display: grid;
+      gap: 5px;
+    }
+
+    .area-item {
+      min-height: 38px;
+      padding: 6px 7px;
+      display: grid;
+      grid-template-columns: 26px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--line-soft);
+      border-radius: 6px;
+      background: #142136;
+      color: var(--text);
+      text-align: left;
+    }
+
+    .area-item.active { border-color: var(--blue); background: #1c3150; }
+
+    .area-no {
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
+      border-radius: 5px;
+      background: #334155;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .area-item small { color: var(--muted); }
+
+    .doc-panel {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .doc-toolbar {
+      min-height: 43px;
+      padding: 6px 7px;
+      display: grid;
+      grid-template-columns: auto auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 6px;
+      border-bottom: 1px solid var(--line-soft);
+      background: #17253a;
+      flex-shrink: 0;
+    }
+
+    .tool-group {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .tool-select {
+      height: 29px;
+      width: auto;
+      min-width: 76px;
+      padding: 0 6px;
+      font-size: 11px;
+    }
+
+    .tool-button {
+      min-width: 29px;
+      height: 29px;
+      padding: 0 7px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: #24334a;
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .tool-button.active { border-color: var(--blue); background: var(--blue-dark); }
+
+    .toolbar-hint {
+      min-width: 0;
+      color: var(--muted);
+      font-size: 10px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .document-viewport {
+      position: relative;
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      place-items: center;
+      overflow: auto;
+      padding: 16px;
+      background-color: #0c1523;
+      background-image:
+        linear-gradient(rgba(148, 163, 184, 0.055) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148, 163, 184, 0.055) 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+
+    .paper {
+      position: relative;
+      width: min(94%, 900px);
+      aspect-ratio: 1.42 / 1;
+      border: 1px solid #9aa7b7;
+      background: var(--paper);
+      color: var(--ink);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+      overflow: hidden;
+    }
+
+    .paper::before {
+      content: "組立要領書　AX-120 / 本体締結";
+      position: absolute;
+      left: 4%;
+      top: 3%;
+      font-size: clamp(9px, 0.8vw, 13px);
+      font-weight: 800;
+      letter-spacing: 0.04em;
+    }
+
+    .paper svg {
+      position: absolute;
+      inset: 9% 4% 6%;
+      width: 92%;
+      height: 85%;
+    }
+
+    .drawing-line { fill: none; stroke: #536275; stroke-width: 2; }
+    .drawing-thin { fill: none; stroke: #8793a3; stroke-width: 1; }
+    .drawing-fill { fill: #d4dbe4; stroke: #536275; stroke-width: 1.5; }
+
+    .marker {
+      position: absolute;
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border: 2px solid #172337;
+      border-radius: 50%;
+      background: #fff;
+      color: #172337;
+      font-size: 12px;
+      font-weight: 900;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+      user-select: none;
+    }
+
+    .marker.selected {
+      border-color: #8a6300;
+      background: #fde047;
+      box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.3);
+    }
+
+    .marker.done { border-color: #166534; background: #86efac; }
+    .marker.current { border-color: #9a6700; background: #fde047; }
+    .marker.rejected { border-color: #9f1239; background: #fda4af; }
+
+    .m1 { left: 23%; top: 35%; }
+    .m2 { left: 39%; top: 25%; }
+    .m3 { left: 57%; top: 31%; }
+    .m4 { left: 69%; top: 46%; }
+    .m5 { left: 52%; top: 62%; }
+    .m6 { left: 33%; top: 66%; }
+    .m7 { left: 18%; top: 52%; }
+
+    .doc-badge {
+      position: absolute;
+      left: 10px;
+      bottom: 9px;
+      min-height: 25px;
+      padding: 0 8px;
+      display: flex;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      color: var(--muted);
+      background: rgba(12, 21, 35, 0.88);
+      font-size: 10px;
+    }
+
+    .condition-pane {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .condition-pane .panel-body {
+      flex: 1;
+      min-height: 0;
+      padding: 8px;
+    }
+
+    .selected-marker-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .selected-marker-number {
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: #fde047;
+      color: #182235;
+      font-weight: 900;
+    }
+
+    .selected-marker-title strong { display: block; font-size: 13px; }
+    .selected-marker-title small { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; }
+
+    .toggle-line {
+      min-height: 34px;
+      padding: 6px 7px;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 7px;
+      align-items: center;
+      border: 1px solid var(--line-soft);
+      border-radius: 6px;
+      background: #132036;
+    }
+
+    .toggle {
+      position: relative;
+      width: 36px;
+      height: 20px;
+      border: 0;
+      border-radius: 999px;
+      background: #526177;
+      padding: 0;
+    }
+
+    .toggle::after {
+      content: "";
+      position: absolute;
+      left: 3px;
+      top: 3px;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #fff;
+    }
+
+    .toggle.on { background: #147d61; }
+    .toggle.on::after { left: 19px; }
+
+    .toggle-copy { min-width: 0; }
+    .toggle-copy strong { display: block; font-size: 11px; }
+    .toggle-copy span { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; line-height: 1.35; }
+
+    .condition-grid {
+      display: grid;
+      grid-template-columns: 88px 76px minmax(0, 1fr);
+      gap: 7px;
+    }
+
+    .condition-grid .span-2 { grid-column: span 2; }
+    .condition-grid .span-all { grid-column: 1 / -1; }
+    .condition-grid input,
+    .condition-grid select { width: 100%; height: 32px; }
+
+    .torque-values {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr)) 70px;
+      gap: 6px;
+    }
+
+    .torque-values input,
+    .torque-values select { height: 32px; }
+
+    .batch-box {
+      margin-top: 9px;
+      padding: 8px;
+      border: 1px solid #495a72;
+      border-radius: 7px;
+      background: #111d30;
+    }
+
+    .batch-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+
+    .batch-title strong { font-size: 11px; }
+    .batch-title span { color: var(--muted); font-size: 10px; }
+
+    .batch-controls {
+      display: grid;
+      grid-template-columns: auto 52px auto 52px minmax(0, 1fr);
+      align-items: end;
+      gap: 5px;
+    }
+
+    .batch-controls label { gap: 2px; }
+    .batch-controls input { width: 52px; height: 31px; text-align: center; }
+    .batch-controls .arrow { align-self: center; color: var(--muted); }
+
+    .batch-result {
+      min-height: 17px;
+      margin-top: 6px;
+      color: var(--green);
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .condition-list {
+      margin-top: 8px;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 4px;
+    }
+
+    .condition-chip {
+      padding: 5px 3px;
+      border: 1px solid var(--line-soft);
+      border-radius: 5px;
+      color: var(--muted);
+      background: #152238;
+      text-align: center;
+      font-size: 9px;
+      line-height: 1.3;
+    }
+
+    .condition-chip strong { display: block; color: var(--text); font-size: 11px; }
+    .condition-chip.copied { border-color: #277d63; color: #baf8dc; background: #10362f; }
+
+    /* Work */
+    .work-header-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .work-header-meta b { color: var(--text); }
+
+    .work-grid {
+      height: 100%;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 356px;
+      gap: 8px;
+      padding: 8px;
+    }
+
+    .work-doc {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .work-doc-toolbar {
+      min-height: 39px;
+      padding: 5px 7px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 7px;
+      border-bottom: 1px solid var(--line-soft);
+      background: #17253a;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .work-doc .document-viewport { padding: 12px; }
+    .work-doc .paper { width: min(96%, 980px); }
+
+    .work-pane {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .work-pane-scroll {
+      flex: 1;
+      min-height: 0;
+      padding: 8px;
+      overflow: auto;
+    }
+
+    .now-card {
+      padding: 8px;
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #101c2e;
+    }
+
+    .now-number {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: #fde047;
+      color: #172337;
+      font-size: 16px;
+      font-weight: 900;
+    }
+
+    .now-card strong { display: block; font-size: 13px; }
+    .now-card span { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; }
+
+    .state-card {
+      margin-top: 8px;
+      padding: 8px;
+      border: 1px solid #26785f;
+      border-radius: 7px;
+      background: var(--green-bg);
+    }
+
+    .state-card.warn { border-color: #856820; background: var(--amber-bg); }
+    .state-card.bad { border-color: #9c3a4e; background: var(--red-bg); }
+    .state-card.admin { border-color: #6657ae; background: var(--violet-bg); }
+
+    .state-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .state-title strong { font-size: 13px; }
+    .state-card p { margin-top: 4px; color: #d8e1ed; font-size: 10px; line-height: 1.5; }
+
+    .asset-card {
+      margin-top: 8px;
+      padding: 8px;
+      border: 1px solid var(--line-soft);
+      border-radius: 7px;
+      background: #132036;
+    }
+
+    .asset-card select { width: 100%; margin-top: 5px; height: 33px; }
+
+    .asset-line {
+      margin-top: 7px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5px;
+    }
+
+    .asset-kv {
+      padding: 6px;
+      border: 1px solid var(--line-soft);
+      border-radius: 5px;
+      background: #0e1929;
+    }
+
+    .asset-kv span { display: block; color: var(--muted); font-size: 9px; }
+    .asset-kv strong { display: block; margin-top: 2px; color: var(--text); font-size: 11px; }
+
+    .confirm-line {
+      margin-top: 7px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .confirm-copy { color: var(--muted); font-size: 10px; line-height: 1.4; }
+
+    .receive-box {
+      margin-top: 8px;
+      min-height: 57px;
+      padding: 8px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      border: 1px dashed #4a607a;
+      border-radius: 7px;
+      background: #0e1929;
+    }
+
+    .receive-box strong { display: block; font-size: 12px; }
+    .receive-box span { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; }
+    .receive-value { color: var(--cyan); font-size: 20px; font-weight: 900; font-variant-numeric: tabular-nums; }
+
+    .audit-box,
+    .override-box {
+      margin-top: 8px;
+      padding: 8px;
+      border: 1px solid var(--line-soft);
+      border-radius: 7px;
+      background: #111d30;
+    }
+
+    .audit-box strong,
+    .override-box strong { font-size: 11px; }
+    .audit-box p,
+    .override-box p { margin-top: 4px; color: var(--muted); font-size: 10px; line-height: 1.45; }
+
+    .override-box { display: none; border-color: #6657ae; background: #211e41; }
+    .override-box.visible { display: block; }
+
+    .override-grid {
+      margin-top: 7px;
+      display: grid;
+      grid-template-columns: 1fr 72px 75px;
+      gap: 5px;
+    }
+
+    .override-grid input,
+    .override-grid select { width: 100%; height: 31px; }
+    .override-grid .wide { grid-column: 1 / -1; }
+
+    .footer-strip {
+      min-height: 34px;
+      padding: 5px 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      border-top: 1px solid var(--line-soft);
+      background: #101c2e;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 18px;
+      z-index: 20;
+      transform: translateX(-50%);
+      min-height: 36px;
+      padding: 8px 13px;
+      display: none;
+      align-items: center;
+      border: 1px solid #26785f;
+      border-radius: 7px;
+      background: #0d3b31;
+      color: #d1fae5;
+      box-shadow: var(--shadow);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .toast.visible { display: flex; }
+
+    @media (max-width: 1500px) {
+      .preview-bar {
+        grid-template-columns: auto auto minmax(0, 1fr);
+      }
+
+      .preview-note { display: none; }
+      .preview-title span { max-width: 22rem; overflow: hidden; text-overflow: ellipsis; }
+      .editor-grid { grid-template-columns: 215px minmax(0, 1fr) 320px; }
+      .work-grid { grid-template-columns: minmax(0, 1fr) 330px; }
+      .master-grid { grid-template-columns: 305px minmax(0, 1fr); }
+      .doc-toolbar { grid-template-columns: auto auto minmax(3rem, 1fr) auto; }
+      .toolbar-hint { font-size: 9px; }
+      .condition-grid { grid-template-columns: 78px 68px minmax(0, 1fr); }
+      .batch-controls { grid-template-columns: auto 46px auto 46px minmax(0, 1fr); }
+      .batch-controls input { width: 46px; }
+    }
+
+    @media (max-height: 820px) {
+      .app-header { min-height: 45px; padding-top: 5px; padding-bottom: 5px; }
+      .preview-bar { height: 54px; padding-top: 6px; padding-bottom: 6px; }
+      .app-shell { height: calc(100dvh - 54px); padding: 6px; }
+      .editor-grid,
+      .master-grid,
+      .work-grid { gap: 6px; padding: 6px; }
+      .panel-body,
+      .condition-pane .panel-body,
+      .work-pane-scroll { padding: 7px; }
+      .divider { margin: 7px 0; }
+      .batch-box,
+      .setting-box,
+      .asset-card,
+      .state-card,
+      .receive-box,
+      .audit-box,
+      .override-box { margin-top: 6px; }
+      .document-viewport { padding: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="preview-bar">
+    <div class="preview-title">
+      <strong>組立・トルクレンチ締付トレーサビリティ</strong>
+      <span>実装前プレビュー — API・DB・実機には接続しません</span>
+    </div>
+    <nav class="tabs" aria-label="プレビュー画面">
+      <button class="tab" type="button" data-screen-target="master" aria-selected="true">1. レンチ管理</button>
+      <button class="tab" type="button" data-screen-target="template" aria-selected="false">2. テンプレート</button>
+      <button class="tab" type="button" data-screen-target="work" aria-selected="false">3. 作業・警告</button>
+    </nav>
+    <div class="state-tabs" id="work-state-tabs" aria-label="作業状態" hidden>
+      <button class="state-tab" type="button" data-work-state="confirmed" aria-selected="true">確認済み</button>
+      <button class="state-tab" type="button" data-work-state="disconnected" aria-selected="false">未接続</button>
+      <button class="state-tab" type="button" data-work-state="wrong" aria-selected="false">誤レンチ</button>
+      <button class="state-tab" type="button" data-work-state="expired" aria-selected="false">校正切れ</button>
+      <button class="state-tab" type="button" data-work-state="override" aria-selected="false">管理者例外</button>
+    </div>
+    <div class="preview-note">承認後に本番実装へ進むゲート</div>
+    <div class="viewport-badge" id="viewport-badge">viewport</div>
+  </header>
+
+  <main class="app-shell">
+    <section class="screen active" id="screen-master" aria-label="トルクレンチ管理画面">
+      <header class="app-header">
+        <div class="title-row">
+          <span class="back">‹ 管理ツール</span>
+          <div>
+            <h1>トルクレンチ管理</h1>
+            <p class="subtitle">物理レンチ、型番、適合グループ、設定履歴を一つの画面で確認</p>
+          </div>
+        </div>
+        <div class="header-actions">
+          <div class="master-summary">
+            <span class="pill ok">使用可能 6</span>
+            <span class="pill warn">校正30日以内 1</span>
+            <span class="pill bad">要対応 1</span>
+          </div>
+          <button class="btn ghost" type="button">適合グループ</button>
+          <button class="btn ghost" type="button">型番管理</button>
+          <button class="btn primary" type="button">＋ 物理レンチ登録</button>
+        </div>
+      </header>
+
+      <div class="body-fill master-grid">
+        <aside class="panel master-form">
+          <div class="panel-head">
+            <div>
+              <h2>選択中の物理レンチ</h2>
+              <p id="master-selection">TW-A103 を編集</p>
+            </div>
+            <span class="pill ok">AVAILABLE</span>
+          </div>
+          <div class="panel-body">
+            <div class="field-grid">
+              <label>製造番号<input value="TW-A103" /></label>
+              <label>管理番号<input value="MI-0241" /></label>
+              <label class="wide">メーカー / 型番
+                <select><option>東日製作所 / CEM20N3X10D-BTLA</option></select>
+              </label>
+              <label>保管場所
+                <select><option>TalkPlazaF1</option><option>TalkPlazaF2</option><option>Fab1</option></select>
+              </label>
+              <label>校正期限<input value="2027-03-31" /></label>
+            </div>
+
+            <div class="setting-box">
+              <div class="section-label">現在の設定（履歴 #4）</div>
+              <div class="triple">
+                <label>下限<input value="9.0" /></label>
+                <label>規定<input value="10.0" /></label>
+                <label>上限<input value="11.0" /></label>
+              </div>
+              <div class="button-row" style="margin-top:7px; justify-content:space-between;">
+                <span class="help">N·m・2026/07/15 09:24・山田</span>
+                <button class="btn small success" type="button" id="add-setting">新しい設定を追加</button>
+              </div>
+            </div>
+
+            <div class="divider"></div>
+            <div class="section-label">適合グループ</div>
+            <div class="tag-row">
+              <span class="pill info">M6×30 / SCM435 / 10.9</span>
+              <span class="pill info">M6×35 / SCM435 / 10.9</span>
+            </div>
+            <p class="help" style="margin-top:7px;">適合グループには複数型番を登録できます。テンプレートは製造番号ではなくグループを選びます。</p>
+
+            <div class="divider"></div>
+            <div class="button-row" style="justify-content:flex-end;">
+              <button class="btn ghost" type="button">利用停止</button>
+              <button class="btn primary" type="button">変更を保存</button>
+            </div>
+          </div>
+        </aside>
+
+        <section class="panel master-list">
+          <div class="panel-head">
+            <div>
+              <h2>登録済みトルクレンチ</h2>
+              <p>製造番号を主表示。校正・保管・現在設定を横断確認</p>
+            </div>
+            <span class="pill info">全 8 台</span>
+          </div>
+          <div class="filter-row">
+            <input aria-label="製造番号または型番検索" placeholder="製造番号・型番・管理番号で検索" />
+            <select aria-label="保管場所"><option>全保管場所</option><option>TalkPlazaF1</option><option>Fab1</option></select>
+            <select aria-label="状態"><option>全状態</option><option>使用可能</option><option>要対応</option></select>
+            <button class="btn small ghost" type="button">履歴を出力</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <colgroup>
+                <col style="width:14%" /><col style="width:22%" /><col style="width:13%" /><col style="width:12%" />
+                <col style="width:14%" /><col style="width:16%" /><col style="width:9%" />
+              </colgroup>
+              <thead>
+                <tr><th>製造番号</th><th>メーカー / 型番</th><th>現在設定</th><th>保管場所</th><th>校正期限</th><th>適合グループ</th><th>状態</th></tr>
+              </thead>
+              <tbody>
+                <tr class="selected" data-master-row="TW-A103"><td><span class="serial">TW-A103</span><span class="subcell">MI-0241</span></td><td>東日製作所<span class="subcell">CEM20N3X10D-BTLA</span></td><td>9.0 / 10.0 / 11.0<span class="subcell">N·m・履歴 #4</span></td><td>TalkPlazaF1</td><td>2027/03/31</td><td>M6系 2件</td><td><span class="pill ok">使用可</span></td></tr>
+                <tr data-master-row="TW-A107"><td><span class="serial">TW-A107</span><span class="subcell">MI-0247</span></td><td>東日製作所<span class="subcell">CEM20N3X10D-BTLA</span></td><td>9.0 / 10.0 / 11.0<span class="subcell">N·m・履歴 #2</span></td><td>TalkPlazaF2</td><td>2026/08/12</td><td>M6系 2件</td><td><span class="pill warn">校正間近</span></td></tr>
+                <tr data-master-row="TW-B201"><td><span class="serial">TW-B201</span><span class="subcell">MI-0312</span></td><td>東日製作所<span class="subcell">CEM50N3X12D-BTLA</span></td><td>21.0 / 23.0 / 25.0<span class="subcell">N·m・履歴 #7</span></td><td>Fab1</td><td>2027/01/20</td><td>M8系 3件</td><td><span class="pill ok">使用可</span></td></tr>
+                <tr data-master-row="TW-C015"><td><span class="serial">TW-C015</span><span class="subcell">MI-0188</span></td><td>中村製作所<span class="subcell">DTC-N20REV</span></td><td>9.0 / 10.0 / 11.0<span class="subcell">N·m・履歴 #5</span></td><td>MakoRoom</td><td>2026/06/30</td><td>M6系 1件</td><td><span class="pill bad">校正切れ</span></td></tr>
+                <tr data-master-row="TW-A115"><td><span class="serial">TW-A115</span><span class="subcell">MI-0255</span></td><td>東日製作所<span class="subcell">CEM20N3X10D-BTLA</span></td><td>4.5 / 5.0 / 5.5<span class="subcell">N·m・履歴 #1</span></td><td>開発棟</td><td>2027/05/10</td><td>M5系 1件</td><td><span class="pill ok">使用中</span></td></tr>
+                <tr data-master-row="TW-D020"><td><span class="serial">TW-D020</span><span class="subcell">MI-0330</span></td><td>東日製作所<span class="subcell">CEM100N3X15D-BTLA</span></td><td>48.0 / 50.0 / 52.0<span class="subcell">N·m・履歴 #3</span></td><td>Fab2</td><td>2027/06/18</td><td>M10系 2件</td><td><span class="pill ok">使用可</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="screen" id="screen-template" aria-label="組立テンプレート編集画面">
+      <header class="app-header">
+        <div class="title-row">
+          <span class="back">‹ テンプレート一覧</span>
+          <div>
+            <h1>組立テンプレート編集</h1>
+            <p class="subtitle">AX-120 / 標準組立　改訂 v4（保存後はトレーサビリティ必須）</p>
+          </div>
+        </div>
+        <div class="editor-meta">
+          <span>丸数字 <b>32</b></span><span>必須チェック <b>4</b></span><span>未設定 <b style="color:var(--amber)">0</b></span>
+        </div>
+        <div class="header-actions">
+          <button class="btn ghost" type="button">プレビュー</button>
+          <button class="btn primary" type="button">改訂を保存</button>
+        </div>
+      </header>
+
+      <div class="body-fill editor-grid">
+        <aside class="panel template-rail">
+          <div class="panel-head"><div><h2>テンプレート構成</h2><p>工程・エリア・ページ</p></div></div>
+          <div class="rail-section compact-meta">
+            <div><span>型番</span><strong>AX-120</strong></div>
+            <div><span>手順</span><strong>標準組立</strong></div>
+            <div><span>モード</span><span class="pill info">REQUIRED</span></div>
+          </div>
+          <div class="rail-section" style="flex:1; overflow:auto;">
+            <div class="section-label">エリア</div>
+            <div class="area-list">
+              <button class="area-item active" type="button"><span class="area-no">A</span><span>本体締結<small>丸数字 ①〜⑫</small></span><small>12</small></button>
+              <button class="area-item" type="button"><span class="area-no">B</span><span>上部ユニット<small>丸数字 ⑬〜㉒</small></span><small>10</small></button>
+              <button class="area-item" type="button"><span class="area-no">C</span><span>配管固定<small>丸数字 ㉓〜㉟</small></span><small>10</small></button>
+            </div>
+            <button class="btn small ghost" type="button" style="width:100%; margin-top:6px;">＋ エリア追加</button>
+          </div>
+          <div class="rail-section">
+            <div class="section-label">ページ</div>
+            <div class="button-row">
+              <button class="btn small primary" type="button">1 / 3</button>
+              <button class="btn small ghost" type="button">2</button>
+              <button class="btn small ghost" type="button">3</button>
+            </div>
+          </div>
+        </aside>
+
+        <section class="panel doc-panel">
+          <div class="doc-toolbar" aria-label="ドキュメント操作（1行）">
+            <div class="tool-group">
+              <select class="tool-select" aria-label="ページ"><option>ページ 1 / 3</option></select>
+              <button class="tool-button" type="button" aria-label="縮小">−</button>
+              <button class="tool-button" type="button" aria-label="全体表示">□</button>
+              <button class="tool-button" type="button" aria-label="拡大">＋</button>
+              <span style="font-size:10px; color:var(--muted);">100%</span>
+            </div>
+            <div class="tool-group">
+              <button class="tool-button active" type="button">丸数字</button>
+              <button class="tool-button" type="button">必須チェック</button>
+            </div>
+            <div class="toolbar-hint">図面をクリックして追加・ドラッグして移動。丸数字はテンプレート全体で一意。</div>
+            <div class="tool-group">
+              <button class="tool-button" type="button">吹出線</button>
+              <button class="tool-button" type="button">選択解除</button>
+            </div>
+          </div>
+          <div class="document-viewport">
+            <div class="paper">
+              <svg viewBox="0 0 900 560" aria-hidden="true">
+                <rect class="drawing-fill" x="170" y="115" width="540" height="300" rx="18" />
+                <rect class="drawing-line" x="230" y="160" width="420" height="210" rx="14" />
+                <circle class="drawing-line" cx="280" cy="210" r="32" />
+                <circle class="drawing-line" cx="450" cy="205" r="40" />
+                <circle class="drawing-line" cx="610" cy="215" r="28" />
+                <path class="drawing-thin" d="M190 280 H690 M450 120 V415" />
+                <path class="drawing-line" d="M235 330 H330 L360 360 H545 L575 330 H645" />
+                <rect class="drawing-thin" x="120" y="445" width="660" height="70" />
+                <path class="drawing-thin" d="M120 468 H780 M300 445 V515 M570 445 V515" />
+              </svg>
+              <button class="marker m1 selected" type="button" aria-label="丸数字1">1</button>
+              <button class="marker m2" type="button" aria-label="丸数字2">2</button>
+              <button class="marker m3" type="button" aria-label="丸数字3">3</button>
+              <button class="marker m4" type="button" aria-label="丸数字4">4</button>
+              <button class="marker m5" type="button" aria-label="丸数字5">5</button>
+              <button class="marker m6" type="button" aria-label="丸数字6">6</button>
+              <button class="marker m7" type="button" aria-label="丸数字7">7</button>
+            </div>
+            <span class="doc-badge">中央表示領域を優先　操作バー 1行</span>
+          </div>
+        </section>
+
+        <aside class="panel condition-pane">
+          <div class="panel-head">
+            <div class="selected-marker-title">
+              <span class="selected-marker-number">1</span>
+              <div><strong>丸数字 ① の締付条件</strong><small>内部締付IDは自動生成・非表示</small></div>
+            </div>
+            <button class="btn small danger" type="button">削除</button>
+          </div>
+          <div class="panel-body">
+            <div class="toggle-line">
+              <button class="toggle on" id="inherit-toggle" type="button" role="switch" aria-checked="true" aria-label="次の丸数字へ条件を引き継ぐ"></button>
+              <div class="toggle-copy"><strong>次の丸数字へ条件を引き継ぐ</strong><span id="inherit-copy">ON：①の条件を次の新規丸数字へ初期設定</span></div>
+            </div>
+
+            <div class="divider"></div>
+            <div class="condition-grid">
+              <label>呼び径<select><option>M6</option><option>M8</option></select></label>
+              <label>長さ mm<input value="30" /></label>
+              <label>材質<select><option>SCM435</option></select></label>
+              <label class="span-2">強度区分<select><option>10.9</option><option>8.8</option></select></label>
+              <label>単位<select><option>N·m</option><option>kgf·cm</option></select></label>
+              <label class="span-all">適合トルクレンチ群
+                <select><option>M6×30 / SCM435 / 10.9（2型番・4台）</option></select>
+              </label>
+            </div>
+
+            <div class="section-label" style="margin-top:9px;">トルク設定</div>
+            <div class="torque-values">
+              <label>下限<input value="9.0" /></label>
+              <label>規定<input value="10.0" /></label>
+              <label>上限<input value="11.0" /></label>
+              <label>単位<select><option>N·m</option></select></label>
+            </div>
+
+            <div class="batch-box">
+              <div class="batch-title"><strong>①の条件を既存の丸数字へ反映</strong><span>番号・座標・IDは維持</span></div>
+              <div class="batch-controls">
+                <label>開始<input id="range-start" value="2" inputmode="numeric" /></label>
+                <span class="arrow">〜</span>
+                <label>終了<input id="range-end" value="35" inputmode="numeric" /></label>
+                <span></span>
+                <button class="btn small success" id="apply-range" type="button">範囲へ反映</button>
+              </div>
+              <div class="batch-result" id="batch-result" aria-live="polite">入力内容を確認して反映します</div>
+            </div>
+
+            <div class="condition-list" aria-label="反映例">
+              <div class="condition-chip" data-condition-chip><strong>②</strong>M8 / 未反映</div>
+              <div class="condition-chip" data-condition-chip><strong>③</strong>M8 / 未反映</div>
+              <div class="condition-chip" data-condition-chip><strong>④</strong>M6 / 旧設定</div>
+              <div class="condition-chip" data-condition-chip><strong>⑤</strong>M6 / 旧設定</div>
+              <div class="condition-chip" data-condition-chip><strong>⑥</strong>M8 / 未反映</div>
+              <div class="condition-chip" data-condition-chip><strong>⑦</strong>M6 / 旧設定</div>
+              <div class="condition-chip"><strong>…</strong>既存のみ</div>
+              <div class="condition-chip"><strong>㉟</strong>M8 / 旧設定</div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="screen" id="screen-work" aria-label="組立作業・警告画面">
+      <header class="app-header">
+        <div class="title-row">
+          <span class="back">‹ 組立トップ</span>
+          <div><h1>組立作業</h1><p class="subtitle">要領書を見ながら、確認済みトルクレンチの入力を待機</p></div>
+        </div>
+        <div class="work-header-meta"><span>製番 <b>26071501</b></span><span>S/N <b>AX120-0042</b></span><span>工程 <b>本体締結</b></span><span>進捗 <b>7 / 35</b></span></div>
+        <div class="header-actions"><span class="pill ok" id="header-agent-pill">Agent 接続済み</span><button class="btn ghost" type="button">組立トップ</button></div>
+      </header>
+
+      <div class="body-fill work-grid">
+        <section class="panel work-doc">
+          <div class="work-doc-toolbar"><div class="tool-group"><button class="tool-button" type="button">‹ 前ページ</button><select class="tool-select"><option>本体締結 1 / 3</option></select><button class="tool-button" type="button">次ページ ›</button></div><span>現在位置：丸数字 ⑦</span><div class="tool-group"><button class="tool-button" type="button">−</button><button class="tool-button" type="button">□</button><button class="tool-button" type="button">＋</button></div></div>
+          <div class="document-viewport">
+            <div class="paper">
+              <svg viewBox="0 0 900 560" aria-hidden="true">
+                <rect class="drawing-fill" x="170" y="115" width="540" height="300" rx="18" />
+                <rect class="drawing-line" x="230" y="160" width="420" height="210" rx="14" />
+                <circle class="drawing-line" cx="280" cy="210" r="32" />
+                <circle class="drawing-line" cx="450" cy="205" r="40" />
+                <circle class="drawing-line" cx="610" cy="215" r="28" />
+                <path class="drawing-thin" d="M190 280 H690 M450 120 V415" />
+                <path class="drawing-line" d="M235 330 H330 L360 360 H545 L575 330 H645" />
+                <rect class="drawing-thin" x="120" y="445" width="660" height="70" />
+                <path class="drawing-thin" d="M120 468 H780 M300 445 V515 M570 445 V515" />
+              </svg>
+              <span class="marker m1 done">1</span><span class="marker m2 done">2</span><span class="marker m3 done">3</span><span class="marker m4 done">4</span><span class="marker m5 done">5</span><span class="marker m6 done">6</span><span class="marker m7 current" id="work-marker">7</span>
+            </div>
+            <span class="doc-badge">要領書表示を最大化　締付入力は右ペインへ集約</span>
+          </div>
+        </section>
+
+        <aside class="panel work-pane">
+          <div class="panel-head"><div><h2>締付条件・トルクレンチ</h2><p>丸数字 ⑦　実機入力待機</p></div><span class="pill ok" id="armed-pill">受信待機</span></div>
+          <div class="work-pane-scroll">
+            <div class="now-card">
+              <span class="now-number">7</span>
+              <div><strong>M6×30 / SCM435 / 10.9</strong><span>下限 9.0　規定 10.0　上限 11.0 N·m</span></div>
+              <span class="pill info">必須</span>
+            </div>
+
+            <div class="state-card" id="work-state-card">
+              <div class="state-title"><strong id="work-state-title">確認済み・受信可能</strong><span class="pill ok" id="work-state-pill">ARMED</span></div>
+              <p id="work-state-message">TW-A103 の現物表示と登録設定が確認されています。次の実機送信を待っています。</p>
+            </div>
+
+            <div class="asset-card">
+              <label>使用する物理トルクレンチ
+                <select id="work-wrench-select"><option>TW-A103 — CEM20N3X10D-BTLA</option><option>TW-A107 — CEM20N3X10D-BTLA</option></select>
+              </label>
+              <div class="asset-line">
+                <div class="asset-kv"><span>現在設定</span><strong>9.0 / 10.0 / 11.0 N·m</strong></div>
+                <div class="asset-kv"><span>校正期限</span><strong id="calibration-value">2027/03/31（有効）</strong></div>
+                <div class="asset-kv"><span>状態 / 保管</span><strong>AVAILABLE / TalkPlazaF1</strong></div>
+                <div class="asset-kv"><span>適合</span><strong>モデル・範囲・締結条件 OK</strong></div>
+              </div>
+              <div class="confirm-line">
+                <div class="confirm-copy">現物の製造番号と表示値が上記と一致することを確認してください。</div>
+                <button class="btn small success" type="button" id="confirm-tool">現物を確認</button>
+              </div>
+            </div>
+
+            <div class="receive-box">
+              <div><strong id="receive-title">実機データ待機中</strong><span id="receive-detail">Agentが製造番号・トルク・単位・メモリ番号を送信します</span></div>
+              <div class="receive-value" id="receive-value">--.--</div>
+            </div>
+
+            <div class="audit-box" id="audit-box">
+              <strong id="audit-title">監査記録</strong>
+              <p id="audit-message">受付・拒否のどちらも、実際の製造番号、設定履歴、イベントID、原文を保存します。</p>
+            </div>
+
+            <div class="override-box" id="override-box">
+              <strong>管理者例外入力（ADMIN / MANAGER）</strong>
+              <p>通信だけを代替します。適合・校正・設定確認は省略できません。</p>
+              <div class="override-grid">
+                <label>確認済みレンチ<select><option>TW-A103</option></select></label>
+                <label>値<input value="10.1" /></label>
+                <label>単位<select><option>N·m</option></select></label>
+                <label class="wide">理由<input value="torque-agent通信障害のため表示値を転記" /></label>
+              </div>
+              <div class="button-row" style="margin-top:7px; justify-content:flex-end;"><button class="btn small primary" type="button" id="override-submit">理由付きで記録</button></div>
+            </div>
+          </div>
+          <div class="footer-strip"><span>通常の手入力欄はREQUIREDでは表示しません</span><span>セッション ID: AS-26071501-42</span></div>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    (() => {
+      const screens = [...document.querySelectorAll('.screen')];
+      const screenTabs = [...document.querySelectorAll('[data-screen-target]')];
+      const workStateTabs = document.getElementById('work-state-tabs');
+      const viewportBadge = document.getElementById('viewport-badge');
+      const toast = document.getElementById('toast');
+      let toastTimer;
+
+      const showToast = (message) => {
+        toast.textContent = message;
+        toast.classList.add('visible');
+        window.clearTimeout(toastTimer);
+        toastTimer = window.setTimeout(() => toast.classList.remove('visible'), 2600);
+      };
+
+      const updateViewport = () => {
+        viewportBadge.textContent = `${window.innerWidth} × ${window.innerHeight}`;
+      };
+
+      const setScreen = (name) => {
+        screens.forEach((screen) => screen.classList.toggle('active', screen.id === `screen-${name}`));
+        screenTabs.forEach((tab) => tab.setAttribute('aria-selected', String(tab.dataset.screenTarget === name)));
+        workStateTabs.hidden = name !== 'work';
+      };
+
+      screenTabs.forEach((tab) => tab.addEventListener('click', () => setScreen(tab.dataset.screenTarget)));
+
+      const inheritToggle = document.getElementById('inherit-toggle');
+      const inheritCopy = document.getElementById('inherit-copy');
+      inheritToggle.addEventListener('click', () => {
+        const next = inheritToggle.getAttribute('aria-checked') !== 'true';
+        inheritToggle.setAttribute('aria-checked', String(next));
+        inheritToggle.classList.toggle('on', next);
+        inheritCopy.textContent = next ? 'ON：①の条件を次の新規丸数字へ初期設定' : 'OFF：新規丸数字には標準初期値を使用';
+        showToast(next ? '次の丸数字への条件引継ぎをONにしました' : '条件引継ぎをOFFにしました');
+      });
+
+      document.getElementById('apply-range').addEventListener('click', () => {
+        const start = Number(document.getElementById('range-start').value);
+        const end = Number(document.getElementById('range-end').value);
+        const result = document.getElementById('batch-result');
+        if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start) {
+          result.style.color = 'var(--red)';
+          result.textContent = '開始・終了には正しい丸数字範囲を入力してください';
+          return;
+        }
+        document.querySelectorAll('[data-condition-chip]').forEach((chip) => {
+          chip.classList.add('copied');
+          const number = chip.querySelector('strong').textContent;
+          chip.innerHTML = `<strong>${number}</strong>M6 / 10.0 N·m`;
+        });
+        result.style.color = 'var(--green)';
+        result.textContent = `${start}〜${end}：31件を更新・欠番3件をスキップ（デモ）`;
+        showToast('①の締付条件だけを反映しました。丸数字・座標・IDは変更していません。');
+      });
+
+      const masterRows = [...document.querySelectorAll('[data-master-row]')];
+      masterRows.forEach((row) => row.addEventListener('click', () => {
+        masterRows.forEach((item) => item.classList.remove('selected'));
+        row.classList.add('selected');
+        document.getElementById('master-selection').textContent = `${row.dataset.masterRow} を選択`;
+      }));
+
+      document.getElementById('add-setting').addEventListener('click', () => showToast('設定値は上書きせず、新しい履歴として追加します（デモ）'));
+
+      const stateCard = document.getElementById('work-state-card');
+      const stateTitle = document.getElementById('work-state-title');
+      const stateMessage = document.getElementById('work-state-message');
+      const statePill = document.getElementById('work-state-pill');
+      const agentPill = document.getElementById('header-agent-pill');
+      const armedPill = document.getElementById('armed-pill');
+      const calibrationValue = document.getElementById('calibration-value');
+      const receiveTitle = document.getElementById('receive-title');
+      const receiveDetail = document.getElementById('receive-detail');
+      const receiveValue = document.getElementById('receive-value');
+      const auditTitle = document.getElementById('audit-title');
+      const auditMessage = document.getElementById('audit-message');
+      const overrideBox = document.getElementById('override-box');
+      const workMarker = document.getElementById('work-marker');
+      const confirmButton = document.getElementById('confirm-tool');
+
+      const stateConfig = {
+        confirmed: {
+          cardClass: '', title: '確認済み・受信可能', pill: 'ARMED', pillClass: 'pill ok',
+          message: 'TW-A103 の現物表示と登録設定が確認されています。次の実機送信を待っています。',
+          agent: 'Agent 接続済み', agentClass: 'pill ok', armed: '受信待機', armedClass: 'pill ok',
+          calibration: '2027/03/31（有効）', receiveTitle: '実機データ待機中', receiveDetail: 'Agentが製造番号・トルク・単位・メモリ番号を送信します', value: '--.--',
+          auditTitle: '監査記録', audit: '受付・拒否のどちらも、実際の製造番号、設定履歴、イベントID、原文を保存します.', marker: 'current', override: false, confirmDisabled: false
+        },
+        disconnected: {
+          cardClass: 'warn', title: 'torque-agent 未接続', pill: 'OFFLINE', pillClass: 'pill warn',
+          message: 'ローカルAgentからheartbeatがありません。実機入力を待機せず、接続復旧を案内します。',
+          agent: 'Agent 未接続', agentClass: 'pill warn', armed: '停止中', armedClass: 'pill warn',
+          calibration: '2027/03/31（有効）', receiveTitle: '接続を確認してください', receiveDetail: 'Bluetooth接続・Agent稼働・127.0.0.1:7073 を確認', value: 'OFF',
+          auditTitle: '入力割当を停止', audit: '有効な作業バインドがないイベントを別セッションへ推測割当しません。', marker: 'current', override: false, confirmDisabled: true
+        },
+        wrong: {
+          cardClass: 'bad', title: '誤ったトルクレンチを拒否', pill: 'REJECTED', pillClass: 'pill bad',
+          message: '受信した製造番号 TW-B201 は、丸数字⑦の適合グループに含まれません。作業位置は進みません。',
+          agent: 'Agent 接続済み', agentClass: 'pill ok', armed: '拒否記録済み', armedClass: 'pill bad',
+          calibration: '2027/03/31（有効）', receiveTitle: 'TW-B201 を受信・不適合', receiveDetail: '理由：WRONG_CAPABILITY_GROUP　イベントは監査保存済み', value: '10.2',
+          auditTitle: '拒否監査 #18', audit: '製造番号 TW-B201、10.2 N·m、メモリ 00481、原文、拒否理由をIGNOREDとして保存。', marker: 'rejected', override: false, confirmDisabled: false
+        },
+        expired: {
+          cardClass: 'bad', title: '校正期限切れのため使用不可', pill: 'BLOCKED', pillClass: 'pill bad',
+          message: '選択した TW-C015 の校正期限は 2026/06/30 です。別の適合レンチを選択してください。',
+          agent: 'Agent 接続済み', agentClass: 'pill ok', armed: '確認不可', armedClass: 'pill bad',
+          calibration: '2026/06/30（期限切れ）', receiveTitle: '実機入力を受け付けません', receiveDetail: '校正が有効な物理レンチへ切り替えるまで作業を停止', value: 'BLOCK',
+          auditTitle: '使用前判定', audit: '校正未登録または期限切れは候補・確認・実績受付の全境界で拒否します。', marker: 'rejected', override: false, confirmDisabled: true
+        },
+        override: {
+          cardClass: 'admin', title: '管理者例外入力', pill: 'ADMIN', pillClass: 'pill info',
+          message: 'Agent通信障害時だけ、確認済み物理レンチの表示値を理由付きで転記します。安全条件は省略しません。',
+          agent: 'Agent 未接続', agentClass: 'pill warn', armed: '管理者入力', armedClass: 'pill info',
+          calibration: '2027/03/31（有効）', receiveTitle: 'JWT認証済み管理者が入力', receiveDetail: '有効な確認・理由・値・単位をサーバーで再検証', value: '10.1',
+          auditTitle: '監査主体', audit: '入力者のユーザーID、理由、確認ID、物理製造番号、値を同じ締付実績へ保存します。', marker: 'current', override: true, confirmDisabled: false
+        }
+      };
+
+      const setClassName = (element, value) => { element.className = value; };
+
+      const setWorkState = (name) => {
+        const config = stateConfig[name];
+        document.querySelectorAll('[data-work-state]').forEach((button) => button.setAttribute('aria-selected', String(button.dataset.workState === name)));
+        stateCard.className = `state-card${config.cardClass ? ` ${config.cardClass}` : ''}`;
+        stateTitle.textContent = config.title;
+        stateMessage.textContent = config.message;
+        statePill.textContent = config.pill;
+        setClassName(statePill, config.pillClass);
+        agentPill.textContent = config.agent;
+        setClassName(agentPill, config.agentClass);
+        armedPill.textContent = config.armed;
+        setClassName(armedPill, config.armedClass);
+        calibrationValue.textContent = config.calibration;
+        calibrationValue.style.color = name === 'expired' ? 'var(--red)' : 'var(--text)';
+        receiveTitle.textContent = config.receiveTitle;
+        receiveDetail.textContent = config.receiveDetail;
+        receiveValue.textContent = config.value;
+        auditTitle.textContent = config.auditTitle;
+        auditMessage.textContent = config.audit;
+        overrideBox.classList.toggle('visible', config.override);
+        workMarker.className = `marker m7 ${config.marker}`;
+        confirmButton.disabled = config.confirmDisabled;
+      };
+
+      document.querySelectorAll('[data-work-state]').forEach((button) => button.addEventListener('click', () => setWorkState(button.dataset.workState)));
+      confirmButton.addEventListener('click', () => showToast('TW-A103 の製造番号と表示設定を確認済みにしました（デモ）'));
+      document.getElementById('override-submit').addEventListener('click', () => showToast('管理者・理由・確認済みレンチを監査付きで記録します（デモ）'));
+
+      window.addEventListener('resize', updateViewport);
+      updateViewport();
+      setWorkState('confirmed');
+    })();
+  </script>
+</body>
+</html>

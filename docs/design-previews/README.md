@@ -4,6 +4,7 @@
 
 | ファイル | 説明 |
 |----------|------|
+| [assembly-torque-wrench-traceability-preview.html](./assembly-torque-wrench-traceability-preview.html) | **組立・トルクレンチ締付トレーサビリティ実装前案** — トルクレンチ管理、テンプレート条件引継ぎ／範囲反映、作業確認／未接続／誤レンチ／校正切れ／管理者例外を切替可能。API・DB・実機には非接続。[ExecPlan](../plans/assembly-torque-wrench-traceability-execplan.md)・[ADR](../decisions/ADR-20260717-assembly-torque-wrench-traceability.md) |
 | [manual-order-leader-overview-preview.html](./manual-order-leader-overview-preview.html) | 手動順番プレビュー：上部＝**閲覧（高密度グリッド）**、下部＝**編集モード**（太い行・つかみ・↑↓並べ替えデモ・保存はアラートのみ） |
 | [manual-order-peek-accordion-schedule-preview.html](./manual-order-peek-accordion-schedule-preview.html) | **検討用・静的のみ** — 上＝全端末横カード＋鉛筆の**配置イメージ**、下＝生産スケジュール風（中央カードと下を対応させた**見本の1状態**）。クリック・保存・API なし。 |
 | [manual-order-edit-focus-gray-preview.html](./manual-order-edit-focus-gray-preview.html) | **検討用・静的のみ** — 編集中に**他カードをグレーアウト**し、背面に**大きな「編集中」＋端末名**を重ねる例。下はスケジュール風＋順位ドロップダウン見本。 |

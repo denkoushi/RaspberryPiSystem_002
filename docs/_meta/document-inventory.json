@@ -15,17 +15,17 @@
     ]
   },
   "summary": {
-    "documentCount": 523,
-    "totalLines": 151020,
-    "totalBytes": 11297197,
-    "withFrontmatter": 211,
-    "withStatus": 69,
-    "sourceOfTruthDeclared": 41,
+    "documentCount": 525,
+    "totalLines": 151342,
+    "totalBytes": 11330951,
+    "withFrontmatter": 212,
+    "withStatus": 70,
+    "sourceOfTruthDeclared": 42,
     "execPlanReferences": 64,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 23,
-    "localLinkCount": 5531,
+    "localLinkCount": 5534,
     "brokenLocalLinkCount": 90,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -5913,8 +5913,8 @@
     },
     {
       "path": "docs/AI_START_HERE.md",
-      "lineCount": 97,
-      "byteSize": 4087,
+      "lineCount": 98,
+      "byteSize": 4194,
       "hasFrontmatter": true,
       "title": "AI Start Here",
       "status": null,
@@ -16423,9 +16423,24 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/decisions/ADR-20260717-assembly-torque-wrench-traceability.md",
+      "lineCount": 70,
+      "byteSize": 6595,
+      "hasFrontmatter": false,
+      "title": "ADR-20260717: Assembly Torque Wrench Traceability Boundaries",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/design-previews/README.md",
-      "lineCount": 99,
-      "byteSize": 19447,
+      "lineCount": 100,
+      "byteSize": 19980,
       "hasFrontmatter": false,
       "title": "デザインプレビュー（静的 HTML）",
       "status": null,
@@ -16449,6 +16464,16 @@
         {
           "href": "../decisions/ADR-20260709-assembly-work-session-operator-layout.md",
           "targetPath": "docs/decisions/ADR-20260709-assembly-work-session-operator-layout.md",
+          "exists": true
+        },
+        {
+          "href": "../decisions/ADR-20260717-assembly-torque-wrench-traceability.md",
+          "targetPath": "docs/decisions/ADR-20260717-assembly-torque-wrench-traceability.md",
+          "exists": true
+        },
+        {
+          "href": "./assembly-torque-wrench-traceability-preview.html",
+          "targetPath": "docs/design-previews/assembly-torque-wrench-traceability-preview.html",
           "exists": true
         },
         {
@@ -16699,6 +16724,11 @@
         {
           "href": "../knowledge-base/KB-382-mobile-placement-shelf-layout-master.md#layout-editor-dock-confirm-reset-2026-05",
           "targetPath": "docs/knowledge-base/KB-382-mobile-placement-shelf-layout-master.md",
+          "exists": true
+        },
+        {
+          "href": "../plans/assembly-torque-wrench-traceability-execplan.md",
+          "targetPath": "docs/plans/assembly-torque-wrench-traceability-execplan.md",
           "exists": true
         },
         {
@@ -31236,6 +31266,21 @@
       "source_of_truth": null,
       "localLinks": [],
       "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/assembly-torque-wrench-traceability-execplan.md",
+      "lineCount": 250,
+      "byteSize": 26519,
+      "hasFrontmatter": true,
+      "title": "Assembly Torque Wrench Traceability",
+      "status": "active",
+      "source_of_truth": "this file",
+      "localLinks": [],
+      "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
