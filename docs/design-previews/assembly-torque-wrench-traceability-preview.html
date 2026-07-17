@@ -1562,8 +1562,10 @@
         }
         document.querySelectorAll('[data-condition-chip]').forEach((chip) => {
           chip.classList.add('copied');
-          const number = chip.querySelector('strong').textContent;
-          chip.innerHTML = `<strong>${number}</strong>M6 / 10.0 N·m`;
+          const number = chip.querySelector('strong')?.textContent ?? '';
+          const marker = document.createElement('strong');
+          marker.textContent = number;
+          chip.replaceChildren(marker, document.createTextNode('M6 / 10.0 N·m'));
         });
         result.style.color = 'var(--green)';
         result.textContent = `${start}〜${end}：31件を更新・欠番3件をスキップ（デモ）`;

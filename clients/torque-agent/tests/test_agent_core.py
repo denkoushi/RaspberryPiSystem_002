@@ -2,12 +2,14 @@ import asyncio
 import json
 from pathlib import Path
 
+import httpx
 import pytest
 
 from torque_agent.binding import BindingStore
 from torque_agent.config import AgentConfig
 from torque_agent.hid_line_decoder import DecodedHidFrame, HidLineDecoder
 from torque_agent.ingestor import TorqueEventIngestor
+from torque_agent.main import create_app
 from torque_agent.models import WorkBinding
 from torque_agent.parser_registry import ParserRegistry, SyntheticDelimitedFixtureParser
 from torque_agent.queue_store import QueueStore
@@ -182,6 +184,46 @@ def test_config_accepts_multiple_explicit_by_id_devices(monkeypatch: pytest.Monk
         "/dev/input/by-id/wrench-b",
     ]
     assert config.browser_origins == ("http://127.0.0.1:3000", "https://kiosk.example.test")
+
+
+def test_loopback_api_health_and_disarm_contract(tmp_path: Path) -> None:
+    config = AgentConfig(
+        api_base_url="http://127.0.0.1:3000",
+        client_key="test-client",
+        queue_path=tmp_path / "events.sqlite3",
+        devices=(),
+        browser_origins=("http://127.0.0.1:3000",),
+    )
+    bindings = BindingStore(ttl_seconds=5)
+    bindings.update(WorkBinding("session", "bolt", "confirmation", "profile"))
+    app = create_app(config, bindings, QueueStore(config.queue_path))
+
+    async def request_loopback_api() -> tuple[httpx.Response, httpx.Response]:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://agent.test") as client:
+            health_response = await client.get(
+                "/health",
+                headers={"origin": "http://127.0.0.1:3000"},
+            )
+            disarm_response = await client.post(
+                "/heartbeat",
+                json={
+                    "sessionId": "session",
+                    "currentTemplateBoltId": None,
+                    "confirmationId": None,
+                    "torqueWrenchProfileId": None,
+                },
+            )
+        return health_response, disarm_response
+
+    health, disarm = asyncio.run(request_loopback_api())
+
+    assert health.status_code == 200
+    assert health.json()["bound"] is True
+    assert health.headers["access-control-allow-origin"] == "http://127.0.0.1:3000"
+    assert disarm.status_code == 200
+    assert disarm.json() == {"ok": True, "bound": False}
+    assert bindings.current() is None
 
 
 def test_config_rejects_general_keyboard_event_path(monkeypatch: pytest.MonkeyPatch) -> None:

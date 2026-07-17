@@ -11,7 +11,6 @@ from pydantic import BaseModel
 from .api_client import OutboxSender
 from .binding import BindingStore
 from .config import AgentConfig
-from .hid_reader import read_hid_device
 from .ingestor import TorqueEventIngestor
 from .models import WorkBinding
 from .parser_registry import ParserRegistry, SyntheticDelimitedFixtureParser
@@ -72,6 +71,10 @@ def create_app(config: AgentConfig, binding_store: BindingStore, queue: QueueSto
 
 
 async def run_agent(config: AgentConfig) -> None:
+    # evdev is Linux-only. Keep the adapter import at the production runtime
+    # boundary so configuration, HTTP, replay, and unit tests remain portable.
+    from .hid_reader import read_hid_device
+
     queue = QueueStore(config.queue_path)
     bindings = BindingStore(config.heartbeat_ttl_seconds)
     registry = build_registry(config)

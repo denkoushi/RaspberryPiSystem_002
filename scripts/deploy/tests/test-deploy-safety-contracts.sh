@@ -908,6 +908,7 @@ ALLOWED_RELEASE_FILE_DESTINATIONS = {
     '/etc/polkit-1/rules.d/50-pcscd-allow-all.rules',
     '{{ repo_path }}/clients/nfc-agent/.env',
     '{{ repo_path }}/clients/barcode-agent/.env',
+    '{{ repo_path }}/clients/torque-agent/.env',
     '/etc/raspi-haizen-agent.conf',
     '/etc/systemd/system/haizen-agent.service',
     '/etc/sudoers.d/{{ client_sudo_user }}',
@@ -1122,6 +1123,7 @@ def audit_tasks(tasks, source, inherited_full):
                     allowed_source = source.resolve() in {
                         (roles_root / 'client/tasks/nfc-agent-lifecycle.yml').resolve(),
                         (roles_root / 'client/tasks/barcode-agent-lifecycle.yml').resolve(),
+                        (roles_root / 'client/tasks/torque-agent-lifecycle.yml').resolve(),
                         (roles_root / 'client/handlers/main.yml').resolve(),
                     }
                     assert (
@@ -1269,7 +1271,11 @@ for path, fragments in exact_preflight_fragments.items():
         assert fragment in text, f'{path}: exact release preflight lost {fragment!r}'
 
 docker_sources = [source.resolve() for source, _name in docker_exceptions]
-for lifecycle in ('nfc-agent-lifecycle.yml', 'barcode-agent-lifecycle.yml'):
+for lifecycle in (
+    'nfc-agent-lifecycle.yml',
+    'barcode-agent-lifecycle.yml',
+    'torque-agent-lifecycle.yml',
+):
     source = (roles_root / 'client/tasks' / lifecycle).resolve()
     assert docker_sources.count(source) == 1, (
         f'{lifecycle}: release-only must execute exactly one Compose mutation'

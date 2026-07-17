@@ -7,7 +7,7 @@ date: 2026-07-17
 source_of_truth: this file
 related_code: apps/api/prisma/schema.prisma, apps/api/src/routes/assembly, apps/api/src/services/assembly, apps/web/src/features/assembly, apps/web/src/pages/kiosk, packages/shared-types, clients/torque-agent
 related_docs: ../decisions/ADR-20260717-assembly-torque-wrench-traceability.md, ../design-previews/assembly-torque-wrench-traceability-preview.html, ./kiosk-assembly-torque-management-mvp.md
-validation: preview approved; lint and affected builds pass; disposable-Postgres migration, upgrade, integration, and EXPLAIN checks pass; agent, Ruff, Docker, deployment, and offline capture-kit contracts pass; physical CEM3-BTLA payload capture remains pending
+validation: preview approved; lint and affected builds pass; disposable-Postgres migration, upgrade, integration, and EXPLAIN checks pass; agent, Ruff, Docker, deployment, offline capture-kit, Trivy, and PR CI-remediation contracts pass locally; physical CEM3-BTLA payload capture remains pending
 open_items: capture real CEM3-BTLA HOGP output and freeze sanitized parser fixtures; register and test only the fixture-proven production parser; perform final Raspberry Pi HID and production-screen acceptance
 ---
 
@@ -42,6 +42,7 @@ The real-device gate does not prevent preparation of a read-only capture kit. Be
 - [x] (2026-07-17 09:06Z) Updated the canonical assembly/measuring-instrument documents and added an operator-focused torque-agent runbook.
 - [x] (2026-07-17 09:28Z) Hardened condition-confirmation reuse, runtime eligibility, event idempotency, future-setting handling, local HID-error retention, and loopback CORS; reran final disposable-resource validation.
 - [x] (2026-07-17 10:22Z) Implemented and validated the offline private-capture, replay, sanitization, and fixture-validation kit without importing `evdev` on macOS or registering a CEM3-BTLA parser.
+- [x] (2026-07-17 11:20Z) Remediated the first Draft PR CI findings: upgraded the vulnerable FastAPI/Starlette lock, made rate limiting and DOM text construction explicit for CodeQL, and brought torque-agent release lifecycle ownership under the deployment safety contract.
 - [ ] Capture the real-device fixtures, complete hardware acceptance, and close the final retrospective.
 
 ## Surprises & Discoveries
@@ -90,6 +91,12 @@ The real-device gate does not prevent preparation of a read-only capture kit. Be
 
 - Observation: Standard HID shift/modifier handling is required to preserve payload text without assuming any CEM3-BTLA field format.
   Evidence: The decoder now tracks left/right Shift key-down/up state, supports standard keyboard punctuation, and still retains every unsupported key plus the exact terminator. Unknown-key frames are locally audited and are never forwarded as silently altered payloads.
+
+- Observation: The first Draft PR exposed three independent CI contract gaps rather than a feature-behavior failure.
+  Evidence: API/Web/DB/E2E and agent tests passed, while Trivy identified three HIGH findings in the locked Starlette 0.37.2, CodeQL identified one implicit rate-limit and one `innerHTML` flow, and the deploy contract rejected the torque-agent `.env` destination and unowned Compose command.
+
+- Observation: Importing the loopback FastAPI application on macOS also imported Linux-only `evdev` through `main.py`.
+  Evidence: The new dependency compatibility test failed during collection with `ModuleNotFoundError: evdev`. Moving `hid_reader` import into `run_agent` preserved the Linux runtime and allowed 21 agent tests to pass without `evdev` on macOS.
 
 ## Decision Log
 
@@ -149,6 +156,14 @@ The real-device gate does not prevent preparation of a read-only capture kit. Be
   Rationale: Key codes themselves can reconstruct a serial number. Ignoring filenames is only a secondary defense, so the CLI must reject a private output path below a Git root and must never print payload text.
   Date/Author: 2026-07-17 / Codex, approved by user.
 
+- Decision: Upgrade torque-agent to FastAPI 0.139.2 and the resulting Starlette 1.3.1 lock, and add an OS-independent loopback API contract test.
+  Rationale: This removes the observed HIGH vulnerabilities while proving that health, CORS, and disarm behavior remain compatible with the newer ASGI stack.
+  Date/Author: 2026-07-17 / Codex, approved as CI remediation by user.
+
+- Decision: Treat torque-agent configuration distribution and Docker lifecycle as separate Ansible adapters, matching the existing NFC and barcode ownership boundary.
+  Rationale: Release-only must be able to choose build, recreate, or no-build from the immutable Git diff, and every Docker mutation and rollback destination must be statically auditable.
+  Date/Author: 2026-07-17 / Codex, approved as CI remediation by user.
+
 ## Outcomes & Retrospective
 
 The feature branch, living plan, ADR, and interactive three-screen preview now exist on the latest remote main. Browser validation exercised condition inheritance, range copy, all five work states, and both target responsive classes without console errors, outer overflow, or clipped controls. Production behavior, database state, existing Docker resources, and deployed hosts remain unchanged.
@@ -165,6 +180,8 @@ The final pass also completed zero-warning root lint, Shared Types/API/Web produ
 Every temporary database, volume, network, container, and feature image created by this pass was removed. Canonical assembly, measuring-instrument API/UI, agent README, INDEX, and operations Runbook now describe the implemented/not-deployed state and the remaining hardware gate.
 
 Milestone 2A completed at 19:22 JST without a physical wrench. The standard-library CLI now records exclusive EV_KEY streams only to new Git-external 0700/0600 sessions, preserves incomplete manifests, replays without payload output, performs fail-closed literal redaction, and validates strict observed/derived fixture contracts. The synthetic `capture_contract` remains explicitly non-CEM evidence, and no `cem3_btla` fixture or production parser was added. Validation passed 20 agent/capture tests, Ruff 0.4.2, zero-warning root lint, document inventory/link audit, and disposable Docker wheel/runtime replay/validation; temporary containers and images were removed.
+
+Draft PR #1038 initially passed the functional API, Web, DB, E2E, and client suites but exposed security and deployment-contract gaps. The approved remediation now passes 21 torque-agent tests, Ruff, API build, zero-warning root lint, 621 deploy regression tests, the release safety audit, four relevant Ansible syntax checks, a targeted Trivy scan with zero findings for `poetry.lock`, and a disposable Linux image build/runtime health check. The disposable container and image were removed. The PR CI rerun remains the final evidence for this remediation; the physical CEM3-BTLA gate is unchanged.
 
 ## Context and Orientation
 
@@ -366,3 +383,5 @@ Revision note 2026-07-17 09:28Z: Completed the resume-time hardening pass, inclu
 Revision note 2026-07-17 10:00Z: Split the device milestone into offline capture readiness (2A) and physical fixture/parser promotion (2B). Fixed the private evidence format, fail-closed redaction, macOS replay boundary, CLI exit codes, and the rule that no CEM3-BTLA parser or fixture may be invented before observed hardware output.
 
 Revision note 2026-07-17 10:22Z: Completed Milestone 2A with the read-only capture CLI, Linux adapter/OS-independent recorder split, strict decoder/audit boundary, synthetic contract fixtures, fail-closed sanitizer/validator, defensive ignores, Docker console entry, and operator Runbook. Recorded 20 passing tests plus Ruff, root lint, document audit, and disposable image runtime evidence. Milestone 2B remains gated on physical output.
+
+Revision note 2026-07-17 11:20Z: Recorded the approved Draft PR CI remediation: dependency vulnerability removal, explicit rate-limit and safe DOM construction, portable loopback API testing, and torque-agent Ansible lifecycle ownership. Local security, deployment, lint, build, agent, and disposable-image validation pass; GitHub CI rerun remains pending.

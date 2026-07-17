@@ -147,23 +147,27 @@ export async function registerTorqueWrenchRoutes(app: FastifyInstance): Promise<
     return reply.code(201).send({ confirmation });
   });
 
-  app.get('/assembly/work-sessions/:id/torque-wrench-confirmations/current', async (request, reply) => {
-    const { id } = assemblyWorkSessionParamsSchema.parse(request.params);
-    let clientDeviceId: string | undefined;
-    if (request.headers.authorization) {
-      try {
-        await canWrite(request, reply);
-      } catch (error) {
-        if (!request.headers['x-client-key']) throw error;
+  app.get(
+    '/assembly/work-sessions/:id/torque-wrench-confirmations/current',
+    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const { id } = assemblyWorkSessionParamsSchema.parse(request.params);
+      let clientDeviceId: string | undefined;
+      if (request.headers.authorization) {
+        try {
+          await canWrite(request, reply);
+        } catch (error) {
+          if (!request.headers['x-client-key']) throw error;
+          const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
+          clientDeviceId = clientDevice.id;
+        }
+      } else {
         const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
         clientDeviceId = clientDevice.id;
       }
-    } else {
-      const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
-      clientDeviceId = clientDevice.id;
+      return { confirmations: await traceabilityService.listCurrentConfirmations(id, clientDeviceId) };
     }
-    return { confirmations: await traceabilityService.listCurrentConfirmations(id, clientDeviceId) };
-  });
+  );
 
   app.post('/assembly/work-sessions/:id/record-torque-override', { preHandler: canWrite }, async (request) => {
     const { id } = assemblyWorkSessionParamsSchema.parse(request.params);

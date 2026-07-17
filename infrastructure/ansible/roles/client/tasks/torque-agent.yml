@@ -1,4 +1,8 @@
 ---
+# torque-agent configuration distribution only. Container lifecycle belongs to
+# torque-agent-lifecycle.yml so release-only can select build/recreate/no-build
+# from the immutable Git diff without hiding Docker mutations in config tasks.
+
 - name: Validate torque-agent variable contract
   ansible.builtin.assert:
     that:
@@ -20,6 +24,20 @@
     mode: '0755'
   when: terminal_release_mode | default('full') == 'full'
 
+- name: Check torque-agent directory before release
+  ansible.builtin.stat:
+    path: "{{ repo_path }}/clients/torque-agent"
+  register: torque_agent_directory
+  when: terminal_release_mode | default('full') == 'release-only'
+
+- name: Require torque-agent directory before release
+  ansible.builtin.assert:
+    that:
+      - torque_agent_directory.stat.exists | default(false)
+      - torque_agent_directory.stat.isdir | default(false)
+    fail_msg: torque-agent directory is missing; provision the terminal before release.
+  when: terminal_release_mode | default('full') == 'release-only'
+
 - name: Deploy torque-agent environment
   ansible.builtin.template:
     src: "{{ role_path }}/../../templates/torque-agent.env.j2"
@@ -27,21 +45,12 @@
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
     mode: '0600'
-  register: torque_agent_env
+  register: torque_agent_env_result
 
-- name: Build and start torque-agent compose profile
-  ansible.builtin.command:
-    argv:
-      - docker
-      - compose
-      - -f
-      - "{{ repo_path }}/infrastructure/docker/docker-compose.client.yml"
-      - --profile
-      - torque
-      - up
-      - -d
-      - --build
-      - torque-agent
-  changed_when: true
-  when:
-    - terminal_release_mode | default('full') == 'full' or torque_agent_env.changed
+- name: Include torque-agent environment changes in lifecycle selection
+  ansible.builtin.set_fact:
+    torque_agent_runtime_recreate_needed: >-
+      {{
+        torque_agent_runtime_recreate_needed | default(true) | bool
+        or torque_agent_env_result.changed | default(false) | bool
+      }}
