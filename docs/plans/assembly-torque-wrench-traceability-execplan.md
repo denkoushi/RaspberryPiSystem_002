@@ -224,6 +224,10 @@ The real-device gate does not prevent preparation of a read-only capture kit. Be
   Rationale: Both editable marker kinds need precise placement, while callout-tip placement remains the existing tap/delete workflow and work sessions remain read-only views of saved geometry.
   Date/Author: 2026-07-18 / Codex, approved recommended defaults.
 
+- Decision: In the Milestone 4B preview, waiting is conveyed by the current-marker focus ring without a `待` badge; NG retry uses a red `×` rather than an exclamation mark.
+  Rationale: The marker number remains easier to read without a redundant waiting glyph, while the multiplication/cross symbol communicates a required retry more directly than a generic warning sign.
+  Date/Author: 2026-07-18 / Codex, directed by user during preview review.
+
 ## Outcomes & Retrospective
 
 The feature branch, living plan, ADR, and interactive three-screen preview now exist on the latest remote main. Browser validation exercised condition inheritance, range copy, all five work states, and both target responsive classes without console errors, outer overflow, or clipped controls. Milestone 4A now also keeps assembly callout geometry at inspection-drawing scale and permits precise on-screen movement of either editable marker kind without changing any business identity or condition. Production behavior, database state, existing Docker resources, and deployed hosts remain unchanged.
@@ -311,7 +315,7 @@ No API, DTO, Prisma schema, migration, SQL, or EXPLAIN work belongs to this mile
 
 ### Milestone 4B: torque-input operator density and outcome parity
 
-Before production code, create `docs/design-previews/kiosk-assembly-torque-input-operator-preview.html` as a self-contained interactive mock. It must switch LEGACY waiting and NG retry, REQUIRED pre-confirmation, REQUIRED agent-armed waiting, and REQUIRED offline/rejected states. The preview must show compact current-condition information, content-width workflow controls, a three-row readable history, and numbered bolt markers with distinct neutral, waiting, complete, NG, and unaccepted outcomes. Inspect it at 1366x768 and 1920x1080, then stop for explicit approval.
+Before production code, create `docs/design-previews/kiosk-assembly-torque-input-operator-preview.html` as a self-contained interactive mock. It must switch LEGACY waiting and NG retry, REQUIRED pre-confirmation, REQUIRED agent-armed waiting, and REQUIRED offline/rejected states. The preview must show compact current-condition information, content-width workflow controls, a three-row readable history, and numbered bolt markers with distinct neutral, waiting, complete, NG, and unaccepted outcomes. Waiting uses its strong focus ring without a `待` badge; NG retry uses a red `×`. Inspect it at 1366x768 and 1920x1080, then stop for explicit approval.
 
 After approval, introduce a pure assembly presentation selector that determines each bolt's display state from the current work cursor and the latest torque record by stable timestamp order. It must preserve a current bolt's NG retry state instead of replacing it with a generic current state. Keep the marker number visible; pair color with a short badge and accessible label. Existing coordinate, callout, check-marker, API, DTO, persistence, and session-transition behavior stay unchanged.
 
@@ -489,3 +493,5 @@ Revision note 2026-07-18 04:15Z: Added approved Milestone 4A after reproducing t
 Revision note 2026-07-18 04:29Z: Completed Milestone 4A with a single measured-layout callout contract, domain-neutral coordinate nudge logic/UI, inspection compatibility wrappers, assembly editor/work/preview integration, 23 focused and 1458 full Web tests, zero-warning root lint, Web build, responsive geometry E2E, document audit, and browser inspection. No API, DTO, Prisma, Docker, or database resource changed; push, PR update, CI, and deployment remain unauthorized.
 
 Revision note 2026-07-18 06:10Z: Started Milestone 4B on child branch `feat/assembly-torque-input-operator-ui`. The production UI gate is intentionally closed until the interactive preview is approved. The recorded root cause is presentation-only: current cursor state overwrites NG marker feedback, while existing API/DTO/DB contracts already contain the required torque record facts.
+
+Revision note 2026-07-18 06:30Z: Refined the unapproved Milestone 4B preview at user direction: removed the `待` badge from the current marker while retaining its focus ring, and replaced the NG exclamation mark with `×`. Rechecked the interactive states and two responsive target sizes; the production UI gate remains closed.

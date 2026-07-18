@@ -31,7 +31,7 @@ The page has two compatible workflows. LEGACY templates accept a manual value an
 ## Proposed Decision
 
 - Use one pure assembly presentation selector to combine current cursor and latest torque-record outcome without changing API or persistence contracts.
-- Keep each bolt's marker number visible. Pair a state badge with color and accessible text: neutral, input waiting, complete, NG retry, or unaccepted input. A compact legend explains the mapping inside the procedure view.
+- Keep each bolt's marker number visible. Pair color with accessible text and a short outcome badge where it adds information: input waiting is a strong focus ring without a `待` text badge; complete uses a check badge; NG retry uses a red `×`; unaccepted input uses a distinct amber `×` plus the `未受付` label. A compact legend explains the mapping inside the procedure view.
 - Render the right pane as compact condition, mode-specific entry/readiness, workflow action, and recent-history regions. Main entry controls fit one LEGACY row; workflow controls remain visible but use content width and preserve their existing enabled/disabled behavior.
 - Show the three latest history entries at readable size, then scroll older entries in the same list. Existing audit meanings `OK`, `NG`, and `IGNORED` are unchanged.
 - Build and obtain approval for a standalone interactive preview before modifying production React components.
