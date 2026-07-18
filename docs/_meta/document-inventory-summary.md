@@ -12,8 +12,8 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Metric | Count |
 |--------|------:|
 | Documents | 526 |
-| Total lines | 152030 |
-| Total bytes | 11425209 |
+| Total lines | 152040 |
+| Total bytes | 11427392 |
 | With frontmatter | 212 |
 | With status | 70 |
 | source_of_truth declared | 42 |
@@ -84,7 +84,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md` (13:1164, 295:1220, 297:1290)
 - `docs/knowledge-base/infrastructure/signage.md` (23:1023, 29:1221, 349:1060)
 - `docs/plans/assembly-torque-wrench-traceability-execplan.md` (305:1055)
-- `docs/plans/deployment-foundation-refactor-execplan.md` (99:1226, 872:1025, 878:1002)
+- `docs/plans/deployment-foundation-refactor-execplan.md` (99:1226, 880:1025, 886:1002)
 - `docs/plans/dgx-spark-local-llm-migration-execplan.md` (38:1075)
 - `docs/plans/kiosk-assembly-torque-management-mvp.md` (135:1006)
 - `docs/plans/pi5-minimal-downtime-phase2.md` (130:1083)

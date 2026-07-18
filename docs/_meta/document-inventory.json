@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 526,
-    "totalLines": 152030,
-    "totalBytes": 11425209,
+    "totalLines": 152040,
+    "totalBytes": 11427392,
     "withFrontmatter": 212,
     "withStatus": 70,
     "sourceOfTruthDeclared": 42,
@@ -31364,8 +31364,8 @@
     },
     {
       "path": "docs/plans/deployment-foundation-refactor-execplan.md",
-      "lineCount": 896,
-      "byteSize": 149936,
+      "lineCount": 906,
+      "byteSize": 152119,
       "hasFrontmatter": true,
       "title": "Refactor the deployment foundation through eight gated pull requests",
       "status": "in-progress",
@@ -31380,19 +31380,19 @@
           "length": 1226
         },
         {
-          "line": 872,
+          "line": 880,
           "length": 1025
         },
         {
-          "line": 878,
+          "line": 886,
           "length": 1002
         },
         {
-          "line": 884,
+          "line": 892,
           "length": 1197
         },
         {
-          "line": 886,
+          "line": 894,
           "length": 1137
         }
       ],

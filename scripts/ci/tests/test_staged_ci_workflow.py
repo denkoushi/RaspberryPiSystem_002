@@ -95,6 +95,22 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("  codeql:\n    name: codeql", CODEQL)
         self.assertIn("  gitleaks:\n    name: gitleaks", GITLEAKS)
 
+    def test_manual_gitleaks_scans_only_the_cumulative_main_branch_range(self) -> None:
+        block = job_block(GITLEAKS, "gitleaks")
+        self.assertIn("if: github.event_name != 'workflow_dispatch'", block)
+        self.assertIn("if: github.event_name == 'workflow_dispatch'", block)
+        self.assertIn(
+            "git fetch --no-tags --force origin main:refs/remotes/origin/main",
+            block,
+        )
+        self.assertIn(
+            "zricethezav/gitleaks:v8.24.3@sha256:5d0147dc25c78f8cc2b9861ff8f5c9b4a41419ed60a9ce2217de5a215270b42b",
+            block,
+        )
+        self.assertIn("--log-opts=origin/main..HEAD", block)
+        manual = block.split("Run Gitleaks (manual branch range)", 1)[1]
+        self.assertNotIn("--all", manual)
+
     def test_deploy_contract_discovers_terminal_profiles_from_registry(self) -> None:
         deploy = job_block(CI, "deploy-contract")
         self.assertIn("terminal_profile_contracts.py --list-playbooks", deploy)
