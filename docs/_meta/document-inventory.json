@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 526,
-    "totalLines": 151908,
-    "totalBytes": 11399648,
+    "totalLines": 151927,
+    "totalBytes": 11403650,
     "withFrontmatter": 212,
     "withStatus": 70,
     "sourceOfTruthDeclared": 42,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 23,
-    "localLinkCount": 5544,
+    "localLinkCount": 5546,
     "brokenLocalLinkCount": 87,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -16439,8 +16439,8 @@
     },
     {
       "path": "docs/design-previews/README.md",
-      "lineCount": 100,
-      "byteSize": 19980,
+      "lineCount": 101,
+      "byteSize": 20494,
       "hasFrontmatter": false,
       "title": "デザインプレビュー（静的 HTML）",
       "status": null,
@@ -16472,6 +16472,11 @@
           "exists": true
         },
         {
+          "href": "../decisions/ADR-20260718-assembly-torque-input-operator-ui.md",
+          "targetPath": "docs/decisions/ADR-20260718-assembly-torque-input-operator-ui.md",
+          "exists": true
+        },
+        {
           "href": "./assembly-torque-wrench-traceability-preview.html",
           "targetPath": "docs/design-previews/assembly-torque-wrench-traceability-preview.html",
           "exists": true
@@ -16499,6 +16504,11 @@
         {
           "href": "./kiosk-assembly-home-unit-cards-preview.html",
           "targetPath": "docs/design-previews/kiosk-assembly-home-unit-cards-preview.html",
+          "exists": true
+        },
+        {
+          "href": "./kiosk-assembly-torque-input-operator-preview.html",
+          "targetPath": "docs/design-previews/kiosk-assembly-torque-input-operator-preview.html",
           "exists": true
         },
         {
@@ -31283,8 +31293,8 @@
     },
     {
       "path": "docs/plans/assembly-torque-wrench-traceability-execplan.md",
-      "lineCount": 473,
-      "byteSize": 65127,
+      "lineCount": 491,
+      "byteSize": 68615,
       "hasFrontmatter": true,
       "title": "Assembly Torque Wrench Traceability",
       "status": "active",

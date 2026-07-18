@@ -6,9 +6,9 @@ scope: assembly template tightening conditions, torque wrench master, physical-t
 date: 2026-07-17
 source_of_truth: this file
 related_code: apps/api/prisma/schema.prisma, apps/api/src/routes/assembly, apps/api/src/services/assembly, apps/web/src/features/assembly, apps/web/src/pages/kiosk, packages/shared-types, clients/torque-agent
-related_docs: ../decisions/ADR-20260717-assembly-torque-wrench-traceability.md, ../design-previews/assembly-torque-wrench-traceability-preview.html, ./kiosk-assembly-torque-management-mvp.md
-validation: preview approved; traceability DB/API/agent/infrastructure and Draft PR CI contracts pass through commit 3566cade; three normal CEM3-BTLA frames are sanitized and the strict unregistered parser adapter passes; Milestone 4A CSS-pixel callout and marker-nudge focused tests, Web lint/build, responsive E2E, and browser inspection pass; production parser promotion and physical acceptance remain pending
-open_items: capture repeated-memory and rapid-consecutive CEM3-BTLA fixtures; record firmware; restore and verify a stable Pi HID bond; register the fixture-proven parser only after the remaining transport matrix passes; perform final Raspberry Pi HID and production-screen acceptance
+related_docs: ../decisions/ADR-20260717-assembly-torque-wrench-traceability.md, ../decisions/ADR-20260718-assembly-torque-input-operator-ui.md, ../design-previews/assembly-torque-wrench-traceability-preview.html, ../design-previews/kiosk-assembly-torque-input-operator-preview.html, ./kiosk-assembly-torque-management-mvp.md
+validation: preview approved; traceability DB/API/agent/infrastructure and Draft PR CI contracts pass through commit 3566cade; three normal CEM3-BTLA frames are sanitized and the strict unregistered parser adapter passes; Milestone 4A CSS-pixel callout and marker-nudge focused tests, Web lint/build, responsive E2E, and browser inspection pass; Milestone 4B operator-input preview is pending approval; production parser promotion and physical acceptance remain pending
+open_items: approve Milestone 4B torque-input operator preview; capture repeated-memory and rapid-consecutive CEM3-BTLA fixtures; record firmware; restore and verify a stable Pi HID bond; register the fixture-proven parser only after the remaining transport matrix passes; perform final Raspberry Pi HID and production-screen acceptance
 ---
 
 # Add Physical Torque Wrench Traceability to Assembly Work
@@ -50,6 +50,8 @@ The real-device gate does not prevent preparation of a read-only capture kit. Be
 - [x] (2026-07-18 03:22Z) Pushed capture/parser commit `c6841ad8` and device-contract documentation commit `3566cade`; Draft PR #1038 passed API, Web, DB, E2E, CodeQL, gitleaks, both Docker-security jobs, deploy contracts, and aggregate `ci-required`.
 - [x] (2026-07-18 04:15Z) Reproduced the assembly callout scale defect, traced it to the assembly-only `100 x 100` SVG coordinate space, and confirmed the existing 12 focused unit checks plus four responsive E2E checks do not assert rendered geometry.
 - [x] (2026-07-18 04:29Z) Completed Milestone 4A: assembly editor/work/preview now share measured CSS-pixel callout geometry, bolt/check markers use the shared 0.0025 ratio nudge controls, inspection compatibility remains intact, and 23 focused plus 1458 full Web tests, zero-warning root lint, Web build, two-viewport E2E, document audit, and browser inspection pass without database work.
+- [x] (2026-07-18 06:10Z) Created child branch `feat/assembly-torque-input-operator-ui` from the clean, synchronized traceability branch and recorded Milestone 4B's preview approval gate.
+- [ ] Create and obtain approval for the interactive legacy/agent torque-input operator preview before modifying production React code.
 - [ ] Capture the real-device fixtures, complete hardware acceptance, and close the final retrospective.
 
 ## Surprises & Discoveries
@@ -125,6 +127,12 @@ The real-device gate does not prevent preparation of a read-only capture kit. Be
 
 - Observation: One coherent CSS-pixel layout fixes both editor and work-view scale without changing stored marker or callout ratios.
   Evidence: The new regression checks compare the SVG viewBox with its rendered layer, exercise the work-view image wrapper, and passed at both required viewports through zoom and fit. Browser inspection showed compact arrowheads at 1366x768 and no outer horizontal overflow; the 1920-class measured SVG and viewBox differed by less than one pixel.
+
+- Observation: The current work-session marker state loses NG feedback for the active bolt.
+  Evidence: `latestStatusByBolt` records `ng` and then unconditionally replaces the current bolt with `current`; the canvas only receives one string status. The record remains in the audit trail, but the drawing cannot distinguish an untouched current marker from one requiring NG retry.
+
+- Observation: The right-side torque panel uses full-width default controls and a fixed three-column `text-xs` history list.
+  Evidence: The LEGACY `トルク記録` button has `w-full`, the workflow buttons use equal grid columns regardless of label width, and history renders marker/timestamp, value, and judgement at `text-xs`. The panel has no presentation boundary that separates cursor state from last input outcome.
 
 ## Decision Log
 
@@ -301,6 +309,14 @@ Extract the inspection-drawing position calculation and four accessible on-scree
 
 No API, DTO, Prisma schema, migration, SQL, or EXPLAIN work belongs to this milestone because both assembly marker models already persist validated ratio coordinates. If implementation contradicts that fact, stop and revise this plan before touching a database.
 
+### Milestone 4B: torque-input operator density and outcome parity
+
+Before production code, create `docs/design-previews/kiosk-assembly-torque-input-operator-preview.html` as a self-contained interactive mock. It must switch LEGACY waiting and NG retry, REQUIRED pre-confirmation, REQUIRED agent-armed waiting, and REQUIRED offline/rejected states. The preview must show compact current-condition information, content-width workflow controls, a three-row readable history, and numbered bolt markers with distinct neutral, waiting, complete, NG, and unaccepted outcomes. Inspect it at 1366x768 and 1920x1080, then stop for explicit approval.
+
+After approval, introduce a pure assembly presentation selector that determines each bolt's display state from the current work cursor and the latest torque record by stable timestamp order. It must preserve a current bolt's NG retry state instead of replacing it with a generic current state. Keep the marker number visible; pair color with a short badge and accessible label. Existing coordinate, callout, check-marker, API, DTO, persistence, and session-transition behavior stay unchanged.
+
+Split the right panel into reusable assembly UI components for current condition, mode-specific entry/agent readiness, workflow actions, and recent torque history. LEGACY keeps the existing numeric input/source/record behavior but renders it in one compact row. REQUIRED never renders ordinary manual input. The latest three entries remain visible in larger rows while the rest scroll. Do not run Docker, database, migration, SQL, or EXPLAIN validation unless implementation reveals a backend contract change; then stop and revise this plan before using a uniquely named disposable database.
+
 ### Milestone 5: confirmation, event intake, audit, and export
 
 Add compatible-wrench lookup and confirmation endpoints. Eligibility requires exact structured fastener match, model membership, model range coverage, AVAILABLE or IN_USE state, non-null calibration valid through the current Asia/Tokyo date, exact latest-setting match after canonical conversion, and a current confirmation.
@@ -471,3 +487,5 @@ Revision note 2026-07-18 03:22Z: Recorded successful Draft PR #1038 checks for c
 Revision note 2026-07-18 04:15Z: Added approved Milestone 4A after reproducing the assembly-only callout scale defect. Fixed the planned contract to measured CSS-pixel layout, shared ratio nudge controls, both editable assembly marker kinds, all assembly callout views, and Web-only validation without database work.
 
 Revision note 2026-07-18 04:29Z: Completed Milestone 4A with a single measured-layout callout contract, domain-neutral coordinate nudge logic/UI, inspection compatibility wrappers, assembly editor/work/preview integration, 23 focused and 1458 full Web tests, zero-warning root lint, Web build, responsive geometry E2E, document audit, and browser inspection. No API, DTO, Prisma, Docker, or database resource changed; push, PR update, CI, and deployment remain unauthorized.
+
+Revision note 2026-07-18 06:10Z: Started Milestone 4B on child branch `feat/assembly-torque-input-operator-ui`. The production UI gate is intentionally closed until the interactive preview is approved. The recorded root cause is presentation-only: current cursor state overwrites NG marker feedback, while existing API/DTO/DB contracts already contain the required torque record facts.

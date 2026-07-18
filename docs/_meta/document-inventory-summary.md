@@ -12,8 +12,8 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Metric | Count |
 |--------|------:|
 | Documents | 526 |
-| Total lines | 151908 |
-| Total bytes | 11399648 |
+| Total lines | 151927 |
+| Total bytes | 11403650 |
 | With frontmatter | 212 |
 | With status | 70 |
 | source_of_truth declared | 42 |
@@ -21,7 +21,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Question-mark corruption documents | 1 |
 | Replacement-character documents | 1 |
 | Long-line documents | 23 |
-| Local links | 5544 |
+| Local links | 5546 |
 | Broken local links | 87 |
 | Documents over 1,000 lines | 28 |
 | Documents over 3,000 lines | 6 |
