@@ -7,7 +7,7 @@ date: 2026-07-17
 source_of_truth: this file
 related_code: apps/api/prisma/schema.prisma, apps/api/src/routes/assembly, apps/api/src/services/assembly, apps/web/src/features/assembly, apps/web/src/pages/kiosk, packages/shared-types, clients/torque-agent
 related_docs: ../decisions/ADR-20260717-assembly-torque-wrench-traceability.md, ../design-previews/assembly-torque-wrench-traceability-preview.html, ./kiosk-assembly-torque-management-mvp.md
-validation: preview approved; lint and affected builds pass; disposable-Postgres migration, upgrade, integration, and EXPLAIN checks pass; agent, Ruff, Docker, deployment, offline capture-kit, Trivy, and Draft PR CI contracts pass through commit 3566cade; three normal CEM3-BTLA frames are sanitized and the strict unregistered parser adapter passes; production parser promotion and physical acceptance remain pending
+validation: preview approved; traceability DB/API/agent/infrastructure and Draft PR CI contracts pass through commit 3566cade; three normal CEM3-BTLA frames are sanitized and the strict unregistered parser adapter passes; Milestone 4A CSS-pixel callout and marker-nudge focused tests, Web lint/build, responsive E2E, and browser inspection pass; production parser promotion and physical acceptance remain pending
 open_items: capture repeated-memory and rapid-consecutive CEM3-BTLA fixtures; record firmware; restore and verify a stable Pi HID bond; register the fixture-proven parser only after the remaining transport matrix passes; perform final Raspberry Pi HID and production-screen acceptance
 ---
 
@@ -48,6 +48,8 @@ The real-device gate does not prevent preparation of a read-only capture kit. Be
 - [x] (2026-07-17 11:31Z) Pushed remediation commit `3776a953` and confirmed Draft PR #1038 passes every required CI job, including the aggregate `ci-required` gate.
 - [x] (2026-07-18 03:10Z) Passed 34 agent/capture/parser tests, Ruff, zero-warning root lint, document audit, 621 deployment regressions, deployment safety contracts, and disposable Linux image replay/parser/gate checks; removed the image and left the Pi4 in its normal service state.
 - [x] (2026-07-18 03:22Z) Pushed capture/parser commit `c6841ad8` and device-contract documentation commit `3566cade`; Draft PR #1038 passed API, Web, DB, E2E, CodeQL, gitleaks, both Docker-security jobs, deploy contracts, and aggregate `ci-required`.
+- [x] (2026-07-18 04:15Z) Reproduced the assembly callout scale defect, traced it to the assembly-only `100 x 100` SVG coordinate space, and confirmed the existing 12 focused unit checks plus four responsive E2E checks do not assert rendered geometry.
+- [x] (2026-07-18 04:29Z) Completed Milestone 4A: assembly editor/work/preview now share measured CSS-pixel callout geometry, bolt/check markers use the shared 0.0025 ratio nudge controls, inspection compatibility remains intact, and 23 focused plus 1458 full Web tests, zero-warning root lint, Web build, two-viewport E2E, document audit, and browser inspection pass without database work.
 - [ ] Capture the real-device fixtures, complete hardware acceptance, and close the final retrospective.
 
 ## Surprises & Discoveries
@@ -114,6 +116,15 @@ The real-device gate does not prevent preparation of a read-only capture kit. Be
 
 - Observation: The post-clear pairing failure occurs below the parser and HID layers.
   Evidence: Repeated Pi4 HCI traces completed an LE connection but failed `LE Read Remote Used Features` with status `0x3e` before SMP key exchange or HID service resolution. Two `bluetoothctl` success messages were rejected as false positives because no bonded device or SMP exchange remained. After restoring the controller and services to their normal configuration, a final 30-second powered-on observation saw no wrench advertisement. The same Pi/wrench pair had transmitted complete frames earlier, so this is recorded as an unresolved link/bond stability issue, not as a proven platform incompatibility.
+
+- Observation: Assembly and inspection drawing already share `ImageMarkerCalloutOverlay`, but assembly supplies a synthetic `100 x 100` coordinate space instead of the rendered image layout.
+  Evidence: At a roughly 906 x 624 CSS-pixel assembly image, the SVG still rendered `viewBox="0 0 100 100"` with stroke width 1.8 and marker width 6, scaling the line and arrowhead into an unusably large triangle. Inspection drawing passes its measured canvas layout and does not exhibit the defect.
+
+- Observation: Existing callout tests prove presence, not visual scale.
+  Evidence: Twelve focused Vitest checks and all four `assembly-library-editor-ui.spec.ts` cases passed before the fix because they count SVG lines and markers without comparing the SVG coordinate space to its CSS pixel bounds.
+
+- Observation: One coherent CSS-pixel layout fixes both editor and work-view scale without changing stored marker or callout ratios.
+  Evidence: The new regression checks compare the SVG viewBox with its rendered layer, exercise the work-view image wrapper, and passed at both required viewports through zoom and fit. Browser inspection showed compact arrowheads at 1366x768 and no outer horizontal overflow; the 1920-class measured SVG and viewBox differed by less than one pixel.
 
 ## Decision Log
 
@@ -193,9 +204,21 @@ The real-device gate does not prevent preparation of a read-only capture kit. Be
   Rationale: Isolating parser construction from profile activation allows verified implementation progress without presenting a partially proven device contract as production-ready.
   Date/Author: 2026-07-18 / Codex.
 
+- Decision: Every callout consumer supplies one measured `ZoomedImageCanvasLayout` expressed in CSS pixels; placeholder coordinate spaces are invalid.
+  Rationale: One coherent layout object prevents image, content, line, and arrowhead geometry from drifting independently and gives assembly the exact rendering contract already used by inspection drawing.
+  Date/Author: 2026-07-18 / Codex, approved by user.
+
+- Decision: Extract the existing inspection-drawing ratio nudge into the domain-neutral image-canvas module and keep inspection exports as compatibility wrappers.
+  Rationale: Assembly and inspection drawing need the same four on-screen buttons, 0.0025 ratio step, clamp, and accessibility labels, while neither business domain should depend on the other.
+  Date/Author: 2026-07-18 / Codex, approved by user.
+
+- Decision: Assembly nudge controls apply to bolt and check markers in template editing only; they do not move callout tips and do not install global physical-keyboard handlers.
+  Rationale: Both editable marker kinds need precise placement, while callout-tip placement remains the existing tap/delete workflow and work sessions remain read-only views of saved geometry.
+  Date/Author: 2026-07-18 / Codex, approved recommended defaults.
+
 ## Outcomes & Retrospective
 
-The feature branch, living plan, ADR, and interactive three-screen preview now exist on the latest remote main. Browser validation exercised condition inheritance, range copy, all five work states, and both target responsive classes without console errors, outer overflow, or clipped controls. Production behavior, database state, existing Docker resources, and deployed hosts remain unchanged.
+The feature branch, living plan, ADR, and interactive three-screen preview now exist on the latest remote main. Browser validation exercised condition inheritance, range copy, all five work states, and both target responsive classes without console errors, outer overflow, or clipped controls. Milestone 4A now also keeps assembly callout geometry at inspection-drawing scale and permits precise on-screen movement of either editable marker kind without changing any business identity or condition. Production behavior, database state, existing Docker resources, and deployed hosts remain unchanged.
 
 At the preview gate, update this section with the approved/rejected layout and any requested changes. At completion, summarize traceable user behavior, migration compatibility, device-capture evidence, test counts, EXPLAIN results, and any deferred operational work.
 
@@ -225,6 +248,8 @@ The Prisma schema is `apps/api/prisma/schema.prisma`. Generic physical measuring
 Assembly API routes are registered under `apps/api/src/routes/assembly/index.ts`. Template normalization and revisions are handled in `apps/api/src/services/assembly/assembly-template.service.ts`. Work progression is controlled by `apps/api/src/services/assembly/assembly-work-session.service.ts`, and Excel output is produced by `apps/api/src/services/assembly/assembly-excel-export.service.ts`.
 
 The template editor is `apps/web/src/pages/kiosk/KioskAssemblyTemplateEditorPage.tsx`, with draft mutation helpers in `apps/web/src/features/assembly/assemblyTemplateDraft.ts`. The operator work page is `apps/web/src/pages/kiosk/KioskAssemblyWorkSessionPage.tsx`. Existing local agent patterns live under `clients/nfc-agent`, `clients/barcode-agent`, and `clients/haizen-agent`, but none combines durable API acknowledgement with torque-specific parsing.
+
+Shared image zoom, measured contain layout, callout rendering, and pointer conversion live in `apps/web/src/features/kiosk/image-canvas`. Inspection drawing already passes the measured CSS-pixel layout to the shared callout renderer and owns compatibility wrappers for its older import names. Assembly must consume the same neutral contract rather than importing inspection-specific code or inventing a percentage-sized SVG coordinate space.
 
 The parser-independent agent lives under `clients/torque-agent`. `hid_reader.py` is the Linux `evdev` adapter, and `hid_line_decoder.py` preserves decoded frames, exact terminators, and unsupported keys. `cem3_btla_parser.py` contains the strict adapter proven by the observed normal fixture, while `parser_registry.py` deliberately keeps that profile unregistered until the remaining physical transport scenarios pass. The offline capture core does not import `evdev`; the Linux adapter is loaded only by the `capture` command so `replay`, `sanitize`, `validate`, and their tests run on macOS without a physical device.
 
@@ -267,6 +292,14 @@ Make new templates `REQUIRED` and convert revisions saved by the new editor to `
 Use the globally smallest unused positive marker number for new tightening markers. Deleting a marker never renumbers another marker. Add a default-on inheritance toggle: the next marker receives the selected or most recently used condition, or existing defaults when no source exists.
 
 Add a range-copy command using the selected marker as source and inclusive target marker numbers. It updates only existing tightening markers across all areas/pages, skips gaps, and reports changed/skipped counts. Copy nominal diameter, length, material, strength class, nominal/lower/upper torque, unit, and capability group only. Preserve marker number, coordinates, page, area, sort order, callout, persistent ID, and internal tightening ID.
+
+### Milestone 4A: assembly callout and marker-position parity
+
+Change `ImageMarkerCalloutOverlay` to accept one measured `ZoomedImageCanvasLayout`. Render assembly callouts in the content coordinate layer using the same CSS-pixel geometry as inspection drawing, while keeping marker buttons positioned by ratios inside the image rectangle. Apply this renderer to template editing, the work-session sequence viewer, and the development preview. Line weight, arrowhead, and same-number tip badge remain owned by the shared component; bolt/check tone differences remain domain presentation only.
+
+Extract the inspection-drawing position calculation and four accessible on-screen direction buttons into the domain-neutral image-canvas module. Preserve inspection-drawing exports through wrappers. In the assembly template editor, show the controls for the selected bolt or check marker, disable them while busy or read-only, move by ratio 0.0025, and clamp to 0 through 1. Each action changes only `xRatio` and `yRatio`; marker identity, page, condition, callout tip, and ordering remain unchanged.
+
+No API, DTO, Prisma schema, migration, SQL, or EXPLAIN work belongs to this milestone because both assembly marker models already persist validated ratio coordinates. If implementation contradicts that fact, stop and revise this plan before touching a database.
 
 ### Milestone 5: confirmation, event intake, audit, and export
 
@@ -350,6 +383,8 @@ The work milestone is accepted when a correct confirmed wrench advances an in-ra
 
 The UI milestone is accepted when markers 1 through 35 can share condition values while retaining unique identity and placement, required work has no ordinary manual input, and legacy work keeps its existing flow. The export must prove the actual wrench and setting per record.
 
+Milestone 4A is accepted when the assembly callout SVG viewBox matches the measured CSS-pixel content layer instead of `100 x 100`, both assembly marker kinds move by exactly 0.0025 ratio per on-screen direction-button press, all other draft fields remain byte-for-byte equivalent, inspection-drawing compatibility tests remain green, and editor/work views show the same fixed-size callout geometry at 1366 x 768 and 1920 x 1080 through zoom and fit transitions.
+
 The agent milestone is accepted when two simulated HID sources, API outage/recovery, SQLite restart, binding expiry, duplicate acknowledgement, and malformed input pass without data loss, double insert, cross-session assignment, or keyboard leakage.
 
 ## Idempotence and Recovery
@@ -403,6 +438,8 @@ The shared type package will expose `AssemblyTorqueTraceabilityMode`, torque-wre
 
 `TorqueUnitConverter` is a pure interface accepting decimal value and observed unit and returning a canonical N·m decimal or an unsupported-unit result. `TorqueWrenchEligibilityPolicy` accepts an immutable template condition, model capability, physical asset state, latest setting, current date, and optional confirmation; it returns either eligible data or one stable rejection code. HTTP handlers, Prisma queries, and React components must not duplicate these rules.
 
+The shared image-canvas package exposes callout rendering against one `ZoomedImageCanvasLayout` and a domain-neutral marker-position nudge primitive accepting only `xRatio` and `yRatio`. Inspection drawing keeps its existing exported names as adapters; assembly imports only the neutral contracts. Neither UI domain may depend on the other's business types.
+
 The torque agent defines independent ports for HID events, payload parsing, durable outbox persistence, work binding, and API delivery. The CEM3-BTLA adapter is selected by a fixture-derived output-profile identifier only after that profile is registered; construction and activation remain separate. SQLite, evdev, WebSocket, and HTTP are implementation details behind those ports.
 
 The capture package exposes an OS-independent `CapturedKeyEvent` value with sequence, relative nanoseconds, key code, key state, and frame number; a decoded frame with text, exact terminator, source key codes, and unsupported key codes; an asynchronous event-source protocol; a recorder; a literal sanitizer; and a fixture validator. The Linux event source is the only component allowed to import `evdev`. The CLI returns 0 for success, 2 for usage or safety validation, 3 for timeout/interruption/incomplete capture, and 4 for OS or device failures.
@@ -430,3 +467,7 @@ Revision note 2026-07-18 02:46Z: Recorded three complete normal CEM3-BTLA frames
 Revision note 2026-07-18 03:10Z: Recorded final local validation for the capture reliability and unregistered parser changes, including the expected incomplete-fixture exit, disposable Linux image evidence/removal, deployment contracts, document audit, and safe Pi4 service state. No deployment, database mutation, or production profile activation occurred.
 
 Revision note 2026-07-18 03:22Z: Recorded successful Draft PR #1038 checks for commits `c6841ad8` and `3566cade`, including the aggregate `ci-required` gate. The remaining work is limited to the explicitly open hardware/fixture promotion gates.
+
+Revision note 2026-07-18 04:15Z: Added approved Milestone 4A after reproducing the assembly-only callout scale defect. Fixed the planned contract to measured CSS-pixel layout, shared ratio nudge controls, both editable assembly marker kinds, all assembly callout views, and Web-only validation without database work.
+
+Revision note 2026-07-18 04:29Z: Completed Milestone 4A with a single measured-layout callout contract, domain-neutral coordinate nudge logic/UI, inspection compatibility wrappers, assembly editor/work/preview integration, 23 focused and 1458 full Web tests, zero-warning root lint, Web build, responsive geometry E2E, document audit, and browser inspection. No API, DTO, Prisma, Docker, or database resource changed; push, PR update, CI, and deployment remain unauthorized.

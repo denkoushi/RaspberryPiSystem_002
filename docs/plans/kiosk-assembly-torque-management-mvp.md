@@ -7,7 +7,7 @@ date: 2026-07-06
 source_of_truth: this file
 related_code: apps/api/src/routes/assembly/index.ts, apps/api/src/routes/kiosk-documents.ts, apps/api/src/routes/kiosk/assembly-procedure-order-auth.ts, apps/api/src/routes/storage/assembly-procedure-images.ts, apps/api/src/services/assembly, apps/web/src/features/assembly, apps/web/src/pages/kiosk/KioskAssemblyHomePage.tsx, apps/web/src/pages/kiosk/KioskAssemblyProcedureOrderSettingsPage.tsx, infrastructure/docker/docker-compose.server.yml, infrastructure/ansible/roles/server/tasks/main.yml
 related_docs: ../INDEX.md, ../guides/deployment.md, ./assembly-torque-wrench-traceability-execplan.md, ../runbooks/assembly-torque-agent.md, ../decisions/ADR-20260717-assembly-torque-wrench-traceability.md
-validation: prior deployed MVP evidence below; 2026-07-17 traceability preview approved and local lint/build, disposable-Postgres migration/integration/EXPLAIN, agent, Docker, Compose, and Ansible contracts passed; physical CEM3-BTLA payload remains unverified
+validation: prior deployed MVP evidence below; 2026-07-17 traceability preview and disposable-Postgres/API/agent/infrastructure checks passed; 2026-07-18 assembly callout CSS-pixel parity and marker nudge unit/E2E/browser checks passed without DB changes; CEM3-BTLA parser promotion remains gated
 open_items: capture and approve real CEM3-BTLA HOGP fixtures, finalize the production parser profile, perform on-device responsive/hardware acceptance, deploy only after explicit authorization
 ---
 
@@ -35,6 +35,7 @@ This is separate from part measurement and self-inspection. The implementation r
 - A confirmation is reused across different marker numbers only while session, physical wrench, normalized tightening condition, and latest setting history remain identical. A wrench/condition/setting change requires reconfirmation.
 - Accepted, NG, and rejected inputs preserve physical serial/model/setting snapshots. Rejected inputs do not advance work. `(clientDeviceId, eventId)` is idempotent and cannot be replayed into another session.
 - `clients/torque-agent` now has explicit HID, parser-registry, work-binding, SQLite outbox/local-audit, API-delivery, and health boundaries. It has no production CEM3-BTLA parser until sanitized real payload fixtures are captured; the only parser is clearly test-only.
+- The 2026-07-18 Milestone 4A Web refinement gives assembly editor/work callouts the same measured CSS-pixel geometry as inspection drawing and adds reusable `↑ ↓ ← →` position controls for selected bolt/check markers. One press moves only `xRatio` or `yRatio` by 0.0025; IDs, marker numbers, pages, conditions, callout tips, and order remain unchanged.
 - Canonical implementation detail and validation evidence: [traceability ExecPlan](./assembly-torque-wrench-traceability-execplan.md). Operations: [torque-agent Runbook](../runbooks/assembly-torque-agent.md).
 - Latest local implementation branch: `feat/kiosk-deploy-notice-assembly-ui`, based on `origin/main`; implemented and verified locally on 2026-07-14, not deployed.
 - Latest deployed implementation branch: `feat/kiosk-assembly-wip-first-ui`.
@@ -190,7 +191,7 @@ Routes:
 
 The management page follows the inspection drawing management pattern: table-based procedure library, table-based template list, separate template editor, and separate work screen. The operator top page keeps the work-start path short and leaves the vertical screen space for search, serial entry, and WIP visibility.
 
-The 2026-07-14 library/editor update uses two rows per procedure/template item so long procedure names and 型番 remain readable while actions stay on one right-aligned row. 型番 and both procedure-name filters use an accessible common combobox that preserves free input and refreshes candidates from the complete assembly dataset. The editor reuses domain-neutral image-canvas `− / ＋ / □` controls (0.5–2.5, 0.25 steps), scroll-based zoom, and 10px drag suppression. Bolt and check markers can each have an optional same-number callout line/tip; the work-session view renders saved callouts without intercepting marker operations.
+The 2026-07-14 library/editor update uses two rows per procedure/template item so long procedure names and 型番 remain readable while actions stay on one right-aligned row. 型番 and both procedure-name filters use an accessible common combobox that preserves free input and refreshes candidates from the complete assembly dataset. The editor reuses domain-neutral image-canvas `− / ＋ / □` controls (0.5–2.5, 0.25 steps), scroll-based zoom, and 10px drag suppression. Bolt and check markers can each have an optional same-number callout line/tip; editor, work-session, and DEV preview render it from one measured CSS-pixel layout so its line, arrowhead, and tip badge do not scale from a synthetic coordinate space. The selected bolt/check marker also exposes the shared on-screen `↑ ↓ ← →` controls while the work-session view remains read-only.
 
 Procedure documents use a `削除` action instead of a `無効化` action. The delete action is disabled when any template references the document. If unused, the API deletes both the DB row and the stored image file.
 
@@ -224,6 +225,7 @@ DEV preview routes:
 - Referenced `KioskDocument` rows cannot be deleted; the API returns HTTP 409 while the document is used by an assembly procedure order.
 - Viewing order does not gate torque progress. If no valid configured PDF sequence is available, the work screen keeps showing the existing single procedure image and torque work continues.
 - Bolt/check callout tips are optional. X/Y must both be numbers in 0–1 or both null/omitted; revisions copy them, and templates without callouts remain compatible.
+- Marker nudge buttons move the selected bolt or check marker by the fixed ratio 0.0025, clamp coordinates to 0 through 1, and change only `xRatio` / `yRatio`. They are disabled for historical/read-only templates and during save. Callout-tip placement/deletion remains separate, and no global physical-keyboard movement is installed.
 - User-facing assembly labels and Excel headings use `型番`; the internal `modelCode`, DB columns, and JSON keys remain unchanged.
 - REQUIRED marker numbers are unique across the whole template, remain stable after deletion, and reuse the smallest missing positive number on the next addition.
 - Condition inheritance/range copy changes only fastener fields, limits, unit, and capability group; marker number, coordinates, page, callout, ordering, DB ID, and internal tightening ID are never copied.
@@ -240,6 +242,13 @@ Local traceability validation on 2026-07-17 (not deployed):
 - Integration coverage includes physical serial/settings snapshots, wrong/unknown/stale wrench rejection, same-condition confirmation reuse, reconfirmation after setting change, cross-session event-ID refusal, idempotent retransmission, and ADMIN/MANAGER override auditing.
 - Representative EXPLAIN plans selected the normalized serial, latest setting, fastener/group, device/event idempotency, session timeline, and profile/memory replay indexes. All disposable container, volume, network, and validation image resources were removed after each run.
 - The production CEM3-BTLA parser and real-device acceptance are intentionally not claimed; see [the ExecPlan](./assembly-torque-wrench-traceability-execplan.md).
+
+Local assembly callout/marker parity validation on 2026-07-18 (not pushed or deployed):
+
+- Generic ratio arithmetic/UI, assembly bolt/check invariants, inspection compatibility, callout layout, and work-view rendering tests passed: 9 focused files / 23 tests.
+- The full Web suite passed: 295 files / 1458 tests. Zero-warning root workspace lint and the Web production build also passed.
+- `assembly-library-editor-ui.spec.ts` passed all 4 Chromium cases at 1366x768 and 1920x1080. It verifies CSS-pixel SVG/viewBox parity in both editor and display-only work rendering, fixed 6px arrowhead coordinates, zoom/fit behavior, exact 0.0025 marker movement, fixed callout tips, and both marker kinds.
+- In-app browser inspection confirmed compact arrows and visible one-row nudge controls with no outer horizontal overflow. No Docker, Postgres, SQL, migration, or EXPLAIN command ran because the API and persistence contracts did not change.
 
 Local validation before push:
 

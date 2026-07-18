@@ -38,6 +38,7 @@ import {
 import {
   clearImageMarkerCalloutTip,
   ImageCanvasZoomControls,
+  ImageMarkerPositionNudge,
   imageMarkerHasCalloutTip,
   setImageMarkerCalloutTip,
   useImageCanvasZoom
@@ -621,6 +622,12 @@ export function KioskAssemblyTemplateEditorPage() {
                       矢視削除
                     </Button>
                   </div>
+                  <ImageMarkerPositionNudge
+                    position={selectedBolt}
+                    disabled={busy || readOnly}
+                    groupLabel="締結マーカーの位置調整"
+                    onChange={(patch) => setBoltPatch(selectedBolt.id, patch)}
+                  />
                   <p className="text-xs text-white/55">
                     ページ: {selectedPage ? pageRefKey(currentPageRef!) : '未設定'}
                   </p>
@@ -742,6 +749,12 @@ export function KioskAssemblyTemplateEditorPage() {
                       矢視削除
                     </Button>
                   </div>
+                  <ImageMarkerPositionNudge
+                    position={selectedCheckItem}
+                    disabled={busy || readOnly}
+                    groupLabel="チェックマーカーの位置調整"
+                    onChange={(patch) => setCheckItemPatch(selectedCheckItem.id, patch)}
+                  />
                   <label className="grid gap-1 text-xs font-semibold text-white/70">
                     ラベル
                     <Input

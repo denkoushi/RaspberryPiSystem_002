@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 526,
-    "totalLines": 151853,
-    "totalBytes": 11389910,
+    "totalLines": 151908,
+    "totalBytes": 11399648,
     "withFrontmatter": 212,
     "withStatus": 70,
     "sourceOfTruthDeclared": 42,
@@ -16394,8 +16394,8 @@
     },
     {
       "path": "docs/decisions/ADR-20260714-assembly-marker-callout-and-shared-image-canvas.md",
-      "lineCount": 34,
-      "byteSize": 1962,
+      "lineCount": 39,
+      "byteSize": 3010,
       "hasFrontmatter": true,
       "title": "Assembly marker callouts and shared image-canvas behavior",
       "status": "accepted",
@@ -31283,8 +31283,8 @@
     },
     {
       "path": "docs/plans/assembly-torque-wrench-traceability-execplan.md",
-      "lineCount": 432,
-      "byteSize": 58330,
+      "lineCount": 473,
+      "byteSize": 65127,
       "hasFrontmatter": true,
       "title": "Assembly Torque Wrench Traceability",
       "status": "active",
@@ -31936,8 +31936,8 @@
     },
     {
       "path": "docs/plans/kiosk-assembly-torque-management-mvp.md",
-      "lineCount": 418,
-      "byteSize": 37640,
+      "lineCount": 427,
+      "byteSize": 39533,
       "hasFrontmatter": true,
       "title": "Kiosk Assembly Torque Management MVP",
       "status": "active",

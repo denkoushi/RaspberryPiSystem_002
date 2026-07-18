@@ -2,11 +2,16 @@ import { useState } from 'react';
 
 import {
   AssemblyProcedureCanvas,
+  AssemblyProcedureImageWithMarkers,
   createAssemblyBoltAt,
   draftToCanvasBolts,
   emptyAssemblyArea
 } from '../../features/assembly';
-import { ImageCanvasZoomControls, useImageCanvasZoom } from '../../features/kiosk/image-canvas';
+import {
+  ImageCanvasZoomControls,
+  ImageMarkerPositionNudge,
+  useImageCanvasZoom
+} from '../../features/kiosk/image-canvas';
 
 import type { AssemblyCanvasCheckItem } from '../../features/assembly';
 
@@ -60,7 +65,7 @@ export function KioskAssemblyTemplateEditorPreviewPage() {
     ];
     return draft;
   });
-  const [checkItems] = useState<AssemblyCanvasCheckItem[]>([
+  const [checkItems, setCheckItems] = useState<AssemblyCanvasCheckItem[]>([
     {
       id: 'check-1',
       markerNo: 1,
@@ -73,11 +78,25 @@ export function KioskAssemblyTemplateEditorPreviewPage() {
       checked: false
     }
   ]);
+  const [selectedBoltId, setSelectedBoltId] = useState<string | null>('bolt-1');
+  const [selectedCheckItemId, setSelectedCheckItemId] = useState<string | null>(null);
+  const [previewMode, setPreviewMode] = useState<'editor' | 'work'>('editor');
+  const selectedBolt = area.bolts.find((bolt) => bolt.id === selectedBoltId) ?? null;
+  const selectedCheckItem = checkItems.find((item) => item.id === selectedCheckItemId) ?? null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 bg-slate-800 p-2 text-white">
-      <div className="rounded border border-white/15 bg-slate-900/70 p-2">
-        <h1 className="text-[1.28rem] font-bold leading-tight">組立テンプレート編集</h1>
+      <div className="flex items-center justify-between gap-2 rounded border border-white/15 bg-slate-900/70 p-2">
+        <h1 className="text-[1.28rem] font-bold leading-tight">
+          {previewMode === 'editor' ? '組立テンプレート編集' : '組立作業表示'}
+        </h1>
+        <button
+          type="button"
+          className="rounded border border-white/20 bg-slate-950 px-3 py-1 text-xs font-bold text-white hover:border-cyan-300"
+          onClick={() => setPreviewMode((current) => current === 'editor' ? 'work' : 'editor')}
+        >
+          {previewMode === 'editor' ? '作業画面表示' : '編集画面表示'}
+        </button>
       </div>
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-auto xl:grid-cols-[22rem_minmax(0,1fr)_24rem] xl:overflow-hidden">
         <section className="rounded border border-white/15 bg-slate-900/70 p-3">
@@ -102,27 +121,85 @@ export function KioskAssemblyTemplateEditorPreviewPage() {
             </div>
           </div>
           <div className="min-h-0 flex-1">
-            <AssemblyProcedureCanvas
-              imageRelativePath={PREVIEW_PROCEDURE_IMAGE}
-              bolts={draftToCanvasBolts([area])}
-              checkItems={checkItems}
-              onAddBolt={(xRatio, yRatio) => {
-                setArea((current) => ({
-                  ...current,
-                  bolts: [...current.bolts, createAssemblyBoltAt(current, xRatio, yRatio)]
-                }));
-              }}
-              zoom={canvasZoom.zoom}
-              fitGeneration={canvasZoom.fitGeneration}
-              className="h-full"
-            />
+            {previewMode === 'editor' ? (
+              <AssemblyProcedureCanvas
+                imageRelativePath={PREVIEW_PROCEDURE_IMAGE}
+                bolts={draftToCanvasBolts([area])}
+                checkItems={checkItems}
+                selectedBoltId={selectedBoltId}
+                selectedCheckItemId={selectedCheckItemId}
+                onSelectBolt={(id) => {
+                  setSelectedBoltId(id);
+                  setSelectedCheckItemId(null);
+                }}
+                onSelectCheckItem={(id) => {
+                  setSelectedCheckItemId(id);
+                  setSelectedBoltId(null);
+                }}
+                onAddBolt={(xRatio, yRatio) => {
+                  setArea((current) => ({
+                    ...current,
+                    bolts: [...current.bolts, createAssemblyBoltAt(current, xRatio, yRatio)]
+                  }));
+                }}
+                zoom={canvasZoom.zoom}
+                fitGeneration={canvasZoom.fitGeneration}
+                className="h-full"
+              />
+            ) : (
+              <AssemblyProcedureImageWithMarkers
+                fitToParent
+                imageContent={<img src={PREVIEW_PROCEDURE_IMAGE} alt="組立手順書" />}
+                bolts={draftToCanvasBolts([area])}
+                checkItems={checkItems}
+                selectedBoltId={selectedBoltId}
+                className="h-full w-full"
+              />
+            )}
           </div>
         </section>
         <section className="rounded border border-white/15 bg-slate-900/70 p-3">
-          <h2 className="text-[1.02rem] font-bold">締付条件</h2>
-          <div className="mt-3 rounded border border-white/10 bg-slate-950 p-3 text-sm text-white/80">
-            {area.bolts[0].tighteningId} / {area.bolts[0].nominalTorque} {area.bolts[0].unit}
-          </div>
+          <h2 className="text-[1.02rem] font-bold">
+            {selectedCheckItem ? 'チェック項目' : '締付条件'}
+          </h2>
+          {previewMode === 'work' ? (
+            <div className="mt-3 rounded border border-white/10 bg-slate-950 p-3 text-sm text-white/70">
+              保存済みマーカーと矢視を表示（位置調整はテンプレート編集で行います）
+            </div>
+          ) : selectedBolt ? (
+            <div className="mt-3 grid gap-3 rounded border border-white/10 bg-slate-950 p-3 text-sm text-white/80">
+              <div>{selectedBolt.tighteningId} / {selectedBolt.nominalTorque} {selectedBolt.unit}</div>
+              <ImageMarkerPositionNudge
+                position={selectedBolt}
+                groupLabel="締結マーカーの位置調整"
+                onChange={(patch) => {
+                  setArea((current) => ({
+                    ...current,
+                    bolts: current.bolts.map((bolt) =>
+                      bolt.id === selectedBolt.id ? { ...bolt, ...patch } : bolt
+                    )
+                  }));
+                }}
+              />
+            </div>
+          ) : selectedCheckItem ? (
+            <div className="mt-3 grid gap-3 rounded border border-white/10 bg-slate-950 p-3 text-sm text-white/80">
+              <div>{selectedCheckItem.label}</div>
+              <ImageMarkerPositionNudge
+                position={selectedCheckItem}
+                groupLabel="チェックマーカーの位置調整"
+                onChange={(patch) => {
+                  setCheckItems((current) => current.map((item) =>
+                    item.id === selectedCheckItem.id ? { ...item, ...patch } : item
+                  ));
+                }}
+              />
+            </div>
+          ) : (
+            <div className="mt-3 rounded border border-dashed border-white/20 p-3 text-sm text-white/60">
+              手順書上のマーカーを選択
+            </div>
+          )}
         </section>
       </div>
     </div>

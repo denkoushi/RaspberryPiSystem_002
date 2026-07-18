@@ -14,13 +14,16 @@ describe('ImageMarkerCalloutOverlay', () => {
             { id: 'invalid', markerNo: 3, xRatio: 0.5, yRatio: 0.5, calloutTipXRatio: 0.5, calloutTipYRatio: null }
           ]}
           selectedId="bolt-1"
-          image={{ offsetX: 0, offsetY: 0, width: 100, height: 100 }}
-          contentWidth={100}
-          contentHeight={100}
+          layout={{
+            image: { offsetX: 12, offsetY: 8, width: 876, height: 604 },
+            contentWidth: 900,
+            contentHeight: 620
+          }}
         />
       </div>
     );
     expect(container.querySelectorAll('line')).toHaveLength(2);
+    expect(container.querySelector('svg')).toHaveAttribute('viewBox', '0 0 900 620');
     expect(container.textContent).toContain('1');
     expect(container.textContent).toContain('2');
     expect(container.textContent).not.toContain('3');

@@ -277,9 +277,7 @@ export function InspectionDrawingCanvas({
             <ImageMarkerCalloutOverlay
               items={points}
               selectedId={selectedPointId}
-              image={image}
-              contentWidth={zoomedLayout.contentWidth}
-              contentHeight={zoomedLayout.contentHeight}
+              layout={zoomedLayout}
             />
           ) : null}
           {image

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 const viewports = [
   { width: 1366, height: 768 },
@@ -45,6 +45,36 @@ async function mockKioskApis(page: Page, deployNotice = false): Promise<void> {
   });
 }
 
+async function calloutLineGeometry(line: Locator) {
+  return line.evaluate((element) => ({
+    x1: Number(element.getAttribute('x1')),
+    y1: Number(element.getAttribute('y1')),
+    x2: Number(element.getAttribute('x2')),
+    y2: Number(element.getAttribute('y2'))
+  }));
+}
+
+async function expectCssPixelCalloutLayout(page: Page) {
+  const svg = page.getByTestId('image-marker-callout-svg');
+  await expect(svg).toBeVisible();
+  const metrics = await svg.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const viewBox = (element as SVGSVGElement).viewBox.baseVal;
+    return {
+      renderedWidth: rect.width,
+      renderedHeight: rect.height,
+      viewBoxWidth: viewBox.width,
+      viewBoxHeight: viewBox.height
+    };
+  });
+  expect(metrics.viewBoxWidth).toBeGreaterThan(100);
+  expect(metrics.viewBoxHeight).toBeGreaterThan(100);
+  expect(Math.abs(metrics.renderedWidth - metrics.viewBoxWidth)).toBeLessThan(1);
+  expect(Math.abs(metrics.renderedHeight - metrics.viewBoxHeight)).toBeLessThan(1);
+  await expect(svg.locator('marker').first()).toHaveAttribute('markerWidth', '6');
+  await expect(svg.locator('marker').first()).toHaveAttribute('markerHeight', '6');
+}
+
 for (const viewport of viewports) {
   test(`assembly library is two-row and deploy notice stays movable/non-blocking at ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport);
@@ -81,21 +111,65 @@ for (const viewport of viewports) {
     await expect(canvas).toBeVisible();
     await expect(canvas.locator('svg line')).toHaveCount(2);
     await expect(canvas.locator('button[title^="P7-A13"]')).toHaveCount(2);
+    await expectCssPixelCalloutLayout(page);
+
+    const image = canvas.locator('img').last();
+    const initialImageBox = await image.boundingBox();
+    expect(initialImageBox).not.toBeNull();
+    const boltLine = canvas.locator('svg line').nth(0);
+    const boltLineBefore = await calloutLineGeometry(boltLine);
+    const boltMarker = canvas.getByRole('button', { name: 'P7-A13-U1-B1' });
+    const boltMarkerBefore = await boltMarker.boundingBox();
+    expect(boltMarkerBefore).not.toBeNull();
+    await page
+      .getByRole('group', { name: '締結マーカーの位置調整' })
+      .getByRole('button', { name: '右へ移動' })
+      .click();
+    const boltMarkerAfter = await boltMarker.boundingBox();
+    expect(boltMarkerAfter).not.toBeNull();
+    expect(boltMarkerAfter!.x - boltMarkerBefore!.x).toBeCloseTo(initialImageBox!.width * 0.0025, 1);
+    const boltLineAfter = await calloutLineGeometry(boltLine);
+    expect(boltLineAfter.x1 - boltLineBefore.x1).toBeCloseTo(initialImageBox!.width * 0.0025, 1);
+    expect(boltLineAfter.y1).toBe(boltLineBefore.y1);
+    expect(boltLineAfter.x2).toBe(boltLineBefore.x2);
+    expect(boltLineAfter.y2).toBe(boltLineBefore.y2);
+
+    await canvas.getByRole('button', { name: '目視確認' }).click();
+    const checkLine = canvas.locator('svg line').nth(1);
+    const checkLineBefore = await calloutLineGeometry(checkLine);
+    await page
+      .getByRole('group', { name: 'チェックマーカーの位置調整' })
+      .getByRole('button', { name: '上へ移動' })
+      .click();
+    const checkLineAfter = await calloutLineGeometry(checkLine);
+    expect(checkLineAfter.x1).toBe(checkLineBefore.x1);
+    expect(checkLineBefore.y1 - checkLineAfter.y1).toBeCloseTo(initialImageBox!.height * 0.0025, 1);
+    expect(checkLineAfter.x2).toBe(checkLineBefore.x2);
+    expect(checkLineAfter.y2).toBe(checkLineBefore.y2);
 
     for (let index = 0; index < 6; index += 1) {
       await page.getByRole('button', { name: '拡大' }).click();
     }
     await expect.poll(() => canvas.evaluate((element) => element.scrollWidth > element.clientWidth || element.scrollHeight > element.clientHeight))
       .toBe(true);
+    await expectCssPixelCalloutLayout(page);
 
     await page.getByRole('button', { name: '全面表示' }).click();
     await expect.poll(() => canvas.evaluate((element) => ({ left: element.scrollLeft, top: element.scrollTop })))
       .toEqual({ left: 0, top: 0 });
 
-    const image = canvas.locator('img').last();
     const box = await image.boundingBox();
     expect(box).not.toBeNull();
     await page.mouse.click(box!.x + box!.width * 0.88, box!.y + box!.height * 0.86);
     await expect(canvas.locator('button[title^="P7-A13"]')).toHaveCount(3);
+
+    await page.getByRole('button', { name: '作業画面表示' }).click();
+    const workImage = page.getByTestId('assembly-procedure-image-with-markers');
+    await expect(workImage).toBeVisible();
+    await expect(workImage.locator('svg line')).toHaveCount(2);
+    await expect(workImage.locator('button[title^="P7-A13"]')).toHaveCount(3);
+    await expectCssPixelCalloutLayout(page);
+    await expect(page.getByRole('group', { name: '締結マーカーの位置調整' })).toHaveCount(0);
+    await expect(page.getByRole('group', { name: 'チェックマーカーの位置調整' })).toHaveCount(0);
   });
 }
