@@ -98,6 +98,24 @@ class TerminalAgentHealthProbeTest(unittest.TestCase):
             env={"PATH": f"{self.bin}:{os.environ.get('PATH', '')}"},
         )
 
+    def _run_with_restored_port(self) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [
+                str(PROBE),
+                "--agent",
+                "barcode-agent",
+                "--repository",
+                str(self.repository),
+                "--compose-file",
+                str(self.compose),
+                "--ansible-marker",
+            ],
+            check=False,
+            text=True,
+            capture_output=True,
+            env={"PATH": f"{self.bin}:{os.environ.get('PATH', '')}"},
+        )
+
     def test_running_container_and_live_status_contract_emit_exact_marker(self):
         self._docker("printf '%064d\\n' 0 | tr 0 a\n")
 
@@ -118,6 +136,34 @@ class TerminalAgentHealthProbeTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("not uniquely running", result.stderr)
         self.assertEqual(AgentHandler.requests, 0)
+
+    def test_rollback_probe_discovers_port_from_restored_container_environment(self):
+        self._docker(
+            "if [[ \"$1\" == compose ]]; then\n"
+            "  printf '%064d\\n' 0 | tr 0 a\n"
+            "else\n"
+            "  printf '%s\\n' "
+            f"'[\"REST_PORT={self.server.server_port}\",\"SECRET=not-emitted\"]'\n"
+            "fi\n"
+        )
+
+        result = self._run_with_restored_port()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            result.stdout.strip(),
+            f"TERMINAL_AGENT_HEALTH_OK:barcode-agent:{self.server.server_port}",
+        )
+        self.assertNotIn("not-emitted", result.stdout + result.stderr)
+
+    def test_restored_container_port_rejects_duplicate_port_keys(self):
+        with patch.object(
+            PROBE_MODULE,
+            "_run",
+            return_value='["REST_PORT=7072","REST_PORT=7073"]',
+        ):
+            with self.assertRaisesRegex(PROBE_MODULE.ProbeError, "ambiguous"):
+                PROBE_MODULE._container_port("a" * 64, "barcode-agent")
 
 
 class PcscRuntimeContractTest(unittest.TestCase):

@@ -15,7 +15,12 @@ from pathlib import Path
 from typing import Any
 
 
-_AGENTS = {"nfc-agent": 7071, "barcode-agent": None, "torque-agent": 7073}
+_AGENTS = {"nfc-agent": 7071, "barcode-agent": 7072, "torque-agent": 7073}
+_PORT_ENVIRONMENT = {
+    "nfc-agent": "REST_PORT",
+    "barcode-agent": "REST_PORT",
+    "torque-agent": "TORQUE_LOCAL_PORT",
+}
 _MAX_RESPONSE_BYTES = 64 * 1024
 _CONTAINER_ID_RE = re.compile(r"^[0-9a-f]{12,64}$")
 
@@ -53,7 +58,7 @@ def _run(command: list[str], *, cwd: Path | None = None) -> str:
     return result.stdout
 
 
-def _container(repository: Path, compose_file: Path, agent: str) -> None:
+def _container(repository: Path, compose_file: Path, agent: str) -> str:
     output = _run(
         [
             "docker",
@@ -71,6 +76,43 @@ def _container(repository: Path, compose_file: Path, agent: str) -> None:
     identifiers = [line.strip() for line in output.splitlines() if line.strip()]
     if len(identifiers) != 1 or _CONTAINER_ID_RE.fullmatch(identifiers[0]) is None:
         raise ProbeError("required kiosk agent container is not uniquely running")
+    return identifiers[0]
+
+
+def _container_port(identifier: str, agent: str) -> int:
+    """Resolve the live port from the restored container, never from new inventory."""
+
+    if _CONTAINER_ID_RE.fullmatch(identifier) is None or agent not in _PORT_ENVIRONMENT:
+        raise ProbeError("required kiosk agent runtime identity is malformed")
+    raw = _run(
+        [
+            "docker",
+            "container",
+            "inspect",
+            "--format",
+            "{{json .Config.Env}}",
+            identifier,
+        ]
+    )
+    try:
+        entries = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise ProbeError("kiosk agent runtime environment is malformed") from error
+    if not isinstance(entries, list) or any(not isinstance(item, str) for item in entries):
+        raise ProbeError("kiosk agent runtime environment is malformed")
+    key = _PORT_ENVIRONMENT[agent]
+    values = [item[len(key) + 1 :] for item in entries if item.startswith(f"{key}=")]
+    if len(values) > 1:
+        raise ProbeError("kiosk agent runtime port is ambiguous")
+    raw_port = values[0] if values else str(_AGENTS[agent])
+    if re.fullmatch(r"[0-9]{1,5}", raw_port) is None:
+        raise ProbeError("kiosk agent runtime port is malformed")
+    port = int(raw_port)
+    if not 1 <= port <= 65535:
+        raise ProbeError("kiosk agent runtime port is malformed")
+    if agent in {"nfc-agent", "torque-agent"} and port != _AGENTS[agent]:
+        raise ProbeError("kiosk agent runtime port violates the runtime contract")
+    return port
 
 
 def _endpoint(agent: str, port: int) -> None:
@@ -146,7 +188,7 @@ def _pcsc_runtime(socket_path: str = "/run/pcscd/pcscd.comm") -> None:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--agent", choices=sorted(_AGENTS), required=True)
-    parser.add_argument("--port", type=int, required=True)
+    parser.add_argument("--port", type=int)
     parser.add_argument("--repository", type=Path, required=True)
     parser.add_argument("--compose-file", type=Path, required=True)
     parser.add_argument("--require-pcscd", action="store_true")
@@ -157,21 +199,22 @@ def _parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = _parser().parse_args()
     try:
-        if not 1 <= args.port <= 65535:
-            raise ProbeError("kiosk agent status port is malformed")
-        fixed_port = _AGENTS[args.agent]
-        if fixed_port is not None and args.port != fixed_port:
-            raise ProbeError("kiosk agent status port violates the runtime contract")
+        if args.port is not None:
+            if not 1 <= args.port <= 65535:
+                raise ProbeError("kiosk agent status port is malformed")
+            if args.agent in {"nfc-agent", "torque-agent"} and args.port != _AGENTS[args.agent]:
+                raise ProbeError("kiosk agent status port violates the runtime contract")
         if not args.repository.is_absolute() or not args.compose_file.is_absolute():
             raise ProbeError("kiosk agent runtime paths must be absolute")
         if args.require_pcscd:
             if args.agent != "nfc-agent":
                 raise ProbeError("pcscd is only valid for nfc-agent")
             _pcsc_runtime()
-        _container(args.repository, args.compose_file, args.agent)
-        _endpoint(args.agent, args.port)
+        identifier = _container(args.repository, args.compose_file, args.agent)
+        port = args.port if args.port is not None else _container_port(identifier, args.agent)
+        _endpoint(args.agent, port)
         if args.ansible_marker:
-            print(f"TERMINAL_AGENT_HEALTH_OK:{args.agent}:{args.port}")
+            print(f"TERMINAL_AGENT_HEALTH_OK:{args.agent}:{port}")
         return 0
     except ProbeError as error:
         print(f"terminal agent health proof failed: {error}", file=sys.stderr)

@@ -222,10 +222,23 @@ class TerminalAdapter:
         del inventory, target_spec, run_id, release_sha, verification_id
 
     def observe(
-        self, inventory: str, host: str, client_id: str
+        self,
+        inventory: str,
+        host: str,
+        client_id: str,
+        *,
+        runtime_health: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        if runtime_health is None:
+            return self.runtime.observe_terminal_evidence(
+                inventory, host, self.profile.id, client_id
+            )
         return self.runtime.observe_terminal_evidence(
-            inventory, host, self.profile.id, client_id
+            inventory,
+            host,
+            self.profile.id,
+            client_id,
+            runtime_health=runtime_health,
         )
 
     def _active_units(self) -> tuple[str, ...]:
@@ -242,15 +255,54 @@ class TerminalAdapter:
             units.append("status-agent.timer")
         return tuple(dict.fromkeys(units))
 
+    def _validated_runtime_health(
+        self, value: dict[str, Any]
+    ) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        if not isinstance(value, dict) or set(value) != {
+            "activeSystemdUnits",
+            "runningDockerServices",
+        }:
+            raise RuntimeError("sealed terminal runtime health contract is malformed")
+        units = value.get("activeSystemdUnits")
+        agents = value.get("runningDockerServices")
+        if (
+            not isinstance(units, list)
+            or any(
+                not isinstance(unit, str) or unit not in self.runtime_units
+                for unit in units
+            )
+            or len(units) != len(set(units))
+            or not isinstance(agents, list)
+            or any(
+                not isinstance(agent, str) or agent not in self.docker_services
+                for agent in agents
+            )
+            or len(agents) != len(set(agents))
+        ):
+            raise RuntimeError("sealed terminal runtime health contract is malformed")
+        return tuple(units), tuple(agents)
+
     def observe_direct(
-        self, inventory: str, host: str, client_id: str
+        self,
+        inventory: str,
+        host: str,
+        client_id: str,
+        *,
+        runtime_health: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Collect adapter-owned live evidence for the real facade runtime."""
 
         sha = self.runtime.remote_previous_sha(inventory, host)
         if not isinstance(sha, str) or FULL_SHA_RE.fullmatch(sha) is None:
             raise RuntimeError(f"terminal HEAD is not immutable: {host}")
-        services = list(self._active_units())
+        restored_agents: tuple[str, ...] | None = None
+        if runtime_health is None:
+            services = list(self._active_units())
+        else:
+            restored_units, restored_agents = self._validated_runtime_health(
+                runtime_health
+            )
+            services = list(restored_units)
         for service in services:
             self.runtime.run(
                 [
@@ -296,13 +348,20 @@ class TerminalAdapter:
             "authenticatedEndpoint": True,
             "statusClientId": client_id,
         }
-        self.extend_health_evidence(inventory, host, result)
+        self.extend_health_evidence(
+            inventory, host, result, expected_agents=restored_agents
+        )
         return result
 
     def extend_health_evidence(
-        self, inventory: str, host: str, result: dict[str, Any]
+        self,
+        inventory: str,
+        host: str,
+        result: dict[str, Any],
+        *,
+        expected_agents: tuple[str, ...] | None = None,
     ) -> None:
-        del inventory, host, result
+        del inventory, host, result, expected_agents
 
     def rollback(
         self,
@@ -381,12 +440,22 @@ class GenericSystemdAdapter(TerminalAdapter):
         return tuple(dict.fromkeys((*base, *legacy_browser_paths)))
 
     def extend_health_evidence(
-        self, inventory: str, host: str, result: dict[str, Any]
+        self,
+        inventory: str,
+        host: str,
+        result: dict[str, Any],
+        *,
+        expected_agents: tuple[str, ...] | None = None,
     ) -> None:
         configured = set(self.docker_services)
         if not configured:
             return
-        agents = self.runtime.probe_kiosk_agents(inventory, host)
+        if expected_agents is None:
+            agents = self.runtime.probe_kiosk_agents(inventory, host)
+        else:
+            agents = self.runtime.probe_kiosk_agents(
+                inventory, host, expected_agents=list(expected_agents)
+            )
         containers = agents.get("agentContainers") if isinstance(agents, dict) else None
         endpoints = (
             agents.get("authenticatedAgentEndpoints")
@@ -454,8 +523,14 @@ class SignageSystemdAdapter(TerminalAdapter):
         return tuple(unit for unit in allowed if unit in units)
 
     def extend_health_evidence(
-        self, inventory: str, host: str, result: dict[str, Any]
+        self,
+        inventory: str,
+        host: str,
+        result: dict[str, Any],
+        *,
+        expected_agents: tuple[str, ...] | None = None,
     ) -> None:
+        del expected_agents
         signage = self.runtime.probe_signage_endpoints(inventory, host)
         if (
             not isinstance(signage, dict)

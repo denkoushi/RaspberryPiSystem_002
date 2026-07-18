@@ -521,6 +521,7 @@ def _recover_interrupted_terminals(
             if (
                 not isinstance(preflight, dict)
                 or type(preflight.get("ready")) is not bool
+                or not isinstance(preflight.get("runtimeHealth"), dict)
                 or not isinstance(preflight.get("issues"), list)
                 or any(
                     not isinstance(issue, str) or not issue
@@ -529,6 +530,7 @@ def _recover_interrupted_terminals(
                 or preflight["ready"] != (not preflight["issues"])
             ):
                 raise RuntimeError("rollback preflight result is malformed")
+            record["rollbackRuntimeHealth"] = preflight["runtimeHealth"]
             host_issues.extend(preflight["issues"])
         except Exception as error:
             preflight = None
@@ -751,7 +753,14 @@ def _recover_interrupted_terminals(
                 state.save()
 
         observation = adapter.observe(
-            inventory, host, target_spec["clientId"]
+            inventory,
+            host,
+            target_spec["clientId"],
+            runtime_health=(
+                record.get("rollbackRuntimeHealth")
+                if cleanup_outcome == "restored"
+                else None
+            ),
         )
         if observation.get("currentSha") != expected_sha:
             raise RuntimeError(
@@ -1352,6 +1361,13 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                     target["rollback"] = f"failed: {rollback_error}"
                 if rollback_ok:
                     try:
+                        rollback_runtime_health = target.get(
+                            "rollbackRuntimeHealth"
+                        )
+                        if not isinstance(rollback_runtime_health, dict):
+                            raise RuntimeError(
+                                "rollback runtime health authority is missing"
+                            )
                         rollback_ready_sha = _rollback_ready_sha(
                             state, adapter, target
                         )
@@ -1367,7 +1383,10 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                             rollback=True,
                         )
                         rollback_observation = adapter.observe(
-                            inventory, host, target_spec["clientId"]
+                            inventory,
+                            host,
+                            target_spec["clientId"],
+                            runtime_health=rollback_runtime_health,
                         )
                         if (
                             rollback_observation.get("currentSha")

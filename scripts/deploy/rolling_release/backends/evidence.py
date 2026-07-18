@@ -28,7 +28,10 @@ class Runtime(Protocol):
     ) -> dict[str, Any]: ...
 
     def probe_kiosk_agents(
-        self, inventory: str, host: str
+        self,
+        inventory: str,
+        host: str,
+        expected_agents: list[str] | None = None,
     ) -> dict[str, Any]: ...
 
     def phase3_status(self) -> dict[str, Any]: ...
@@ -91,12 +94,15 @@ def observe_terminal(
     client_id: str,
     *,
     runtime: Runtime,
+    runtime_health: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     try:
         adapter = adapter_for_profile(role, runtime=runtime)
     except (KeyError, ValueError) as error:
         raise ValueError(f"unsupported terminal evidence role: {role}") from error
-    return adapter.observe_direct(inventory, host, client_id)
+    return adapter.observe_direct(
+        inventory, host, client_id, runtime_health=runtime_health
+    )
 
 
 def observe_pi5(

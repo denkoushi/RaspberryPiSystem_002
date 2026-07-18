@@ -1896,6 +1896,30 @@ def _verify_docker_record(record: Mapping[str, Any]) -> None:
         raise RuntimeManifestError("Docker service does not match its sealed runtime state")
 
 
+def _runtime_health_contract(manifest: Mapping[str, Any]) -> dict[str, list[str]]:
+    """Expose the non-secret live-health contract sealed by one manifest.
+
+    Rollback verification must describe the runtime that was actually restored,
+    not features enabled by a newer inventory.  Unit names and Compose service
+    names are already allowlisted, integrity-protected manifest fields; no
+    environment, container configuration, path, or credential crosses this
+    boundary.
+    """
+
+    return {
+        "activeSystemdUnits": [
+            record["name"]
+            for record in manifest["units"]
+            if record["activeState"] == "active"
+        ],
+        "runningDockerServices": [
+            record["service"]
+            for record in manifest["docker"]
+            if record["state"] == "present" and record["running"] is True
+        ],
+    }
+
+
 def _restore_docker(record: Mapping[str, Any]) -> None:
     compose = record["compose"]
     service = record["service"]
@@ -2101,6 +2125,7 @@ def preflight_restore(
         "manifestSha256": manifest["manifestSha256"],
         "unitCount": len(manifest["units"]),
         "dockerCount": len(manifest["docker"]),
+        "runtimeHealth": _runtime_health_contract(manifest),
         "restoredReceipt": restored_receipt,
         "requiresRuntimeReconciliation": requires_reconciliation,
         "issues": issues,
@@ -2300,6 +2325,7 @@ def restore(
         "manifestSha256": manifest["manifestSha256"],
         "unitCount": len(manifest["units"]),
         "dockerCount": len(manifest["docker"]),
+        "runtimeHealth": _runtime_health_contract(manifest),
     }
 
 

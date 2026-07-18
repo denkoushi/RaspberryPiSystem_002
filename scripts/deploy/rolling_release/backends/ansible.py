@@ -72,6 +72,7 @@ _CLIENT_COMPOSE_DIRECTORY = f"{_TERMINAL_REPOSITORY}/infrastructure/docker"
 _CLIENT_COMPOSE_FILE = (
     f"{_CLIENT_COMPOSE_DIRECTORY}/docker-compose.client.yml"
 )
+_KIOSK_AGENT_ORDER = ("nfc-agent", "barcode-agent", "torque-agent")
 
 _COMMON_RUNTIME_UNITS = (
     "lightdm.service",
@@ -561,6 +562,37 @@ def _terminal_runtime_contract(terminal_type: str) -> tuple[list[str], list[str]
     return list(adapter.runtime_units), list(adapter.docker_services)
 
 
+def _validated_runtime_health_contract(
+    value: Any, *, terminal_type: str
+) -> dict[str, list[str]]:
+    """Validate the non-secret health contract derived from a sealed manifest."""
+
+    units, docker_services = _terminal_runtime_contract(terminal_type)
+    if not isinstance(value, dict) or set(value) != {
+        "activeSystemdUnits",
+        "runningDockerServices",
+    }:
+        raise RuntimeError("terminal runtime health contract is malformed")
+    active_units = value.get("activeSystemdUnits")
+    running_services = value.get("runningDockerServices")
+    if (
+        not isinstance(active_units, list)
+        or any(not isinstance(unit, str) or unit not in units for unit in active_units)
+        or len(active_units) != len(set(active_units))
+        or not isinstance(running_services, list)
+        or any(
+            not isinstance(service, str) or service not in docker_services
+            for service in running_services
+        )
+        or len(running_services) != len(set(running_services))
+    ):
+        raise RuntimeError("terminal runtime health contract is malformed")
+    return {
+        "activeSystemdUnits": list(active_units),
+        "runningDockerServices": list(running_services),
+    }
+
+
 def _terminal_restart_on_restore_contract(terminal_type: str) -> list[str]:
     return list(
         adapter_for_profile(
@@ -1037,10 +1069,17 @@ def probe_signage_endpoints(
 def probe_kiosk_agents(
     inventory: str,
     host: str,
+    expected_agents: list[str] | tuple[str, ...] | None = None,
     *,
     runtime: Runtime,
 ) -> dict[str, Any]:
-    """Prove every agent enabled by this host's resolved inventory facts."""
+    """Prove the selected agent set without mixing release-time authorities.
+
+    A normal deployment derives the set from current inventory.  A rollback
+    supplies the exact running service set derived from its sealed runtime
+    manifest; newer inventory may describe agents that did not exist in the
+    restored release.
+    """
 
     if not isinstance(host, str) or _HOST_RE.fullmatch(host) is None:
         raise ValueError("terminal host is malformed")
@@ -1061,18 +1100,50 @@ def probe_kiosk_agents(
         raise RuntimeError(f"kiosk inventory facts are malformed: {host}") from error
     if not isinstance(values, dict):
         raise RuntimeError(f"kiosk inventory facts are malformed: {host}")
-    nfc_identity = values.get("nfc_agent_client_id")
-    if nfc_identity is not None and (
-        not isinstance(nfc_identity, str)
-        or _CLIENT_ID_RE.fullmatch(nfc_identity) is None
-    ):
-        raise RuntimeError(f"kiosk NFC inventory contract is malformed: {host}")
-    barcode_enabled = values.get("barcode_agent_enabled", False)
-    if type(barcode_enabled) is not bool:
-        raise RuntimeError(f"kiosk barcode inventory contract is malformed: {host}")
-    barcode_port = values.get("barcode_agent_rest_port", 7072)
+    if expected_agents is None:
+        nfc_identity = values.get("nfc_agent_client_id")
+        if nfc_identity is not None and (
+            not isinstance(nfc_identity, str)
+            or _CLIENT_ID_RE.fullmatch(nfc_identity) is None
+        ):
+            raise RuntimeError(f"kiosk NFC inventory contract is malformed: {host}")
+        barcode_enabled = values.get("barcode_agent_enabled", False)
+        if type(barcode_enabled) is not bool:
+            raise RuntimeError(f"kiosk barcode inventory contract is malformed: {host}")
+        torque_enabled = values.get("torque_agent_enabled", False)
+        if type(torque_enabled) is not bool:
+            raise RuntimeError(f"kiosk torque inventory contract is malformed: {host}")
+        selected_agents = tuple(
+            agent
+            for agent, enabled in (
+                ("nfc-agent", nfc_identity is not None),
+                ("barcode-agent", barcode_enabled),
+                ("torque-agent", torque_enabled),
+            )
+            if enabled
+        )
+    else:
+        if (
+            not isinstance(expected_agents, (list, tuple))
+            or any(
+                not isinstance(agent, str) or agent not in _KIOSK_AGENT_ORDER
+                for agent in expected_agents
+            )
+            or len(expected_agents) != len(set(expected_agents))
+        ):
+            raise RuntimeError(f"kiosk restored-agent contract is malformed: {host}")
+        selected = set(expected_agents)
+        selected_agents = tuple(
+            agent for agent in _KIOSK_AGENT_ORDER if agent in selected
+        )
+    barcode_port = (
+        values.get("barcode_agent_rest_port", 7072)
+        if expected_agents is None
+        else None
+    )
     if (
-        barcode_enabled
+        "barcode-agent" in selected_agents
+        and barcode_port is not None
         and (
             isinstance(barcode_port, bool)
             or not isinstance(barcode_port, int)
@@ -1080,17 +1151,21 @@ def probe_kiosk_agents(
         )
     ):
         raise RuntimeError(f"kiosk barcode inventory port is malformed: {host}")
-    agents: list[tuple[str, int, bool]] = []
-    if nfc_identity is not None:
-        agents.append(("nfc-agent", 7071, True))
-    if barcode_enabled:
+    agents: list[tuple[str, int | None, bool]] = []
+    if "nfc-agent" in selected_agents:
+        agents.append(
+            ("nfc-agent", 7071 if expected_agents is None else None, True)
+        )
+    if "barcode-agent" in selected_agents:
         agents.append(("barcode-agent", barcode_port, False))
-    torque_enabled = values.get("torque_agent_enabled", False)
-    if type(torque_enabled) is not bool:
-        raise RuntimeError(f"kiosk torque inventory contract is malformed: {host}")
-    torque_port = values.get("torque_agent_local_port", 7073)
+    torque_port = (
+        values.get("torque_agent_local_port", 7073)
+        if expected_agents is None
+        else None
+    )
     if (
-        torque_enabled
+        "torque-agent" in selected_agents
+        and torque_port is not None
         and (
             isinstance(torque_port, bool)
             or not isinstance(torque_port, int)
@@ -1098,7 +1173,7 @@ def probe_kiosk_agents(
         )
     ):
         raise RuntimeError(f"kiosk torque inventory port is malformed: {host}")
-    if torque_enabled:
+    if "torque-agent" in selected_agents:
         agents.append(("torque-agent", torque_port, False))
 
     source = runtime.PROJECT / "scripts/deploy/terminal-agent-health-probe.py"
@@ -1108,8 +1183,7 @@ def probe_kiosk_agents(
             str(source),
             "--agent",
             agent,
-            "--port",
-            str(port),
+            *(["--port", str(port)] if port is not None else []),
             "--repository",
             _TERMINAL_REPOSITORY,
             "--compose-file",
@@ -1133,14 +1207,19 @@ def probe_kiosk_agents(
             capture=True,
         )
         markers = _TERMINAL_AGENT_MARKER_RE.findall(output)
-        expected = (agent, str(port))
-        if not markers or any(marker != expected for marker in markers):
+        if not markers or any(marker != markers[0] for marker in markers):
             raise RuntimeError(f"kiosk agent health could not be verified: {host}")
-        endpoints.append({"agent": agent, "port": port})
+        proven_agent, proven_port_raw = markers[0]
+        if proven_agent != agent:
+            raise RuntimeError(f"kiosk agent health could not be verified: {host}")
+        proven_port = int(proven_port_raw)
+        if port is not None and proven_port != port:
+            raise RuntimeError(f"kiosk agent health could not be verified: {host}")
+        endpoints.append({"agent": agent, "port": proven_port})
     return {
         "agentContainers": [value["agent"] for value in endpoints],
         "authenticatedAgentEndpoints": endpoints,
-        "pcscdRequired": nfc_identity is not None,
+        "pcscdRequired": "nfc-agent" in selected_agents,
     }
 
 
@@ -1592,6 +1671,7 @@ def preflight_terminal_rollback(
                 "manifestSha256",
                 "unitCount",
                 "dockerCount",
+                "runtimeHealth",
                 "restoredReceipt",
                 "requiresRuntimeReconciliation",
                 "issues",
@@ -1611,6 +1691,9 @@ def preflight_terminal_rollback(
             or runtime_result["ready"] != (not runtime_result["issues"])
         ):
             raise RuntimeError("terminal runtime rollback preflight result is invalid")
+        runtime_result["runtimeHealth"] = _validated_runtime_health_contract(
+            runtime_result.get("runtimeHealth"), terminal_type=authority["terminalType"]
+        )
         issues.extend(f"runtime manifest: {issue}" for issue in runtime_result["issues"])
     except Exception as error:
         issues.append(f"runtime manifest: {error}")
@@ -1620,6 +1703,9 @@ def preflight_terminal_rollback(
         "issues": issues,
         "fileManifestReady": bool(file_result and file_result.get("ready")),
         "runtimeManifestReady": bool(runtime_result and runtime_result.get("ready")),
+        "runtimeHealth": (
+            runtime_result.get("runtimeHealth") if runtime_result else None
+        ),
         "restoredReceipt": bool(runtime_result and runtime_result.get("restoredReceipt")),
         "requiresRuntimeReconciliation": bool(
             runtime_result and runtime_result.get("requiresRuntimeReconciliation")
@@ -1640,6 +1726,7 @@ def rollback_terminal(
             target_spec, target, run_id
         )
         host = authority["host"]
+        terminal_type = authority["terminalType"]
         previous_sha = authority["previousSha"]
         desired_sha = authority["desiredSha"]
         expected_path = authority["manifestPath"]
@@ -1712,7 +1799,13 @@ def rollback_terminal(
         )
         if (
             set(runtime_result)
-            != {"restored", "manifestSha256", "unitCount", "dockerCount"}
+            != {
+                "restored",
+                "manifestSha256",
+                "unitCount",
+                "dockerCount",
+                "runtimeHealth",
+            }
             or runtime_result.get("restored") is not True
             or runtime_result.get("manifestSha256")
             != runtime_manifest["manifestSha256"]
@@ -1721,6 +1814,9 @@ def rollback_terminal(
             != runtime_manifest["dockerCount"]
         ):
             raise RuntimeError("terminal runtime restore result is invalid")
+        target["rollbackRuntimeHealth"] = _validated_runtime_health_contract(
+            runtime_result.get("runtimeHealth"), terminal_type=terminal_type
+        )
         target["rollback"] = "success"
         return True
     except Exception as rollback_error:

@@ -588,8 +588,23 @@ class TerminalRuntimeManifestTest(unittest.TestCase):
             0o600,
         )
 
+        preflight = MODULE.preflight_restore(
+            root=self.storage,
+            run_id=self.run_id,
+            host=self.host,
+            expected_manifest_sha256=captured["manifestSha256"],
+        )
+        self.assertEqual(
+            preflight["runtimeHealth"],
+            {
+                "activeSystemdUnits": [],
+                "runningDockerServices": ["nfc-agent"],
+            },
+        )
+
         self.candidate("nfc-agent")
-        self.restore(captured["manifestSha256"])
+        restored_result = self.restore(captured["manifestSha256"])
+        self.assertEqual(restored_result["runtimeHealth"], preflight["runtimeHealth"])
         restored = self.fake.containers[(self.compose["project"], "nfc-agent")]
         self.assertEqual(restored["imageId"], prior)
         self.assertTrue(restored["running"])

@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 526,
-    "totalLines": 152084,
-    "totalBytes": 11437815,
+    "totalLines": 152099,
+    "totalBytes": 11440551,
     "withFrontmatter": 212,
     "withStatus": 70,
     "sourceOfTruthDeclared": 42,
@@ -31283,8 +31283,8 @@
     },
     {
       "path": "docs/plans/assembly-torque-wrench-traceability-execplan.md",
-      "lineCount": 560,
-      "byteSize": 85857,
+      "lineCount": 575,
+      "byteSize": 88593,
       "hasFrontmatter": true,
       "title": "Assembly Torque Wrench Traceability",
       "status": "active",
@@ -31295,11 +31295,7 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 10,
-          "length": 1150
-        },
-        {
-          "line": 328,
+          "line": 341,
           "length": 1055
         }
       ],
