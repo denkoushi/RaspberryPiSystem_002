@@ -7,7 +7,7 @@ date: 2026-07-17
 source_of_truth: this file
 related_code: apps/api/prisma/schema.prisma, apps/api/src/routes/assembly, apps/api/src/services/assembly, apps/web/src/features/assembly, apps/web/src/pages/kiosk, packages/shared-types, clients/torque-agent
 related_docs: ../decisions/ADR-20260717-assembly-torque-wrench-traceability.md, ../design-previews/assembly-torque-wrench-traceability-preview.html, ./kiosk-assembly-torque-management-mvp.md
-validation: preview approved; lint and affected builds pass; disposable-Postgres migration, upgrade, integration, and EXPLAIN checks pass; agent, Ruff, Docker, deployment, offline capture-kit, Trivy, and Draft PR CI-remediation contracts pass; three normal CEM3-BTLA frames are sanitized and the strict unregistered parser adapter passes; production parser promotion and physical acceptance remain pending
+validation: preview approved; lint and affected builds pass; disposable-Postgres migration, upgrade, integration, and EXPLAIN checks pass; agent, Ruff, Docker, deployment, offline capture-kit, Trivy, and Draft PR CI contracts pass through commit 3566cade; three normal CEM3-BTLA frames are sanitized and the strict unregistered parser adapter passes; production parser promotion and physical acceptance remain pending
 open_items: capture repeated-memory and rapid-consecutive CEM3-BTLA fixtures; record firmware; restore and verify a stable Pi HID bond; register the fixture-proven parser only after the remaining transport matrix passes; perform final Raspberry Pi HID and production-screen acceptance
 ---
 
@@ -47,6 +47,7 @@ The real-device gate does not prevent preparation of a read-only capture kit. Be
 - [x] (2026-07-17 11:20Z) Remediated the first Draft PR CI findings: upgraded the vulnerable FastAPI/Starlette lock, made rate limiting and DOM text construction explicit for CodeQL, and brought torque-agent release lifecycle ownership under the deployment safety contract.
 - [x] (2026-07-17 11:31Z) Pushed remediation commit `3776a953` and confirmed Draft PR #1038 passes every required CI job, including the aggregate `ci-required` gate.
 - [x] (2026-07-18 03:10Z) Passed 34 agent/capture/parser tests, Ruff, zero-warning root lint, document audit, 621 deployment regressions, deployment safety contracts, and disposable Linux image replay/parser/gate checks; removed the image and left the Pi4 in its normal service state.
+- [x] (2026-07-18 03:22Z) Pushed capture/parser commit `c6841ad8` and device-contract documentation commit `3566cade`; Draft PR #1038 passed API, Web, DB, E2E, CodeQL, gitleaks, both Docker-security jobs, deploy contracts, and aggregate `ci-required`.
 - [ ] Capture the real-device fixtures, complete hardware acceptance, and close the final retrospective.
 
 ## Surprises & Discoveries
@@ -214,6 +215,8 @@ Draft PR #1038 initially passed the functional API, Web, DB, E2E, and client sui
 Physical work on 2026-07-18 established the normal payload contract without sacrificing a warm-up measurement. Three observed frames were sanitized to `SERIAL_A`; raw key events, the real serial, the replacement map, and HCI logs remain outside Git. A strict seven-field adapter and derived rejection fixtures now pass on macOS, but the production registry remains deliberately closed until repeated-memory and rapid-consecutive observations are available. Pairing was later cleared during root-cause diagnosis and could not be re-established: the failure is before SMP/HID and is tracked separately from payload parsing. The Pi4 controller, Bluetooth service, kiosk browser, and display manager were restored to their normal state; no application deployment or database change was performed during capture.
 
 The post-capture implementation pass now has 34 passing torque-agent tests, Ruff, zero-warning root lint, a current document inventory, `git diff --check`, 621 deployment regression tests, client lifecycle selection, and deployment safety contracts. A disposable Linux image replayed the synthetic capture contract, parsed a documented surrogate through the strict CEM adapter, and proved the production registry remains closed; its temporary tag was removed. The incomplete fixture validator correctly returns exit code 3 naming only `repeated_memory` and `rapid_consecutive`. Final Pi4 readback showed `bluetooth`, `kiosk-browser`, and `lightdm` active, controller powered, discovery off, and no `btmon`/`bluetoothctl` diagnostic process.
+
+Draft PR #1038 then passed every selected GitHub check at commit `3566cade`: API, Web, DB infrastructure, E2E and smoke, workspace quality, client and repository policy, deploy contract, CodeQL, gitleaks, and both API/Web Docker security jobs. The aggregate `ci-required` gate passed. The PR remains Draft and no deployment was performed.
 
 ## Context and Orientation
 
@@ -425,3 +428,5 @@ Revision note 2026-07-17 11:31Z: Recorded the successful Draft PR #1038 rerun fo
 Revision note 2026-07-18 02:46Z: Recorded three complete normal CEM3-BTLA frames captured without a warm-up discard, the exact seven-field TAB/ENTER `kEY=JP` contract, the bounded-buffer first-frame-loss fix, strict but unregistered parser adapter, and derived rejection fixtures. Narrowed the remaining observed gate to repeated-memory and rapid-consecutive transport behavior, kept firmware and stable Pi HID bonding open, and separated the observed pre-SMP `0x3e` link failure from parser/API work.
 
 Revision note 2026-07-18 03:10Z: Recorded final local validation for the capture reliability and unregistered parser changes, including the expected incomplete-fixture exit, disposable Linux image evidence/removal, deployment contracts, document audit, and safe Pi4 service state. No deployment, database mutation, or production profile activation occurred.
+
+Revision note 2026-07-18 03:22Z: Recorded successful Draft PR #1038 checks for commits `c6841ad8` and `3566cade`, including the aggregate `ci-required` gate. The remaining work is limited to the explicitly open hardware/fixture promotion gates.
