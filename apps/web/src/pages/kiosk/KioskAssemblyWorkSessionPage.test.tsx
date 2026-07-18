@@ -259,8 +259,9 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
 
     renderPage();
 
-    expect(await screen.findByText('同じ締付条件の確認を引継ぎ・トルク入力待機中')).toBeInTheDocument();
+    expect(await screen.findByText('同じ締付条件の確認を引継ぎ・入力待機中')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '現物確認済み' })).toBeDisabled();
+    expect(screen.queryByRole('textbox', { name: 'トルク値' })).not.toBeInTheDocument();
     expect(mockListCurrentTorqueWrenchConfirmations).toHaveBeenCalledWith('session-1');
   });
 });

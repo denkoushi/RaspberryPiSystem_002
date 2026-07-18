@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>組立作業 トルク入力右ペイン — 承認用プレビュー</title>
+  <style>
+    :root {
+      --bg: #172033;
+      --panel: #1d2940;
+      --surface: #0b1120;
+      --line: rgba(226, 232, 240, .17);
+      --text: #f8fafc;
+      --muted: #a9b6ca;
+      --cyan: #67e8f9;
+      --emerald: #6ee7b7;
+      --amber: #fcd34d;
+      --rose: #fda4af;
+      --slate: #94a3b8;
+      --font: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 320px; background: #0c1424; color: var(--text); font-family: var(--font); }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    button:disabled { cursor: not-allowed; opacity: .48; }
+
+    .page { max-width: 1720px; margin: 0 auto; padding: 16px; }
+    .intro { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; margin-bottom: 12px; }
+    .intro h1 { margin: 0; font-size: 1.1rem; }
+    .intro p { margin: 3px 0 0; color: var(--muted); font-size: .82rem; }
+    .state-controls { display: flex; flex-wrap: wrap; gap: 6px; }
+    .state-controls button { min-height: 34px; border: 1px solid var(--line); border-radius: 7px; padding: 0 10px; background: #111a2c; color: var(--text); font-size: .78rem; font-weight: 700; }
+    .state-controls button[aria-pressed="true"] { border-color: var(--cyan); background: rgba(8, 145, 178, .28); color: #d9faff; }
+
+    .kiosk { display: grid; min-height: 720px; grid-template-rows: auto minmax(0, 1fr); gap: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); overflow: hidden; }
+    .header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 40px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 7px; background: rgba(15, 23, 42, .7); }
+    .header strong { font-size: .98rem; white-space: nowrap; }
+    .header .meta { overflow: hidden; color: var(--muted); font-size: .76rem; white-space: nowrap; text-overflow: ellipsis; }
+    .header a { display: inline-flex; min-height: 30px; align-items: center; border: 1px solid var(--line); border-radius: 6px; padding: 0 10px; color: var(--text); font-size: .78rem; font-weight: 700; }
+
+    .main { display: grid; min-height: 0; grid-template-columns: minmax(0, 1fr) 368px; gap: 8px; }
+    .procedure { position: relative; min-height: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: #dce3ed; color: #1f2937; }
+    .drawing-title { position: absolute; z-index: 1; top: 14px; left: 16px; font-size: 1rem; font-weight: 700; }
+    .drawing-sub { position: absolute; z-index: 1; top: 39px; left: 16px; color: #475569; font-size: .76rem; }
+    .drawing { position: absolute; inset: 76px 34px 54px; border: 2px solid #526174; border-radius: 5px; background: repeating-linear-gradient(0deg, rgba(71,85,105,.08) 0 1px, transparent 1px 44px), repeating-linear-gradient(90deg, rgba(71,85,105,.06) 0 1px, transparent 1px 44px), #f8fafc; }
+    .part { position: absolute; border: 3px solid #475569; border-radius: 8px; background: rgba(203,213,225,.55); }
+    .part.p1 { left: 14%; top: 24%; width: 48%; height: 25%; }
+    .part.p2 { left: 35%; top: 56%; width: 36%; height: 17%; }
+    .part.p3 { left: 66%; top: 14%; width: 17%; height: 66%; border-style: dashed; }
+    .marker { position: absolute; display: grid; width: 42px; height: 42px; place-items: center; transform: translate(-50%, -50%); border: 3px solid #64748b; border-radius: 50%; background: #fff; color: #0f172a; font-size: 1rem; font-weight: 800; box-shadow: 0 2px 8px rgba(15,23,42,.25); }
+    .marker::after { position: absolute; right: -8px; top: -8px; display: grid; width: 20px; height: 20px; place-items: center; border: 2px solid #fff; border-radius: 50%; color: #fff; font-size: .72rem; font-weight: 900; content: attr(data-badge); }
+    .marker.pending::after { display: none; }
+    .marker.wait { border-color: #0891b2; box-shadow: 0 0 0 5px rgba(6,182,212,.26), 0 2px 8px rgba(15,23,42,.25); }
+    /* 入力待ちは番号を消さず、強調枠だけで現在位置を示す。 */
+    .marker.wait::after { display: none; }
+    .marker.done { border-color: #047857; background: #ecfdf5; }
+    .marker.done::after { background: #047857; }
+    .marker.ng { border-color: #dc2626; background: #fff1f2; box-shadow: 0 0 0 5px rgba(244,63,94,.22), 0 2px 8px rgba(15,23,42,.25); }
+    .marker.ng::after { background: #dc2626; }
+    .marker.rejected { border-color: #d97706; background: #fffbeb; }
+    .marker.rejected::after { background: #d97706; }
+    .m1 { left: 26%; top: 35%; } .m2 { left: 54%; top: 48%; } .m3 { left: 47%; top: 66%; } .m4 { left: 74%; top: 35%; }
+    .legend { position: absolute; right: 12px; bottom: 10px; display: flex; flex-wrap: wrap; justify-content: end; gap: 4px 10px; color: #334155; font-size: .7rem; font-weight: 700; }
+    .legend span::before { display: inline-block; width: 9px; height: 9px; margin-right: 4px; border-radius: 50%; content: ""; }
+    .legend .l-wait::before { background: #0891b2; } .legend .l-done::before { background: #047857; } .legend .l-ng::before { background: #dc2626; } .legend .l-rejected::before { background: #d97706; }
+
+    .side { min-height: 0; overflow: auto; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: rgba(15, 23, 42, .72); }
+    .side h2 { margin: 0 0 9px; font-size: 1rem; }
+    .condition { display: grid; gap: 5px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+    .condition-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .condition-head strong { font-size: 1.2rem; }
+    .condition-head span { overflow: hidden; color: var(--muted); font-size: .82rem; white-space: nowrap; text-overflow: ellipsis; }
+    .condition-value { color: #e2e8f0; font-size: .9rem; font-weight: 700; letter-spacing: .01em; }
+    .condition-value b { color: var(--text); font-size: 1.05rem; }
+    .mode-panel { display: grid; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+    .mode-status { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: .81rem; }
+    .mode-status strong { color: var(--text); font-size: .86rem; }
+    .dot { display: inline-block; width: 9px; height: 9px; margin-right: 5px; border-radius: 50%; background: var(--amber); }
+    .dot.online { background: var(--emerald); } .dot.bad { background: var(--rose); }
+    .entry-row { display: grid; grid-template-columns: minmax(0, 1fr) 84px 104px; gap: 6px; }
+    .entry-row input, .entry-row select, .entry-row button, .wrench select, .wrench button { min-height: 44px; border: 1px solid var(--line); border-radius: 7px; color: var(--text); }
+    .entry-row input, .entry-row select, .wrench select { min-width: 0; padding: 0 9px; background: var(--surface); }
+    .entry-row input { font-size: 1.02rem; font-weight: 700; }
+    .btn-primary { border-color: transparent !important; background: #059669; font-weight: 800; }
+    .wrench { display: grid; gap: 7px; }
+    .wrench label { color: var(--muted); font-size: .76rem; font-weight: 700; }
+    .wrench select { width: 100%; }
+    .wrench button { width: fit-content; padding: 0 12px; background: #0f766e; font-weight: 800; }
+    .notice { display: flex; align-items: center; gap: 7px; min-height: 34px; padding: 6px 8px; border-radius: 6px; background: rgba(6, 182, 212, .12); color: #cffafe; font-size: .8rem; font-weight: 700; }
+    .notice.ng { background: rgba(225, 29, 72, .16); color: #fecdd3; }
+    .notice.warn { background: rgba(217, 119, 6, .17); color: #fde68a; }
+    .workflow { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+    .workflow button { min-height: 44px; border: 1px solid var(--line); border-radius: 7px; padding: 0 11px; background: #25334c; color: var(--text); font-size: .83rem; font-weight: 800; white-space: nowrap; }
+    .workflow .redo { border-color: rgba(248,113,113,.58); background: rgba(127,29,29,.54); }
+    .workflow .finish { border-color: rgba(16,185,129,.52); background: rgba(6,78,59,.65); }
+    .completion-note { margin: -3px 0 0; color: var(--amber); font-size: .76rem; font-weight: 700; }
+    .history { padding-top: 10px; }
+    .history h3 { margin: 0 0 7px; font-size: .9rem; }
+    /* 直近3件を常時見せ、4件目以降は同じリスト内で確認する。 */
+    .history-list { max-height: 174px; overflow: auto; border-top: 1px solid var(--line); }
+    .history-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 58px; border-bottom: 1px solid var(--line); }
+    .history-main { min-width: 0; }
+    .history-main strong { display: block; font-size: .92rem; }
+    .history-main span { display: block; overflow: hidden; color: var(--muted); font-size: .75rem; white-space: nowrap; text-overflow: ellipsis; }
+    .history-result { display: grid; justify-items: end; gap: 4px; }
+    .history-result b { font-size: 1.08rem; font-variant-numeric: tabular-nums; }
+    .badge { display: inline-flex; min-height: 22px; align-items: center; border-radius: 999px; padding: 0 7px; font-size: .72rem; font-weight: 900; }
+    .badge.ok { background: rgba(16,185,129,.2); color: #a7f3d0; } .badge.ng { background: rgba(244,63,94,.2); color: #fecdd3; } .badge.ignored { background: rgba(245,158,11,.2); color: #fde68a; }
+
+    @media (max-width: 1040px) { .main { grid-template-columns: 1fr; } .side { max-height: none; } .kiosk { min-height: 860px; } .procedure { min-height: 440px; } }
+    @media (max-width: 600px) { .page { padding: 8px; } .header { grid-template-columns: 1fr auto; } .header .meta { grid-column: 1 / -1; grid-row: 2; } .entry-row { grid-template-columns: 1fr 78px; } .entry-row button { grid-column: 1 / -1; width: fit-content; padding: 0 14px; } .drawing { inset: 74px 16px 62px; } }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="intro">
+      <div>
+        <h1>組立作業 — トルク入力・状態表示</h1>
+        <p>承認用プレビュー。切替は表示だけで、API・DB・実機には接続しません。</p>
+      </div>
+      <div class="state-controls" role="group" aria-label="確認する画面状態">
+        <button type="button" data-state="legacy-wait" aria-pressed="true">手入力・入力待ち</button>
+        <button type="button" data-state="legacy-ng" aria-pressed="false">手入力・NG再入力</button>
+        <button type="button" data-state="required-confirm" aria-pressed="false">agent・確認前</button>
+        <button type="button" data-state="required-armed" aria-pressed="false">agent・入力待機</button>
+        <button type="button" data-state="required-offline" aria-pressed="false">agent・未接続／未受付</button>
+      </div>
+    </header>
+
+    <section class="kiosk" aria-label="組立作業プレビュー">
+      <header class="header">
+        <strong>組立作業</strong>
+        <div class="meta">P7-A13 / U1 / 製番 P-240812 / MODEL-A / 要領書 / 現在 丸数字 13</div>
+        <a>組立トップ</a>
+      </header>
+
+      <div class="main">
+        <section class="procedure" aria-label="組立要領書と締結状態">
+          <div class="drawing-title">ストッパー取付 要領書</div>
+          <div class="drawing-sub">丸数字は番号＋状態バッジで表示します</div>
+          <div class="drawing" aria-hidden="true">
+            <div class="part p1"></div><div class="part p2"></div><div class="part p3"></div>
+            <div class="marker done m1" data-badge="✓" aria-label="丸数字 11、入力完了">11</div>
+            <div class="marker wait m2" data-badge="" aria-label="丸数字 13、入力待ち">13</div>
+            <div class="marker pending m3" data-badge="" aria-label="丸数字 14、未入力">14</div>
+            <div class="marker pending m4" data-badge="" aria-label="丸数字 15、未入力">15</div>
+          </div>
+          <div class="legend" aria-label="丸数字の状態凡例"><span class="l-wait">入力待ち</span><span class="l-done">完了</span><span class="l-ng">NG再入力</span><span class="l-rejected">未受付</span></div>
+        </section>
+
+        <aside class="side" aria-label="締付入力ペイン">
+          <h2>締付</h2>
+          <section class="condition" aria-label="現在の締付条件">
+            <div class="condition-head"><strong>丸数字 13</strong><span>ストッパー取付</span></div>
+            <div class="condition-value"><b>規定 90</b> kgf-cm <span>｜許容 81–99</span></div>
+          </section>
+
+          <section class="mode-panel" id="mode-panel" aria-live="polite"></section>
+
+          <section class="workflow" aria-label="工程操作">
+            <button type="button" disabled>次工程へ</button>
+            <button type="button" class="redo">やり直し</button>
+            <button type="button" class="finish" disabled>作業完了</button>
+          </section>
+          <p class="completion-note">締付が未完了です。</p>
+
+          <section class="history" aria-label="トルク入力履歴">
+            <h3>履歴</h3>
+            <div class="history-list" id="history-list"></div>
+          </section>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const root = document;
+    const panel = root.getElementById('mode-panel');
+    const historyList = root.getElementById('history-list');
+    const marker13 = root.querySelector('.m2');
+    const marker14 = root.querySelector('.m3');
+
+    const histories = {
+      'legacy-wait': [
+        ['丸数字 12', '09:42:16', '89.7 kgf-cm', 'OK', 'ok'],
+        ['丸数字 11', '09:41:48', '90.4 kgf-cm', 'OK', 'ok'],
+        ['丸数字 10', '09:41:12', '89.9 kgf-cm', 'OK', 'ok'],
+        ['丸数字 9', '09:40:39', '90.2 kgf-cm', 'OK', 'ok']
+      ],
+      'legacy-ng': [
+        ['丸数字 13', '09:42:52', '78.0 kgf-cm', 'NG', 'ng'],
+        ['丸数字 12', '09:42:16', '89.7 kgf-cm', 'OK', 'ok'],
+        ['丸数字 11', '09:41:48', '90.4 kgf-cm', 'OK', 'ok'],
+        ['丸数字 10', '09:41:12', '89.9 kgf-cm', 'OK', 'ok']
+      ],
+      'required-confirm': [
+        ['丸数字 12', '09:42:16', '89.7 kgf-cm', 'OK', 'ok'],
+        ['丸数字 11', '09:41:48', '90.4 kgf-cm', 'OK', 'ok'],
+        ['丸数字 10', '09:41:12', '89.9 kgf-cm', 'OK', 'ok']
+      ],
+      'required-armed': [
+        ['丸数字 12', '09:42:16', '89.7 kgf-cm', 'OK', 'ok'],
+        ['丸数字 11', '09:41:48', '90.4 kgf-cm', 'OK', 'ok'],
+        ['丸数字 10', '09:41:12', '89.9 kgf-cm', 'OK', 'ok']
+      ],
+      'required-offline': [
+        ['丸数字 13', '09:42:51', '—', '未受付', 'ignored'],
+        ['丸数字 12', '09:42:16', '89.7 kgf-cm', 'OK', 'ok'],
+        ['丸数字 11', '09:41:48', '90.4 kgf-cm', 'OK', 'ok']
+      ]
+    };
+
+    const panels = {
+      'legacy-wait': `
+        <div class="mode-status"><strong><span class="dot"></span>手入力・入力待ち</strong><span>丸数字 13</span></div>
+        <div class="entry-row"><input aria-label="トルク値" placeholder="トルク値" inputmode="decimal" /><select aria-label="入力方式"><option>手入力</option><option>mock</option></select><button class="btn-primary" type="button">記録</button></div>
+      `,
+      'legacy-ng': `
+        <div class="notice ng">× NG 78.0 kgf-cm — 許容 81–99。丸数字 13で再入力してください。</div>
+        <div class="entry-row"><input aria-label="トルク値" value="" placeholder="トルク値" inputmode="decimal" /><select aria-label="入力方式"><option>手入力</option><option>mock</option></select><button class="btn-primary" type="button">再記録</button></div>
+      `,
+      'required-confirm': `
+        <div class="mode-status"><strong><span class="dot"></span>agent 接続確認待ち</strong><span>現物確認が必要</span></div>
+        <div class="wrench"><label for="wrench">使用する物理トルクレンチ</label><select id="wrench"><option>702902S / CEM3-BTLA / 90 kgf-cm</option></select><button type="button">現物設定を確認</button></div>
+        <div class="notice">製造番号と表示設定を確認後、入力を受け付けます。</div>
+      `,
+      'required-armed': `
+        <div class="mode-status"><strong><span class="dot online"></span>agent 接続済み</strong><span>702902S</span></div>
+        <div class="notice">現物確認済み・トルク入力待機中</div>
+        <div class="wrench"><label>設定 90 kgf-cm / 許容 81–99</label></div>
+      `,
+      'required-offline': `
+        <div class="mode-status"><strong><span class="dot bad"></span>agent 未接続</strong><span>丸数字 13</span></div>
+        <div class="notice warn">未受付：トルクエージェントに接続できません。工程は進みません。</div>
+        <div class="wrench"><label>確認済みレンチ 702902S / CEM3-BTLA</label><button type="button">接続を再確認</button></div>
+      `
+    };
+
+    function renderHistory(state) {
+      historyList.innerHTML = histories[state].map(([marker, time, value, judgement, tone]) => `
+        <div class="history-row"><div class="history-main"><strong>${marker}</strong><span>${time}${tone === 'ignored' ? ' / agent受信' : ''}</span></div><div class="history-result"><b>${value}</b><span class="badge ${tone}">${judgement}</span></div></div>
+      `).join('');
+    }
+
+    function setMarker(marker, klass, badge, label) {
+      marker.className = `marker ${klass} ${marker === marker13 ? 'm2' : 'm3'}`;
+      marker.dataset.badge = badge;
+      marker.setAttribute('aria-label', label);
+    }
+
+    function render(state) {
+      panel.innerHTML = panels[state];
+      renderHistory(state);
+      setMarker(marker13, 'wait', '', '丸数字 13、入力待ち');
+      setMarker(marker14, 'pending', '', '丸数字 14、未入力');
+      if (state === 'legacy-ng') setMarker(marker13, 'ng', '×', '丸数字 13、NG。再入力が必要');
+      if (state === 'required-offline') setMarker(marker13, 'rejected', '×', '丸数字 13、agent受信が未受付');
+      root.querySelectorAll('[data-state]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.state === state)));
+    }
+
+    root.querySelectorAll('[data-state]').forEach((button) => button.addEventListener('click', () => render(button.dataset.state)));
+    render('legacy-wait');
+  </script>
+</body>
+</html>

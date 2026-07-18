@@ -9,8 +9,10 @@ import {
   useZoomedImageCanvasLayout
 } from '../kiosk/image-canvas';
 
+import { assemblyTorqueMarkerStateLabel } from './assemblyTorquePresentation';
 import { computeContainSize } from './computeContainSize';
 
+import type { AssemblyTorqueMarkerDisplayState } from './assemblyTorquePresentation';
 import type { ZoomedImageCanvasLayout } from '../kiosk/image-canvas';
 import type { MouseEvent, ReactNode, RefObject } from 'react';
 
@@ -25,7 +27,7 @@ export type AssemblyCanvasBolt = AssemblyCanvasCallout & {
   xRatio: number;
   yRatio: number;
   label: string;
-  status?: 'pending' | 'current' | 'ok' | 'ng' | 'ignored';
+  status?: AssemblyTorqueMarkerDisplayState;
 };
 
 export type AssemblyCanvasCheckItem = AssemblyCanvasCallout & {
@@ -54,16 +56,39 @@ type Props = {
   placementAction?: 'place' | 'callout';
   zoom?: number;
   fitGeneration?: number;
+  showTorqueLegend?: boolean;
   className?: string;
 };
 
 function boltMarkerClass(status: AssemblyCanvasBolt['status'], selected: boolean): string {
+  if (status === 'waiting') return 'bg-white text-slate-950 ring-4 ring-cyan-300';
+  if (status === 'complete') return 'bg-emerald-500 text-white ring-2 ring-emerald-200';
+  if (status === 'retry') return 'bg-rose-600 text-white ring-4 ring-rose-200';
+  if (status === 'unaccepted') return 'bg-amber-500 text-slate-950 ring-2 ring-amber-200';
   if (selected) return 'bg-cyan-300 text-slate-950 ring-4 ring-cyan-100';
-  if (status === 'current') return 'bg-amber-300 text-slate-950 ring-4 ring-amber-100';
-  if (status === 'ok') return 'bg-emerald-500 text-white ring-2 ring-emerald-200';
-  if (status === 'ng') return 'bg-rose-600 text-white ring-2 ring-rose-200';
-  if (status === 'ignored') return 'bg-slate-500 text-white ring-2 ring-slate-200';
   return 'bg-white text-slate-950 ring-2 ring-slate-400';
+}
+
+function torqueMarkerBadge(status: AssemblyTorqueMarkerDisplayState | undefined) {
+  if (status === 'complete') return { symbol: '✓', className: 'bg-emerald-700 text-white' };
+  if (status === 'retry') return { symbol: '×', className: 'bg-rose-700 text-white' };
+  if (status === 'unaccepted') return { symbol: '×', className: 'bg-amber-700 text-white' };
+  return null;
+}
+
+function AssemblyTorqueMarkerLegend() {
+  return (
+    <div
+      className="pointer-events-none absolute bottom-2 right-2 z-20 flex flex-wrap justify-end gap-x-2 gap-y-1 rounded bg-slate-950/80 px-2 py-1 text-[0.65rem] font-bold text-white/90 shadow"
+      aria-label="丸数字の状態凡例"
+    >
+      <span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-slate-300" />未入力</span>
+      <span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-cyan-300" />入力待ち</span>
+      <span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-emerald-500" />完了</span>
+      <span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-rose-600" />NG</span>
+      <span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-amber-500" />未受付</span>
+    </div>
+  );
 }
 
 function checkMarkerClass(item: AssemblyCanvasCheckItem, selected: boolean): string {
@@ -90,7 +115,8 @@ export function AssemblyMarkerOverlay({
   selectedCheckItemId,
   onSelectBolt,
   onSelectCheckItem,
-  onToggleCheckItem
+  onToggleCheckItem,
+  showTorqueLegend = false
 }: Pick<
   Props,
   | 'bolts'
@@ -100,6 +126,7 @@ export function AssemblyMarkerOverlay({
   | 'onSelectBolt'
   | 'onSelectCheckItem'
   | 'onToggleCheckItem'
+  | 'showTorqueLegend'
 >) {
   return (
     <>
@@ -108,7 +135,7 @@ export function AssemblyMarkerOverlay({
           key={`bolt-${bolt.id}`}
           type="button"
           title={bolt.label}
-          aria-label={bolt.label}
+          aria-label={`${bolt.label}、${assemblyTorqueMarkerStateLabel(bolt.status ?? 'pending')}`}
           onClick={(event) => {
             event.stopPropagation();
             onSelectBolt?.(bolt.id);
@@ -120,7 +147,15 @@ export function AssemblyMarkerOverlay({
           )}
           style={{ left: `${bolt.xRatio * 100}%`, top: `${bolt.yRatio * 100}%` }}
         >
-          {bolt.markerNo}
+          <span>{bolt.markerNo}</span>
+          {torqueMarkerBadge(bolt.status) ? (
+            <span
+              aria-hidden="true"
+              className={clsx('absolute -right-2 -top-2 grid h-5 w-5 place-items-center rounded-full border-2 border-white text-xs font-black', torqueMarkerBadge(bolt.status)?.className)}
+            >
+              {torqueMarkerBadge(bolt.status)?.symbol}
+            </span>
+          ) : null}
         </button>
       ))}
       {checkItems.map((item) => (
@@ -147,6 +182,7 @@ export function AssemblyMarkerOverlay({
           ✓{item.markerNo}
         </button>
       ))}
+      {showTorqueLegend ? <AssemblyTorqueMarkerLegend /> : null}
     </>
   );
 }
@@ -262,6 +298,7 @@ export function AssemblyProcedureCanvas({
   placementAction = 'place',
   zoom = 1,
   fitGeneration = 0,
+  showTorqueLegend = false,
   className
 }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -408,6 +445,7 @@ export function AssemblyProcedureCanvas({
                 onSelectBolt={onSelectBolt}
                 onSelectCheckItem={onSelectCheckItem}
                 onToggleCheckItem={onToggleCheckItem}
+                showTorqueLegend={showTorqueLegend}
               />
             </div>
           </div>
@@ -443,6 +481,7 @@ export function AssemblyProcedureImageWithMarkers({
   onToggleCheckItem,
   onPlacementClick,
   fitToParent = false,
+  showTorqueLegend = false,
   className
 }: {
   imageContent: ReactNode;
@@ -456,6 +495,7 @@ export function AssemblyProcedureImageWithMarkers({
   onPlacementClick?: (xRatio: number, yRatio: number) => void;
   /** When true, scale the image to the largest size that fits the parent while preserving aspect ratio. */
   fitToParent?: boolean;
+  showTorqueLegend?: boolean;
   className?: string;
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -482,6 +522,7 @@ export function AssemblyProcedureImageWithMarkers({
         onSelectBolt={onSelectBolt}
         onSelectCheckItem={onSelectCheckItem}
         onToggleCheckItem={onToggleCheckItem}
+        showTorqueLegend={showTorqueLegend}
       />
     </>
   );
