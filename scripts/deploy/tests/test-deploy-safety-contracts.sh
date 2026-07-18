@@ -23,6 +23,7 @@ CLIENT_TASKS="${ROOT_DIR}/infrastructure/ansible/roles/client/tasks/main.yml"
 NFC_LIFECYCLE_TASKS="${ROOT_DIR}/infrastructure/ansible/roles/client/tasks/nfc-agent-lifecycle.yml"
 RELEASE_APPLICATION="${ROOT_DIR}/scripts/deploy/rolling_release/application.py"
 TERMINAL_PREFLIGHT="${ROOT_DIR}/scripts/deploy/rolling_release/terminal_preflight.py"
+TERMINAL_AGENT_HEALTH="${ROOT_DIR}/scripts/deploy/terminal-agent-health-probe.py"
 KIOSK_FIREFOX_TASKS="${ROOT_DIR}/infrastructure/ansible/roles/kiosk/tasks/firefox-chrome.yml"
 SIGNAGE_TASKS="${ROOT_DIR}/infrastructure/ansible/roles/signage/tasks/main.yml"
 KIOSK_LAUNCH_TEMPLATE="${ROOT_DIR}/infrastructure/ansible/templates/kiosk-launch.sh.j2"
@@ -31,11 +32,11 @@ SIGNAGE_DISPLAY_TEMPLATES=(
   "${ROOT_DIR}/infrastructure/ansible/roles/signage/templates/signage-display.sh.j2"
 )
 
-python3 - "${RELEASE_APPLICATION}" "${TERMINAL_PREFLIGHT}" "${NFC_LIFECYCLE_TASKS}" <<'PY'
+python3 - "${RELEASE_APPLICATION}" "${TERMINAL_PREFLIGHT}" "${NFC_LIFECYCLE_TASKS}" "${TERMINAL_AGENT_HEALTH}" <<'PY'
 import sys
 from pathlib import Path
 
-application_path, preflight_path, nfc_path = map(Path, sys.argv[1:])
+application_path, preflight_path, nfc_path, agent_health_path = map(Path, sys.argv[1:])
 application = application_path.read_text(encoding='utf-8')
 preflight = preflight_path.read_text(encoding='utf-8')
 nfc = nfc_path.read_text(encoding='utf-8')
@@ -52,11 +53,18 @@ assert 'results.append(result)' in preflight
 assert 'os.O_CREAT' not in preflight
 assert 'os.makedirs' not in preflight
 assert 'UserKnownHostsFile=/dev/null' in preflight
+assert 'candidate.artifact-missing' in preflight
+assert '"cat-file", "-t"' in preflight
+assert '_require_directory(issues, f"{repo}/clients/' not in preflight
 assert 'pcscd.socket' in preflight
 assert '_require_unit(issues, "pcscd.service"' not in preflight
 assert 'pcscd.socket' in nfc
 assert 'systemctl is-enabled --quiet pcscd.service' not in nfc
 assert 'systemctl is-active --quiet pcscd.service' not in nfc
+agent_health = agent_health_path.read_text(encoding='utf-8')
+assert 'pcscd.socket' in agent_health
+assert 'pcscd.comm' in agent_health
+assert 'pcscd.service' not in agent_health
 PY
 
 python3 - "${ROOT_DIR}" <<'PY'

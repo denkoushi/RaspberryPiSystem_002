@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import urllib.error
@@ -126,6 +127,22 @@ def _endpoint(agent: str, port: int) -> None:
         raise ProbeError("barcode-agent status port does not match inventory")
 
 
+def _pcsc_runtime(socket_path: str = "/run/pcscd/pcscd.comm") -> None:
+    load_state = _run(
+        ["systemctl", "show", "--property=LoadState", "--value", "pcscd.socket"]
+    ).strip()
+    if load_state != "loaded":
+        raise ProbeError("PC/SC socket unit is not loaded")
+    _run(["systemctl", "is-enabled", "--quiet", "pcscd.socket"])
+    _run(["systemctl", "is-active", "--quiet", "pcscd.socket"])
+    try:
+        socket_state = os.stat(socket_path, follow_symlinks=False)
+    except OSError as error:
+        raise ProbeError("PC/SC communication socket is unavailable") from error
+    if not stat.S_ISSOCK(socket_state.st_mode):
+        raise ProbeError("PC/SC communication path is not a socket")
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--agent", choices=sorted(_AGENTS), required=True)
@@ -150,8 +167,7 @@ def main() -> int:
         if args.require_pcscd:
             if args.agent != "nfc-agent":
                 raise ProbeError("pcscd is only valid for nfc-agent")
-            _run(["systemctl", "is-enabled", "--quiet", "pcscd.service"])
-            _run(["systemctl", "is-active", "--quiet", "pcscd.service"])
+            _pcsc_runtime()
         _container(args.repository, args.compose_file, args.agent)
         _endpoint(args.agent, args.port)
         if args.ansible_marker:

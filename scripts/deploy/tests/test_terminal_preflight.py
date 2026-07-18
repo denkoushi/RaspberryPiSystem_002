@@ -57,6 +57,18 @@ def target(host: str = "kiosk-a") -> dict[str, object]:
     }
 
 
+def candidate_success(argv, *, timeout):
+    del timeout
+    if "-t" not in argv:
+        return subprocess.CompletedProcess(argv, 0, "", "")
+    object_name = argv[-1]
+    relative = object_name.split(":", 1)[1]
+    expected = dict(
+        terminal_preflight._candidate_artifact_contract([target()])
+    ).get(relative, "blob")
+    return subprocess.CompletedProcess(argv, 0, f"{expected}\n", "")
+
+
 class TerminalPreflightTest(unittest.TestCase):
     def test_contract_builder_resolves_tailscale_address_and_omits_secrets(self):
         inventory = {
@@ -156,6 +168,7 @@ class TerminalPreflightTest(unittest.TestCase):
                 outcome = terminal_preflight.execute_orchestrator(
                     spec,
                     run_command=run_command,
+                    candidate_run_command=candidate_success,
                     server_client_id_reader=lambda: "raspberrypi5-server",
                     source="TRUSTED_SOURCE",
                 )
@@ -166,6 +179,112 @@ class TerminalPreflightTest(unittest.TestCase):
         self.assertIn("unit.pcscd.socket.active", output)
         self.assertIn("repo.dirty", output)
         self.assertIn("3 issue(s) across 2 terminal(s)", output)
+
+    def test_candidate_artifacts_and_terminal_issues_are_reported_together(self):
+        selected = {
+            **target(),
+            "nfcEnabled": False,
+            "torqueEnabled": True,
+        }
+        terminal_result = {
+            "version": 1,
+            "host": "kiosk-a",
+            "profile": "kiosk",
+            "ready": False,
+            "issues": [{"code": "repo.dirty", "message": "repository dirty"}],
+        }
+
+        def remote_runner(argv, *, timeout):
+            del argv, timeout
+            marker = terminal_preflight._encode_marker(terminal_result)
+            return subprocess.CompletedProcess(
+                [], 78, f"TERMINAL_PREFLIGHT_RESULT:{marker}\n", ""
+            )
+
+        def candidate_runner(argv, *, timeout):
+            del timeout
+            if "-t" not in argv:
+                return subprocess.CompletedProcess(argv, 0, "", "")
+            object_name = argv[-1]
+            if object_name.endswith(":clients/torque-agent"):
+                return subprocess.CompletedProcess(argv, 128, "", "missing")
+            relative = object_name.split(":", 1)[1]
+            expected = dict(
+                terminal_preflight._candidate_artifact_contract([selected])
+            )[relative]
+            return subprocess.CompletedProcess(argv, 0, f"{expected}\n", "")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            lock = Path(temporary, "logs", "deploy", "fleet-release-state.lock")
+            lock.parent.mkdir(parents=True)
+            lock.write_bytes(b"")
+            spec = {
+                "version": 1,
+                "mode": "orchestrator",
+                "project": str(Path(temporary).resolve()),
+                "runId": RUN_ID,
+                "sha": SHA,
+                "expectedServerClientId": "raspberrypi5-server",
+                "targets": [selected],
+            }
+            stderr = io.StringIO()
+            with patch("sys.stderr", stderr):
+                outcome = terminal_preflight.execute_orchestrator(
+                    spec,
+                    run_command=remote_runner,
+                    candidate_run_command=candidate_runner,
+                    server_client_id_reader=lambda: "raspberrypi5-server",
+                    source="TRUSTED_SOURCE",
+                )
+
+        self.assertEqual(outcome, terminal_preflight.EX_CONFIG)
+        output = stderr.getvalue()
+        self.assertIn("candidate.artifact-missing", output)
+        self.assertIn("clients/torque-agent", output)
+        self.assertIn("repo.dirty", output)
+        self.assertIn("2 issue(s) across candidate and 1 terminal(s)", output)
+
+    def test_candidate_contract_owns_agent_source_trees_not_the_current_terminal(self):
+        selected = {
+            **target(),
+            "barcodeEnabled": True,
+            "torqueEnabled": True,
+        }
+        artifacts = dict(terminal_preflight._candidate_artifact_contract([selected]))
+        self.assertEqual(artifacts["clients/nfc-agent"], "tree")
+        self.assertEqual(artifacts["clients/barcode-agent"], "tree")
+        self.assertEqual(artifacts["clients/torque-agent"], "tree")
+
+        required_directories: list[str] = []
+
+        def record_directory(_issues, path, _code, **_requirements):
+            required_directories.append(path)
+
+        socket_stat = Mock(st_mode=stat.S_IFSOCK | 0o660)
+        with patch.object(terminal_preflight, "_check_repository"), patch.object(
+            terminal_preflight, "_check_network"
+        ), patch.object(terminal_preflight, "_check_resources"), patch.object(
+            terminal_preflight, "_require_directory", side_effect=record_directory
+        ), patch.object(terminal_preflight, "_require_file"), patch.object(
+            terminal_preflight, "_require_packages"
+        ), patch.object(terminal_preflight, "_require_command"), patch.object(
+            terminal_preflight, "_require_unit"
+        ), patch.object(terminal_preflight, "_unit_exists", return_value=False), patch.object(
+            terminal_preflight, "_command", return_value=subprocess.CompletedProcess([], 0, "", "")
+        ), patch.object(terminal_preflight.os, "stat", return_value=socket_stat), patch.object(
+            terminal_preflight, "_check_cron"
+        ):
+            result = terminal_preflight.run_target_probe(
+                {**selected, "manageKioskBrowser": False}
+            )
+
+        self.assertTrue(result["ready"])
+        self.assertFalse(
+            any(
+                path.startswith("/opt/RaspberryPiSystem_002/clients/")
+                for path in required_directories
+            )
+        )
 
     def test_orchestrator_does_not_create_a_missing_lock_or_release_state(self):
         with tempfile.TemporaryDirectory() as temporary:

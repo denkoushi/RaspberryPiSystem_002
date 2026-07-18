@@ -41,6 +41,51 @@ TARGET_MARKER_RE = re.compile(
     r"TERMINAL_PREFLIGHT_RESULT:([A-Za-z0-9_-]+={0,2})(?![A-Za-z0-9_=-])"
 )
 ALLOWED_UNTRACKED = frozenset({"power-actions"})
+_BASE_CANDIDATE_ARTIFACTS = (
+    ("infrastructure/ansible/playbooks/deploy-staged.yml", "blob"),
+    ("infrastructure/ansible/roles/common/tasks/main.yml", "blob"),
+    ("scripts/deploy/rollback-manifest.py", "blob"),
+    ("scripts/deploy/terminal-runtime-manifest.py", "blob"),
+    ("scripts/deploy/terminal-agent-health-probe.py", "blob"),
+)
+_PROFILE_CANDIDATE_ARTIFACTS = {
+    "kiosk": (
+        ("infrastructure/ansible/roles/client/tasks/main.yml", "blob"),
+    ),
+    "signage": (
+        ("infrastructure/ansible/roles/signage/tasks/main.yml", "blob"),
+    ),
+}
+_FEATURE_CANDIDATE_ARTIFACTS = {
+    "nfcEnabled": (
+        ("clients/nfc-agent", "tree"),
+        ("infrastructure/ansible/roles/client/tasks/nfc-agent.yml", "blob"),
+        ("infrastructure/ansible/roles/client/tasks/nfc-agent-lifecycle.yml", "blob"),
+        ("infrastructure/ansible/templates/nfc-agent.env.j2", "blob"),
+        ("infrastructure/docker/Dockerfile.nfc-agent", "blob"),
+        ("infrastructure/docker/docker-compose.client.yml", "blob"),
+    ),
+    "barcodeEnabled": (
+        ("clients/barcode-agent", "tree"),
+        ("infrastructure/ansible/roles/client/tasks/barcode-agent.yml", "blob"),
+        ("infrastructure/ansible/roles/client/tasks/barcode-agent-lifecycle.yml", "blob"),
+        ("infrastructure/ansible/templates/barcode-agent.env.j2", "blob"),
+        ("infrastructure/docker/Dockerfile.barcode-agent", "blob"),
+        ("infrastructure/docker/docker-compose.client.yml", "blob"),
+    ),
+    "torqueEnabled": (
+        ("clients/torque-agent", "tree"),
+        ("infrastructure/ansible/roles/client/tasks/torque-agent.yml", "blob"),
+        ("infrastructure/ansible/roles/client/tasks/torque-agent-lifecycle.yml", "blob"),
+        ("infrastructure/ansible/templates/torque-agent.env.j2", "blob"),
+        ("infrastructure/docker/Dockerfile.torque-agent", "blob"),
+        ("infrastructure/docker/docker-compose.client.yml", "blob"),
+    ),
+    "haizenEnabled": (
+        ("clients/haizen-agent", "tree"),
+        ("infrastructure/ansible/roles/client/tasks/haizen-agent.yml", "blob"),
+    ),
+}
 TARGET_LOADER = (
     "import base64,sys;source,payload=sys.argv[1:];"
     "sys.argv=['terminal-preflight',base64.b64decode(payload).decode('utf-8')];"
@@ -247,6 +292,79 @@ def _command(argv: Sequence[str], *, timeout: int = 10) -> subprocess.CompletedP
         return _default_run(argv, timeout=timeout)
     except (OSError, subprocess.TimeoutExpired) as error:
         return subprocess.CompletedProcess(list(argv), 127, "", str(error))
+
+
+def _candidate_artifact_contract(
+    targets: Sequence[Mapping[str, Any]],
+) -> tuple[tuple[str, str], ...]:
+    """Return candidate-owned paths needed by the selected release graph."""
+
+    artifacts = set(_BASE_CANDIDATE_ARTIFACTS)
+    for target in targets:
+        artifacts.update(_PROFILE_CANDIDATE_ARTIFACTS[target["profile"]])
+        for flag, required in _FEATURE_CANDIDATE_ARTIFACTS.items():
+            if target[flag]:
+                artifacts.update(required)
+    return tuple(sorted(artifacts))
+
+
+def _candidate_artifact_issues(
+    spec: Mapping[str, Any],
+    *,
+    run_command: Callable[..., Any] = _default_run,
+) -> list[dict[str, str]]:
+    """Validate candidate-owned artifacts on Pi5 without checking them out."""
+
+    project = str(spec["project"])
+    sha = str(spec["sha"])
+    try:
+        commit = run_command(
+            ["/usr/bin/git", "-C", project, "cat-file", "-e", f"{sha}^{{commit}}"],
+            timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return [
+            {
+                "code": "candidate.inspect",
+                "message": "immutable candidate commit could not be inspected on Pi5",
+            }
+        ]
+    if getattr(commit, "returncode", 1) != 0:
+        return [
+            {
+                "code": "candidate.commit",
+                "message": "immutable candidate commit is unavailable on Pi5",
+            }
+        ]
+
+    issues: list[dict[str, str]] = []
+    for path, expected_type in _candidate_artifact_contract(spec["targets"]):
+        try:
+            result = run_command(
+                ["/usr/bin/git", "-C", project, "cat-file", "-t", f"{sha}:{path}"],
+                timeout=20,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            _issue(
+                issues,
+                "candidate.artifact-read",
+                f"candidate artifact could not be inspected: {path}",
+            )
+            continue
+        observed_type = str(getattr(result, "stdout", "")).strip()
+        if getattr(result, "returncode", 1) != 0:
+            _issue(
+                issues,
+                "candidate.artifact-missing",
+                f"required candidate artifact is missing: {path}",
+            )
+        elif observed_type != expected_type:
+            _issue(
+                issues,
+                "candidate.artifact-type",
+                f"candidate artifact must be a Git {expected_type}: {path}",
+            )
+    return issues
 
 
 def _issue(issues: list[dict[str, str]], code: str, message: str) -> None:
@@ -476,10 +594,8 @@ def run_target_probe(spec: Mapping[str, Any]) -> dict[str, Any]:
         if _unit_exists(unit):
             _require_unit(issues, unit, enabled=True)
 
-    repo = str(spec["repoPath"])
     docker_required = False
     if spec["nfcEnabled"]:
-        _require_directory(issues, f"{repo}/clients/nfc-agent", "nfc.directory")
         _require_packages(issues, ("pcscd", "pcsc-tools"))
         # Debian/Raspberry Pi OS uses socket activation.  pcscd.service is
         # expected to be indirect and may be inactive while the enabled socket
@@ -494,11 +610,9 @@ def run_target_probe(spec: Mapping[str, Any]) -> dict[str, Any]:
                 _issue(issues, "nfc.pcsc-socket", "PC/SC communication path is not a socket")
         docker_required = True
     if spec["barcodeEnabled"]:
-        _require_directory(issues, f"{repo}/clients/barcode-agent", "barcode.directory")
         docker_required = True
     if spec["torqueEnabled"]:
         _require_directory(issues, "/usr/local/libexec", "torque.helper-directory")
-        _require_directory(issues, f"{repo}/clients/torque-agent", "torque.directory")
         docker_required = True
     if docker_required:
         _require_command(issues, "docker")
@@ -653,6 +767,7 @@ def execute_orchestrator(
     spec: Mapping[str, Any],
     *,
     run_command: Callable[..., Any] = _default_run,
+    candidate_run_command: Callable[..., Any] = _default_run,
     server_client_id_reader: Callable[[], str] | None = None,
     source: str | None = None,
 ) -> int:
@@ -680,6 +795,9 @@ def execute_orchestrator(
             return EX_CONFIG
 
         probe_source = source or _source_text()
+        candidate_issues = _candidate_artifact_issues(
+            spec, run_command=candidate_run_command
+        )
         results: list[dict[str, Any]] = []
         for target in spec["targets"]:
             command = _remote_probe_command(target, probe_source)
@@ -715,17 +833,30 @@ def execute_orchestrator(
             results.append(result)
 
         failures = [result for result in results if result.get("ready") is not True]
-        if failures:
+        if candidate_issues or failures:
             print("[ERROR] aggregate terminal preflight rejected the release:", file=sys.stderr)
+            for issue in candidate_issues:
+                print(
+                    f"- candidate: {issue.get('code')}: {issue.get('message')}",
+                    file=sys.stderr,
+                )
             for result in failures:
                 for issue in result.get("issues") or []:
                     print(
                         f"- {result.get('host')}: {issue.get('code')}: {issue.get('message')}",
                         file=sys.stderr,
                     )
+            issue_count = len(candidate_issues) + sum(
+                len(result.get("issues") or []) for result in failures
+            )
+            scopes = (
+                f"candidate and {len(failures)} terminal(s)"
+                if candidate_issues
+                else f"{len(failures)} terminal(s)"
+            )
             print(
-                f"[ERROR] {sum(len(result.get('issues') or []) for result in failures)} "
-                f"issue(s) across {len(failures)} terminal(s); no release unit was submitted",
+                f"[ERROR] {issue_count} issue(s) across {scopes}; "
+                "no release unit was submitted",
                 file=sys.stderr,
             )
             return EX_CONFIG

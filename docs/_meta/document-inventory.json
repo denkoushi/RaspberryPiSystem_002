@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 526,
-    "totalLines": 152040,
-    "totalBytes": 11427392,
+    "totalLines": 152057,
+    "totalBytes": 11432002,
     "withFrontmatter": 212,
     "withStatus": 70,
     "sourceOfTruthDeclared": 42,
@@ -18093,8 +18093,8 @@
     },
     {
       "path": "docs/guides/deployment.md",
-      "lineCount": 167,
-      "byteSize": 9663,
+      "lineCount": 169,
+      "byteSize": 10335,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -31364,8 +31364,8 @@
     },
     {
       "path": "docs/plans/deployment-foundation-refactor-execplan.md",
-      "lineCount": 906,
-      "byteSize": 152119,
+      "lineCount": 921,
+      "byteSize": 156057,
       "hasFrontmatter": true,
       "title": "Refactor the deployment foundation through eight gated pull requests",
       "status": "in-progress",
@@ -31380,19 +31380,19 @@
           "length": 1226
         },
         {
-          "line": 880,
+          "line": 893,
           "length": 1025
         },
         {
-          "line": 886,
+          "line": 899,
           "length": 1002
         },
         {
-          "line": 892,
+          "line": 905,
           "length": 1197
         },
         {
-          "line": 894,
+          "line": 907,
           "length": 1137
         }
       ],

@@ -1,18 +1,27 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
+import stat
 import subprocess
+import sys
 import tempfile
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 
 ROOT = Path(__file__).resolve().parents[3]
 PROBE = ROOT / "scripts/deploy/terminal-agent-health-probe.py"
+PROBE_SPEC = importlib.util.spec_from_file_location("terminal_agent_health_probe", PROBE)
+assert PROBE_SPEC is not None and PROBE_SPEC.loader is not None
+PROBE_MODULE = importlib.util.module_from_spec(PROBE_SPEC)
+sys.modules[PROBE_SPEC.name] = PROBE_MODULE
+PROBE_SPEC.loader.exec_module(PROBE_MODULE)
 
 
 class AgentHandler(BaseHTTPRequestHandler):
@@ -109,6 +118,52 @@ class TerminalAgentHealthProbeTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("not uniquely running", result.stderr)
         self.assertEqual(AgentHandler.requests, 0)
+
+
+class PcscRuntimeContractTest(unittest.TestCase):
+    def test_pcsc_runtime_uses_socket_activation_contract(self):
+        commands: list[tuple[str, ...]] = []
+
+        def run(command, *, cwd=None):
+            del cwd
+            commands.append(tuple(command))
+            return "loaded\n" if "show" in command else ""
+
+        socket_state = Mock(st_mode=stat.S_IFSOCK | 0o660)
+        with patch.object(PROBE_MODULE, "_run", side_effect=run), patch.object(
+            PROBE_MODULE.os, "stat", return_value=socket_state
+        ):
+            PROBE_MODULE._pcsc_runtime()
+
+        self.assertIn(
+            (
+                "systemctl",
+                "show",
+                "--property=LoadState",
+                "--value",
+                "pcscd.socket",
+            ),
+            commands,
+        )
+        self.assertIn(
+            ("systemctl", "is-enabled", "--quiet", "pcscd.socket"), commands
+        )
+        self.assertIn(
+            ("systemctl", "is-active", "--quiet", "pcscd.socket"), commands
+        )
+        self.assertFalse(any("pcscd.service" in command for command in commands))
+
+    def test_pcsc_runtime_rejects_a_non_socket_communication_path(self):
+        def run(command, *, cwd=None):
+            del cwd
+            return "loaded\n" if "show" in command else ""
+
+        regular_file = Mock(st_mode=stat.S_IFREG | 0o660)
+        with patch.object(PROBE_MODULE, "_run", side_effect=run), patch.object(
+            PROBE_MODULE.os, "stat", return_value=regular_file
+        ):
+            with self.assertRaisesRegex(PROBE_MODULE.ProbeError, "not a socket"):
+                PROBE_MODULE._pcsc_runtime()
 
 
 if __name__ == "__main__":
