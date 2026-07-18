@@ -16,8 +16,9 @@ from torque_agent.capture_cli import (
     EXIT_USAGE_OR_SAFETY,
     main,
 )
-from torque_agent.capture_fixtures import sanitize_capture, validate_fixtures
+from torque_agent.capture_fixtures import replay_capture, sanitize_capture, validate_fixtures
 from torque_agent.capture_models import (
+    DEFAULT_FRAME_TERMINATORS,
     PRIVATE_EVENTS_FILE,
     PRIVATE_MANIFEST_FILE,
     CaptureConfiguration,
@@ -78,7 +79,13 @@ def key_events(*frames: tuple[str, str]) -> list[ObservedKeyEvent]:
     return events
 
 
-def configuration(output: Path, *, expected_frames: int = 2, timeout: float = 1.0) -> CaptureConfiguration:
+def configuration(
+    output: Path,
+    *,
+    expected_frames: int = 2,
+    timeout: float = 1.0,
+    frame_terminators: tuple[str, ...] = DEFAULT_FRAME_TERMINATORS,
+) -> CaptureConfiguration:
     return CaptureConfiguration(
         device=Path("/dev/input/by-id/CEM3-BTLA-event-kbd"),
         output=output,
@@ -87,6 +94,7 @@ def configuration(output: Path, *, expected_frames: int = 2, timeout: float = 1.
         firmware="fixture-only",
         output_config="fixture-only",
         timeout_seconds=timeout,
+        frame_terminators=frame_terminators,
     )
 
 
@@ -121,6 +129,65 @@ def test_capture_preserves_events_terminators_permissions_and_releases_grab(tmp_
         "KEY_ENTER",
     ]
     assert json.loads((output / PRIVATE_MANIFEST_FILE).read_text())["status"] == "complete"
+
+
+def test_capture_buffers_events_in_ram_and_syncs_once_at_finalization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fsync_calls: list[int] = []
+    monkeypatch.setattr("torque_agent.capture_recorder.os.fsync", fsync_calls.append)
+    source = FakeEventSource(key_events(("firstframe", "KEY_ENTER"), ("secondframe", "KEY_ENTER")))
+
+    assert asyncio.run(capture_events(source, configuration(tmp_path / "batched-sync"))) == 2
+
+    # Initial manifest, one final event batch, and final manifest. The
+    # individual key down/up events must not trigger durable writes.
+    assert len(fsync_calls) == 3
+
+
+def test_capture_can_preserve_tab_delimited_fields_until_enter_terminates_transmission(tmp_path: Path) -> None:
+    source = FakeEventSource(
+        key_events(("001", "KEY_TAB"), ("actual", "KEY_TAB"), ("nm", "KEY_ENTER"))
+    )
+    output = tmp_path / "enter-terminated-capture"
+    config = configuration(
+        output,
+        expected_frames=1,
+        frame_terminators=("KEY_ENTER", "KEY_KPENTER"),
+    )
+
+    assert asyncio.run(capture_events(source, config)) == 1
+    replay = replay_capture(output)
+    assert len(replay.frames) == 1
+    assert replay.frames[0].text == "001\tactual\tnm"
+    assert replay.frames[0].terminator == "KEY_ENTER"
+    manifest = json.loads((output / PRIVATE_MANIFEST_FILE).read_text())
+    assert manifest["frameTerminators"] == ["KEY_ENTER", "KEY_KPENTER"]
+    assert manifest["capturedFrames"] == 1
+
+
+def test_replay_retains_unknown_only_frame_and_sanitizer_fails_closed(tmp_path: Path) -> None:
+    source = FakeEventSource(
+        [
+            ObservedKeyEvent(0, 183, 1, "down", ("KEY_F13",)),
+            ObservedKeyEvent(1, 28, 1, "down", ("KEY_ENTER",)),
+        ]
+    )
+    output = tmp_path / "unknown-only-capture"
+    assert asyncio.run(capture_events(source, configuration(output, expected_frames=1))) == 1
+
+    replay = replay_capture(output)
+    assert len(replay.frames) == 1
+    assert replay.frames[0].text == ""
+    assert replay.frames[0].unsupported_key_codes == ("KEY_F13",)
+    assert replay.unsupported_key_count == 1
+
+    redactions = tmp_path / "unknown-map.torque-redactions.json"
+    redactions.write_text(json.dumps({"literals": [{"source": "actual", "replacement": "SERIAL_A"}]}))
+    redactions.chmod(0o600)
+    with pytest.raises(CaptureIncompleteError, match="unsupported keys"):
+        sanitize_capture(output, redactions, tmp_path / "unknown.jsonl")
 
 
 def test_capture_releases_source_and_retains_partial_output_on_device_error_and_timeout(tmp_path: Path) -> None:
@@ -184,6 +251,125 @@ def test_linux_adapter_releases_exclusive_grab_on_success_and_setup_error(
     assert not failed.grabbed and failed.closed
 
 
+def test_linux_adapter_reopens_stable_by_id_path_after_device_disconnect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created: list[object] = []
+
+    class FakeLoop:
+        def __init__(self, events: list[object]) -> None:
+            self._events = iter(events)
+
+        def __aiter__(self) -> FakeLoop:
+            return self
+
+        async def __anext__(self) -> object:
+            event = next(self._events)
+            if isinstance(event, Exception):
+                raise event
+            return event
+
+    class FakeDevice:
+        def __init__(self, path: str) -> None:
+            self.path = path
+            self.grabbed = False
+            self.closed = False
+            self._index = len(created)
+            created.append(self)
+
+        def grab(self) -> None:
+            self.grabbed = True
+
+        def ungrab(self) -> None:
+            self.grabbed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+        def async_read_loop(self) -> FakeLoop:
+            if self._index == 0:
+                return FakeLoop([OSError(19, "device disconnected")])
+            return FakeLoop([SimpleNamespace(type=1, code=30, value=1)])
+
+    key_event = SimpleNamespace(
+        keycode="KEY_A",
+        keystate=1,
+        key_down=1,
+        key_up=0,
+        key_hold=2,
+    )
+    module = SimpleNamespace(
+        InputDevice=FakeDevice,
+        categorize=lambda event: key_event,
+        ecodes=SimpleNamespace(EV_SYN=0, EV_KEY=1, SYN_DROPPED=3),
+    )
+    monkeypatch.setitem(sys.modules, "evdev", module)
+
+    async def receive_after_reconnect() -> ObservedKeyEvent:
+        async with LinuxEvdevEventSource(Path("/dev/input/by-id/CEM3-BTLA-event-kbd")) as source:
+            return await anext(source)
+
+    observed = asyncio.run(receive_after_reconnect())
+
+    assert observed.key_codes == ("KEY_A",)
+    assert len(created) == 2
+    assert all(device.closed and not device.grabbed for device in created)
+
+
+def test_linux_adapter_rejects_kernel_input_buffer_overrun(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created: list[object] = []
+
+    class FakeLoop:
+        def __init__(self) -> None:
+            self._returned = False
+
+        def __aiter__(self) -> FakeLoop:
+            return self
+
+        async def __anext__(self) -> object:
+            if self._returned:
+                raise StopAsyncIteration
+            self._returned = True
+            return SimpleNamespace(type=0, code=3, value=0)
+
+    class FakeDevice:
+        def __init__(self, _path: str) -> None:
+            self.grabbed = False
+            self.closed = False
+            created.append(self)
+
+        def grab(self) -> None:
+            self.grabbed = True
+
+        def ungrab(self) -> None:
+            self.grabbed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+        def async_read_loop(self) -> FakeLoop:
+            return FakeLoop()
+
+    module = SimpleNamespace(
+        InputDevice=FakeDevice,
+        categorize=lambda event: event,
+        ecodes=SimpleNamespace(EV_SYN=0, EV_KEY=1, SYN_DROPPED=3),
+    )
+    monkeypatch.setitem(sys.modules, "evdev", module)
+
+    async def receive_overrun() -> None:
+        async with LinuxEvdevEventSource(Path("/dev/input/by-id/CEM3-BTLA-event-kbd")) as source:
+            with pytest.raises(CaptureDeviceError, match="buffer overrun"):
+                await anext(source)
+
+    asyncio.run(receive_overrun())
+
+    assert len(created) == 1
+    assert created[0].closed and not created[0].grabbed
+
+
 def test_replay_on_repository_fixture_is_explicit_and_never_prints_payload(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["replay", "--input", str(FIXTURES / "synthetic-key-events.jsonl"), "--synthetic"]) == EXIT_SUCCESS
     captured = capsys.readouterr()
@@ -237,6 +423,26 @@ def test_sanitize_requires_every_literal_and_emits_only_anonymized_fixture_field
     with pytest.raises(CaptureSafetyError, match="not found"):
         sanitize_capture(raw, missing_map, tmp_path / "missing.jsonl")
 
+    noise_then_value_raw = tmp_path / "noise-then-value-raw"
+    assert asyncio.run(
+        capture_events(
+            FakeEventSource(key_events(("", "KEY_ENTER"), ("actualone", "KEY_ENTER"))),
+            configuration(noise_then_value_raw, expected_frames=1),
+        )
+    ) == 1
+    single_redactions = tmp_path / "single-map.torque-redactions.json"
+    single_redactions.write_text(
+        json.dumps({"literals": [{"source": "actualone", "replacement": "SERIAL_A"}]})
+    )
+    single_redactions.chmod(0o600)
+    noise_output = tmp_path / "noise-filtered.jsonl"
+    assert sanitize_capture(noise_then_value_raw, single_redactions, noise_output) == {
+        "frames": 1,
+        "scenario": "normal",
+        "aliases": 1,
+    }
+    assert json.loads(noise_output.read_text())["payloadText"] == "SERIAL_A"
+
 
 def test_validate_accepts_synthetic_contract_and_detects_coverage_or_device_shortfall(tmp_path: Path) -> None:
     result = validate_fixtures(FIXTURES)
@@ -261,21 +467,23 @@ def test_validate_accepts_synthetic_contract_and_detects_coverage_or_device_shor
 
     complete = tmp_path / "complete"
     complete.mkdir()
-    for scenario in ("normal", "below_limit", "above_limit"):
-        (complete / f"{scenario}.jsonl").write_text(
+    (complete / "normal.jsonl").write_text(
+        "".join(
             json.dumps(
                 {
                     "schemaVersion": 1,
                     "payloadText": "SERIAL_A",
                     "terminator": "KEY_TAB",
-                    "scenario": scenario,
-                    "sequence": 1,
+                    "scenario": "normal",
+                    "sequence": sequence,
                     "provenance": "observed",
                 }
             )
             + "\n"
+            for sequence in (1, 2, 3)
         )
-    for scenario in ("repeated_memory", "rapid_consecutive"):
+    )
+    for scenario, sequences in (("repeated_memory", (1, 2)), ("rapid_consecutive", (1, 2, 3, 4, 5))):
         records = [
             {
                 "schemaVersion": 1,
@@ -285,7 +493,7 @@ def test_validate_accepts_synthetic_contract_and_detects_coverage_or_device_shor
                 "sequence": sequence,
                 "provenance": "observed",
             }
-            for sequence in (1, 2)
+            for sequence in sequences
         ]
         (complete / f"{scenario}.jsonl").write_text("".join(json.dumps(record) + "\n" for record in records))
     with pytest.raises(CaptureIncompleteError, match="2 distinct"):

@@ -14,9 +14,10 @@ async def read_hid_device(
     path: Path,
     on_line: Callable[[Path, str], Awaitable[None]],
     on_decode_error: Callable[[Path, DecodedHidFrame], Awaitable[None]] | None = None,
+    frame_terminators: frozenset[str] | None = None,
 ) -> None:
     device = InputDevice(str(path))
-    decoder = HidLineDecoder()
+    decoder = HidLineDecoder(terminators=frame_terminators)
     grabbed = False
     try:
         device.grab()

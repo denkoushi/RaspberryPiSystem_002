@@ -8,6 +8,11 @@ from typing import Protocol
 CAPTURE_SCHEMA_VERSION = 1
 PRIVATE_EVENTS_FILE = "events.torque-capture-private.jsonl"
 PRIVATE_MANIFEST_FILE = "manifest.torque-capture-private.json"
+DEFAULT_FRAME_TERMINATORS = ("KEY_ENTER", "KEY_KPENTER", "KEY_TAB")
+FRAME_TERMINATORS_BY_NAME = {
+    "enter": ("KEY_ENTER", "KEY_KPENTER"),
+    "tab": ("KEY_TAB",),
+}
 
 
 class CaptureSafetyError(ValueError):
@@ -64,6 +69,7 @@ class CaptureConfiguration:
     firmware: str
     output_config: str
     timeout_seconds: float = 120.0
+    frame_terminators: tuple[str, ...] = DEFAULT_FRAME_TERMINATORS
 
 
 class AsyncKeyEventSource(Protocol):

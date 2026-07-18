@@ -33,6 +33,7 @@ UNSHIFTED_KEYS = {
     "KEY_KPPLUS": "+",
     "KEY_KPASTERISK": "*",
     "KEY_KPSLASH": "/",
+    "KEY_TAB": "\t",
 }
 SHIFTED_KEYS = {
     **{f"KEY_{letter}": letter for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"},
@@ -71,11 +72,12 @@ class DecodedHidFrame:
 
 
 class HidLineDecoder:
-    def __init__(self) -> None:
+    def __init__(self, *, terminators: frozenset[str] | None = None) -> None:
         self._buffer: list[str] = []
         self._key_codes: list[str] = []
         self._unsupported_key_codes: list[str] = []
         self._pressed_shift_keys: set[str] = set()
+        self._terminators = terminators if terminators is not None else frozenset(TERMINATORS)
 
     @property
     def pending_key_count(self) -> int:
@@ -98,7 +100,7 @@ class HidLineDecoder:
         if key_state != "down":
             return None
 
-        if key_code in TERMINATORS:
+        if key_code in self._terminators:
             frame = DecodedHidFrame(
                 text="".join(self._buffer),
                 terminator=key_code,

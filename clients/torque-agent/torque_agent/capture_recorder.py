@@ -21,7 +21,10 @@ from .capture_models import (
     CaptureSafetyError,
     ObservedKeyEvent,
 )
-from .hid_line_decoder import TERMINATORS
+from .hid_line_decoder import SHIFT_KEYS
+
+
+MAX_CAPTURE_EVENTS = 100_000
 
 
 def _utc_now() -> str:
@@ -97,6 +100,8 @@ class PrivateCaptureWriter:
         self._sequence = 0
         self._frame_no = 1
         self._completed_frames = 0
+        self._frame_has_payload = False
+        self._buffered_records: list[str] = []
         self._started_at = _utc_now()
 
     @property
@@ -120,6 +125,8 @@ class PrivateCaptureWriter:
     def record(self, event: ObservedKeyEvent) -> bool:
         if self._stream is None:
             raise RuntimeError("capture writer has not been started")
+        if len(self._buffered_records) >= MAX_CAPTURE_EVENTS:
+            raise CaptureIncompleteError("capture RAM buffer limit exceeded; acquired events were retained")
         self._sequence += 1
         record = CapturedKeyEvent(
             sequence=self._sequence,
@@ -130,19 +137,35 @@ class PrivateCaptureWriter:
             key_state=event.key_state,
             key_codes=event.key_codes,
         ).to_private_record()
-        self._stream.write(json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n")
+        self._buffered_records.append(
+            json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"
+        )
+
+        if event.key_state == "down":
+            key_code = event.key_codes[0]
+            if key_code in self.config.frame_terminators:
+                if self._frame_has_payload:
+                    self._completed_frames += 1
+                    self._frame_no += 1
+                    self._frame_has_payload = False
+            elif key_code not in SHIFT_KEYS:
+                self._frame_has_payload = True
+        return self._completed_frames >= self.config.expected_frames
+
+    def _persist_buffered_events(self) -> None:
+        if self._stream is None or not self._buffered_records:
+            return
+        # The latency-sensitive evdev loop records into bounded RAM only.
+        # Persist once after success, timeout, interruption, or error so slow
+        # Raspberry Pi storage cannot cause a kernel input queue overrun.
+        self._stream.writelines(self._buffered_records)
         self._stream.flush()
         os.fsync(self._stream.fileno())
-
-        if event.key_state == "down" and event.key_codes[0] in TERMINATORS:
-            self._completed_frames += 1
-            self._frame_no += 1
-        return self._completed_frames >= self.config.expected_frames
+        self._buffered_records.clear()
 
     def finalize(self, status: str, *, error: str | None = None) -> None:
         if self._stream is not None:
-            self._stream.flush()
-            os.fsync(self._stream.fileno())
+            self._persist_buffered_events()
             self._stream.close()
             self._stream = None
         self._write_manifest(status, error=error)
@@ -158,6 +181,7 @@ class PrivateCaptureWriter:
             "devicePath": str(self.config.device),
             "firmware": self.config.firmware,
             "outputConfig": self.config.output_config,
+            "frameTerminators": list(self.config.frame_terminators),
             "startedAt": self._started_at,
             "finishedAt": None if status == "in_progress" else _utc_now(),
         }

@@ -9,6 +9,7 @@ from typing import Any
 
 from .capture_models import (
     CAPTURE_SCHEMA_VERSION,
+    DEFAULT_FRAME_TERMINATORS,
     PRIVATE_EVENTS_FILE,
     PRIVATE_MANIFEST_FILE,
     CaptureIncompleteError,
@@ -20,13 +21,23 @@ from .hid_line_decoder import DecodedHidFrame, HidLineDecoder, TERMINATORS
 
 OBSERVED_SCENARIOS = {
     "normal",
-    "below_limit",
-    "above_limit",
     "repeated_memory",
     "rapid_consecutive",
 }
-DERIVED_SCENARIOS = {"partial", "missing_field", "bad_number", "unsupported_unit"}
+DERIVED_SCENARIOS = {
+    "below_limit",
+    "above_limit",
+    "partial",
+    "missing_field",
+    "bad_number",
+    "unsupported_unit",
+}
 ALLOWED_SCENARIOS = OBSERVED_SCENARIOS | DERIVED_SCENARIOS
+OBSERVED_MINIMUM_RECORDS = {
+    "normal": 3,
+    "repeated_memory": 2,
+    "rapid_consecutive": 5,
+}
 FIXTURE_KEYS = {
     "schemaVersion",
     "payloadText",
@@ -101,6 +112,7 @@ def resolve_private_capture(input_path: Path) -> tuple[Path, dict[str, Any] | No
 
 
 def replay_capture(input_path: Path, *, allow_repository_input: bool = False) -> ReplayResult:
+    manifest: dict[str, Any] | None = None
     if allow_repository_input:
         events_path = input_path.expanduser().resolve(strict=True)
         if events_path.name != "synthetic-key-events.jsonl":
@@ -114,8 +126,19 @@ def replay_capture(input_path: Path, *, allow_repository_input: bool = False) ->
         }:
             raise CaptureSafetyError("repository replay requires a synthetic fixture contract marker")
     else:
-        events_path, _ = resolve_private_capture(input_path)
-    decoder = HidLineDecoder()
+        events_path, manifest = resolve_private_capture(input_path)
+    raw_terminators = manifest.get("frameTerminators") if manifest is not None else None
+    if raw_terminators is None:
+        frame_terminators = frozenset(DEFAULT_FRAME_TERMINATORS)
+    elif (
+        not isinstance(raw_terminators, list)
+        or not raw_terminators
+        or not all(isinstance(value, str) and value in TERMINATORS for value in raw_terminators)
+    ):
+        raise CaptureSafetyError("capture manifest has invalid frame terminators")
+    else:
+        frame_terminators = frozenset(raw_terminators)
+    decoder = HidLineDecoder(terminators=frame_terminators)
     frames: list[DecodedHidFrame] = []
     for index, record in enumerate(_load_jsonl(events_path), start=1):
         if record.get("schemaVersion") != CAPTURE_SCHEMA_VERSION:
@@ -129,7 +152,7 @@ def replay_capture(input_path: Path, *, allow_repository_input: bool = False) ->
         if key_state not in {"down", "up", "hold"}:
             raise CaptureSafetyError(f"invalid key state at event {index}")
         frame = decoder.feed(key_codes[0], key_state)
-        if frame is not None:
+        if frame is not None and (frame.text or frame.unsupported_key_codes):
             frames.append(frame)
     return ReplayResult(
         frames=tuple(frames),
@@ -303,6 +326,7 @@ def validate_fixtures(
         raise CaptureIncompleteError("fixture set contains no scenario files")
 
     scenarios: set[str] = set()
+    scenario_record_counts: dict[str, int] = {}
     aliases: set[str] = set()
     total_records = 0
     for path in fixture_files:
@@ -317,14 +341,20 @@ def validate_fixtures(
             if record["provenance"] != required_provenance:
                 raise CaptureSafetyError(f"fixture provenance does not match its scenario: {path.name}")
             scenarios.add(record["scenario"])
+            scenario_record_counts[record["scenario"]] = scenario_record_counts.get(record["scenario"], 0) + 1
             aliases.update(SERIAL_ALIAS.findall(record["payloadText"]))
             total_records += 1
-        if path.stem in {"repeated_memory", "rapid_consecutive"} and len(records) < 2:
-            raise CaptureIncompleteError(f"scenario requires at least two frames: {path.stem}")
 
     missing = OBSERVED_SCENARIOS - scenarios
     if missing:
         raise CaptureIncompleteError("fixture coverage is incomplete: " + ", ".join(sorted(missing)))
+    insufficient = [] if synthetic else [
+        f"{scenario} ({scenario_record_counts.get(scenario, 0)}/{minimum})"
+        for scenario, minimum in OBSERVED_MINIMUM_RECORDS.items()
+        if scenario_record_counts.get(scenario, 0) < minimum
+    ]
+    if insufficient:
+        raise CaptureIncompleteError("fixture record coverage is incomplete: " + ", ".join(insufficient))
     if not synthetic:
         minimum_aliases = 2 if available_device_count > 1 else 1
         if len(aliases) < minimum_aliases:

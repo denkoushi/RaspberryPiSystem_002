@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Protocol
 
+from .hid_line_decoder import TERMINATORS
 from .models import ParsedTorqueEvent
 
 
@@ -10,22 +12,43 @@ class TorquePayloadParser(Protocol):
     def parse(self, raw_text: str) -> ParsedTorqueEvent: ...
 
 
+@dataclass(frozen=True)
+class ParserDefinition:
+    factory: Callable[[], TorquePayloadParser]
+    frame_terminators: frozenset[str]
+
+
 class ParserRegistry:
     def __init__(self) -> None:
-        self._factories: dict[str, Callable[[], TorquePayloadParser]] = {}
+        self._definitions: dict[str, ParserDefinition] = {}
 
-    def register(self, profile: str, factory: Callable[[], TorquePayloadParser]) -> None:
-        if profile in self._factories:
+    def register(
+        self,
+        profile: str,
+        factory: Callable[[], TorquePayloadParser],
+        *,
+        frame_terminators: frozenset[str] | None = None,
+    ) -> None:
+        if profile in self._definitions:
             raise ValueError(f"Parser already registered: {profile}")
-        self._factories[profile] = factory
+        selected_terminators = frame_terminators or frozenset(TERMINATORS)
+        if not selected_terminators or not selected_terminators.issubset(TERMINATORS):
+            raise ValueError(f"Parser has invalid HID frame terminators: {profile}")
+        self._definitions[profile] = ParserDefinition(factory, selected_terminators)
 
     def create(self, profile: str) -> TorquePayloadParser:
-        factory = self._factories.get(profile)
-        if not factory:
+        definition = self._definitions.get(profile)
+        if not definition:
             raise ValueError(
                 f"No verified parser for profile '{profile}'. Capture and approve a real CEM3-BTLA fixture before enabling it."
             )
-        return factory()
+        return definition.factory()
+
+    def frame_terminators(self, profile: str) -> frozenset[str]:
+        definition = self._definitions.get(profile)
+        if not definition:
+            raise ValueError(f"No verified parser profile: {profile}")
+        return definition.frame_terminators
 
 
 class SyntheticDelimitedFixtureParser:

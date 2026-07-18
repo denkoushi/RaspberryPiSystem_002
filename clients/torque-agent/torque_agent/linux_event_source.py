@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import errno
 import time
 from pathlib import Path
 from typing import Any
@@ -19,36 +21,7 @@ class LinuxEvdevEventSource:
         self._loop: Any | None = None
         self._grabbed = False
 
-    async def __aenter__(self) -> LinuxEvdevEventSource:
-        try:
-            from evdev import InputDevice, categorize, ecodes
-        except ImportError as error:
-            raise CaptureDeviceError("capture requires Linux with the evdev package installed") from error
-
-        try:
-            self._device = InputDevice(str(self._device_path))
-            self._device.grab()
-            self._grabbed = True
-            self._ecodes = ecodes
-            self._categorize = categorize
-            self._started_ns = time.monotonic_ns()
-            self._loop = self._device.async_read_loop()
-        except Exception as error:
-            if self._device is not None:
-                if self._grabbed:
-                    try:
-                        self._device.ungrab()
-                    except OSError:
-                        pass
-                self._device.close()
-                self._device = None
-                self._grabbed = False
-            raise CaptureDeviceError(
-                "device could not be grabbed exclusively; stop torque-agent if it owns the device"
-            ) from error
-        return self
-
-    async def __aexit__(self, exc_type: object, exc: object, traceback: object) -> None:
+    def _close_device(self) -> None:
         if self._device is None:
             return
         try:
@@ -60,7 +33,54 @@ class LinuxEvdevEventSource:
         finally:
             self._device.close()
             self._device = None
+            self._loop = None
             self._grabbed = False
+
+    def _open_device(self) -> None:
+        if self._ecodes is None or self._categorize is None:
+            raise RuntimeError("evdev adapter has not been initialized")
+        try:
+            self._device = self._input_device(str(self._device_path))
+            self._device.grab()
+            self._grabbed = True
+            self._loop = self._device.async_read_loop()
+        except Exception:
+            self._close_device()
+            raise
+
+    async def _reopen_after_disconnect(self) -> None:
+        while True:
+            try:
+                self._open_device()
+                return
+            except OSError as error:
+                if error.errno not in {errno.ENOENT, errno.ENODEV}:
+                    raise CaptureDeviceError(
+                        "device could not be grabbed after reconnect; stop torque-agent if it owns the device"
+                    ) from error
+                await asyncio.sleep(0.05)
+
+    async def __aenter__(self) -> LinuxEvdevEventSource:
+        try:
+            from evdev import InputDevice, categorize, ecodes
+        except ImportError as error:
+            raise CaptureDeviceError("capture requires Linux with the evdev package installed") from error
+
+        self._input_device = InputDevice
+        self._ecodes = ecodes
+        self._categorize = categorize
+        try:
+            self._started_ns = time.monotonic_ns()
+            self._open_device()
+        except Exception as error:
+            self._close_device()
+            raise CaptureDeviceError(
+                "device could not be grabbed exclusively; stop torque-agent if it owns the device"
+            ) from error
+        return self
+
+    async def __aexit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        self._close_device()
 
     def __aiter__(self) -> LinuxEvdevEventSource:
         return self
@@ -71,8 +91,14 @@ class LinuxEvdevEventSource:
         while True:
             try:
                 event = await anext(self._loop)
-            except StopAsyncIteration:
-                raise
+            except (OSError, StopAsyncIteration):
+                self._close_device()
+                await self._reopen_after_disconnect()
+                continue
+            if event.type == self._ecodes.EV_SYN and event.code == self._ecodes.SYN_DROPPED:
+                raise CaptureDeviceError(
+                    "kernel input buffer overrun detected; captured key data is incomplete"
+                )
             if event.type != self._ecodes.EV_KEY:
                 continue
             key_event = self._categorize(event)

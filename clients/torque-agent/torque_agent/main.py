@@ -80,6 +80,9 @@ async def run_agent(config: AgentConfig) -> None:
     registry = build_registry(config)
     parsers = {device.path: registry.create(device.parser_profile) for device in config.devices}
     parser_profiles = {device.path: device.parser_profile for device in config.devices}
+    frame_terminators = {
+        device.path: registry.frame_terminators(device.parser_profile) for device in config.devices
+    }
     ingestor = TorqueEventIngestor(
         queue=queue,
         bindings=bindings,
@@ -92,7 +95,14 @@ async def run_agent(config: AgentConfig) -> None:
     tasks = [asyncio.create_task(OutboxSender(config.api_base_url, config.client_key, queue).run()),
              asyncio.create_task(server.serve())]
     tasks.extend(
-        asyncio.create_task(read_hid_device(device.path, ingestor.on_line, ingestor.on_decode_error))
+        asyncio.create_task(
+            read_hid_device(
+                device.path,
+                ingestor.on_line,
+                ingestor.on_decode_error,
+                frame_terminators[device.path],
+            )
+        )
         for device in config.devices
     )
     await asyncio.gather(*tasks)

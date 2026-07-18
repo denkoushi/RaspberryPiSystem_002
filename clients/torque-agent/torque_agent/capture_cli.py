@@ -9,6 +9,7 @@ from typing import Sequence
 
 from .capture_fixtures import replay_summary, sanitize_capture, validate_fixtures
 from .capture_models import (
+    FRAME_TERMINATORS_BY_NAME,
     CaptureConfiguration,
     CaptureDeviceError,
     CaptureIncompleteError,
@@ -53,6 +54,12 @@ def build_parser() -> argparse.ArgumentParser:
     capture.add_argument("--expected-frames", type=_positive_int, required=True)
     capture.add_argument("--firmware", required=True)
     capture.add_argument("--output-config", required=True)
+    capture.add_argument(
+        "--terminator",
+        choices=sorted(FRAME_TERMINATORS_BY_NAME),
+        default="enter",
+        help="key that completes one transmitted measurement; TAB remains a field delimiter in enter mode",
+    )
     capture.add_argument("--timeout", type=_positive_float, default=120.0)
 
     replay = subparsers.add_parser("replay", help="replay captured EV_KEY events without printing payloads")
@@ -91,6 +98,7 @@ def _capture(args: argparse.Namespace) -> dict[str, object]:
         firmware=args.firmware,
         output_config=args.output_config,
         timeout_seconds=args.timeout,
+        frame_terminators=FRAME_TERMINATORS_BY_NAME[args.terminator],
     )
     frames = asyncio.run(capture_events(LinuxEvdevEventSource(config.device), config))
     return {"status": "complete", "frames": frames}

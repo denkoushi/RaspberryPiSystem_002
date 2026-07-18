@@ -6,13 +6,17 @@ import httpx
 import pytest
 
 from torque_agent.binding import BindingStore
+from torque_agent.cem3_btla_parser import Cem3BtlaHogpParser
 from torque_agent.config import AgentConfig
 from torque_agent.hid_line_decoder import DecodedHidFrame, HidLineDecoder
 from torque_agent.ingestor import TorqueEventIngestor
-from torque_agent.main import create_app
+from torque_agent.main import build_registry, create_app
 from torque_agent.models import WorkBinding
 from torque_agent.parser_registry import ParserRegistry, SyntheticDelimitedFixtureParser
 from torque_agent.queue_store import QueueStore
+
+
+CEM3_FIXTURES = Path(__file__).parent / "fixtures" / "cem3_btla" / "SERIAL_A"
 
 
 def test_queue_survives_restart_and_keeps_event_identity(tmp_path: Path) -> None:
@@ -118,6 +122,72 @@ def test_synthetic_fixture_parser_is_explicit_and_complete() -> None:
         registry.create("CEM3-BTLA-unverified")
 
 
+def test_cem3_btla_parser_matches_only_observed_normal_fixtures() -> None:
+    parser = Cem3BtlaHogpParser()
+    records = [json.loads(line) for line in (CEM3_FIXTURES / "normal.jsonl").read_text().splitlines()]
+
+    events = [parser.parse(record["payloadText"].replace("SERIAL_A", "123456A")) for record in records]
+
+    assert [event.memory_counter for event in events] == ["025", "026", "027"]
+    assert [event.value for event in events] == [4.24, 4.24, 4.36]
+    assert all(event.unit == "nm" and event.device_judgement == "O" for event in events)
+    assert events[0].serial_number == "123456A"
+    assert events[0].device_recorded_at == "2026-07-18T09:54:12+09:00"
+
+
+@pytest.mark.parametrize(
+    ("fixture_name", "message"),
+    [
+        ("partial.jsonl", "exactly 7"),
+        ("missing_field.jsonl", "exactly 7"),
+        ("bad_number.jsonl", "torque value"),
+        ("unsupported_unit.jsonl", "unit field"),
+    ],
+)
+def test_cem3_btla_parser_rejects_fixture_derived_invalid_payloads(
+    fixture_name: str,
+    message: str,
+) -> None:
+    record = json.loads((CEM3_FIXTURES / fixture_name).read_text().splitlines()[0])
+    payload = record["payloadText"].replace("SERIAL_A", "123456A")
+
+    with pytest.raises(ValueError, match=message):
+        Cem3BtlaHogpParser().parse(payload)
+
+
+def test_cem3_btla_parser_rejects_unobserved_time_layout_and_invalid_calendar() -> None:
+    parser = Cem3BtlaHogpParser()
+    observed = "025\t04.24\tnm   \tO \t123456A\t26/07/18\t09'54'12"
+
+    with pytest.raises(ValueError, match="kEY-JP Linux HID"):
+        parser.parse(observed.replace("09'54'12", "09:54:12"))
+    with pytest.raises(ValueError, match="valid calendar"):
+        parser.parse(observed.replace("26/07/18", "26/02/30"))
+
+
+def test_cem3_btla_parser_definition_keeps_tab_as_data_but_remains_production_gated(tmp_path: Path) -> None:
+    registry = ParserRegistry()
+    registry.register(
+        Cem3BtlaHogpParser.PROFILE,
+        Cem3BtlaHogpParser,
+        frame_terminators=Cem3BtlaHogpParser.FRAME_TERMINATORS,
+    )
+
+    assert isinstance(registry.create(Cem3BtlaHogpParser.PROFILE), Cem3BtlaHogpParser)
+    assert registry.frame_terminators(Cem3BtlaHogpParser.PROFILE) == frozenset({"KEY_ENTER", "KEY_KPENTER"})
+
+    production_registry = build_registry(
+        AgentConfig(
+            api_base_url="http://127.0.0.1:3000",
+            client_key="test-client",
+            queue_path=tmp_path / "events.sqlite3",
+            devices=(),
+        )
+    )
+    with pytest.raises(ValueError, match="No verified parser"):
+        production_registry.create(Cem3BtlaHogpParser.PROFILE)
+
+
 def test_hid_decoder_handles_partial_and_continuous_lines() -> None:
     decoder = HidLineDecoder()
     assert decoder.feed("KEY_A") is None
@@ -125,6 +195,19 @@ def test_hid_decoder_handles_partial_and_continuous_lines() -> None:
     assert decoder.feed("KEY_ENTER") == DecodedHidFrame("a1", "KEY_ENTER", ("KEY_A", "KEY_1"), ())
     assert decoder.feed("KEY_B") is None
     assert decoder.feed("KEY_TAB") == DecodedHidFrame("b", "KEY_TAB", ("KEY_B",), ())
+
+
+def test_hid_decoder_can_treat_tab_as_data_until_enter() -> None:
+    decoder = HidLineDecoder(terminators=frozenset({"KEY_ENTER", "KEY_KPENTER"}))
+    assert decoder.feed("KEY_0") is None
+    assert decoder.feed("KEY_TAB") is None
+    assert decoder.feed("KEY_A") is None
+    assert decoder.feed("KEY_ENTER") == DecodedHidFrame(
+        "0\ta",
+        "KEY_ENTER",
+        ("KEY_0", "KEY_TAB", "KEY_A"),
+        (),
+    )
 
 
 def test_hid_decoder_retains_unknown_keys_and_actual_terminator() -> None:
