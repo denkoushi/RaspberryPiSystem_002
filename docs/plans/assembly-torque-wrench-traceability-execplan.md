@@ -7,8 +7,8 @@ date: 2026-07-17
 source_of_truth: this file
 related_code: apps/api/prisma/schema.prisma, apps/api/src/routes/assembly, apps/api/src/services/assembly, apps/web/src/features/assembly, apps/web/src/pages/kiosk, packages/shared-types, clients/torque-agent
 related_docs: ../decisions/ADR-20260717-assembly-torque-wrench-traceability.md, ../decisions/ADR-20260718-assembly-torque-input-operator-ui.md, ../design-previews/assembly-torque-wrench-traceability-preview.html, ../design-previews/kiosk-assembly-torque-input-operator-preview.html, ./kiosk-assembly-torque-management-mvp.md
-validation: preview approved; traceability DB/API/agent/infrastructure and Draft PR CI contracts pass through commit 3566cade; three normal CEM3-BTLA frames are sanitized and the strict unregistered parser adapter passes; Milestone 4A CSS-pixel callout and marker-nudge focused tests, Web lint/build, responsive E2E, and browser inspection pass; Milestone 4B operator-input preview is pending approval; production parser promotion and physical acceptance remain pending
-open_items: approve Milestone 4B torque-input operator preview; capture repeated-memory and rapid-consecutive CEM3-BTLA fixtures; record firmware; restore and verify a stable Pi HID bond; register the fixture-proven parser only after the remaining transport matrix passes; perform final Raspberry Pi HID and production-screen acceptance
+validation: preview approved; traceability DB/API/agent/infrastructure and Draft PR CI contracts pass through commit 3566cade; three normal CEM3-BTLA frames are sanitized and the strict unregistered parser adapter passes; Milestone 4A CSS-pixel callout and marker-nudge focused tests, Web lint/build, responsive E2E, and browser inspection pass; Milestone 4B operator-input focused tests, full Web suite, lint/build, and LEGACY/REQUIRED two-viewport E2E pass; production parser promotion and physical acceptance remain pending
+open_items: capture repeated-memory and rapid-consecutive CEM3-BTLA fixtures; record firmware; restore and verify a stable Pi HID bond; register the fixture-proven parser only after the remaining transport matrix passes; perform final Raspberry Pi HID and production-screen acceptance
 ---
 
 # Add Physical Torque Wrench Traceability to Assembly Work
@@ -51,7 +51,8 @@ The real-device gate does not prevent preparation of a read-only capture kit. Be
 - [x] (2026-07-18 04:15Z) Reproduced the assembly callout scale defect, traced it to the assembly-only `100 x 100` SVG coordinate space, and confirmed the existing 12 focused unit checks plus four responsive E2E checks do not assert rendered geometry.
 - [x] (2026-07-18 04:29Z) Completed Milestone 4A: assembly editor/work/preview now share measured CSS-pixel callout geometry, bolt/check markers use the shared 0.0025 ratio nudge controls, inspection compatibility remains intact, and 23 focused plus 1458 full Web tests, zero-warning root lint, Web build, two-viewport E2E, document audit, and browser inspection pass without database work.
 - [x] (2026-07-18 06:10Z) Created child branch `feat/assembly-torque-input-operator-ui` from the clean, synchronized traceability branch and recorded Milestone 4B's preview approval gate.
-- [ ] Create and obtain approval for the interactive legacy/agent torque-input operator preview before modifying production React code.
+- [x] (2026-07-18 06:30Z) Received approval for the interactive LEGACY/REQUIRED operator preview after replacing the waiting badge with a focus ring and the NG warning glyph with `×`.
+- [x] (2026-07-18 06:45Z) Completed Milestone 4B: added deterministic torque-record presentation, compact mode-specific input/readiness panels, readable scrollable history, and distinct accessible current/NG/unaccepted marker states without changing any backend contract.
 - [ ] Capture the real-device fixtures, complete hardware acceptance, and close the final retrospective.
 
 ## Surprises & Discoveries
@@ -228,6 +229,10 @@ The real-device gate does not prevent preparation of a read-only capture kit. Be
   Rationale: The marker number remains easier to read without a redundant waiting glyph, while the multiplication/cross symbol communicates a required retry more directly than a generic warning sign.
   Date/Author: 2026-07-18 / Codex, directed by user during preview review.
 
+- Decision: Derive marker and current-feedback presentation through one pure selector that chooses the latest record by `recordedAt`, then `createdAt`, then stable ID.
+  Rationale: API array order is not a chronological contract. The selector keeps a current bolt's NG or unaccepted state visible instead of replacing it with generic waiting, while both configured and fallback procedure renderers consume the same state map.
+  Date/Author: 2026-07-18 / Codex, approved implementation.
+
 ## Outcomes & Retrospective
 
 The feature branch, living plan, ADR, and interactive three-screen preview now exist on the latest remote main. Browser validation exercised condition inheritance, range copy, all five work states, and both target responsive classes without console errors, outer overflow, or clipped controls. Milestone 4A now also keeps assembly callout geometry at inspection-drawing scale and permits precise on-screen movement of either editable marker kind without changing any business identity or condition. Production behavior, database state, existing Docker resources, and deployed hosts remain unchanged.
@@ -320,6 +325,8 @@ Before production code, create `docs/design-previews/kiosk-assembly-torque-input
 After approval, introduce a pure assembly presentation selector that determines each bolt's display state from the current work cursor and the latest torque record by stable timestamp order. It must preserve a current bolt's NG retry state instead of replacing it with a generic current state. Keep the marker number visible; pair color with a short badge and accessible label. Existing coordinate, callout, check-marker, API, DTO, persistence, and session-transition behavior stay unchanged.
 
 Split the right panel into reusable assembly UI components for current condition, mode-specific entry/agent readiness, workflow actions, and recent torque history. LEGACY keeps the existing numeric input/source/record behavior but renders it in one compact row. REQUIRED never renders ordinary manual input. The latest three entries remain visible in larger rows while the rest scroll. Do not run Docker, database, migration, SQL, or EXPLAIN validation unless implementation reveals a backend contract change; then stop and revise this plan before using a uniquely named disposable database.
+
+Implementation completed after preview approval: `assemblyTorquePresentation` is the side-effect-free chronology and status boundary; `AssemblyTorqueOperatorPanel` owns compact condition, LEGACY entry, REQUIRED readiness, feedback, workflow, and history presentation. The work page retains existing event handlers and disabled predicates. Canvas/sequence inputs receive the shared status map and show the in-drawing legend; neither check-marker behavior nor callout/coordinate interaction changes.
 
 ### Milestone 5: confirmation, event intake, audit, and export
 
@@ -495,3 +502,5 @@ Revision note 2026-07-18 04:29Z: Completed Milestone 4A with a single measured-l
 Revision note 2026-07-18 06:10Z: Started Milestone 4B on child branch `feat/assembly-torque-input-operator-ui`. The production UI gate is intentionally closed until the interactive preview is approved. The recorded root cause is presentation-only: current cursor state overwrites NG marker feedback, while existing API/DTO/DB contracts already contain the required torque record facts.
 
 Revision note 2026-07-18 06:30Z: Refined the unapproved Milestone 4B preview at user direction: removed the `待` badge from the current marker while retaining its focus ring, and replaced the NG exclamation mark with `×`. Rechecked the interactive states and two responsive target sizes; the production UI gate remains closed.
+
+Revision note 2026-07-18 06:45Z: The user approved the refined Milestone 4B preview. Implemented the Web-only operator input and marker-feedback refinement on `feat/assembly-torque-input-operator-ui`: deterministic current/latest-record presentation, compact LEGACY and REQUIRED panels, immediate NG/unaccepted feedback, readable scrollable history, legend, and number-preserving marker outcomes. Focused tests (15), the full Web suite (297 files / 1468 tests), zero-warning Web lint, production build, and four mocked Chromium cases at 1366x768 and 1920x1080 passed. No API, DTO, Prisma, migration, Docker, database, SQL, or EXPLAIN resource changed; push, PR update, CI, and deployment remain unauthorized.

@@ -16,6 +16,7 @@ type Props = {
   boltMarkers?: AssemblyCanvasBolt[];
   checkMarkers?: AssemblyCanvasCheckItem[];
   selectedBoltId?: string | null;
+  showTorqueLegend?: boolean;
   onToggleCheckItem?: (checkItemId: string) => void;
   onCurrentPageChange?: (page: AssemblyProcedureSequencePageDto | null) => void;
 };
@@ -36,6 +37,7 @@ export function AssemblyProcedureSequenceViewer({
   boltMarkers = [],
   checkMarkers = [],
   selectedBoltId,
+  showTorqueLegend = false,
   onToggleCheckItem,
   onCurrentPageChange
 }: Props) {
@@ -154,6 +156,7 @@ export function AssemblyProcedureSequenceViewer({
           checkItems={checkMarkers}
           selectedBoltId={selectedBoltId}
           onToggleCheckItem={onToggleCheckItem}
+          showTorqueLegend={showTorqueLegend}
         />
       </div>
     </div>

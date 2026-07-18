@@ -1,4 +1,5 @@
 import type { AssemblyCanvasBolt, AssemblyCanvasCheckItem } from './AssemblyProcedureCanvas';
+import type { AssemblyTorqueMarkerDisplayState } from './assemblyTorquePresentation';
 import type {
   AssemblyProcedureDocumentDto,
   AssemblyProcedureDocumentSummaryDto,
@@ -499,7 +500,7 @@ export function draftToCanvasBolts(areas: AssemblyDraftArea[]): AssemblyCanvasBo
 
 export function templateToCanvasBolts(
   template: AssemblyTemplateDto,
-  statusByBolt = new Map<string, AssemblyCanvasBolt['status']>(),
+  statusByBolt = new Map<string, AssemblyTorqueMarkerDisplayState>(),
   pageRef?: AssemblyPageRef | null
 ): AssemblyCanvasBolt[] {
   return template.areas.flatMap((area) =>
@@ -542,16 +543,6 @@ export function sessionCheckItemsToCanvas(
     }));
 }
 
-export const latestStatusByBolt = (session: AssemblyWorkSessionDto): Map<string, AssemblyCanvasBolt['status']> => {
-  const map = new Map<string, AssemblyCanvasBolt['status']>();
-  for (const record of session.torqueRecords) {
-    if (record.judgement === 'ok' && record.accepted) map.set(record.templateBoltId, 'ok');
-    else if (record.judgement === 'ng') map.set(record.templateBoltId, 'ng');
-    else if (record.judgement === 'ignored') map.set(record.templateBoltId, 'ignored');
-  }
-  if (session.currentBoltId) map.set(session.currentBoltId, 'current');
-  return map;
-};
 
 export function currentAssemblyArea(session: AssemblyWorkSessionDto) {
   return session.template.areas.find((area) => area.id === session.currentAreaId) ?? null;

@@ -13,15 +13,22 @@ import {
   recordAssemblyTorque,
   restartAssemblyArea
 } from '../../api/client';
-import { Button, buttonClassName } from '../../components/ui/Button';
+import { buttonClassName } from '../../components/ui/Button';
 import {
   AssemblyProcedureCanvas,
   AssemblyProcedureSequenceViewer,
+  AssemblyLegacyTorqueEntry,
+  AssemblyRequiredTorqueEntry,
+  AssemblyTorqueCurrentCondition,
+  AssemblyTorqueFeedback,
+  AssemblyTorqueHistory,
+  AssemblyTorqueWorkflowActions,
   AssemblyWorkSessionHeader,
+  assemblyTorqueCurrentFeedback,
+  assemblyTorqueMarkerStates,
   currentAssemblyArea,
   currentAssemblyBolt,
   KIOSK_ASSEMBLY_HOME_PATH,
-  latestStatusByBolt,
   readAssemblyApiErrorMessage,
   resolveAssemblyCheckSummary,
   sessionCheckItemsToCanvas,
@@ -94,13 +101,17 @@ export function KioskAssemblyWorkSessionPage() {
     };
   }, [session?.id]);
 
-  const statusByBolt = useMemo(() => (session ? latestStatusByBolt(session) : new Map()), [session]);
+  const markerStates = useMemo(() => (session ? assemblyTorqueMarkerStates(session) : new Map()), [session]);
+  const currentTorqueFeedback = useMemo(
+    () => (session ? assemblyTorqueCurrentFeedback(session) : null),
+    [session]
+  );
   const checkSummary = useMemo(() => (session ? resolveAssemblyCheckSummary(session) : null), [session]);
   const currentArea = session ? currentAssemblyArea(session) : null;
   const currentBolt = session ? currentAssemblyBolt(session) : null;
   const traceabilityRequired = session?.template.traceabilityMode === 'REQUIRED';
   const allBoltsComplete = session
-    ? session.template.areas.every((area) => area.bolts.every((bolt) => statusByBolt.get(bolt.id) === 'ok'))
+    ? session.template.areas.every((area) => area.bolts.every((bolt) => markerStates.get(bolt.id) === 'complete'))
     : false;
   const checksComplete = checkSummary?.allRequiredCompleted ?? true;
   const canComplete = Boolean(session && allBoltsComplete && checksComplete && session.status === 'in_progress');
@@ -215,8 +226,8 @@ export function KioskAssemblyWorkSessionPage() {
 
   const visibleBoltMarkers = useMemo(() => {
     if (!session || !activePageRef) return [];
-    return templateToCanvasBolts(session.template, statusByBolt, activePageRef);
-  }, [activePageRef, session, statusByBolt]);
+    return templateToCanvasBolts(session.template, markerStates, activePageRef);
+  }, [activePageRef, markerStates, session]);
 
   const visibleCheckMarkers = useMemo(() => {
     if (!session || !activePageRef) return [];
@@ -256,9 +267,9 @@ export function KioskAssemblyWorkSessionPage() {
       const result = await recordAssemblyTorque(session.id, { value, source: torqueSource });
       setSession(result.session);
       setTorqueValue('');
-      if (result.outcome.kind === 'ignored_duplicate') setMessage('1秒以内の再送信として無視しました。');
+      if (result.outcome.kind === 'ignored_duplicate') setMessage(null);
       else if (result.outcome.kind === 'recorded_ng') {
-        setMessage(result.outcome.requiresAreaRestart ? 'NGです。上限超過が続いています。エリアやり直しを確認してください。' : 'NGです。同じ箇所で停止します。');
+        setMessage(result.outcome.requiresAreaRestart ? '上限超過が続いています。エリアやり直しを確認してください。' : null);
       } else {
         setMessage(result.outcome.areaCompleted ? 'エリア完了です。次工程へ進んでください。' : 'OKです。次の締付箇所へ進みました。');
       }
@@ -352,6 +363,7 @@ export function KioskAssemblyWorkSessionPage() {
                 boltMarkers={visibleBoltMarkers}
                 checkMarkers={visibleCheckMarkers}
                 selectedBoltId={session.currentBoltId}
+                showTorqueLegend
                 onToggleCheckItem={(checkItemId) => void toggleCheckItem(checkItemId)}
                 onCurrentPageChange={handleCurrentPageChange}
               />
@@ -361,6 +373,7 @@ export function KioskAssemblyWorkSessionPage() {
                 bolts={visibleBoltMarkers}
                 checkItems={visibleCheckMarkers}
                 selectedBoltId={session.currentBoltId}
+                showTorqueLegend
                 onToggleCheckItem={(checkItemId) => void toggleCheckItem(checkItemId)}
                 className="h-full"
               />
@@ -368,119 +381,54 @@ export function KioskAssemblyWorkSessionPage() {
           </div>
         </section>
 
-        <section className="min-h-0 overflow-y-auto rounded border border-white/15 bg-slate-900/70 p-3">
+        <section className="min-h-0 overflow-y-auto rounded border border-white/15 bg-slate-900/70 p-3" aria-label="締付入力ペイン">
           <h2 className="text-[1.02rem] font-bold">締付</h2>
-          <div className="mt-3 rounded border border-white/10 bg-slate-950 p-3">
-            <div className="text-sm text-white/60">現在</div>
-            <div className="mt-1 text-lg font-bold">{currentBolt ? `丸数字 ${currentBolt.markerNo}` : (allBoltsComplete ? '全締付完了' : '次工程待ち')}</div>
-            <div className="mt-1 text-sm text-white/70">{currentArea?.areaName ?? ''}</div>
-            {currentBolt ? (
-              <div className="mt-2 text-sm text-white/80">
-                規定 {currentBolt.nominalTorque} / 下限 {currentBolt.lowerLimit} / 上限 {currentBolt.upperLimit} {currentBolt.unit}
-              </div>
-            ) : null}
+          <div className="mt-2">
+            <AssemblyTorqueCurrentCondition
+              currentBolt={currentBolt}
+              areaName={currentArea?.areaName}
+              allBoltsComplete={allBoltsComplete}
+            />
           </div>
           {checkSummary && checkSummary.requiredTotal > 0 ? (
-            <div className="mt-3 rounded border border-lime-300/20 bg-lime-500/10 p-3 text-sm">
-              <div className="font-semibold text-lime-100">チェック進捗</div>
-              <div className="mt-1 text-lime-50">
-                必須 {checkSummary.requiredCompleted}/{checkSummary.requiredTotal}
-              </div>
+            <div className="mt-2 flex items-center justify-between rounded border border-lime-300/20 bg-lime-500/10 px-2 py-2 text-sm">
+              <span className="font-semibold text-lime-100">チェック進捗</span>
+              <span className="font-bold text-lime-50">必須 {checkSummary.requiredCompleted}/{checkSummary.requiredTotal}</span>
             </div>
           ) : null}
           {traceabilityRequired ? (
-            <div className="mt-3 grid gap-3 rounded border border-cyan-300/25 bg-cyan-950/20 p-3">
-              <div className="flex items-center justify-between text-sm"><span className="font-semibold">トルクエージェント</span><span className={agentConnected ? 'text-emerald-300' : 'text-amber-200'}>{agentConnected ? '接続済み' : '未接続'}</span></div>
-              <label className="grid gap-1 text-xs font-semibold text-white/70">
-                使用する物理トルクレンチ
-                <select className="min-h-11 rounded bg-slate-950 px-2 text-sm" value={selectedProfileId} disabled={busy || Boolean(confirmation)} onChange={(e) => setSelectedProfileId(e.target.value)}>
-                  {compatibleWrenches.length === 0 ? <option value="">適合レンチなし</option> : null}
-                  {compatibleWrenches.map(({ profile }) => {
-                    const setting = profile.settingHistories[0];
-                    return <option key={profile.id} value={profile.id}>{profile.serialNumber} / {profile.model.modelNumber}{setting ? ` / ${setting.nominalTorque} ${setting.unit}` : ''}</option>;
-                  })}
-                </select>
-              </label>
-              <Button type="button" variant="primary" disabled={busy || !selectedProfileId || Boolean(confirmation)} onClick={confirmPhysicalWrench}>
-                {confirmation ? '現物確認済み' : '製造番号と現物設定を確認'}
-              </Button>
-              <div className="rounded bg-slate-950/70 px-3 py-2 text-center text-sm font-semibold">
-                {confirmation
-                  ? confirmationReused
-                    ? '同じ締付条件の確認を引継ぎ・トルク入力待機中'
-                    : '現物確認済み・トルク入力待機中'
-                  : '現物確認後に入力を受け付けます'}
-              </div>
-            </div>
-          ) : (
-          <>
-          <div className="mt-3 grid grid-cols-[1fr_6rem] gap-2">
-            <input
-              className="rounded bg-slate-950 px-3 py-3 text-lg"
-              value={torqueValue}
-              onChange={(event) => setTorqueValue(event.target.value)}
-              placeholder="トルク値"
+            <AssemblyRequiredTorqueEntry
+              busy={busy}
+              agentConnected={agentConnected}
+              compatibleWrenches={compatibleWrenches}
+              selectedProfileId={selectedProfileId}
+              confirmation={confirmation}
+              confirmationReused={confirmationReused}
+              onProfileChange={setSelectedProfileId}
+              onConfirm={() => void confirmPhysicalWrench()}
             />
-            <select
-              className="rounded bg-slate-950 px-2 text-sm"
-              value={torqueSource}
-              onChange={(event) => setTorqueSource(event.target.value as 'manual' | 'mock')}
-            >
-              <option value="manual">手入力</option>
-              <option value="mock">mock</option>
-            </select>
-          </div>
-          <Button type="button" variant="primary" disabled={busy || !session.currentBoltId} className="mt-2 min-h-12 w-full" onClick={recordTorque}>
-            トルク記録
-          </Button>
-          </>
+          ) : (
+            <AssemblyLegacyTorqueEntry
+              value={torqueValue}
+              source={torqueSource}
+              disabled={busy || !session.currentBoltId}
+              onValueChange={setTorqueValue}
+              onSourceChange={setTorqueSource}
+              onRecord={() => void recordTorque()}
+            />
           )}
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={busy || Boolean(session.currentBoltId) || allBoltsComplete}
-              onClick={() => void runBusy(async () => setSession(await advanceAssemblyArea(session.id)))}
-            >
-              次工程へ
-            </Button>
-            <Button
-              type="button"
-              variant="danger"
-              disabled={busy || !session.currentAreaId}
-              onClick={() => void runBusy(async () => setSession(await restartAssemblyArea(session.id, { reason: '画面操作によるエリアやり直し' })))}
-            >
-              やり直し
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              disabled={busy || !canComplete}
-              className="col-span-2"
-              title={completeDisabledReason ?? undefined}
-              onClick={completeSession}
-            >
-              作業完了
-            </Button>
-          </div>
-          {completeDisabledReason ? (
-            <p className="mt-2 text-xs font-semibold text-amber-200">{completeDisabledReason}</p>
-          ) : null}
-          <h3 className="mt-5 text-sm font-bold">履歴</h3>
-          <div className="mt-2 max-h-80 overflow-y-auto rounded border border-white/10">
-            {session.torqueRecords.slice().reverse().map((record) => (
-              <div key={record.id} className="grid grid-cols-[1fr_4rem_4rem] gap-2 border-b border-white/10 px-3 py-2 text-xs">
-                <div>
-                  <div className="font-semibold">丸数字 {record.markerNo}{record.serialNumberSnapshot ? ` / ${record.serialNumberSnapshot}` : ''}</div>
-                  <div className="text-white/50">{new Date(record.recordedAt).toLocaleString()}</div>
-                </div>
-                <div>{record.value ?? '-'}</div>
-                <div className={record.judgement === 'ok' ? 'text-emerald-300' : record.judgement === 'ng' ? 'text-rose-300' : 'text-slate-300'}>
-                  {record.judgement.toUpperCase()}
-                </div>
-              </div>
-            ))}
-          </div>
+          <AssemblyTorqueFeedback feedback={currentTorqueFeedback} />
+          <AssemblyTorqueWorkflowActions
+            busy={busy}
+            advanceDisabled={Boolean(session.currentBoltId) || allBoltsComplete}
+            restartDisabled={!session.currentAreaId}
+            completeDisabled={!canComplete}
+            completeDisabledReason={completeDisabledReason}
+            onAdvance={() => void runBusy(async () => setSession(await advanceAssemblyArea(session.id)))}
+            onRestart={() => void runBusy(async () => setSession(await restartAssemblyArea(session.id, { reason: '画面操作によるエリアやり直し' })))}
+            onComplete={() => void completeSession()}
+          />
+          <AssemblyTorqueHistory records={session.torqueRecords} />
         </section>
       </main>
     </div>
