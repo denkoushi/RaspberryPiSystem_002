@@ -273,7 +273,6 @@ model TorqueWrenchProfile {
   model                 TorqueWrenchModel                  @relation(fields: [modelId], references: [id], onDelete: Restrict)
   settingHistories      TorqueWrenchSettingHistory[]
   confirmations         AssemblyTorqueWrenchConfirmation[]
-  torqueRecords         AssemblyTorqueRecord[]
 
   @@index([modelId], map: "TorqueWrenchProfile_idx_model")
 }
@@ -290,7 +289,6 @@ model TorqueWrenchCapabilityGroup {
   createdAt       DateTime                           @default(now())
   updatedAt       DateTime                           @updatedAt
   models          TorqueWrenchCapabilityGroupModel[]
-  templateBolts   AssemblyTemplateBolt[]
 
   @@index([nominalDiameter, boltLengthMm, material, strengthClass, isActive], map: "TorqueWrenchCapabilityGroup_idx_fastener_active")
 }
@@ -324,7 +322,6 @@ model TorqueWrenchSettingHistory {
   createdAt             DateTime                           @default(now())
   torqueWrenchProfile   TorqueWrenchProfile                @relation(fields: [torqueWrenchProfileId], references: [id], onDelete: Restrict)
   confirmations         AssemblyTorqueWrenchConfirmation[]
-  torqueRecords         AssemblyTorqueRecord[]
 
   @@index([torqueWrenchProfileId, effectiveAt(sort: Desc), createdAt(sort: Desc)], map: "TorqueWrenchSettingHistory_idx_profile_effective")
 }
@@ -2174,11 +2171,6 @@ enum AssemblyTorqueRecordJudgement {
   IGNORED
 }
 
-enum AssemblyTorqueTraceabilityMode {
-  LEGACY
-  REQUIRED
-}
-
 enum AssemblyProcedureDocumentStatus {
   DRAFT
   PUBLISHED
@@ -2492,7 +2484,8 @@ model AssemblyTemplate {
   version             Int                            @default(1)
   isActive            Boolean                        @default(true)
   procedureDocumentId String
-  traceabilityMode    AssemblyTorqueTraceabilityMode @default(LEGACY)
+  /// Expand-first rollout: NULL on pre-feature rows means LEGACY.
+  traceabilityMode    String?
   createdAt           DateTime                       @default(now())
   updatedAt           DateTime                       @updatedAt
   procedureDocument   AssemblyProcedureDocument      @relation(fields: [procedureDocumentId], references: [id], onDelete: Restrict)
@@ -2524,7 +2517,6 @@ model AssemblyTemplateArea {
   bolts                AssemblyTemplateBolt[]
 
   @@unique([templateId, sortOrder], map: "AssemblyTemplateArea_unique_template_sort")
-  @@unique([id, templateId], map: "AssemblyTemplateArea_unique_id_template")
   @@index([templateId], map: "AssemblyTemplateArea_idx_template")
 }
 
@@ -2532,7 +2524,8 @@ model AssemblyTemplateArea {
 model AssemblyTemplateBolt {
   id                          String                             @id @default(uuid())
   areaId                      String
-  templateId                  String
+  /// NULL only for templates created before traceability rollout.
+  templateId                  String?
   sortOrder                   Int
   tighteningId                String
   markerNo                    Int
@@ -2556,8 +2549,7 @@ model AssemblyTemplateBolt {
   unit                        String
   createdAt                   DateTime                           @default(now())
   updatedAt                   DateTime                           @updatedAt
-  area                        AssemblyTemplateArea               @relation(fields: [areaId, templateId], references: [id, templateId], onDelete: Cascade)
-  capabilityGroup             TorqueWrenchCapabilityGroup?       @relation(fields: [capabilityGroupId], references: [id], onDelete: Restrict)
+  area                        AssemblyTemplateArea               @relation(fields: [areaId], references: [id], onDelete: Cascade)
   kioskDocument               KioskDocument?                     @relation(fields: [kioskDocumentId], references: [id], onDelete: Restrict)
   assemblyProcedureDocument   AssemblyProcedureDocument?         @relation(fields: [assemblyProcedureDocumentId], references: [id], onDelete: Restrict)
   torqueRecords               AssemblyTorqueRecord[]
@@ -2565,7 +2557,7 @@ model AssemblyTemplateBolt {
 
   @@unique([areaId, sortOrder], map: "AssemblyTemplateBolt_unique_area_sort")
   @@unique([areaId, tighteningId], map: "AssemblyTemplateBolt_unique_area_tightening")
-  @@unique([templateId, markerNo], map: "AssemblyTemplateBolt_unique_template_marker")
+  @@index([templateId, markerNo], map: "AssemblyTemplateBolt_idx_template_marker")
   @@index([areaId, markerNo], map: "AssemblyTemplateBolt_idx_area_marker")
   @@index([capabilityGroupId], map: "AssemblyTemplateBolt_idx_capability_group")
   @@index([kioskDocumentId], map: "AssemblyTemplateBolt_idx_kiosk_document")
@@ -2704,7 +2696,6 @@ model AssemblyTorqueWrenchConfirmation {
   templateBolt             AssemblyTemplateBolt       @relation(fields: [templateBoltId], references: [id], onDelete: Restrict)
   torqueWrenchProfile      TorqueWrenchProfile        @relation(fields: [torqueWrenchProfileId], references: [id], onDelete: Restrict)
   settingHistory           TorqueWrenchSettingHistory @relation(fields: [settingHistoryId], references: [id], onDelete: Restrict)
-  torqueRecords            AssemblyTorqueRecord[]
 
   @@index([sessionId, conditionFingerprint, confirmedAt(sort: Desc)], map: "AssemblyTorqueWrenchConfirmation_idx_session_condition")
   @@index([torqueWrenchProfileId, confirmedAt(sort: Desc)], map: "AssemblyTorqueWrenchConfirmation_idx_profile_confirmed")
@@ -2748,18 +2739,28 @@ model AssemblyTorqueRecord {
   createdAt                    DateTime                          @default(now())
   session                      AssemblyWorkSession               @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   templateBolt                 AssemblyTemplateBolt              @relation(fields: [templateBoltId], references: [id], onDelete: Restrict)
-  torqueWrenchProfile          TorqueWrenchProfile?              @relation(fields: [torqueWrenchProfileId], references: [id], onDelete: Restrict)
-  confirmation                 AssemblyTorqueWrenchConfirmation? @relation(fields: [confirmationId], references: [id], onDelete: Restrict)
-  settingHistory               TorqueWrenchSettingHistory?       @relation(fields: [settingHistoryId], references: [id], onDelete: Restrict)
+  agentEvent                   AssemblyTorqueAgentEvent?
 
   @@unique([sessionId, templateBoltId, attempt], map: "AssemblyTorqueRecord_unique_attempt")
-  @@unique([sourceClientDeviceId, sourceEventKey], map: "AssemblyTorqueRecord_unique_source_event")
+  @@index([sourceClientDeviceId, sourceEventKey], map: "AssemblyTorqueRecord_idx_source_event")
   @@index([sessionId, recordedAt], map: "AssemblyTorqueRecord_idx_session_recorded")
   @@index([templateBoltId], map: "AssemblyTorqueRecord_idx_bolt")
   @@index([torqueWrenchProfileId, recordedAt], map: "AssemblyTorqueRecord_idx_profile_recorded")
   @@index([torqueWrenchProfileId, deviceMemoryCounter, recordedAt], map: "AssemblyTorqueRecord_idx_profile_memory_recorded")
   @@index([confirmationId], map: "AssemblyTorqueRecord_idx_confirmation")
   @@index([settingHistoryId], map: "AssemblyTorqueRecord_idx_setting")
+}
+
+/// Agent event idempotency claim. New-table PK preserves uniqueness without
+/// adding a contract constraint to the already-live torque record table.
+model AssemblyTorqueAgentEvent {
+  sourceClientDeviceId String
+  sourceEventKey       String
+  torqueRecordId       String               @unique
+  createdAt            DateTime             @default(now())
+  torqueRecord         AssemblyTorqueRecord @relation(fields: [torqueRecordId], references: [id], onDelete: Cascade)
+
+  @@id([sourceClientDeviceId, sourceEventKey])
 }
 
 /// 組立トルク管理: 作業セッションごとのチェック項目トグル状態。

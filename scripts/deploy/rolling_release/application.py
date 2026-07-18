@@ -206,6 +206,15 @@ def require_checkout_sha(sha: str, *, runtime: Any) -> None:
         )
 
 
+def validate_candidate_migrations(sha: str, *, runtime: Any) -> None:
+    """Validate committed candidate SQL before any remote release is submitted."""
+
+    validator = runtime.PROJECT / "scripts/deploy/validate-candidate-migrations.sh"
+    runtime.run(
+        [str(validator), "origin/main", sha],
+    )
+
+
 def read_remote_server_client_id(*, runtime: Any) -> str:
     """Read only the public CLIENT_ID field; never return the config or key."""
 
@@ -235,6 +244,7 @@ def launch(args: Any, *, runtime: Any) -> int:
     _require_clean_worktree(runtime=runtime)
     remote_inventory = _remote_inventory(args.inventory, runtime=runtime)
     runtime.run(["git", "-C", str(runtime.PROJECT), "fetch", "origin", args.branch])
+    runtime.run(["git", "-C", str(runtime.PROJECT), "fetch", "origin", "main"])
     sha = runtime.run(
         ["git", "-C", str(runtime.PROJECT), "rev-parse", f"origin/{args.branch}"],
         capture=True,
@@ -242,6 +252,7 @@ def launch(args: Any, *, runtime: Any) -> int:
     if not runtime.FULL_SHA_RE.fullmatch(sha):
         raise RuntimeError("origin branch did not resolve to an immutable SHA")
     require_checkout_sha(sha, runtime=runtime)
+    validate_candidate_migrations(sha, runtime=runtime)
     inventory_data = runtime.inventory_json(
         str(runtime.ANSIBLE_DIRECTORY / remote_inventory)
     )
@@ -264,8 +275,18 @@ def launch(args: Any, *, runtime: Any) -> int:
         skip_canary_hold=args.skip_canary_hold,
         full_fleet=args.full_fleet,
     ).validate()
+    systemd, control = build_backends(runtime)
+    preflight = systemd.preflight_migrations(spec)
+    if preflight.returncode != 0:
+        detail = (
+            preflight.stderr
+            or preflight.stdout
+            or "production-ledger migration preflight failed"
+        ).strip()
+        raise RuntimeError(
+            f"release {run_id} was not submitted because migration preflight failed: {detail}"
+        )
     try:
-        systemd, control = build_backends(runtime)
         result = systemd.start(spec, wait=not args.detach)
     except Exception as error:
         raise RuntimeError(

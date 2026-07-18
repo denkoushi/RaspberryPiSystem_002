@@ -64,9 +64,14 @@ def release_args(*, detach=False):
 
 
 class FakeSystemd:
-    def __init__(self, start_result=None):
+    def __init__(self, start_result=None, preflight_result=None):
         self.start_result = start_result or CommandResult(("systemd-run",), 0)
+        self.preflight_result = preflight_result or CommandResult(("migration-preflight",), 0)
         self.events = []
+
+    def preflight_migrations(self, spec):
+        self.events.append(("preflight", spec.run_id))
+        return self.preflight_result
 
     def start(self, spec, *, wait):
         self.events.append(("start", spec.run_id, wait))
@@ -170,6 +175,24 @@ class ReleaseApplicationTest(unittest.TestCase):
         backends.assert_not_called()
         self.assertEqual(systemd.events, [])
 
+    def test_static_candidate_migration_failure_stops_before_any_ssh(self):
+        identity = Mock()
+        backends = Mock()
+        with patch.object(application, "_require_clean_worktree"), patch.object(
+            application, "_remote_inventory", return_value="inventory.yml"
+        ), patch.object(
+            application,
+            "validate_candidate_migrations",
+            side_effect=RuntimeError("candidate SQL rejected"),
+        ), patch.object(
+            application, "validate_remote_server_identity", identity
+        ), patch.object(application, "build_backends", backends):
+            with self.assertRaisesRegex(RuntimeError, "candidate SQL rejected"):
+                application.launch(release_args(), runtime=Runtime)
+
+        identity.assert_not_called()
+        backends.assert_not_called()
+
     def test_invalid_terminal_topology_stops_before_ssh_and_submission(self):
         class InvalidRuntime(Runtime):
             @staticmethod
@@ -215,7 +238,36 @@ class ReleaseApplicationTest(unittest.TestCase):
         outcome, output, systemd, _control = self.launch(detach=True)
         self.assertEqual(outcome, 0)
         self.assertIn(RUN_ID, output)
-        self.assertEqual(systemd.events, [("start", RUN_ID, False)])
+        self.assertEqual(
+            systemd.events,
+            [("preflight", RUN_ID), ("start", RUN_ID, False)],
+        )
+
+    def test_production_ledger_preflight_failure_stops_before_unit_submission(self):
+        systemd = FakeSystemd(
+            preflight_result=CommandResult(
+                ("migration-preflight",), 78, stderr="disallowed candidate SQL"
+            )
+        )
+        control = FakeControl()
+        patches = (
+            patch.object(application, "_require_clean_worktree"),
+            patch.object(application, "_remote_inventory", return_value="inventory.yml"),
+            patch.object(application, "new_run_id", return_value=RUN_ID),
+            patch.object(application, "build_backends", return_value=(systemd, control)),
+            patch.object(
+                application,
+                "validate_remote_server_identity",
+                return_value={
+                    "host": "raspberrypi5",
+                    "clientId": "raspberrypi5-server",
+                },
+            ),
+        )
+        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+            with self.assertRaisesRegex(RuntimeError, "was not submitted"):
+                application.launch(release_args(), runtime=Runtime)
+        self.assertEqual(systemd.events, [("preflight", RUN_ID)])
 
     def test_foreground_maps_reconciled_terminal_states(self):
         for state, expected in (("success", 0), ("cancelled", 130), ("failed", 1)):
@@ -224,7 +276,10 @@ class ReleaseApplicationTest(unittest.TestCase):
                     observed={"runId": RUN_ID, "state": state}
                 )
                 self.assertEqual(outcome, expected)
-                self.assertEqual(systemd.events, [("start", RUN_ID, True)])
+                self.assertEqual(
+                    systemd.events,
+                    [("preflight", RUN_ID), ("start", RUN_ID, True)],
+                )
 
     def test_uncertain_submission_and_observation_errors_always_name_run_id(self):
         rejected = CommandResult(("ssh",), 255, stderr="connection lost")

@@ -3,6 +3,7 @@ import { Prisma, type AssemblyTemplateBolt } from '@prisma/client';
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { lockAssemblyWorkSession } from '../assembly/assembly-work-session-lock.repository.js';
+import { resolveAssemblyTraceabilityMode } from '../assembly/assembly-template.service.js';
 import {
   assemblyWorkSessionDetailInclude,
   type AssemblyWorkSessionDetail
@@ -106,7 +107,7 @@ function candidateFromProfile(
 }
 
 function findCurrentBolt(session: AssemblyWorkSessionDetail): AssemblyTemplateBolt {
-  if (session.template.traceabilityMode !== 'REQUIRED') {
+  if (resolveAssemblyTraceabilityMode(session.template.traceabilityMode) !== 'REQUIRED') {
     throw new ApiError(409, 'この作業は従来方式のテンプレートです', undefined, 'LEGACY_TRACEABILITY_MODE');
   }
   if (!session.currentBoltId) throw new ApiError(409, '現在の締付箇所がありません');
@@ -337,6 +338,13 @@ export class AssemblyTorqueTraceabilityService {
         deviceJudgement: input.deviceJudgement?.slice(0, 80) ?? null
       }
     });
+    await tx.assemblyTorqueAgentEvent.create({
+      data: {
+        sourceClientDeviceId: input.clientDeviceId,
+        sourceEventKey: input.sourceEventKey,
+        torqueRecordId: record.id
+      }
+    });
     return {
       kind: 'rejected',
       torqueRecordId: record.id,
@@ -349,15 +357,16 @@ export class AssemblyTorqueTraceabilityService {
   }
 
   async recordAgent(input: AgentTorqueRecordInput): Promise<{ session: AssemblyWorkSessionDetail; outcome: TraceabilityOutcome }> {
-    const existing = await prisma.assemblyTorqueRecord.findUnique({
+    const existingEvent = await prisma.assemblyTorqueAgentEvent.findUnique({
       where: {
         sourceClientDeviceId_sourceEventKey: {
           sourceClientDeviceId: input.clientDeviceId,
           sourceEventKey: input.sourceEventKey
         }
-      }
+      },
+      include: { torqueRecord: true }
     });
-    if (existing) return this.resultForExisting(input.sessionId, existing);
+    if (existingEvent) return this.resultForExisting(input.sessionId, existingEvent.torqueRecord);
 
     try {
       const outcome = await prisma.$transaction(async (tx) => {
@@ -454,6 +463,13 @@ export class AssemblyTorqueTraceabilityService {
             deviceJudgement: input.deviceJudgement?.slice(0, 80) ?? null
           }
         });
+        await tx.assemblyTorqueAgentEvent.create({
+          data: {
+            sourceClientDeviceId: input.clientDeviceId,
+            sourceEventKey: input.sourceEventKey,
+            torqueRecordId: record.id
+          }
+        });
         if (!accepted) {
           return {
             kind: 'recorded_ng',
@@ -486,15 +502,16 @@ export class AssemblyTorqueTraceabilityService {
       return { session, outcome };
     } catch (error) {
       if (isUniqueConstraintError(error)) {
-        const raced = await prisma.assemblyTorqueRecord.findUnique({
+        const racedEvent = await prisma.assemblyTorqueAgentEvent.findUnique({
           where: {
             sourceClientDeviceId_sourceEventKey: {
               sourceClientDeviceId: input.clientDeviceId,
               sourceEventKey: input.sourceEventKey
             }
-          }
+          },
+          include: { torqueRecord: true }
         });
-        if (raced) return this.resultForExisting(input.sessionId, raced);
+        if (racedEvent) return this.resultForExisting(input.sessionId, racedEvent.torqueRecord);
       }
       throw error;
     }

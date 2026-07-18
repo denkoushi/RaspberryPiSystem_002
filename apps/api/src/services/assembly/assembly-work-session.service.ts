@@ -1,7 +1,11 @@
 import type { AssemblyTorqueInputSource, Prisma } from '@prisma/client';
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
-import { assemblyTemplateDetailInclude, type AssemblyTemplateDetail } from './assembly-template.service.js';
+import {
+  assemblyTemplateDetailInclude,
+  resolveAssemblyTraceabilityMode,
+  type AssemblyTemplateDetailRow
+} from './assembly-template.service.js';
 import { normalizeAssemblyUpperIdentifier } from './assembly-identifiers.js';
 import { computeAssemblyCheckSummary, type AssemblyCheckSummary } from './assembly-check-summary.js';
 import { lockAssemblyWorkSession } from './assembly-work-session-lock.repository.js';
@@ -74,7 +78,7 @@ export type AssemblyCheckRecordResult = {
   checkedAt: Date | null;
 };
 
-export type AssemblyWorkSessionCheckItemView = AssemblyTemplateDetail['checkItems'][number] & {
+export type AssemblyWorkSessionCheckItemView = AssemblyTemplateDetailRow['checkItems'][number] & {
   record: AssemblyCheckRecordResult | null;
 };
 
@@ -86,19 +90,19 @@ function required(value: string, label: string): string {
   return trimmed;
 }
 
-function sortedAreas(template: AssemblyTemplateDetail) {
+function sortedAreas(template: AssemblyTemplateDetailRow) {
   return [...template.areas].sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
-function sortedBoltsForArea(area: AssemblyTemplateDetail['areas'][number]) {
+function sortedBoltsForArea(area: AssemblyTemplateDetailRow['areas'][number]) {
   return [...area.bolts].sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
-function flattenBolts(template: AssemblyTemplateDetail) {
+function flattenBolts(template: AssemblyTemplateDetailRow) {
   return sortedAreas(template).flatMap((area) => sortedBoltsForArea(area).map((bolt) => ({ area, bolt })));
 }
 
-function firstPosition(template: AssemblyTemplateDetail): { areaId: string; boltId: string } {
+function firstPosition(template: AssemblyTemplateDetailRow): { areaId: string; boltId: string } {
   const first = flattenBolts(template)[0];
   if (!first) {
     throw new ApiError(409, 'テンプレートに締付箇所がありません');
@@ -106,11 +110,11 @@ function firstPosition(template: AssemblyTemplateDetail): { areaId: string; bolt
   return { areaId: first.area.id, boltId: first.bolt.id };
 }
 
-function findBoltPosition(template: AssemblyTemplateDetail, boltId: string) {
+function findBoltPosition(template: AssemblyTemplateDetailRow, boltId: string) {
   return flattenBolts(template).find((entry) => entry.bolt.id === boltId) ?? null;
 }
 
-function nextBoltInSameArea(template: AssemblyTemplateDetail, currentBoltId: string): string | null {
+function nextBoltInSameArea(template: AssemblyTemplateDetailRow, currentBoltId: string): string | null {
   const current = findBoltPosition(template, currentBoltId);
   if (!current) return null;
   const bolts = sortedBoltsForArea(current.area);
@@ -118,7 +122,7 @@ function nextBoltInSameArea(template: AssemblyTemplateDetail, currentBoltId: str
   return index >= 0 ? (bolts[index + 1]?.id ?? null) : null;
 }
 
-function nextAreaFirstBolt(template: AssemblyTemplateDetail, currentAreaId: string): { areaId: string; boltId: string } | null {
+function nextAreaFirstBolt(template: AssemblyTemplateDetailRow, currentAreaId: string): { areaId: string; boltId: string } | null {
   const areas = sortedAreas(template);
   const index = areas.findIndex((area) => area.id === currentAreaId);
   const nextArea = index >= 0 ? areas[index + 1] : null;
@@ -252,7 +256,7 @@ export class AssemblyWorkSessionService {
             operatorNameSnapshot: required(input.operatorNameSnapshot, '作業者名').slice(0, 120),
             targetUnit: required(normalizeAssemblyUpperIdentifier(input.targetUnit), '機種名').slice(0, 120),
             torqueWrenchId:
-              template.traceabilityMode === 'LEGACY'
+              resolveAssemblyTraceabilityMode(template.traceabilityMode) === 'LEGACY'
                 ? required(input.torqueWrenchId ?? '', '使用トルクレンチ').slice(0, 120)
                 : '',
             clientDeviceId: input.clientDeviceId ?? null,

@@ -389,6 +389,11 @@ jobs:
       - name: Setup pnpm workspace
         uses: ./.github/actions/setup-pnpm-monorepo
 
+      - name: Validate immutable candidate migrations before release tooling
+        run: |
+          git fetch --no-tags --depth=1 origin main
+          bash scripts/deploy/validate-candidate-migrations.sh origin/main "$GITHUB_SHA"
+
       - name: Validate deployment contracts
         run: |
           bash -n scripts/update-all-clients.sh

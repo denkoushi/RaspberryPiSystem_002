@@ -1,75 +1,44 @@
--- CreateEnum
-CREATE TYPE "AssemblyTorqueTraceabilityMode" AS ENUM ('LEGACY', 'REQUIRED');
+-- Expand-only rollout contract:
+-- - existing tables receive nullable built-in columns only;
+-- - existing LEGACY rows are not rewritten during deploy;
+-- - foreign keys and uniqueness owned by new tables are declared at CREATE time;
+-- - contract/backfill work for legacy rows is intentionally deferred.
 
--- Existing templates and records remain LEGACY-compatible. Keep the legacy
--- free-text wrench columns NOT NULL for an expand-only rollout. REQUIRED rows
--- store an empty compatibility value; physical-wrench identity is recorded by
--- the new confirmation and torque-record relations below.
+-- Existing templates have NULL here and are interpreted as LEGACY by the API.
+-- Every newly created/revised template writes LEGACY or REQUIRED explicitly.
+ALTER TABLE "AssemblyTemplate" ADD COLUMN "traceabilityMode" TEXT;
 
-ALTER TABLE "AssemblyTemplate"
-  ADD COLUMN "traceabilityMode" "AssemblyTorqueTraceabilityMode" NOT NULL DEFAULT 'LEGACY';
+-- Structured bolt requirements. templateId remains nullable for pre-existing
+-- LEGACY rows; all newly created/revised templates write it explicitly.
+ALTER TABLE "AssemblyTemplateBolt" ADD COLUMN "templateId" TEXT;
+ALTER TABLE "AssemblyTemplateBolt" ADD COLUMN "nominalDiameter" TEXT;
+ALTER TABLE "AssemblyTemplateBolt" ADD COLUMN "boltLengthMm" DECIMAL(10,3);
+ALTER TABLE "AssemblyTemplateBolt" ADD COLUMN "material" TEXT;
+ALTER TABLE "AssemblyTemplateBolt" ADD COLUMN "strengthClass" TEXT;
+ALTER TABLE "AssemblyTemplateBolt" ADD COLUMN "capabilityGroupId" TEXT;
 
--- Add templateId as nullable first so existing bolt rows can be backfilled from
--- their owning area without renumbering markers.
-ALTER TABLE "AssemblyTemplateBolt"
-  ADD COLUMN "templateId" TEXT,
-  ADD COLUMN "nominalDiameter" TEXT,
-  ADD COLUMN "boltLengthMm" DECIMAL(10,3),
-  ADD COLUMN "material" TEXT,
-  ADD COLUMN "strengthClass" TEXT,
-  ADD COLUMN "capabilityGroupId" TEXT;
-
-UPDATE "AssemblyTemplateBolt" AS bolt
-SET "templateId" = area."templateId"
-FROM "AssemblyTemplateArea" AS area
-WHERE area."id" = bolt."areaId";
-
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1
-    FROM "AssemblyTemplateBolt"
-    WHERE "templateId" IS NULL
-  ) THEN
-    RAISE EXCEPTION 'AssemblyTemplateBolt.templateId backfill failed: an area reference could not be resolved';
-  END IF;
-
-  IF EXISTS (
-    SELECT 1
-    FROM "AssemblyTemplateBolt"
-    GROUP BY "templateId", "markerNo"
-    HAVING COUNT(*) > 1
-  ) THEN
-    RAISE EXCEPTION 'Assembly template marker numbers must be unique across the entire template; resolve existing duplicates before migration';
-  END IF;
-END $$;
-
-ALTER TABLE "AssemblyTemplateBolt"
-  ALTER COLUMN "templateId" SET NOT NULL;
-
--- Extend torque results with immutable physical-wrench and setting snapshots.
-ALTER TABLE "AssemblyTorqueRecord"
-  ADD COLUMN "inputUnit" TEXT,
-  ADD COLUMN "valueNm" DECIMAL(18,6),
-  ADD COLUMN "torqueWrenchProfileId" TEXT,
-  ADD COLUMN "confirmationId" TEXT,
-  ADD COLUMN "settingHistoryId" TEXT,
-  ADD COLUMN "serialNumberSnapshot" TEXT,
-  ADD COLUMN "manufacturerSnapshot" TEXT,
-  ADD COLUMN "modelNumberSnapshot" TEXT,
-  ADD COLUMN "settingLowerLimitSnapshot" DECIMAL(18,6),
-  ADD COLUMN "settingNominalTorqueSnapshot" DECIMAL(18,6),
-  ADD COLUMN "settingUpperLimitSnapshot" DECIMAL(18,6),
-  ADD COLUMN "settingUnitSnapshot" TEXT,
-  ADD COLUMN "sourceClientDeviceId" TEXT,
-  ADD COLUMN "sourceEventKey" TEXT,
-  ADD COLUMN "expectedTemplateBoltId" TEXT,
-  ADD COLUMN "deviceRecordedAt" TIMESTAMP(3),
-  ADD COLUMN "deviceMemoryCounter" TEXT,
-  ADD COLUMN "deviceJudgement" TEXT,
-  ADD COLUMN "overrideActorUserId" TEXT,
-  ADD COLUMN "overrideActorUsername" TEXT,
-  ADD COLUMN "overrideReason" TEXT;
+-- Immutable traceability snapshots on existing torque records.
+ALTER TABLE "AssemblyTorqueRecord" ADD COLUMN "inputUnit" TEXT;
+ALTER TABLE "AssemblyTorqueRecord" ADD COLUMN "valueNm" DECIMAL(18,6);
+ALTER TABLE "AssemblyTorqueRecord" ADD COLUMN "torqueWrenchProfileId" TEXT;
+ALTER TABLE "AssemblyTorqueRecord" ADD COLUMN "confirmationId" TEXT;
+ALTER TABLE "AssemblyTorqueRecord" ADD COLUMN "settingHistoryId" TEXT;
+ALTER TABLE "AssemblyTorqueRecord" ADD COLUMN "serialNumberSnapshot" TEXT;
+ALTER TABLE "AssemblyTorqueRecord" ADD COLUMN "manufacturerSnapshot" TEXT;
+ALTER TABLE "AssemblyTorqueRecord" ADD COLUMN "modelNumberSnapshot" TEXT;
+ALTER TABLE "AssemblyTorqueRecord" ADD COLUMN "settingLowerLimitSnapshot" DECIMAL(18,6);
+ALTER TABLE "AssemblyTorqueRecord" ADD COLUMN "settingNominalTorqueSnapshot" DECIMAL(18,6);
+ALTER TABLE "AssemblyTorqueRecord" ADD COLUMN "settingUpperLimitSnapshot" DECIMAL(18,6);
+ALTER TABLE "AssemblyTorqueRecord" ADD COLUMN "settingUnitSnapshot" TEXT;
+ALTER TABLE "AssemblyTorqueRecord" ADD COLUMN "sourceClientDeviceId" TEXT;
+ALTER TABLE "AssemblyTorqueRecord" ADD COLUMN "sourceEventKey" TEXT;
+ALTER TABLE "AssemblyTorqueRecord" ADD COLUMN "expectedTemplateBoltId" TEXT;
+ALTER TABLE "AssemblyTorqueRecord" ADD COLUMN "deviceRecordedAt" TIMESTAMP(3);
+ALTER TABLE "AssemblyTorqueRecord" ADD COLUMN "deviceMemoryCounter" TEXT;
+ALTER TABLE "AssemblyTorqueRecord" ADD COLUMN "deviceJudgement" TEXT;
+ALTER TABLE "AssemblyTorqueRecord" ADD COLUMN "overrideActorUserId" TEXT;
+ALTER TABLE "AssemblyTorqueRecord" ADD COLUMN "overrideActorUsername" TEXT;
+ALTER TABLE "AssemblyTorqueRecord" ADD COLUMN "overrideReason" TEXT;
 
 -- Torque-wrench model master (shared by multiple physical instruments).
 CREATE TABLE "TorqueWrenchModel" (
@@ -87,7 +56,8 @@ CREATE TABLE "TorqueWrenchModel" (
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL,
 
-  CONSTRAINT "TorqueWrenchModel_pkey" PRIMARY KEY ("id")
+  CONSTRAINT "TorqueWrenchModel_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "TorqueWrenchModel_unique_manufacturer_model_key" UNIQUE ("manufacturerKey", "modelNumberKey")
 );
 
 -- Physical wrench profile; calibration, state and storage remain owned by
@@ -101,7 +71,13 @@ CREATE TABLE "TorqueWrenchProfile" (
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL,
 
-  CONSTRAINT "TorqueWrenchProfile_pkey" PRIMARY KEY ("id")
+  CONSTRAINT "TorqueWrenchProfile_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "TorqueWrenchProfile_measuringInstrumentId_key" UNIQUE ("measuringInstrumentId"),
+  CONSTRAINT "TorqueWrenchProfile_serialNumberKey_key" UNIQUE ("serialNumberKey"),
+  CONSTRAINT "TorqueWrenchProfile_measuringInstrumentId_fkey"
+    FOREIGN KEY ("measuringInstrumentId") REFERENCES "MeasuringInstrument"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT "TorqueWrenchProfile_modelId_fkey"
+    FOREIGN KEY ("modelId") REFERENCES "TorqueWrenchModel"("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 CREATE TABLE "TorqueWrenchCapabilityGroup" (
@@ -115,7 +91,8 @@ CREATE TABLE "TorqueWrenchCapabilityGroup" (
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL,
 
-  CONSTRAINT "TorqueWrenchCapabilityGroup_pkey" PRIMARY KEY ("id")
+  CONSTRAINT "TorqueWrenchCapabilityGroup_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "TorqueWrenchCapabilityGroup_name_key" UNIQUE ("name")
 );
 
 CREATE TABLE "TorqueWrenchCapabilityGroupModel" (
@@ -123,7 +100,11 @@ CREATE TABLE "TorqueWrenchCapabilityGroupModel" (
   "modelId" TEXT NOT NULL,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-  CONSTRAINT "TorqueWrenchCapabilityGroupModel_pkey" PRIMARY KEY ("capabilityGroupId", "modelId")
+  CONSTRAINT "TorqueWrenchCapabilityGroupModel_pkey" PRIMARY KEY ("capabilityGroupId", "modelId"),
+  CONSTRAINT "TorqueWrenchCapabilityGroupModel_capabilityGroupId_fkey"
+    FOREIGN KEY ("capabilityGroupId") REFERENCES "TorqueWrenchCapabilityGroup"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "TorqueWrenchCapabilityGroupModel_modelId_fkey"
+    FOREIGN KEY ("modelId") REFERENCES "TorqueWrenchModel"("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- Append-only setting history. Services never update or delete these rows.
@@ -143,7 +124,9 @@ CREATE TABLE "TorqueWrenchSettingHistory" (
   "reason" TEXT,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-  CONSTRAINT "TorqueWrenchSettingHistory_pkey" PRIMARY KEY ("id")
+  CONSTRAINT "TorqueWrenchSettingHistory_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "TorqueWrenchSettingHistory_torqueWrenchProfileId_fkey"
+    FOREIGN KEY ("torqueWrenchProfileId") REFERENCES "TorqueWrenchProfile"("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 CREATE TABLE "AssemblyTorqueWrenchConfirmation" (
@@ -159,28 +142,40 @@ CREATE TABLE "AssemblyTorqueWrenchConfirmation" (
   "clientDeviceNameSnapshot" TEXT,
   "confirmedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-  CONSTRAINT "AssemblyTorqueWrenchConfirmation_pkey" PRIMARY KEY ("id")
+  CONSTRAINT "AssemblyTorqueWrenchConfirmation_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "AssemblyTorqueWrenchConfirmation_sessionId_fkey"
+    FOREIGN KEY ("sessionId") REFERENCES "AssemblyWorkSession"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "AssemblyTorqueWrenchConfirmation_templateBoltId_fkey"
+    FOREIGN KEY ("templateBoltId") REFERENCES "AssemblyTemplateBolt"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT "AssemblyTorqueWrenchConfirmation_torqueWrenchProfileId_fkey"
+    FOREIGN KEY ("torqueWrenchProfileId") REFERENCES "TorqueWrenchProfile"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT "AssemblyTorqueWrenchConfirmation_settingHistoryId_fkey"
+    FOREIGN KEY ("settingHistoryId") REFERENCES "TorqueWrenchSettingHistory"("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
-CREATE UNIQUE INDEX "TorqueWrenchModel_unique_manufacturer_model_key"
-  ON "TorqueWrenchModel"("manufacturerKey", "modelNumberKey");
+-- A separate append-only claim table gives clientDeviceId + eventId a real
+-- database uniqueness boundary without adding a contract constraint to the
+-- already-live AssemblyTorqueRecord table.
+CREATE TABLE "AssemblyTorqueAgentEvent" (
+  "sourceClientDeviceId" TEXT NOT NULL,
+  "sourceEventKey" TEXT NOT NULL,
+  "torqueRecordId" TEXT NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  CONSTRAINT "AssemblyTorqueAgentEvent_pkey" PRIMARY KEY ("sourceClientDeviceId", "sourceEventKey"),
+  CONSTRAINT "AssemblyTorqueAgentEvent_torqueRecordId_key" UNIQUE ("torqueRecordId"),
+  CONSTRAINT "AssemblyTorqueAgentEvent_torqueRecordId_fkey"
+    FOREIGN KEY ("torqueRecordId") REFERENCES "AssemblyTorqueRecord"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
 CREATE INDEX "TorqueWrenchModel_idx_active_keys"
   ON "TorqueWrenchModel"("isActive", "manufacturerKey", "modelNumberKey");
-
-CREATE UNIQUE INDEX "TorqueWrenchProfile_measuringInstrumentId_key"
-  ON "TorqueWrenchProfile"("measuringInstrumentId");
-CREATE UNIQUE INDEX "TorqueWrenchProfile_serialNumberKey_key"
-  ON "TorqueWrenchProfile"("serialNumberKey");
 CREATE INDEX "TorqueWrenchProfile_idx_model"
   ON "TorqueWrenchProfile"("modelId");
-
-CREATE UNIQUE INDEX "TorqueWrenchCapabilityGroup_name_key"
-  ON "TorqueWrenchCapabilityGroup"("name");
 CREATE INDEX "TorqueWrenchCapabilityGroup_idx_fastener_active"
   ON "TorqueWrenchCapabilityGroup"("nominalDiameter", "boltLengthMm", "material", "strengthClass", "isActive");
 CREATE INDEX "TorqueWrenchCapabilityGroupModel_idx_model_group"
   ON "TorqueWrenchCapabilityGroupModel"("modelId", "capabilityGroupId");
-
 CREATE INDEX "TorqueWrenchSettingHistory_idx_profile_effective"
   ON "TorqueWrenchSettingHistory"("torqueWrenchProfileId", "effectiveAt" DESC, "createdAt" DESC);
 CREATE INDEX "AssemblyTorqueWrenchConfirmation_idx_session_condition"
@@ -189,15 +184,11 @@ CREATE INDEX "AssemblyTorqueWrenchConfirmation_idx_profile_confirmed"
   ON "AssemblyTorqueWrenchConfirmation"("torqueWrenchProfileId", "confirmedAt" DESC);
 CREATE INDEX "AssemblyTorqueWrenchConfirmation_idx_setting"
   ON "AssemblyTorqueWrenchConfirmation"("settingHistoryId");
-
-CREATE UNIQUE INDEX "AssemblyTemplateArea_unique_id_template"
-  ON "AssemblyTemplateArea"("id", "templateId");
-CREATE UNIQUE INDEX "AssemblyTemplateBolt_unique_template_marker"
+CREATE INDEX "AssemblyTemplateBolt_idx_template_marker"
   ON "AssemblyTemplateBolt"("templateId", "markerNo");
 CREATE INDEX "AssemblyTemplateBolt_idx_capability_group"
   ON "AssemblyTemplateBolt"("capabilityGroupId");
-
-CREATE UNIQUE INDEX "AssemblyTorqueRecord_unique_source_event"
+CREATE INDEX "AssemblyTorqueRecord_idx_source_event"
   ON "AssemblyTorqueRecord"("sourceClientDeviceId", "sourceEventKey");
 CREATE INDEX "AssemblyTorqueRecord_idx_profile_recorded"
   ON "AssemblyTorqueRecord"("torqueWrenchProfileId", "recordedAt");
@@ -207,54 +198,3 @@ CREATE INDEX "AssemblyTorqueRecord_idx_confirmation"
   ON "AssemblyTorqueRecord"("confirmationId");
 CREATE INDEX "AssemblyTorqueRecord_idx_setting"
   ON "AssemblyTorqueRecord"("settingHistoryId");
-
--- Replace the area-only relation with a composite relation that proves every
--- bolt's denormalized templateId matches its actual owning area.
-ALTER TABLE "AssemblyTemplateBolt"
-  DROP CONSTRAINT "AssemblyTemplateBolt_areaId_fkey";
-
-ALTER TABLE "TorqueWrenchProfile"
-  ADD CONSTRAINT "TorqueWrenchProfile_measuringInstrumentId_fkey"
-  FOREIGN KEY ("measuringInstrumentId") REFERENCES "MeasuringInstrument"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE "TorqueWrenchProfile"
-  ADD CONSTRAINT "TorqueWrenchProfile_modelId_fkey"
-  FOREIGN KEY ("modelId") REFERENCES "TorqueWrenchModel"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE "TorqueWrenchCapabilityGroupModel"
-  ADD CONSTRAINT "TorqueWrenchCapabilityGroupModel_capabilityGroupId_fkey"
-  FOREIGN KEY ("capabilityGroupId") REFERENCES "TorqueWrenchCapabilityGroup"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "TorqueWrenchCapabilityGroupModel"
-  ADD CONSTRAINT "TorqueWrenchCapabilityGroupModel_modelId_fkey"
-  FOREIGN KEY ("modelId") REFERENCES "TorqueWrenchModel"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE "TorqueWrenchSettingHistory"
-  ADD CONSTRAINT "TorqueWrenchSettingHistory_torqueWrenchProfileId_fkey"
-  FOREIGN KEY ("torqueWrenchProfileId") REFERENCES "TorqueWrenchProfile"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
-ALTER TABLE "AssemblyTemplateBolt"
-  ADD CONSTRAINT "AssemblyTemplateBolt_areaId_templateId_fkey"
-  FOREIGN KEY ("areaId", "templateId") REFERENCES "AssemblyTemplateArea"("id", "templateId") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "AssemblyTemplateBolt"
-  ADD CONSTRAINT "AssemblyTemplateBolt_capabilityGroupId_fkey"
-  FOREIGN KEY ("capabilityGroupId") REFERENCES "TorqueWrenchCapabilityGroup"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
-ALTER TABLE "AssemblyTorqueWrenchConfirmation"
-  ADD CONSTRAINT "AssemblyTorqueWrenchConfirmation_sessionId_fkey"
-  FOREIGN KEY ("sessionId") REFERENCES "AssemblyWorkSession"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "AssemblyTorqueWrenchConfirmation"
-  ADD CONSTRAINT "AssemblyTorqueWrenchConfirmation_templateBoltId_fkey"
-  FOREIGN KEY ("templateBoltId") REFERENCES "AssemblyTemplateBolt"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE "AssemblyTorqueWrenchConfirmation"
-  ADD CONSTRAINT "AssemblyTorqueWrenchConfirmation_torqueWrenchProfileId_fkey"
-  FOREIGN KEY ("torqueWrenchProfileId") REFERENCES "TorqueWrenchProfile"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE "AssemblyTorqueWrenchConfirmation"
-  ADD CONSTRAINT "AssemblyTorqueWrenchConfirmation_settingHistoryId_fkey"
-  FOREIGN KEY ("settingHistoryId") REFERENCES "TorqueWrenchSettingHistory"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
-ALTER TABLE "AssemblyTorqueRecord"
-  ADD CONSTRAINT "AssemblyTorqueRecord_torqueWrenchProfileId_fkey"
-  FOREIGN KEY ("torqueWrenchProfileId") REFERENCES "TorqueWrenchProfile"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE "AssemblyTorqueRecord"
-  ADD CONSTRAINT "AssemblyTorqueRecord_confirmationId_fkey"
-  FOREIGN KEY ("confirmationId") REFERENCES "AssemblyTorqueWrenchConfirmation"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE "AssemblyTorqueRecord"
-  ADD CONSTRAINT "AssemblyTorqueRecord_settingHistoryId_fkey"
-  FOREIGN KEY ("settingHistoryId") REFERENCES "TorqueWrenchSettingHistory"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

@@ -11,6 +11,8 @@ import unittest
 from pathlib import Path, PurePosixPath
 
 from scripts.deploy.rolling_release import bootstrap
+from scripts.deploy.rolling_release import migration_preflight
+from scripts.deploy.rolling_release.backends import systemd as backend_module
 from scripts.deploy.rolling_release.backends.command import CommandResult, SshTransport
 from scripts.deploy.rolling_release.backends.systemd import (
     SystemdBackend,
@@ -61,6 +63,7 @@ class SystemdBackendTest(unittest.TestCase):
             transport,
             remote_project=PurePosixPath(project),
             bootstrap_source='TRUSTED_BOOTSTRAP_SOURCE',
+            migration_preflight_source='TRUSTED_MIGRATION_PREFLIGHT_SOURCE',
         ), runner
 
     def remote_argv(self, runner):
@@ -121,6 +124,25 @@ class SystemdBackendTest(unittest.TestCase):
         self.assertNotIn('--wait', remote)
         self.assertNotIn('--no-block', remote)
         self.assertNotIn('--collect', remote)
+
+    def test_migration_preflight_is_read_only_and_precedes_systemd_submission(self):
+        backend, runner = self.backend()
+
+        result = backend.preflight_migrations(self.spec())
+
+        self.assertEqual(result.returncode, 0)
+        remote = self.remote_argv(runner)
+        self.assertNotIn('/usr/bin/systemd-run', remote)
+        self.assertEqual(remote[:3], ['/usr/bin/python3', '-c', backend_module.MIGRATION_PREFLIGHT_LOADER])
+        self.assertEqual(
+            base64.b64decode(remote[-2]).decode('utf-8'),
+            'TRUSTED_MIGRATION_PREFLIGHT_SOURCE',
+        )
+        payload = migration_preflight.parse_spec(
+            base64.b64decode(remote[-1]).decode('utf-8')
+        )
+        self.assertEqual(payload['sha'], SHA)
+        self.assertEqual(payload['runId'], RUN_ID)
 
     def test_exact_multiline_bootstrap_source_survives_ssh_quoting(self):
         runner = FakeRunner()

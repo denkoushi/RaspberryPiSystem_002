@@ -168,7 +168,19 @@ describe('torque wrench traceability API', () => {
         isActive: true
       }
     });
-    const template = await new AssemblyTemplateService().create({
+    const templateService = new AssemblyTemplateService();
+    const preFeatureTemplate = await prisma.assemblyTemplate.create({
+      data: {
+        modelCode: 'LEGACY-NULL',
+        procedurePattern: '旧形式',
+        name: '旧形式NULL互換',
+        procedureDocumentId: document.id
+      }
+    });
+    expect(preFeatureTemplate.traceabilityMode).toBeNull();
+    expect((await templateService.getById(preFeatureTemplate.id))?.traceabilityMode).toBe('LEGACY');
+
+    const template = await templateService.create({
       modelCode: 'TRACE-001',
       procedurePattern: '標準',
       name: 'トルク追跡テスト',
@@ -331,6 +343,11 @@ describe('torque wrench traceability API', () => {
     expect(replay.json().outcome.torqueRecordId).toBe(acceptedRecordId);
     expect(
       await prisma.assemblyTorqueRecord.count({
+        where: { sourceClientDeviceId: client.id, sourceEventKey: 'evt-valid-1' }
+      })
+    ).toBe(1);
+    expect(
+      await prisma.assemblyTorqueAgentEvent.count({
         where: { sourceClientDeviceId: client.id, sourceEventKey: 'evt-valid-1' }
       })
     ).toBe(1);

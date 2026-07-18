@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { normalizeAssemblyUpperIdentifier } from './assembly-identifiers.js';
+import { resolveAssemblyTraceabilityMode } from './assembly-template.service.js';
 import { AssemblyWorkSessionService } from './assembly-work-session.service.js';
 
 const assemblyLotInclude = {
@@ -152,7 +153,7 @@ export class AssemblyLotService {
         });
         if (!template) throw new ApiError(404, '有効な組立テンプレートが見つかりません');
         const torqueWrenchId =
-          template.traceabilityMode === 'LEGACY'
+          resolveAssemblyTraceabilityMode(template.traceabilityMode) === 'LEGACY'
             ? required(input.torqueWrenchId ?? '', '使用トルクレンチ').slice(0, 120)
             : '';
 

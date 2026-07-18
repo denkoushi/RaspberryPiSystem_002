@@ -8,7 +8,7 @@ import re
 from pathlib import Path, PurePosixPath
 from typing import Iterable
 
-from .. import bootstrap
+from .. import bootstrap, migration_preflight
 from ..models import LaunchSpec, UnitObservation, unit_name_for, validate_lookup_run_id
 from .command import CommandResult, SshTransport, SubprocessRunner
 
@@ -27,6 +27,12 @@ BOOTSTRAP_LOADER = (
     "exec(compile(base64.b64decode(source),'<rolling-release-bootstrap>','exec'),"
     "{'__name__':'__main__'})"
 )
+MIGRATION_PREFLIGHT_LOADER = (
+    "import base64,sys;source,payload=sys.argv[1:];"
+    "sys.argv=['migration-preflight',base64.b64decode(payload).decode('utf-8')];"
+    "exec(compile(base64.b64decode(source),'<migration-preflight>','exec'),"
+    "{'__name__':'__main__'})"
+)
 _USER_RE = re.compile(r'^[a-z_][a-z0-9_-]{0,30}$')
 SHOW_PROPERTIES = (
     'LoadState',
@@ -43,6 +49,13 @@ def _load_bootstrap_source() -> str:
     source_path = Path(bootstrap.__file__ or '')
     if not source_path.is_file():
         raise RuntimeError('standalone rolling-release bootstrap source is unavailable')
+    return source_path.read_text(encoding='utf-8')
+
+
+def _load_migration_preflight_source() -> str:
+    source_path = Path(migration_preflight.__file__ or '')
+    if not source_path.is_file():
+        raise RuntimeError('standalone migration preflight source is unavailable')
     return source_path.read_text(encoding='utf-8')
 
 
@@ -115,6 +128,7 @@ class SystemdBackend:
         remote_user: str = DEFAULT_REMOTE_USER,
         remote_home: PurePosixPath = DEFAULT_REMOTE_HOME,
         bootstrap_source: str | None = None,
+        migration_preflight_source: str | None = None,
     ) -> None:
         project = str(remote_project)
         if (
@@ -141,6 +155,13 @@ class SystemdBackend:
         self.bootstrap_source = bootstrap_source if bootstrap_source is not None else _load_bootstrap_source()
         if not self.bootstrap_source.strip():
             raise ValueError('bootstrap source must not be empty')
+        self.migration_preflight_source = (
+            migration_preflight_source
+            if migration_preflight_source is not None
+            else _load_migration_preflight_source()
+        )
+        if not self.migration_preflight_source.strip():
+            raise ValueError('migration preflight source must not be empty')
 
     def release_state_path(self, run_id: str) -> PurePosixPath:
         validate_lookup_run_id(run_id)
@@ -195,6 +216,35 @@ class SystemdBackend:
     def start(self, spec: LaunchSpec, *, wait: bool) -> CommandResult:
         """Submit the unit; foreground uses systemd-run's service wait contract."""
         return self.transport.run(self.build_start_command(spec, wait=wait))
+
+    def build_migration_preflight_command(self, spec: LaunchSpec) -> tuple[str, ...]:
+        """Build the read-only gate that must pass before a release unit exists."""
+        spec.validate()
+        payload = {
+            'version': 1,
+            'project': str(self.remote_project),
+            'runId': spec.run_id,
+            'branch': spec.branch,
+            'sha': spec.sha,
+            'expectedServerClientId': spec.expected_server_client_id,
+        }
+        serialized = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(',', ':'),
+        )
+        return (
+            REMOTE_PYTHON,
+            '-c',
+            MIGRATION_PREFLIGHT_LOADER,
+            _encode_argument(self.migration_preflight_source),
+            _encode_argument(serialized),
+        )
+
+    def preflight_migrations(self, spec: LaunchSpec) -> CommandResult:
+        """Read the live ledger and reject unsafe SQL before unit submission."""
+        return self.transport.run(self.build_migration_preflight_command(spec))
 
     def show(self, run_id: str) -> UnitObservation:
         unit_name = unit_name_for(run_id)
