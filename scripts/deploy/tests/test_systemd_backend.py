@@ -12,6 +12,7 @@ from pathlib import Path, PurePosixPath
 
 from scripts.deploy.rolling_release import bootstrap
 from scripts.deploy.rolling_release import migration_preflight
+from scripts.deploy.rolling_release import terminal_preflight
 from scripts.deploy.rolling_release.backends import systemd as backend_module
 from scripts.deploy.rolling_release.backends.command import CommandResult, SshTransport
 from scripts.deploy.rolling_release.backends.systemd import (
@@ -64,6 +65,7 @@ class SystemdBackendTest(unittest.TestCase):
             remote_project=PurePosixPath(project),
             bootstrap_source='TRUSTED_BOOTSTRAP_SOURCE',
             migration_preflight_source='TRUSTED_MIGRATION_PREFLIGHT_SOURCE',
+            terminal_preflight_source='TRUSTED_TERMINAL_PREFLIGHT_SOURCE',
         ), runner
 
     def remote_argv(self, runner):
@@ -143,6 +145,59 @@ class SystemdBackendTest(unittest.TestCase):
         )
         self.assertEqual(payload['sha'], SHA)
         self.assertEqual(payload['runId'], RUN_ID)
+
+    def test_terminal_preflight_is_read_only_and_carries_secret_free_targets(self):
+        backend, runner = self.backend()
+        target = {
+            'version': 1,
+            'mode': 'target',
+            'host': 'kiosk-a',
+            'profile': 'kiosk',
+            'address': '100.64.0.10',
+            'user': 'kiosk-a',
+            'port': 22,
+            'repoPath': '/opt/RaspberryPiSystem_002',
+            'memoryRequiredMb': 120,
+            'tailscaleEnabled': True,
+            'servicesToRestart': ['kiosk-browser.service'],
+            'manageKioskBrowser': True,
+            'kioskBrowserEngine': 'firefox',
+            'firefoxMinimizeChrome': True,
+            'clamavEnabled': True,
+            'clamavLogDir': '/var/log/clamav',
+            'clamavCron': '0 3 * * 0',
+            'rkhunterEnabled': True,
+            'rkhunterLogDir': '/var/log/rkhunter',
+            'rkhunterCron': '30 3 * * 0',
+            'nfcEnabled': True,
+            'nfcContractValid': True,
+            'barcodeEnabled': False,
+            'barcodeSerialDevice': '/dev/ttyACM0',
+            'torqueEnabled': False,
+            'torqueContractValid': True,
+            'haizenEnabled': False,
+            'haizenHidDevice': '/dev/input/event0',
+            'haizenInstallEvdev': True,
+            'manageSignage': False,
+            'inventoryIssues': [],
+        }
+
+        result = backend.preflight_terminals(self.spec(), [target])
+
+        self.assertEqual(result.returncode, 0)
+        remote = self.remote_argv(runner)
+        self.assertNotIn('/usr/bin/systemd-run', remote)
+        self.assertEqual(remote[:3], ['/usr/bin/python3', '-c', backend_module.TERMINAL_PREFLIGHT_LOADER])
+        self.assertEqual(
+            base64.b64decode(remote[-2]).decode('utf-8'),
+            'TRUSTED_TERMINAL_PREFLIGHT_SOURCE',
+        )
+        payload = terminal_preflight.parse_spec(
+            base64.b64decode(remote[-1]).decode('utf-8')
+        )
+        self.assertEqual(payload['targets'], [target])
+        self.assertNotIn('clientKey', json.dumps(payload))
+        self.assertNotIn('secret', json.dumps(payload).lower())
 
     def test_exact_multiline_bootstrap_source_survives_ssh_quoting(self):
         runner = FakeRunner()

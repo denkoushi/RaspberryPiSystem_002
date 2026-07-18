@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 526,
-    "totalLines": 151983,
-    "totalBytes": 11418078,
+    "totalLines": 152030,
+    "totalBytes": 11425209,
     "withFrontmatter": 212,
     "withStatus": 70,
     "sourceOfTruthDeclared": 42,
@@ -18093,8 +18093,8 @@
     },
     {
       "path": "docs/guides/deployment.md",
-      "lineCount": 152,
-      "byteSize": 8325,
+      "lineCount": 167,
+      "byteSize": 9663,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -29668,8 +29668,8 @@
     },
     {
       "path": "docs/knowledge-base/infrastructure/KB-291-robodrill01-nfc-scan-not-responding-investigation.md",
-      "lineCount": 174,
-      "byteSize": 8672,
+      "lineCount": 175,
+      "byteSize": 9184,
       "hasFrontmatter": true,
       "title": "KB-291: ロボドリル01（raspi4-robodrill01）NFCスキャンが反応しない調査報告",
       "status": null,
@@ -31364,8 +31364,8 @@
     },
     {
       "path": "docs/plans/deployment-foundation-refactor-execplan.md",
-      "lineCount": 865,
-      "byteSize": 144655,
+      "lineCount": 896,
+      "byteSize": 149936,
       "hasFrontmatter": true,
       "title": "Refactor the deployment foundation through eight gated pull requests",
       "status": "in-progress",
@@ -31380,19 +31380,19 @@
           "length": 1226
         },
         {
-          "line": 843,
+          "line": 872,
           "length": 1025
         },
         {
-          "line": 849,
+          "line": 878,
           "length": 1002
         },
         {
-          "line": 855,
+          "line": 884,
           "length": 1197
         },
         {
-          "line": 857,
+          "line": 886,
           "length": 1137
         }
       ],

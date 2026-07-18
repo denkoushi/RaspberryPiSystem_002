@@ -21,6 +21,7 @@ from .backends.systemd import (
 from .models import LaunchSpec
 from .policy import server_identity
 from .reconcile import reconcile_status
+from .terminal_preflight_contract import build_target_contracts
 
 
 OPERATOR_CANARY_APPROVAL_CLIENT = "operator-canary-approval"
@@ -258,7 +259,19 @@ def launch(args: Any, *, runtime: Any) -> int:
     )
     # Validate the complete target-tree topology before the identity probe
     # opens SSH or a transient systemd unit can reach remote checkout/state.
-    runtime.release_hosts(inventory_data)
+    all_release_hosts = runtime.release_hosts(inventory_data)
+    selected_release_hosts = all_release_hosts
+    if args.limit:
+        selected = runtime.selected_hosts(
+            str(runtime.ANSIBLE_DIRECTORY / remote_inventory), args.limit
+        )
+        if not selected:
+            raise RuntimeError(f"--limit selected no hosts: {args.limit}")
+        selected_release_hosts = runtime.release_hosts(inventory_data, selected)
+    terminal_preflight_targets = build_target_contracts(
+        inventory_data,
+        [target for target in selected_release_hosts if target.get("role") != "server"],
+    )
     identity = validate_remote_server_identity(inventory_data, runtime=runtime)
 
     run_id = new_run_id()
@@ -286,6 +299,33 @@ def launch(args: Any, *, runtime: Any) -> int:
         raise RuntimeError(
             f"release {run_id} was not submitted because migration preflight failed: {detail}"
         )
+    terminal_preflight_result = systemd.preflight_terminals(
+        spec, terminal_preflight_targets
+    )
+    if terminal_preflight_result.returncode != 0:
+        detail = (
+            terminal_preflight_result.stderr
+            or terminal_preflight_result.stdout
+            or "aggregate terminal preflight failed"
+        ).strip()
+        raise RuntimeError(
+            f"release {run_id} was not submitted because terminal preflight failed: {detail}"
+        )
+    if getattr(args, "preflight_only", False):
+        print(
+            json.dumps(
+                {
+                    "preflightId": run_id,
+                    "sha": sha,
+                    "state": "passed",
+                    "terminalCount": len(terminal_preflight_targets),
+                    "releaseSubmitted": False,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
+        return 0
     try:
         result = systemd.start(spec, wait=not args.detach)
     except Exception as error:

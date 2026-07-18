@@ -8,7 +8,7 @@ import re
 from pathlib import Path, PurePosixPath
 from typing import Iterable
 
-from .. import bootstrap, migration_preflight
+from .. import bootstrap, migration_preflight, terminal_preflight
 from ..models import LaunchSpec, UnitObservation, unit_name_for, validate_lookup_run_id
 from .command import CommandResult, SshTransport, SubprocessRunner
 
@@ -33,6 +33,13 @@ MIGRATION_PREFLIGHT_LOADER = (
     "exec(compile(base64.b64decode(source),'<migration-preflight>','exec'),"
     "{'__name__':'__main__'})"
 )
+TERMINAL_PREFLIGHT_LOADER = (
+    "import base64,sys;source,payload=sys.argv[1:];"
+    "decoded=base64.b64decode(source).decode('utf-8');"
+    "sys.argv=['terminal-preflight',base64.b64decode(payload).decode('utf-8')];"
+    "exec(compile(decoded,'<terminal-preflight>','exec'),"
+    "{'__name__':'__main__','EMBEDDED_TERMINAL_PREFLIGHT_SOURCE':decoded})"
+)
 _USER_RE = re.compile(r'^[a-z_][a-z0-9_-]{0,30}$')
 SHOW_PROPERTIES = (
     'LoadState',
@@ -56,6 +63,13 @@ def _load_migration_preflight_source() -> str:
     source_path = Path(migration_preflight.__file__ or '')
     if not source_path.is_file():
         raise RuntimeError('standalone migration preflight source is unavailable')
+    return source_path.read_text(encoding='utf-8')
+
+
+def _load_terminal_preflight_source() -> str:
+    source_path = Path(terminal_preflight.__file__ or '')
+    if not source_path.is_file():
+        raise RuntimeError('standalone terminal preflight source is unavailable')
     return source_path.read_text(encoding='utf-8')
 
 
@@ -129,6 +143,7 @@ class SystemdBackend:
         remote_home: PurePosixPath = DEFAULT_REMOTE_HOME,
         bootstrap_source: str | None = None,
         migration_preflight_source: str | None = None,
+        terminal_preflight_source: str | None = None,
     ) -> None:
         project = str(remote_project)
         if (
@@ -162,6 +177,13 @@ class SystemdBackend:
         )
         if not self.migration_preflight_source.strip():
             raise ValueError('migration preflight source must not be empty')
+        self.terminal_preflight_source = (
+            terminal_preflight_source
+            if terminal_preflight_source is not None
+            else _load_terminal_preflight_source()
+        )
+        if not self.terminal_preflight_source.strip():
+            raise ValueError('terminal preflight source must not be empty')
 
     def release_state_path(self, run_id: str) -> PurePosixPath:
         validate_lookup_run_id(run_id)
@@ -245,6 +267,42 @@ class SystemdBackend:
     def preflight_migrations(self, spec: LaunchSpec) -> CommandResult:
         """Read the live ledger and reject unsafe SQL before unit submission."""
         return self.transport.run(self.build_migration_preflight_command(spec))
+
+    def build_terminal_preflight_command(
+        self, spec: LaunchSpec, targets: list[dict[str, object]]
+    ) -> tuple[str, ...]:
+        """Build the aggregate read-only terminal gate run before submission."""
+        spec.validate()
+        payload = {
+            'version': 1,
+            'mode': 'orchestrator',
+            'project': str(self.remote_project),
+            'runId': spec.run_id,
+            'sha': spec.sha,
+            'expectedServerClientId': spec.expected_server_client_id,
+            'targets': targets,
+        }
+        serialized = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(',', ':'),
+        )
+        # Parse locally before SSH so malformed or secret-bearing contracts
+        # cannot reach Pi5.
+        terminal_preflight.parse_spec(serialized)
+        return (
+            REMOTE_PYTHON,
+            '-c',
+            TERMINAL_PREFLIGHT_LOADER,
+            _encode_argument(self.terminal_preflight_source),
+            _encode_argument(serialized),
+        )
+
+    def preflight_terminals(
+        self, spec: LaunchSpec, targets: list[dict[str, object]]
+    ) -> CommandResult:
+        return self.transport.run(self.build_terminal_preflight_command(spec, targets))
 
     def show(self, run_id: str) -> UnitObservation:
         unit_name = unit_name_for(run_id)

@@ -13,9 +13,9 @@
   register: pcsc_runtime_install_result
   when: terminal_release_mode | default('full') == 'full'
 
-- name: Ensure pcscd service is enabled and running
+- name: Ensure PC/SC socket activation is enabled and running
   ansible.builtin.systemd:
-    name: pcscd
+    name: pcscd.socket
     enabled: true
     state: started
   register: pcscd_service_result
@@ -32,11 +32,12 @@
   changed_when: false
   when: terminal_release_mode | default('full') == 'release-only'
 
-- name: Verify pcscd is enabled and active for release
+- name: Verify PC/SC socket activation and communication endpoint for release
   ansible.builtin.shell: |
     set -euo pipefail
-    systemctl is-enabled --quiet pcscd.service
-    systemctl is-active --quiet pcscd.service
+    systemctl is-enabled --quiet pcscd.socket
+    systemctl is-active --quiet pcscd.socket
+    test -S /run/pcscd/pcscd.comm
   args:
     executable: /bin/bash
   changed_when: false

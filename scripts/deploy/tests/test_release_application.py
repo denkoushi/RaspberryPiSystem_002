@@ -49,7 +49,7 @@ class Runtime:
         }
 
 
-def release_args(*, detach=False):
+def release_args(*, detach=False, preflight_only=False):
     return argparse.Namespace(
         branch="main",
         inventory="infrastructure/ansible/inventory.yml",
@@ -60,18 +60,26 @@ def release_args(*, detach=False):
         skip_canary_hold=False,
         full_fleet=False,
         detach=detach,
+        preflight_only=preflight_only,
     )
 
 
 class FakeSystemd:
-    def __init__(self, start_result=None, preflight_result=None):
+    def __init__(self, start_result=None, preflight_result=None, terminal_preflight_result=None):
         self.start_result = start_result or CommandResult(("systemd-run",), 0)
         self.preflight_result = preflight_result or CommandResult(("migration-preflight",), 0)
+        self.terminal_preflight_result = terminal_preflight_result or CommandResult(
+            ("terminal-preflight",), 0
+        )
         self.events = []
 
     def preflight_migrations(self, spec):
-        self.events.append(("preflight", spec.run_id))
+        self.events.append(("migration-preflight", spec.run_id))
         return self.preflight_result
+
+    def preflight_terminals(self, spec, targets):
+        self.events.append(("terminal-preflight", spec.run_id, len(targets)))
+        return self.terminal_preflight_result
 
     def start(self, spec, *, wait):
         self.events.append(("start", spec.run_id, wait))
@@ -240,7 +248,11 @@ class ReleaseApplicationTest(unittest.TestCase):
         self.assertIn(RUN_ID, output)
         self.assertEqual(
             systemd.events,
-            [("preflight", RUN_ID), ("start", RUN_ID, False)],
+            [
+                ("migration-preflight", RUN_ID),
+                ("terminal-preflight", RUN_ID, 0),
+                ("start", RUN_ID, False),
+            ],
         )
 
     def test_production_ledger_preflight_failure_stops_before_unit_submission(self):
@@ -267,7 +279,78 @@ class ReleaseApplicationTest(unittest.TestCase):
         with patches[0], patches[1], patches[2], patches[3], patches[4]:
             with self.assertRaisesRegex(RuntimeError, "was not submitted"):
                 application.launch(release_args(), runtime=Runtime)
-        self.assertEqual(systemd.events, [("preflight", RUN_ID)])
+        self.assertEqual(systemd.events, [("migration-preflight", RUN_ID)])
+
+    def test_preflight_only_never_submits_a_release_unit(self):
+        systemd = FakeSystemd()
+        control = FakeControl()
+        patches = (
+            patch.object(application, "_require_clean_worktree"),
+            patch.object(application, "_remote_inventory", return_value="inventory.yml"),
+            patch.object(application, "new_run_id", return_value=RUN_ID),
+            patch.object(application, "build_backends", return_value=(systemd, control)),
+            patch.object(
+                application,
+                "validate_remote_server_identity",
+                return_value={
+                    "host": "raspberrypi5",
+                    "clientId": "raspberrypi5-server",
+                },
+            ),
+        )
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patch(
+            "sys.stdout", new_callable=io.StringIO
+        ) as stdout:
+            outcome = application.launch(
+                release_args(preflight_only=True), runtime=Runtime
+            )
+
+        self.assertEqual(outcome, 0)
+        self.assertIn('"releaseSubmitted": false', stdout.getvalue())
+        self.assertEqual(
+            systemd.events,
+            [
+                ("migration-preflight", RUN_ID),
+                ("terminal-preflight", RUN_ID, 0),
+            ],
+        )
+
+    def test_aggregate_terminal_preflight_failure_stops_before_unit_submission(self):
+        systemd = FakeSystemd(
+            terminal_preflight_result=CommandResult(
+                ("terminal-preflight",),
+                78,
+                stderr=(
+                    "- kiosk-a: unit.pcscd.socket.active\n"
+                    "- kiosk-a: package.pcsc-tools\n"
+                ),
+            )
+        )
+        control = FakeControl()
+        patches = (
+            patch.object(application, "_require_clean_worktree"),
+            patch.object(application, "_remote_inventory", return_value="inventory.yml"),
+            patch.object(application, "new_run_id", return_value=RUN_ID),
+            patch.object(application, "build_backends", return_value=(systemd, control)),
+            patch.object(
+                application,
+                "validate_remote_server_identity",
+                return_value={
+                    "host": "raspberrypi5",
+                    "clientId": "raspberrypi5-server",
+                },
+            ),
+        )
+        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+            with self.assertRaisesRegex(RuntimeError, "terminal preflight failed"):
+                application.launch(release_args(), runtime=Runtime)
+        self.assertEqual(
+            systemd.events,
+            [
+                ("migration-preflight", RUN_ID),
+                ("terminal-preflight", RUN_ID, 0),
+            ],
+        )
 
     def test_foreground_maps_reconciled_terminal_states(self):
         for state, expected in (("success", 0), ("cancelled", 130), ("failed", 1)):
@@ -278,7 +361,11 @@ class ReleaseApplicationTest(unittest.TestCase):
                 self.assertEqual(outcome, expected)
                 self.assertEqual(
                     systemd.events,
-                    [("preflight", RUN_ID), ("start", RUN_ID, True)],
+                    [
+                        ("migration-preflight", RUN_ID),
+                        ("terminal-preflight", RUN_ID, 0),
+                        ("start", RUN_ID, True),
+                    ],
                 )
 
     def test_uncertain_submission_and_observation_errors_always_name_run_id(self):
