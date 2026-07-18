@@ -3,6 +3,7 @@ import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { normalizeAssemblyUpperIdentifier } from './assembly-identifiers.js';
 import { resolveAssemblyTraceabilityMode } from './assembly-template.service.js';
+import { runAssemblyTransaction } from './assembly-transaction.js';
 import { AssemblyWorkSessionService } from './assembly-work-session.service.js';
 
 const assemblyLotInclude = {
@@ -146,7 +147,7 @@ export class AssemblyLotService {
 
     const operatorNameSnapshot = required(input.operatorNameSnapshot, '作業者名').slice(0, 120);
     try {
-      const lotId = await prisma.$transaction(async (tx) => {
+      const lotId = await runAssemblyTransaction(async (tx) => {
         const template = await tx.assemblyTemplate.findFirst({
           where: { id: input.templateId, isActive: true },
           select: { id: true, traceabilityMode: true }

@@ -306,6 +306,68 @@ describe('assembly torque management API', () => {
     expect(stored.cancelledAt).not.toBeNull();
   });
 
+  it('共通予算内ならPrisma既定5秒を超える作業セッション行ロックを待機できる', async () => {
+    const client = await createTestClientDevice();
+    const headers = { 'x-client-key': client.apiKey };
+    const document = await uploadPublishedProcedureDocument(app, headers, '長時間ロック待機手順');
+    const templateRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      payload: buildTemplatePayload(document.id, {
+        modelCode: 'LOCK-BUDGET',
+        procedurePattern: '標準',
+        name: '長時間ロック待機テンプレート'
+      })
+    });
+    expect(templateRes.statusCode).toBe(200);
+
+    const startRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/work-sessions',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      payload: {
+        templateId: templateRes.json().template.id,
+        productNo: 'LOCK-BUDGET-PRODUCT',
+        serialNo: 'LOCK-BUDGET-SERIAL',
+        operatorNameSnapshot: '長時間ロック待機テスト',
+        targetUnit: 'LOCK-BUDGET-UNIT',
+        torqueWrenchId: 'LOCK-BUDGET-WRENCH'
+      }
+    });
+    expect(startRes.statusCode).toBe(200);
+    const sessionId = startRes.json().session.id as string;
+
+    let reportLocked!: () => void;
+    const locked = new Promise<void>((resolve) => {
+      reportLocked = resolve;
+    });
+    const blocker = prisma.$transaction(async (tx) => {
+      await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "AssemblyWorkSession" WHERE id = ${sessionId} FOR UPDATE
+      `;
+      reportLocked();
+      await tx.$queryRaw<Array<{ slept: string | null }>>`
+        SELECT pg_sleep(6)::text AS slept
+      `;
+    }, { maxWait: 5_000, timeout: 10_000 });
+    await locked;
+
+    const startedAt = Date.now();
+    const torquePromise = app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${sessionId}/record-torque`,
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      payload: { value: 10, source: 'manual' }
+    });
+    await blocker;
+    const torque = await torquePromise;
+
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(5_000);
+    expect(torque.statusCode).toBe(200);
+    expect(torque.json().outcome.kind).toBe('accepted_ok');
+  }, 15_000);
+
   it('runs the MVP flow from procedure upload to Excel export', async () => {
     const client = await createTestClientDevice();
     const headers = { 'x-client-key': client.apiKey };

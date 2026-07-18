@@ -2,7 +2,7 @@ import type { TorqueWrenchRejectionReason } from '@raspi-system/shared-types';
 import { Prisma, type AssemblyTemplateBolt } from '@prisma/client';
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
-import { lockAssemblyWorkSession } from '../assembly/assembly-work-session-lock.repository.js';
+import { runLockedAssemblyWorkSessionTransaction } from '../assembly/assembly-transaction.js';
 import { resolveAssemblyTraceabilityMode } from '../assembly/assembly-template.service.js';
 import {
   assemblyWorkSessionDetailInclude,
@@ -205,8 +205,7 @@ export class AssemblyTorqueTraceabilityService {
     if (!input.physicalDisplayConfirmed) {
       throw new ApiError(400, '現物の製造番号と設定表示の確認が必要です');
     }
-    return prisma.$transaction(async (tx) => {
-      const session = await lockAssemblyWorkSession(tx, input.sessionId);
+    return runLockedAssemblyWorkSessionTransaction(input.sessionId, async (tx, session) => {
       assertSessionClient(session, input.clientDeviceId);
       const bolt = findCurrentBolt(session);
       if (bolt.id !== input.expectedTemplateBoltId) {
@@ -369,8 +368,7 @@ export class AssemblyTorqueTraceabilityService {
     if (existingEvent) return this.resultForExisting(input.sessionId, existingEvent.torqueRecord);
 
     try {
-      const outcome = await prisma.$transaction(async (tx) => {
-        const session = await lockAssemblyWorkSession(tx, input.sessionId);
+      const outcome = await runLockedAssemblyWorkSessionTransaction(input.sessionId, async (tx, session) => {
         if (session.status !== 'IN_PROGRESS') throw new ApiError(409, 'この作業は入力できない状態です');
         assertSessionClient(session, input.clientDeviceId);
         const bolt = findCurrentBolt(session);
@@ -528,8 +526,7 @@ export class AssemblyTorqueTraceabilityService {
   }): Promise<{ session: AssemblyWorkSessionDetail; outcome: TraceabilityOutcome }> {
     const reason = input.reason.trim();
     if (!reason) throw new ApiError(400, '管理者例外入力の理由が必要です');
-    const outcome = await prisma.$transaction(async (tx) => {
-      const session = await lockAssemblyWorkSession(tx, input.sessionId);
+    const outcome = await runLockedAssemblyWorkSessionTransaction(input.sessionId, async (tx, session) => {
       if (session.status !== 'IN_PROGRESS') throw new ApiError(409, 'この作業は入力できない状態です');
       const bolt = findCurrentBolt(session);
       const confirmation = await tx.assemblyTorqueWrenchConfirmation.findUnique({

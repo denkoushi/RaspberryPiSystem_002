@@ -30,9 +30,11 @@ describe('DatabaseBackupTarget', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
   });
 
-  it('writes pg_dump output as gzip for upload', async () => {
+  it('keeps the configured source identity while using the runtime connection for pg_dump', async () => {
+    vi.stubEnv('DATABASE_URL', 'postgresql://codex:codex@127.0.0.1:55432/codex_review');
     const child = createMockChild();
     spawnMock.mockReturnValueOnce(child);
 
@@ -42,7 +44,8 @@ describe('DatabaseBackupTarget', () => {
       child.emit('close', 0);
     });
 
-    const target = new DatabaseBackupTarget('postgresql://postgres:postgres@db:5432/borrow_return');
+    const target = new DatabaseBackupTarget('postgresql://postgres:postgres@localhost:5432/borrow_return');
+    expect(target.info).toEqual({ type: 'database', source: 'borrow_return' });
     const source = await target.createUploadSource();
 
     expect(source.kind).toBe('file');
@@ -55,6 +58,7 @@ describe('DatabaseBackupTarget', () => {
     expect(gunzipSync(compressed).toString('utf-8')).toContain('PostgreSQL database dump');
 
     const [, args] = spawnMock.mock.calls[0] ?? [];
+    expect(args).toContain('codex_review');
     expect(args).toContain('--clean');
     expect(args).toContain('--if-exists');
     expect(args).not.toContain('-f');

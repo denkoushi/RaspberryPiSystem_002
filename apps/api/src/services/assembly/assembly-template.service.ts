@@ -10,6 +10,7 @@ import {
   normalizeMarkerPageRef,
   type AssemblyMarkerPageRefInput
 } from './assembly-check-summary.js';
+import { runAssemblyTransaction } from './assembly-transaction.js';
 
 const procedureDocumentInclude = {
   pages: {
@@ -482,7 +483,7 @@ export class AssemblyTemplateService {
     const areas = normalizeAreas(input.areas, traceabilityMode);
     const checkItems = normalizeCheckItems(input.checkItems ?? []);
 
-    return prisma.$transaction(async (tx) => {
+    return runAssemblyTransaction(async (tx) => {
       const doc = await tx.assemblyProcedureDocument.findFirst({
         where: { id: input.procedureDocumentId, isActive: true, status: 'PUBLISHED' }
       });

@@ -12,8 +12,8 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Metric | Count |
 |--------|------:|
 | Documents | 526 |
-| Total lines | 152057 |
-| Total bytes | 11432002 |
+| Total lines | 152084 |
+| Total bytes | 11437815 |
 | With frontmatter | 212 |
 | With status | 70 |
 | source_of_truth declared | 42 |
@@ -83,7 +83,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/knowledge-base/KB-320-kiosk-part-measurement.md` (1804:1045, 1811:1213)
 - `docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md` (13:1164, 295:1220, 297:1290)
 - `docs/knowledge-base/infrastructure/signage.md` (23:1023, 29:1221, 349:1060)
-- `docs/plans/assembly-torque-wrench-traceability-execplan.md` (305:1055)
+- `docs/plans/assembly-torque-wrench-traceability-execplan.md` (10:1150, 328:1055)
 - `docs/plans/deployment-foundation-refactor-execplan.md` (99:1226, 893:1025, 899:1002)
 - `docs/plans/dgx-spark-local-llm-migration-execplan.md` (38:1075)
 - `docs/plans/kiosk-assembly-torque-management-mvp.md` (135:1006)

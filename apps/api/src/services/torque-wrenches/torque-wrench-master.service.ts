@@ -2,6 +2,7 @@ import { Prisma, type MeasuringInstrumentStatus } from '@prisma/client';
 import { TORQUE_WRENCH_STORAGE_LOCATIONS, type TorqueWrenchStorageLocation } from '@raspi-system/shared-types';
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
+import { runAssemblyTransaction } from '../assembly/assembly-transaction.js';
 import { TorqueUnitConverter } from './torque-unit-converter.js';
 import { normalizeFastenerText, normalizeTorqueWrenchKey } from './torque-wrench-normalization.js';
 
@@ -164,7 +165,7 @@ export class TorqueWrenchMasterService {
     const serialNumber = required(input.serialNumber, '製造番号', 120);
     const model = await prisma.torqueWrenchModel.findFirst({ where: { id: input.modelId, isActive: true } });
     if (!model) throw new ApiError(400, '有効なトルクレンチ型番を指定してください');
-    return prisma.$transaction(async (tx) => {
+    return runAssemblyTransaction(async (tx) => {
       const instrument = await tx.measuringInstrument.create({
         data: {
           name: required(input.name, '名称', 200),
@@ -195,7 +196,7 @@ export class TorqueWrenchMasterService {
       const model = await prisma.torqueWrenchModel.findFirst({ where: { id: input.modelId, isActive: true } });
       if (!model) throw new ApiError(400, '有効なトルクレンチ型番を指定してください');
     }
-    return prisma.$transaction(async (tx) => {
+    return runAssemblyTransaction(async (tx) => {
       await tx.measuringInstrument.update({
         where: { id: current.measuringInstrumentId },
         data: {
@@ -311,7 +312,7 @@ export class TorqueWrenchMasterService {
       const count = await prisma.torqueWrenchModel.count({ where: { id: { in: modelIds }, isActive: true } });
       if (count !== modelIds.length) throw new ApiError(400, '無効または存在しない型番が含まれています');
     }
-    return prisma.$transaction(async (tx) => {
+    return runAssemblyTransaction(async (tx) => {
       if (modelIds) {
         await tx.torqueWrenchCapabilityGroupModel.deleteMany({ where: { capabilityGroupId: id } });
       }
