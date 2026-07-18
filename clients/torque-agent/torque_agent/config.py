@@ -6,6 +6,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from .capture_models import CaptureSafetyError
+from .capture_recorder import validate_device_path
+
 
 def _http_origin(value: str, label: str) -> str:
     parsed = urlsplit(value)
@@ -58,8 +61,10 @@ class AgentConfig:
         devices: list[HidDeviceConfig] = []
         for row in raw_devices:
             path = Path(str(row["path"]))
-            if not str(path).startswith("/dev/input/by-id/"):
-                raise ValueError(f"Only /dev/input/by-id devices are allowed: {path}")
+            try:
+                validate_device_path(path)
+            except CaptureSafetyError as error:
+                raise ValueError(f"Only explicit torque-wrench /dev/input/by-id devices are allowed: {path}") from error
             devices.append(HidDeviceConfig(path=path, parser_profile=str(row["parserProfile"])))
         return cls(
             api_base_url=api_base_url,

@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from .api_client import OutboxSender
 from .binding import BindingStore
+from .cem3_btla_parser import Cem3BtlaHogpParser
 from .config import AgentConfig
 from .ingestor import TorqueEventIngestor
 from .models import WorkBinding
@@ -28,6 +29,11 @@ class HeartbeatBody(BaseModel):
 
 def build_registry(config: AgentConfig) -> ParserRegistry:
     registry = ParserRegistry()
+    registry.register(
+        Cem3BtlaHogpParser.PROFILE,
+        Cem3BtlaHogpParser,
+        frame_terminators=Cem3BtlaHogpParser.FRAME_TERMINATORS,
+    )
     if config.synthetic_fixture_enabled:
         registry.register(SyntheticDelimitedFixtureParser.PROFILE, SyntheticDelimitedFixtureParser)
     return registry

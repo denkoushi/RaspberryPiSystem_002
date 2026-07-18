@@ -1,0 +1,12 @@
+[Unit]
+Description=Prepare exact external torque Bluetooth adapter %I
+After=bluetooth.service systemd-rfkill.service
+Requires=bluetooth.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/torque-bluetooth-adapter %I
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict

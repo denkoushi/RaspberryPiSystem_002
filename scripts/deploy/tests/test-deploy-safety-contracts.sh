@@ -909,6 +909,10 @@ ALLOWED_RELEASE_FILE_DESTINATIONS = {
     '{{ repo_path }}/clients/nfc-agent/.env',
     '{{ repo_path }}/clients/barcode-agent/.env',
     '{{ repo_path }}/clients/torque-agent/.env',
+    '/usr/local/libexec/torque-bluetooth-adapter',
+    '/etc/systemd/system/torque-bluetooth-adapter@.service',
+    '/etc/udev/rules.d/90-torque-bluetooth-adapter.rules',
+    '/etc/udev/rules.d/99-torque-wrench-hid.rules',
     '/etc/raspi-haizen-agent.conf',
     '/etc/systemd/system/haizen-agent.service',
     '/etc/sudoers.d/{{ client_sudo_user }}',
@@ -967,6 +971,29 @@ READ_ONLY_COMMAND = re.compile(
     r'systemd-analyze\s+verify|tailscale\s+status|which\s+)',
     re.IGNORECASE,
 )
+
+APPROVED_RELEASE_COMMANDS = {
+    (
+        'roles/client/tasks/torque-agent.yml',
+        'Reload udev rules for torque devices',
+        'udevadm control --reload-rules',
+    ),
+    (
+        'roles/client/tasks/torque-agent.yml',
+        'Retrigger exact Bluetooth hosts after torque device configuration changes',
+        'udevadm trigger --subsystem-match=bluetooth --property-match=DEVTYPE=host --action=add',
+    ),
+    (
+        'roles/client/tasks/torque-agent.yml',
+        'Retrigger Bluetooth input devices after torque HID rule changes',
+        'udevadm trigger --subsystem-match=input --property-match=ID_BUS=bluetooth --action=add',
+    ),
+    (
+        'roles/client/tasks/torque-agent.yml',
+        'Wait for torque udev events to settle',
+        'udevadm settle --timeout=30',
+    ),
+}
 
 
 def normalized(value):
@@ -1144,7 +1171,9 @@ def audit_tasks(tasks, source, inherited_full):
 
             if module in COMMAND_MODULES:
                 payload = command_text(value)
-                assert READ_ONLY_COMMAND.match(payload), (
+                source_relative = source.resolve().relative_to(ansible_root).as_posix()
+                approved_release_command = (source_relative, name, payload)
+                assert READ_ONLY_COMMAND.match(payload) or approved_release_command in APPROVED_RELEASE_COMMANDS, (
                     f'{source}:{name}: command is not a recognized read-only preflight: {payload}'
                 )
 

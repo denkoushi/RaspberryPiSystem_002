@@ -12,15 +12,15 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Metric | Count |
 |--------|------:|
 | Documents | 526 |
-| Total lines | 151908 |
-| Total bytes | 11399648 |
+| Total lines | 151955 |
+| Total bytes | 11409685 |
 | With frontmatter | 212 |
 | With status | 70 |
 | source_of_truth declared | 42 |
 | References to EXEC_PLAN.md | 64 |
 | Question-mark corruption documents | 1 |
 | Replacement-character documents | 1 |
-| Long-line documents | 23 |
+| Long-line documents | 24 |
 | Local links | 5544 |
 | Broken local links | 87 |
 | Documents over 1,000 lines | 28 |
@@ -83,6 +83,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/knowledge-base/KB-320-kiosk-part-measurement.md` (1804:1045, 1811:1213)
 - `docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md` (13:1164, 295:1220, 297:1290)
 - `docs/knowledge-base/infrastructure/signage.md` (23:1023, 29:1221, 349:1060)
+- `docs/plans/assembly-torque-wrench-traceability-execplan.md` (286:1055)
 - `docs/plans/deployment-foundation-refactor-execplan.md` (99:1226, 843:1025, 849:1002)
 - `docs/plans/dgx-spark-local-llm-migration-execplan.md` (38:1075)
 - `docs/plans/pi5-minimal-downtime-phase2.md` (130:1083)
@@ -90,7 +91,6 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/plans/solid-refactor-phase4-execplan-202607.md` (30:1179, 31:1213, 32:1328)
 - `docs/plans/solid-refactor-phase5-execplan-202607.md` (31:1231, 32:1107, 95:1206)
 - `docs/plans/solid-refactor-phase6-execplan-202607.md` (32:1014, 33:1055, 34:1565)
-- `docs/runbooks/dgx-system-prod-local-llm.md` (46:1212, 126:1193, 139:1694)
 
 ## Broken Local Links
 

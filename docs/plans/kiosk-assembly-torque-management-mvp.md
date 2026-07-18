@@ -7,8 +7,8 @@ date: 2026-07-06
 source_of_truth: this file
 related_code: apps/api/src/routes/assembly/index.ts, apps/api/src/routes/kiosk-documents.ts, apps/api/src/routes/kiosk/assembly-procedure-order-auth.ts, apps/api/src/routes/storage/assembly-procedure-images.ts, apps/api/src/services/assembly, apps/web/src/features/assembly, apps/web/src/pages/kiosk/KioskAssemblyHomePage.tsx, apps/web/src/pages/kiosk/KioskAssemblyProcedureOrderSettingsPage.tsx, infrastructure/docker/docker-compose.server.yml, infrastructure/ansible/roles/server/tasks/main.yml
 related_docs: ../INDEX.md, ../guides/deployment.md, ./assembly-torque-wrench-traceability-execplan.md, ../runbooks/assembly-torque-agent.md, ../decisions/ADR-20260717-assembly-torque-wrench-traceability.md
-validation: prior deployed MVP evidence below; 2026-07-17 traceability preview and disposable-Postgres/API/agent/infrastructure checks passed; 2026-07-18 assembly callout CSS-pixel parity and marker nudge unit/E2E/browser checks passed without DB changes; CEM3-BTLA parser promotion remains gated
-open_items: capture and approve real CEM3-BTLA HOGP fixtures, finalize the production parser profile, perform on-device responsive/hardware acceptance, deploy only after explicit authorization
+validation: prior deployed MVP evidence below; 2026-07-17 traceability preview and disposable-Postgres/API/agent/infrastructure checks passed; 2026-07-18 assembly callout CSS-pixel parity passed; CEM3-BTLA normal and rapid fixtures, external-adapter bond/reconnect, strict parser registration, and persistent exact-device selection are implemented locally but not deployed
+open_items: complete local/Draft PR CI validation, record wrench firmware when available, perform authorized reboot and production-screen acceptance, deploy only after explicit authorization
 ---
 
 # Kiosk Assembly Torque Management MVP
@@ -34,7 +34,7 @@ This is separate from part measurement and self-inspection. The implementation r
 - REQUIRED work selects and confirms one serial-numbered physical torque wrench backed by `MeasuringInstrument`. The API centrally checks group/fastener match, model membership/range, AVAILABLE or IN_USE state, calibration validity in Asia/Tokyo, latest setting equality after N·m conversion, current work position, and client-device ownership.
 - A confirmation is reused across different marker numbers only while session, physical wrench, normalized tightening condition, and latest setting history remain identical. A wrench/condition/setting change requires reconfirmation.
 - Accepted, NG, and rejected inputs preserve physical serial/model/setting snapshots. Rejected inputs do not advance work. `(clientDeviceId, eventId)` is idempotent and cannot be replayed into another session.
-- `clients/torque-agent` now has explicit HID, parser-registry, work-binding, SQLite outbox/local-audit, API-delivery, and health boundaries. It has no production CEM3-BTLA parser until sanitized real payload fixtures are captured; the only parser is clearly test-only.
+- `clients/torque-agent` has explicit HID, parser-registry, work-binding, SQLite outbox/local-audit, API-delivery, and health boundaries. The strict production CEM3-BTLA parser is derived from sanitized normal and rapid observations. The agent waits for and reconnects only the configured stable by-id path; transient event numbers and other keyboards are never fallback candidates.
 - The 2026-07-18 Milestone 4A Web refinement gives assembly editor/work callouts the same measured CSS-pixel geometry as inspection drawing and adds reusable `↑ ↓ ← →` position controls for selected bolt/check markers. One press moves only `xRatio` or `yRatio` by 0.0025; IDs, marker numbers, pages, conditions, callout tips, and order remain unchanged.
 - Canonical implementation detail and validation evidence: [traceability ExecPlan](./assembly-torque-wrench-traceability-execplan.md). Operations: [torque-agent Runbook](../runbooks/assembly-torque-agent.md).
 - Latest local implementation branch: `feat/kiosk-deploy-notice-assembly-ui`, based on `origin/main`; implemented and verified locally on 2026-07-14, not deployed.
@@ -210,7 +210,7 @@ DEV preview routes:
 - A value arriving within 1 second after an accepted OK is recorded as ignored duplicate, not accepted as a normal value.
 - Area completion waits for a manual next-area action.
 - Initial torque input sources are `manual`, `mock`, and `agent`.
-- Real Bluetooth communication is not implemented in this branch.
+- Real Bluetooth communication is implemented through the local torque-agent but remains undeployed. The external-controller and wrench HID identities are configured independently so a reboot cannot bind the agent to a transient `hciN` or `eventN` name.
 - Units are not converted in v1; the entered value must match the template unit.
 - Excel export is a readable quality record, not a full legacy form reproduction.
 - Kiosk start uses `AssemblyWorkSession.productNo` as the production seiban.
@@ -230,7 +230,7 @@ DEV preview routes:
 - REQUIRED marker numbers are unique across the whole template, remain stable after deletion, and reuse the smallest missing positive number on the next addition.
 - Condition inheritance/range copy changes only fastener fields, limits, unit, and capability group; marker number, coordinates, page, callout, ordering, DB ID, and internal tightening ID are never copied.
 - A physical-wrench confirmation follows the normalized condition rather than the marker identity. It is reusable across equal conditions and becomes stale after any condition, wrench, or setting-history change.
-- CEM3-BTLA field order, delimiter, judgement, and terminator are not inferred from product prose. A fixture-driven parser is blocked until actual sanitized output is captured and approved.
+- CEM3-BTLA field order, delimiter, judgement, and terminator are not inferred from product prose. The registered parser accepts only the seven-field TAB/ENTER shape proven by sanitized normal and rapid observations.
 
 ## Validation Results
 
@@ -241,7 +241,7 @@ Local traceability validation on 2026-07-17 (not deployed):
 - A uniquely named disposable `pgvector/pgvector:pg15` database applied all 149 migrations. A prior-version upgrade preserved representative legacy rows; historical cross-area marker duplication failed with SQLSTATE `P0001` and rolled back unchanged.
 - Integration coverage includes physical serial/settings snapshots, wrong/unknown/stale wrench rejection, same-condition confirmation reuse, reconfirmation after setting change, cross-session event-ID refusal, idempotent retransmission, and ADMIN/MANAGER override auditing.
 - Representative EXPLAIN plans selected the normalized serial, latest setting, fastener/group, device/event idempotency, session timeline, and profile/memory replay indexes. All disposable container, volume, network, and validation image resources were removed after each run.
-- The production CEM3-BTLA parser and real-device acceptance are intentionally not claimed; see [the ExecPlan](./assembly-torque-wrench-traceability-execplan.md).
+- The production CEM3-BTLA parser and external-adapter bond/reconnect are locally proven but not deployed. Reboot and production-screen acceptance remain open; see [the ExecPlan](./assembly-torque-wrench-traceability-execplan.md).
 
 Local assembly callout/marker parity validation on 2026-07-18 (not pushed or deployed):
 
@@ -407,9 +407,9 @@ Real-device deployment and smoke:
 
 ## Open Items
 
-- Capture normal, low/high-limit, replay, rapid consecutive, partial, and malformed output from a configured CEM3-BTLA; sanitize it and freeze fixture files before registering a production parser profile.
-- Validate at least two physical serial numbers when two tools are available, then perform Raspberry Pi HID path, exclusive-grab, browser-heartbeat, outage/recovery, and responsive work-screen acceptance.
-- Do not deploy the parser or enable the client Compose `torque` profile until the fixture gate passes and deployment is explicitly authorized. Parser-independent agent/Docker/Ansible contracts are already implemented locally.
+- Record firmware when it can be displayed. Capture optional same-memory resend only if a future wrench exposes the operation; do not invent observed evidence for the current wrench.
+- Validate at least two physical serial numbers only when two tools are available, then perform authorized reboot, exclusive-grab, browser-heartbeat, outage/recovery, and responsive work-screen acceptance.
+- Do not deploy the parser or enable the client Compose `torque` profile until local/CI validation passes and deployment is explicitly authorized. Exact external-controller/HID selection and agent reconnect are implemented locally.
 - Add page-viewed/completion audit if procedure viewing itself must become a quality gate.
 - Add NFC serial scan if/when serial identification moves from software keypad to tag scanning.
 - Decide whether Excel output needs full legacy form reproduction or whether the current quality-record workbook is enough.

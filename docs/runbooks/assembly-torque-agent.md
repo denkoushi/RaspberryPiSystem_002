@@ -2,7 +2,7 @@
 
 ## 目的と現在のゲート
 
-`torque-agent`は、許可済みBluetooth HIDトルクレンチをPi4上で排他取得し、組立作業画面の現在位置へ結び付け、SQLiteへ先に保存してからPi5 APIへ送る。CEM3-BTLAの通常出力3件と厳密parser adapterは存在するが、再送・連続送信fixtureの承認までは正式profileを有効化しない。
+`torque-agent`は、許可済みBluetooth HIDトルクレンチをPi4上で排他取得し、組立作業画面の現在位置へ結び付け、SQLiteへ先に保存してからPi5 APIへ送る。CEM3-BTLAの通常3件・連続5件を匿名化して固定し、厳密な`cem3-btla-hogp-v1` profileを登録済みである。外付けBluetooth設定とagentはまだデプロイしていない。
 
 このRunbookは実機準備と安全な確認手順を定義する。デプロイ、実機設定変更、クライアントキー発行はそれぞれ明示的な承認後に行う。
 
@@ -11,14 +11,14 @@
 1. 管理画面`/admin/tools/torque-wrenches`で型番、物理製造番号、校正期限、保管場所、状態、設定履歴、適合グループを登録する。
 2. 検証済みCEM3-BTLA設定を使う。`Cn_o=ON`、`An_o=OFF`、`Jd_o=ON`、`Sn_o=ON`、`dt_o=ON`、`bA_o=OFF`、`Un_o=ON`、`dLm=TAB`、`End=ENTER`、`kEY=JP`、`ZEro=OFF`である。
 3. 実測の順序はメモリ番号、トルク、単位、合否判定、製造番号、日付、時刻の7項目である。設定または機種プロファイルを変えた場合は既存parserで推測せず、新しい実測fixtureとして扱う。
-4. Pi4でペアリング後、対象だけを安定名で確認する。
+4. Pi4でペアリング後、Ansibleが完全一致した対象だけへ作る安定名を確認する。
 
 ```bash
 find /dev/input/by-id -maxdepth 1 -type l -print
 readlink -f /dev/input/by-id/<candidate>
 ```
 
-`/dev/input/event*`や一般キーボードを設定してはいけない。必ず対象レンチ固有の`/dev/input/by-id/*`を使う。
+`/dev/input/event*`、`hciN`、一般キーボードを設定してはいけない。外付けコントローラーはUSB vendor/product、レンチはBluetooth HID bustype・vendor/product・name・uniqで別々に同定し、必ず対象レンチ固有の`/dev/input/by-id/*`を使う。
 
 ペアリングは本体電源ON後3分以内に開始する。ホスト側の登録を消した場合は、本体側のペアリング情報も消してから再登録する。`bluetoothctl`の文言だけを成功判定にせず、最終的に`Paired: yes`、`Bonded: yes`、HIDサービス解決、安定した`/dev/input/by-id/*`の全てを確認する。
 
@@ -35,7 +35,7 @@ poetry run torque-capture validate \
   --fixtures tests/fixtures/capture_contract
 ```
 
-`capture_contract`はCEM3-BTLA出力を模したものではない。`tests/fixtures/cem3_btla/`には実機由来の匿名化済み通常fixtureと、それから作った明示的な派生fixtureだけを置く。adapterは存在するが、実測matrixが揃うまで正式parser profileは登録しない。
+`capture_contract`はCEM3-BTLA出力を模したものではない。`tests/fixtures/cem3_btla/`には実機由来の匿名化済み通常・連続fixtureと、それから作った明示的な派生fixtureだけを置く。正式parser profileはこの実測形だけを受理する。
 
 ### 1. 採取情報を記録する
 
@@ -45,7 +45,7 @@ poetry run torque-capture validate \
 - 有効にした出力項目とその順序
 - 単位と小数点表記
 - TAB／ENTER等の終端設定
-- 同じメモリを再送する実機操作
+- 同じメモリを再送する実機操作の有無
 - 利用可能な実機台数
 
 製造番号、トルク値、単位、メモリ番号を必須出力にし、可能なら機器日時と機器判定も有効にする。文字列、区切り、日時、判定表記は事前に仮定しない。
@@ -67,9 +67,10 @@ chmod 700 /var/lib/torque-agent/capture-private
 ```bash
 cd /opt/RaspberryPiSystem_002/clients/torque-agent
 poetry run torque-capture capture --device /dev/input/by-id/<approved-device> --output /var/lib/torque-agent/capture-private/<normal-id> --scenario normal --expected-frames 3 --firmware '<firmware>' --output-config '<output-config-label>' --terminator enter
-poetry run torque-capture capture --device /dev/input/by-id/<approved-device> --output /var/lib/torque-agent/capture-private/<repeat-id> --scenario repeated_memory --expected-frames 2 --firmware '<firmware>' --output-config '<output-config-label>' --terminator enter
 poetry run torque-capture capture --device /dev/input/by-id/<approved-device> --output /var/lib/torque-agent/capture-private/<rapid-id> --scenario rapid_consecutive --expected-frames 5 --firmware '<firmware>' --output-config '<output-config-label>' --terminator enter
 ```
+
+同一メモリ再送操作が実機に存在する場合だけ`repeated_memory`を2件採取する。現行レンチにはその機能がないため必須にせず、synthetic capture契約とagentのeventId冪等性テストで検証する。実測した体裁のfixtureを作ってはならない。
 
 `/dev/input/event*`と一般キーボードは拒否され、`--no-grab`は存在しない。CLIの標準出力にはpayload本文や製造番号が出ず、件数だけが出る。採取後に権限を確認する。
 
@@ -100,7 +101,7 @@ poetry run torque-capture sanitize \
   --output tests/fixtures/cem3_btla/SERIAL_A/normal.jsonl
 ```
 
-`sanitize`は各置換元が1回以上存在し、置換後に実値が残らない場合だけ書き出す。実測必須は`normal`、`repeated_memory`、`rapid_consecutive`である。`partial`、`missing_field`、`bad_number`、`unsupported_unit`は実payloadから作る派生fixtureであり、`provenance=derived`として実測と区別する。下限・上限の合否はAPIが受信値と工程条件で判定するため、レンチが`NG_MAN`で送信を抑止するNG値を実測fixtureの必須条件にしない。
+`sanitize`は各置換元が1回以上存在し、置換後に実値が残らない場合だけ書き出す。実測必須は`normal`と`rapid_consecutive`である。任意の`repeated_memory`が存在する場合は2件以上を要求する。`partial`、`missing_field`、`bad_number`、`unsupported_unit`は実payloadから作る派生fixtureであり、`provenance=derived`として実測と区別する。下限・上限の合否はAPIが受信値と工程条件で判定するため、レンチが`NG_MAN`で送信を抑止するNG値を実測fixtureの必須条件にしない。
 
 ```bash
 poetry run torque-capture validate \
@@ -113,7 +114,7 @@ git ls-files | rg 'torque-capture-private|torque-redactions|events\.sqlite3' && 
 
 複数実機が利用可能と記録した場合だけ`--available-device-count 2`とし、`SERIAL_A`と`SERIAL_B`の両方を必須にする。raw captureはfixture承認まで保持し、承認後もCLIから自動削除しない。保全期間や削除は別の承認済み運用判断とする。
 
-通常fixtureだけの現時点では`validate`が不足シナリオを示して終了コード3になるのが正しい。`repeated_memory`と`rapid_consecutive`を実測で追加するまで、この結果を成功扱いしたりproduction profileを登録したりしない。
+normal 3件とrapid-consecutive 5件が揃った現行fixtureは`validate`が成功する。synthetic fixtureは引き続き`repeated_memory`を含まなければならない。
 
 ### 4. agentを再起動する
 
@@ -134,6 +135,7 @@ curl --fail --silent http://127.0.0.1:7073/health
 - `Pairing successful`が表示されても`Paired/Bonded`が残らずSMP交換が無い場合は成功扱いしない。
 - コントローラー設定を一時変更した場合は、標準のBR/EDR+LEと接続パラメータ、`bluetooth`、`kiosk-browser`、`lightdm`を復元してから終了する。
 - 同じPi／レンチで解消しない場合は別Bluetoothコントローラーまたは取説の対応端末でA/B確認し、本体ファームウェア版も記録する。過去に同じ組合せで受信できた事実がある場合、単発の失敗だけでLinux非対応と断定しない。
+- 外付けコントローラーで解消した場合も`hci1`や`event5`を保存しない。USB IDとHID identityの完全一致で安定linkを生成し、内蔵コントローラーを一括unblock・無効化しない。
 
 ## 端末設定
 
@@ -148,9 +150,18 @@ torque_agent_heartbeat_ttl_seconds: 8
 # WebがAPIと別originの場合だけ指定。ワイルドカードは使用不可。
 torque_agent_browser_origins:
   - https://<kiosk-web-origin>
+torque_agent_bluetooth_adapter:
+  usb_vendor_id: "<four-lowercase-hex>"
+  usb_product_id: "<four-lowercase-hex>"
+torque_agent_hid_links:
+  - link_name: bluetooth-<approved-wrench>-event-kbd
+    name: <exact-hid-name>
+    uniq: <exact-lowercase-bluetooth-address>
+    vendor_id: "<four-lowercase-hex>"
+    product_id: "<four-lowercase-hex>"
 torque_agent_hid_devices:
-  - path: /dev/input/by-id/<approved-device>
-    parserProfile: <fixture-approved-profile>
+  - path: /dev/input/by-id/bluetooth-<approved-wrench>-event-kbd
+    parserProfile: cem3-btla-hogp-v1
 ```
 
 APIとキオスクWebが同originなら`torque_agent_browser_origins`は空にし、別originのときだけWeb originを明示する。`TORQUE_ENABLE_SYNTHETIC_FIXTURE`は本番で常に`false`とする。生成される`clients/torque-agent/.env`は0600で、リポジトリへ追加しない。
@@ -167,6 +178,8 @@ docker compose -f infrastructure/docker/docker-compose.client.yml --profile torq
 ```
 
 正常時の`/health`は`ok=true`を返す。`queuedEvents`はAPI送信待ち、`localAuditEvents`はbinding無しまたは解析失敗でサーバーへ割り当てなかった入力、`bound`は有効な作業画面heartbeatの有無である。
+
+レンチがOFFの状態でagentが先に起動しても異常ではない。agentは設定された同一by-id pathだけを待ち、ON・自動再接続後に排他取得する。切断途中の文字列は次回接続へ結合せず、新しいdecoderで再開する。
 
 ## 作業前・作業中の確認
 

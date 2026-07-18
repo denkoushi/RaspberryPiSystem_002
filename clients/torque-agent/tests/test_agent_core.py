@@ -122,14 +122,18 @@ def test_synthetic_fixture_parser_is_explicit_and_complete() -> None:
         registry.create("CEM3-BTLA-unverified")
 
 
-def test_cem3_btla_parser_matches_only_observed_normal_fixtures() -> None:
+def test_cem3_btla_parser_matches_observed_normal_and_rapid_fixtures() -> None:
     parser = Cem3BtlaHogpParser()
-    records = [json.loads(line) for line in (CEM3_FIXTURES / "normal.jsonl").read_text().splitlines()]
+    records = [
+        json.loads(line)
+        for fixture_name in ("normal.jsonl", "rapid_consecutive.jsonl")
+        for line in (CEM3_FIXTURES / fixture_name).read_text().splitlines()
+    ]
 
     events = [parser.parse(record["payloadText"].replace("SERIAL_A", "123456A")) for record in records]
 
-    assert [event.memory_counter for event in events] == ["025", "026", "027"]
-    assert [event.value for event in events] == [4.24, 4.24, 4.36]
+    assert [event.memory_counter for event in events] == ["025", "026", "027", "009", "010", "011", "013", "014"]
+    assert [event.value for event in events] == [4.24, 4.24, 4.36, 4.16, 4.06, 4.1, 4.24, 4.06]
     assert all(event.unit == "nm" and event.device_judgement == "O" for event in events)
     assert events[0].serial_number == "123456A"
     assert events[0].device_recorded_at == "2026-07-18T09:54:12+09:00"
@@ -165,7 +169,7 @@ def test_cem3_btla_parser_rejects_unobserved_time_layout_and_invalid_calendar() 
         parser.parse(observed.replace("26/07/18", "26/02/30"))
 
 
-def test_cem3_btla_parser_definition_keeps_tab_as_data_but_remains_production_gated(tmp_path: Path) -> None:
+def test_cem3_btla_parser_definition_keeps_tab_as_data_and_is_registered_for_production(tmp_path: Path) -> None:
     registry = ParserRegistry()
     registry.register(
         Cem3BtlaHogpParser.PROFILE,
@@ -184,8 +188,10 @@ def test_cem3_btla_parser_definition_keeps_tab_as_data_but_remains_production_ga
             devices=(),
         )
     )
-    with pytest.raises(ValueError, match="No verified parser"):
-        production_registry.create(Cem3BtlaHogpParser.PROFILE)
+    assert isinstance(production_registry.create(Cem3BtlaHogpParser.PROFILE), Cem3BtlaHogpParser)
+    assert production_registry.frame_terminators(Cem3BtlaHogpParser.PROFILE) == frozenset(
+        {"KEY_ENTER", "KEY_KPENTER"}
+    )
 
 
 def test_hid_decoder_handles_partial_and_continuous_lines() -> None:
@@ -309,15 +315,26 @@ def test_loopback_api_health_and_disarm_contract(tmp_path: Path) -> None:
     assert bindings.current() is None
 
 
-def test_config_rejects_general_keyboard_event_path(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/dev/input/event0",
+        "/dev/input/by-id/../event0",
+        "/dev/input/by-id/General-Keyboard-event-kbd",
+    ],
+)
+def test_config_rejects_general_keyboard_event_path(
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+) -> None:
     monkeypatch.setenv("TORQUE_API_BASE_URL", "http://127.0.0.1:3000")
     monkeypatch.setenv("TORQUE_CLIENT_KEY", "test-client")
     monkeypatch.setenv(
         "TORQUE_HID_DEVICES_JSON",
-        '[{"path":"/dev/input/event0","parserProfile":"fixture"}]',
+        json.dumps([{"path": path, "parserProfile": "fixture"}]),
     )
 
-    with pytest.raises(ValueError, match="Only /dev/input/by-id"):
+    with pytest.raises(ValueError, match="Only explicit torque-wrench /dev/input/by-id"):
         AgentConfig.from_env()
 
 

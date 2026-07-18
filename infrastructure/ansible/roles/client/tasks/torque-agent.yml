@@ -13,7 +13,119 @@
       - torque_agent_hid_devices is defined
       - torque_agent_hid_devices | length > 0
       - torque_agent_hid_devices | map(attribute='path') | select('match', '^/dev/input/by-id/') | list | length == torque_agent_hid_devices | length
-    fail_msg: torque-agent requires an API URL, registered client key, and explicit /dev/input/by-id device profiles.
+      - torque_agent_hid_devices | map(attribute='parserProfile') | select('equalto', 'cem3-btla-hogp-v1') | list | length == torque_agent_hid_devices | length
+      - torque_agent_bluetooth_adapter.usb_vendor_id | default('') is match('^[0-9a-f]{4}$')
+      - torque_agent_bluetooth_adapter.usb_product_id | default('') is match('^[0-9a-f]{4}$')
+      - torque_agent_hid_links is defined
+      - torque_agent_hid_links | length > 0
+    fail_msg: torque-agent requires an API URL, registered client key, exact external adapter identity, stable HID links, and verified CEM3-BTLA /dev/input/by-id profiles.
+
+- name: Validate torque-wrench HID identity contracts
+  ansible.builtin.assert:
+    that:
+      - item.link_name is match('^[A-Za-z0-9][A-Za-z0-9._-]{0,126}-event-kbd$')
+      - item.name is match('^[A-Za-z0-9][A-Za-z0-9._-]{0,126}$')
+      - item.uniq is match('^[0-9a-f]{2}(:[0-9a-f]{2}){5}$')
+      - item.vendor_id is match('^[0-9a-f]{4}$')
+      - item.product_id is match('^[0-9a-f]{4}$')
+      - ('/dev/input/by-id/' ~ item.link_name) in (torque_agent_hid_devices | map(attribute='path') | list)
+    fail_msg: torque-agent HID links require a safe by-id name and exact lowercase Bluetooth HID identity.
+  loop: "{{ torque_agent_hid_links }}"
+  loop_control:
+    label: "{{ item.link_name | default('invalid-link') }}"
+
+- name: Ensure torque Bluetooth helper directory exists
+  ansible.builtin.file:
+    path: /usr/local/libexec
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  when: terminal_release_mode | default('full') == 'full'
+
+- name: Check torque Bluetooth helper directory before release
+  ansible.builtin.stat:
+    path: /usr/local/libexec
+  register: torque_bluetooth_helper_directory
+  when: terminal_release_mode | default('full') == 'release-only'
+
+- name: Require torque Bluetooth helper directory before release
+  ansible.builtin.assert:
+    that:
+      - torque_bluetooth_helper_directory.stat.exists | default(false)
+      - torque_bluetooth_helper_directory.stat.isdir | default(false)
+    fail_msg: /usr/local/libexec is missing; provision the terminal before release.
+  when: terminal_release_mode | default('full') == 'release-only'
+
+- name: Deploy exact-controller Bluetooth preparation helper
+  ansible.builtin.template:
+    src: torque-bluetooth-adapter.sh.j2
+    dest: /usr/local/libexec/torque-bluetooth-adapter
+    owner: root
+    group: root
+    mode: '0755'
+  register: torque_bluetooth_helper_result
+
+- name: Deploy torque Bluetooth systemd instance unit
+  ansible.builtin.template:
+    src: torque-bluetooth-adapter@.service.j2
+    dest: /etc/systemd/system/torque-bluetooth-adapter@.service
+    owner: root
+    group: root
+    mode: '0644'
+  register: torque_bluetooth_unit_result
+
+- name: Deploy exact external-controller udev rule
+  ansible.builtin.template:
+    src: 90-torque-bluetooth-adapter.rules.j2
+    dest: /etc/udev/rules.d/90-torque-bluetooth-adapter.rules
+    owner: root
+    group: root
+    mode: '0644'
+  register: torque_bluetooth_udev_result
+
+- name: Deploy exact torque-wrench HID by-id rules
+  ansible.builtin.template:
+    src: 99-torque-wrench-hid.rules.j2
+    dest: /etc/udev/rules.d/99-torque-wrench-hid.rules
+    owner: root
+    group: root
+    mode: '0644'
+  register: torque_hid_udev_result
+
+- name: Reload systemd for torque Bluetooth unit
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: torque_bluetooth_unit_result.changed
+
+- name: Reload udev rules for torque devices
+  ansible.builtin.command: udevadm control --reload-rules
+  changed_when: false
+  when: torque_bluetooth_udev_result.changed or torque_hid_udev_result.changed
+
+- name: Retrigger exact Bluetooth hosts after torque device configuration changes
+  ansible.builtin.command: >-
+    udevadm trigger --subsystem-match=bluetooth --property-match=DEVTYPE=host --action=add
+  changed_when: false
+  when: >-
+    torque_bluetooth_helper_result.changed
+    or torque_bluetooth_unit_result.changed
+    or torque_bluetooth_udev_result.changed
+
+- name: Retrigger Bluetooth input devices after torque HID rule changes
+  ansible.builtin.command: >-
+    udevadm trigger --subsystem-match=input --property-match=ID_BUS=bluetooth --action=add
+  changed_when: false
+  when: torque_hid_udev_result.changed
+
+- name: Wait for torque udev events to settle
+  ansible.builtin.command: udevadm settle --timeout=30
+  changed_when: false
+  when: >-
+    torque_bluetooth_helper_result.changed
+    or torque_bluetooth_unit_result.changed
+    or torque_bluetooth_udev_result.changed
+    or torque_hid_udev_result.changed
 
 - name: Ensure torque-agent directory exists
   ansible.builtin.file:

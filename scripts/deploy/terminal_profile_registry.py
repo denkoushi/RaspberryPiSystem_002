@@ -29,6 +29,8 @@ _ALLOWED_ROLLBACK_PATHS = frozenset(
         "/etc/NetworkManager/NetworkManager.conf",
         "/etc/raspi-haizen-agent.conf",
         "/etc/raspi-status-agent.conf",
+        "/etc/udev/rules.d/90-torque-bluetooth-adapter.rules",
+        "/etc/udev/rules.d/99-torque-wrench-hid.rules",
         "/usr/bin/chromium-browser",
     }
 )

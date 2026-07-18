@@ -24,6 +24,10 @@ OBSERVED_SCENARIOS = {
     "repeated_memory",
     "rapid_consecutive",
 }
+REQUIRED_OBSERVED_SCENARIOS = {
+    "normal",
+    "rapid_consecutive",
+}
 DERIVED_SCENARIOS = {
     "below_limit",
     "above_limit",
@@ -345,13 +349,15 @@ def validate_fixtures(
             aliases.update(SERIAL_ALIAS.findall(record["payloadText"]))
             total_records += 1
 
-    missing = OBSERVED_SCENARIOS - scenarios
+    required_scenarios = OBSERVED_SCENARIOS if synthetic else REQUIRED_OBSERVED_SCENARIOS
+    missing = required_scenarios - scenarios
     if missing:
         raise CaptureIncompleteError("fixture coverage is incomplete: " + ", ".join(sorted(missing)))
     insufficient = [] if synthetic else [
         f"{scenario} ({scenario_record_counts.get(scenario, 0)}/{minimum})"
         for scenario, minimum in OBSERVED_MINIMUM_RECORDS.items()
-        if scenario_record_counts.get(scenario, 0) < minimum
+        if (scenario in required_scenarios or scenario in scenarios)
+        and scenario_record_counts.get(scenario, 0) < minimum
     ]
     if insufficient:
         raise CaptureIncompleteError("fixture record coverage is incomplete: " + ", ".join(insufficient))

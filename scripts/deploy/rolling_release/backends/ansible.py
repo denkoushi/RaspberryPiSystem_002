@@ -111,6 +111,10 @@ _COMMON_TERMINAL_PATHS = (
 
 _KIOSK_TERMINAL_PATHS = (
     f"{_TERMINAL_REPOSITORY}/clients/torque-agent/.env",
+    "/usr/local/libexec/torque-bluetooth-adapter",
+    "/etc/systemd/system/torque-bluetooth-adapter@.service",
+    "/etc/udev/rules.d/90-torque-bluetooth-adapter.rules",
+    "/etc/udev/rules.d/99-torque-wrench-hid.rules",
     "/usr/bin/chromium-browser",
     "/usr/local/bin/kiosk-launch.sh",
     "/etc/systemd/system/kiosk-browser.service",

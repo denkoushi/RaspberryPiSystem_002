@@ -32,9 +32,10 @@ The physical CEM3-BTLA sends one-way Bluetooth HOGP keyboard output. The system 
 8. A dedicated loopback-only torque agent reads configured HID devices, persists events in a SQLite outbox before delivery, and deletes them only after API acknowledgement. The API, not the agent, owns authorization and acceptance policy.
 9. ADMIN/MANAGER manual override replaces failed transport only. It requires a valid wrench confirmation and reason and cannot bypass eligibility.
 10. Production implementation is gated by an approved interactive preview. The production parser is separately gated by captured real-device output; field order and delimiters must not be guessed.
-11. The parser adapter may be implemented and tested from observed normal output, but production profile registration additionally requires observed repeated-memory and rapid-consecutive transport fixtures. Parser construction and activation are separate boundaries.
+11. Production parser registration requires observed normal and rapid-consecutive fixtures. Same-memory resend remains optional observed evidence when the device exposes that operation and is otherwise mandatory synthetic transport/idempotency coverage. Parser construction and activation are separate boundaries.
 12. The server is authoritative for lower/upper torque acceptance. In the selected `NG_MAN` workflow, observed below/above-limit device output is not required; partial, missing-field, malformed-number, and unsupported-unit cases are explicit derived rejection fixtures.
 13. No production measurement is discarded as a warm-up. The capture and HID boundary must preserve the first complete frame or fail closed, and Bluetooth link/bond failures are diagnosed separately from payload parsing and API acceptance.
+14. External Bluetooth-controller identity and wrench HID identity are separate deployment adapters. Match the controller by exact USB vendor/product and the wrench by exact Bluetooth HID bustype, vendor/product, name, and unique address. Never persist transient `hciN` or `eventN` names, and never fall back to an unconfigured keyboard.
 
 ## Alternatives
 

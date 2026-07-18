@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly expected_vendor='{{ torque_agent_bluetooth_adapter.usb_vendor_id }}'
+readonly expected_product='{{ torque_agent_bluetooth_adapter.usb_product_id }}'
+readonly hci_name="${1:-}"
+
+if [[ ! "${hci_name}" =~ ^hci[0-9]+$ ]]; then
+  echo "invalid Bluetooth controller name" >&2
+  exit 2
+fi
+
+readonly class_path="/sys/class/bluetooth/${hci_name}"
+for _ in {1..30}; do
+  [[ -e "${class_path}/device" ]] && break
+  sleep 1
+done
+[[ -e "${class_path}/device" ]]
+
+device_path="$(readlink -f "${class_path}/device")"
+candidate="${device_path}"
+matched=false
+while [[ "${candidate}" == /sys/* ]]; do
+  if [[ -r "${candidate}/idVendor" && -r "${candidate}/idProduct" ]]; then
+    vendor="$(tr '[:upper:]' '[:lower:]' < "${candidate}/idVendor")"
+    product="$(tr '[:upper:]' '[:lower:]' < "${candidate}/idProduct")"
+    if [[ "${vendor}" == "${expected_vendor}" && "${product}" == "${expected_product}" ]]; then
+      matched=true
+      break
+    fi
+  fi
+  candidate="$(dirname "${candidate}")"
+done
+
+if [[ "${matched}" != true ]]; then
+  echo "Bluetooth controller does not match configured USB identity" >&2
+  exit 3
+fi
+
+controller_path="$(readlink -f "${class_path}")"
+rfkill_matched=false
+for rfkill_path in /sys/class/rfkill/rfkill*; do
+  [[ -r "${rfkill_path}/type" && "$(< "${rfkill_path}/type")" == bluetooth ]] || continue
+  rfkill_device="$(readlink -f "${rfkill_path}/device")"
+  if [[ "${rfkill_device}" == "${controller_path}" || "${rfkill_device}" == "${controller_path}/"* ]]; then
+    rfkill_matched=true
+    if [[ "$(< "${rfkill_path}/hard")" == 1 ]]; then
+      echo "configured external Bluetooth controller is hard blocked" >&2
+      exit 4
+    fi
+    printf '0\n' > "${rfkill_path}/soft"
+  fi
+done
+
+if [[ "${rfkill_matched}" != true ]]; then
+  echo "no rfkill entry matched configured external Bluetooth controller" >&2
+  exit 5
+fi
+
+hci_index="${hci_name#hci}"
+address="$(btmgmt --index "${hci_index}" info | awk '/^[[:space:]]*addr / { print toupper($2); exit }')"
+if [[ ! "${address}" =~ ^([0-9A-F]{2}:){5}[0-9A-F]{2}$ ]]; then
+  echo "configured external Bluetooth controller address is unavailable" >&2
+  exit 6
+fi
+for _ in {1..20}; do
+  if bluetoothctl show "${address}" | grep -q 'Powered: yes'; then
+    exit 0
+  fi
+  printf 'select %s\npower on\nquit\n' "${address}" | bluetoothctl >/dev/null 2>&1 || true
+  sleep 1
+done
+
+echo "configured external Bluetooth controller did not become powered" >&2
+exit 7
