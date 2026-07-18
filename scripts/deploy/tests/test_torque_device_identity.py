@@ -24,15 +24,36 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
             self.assertIn(fragment, rule)
         for fragment in (
             "^hci[0-9]+$",
+            "--discover",
+            "expected exactly one configured external Bluetooth controller",
             "idVendor",
             "idProduct",
             '"${rfkill_device}" == "${controller_path}"',
-            "btmgmt --index",
-            "bluetoothctl show",
+            'timeout --signal=TERM --kill-after=1 4 btmgmt --index',
+            'power on',
+            "for _ in {1..15}",
         ):
             self.assertIn(fragment, helper)
+        self.assertNotIn("bluetoothctl", helper)
         self.assertNotIn("rfkill unblock bluetooth", helper)
         self.assertNotIn("/sys/class/bluetooth/hci1", helper)
+        self.assertIn('[[ "${controller_name}" =~ ^hci[0-9]+$ ]] || continue', helper)
+        self.assertEqual(helper.count("btmgmt --index"), 2)
+        self.assertEqual(
+            helper.count("timeout --signal=TERM --kill-after=1 4 btmgmt --index"),
+            2,
+        )
+        discover_branch = helper.index('if [[ "${hci_name}" == \'--discover\' ]]')
+        discover_exit = helper.index("exit 0", discover_branch)
+        rfkill_write = helper.index("printf '0\\n'", discover_exit)
+        first_power_command = helper.index("btmgmt --index", rfkill_write)
+        self.assertLess(discover_branch, discover_exit)
+        self.assertLess(discover_exit, rfkill_write)
+        self.assertLess(rfkill_write, first_power_command)
+
+        unit = (CLIENT_ROLE / "templates/torque-bluetooth-adapter@.service.j2").read_text()
+        self.assertIn("TimeoutStartSec=90", unit)
+        self.assertIn("TimeoutStopSec=10", unit)
 
     def test_hid_rule_requires_full_wrench_identity_before_creating_by_id_link(self) -> None:
         rule = (CLIENT_ROLE / "templates/99-torque-wrench-hid.rules.j2").read_text()
@@ -78,6 +99,12 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
             "udevadm control --reload-rules",
             "udevadm trigger --subsystem-match=bluetooth --property-match=DEVTYPE=host --action=add",
             "udevadm trigger --subsystem-match=input --property-match=ID_BUS=bluetooth --action=add",
+            "Discover the exact configured torque Bluetooth controller",
+            "/usr/local/libexec/torque-bluetooth-adapter --discover",
+            "Prepare and synchronously verify the exact torque Bluetooth controller",
+            "torque-bluetooth-adapter@{{ torque_bluetooth_controller_discovery.stdout | trim }}.service",
+            "Require successful exact torque Bluetooth controller preparation",
+            "ExecMainStatus=0",
         ):
             self.assertIn(fragment, tasks)
 

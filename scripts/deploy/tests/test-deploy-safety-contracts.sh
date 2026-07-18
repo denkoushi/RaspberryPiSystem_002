@@ -1005,7 +1005,8 @@ DOCKER_MUTATION = re.compile(
     re.IGNORECASE,
 )
 READ_ONLY_COMMAND = re.compile(
-    r'^(?:docker\s+--version|ip\s+-brief|rsvg-convert\s+--version|'
+    r'^(?:/usr/local/libexec/torque-bluetooth-adapter\s+--discover|'
+    r'docker\s+--version|ip\s+-brief|rsvg-convert\s+--version|'
     r'systemctl\s+(?:is-|list-unit-files|show|status)|'
     r'systemd-analyze\s+verify|tailscale\s+status|which\s+)',
     re.IGNORECASE,

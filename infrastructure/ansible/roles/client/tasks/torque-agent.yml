@@ -127,6 +127,38 @@
     or torque_bluetooth_udev_result.changed
     or torque_hid_udev_result.changed
 
+- name: Discover the exact configured torque Bluetooth controller
+  ansible.builtin.command: /usr/local/libexec/torque-bluetooth-adapter --discover
+  register: torque_bluetooth_controller_discovery
+  changed_when: false
+
+- name: Require one safe torque Bluetooth controller instance
+  ansible.builtin.assert:
+    that:
+      - torque_bluetooth_controller_discovery.stdout | trim is match('^hci[0-9]+$')
+    fail_msg: The exact configured external torque Bluetooth controller is unavailable or ambiguous.
+
+- name: Prepare and synchronously verify the exact torque Bluetooth controller
+  ansible.builtin.systemd:
+    name: "torque-bluetooth-adapter@{{ torque_bluetooth_controller_discovery.stdout | trim }}.service"
+    state: restarted
+
+- name: Read exact torque Bluetooth controller unit result
+  ansible.builtin.command: >-
+    systemctl show
+    torque-bluetooth-adapter@{{ torque_bluetooth_controller_discovery.stdout | trim }}.service
+    --property=Result --property=ExecMainCode --property=ExecMainStatus
+  register: torque_bluetooth_controller_unit_result
+  changed_when: false
+
+- name: Require successful exact torque Bluetooth controller preparation
+  ansible.builtin.assert:
+    that:
+      - "'Result=success' in torque_bluetooth_controller_unit_result.stdout_lines"
+      - "'ExecMainCode=exited' in torque_bluetooth_controller_unit_result.stdout_lines"
+      - "'ExecMainStatus=0' in torque_bluetooth_controller_unit_result.stdout_lines"
+    fail_msg: The exact external torque Bluetooth controller preparation unit did not complete successfully.
+
 - name: Ensure torque-agent directory exists
   ansible.builtin.file:
     path: "{{ repo_path }}/clients/torque-agent"
