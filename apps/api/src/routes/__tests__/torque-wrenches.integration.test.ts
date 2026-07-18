@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
 import { prisma } from '../../lib/prisma.js';
+import { AssemblyLotService } from '../../services/assembly/assembly-lot.service.js';
 import { AssemblyTemplateService } from '../../services/assembly/assembly-template.service.js';
 import { AssemblyWorkSessionService } from '../../services/assembly/assembly-work-session.service.js';
 import { createAuthHeader, createTestClientDevice, createTestUser } from './helpers.js';
@@ -21,6 +22,8 @@ describe('torque wrench traceability API', () => {
     await prisma.assemblyTorqueRecord.deleteMany({});
     await prisma.assemblyTorqueWrenchConfirmation.deleteMany({});
     await prisma.assemblyWorkSession.deleteMany({});
+    await prisma.assemblyLotSerial.deleteMany({});
+    await prisma.assemblyLot.deleteMany({});
     await prisma.assemblySerialRegistry.deleteMany({});
     await prisma.assemblyTemplateBolt.deleteMany({});
     await prisma.assemblyTemplateArea.deleteMany({});
@@ -207,6 +210,26 @@ describe('torque wrench traceability API', () => {
       targetUnit: 'TRACE-001',
       clientDeviceId: client.id
     });
+    expect(session.torqueWrenchId).toBe('');
+    expect(
+      (
+        await prisma.assemblyWorkSession.findUniqueOrThrow({
+          where: { id: session.id },
+          select: { torqueWrenchId: true }
+        })
+      ).torqueWrenchId
+    ).toBe('');
+
+    const lot = await new AssemblyLotService().create({
+      templateId: template.id,
+      productNo: 'TRACE-LOT-PRODUCT',
+      expectedQuantity: 1,
+      serialNos: [`TRACE-LOT-${randomUUID()}`],
+      operatorNameSnapshot: '試験作業者',
+      targetUnit: 'TRACE-001',
+      clientDeviceId: client.id
+    });
+    expect(lot.torqueWrenchId).toBe('');
     const kioskHeaders = { 'x-client-key': client.apiKey, 'content-type': 'application/json' };
 
     const compatible = await app.inject({

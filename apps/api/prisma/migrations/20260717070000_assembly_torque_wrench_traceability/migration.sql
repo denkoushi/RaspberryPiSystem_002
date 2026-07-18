@@ -1,13 +1,10 @@
 -- CreateEnum
 CREATE TYPE "AssemblyTorqueTraceabilityMode" AS ENUM ('LEGACY', 'REQUIRED');
 
--- Existing templates and records remain LEGACY-compatible. The physical wrench
--- reference is optional for those historical rows.
-ALTER TABLE "AssemblyLot"
-  ALTER COLUMN "torqueWrenchId" DROP NOT NULL;
-
-ALTER TABLE "AssemblyWorkSession"
-  ALTER COLUMN "torqueWrenchId" DROP NOT NULL;
+-- Existing templates and records remain LEGACY-compatible. Keep the legacy
+-- free-text wrench columns NOT NULL for an expand-only rollout. REQUIRED rows
+-- store an empty compatibility value; physical-wrench identity is recorded by
+-- the new confirmation and torque-record relations below.
 
 ALTER TABLE "AssemblyTemplate"
   ADD COLUMN "traceabilityMode" "AssemblyTorqueTraceabilityMode" NOT NULL DEFAULT 'LEGACY';

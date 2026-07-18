@@ -254,7 +254,7 @@ export class AssemblyWorkSessionService {
             torqueWrenchId:
               template.traceabilityMode === 'LEGACY'
                 ? required(input.torqueWrenchId ?? '', '使用トルクレンチ').slice(0, 120)
-                : null,
+                : '',
             clientDeviceId: input.clientDeviceId ?? null,
             clientDeviceNameSnapshot: input.clientDeviceNameSnapshot ?? null,
             currentAreaId: first.areaId,

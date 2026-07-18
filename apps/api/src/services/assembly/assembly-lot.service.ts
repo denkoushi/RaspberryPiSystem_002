@@ -154,7 +154,7 @@ export class AssemblyLotService {
         const torqueWrenchId =
           template.traceabilityMode === 'LEGACY'
             ? required(input.torqueWrenchId ?? '', '使用トルクレンチ').slice(0, 120)
-            : null;
+            : '';
 
         const existingSerials = await tx.assemblySerialRegistry.findMany({
           where: { serialNo: { in: serialNos } },

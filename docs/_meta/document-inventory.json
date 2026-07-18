@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 526,
-    "totalLines": 151957,
-    "totalBytes": 11410384,
+    "totalLines": 151967,
+    "totalBytes": 11412583,
     "withFrontmatter": 212,
     "withStatus": 70,
     "sourceOfTruthDeclared": 42,
@@ -31283,8 +31283,8 @@
     },
     {
       "path": "docs/plans/assembly-torque-wrench-traceability-execplan.md",
-      "lineCount": 508,
-      "byteSize": 73966,
+      "lineCount": 518,
+      "byteSize": 76075,
       "hasFrontmatter": true,
       "title": "Assembly Torque Wrench Traceability",
       "status": "active",
@@ -31295,7 +31295,7 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 286,
+          "line": 294,
           "length": 1055
         }
       ],
@@ -31942,7 +31942,7 @@
     {
       "path": "docs/plans/kiosk-assembly-torque-management-mvp.md",
       "lineCount": 427,
-      "byteSize": 39987,
+      "byteSize": 40077,
       "hasFrontmatter": true,
       "title": "Kiosk Assembly Torque Management MVP",
       "status": "active",

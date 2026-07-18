@@ -2620,7 +2620,7 @@ model AssemblyLot {
   operatorEmployeeId       String?
   operatorNameSnapshot     String
   targetUnit               String
-  torqueWrenchId           String?
+  torqueWrenchId           String
   clientDeviceId           String?
   clientDeviceNameSnapshot String?
   createdAt                DateTime            @default(now())
@@ -2661,7 +2661,7 @@ model AssemblyWorkSession {
   operatorEmployeeId        String?
   operatorNameSnapshot      String
   targetUnit                String
-  torqueWrenchId            String?
+  torqueWrenchId            String
   clientDeviceId            String?
   clientDeviceNameSnapshot  String?
   currentAreaId             String?
