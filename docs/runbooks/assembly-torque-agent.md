@@ -2,15 +2,15 @@
 
 ## 目的と現在のゲート
 
-`torque-agent`は、許可済みBluetooth HIDトルクレンチをPi4上で排他取得し、組立作業画面の現在位置へ結び付け、SQLiteへ先に保存してからPi5 APIへ送る。実装・Docker・Ansible契約は存在するが、CEM3-BTLAの正式parser profileは実機出力fixtureの承認まで有効化しない。
+`torque-agent`は、許可済みBluetooth HIDトルクレンチをPi4上で排他取得し、組立作業画面の現在位置へ結び付け、SQLiteへ先に保存してからPi5 APIへ送る。CEM3-BTLAの通常出力3件と厳密parser adapterは存在するが、再送・連続送信fixtureの承認までは正式profileを有効化しない。
 
 このRunbookは実機準備と安全な確認手順を定義する。デプロイ、実機設定変更、クライアントキー発行はそれぞれ明示的な承認後に行う。
 
 ## 導入前チェック
 
 1. 管理画面`/admin/tools/torque-wrenches`で型番、物理製造番号、校正期限、保管場所、状態、設定履歴、適合グループを登録する。
-2. CEM3-BTLA本体で、製造番号、トルク値、単位、メモリ番号を必須出力にする。可能なら機器日時と判定も追加する。
-3. TABまたは改行を1送信の終端に設定する。フィールド順・区切り・小数点表記は推測せず記録する。
+2. 検証済みCEM3-BTLA設定を使う。`Cn_o=ON`、`An_o=OFF`、`Jd_o=ON`、`Sn_o=ON`、`dt_o=ON`、`bA_o=OFF`、`Un_o=ON`、`dLm=TAB`、`End=ENTER`、`kEY=JP`、`ZEro=OFF`である。
+3. 実測の順序はメモリ番号、トルク、単位、合否判定、製造番号、日付、時刻の7項目である。設定または機種プロファイルを変えた場合は既存parserで推測せず、新しい実測fixtureとして扱う。
 4. Pi4でペアリング後、対象だけを安定名で確認する。
 
 ```bash
@@ -19,6 +19,8 @@ readlink -f /dev/input/by-id/<candidate>
 ```
 
 `/dev/input/event*`や一般キーボードを設定してはいけない。必ず対象レンチ固有の`/dev/input/by-id/*`を使う。
+
+ペアリングは本体電源ON後3分以内に開始する。ホスト側の登録を消した場合は、本体側のペアリング情報も消してから再登録する。`bluetoothctl`の文言だけを成功判定にせず、最終的に`Paired: yes`、`Bonded: yes`、HIDサービス解決、安定した`/dev/input/by-id/*`の全てを確認する。
 
 ## 実機fixture採取（Milestone 2B）
 
@@ -33,7 +35,7 @@ poetry run torque-capture validate \
   --fixtures tests/fixtures/capture_contract
 ```
 
-`capture_contract`はCEM3-BTLA出力を模したものではない。実機由来の匿名化済みfixtureだけを`tests/fixtures/cem3_btla/`へ配置し、実payloadが揃うまでは同ディレクトリも正式parser profileも作らない。
+`capture_contract`はCEM3-BTLA出力を模したものではない。`tests/fixtures/cem3_btla/`には実機由来の匿名化済み通常fixtureと、それから作った明示的な派生fixtureだけを置く。adapterは存在するが、実測matrixが揃うまで正式parser profileは登録しない。
 
 ### 1. 採取情報を記録する
 
@@ -64,11 +66,9 @@ chmod 700 /var/lib/torque-agent/capture-private
 
 ```bash
 cd /opt/RaspberryPiSystem_002/clients/torque-agent
-poetry run torque-capture capture --device /dev/input/by-id/<approved-device> --output /var/lib/torque-agent/capture-private/<normal-id> --scenario normal --expected-frames 3 --firmware '<firmware>' --output-config '<output-config-label>'
-poetry run torque-capture capture --device /dev/input/by-id/<approved-device> --output /var/lib/torque-agent/capture-private/<below-id> --scenario below_limit --expected-frames 3 --firmware '<firmware>' --output-config '<output-config-label>'
-poetry run torque-capture capture --device /dev/input/by-id/<approved-device> --output /var/lib/torque-agent/capture-private/<above-id> --scenario above_limit --expected-frames 3 --firmware '<firmware>' --output-config '<output-config-label>'
-poetry run torque-capture capture --device /dev/input/by-id/<approved-device> --output /var/lib/torque-agent/capture-private/<repeat-id> --scenario repeated_memory --expected-frames 2 --firmware '<firmware>' --output-config '<output-config-label>'
-poetry run torque-capture capture --device /dev/input/by-id/<approved-device> --output /var/lib/torque-agent/capture-private/<rapid-id> --scenario rapid_consecutive --expected-frames 5 --firmware '<firmware>' --output-config '<output-config-label>'
+poetry run torque-capture capture --device /dev/input/by-id/<approved-device> --output /var/lib/torque-agent/capture-private/<normal-id> --scenario normal --expected-frames 3 --firmware '<firmware>' --output-config '<output-config-label>' --terminator enter
+poetry run torque-capture capture --device /dev/input/by-id/<approved-device> --output /var/lib/torque-agent/capture-private/<repeat-id> --scenario repeated_memory --expected-frames 2 --firmware '<firmware>' --output-config '<output-config-label>' --terminator enter
+poetry run torque-capture capture --device /dev/input/by-id/<approved-device> --output /var/lib/torque-agent/capture-private/<rapid-id> --scenario rapid_consecutive --expected-frames 5 --firmware '<firmware>' --output-config '<output-config-label>' --terminator enter
 ```
 
 `/dev/input/event*`と一般キーボードは拒否され、`--no-grab`は存在しない。CLIの標準出力にはpayload本文や製造番号が出ず、件数だけが出る。採取後に権限を確認する。
@@ -100,7 +100,7 @@ poetry run torque-capture sanitize \
   --output tests/fixtures/cem3_btla/SERIAL_A/normal.jsonl
 ```
 
-`sanitize`は各置換元が1回以上存在し、置換後に実値が残らない場合だけ書き出す。同じ手順で5つの実測シナリオを作る。`partial`、`missing_field`、`bad_number`、`unsupported_unit`は実payloadの契約確定後に作る派生fixtureであり、`provenance=derived`として実測と区別する。
+`sanitize`は各置換元が1回以上存在し、置換後に実値が残らない場合だけ書き出す。実測必須は`normal`、`repeated_memory`、`rapid_consecutive`である。`partial`、`missing_field`、`bad_number`、`unsupported_unit`は実payloadから作る派生fixtureであり、`provenance=derived`として実測と区別する。下限・上限の合否はAPIが受信値と工程条件で判定するため、レンチが`NG_MAN`で送信を抑止するNG値を実測fixtureの必須条件にしない。
 
 ```bash
 poetry run torque-capture validate \
@@ -113,6 +113,8 @@ git ls-files | rg 'torque-capture-private|torque-redactions|events\.sqlite3' && 
 
 複数実機が利用可能と記録した場合だけ`--available-device-count 2`とし、`SERIAL_A`と`SERIAL_B`の両方を必須にする。raw captureはfixture承認まで保持し、承認後もCLIから自動削除しない。保全期間や削除は別の承認済み運用判断とする。
 
+通常fixtureだけの現時点では`validate`が不足シナリオを示して終了コード3になるのが正しい。`repeated_memory`と`rapid_consecutive`を実測で追加するまで、この結果を成功扱いしたりproduction profileを登録したりしない。
+
 ### 4. agentを再起動する
 
 採取コマンドの終了後は、成功・失敗にかかわらずagentを明示的に戻す。
@@ -124,6 +126,14 @@ curl --fail --silent http://127.0.0.1:7073/health
 ```
 
 実機fixtureのレビューでは、観測されたフィールド順、区切り、単位、終端だけを正式parserへ許可する。推測による代替形式は追加しない。
+
+### ペアリング／HIDが成立しない場合
+
+- 青ランプの点灯だけで成功としない。広告検出、LE接続、SMP鍵交換、`Bonded: yes`、HIDサービス解決を順に切り分ける。
+- `LE Read Remote Used Features`直後の`Connection Failed to be Established (0x3e)`でSMPが一度も見えない場合はparser、API、出力設定の問題ではない。同じpair操作を無制限に繰り返さず、HCIログをGit外へ保全する。
+- `Pairing successful`が表示されても`Paired/Bonded`が残らずSMP交換が無い場合は成功扱いしない。
+- コントローラー設定を一時変更した場合は、標準のBR/EDR+LEと接続パラメータ、`bluetooth`、`kiosk-browser`、`lightdm`を復元してから終了する。
+- 同じPi／レンチで解消しない場合は別Bluetoothコントローラーまたは取説の対応端末でA/B確認し、本体ファームウェア版も記録する。過去に同じ組合せで受信できた事実がある場合、単発の失敗だけでLinux非対応と断定しない。
 
 ## 端末設定
 
@@ -165,6 +175,8 @@ docker compose -f infrastructure/docker/docker-compose.client.yml --profile torq
 3. 画面が`接続済み`かつ`トルク入力待機中`になった後だけ締め付ける。
 4. 丸数字の切替時は一度bindingを解除する。同じ条件・同じ物理レンチ・同じ最新設定なら確認が自動再利用され、「トルク入力待機中」へ戻る。条件、レンチ、設定履歴が変わった場合は再確認する。
 5. 誤レンチ、校正切れ、状態不適合、設定不一致、現在位置不一致、未対応単位では位置が進まないことを確認する。
+
+最初の作業1件をウォームアップとして捨ててはいけない。最初のフレームが欠けた場合は作業を進めず、`HID_DECODE_FAILED`または不完全captureとして原因を確認する。
 
 ## SQLite確認
 

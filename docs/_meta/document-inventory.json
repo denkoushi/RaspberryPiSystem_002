@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 526,
-    "totalLines": 151794,
-    "totalBytes": 11377673,
+    "totalLines": 151848,
+    "totalBytes": 11389060,
     "withFrontmatter": 212,
     "withStatus": 70,
     "sourceOfTruthDeclared": 42,
@@ -16424,8 +16424,8 @@
     },
     {
       "path": "docs/decisions/ADR-20260717-assembly-torque-wrench-traceability.md",
-      "lineCount": 70,
-      "byteSize": 6595,
+      "lineCount": 75,
+      "byteSize": 7770,
       "hasFrontmatter": false,
       "title": "ADR-20260717: Assembly Torque Wrench Traceability Boundaries",
       "status": null,
@@ -31283,8 +31283,8 @@
     },
     {
       "path": "docs/plans/assembly-torque-wrench-traceability-execplan.md",
-      "lineCount": 390,
-      "byteSize": 49201,
+      "lineCount": 427,
+      "byteSize": 57480,
       "hasFrontmatter": true,
       "title": "Assembly Torque Wrench Traceability",
       "status": "active",
@@ -34564,8 +34564,8 @@
     },
     {
       "path": "docs/runbooks/assembly-torque-agent.md",
-      "lineCount": 219,
-      "byteSize": 12291,
+      "lineCount": 231,
+      "byteSize": 14224,
       "hasFrontmatter": false,
       "title": "組立 torque-agent 運用Runbook",
       "status": null,

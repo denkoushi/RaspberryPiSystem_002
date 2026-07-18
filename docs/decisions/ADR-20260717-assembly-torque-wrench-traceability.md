@@ -32,6 +32,9 @@ The physical CEM3-BTLA sends one-way Bluetooth HOGP keyboard output. The system 
 8. A dedicated loopback-only torque agent reads configured HID devices, persists events in a SQLite outbox before delivery, and deletes them only after API acknowledgement. The API, not the agent, owns authorization and acceptance policy.
 9. ADMIN/MANAGER manual override replaces failed transport only. It requires a valid wrench confirmation and reason and cannot bypass eligibility.
 10. Production implementation is gated by an approved interactive preview. The production parser is separately gated by captured real-device output; field order and delimiters must not be guessed.
+11. The parser adapter may be implemented and tested from observed normal output, but production profile registration additionally requires observed repeated-memory and rapid-consecutive transport fixtures. Parser construction and activation are separate boundaries.
+12. The server is authoritative for lower/upper torque acceptance. In the selected `NG_MAN` workflow, observed below/above-limit device output is not required; partial, missing-field, malformed-number, and unsupported-unit cases are explicit derived rejection fixtures.
+13. No production measurement is discarded as a warm-up. The capture and HID boundary must preserve the first complete frame or fail closed, and Bluetooth link/bond failures are diagnosed separately from payload parsing and API acceptance.
 
 ## Alternatives
 
@@ -42,6 +45,8 @@ The physical CEM3-BTLA sends one-way Bluetooth HOGP keyboard output. The system 
 - Drop wrong-wrench input before persistence: rejected because refusal without evidence weakens auditability and diagnosis.
 - Let the browser consume HID keystrokes and post directly: rejected because it risks input leakage, loss during network outages, and cross-session ambiguity.
 - Parse the expected CEM3-BTLA format from documentation alone: rejected because the accessible product documentation does not establish the deployed output order and separators.
+- Require the wrench to transmit NG values before the server can enforce limits: rejected because device output mode can suppress NG transmissions, while the server already owns the authoritative condition and received-value comparison.
+- Ignore the first event as a Bluetooth/HID warm-up: rejected because it would lose the first real assembly operation and hide an unresolved acquisition defect.
 
 ## Consequences
 

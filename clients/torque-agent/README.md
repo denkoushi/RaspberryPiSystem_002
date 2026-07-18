@@ -4,7 +4,11 @@
 
 ## CEM3-BTLA parser gate
 
-CEM3-BTLAの実出力フォーマットはまだ固定していません。実機から製造番号、トルク、単位、メモリ番号を含む匿名化fixtureを採取・承認するまでは、CEM3-BTLA用プロファイルを登録しない設計です。`synthetic-delimited-fixture-v1` はテスト専用で、実機形式を推測したものではありません。
+CEM3-BTLAの通常出力3件から、`cem3-btla-hogp-v1`の厳密parser adapterと匿名化fixtureを作成済みです。ただし、再送と連続入力の実測fixtureが揃うまではproduction registryへ登録しません。`synthetic-delimited-fixture-v1`はテスト専用で、実機形式を推測したものではありません。
+
+観測済みの本体設定は`Cn_o=ON`、`An_o=OFF`、`Jd_o=ON`、`Sn_o=ON`、`dt_o=ON`、`bA_o=OFF`、`Un_o=ON`、`dLm=TAB`、`End=ENTER`、`kEY=JP`、`ZEro=OFF`です。payloadはメモリ番号、トルク、空白埋め単位、2文字の合否判定、7文字の製造番号、`YY/MM/DD`、時刻の7フィールドです。Pi/Linuxの`kEY=JP`経路では時刻区切りがアポストロフィとして観測されたため、このprofileはその実測形だけを受理します。
+
+`tests/fixtures/cem3_btla/SERIAL_A/normal.jsonl`は実測・匿名化済みです。`partial`、`missing_field`、`bad_number`、`unsupported_unit`はその契約から作った派生fixtureです。`repeated_memory`と`rapid_consecutive`が未採取なので、fixture validatorの終了コード3とproduction profile未登録は意図したゲートです。最初の測定をウォームアップとして捨てる運用はしません。
 
 ## Read-only capture kit
 
@@ -26,6 +30,17 @@ poetry run torque-capture validate \
 ```
 
 終了コードは成功`0`、引数・安全条件違反`2`、未完了・タイムアウト`3`、機器・OSエラー`4`です。raw payloadは標準出力へ表示しません。実機採取の停止・再起動、匿名化、保全手順はRunbookに従ってください。
+
+実機採取時はフィールド区切りのTABをフレーム終端にしないよう、終端を明示します。
+
+```bash
+poetry run torque-capture capture \
+  --device /dev/input/by-id/<approved-device> \
+  --output /var/lib/torque-agent/capture-private/<capture-id> \
+  --scenario normal --expected-frames 3 \
+  --firmware '<firmware>' --output-config '<output-config-label>' \
+  --terminator enter
+```
 
 ## Safety properties
 
