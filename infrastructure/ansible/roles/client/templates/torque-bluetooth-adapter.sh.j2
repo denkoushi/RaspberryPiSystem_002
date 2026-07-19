@@ -4,17 +4,24 @@ set -euo pipefail
 readonly expected_vendor='{{ torque_agent_bluetooth_adapter.usb_vendor_id }}'
 readonly expected_product='{{ torque_agent_bluetooth_adapter.usb_product_id }}'
 readonly hci_name="${1:-}"
+readonly sys_root="$(readlink -f "${TORQUE_BLUETOOTH_SYS_ROOT:-/sys}")"
+readonly bluetooth_class_root="${sys_root}/class/bluetooth"
+readonly rfkill_class_root="${sys_root}/class/rfkill"
+readonly btmgmt_bin="${TORQUE_BLUETOOTH_BTMGMT_BIN:-btmgmt}"
+readonly timeout_bin="${TORQUE_BLUETOOTH_TIMEOUT_BIN:-timeout}"
+readonly command_timeout_seconds="${TORQUE_BLUETOOTH_COMMAND_TIMEOUT_SECONDS:-4}"
+readonly retry_sleep_seconds="${TORQUE_BLUETOOTH_RETRY_SLEEP_SECONDS:-1}"
 
 controller_usb_parent() {
   local controller_name="$1"
-  local controller_class_path="/sys/class/bluetooth/${controller_name}"
+  local controller_class_path="${bluetooth_class_root}/${controller_name}"
   local candidate
   local vendor
   local product
 
   [[ -e "${controller_class_path}/device" ]] || return 1
   candidate="$(readlink -f "${controller_class_path}/device")"
-  while [[ "${candidate}" == /sys/* ]]; do
+  while [[ "${candidate}" == "${sys_root}"/* ]]; do
     if [[ -r "${candidate}/idVendor" && -r "${candidate}/idProduct" ]]; then
       vendor="$(tr '[:upper:]' '[:lower:]' < "${candidate}/idVendor")"
       product="$(tr '[:upper:]' '[:lower:]' < "${candidate}/idProduct")"
@@ -34,7 +41,7 @@ discover_exact_controller() {
   local matched_controller=''
   local match_count=0
 
-  for class_path in /sys/class/bluetooth/hci[0-9]*; do
+  for class_path in "${bluetooth_class_root}"/hci[0-9]*; do
     [[ -e "${class_path}/device" ]] || continue
     controller_name="${class_path##*/}"
     [[ "${controller_name}" =~ ^hci[0-9]+$ ]] || continue
@@ -61,6 +68,37 @@ controller_info_is_powered() {
   '
 }
 
+btmgmt_is_timeout_status() {
+  local status="$1"
+  [[ "${status}" -eq 124 || "${status}" -eq 137 ]]
+}
+
+run_btmgmt() {
+  local operation="$1"
+  local command_output
+  local command_status
+  local detail
+  local result
+  shift
+
+  set +e
+  command_output="$("${timeout_bin}" --signal=TERM --kill-after=1 "${command_timeout_seconds}" "${btmgmt_bin}" "$@" 2>&1)"
+  command_status=$?
+  set -e
+  if [[ "${command_status}" -ne 0 ]]; then
+    detail="$(printf '%s' "${command_output}" | LC_ALL=C tr '\n\r\t' '   ' | LC_ALL=C tr -c '[:print:]' '?' | tr -s ' ' | cut -c1-240)"
+    [[ -n "${detail}" ]] || detail='none'
+    result='exit'
+    if btmgmt_is_timeout_status "${command_status}"; then
+      result='timeout'
+    fi
+    printf 'torque-bluetooth operation=%s result=%s status=%s detail=%s\n' \
+      "${operation}" "${result}" "${command_status}" "${detail}" >&2
+    return "${command_status}"
+  fi
+  printf '%s\n' "${command_output}"
+}
+
 self_test_parser() {
   printf '%s\n' 'current settings: powered connectable bondable' \
     | controller_info_is_powered
@@ -75,15 +113,27 @@ probe_exact_controller() {
   local controller_name
   local controller_index
   local controller_info
+  local command_status
 
   self_test_parser
   controller_name="$(discover_exact_controller)"
   controller_index="${controller_name#hci}"
-  controller_info="$(timeout --signal=TERM --kill-after=1 4 btmgmt --index "${controller_index}" info 2>/dev/null || true)"
-  if ! controller_info_is_powered <<< "${controller_info}"; then
-    echo "configured external Bluetooth controller is not powered" >&2
-    return 7
-  fi
+  for _ in {1..3}; do
+    if controller_info="$(run_btmgmt info --index "${controller_index}" info)"; then
+      if ! controller_info_is_powered <<< "${controller_info}"; then
+        echo "configured external Bluetooth controller is not powered" >&2
+        return 7
+      fi
+    else
+      command_status=$?
+      if btmgmt_is_timeout_status "${command_status}"; then
+        echo "configured external Bluetooth controller management info did not respond" >&2
+        return 10
+      fi
+      echo "configured external Bluetooth controller management info failed" >&2
+      return 12
+    fi
+  done
 }
 
 if [[ "${hci_name}" == '--discover' ]]; then
@@ -106,7 +156,7 @@ if [[ ! "${hci_name}" =~ ^hci[0-9]+$ ]]; then
   exit 2
 fi
 
-readonly selected_class_path="/sys/class/bluetooth/${hci_name}"
+readonly selected_class_path="${bluetooth_class_root}/${hci_name}"
 for _ in {1..15}; do
   [[ -e "${selected_class_path}/device" ]] && break
   sleep 1
@@ -120,7 +170,7 @@ fi
 
 controller_path="$(readlink -f "${selected_class_path}")"
 rfkill_matched=false
-for rfkill_path in /sys/class/rfkill/rfkill*; do
+for rfkill_path in "${rfkill_class_root}"/rfkill*; do
   [[ -r "${rfkill_path}/type" && "$(< "${rfkill_path}/type")" == bluetooth ]] || continue
   rfkill_device="$(readlink -f "${rfkill_path}/device")"
   if [[ "${rfkill_device}" == "${controller_path}" || "${rfkill_device}" == "${controller_path}/"* ]]; then
@@ -129,7 +179,9 @@ for rfkill_path in /sys/class/rfkill/rfkill*; do
       echo "configured external Bluetooth controller is hard blocked" >&2
       exit 4
     fi
-    printf '0\n' > "${rfkill_path}/soft"
+    if [[ "$(< "${rfkill_path}/soft")" == 1 ]]; then
+      printf '0\n' > "${rfkill_path}/soft"
+    fi
   fi
 done
 
@@ -139,14 +191,58 @@ if [[ "${rfkill_matched}" != true ]]; then
 fi
 
 hci_index="${hci_name#hci}"
+info_succeeded=false
+power_succeeded=false
+info_timed_out=false
+power_timed_out=false
+info_failed=false
+power_failed=false
 for _ in {1..6}; do
-  controller_info="$(timeout --signal=TERM --kill-after=1 4 btmgmt --index "${hci_index}" info 2>/dev/null || true)"
-  if controller_info_is_powered <<< "${controller_info}"; then
-    exit 0
+  if controller_info="$(run_btmgmt info --index "${hci_index}" info)"; then
+    info_succeeded=true
+    if controller_info_is_powered <<< "${controller_info}"; then
+      exit 0
+    fi
+  else
+    command_status=$?
+    if btmgmt_is_timeout_status "${command_status}"; then
+      info_timed_out=true
+    else
+      info_failed=true
+    fi
   fi
-  timeout --signal=TERM --kill-after=1 4 btmgmt --index "${hci_index}" power on >/dev/null 2>&1 || true
-  sleep 1
+  if run_btmgmt power-on --index "${hci_index}" power on >/dev/null; then
+    power_succeeded=true
+  else
+    command_status=$?
+    if btmgmt_is_timeout_status "${command_status}"; then
+      power_timed_out=true
+    else
+      power_failed=true
+    fi
+  fi
+  sleep "${retry_sleep_seconds}"
 done
 
+if [[ "${info_succeeded}" != true ]]; then
+  if [[ "${info_timed_out}" == true ]]; then
+    echo "configured external Bluetooth controller management info did not respond" >&2
+    exit 10
+  fi
+  if [[ "${info_failed}" == true ]]; then
+    echo "configured external Bluetooth controller management info failed" >&2
+    exit 12
+  fi
+fi
+if [[ "${power_succeeded}" != true ]]; then
+  if [[ "${power_timed_out}" == true ]]; then
+    echo "configured external Bluetooth controller power request did not respond" >&2
+    exit 11
+  fi
+  if [[ "${power_failed}" == true ]]; then
+    echo "configured external Bluetooth controller power request failed" >&2
+    exit 13
+  fi
+fi
 echo "configured external Bluetooth controller did not become powered" >&2
 exit 7

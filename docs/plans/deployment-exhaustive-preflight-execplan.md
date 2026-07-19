@@ -50,6 +50,7 @@ The result is observable in three ways. The route coverage test fails if a new e
 - [x] (2026-07-19 06:01Z) Published `03265e2d`; exact-head CI, CodeQL, and secret scan passed. Two print plans and two read-only preflights selected only Pi5 and StoneBase, reported all 23 routes ready, and left Git, fleet state, maintenance, services, Docker identities, and migration ledger unchanged.
 - [x] (2026-07-19 06:43Z) Submitted limited run `20260719-061915-60c976`. Pi5 completed, StoneBase rejected the candidate Bluetooth helper, and the orchestrator restored its prior Git/runtime state and cleared maintenance before marking the run failed. No manual host repair or direct retry was performed.
 - [x] (2026-07-19 06:53Z) Reclassified the failure as a preflight/apply equivalence defect. Added every torque Bluetooth deployment asset to candidate inspection and made aggregate terminal preflight safely render and execute the exact candidate helper in read-only `--probe` mode before release submission.
+- [x] (2026-07-19 09:34Z) After failed run `20260719-072806-7f96b0` safely rolled StoneBase back, removed synthetic Bluetooth udev ownership, made Ansible wait without interrupting a running unit, added bounded helper diagnostics and failure-evidence collection, and extended candidate inspection to reject a regression in any of those contracts. Added fake-sysfs/fake-`btmgmt` state tests and the client-agent registry matrix; no deploy or host mutation was performed.
 - [ ] Complete hosted exact-head checks and two-pass live read-only gates for the corrected helper probe.
 - [ ] Only after all gates pass, run the already-authorized limited Pi5 and StoneBase release and prove verified/no-op completion.
 
@@ -69,6 +70,9 @@ The result is observable in three ways. The route coverage test fails if a new e
 
 - Observation: The existing rollback path behaved as designed when the candidate helper failed.
   Evidence: StoneBase returned to `d9a2380e...`, its three Docker services and five units were verified, maintenance was cleared, and the fleet run closed failed. Pi5 remained on its already healthy candidate and no manual repair was needed.
+
+- Observation: The synthetic Bluetooth udev event and Ansible restart shared one unit but did not establish why BlueZ stopped answering management commands.
+  Evidence: In run `20260719-072806-7f96b0`, the synthetic udev add started `torque-bluetooth-adapter@hci1.service`; a later `state: restarted` sent it SIGTERM. The replacement unit then spent about 54 seconds in six bounded `btmgmt info`/`power on` attempts before exit 7. Existing code discarded command errors, so the event proves the ownership race but not a rejected power request.
 
 ## Decision Log
 
@@ -96,9 +100,13 @@ The result is observable in three ways. The route coverage test fails if a new e
   Rationale: All files that can make the feature fail during apply must be present and type-checked at the immutable SHA; inspecting only the application source leaves provisioning omissions undiscovered.
   Date/Author: 2026-07-19 / Codex.
 
+- Decision: A release has one synchronous Bluetooth preparation owner: real udev add events may request the unit, while Ansible only starts the exact discovered unit and never synthesizes an add event or restarts it. The helper records bounded `btmgmt` outcome classes instead of treating all failures as exit 7.
+  Rationale: This removes the proven SIGTERM race without claiming it caused the lower-level management timeout, and preserves evidence to determine that cause if it returns.
+  Date/Author: 2026-07-19 / Codex, approved implementation plan.
+
 ## Outcomes & Retrospective
 
-The first complete route release proved rollback but exposed a candidate-artifact execution gap. Pi5 is healthy on `03265e2d`; StoneBase was automatically restored to its prior release with maintenance cleared. The structural correction is implemented locally. Complete validation, exact-head publication, two new live read-only proofs, and the final limited release remain pending.
+The first complete route release proved rollback but exposed a candidate-artifact execution gap. Pi5 is healthy on `03265e2d`; StoneBase was automatically restored to its prior release with maintenance cleared. The subsequent unit interruption exposed a second gap: apply ownership and failure observability were not part of the candidate proof. The structural correction is implemented locally, including a data-only client-agent consistency matrix. Complete validation, exact-head publication, two new live read-only proofs, and the final limited release remain pending.
 
 ## Context and Orientation
 
@@ -178,3 +186,5 @@ Revision note 2026-07-19: Created this focused plan after the user rejected seri
 Revision note 2026-07-19 05:31Z: Implemented the route inventory, boundary/rehearsal coverage checks, standard-library Pi5 route probe, aggregate machine-readable preflight, selected-host evidence, and local read-only inventory boundary. A readable active run is now carried forward as interrupted-recovery work instead of being incorrectly blocked; missing recovery authority fails closed. The complete local deploy contract passed twice with no residual temporary Docker resources; hosted and live read-only gates remain.
 
 Revision note 2026-07-19 06:53Z: Recorded the first limited release, successful automatic StoneBase rollback, and the structural preflight gap it exposed. Candidate inspection now includes every torque Bluetooth deployment asset, and terminal preflight executes the exact safely rendered helper through a read-only live probe. The validation sequence restarts from local contracts; no host-specific repair or immediate retry is permitted.
+
+Revision note 2026-07-19 09:34Z: Recorded run `20260719-072806-7f96b0` as a proven ownership race plus an unproven lower-level BlueZ management failure. The local implementation removes the synthetic trigger/restart sequence, preserves unit and bounded journal evidence, distinguishes management outcomes in the helper, and adds cross-boundary client-agent drift detection. No production retry is authorized until local/hosted validation and two unchanged read-only preflights complete.

@@ -53,8 +53,11 @@ _SIGNAGE_ENDPOINT_MARKER_RE = re.compile(
 _SIGNAGE_RUNTIME_MARKER_RE = re.compile(
     r"SIGNAGE_RUNTIME_PROOF_OK:([0-9a-f]{64})(?![0-9a-f])"
 )
+_KIOSK_AGENT_ORDER = ("nfc-agent", "barcode-agent", "torque-agent")
 _TERMINAL_AGENT_MARKER_RE = re.compile(
-    r"TERMINAL_AGENT_HEALTH_OK:(nfc-agent|barcode-agent|torque-agent):([0-9]{1,5})"
+    r"TERMINAL_AGENT_HEALTH_OK:("
+    + "|".join(re.escape(agent) for agent in _KIOSK_AGENT_ORDER)
+    + r"):([0-9]{1,5})"
     r"(?![A-Za-z0-9_-])"
 )
 _MAX_MARKER_BYTES = 2 * 1024 * 1024
@@ -74,8 +77,6 @@ _SERVER_CONFIG_PATHS = (
     f"{_TERMINAL_REPOSITORY}/apps/web/.env",
     f"{_TERMINAL_REPOSITORY}/infrastructure/docker/.env",
 )
-_KIOSK_AGENT_ORDER = ("nfc-agent", "barcode-agent", "torque-agent")
-
 _COMMON_RUNTIME_UNITS = (
     "lightdm.service",
     "status-agent.service",

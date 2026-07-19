@@ -24,6 +24,43 @@ from scripts.deploy.rolling_release.terminal_preflight_contract import (
 SHA = "a" * 40
 RUN_ID = "20260718-120000-a1b2c3"
 
+TORQUE_HELPER_PATH = (
+    "infrastructure/ansible/roles/client/templates/torque-bluetooth-adapter.sh.j2"
+)
+TORQUE_UNIT_PATH = (
+    "infrastructure/ansible/roles/client/templates/torque-bluetooth-adapter@.service.j2"
+)
+TORQUE_RULE_PATH = (
+    "infrastructure/ansible/roles/client/templates/90-torque-bluetooth-adapter.rules.j2"
+)
+TORQUE_TASKS_PATH = "infrastructure/ansible/roles/client/tasks/torque-agent.yml"
+TORQUE_CANDIDATE_SOURCES = {
+    TORQUE_HELPER_PATH: "#!/usr/bin/env bash\n"
+    "set -euo pipefail\n"
+    "readonly vendor='{{ torque_agent_bluetooth_adapter.usb_vendor_id }}'\n"
+    "readonly product='{{ torque_agent_bluetooth_adapter.usb_product_id }}'\n"
+    "run_btmgmt() { timeout --kill-after=1 4 btmgmt \"$@\"; cut -c1-240; }\n"
+    "printf 'torque-bluetooth operation=%s result=%s status=%s\\n' info success 0\n"
+    "probe_exact_controller() {\n"
+    "  for _ in {1..3}; do run_btmgmt info; done\n"
+    "}\n"
+    "[[ \"${1:-}\" == '--probe' ]]\n",
+    TORQUE_UNIT_PATH: "[Unit]\nAfter=bluetooth.service systemd-rfkill.service\n"
+    "Requires=bluetooth.service\n[Service]\n"
+    "ExecStart=/usr/local/libexec/torque-bluetooth-adapter %I\n"
+    "TimeoutStartSec=90\nTimeoutStopSec=10\n",
+    TORQUE_RULE_PATH: 'ACTION=="add", SUBSYSTEM=="bluetooth", ENV{DEVTYPE}=="host", '
+    'ATTRS{idVendor}=="{{ torque_agent_bluetooth_adapter.usb_vendor_id }}", '
+    'ATTRS{idProduct}=="{{ torque_agent_bluetooth_adapter.usb_product_id }}", '
+    'ENV{SYSTEMD_WANTS}+="torque-bluetooth-adapter@%k.service"\n',
+    TORQUE_TASKS_PATH: "- ansible.builtin.systemd:\n"
+    "    name: torque-bluetooth-adapter@hci1.service\n"
+    "    state: started\n"
+    "  rescue:\n"
+    "    - ansible.builtin.command: systemctl show torque-bluetooth-adapter@hci1.service\n"
+    "    - ansible.builtin.command: journalctl --lines=80 --output=short-iso\n",
+}
+
 
 def target(host: str = "kiosk-a") -> dict[str, object]:
     return {
@@ -69,15 +106,12 @@ def target(host: str = "kiosk-a") -> dict[str, object]:
 def candidate_success(argv, *, timeout):
     del timeout
     if "blob" in argv:
-        if argv[-1].endswith(":infrastructure/ansible/roles/client/templates/torque-bluetooth-adapter.sh.j2"):
+        relative = argv[-1].split(":", 1)[1]
+        if relative in TORQUE_CANDIDATE_SOURCES:
             return subprocess.CompletedProcess(
                 argv,
                 0,
-                "#!/usr/bin/env bash\n"
-                "set -euo pipefail\n"
-                "readonly expected_vendor='{{ torque_agent_bluetooth_adapter.usb_vendor_id }}'\n"
-                "readonly expected_product='{{ torque_agent_bluetooth_adapter.usb_product_id }}'\n"
-                "[[ \"${1:-}\" == '--probe' ]]\n",
+                TORQUE_CANDIDATE_SOURCES[relative],
                 "",
             )
         return subprocess.CompletedProcess(
@@ -199,6 +233,40 @@ class TerminalPreflightTest(unittest.TestCase):
 
         self.assertEqual(issues, [])
         self.assertIn(terminal_preflight._TORQUE_VENDOR_PLACEHOLDER, source)
+
+    def test_candidate_torque_bluetooth_contract_rejects_a_competing_start_owner(self):
+        sources = dict(TORQUE_CANDIDATE_SOURCES)
+        sources[TORQUE_TASKS_PATH] += (
+            "- ansible.builtin.command: >-\n"
+            "    udevadm trigger --subsystem-match=bluetooth --action=add\n"
+        )
+
+        issues = terminal_preflight._candidate_torque_bluetooth_contract_issues(sources)
+
+        self.assertEqual(
+            issues,
+            [
+                {
+                    "code": "candidate.torque-bluetooth-ownership",
+                    "message": "candidate torque Bluetooth tasks must use one synchronous start owner",
+                }
+            ],
+        )
+
+    def test_candidate_torque_bluetooth_contract_rejects_missing_diagnostics_and_evidence(self):
+        sources = dict(TORQUE_CANDIDATE_SOURCES)
+        sources[TORQUE_HELPER_PATH] = "#!/usr/bin/env bash\nprobe_exact_controller() { power on; }\n"
+        sources[TORQUE_TASKS_PATH] = "- ansible.builtin.systemd:\n    state: started\n"
+
+        issues = terminal_preflight._candidate_torque_bluetooth_contract_issues(sources)
+
+        self.assertEqual(
+            {issue["code"] for issue in issues},
+            {
+                "candidate.torque-bluetooth-diagnostics",
+                "candidate.torque-bluetooth-failure-evidence",
+            },
+        )
 
     def test_remote_probe_transports_all_exact_candidate_probe_sources(self):
         preflight_source = "sentinel-preflight-payload-value"
@@ -545,8 +613,14 @@ print("TERMINAL_PREFLIGHT_RESULT:" + encoded)
         def candidate_runner(argv, *, timeout):
             del timeout
             if "blob" in argv:
+                relative = argv[-1].split(":", 1)[1]
                 return subprocess.CompletedProcess(
-                    argv, 0, "# candidate runtime manifest source\n", ""
+                    argv,
+                    0,
+                    TORQUE_CANDIDATE_SOURCES.get(
+                        relative, "# candidate runtime manifest source\n"
+                    ),
+                    "",
                 )
             if "-t" not in argv:
                 return subprocess.CompletedProcess(argv, 0, "", "")

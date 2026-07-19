@@ -22,6 +22,17 @@ _PORT_ENVIRONMENT = {
     "barcode-agent": "REST_PORT",
     "torque-agent": "TORQUE_LOCAL_PORT",
 }
+_ENDPOINTS = {
+    "nfc-agent": "/api/agent/status",
+    "barcode-agent": "/api/agent/status",
+    "torque-agent": "/health",
+}
+_RESPONSE_VALIDATORS = {
+    "nfc-agent": "nfc-agent-status-v1",
+    "barcode-agent": "barcode-agent-status-v1",
+    "torque-agent": "torque-agent-health-v1",
+}
+_FIXED_PORT_AGENTS = frozenset({"nfc-agent", "torque-agent"})
 _MAX_RESPONSE_BYTES = 64 * 1024
 _CONTAINER_ID_RE = re.compile(r"^[0-9a-f]{12,64}$")
 _STABILITY_REQUIRED_SUCCESSES = 2
@@ -115,7 +126,7 @@ def _container_port(identifier: str, agent: str) -> int:
     port = int(raw_port)
     if not 1 <= port <= 65535:
         raise ProbeError("kiosk agent runtime port is malformed")
-    if agent in {"nfc-agent", "torque-agent"} and port != _AGENTS[agent]:
+    if agent in _FIXED_PORT_AGENTS and port != _AGENTS[agent]:
         raise ProbeError("kiosk agent runtime port violates the runtime contract")
     return port
 
@@ -124,7 +135,7 @@ def _endpoint(agent: str, port: int) -> None:
     opener = urllib.request.build_opener(
         urllib.request.ProxyHandler({}), _NoRedirect(), urllib.request.HTTPHandler()
     )
-    endpoint_path = "/health" if agent == "torque-agent" else "/api/agent/status"
+    endpoint_path = _ENDPOINTS[agent]
     request = urllib.request.Request(
         f"http://127.0.0.1:{port}{endpoint_path}",
         headers={"Accept": "application/json"},
@@ -149,7 +160,8 @@ def _endpoint(agent: str, port: int) -> None:
         )
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
         raise ProbeError("kiosk agent status response is malformed") from error
-    if agent == "torque-agent":
+    validator = _RESPONSE_VALIDATORS[agent]
+    if validator == "torque-agent-health-v1":
         if (
             not isinstance(value, dict)
             or value.get("ok") is not True
@@ -160,13 +172,15 @@ def _endpoint(agent: str, port: int) -> None:
         ):
             raise ProbeError("torque-agent health contract is malformed")
         return
+    if validator not in {"nfc-agent-status-v1", "barcode-agent-status-v1"}:
+        raise ProbeError("kiosk agent status validator is malformed")
     if (
         not isinstance(value, dict)
         or type(value.get("readerConnected")) is not bool
         or not isinstance(value.get("message"), str)
     ):
         raise ProbeError("kiosk agent status contract is malformed")
-    if agent == "nfc-agent":
+    if validator == "nfc-agent-status-v1":
         queue_size = value.get("queueSize")
         if isinstance(queue_size, bool) or not isinstance(queue_size, int) or queue_size < 0:
             raise ProbeError("nfc-agent status contract is malformed")
@@ -205,7 +219,7 @@ def _validate_arguments(args: argparse.Namespace) -> None:
     if args.port is not None:
         if not 1 <= args.port <= 65535:
             raise ProbeError("kiosk agent status port is malformed")
-        if args.agent in {"nfc-agent", "torque-agent"} and args.port != _AGENTS[args.agent]:
+        if args.agent in _FIXED_PORT_AGENTS and args.port != _AGENTS[args.agent]:
             raise ProbeError("kiosk agent status port violates the runtime contract")
     if not args.repository.is_absolute() or not args.compose_file.is_absolute():
         raise ProbeError("kiosk agent runtime paths must be absolute")

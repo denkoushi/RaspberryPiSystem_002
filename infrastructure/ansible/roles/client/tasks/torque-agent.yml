@@ -103,15 +103,6 @@
   changed_when: false
   when: torque_bluetooth_udev_result.changed or torque_hid_udev_result.changed
 
-- name: Retrigger exact Bluetooth hosts after torque device configuration changes
-  ansible.builtin.command: >-
-    udevadm trigger --subsystem-match=bluetooth --property-match=DEVTYPE=host --action=add
-  changed_when: false
-  when: >-
-    torque_bluetooth_helper_result.changed
-    or torque_bluetooth_unit_result.changed
-    or torque_bluetooth_udev_result.changed
-
 - name: Retrigger Bluetooth input devices after torque HID rule changes
   ansible.builtin.command: >-
     udevadm trigger --subsystem-match=input --property-match=ID_BUS=bluetooth --action=add
@@ -122,9 +113,7 @@
   ansible.builtin.command: udevadm settle --timeout=30
   changed_when: false
   when: >-
-    torque_bluetooth_helper_result.changed
-    or torque_bluetooth_unit_result.changed
-    or torque_bluetooth_udev_result.changed
+    torque_bluetooth_udev_result.changed
     or torque_hid_udev_result.changed
 
 - name: Discover the exact configured torque Bluetooth controller
@@ -139,9 +128,41 @@
     fail_msg: The exact configured external torque Bluetooth controller is unavailable or ambiguous.
 
 - name: Prepare and synchronously verify the exact torque Bluetooth controller
-  ansible.builtin.systemd:
-    name: "torque-bluetooth-adapter@{{ torque_bluetooth_controller_discovery.stdout | trim }}.service"
-    state: restarted
+  block:
+    - name: Start exact torque Bluetooth controller preparation without interruption
+      ansible.builtin.systemd:
+        name: "torque-bluetooth-adapter@{{ torque_bluetooth_controller_discovery.stdout | trim }}.service"
+        state: started
+  rescue:
+    - name: Read failed exact torque Bluetooth controller unit result
+      ansible.builtin.command: >-
+        systemctl show
+        torque-bluetooth-adapter@{{ torque_bluetooth_controller_discovery.stdout | trim }}.service
+        --property=Result --property=ExecMainCode --property=ExecMainStatus
+      register: torque_bluetooth_controller_failure_result
+      changed_when: false
+      failed_when: false
+
+    - name: Read bounded exact torque Bluetooth controller journal diagnostics
+      ansible.builtin.command: >-
+        journalctl
+        --unit=torque-bluetooth-adapter@{{ torque_bluetooth_controller_discovery.stdout | trim }}.service
+        --lines=80 --no-pager --output=short-iso
+      register: torque_bluetooth_controller_failure_journal
+      changed_when: false
+      failed_when: false
+
+    - name: Emit exact torque Bluetooth controller failure diagnostics
+      ansible.builtin.debug:
+        msg:
+          - "unit result: {{ torque_bluetooth_controller_failure_result.stdout_lines | default([]) }}"
+          - "unit journal: {{ torque_bluetooth_controller_failure_journal.stdout_lines | default([]) }}"
+
+    - name: Fail exact torque Bluetooth controller preparation with diagnostics
+      ansible.builtin.fail:
+        msg: >-
+          The exact external torque Bluetooth controller preparation unit failed;
+          see the bounded unit result and journal diagnostics above.
 
 - name: Read exact torque Bluetooth controller unit result
   ansible.builtin.command: >-

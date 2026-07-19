@@ -15,17 +15,17 @@
     ]
   },
   "summary": {
-    "documentCount": 527,
-    "totalLines": 152497,
-    "totalBytes": 11498116,
-    "withFrontmatter": 213,
-    "withStatus": 71,
-    "sourceOfTruthDeclared": 43,
+    "documentCount": 528,
+    "totalLines": 152559,
+    "totalBytes": 11505149,
+    "withFrontmatter": 214,
+    "withStatus": 72,
+    "sourceOfTruthDeclared": 44,
     "execPlanReferences": 64,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 25,
-    "localLinkCount": 5546,
+    "localLinkCount": 5548,
     "brokenLocalLinkCount": 87,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -5914,7 +5914,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1977,
-      "byteSize": 338750,
+      "byteSize": 338820,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -10558,6 +10558,11 @@
         {
           "href": "./runbooks/assembly-torque-agent.md",
           "targetPath": "docs/runbooks/assembly-torque-agent.md",
+          "exists": true
+        },
+        {
+          "href": "./runbooks/client-agent-addition.md",
+          "targetPath": "docs/runbooks/client-agent-addition.md",
           "exists": true
         },
         {
@@ -31378,8 +31383,8 @@
     },
     {
       "path": "docs/plans/deployment-exhaustive-preflight-execplan.md",
-      "lineCount": 180,
-      "byteSize": 21036,
+      "lineCount": 190,
+      "byteSize": 23283,
       "hasFrontmatter": true,
       "title": "Prove every deployment route before another production release",
       "status": "in-progress",
@@ -34603,8 +34608,8 @@
     },
     {
       "path": "docs/runbooks/assembly-torque-agent.md",
-      "lineCount": 244,
-      "byteSize": 15282,
+      "lineCount": 245,
+      "byteSize": 15359,
       "hasFrontmatter": false,
       "title": "組立 torque-agent 運用Runbook",
       "status": null,
@@ -34629,9 +34634,29 @@
           "href": "../plans/kiosk-assembly-torque-management-mvp.md",
           "targetPath": "docs/plans/kiosk-assembly-torque-management-mvp.md",
           "exists": true
+        },
+        {
+          "href": "client-agent-addition.md",
+          "targetPath": "docs/runbooks/client-agent-addition.md",
+          "exists": true
         }
       ],
       "inboundCount": 3,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/runbooks/client-agent-addition.md",
+      "lineCount": 51,
+      "byteSize": 4639,
+      "hasFrontmatter": true,
+      "title": "Client Docker Agent Addition Runbook",
+      "status": "active",
+      "source_of_truth": "docs/runbooks/client-agent-addition.md",
+      "localLinks": [],
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],

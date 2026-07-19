@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "pi5ControlPlane": {
     "id": "pi5",
     "inventoryGroup": "server",
@@ -155,6 +155,8 @@
     {"match": "prefix", "path": "apps/api/", "component": "server-app"},
     {"match": "prefix", "path": "apps/web/", "component": "server-app"},
     {"match": "prefix", "path": "packages/", "component": "server-app"},
+    {"match": "exact", "path": "infrastructure/docker/Dockerfile.nfc-agent", "component": "nfc-agent"},
+    {"match": "exact", "path": "infrastructure/docker/Dockerfile.barcode-agent", "component": "barcode-agent"},
     {"match": "exact", "path": "infrastructure/docker/Dockerfile.torque-agent", "component": "torque-agent"},
     {"match": "prefix", "path": "infrastructure/docker/", "component": "server-app"},
     {"match": "exact", "path": "package.json", "component": "server-app"},
@@ -201,5 +203,43 @@
     "nfc-agent": {"hostVar": "nfc_agent_client_id", "match": "non-empty-string"},
     "barcode-agent": {"hostVar": "barcode_agent_enabled", "match": "true"},
     "torque-agent": {"hostVar": "torque_agent_enabled", "match": "true"}
+  },
+  "clientAgents": {
+    "nfc-agent": {
+      "composeService": "nfc-agent",
+      "runtimeEnvPath": "/opt/RaspberryPiSystem_002/clients/nfc-agent/.env",
+      "envTemplate": "infrastructure/ansible/templates/nfc-agent.env.j2",
+      "portPolicy": "fixed",
+      "defaultPort": 7071,
+      "portEnvironment": "REST_PORT",
+      "healthEndpoint": "/api/agent/status",
+      "responseValidator": "nfc-agent-status-v1",
+      "component": "nfc-agent",
+      "hostSelector": {"hostVar": "nfc_agent_client_id", "match": "non-empty-string"}
+    },
+    "barcode-agent": {
+      "composeService": "barcode-agent",
+      "runtimeEnvPath": "/opt/RaspberryPiSystem_002/clients/barcode-agent/.env",
+      "envTemplate": "infrastructure/ansible/templates/barcode-agent.env.j2",
+      "portPolicy": "configurable",
+      "defaultPort": 7072,
+      "portEnvironment": "REST_PORT",
+      "healthEndpoint": "/api/agent/status",
+      "responseValidator": "barcode-agent-status-v1",
+      "component": "barcode-agent",
+      "hostSelector": {"hostVar": "barcode_agent_enabled", "match": "true"}
+    },
+    "torque-agent": {
+      "composeService": "torque-agent",
+      "runtimeEnvPath": "/opt/RaspberryPiSystem_002/clients/torque-agent/.env",
+      "envTemplate": "infrastructure/ansible/templates/torque-agent.env.j2",
+      "portPolicy": "fixed",
+      "defaultPort": 7073,
+      "portEnvironment": "TORQUE_LOCAL_PORT",
+      "healthEndpoint": "/health",
+      "responseValidator": "torque-agent-health-v1",
+      "component": "torque-agent",
+      "hostSelector": {"hostVar": "torque_agent_enabled", "match": "true"}
+    }
   }
 }

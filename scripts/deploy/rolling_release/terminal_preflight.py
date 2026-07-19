@@ -103,6 +103,16 @@ _FEATURE_CANDIDATE_ARTIFACTS = {
         ("infrastructure/ansible/roles/client/tasks/haizen-agent.yml", "blob"),
     ),
 }
+_TORQUE_BLUETOOTH_DEPLOYMENT_ARTIFACTS = (
+    "infrastructure/ansible/roles/client/templates/torque-bluetooth-adapter.sh.j2",
+    "infrastructure/ansible/roles/client/templates/torque-bluetooth-adapter@.service.j2",
+    "infrastructure/ansible/roles/client/templates/90-torque-bluetooth-adapter.rules.j2",
+    "infrastructure/ansible/roles/client/tasks/torque-agent.yml",
+)
+_TORQUE_HELPER_ARTIFACT = _TORQUE_BLUETOOTH_DEPLOYMENT_ARTIFACTS[0]
+_TORQUE_UNIT_ARTIFACT = _TORQUE_BLUETOOTH_DEPLOYMENT_ARTIFACTS[1]
+_TORQUE_UDEV_ARTIFACT = _TORQUE_BLUETOOTH_DEPLOYMENT_ARTIFACTS[2]
+_TORQUE_TASKS_ARTIFACT = _TORQUE_BLUETOOTH_DEPLOYMENT_ARTIFACTS[3]
 TARGET_INPUT_MAX_BYTES = 3 * 1024 * 1024
 TARGET_LOADER = (
     "import json,sys;"
@@ -497,7 +507,7 @@ def _candidate_helper_source(
     issue_scope: str,
     run_command: Callable[..., Any] = _default_run,
 ) -> tuple[str | None, list[dict[str, str]]]:
-    """Read the exact helper blob from the immutable candidate on Pi5."""
+    """Read one exact candidate blob from the immutable candidate on Pi5."""
 
     object_name = f"{spec['sha']}:{relative_path}"
     try:
@@ -516,7 +526,7 @@ def _candidate_helper_source(
         return None, [
             {
                 "code": f"candidate.{issue_scope}-helper-read",
-                "message": f"candidate {issue_scope} helper could not be read on Pi5",
+                "message": f"candidate {issue_scope} artifact could not be read on Pi5",
             }
         ]
     source = getattr(result, "stdout", "")
@@ -530,7 +540,7 @@ def _candidate_helper_source(
         return None, [
             {
                 "code": f"candidate.{issue_scope}-helper-invalid",
-                "message": f"candidate {issue_scope} helper is unavailable or malformed",
+                "message": f"candidate {issue_scope} artifact is unavailable or malformed",
             }
         ]
     return source, []
@@ -567,17 +577,122 @@ def _candidate_torque_helper_template_source(
     *,
     run_command: Callable[..., Any] = _default_run,
 ) -> tuple[str | None, list[dict[str, str]]]:
-    if not any(target["torqueEnabled"] for target in spec["targets"]):
-        return "", []
-    return _candidate_helper_source(
-        spec,
-        relative_path=(
-            "infrastructure/ansible/roles/client/templates/"
-            "torque-bluetooth-adapter.sh.j2"
-        ),
-        issue_scope="torque-bluetooth",
-        run_command=run_command,
+    sources, issues = _candidate_torque_bluetooth_sources(
+        spec, run_command=run_command
     )
+    return sources.get(_TORQUE_HELPER_ARTIFACT, ""), issues
+
+
+def _candidate_torque_bluetooth_sources(
+    spec: Mapping[str, Any],
+    *,
+    run_command: Callable[..., Any] = _default_run,
+) -> tuple[dict[str, str], list[dict[str, str]]]:
+    """Read every exact artifact that controls torque Bluetooth ownership."""
+
+    if not any(target["torqueEnabled"] for target in spec["targets"]):
+        return {}, []
+    sources: dict[str, str] = {}
+    issues: list[dict[str, str]] = []
+    for path in _TORQUE_BLUETOOTH_DEPLOYMENT_ARTIFACTS:
+        source, source_issues = _candidate_helper_source(
+            spec,
+            relative_path=path,
+            issue_scope="torque-bluetooth",
+            run_command=run_command,
+        )
+        issues.extend(source_issues)
+        if source is not None:
+            sources[path] = source
+    return sources, issues
+
+
+def _candidate_torque_bluetooth_contract_issues(
+    sources: Mapping[str, str],
+) -> list[dict[str, str]]:
+    """Reject a candidate that reintroduces unsafe Bluetooth ownership."""
+
+    if set(sources) != set(_TORQUE_BLUETOOTH_DEPLOYMENT_ARTIFACTS):
+        return []
+    issues: list[dict[str, str]] = []
+    helper = sources.get(_TORQUE_HELPER_ARTIFACT, "")
+    unit = sources.get(_TORQUE_UNIT_ARTIFACT, "")
+    rule = sources.get(_TORQUE_UDEV_ARTIFACT, "")
+    tasks = sources.get(_TORQUE_TASKS_ARTIFACT, "")
+
+    if (
+        "udevadm trigger --subsystem-match=bluetooth"
+        in tasks
+        or "state: restarted" in tasks
+        or "state: started" not in tasks
+    ):
+        _issue(
+            issues,
+            "candidate.torque-bluetooth-ownership",
+            "candidate torque Bluetooth tasks must use one synchronous start owner",
+        )
+    if not all(
+        fragment in tasks
+        for fragment in (
+            "rescue:",
+            "systemctl show",
+            "journalctl",
+            "--lines=80",
+            "--output=short-iso",
+        )
+    ):
+        _issue(
+            issues,
+            "candidate.torque-bluetooth-failure-evidence",
+            "candidate torque Bluetooth tasks must retain bounded unit and journal evidence",
+        )
+    if not all(
+        fragment in unit
+        for fragment in (
+            "After=bluetooth.service systemd-rfkill.service",
+            "Requires=bluetooth.service",
+            "ExecStart=/usr/local/libexec/torque-bluetooth-adapter %I",
+            "TimeoutStartSec=90",
+            "TimeoutStopSec=10",
+        )
+    ):
+        _issue(
+            issues,
+            "candidate.torque-bluetooth-unit",
+            "candidate torque Bluetooth unit lacks bounded controller preparation",
+        )
+    if not all(
+        fragment in rule
+        for fragment in (
+            'ACTION=="add", SUBSYSTEM=="bluetooth", ENV{DEVTYPE}=="host"',
+            'ATTRS{idVendor}=="{{ torque_agent_bluetooth_adapter.usb_vendor_id }}"',
+            'ATTRS{idProduct}=="{{ torque_agent_bluetooth_adapter.usb_product_id }}"',
+            "ENV{SYSTEMD_WANTS}+=\"torque-bluetooth-adapter@%k.service\"",
+        )
+    ):
+        _issue(
+            issues,
+            "candidate.torque-bluetooth-udev",
+            "candidate torque Bluetooth udev rule does not target the exact controller",
+        )
+    probe_start = helper.find("probe_exact_controller()")
+    probe_end = helper.find("\n}\n", probe_start)
+    probe_source = helper[probe_start:probe_end] if probe_start >= 0 and probe_end >= 0 else ""
+    if (
+        "run_btmgmt()" not in helper
+        or "torque-bluetooth operation=%s result=%s status=%s" not in helper
+        or "for _ in {1..3}" not in helper
+        or "--kill-after=1" not in helper
+        or "cut -c1-240" not in helper
+        or "power on" in probe_source
+        or "2>/dev/null || true" in helper
+    ):
+        _issue(
+            issues,
+            "candidate.torque-bluetooth-diagnostics",
+            "candidate torque Bluetooth helper lacks bounded management diagnostics",
+        )
+    return issues
 
 
 _TORQUE_VENDOR_PLACEHOLDER = (
@@ -1345,12 +1460,18 @@ def execute_orchestrator(
             )
         )
         candidate_issues.extend(agent_health_source_issues)
-        torque_helper_template_source, torque_helper_source_issues = (
-            _candidate_torque_helper_template_source(
+        torque_bluetooth_sources, torque_helper_source_issues = (
+            _candidate_torque_bluetooth_sources(
                 spec, run_command=candidate_run_command
             )
         )
         candidate_issues.extend(torque_helper_source_issues)
+        candidate_issues.extend(
+            _candidate_torque_bluetooth_contract_issues(torque_bluetooth_sources)
+        )
+        torque_helper_template_source = torque_bluetooth_sources.get(
+            _TORQUE_HELPER_ARTIFACT, ""
+        )
         results: list[dict[str, Any]] = []
         for target in spec["targets"]:
             command = _remote_probe_command(target)

@@ -31,31 +31,31 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
             "idVendor",
             "idProduct",
             '"${rfkill_device}" == "${controller_path}"',
-            'timeout --signal=TERM --kill-after=1 4 btmgmt --index',
-            'power on',
+            "run_btmgmt()",
+            "torque-bluetooth operation=%s result=%s status=%s",
+            "--kill-after=1",
+            "cut -c1-240",
+            "management info did not respond",
+            "for _ in {1..3}",
+            "run_btmgmt power-on",
             "for _ in {1..15}",
         ):
             self.assertIn(fragment, helper)
         self.assertNotIn("bluetoothctl", helper)
         self.assertNotIn("rfkill unblock bluetooth", helper)
         self.assertNotIn("/sys/class/bluetooth/hci1", helper)
+        self.assertNotIn("2>/dev/null || true", helper)
         self.assertIn('[[ "${controller_name}" =~ ^hci[0-9]+$ ]] || continue', helper)
-        self.assertEqual(helper.count("btmgmt --index"), 3)
-        self.assertEqual(
-            helper.count("timeout --signal=TERM --kill-after=1 4 btmgmt --index"),
-            3,
-        )
         discover_branch = helper.index('if [[ "${hci_name}" == \'--discover\' ]]')
         discover_exit = helper.index("exit 0", discover_branch)
         probe_branch = helper.index('if [[ "${hci_name}" == \'--probe\' ]]')
         probe_exit = helper.index("exit 0", probe_branch)
         rfkill_write = helper.index("printf '0\\n'", discover_exit)
-        first_power_command = helper.index("btmgmt --index", rfkill_write)
         self.assertLess(discover_branch, discover_exit)
         self.assertLess(discover_exit, rfkill_write)
         self.assertLess(probe_branch, probe_exit)
         self.assertLess(probe_exit, rfkill_write)
-        self.assertLess(rfkill_write, first_power_command)
+        self.assertLess(rfkill_write, helper.index("run_btmgmt power-on"))
 
         unit = (CLIENT_ROLE / "templates/torque-bluetooth-adapter@.service.j2").read_text()
         self.assertIn("TimeoutStartSec=90", unit)
@@ -103,7 +103,6 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
             "99-torque-wrench-hid.rules",
             "torque-bluetooth-adapter@.service",
             "udevadm control --reload-rules",
-            "udevadm trigger --subsystem-match=bluetooth --property-match=DEVTYPE=host --action=add",
             "udevadm trigger --subsystem-match=input --property-match=ID_BUS=bluetooth --action=add",
             "Discover the exact configured torque Bluetooth controller",
             "/usr/local/libexec/torque-bluetooth-adapter --discover",
@@ -111,8 +110,20 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
             "torque-bluetooth-adapter@{{ torque_bluetooth_controller_discovery.stdout | trim }}.service",
             "Require successful exact torque Bluetooth controller preparation",
             "ExecMainStatus=0",
+            "state: started",
+            "Start exact torque Bluetooth controller preparation without interruption",
+            "Read bounded exact torque Bluetooth controller journal diagnostics",
+            "--lines=80 --no-pager --output=short-iso",
         ):
             self.assertIn(fragment, tasks)
+        self.assertNotIn(
+            "udevadm trigger --subsystem-match=bluetooth --property-match=DEVTYPE=host --action=add",
+            tasks,
+        )
+        self.assertNotRegex(
+            tasks,
+            r"torque-bluetooth-adapter@\{\{[^\n]+\n\s+state: restarted",
+        )
 
     def test_device_identity_files_are_in_the_sealed_rollback_contract(self) -> None:
         backend = (ROOT / "scripts/deploy/rolling_release/backends/ansible.py").read_text()

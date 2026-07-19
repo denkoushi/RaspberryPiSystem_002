@@ -33,7 +33,7 @@ class TerminalProfileRegistryTest(unittest.TestCase):
     def test_production_registry_contains_only_kiosk_and_signage(self):
         registry = load_registry()
 
-        self.assertEqual(registry.schema_version, 2)
+        self.assertEqual(registry.schema_version, 3)
         self.assertEqual(registry.profile_ids, ("kiosk", "signage"))
         self.assertEqual(registry.pi5_control_plane.inventory_group, "server")
         self.assertEqual(registry.pi5_control_plane.required_host_count, 1)
@@ -95,6 +95,15 @@ class TerminalProfileRegistryTest(unittest.TestCase):
             registry.component_for("infrastructure/ansible/roles/common/tasks/main.yml"),
             "global",
         )
+        self.assertEqual(
+            registry.client_agent_ids,
+            ("barcode-agent", "nfc-agent", "torque-agent"),
+        )
+        torque = registry.client_agent("torque-agent")
+        self.assertEqual(torque.compose_service, "torque-agent")
+        self.assertEqual(torque.port_policy, "fixed")
+        self.assertEqual(torque.default_port, 7073)
+        self.assertEqual(torque.health_endpoint, "/health")
 
     def test_profile_order_is_deterministic(self):
         self.payload["terminalProfiles"].reverse()
@@ -376,9 +385,36 @@ class TerminalProfileRegistryTest(unittest.TestCase):
                 with self.assertRaises(RegistryError):
                     self.load_payload(payload)
 
+    def test_client_agents_are_strict_data_and_match_component_selectors(self):
+        cases = (
+            ("composeService", "agent; reboot", "safe lowercase identifier"),
+            ("runtimeEnvPath", "/etc/passwd", "allowlisted absolute path"),
+            ("envTemplate", "scripts/deploy/helper.py", "Ansible env template"),
+            ("portPolicy", "dynamic", "fixed or configurable"),
+            ("defaultPort", 65536, "defaultPort"),
+            ("portEnvironment", "rest-port", "safe environment name"),
+            ("healthEndpoint", "https://example.invalid", "normalized path"),
+            ("responseValidator", "module.function", "safe lowercase identifier"),
+            ("component", "unknown", "cannot redefine"),
+        )
+        for field, value, message in cases:
+            with self.subTest(field=field):
+                payload = copy.deepcopy(self.payload)
+                payload["clientAgents"]["torque-agent"][field] = value
+                with self.assertRaisesRegex(RegistryError, message):
+                    self.load_payload(payload)
+
+        selector_mismatch = copy.deepcopy(self.payload)
+        selector_mismatch["clientAgents"]["torque-agent"]["hostSelector"] = {
+            "hostVar": "torque_agent_enabled",
+            "match": "non-empty-string",
+        }
+        with self.assertRaisesRegex(RegistryError, "must match componentHostSelectors"):
+            self.load_payload(selector_mismatch)
+
     def test_unsupported_schema_and_duplicate_profile_options_are_rejected(self):
         schema = copy.deepcopy(self.payload)
-        schema["schemaVersion"] = 3
+        schema["schemaVersion"] = 4
         with self.assertRaisesRegex(RegistryError, "schemaVersion"):
             self.load_payload(schema)
 

@@ -13,7 +13,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REGISTRY_PATH = Path(__file__).with_name("terminal-profile-registry.json")
 _SAFE_ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,62}$")
@@ -56,6 +56,7 @@ _TOP_LEVEL_KEYS = frozenset(
         "pathMappings",
         "componentProfiles",
         "componentHostSelectors",
+        "clientAgents",
     }
 )
 _CONTROL_PLANE_KEYS = frozenset(
@@ -83,6 +84,23 @@ _PATH_MAPPING_KEYS = frozenset({"match", "path", "component"})
 _COMPONENT_HOST_SELECTOR_KEYS = frozenset({"hostVar", "match"})
 _COMPONENT_HOST_SELECTOR_MATCHES = frozenset({"true", "non-empty-string"})
 _SAFE_HOST_VAR_RE = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
+_SAFE_ENVIRONMENT_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]{0,126}$")
+_SAFE_HEALTH_ENDPOINT_RE = re.compile(r"^/[A-Za-z0-9._~!$&'()*+,;=:@%/-]{0,255}$")
+_PORT_POLICIES = frozenset({"fixed", "configurable"})
+_CLIENT_AGENT_KEYS = frozenset(
+    {
+        "composeService",
+        "runtimeEnvPath",
+        "envTemplate",
+        "portPolicy",
+        "defaultPort",
+        "portEnvironment",
+        "healthEndpoint",
+        "responseValidator",
+        "component",
+        "hostSelector",
+    }
+)
 
 
 class RegistryError(ValueError):
@@ -145,6 +163,23 @@ class ComponentHostSelector:
 
 
 @dataclass(frozen=True)
+class ClientAgentContract:
+    """Data-only cross-boundary contract for one containerized terminal agent."""
+
+    id: str
+    compose_service: str
+    runtime_env_path: str
+    env_template: str
+    port_policy: str
+    default_port: int
+    port_environment: str
+    health_endpoint: str
+    response_validator: str
+    component: str
+    host_selector: ComponentHostSelector
+
+
+@dataclass(frozen=True)
 class TerminalProfileRegistry:
     schema_version: int
     pi5_control_plane: Pi5ControlPlane
@@ -152,10 +187,21 @@ class TerminalProfileRegistry:
     path_mappings: tuple[PathMapping, ...]
     component_profiles: tuple[tuple[str, tuple[str, ...]], ...]
     component_host_selectors: tuple[ComponentHostSelector, ...]
+    client_agents: tuple[ClientAgentContract, ...]
 
     @property
     def profile_ids(self) -> tuple[str, ...]:
         return tuple(profile.id for profile in self.profiles)
+
+    @property
+    def client_agent_ids(self) -> tuple[str, ...]:
+        return tuple(agent.id for agent in self.client_agents)
+
+    def client_agent(self, agent_id: str) -> ClientAgentContract:
+        for agent in self.client_agents:
+            if agent.id == agent_id:
+                return agent
+        raise KeyError(agent_id)
 
     def profile(self, profile_id: str) -> TerminalProfile:
         for profile in self.profiles:
@@ -553,6 +599,105 @@ def _parse_component_host_selectors(
     return tuple(sorted(selectors, key=lambda item: item.component))
 
 
+def _parse_client_agents(value: Any) -> tuple[ClientAgentContract, ...]:
+    """Parse inert agent metadata; executable consumers stay independently sealed."""
+
+    if not isinstance(value, dict) or not value or len(value) > 64:
+        raise RegistryError("clientAgents must be a non-empty bounded object")
+    agents: list[ClientAgentContract] = []
+    for raw_id, raw_contract in value.items():
+        agent_id = _safe_identifier(raw_id, name="clientAgents key")
+        item = _strict_object(
+            raw_contract, name=f"clientAgents.{agent_id}", keys=_CLIENT_AGENT_KEYS
+        )
+        compose_service = _safe_identifier(
+            item["composeService"], name=f"clientAgents.{agent_id}.composeService"
+        )
+        runtime_env_path = _safe_rollback_path(
+            item["runtimeEnvPath"], name=f"clientAgents.{agent_id}.runtimeEnvPath"
+        )
+        if not runtime_env_path.endswith("/.env"):
+            raise RegistryError(
+                f"clientAgents.{agent_id}.runtimeEnvPath must name an .env file"
+            )
+        env_template = _safe_repository_path(
+            item["envTemplate"],
+            name=f"clientAgents.{agent_id}.envTemplate",
+            exact=True,
+        )
+        if not env_template.startswith("infrastructure/ansible/templates/") or not env_template.endswith(".j2"):
+            raise RegistryError(
+                f"clientAgents.{agent_id}.envTemplate must be an Ansible env template"
+            )
+        port_policy = item["portPolicy"]
+        if not isinstance(port_policy, str) or port_policy not in _PORT_POLICIES:
+            raise RegistryError(
+                f"clientAgents.{agent_id}.portPolicy must be fixed or configurable"
+            )
+        port_environment = item["portEnvironment"]
+        if (
+            not isinstance(port_environment, str)
+            or _SAFE_ENVIRONMENT_NAME_RE.fullmatch(port_environment) is None
+        ):
+            raise RegistryError(
+                f"clientAgents.{agent_id}.portEnvironment must be a safe environment name"
+            )
+        health_endpoint = item["healthEndpoint"]
+        if (
+            not isinstance(health_endpoint, str)
+            or _SAFE_HEALTH_ENDPOINT_RE.fullmatch(health_endpoint) is None
+            or "//" in health_endpoint
+            or ".." in PurePosixPath(health_endpoint).parts
+        ):
+            raise RegistryError(
+                f"clientAgents.{agent_id}.healthEndpoint must be a normalized path"
+            )
+        component = _safe_component(
+            item["component"], name=f"clientAgents.{agent_id}.component"
+        )
+        host_selector_raw = _strict_object(
+            item["hostSelector"],
+            name=f"clientAgents.{agent_id}.hostSelector",
+            keys=_COMPONENT_HOST_SELECTOR_KEYS,
+        )
+        host_var = host_selector_raw["hostVar"]
+        host_match = host_selector_raw["match"]
+        if not isinstance(host_var, str) or _SAFE_HOST_VAR_RE.fullmatch(host_var) is None:
+            raise RegistryError(
+                f"clientAgents.{agent_id}.hostSelector.hostVar is invalid"
+            )
+        if not isinstance(host_match, str) or host_match not in _COMPONENT_HOST_SELECTOR_MATCHES:
+            raise RegistryError(
+                f"clientAgents.{agent_id}.hostSelector.match is invalid"
+            )
+        agents.append(
+            ClientAgentContract(
+                id=agent_id,
+                compose_service=compose_service,
+                runtime_env_path=runtime_env_path,
+                env_template=env_template,
+                port_policy=port_policy,
+                default_port=_bounded_int(
+                    item["defaultPort"],
+                    name=f"clientAgents.{agent_id}.defaultPort",
+                    minimum=1,
+                    maximum=65_535,
+                ),
+                port_environment=port_environment,
+                health_endpoint=health_endpoint,
+                response_validator=_safe_identifier(
+                    item["responseValidator"],
+                    name=f"clientAgents.{agent_id}.responseValidator",
+                ),
+                component=component,
+                host_selector=ComponentHostSelector(
+                    component=component, host_var=host_var, match=host_match
+                ),
+            )
+        )
+    return tuple(sorted(agents, key=lambda agent: agent.id))
+
+
 def load_registry(
     registry_path: Path | str = DEFAULT_REGISTRY_PATH,
     *,
@@ -641,6 +786,7 @@ def load_registry(
         top["componentHostSelectors"],
         component_profiles=component_map,
     )
+    client_agents = _parse_client_agents(top["clientAgents"])
     mapped_components = {mapping.component for mapping in path_mappings}
     missing_components = sorted(mapped_components - set(component_map))
     if missing_components:
@@ -664,6 +810,19 @@ def load_registry(
             )
     if set(component_map.get("global", ())) != profile_ids:
         raise RegistryError("componentProfiles.global must target every terminal profile")
+    selectors_by_component = {
+        selector.component: selector for selector in component_host_selectors
+    }
+    for agent in client_agents:
+        if not component_map.get(agent.component):
+            raise RegistryError(
+                f"clientAgents.{agent.id}.component must target a terminal profile"
+            )
+        selector = selectors_by_component.get(agent.component)
+        if selector != agent.host_selector:
+            raise RegistryError(
+                f"clientAgents.{agent.id}.hostSelector must match componentHostSelectors"
+            )
 
     return TerminalProfileRegistry(
         schema_version=schema_version,
@@ -672,4 +831,5 @@ def load_registry(
         path_mappings=path_mappings,
         component_profiles=component_profiles,
         component_host_selectors=component_host_selectors,
+        client_agents=client_agents,
     )

@@ -15,6 +15,7 @@
     "test:api": "bash scripts/test/run-tests.sh",
     "test:backup": "bash scripts/test/backup-restore.test.sh",
     "test:monitor": "bash scripts/test/monitor.test.sh",
+    "test:deploy-contracts": "bash scripts/ci/run-deploy-contracts-local.sh",
     "test:e2e": "playwright test",
     "test:e2e:smoke": "playwright test e2e/smoke --workers=1 --retries=1",
     "test:e2e:ui": "playwright test --ui",
