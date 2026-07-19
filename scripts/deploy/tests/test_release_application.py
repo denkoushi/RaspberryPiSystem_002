@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import json
 import re
 import unittest
 from pathlib import Path
@@ -31,7 +32,7 @@ class Runtime:
         return SHA if capture and "rev-parse" in command else ""
 
     @staticmethod
-    def inventory_json(_inventory):
+    def read_only_inventory_json(_inventory):
         return {
             "server": {"hosts": ["raspberrypi5"]},
             "clients": {"children": []},
@@ -48,12 +49,24 @@ class Runtime:
             },
         }
 
+    @staticmethod
+    def read_only_selected_hosts(_inventory, limit):
+        return ["raspberrypi5"] if limit else None
 
-def release_args(*, detach=False, preflight_only=False):
+    @staticmethod
+    def inventory_json(_inventory):
+        raise AssertionError("local launch must not use the mutating inventory adapter")
+
+    @staticmethod
+    def selected_hosts(_inventory, _limit):
+        raise AssertionError("local launch must not use the mutating host selector")
+
+
+def release_args(*, detach=False, preflight_only=False, limit=""):
     return argparse.Namespace(
         branch="main",
         inventory="infrastructure/ansible/inventory.yml",
-        limit="",
+        limit=limit,
         canary_hold_timeout=1800,
         emergency_override=False,
         reason=None,
@@ -65,11 +78,25 @@ def release_args(*, detach=False, preflight_only=False):
 
 
 class FakeSystemd:
-    def __init__(self, start_result=None, preflight_result=None, terminal_preflight_result=None):
+    def __init__(
+        self,
+        start_result=None,
+        preflight_result=None,
+        terminal_preflight_result=None,
+        route_preflight_result=None,
+    ):
         self.start_result = start_result or CommandResult(("systemd-run",), 0)
         self.preflight_result = preflight_result or CommandResult(("migration-preflight",), 0)
         self.terminal_preflight_result = terminal_preflight_result or CommandResult(
             ("terminal-preflight",), 0
+        )
+        self.route_preflight_result = route_preflight_result or CommandResult(
+            ("route-preflight",),
+            0,
+            stdout=(
+                '{"version":1,"probe":"route","status":"passed",'
+                '"proofs":["pi5.bootstrap-readiness"],"issues":[],"warnings":[],"metrics":{}}'
+            ),
         )
         self.events = []
 
@@ -80,6 +107,10 @@ class FakeSystemd:
     def preflight_terminals(self, spec, targets):
         self.events.append(("terminal-preflight", spec.run_id, len(targets)))
         return self.terminal_preflight_result
+
+    def preflight_route(self, spec):
+        self.events.append(("route-preflight", spec.run_id))
+        return self.route_preflight_result
 
     def start(self, spec, *, wait):
         self.events.append(("start", spec.run_id, wait))
@@ -204,8 +235,8 @@ class ReleaseApplicationTest(unittest.TestCase):
     def test_invalid_terminal_topology_stops_before_ssh_and_submission(self):
         class InvalidRuntime(Runtime):
             @staticmethod
-            def inventory_json(_inventory):
-                value = Runtime.inventory_json(_inventory)
+            def read_only_inventory_json(_inventory):
+                value = Runtime.read_only_inventory_json(_inventory)
                 value["clients"] = {"children": ["unregistered_type"]}
                 return value
 
@@ -221,6 +252,59 @@ class ReleaseApplicationTest(unittest.TestCase):
 
         identity.assert_not_called()
         backends.assert_not_called()
+
+    def test_local_launch_uses_only_read_only_inventory_adapters(self):
+        systemd = FakeSystemd()
+        control = FakeControl()
+        read_inventory = Mock(
+            side_effect=Runtime.read_only_inventory_json
+        )
+        read_selection = Mock(return_value=["raspberrypi5"])
+        runtime = type(
+            "ReadOnlyRuntime",
+            (Runtime,),
+            {
+                "read_only_inventory_json": staticmethod(read_inventory),
+                "read_only_selected_hosts": staticmethod(read_selection),
+            },
+        )
+        patches = (
+            patch.object(application, "_require_clean_worktree"),
+            patch.object(application, "_remote_inventory", return_value="inventory.yml"),
+            patch.object(application, "new_run_id", return_value=RUN_ID),
+            patch.object(application, "build_backends", return_value=(systemd, control)),
+            patch.object(
+                application,
+                "validate_remote_server_identity",
+                return_value={
+                    "host": "raspberrypi5",
+                    "clientId": "raspberrypi5-server",
+                },
+            ),
+        )
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patch(
+            "sys.stdout", new_callable=io.StringIO
+        ):
+            outcome = application.launch(
+                release_args(preflight_only=True, limit="raspberrypi5"),
+                runtime=runtime,
+            )
+
+        self.assertEqual(outcome, 0)
+        read_inventory.assert_called_once_with(
+            str(Runtime.ANSIBLE_DIRECTORY / "inventory.yml")
+        )
+        read_selection.assert_called_once_with(
+            str(Runtime.ANSIBLE_DIRECTORY / "inventory.yml"), "raspberrypi5"
+        )
+        self.assertEqual(
+            systemd.events,
+            [
+                ("migration-preflight", RUN_ID),
+                ("route-preflight", RUN_ID),
+                ("terminal-preflight", RUN_ID, 0),
+            ],
+        )
 
     def test_remote_identity_probe_returns_only_client_id_and_never_requests_key(self):
         transport = SimpleNamespace(
@@ -250,6 +334,7 @@ class ReleaseApplicationTest(unittest.TestCase):
             systemd.events,
             [
                 ("migration-preflight", RUN_ID),
+                ("route-preflight", RUN_ID),
                 ("terminal-preflight", RUN_ID, 0),
                 ("start", RUN_ID, False),
             ],
@@ -279,7 +364,14 @@ class ReleaseApplicationTest(unittest.TestCase):
         with patches[0], patches[1], patches[2], patches[3], patches[4]:
             with self.assertRaisesRegex(RuntimeError, "was not submitted"):
                 application.launch(release_args(), runtime=Runtime)
-        self.assertEqual(systemd.events, [("migration-preflight", RUN_ID)])
+        self.assertEqual(
+            systemd.events,
+            [
+                ("migration-preflight", RUN_ID),
+                ("route-preflight", RUN_ID),
+                ("terminal-preflight", RUN_ID, 0),
+            ],
+        )
 
     def test_preflight_only_never_submits_a_release_unit(self):
         systemd = FakeSystemd()
@@ -306,11 +398,18 @@ class ReleaseApplicationTest(unittest.TestCase):
             )
 
         self.assertEqual(outcome, 0)
-        self.assertIn('"releaseSubmitted": false', stdout.getvalue())
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(payload["releaseSubmitted"])
+        self.assertEqual(payload["selectedHosts"], ["raspberrypi5"])
+        self.assertEqual(
+            payload["routeCoverage"],
+            [stage.id for stage in application.ROUTE_STAGES],
+        )
         self.assertEqual(
             systemd.events,
             [
                 ("migration-preflight", RUN_ID),
+                ("route-preflight", RUN_ID),
                 ("terminal-preflight", RUN_ID, 0),
             ],
         )
@@ -342,12 +441,13 @@ class ReleaseApplicationTest(unittest.TestCase):
             ),
         )
         with patches[0], patches[1], patches[2], patches[3], patches[4]:
-            with self.assertRaisesRegex(RuntimeError, "terminal preflight failed"):
+            with self.assertRaisesRegex(RuntimeError, "aggregate preflight blocked"):
                 application.launch(release_args(), runtime=Runtime)
         self.assertEqual(
             systemd.events,
             [
                 ("migration-preflight", RUN_ID),
+                ("route-preflight", RUN_ID),
                 ("terminal-preflight", RUN_ID, 0),
             ],
         )
@@ -363,10 +463,66 @@ class ReleaseApplicationTest(unittest.TestCase):
                     systemd.events,
                     [
                         ("migration-preflight", RUN_ID),
+                        ("route-preflight", RUN_ID),
                         ("terminal-preflight", RUN_ID, 0),
                         ("start", RUN_ID, True),
                     ],
                 )
+
+    def test_preflight_only_aggregates_blockers_and_incomplete_probes(self):
+        systemd = FakeSystemd(
+            preflight_result=CommandResult(
+                ("migration-preflight",), 78, stderr="migration.blocked"
+            ),
+            terminal_preflight_result=CommandResult(
+                ("terminal-preflight",), 78, stderr="terminal.blocked"
+            ),
+            route_preflight_result=CommandResult(
+                ("route-preflight",),
+                70,
+                stdout=(
+                    '{"version":1,"probe":"route","status":"incomplete",'
+                    '"proofs":[],"issues":["route.internal-error"],"warnings":[],"metrics":{}}'
+                ),
+            ),
+        )
+        control = FakeControl()
+        patches = (
+            patch.object(application, "_require_clean_worktree"),
+            patch.object(application, "_remote_inventory", return_value="inventory.yml"),
+            patch.object(application, "new_run_id", return_value=RUN_ID),
+            patch.object(application, "build_backends", return_value=(systemd, control)),
+            patch.object(
+                application,
+                "validate_remote_server_identity",
+                return_value={
+                    "host": "raspberrypi5",
+                    "clientId": "raspberrypi5-server",
+                },
+            ),
+        )
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patch(
+            "sys.stdout", new_callable=io.StringIO
+        ) as stdout:
+            outcome = application.launch(
+                release_args(preflight_only=True), runtime=Runtime
+            )
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(outcome, 70)
+        self.assertEqual(payload["status"], "incomplete")
+        self.assertEqual(
+            [probe["status"] for probe in payload["probes"]],
+            ["blocked", "incomplete", "blocked"],
+        )
+        self.assertEqual(
+            systemd.events,
+            [
+                ("migration-preflight", RUN_ID),
+                ("route-preflight", RUN_ID),
+                ("terminal-preflight", RUN_ID, 0),
+            ],
+        )
 
     def test_uncertain_submission_and_observation_errors_always_name_run_id(self):
         rejected = CommandResult(("ssh",), 255, stderr="connection lost")

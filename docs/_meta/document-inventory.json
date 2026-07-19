@@ -15,17 +15,17 @@
     ]
   },
   "summary": {
-    "documentCount": 526,
-    "totalLines": 152311,
-    "totalBytes": 11475893,
-    "withFrontmatter": 212,
-    "withStatus": 70,
-    "sourceOfTruthDeclared": 42,
+    "documentCount": 527,
+    "totalLines": 152476,
+    "totalBytes": 11494335,
+    "withFrontmatter": 213,
+    "withStatus": 71,
+    "sourceOfTruthDeclared": 43,
     "execPlanReferences": 64,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 25,
-    "localLinkCount": 5544,
+    "localLinkCount": 5546,
     "brokenLocalLinkCount": 87,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -5913,8 +5913,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 1973,
-      "byteSize": 338288,
+      "lineCount": 1977,
+      "byteSize": 338750,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -7137,6 +7137,11 @@
         },
         {
           "href": "./guides/deployment.md#linuxpi端末typeを追加する",
+          "targetPath": "docs/guides/deployment.md",
+          "exists": true
+        },
+        {
+          "href": "./guides/deployment.md#実行前確認",
           "targetPath": "docs/guides/deployment.md",
           "exists": true
         },
@@ -10126,6 +10131,11 @@
           "exists": true
         },
         {
+          "href": "./plans/deployment-exhaustive-preflight-execplan.md",
+          "targetPath": "docs/plans/deployment-exhaustive-preflight-execplan.md",
+          "exists": true
+        },
+        {
           "href": "./plans/deployment-foundation-refactor-execplan.md",
           "targetPath": "docs/plans/deployment-foundation-refactor-execplan.md",
           "exists": true
@@ -11016,95 +11026,95 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 254,
+          "line": 258,
           "length": 1132
         },
         {
-          "line": 270,
+          "line": 274,
           "length": 1242
         },
         {
-          "line": 274,
+          "line": 278,
           "length": 1022
         },
         {
-          "line": 288,
+          "line": 292,
           "length": 1065
         },
         {
-          "line": 336,
+          "line": 340,
           "length": 1165
         },
         {
-          "line": 342,
+          "line": 346,
           "length": 1458
         },
         {
-          "line": 354,
+          "line": 358,
           "length": 1083
         },
         {
-          "line": 368,
+          "line": 372,
           "length": 1398
         },
         {
-          "line": 370,
+          "line": 374,
           "length": 1133
         },
         {
-          "line": 374,
+          "line": 378,
           "length": 1399
         },
         {
-          "line": 376,
+          "line": 380,
           "length": 1008
         },
         {
-          "line": 382,
+          "line": 386,
           "length": 1059
         },
         {
-          "line": 390,
+          "line": 394,
           "length": 1129
         },
         {
-          "line": 394,
+          "line": 398,
           "length": 1135
         },
         {
-          "line": 398,
+          "line": 402,
           "length": 1117
         },
         {
-          "line": 513,
+          "line": 517,
           "length": 1013
         },
         {
-          "line": 699,
+          "line": 703,
           "length": 2038
         },
         {
-          "line": 715,
+          "line": 719,
           "length": 1496
         },
         {
-          "line": 721,
+          "line": 725,
           "length": 1177
         },
         {
-          "line": 1063,
+          "line": 1067,
           "length": 1449
         },
         {
-          "line": 1099,
+          "line": 1103,
           "length": 1136
         },
         {
-          "line": 1101,
+          "line": 1105,
           "length": 1239
         },
         {
-          "line": 1137,
+          "line": 1141,
           "length": 1004
         }
       ],
@@ -18093,8 +18103,8 @@
     },
     {
       "path": "docs/guides/deployment.md",
-      "lineCount": 187,
-      "byteSize": 12578,
+      "lineCount": 189,
+      "byteSize": 13303,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -18141,7 +18151,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 197,
+      "inboundCount": 198,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -31361,6 +31371,21 @@
       "source_of_truth": null,
       "localLinks": [],
       "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/deployment-exhaustive-preflight-execplan.md",
+      "lineCount": 159,
+      "byteSize": 17255,
+      "hasFrontmatter": true,
+      "title": "Prove every deployment route before another production release",
+      "status": "in-progress",
+      "source_of_truth": "docs/plans/deployment-exhaustive-preflight-execplan.md",
+      "localLinks": [],
+      "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],

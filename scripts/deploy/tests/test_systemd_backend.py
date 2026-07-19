@@ -12,6 +12,7 @@ from pathlib import Path, PurePosixPath
 
 from scripts.deploy.rolling_release import bootstrap
 from scripts.deploy.rolling_release import migration_preflight
+from scripts.deploy.rolling_release import route_preflight
 from scripts.deploy.rolling_release import terminal_preflight
 from scripts.deploy.rolling_release.adapter_registry import adapter_for_profile
 from scripts.deploy.rolling_release.backends import systemd as backend_module
@@ -66,6 +67,7 @@ class SystemdBackendTest(unittest.TestCase):
             remote_project=PurePosixPath(project),
             bootstrap_source='TRUSTED_BOOTSTRAP_SOURCE',
             migration_preflight_source='TRUSTED_MIGRATION_PREFLIGHT_SOURCE',
+            route_preflight_source='TRUSTED_ROUTE_PREFLIGHT_SOURCE',
             terminal_preflight_source='TRUSTED_TERMINAL_PREFLIGHT_SOURCE',
         ), runner
 
@@ -202,6 +204,30 @@ class SystemdBackendTest(unittest.TestCase):
         self.assertEqual(payload['targets'], [target])
         self.assertNotIn('clientKey', json.dumps(payload))
         self.assertNotIn('secret', json.dumps(payload).lower())
+
+    def test_route_preflight_is_read_only_and_carries_the_exact_release_contract(self):
+        backend, runner = self.backend()
+
+        result = backend.preflight_route(self.spec())
+
+        self.assertEqual(result.returncode, 0)
+        remote = self.remote_argv(runner)
+        self.assertNotIn('/usr/bin/systemd-run', remote)
+        self.assertEqual(
+            remote[:3],
+            ['/usr/bin/python3', '-c', backend_module.ROUTE_PREFLIGHT_LOADER],
+        )
+        self.assertEqual(
+            base64.b64decode(remote[-2]).decode('utf-8'),
+            'TRUSTED_ROUTE_PREFLIGHT_SOURCE',
+        )
+        payload = route_preflight.parse_spec(
+            base64.b64decode(remote[-1]).decode('utf-8')
+        )
+        self.assertEqual(payload['sha'], SHA)
+        self.assertEqual(payload['runId'], RUN_ID)
+        self.assertEqual(payload['inventory'], 'inventory.yml')
+        self.assertEqual(payload['expectedServerClientId'], 'raspberrypi5-server')
 
     def test_exact_multiline_bootstrap_source_survives_ssh_quoting(self):
         runner = FakeRunner()

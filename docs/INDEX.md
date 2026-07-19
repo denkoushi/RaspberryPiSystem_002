@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### デプロイ全経路の事前検証（2026-07-19 · 実装・検証中）
+
+- **停止要因の一括検出と全ルート証明**: local、Pi5、Kiosk、Signage、rollback、cancel、中断復旧、最終証跡の23段階を機械可読な契約へ集約し、全件収集型preflightと既存障害注入試験へ結合する。**正本**: [ExecPlan](./plans/deployment-exhaustive-preflight-execplan.md) · [Guide](./guides/deployment.md#実行前確認)
+
 ### AIエージェント運用
 
 - **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
