@@ -75,6 +75,18 @@ class TerminalProfileRegistryTest(unittest.TestCase):
                 {"torque-agent", "kiosk-role"}, {}
             )
         )
+        self.assertEqual(
+            registry.component_for("scripts/deploy/future-control-step.py"),
+            "deploy-control",
+        )
+        self.assertEqual(
+            registry.component_for("scripts/deploy/tests/test_future_control_step.py"),
+            "neutral",
+        )
+        self.assertEqual(
+            registry.component_for("scripts/deploy/signage-runtime-proof.py"),
+            "signage-role",
+        )
 
     def test_profile_order_is_deterministic(self):
         self.payload["terminalProfiles"].reverse()

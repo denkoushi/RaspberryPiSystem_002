@@ -138,6 +138,9 @@ class ClassifyDeployImpactTest(unittest.TestCase):
                 'scripts/deploy/rolling_release/remote_control.py',
                 'scripts/deploy/rolling_release/state.py',
                 'scripts/deploy/terminal-runtime-manifest.py',
+                'scripts/deploy/change-detector.sh',
+                'scripts/deploy/terminal-agent-health-probe.py',
+                'scripts/deploy/validate-candidate-migrations.sh',
             ]
         )
         self.assertFalse(result['server'])
@@ -146,6 +149,24 @@ class ClassifyDeployImpactTest(unittest.TestCase):
         self.assertFalse(result['migration'])
         self.assertEqual(result['components'], ['deploy-control'])
         self.assertEqual(result['affectedProfiles'], [])
+
+    def test_deploy_directory_boundary_preserves_test_and_signage_overrides(self):
+        self.assertEqual(
+            impact.classify(['scripts/deploy/new-control-step.py'])['components'],
+            ['deploy-control'],
+        )
+        self.assertEqual(
+            impact.classify(['scripts/deploy/tests/test_new_control_step.py'])[
+                'components'
+            ],
+            ['neutral'],
+        )
+        self.assertEqual(
+            impact.classify(['scripts/deploy/signage-runtime-proof.py'])[
+                'components'
+            ],
+            ['signage-role'],
+        )
 
     def test_signage_runtime_proof_is_signage_only(self):
         result = impact.classify(['scripts/deploy/signage-runtime-proof.py'])

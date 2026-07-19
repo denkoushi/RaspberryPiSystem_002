@@ -116,6 +116,14 @@ without targeting Pi5 or a terminal. A real template beside that validation
 change retains its own component mapping, so the neutral category never hides
 runtime impact.
 
+Repository-owned deployment orchestration under `scripts/deploy/` is one
+`deploy-control` responsibility boundary. The more specific
+`scripts/deploy/tests/` neutral mapping and signage runtime-proof mapping take
+precedence. New control helpers therefore cannot become an accidental
+fail-closed terminal rollout merely because a second filename allowlist was not
+updated, while genuinely unknown paths outside that closed boundary remain
+fail-closed.
+
 This generalization does not justify a production rollout. Its first physical
 proof occurs with a real product change through the ordinary canary and approval
 process. TalkPlaza remains static-only until a real control plane exists.

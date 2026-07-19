@@ -77,7 +77,9 @@ The real-device gate does not prevent preparation of a read-only capture kit. Be
 - [x] (2026-07-19 03:14Z) Added repository-wide parsing for all 99 Ansible templates, explicit shell/Jinja `${#` collision rejection, and a secret-free rendered `bash -n` contract for the torque controller helper. The shared local/CI runner passed 676 deployment tests, isolated PostgreSQL with all 149 migrations and deploy-status integration, rollback safety, both inventories, every selected playbook syntax check, and recovery check mode; root lint and document audit also pass, with disposable resources removed.
 - [x] (2026-07-19 03:28Z) Exact-head CI, CodeQL, Secret scan, and aggregate `ci-required` passed at `a5a7f90e`. The subsequent read-only print-plan stopped before preflight because two validation-only `scripts/ci` assets were unclassified and therefore expanded the plan to the complete fleet. No release unit or host mutation occurred.
 - [x] (2026-07-19 03:28Z) Moved the template validator into the validation-only `scripts/ci/` boundary, classified that directory once as neutral, and added mixed-diff contracts proving CI/docs/tests cannot hide or broaden the torque template's kiosk-only component scope.
-- [ ] Pass the full local and exact-head CI contracts for the path-classification correction, then repeat standard print-plan, preflight, release, and physical acceptance.
+- [x] (2026-07-19 03:43Z) Full local contracts and exact-head CI/CodeQL/Secret scan passed at `a2ff06be`. A second mutation-free print-plan proved the CI boundary correction, then exposed 26 historically unclassified deploy-control helpers and legitimate cumulative common-role/inventory differences on older verified terminals; no preflight or release began.
+- [x] (2026-07-19 03:53Z) Closed `scripts/deploy/` as one deploy-control boundary with test/signage precedence. Focused 71 tests and the shared local gate passed 679 deployment tests, all 149 migrations plus deploy-status integration on disposable PostgreSQL, safety/inventory/playbook/recovery checks, root lint, Ruff, and document audit; disposable resources were removed.
+- [ ] Pass exact-head CI, then use the documented explicit Pi5 plus StoneBase limit for preflight, release, and physical acceptance.
 
 ## Surprises & Discoveries
 
@@ -213,6 +215,9 @@ The real-device gate does not prevent preparation of a read-only capture kit. Be
 - Observation: Validation-only source lacked a directory-level release-impact classification and therefore became fail-closed `unknown` after publication.
   Evidence: The exact-head print-plan after `a5a7f90e` correctly refused minimization and selected Pi5 plus every kiosk/signage terminal because `scripts/ci/run-deploy-contracts-local.sh` and the new validator had no registry mapping. The validation code does not run on a terminal; the torque template beside it is already classified separately as `torque-agent`.
 
+- Observation: Per-file deploy-control mappings left 26 tracked orchestration helpers unclassified, and divergent verified terminal SHAs made one such helper expand a cumulative plan to every terminal.
+  Evidence: The exact-head print-plan after `a2ff06be` classified the latest Pi5-to-candidate delta as `deploy-control`, `neutral`, and `torque-agent`, but StoneBase's verified `d9a2380e` baseline additionally saw `scripts/deploy/terminal-agent-health-probe.py` as unknown. Older verified kiosks/signage also correctly retained cumulative common-role and inventory differences. The public `--limit` contract permits excluding those verified hosts for this single-host feature acceptance; it still forbids excluding unknown-evidence hosts or a required Pi5.
+
 ## Decision Log
 
 - Decision: Reuse `MeasuringInstrument` as the physical asset record and add a one-to-one torque-wrench profile rather than duplicating storage location, calibration, and lifecycle state.
@@ -342,6 +347,14 @@ The real-device gate does not prevent preparation of a read-only capture kit. Be
 - Decision: Validation-only executables live under `scripts/ci/` and that complete directory is neutral for runtime release impact; mixed-diff tests prove neutral paths neither hide nor broaden a separately classified runtime asset.
   Rationale: Adding individual validator filenames to an allowlist would repeat the same manual-sync failure. One responsibility-based directory mapping lets future validation code strengthen CI without manufacturing terminal work, while unknown paths elsewhere remain fail-closed.
   Date/Author: 2026-07-19 / Codex, required by the user's repeated-failure structural-remediation rule.
+
+- Decision: Treat `scripts/deploy/` as a closed deploy-control boundary, with earlier specific mappings for deploy tests and the signage runtime proof, rather than maintaining a second list of individual control filenames.
+  Rationale: All 26 unclassified files in that directory are orchestration/control-plane helpers. Directory ownership eliminates recurring synchronization omissions, preserves the one real terminal-runtime exception, and leaves unknown paths elsewhere fail-closed.
+  Date/Author: 2026-07-19 / Codex, required by the user's whole-system remediation rule.
+
+- Decision: Run this feature-branch acceptance with the documented explicit limit `raspberrypi5:raspi4-kensaku-stonebase01` after the unbounded plan is audited, instead of converging unrelated verified terminals to the feature SHA.
+  Rationale: The other terminals' cumulative common-role/inventory impact is legitimate but outside this physical acceptance. The public limit is not an emergency override: verified excluded hosts retain their current SHA, unknown-evidence hosts cannot be excluded, and Pi5 cannot be excluded when server impact requires it.
+  Date/Author: 2026-07-19 / Codex, covered by the user's standing deployment authorization.
 
 - Decision: Register `cem3-btla-hogp-v1` only after observed normal and rapid-consecutive fixtures, exact stable device selection, and startup/reconnect tests all pass; those gates are now satisfied.
   Rationale: Parser construction remained isolated until the actual seven-field contract and multi-frame boundary were proven. Production activation now depends on the exact external controller and wrench by-id path and cannot fall back to a general keyboard or transient event node.
@@ -663,3 +676,7 @@ Revision note 2026-07-19 03:04Z: Recorded green exact-head CI for `cf242bd3` and
 Revision note 2026-07-19 03:14Z: Completed the whole-template structural correction before retry. The local/CI runner now parses all 99 Ansible sources, rejects the shell/Jinja `${#` delimiter collision class, and renders the release-critical torque helper through `bash -n`. The full 676-test deployment contract, isolated PostgreSQL/migration integration, safety, inventory, selected-playbook, recovery, lint, and document checks pass; all disposable resources were removed.
 
 Revision note 2026-07-19 03:28Z: Recorded green exact-head CI for `a5a7f90e` and the subsequent mutation-free print-plan stop. Instead of allowlisting two filenames, established `scripts/ci/` as the single validation-only neutral boundary and added mixed runtime/validation classification contracts. The next release remains blocked on a new full local run, publication, exact-head CI, and a minimized print-plan.
+
+Revision note 2026-07-19 03:43Z: Recorded green exact-head CI for `a2ff06be` and the second mutation-free plan audit. The remaining expansion was separated into a recurring classification defect (26 deploy-control helpers outside a responsibility boundary) and legitimate cumulative differences on verified older terminals. The structural correction closes `scripts/deploy/` with specific test/signage overrides; the approved physical acceptance will use the documented Pi5 plus StoneBase limit rather than mutate unrelated verified terminals.
+
+Revision note 2026-07-19 03:53Z: Completed the deploy-control responsibility boundary and its precedence contracts. The full shared local gate passed 679 deployment tests, disposable PostgreSQL with all 149 migrations and deploy-status integration, rollback safety, both inventories, every selected playbook syntax check, recovery check, lint, Ruff, and document audit. Exact-head publication and CI remain the only software gates before the limited physical release.
