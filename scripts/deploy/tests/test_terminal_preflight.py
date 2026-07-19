@@ -143,12 +143,38 @@ class TerminalPreflightTest(unittest.TestCase):
             ["blob", f"{SHA}:scripts/deploy/terminal-runtime-manifest.py"],
         )
 
-    def test_remote_probe_transports_preflight_and_candidate_runtime_sources(self):
+    def test_candidate_agent_health_source_is_read_from_exact_git_blob(self):
+        observed: list[list[str]] = []
+
+        def runner(argv, *, timeout):
+            self.assertEqual(timeout, 20)
+            observed.append(list(argv))
+            return subprocess.CompletedProcess(
+                argv, 0, "# exact candidate health helper\n", ""
+            )
+
+        source, issues = terminal_preflight._candidate_agent_health_source(
+            {
+                "project": "/opt/RaspberryPiSystem_002",
+                "sha": SHA,
+            },
+            run_command=runner,
+        )
+
+        self.assertEqual(source, "# exact candidate health helper\n")
+        self.assertEqual(issues, [])
+        self.assertEqual(
+            observed[0][-2:],
+            ["blob", f"{SHA}:scripts/deploy/terminal-agent-health-probe.py"],
+        )
+
+    def test_remote_probe_transports_all_exact_candidate_probe_sources(self):
         preflight_source = "sentinel-preflight-payload-value"
         runtime_source = "sentinel-runtime-payload-value"
+        agent_health_source = "sentinel-agent-health-payload-value"
         command = terminal_preflight._remote_probe_command(target())
         probe_input = terminal_preflight._remote_probe_input(
-            target(), preflight_source, runtime_source
+            target(), preflight_source, runtime_source, agent_health_source
         )
         remote = shlex.split(command[-1])
         envelope = json.loads(probe_input)
@@ -156,8 +182,10 @@ class TerminalPreflightTest(unittest.TestCase):
         self.assertEqual(remote[-2:], ["-c", terminal_preflight.TARGET_LOADER])
         self.assertNotIn(preflight_source, command[-1])
         self.assertNotIn(runtime_source, command[-1])
+        self.assertNotIn(agent_health_source, command[-1])
         self.assertEqual(envelope["preflightSource"], preflight_source)
         self.assertEqual(envelope["runtimeManifestSource"], runtime_source)
+        self.assertEqual(envelope["agentHealthSource"], agent_health_source)
         self.assertEqual(envelope["spec"]["host"], "kiosk-a")
 
     def test_remote_probe_streams_source_larger_than_linux_single_argument_limit(self):
@@ -169,8 +197,9 @@ encoded = base64.urlsafe_b64encode(json.dumps(payload).encode("utf-8")).decode("
 print("TERMINAL_PREFLIGHT_RESULT:" + encoded)
 """
         runtime_source = "# candidate runtime source\n"
+        agent_health_source = "# candidate health source\n"
         probe_input = terminal_preflight._remote_probe_input(
-            target(), preflight_source, runtime_source
+            target(), preflight_source, runtime_source, agent_health_source
         )
         completed = subprocess.run(
             [sys.executable, "-c", terminal_preflight.TARGET_LOADER],
@@ -184,6 +213,7 @@ print("TERMINAL_PREFLIGHT_RESULT:" + encoded)
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertTrue(terminal_preflight._decode_marker(completed.stdout)["ready"])
         self.assertEqual(json.loads(probe_input)["runtimeManifestSource"], runtime_source)
+        self.assertEqual(json.loads(probe_input)["agentHealthSource"], agent_health_source)
         self.assertLess(
             len(terminal_preflight._remote_probe_command(target())[-1]), 131_072
         )
@@ -251,6 +281,63 @@ print("TERMINAL_PREFLIGHT_RESULT:" + encoded)
             "message": payload["message"],
         })
         self.assertNotIn(secret, json.dumps(issue))
+
+    def test_live_agent_health_runs_every_enabled_agent_from_candidate_source(self):
+        selected = {
+            **target(),
+            "barcodeEnabled": True,
+            "torqueEnabled": True,
+        }
+        completed = [
+            subprocess.CompletedProcess(
+                [], 0, f"TERMINAL_AGENT_HEALTH_OK:{agent}:{port}\n", ""
+            )
+            for agent, port in (
+                ("nfc-agent", 7071),
+                ("barcode-agent", 7072),
+                ("torque-agent", 7073),
+            )
+        ]
+
+        with patch.object(
+            terminal_preflight, "_command", side_effect=completed
+        ) as run:
+            issues = terminal_preflight._probe_live_agent_health(
+                selected, "# exact candidate health helper"
+            )
+
+        self.assertEqual(issues, [])
+        self.assertEqual(run.call_count, 3)
+        for call, agent in zip(
+            run.call_args_list,
+            ("nfc-agent", "barcode-agent", "torque-agent"),
+            strict=True,
+        ):
+            self.assertEqual(call.args[0][:3], ["/usr/bin/python3", "-", "--agent"])
+            self.assertIn(agent, call.args[0])
+            self.assertEqual(
+                call.kwargs["input_text"], "# exact candidate health helper"
+            )
+
+    def test_live_agent_health_returns_safe_issue_without_raw_probe_output(self):
+        secret = "DO-NOT-LEAK-AGENT-SECRET"
+        completed = subprocess.CompletedProcess([], 1, "", secret)
+
+        with patch.object(terminal_preflight, "_command", return_value=completed):
+            issues = terminal_preflight._probe_live_agent_health(
+                target(), "# exact candidate health helper"
+            )
+
+        self.assertEqual(
+            issues,
+            [
+                {
+                    "code": "agent.nfc-agent.health",
+                    "message": "nfc-agent did not pass the stable live health contract",
+                }
+            ],
+        )
+        self.assertNotIn(secret, json.dumps(issues))
 
     def test_contract_builder_rejects_malformed_resource_threshold(self):
         inventory = {

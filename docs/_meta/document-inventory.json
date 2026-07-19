@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 526,
-    "totalLines": 152181,
-    "totalBytes": 11453633,
+    "totalLines": 152214,
+    "totalBytes": 11459220,
     "withFrontmatter": 212,
     "withStatus": 70,
     "sourceOfTruthDeclared": 42,
@@ -16409,8 +16409,8 @@
     },
     {
       "path": "docs/decisions/ADR-20260716-terminal-profile-registry-adapter-boundary.md",
-      "lineCount": 122,
-      "byteSize": 6271,
+      "lineCount": 134,
+      "byteSize": 7080,
       "hasFrontmatter": true,
       "title": "Terminal profile registry and executable adapter boundary",
       "status": "accepted",
@@ -18093,8 +18093,8 @@
     },
     {
       "path": "docs/guides/deployment.md",
-      "lineCount": 185,
-      "byteSize": 11501,
+      "lineCount": 187,
+      "byteSize": 12333,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -31283,8 +31283,8 @@
     },
     {
       "path": "docs/plans/assembly-torque-wrench-traceability-execplan.md",
-      "lineCount": 622,
-      "byteSize": 99168,
+      "lineCount": 641,
+      "byteSize": 103114,
       "hasFrontmatter": true,
       "title": "Assembly Torque Wrench Traceability",
       "status": "active",
@@ -31296,10 +31296,10 @@
       "longLines": [
         {
           "line": 10,
-          "length": 1175
+          "length": 1268
         },
         {
-          "line": 382,
+          "line": 399,
           "length": 1055
         }
       ],

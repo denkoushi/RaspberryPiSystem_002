@@ -369,6 +369,32 @@ def _finalize_terminal_display(
     )
 
 
+def _validated_interrupted_rollback_preflight(
+    *,
+    adapter: TerminalAdapter,
+    inventory: str,
+    target_spec: dict[str, str],
+    record: dict[str, Any],
+    authority_run_id: str,
+) -> dict[str, Any]:
+    preflight = adapter.preflight_rollback(
+        inventory, target_spec, record, authority_run_id
+    )
+    if (
+        not isinstance(preflight, dict)
+        or type(preflight.get("ready")) is not bool
+        or not isinstance(preflight.get("runtimeHealth"), dict)
+        or not isinstance(preflight.get("issues"), list)
+        or any(
+            not isinstance(issue, str) or not issue
+            for issue in preflight.get("issues", [])
+        )
+        or preflight["ready"] != (not preflight["issues"])
+    ):
+        raise RuntimeError("rollback preflight result is malformed")
+    return preflight
+
+
 def _recover_interrupted_terminals(
     *,
     runtime: Any,
@@ -493,43 +519,42 @@ def _recover_interrupted_terminals(
     preflight_issues: list[str] = []
     for host, _fleet_record, target_spec, record, authority_run_id in work_items:
         adapter = _terminal_adapter(runtime, target_spec["terminalType"])
-        if not (
+        maintenance_needs_cleanup = bool(
             record.get("maintenanceStartedAt")
             and not record.get("maintenanceClearedAt")
-        ):
+        )
+        # A pre-mutation capture can still own Docker rollback tags and the
+        # exact runtime-health baseline even though maintenance never began.
+        # Preflight every persisted manifest so recovery and its later live
+        # observation consume the same sealed authority. A truly pre-capture
+        # crash has no manifest and is recaptured idempotently below.
+        if not maintenance_needs_cleanup and "rollbackManifest" not in record:
             continue
         host_issues: list[str] = []
         rollback_ready_sha: str | None = None
         preflight: dict[str, Any] | None = None
-        try:
-            previous_sha = record.get("previousSha")
-            if (
-                not isinstance(previous_sha, str)
-                or FULL_SHA_RE.fullmatch(previous_sha) is None
-            ):
-                raise RuntimeError("sealed previous release SHA is unavailable")
-            rollback_ready_sha = _interrupted_rollback_ready_sha(
-                fleet_state, adapter, previous_sha
-            )
-            rollback_ready_shas[host] = rollback_ready_sha
-        except Exception as error:
-            host_issues.append(f"rollback ready identity: {error}")
-        try:
-            preflight = adapter.preflight_rollback(
-                inventory, target_spec, record, authority_run_id
-            )
-            if (
-                not isinstance(preflight, dict)
-                or type(preflight.get("ready")) is not bool
-                or not isinstance(preflight.get("runtimeHealth"), dict)
-                or not isinstance(preflight.get("issues"), list)
-                or any(
-                    not isinstance(issue, str) or not issue
-                    for issue in preflight.get("issues", [])
+        if maintenance_needs_cleanup:
+            try:
+                previous_sha = record.get("previousSha")
+                if (
+                    not isinstance(previous_sha, str)
+                    or FULL_SHA_RE.fullmatch(previous_sha) is None
+                ):
+                    raise RuntimeError("sealed previous release SHA is unavailable")
+                rollback_ready_sha = _interrupted_rollback_ready_sha(
+                    fleet_state, adapter, previous_sha
                 )
-                or preflight["ready"] != (not preflight["issues"])
-            ):
-                raise RuntimeError("rollback preflight result is malformed")
+                rollback_ready_shas[host] = rollback_ready_sha
+            except Exception as error:
+                host_issues.append(f"rollback ready identity: {error}")
+        try:
+            preflight = _validated_interrupted_rollback_preflight(
+                adapter=adapter,
+                inventory=inventory,
+                target_spec=target_spec,
+                record=record,
+                authority_run_id=authority_run_id,
+            )
             record["rollbackRuntimeHealth"] = preflight["runtimeHealth"]
             host_issues.extend(preflight["issues"])
         except Exception as error:
@@ -734,6 +759,21 @@ def _recover_interrupted_terminals(
                     authority_run_id,
                     expected_sha,
                 )
+                recaptured_preflight = _validated_interrupted_rollback_preflight(
+                    adapter=adapter,
+                    inventory=inventory,
+                    target_spec=target_spec,
+                    record=record,
+                    authority_run_id=authority_run_id,
+                )
+                if not recaptured_preflight["ready"]:
+                    raise RuntimeError(
+                        "interrupted terminal recaptured manifest is not restorable: "
+                        + "; ".join(recaptured_preflight["issues"])
+                    )
+                record["rollbackRuntimeHealth"] = recaptured_preflight[
+                    "runtimeHealth"
+                ]
                 state.save()
 
             notice = record.get("notice")
@@ -756,11 +796,7 @@ def _recover_interrupted_terminals(
             inventory,
             host,
             target_spec["clientId"],
-            runtime_health=(
-                record.get("rollbackRuntimeHealth")
-                if cleanup_outcome == "restored"
-                else None
-            ),
+            runtime_health=record.get("rollbackRuntimeHealth"),
         )
         if observation.get("currentSha") != expected_sha:
             raise RuntimeError(

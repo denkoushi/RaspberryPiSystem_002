@@ -2929,6 +2929,80 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         self.assertEqual(recovery["recovery"], "pre-mutation-live-verified")
         self.assertEqual(recovery["rollbackAuthorityRunId"], "crashed-run")
 
+    def test_pre_mutation_interruption_preflights_sealed_runtime_health(self):
+        terminal = {
+            "host": "kiosk-a",
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "a",
+        }
+        interrupted = host_record("kiosk", OLD_SHA)
+        interrupted.update(
+            {
+                "desiredSha": NEW_SHA,
+                "currentSha": None,
+                "previousSha": OLD_SHA,
+                "evidence": "unknown",
+                "verifiedAt": None,
+                "lastRunId": "crashed-run",
+            }
+        )
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", NEW_SHA),
+                "kiosk-a": interrupted,
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan={
+                "pi5Required": False,
+                "hosts": [
+                    decision("pi5", "server", current=NEW_SHA, targeted=False),
+                    decision("kiosk-a", "kiosk", current=OLD_SHA, targeted=False),
+                ],
+            },
+            targets=[],
+        )
+        runtime.abandoned_run_id = "crashed-run"
+        runtime.deployed_sha["kiosk-a"] = OLD_SHA
+        runtime.prior_runs["crashed-run"] = {
+            "version": 1,
+            "runId": "crashed-run",
+            "state": "running",
+            "targets": [
+                {
+                    **terminal,
+                    "desiredSha": NEW_SHA,
+                    "previousSha": OLD_SHA,
+                    "currentSha": OLD_SHA,
+                    "evidence": "unknown",
+                    "state": "pending",
+                    "rollbackManifest": rollback_manifest(
+                        "crashed-run", "kiosk-a"
+                    ),
+                }
+            ],
+        }
+
+        self.assertEqual(
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            ),
+            0,
+        )
+
+        preflight = runtime.events.index("rollback:preflight:kiosk-a")
+        observe = runtime.events.index("observe:terminal:kiosk-a")
+        self.assertLess(preflight, observe)
+        self.assertNotIn(f"manifest:capture:kiosk-a:{OLD_SHA}", runtime.events)
+        self.assertEqual(
+            runtime.observed_runtime_health,
+            [("kiosk-a", rollback_runtime_health("kiosk"))],
+        )
+        audit = runtime.states[-1].payload["interruptedRecoveryPreflight"]
+        self.assertEqual(audit["state"], "success")
+        self.assertEqual(audit["targets"][0]["rollbackReadySha"], None)
+        self.assertTrue(audit["targets"][0]["runtimeManifestReady"])
+
     def test_unknown_first_run_recovers_crash_on_either_side_of_repository_baseline(self):
         terminal = {
             "host": "kiosk-a",

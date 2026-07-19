@@ -72,6 +72,15 @@ live state through the same parser as capture but creates no manifest directory,
 rollback tag, service transition, checkout, or other mutation. Candidate source
 is transported through bounded standard input rather than process arguments.
 
+Aggregate preflight also streams and executes the exact immutable-candidate
+agent-health helper. Every enabled optional agent must prove its container,
+required supporting socket, and loopback JSON endpoint twice consecutively in a
+bounded three-attempt window. Forward verification and rollback observation use
+that same helper and stability rule. Interrupted recovery preflights every
+sealed runtime manifest before restore or observation, including a manifest
+captured before maintenance started; such a manifest may already own rollback
+tags and the historical optional-agent health authority.
+
 Profiles that fit `generic-systemd` use the shared serial terminal playbook and
 need only registry plus inventory. A genuinely different lifecycle adds one
 adapter (and its repository-owned playbook when needed) plus registry data;
@@ -119,4 +128,7 @@ validated statically; only the production fleet state is read for plans. The
 shared local/CI runner additionally exercises runtime capture with absent and
 present optional agents, rejects unsupported external Docker features before
 mutation, accepts digest-covered Compose health metadata, and validates a
-candidate source larger than Linux's common single-argument limit.
+candidate source larger than Linux's common single-argument limit. It also
+proves exact candidate-health source transport, bounded consecutive health,
+transient recovery, persistent-instability rejection, and pre-mutation sealed
+manifest preflight during interrupted recovery.

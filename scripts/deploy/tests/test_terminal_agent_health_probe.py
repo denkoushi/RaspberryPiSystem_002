@@ -126,7 +126,7 @@ class TerminalAgentHealthProbeTest(unittest.TestCase):
             result.stdout.strip(),
             f"TERMINAL_AGENT_HEALTH_OK:barcode-agent:{self.server.server_port}",
         )
-        self.assertEqual(AgentHandler.requests, 1)
+        self.assertEqual(AgentHandler.requests, 2)
 
     def test_container_death_before_final_observation_fails_before_endpoint(self):
         self._docker("exit 0\n")
@@ -164,6 +164,48 @@ class TerminalAgentHealthProbeTest(unittest.TestCase):
         ):
             with self.assertRaisesRegex(PROBE_MODULE.ProbeError, "ambiguous"):
                 PROBE_MODULE._container_port("a" * 64, "barcode-agent")
+
+    def test_stability_probe_recovers_from_a_transient_and_requires_two_successes(self):
+        args = Mock()
+        attempts = [PROBE_MODULE.ProbeError("temporary"), 7072, 7072]
+
+        def probe_once(_args):
+            result = attempts.pop(0)
+            if isinstance(result, Exception):
+                raise result
+            return result
+
+        with patch.object(PROBE_MODULE, "_probe_once", side_effect=probe_once):
+            port = PROBE_MODULE._stable_probe(
+                args,
+                sleep=lambda _seconds: None,
+                required_successes=2,
+                max_attempts=5,
+                interval_seconds=0,
+            )
+
+        self.assertEqual(port, 7072)
+        self.assertEqual(attempts, [])
+
+    def test_stability_probe_rejects_non_consecutive_successes(self):
+        args = Mock()
+        attempts = [7072, PROBE_MODULE.ProbeError("temporary"), 7072]
+
+        def probe_once(_args):
+            result = attempts.pop(0)
+            if isinstance(result, Exception):
+                raise result
+            return result
+
+        with patch.object(PROBE_MODULE, "_probe_once", side_effect=probe_once):
+            with self.assertRaisesRegex(PROBE_MODULE.ProbeError, "did not stabilize"):
+                PROBE_MODULE._stable_probe(
+                    args,
+                    sleep=lambda _seconds: None,
+                    required_successes=2,
+                    max_attempts=3,
+                    interval_seconds=0,
+                )
 
 
 class PcscRuntimeContractTest(unittest.TestCase):

@@ -48,6 +48,11 @@ RUNTIME_ERROR_MARKER_RE = re.compile(
     r"TERMINAL_RUNTIME_MANIFEST_ERROR:"
     r"([A-Za-z0-9_-]+={0,2})(?![A-Za-z0-9_=-])"
 )
+AGENT_HEALTH_MARKER_RE = re.compile(
+    r"TERMINAL_AGENT_HEALTH_OK:"
+    r"(nfc-agent|barcode-agent|torque-agent):([0-9]{1,5})"
+    r"(?![A-Za-z0-9_:-])"
+)
 ALLOWED_UNTRACKED = frozenset({"power-actions"})
 _BASE_CANDIDATE_ARTIFACTS = (
     ("infrastructure/ansible/playbooks/deploy-staged.yml", "blob"),
@@ -102,13 +107,16 @@ TARGET_LOADER = (
     f"fail() if len(raw)>{TARGET_INPUT_MAX_BYTES} else None;"
     "envelope=json.loads(raw.decode('utf-8'));"
     "fail() if not isinstance(envelope,dict) or "
-    "set(envelope)!={'preflightSource','runtimeManifestSource','spec'} else None;"
+    "set(envelope)!={'preflightSource','runtimeManifestSource','agentHealthSource','spec'} else None;"
     "source=envelope['preflightSource'];runtime=envelope['runtimeManifestSource'];"
-    "fail() if not isinstance(source,str) or not isinstance(runtime,str) else None;"
+    "health=envelope['agentHealthSource'];"
+    "fail() if not isinstance(source,str) or not isinstance(runtime,str) "
+    "or not isinstance(health,str) else None;"
     "sys.argv=['terminal-preflight',json.dumps(envelope['spec'],separators=(',',':'))];"
     "exec(compile(source,'<terminal-preflight>','exec'),"
     "{'__name__':'__main__','EMBEDDED_TERMINAL_PREFLIGHT_SOURCE':source,"
-    "'EMBEDDED_RUNTIME_MANIFEST_SOURCE':runtime})"
+    "'EMBEDDED_RUNTIME_MANIFEST_SOURCE':runtime,"
+    "'EMBEDDED_AGENT_HEALTH_SOURCE':health})"
 )
 
 
@@ -468,14 +476,16 @@ def _candidate_artifact_issues(
     return issues
 
 
-def _candidate_runtime_manifest_source(
+def _candidate_helper_source(
     spec: Mapping[str, Any],
     *,
+    relative_path: str,
+    issue_scope: str,
     run_command: Callable[..., Any] = _default_run,
 ) -> tuple[str | None, list[dict[str, str]]]:
     """Read the exact helper blob from the immutable candidate on Pi5."""
 
-    object_name = f"{spec['sha']}:scripts/deploy/terminal-runtime-manifest.py"
+    object_name = f"{spec['sha']}:{relative_path}"
     try:
         result = run_command(
             [
@@ -491,8 +501,8 @@ def _candidate_runtime_manifest_source(
     except (OSError, subprocess.TimeoutExpired):
         return None, [
             {
-                "code": "candidate.runtime-helper-read",
-                "message": "candidate runtime helper could not be read on Pi5",
+                "code": f"candidate.{issue_scope}-helper-read",
+                "message": f"candidate {issue_scope} helper could not be read on Pi5",
             }
         ]
     source = getattr(result, "stdout", "")
@@ -505,11 +515,37 @@ def _candidate_runtime_manifest_source(
     ):
         return None, [
             {
-                "code": "candidate.runtime-helper-invalid",
-                "message": "candidate runtime helper is unavailable or malformed",
+                "code": f"candidate.{issue_scope}-helper-invalid",
+                "message": f"candidate {issue_scope} helper is unavailable or malformed",
             }
         ]
     return source, []
+
+
+def _candidate_runtime_manifest_source(
+    spec: Mapping[str, Any],
+    *,
+    run_command: Callable[..., Any] = _default_run,
+) -> tuple[str | None, list[dict[str, str]]]:
+    return _candidate_helper_source(
+        spec,
+        relative_path="scripts/deploy/terminal-runtime-manifest.py",
+        issue_scope="runtime",
+        run_command=run_command,
+    )
+
+
+def _candidate_agent_health_source(
+    spec: Mapping[str, Any],
+    *,
+    run_command: Callable[..., Any] = _default_run,
+) -> tuple[str | None, list[dict[str, str]]]:
+    return _candidate_helper_source(
+        spec,
+        relative_path="scripts/deploy/terminal-agent-health-probe.py",
+        issue_scope="agent-health",
+        run_command=run_command,
+    )
 
 
 def _issue(issues: list[dict[str, str]], code: str, message: str) -> None:
@@ -847,8 +883,88 @@ def _probe_runtime_capture(
     return None
 
 
+def _enabled_agent_health_specs(
+    spec: Mapping[str, Any],
+) -> tuple[tuple[str, bool], ...]:
+    if spec["profile"] != "kiosk":
+        return ()
+    return tuple(
+        (agent, require_pcscd)
+        for flag, agent, require_pcscd in (
+            ("nfcEnabled", "nfc-agent", True),
+            ("barcodeEnabled", "barcode-agent", False),
+            ("torqueEnabled", "torque-agent", False),
+        )
+        if spec[flag]
+    )
+
+
+def _probe_live_agent_health(
+    spec: Mapping[str, Any], agent_health_source: str
+) -> list[dict[str, str]]:
+    """Run the exact candidate health proof against every live enabled agent."""
+
+    selected = _enabled_agent_health_specs(spec)
+    if not selected:
+        return []
+    contract = spec["runtimeManifestContract"]
+    compose = contract.get("compose")
+    config_files = compose.get("configFiles") if isinstance(compose, dict) else None
+    if not isinstance(config_files, list) or len(config_files) != 1:
+        return [
+            {
+                "code": "agent.health-contract",
+                "message": "kiosk agent health Compose contract is malformed",
+            }
+        ]
+    issues: list[dict[str, str]] = []
+    for agent, require_pcscd in selected:
+        arguments = [
+            "/usr/bin/python3",
+            "-",
+            "--agent",
+            agent,
+            "--repository",
+            spec["repoPath"],
+            "--compose-file",
+            config_files[0],
+            *(["--require-pcscd"] if require_pcscd else []),
+            "--ansible-marker",
+        ]
+        completed = _command(
+            arguments,
+            timeout=20,
+            input_text=agent_health_source,
+        )
+        output = f"{completed.stdout}\n{completed.stderr}"
+        markers = AGENT_HEALTH_MARKER_RE.findall(output)
+        if (
+            completed.returncode != 0
+            or not markers
+            or any(marker != markers[0] for marker in markers[1:])
+            or markers[0][0] != agent
+        ):
+            _issue(
+                issues,
+                f"agent.{agent}.health",
+                f"{agent} did not pass the stable live health contract",
+            )
+            continue
+        port = int(markers[0][1])
+        if not 1 <= port <= 65535:
+            _issue(
+                issues,
+                f"agent.{agent}.health",
+                f"{agent} returned a malformed live health result",
+            )
+    return issues
+
+
 def run_target_probe(
-    spec: Mapping[str, Any], *, runtime_manifest_source: str | None = None
+    spec: Mapping[str, Any],
+    *,
+    runtime_manifest_source: str | None = None,
+    agent_health_source: str | None = None,
 ) -> dict[str, Any]:
     issues: list[dict[str, str]] = []
     for code in spec["inventoryIssues"]:
@@ -958,6 +1074,8 @@ def run_target_probe(
         runtime_issue = _probe_runtime_capture(spec, runtime_manifest_source)
         if runtime_issue is not None:
             issues.append(runtime_issue)
+    if agent_health_source is not None:
+        issues.extend(_probe_live_agent_health(spec, agent_health_source))
 
     return {
         "version": 1,
@@ -1041,18 +1159,23 @@ def _remote_probe_command(target: Mapping[str, Any]) -> list[str]:
 
 
 def _remote_probe_input(
-    target: Mapping[str, Any], source: str, runtime_manifest_source: str
+    target: Mapping[str, Any],
+    source: str,
+    runtime_manifest_source: str,
+    agent_health_source: str = "",
 ) -> str:
     if (
         not source.strip()
         or "\x00" in source
         or "\x00" in runtime_manifest_source
+        or "\x00" in agent_health_source
     ):
         raise TerminalPreflightConfigError("terminal probe source is malformed")
     serialized = json.dumps(
         {
             "preflightSource": source,
             "runtimeManifestSource": runtime_manifest_source,
+            "agentHealthSource": agent_health_source,
             "spec": target,
         },
         ensure_ascii=False,
@@ -1105,12 +1228,21 @@ def execute_orchestrator(
             )
         )
         candidate_issues.extend(runtime_source_issues)
+        agent_health_source, agent_health_source_issues = (
+            _candidate_agent_health_source(
+                spec, run_command=candidate_run_command
+            )
+        )
+        candidate_issues.extend(agent_health_source_issues)
         results: list[dict[str, Any]] = []
         for target in spec["targets"]:
             command = _remote_probe_command(target)
             try:
                 probe_input = _remote_probe_input(
-                    target, probe_source, runtime_manifest_source or ""
+                    target,
+                    probe_source,
+                    runtime_manifest_source or "",
+                    agent_health_source or "",
                 )
             except TerminalPreflightConfigError as error:
                 results.append(
@@ -1210,11 +1342,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EX_CONFIG
     if spec["mode"] == "target":
         runtime_source = globals().get("EMBEDDED_RUNTIME_MANIFEST_SOURCE")
+        agent_health_source = globals().get("EMBEDDED_AGENT_HEALTH_SOURCE")
         result = run_target_probe(
             spec,
             runtime_manifest_source=(
                 runtime_source
                 if isinstance(runtime_source, str) and runtime_source.strip()
+                else None
+            ),
+            agent_health_source=(
+                agent_health_source
+                if isinstance(agent_health_source, str)
+                and agent_health_source.strip()
                 else None
             ),
         )

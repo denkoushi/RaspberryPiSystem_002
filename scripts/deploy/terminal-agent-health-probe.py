@@ -9,6 +9,7 @@ import re
 import stat
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -23,6 +24,10 @@ _PORT_ENVIRONMENT = {
 }
 _MAX_RESPONSE_BYTES = 64 * 1024
 _CONTAINER_ID_RE = re.compile(r"^[0-9a-f]{12,64}$")
+_STABILITY_REQUIRED_SUCCESSES = 2
+_STABILITY_MAX_ATTEMPTS = 3
+_STABILITY_INTERVAL_SECONDS = 1.0
+_ENDPOINT_TIMEOUT_SECONDS = 3
 
 
 class ProbeError(RuntimeError):
@@ -126,7 +131,7 @@ def _endpoint(agent: str, port: int) -> None:
         method="GET",
     )
     try:
-        with opener.open(request, timeout=10) as response:
+        with opener.open(request, timeout=_ENDPOINT_TIMEOUT_SECONDS) as response:
             if response.status != 200 or response.headers.get_content_type() != "application/json":
                 raise ProbeError("kiosk agent status endpoint is unhealthy")
             body = response.read(_MAX_RESPONSE_BYTES + 1)
@@ -196,23 +201,64 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _validate_arguments(args: argparse.Namespace) -> None:
+    if args.port is not None:
+        if not 1 <= args.port <= 65535:
+            raise ProbeError("kiosk agent status port is malformed")
+        if args.agent in {"nfc-agent", "torque-agent"} and args.port != _AGENTS[args.agent]:
+            raise ProbeError("kiosk agent status port violates the runtime contract")
+    if not args.repository.is_absolute() or not args.compose_file.is_absolute():
+        raise ProbeError("kiosk agent runtime paths must be absolute")
+    if args.require_pcscd and args.agent != "nfc-agent":
+        raise ProbeError("pcscd is only valid for nfc-agent")
+
+
+def _probe_once(args: argparse.Namespace) -> int:
+    if args.require_pcscd:
+        _pcsc_runtime()
+    identifier = _container(args.repository, args.compose_file, args.agent)
+    port = args.port if args.port is not None else _container_port(identifier, args.agent)
+    _endpoint(args.agent, port)
+    return port
+
+
+def _stable_probe(
+    args: argparse.Namespace,
+    *,
+    sleep: Any = time.sleep,
+    required_successes: int = _STABILITY_REQUIRED_SUCCESSES,
+    max_attempts: int = _STABILITY_MAX_ATTEMPTS,
+    interval_seconds: float = _STABILITY_INTERVAL_SECONDS,
+) -> int:
+    """Require consecutive complete proofs instead of accepting one instant."""
+
+    consecutive = 0
+    last_port: int | None = None
+    last_error: ProbeError | None = None
+    for attempt in range(max_attempts):
+        try:
+            last_port = _probe_once(args)
+        except ProbeError as error:
+            consecutive = 0
+            last_error = error
+        else:
+            consecutive += 1
+            if consecutive >= required_successes:
+                return last_port
+        if attempt + 1 < max_attempts:
+            sleep(interval_seconds)
+    if last_error is not None:
+        raise ProbeError(
+            f"required kiosk agent runtime did not stabilize: {last_error}"
+        ) from last_error
+    raise ProbeError("required kiosk agent runtime did not remain stable")
+
+
 def main() -> int:
     args = _parser().parse_args()
     try:
-        if args.port is not None:
-            if not 1 <= args.port <= 65535:
-                raise ProbeError("kiosk agent status port is malformed")
-            if args.agent in {"nfc-agent", "torque-agent"} and args.port != _AGENTS[args.agent]:
-                raise ProbeError("kiosk agent status port violates the runtime contract")
-        if not args.repository.is_absolute() or not args.compose_file.is_absolute():
-            raise ProbeError("kiosk agent runtime paths must be absolute")
-        if args.require_pcscd:
-            if args.agent != "nfc-agent":
-                raise ProbeError("pcscd is only valid for nfc-agent")
-            _pcsc_runtime()
-        identifier = _container(args.repository, args.compose_file, args.agent)
-        port = args.port if args.port is not None else _container_port(identifier, args.agent)
-        _endpoint(args.agent, port)
+        _validate_arguments(args)
+        port = _stable_probe(args)
         if args.ansible_marker:
             print(f"TERMINAL_AGENT_HEALTH_OK:{args.agent}:{port}")
         return 0

@@ -99,7 +99,7 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
   --preflight-only
 ```
 
-`--preflight-only` は選択した全端末の問題を途中で打ち切らず一括表示し、一件でもあれば終了コード78で失敗する。出力された問題は、正規のAnsible設定または別途承認された保守変更でまとめて解消し、同じコマンドを再実行する。エラーを一件ずつ見ながら個別service起動や手動checkoutで迂回してはならない。
+`--preflight-only` は選択した全端末の問題を途中で打ち切らず一括表示し、一件でもあれば終了コード78で失敗する。候補SHAが所有する正確なagent health helperを端末へstdinで送り、現在有効なNFC・バーコード・トルクagentへ本番と同じ安定性判定を行う。各agentは、最大3回の範囲で2回連続してcontainer identity、必要なPC/SC、loopback JSON endpointの全証明に成功しなければならない。出力された問題は、正規のAnsible設定または別途承認された保守変更でまとめて解消し、同じコマンドを再実行する。エラーを一件ずつ見ながら個別service起動や手動checkoutで迂回してはならない。
 
 候補SHAが所有するソースツリー、playbook、agent Dockerfile、Compose定義、設定テンプレートは、Pi5上の候補Git objectから検査する。端末の現在のcheckoutに次リリースで初めて追加されるディレクトリを要求してはならない。端末側の事前検査は、候補checkoutでは作れないOS package、systemd socket、Docker、NetworkManager、既存repository、メモリ、ディスクなどのhost資源だけを対象とする。NFCのPC/SC判定は全段階で`pcscd.socket=loaded/active/enabled`と`/run/pcscd/pcscd.comm`のUnix socketを正とし、`pcscd.service`の常時activeは要求しない。
 
@@ -123,6 +123,8 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
 ```
 
 通常実行も、release unitの作成前に`--preflight-only`と同じmigration・全端末前提検査を再実行する。事前検査と実行の間に状態が変わっても、そこで停止し、端末通知、maintenance、checkout、service変更へは進まない。
+
+前回runの中断復旧では、maintenance開始の有無にかかわらず、保存済みの全sealed runtime manifestを先にpreflightする。manifestはmaintenance前でもDocker rollback tagと当時のoptional-agent health authorityを所有し得るためである。復旧後の観測も同じsealed health contractと安定性判定を使う。active/failed run、manifest、rollback tag、fleet stateを手で削除・編集してこの連鎖を迂回してはならない。
 
 非同期で開始する場合:
 
