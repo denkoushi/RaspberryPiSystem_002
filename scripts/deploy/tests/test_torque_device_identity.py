@@ -25,6 +25,8 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
         for fragment in (
             "^hci[0-9]+$",
             "--discover",
+            "--self-test",
+            "--probe",
             "expected exactly one configured external Bluetooth controller",
             "idVendor",
             "idProduct",
@@ -38,17 +40,21 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
         self.assertNotIn("rfkill unblock bluetooth", helper)
         self.assertNotIn("/sys/class/bluetooth/hci1", helper)
         self.assertIn('[[ "${controller_name}" =~ ^hci[0-9]+$ ]] || continue', helper)
-        self.assertEqual(helper.count("btmgmt --index"), 2)
+        self.assertEqual(helper.count("btmgmt --index"), 3)
         self.assertEqual(
             helper.count("timeout --signal=TERM --kill-after=1 4 btmgmt --index"),
-            2,
+            3,
         )
         discover_branch = helper.index('if [[ "${hci_name}" == \'--discover\' ]]')
         discover_exit = helper.index("exit 0", discover_branch)
+        probe_branch = helper.index('if [[ "${hci_name}" == \'--probe\' ]]')
+        probe_exit = helper.index("exit 0", probe_branch)
         rfkill_write = helper.index("printf '0\\n'", discover_exit)
         first_power_command = helper.index("btmgmt --index", rfkill_write)
         self.assertLess(discover_branch, discover_exit)
         self.assertLess(discover_exit, rfkill_write)
+        self.assertLess(probe_branch, probe_exit)
+        self.assertLess(probe_exit, rfkill_write)
         self.assertLess(rfkill_write, first_power_command)
 
         unit = (CLIENT_ROLE / "templates/torque-bluetooth-adapter@.service.j2").read_text()

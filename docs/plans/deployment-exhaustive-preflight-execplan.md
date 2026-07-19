@@ -21,8 +21,8 @@ validation:
   - complete local deploy contract suite and exact-head hosted checks
   - two consecutive read-only production preflights with unchanged host evidence
 open_items:
-  - publish and pass exact-head hosted validation
-  - pass two read-only Pi5 and StoneBase preflights before release
+  - publish and pass exact-head hosted validation for the candidate-helper probe correction
+  - pass two unchanged Pi5 and StoneBase preflights that execute the exact candidate helper
 supersedes: null
 superseded_by: null
 ---
@@ -47,7 +47,10 @@ The result is observable in three ways. The route coverage test fails if a new e
 - [x] (2026-07-19 05:20Z) Added the standard-library Pi5 route probe and aggregate JSON report. Normal launch and `--preflight-only` both collect migration, route, and terminal results before deciding; exit 0/78/70 is fail-closed.
 - [x] (2026-07-19 05:22Z) Reconnected the complete existing rehearsal matrix to the route contract: no-op, Pi5, Kiosk, Signage, combined ordering, canary, rollback, cancellation, finalization, and interrupted recovery remain exercised by the complete deploy suite.
 - [x] (2026-07-19 05:31Z) Passed 692 deployment Python tests and the canonical local deploy-contract twice: 99 templates, shell/Blue-Green/maintenance/rollback contracts, both inventories, all profile playbooks, isolated Postgres with 149 migrations, SQL/EXPLAIN, and 20 API tests. Temporary Docker resources were absent after completion.
-- [ ] Complete hosted exact-head checks and two-pass live read-only gates.
+- [x] (2026-07-19 06:01Z) Published `03265e2d`; exact-head CI, CodeQL, and secret scan passed. Two print plans and two read-only preflights selected only Pi5 and StoneBase, reported all 23 routes ready, and left Git, fleet state, maintenance, services, Docker identities, and migration ledger unchanged.
+- [x] (2026-07-19 06:43Z) Submitted limited run `20260719-061915-60c976`. Pi5 completed, StoneBase rejected the candidate Bluetooth helper, and the orchestrator restored its prior Git/runtime state and cleared maintenance before marking the run failed. No manual host repair or direct retry was performed.
+- [x] (2026-07-19 06:53Z) Reclassified the failure as a preflight/apply equivalence defect. Added every torque Bluetooth deployment asset to candidate inspection and made aggregate terminal preflight safely render and execute the exact candidate helper in read-only `--probe` mode before release submission.
+- [ ] Complete hosted exact-head checks and two-pass live read-only gates for the corrected helper probe.
 - [ ] Only after all gates pass, run the already-authorized limited Pi5 and StoneBase release and prove verified/no-op completion.
 
 ## Surprises & Discoveries
@@ -60,6 +63,12 @@ The result is observable in three ways. The route coverage test fails if a new e
 
 - Observation: Existing tests are extensive but do not expose a single statement of route completeness.
   Evidence: Coordinator, bootstrap, rollback, migration, and terminal preflight tests cover hundreds of cases, but no contract fails when a new coordinator boundary has neither live preflight evidence nor composed failure rehearsal.
+
+- Observation: Route coverage alone did not guarantee that a release-critical rendered helper had been executed before mutation.
+  Evidence: Run `20260719-061915-60c976` passed all 23 route rows and two live preflights, but the deployed helper failed on a Bash readonly-variable collision and an AWK reserved identifier. CI had parsed Jinja and run `bash -n`; terminal preflight checked the currently installed agent, not the exact candidate helper blob.
+
+- Observation: The existing rollback path behaved as designed when the candidate helper failed.
+  Evidence: StoneBase returned to `d9a2380e...`, its three Docker services and five units were verified, maintenance was cleared, and the fleet run closed failed. Pi5 remained on its already healthy candidate and no manual repair was needed.
 
 ## Decision Log
 
@@ -79,9 +88,17 @@ The result is observable in three ways. The route coverage test fails if a new e
   Rationale: Incomplete evidence must never be interpreted as readiness, and operators need all deterministic blockers in one run.
   Date/Author: 2026-07-19 / Codex.
 
+- Decision: A release-critical candidate helper is not proven by source presence, template parsing, shell syntax, or current-runtime health alone. Preflight must obtain the exact immutable candidate blob, safely render only its declared inventory values, and execute its own read-only probe on the selected terminal.
+  Rationale: This establishes equivalence between the artifact inspected before submission and the helper Ansible will install, while detecting interpreter/runtime defects before maintenance or service mutation.
+  Date/Author: 2026-07-19 / Codex, following the failed limited release.
+
+- Decision: Torque candidate inspection includes the helper script, systemd unit, Bluetooth adapter udev rule, and HID udev rule in addition to agent source and Compose assets.
+  Rationale: All files that can make the feature fail during apply must be present and type-checked at the immutable SHA; inspecting only the application source leaves provisioning omissions undiscovered.
+  Date/Author: 2026-07-19 / Codex.
+
 ## Outcomes & Retrospective
 
-Offline implementation and the complete local contract now pass. Production remains unchanged. Publication, exact-head hosted checks, two consecutive live read-only proofs, and the final release remain pending.
+The first complete route release proved rollback but exposed a candidate-artifact execution gap. Pi5 is healthy on `03265e2d`; StoneBase was automatically restored to its prior release with maintenance cleared. The structural correction is implemented locally. Complete validation, exact-head publication, two new live read-only proofs, and the final limited release remain pending.
 
 ## Context and Orientation
 
@@ -146,6 +163,8 @@ All local tests and read-only probes are repeatable. Preflight may create only a
 
 If any local or hosted gate fails, fix the route contract or its implementation and rerun the complete validation sequence. If a new production blocker appears after all gates, stop through the public cancel/status interface, add the missing route proof and regression, and restart the entire twelve-gate sequence. Do not apply a host-specific repair and immediately retry.
 
+The exact candidate torque Bluetooth helper probe is deliberately read-only. Its `--probe` path validates its parser, resolves exactly one configured USB controller, reads `btmgmt info`, and requires the controller to be powered. It does not write rfkill state, power a controller, install a file, reload udev, or start/stop a service.
+
 ## Artifacts and Notes
 
 The first stopped preflight produced no release run and no managed-host mutation. Its deterministic failure was local `ansible-inventory` auto-loading normal `ansible.cfg` and looking for `.vault-pass`. The read-only inventory command from the repository root succeeded, proving the local responsibility mismatch.
@@ -157,3 +176,5 @@ The public CLI names remain unchanged. `--preflight-only` gains a complete JSON 
 Revision note 2026-07-19: Created this focused plan after the user rejected serial production discovery. It freezes deployment, preserves the local read-only adapter WIP, defines machine-enforced route completeness, expands aggregate preflight, requires before/after boundary rehearsal, and makes two unchanged live preflights a hard release gate.
 
 Revision note 2026-07-19 05:31Z: Implemented the route inventory, boundary/rehearsal coverage checks, standard-library Pi5 route probe, aggregate machine-readable preflight, selected-host evidence, and local read-only inventory boundary. A readable active run is now carried forward as interrupted-recovery work instead of being incorrectly blocked; missing recovery authority fails closed. The complete local deploy contract passed twice with no residual temporary Docker resources; hosted and live read-only gates remain.
+
+Revision note 2026-07-19 06:53Z: Recorded the first limited release, successful automatic StoneBase rollback, and the structural preflight gap it exposed. Candidate inspection now includes every torque Bluetooth deployment asset, and terminal preflight executes the exact safely rendered helper through a read-only live probe. The validation sequence restarts from local contracts; no host-specific repair or immediate retry is permitted.

@@ -68,16 +68,24 @@ class AnsibleTemplateContractTests(unittest.TestCase):
             }
         )
 
-        self.assertIn('${#matches[@]}', rendered)
+        self.assertIn('match_count=$((match_count + 1))', rendered)
         self.assertNotIn("{{", rendered)
-        result = subprocess.run(
+        syntax = subprocess.run(
             ["bash", "-n"],
             input=rendered,
             text=True,
             capture_output=True,
             check=False,
         )
-        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(syntax.returncode, 0, syntax.stderr)
+        runtime = subprocess.run(
+            ["bash", "-s", "--", "--self-test"],
+            input=rendered,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(runtime.returncode, 0, runtime.stderr)
 
 
 if __name__ == "__main__":

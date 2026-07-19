@@ -178,6 +178,8 @@ class SystemdBackendTest(unittest.TestCase):
             'barcodeSerialDevice': '/dev/ttyACM0',
             'torqueEnabled': False,
             'torqueContractValid': True,
+            'torqueUsbVendorId': '',
+            'torqueUsbProductId': '',
             'haizenEnabled': False,
             'haizenHidDevice': '/dev/input/event0',
             'haizenInstallEvdev': True,

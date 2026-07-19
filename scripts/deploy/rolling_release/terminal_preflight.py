@@ -90,6 +90,10 @@ _FEATURE_CANDIDATE_ARTIFACTS = {
         ("clients/torque-agent", "tree"),
         ("infrastructure/ansible/roles/client/tasks/torque-agent.yml", "blob"),
         ("infrastructure/ansible/roles/client/tasks/torque-agent-lifecycle.yml", "blob"),
+        ("infrastructure/ansible/roles/client/templates/torque-bluetooth-adapter.sh.j2", "blob"),
+        ("infrastructure/ansible/roles/client/templates/torque-bluetooth-adapter@.service.j2", "blob"),
+        ("infrastructure/ansible/roles/client/templates/90-torque-bluetooth-adapter.rules.j2", "blob"),
+        ("infrastructure/ansible/roles/client/templates/99-torque-wrench-hid.rules.j2", "blob"),
         ("infrastructure/ansible/templates/torque-agent.env.j2", "blob"),
         ("infrastructure/docker/Dockerfile.torque-agent", "blob"),
         ("infrastructure/docker/docker-compose.client.yml", "blob"),
@@ -107,16 +111,18 @@ TARGET_LOADER = (
     f"fail() if len(raw)>{TARGET_INPUT_MAX_BYTES} else None;"
     "envelope=json.loads(raw.decode('utf-8'));"
     "fail() if not isinstance(envelope,dict) or "
-    "set(envelope)!={'preflightSource','runtimeManifestSource','agentHealthSource','spec'} else None;"
+    "set(envelope)!={'preflightSource','runtimeManifestSource','agentHealthSource','torqueHelperTemplateSource','spec'} else None;"
     "source=envelope['preflightSource'];runtime=envelope['runtimeManifestSource'];"
     "health=envelope['agentHealthSource'];"
+    "torque=envelope['torqueHelperTemplateSource'];"
     "fail() if not isinstance(source,str) or not isinstance(runtime,str) "
-    "or not isinstance(health,str) else None;"
+    "or not isinstance(health,str) or not isinstance(torque,str) else None;"
     "sys.argv=['terminal-preflight',json.dumps(envelope['spec'],separators=(',',':'))];"
     "exec(compile(source,'<terminal-preflight>','exec'),"
     "{'__name__':'__main__','EMBEDDED_TERMINAL_PREFLIGHT_SOURCE':source,"
     "'EMBEDDED_RUNTIME_MANIFEST_SOURCE':runtime,"
-    "'EMBEDDED_AGENT_HEALTH_SOURCE':health})"
+    "'EMBEDDED_AGENT_HEALTH_SOURCE':health,"
+    "'EMBEDDED_TORQUE_HELPER_TEMPLATE_SOURCE':torque})"
 )
 
 
@@ -227,6 +233,8 @@ def _validate_target(payload: Any, *, routing: bool) -> None:
         "barcodeSerialDevice",
         "torqueEnabled",
         "torqueContractValid",
+        "torqueUsbVendorId",
+        "torqueUsbProductId",
         "haizenEnabled",
         "haizenHidDevice",
         "haizenInstallEvdev",
@@ -255,6 +263,12 @@ def _validate_target(payload: Any, *, routing: bool) -> None:
             raise TerminalPreflightConfigError("address is malformed")
     if payload.get("profile") not in {"kiosk", "signage"}:
         raise TerminalPreflightConfigError("profile is unsupported")
+    for key in ("torqueUsbVendorId", "torqueUsbProductId"):
+        value = payload.get(key)
+        if not isinstance(value, str) or (
+            value and re.fullmatch(r"[0-9a-f]{4}", value) is None
+        ):
+            raise TerminalPreflightConfigError(f"{key} is malformed")
     if not isinstance(payload.get("user"), str) or USER_RE.fullmatch(payload["user"]) is None:
         raise TerminalPreflightConfigError("user is malformed")
     if type(payload.get("port")) is not int or not 1 <= payload["port"] <= 65535:
@@ -546,6 +560,93 @@ def _candidate_agent_health_source(
         issue_scope="agent-health",
         run_command=run_command,
     )
+
+
+def _candidate_torque_helper_template_source(
+    spec: Mapping[str, Any],
+    *,
+    run_command: Callable[..., Any] = _default_run,
+) -> tuple[str | None, list[dict[str, str]]]:
+    if not any(target["torqueEnabled"] for target in spec["targets"]):
+        return "", []
+    return _candidate_helper_source(
+        spec,
+        relative_path=(
+            "infrastructure/ansible/roles/client/templates/"
+            "torque-bluetooth-adapter.sh.j2"
+        ),
+        issue_scope="torque-bluetooth",
+        run_command=run_command,
+    )
+
+
+_TORQUE_VENDOR_PLACEHOLDER = (
+    "{{ torque_agent_bluetooth_adapter.usb_vendor_id }}"
+)
+_TORQUE_PRODUCT_PLACEHOLDER = (
+    "{{ torque_agent_bluetooth_adapter.usb_product_id }}"
+)
+
+
+def _render_candidate_torque_helper(
+    spec: Mapping[str, Any], template_source: str
+) -> str:
+    """Render the two-value helper template without evaluating arbitrary Jinja."""
+
+    if not spec["torqueEnabled"]:
+        return ""
+    vendor = spec["torqueUsbVendorId"]
+    product = spec["torqueUsbProductId"]
+    if (
+        re.fullmatch(r"[0-9a-f]{4}", vendor) is None
+        or re.fullmatch(r"[0-9a-f]{4}", product) is None
+        or template_source.count(_TORQUE_VENDOR_PLACEHOLDER) != 1
+        or template_source.count(_TORQUE_PRODUCT_PLACEHOLDER) != 1
+    ):
+        raise TerminalPreflightConfigError(
+            "candidate torque Bluetooth helper contract is malformed"
+        )
+    rendered = template_source.replace(_TORQUE_VENDOR_PLACEHOLDER, vendor).replace(
+        _TORQUE_PRODUCT_PLACEHOLDER, product
+    )
+    if (
+        not rendered.strip()
+        or "\x00" in rendered
+        or len(rendered.encode("utf-8")) > 2 * 1024 * 1024
+        or any(token in rendered for token in ("{{", "{%", "{#"))
+    ):
+        raise TerminalPreflightConfigError(
+            "candidate torque Bluetooth helper rendering is incomplete"
+        )
+    return rendered
+
+
+def _probe_candidate_torque_helper(
+    spec: Mapping[str, Any], template_source: str
+) -> dict[str, str] | None:
+    if not spec["torqueEnabled"]:
+        return None
+    try:
+        rendered = _render_candidate_torque_helper(spec, template_source)
+    except TerminalPreflightConfigError:
+        return {
+            "code": "torque.candidate-helper-contract",
+            "message": "candidate torque Bluetooth helper could not be rendered safely",
+        }
+    completed = _command(
+        ["/usr/bin/bash", "-s", "--", "--probe"],
+        timeout=20,
+        input_text=rendered,
+    )
+    if completed.returncode != 0:
+        return {
+            "code": "torque.candidate-helper-probe",
+            "message": (
+                "candidate torque Bluetooth helper did not pass its exact "
+                "read-only live probe"
+            ),
+        }
+    return None
 
 
 def _issue(issues: list[dict[str, str]], code: str, message: str) -> None:
@@ -965,6 +1066,7 @@ def run_target_probe(
     *,
     runtime_manifest_source: str | None = None,
     agent_health_source: str | None = None,
+    torque_helper_template_source: str | None = None,
 ) -> dict[str, Any]:
     issues: list[dict[str, str]] = []
     for code in spec["inventoryIssues"]:
@@ -1076,6 +1178,12 @@ def run_target_probe(
             issues.append(runtime_issue)
     if agent_health_source is not None:
         issues.extend(_probe_live_agent_health(spec, agent_health_source))
+    if torque_helper_template_source is not None:
+        torque_helper_issue = _probe_candidate_torque_helper(
+            spec, torque_helper_template_source
+        )
+        if torque_helper_issue is not None:
+            issues.append(torque_helper_issue)
 
     return {
         "version": 1,
@@ -1163,12 +1271,14 @@ def _remote_probe_input(
     source: str,
     runtime_manifest_source: str,
     agent_health_source: str = "",
+    torque_helper_template_source: str = "",
 ) -> str:
     if (
         not source.strip()
         or "\x00" in source
         or "\x00" in runtime_manifest_source
         or "\x00" in agent_health_source
+        or "\x00" in torque_helper_template_source
     ):
         raise TerminalPreflightConfigError("terminal probe source is malformed")
     serialized = json.dumps(
@@ -1176,6 +1286,7 @@ def _remote_probe_input(
             "preflightSource": source,
             "runtimeManifestSource": runtime_manifest_source,
             "agentHealthSource": agent_health_source,
+            "torqueHelperTemplateSource": torque_helper_template_source,
             "spec": target,
         },
         ensure_ascii=False,
@@ -1234,6 +1345,12 @@ def execute_orchestrator(
             )
         )
         candidate_issues.extend(agent_health_source_issues)
+        torque_helper_template_source, torque_helper_source_issues = (
+            _candidate_torque_helper_template_source(
+                spec, run_command=candidate_run_command
+            )
+        )
+        candidate_issues.extend(torque_helper_source_issues)
         results: list[dict[str, Any]] = []
         for target in spec["targets"]:
             command = _remote_probe_command(target)
@@ -1243,6 +1360,7 @@ def execute_orchestrator(
                     probe_source,
                     runtime_manifest_source or "",
                     agent_health_source or "",
+                    torque_helper_template_source or "",
                 )
             except TerminalPreflightConfigError as error:
                 results.append(
@@ -1343,6 +1461,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if spec["mode"] == "target":
         runtime_source = globals().get("EMBEDDED_RUNTIME_MANIFEST_SOURCE")
         agent_health_source = globals().get("EMBEDDED_AGENT_HEALTH_SOURCE")
+        torque_helper_template_source = globals().get(
+            "EMBEDDED_TORQUE_HELPER_TEMPLATE_SOURCE"
+        )
         result = run_target_probe(
             spec,
             runtime_manifest_source=(
@@ -1354,6 +1475,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 agent_health_source
                 if isinstance(agent_health_source, str)
                 and agent_health_source.strip()
+                else None
+            ),
+            torque_helper_template_source=(
+                torque_helper_template_source
+                if isinstance(torque_helper_template_source, str)
+                and torque_helper_template_source.strip()
                 else None
             ),
         )

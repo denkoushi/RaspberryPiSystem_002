@@ -193,6 +193,17 @@ def build_target_contracts(
         nfc_enabled = "nfc_agent_client_id" in values
         barcode_enabled = _boolean(values.get("barcode_agent_enabled"))
         torque_enabled = _boolean(values.get("torque_agent_enabled"))
+        torque_adapter = values.get("torque_agent_bluetooth_adapter")
+        torque_vendor_id = (
+            str(torque_adapter.get("usb_vendor_id", ""))
+            if isinstance(torque_adapter, dict)
+            else ""
+        )
+        torque_product_id = (
+            str(torque_adapter.get("usb_product_id", ""))
+            if isinstance(torque_adapter, dict)
+            else ""
+        )
         haizen_enabled = _boolean(values.get("haizen_agent_enabled"))
         manage_kiosk = _boolean(values.get("manage_kiosk_browser"))
         manage_signage = _boolean(values.get("manage_signage_lite"))
@@ -277,6 +288,8 @@ def build_target_contracts(
                 ),
                 "torqueEnabled": torque_enabled,
                 "torqueContractValid": torque_contract_valid,
+                "torqueUsbVendorId": torque_vendor_id,
+                "torqueUsbProductId": torque_product_id,
                 "haizenEnabled": haizen_enabled,
                 "haizenHidDevice": _safe_path(
                     values.get("haizen_agent_hid_device"),

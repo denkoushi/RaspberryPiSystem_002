@@ -53,6 +53,8 @@ def target(host: str = "kiosk-a") -> dict[str, object]:
         "barcodeSerialDevice": "/dev/ttyACM0",
         "torqueEnabled": False,
         "torqueContractValid": True,
+        "torqueUsbVendorId": "",
+        "torqueUsbProductId": "",
         "haizenEnabled": False,
         "haizenHidDevice": "/dev/input/event0",
         "haizenInstallEvdev": True,
@@ -67,6 +69,17 @@ def target(host: str = "kiosk-a") -> dict[str, object]:
 def candidate_success(argv, *, timeout):
     del timeout
     if "blob" in argv:
+        if argv[-1].endswith(":infrastructure/ansible/roles/client/templates/torque-bluetooth-adapter.sh.j2"):
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                "#!/usr/bin/env bash\n"
+                "set -euo pipefail\n"
+                "readonly expected_vendor='{{ torque_agent_bluetooth_adapter.usb_vendor_id }}'\n"
+                "readonly expected_product='{{ torque_agent_bluetooth_adapter.usb_product_id }}'\n"
+                "[[ \"${1:-}\" == '--probe' ]]\n",
+                "",
+            )
         return subprocess.CompletedProcess(
             argv, 0, "# candidate runtime manifest source\n", ""
         )
@@ -168,13 +181,34 @@ class TerminalPreflightTest(unittest.TestCase):
             ["blob", f"{SHA}:scripts/deploy/terminal-agent-health-probe.py"],
         )
 
+    def test_candidate_torque_helper_source_is_read_from_exact_git_blob(self):
+        selected = {
+            **target(),
+            "torqueEnabled": True,
+            "torqueUsbVendorId": "2357",
+            "torqueUsbProductId": "0604",
+        }
+        source, issues = terminal_preflight._candidate_torque_helper_template_source(
+            {
+                "project": "/opt/RaspberryPiSystem_002",
+                "sha": SHA,
+                "targets": [selected],
+            },
+            run_command=candidate_success,
+        )
+
+        self.assertEqual(issues, [])
+        self.assertIn(terminal_preflight._TORQUE_VENDOR_PLACEHOLDER, source)
+
     def test_remote_probe_transports_all_exact_candidate_probe_sources(self):
         preflight_source = "sentinel-preflight-payload-value"
         runtime_source = "sentinel-runtime-payload-value"
         agent_health_source = "sentinel-agent-health-payload-value"
+        torque_helper_source = "sentinel-torque-helper-payload-value"
         command = terminal_preflight._remote_probe_command(target())
         probe_input = terminal_preflight._remote_probe_input(
-            target(), preflight_source, runtime_source, agent_health_source
+            target(), preflight_source, runtime_source, agent_health_source,
+            torque_helper_source
         )
         remote = shlex.split(command[-1])
         envelope = json.loads(probe_input)
@@ -183,9 +217,11 @@ class TerminalPreflightTest(unittest.TestCase):
         self.assertNotIn(preflight_source, command[-1])
         self.assertNotIn(runtime_source, command[-1])
         self.assertNotIn(agent_health_source, command[-1])
+        self.assertNotIn(torque_helper_source, command[-1])
         self.assertEqual(envelope["preflightSource"], preflight_source)
         self.assertEqual(envelope["runtimeManifestSource"], runtime_source)
         self.assertEqual(envelope["agentHealthSource"], agent_health_source)
+        self.assertEqual(envelope["torqueHelperTemplateSource"], torque_helper_source)
         self.assertEqual(envelope["spec"]["host"], "kiosk-a")
 
     def test_remote_probe_streams_source_larger_than_linux_single_argument_limit(self):
@@ -198,8 +234,10 @@ print("TERMINAL_PREFLIGHT_RESULT:" + encoded)
 """
         runtime_source = "# candidate runtime source\n"
         agent_health_source = "# candidate health source\n"
+        torque_helper_source = "# candidate torque helper source\n"
         probe_input = terminal_preflight._remote_probe_input(
-            target(), preflight_source, runtime_source, agent_health_source
+            target(), preflight_source, runtime_source, agent_health_source,
+            torque_helper_source
         )
         completed = subprocess.run(
             [sys.executable, "-c", terminal_preflight.TARGET_LOADER],
@@ -214,6 +252,10 @@ print("TERMINAL_PREFLIGHT_RESULT:" + encoded)
         self.assertTrue(terminal_preflight._decode_marker(completed.stdout)["ready"])
         self.assertEqual(json.loads(probe_input)["runtimeManifestSource"], runtime_source)
         self.assertEqual(json.loads(probe_input)["agentHealthSource"], agent_health_source)
+        self.assertEqual(
+            json.loads(probe_input)["torqueHelperTemplateSource"],
+            torque_helper_source,
+        )
         self.assertLess(
             len(terminal_preflight._remote_probe_command(target())[-1]), 131_072
         )
@@ -287,6 +329,8 @@ print("TERMINAL_PREFLIGHT_RESULT:" + encoded)
             **target(),
             "barcodeEnabled": True,
             "torqueEnabled": True,
+            "torqueUsbVendorId": "2357",
+            "torqueUsbProductId": "0604",
         }
         completed = [
             subprocess.CompletedProcess(
@@ -338,6 +382,61 @@ print("TERMINAL_PREFLIGHT_RESULT:" + encoded)
             ],
         )
         self.assertNotIn(secret, json.dumps(issues))
+
+    def test_candidate_torque_helper_probe_runs_exact_rendered_source(self):
+        selected = {
+            **target(),
+            "torqueEnabled": True,
+            "torqueUsbVendorId": "2357",
+            "torqueUsbProductId": "0604",
+        }
+        template = (
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "vendor='{{ torque_agent_bluetooth_adapter.usb_vendor_id }}'\n"
+            "product='{{ torque_agent_bluetooth_adapter.usb_product_id }}'\n"
+            "[[ \"${1:-}\" == '--probe' && \"$vendor\" == 2357 && \"$product\" == 0604 ]]\n"
+        )
+
+        with patch.object(
+            terminal_preflight,
+            "_command",
+            return_value=subprocess.CompletedProcess([], 0, "", ""),
+        ) as run:
+            issue = terminal_preflight._probe_candidate_torque_helper(
+                selected, template
+            )
+
+        self.assertIsNone(issue)
+        self.assertEqual(run.call_args.args[0], ["/usr/bin/bash", "-s", "--", "--probe"])
+        rendered = run.call_args.kwargs["input_text"]
+        self.assertIn("vendor='2357'", rendered)
+        self.assertIn("product='0604'", rendered)
+        self.assertNotIn("{{", rendered)
+
+    def test_candidate_torque_helper_probe_hides_raw_failure_output(self):
+        secret = "DO-NOT-LEAK-TORQUE-SECRET"
+        selected = {
+            **target(),
+            "torqueEnabled": True,
+            "torqueUsbVendorId": "2357",
+            "torqueUsbProductId": "0604",
+        }
+        template = (
+            "vendor='{{ torque_agent_bluetooth_adapter.usb_vendor_id }}'\n"
+            "product='{{ torque_agent_bluetooth_adapter.usb_product_id }}'\n"
+        )
+        with patch.object(
+            terminal_preflight,
+            "_command",
+            return_value=subprocess.CompletedProcess([], 1, secret, secret),
+        ):
+            issue = terminal_preflight._probe_candidate_torque_helper(
+                selected, template
+            )
+
+        self.assertEqual(issue["code"], "torque.candidate-helper-probe")
+        self.assertNotIn(secret, json.dumps(issue))
 
     def test_contract_builder_rejects_malformed_resource_threshold(self):
         inventory = {
@@ -424,6 +523,8 @@ print("TERMINAL_PREFLIGHT_RESULT:" + encoded)
             **target(),
             "nfcEnabled": False,
             "torqueEnabled": True,
+            "torqueUsbVendorId": "2357",
+            "torqueUsbProductId": "0604",
         }
         terminal_result = {
             "version": 1,
@@ -493,11 +594,20 @@ print("TERMINAL_PREFLIGHT_RESULT:" + encoded)
             **target(),
             "barcodeEnabled": True,
             "torqueEnabled": True,
+            "torqueUsbVendorId": "2357",
+            "torqueUsbProductId": "0604",
         }
         artifacts = dict(terminal_preflight._candidate_artifact_contract([selected]))
         self.assertEqual(artifacts["clients/nfc-agent"], "tree")
         self.assertEqual(artifacts["clients/barcode-agent"], "tree")
         self.assertEqual(artifacts["clients/torque-agent"], "tree")
+        self.assertEqual(
+            artifacts[
+                "infrastructure/ansible/roles/client/templates/"
+                "torque-bluetooth-adapter.sh.j2"
+            ],
+            "blob",
+        )
 
         required_directories: list[str] = []
 

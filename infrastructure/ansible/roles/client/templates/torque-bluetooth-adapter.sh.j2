@@ -7,13 +7,13 @@ readonly hci_name="${1:-}"
 
 controller_usb_parent() {
   local controller_name="$1"
-  local class_path="/sys/class/bluetooth/${controller_name}"
+  local controller_class_path="/sys/class/bluetooth/${controller_name}"
   local candidate
   local vendor
   local product
 
-  [[ -e "${class_path}/device" ]] || return 1
-  candidate="$(readlink -f "${class_path}/device")"
+  [[ -e "${controller_class_path}/device" ]] || return 1
+  candidate="$(readlink -f "${controller_class_path}/device")"
   while [[ "${candidate}" == /sys/* ]]; do
     if [[ -r "${candidate}/idVendor" && -r "${candidate}/idProduct" ]]; then
       vendor="$(tr '[:upper:]' '[:lower:]' < "${candidate}/idVendor")"
@@ -31,25 +31,73 @@ controller_usb_parent() {
 discover_exact_controller() {
   local class_path
   local controller_name
-  local -a matches=()
+  local matched_controller=''
+  local match_count=0
 
   for class_path in /sys/class/bluetooth/hci[0-9]*; do
     [[ -e "${class_path}/device" ]] || continue
     controller_name="${class_path##*/}"
     [[ "${controller_name}" =~ ^hci[0-9]+$ ]] || continue
     if controller_usb_parent "${controller_name}" >/dev/null; then
-      matches+=("${controller_name}")
+      matched_controller="${controller_name}"
+      match_count=$((match_count + 1))
     fi
   done
-  if [[ "{{ '${#' }}matches[@]}" -ne 1 ]]; then
-    echo "expected exactly one configured external Bluetooth controller; found {{ '${#' }}matches[@]}" >&2
+  if [[ "${match_count}" -ne 1 ]]; then
+    echo "expected exactly one configured external Bluetooth controller; found ${match_count}" >&2
     return 8
   fi
-  printf '%s\n' "${matches[0]}"
+  printf '%s\n' "${matched_controller}"
+}
+
+controller_info_is_powered() {
+  awk '
+    /^[[:space:]]*current settings:/ {
+      for (field_number = 1; field_number <= NF; field_number += 1) {
+        if ($field_number == "powered") found = 1
+      }
+    }
+    END { exit(found ? 0 : 1) }
+  '
+}
+
+self_test_parser() {
+  printf '%s\n' 'current settings: powered connectable bondable' \
+    | controller_info_is_powered
+  if printf '%s\n' 'current settings: connectable bondable' \
+    | controller_info_is_powered; then
+    echo "Bluetooth controller parser accepted an unpowered fixture" >&2
+    return 9
+  fi
+}
+
+probe_exact_controller() {
+  local controller_name
+  local controller_index
+  local controller_info
+
+  self_test_parser
+  controller_name="$(discover_exact_controller)"
+  controller_index="${controller_name#hci}"
+  controller_info="$(timeout --signal=TERM --kill-after=1 4 btmgmt --index "${controller_index}" info 2>/dev/null || true)"
+  if ! controller_info_is_powered <<< "${controller_info}"; then
+    echo "configured external Bluetooth controller is not powered" >&2
+    return 7
+  fi
 }
 
 if [[ "${hci_name}" == '--discover' ]]; then
   discover_exact_controller
+  exit 0
+fi
+
+if [[ "${hci_name}" == '--self-test' ]]; then
+  self_test_parser
+  exit 0
+fi
+
+if [[ "${hci_name}" == '--probe' ]]; then
+  probe_exact_controller
   exit 0
 fi
 
@@ -58,19 +106,19 @@ if [[ ! "${hci_name}" =~ ^hci[0-9]+$ ]]; then
   exit 2
 fi
 
-readonly class_path="/sys/class/bluetooth/${hci_name}"
+readonly selected_class_path="/sys/class/bluetooth/${hci_name}"
 for _ in {1..15}; do
-  [[ -e "${class_path}/device" ]] && break
+  [[ -e "${selected_class_path}/device" ]] && break
   sleep 1
 done
-[[ -e "${class_path}/device" ]]
+[[ -e "${selected_class_path}/device" ]]
 
 if ! controller_usb_parent "${hci_name}" >/dev/null; then
   echo "Bluetooth controller does not match configured USB identity" >&2
   exit 3
 fi
 
-controller_path="$(readlink -f "${class_path}")"
+controller_path="$(readlink -f "${selected_class_path}")"
 rfkill_matched=false
 for rfkill_path in /sys/class/rfkill/rfkill*; do
   [[ -r "${rfkill_path}/type" && "$(< "${rfkill_path}/type")" == bluetooth ]] || continue
@@ -93,14 +141,7 @@ fi
 hci_index="${hci_name#hci}"
 for _ in {1..6}; do
   controller_info="$(timeout --signal=TERM --kill-after=1 4 btmgmt --index "${hci_index}" info 2>/dev/null || true)"
-  if awk '
-    /^[[:space:]]*current settings:/ {
-      for (index = 1; index <= NF; index += 1) {
-        if ($index == "powered") found = 1
-      }
-    }
-    END { exit(found ? 0 : 1) }
-  ' <<< "${controller_info}"; then
+  if controller_info_is_powered <<< "${controller_info}"; then
     exit 0
   fi
   timeout --signal=TERM --kill-after=1 4 btmgmt --index "${hci_index}" power on >/dev/null 2>&1 || true
