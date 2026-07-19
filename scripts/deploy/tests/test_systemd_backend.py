@@ -13,6 +13,7 @@ from pathlib import Path, PurePosixPath
 from scripts.deploy.rolling_release import bootstrap
 from scripts.deploy.rolling_release import migration_preflight
 from scripts.deploy.rolling_release import terminal_preflight
+from scripts.deploy.rolling_release.adapter_registry import adapter_for_profile
 from scripts.deploy.rolling_release.backends import systemd as backend_module
 from scripts.deploy.rolling_release.backends.command import CommandResult, SshTransport
 from scripts.deploy.rolling_release.backends.systemd import (
@@ -180,6 +181,9 @@ class SystemdBackendTest(unittest.TestCase):
             'haizenInstallEvdev': True,
             'manageSignage': False,
             'inventoryIssues': [],
+            'runtimeManifestContract': adapter_for_profile(
+                'kiosk', runtime=None
+            ).runtime_manifest_contract.as_preflight_payload(),
         }
 
         result = backend.preflight_terminals(self.spec(), [target])

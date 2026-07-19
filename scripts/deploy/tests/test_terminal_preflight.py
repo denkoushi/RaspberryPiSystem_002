@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import base64
 import io
 import json
+import shlex
 import stat
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from scripts.deploy.rolling_release.adapter_registry import adapter_for_profile
 from scripts.deploy.rolling_release import terminal_preflight
 from scripts.deploy.rolling_release.terminal_preflight_contract import (
     TerminalPreflightContractError,
@@ -54,11 +58,18 @@ def target(host: str = "kiosk-a") -> dict[str, object]:
         "haizenInstallEvdev": True,
         "manageSignage": False,
         "inventoryIssues": [],
+        "runtimeManifestContract": adapter_for_profile(
+            "kiosk", runtime=None
+        ).runtime_manifest_contract.as_preflight_payload(),
     }
 
 
 def candidate_success(argv, *, timeout):
     del timeout
+    if "blob" in argv:
+        return subprocess.CompletedProcess(
+            argv, 0, "# candidate runtime manifest source\n", ""
+        )
     if "-t" not in argv:
         return subprocess.CompletedProcess(argv, 0, "", "")
     object_name = argv[-1]
@@ -99,7 +110,147 @@ class TerminalPreflightTest(unittest.TestCase):
         serialized = json.dumps(contracts)
         self.assertNotIn("must-not-cross-boundary", serialized)
         self.assertNotIn("client_secret", serialized)
+        self.assertEqual(
+            contracts[0]["runtimeManifestContract"],
+            adapter_for_profile(
+                "kiosk", runtime=None
+            ).runtime_manifest_contract.as_preflight_payload(),
+        )
         terminal_preflight.parse_spec(json.dumps(contracts[0]))
+
+    def test_candidate_runtime_helper_source_is_read_from_exact_git_blob(self):
+        observed: list[list[str]] = []
+
+        def runner(argv, *, timeout):
+            self.assertEqual(timeout, 20)
+            observed.append(list(argv))
+            return subprocess.CompletedProcess(
+                argv, 0, "# exact candidate helper\n", ""
+            )
+
+        source, issues = terminal_preflight._candidate_runtime_manifest_source(
+            {
+                "project": "/opt/RaspberryPiSystem_002",
+                "sha": SHA,
+            },
+            run_command=runner,
+        )
+
+        self.assertEqual(source, "# exact candidate helper\n")
+        self.assertEqual(issues, [])
+        self.assertEqual(
+            observed[0][-2:],
+            ["blob", f"{SHA}:scripts/deploy/terminal-runtime-manifest.py"],
+        )
+
+    def test_remote_probe_transports_preflight_and_candidate_runtime_sources(self):
+        preflight_source = "sentinel-preflight-payload-value"
+        runtime_source = "sentinel-runtime-payload-value"
+        command = terminal_preflight._remote_probe_command(target())
+        probe_input = terminal_preflight._remote_probe_input(
+            target(), preflight_source, runtime_source
+        )
+        remote = shlex.split(command[-1])
+        envelope = json.loads(probe_input)
+
+        self.assertEqual(remote[-2:], ["-c", terminal_preflight.TARGET_LOADER])
+        self.assertNotIn(preflight_source, command[-1])
+        self.assertNotIn(runtime_source, command[-1])
+        self.assertEqual(envelope["preflightSource"], preflight_source)
+        self.assertEqual(envelope["runtimeManifestSource"], runtime_source)
+        self.assertEqual(envelope["spec"]["host"], "kiosk-a")
+
+    def test_remote_probe_streams_source_larger_than_linux_single_argument_limit(self):
+        preflight_source = "#" + ("x" * 150_000) + "\n" + """
+import base64
+import json
+payload = {"version": 1, "host": "kiosk-a", "profile": "kiosk", "ready": True, "issues": []}
+encoded = base64.urlsafe_b64encode(json.dumps(payload).encode("utf-8")).decode("ascii")
+print("TERMINAL_PREFLIGHT_RESULT:" + encoded)
+"""
+        runtime_source = "# candidate runtime source\n"
+        probe_input = terminal_preflight._remote_probe_input(
+            target(), preflight_source, runtime_source
+        )
+        completed = subprocess.run(
+            [sys.executable, "-c", terminal_preflight.TARGET_LOADER],
+            input=probe_input,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertGreater(len(preflight_source), 131_072)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertTrue(terminal_preflight._decode_marker(completed.stdout)["ready"])
+        self.assertEqual(json.loads(probe_input)["runtimeManifestSource"], runtime_source)
+        self.assertLess(
+            len(terminal_preflight._remote_probe_command(target())[-1]), 131_072
+        )
+
+    def test_runtime_probe_uses_shared_contract_and_accepts_bounded_result(self):
+        selected = target()
+        contract = selected["runtimeManifestContract"]
+        payload = {
+            "compatible": True,
+            "unitCount": len(contract["systemdUnits"]),
+            "dockerCount": len(contract["dockerServices"]),
+            "presentDockerCount": 3,
+        }
+        encoded = base64.urlsafe_b64encode(
+            json.dumps(payload, sort_keys=True).encode("utf-8")
+        ).decode("ascii")
+        completed = subprocess.CompletedProcess(
+            [],
+            0,
+            f"TERMINAL_RUNTIME_MANIFEST_RESULT:{encoded}\n",
+            "",
+        )
+
+        with patch.object(terminal_preflight, "_command", return_value=completed) as run:
+            issue = terminal_preflight._probe_runtime_capture(
+                selected, "# candidate helper"
+            )
+
+        self.assertIsNone(issue)
+        arguments = run.call_args.args[0]
+        self.assertEqual(arguments[:3], [
+            "/usr/bin/python3",
+            "-",
+            "probe-capture",
+        ])
+        self.assertEqual(run.call_args.kwargs["input_text"], "# candidate helper")
+        self.assertNotIn("--root", arguments)
+        for service in contract["dockerServices"]:
+            self.assertIn(service, arguments)
+
+    def test_runtime_probe_returns_safe_machine_error_without_raw_output(self):
+        secret = "DO-NOT-LEAK-RUNTIME-SECRET"
+        payload = {
+            "version": 1,
+            "code": "runtime.unsupported-feature",
+            "message": "Docker runtime feature is unsupported by rollback capture: ExtraHosts",
+        }
+        encoded = base64.urlsafe_b64encode(
+            json.dumps(payload, sort_keys=True).encode("utf-8")
+        ).decode("ascii")
+        completed = subprocess.CompletedProcess(
+            [],
+            1,
+            f"TERMINAL_RUNTIME_MANIFEST_ERROR:{encoded}\n",
+            secret,
+        )
+
+        with patch.object(terminal_preflight, "_command", return_value=completed):
+            issue = terminal_preflight._probe_runtime_capture(
+                target(), "# candidate helper"
+            )
+
+        self.assertEqual(issue, {
+            "code": "runtime.unsupported-feature",
+            "message": payload["message"],
+        })
+        self.assertNotIn(secret, json.dumps(issue))
 
     def test_contract_builder_rejects_malformed_resource_threshold(self):
         inventory = {
@@ -145,7 +296,8 @@ class TerminalPreflightTest(unittest.TestCase):
         }
         results = [first, second]
 
-        def run_command(_argv, *, timeout):
+        def run_command(_argv, *, timeout, input_text=None):
+            self.assertIsNotNone(input_text)
             value = results.pop(0)
             marker = terminal_preflight._encode_marker(value)
             return subprocess.CompletedProcess([], 78, f"TERMINAL_PREFLIGHT_RESULT:{marker}\n", "")
@@ -194,7 +346,8 @@ class TerminalPreflightTest(unittest.TestCase):
             "issues": [{"code": "repo.dirty", "message": "repository dirty"}],
         }
 
-        def remote_runner(argv, *, timeout):
+        def remote_runner(argv, *, timeout, input_text=None):
+            self.assertIsNotNone(input_text)
             del argv, timeout
             marker = terminal_preflight._encode_marker(terminal_result)
             return subprocess.CompletedProcess(
@@ -203,6 +356,10 @@ class TerminalPreflightTest(unittest.TestCase):
 
         def candidate_runner(argv, *, timeout):
             del timeout
+            if "blob" in argv:
+                return subprocess.CompletedProcess(
+                    argv, 0, "# candidate runtime manifest source\n", ""
+                )
             if "-t" not in argv:
                 return subprocess.CompletedProcess(argv, 0, "", "")
             object_name = argv[-1]

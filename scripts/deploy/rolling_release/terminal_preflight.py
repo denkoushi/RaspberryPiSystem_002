@@ -40,6 +40,14 @@ UNIT_RE = re.compile(
 TARGET_MARKER_RE = re.compile(
     r"TERMINAL_PREFLIGHT_RESULT:([A-Za-z0-9_-]+={0,2})(?![A-Za-z0-9_=-])"
 )
+RUNTIME_RESULT_MARKER_RE = re.compile(
+    r"TERMINAL_RUNTIME_MANIFEST_RESULT:"
+    r"([A-Za-z0-9_-]+={0,2})(?![A-Za-z0-9_=-])"
+)
+RUNTIME_ERROR_MARKER_RE = re.compile(
+    r"TERMINAL_RUNTIME_MANIFEST_ERROR:"
+    r"([A-Za-z0-9_-]+={0,2})(?![A-Za-z0-9_=-])"
+)
 ALLOWED_UNTRACKED = frozenset({"power-actions"})
 _BASE_CANDIDATE_ARTIFACTS = (
     ("infrastructure/ansible/playbooks/deploy-staged.yml", "blob"),
@@ -86,16 +94,35 @@ _FEATURE_CANDIDATE_ARTIFACTS = {
         ("infrastructure/ansible/roles/client/tasks/haizen-agent.yml", "blob"),
     ),
 }
+TARGET_INPUT_MAX_BYTES = 3 * 1024 * 1024
 TARGET_LOADER = (
-    "import base64,sys;source,payload=sys.argv[1:];"
-    "sys.argv=['terminal-preflight',base64.b64decode(payload).decode('utf-8')];"
-    "exec(compile(base64.b64decode(source),'<terminal-preflight>','exec'),"
-    "{'__name__':'__main__','EMBEDDED_TERMINAL_PREFLIGHT_SOURCE':base64.b64decode(source).decode('utf-8')})"
+    "import json,sys;"
+    "fail=lambda:(_ for _ in ()).throw(SystemExit(78));"
+    f"raw=sys.stdin.buffer.read({TARGET_INPUT_MAX_BYTES + 1});"
+    f"fail() if len(raw)>{TARGET_INPUT_MAX_BYTES} else None;"
+    "envelope=json.loads(raw.decode('utf-8'));"
+    "fail() if not isinstance(envelope,dict) or "
+    "set(envelope)!={'preflightSource','runtimeManifestSource','spec'} else None;"
+    "source=envelope['preflightSource'];runtime=envelope['runtimeManifestSource'];"
+    "fail() if not isinstance(source,str) or not isinstance(runtime,str) else None;"
+    "sys.argv=['terminal-preflight',json.dumps(envelope['spec'],separators=(',',':'))];"
+    "exec(compile(source,'<terminal-preflight>','exec'),"
+    "{'__name__':'__main__','EMBEDDED_TERMINAL_PREFLIGHT_SOURCE':source,"
+    "'EMBEDDED_RUNTIME_MANIFEST_SOURCE':runtime})"
 )
 
 
 class TerminalPreflightConfigError(ValueError):
     """The preflight contract is malformed or unsafe."""
+
+
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
 
 
 def _safe_path(value: Any, *, name: str) -> str:
@@ -119,8 +146,14 @@ def _require_bool(payload: Mapping[str, Any], key: str) -> bool:
 
 def parse_spec(raw: str) -> dict[str, Any]:
     try:
-        payload = json.loads(raw)
-    except (TypeError, json.JSONDecodeError) as error:
+        payload = json.loads(
+            raw,
+            object_pairs_hook=_reject_duplicate_json_keys,
+            parse_constant=lambda constant: (_ for _ in ()).throw(
+                ValueError(f"invalid JSON constant: {constant}")
+            ),
+        )
+    except (TypeError, json.JSONDecodeError, ValueError) as error:
         raise TerminalPreflightConfigError("terminal preflight is not valid JSON") from error
     if not isinstance(payload, dict) or payload.get("version") != 1:
         raise TerminalPreflightConfigError("unsupported terminal preflight version")
@@ -191,6 +224,7 @@ def _validate_target(payload: Any, *, routing: bool) -> None:
         "haizenInstallEvdev",
         "manageSignage",
         "inventoryIssues",
+        "runtimeManifestContract",
     }
     if not isinstance(payload, dict) or set(payload) != expected:
         raise TerminalPreflightConfigError("target fields do not match version 1")
@@ -253,8 +287,60 @@ def _validate_target(payload: Any, *, routing: bool) -> None:
         value = payload.get(key)
         if not isinstance(value, str) or not value or "\x00" in value or len(value) > 512:
             raise TerminalPreflightConfigError(f"{key} is malformed")
+    _validate_runtime_manifest_contract(payload.get("runtimeManifestContract"))
     if routing and payload.get("mode") != "target":
         raise TerminalPreflightConfigError("routing target mode is malformed")
+
+
+def _validate_runtime_manifest_contract(value: Any) -> None:
+    if not isinstance(value, dict) or set(value) != {
+        "systemdUnits",
+        "dockerServices",
+        "restartOnRestoreUnits",
+        "compose",
+    }:
+        raise TerminalPreflightConfigError("runtime manifest contract is malformed")
+    units = value.get("systemdUnits")
+    services = value.get("dockerServices")
+    restart_units = value.get("restartOnRestoreUnits")
+    if (
+        not isinstance(units, list)
+        or not units
+        or any(not isinstance(unit, str) or UNIT_RE.fullmatch(unit) is None for unit in units)
+        or len(units) != len(set(units))
+        or not isinstance(services, list)
+        or any(service not in {"nfc-agent", "barcode-agent", "torque-agent"} for service in services)
+        or len(services) != len(set(services))
+        or not isinstance(restart_units, list)
+        or any(unit not in units for unit in restart_units)
+        or len(restart_units) != len(set(restart_units))
+    ):
+        raise TerminalPreflightConfigError("runtime manifest contract is malformed")
+    compose = value.get("compose")
+    if services:
+        if not isinstance(compose, dict) or set(compose) != {
+            "project",
+            "workingDirectory",
+            "configFiles",
+        }:
+            raise TerminalPreflightConfigError("runtime Compose contract is malformed")
+        project = compose.get("project")
+        if not isinstance(project, str) or re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,62}", project) is None:
+            raise TerminalPreflightConfigError("runtime Compose project is malformed")
+        _safe_path(compose.get("workingDirectory"), name="runtime Compose working directory")
+        config_files = compose.get("configFiles")
+        if (
+            not isinstance(config_files, list)
+            or not config_files
+            or len(config_files) != len(set(config_files))
+        ):
+            raise TerminalPreflightConfigError("runtime Compose config files are malformed")
+        for path in config_files:
+            _safe_path(path, name="runtime Compose config file")
+    elif compose is not None:
+        raise TerminalPreflightConfigError(
+            "runtime Compose contract was supplied without Docker services"
+        )
 
 
 def _read_server_client_id(path: str = "/etc/raspi-status-agent.conf") -> str:
@@ -281,15 +367,30 @@ def _read_server_client_id(path: str = "/etc/raspi-status-agent.conf") -> str:
     return values[0]
 
 
-def _default_run(argv: Sequence[str], *, timeout: int = 20) -> subprocess.CompletedProcess[str]:
+def _default_run(
+    argv: Sequence[str],
+    *,
+    timeout: int = 20,
+    input_text: str | None = None,
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        list(argv), text=True, capture_output=True, check=False, timeout=timeout
+        list(argv),
+        text=True,
+        input=input_text,
+        capture_output=True,
+        check=False,
+        timeout=timeout,
     )
 
 
-def _command(argv: Sequence[str], *, timeout: int = 10) -> subprocess.CompletedProcess[str]:
+def _command(
+    argv: Sequence[str],
+    *,
+    timeout: int = 10,
+    input_text: str | None = None,
+) -> subprocess.CompletedProcess[str]:
     try:
-        return _default_run(argv, timeout=timeout)
+        return _default_run(argv, timeout=timeout, input_text=input_text)
     except (OSError, subprocess.TimeoutExpired) as error:
         return subprocess.CompletedProcess(list(argv), 127, "", str(error))
 
@@ -365,6 +466,50 @@ def _candidate_artifact_issues(
                 f"candidate artifact must be a Git {expected_type}: {path}",
             )
     return issues
+
+
+def _candidate_runtime_manifest_source(
+    spec: Mapping[str, Any],
+    *,
+    run_command: Callable[..., Any] = _default_run,
+) -> tuple[str | None, list[dict[str, str]]]:
+    """Read the exact helper blob from the immutable candidate on Pi5."""
+
+    object_name = f"{spec['sha']}:scripts/deploy/terminal-runtime-manifest.py"
+    try:
+        result = run_command(
+            [
+                "/usr/bin/git",
+                "-C",
+                str(spec["project"]),
+                "cat-file",
+                "blob",
+                object_name,
+            ],
+            timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None, [
+            {
+                "code": "candidate.runtime-helper-read",
+                "message": "candidate runtime helper could not be read on Pi5",
+            }
+        ]
+    source = getattr(result, "stdout", "")
+    if (
+        getattr(result, "returncode", 1) != 0
+        or not isinstance(source, str)
+        or not source.strip()
+        or len(source.encode("utf-8")) > 2 * 1024 * 1024
+        or "\x00" in source
+    ):
+        return None, [
+            {
+                "code": "candidate.runtime-helper-invalid",
+                "message": "candidate runtime helper is unavailable or malformed",
+            }
+        ]
+    return source, []
 
 
 def _issue(issues: list[dict[str, str]], code: str, message: str) -> None:
@@ -580,7 +725,131 @@ def _check_cron(
         _issue(issues, code, f"provisioned cron entry is missing or duplicated: {label}")
 
 
-def run_target_probe(spec: Mapping[str, Any]) -> dict[str, Any]:
+def _runtime_probe_arguments(spec: Mapping[str, Any]) -> list[str]:
+    contract = spec["runtimeManifestContract"]
+    arguments = [
+        "probe-capture",
+        "--run-id",
+        str(spec.get("runtimeProbeRunId") or "preflight-probe"),
+        "--host",
+        str(spec["host"]),
+        "--ansible-marker",
+    ]
+    for unit in contract["systemdUnits"]:
+        arguments.extend(("--unit", unit))
+    for unit in contract["restartOnRestoreUnits"]:
+        arguments.extend(("--restart-on-restore-unit", unit))
+    for service in contract["dockerServices"]:
+        arguments.extend(("--docker-service", service))
+    compose = contract["compose"]
+    if compose is not None:
+        arguments.extend(
+            (
+                "--compose-project",
+                compose["project"],
+                "--compose-working-directory",
+                compose["workingDirectory"],
+            )
+        )
+        for path in compose["configFiles"]:
+            arguments.extend(("--compose-config-file", path))
+    return arguments
+
+
+def _decode_unique_runtime_marker(
+    output: str, pattern: re.Pattern[str], *, label: str
+) -> dict[str, Any]:
+    matches = pattern.findall(output)
+    if not matches:
+        raise ValueError(f"{label} marker is missing")
+    decoded: list[dict[str, Any]] = []
+    for encoded in matches:
+        if len(encoded) > 65536:
+            raise ValueError(f"{label} marker is too large")
+        try:
+            raw = base64.b64decode(encoded, altchars=b"-_", validate=True)
+            if base64.urlsafe_b64encode(raw).decode("ascii") != encoded:
+                raise ValueError("non-canonical marker")
+            value = json.loads(
+                raw.decode("utf-8"),
+                object_pairs_hook=_reject_duplicate_json_keys,
+                parse_constant=lambda constant: (_ for _ in ()).throw(
+                    ValueError(f"invalid JSON constant: {constant}")
+                ),
+            )
+        except (binascii.Error, UnicodeError, json.JSONDecodeError, ValueError) as error:
+            raise ValueError(f"{label} marker is malformed") from error
+        if not isinstance(value, dict):
+            raise ValueError(f"{label} marker is not an object")
+        decoded.append(value)
+    if any(value != decoded[0] for value in decoded[1:]):
+        raise ValueError(f"{label} markers disagree")
+    return decoded[0]
+
+
+def _probe_runtime_capture(
+    spec: Mapping[str, Any], runtime_manifest_source: str
+) -> dict[str, str] | None:
+    completed = _command(
+        [
+            "/usr/bin/python3",
+            "-",
+            *_runtime_probe_arguments(spec),
+        ],
+        timeout=60,
+        input_text=runtime_manifest_source,
+    )
+    output = f"{completed.stdout}\n{completed.stderr}"
+    if completed.returncode != 0:
+        try:
+            payload = _decode_unique_runtime_marker(
+                output, RUNTIME_ERROR_MARKER_RE, label="runtime capture error"
+            )
+        except ValueError:
+            return {
+                "code": "runtime.capture-probe",
+                "message": "runtime capture compatibility probe failed without safe evidence",
+            }
+        if (
+            set(payload) != {"version", "code", "message"}
+            or payload.get("version") != 1
+            or not isinstance(payload.get("code"), str)
+            or re.fullmatch(r"[a-z0-9.-]{1,100}", payload["code"]) is None
+            or not isinstance(payload.get("message"), str)
+            or not payload["message"]
+            or len(payload["message"]) > 512
+        ):
+            return {
+                "code": "runtime.capture-probe",
+                "message": "runtime capture compatibility returned malformed safe evidence",
+            }
+        return {"code": payload["code"], "message": payload["message"]}
+    try:
+        payload = _decode_unique_runtime_marker(
+            output, RUNTIME_RESULT_MARKER_RE, label="runtime capture result"
+        )
+    except ValueError as error:
+        return {"code": "runtime.capture-probe", "message": str(error)}
+    contract = spec["runtimeManifestContract"]
+    if (
+        set(payload)
+        != {"compatible", "unitCount", "dockerCount", "presentDockerCount"}
+        or payload.get("compatible") is not True
+        or payload.get("unitCount") != len(contract["systemdUnits"])
+        or payload.get("dockerCount") != len(contract["dockerServices"])
+        or type(payload.get("presentDockerCount")) is not int
+        or not 0 <= payload["presentDockerCount"] <= payload["dockerCount"]
+    ):
+        return {
+            "code": "runtime.capture-probe",
+            "message": "runtime capture compatibility result is invalid",
+        }
+    return None
+
+
+def run_target_probe(
+    spec: Mapping[str, Any], *, runtime_manifest_source: str | None = None
+) -> dict[str, Any]:
     issues: list[dict[str, str]] = []
     for code in spec["inventoryIssues"]:
         _issue(issues, code, "inventory contract is incomplete or invalid")
@@ -685,6 +954,11 @@ def run_target_probe(spec: Mapping[str, Any]) -> dict[str, Any]:
         ):
             _require_unit(issues, unit, loaded=True, enabled=True)
 
+    if runtime_manifest_source is not None:
+        runtime_issue = _probe_runtime_capture(spec, runtime_manifest_source)
+        if runtime_issue is not None:
+            issues.append(runtime_issue)
+
     return {
         "version": 1,
         "host": spec["host"],
@@ -709,7 +983,13 @@ def _decode_marker(output: str) -> dict[str, Any]:
             raw = base64.b64decode(encoded, altchars=b"-_", validate=True)
             if base64.urlsafe_b64encode(raw).decode("ascii") != encoded:
                 raise ValueError("non-canonical marker")
-            value = json.loads(raw.decode("utf-8"))
+            value = json.loads(
+                raw.decode("utf-8"),
+                object_pairs_hook=_reject_duplicate_json_keys,
+                parse_constant=lambda constant: (_ for _ in ()).throw(
+                    ValueError(f"invalid JSON constant: {constant}")
+                ),
+            )
         except (binascii.Error, UnicodeError, json.JSONDecodeError) as error:
             raise ValueError("terminal preflight result marker is malformed") from error
         if not isinstance(value, dict):
@@ -728,8 +1008,7 @@ def _source_text() -> str:
     return source_path.read_text(encoding="utf-8")
 
 
-def _remote_probe_command(target: Mapping[str, Any], source: str) -> list[str]:
-    serialized = json.dumps(target, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+def _remote_probe_command(target: Mapping[str, Any]) -> list[str]:
     remote = shlex.join(
         [
             "/usr/bin/sudo",
@@ -737,8 +1016,6 @@ def _remote_probe_command(target: Mapping[str, Any], source: str) -> list[str]:
             "/usr/bin/python3",
             "-c",
             TARGET_LOADER,
-            base64.b64encode(source.encode("utf-8")).decode("ascii"),
-            base64.b64encode(serialized.encode("utf-8")).decode("ascii"),
         ]
     )
     return [
@@ -761,6 +1038,30 @@ def _remote_probe_command(target: Mapping[str, Any], source: str) -> list[str]:
         f"{target['user']}@{target['address']}",
         remote,
     ]
+
+
+def _remote_probe_input(
+    target: Mapping[str, Any], source: str, runtime_manifest_source: str
+) -> str:
+    if (
+        not source.strip()
+        or "\x00" in source
+        or "\x00" in runtime_manifest_source
+    ):
+        raise TerminalPreflightConfigError("terminal probe source is malformed")
+    serialized = json.dumps(
+        {
+            "preflightSource": source,
+            "runtimeManifestSource": runtime_manifest_source,
+            "spec": target,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    if len(serialized.encode("utf-8")) > TARGET_INPUT_MAX_BYTES:
+        raise TerminalPreflightConfigError("terminal probe input exceeds its safety limit")
+    return serialized
 
 
 def execute_orchestrator(
@@ -798,11 +1099,39 @@ def execute_orchestrator(
         candidate_issues = _candidate_artifact_issues(
             spec, run_command=candidate_run_command
         )
+        runtime_manifest_source, runtime_source_issues = (
+            _candidate_runtime_manifest_source(
+                spec, run_command=candidate_run_command
+            )
+        )
+        candidate_issues.extend(runtime_source_issues)
         results: list[dict[str, Any]] = []
         for target in spec["targets"]:
-            command = _remote_probe_command(target, probe_source)
+            command = _remote_probe_command(target)
             try:
-                completed = run_command(command, timeout=60)
+                probe_input = _remote_probe_input(
+                    target, probe_source, runtime_manifest_source or ""
+                )
+            except TerminalPreflightConfigError as error:
+                results.append(
+                    {
+                        "version": 1,
+                        "host": target["host"],
+                        "profile": target["profile"],
+                        "ready": False,
+                        "issues": [
+                            {
+                                "code": "transport.input",
+                                "message": str(error),
+                            }
+                        ],
+                    }
+                )
+                continue
+            try:
+                completed = run_command(
+                    command, timeout=60, input_text=probe_input
+                )
             except (OSError, subprocess.TimeoutExpired) as error:
                 results.append(
                     {
@@ -880,7 +1209,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"[ERROR] {error}", file=sys.stderr)
         return EX_CONFIG
     if spec["mode"] == "target":
-        result = run_target_probe(spec)
+        runtime_source = globals().get("EMBEDDED_RUNTIME_MANIFEST_SOURCE")
+        result = run_target_probe(
+            spec,
+            runtime_manifest_source=(
+                runtime_source
+                if isinstance(runtime_source, str) and runtime_source.strip()
+                else None
+            ),
+        )
         print(f"TERMINAL_PREFLIGHT_RESULT:{_encode_marker(result)}")
         return EX_OK if result["ready"] else EX_CONFIG
     return execute_orchestrator(spec)

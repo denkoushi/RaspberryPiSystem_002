@@ -30,6 +30,7 @@ from typing import Any, Mapping, Sequence
 MANIFEST_VERSION = 2
 RECEIPT_VERSION = 1
 MARKER_PREFIX = "TERMINAL_RUNTIME_MANIFEST_RESULT:"
+ERROR_MARKER_PREFIX = "TERMINAL_RUNTIME_MANIFEST_ERROR:"
 MAX_JSON_BYTES = 1024 * 1024
 MAX_COMMAND_OUTPUT = 1024 * 1024
 COMMAND_TIMEOUT_SECONDS = 60
@@ -135,6 +136,10 @@ ENVIRONMENT_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 class RuntimeManifestError(RuntimeError):
     """Raised when the helper cannot prove its fail-closed contract."""
 
+    def __init__(self, message: str, *, code: str = "runtime.contract") -> None:
+        super().__init__(message)
+        self.code = code
+
 
 @dataclass(frozen=True)
 class CommandResult:
@@ -161,6 +166,16 @@ class SystemdObservation:
     state: dict[str, Any]
     needs_daemon_reload: bool
     transitional: bool = False
+
+
+@dataclass(frozen=True)
+class CaptureRequest:
+    run_id: str
+    host: str
+    units: tuple[str, ...]
+    docker_services: tuple[str, ...]
+    restart_on_restore_units: tuple[str, ...]
+    compose: dict[str, Any] | None
 
 
 def _run_command(
@@ -1077,17 +1092,14 @@ def _require_supported_capture_runtime(
     ):
         if not _empty_runtime_setting(host_config.get(key)):
             raise RuntimeManifestError(
-                f"Docker runtime feature is unsupported by rollback capture: {key}"
+                f"Docker runtime feature is unsupported by rollback capture: {key}",
+                code="runtime.unsupported-feature",
             )
     for key in ("AutoRemove", "PublishAllPorts"):
         if host_config.get(key) not in {None, False}:
             raise RuntimeManifestError(
-                f"Docker runtime feature is unsupported by rollback capture: {key}"
-            )
-    for key in ("Healthcheck", "ExposedPorts"):
-        if not _empty_runtime_setting(container_config.get(key)):
-            raise RuntimeManifestError(
-                f"Docker runtime feature is unsupported by rollback capture: {key}"
+                f"Docker runtime feature is unsupported by rollback capture: {key}",
+                code="runtime.unsupported-feature",
             )
 
 
@@ -1635,6 +1647,117 @@ def _capture_result(
     }
 
 
+def _validated_capture_request(
+    *,
+    run_id: str,
+    host: str,
+    units: Sequence[str],
+    docker_services: Sequence[str],
+    restart_on_restore_units: Sequence[str],
+    compose_project: str | None,
+    compose_working_directory: os.PathLike[str] | str | None,
+    compose_config_files: Sequence[os.PathLike[str] | str],
+) -> CaptureRequest:
+    safe_run_id = _validate_identity(run_id, RUN_ID_RE, "run ID")
+    safe_host = _validate_identity(host, HOST_RE, "host")
+    requested_units = tuple(_validate_unit_name(item) for item in units)
+    requested_services = tuple(_validate_service(item) for item in docker_services)
+    requested_restart_on_restore = tuple(
+        _validate_unit_name(item) for item in restart_on_restore_units
+    )
+    if len(set(requested_units)) != len(requested_units):
+        raise RuntimeManifestError("capture request contains duplicate systemd units")
+    if len(set(requested_services)) != len(requested_services):
+        raise RuntimeManifestError("capture request contains duplicate Docker services")
+    if (
+        len(set(requested_restart_on_restore))
+        != len(requested_restart_on_restore)
+        or any(
+            item not in RESTART_ON_RESTORE_UNITS
+            for item in requested_restart_on_restore
+        )
+        or any(item not in requested_units for item in requested_restart_on_restore)
+    ):
+        raise RuntimeManifestError("capture restart-on-restore set is malformed")
+    if not requested_units and not requested_services:
+        raise RuntimeManifestError("capture request contains no runtime targets")
+    if requested_services:
+        if compose_project is None or compose_working_directory is None:
+            raise RuntimeManifestError("Docker capture requires a Compose context")
+        compose = _validate_compose_context(
+            {
+                "project": compose_project,
+                "workingDirectory": os.fspath(compose_working_directory),
+                "configFiles": [os.fspath(path) for path in compose_config_files],
+            },
+            require_files=True,
+        )
+    else:
+        if (
+            compose_project is not None
+            or compose_working_directory is not None
+            or compose_config_files
+        ):
+            raise RuntimeManifestError(
+                "Compose context was provided without Docker services"
+            )
+        compose = None
+    return CaptureRequest(
+        run_id=safe_run_id,
+        host=safe_host,
+        units=requested_units,
+        docker_services=requested_services,
+        restart_on_restore_units=requested_restart_on_restore,
+        compose=compose,
+    )
+
+
+def probe_capture(
+    *,
+    run_id: str,
+    host: str,
+    units: Sequence[str],
+    docker_services: Sequence[str],
+    restart_on_restore_units: Sequence[str] = (),
+    compose_project: str | None = None,
+    compose_working_directory: os.PathLike[str] | str | None = None,
+    compose_config_files: Sequence[os.PathLike[str] | str] = (),
+) -> dict[str, Any]:
+    """Prove capture compatibility without files, tags, or runtime mutation."""
+
+    request = _validated_capture_request(
+        run_id=run_id,
+        host=host,
+        units=units,
+        docker_services=docker_services,
+        restart_on_restore_units=restart_on_restore_units,
+        compose_project=compose_project,
+        compose_working_directory=compose_working_directory,
+        compose_config_files=compose_config_files,
+    )
+    if request.compose is not None:
+        _preflight_compose(request.compose)
+    for unit in request.units:
+        _capturable_systemd_state(unit)
+    docker_records = [
+        _capture_docker_record(
+            run_id=request.run_id,
+            host=request.host,
+            service=service,
+            compose=request.compose,
+        )
+        for service in request.docker_services
+    ]
+    return {
+        "compatible": True,
+        "unitCount": len(request.units),
+        "dockerCount": len(request.docker_services),
+        "presentDockerCount": sum(
+            record["state"] == "present" for record in docker_records
+        ),
+    }
+
+
 def _verify_capture_retry(
     manifest: Mapping[str, Any],
     *,
@@ -1673,47 +1796,23 @@ def capture(
     compose_working_directory: os.PathLike[str] | str | None = None,
     compose_config_files: Sequence[os.PathLike[str] | str] = (),
 ) -> dict[str, Any]:
-    context = _build_context(root=root, run_id=run_id, host=host, create=True)
-    requested_units = [_validate_unit_name(item) for item in units]
-    requested_services = [_validate_service(item) for item in docker_services]
-    requested_restart_on_restore = [
-        _validate_unit_name(item) for item in restart_on_restore_units
-    ]
-    if len(set(requested_units)) != len(requested_units):
-        raise RuntimeManifestError("capture request contains duplicate systemd units")
-    if len(set(requested_services)) != len(requested_services):
-        raise RuntimeManifestError("capture request contains duplicate Docker services")
-    if (
-        len(set(requested_restart_on_restore))
-        != len(requested_restart_on_restore)
-        or any(
-            item not in RESTART_ON_RESTORE_UNITS
-            for item in requested_restart_on_restore
-        )
-        or any(item not in requested_units for item in requested_restart_on_restore)
-    ):
-        raise RuntimeManifestError("capture restart-on-restore set is malformed")
-    if not requested_units and not requested_services:
-        raise RuntimeManifestError("capture request contains no runtime targets")
-    if requested_services:
-        if compose_project is None or compose_working_directory is None:
-            raise RuntimeManifestError("Docker capture requires a Compose context")
-        compose = _validate_compose_context(
-            {
-                "project": compose_project,
-                "workingDirectory": os.fspath(compose_working_directory),
-                "configFiles": [os.fspath(path) for path in compose_config_files],
-            },
-            require_files=True,
-        )
-    else:
-        if (
-            compose_project is not None
-            or compose_working_directory is not None
-            or compose_config_files
-        ):
-            raise RuntimeManifestError("Compose context was provided without Docker services")
-        compose = None
+    request = _validated_capture_request(
+        run_id=run_id,
+        host=host,
+        units=units,
+        docker_services=docker_services,
+        restart_on_restore_units=restart_on_restore_units,
+        compose_project=compose_project,
+        compose_working_directory=compose_working_directory,
+        compose_config_files=compose_config_files,
+    )
+    context = _build_context(
+        root=root, run_id=request.run_id, host=request.host, create=True
+    )
+    requested_units = list(request.units)
+    requested_services = list(request.docker_services)
+    requested_restart_on_restore = list(request.restart_on_restore_units)
+    compose = request.compose
 
     with _HostLock(context.lock_path):
         try:
@@ -2435,25 +2534,56 @@ def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--ansible-marker", action="store_true")
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    subparsers = parser.add_subparsers(dest="command", required=True)
-
-    capture_parser = subparsers.add_parser("capture")
-    _add_common_arguments(capture_parser)
-    capture_parser.add_argument("--unit", action="append", default=[])
-    capture_parser.add_argument(
+def _add_capture_arguments(
+    parser: argparse.ArgumentParser, *, include_root: bool
+) -> None:
+    if include_root:
+        parser.add_argument("--root", type=Path, required=True)
+    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--host", required=True)
+    parser.add_argument("--ansible-marker", action="store_true")
+    parser.add_argument("--unit", action="append", default=[])
+    parser.add_argument(
         "--restart-on-restore-unit",
         action="append",
         default=[],
         choices=sorted(RESTART_ON_RESTORE_UNITS),
     )
-    capture_parser.add_argument(
-        "--docker-service", action="append", default=[], choices=sorted(ALLOWED_DOCKER_SERVICES)
+    parser.add_argument(
+        "--docker-service",
+        action="append",
+        default=[],
+        choices=sorted(ALLOWED_DOCKER_SERVICES),
     )
-    capture_parser.add_argument("--compose-project")
-    capture_parser.add_argument("--compose-working-directory", type=Path)
-    capture_parser.add_argument("--compose-config-file", action="append", type=Path, default=[])
+    parser.add_argument("--compose-project")
+    parser.add_argument("--compose-working-directory", type=Path)
+    parser.add_argument(
+        "--compose-config-file", action="append", type=Path, default=[]
+    )
+
+
+def _safe_error_payload(error: BaseException) -> dict[str, str]:
+    if isinstance(error, RuntimeManifestError):
+        code = error.code
+        raw_message = str(error)
+    else:
+        code = "runtime.os"
+        raw_message = "operating system operation failed"
+    message = " ".join(raw_message.split())[:512]
+    if not message:
+        message = "runtime manifest operation failed"
+    return {"version": 1, "code": code, "message": message}
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    capture_parser = subparsers.add_parser("capture")
+    _add_capture_arguments(capture_parser, include_root=True)
+
+    probe_capture_parser = subparsers.add_parser("probe-capture")
+    _add_capture_arguments(probe_capture_parser, include_root=False)
 
     restore_parser = subparsers.add_parser("restore")
     _add_common_arguments(restore_parser)
@@ -2472,18 +2602,21 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     try:
-        if args.command == "capture":
-            result = capture(
-                root=args.root,
-                run_id=args.run_id,
-                host=args.host,
-                units=args.unit,
-                docker_services=args.docker_service,
-                restart_on_restore_units=args.restart_on_restore_unit,
-                compose_project=args.compose_project,
-                compose_working_directory=args.compose_working_directory,
-                compose_config_files=args.compose_config_file,
-            )
+        if args.command in {"capture", "probe-capture"}:
+            capture_arguments = {
+                "run_id": args.run_id,
+                "host": args.host,
+                "units": args.unit,
+                "docker_services": args.docker_service,
+                "restart_on_restore_units": args.restart_on_restore_unit,
+                "compose_project": args.compose_project,
+                "compose_working_directory": args.compose_working_directory,
+                "compose_config_files": args.compose_config_file,
+            }
+            if args.command == "capture":
+                result = capture(root=args.root, **capture_arguments)
+            else:
+                result = probe_capture(**capture_arguments)
         elif args.command == "preflight-restore":
             result = preflight_restore(
                 root=args.root,
@@ -2507,7 +2640,21 @@ def main(argv: list[str] | None = None) -> int:
                 outcome=args.outcome,
             )
     except (RuntimeManifestError, OSError) as error:
-        print(f"terminal runtime manifest failed: {error}", file=sys.stderr)
+        payload = _safe_error_payload(error)
+        if args.ansible_marker:
+            encoded_error = json.dumps(
+                payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            )
+            marker = base64.urlsafe_b64encode(
+                encoded_error.encode("utf-8")
+            ).decode("ascii")
+            print(ERROR_MARKER_PREFIX + marker)
+        else:
+            print(
+                f"terminal runtime manifest failed [{payload['code']}]: "
+                f"{payload['message']}",
+                file=sys.stderr,
+            )
         return 1
     encoded = json.dumps(result, ensure_ascii=False, sort_keys=True)
     if args.ansible_marker:

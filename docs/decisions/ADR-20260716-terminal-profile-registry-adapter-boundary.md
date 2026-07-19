@@ -9,7 +9,10 @@ related_code:
   - scripts/deploy/terminal-profile-registry.json
   - scripts/deploy/terminal_profile_registry.py
   - scripts/deploy/rolling_release/terminal_adapters.py
+  - scripts/deploy/rolling_release/terminal_preflight.py
+  - scripts/deploy/terminal-runtime-manifest.py
   - scripts/deploy/terminal_profile_contracts.py
+  - scripts/ci/run-deploy-contracts-local.sh
 related_docs:
   - ../architecture/deployment-modules.md
   - ../guides/deployment.md
@@ -60,6 +63,15 @@ cancel, and the decision to rollback. Human gates are appended per profile;
 the legacy `canaryHold` remains the current/latest compatibility view, and
 `--approve RUN_ID` approves only the current gate.
 
+The adapter also owns one secret-free runtime-manifest contract: exact systemd
+units, Docker services, restart-on-restore units, and Compose identity. Runtime
+capture and aggregate preflight consume that same value. Before a release unit
+can exist, Pi5 reads the exact helper from the immutable candidate Git object
+and streams it to the selected terminal. Its `probe-capture` mode inspects the
+live state through the same parser as capture but creates no manifest directory,
+rollback tag, service transition, checkout, or other mutation. Candidate source
+is transported through bounded standard input rather than process arguments.
+
 Profiles that fit `generic-systemd` use the shared serial terminal playbook and
 need only registry plus inventory. A genuinely different lifecycle adds one
 adapter (and its repository-owned playbook when needed) plus registry data;
@@ -75,7 +87,10 @@ paths remain successful but fail closed across every registered profile.
 CI reads the registry and validates adapters, inventory membership and canaries,
 selected playbooks, literal `serial: 1`, orchestration guards, rollback
 ownership, and absence of production profile names from core modules. Adding a
-profile does not add a workflow job.
+profile does not add a workflow job. The complete deployment contract command
+list lives in `scripts/ci/run-deploy-contracts-local.sh`; developers and GitHub
+Actions execute that same entry point so a profile or agent contract failure is
+visible before push rather than after hosted CI starts.
 
 This generalization does not justify a production rollout. Its first physical
 proof occurs with a real product change through the ordinary canary and approval
@@ -100,4 +115,8 @@ release-bound readiness, cancel, and exact rollback through the unchanged
 coordinator. Separate synthetic profiles cover deterministic order, multiple
 human gates, health-only policy, timeouts, rollback failure, and unknown
 evidence. Production and TalkPlaza inventories and every selected playbook are
-validated statically; only the production fleet state is read for plans.
+validated statically; only the production fleet state is read for plans. The
+shared local/CI runner additionally exercises runtime capture with absent and
+present optional agents, rejects unsupported external Docker features before
+mutation, accepts digest-covered Compose health metadata, and validates a
+candidate source larger than Linux's common single-argument limit.

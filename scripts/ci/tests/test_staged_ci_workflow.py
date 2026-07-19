@@ -10,6 +10,9 @@ ROOT = Path(__file__).resolve().parents[3]
 CI = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 CODEQL = (ROOT / ".github/workflows/codeql.yml").read_text(encoding="utf-8")
 GITLEAKS = (ROOT / ".github/workflows/gitleaks.yml").read_text(encoding="utf-8")
+DEPLOY_CONTRACT_RUNNER = (
+    ROOT / "scripts/ci/run-deploy-contracts-local.sh"
+).read_text(encoding="utf-8")
 
 
 def job_block(text: str, job: str) -> str:
@@ -111,15 +114,26 @@ class StagedCiWorkflowTests(unittest.TestCase):
         manual = block.split("Run Gitleaks (manual branch range)", 1)[1]
         self.assertNotIn("--all", manual)
 
-    def test_deploy_contract_discovers_terminal_profiles_from_registry(self) -> None:
+    def test_deploy_contract_uses_the_same_registry_driven_local_runner(self) -> None:
         deploy = job_block(CI, "deploy-contract")
-        self.assertIn("terminal_profile_contracts.py --list-playbooks", deploy)
-        self.assertIn("terminal_profile_contracts.py \\\n", deploy)
-        self.assertIn("--inventory-json /tmp/inventory.json", deploy)
-        self.assertIn("\"${TERMINAL_PROFILE_PLAYBOOKS[@]}\"", deploy)
+        self.assertIn(
+            "bash scripts/ci/run-deploy-contracts-local.sh --install-collections",
+            deploy,
+        )
+        self.assertNotIn("python3 -m unittest discover -s scripts/deploy/tests", deploy)
+        self.assertIn(
+            "terminal_profile_contracts.py\" --list-playbooks",
+            DEPLOY_CONTRACT_RUNNER,
+        )
+        self.assertIn(
+            '--inventory-json "$TEMP_DIR/inventory.json"', DEPLOY_CONTRACT_RUNNER
+        )
+        self.assertIn(
+            '"${TERMINAL_PROFILE_PLAYBOOKS[@]}"', DEPLOY_CONTRACT_RUNNER
+        )
         self.assertNotIn(
             "ansible-playbook --syntax-check playbooks/deploy-staged.yml",
-            deploy,
+            DEPLOY_CONTRACT_RUNNER,
         )
 
 

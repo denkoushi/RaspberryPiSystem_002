@@ -13,9 +13,12 @@ import re
 import shlex
 import subprocess
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from ..adapter_registry import adapter_for_profile
+
+if TYPE_CHECKING:
+    from ..terminal_adapters import TerminalRuntimeManifestContract
 
 
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$")
@@ -35,6 +38,10 @@ _REPOSITORY_BASELINE_MARKER_RE = re.compile(
 )
 _RUNTIME_MANIFEST_MARKER_RE = re.compile(
     r"TERMINAL_RUNTIME_MANIFEST_RESULT:"
+    r"([A-Za-z0-9_-]+={0,2})(?![A-Za-z0-9_=-])"
+)
+_RUNTIME_MANIFEST_ERROR_MARKER_RE = re.compile(
+    r"TERMINAL_RUNTIME_MANIFEST_ERROR:"
     r"([A-Za-z0-9_-]+={0,2})(?![A-Za-z0-9_=-])"
 )
 _SIGNAGE_MAINTENANCE_MARKER_RE = re.compile(
@@ -66,11 +73,6 @@ _SERVER_CONFIG_PATHS = (
     f"{_TERMINAL_REPOSITORY}/apps/api/.env",
     f"{_TERMINAL_REPOSITORY}/apps/web/.env",
     f"{_TERMINAL_REPOSITORY}/infrastructure/docker/.env",
-)
-_CLIENT_COMPOSE_PROJECT = "docker"
-_CLIENT_COMPOSE_DIRECTORY = f"{_TERMINAL_REPOSITORY}/infrastructure/docker"
-_CLIENT_COMPOSE_FILE = (
-    f"{_CLIENT_COMPOSE_DIRECTORY}/docker-compose.client.yml"
 )
 _KIOSK_AGENT_ORDER = ("nfc-agent", "barcode-agent", "torque-agent")
 
@@ -425,6 +427,53 @@ def _runtime_manifest_marker(output: str) -> dict[str, Any]:
     return first
 
 
+def _runtime_manifest_error_marker(output: str) -> dict[str, Any]:
+    encoded_results = _RUNTIME_MANIFEST_ERROR_MARKER_RE.findall(output)
+    if not encoded_results:
+        raise RuntimeError("terminal runtime manifest error marker is missing")
+    decoded_results: list[dict[str, str]] = []
+    for encoded in encoded_results:
+        if len(encoded) > 65536:
+            raise RuntimeError("terminal runtime manifest error marker is too large")
+        try:
+            raw = base64.b64decode(encoded, altchars=b"-_", validate=True)
+            if base64.urlsafe_b64encode(raw).decode("ascii") != encoded:
+                raise ValueError("non-canonical base64")
+            value = json.loads(
+                raw.decode("utf-8"),
+                object_pairs_hook=_reject_duplicate_json_keys,
+                parse_constant=lambda constant: (_ for _ in ()).throw(
+                    ValueError(f"invalid JSON constant: {constant}")
+                ),
+            )
+        except (
+            UnicodeDecodeError,
+            binascii.Error,
+            json.JSONDecodeError,
+            ValueError,
+        ) as error:
+            raise RuntimeError(
+                "terminal runtime manifest error marker is malformed"
+            ) from error
+        if (
+            not isinstance(value, dict)
+            or set(value) != {"version", "code", "message"}
+            or value.get("version") != 1
+            or not isinstance(value.get("code"), str)
+            or re.fullmatch(r"[a-z0-9.-]{1,100}", value["code"]) is None
+            or not isinstance(value.get("message"), str)
+            or not value["message"]
+            or len(value["message"]) > 512
+            or any(ord(character) < 32 for character in value["message"])
+        ):
+            raise RuntimeError("terminal runtime manifest error marker is malformed")
+        decoded_results.append(value)
+    first = decoded_results[0]
+    if any(result != first for result in decoded_results[1:]):
+        raise RuntimeError("terminal runtime manifest error callback results disagree")
+    return first
+
+
 def _validated_terminal_spec(target_spec: dict[str, str]) -> tuple[str, str]:
     host = target_spec.get("host")
     terminal_type = target_spec.get("terminalType")
@@ -531,21 +580,37 @@ def _run_runtime_manifest_helper(
     runtime: Runtime,
 ) -> dict[str, Any]:
     source = runtime.PROJECT / "scripts/deploy/terminal-runtime-manifest.py"
-    output = runtime.run(
-        [
-            "ansible",
-            "-i",
-            inventory,
-            host,
-            "-b",
-            "-m",
-            "script",
-            "-a",
-            _manifest_action([str(source), *arguments, "--ansible-marker"]),
-        ],
-        cwd=runtime.ANSIBLE_DIRECTORY,
-        capture=True,
-    )
+    try:
+        output = runtime.run(
+            [
+                "ansible",
+                "-i",
+                inventory,
+                host,
+                "-b",
+                "-m",
+                "script",
+                "-a",
+                _manifest_action([str(source), *arguments, "--ansible-marker"]),
+            ],
+            cwd=runtime.ANSIBLE_DIRECTORY,
+            capture=True,
+        )
+    except subprocess.CalledProcessError as error:
+        combined = "\n".join(
+            value
+            for value in (error.stdout, error.stderr)
+            if isinstance(value, str)
+        )
+        try:
+            evidence = _runtime_manifest_error_marker(combined)
+        except RuntimeError:
+            raise RuntimeError(
+                f"terminal runtime manifest operation failed without safe evidence: {host}"
+            ) from None
+        raise RuntimeError(
+            f"terminal runtime manifest {evidence['code']}: {evidence['message']}"
+        ) from None
     return _runtime_manifest_marker(output)
 
 
@@ -560,6 +625,14 @@ def _expected_runtime_manifest_path(run_id: str, host: str) -> str:
 def _terminal_runtime_contract(terminal_type: str) -> tuple[list[str], list[str]]:
     adapter = adapter_for_profile(terminal_type, runtime=None)
     return list(adapter.runtime_units), list(adapter.docker_services)
+
+
+def _terminal_runtime_manifest_contract(
+    terminal_type: str,
+) -> TerminalRuntimeManifestContract:
+    return adapter_for_profile(
+        terminal_type, runtime=None
+    ).runtime_manifest_contract
 
 
 def _validated_runtime_health_contract(
@@ -609,7 +682,9 @@ def _capture_terminal_runtime_manifest(
     *,
     runtime: Runtime,
 ) -> dict[str, Any]:
-    units, docker_services = _terminal_runtime_contract(terminal_type)
+    contract = _terminal_runtime_manifest_contract(terminal_type)
+    units = list(contract.systemd_units)
+    docker_services = list(contract.docker_services)
     arguments = [
         "capture",
         "--root",
@@ -621,21 +696,27 @@ def _capture_terminal_runtime_manifest(
     ]
     for unit in units:
         arguments.extend(("--unit", unit))
-    for unit in _terminal_restart_on_restore_contract(terminal_type):
+    for unit in contract.restart_on_restore_units:
         arguments.extend(("--restart-on-restore-unit", unit))
     for service in docker_services:
         arguments.extend(("--docker-service", service))
     if docker_services:
+        if (
+            contract.compose_project is None
+            or contract.compose_working_directory is None
+            or not contract.compose_config_files
+        ):
+            raise RuntimeError("terminal runtime Compose contract is incomplete")
         arguments.extend(
             (
                 "--compose-project",
-                _CLIENT_COMPOSE_PROJECT,
+                contract.compose_project,
                 "--compose-working-directory",
-                _CLIENT_COMPOSE_DIRECTORY,
-                "--compose-config-file",
-                _CLIENT_COMPOSE_FILE,
+                contract.compose_working_directory,
             )
         )
+        for path in contract.compose_config_files:
+            arguments.extend(("--compose-config-file", path))
     result = _run_runtime_manifest_helper(
         inventory, host, arguments, runtime=runtime
     )
@@ -1177,6 +1258,11 @@ def probe_kiosk_agents(
         agents.append(("torque-agent", torque_port, False))
 
     source = runtime.PROJECT / "scripts/deploy/terminal-agent-health-probe.py"
+    compose_files = _terminal_runtime_manifest_contract(
+        "kiosk"
+    ).compose_config_files
+    if len(compose_files) != 1:
+        raise RuntimeError("kiosk agent health Compose contract is malformed")
     endpoints: list[dict[str, Any]] = []
     for agent, port, require_pcscd in agents:
         arguments = [
@@ -1187,7 +1273,7 @@ def probe_kiosk_agents(
             "--repository",
             _TERMINAL_REPOSITORY,
             "--compose-file",
-            _CLIENT_COMPOSE_FILE,
+            compose_files[0],
             *(["--require-pcscd"] if require_pcscd else []),
             "--ansible-marker",
         ]

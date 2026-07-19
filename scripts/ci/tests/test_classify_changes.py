@@ -75,6 +75,7 @@ class ClassifyChangesTests(unittest.TestCase):
     def test_workflow_unknown_delete_and_rename_fail_closed(self) -> None:
         cases = (
             Change("M", ".github/workflows/ci.yml"),
+            Change("M", "scripts/ci/run-deploy-contracts-local.sh"),
             Change("M", "new-top-level/tool.py"),
             Change("D", "docs/obsolete.md"),
             Change("R100", "apps/api/src/old.ts", "apps/api/src/new.ts"),

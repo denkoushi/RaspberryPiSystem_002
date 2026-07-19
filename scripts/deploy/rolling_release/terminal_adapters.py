@@ -28,6 +28,39 @@ _COMMON_RUNTIME_UNITS = frozenset(
     }
 )
 _AGENT_PROBES = ("nfc-agent", "barcode-agent", "torque-agent")
+_TERMINAL_REPOSITORY = "/opt/RaspberryPiSystem_002"
+_CLIENT_COMPOSE_PROJECT = "docker"
+_CLIENT_COMPOSE_DIRECTORY = f"{_TERMINAL_REPOSITORY}/infrastructure/docker"
+_CLIENT_COMPOSE_FILES = (
+    f"{_CLIENT_COMPOSE_DIRECTORY}/docker-compose.client.yml",
+)
+
+
+@dataclass(frozen=True)
+class TerminalRuntimeManifestContract:
+    """Secret-free, adapter-owned runtime capture/probe configuration."""
+
+    systemd_units: tuple[str, ...]
+    docker_services: tuple[str, ...]
+    restart_on_restore_units: tuple[str, ...]
+    compose_project: str | None
+    compose_working_directory: str | None
+    compose_config_files: tuple[str, ...]
+
+    def as_preflight_payload(self) -> dict[str, Any]:
+        compose = None
+        if self.docker_services:
+            compose = {
+                "project": self.compose_project,
+                "workingDirectory": self.compose_working_directory,
+                "configFiles": list(self.compose_config_files),
+            }
+        return {
+            "systemdUnits": list(self.systemd_units),
+            "dockerServices": list(self.docker_services),
+            "restartOnRestoreUnits": list(self.restart_on_restore_units),
+            "compose": compose,
+        }
 
 
 def _verified_control_plane_sha(records: Any, *, qualifier: str) -> str:
@@ -88,6 +121,22 @@ class TerminalAdapter:
             if unit not in _COMMON_RUNTIME_UNITS and unit.endswith(".service")
         )
         return tuple(dict.fromkeys(result))
+
+    @property
+    def runtime_manifest_contract(self) -> TerminalRuntimeManifestContract:
+        """Return the sole capture contract used by preflight and release."""
+
+        docker_services = self.docker_services
+        return TerminalRuntimeManifestContract(
+            systemd_units=self.runtime_units,
+            docker_services=docker_services,
+            restart_on_restore_units=self.restart_on_restore_units,
+            compose_project=_CLIENT_COMPOSE_PROJECT if docker_services else None,
+            compose_working_directory=(
+                _CLIENT_COMPOSE_DIRECTORY if docker_services else None
+            ),
+            compose_config_files=_CLIENT_COMPOSE_FILES if docker_services else (),
+        )
 
     def rollback_paths(self, user: str, home: str, run_id: str) -> tuple[str, ...]:
         del run_id

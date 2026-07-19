@@ -54,6 +54,13 @@ def runtime_marker(value):
     return f"TERMINAL_RUNTIME_MANIFEST_RESULT:{encoded}"
 
 
+def runtime_error_marker(value):
+    encoded = base64.urlsafe_b64encode(
+        json.dumps(value, sort_keys=True).encode("utf-8")
+    ).decode("ascii")
+    return f"TERMINAL_RUNTIME_MANIFEST_ERROR:{encoded}"
+
+
 class SelectedHostsTest(unittest.TestCase):
     def test_empty_limit_skips_ansible(self):
         runtime = Runtime("unused")
@@ -483,6 +490,63 @@ class RollbackManifestAdapterTest(unittest.TestCase):
             ansible._manifest_marker(
                 "ROLLBACK_MANIFEST_RESULT:" + duplicate_json
             )
+
+    def test_runtime_error_marker_is_strict_and_propagates_safe_reason(self):
+        payload = {
+            "version": 1,
+            "code": "runtime.unsupported-feature",
+            "message": "Docker runtime feature is unsupported by rollback capture: ExtraHosts",
+        }
+        marker = runtime_error_marker(payload)
+        self.assertEqual(ansible._runtime_manifest_error_marker(marker), payload)
+        with self.assertRaisesRegex(RuntimeError, "disagree"):
+            ansible._runtime_manifest_error_marker(
+                marker
+                + "\n"
+                + runtime_error_marker({**payload, "code": "runtime.contract"})
+            )
+
+        secret = "DO-NOT-LEAK-ANSIBLE-SECRET"
+        error = subprocess.CalledProcessError(
+            1,
+            ["ansible"],
+            output=marker,
+            stderr=secret,
+        )
+        runtime = Runtime(error)
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "runtime.unsupported-feature: Docker runtime feature",
+        ) as raised:
+            ansible._run_runtime_manifest_helper(
+                "inventory.yml",
+                self.HOST,
+                ["capture"],
+                runtime=runtime,
+            )
+        self.assertNotIn(secret, str(raised.exception))
+
+    def test_runtime_helper_failure_without_safe_marker_hides_raw_output(self):
+        secret = "DO-NOT-LEAK-MISSING-MARKER"
+        error = subprocess.CalledProcessError(
+            1,
+            ["ansible"],
+            output=secret,
+            stderr=secret,
+        )
+        runtime = Runtime(error)
+
+        with self.assertRaisesRegex(
+            RuntimeError, "failed without safe evidence"
+        ) as raised:
+            ansible._run_runtime_manifest_helper(
+                "inventory.yml",
+                self.HOST,
+                ["capture"],
+                runtime=runtime,
+            )
+
+        self.assertNotIn(secret, str(raised.exception))
 
     def test_capture_rejects_wrong_repository_proof(self):
         _paths, result = self._capture_result()

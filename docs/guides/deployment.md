@@ -45,12 +45,27 @@ scripts/update-all-clients.sh --cancel RUN_ID --reason TEXT
 ## 実行前確認
 
 1. 対象branchまたは不変SHAを確定する。
-2. 対象SHAの `ci-required`、`codeql`、`gitleaks` が成功していることを確認する。
-3. ローカルworktreeがcleanであることを確認する。
-4. 正しいinventoryを選ぶ。
-5. まず `--print-plan` を実行し、対象hostと理由、`unknown` の有無を確認する。
-6. inventoryごとに実機実行の明示承認を得る。
-7. 承認された対象へ `--preflight-only` を実行し、全端末が合格することを確認する。
+2. deployment/profile/agentへ変更がある場合、下記のローカル正本コマンドを完走する。
+3. 対象SHAの `ci-required`、`codeql`、`gitleaks` が成功していることを確認する。
+4. ローカルworktreeがcleanであることを確認する。
+5. 正しいinventoryを選ぶ。
+6. まず `--print-plan` を実行し、対象hostと理由、`unknown` の有無を確認する。
+7. inventoryごとに実機実行の明示承認を得る。
+8. 承認された対象へ `--preflight-only` を実行し、全端末が合格することを確認する。
+
+ローカルとGitHub Actionsの`deploy-contract`は、同じ実行入口を使う。
+
+```bash
+scripts/ci/run-deploy-contracts-local.sh
+```
+
+`community.general`が未導入の環境だけ、初回に次を使う。
+
+```bash
+scripts/ci/run-deploy-contracts-local.sh --install-collections
+```
+
+このコマンドは管理対象hostへ接続しない。deployment Python/shell契約、隔離Postgresによるdeploy-status統合、安全契約、両inventory、registryから導出したprofile playbook、Ansible syntax/checkを検証し、一時ファイルと隔離DB資源を終了時に削除する。CIへ個別コマンドを追加せず、このスクリプトを更新してローカルとCIの検査内容を同時に変える。
 
 第2工場の標準inventory:
 
@@ -95,8 +110,9 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
 1. SSH、Ansible、Git、systemd、status-agent、manifest rollbackで足りるなら `generic-systemd` と `playbooks/deploy-terminal-profile.yml` を選ぶ。固有のmaintenance、health、ready、rollbackが必要なら `terminal_adapters.py` と `adapter_registry.py` にadapterを一つ追加し、必要なrepository-owned playbookを用意する。planner、policy、fleet state、coordinatorへType名を追加しない。
 2. registryへrollout順、impact component、adapter/playbook、notice秒、canary group、`human` または `health-only`、systemd unit、rollback path、health probe、`control-plane` または `terminal` ready authorityを明記する。path mappingとcomponent-to-profileも同じ変更で追加する。
 3. 対象inventoryの `clients.children` にprofile groupを追加し、各hostを登録済みgroupの一つだけに所属させる。非空groupにはcanaryをちょうど一台置き、全hostの `status_agent_client_id` を一意にする。
-4. CIの `deploy-contract` を通す。CIはregistryからadapter、group、canary、playbookを動的に読み、`serial: 1`、orchestration guard、rollback ownership、coreのType非依存を検証する。profileごとのworkflow job追加は不要である。
-5. production登録に架空Typeを置かない。実製品変更の `--print-plan` を確認し、通常のhuman canary承認またはhealth-only証跡を使って最初の実機証明を行う。
+4. systemd/Docker runtimeのcapture、preflight、restore用リストを別ファイルへ複写しない。adapterの`runtime_manifest_contract`を正本とし、optional agentは「無効でcontainerなし」と「有効でcontainerあり」の双方を`probe-capture`で検証する。
+5. ローカル正本コマンドとCIの `deploy-contract` を通す。registryからadapter、group、canary、playbookを動的に読み、`serial: 1`、orchestration guard、rollback ownership、coreのType非依存を検証する。profileごとのworkflow job追加は不要である。
+6. production登録に架空Typeを置かない。実製品変更の `--print-plan` を確認し、通常のhuman canary承認またはhealth-only証跡を使って最初の実機証明を行う。
 
 ## 通常実行
 

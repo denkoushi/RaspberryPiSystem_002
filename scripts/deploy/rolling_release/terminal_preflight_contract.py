@@ -12,6 +12,8 @@ import re
 from collections.abc import Iterable, Mapping
 from typing import Any
 
+from .adapter_registry import adapter_for_profile
+
 
 _HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$")
 _USER_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
@@ -213,6 +215,9 @@ def build_target_contracts(
             inventory_issues.append("inventory.kiosk-browser-engine")
         nfc_contract_valid = "inventory.nfc-contract" not in inventory_issues
         torque_contract_valid = "inventory.torque-contract" not in inventory_issues
+        runtime_manifest_contract = adapter_for_profile(
+            profile, runtime=None
+        ).runtime_manifest_contract.as_preflight_payload()
 
         contracts.append(
             {
@@ -283,6 +288,7 @@ def build_target_contracts(
                 ),
                 "manageSignage": manage_signage,
                 "inventoryIssues": inventory_issues,
+                "runtimeManifestContract": runtime_manifest_contract,
             }
         )
     return contracts

@@ -394,22 +394,6 @@ jobs:
           git fetch --no-tags --depth=1 origin main
           bash scripts/deploy/validate-candidate-migrations.sh origin/main "$GITHUB_SHA"
 
-      - name: Validate deployment contracts
-        run: |
-          bash -n scripts/update-all-clients.sh
-          bash -n scripts/server/deploy.sh
-          bash -n scripts/server/deploy-detached.sh
-          bash scripts/deploy/tests/test-single-deploy-entrypoint.sh
-          bash -n scripts/deploy/pi5-blue-green.sh
-          bash -n scripts/deploy/pi5-candidate-build.sh
-          bash scripts/deploy/tests/test-pi5-image-deploy.sh
-          bash scripts/deploy/tests/test-pi5-blue-green.sh
-          bash scripts/deploy/tests/test-pi5-blue-green-maintenance-container.sh
-          python3 -m unittest discover -s scripts/deploy/tests -p 'test_*.py'
-          python3 scripts/deploy/tests/test-client-agent-lifecycle-selection.py
-          bash scripts/deploy/tests/test-signage-deploy-maintenance.sh
-          bash scripts/deploy/tests/test-deploy-status-postgres.sh
-
       - name: Install Ansible
         run: |
           set -euo pipefail
@@ -423,54 +407,8 @@ jobs:
           path: ~/.ansible/collections
           key: ansible-collections-${{ runner.os }}-community-general-v1
 
-      - name: Validate deploy safety contracts
-        run: bash scripts/deploy/tests/test-deploy-safety-contracts.sh
-
-      - name: Validate inventories and Ansible playbooks
-        run: |
-          set -euo pipefail
-          cd infrastructure/ansible
-          ansible-galaxy collection install community.general
-          sed 's/^vault_password_file = .vault-pass/# vault_password_file = .vault-pass (disabled for CI)/' ansible.cfg > /tmp/ansible-ci.cfg
-          export ANSIBLE_CONFIG=/tmp/ansible-ci.cfg
-          export ANSIBLE_ROLES_PATH="$(pwd)/roles"
-          READ_ONLY_ANSIBLE_CONFIG="$(pwd)/ansible-readonly.cfg"
-          STATIC_PLAYBOOKS=(
-            playbooks/deploy.yml
-            playbooks/deploy-terminal-profile.yml
-            playbooks/server-config-release.yml
-            playbooks/update-clients.yml
-            playbooks/health-check.yml
-            playbooks/manage-system-configs.yml
-            playbooks/manage-app-configs.yml
-            playbooks/rollback.yml
-            playbooks/restart-services.yml
-            playbooks/ping.yml
-            playbooks/recover-pi4.yml
-            playbooks/recover-pi4-verify.yml
-          )
-          mapfile -t TERMINAL_PROFILE_PLAYBOOKS < <(
-            python3 ../../scripts/deploy/terminal_profile_contracts.py --list-playbooks
-          )
-          python3 ../../scripts/deploy/tests/test_recover_pi4.py
-          for inventory in inventory.yml inventory-talkplaza.yml; do
-            ANSIBLE_CONFIG="$READ_ONLY_ANSIBLE_CONFIG" \
-              ansible-inventory -i "$inventory" --list > "/tmp/${inventory%.yml}.json"
-            python3 -m json.tool "/tmp/${inventory%.yml}.json" > /dev/null
-          done
-          python3 ../../scripts/deploy/terminal_profile_contracts.py \
-            --inventory-json /tmp/inventory.json \
-            --inventory-json /tmp/inventory-talkplaza.json
-          for playbook in "${STATIC_PLAYBOOKS[@]}" "${TERMINAL_PROFILE_PLAYBOOKS[@]}"; do
-            ansible-playbook --syntax-check "$playbook" -i inventory.yml
-          done
-          for playbook in playbooks/deploy-terminal-profile.yml "${TERMINAL_PROFILE_PLAYBOOKS[@]}"; do
-            ansible-playbook --syntax-check "$playbook" -i inventory-talkplaza.yml
-          done
-          ansible-playbook --check \
-            -i ../../scripts/deploy/tests/fixtures/recovery-check-inventory.yml \
-            playbooks/recover-pi4-verify.yml \
-            -e recovery_authorized=true
+      - name: Validate deploy contracts
+        run: bash scripts/ci/run-deploy-contracts-local.sh --install-collections
 
   client:
     name: client
