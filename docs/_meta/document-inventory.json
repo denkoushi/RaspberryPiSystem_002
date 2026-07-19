@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 528,
-    "totalLines": 152559,
-    "totalBytes": 11505149,
+    "totalLines": 152569,
+    "totalBytes": 11507050,
     "withFrontmatter": 214,
     "withStatus": 72,
     "sourceOfTruthDeclared": 44,
@@ -31383,8 +31383,8 @@
     },
     {
       "path": "docs/plans/deployment-exhaustive-preflight-execplan.md",
-      "lineCount": 190,
-      "byteSize": 23283,
+      "lineCount": 200,
+      "byteSize": 25184,
       "hasFrontmatter": true,
       "title": "Prove every deployment route before another production release",
       "status": "in-progress",

@@ -80,6 +80,7 @@ bash scripts/deploy/tests/test-pi5-blue-green-maintenance-container.sh
 python3 -m unittest discover -s scripts/deploy/tests -p 'test_*.py'
 python3 scripts/deploy/tests/test-client-agent-lifecycle-selection.py
 bash scripts/deploy/tests/test-signage-deploy-maintenance.sh
+bash scripts/deploy/tests/test-deploy-status-postgres-observability.sh
 bash scripts/deploy/tests/test-deploy-status-postgres.sh
 
 echo "[deploy-contract] rollback and release safety contracts"

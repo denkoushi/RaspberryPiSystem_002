@@ -51,6 +51,7 @@ The result is observable in three ways. The route coverage test fails if a new e
 - [x] (2026-07-19 06:43Z) Submitted limited run `20260719-061915-60c976`. Pi5 completed, StoneBase rejected the candidate Bluetooth helper, and the orchestrator restored its prior Git/runtime state and cleared maintenance before marking the run failed. No manual host repair or direct retry was performed.
 - [x] (2026-07-19 06:53Z) Reclassified the failure as a preflight/apply equivalence defect. Added every torque Bluetooth deployment asset to candidate inspection and made aggregate terminal preflight safely render and execute the exact candidate helper in read-only `--probe` mode before release submission.
 - [x] (2026-07-19 09:34Z) After failed run `20260719-072806-7f96b0` safely rolled StoneBase back, removed synthetic Bluetooth udev ownership, made Ansible wait without interrupting a running unit, added bounded helper diagnostics and failure-evidence collection, and extended candidate inspection to reject a regression in any of those contracts. Added fake-sysfs/fake-`btmgmt` state tests and the client-agent registry matrix; no deploy or host mutation was performed.
+- [x] (2026-07-19 10:05Z) The first exact-head hosted CI exposed an unrelated diagnostic gap in the isolated deploy-status PostgreSQL test: it ended with exit 1 but emitted neither the failing stage nor container evidence. Added a failure-path contract that requires bounded test-container state and PostgreSQL log output, while preserving the existing 30-second readiness limit and cleanup behavior. The candidate has not yet been re-published; no preflight or host mutation followed the failed CI.
 - [ ] Complete hosted exact-head checks and two-pass live read-only gates for the corrected helper probe.
 - [ ] Only after all gates pass, run the already-authorized limited Pi5 and StoneBase release and prove verified/no-op completion.
 
@@ -73,6 +74,9 @@ The result is observable in three ways. The route coverage test fails if a new e
 
 - Observation: The synthetic Bluetooth udev event and Ansible restart shared one unit but did not establish why BlueZ stopped answering management commands.
   Evidence: In run `20260719-072806-7f96b0`, the synthetic udev add started `torque-bluetooth-adapter@hci1.service`; a later `state: restarted` sent it SIGTERM. The replacement unit then spent about 54 seconds in six bounded `btmgmt info`/`power on` attempts before exit 7. Existing code discarded command errors, so the event proves the ownership race but not a rejected power request.
+
+- Observation: Hosted CI did not preserve the failed stage or PostgreSQL evidence from its isolated deploy-status integration test.
+  Evidence: CI run `29682394018`, job `deploy-contract`, passed 705 Python deployment tests and preceding shell contracts, pulled `pgvector/pgvector:pg15`, then emitted only `Process completed with exit code 1`. The same exact candidate passed the isolated test locally. This is inconclusive for the lower-level runner cause, but conclusively a diagnostic-contract gap.
 
 ## Decision Log
 
@@ -103,6 +107,10 @@ The result is observable in three ways. The route coverage test fails if a new e
 - Decision: A release has one synchronous Bluetooth preparation owner: real udev add events may request the unit, while Ansible only starts the exact discovered unit and never synthesizes an add event or restarts it. The helper records bounded `btmgmt` outcome classes instead of treating all failures as exit 7.
   Rationale: This removes the proven SIGTERM race without claiming it caused the lower-level management timeout, and preserves evidence to determine that cause if it returns.
   Date/Author: 2026-07-19 / Codex, approved implementation plan.
+
+- Decision: The isolated deploy-status PostgreSQL test must emit its named stage and bounded test-container state/log evidence before cleanup on any failure; it must not increase timeouts or skip the integration test to mask an unproven runner failure.
+  Rationale: Hosted CI must distinguish database startup, migration, fixture/index, and API-test failures without leaking container environment values or leaving temporary resources.
+  Date/Author: 2026-07-19 / Codex, authorized by the user's instruction to complete deployment safely.
 
 ## Outcomes & Retrospective
 
@@ -188,3 +196,5 @@ Revision note 2026-07-19 05:31Z: Implemented the route inventory, boundary/rehea
 Revision note 2026-07-19 06:53Z: Recorded the first limited release, successful automatic StoneBase rollback, and the structural preflight gap it exposed. Candidate inspection now includes every torque Bluetooth deployment asset, and terminal preflight executes the exact safely rendered helper through a read-only live probe. The validation sequence restarts from local contracts; no host-specific repair or immediate retry is permitted.
 
 Revision note 2026-07-19 09:34Z: Recorded run `20260719-072806-7f96b0` as a proven ownership race plus an unproven lower-level BlueZ management failure. The local implementation removes the synthetic trigger/restart sequence, preserves unit and bounded journal evidence, distinguishes management outcomes in the helper, and adds cross-boundary client-agent drift detection. No production retry is authorized until local/hosted validation and two unchanged read-only preflights complete.
+
+Revision note 2026-07-19 10:05Z: The first hosted exact-head run failed in an existing isolated PostgreSQL integration test without diagnostic evidence. The test now has a permanent mocked-readiness failure contract and bounded failure output. This is CI observability work only; it neither alters the Bluetooth implementation nor relaxes the release gate.
