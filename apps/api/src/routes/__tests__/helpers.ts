@@ -5,10 +5,71 @@ import type { FastifyInstance } from 'fastify';
 import bcrypt from 'bcryptjs';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { expect } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 
 let employeeSequence = 0;
 let itemSequence = 0;
+let importTokenSequence = 0;
+const importTestRunId = randomUUID();
+let importEmployeeCursor = 0;
+let importItemCursor = 0;
+const reservedImportEmployeeCodes = new Set<string>();
+const reservedImportItemCodes = new Set<string>();
+
+const CONSTRAINED_CODE_MIN = 1000;
+const CONSTRAINED_CODE_COUNT = 9000;
+
+function constrainedCodeAt(cursor: number): string {
+  const poolId = Number.parseInt(process.env.VITEST_POOL_ID ?? '0', 10);
+  const normalizedPoolId = Number.isFinite(poolId) ? Math.max(0, poolId) : 0;
+  const offset = (normalizedPoolId * 997 + cursor) % CONSTRAINED_CODE_COUNT;
+  return String(CONSTRAINED_CODE_MIN + offset).padStart(4, '0');
+}
+
+/**
+ * 4桁制約を持つCSV取込テスト用の社員コードを予約する。
+ *
+ * APIテストは共有DBを1 workerで直列実行する契約である。DB上の既存値と、
+ * まだ取込前の同一worker内予約値の両方を避け、時刻剰余による衝突をなくす。
+ */
+export async function reserveUnusedImportEmployeeCode(): Promise<string> {
+  for (let attempt = 0; attempt < CONSTRAINED_CODE_COUNT; attempt += 1) {
+    const candidate = constrainedCodeAt(importEmployeeCursor++);
+    if (reservedImportEmployeeCodes.has(candidate)) continue;
+    const existing = await prisma.employee.findUnique({
+      where: { employeeCode: candidate },
+      select: { id: true },
+    });
+    if (existing) continue;
+    reservedImportEmployeeCodes.add(candidate);
+    return candidate;
+  }
+  throw new Error('Failed to reserve an unused employeeCode for import test');
+}
+
+/** 4桁制約を持つCSV取込テスト用の管理番号を予約する。 */
+export async function reserveUnusedImportItemCode(): Promise<string> {
+  for (let attempt = 0; attempt < CONSTRAINED_CODE_COUNT; attempt += 1) {
+    const numericCode = constrainedCodeAt(importItemCursor++);
+    const candidate = `TO${numericCode}`;
+    if (reservedImportItemCodes.has(candidate)) continue;
+    const existing = await prisma.item.findUnique({
+      where: { itemCode: candidate },
+      select: { id: true },
+    });
+    if (existing) continue;
+    reservedImportItemCodes.add(candidate);
+    return candidate;
+  }
+  throw new Error('Failed to reserve an unused itemCode for import test');
+}
+
+/** DBへ保存するテスト補助識別子。実行単位UUIDと単調増加値で再起動後も衝突を避ける。 */
+export function createImportTestToken(prefix: string): string {
+  importTokenSequence += 1;
+  return `${prefix}-${importTestRunId}-${importTokenSequence}`;
+}
 
 /**
  * テスト用の認証トークンを生成
@@ -257,4 +318,3 @@ export async function createTestMeasuringInstrumentWithTag(data?: {
   });
   return { instrument, rfidTagUid };
 }
-

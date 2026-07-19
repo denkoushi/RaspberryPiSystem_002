@@ -1,7 +1,16 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
 import { prisma } from '../../lib/prisma.js';
-import { createAuthHeader, createTestEmployee, createTestItem, createTestLoan, createTestUser } from './helpers.js';
+import {
+  createAuthHeader,
+  createImportTestToken,
+  createTestEmployee,
+  createTestItem,
+  createTestLoan,
+  createTestUser,
+  reserveUnusedImportEmployeeCode,
+  reserveUnusedImportItemCode,
+} from './helpers.js';
 import FormData from 'form-data';
 import { Readable } from 'stream';
 import { promisify } from 'util';
@@ -47,34 +56,6 @@ describe('POST /api/imports/master', () => {
   let app: Awaited<ReturnType<typeof buildServer>>;
   let closeServer: (() => Promise<void>) | null = null;
   let adminToken: string;
-  let testCounter = 0;
-
-  /**
-   * テスト用の一意なIDを生成するヘルパー関数
-   * 4桁の数字（1000-9999）を返す
-   */
-  function generateTestId(offset: number): number {
-    testCounter++;
-    // タイムスタンプとカウンターを使用して一意なIDを生成
-    const timestamp = Date.now() % 10000;
-    const base = 1000 + ((timestamp + testCounter * 100 + offset) % 9000);
-    return base;
-  }
-
-  async function generateUnusedEmployeeCode(offset: number): Promise<string> {
-    for (let attempt = 0; attempt < 9000; attempt++) {
-      const candidate = String(1000 + ((generateTestId(offset) + attempt) % 9000)).padStart(4, '0');
-      const existing = await prisma.employee.findUnique({
-        where: { employeeCode: candidate },
-        select: { id: true },
-      });
-      if (!existing) {
-        return candidate;
-      }
-    }
-
-    throw new Error('Failed to find unused employeeCode for import test');
-  }
 
   beforeAll(async () => {
     app = await buildServer();
@@ -96,7 +77,7 @@ describe('POST /api/imports/master', () => {
 
   it('should return 401 without authentication', async () => {
     const formData = new FormData();
-    const emp = String(generateTestId(1)).padStart(4, '0');
+    const emp = await reserveUnusedImportEmployeeCode();
     const csvContent = `employeeCode,lastName,firstName\n${emp},Test,Employee`;
     formData.append('employees', Buffer.from(csvContent), {
       filename: 'employees.csv',
@@ -118,7 +99,7 @@ describe('POST /api/imports/master', () => {
   it('should return 403 for non-admin user', async () => {
     const manager = await createTestUser('MANAGER');
     const formData = new FormData();
-    const emp = String(generateTestId(2)).padStart(4, '0');
+    const emp = await reserveUnusedImportEmployeeCode();
     const csvContent = `employeeCode,lastName,firstName\n${emp},Test,Employee`;
     formData.append('employees', Buffer.from(csvContent), {
       filename: 'employees.csv',
@@ -144,11 +125,10 @@ describe('POST /api/imports/master', () => {
 
   it('should import employees CSV successfully', async () => {
     const formData = new FormData();
-    const emp1 = await generateUnusedEmployeeCode(10);
-    const emp2 = await generateUnusedEmployeeCode(11);
-    // nfcTagUidも一意にするため、タイムスタンプとカウンターを使用
-    const uniqueTag1 = `TAG${Date.now()}${testCounter}001`;
-    const uniqueTag2 = `TAG${Date.now()}${testCounter}002`;
+    const emp1 = await reserveUnusedImportEmployeeCode();
+    const emp2 = await reserveUnusedImportEmployeeCode();
+    const uniqueTag1 = createImportTestToken('TAG-EMP');
+    const uniqueTag2 = createImportTestToken('TAG-EMP');
     const csvContent = `employeeCode,lastName,firstName,nfcTagUid,department,status\n${emp1},Test,Employee1,${uniqueTag1},Dept1,ACTIVE\n${emp2},Test,Employee2,${uniqueTag2},Dept2,ACTIVE`;
     formData.append('employees', Buffer.from(csvContent), {
       filename: 'employees.csv',
@@ -178,13 +158,10 @@ describe('POST /api/imports/master', () => {
 
   it('should import items CSV successfully', async () => {
     const formData = new FormData();
-    const item1Num = generateTestId(20);
-    const item2Num = generateTestId(21);
-    const item1 = `TO${String(item1Num).padStart(4, '0')}`;
-    const item2 = `TO${String(item2Num).padStart(4, '0')}`;
-    // nfcTagUidも一意にするため、タイムスタンプとカウンターを使用
-    const uniqueTag1 = `TAG${Date.now()}${testCounter}001`;
-    const uniqueTag2 = `TAG${Date.now()}${testCounter}002`;
+    const item1 = await reserveUnusedImportItemCode();
+    const item2 = await reserveUnusedImportItemCode();
+    const uniqueTag1 = createImportTestToken('TAG-ITEM');
+    const uniqueTag2 = createImportTestToken('TAG-ITEM');
     const csvContent = `itemCode,name,nfcTagUid,category,storageLocation,status,notes\n${item1},Test Item 1,${uniqueTag1},Category1,Location1,AVAILABLE,Notes1\n${item2},Test Item 2,${uniqueTag2},Category2,Location2,AVAILABLE,Notes2`;
     formData.append('items', Buffer.from(csvContent), {
       filename: 'items.csv',
@@ -215,8 +192,8 @@ describe('POST /api/imports/master', () => {
 
   it('should import both employees and items CSV simultaneously', async () => {
     const formData = new FormData();
-    const emp = String(generateTestId(30)).padStart(4, '0');
-    const item = `TO${String(generateTestId(31)).padStart(4, '0')}`;
+    const emp = await reserveUnusedImportEmployeeCode();
+    const item = await reserveUnusedImportItemCode();
     const employeesCsv = `employeeCode,lastName,firstName\n${emp},Test,Employee3`;
     const itemsCsv = `itemCode,name\n${item},Test Item 3`;
     formData.append('employees', Buffer.from(employeesCsv), {
@@ -251,7 +228,7 @@ describe('POST /api/imports/master', () => {
 
   it('should update existing employees when employeeCode matches', async () => {
     // 既存の従業員を作成
-    const empCode = String(generateTestId(40)).padStart(4, '0');
+    const empCode = await reserveUnusedImportEmployeeCode();
     await createTestEmployee({ employeeCode: empCode, displayName: 'Original Name' });
 
     const formData = new FormData();
@@ -332,10 +309,10 @@ describe('POST /api/imports/master', () => {
 
   it('should return 400 for duplicate nfcTagUid within CSV', async () => {
     const formData = new FormData();
-    const emp1 = String(generateTestId(50)).padStart(4, '0');
-    const emp2 = String(generateTestId(51)).padStart(4, '0');
+    const emp1 = await reserveUnusedImportEmployeeCode();
+    const emp2 = await reserveUnusedImportEmployeeCode();
     // 意図的に同じnfcTagUidを使用して重複エラーをテスト
-    const duplicateTag = `DUPLICATE_TAG_${Date.now()}`;
+    const duplicateTag = createImportTestToken('DUPLICATE-TAG');
     const csvContent = `employeeCode,lastName,firstName,nfcTagUid\n${emp1},Test,Employee1,${duplicateTag}\n${emp2},Test,Employee2,${duplicateTag}`;
     formData.append('employees', Buffer.from(csvContent), {
       filename: 'employees.csv',
@@ -361,10 +338,10 @@ describe('POST /api/imports/master', () => {
 
   it('should return 400 for duplicate nfcTagUid between employees and items', async () => {
     const formData = new FormData();
-    const emp = String(generateTestId(60)).padStart(4, '0');
-    const item = `TO${String(generateTestId(61)).padStart(4, '0')}`;
+    const emp = await reserveUnusedImportEmployeeCode();
+    const item = await reserveUnusedImportItemCode();
     // 意図的に同じnfcTagUidを使用して重複エラーをテスト
-    const sharedTag = `SHARED_TAG_${Date.now()}`;
+    const sharedTag = createImportTestToken('SHARED-TAG');
     const employeesCsv = `employeeCode,lastName,firstName,nfcTagUid\n${emp},Test,Employee,${sharedTag}`;
     const itemsCsv = `itemCode,name,nfcTagUid\n${item},Test Item,${sharedTag}`;
     formData.append('employees', Buffer.from(employeesCsv), {
@@ -415,8 +392,8 @@ describe('POST /api/imports/master', () => {
 
   it('should handle replaceExisting=true correctly', async () => {
     // 既存の従業員を作成
-    const empOld = await generateUnusedEmployeeCode(80);
-    const empNew = await generateUnusedEmployeeCode(90);
+    const empOld = await reserveUnusedImportEmployeeCode();
+    const empNew = await reserveUnusedImportEmployeeCode();
     await createTestEmployee({ employeeCode: empOld, displayName: 'Original Employee' });
     await createTestEmployee({ employeeCode: empNew, displayName: 'Replace Candidate' });
 
@@ -452,15 +429,6 @@ describe('POST /api/imports/master/:type', () => {
   let app: Awaited<ReturnType<typeof buildServer>>;
   let closeServer: (() => Promise<void>) | null = null;
   let adminToken: string;
-  let testCounter = 0;
-
-  function generateTestId(offset: number): number {
-    testCounter++;
-    const timestamp = Date.now() % 10000;
-    const base = 1000 + ((timestamp + testCounter * 100 + offset) % 9000);
-    return base;
-  }
-
   beforeAll(async () => {
     app = await buildServer();
     closeServer = async () => {
@@ -481,7 +449,7 @@ describe('POST /api/imports/master/:type', () => {
 
   it('should return 401 without authentication', async () => {
     const formData = new FormData();
-    const emp = String(generateTestId(1)).padStart(4, '0');
+    const emp = await reserveUnusedImportEmployeeCode();
     const csvContent = `employeeCode,lastName,firstName\n${emp},Test,Employee`;
     formData.append('file', Buffer.from(csvContent), {
       filename: 'employees.csv',
@@ -502,7 +470,7 @@ describe('POST /api/imports/master/:type', () => {
 
   it('should import employees CSV successfully', async () => {
     const formData = new FormData();
-    const emp = String(generateTestId(2)).padStart(4, '0');
+    const emp = await reserveUnusedImportEmployeeCode();
     const csvContent = `employeeCode,lastName,firstName\n${emp},Test,Employee`;
     formData.append('file', Buffer.from(csvContent), {
       filename: 'employees.csv',
@@ -531,7 +499,7 @@ describe('POST /api/imports/master/:type', () => {
 
   it('should import items CSV successfully', async () => {
     const formData = new FormData();
-    const itemCode = `TO${String(generateTestId(3)).padStart(4, '0')}`;
+    const itemCode = await reserveUnusedImportItemCode();
     const csvContent = `itemCode,name\n${itemCode},Test Item`;
     formData.append('file', Buffer.from(csvContent), {
       filename: 'items.csv',
@@ -560,7 +528,7 @@ describe('POST /api/imports/master/:type', () => {
 
   it('should import measuring instruments CSV successfully', async () => {
     const formData = new FormData();
-    const mgmtNum = `MI-TEST-${generateTestId(4)}`;
+    const mgmtNum = createImportTestToken('MI-TEST');
     const csvContent = `managementNumber,name,department\n${mgmtNum},Test Instrument,品質管理部`;
     formData.append('file', Buffer.from(csvContent), {
       filename: 'measuring-instruments.csv',
@@ -589,7 +557,7 @@ describe('POST /api/imports/master/:type', () => {
 
   it('should import rigging gears CSV successfully', async () => {
     const formData = new FormData();
-    const mgmtNum = `RG-TEST-${generateTestId(5)}`;
+    const mgmtNum = createImportTestToken('RG-TEST');
     const csvContent = `managementNumber,name,usableYears\n${mgmtNum},Test Rigging,10`;
     formData.append('file', Buffer.from(csvContent), {
       filename: 'rigging-gears.csv',
