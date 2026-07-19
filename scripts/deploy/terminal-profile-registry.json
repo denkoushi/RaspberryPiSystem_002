@@ -138,6 +138,7 @@
     {"match": "prefix", "path": ".cursor/", "component": "neutral"},
     {"match": "prefix", "path": ".agent/", "component": "neutral"},
     {"match": "prefix", "path": ".github/", "component": "neutral"},
+    {"match": "prefix", "path": "scripts/ci/", "component": "neutral"},
     {"match": "prefix", "path": "scripts/deploy/tests/", "component": "neutral"},
     {"match": "exact", "path": "AGENTS.md", "component": "neutral"},
     {"match": "prefix", "path": "README", "component": "neutral"},

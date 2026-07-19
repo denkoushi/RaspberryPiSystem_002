@@ -10,9 +10,9 @@ from jinja2 import Environment, StrictUndefined
 
 
 ROOT = Path(__file__).resolve().parents[3]
-DEPLOY_DIR = ROOT / "scripts/deploy"
-if str(DEPLOY_DIR) not in sys.path:
-    sys.path.insert(0, str(DEPLOY_DIR))
+CI_DIR = ROOT / "scripts/ci"
+if str(CI_DIR) not in sys.path:
+    sys.path.insert(0, str(CI_DIR))
 
 from ansible_template_contracts import (  # noqa: E402
     discover_templates,

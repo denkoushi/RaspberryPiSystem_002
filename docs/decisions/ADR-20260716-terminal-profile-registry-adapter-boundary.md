@@ -12,7 +12,7 @@ related_code:
   - scripts/deploy/rolling_release/terminal_preflight.py
   - scripts/deploy/terminal-runtime-manifest.py
   - scripts/deploy/terminal_profile_contracts.py
-  - scripts/deploy/ansible_template_contracts.py
+  - scripts/ci/ansible_template_contracts.py
   - scripts/ci/run-deploy-contracts-local.sh
 related_docs:
   - ../architecture/deployment-modules.md
@@ -109,6 +109,12 @@ with Jinja's comment delimiter. Release-critical executable templates add a
 representative secret-free render and their native syntax check. A template
 cannot therefore first reveal deterministic source syntax failure while a
 managed terminal is already in maintenance.
+
+Validation-only executables and tests live under `scripts/ci/` and classify as
+`neutral` for runtime rollout. Their presence can strengthen publication gates
+without targeting Pi5 or a terminal. A real template beside that validation
+change retains its own component mapping, so the neutral category never hides
+runtime impact.
 
 This generalization does not justify a production rollout. Its first physical
 proof occurs with a real product change through the ordinary canary and approval

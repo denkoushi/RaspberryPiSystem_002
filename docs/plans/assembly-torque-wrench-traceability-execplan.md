@@ -75,7 +75,9 @@ The real-device gate does not prevent preparation of a read-only capture kit. Be
 - [x] (2026-07-19 02:25Z) Added exact-candidate agent health to aggregate preflight, required two consecutive complete health proofs, and preflighted every sealed manifest before interrupted recovery. Focused 79 and full 672 deployment tests, Ruff, zero-warning root lint, isolated PostgreSQL deploy-status integration, safety/inventory/Ansible contracts, document audit, and diff checks pass; disposable resources were removed.
 - [x] (2026-07-19 03:04Z) Exact-head CI passed for stable preflight/recovery health. Standard release `20260719-023727-47a971` then proved the correction by safely recovering the interrupted StoneBase run and verifying all three agents before candidate apply. Pi5 reached `cf242bd3`; StoneBase stopped during candidate template rendering, restored its sealed `d9a2380e` runtime, passed rollback health, and cleared maintenance.
 - [x] (2026-07-19 03:14Z) Added repository-wide parsing for all 99 Ansible templates, explicit shell/Jinja `${#` collision rejection, and a secret-free rendered `bash -n` contract for the torque controller helper. The shared local/CI runner passed 676 deployment tests, isolated PostgreSQL with all 149 migrations and deploy-status integration, rollback safety, both inventories, every selected playbook syntax check, and recovery check mode; root lint and document audit also pass, with disposable resources removed.
-- [ ] Pass exact-head CI for the template-rendering contract, then repeat standard preflight, release, and physical acceptance.
+- [x] (2026-07-19 03:28Z) Exact-head CI, CodeQL, Secret scan, and aggregate `ci-required` passed at `a5a7f90e`. The subsequent read-only print-plan stopped before preflight because two validation-only `scripts/ci` assets were unclassified and therefore expanded the plan to the complete fleet. No release unit or host mutation occurred.
+- [x] (2026-07-19 03:28Z) Moved the template validator into the validation-only `scripts/ci/` boundary, classified that directory once as neutral, and added mixed-diff contracts proving CI/docs/tests cannot hide or broaden the torque template's kiosk-only component scope.
+- [ ] Pass the full local and exact-head CI contracts for the path-classification correction, then repeat standard print-plan, preflight, release, and physical acceptance.
 
 ## Surprises & Discoveries
 
@@ -208,6 +210,9 @@ The real-device gate does not prevent preparation of a read-only capture kit. Be
 - Observation: Playbook syntax validation did not parse or render the 99 repository-owned Ansible templates, allowing a deterministic source defect to reach a terminal in maintenance.
   Evidence: Release `20260719-023727-47a971` failed while rendering `torque-bluetooth-adapter.sh.j2` because shell `${#matches[@]}` collided with Jinja's `{#` comment delimiter. A repository-wide source parse found that one defect among all 99 templates; the existing `ansible-playbook --syntax-check` suite had passed because it did not instantiate that task template.
 
+- Observation: Validation-only source lacked a directory-level release-impact classification and therefore became fail-closed `unknown` after publication.
+  Evidence: The exact-head print-plan after `a5a7f90e` correctly refused minimization and selected Pi5 plus every kiosk/signage terminal because `scripts/ci/run-deploy-contracts-local.sh` and the new validator had no registry mapping. The validation code does not run on a terminal; the torque template beside it is already classified separately as `torque-agent`.
+
 ## Decision Log
 
 - Decision: Reuse `MeasuringInstrument` as the physical asset record and add a one-to-one torque-wrench profile rather than duplicating storage location, calibration, and lifecycle state.
@@ -333,6 +338,10 @@ The real-device gate does not prevent preparation of a read-only capture kit. Be
 - Decision: The shared local/CI deploy-contract entry point parses every Ansible `.j2` source before lifecycle tests, and each release-critical executable template additionally renders with secret-free representative values and passes its native syntax checker.
   Rationale: Playbook syntax, template source syntax, and rendered executable syntax are different boundaries. Validating all three before publication prevents deterministic rendering failures from first appearing after a terminal enters maintenance, without weakening runtime fail-closed behavior.
   Date/Author: 2026-07-19 / Codex, approved by user as a structural correction before retry.
+
+- Decision: Validation-only executables live under `scripts/ci/` and that complete directory is neutral for runtime release impact; mixed-diff tests prove neutral paths neither hide nor broaden a separately classified runtime asset.
+  Rationale: Adding individual validator filenames to an allowlist would repeat the same manual-sync failure. One responsibility-based directory mapping lets future validation code strengthen CI without manufacturing terminal work, while unknown paths elsewhere remain fail-closed.
+  Date/Author: 2026-07-19 / Codex, required by the user's repeated-failure structural-remediation rule.
 
 - Decision: Register `cem3-btla-hogp-v1` only after observed normal and rapid-consecutive fixtures, exact stable device selection, and startup/reconnect tests all pass; those gates are now satisfied.
   Rationale: Parser construction remained isolated until the actual seven-field contract and multi-frame boundary were proven. Production activation now depends on the exact external controller and wrench by-id path and cannot fall back to a general keyboard or transient event node.
@@ -652,3 +661,5 @@ Revision note 2026-07-19 02:25Z: Recorded green exact-head CI for `c09834e3`, su
 Revision note 2026-07-19 03:04Z: Recorded green exact-head CI for `cf242bd3` and release `20260719-023727-47a971`. The new recovery boundary successfully restored and verified the prior interrupted StoneBase runtime, but the candidate later exposed an Ansible template source-syntax gap that playbook syntax checks cannot detect. StoneBase rollback was verified and maintenance cleared; Pi5 remains verified at the candidate. Before any retry, the shared local/CI gate now owns parse coverage for all `.j2` sources plus rendered native syntax for release-critical executable templates.
 
 Revision note 2026-07-19 03:14Z: Completed the whole-template structural correction before retry. The local/CI runner now parses all 99 Ansible sources, rejects the shell/Jinja `${#` delimiter collision class, and renders the release-critical torque helper through `bash -n`. The full 676-test deployment contract, isolated PostgreSQL/migration integration, safety, inventory, selected-playbook, recovery, lint, and document checks pass; all disposable resources were removed.
+
+Revision note 2026-07-19 03:28Z: Recorded green exact-head CI for `a5a7f90e` and the subsequent mutation-free print-plan stop. Instead of allowlisting two filenames, established `scripts/ci/` as the single validation-only neutral boundary and added mixed runtime/validation classification contracts. The next release remains blocked on a new full local run, publication, exact-head CI, and a minimized print-plan.

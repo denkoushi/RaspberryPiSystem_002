@@ -169,6 +169,37 @@ class ClassifyDeployImpactTest(unittest.TestCase):
         self.assertFalse(result['migration'])
         self.assertEqual(result['components'], ['neutral'])
 
+    def test_ci_validation_files_are_neutral(self):
+        result = impact.classify(
+            [
+                'scripts/ci/run-deploy-contracts-local.sh',
+                'scripts/ci/ansible_template_contracts.py',
+                'scripts/ci/tests/test_classify_changes.py',
+            ]
+        )
+        self.assertFalse(result['server'])
+        self.assertFalse(result['kiosk'])
+        self.assertFalse(result['signage'])
+        self.assertFalse(result['migration'])
+        self.assertEqual(result['components'], ['neutral'])
+
+    def test_ci_contract_changes_do_not_expand_torque_asset_scope(self):
+        result = impact.classify(
+            [
+                'docs/guides/deployment.md',
+                'scripts/ci/run-deploy-contracts-local.sh',
+                'scripts/ci/ansible_template_contracts.py',
+                'scripts/deploy/tests/test_ansible_template_contracts.py',
+                'infrastructure/ansible/roles/client/templates/torque-bluetooth-adapter.sh.j2',
+            ]
+        )
+        self.assertFalse(result['server'])
+        self.assertTrue(result['kiosk'])
+        self.assertFalse(result['signage'])
+        self.assertFalse(result['migration'])
+        self.assertEqual(result['components'], ['neutral', 'torque-agent'])
+        self.assertEqual(result['affectedProfiles'], ['kiosk'])
+
     def test_signage_recovery_fix_targets_only_signage(self):
         result = impact.classify(
             [
