@@ -39,6 +39,7 @@ class FakeRuntime:
         self.calls: list[list[str]] = []
         self.units: dict[str, dict[str, str]] = {}
         self.unit_needs_reload: set[str] = set()
+        self.unit_show_transitions: dict[str, list[str]] = {}
         self.stop_results_failed: set[str] = set()
         self.timer_start_transitions: dict[str, list[str]] = {}
         self.timer_persistent: dict[str, bool] = {}
@@ -181,6 +182,7 @@ class FakeRuntime:
         cloned = FakeRuntime(compose=self.compose, bind_source=self.bind_source)
         cloned.units = copy.deepcopy(self.units)
         cloned.unit_needs_reload = set(self.unit_needs_reload)
+        cloned.unit_show_transitions = copy.deepcopy(self.unit_show_transitions)
         cloned.stop_results_failed = set(self.stop_results_failed)
         cloned.timer_start_transitions = copy.deepcopy(
             self.timer_start_transitions
@@ -381,6 +383,9 @@ class FakeRuntime:
                 if value.startswith("--property=")
             ]
             output = "\n".join(f"{key}={values[key]}" for key in properties)
+            transitions = self.unit_show_transitions.get(call[-1], [])
+            if transitions:
+                state["ActiveState"] = transitions.pop(0)
             return self._result(0, output, allowed_exit_codes)
         if call[:2] == ["systemctl", "daemon-reload"]:
             self.unit_needs_reload.clear()
@@ -1570,11 +1575,16 @@ class TerminalRuntimeManifestTest(unittest.TestCase):
             with self.subTest(active_unit=active_unit):
                 self.fake.units[active_unit]["ActiveState"] = "active"
                 self.fake.calls.clear()
-                with self.assertRaisesRegex(
-                    MODULE.RuntimeManifestError,
-                    "transient oneshot unit is active during runtime capture",
-                ):
-                    self.capture(units=sorted(oneshots))
+                with mock.patch.object(MODULE.time, "sleep") as sleep:
+                    with self.assertRaisesRegex(
+                        MODULE.RuntimeManifestError,
+                        "transient oneshot unit did not quiesce before runtime capture",
+                    ):
+                        self.capture(units=sorted(oneshots))
+                self.assertEqual(
+                    sleep.call_count,
+                    MODULE.TRANSIENT_ONESHOT_STABILIZATION_ATTEMPTS - 1,
+                )
                 self.assertFalse(self.manifest_path.exists())
                 self.assertEqual(self.fake.mutation_calls, [])
                 self.fake.units[active_unit]["ActiveState"] = "inactive"
@@ -1582,6 +1592,21 @@ class TerminalRuntimeManifestTest(unittest.TestCase):
         captured = self.capture(units=sorted(oneshots))
         self.assertTrue(self.manifest_path.exists())
         self.assertEqual(captured["unitCount"], len(oneshots))
+
+    def test_capture_waits_for_transient_oneshot_to_quiesce_before_sealing(self):
+        unit = "status-agent.service"
+        self.fake.add_unit(unit, unit_file="static", active="activating")
+        self.fake.unit_show_transitions[unit] = ["inactive"]
+
+        with mock.patch.object(MODULE.time, "sleep") as sleep:
+            captured = self.capture(units=[unit])
+
+        self.assertEqual(captured["unitCount"], 1)
+        self.assertEqual(sleep.call_count, 1)
+        self.assertEqual(
+            self.fake.units[unit]["ActiveState"], "inactive"
+        )
+        self.assertEqual(self.fake.mutation_calls, [])
 
     def test_sealed_active_transient_oneshot_is_rejected_before_restore(self):
         self.fake.add_unit(

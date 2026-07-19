@@ -22,6 +22,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -68,6 +69,8 @@ TRANSIENT_ONESHOT_TIMER_BY_UNIT = {
     "signage-daily-reboot.service": "signage-daily-reboot.timer",
 }
 TRANSIENT_ONESHOT_UNITS = frozenset(TRANSIENT_ONESHOT_TIMER_BY_UNIT)
+TRANSIENT_ONESHOT_STABILIZATION_ATTEMPTS = 5
+TRANSIENT_ONESHOT_STABILIZATION_DELAY_SECONDS = 1
 RESTART_ON_RESTORE_UNITS = frozenset(
     {
         "kiosk-browser.service",
@@ -593,15 +596,28 @@ def _systemd_state(
 
 
 def _capturable_systemd_state(unit: str) -> dict[str, Any]:
-    state = _systemd_state(unit)
-    if (
-        state["name"] in TRANSIENT_ONESHOT_UNITS
-        and state["activeState"] == "active"
-    ):
-        raise RuntimeManifestError(
-            "transient oneshot unit is active during runtime capture"
+    safe_unit = _validate_unit_name(unit)
+    if safe_unit not in TRANSIENT_ONESHOT_UNITS:
+        return _systemd_state(safe_unit)
+
+    for attempt in range(TRANSIENT_ONESHOT_STABILIZATION_ATTEMPTS):
+        observation = _systemd_observation(
+            safe_unit,
+            allow_transient_oneshot_transition=True,
         )
-    return state
+        if observation.needs_daemon_reload:
+            raise RuntimeManifestError(
+                "systemd unit requires daemon-reload before its state is stable"
+            )
+        state = observation.state
+        if state["activeState"] == "inactive":
+            return state
+        if attempt + 1 < TRANSIENT_ONESHOT_STABILIZATION_ATTEMPTS:
+            time.sleep(TRANSIENT_ONESHOT_STABILIZATION_DELAY_SECONDS)
+
+    raise RuntimeManifestError(
+        "transient oneshot unit did not quiesce before runtime capture"
+    )
 
 
 def _validate_unit_record(
