@@ -176,7 +176,9 @@
   ansible.builtin.assert:
     that:
       - "'Result=success' in torque_bluetooth_controller_unit_result.stdout_lines"
-      - "'ExecMainCode=exited' in torque_bluetooth_controller_unit_result.stdout_lines"
+      # systemctl show serializes the normal wait status (CLD_EXITED) as 1.
+      # "exited" is a human-readable status label, not this property's value.
+      - "'ExecMainCode=1' in torque_bluetooth_controller_unit_result.stdout_lines"
       - "'ExecMainStatus=0' in torque_bluetooth_controller_unit_result.stdout_lines"
     fail_msg: The exact external torque Bluetooth controller preparation unit did not complete successfully.
 
