@@ -65,7 +65,7 @@ scripts/ci/run-deploy-contracts-local.sh
 scripts/ci/run-deploy-contracts-local.sh --install-collections
 ```
 
-このコマンドは管理対象hostへ接続しない。deployment Python/shell契約、隔離Postgresによるdeploy-status統合、安全契約、両inventory、registryから導出したprofile playbook、Ansible syntax/checkを検証し、一時ファイルと隔離DB資源を終了時に削除する。CIへ個別コマンドを追加せず、このスクリプトを更新してローカルとCIの検査内容を同時に変える。
+このコマンドは管理対象hostへ接続しない。全Ansible `.j2`ソースのJinja構文・shell/Jinja区切り衝突、deployment Python/shell契約、隔離Postgresによるdeploy-status統合、安全契約、両inventory、registryから導出したprofile playbook、Ansible syntax/checkを検証し、一時ファイルと隔離DB資源を終了時に削除する。実行可能なリリース重要テンプレートは、代表的な秘密を含まない変数でレンダーした結果にもネイティブ構文検査を持たせる。CIへ個別コマンドを追加せず、このスクリプトを更新してローカルとCIの検査内容を同時に変える。
 
 第2工場の標準inventory:
 

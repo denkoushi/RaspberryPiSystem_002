@@ -64,6 +64,9 @@ trap cleanup EXIT HUP INT TERM
 
 cd "$ROOT_DIR"
 
+echo "[deploy-contract] parse all Ansible Jinja templates"
+python3 scripts/deploy/ansible_template_contracts.py
+
 echo "[deploy-contract] shell and deployment lifecycle contracts"
 bash -n scripts/update-all-clients.sh
 bash -n scripts/server/deploy.sh

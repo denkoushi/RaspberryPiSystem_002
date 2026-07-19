@@ -12,6 +12,7 @@ related_code:
   - scripts/deploy/rolling_release/terminal_preflight.py
   - scripts/deploy/terminal-runtime-manifest.py
   - scripts/deploy/terminal_profile_contracts.py
+  - scripts/deploy/ansible_template_contracts.py
   - scripts/ci/run-deploy-contracts-local.sh
 related_docs:
   - ../architecture/deployment-modules.md
@@ -101,6 +102,14 @@ list lives in `scripts/ci/run-deploy-contracts-local.sh`; developers and GitHub
 Actions execute that same entry point so a profile or agent contract failure is
 visible before push rather than after hosted CI starts.
 
+That shared entry point parses every repository-owned Ansible `.j2` source,
+including templates that `ansible-playbook --syntax-check` does not instantiate.
+It also rejects unescaped shell array-length tokens whose `${#` prefix collides
+with Jinja's comment delimiter. Release-critical executable templates add a
+representative secret-free render and their native syntax check. A template
+cannot therefore first reveal deterministic source syntax failure while a
+managed terminal is already in maintenance.
+
 This generalization does not justify a production rollout. Its first physical
 proof occurs with a real product change through the ordinary canary and approval
 process. TalkPlaza remains static-only until a real control plane exists.
@@ -131,4 +140,7 @@ mutation, accepts digest-covered Compose health metadata, and validates a
 candidate source larger than Linux's common single-argument limit. It also
 proves exact candidate-health source transport, bounded consecutive health,
 transient recovery, persistent-instability rejection, and pre-mutation sealed
-manifest preflight during interrupted recovery.
+manifest preflight during interrupted recovery. All repository-owned Ansible
+templates parse before those tests begin, and the rendered torque Bluetooth
+controller helper passes `bash -n` with its literal shell array-length syntax
+preserved.
