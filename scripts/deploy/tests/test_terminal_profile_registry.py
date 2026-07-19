@@ -33,7 +33,7 @@ class TerminalProfileRegistryTest(unittest.TestCase):
     def test_production_registry_contains_only_kiosk_and_signage(self):
         registry = load_registry()
 
-        self.assertEqual(registry.schema_version, 1)
+        self.assertEqual(registry.schema_version, 2)
         self.assertEqual(registry.profile_ids, ("kiosk", "signage"))
         self.assertEqual(registry.pi5_control_plane.inventory_group, "server")
         self.assertEqual(registry.pi5_control_plane.required_host_count, 1)
@@ -48,6 +48,32 @@ class TerminalProfileRegistryTest(unittest.TestCase):
         self.assertEqual(
             registry.profiles_for_components({"status-agent"}),
             ["kiosk", "signage"],
+        )
+        self.assertTrue(
+            registry.components_apply_to_host(
+                {"torque-agent"}, {"torque_agent_enabled": True}
+            )
+        )
+        self.assertFalse(
+            registry.components_apply_to_host({"torque-agent"}, {})
+        )
+        self.assertTrue(
+            registry.components_apply_to_host({"torque-agent"}, None)
+        )
+        self.assertTrue(
+            registry.components_apply_to_host(
+                {"nfc-agent"}, {"nfc_agent_client_id": "kiosk-a"}
+            )
+        )
+        self.assertFalse(
+            registry.components_apply_to_host(
+                {"nfc-agent"}, {"nfc_agent_client_id": "  "}
+            )
+        )
+        self.assertTrue(
+            registry.components_apply_to_host(
+                {"torque-agent", "kiosk-role"}, {}
+            )
         )
 
     def test_profile_order_is_deterministic(self):
@@ -315,9 +341,24 @@ class TerminalProfileRegistryTest(unittest.TestCase):
         with self.assertRaisesRegex(RegistryError, "does not target itself"):
             self.load_payload(missing_self)
 
+    def test_component_host_selectors_are_data_only_and_terminal_scoped(self):
+        cases = (
+            ("torque-agent", {"hostVar": "../unsafe", "match": "true"}),
+            ("torque-agent", {"hostVar": "torque_agent_enabled", "match": "shell"}),
+            ("torque-agent", {"hostVar": "torque_agent_enabled", "match": True}),
+            ("neutral", {"hostVar": "docs_only", "match": "true"}),
+            ("not-registered", {"hostVar": "enabled", "match": "true"}),
+        )
+        for component, selector in cases:
+            with self.subTest(component=component, selector=selector):
+                payload = copy.deepcopy(self.payload)
+                payload["componentHostSelectors"][component] = selector
+                with self.assertRaises(RegistryError):
+                    self.load_payload(payload)
+
     def test_unsupported_schema_and_duplicate_profile_options_are_rejected(self):
         schema = copy.deepcopy(self.payload)
-        schema["schemaVersion"] = 2
+        schema["schemaVersion"] = 3
         with self.assertRaisesRegex(RegistryError, "schemaVersion"):
             self.load_payload(schema)
 

@@ -13,7 +13,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REGISTRY_PATH = Path(__file__).with_name("terminal-profile-registry.json")
 _SAFE_ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,62}$")
@@ -55,6 +55,7 @@ _TOP_LEVEL_KEYS = frozenset(
         "terminalProfiles",
         "pathMappings",
         "componentProfiles",
+        "componentHostSelectors",
     }
 )
 _CONTROL_PLANE_KEYS = frozenset(
@@ -79,6 +80,9 @@ _ADAPTER_OPTION_KEYS = frozenset(
 )
 _READY_AUTHORITIES = frozenset({"control-plane", "terminal"})
 _PATH_MAPPING_KEYS = frozenset({"match", "path", "component"})
+_COMPONENT_HOST_SELECTOR_KEYS = frozenset({"hostVar", "match"})
+_COMPONENT_HOST_SELECTOR_MATCHES = frozenset({"true", "non-empty-string"})
+_SAFE_HOST_VAR_RE = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
 
 
 class RegistryError(ValueError):
@@ -128,12 +132,26 @@ class PathMapping:
 
 
 @dataclass(frozen=True)
+class ComponentHostSelector:
+    component: str
+    host_var: str
+    match: str
+
+    def matches(self, host_vars: dict[str, Any]) -> bool:
+        value = host_vars.get(self.host_var)
+        if self.match == "true":
+            return value is True
+        return isinstance(value, str) and bool(value.strip())
+
+
+@dataclass(frozen=True)
 class TerminalProfileRegistry:
     schema_version: int
     pi5_control_plane: Pi5ControlPlane
     profiles: tuple[TerminalProfile, ...]
     path_mappings: tuple[PathMapping, ...]
     component_profiles: tuple[tuple[str, tuple[str, ...]], ...]
+    component_host_selectors: tuple[ComponentHostSelector, ...]
 
     @property
     def profile_ids(self) -> tuple[str, ...]:
@@ -161,6 +179,29 @@ class TerminalProfileRegistry:
         for component in components:
             affected.update(component_profiles.get(component, ()))
         return [profile.id for profile in self.profiles if profile.id in affected]
+
+    def components_apply_to_host(
+        self,
+        components: set[str],
+        host_vars: Any,
+    ) -> bool:
+        """Return whether profile-impacting components apply to one inventory host.
+
+        Components without an explicit selector remain profile-wide. Missing or
+        malformed host metadata fails closed. When every component is optional,
+        at least one selector must match the host.
+        """
+        if not components:
+            return False
+        selectors = {
+            selector.component: selector
+            for selector in self.component_host_selectors
+        }
+        if any(component not in selectors for component in components):
+            return True
+        if not isinstance(host_vars, dict):
+            return True
+        return any(selectors[component].matches(host_vars) for component in components)
 
 
 def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -470,6 +511,48 @@ def _parse_component_profiles(
     return tuple(sorted(result))
 
 
+def _parse_component_host_selectors(
+    value: Any,
+    *,
+    component_profiles: dict[str, tuple[str, ...]],
+) -> tuple[ComponentHostSelector, ...]:
+    if not isinstance(value, dict) or len(value) > 256:
+        raise RegistryError("componentHostSelectors must be a bounded object")
+    selectors: list[ComponentHostSelector] = []
+    for raw_component, raw_selector in value.items():
+        component = _safe_component(
+            raw_component, name="componentHostSelectors key"
+        )
+        profiles = component_profiles.get(component)
+        if not profiles:
+            raise RegistryError(
+                f"componentHostSelectors.{component} must reference a terminal component"
+            )
+        selector = _strict_object(
+            raw_selector,
+            name=f"componentHostSelectors.{component}",
+            keys=_COMPONENT_HOST_SELECTOR_KEYS,
+        )
+        host_var = selector["hostVar"]
+        if not isinstance(host_var, str) or not _SAFE_HOST_VAR_RE.fullmatch(host_var):
+            raise RegistryError(
+                f"componentHostSelectors.{component}.hostVar is invalid"
+            )
+        match = selector["match"]
+        if not isinstance(match, str) or match not in _COMPONENT_HOST_SELECTOR_MATCHES:
+            raise RegistryError(
+                f"componentHostSelectors.{component}.match is invalid"
+            )
+        selectors.append(
+            ComponentHostSelector(
+                component=component,
+                host_var=host_var,
+                match=match,
+            )
+        )
+    return tuple(sorted(selectors, key=lambda item: item.component))
+
+
 def load_registry(
     registry_path: Path | str = DEFAULT_REGISTRY_PATH,
     *,
@@ -554,6 +637,10 @@ def load_registry(
         top["componentProfiles"], profile_ids=profile_ids
     )
     component_map = dict(component_profiles)
+    component_host_selectors = _parse_component_host_selectors(
+        top["componentHostSelectors"],
+        component_profiles=component_map,
+    )
     mapped_components = {mapping.component for mapping in path_mappings}
     missing_components = sorted(mapped_components - set(component_map))
     if missing_components:
@@ -584,4 +671,5 @@ def load_registry(
         profiles=profiles,
         path_mappings=path_mappings,
         component_profiles=component_profiles,
+        component_host_selectors=component_host_selectors,
     )

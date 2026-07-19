@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "pi5ControlPlane": {
     "id": "pi5",
     "inventoryGroup": "server",
@@ -171,9 +171,17 @@
     {"match": "prefix", "path": "clients/torque-agent/", "component": "torque-agent"},
     {"match": "prefix", "path": "clients/status-agent/", "component": "status-agent"},
     {"match": "prefix", "path": "infrastructure/ansible/roles/kiosk/", "component": "kiosk-role"},
+    {"match": "prefix", "path": "infrastructure/ansible/roles/client/tasks/nfc-agent", "component": "nfc-agent"},
+    {"match": "prefix", "path": "infrastructure/ansible/roles/client/tasks/barcode-agent", "component": "barcode-agent"},
+    {"match": "prefix", "path": "infrastructure/ansible/roles/client/tasks/torque-agent", "component": "torque-agent"},
+    {"match": "prefix", "path": "infrastructure/ansible/roles/client/templates/torque-", "component": "torque-agent"},
+    {"match": "exact", "path": "infrastructure/ansible/roles/client/templates/90-torque-bluetooth-adapter.rules.j2", "component": "torque-agent"},
+    {"match": "exact", "path": "infrastructure/ansible/roles/client/templates/99-torque-wrench-hid.rules.j2", "component": "torque-agent"},
     {"match": "prefix", "path": "infrastructure/ansible/roles/client/", "component": "client-role"},
     {"match": "prefix", "path": "infrastructure/ansible/roles/signage/", "component": "signage-role"},
     {"match": "prefix", "path": "infrastructure/ansible/templates/signage", "component": "signage-role"},
+    {"match": "exact", "path": "infrastructure/ansible/templates/nfc-agent.env.j2", "component": "nfc-agent"},
+    {"match": "exact", "path": "infrastructure/ansible/templates/barcode-agent.env.j2", "component": "barcode-agent"},
     {"match": "exact", "path": "infrastructure/ansible/templates/torque-agent.env.j2", "component": "torque-agent"},
     {"match": "exact", "path": "infrastructure/ansible/tasks/preflight-signage.yml", "component": "signage-role"},
     {"match": "prefix", "path": "infrastructure/ansible/playbooks/", "component": "global"},
@@ -193,5 +201,10 @@
     "client-role": ["kiosk", "signage"],
     "signage-role": ["signage"],
     "global": ["kiosk", "signage"]
+  },
+  "componentHostSelectors": {
+    "nfc-agent": {"hostVar": "nfc_agent_client_id", "match": "non-empty-string"},
+    "barcode-agent": {"hostVar": "barcode_agent_enabled", "match": "true"},
+    "torque-agent": {"hostVar": "torque_agent_enabled", "match": "true"}
   }
 }

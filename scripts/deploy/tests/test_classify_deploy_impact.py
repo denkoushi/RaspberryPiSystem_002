@@ -65,6 +65,37 @@ class ClassifyDeployImpactTest(unittest.TestCase):
         self.assertFalse(result['server'])
         self.assertEqual(result['components'], ['torque-agent'])
 
+    def test_agent_specific_ansible_assets_do_not_expand_to_all_client_roles(self):
+        cases = {
+            'nfc-agent': [
+                'infrastructure/ansible/roles/client/tasks/nfc-agent.yml',
+                'infrastructure/ansible/roles/client/tasks/nfc-agent-lifecycle.yml',
+                'infrastructure/ansible/templates/nfc-agent.env.j2',
+            ],
+            'barcode-agent': [
+                'infrastructure/ansible/roles/client/tasks/barcode-agent.yml',
+                'infrastructure/ansible/roles/client/tasks/barcode-agent-lifecycle.yml',
+                'infrastructure/ansible/templates/barcode-agent.env.j2',
+            ],
+            'torque-agent': [
+                'infrastructure/ansible/roles/client/tasks/torque-agent.yml',
+                'infrastructure/ansible/roles/client/tasks/torque-agent-lifecycle.yml',
+                'infrastructure/ansible/roles/client/templates/torque-bluetooth-adapter.sh.j2',
+                'infrastructure/ansible/roles/client/templates/torque-bluetooth-adapter@.service.j2',
+                'infrastructure/ansible/roles/client/templates/90-torque-bluetooth-adapter.rules.j2',
+                'infrastructure/ansible/roles/client/templates/99-torque-wrench-hid.rules.j2',
+                'infrastructure/ansible/templates/torque-agent.env.j2',
+            ],
+        }
+        for component, paths in cases.items():
+            with self.subTest(component=component):
+                result = impact.classify(paths)
+                self.assertEqual(result['components'], [component])
+                self.assertEqual(result['affectedProfiles'], ['kiosk'])
+                self.assertTrue(result['kiosk'])
+                self.assertFalse(result['signage'])
+                self.assertFalse(result['server'])
+
     def test_status_agent_is_kiosk_and_signage(self):
         result = impact.classify(['clients/status-agent/status-agent.py'])
         self.assertTrue(result['kiosk'])
