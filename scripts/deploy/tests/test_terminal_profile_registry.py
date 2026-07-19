@@ -87,6 +87,14 @@ class TerminalProfileRegistryTest(unittest.TestCase):
             registry.component_for("scripts/deploy/signage-runtime-proof.py"),
             "signage-role",
         )
+        self.assertEqual(
+            registry.component_for("e2e/future-runtime.spec.ts"),
+            "neutral",
+        )
+        self.assertEqual(
+            registry.component_for("infrastructure/ansible/roles/common/tasks/main.yml"),
+            "global",
+        )
 
     def test_profile_order_is_deterministic(self):
         self.payload["terminalProfiles"].reverse()

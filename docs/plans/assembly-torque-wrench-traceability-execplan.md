@@ -79,7 +79,9 @@ The real-device gate does not prevent preparation of a read-only capture kit. Be
 - [x] (2026-07-19 03:28Z) Moved the template validator into the validation-only `scripts/ci/` boundary, classified that directory once as neutral, and added mixed-diff contracts proving CI/docs/tests cannot hide or broaden the torque template's kiosk-only component scope.
 - [x] (2026-07-19 03:43Z) Full local contracts and exact-head CI/CodeQL/Secret scan passed at `a2ff06be`. A second mutation-free print-plan proved the CI boundary correction, then exposed 26 historically unclassified deploy-control helpers and legitimate cumulative common-role/inventory differences on older verified terminals; no preflight or release began.
 - [x] (2026-07-19 03:53Z) Closed `scripts/deploy/` as one deploy-control boundary with test/signage precedence. Focused 71 tests and the shared local gate passed 679 deployment tests, all 149 migrations plus deploy-status integration on disposable PostgreSQL, safety/inventory/playbook/recovery checks, root lint, Ruff, and document audit; disposable resources were removed.
-- [ ] Pass exact-head CI, then use the documented explicit Pi5 plus StoneBase limit for preflight, release, and physical acceptance.
+- [x] (2026-07-19 04:02Z) Exact-head CI/CodeQL/Secret scan passed at `2f4da930`. Unbounded and limited read-only plans then proved StoneBase was cleanly component-selected, while excluded older verified baselines still contributed two known-but-unowned paths to aggregate `unknown`: browser E2E and the Ansible common role. No preflight or release began.
+- [x] (2026-07-19 04:11Z) Classified E2E/test-data as neutral and the shared Ansible common role as global. Every current fleet baseline now has zero unknown paths; focused 72 and full 680 deployment tests, all 149 migrations plus deploy-status integration, safety/inventory/playbook/recovery contracts, root lint, Ruff, and document audit pass with disposable resources removed.
+- [ ] Pass exact-head CI, then run limited preflight, release, and physical acceptance.
 
 ## Surprises & Discoveries
 
@@ -218,6 +220,9 @@ The real-device gate does not prevent preparation of a read-only capture kit. Be
 - Observation: Per-file deploy-control mappings left 26 tracked orchestration helpers unclassified, and divergent verified terminal SHAs made one such helper expand a cumulative plan to every terminal.
   Evidence: The exact-head print-plan after `a2ff06be` classified the latest Pi5-to-candidate delta as `deploy-control`, `neutral`, and `torque-agent`, but StoneBase's verified `d9a2380e` baseline additionally saw `scripts/deploy/terminal-agent-health-probe.py` as unknown. Older verified kiosks/signage also correctly retained cumulative common-role and inventory differences. The public `--limit` contract permits excluding those verified hosts for this single-host feature acceptance; it still forbids excluding unknown-evidence hosts or a required Pi5.
 
+- Observation: After closing deploy-control ownership, all remaining unknown paths across the actual fleet baselines were validation-only E2E files or the shared Ansible common role.
+  Evidence: The unbounded plan at `2f4da930` selected StoneBase with the explicit reason `kiosk impact: deploy-control,torque-agent`; the older `3e52d7bb` and `72de4add` baselines still saw `e2e/assembly-library-editor-ui.spec.ts` and `infrastructure/ansible/roles/common/tasks/main.yml` as unknown. The former never deploys, while the latter is executed by every registered terminal profile and is therefore global rather than unknown.
+
 ## Decision Log
 
 - Decision: Reuse `MeasuringInstrument` as the physical asset record and add a one-to-one torque-wrench profile rather than duplicating storage location, calibration, and lifecycle state.
@@ -351,6 +356,10 @@ The real-device gate does not prevent preparation of a read-only capture kit. Be
 - Decision: Treat `scripts/deploy/` as a closed deploy-control boundary, with earlier specific mappings for deploy tests and the signage runtime proof, rather than maintaining a second list of individual control filenames.
   Rationale: All 26 unclassified files in that directory are orchestration/control-plane helpers. Directory ownership eliminates recurring synchronization omissions, preserves the one real terminal-runtime exception, and leaves unknown paths elsewhere fail-closed.
   Date/Author: 2026-07-19 / Codex, required by the user's whole-system remediation rule.
+
+- Decision: Treat `e2e/` and `test-data/` as neutral validation boundaries and `infrastructure/ansible/roles/common/` as a global terminal-runtime boundary.
+  Rationale: This is the complete ownership classification of the remaining unknown paths in every live fleet baseline, not a per-file exception. Common-role changes must conservatively target all profiles; browser tests and fixtures must never manufacture runtime work.
+  Date/Author: 2026-07-19 / Codex, required before using explicit target limitation.
 
 - Decision: Run this feature-branch acceptance with the documented explicit limit `raspberrypi5:raspi4-kensaku-stonebase01` after the unbounded plan is audited, instead of converging unrelated verified terminals to the feature SHA.
   Rationale: The other terminals' cumulative common-role/inventory impact is legitimate but outside this physical acceptance. The public limit is not an emergency override: verified excluded hosts retain their current SHA, unknown-evidence hosts cannot be excluded, and Pi5 cannot be excluded when server impact requires it.
@@ -680,3 +689,7 @@ Revision note 2026-07-19 03:28Z: Recorded green exact-head CI for `a5a7f90e` and
 Revision note 2026-07-19 03:43Z: Recorded green exact-head CI for `a2ff06be` and the second mutation-free plan audit. The remaining expansion was separated into a recurring classification defect (26 deploy-control helpers outside a responsibility boundary) and legitimate cumulative differences on verified older terminals. The structural correction closes `scripts/deploy/` with specific test/signage overrides; the approved physical acceptance will use the documented Pi5 plus StoneBase limit rather than mutate unrelated verified terminals.
 
 Revision note 2026-07-19 03:53Z: Completed the deploy-control responsibility boundary and its precedence contracts. The full shared local gate passed 679 deployment tests, disposable PostgreSQL with all 149 migrations and deploy-status integration, rollback safety, both inventories, every selected playbook syntax check, recovery check, lint, Ruff, and document audit. Exact-head publication and CI remain the only software gates before the limited physical release.
+
+Revision note 2026-07-19 04:02Z: Recorded green exact-head CI for `2f4da930` and both mutation-free plan views. StoneBase is now selected by known torque/deploy-control impact, but the aggregate plan exposed the final two ownership gaps on older verified baselines. Closed them by responsibility—E2E/test data neutral, common Ansible role global—and added contracts requiring those semantics before limited preflight can begin.
+
+Revision note 2026-07-19 04:11Z: Completed the fleet-baseline ownership audit. All four distinct verified current SHAs classify to known components with no unknown paths. The final shared local gate passed 680 deployment tests, disposable PostgreSQL with all 149 migrations and deploy-status integration, safety, both inventories, selected playbook syntax, recovery, lint, Ruff, and document audit. Exact-head publication/CI is now the sole software gate before limited preflight.

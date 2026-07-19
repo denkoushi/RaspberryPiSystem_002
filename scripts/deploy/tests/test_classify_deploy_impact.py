@@ -190,6 +190,20 @@ class ClassifyDeployImpactTest(unittest.TestCase):
         self.assertFalse(result['migration'])
         self.assertEqual(result['components'], ['neutral'])
 
+    def test_browser_e2e_and_test_data_are_neutral(self):
+        result = impact.classify(
+            [
+                'e2e/assembly-library-editor-ui.spec.ts',
+                'e2e/smoke/kiosk-smoke.spec.ts',
+                'test-data/items-test.csv',
+            ]
+        )
+        self.assertFalse(result['server'])
+        self.assertFalse(result['kiosk'])
+        self.assertFalse(result['signage'])
+        self.assertFalse(result['migration'])
+        self.assertEqual(result['components'], ['neutral'])
+
     def test_ci_validation_files_are_neutral(self):
         result = impact.classify(
             [
@@ -262,7 +276,12 @@ class ClassifyDeployImpactTest(unittest.TestCase):
         self.assertEqual(result['affectedProfiles'], ['kiosk', 'signage'])
 
     def test_global_change_targets_all_registered_profiles(self):
-        result = impact.classify(['infrastructure/ansible/inventory.yml'])
+        result = impact.classify(
+            [
+                'infrastructure/ansible/inventory.yml',
+                'infrastructure/ansible/roles/common/tasks/main.yml',
+            ]
+        )
 
         self.assertTrue(result['server'])
         self.assertTrue(result['kiosk'])

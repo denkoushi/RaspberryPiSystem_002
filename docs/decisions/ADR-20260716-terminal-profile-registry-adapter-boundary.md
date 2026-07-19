@@ -124,6 +124,13 @@ fail-closed terminal rollout merely because a second filename allowlist was not
 updated, while genuinely unknown paths outside that closed boundary remain
 fail-closed.
 
+Browser E2E and test-data directories are validation-only neutral boundaries.
+The Ansible `common` role is the inverse: every registered terminal profile
+executes it, so its complete directory is `global`. These directory contracts
+prevent historical verified baselines from reporting known validation or shared
+runtime ownership as `unknown`; they do not weaken fail-closed handling for
+unowned paths.
+
 This generalization does not justify a production rollout. Its first physical
 proof occurs with a real product change through the ordinary canary and approval
 process. TalkPlaza remains static-only until a real control plane exists.
