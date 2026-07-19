@@ -84,6 +84,11 @@ class TorqueBluetoothAdapterTests(unittest.TestCase):
             "for argument in \"$@\"; do last=\"$argument\"; done\n"
             "printf '%s\\n' \"$last\" >> \"$TORQUE_BLUETOOTH_TEST_CALLS\"\n"
             "mode=\"${TORQUE_BLUETOOTH_TEST_MODE:?}\"\n"
+            "if [ \"$mode\" = stdin-eof ]; then\n"
+            "  if python3 -c 'import select, sys; raise SystemExit(0 if select.select([sys.stdin], [], [], 0)[0] else 1)'; then\n"
+            "    exit 124\n"
+            "  fi\n"
+            "fi\n"
             "if [ \"$last\" = info ]; then\n"
             "  case \"$mode\" in\n"
             "    info-timeout) exit 124 ;;\n"
@@ -110,7 +115,13 @@ class TorqueBluetoothAdapterTests(unittest.TestCase):
         )
         btmgmt.chmod(0o755)
 
-    def _run(self, argument: str, mode: str) -> subprocess.CompletedProcess[str]:
+    def _run(
+        self,
+        argument: str,
+        mode: str,
+        *,
+        extra_environment: dict[str, str] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
         environment = {
             **os.environ,
             "TORQUE_BLUETOOTH_SYS_ROOT": str(self.sys_root),
@@ -121,6 +132,7 @@ class TorqueBluetoothAdapterTests(unittest.TestCase):
             "TORQUE_BLUETOOTH_TEST_MODE": mode,
             "TORQUE_BLUETOOTH_TEST_STATE": str(self.state_path),
             "TORQUE_BLUETOOTH_TEST_CALLS": str(self.calls_path),
+            **(extra_environment or {}),
         }
         return subprocess.run(
             ["bash", "-s", "--", argument],
@@ -136,6 +148,19 @@ class TorqueBluetoothAdapterTests(unittest.TestCase):
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual(self.calls_path.read_text(encoding="utf-8").splitlines(), ["info"] * 3)
+
+    def test_btmgmt_keeps_a_non_readable_stdin_when_service_stdin_is_closed(self) -> None:
+        stdin_temp = self.root / "stdin-temp"
+        stdin_temp.mkdir()
+        completed = self._run(
+            "--probe",
+            "stdin-eof",
+            extra_environment={"TMPDIR": str(stdin_temp)},
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(self.calls_path.read_text(encoding="utf-8").splitlines(), ["info"] * 3)
+        self.assertEqual(list(stdin_temp.iterdir()), [])
 
     def test_main_powers_only_the_exact_unpowered_controller(self) -> None:
         self.state_path.write_text("unpowered\n", encoding="utf-8")

@@ -39,7 +39,7 @@ TORQUE_CANDIDATE_SOURCES = {
     "set -euo pipefail\n"
     "readonly vendor='{{ torque_agent_bluetooth_adapter.usb_vendor_id }}'\n"
     "readonly product='{{ torque_agent_bluetooth_adapter.usb_product_id }}'\n"
-    "run_btmgmt() { timeout --kill-after=1 4 btmgmt \"$@\"; cut -c1-240; }\n"
+    "run_btmgmt() { mkfifo -m 600 \"${stdin_fifo}\"; timeout --kill-after=1 4 btmgmt \"$@\" <&9 2>&1; cut -c1-240; }\n"
     "printf 'torque-bluetooth operation=%s result=%s status=%s\\n' info success 0\n"
     "probe_exact_controller() {\n"
     "  for _ in {1..3}; do run_btmgmt info; done\n"

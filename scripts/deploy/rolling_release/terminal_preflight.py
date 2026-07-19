@@ -680,6 +680,8 @@ def _candidate_torque_bluetooth_contract_issues(
     probe_source = helper[probe_start:probe_end] if probe_start >= 0 and probe_end >= 0 else ""
     if (
         "run_btmgmt()" not in helper
+        or 'mkfifo -m 600 "${stdin_fifo}"' not in helper
+        or '<&9 2>&1' not in helper
         or "torque-bluetooth operation=%s result=%s status=%s" not in helper
         or "for _ in {1..3}" not in helper
         or "--kill-after=1" not in helper

@@ -79,12 +79,30 @@ run_btmgmt() {
   local command_status
   local detail
   local result
+  local stdin_dir
+  local stdin_fifo
   shift
 
+  # BlueZ btmgmt 5.82 attaches stdin even for non-interactive commands.  A
+  # systemd service's closed stdin prevents the command from being dispatched.
+  # Keep both ends of a no-data FIFO open only for the bounded invocation.
+  stdin_dir="$(mktemp -d "${TMPDIR:-/tmp}/torque-btmgmt-stdin.XXXXXX")"
+  stdin_fifo="${stdin_dir}/stdin"
+  mkfifo -m 600 "${stdin_fifo}"
   set +e
-  command_output="$("${timeout_bin}" --signal=TERM --kill-after=1 "${command_timeout_seconds}" "${btmgmt_bin}" "$@" 2>&1)"
+  command_output="$(
+    {
+      exec 9<> "${stdin_fifo}"
+      "${timeout_bin}" --signal=TERM --kill-after=1 "${command_timeout_seconds}" "${btmgmt_bin}" "$@" <&9 2>&1
+      command_status=$?
+      exec 9>&-
+      exit "${command_status}"
+    }
+  )"
   command_status=$?
   set -e
+  rm -f "${stdin_fifo}"
+  rmdir "${stdin_dir}"
   if [[ "${command_status}" -ne 0 ]]; then
     detail="$(printf '%s' "${command_output}" | LC_ALL=C tr '\n\r\t' '   ' | LC_ALL=C tr -c '[:print:]' '?' | tr -s ' ' | cut -c1-240)"
     [[ -n "${detail}" ]] || detail='none'
