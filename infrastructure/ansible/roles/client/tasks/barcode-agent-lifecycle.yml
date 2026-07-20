@@ -13,10 +13,43 @@
     msg: "barcode-agent には Docker が必要です。{{ inventory_hostname }} に Docker をインストールしてください。"
   when: barcode_docker_version_check.rc != 0
 
-- name: Ensure barcode-agent container is up
+- name: Probe barcode-agent health before conditional Compose convergence
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ barcode_agent_rest_port | default(7072) }}/api/agent/status"
+    method: GET
+    status_code: [200]
+    timeout: 10
+  register: barcode_agent_pre_lifecycle_health
+  changed_when: false
+  failed_when: false
+
+- name: Determine whether barcode-agent Compose convergence is required
+  ansible.builtin.set_fact:
+    barcode_agent_compose_converge_needed: >-
+      {{
+        barcode_agent_image_build_needed | default(true) | bool
+        or barcode_agent_runtime_recreate_needed | default(true) | bool
+        or (barcode_agent_pre_lifecycle_health.status | default(-1) | int) != 200
+      }}
+  changed_when: false
+
+- name: Converge barcode-agent container when build, runtime, config, or health requires it
   ansible.builtin.shell: |
     set -euo pipefail
     cd "{{ repo_path }}"
+    compose_container_id() {
+      docker compose -f infrastructure/docker/docker-compose.client.yml --profile barcode ps -q barcode-agent \
+        2>/dev/null | head -n 1 || true
+    }
+    container_state() {
+      local container_id="$1"
+      if [[ -z "${container_id}" ]]; then
+        return 0
+      fi
+      docker inspect --format \{\{.State.Status\}\} "${container_id}" 2>/dev/null || true
+    }
+    before_id="$(compose_container_id)"
+    before_state="$(container_state "${before_id}")"
     {% if barcode_agent_image_build_needed | default(true) %}
     docker compose -f infrastructure/docker/docker-compose.client.yml --profile barcode up -d --build barcode-agent
     {% elif barcode_agent_runtime_recreate_needed | default(true) %}
@@ -24,9 +57,18 @@
     {% else %}
     docker compose -f infrastructure/docker/docker-compose.client.yml --profile barcode up -d --no-build barcode-agent
     {% endif %}
+    after_id="$(compose_container_id)"
+    after_state="$(container_state "${after_id}")"
+    changed=false
+    if [[ -z "${after_id}" || "${before_id}" != "${after_id}" || "${before_state}" != "running" ]]; then
+      changed=true
+    fi
+    printf '%s\n' "${changed}"
   args:
     executable: /bin/bash
   register: barcode_agent_up_result
+  changed_when: barcode_agent_up_result.stdout_lines | last | default('') == 'true'
+  when: barcode_agent_compose_converge_needed | bool
 
 - name: Wait for barcode-agent to become ready
   ansible.builtin.uri:

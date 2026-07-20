@@ -1,20 +1,20 @@
 ---
-# .env 変更時に nfc-agent コンテナを再作成して新設定を反映
-- name: restart nfc-agent
-  ansible.builtin.shell: |
-    set -euo pipefail
-    cd "{{ repo_path }}" && docker compose -f infrastructure/docker/docker-compose.client.yml up -d --force-recreate nfc-agent
-  args:
-    executable: /bin/bash
-  when: terminal_release_mode | default('full') == 'full'
+- name: reload client systemd daemon after release unit change
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: terminal_release_mode | default('full') == 'release-only'
 
-- name: restart barcode-agent
-  ansible.builtin.shell: |
-    set -euo pipefail
-    cd "{{ repo_path }}" && docker compose -f infrastructure/docker/docker-compose.client.yml --profile barcode up -d --force-recreate --no-build barcode-agent
-  args:
-    executable: /bin/bash
-  when: terminal_release_mode | default('full') == 'full'
+- name: restart status-agent service after release configuration change
+  ansible.builtin.systemd:
+    name: status-agent.service
+    state: restarted
+  when: terminal_release_mode | default('full') == 'release-only'
+
+- name: restart status-agent timer after release configuration change
+  ansible.builtin.systemd:
+    name: status-agent.timer
+    state: restarted
+  when: terminal_release_mode | default('full') == 'release-only'
 
 - name: restart haizen-agent
   ansible.builtin.systemd:

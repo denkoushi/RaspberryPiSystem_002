@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression checks for Pi4 agent build/recreate/no-build selection."""
+"""Regression checks for Pi4 agent changed-only Compose selection."""
 from __future__ import annotations
 
 import re
@@ -168,6 +168,12 @@ def classify_paths(paths: list[str], *, unavailable: bool = False) -> dict[str, 
     }
 
 
+def compose_converge_needed(*, image: bool, recreate: bool, health_status: int) -> bool:
+    """Mirror the fail-closed truth table used by every lifecycle task."""
+
+    return image or recreate or health_status != 200
+
+
 def assert_pre_sync_diff_fixture() -> None:
     common_tasks = (
         ROOT / "infrastructure/ansible/roles/common/tasks/main.yml"
@@ -238,6 +244,24 @@ def assert_pre_sync_diff_fixture() -> None:
         docs_only = classify_paths(["docs/readme.md"])
         if any(docs_only.values()):
             raise AssertionError(f"docs-only change must not rebuild client agents: {docs_only}")
+        if compose_converge_needed(
+            image=docs_only["nfc_image"],
+            recreate=docs_only["nfc_recreate"],
+            health_status=200,
+        ):
+            raise AssertionError("healthy unchanged agent must skip Docker Compose")
+        if not compose_converge_needed(
+            image=False, recreate=False, health_status=503
+        ):
+            raise AssertionError("unhealthy unchanged agent must converge Docker Compose")
+        if not compose_converge_needed(
+            image=True, recreate=False, health_status=200
+        ):
+            raise AssertionError("image change must converge Docker Compose")
+        if not compose_converge_needed(
+            image=False, recreate=True, health_status=200
+        ):
+            raise AssertionError("runtime/config change must converge Docker Compose")
 
         unavailable = git("diff", "--name-only", "f" * 40, new_sha, check=False)
         if unavailable.returncode == 0:
@@ -270,42 +294,42 @@ def assert_agent_scope_and_health_contracts() -> None:
         require(f"ansible.builtin.include_tasks: {filename}", include, name)
         require(f"when: {condition}", include, name)
 
-    for filename, environment_name, lifecycle_name, result, require_notification in (
+    for filename, environment_name, lifecycle_name, result in (
         (
             "nfc-agent.yml",
             "Deploy NFC agent environment variables",
             "Include NFC environment changes in lifecycle selection",
             "nfc_agent_env_result",
-            True,
         ),
         (
             "barcode-agent.yml",
             "Deploy barcode agent environment variables",
             "Include barcode environment changes in lifecycle selection",
             "barcode_agent_env_result",
-            True,
         ),
         (
             "torque-agent.yml",
             "Deploy torque-agent environment",
             "Include torque-agent environment changes in lifecycle selection",
             "torque_agent_env_result",
-            False,
         ),
     ):
         text = (CLIENT_TASKS / filename).read_text(encoding="utf-8")
         environment = task_block(text, environment_name)
         if "terminal_release_mode" in environment:
             raise AssertionError(f"{filename} environment must remain release-reachable")
-        if require_notification:
-            require("notify: restart", environment, f"{filename} environment notification")
+        if "notify:" in environment:
+            raise AssertionError(
+                f"{filename} environment must use the single lifecycle convergence path"
+            )
         lifecycle_selection = task_block(text, lifecycle_name)
         require(f"{result}.changed", lifecycle_selection, f"{filename} environment lifecycle")
 
-    for filename, agent, docker_register, health_path, status_register in (
+    for filename, agent, agent_variable, docker_register, health_path, status_register in (
         (
             "nfc-agent-lifecycle.yml",
             "nfc-agent",
+            "nfc_agent",
             "docker_version_check",
             "/api/agent/status",
             "nfc_agent_status_check",
@@ -313,6 +337,7 @@ def assert_agent_scope_and_health_contracts() -> None:
         (
             "barcode-agent-lifecycle.yml",
             "barcode-agent",
+            "barcode_agent",
             "barcode_docker_version_check",
             "/api/agent/status",
             "barcode_agent_status_check",
@@ -320,6 +345,7 @@ def assert_agent_scope_and_health_contracts() -> None:
         (
             "torque-agent-lifecycle.yml",
             "torque-agent",
+            "torque_agent",
             "torque_docker_version_check",
             "/health",
             "torque_agent_status_check",
@@ -334,6 +360,37 @@ def assert_agent_scope_and_health_contracts() -> None:
         )
         require("ansible.builtin.fail:", docker_failure, agent)
         require(f"when: {docker_register}.rc != 0", docker_failure, agent)
+        pre_lifecycle_health = task_block(
+            text, f"Probe {agent} health before conditional Compose convergence"
+        )
+        require(health_path, pre_lifecycle_health, agent)
+        require(f"register: {agent_variable}_pre_lifecycle_health", pre_lifecycle_health, agent)
+        require("status_code: [200]", pre_lifecycle_health, agent)
+        require("changed_when: false", pre_lifecycle_health, agent)
+        require("failed_when: false", pre_lifecycle_health, agent)
+        selection = task_block(
+            text, f"Determine whether {agent} Compose convergence is required"
+        )
+        require(f"{agent_variable}_image_build_needed | default(true) | bool", selection, agent)
+        require(f"{agent_variable}_runtime_recreate_needed | default(true) | bool", selection, agent)
+        require(f"{agent_variable}_pre_lifecycle_health.status", selection, agent)
+        require("!= 200", selection, agent)
+        require("changed_when: false", selection, agent)
+        converge = task_block(
+            text,
+            f"Converge {agent} container when build, runtime, config, or health requires it",
+        )
+        require(f"when: {agent_variable}_compose_converge_needed | bool", converge, agent)
+        require(f"register: {agent_variable}_up_result", converge, agent)
+        require(
+            f"changed_when: {agent_variable}_up_result.stdout_lines | last | default('') == 'true'",
+            converge,
+            agent,
+        )
+        require("compose_container_id()", converge, agent)
+        require("container_state()", converge, agent)
+        require("docker inspect --format", converge, agent)
+        require("printf '%s\\n' \"${changed}\"", converge, agent)
         readiness = task_block(text, f"Wait for {agent} to become ready")
         require(health_path, readiness, agent)
         require("status_code: [200]", readiness, agent)
@@ -347,24 +404,71 @@ def assert_agent_scope_and_health_contracts() -> None:
         require("docker-compose.client.yml", diagnostics, agent)
         require("ps -a", diagnostics, agent)
 
-    handlers = (
-        ROOT / "infrastructure/ansible/roles/client/handlers/main.yml"
-    ).read_text(encoding="utf-8")
-    barcode_handler = task_block(handlers, "restart barcode-agent")
-    require("--force-recreate --no-build barcode-agent", barcode_handler, "barcode handler")
+    handlers = (ROOT / "infrastructure/ansible/roles/client/handlers/main.yml").read_text(
+        encoding="utf-8"
+    )
+    reload_handler = task_block(
+        handlers, "reload client systemd daemon after release unit change"
+    )
+    service_handler = task_block(
+        handlers, "restart status-agent service after release configuration change"
+    )
+    timer_handler = task_block(
+        handlers, "restart status-agent timer after release configuration change"
+    )
+    for handler, required in (
+        (reload_handler, "daemon_reload: true"),
+        (service_handler, "name: status-agent.service"),
+        (timer_handler, "name: status-agent.timer"),
+    ):
+        require(
+            "terminal_release_mode | default('full') == 'release-only'",
+            handler,
+            "changed-only release handler",
+        )
+        require(required, handler, "changed-only release handler")
+    require("state: restarted", service_handler, "status-agent service handler")
+    require("state: restarted", timer_handler, "status-agent timer handler")
+    if not (
+        handlers.index("- name: reload client systemd daemon")
+        < handlers.index("- name: restart status-agent service")
+        < handlers.index("- name: restart status-agent timer")
+    ):
+        raise AssertionError("systemd reload handler must precede targeted restart handlers")
+
+    status_config = task_block(main, "Create status-agent configuration file")
+    status_service = task_block(main, "Copy status-agent systemd service file")
+    status_timer = task_block(main, "Copy status-agent systemd timer file")
+    require(
+        "notify: restart status-agent service after release configuration change",
+        status_config,
+        "status-agent configuration notification",
+    )
+    for task, restart in (
+        (status_service, "restart status-agent service after release configuration change"),
+        (status_timer, "restart status-agent timer after release configuration change"),
+    ):
+        require(
+            "reload client systemd daemon after release unit change",
+            task,
+            "status-agent unit notification",
+        )
+        require(restart, task, "status-agent unit notification")
+    legacy_restart = task_block(main, "Restart required services (clients) with retry")
     require(
         "terminal_release_mode | default('full') == 'full'",
-        barcode_handler,
-        "barcode handler release guard",
+        legacy_restart,
+        "release-only restart suppression",
     )
-    if "--build" in barcode_handler:
-        raise AssertionError("barcode config handler must not rebuild the image")
-    nfc_handler = task_block(handlers, "restart nfc-agent")
-    require(
-        "terminal_release_mode | default('full') == 'full'",
-        nfc_handler,
-        "nfc handler release guard",
+    flush_handlers = task_block(
+        main, "Apply changed-only release service handlers before health verification"
     )
+    require("ansible.builtin.meta: flush_handlers", flush_handlers, "handler flush")
+    if not (
+        main.index("- name: Apply changed-only release service handlers before health verification")
+        < main.index("- name: Verify restarted client services and timers are healthy")
+    ):
+        raise AssertionError("changed-only handlers must flush before universal health checks")
 
     health = task_block(main, "Verify restarted client services and timers are healthy")
     require("status-agent.service", health, "status-agent oneshot health")
