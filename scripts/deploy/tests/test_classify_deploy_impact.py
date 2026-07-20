@@ -150,6 +150,17 @@ class ClassifyDeployImpactTest(unittest.TestCase):
         self.assertEqual(result['components'], ['deploy-control'])
         self.assertEqual(result['affectedProfiles'], [])
 
+    def test_pi5_migration_validator_is_control_plane_impact(self):
+        result = impact.classify(
+            ['scripts/deploy/validate-expand-only-migrations.py']
+        )
+        self.assertTrue(result['server'])
+        self.assertFalse(result['migration'])
+        self.assertFalse(result['kiosk'])
+        self.assertFalse(result['signage'])
+        self.assertEqual(result['components'], ['pi5-control'])
+        self.assertEqual(result['affectedProfiles'], [])
+
     def test_deploy_directory_boundary_preserves_test_and_signage_overrides(self):
         self.assertEqual(
             impact.classify(['scripts/deploy/new-control-step.py'])['components'],

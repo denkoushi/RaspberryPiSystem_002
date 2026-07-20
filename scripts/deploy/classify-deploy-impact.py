@@ -53,6 +53,14 @@ def classify(paths, *, registry: TerminalProfileRegistry = DEFAULT_REGISTRY):
             result['migration'] = result['server'] = True
             continue
 
+        if component == 'pi5-control':
+            # The expand-only validator executes from the Pi5 checkout before
+            # a candidate schema migration is accepted.  Its own fixes must
+            # therefore roll out to Pi5 even though they do not change a
+            # terminal runtime.
+            result['server'] = True
+            continue
+
         if component == 'server-app':
             result['server'] = True
             continue

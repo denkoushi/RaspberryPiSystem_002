@@ -149,6 +149,7 @@
     {"match": "exact", "path": ".gitignore", "component": "deploy-control"},
     {"match": "exact", "path": "infrastructure/ansible/ansible-readonly.cfg", "component": "deploy-control"},
     {"match": "exact", "path": "scripts/update-all-clients.sh", "component": "deploy-control"},
+    {"match": "exact", "path": "scripts/deploy/validate-expand-only-migrations.py", "component": "pi5-control"},
     {"match": "exact", "path": "scripts/deploy/signage-runtime-proof.py", "component": "signage-role"},
     {"match": "prefix", "path": "scripts/deploy/", "component": "deploy-control"},
     {"match": "prefix", "path": "apps/api/prisma/migrations/", "component": "migration"},
@@ -188,6 +189,7 @@
   "componentProfiles": {
     "neutral": [],
     "deploy-control": [],
+    "pi5-control": [],
     "migration": [],
     "server-app": [],
     "nfc-agent": ["kiosk"],
