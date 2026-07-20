@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { KioskAssemblyWorkSessionPage } from './KioskAssemblyWorkSessionPage';
 
@@ -12,6 +12,9 @@ const mockRecordAssemblyTorque = vi.fn();
 const mockAdvanceAssemblyArea = vi.fn();
 const mockRestartAssemblyArea = vi.fn();
 const mockCompleteAssemblyWorkSession = vi.fn();
+const mockListCompatibleTorqueWrenches = vi.fn();
+const mockListCurrentTorqueWrenchConfirmations = vi.fn();
+const mockConfirmAssemblyTorqueWrench = vi.fn();
 
 vi.mock('../../api/client', () => ({
   getAssemblyWorkSession: (...args: unknown[]) => mockGetAssemblyWorkSession(...args),
@@ -21,6 +24,9 @@ vi.mock('../../api/client', () => ({
   advanceAssemblyArea: (...args: unknown[]) => mockAdvanceAssemblyArea(...args),
   restartAssemblyArea: (...args: unknown[]) => mockRestartAssemblyArea(...args),
   completeAssemblyWorkSession: (...args: unknown[]) => mockCompleteAssemblyWorkSession(...args),
+  listCompatibleTorqueWrenchesForSession: (...args: unknown[]) => mockListCompatibleTorqueWrenches(...args),
+  listCurrentTorqueWrenchConfirmations: (...args: unknown[]) => mockListCurrentTorqueWrenchConfirmations(...args),
+  confirmAssemblyTorqueWrench: (...args: unknown[]) => mockConfirmAssemblyTorqueWrench(...args),
   resolveKioskDocumentPageImageUrl: (path: string) => path
 }));
 
@@ -59,6 +65,7 @@ const session: AssemblyWorkSessionDto = {
     modelCode: 'MH-AX',
     procedurePattern: '標準',
     name: 'MH-AX 標準',
+    traceabilityMode: 'LEGACY',
     version: 1,
     isActive: true,
     procedureDocumentId: 'procedure-1',
@@ -150,6 +157,10 @@ function renderPage() {
 }
 
 describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   beforeEach(() => {
     mockGetAssemblyWorkSession.mockReset();
     mockGetProcedureSequence.mockReset();
@@ -157,6 +168,9 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     mockAdvanceAssemblyArea.mockReset();
     mockRestartAssemblyArea.mockReset();
     mockCompleteAssemblyWorkSession.mockReset();
+    mockListCompatibleTorqueWrenches.mockReset();
+    mockListCurrentTorqueWrenchConfirmations.mockReset();
+    mockConfirmAssemblyTorqueWrench.mockReset();
     mockGetAssemblyWorkSession.mockResolvedValue(session);
     mockGetProcedureSequence.mockResolvedValue(configuredSequence);
   });
@@ -173,7 +187,8 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     await waitFor(() => {
       expect(screen.getByText((_, element) => element?.tagName === 'SPAN' && element.textContent === '要領書')).toBeInTheDocument();
     });
-    expect(screen.getAllByText('BOLT-1').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('BOLT-1')).not.toBeInTheDocument();
+    expect(screen.getAllByText('丸数字 1').length).toBeGreaterThanOrEqual(1);
   });
 
   it('renders configured PDF procedure sequence with page navigation', async () => {
@@ -200,5 +215,52 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     await waitFor(() => expect(mockGetProcedureSequence).toHaveBeenCalledWith('session-1'));
     expect(await screen.findByText('fallback procedure canvas')).toBeInTheDocument();
     expect(await screen.findByText('手順書')).toBeInTheDocument();
+  });
+
+  it('automatically reuses a current physical-wrench confirmation for the same tightening condition', async () => {
+    const requiredSession: AssemblyWorkSessionDto = {
+      ...session,
+      template: {
+        ...session.template,
+        traceabilityMode: 'REQUIRED',
+        areas: session.template.areas.map((area) => ({
+          ...area,
+          bolts: area.bolts.map((bolt) => ({
+            ...bolt,
+            nominalDiameter: 'M8',
+            boltLengthMm: '35',
+            material: 'SCM435',
+            strengthClass: '10.9',
+            capabilityGroupId: 'group-1'
+          }))
+        }))
+      }
+    };
+    mockGetAssemblyWorkSession.mockResolvedValue(requiredSession);
+    mockListCompatibleTorqueWrenches.mockResolvedValue([
+      {
+        profile: {
+          id: 'profile-1',
+          serialNumber: 'TW-A103',
+          model: { modelNumber: 'CEM20N3X10D-BTLA' },
+          settingHistories: [{ nominalTorque: '10', unit: 'N·m' }]
+        },
+        conditionFingerprint: 'condition-1'
+      }
+    ]);
+    mockListCurrentTorqueWrenchConfirmations.mockResolvedValue([
+      {
+        id: 'confirmation-1',
+        torqueWrenchProfileId: 'profile-1',
+        settingHistoryId: 'setting-1'
+      }
+    ]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
+
+    renderPage();
+
+    expect(await screen.findByText('同じ締付条件の確認を引継ぎ・トルク入力待機中')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '現物確認済み' })).toBeDisabled();
+    expect(mockListCurrentTorqueWrenchConfirmations).toHaveBeenCalledWith('session-1');
   });
 });

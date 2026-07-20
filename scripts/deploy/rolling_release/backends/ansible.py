@@ -13,9 +13,12 @@ import re
 import shlex
 import subprocess
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from ..adapter_registry import adapter_for_profile
+
+if TYPE_CHECKING:
+    from ..terminal_adapters import TerminalRuntimeManifestContract
 
 
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$")
@@ -37,6 +40,10 @@ _RUNTIME_MANIFEST_MARKER_RE = re.compile(
     r"TERMINAL_RUNTIME_MANIFEST_RESULT:"
     r"([A-Za-z0-9_-]+={0,2})(?![A-Za-z0-9_=-])"
 )
+_RUNTIME_MANIFEST_ERROR_MARKER_RE = re.compile(
+    r"TERMINAL_RUNTIME_MANIFEST_ERROR:"
+    r"([A-Za-z0-9_-]+={0,2})(?![A-Za-z0-9_=-])"
+)
 _SIGNAGE_MAINTENANCE_MARKER_RE = re.compile(
     r"SIGNAGE_MAINTENANCE_SEALED:([0-9a-f]{64})(?![0-9a-f])"
 )
@@ -46,8 +53,11 @@ _SIGNAGE_ENDPOINT_MARKER_RE = re.compile(
 _SIGNAGE_RUNTIME_MARKER_RE = re.compile(
     r"SIGNAGE_RUNTIME_PROOF_OK:([0-9a-f]{64})(?![0-9a-f])"
 )
+_KIOSK_AGENT_ORDER = ("nfc-agent", "barcode-agent", "torque-agent")
 _TERMINAL_AGENT_MARKER_RE = re.compile(
-    r"TERMINAL_AGENT_HEALTH_OK:(nfc-agent|barcode-agent):([0-9]{1,5})"
+    r"TERMINAL_AGENT_HEALTH_OK:("
+    + "|".join(re.escape(agent) for agent in _KIOSK_AGENT_ORDER)
+    + r"):([0-9]{1,5})"
     r"(?![A-Za-z0-9_-])"
 )
 _MAX_MARKER_BYTES = 2 * 1024 * 1024
@@ -67,12 +77,6 @@ _SERVER_CONFIG_PATHS = (
     f"{_TERMINAL_REPOSITORY}/apps/web/.env",
     f"{_TERMINAL_REPOSITORY}/infrastructure/docker/.env",
 )
-_CLIENT_COMPOSE_PROJECT = "docker"
-_CLIENT_COMPOSE_DIRECTORY = f"{_TERMINAL_REPOSITORY}/infrastructure/docker"
-_CLIENT_COMPOSE_FILE = (
-    f"{_CLIENT_COMPOSE_DIRECTORY}/docker-compose.client.yml"
-)
-
 _COMMON_RUNTIME_UNITS = (
     "lightdm.service",
     "status-agent.service",
@@ -110,6 +114,11 @@ _COMMON_TERMINAL_PATHS = (
 )
 
 _KIOSK_TERMINAL_PATHS = (
+    f"{_TERMINAL_REPOSITORY}/clients/torque-agent/.env",
+    "/usr/local/libexec/torque-bluetooth-adapter",
+    "/etc/systemd/system/torque-bluetooth-adapter@.service",
+    "/etc/udev/rules.d/90-torque-bluetooth-adapter.rules",
+    "/etc/udev/rules.d/99-torque-wrench-hid.rules",
     "/usr/bin/chromium-browser",
     "/usr/local/bin/kiosk-launch.sh",
     "/etc/systemd/system/kiosk-browser.service",
@@ -419,6 +428,53 @@ def _runtime_manifest_marker(output: str) -> dict[str, Any]:
     return first
 
 
+def _runtime_manifest_error_marker(output: str) -> dict[str, Any]:
+    encoded_results = _RUNTIME_MANIFEST_ERROR_MARKER_RE.findall(output)
+    if not encoded_results:
+        raise RuntimeError("terminal runtime manifest error marker is missing")
+    decoded_results: list[dict[str, str]] = []
+    for encoded in encoded_results:
+        if len(encoded) > 65536:
+            raise RuntimeError("terminal runtime manifest error marker is too large")
+        try:
+            raw = base64.b64decode(encoded, altchars=b"-_", validate=True)
+            if base64.urlsafe_b64encode(raw).decode("ascii") != encoded:
+                raise ValueError("non-canonical base64")
+            value = json.loads(
+                raw.decode("utf-8"),
+                object_pairs_hook=_reject_duplicate_json_keys,
+                parse_constant=lambda constant: (_ for _ in ()).throw(
+                    ValueError(f"invalid JSON constant: {constant}")
+                ),
+            )
+        except (
+            UnicodeDecodeError,
+            binascii.Error,
+            json.JSONDecodeError,
+            ValueError,
+        ) as error:
+            raise RuntimeError(
+                "terminal runtime manifest error marker is malformed"
+            ) from error
+        if (
+            not isinstance(value, dict)
+            or set(value) != {"version", "code", "message"}
+            or value.get("version") != 1
+            or not isinstance(value.get("code"), str)
+            or re.fullmatch(r"[a-z0-9.-]{1,100}", value["code"]) is None
+            or not isinstance(value.get("message"), str)
+            or not value["message"]
+            or len(value["message"]) > 512
+            or any(ord(character) < 32 for character in value["message"])
+        ):
+            raise RuntimeError("terminal runtime manifest error marker is malformed")
+        decoded_results.append(value)
+    first = decoded_results[0]
+    if any(result != first for result in decoded_results[1:]):
+        raise RuntimeError("terminal runtime manifest error callback results disagree")
+    return first
+
+
 def _validated_terminal_spec(target_spec: dict[str, str]) -> tuple[str, str]:
     host = target_spec.get("host")
     terminal_type = target_spec.get("terminalType")
@@ -525,21 +581,37 @@ def _run_runtime_manifest_helper(
     runtime: Runtime,
 ) -> dict[str, Any]:
     source = runtime.PROJECT / "scripts/deploy/terminal-runtime-manifest.py"
-    output = runtime.run(
-        [
-            "ansible",
-            "-i",
-            inventory,
-            host,
-            "-b",
-            "-m",
-            "script",
-            "-a",
-            _manifest_action([str(source), *arguments, "--ansible-marker"]),
-        ],
-        cwd=runtime.ANSIBLE_DIRECTORY,
-        capture=True,
-    )
+    try:
+        output = runtime.run(
+            [
+                "ansible",
+                "-i",
+                inventory,
+                host,
+                "-b",
+                "-m",
+                "script",
+                "-a",
+                _manifest_action([str(source), *arguments, "--ansible-marker"]),
+            ],
+            cwd=runtime.ANSIBLE_DIRECTORY,
+            capture=True,
+        )
+    except subprocess.CalledProcessError as error:
+        combined = "\n".join(
+            value
+            for value in (error.stdout, error.stderr)
+            if isinstance(value, str)
+        )
+        try:
+            evidence = _runtime_manifest_error_marker(combined)
+        except RuntimeError:
+            raise RuntimeError(
+                f"terminal runtime manifest operation failed without safe evidence: {host}"
+            ) from None
+        raise RuntimeError(
+            f"terminal runtime manifest {evidence['code']}: {evidence['message']}"
+        ) from None
     return _runtime_manifest_marker(output)
 
 
@@ -554,6 +626,45 @@ def _expected_runtime_manifest_path(run_id: str, host: str) -> str:
 def _terminal_runtime_contract(terminal_type: str) -> tuple[list[str], list[str]]:
     adapter = adapter_for_profile(terminal_type, runtime=None)
     return list(adapter.runtime_units), list(adapter.docker_services)
+
+
+def _terminal_runtime_manifest_contract(
+    terminal_type: str,
+) -> TerminalRuntimeManifestContract:
+    return adapter_for_profile(
+        terminal_type, runtime=None
+    ).runtime_manifest_contract
+
+
+def _validated_runtime_health_contract(
+    value: Any, *, terminal_type: str
+) -> dict[str, list[str]]:
+    """Validate the non-secret health contract derived from a sealed manifest."""
+
+    units, docker_services = _terminal_runtime_contract(terminal_type)
+    if not isinstance(value, dict) or set(value) != {
+        "activeSystemdUnits",
+        "runningDockerServices",
+    }:
+        raise RuntimeError("terminal runtime health contract is malformed")
+    active_units = value.get("activeSystemdUnits")
+    running_services = value.get("runningDockerServices")
+    if (
+        not isinstance(active_units, list)
+        or any(not isinstance(unit, str) or unit not in units for unit in active_units)
+        or len(active_units) != len(set(active_units))
+        or not isinstance(running_services, list)
+        or any(
+            not isinstance(service, str) or service not in docker_services
+            for service in running_services
+        )
+        or len(running_services) != len(set(running_services))
+    ):
+        raise RuntimeError("terminal runtime health contract is malformed")
+    return {
+        "activeSystemdUnits": list(active_units),
+        "runningDockerServices": list(running_services),
+    }
 
 
 def _terminal_restart_on_restore_contract(terminal_type: str) -> list[str]:
@@ -572,7 +683,9 @@ def _capture_terminal_runtime_manifest(
     *,
     runtime: Runtime,
 ) -> dict[str, Any]:
-    units, docker_services = _terminal_runtime_contract(terminal_type)
+    contract = _terminal_runtime_manifest_contract(terminal_type)
+    units = list(contract.systemd_units)
+    docker_services = list(contract.docker_services)
     arguments = [
         "capture",
         "--root",
@@ -584,21 +697,27 @@ def _capture_terminal_runtime_manifest(
     ]
     for unit in units:
         arguments.extend(("--unit", unit))
-    for unit in _terminal_restart_on_restore_contract(terminal_type):
+    for unit in contract.restart_on_restore_units:
         arguments.extend(("--restart-on-restore-unit", unit))
     for service in docker_services:
         arguments.extend(("--docker-service", service))
     if docker_services:
+        if (
+            contract.compose_project is None
+            or contract.compose_working_directory is None
+            or not contract.compose_config_files
+        ):
+            raise RuntimeError("terminal runtime Compose contract is incomplete")
         arguments.extend(
             (
                 "--compose-project",
-                _CLIENT_COMPOSE_PROJECT,
+                contract.compose_project,
                 "--compose-working-directory",
-                _CLIENT_COMPOSE_DIRECTORY,
-                "--compose-config-file",
-                _CLIENT_COMPOSE_FILE,
+                contract.compose_working_directory,
             )
         )
+        for path in contract.compose_config_files:
+            arguments.extend(("--compose-config-file", path))
     result = _run_runtime_manifest_helper(
         inventory, host, arguments, runtime=runtime
     )
@@ -1032,10 +1151,17 @@ def probe_signage_endpoints(
 def probe_kiosk_agents(
     inventory: str,
     host: str,
+    expected_agents: list[str] | tuple[str, ...] | None = None,
     *,
     runtime: Runtime,
 ) -> dict[str, Any]:
-    """Prove every agent enabled by this host's resolved inventory facts."""
+    """Prove the selected agent set without mixing release-time authorities.
+
+    A normal deployment derives the set from current inventory.  A rollback
+    supplies the exact running service set derived from its sealed runtime
+    manifest; newer inventory may describe agents that did not exist in the
+    restored release.
+    """
 
     if not isinstance(host, str) or _HOST_RE.fullmatch(host) is None:
         raise ValueError("terminal host is malformed")
@@ -1056,18 +1182,50 @@ def probe_kiosk_agents(
         raise RuntimeError(f"kiosk inventory facts are malformed: {host}") from error
     if not isinstance(values, dict):
         raise RuntimeError(f"kiosk inventory facts are malformed: {host}")
-    nfc_identity = values.get("nfc_agent_client_id")
-    if nfc_identity is not None and (
-        not isinstance(nfc_identity, str)
-        or _CLIENT_ID_RE.fullmatch(nfc_identity) is None
-    ):
-        raise RuntimeError(f"kiosk NFC inventory contract is malformed: {host}")
-    barcode_enabled = values.get("barcode_agent_enabled", False)
-    if type(barcode_enabled) is not bool:
-        raise RuntimeError(f"kiosk barcode inventory contract is malformed: {host}")
-    barcode_port = values.get("barcode_agent_rest_port", 7072)
+    if expected_agents is None:
+        nfc_identity = values.get("nfc_agent_client_id")
+        if nfc_identity is not None and (
+            not isinstance(nfc_identity, str)
+            or _CLIENT_ID_RE.fullmatch(nfc_identity) is None
+        ):
+            raise RuntimeError(f"kiosk NFC inventory contract is malformed: {host}")
+        barcode_enabled = values.get("barcode_agent_enabled", False)
+        if type(barcode_enabled) is not bool:
+            raise RuntimeError(f"kiosk barcode inventory contract is malformed: {host}")
+        torque_enabled = values.get("torque_agent_enabled", False)
+        if type(torque_enabled) is not bool:
+            raise RuntimeError(f"kiosk torque inventory contract is malformed: {host}")
+        selected_agents = tuple(
+            agent
+            for agent, enabled in (
+                ("nfc-agent", nfc_identity is not None),
+                ("barcode-agent", barcode_enabled),
+                ("torque-agent", torque_enabled),
+            )
+            if enabled
+        )
+    else:
+        if (
+            not isinstance(expected_agents, (list, tuple))
+            or any(
+                not isinstance(agent, str) or agent not in _KIOSK_AGENT_ORDER
+                for agent in expected_agents
+            )
+            or len(expected_agents) != len(set(expected_agents))
+        ):
+            raise RuntimeError(f"kiosk restored-agent contract is malformed: {host}")
+        selected = set(expected_agents)
+        selected_agents = tuple(
+            agent for agent in _KIOSK_AGENT_ORDER if agent in selected
+        )
+    barcode_port = (
+        values.get("barcode_agent_rest_port", 7072)
+        if expected_agents is None
+        else None
+    )
     if (
-        barcode_enabled
+        "barcode-agent" in selected_agents
+        and barcode_port is not None
         and (
             isinstance(barcode_port, bool)
             or not isinstance(barcode_port, int)
@@ -1075,25 +1233,48 @@ def probe_kiosk_agents(
         )
     ):
         raise RuntimeError(f"kiosk barcode inventory port is malformed: {host}")
-    agents: list[tuple[str, int, bool]] = []
-    if nfc_identity is not None:
-        agents.append(("nfc-agent", 7071, True))
-    if barcode_enabled:
+    agents: list[tuple[str, int | None, bool]] = []
+    if "nfc-agent" in selected_agents:
+        agents.append(
+            ("nfc-agent", 7071 if expected_agents is None else None, True)
+        )
+    if "barcode-agent" in selected_agents:
         agents.append(("barcode-agent", barcode_port, False))
+    torque_port = (
+        values.get("torque_agent_local_port", 7073)
+        if expected_agents is None
+        else None
+    )
+    if (
+        "torque-agent" in selected_agents
+        and torque_port is not None
+        and (
+            isinstance(torque_port, bool)
+            or not isinstance(torque_port, int)
+            or torque_port != 7073
+        )
+    ):
+        raise RuntimeError(f"kiosk torque inventory port is malformed: {host}")
+    if "torque-agent" in selected_agents:
+        agents.append(("torque-agent", torque_port, False))
 
     source = runtime.PROJECT / "scripts/deploy/terminal-agent-health-probe.py"
+    compose_files = _terminal_runtime_manifest_contract(
+        "kiosk"
+    ).compose_config_files
+    if len(compose_files) != 1:
+        raise RuntimeError("kiosk agent health Compose contract is malformed")
     endpoints: list[dict[str, Any]] = []
     for agent, port, require_pcscd in agents:
         arguments = [
             str(source),
             "--agent",
             agent,
-            "--port",
-            str(port),
+            *(["--port", str(port)] if port is not None else []),
             "--repository",
             _TERMINAL_REPOSITORY,
             "--compose-file",
-            _CLIENT_COMPOSE_FILE,
+            compose_files[0],
             *(["--require-pcscd"] if require_pcscd else []),
             "--ansible-marker",
         ]
@@ -1113,14 +1294,19 @@ def probe_kiosk_agents(
             capture=True,
         )
         markers = _TERMINAL_AGENT_MARKER_RE.findall(output)
-        expected = (agent, str(port))
-        if not markers or any(marker != expected for marker in markers):
+        if not markers or any(marker != markers[0] for marker in markers):
             raise RuntimeError(f"kiosk agent health could not be verified: {host}")
-        endpoints.append({"agent": agent, "port": port})
+        proven_agent, proven_port_raw = markers[0]
+        if proven_agent != agent:
+            raise RuntimeError(f"kiosk agent health could not be verified: {host}")
+        proven_port = int(proven_port_raw)
+        if port is not None and proven_port != port:
+            raise RuntimeError(f"kiosk agent health could not be verified: {host}")
+        endpoints.append({"agent": agent, "port": proven_port})
     return {
         "agentContainers": [value["agent"] for value in endpoints],
         "authenticatedAgentEndpoints": endpoints,
-        "pcscdRequired": nfc_identity is not None,
+        "pcscdRequired": "nfc-agent" in selected_agents,
     }
 
 
@@ -1572,6 +1758,7 @@ def preflight_terminal_rollback(
                 "manifestSha256",
                 "unitCount",
                 "dockerCount",
+                "runtimeHealth",
                 "restoredReceipt",
                 "requiresRuntimeReconciliation",
                 "issues",
@@ -1591,6 +1778,9 @@ def preflight_terminal_rollback(
             or runtime_result["ready"] != (not runtime_result["issues"])
         ):
             raise RuntimeError("terminal runtime rollback preflight result is invalid")
+        runtime_result["runtimeHealth"] = _validated_runtime_health_contract(
+            runtime_result.get("runtimeHealth"), terminal_type=authority["terminalType"]
+        )
         issues.extend(f"runtime manifest: {issue}" for issue in runtime_result["issues"])
     except Exception as error:
         issues.append(f"runtime manifest: {error}")
@@ -1600,6 +1790,9 @@ def preflight_terminal_rollback(
         "issues": issues,
         "fileManifestReady": bool(file_result and file_result.get("ready")),
         "runtimeManifestReady": bool(runtime_result and runtime_result.get("ready")),
+        "runtimeHealth": (
+            runtime_result.get("runtimeHealth") if runtime_result else None
+        ),
         "restoredReceipt": bool(runtime_result and runtime_result.get("restoredReceipt")),
         "requiresRuntimeReconciliation": bool(
             runtime_result and runtime_result.get("requiresRuntimeReconciliation")
@@ -1620,6 +1813,7 @@ def rollback_terminal(
             target_spec, target, run_id
         )
         host = authority["host"]
+        terminal_type = authority["terminalType"]
         previous_sha = authority["previousSha"]
         desired_sha = authority["desiredSha"]
         expected_path = authority["manifestPath"]
@@ -1692,7 +1886,13 @@ def rollback_terminal(
         )
         if (
             set(runtime_result)
-            != {"restored", "manifestSha256", "unitCount", "dockerCount"}
+            != {
+                "restored",
+                "manifestSha256",
+                "unitCount",
+                "dockerCount",
+                "runtimeHealth",
+            }
             or runtime_result.get("restored") is not True
             or runtime_result.get("manifestSha256")
             != runtime_manifest["manifestSha256"]
@@ -1701,6 +1901,9 @@ def rollback_terminal(
             != runtime_manifest["dockerCount"]
         ):
             raise RuntimeError("terminal runtime restore result is invalid")
+        target["rollbackRuntimeHealth"] = _validated_runtime_health_contract(
+            runtime_result.get("runtimeHealth"), terminal_type=terminal_type
+        )
         target["rollback"] = "success"
         return True
     except Exception as rollback_error:

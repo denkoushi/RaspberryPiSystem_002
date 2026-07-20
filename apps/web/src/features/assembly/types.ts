@@ -25,6 +25,7 @@ export type AssemblyProcedureDocumentSummaryDto = AssemblyProcedureDocumentDto &
 export type AssemblyTemplateBoltDto = {
   id: string;
   areaId: string;
+  templateId: string;
   sortOrder: number;
   tighteningId: string;
   markerNo: number;
@@ -33,6 +34,11 @@ export type AssemblyTemplateBoltDto = {
   calloutTipXRatio?: string | null;
   calloutTipYRatio?: string | null;
   boltSpec: string;
+  nominalDiameter: string | null;
+  boltLengthMm: string | null;
+  material: string | null;
+  strengthClass: string | null;
+  capabilityGroupId: string | null;
   nominalTorque: string;
   lowerLimit: string;
   upperLimit: string;
@@ -80,6 +86,7 @@ export type AssemblyTemplateDto = {
   name: string;
   version: number;
   isActive: boolean;
+  traceabilityMode?: 'LEGACY' | 'REQUIRED';
   procedureDocumentId: string;
   createdAt: string;
   updatedAt: string;
@@ -95,6 +102,7 @@ export type AssemblyTemplateSummaryDto = {
   name: string;
   version: number;
   isActive: boolean;
+  traceabilityMode?: 'LEGACY' | 'REQUIRED';
   procedureDocumentId: string;
   procedureDocumentName: string;
   areaCount: number;
@@ -111,9 +119,27 @@ export type AssemblyTorqueRecordDto = {
   inputSource: 'manual' | 'mock' | 'agent';
   rawPayload?: unknown;
   value: string | null;
+  inputUnit?: string | null;
+  valueNm?: string | null;
   judgement: 'ok' | 'ng' | 'ignored';
   accepted: boolean;
   ignoredReason: string | null;
+  torqueWrenchProfileId?: string | null;
+  confirmationId?: string | null;
+  settingHistoryId?: string | null;
+  serialNumberSnapshot?: string | null;
+  manufacturerSnapshot?: string | null;
+  modelNumberSnapshot?: string | null;
+  settingLowerLimitSnapshot?: string | null;
+  settingNominalTorqueSnapshot?: string | null;
+  settingUpperLimitSnapshot?: string | null;
+  settingUnitSnapshot?: string | null;
+  sourceEventKey?: string | null;
+  deviceRecordedAt?: string | null;
+  deviceMemoryCounter?: string | null;
+  deviceJudgement?: string | null;
+  overrideActorUsername?: string | null;
+  overrideReason?: string | null;
   recordedAt: string;
   createdAt: string;
   tighteningId: string;
@@ -175,6 +201,7 @@ export type AssemblyWorkSessionDto = {
   templateId: string;
   status: 'in_progress' | 'completed' | 'cancelled';
   productNo: string;
+  workId?: string;
   serialNo: string;
   nameplateNo: string;
   operatorEmployeeId: string | null;
@@ -219,6 +246,7 @@ export type AssemblyWorkSessionSummaryDto = {
   templateId: string;
   status: 'in_progress' | 'completed' | 'cancelled';
   productNo: string;
+  workId?: string;
   serialNo: string;
   nameplateNo: string;
   operatorNameSnapshot: string;
@@ -239,6 +267,8 @@ export type AssemblyWorkSessionSummaryDto = {
   acceptedBoltCount: number;
   totalBoltCount: number;
   approval: AssemblyWorkSessionApprovalDto | null;
+  isTopLevel?: boolean;
+  formalId?: string | null;
 };
 
 export type AssemblyLotSerialStatusDto = 'not_started' | 'in_progress' | 'completed' | 'cancelled';
@@ -247,6 +277,7 @@ export type AssemblyLotSerialDto = {
   id: string;
   lotId: string;
   sortOrder: number;
+  workId?: string;
   serialNo: string;
   status: AssemblyLotSerialStatusDto;
   workSessionId: string | null;
@@ -370,13 +401,18 @@ export type AssemblyProcedureSequenceDto = {
 
 export type AssemblyTemplateBoltInput = {
   sortOrder: number;
-  tighteningId: string;
+  tighteningId?: string;
   markerNo: number;
   xRatio: number;
   yRatio: number;
   calloutTipXRatio?: number | null;
   calloutTipYRatio?: number | null;
   boltSpec: string;
+  nominalDiameter?: string | null;
+  boltLengthMm?: number | null;
+  material?: string | null;
+  strengthClass?: string | null;
+  capabilityGroupId?: string | null;
   nominalTorque: number;
   lowerLimit: number;
   upperLimit: number;
@@ -417,34 +453,89 @@ export type AssemblyTemplateCreateInput = {
   procedureDocumentId: string;
   areas: AssemblyTemplateAreaInput[];
   checkItems?: AssemblyTemplateCheckItemInput[];
+  traceabilityMode?: 'LEGACY' | 'REQUIRED';
 };
 
 export type AssemblyWorkSessionStartInput = {
   templateId: string;
   productNo: string;
-  serialNo: string;
+  workId?: string;
+  /** 旧API互換。新規呼び出しは workId を使用する。 */
+  serialNo?: string;
   nameplateNo?: string | null;
   operatorEmployeeId?: string | null;
   operatorNameSnapshot: string;
   targetUnit: string;
-  torqueWrenchId: string;
+  torqueWrenchId?: string | null;
 };
 
 export type AssemblyLotCreateInput = {
   templateId: string;
   productNo: string;
   expectedQuantity: number;
-  serialNos: string[];
+  workIds?: string[];
+  /** 旧API互換。新規呼び出しは workIds を使用する。 */
+  serialNos?: string[];
   operatorEmployeeId?: string | null;
   operatorNameSnapshot: string;
   targetUnit: string;
-  torqueWrenchId: string;
+  torqueWrenchId?: string | null;
 };
 
 export type AssemblyTorqueRecordOutcome = {
-  kind: 'accepted_ok' | 'recorded_ng' | 'ignored_duplicate';
+  kind: 'accepted_ok' | 'recorded_ng' | 'ignored_duplicate' | 'rejected';
   movedToBoltId: string | null;
   areaCompleted: boolean;
   allBoltsCompleted: boolean;
   requiresAreaRestart: boolean;
+  rejectionReason?: string;
+  torqueRecordId?: string;
+};
+
+export type AssemblyTraceabilityWorkUnitDto = {
+  id: string;
+  workId: string;
+  status: 'in_progress' | 'completed' | 'cancelled' | 'not_started';
+  productNo: string | null;
+  targetUnit: string | null;
+  templateName: string | null;
+  completedAt: string | null;
+};
+
+export type AssemblyFormalIdentifierDto = {
+  id: string;
+  formalId: string;
+  assignedAt?: string;
+};
+
+export type AssemblyGenealogyNodeDto = {
+  workUnit: AssemblyTraceabilityWorkUnitDto;
+  children: AssemblyGenealogyNodeDto[];
+};
+
+export type AssemblyTraceabilityDetailDto = {
+  workUnit: AssemblyTraceabilityWorkUnitDto;
+  activeParent: { linkId: string; workUnit: AssemblyTraceabilityWorkUnitDto } | null;
+  activeChildren: Array<{ linkId: string; workUnit: AssemblyTraceabilityWorkUnitDto }>;
+  root: { workUnit: AssemblyTraceabilityWorkUnitDto; formalIdentifier: AssemblyFormalIdentifierDto | null };
+  formalIdentifierHistory: Array<{
+    id: string;
+    formalId: string;
+    assignedAt: string;
+    assignedByUsernameSnapshot: string | null;
+    supersededAt: string | null;
+    supersededByUsernameSnapshot: string | null;
+    supersedeReason: string | null;
+  }>;
+  compositionHistory: Array<{
+    id: string;
+    parentWorkId: string;
+    childWorkId: string;
+    linkedAt: string;
+    linkedByUsernameSnapshot: string | null;
+    unlinkedAt: string | null;
+    unlinkedByUsernameSnapshot: string | null;
+    unlinkReason: string | null;
+  }>;
+  genealogy: AssemblyGenealogyNodeDto[];
 };

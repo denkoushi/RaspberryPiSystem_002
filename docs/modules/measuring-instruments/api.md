@@ -2,8 +2,10 @@
 
 ## 認証
 
-- すべてのエンドポイントはJWT認証が必要（toolsモジュールと同様）
-- クライアントキー認証はキオスク/API連携用に将来追加を検討
+- 管理マスターの登録・更新・利用停止はADMIN／MANAGERのJWTが必要
+- 管理マスターの参照はADMIN／MANAGER／VIEWERのJWT、または登録済み`x-client-key`を許可する
+- 持出・返却、キオスク点検記録、組立の候補・現物確認・エージェント入力は登録済み`x-client-key`を使用する
+- 組立の管理者例外入力はADMIN／MANAGERのJWTだけを許可し、共有パスワードは使用しない
 
 ## 計測機器管理 API
 
@@ -110,6 +112,29 @@
 
 - `ws://localhost:7071/stream`（NFC/TS100エージェントから計測機器タグUIDを受信予定）
 - 受信ペイロード: `{ uid, reader, timestamp, type: 'rfid-tag' }`（typeは将来TS100用に拡張）
+
+## トルクレンチ拡張 API
+
+### マスター
+
+- `GET/POST /api/torque-wrench-models`
+- `GET/PUT /api/torque-wrench-models/:id`
+- `GET/POST /api/torque-wrench-capability-groups`
+- `GET/PUT /api/torque-wrench-capability-groups/:id`
+- `GET /api/torque-wrench-capability-groups/compatible`
+- `GET/POST /api/torque-wrenches`
+- `GET/PUT /api/torque-wrenches/:id`
+- `POST /api/torque-wrenches/:id/settings`（追記専用）
+
+### REQUIRED組立作業
+
+- `GET /api/assembly/work-sessions/:id/compatible-torque-wrenches`
+- `POST /api/assembly/work-sessions/:id/torque-wrench-confirmations`
+- `GET /api/assembly/work-sessions/:id/torque-wrench-confirmations/current`
+- `POST /api/assembly/work-sessions/:id/record-torque`
+- `POST /api/assembly/work-sessions/:id/record-torque-override`
+
+エージェント入力は、端末IDをクライアントキーから確定し、`sourceEventKey`、現在のテンプレートBolt ID、確認ID、製造番号、値、単位、原文を必須とする。同じ端末・同じイベントIDは元の結果を返し、別セッションへの使い回しは409で拒否する。業務拒否はHTTP 200の機械可読な`rejectionReason`として監査行を保存し、工程位置を進めない。
 
 ## バリデーション・制約
 

@@ -1,0 +1,5 @@
+# Ansible managed: stable links for exact torque-wrench HID identities only.
+{% for wrench in torque_agent_hid_links %}
+ACTION=="add", SUBSYSTEM=="input", KERNEL=="event*", ATTRS{id/bustype}=="0005", ATTRS{id/vendor}=="{{ wrench.vendor_id }}", ATTRS{id/product}=="{{ wrench.product_id }}", ATTRS{name}=="{{ wrench.name }}", ATTRS{uniq}=="{{ wrench.uniq }}", SYMLINK+="input/by-id/{{ wrench.link_name }}"
+ACTION=="change", SUBSYSTEM=="input", KERNEL=="event*", ATTRS{id/bustype}=="0005", ATTRS{id/vendor}=="{{ wrench.vendor_id }}", ATTRS{id/product}=="{{ wrench.product_id }}", ATTRS{name}=="{{ wrench.name }}", ATTRS{uniq}=="{{ wrench.uniq }}", SYMLINK+="input/by-id/{{ wrench.link_name }}"
+{% endfor %}

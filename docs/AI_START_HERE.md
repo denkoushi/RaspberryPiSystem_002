@@ -47,6 +47,7 @@ If `EXEC_PLAN.md` must be touched, keep the entry short and limited to current s
 - Active self-inspection autosave / callout / template create lock: `docs/plans/self-inspection-autosave-callout-template-lock.md`
 - Active self-inspection confirm guard + draft WIP: `docs/plans/self-inspection-confirm-guard-wip-draft.md`
 - Active DGX ComfyUI Phase 1 follow-up: `docs/plans/dgx-comfyui-single-image-edit-workflow.md`
+- Active assembly torque-wrench traceability: `docs/plans/assembly-torque-wrench-traceability-execplan.md`
 
 The index files are navigation only. They must not become narrative logs.
 

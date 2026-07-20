@@ -35,6 +35,18 @@ class Runtime:
     def probe_terminal_identity(self, _inventory, _host, client_id):
         return {"authenticated": True, "statusClientId": client_id}
 
+    def probe_kiosk_agents(self, _inventory, host, expected_agents=None):
+        self.calls.append(("agents", host, expected_agents))
+        selected = list(expected_agents or [])
+        ports = {"nfc-agent": 7071, "barcode-agent": 7072, "torque-agent": 7073}
+        return {
+            "agentContainers": selected,
+            "authenticatedAgentEndpoints": [
+                {"agent": agent, "port": ports[agent]} for agent in selected
+            ],
+            "pcscdRequired": "nfc-agent" in selected,
+        }
+
     def apply_terminal_profile(self, inventory, host, revision, run_id, profile):
         self.calls.append(
             ("apply", inventory, host, revision, run_id, profile.playbook)
@@ -72,6 +84,35 @@ def synthetic_profile(**overrides):
 
 
 class GenericTerminalAdapterTest(unittest.TestCase):
+    def test_rollback_observation_uses_sealed_runtime_not_future_profile_set(self):
+        runtime = Runtime()
+        adapter = GenericSystemdAdapter(load_registry().profile("kiosk"), runtime)
+        runtime_health = {
+            "activeSystemdUnits": [
+                "lightdm.service",
+                "status-agent.timer",
+                "kiosk-browser.service",
+            ],
+            "runningDockerServices": ["nfc-agent", "barcode-agent"],
+        }
+
+        evidence = adapter.observe_direct(
+            "inventory.yml",
+            "kiosk-a",
+            "kiosk-a-client",
+            runtime_health=runtime_health,
+        )
+
+        self.assertEqual(evidence["services"], runtime_health["activeSystemdUnits"])
+        self.assertEqual(
+            evidence["agentContainers"], ["nfc-agent", "barcode-agent"]
+        )
+        self.assertIn(
+            ("agents", "kiosk-a", ["nfc-agent", "barcode-agent"]),
+            runtime.calls,
+        )
+        self.assertNotIn("torque-agent", evidence["agentContainers"])
+
     def test_synthetic_profile_runs_forward_health_and_exact_rollback(self):
         runtime = Runtime()
         profile = synthetic_profile()

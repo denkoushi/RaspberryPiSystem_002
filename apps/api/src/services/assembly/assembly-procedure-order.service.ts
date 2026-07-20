@@ -5,6 +5,7 @@ import {
   SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
   verifyDueManagementAccessPassword
 } from '../production-schedule/production-schedule-settings.service.js';
+import { runAssemblyTransaction } from './assembly-transaction.js';
 
 export type AssemblyProcedureOrderDocumentType = 'kiosk_document' | 'assembly_procedure_document';
 
@@ -321,7 +322,7 @@ export class AssemblyProcedureOrderService {
       }
     }
 
-    await prisma.$transaction(async (tx) => {
+    await runAssemblyTransaction(async (tx) => {
       const set = await tx.assemblyProcedureOrderSet.upsert({
         where: { machineNameKey },
         create: { machineName, machineNameKey },

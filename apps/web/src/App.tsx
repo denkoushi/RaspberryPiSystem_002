@@ -38,6 +38,7 @@ import { KioskAssemblyHomePage } from './pages/kiosk/KioskAssemblyHomePage';
 import { KioskAssemblyPage } from './pages/kiosk/KioskAssemblyPage';
 import { KioskAssemblyProcedureOrderSettingsPage } from './pages/kiosk/KioskAssemblyProcedureOrderSettingsPage';
 import { KioskAssemblyRecordApprovalPage } from './pages/kiosk/KioskAssemblyRecordApprovalPage';
+import { KioskAssemblyTraceabilityPage } from './pages/kiosk/KioskAssemblyTraceabilityPage';
 import { KioskBorrowPage } from './pages/kiosk/KioskBorrowPage';
 import { KioskCallPage } from './pages/kiosk/KioskCallPage';
 import { KioskDocumentsPage } from './pages/kiosk/KioskDocumentsPage';
@@ -68,6 +69,7 @@ import { PurchaseOrderLookupPage } from './pages/kiosk/PurchaseOrderLookupPage';
 import { LoginPage } from './pages/LoginPage';
 import { SignageDisplayPage } from './pages/signage/SignageDisplayPage';
 import { SignageLiteDisplayPage } from './pages/signage/SignageLiteDisplayPage';
+import { AssemblyTorqueOverridePage } from './pages/tools/AssemblyTorqueOverridePage';
 import { EmployeesPage } from './pages/tools/EmployeesPage';
 import { HistoryPage } from './pages/tools/HistoryPage';
 import { InspectionItemsPage } from './pages/tools/InspectionItemsPage';
@@ -79,6 +81,7 @@ import { MachinesUninspectedPage } from './pages/tools/MachinesUninspectedPage';
 import { MeasuringInstrumentGenresPage } from './pages/tools/MeasuringInstrumentGenresPage';
 import { MeasuringInstrumentsPage } from './pages/tools/MeasuringInstrumentsPage';
 import { RiggingGearsPage } from './pages/tools/RiggingGearsPage';
+import { TorqueWrenchesPage } from './pages/tools/TorqueWrenchesPage';
 import { UnifiedItemsPage } from './pages/tools/UnifiedItemsPage';
 
 const KioskInspectionDrawingCreatePreviewPage = lazy(() =>
@@ -191,6 +194,7 @@ function App() {
             element={<KioskAssemblyProcedureOrderSettingsPage />}
           />
           <Route path="/kiosk/assembly/record-approvals" element={<KioskAssemblyRecordApprovalPage />} />
+          <Route path="/kiosk/assembly/traceability" element={<KioskAssemblyTraceabilityPage />} />
           <Route
             path="/kiosk/assembly/templates/new"
             element={lazyRouteElement(<KioskAssemblyTemplateEditorPage />)}
@@ -310,6 +314,8 @@ function App() {
           <Route path="instrument-tags" element={<InstrumentTagsPage />} />
           <Route path="inspection-records" element={<InspectionRecordsPage />} />
           <Route path="measuring-instruments" element={<MeasuringInstrumentsPage />} />
+          <Route path="torque-wrenches" element={<TorqueWrenchesPage />} />
+          <Route path="assembly-torque-override" element={<AssemblyTorqueOverridePage />} />
           <Route path="measuring-instrument-genres" element={<MeasuringInstrumentGenresPage />} />
           <Route path="part-measurement-templates" element={<PartMeasurementTemplatesPage />} />
           <Route path="machines" element={<MachinesPage />} />

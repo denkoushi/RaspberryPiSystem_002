@@ -38,6 +38,23 @@ class RollingReleaseCliContractTest(unittest.TestCase):
         args = parse("main", "infrastructure/ansible/inventory.yml", "--dry-run")
         self.assertTrue(args.print_plan)
 
+    def test_preflight_only_is_public_and_rejects_ignored_execution_options(self):
+        base = ("main", "infrastructure/ansible/inventory.yml", "--preflight-only")
+        args = parse(*base, "--limit", "raspberrypi5:kiosk-a")
+        self.assertTrue(args.preflight_only)
+        self.assertEqual(args.limit, "raspberrypi5:kiosk-a")
+        for extra in (
+            ("--detach",),
+            ("--print-plan",),
+            ("--full-fleet",),
+            ("--canary-hold-timeout", "10"),
+            ("--emergency-override", "--reason", "incident"),
+        ):
+            with self.subTest(extra=extra), self.assertRaisesRegex(
+                UsageError, "--preflight-only"
+            ):
+                parse(*base, *extra)
+
     def test_full_fleet_is_explicit_and_excludes_narrowing_options(self):
         args = parse("main", "infrastructure/ansible/inventory.yml", "--full-fleet")
         self.assertTrue(args.full_fleet)

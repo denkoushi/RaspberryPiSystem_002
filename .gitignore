@@ -55,6 +55,12 @@ __pycache__/
 .venv/
 clients/nfc-agent/.venv/
 
+# CEM3-BTLA private capture artifacts (only sanitized fixtures may be committed)
+capture-private/
+*.torque-capture-private.json
+*.torque-capture-private.jsonl
+*.torque-redactions.json
+
 # IDE
 .DS_Store
 .idea/

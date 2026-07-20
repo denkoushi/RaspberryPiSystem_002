@@ -39,6 +39,7 @@ class FakeRuntime:
         self.calls: list[list[str]] = []
         self.units: dict[str, dict[str, str]] = {}
         self.unit_needs_reload: set[str] = set()
+        self.unit_show_transitions: dict[str, list[str]] = {}
         self.stop_results_failed: set[str] = set()
         self.timer_start_transitions: dict[str, list[str]] = {}
         self.timer_persistent: dict[str, bool] = {}
@@ -48,6 +49,7 @@ class FakeRuntime:
         self.service_references = {
             "nfc-agent": "raspberrypisystem_002-nfc-agent:latest",
             "barcode-agent": "raspberrypisystem_002-barcode-agent:latest",
+            "torque-agent": "raspberrypisystem_002-torque-agent:latest",
         }
         self.service_mounts = {
             "nfc-agent": [
@@ -69,10 +71,12 @@ class FakeRuntime:
                 },
             ],
             "barcode-agent": [],
+            "torque-agent": [],
         }
         self.service_restart = {
             "nfc-agent": {"Name": "unless-stopped", "MaximumRetryCount": 0},
             "barcode-agent": {"Name": "unless-stopped", "MaximumRetryCount": 0},
+            "torque-agent": {"Name": "unless-stopped", "MaximumRetryCount": 0},
         }
         self.service_security = {
             service: {
@@ -100,6 +104,27 @@ class FakeRuntime:
                 "CLIENT_SECRET=SECRET-BARCODE-BASELINE",
                 "PYTHONUNBUFFERED=1",
             ],
+            "torque-agent": [
+                "API_BASE_URL=https://api.example.invalid",
+                "CLIENT_KEY=SECRET-TORQUE-BASELINE",
+                "PYTHONUNBUFFERED=1",
+            ],
+        }
+        self.service_healthcheck = {
+            "nfc-agent": None,
+            "barcode-agent": None,
+            "torque-agent": {
+                "Test": [
+                    "CMD",
+                    "python",
+                    "-c",
+                    "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7073/health')",
+                ],
+                "Interval": 15_000_000_000,
+                "Timeout": 5_000_000_000,
+                "StartPeriod": 10_000_000_000,
+                "Retries": 3,
+            },
         }
         self.service_host_config_extra = {
             service: {
@@ -157,6 +182,7 @@ class FakeRuntime:
         cloned = FakeRuntime(compose=self.compose, bind_source=self.bind_source)
         cloned.units = copy.deepcopy(self.units)
         cloned.unit_needs_reload = set(self.unit_needs_reload)
+        cloned.unit_show_transitions = copy.deepcopy(self.unit_show_transitions)
         cloned.stop_results_failed = set(self.stop_results_failed)
         cloned.timer_start_transitions = copy.deepcopy(
             self.timer_start_transitions
@@ -170,6 +196,7 @@ class FakeRuntime:
         cloned.service_restart = copy.deepcopy(self.service_restart)
         cloned.service_security = copy.deepcopy(self.service_security)
         cloned.service_environment = copy.deepcopy(self.service_environment)
+        cloned.service_healthcheck = copy.deepcopy(self.service_healthcheck)
         cloned.service_host_config_extra = copy.deepcopy(
             self.service_host_config_extra
         )
@@ -214,6 +241,7 @@ class FakeRuntime:
         mounts: list[dict] | None = None,
         security: dict | None = None,
         environment: list[str] | None = None,
+        healthcheck: dict | None = None,
     ) -> str:
         reference = self.service_references[service]
         self.images[reference] = image
@@ -230,6 +258,11 @@ class FakeRuntime:
             if environment is None
             else environment
         )
+        selected_healthcheck = copy.deepcopy(
+            self.service_healthcheck[service]
+            if healthcheck is None
+            else healthcheck
+        )
         container_config = {
             "Env": selected_environment,
             "Hostname": identifier[:12],
@@ -238,7 +271,7 @@ class FakeRuntime:
             "Cmd": selected_security["command"],
             "Entrypoint": selected_security["entrypoint"],
             "WorkingDir": f"/app/{service}",
-            "Healthcheck": None,
+            "Healthcheck": selected_healthcheck,
             "ExposedPorts": None,
             "Labels": {
                 "com.docker.compose.project": self.compose["project"],
@@ -350,6 +383,9 @@ class FakeRuntime:
                 if value.startswith("--property=")
             ]
             output = "\n".join(f"{key}={values[key]}" for key in properties)
+            transitions = self.unit_show_transitions.get(call[-1], [])
+            if transitions:
+                state["ActiveState"] = transitions.pop(0)
             return self._result(0, output, allowed_exit_codes)
         if call[:2] == ["systemctl", "daemon-reload"]:
             self.unit_needs_reload.clear()
@@ -545,6 +581,29 @@ class TerminalRuntimeManifestTest(unittest.TestCase):
             compose_config_files=(self.compose["configFiles"] if selected_services else []),
         )
 
+    def probe_capture(
+        self,
+        *,
+        services: list[str] | None = None,
+        units: list[str] | None = None,
+        restart_on_restore_units: list[str] | None = None,
+    ):
+        selected_services = services or []
+        return MODULE.probe_capture(
+            run_id=self.run_id,
+            host=self.host,
+            units=units or [],
+            docker_services=selected_services,
+            restart_on_restore_units=restart_on_restore_units or [],
+            compose_project=self.compose["project"] if selected_services else None,
+            compose_working_directory=(
+                self.compose["workingDirectory"] if selected_services else None
+            ),
+            compose_config_files=(
+                self.compose["configFiles"] if selected_services else []
+            ),
+        )
+
     def restore(self, digest: str):
         return MODULE.restore(
             root=self.storage,
@@ -588,8 +647,23 @@ class TerminalRuntimeManifestTest(unittest.TestCase):
             0o600,
         )
 
+        preflight = MODULE.preflight_restore(
+            root=self.storage,
+            run_id=self.run_id,
+            host=self.host,
+            expected_manifest_sha256=captured["manifestSha256"],
+        )
+        self.assertEqual(
+            preflight["runtimeHealth"],
+            {
+                "activeSystemdUnits": [],
+                "runningDockerServices": ["nfc-agent"],
+            },
+        )
+
         self.candidate("nfc-agent")
-        self.restore(captured["manifestSha256"])
+        restored_result = self.restore(captured["manifestSha256"])
+        self.assertEqual(restored_result["runtimeHealth"], preflight["runtimeHealth"])
         restored = self.fake.containers[(self.compose["project"], "nfc-agent")]
         self.assertEqual(restored["imageId"], prior)
         self.assertTrue(restored["running"])
@@ -749,6 +823,93 @@ class TerminalRuntimeManifestTest(unittest.TestCase):
 
         self.assertFalse(self.manifest_path.exists())
         self.assertEqual(self.fake.mutation_calls, [])
+
+    def test_probe_capture_checks_all_agents_without_files_tags_or_mutation(self):
+        for service in ("nfc-agent", "barcode-agent", "torque-agent"):
+            self.fake.add_container(
+                service, image_id(f"probe-{service}"), running=True
+            )
+        self.fake.calls.clear()
+
+        result = self.probe_capture(
+            services=["nfc-agent", "barcode-agent", "torque-agent"]
+        )
+
+        self.assertEqual(
+            result,
+            {
+                "compatible": True,
+                "unitCount": 0,
+                "dockerCount": 3,
+                "presentDockerCount": 3,
+            },
+        )
+        self.assertEqual(self.fake.mutation_calls, [])
+        self.assertFalse(self.storage.exists())
+        self.assertFalse(any(call[:2] == ["docker", "tag"] for call in self.fake.calls))
+
+    def test_probe_capture_accepts_a_mixed_optional_agent_runtime(self):
+        self.fake.add_container(
+            "torque-agent", image_id("probe-only-torque"), running=True
+        )
+        self.fake.calls.clear()
+
+        result = self.probe_capture(
+            services=["nfc-agent", "barcode-agent", "torque-agent"]
+        )
+
+        self.assertEqual(result["dockerCount"], 3)
+        self.assertEqual(result["presentDockerCount"], 1)
+        self.assertEqual(self.fake.mutation_calls, [])
+        self.assertFalse(self.storage.exists())
+
+    def test_probe_and_capture_accept_and_restore_torque_healthcheck(self):
+        prior = image_id("torque-with-healthcheck")
+        expected_healthcheck = copy.deepcopy(
+            self.fake.service_healthcheck["torque-agent"]
+        )
+        self.fake.add_container("torque-agent", prior, running=True)
+
+        probed = self.probe_capture(services=["torque-agent"])
+        self.assertTrue(probed["compatible"])
+        captured = self.capture(services=["torque-agent"])
+
+        self.fake.service_healthcheck["torque-agent"] = {
+            "Test": ["CMD", "false"],
+            "Interval": 1_000_000_000,
+            "Timeout": 1_000_000_000,
+            "Retries": 1,
+        }
+        self.fake.add_container(
+            "torque-agent", image_id("torque-candidate"), running=True
+        )
+        self.fake.service_healthcheck["torque-agent"] = expected_healthcheck
+
+        self.restore(captured["manifestSha256"])
+
+        restored = self.fake.containers[(self.compose["project"], "torque-agent")]
+        self.assertEqual(
+            restored["containerConfig"]["Healthcheck"], expected_healthcheck
+        )
+
+    def test_probe_rejects_external_runtime_feature_before_any_mutation(self):
+        self.fake.service_host_config_extra["torque-agent"]["ExtraHosts"] = [
+            "unsafe.invalid:192.0.2.10"
+        ]
+        self.fake.add_container(
+            "torque-agent", image_id("unsupported-probe"), running=True
+        )
+        self.fake.calls.clear()
+
+        with self.assertRaisesRegex(
+            MODULE.RuntimeManifestError,
+            "unsupported by rollback capture: ExtraHosts",
+        ) as raised:
+            self.probe_capture(services=["torque-agent"])
+
+        self.assertEqual(raised.exception.code, "runtime.unsupported-feature")
+        self.assertEqual(self.fake.mutation_calls, [])
+        self.assertFalse(self.storage.exists())
 
     def test_same_image_functional_runtime_drift_is_recreated_from_compose(self):
         prior = image_id("same-image-runtime-config")
@@ -1414,11 +1575,16 @@ class TerminalRuntimeManifestTest(unittest.TestCase):
             with self.subTest(active_unit=active_unit):
                 self.fake.units[active_unit]["ActiveState"] = "active"
                 self.fake.calls.clear()
-                with self.assertRaisesRegex(
-                    MODULE.RuntimeManifestError,
-                    "transient oneshot unit is active during runtime capture",
-                ):
-                    self.capture(units=sorted(oneshots))
+                with mock.patch.object(MODULE.time, "sleep") as sleep:
+                    with self.assertRaisesRegex(
+                        MODULE.RuntimeManifestError,
+                        "transient oneshot unit did not quiesce before runtime capture",
+                    ):
+                        self.capture(units=sorted(oneshots))
+                self.assertEqual(
+                    sleep.call_count,
+                    MODULE.TRANSIENT_ONESHOT_STABILIZATION_ATTEMPTS - 1,
+                )
                 self.assertFalse(self.manifest_path.exists())
                 self.assertEqual(self.fake.mutation_calls, [])
                 self.fake.units[active_unit]["ActiveState"] = "inactive"
@@ -1426,6 +1592,21 @@ class TerminalRuntimeManifestTest(unittest.TestCase):
         captured = self.capture(units=sorted(oneshots))
         self.assertTrue(self.manifest_path.exists())
         self.assertEqual(captured["unitCount"], len(oneshots))
+
+    def test_capture_waits_for_transient_oneshot_to_quiesce_before_sealing(self):
+        unit = "status-agent.service"
+        self.fake.add_unit(unit, unit_file="static", active="activating")
+        self.fake.unit_show_transitions[unit] = ["inactive"]
+
+        with mock.patch.object(MODULE.time, "sleep") as sleep:
+            captured = self.capture(units=[unit])
+
+        self.assertEqual(captured["unitCount"], 1)
+        self.assertEqual(sleep.call_count, 1)
+        self.assertEqual(
+            self.fake.units[unit]["ActiveState"], "inactive"
+        )
+        self.assertEqual(self.fake.mutation_calls, [])
 
     def test_sealed_active_transient_oneshot_is_rejected_before_restore(self):
         self.fake.add_unit(
@@ -1894,6 +2075,47 @@ class TerminalRuntimeManifestTest(unittest.TestCase):
         self.assertEqual(result["unitCount"], 1)
         self.assertEqual(result["dockerCount"], 0)
         self.assertNotIn("units", result)
+
+    def test_cli_error_marker_is_bounded_machine_readable_and_secret_free(self):
+        secret = "DO-NOT-LEAK-SECRET"
+        self.fake.service_host_config_extra["torque-agent"]["ExtraHosts"] = [
+            f"{secret}:192.0.2.10"
+        ]
+        self.fake.add_container(
+            "torque-agent", image_id("error-marker"), running=True
+        )
+        output = io.StringIO()
+        with redirect_stdout(output):
+            status = MODULE.main(
+                [
+                    "probe-capture",
+                    "--run-id",
+                    self.run_id,
+                    "--host",
+                    self.host,
+                    "--docker-service",
+                    "torque-agent",
+                    "--compose-project",
+                    self.compose["project"],
+                    "--compose-working-directory",
+                    self.compose["workingDirectory"],
+                    "--compose-config-file",
+                    self.compose["configFiles"][0],
+                    "--ansible-marker",
+                ]
+            )
+
+        self.assertEqual(status, 1)
+        line = output.getvalue().strip()
+        self.assertTrue(line.startswith(MODULE.ERROR_MARKER_PREFIX))
+        self.assertNotIn(secret, line)
+        payload = json.loads(
+            base64.urlsafe_b64decode(
+                line.removeprefix(MODULE.ERROR_MARKER_PREFIX)
+            )
+        )
+        self.assertEqual(payload["code"], "runtime.unsupported-feature")
+        self.assertLessEqual(len(payload["message"]), 512)
 
 
 if __name__ == "__main__":

@@ -20,6 +20,10 @@ RESTART_CLIENT_SERVICE="${ROOT_DIR}/infrastructure/ansible/tasks/restart-client-
 TERMINAL_DISPLAY_PREFLIGHT="${ROOT_DIR}/infrastructure/ansible/tasks/preflight-terminal-display.yml"
 SIGNAGE_PRESTAGE="${ROOT_DIR}/infrastructure/ansible/tasks/prestage-signage-runtime.yml"
 CLIENT_TASKS="${ROOT_DIR}/infrastructure/ansible/roles/client/tasks/main.yml"
+NFC_LIFECYCLE_TASKS="${ROOT_DIR}/infrastructure/ansible/roles/client/tasks/nfc-agent-lifecycle.yml"
+RELEASE_APPLICATION="${ROOT_DIR}/scripts/deploy/rolling_release/application.py"
+TERMINAL_PREFLIGHT="${ROOT_DIR}/scripts/deploy/rolling_release/terminal_preflight.py"
+TERMINAL_AGENT_HEALTH="${ROOT_DIR}/scripts/deploy/terminal-agent-health-probe.py"
 KIOSK_FIREFOX_TASKS="${ROOT_DIR}/infrastructure/ansible/roles/kiosk/tasks/firefox-chrome.yml"
 SIGNAGE_TASKS="${ROOT_DIR}/infrastructure/ansible/roles/signage/tasks/main.yml"
 KIOSK_LAUNCH_TEMPLATE="${ROOT_DIR}/infrastructure/ansible/templates/kiosk-launch.sh.j2"
@@ -27,6 +31,41 @@ SIGNAGE_DISPLAY_TEMPLATES=(
   "${ROOT_DIR}/infrastructure/ansible/templates/signage-display.sh.j2"
   "${ROOT_DIR}/infrastructure/ansible/roles/signage/templates/signage-display.sh.j2"
 )
+
+python3 - "${RELEASE_APPLICATION}" "${TERMINAL_PREFLIGHT}" "${NFC_LIFECYCLE_TASKS}" "${TERMINAL_AGENT_HEALTH}" <<'PY'
+import sys
+from pathlib import Path
+
+application_path, preflight_path, nfc_path, agent_health_path = map(Path, sys.argv[1:])
+application = application_path.read_text(encoding='utf-8')
+preflight = preflight_path.read_text(encoding='utf-8')
+nfc = nfc_path.read_text(encoding='utf-8')
+
+migration = application.index('systemd.preflight_migrations(spec)')
+terminal = application.index('systemd.preflight_terminals(')
+submission = application.index('systemd.start(spec, wait=not args.detach)')
+assert migration < terminal < submission, (
+    'migration and aggregate terminal preflights must both precede release-unit submission'
+)
+assert 'no release unit was submitted' in preflight
+assert 'for target in spec["targets"]' in preflight
+assert 'results.append(result)' in preflight
+assert 'os.O_CREAT' not in preflight
+assert 'os.makedirs' not in preflight
+assert 'UserKnownHostsFile=/dev/null' in preflight
+assert 'candidate.artifact-missing' in preflight
+assert '"cat-file", "-t"' in preflight
+assert '_require_directory(issues, f"{repo}/clients/' not in preflight
+assert 'pcscd.socket' in preflight
+assert '_require_unit(issues, "pcscd.service"' not in preflight
+assert 'pcscd.socket' in nfc
+assert 'systemctl is-enabled --quiet pcscd.service' not in nfc
+assert 'systemctl is-active --quiet pcscd.service' not in nfc
+agent_health = agent_health_path.read_text(encoding='utf-8')
+assert 'pcscd.socket' in agent_health
+assert 'pcscd.comm' in agent_health
+assert 'pcscd.service' not in agent_health
+PY
 
 python3 - "${ROOT_DIR}" <<'PY'
 import importlib.util
@@ -908,6 +947,11 @@ ALLOWED_RELEASE_FILE_DESTINATIONS = {
     '/etc/polkit-1/rules.d/50-pcscd-allow-all.rules',
     '{{ repo_path }}/clients/nfc-agent/.env',
     '{{ repo_path }}/clients/barcode-agent/.env',
+    '{{ repo_path }}/clients/torque-agent/.env',
+    '/usr/local/libexec/torque-bluetooth-adapter',
+    '/etc/systemd/system/torque-bluetooth-adapter@.service',
+    '/etc/udev/rules.d/90-torque-bluetooth-adapter.rules',
+    '/etc/udev/rules.d/99-torque-wrench-hid.rules',
     '/etc/raspi-haizen-agent.conf',
     '/etc/systemd/system/haizen-agent.service',
     '/etc/sudoers.d/{{ client_sudo_user }}',
@@ -961,11 +1005,31 @@ DOCKER_MUTATION = re.compile(
     re.IGNORECASE,
 )
 READ_ONLY_COMMAND = re.compile(
-    r'^(?:docker\s+--version|ip\s+-brief|rsvg-convert\s+--version|'
+    r'^(?:/usr/local/libexec/torque-bluetooth-adapter\s+--discover|'
+    r'docker\s+--version|ip\s+-brief|rsvg-convert\s+--version|'
     r'systemctl\s+(?:is-|list-unit-files|show|status)|'
+    r'journalctl\s+--unit=torque-bluetooth-adapter@\{\{\s+torque_bluetooth_controller_discovery\.stdout\s+\|\s+trim\s+\}\}\.service\s+--lines=80\s+--no-pager\s+--output=short-iso$|'
     r'systemd-analyze\s+verify|tailscale\s+status|which\s+)',
     re.IGNORECASE,
 )
+
+APPROVED_RELEASE_COMMANDS = {
+    (
+        'roles/client/tasks/torque-agent.yml',
+        'Reload udev rules for torque devices',
+        'udevadm control --reload-rules',
+    ),
+    (
+        'roles/client/tasks/torque-agent.yml',
+        'Retrigger Bluetooth input devices after torque HID rule changes',
+        'udevadm trigger --subsystem-match=input --property-match=ID_BUS=bluetooth --action=add',
+    ),
+    (
+        'roles/client/tasks/torque-agent.yml',
+        'Wait for torque udev events to settle',
+        'udevadm settle --timeout=30',
+    ),
+}
 
 
 def normalized(value):
@@ -1122,6 +1186,7 @@ def audit_tasks(tasks, source, inherited_full):
                     allowed_source = source.resolve() in {
                         (roles_root / 'client/tasks/nfc-agent-lifecycle.yml').resolve(),
                         (roles_root / 'client/tasks/barcode-agent-lifecycle.yml').resolve(),
+                        (roles_root / 'client/tasks/torque-agent-lifecycle.yml').resolve(),
                         (roles_root / 'client/handlers/main.yml').resolve(),
                     }
                     assert (
@@ -1142,7 +1207,9 @@ def audit_tasks(tasks, source, inherited_full):
 
             if module in COMMAND_MODULES:
                 payload = command_text(value)
-                assert READ_ONLY_COMMAND.match(payload), (
+                source_relative = source.resolve().relative_to(ansible_root).as_posix()
+                approved_release_command = (source_relative, name, payload)
+                assert READ_ONLY_COMMAND.match(payload) or approved_release_command in APPROVED_RELEASE_COMMANDS, (
                     f'{source}:{name}: command is not a recognized read-only preflight: {payload}'
                 )
 
@@ -1269,7 +1336,11 @@ for path, fragments in exact_preflight_fragments.items():
         assert fragment in text, f'{path}: exact release preflight lost {fragment!r}'
 
 docker_sources = [source.resolve() for source, _name in docker_exceptions]
-for lifecycle in ('nfc-agent-lifecycle.yml', 'barcode-agent-lifecycle.yml'):
+for lifecycle in (
+    'nfc-agent-lifecycle.yml',
+    'barcode-agent-lifecycle.yml',
+    'torque-agent-lifecycle.yml',
+):
     source = (roles_root / 'client/tasks' / lifecycle).resolve()
     assert docker_sources.count(source) == 1, (
         f'{lifecycle}: release-only must execute exactly one Compose mutation'

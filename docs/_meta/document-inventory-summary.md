@@ -11,18 +11,18 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 
 | Metric | Count |
 |--------|------:|
-| Documents | 523 |
-| Total lines | 151020 |
-| Total bytes | 11297197 |
-| With frontmatter | 211 |
-| With status | 69 |
-| source_of_truth declared | 41 |
+| Documents | 528 |
+| Total lines | 152569 |
+| Total bytes | 11507050 |
+| With frontmatter | 214 |
+| With status | 72 |
+| source_of_truth declared | 44 |
 | References to EXEC_PLAN.md | 64 |
 | Question-mark corruption documents | 1 |
 | Replacement-character documents | 1 |
-| Long-line documents | 23 |
-| Local links | 5531 |
-| Broken local links | 90 |
+| Long-line documents | 25 |
+| Local links | 5548 |
+| Broken local links | 87 |
 | Documents over 1,000 lines | 28 |
 | Documents over 3,000 lines | 6 |
 
@@ -40,7 +40,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | `docs/archive/architecture/deployment-modules-legacy-through-2026-07.md` | 2522 | 128149 |
 | `docs/knowledge-base/infrastructure/backup-restore.md` | 2208 | 137917 |
 | `docs/knowledge-base/infrastructure/signage.md` | 2196 | 188323 |
-| `docs/INDEX.md` | 1969 | 337411 |
+| `docs/INDEX.md` | 1977 | 338820 |
 | `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1871 | 206136 |
 | `docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md` | 1654 | 153539 |
 | `docs/archive/deployments/legacy-operator-guide-through-2026-07.md` | 1600 | 108028 |
@@ -72,7 +72,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 ## Long-Line Documents
 
 - `EXEC_PLAN.md` (23:1093, 31:1026, 44:1017)
-- `docs/INDEX.md` (250:1132, 266:1242, 270:1022)
+- `docs/INDEX.md` (258:1132, 274:1242, 278:1022)
 - `docs/archive/deployments/2026-04.md` (83:1066)
 - `docs/archive/deployments/2026-05.md` (815:25090, 1642:1257, 2471:1119)
 - `docs/decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md` (47:1010)
@@ -83,14 +83,14 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/knowledge-base/KB-320-kiosk-part-measurement.md` (1804:1045, 1811:1213)
 - `docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md` (13:1164, 295:1220, 297:1290)
 - `docs/knowledge-base/infrastructure/signage.md` (23:1023, 29:1221, 349:1060)
-- `docs/plans/deployment-foundation-refactor-execplan.md` (99:1226, 843:1025, 849:1002)
+- `docs/plans/assembly-torque-wrench-traceability-execplan.md` (10:1434, 447:1055)
+- `docs/plans/deployment-foundation-refactor-execplan.md` (99:1226, 893:1025, 899:1002)
 - `docs/plans/dgx-spark-local-llm-migration-execplan.md` (38:1075)
+- `docs/plans/kiosk-assembly-torque-management-mvp.md` (135:1006)
 - `docs/plans/pi5-minimal-downtime-phase2.md` (130:1083)
 - `docs/plans/solid-refactor-phase3-execplan-202607.md` (28:1154, 30:1151)
 - `docs/plans/solid-refactor-phase4-execplan-202607.md` (30:1179, 31:1213, 32:1328)
 - `docs/plans/solid-refactor-phase5-execplan-202607.md` (31:1231, 32:1107, 95:1206)
-- `docs/plans/solid-refactor-phase6-execplan-202607.md` (32:1014, 33:1055, 34:1565)
-- `docs/runbooks/dgx-system-prod-local-llm.md` (46:1212, 126:1193, 139:1694)
 
 ## Broken Local Links
 

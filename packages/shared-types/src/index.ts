@@ -30,4 +30,6 @@ export * from './kiosk/index.js';
 // 部品測定モジュール
 export * from './part-measurement/index.js';
 
+// トルクレンチ・組立締付トレーサビリティ
+export * from './torque-wrenches/index.js';
 

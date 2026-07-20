@@ -3,6 +3,12 @@ export const KIOSK_ASSEMBLY_HOME_PATH = KIOSK_ASSEMBLY_PATH_PREFIX;
 export const KIOSK_ASSEMBLY_LIBRARY_PATH = `${KIOSK_ASSEMBLY_PATH_PREFIX}/library`;
 export const KIOSK_ASSEMBLY_PROCEDURE_ORDER_SETTINGS_PATH = `${KIOSK_ASSEMBLY_PATH_PREFIX}/procedure-order-settings`;
 export const KIOSK_ASSEMBLY_RECORD_APPROVALS_PATH = `${KIOSK_ASSEMBLY_PATH_PREFIX}/record-approvals`;
+export const KIOSK_ASSEMBLY_TRACEABILITY_PATH = `${KIOSK_ASSEMBLY_PATH_PREFIX}/traceability`;
+
+export function kioskAssemblyTraceabilityPath(params?: { workId?: string | null }): string {
+  const workId = params?.workId?.trim();
+  return workId ? `${KIOSK_ASSEMBLY_TRACEABILITY_PATH}?workId=${encodeURIComponent(workId)}` : KIOSK_ASSEMBLY_TRACEABILITY_PATH;
+}
 
 export function kioskAssemblyRecordApprovalPath(params?: { sessionId?: string | null }): string {
   const query = new URLSearchParams();

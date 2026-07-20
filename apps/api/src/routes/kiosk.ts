@@ -13,6 +13,7 @@ import {
 } from './kiosk/part-measurement-self-inspection-record-approval-auth.js';
 import { registerKioskAssemblyProcedureOrderAuthRoute } from './kiosk/assembly-procedure-order-auth.js';
 import { registerKioskAssemblyRecordApprovalAuthRoute } from './kiosk/assembly-record-approval-auth.js';
+import { registerKioskAssemblyTraceabilityAuthRoute } from './kiosk/assembly-traceability-auth.js';
 import {
   checkPowerRateLimit,
   checkRateLimit,
@@ -99,6 +100,13 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
   });
 
   await registerKioskAssemblyRecordApprovalAuthRoute(app, {
+    requireClientDevice,
+    resolveLocationScopeContext,
+    resolveTargetLocation,
+    leaderboardShellSnapshotStore
+  });
+
+  await registerKioskAssemblyTraceabilityAuthRoute(app, {
     requireClientDevice,
     resolveLocationScopeContext,
     resolveTargetLocation,

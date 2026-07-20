@@ -15,18 +15,18 @@
     ]
   },
   "summary": {
-    "documentCount": 523,
-    "totalLines": 151020,
-    "totalBytes": 11297197,
-    "withFrontmatter": 211,
-    "withStatus": 69,
-    "sourceOfTruthDeclared": 41,
+    "documentCount": 528,
+    "totalLines": 152569,
+    "totalBytes": 11507050,
+    "withFrontmatter": 214,
+    "withStatus": 72,
+    "sourceOfTruthDeclared": 44,
     "execPlanReferences": 64,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
-    "longLineDocuments": 23,
-    "localLinkCount": 5531,
-    "brokenLocalLinkCount": 90,
+    "longLineDocuments": 25,
+    "localLinkCount": 5548,
+    "brokenLocalLinkCount": 87,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
     "brokenLocalLinks": [
@@ -366,16 +366,6 @@
         "targetPath": "docs/knowledge-base/knowledge-base/KB-297-kiosk-due-management-workflow.md"
       },
       {
-        "sourcePath": "docs/modules/measuring-instruments/README.md",
-        "href": "../../architecture/database.md#measuring-instruments-module",
-        "targetPath": "docs/architecture/database.md"
-      },
-      {
-        "sourcePath": "docs/modules/measuring-instruments/ui.md",
-        "href": "../guides/deployment.md",
-        "targetPath": "docs/modules/guides/deployment.md"
-      },
-      {
         "sourcePath": "docs/modules/signage/README.md",
         "href": "../architecture/overview.md",
         "targetPath": "docs/modules/architecture/overview.md"
@@ -439,11 +429,6 @@
         "sourcePath": "docs/modules/tools/photo-loan.md",
         "href": "../runbooks/photo-tool-similarity-gallery.md",
         "targetPath": "docs/modules/runbooks/photo-tool-similarity-gallery.md"
-      },
-      {
-        "sourcePath": "docs/plans/kiosk-assembly-torque-management-mvp.md",
-        "href": "../../apps/web/src/pages/kiosk/KioskAssemblyWorkStartPage.tsx",
-        "targetPath": "apps/web/src/pages/kiosk/KioskAssemblyWorkStartPage.tsx"
       },
       {
         "sourcePath": "docs/plans/load-balancing-outsourcing-improvement-proposal.md",
@@ -5913,8 +5898,8 @@
     },
     {
       "path": "docs/AI_START_HERE.md",
-      "lineCount": 97,
-      "byteSize": 4087,
+      "lineCount": 98,
+      "byteSize": 4194,
       "hasFrontmatter": true,
       "title": "AI Start Here",
       "status": null,
@@ -5928,8 +5913,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 1969,
-      "byteSize": 337411,
+      "lineCount": 1977,
+      "byteSize": 338820,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -6831,6 +6816,11 @@
           "exists": true
         },
         {
+          "href": "./decisions/ADR-20260717-assembly-torque-wrench-traceability.md",
+          "targetPath": "docs/decisions/ADR-20260717-assembly-torque-wrench-traceability.md",
+          "exists": true
+        },
+        {
           "href": "./design-previews/kiosk-assembly-home-table-dense-3col-preview.html",
           "targetPath": "docs/design-previews/kiosk-assembly-home-table-dense-3col-preview.html",
           "exists": true
@@ -7147,6 +7137,11 @@
         },
         {
           "href": "./guides/deployment.md#linuxpi端末typeを追加する",
+          "targetPath": "docs/guides/deployment.md",
+          "exists": true
+        },
+        {
+          "href": "./guides/deployment.md#実行前確認",
           "targetPath": "docs/guides/deployment.md",
           "exists": true
         },
@@ -10116,6 +10111,11 @@
           "exists": true
         },
         {
+          "href": "./plans/assembly-torque-wrench-traceability-execplan.md",
+          "targetPath": "docs/plans/assembly-torque-wrench-traceability-execplan.md",
+          "exists": true
+        },
+        {
           "href": "./plans/assembly-unified-workflow-execplan.md",
           "targetPath": "docs/plans/assembly-unified-workflow-execplan.md",
           "exists": true
@@ -10128,6 +10128,11 @@
         {
           "href": "./plans/deploy-stability-execplan.md",
           "targetPath": "docs/plans/deploy-stability-execplan.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/deployment-exhaustive-preflight-execplan.md",
+          "targetPath": "docs/plans/deployment-exhaustive-preflight-execplan.md",
           "exists": true
         },
         {
@@ -10548,6 +10553,16 @@
         {
           "href": "./runbooks/actual-hours-canonical-backfill.md#shared-global-rank-へのバックフィル",
           "targetPath": "docs/runbooks/actual-hours-canonical-backfill.md",
+          "exists": true
+        },
+        {
+          "href": "./runbooks/assembly-torque-agent.md",
+          "targetPath": "docs/runbooks/assembly-torque-agent.md",
+          "exists": true
+        },
+        {
+          "href": "./runbooks/client-agent-addition.md",
+          "targetPath": "docs/runbooks/client-agent-addition.md",
           "exists": true
         },
         {
@@ -11016,95 +11031,95 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 250,
+          "line": 258,
           "length": 1132
         },
         {
-          "line": 266,
+          "line": 274,
           "length": 1242
         },
         {
-          "line": 270,
+          "line": 278,
           "length": 1022
         },
         {
-          "line": 284,
+          "line": 292,
           "length": 1065
         },
         {
-          "line": 332,
+          "line": 340,
           "length": 1165
         },
         {
-          "line": 338,
+          "line": 346,
           "length": 1458
         },
         {
-          "line": 350,
+          "line": 358,
           "length": 1083
         },
         {
-          "line": 364,
+          "line": 372,
           "length": 1398
         },
         {
-          "line": 366,
+          "line": 374,
           "length": 1133
         },
         {
-          "line": 370,
+          "line": 378,
           "length": 1399
         },
         {
-          "line": 372,
+          "line": 380,
           "length": 1008
         },
         {
-          "line": 378,
+          "line": 386,
           "length": 1059
         },
         {
-          "line": 386,
+          "line": 394,
           "length": 1129
         },
         {
-          "line": 390,
+          "line": 398,
           "length": 1135
         },
         {
-          "line": 394,
+          "line": 402,
           "length": 1117
         },
         {
-          "line": 509,
+          "line": 517,
           "length": 1013
         },
         {
-          "line": 695,
+          "line": 703,
           "length": 2038
         },
         {
-          "line": 711,
+          "line": 719,
           "length": 1496
         },
         {
-          "line": 717,
+          "line": 725,
           "length": 1177
         },
         {
-          "line": 1059,
+          "line": 1067,
           "length": 1449
         },
         {
-          "line": 1095,
+          "line": 1103,
           "length": 1136
         },
         {
-          "line": 1097,
+          "line": 1105,
           "length": 1239
         },
         {
-          "line": 1133,
+          "line": 1141,
           "length": 1004
         }
       ],
@@ -16394,8 +16409,8 @@
     },
     {
       "path": "docs/decisions/ADR-20260714-assembly-marker-callout-and-shared-image-canvas.md",
-      "lineCount": 34,
-      "byteSize": 1962,
+      "lineCount": 39,
+      "byteSize": 3010,
       "hasFrontmatter": true,
       "title": "Assembly marker callouts and shared image-canvas behavior",
       "status": "accepted",
@@ -16409,8 +16424,8 @@
     },
     {
       "path": "docs/decisions/ADR-20260716-terminal-profile-registry-adapter-boundary.md",
-      "lineCount": 103,
-      "byteSize": 4930,
+      "lineCount": 167,
+      "byteSize": 9011,
       "hasFrontmatter": true,
       "title": "Terminal profile registry and executable adapter boundary",
       "status": "accepted",
@@ -16423,9 +16438,24 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/decisions/ADR-20260717-assembly-torque-wrench-traceability.md",
+      "lineCount": 77,
+      "byteSize": 9182,
+      "hasFrontmatter": false,
+      "title": "ADR-20260717: Assembly Torque Wrench Traceability Boundaries",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 3,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/design-previews/README.md",
-      "lineCount": 99,
-      "byteSize": 19447,
+      "lineCount": 100,
+      "byteSize": 19980,
       "hasFrontmatter": false,
       "title": "デザインプレビュー（静的 HTML）",
       "status": null,
@@ -16449,6 +16479,16 @@
         {
           "href": "../decisions/ADR-20260709-assembly-work-session-operator-layout.md",
           "targetPath": "docs/decisions/ADR-20260709-assembly-work-session-operator-layout.md",
+          "exists": true
+        },
+        {
+          "href": "../decisions/ADR-20260717-assembly-torque-wrench-traceability.md",
+          "targetPath": "docs/decisions/ADR-20260717-assembly-torque-wrench-traceability.md",
+          "exists": true
+        },
+        {
+          "href": "./assembly-torque-wrench-traceability-preview.html",
+          "targetPath": "docs/design-previews/assembly-torque-wrench-traceability-preview.html",
           "exists": true
         },
         {
@@ -16699,6 +16739,11 @@
         {
           "href": "../knowledge-base/KB-382-mobile-placement-shelf-layout-master.md#layout-editor-dock-confirm-reset-2026-05",
           "targetPath": "docs/knowledge-base/KB-382-mobile-placement-shelf-layout-master.md",
+          "exists": true
+        },
+        {
+          "href": "../plans/assembly-torque-wrench-traceability-execplan.md",
+          "targetPath": "docs/plans/assembly-torque-wrench-traceability-execplan.md",
           "exists": true
         },
         {
@@ -18063,8 +18108,8 @@
     },
     {
       "path": "docs/guides/deployment.md",
-      "lineCount": 152,
-      "byteSize": 8325,
+      "lineCount": 189,
+      "byteSize": 13303,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -18111,7 +18156,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 196,
+      "inboundCount": 198,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -26447,7 +26492,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 9,
+      "inboundCount": 10,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -29638,8 +29683,8 @@
     },
     {
       "path": "docs/knowledge-base/infrastructure/KB-291-robodrill01-nfc-scan-not-responding-investigation.md",
-      "lineCount": 174,
-      "byteSize": 8672,
+      "lineCount": 175,
+      "byteSize": 9184,
       "hasFrontmatter": true,
       "title": "KB-291: ロボドリル01（raspi4-robodrill01）NFCスキャンが反応しない調査報告",
       "status": null,
@@ -30650,18 +30695,13 @@
     },
     {
       "path": "docs/modules/measuring-instruments/README.md",
-      "lineCount": 203,
-      "byteSize": 10654,
+      "lineCount": 225,
+      "byteSize": 12812,
       "hasFrontmatter": false,
       "title": "計測機器管理モジュール",
       "status": null,
       "source_of_truth": null,
       "localLinks": [
-        {
-          "href": "../../architecture/database.md#measuring-instruments-module",
-          "targetPath": "docs/architecture/database.md",
-          "exists": false
-        },
         {
           "href": "../../architecture/overview.md",
           "targetPath": "docs/architecture/overview.md",
@@ -30685,6 +30725,11 @@
         {
           "href": "../../knowledge-base/api.md#kb-094-サイネージ左ペインで計測機器と工具を視覚的に識別できない",
           "targetPath": "docs/knowledge-base/api.md",
+          "exists": true
+        },
+        {
+          "href": "../../knowledge-base/database.md",
+          "targetPath": "docs/knowledge-base/database.md",
           "exists": true
         },
         {
@@ -30718,6 +30763,11 @@
           "exists": true
         },
         {
+          "href": "../../plans/assembly-torque-wrench-traceability-execplan.md",
+          "targetPath": "docs/plans/assembly-torque-wrench-traceability-execplan.md",
+          "exists": true
+        },
+        {
           "href": "../../plans/ts100-integration-plan.md",
           "targetPath": "docs/plans/ts100-integration-plan.md",
           "exists": true
@@ -30725,6 +30775,11 @@
         {
           "href": "../../requirements/measuring-instruments-requirements.md",
           "targetPath": "docs/requirements/measuring-instruments-requirements.md",
+          "exists": true
+        },
+        {
+          "href": "../../runbooks/assembly-torque-agent.md",
+          "targetPath": "docs/runbooks/assembly-torque-agent.md",
           "exists": true
         }
       ],
@@ -30736,8 +30791,8 @@
     },
     {
       "path": "docs/modules/measuring-instruments/api.md",
-      "lineCount": 138,
-      "byteSize": 4591,
+      "lineCount": 163,
+      "byteSize": 6118,
       "hasFrontmatter": false,
       "title": "計測機器管理モジュール API仕様書",
       "status": null,
@@ -30751,13 +30806,18 @@
     },
     {
       "path": "docs/modules/measuring-instruments/ui.md",
-      "lineCount": 143,
-      "byteSize": 13623,
+      "lineCount": 154,
+      "byteSize": 14898,
       "hasFrontmatter": false,
       "title": "計測機器管理 UI設計メモ",
       "status": null,
       "source_of_truth": null,
       "localLinks": [
+        {
+          "href": "../../guides/deployment.md",
+          "targetPath": "docs/guides/deployment.md",
+          "exists": true
+        },
         {
           "href": "../../guides/ui-visibility-color-theme-remaining-tasks.md",
           "targetPath": "docs/guides/ui-visibility-color-theme-remaining-tasks.md",
@@ -30792,11 +30852,6 @@
           "href": "../../knowledge-base/KB-344-unified-loan-analytics.md",
           "targetPath": "docs/knowledge-base/KB-344-unified-loan-analytics.md",
           "exists": true
-        },
-        {
-          "href": "../guides/deployment.md",
-          "targetPath": "docs/modules/guides/deployment.md",
-          "exists": false
         },
         {
           "href": "../../plans/nfc-stream-isolation-plan.md",
@@ -31242,6 +31297,30 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/assembly-torque-wrench-traceability-execplan.md",
+      "lineCount": 705,
+      "byteSize": 117611,
+      "hasFrontmatter": true,
+      "title": "Assembly Torque Wrench Traceability",
+      "status": "active",
+      "source_of_truth": "this file",
+      "localLinks": [],
+      "inboundCount": 5,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [
+        {
+          "line": 10,
+          "length": 1434
+        },
+        {
+          "line": 447,
+          "length": 1055
+        }
+      ],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/assembly-unified-workflow-execplan.md",
       "lineCount": 363,
       "byteSize": 17855,
@@ -31303,9 +31382,24 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/deployment-exhaustive-preflight-execplan.md",
+      "lineCount": 200,
+      "byteSize": 25184,
+      "hasFrontmatter": true,
+      "title": "Prove every deployment route before another production release",
+      "status": "in-progress",
+      "source_of_truth": "docs/plans/deployment-exhaustive-preflight-execplan.md",
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/deployment-foundation-refactor-execplan.md",
-      "lineCount": 865,
-      "byteSize": 144655,
+      "lineCount": 921,
+      "byteSize": 156057,
       "hasFrontmatter": true,
       "title": "Refactor the deployment foundation through eight gated pull requests",
       "status": "in-progress",
@@ -31320,19 +31414,19 @@
           "length": 1226
         },
         {
-          "line": 843,
+          "line": 893,
           "length": 1025
         },
         {
-          "line": 849,
+          "line": 899,
           "length": 1002
         },
         {
-          "line": 855,
+          "line": 905,
           "length": 1197
         },
         {
-          "line": 857,
+          "line": 907,
           "length": 1137
         }
       ],
@@ -31881,8 +31975,8 @@
     },
     {
       "path": "docs/plans/kiosk-assembly-torque-management-mvp.md",
-      "lineCount": 387,
-      "byteSize": 31728,
+      "lineCount": 427,
+      "byteSize": 40576,
       "hasFrontmatter": true,
       "title": "Kiosk Assembly Torque Management MVP",
       "status": "active",
@@ -31949,20 +32043,30 @@
           "exists": true
         },
         {
-          "href": "../../apps/web/src/pages/kiosk/KioskAssemblyWorkStartPage.tsx",
-          "targetPath": "apps/web/src/pages/kiosk/KioskAssemblyWorkStartPage.tsx",
-          "exists": false
+          "href": "./assembly-torque-wrench-traceability-execplan.md",
+          "targetPath": "docs/plans/assembly-torque-wrench-traceability-execplan.md",
+          "exists": true
         },
         {
           "href": "./kiosk-deploy-notice-assembly-ui.md",
           "targetPath": "docs/plans/kiosk-deploy-notice-assembly-ui.md",
           "exists": true
+        },
+        {
+          "href": "../runbooks/assembly-torque-agent.md",
+          "targetPath": "docs/runbooks/assembly-torque-agent.md",
+          "exists": true
         }
       ],
-      "inboundCount": 2,
+      "inboundCount": 3,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
-      "longLines": [],
+      "longLines": [
+        {
+          "line": 135,
+          "length": 1006
+        }
+      ],
       "referencesExecPlan": false
     },
     {
@@ -34497,6 +34601,62 @@
         }
       ],
       "inboundCount": 7,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/runbooks/assembly-torque-agent.md",
+      "lineCount": 245,
+      "byteSize": 15359,
+      "hasFrontmatter": false,
+      "title": "組立 torque-agent 運用Runbook",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "../../clients/torque-agent/README.md",
+          "targetPath": "clients/torque-agent/README.md",
+          "exists": true
+        },
+        {
+          "href": "../decisions/ADR-20260717-assembly-torque-wrench-traceability.md",
+          "targetPath": "docs/decisions/ADR-20260717-assembly-torque-wrench-traceability.md",
+          "exists": true
+        },
+        {
+          "href": "../plans/assembly-torque-wrench-traceability-execplan.md",
+          "targetPath": "docs/plans/assembly-torque-wrench-traceability-execplan.md",
+          "exists": true
+        },
+        {
+          "href": "../plans/kiosk-assembly-torque-management-mvp.md",
+          "targetPath": "docs/plans/kiosk-assembly-torque-management-mvp.md",
+          "exists": true
+        },
+        {
+          "href": "client-agent-addition.md",
+          "targetPath": "docs/runbooks/client-agent-addition.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 3,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/runbooks/client-agent-addition.md",
+      "lineCount": 51,
+      "byteSize": 4639,
+      "hasFrontmatter": true,
+      "title": "Client Docker Agent Addition Runbook",
+      "status": "active",
+      "source_of_truth": "docs/runbooks/client-agent-addition.md",
+      "localLinks": [],
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],

@@ -60,7 +60,7 @@ export function AssemblyItemCard({
             製番 {productNo}
           </span>
           <span className="shrink-0 text-white/80" title={serialNo}>
-            S/N {serialNo}
+            作業ID {serialNo}
           </span>
           <span className={`shrink-0 ${toneClassName.accent}`}>進捗 {progressText}</span>
         </div>

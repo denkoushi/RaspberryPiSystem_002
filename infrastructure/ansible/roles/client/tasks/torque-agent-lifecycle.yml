@@ -1,0 +1,55 @@
+---
+# torque-agent container lifecycle. The configuration task runs immediately
+# before this file and folds .env changes into the recreate decision.
+
+- name: Ensure Docker is available for torque-agent
+  ansible.builtin.command: docker --version
+  register: torque_docker_version_check
+  changed_when: false
+  failed_when: false
+
+- name: Fail if Docker is not available (torque-agent requires Docker)
+  ansible.builtin.fail:
+    msg: "torque-agent requires Docker on {{ inventory_hostname }}."
+  when: torque_docker_version_check.rc != 0
+
+- name: Ensure torque-agent container is up
+  ansible.builtin.shell: |
+    set -euo pipefail
+    cd "{{ repo_path }}"
+    {% if torque_agent_image_build_needed | default(true) %}
+    docker compose -f infrastructure/docker/docker-compose.client.yml --profile torque up -d --build torque-agent
+    {% elif torque_agent_runtime_recreate_needed | default(true) %}
+    docker compose -f infrastructure/docker/docker-compose.client.yml --profile torque up -d --force-recreate --no-build torque-agent
+    {% else %}
+    docker compose -f infrastructure/docker/docker-compose.client.yml --profile torque up -d --no-build torque-agent
+    {% endif %}
+  args:
+    executable: /bin/bash
+  register: torque_agent_up_result
+
+- name: Wait for torque-agent to become ready
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ torque_agent_local_port | default(7073) }}/health"
+    method: GET
+    status_code: [200]
+    timeout: 10
+  register: torque_agent_status_check
+  retries: 5
+  delay: 3
+  until: torque_agent_status_check.status == 200
+
+- name: Capture docker compose ps for torque-agent (diagnostics on failure)
+  ansible.builtin.shell: |
+    cd "{{ repo_path }}" && docker compose -f infrastructure/docker/docker-compose.client.yml --profile torque ps -a
+  register: torque_agent_ps_result
+  changed_when: false
+  failed_when: false
+  when: torque_agent_status_check.status | default(0) != 200
+
+- name: Emit torque-agent status for diagnostics on failure
+  ansible.builtin.debug:
+    msg:
+      - "torque-agent health API: {{ torque_agent_status_check.json | default({}) }}"
+      - "docker compose ps: {{ torque_agent_ps_result.stdout | default('') }}"
+  when: torque_agent_status_check.status | default(0) != 200

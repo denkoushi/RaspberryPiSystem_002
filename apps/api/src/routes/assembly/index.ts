@@ -10,6 +10,9 @@ import {
 import { convertDrawingUploadToPreviewBuffer } from '../../lib/part-measurement-drawing-preview.js';
 import { AssemblyProcedureImageStorage } from '../../lib/assembly-procedure-image-storage.js';
 import { requireClientDevice } from '../kiosk/shared.js';
+import { requireKioskClientDevice } from '../../services/clients/client-device-auth.service.js';
+import { AssemblyTorqueTraceabilityService } from '../../services/torque-wrenches/index.js';
+import { agentTorqueRecordSchema } from '../torque-wrenches/schemas.js';
 import {
   AssemblyExcelExportService,
   AssemblyLibraryFilterOptionsService,
@@ -22,9 +25,11 @@ import {
   AssemblyTemplateService,
   AssemblyWorkSessionService,
   AssemblyWorkSessionRecordApprovalService,
+  AssemblyTraceabilityService,
   resolveAssemblyOperatorNfcUid,
   buildAssemblyLotSummary,
   serializeAssemblyWorkSessionApproval,
+  resolveAssemblyTraceabilityMode,
   TORQUE_INPUT_PORT_SOURCES,
   toPrismaTorqueInputSource,
   type AssemblyProcedureDocumentSummary,
@@ -36,6 +41,7 @@ import {
   type AssemblyTemplateAreaInput,
   type AssemblyTemplateCheckItemInput,
   type AssemblyTemplateDetail,
+  type AssemblyTemplateDetailRow,
   type AssemblyTemplateSummary,
   type AssemblyWorkSessionDetail,
   type AssemblyWorkSessionSummary
@@ -68,13 +74,18 @@ function validateCalloutTipPair(
 
 const boltInputSchema = z.object({
   sortOrder: z.coerce.number().int().min(0),
-  tighteningId: z.string().trim().min(1).max(120),
+  tighteningId: z.string().trim().min(1).max(120).optional(),
   markerNo: z.coerce.number().int().min(1).max(999),
   xRatio: z.coerce.number().min(0).max(1),
   yRatio: z.coerce.number().min(0).max(1),
   calloutTipXRatio: z.coerce.number().min(0).max(1).optional().nullable(),
   calloutTipYRatio: z.coerce.number().min(0).max(1).optional().nullable(),
   boltSpec: z.string().trim().min(1).max(200),
+  nominalDiameter: z.string().trim().min(1).max(40).optional().nullable(),
+  boltLengthMm: z.coerce.number().positive().optional().nullable(),
+  material: z.string().trim().min(1).max(80).optional().nullable(),
+  strengthClass: z.string().trim().min(1).max(80).optional().nullable(),
+  capabilityGroupId: z.string().uuid().optional().nullable(),
   nominalTorque: z.coerce.number(),
   lowerLimit: z.coerce.number(),
   upperLimit: z.coerce.number(),
@@ -114,7 +125,8 @@ const templateBodySchema = z.object({
   name: z.string().trim().min(1).max(200),
   procedureDocumentId: z.string().uuid(),
   areas: z.array(areaInputSchema).min(1),
-  checkItems: z.array(checkItemInputSchema).optional()
+  checkItems: z.array(checkItemInputSchema).optional(),
+  traceabilityMode: z.enum(['LEGACY', 'REQUIRED']).optional().default('LEGACY')
 });
 
 const templateReviseBodySchema = templateBodySchema.partial().extend({
@@ -127,27 +139,49 @@ const recordCheckBodySchema = z.object({
   checked: z.boolean()
 });
 
-const startSessionBodySchema = z.object({
+const startSessionBodySchema = z
+  .object({
   templateId: z.string().uuid(),
   productNo: z.string().trim().min(1).max(120),
-  serialNo: z.string().trim().min(1).max(120),
+  workId: z.string().trim().min(1).max(120).optional(),
+  /** 旧クライアント互換。新規クライアントは workId を送信する。 */
+  serialNo: z.string().trim().min(1).max(120).optional(),
   nameplateNo: z.string().trim().min(1).max(120).optional().nullable(),
   operatorEmployeeId: z.string().trim().max(120).optional().nullable(),
   operatorNameSnapshot: z.string().trim().min(1).max(120),
   targetUnit: z.string().trim().min(1).max(120),
-  torqueWrenchId: z.string().trim().min(1).max(120)
-});
+  torqueWrenchId: z.string().trim().min(1).max(120).optional().nullable()
+  })
+  .superRefine((value, ctx) => {
+    if (!value.workId && !value.serialNo) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: '作業用IDが必要です', path: ['workId'] });
+    }
+    if (value.workId && value.serialNo && value.workId !== value.serialNo) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'workId と serialNo は同じ値を指定してください', path: ['workId'] });
+    }
+  });
 
-const createAssemblyLotBodySchema = z.object({
+const createAssemblyLotBodySchema = z
+  .object({
   templateId: z.string().uuid(),
   productNo: z.string().trim().min(1).max(120),
   expectedQuantity: z.coerce.number().int().min(1).max(500),
-  serialNos: z.array(z.string().trim().min(1).max(120)).min(1).max(500),
+  workIds: z.array(z.string().trim().min(1).max(120)).min(1).max(500).optional(),
+  /** 旧クライアント互換。新規クライアントは workIds を送信する。 */
+  serialNos: z.array(z.string().trim().min(1).max(120)).min(1).max(500).optional(),
   operatorEmployeeId: z.string().trim().max(120).optional().nullable(),
   operatorNameSnapshot: z.string().trim().min(1).max(120),
   targetUnit: z.string().trim().min(1).max(120),
-  torqueWrenchId: z.string().trim().min(1).max(120)
-});
+  torqueWrenchId: z.string().trim().min(1).max(120).optional().nullable()
+  })
+  .superRefine((value, ctx) => {
+    if (!value.workIds && !value.serialNos) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: '作業用IDが必要です', path: ['workIds'] });
+    }
+    if (value.workIds && value.serialNos) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'workIds または serialNos のどちらか一方だけを指定してください', path: ['workIds'] });
+    }
+  });
 
 const procedureOrderItemBodySchema = z
   .object({
@@ -241,6 +275,7 @@ function serializeTemplateSummary(template: AssemblyTemplateSummary) {
     name: template.name,
     version: template.version,
     isActive: template.isActive,
+    traceabilityMode: template.traceabilityMode,
     procedureDocumentId: template.procedureDocumentId,
     procedureDocumentName: template.procedureDocumentName,
     areaCount: template.areaCount,
@@ -351,6 +386,7 @@ function serializeAssemblyLotSummary(lot: AssemblyLotSummary) {
       id: serial.id,
       lotId: serial.lotId,
       sortOrder: serial.sortOrder,
+      workId: serial.workId,
       serialNo: serial.serialNo,
       status: serializeLotSerialStatus(serial.status),
       workSessionId: serial.workSessionId,
@@ -385,7 +421,7 @@ function serializeCheckRecord(record: {
   };
 }
 
-function serializeTemplate(template: AssemblyTemplateDetail) {
+function serializeTemplate(template: AssemblyTemplateDetail | AssemblyTemplateDetailRow) {
   return {
     id: template.id,
     modelCode: template.modelCode,
@@ -393,6 +429,7 @@ function serializeTemplate(template: AssemblyTemplateDetail) {
     name: template.name,
     version: template.version,
     isActive: template.isActive,
+    traceabilityMode: resolveAssemblyTraceabilityMode(template.traceabilityMode),
     procedureDocumentId: template.procedureDocumentId,
     createdAt: template.createdAt.toISOString(),
     updatedAt: template.updatedAt.toISOString(),
@@ -427,6 +464,7 @@ function serializeTemplate(template: AssemblyTemplateDetail) {
       bolts: area.bolts.map((bolt) => ({
         id: bolt.id,
         areaId: bolt.areaId,
+        templateId: bolt.templateId ?? area.templateId,
         sortOrder: bolt.sortOrder,
         tighteningId: bolt.tighteningId,
         markerNo: bolt.markerNo,
@@ -435,6 +473,11 @@ function serializeTemplate(template: AssemblyTemplateDetail) {
         calloutTipXRatio: decimalToString(bolt.calloutTipXRatio),
         calloutTipYRatio: decimalToString(bolt.calloutTipYRatio),
         boltSpec: bolt.boltSpec,
+        nominalDiameter: bolt.nominalDiameter,
+        boltLengthMm: decimalToString(bolt.boltLengthMm),
+        material: bolt.material,
+        strengthClass: bolt.strengthClass,
+        capabilityGroupId: bolt.capabilityGroupId,
         nominalTorque: decimalToString(bolt.nominalTorque),
         lowerLimit: decimalToString(bolt.lowerLimit),
         upperLimit: decimalToString(bolt.upperLimit),
@@ -456,7 +499,8 @@ function serializeSessionSummary(session: AssemblyWorkSessionSummary) {
     templateId: session.templateId,
     status: session.status.toLowerCase(),
     productNo: session.productNo,
-    serialNo: session.serialNo,
+    workId: session.workId,
+    serialNo: session.workId,
     nameplateNo: session.nameplateNo,
     operatorNameSnapshot: session.operatorNameSnapshot,
     targetUnit: session.targetUnit,
@@ -475,7 +519,9 @@ function serializeSessionSummary(session: AssemblyWorkSessionSummary) {
     currentBoltMarkerNo: session.currentBoltMarkerNo,
     acceptedBoltCount: session.acceptedBoltCount,
     totalBoltCount: session.totalBoltCount,
-    approval: serializeAssemblyWorkSessionApproval(session.approval)
+    approval: serializeAssemblyWorkSessionApproval(session.approval),
+    isTopLevel: session.isTopLevel,
+    formalId: session.formalId
   };
 }
 
@@ -510,7 +556,8 @@ function serializeSession(session: AssemblyWorkSessionDetail, sessionService: As
     templateId: session.templateId,
     status: session.status.toLowerCase(),
     productNo: session.productNo,
-    serialNo: session.serialNo,
+    workId: session.workId,
+    serialNo: session.workId,
     nameplateNo: session.nameplateNo,
     operatorEmployeeId: session.operatorEmployeeId,
     operatorNameSnapshot: session.operatorNameSnapshot,
@@ -535,9 +582,29 @@ function serializeSession(session: AssemblyWorkSessionDetail, sessionService: As
       inputSource: record.inputSource.toLowerCase(),
       rawPayload: record.rawPayload,
       value: decimalToString(record.value),
+      inputUnit: record.inputUnit,
+      valueNm: decimalToString(record.valueNm),
       judgement: record.judgement.toLowerCase(),
       accepted: record.accepted,
       ignoredReason: record.ignoredReason,
+      torqueWrenchProfileId: record.torqueWrenchProfileId,
+      confirmationId: record.confirmationId,
+      settingHistoryId: record.settingHistoryId,
+      serialNumberSnapshot: record.serialNumberSnapshot,
+      manufacturerSnapshot: record.manufacturerSnapshot,
+      modelNumberSnapshot: record.modelNumberSnapshot,
+      settingLowerLimitSnapshot: decimalToString(record.settingLowerLimitSnapshot),
+      settingNominalTorqueSnapshot: decimalToString(record.settingNominalTorqueSnapshot),
+      settingUpperLimitSnapshot: decimalToString(record.settingUpperLimitSnapshot),
+      settingUnitSnapshot: record.settingUnitSnapshot,
+      sourceClientDeviceId: record.sourceClientDeviceId,
+      sourceEventKey: record.sourceEventKey,
+      expectedTemplateBoltId: record.expectedTemplateBoltId,
+      deviceRecordedAt: dateToIso(record.deviceRecordedAt),
+      deviceMemoryCounter: record.deviceMemoryCounter,
+      deviceJudgement: record.deviceJudgement,
+      overrideActorUsername: record.overrideActorUsername,
+      overrideReason: record.overrideReason,
       recordedAt: record.recordedAt.toISOString(),
       createdAt: record.createdAt.toISOString(),
       tighteningId: record.templateBolt.tighteningId,
@@ -599,6 +666,15 @@ async function tryGetClientDevice(headers: FastifyRequest['headers']): Promise<{
   }
 }
 
+async function buildAssemblyTraceabilityActor(request: FastifyRequest) {
+  const clientDevice = await tryGetClientDevice(request.headers);
+  return {
+    username: request.user?.username ?? null,
+    clientDeviceId: clientDevice?.id ?? null,
+    clientDeviceNameSnapshot: clientDevice?.name ?? null
+  };
+}
+
 export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void> {
   const isAuthOnlyError = (error: unknown): boolean => {
     if (!error || typeof error !== 'object') return false;
@@ -639,8 +715,10 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
   const libraryFilterOptionsService = new AssemblyLibraryFilterOptionsService();
   const templateService = new AssemblyTemplateService();
   const sessionService = new AssemblyWorkSessionService();
+  const traceabilityService = new AssemblyTorqueTraceabilityService();
   const lotService = new AssemblyLotService(sessionService);
   const recordApprovalService = new AssemblyWorkSessionRecordApprovalService();
+  const assemblyTraceabilityService = new AssemblyTraceabilityService();
   const seibanStartService = new AssemblySeibanStartService();
   const seibanLotQuantityService = new AssemblySeibanLotQuantityService();
   const procedureOrderService = new AssemblyProcedureOrderService();
@@ -952,12 +1030,98 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
       .object({
         status: z.enum(['in_progress', 'completed', 'cancelled', 'all']).optional(),
         productNo: z.string().optional(),
+        workId: z.string().optional(),
+        /** 旧クライアント互換。 */
         serialNo: z.string().optional(),
         limit: z.coerce.number().int().min(1).max(100).optional()
       })
       .parse(request.query);
     const sessions = await sessionService.listSummary(q);
     return { sessions: sessions.map(serializeSessionSummary) };
+  });
+
+  app.get('/assembly/traceability/work-units', { preHandler: allowView }, async (request) => {
+    const query = z
+      .object({
+        scope: z.literal('top_level').optional(),
+        state: z.enum(['all', 'unassigned', 'assigned']).optional(),
+        query: z.string().max(120).optional(),
+        limit: z.coerce.number().int().min(1).max(100).optional()
+      })
+      .parse(request.query);
+    const workUnits = await assemblyTraceabilityService.listTopLevelCompleted(query);
+    const filtered = query.state === 'unassigned'
+      ? workUnits.filter((unit) => unit.formalIdentifier == null)
+      : query.state === 'assigned'
+        ? workUnits.filter((unit) => unit.formalIdentifier != null)
+        : workUnits;
+    return {
+      workUnits: filtered.map((unit) => ({
+        ...unit,
+        completedAt: dateToIso(unit.completedAt),
+        formalIdentifier: unit.formalIdentifier
+          ? { ...unit.formalIdentifier, assignedAt: unit.formalIdentifier.assignedAt.toISOString() }
+          : null
+      }))
+    };
+  });
+
+  app.post('/assembly/traceability/work-units/resolve', { preHandler: allowView }, async (request) => {
+    const body = z.object({ workId: z.string().trim().min(1).max(120) }).parse(request.body);
+    return assemblyTraceabilityService.resolve(body.workId);
+  });
+
+  app.post('/assembly/traceability/links', { preHandler: allowWriteKiosk }, async (request) => {
+    const body = z.object({
+      parentWorkId: z.string().trim().min(1).max(120),
+      childWorkId: z.string().trim().min(1).max(120),
+      accessPassword: z.string().max(128).optional().default('')
+    }).parse(request.body);
+    const link = await assemblyTraceabilityService.link({ ...body, actor: await buildAssemblyTraceabilityActor(request) });
+    return { link };
+  });
+
+  app.post('/assembly/traceability/links/:id/unlink', { preHandler: allowWriteKiosk }, async (request) => {
+    const params = idParamSchema.parse(request.params);
+    const body = z.object({ accessPassword: z.string().max(128).optional().default(''), reason: z.string().trim().min(1).max(500) }).parse(request.body);
+    const link = await assemblyTraceabilityService.unlink({ linkId: params.id, ...body, actor: await buildAssemblyTraceabilityActor(request) });
+    return { link };
+  });
+
+  app.post('/assembly/traceability/links/:id/reassign', { preHandler: allowWriteKiosk }, async (request) => {
+    const params = idParamSchema.parse(request.params);
+    const body = z.object({
+      parentWorkId: z.string().trim().min(1).max(120),
+      accessPassword: z.string().max(128).optional().default(''),
+      reason: z.string().trim().min(1).max(500)
+    }).parse(request.body);
+    const link = await assemblyTraceabilityService.reassign({ linkId: params.id, ...body, actor: await buildAssemblyTraceabilityActor(request) });
+    return { link };
+  });
+
+  app.post('/assembly/traceability/formal-identifiers', { preHandler: allowWriteKiosk }, async (request) => {
+    const body = z.object({
+      workId: z.string().trim().min(1).max(120),
+      formalId: z.string().trim().min(1).max(120),
+      accessPassword: z.string().max(128).optional().default('')
+    }).parse(request.body);
+    const formalIdentifier = await assemblyTraceabilityService.assignFormalIdentifier({ ...body, actor: await buildAssemblyTraceabilityActor(request) });
+    return { formalIdentifier };
+  });
+
+  app.post('/assembly/traceability/formal-identifiers/:id/correct', { preHandler: allowWriteKiosk }, async (request) => {
+    const params = idParamSchema.parse(request.params);
+    const body = z.object({
+      formalId: z.string().trim().min(1).max(120),
+      accessPassword: z.string().max(128).optional().default(''),
+      reason: z.string().trim().min(1).max(500)
+    }).parse(request.body);
+    const formalIdentifier = await assemblyTraceabilityService.correctFormalIdentifier({
+      assignmentId: params.id,
+      ...body,
+      actor: await buildAssemblyTraceabilityActor(request)
+    });
+    return { formalIdentifier };
   });
 
   app.get('/assembly/work-sessions/:id/procedure-sequence', { preHandler: allowView }, async (request, reply) => {
@@ -976,6 +1140,15 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
 
   app.post('/assembly/work-sessions/:id/record-torque', { preHandler: allowWriteKiosk }, async (request) => {
     const params = idParamSchema.parse(request.params);
+    const agentBody = agentTorqueRecordSchema.safeParse(request.body);
+    if (agentBody.success && 'sourceEventKey' in agentBody.data) {
+      const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
+      return traceabilityService.recordAgent({
+        sessionId: params.id,
+        clientDeviceId: clientDevice.id,
+        ...agentBody.data
+      });
+    }
     const body = recordTorqueBodySchema.parse(request.body);
     const result = await sessionService.recordTorque({
       sessionId: params.id,

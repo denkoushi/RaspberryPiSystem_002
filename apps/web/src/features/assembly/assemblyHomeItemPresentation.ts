@@ -36,7 +36,7 @@ export function presentNotStartedAssemblyItems(lots: AssemblyLotSummaryDto[]): N
         lotId: lot.id,
         lotSerialId: serial.id,
         productNo: lot.productNo,
-        serialNo: serial.serialNo,
+        serialNo: serial.workId ?? serial.serialNo,
         machineName: lot.targetUnit || lot.template.modelCode,
         progressText: '0%',
         progressPercent: 0,
@@ -56,7 +56,7 @@ export function presentWipAssemblyItems(sessions: AssemblyWorkSessionSummaryDto[
   return sessions.map((session) => ({
     id: session.id,
     productNo: session.productNo,
-    serialNo: session.serialNo,
+    serialNo: session.workId ?? session.serialNo,
     machineName: session.targetUnit || session.templateModelCode,
     progressText: `${progressText(session)} (${progressPercent(session)}%)`,
     progressPercent: progressPercent(session),
@@ -78,7 +78,7 @@ export function presentCompletedAssemblyItems(sessions: AssemblyWorkSessionSumma
   return sessions.map((session) => ({
     id: session.id,
     productNo: session.productNo,
-    serialNo: session.serialNo,
+    serialNo: session.workId ?? session.serialNo,
     machineName: session.targetUnit || session.templateModelCode,
     progressText: `${progressText(session)} (${progressPercent(session)}%)`,
     progressPercent: progressPercent(session),
@@ -90,6 +90,7 @@ export function presentCompletedAssemblyItems(sessions: AssemblyWorkSessionSumma
         value: `${session.templateName} v${session.templateVersion}・${session.templateProcedurePattern}`
       },
       { label: 'トルクレンチ', value: session.torqueWrenchId },
+      { label: '正式ID', value: session.isTopLevel === false ? 'サブアセンブリ' : session.formalId ?? '未登録' },
       { label: '完了', value: formatAssemblyTimestamp(session.completedAt ?? session.updatedAt) }
     ]
   }));

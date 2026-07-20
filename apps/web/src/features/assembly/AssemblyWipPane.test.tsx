@@ -43,7 +43,7 @@ describe('AssemblyWipPane', () => {
     );
 
     expect(screen.getByRole('list', { name: '仕掛中' })).toBeInTheDocument();
-    expect(screen.getByText('S/N S002')).toBeInTheDocument();
+    expect(screen.getByText('作業ID S002')).toBeInTheDocument();
     expect(screen.getByText('進捗 0/1 (0%)')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: '再開' })).not.toBeInTheDocument();
 

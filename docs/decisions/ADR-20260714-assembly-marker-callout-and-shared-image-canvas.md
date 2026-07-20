@@ -25,10 +25,15 @@ Assembly bolt and check markers are page-level domain records, but their image z
 - Attach callouts to existing bolt/check markers; do not add an independent annotation model.
 - Require both ratios together, keep callouts optional, copy them on template revision, and render them in editor and work-session views.
 - Keep marker/page ratios independent of zoom by sizing scrollable canvas content instead of applying page-level transforms.
+- Require every callout consumer to pass one measured `ZoomedImageCanvasLayout` in CSS pixels. The SVG viewBox, image rectangle, line, arrowhead, and tip badge must derive from that same value; placeholder spaces such as `100 x 100` are invalid.
+- Keep ratio-coordinate nudging in the domain-neutral image-canvas module: four accessible on-screen buttons move by 0.0025, clamp to 0 through 1, and emit only `xRatio` / `yRatio`. Inspection drawing retains its existing public component and helper names as compatibility wrappers.
+- Assembly exposes the nudge buttons for selected bolt and check markers while editing. It does not add global keyboard shortcuts or callout-tip nudging; a moved marker changes the line start while the saved tip remains fixed.
 
 ## Consequences
 
 - The migration is additive and existing templates remain visually unchanged.
 - API and Web DTOs gain nullable callout fields; `modelCode` and page-reference contracts remain unchanged.
 - Shared primitives receive regression coverage from both inspection-drawing and assembly consumers.
+- Editor, work-session, and preview callouts now use their rendered CSS-pixel coordinate space, so stroke and arrowhead sizes remain stable through fit and zoom transitions.
+- Marker position refinement reuses existing ratio persistence and requires no API, DTO, Prisma, or migration change.
 - A rolling release must update DB/API before a Web client that sends callout fields.

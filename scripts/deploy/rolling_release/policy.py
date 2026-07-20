@@ -335,8 +335,9 @@ def _role_impacted(
     host: str,
     classification: dict[str, Any] | None,
     inventory: dict[str, Any],
-    profile_ids: frozenset[str],
+    registry: TerminalProfileRegistry,
 ) -> bool:
+    profile_ids = frozenset(registry.profile_ids)
     normalized = _valid_classification(classification)
     if normalized is None:
         return True
@@ -360,14 +361,20 @@ def _role_impacted(
     if not impacted:
         return False
 
-    runtime_components = components - {'neutral', 'deploy-control'}
-    if runtime_components != {'barcode-agent'}:
+    component_profiles = dict(registry.component_profiles)
+    runtime_components = {
+        component
+        for component in components
+        if role in component_profiles.get(component, ())
+    }
+    # An impacted role without a matching runtime component is internally
+    # inconsistent classification evidence and can never justify exclusion.
+    if not runtime_components:
         return True
     metadata = inventory.get('_meta', {}) if isinstance(inventory, dict) else {}
     hostvars = metadata.get('hostvars', {}) if isinstance(metadata, dict) else {}
     values = hostvars.get(host) if isinstance(hostvars, dict) else None
-    # A missing ownership fact can never justify excluding a terminal.
-    return not isinstance(values, dict) or values.get('barcode_agent_enabled') is True
+    return registry.components_apply_to_host(runtime_components, values)
 
 
 def _impact_reason(role: str, classification: dict[str, Any] | None) -> str:
@@ -454,7 +461,8 @@ def plan_target_decisions(
     classifications: Mapping[str, Any] = (
         classifications_by_sha if isinstance(classifications_by_sha, Mapping) else {}
     )
-    profile_ids = frozenset(_registry(registry).profile_ids)
+    registry_value = _registry(registry)
+    profile_ids = frozenset(registry_value.profile_ids)
     release_roles = profile_ids | {'server'}
 
     decisions: list[dict[str, Any]] = []
@@ -491,7 +499,7 @@ def plan_target_decisions(
         else:
             classification = classifications.get(current)
             impacted = _role_impacted(
-                role, host, classification, inventory, profile_ids
+                role, host, classification, inventory, registry_value
             )
             desired = release_sha if impacted else current
             if current != desired:

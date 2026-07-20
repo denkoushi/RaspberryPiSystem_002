@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raspi-system.local/schemas/cem3-btla-capture-fixture-v1.json",
+  "title": "Sanitized CEM3-BTLA capture fixture frame",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "payloadText",
+    "terminator",
+    "scenario",
+    "sequence",
+    "provenance"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "payloadText": { "type": "string", "minLength": 1 },
+    "terminator": { "enum": ["KEY_TAB", "KEY_ENTER", "KEY_KPENTER"] },
+    "scenario": {
+      "enum": [
+        "normal",
+        "below_limit",
+        "above_limit",
+        "repeated_memory",
+        "rapid_consecutive",
+        "partial",
+        "missing_field",
+        "bad_number",
+        "unsupported_unit"
+      ]
+    },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "provenance": { "enum": ["observed", "derived"] }
+  }
+}

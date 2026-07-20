@@ -27,6 +27,8 @@
 ## 管理コンソール
 
 - 計測機器一覧（登録/編集/削除）: `/admin/tools/measuring-instruments`
+- トルクレンチ管理（型番、物理製造番号、校正・状態、現在設定／履歴、適合グループ）: `/admin/tools/torque-wrenches`
+- 組立トルク管理者例外入力: `/admin/tools/assembly-torque-override`。有効な現物確認と理由を必須とし、安全条件を迂回しない
 - 計測機器ジャンル管理（名称、画像1〜2枚）: `/admin/tools/measuring-instrument-genres`
 - 計測機器登録/編集フォームに **NFC/RFIDタグUID** を追加（保存時にタグ紐付けを自動作成。既存UIDは409で拒否）
 - 計測機器登録/編集フォームでジャンルを割り当て（未設定可だがキオスク持出は不可）
@@ -36,6 +38,15 @@
 - RFIDタグ紐付け管理（登録/削除）: `/admin/tools/instrument-tags`
 - 点検記録の閲覧/手動登録: `/admin/tools/inspection-records`
 - 工具と計測機器の混在一覧・フィルタ（別途実装検討）
+
+## 組立トルクレンチUI
+
+- REQUIREDテンプレートでは呼び径、長さ、材質、強度区分を入力後、サーバーが一致する適合グループだけを候補表示する
+- 締付IDは内部監査識別子としてサーバー生成し、通常UIでは表示・編集しない
+- 「次の丸数字へ条件を引継ぐ」は既定ON。範囲反映は存在する締付丸数字だけを更新し、欠番を作らない
+- コピー対象は締結条件、規定／上下限、単位、適合グループだけ。丸数字、座標、ページ、矢視、並び順、DB IDは維持する
+- REQUIRED作業画面は通常の手入力欄を出さず、適合する物理製造番号の選択、現物表示確認、agent接続状態、受信待機／拒否理由を表示する
+- 同一セッション・同一物理レンチ・同一条件・同一最新設定なら、別の丸数字へ進んでも確認を自動引継ぎする
 
 ## サイネージ表示（ラズパイ3）
 
@@ -60,8 +71,8 @@
   - **ナレッジベース**: [KB-095](../../knowledge-base/frontend.md#kb-095-計測機器タグスキャン時の自動遷移機能)
 - **持ち出し画面**: `/kiosk/instruments/borrow`
   - **レイアウト（2026-04-14）**: `docs/design-previews/kiosk-instrument-borrow-current.html` に沿ってヘッダ行・ジャンル画像パネル・点検カードを再配置（備考欄削除、タグ解決失敗時は選択クリア等）。コンポーネントは `InstrumentBorrowPageLayout` / `InstrumentBorrowHeaderRow` / `InstrumentBorrowGenreImagesPanel` / `InstrumentBorrowInspectionItemCard` に分割。**ジャンル点検画像の枠**は **白背景**（`InstrumentBorrowGenreImagesPanel`・`border-slate-300` は維持）。プレビュー HTML のプレースホルダーも同様。
-  - **レイアウト（2026-04-14・align ブランチ）**: 計測機器タグUID と氏名タグUIDを **`InstrumentBorrowTagUidFields`** で横並び（狭い幅では縦）、`点検項目` 見出しをその下の全幅に配置。点検カードは **`InstrumentBorrowInspectionItemsGrid`** で **`sm` 以上で 2 列グリッド**。OK 時は点検カードの **OK フッター文言を非表示**（NG 時のみ `❌ NG`）。Web 回帰テストは `InstrumentBorrowLayoutComponents.test.tsx`。本番デプロイ・Detach Run ID・Phase12 実機検証は [deployment.md](../guides/deployment.md) 冒頭の「最終更新」。
-  - **画像ファイルの永続化（2026-04-14）**: ジャンル画像の実体は API ホストの `storage/measuring-instrument-genres/`（Docker では volume バインド）に保存される。デプロイで `api` を再作成しても消えないよう **`infrastructure/docker/docker-compose.server.yml` で永続マウント**し、初回移行時は Ansible がコンテナ内残存ファイルを **best-effort でホストへ退避**する。運用の詳細は [deployment.md](../guides/deployment.md) の「新しい bind mount」知見・[KB-343](../../knowledge-base/infrastructure/ansible-deployment.md#kb-343-measuring-instrument-genre-image-persistence)。**本番反映は Pi5 のみ**（`--limit raspberrypi5`）で足りる（キオスク端末はサーバー経由で画像取得）。実機自動検証は `./scripts/deploy/verify-phase12-real.sh`（**PASS 43/0/0** 例・2026-04-14）。
+  - **レイアウト（2026-04-14・align ブランチ）**: 計測機器タグUID と氏名タグUIDを **`InstrumentBorrowTagUidFields`** で横並び（狭い幅では縦）、`点検項目` 見出しをその下の全幅に配置。点検カードは **`InstrumentBorrowInspectionItemsGrid`** で **`sm` 以上で 2 列グリッド**。OK 時は点検カードの **OK フッター文言を非表示**（NG 時のみ `❌ NG`）。Web 回帰テストは `InstrumentBorrowLayoutComponents.test.tsx`。本番デプロイ・Detach Run ID・Phase12 実機検証は [deployment.md](../../guides/deployment.md) 冒頭の「最終更新」。
+  - **画像ファイルの永続化（2026-04-14）**: ジャンル画像の実体は API ホストの `storage/measuring-instrument-genres/`（Docker では volume バインド）に保存される。デプロイで `api` を再作成しても消えないよう **`infrastructure/docker/docker-compose.server.yml` で永続マウント**し、初回移行時は Ansible がコンテナ内残存ファイルを **best-effort でホストへ退避**する。運用の詳細は [deployment.md](../../guides/deployment.md) の「新しい bind mount」知見・[KB-343](../../knowledge-base/infrastructure/ansible-deployment.md#kb-343-measuring-instrument-genre-image-persistence)。**本番反映は Pi5 のみ**（`--limit raspberrypi5`）で足りる（キオスク端末はサーバー経由で画像取得）。実機自動検証は `./scripts/deploy/verify-phase12-real.sh`（**PASS 43/0/0** 例・2026-04-14）。
   - 計測機器タグUID・氏名タグUIDの手入力フォーム（実装済み）
   - NFCエージェント連携実装済み（計測機器タグ→氏名タグの順で自動送信）
   - 計測機器選択→ジャンル解決→点検項目自動表示を実装

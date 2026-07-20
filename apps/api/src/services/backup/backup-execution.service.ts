@@ -5,6 +5,7 @@ import type { BackupTarget } from './backup-target.interface.js';
 import type { BackupKind } from './backup-types.js';
 import { BackupService } from './backup.service.js';
 import { BackupHistoryService } from './backup-history.service.js';
+import { databaseNameFromSource } from './backup-database-source.js';
 import { StorageProviderFactory } from './storage-provider-factory.js';
 import { recoverAndRetryBackupOnInsufficientSpace } from './backup-space-recovery.service.js';
 
@@ -59,25 +60,6 @@ export function resolveBackupProviders(params: {
   return providers;
 }
 
-function getDatabaseName(source: string): string | undefined {
-  if (!source) return undefined;
-
-  if (source.startsWith('postgresql://') || source.startsWith('postgres://')) {
-    try {
-      const parsed = new URL(source);
-      return parsed.pathname.replace(/^\//, '') || undefined;
-    } catch {
-      return undefined;
-    }
-  }
-
-  if (!source.includes('/') && !source.includes(':')) {
-    return source;
-  }
-
-  return undefined;
-}
-
 export function findBackupTargetConfig(
   config: BackupConfig,
   kind: BackupKind,
@@ -88,10 +70,12 @@ export function findBackupTargetConfig(
 
   if (kind !== 'database') return undefined;
 
-  const sourceDbName = getDatabaseName(source);
+  const sourceDbName = databaseNameFromSource(source);
   if (!sourceDbName) return undefined;
 
-  return config.targets.find((t) => t.kind === 'database' && getDatabaseName(t.source) === sourceDbName);
+  return config.targets.find(
+    (t) => t.kind === 'database' && databaseNameFromSource(t.source) === sourceDbName
+  );
 }
 
 export async function executeBackupAcrossProviders(

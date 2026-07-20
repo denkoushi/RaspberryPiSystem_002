@@ -37,17 +37,21 @@ def assert_change_classification_is_staged() -> None:
     if (
         "nfc_agent_runtime_recreate_needed:" in image_block
         or "barcode_agent_runtime_recreate_needed:" in image_block
+        or "torque_agent_runtime_recreate_needed:" in image_block
     ):
         raise AssertionError("runtime facts must not reference image facts in the same set_fact task")
 
     expected_patterns = (
         "^clients/nfc-agent/",
         "^clients/barcode-agent/",
+        "^clients/torque-agent/",
         "^infrastructure/docker/Dockerfile\\.nfc-agent$",
         "^infrastructure/docker/Dockerfile\\.barcode-agent$",
+        "^infrastructure/docker/Dockerfile\\.torque-agent$",
         "^infrastructure/docker/docker-compose\\.client\\.yml$",
         "nfc_agent_image_build_needed | bool",
         "barcode_agent_image_build_needed | bool",
+        "torque_agent_image_build_needed | bool",
     )
     classification = text[image_start:]
     for pattern in expected_patterns:
@@ -141,18 +145,26 @@ def classify_paths(paths: list[str], *, unavailable: bool = False) -> dict[str, 
             for path in paths
         )
 
-    for fact in ("nfc_agent_image_build_needed", "barcode_agent_image_build_needed"):
+    for fact in (
+        "nfc_agent_image_build_needed",
+        "barcode_agent_image_build_needed",
+        "torque_agent_image_build_needed",
+    ):
         if "repo_diff_unavailable | bool" not in fact_body(text, fact):
             raise AssertionError(f"{fact} must fail closed when the Git diff is unavailable")
 
     nfc_image = matched("nfc_agent_image_build_needed")
     barcode_image = matched("barcode_agent_image_build_needed")
+    torque_image = matched("torque_agent_image_build_needed")
     return {
         "nfc_image": nfc_image,
         "barcode_image": barcode_image,
+        "torque_image": torque_image,
         "nfc_recreate": nfc_image or matched("nfc_agent_runtime_recreate_needed"),
         "barcode_recreate": barcode_image
         or matched("barcode_agent_runtime_recreate_needed"),
+        "torque_recreate": torque_image
+        or matched("torque_agent_runtime_recreate_needed"),
     }
 
 
@@ -190,6 +202,7 @@ def assert_pre_sync_diff_fixture() -> None:
         for relative in (
             "clients/nfc-agent/agent.py",
             "infrastructure/ansible/roles/client/tasks/barcode-agent.yml",
+            "infrastructure/ansible/roles/client/tasks/torque-agent.yml",
             "docs/readme.md",
         ):
             path = repo / relative
@@ -203,6 +216,9 @@ def assert_pre_sync_diff_fixture() -> None:
         (repo / "infrastructure/ansible/roles/client/tasks/barcode-agent.yml").write_text(
             "candidate\n", encoding="utf-8"
         )
+        (repo / "infrastructure/ansible/roles/client/tasks/torque-agent.yml").write_text(
+            "candidate\n", encoding="utf-8"
+        )
         git("add", ".")
         git("commit", "-qm", "candidate")
         new_sha = git("rev-parse", "HEAD").stdout.strip()
@@ -212,8 +228,10 @@ def assert_pre_sync_diff_fixture() -> None:
         if decision != {
             "nfc_image": True,
             "barcode_image": False,
+            "torque_image": False,
             "nfc_recreate": True,
             "barcode_recreate": True,
+            "torque_recreate": True,
         }:
             raise AssertionError(f"unexpected lifecycle decision for preserved Git diff: {decision}")
 
@@ -241,29 +259,71 @@ def assert_agent_scope_and_health_contracts() -> None:
             "barcode-agent-lifecycle.yml",
             "barcode_agent_enabled | default(false) | bool",
         ),
+        (
+            "Ensure torque-agent is running (assembly kiosk, optional)",
+            "torque-agent-lifecycle.yml",
+            "torque_agent_enabled | default(false) | bool",
+        ),
     )
     for name, filename, condition in expected:
         include = task_block(main, name)
         require(f"ansible.builtin.include_tasks: {filename}", include, name)
         require(f"when: {condition}", include, name)
 
-    for filename, agent, result in (
-        ("nfc-agent.yml", "NFC", "nfc_agent_env_result"),
-        ("barcode-agent.yml", "barcode", "barcode_agent_env_result"),
+    for filename, environment_name, lifecycle_name, result, require_notification in (
+        (
+            "nfc-agent.yml",
+            "Deploy NFC agent environment variables",
+            "Include NFC environment changes in lifecycle selection",
+            "nfc_agent_env_result",
+            True,
+        ),
+        (
+            "barcode-agent.yml",
+            "Deploy barcode agent environment variables",
+            "Include barcode environment changes in lifecycle selection",
+            "barcode_agent_env_result",
+            True,
+        ),
+        (
+            "torque-agent.yml",
+            "Deploy torque-agent environment",
+            "Include torque-agent environment changes in lifecycle selection",
+            "torque_agent_env_result",
+            False,
+        ),
     ):
         text = (CLIENT_TASKS / filename).read_text(encoding="utf-8")
-        environment = task_block(text, f"Deploy {agent} agent environment variables")
+        environment = task_block(text, environment_name)
         if "terminal_release_mode" in environment:
-            raise AssertionError(f"{agent} environment must remain release-reachable")
-        require("notify: restart", environment, f"{agent} environment notification")
-        lifecycle_selection = task_block(
-            text, f"Include {agent} environment changes in lifecycle selection"
-        )
-        require(f"{result}.changed", lifecycle_selection, f"{agent} environment lifecycle")
+            raise AssertionError(f"{filename} environment must remain release-reachable")
+        if require_notification:
+            require("notify: restart", environment, f"{filename} environment notification")
+        lifecycle_selection = task_block(text, lifecycle_name)
+        require(f"{result}.changed", lifecycle_selection, f"{filename} environment lifecycle")
 
-    for filename, agent, docker_register in (
-        ("nfc-agent-lifecycle.yml", "nfc-agent", "docker_version_check"),
-        ("barcode-agent-lifecycle.yml", "barcode-agent", "barcode_docker_version_check"),
+    for filename, agent, docker_register, health_path, status_register in (
+        (
+            "nfc-agent-lifecycle.yml",
+            "nfc-agent",
+            "docker_version_check",
+            "/api/agent/status",
+            "nfc_agent_status_check",
+        ),
+        (
+            "barcode-agent-lifecycle.yml",
+            "barcode-agent",
+            "barcode_docker_version_check",
+            "/api/agent/status",
+            "barcode_agent_status_check",
+        ),
+        (
+            "torque-agent-lifecycle.yml",
+            "torque-agent",
+            "torque_docker_version_check",
+            "/health",
+            "torque_agent_status_check",
+        ),
     ):
         text = (CLIENT_TASKS / filename).read_text(encoding="utf-8")
         docker_check = task_block(text, f"Ensure Docker is available for {agent}")
@@ -275,16 +335,17 @@ def assert_agent_scope_and_health_contracts() -> None:
         require("ansible.builtin.fail:", docker_failure, agent)
         require(f"when: {docker_register}.rc != 0", docker_failure, agent)
         readiness = task_block(text, f"Wait for {agent} to become ready")
-        require("/api/agent/status", readiness, agent)
+        require(health_path, readiness, agent)
         require("status_code: [200]", readiness, agent)
         require("retries: 5", readiness, agent)
-        require(f"until: {agent.replace('-', '_')}_status_check.status == 200", readiness, agent)
+        require(f"until: {status_register}.status == 200", readiness, agent)
         if "failed_when: false" in readiness:
             raise AssertionError(f"{agent} readiness must fail closed after retries")
         diagnostics = task_block(
             text, f"Capture docker compose ps for {agent} (diagnostics on failure)"
         )
-        require("docker-compose.client.yml ps -a", diagnostics, agent)
+        require("docker-compose.client.yml", diagnostics, agent)
+        require("ps -a", diagnostics, agent)
 
     handlers = (
         ROOT / "infrastructure/ansible/roles/client/handlers/main.yml"
@@ -387,6 +448,7 @@ def main() -> None:
     for filename, agent in (
         ("nfc-agent-lifecycle.yml", "nfc_agent"),
         ("barcode-agent-lifecycle.yml", "barcode_agent"),
+        ("torque-agent-lifecycle.yml", "torque_agent"),
     ):
         template = command_template(filename)
         branches = command_branches(template, agent)

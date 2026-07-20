@@ -4,6 +4,14 @@ client_default_services_to_restart:
   - status-agent.service
   - status-agent.timer
 haizen_agent_enabled: false
+torque_agent_enabled: false
+torque_agent_local_port: 7073
+torque_agent_heartbeat_ttl_seconds: 8
+torque_agent_browser_origins: []
+# system: OS CA verification (default); insecure: only for an explicitly scoped self-signed server.
+torque_agent_tls_verify_mode: "system"
+torque_agent_bluetooth_adapter: {}
+torque_agent_hid_links: []
 haizen_agent_install_evdev: true
 # insecure: 自己署名 Pi5 TLS 向け / system: OS 検証（Caddy 等で正規証明書を載せた環境）
 haizen_agent_tls_verify_mode: "insecure"

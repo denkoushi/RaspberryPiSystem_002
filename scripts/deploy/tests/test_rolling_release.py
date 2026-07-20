@@ -2269,10 +2269,15 @@ class AutoMinimizeTest(unittest.TestCase):
             'raspberrypi5': {
                 'status_agent_client_id': 'raspberrypi5-server',
             },
-            'kiosk-a': {'manage_kiosk_browser': True, 'status_agent_client_id': 'a'},
+            'kiosk-a': {
+                'manage_kiosk_browser': True,
+                'status_agent_client_id': 'a',
+                'nfc_agent_client_id': 'nfc-a',
+            },
             'kiosk-b': {
                 'manage_kiosk_browser': True,
                 'status_agent_client_id': 'b',
+                'nfc_agent_client_id': 'nfc-b',
                 'barcode_agent_enabled': True,
             },
             'raspberrypi3': {'manage_signage_lite': True, 'status_agent_client_id': 's'},

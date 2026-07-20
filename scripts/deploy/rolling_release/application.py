@@ -21,9 +21,13 @@ from .backends.systemd import (
 from .models import LaunchSpec
 from .policy import server_identity
 from .reconcile import reconcile_status
+from .route_contract import ROUTE_STAGES
+from .terminal_preflight_contract import build_target_contracts
 
 
 OPERATOR_CANARY_APPROVAL_CLIENT = "operator-canary-approval"
+EX_SOFTWARE = 70
+EX_CONFIG = 78
 _REMOTE_CLIENT_ID_PROBE = r'''import os,re,stat,sys
 p="/etc/raspi-status-agent.conf"
 flags=os.O_RDONLY|getattr(os,"O_CLOEXEC",0)|getattr(os,"O_NOFOLLOW",0)
@@ -206,6 +210,15 @@ def require_checkout_sha(sha: str, *, runtime: Any) -> None:
         )
 
 
+def validate_candidate_migrations(sha: str, *, runtime: Any) -> None:
+    """Validate committed candidate SQL before any remote release is submitted."""
+
+    validator = runtime.PROJECT / "scripts/deploy/validate-candidate-migrations.sh"
+    runtime.run(
+        [str(validator), "origin/main", sha],
+    )
+
+
 def read_remote_server_client_id(*, runtime: Any) -> str:
     """Read only the public CLIENT_ID field; never return the config or key."""
 
@@ -231,10 +244,126 @@ def validate_remote_server_identity(
     return identity
 
 
+def _bounded_probe_details(result: Any) -> list[str]:
+    details: list[str] = []
+    for raw in f"{result.stdout or ''}\n{result.stderr or ''}".splitlines():
+        line = "".join(character for character in raw.strip() if character.isprintable())
+        if not line or len(details) >= 100:
+            continue
+        details.append(line[:512])
+    return details
+
+
+def _probe_record(name: str, result: Any, *, structured: bool = False) -> dict[str, Any]:
+    returncode = result.returncode if type(result.returncode) is int else EX_SOFTWARE
+    status = "passed" if returncode == 0 else ("blocked" if returncode == EX_CONFIG else "incomplete")
+    record: dict[str, Any] = {
+        "probe": name,
+        "status": status,
+        "exitCode": returncode,
+        "issues": [],
+    }
+    if structured:
+        try:
+            payload = json.loads((result.stdout or "").strip())
+        except (TypeError, json.JSONDecodeError):
+            payload = None
+        if not isinstance(payload, dict) or payload.get("probe") != name:
+            record.update(
+                {
+                    "status": "incomplete",
+                    "exitCode": EX_SOFTWARE,
+                    "issues": [f"{name}.invalid-report"],
+                }
+            )
+            return record
+        issues = payload.get("issues")
+        proofs = payload.get("proofs")
+        warnings = payload.get("warnings")
+        metrics = payload.get("metrics")
+        record["issues"] = (
+            [value[:256] for value in issues if isinstance(value, str)][:100]
+            if isinstance(issues, list)
+            else [f"{name}.invalid-issues"]
+        )
+        record["proofs"] = (
+            [value[:256] for value in proofs if isinstance(value, str)][:100]
+            if isinstance(proofs, list)
+            else []
+        )
+        record["warnings"] = (
+            [value[:256] for value in warnings if isinstance(value, str)][:100]
+            if isinstance(warnings, list)
+            else []
+        )
+        record["metrics"] = (
+            {
+                key: value
+                for key, value in metrics.items()
+                if key in {"diskFreeMb", "memoryAvailableMb"}
+                and type(value) in {int, float}
+            }
+            if isinstance(metrics, dict)
+            else {}
+        )
+        if payload.get("status") != status:
+            record.update(
+                {
+                    "status": "incomplete",
+                    "exitCode": EX_SOFTWARE,
+                    "issues": [f"{name}.status-mismatch"],
+                }
+            )
+        return record
+    if returncode != 0:
+        record["issues"] = [f"{name}.{status}"]
+        record["details"] = _bounded_probe_details(result)
+    return record
+
+
+def _preflight_report(
+    spec: LaunchSpec,
+    *,
+    migration_result: Any,
+    route_result: Any,
+    terminal_result: Any,
+    selected_hosts: list[str],
+    terminal_count: int,
+) -> tuple[int, dict[str, Any]]:
+    probes = [
+        _probe_record("migration", migration_result),
+        _probe_record("route", route_result, structured=True),
+        _probe_record("terminal", terminal_result),
+    ]
+    if any(probe["status"] == "incomplete" for probe in probes):
+        outcome = EX_SOFTWARE
+        status = "incomplete"
+    elif any(probe["status"] == "blocked" for probe in probes):
+        outcome = EX_CONFIG
+        status = "blocked"
+    else:
+        outcome = 0
+        status = "passed"
+    return outcome, {
+        "version": 1,
+        "preflightId": spec.run_id,
+        "sha": spec.sha,
+        "inventory": spec.inventory,
+        "limit": spec.limit,
+        "status": status,
+        "selectedHosts": selected_hosts,
+        "terminalCount": terminal_count,
+        "releaseSubmitted": False,
+        "routeCoverage": [stage.id for stage in ROUTE_STAGES],
+        "probes": probes,
+    }
+
+
 def launch(args: Any, *, runtime: Any) -> int:
     _require_clean_worktree(runtime=runtime)
     remote_inventory = _remote_inventory(args.inventory, runtime=runtime)
     runtime.run(["git", "-C", str(runtime.PROJECT), "fetch", "origin", args.branch])
+    runtime.run(["git", "-C", str(runtime.PROJECT), "fetch", "origin", "main"])
     sha = runtime.run(
         ["git", "-C", str(runtime.PROJECT), "rev-parse", f"origin/{args.branch}"],
         capture=True,
@@ -242,12 +371,25 @@ def launch(args: Any, *, runtime: Any) -> int:
     if not runtime.FULL_SHA_RE.fullmatch(sha):
         raise RuntimeError("origin branch did not resolve to an immutable SHA")
     require_checkout_sha(sha, runtime=runtime)
-    inventory_data = runtime.inventory_json(
+    validate_candidate_migrations(sha, runtime=runtime)
+    inventory_data = runtime.read_only_inventory_json(
         str(runtime.ANSIBLE_DIRECTORY / remote_inventory)
     )
     # Validate the complete target-tree topology before the identity probe
     # opens SSH or a transient systemd unit can reach remote checkout/state.
-    runtime.release_hosts(inventory_data)
+    all_release_hosts = runtime.release_hosts(inventory_data)
+    selected_release_hosts = all_release_hosts
+    if args.limit:
+        selected = runtime.read_only_selected_hosts(
+            str(runtime.ANSIBLE_DIRECTORY / remote_inventory), args.limit
+        )
+        if not selected:
+            raise RuntimeError(f"--limit selected no hosts: {args.limit}")
+        selected_release_hosts = runtime.release_hosts(inventory_data, selected)
+    terminal_preflight_targets = build_target_contracts(
+        inventory_data,
+        [target for target in selected_release_hosts if target.get("role") != "server"],
+    )
     identity = validate_remote_server_identity(inventory_data, runtime=runtime)
 
     run_id = new_run_id()
@@ -264,8 +406,30 @@ def launch(args: Any, *, runtime: Any) -> int:
         skip_canary_hold=args.skip_canary_hold,
         full_fleet=args.full_fleet,
     ).validate()
+    systemd, control = build_backends(runtime)
+    migration_preflight = systemd.preflight_migrations(spec)
+    route_preflight = systemd.preflight_route(spec)
+    terminal_preflight_result = systemd.preflight_terminals(
+        spec, terminal_preflight_targets
+    )
+    preflight_code, preflight_report = _preflight_report(
+        spec,
+        migration_result=migration_preflight,
+        route_result=route_preflight,
+        terminal_result=terminal_preflight_result,
+        selected_hosts=[str(target["host"]) for target in selected_release_hosts],
+        terminal_count=len(terminal_preflight_targets),
+    )
+    if getattr(args, "preflight_only", False):
+        print(json.dumps(preflight_report, ensure_ascii=False, sort_keys=True))
+        return preflight_code
+    if preflight_code != 0:
+        raise RuntimeError(
+            f"release {run_id} was not submitted because aggregate preflight "
+            f"{preflight_report['status']}: "
+            + json.dumps(preflight_report["probes"], ensure_ascii=True, sort_keys=True)
+        )
     try:
-        systemd, control = build_backends(runtime)
         result = systemd.start(spec, wait=not args.detach)
     except Exception as error:
         raise RuntimeError(

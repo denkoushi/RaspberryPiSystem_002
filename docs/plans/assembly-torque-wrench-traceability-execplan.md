@@ -1,0 +1,705 @@
+---
+title: Assembly Torque Wrench Traceability
+id: plan-assembly-torque-wrench-traceability
+status: active
+scope: assembly template tightening conditions, torque wrench master, physical-tool confirmation, torque-agent, private HID capture tooling, torque audit records, responsive kiosk UI
+date: 2026-07-17
+source_of_truth: this file
+related_code: apps/api/prisma/schema.prisma, apps/api/src/routes/assembly, apps/api/src/services/assembly, apps/web/src/features/assembly, apps/web/src/pages/kiosk, packages/shared-types, clients/torque-agent
+related_docs: ../decisions/ADR-20260717-assembly-torque-wrench-traceability.md, ../design-previews/assembly-torque-wrench-traceability-preview.html, ./kiosk-assembly-torque-management-mvp.md
+validation: preview approved; traceability DB/API/agent/infrastructure and Draft PR CI contracts pass through commit d606006d; three normal and five rapid-consecutive CEM3-BTLA frames are sanitized; an external RTL8761BU controller established a stable bond and survived wrench power cycling; the strict parser is production-registered behind exact controller/HID identity, startup-wait, and reconnect contracts; the fully expand-only migration, candidate/terminal preflight separation, shared assembly transaction policy, and backup source/connection separation pass all 149 migrations, 23 focused real-DB integration tests, a six-second row-lock wait, all 2,360 API tests, and exact-head CI at ea64f28b; rollback-runtime authority unification passes exact-head CI and standard release 20260718-224954-e64fe2; finite exact-controller acceptance passes exact-head CI at 1e851fc1; optional-agent ownership, adapter-owned runtime capture, exact-candidate read-only capture probing, and the shared local/CI deploy-contract runner pass exact-head CI at c09834e3 and a read-only StoneBase preflight; stable candidate agent health and pre-mutation sealed-manifest recovery pass 79 focused and 672 full deployment tests locally; fleet-baseline ownership passes exact-head CI at b6f6e622; collision-free import fixtures pass ten accumulated-DB repetitions plus Gmail/Dropbox integration locally; the corrected standard release remains pending
+open_items: pass exact-head CI for collision-free import fixtures, then run limited standard preflight, release, and physical acceptance; record firmware when available; verify reboot, exact external-controller selection, completed controller unit, stable HID link, first-frame capture, rapid input, and the production work screen
+---
+
+# Add Physical Torque Wrench Traceability to Assembly Work
+
+This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept current while work proceeds. Maintain this document in accordance with `.agent/PLANS.md` from the repository root.
+
+## Purpose / Big Picture
+
+After this change, an operator can configure one tightening condition once and reuse it across many uniquely numbered circle markers. A required-traceability template identifies the permitted torque-wrench capability rather than one irreplaceable physical tool. At work time, the operator confirms a specific serial-numbered wrench and its displayed settings, and every accepted or rejected torque event records the physical wrench and setting snapshot.
+
+The system must refuse an incompatible, unregistered, uncalibrated, expired, wrongly configured, or unexpected wrench without advancing the current marker. It must still retain the input and reason as an audit event. Existing assembly templates and records remain usable in a legacy mode.
+
+Two explicit gates protect the implementation. First, the user must approve a three-screen interactive design preview at 1920x1080 and 1366x768 before production UI, API, or database changes begin. Second, a real CEM3-BTLA HOGP payload must be captured before the production parser contract is fixed. No guessed separator or field order may cross that gate.
+
+The real-device gate does not prevent preparation of a read-only capture kit. Before the wrench is available, the repository can provide a network-free command that records exact Linux HID key events outside Git, replays synthetic events on macOS, sanitizes literal identifiers, and validates fixture coverage. This preparation must not register a CEM3-BTLA parser or create a sample that could be mistaken for observed device output.
+
+## Progress
+
+- [x] (2026-07-17 06:13Z) Confirmed the original worktree was clean and fetched the latest `origin/main`.
+- [x] (2026-07-17 06:13Z) Created `feat/assembly-torque-wrench-traceability` directly from `origin/main` because `main` is checked out by another worktree at `/private/tmp/raspi-phase3`; no other worktree was changed.
+- [x] (2026-07-17 06:13Z) Re-read repository safety, architecture, documentation, Git, test, UI, and ExecPlan rules.
+- [x] (2026-07-17 06:13Z) Recorded the implementation contract and the preview/payload approval gates in this ExecPlan.
+- [x] (2026-07-17 06:32Z) Created and visually verified the interactive design preview for torque-wrench master, template editor, and work/exception states.
+- [x] (2026-07-17 06:40Z) Presented the preview evidence and received explicit user approval to proceed with production implementation.
+- [x] (2026-07-18 00:55Z) Captured three complete normal CEM3-BTLA transmissions without a discarded warm-up event and committed only literal-redacted `SERIAL_A` evidence.
+- [x] (2026-07-18 02:46Z) Implemented the fixture-driven strict parser adapter, derived malformed fixtures, lossless capture buffering/reconnect handling, and tests while keeping the production profile unregistered.
+- [x] (2026-07-18 08:44Z) Paired the wrench through the external `2357:0604` RTL8761BU controller, proved bond/service/HID resolution, captured one complete preflight and five complete rapid transmissions, and proved automatic reconnect after wrench OFF/ON without changing the internal controller.
+- [x] (2026-07-18 09:24Z) Sanitized the five-frame rapid evidence, promoted the strict parser, added exact external-controller and wrench-HID deployment identities, made production HID startup/reconnect use only the stable configured path, and registered every new root-owned file in the sealed rollback contract.
+- [ ] Record firmware when available and, only after separate deployment authorization, complete reboot and production-screen acceptance.
+- [x] (2026-07-17 07:48Z) Implemented shared types, additive Prisma schema, safe migration, torque-wrench master services, unit conversion, and centralized eligibility policy.
+- [x] (2026-07-17 07:48Z) Implemented template condition inheritance, range copy, global marker uniqueness, and hidden server-generated tightening IDs.
+- [x] (2026-07-17 07:48Z) Implemented work confirmation, agent event intake, rejected-event audit, idempotency, admin override, and Excel traceability.
+- [x] (2026-07-17 07:48Z) Implemented the parser-independent `clients/torque-agent` boundaries and integrated Docker Compose, Ansible, terminal profiles, and health checks.
+- [x] (2026-07-17 07:48Z) Ran focused unit/integration, migration/upgrade, EXPLAIN, agent, Docker-runtime, infrastructure, lint, and build validation using disposable resources only.
+- [x] (2026-07-17 09:06Z) Updated the canonical assembly/measuring-instrument documents and added an operator-focused torque-agent runbook.
+- [x] (2026-07-17 09:28Z) Hardened condition-confirmation reuse, runtime eligibility, event idempotency, future-setting handling, local HID-error retention, and loopback CORS; reran final disposable-resource validation.
+- [x] (2026-07-17 10:22Z) Implemented and validated the offline private-capture, replay, sanitization, and fixture-validation kit without importing `evdev` on macOS or registering a CEM3-BTLA parser.
+- [x] (2026-07-17 11:20Z) Remediated the first Draft PR CI findings: upgraded the vulnerable FastAPI/Starlette lock, made rate limiting and DOM text construction explicit for CodeQL, and brought torque-agent release lifecycle ownership under the deployment safety contract.
+- [x] (2026-07-17 11:31Z) Pushed remediation commit `3776a953` and confirmed Draft PR #1038 passes every required CI job, including the aggregate `ci-required` gate.
+- [x] (2026-07-18 03:10Z) Passed 34 agent/capture/parser tests, Ruff, zero-warning root lint, document audit, 621 deployment regressions, deployment safety contracts, and disposable Linux image replay/parser/gate checks; removed the image and left the Pi4 in its normal service state.
+- [x] (2026-07-18 03:22Z) Pushed capture/parser commit `c6841ad8` and device-contract documentation commit `3566cade`; Draft PR #1038 passed API, Web, DB, E2E, CodeQL, gitleaks, both Docker-security jobs, deploy contracts, and aggregate `ci-required`.
+- [x] (2026-07-18 04:15Z) Reproduced the assembly callout scale defect, traced it to the assembly-only `100 x 100` SVG coordinate space, and confirmed the existing 12 focused unit checks plus four responsive E2E checks do not assert rendered geometry.
+- [x] (2026-07-18 04:29Z) Completed Milestone 4A: assembly editor/work/preview now share measured CSS-pixel callout geometry, bolt/check markers use the shared 0.0025 ratio nudge controls, inspection compatibility remains intact, and 23 focused plus 1458 full Web tests, zero-warning root lint, Web build, two-viewport E2E, document audit, and browser inspection pass without database work.
+- [x] (2026-07-18 09:24Z) Passed Milestone 2C local validation: 38 agent tests, Ruff, 626 deploy tests, release safety contracts, root lint, Ansible syntax, observed/synthetic fixture validation, disposable Linux image runtime, document audit, and `git diff --check`; no deployment, database access, or persistent host mutation occurred.
+- [x] (2026-07-18 09:39Z) Created Draft PR #1040 and passed Secret scan, CodeQL, API, Web, DB/infra, E2E, client/repository/workspace policy, both Docker-security jobs, deploy contracts, and aggregate `ci-required` at commit `033fd760`; restored the PR base to the parent feature branch and stopped before deployment.
+- [x] (2026-07-18 10:02Z) Deployment run `20260718-095718-002eee` stopped before migration because the release planner correctly rejected two legacy-column `DROP NOT NULL` statements. Both columns now remain NOT NULL, REQUIRED session/lot creation stores an empty compatibility value, and all 149 migrations, schema inspection, focused API integration, API build, root lint, 626 deploy tests, and document audit pass with disposable resources removed.
+- [x] (2026-07-18 10:37Z) Deployment run `20260718-103432-d84379` also stopped before migration, application switch, or stonebase mutation. The production validator rejected `AssemblyTemplate.traceabilityMode NOT NULL DEFAULT 'LEGACY'`; a complete audit showed the candidate migration still contained further prohibited backfill, constraint, and unique-index operations.
+- [x] (2026-07-18 11:10Z) Replaced the complete feature migration with a true expand-only boundary: existing-table additions are nullable built-in columns, existing null traceability is interpreted as `LEGACY`, agent idempotency is owned by a composite primary key on the new `AssemblyTorqueAgentEvent` table, and deferred constraints/backfill are not smuggled into the release.
+- [x] (2026-07-18 11:32Z) Passed the actual migration file through the production validator, applied all 149 migrations to a disposable database, passed focused traceability integration, and proved the event composite primary key with 10,000 representative rows and `EXPLAIN (ANALYZE, BUFFERS)`; the temporary container, volume, and network were removed.
+- [x] (2026-07-18 14:49Z) Committed and pushed the candidate/terminal preflight separation at `20b58b10`; hosted CodeQL and Secret scan passed, while API shard 1 exposed a latent Prisma `P2028` after 13.9 seconds inside a default five-second assembly work-session transaction.
+- [x] (2026-07-18 15:08Z) Replaced every direct interactive transaction in assembly and torque-wrench services with one bounded policy (`maxWait=15s`, `timeout=30s`), centralized all work-session row-lock mutations, and added a contract that rejects future bypasses. All 149 migrations, 23 focused real-DB integration tests, and a six-second row-lock wait pass; disposable Docker resources were removed.
+- [x] (2026-07-18 21:28Z) After the full API suite twice exposed an environment-dependent backup cleanup failure, stopped endpoint-level work and audited the database-backup identity boundary. Split configured logical source from runtime connection URL, shared one DB-name normalizer across cleanup/config lookup, strengthened the transaction bypass scan recursively, and passed 453 API files / 2,360 tests against disposable database `codex_review`; all temporary resources were removed.
+- [x] (2026-07-18 21:46Z) Pushed `ea64f28b`; exact-head CI, CodeQL, Secret scan, API/Web/DB/E2E, Docker security, deployment contracts, and aggregate `ci-required` all passed.
+- [x] (2026-07-18 21:56Z) Passed the standard aggregate production-ledger/terminal preflight for Pi5 and stonebase without changing fleet state.
+- [x] (2026-07-18 22:04Z) Stopped deployment retries after interrupted recovery restored the sealed old stonebase runtime but current inventory incorrectly required the newly added torque-agent during rollback verification. Audited runtime capture, restore, health observation, normal rollback, interrupted recovery, and optional-agent endpoint discovery as one authority boundary.
+- [x] (2026-07-18 23:20Z) Passed exact-head CI for the sealed-runtime health correction and completed standard release `20260718-224954-e64fe2`; Pi5 and stonebase both reached immutable SHA `d9a2380e`, terminal evidence was verified, maintenance cleared, and all three agent health probes passed.
+- [x] (2026-07-18 23:41Z) Replaced external-controller preparation with exact USB-controller discovery, bounded `btmgmt` calls, a finite oneshot deadline, and synchronous Ansible result acceptance; all 651 deploy tests, six live terminal-health tests, release safety contracts, Ansible/helper syntax, root lint, document audit, and diff checks pass locally.
+- [x] (2026-07-19 00:17Z) Passed exact-head CI for finite controller acceptance at `1e851fc1`, then stopped before preflight when standard print-plan exposed that agent-specific client-role assets expanded the release to unrelated kiosk and signage terminals.
+- [x] (2026-07-19 00:17Z) Replaced the hard-coded barcode exception with one validated component-host selector registry covering NFC, barcode, and torque agents; agent-specific task/template paths now classify narrowly, while missing inventory structure, inconsistent classification, mixed profile-wide changes, and unknown components remain fail-closed. All 175 focused and 654 full deployment tests pass locally.
+- [x] (2026-07-19 01:34Z) Stopped after release `20260719-004608-c62e1e` rejected the live torque-agent container during rollback-runtime capture without changing StoneBase. Replaced the preflight/capture split with one adapter-owned runtime contract and the exact candidate helper's read-only `probe-capture`, accepted Compose-owned health/exposed-port metadata while retaining fail-closed rejection of unsupported external features, and streamed both helpers over stdin to avoid Linux argv limits.
+- [x] (2026-07-19 01:34Z) Replaced the copied GitHub deploy-contract command list with `scripts/ci/run-deploy-contracts-local.sh`, used by local development and CI. The complete local run passed 665 deployment tests, isolated PostgreSQL integration, rollback safety, both inventories, terminal profile contracts, all selected Ansible syntax checks, and recovery check mode; temporary resources were removed.
+- [x] (2026-07-19 01:50Z) Passed exact-head CI, CodeQL, Secret scan, deploy contracts, and aggregate `ci-required` for runtime-capture correction `c09834e3`; read-only StoneBase preflight `20260719-015423-6625e5` also passed without creating a release.
+- [x] (2026-07-19 02:17Z) Stopped release `20260719-015514-0c8044` during interrupted-run recovery before candidate apply when one instantaneous NFC health sample failed. Audited aggregate preflight, every sealed recovery manifest, and final agent health as one boundary; all three live endpoints subsequently passed with zero container restarts.
+- [x] (2026-07-19 02:25Z) Added exact-candidate agent health to aggregate preflight, required two consecutive complete health proofs, and preflighted every sealed manifest before interrupted recovery. Focused 79 and full 672 deployment tests, Ruff, zero-warning root lint, isolated PostgreSQL deploy-status integration, safety/inventory/Ansible contracts, document audit, and diff checks pass; disposable resources were removed.
+- [x] (2026-07-19 03:04Z) Exact-head CI passed for stable preflight/recovery health. Standard release `20260719-023727-47a971` then proved the correction by safely recovering the interrupted StoneBase run and verifying all three agents before candidate apply. Pi5 reached `cf242bd3`; StoneBase stopped during candidate template rendering, restored its sealed `d9a2380e` runtime, passed rollback health, and cleared maintenance.
+- [x] (2026-07-19 03:14Z) Added repository-wide parsing for all 99 Ansible templates, explicit shell/Jinja `${#` collision rejection, and a secret-free rendered `bash -n` contract for the torque controller helper. The shared local/CI runner passed 676 deployment tests, isolated PostgreSQL with all 149 migrations and deploy-status integration, rollback safety, both inventories, every selected playbook syntax check, and recovery check mode; root lint and document audit also pass, with disposable resources removed.
+- [x] (2026-07-19 03:28Z) Exact-head CI, CodeQL, Secret scan, and aggregate `ci-required` passed at `a5a7f90e`. The subsequent read-only print-plan stopped before preflight because two validation-only `scripts/ci` assets were unclassified and therefore expanded the plan to the complete fleet. No release unit or host mutation occurred.
+- [x] (2026-07-19 03:28Z) Moved the template validator into the validation-only `scripts/ci/` boundary, classified that directory once as neutral, and added mixed-diff contracts proving CI/docs/tests cannot hide or broaden the torque template's kiosk-only component scope.
+- [x] (2026-07-19 03:43Z) Full local contracts and exact-head CI/CodeQL/Secret scan passed at `a2ff06be`. A second mutation-free print-plan proved the CI boundary correction, then exposed 26 historically unclassified deploy-control helpers and legitimate cumulative common-role/inventory differences on older verified terminals; no preflight or release began.
+- [x] (2026-07-19 03:53Z) Closed `scripts/deploy/` as one deploy-control boundary with test/signage precedence. Focused 71 tests and the shared local gate passed 679 deployment tests, all 149 migrations plus deploy-status integration on disposable PostgreSQL, safety/inventory/playbook/recovery checks, root lint, Ruff, and document audit; disposable resources were removed.
+- [x] (2026-07-19 04:02Z) Exact-head CI/CodeQL/Secret scan passed at `2f4da930`. Unbounded and limited read-only plans then proved StoneBase was cleanly component-selected, while excluded older verified baselines still contributed two known-but-unowned paths to aggregate `unknown`: browser E2E and the Ansible common role. No preflight or release began.
+- [x] (2026-07-19 04:11Z) Classified E2E/test-data as neutral and the shared Ansible common role as global. Every current fleet baseline now has zero unknown paths; focused 72 and full 680 deployment tests, all 149 migrations plus deploy-status integration, safety/inventory/playbook/recovery contracts, root lint, Ruff, and document audit pass with disposable resources removed.
+- [x] (2026-07-19 04:20Z) Exact-head CI at `b6f6e622` passed every release and security gate but exposed the recurring import-test code collision in API shard 1. Replaced timestamp-derived constrained identifiers across direct, Gmail, and Dropbox import tests with one DB-aware reservation boundary plus run-unique tokens; the exact test passed ten times against one accumulating disposable database and both provider suites passed, with all temporary resources removed.
+- [ ] Pass exact-head CI for the import-fixture correction, then run limited preflight, release, and physical acceptance.
+
+## Surprises & Discoveries
+
+- Observation: The repository-local `main` branch could not be checked out in this worktree.
+  Evidence: `git switch main` returned `fatal: 'main' is already used by worktree at '/private/tmp/raspi-phase3'`. The fetched `origin/main` commit `b4c7d01a` was therefore used directly as the feature-branch base.
+
+- Observation: The existing assembly schema cannot prove that a circle marker is unique across areas in one template.
+  Evidence: `AssemblyTemplateBolt` has area-scoped ordering and tightening-ID constraints, while `markerNo` is only indexed by area. The editor also derives a new number from the selected area's current bolt count and renumbers later bolts after deletion.
+
+- Observation: The existing assembly work path treats a wrench as free text and does not preserve a physical serial or settings.
+  Evidence: `AssemblyLot.torqueWrenchId` and `AssemblyWorkSession.torqueWrenchId` are strings, while `AssemblyTorqueRecord` records torque value/source/raw payload but has no physical-wrench relation.
+
+- Observation: CEM3-BTLA exposes one-way Bluetooth HOGP keyboard output; system code cannot remotely read the setting displayed on the wrench.
+  Evidence: The official product page documents selectable output fields and HOGP communication but not remote setting read/write. This makes operator confirmation plus append-only setting history a required control rather than a UI preference.
+
+- Observation: The in-app browser's explicit viewport override uses a 0.67 device scale, so integer outer dimensions produce CSS viewports one pixel above or below the requested height.
+  Evidence: The responsive pass reported 1366x769 for a 915x515 override and 1919x1081 for a 1286x724-equivalent calculation. The default browser rendered clean screenshots at 1910x1075. Acceptance measurements use the CSS viewport and treat the one-pixel height difference as browser instrumentation, not application overflow.
+
+- Observation: The original feature migration was functionally correct on a disposable database but incompatible with the production expand-only release policy.
+  Evidence: Fresh and upgrade tests accepted backfill, `SET NOT NULL`, constraint replacement, and unique-index operations that the production validator deliberately rejects. Passing PostgreSQL and integration tests therefore did not prove deployability.
+
+- Observation: The first authorized production release was stopped by the expand-only migration planner before database application.
+  Evidence: Release `20260718-095718-002eee` rejected `ALTER COLUMN "torqueWrenchId" DROP NOT NULL` for both `AssemblyLot` and `AssemblyWorkSession`. The migration ledger and application containers were not changed, stonebase remained pending, and the existing Pi5 API stayed healthy.
+
+- Observation: The second authorized release exposed a preventable preflight gap rather than a new production-only behavior.
+  Evidence: Release `20260718-103432-d84379` rejected the next prohibited statement, `ADD COLUMN "traceabilityMode" ... NOT NULL DEFAULT 'LEGACY'`. The full migration had not been run through the exact production validator after the first remediation, so stopping at the next statement was predictable. The release again ended before database, application, or stonebase mutation.
+
+- Observation: Hosted CI exposed a domain-wide transaction-budget gap rather than an assertion or schema defect.
+  Evidence: API shard 1 reached `record-torque` with valid data but Prisma raised `P2028`: the interactive transaction retained its default 5,000 ms timeout and attempted to commit after 13,902 ms. The same implicit default existed in legacy manual torque, required agent torque, administrator override, wrench confirmation, marker/check progression, completion/cancel, approval, lot/template/document operations, and torque-wrench master mutations.
+
+- Observation: Extending only `recordTorque` would leave equivalent failure modes in every adjacent assembly mutation.
+  Evidence: The repository audit found direct `prisma.$transaction` calls across both assembly and torque-wrench service directories. The shared policy test now scans both directories and fails if any production service bypasses the single transaction entry point. A real PostgreSQL regression holds the work-session row lock for six seconds and proves the API succeeds after Prisma's former default timeout boundary.
+
+- Observation: The repeated full-suite backup failure was deterministic environment coupling, not a flaky mock or a torque regression.
+  Evidence: `DatabaseBackupTarget` replaced any configured localhost URL with `DATABASE_URL`, and then exposed the substituted database name through `info.source`. The retention path expected configured logical source `borrow_return`, while the disposable runtime database was named `codex_review`, so no stored path matched. A single-file run passed only because setup defaulted the environment database name to `borrow_return`; the same full suite failed twice with `codex_review`.
+
+- Observation: One database value was incorrectly serving two independent responsibilities.
+  Evidence: `pg_dump` and `psql` correctly require the runtime connection URL, while backup path generation, retention matching, config lookup, and audit history require the configured logical target name. Separating these values makes Docker/test connection substitution safe and removes duplicate database-name parsing from backup execution.
+
+- Observation: An interrupted rollback restored the exact sealed historical runtime, but its live verification re-read optional agents from the newer inventory.
+  Evidence: Run `20260718-215657-39a3ea` restored a version-2 runtime manifest that sealed running `nfc-agent` and `barcode-agent` containers and an absent `torque-agent`. The subsequent generic kiosk observation nevertheless invoked the torque health probe because current inventory enabled it, so recovery failed before the new candidate deployment began.
+
+- Observation: Optional-agent presence was not the only time-varying field crossing the rollback boundary.
+  Evidence: The health probe also accepted ports from current inventory. The structural correction now derives the exact running agent set from the integrity-protected runtime manifest and, during rollback, derives each live port from the restored container environment whose digest was already sealed and verified. Forward deployment continues to validate current inventory. No rollback path silently falls back to future desired state.
+
+- Observation: A successful terminal release did not prove that the asynchronous external-controller preparation unit had completed.
+  Evidence: Release `20260718-224954-e64fe2` verified Pi5, stonebase, the stable HID link, and all three agent endpoints, but `torque-bluetooth-adapter@hci1.service` remained `activating` for more than sixteen minutes. Its process tree was blocked in `btmgmt --index 1 info`; the helper had no command timeout, the systemd unit had no `TimeoutStartSec`, and Ansible retriggered udev without synchronously checking the resulting unit. The wrench remained paired, bonded, connected, and exposed its HID link, so agent health alone could not reveal this incomplete controller lifecycle.
+
+- Observation: Correct controller code was still unsafe to release because agent-specific Ansible assets inherited the generic client-role classification.
+  Evidence: The first standard print-plan after `1e851fc1` classified torque helper, unit, task, and udev changes as `client-role`, selected every kiosk and signage terminal, and reported unrelated devices as unknown release impact. No preflight or deployment was started. The classifier had a generic `roles/client/` prefix, while release policy contained a one-off hard-coded barcode ownership exception and no shared ownership model for NFC or torque.
+
+- Observation: The intended indexes serve the five high-volume traceability lookups.
+  Evidence: With 5,000 profiles, 15,000 settings, 5,000 groups, 10,000 records, `EXPLAIN (ANALYZE, BUFFERS)` selected the serial-key unique index, profile/effective setting index, fastener/group indexes, source-device/event unique index, and session/recorded index respectively. A profile/memory/recorded index was subsequently included in the migration for replay-audit lookup.
+
+- Observation: Runtime health testing caught an incorrect Python module working directory in the first agent image.
+  Evidence: The Dockerfile was corrected to copy under `/app/torque-agent` and execute there. The rebuilt multi-stage image was 214 MB and returned `{ok: true, queuedEvents: 0, bound: false}` from its loopback health endpoint.
+
+- Observation: The first confirmation fingerprint incorrectly included the template Bolt ID, so identical conditions on successive unique markers could not reuse one physical-display confirmation.
+  Evidence: Resume-time review traced the stale check through policy, API, and Web state. The fingerprint now contains only normalized fastener, capability, and torque condition values; current confirmations search the session and select the latest valid confirmation per physical profile. Integration coverage proves marker ① confirmation is reused at marker ②, while a new setting history immediately makes it stale.
+
+- Observation: Inputs received without a live browser binding or with an invalid payload were only logged and then lost.
+  Evidence: HID ingestion was extracted behind `TorqueEventIngestor`. Such inputs now enter a bounded SQLite `torque_local_audit` with reason, raw text, device path, parser profile, and parse error; they are never guessed into a work session. Agent tests prove audit survival across SQLite reopen and normal bound-event queueing.
+
+- Observation: Binding the loopback heartbeat API with wildcard CORS would allow an unrelated browser page to submit a binding request to `127.0.0.1`.
+  Evidence: The agent now derives the API origin, accepts only explicitly configured additional Web origins, rejects wildcard/non-origin values during configuration, and limits CORS request headers. A live disposable image returned 200 to the configured kiosk origin and 400 without an allow-origin header to an untrusted origin.
+
+- Observation: Keeping the prior confirmation visible while loading the next marker could leave the previous local binding alive for its heartbeat TTL if the compatibility request failed.
+  Evidence: Marker changes now clear the Web confirmation and connection display before fetching reusable confirmation data. An unconfirmed heartbeat explicitly clears the agent binding; a live image test proved the transition `bound=false → true → false`. A same-condition confirmation is then reselected automatically only after the API revalidates it.
+
+- Observation: Before Milestone 2A, `HidLineDecoder` returned only decoded text, discarded unsupported key codes, and did not preserve whether TAB or ENTER terminated the frame.
+  Evidence: The pre-kit decoder mapped a small key set and returned a string for any configured terminator. The implemented forensic path now records exact EV_KEY events before decoding and retains unsupported keys and terminators so an unknown character cannot disappear silently.
+
+- Observation: Installing the project root into the Docker builder with Poetry produced an editable console script that referenced the builder-only `/build` path.
+  Evidence: The first disposable runtime image found `/opt/venv/bin/torque-capture` but raised `ModuleNotFoundError: torque_agent`. Building a wheel and installing it non-editably into `/opt/venv` fixed the boundary; the rebuilt image ran help, replay, schema-resource, and fixture-validation checks successfully.
+
+- Observation: Standard HID shift/modifier handling is required to preserve payload text without assuming any CEM3-BTLA field format.
+  Evidence: The decoder now tracks left/right Shift key-down/up state, supports standard keyboard punctuation, and still retains every unsupported key plus the exact terminator. Unknown-key frames are locally audited and are never forwarded as silently altered payloads.
+
+- Observation: The first Draft PR exposed three independent CI contract gaps rather than a feature-behavior failure.
+  Evidence: API/Web/DB/E2E and agent tests passed, while Trivy identified three HIGH findings in the locked Starlette 0.37.2, CodeQL identified one implicit rate-limit and one `innerHTML` flow, and the deploy contract rejected the torque-agent `.env` destination and unowned Compose command.
+
+- Observation: Importing the loopback FastAPI application on macOS also imported Linux-only `evdev` through `main.py`.
+  Evidence: The new dependency compatibility test failed during collection with `ModuleNotFoundError: evdev`. Moving `hid_reader` import into `run_agent` preserved the Linux runtime and allowed 21 agent tests to pass without `evdev` on macOS.
+
+- Observation: Per-key durability work in the first capture implementation could lose the beginning of the first real transmission even though later frames decoded completely.
+  Evidence: Older captures contained only five or six fields in their first frame. Replacing per-event `fsync` with a bounded in-memory event buffer and one final durable flush produced three complete seven-field frames in one run, with no warm-up measurement discarded. `SYN_DROPPED` and reconnect failure remain fail-closed rather than silently omitting keys.
+
+- Observation: The deployed CEM3-BTLA configuration emits exactly seven TAB-delimited fields and ends a frame with ENTER.
+  Evidence: Three sanitized observed frames had memory counter, torque, padded unit, two-character judgement, seven-character serial, date, and time in that order. The active settings were `Cn_o=ON`, `An_o=OFF`, `Jd_o=ON`, `Sn_o=ON`, `dt_o=ON`, `bA_o=OFF`, `Un_o=ON`, `dLm=TAB`, `End=ENTER`, `kEY=JP`, and `ZEro=OFF`. The Pi decoded the Japanese-keyboard time separators as apostrophes, so the adapter accepts that observed form only.
+
+- Observation: Below/above-limit values are not a required device-contract scenario for this workflow.
+  Evidence: The manual states that `NG_MAN` requires a MEM operation to transmit NG data, while `NG_AUTO` sends it automatically. The user selected a workflow in which the kiosk waits for the next valid value and the server remains authoritative for range acceptance. Derived malformed/boundary fixtures test rejection without claiming that the wrench transmitted those samples.
+
+- Observation: The post-clear pairing failure occurs below the parser and HID layers.
+  Evidence: Repeated Pi4 HCI traces completed an LE connection but failed `LE Read Remote Used Features` with status `0x3e` before SMP key exchange or HID service resolution. Two `bluetoothctl` success messages were rejected as false positives because no bonded device or SMP exchange remained. After restoring the controller and services to their normal configuration, a final 30-second powered-on observation saw no wrench advertisement. The same Pi/wrench pair had transmitted complete frames earlier, so this is recorded as an unresolved link/bond stability issue, not as a proven platform incompatibility.
+
+- Observation: Replacing only the Bluetooth controller resolved the pre-SMP `0x3e` failure without changing the wrench payload or application stack.
+  Evidence: The external TP-Link `2357:0604` RTL8761BU controller bonded the same wrench, resolved HID and battery services, created a Linux keyboard event node, captured one complete preflight frame and five complete rapid frames with ENTER terminators and no unsupported or pending keys, and automatically reconnected after a wrench OFF/ON cycle. The Pi4 internal controller remained present and unmodified.
+
+- Observation: BlueZ UHID creates an event node for this wrench but does not create a stable `/dev/input/by-id` link.
+  Evidence: The resolved input device reported Bluetooth bustype `0005`, HID vendor `2f84`, product `0001`, the exact wrench `uniq`, and name `TOHNICHI_702902S`, while its kernel event number was transient. The external controller is independently identifiable by USB vendor/product `2357:0604`; controller index names such as `hci1` are not stable identity.
+
+- Observation: This wrench configuration has no operator-accessible same-memory resend operation.
+  Evidence: The user explicitly confirmed there is no such function, and the attempted `repeated_memory` capture was interrupted with zero records. Agent delivery idempotency remains testable with synthetic repeated-memory evidence and stable event IDs; physical parser promotion does not depend on an unavailable operation.
+
+- Observation: Assembly and inspection drawing already share `ImageMarkerCalloutOverlay`, but assembly supplies a synthetic `100 x 100` coordinate space instead of the rendered image layout.
+  Evidence: At a roughly 906 x 624 CSS-pixel assembly image, the SVG still rendered `viewBox="0 0 100 100"` with stroke width 1.8 and marker width 6, scaling the line and arrowhead into an unusably large triangle. Inspection drawing passes its measured canvas layout and does not exhibit the defect.
+
+- Observation: Existing callout tests prove presence, not visual scale.
+  Evidence: Twelve focused Vitest checks and all four `assembly-library-editor-ui.spec.ts` cases passed before the fix because they count SVG lines and markers without comparing the SVG coordinate space to its CSS pixel bounds.
+
+- Observation: One coherent CSS-pixel layout fixes both editor and work-view scale without changing stored marker or callout ratios.
+  Evidence: The new regression checks compare the SVG viewBox with its rendered layer, exercise the work-view image wrapper, and passed at both required viewports through zoom and fit. Browser inspection showed compact arrowheads at 1366x768 and no outer horizontal overflow; the 1920-class measured SVG and viewBox differed by less than one pixel.
+
+- Observation: Aggregate host preflight did not prove that the candidate rollback-runtime helper could capture the selected live container contract.
+  Evidence: Read-only preflight passed, but release `20260719-004608-c62e1e` stopped before checkout or service mutation when capture rejected torque-agent's Compose-owned `Healthcheck`. The same capture already hashes that metadata and restore verifies the complete functional digest, so rejection was both late and stricter than the restore authority. External host bindings and extra hosts remain unsupported and fail closed.
+
+- Observation: Transporting candidate helper source as Base64 command-line arguments would create another predictable production-only stop.
+  Evidence: `terminal-runtime-manifest.py` is approximately 100 KB and exceeds Linux's common 128 KiB single-argument limit after Base64 expansion. The aggregate probe now streams a bounded JSON envelope through SSH stdin, and the target streams the exact helper into `python3 -`; a regression uses a 150 KB source without placing it in argv.
+
+- Observation: GitHub and local deploy-contract checks had no shared executable source.
+  Evidence: `.github/workflows/ci.yml` directly listed Python, shell, safety, inventory, and Ansible commands. The new repository script owns that list, CI invokes the same script, and one macOS execution passed the complete contract before publication.
+
+- Observation: Candidate preflight, interrupted recovery, and final agent acceptance did not prove the same live-health fact at the same strength.
+  Evidence: Read-only preflight `20260719-015423-6625e5` passed, but release `20260719-015514-0c8044` stopped while recovering the earlier sealed authority because one NFC probe returned exit 4. The candidate was not applied. Immediate read-only checks proved NFC, barcode, and torque endpoints healthy with zero container restarts, showing a single-sample boundary mismatch rather than an NFC-only runtime defect.
+
+- Observation: A sealed pre-mutation runtime manifest can own rollback tags and exact health authority even when maintenance never began.
+  Evidence: The interrupted-recovery preflight previously examined only records that had crossed maintenance. A run that sealed its runtime manifest and failed before maintenance could therefore defer manifest and endpoint proof until recovery execution. Recovery now preflights every persisted manifest and only derives rollback-ready SHA when maintenance cleanup is actually needed.
+
+- Observation: Playbook syntax validation did not parse or render the 99 repository-owned Ansible templates, allowing a deterministic source defect to reach a terminal in maintenance.
+  Evidence: Release `20260719-023727-47a971` failed while rendering `torque-bluetooth-adapter.sh.j2` because shell `${#matches[@]}` collided with Jinja's `{#` comment delimiter. A repository-wide source parse found that one defect among all 99 templates; the existing `ansible-playbook --syntax-check` suite had passed because it did not instantiate that task template.
+
+- Observation: Validation-only source lacked a directory-level release-impact classification and therefore became fail-closed `unknown` after publication.
+  Evidence: The exact-head print-plan after `a5a7f90e` correctly refused minimization and selected Pi5 plus every kiosk/signage terminal because `scripts/ci/run-deploy-contracts-local.sh` and the new validator had no registry mapping. The validation code does not run on a terminal; the torque template beside it is already classified separately as `torque-agent`.
+
+- Observation: Per-file deploy-control mappings left 26 tracked orchestration helpers unclassified, and divergent verified terminal SHAs made one such helper expand a cumulative plan to every terminal.
+  Evidence: The exact-head print-plan after `a2ff06be` classified the latest Pi5-to-candidate delta as `deploy-control`, `neutral`, and `torque-agent`, but StoneBase's verified `d9a2380e` baseline additionally saw `scripts/deploy/terminal-agent-health-probe.py` as unknown. Older verified kiosks/signage also correctly retained cumulative common-role and inventory differences. The public `--limit` contract permits excluding those verified hosts for this single-host feature acceptance; it still forbids excluding unknown-evidence hosts or a required Pi5.
+
+- Observation: After closing deploy-control ownership, all remaining unknown paths across the actual fleet baselines were validation-only E2E files or the shared Ansible common role.
+  Evidence: The unbounded plan at `2f4da930` selected StoneBase with the explicit reason `kiosk impact: deploy-control,torque-agent`; the older `3e52d7bb` and `72de4add` baselines still saw `e2e/assembly-library-editor-ui.spec.ts` and `infrastructure/ansible/roles/common/tasks/main.yml` as unknown. The former never deploys, while the latter is executed by every registered terminal profile and is therefore global rather than unknown.
+
+- Observation: The import integration suite derived constrained business identifiers from wall-clock remainder independently in multiple suites, so a later test could update an accumulated row instead of creating one.
+  Evidence: API shard 1 at exact head `b6f6e622` expected one created item but observed zero. The same random-code collision had already been recorded in main CI on 2026-07-16 and was previously passed by rerunning only the failed job. Both direct-import describe blocks reset their counters, while Gmail and Dropbox repeated the timestamp-remainder scheme against the same database.
+
+## Decision Log
+
+- Decision: Reuse `MeasuringInstrument` as the physical asset record and add a one-to-one torque-wrench profile rather than duplicating storage location, calibration, and lifecycle state.
+  Rationale: It preserves the existing asset-management source of truth and keeps torque-specific rules in a separate module.
+  Date/Author: 2026-07-17 / Codex, confirmed by user.
+
+- Decision: Templates select a capability group that can contain multiple models; work records select and snapshot one physical serial-numbered wrench.
+  Rationale: A template should describe an allowed capability, while an audit record must prove which replaceable physical asset was actually used.
+  Date/Author: 2026-07-17 / Codex, confirmed by user.
+
+- Decision: Existing templates with a null traceability column are interpreted as `LEGACY`; new templates and revisions saved by the new editor persist `REQUIRED` explicitly. Database backfill and contract tightening are deferred to a separately authorized contract phase.
+  Rationale: This preserves historical behavior while keeping the first production migration strictly additive and nullable. Application normalization gives callers one stable domain value without requiring a release-time table rewrite.
+  Date/Author: 2026-07-17 / Codex, confirmed by user.
+
+- Decision: Circle-marker identity and copied tightening conditions are separate concerns.
+  Rationale: Marker numbers remain unique and stable. Bulk copy changes only condition fields and never coordinates, page references, callouts, ordering, or internal IDs.
+  Date/Author: 2026-07-17 / Codex, clarified by user.
+
+- Decision: Store wrench settings as append-only history and require first-use confirmation of the current history row against the physical display.
+  Rationale: The device cannot be queried remotely; overwriting one current-value row would destroy auditability.
+  Date/Author: 2026-07-17 / Codex, confirmed by user.
+
+- Decision: Preserve rejected device inputs as `IGNORED` torque records and do not advance the work position.
+  Rationale: Rejection controls safety, while retention proves what was attempted and why it was refused.
+  Date/Author: 2026-07-17 / Codex, confirmed by user.
+
+- Decision: A dedicated local `torque-agent` owns HID reading, durable delivery, and multi-device multiplexing. The API owns authorization, eligibility, current-position validation, and final acceptance.
+  Rationale: Device I/O changes independently from assembly policy. A durable outbox prevents transient network failures from losing measurements.
+  Date/Author: 2026-07-17 / Codex, confirmed by user.
+
+- Decision: Do not begin production UI, API, schema, migration, or agent implementation before preview approval; do not fix the parser contract before real payload capture.
+  Rationale: These are explicit acceptance gates in the approved plan and prevent expensive UI rework or an invented device protocol.
+  Date/Author: 2026-07-17 / Codex, confirmed by user.
+
+- Decision: Physical-display confirmation identity excludes marker/Bolt identity and includes the normalized tightening condition, capability group, and canonical torque limits.
+  Rationale: Circle markers are always unique, but the user explicitly requires one set of equal input conditions to be reusable across many markers. Session, physical profile, and latest setting still constrain reuse; any change forces reconfirmation.
+  Date/Author: 2026-07-17 / Codex, derived from the confirmed requirement and verified on resume.
+
+- Decision: Unbound or unparseable HID input is retained in a separate bounded local audit, not the API delivery outbox.
+  Rationale: It prevents measurement loss without inventing a session assignment. Keeping it separate also prevents later automatic delivery of an event that was never safely bound.
+  Date/Author: 2026-07-17 / Codex.
+
+- Decision: The loopback heartbeat endpoint permits the API origin and explicitly configured kiosk Web origins only; wildcard CORS is invalid configuration.
+  Rationale: Loopback limits network reachability but does not by itself stop an unrelated page open in the same browser from attempting a cross-origin request.
+  Date/Author: 2026-07-17 / Codex.
+
+- Decision: Every marker transition disarms the local agent before condition-based confirmation reuse is revalidated.
+  Rationale: A brief disarmed state is safer than displaying or retaining a stale binding during an API failure. Reuse remains automatic after successful validation and does not require another physical check when all reuse keys are unchanged.
+  Date/Author: 2026-07-17 / Codex.
+
+- Decision: Add one standard-library `torque-capture` CLI with `capture`, `replay`, `sanitize`, and `validate` commands before the physical wrench is available.
+  Rationale: One independently testable boundary keeps device I/O, private evidence, redaction, and committed fixtures separate without adding a dependency or coupling capture to the API/outbox process.
+  Date/Author: 2026-07-17 / Codex, approved by user.
+
+- Decision: Unsanitized payload text and key events must remain outside every Git worktree with directory mode 0700 and file mode 0600; only fail-closed literal-redacted fixtures may enter `tests/fixtures/cem3_btla`.
+  Rationale: Key codes themselves can reconstruct a serial number. Ignoring filenames is only a secondary defense, so the CLI must reject a private output path below a Git root and must never print payload text.
+  Date/Author: 2026-07-17 / Codex, approved by user.
+
+- Decision: Upgrade torque-agent to FastAPI 0.139.2 and the resulting Starlette 1.3.1 lock, and add an OS-independent loopback API contract test.
+  Rationale: This removes the observed HIGH vulnerabilities while proving that health, CORS, and disarm behavior remain compatible with the newer ASGI stack.
+  Date/Author: 2026-07-17 / Codex, approved as CI remediation by user.
+
+- Decision: Treat torque-agent configuration distribution and Docker lifecycle as separate Ansible adapters, matching the existing NFC and barcode ownership boundary.
+  Rationale: Release-only must be able to choose build, recreate, or no-build from the immutable Git diff, and every Docker mutation and rollback destination must be statically auditable.
+  Date/Author: 2026-07-17 / Codex, approved as CI remediation by user.
+
+- Decision: Never discard the first production measurement as a transport warm-up.
+  Rationale: A test that succeeds only after sacrificing the first operation does not prove the production workflow. Capture buffering must preserve the first frame or fail closed and surface an incomplete capture.
+  Date/Author: 2026-07-18 / Codex, confirmed by user.
+
+- Decision: Require observed `normal` and `rapid_consecutive` fixtures for parser promotion; accept `repeated_memory` as optional observed evidence and require it in the synthetic transport/idempotency contract instead. Model `partial`, `missing_field`, `bad_number`, and `unsupported_unit` as derived rejection fixtures, and do not require observed below/above-limit payloads.
+  Rationale: Normal and rapid observations prove the physical parser and multi-frame boundary. This wrench exposes no same-memory resend operation, while delivery idempotency is owned by agent event IDs and can be proven deterministically with synthetic repeated-memory evidence. Torque range acceptance is server-owned, and the selected device mode may suppress NG output.
+  Date/Author: 2026-07-18 / Codex, confirmed by user and supported by the device manual.
+
+- Decision: Persist external-controller selection and wrench HID identity as separate deployment adapters.
+  Rationale: The controller is selected by its exact USB vendor/product pair and may receive a different `hciN` index after reboot. The wrench is selected by Bluetooth HID bustype, vendor, product, name, and unique address and may receive a different `eventN`. A generated stable `/dev/input/by-id` link lets the agent fail closed without ever opening a general keyboard or guessing a transient node.
+  Date/Author: 2026-07-18 / Codex, approved by user.
+
+- Decision: Retain the legacy lot/session `torqueWrenchId` columns as NOT NULL and store an empty compatibility string for REQUIRED templates.
+  Rationale: REQUIRED traceability derives the actual physical wrench from confirmations and torque-record snapshots, so relaxing a legacy constraint provides no domain value. Keeping the constraint is expand-only, preserves old consumers, and avoids a prohibited production schema contraction.
+  Date/Author: 2026-07-18 / Codex, approved as the safe deployment remediation by user.
+
+- Decision: A deployment command must run three migration gates automatically: committed candidate SQL against `origin/main`, the actual Pi5 migration ledger before creating a release unit, and the existing in-release ledger recheck immediately before candidate work.
+  Rationale: A written checklist did not prevent the second avoidable stop. The gate must be executable, bound to the immutable candidate SHA, and fail before checkout, migration, image build, service transition, or terminal mutation. The in-release repetition protects against ledger changes after preflight.
+  Date/Author: 2026-07-18 / Codex, required after user review.
+
+- Decision: Assembly and torque-wrench interactive transactions use one domain policy with a 15-second acquisition wait and a 30-second callback timeout; work-session mutations additionally use one row-lock wrapper.
+  Rationale: The prior Prisma defaults were implicit and inconsistent with hosted/Pi latency. Centralizing a finite budget supports legitimate temporary contention without masking indefinite locks, keeps LEGACY and REQUIRED semantics identical, and makes omission mechanically detectable. Individual endpoint timeout patches and blind CI retries are prohibited.
+  Date/Author: 2026-07-18 / Codex, approved under the user's structural-remediation authorization.
+
+- Decision: A database backup target keeps a configured logical source name separately from its effective runtime connection URL.
+  Rationale: Connection substitution is an infrastructure concern and must not rename storage paths, retention filters, or audit identity. One pure database-source normalizer now serves target construction and config matching; product and tests no longer depend on the runtime database having the same name as the configured target.
+  Date/Author: 2026-07-18 / Codex, required by the user's repeated-failure structural-remediation rule.
+
+- Decision: A rollback's sealed runtime manifest is the sole authority for post-restore systemd and optional-agent health selection.
+  Rationale: Current inventory describes the candidate being deployed, not the historical runtime being restored. Restore and preflight now return a non-secret allowlisted health contract derived from the sealed manifest; normal and interrupted rollback must propagate it or fail closed. Agent endpoint ports are read from the restored container itself so future inventory additions or port changes cannot invalidate an otherwise exact historical rollback.
+  Date/Author: 2026-07-18 / Codex, required by the user's no-individual-patches structural-remediation rule.
+
+- Decision: Exact external-controller preparation is a synchronous, finite release acceptance gate rather than a fire-and-forget udev side effect.
+  Rationale: Every controller command must have a timeout, the oneshot unit must have a total start limit, and release Ansible must discover exactly one configured USB controller then wait for that unit to succeed. A running torque-agent or present HID link is necessary but does not substitute for controller lifecycle completion. This prevents a hung hotplug helper from surviving a nominally successful release.
+  Date/Author: 2026-07-18 / Codex, required by the user's no-individual-patches structural-remediation rule.
+
+- Decision: Optional-agent release ownership is a validated data-only registry contract, never a component-name conditional in release policy.
+  Rationale: NFC, barcode, torque, and future optional agents need one auditable mapping from repository assets to component, component to terminal profile, and component to host inventory selector. Agent-specific assets target only enabled owners; profile-wide mixed changes remain profile-wide, and absent or contradictory structural evidence fails closed. This prevents both fleet over-expansion and unsafe exclusion without relying on `--limit` as a workaround.
+  Date/Author: 2026-07-19 / Codex, required by the user's no-individual-patches structural-remediation rule.
+
+- Decision: The terminal adapter owns one secret-free runtime-manifest contract used unchanged by capture, read-only candidate preflight, health discovery, and result-count validation.
+  Rationale: Separate lists and Compose constants let preflight approve a state that capture later rejected. Executing the exact immutable-candidate helper in `probe-capture` mode before release submission proves parser and live-runtime compatibility without creating manifests, tags, directories, services, or checkouts.
+  Date/Author: 2026-07-19 / Codex, approved by user as structural remediation.
+
+- Decision: Candidate executable source crosses Pi5-to-terminal boundaries through bounded stdin, never a command-line argument; local and hosted deploy contracts execute one repository-owned runner.
+  Rationale: stdin removes platform argv-size and process-list exposure limits. One executable runner moves failure discovery before push and prevents the local check list from drifting from GitHub Actions.
+  Date/Author: 2026-07-19 / Codex, approved by user after the independent multi-agent assessment.
+
+- Decision: Candidate preflight and runtime acceptance execute the same immutable agent-health helper, and a healthy agent requires two consecutive complete proofs within a bounded three-attempt window.
+  Rationale: One instantaneous sample is insufficient for a release or rollback authority. Sharing the exact candidate helper prevents preflight/runtime drift, while a small bounded stability window tolerates one transient without hiding a persistently unstable endpoint.
+  Date/Author: 2026-07-19 / Codex, required by the user's repeated-failure structural-remediation rule.
+
+- Decision: Interrupted recovery preflights every sealed runtime manifest before any restore or live observation, including manifests captured before maintenance began.
+  Rationale: A sealed manifest may already own rollback image tags and the exact optional-agent health set. Recovery must validate that authority at the earliest common boundary instead of discovering incompatibility after entering the mutating recovery path.
+  Date/Author: 2026-07-19 / Codex, required by the user's repeated-failure structural-remediation rule.
+
+- Decision: The shared local/CI deploy-contract entry point parses every Ansible `.j2` source before lifecycle tests, and each release-critical executable template additionally renders with secret-free representative values and passes its native syntax checker.
+  Rationale: Playbook syntax, template source syntax, and rendered executable syntax are different boundaries. Validating all three before publication prevents deterministic rendering failures from first appearing after a terminal enters maintenance, without weakening runtime fail-closed behavior.
+  Date/Author: 2026-07-19 / Codex, approved by user as a structural correction before retry.
+
+- Decision: Validation-only executables live under `scripts/ci/` and that complete directory is neutral for runtime release impact; mixed-diff tests prove neutral paths neither hide nor broaden a separately classified runtime asset.
+  Rationale: Adding individual validator filenames to an allowlist would repeat the same manual-sync failure. One responsibility-based directory mapping lets future validation code strengthen CI without manufacturing terminal work, while unknown paths elsewhere remain fail-closed.
+  Date/Author: 2026-07-19 / Codex, required by the user's repeated-failure structural-remediation rule.
+
+- Decision: Treat `scripts/deploy/` as a closed deploy-control boundary, with earlier specific mappings for deploy tests and the signage runtime proof, rather than maintaining a second list of individual control filenames.
+  Rationale: All 26 unclassified files in that directory are orchestration/control-plane helpers. Directory ownership eliminates recurring synchronization omissions, preserves the one real terminal-runtime exception, and leaves unknown paths elsewhere fail-closed.
+  Date/Author: 2026-07-19 / Codex, required by the user's whole-system remediation rule.
+
+- Decision: Treat `e2e/` and `test-data/` as neutral validation boundaries and `infrastructure/ansible/roles/common/` as a global terminal-runtime boundary.
+  Rationale: This is the complete ownership classification of the remaining unknown paths in every live fleet baseline, not a per-file exception. Common-role changes must conservatively target all profiles; browser tests and fixtures must never manufacture runtime work.
+  Date/Author: 2026-07-19 / Codex, required before using explicit target limitation.
+
+- Decision: Run this feature-branch acceptance with the documented explicit limit `raspberrypi5:raspi4-kensaku-stonebase01` after the unbounded plan is audited, instead of converging unrelated verified terminals to the feature SHA.
+  Rationale: The other terminals' cumulative common-role/inventory impact is legitimate but outside this physical acceptance. The public limit is not an emergency override: verified excluded hosts retain their current SHA, unknown-evidence hosts cannot be excluded, and Pi5 cannot be excluded when server impact requires it.
+  Date/Author: 2026-07-19 / Codex, covered by the user's standing deployment authorization.
+
+- Decision: Import integration tests obtain constrained employee/item identifiers through one DB-aware reservation boundary and use one run-unique token generator for unconstrained identifiers.
+  Rationale: Wall-clock arithmetic and per-suite counters do not prove uniqueness across describe blocks, provider suites, process restarts, or an accumulating shared test database. The shared helper checks persisted values, reserves pending values in-process, partitions workers, and fails explicitly if the finite four-digit namespace is exhausted; blind failed-job reruns are not acceptance evidence.
+  Date/Author: 2026-07-19 / Codex, required by the user's repeated-failure structural-remediation rule.
+
+- Decision: Register `cem3-btla-hogp-v1` only after observed normal and rapid-consecutive fixtures, exact stable device selection, and startup/reconnect tests all pass; those gates are now satisfied.
+  Rationale: Parser construction remained isolated until the actual seven-field contract and multi-frame boundary were proven. Production activation now depends on the exact external controller and wrench by-id path and cannot fall back to a general keyboard or transient event node.
+  Date/Author: 2026-07-18 / Codex.
+
+- Decision: Every callout consumer supplies one measured `ZoomedImageCanvasLayout` expressed in CSS pixels; placeholder coordinate spaces are invalid.
+  Rationale: One coherent layout object prevents image, content, line, and arrowhead geometry from drifting independently and gives assembly the exact rendering contract already used by inspection drawing.
+  Date/Author: 2026-07-18 / Codex, approved by user.
+
+- Decision: Extract the existing inspection-drawing ratio nudge into the domain-neutral image-canvas module and keep inspection exports as compatibility wrappers.
+  Rationale: Assembly and inspection drawing need the same four on-screen buttons, 0.0025 ratio step, clamp, and accessibility labels, while neither business domain should depend on the other.
+  Date/Author: 2026-07-18 / Codex, approved by user.
+
+- Decision: Assembly nudge controls apply to bolt and check markers in template editing only; they do not move callout tips and do not install global physical-keyboard handlers.
+  Rationale: Both editable marker kinds need precise placement, while callout-tip placement remains the existing tap/delete workflow and work sessions remain read-only views of saved geometry.
+  Date/Author: 2026-07-18 / Codex, approved recommended defaults.
+
+## Outcomes & Retrospective
+
+The feature branch, living plan, ADR, and interactive three-screen preview now exist on the latest remote main. Browser validation exercised condition inheritance, range copy, all five work states, and both target responsive classes without console errors, outer overflow, or clipped controls. Milestone 4A now also keeps assembly callout geometry at inspection-drawing scale and permits precise on-screen movement of either editable marker kind without changing any business identity or condition. Production behavior, database state, existing Docker resources, and deployed hosts remain unchanged.
+
+At the preview gate, update this section with the approved/rejected layout and any requested changes. At completion, summarize traceable user behavior, migration compatibility, device-capture evidence, test counts, EXPLAIN results, and any deferred operational work.
+
+The user approved the preview without requested layout changes on 2026-07-17. Production schema, API, and UI work may now proceed. The separate real-device payload gate still applies to the CEM3-BTLA production parser; parser-independent agent boundaries and durable-delivery behavior may be implemented and tested with an explicitly labeled synthetic profile.
+
+At the 2026-07-17 17:00 JST safety checkpoint, parser-independent production work is implemented on the feature branch. Validation includes 22 focused API integration tests, 6 torque-agent unit tests, 130 deployment/profile/probe tests, root lint with zero warnings, shared/API/Web production builds, full fresh and legacy-upgrade migrations, duplicate-marker rollback, representative EXPLAIN plans, Compose configuration, Ansible syntax, image build, and live container health. The only supported agent parser remains explicitly synthetic; no CEM3-BTLA field order or delimiter has been guessed. Final completion is therefore intentionally held behind the real-device fixture gate and remaining runbook/canonical-document updates.
+
+Work resumed at 17:54 JST. Review corrected condition-based confirmation reuse, safe disarm/rearm across marker transitions, runtime fastener/group revalidation, cross-session event-ID misuse, future-dated setting ambiguity, local preservation of unbound/malformed HID input, and wildcard loopback CORS.
+A final disposable database applied all 149 migrations and passed the 22 combined assembly/traceability integration tests. Unit/UI evidence includes 19 converter/policy checks, 7 focused Web checks, and 8 agent checks with Ruff 0.4.2.
+The final pass also completed zero-warning root lint, Shared Types/API/Web production builds, 136 deployment/profile/probe contracts, Compose configuration, Ansible syntax, and a disposable agent image health/CORS/binding runtime check.
+Every temporary database, volume, network, container, and feature image created by this pass was removed. Canonical assembly, measuring-instrument API/UI, agent README, INDEX, and operations Runbook now describe the implemented/not-deployed state and the remaining hardware gate.
+
+Milestone 2A completed at 19:22 JST without a physical wrench. The standard-library CLI now records exclusive EV_KEY streams only to new Git-external 0700/0600 sessions, preserves incomplete manifests, replays without payload output, performs fail-closed literal redaction, and validates strict observed/derived fixture contracts. The synthetic `capture_contract` remains explicitly non-CEM evidence, and no `cem3_btla` fixture or production parser was added. Validation passed 20 agent/capture tests, Ruff 0.4.2, zero-warning root lint, document inventory/link audit, and disposable Docker wheel/runtime replay/validation; temporary containers and images were removed.
+
+Draft PR #1038 initially passed the functional API, Web, DB, E2E, and client suites but exposed security and deployment-contract gaps. The approved remediation now passes 21 torque-agent tests, Ruff, API build, zero-warning root lint, 621 deploy regression tests, the release safety audit, four relevant Ansible syntax checks, a targeted Trivy scan with zero findings for `poetry.lock`, and a disposable Linux image build/runtime health check. The disposable container and image were removed. GitHub then passed `docker-security (api)`, `deploy-contract`, the CodeQL workflow, API/Web/DB/E2E, and the aggregate `ci-required` gate for commit `3776a953`; the additional CodeQL alert check completed with no new finding. The physical CEM3-BTLA gate is unchanged.
+
+Physical work on 2026-07-18 established the payload contract without sacrificing a warm-up measurement. Three normal and five rapid-consecutive observed frames were sanitized to `SERIAL_A`; raw key events, the real serial, the replacement map, and HCI logs remain outside Git. The external RTL8761BU controller resolved the earlier pre-SMP link failure, retained a bond through wrench power cycling, and delivered complete ENTER-terminated frames with no unsupported or pending keys. The tested wrench has no same-memory resend function, so physical resend is optional while synthetic transport/idempotency coverage remains mandatory.
+
+The Milestone 2C implementation pass now has 38 passing torque-agent tests, Ruff, zero-warning root lint, a current document inventory, `git diff --check`, 626 deployment regression tests, client lifecycle selection, deployment safety contracts, and Ansible syntax validation. A disposable Linux image registered the strict production CEM adapter and validated both observed and synthetic contracts; its temporary tag was removed. The agent waits for and reconnects only to the exact configured by-id path with a fresh decoder and exclusive grab. The Ansible controller helper selects only USB `2357:0604`, the HID rule requires the full Bluetooth identity, and all four root-owned files are in the sealed capture/rollback profile. Live helper and rendered-rule checks rejected the internal controller and left `bluetooth`, `kiosk-browser`, and `lightdm` active. No application deployment or database change was performed.
+
+Standard release `20260718-224954-e64fe2` subsequently deployed immutable SHA `d9a2380e` to Pi5 and stonebase with exit code zero, verified evidence, committed runtime manifests, and cleared maintenance. The production API and the NFC, barcode, and torque strict health probes passed. Post-release physical audit nevertheless kept acceptance open because the external-controller oneshot was still activating. The next implementation therefore strengthens the controller lifecycle and the release gate together; manually stopping the unit, restarting Bluetooth, or accepting agent health alone is explicitly rejected.
+
+The following print-plan prevented a second form of unsafe release before any mutation: torque-specific role assets were still classified as generic client-role changes and would have expanded to unrelated terminals. The release graph now uses one schema-validated host-selector model for all optional agents, with narrow path ownership and fail-closed structural checks. This replaces the earlier barcode-only policy branch and makes future optional-agent additions data-only plus contract-tested.
+
+Draft PR #1038 then passed every selected GitHub check at commit `3566cade`: API, Web, DB infrastructure, E2E and smoke, workspace quality, client and repository policy, deploy contract, CodeQL, gitleaks, and both API/Web Docker security jobs. The aggregate `ci-required` gate passed. The PR remains Draft and no deployment was performed.
+
+## Context and Orientation
+
+The Prisma schema is `apps/api/prisma/schema.prisma`. Generic physical measuring instruments already live in `MeasuringInstrument` with management number, storage location, calibration expiry, and lifecycle status. Torque-specific models must reference it rather than copy those columns.
+
+Assembly API routes are registered under `apps/api/src/routes/assembly/index.ts`. Template normalization and revisions are handled in `apps/api/src/services/assembly/assembly-template.service.ts`. Work progression is controlled by `apps/api/src/services/assembly/assembly-work-session.service.ts`, and Excel output is produced by `apps/api/src/services/assembly/assembly-excel-export.service.ts`.
+
+The template editor is `apps/web/src/pages/kiosk/KioskAssemblyTemplateEditorPage.tsx`, with draft mutation helpers in `apps/web/src/features/assembly/assemblyTemplateDraft.ts`. The operator work page is `apps/web/src/pages/kiosk/KioskAssemblyWorkSessionPage.tsx`. Existing local agent patterns live under `clients/nfc-agent`, `clients/barcode-agent`, and `clients/haizen-agent`, but none combines durable API acknowledgement with torque-specific parsing.
+
+Shared image zoom, measured contain layout, callout rendering, and pointer conversion live in `apps/web/src/features/kiosk/image-canvas`. Inspection drawing already passes the measured CSS-pixel layout to the shared callout renderer and owns compatibility wrappers for its older import names. Assembly must consume the same neutral contract rather than importing inspection-specific code or inventing a percentage-sized SVG coordinate space.
+
+The parser-independent agent lives under `clients/torque-agent`. `hid_reader.py` is the Linux `evdev` adapter, waits for and reopens one configured stable by-id path, and creates a fresh decoder for every connection. `hid_line_decoder.py` preserves decoded frames, exact terminators, and unsupported keys. `cem3_btla_parser.py` contains the strict adapter proven by observed normal and rapid fixtures, and `main.py` registers that exact profile for production. The offline capture core does not import `evdev`; the Linux adapter is loaded only by capture or agent runtime so `replay`, `sanitize`, `validate`, and their tests run on macOS without a physical device.
+
+A capability group is a named fastener condition—nominal diameter, length, material, and strength class—associated with one or more torque-wrench models. A physical wrench is one serial-numbered `MeasuringInstrument` with a torque profile. A confirmation is a work-session record saying the operator compared one physical wrench's display with the latest registered setting for the current condition.
+
+## Plan of Work
+
+### Milestone 1: preview and approval
+
+Create `docs/design-previews/assembly-torque-wrench-traceability-preview.html` as one self-contained, interactive mock. It must expose tabs for the master, template editor, and work screen. Work-screen state controls must show confirmed/armed, disconnected, wrong wrench, expired calibration, and admin exception states. The template screen must demonstrate a two-row maximum toolbar, a narrow condition pane without an editable tightening ID, default-on inheritance, and range copy from a selected marker to existing markers only.
+
+Serve the directory through a local loopback HTTP server and inspect the actual rendered page at 1920x1080 and 1366x768. Exercise every tab and state, check horizontal and vertical overflow, and capture screenshots. Add a short entry to `docs/design-previews/README.md`. Present the evidence to the user and stop until approval.
+
+### Milestone 2A: offline private-capture readiness kit
+
+Add a `torque-capture` console command to `clients/torque-agent` using Python's standard `argparse`. The command has four subcommands. `capture` exclusively opens one explicit `/dev/input/by-id/*` device, records all EV_KEY states, relative timing, frame number, and exact terminator into a private JSONL session, and never initializes the API client, work binding, or SQLite outbox. It requires an output path outside any Git worktree, creates the directory as 0700 and its files as 0600, does not echo payloads, preserves partial data on timeout or interruption, and never stops a running agent automatically.
+
+`replay` feeds saved events through the OS-independent decoder and reports only frame counts, terminators, and unsupported-key counts. `sanitize` reads a 0600 literal-replacement JSON file outside Git, requires every source literal to occur, verifies that no source remains, and emits only sanitized payload text, terminator, scenario, sequence, and observed/derived provenance. `validate` verifies the fixture schema and its selected contract: production CEM3 evidence requires observed normal and rapid-consecutive samples, while the synthetic capture contract also requires repeated-memory behavior. Optional observed repeated-memory evidence is accepted when a device exposes that operation. Partial, missing-field, bad-number, and unsupported-unit fixtures are marked derived and may be added only after the observed payload shape is known. Below/above-limit values are server-side range cases rather than required observed device fixtures. When the operator declares that two devices are available, validation requires two anonymized device aliases.
+
+Refactor the HID decoding boundary so a frame preserves its terminator and any unsupported key codes instead of silently discarding evidence. Keep the existing string callback behavior at the production ingestion boundary, but reject or audit an undecodable frame rather than forwarding altered text. Add a synthetic capture-contract fixture for macOS replay; do not create anything under `tests/fixtures/cem3_btla` during this milestone. Update `.gitignore`, the agent README, and the operations Runbook with private-data handling and commands. This milestone is accepted when its CLI and synthetic tests pass without `evdev` on macOS, the Docker image exposes the command, and no parser named `cem3-btla-hogp-v1` is registered.
+
+### Milestone 2B: real device contract
+
+The tested CEM3-BTLA is configured to send memory counter, torque, unit, judgement, serial number, date, and time, separated by TAB and terminated by ENTER. Normal capture is complete: three consecutive frames were recorded without a warm-up discard. Rapid-consecutive capture is also complete: five frames were received through the external adapter with no pending or unsupported keys. The tested wrench exposes no operator-accessible same-memory resend, so that scenario remains a synthetic idempotency contract rather than a physical promotion gate. Record firmware when it can be displayed. When multiple physical wrenches are available, capture at least two serial aliases.
+
+Store sanitized samples under `clients/torque-agent/tests/fixtures/cem3_btla/`. The observed adapter accepts only seven fields, the observed padded `nm` unit, documented memory/serial/judgement widths, `YY/MM/DD`, the apostrophe-separated time produced by the deployed `kEY=JP` Linux path, and ENTER. `partial`, `missing_field`, `bad_number`, and `unsupported_unit` remain explicitly derived. Register the production profile only after sanitized normal/rapid evidence, parser tests, persistent exact-device selection, and disconnect/reconnect tests pass; do not add speculative alternate shapes.
+
+### Milestone 2C: external-controller promotion and persistent HID acceptance
+
+Continue from `feat/assembly-torque-wrench-traceability` on the dedicated branch `feat/assembly-torque-external-bluetooth-acceptance`. Sanitize the completed five-frame rapid capture outside Git and commit only the redacted fixture. Never print or commit the raw payload or redaction map. The physical HID identity may appear only as reviewed host-scoped deployment configuration; it must not leak into fixtures, capture logs, transient `eventN`, or controller-index configuration.
+
+Add host-scoped Ansible inputs for the external controller's exact USB vendor/product identity and for one stable wrench HID link. Install a narrow udev/systemd adapter that unblocks and powers only the matching external controller and a separate udev rule that creates the configured `/dev/input/by-id` link only when Bluetooth bustype, HID vendor/product, name, and unique wrench address all match. The internal controller remains untouched. Invalid identifiers or unsafe link names fail configuration before files or services change.
+
+Make the production HID reader wait for configured stable paths at startup and reopen the same exact path after disconnect. Every reopen creates a fresh decoder, releases the prior exclusive grab, and never falls back to `/dev/input/event*` discovery or another keyboard. Register the strict `cem3-btla-hogp-v1` parser in the production registry only after the observed fixture validator and reconnect contracts pass.
+
+Validate fixture coverage, parser strictness, startup wait, disconnect/reconnect, wrong-path fail-closed behavior, udev/systemd templates, Ansible syntax and lifecycle/change-classification contracts, torque-agent tests and Ruff, root lint, disposable agent Docker build/runtime, document audit, and `git diff --check`. Verify on the Pi without deploying that the existing external bond reconnects after wrench power cycling and, after persistent configuration is eventually deployed under separate authorization, survives a Pi reboot. This milestone does not change the API, DTO, Prisma schema, migration, SQL, or database.
+
+### Milestone 3: additive domain model and master API
+
+Add shared DTOs and enums under `packages/shared-types/src/torque-wrenches`. Add `AssemblyTorqueTraceabilityMode` with `LEGACY` and `REQUIRED`. In Prisma add `TorqueWrenchModel`, `TorqueWrenchProfile`, `TorqueWrenchCapabilityGroup`, the group/model join, and `TorqueWrenchSettingHistory`. Store original unit values and canonical N·m decimals. Use normalized manufacturer/model/serial keys for deterministic uniqueness.
+
+Add nullable `templateId`, structured fastener fields, and capability-group reference to `AssemblyTemplateBolt`. Existing rows continue to resolve their template through the area relation, while new and revised templates write the direct ID. Enforce template-wide marker uniqueness in the application for new/revised templates during the expand phase; defer database backfill, duplicate remediation, NOT NULL, and the final unique constraint to a separately reviewed contract migration. Keep the legacy lot/session wrench strings NOT NULL; REQUIRED rows use an empty compatibility value while physical identity comes from the new records. Add confirmation and torque-record audit columns as nullable fields, and place agent idempotency on the composite primary key of a newly created event table so no unique constraint must be added to the populated torque-record table.
+
+Implement separate torque-wrench routes/services. Keep normalization in pure helpers, conversion behind `TorqueUnitConverter`, and all compatibility decisions behind `TorqueWrenchEligibilityPolicy`. Master reads accept JWT or registered client key. Writes and setting-history append operations require ADMIN or MANAGER JWT. Referenced entities are retired, never hard-deleted.
+
+### Milestone 4: template editing behavior
+
+Make new templates `REQUIRED` and convert revisions saved by the new editor to `REQUIRED`. The server generates the internal tightening ID. Required templates reject missing structured fields or capability groups.
+
+Use the globally smallest unused positive marker number for new tightening markers. Deleting a marker never renumbers another marker. Add a default-on inheritance toggle: the next marker receives the selected or most recently used condition, or existing defaults when no source exists.
+
+Add a range-copy command using the selected marker as source and inclusive target marker numbers. It updates only existing tightening markers across all areas/pages, skips gaps, and reports changed/skipped counts. Copy nominal diameter, length, material, strength class, nominal/lower/upper torque, unit, and capability group only. Preserve marker number, coordinates, page, area, sort order, callout, persistent ID, and internal tightening ID.
+
+### Milestone 4A: assembly callout and marker-position parity
+
+Change `ImageMarkerCalloutOverlay` to accept one measured `ZoomedImageCanvasLayout`. Render assembly callouts in the content coordinate layer using the same CSS-pixel geometry as inspection drawing, while keeping marker buttons positioned by ratios inside the image rectangle. Apply this renderer to template editing, the work-session sequence viewer, and the development preview. Line weight, arrowhead, and same-number tip badge remain owned by the shared component; bolt/check tone differences remain domain presentation only.
+
+Extract the inspection-drawing position calculation and four accessible on-screen direction buttons into the domain-neutral image-canvas module. Preserve inspection-drawing exports through wrappers. In the assembly template editor, show the controls for the selected bolt or check marker, disable them while busy or read-only, move by ratio 0.0025, and clamp to 0 through 1. Each action changes only `xRatio` and `yRatio`; marker identity, page, condition, callout tip, and ordering remain unchanged.
+
+No API, DTO, Prisma schema, migration, SQL, or EXPLAIN work belongs to this milestone because both assembly marker models already persist validated ratio coordinates. If implementation contradicts that fact, stop and revise this plan before touching a database.
+
+### Milestone 5: confirmation, event intake, audit, and export
+
+Add compatible-wrench lookup and confirmation endpoints. Eligibility requires exact structured fastener match, model membership, model range coverage, AVAILABLE or IN_USE state, non-null calibration valid through the current Asia/Tokyo date, exact latest-setting match after canonical conversion, and a current confirmation.
+
+Extend agent torque intake with source event ID, expected template bolt, confirmation ID, serial, value, unit, raw payload, optional device time, memory counter, and device judgement. Match the client-key device to the session owner and make `(sourceClientDeviceId, sourceEventKey)` unique. Repeated delivery returns the original outcome. Wrong, unknown, expired, ineligible, stale-position, stale-confirmation, or unsupported-unit input is stored as `IGNORED` with a stable reason code and does not advance the marker.
+
+Keep the existing legacy input shape only for LEGACY templates. REQUIRED templates accept ordinary work events from the agent. Add an ADMIN/MANAGER-only override endpoint and page that require a valid confirmation, value/unit, and non-empty reason; an override replaces the transport but does not bypass eligibility.
+
+Update Excel output to include marker, required condition, actual value, physical serial, manufacturer/model, setting snapshot, acceptance/rejection reason, and override actor/reason. Retain the internal tightening ID only as an audit/compatibility column.
+
+### Milestone 6: local torque-agent and deployment contracts
+
+Create `clients/torque-agent` with independent HID adapter, parser registry, SQLite outbox, HTTP delivery adapter, and loopback control server. Only configured stable `/dev/input/by-id` paths may be opened, and input devices must be grabbed so measurements do not leak into kiosk text fields. Persist each event before network delivery; delete it only after a terminal 2xx acknowledgement; retry timeout and 5xx responses with the same event ID and bounded backoff.
+
+The browser sends a short-lived binding heartbeat containing session, expected bolt, confirmed physical wrench, and confirmation ID to `127.0.0.1:7073`. An event without a live binding is retained as a local error and never guessed into a session. Multiple configured wrenches are multiplexed by their payload serial and events are serialized through the durable outbox.
+
+Add the service to the client Docker Compose, a dedicated Dockerfile, Ansible configuration and lifecycle tasks, terminal profile/runtime registries, deployment change classification, and health-probe tests. Do not deploy or modify any real host.
+
+### Milestone 7: documentation and final verification
+
+Update the compact current-state sections in `docs/plans/kiosk-assembly-torque-management-mvp.md` and the measuring-instrument module docs. Correct any authentication documentation that disagrees with code. Add an operations README/runbook for Bluetooth pairing, configured HID paths, queue inspection, and safe restart. Link canonical documents from thin indexes without copying narrative logs.
+
+Run focused tests after each milestone and the full affected suites at the end. Record only concise evidence in this plan, leaving generated logs and screenshots in designated artifact paths.
+
+## Concrete Steps
+
+Run all repository commands from `/Users/tsudatakashi/RaspberryPiSystem_002`. The branch has already been created from fetched `origin/main` as described in Progress.
+
+For the preview, start a local server bound to loopback:
+
+    cd docs/design-previews
+    python3 -m http.server 8765 --bind 127.0.0.1
+
+Open `http://127.0.0.1:8765/assembly-torque-wrench-traceability-preview.html`, exercise all tabs/states, then terminate the server. This process has no application or database access.
+
+For production code, use the existing workspace commands and add focused tests before full suites:
+
+    pnpm --filter @raspi-system/shared-types build
+    pnpm --filter @raspi-system/api build
+    pnpm --filter @raspi-system/web test
+    pnpm --filter @raspi-system/web build
+    pnpm lint --max-warnings=0
+    cd clients/torque-agent
+    poetry run pytest
+    poetry run ruff check .
+
+For offline capture-kit verification on macOS, run from `clients/torque-agent`:
+
+    poetry run torque-capture replay --input tests/fixtures/capture_contract/synthetic-key-events.jsonl --synthetic
+    poetry run torque-capture validate --fixtures tests/fixtures/capture_contract
+
+On the Raspberry Pi, stop the agent through the approved operational procedure, then capture each observed scenario into a new directory outside the repository. The command refuses `/dev/input/event*`, never offers a non-exclusive mode, and defaults to a 120-second timeout:
+
+    poetry run torque-capture capture --device /dev/input/by-id/<approved-device> --output /var/lib/torque-agent/captures/<normal-id> --scenario normal --expected-frames 3 --firmware <firmware> --output-config <configuration-label> --terminator enter
+    poetry run torque-capture capture --device /dev/input/by-id/<approved-device> --output /var/lib/torque-agent/captures/<rapid-id> --scenario rapid_consecutive --expected-frames 5 --firmware <firmware> --output-config <configuration-label> --terminator enter
+
+If and only if the physical wrench exposes a same-memory resend operation, capture `repeated_memory` with two frames. Otherwise keep that scenario in the synthetic capture/idempotency contract and record the physical limitation; do not invent an observed fixture.
+
+After all observations, place a 0600 redaction file outside Git, sanitize each capture to a candidate fixture, and validate the complete matrix. The redaction file contains a JSON object whose `literals` array has `{ "source": "<real value>", "replacement": "SERIAL_A" }` rows; do not put a real literal on the command line.
+
+    poetry run torque-capture sanitize --input /var/lib/torque-agent/captures/<capture-id> --redactions /var/lib/torque-agent/private/cem3.torque-redactions.json --output tests/fixtures/cem3_btla/SERIAL_A/<scenario>.jsonl
+    poetry run torque-capture validate --fixtures tests/fixtures/cem3_btla --available-device-count 1 --redactions /var/lib/torque-agent/private/cem3.torque-redactions.json
+
+Database tests must use a unique temporary container, volume, and network based on one run ID. Do not use the repository helper that owns the fixed `postgres-test-local` name. Bind a random container port only to `127.0.0.1`, export the resulting disposable `DATABASE_URL`, and install an EXIT/INT/TERM trap before migration. Use `pgvector/pgvector:pg15`; pulling the image is allowed. The trap must remove the temporary container, volume, and network, and a final `docker ps`, `docker volume ls`, and `docker network ls` filter must prove the run ID is absent.
+
+Deploy migrations from zero. In a second disposable database, deploy through the migration immediately before this feature, insert representative legacy template/lot/session/record rows with SQL, apply the new migration, and assert the old values and counts remain unchanged. Run relevant integration tests against the same disposable server.
+
+Load representative master, group, setting, session, and event volumes and run `EXPLAIN (ANALYZE, BUFFERS)` for normalized serial lookup, latest setting, compatible-group lookup, event idempotency, and session history. Record the chosen indexes and actual plan nodes in this document. Finish with infrastructure contract tests, agent image build, `git diff --check`, Markdown-link validation, and a review that no secret or generated database file is tracked.
+
+## Validation and Acceptance
+
+The preview milestone is accepted when all controls work in the standalone mock, all five work states are reachable, the template toolbar occupies no more than two rows, short fields are not stretched, no action is clipped, and the document pane remains the dominant surface at both required viewports. User approval is mandatory.
+
+The device-contract milestone is accepted when sanitized normal and rapid-consecutive samples exist and parser tests distinguish complete events from derived partial/missing/malformed/unsupported-unit input, with two serial aliases only when multiple physical devices are available. Optional observed repeated-memory evidence is validated when present; otherwise its transport/idempotency behavior remains mandatory synthetic coverage. The first normal operation must be captured without a warm-up discard. No parser behavior may rely only on manual prose.
+
+The external-controller promotion milestone is accepted when only the configured USB controller is unblocked/powered, only the exact configured wrench receives a stable `/dev/input/by-id` link, the agent waits for and reopens that path without cross-device fallback, the strict CEM3 profile is registered, and observed normal plus rapid fixtures pass in both macOS tests and a disposable Linux image. Repository contracts and CI must pass. Deployment and Pi reboot acceptance remain separately authorized actions.
+
+The offline capture-kit milestone is accepted before hardware when `/dev/input/event0` and Git-contained private output are rejected, synthetic TAB/ENTER/partial/continuous/unsupported-key events replay without loss, interruption releases the device and preserves an incomplete manifest, output permissions are 0700/0600, stdout contains no payload, literal redaction fails closed, incomplete fixture coverage is detected, and all capture tests run on macOS without importing `evdev`.
+
+The domain milestone is accepted when legacy rows migrate unchanged, new required templates enforce structured fields, template-wide marker duplicates fail at both service and database boundaries, and referenced master data cannot be physically deleted.
+
+The work milestone is accepted when a correct confirmed wrench advances an in-range marker and snapshots its serial/settings; each incompatible case creates one ignored audit row and leaves the marker unchanged; a retried event key returns one stored row; and an admin override is authenticated and reasoned.
+
+The UI milestone is accepted when markers 1 through 35 can share condition values while retaining unique identity and placement, required work has no ordinary manual input, and legacy work keeps its existing flow. The export must prove the actual wrench and setting per record.
+
+Milestone 4A is accepted when the assembly callout SVG viewBox matches the measured CSS-pixel content layer instead of `100 x 100`, both assembly marker kinds move by exactly 0.0025 ratio per on-screen direction-button press, all other draft fields remain byte-for-byte equivalent, inspection-drawing compatibility tests remain green, and editor/work views show the same fixed-size callout geometry at 1366 x 768 and 1920 x 1080 through zoom and fit transitions.
+
+The agent milestone is accepted when two simulated HID sources, API outage/recovery, SQLite restart, binding expiry, duplicate acknowledgement, and malformed input pass without data loss, double insert, cross-session assignment, or keyboard leakage.
+
+## Idempotence and Recovery
+
+All schema work is additive before constraints. Migration tests run only on disposable databases. If existing marker duplicates are found, stop and report the template/marker groups; do not repair them automatically. A later data-remediation plan requires explicit authorization.
+
+The torque agent's outbox makes delivery retryable. Restarting it replays the same event IDs. A 2xx acknowledgement is the only condition that removes a queued event. Parser fixtures are immutable evidence and may only be replaced by a documented new capture/profile.
+
+Every capture uses a new output directory and refuses to overwrite an existing session. It writes a manifest with `in_progress` first and atomically replaces it with `complete`, `timeout`, or `interrupted` at the end. Sanitization also writes to a temporary sibling and atomically replaces only a new target. A failed capture or sanitization is retryable with a new identifier; no command deletes raw evidence or a redaction map automatically.
+
+Preview files and documentation are ordinary feature-branch commits and can be reverted independently from later schema/API commits. No push, merge, deploy, real-host Ansible operation, existing database mutation, or existing Docker-resource deletion is authorized by this plan.
+
+## Artifacts and Notes
+
+Expected preview artifact:
+
+    docs/design-previews/assembly-torque-wrench-traceability-preview.html
+
+Expected design decision record:
+
+    docs/decisions/ADR-20260717-assembly-torque-wrench-traceability.md
+
+Observed and derived production-parser evidence, complete for parser promotion after the sanitized rapid-consecutive fixture is added; repeated-memory remains optional observed evidence:
+
+    clients/torque-agent/tests/fixtures/cem3_btla/
+
+Expected synthetic evidence for the capture tool, which must never be described as CEM3-BTLA output:
+
+    clients/torque-agent/tests/fixtures/capture_contract/
+
+Private raw evidence and redaction maps use names matching `*.torque-capture-private.jsonl`, `capture-private/`, or `*.torque-redactions.json`; these patterns are ignored defensively, but the capture command must still reject any destination inside a Git worktree.
+
+Keep screenshots and short validation summaries as artifacts; do not commit transient server logs, SQLite queues, credentials, or raw production identifiers.
+
+Preview evidence captured on 2026-07-17:
+
+    1910x1075 master: no clipped controls; body 1910x1075 with no outer scroll.
+    1910x1075 template: document pane 1267px, condition pane 350px, toolbar 43px high, no clipped controls.
+    1910x1075 work: document pane 1511px, work pane 356px, no clipped controls.
+    1366x769 master: body/app/screen dimensions equal scroll dimensions; no clipped controls.
+    1366x769 template: document pane 792px, condition pane 320px, toolbar scrollWidth equals clientWidth, no clipped controls.
+    1366x769 work: document pane 1003px, work pane 330px, no ordinary manual input, footer visible, no clipped controls.
+    Range-copy interaction: 2–35 reported 31 updated and 3 missing; condition chips changed while marker identity remained represented separately.
+    Inheritance interaction: switch changed from checked to unchecked and copy changed to the default-value explanation.
+    Work states: confirmed/ARMED, disconnected/OFFLINE, wrong/REJECTED, expired/BLOCKED, and override/ADMIN all rendered; override form was visible only in the ADMIN state.
+    Browser console: zero warning or error entries.
+
+## Interfaces and Dependencies
+
+The shared type package will expose `AssemblyTorqueTraceabilityMode`, torque-wrench master DTOs, confirmation DTOs, agent event DTOs, and stable rejection reason codes. The API will keep legacy assembly input types at the boundary and convert them to domain commands rather than leaking legacy strings into the new policy.
+
+`TorqueUnitConverter` is a pure interface accepting decimal value and observed unit and returning a canonical N·m decimal or an unsupported-unit result. `TorqueWrenchEligibilityPolicy` accepts an immutable template condition, model capability, physical asset state, latest setting, current date, and optional confirmation; it returns either eligible data or one stable rejection code. HTTP handlers, Prisma queries, and React components must not duplicate these rules.
+
+The shared image-canvas package exposes callout rendering against one `ZoomedImageCanvasLayout` and a domain-neutral marker-position nudge primitive accepting only `xRatio` and `yRatio`. Inspection drawing keeps its existing exported names as adapters; assembly imports only the neutral contracts. Neither UI domain may depend on the other's business types.
+
+The torque agent defines independent ports for HID events, payload parsing, durable outbox persistence, work binding, and API delivery. The CEM3-BTLA adapter is selected by a fixture-derived output-profile identifier only after that profile is registered; construction and activation remain separate. SQLite, evdev, WebSocket, and HTTP are implementation details behind those ports.
+
+The capture package exposes an OS-independent `CapturedKeyEvent` value with sequence, relative nanoseconds, key code, key state, and frame number; a decoded frame with text, exact terminator, source key codes, and unsupported key codes; an asynchronous event-source protocol; a recorder; a literal sanitizer; and a fixture validator. The Linux event source is the only component allowed to import `evdev`. The CLI returns 0 for success, 2 for usage or safety validation, 3 for timeout/interruption/incomplete capture, and 4 for OS or device failures.
+
+Revision note 2026-07-17 06:32Z: Created this self-contained execution plan after branching from fetched `origin/main`, then added the approved-scope interactive preview and responsive browser evidence. The production implementation remains deliberately paused at the user approval gate.
+
+Revision note 2026-07-17 06:40Z: Recorded the user's preview approval. Opened the production schema/API/UI milestones while retaining the independent real-device payload gate for the final CEM3-BTLA parser profile.
+
+Revision note 2026-07-17 07:48Z: Recorded the production checkpoint, disposable-database migration and EXPLAIN evidence, affected test/build results, and the remaining real-device fixture gate before the requested 17:00 JST safe pause.
+
+Revision note 2026-07-17 09:06Z: After the user resumed work, corrected confirmation reuse and local input-audit behavior, reran disposable-Postgres/API/agent/Ruff/build/lint validation, and completed canonical documentation plus the torque-agent operations Runbook. The real CEM3-BTLA fixture gate remains unchanged.
+
+Revision note 2026-07-17 09:28Z: Completed the resume-time hardening pass, including future-setting rejection and strict loopback CORS, and recorded the final disposable Postgres, image-runtime, build, lint, and deployment-contract results. The real CEM3-BTLA fixture gate remains unchanged.
+
+Revision note 2026-07-17 10:00Z: Split the device milestone into offline capture readiness (2A) and physical fixture/parser promotion (2B). Fixed the private evidence format, fail-closed redaction, macOS replay boundary, CLI exit codes, and the rule that no CEM3-BTLA parser or fixture may be invented before observed hardware output.
+
+Revision note 2026-07-17 10:22Z: Completed Milestone 2A with the read-only capture CLI, Linux adapter/OS-independent recorder split, strict decoder/audit boundary, synthetic contract fixtures, fail-closed sanitizer/validator, defensive ignores, Docker console entry, and operator Runbook. Recorded 20 passing tests plus Ruff, root lint, document audit, and disposable image runtime evidence. Milestone 2B remains gated on physical output.
+
+Revision note 2026-07-17 11:20Z: Recorded the approved Draft PR CI remediation: dependency vulnerability removal, explicit rate-limit and safe DOM construction, portable loopback API testing, and torque-agent Ansible lifecycle ownership. Local security, deployment, lint, build, agent, and disposable-image validation pass; GitHub CI rerun remains pending.
+
+Revision note 2026-07-17 11:31Z: Recorded the successful Draft PR #1038 rerun for remediation commit `3776a953`. Every required GitHub Actions job and the `ci-required` aggregate passed; the separate real-device parser gate remains open.
+
+Revision note 2026-07-18 02:46Z: Recorded three complete normal CEM3-BTLA frames captured without a warm-up discard, the exact seven-field TAB/ENTER `kEY=JP` contract, the bounded-buffer first-frame-loss fix, strict but unregistered parser adapter, and derived rejection fixtures. Narrowed the remaining observed gate to repeated-memory and rapid-consecutive transport behavior, kept firmware and stable Pi HID bonding open, and separated the observed pre-SMP `0x3e` link failure from parser/API work.
+
+Revision note 2026-07-18 03:10Z: Recorded final local validation for the capture reliability and unregistered parser changes, including the expected incomplete-fixture exit, disposable Linux image evidence/removal, deployment contracts, document audit, and safe Pi4 service state. No deployment, database mutation, or production profile activation occurred.
+
+Revision note 2026-07-18 03:22Z: Recorded successful Draft PR #1038 checks for commits `c6841ad8` and `3566cade`, including the aggregate `ci-required` gate. The remaining work is limited to the explicitly open hardware/fixture promotion gates.
+
+Revision note 2026-07-18 04:15Z: Added approved Milestone 4A after reproducing the assembly-only callout scale defect. Fixed the planned contract to measured CSS-pixel layout, shared ratio nudge controls, both editable assembly marker kinds, all assembly callout views, and Web-only validation without database work.
+
+Revision note 2026-07-18 04:29Z: Completed Milestone 4A with a single measured-layout callout contract, domain-neutral coordinate nudge logic/UI, inspection compatibility wrappers, assembly editor/work/preview integration, 23 focused and 1458 full Web tests, zero-warning root lint, Web build, responsive geometry E2E, document audit, and browser inspection. No API, DTO, Prisma, Docker, or database resource changed; push, PR update, CI, and deployment remain unauthorized.
+
+Revision note 2026-07-18 08:44Z: Added approved Milestone 2C after the external RTL8761BU controller established a stable bond, resolved HID services, captured one complete preflight and five complete rapid frames, and automatically reconnected after wrench power cycling. Reclassified physical repeated-memory capture as optional because the tested wrench exposes no resend operation, while retaining mandatory synthetic idempotency coverage. Fixed the implementation boundary to exact USB/HID identities, stable by-id linking, production startup/reconnect handling, strict parser registration, non-deploy validation, Draft PR, and CI.
+
+Revision note 2026-07-18 09:24Z: Completed Milestone 2C implementation and local validation. Added the sanitized five-frame rapid fixture, production parser registration, exact external-controller and wrench-HID persistence, same-path startup/reconnect behavior, and sealed rollback coverage for every new root-owned file. Validation passes 38 agent tests, Ruff, 626 deploy tests, release safety contracts, root lint, Ansible syntax, observed/synthetic fixture checks, disposable Linux runtime, document audit, and diff checks. Deployment, reboot acceptance, firmware recording, Draft PR, and CI remain separate gates.
+
+Revision note 2026-07-18 09:39Z: Recorded successful Draft PR #1040 validation for commit `033fd760`. Secret scan, CodeQL, API, Web, DB/infra, E2E, client/repository/workspace policy, both Docker-security jobs, deployment contracts, and aggregate `ci-required` all passed. The PR remains Draft against `feat/assembly-torque-wrench-traceability`; no merge or deployment occurred.
+
+Revision note 2026-07-18 10:02Z: Recorded the fail-closed first production attempt and its expand-only remediation. Release `20260718-095718-002eee` stopped before migration or stonebase mutation. The legacy lot/session wrench columns remain NOT NULL, REQUIRED rows use an empty compatibility value, and disposable Postgres plus focused API and deployment validation pass. A new release run remains gated on commit, push, and green CI.
+
+Revision note 2026-07-18 10:37Z: Recorded the preventable second stop. Release `20260718-103432-d84379` reached no database, application, or stonebase mutation, but proved that correcting only the first rejected statements was insufficient because the complete candidate migration had not been passed through the production validator.
+
+Revision note 2026-07-18 11:32Z: Replaced the full traceability migration with a strictly additive nullable expansion, normalized null traceability to `LEGACY` in the application, moved source-event uniqueness to a new-table composite primary key, and deferred backfill and contract constraints. The actual SQL passes the production validator; all 149 migrations, focused integration, 10,000-row EXPLAIN, and disposable-resource cleanup pass. Added a mandatory pre-submission design so local/CI candidate validation and the live Pi5 ledger check run before a release unit can exist, while retaining the in-release recheck.
+
+Revision note 2026-07-18 15:08Z: After hosted API shard 1 exposed Prisma `P2028`, audited the whole assembly/torque transaction boundary instead of retrying or patching one endpoint. Added one finite transaction budget, one locked-session mutation entry point, and a source contract banning direct transaction bypasses across both service directories. Fresh application of all 149 migrations, 23 focused integration tests, concurrent mutation behavior, a six-second row-lock wait, and disposable-resource cleanup pass; exact-head CI and deployment remain pending.
+
+Revision note 2026-07-18 21:28Z: After the same backup retention assertion failed in two full-suite runs, stopped retrying and audited the backup target model. Separated configured logical DB identity from runtime connection substitution, shared DB-name normalization, and added regression coverage proving `borrow_return` retention while connected to disposable `codex_review`. The structurally corrected run passed all 149 migrations, 23 focused integration tests, and all 2,360 API tests; the dedicated container, volume, and network were removed.
+
+Revision note 2026-07-18 22:21Z: Recorded green exact-head CI for `ea64f28b`, the successful aggregate preflight, and the subsequent interrupted-recovery stop. Replaced current-inventory rollback health selection across both normal and interrupted paths with one sealed-runtime authority, including restored-container endpoint discovery, fail-closed propagation, and regression coverage for future optional-agent additions. Deployment remains paused until this structural correction passes exact-head CI.
+
+Revision note 2026-07-18 23:27Z: Recorded exact-head CI and successful release `20260718-224954-e64fe2`, then kept physical acceptance open after the whole dependency-chain audit found the external-controller oneshot blocked indefinitely in `btmgmt`. Expanded the implementation boundary to finite controller commands, a systemd start deadline, exact-controller discovery, and synchronous Ansible acceptance; individual service workarounds remain prohibited.
+
+Revision note 2026-07-19 00:17Z: Recorded green exact-head CI for finite controller acceptance and the subsequent fail-closed print-plan stop. Replaced generic client-role expansion and the barcode-only exception with a strict component-host selector registry shared by NFC, barcode, and torque, narrow agent asset classification, and fail-closed inconsistency handling. Focused 175 and full 654 deployment tests pass; no preflight, release, or host mutation occurred after the unsafe plan was observed.
+
+Revision note 2026-07-19 01:34Z: Recorded the safe stop of release `20260719-004608-c62e1e` and replaced the late runtime-capture mismatch structurally. The adapter now owns one capture/probe contract; preflight streams and executes the exact candidate helper in mutation-free `probe-capture` mode; Compose health/exposed-port metadata is digest-verified rather than rejected; unsupported external features retain stable safe errors; and candidate sources no longer cross Linux argv limits. Added one local/CI deploy-contract runner and passed its complete 665-test, isolated-PostgreSQL, safety, inventory, profile, Ansible, and recovery validation. Publication, exact-head CI, and a standard release remain pending.
+
+Revision note 2026-07-19 02:25Z: Recorded green exact-head CI for `c09834e3`, successful read-only preflight, and the fail-closed recovery stop in release `20260719-015514-0c8044` before candidate apply. Replaced single-sample and phase-dependent health proof with the exact candidate helper in aggregate preflight, two consecutive bounded agent proofs, and mandatory preflight for every sealed interrupted-recovery manifest. Focused 79 and full 672 deployment tests, shared local/CI contracts with isolated PostgreSQL, root lint, Ruff, document audit, and diff checks pass; temporary resources are absent. A new exact-head CI and standard release remain pending.
+
+Revision note 2026-07-19 03:04Z: Recorded green exact-head CI for `cf242bd3` and release `20260719-023727-47a971`. The new recovery boundary successfully restored and verified the prior interrupted StoneBase runtime, but the candidate later exposed an Ansible template source-syntax gap that playbook syntax checks cannot detect. StoneBase rollback was verified and maintenance cleared; Pi5 remains verified at the candidate. Before any retry, the shared local/CI gate now owns parse coverage for all `.j2` sources plus rendered native syntax for release-critical executable templates.
+
+Revision note 2026-07-19 03:14Z: Completed the whole-template structural correction before retry. The local/CI runner now parses all 99 Ansible sources, rejects the shell/Jinja `${#` delimiter collision class, and renders the release-critical torque helper through `bash -n`. The full 676-test deployment contract, isolated PostgreSQL/migration integration, safety, inventory, selected-playbook, recovery, lint, and document checks pass; all disposable resources were removed.
+
+Revision note 2026-07-19 03:28Z: Recorded green exact-head CI for `a5a7f90e` and the subsequent mutation-free print-plan stop. Instead of allowlisting two filenames, established `scripts/ci/` as the single validation-only neutral boundary and added mixed runtime/validation classification contracts. The next release remains blocked on a new full local run, publication, exact-head CI, and a minimized print-plan.
+
+Revision note 2026-07-19 03:43Z: Recorded green exact-head CI for `a2ff06be` and the second mutation-free plan audit. The remaining expansion was separated into a recurring classification defect (26 deploy-control helpers outside a responsibility boundary) and legitimate cumulative differences on verified older terminals. The structural correction closes `scripts/deploy/` with specific test/signage overrides; the approved physical acceptance will use the documented Pi5 plus StoneBase limit rather than mutate unrelated verified terminals.
+
+Revision note 2026-07-19 03:53Z: Completed the deploy-control responsibility boundary and its precedence contracts. The full shared local gate passed 679 deployment tests, disposable PostgreSQL with all 149 migrations and deploy-status integration, rollback safety, both inventories, every selected playbook syntax check, recovery check, lint, Ruff, and document audit. Exact-head publication and CI remain the only software gates before the limited physical release.
+
+Revision note 2026-07-19 04:02Z: Recorded green exact-head CI for `2f4da930` and both mutation-free plan views. StoneBase is now selected by known torque/deploy-control impact, but the aggregate plan exposed the final two ownership gaps on older verified baselines. Closed them by responsibility—E2E/test data neutral, common Ansible role global—and added contracts requiring those semantics before limited preflight can begin.
+
+Revision note 2026-07-19 04:11Z: Completed the fleet-baseline ownership audit. All four distinct verified current SHAs classify to known components with no unknown paths. The final shared local gate passed 680 deployment tests, disposable PostgreSQL with all 149 migrations and deploy-status integration, safety, both inventories, selected playbook syntax, recovery, lint, Ruff, and document audit. Exact-head publication/CI is now the sole software gate before limited preflight.
+
+Revision note 2026-07-19 04:20Z: Exact-head CI at `b6f6e622` exposed the previously recurring API import-code collision instead of a release regression. Replaced all timestamp-remainder generation in direct, Gmail, and Dropbox import integration paths with one DB-aware constrained-code reservation boundary and run-unique auxiliary tokens. The exact 19-test import file passed ten times against one accumulating disposable PostgreSQL database, both provider files passed 19 tests, API lint/build and diff checks pass, and all temporary Docker resources were removed. Publication and a fresh exact-head CI run remain before the limited release.

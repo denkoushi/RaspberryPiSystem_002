@@ -40,6 +40,7 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--approve")
     value.add_argument("--cancel")
     value.add_argument("--print-plan", "--dry-run", action="store_true")
+    value.add_argument("--preflight-only", action="store_true")
     value.add_argument("--detach", action="store_true")
     value.add_argument("--full-fleet", action="store_true")
     value.add_argument("--follow", action="store_true", help=argparse.SUPPRESS)
@@ -125,6 +126,7 @@ def normalize_arguments(args: argparse.Namespace) -> argparse.Namespace:
                 ("--limit", bool(args.limit)),
                 ("--detach", args.detach),
                 ("--print-plan", args.print_plan),
+                ("--preflight-only", args.preflight_only),
                 ("--remote-run", args.remote_run),
                 ("--sha", args.sha is not None),
                 ("--run-id", args.run_id is not None),
@@ -165,6 +167,16 @@ def normalize_arguments(args: argparse.Namespace) -> argparse.Namespace:
         raise UsageError("--canary-hold-timeout must be greater than zero")
     if args.print_plan and args.detach:
         raise UsageError("--print-plan cannot be combined with --detach")
+    if args.preflight_only and args.detach:
+        raise UsageError("--preflight-only cannot be combined with --detach")
+    if args.preflight_only and args.print_plan:
+        raise UsageError("--preflight-only cannot be combined with --print-plan")
+    if args.preflight_only and (args.emergency_override or args.skip_canary_hold):
+        raise UsageError("--preflight-only cannot be combined with execution override options")
+    if args.preflight_only and args.full_fleet:
+        raise UsageError("--preflight-only checks the selected universe and cannot use --full-fleet")
+    if args.preflight_only and args.canary_hold_timeout != DEFAULT_CANARY_HOLD_TIMEOUT:
+        raise UsageError("--preflight-only cannot be combined with --canary-hold-timeout")
     if args.full_fleet and args.limit:
         raise UsageError("--full-fleet cannot be combined with --limit")
     if args.print_plan and (args.emergency_override or args.skip_canary_hold):
@@ -188,8 +200,10 @@ def normalize_arguments(args: argparse.Namespace) -> argparse.Namespace:
             r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", args.expected_server_client_id
         ):
             raise UsageError("--remote-run requires a safe expected server client ID")
-        if args.detach or args.print_plan:
-            raise UsageError("--remote-run cannot be combined with --detach or --print-plan")
+        if args.detach or args.print_plan or args.preflight_only:
+            raise UsageError(
+                "--remote-run cannot be combined with --detach, --print-plan or --preflight-only"
+            )
     elif args.sha or args.run_id or args.expected_server_client_id:
         raise UsageError(
             "--sha, --run-id and --expected-server-client-id are internal remote-run options"
