@@ -199,23 +199,92 @@ export const emptyAssemblyArea = (index = 0): AssemblyDraftArea => ({
 export const formatTighteningId = (area: Pick<AssemblyDraftArea, 'processNo' | 'areaCode' | 'unitCode'>, index: number) =>
   `P${area.processNo}-A${area.areaCode}-U${area.unitCode}-B${index + 1}`;
 
+export const ASSEMBLY_BOLT_CONDITION_KEYS = [
+  'boltSpec',
+  'nominalDiameter',
+  'boltLengthMm',
+  'material',
+  'strengthClass',
+  'nominalTorque',
+  'lowerLimit',
+  'upperLimit',
+  'unit',
+  'capabilityGroupId'
+] as const;
+
+export type AssemblyBoltConditionKey = (typeof ASSEMBLY_BOLT_CONDITION_KEYS)[number];
+
+export function nextAssemblyMarkerNo(areas: AssemblyDraftArea[]): number {
+  const used = new Set(areas.flatMap((area) => area.bolts.map((bolt) => bolt.markerNo)));
+  let markerNo = 1;
+  while (used.has(markerNo)) markerNo += 1;
+  return markerNo;
+}
+
+export function copyAssemblyBoltCondition(source: AssemblyDraftBolt, target: AssemblyDraftBolt): AssemblyDraftBolt {
+  return {
+    ...target,
+    boltSpec: source.boltSpec,
+    nominalDiameter: source.nominalDiameter,
+    boltLengthMm: source.boltLengthMm,
+    material: source.material,
+    strengthClass: source.strengthClass,
+    nominalTorque: source.nominalTorque,
+    lowerLimit: source.lowerLimit,
+    upperLimit: source.upperLimit,
+    unit: source.unit,
+    capabilityGroupId: source.capabilityGroupId
+  };
+}
+
+export function applyAssemblyBoltConditionRange(
+  areas: AssemblyDraftArea[],
+  sourceBoltId: string,
+  startMarkerNo: number,
+  endMarkerNo: number
+): { areas: AssemblyDraftArea[]; updatedCount: number; missingCount: number } {
+  const source = areas.flatMap((area) => area.bolts).find((bolt) => bolt.id === sourceBoltId);
+  if (!source) return { areas, updatedCount: 0, missingCount: 0 };
+  const first = Math.min(startMarkerNo, endMarkerNo);
+  const last = Math.max(startMarkerNo, endMarkerNo);
+  const targets = new Set(Array.from({ length: last - first + 1 }, (_, index) => first + index));
+  let updatedCount = 0;
+  const nextAreas = areas.map((area) => ({
+    ...area,
+    bolts: area.bolts.map((bolt) => {
+      if (!targets.has(bolt.markerNo) || bolt.id === source.id) return bolt;
+      updatedCount += 1;
+      return copyAssemblyBoltCondition(source, bolt);
+    })
+  }));
+  const existingCount = new Set(areas.flatMap((area) => area.bolts.map((bolt) => bolt.markerNo)).filter((no) => targets.has(no))).size;
+  return { areas: nextAreas, updatedCount, missingCount: targets.size - existingCount };
+}
+
 export function createAssemblyBoltAt(
   area: AssemblyDraftArea,
   xRatio: number,
   yRatio: number,
-  pageRef?: AssemblyPageRef | null
+  pageRef?: AssemblyPageRef | null,
+  options?: { allAreas?: AssemblyDraftArea[]; inheritFrom?: AssemblyDraftBolt | null }
 ): AssemblyDraftBolt {
   const index = area.bolts.length;
-  return {
+  const markerNo = options?.allAreas ? nextAssemblyMarkerNo(options.allAreas) : nextAssemblyMarkerNo([area]);
+  const created: AssemblyDraftBolt = {
     id: crypto.randomUUID(),
     sortOrder: index,
     tighteningId: formatTighteningId(area, index),
-    markerNo: index + 1,
+    markerNo,
     xRatio,
     yRatio,
     calloutTipXRatio: null,
     calloutTipYRatio: null,
     boltSpec: 'M6x30',
+    nominalDiameter: 'M6',
+    boltLengthMm: 30,
+    material: 'STEEL',
+    strengthClass: '8.8',
+    capabilityGroupId: null,
     nominalTorque: 90,
     lowerLimit: 81,
     upperLimit: 99,
@@ -224,6 +293,7 @@ export function createAssemblyBoltAt(
     assemblyProcedureDocumentId: pageRef?.source === 'assembly_procedure_document' ? pageRef.documentId : null,
     pageIndex: pageRef?.pageIndex ?? null
   };
+  return options?.inheritFrom ? copyAssemblyBoltCondition(options.inheritFrom, created) : created;
 }
 
 export function createAssemblyCheckItemAt(
@@ -273,6 +343,11 @@ export function dtoBoltToDraft(bolt: AssemblyTemplateBoltDto): AssemblyDraftBolt
     calloutTipXRatio: bolt.calloutTipXRatio == null ? null : toNumber(bolt.calloutTipXRatio),
     calloutTipYRatio: bolt.calloutTipYRatio == null ? null : toNumber(bolt.calloutTipYRatio),
     boltSpec: bolt.boltSpec,
+    nominalDiameter: bolt.nominalDiameter,
+    boltLengthMm: bolt.boltLengthMm == null ? null : toNumber(bolt.boltLengthMm),
+    material: bolt.material,
+    strengthClass: bolt.strengthClass,
+    capabilityGroupId: bolt.capabilityGroupId,
     nominalTorque: toNumber(bolt.nominalTorque),
     lowerLimit: toNumber(bolt.lowerLimit),
     upperLimit: toNumber(bolt.upperLimit),
@@ -325,6 +400,11 @@ export function draftAreasToInput(areas: AssemblyDraftArea[]): AssemblyTemplateA
       calloutTipXRatio: bolt.calloutTipXRatio ?? null,
       calloutTipYRatio: bolt.calloutTipYRatio ?? null,
       boltSpec: bolt.boltSpec,
+      nominalDiameter: bolt.nominalDiameter ?? null,
+      boltLengthMm: bolt.boltLengthMm ?? null,
+      material: bolt.material ?? null,
+      strengthClass: bolt.strengthClass ?? null,
+      capabilityGroupId: bolt.capabilityGroupId ?? null,
       nominalTorque: bolt.nominalTorque,
       lowerLimit: bolt.lowerLimit,
       upperLimit: bolt.upperLimit,
@@ -376,7 +456,7 @@ export function filterDraftBoltsForPage(
         yRatio: bolt.yRatio,
         calloutTipXRatio: bolt.calloutTipXRatio ?? null,
         calloutTipYRatio: bolt.calloutTipYRatio ?? null,
-        label: bolt.tighteningId,
+        label: bolt.tighteningId ?? `丸数字${bolt.markerNo}`,
         status: 'pending' as const
       }))
   );
@@ -411,7 +491,7 @@ export function draftToCanvasBolts(areas: AssemblyDraftArea[]): AssemblyCanvasBo
       yRatio: bolt.yRatio,
       calloutTipXRatio: bolt.calloutTipXRatio ?? null,
       calloutTipYRatio: bolt.calloutTipYRatio ?? null,
-      label: bolt.tighteningId,
+      label: bolt.tighteningId ?? `丸数字${bolt.markerNo}`,
       status: 'pending' as const
     }))
   );

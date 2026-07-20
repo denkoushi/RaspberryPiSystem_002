@@ -39,6 +39,12 @@ export function AdminLayout() {
             <NavLink to="/admin/tools/measuring-instruments" className={linkClass}>
               計測機器
             </NavLink>
+            <NavLink to="/admin/tools/torque-wrenches" className={linkClass}>
+              トルクレンチ
+            </NavLink>
+            <NavLink to="/admin/tools/assembly-torque-override" className={linkClass}>
+              組立例外入力
+            </NavLink>
             <NavLink to="/admin/tools/measuring-instrument-genres" className={linkClass}>
               計測機器ジャンル
             </NavLink>

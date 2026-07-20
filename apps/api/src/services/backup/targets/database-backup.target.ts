@@ -11,6 +11,7 @@ import type { BackupTargetInfo, RestoreOptions, RestoreResult } from '../backup-
 import type { UploadSource } from '../storage/storage-provider.interface.js';
 import { ApiError } from '../../../lib/errors.js';
 import { logger } from '../../../lib/logger.js';
+import { resolveDatabaseBackupSource } from '../backup-database-source.js';
 
 const DEFAULT_DB_URL = 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 
@@ -19,13 +20,14 @@ const DEFAULT_DB_URL = 'postgresql://postgres:postgres@localhost:5432/borrow_ret
  * pg_dump が実行可能であることを前提とする。
  */
 export class DatabaseBackupTarget implements BackupTarget {
-  private readonly dbUrl: string;
+  private readonly connectionUrl: string;
+  private readonly sourceName: string;
 
   constructor(dbUrl?: string) {
     // dbUrlが指定されていない場合、またはlocalhostを含む場合は環境変数DATABASE_URLを使用
     // Dockerコンテナ内ではdb:5432を使用する必要があるため
     if (!dbUrl || dbUrl.includes('localhost') || dbUrl.includes('127.0.0.1')) {
-      this.dbUrl = process.env.DATABASE_URL || DEFAULT_DB_URL;
+      this.connectionUrl = process.env.DATABASE_URL || DEFAULT_DB_URL;
     } else {
       // dbUrlがデータベース接続文字列でない場合（データベース名のみの場合）、環境変数DATABASE_URLを使用
       // データベース接続文字列はpostgresql://で始まる
@@ -35,22 +37,23 @@ export class DatabaseBackupTarget implements BackupTarget {
         try {
           const url = new URL(baseUrl);
           url.pathname = `/${dbUrl}`;
-          this.dbUrl = url.toString();
+          this.connectionUrl = url.toString();
         } catch {
           // URL解析に失敗した場合は環境変数DATABASE_URLを使用
-          this.dbUrl = process.env.DATABASE_URL || DEFAULT_DB_URL;
+          this.connectionUrl = process.env.DATABASE_URL || DEFAULT_DB_URL;
         }
       } else {
-        this.dbUrl = dbUrl;
+        this.connectionUrl = dbUrl;
       }
     }
+
+    this.sourceName = resolveDatabaseBackupSource(dbUrl, this.connectionUrl);
   }
 
   get info(): BackupTargetInfo {
-    const url = new URL(this.dbUrl);
     return {
       type: 'database',
-      source: url.pathname.replace(/^\//, '') || 'database'
+      source: this.sourceName
     };
   }
 
@@ -141,7 +144,7 @@ export class DatabaseBackupTarget implements BackupTarget {
     port: string;
     password?: string;
   } {
-    const url = new URL(this.dbUrl);
+    const url = new URL(this.connectionUrl);
     const dbName = url.pathname.replace(/^\//, '');
     const user = decodeURIComponent(url.username || 'postgres');
     const host = url.hostname || 'localhost';
@@ -152,7 +155,7 @@ export class DatabaseBackupTarget implements BackupTarget {
 
   async restore(backupData: Buffer, options?: RestoreOptions): Promise<RestoreResult> {
     void options;
-    const url = new URL(this.dbUrl);
+    const url = new URL(this.connectionUrl);
     const dbName = url.pathname.replace(/^\//, '');
     const user = decodeURIComponent(url.username || 'postgres');
     const host = url.hostname || 'localhost';

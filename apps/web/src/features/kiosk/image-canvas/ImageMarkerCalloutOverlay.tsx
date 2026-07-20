@@ -3,7 +3,7 @@ import { useId } from 'react';
 
 import { imageMarkerHasCalloutTip } from './imageMarkerCallout';
 
-import type { ImageCanvasRect } from './imageCanvasModel';
+import type { ZoomedImageCanvasLayout } from './imageCanvasModel';
 import type { ImageMarkerCalloutTip } from './imageMarkerCallout';
 
 export type ImageMarkerCallout = ImageMarkerCalloutTip & {
@@ -17,19 +17,16 @@ export type ImageMarkerCallout = ImageMarkerCalloutTip & {
 type Props = {
   items: ImageMarkerCallout[];
   selectedId?: string | null;
-  image: ImageCanvasRect;
-  contentWidth: number;
-  contentHeight: number;
+  layout: ZoomedImageCanvasLayout;
 };
 
 /** ドメインに依存せず、比率座標から同番号の矢視線と先端バッジを描画する。 */
 export function ImageMarkerCalloutOverlay({
   items,
   selectedId,
-  image,
-  contentWidth,
-  contentHeight
+  layout
 }: Props) {
+  const { image, contentWidth, contentHeight } = layout;
   const prefix = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const visibleItems = items.filter(imageMarkerHasCalloutTip);
   if (visibleItems.length === 0) return null;
@@ -38,8 +35,17 @@ export function ImageMarkerCalloutOverlay({
     item.id === selectedId ? '#22d3ee' : item.tone === 'lime' ? '#84cc16' : '#f59e0b';
 
   return (
-    <div className="pointer-events-none absolute inset-0 z-[5]" aria-hidden="true">
-      <svg className="absolute inset-0 h-full w-full" viewBox={`0 0 ${contentWidth} ${contentHeight}`} preserveAspectRatio="none">
+    <div
+      className="pointer-events-none absolute inset-0 z-[5]"
+      aria-hidden="true"
+      data-testid="image-marker-callout-overlay"
+    >
+      <svg
+        className="absolute inset-0 h-full w-full"
+        viewBox={`0 0 ${contentWidth} ${contentHeight}`}
+        preserveAspectRatio="none"
+        data-testid="image-marker-callout-svg"
+      >
         <defs>
           {visibleItems.map((item) => {
             const color = colorFor(item);

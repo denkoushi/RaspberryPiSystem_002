@@ -3,6 +3,7 @@ import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { prisma } from '../../lib/prisma.js';
 import { AssemblyProcedureImageStorage } from '../../lib/assembly-procedure-image-storage.js';
+import { runAssemblyTransaction } from './assembly-transaction.js';
 
 const procedureDocumentInclude = {
   pages: {
@@ -208,7 +209,7 @@ export class AssemblyProcedureDocumentService {
 
   async deleteIfUnused(id: string): Promise<'deleted' | 'not_found' | 'in_use'> {
     const imagePaths: string[] = [];
-    const outcome = await prisma.$transaction(async (tx) => {
+    const outcome = await runAssemblyTransaction(async (tx) => {
       const locked = await tx.$queryRaw<Array<{ id: string }>>`
         SELECT id FROM "AssemblyProcedureDocument"
         WHERE id = ${id}

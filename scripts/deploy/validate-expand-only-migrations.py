@@ -30,9 +30,22 @@ CREATE_TABLE = re.compile(
     re.IGNORECASE,
 )
 CREATE_INDEX = re.compile(
-    rf"^CREATE\s+INDEX\s+(?:CONCURRENTLY\s+)?"
+    rf"^CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:CONCURRENTLY\s+)?"
     rf"(?:IF\s+NOT\s+EXISTS\s+)?{QUALIFIED_IDENTIFIER}\s+ON\s+"
     rf"(?:ONLY\s+)?{QUALIFIED_IDENTIFIER}(?:\s+USING\s+{IDENTIFIER})?\s*\(",
+    re.IGNORECASE,
+)
+RAW_IDENTIFIER = r'(?:(?:"(?:[^"]|"")*")|[A-Za-z_][A-Za-z0-9_$]*)'
+RAW_QUALIFIED_IDENTIFIER = rf"{RAW_IDENTIFIER}(?:\s*\.\s*{RAW_IDENTIFIER}){{0,2}}"
+RAW_CREATE_TABLE = re.compile(
+    rf"^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"
+    rf"(?P<table>{RAW_QUALIFIED_IDENTIFIER})\s*\(",
+    re.IGNORECASE,
+)
+RAW_CREATE_UNIQUE_INDEX = re.compile(
+    rf"^\s*CREATE\s+UNIQUE\s+INDEX\s+(?:CONCURRENTLY\s+)?"
+    rf"(?:IF\s+NOT\s+EXISTS\s+)?{RAW_QUALIFIED_IDENTIFIER}\s+ON\s+"
+    rf"(?:ONLY\s+)?(?P<table>{RAW_QUALIFIED_IDENTIFIER})(?:\s+USING\s+{RAW_IDENTIFIER})?\s*\(",
     re.IGNORECASE,
 )
 CREATE_ENUM = re.compile(
@@ -292,7 +305,21 @@ def _parenthesized_body_ends_statement(code: str, opening: int) -> bool:
     return False
 
 
-def validate_statement(statement: SqlStatement, label: str) -> None:
+def _parenthesized_index_has_where_suffix(code: str, opening: int) -> bool:
+    depth = 0
+    for index in range(opening, len(code)):
+        if code[index] == "(":
+            depth += 1
+        elif code[index] == ")":
+            depth -= 1
+            if depth == 0:
+                return bool(re.match(r"^\s+WHERE\s+.+$", code[index + 1 :], re.IGNORECASE))
+    return False
+
+
+def validate_statement(
+    statement: SqlStatement, label: str, *, allow_new_table_partial_unique_index: bool = False
+) -> None:
     code = statement.code.strip()
     if not _balanced_parentheses(code):
         raise ValueError(f"unbalanced parentheses in {label}: {statement.text[:120]}")
@@ -303,10 +330,13 @@ def validate_statement(statement: SqlStatement, label: str) -> None:
     ):
         return
     create_index = CREATE_INDEX.match(code)
-    if create_index is not None and _parenthesized_body_ends_statement(
-        code, create_index.end() - 1
-    ):
-        return
+    if create_index is not None:
+        if _parenthesized_body_ends_statement(code, create_index.end() - 1):
+            return
+        if allow_new_table_partial_unique_index and _parenthesized_index_has_where_suffix(
+            code, create_index.end() - 1
+        ):
+            return
     create_enum = CREATE_ENUM.match(code)
     if create_enum is not None and _parenthesized_body_ends_statement(
         code, create_enum.end() - 1
@@ -337,8 +367,25 @@ def validate_sql(raw: bytes, label: str) -> None:
     statements = split_sql_statements(text)
     if not statements:
         raise ValueError(f"migration contains no SQL statements: {label}")
+    created_tables: set[str] = set()
     for statement in statements:
-        validate_statement(statement, label)
+        # A UNIQUE index can reject a write or lock an existing production table.
+        # It is safe in the expand-only contract only when it belongs to a table
+        # created earlier in this same, not-yet-applied migration.
+        unique_index = RAW_CREATE_UNIQUE_INDEX.match(statement.text)
+        if unique_index is not None and unique_index.group("table") not in created_tables:
+            raise ValueError(
+                f"unique index must target a table created in the same migration: {label}: "
+                f"{statement.text[:120]}"
+            )
+        validate_statement(
+            statement,
+            label,
+            allow_new_table_partial_unique_index=unique_index is not None,
+        )
+        create_table = RAW_CREATE_TABLE.match(statement.text)
+        if create_table is not None:
+            created_tables.add(create_table.group("table"))
 
 
 def _run_git(repository: pathlib.Path, arguments: list[str]) -> bytes:

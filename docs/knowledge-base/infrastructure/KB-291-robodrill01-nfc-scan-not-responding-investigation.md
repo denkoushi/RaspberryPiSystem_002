@@ -154,14 +154,15 @@ sudo scripts/client/setup-nfc-agent.sh
 
 | 事象 | 根因 | 対策 |
 |------|------|------|
-| `readerConnected: false` | **pcscd** が未導入または非稼働。nfc-agent は pcscd 経由でリーダーにアクセスする | `nfc-agent-lifecycle.yml` で pcscd・pcsc-tools を自動インストール、pcscd.service を有効化・起動。pcscd 状態変更時に nfc-agent を再起動 |
+| `readerConnected: false` | **pcscd** が未導入、またはPC/SC通信ソケットが利用不能。nfc-agent は pcscd 経由でリーダーにアクセスする | `nfc-agent-lifecycle.yml` で pcscd・pcsc-toolsを自動インストールし、`pcscd.socket`を有効化・起動する。`/run/pcscd/pcscd.comm`がUnixソケットであることを確認し、PC/SC状態変更時にnfc-agentを再起動する |
 | `nfc-agent には Docker が必要です` | raspi4-robodrill01 に Docker が未インストール | 手動: `curl -fsSL https://get.docker.com \| sh` および `sudo usermod -aG docker <user>`。恒久対策: 新規 Pi4 追加時は client-initial-setup.md の前提条件に Docker を含める |
 | `Refusing to deserialize an invalid UTF8 string` | journalctl/df 出力に無効 UTF-8（サロゲート等）が混入し、Ansible の Python が失敗 | `update-clients-core.yml` で `iconv -f utf-8 -t utf-8 -c` により無効文字を除去 |
 | health-check で `iconv` が非ゼロ終了 | iconv が無効文字を除去すると終了コード 1 を返す | `health-check.yml` で `iconv ... \|\| true` を付与し、タスク失敗を回避 |
 
 ### 知見
 
-- **pcscd と nfc-agent の起動順序**: nfc-agent は起動時に pcscd ソケットを参照する。pcscd が後から起動した場合、nfc-agent を再起動しないと `readerConnected` が true にならない。`nfc-agent-lifecycle.yml` は pcscd の状態変更時に nfc-agent を再起動する。
+- **pcscd と nfc-agent の起動順序**: nfc-agent は起動時にPC/SCソケットを参照する。`pcscd.socket`が後から利用可能になった場合、nfc-agentを再起動しないと`readerConnected`がtrueにならない。`nfc-agent-lifecycle.yml`はソケット状態変更時にnfc-agentを再起動する。
+- **socket activationを正として判定する**: Raspberry Pi OSでは`pcscd.service`が`inactive/indirect`でも正常である。`pcscd.socket=loaded/active/enabled`、`/run/pcscd/pcscd.comm`がUnixソケット、nfc-agentのstatus endpointが成功することを運用契約とする。常駐serviceのactive状態を必須にすると正常端末を誤って停止させる。
 - **Docker 未導入の検出**: `nfc-agent-lifecycle.yml` の `docker --version` チェックで fail-fast。新規 Pi4 追加時は Docker を先に導入する必要がある。
 
 ---

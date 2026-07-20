@@ -11,6 +11,7 @@ import {
 
 import { computeContainSize } from './computeContainSize';
 
+import type { ZoomedImageCanvasLayout } from '../kiosk/image-canvas';
 import type { MouseEvent, ReactNode, RefObject } from 'react';
 
 type AssemblyCanvasCallout = {
@@ -72,6 +73,16 @@ function checkMarkerClass(item: AssemblyCanvasCheckItem, selected: boolean): str
   return 'bg-lime-300/80 text-slate-900 ring-2 ring-dashed ring-lime-100';
 }
 
+function assemblyCanvasCallouts(
+  bolts: AssemblyCanvasBolt[],
+  checkItems: AssemblyCanvasCheckItem[]
+) {
+  return [
+    ...bolts.map((bolt) => ({ ...bolt, tone: 'amber' as const })),
+    ...checkItems.map((item) => ({ ...item, tone: 'lime' as const }))
+  ];
+}
+
 export function AssemblyMarkerOverlay({
   bolts,
   checkItems = [],
@@ -90,24 +101,14 @@ export function AssemblyMarkerOverlay({
   | 'onSelectCheckItem'
   | 'onToggleCheckItem'
 >) {
-  const callouts = [
-    ...bolts.map((bolt) => ({ ...bolt, tone: 'amber' as const })),
-    ...checkItems.map((item) => ({ ...item, tone: 'lime' as const }))
-  ];
   return (
     <>
-      <ImageMarkerCalloutOverlay
-        items={callouts}
-        selectedId={selectedBoltId ?? selectedCheckItemId}
-        image={{ offsetX: 0, offsetY: 0, width: 100, height: 100 }}
-        contentWidth={100}
-        contentHeight={100}
-      />
       {bolts.map((bolt) => (
         <button
           key={`bolt-${bolt.id}`}
           type="button"
           title={bolt.label}
+          aria-label={bolt.label}
           onClick={(event) => {
             event.stopPropagation();
             onSelectBolt?.(bolt.id);
@@ -127,6 +128,7 @@ export function AssemblyMarkerOverlay({
           key={`check-${item.id}`}
           type="button"
           title={item.label ?? `チェック${item.markerNo}`}
+          aria-label={item.label ?? `チェック${item.markerNo}`}
           onClick={(event) => {
             event.stopPropagation();
             if (onToggleCheckItem) {
@@ -176,6 +178,45 @@ function useContainFitBox(
   }, [viewportRef, naturalWidth, naturalHeight]);
 
   return box;
+}
+
+function useElementSize(elementRef: RefObject<HTMLElement | null>): {
+  width: number;
+  height: number;
+} {
+  const [size, setSize] = useState({ width: 0, height: 0 });
+
+  useLayoutEffect(() => {
+    const element = elementRef.current;
+    if (!element) return;
+    const update = () => {
+      const rect = element.getBoundingClientRect();
+      setSize((current) =>
+        Math.abs(current.width - rect.width) < 0.5 && Math.abs(current.height - rect.height) < 0.5
+          ? current
+          : { width: rect.width, height: rect.height }
+      );
+    };
+    update();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', update);
+      return () => window.removeEventListener('resize', update);
+    }
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [elementRef]);
+
+  return size;
+}
+
+function zeroOffsetLayout(width: number, height: number): ZoomedImageCanvasLayout | null {
+  if (width <= 0 || height <= 0) return null;
+  return {
+    image: { offsetX: 0, offsetY: 0, width, height },
+    contentWidth: width,
+    contentHeight: height
+  };
 }
 
 function useNaturalSizeFromImg(rootRef: RefObject<HTMLElement | null>, deps: unknown[]): {
@@ -339,6 +380,11 @@ export function AssemblyProcedureCanvas({
       {blobUrl ? (
         layout ? (
           <div className="relative" style={{ width: layout.contentWidth, height: layout.contentHeight }}>
+            <ImageMarkerCalloutOverlay
+              items={assemblyCanvasCallouts(bolts, checkItems)}
+              selectedId={selectedBoltId ?? selectedCheckItemId}
+              layout={layout}
+            />
             <div
               className="absolute"
               style={{
@@ -416,6 +462,29 @@ export function AssemblyProcedureImageWithMarkers({
   const frameRef = useRef<HTMLDivElement>(null);
   const natural = useNaturalSizeFromImg(fitToParent ? viewportRef : frameRef, [imageContent, fitToParent]);
   const fitted = useContainFitBox(viewportRef, natural.width, natural.height);
+  const frameSize = useElementSize(frameRef);
+  const calloutLayout = zeroOffsetLayout(frameSize.width, frameSize.height);
+
+  const markerLayers = (
+    <>
+      {calloutLayout ? (
+        <ImageMarkerCalloutOverlay
+          items={assemblyCanvasCallouts(bolts, checkItems)}
+          selectedId={selectedBoltId ?? selectedCheckItemId}
+          layout={calloutLayout}
+        />
+      ) : null}
+      <AssemblyMarkerOverlay
+        bolts={bolts}
+        checkItems={checkItems}
+        selectedBoltId={selectedBoltId}
+        selectedCheckItemId={selectedCheckItemId}
+        onSelectBolt={onSelectBolt}
+        onSelectCheckItem={onSelectCheckItem}
+        onToggleCheckItem={onToggleCheckItem}
+      />
+    </>
+  );
 
   const handleClick = (event: MouseEvent<HTMLDivElement>) => {
     if (!onPlacementClick) return;
@@ -430,17 +499,14 @@ export function AssemblyProcedureImageWithMarkers({
 
   if (!fitToParent) {
     return (
-      <div className={clsx('relative inline-block max-h-full max-w-full', className)} ref={frameRef} onClick={handleClick}>
+      <div
+        ref={frameRef}
+        data-testid="assembly-procedure-image-with-markers"
+        className={clsx('relative inline-block max-h-full max-w-full', className)}
+        onClick={handleClick}
+      >
         {imageContent}
-        <AssemblyMarkerOverlay
-          bolts={bolts}
-          checkItems={checkItems}
-          selectedBoltId={selectedBoltId}
-          selectedCheckItemId={selectedCheckItemId}
-          onSelectBolt={onSelectBolt}
-          onSelectCheckItem={onSelectCheckItem}
-          onToggleCheckItem={onToggleCheckItem}
-        />
+        {markerLayers}
       </div>
     );
   }
@@ -448,6 +514,7 @@ export function AssemblyProcedureImageWithMarkers({
   return (
     <div
       ref={viewportRef}
+      data-testid="assembly-procedure-image-with-markers"
       className={clsx('flex h-full min-h-0 w-full items-center justify-center overflow-hidden', className)}
     >
       <div
@@ -457,15 +524,7 @@ export function AssemblyProcedureImageWithMarkers({
         onClick={handleClick}
       >
         {imageContent}
-        <AssemblyMarkerOverlay
-          bolts={bolts}
-          checkItems={checkItems}
-          selectedBoltId={selectedBoltId}
-          selectedCheckItemId={selectedCheckItemId}
-          onSelectBolt={onSelectBolt}
-          onSelectCheckItem={onSelectCheckItem}
-          onToggleCheckItem={onToggleCheckItem}
-        />
+        {markerLayers}
       </div>
     </div>
   );

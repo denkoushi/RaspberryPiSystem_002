@@ -1,14 +1,21 @@
 import type { AssemblyTorqueInputSource, Prisma } from '@prisma/client';
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
-import { assemblyTemplateDetailInclude, type AssemblyTemplateDetail } from './assembly-template.service.js';
+import {
+  assemblyTemplateDetailInclude,
+  resolveAssemblyTraceabilityMode,
+  type AssemblyTemplateDetailRow
+} from './assembly-template.service.js';
 import { normalizeAssemblyUpperIdentifier } from './assembly-identifiers.js';
 import { computeAssemblyCheckSummary, type AssemblyCheckSummary } from './assembly-check-summary.js';
-import { lockAssemblyWorkSession } from './assembly-work-session-lock.repository.js';
 import {
   assemblyWorkSessionDetailInclude,
   type AssemblyWorkSessionDetail,
 } from './assembly-work-session-detail.js';
+import {
+  runAssemblyTransaction,
+  runLockedAssemblyWorkSessionTransaction
+} from './assembly-transaction.js';
 export { assemblyWorkSessionDetailInclude, type AssemblyWorkSessionDetail } from './assembly-work-session-detail.js';
 
 export type AssemblyStartInput = {
@@ -19,7 +26,7 @@ export type AssemblyStartInput = {
   operatorEmployeeId?: string | null;
   operatorNameSnapshot: string;
   targetUnit: string;
-  torqueWrenchId: string;
+  torqueWrenchId?: string | null;
   clientDeviceId?: string | null;
   clientDeviceNameSnapshot?: string | null;
 };
@@ -41,7 +48,7 @@ export type AssemblyWorkSessionSummary = {
   nameplateNo: string;
   operatorNameSnapshot: string;
   targetUnit: string;
-  torqueWrenchId: string;
+  torqueWrenchId: string | null;
   startedAt: Date;
   completedAt: Date | null;
   cancelledAt: Date | null;
@@ -74,7 +81,7 @@ export type AssemblyCheckRecordResult = {
   checkedAt: Date | null;
 };
 
-export type AssemblyWorkSessionCheckItemView = AssemblyTemplateDetail['checkItems'][number] & {
+export type AssemblyWorkSessionCheckItemView = AssemblyTemplateDetailRow['checkItems'][number] & {
   record: AssemblyCheckRecordResult | null;
 };
 
@@ -86,19 +93,19 @@ function required(value: string, label: string): string {
   return trimmed;
 }
 
-function sortedAreas(template: AssemblyTemplateDetail) {
+function sortedAreas(template: AssemblyTemplateDetailRow) {
   return [...template.areas].sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
-function sortedBoltsForArea(area: AssemblyTemplateDetail['areas'][number]) {
+function sortedBoltsForArea(area: AssemblyTemplateDetailRow['areas'][number]) {
   return [...area.bolts].sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
-function flattenBolts(template: AssemblyTemplateDetail) {
+function flattenBolts(template: AssemblyTemplateDetailRow) {
   return sortedAreas(template).flatMap((area) => sortedBoltsForArea(area).map((bolt) => ({ area, bolt })));
 }
 
-function firstPosition(template: AssemblyTemplateDetail): { areaId: string; boltId: string } {
+function firstPosition(template: AssemblyTemplateDetailRow): { areaId: string; boltId: string } {
   const first = flattenBolts(template)[0];
   if (!first) {
     throw new ApiError(409, 'テンプレートに締付箇所がありません');
@@ -106,11 +113,11 @@ function firstPosition(template: AssemblyTemplateDetail): { areaId: string; bolt
   return { areaId: first.area.id, boltId: first.bolt.id };
 }
 
-function findBoltPosition(template: AssemblyTemplateDetail, boltId: string) {
+function findBoltPosition(template: AssemblyTemplateDetailRow, boltId: string) {
   return flattenBolts(template).find((entry) => entry.bolt.id === boltId) ?? null;
 }
 
-function nextBoltInSameArea(template: AssemblyTemplateDetail, currentBoltId: string): string | null {
+function nextBoltInSameArea(template: AssemblyTemplateDetailRow, currentBoltId: string): string | null {
   const current = findBoltPosition(template, currentBoltId);
   if (!current) return null;
   const bolts = sortedBoltsForArea(current.area);
@@ -118,7 +125,7 @@ function nextBoltInSameArea(template: AssemblyTemplateDetail, currentBoltId: str
   return index >= 0 ? (bolts[index + 1]?.id ?? null) : null;
 }
 
-function nextAreaFirstBolt(template: AssemblyTemplateDetail, currentAreaId: string): { areaId: string; boltId: string } | null {
+function nextAreaFirstBolt(template: AssemblyTemplateDetailRow, currentAreaId: string): { areaId: string; boltId: string } | null {
   const areas = sortedAreas(template);
   const index = areas.findIndex((area) => area.id === currentAreaId);
   const nextArea = index >= 0 ? areas[index + 1] : null;
@@ -219,7 +226,7 @@ export class AssemblyWorkSessionService {
     const first = firstPosition(template);
     const nameplateNo = (input.nameplateNo?.trim() || serialNo).slice(0, 120);
     try {
-      return await prisma.$transaction(async (tx) => {
+      return await runAssemblyTransaction(async (tx) => {
         const registry = await tx.assemblySerialRegistry.findUnique({
           where: { serialNo },
           include: { lotSerial: true }
@@ -251,7 +258,10 @@ export class AssemblyWorkSessionService {
             operatorEmployeeId: input.operatorEmployeeId?.trim() || null,
             operatorNameSnapshot: required(input.operatorNameSnapshot, '作業者名').slice(0, 120),
             targetUnit: required(normalizeAssemblyUpperIdentifier(input.targetUnit), '機種名').slice(0, 120),
-            torqueWrenchId: required(input.torqueWrenchId, '使用トルクレンチ').slice(0, 120),
+            torqueWrenchId:
+              resolveAssemblyTraceabilityMode(template.traceabilityMode) === 'LEGACY'
+                ? required(input.torqueWrenchId ?? '', '使用トルクレンチ').slice(0, 120)
+                : '',
             clientDeviceId: input.clientDeviceId ?? null,
             clientDeviceNameSnapshot: input.clientDeviceNameSnapshot ?? null,
             currentAreaId: first.areaId,
@@ -268,7 +278,7 @@ export class AssemblyWorkSessionService {
 
   async startRegisteredSerial(input: AssemblyRegisteredSerialStartInput): Promise<AssemblyWorkSessionDetail> {
     try {
-      return await prisma.$transaction(async (tx) => {
+      return await runAssemblyTransaction(async (tx) => {
         const lotSerial = await tx.assemblyLotSerial.findFirst({
           where: { id: input.lotSerialId, lotId: input.lotId },
           include: {
@@ -434,8 +444,7 @@ export class AssemblyWorkSessionService {
       throw new ApiError(400, 'トルク値が不正です');
     }
     const now = new Date();
-    const result = await prisma.$transaction(async (tx) => {
-      const session = await lockAssemblyWorkSession(tx, input.sessionId);
+    const result = await runLockedAssemblyWorkSessionTransaction(input.sessionId, async (tx, session) => {
       if (session.status !== 'IN_PROGRESS') throw sessionStateConflict('この作業は入力できない状態です');
       if (!session.currentAreaId || !session.currentBoltId) {
         throw new ApiError(409, '現在のエリアは完了しています。次工程へ進むか作業完了してください。');
@@ -534,8 +543,7 @@ export class AssemblyWorkSessionService {
   }
 
   async advanceArea(sessionId: string): Promise<AssemblyWorkSessionDetail> {
-    return prisma.$transaction(async (tx) => {
-      const session = await lockAssemblyWorkSession(tx, sessionId);
+    return runLockedAssemblyWorkSessionTransaction(sessionId, async (tx, session) => {
       if (session.status !== 'IN_PROGRESS') throw sessionStateConflict('この作業は進行中ではありません');
       if (!session.currentAreaId) throw sessionStateConflict('次の工程はありません。作業完了してください。');
       if (session.currentBoltId) throw sessionStateConflict('現在のエリアに未完了の締付箇所があります');
@@ -555,8 +563,7 @@ export class AssemblyWorkSessionService {
   }
 
   async restartArea(sessionId: string, params: { areaId?: string | null; reason?: string | null }): Promise<AssemblyWorkSessionDetail> {
-    return prisma.$transaction(async (tx) => {
-      const session = await lockAssemblyWorkSession(tx, sessionId);
+    return runLockedAssemblyWorkSessionTransaction(sessionId, async (tx, session) => {
       if (session.status !== 'IN_PROGRESS') throw sessionStateConflict('この作業は進行中ではありません');
       const areaId = params.areaId?.trim() || session.currentAreaId;
       if (!areaId) throw new ApiError(400, 'やり直すエリアがありません');
@@ -585,8 +592,7 @@ export class AssemblyWorkSessionService {
     checked: boolean;
   }): Promise<{ record: AssemblyCheckRecordResult; checkSummary: AssemblyCheckSummary }> {
     const now = new Date();
-    await prisma.$transaction(async (tx) => {
-      const session = await lockAssemblyWorkSession(tx, input.sessionId);
+    await runLockedAssemblyWorkSessionTransaction(input.sessionId, async (tx, session) => {
       if (session.status !== 'IN_PROGRESS') throw sessionStateConflict('この作業は入力できない状態です');
 
       const checkItem = session.template.checkItems.find((item) => item.id === input.checkItemId);
@@ -630,8 +636,7 @@ export class AssemblyWorkSessionService {
   }
 
   async complete(sessionId: string): Promise<AssemblyWorkSessionDetail> {
-    return prisma.$transaction(async (tx) => {
-      const session = await lockAssemblyWorkSession(tx, sessionId);
+    return runLockedAssemblyWorkSessionTransaction(sessionId, async (tx, session) => {
       if (session.status !== 'IN_PROGRESS') throw sessionStateConflict('この作業は進行中ではありません');
       if (!allBoltsComplete(session)) throw sessionStateConflict('未完了の締付箇所があります');
       const checkSummary = buildCheckSummary(session);
@@ -652,8 +657,7 @@ export class AssemblyWorkSessionService {
   }
 
   async cancel(sessionId: string, reason?: string | null): Promise<AssemblyWorkSessionDetail> {
-    return prisma.$transaction(async (tx) => {
-      const session = await lockAssemblyWorkSession(tx, sessionId);
+    return runLockedAssemblyWorkSessionTransaction(sessionId, async (tx, session) => {
       if (session.status !== 'IN_PROGRESS') throw sessionStateConflict('この作業は進行中ではありません');
       return tx.assemblyWorkSession.update({
         where: { id: session.id },

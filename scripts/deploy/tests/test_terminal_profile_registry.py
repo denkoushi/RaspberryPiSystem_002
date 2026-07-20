@@ -33,7 +33,7 @@ class TerminalProfileRegistryTest(unittest.TestCase):
     def test_production_registry_contains_only_kiosk_and_signage(self):
         registry = load_registry()
 
-        self.assertEqual(registry.schema_version, 1)
+        self.assertEqual(registry.schema_version, 3)
         self.assertEqual(registry.profile_ids, ("kiosk", "signage"))
         self.assertEqual(registry.pi5_control_plane.inventory_group, "server")
         self.assertEqual(registry.pi5_control_plane.required_host_count, 1)
@@ -49,6 +49,61 @@ class TerminalProfileRegistryTest(unittest.TestCase):
             registry.profiles_for_components({"status-agent"}),
             ["kiosk", "signage"],
         )
+        self.assertTrue(
+            registry.components_apply_to_host(
+                {"torque-agent"}, {"torque_agent_enabled": True}
+            )
+        )
+        self.assertFalse(
+            registry.components_apply_to_host({"torque-agent"}, {})
+        )
+        self.assertTrue(
+            registry.components_apply_to_host({"torque-agent"}, None)
+        )
+        self.assertTrue(
+            registry.components_apply_to_host(
+                {"nfc-agent"}, {"nfc_agent_client_id": "kiosk-a"}
+            )
+        )
+        self.assertFalse(
+            registry.components_apply_to_host(
+                {"nfc-agent"}, {"nfc_agent_client_id": "  "}
+            )
+        )
+        self.assertTrue(
+            registry.components_apply_to_host(
+                {"torque-agent", "kiosk-role"}, {}
+            )
+        )
+        self.assertEqual(
+            registry.component_for("scripts/deploy/future-control-step.py"),
+            "deploy-control",
+        )
+        self.assertEqual(
+            registry.component_for("scripts/deploy/tests/test_future_control_step.py"),
+            "neutral",
+        )
+        self.assertEqual(
+            registry.component_for("scripts/deploy/signage-runtime-proof.py"),
+            "signage-role",
+        )
+        self.assertEqual(
+            registry.component_for("e2e/future-runtime.spec.ts"),
+            "neutral",
+        )
+        self.assertEqual(
+            registry.component_for("infrastructure/ansible/roles/common/tasks/main.yml"),
+            "global",
+        )
+        self.assertEqual(
+            registry.client_agent_ids,
+            ("barcode-agent", "nfc-agent", "torque-agent"),
+        )
+        torque = registry.client_agent("torque-agent")
+        self.assertEqual(torque.compose_service, "torque-agent")
+        self.assertEqual(torque.port_policy, "fixed")
+        self.assertEqual(torque.default_port, 7073)
+        self.assertEqual(torque.health_endpoint, "/health")
 
     def test_profile_order_is_deterministic(self):
         self.payload["terminalProfiles"].reverse()
@@ -315,9 +370,51 @@ class TerminalProfileRegistryTest(unittest.TestCase):
         with self.assertRaisesRegex(RegistryError, "does not target itself"):
             self.load_payload(missing_self)
 
+    def test_component_host_selectors_are_data_only_and_terminal_scoped(self):
+        cases = (
+            ("torque-agent", {"hostVar": "../unsafe", "match": "true"}),
+            ("torque-agent", {"hostVar": "torque_agent_enabled", "match": "shell"}),
+            ("torque-agent", {"hostVar": "torque_agent_enabled", "match": True}),
+            ("neutral", {"hostVar": "docs_only", "match": "true"}),
+            ("not-registered", {"hostVar": "enabled", "match": "true"}),
+        )
+        for component, selector in cases:
+            with self.subTest(component=component, selector=selector):
+                payload = copy.deepcopy(self.payload)
+                payload["componentHostSelectors"][component] = selector
+                with self.assertRaises(RegistryError):
+                    self.load_payload(payload)
+
+    def test_client_agents_are_strict_data_and_match_component_selectors(self):
+        cases = (
+            ("composeService", "agent; reboot", "safe lowercase identifier"),
+            ("runtimeEnvPath", "/etc/passwd", "allowlisted absolute path"),
+            ("envTemplate", "scripts/deploy/helper.py", "Ansible env template"),
+            ("portPolicy", "dynamic", "fixed or configurable"),
+            ("defaultPort", 65536, "defaultPort"),
+            ("portEnvironment", "rest-port", "safe environment name"),
+            ("healthEndpoint", "https://example.invalid", "normalized path"),
+            ("responseValidator", "module.function", "safe lowercase identifier"),
+            ("component", "unknown", "cannot redefine"),
+        )
+        for field, value, message in cases:
+            with self.subTest(field=field):
+                payload = copy.deepcopy(self.payload)
+                payload["clientAgents"]["torque-agent"][field] = value
+                with self.assertRaisesRegex(RegistryError, message):
+                    self.load_payload(payload)
+
+        selector_mismatch = copy.deepcopy(self.payload)
+        selector_mismatch["clientAgents"]["torque-agent"]["hostSelector"] = {
+            "hostVar": "torque_agent_enabled",
+            "match": "non-empty-string",
+        }
+        with self.assertRaisesRegex(RegistryError, "must match componentHostSelectors"):
+            self.load_payload(selector_mismatch)
+
     def test_unsupported_schema_and_duplicate_profile_options_are_rejected(self):
         schema = copy.deepcopy(self.payload)
-        schema["schemaVersion"] = 2
+        schema["schemaVersion"] = 4
         with self.assertRaisesRegex(RegistryError, "schemaVersion"):
             self.load_payload(schema)
 

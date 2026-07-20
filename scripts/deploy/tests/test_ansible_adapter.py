@@ -54,6 +54,13 @@ def runtime_marker(value):
     return f"TERMINAL_RUNTIME_MANIFEST_RESULT:{encoded}"
 
 
+def runtime_error_marker(value):
+    encoded = base64.urlsafe_b64encode(
+        json.dumps(value, sort_keys=True).encode("utf-8")
+    ).decode("ascii")
+    return f"TERMINAL_RUNTIME_MANIFEST_ERROR:{encoded}"
+
+
 class SelectedHostsTest(unittest.TestCase):
     def test_empty_limit_skips_ansible(self):
         runtime = Runtime("unused")
@@ -484,6 +491,63 @@ class RollbackManifestAdapterTest(unittest.TestCase):
                 "ROLLBACK_MANIFEST_RESULT:" + duplicate_json
             )
 
+    def test_runtime_error_marker_is_strict_and_propagates_safe_reason(self):
+        payload = {
+            "version": 1,
+            "code": "runtime.unsupported-feature",
+            "message": "Docker runtime feature is unsupported by rollback capture: ExtraHosts",
+        }
+        marker = runtime_error_marker(payload)
+        self.assertEqual(ansible._runtime_manifest_error_marker(marker), payload)
+        with self.assertRaisesRegex(RuntimeError, "disagree"):
+            ansible._runtime_manifest_error_marker(
+                marker
+                + "\n"
+                + runtime_error_marker({**payload, "code": "runtime.contract"})
+            )
+
+        secret = "DO-NOT-LEAK-ANSIBLE-SECRET"
+        error = subprocess.CalledProcessError(
+            1,
+            ["ansible"],
+            output=marker,
+            stderr=secret,
+        )
+        runtime = Runtime(error)
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "runtime.unsupported-feature: Docker runtime feature",
+        ) as raised:
+            ansible._run_runtime_manifest_helper(
+                "inventory.yml",
+                self.HOST,
+                ["capture"],
+                runtime=runtime,
+            )
+        self.assertNotIn(secret, str(raised.exception))
+
+    def test_runtime_helper_failure_without_safe_marker_hides_raw_output(self):
+        secret = "DO-NOT-LEAK-MISSING-MARKER"
+        error = subprocess.CalledProcessError(
+            1,
+            ["ansible"],
+            output=secret,
+            stderr=secret,
+        )
+        runtime = Runtime(error)
+
+        with self.assertRaisesRegex(
+            RuntimeError, "failed without safe evidence"
+        ) as raised:
+            ansible._run_runtime_manifest_helper(
+                "inventory.yml",
+                self.HOST,
+                ["capture"],
+                runtime=runtime,
+            )
+
+        self.assertNotIn(secret, str(raised.exception))
+
     def test_capture_rejects_wrong_repository_proof(self):
         _paths, result = self._capture_result()
         result["repository"]["head"] = "b" * 40
@@ -564,11 +628,21 @@ class RollbackManifestAdapterTest(unittest.TestCase):
 
     def _runtime_restore_result(self, terminal_type="kiosk"):
         units, docker_services = ansible._terminal_runtime_contract(terminal_type)
+        active_units = [
+            unit
+            for unit in units
+            if unit.endswith(".timer")
+            or unit in {"lightdm.service", "kiosk-browser.service", "signage-lite.service"}
+        ]
         return {
             "restored": True,
             "manifestSha256": self.RUNTIME_DIGEST,
             "unitCount": len(units),
             "dockerCount": len(docker_services),
+            "runtimeHealth": {
+                "activeSystemdUnits": active_units,
+                "runningDockerServices": docker_services[:2],
+            },
         }
 
     def test_rollback_preflight_collects_file_and_runtime_issues(self):
@@ -592,6 +666,10 @@ class RollbackManifestAdapterTest(unittest.TestCase):
             "manifestSha256": self.RUNTIME_DIGEST,
             "unitCount": len(units),
             "dockerCount": len(docker_services),
+            "runtimeHealth": {
+                "activeSystemdUnits": ["lightdm.service", "status-agent.timer"],
+                "runningDockerServices": ["nfc-agent", "barcode-agent"],
+            },
             "restoredReceipt": True,
             "requiresRuntimeReconciliation": True,
             "issues": ["docker nfc-agent: sealed image is unavailable"],
@@ -634,6 +712,10 @@ class RollbackManifestAdapterTest(unittest.TestCase):
         )
 
         self.assertEqual(target["rollback"], "success")
+        self.assertEqual(
+            target["rollbackRuntimeHealth"],
+            self._runtime_restore_result()["runtimeHealth"],
+        )
         restore_action = runtime.calls[0][0][-1]
         self.assertIn(" restore ", f" {restore_action} ")
         self.assertIn(
@@ -1298,6 +1380,43 @@ class TerminalHealthAdapterTest(unittest.TestCase):
                     )
                 ),
             )
+
+    def test_restored_agent_probe_uses_sealed_set_not_new_inventory_flags(self):
+        runtime = Runtime(
+            [
+                json.dumps(
+                    {
+                        "nfc_agent_client_id": "kiosk-a",
+                        "barcode_agent_enabled": True,
+                        "barcode_agent_rest_port": 7072,
+                        "torque_agent_enabled": True,
+                        "torque_agent_local_port": 9999,
+                    }
+                ),
+                "TERMINAL_AGENT_HEALTH_OK:nfc-agent:7071\n",
+                "TERMINAL_AGENT_HEALTH_OK:barcode-agent:7072\n",
+            ]
+        )
+
+        proof = ansible.probe_kiosk_agents(
+            "inventory.yml",
+            "kiosk-a",
+            expected_agents=["nfc-agent", "barcode-agent"],
+            runtime=runtime,
+        )
+
+        self.assertEqual(
+            proof["agentContainers"], ["nfc-agent", "barcode-agent"]
+        )
+        self.assertEqual(len(runtime.calls), 3)
+        restored_commands = " ".join(
+            " ".join(command) for command, _options in runtime.calls[1:]
+        )
+        self.assertNotIn("--port", restored_commands)
+        self.assertNotIn(
+            "torque-agent",
+            restored_commands,
+        )
 
     def test_signage_ready_proof_binds_exact_cycle_without_key_in_argv(self):
         sha = "a" * 40

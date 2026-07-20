@@ -25,6 +25,7 @@ export type AssemblyProcedureDocumentSummaryDto = AssemblyProcedureDocumentDto &
 export type AssemblyTemplateBoltDto = {
   id: string;
   areaId: string;
+  templateId: string;
   sortOrder: number;
   tighteningId: string;
   markerNo: number;
@@ -33,6 +34,11 @@ export type AssemblyTemplateBoltDto = {
   calloutTipXRatio?: string | null;
   calloutTipYRatio?: string | null;
   boltSpec: string;
+  nominalDiameter: string | null;
+  boltLengthMm: string | null;
+  material: string | null;
+  strengthClass: string | null;
+  capabilityGroupId: string | null;
   nominalTorque: string;
   lowerLimit: string;
   upperLimit: string;
@@ -80,6 +86,7 @@ export type AssemblyTemplateDto = {
   name: string;
   version: number;
   isActive: boolean;
+  traceabilityMode?: 'LEGACY' | 'REQUIRED';
   procedureDocumentId: string;
   createdAt: string;
   updatedAt: string;
@@ -95,6 +102,7 @@ export type AssemblyTemplateSummaryDto = {
   name: string;
   version: number;
   isActive: boolean;
+  traceabilityMode?: 'LEGACY' | 'REQUIRED';
   procedureDocumentId: string;
   procedureDocumentName: string;
   areaCount: number;
@@ -111,9 +119,27 @@ export type AssemblyTorqueRecordDto = {
   inputSource: 'manual' | 'mock' | 'agent';
   rawPayload?: unknown;
   value: string | null;
+  inputUnit?: string | null;
+  valueNm?: string | null;
   judgement: 'ok' | 'ng' | 'ignored';
   accepted: boolean;
   ignoredReason: string | null;
+  torqueWrenchProfileId?: string | null;
+  confirmationId?: string | null;
+  settingHistoryId?: string | null;
+  serialNumberSnapshot?: string | null;
+  manufacturerSnapshot?: string | null;
+  modelNumberSnapshot?: string | null;
+  settingLowerLimitSnapshot?: string | null;
+  settingNominalTorqueSnapshot?: string | null;
+  settingUpperLimitSnapshot?: string | null;
+  settingUnitSnapshot?: string | null;
+  sourceEventKey?: string | null;
+  deviceRecordedAt?: string | null;
+  deviceMemoryCounter?: string | null;
+  deviceJudgement?: string | null;
+  overrideActorUsername?: string | null;
+  overrideReason?: string | null;
   recordedAt: string;
   createdAt: string;
   tighteningId: string;
@@ -370,13 +396,18 @@ export type AssemblyProcedureSequenceDto = {
 
 export type AssemblyTemplateBoltInput = {
   sortOrder: number;
-  tighteningId: string;
+  tighteningId?: string;
   markerNo: number;
   xRatio: number;
   yRatio: number;
   calloutTipXRatio?: number | null;
   calloutTipYRatio?: number | null;
   boltSpec: string;
+  nominalDiameter?: string | null;
+  boltLengthMm?: number | null;
+  material?: string | null;
+  strengthClass?: string | null;
+  capabilityGroupId?: string | null;
   nominalTorque: number;
   lowerLimit: number;
   upperLimit: number;
@@ -417,6 +448,7 @@ export type AssemblyTemplateCreateInput = {
   procedureDocumentId: string;
   areas: AssemblyTemplateAreaInput[];
   checkItems?: AssemblyTemplateCheckItemInput[];
+  traceabilityMode?: 'LEGACY' | 'REQUIRED';
 };
 
 export type AssemblyWorkSessionStartInput = {
@@ -427,7 +459,7 @@ export type AssemblyWorkSessionStartInput = {
   operatorEmployeeId?: string | null;
   operatorNameSnapshot: string;
   targetUnit: string;
-  torqueWrenchId: string;
+  torqueWrenchId?: string | null;
 };
 
 export type AssemblyLotCreateInput = {
@@ -438,13 +470,15 @@ export type AssemblyLotCreateInput = {
   operatorEmployeeId?: string | null;
   operatorNameSnapshot: string;
   targetUnit: string;
-  torqueWrenchId: string;
+  torqueWrenchId?: string | null;
 };
 
 export type AssemblyTorqueRecordOutcome = {
-  kind: 'accepted_ok' | 'recorded_ng' | 'ignored_duplicate';
+  kind: 'accepted_ok' | 'recorded_ng' | 'ignored_duplicate' | 'rejected';
   movedToBoltId: string | null;
   areaCompleted: boolean;
   allBoltsCompleted: boolean;
   requiresAreaRestart: boolean;
+  rejectionReason?: string;
+  torqueRecordId?: string;
 };

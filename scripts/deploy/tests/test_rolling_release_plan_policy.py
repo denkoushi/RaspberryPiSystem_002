@@ -104,11 +104,13 @@ class ReleasePolicyTest(unittest.TestCase):
                 'kiosk-a': {
                     'manage_kiosk_browser': True,
                     'status_agent_client_id': 'a',
+                    'nfc_agent_client_id': 'nfc-a',
                 },
                 'kiosk-b': {
                     'manage_kiosk_browser': True,
                     'status_agent_client_id': 'b',
                     'barcode_agent_enabled': True,
+                    'torque_agent_enabled': True,
                 },
                 'signage-a': {
                     'manage_signage_lite': True,
@@ -264,8 +266,8 @@ class ReleasePolicyTest(unittest.TestCase):
     def test_role_specific_impact_targets_only_affected_verified_hosts(self):
         fleet = {
             'server-a': verified_record('server'),
-            'kiosk-b': verified_record('kiosk', desired=RELEASE_SHA),
-            'kiosk-a': verified_record('kiosk', desired=RELEASE_SHA),
+            'kiosk-b': verified_record('kiosk'),
+            'kiosk-a': verified_record('kiosk'),
             'signage-a': verified_record('signage'),
         }
         impact = classification(kiosk=True, components=['nfc-agent'])
@@ -284,10 +286,13 @@ class ReleasePolicyTest(unittest.TestCase):
             by_host['server-a']['targetReason'],
             'verified; no server-impacting changes',
         )
-        self.assertTrue(by_host['kiosk-b']['targeted'])
+        self.assertFalse(by_host['kiosk-b']['targeted'])
         self.assertTrue(by_host['kiosk-a']['targeted'])
-        self.assertEqual(by_host['kiosk-b']['desiredSha'], RELEASE_SHA)
-        self.assertEqual(by_host['kiosk-b']['targetReason'], 'kiosk impact: nfc-agent')
+        self.assertEqual(by_host['kiosk-b']['desiredSha'], CURRENT_SHA)
+        self.assertEqual(
+            by_host['kiosk-b']['targetReason'],
+            'verified; no kiosk-impacting changes',
+        )
         self.assertFalse(by_host['signage-a']['targeted'])
         self.assertEqual(by_host['signage-a']['desiredSha'], CURRENT_SHA)
 
@@ -374,6 +379,75 @@ class ReleasePolicyTest(unittest.TestCase):
         )[0]
         self.assertTrue(unknown['targeted'])
         self.assertEqual(unknown['targetReason'], 'evidence unknown')
+
+    def test_optional_agent_impacts_use_registry_owned_host_selectors(self):
+        fleet = {
+            'kiosk-b': verified_record('kiosk'),
+            'kiosk-a': verified_record('kiosk'),
+        }
+        for component, expected_hosts in (
+            ('nfc-agent', {'kiosk-a'}),
+            ('barcode-agent', {'kiosk-b'}),
+            ('torque-agent', {'kiosk-b'}),
+        ):
+            with self.subTest(component=component):
+                decisions = POLICY.plan_target_decisions(
+                    [self.hosts[1], self.hosts[2]],
+                    fleet,
+                    RELEASE_SHA,
+                    {CURRENT_SHA: classification(kiosk=True, components=[component])},
+                    self.inventory,
+                )
+                targeted = {
+                    decision['host']
+                    for decision in decisions
+                    if decision['targeted']
+                }
+                self.assertEqual(targeted, expected_hosts)
+
+        mixed = POLICY.plan_target_decisions(
+            [self.hosts[1], self.hosts[2]],
+            fleet,
+            RELEASE_SHA,
+            {
+                CURRENT_SHA: classification(
+                    kiosk=True,
+                    components=['torque-agent', 'kiosk-role'],
+                )
+            },
+            self.inventory,
+        )
+        self.assertTrue(all(decision['targeted'] for decision in mixed))
+
+        malformed_inventory = copy.deepcopy(self.inventory)
+        malformed_inventory['_meta']['hostvars'] = []
+        fail_closed = POLICY.plan_target_decisions(
+            [self.hosts[1], self.hosts[2]],
+            fleet,
+            RELEASE_SHA,
+            {
+                CURRENT_SHA: classification(
+                    kiosk=True,
+                    components=['torque-agent'],
+                )
+            },
+            malformed_inventory,
+        )
+        self.assertTrue(all(decision['targeted'] for decision in fail_closed))
+
+        inconsistent = POLICY.plan_target_decisions(
+            [self.hosts[1], self.hosts[2]],
+            fleet,
+            RELEASE_SHA,
+            {
+                CURRENT_SHA: classification(
+                    kiosk=True,
+                    components=['neutral'],
+                )
+            },
+            self.inventory,
+        )
+        self.assertTrue(all(decision['targeted'] for decision in inconsistent))
 
     def test_unavailable_or_unknown_classification_fails_closed(self):
         fleet = {

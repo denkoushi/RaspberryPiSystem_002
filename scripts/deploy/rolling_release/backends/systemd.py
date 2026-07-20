@@ -8,7 +8,7 @@ import re
 from pathlib import Path, PurePosixPath
 from typing import Iterable
 
-from .. import bootstrap
+from .. import bootstrap, migration_preflight, route_preflight, terminal_preflight
 from ..models import LaunchSpec, UnitObservation, unit_name_for, validate_lookup_run_id
 from .command import CommandResult, SshTransport, SubprocessRunner
 
@@ -27,6 +27,25 @@ BOOTSTRAP_LOADER = (
     "exec(compile(base64.b64decode(source),'<rolling-release-bootstrap>','exec'),"
     "{'__name__':'__main__'})"
 )
+MIGRATION_PREFLIGHT_LOADER = (
+    "import base64,sys;source,payload=sys.argv[1:];"
+    "sys.argv=['migration-preflight',base64.b64decode(payload).decode('utf-8')];"
+    "exec(compile(base64.b64decode(source),'<migration-preflight>','exec'),"
+    "{'__name__':'__main__'})"
+)
+TERMINAL_PREFLIGHT_LOADER = (
+    "import base64,sys;source,payload=sys.argv[1:];"
+    "decoded=base64.b64decode(source).decode('utf-8');"
+    "sys.argv=['terminal-preflight',base64.b64decode(payload).decode('utf-8')];"
+    "exec(compile(decoded,'<terminal-preflight>','exec'),"
+    "{'__name__':'__main__','EMBEDDED_TERMINAL_PREFLIGHT_SOURCE':decoded})"
+)
+ROUTE_PREFLIGHT_LOADER = (
+    "import base64,sys;source,payload=sys.argv[1:];"
+    "sys.argv=['route-preflight',base64.b64decode(payload).decode('utf-8')];"
+    "exec(compile(base64.b64decode(source),'<route-preflight>','exec'),"
+    "{'__name__':'__main__'})"
+)
 _USER_RE = re.compile(r'^[a-z_][a-z0-9_-]{0,30}$')
 SHOW_PROPERTIES = (
     'LoadState',
@@ -43,6 +62,27 @@ def _load_bootstrap_source() -> str:
     source_path = Path(bootstrap.__file__ or '')
     if not source_path.is_file():
         raise RuntimeError('standalone rolling-release bootstrap source is unavailable')
+    return source_path.read_text(encoding='utf-8')
+
+
+def _load_migration_preflight_source() -> str:
+    source_path = Path(migration_preflight.__file__ or '')
+    if not source_path.is_file():
+        raise RuntimeError('standalone migration preflight source is unavailable')
+    return source_path.read_text(encoding='utf-8')
+
+
+def _load_terminal_preflight_source() -> str:
+    source_path = Path(terminal_preflight.__file__ or '')
+    if not source_path.is_file():
+        raise RuntimeError('standalone terminal preflight source is unavailable')
+    return source_path.read_text(encoding='utf-8')
+
+
+def _load_route_preflight_source() -> str:
+    source_path = Path(route_preflight.__file__ or '')
+    if not source_path.is_file():
+        raise RuntimeError('standalone route preflight source is unavailable')
     return source_path.read_text(encoding='utf-8')
 
 
@@ -115,6 +155,9 @@ class SystemdBackend:
         remote_user: str = DEFAULT_REMOTE_USER,
         remote_home: PurePosixPath = DEFAULT_REMOTE_HOME,
         bootstrap_source: str | None = None,
+        migration_preflight_source: str | None = None,
+        terminal_preflight_source: str | None = None,
+        route_preflight_source: str | None = None,
     ) -> None:
         project = str(remote_project)
         if (
@@ -141,6 +184,27 @@ class SystemdBackend:
         self.bootstrap_source = bootstrap_source if bootstrap_source is not None else _load_bootstrap_source()
         if not self.bootstrap_source.strip():
             raise ValueError('bootstrap source must not be empty')
+        self.migration_preflight_source = (
+            migration_preflight_source
+            if migration_preflight_source is not None
+            else _load_migration_preflight_source()
+        )
+        if not self.migration_preflight_source.strip():
+            raise ValueError('migration preflight source must not be empty')
+        self.terminal_preflight_source = (
+            terminal_preflight_source
+            if terminal_preflight_source is not None
+            else _load_terminal_preflight_source()
+        )
+        if not self.terminal_preflight_source.strip():
+            raise ValueError('terminal preflight source must not be empty')
+        self.route_preflight_source = (
+            route_preflight_source
+            if route_preflight_source is not None
+            else _load_route_preflight_source()
+        )
+        if not self.route_preflight_source.strip():
+            raise ValueError('route preflight source must not be empty')
 
     def release_state_path(self, run_id: str) -> PurePosixPath:
         validate_lookup_run_id(run_id)
@@ -195,6 +259,100 @@ class SystemdBackend:
     def start(self, spec: LaunchSpec, *, wait: bool) -> CommandResult:
         """Submit the unit; foreground uses systemd-run's service wait contract."""
         return self.transport.run(self.build_start_command(spec, wait=wait))
+
+    def build_migration_preflight_command(self, spec: LaunchSpec) -> tuple[str, ...]:
+        """Build the read-only gate that must pass before a release unit exists."""
+        spec.validate()
+        payload = {
+            'version': 1,
+            'project': str(self.remote_project),
+            'runId': spec.run_id,
+            'branch': spec.branch,
+            'sha': spec.sha,
+            'expectedServerClientId': spec.expected_server_client_id,
+        }
+        serialized = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(',', ':'),
+        )
+        return (
+            REMOTE_PYTHON,
+            '-c',
+            MIGRATION_PREFLIGHT_LOADER,
+            _encode_argument(self.migration_preflight_source),
+            _encode_argument(serialized),
+        )
+
+    def preflight_migrations(self, spec: LaunchSpec) -> CommandResult:
+        """Read the live ledger and reject unsafe SQL before unit submission."""
+        return self.transport.run(self.build_migration_preflight_command(spec))
+
+    def build_terminal_preflight_command(
+        self, spec: LaunchSpec, targets: list[dict[str, object]]
+    ) -> tuple[str, ...]:
+        """Build the aggregate read-only terminal gate run before submission."""
+        spec.validate()
+        payload = {
+            'version': 1,
+            'mode': 'orchestrator',
+            'project': str(self.remote_project),
+            'runId': spec.run_id,
+            'sha': spec.sha,
+            'expectedServerClientId': spec.expected_server_client_id,
+            'targets': targets,
+        }
+        serialized = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(',', ':'),
+        )
+        # Parse locally before SSH so malformed or secret-bearing contracts
+        # cannot reach Pi5.
+        terminal_preflight.parse_spec(serialized)
+        return (
+            REMOTE_PYTHON,
+            '-c',
+            TERMINAL_PREFLIGHT_LOADER,
+            _encode_argument(self.terminal_preflight_source),
+            _encode_argument(serialized),
+        )
+
+    def preflight_terminals(
+        self, spec: LaunchSpec, targets: list[dict[str, object]]
+    ) -> CommandResult:
+        return self.transport.run(self.build_terminal_preflight_command(spec, targets))
+
+    def build_route_preflight_command(self, spec: LaunchSpec) -> tuple[str, ...]:
+        """Build the read-only Pi5 route gate run before release submission."""
+        spec.validate()
+        payload = {
+            'version': 1,
+            'project': str(self.remote_project),
+            'runId': spec.run_id,
+            'sha': spec.sha,
+            'inventory': spec.inventory,
+            'expectedServerClientId': spec.expected_server_client_id,
+        }
+        serialized = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(',', ':'),
+        )
+        route_preflight.parse_spec(serialized)
+        return (
+            REMOTE_PYTHON,
+            '-c',
+            ROUTE_PREFLIGHT_LOADER,
+            _encode_argument(self.route_preflight_source),
+            _encode_argument(serialized),
+        )
+
+    def preflight_route(self, spec: LaunchSpec) -> CommandResult:
+        return self.transport.run(self.build_route_preflight_command(spec))
 
     def show(self, run_id: str) -> UnitObservation:
         unit_name = unit_name_for(run_id)

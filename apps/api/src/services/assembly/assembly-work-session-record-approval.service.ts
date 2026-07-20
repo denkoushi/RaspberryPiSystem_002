@@ -1,6 +1,6 @@
 import { ApiError } from '../../lib/errors.js';
-import { prisma } from '../../lib/prisma.js';
 import { assemblyWorkSessionDetailInclude, type AssemblyWorkSessionDetail } from './assembly-work-session.service.js';
+import { runLockedAssemblyWorkSessionTransaction } from './assembly-transaction.js';
 
 export type AssemblyWorkSessionApprovalSnapshot = {
   approvedAt: Date;
@@ -41,16 +41,7 @@ export class AssemblyWorkSessionRecordApprovalService {
     }
     const comment = input.comment?.trim() || null;
 
-    return prisma.$transaction(async (tx) => {
-      const session = await tx.assemblyWorkSession.findUnique({
-        where: { id: sessionId },
-        include: {
-          approval: true
-        }
-      });
-      if (!session) {
-        throw new ApiError(404, '作業セッションが見つかりません');
-      }
+    return runLockedAssemblyWorkSessionTransaction(sessionId, async (tx, session) => {
       if (session.status !== 'COMPLETED') {
         throw new ApiError(409, '完了した作業のみ承認できます');
       }
