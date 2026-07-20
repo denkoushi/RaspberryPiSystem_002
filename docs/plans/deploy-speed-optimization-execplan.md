@@ -25,8 +25,8 @@ validation:
   - the approved Pi5 and StoneBase performance acceptance run
 open_items:
   - merge or otherwise resolve the parent deployment-foundation PR before this stacked PR
-  - pass hosted checks for the selected re-verification CLI addition
-  - complete the approved production performance acceptance for Phase A
+  - pass hosted checks for the root-safe evidence correction
+  - obtain a new explicit StoneBase inventory approval and complete the recovery acceptance run
 supersedes: null
 superseded_by: null
 ---
@@ -59,7 +59,13 @@ An operator can observe the improvement in the existing durable timing fields. A
 - [x] (2026-07-20 10:57Z) After explicit production-acceptance approval, the exact Pi5 plus StoneBase `--preflight-only` universe passed all 24 route stages as preflight `20260720-105659-6dea6a`; `releaseSubmitted` remained false and FJV was not selected or connected.
 - [x] (2026-07-20 11:19Z) Added the separately approved `--limit ... --reverify-selected` contract after the normal no-op plan correctly minimized the deploy-control-only candidate to zero targets. The flag restores only explicitly selected verified hosts to the plan, remains unable to exclude unknown evidence or required Pi5 work, and is durably recorded through bootstrap and run state.
 - [x] (2026-07-20 11:24Z) Passed 250 focused tests, all 739 deployment Python tests, and the complete repository-owned deploy contract including safety, route, Ansible, and isolated PostgreSQL integration.
-- [ ] Pass hosted checks on the new immutable head, then execute the already approved Pi5 plus StoneBase performance acceptance without any FJV connection.
+- [x] (2026-07-20 11:33Z) Manually dispatched hosted CI, Secret scan, and CodeQL for immutable head `d837a26e`; all three succeeded. The exact Pi5 plus StoneBase plan and all 24 preflight stages passed, with every FJV terminal excluded as outside the explicit limit.
+- [x] (2026-07-20 11:57Z) Ran the approved acceptance as `20260720-113428-ce30b9`. Pi5 completed its unchanged five-minute stability contract. StoneBase forward Ansible completed in 484,866 ms, 589,803 ms or 54.88 percent below the 1,074,669 ms baseline, and its exact SHA ready ACK succeeded.
+- [x] (2026-07-20 11:57Z) The first acceptance stopped fail-closed in the consolidated final-evidence bundle, automatically completed manifest-bounded rollback, retained maintenance because consolidated rollback evidence was also unknown, and left fleet evidence unknown. No FJV connection was made.
+- [x] (2026-07-20 12:03Z) Re-ran the legacy read-only evidence path against StoneBase: previous SHA `63cfa4688a074bed25779f8df597ff2883ac7933`, all three required systemd units, the status-agent oneshot, authenticated identity, and all three agent endpoints passed. A one-transport, stage-only diagnostic then localized the consolidated failure to its initial Git HEAD probe.
+- [x] (2026-07-20 12:10Z) Corrected the consolidated root-owned bundle to use a per-invocation, exact-path `safe.directory` option rather than ambient root Git configuration. The patched candidate bundle passed live read-only StoneBase evidence with the previous SHA and every unchanged proof in one marker.
+- [x] (2026-07-20 12:16Z) Passed 86 focused tests, all 739 deployment Python tests, Python compilation, and the complete repository-owned deploy contract including safety, 24 route stages, Ansible, and isolated PostgreSQL integration.
+- [ ] Commit and push the correction, pass hosted validation, then present the exact recovery plan for a new explicit inventory approval before another release run.
 
 ## Surprises & Discoveries
 
@@ -83,6 +89,9 @@ An operator can observe the improvement in the existing durable timing fields. A
 
 - Observation: Safe target minimization intentionally turns deploy-control-only acceptance into a no-op when all selected hosts are already verified.
   Evidence: The first approved acceptance plan for `e340593d56878b46ccf89f987180735bc06a4958` selected Pi5 and StoneBase but returned zero targets because both were verified at the previous accepted deployment-control baseline and no server or kiosk application component changed. `--full-fleet` cannot be combined with `--limit` and would violate the explicit FJV exclusion.
+
+- Observation: The first consolidated evidence run depended accidentally on root's ambient Git trust configuration.
+  Evidence: The bundle deliberately supplied only `PATH` to subprocesses and ran under Ansible become for systemd and Docker proof. Its initial `git rev-parse` therefore could not use the terminal's root-home `safe.directory` setting and stopped both forward and rollback evidence before any later proof. The legacy individual evidence path passed every proof, a stage-only bundled diagnostic identified `git`, and a candidate bundle with an exact per-invocation safe-directory option passed all unchanged proofs.
 
 ## Decision Log
 
@@ -110,9 +119,13 @@ An operator can observe the improvement in the existing durable timing fields. A
   Rationale: Performance acceptance needs one real forward release through the new transport even when impact classification is a no-op. The new mode targets only the exact selected verified hosts, leaves unknown hosts and required Pi5 exclusion checks authoritative, and does not alter notification, stability, acknowledgement, maintenance, or rollback behavior.
   Date/Author: 2026-07-20 / User and Codex.
 
+- Decision: Make the consolidated evidence Git probe trust only `/opt/RaspberryPiSystem_002` for that single read-only invocation, without writing global or repository Git configuration.
+  Rationale: The other consolidated proofs require root, while the checkout is owned by the terminal account. `git -c safe.directory=<exact repository>` removes dependence on ambient root configuration, matches the existing deployment checkout contract, and neither broadens trust to other paths nor mutates terminal configuration.
+  Date/Author: 2026-07-20 / Codex.
+
 ## Outcomes & Retrospective
 
-Phase A implementation now has narrow transport boundaries and executable failure contracts. If the optimized Ansible plus `become` path fails, the run records the target as unknown and stops before baseline, manifest, notice, maintenance, playbook, or rollback. Manifest and evidence bundles accept only canonical, agreeing, exact-schema results and hide untrusted remote output. The original complete local and hosted deploy contracts passed with 732 Python tests, and the selected re-verification addition now passes 739 local deployment tests plus the aggregate contract. Hosted revalidation and production performance remain intentionally unclaimed until the approved StoneBase run completes.
+Phase A demonstrated the principal speed gain: StoneBase forward Ansible fell from 1,074,669 ms to 484,866 ms while notice, Pi5 stability, maintenance, exact ready ACK, durable state, and rollback policy remained intact. The first acceptance is not a safety acceptance: consolidated evidence failed before Git HEAD proof, rollback ran, and maintenance correctly remained visible because rollback evidence could not be promoted. Read-only legacy evidence subsequently proved the restored previous SHA and runtime healthy. The candidate correction now passes the exact one-transport evidence path live, but final recovery acceptance remains intentionally unclaimed until the corrected immutable head passes all checks and a separately approved standard run ends verified with maintenance cleared.
 
 ## Context and Orientation
 
@@ -182,4 +195,4 @@ The raw and aggregate timing artifacts remain on Pi5 under `/opt/RaspberryPiSyst
 
 No new third-party dependency is introduced. The implementation uses the existing Ansible CLI, inventory, SSH connection plugin, Python interpreter, and passwordless `sudo` contract.
 
-Revision note (2026-07-20 11:24Z): Recorded the approved read-only production preflight, the target-minimization acceptance gap, and the fail-closed selected re-verification CLI with complete local deploy-contract validation. Hosted checks and the approved StoneBase acceptance run remain open.
+Revision note (2026-07-20 12:16Z): Recorded hosted validation, the first production acceptance's measured Ansible gain and fail-closed evidence rollback, the root Git trust diagnosis, the live read-only proof of the exact-path correction, and complete local validation. A corrected recovery release still requires hosted checks and new explicit inventory approval.

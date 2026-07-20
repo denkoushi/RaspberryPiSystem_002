@@ -48,7 +48,23 @@ def _run(command: list[str], *, cwd: Path | None = None) -> str:
 
 
 def _current_sha(repository: Path) -> str:
-    sha = _run(["git", "-C", str(repository), "rev-parse", "HEAD"]).strip()
+    # The evidence bundle runs under Ansible become because the remaining
+    # systemd and Docker proofs require root.  Do not depend on root's ambient
+    # Git configuration to trust the terminal-user-owned checkout: scope the
+    # trust exception to this one fixed repository and this one read-only Git
+    # invocation.  This mirrors the existing deployment checkout contract and
+    # does not persist safe.directory configuration on the terminal.
+    sha = _run(
+        [
+            "git",
+            "-c",
+            f"safe.directory={repository}",
+            "-C",
+            str(repository),
+            "rev-parse",
+            "HEAD",
+        ]
+    ).strip()
     if FULL_SHA_RE.fullmatch(sha) is None:
         raise EvidenceError("terminal HEAD is not immutable")
     return sha

@@ -23,7 +23,13 @@ class TerminalReleaseEvidenceTest(unittest.TestCase):
         def run(command, *, cwd=None):
             del cwd
             commands.append(command)
-            if command[:3] == ["git", "-C", "/candidate"]:
+            if command[:5] == [
+                "git",
+                "-c",
+                "safe.directory=/candidate",
+                "-C",
+                "/candidate",
+            ]:
                 return SHA + "\n"
             if command[:3] == ["systemctl", "show", "--property=Result"]:
                 return "success\n"
@@ -85,6 +91,18 @@ class TerminalReleaseEvidenceTest(unittest.TestCase):
             },
         )
         identity.probe.assert_called_once_with("tools03")
+        self.assertEqual(
+            commands[0],
+            [
+                "git",
+                "-c",
+                "safe.directory=/candidate",
+                "-C",
+                "/candidate",
+                "rev-parse",
+                "HEAD",
+            ],
+        )
         self.assertEqual(
             [command for command in commands if command[:2] == ["systemctl", "is-active"]],
             [
