@@ -25,7 +25,7 @@ validation:
   - the approved Pi5 and StoneBase performance acceptance run
 open_items:
   - merge or otherwise resolve the parent deployment-foundation PR before this stacked PR
-  - pass hosted checks for the root-safe evidence correction
+  - pass hosted checks for terminal-run recovery plan shadowing
   - obtain a new explicit StoneBase inventory approval and complete the recovery acceptance run
 supersedes: null
 superseded_by: null
@@ -65,7 +65,11 @@ An operator can observe the improvement in the existing durable timing fields. A
 - [x] (2026-07-20 12:03Z) Re-ran the legacy read-only evidence path against StoneBase: previous SHA `63cfa4688a074bed25779f8df597ff2883ac7933`, all three required systemd units, the status-agent oneshot, authenticated identity, and all three agent endpoints passed. A one-transport, stage-only diagnostic then localized the consolidated failure to its initial Git HEAD probe.
 - [x] (2026-07-20 12:10Z) Corrected the consolidated root-owned bundle to use a per-invocation, exact-path `safe.directory` option rather than ambient root Git configuration. The patched candidate bundle passed live read-only StoneBase evidence with the previous SHA and every unchanged proof in one marker.
 - [x] (2026-07-20 12:16Z) Passed 86 focused tests, all 739 deployment Python tests, Python compilation, and the complete repository-owned deploy contract including safety, 24 route stages, Ansible, and isolated PostgreSQL integration.
-- [ ] Commit and push the correction, pass hosted validation, then present the exact recovery plan for a new explicit inventory approval before another release run.
+- [x] (2026-07-20 12:18Z) Committed and pushed the root-safe evidence correction as `f4998d19`; manually dispatched hosted CI `29741700246`, CodeQL `29741702197`, and Secret scan `29741704735`, all of which succeeded on that immutable head.
+- [x] (2026-07-20 12:29Z) The first post-failure limited plan correctly refused to exclude five other hosts because the interrupted recovery deliberately retained the old fleet `activeRun`. A connection-free full plan showed that this conservative shadow, rather than changed per-host evidence, widened all seven hosts to unknown.
+- [x] (2026-07-20 12:33Z) Added read-only recovery shadowing: only when standard status reconciliation proves the retained active run is terminal does `--print-plan` preserve its durable per-host verified/unknown records. A running, unreachable, or unprovable run still widens every host to unknown; execution-side abandonment, recovery, and locking are unchanged.
+- [x] (2026-07-20 12:38Z) Passed the focused planner tests, all 741 deployment Python tests, Python compilation, and the complete repository-owned deploy contract after recovery shadowing.
+- [ ] Commit and push the recovery-plan correction, pass hosted validation, then present the exact recovery plan for a new explicit inventory approval before another release run.
 
 ## Surprises & Discoveries
 
@@ -92,6 +96,9 @@ An operator can observe the improvement in the existing durable timing fields. A
 
 - Observation: The first consolidated evidence run depended accidentally on root's ambient Git trust configuration.
   Evidence: The bundle deliberately supplied only `PATH` to subprocesses and ran under Ansible become for systemd and Docker proof. Its initial `git rev-parse` therefore could not use the terminal's root-home `safe.directory` setting and stopped both forward and rollback evidence before any later proof. The legacy individual evidence path passed every proof, a stage-only bundled diagnostic identified `git`, and a candidate bundle with an exact per-invocation safe-directory option passed all unchanged proofs.
+
+- Observation: A terminal failed run retained as the fleet `activeRun` makes the old read-only planner intentionally forget every per-host record, even after the systemd unit and durable run state are terminal.
+  Evidence: The limited recovery plan refused Pi5 plus StoneBase because five hosts outside the limit appeared unknown; the connection-free full plan warned that `20260720-113428-ce30b9` was active and synthesized missing records for all seven hosts. Standard status already reconciled that run as durably failed and its unit as non-active, while the persisted fleet records still distinguish the touched StoneBase host from untouched verified hosts.
 
 ## Decision Log
 
@@ -121,6 +128,10 @@ An operator can observe the improvement in the existing durable timing fields. A
 
 - Decision: Make the consolidated evidence Git probe trust only `/opt/RaspberryPiSystem_002` for that single read-only invocation, without writing global or repository Git configuration.
   Rationale: The other consolidated proofs require root, while the checkout is owned by the terminal account. `git -c safe.directory=<exact repository>` removes dependence on ambient root configuration, matches the existing deployment checkout contract, and neither broadens trust to other paths nor mutates terminal configuration.
+  Date/Author: 2026-07-20 / Codex.
+
+- Decision: Let `--print-plan` shadow a retained fleet active run as inactive only after the canonical status reconciler proves its durable run and systemd unit are terminal.
+  Rationale: This makes the preview match the coordinator's existing lock-owned `abandon_active_run` transition and exposes the exact recovery host before approval. It never writes fleet state, never promotes unknown evidence, and keeps the prior all-host fail-closed shadow for running, unreachable, malformed, or otherwise unproven runs.
   Date/Author: 2026-07-20 / Codex.
 
 ## Outcomes & Retrospective
@@ -195,4 +206,4 @@ The raw and aggregate timing artifacts remain on Pi5 under `/opt/RaspberryPiSyst
 
 No new third-party dependency is introduced. The implementation uses the existing Ansible CLI, inventory, SSH connection plugin, Python interpreter, and passwordless `sudo` contract.
 
-Revision note (2026-07-20 12:16Z): Recorded hosted validation, the first production acceptance's measured Ansible gain and fail-closed evidence rollback, the root Git trust diagnosis, the live read-only proof of the exact-path correction, and complete local validation. A corrected recovery release still requires hosted checks and new explicit inventory approval.
+Revision note (2026-07-20 12:33Z): Recorded successful hosted validation for the evidence correction and the retained-active-run planning gap exposed by fail-closed recovery. Added a status-proven, read-only planning shadow so exact StoneBase recovery can be reviewed without weakening execution-side unknown evidence or including FJV.

@@ -2120,6 +2120,99 @@ class PrintPlanShadowTest(unittest.TestCase):
         self.assertEqual(state['generation'], 0)
         self.assertEqual(warnings, [])
 
+    def test_terminal_active_run_preserves_host_evidence_for_recovery_plan(self):
+        active = {
+            'generation': 4,
+            'activeRun': {
+                'runId': 'failed-run',
+                'status': 'running',
+                'desiredSha': TARGET_SHA,
+                'inventory': 'inventory.yml',
+                'startedAt': '2026-07-20T11:00:00Z',
+                'kind': 'release',
+            },
+            'lastRun': None,
+            'fleet': {
+                'raspberrypi5': _verified_fleet_record('server', TARGET_SHA),
+                'kiosk-a': {
+                    'role': 'kiosk',
+                    'desiredSha': TARGET_SHA,
+                    'currentSha': None,
+                    'previousSha': BASE_SHA,
+                    'evidence': 'unknown',
+                    'verifiedAt': None,
+                    'lastRunId': 'failed-run',
+                },
+            },
+        }
+        transport = Mock()
+        transport.run.return_value = Mock(
+            returncode=0,
+            stdout=json.dumps(active),
+            stderr='',
+        )
+        systemd = Mock()
+        control = Mock()
+        with patch.object(
+            MODULE.release_application,
+            'build_server_transport',
+            return_value=('denkon5sd02', transport),
+        ), patch.object(
+            MODULE.release_application,
+            'build_backends',
+            return_value=(systemd, control),
+        ), patch.object(
+            MODULE.release_application,
+            'observe',
+            return_value={'state': 'failed'},
+        ) as observe:
+            state, warnings = MODULE.read_plan_fleet_release_state()
+
+        observe.assert_called_once_with(
+            'failed-run', systemd=systemd, control=control
+        )
+        self.assertIsNone(state['activeRun'])
+        self.assertEqual(state['fleet'], active['fleet'])
+        self.assertTrue(any('durably failed' in warning for warning in warnings))
+
+    def test_running_active_run_keeps_conservative_all_host_shadow(self):
+        active = {
+            'generation': 4,
+            'activeRun': {
+                'runId': 'live-run',
+                'status': 'running',
+                'desiredSha': TARGET_SHA,
+                'inventory': 'inventory.yml',
+                'startedAt': '2026-07-20T11:00:00Z',
+                'kind': 'release',
+            },
+            'lastRun': None,
+            'fleet': {},
+        }
+        transport = Mock()
+        transport.run.return_value = Mock(
+            returncode=0,
+            stdout=json.dumps(active),
+            stderr='',
+        )
+        with patch.object(
+            MODULE.release_application,
+            'build_server_transport',
+            return_value=('denkon5sd02', transport),
+        ), patch.object(
+            MODULE.release_application,
+            'build_backends',
+            return_value=(Mock(), Mock()),
+        ), patch.object(
+            MODULE.release_application,
+            'observe',
+            return_value={'state': 'running'},
+        ):
+            state, warnings = MODULE.read_plan_fleet_release_state()
+
+        self.assertEqual(state, active)
+        self.assertEqual(warnings, [])
+
 
 class FleetScopeLimitTest(unittest.TestCase):
     INVENTORY = {
