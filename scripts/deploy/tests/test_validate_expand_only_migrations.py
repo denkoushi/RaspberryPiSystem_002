@@ -71,6 +71,7 @@ class SqlAllowListTests(unittest.TestCase):
         statements = [
             'CREATE TABLE "Widget" ("id" INTEGER NOT NULL, CONSTRAINT "Widget_pkey" PRIMARY KEY ("id"));',
             'CREATE INDEX "Widget_note_idx" ON "Widget"("note");',
+            'CREATE TABLE "UniqueWidget" ("id" INTEGER NOT NULL); CREATE UNIQUE INDEX "UniqueWidget_id_key" ON "UniqueWidget"("id") WHERE "id" IS NOT NULL;',
             "CREATE TYPE \"Mood\" AS ENUM ('calm', 'busy');",
             'CREATE SEQUENCE IF NOT EXISTS "Widget_counter" START WITH 1;',
             'CREATE SCHEMA IF NOT EXISTS "archive" AUTHORIZATION "postgres";',

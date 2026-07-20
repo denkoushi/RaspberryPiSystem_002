@@ -15,7 +15,11 @@ CREATE TABLE "AssemblyWorkUnitComposition" (
     "unlinkedByClientDeviceNameSnapshot" TEXT,
     "unlinkReason" TEXT,
 
-    CONSTRAINT "AssemblyWorkUnitComposition_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "AssemblyWorkUnitComposition_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "AssemblyWorkUnitComposition_parentWorkUnitId_fkey"
+      FOREIGN KEY ("parentWorkUnitId") REFERENCES "AssemblySerialRegistry"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "AssemblyWorkUnitComposition_childWorkUnitId_fkey"
+      FOREIGN KEY ("childWorkUnitId") REFERENCES "AssemblySerialRegistry"("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 CREATE TABLE "AssemblyFormalIdentifierAssignment" (
@@ -32,7 +36,9 @@ CREATE TABLE "AssemblyFormalIdentifierAssignment" (
     "supersededByClientDeviceNameSnapshot" TEXT,
     "supersedeReason" TEXT,
 
-    CONSTRAINT "AssemblyFormalIdentifierAssignment_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "AssemblyFormalIdentifierAssignment_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "AssemblyFormalIdentifierAssignment_workUnitId_fkey"
+      FOREIGN KEY ("workUnitId") REFERENCES "AssemblySerialRegistry"("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 CREATE UNIQUE INDEX "AssemblyFormalIdentifierAssignment_formalId_key"
@@ -51,13 +57,3 @@ CREATE UNIQUE INDEX "AssemblyWorkUnitComposition_unique_active_child"
 CREATE UNIQUE INDEX "AssemblyFormalIdentifierAssignment_unique_active_work_unit"
   ON "AssemblyFormalIdentifierAssignment"("workUnitId")
   WHERE "supersededAt" IS NULL;
-
-ALTER TABLE "AssemblyWorkUnitComposition"
-  ADD CONSTRAINT "AssemblyWorkUnitComposition_parentWorkUnitId_fkey"
-  FOREIGN KEY ("parentWorkUnitId") REFERENCES "AssemblySerialRegistry"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE "AssemblyWorkUnitComposition"
-  ADD CONSTRAINT "AssemblyWorkUnitComposition_childWorkUnitId_fkey"
-  FOREIGN KEY ("childWorkUnitId") REFERENCES "AssemblySerialRegistry"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE "AssemblyFormalIdentifierAssignment"
-  ADD CONSTRAINT "AssemblyFormalIdentifierAssignment_workUnitId_fkey"
-  FOREIGN KEY ("workUnitId") REFERENCES "AssemblySerialRegistry"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
