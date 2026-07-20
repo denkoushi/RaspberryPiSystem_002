@@ -698,6 +698,21 @@ print("TERMINAL_PREFLIGHT_RESULT:" + encoded)
             "torqueUsbProductId": "0604",
         }
         artifacts = dict(terminal_preflight._candidate_artifact_contract([selected]))
+        self.assertEqual(
+            artifacts[
+                "scripts/deploy/rolling_release/terminal_manifest_capture.py"
+            ],
+            "blob",
+        )
+        self.assertEqual(
+            artifacts[
+                "scripts/deploy/rolling_release/terminal_release_evidence.py"
+            ],
+            "blob",
+        )
+        self.assertEqual(
+            artifacts["scripts/deploy/terminal-identity-probe.py"], "blob"
+        )
         self.assertEqual(artifacts["clients/nfc-agent"], "tree")
         self.assertEqual(artifacts["clients/barcode-agent"], "tree")
         self.assertEqual(artifacts["clients/torque-agent"], "tree")

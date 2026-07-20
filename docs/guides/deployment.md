@@ -99,7 +99,7 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
   --preflight-only
 ```
 
-`--preflight-only` はmigration、Pi5、選択した全端末の問題を途中で打ち切らず、一つのJSONとして表示する。JSONには不変SHA、対象host、23段階のroute coverage、各probeのproof・issue・安全な資源値が含まれ、`releaseSubmitted`は常に`false`である。完全合格は終了コード0、通常の前提不足は78、検査自体が欠落・破損・内部失敗した場合は70とする。70を前提不足として扱ったり、probeを省略して続行してはならない。
+`--preflight-only` はmigration、Pi5、選択した全端末の問題を途中で打ち切らず、一つのJSONとして表示する。JSONには不変SHA、対象host、24段階のroute coverage、各probeのproof・issue・安全な資源値が含まれ、`releaseSubmitted`は常に`false`である。完全合格は終了コード0、通常の前提不足は78、検査自体が欠落・破損・内部失敗した場合は70とする。70を前提不足として扱ったり、probeを省略して続行してはならない。
 
 Pi5 probeは既存fleet lockを全検査中保持し、実機identity、clean checkout、候補commit・protocol・実行成果物、通常Ansible設定とVault、inventory展開、Docker/Compose、空きディスク・メモリ、fleet/Blue-Green/deploy-statusの可読性、active run不在を同時に確認する。端末probeは候補SHAが所有する正確なagent health helperを端末へstdinで送り、現在有効なNFC・バーコード・トルクagentへ本番と同じ安定性判定を行う。各agentは、最大3回の範囲で2回連続してcontainer identity、必要なPC/SC、loopback JSON endpointの全証明に成功しなければならない。出力された問題は、正規のAnsible設定または別途承認された保守変更でまとめて解消し、同じコマンドを再実行する。エラーを一件ずつ見ながら個別service起動や手動checkoutで迂回してはならない。
 
@@ -136,6 +136,10 @@ scripts/update-all-clients.sh --status RUN_ID
 ```
 
 Pi5が対象の場合は、host設定、Expand-only migration、candidate image、Blue/Green切替、load確認、5分間の安定化を完了してから端末へ進む。端末はprofile指定の通知（現在のKioskは60秒）後に一台ずつ更新する。
+
+端末のforward Ansible playbookだけはSSH pipeliningを使う。各対象端末をdurable stateで`unknown`へ遷移した直後、repository baseline、manifest、通知、maintenance、checkout、service変更より前に、同じpipeliningと`become`で互換性を検査する。検査失敗は端末変更前にfail-closedで停止する。
+
+端末manifest取得は、SSH account identity、file manifest、runtime manifestを候補SHA所有の一つのbundleで検査・取得する。file/runtimeは別々のroot、digest、復元権限のままであり、一方だけ成功した場合や応答を失った場合は成功扱いにしない。Generic Kioskの最終証跡も、Git HEAD、systemd、status identity、各agentの安定性判定を候補SHA所有の一つのbundleで確認する。これらのbundleはpipeliningを使わず、検査内容と必須条件を減らさない。cleanupとrollbackは従来のAnsible transportとsealed manifestだけを使う。
 
 ## 成功の確認
 

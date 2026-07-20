@@ -1286,6 +1286,19 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             state.payload["fleetGeneration"] = fleet_state["generation"]
             state.save()
 
+            # The optimized forward executor uses Ansible SSH pipelining. Prove
+            # the exact pipelining + become path before repository inspection,
+            # manifest capture, notice, maintenance, checkout, or service work.
+            # Rollback retains the previously accepted non-pipelined transport.
+            with _measure_phase(
+                state,
+                runtime,
+                "terminal-ansible-pipelining-preflight",
+                host=host,
+            ):
+                runtime.preflight_terminal_ansible_pipelining(inventory, host)
+            token.checkpoint(f"after-terminal-ansible-pipelining-preflight:{host}")
+
             with _measure_phase(state, runtime, "terminal-repository-baseline", host=host):
                 repository_baseline = adapter.prepare_repository(inventory, host)
             target["previousSha"] = repository_baseline["head"]

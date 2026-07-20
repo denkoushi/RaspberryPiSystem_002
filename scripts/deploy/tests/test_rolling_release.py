@@ -2322,6 +2322,7 @@ class AutoMinimizeTest(unittest.TestCase):
                     patch.object(MODULE, 'selected_hosts', return_value=None), \
                     fleet_execution_contract(targets, classification, inventory) as ensure, \
                     patch.object(MODULE, 'remote_previous_sha', return_value=BASE_SHA), \
+                    patch.object(MODULE, 'preflight_terminal_ansible_pipelining'), \
                     patch.object(MODULE, 'should_issue_terminal_notice', return_value=False), \
                     patch.object(MODULE, 'wait_for_ack', return_value=True), \
                     patch.object(MODULE, 'state_command'), \

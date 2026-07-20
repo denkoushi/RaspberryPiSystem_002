@@ -703,6 +703,12 @@ def remote_previous_sha(inventory: str, host: str) -> str:
     return ansible_backend.remote_previous_sha(inventory, host, runtime=_runtime())
 
 
+def preflight_terminal_ansible_pipelining(inventory: str, host: str) -> None:
+    return ansible_backend.preflight_terminal_ansible_pipelining(
+        inventory, host, runtime=_runtime()
+    )
+
+
 def prepare_terminal_repository(inventory: str, host: str) -> dict[str, Any]:
     return ansible_backend.prepare_terminal_repository(
         inventory, host, runtime=_runtime()
@@ -745,6 +751,26 @@ def probe_kiosk_agents(
 ) -> dict[str, Any]:
     return ansible_backend.probe_kiosk_agents(
         inventory, host, expected_agents=expected_agents, runtime=_runtime()
+    )
+
+
+def probe_terminal_release_evidence(
+    inventory: str,
+    host: str,
+    client_id: str,
+    services: list[str],
+    *,
+    expected_agents: list[str] | tuple[str, ...] | None = None,
+    check_status_agent_result: bool = True,
+) -> dict[str, Any]:
+    return ansible_backend.probe_terminal_release_evidence(
+        inventory,
+        host,
+        client_id,
+        services,
+        expected_agents=expected_agents,
+        check_status_agent_result=check_status_agent_result,
+        runtime=_runtime(),
     )
 
 

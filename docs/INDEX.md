@@ -39,7 +39,7 @@
 
 ### 計画（2026-07-12 · デプロイ対象最小化 / カナリア・ホールド · 実装済・本番 shadow 評価待ち）
 
-- **対象最小化・カナリア・ホールド・Pi5冪等スキップ**: [ADR](./decisions/ADR-20260712-deploy-target-minimization-canary-hold.md) · [Plan](./plans/rolling-terminal-bluegreen-deploy.md) · [Refactor ExecPlan](./plans/deployment-foundation-refactor-execplan.md) · [deployment](./guides/deployment.md#標準更新入口ローリング端末別メンテナンス)
+- **対象最小化・カナリア・ホールド・Pi5冪等スキップ**: [ADR](./decisions/ADR-20260712-deploy-target-minimization-canary-hold.md) · [Plan](./plans/rolling-terminal-bluegreen-deploy.md) · [Refactor ExecPlan](./plans/deployment-foundation-refactor-execplan.md) · [速度改善ExecPlan](./plans/deploy-speed-optimization-execplan.md) · [deployment](./guides/deployment.md#標準更新入口ローリング端末別メンテナンス)
 
 ### 計画（2026-07-11 · 自主検査 confirm guard / 下書き仕掛中 · 本番反映済）
 

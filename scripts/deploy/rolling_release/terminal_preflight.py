@@ -58,6 +58,9 @@ _BASE_CANDIDATE_ARTIFACTS = (
     ("infrastructure/ansible/playbooks/deploy-staged.yml", "blob"),
     ("infrastructure/ansible/roles/common/tasks/main.yml", "blob"),
     ("scripts/deploy/rollback-manifest.py", "blob"),
+    ("scripts/deploy/rolling_release/terminal_manifest_capture.py", "blob"),
+    ("scripts/deploy/rolling_release/terminal_release_evidence.py", "blob"),
+    ("scripts/deploy/terminal-identity-probe.py", "blob"),
     ("scripts/deploy/terminal-runtime-manifest.py", "blob"),
     ("scripts/deploy/terminal-agent-health-probe.py", "blob"),
 )

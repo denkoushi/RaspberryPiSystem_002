@@ -159,6 +159,16 @@ ROUTE_STAGES: tuple[RouteStage, ...] = (
         "pi5-release-before-after-faults",
     ),
     RouteStage(
+        "terminal.apply-transport-preflight",
+        "terminal",
+        "read",
+        ("preflight_terminal_ansible_pipelining",),
+        "terminal.ansible-pipelining-and-become",
+        "stop-before-terminal-mutation",
+        "coordinator",
+        "pipelining-preflight-before-terminal-mutation",
+    ),
+    RouteStage(
         "terminal.baseline-and-manifest",
         "terminal",
         "mutation",

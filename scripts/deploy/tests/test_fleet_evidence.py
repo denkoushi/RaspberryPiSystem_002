@@ -53,6 +53,44 @@ class TerminalRuntime:
             "pcscdRequired": True,
         }
 
+    def probe_terminal_release_evidence(
+        self,
+        inventory,
+        host,
+        client_id,
+        services,
+        *,
+        expected_agents=None,
+        check_status_agent_result=True,
+    ):
+        self.calls.append(
+            (
+                "release-evidence",
+                inventory,
+                host,
+                client_id,
+                list(services),
+                expected_agents,
+                check_status_agent_result,
+            )
+        )
+        if self.failure is not None:
+            raise self.failure
+        return {
+            "currentSha": self.sha,
+            "services": list(services),
+            "oneshotServices": (
+                ["status-agent.service"] if check_status_agent_result else []
+            ),
+            "authenticatedEndpoint": True,
+            "statusClientId": client_id,
+            "agentContainers": ["nfc-agent"],
+            "authenticatedAgentEndpoints": [
+                {"agent": "nfc-agent", "port": 7071}
+            ],
+            "pcscdRequired": True,
+        }
+
 
 class TerminalEvidenceTest(unittest.TestCase):
     def test_kiosk_requires_exact_head_and_required_services(self):
@@ -71,26 +109,22 @@ class TerminalEvidenceTest(unittest.TestCase):
         self.assertEqual(observed["oneshotServices"], ["status-agent.service"])
         self.assertEqual(observed["agentContainers"], ["nfc-agent"])
         self.assertTrue(observed["pcscdRequired"])
-        self.assertTrue(
-            all(
-                call[2]['cwd'] == runtime.ANSIBLE_DIRECTORY
-                for call in runtime.calls
-                if call[0] == 'run'
-            )
-        )
-        commands = [call[1] for call in runtime.calls if call[0] == "run"]
-        self.assertEqual(len(commands), 4)
-        self.assertTrue(
-            all(command[:4] == ["ansible", "-i", "inventory.yml", "kiosk-a"] for command in commands)
-        )
         self.assertEqual(
-            [command[-1] for command in commands],
+            runtime.calls,
             [
-                "systemctl is-active --quiet lightdm.service",
-                "systemctl is-active --quiet kiosk-browser.service",
-                "systemctl is-active --quiet status-agent.timer",
-                'test "$(systemctl show --property=Result --value '
-                'status-agent.service)" = success',
+                (
+                    "release-evidence",
+                    "inventory.yml",
+                    "kiosk-a",
+                    "client-a",
+                    [
+                        "lightdm.service",
+                        "kiosk-browser.service",
+                        "status-agent.timer",
+                    ],
+                    None,
+                    True,
+                )
             ],
         )
 
@@ -131,34 +165,20 @@ class TerminalEvidenceTest(unittest.TestCase):
             )
 
     def test_each_required_service_must_succeed_independently(self):
-        runtime = TerminalRuntime()
-        original_run = runtime.run
-        service_calls = 0
-
-        def fail_second_service(command, **kwargs):
-            nonlocal service_calls
-            service_calls += 1
-            if service_calls == 2:
-                raise subprocess.CalledProcessError(3, command)
-            return original_run(command, **kwargs)
-
-        runtime.run = fail_second_service
+        failure = subprocess.CalledProcessError(3, ["terminal-release-evidence"])
+        runtime = TerminalRuntime(failure=failure)
         with self.assertRaises(subprocess.CalledProcessError):
             evidence.observe_terminal(
                 "inventory.yml", "kiosk-a", "kiosk", "client-a", runtime=runtime
             )
-        self.assertEqual(service_calls, 2)
+        self.assertEqual(runtime.calls[0][0], "release-evidence")
 
     def test_status_agent_oneshot_result_must_be_success(self):
-        runtime = TerminalRuntime()
-        original_run = runtime.run
-
-        def fail_oneshot(command, **kwargs):
-            if command[5:7] == ["-m", "shell"]:
-                raise subprocess.CalledProcessError(1, command)
-            return original_run(command, **kwargs)
-
-        runtime.run = fail_oneshot
+        runtime = TerminalRuntime(
+            failure=subprocess.CalledProcessError(
+                1, ["terminal-release-evidence"]
+            )
+        )
         with self.assertRaises(subprocess.CalledProcessError):
             evidence.observe_terminal(
                 "inventory.yml", "kiosk-a", "kiosk", "client-a", runtime=runtime
@@ -174,26 +194,30 @@ class TerminalEvidenceTest(unittest.TestCase):
             )
 
         malformed = TerminalRuntime(sha="main")
-        with self.assertRaisesRegex(RuntimeError, "not immutable"):
+        with self.assertRaisesRegex(RuntimeError, "release evidence is malformed"):
             evidence.observe_terminal(
                 "inventory.yml", "kiosk-a", "kiosk", "client-a", runtime=malformed
             )
-        self.assertEqual(malformed.calls, [("head", "inventory.yml", "kiosk-a")])
+        self.assertEqual(malformed.calls[0][0], "release-evidence")
 
     def test_authenticated_endpoint_must_return_the_expected_identity(self):
         runtime = TerminalRuntime()
-        runtime.probe_terminal_identity = lambda *_args: {
-            "authenticated": True,
-            "statusClientId": "other-client",
-        }
-        with self.assertRaisesRegex(RuntimeError, "not authenticated"):
+        original = runtime.probe_terminal_release_evidence
+
+        def wrong_identity(*args, **kwargs):
+            result = original(*args, **kwargs)
+            result["statusClientId"] = "other-client"
+            return result
+
+        runtime.probe_terminal_release_evidence = wrong_identity
+        with self.assertRaisesRegex(RuntimeError, "release evidence is malformed"):
             evidence.observe_terminal(
                 "inventory.yml", "kiosk-a", "kiosk", "client-a", runtime=runtime
             )
 
     def test_agent_failure_after_playbook_fails_final_kiosk_observation(self):
         runtime = TerminalRuntime()
-        runtime.probe_kiosk_agents = lambda *_args: (_ for _ in ()).throw(
+        runtime.probe_terminal_release_evidence = lambda *_args, **_kwargs: (_ for _ in ()).throw(
             RuntimeError("nfc-agent died after playbook")
         )
 

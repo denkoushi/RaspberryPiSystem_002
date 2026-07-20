@@ -59,6 +59,10 @@ REHEARSAL_TESTS = {
         "scripts/deploy/tests/test_rolling_release.py",
         "test_interrupted_candidate_preparation_boundaries_are_discarded",
     ),
+    "pipelining-preflight-before-terminal-mutation": (
+        "scripts/deploy/tests/test_fleet_coordinator_transitions.py",
+        "test_pipelining_preflight_failure_precedes_every_terminal_mutation",
+    ),
     "terminal-capture-before-after-faults": (
         "scripts/deploy/tests/test_fleet_coordinator_transitions.py",
         "test_manifest_capture_failure_precedes_every_terminal_mutation",

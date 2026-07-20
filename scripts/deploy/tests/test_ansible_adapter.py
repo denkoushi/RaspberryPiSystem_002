@@ -8,10 +8,14 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 from unittest import mock
 
 from scripts.deploy.rolling_release.backends import ansible
+
+
+PROJECT = Path(__file__).resolve().parents[3]
 
 
 class Runtime:
@@ -59,6 +63,84 @@ def runtime_error_marker(value):
         json.dumps(value, sort_keys=True).encode("utf-8")
     ).decode("ascii")
     return f"TERMINAL_RUNTIME_MANIFEST_ERROR:{encoded}"
+
+
+def terminal_manifest_capture_marker(
+    file_result, runtime_result, *, user="tools03", home="/home/tools03"
+):
+    encoded = base64.urlsafe_b64encode(
+        json.dumps(
+            {
+                "version": 1,
+                "remoteUser": user,
+                "remoteHome": home,
+                "fileManifest": file_result,
+                "runtimeManifest": runtime_result,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).decode("ascii")
+    return f"TERMINAL_MANIFEST_CAPTURE_RESULT:{encoded}"
+
+
+def terminal_manifest_capture_error(value):
+    encoded = base64.urlsafe_b64encode(
+        json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).decode("ascii")
+    return f"TERMINAL_MANIFEST_CAPTURE_ERROR:{encoded}"
+
+
+def terminal_release_evidence_marker(value):
+    encoded = base64.urlsafe_b64encode(
+        json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).decode("ascii")
+    return f"TERMINAL_RELEASE_EVIDENCE_RESULT:{encoded}"
+
+
+class BundledScriptTest(unittest.TestCase):
+    def test_candidate_owned_transport_bundles_are_executable_and_complete(self):
+        runtime = Runtime("unused")
+        runtime.PROJECT = PROJECT
+        bundles = (
+            (
+                "scripts/deploy/rolling_release/terminal_release_evidence.py",
+                {
+                    "terminal_identity_probe.py": (
+                        "scripts/deploy/terminal-identity-probe.py"
+                    ),
+                    "terminal_agent_health_probe.py": (
+                        "scripts/deploy/terminal-agent-health-probe.py"
+                    ),
+                },
+            ),
+            (
+                "scripts/deploy/rolling_release/terminal_manifest_capture.py",
+                {
+                    "rollback_manifest.py": "scripts/deploy/rollback-manifest.py",
+                    "terminal_runtime_manifest.py": (
+                        "scripts/deploy/terminal-runtime-manifest.py"
+                    ),
+                },
+            ),
+        )
+
+        for main, modules in bundles:
+            with self.subTest(main=main), ansible._bundled_script(
+                runtime, main=main, modules=modules
+            ) as archive:
+                self.assertEqual(archive.stat().st_mode & 0o777, 0o700)
+                with zipfile.ZipFile(archive) as packaged:
+                    self.assertEqual(
+                        set(packaged.namelist()), {"__main__.py", *modules}
+                    )
+                result = subprocess.run(
+                    [str(archive), "--help"],
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
 
 
 class SelectedHostsTest(unittest.TestCase):
@@ -329,14 +411,11 @@ class RollbackManifestAdapterTest(unittest.TestCase):
                 "/home/tools03/.config/labwc/rc.xml",
             }.issubset(paths)
         )
-        identity = (
-            "ROLLBACK_REMOTE_IDENTITY:tools03:/home/tools03\n"
-            "ROLLBACK_REMOTE_IDENTITY:tools03:/home/tools03\n"
-        )
         runtime_result = self._runtime_capture_result()
         runtime = Runtime(
-            [identity, manifest_marker(result), runtime_marker(runtime_result)]
+            terminal_manifest_capture_marker(result, runtime_result)
         )
+        runtime.PROJECT = PROJECT
 
         reference = ansible.capture_terminal_manifest(
             "inventory.yml",
@@ -360,53 +439,50 @@ class RollbackManifestAdapterTest(unittest.TestCase):
                 },
             },
         )
-        identity_command = runtime.calls[0][0]
-        self.assertNotIn("-b", identity_command)
-        self.assertIn("ansible_become=false", identity_command)
-        self.assertIn("ROLLBACK_REMOTE_IDENTITY", identity_command[-1])
-        command, options = runtime.calls[1]
+        self.assertEqual(len(runtime.calls), 1)
+        command, options = runtime.calls[0]
         self.assertEqual(command[0:7], [
-            "ansible", "-i", "inventory.yml", self.HOST, "-b", "-m", "script"
+            "ansible", "-i", "inventory.yml", self.HOST, "-e",
+            "ansible_become=false", "-m",
         ])
+        self.assertNotIn("-b", command)
+        self.assertEqual(command[7], "script")
         action = command[-1]
-        self.assertIn("/project/scripts/deploy/rollback-manifest.py", action)
-        self.assertIn("capture-set", action)
+        self.assertIn("release-helper.pyz", action)
+        self.assertIn("--file-root", action)
+        self.assertIn("--runtime-root", action)
         self.assertIn("--repository /opt/RaspberryPiSystem_002", action)
         self.assertIn(f"--expected-head {self.PREVIOUS_SHA}", action)
-        for path in paths:
-            self.assertIn(f"--path {path}", action)
+        self.assertIn("--path-template @REMOTE_HOME@/.config", action)
         self.assertNotIn("client-key", action)
         self.assertTrue(options["capture"])
-        runtime_action = runtime.calls[2][0][-1]
-        self.assertIn(
-            "/project/scripts/deploy/terminal-runtime-manifest.py", runtime_action
-        )
-        self.assertIn(" capture ", f" {runtime_action} ")
-        self.assertIn("--docker-service nfc-agent", runtime_action)
-        self.assertIn("--docker-service barcode-agent", runtime_action)
+        self.assertIn("--docker-service nfc-agent", action)
+        self.assertIn("--docker-service barcode-agent", action)
         for unit in ansible._terminal_restart_on_restore_contract("kiosk"):
             self.assertIn(
-                f"--restart-on-restore-unit {unit}", runtime_action
+                f"--restart-on-restore-unit {unit}", action
             )
         self.assertIn(
             "--compose-working-directory "
             "/opt/RaspberryPiSystem_002/infrastructure/docker",
-            runtime_action,
+            action,
         )
         self.assertIn(
             "--compose-config-file "
             "/opt/RaspberryPiSystem_002/infrastructure/docker/"
             "docker-compose.client.yml",
-            runtime_action,
+            action,
         )
 
     def test_capture_uses_signage_only_paths_and_run_scoped_prestage_file(self):
         paths, result = self._capture_result("signage")
-        runtime = Runtime([
-            "ROLLBACK_REMOTE_IDENTITY:signageras3:/home/signageras3\n",
-            manifest_marker(result),
-            runtime_marker(self._runtime_capture_result("signage")),
-        ])
+        runtime = Runtime(terminal_manifest_capture_marker(
+            result,
+            self._runtime_capture_result("signage"),
+            user="signageras3",
+            home="/home/signageras3",
+        ))
+        runtime.PROJECT = PROJECT
 
         ansible.capture_terminal_manifest(
             "inventory.yml",
@@ -415,32 +491,37 @@ class RollbackManifestAdapterTest(unittest.TestCase):
             self.PREVIOUS_SHA,
             runtime=runtime,
         )
-        runtime_action = runtime.calls[2][0][-1]
+        runtime_action = runtime.calls[0][0][-1]
         for unit in ansible._terminal_restart_on_restore_contract("signage"):
             self.assertIn(
                 f"--restart-on-restore-unit {unit}", runtime_action
             )
 
-        action = runtime.calls[1][0][-1]
+        action = runtime.calls[0][0][-1]
         self.assertIn(
-            f"--path /run/signage/release-{self.RUN_ID}-maintenance.svg", action
+            f"--path-template /run/signage/release-{self.RUN_ID}-maintenance.svg", action
         )
         self.assertIn(
-            f"--path /run/signage/release-{self.RUN_ID}-maintenance.jpg", action
+            f"--path-template /run/signage/release-{self.RUN_ID}-maintenance.jpg", action
         )
         self.assertIn(
-            f"--path /run/signage/release-{self.RUN_ID}-maintenance.sha256", action
+            f"--path-template /run/signage/release-{self.RUN_ID}-maintenance.sha256", action
         )
-        self.assertIn("--path /etc/systemd/system/signage-lite.service", action)
-        self.assertNotIn("--path /etc/systemd/system/kiosk-browser.service", action)
-        runtime_action = runtime.calls[2][0][-1]
+        self.assertIn("--path-template /etc/systemd/system/signage-lite.service", action)
+        self.assertNotIn("--path-template /etc/systemd/system/kiosk-browser.service", action)
+        runtime_action = runtime.calls[0][0][-1]
         self.assertIn("--unit signage-lite.service", runtime_action)
         self.assertIn("--unit signage-daily-reboot.timer", runtime_action)
         self.assertNotIn("--docker-service", runtime_action)
 
     def test_capture_rejects_malformed_identity_before_helper_execution(self):
-        runtime = Runtime("ROLLBACK_REMOTE_IDENTITY:root:/root\n")
-        with self.assertRaisesRegex(RuntimeError, "could not be resolved"):
+        paths, file_result = self._capture_result()
+        del paths
+        runtime = Runtime(terminal_manifest_capture_marker(
+            file_result, self._runtime_capture_result(), user="root", home="/root"
+        ))
+        runtime.PROJECT = PROJECT
+        with self.assertRaisesRegex(RuntimeError, "capture result is invalid"):
             ansible.capture_terminal_manifest(
                 "inventory.yml",
                 {"host": self.HOST, "terminalType": "kiosk"},
@@ -551,10 +632,10 @@ class RollbackManifestAdapterTest(unittest.TestCase):
     def test_capture_rejects_wrong_repository_proof(self):
         _paths, result = self._capture_result()
         result["repository"]["head"] = "b" * 40
-        runtime = Runtime([
-            "ROLLBACK_REMOTE_IDENTITY:tools03:/home/tools03\n",
-            manifest_marker(result),
-        ])
+        runtime = Runtime(terminal_manifest_capture_marker(
+            result, self._runtime_capture_result()
+        ))
+        runtime.PROJECT = PROJECT
         with self.assertRaisesRegex(RuntimeError, "capture result is invalid"):
             ansible.capture_terminal_manifest(
                 "inventory.yml",
@@ -568,11 +649,8 @@ class RollbackManifestAdapterTest(unittest.TestCase):
         _paths, result = self._capture_result()
         runtime_result = self._runtime_capture_result()
         runtime_result["rollbackTags"] = [{"not": "a string"}]
-        runtime = Runtime([
-            "ROLLBACK_REMOTE_IDENTITY:tools03:/home/tools03\n",
-            manifest_marker(result),
-            runtime_marker(runtime_result),
-        ])
+        runtime = Runtime(terminal_manifest_capture_marker(result, runtime_result))
+        runtime.PROJECT = PROJECT
         with self.assertRaisesRegex(RuntimeError, "runtime manifest capture result"):
             ansible.capture_terminal_manifest(
                 "inventory.yml",
@@ -581,6 +659,58 @@ class RollbackManifestAdapterTest(unittest.TestCase):
                 self.PREVIOUS_SHA,
                 runtime=runtime,
             )
+
+    def test_capture_safe_failure_reason_hides_raw_ansible_output(self):
+        safe = terminal_manifest_capture_error(
+            {
+                "version": 1,
+                "stage": "runtime",
+                "code": "runtime.stability",
+                "message": "runtime manifest capture failed",
+            }
+        )
+        secret = "DO-NOT-LEAK-CAPTURE-SECRET"
+        error = subprocess.CalledProcessError(
+            1, ["ansible"], output=safe, stderr=secret
+        )
+        runtime = Runtime(error)
+        runtime.PROJECT = PROJECT
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "runtime/runtime.stability: runtime manifest capture failed",
+        ) as raised:
+            ansible.capture_terminal_manifest(
+                "inventory.yml",
+                {"host": self.HOST, "terminalType": "kiosk"},
+                self.RUN_ID,
+                self.PREVIOUS_SHA,
+                runtime=runtime,
+            )
+
+        self.assertNotIn(secret, str(raised.exception))
+
+    def test_capture_response_loss_stays_failed_without_reconstructing_authority(self):
+        secret = "REMOTE-CAPTURE-MAY-HAVE-COMPLETED"
+        error = subprocess.CalledProcessError(
+            1, ["ansible"], output=secret, stderr=secret
+        )
+        runtime = Runtime(error)
+        runtime.PROJECT = PROJECT
+
+        with self.assertRaisesRegex(
+            RuntimeError, "failed without safe evidence"
+        ) as raised:
+            ansible.capture_terminal_manifest(
+                "inventory.yml",
+                {"host": self.HOST, "terminalType": "kiosk"},
+                self.RUN_ID,
+                self.PREVIOUS_SHA,
+                runtime=runtime,
+            )
+
+        self.assertNotIn(secret, str(raised.exception))
+        self.assertEqual(len(runtime.calls), 1)
 
     def _rollback_target(self, count=2):
         return {
@@ -1133,6 +1263,50 @@ class ServerConfigConvergenceTest(unittest.TestCase):
                 self.assertEqual(runtime.calls, [])
 
 
+class TerminalPipeliningPreflightTest(unittest.TestCase):
+    def test_preflight_uses_exact_pipelined_become_path(self):
+        runtime = Runtime("")
+        with mock.patch.dict(
+            os.environ,
+            {
+                "ANSIBLE_PIPELINING": "false",
+                "ANSIBLE_SSH_PIPELINING": "false",
+            },
+            clear=False,
+        ):
+            ansible.preflight_terminal_ansible_pipelining(
+                "inventory.yml", "kiosk-a", runtime=runtime
+            )
+
+        command, options = runtime.calls[0]
+        self.assertEqual(
+            command,
+            [
+                "ansible",
+                "-i",
+                "inventory.yml",
+                "kiosk-a",
+                "-b",
+                "-m",
+                "ansible.builtin.command",
+                "-a",
+                "/usr/bin/true",
+            ],
+        )
+        self.assertEqual(options["cwd"], runtime.ANSIBLE_DIRECTORY)
+        self.assertTrue(options["capture"])
+        self.assertEqual(options["env"]["ANSIBLE_PIPELINING"], "true")
+        self.assertEqual(options["env"]["ANSIBLE_SSH_PIPELINING"], "true")
+
+    def test_preflight_rejects_malformed_host_without_connecting(self):
+        runtime = Runtime("")
+        with self.assertRaisesRegex(ValueError, "terminal host"):
+            ansible.preflight_terminal_ansible_pipelining(
+                "inventory.yml", "bad host", runtime=runtime
+            )
+        self.assertEqual(runtime.calls, [])
+
+
 class TerminalReleasePlaybookTest(unittest.TestCase):
     def test_terminal_playbook_uses_release_only_mutation_profile(self):
         runtime = Runtime("")
@@ -1157,6 +1331,8 @@ class TerminalReleasePlaybookTest(unittest.TestCase):
         self.assertEqual(
             options["env"]["ROLLING_RELEASE_TIMING_HOST"], "kiosk-a"
         )
+        self.assertEqual(options["env"]["ANSIBLE_PIPELINING"], "true")
+        self.assertEqual(options["env"]["ANSIBLE_SSH_PIPELINING"], "true")
 
     def test_terminal_playbook_rejects_legacy_rollback_mode_without_execution(self):
         runtime = Runtime("")
@@ -1231,6 +1407,157 @@ class SignageMaintenancePrestageTest(unittest.TestCase):
 
 
 class TerminalHealthAdapterTest(unittest.TestCase):
+    def _release_evidence(self, *, agents=None, services=None):
+        selected_agents = agents or []
+        selected_services = services or ["lightdm.service", "status-agent.timer"]
+        return {
+            "version": 1,
+            "currentSha": "a" * 40,
+            "activeSystemdUnits": selected_services,
+            "oneshotServices": ["status-agent.service"],
+            "identity": {"authenticated": True, "statusClientId": "terminal-a"},
+            "agentContainers": [agent for agent, _port in selected_agents],
+            "authenticatedAgentEndpoints": [
+                {"agent": agent, "port": port} for agent, port in selected_agents
+            ],
+            "pcscdRequired": any(agent == "nfc-agent" for agent, _port in selected_agents),
+        }
+
+    def test_release_evidence_uses_one_remote_transport_for_all_generic_proofs(self):
+        secret = "nfc-secret-never-forwarded"
+        agents = [("nfc-agent", 7071), ("barcode-agent", 7072)]
+        evidence = self._release_evidence(agents=agents)
+        runtime = Runtime(
+            [
+                json.dumps(
+                    {
+                        "nfc_agent_client_id": "terminal-a",
+                        "nfc_agent_client_secret": secret,
+                        "barcode_agent_enabled": True,
+                        "barcode_agent_rest_port": 7072,
+                    }
+                ),
+                terminal_release_evidence_marker(evidence),
+            ]
+        )
+        runtime.PROJECT = PROJECT
+
+        result = ansible.probe_terminal_release_evidence(
+            "inventory.yml",
+            "kiosk-a",
+            "terminal-a",
+            ["lightdm.service", "status-agent.timer"],
+            runtime=runtime,
+        )
+
+        self.assertEqual(
+            result,
+            {
+                "currentSha": "a" * 40,
+                "services": ["lightdm.service", "status-agent.timer"],
+                "oneshotServices": ["status-agent.service"],
+                "authenticatedEndpoint": True,
+                "statusClientId": "terminal-a",
+                "agentContainers": ["nfc-agent", "barcode-agent"],
+                "authenticatedAgentEndpoints": [
+                    {"agent": "nfc-agent", "port": 7071},
+                    {"agent": "barcode-agent", "port": 7072},
+                ],
+                "pcscdRequired": True,
+            },
+        )
+        self.assertEqual(len(runtime.calls), 2)
+        self.assertEqual(
+            runtime.calls[0][0],
+            ["ansible-inventory", "-i", "inventory.yml", "--host", "kiosk-a"],
+        )
+        command, options = runtime.calls[1]
+        self.assertEqual(
+            command[:7],
+            ["ansible", "-i", "inventory.yml", "kiosk-a", "-b", "-m", "script"],
+        )
+        action = command[-1]
+        self.assertIn("release-helper.pyz", action)
+        self.assertIn("--expected-client-id terminal-a", action)
+        self.assertIn("--service lightdm.service", action)
+        self.assertIn("--service status-agent.timer", action)
+        self.assertIn("--check-status-agent-result", action)
+        self.assertIn("--agent-spec nfc-agent:7071:1", action)
+        self.assertIn("--agent-spec barcode-agent:7072:0", action)
+        self.assertNotIn(secret, " ".join(command))
+        self.assertTrue(options["capture"])
+
+    def test_restored_release_evidence_uses_the_sealed_agent_set(self):
+        agents = [("nfc-agent", 8123), ("barcode-agent", 8124)]
+        evidence = self._release_evidence(agents=agents)
+        runtime = Runtime(
+            [
+                json.dumps(
+                    {
+                        "nfc_agent_client_id": "new-inventory-value",
+                        "torque_agent_enabled": True,
+                    }
+                ),
+                terminal_release_evidence_marker(evidence),
+            ]
+        )
+        runtime.PROJECT = PROJECT
+
+        result = ansible.probe_terminal_release_evidence(
+            "inventory.yml",
+            "kiosk-a",
+            "terminal-a",
+            ["lightdm.service", "status-agent.timer"],
+            expected_agents=["nfc-agent", "barcode-agent"],
+            runtime=runtime,
+        )
+
+        self.assertEqual(result["agentContainers"], ["nfc-agent", "barcode-agent"])
+        action = runtime.calls[1][0][-1]
+        self.assertIn("--agent-spec nfc-agent:auto:1", action)
+        self.assertIn("--agent-spec barcode-agent:auto:0", action)
+        self.assertNotIn("torque-agent", action)
+
+    def test_release_evidence_rejects_disagreement_and_hides_remote_output(self):
+        evidence = self._release_evidence()
+        malformed = {**evidence, "unexpected": True}
+        for output, message in (
+            (terminal_release_evidence_marker(malformed), "malformed"),
+            (
+                terminal_release_evidence_marker(evidence)
+                + "\n"
+                + terminal_release_evidence_marker({**evidence, "currentSha": "b" * 40}),
+                "callback results disagree",
+            ),
+        ):
+            with self.subTest(message=message):
+                runtime = Runtime(["{}", output])
+                runtime.PROJECT = PROJECT
+                with self.assertRaisesRegex(RuntimeError, message):
+                    ansible.probe_terminal_release_evidence(
+                        "inventory.yml",
+                        "kiosk-a",
+                        "terminal-a",
+                        ["lightdm.service", "status-agent.timer"],
+                        runtime=runtime,
+                    )
+
+        secret = "DO-NOT-LEAK-RELEASE-EVIDENCE"
+        error = subprocess.CalledProcessError(
+            1, ["ansible"], output=secret, stderr=secret
+        )
+        runtime = Runtime(["{}", error])
+        runtime.PROJECT = PROJECT
+        with self.assertRaisesRegex(RuntimeError, "failed without safe proof") as raised:
+            ansible.probe_terminal_release_evidence(
+                "inventory.yml",
+                "kiosk-a",
+                "terminal-a",
+                ["lightdm.service", "status-agent.timer"],
+                runtime=runtime,
+            )
+        self.assertNotIn(secret, str(raised.exception))
+
     def test_identity_probe_executes_on_terminal_without_key_in_command(self):
         runtime = Runtime(
             'host | CHANGED => {"stdout":"TERMINAL_IDENTITY_OK:terminal-a",'
