@@ -289,6 +289,26 @@ all:
               barcode_agent_serial_device: "/dev/ttyACM0"
               barcode_agent_serial_baud: 9600
               barcode_agent_rest_port: 7072
+              # 外付けRTL8761BUと実測済みCEM3-BTLAだけをtorque-agentへ公開する。
+              torque_agent_enabled: true
+              torque_agent_api_base_url: "{{ server_base_url }}"
+              torque_agent_client_key: "{{ status_agent_client_key }}"
+              # Pi5 currently presents a self-signed Caddy certificate. This exception is scoped to StoneBase.
+              torque_agent_tls_verify_mode: "insecure"
+              torque_agent_browser_origins:
+                - "{{ server_base_url }}"
+              torque_agent_bluetooth_adapter:
+                usb_vendor_id: "2357"
+                usb_product_id: "0604"
+              torque_agent_hid_links:
+                - link_name: "bluetooth-TOHNICHI_702902S-event-kbd"
+                  name: "TOHNICHI_702902S"
+                  uniq: "c4:90:43:98:7e:c3"
+                  vendor_id: "2f84"
+                  product_id: "0001"
+              torque_agent_hid_devices:
+                - path: "/dev/input/by-id/bluetooth-TOHNICHI_702902S-event-kbd"
+                  parserProfile: "cem3-btla-hogp-v1"
             raspi4-sessaku-01:
               # Sessaku-01 キオスク（Pi4 5台目）
               # NOTE: 通常運用は Tailscale、初期セットアップ時のみ local_network にフォールバックする

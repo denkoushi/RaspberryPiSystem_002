@@ -1,6 +1,10 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildServer } from '../../app.js';
-import { createTestUser } from './helpers.js';
+import {
+  createTestUser,
+  reserveUnusedImportEmployeeCode,
+  reserveUnusedImportItemCode,
+} from './helpers.js';
 import { prisma } from '../../lib/prisma.js';
 
 // モック: BackupConfigLoader → Gmail設定を返す
@@ -27,11 +31,11 @@ vi.mock('../../services/backup/backup-config.loader.js', () => {
 // モック: GmailStorageProvider → downloadでCSVを返す
 const mockDownload = vi.fn(async (path: string): Promise<Buffer> => {
   if (path.includes('employees') || path.toLowerCase().includes('employee')) {
-    const emp = (Date.now() % 10000).toString().padStart(4, '0');
+    const emp = await reserveUnusedImportEmployeeCode();
     return Buffer.from(`employeeCode,lastName,firstName\n${emp},Emp,${emp}`);
   }
   if (path.includes('items') || path.toLowerCase().includes('item')) {
-    const item = `TO${(Date.now() % 10000).toString().padStart(4, '0')}`;
+    const item = await reserveUnusedImportItemCode();
     return Buffer.from(`itemCode,name\n${item},Item-${item}`);
   }
   throw new Error(`unexpected path: ${path}`);
@@ -217,4 +221,3 @@ describe('POST /api/imports/master/from-dropbox (Gmail provider)', () => {
     expect(json.summary.items.processed).toBeGreaterThan(0);
   });
 });
-

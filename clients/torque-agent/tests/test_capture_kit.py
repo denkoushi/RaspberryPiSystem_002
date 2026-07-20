@@ -32,6 +32,7 @@ from torque_agent.linux_event_source import LinuxEvdevEventSource
 
 
 FIXTURES = Path(__file__).parent / "fixtures" / "capture_contract"
+CEM3_FIXTURES = Path(__file__).parent / "fixtures" / "cem3_btla"
 
 
 class FakeEventSource:
@@ -454,6 +455,10 @@ def test_validate_accepts_synthetic_contract_and_detects_coverage_or_device_shor
         "repeated_memory",
         "rapid_consecutive",
     }
+    observed = validate_fixtures(CEM3_FIXTURES)
+    assert observed["fixtureKind"] == "observed"
+    assert set(observed["scenarios"]) >= {"normal", "rapid_consecutive"}
+    assert "repeated_memory" not in observed["scenarios"]
 
     incomplete = tmp_path / "incomplete"
     incomplete.mkdir()
@@ -483,7 +488,7 @@ def test_validate_accepts_synthetic_contract_and_detects_coverage_or_device_shor
             for sequence in (1, 2, 3)
         )
     )
-    for scenario, sequences in (("repeated_memory", (1, 2)), ("rapid_consecutive", (1, 2, 3, 4, 5))):
+    for scenario, sequences in (("rapid_consecutive", (1, 2, 3, 4, 5)),):
         records = [
             {
                 "schemaVersion": 1,
@@ -498,6 +503,23 @@ def test_validate_accepts_synthetic_contract_and_detects_coverage_or_device_shor
         (complete / f"{scenario}.jsonl").write_text("".join(json.dumps(record) + "\n" for record in records))
     with pytest.raises(CaptureIncompleteError, match="2 distinct"):
         validate_fixtures(complete, available_device_count=2)
+
+    optional_repeat = complete / "repeated_memory.jsonl"
+    optional_repeat.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "payloadText": "SERIAL_A",
+                "terminator": "KEY_ENTER",
+                "scenario": "repeated_memory",
+                "sequence": 1,
+                "provenance": "observed",
+            }
+        )
+        + "\n"
+    )
+    with pytest.raises(CaptureIncompleteError, match=r"repeated_memory \(1/2\)"):
+        validate_fixtures(complete)
 
     copied_contract = tmp_path / "cem3_btla"
     copied_contract.mkdir()

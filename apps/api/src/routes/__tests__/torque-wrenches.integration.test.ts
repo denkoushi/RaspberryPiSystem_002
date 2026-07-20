@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
 import { prisma } from '../../lib/prisma.js';
+import { AssemblyLotService } from '../../services/assembly/assembly-lot.service.js';
 import { AssemblyTemplateService } from '../../services/assembly/assembly-template.service.js';
 import { AssemblyWorkSessionService } from '../../services/assembly/assembly-work-session.service.js';
 import { createAuthHeader, createTestClientDevice, createTestUser } from './helpers.js';
@@ -21,6 +22,8 @@ describe('torque wrench traceability API', () => {
     await prisma.assemblyTorqueRecord.deleteMany({});
     await prisma.assemblyTorqueWrenchConfirmation.deleteMany({});
     await prisma.assemblyWorkSession.deleteMany({});
+    await prisma.assemblyLotSerial.deleteMany({});
+    await prisma.assemblyLot.deleteMany({});
     await prisma.assemblySerialRegistry.deleteMany({});
     await prisma.assemblyTemplateBolt.deleteMany({});
     await prisma.assemblyTemplateArea.deleteMany({});
@@ -165,7 +168,19 @@ describe('torque wrench traceability API', () => {
         isActive: true
       }
     });
-    const template = await new AssemblyTemplateService().create({
+    const templateService = new AssemblyTemplateService();
+    const preFeatureTemplate = await prisma.assemblyTemplate.create({
+      data: {
+        modelCode: 'LEGACY-NULL',
+        procedurePattern: '旧形式',
+        name: '旧形式NULL互換',
+        procedureDocumentId: document.id
+      }
+    });
+    expect(preFeatureTemplate.traceabilityMode).toBeNull();
+    expect((await templateService.getById(preFeatureTemplate.id))?.traceabilityMode).toBe('LEGACY');
+
+    const template = await templateService.create({
       modelCode: 'TRACE-001',
       procedurePattern: '標準',
       name: 'トルク追跡テスト',
@@ -207,6 +222,26 @@ describe('torque wrench traceability API', () => {
       targetUnit: 'TRACE-001',
       clientDeviceId: client.id
     });
+    expect(session.torqueWrenchId).toBe('');
+    expect(
+      (
+        await prisma.assemblyWorkSession.findUniqueOrThrow({
+          where: { id: session.id },
+          select: { torqueWrenchId: true }
+        })
+      ).torqueWrenchId
+    ).toBe('');
+
+    const lot = await new AssemblyLotService().create({
+      templateId: template.id,
+      productNo: 'TRACE-LOT-PRODUCT',
+      expectedQuantity: 1,
+      serialNos: [`TRACE-LOT-${randomUUID()}`],
+      operatorNameSnapshot: '試験作業者',
+      targetUnit: 'TRACE-001',
+      clientDeviceId: client.id
+    });
+    expect(lot.torqueWrenchId).toBe('');
     const kioskHeaders = { 'x-client-key': client.apiKey, 'content-type': 'application/json' };
 
     const compatible = await app.inject({
@@ -308,6 +343,11 @@ describe('torque wrench traceability API', () => {
     expect(replay.json().outcome.torqueRecordId).toBe(acceptedRecordId);
     expect(
       await prisma.assemblyTorqueRecord.count({
+        where: { sourceClientDeviceId: client.id, sourceEventKey: 'evt-valid-1' }
+      })
+    ).toBe(1);
+    expect(
+      await prisma.assemblyTorqueAgentEvent.count({
         where: { sourceClientDeviceId: client.id, sourceEventKey: 'evt-valid-1' }
       })
     ).toBe(1);

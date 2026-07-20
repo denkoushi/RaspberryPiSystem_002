@@ -2,13 +2,13 @@
 
 複数の許可済み `/dev/input/by-id/*` HID機器を排他取得し、入力イベントをSQLiteへ先に保存してから組立APIへ送るローカルエージェントです。ローカル制御APIは `127.0.0.1:7073` のみで待ち受けます。
 
-## CEM3-BTLA parser gate
+## CEM3-BTLA parser contract
 
-CEM3-BTLAの通常出力3件から、`cem3-btla-hogp-v1`の厳密parser adapterと匿名化fixtureを作成済みです。ただし、再送と連続入力の実測fixtureが揃うまではproduction registryへ登録しません。`synthetic-delimited-fixture-v1`はテスト専用で、実機形式を推測したものではありません。
+CEM3-BTLAの通常出力3件と連続出力5件から、`cem3-btla-hogp-v1`の厳密parser adapterと匿名化fixtureを作成し、production registryへ登録済みです。`synthetic-delimited-fixture-v1`はテスト専用で、実機形式を推測したものではありません。本番デプロイは別の明示承認まで行いません。
 
 観測済みの本体設定は`Cn_o=ON`、`An_o=OFF`、`Jd_o=ON`、`Sn_o=ON`、`dt_o=ON`、`bA_o=OFF`、`Un_o=ON`、`dLm=TAB`、`End=ENTER`、`kEY=JP`、`ZEro=OFF`です。payloadはメモリ番号、トルク、空白埋め単位、2文字の合否判定、7文字の製造番号、`YY/MM/DD`、時刻の7フィールドです。Pi/Linuxの`kEY=JP`経路では時刻区切りがアポストロフィとして観測されたため、このprofileはその実測形だけを受理します。
 
-`tests/fixtures/cem3_btla/SERIAL_A/normal.jsonl`は実測・匿名化済みです。`partial`、`missing_field`、`bad_number`、`unsupported_unit`はその契約から作った派生fixtureです。`repeated_memory`と`rapid_consecutive`が未採取なので、fixture validatorの終了コード3とproduction profile未登録は意図したゲートです。最初の測定をウォームアップとして捨てる運用はしません。
+`tests/fixtures/cem3_btla/SERIAL_A/normal.jsonl`と`rapid_consecutive.jsonl`は実測・匿名化済みです。`partial`、`missing_field`、`bad_number`、`unsupported_unit`はその契約から作った派生fixtureです。実機に同一メモリ再送機能がないため、`repeated_memory`はsynthetic capture契約とeventId冪等性テストで検証し、実測fixtureは任意です。最初の測定をウォームアップとして捨てる運用はしません。
 
 ## Read-only capture kit
 
@@ -45,6 +45,7 @@ poetry run torque-capture capture \
 ## Safety properties
 
 - 設定した `/dev/input/by-id` のみを開き、`grab()` でブラウザーへのキー漏れを防止します。
+- 起動時に設定済みlinkが未生成でも同じpathだけを待ち、Bluetooth切断後もfresh decoderで同じpathを再取得します。`eventN`探索や別キーボードへのfallbackはしません。
 - 有効なブラウザheartbeatがない入力は別作業へ推測割当せず、SQLiteの`torque_local_audit`へ理由付きで残します。
 - 解析できない入力もHID監視を停止させず、原文・機器パス・parser profile・エラーをローカル監査へ残します。
 - 未対応HIDキーを黙って除去せず、実際の終端とキー情報を`HID_DECODE_FAILED`としてローカル監査へ残し、改変されたpayloadを送信しません。
@@ -57,7 +58,7 @@ poetry run torque-capture capture \
 
 ## Environment
 
-環境変数は `.env.example` を参照する。秘密のクライアントキーや現場固有の実デバイスパスはコミットしない。
+環境変数は `.env.example` を参照する。秘密のクライアントキーをコミットしない。実デバイスpathはAnsibleがUSBコントローラーとBluetooth HIDの完全一致から生成する安定した`/dev/input/by-id`だけを使う。
 
 - `TORQUE_API_BASE_URL`: Pi5 APIのorigin。末尾`/api`は付けない
 - `TORQUE_CLIENT_KEY`: このキオスク端末として登録済みのクライアントキー
@@ -65,6 +66,7 @@ poetry run torque-capture capture \
 - `TORQUE_QUEUE_PATH`: outboxとローカル監査を持つSQLiteファイル
 - `TORQUE_LOCAL_PORT`: loopback heartbeat/healthポート。標準は7073
 - `TORQUE_HEARTBEAT_TTL_SECONDS`: 作業画面bindingの有効秒数
+- `TORQUE_TLS_VERIFY_MODE`: `system`（既定、OSのCAで検証）または、自己署名Pi5に限定した`insecure`。inventoryで端末単位に明示し、全体既定を弱めない
 - `TORQUE_BROWSER_ORIGINS_JSON`: APIとWebが別originの場合に追加許可するキオスクWeb originのJSON配列。API originは自動許可され、ワイルドカードは使用不可
 - `TORQUE_ENABLE_SYNTHETIC_FIXTURE`: テスト専用。本番は必ず`false`
 

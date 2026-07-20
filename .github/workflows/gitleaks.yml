@@ -28,7 +28,30 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Run Gitleaks
+      - name: Run Gitleaks (event-native range)
+        if: github.event_name != 'workflow_dispatch'
         uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run Gitleaks (manual branch range)
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --force origin main:refs/remotes/origin/main
+          docker run --rm \
+            --volume "${GITHUB_WORKSPACE}:/repo" \
+            --workdir /repo \
+            zricethezav/gitleaks:v8.24.3@sha256:5d0147dc25c78f8cc2b9861ff8f5c9b4a41419ed60a9ce2217de5a215270b42b \
+            git --redact --verbose --exit-code 2 \
+            --report-format sarif --report-path results.sarif \
+            --log-opts=origin/main..HEAD .
+
+      - name: Upload manual Gitleaks report on failure
+        if: failure() && github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v6
+        with:
+          name: gitleaks-results
+          path: results.sarif
+          if-no-files-found: error

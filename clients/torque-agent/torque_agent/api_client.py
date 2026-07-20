@@ -11,13 +11,14 @@ LOGGER = logging.getLogger("torque_agent.sender")
 
 
 class OutboxSender:
-    def __init__(self, api_base_url: str, client_key: str, queue: QueueStore) -> None:
+    def __init__(self, api_base_url: str, client_key: str, queue: QueueStore, *, tls_verify: bool = True) -> None:
         self.api_base_url = api_base_url
         self.client_key = client_key
         self.queue = queue
+        self.tls_verify = tls_verify
 
     async def send_once(self) -> bool:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=10, verify=self.tls_verify) as client:
             for event_id, envelope in self.queue.pending():
                 session_id = envelope["sessionId"]
                 payload = dict(envelope["payload"])

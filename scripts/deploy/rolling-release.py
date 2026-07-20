@@ -283,10 +283,20 @@ def fleet_finish_run(run_id: str, status: str) -> dict[str, Any]:
 
 
 def observe_terminal_evidence(
-    inventory: str, host: str, role: str, client_id: str
+    inventory: str,
+    host: str,
+    role: str,
+    client_id: str,
+    *,
+    runtime_health: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return evidence_backend.observe_terminal(
-        inventory, host, role, client_id, runtime=_runtime()
+        inventory,
+        host,
+        role,
+        client_id,
+        runtime=_runtime(),
+        runtime_health=runtime_health,
     )
 
 
@@ -723,9 +733,13 @@ def probe_signage_endpoints(inventory: str, host: str) -> dict[str, Any]:
     )
 
 
-def probe_kiosk_agents(inventory: str, host: str) -> dict[str, Any]:
+def probe_kiosk_agents(
+    inventory: str,
+    host: str,
+    expected_agents: list[str] | None = None,
+) -> dict[str, Any]:
     return ansible_backend.probe_kiosk_agents(
-        inventory, host, runtime=_runtime()
+        inventory, host, expected_agents=expected_agents, runtime=_runtime()
     )
 
 

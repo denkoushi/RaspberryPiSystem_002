@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import type { AssemblyTorqueTraceabilityMode, Prisma } from '@prisma/client';
+import type { AssemblyTorqueTraceabilityMode } from '@raspi-system/shared-types';
+import type { Prisma } from '@prisma/client';
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { TorqueUnitConverter, normalizeFastenerText } from '../torque-wrenches/index.js';
@@ -9,6 +10,7 @@ import {
   normalizeMarkerPageRef,
   type AssemblyMarkerPageRefInput
 } from './assembly-check-summary.js';
+import { runAssemblyTransaction } from './assembly-transaction.js';
 
 const procedureDocumentInclude = {
   pages: {
@@ -33,9 +35,31 @@ export const assemblyTemplateDetailInclude = {
   }
 } satisfies Prisma.AssemblyTemplateInclude;
 
-export type AssemblyTemplateDetail = Prisma.AssemblyTemplateGetPayload<{
+export type AssemblyTemplateDetailRow = Prisma.AssemblyTemplateGetPayload<{
   include: typeof assemblyTemplateDetailInclude;
 }>;
+
+export type AssemblyTemplateDetail = Omit<AssemblyTemplateDetailRow, 'traceabilityMode'> & {
+  traceabilityMode: AssemblyTorqueTraceabilityMode;
+};
+
+/** Existing rows have NULL because the production migration is expand-only. */
+export function resolveAssemblyTraceabilityMode(
+  value: string | null | undefined
+): AssemblyTorqueTraceabilityMode {
+  if (value == null || value === 'LEGACY') return 'LEGACY';
+  if (value === 'REQUIRED') return 'REQUIRED';
+  throw new ApiError(500, '組立テンプレートのトレーサビリティ設定が不正です');
+}
+
+export function resolveAssemblyTemplateDetail(
+  template: AssemblyTemplateDetailRow
+): AssemblyTemplateDetail {
+  return {
+    ...template,
+    traceabilityMode: resolveAssemblyTraceabilityMode(template.traceabilityMode)
+  };
+}
 
 export type AssemblyTemplateSummary = {
   id: string;
@@ -335,7 +359,7 @@ export class AssemblyTemplateService {
     const modelCode = params.modelCode?.trim();
     const procedurePattern = params.procedurePattern?.trim();
     const q = params.q?.trim();
-    return prisma.assemblyTemplate.findMany({
+    const templates = await prisma.assemblyTemplate.findMany({
       where: {
         ...(params.includeInactive ? {} : { isActive: true }),
         ...(modelCode ? { modelCode: { equals: modelCode, mode: 'insensitive' } } : {}),
@@ -354,6 +378,7 @@ export class AssemblyTemplateService {
       orderBy: [{ updatedAt: 'desc' }, { modelCode: 'asc' }, { procedurePattern: 'asc' }],
       take: Math.min(Math.max(params.limit ?? 100, 1), 200)
     });
+    return templates.map(resolveAssemblyTemplateDetail);
   }
 
   async listSummary(params: {
@@ -429,7 +454,7 @@ export class AssemblyTemplateService {
       name: template.name,
       version: template.version,
       isActive: template.isActive,
-      traceabilityMode: template.traceabilityMode,
+      traceabilityMode: resolveAssemblyTraceabilityMode(template.traceabilityMode),
       procedureDocumentId: template.procedureDocumentId,
       procedureDocumentName: template.procedureDocument.name,
       areaCount: template.areas.length,
@@ -440,13 +465,14 @@ export class AssemblyTemplateService {
   }
 
   async getById(id: string, options: { includeInactive?: boolean } = {}): Promise<AssemblyTemplateDetail | null> {
-    return prisma.assemblyTemplate.findFirst({
+    const template = await prisma.assemblyTemplate.findFirst({
       where: {
         id,
         ...(options.includeInactive ? {} : { isActive: true })
       },
       include: assemblyTemplateDetailInclude
     });
+    return template ? resolveAssemblyTemplateDetail(template) : null;
   }
 
   async create(input: AssemblyTemplateUpsertInput): Promise<AssemblyTemplateDetail> {
@@ -457,7 +483,7 @@ export class AssemblyTemplateService {
     const areas = normalizeAreas(input.areas, traceabilityMode);
     const checkItems = normalizeCheckItems(input.checkItems ?? []);
 
-    return prisma.$transaction(async (tx) => {
+    return runAssemblyTransaction(async (tx) => {
       const doc = await tx.assemblyProcedureDocument.findFirst({
         where: { id: input.procedureDocumentId, isActive: true, status: 'PUBLISHED' }
       });
@@ -564,7 +590,7 @@ export class AssemblyTemplateService {
         include: assemblyTemplateDetailInclude
       });
       if (!detail) throw new ApiError(500, '作成したテンプレートを取得できませんでした');
-      return detail;
+      return resolveAssemblyTemplateDetail(detail);
     });
   }
 

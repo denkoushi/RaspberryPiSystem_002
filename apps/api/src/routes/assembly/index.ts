@@ -28,6 +28,7 @@ import {
   resolveAssemblyOperatorNfcUid,
   buildAssemblyLotSummary,
   serializeAssemblyWorkSessionApproval,
+  resolveAssemblyTraceabilityMode,
   TORQUE_INPUT_PORT_SOURCES,
   toPrismaTorqueInputSource,
   type AssemblyProcedureDocumentSummary,
@@ -39,6 +40,7 @@ import {
   type AssemblyTemplateAreaInput,
   type AssemblyTemplateCheckItemInput,
   type AssemblyTemplateDetail,
+  type AssemblyTemplateDetailRow,
   type AssemblyTemplateSummary,
   type AssemblyWorkSessionDetail,
   type AssemblyWorkSessionSummary
@@ -395,7 +397,7 @@ function serializeCheckRecord(record: {
   };
 }
 
-function serializeTemplate(template: AssemblyTemplateDetail) {
+function serializeTemplate(template: AssemblyTemplateDetail | AssemblyTemplateDetailRow) {
   return {
     id: template.id,
     modelCode: template.modelCode,
@@ -403,7 +405,7 @@ function serializeTemplate(template: AssemblyTemplateDetail) {
     name: template.name,
     version: template.version,
     isActive: template.isActive,
-    traceabilityMode: template.traceabilityMode,
+    traceabilityMode: resolveAssemblyTraceabilityMode(template.traceabilityMode),
     procedureDocumentId: template.procedureDocumentId,
     createdAt: template.createdAt.toISOString(),
     updatedAt: template.updatedAt.toISOString(),
@@ -438,7 +440,7 @@ function serializeTemplate(template: AssemblyTemplateDetail) {
       bolts: area.bolts.map((bolt) => ({
         id: bolt.id,
         areaId: bolt.areaId,
-        templateId: bolt.templateId,
+        templateId: bolt.templateId ?? area.templateId,
         sortOrder: bolt.sortOrder,
         tighteningId: bolt.tighteningId,
         markerNo: bolt.markerNo,

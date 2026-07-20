@@ -2,7 +2,8 @@ import type { TorqueWrenchRejectionReason } from '@raspi-system/shared-types';
 import { Prisma, type AssemblyTemplateBolt } from '@prisma/client';
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
-import { lockAssemblyWorkSession } from '../assembly/assembly-work-session-lock.repository.js';
+import { runLockedAssemblyWorkSessionTransaction } from '../assembly/assembly-transaction.js';
+import { resolveAssemblyTraceabilityMode } from '../assembly/assembly-template.service.js';
 import {
   assemblyWorkSessionDetailInclude,
   type AssemblyWorkSessionDetail
@@ -106,7 +107,7 @@ function candidateFromProfile(
 }
 
 function findCurrentBolt(session: AssemblyWorkSessionDetail): AssemblyTemplateBolt {
-  if (session.template.traceabilityMode !== 'REQUIRED') {
+  if (resolveAssemblyTraceabilityMode(session.template.traceabilityMode) !== 'REQUIRED') {
     throw new ApiError(409, 'この作業は従来方式のテンプレートです', undefined, 'LEGACY_TRACEABILITY_MODE');
   }
   if (!session.currentBoltId) throw new ApiError(409, '現在の締付箇所がありません');
@@ -204,8 +205,7 @@ export class AssemblyTorqueTraceabilityService {
     if (!input.physicalDisplayConfirmed) {
       throw new ApiError(400, '現物の製造番号と設定表示の確認が必要です');
     }
-    return prisma.$transaction(async (tx) => {
-      const session = await lockAssemblyWorkSession(tx, input.sessionId);
+    return runLockedAssemblyWorkSessionTransaction(input.sessionId, async (tx, session) => {
       assertSessionClient(session, input.clientDeviceId);
       const bolt = findCurrentBolt(session);
       if (bolt.id !== input.expectedTemplateBoltId) {
@@ -337,6 +337,13 @@ export class AssemblyTorqueTraceabilityService {
         deviceJudgement: input.deviceJudgement?.slice(0, 80) ?? null
       }
     });
+    await tx.assemblyTorqueAgentEvent.create({
+      data: {
+        sourceClientDeviceId: input.clientDeviceId,
+        sourceEventKey: input.sourceEventKey,
+        torqueRecordId: record.id
+      }
+    });
     return {
       kind: 'rejected',
       torqueRecordId: record.id,
@@ -349,19 +356,19 @@ export class AssemblyTorqueTraceabilityService {
   }
 
   async recordAgent(input: AgentTorqueRecordInput): Promise<{ session: AssemblyWorkSessionDetail; outcome: TraceabilityOutcome }> {
-    const existing = await prisma.assemblyTorqueRecord.findUnique({
+    const existingEvent = await prisma.assemblyTorqueAgentEvent.findUnique({
       where: {
         sourceClientDeviceId_sourceEventKey: {
           sourceClientDeviceId: input.clientDeviceId,
           sourceEventKey: input.sourceEventKey
         }
-      }
+      },
+      include: { torqueRecord: true }
     });
-    if (existing) return this.resultForExisting(input.sessionId, existing);
+    if (existingEvent) return this.resultForExisting(input.sessionId, existingEvent.torqueRecord);
 
     try {
-      const outcome = await prisma.$transaction(async (tx) => {
-        const session = await lockAssemblyWorkSession(tx, input.sessionId);
+      const outcome = await runLockedAssemblyWorkSessionTransaction(input.sessionId, async (tx, session) => {
         if (session.status !== 'IN_PROGRESS') throw new ApiError(409, 'この作業は入力できない状態です');
         assertSessionClient(session, input.clientDeviceId);
         const bolt = findCurrentBolt(session);
@@ -454,6 +461,13 @@ export class AssemblyTorqueTraceabilityService {
             deviceJudgement: input.deviceJudgement?.slice(0, 80) ?? null
           }
         });
+        await tx.assemblyTorqueAgentEvent.create({
+          data: {
+            sourceClientDeviceId: input.clientDeviceId,
+            sourceEventKey: input.sourceEventKey,
+            torqueRecordId: record.id
+          }
+        });
         if (!accepted) {
           return {
             kind: 'recorded_ng',
@@ -486,15 +500,16 @@ export class AssemblyTorqueTraceabilityService {
       return { session, outcome };
     } catch (error) {
       if (isUniqueConstraintError(error)) {
-        const raced = await prisma.assemblyTorqueRecord.findUnique({
+        const racedEvent = await prisma.assemblyTorqueAgentEvent.findUnique({
           where: {
             sourceClientDeviceId_sourceEventKey: {
               sourceClientDeviceId: input.clientDeviceId,
               sourceEventKey: input.sourceEventKey
             }
-          }
+          },
+          include: { torqueRecord: true }
         });
-        if (raced) return this.resultForExisting(input.sessionId, raced);
+        if (racedEvent) return this.resultForExisting(input.sessionId, racedEvent.torqueRecord);
       }
       throw error;
     }
@@ -511,8 +526,7 @@ export class AssemblyTorqueTraceabilityService {
   }): Promise<{ session: AssemblyWorkSessionDetail; outcome: TraceabilityOutcome }> {
     const reason = input.reason.trim();
     if (!reason) throw new ApiError(400, '管理者例外入力の理由が必要です');
-    const outcome = await prisma.$transaction(async (tx) => {
-      const session = await lockAssemblyWorkSession(tx, input.sessionId);
+    const outcome = await runLockedAssemblyWorkSessionTransaction(input.sessionId, async (tx, session) => {
       if (session.status !== 'IN_PROGRESS') throw new ApiError(409, 'この作業は入力できない状態です');
       const bolt = findCurrentBolt(session);
       const confirmation = await tx.assemblyTorqueWrenchConfirmation.findUnique({

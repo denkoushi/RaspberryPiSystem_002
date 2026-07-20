@@ -352,18 +352,21 @@
       {{
         nfc_agent_image_build_needed | bool
         or (repo_changed_files | select('match', '^infrastructure/ansible/(roles/client/(tasks/nfc-agent|templates/.*nfc|handlers)|group_vars/).*') | list | length > 0)
+        or (repo_changed_files | select('match', '^infrastructure/ansible/templates/nfc-agent\.env\.j2$') | list | length > 0)
         or (repo_changed_files | select('match', '^\.env') | list | length > 0)
       }}
     barcode_agent_runtime_recreate_needed: >-
       {{
         barcode_agent_image_build_needed | bool
         or (repo_changed_files | select('match', '^infrastructure/ansible/(roles/client/(tasks/barcode-agent|templates/.*barcode|handlers)|group_vars/).*') | list | length > 0)
+        or (repo_changed_files | select('match', '^infrastructure/ansible/templates/barcode-agent\.env\.j2$') | list | length > 0)
         or (repo_changed_files | select('match', '^\.env') | list | length > 0)
       }}
     torque_agent_runtime_recreate_needed: >-
       {{
         torque_agent_image_build_needed | bool
         or (repo_changed_files | select('match', '^infrastructure/ansible/(roles/client/(tasks/torque-agent|templates/.*torque|handlers)|group_vars/).*') | list | length > 0)
+        or (repo_changed_files | select('match', '^infrastructure/ansible/templates/torque-agent\.env\.j2$') | list | length > 0)
         or (repo_changed_files | select('match', '^\.env') | list | length > 0)
       }}
     server_docker_build_needed: >-

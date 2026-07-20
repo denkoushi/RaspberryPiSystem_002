@@ -15,17 +15,17 @@
     ]
   },
   "summary": {
-    "documentCount": 526,
-    "totalLines": 151908,
-    "totalBytes": 11399648,
-    "withFrontmatter": 212,
-    "withStatus": 70,
-    "sourceOfTruthDeclared": 42,
+    "documentCount": 528,
+    "totalLines": 152569,
+    "totalBytes": 11507050,
+    "withFrontmatter": 214,
+    "withStatus": 72,
+    "sourceOfTruthDeclared": 44,
     "execPlanReferences": 64,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
-    "longLineDocuments": 23,
-    "localLinkCount": 5544,
+    "longLineDocuments": 25,
+    "localLinkCount": 5548,
     "brokenLocalLinkCount": 87,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -5913,8 +5913,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 1973,
-      "byteSize": 338288,
+      "lineCount": 1977,
+      "byteSize": 338820,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -7137,6 +7137,11 @@
         },
         {
           "href": "./guides/deployment.md#linuxpi端末typeを追加する",
+          "targetPath": "docs/guides/deployment.md",
+          "exists": true
+        },
+        {
+          "href": "./guides/deployment.md#実行前確認",
           "targetPath": "docs/guides/deployment.md",
           "exists": true
         },
@@ -10126,6 +10131,11 @@
           "exists": true
         },
         {
+          "href": "./plans/deployment-exhaustive-preflight-execplan.md",
+          "targetPath": "docs/plans/deployment-exhaustive-preflight-execplan.md",
+          "exists": true
+        },
+        {
           "href": "./plans/deployment-foundation-refactor-execplan.md",
           "targetPath": "docs/plans/deployment-foundation-refactor-execplan.md",
           "exists": true
@@ -10548,6 +10558,11 @@
         {
           "href": "./runbooks/assembly-torque-agent.md",
           "targetPath": "docs/runbooks/assembly-torque-agent.md",
+          "exists": true
+        },
+        {
+          "href": "./runbooks/client-agent-addition.md",
+          "targetPath": "docs/runbooks/client-agent-addition.md",
           "exists": true
         },
         {
@@ -11016,95 +11031,95 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 254,
+          "line": 258,
           "length": 1132
         },
         {
-          "line": 270,
+          "line": 274,
           "length": 1242
         },
         {
-          "line": 274,
+          "line": 278,
           "length": 1022
         },
         {
-          "line": 288,
+          "line": 292,
           "length": 1065
         },
         {
-          "line": 336,
+          "line": 340,
           "length": 1165
         },
         {
-          "line": 342,
+          "line": 346,
           "length": 1458
         },
         {
-          "line": 354,
+          "line": 358,
           "length": 1083
         },
         {
-          "line": 368,
+          "line": 372,
           "length": 1398
         },
         {
-          "line": 370,
+          "line": 374,
           "length": 1133
         },
         {
-          "line": 374,
+          "line": 378,
           "length": 1399
         },
         {
-          "line": 376,
+          "line": 380,
           "length": 1008
         },
         {
-          "line": 382,
+          "line": 386,
           "length": 1059
         },
         {
-          "line": 390,
+          "line": 394,
           "length": 1129
         },
         {
-          "line": 394,
+          "line": 398,
           "length": 1135
         },
         {
-          "line": 398,
+          "line": 402,
           "length": 1117
         },
         {
-          "line": 513,
+          "line": 517,
           "length": 1013
         },
         {
-          "line": 699,
+          "line": 703,
           "length": 2038
         },
         {
-          "line": 715,
+          "line": 719,
           "length": 1496
         },
         {
-          "line": 721,
+          "line": 725,
           "length": 1177
         },
         {
-          "line": 1063,
+          "line": 1067,
           "length": 1449
         },
         {
-          "line": 1099,
+          "line": 1103,
           "length": 1136
         },
         {
-          "line": 1101,
+          "line": 1105,
           "length": 1239
         },
         {
-          "line": 1137,
+          "line": 1141,
           "length": 1004
         }
       ],
@@ -16409,8 +16424,8 @@
     },
     {
       "path": "docs/decisions/ADR-20260716-terminal-profile-registry-adapter-boundary.md",
-      "lineCount": 103,
-      "byteSize": 4930,
+      "lineCount": 167,
+      "byteSize": 9011,
       "hasFrontmatter": true,
       "title": "Terminal profile registry and executable adapter boundary",
       "status": "accepted",
@@ -16424,8 +16439,8 @@
     },
     {
       "path": "docs/decisions/ADR-20260717-assembly-torque-wrench-traceability.md",
-      "lineCount": 75,
-      "byteSize": 7770,
+      "lineCount": 77,
+      "byteSize": 9182,
       "hasFrontmatter": false,
       "title": "ADR-20260717: Assembly Torque Wrench Traceability Boundaries",
       "status": null,
@@ -18093,8 +18108,8 @@
     },
     {
       "path": "docs/guides/deployment.md",
-      "lineCount": 152,
-      "byteSize": 8325,
+      "lineCount": 189,
+      "byteSize": 13303,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -18141,7 +18156,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 197,
+      "inboundCount": 198,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -29668,8 +29683,8 @@
     },
     {
       "path": "docs/knowledge-base/infrastructure/KB-291-robodrill01-nfc-scan-not-responding-investigation.md",
-      "lineCount": 174,
-      "byteSize": 8672,
+      "lineCount": 175,
+      "byteSize": 9184,
       "hasFrontmatter": true,
       "title": "KB-291: ロボドリル01（raspi4-robodrill01）NFCスキャンが反応しない調査報告",
       "status": null,
@@ -31283,8 +31298,8 @@
     },
     {
       "path": "docs/plans/assembly-torque-wrench-traceability-execplan.md",
-      "lineCount": 473,
-      "byteSize": 65127,
+      "lineCount": 705,
+      "byteSize": 117611,
       "hasFrontmatter": true,
       "title": "Assembly Torque Wrench Traceability",
       "status": "active",
@@ -31293,7 +31308,16 @@
       "inboundCount": 5,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
-      "longLines": [],
+      "longLines": [
+        {
+          "line": 10,
+          "length": 1434
+        },
+        {
+          "line": 447,
+          "length": 1055
+        }
+      ],
       "referencesExecPlan": false
     },
     {
@@ -31358,9 +31382,24 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/deployment-exhaustive-preflight-execplan.md",
+      "lineCount": 200,
+      "byteSize": 25184,
+      "hasFrontmatter": true,
+      "title": "Prove every deployment route before another production release",
+      "status": "in-progress",
+      "source_of_truth": "docs/plans/deployment-exhaustive-preflight-execplan.md",
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/deployment-foundation-refactor-execplan.md",
-      "lineCount": 865,
-      "byteSize": 144655,
+      "lineCount": 921,
+      "byteSize": 156057,
       "hasFrontmatter": true,
       "title": "Refactor the deployment foundation through eight gated pull requests",
       "status": "in-progress",
@@ -31375,19 +31414,19 @@
           "length": 1226
         },
         {
-          "line": 843,
+          "line": 893,
           "length": 1025
         },
         {
-          "line": 849,
+          "line": 899,
           "length": 1002
         },
         {
-          "line": 855,
+          "line": 905,
           "length": 1197
         },
         {
-          "line": 857,
+          "line": 907,
           "length": 1137
         }
       ],
@@ -31937,7 +31976,7 @@
     {
       "path": "docs/plans/kiosk-assembly-torque-management-mvp.md",
       "lineCount": 427,
-      "byteSize": 39533,
+      "byteSize": 40576,
       "hasFrontmatter": true,
       "title": "Kiosk Assembly Torque Management MVP",
       "status": "active",
@@ -32022,7 +32061,12 @@
       "inboundCount": 3,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
-      "longLines": [],
+      "longLines": [
+        {
+          "line": 135,
+          "length": 1006
+        }
+      ],
       "referencesExecPlan": false
     },
     {
@@ -34564,8 +34608,8 @@
     },
     {
       "path": "docs/runbooks/assembly-torque-agent.md",
-      "lineCount": 231,
-      "byteSize": 14224,
+      "lineCount": 245,
+      "byteSize": 15359,
       "hasFrontmatter": false,
       "title": "組立 torque-agent 運用Runbook",
       "status": null,
@@ -34590,9 +34634,29 @@
           "href": "../plans/kiosk-assembly-torque-management-mvp.md",
           "targetPath": "docs/plans/kiosk-assembly-torque-management-mvp.md",
           "exists": true
+        },
+        {
+          "href": "client-agent-addition.md",
+          "targetPath": "docs/runbooks/client-agent-addition.md",
+          "exists": true
         }
       ],
       "inboundCount": 3,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/runbooks/client-agent-addition.md",
+      "lineCount": 51,
+      "byteSize": 4639,
+      "hasFrontmatter": true,
+      "title": "Client Docker Agent Addition Runbook",
+      "status": "active",
+      "source_of_truth": "docs/runbooks/client-agent-addition.md",
+      "localLinks": [],
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],

@@ -6,6 +6,7 @@ import httpx
 import pytest
 
 from torque_agent.binding import BindingStore
+from torque_agent.api_client import OutboxSender
 from torque_agent.cem3_btla_parser import Cem3BtlaHogpParser
 from torque_agent.config import AgentConfig
 from torque_agent.hid_line_decoder import DecodedHidFrame, HidLineDecoder
@@ -122,14 +123,18 @@ def test_synthetic_fixture_parser_is_explicit_and_complete() -> None:
         registry.create("CEM3-BTLA-unverified")
 
 
-def test_cem3_btla_parser_matches_only_observed_normal_fixtures() -> None:
+def test_cem3_btla_parser_matches_observed_normal_and_rapid_fixtures() -> None:
     parser = Cem3BtlaHogpParser()
-    records = [json.loads(line) for line in (CEM3_FIXTURES / "normal.jsonl").read_text().splitlines()]
+    records = [
+        json.loads(line)
+        for fixture_name in ("normal.jsonl", "rapid_consecutive.jsonl")
+        for line in (CEM3_FIXTURES / fixture_name).read_text().splitlines()
+    ]
 
     events = [parser.parse(record["payloadText"].replace("SERIAL_A", "123456A")) for record in records]
 
-    assert [event.memory_counter for event in events] == ["025", "026", "027"]
-    assert [event.value for event in events] == [4.24, 4.24, 4.36]
+    assert [event.memory_counter for event in events] == ["025", "026", "027", "009", "010", "011", "013", "014"]
+    assert [event.value for event in events] == [4.24, 4.24, 4.36, 4.16, 4.06, 4.1, 4.24, 4.06]
     assert all(event.unit == "nm" and event.device_judgement == "O" for event in events)
     assert events[0].serial_number == "123456A"
     assert events[0].device_recorded_at == "2026-07-18T09:54:12+09:00"
@@ -165,7 +170,7 @@ def test_cem3_btla_parser_rejects_unobserved_time_layout_and_invalid_calendar() 
         parser.parse(observed.replace("26/07/18", "26/02/30"))
 
 
-def test_cem3_btla_parser_definition_keeps_tab_as_data_but_remains_production_gated(tmp_path: Path) -> None:
+def test_cem3_btla_parser_definition_keeps_tab_as_data_and_is_registered_for_production(tmp_path: Path) -> None:
     registry = ParserRegistry()
     registry.register(
         Cem3BtlaHogpParser.PROFILE,
@@ -184,8 +189,10 @@ def test_cem3_btla_parser_definition_keeps_tab_as_data_but_remains_production_ga
             devices=(),
         )
     )
-    with pytest.raises(ValueError, match="No verified parser"):
-        production_registry.create(Cem3BtlaHogpParser.PROFILE)
+    assert isinstance(production_registry.create(Cem3BtlaHogpParser.PROFILE), Cem3BtlaHogpParser)
+    assert production_registry.frame_terminators(Cem3BtlaHogpParser.PROFILE) == frozenset(
+        {"KEY_ENTER", "KEY_KPENTER"}
+    )
 
 
 def test_hid_decoder_handles_partial_and_continuous_lines() -> None:
@@ -269,6 +276,59 @@ def test_config_accepts_multiple_explicit_by_id_devices(monkeypatch: pytest.Monk
     assert config.browser_origins == ("http://127.0.0.1:3000", "https://kiosk.example.test")
 
 
+@pytest.mark.parametrize(("mode", "expected"), [("system", True), (" insecure ", False)])
+def test_config_parses_explicit_tls_verify_mode(monkeypatch: pytest.MonkeyPatch, mode: str, expected: bool) -> None:
+    monkeypatch.setenv("TORQUE_API_BASE_URL", "https://server.example.test")
+    monkeypatch.setenv("TORQUE_CLIENT_KEY", "test-client")
+    monkeypatch.setenv("TORQUE_HID_DEVICES_JSON", "[]")
+    monkeypatch.setenv("TORQUE_TLS_VERIFY_MODE", mode)
+
+    assert AgentConfig.from_env().tls_verify is expected
+
+
+def test_config_rejects_unknown_tls_verify_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TORQUE_API_BASE_URL", "https://server.example.test")
+    monkeypatch.setenv("TORQUE_CLIENT_KEY", "test-client")
+    monkeypatch.setenv("TORQUE_HID_DEVICES_JSON", "[]")
+    monkeypatch.setenv("TORQUE_TLS_VERIFY_MODE", "disabled")
+
+    with pytest.raises(ValueError, match="TORQUE_TLS_VERIFY_MODE"):
+        AgentConfig.from_env()
+
+
+def test_outbox_sender_uses_explicit_tls_verification_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    queue = QueueStore(tmp_path / "events.sqlite3")
+    queue.enqueue("event-1", {"sessionId": "session-1", "payload": {"value": 4.2}})
+    captured: dict[str, object] = {}
+
+    class Response:
+        status_code = 201
+        text = "ok"
+
+    class Client:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+        async def __aenter__(self) -> "Client":
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        async def post(self, url: str, **kwargs: object) -> Response:
+            captured["url"] = url
+            captured.update(kwargs)
+            return Response()
+
+    monkeypatch.setattr("torque_agent.api_client.httpx.AsyncClient", Client)
+
+    delivered = asyncio.run(OutboxSender("https://server.example.test", "client", queue, tls_verify=False).send_once())
+
+    assert delivered is True
+    assert captured["verify"] is False
+    assert queue.count() == 0
+
+
 def test_loopback_api_health_and_disarm_contract(tmp_path: Path) -> None:
     config = AgentConfig(
         api_base_url="http://127.0.0.1:3000",
@@ -309,15 +369,26 @@ def test_loopback_api_health_and_disarm_contract(tmp_path: Path) -> None:
     assert bindings.current() is None
 
 
-def test_config_rejects_general_keyboard_event_path(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/dev/input/event0",
+        "/dev/input/by-id/../event0",
+        "/dev/input/by-id/General-Keyboard-event-kbd",
+    ],
+)
+def test_config_rejects_general_keyboard_event_path(
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+) -> None:
     monkeypatch.setenv("TORQUE_API_BASE_URL", "http://127.0.0.1:3000")
     monkeypatch.setenv("TORQUE_CLIENT_KEY", "test-client")
     monkeypatch.setenv(
         "TORQUE_HID_DEVICES_JSON",
-        '[{"path":"/dev/input/event0","parserProfile":"fixture"}]',
+        json.dumps([{"path": path, "parserProfile": "fixture"}]),
     )
 
-    with pytest.raises(ValueError, match="Only /dev/input/by-id"):
+    with pytest.raises(ValueError, match="Only explicit torque-wrench /dev/input/by-id"):
         AgentConfig.from_env()
 
 

@@ -1,0 +1,5 @@
+{"schemaVersion":1,"payloadText":"009\t04.16\tnm   \tO \tSERIAL_A\t26/07/18\t17'24'58","terminator":"KEY_ENTER","scenario":"rapid_consecutive","sequence":1,"provenance":"observed"}
+{"schemaVersion":1,"payloadText":"010\t04.06\tnm   \tO \tSERIAL_A\t26/07/18\t17'25'01","terminator":"KEY_ENTER","scenario":"rapid_consecutive","sequence":2,"provenance":"observed"}
+{"schemaVersion":1,"payloadText":"011\t04.10\tnm   \tO \tSERIAL_A\t26/07/18\t17'25'04","terminator":"KEY_ENTER","scenario":"rapid_consecutive","sequence":3,"provenance":"observed"}
+{"schemaVersion":1,"payloadText":"013\t04.24\tnm   \tO \tSERIAL_A\t26/07/18\t17'25'09","terminator":"KEY_ENTER","scenario":"rapid_consecutive","sequence":4,"provenance":"observed"}
+{"schemaVersion":1,"payloadText":"014\t04.06\tnm   \tO \tSERIAL_A\t26/07/18\t17'27'36","terminator":"KEY_ENTER","scenario":"rapid_consecutive","sequence":5,"provenance":"observed"}

@@ -65,6 +65,37 @@ class ClassifyDeployImpactTest(unittest.TestCase):
         self.assertFalse(result['server'])
         self.assertEqual(result['components'], ['torque-agent'])
 
+    def test_agent_specific_ansible_assets_do_not_expand_to_all_client_roles(self):
+        cases = {
+            'nfc-agent': [
+                'infrastructure/ansible/roles/client/tasks/nfc-agent.yml',
+                'infrastructure/ansible/roles/client/tasks/nfc-agent-lifecycle.yml',
+                'infrastructure/ansible/templates/nfc-agent.env.j2',
+            ],
+            'barcode-agent': [
+                'infrastructure/ansible/roles/client/tasks/barcode-agent.yml',
+                'infrastructure/ansible/roles/client/tasks/barcode-agent-lifecycle.yml',
+                'infrastructure/ansible/templates/barcode-agent.env.j2',
+            ],
+            'torque-agent': [
+                'infrastructure/ansible/roles/client/tasks/torque-agent.yml',
+                'infrastructure/ansible/roles/client/tasks/torque-agent-lifecycle.yml',
+                'infrastructure/ansible/roles/client/templates/torque-bluetooth-adapter.sh.j2',
+                'infrastructure/ansible/roles/client/templates/torque-bluetooth-adapter@.service.j2',
+                'infrastructure/ansible/roles/client/templates/90-torque-bluetooth-adapter.rules.j2',
+                'infrastructure/ansible/roles/client/templates/99-torque-wrench-hid.rules.j2',
+                'infrastructure/ansible/templates/torque-agent.env.j2',
+            ],
+        }
+        for component, paths in cases.items():
+            with self.subTest(component=component):
+                result = impact.classify(paths)
+                self.assertEqual(result['components'], [component])
+                self.assertEqual(result['affectedProfiles'], ['kiosk'])
+                self.assertTrue(result['kiosk'])
+                self.assertFalse(result['signage'])
+                self.assertFalse(result['server'])
+
     def test_status_agent_is_kiosk_and_signage(self):
         result = impact.classify(['clients/status-agent/status-agent.py'])
         self.assertTrue(result['kiosk'])
@@ -107,6 +138,9 @@ class ClassifyDeployImpactTest(unittest.TestCase):
                 'scripts/deploy/rolling_release/remote_control.py',
                 'scripts/deploy/rolling_release/state.py',
                 'scripts/deploy/terminal-runtime-manifest.py',
+                'scripts/deploy/change-detector.sh',
+                'scripts/deploy/terminal-agent-health-probe.py',
+                'scripts/deploy/validate-candidate-migrations.sh',
             ]
         )
         self.assertFalse(result['server'])
@@ -115,6 +149,24 @@ class ClassifyDeployImpactTest(unittest.TestCase):
         self.assertFalse(result['migration'])
         self.assertEqual(result['components'], ['deploy-control'])
         self.assertEqual(result['affectedProfiles'], [])
+
+    def test_deploy_directory_boundary_preserves_test_and_signage_overrides(self):
+        self.assertEqual(
+            impact.classify(['scripts/deploy/new-control-step.py'])['components'],
+            ['deploy-control'],
+        )
+        self.assertEqual(
+            impact.classify(['scripts/deploy/tests/test_new_control_step.py'])[
+                'components'
+            ],
+            ['neutral'],
+        )
+        self.assertEqual(
+            impact.classify(['scripts/deploy/signage-runtime-proof.py'])[
+                'components'
+            ],
+            ['signage-role'],
+        )
 
     def test_signage_runtime_proof_is_signage_only(self):
         result = impact.classify(['scripts/deploy/signage-runtime-proof.py'])
@@ -137,6 +189,51 @@ class ClassifyDeployImpactTest(unittest.TestCase):
         self.assertFalse(result['signage'])
         self.assertFalse(result['migration'])
         self.assertEqual(result['components'], ['neutral'])
+
+    def test_browser_e2e_and_test_data_are_neutral(self):
+        result = impact.classify(
+            [
+                'e2e/assembly-library-editor-ui.spec.ts',
+                'e2e/smoke/kiosk-smoke.spec.ts',
+                'test-data/items-test.csv',
+            ]
+        )
+        self.assertFalse(result['server'])
+        self.assertFalse(result['kiosk'])
+        self.assertFalse(result['signage'])
+        self.assertFalse(result['migration'])
+        self.assertEqual(result['components'], ['neutral'])
+
+    def test_ci_validation_files_are_neutral(self):
+        result = impact.classify(
+            [
+                'scripts/ci/run-deploy-contracts-local.sh',
+                'scripts/ci/ansible_template_contracts.py',
+                'scripts/ci/tests/test_classify_changes.py',
+            ]
+        )
+        self.assertFalse(result['server'])
+        self.assertFalse(result['kiosk'])
+        self.assertFalse(result['signage'])
+        self.assertFalse(result['migration'])
+        self.assertEqual(result['components'], ['neutral'])
+
+    def test_ci_contract_changes_do_not_expand_torque_asset_scope(self):
+        result = impact.classify(
+            [
+                'docs/guides/deployment.md',
+                'scripts/ci/run-deploy-contracts-local.sh',
+                'scripts/ci/ansible_template_contracts.py',
+                'scripts/deploy/tests/test_ansible_template_contracts.py',
+                'infrastructure/ansible/roles/client/templates/torque-bluetooth-adapter.sh.j2',
+            ]
+        )
+        self.assertFalse(result['server'])
+        self.assertTrue(result['kiosk'])
+        self.assertFalse(result['signage'])
+        self.assertFalse(result['migration'])
+        self.assertEqual(result['components'], ['neutral', 'torque-agent'])
+        self.assertEqual(result['affectedProfiles'], ['kiosk'])
 
     def test_signage_recovery_fix_targets_only_signage(self):
         result = impact.classify(
@@ -179,7 +276,12 @@ class ClassifyDeployImpactTest(unittest.TestCase):
         self.assertEqual(result['affectedProfiles'], ['kiosk', 'signage'])
 
     def test_global_change_targets_all_registered_profiles(self):
-        result = impact.classify(['infrastructure/ansible/inventory.yml'])
+        result = impact.classify(
+            [
+                'infrastructure/ansible/inventory.yml',
+                'infrastructure/ansible/roles/common/tasks/main.yml',
+            ]
+        )
 
         self.assertTrue(result['server'])
         self.assertTrue(result['kiosk'])

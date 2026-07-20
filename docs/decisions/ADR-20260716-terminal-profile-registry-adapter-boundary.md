@@ -9,7 +9,11 @@ related_code:
   - scripts/deploy/terminal-profile-registry.json
   - scripts/deploy/terminal_profile_registry.py
   - scripts/deploy/rolling_release/terminal_adapters.py
+  - scripts/deploy/rolling_release/terminal_preflight.py
+  - scripts/deploy/terminal-runtime-manifest.py
   - scripts/deploy/terminal_profile_contracts.py
+  - scripts/ci/ansible_template_contracts.py
+  - scripts/ci/run-deploy-contracts-local.sh
 related_docs:
   - ../architecture/deployment-modules.md
   - ../guides/deployment.md
@@ -60,6 +64,24 @@ cancel, and the decision to rollback. Human gates are appended per profile;
 the legacy `canaryHold` remains the current/latest compatibility view, and
 `--approve RUN_ID` approves only the current gate.
 
+The adapter also owns one secret-free runtime-manifest contract: exact systemd
+units, Docker services, restart-on-restore units, and Compose identity. Runtime
+capture and aggregate preflight consume that same value. Before a release unit
+can exist, Pi5 reads the exact helper from the immutable candidate Git object
+and streams it to the selected terminal. Its `probe-capture` mode inspects the
+live state through the same parser as capture but creates no manifest directory,
+rollback tag, service transition, checkout, or other mutation. Candidate source
+is transported through bounded standard input rather than process arguments.
+
+Aggregate preflight also streams and executes the exact immutable-candidate
+agent-health helper. Every enabled optional agent must prove its container,
+required supporting socket, and loopback JSON endpoint twice consecutively in a
+bounded three-attempt window. Forward verification and rollback observation use
+that same helper and stability rule. Interrupted recovery preflights every
+sealed runtime manifest before restore or observation, including a manifest
+captured before maintenance started; such a manifest may already own rollback
+tags and the historical optional-agent health authority.
+
 Profiles that fit `generic-systemd` use the shared serial terminal playbook and
 need only registry plus inventory. A genuinely different lifecycle adds one
 adapter (and its repository-owned playbook when needed) plus registry data;
@@ -75,7 +97,39 @@ paths remain successful but fail closed across every registered profile.
 CI reads the registry and validates adapters, inventory membership and canaries,
 selected playbooks, literal `serial: 1`, orchestration guards, rollback
 ownership, and absence of production profile names from core modules. Adding a
-profile does not add a workflow job.
+profile does not add a workflow job. The complete deployment contract command
+list lives in `scripts/ci/run-deploy-contracts-local.sh`; developers and GitHub
+Actions execute that same entry point so a profile or agent contract failure is
+visible before push rather than after hosted CI starts.
+
+That shared entry point parses every repository-owned Ansible `.j2` source,
+including templates that `ansible-playbook --syntax-check` does not instantiate.
+It also rejects unescaped shell array-length tokens whose `${#` prefix collides
+with Jinja's comment delimiter. Release-critical executable templates add a
+representative secret-free render and their native syntax check. A template
+cannot therefore first reveal deterministic source syntax failure while a
+managed terminal is already in maintenance.
+
+Validation-only executables and tests live under `scripts/ci/` and classify as
+`neutral` for runtime rollout. Their presence can strengthen publication gates
+without targeting Pi5 or a terminal. A real template beside that validation
+change retains its own component mapping, so the neutral category never hides
+runtime impact.
+
+Repository-owned deployment orchestration under `scripts/deploy/` is one
+`deploy-control` responsibility boundary. The more specific
+`scripts/deploy/tests/` neutral mapping and signage runtime-proof mapping take
+precedence. New control helpers therefore cannot become an accidental
+fail-closed terminal rollout merely because a second filename allowlist was not
+updated, while genuinely unknown paths outside that closed boundary remain
+fail-closed.
+
+Browser E2E and test-data directories are validation-only neutral boundaries.
+The Ansible `common` role is the inverse: every registered terminal profile
+executes it, so its complete directory is `global`. These directory contracts
+prevent historical verified baselines from reporting known validation or shared
+runtime ownership as `unknown`; they do not weaken fail-closed handling for
+unowned paths.
 
 This generalization does not justify a production rollout. Its first physical
 proof occurs with a real product change through the ordinary canary and approval
@@ -100,4 +154,14 @@ release-bound readiness, cancel, and exact rollback through the unchanged
 coordinator. Separate synthetic profiles cover deterministic order, multiple
 human gates, health-only policy, timeouts, rollback failure, and unknown
 evidence. Production and TalkPlaza inventories and every selected playbook are
-validated statically; only the production fleet state is read for plans.
+validated statically; only the production fleet state is read for plans. The
+shared local/CI runner additionally exercises runtime capture with absent and
+present optional agents, rejects unsupported external Docker features before
+mutation, accepts digest-covered Compose health metadata, and validates a
+candidate source larger than Linux's common single-argument limit. It also
+proves exact candidate-health source transport, bounded consecutive health,
+transient recovery, persistent-instability rejection, and pre-mutation sealed
+manifest preflight during interrupted recovery. All repository-owned Ansible
+templates parse before those tests begin, and the rendered torque Bluetooth
+controller helper passes `bash -n` with its literal shell array-length syntax
+preserved.
