@@ -1,7 +1,7 @@
 ---
 id: deploy-speed-optimization
 title: Shorten rolling releases without weakening terminal safety
-status: in-progress
+status: complete
 scope: Rolling-release telemetry, Ansible transport latency, and terminal evidence latency
 date: 2026-07-20
 source_of_truth: docs/plans/deploy-speed-optimization-execplan.md
@@ -25,8 +25,6 @@ validation:
   - the approved Pi5 and StoneBase performance acceptance run
 open_items:
   - merge or otherwise resolve the parent deployment-foundation PR before this stacked PR
-  - pass hosted checks for the current fleet active-run route preflight
-  - obtain a new explicit StoneBase inventory approval and complete the recovery acceptance run
 supersedes: null
 superseded_by: null
 ---
@@ -73,7 +71,11 @@ An operator can observe the improvement in the existing durable timing fields. A
 - [x] (2026-07-20 12:49Z) The corrected exact plan targeted only StoneBase and excluded Pi5, FJV, and the other four terminals. The subsequent aggregate preflight remained blocked at `pi5.interrupted-run-authority`, because the route probe still recognized only the legacy string active-run schema while fleet state now stores a validated run-summary object.
 - [x] (2026-07-20 12:53Z) Updated the read-only route probe to accept both the legacy active-run ID and the current running-summary schema, and to require the referenced run authority's embedded `runId` to match before declaring interrupted recovery readable. Missing, malformed, mismatched, or unreadable authority remains blocked.
 - [x] (2026-07-20 12:57Z) Passed 39 focused route/planner tests, all 742 deployment Python tests, Python compilation, and the complete repository-owned deploy contract after current-schema route recovery support.
-- [ ] Commit and push the route correction, pass hosted validation, rerun the exact plan and preflight, then present the recovery run for new explicit inventory approval.
+- [x] (2026-07-20 13:08Z) Committed and pushed the current-schema route correction as `7cde783c`; manually dispatched CI `29744348054`, CodeQL `29744350106`, and Secret scan `29744351976`, all of which succeeded on that immutable head.
+- [x] (2026-07-20 13:09Z) Re-ran the exact Pi5 plus StoneBase aggregate preflight as `20260720-130853-e84081`. All three probes and all 24 route stages passed, release submission remained false, and no FJV host was selected or connected.
+- [x] (2026-07-20 13:41Z) After new explicit inventory approval, completed recovery acceptance run `20260720-131727-e6e183`. Canonical recovery first verified StoneBase at previous SHA `63cfa4688a074bed25779f8df597ff2883ac7933` and cleared the retained maintenance state, then the standard forward path completed with exact candidate-SHA ready ACK, verified integrated evidence, cleared maintenance, committed runtime finalization and cleanup, and no rollback. FJV remained outside the limit and received no connection.
+- [x] (2026-07-20 13:41Z) Measured StoneBase forward Ansible at 428,523 ms, 646,146 ms or 60.13 percent below the 1,074,669 ms baseline. Final evidence took 14,098 ms. The whole 23 minute 10 second run included approximately 1 minute 48 seconds of one-time interrupted-run recovery; excluding that recovery, the standard path was approximately 21 minutes 22 seconds, 12 minutes 6 seconds below the 33 minute 28 second baseline while retaining the fixed notice and Pi5 stability windows.
+- [x] (2026-07-20 13:42Z) Confirmed a connection-free same-candidate plan had zero targets and no warnings. Pi5 is verified at candidate SHA; StoneBase is verified at its unchanged role-specific SHA because this candidate contains no kiosk-impacting application change, while its exact release ACK is bound to candidate SHA `7cde783c`.
 
 ## Surprises & Discoveries
 
@@ -106,6 +108,9 @@ An operator can observe the improvement in the existing durable timing fields. A
 
 - Observation: The route preflight's interrupted-run recovery check lagged the authoritative fleet-state schema.
   Evidence: It accepted an `activeRun` string and looked up that run's JSON authority, while fleet-state v2 persists `activeRun` as a running summary object containing `runId`, desired SHA, inventory, and start time. The exact recovery preflight therefore blocked with `pi5.interrupted-run-authority` even though the authority file was present and readable.
+
+- Observation: The exact release ACK SHA and a terminal's role-specific repository SHA are separate authorities for a deploy-control-only release.
+  Evidence: Final run `20260720-131727-e6e183` required and received ready ACK SHA `7cde783cc44f0883516249ffb11aa00c5c6e21e0`. Because impact classification found no kiosk application change, StoneBase's planned, evidenced, and runtime-finalized repository SHA correctly remained `63cfa4688a074bed25779f8df597ff2883ac7933`. The subsequent connection-free plan returned zero targets and no warnings rather than treating that deliberate role-specific SHA as drift.
 
 ## Decision Log
 
@@ -147,7 +152,9 @@ An operator can observe the improvement in the existing durable timing fields. A
 
 ## Outcomes & Retrospective
 
-Phase A demonstrated the principal speed gain: StoneBase forward Ansible fell from 1,074,669 ms to 484,866 ms while notice, Pi5 stability, maintenance, exact ready ACK, durable state, and rollback policy remained intact. The first acceptance is not a safety acceptance: consolidated evidence failed before Git HEAD proof, rollback ran, and maintenance correctly remained visible because rollback evidence could not be promoted. Read-only legacy evidence subsequently proved the restored previous SHA and runtime healthy. The candidate correction now passes the exact one-transport evidence path live, but final recovery acceptance remains intentionally unclaimed until the corrected immutable head passes all checks and a separately approved standard run ends verified with maintenance cleared.
+Phase A completed its production acceptance. StoneBase forward Ansible fell from 1,074,669 ms to 428,523 ms, a 60.13 percent reduction, and consolidated final evidence completed in 14,098 ms rather than the earlier approximately 88 seconds. The standard path was approximately 12 minutes 6 seconds faster end to end after subtracting the one-time interrupted-run recovery from the 23 minute 10 second acceptance run. The sixty-second notice, five-minute Pi5 stability monitor, per-terminal maintenance, exact candidate-SHA ready ACK, durable state order, and manifest-bounded rollback policy were unchanged.
+
+The first acceptance usefully exercised the fail-closed boundary: evidence failed before Git HEAD proof, manifest-bounded rollback ran, and maintenance remained visible because rollback evidence could not be promoted. The corrected bundle then passed live read-only proof, immutable-head hosted validation, exact aggregate preflight, and a separately approved recovery acceptance. Canonical recovery verified the old SHA before clearing retained maintenance; the new run ended success with verified evidence, committed runtime finalization and cleanup, no rollback, and a zero-target follow-up plan. No FJV host was connected or deployed in either acceptance.
 
 ## Context and Orientation
 
@@ -209,6 +216,17 @@ Accepted baseline run:
     terminal-ansible-apply: 1,074,669 ms
     recap: ok=161 changed=8 skipped=128 failed=0 unreachable=0
 
+Accepted Phase A recovery run:
+
+    runId: 20260720-131727-e6e183
+    releaseSha: 7cde783cc44f0883516249ffb11aa00c5c6e21e0
+    wall: 1,389,859 ms (includes one-time interrupted-run recovery)
+    terminal-ansible-apply: 428,523 ms
+    terminal-evidence: 14,098 ms
+    terminal runtime SHA: 63cfa4688a074bed25779f8df597ff2883ac7933 (unchanged role-specific kiosk SHA)
+    exact ready ACK SHA: 7cde783cc44f0883516249ffb11aa00c5c6e21e0
+    final state: success; evidence verified; maintenance cleared; finalization and cleanup committed; rollback absent
+
 The raw and aggregate timing artifacts remain on Pi5 under `/opt/RaspberryPiSystem_002/logs/deploy/release-runs/` with the run ID above. Raw timing data is mode 0600.
 
 ## Interfaces and Dependencies
@@ -217,4 +235,4 @@ The raw and aggregate timing artifacts remain on Pi5 under `/opt/RaspberryPiSyst
 
 No new third-party dependency is introduced. The implementation uses the existing Ansible CLI, inventory, SSH connection plugin, Python interpreter, and passwordless `sudo` contract.
 
-Revision note (2026-07-20 12:53Z): Recorded successful hosted validation for recovery planning, the exact StoneBase-only plan, and the current-schema mismatch found by aggregate preflight. Added strict current/legacy active-run authority recognition while keeping unreadable or mismatched recovery blocked.
+Revision note (2026-07-20 13:42Z): Recorded immutable-head hosted validation, the passing exact preflight, the separately approved recovery acceptance, the final safety evidence, and the 60.13 percent terminal Ansible reduction. Marked Phase A complete; only the stacked parent PR dependency remains open.
