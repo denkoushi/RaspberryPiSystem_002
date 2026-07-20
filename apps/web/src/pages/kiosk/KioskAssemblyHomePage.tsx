@@ -19,6 +19,7 @@ import {
   kioskAssemblyLibraryPath,
   kioskAssemblyProcedureOrderSettingsPath,
   kioskAssemblyRecordApprovalPath,
+  kioskAssemblyTraceabilityPath,
   kioskAssemblyWorkSessionPath,
   normalizeAssemblyUpperIdentifier,
   readAssemblyApiErrorMessage,
@@ -36,7 +37,7 @@ function normalizeIdentifier(value: string): string {
 }
 
 function normalizeSerialIdentifier(value: string): string {
-  return toHalfWidthAscii(value).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 120);
+  return normalizeIdentifier(value);
 }
 
 function normalizeManualLotQtyDraft(value: string): string {
@@ -292,11 +293,11 @@ export function KioskAssemblyHomePage() {
       return;
     }
     if (lotSerialNos.length >= expectedLotQuantity) {
-      setMessage('ロット数を超えるシリアルNo.は登録できません。');
+      setMessage('ロット数を超える作業用IDは登録できません。');
       return;
     }
     if (lotSerialNos.includes(next)) {
-      setMessage('同じシリアルNo.は登録できません。');
+      setMessage('同じ作業用IDは登録できません。');
       return;
     }
     setLotSerialNos((current) => [...current, next]);
@@ -325,7 +326,7 @@ export function KioskAssemblyHomePage() {
         templateId: selectedCandidate.activeTemplate.id,
         productNo: selectedCandidate.fseiban,
         expectedQuantity: expectedLotQuantity,
-        serialNos: lotSerialNos,
+        workIds: lotSerialNos,
         operatorEmployeeId,
         operatorNameSnapshot: operatorNameSnapshot.trim(),
         targetUnit: selectedCandidate.machineName,
@@ -333,7 +334,7 @@ export function KioskAssemblyHomePage() {
       });
       setLotSerialNos([]);
       setSerialDraft('');
-      setMessage('ロットを登録しました。登録済みロットからシリアルごとに開始してください。');
+      setMessage('ロットを登録しました。登録済みロットから作業用IDごとに開始してください。');
       await reloadLots();
     } catch (e: unknown) {
       setMessage(readAssemblyApiErrorMessage(e, 'ロット登録に失敗しました。'));
@@ -349,7 +350,7 @@ export function KioskAssemblyHomePage() {
       const session = await startAssemblyLotSerial(lotId, lotSerialId);
       navigate(kioskAssemblyWorkSessionPath(session.id));
     } catch (e: unknown) {
-      setMessage(readAssemblyApiErrorMessage(e, 'シリアルの組立開始に失敗しました。'));
+      setMessage(readAssemblyApiErrorMessage(e, '作業用IDの組立開始に失敗しました。'));
     } finally {
       setBusySerialId(null);
     }
@@ -396,6 +397,12 @@ export function KioskAssemblyHomePage() {
             className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1.02rem]')}
           >
             記録確認
+          </Link>
+          <Link
+            to={kioskAssemblyTraceabilityPath()}
+            className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1.02rem]')}
+          >
+            製品構成・正式ID
           </Link>
         </nav>
       </div>

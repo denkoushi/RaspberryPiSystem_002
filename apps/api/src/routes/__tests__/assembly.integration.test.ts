@@ -134,7 +134,9 @@ async function cleanAssemblyTables() {
   await prisma.assemblyWorkSession.deleteMany({});
   await prisma.assemblyLotSerial.deleteMany({});
   await prisma.assemblyLot.deleteMany({});
-  await prisma.assemblySerialRegistry.deleteMany({});
+  await prisma.assemblyFormalIdentifierAssignment.deleteMany({});
+  await prisma.assemblyWorkUnitComposition.deleteMany({});
+  await prisma.assemblyWorkUnit.deleteMany({});
   await prisma.assemblyTemplateBolt.deleteMany({});
   await prisma.assemblyTemplateArea.deleteMany({});
   await prisma.assemblyTemplate.deleteMany({});
@@ -2260,6 +2262,165 @@ describe('assembly torque management API', () => {
         headers: { 'x-client-key': client.apiKey }
       });
       expect(complete.statusCode).toBe(200);
+    });
+
+    it('links completed work IDs, preserves correction history, and reserves formal IDs', async () => {
+      const client = await createTestClientDevice();
+      const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
+      const publishedDoc = await uploadPublishedProcedureDocument(app, headers, '構成・正式ID手順');
+      const templateRes = await app.inject({
+        method: 'POST',
+        url: '/api/assembly/templates',
+        headers,
+        payload: buildTemplatePayload(publishedDoc.id, { modelCode: 'TRACEABILITY', procedurePattern: '構成' })
+      });
+      expect(templateRes.statusCode).toBe(200);
+      const templateId = templateRes.json().template.id as string;
+
+      const workIdLot = await app.inject({
+        method: 'POST',
+        url: '/api/assembly/lots',
+        headers,
+        payload: {
+          templateId,
+          productNo: 'P-WORK-ID-LOT',
+          expectedQuantity: 1,
+          workIds: ['work-id-001'],
+          operatorNameSnapshot: '構成テスト',
+          targetUnit: '構成テスト機',
+          torqueWrenchId: 'CEM20N3X10D-BTLA'
+        }
+      });
+      expect(workIdLot.statusCode).toBe(200);
+      expect(workIdLot.json().lot.serials[0]).toMatchObject({ workId: 'WORK-ID-001', serialNo: 'WORK-ID-001' });
+
+      const seedWorkUnit = async (workId: string, status: 'COMPLETED' | 'IN_PROGRESS' = 'COMPLETED') => {
+        const workUnit = await prisma.assemblyWorkUnit.create({ data: { workId } });
+        await prisma.assemblyWorkSession.create({
+          data: {
+            templateId,
+            workUnitId: workUnit.id,
+            productNo: `P-${workId}`,
+            workId,
+            nameplateNo: `NAME-${workId}`,
+            status,
+            operatorNameSnapshot: '構成テスト',
+            targetUnit: '構成テスト機',
+            torqueWrenchId: 'CEM20N3X10D-BTLA',
+            completedAt: status === 'COMPLETED' ? new Date() : null
+          }
+        });
+        return workUnit;
+      };
+
+      await seedWorkUnit('FINAL-001');
+      await seedWorkUnit('FINAL-002');
+      await seedWorkUnit('SUB-001');
+      await seedWorkUnit('SUB-002');
+      await seedWorkUnit('SUB-003');
+      await seedWorkUnit('SUB-WIP', 'IN_PROGRESS');
+
+      const missingPassword = await app.inject({
+        method: 'POST',
+        url: '/api/assembly/traceability/links',
+        headers,
+        payload: { parentWorkId: 'FINAL-001', childWorkId: 'SUB-001' }
+      });
+      expect(missingPassword.statusCode).toBe(403);
+
+      const link = async (parentWorkId: string, childWorkId: string) => app.inject({
+        method: 'POST',
+        url: '/api/assembly/traceability/links',
+        headers,
+        payload: { parentWorkId, childWorkId, accessPassword: '2520' }
+      });
+      const firstLink = await link('FINAL-001', 'SUB-001');
+      expect(firstLink.statusCode).toBe(200);
+      const secondLink = await link('SUB-001', 'SUB-002');
+      expect(secondLink.statusCode).toBe(200);
+      expect((await link('FINAL-002', 'SUB-001')).statusCode).toBe(409);
+      expect((await link('FINAL-001', 'SUB-WIP')).statusCode).toBe(409);
+      expect((await link('SUB-002', 'FINAL-001')).statusCode).toBe(409);
+
+      const changeSource = await link('FINAL-001', 'SUB-003');
+      expect(changeSource.statusCode).toBe(200);
+      const reassign = await app.inject({
+        method: 'POST',
+        url: `/api/assembly/traceability/links/${changeSource.json().link.id as string}/reassign`,
+        headers,
+        payload: { parentWorkId: 'FINAL-002', reason: '完成品を変更', accessPassword: '2520' }
+      });
+      expect(reassign.statusCode).toBe(200);
+      const unlink = await app.inject({
+        method: 'POST',
+        url: `/api/assembly/traceability/links/${reassign.json().link.id as string}/unlink`,
+        headers,
+        payload: { reason: '構成を取り消し', accessPassword: '2520' }
+      });
+      expect(unlink.statusCode).toBe(200);
+      const subThree = await prisma.assemblyWorkUnit.findUniqueOrThrow({ where: { workId: 'SUB-003' } });
+      expect(await prisma.assemblyWorkUnitComposition.count({ where: { childWorkUnitId: subThree.id, unlinkedAt: { not: null } } })).toBe(2);
+
+      const resolveBeforeFormal = await app.inject({
+        method: 'POST',
+        url: '/api/assembly/traceability/work-units/resolve',
+        headers,
+        payload: { workId: 'FINAL-001' }
+      });
+      expect(resolveBeforeFormal.statusCode).toBe(200);
+      expect(resolveBeforeFormal.json().genealogy[0].children[0].workUnit.workId).toBe('SUB-001');
+
+      const childFormal = await app.inject({
+        method: 'POST',
+        url: '/api/assembly/traceability/formal-identifiers',
+        headers,
+        payload: { workId: 'SUB-001', formalId: 'FORMAL-CHILD', accessPassword: '2520' }
+      });
+      expect(childFormal.statusCode).toBe(409);
+
+      const initialFormal = await app.inject({
+        method: 'POST',
+        url: '/api/assembly/traceability/formal-identifiers',
+        headers,
+        payload: { workId: 'FINAL-001', formalId: 'FORMAL-001', accessPassword: '2520' }
+      });
+      expect(initialFormal.statusCode).toBe(200);
+      const formalAssignmentId = initialFormal.json().formalIdentifier.id as string;
+
+      const correction = await app.inject({
+        method: 'POST',
+        url: `/api/assembly/traceability/formal-identifiers/${formalAssignmentId}/correct`,
+        headers,
+        payload: { formalId: 'FORMAL-002', reason: '銘板の記載誤り', accessPassword: '2520' }
+      });
+      expect(correction.statusCode).toBe(200);
+      expect((await app.inject({
+        method: 'POST',
+        url: '/api/assembly/traceability/formal-identifiers',
+        headers,
+        payload: { workId: 'FINAL-002', formalId: 'FORMAL-001', accessPassword: '2520' }
+      })).statusCode).toBe(409);
+
+      const resolveAfterFormal = await app.inject({
+        method: 'POST',
+        url: '/api/assembly/traceability/work-units/resolve',
+        headers,
+        payload: { workId: 'FINAL-001' }
+      });
+      expect(resolveAfterFormal.statusCode).toBe(200);
+      expect(resolveAfterFormal.json().root.formalIdentifier.formalId).toBe('FORMAL-002');
+      expect(resolveAfterFormal.json().formalIdentifierHistory).toHaveLength(2);
+
+      const exportRes = await app.inject({
+        method: 'GET',
+        url: `/api/assembly/work-sessions/${(await prisma.assemblyWorkSession.findFirstOrThrow({ where: { workId: 'FINAL-001' } })).id}/export.xlsx`,
+        headers: { 'x-client-key': client.apiKey }
+      });
+      expect(exportRes.statusCode).toBe(200);
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(exportRes.rawPayload);
+      expect(workbook.getWorksheet('構成・正式ID履歴')).toBeDefined();
+      expect(workbook.getWorksheet('概要')?.getColumn(1).values).toContain('正式ID');
     });
   });
 });
