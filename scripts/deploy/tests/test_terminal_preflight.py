@@ -165,6 +165,32 @@ class TerminalPreflightTest(unittest.TestCase):
         )
         terminal_preflight.parse_spec(json.dumps(contracts[0]))
 
+    def test_contract_builder_resolves_indirect_inventory_address_alias(self):
+        inventory = {
+            "_meta": {
+                "hostvars": {
+                    "kiosk-a": {
+                        "ansible_host": "{{ kiosk_ip }}",
+                        "ansible_user": "kiosk-a",
+                        "kiosk_ip": "{{ current_network.kiosk_a_ip | default(local_network.kiosk_a_ip) }}",
+                        "network_mode": "tailscale",
+                        "tailscale_network": {"kiosk_a_ip": "100.64.0.10"},
+                        "local_network": {"kiosk_a_ip": "192.168.10.10"},
+                        "tailscale_enabled": True,
+                        "nfc_agent_client_id": "kiosk-a-client",
+                        "manage_kiosk_browser": True,
+                        "kiosk_browser_engine": "firefox",
+                    }
+                }
+            }
+        }
+
+        contracts = build_target_contracts(
+            inventory, [{"host": "kiosk-a", "role": "kiosk"}]
+        )
+
+        self.assertEqual(contracts[0]["address"], "100.64.0.10")
+
     def test_candidate_runtime_helper_source_is_read_from_exact_git_blob(self):
         observed: list[list[str]] = []
 
@@ -585,6 +611,41 @@ print("TERMINAL_PREFLIGHT_RESULT:" + encoded)
         self.assertIn("unit.pcscd.socket.active", output)
         self.assertIn("repo.dirty", output)
         self.assertIn("3 issue(s) across 2 terminal(s)", output)
+
+    def test_orchestrator_reports_a_sanitized_transport_excerpt_when_marker_is_missing(self):
+        def run_command(_argv, *, timeout, input_text=None):
+            self.assertEqual(timeout, 60)
+            self.assertIsNotNone(input_text)
+            return subprocess.CompletedProcess([], 255, "", "ssh: connect to host timed out\n")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            lock = Path(temporary, "logs", "deploy", "fleet-release-state.lock")
+            lock.parent.mkdir(parents=True)
+            lock.write_bytes(b"")
+            spec = {
+                "version": 1,
+                "mode": "orchestrator",
+                "project": str(Path(temporary).resolve()),
+                "runId": RUN_ID,
+                "sha": SHA,
+                "expectedServerClientId": "raspberrypi5-server",
+                "targets": [target("kiosk-a")],
+            }
+            stderr = io.StringIO()
+            with patch("sys.stderr", stderr):
+                outcome = terminal_preflight.execute_orchestrator(
+                    spec,
+                    run_command=run_command,
+                    candidate_run_command=candidate_success,
+                    server_client_id_reader=lambda: "raspberrypi5-server",
+                    source="TRUSTED_SOURCE",
+                )
+
+        self.assertEqual(outcome, terminal_preflight.EX_CONFIG)
+        self.assertIn(
+            "terminal preflight result marker is missing: ssh: connect to host timed out",
+            stderr.getvalue(),
+        )
 
     def test_candidate_artifacts_and_terminal_issues_are_reported_together(self):
         selected = {

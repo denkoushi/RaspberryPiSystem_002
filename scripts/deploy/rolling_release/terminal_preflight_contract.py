@@ -17,6 +17,7 @@ from .adapter_registry import adapter_for_profile
 
 _HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$")
 _USER_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
+_VARIABLE_TEMPLATE_RE = re.compile(r"^\s*{{\s*([A-Za-z_][A-Za-z0-9_]*)\s*}}\s*$")
 _UNIT_RE = re.compile(
     r"^[A-Za-z0-9][A-Za-z0-9_.@:-]{0,126}\.(?:service|timer|socket|path|target|mount)$"
 )
@@ -66,6 +67,17 @@ def _safe_text(value: Any, *, name: str, default: str, maximum: int = 512) -> st
 
 def _resolve_address(values: Mapping[str, Any], host: str) -> str:
     raw = values.get("ansible_host")
+    seen_variables: set[str] = set()
+    while isinstance(raw, str):
+        variable_match = _VARIABLE_TEMPLATE_RE.fullmatch(raw)
+        if variable_match is None:
+            break
+        variable_name = variable_match.group(1)
+        if variable_name in seen_variables:
+            break
+        seen_variables.add(variable_name)
+        raw = values.get(variable_name)
+
     if isinstance(raw, str) and "{{" not in raw:
         candidate = raw
     else:

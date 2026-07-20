@@ -1343,6 +1343,15 @@ def _decode_marker(output: str) -> dict[str, Any]:
     return results[0]
 
 
+def _transport_excerpt(completed: Any) -> str:
+    raw_output = f"{getattr(completed, 'stdout', '')}\n{getattr(completed, 'stderr', '')}"
+    for raw in reversed(raw_output.splitlines()):
+        excerpt = "".join(character for character in raw.strip() if character.isprintable())
+        if excerpt:
+            return excerpt[:256]
+    return ""
+
+
 def _source_text() -> str:
     embedded = globals().get("EMBEDDED_TERMINAL_PREFLIGHT_SOURCE")
     if isinstance(embedded, str) and embedded.strip():
@@ -1525,12 +1534,18 @@ def execute_orchestrator(
             try:
                 result = _decode_marker(output)
             except ValueError as error:
+                excerpt = _transport_excerpt(completed)
                 result = {
                     "version": 1,
                     "host": target["host"],
                     "profile": target["profile"],
                     "ready": False,
-                    "issues": [{"code": "transport.result", "message": str(error)}],
+                    "issues": [
+                        {
+                            "code": "transport.result",
+                            "message": f"{error}: {excerpt}" if excerpt else str(error),
+                        }
+                    ],
                 }
             results.append(result)
 
