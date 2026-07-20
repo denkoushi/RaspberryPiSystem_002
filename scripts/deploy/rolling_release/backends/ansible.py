@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 from ..adapter_registry import adapter_for_profile
+from .. import telemetry
 
 if TYPE_CHECKING:
     from ..terminal_adapters import TerminalRuntimeManifestContract
@@ -68,6 +69,32 @@ _READ_ONLY_ENVIRONMENT_REMOVALS = (
     "ANSIBLE_VAULT_ID_MATCH",
     "ANSIBLE_VAULT_PASSWORD_FILE",
 )
+
+
+def _release_timing_environment(
+    environment: dict[str, str],
+    *,
+    runtime: "Runtime",
+    run_id: str,
+    host: str,
+    scope: str,
+) -> None:
+    """Enable a notification callback only for an orchestrated release run."""
+
+    environment.update(telemetry.environment(Path(runtime.PROJECT), run_id, host, scope))
+    plugin_directory = str(Path(runtime.ANSIBLE_DIRECTORY) / "callback_plugins")
+    existing_plugins = environment.get("ANSIBLE_CALLBACK_PLUGINS", "")
+    environment["ANSIBLE_CALLBACK_PLUGINS"] = os.pathsep.join(
+        item for item in (existing_plugins, plugin_directory) if item
+    )
+    enabled = [
+        item
+        for item in environment.get("ANSIBLE_CALLBACKS_ENABLED", "").split(",")
+        if item
+    ]
+    if "rolling_release_timing" not in enabled:
+        enabled.append("rolling_release_timing")
+    environment["ANSIBLE_CALLBACKS_ENABLED"] = ",".join(enabled)
 
 _TERMINAL_REPOSITORY = "/opt/RaspberryPiSystem_002"
 _ROLLBACK_MANIFEST_ROOT = "/var/lib/raspi-release/rollback-manifests"
@@ -1553,6 +1580,13 @@ def converge_server_config(
             "RELEASE_ORCHESTRATED": "1",
         }
     )
+    _release_timing_environment(
+        environment,
+        runtime=runtime,
+        run_id=run_id,
+        host=host,
+        scope="server-config",
+    )
     extra = (
         "release_orchestrated=true release_rollback=false "
         "server_release_mode=host-config-only"
@@ -1590,6 +1624,13 @@ def playbook(
     environment = os.environ.copy()
     environment.update(
         {"ANSIBLE_REPO_VERSION": revision, "RUN_ID": run_id, "RELEASE_ORCHESTRATED": "1"}
+    )
+    _release_timing_environment(
+        environment,
+        runtime=runtime,
+        run_id=run_id,
+        host=host,
+        scope="terminal-apply",
     )
     extra = (
         "release_orchestrated=true release_rollback=false "

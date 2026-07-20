@@ -52,6 +52,7 @@ from rolling_release.lock import (
 )
 from rolling_release.models import unit_name_for
 from rolling_release.state import RunStateStore, TERMINAL_STATES
+from rolling_release import telemetry as release_telemetry
 
 
 PROJECT = Path(__file__).resolve().parents[2]
@@ -353,6 +354,10 @@ class ReleaseState:
 
 def status_file(run_id: str) -> Path:
     return RUN_DIRECTORY / f"{run_id}.json"
+
+
+def collect_ansible_timing(run_id: str) -> dict[str, Any]:
+    return release_telemetry.collect(PROJECT, run_id)
 
 
 def read_release_run(run_id: str) -> dict[str, Any] | None:

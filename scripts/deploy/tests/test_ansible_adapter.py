@@ -1150,6 +1150,13 @@ class TerminalReleasePlaybookTest(unittest.TestCase):
             command,
         )
         self.assertEqual(options["env"]["ANSIBLE_REPO_VERSION"], "a" * 40)
+        self.assertEqual(options["env"]["ANSIBLE_CALLBACKS_ENABLED"], "rolling_release_timing")
+        self.assertEqual(
+            options["env"]["ROLLING_RELEASE_TIMING_SCOPE"], "terminal-apply"
+        )
+        self.assertEqual(
+            options["env"]["ROLLING_RELEASE_TIMING_HOST"], "kiosk-a"
+        )
 
     def test_terminal_playbook_rejects_legacy_rollback_mode_without_execution(self):
         runtime = Runtime("")
