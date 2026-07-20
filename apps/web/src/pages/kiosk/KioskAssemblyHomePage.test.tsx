@@ -211,11 +211,11 @@ describe('KioskAssemblyHomePage', () => {
       '/kiosk/assembly/procedure-order-settings?machineName=MH-AX'
     );
     await waitFor(() => expect(screen.getByText('入力済み 0/2')).toBeInTheDocument());
-    fireEvent.change(screen.getByLabelText('シリアルNo.追加'), { target: { value: 's001' } });
-    await waitFor(() => expect(screen.getByLabelText('シリアルNo.追加')).toHaveValue('S001'));
+    fireEvent.change(screen.getByLabelText('作業用ID追加'), { target: { value: 's001' } });
+    await waitFor(() => expect(screen.getByLabelText('作業用ID追加')).toHaveValue('S001'));
     fireEvent.click(screen.getByRole('button', { name: '追加' }));
-    fireEvent.change(screen.getByLabelText('シリアルNo.追加'), { target: { value: 's002' } });
-    await waitFor(() => expect(screen.getByLabelText('シリアルNo.追加')).toHaveValue('S002'));
+    fireEvent.change(screen.getByLabelText('作業用ID追加'), { target: { value: 's002' } });
+    await waitFor(() => expect(screen.getByLabelText('作業用ID追加')).toHaveValue('S002'));
     fireEvent.click(screen.getByRole('button', { name: '追加' }));
     fireEvent.change(screen.getByLabelText('作業者'), { target: { value: '佐藤' } });
 
@@ -226,14 +226,14 @@ describe('KioskAssemblyHomePage', () => {
         templateId: 'template-1',
         productNo: 'ASMTEST-A1',
         expectedQuantity: 2,
-        serialNos: ['S001', 'S002'],
+        workIds: ['S001', 'S002'],
         operatorEmployeeId: null,
         operatorNameSnapshot: '佐藤',
         targetUnit: 'MH-AX',
         torqueWrenchId: 'CEM20N3X10D-BTLA'
       })
     );
-    expect(await screen.findByText('ロットを登録しました。登録済みロットからシリアルごとに開始してください。')).toBeInTheDocument();
+    expect(await screen.findByText('ロットを登録しました。登録済みロットから作業用IDごとに開始してください。')).toBeInTheDocument();
   });
 
   it('starts a not-started serial from a registered lot', async () => {
@@ -275,9 +275,9 @@ describe('KioskAssemblyHomePage', () => {
     renderPage();
 
     const fseibanInput = screen.getByLabelText('製番');
-    const serialInput = screen.getByLabelText('シリアルNo.追加');
+    const serialInput = screen.getByLabelText('作業用ID追加');
     const fseibanPad = within(screen.getByRole('group', { name: '製番入力パッド' }));
-    const serialPad = within(screen.getByRole('group', { name: 'シリアル入力パッド' }));
+    const serialPad = within(screen.getByRole('group', { name: '作業用ID入力パッド' }));
 
     fireEvent.click(fseibanPad.getByRole('button', { name: 'A' }));
     fireEvent.click(fseibanPad.getByRole('button', { name: '1' }));
@@ -404,11 +404,11 @@ describe('KioskAssemblyHomePage', () => {
     await waitFor(() => expect(screen.getByText('入力済み 0/2')).toBeInTheDocument());
     expect(screen.getByText('2（手入力）')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('シリアルNo.追加'), { target: { value: 's001' } });
-    await waitFor(() => expect(screen.getByLabelText('シリアルNo.追加')).toHaveValue('S001'));
+    fireEvent.change(screen.getByLabelText('作業用ID追加'), { target: { value: 's001' } });
+    await waitFor(() => expect(screen.getByLabelText('作業用ID追加')).toHaveValue('S001'));
     fireEvent.click(screen.getByRole('button', { name: '追加' }));
-    fireEvent.change(screen.getByLabelText('シリアルNo.追加'), { target: { value: 's002' } });
-    await waitFor(() => expect(screen.getByLabelText('シリアルNo.追加')).toHaveValue('S002'));
+    fireEvent.change(screen.getByLabelText('作業用ID追加'), { target: { value: 's002' } });
+    await waitFor(() => expect(screen.getByLabelText('作業用ID追加')).toHaveValue('S002'));
     fireEvent.click(screen.getByRole('button', { name: '追加' }));
     fireEvent.change(screen.getByLabelText('作業者'), { target: { value: '佐藤' } });
 
@@ -419,7 +419,7 @@ describe('KioskAssemblyHomePage', () => {
         templateId: 'template-1',
         productNo: 'ASMTEST-A1',
         expectedQuantity: 2,
-        serialNos: ['S001', 'S002'],
+        workIds: ['S001', 'S002'],
         operatorEmployeeId: null,
         operatorNameSnapshot: '佐藤',
         targetUnit: 'MH-AX',
