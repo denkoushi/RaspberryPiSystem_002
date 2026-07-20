@@ -20,11 +20,12 @@ related_docs:
   - ../guides/deployment.md
 validation:
   - isolated Python and deployment safety contract tests
+  - manually dispatched hosted CI, Secret scan, and CodeQL on the stacked PR head
   - one user-approved Pi5 and StoneBase timing run
   - a future separately approved Pi5 and StoneBase performance acceptance run
 open_items:
-  - review, commit, and push the locally validated Phase A change
-  - obtain hosted CI and production performance acceptance for Phase A
+  - merge or otherwise resolve the parent deployment-foundation PR before this stacked PR
+  - obtain separate approval and production performance acceptance for Phase A
 supersedes: null
 superseded_by: null
 ---
@@ -51,7 +52,9 @@ An operator can observe the improvement in the existing durable timing fields. A
 - [x] (2026-07-20 09:45Z) After explicit approval, designed Phase A2 and A3 as transport consolidation only: Generic terminal final evidence uses one candidate-owned zip application, and file/runtime manifest capture uses one candidate-owned zip application while retaining independent authorities.
 - [x] (2026-07-20 10:02Z) Added strict marker parsing, candidate-artifact preflight ownership, non-root SSH identity proof followed by one passwordless-sudo re-exec, and fault injection for partial success, response loss, marker disagreement, sealed rollback agent sets, and secret-bearing remote failures.
 - [x] (2026-07-20 10:11Z) Passed 97 focused tests, then 732 deployment Python tests, then the complete repository-owned deploy contract including deploy safety, 24-stage route coverage, Ansible syntax, and isolated PostgreSQL integration.
-- [ ] Commit and push the Phase A change only after the worktree and validation evidence are reviewed.
+- [x] (2026-07-20 10:22Z) Committed and pushed Phase A as `d3b4b850` and opened stacked draft PR #1045 against the deployment-foundation branch so a main-targeted PR would not mix its unrelated parent diff.
+- [x] (2026-07-20 10:29Z) Fixed one CI-only unit-test isolation defect as `9c7f2adf`: canary tests now mock the newly added Ansible preflight at their shared external-boundary fixture instead of relying on the local no-match behavior of Ansible.
+- [x] (2026-07-20 10:38Z) Manually dispatched hosted CI, Secret scan, and CodeQL because the stacked PR trigger accepts only `base=main`; all three succeeded on `9c7f2adf`, including the complete 732-test deploy contract.
 - [ ] Obtain separate approval before a production acceptance run; never infer that local implementation approval includes another device deployment.
 
 ## Surprises & Discoveries
@@ -98,7 +101,7 @@ An operator can observe the improvement in the existing durable timing fields. A
 
 ## Outcomes & Retrospective
 
-Phase A local implementation now has narrow transport boundaries and executable failure contracts. If the optimized Ansible plus `become` path fails, the run records the target as unknown and stops before baseline, manifest, notice, maintenance, playbook, or rollback. Manifest and evidence bundles accept only canonical, agreeing, exact-schema results and hide untrusted remote output. The complete local deploy contract passes with 732 Python tests. Production performance and device acceptance remain intentionally unclaimed until hosted checks and a separately approved StoneBase run complete.
+Phase A implementation now has narrow transport boundaries and executable failure contracts. If the optimized Ansible plus `become` path fails, the run records the target as unknown and stops before baseline, manifest, notice, maintenance, playbook, or rollback. Manifest and evidence bundles accept only canonical, agreeing, exact-schema results and hide untrusted remote output. The complete local and hosted deploy contracts pass with 732 Python tests, and hosted Secret scan and CodeQL also pass. Production performance and device acceptance remain intentionally unclaimed until a separately approved StoneBase run completes.
 
 ## Context and Orientation
 
@@ -168,4 +171,4 @@ The raw and aggregate timing artifacts remain on Pi5 under `/opt/RaspberryPiSyst
 
 No new third-party dependency is introduced. The implementation uses the existing Ansible CLI, inventory, SSH connection plugin, Python interpreter, and passwordless `sudo` contract.
 
-Revision note (2026-07-20 10:11Z): Extended the approved A1 pipelining plan with separately approved A2 evidence and A3 manifest transport consolidation, their failure semantics, and the completed 732-test aggregate validation. Hosted and production performance gates remain open.
+Revision note (2026-07-20 10:38Z): Recorded stacked draft PR #1045, the CI-only test isolation correction, and successful hosted CI, Secret scan, and CodeQL. Only parent-stack resolution and separately approved production performance acceptance remain open.
