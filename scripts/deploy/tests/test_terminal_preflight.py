@@ -165,6 +165,32 @@ class TerminalPreflightTest(unittest.TestCase):
         )
         terminal_preflight.parse_spec(json.dumps(contracts[0]))
 
+    def test_contract_builder_resolves_indirect_inventory_address_alias(self):
+        inventory = {
+            "_meta": {
+                "hostvars": {
+                    "kiosk-a": {
+                        "ansible_host": "{{ kiosk_ip }}",
+                        "ansible_user": "kiosk-a",
+                        "kiosk_ip": "{{ current_network.kiosk_a_ip | default(local_network.kiosk_a_ip) }}",
+                        "network_mode": "tailscale",
+                        "tailscale_network": {"kiosk_a_ip": "100.64.0.10"},
+                        "local_network": {"kiosk_a_ip": "192.168.10.10"},
+                        "tailscale_enabled": True,
+                        "nfc_agent_client_id": "kiosk-a-client",
+                        "manage_kiosk_browser": True,
+                        "kiosk_browser_engine": "firefox",
+                    }
+                }
+            }
+        }
+
+        contracts = build_target_contracts(
+            inventory, [{"host": "kiosk-a", "role": "kiosk"}]
+        )
+
+        self.assertEqual(contracts[0]["address"], "100.64.0.10")
+
     def test_candidate_runtime_helper_source_is_read_from_exact_git_blob(self):
         observed: list[list[str]] = []
 
