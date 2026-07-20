@@ -14,11 +14,12 @@
       - torque_agent_hid_devices | length > 0
       - torque_agent_hid_devices | map(attribute='path') | select('match', '^/dev/input/by-id/') | list | length == torque_agent_hid_devices | length
       - torque_agent_hid_devices | map(attribute='parserProfile') | select('equalto', 'cem3-btla-hogp-v1') | list | length == torque_agent_hid_devices | length
+      - torque_agent_tls_verify_mode | default('system') in ['system', 'insecure']
       - torque_agent_bluetooth_adapter.usb_vendor_id | default('') is match('^[0-9a-f]{4}$')
       - torque_agent_bluetooth_adapter.usb_product_id | default('') is match('^[0-9a-f]{4}$')
       - torque_agent_hid_links is defined
       - torque_agent_hid_links | length > 0
-    fail_msg: torque-agent requires an API URL, registered client key, exact external adapter identity, stable HID links, and verified CEM3-BTLA /dev/input/by-id profiles.
+    fail_msg: torque-agent requires an API URL, registered client key, an explicit TLS verification mode, exact external adapter identity, stable HID links, and verified CEM3-BTLA /dev/input/by-id profiles.
 
 - name: Validate torque-wrench HID identity contracts
   ansible.builtin.assert:

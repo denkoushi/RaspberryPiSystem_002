@@ -66,6 +66,7 @@ poetry run torque-capture capture \
 - `TORQUE_QUEUE_PATH`: outboxとローカル監査を持つSQLiteファイル
 - `TORQUE_LOCAL_PORT`: loopback heartbeat/healthポート。標準は7073
 - `TORQUE_HEARTBEAT_TTL_SECONDS`: 作業画面bindingの有効秒数
+- `TORQUE_TLS_VERIFY_MODE`: `system`（既定、OSのCAで検証）または、自己署名Pi5に限定した`insecure`。inventoryで端末単位に明示し、全体既定を弱めない
 - `TORQUE_BROWSER_ORIGINS_JSON`: APIとWebが別originの場合に追加許可するキオスクWeb originのJSON配列。API originは自動許可され、ワイルドカードは使用不可
 - `TORQUE_ENABLE_SYNTHETIC_FIXTURE`: テスト専用。本番は必ず`false`
 

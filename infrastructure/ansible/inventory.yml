@@ -293,6 +293,8 @@ all:
               torque_agent_enabled: true
               torque_agent_api_base_url: "{{ server_base_url }}"
               torque_agent_client_key: "{{ status_agent_client_key }}"
+              # Pi5 currently presents a self-signed Caddy certificate. This exception is scoped to StoneBase.
+              torque_agent_tls_verify_mode: "insecure"
               torque_agent_browser_origins:
                 - "{{ server_base_url }}"
               torque_agent_bluetooth_adapter:

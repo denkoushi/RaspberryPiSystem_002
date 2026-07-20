@@ -98,7 +98,7 @@ async def run_agent(config: AgentConfig) -> None:
 
     app = create_app(config, bindings, queue)
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=config.local_port, log_level="info"))
-    tasks = [asyncio.create_task(OutboxSender(config.api_base_url, config.client_key, queue).run()),
+    tasks = [asyncio.create_task(OutboxSender(config.api_base_url, config.client_key, queue, tls_verify=config.tls_verify).run()),
              asyncio.create_task(server.serve())]
     tasks.extend(
         asyncio.create_task(

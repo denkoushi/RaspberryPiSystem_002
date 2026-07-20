@@ -40,6 +40,7 @@ class AgentConfig:
     browser_origins: tuple[str, ...] = ()
     heartbeat_ttl_seconds: float = 8.0
     local_port: int = 7073
+    tls_verify: bool = True
     synthetic_fixture_enabled: bool = False
 
     @classmethod
@@ -66,6 +67,9 @@ class AgentConfig:
             except CaptureSafetyError as error:
                 raise ValueError(f"Only explicit torque-wrench /dev/input/by-id devices are allowed: {path}") from error
             devices.append(HidDeviceConfig(path=path, parser_profile=str(row["parserProfile"])))
+        tls_verify_mode = os.environ.get("TORQUE_TLS_VERIFY_MODE", "system").strip().lower()
+        if tls_verify_mode not in {"system", "insecure"}:
+            raise ValueError("TORQUE_TLS_VERIFY_MODE must be either system or insecure")
         return cls(
             api_base_url=api_base_url,
             client_key=client_key,
@@ -74,5 +78,6 @@ class AgentConfig:
             browser_origins=browser_origins,
             heartbeat_ttl_seconds=float(os.environ.get("TORQUE_HEARTBEAT_TTL_SECONDS", "8")),
             local_port=int(os.environ.get("TORQUE_LOCAL_PORT", "7073")),
+            tls_verify=tls_verify_mode == "system",
             synthetic_fixture_enabled=os.environ.get("TORQUE_ENABLE_SYNTHETIC_FIXTURE", "false").lower() == "true",
         )

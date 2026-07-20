@@ -6,6 +6,7 @@ import httpx
 import pytest
 
 from torque_agent.binding import BindingStore
+from torque_agent.api_client import OutboxSender
 from torque_agent.cem3_btla_parser import Cem3BtlaHogpParser
 from torque_agent.config import AgentConfig
 from torque_agent.hid_line_decoder import DecodedHidFrame, HidLineDecoder
@@ -273,6 +274,59 @@ def test_config_accepts_multiple_explicit_by_id_devices(monkeypatch: pytest.Monk
         "/dev/input/by-id/wrench-b",
     ]
     assert config.browser_origins == ("http://127.0.0.1:3000", "https://kiosk.example.test")
+
+
+@pytest.mark.parametrize(("mode", "expected"), [("system", True), (" insecure ", False)])
+def test_config_parses_explicit_tls_verify_mode(monkeypatch: pytest.MonkeyPatch, mode: str, expected: bool) -> None:
+    monkeypatch.setenv("TORQUE_API_BASE_URL", "https://server.example.test")
+    monkeypatch.setenv("TORQUE_CLIENT_KEY", "test-client")
+    monkeypatch.setenv("TORQUE_HID_DEVICES_JSON", "[]")
+    monkeypatch.setenv("TORQUE_TLS_VERIFY_MODE", mode)
+
+    assert AgentConfig.from_env().tls_verify is expected
+
+
+def test_config_rejects_unknown_tls_verify_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TORQUE_API_BASE_URL", "https://server.example.test")
+    monkeypatch.setenv("TORQUE_CLIENT_KEY", "test-client")
+    monkeypatch.setenv("TORQUE_HID_DEVICES_JSON", "[]")
+    monkeypatch.setenv("TORQUE_TLS_VERIFY_MODE", "disabled")
+
+    with pytest.raises(ValueError, match="TORQUE_TLS_VERIFY_MODE"):
+        AgentConfig.from_env()
+
+
+def test_outbox_sender_uses_explicit_tls_verification_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    queue = QueueStore(tmp_path / "events.sqlite3")
+    queue.enqueue("event-1", {"sessionId": "session-1", "payload": {"value": 4.2}})
+    captured: dict[str, object] = {}
+
+    class Response:
+        status_code = 201
+        text = "ok"
+
+    class Client:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+        async def __aenter__(self) -> "Client":
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        async def post(self, url: str, **kwargs: object) -> Response:
+            captured["url"] = url
+            captured.update(kwargs)
+            return Response()
+
+    monkeypatch.setattr("torque_agent.api_client.httpx.AsyncClient", Client)
+
+    delivered = asyncio.run(OutboxSender("https://server.example.test", "client", queue, tls_verify=False).send_once())
+
+    assert delivered is True
+    assert captured["verify"] is False
+    assert queue.count() == 0
 
 
 def test_loopback_api_health_and_disarm_contract(tmp_path: Path) -> None:

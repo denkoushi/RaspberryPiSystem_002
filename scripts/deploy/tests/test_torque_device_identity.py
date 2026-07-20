@@ -84,6 +84,7 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
 
         for fragment in (
             "torque_agent_enabled: true",
+            'torque_agent_tls_verify_mode: "insecure"',
             'usb_vendor_id: "2357"',
             'usb_product_id: "0604"',
             'path: "/dev/input/by-id/bluetooth-TOHNICHI_702902S-event-kbd"',
@@ -99,6 +100,7 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
             "torque_agent_bluetooth_adapter.usb_vendor_id",
             "torque_agent_hid_links",
             "cem3-btla-hogp-v1",
+            "torque_agent_tls_verify_mode",
             "90-torque-bluetooth-adapter.rules",
             "99-torque-wrench-hid.rules",
             "torque-bluetooth-adapter@.service",
