@@ -107,10 +107,10 @@ describe('AssemblyLotPane', () => {
 
     expect(screen.getByRole('heading', { name: '着手前' })).toBeInTheDocument();
     expect(screen.getByRole('list', { name: '着手前' })).toBeInTheDocument();
-    expect(screen.getByText('S/N S-003')).toBeInTheDocument();
-    expect(screen.getByText('S/N S-004')).toBeInTheDocument();
-    expect(screen.queryByText('S/N S-001')).not.toBeInTheDocument();
-    expect(screen.queryByText('S/N S-002')).not.toBeInTheDocument();
+    expect(screen.getByText('作業ID S-003')).toBeInTheDocument();
+    expect(screen.getByText('作業ID S-004')).toBeInTheDocument();
+    expect(screen.queryByText('作業ID S-001')).not.toBeInTheDocument();
+    expect(screen.queryByText('作業ID S-002')).not.toBeInTheDocument();
     expect(screen.queryByText('未着手')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '開始' })).not.toBeInTheDocument();
 
