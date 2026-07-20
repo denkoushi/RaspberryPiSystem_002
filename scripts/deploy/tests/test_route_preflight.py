@@ -120,7 +120,19 @@ class RoutePreflightTest(unittest.TestCase):
             lock.write_text("", encoding="utf-8")
             active_run = "20260719-010203-a1b2c3"
             (project / "logs/deploy/fleet-release-state.json").write_text(
-                json.dumps({"activeRun": active_run}), encoding="utf-8"
+                json.dumps(
+                    {
+                        "activeRun": {
+                            "runId": active_run,
+                            "status": "running",
+                            "desiredSha": "a" * 40,
+                            "inventory": "inventory.yml",
+                            "startedAt": "2026-07-19T01:02:03Z",
+                            "kind": "release",
+                        }
+                    }
+                ),
+                encoding="utf-8",
             )
             run_path = project / f"logs/deploy/release-runs/{active_run}.json"
             run_path.parent.mkdir(parents=True)
@@ -161,6 +173,49 @@ class RoutePreflightTest(unittest.TestCase):
                 "pi5.interrupted-run-recovery-required", report["warnings"]
             )
             self.assertIn(
+                "pi5.interrupted-run-authority-readable", report["proofs"]
+            )
+
+    def test_current_active_run_summary_must_match_its_authority(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Path(temporary)
+            lock = project / "logs/deploy/fleet-release-state.lock"
+            lock.parent.mkdir(parents=True)
+            lock.write_text("", encoding="utf-8")
+            active_run = "20260719-010203-a1b2c3"
+            (project / "logs/deploy/fleet-release-state.json").write_text(
+                json.dumps(
+                    {
+                        "activeRun": {
+                            "runId": active_run,
+                            "status": "running",
+                            "desiredSha": "a" * 40,
+                            "inventory": "inventory.yml",
+                            "startedAt": "2026-07-19T01:02:03Z",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            run_path = project / f"logs/deploy/release-runs/{active_run}.json"
+            run_path.parent.mkdir(parents=True)
+            run_path.write_text(
+                json.dumps({"runId": "different-run"}), encoding="utf-8"
+            )
+
+            with patch.object(route_preflight.os.path, "isfile", return_value=False):
+                _code, report = route_preflight.execute(
+                    spec(str(project)),
+                    run_command=lambda *_args, **_kwargs: SimpleNamespace(
+                        returncode=1, stdout="", stderr=""
+                    ),
+                    client_id_reader=lambda: "raspberrypi5-server",
+                    disk_free_reader=lambda _path: 8192,
+                    memory_available_reader=lambda: 2048,
+                )
+
+            self.assertIn("pi5.interrupted-run-authority", report["issues"])
+            self.assertNotIn(
                 "pi5.interrupted-run-authority-readable", report["proofs"]
             )
 

@@ -25,7 +25,7 @@ validation:
   - the approved Pi5 and StoneBase performance acceptance run
 open_items:
   - merge or otherwise resolve the parent deployment-foundation PR before this stacked PR
-  - pass hosted checks for terminal-run recovery plan shadowing
+  - pass hosted checks for the current fleet active-run route preflight
   - obtain a new explicit StoneBase inventory approval and complete the recovery acceptance run
 supersedes: null
 superseded_by: null
@@ -69,7 +69,11 @@ An operator can observe the improvement in the existing durable timing fields. A
 - [x] (2026-07-20 12:29Z) The first post-failure limited plan correctly refused to exclude five other hosts because the interrupted recovery deliberately retained the old fleet `activeRun`. A connection-free full plan showed that this conservative shadow, rather than changed per-host evidence, widened all seven hosts to unknown.
 - [x] (2026-07-20 12:33Z) Added read-only recovery shadowing: only when standard status reconciliation proves the retained active run is terminal does `--print-plan` preserve its durable per-host verified/unknown records. A running, unreachable, or unprovable run still widens every host to unknown; execution-side abandonment, recovery, and locking are unchanged.
 - [x] (2026-07-20 12:38Z) Passed the focused planner tests, all 741 deployment Python tests, Python compilation, and the complete repository-owned deploy contract after recovery shadowing.
-- [ ] Commit and push the recovery-plan correction, pass hosted validation, then present the exact recovery plan for a new explicit inventory approval before another release run.
+- [x] (2026-07-20 12:40Z) Committed and pushed recovery shadowing as `cf60e1d1`; manually dispatched hosted CI `29743062754`, CodeQL `29743064609`, and Secret scan `29743066487`, all of which succeeded on that immutable head.
+- [x] (2026-07-20 12:49Z) The corrected exact plan targeted only StoneBase and excluded Pi5, FJV, and the other four terminals. The subsequent aggregate preflight remained blocked at `pi5.interrupted-run-authority`, because the route probe still recognized only the legacy string active-run schema while fleet state now stores a validated run-summary object.
+- [x] (2026-07-20 12:53Z) Updated the read-only route probe to accept both the legacy active-run ID and the current running-summary schema, and to require the referenced run authority's embedded `runId` to match before declaring interrupted recovery readable. Missing, malformed, mismatched, or unreadable authority remains blocked.
+- [x] (2026-07-20 12:57Z) Passed 39 focused route/planner tests, all 742 deployment Python tests, Python compilation, and the complete repository-owned deploy contract after current-schema route recovery support.
+- [ ] Commit and push the route correction, pass hosted validation, rerun the exact plan and preflight, then present the recovery run for new explicit inventory approval.
 
 ## Surprises & Discoveries
 
@@ -99,6 +103,9 @@ An operator can observe the improvement in the existing durable timing fields. A
 
 - Observation: A terminal failed run retained as the fleet `activeRun` makes the old read-only planner intentionally forget every per-host record, even after the systemd unit and durable run state are terminal.
   Evidence: The limited recovery plan refused Pi5 plus StoneBase because five hosts outside the limit appeared unknown; the connection-free full plan warned that `20260720-113428-ce30b9` was active and synthesized missing records for all seven hosts. Standard status already reconciled that run as durably failed and its unit as non-active, while the persisted fleet records still distinguish the touched StoneBase host from untouched verified hosts.
+
+- Observation: The route preflight's interrupted-run recovery check lagged the authoritative fleet-state schema.
+  Evidence: It accepted an `activeRun` string and looked up that run's JSON authority, while fleet-state v2 persists `activeRun` as a running summary object containing `runId`, desired SHA, inventory, and start time. The exact recovery preflight therefore blocked with `pi5.interrupted-run-authority` even though the authority file was present and readable.
 
 ## Decision Log
 
@@ -132,6 +139,10 @@ An operator can observe the improvement in the existing durable timing fields. A
 
 - Decision: Let `--print-plan` shadow a retained fleet active run as inactive only after the canonical status reconciler proves its durable run and systemd unit are terminal.
   Rationale: This makes the preview match the coordinator's existing lock-owned `abandon_active_run` transition and exposes the exact recovery host before approval. It never writes fleet state, never promotes unknown evidence, and keeps the prior all-host fail-closed shadow for running, unreachable, malformed, or otherwise unproven runs.
+  Date/Author: 2026-07-20 / Codex.
+
+- Decision: Preserve legacy route-preflight compatibility while strictly recognizing the current active-run summary and binding it to the same run ID inside the referenced authority file.
+  Rationale: Coordinator recovery already owns full schema and manifest validation after acquiring the fleet lease. The pre-submission route gate must prove that an authority exists for the exact retained run without rejecting the current schema; a run-ID mismatch or malformed summary cannot be allowed through.
   Date/Author: 2026-07-20 / Codex.
 
 ## Outcomes & Retrospective
@@ -206,4 +217,4 @@ The raw and aggregate timing artifacts remain on Pi5 under `/opt/RaspberryPiSyst
 
 No new third-party dependency is introduced. The implementation uses the existing Ansible CLI, inventory, SSH connection plugin, Python interpreter, and passwordless `sudo` contract.
 
-Revision note (2026-07-20 12:33Z): Recorded successful hosted validation for the evidence correction and the retained-active-run planning gap exposed by fail-closed recovery. Added a status-proven, read-only planning shadow so exact StoneBase recovery can be reviewed without weakening execution-side unknown evidence or including FJV.
+Revision note (2026-07-20 12:53Z): Recorded successful hosted validation for recovery planning, the exact StoneBase-only plan, and the current-schema mismatch found by aggregate preflight. Added strict current/legacy active-run authority recognition while keeping unreadable or mismatched recovery blocked.
