@@ -12,10 +12,14 @@ import os
 import re
 import shlex
 import subprocess
+import tempfile
+import zipapp
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 from ..adapter_registry import adapter_for_profile
+from .. import telemetry
 
 if TYPE_CHECKING:
     from ..terminal_adapters import TerminalRuntimeManifestContract
@@ -29,6 +33,10 @@ _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _VERIFICATION_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 _REMOTE_USER_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
 _REMOTE_HOME_RE = re.compile(r"^/home/[a-z_][a-z0-9_-]{0,31}$")
+_SYSTEMD_UNIT_RE = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9_.@:-]{0,126}\."
+    r"(?:service|timer|socket|path|target|mount)$"
+)
 _MANIFEST_MARKER_RE = re.compile(
     r"ROLLBACK_MANIFEST_RESULT:([A-Za-z0-9_-]+={0,2})(?![A-Za-z0-9_=-])"
 )
@@ -60,6 +68,18 @@ _TERMINAL_AGENT_MARKER_RE = re.compile(
     + r"):([0-9]{1,5})"
     r"(?![A-Za-z0-9_-])"
 )
+_TERMINAL_RELEASE_EVIDENCE_MARKER_RE = re.compile(
+    r"TERMINAL_RELEASE_EVIDENCE_RESULT:"
+    r"([A-Za-z0-9_-]+={0,2})(?![A-Za-z0-9_=-])"
+)
+_TERMINAL_MANIFEST_CAPTURE_MARKER_RE = re.compile(
+    r"TERMINAL_MANIFEST_CAPTURE_RESULT:"
+    r"([A-Za-z0-9_-]+={0,2})(?![A-Za-z0-9_=-])"
+)
+_TERMINAL_MANIFEST_CAPTURE_ERROR_MARKER_RE = re.compile(
+    r"TERMINAL_MANIFEST_CAPTURE_ERROR:"
+    r"([A-Za-z0-9_-]+={0,2})(?![A-Za-z0-9_=-])"
+)
 _MAX_MARKER_BYTES = 2 * 1024 * 1024
 _READ_ONLY_CONFIG_NAME = "ansible-readonly.cfg"
 _READ_ONLY_ENVIRONMENT_REMOVALS = (
@@ -68,6 +88,75 @@ _READ_ONLY_ENVIRONMENT_REMOVALS = (
     "ANSIBLE_VAULT_ID_MATCH",
     "ANSIBLE_VAULT_PASSWORD_FILE",
 )
+
+
+def _terminal_apply_environment() -> dict[str, str]:
+    """Return the process environment for the candidate terminal executor.
+
+    Pipelining is deliberately scoped to the forward terminal playbook and
+    its exact preflight. Rollback, manifest capture, and evidence collection
+    retain their previously accepted Ansible transport behavior.
+    """
+
+    environment = os.environ.copy()
+    environment["ANSIBLE_PIPELINING"] = "true"
+    environment["ANSIBLE_SSH_PIPELINING"] = "true"
+    return environment
+
+
+@contextmanager
+def _bundled_script(
+    runtime: "Runtime",
+    *,
+    main: str,
+    modules: dict[str, str],
+):
+    """Build one candidate-owned zipapp for a single Ansible script call."""
+
+    with tempfile.TemporaryDirectory(prefix="raspi-release-bundle-") as temporary:
+        source_directory = Path(temporary) / "source"
+        source_directory.mkdir(mode=0o700)
+        sources = {"__main__.py": main, **modules}
+        for destination, relative in sources.items():
+            source = Path(runtime.PROJECT) / relative
+            if not source.is_file() or source.is_symlink():
+                raise RuntimeError(f"release bundle source is unavailable: {relative}")
+            (source_directory / destination).write_bytes(source.read_bytes())
+        archive = Path(temporary) / "release-helper.pyz"
+        zipapp.create_archive(
+            source_directory,
+            target=archive,
+            interpreter="/usr/bin/env python3",
+            compressed=False,
+        )
+        archive.chmod(0o700)
+        yield archive
+
+
+def _release_timing_environment(
+    environment: dict[str, str],
+    *,
+    runtime: "Runtime",
+    run_id: str,
+    host: str,
+    scope: str,
+) -> None:
+    """Enable a notification callback only for an orchestrated release run."""
+
+    environment.update(telemetry.environment(Path(runtime.PROJECT), run_id, host, scope))
+    plugin_directory = str(Path(runtime.ANSIBLE_DIRECTORY) / "callback_plugins")
+    existing_plugins = environment.get("ANSIBLE_CALLBACK_PLUGINS", "")
+    environment["ANSIBLE_CALLBACK_PLUGINS"] = os.pathsep.join(
+        item for item in (existing_plugins, plugin_directory) if item
+    )
+    enabled = [
+        item
+        for item in environment.get("ANSIBLE_CALLBACKS_ENABLED", "").split(",")
+        if item
+    ]
+    if "rolling_release_timing" not in enabled:
+        enabled.append("rolling_release_timing")
+    environment["ANSIBLE_CALLBACKS_ENABLED"] = ",".join(enabled)
 
 _TERMINAL_REPOSITORY = "/opt/RaspberryPiSystem_002"
 _ROLLBACK_MANIFEST_ROOT = "/var/lib/raspi-release/rollback-manifests"
@@ -326,6 +415,73 @@ def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
             raise ValueError(f"duplicate JSON key: {key}")
         result[key] = value
     return result
+
+
+def _strict_result_marker(
+    output: str,
+    *,
+    pattern: re.Pattern[str],
+    prefix: str,
+    label: str,
+    max_bytes: int = _MAX_MARKER_BYTES,
+) -> dict[str, Any]:
+    encoded_results = pattern.findall(output)
+    if not encoded_results:
+        if prefix in output:
+            raise RuntimeError(f"{label} marker is malformed")
+        raise RuntimeError(f"{label} marker is missing")
+    decoded_results: list[dict[str, Any]] = []
+    for encoded in encoded_results:
+        if len(encoded) > max_bytes:
+            raise RuntimeError(f"{label} marker is too large")
+        try:
+            raw = base64.b64decode(encoded, altchars=b"-_", validate=True)
+            if base64.urlsafe_b64encode(raw).decode("ascii") != encoded:
+                raise ValueError("non-canonical base64")
+            value = json.loads(
+                raw.decode("utf-8"),
+                object_pairs_hook=_reject_duplicate_json_keys,
+                parse_constant=lambda constant: (_ for _ in ()).throw(
+                    ValueError(f"invalid JSON constant: {constant}")
+                ),
+            )
+        except (
+            UnicodeDecodeError,
+            binascii.Error,
+            json.JSONDecodeError,
+            ValueError,
+        ) as error:
+            raise RuntimeError(f"{label} marker is malformed") from error
+        if not isinstance(value, dict):
+            raise RuntimeError(f"{label} result must be an object")
+        decoded_results.append(value)
+    first = decoded_results[0]
+    if any(value != first for value in decoded_results[1:]):
+        raise RuntimeError(f"{label} callback results disagree")
+    return first
+
+
+def _terminal_manifest_capture_error(output: str) -> dict[str, str]:
+    value = _strict_result_marker(
+        output,
+        pattern=_TERMINAL_MANIFEST_CAPTURE_ERROR_MARKER_RE,
+        prefix="TERMINAL_MANIFEST_CAPTURE_ERROR:",
+        label="terminal manifest capture error",
+        max_bytes=65536,
+    )
+    if (
+        set(value) != {"version", "stage", "code", "message"}
+        or value.get("version") != 1
+        or value.get("stage") not in {"identity", "file", "runtime"}
+        or not isinstance(value.get("code"), str)
+        or re.fullmatch(r"[a-z0-9.-]{1,100}", value["code"]) is None
+        or not isinstance(value.get("message"), str)
+        or not value["message"]
+        or len(value["message"]) > 512
+        or any(ord(character) < 32 for character in value["message"])
+    ):
+        raise RuntimeError("terminal manifest capture error marker is malformed")
+    return value
 
 
 def _manifest_marker(output: str) -> dict[str, Any]:
@@ -795,16 +951,21 @@ def capture_terminal_manifest(
     *,
     runtime: Runtime,
 ) -> dict[str, Any]:
-    """Seal the exact terminal file set and repository HEAD before mutation."""
+    """Seal independent file/runtime authorities through one SSH transport."""
 
     host, terminal_type = _validated_terminal_spec(target_spec)
     _validated_run_and_sha(run_id, previous_sha)
-    user, home = _remote_identity(inventory, host, runtime=runtime)
-    paths = _terminal_manifest_paths(terminal_type, user, home, run_id)
+    path_templates = _terminal_manifest_paths(
+        terminal_type, "@REMOTE_USER@", "@REMOTE_HOME@", run_id
+    )
+    contract = _terminal_runtime_manifest_contract(terminal_type)
+    units = list(contract.systemd_units)
+    docker_services = list(contract.docker_services)
     arguments = [
-        "capture-set",
-        "--root",
+        "--file-root",
         _ROLLBACK_MANIFEST_ROOT,
+        "--runtime-root",
+        _RUNTIME_MANIFEST_ROOT,
         "--run-id",
         run_id,
         "--host",
@@ -813,17 +974,109 @@ def capture_terminal_manifest(
         _TERMINAL_REPOSITORY,
         "--expected-head",
         previous_sha,
+        "--ansible-marker",
     ]
-    for path in paths:
-        arguments.extend(("--path", path))
-    result = _run_manifest_helper(
-        inventory, host, arguments, runtime=runtime
+    for path in path_templates:
+        arguments.extend(("--path-template", path))
+    for unit in units:
+        arguments.extend(("--unit", unit))
+    for unit in contract.restart_on_restore_units:
+        arguments.extend(("--restart-on-restore-unit", unit))
+    for service in docker_services:
+        arguments.extend(("--docker-service", service))
+    if docker_services:
+        if (
+            contract.compose_project is None
+            or contract.compose_working_directory is None
+            or not contract.compose_config_files
+        ):
+            raise RuntimeError("terminal runtime Compose contract is incomplete")
+        arguments.extend(
+            (
+                "--compose-project",
+                contract.compose_project,
+                "--compose-working-directory",
+                contract.compose_working_directory,
+            )
+        )
+        for path in contract.compose_config_files:
+            arguments.extend(("--compose-config-file", path))
+    with _bundled_script(
+        runtime,
+        main="scripts/deploy/rolling_release/terminal_manifest_capture.py",
+        modules={
+            "rollback_manifest.py": "scripts/deploy/rollback-manifest.py",
+            "terminal_runtime_manifest.py": (
+                "scripts/deploy/terminal-runtime-manifest.py"
+            ),
+        },
+    ) as source:
+        try:
+            output = runtime.run(
+                [
+                    "ansible",
+                    "-i",
+                    inventory,
+                    host,
+                    "-e",
+                    "ansible_become=false",
+                    "-m",
+                    "script",
+                    "-a",
+                    shlex.join([str(source), *arguments]),
+                ],
+                cwd=runtime.ANSIBLE_DIRECTORY,
+                capture=True,
+            )
+        except subprocess.CalledProcessError as error:
+            combined = "\n".join(
+                value
+                for value in (error.stdout, error.stderr)
+                if isinstance(value, str)
+            )
+            try:
+                evidence = _terminal_manifest_capture_error(combined)
+            except RuntimeError:
+                raise RuntimeError(
+                    f"terminal manifest capture failed without safe evidence: {host}"
+                ) from None
+            raise RuntimeError(
+                "terminal manifest capture "
+                f"{evidence['stage']}/{evidence['code']}: {evidence['message']}"
+            ) from None
+    envelope = _strict_result_marker(
+        output,
+        pattern=_TERMINAL_MANIFEST_CAPTURE_MARKER_RE,
+        prefix="TERMINAL_MANIFEST_CAPTURE_RESULT:",
+        label="terminal manifest capture",
     )
-    expected_path = _expected_manifest_path(run_id, host)
-    digest = result.get("manifestSha256")
-    repository = result.get("repository")
+    user = envelope.get("remoteUser")
+    home = envelope.get("remoteHome")
     if (
-        set(result)
+        set(envelope)
+        != {
+            "version",
+            "remoteUser",
+            "remoteHome",
+            "fileManifest",
+            "runtimeManifest",
+        }
+        or envelope.get("version") != 1
+        or not isinstance(user, str)
+        or _REMOTE_USER_RE.fullmatch(user) is None
+        or not isinstance(home, str)
+        or _REMOTE_HOME_RE.fullmatch(home) is None
+        or home != f"/home/{user}"
+    ):
+        raise RuntimeError(f"terminal manifest capture result is invalid: {host}")
+    paths = _terminal_manifest_paths(terminal_type, user, home, run_id)
+    result = envelope.get("fileManifest")
+    expected_path = _expected_manifest_path(run_id, host)
+    digest = result.get("manifestSha256") if isinstance(result, dict) else None
+    repository = result.get("repository") if isinstance(result, dict) else None
+    if (
+        not isinstance(result, dict)
+        or set(result)
         != {
             "captured",
             "manifest",
@@ -842,13 +1095,54 @@ def capture_terminal_manifest(
         != {"path": _TERMINAL_REPOSITORY, "head": previous_sha}
     ):
         raise RuntimeError(f"rollback manifest capture result is invalid: {host}")
-    runtime_manifest = _capture_terminal_runtime_manifest(
-        inventory,
-        host,
-        terminal_type,
-        run_id,
-        runtime=runtime,
+    runtime_result = envelope.get("runtimeManifest")
+    runtime_path = _expected_runtime_manifest_path(run_id, host)
+    runtime_digest = (
+        runtime_result.get("manifestSha256")
+        if isinstance(runtime_result, dict)
+        else None
     )
+    rollback_tags = (
+        runtime_result.get("rollbackTags")
+        if isinstance(runtime_result, dict)
+        else None
+    )
+    if (
+        not isinstance(runtime_result, dict)
+        or set(runtime_result)
+        != {
+            "captured",
+            "manifest",
+            "manifestSha256",
+            "unitCount",
+            "dockerCount",
+            "rollbackTags",
+        }
+        or runtime_result.get("captured") is not True
+        or runtime_result.get("manifest") != runtime_path
+        or not isinstance(runtime_digest, str)
+        or _SHA256_RE.fullmatch(runtime_digest) is None
+        or runtime_result.get("unitCount") != len(units)
+        or runtime_result.get("dockerCount") != len(docker_services)
+        or not isinstance(rollback_tags, list)
+        or len(rollback_tags) > len(docker_services)
+        or any(
+            not isinstance(tag, str)
+            or not tag.startswith("raspi-rollback/")
+            or len(tag) > 255
+            for tag in rollback_tags
+        )
+        or len(set(rollback_tags)) != len(rollback_tags)
+    ):
+        raise RuntimeError(
+            f"terminal runtime manifest capture result is invalid: {host}"
+        )
+    runtime_manifest = {
+        "path": runtime_path,
+        "manifestSha256": runtime_digest,
+        "unitCount": len(units),
+        "dockerCount": len(docker_services),
+    }
     # Do not copy captured payloads or their (potentially secret) contents into
     # controller state. This sealed reference is sufficient for exact restore.
     return {
@@ -1148,14 +1442,14 @@ def probe_signage_endpoints(
     }
 
 
-def probe_kiosk_agents(
+def _kiosk_agent_specs(
     inventory: str,
     host: str,
     expected_agents: list[str] | tuple[str, ...] | None = None,
     *,
     runtime: Runtime,
-) -> dict[str, Any]:
-    """Prove the selected agent set without mixing release-time authorities.
+) -> list[tuple[str, int | None, bool]]:
+    """Resolve the selected agent set without mixing release-time authorities.
 
     A normal deployment derives the set from current inventory.  A rollback
     supplies the exact running service set derived from its sealed runtime
@@ -1257,6 +1551,21 @@ def probe_kiosk_agents(
         raise RuntimeError(f"kiosk torque inventory port is malformed: {host}")
     if "torque-agent" in selected_agents:
         agents.append(("torque-agent", torque_port, False))
+    return agents
+
+
+def probe_kiosk_agents(
+    inventory: str,
+    host: str,
+    expected_agents: list[str] | tuple[str, ...] | None = None,
+    *,
+    runtime: Runtime,
+) -> dict[str, Any]:
+    """Prove every selected kiosk agent with the legacy per-agent transport."""
+
+    agents = _kiosk_agent_specs(
+        inventory, host, expected_agents, runtime=runtime
+    )
 
     source = runtime.PROJECT / "scripts/deploy/terminal-agent-health-probe.py"
     compose_files = _terminal_runtime_manifest_contract(
@@ -1306,7 +1615,151 @@ def probe_kiosk_agents(
     return {
         "agentContainers": [value["agent"] for value in endpoints],
         "authenticatedAgentEndpoints": endpoints,
-        "pcscdRequired": "nfc-agent" in selected_agents,
+        "pcscdRequired": any(agent == "nfc-agent" for agent, _port, _pcsc in agents),
+    }
+
+
+def probe_terminal_release_evidence(
+    inventory: str,
+    host: str,
+    client_id: str,
+    services: list[str],
+    *,
+    expected_agents: list[str] | tuple[str, ...] | None = None,
+    check_status_agent_result: bool = True,
+    runtime: Runtime,
+) -> dict[str, Any]:
+    """Collect Git, systemd, identity, and agent proof in one SSH call."""
+
+    if not isinstance(host, str) or _HOST_RE.fullmatch(host) is None:
+        raise ValueError("terminal host is malformed")
+    if not isinstance(client_id, str) or _CLIENT_ID_RE.fullmatch(client_id) is None:
+        raise ValueError("terminal client identity is malformed")
+    if (
+        not isinstance(services, list)
+        or not services
+        or len(services) != len(set(services))
+        or any(
+            not isinstance(service, str)
+            or _SYSTEMD_UNIT_RE.fullmatch(service) is None
+            for service in services
+        )
+        or type(check_status_agent_result) is not bool
+    ):
+        raise ValueError("terminal service proof request is malformed")
+    agent_specs = _kiosk_agent_specs(
+        inventory, host, expected_agents, runtime=runtime
+    )
+    compose_files = _terminal_runtime_manifest_contract("kiosk").compose_config_files
+    if len(compose_files) != 1:
+        raise RuntimeError("kiosk agent health Compose contract is malformed")
+    arguments = [
+        "--expected-client-id",
+        client_id,
+        "--repository",
+        _TERMINAL_REPOSITORY,
+        "--compose-file",
+        compose_files[0],
+        "--ansible-marker",
+    ]
+    for service in services:
+        arguments.extend(("--service", service))
+    if check_status_agent_result:
+        arguments.append("--check-status-agent-result")
+    for agent, port, require_pcscd in agent_specs:
+        arguments.extend(
+            (
+                "--agent-spec",
+                f"{agent}:{port if port is not None else 'auto'}:"
+                f"{1 if require_pcscd else 0}",
+            )
+        )
+    with _bundled_script(
+        runtime,
+        main="scripts/deploy/rolling_release/terminal_release_evidence.py",
+        modules={
+            "terminal_identity_probe.py": "scripts/deploy/terminal-identity-probe.py",
+            "terminal_agent_health_probe.py": (
+                "scripts/deploy/terminal-agent-health-probe.py"
+            ),
+        },
+    ) as source:
+        try:
+            output = runtime.run(
+                [
+                    "ansible",
+                    "-i",
+                    inventory,
+                    host,
+                    "-b",
+                    "-m",
+                    "script",
+                    "-a",
+                    shlex.join([str(source), *arguments]),
+                ],
+                cwd=runtime.ANSIBLE_DIRECTORY,
+                capture=True,
+            )
+        except subprocess.CalledProcessError:
+            raise RuntimeError(
+                f"terminal release evidence failed without safe proof: {host}"
+            ) from None
+    value = _strict_result_marker(
+        output,
+        pattern=_TERMINAL_RELEASE_EVIDENCE_MARKER_RE,
+        prefix="TERMINAL_RELEASE_EVIDENCE_RESULT:",
+        label="terminal release evidence",
+    )
+    expected_oneshot = ["status-agent.service"] if check_status_agent_result else []
+    expected_agent_names = [agent for agent, _port, _pcsc in agent_specs]
+    endpoints = value.get("authenticatedAgentEndpoints")
+    if (
+        set(value)
+        != {
+            "version",
+            "currentSha",
+            "activeSystemdUnits",
+            "oneshotServices",
+            "identity",
+            "agentContainers",
+            "authenticatedAgentEndpoints",
+            "pcscdRequired",
+        }
+        or value.get("version") != 1
+        or not isinstance(value.get("currentSha"), str)
+        or _FULL_SHA_RE.fullmatch(value["currentSha"]) is None
+        or value.get("activeSystemdUnits") != services
+        or value.get("oneshotServices") != expected_oneshot
+        or value.get("identity")
+        != {"authenticated": True, "statusClientId": client_id}
+        or value.get("agentContainers") != expected_agent_names
+        or not isinstance(endpoints, list)
+        or len(endpoints) != len(agent_specs)
+        or any(
+            not isinstance(endpoint, dict)
+            or set(endpoint) != {"agent", "port"}
+            or endpoint.get("agent") != agent_specs[index][0]
+            or isinstance(endpoint.get("port"), bool)
+            or not isinstance(endpoint.get("port"), int)
+            or not 1 <= endpoint["port"] <= 65535
+            or (
+                agent_specs[index][1] is not None
+                and endpoint["port"] != agent_specs[index][1]
+            )
+            for index, endpoint in enumerate(endpoints)
+        )
+        or value.get("pcscdRequired") != ("nfc-agent" in expected_agent_names)
+    ):
+        raise RuntimeError(f"terminal release evidence is malformed: {host}")
+    return {
+        "currentSha": value["currentSha"],
+        "services": services,
+        "oneshotServices": expected_oneshot,
+        "authenticatedEndpoint": True,
+        "statusClientId": client_id,
+        "agentContainers": expected_agent_names,
+        "authenticatedAgentEndpoints": endpoints,
+        "pcscdRequired": value["pcscdRequired"],
     }
 
 
@@ -1553,6 +2006,13 @@ def converge_server_config(
             "RELEASE_ORCHESTRATED": "1",
         }
     )
+    _release_timing_environment(
+        environment,
+        runtime=runtime,
+        run_id=run_id,
+        host=host,
+        scope="server-config",
+    )
     extra = (
         "release_orchestrated=true release_rollback=false "
         "server_release_mode=host-config-only"
@@ -1573,6 +2033,34 @@ def converge_server_config(
     )
 
 
+def preflight_terminal_ansible_pipelining(
+    inventory: str,
+    host: str,
+    *,
+    runtime: Runtime,
+) -> None:
+    """Prove the optimized Ansible/become path before terminal mutation."""
+
+    if not isinstance(host, str) or _HOST_RE.fullmatch(host) is None:
+        raise ValueError("terminal host is malformed")
+    runtime.run(
+        [
+            "ansible",
+            "-i",
+            inventory,
+            host,
+            "-b",
+            "-m",
+            "ansible.builtin.command",
+            "-a",
+            "/usr/bin/true",
+        ],
+        cwd=runtime.ANSIBLE_DIRECTORY,
+        capture=True,
+        env=_terminal_apply_environment(),
+    )
+
+
 def playbook(
     inventory: str,
     host: str,
@@ -1587,9 +2075,16 @@ def playbook(
         raise ValueError(
             "terminal rollback must restore its sealed manifest, not rerun a playbook"
         )
-    environment = os.environ.copy()
+    environment = _terminal_apply_environment()
     environment.update(
         {"ANSIBLE_REPO_VERSION": revision, "RUN_ID": run_id, "RELEASE_ORCHESTRATED": "1"}
+    )
+    _release_timing_environment(
+        environment,
+        runtime=runtime,
+        run_id=run_id,
+        host=host,
+        scope="terminal-apply",
     )
     extra = (
         "release_orchestrated=true release_rollback=false "

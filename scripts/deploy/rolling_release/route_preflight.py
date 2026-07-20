@@ -173,22 +173,63 @@ def _acquire_existing_fleet_lock(project: str) -> int:
     return descriptor
 
 
-def _safe_json_object(path: str, *, maximum_bytes: int = 1024 * 1024) -> bool:
+def _safe_json_document(
+    path: str, *, maximum_bytes: int = 1024 * 1024
+) -> dict[str, Any] | None:
     flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     descriptor = os.open(path, flags)
     try:
         metadata = os.fstat(descriptor)
         if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > maximum_bytes:
-            return False
+            return None
         payload = os.read(descriptor, maximum_bytes + 1)
     finally:
         os.close(descriptor)
     if len(payload) > maximum_bytes:
-        return False
+        return None
     try:
-        return isinstance(json.loads(payload.decode("utf-8")), dict)
+        value = json.loads(payload.decode("utf-8"))
     except (UnicodeError, json.JSONDecodeError):
-        return False
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _safe_json_object(path: str, *, maximum_bytes: int = 1024 * 1024) -> bool:
+    return _safe_json_document(path, maximum_bytes=maximum_bytes) is not None
+
+
+def _active_run_id(value: Any) -> str | None:
+    """Accept the legacy ID or the current validated-summary representation."""
+
+    if isinstance(value, str):
+        return value if RUN_ID_RE.fullmatch(value) is not None else None
+    if not isinstance(value, dict):
+        return None
+    run_id = value.get("runId")
+    desired_sha = value.get("desiredSha")
+    inventory = value.get("inventory")
+    started_at = value.get("startedAt")
+    kind = value.get("kind")
+    if (
+        not isinstance(run_id, str)
+        or RUN_ID_RE.fullmatch(run_id) is None
+        or value.get("status") != "running"
+        or not isinstance(desired_sha, str)
+        or FULL_SHA_RE.fullmatch(desired_sha) is None
+        or not isinstance(inventory, str)
+        or not inventory
+        or len(inventory) > 1000
+        or "\x00" in inventory
+        or not isinstance(started_at, str)
+        or re.fullmatch(
+            r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z",
+            started_at,
+        )
+        is None
+        or (kind is not None and kind not in {"release", "pi4-recovery"})
+    ):
+        return None
+    return run_id
 
 
 def execute(
@@ -305,30 +346,28 @@ def execute(
     fleet_path = os.path.join(project, "logs", "deploy", "fleet-release-state.json")
     if os.path.exists(fleet_path):
         try:
-            valid_fleet = _safe_json_object(fleet_path)
-            fleet = (
-                json.loads(Path(fleet_path).read_text(encoding="utf-8"))
-                if valid_fleet
-                else None
-            )
+            fleet = _safe_json_document(fleet_path)
+            valid_fleet = fleet is not None
             _add(issues, valid_fleet, "pi5.fleet-state-readable")
             active_run = fleet.get("activeRun") if isinstance(fleet, dict) else None
             if active_run is not None:
-                valid_active_run = (
-                    isinstance(active_run, str)
-                    and RUN_ID_RE.fullmatch(active_run) is not None
-                )
+                active_run_id = _active_run_id(active_run)
+                valid_active_run = active_run_id is not None
                 run_path = os.path.join(
                     project,
                     "logs",
                     "deploy",
                     "release-runs",
-                    f"{active_run}.json" if valid_active_run else "invalid",
+                    f"{active_run_id}.json" if active_run_id is not None else "invalid",
                 )
                 readable_authority = False
                 if valid_active_run and os.path.exists(run_path):
                     try:
-                        readable_authority = _safe_json_object(run_path)
+                        authority = _safe_json_document(run_path)
+                        readable_authority = (
+                            authority is not None
+                            and authority.get("runId") == active_run_id
+                        )
                     except OSError:
                         readable_authority = False
                 _add(

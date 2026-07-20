@@ -91,6 +91,7 @@ class LaunchSpec:
     reason: str | None = None
     skip_canary_hold: bool = False
     full_fleet: bool = False
+    reverify_selected: bool = False
 
     @property
     def unit_name(self) -> str:
@@ -114,10 +115,13 @@ class LaunchSpec:
         if (
             type(self.skip_canary_hold) is not bool
             or type(self.full_fleet) is not bool
+            or type(self.reverify_selected) is not bool
         ):
             raise ValueError('release flags must be boolean')
         if self.full_fleet and self.limit:
             raise ValueError('full fleet cannot be combined with a limit')
+        if self.reverify_selected and not self.limit:
+            raise ValueError('selected re-verification requires a limit')
         if self.reason is not None:
             validate_text(self.reason, name='reason', maximum=1000)
             if not self.emergency_override:
@@ -151,6 +155,7 @@ class LaunchSpec:
             'reason': self.reason,
             'skipCanaryHold': self.skip_canary_hold,
             'fullFleet': self.full_fleet,
+            'reverifySelected': self.reverify_selected,
         }
 
 

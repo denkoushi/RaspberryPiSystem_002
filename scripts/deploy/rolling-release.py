@@ -52,6 +52,7 @@ from rolling_release.lock import (
 )
 from rolling_release.models import unit_name_for
 from rolling_release.state import RunStateStore, TERMINAL_STATES
+from rolling_release import telemetry as release_telemetry
 
 
 PROJECT = Path(__file__).resolve().parents[2]
@@ -160,6 +161,7 @@ def plan_target_decisions(
     inventory: dict[str, Any],
     *,
     full_fleet: bool,
+    reverify_hosts: Iterable[str] | None = None,
 ) -> list[dict[str, Any]]:
     return release_policy.plan_target_decisions(
         targets,
@@ -168,6 +170,7 @@ def plan_target_decisions(
         classifications_by_sha,
         inventory,
         full_fleet=full_fleet,
+        reverify_hosts=reverify_hosts,
     )
 
 
@@ -194,9 +197,42 @@ def read_plan_fleet_release_state() -> tuple[dict[str, Any], list[str]]:
         if result.returncode != 0:
             detail = (result.stderr or result.stdout or "remote read failed").strip()
             raise RuntimeError(detail)
-        return parse_fleet_state_json(result.stdout, source="remote fleet state"), []
+        state = parse_fleet_state_json(result.stdout, source="remote fleet state")
     except Exception as error:
         return empty_fleet_state(), [f"fleet state unavailable: {error}"]
+
+    active = state.get("activeRun")
+    if not isinstance(active, dict):
+        return state, []
+    active_id = active.get("runId")
+    if not isinstance(active_id, str):
+        return state, []
+    try:
+        systemd, control = release_application.build_backends(_runtime())
+        observation = release_application.observe(
+            active_id, systemd=systemd, control=control
+        )
+    except Exception:
+        return state, [
+            f"fleet active run {active_id} could not be proven terminal; "
+            "retaining the conservative all-host unknown plan"
+        ]
+    terminal_state = observation.get("state")
+    if terminal_state not in TERMINAL_STATES:
+        return state, []
+
+    # This is a read-only planning shadow, not an authoritative fleet-state
+    # transition.  A reconciled terminal systemd/run record cannot resume and
+    # mutate another host.  Preserve the per-host unknown/verified records so
+    # an operator can review the exact recovery scope; the next lock-owning
+    # coordinator still abandons and recovers the active run durably before it
+    # builds its execution plan.
+    shadow = dict(state)
+    shadow["activeRun"] = None
+    return shadow, [
+        f"fleet active run {active_id} is durably {terminal_state}; "
+        "preserving per-host evidence for the read-only recovery plan"
+    ]
 
 
 def fleet_begin_run(run_id: str, desired_sha: str, inventory: str) -> tuple[dict[str, Any], str | None]:
@@ -353,6 +389,10 @@ class ReleaseState:
 
 def status_file(run_id: str) -> Path:
     return RUN_DIRECTORY / f"{run_id}.json"
+
+
+def collect_ansible_timing(run_id: str) -> dict[str, Any]:
+    return release_telemetry.collect(PROJECT, run_id)
 
 
 def read_release_run(run_id: str) -> dict[str, Any] | None:
@@ -698,6 +738,12 @@ def remote_previous_sha(inventory: str, host: str) -> str:
     return ansible_backend.remote_previous_sha(inventory, host, runtime=_runtime())
 
 
+def preflight_terminal_ansible_pipelining(inventory: str, host: str) -> None:
+    return ansible_backend.preflight_terminal_ansible_pipelining(
+        inventory, host, runtime=_runtime()
+    )
+
+
 def prepare_terminal_repository(inventory: str, host: str) -> dict[str, Any]:
     return ansible_backend.prepare_terminal_repository(
         inventory, host, runtime=_runtime()
@@ -740,6 +786,26 @@ def probe_kiosk_agents(
 ) -> dict[str, Any]:
     return ansible_backend.probe_kiosk_agents(
         inventory, host, expected_agents=expected_agents, runtime=_runtime()
+    )
+
+
+def probe_terminal_release_evidence(
+    inventory: str,
+    host: str,
+    client_id: str,
+    services: list[str],
+    *,
+    expected_agents: list[str] | tuple[str, ...] | None = None,
+    check_status_agent_result: bool = True,
+) -> dict[str, Any]:
+    return ansible_backend.probe_terminal_release_evidence(
+        inventory,
+        host,
+        client_id,
+        services,
+        expected_agents=expected_agents,
+        check_status_agent_result=check_status_agent_result,
+        runtime=_runtime(),
     )
 
 
@@ -1090,9 +1156,12 @@ def build_fleet_scope(
     selected: list[str] | None,
     limit: str,
     full_fleet: bool,
+    reverify_selected: bool = False,
 ) -> tuple[dict[str, Any], list[dict[str, str]], dict[str, dict[str, Any] | None], list[str]]:
     all_hosts = release_hosts(inventory_data)
     classifications, warnings = classify_fleet_baselines(sha, fleet_state)
+    if reverify_selected and selected is None:
+        raise RuntimeError('selected re-verification requires an explicit --limit')
     decisions = plan_target_decisions(
         all_hosts,
         fleet_state.get("fleet") or {},
@@ -1100,6 +1169,7 @@ def build_fleet_scope(
         classifications,
         inventory_data,
         full_fleet=full_fleet,
+        reverify_hosts=selected if reverify_selected else None,
     )
 
     if selected is not None:
@@ -1137,6 +1207,7 @@ def build_fleet_scope(
         full_fleet=full_fleet,
         limit=limit,
         canary_hold_policy=should_hold_after_canary,
+        reverify_selected=reverify_selected,
     )
     target_by_host = {target["host"]: target for target in all_hosts}
     terminal_targets = [
@@ -1194,6 +1265,7 @@ def build_print_plan(
     limit: str,
     *,
     full_fleet: bool = False,
+    reverify_selected: bool = False,
 ) -> dict[str, Any]:
     warnings: list[str] = []
     sha, current_warnings = resolve_release_sha(branch)
@@ -1231,6 +1303,7 @@ def build_print_plan(
         selected=selected,
         limit=limit,
         full_fleet=full_fleet,
+        reverify_selected=reverify_selected,
     )
     warnings.extend(scope_warnings)
     server_record = next(
@@ -1316,6 +1389,7 @@ def local_run(args: argparse.Namespace) -> int:
                     args.inventory,
                     args.limit or "",
                     full_fleet=args.full_fleet,
+                    reverify_selected=args.reverify_selected,
                 ),
                 ensure_ascii=False,
             )

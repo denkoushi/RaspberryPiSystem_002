@@ -150,6 +150,9 @@ def fleet_execution_contract(targets, classification, inventory):
         stack.enter_context(patch.object(MODULE, 'fleet_finish_run', side_effect=transition))
         stack.enter_context(patch.object(MODULE, 'release_hosts', return_value=all_hosts))
         stack.enter_context(
+            patch.object(MODULE, 'preflight_terminal_ansible_pipelining')
+        )
+        stack.enter_context(
             patch.object(
                 MODULE,
                 'inventory_server_identity',
@@ -1455,6 +1458,7 @@ class CanaryHoldTest(unittest.TestCase):
             'skip_canary_hold': False,
             'canary_hold_timeout': 60,
             'full_fleet': False,
+            'reverify_selected': False,
             'expected_server_client_id': 'raspberrypi5-server',
         }
         values.update(overrides)
@@ -2116,6 +2120,99 @@ class PrintPlanShadowTest(unittest.TestCase):
         self.assertEqual(state['generation'], 0)
         self.assertEqual(warnings, [])
 
+    def test_terminal_active_run_preserves_host_evidence_for_recovery_plan(self):
+        active = {
+            'generation': 4,
+            'activeRun': {
+                'runId': 'failed-run',
+                'status': 'running',
+                'desiredSha': TARGET_SHA,
+                'inventory': 'inventory.yml',
+                'startedAt': '2026-07-20T11:00:00Z',
+                'kind': 'release',
+            },
+            'lastRun': None,
+            'fleet': {
+                'raspberrypi5': _verified_fleet_record('server', TARGET_SHA),
+                'kiosk-a': {
+                    'role': 'kiosk',
+                    'desiredSha': TARGET_SHA,
+                    'currentSha': None,
+                    'previousSha': BASE_SHA,
+                    'evidence': 'unknown',
+                    'verifiedAt': None,
+                    'lastRunId': 'failed-run',
+                },
+            },
+        }
+        transport = Mock()
+        transport.run.return_value = Mock(
+            returncode=0,
+            stdout=json.dumps(active),
+            stderr='',
+        )
+        systemd = Mock()
+        control = Mock()
+        with patch.object(
+            MODULE.release_application,
+            'build_server_transport',
+            return_value=('denkon5sd02', transport),
+        ), patch.object(
+            MODULE.release_application,
+            'build_backends',
+            return_value=(systemd, control),
+        ), patch.object(
+            MODULE.release_application,
+            'observe',
+            return_value={'state': 'failed'},
+        ) as observe:
+            state, warnings = MODULE.read_plan_fleet_release_state()
+
+        observe.assert_called_once_with(
+            'failed-run', systemd=systemd, control=control
+        )
+        self.assertIsNone(state['activeRun'])
+        self.assertEqual(state['fleet'], active['fleet'])
+        self.assertTrue(any('durably failed' in warning for warning in warnings))
+
+    def test_running_active_run_keeps_conservative_all_host_shadow(self):
+        active = {
+            'generation': 4,
+            'activeRun': {
+                'runId': 'live-run',
+                'status': 'running',
+                'desiredSha': TARGET_SHA,
+                'inventory': 'inventory.yml',
+                'startedAt': '2026-07-20T11:00:00Z',
+                'kind': 'release',
+            },
+            'lastRun': None,
+            'fleet': {},
+        }
+        transport = Mock()
+        transport.run.return_value = Mock(
+            returncode=0,
+            stdout=json.dumps(active),
+            stderr='',
+        )
+        with patch.object(
+            MODULE.release_application,
+            'build_server_transport',
+            return_value=('denkon5sd02', transport),
+        ), patch.object(
+            MODULE.release_application,
+            'build_backends',
+            return_value=(Mock(), Mock()),
+        ), patch.object(
+            MODULE.release_application,
+            'observe',
+            return_value={'state': 'running'},
+        ):
+            state, warnings = MODULE.read_plan_fleet_release_state()
+
+        self.assertEqual(state, active)
+        self.assertEqual(warnings, [])
+
 
 class FleetScopeLimitTest(unittest.TestCase):
     INVENTORY = {
@@ -2196,6 +2293,66 @@ class FleetScopeLimitTest(unittest.TestCase):
         self.assertIn('raspberrypi5', plan['excludedHosts'])
         self.assertEqual(plan['affectedProfiles'], ['kiosk'])
         self.assertEqual(warnings, [])
+
+    def test_selected_reverification_targets_only_the_explicit_verified_hosts(self):
+        classification = {
+            'server': False,
+            'kiosk': False,
+            'signage': False,
+            'migration': False,
+            'components': ['deploy-control'],
+        }
+        with patch.object(
+            MODULE, 'classify_release_impact', return_value=(classification, [])
+        ):
+            plan, targets, _classifications, warnings = MODULE.build_fleet_scope(
+                sha=TARGET_SHA,
+                inventory_data=self.INVENTORY,
+                fleet_state=self.FLEET,
+                selected=['raspberrypi5', 'kiosk-b'],
+                limit='raspberrypi5:kiosk-b',
+                full_fleet=False,
+                reverify_selected=True,
+            )
+
+        self.assertEqual(plan['targetHosts'], ['raspberrypi5', 'kiosk-b'])
+        self.assertEqual([target['host'] for target in targets], ['kiosk-b'])
+        self.assertTrue(plan['pi5Required'])
+        self.assertTrue(plan['reverifySelected'])
+        self.assertEqual(
+            {target['reason'] for target in plan['targets']},
+            {'selected host explicitly reverified'},
+        )
+        self.assertIn('kiosk-a', plan['excludedHosts'])
+        self.assertEqual(warnings, [])
+
+    def test_selected_reverification_still_rejects_unknown_hosts_outside_limit(self):
+        fleet = {**self.FLEET, 'fleet': dict(self.FLEET['fleet'])}
+        fleet['fleet']['kiosk-a'] = {
+            **fleet['fleet']['kiosk-a'],
+            'evidence': 'unknown',
+            'verifiedAt': None,
+        }
+        classification = {
+            'server': False,
+            'kiosk': False,
+            'signage': False,
+            'migration': False,
+            'components': ['deploy-control'],
+        }
+        with patch.object(
+            MODULE, 'classify_release_impact', return_value=(classification, [])
+        ):
+            with self.assertRaisesRegex(RuntimeError, 'unknown-evidence hosts: kiosk-a'):
+                MODULE.build_fleet_scope(
+                    sha=TARGET_SHA,
+                    inventory_data=self.INVENTORY,
+                    fleet_state=fleet,
+                    selected=['kiosk-b'],
+                    limit='kiosk-b',
+                    full_fleet=False,
+                    reverify_selected=True,
+                )
 
     def test_limit_cannot_exclude_an_unknown_terminal(self):
         fleet = {**self.FLEET, 'fleet': dict(self.FLEET['fleet'])}
@@ -2302,6 +2459,7 @@ class AutoMinimizeTest(unittest.TestCase):
             'skip_canary_hold': True,
             'canary_hold_timeout': 60,
             'full_fleet': False,
+            'reverify_selected': False,
             'expected_server_client_id': 'raspberrypi5-server',
         }
         values.update(overrides)

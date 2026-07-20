@@ -47,6 +47,34 @@ class Runtime:
             "pcscdRequired": "nfc-agent" in selected,
         }
 
+    def probe_terminal_release_evidence(
+        self,
+        _inventory,
+        host,
+        client_id,
+        services,
+        *,
+        expected_agents=None,
+        check_status_agent_result=True,
+    ):
+        selected = list(expected_agents or [])
+        ports = {"nfc-agent": 7071, "barcode-agent": 7072, "torque-agent": 7073}
+        self.calls.append(("release-evidence", host, expected_agents))
+        return {
+            "currentSha": NEW_SHA,
+            "services": list(services),
+            "oneshotServices": (
+                ["status-agent.service"] if check_status_agent_result else []
+            ),
+            "authenticatedEndpoint": True,
+            "statusClientId": client_id,
+            "agentContainers": selected,
+            "authenticatedAgentEndpoints": [
+                {"agent": agent, "port": ports[agent]} for agent in selected
+            ],
+            "pcscdRequired": "nfc-agent" in selected,
+        }
+
     def apply_terminal_profile(self, inventory, host, revision, run_id, profile):
         self.calls.append(
             ("apply", inventory, host, revision, run_id, profile.playbook)
@@ -108,7 +136,7 @@ class GenericTerminalAdapterTest(unittest.TestCase):
             evidence["agentContainers"], ["nfc-agent", "barcode-agent"]
         )
         self.assertIn(
-            ("agents", "kiosk-a", ["nfc-agent", "barcode-agent"]),
+            ("release-evidence", "kiosk-a", ("nfc-agent", "barcode-agent")),
             runtime.calls,
         )
         self.assertNotIn("torque-agent", evidence["agentContainers"])

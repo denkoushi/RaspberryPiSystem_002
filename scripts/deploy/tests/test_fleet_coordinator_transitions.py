@@ -202,6 +202,7 @@ class FakeRuntime:
         self.ready_ack_verification_override = None
         self.active_verification_ids = {}
         self.fleet_verified_error_host = None
+        self.terminal_pipelining_preflight_error = None
         self.manifest_capture_error = None
         self.repository_baseline_result = None
         self.runtime_cleanup_error = None
@@ -419,6 +420,11 @@ class FakeRuntime:
         self.events.append(f"terminal:previous:{host}")
         return OLD_SHA
 
+    def preflight_terminal_ansible_pipelining(self, _inventory, host):
+        self.events.append(f"terminal:pipelining-preflight:{host}")
+        if self.terminal_pipelining_preflight_error is not None:
+            raise self.terminal_pipelining_preflight_error
+
     def prepare_terminal_repository(self, _inventory, host):
         self.events.append(f"terminal:baseline:{host}")
         return copy.deepcopy(
@@ -587,6 +593,7 @@ def args(**overrides):
         "skip_canary_hold": True,
         "canary_hold_timeout": 60,
         "full_fleet": False,
+        "reverify_selected": False,
         "expected_server_client_id": "raspberrypi5-server",
     }
     values.update(overrides)
@@ -967,6 +974,61 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             target_state["rollbackManifest"],
             rollback_manifest("run-1", "kiosk-a"),
         )
+
+    def test_pipelining_preflight_failure_precedes_every_terminal_mutation(self):
+        terminal = {
+            "host": "kiosk-a",
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "a",
+        }
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", OLD_SHA),
+                "kiosk-a": host_record("kiosk", OLD_SHA),
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan={
+                "pi5Required": False,
+                "hosts": [
+                    decision("pi5", "server", targeted=False),
+                    decision("kiosk-a", "kiosk"),
+                ],
+            },
+            targets=[terminal],
+        )
+        runtime.terminal_pipelining_preflight_error = RuntimeError(
+            "pipelining become unavailable"
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "pipelining become unavailable"):
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            )
+
+        self.assertIn("fleet:unknown:kiosk-a", runtime.events)
+        self.assertIn("terminal:pipelining-preflight:kiosk-a", runtime.events)
+        for forbidden in (
+            "terminal:baseline:kiosk-a",
+            f"manifest:capture:kiosk-a:{OLD_SHA}",
+            "playbook:kiosk-a",
+            "rollback:kiosk-a",
+            "signage:prestage",
+        ):
+            self.assertNotIn(forbidden, runtime.events)
+        self.assertFalse(
+            any(event.startswith("status:") for event in runtime.events)
+        )
+        target = runtime.states[-1].target("kiosk-a")
+        self.assertNotIn("maintenanceStartedAt", target)
+        self.assertNotIn("rollbackManifest", target)
+        self.assertEqual(target["evidence"], "unknown")
+        phase = next(
+            phase
+            for phase in runtime.states[-1].payload["telemetry"]["phases"]
+            if phase["name"] == "terminal-ansible-pipelining-preflight"
+        )
+        self.assertEqual(phase["outcome"], "RuntimeError")
 
     def test_manifest_capture_failure_precedes_every_terminal_mutation(self):
         terminal = {

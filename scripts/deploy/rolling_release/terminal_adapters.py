@@ -488,23 +488,67 @@ class GenericSystemdAdapter(TerminalAdapter):
         )
         return tuple(dict.fromkeys((*base, *legacy_browser_paths)))
 
-    def extend_health_evidence(
+    def observe_direct(
         self,
         inventory: str,
         host: str,
-        result: dict[str, Any],
+        client_id: str,
         *,
-        expected_agents: tuple[str, ...] | None = None,
+        runtime_health: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Collect the unchanged Generic proofs through one SSH transport."""
+
+        restored_agents: tuple[str, ...] | None = None
+        if runtime_health is None:
+            services = list(self._active_units())
+        else:
+            restored_units, restored_agents = self._validated_runtime_health(
+                runtime_health
+            )
+            services = list(restored_units)
+        result = self.runtime.probe_terminal_release_evidence(
+            inventory,
+            host,
+            client_id,
+            services,
+            expected_agents=restored_agents,
+            check_status_agent_result=(
+                "status-agent" in self.profile.adapter_options.health_probe_ids
+            ),
+        )
+        expected_oneshot = (
+            ["status-agent.service"]
+            if "status-agent" in self.profile.adapter_options.health_probe_ids
+            else []
+        )
+        if (
+            not isinstance(result, dict)
+            or set(result)
+            != {
+                "currentSha",
+                "services",
+                "oneshotServices",
+                "authenticatedEndpoint",
+                "statusClientId",
+                "agentContainers",
+                "authenticatedAgentEndpoints",
+                "pcscdRequired",
+            }
+            or result.get("services") != services
+            or result.get("oneshotServices") != expected_oneshot
+            or result.get("authenticatedEndpoint") is not True
+            or result.get("statusClientId") != client_id
+            or not isinstance(result.get("currentSha"), str)
+            or FULL_SHA_RE.fullmatch(result["currentSha"]) is None
+        ):
+            raise RuntimeError(f"terminal release evidence is malformed: {host}")
+        self._validate_agent_evidence(result, host=host)
+        return result
+
+    def _validate_agent_evidence(
+        self, agents: dict[str, Any], *, host: str
     ) -> None:
         configured = set(self.docker_services)
-        if not configured:
-            return
-        if expected_agents is None:
-            agents = self.runtime.probe_kiosk_agents(inventory, host)
-        else:
-            agents = self.runtime.probe_kiosk_agents(
-                inventory, host, expected_agents=list(expected_agents)
-            )
         containers = agents.get("agentContainers") if isinstance(agents, dict) else None
         endpoints = (
             agents.get("authenticatedAgentEndpoints")
@@ -531,6 +575,25 @@ class GenericSystemdAdapter(TerminalAdapter):
             raise RuntimeError(
                 f"{self.profile.id} agent health evidence is malformed: {host}"
             )
+
+    def extend_health_evidence(
+        self,
+        inventory: str,
+        host: str,
+        result: dict[str, Any],
+        *,
+        expected_agents: tuple[str, ...] | None = None,
+    ) -> None:
+        configured = set(self.docker_services)
+        if not configured:
+            return
+        if expected_agents is None:
+            agents = self.runtime.probe_kiosk_agents(inventory, host)
+        else:
+            agents = self.runtime.probe_kiosk_agents(
+                inventory, host, expected_agents=list(expected_agents)
+            )
+        self._validate_agent_evidence(agents, host=host)
         result.update(agents)
 
 

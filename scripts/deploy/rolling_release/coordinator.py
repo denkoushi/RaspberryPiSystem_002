@@ -7,6 +7,8 @@ per-run state that describes the same transition.
 from __future__ import annotations
 
 import re
+import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +20,49 @@ from .terminal_adapters import TerminalAdapter
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$")
+
+
+@contextmanager
+def _measure_phase(state: Any, runtime: Any, name: str, *, host: str | None = None):
+    """Append non-authoritative timing data without influencing control flow."""
+
+    started_at = runtime.utc_now()
+    started = time.monotonic()
+    outcome = "success"
+    try:
+        yield
+    except BaseException as error:
+        outcome = type(error).__name__
+        raise
+    finally:
+        try:
+            telemetry = state.payload.setdefault("telemetry", {})
+            phases = telemetry.setdefault("phases", [])
+            event = {
+                "name": name,
+                "startedAt": started_at,
+                "endedAt": runtime.utc_now(),
+                "durationMs": round((time.monotonic() - started) * 1000),
+                "outcome": outcome,
+            }
+            if host is not None:
+                event["host"] = host
+            phases.append(event)
+        except Exception:
+            # Metrics must never change a release outcome.
+            pass
+
+
+def _collect_ansible_timing(state: Any, runtime: Any, run_id: str) -> None:
+    collector = getattr(runtime, "collect_ansible_timing", None)
+    if not callable(collector):
+        return
+    try:
+        state.payload.setdefault("telemetry", {})["ansible"] = collector(run_id)
+    except Exception as error:
+        state.payload.setdefault("telemetry", {})["ansible"] = {
+            "state": "unavailable", "error": type(error).__name__,
+        }
 
 
 def _terminal_adapter(runtime: Any, profile_id: str) -> TerminalAdapter:
@@ -983,6 +1028,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
         """Arbitrate late cancellation once, then finalize both state formats."""
 
         assert state is not None
+        _collect_ansible_timing(state, runtime, args.run_id)
         state.payload["phase"] = "completed"
         state.payload["state"] = "success"
 
@@ -1033,6 +1079,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             "inventory": args.inventory,
             "limitHosts": args.limit or "",
             "fullFleet": bool(getattr(args, "full_fleet", False)),
+            "reverifySelected": bool(getattr(args, "reverify_selected", False)),
             "releaseSha": args.sha,
             "unitName": runtime.os.environ.get("ROLLING_RELEASE_UNIT"),
             "runner": "systemd-run",
@@ -1094,6 +1141,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             selected=selected,
             limit=args.limit,
             full_fleet=bool(getattr(args, "full_fleet", False)),
+            reverify_selected=bool(getattr(args, "reverify_selected", False)),
         )
         if plan_warnings:
             plan["warnings"] = list(plan_warnings)
@@ -1139,20 +1187,26 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             state.payload["serverConfig"] = server_config
             interrupted_recovery_pending = True
             state.save()
-            manifest = runtime.capture_server_config_manifest(
-                inventory, server["host"], args.run_id
-            )
+            with _measure_phase(
+                state, runtime, "server-config-manifest-capture", host=server["host"]
+            ):
+                manifest = runtime.capture_server_config_manifest(
+                    inventory, server["host"], args.run_id
+                )
             server_config["rollbackManifest"] = manifest
             server_config["state"] = "captured"
             state.save()
             try:
-                runtime.converge_server_config(
-                    inventory,
-                    server["host"],
-                    server["desiredSha"],
-                    args.run_id,
-                    manifest,
-                )
+                with _measure_phase(
+                    state, runtime, "server-config-apply", host=server["host"]
+                ):
+                    runtime.converge_server_config(
+                        inventory,
+                        server["host"],
+                        server["desiredSha"],
+                        args.run_id,
+                        manifest,
+                    )
             except Exception as config_error:
                 try:
                     restored = runtime.restore_server_config_manifest(
@@ -1181,8 +1235,12 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
 
             # The five-minute Blue/Green switch monitor and cleanup form one
             # atomic safety window. Cancellation is observed only after it.
-            runtime.ensure_pi5_release(server["desiredSha"], state)
-            observation = runtime.observe_pi5_evidence(server["desiredSha"])
+            with _measure_phase(
+                state, runtime, "pi5-release-and-stability", host=server["host"]
+            ):
+                runtime.ensure_pi5_release(server["desiredSha"], state)
+            with _measure_phase(state, runtime, "pi5-evidence", host=server["host"]):
+                observation = runtime.observe_pi5_evidence(server["desiredSha"])
             verification_options = {"observation": observation}
             prior_server_sha = server.get("currentSha")
             if (
@@ -1230,9 +1288,21 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             state.payload["fleetGeneration"] = fleet_state["generation"]
             state.save()
 
-            repository_baseline = adapter.prepare_repository(
-                inventory, host
-            )
+            # The optimized forward executor uses Ansible SSH pipelining. Prove
+            # the exact pipelining + become path before repository inspection,
+            # manifest capture, notice, maintenance, checkout, or service work.
+            # Rollback retains the previously accepted non-pipelined transport.
+            with _measure_phase(
+                state,
+                runtime,
+                "terminal-ansible-pipelining-preflight",
+                host=host,
+            ):
+                runtime.preflight_terminal_ansible_pipelining(inventory, host)
+            token.checkpoint(f"after-terminal-ansible-pipelining-preflight:{host}")
+
+            with _measure_phase(state, runtime, "terminal-repository-baseline", host=host):
+                repository_baseline = adapter.prepare_repository(inventory, host)
             target["previousSha"] = repository_baseline["head"]
             target["repositoryBaseline"] = repository_baseline
             # Persist the verified pre-mutation HEAD before the remote manifest
@@ -1243,12 +1313,15 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             # HEAD before notices, maintenance, prestaging, checkout, or
             # service changes.  A capture failure is therefore mutation-free.
             try:
-                target["rollbackManifest"] = adapter.capture_manifest(
-                    inventory,
-                    target_spec,
-                    args.run_id,
-                    target["previousSha"],
-                )
+                with _measure_phase(
+                    state, runtime, "terminal-manifest-capture", host=host
+                ):
+                    target["rollbackManifest"] = adapter.capture_manifest(
+                        inventory,
+                        target_spec,
+                        args.run_id,
+                        target["previousSha"],
+                    )
             except Exception as capture_error:
                 # The remote helper may have sealed state even if result
                 # delivery failed. Keep this run active so the next
@@ -1262,9 +1335,10 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                 if adapter.should_issue_notice(
                     emergency_override=args.emergency_override
                 ):
-                    adapter.deliver_notice(
-                        state, target_spec, target, args.run_id
-                    )
+                    with _measure_phase(state, runtime, "terminal-notice", host=host):
+                        adapter.deliver_notice(
+                            state, target_spec, target, args.run_id
+                        )
                 else:
                     target["notice"] = {
                         "state": "skipped",
@@ -1315,12 +1389,19 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                 target["maintenanceStartedAt"] = runtime.utc_now()
                 state.payload["phase"] = "deploying"
                 state.save()
-                adapter.enter_maintenance(inventory, target_spec, args.run_id)
+                with _measure_phase(
+                    state, runtime, "terminal-maintenance-enter", host=host
+                ):
+                    adapter.enter_maintenance(inventory, target_spec, args.run_id)
                 token.checkpoint(f"after-maintenance:{host}")
                 adapter.prestage_maintenance(inventory, target_spec, args.run_id)
-                if not runtime.wait_for_ack(
-                    args.run_id, target_spec["clientId"], phase="maintenance"
+                with _measure_phase(
+                    state, runtime, "terminal-maintenance-ack", host=host
                 ):
+                    maintenance_acknowledged = runtime.wait_for_ack(
+                        args.run_id, target_spec["clientId"], phase="maintenance"
+                    )
+                if not maintenance_acknowledged:
                     if not args.emergency_override:
                         raise RuntimeError(
                             f"maintenance acknowledgement timed out for {host}"
@@ -1342,26 +1423,31 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                 )
                 # Ansible is not killed mid-operation.  Verification happens
                 # before the next cancellation checkpoint.
-                adapter.apply(
-                    inventory, host, target["desiredSha"], args.run_id
-                )
+                with _measure_phase(
+                    state, runtime, "terminal-ansible-apply", host=host
+                ):
+                    adapter.apply(
+                        inventory, host, target["desiredSha"], args.run_id
+                    )
                 expected_ready_sha = _terminal_ready_sha(
                     state, adapter, target
                 )
-                _verify_terminal_ready(
-                    runtime=runtime,
-                    state=state,
-                    inventory=inventory,
-                    run_id=args.run_id,
-                    target_spec=target_spec,
-                    adapter=adapter,
-                    target=target,
-                    expected_sha=expected_ready_sha,
-                    rollback=False,
-                )
-                observation = adapter.observe(
-                    inventory, host, target_spec["clientId"]
-                )
+                with _measure_phase(state, runtime, "terminal-ready-ack", host=host):
+                    _verify_terminal_ready(
+                        runtime=runtime,
+                        state=state,
+                        inventory=inventory,
+                        run_id=args.run_id,
+                        target_spec=target_spec,
+                        adapter=adapter,
+                        target=target,
+                        expected_sha=expected_ready_sha,
+                        rollback=False,
+                    )
+                with _measure_phase(state, runtime, "terminal-evidence", host=host):
+                    observation = adapter.observe(
+                        inventory, host, target_spec["clientId"]
+                    )
                 if observation.get("currentSha") != target["desiredSha"]:
                     raise RuntimeError(
                         f"terminal HEAD does not match desired release: {host}"
@@ -1389,9 +1475,12 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                 # Rollback wins over cancellation and is never interrupted.
                 rollback_reconciled = False
                 try:
-                    rollback_ok = adapter.rollback(
-                        inventory, target_spec, target, args.run_id
-                    )
+                    with _measure_phase(
+                        state, runtime, "terminal-rollback", host=host
+                    ):
+                        rollback_ok = adapter.rollback(
+                            inventory, target_spec, target, args.run_id
+                        )
                 except Exception as rollback_error:
                     rollback_ok = False
                     target["rollback"] = f"failed: {rollback_error}"
@@ -1418,12 +1507,15 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                             expected_sha=rollback_ready_sha,
                             rollback=True,
                         )
-                        rollback_observation = adapter.observe(
-                            inventory,
-                            host,
-                            target_spec["clientId"],
-                            runtime_health=rollback_runtime_health,
-                        )
+                        with _measure_phase(
+                            state, runtime, "terminal-rollback-evidence", host=host
+                        ):
+                            rollback_observation = adapter.observe(
+                                inventory,
+                                host,
+                                target_spec["clientId"],
+                                runtime_health=rollback_runtime_health,
+                            )
                         if (
                             rollback_observation.get("currentSha")
                             != target["previousSha"]
@@ -1438,7 +1530,13 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                         state.save()
                         # Cleanup is part of rollback evidence.  Never promote
                         # a host while maintenance remains active.
-                        adapter.clear_maintenance(target_spec, args.run_id)
+                        with _measure_phase(
+                            state,
+                            runtime,
+                            "terminal-rollback-maintenance-clear",
+                            host=host,
+                        ):
+                            adapter.clear_maintenance(target_spec, args.run_id)
                         target["maintenanceClearedAt"] = runtime.utc_now()
                         state.save()
                         _finalize_terminal_display(
@@ -1451,15 +1549,16 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                             target=target,
                             observation=rollback_observation,
                         )
-                        target["runtimeCleanup"] = (
-                            adapter.cleanup(
+                        with _measure_phase(
+                            state, runtime, "terminal-rollback-cleanup", host=host
+                        ):
+                            target["runtimeCleanup"] = adapter.cleanup(
                                 inventory,
                                 target_spec,
                                 target,
                                 args.run_id,
                                 "restored",
                             )
-                        )
                         state.save()
                         fleet_state = runtime.fleet_mark_verified(
                             host,
@@ -1527,7 +1626,10 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             # and never mutate the healthy terminal again via rollback.
             fleet_promoted = False
             try:
-                adapter.clear_maintenance(target_spec, args.run_id)
+                with _measure_phase(
+                    state, runtime, "terminal-maintenance-clear", host=host
+                ):
+                    adapter.clear_maintenance(target_spec, args.run_id)
                 target["maintenanceClearedAt"] = runtime.utc_now()
                 state.save()
                 _finalize_terminal_display(
@@ -1540,13 +1642,14 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                     target=target,
                     observation=observation,
                 )
-                target["runtimeCleanup"] = adapter.cleanup(
-                    inventory,
-                    target_spec,
-                    target,
-                    args.run_id,
-                    "committed",
-                )
+                with _measure_phase(state, runtime, "terminal-cleanup", host=host):
+                    target["runtimeCleanup"] = adapter.cleanup(
+                        inventory,
+                        target_spec,
+                        target,
+                        args.run_id,
+                        "committed",
+                    )
                 state.save()
                 fleet_state = runtime.fleet_mark_verified(
                     host,
@@ -1679,6 +1782,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                     "inventory": args.inventory,
                     "limitHosts": args.limit or "",
                     "fullFleet": bool(getattr(args, "full_fleet", False)),
+                    "reverifySelected": bool(getattr(args, "reverify_selected", False)),
                     "releaseSha": args.sha,
                     "unitName": runtime.os.environ.get("ROLLING_RELEASE_UNIT"),
                     "runner": "systemd-run",
@@ -1711,6 +1815,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             "cancelledAt": runtime.utc_now(),
         }
         state.payload["cancellationCleanup"] = cleanup
+        _collect_ansible_timing(state, runtime, args.run_id)
         if cleanup_failed:
             state.payload["failure"] = (
                 f"cancellation cleanup failed: {cleanup.get('error') or fleet_finish_error}"
@@ -1728,6 +1833,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                 fleet_finish_error = finish_error
                 finished = None
         if state is not None:
+            _collect_ansible_timing(state, runtime, args.run_id)
             state.payload["state"] = "failed"
             state.payload["phase"] = "completed"
             state.payload["failure"] = str(error)

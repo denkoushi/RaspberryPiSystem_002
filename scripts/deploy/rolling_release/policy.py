@@ -29,6 +29,7 @@ SHA256_RE = re.compile(r'^sha256:[0-9a-f]{64}$')
 CLIENT_ID_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$')
 
 REASON_FULL_FLEET = 'full fleet requested'
+REASON_SELECTED_REVERIFY = 'selected host explicitly reverified'
 REASON_STATE_MISSING = 'fleet record missing'
 REASON_ROLE_MISMATCH = 'fleet role mismatch'
 REASON_EVIDENCE_UNKNOWN = 'evidence unknown'
@@ -445,6 +446,7 @@ def plan_target_decisions(
     inventory: dict[str, Any],
     *,
     full_fleet: bool = False,
+    reverify_hosts: Iterable[str] | None = None,
     registry: TerminalProfileRegistry | None = None,
 ) -> list[dict[str, Any]]:
     """Decide one ordered fleet scope using only supplied, durable evidence.
@@ -457,6 +459,17 @@ def plan_target_decisions(
         raise ValueError('release SHA must be 40 lowercase hexadecimal characters')
     if type(full_fleet) is not bool:
         raise TypeError('full_fleet must be boolean')
+    if reverify_hosts is None:
+        selected_for_reverification = frozenset()
+    else:
+        try:
+            selected_for_reverification = frozenset(reverify_hosts)
+        except TypeError as error:
+            raise TypeError('reverify_hosts must contain host names') from error
+        if any(not isinstance(host, str) or not host for host in selected_for_reverification):
+            raise ValueError('reverify_hosts contains a malformed host name')
+    if full_fleet and selected_for_reverification:
+        raise ValueError('full_fleet cannot be combined with selected re-verification')
     fleet_records: Mapping[str, Any] = fleet if isinstance(fleet, Mapping) else {}
     classifications: Mapping[str, Any] = (
         classifications_by_sha if isinstance(classifications_by_sha, Mapping) else {}
@@ -492,6 +505,10 @@ def plan_target_decisions(
             desired = release_sha
             targeted = True
             reason = unsafe_reason or REASON_EVIDENCE_UNKNOWN
+        elif host in selected_for_reverification:
+            desired = release_sha
+            targeted = True
+            reason = REASON_SELECTED_REVERIFY
         elif current == release_sha:
             desired = release_sha
             targeted = recorded_desired != desired
@@ -521,6 +538,12 @@ def plan_target_decisions(
             'targetReason': reason,
             'targeted': targeted,
         })
+    unknown_reverify_hosts = selected_for_reverification - seen
+    if unknown_reverify_hosts:
+        raise ValueError(
+            'reverify_hosts contains hosts outside the release topology: '
+            + ', '.join(sorted(unknown_reverify_hosts))
+        )
     return decisions
 
 
