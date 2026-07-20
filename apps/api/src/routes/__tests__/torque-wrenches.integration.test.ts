@@ -24,7 +24,9 @@ describe('torque wrench traceability API', () => {
     await prisma.assemblyWorkSession.deleteMany({});
     await prisma.assemblyLotSerial.deleteMany({});
     await prisma.assemblyLot.deleteMany({});
-    await prisma.assemblySerialRegistry.deleteMany({});
+    await prisma.assemblyFormalIdentifierAssignment.deleteMany({});
+    await prisma.assemblyWorkUnitComposition.deleteMany({});
+    await prisma.assemblyWorkUnit.deleteMany({});
     await prisma.assemblyTemplateBolt.deleteMany({});
     await prisma.assemblyTemplateArea.deleteMany({});
     await prisma.assemblyTemplate.deleteMany({});

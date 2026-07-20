@@ -170,16 +170,16 @@ export function AssemblyStartPane({
 
         <section className="grid gap-2 rounded border border-white/10 bg-slate-900/60 p-2">
           <h3 className="text-[0.94rem] font-bold text-white/90">
-            シリアル
+            作業用ID
           </h3>
 
           <div className="grid grid-cols-1 gap-2 min-[1500px]:grid-cols-[minmax(0,1fr)_7.5rem]">
             <label className="grid gap-1 text-xs font-semibold text-white/70">
-              シリアルNo.追加
+              作業用ID追加
               <Input
                 value={serialDraft}
                 onChange={(event) => onSerialDraftChange(event.target.value)}
-                placeholder="シリアルNo."
+                placeholder="作業用ID"
                 className="min-h-10 text-[1.05rem] font-bold tracking-normal"
                 disabled={serialInputLocked}
                 onKeyDown={(event) => {
@@ -203,7 +203,7 @@ export function AssemblyStartPane({
           </div>
 
           <AssemblyKeypad
-            ariaLabel="シリアル入力パッド"
+            ariaLabel="作業用ID入力パッド"
             disabled={serialInputLocked}
             onKey={onSerialKey}
             onBackspace={onSerialBackspace}
@@ -229,11 +229,11 @@ export function AssemblyStartPane({
               </p>
             ) : serialDraftDuplicate ? (
               <p className="rounded border border-amber-300/25 bg-amber-500/10 px-2 py-1.5 text-xs font-semibold text-amber-100">
-                同じシリアルNo.は登録できません。
+                同じ作業用IDは登録できません。
               </p>
             ) : serialLimitReached ? (
               <p className="rounded border border-cyan-300/25 bg-cyan-500/10 px-2 py-1.5 text-xs font-semibold text-cyan-100">
-                ロット数分のシリアルNo.を入力済みです。
+                ロット数分の作業用IDを入力済みです。
               </p>
             ) : null}
             {showManualLotQtyInput ? (
@@ -252,7 +252,7 @@ export function AssemblyStartPane({
             <div className="grid max-h-36 content-start gap-1 overflow-y-auto">
               {serialNos.length === 0 ? (
                 <p className="rounded border border-white/10 bg-slate-950/55 px-2 py-3 text-center text-xs font-semibold text-white/50">
-                  シリアルNo.未入力
+                  作業用ID未入力
                 </p>
               ) : (
                 serialNos.map((serialNo, index) => (

@@ -19,7 +19,7 @@ const assemblyLotInclude = {
   serials: {
     orderBy: { sortOrder: 'asc' },
     include: {
-      serialRegistry: true,
+      workUnit: true,
       workSession: {
         include: {
           approval: true
@@ -39,7 +39,9 @@ export type AssemblyLotCreateInput = {
   templateId: string;
   productNo: string;
   expectedQuantity: number;
-  serialNos: string[];
+  /** Legacy boundary name. New callers should use workIds. */
+  serialNos?: string[];
+  workIds?: string[];
   operatorEmployeeId?: string | null;
   operatorNameSnapshot: string;
   targetUnit: string;
@@ -54,23 +56,23 @@ function required(value: string, label: string): string {
   return trimmed;
 }
 
-function normalizeSerialNo(value: string): string {
-  return required(normalizeAssemblyUpperIdentifier(value), 'シリアルNo.').slice(0, 120);
+function normalizeWorkId(value: string): string {
+  return required(normalizeAssemblyUpperIdentifier(value), '作業用ID').slice(0, 120);
 }
 
-function normalizeSerialNos(serialNos: string[]): string[] {
-  return serialNos.map(normalizeSerialNo);
+function normalizeWorkIds(workIds: string[]): string[] {
+  return workIds.map(normalizeWorkId);
 }
 
-function ensureUniqueSerials(serialNos: string[]) {
+function ensureUniqueWorkIds(workIds: string[]) {
   const seen = new Set<string>();
   const duplicates = new Set<string>();
-  for (const serialNo of serialNos) {
-    if (seen.has(serialNo)) duplicates.add(serialNo);
-    seen.add(serialNo);
+  for (const workId of workIds) {
+    if (seen.has(workId)) duplicates.add(workId);
+    seen.add(workId);
   }
   if (duplicates.size > 0) {
-    throw new ApiError(400, `シリアルNo.が重複しています: ${[...duplicates].slice(0, 5).join(', ')}`);
+    throw new ApiError(400, `作業用IDが重複しています: ${[...duplicates].slice(0, 5).join(', ')}`);
   }
 }
 
@@ -90,7 +92,9 @@ export function buildAssemblyLotSummary(lot: AssemblyLotDetail) {
       id: serial.id,
       lotId: serial.lotId,
       sortOrder: serial.sortOrder,
-      serialNo: serial.serialRegistry.serialNo,
+      workId: serial.workUnit.workId,
+      // 既存画面/API利用者向けの互換フィールド。新規画面は workId を使用する。
+      serialNo: serial.workUnit.workId,
       status,
       workSessionId: serial.workSession?.id ?? null,
       startedAt: serial.workSession?.startedAt ?? null,
@@ -136,14 +140,15 @@ export class AssemblyLotService {
     if (!Number.isInteger(input.expectedQuantity) || expectedQuantity <= 0) {
       throw new ApiError(400, 'ロット数は正の整数で指定してください');
     }
-    if (input.serialNos.length !== expectedQuantity) {
-      throw new ApiError(400, `シリアルNo.はロット数 ${expectedQuantity} 件ちょうど入力してください`);
+    const requestedWorkIds = input.workIds ?? input.serialNos ?? [];
+    if (requestedWorkIds.length !== expectedQuantity) {
+      throw new ApiError(400, `作業用IDはロット数 ${expectedQuantity} 件ちょうど入力してください`);
     }
 
     const productNo = required(normalizeAssemblyUpperIdentifier(input.productNo), '製番').slice(0, 120);
     const targetUnit = required(normalizeAssemblyUpperIdentifier(input.targetUnit), '機種名').slice(0, 120);
-    const serialNos = normalizeSerialNos(input.serialNos);
-    ensureUniqueSerials(serialNos);
+    const workIds = normalizeWorkIds(requestedWorkIds);
+    ensureUniqueWorkIds(workIds);
 
     const operatorNameSnapshot = required(input.operatorNameSnapshot, '作業者名').slice(0, 120);
     try {
@@ -158,13 +163,13 @@ export class AssemblyLotService {
             ? required(input.torqueWrenchId ?? '', '使用トルクレンチ').slice(0, 120)
             : '';
 
-        const existingSerials = await tx.assemblySerialRegistry.findMany({
-          where: { serialNo: { in: serialNos } },
-          select: { serialNo: true },
+        const existingWorkUnits = await tx.assemblyWorkUnit.findMany({
+          where: { workId: { in: workIds } },
+          select: { workId: true },
           take: 5
         });
-        if (existingSerials.length > 0) {
-          throw new ApiError(409, `登録済みのシリアルNo.があります: ${existingSerials.map((item) => item.serialNo).join(', ')}`);
+        if (existingWorkUnits.length > 0) {
+          throw new ApiError(409, `登録済みの作業用IDがあります: ${existingWorkUnits.map((item) => item.workId).join(', ')}`);
         }
 
         const lot = await tx.assemblyLot.create({
@@ -182,12 +187,12 @@ export class AssemblyLotService {
           select: { id: true }
         });
 
-        for (const [index, serialNo] of serialNos.entries()) {
-          const registry = await tx.assemblySerialRegistry.create({ data: { serialNo } });
+        for (const [index, workId] of workIds.entries()) {
+          const workUnit = await tx.assemblyWorkUnit.create({ data: { workId } });
           await tx.assemblyLotSerial.create({
             data: {
               lotId: lot.id,
-              serialRegistryId: registry.id,
+              workUnitId: workUnit.id,
               sortOrder: index
             }
           });
@@ -197,7 +202,7 @@ export class AssemblyLotService {
       });
       return this.getRequired(lotId);
     } catch (error) {
-      if (isUniqueConstraintError(error)) throw new ApiError(409, '登録済みのシリアルNo.があります');
+      if (isUniqueConstraintError(error)) throw new ApiError(409, '登録済みの作業用IDがあります');
       throw error;
     }
   }

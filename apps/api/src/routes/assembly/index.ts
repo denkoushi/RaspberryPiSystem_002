@@ -25,6 +25,7 @@ import {
   AssemblyTemplateService,
   AssemblyWorkSessionService,
   AssemblyWorkSessionRecordApprovalService,
+  AssemblyTraceabilityService,
   resolveAssemblyOperatorNfcUid,
   buildAssemblyLotSummary,
   serializeAssemblyWorkSessionApproval,
@@ -138,27 +139,49 @@ const recordCheckBodySchema = z.object({
   checked: z.boolean()
 });
 
-const startSessionBodySchema = z.object({
+const startSessionBodySchema = z
+  .object({
   templateId: z.string().uuid(),
   productNo: z.string().trim().min(1).max(120),
-  serialNo: z.string().trim().min(1).max(120),
+  workId: z.string().trim().min(1).max(120).optional(),
+  /** 旧クライアント互換。新規クライアントは workId を送信する。 */
+  serialNo: z.string().trim().min(1).max(120).optional(),
   nameplateNo: z.string().trim().min(1).max(120).optional().nullable(),
   operatorEmployeeId: z.string().trim().max(120).optional().nullable(),
   operatorNameSnapshot: z.string().trim().min(1).max(120),
   targetUnit: z.string().trim().min(1).max(120),
   torqueWrenchId: z.string().trim().min(1).max(120).optional().nullable()
-});
+  })
+  .superRefine((value, ctx) => {
+    if (!value.workId && !value.serialNo) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: '作業用IDが必要です', path: ['workId'] });
+    }
+    if (value.workId && value.serialNo && value.workId !== value.serialNo) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'workId と serialNo は同じ値を指定してください', path: ['workId'] });
+    }
+  });
 
-const createAssemblyLotBodySchema = z.object({
+const createAssemblyLotBodySchema = z
+  .object({
   templateId: z.string().uuid(),
   productNo: z.string().trim().min(1).max(120),
   expectedQuantity: z.coerce.number().int().min(1).max(500),
-  serialNos: z.array(z.string().trim().min(1).max(120)).min(1).max(500),
+  workIds: z.array(z.string().trim().min(1).max(120)).min(1).max(500).optional(),
+  /** 旧クライアント互換。新規クライアントは workIds を送信する。 */
+  serialNos: z.array(z.string().trim().min(1).max(120)).min(1).max(500).optional(),
   operatorEmployeeId: z.string().trim().max(120).optional().nullable(),
   operatorNameSnapshot: z.string().trim().min(1).max(120),
   targetUnit: z.string().trim().min(1).max(120),
   torqueWrenchId: z.string().trim().min(1).max(120).optional().nullable()
-});
+  })
+  .superRefine((value, ctx) => {
+    if (!value.workIds && !value.serialNos) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: '作業用IDが必要です', path: ['workIds'] });
+    }
+    if (value.workIds && value.serialNos) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'workIds または serialNos のどちらか一方だけを指定してください', path: ['workIds'] });
+    }
+  });
 
 const procedureOrderItemBodySchema = z
   .object({
@@ -363,6 +386,7 @@ function serializeAssemblyLotSummary(lot: AssemblyLotSummary) {
       id: serial.id,
       lotId: serial.lotId,
       sortOrder: serial.sortOrder,
+      workId: serial.workId,
       serialNo: serial.serialNo,
       status: serializeLotSerialStatus(serial.status),
       workSessionId: serial.workSessionId,
@@ -475,7 +499,8 @@ function serializeSessionSummary(session: AssemblyWorkSessionSummary) {
     templateId: session.templateId,
     status: session.status.toLowerCase(),
     productNo: session.productNo,
-    serialNo: session.serialNo,
+    workId: session.workId,
+    serialNo: session.workId,
     nameplateNo: session.nameplateNo,
     operatorNameSnapshot: session.operatorNameSnapshot,
     targetUnit: session.targetUnit,
@@ -494,7 +519,9 @@ function serializeSessionSummary(session: AssemblyWorkSessionSummary) {
     currentBoltMarkerNo: session.currentBoltMarkerNo,
     acceptedBoltCount: session.acceptedBoltCount,
     totalBoltCount: session.totalBoltCount,
-    approval: serializeAssemblyWorkSessionApproval(session.approval)
+    approval: serializeAssemblyWorkSessionApproval(session.approval),
+    isTopLevel: session.isTopLevel,
+    formalId: session.formalId
   };
 }
 
@@ -529,7 +556,8 @@ function serializeSession(session: AssemblyWorkSessionDetail, sessionService: As
     templateId: session.templateId,
     status: session.status.toLowerCase(),
     productNo: session.productNo,
-    serialNo: session.serialNo,
+    workId: session.workId,
+    serialNo: session.workId,
     nameplateNo: session.nameplateNo,
     operatorEmployeeId: session.operatorEmployeeId,
     operatorNameSnapshot: session.operatorNameSnapshot,
@@ -638,6 +666,15 @@ async function tryGetClientDevice(headers: FastifyRequest['headers']): Promise<{
   }
 }
 
+async function buildAssemblyTraceabilityActor(request: FastifyRequest) {
+  const clientDevice = await tryGetClientDevice(request.headers);
+  return {
+    username: request.user?.username ?? null,
+    clientDeviceId: clientDevice?.id ?? null,
+    clientDeviceNameSnapshot: clientDevice?.name ?? null
+  };
+}
+
 export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void> {
   const isAuthOnlyError = (error: unknown): boolean => {
     if (!error || typeof error !== 'object') return false;
@@ -681,6 +718,7 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
   const traceabilityService = new AssemblyTorqueTraceabilityService();
   const lotService = new AssemblyLotService(sessionService);
   const recordApprovalService = new AssemblyWorkSessionRecordApprovalService();
+  const assemblyTraceabilityService = new AssemblyTraceabilityService();
   const seibanStartService = new AssemblySeibanStartService();
   const seibanLotQuantityService = new AssemblySeibanLotQuantityService();
   const procedureOrderService = new AssemblyProcedureOrderService();
@@ -992,12 +1030,98 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
       .object({
         status: z.enum(['in_progress', 'completed', 'cancelled', 'all']).optional(),
         productNo: z.string().optional(),
+        workId: z.string().optional(),
+        /** 旧クライアント互換。 */
         serialNo: z.string().optional(),
         limit: z.coerce.number().int().min(1).max(100).optional()
       })
       .parse(request.query);
     const sessions = await sessionService.listSummary(q);
     return { sessions: sessions.map(serializeSessionSummary) };
+  });
+
+  app.get('/assembly/traceability/work-units', { preHandler: allowView }, async (request) => {
+    const query = z
+      .object({
+        scope: z.literal('top_level').optional(),
+        state: z.enum(['all', 'unassigned', 'assigned']).optional(),
+        query: z.string().max(120).optional(),
+        limit: z.coerce.number().int().min(1).max(100).optional()
+      })
+      .parse(request.query);
+    const workUnits = await assemblyTraceabilityService.listTopLevelCompleted(query);
+    const filtered = query.state === 'unassigned'
+      ? workUnits.filter((unit) => unit.formalIdentifier == null)
+      : query.state === 'assigned'
+        ? workUnits.filter((unit) => unit.formalIdentifier != null)
+        : workUnits;
+    return {
+      workUnits: filtered.map((unit) => ({
+        ...unit,
+        completedAt: dateToIso(unit.completedAt),
+        formalIdentifier: unit.formalIdentifier
+          ? { ...unit.formalIdentifier, assignedAt: unit.formalIdentifier.assignedAt.toISOString() }
+          : null
+      }))
+    };
+  });
+
+  app.post('/assembly/traceability/work-units/resolve', { preHandler: allowView }, async (request) => {
+    const body = z.object({ workId: z.string().trim().min(1).max(120) }).parse(request.body);
+    return assemblyTraceabilityService.resolve(body.workId);
+  });
+
+  app.post('/assembly/traceability/links', { preHandler: allowWriteKiosk }, async (request) => {
+    const body = z.object({
+      parentWorkId: z.string().trim().min(1).max(120),
+      childWorkId: z.string().trim().min(1).max(120),
+      accessPassword: z.string().max(128).optional().default('')
+    }).parse(request.body);
+    const link = await assemblyTraceabilityService.link({ ...body, actor: await buildAssemblyTraceabilityActor(request) });
+    return { link };
+  });
+
+  app.post('/assembly/traceability/links/:id/unlink', { preHandler: allowWriteKiosk }, async (request) => {
+    const params = idParamSchema.parse(request.params);
+    const body = z.object({ accessPassword: z.string().max(128).optional().default(''), reason: z.string().trim().min(1).max(500) }).parse(request.body);
+    const link = await assemblyTraceabilityService.unlink({ linkId: params.id, ...body, actor: await buildAssemblyTraceabilityActor(request) });
+    return { link };
+  });
+
+  app.post('/assembly/traceability/links/:id/reassign', { preHandler: allowWriteKiosk }, async (request) => {
+    const params = idParamSchema.parse(request.params);
+    const body = z.object({
+      parentWorkId: z.string().trim().min(1).max(120),
+      accessPassword: z.string().max(128).optional().default(''),
+      reason: z.string().trim().min(1).max(500)
+    }).parse(request.body);
+    const link = await assemblyTraceabilityService.reassign({ linkId: params.id, ...body, actor: await buildAssemblyTraceabilityActor(request) });
+    return { link };
+  });
+
+  app.post('/assembly/traceability/formal-identifiers', { preHandler: allowWriteKiosk }, async (request) => {
+    const body = z.object({
+      workId: z.string().trim().min(1).max(120),
+      formalId: z.string().trim().min(1).max(120),
+      accessPassword: z.string().max(128).optional().default('')
+    }).parse(request.body);
+    const formalIdentifier = await assemblyTraceabilityService.assignFormalIdentifier({ ...body, actor: await buildAssemblyTraceabilityActor(request) });
+    return { formalIdentifier };
+  });
+
+  app.post('/assembly/traceability/formal-identifiers/:id/correct', { preHandler: allowWriteKiosk }, async (request) => {
+    const params = idParamSchema.parse(request.params);
+    const body = z.object({
+      formalId: z.string().trim().min(1).max(120),
+      accessPassword: z.string().max(128).optional().default(''),
+      reason: z.string().trim().min(1).max(500)
+    }).parse(request.body);
+    const formalIdentifier = await assemblyTraceabilityService.correctFormalIdentifier({
+      assignmentId: params.id,
+      ...body,
+      actor: await buildAssemblyTraceabilityActor(request)
+    });
+    return { formalIdentifier };
   });
 
   app.get('/assembly/work-sessions/:id/procedure-sequence', { preHandler: allowView }, async (request, reply) => {

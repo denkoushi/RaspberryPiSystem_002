@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs';
 import { ApiError } from '../../lib/errors.js';
+import { AssemblyTraceabilityService } from './assembly-traceability.service.js';
 import { AssemblyWorkSessionService, type AssemblyWorkSessionDetail } from './assembly-work-session.service.js';
 
 function fmtDate(date: Date | null | undefined): string {
@@ -33,26 +34,35 @@ function styleHeader(row: ExcelJS.Row): void {
 }
 
 export class AssemblyExcelExportService {
-  constructor(private readonly sessionService = new AssemblyWorkSessionService()) {}
+  constructor(
+    private readonly sessionService = new AssemblyWorkSessionService(),
+    private readonly traceabilityService = new AssemblyTraceabilityService()
+  ) {}
 
   async buildSessionWorkbookBuffer(sessionId: string): Promise<Buffer> {
     const session = await this.sessionService.getDetail(sessionId);
     if (!session) throw new ApiError(404, '作業セッションが見つかりません');
+    const traceability = await this.traceabilityService.exportTraceabilityForSession(sessionId);
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'RaspberryPiSystem_002';
     workbook.created = new Date();
     workbook.modified = new Date();
 
-    this.addSummarySheet(workbook, session);
+    this.addSummarySheet(workbook, session, traceability);
     this.addResultSheet(workbook, session);
     this.addNgHistorySheet(workbook, session);
+    this.addTraceabilityHistorySheet(workbook, traceability);
 
     const raw = await workbook.xlsx.writeBuffer();
     return Buffer.from(raw);
   }
 
-  private addSummarySheet(workbook: ExcelJS.Workbook, session: AssemblyWorkSessionDetail): void {
+  private addSummarySheet(
+    workbook: ExcelJS.Workbook,
+    session: AssemblyWorkSessionDetail,
+    traceability: Awaited<ReturnType<AssemblyTraceabilityService['exportTraceabilityForSession']>>
+  ): void {
     const sheet = workbook.addWorksheet('概要');
     sheet.columns = [
       { header: '項目', key: 'label', width: 24 },
@@ -66,7 +76,8 @@ export class AssemblyExcelExportService {
       ['手順パターン', session.template.procedurePattern],
       ['テンプレート名', `${session.template.name} v${session.template.version}`],
       ['製番/M番号', session.productNo],
-      ['シリアルNo.', session.serialNo],
+      ['作業用ID', session.workId],
+      ['正式ID', traceability?.root.formalIdentifier?.formalId ?? ''],
       ['銘板No.', session.nameplateNo],
       ['作業者', session.operatorNameSnapshot],
       ['対象ユニット', session.targetUnit],
@@ -77,6 +88,47 @@ export class AssemblyExcelExportService {
       ['手順書', session.template.procedureDocument.name]
     ];
     rows.forEach(([label, value]) => sheet.addRow({ label, value }));
+  }
+
+  private addTraceabilityHistorySheet(
+    workbook: ExcelJS.Workbook,
+    traceability: Awaited<ReturnType<AssemblyTraceabilityService['exportTraceabilityForSession']>>
+  ): void {
+    const sheet = workbook.addWorksheet('構成・正式ID履歴');
+    sheet.columns = [
+      { header: '種別', key: 'kind', width: 16 },
+      { header: '親作業用ID', key: 'parentWorkId', width: 22 },
+      { header: '子作業用ID', key: 'childWorkId', width: 22 },
+      { header: '正式ID', key: 'formalId', width: 22 },
+      { header: '登録日時', key: 'createdAt', width: 22 },
+      { header: '解除・訂正日時', key: 'endedAt', width: 22 },
+      { header: '理由', key: 'reason', width: 30 },
+      { header: '操作者', key: 'actor', width: 18 }
+    ];
+    styleHeader(sheet.getRow(1));
+    if (!traceability) return;
+    for (const link of traceability.compositionHistory) {
+      sheet.addRow({
+        kind: '構成',
+        parentWorkId: link.parentWorkId,
+        childWorkId: link.childWorkId,
+        createdAt: fmtDate(link.linkedAt),
+        endedAt: fmtDate(link.unlinkedAt),
+        reason: link.unlinkReason ?? '',
+        actor: link.linkedByUsernameSnapshot ?? ''
+      });
+    }
+    for (const assignment of traceability.formalIdentifierHistory) {
+      sheet.addRow({
+        kind: '正式ID',
+        parentWorkId: traceability.root.workUnit.workId,
+        formalId: assignment.formalId,
+        createdAt: fmtDate(assignment.assignedAt),
+        endedAt: fmtDate(assignment.supersededAt),
+        reason: assignment.supersedeReason ?? '',
+        actor: assignment.assignedByUsernameSnapshot ?? ''
+      });
+    }
   }
 
   private addResultSheet(workbook: ExcelJS.Workbook, session: AssemblyWorkSessionDetail): void {

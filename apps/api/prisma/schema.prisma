@@ -2593,14 +2593,20 @@ model AssemblyTemplateCheckItem {
   @@index([assemblyProcedureDocumentId], map: "AssemblyTemplateCheckItem_idx_assembly_document")
 }
 
-/// 組立キオスク: シリアルNo.の全体一意予約。ロット登録時点で作業セッション未作成でも予約する。
-model AssemblySerialRegistry {
-  id          String               @id @default(uuid())
-  serialNo    String               @unique
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
-  lotSerial   AssemblyLotSerial?
-  workSession AssemblyWorkSession?
+/// 組立キオスク: 作業開始時に払い出す全体一意の作業用ID。
+/// 物理テーブルと列名は旧シリアルNo.実装と互換に保つ。
+model AssemblyWorkUnit {
+  id                           String                              @id @default(uuid())
+  workId                       String                              @unique @map("serialNo")
+  createdAt                    DateTime                            @default(now())
+  updatedAt                    DateTime                            @updatedAt
+  lotSerial                    AssemblyLotSerial?
+  workSession                  AssemblyWorkSession?
+  parentCompositionLinks       AssemblyWorkUnitComposition[]       @relation("AssemblyCompositionParent")
+  childCompositionLinks        AssemblyWorkUnitComposition[]       @relation("AssemblyCompositionChild")
+  formalIdentifierAssignments  AssemblyFormalIdentifierAssignment[]
+
+  @@map("AssemblySerialRegistry")
 }
 
 /// 組立キオスク: 製番ごとのロット計画。各シリアルの作業セッションは開始時に遅延作成する。
@@ -2626,15 +2632,15 @@ model AssemblyLot {
 
 /// 組立キオスク: ロット内シリアル。シリアルはRegistry経由で全体一意にする。
 model AssemblyLotSerial {
-  id               String                 @id @default(uuid())
-  lotId            String
-  serialRegistryId String                 @unique
-  sortOrder        Int
-  createdAt        DateTime               @default(now())
-  updatedAt        DateTime               @updatedAt
-  lot              AssemblyLot            @relation(fields: [lotId], references: [id], onDelete: Cascade)
-  serialRegistry   AssemblySerialRegistry @relation(fields: [serialRegistryId], references: [id], onDelete: Restrict)
-  workSession      AssemblyWorkSession?
+  id          String               @id @default(uuid())
+  lotId       String
+  workUnitId  String               @unique @map("serialRegistryId")
+  sortOrder   Int
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  lot         AssemblyLot          @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  workUnit    AssemblyWorkUnit     @relation(fields: [workUnitId], references: [id], onDelete: Restrict)
+  workSession AssemblyWorkSession?
 
   @@unique([lotId, sortOrder], map: "AssemblyLotSerial_unique_lot_sort")
   @@index([lotId, sortOrder], map: "AssemblyLotSerial_idx_lot_sort")
@@ -2644,11 +2650,11 @@ model AssemblyLotSerial {
 model AssemblyWorkSession {
   id                        String                             @id @default(uuid())
   templateId                String
-  serialRegistryId          String?                            @unique
+  workUnitId                String?                            @unique @map("serialRegistryId")
   lotSerialId               String?                            @unique
   status                    AssemblyWorkSessionStatus          @default(IN_PROGRESS)
   productNo                 String
-  serialNo                  String
+  workId                    String                             @map("serialNo")
   nameplateNo               String
   operatorEmployeeId        String?
   operatorNameSnapshot      String
@@ -2665,7 +2671,7 @@ model AssemblyWorkSession {
   createdAt                 DateTime                           @default(now())
   updatedAt                 DateTime                           @updatedAt
   template                  AssemblyTemplate                   @relation(fields: [templateId], references: [id], onDelete: Restrict)
-  serialRegistry            AssemblySerialRegistry?            @relation(fields: [serialRegistryId], references: [id], onDelete: Restrict)
+  workUnit                  AssemblyWorkUnit?                  @relation(fields: [workUnitId], references: [id], onDelete: Restrict)
   lotSerial                 AssemblyLotSerial?                 @relation(fields: [lotSerialId], references: [id], onDelete: SetNull)
   torqueRecords             AssemblyTorqueRecord[]
   checkRecords              AssemblyCheckRecord[]
@@ -2675,8 +2681,48 @@ model AssemblyWorkSession {
 
   @@index([status, updatedAt], map: "AssemblyWorkSession_idx_status_updated")
   @@index([productNo, status], map: "AssemblyWorkSession_idx_product_status")
-  @@index([productNo, serialNo, status, updatedAt], map: "AssemblyWorkSession_idx_product_serial_status")
+  @@index([productNo, workId, status, updatedAt], map: "AssemblyWorkSession_idx_product_serial_status")
   @@index([templateId, status], map: "AssemblyWorkSession_idx_template_status")
+}
+
+/// 組立キオスク: 作業用IDの親子構成履歴。unlinkedAt が NULL の行だけが現在有効。
+model AssemblyWorkUnitComposition {
+  id                             String           @id @default(uuid())
+  parentWorkUnitId               String
+  childWorkUnitId                String
+  linkedAt                       DateTime         @default(now())
+  linkedByUsernameSnapshot       String?
+  linkedByClientDeviceId          String?
+  linkedByClientDeviceNameSnapshot String?
+  unlinkedAt                     DateTime?
+  unlinkedByUsernameSnapshot     String?
+  unlinkedByClientDeviceId        String?
+  unlinkedByClientDeviceNameSnapshot String?
+  unlinkReason                   String?
+  parentWorkUnit                 AssemblyWorkUnit @relation("AssemblyCompositionParent", fields: [parentWorkUnitId], references: [id], onDelete: Restrict)
+  childWorkUnit                  AssemblyWorkUnit @relation("AssemblyCompositionChild", fields: [childWorkUnitId], references: [id], onDelete: Restrict)
+
+  @@index([parentWorkUnitId, unlinkedAt], map: "AssemblyWorkUnitComposition_idx_parent_active")
+  @@index([childWorkUnitId, unlinkedAt], map: "AssemblyWorkUnitComposition_idx_child_active")
+}
+
+/// 組立キオスク: 最上位完成品へ後付けする正式IDの履歴。supersededAt が NULL の行だけが現在有効。
+model AssemblyFormalIdentifierAssignment {
+  id                               String           @id @default(uuid())
+  workUnitId                       String
+  formalId                         String           @unique
+  assignedAt                       DateTime         @default(now())
+  assignedByUsernameSnapshot       String?
+  assignedByClientDeviceId          String?
+  assignedByClientDeviceNameSnapshot String?
+  supersededAt                     DateTime?
+  supersededByUsernameSnapshot     String?
+  supersededByClientDeviceId        String?
+  supersededByClientDeviceNameSnapshot String?
+  supersedeReason                  String?
+  workUnit                         AssemblyWorkUnit @relation(fields: [workUnitId], references: [id], onDelete: Restrict)
+
+  @@index([workUnitId, supersededAt], map: "AssemblyFormalIdentifierAssignment_idx_work_unit_active")
 }
 
 /// 作業者が物理レンチの製造番号と表示設定を確認した履歴。

@@ -38,6 +38,7 @@ import { KioskAssemblyHomePage } from './pages/kiosk/KioskAssemblyHomePage';
 import { KioskAssemblyPage } from './pages/kiosk/KioskAssemblyPage';
 import { KioskAssemblyProcedureOrderSettingsPage } from './pages/kiosk/KioskAssemblyProcedureOrderSettingsPage';
 import { KioskAssemblyRecordApprovalPage } from './pages/kiosk/KioskAssemblyRecordApprovalPage';
+import { KioskAssemblyTraceabilityPage } from './pages/kiosk/KioskAssemblyTraceabilityPage';
 import { KioskBorrowPage } from './pages/kiosk/KioskBorrowPage';
 import { KioskCallPage } from './pages/kiosk/KioskCallPage';
 import { KioskDocumentsPage } from './pages/kiosk/KioskDocumentsPage';
@@ -193,6 +194,7 @@ function App() {
             element={<KioskAssemblyProcedureOrderSettingsPage />}
           />
           <Route path="/kiosk/assembly/record-approvals" element={<KioskAssemblyRecordApprovalPage />} />
+          <Route path="/kiosk/assembly/traceability" element={<KioskAssemblyTraceabilityPage />} />
           <Route
             path="/kiosk/assembly/templates/new"
             element={lazyRouteElement(<KioskAssemblyTemplateEditorPage />)}
