@@ -14,10 +14,11 @@ related_docs:
   - docs/guides/deployment.md
   - docs/runbooks/deploy-status-recovery.md
   - docs/plans/deploy-speed-optimization-execplan.md
-validation: local contracts passed; live validation not authorized
+validation: local contracts and hosted checks passed; StoneBase Phase B production validation passed
 open_items:
   - integrate the StoneBase local execution PoC into the coordinator only after separate review
-  - obtain explicit approval before any Pi5 + StoneBase preflight or release
+  - obtain separate approval for a StoneBase maintenance-window reverify run that measures the healthy unchanged Compose-skipped path
+  - make the local-execution ready acknowledgement bind the terminal candidate SHA; the existing kiosk ACK authority is the Pi5 control-plane SHA and terminal SHA is independently verified today
 ---
 
 # Optimize unchanged terminal releases and prepare a sealed local execution PoC
@@ -39,7 +40,9 @@ This plan also defines a non-live proof of concept for future StoneBase local ex
 - [x] (2026-07-20 23:03Z) Implemented Phase B changed-only Compose and service lifecycle behavior with static-contract regression tests. Healthy no-change agents now skip Compose; changed, uncertain, or unhealthy agents retain the existing build/recreate/reconcile paths.
 - [x] (2026-07-20 23:05Z) Passed lifecycle regression, 128 focused adapter/route/coordinator/PoC tests, Ansible syntax check under the read-only config, deployment safety contracts, the aggregate local deployment contract, and complete deploy Python test discovery.
 - [x] (2026-07-20 23:03Z) Added a StoneBase-only, non-live candidate artifact/verification harness and five fault-injection tests. It has no coordinator, SSH, fleet-state, or hardware integration.
-- [ ] Request explicit approval before any read-only Pi5 + StoneBase preflight. Do not contact FJV or any other terminal.
+- [x] (2026-07-20 23:22Z) Ran the approved canonical Pi5 + StoneBase-only `--print-plan` and `--preflight-only`; all three probes passed with zero issues and FJV was explicitly excluded.
+- [x] (2026-07-20 23:23Z) Ran the approved canonical serial release `20260720-232311-d2e8c8` for StoneBase only. It completed with exit 0, evidence `verified`, maintenance cleared, committed runtime cleanup, and terminal SHA `73b3dbe4fbacda6cb5cbdfc8f7375201780a4d6c`.
+- [x] (2026-07-20 23:29Z) Re-read the durable run state and ran the canonical no-mutation plan. StoneBase is `verified at desired SHA` and target selection is empty; FJV remains `outside explicit --limit`.
 
 ## Surprises & Discoveries
 
@@ -57,6 +60,12 @@ This plan also defines a non-live proof of concept for future StoneBase local ex
 
 - Observation: the generated one-host inventory must still declare the playbook's fixed `stonebase_local` group.
   Evidence: the first no-mutation local playbook rehearsal skipped with `Could not match supplied host pattern, ignoring: stonebase_local`. The generated inventory now contains that group and its one bound host; the rehearsal then completed `ok=1 changed=0`, and a unit assertion fixes the group shape.
+
+- Observation: the changed Phase B candidate exercised all three agent convergence paths, rather than the intended unchanged skip path, and still materially reduced terminal apply time.
+  Evidence: production run `20260720-232311-d2e8c8` changed the lifecycle files themselves, so NFC, barcode, and torque Compose convergence correctly ran. `terminal-ansible-apply` was 241,853 ms, 43.56% below the Phase A 428,523 ms comparison. The total Pi5 release elapsed time was 340,921 ms, including the unchanged 60-second notice.
+
+- Observation: the existing kiosk ready ACK is intentionally controlled by the verified Pi5 Web/control-plane SHA, not by the terminal repository candidate SHA.
+  Evidence: the successful run records `expectedReadySha` and `readyReleaseSha` as `7cde783cc44f0883516249ffb11aa00c5c6e21e0`, while `currentSha`, `newSha`, and `runtimeFinalization.verifiedSha` independently equal the terminal candidate `73b3dbe4fbacda6cb5cbdfc8f7375201780a4d6c`. This is the pre-existing `readyAuthority: control-plane` kiosk profile behavior. The local-execution integration must add an explicit terminal-candidate ACK rather than treating this control-plane ACK as that proof.
 
 ## Decision Log
 
@@ -86,9 +95,11 @@ This plan also defines a non-live proof of concept for future StoneBase local ex
 
 ## Outcomes & Retrospective
 
-Phase B local implementation is complete and validated. All three agent lifecycle tasks make Compose conditional on the existing fail-closed image/runtime decision plus a read-only pre-lifecycle HTTP probe. The command reports changed only when the service has no post-command container, receives a new container ID, or was previously not running. The unguarded final readiness retry remains in place. Status-agent configuration and unit changes notify targeted release-only handlers, systemd reload precedes those handlers, the unconditional release-only restart loop is suppressed, and the existing health loop always executes after `flush_handlers`.
+Phase B implementation is complete and production-validated on StoneBase. Run `20260720-232311-d2e8c8` completed successfully through the canonical serial route with terminal candidate SHA `73b3dbe4fbacda6cb5cbdfc8f7375201780a4d6c`, verified evidence, maintenance cleared only after evidence, committed runtime finalization/cleanup, and no rollback. `terminal-ansible-apply` was 241,853 ms (43.56% lower than the Phase A 428,523 ms comparison); the full Pi5 release elapsed time was 340,921 ms. The candidate itself changed lifecycle code, so the three Compose convergence tasks correctly reported changes; a separately approved healthy no-change reverify is still required to measure the Compose-skipped path.
 
-The local execution PoC is deliberately only a non-live boundary harness. It creates a no-secret archive with an assertion-only local playbook; validates archive and payload digests, exact member set, candidate SHA, host/status identity, pinned runtime, three sealed-authority digests, staged files, and an exclusive lock; then calls exactly `ansible-playbook -c local` in tests through an injectable process boundary. It does not transfer an artifact, change an actual checkout, run a release playbook, update fleet/run state, enter maintenance, wait for ready ACK, or perform rollback. Those remain open integration milestones. No terminal, Pi5, FJV device, fleet state, release run, manifest, or maintenance state has been contacted or changed by this worktree.
+All three agent lifecycle tasks make Compose conditional on the existing fail-closed image/runtime decision plus a read-only pre-lifecycle HTTP probe. The command reports changed only when the service has no post-command container, receives a new container ID, or was previously not running. The unguarded final readiness retry remains in place. Status-agent configuration and unit changes notify targeted release-only handlers, systemd reload precedes those handlers, the unconditional release-only restart loop is suppressed, and the existing health loop always executes after `flush_handlers`.
+
+The local execution PoC is deliberately only a non-live boundary harness. It creates a no-secret archive with an assertion-only local playbook; validates archive and payload digests, exact member set, candidate SHA, host/status identity, pinned runtime, three sealed-authority digests, staged files, and an exclusive lock; then calls exactly `ansible-playbook -c local` in tests through an injectable process boundary. It does not transfer an artifact, change an actual checkout, run a release playbook, update fleet/run state, enter maintenance, wait for ready ACK, or perform rollback. Those remain open integration milestones. Apart from the separately approved canonical Pi5 + StoneBase Phase B validation recorded above, this worktree did not contact or change other terminals; FJV was never a connection target.
 
 ## Context and Orientation
 
@@ -153,7 +164,7 @@ Do not run `scripts/update-all-clients.sh`, `--print-plan`, `--preflight-only`, 
 
 Phase B local acceptance requires Python compilation, lifecycle selection regressions, adapter/route/coordinator unit tests, the deployment safety contract, and the aggregate local deployment contract to pass. The test suite must demonstrate each failure path listed in Milestone 2 and must demonstrate that no-change service health checks and agent readiness still execute.
 
-Phase B production acceptance is not authorized by this plan. After hosted checks succeed, it requires a separately approved canonical command limited to Pi5 plus StoneBase, with FJV visibly excluded. Compare only the variable terminal apply duration with 428,523 ms; report fixed 60-second notice and five-minute Pi5 monitor separately. Acceptance is success only when ready ACK equals the selected candidate SHA, evidence is verified, maintenance is cleared by the coordinator, runtime finalization is committed, and no rollback was required.
+Phase B StoneBase production acceptance completed in approved run `20260720-232311-d2e8c8`: the terminal candidate SHA was independently verified, evidence is verified, maintenance was cleared by the coordinator, runtime finalization is committed, and no rollback was required. The 60-second notice remained in force. The existing kiosk ready ACK proved the control-plane SHA, so exact terminal candidate SHA proof came from independent post-apply observation and runtime finalization; local-execution integration must add its own candidate-SHA ready-ACK authority before it can satisfy that stronger contract.
 
 The local execution PoC acceptance is initially non-live. Its harness must show that a valid sealed artifact reaches a mocked `ansible-playbook -c local` command exactly once and that every invalid or ambiguous artifact/result is rejected without a success result. Future coordinator integration must map each rejection to evidence `unknown` and choose only manifest-bounded rollback. Hardware acceptance requires an additional explicit approval and the same Pi5 + StoneBase scope.
 
