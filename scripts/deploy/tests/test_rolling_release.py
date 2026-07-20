@@ -1458,6 +1458,7 @@ class CanaryHoldTest(unittest.TestCase):
             'skip_canary_hold': False,
             'canary_hold_timeout': 60,
             'full_fleet': False,
+            'reverify_selected': False,
             'expected_server_client_id': 'raspberrypi5-server',
         }
         values.update(overrides)
@@ -2200,6 +2201,66 @@ class FleetScopeLimitTest(unittest.TestCase):
         self.assertEqual(plan['affectedProfiles'], ['kiosk'])
         self.assertEqual(warnings, [])
 
+    def test_selected_reverification_targets_only_the_explicit_verified_hosts(self):
+        classification = {
+            'server': False,
+            'kiosk': False,
+            'signage': False,
+            'migration': False,
+            'components': ['deploy-control'],
+        }
+        with patch.object(
+            MODULE, 'classify_release_impact', return_value=(classification, [])
+        ):
+            plan, targets, _classifications, warnings = MODULE.build_fleet_scope(
+                sha=TARGET_SHA,
+                inventory_data=self.INVENTORY,
+                fleet_state=self.FLEET,
+                selected=['raspberrypi5', 'kiosk-b'],
+                limit='raspberrypi5:kiosk-b',
+                full_fleet=False,
+                reverify_selected=True,
+            )
+
+        self.assertEqual(plan['targetHosts'], ['raspberrypi5', 'kiosk-b'])
+        self.assertEqual([target['host'] for target in targets], ['kiosk-b'])
+        self.assertTrue(plan['pi5Required'])
+        self.assertTrue(plan['reverifySelected'])
+        self.assertEqual(
+            {target['reason'] for target in plan['targets']},
+            {'selected host explicitly reverified'},
+        )
+        self.assertIn('kiosk-a', plan['excludedHosts'])
+        self.assertEqual(warnings, [])
+
+    def test_selected_reverification_still_rejects_unknown_hosts_outside_limit(self):
+        fleet = {**self.FLEET, 'fleet': dict(self.FLEET['fleet'])}
+        fleet['fleet']['kiosk-a'] = {
+            **fleet['fleet']['kiosk-a'],
+            'evidence': 'unknown',
+            'verifiedAt': None,
+        }
+        classification = {
+            'server': False,
+            'kiosk': False,
+            'signage': False,
+            'migration': False,
+            'components': ['deploy-control'],
+        }
+        with patch.object(
+            MODULE, 'classify_release_impact', return_value=(classification, [])
+        ):
+            with self.assertRaisesRegex(RuntimeError, 'unknown-evidence hosts: kiosk-a'):
+                MODULE.build_fleet_scope(
+                    sha=TARGET_SHA,
+                    inventory_data=self.INVENTORY,
+                    fleet_state=fleet,
+                    selected=['kiosk-b'],
+                    limit='kiosk-b',
+                    full_fleet=False,
+                    reverify_selected=True,
+                )
+
     def test_limit_cannot_exclude_an_unknown_terminal(self):
         fleet = {**self.FLEET, 'fleet': dict(self.FLEET['fleet'])}
         fleet['fleet']['kiosk-a'] = {
@@ -2305,6 +2366,7 @@ class AutoMinimizeTest(unittest.TestCase):
             'skip_canary_hold': True,
             'canary_hold_timeout': 60,
             'full_fleet': False,
+            'reverify_selected': False,
             'expected_server_client_id': 'raspberrypi5-server',
         }
         values.update(overrides)

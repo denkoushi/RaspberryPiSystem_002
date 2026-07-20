@@ -62,7 +62,13 @@ class Runtime:
         raise AssertionError("local launch must not use the mutating host selector")
 
 
-def release_args(*, detach=False, preflight_only=False, limit=""):
+def release_args(
+    *,
+    detach=False,
+    preflight_only=False,
+    limit="",
+    reverify_selected=False,
+):
     return argparse.Namespace(
         branch="main",
         inventory="infrastructure/ansible/inventory.yml",
@@ -72,6 +78,7 @@ def release_args(*, detach=False, preflight_only=False, limit=""):
         reason=None,
         skip_canary_hold=False,
         full_fleet=False,
+        reverify_selected=reverify_selected,
         detach=detach,
         preflight_only=preflight_only,
     )
@@ -99,6 +106,7 @@ class FakeSystemd:
             ),
         )
         self.events = []
+        self.start_specs = []
 
     def preflight_migrations(self, spec):
         self.events.append(("migration-preflight", spec.run_id))
@@ -113,6 +121,7 @@ class FakeSystemd:
         return self.route_preflight_result
 
     def start(self, spec, *, wait):
+        self.start_specs.append(spec)
         self.events.append(("start", spec.run_id, wait))
         return self.start_result
 
@@ -195,6 +204,40 @@ class ReleaseApplicationTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "local HEAD does not match"):
                 application.launch(release_args(), runtime=runtime)
         self.assertEqual(systemd.events, [])
+
+    def test_selected_reverification_is_bound_into_the_launch_spec(self):
+        systemd = FakeSystemd()
+        control = FakeControl()
+        with patch.object(application, "_require_clean_worktree"), patch.object(
+            application, "_remote_inventory", return_value="inventory.yml"
+        ), patch.object(
+            application, "new_run_id", return_value=RUN_ID
+        ), patch.object(
+            application, "build_backends", return_value=(systemd, control)
+        ), patch.object(
+            application,
+            "validate_remote_server_identity",
+            return_value={
+                "host": "raspberrypi5",
+                "clientId": "raspberrypi5-server",
+            },
+        ), patch.object(
+            application,
+            "observe",
+            return_value={"runId": RUN_ID, "state": "success"},
+        ):
+            outcome = application.launch(
+                release_args(
+                    limit="raspberrypi5",
+                    reverify_selected=True,
+                ),
+                runtime=Runtime,
+            )
+
+        self.assertEqual(outcome, 0)
+        self.assertEqual(len(systemd.start_specs), 1)
+        self.assertTrue(systemd.start_specs[0].reverify_selected)
+        self.assertEqual(systemd.start_specs[0].limit, "raspberrypi5")
 
     def test_wrong_remote_site_stops_before_systemd_submission(self):
         systemd = FakeSystemd()

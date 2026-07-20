@@ -593,6 +593,7 @@ def args(**overrides):
         "skip_canary_hold": True,
         "canary_hold_timeout": 60,
         "full_fleet": False,
+        "reverify_selected": False,
         "expected_server_client_id": "raspberrypi5-server",
     }
     values.update(overrides)

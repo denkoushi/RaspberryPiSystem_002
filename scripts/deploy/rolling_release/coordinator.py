@@ -1079,6 +1079,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             "inventory": args.inventory,
             "limitHosts": args.limit or "",
             "fullFleet": bool(getattr(args, "full_fleet", False)),
+            "reverifySelected": bool(getattr(args, "reverify_selected", False)),
             "releaseSha": args.sha,
             "unitName": runtime.os.environ.get("ROLLING_RELEASE_UNIT"),
             "runner": "systemd-run",
@@ -1140,6 +1141,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             selected=selected,
             limit=args.limit,
             full_fleet=bool(getattr(args, "full_fleet", False)),
+            reverify_selected=bool(getattr(args, "reverify_selected", False)),
         )
         if plan_warnings:
             plan["warnings"] = list(plan_warnings)
@@ -1780,6 +1782,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                     "inventory": args.inventory,
                     "limitHosts": args.limit or "",
                     "fullFleet": bool(getattr(args, "full_fleet", False)),
+                    "reverifySelected": bool(getattr(args, "reverify_selected", False)),
                     "releaseSha": args.sha,
                     "unitName": runtime.os.environ.get("ROLLING_RELEASE_UNIT"),
                     "runner": "systemd-run",

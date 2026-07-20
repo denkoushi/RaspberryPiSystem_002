@@ -47,6 +47,7 @@ EXPECTED_KEYS = frozenset({
     'reason',
     'skipCanaryHold',
     'fullFleet',
+    'reverifySelected',
 })
 FORBIDDEN_REF_CHARACTERS = frozenset(' ~^:?*[\\')
 
@@ -144,11 +145,18 @@ def parse_spec(raw: str) -> dict[str, Any]:
     timeout = payload.get('canaryHoldTimeout')
     if type(timeout) is not int or timeout <= 0:
         raise BootstrapConfigError('canaryHoldTimeout must be a positive integer')
-    for key in ('emergencyOverride', 'skipCanaryHold', 'fullFleet'):
+    for key in (
+        'emergencyOverride',
+        'skipCanaryHold',
+        'fullFleet',
+        'reverifySelected',
+    ):
         if type(payload.get(key)) is not bool:
             raise BootstrapConfigError(f'{key} must be boolean')
     if payload['fullFleet'] and payload['limit']:
         raise BootstrapConfigError('fullFleet cannot be combined with limit')
+    if payload['reverifySelected'] and not payload['limit']:
+        raise BootstrapConfigError('reverifySelected requires limit')
     reason = payload.get('reason')
     if reason is not None:
         if not isinstance(reason, str) or '\x00' in reason or len(reason) > 1000:
@@ -224,6 +232,8 @@ def remote_arguments(spec: Mapping[str, Any]) -> list[str]:
         arguments.append('--skip-canary-hold')
     if spec['fullFleet']:
         arguments.append('--full-fleet')
+    if spec['reverifySelected']:
+        arguments.append('--reverify-selected')
     return arguments
 
 

@@ -109,6 +109,7 @@ class SystemdBackendTest(unittest.TestCase):
         self.assertEqual(payload['runId'], RUN_ID)
         self.assertEqual(payload['sha'], SHA)
         self.assertFalse(payload['fullFleet'])
+        self.assertFalse(payload['reverifySelected'])
 
     def test_full_fleet_survives_the_systemd_bootstrap_contract(self):
         backend, runner = self.backend()
@@ -119,6 +120,24 @@ class SystemdBackendTest(unittest.TestCase):
         payload = bootstrap.parse_spec(base64.b64decode(remote[-1]).decode('utf-8'))
         self.assertTrue(payload['fullFleet'])
         self.assertIn('--full-fleet', bootstrap.remote_arguments(payload))
+
+    def test_selected_reverification_survives_the_systemd_bootstrap_contract(self):
+        backend, runner = self.backend()
+
+        backend.start(
+            self.spec(limit='raspberrypi5:stonebase-a', reverify_selected=True),
+            wait=False,
+        )
+
+        remote = self.remote_argv(runner)
+        payload = bootstrap.parse_spec(base64.b64decode(remote[-1]).decode('utf-8'))
+        self.assertTrue(payload['reverifySelected'])
+        arguments = bootstrap.remote_arguments(payload)
+        self.assertIn('--reverify-selected', arguments)
+        self.assertEqual(
+            arguments[arguments.index('--limit') + 1],
+            'raspberrypi5:stonebase-a',
+        )
 
     def test_detach_omits_wait_but_still_waits_for_unit_start(self):
         backend, runner = self.backend()

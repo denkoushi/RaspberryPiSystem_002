@@ -47,6 +47,7 @@ class RollingReleaseCliContractTest(unittest.TestCase):
             ("--detach",),
             ("--print-plan",),
             ("--full-fleet",),
+            ("--reverify-selected", "--limit", "kiosk-a"),
             ("--canary-hold-timeout", "10"),
             ("--emergency-override", "--reason", "incident"),
         ):
@@ -65,6 +66,35 @@ class RollingReleaseCliContractTest(unittest.TestCase):
                 "--full-fleet",
                 "--limit",
                 "kiosk",
+            )
+
+    def test_selected_reverification_requires_and_preserves_an_explicit_limit(self):
+        args = parse(
+            "main",
+            "infrastructure/ansible/inventory.yml",
+            "--limit",
+            "raspberrypi5:stonebase-a",
+            "--reverify-selected",
+        )
+        self.assertTrue(args.reverify_selected)
+        self.assertEqual(args.limit, "raspberrypi5:stonebase-a")
+
+        planned = parse(
+            "main",
+            "infrastructure/ansible/inventory.yml",
+            "--limit",
+            "stonebase-a",
+            "--reverify-selected",
+            "--print-plan",
+        )
+        self.assertTrue(planned.print_plan)
+        self.assertTrue(planned.reverify_selected)
+
+        with self.assertRaisesRegex(UsageError, "requires --limit"):
+            parse(
+                "main",
+                "infrastructure/ansible/inventory.yml",
+                "--reverify-selected",
             )
 
     def test_removed_minimization_alias_exits_two(self):
@@ -129,6 +159,7 @@ class RollingReleaseCliContractTest(unittest.TestCase):
             ("--status", "run-42", "--limit", "kiosk"),
             ("--status", "run-42", "--sha", "a" * 40),
             ("--status", "run-42", "--full-fleet"),
+            ("--status", "run-42", "--reverify-selected"),
             ("--status", "run-42", "--canary-hold-timeout", "1800"),
             (
                 "--cancel",

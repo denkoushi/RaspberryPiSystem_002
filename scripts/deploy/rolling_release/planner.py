@@ -41,6 +41,7 @@ def build_fleet_plan_payload(
     limit: str,
     canary_hold_policy: CanaryHoldPolicy,
     profile_ids: Iterable[str] | None = None,
+    reverify_selected: bool = False,
 ) -> dict[str, Any]:
     """Compose the fleet-aware public and persisted planning snapshot.
 
@@ -50,6 +51,8 @@ def build_fleet_plan_payload(
     """
     if type(full_fleet) is not bool:
         raise TypeError('full_fleet must be boolean')
+    if type(reverify_selected) is not bool:
+        raise TypeError('reverify_selected must be boolean')
     if not isinstance(decisions, list):
         raise TypeError('decisions must be a list')
 
@@ -105,6 +108,7 @@ def build_fleet_plan_payload(
     return {
         'desiredSha': release_sha,
         'fullFleet': full_fleet,
+        'reverifySelected': reverify_selected,
         'limit': limit or None,
         'pi5Required': any(
             decision['role'] == 'server' and decision['targeted']

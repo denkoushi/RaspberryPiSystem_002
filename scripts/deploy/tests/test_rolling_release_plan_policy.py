@@ -513,6 +513,62 @@ class ReleasePolicyTest(unittest.TestCase):
             for decision in first
         ))
 
+    def test_selected_reverification_forces_only_named_verified_hosts(self):
+        fleet = {
+            target['host']: verified_record(target['role'], current=CURRENT_SHA)
+            for target in self.hosts
+        }
+
+        decisions = POLICY.plan_target_decisions(
+            self.hosts,
+            fleet,
+            RELEASE_SHA,
+            {CURRENT_SHA: classification()},
+            self.inventory,
+            reverify_hosts={'kiosk-b'},
+        )
+
+        selected = next(decision for decision in decisions if decision['host'] == 'kiosk-b')
+        self.assertTrue(selected['targeted'])
+        self.assertEqual(selected['desiredSha'], RELEASE_SHA)
+        self.assertEqual(
+            selected['targetReason'],
+            'selected host explicitly reverified',
+        )
+        self.assertFalse(next(
+            decision for decision in decisions if decision['host'] == 'server-a'
+        )['targeted'])
+        self.assertFalse(next(
+            decision for decision in decisions if decision['host'] == 'signage-a'
+        )['targeted'])
+
+    def test_selected_reverification_does_not_mask_unknown_evidence(self):
+        fleet = {
+            target['host']: verified_record(target['role'], current=CURRENT_SHA)
+            for target in self.hosts
+        }
+        fleet['kiosk-b'] = {
+            **fleet['kiosk-b'],
+            'evidence': 'unknown',
+            'verifiedAt': None,
+        }
+
+        selected = next(
+            decision
+            for decision in POLICY.plan_target_decisions(
+                self.hosts,
+                fleet,
+                RELEASE_SHA,
+                {CURRENT_SHA: classification()},
+                self.inventory,
+                reverify_hosts={'kiosk-b'},
+            )
+            if decision['host'] == 'kiosk-b'
+        )
+
+        self.assertTrue(selected['targeted'])
+        self.assertEqual(selected['targetReason'], 'evidence unknown')
+
     def test_stale_recorded_desired_sha_is_not_an_exclusion_basis(self):
         record = verified_record('kiosk', current=RELEASE_SHA, desired=CURRENT_SHA)
         decision = POLICY.plan_target_decisions(
@@ -731,6 +787,7 @@ class ReleasePlannerTest(unittest.TestCase):
         )
         self.assertEqual(payload['desiredSha'], RELEASE_SHA)
         self.assertFalse(payload['fullFleet'])
+        self.assertFalse(payload['reverifySelected'])
         self.assertTrue(payload['pi5Required'])
         self.assertEqual(payload['targetHosts'], ['server-a', 'kiosk-a'])
         self.assertEqual(payload['excludedHosts'], ['signage-a'])

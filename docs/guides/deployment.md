@@ -14,7 +14,7 @@ last_verified: 2026-07-19
 公開CLIは次のとおり。
 
 ```text
-scripts/update-all-clients.sh <branch> <inventory> [--limit PATTERN] [--full-fleet] [--detach]
+scripts/update-all-clients.sh <branch> <inventory> [--limit PATTERN] [--reverify-selected] [--full-fleet] [--detach]
 scripts/update-all-clients.sh <branch> <inventory> --print-plan
 scripts/update-all-clients.sh <branch> <inventory> --preflight-only [--limit PATTERN]
 scripts/update-all-clients.sh --status RUN_ID
@@ -38,6 +38,7 @@ scripts/update-all-clients.sh --cancel RUN_ID --reason TEXT
 - Pi5が必要な変更で `--limit` によりPi5を除外することはできない。
 - `--limit` で根拠不明hostを除外することはできない。
 - 全台を明示的に再検証するときだけ `--full-fleet` を使う。
+- 影響分類がno-opでも、承認済みの限定端末で同一SHAを再検証するときだけ `--limit PATTERN --reverify-selected` を使う。選択されたverified hostだけを対象へ戻し、選択外のunknown host、Pi5必須変更、通常の通知・安定化・ACK・rollback契約は迂回しない。`--print-plan`で正確な対象を確認してから実行する。
 - 端末はregistryのprofile順、profile内canary、残りのinventory順で、一台ずつ更新する。
 
 判断の正本は `logs/deploy/fleet-release-state.json` である。手で編集しない。

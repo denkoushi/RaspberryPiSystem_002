@@ -161,6 +161,7 @@ def plan_target_decisions(
     inventory: dict[str, Any],
     *,
     full_fleet: bool,
+    reverify_hosts: Iterable[str] | None = None,
 ) -> list[dict[str, Any]]:
     return release_policy.plan_target_decisions(
         targets,
@@ -169,6 +170,7 @@ def plan_target_decisions(
         classifications_by_sha,
         inventory,
         full_fleet=full_fleet,
+        reverify_hosts=reverify_hosts,
     )
 
 
@@ -1121,9 +1123,12 @@ def build_fleet_scope(
     selected: list[str] | None,
     limit: str,
     full_fleet: bool,
+    reverify_selected: bool = False,
 ) -> tuple[dict[str, Any], list[dict[str, str]], dict[str, dict[str, Any] | None], list[str]]:
     all_hosts = release_hosts(inventory_data)
     classifications, warnings = classify_fleet_baselines(sha, fleet_state)
+    if reverify_selected and selected is None:
+        raise RuntimeError('selected re-verification requires an explicit --limit')
     decisions = plan_target_decisions(
         all_hosts,
         fleet_state.get("fleet") or {},
@@ -1131,6 +1136,7 @@ def build_fleet_scope(
         classifications,
         inventory_data,
         full_fleet=full_fleet,
+        reverify_hosts=selected if reverify_selected else None,
     )
 
     if selected is not None:
@@ -1168,6 +1174,7 @@ def build_fleet_scope(
         full_fleet=full_fleet,
         limit=limit,
         canary_hold_policy=should_hold_after_canary,
+        reverify_selected=reverify_selected,
     )
     target_by_host = {target["host"]: target for target in all_hosts}
     terminal_targets = [
@@ -1225,6 +1232,7 @@ def build_print_plan(
     limit: str,
     *,
     full_fleet: bool = False,
+    reverify_selected: bool = False,
 ) -> dict[str, Any]:
     warnings: list[str] = []
     sha, current_warnings = resolve_release_sha(branch)
@@ -1262,6 +1270,7 @@ def build_print_plan(
         selected=selected,
         limit=limit,
         full_fleet=full_fleet,
+        reverify_selected=reverify_selected,
     )
     warnings.extend(scope_warnings)
     server_record = next(
@@ -1347,6 +1356,7 @@ def local_run(args: argparse.Namespace) -> int:
                     args.inventory,
                     args.limit or "",
                     full_fleet=args.full_fleet,
+                    reverify_selected=args.reverify_selected,
                 ),
                 ensure_ascii=False,
             )

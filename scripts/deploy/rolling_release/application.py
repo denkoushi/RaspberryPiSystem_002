@@ -405,6 +405,7 @@ def launch(args: Any, *, runtime: Any) -> int:
         reason=args.reason,
         skip_canary_hold=args.skip_canary_hold,
         full_fleet=args.full_fleet,
+        reverify_selected=args.reverify_selected,
     ).validate()
     systemd, control = build_backends(runtime)
     migration_preflight = systemd.preflight_migrations(spec)
