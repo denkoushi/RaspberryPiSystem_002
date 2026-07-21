@@ -48,7 +48,8 @@ If `EXEC_PLAN.md` must be touched, keep the entry short and limited to current s
 - Active self-inspection confirm guard + draft WIP: `docs/plans/self-inspection-confirm-guard-wip-draft.md`
 - Active DGX ComfyUI Phase 1 follow-up: `docs/plans/dgx-comfyui-single-image-edit-workflow.md`
 - Active assembly torque-wrench traceability: `docs/plans/assembly-torque-wrench-traceability-execplan.md`
-- Active deploy speed Phase B / StoneBase local execution PoC: `docs/plans/deploy-speed-phase-b-execplan.md`
+- Active deploy release-identity audit and blocked redesign: `docs/knowledge-base/KB-401-deploy-release-identity-runtime-audit.md`, `docs/plans/deploy-release-identity-architecture-execplan.md`
+- Frozen deploy speed Phase B / StoneBase local execution PoC: `docs/plans/deploy-speed-phase-b-execplan.md`
 
 The index files are navigation only. They must not become narrative logs.
 

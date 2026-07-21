@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 標準Deploy release identity監査（2026-07-21 · No-Go・実機再試行凍結）
+
+- **Pi5 Web・browser・terminal Git・Local artifact/runtimeのidentity分離**: 現行経路の安全性と進行可能性を全体監査し、typed release claimsとmutation/activation/verification target分離を提案。実装・bootstrap・Local実行・再配布はread-only evidence gateまで凍結。**正本**: [KB-401](./knowledge-base/KB-401-deploy-release-identity-runtime-audit.md) · [ADR](./decisions/ADR-20260721-deploy-release-identity-and-activation.md) · [Blocked ExecPlan](./plans/deploy-release-identity-architecture-execplan.md) · [Approval manifest](./plans/deploy-release-identity-readonly-evidence-manifest.md)
+
 ### デプロイ全経路の事前検証（2026-07-19 · 実装・検証中）
 
 - **停止要因の一括検出と全ルート証明**: local、Pi5、Kiosk、Signage、rollback、cancel、中断復旧、最終証跡の23段階を機械可読な契約へ集約し、全件収集型preflightと既存障害注入試験へ結合する。**正本**: [ExecPlan](./plans/deployment-exhaustive-preflight-execplan.md) · [Guide](./guides/deployment.md#実行前確認)
