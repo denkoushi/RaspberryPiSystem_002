@@ -1,7 +1,7 @@
 ---
 id: stonebase-local-ansible
 title: StoneBase sealed local Ansible executor
-status: bootstrap-retry-preflight-pending
+status: bootstrap-retry-approval-required
 scope: opt-in StoneBase terminal apply executor below the rolling-release safety adapter
 date: 2026-07-21
 source_of_truth: docs/plans/stonebase-local-ansible-execplan.md
@@ -14,9 +14,8 @@ related_docs:
   - docs/guides/deployment.md
   - docs/plans/deploy-speed-phase-b-execplan.md
   - docs/runbooks/deploy-status-recovery.md
-validation: bootstrap source-path fix passed 763 deploy Python tests and aggregate deploy contracts; failed run 20260721-021000-1ede52 completed sealed rollback, verified StoneBase restoration, maintenance clear, and cleanup
+validation: bootstrap source-path fix passed 763 deploy Python tests and aggregate deploy contracts; preflight 20260721-023614-f12bd4 passed with maintenance-free SSH fallback and no release submission
 open_items:
-  - publish the bootstrap source-path fix and repeat Pi5 plus StoneBase read-only preflight
   - obtain explicit approval before retrying the Pi5 plus StoneBase SSH bootstrap release
   - bootstrap the runner through an approved SSH executor run before the first local reverify run
 ---
@@ -49,6 +48,7 @@ This is not `ansible-pull`. StoneBase cannot choose a branch, fetch from a netwo
 - [x] (2026-07-21 02:05Z) Published executor-evidence commit `3206b92b91bd47bd7bfc37d9dc0028c2836d46f0` and repeated the approved canonical no-release gate. Print-plan again selected only Pi5 plus StoneBase and excluded FJV. Preflight `20260721-020511-ed1637` passed with requested Local, effective `ssh-ansible`, stable fallback `candidate-requires-ssh-configuration`, no selected runtime, and `releaseSubmitted: false`. This is the expected first-run result because the range from StoneBase `73b3dbe4fbacda6cb5cbdfc8f7375201780a4d6c` contains runner/configuration changes.
 - [x] (2026-07-21 02:25Z) Ran the explicitly approved canonical SSH bootstrap release as `20260721-021000-1ede52`. Pi5 reached candidate `85874ca920645083840a903631eb1b3afcbce742` and stable evidence. StoneBase entered maintenance only after its sealed file/runtime manifests and 60-second notice, then SSH Ansible stopped at `client : Install StoneBase local executor runtime lock`. The coordinator used only the sealed manifests: rollback, rollback ready ACK, independent rollback evidence, runtime cleanup, maintenance clear, and cleanup all succeeded. StoneBase was verified back at `73b3dbe4fbacda6cb5cbdfc8f7375201780a4d6c`; FJV and every other terminal remained excluded.
 - [x] (2026-07-21 02:34Z) Diagnosed the failed task from the bounded Pi5 timing event and task-local journal. The two lock copies incorrectly used role-relative `src` values while their immutable files live under `infrastructure/ansible/files/stonebase-local-ansible`. Changed both to exact `{{ repo_path }}` candidate paths with `remote_src: true`, and added a release safety contract that binds each manifest-backed destination to that exact candidate source. Complete discovery passed 763 tests in 58.662 seconds; the aggregate contract repeated 763 tests, isolated PostgreSQL/API 20 tests, safety/inventory contracts, and every Ansible syntax check successfully.
+- [x] (2026-07-21 02:36Z) Published source-path fix `d99cfe26db1800bf210e4396d73db97736a91810` and ran the no-release gate. Print-plan targeted StoneBase only because Pi5 is already stable at `85874ca920645083840a903631eb1b3afcbce742` and this fix has no server impact; Pi5 remains the coordinator. Preflight `20260721-023614-f12bd4` passed for the exact Pi5 plus StoneBase limit with requested Local, effective `ssh-ansible`, fallback `candidate-requires-ssh-configuration`, and `releaseSubmitted: false`. FJV and all other terminals remained excluded.
 - [ ] In a later approved maintenance window, perform an SSH executor bootstrap run first, then a separate `--reverify-selected --stonebase-local-ansible-poc` run. Record exact run state, evidence, rollback authority, and timings here.
 
 ## Surprises & Discoveries
@@ -253,6 +253,15 @@ Approved SSH bootstrap attempt at candidate `85874ca920645083840a903631eb1b3afcb
     runtime cleanup = restored; maintenance clear = success
     verified StoneBase SHA = 73b3dbe4fbacda6cb5cbdfc8f7375201780a4d6c
 
+Bootstrap retry read-only gate at source-path fix `d99cfe26db1800bf210e4396d73db97736a91810`:
+
+    --print-plan mutation target = raspi4-kensaku-stonebase01 only
+    Pi5 = coordinator, already stable, no server-impacting change
+    --preflight-only ID 20260721-023614-f12bd4 ... passed
+    effectiveExecutor = ssh-ansible
+    fallbackReason = candidate-requires-ssh-configuration
+    releaseSubmitted = false
+
 Local Notes JA: `raspi4-fjv60-80` は明示的な新指示がない限り、接続・配布・preflight・中断復旧probeの対象外である。承認済みの読み取り専用確認ではPi5とStoneBaseだけへ接続し、FJVやその他端末には接続していない。maintenance、bootstrap、配布、release submitは実行していない。
 
 ## Interfaces and Dependencies
@@ -263,4 +272,4 @@ The public CLI adds `--stonebase-local-ansible-poc`. Executor IDs are `ssh-ansib
 
 The fixed runtime is Python 3.11, ansible-core 2.19.4, and community.general 11.4.1. Python packages are installed with aarch64 wheel hashes from `requirements-aarch64-py311.lock`; the collection tarball has a fixed SHA-256 in `runtime-lock.json`. Artifact and staging maximums are 128 MiB and 256 MiB. Local execution timeout is fifteen minutes. The route contract owns `terminal.artifact-seal`, `terminal.single-transfer`, `terminal.local-unit`, `terminal.candidate-ready-ack`, and `terminal.local-residue-cleanup`.
 
-Revision note (2026-07-21 02:34Z): Recorded the failed-closed first SSH bootstrap attempt, complete sealed rollback evidence, exact lock source-path cause, regression contract, and successful local validation. Publish and read-only preflight are next; any retry requires renewed explicit approval.
+Revision note (2026-07-21 02:37Z): The fixed immutable candidate passed the exact Pi5 plus StoneBase no-release gate and selected the expected SSH fallback. Only StoneBase requires mutation; Pi5 is already stable and remains coordinator-only. A retry requires renewed explicit approval.
