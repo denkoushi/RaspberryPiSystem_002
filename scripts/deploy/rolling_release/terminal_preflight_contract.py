@@ -26,10 +26,21 @@ _HEX4_RE = re.compile(r"^[0-9a-f]{4}$")
 _MAC_RE = re.compile(r"^[0-9a-f]{2}(?::[0-9a-f]{2}){5}$")
 _CLIENT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _EXECUTORS = frozenset({"ssh-ansible", "stonebase-local-ansible-poc"})
+_LOCAL_IGNORED_SSH_COMMON_ARGS = "-o StrictHostKeyChecking=no"
 
 
 class TerminalPreflightContractError(ValueError):
     """A selected inventory host cannot form a safe preflight contract."""
+
+
+def local_direct_ssh_common_args_supported(value: Any) -> bool:
+    """Match the direct Local backend's non-forwarded compatibility policy."""
+
+    return (
+        value is None
+        or value == ""
+        or value == _LOCAL_IGNORED_SSH_COMMON_ARGS
+    )
 
 
 def _boolean(value: Any, *, default: bool = False) -> bool:
@@ -222,6 +233,14 @@ def build_target_contracts(
         port = values.get("ansible_port", 22)
         if type(port) is not int or not 1 <= port <= 65535:
             raise TerminalPreflightContractError(f"{host} has an unsafe ansible_port")
+        if requested_executor == "stonebase-local-ansible-poc" and not (
+            local_direct_ssh_common_args_supported(
+                values.get("ansible_ssh_common_args")
+            )
+        ):
+            raise TerminalPreflightContractError(
+                f"{host} has unsupported Local SSH common arguments"
+            )
 
         nfc_enabled = "nfc_agent_client_id" in values
         barcode_enabled = _boolean(values.get("barcode_agent_enabled"))

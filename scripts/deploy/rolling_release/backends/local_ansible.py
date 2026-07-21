@@ -16,12 +16,17 @@ from ..local_execution import (
     SSH_EXECUTOR,
     STONEBASE_HOST,
     CandidateBinding,
+    ExecutorSelection,
     LocalExecutionError,
     build_candidate_artifact,
     select_executor,
     validate_local_result,
 )
-from ..terminal_preflight_contract import build_target_contracts
+from ..terminal_preflight_contract import (
+    TerminalPreflightContractError,
+    build_target_contracts,
+    local_direct_ssh_common_args_supported,
+)
 from . import ansible as ansible_backend
 
 
@@ -86,9 +91,12 @@ def _connection_contract(
         raise LocalExecutionError("StoneBase SSH user is malformed")
     if type(port) is not int or not 1 <= port <= 65535:
         raise LocalExecutionError("StoneBase SSH port is malformed")
-    if common is not None and common != "":
+    if not local_direct_ssh_common_args_supported(common):
         # Arbitrary ssh_common_args cannot be replayed safely through a new
-        # direct transport. Keep using the established Ansible executor.
+        # direct transport. Keep using the established Ansible executor. The
+        # one legacy inventory value accepted by the shared policy is
+        # deliberately not replayed: this backend always supplies
+        # StrictHostKeyChecking=yes itself.
         raise LocalExecutionError("StoneBase requires unsupported SSH common arguments")
     if key is not None and (
         not isinstance(key, str)
@@ -204,8 +212,18 @@ def select_terminal_executor(
         raise LocalExecutionError("local executor selection escaped StoneBase")
     public: dict[str, Any] | None
     runner_preflight: dict[str, Any] | None
+    eligibility_failure: str | None = None
     try:
         public = _public_contract(inventory, target_spec, runtime=runtime)
+    except (
+        LocalExecutionError,
+        LocalSubmissionUncertain,
+        TerminalPreflightContractError,
+    ):
+        public = None
+        runner_preflight = None
+        eligibility_failure = "runner-ineligible: local public inventory contract is unavailable"
+    else:
         required_agents = [
             agent
             for enabled, agent in (
@@ -215,26 +233,27 @@ def select_terminal_executor(
             )
             if enabled
         ]
-        runner_preflight = _direct_runner(
-            inventory,
-            host,
-            [
-                "preflight",
-                "--expected-user",
-                str(public["user"]),
-                "--expected-client-id",
-                str(target_spec["clientId"]),
-                *[
-                    value
-                    for agent in required_agents
-                    for value in ("--require-agent", agent)
+        try:
+            runner_preflight = _direct_runner(
+                inventory,
+                host,
+                [
+                    "preflight",
+                    "--expected-user",
+                    str(public["user"]),
+                    "--expected-client-id",
+                    str(target_spec["clientId"]),
+                    *[
+                        value
+                        for agent in required_agents
+                        for value in ("--require-agent", agent)
+                    ],
                 ],
-            ],
-            runtime=runtime,
-        )
-    except (LocalExecutionError, LocalSubmissionUncertain):
-        public = None
-        runner_preflight = None
+                runtime=runtime,
+            )
+        except (LocalExecutionError, LocalSubmissionUncertain):
+            runner_preflight = None
+            eligibility_failure = "runner-ineligible: local direct runner preflight is unavailable"
     selection = select_executor(
         requested_executor=LOCAL_EXECUTOR,
         project=runtime.PROJECT,
@@ -244,6 +263,17 @@ def select_terminal_executor(
         public_contract=public,
         runner_preflight=runner_preflight,
     )
+    if (
+        eligibility_failure is not None
+        and isinstance(selection.fallback_reason, str)
+        and selection.fallback_reason.startswith("runner-ineligible:")
+    ):
+        selection = ExecutorSelection(
+            requested_executor=selection.requested_executor,
+            effective_executor=selection.effective_executor,
+            fallback_reason=eligibility_failure,
+            changed_paths=selection.changed_paths,
+        )
     return {
         "requestedExecutor": selection.requested_executor,
         "effectiveExecutor": selection.effective_executor,

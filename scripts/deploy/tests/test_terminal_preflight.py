@@ -346,6 +346,50 @@ class TerminalPreflightTest(unittest.TestCase):
 
         self.assertEqual(contracts[0]["address"], "100.64.0.10")
 
+    def test_local_contract_matches_direct_ssh_common_argument_policy(self):
+        host = local_execution.STONEBASE_HOST
+        target_spec = {
+            "host": host,
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "raspi4-kensaku-stonebase01-kiosk1",
+        }
+        hostvars = {
+            "ansible_host": "100.64.0.10",
+            "ansible_user": "raspi4-kensaku-stonebase01",
+            "ansible_ssh_common_args": "-o StrictHostKeyChecking=no",
+        }
+        inventory = {"_meta": {"hostvars": {host: hostvars}}}
+
+        contracts = build_target_contracts(
+            inventory,
+            [target_spec],
+            requested_executor=local_execution.LOCAL_EXECUTOR,
+        )
+        self.assertEqual(contracts[0]["host"], host)
+
+        hostvars["ansible_ssh_common_args"] = "-o ProxyJump=another-host"
+        with self.assertRaisesRegex(
+            TerminalPreflightContractError,
+            "unsupported Local SSH common arguments",
+        ):
+            build_target_contracts(
+                inventory,
+                [target_spec],
+                requested_executor=local_execution.LOCAL_EXECUTOR,
+            )
+
+        hostvars["ansible_ssh_common_args"] = ["-o", "ProxyJump=another-host"]
+        with self.assertRaisesRegex(
+            TerminalPreflightContractError,
+            "unsupported Local SSH common arguments",
+        ):
+            build_target_contracts(
+                inventory,
+                [target_spec],
+                requested_executor=local_execution.LOCAL_EXECUTOR,
+            )
+
     def test_candidate_runtime_helper_source_is_read_from_exact_git_blob(self):
         observed: list[list[str]] = []
 

@@ -1,7 +1,7 @@
 ---
 id: KB-401
 title: Deploy release identity, activation, and runtime audit
-status: runtime-r2-shebang-fix-local-live-no-go
+status: local-direct-transport-fix-live-no-go
 scope: standard Pi5, Kiosk, Signage, SSH Ansible, and experimental StoneBase Local Ansible release route
 date: 2026-07-21
 source_of_truth: true
@@ -17,11 +17,11 @@ related_docs:
   - ../plans/deploy-release-identity-architecture-execplan.md
   - ../plans/deploy-release-identity-readonly-evidence-manifest.md
   - ../plans/deploy-speed-phase-b-execplan.md
-validation: offline source audit, approved read-only evidence receipt f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8, accepted-main SSH run 20260721-162403-d398c0, canonical preflight 20260721-164634-7a7a94, bounded StoneBase runtime path evidence, 872 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template parses, and the complete deploy aggregate
+validation: offline source audit, approved read-only evidence receipt f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8, accepted-main SSH runs 20260721-162403-d398c0 and 20260721-172923-90a38b, canonical preflights 20260721-164634-7a7a94 and 20260721-174938-0c7310, bounded StoneBase runtime evidence, 877 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template parses, and the complete deploy aggregate
 open_items:
-  - review and merge the relocatable r2 runtime publication fix
-  - repeat only the canonical Pi5 plus StoneBase plan, preflight, and serial SSH bootstrap route from accepted main
-  - keep Local execution blocked until r2 bootstrap and runner preflight prove the exact pinned runtime
+  - review and merge the direct-transport inventory parity fix
+  - require canonical preflight to prove both Local runtime and direct transport before another canary
+  - keep Local execution blocked until the exact-scope Local canary completes
   - keep FJV and every terminal other than StoneBase outside connection, planning, preflight, and execution
 ---
 
@@ -30,11 +30,20 @@ open_items:
 ## Executive conclusion
 
 The typed-claim standard route and the sealed prefetch route are live. Canonical
-run `20260721-162403-d398c0` completed one exact-scope Pi5 plus StoneBase SSH
+Runs `20260721-162403-d398c0` and `20260721-172923-90a38b` completed exact-scope Pi5 plus StoneBase SSH
 release with all eleven runtime members verified before notice, offline
 terminal installation, typed Web/repository evidence, cleanup, and maintenance
-clear. The optional StoneBase Local runtime still fails its independent
-runner probe, so Local execution remains **No-Go**.
+clear. The second run installed the corrected immutable `r2` runtime, and
+independent preflight `20260721-174938-0c7310` proved every exact runtime pin
+and selected Local with no fallback.
+
+The first Local canary still remained **No-Go** before maintenance. Its locked
+coordinator repeated selection and rejected a global legacy inventory value,
+`-o StrictHostKeyChecking=no`, which the aggregate preflight had not modeled.
+The direct Local backend never forwards this value and always supplies
+`StrictHostKeyChecking=yes`; the remediation explicitly recognizes only that
+one legacy value as ignored, rejects every other SSH common argument, and
+preserves public-contract versus direct-runner failure provenance.
 
 The audited pre-redesign planner treated only stored files as mutation targets
 and did not model a Kiosk browser as a consumer of the Pi5-hosted Web artifact.
@@ -685,14 +694,45 @@ No-Go until the fix is reviewed and merged, a canonical exact-scope SSH run
 installs `r2`, and a later canonical preflight independently returns effective
 Local with no fallback.
 
+## Direct transport parity addendum
+
+PR #1057 merged at `0deb78228f8abbf36543796ea23144384712775a` after its
+long-shebang review finding was fixed. Canonical run
+`20260721-172923-90a38b` used the unchanged serial SSH route, kept the fixed
+Pi5 stability and terminal notice windows, installed `r2`, and finished with
+ready ACK, independent evidence, cleanup, and maintenance clear. Independent
+preflight `20260721-174938-0c7310` then observed bootstrap `changed/complete`,
+the exact supply lock, Python 3.11.15, ansible-core 2.19.4,
+community.general 11.4.1, runner v3, and runtime identity
+`sha256:f607570e67d68855078486c54bfd5fe467b082e150582deab1862b0413310dd2`.
+
+Canary `20260721-175030-81ee22` did not enter Local execution. The coordinator's
+locked repeat selection fell back before Pi5 mutation was committed to the
+terminal route, with public contract and runner evidence both null. Source
+audit confirmed two coupled contract defects:
+
+1. aggregate preflight proved the Local runner through Ansible but did not
+   apply the direct backend's connection-contract policy;
+2. the direct backend rejected the inherited global inventory string
+   `-o StrictHostKeyChecking=no`, then collapsed that transport exception into
+   the misleading reason `local public inventory contract is malformed`.
+
+The value is not needed by Local and must not weaken it. The fixed backend
+accepts only that exact legacy string as an ignored compatibility value,
+continues to construct its own command with `StrictHostKeyChecking=yes`, and
+still rejects ProxyJump and every other nonempty SSH common argument. Separate
+public-contract and direct-runner fallback codes prevent recurrence from being
+misdiagnosed. The canary was cancelled through the canonical durable control
+path before notice or maintenance; StoneBase remained untouched by that run.
+
 ## Go / No-Go decision
 
 Current split decision:
 
 - **Go**: the accepted typed-claim SSH route and offline implementation/review
   of the relocatable `r2` publication fix.
-- **No-Go**: Local execution until the `r2` fix is accepted on `main`, installed
-  by the canonical exact-scope SSH route, and independently proved by preflight.
+- **No-Go**: Local execution until the direct-transport parity fix is accepted
+  on `main`, independently preflighted, and one exact-scope canary completes.
 
 Live rollout requires all of the following:
 

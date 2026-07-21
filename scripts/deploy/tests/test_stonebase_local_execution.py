@@ -24,6 +24,7 @@ if str(DEPLOY_DIR) not in sys.path:
     sys.path.insert(0, str(DEPLOY_DIR))
 
 from scripts.deploy.rolling_release import coordinator, local_execution  # noqa: E402
+from scripts.deploy.rolling_release.backends import local_ansible  # noqa: E402
 from scripts.deploy.rolling_release.local_execution import (  # noqa: E402
     LOCAL_EXECUTOR,
     SSH_EXECUTOR,
@@ -33,6 +34,9 @@ from scripts.deploy.rolling_release.local_execution import (  # noqa: E402
     build_candidate_artifact,
     inspect_candidate_artifact,
     select_executor,
+)
+from scripts.deploy.rolling_release.terminal_preflight_contract import (  # noqa: E402
+    TerminalPreflightContractError,
 )
 from scripts.deploy.tests.test_fleet_coordinator_transitions import (  # noqa: E402
     NEW_SHA,
@@ -373,6 +377,148 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
             selection.fallback_reason,
             "runner-ineligible: local runner preflight reports runtime-unavailable",
         )
+
+    def test_direct_transport_ignores_only_legacy_host_key_override(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = RepositoryFixture(Path(temporary))
+            commands: list[list[str]] = []
+
+            def inventory_run(command, **_kwargs):
+                self.assertEqual(command[-2:], ["--host", STONEBASE_HOST])
+                return json.dumps(
+                    {
+                        "ansible_host": "100.64.0.10",
+                        "ansible_user": "raspi4-kensaku-stonebase01",
+                        "ansible_ssh_common_args": "-o StrictHostKeyChecking=no",
+                    }
+                )
+
+            def direct_run(command, **_kwargs):
+                commands.append(list(command))
+                return subprocess.CompletedProcess(
+                    command,
+                    0,
+                    stdout=json.dumps(self.runner_preflight()) + "\n",
+                    stderr="",
+                )
+
+            runtime = SimpleNamespace(
+                PROJECT=fixture.project,
+                ANSIBLE_DIRECTORY=fixture.project / "infrastructure/ansible",
+                run=inventory_run,
+                subprocess=SimpleNamespace(run=direct_run),
+            )
+            target = {
+                "host": STONEBASE_HOST,
+                "role": "kiosk",
+                "terminalType": "kiosk",
+                "clientId": "raspi4-kensaku-stonebase01-kiosk1",
+            }
+            with patch.object(
+                local_ansible,
+                "_public_contract",
+                return_value=self.public_contract(),
+            ):
+                selection = local_ansible.select_terminal_executor(
+                    "inventory.yml",
+                    target,
+                    fixture.previous,
+                    fixture.candidate,
+                    runtime=runtime,
+                )
+
+        self.assertEqual(selection["effectiveExecutor"], LOCAL_EXECUTOR)
+        self.assertIsNone(selection["fallbackReason"])
+        self.assertEqual(len(commands), 1)
+        self.assertIn("StrictHostKeyChecking=yes", commands[0])
+        self.assertNotIn("StrictHostKeyChecking=no", commands[0])
+
+    def test_direct_transport_rejects_other_inventory_ssh_arguments(self) -> None:
+        runtime = SimpleNamespace(
+            ANSIBLE_DIRECTORY=PROJECT / "infrastructure/ansible",
+            run=lambda *_args, **_kwargs: json.dumps(
+                {
+                    "ansible_host": "100.64.0.10",
+                    "ansible_user": "raspi4-kensaku-stonebase01",
+                    "ansible_ssh_common_args": "-o ProxyJump=another-host",
+                }
+            ),
+        )
+        with self.assertRaisesRegex(
+            LocalExecutionError, "unsupported SSH common arguments"
+        ):
+            local_ansible._connection_contract(
+                "inventory.yml", STONEBASE_HOST, runtime=runtime
+            )
+
+    def test_direct_runner_failure_keeps_its_preflight_provenance(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = RepositoryFixture(Path(temporary))
+            runtime = SimpleNamespace(PROJECT=fixture.project)
+            target = {
+                "host": STONEBASE_HOST,
+                "role": "kiosk",
+                "terminalType": "kiosk",
+                "clientId": "raspi4-kensaku-stonebase01-kiosk1",
+            }
+            with (
+                patch.object(
+                    local_ansible,
+                    "_public_contract",
+                    return_value=self.public_contract(),
+                ),
+                patch.object(
+                    local_ansible,
+                    "_direct_runner",
+                    side_effect=LocalExecutionError("bounded transport failure"),
+                ),
+            ):
+                selection = local_ansible.select_terminal_executor(
+                    "inventory.yml",
+                    target,
+                    fixture.previous,
+                    fixture.candidate,
+                    runtime=runtime,
+                )
+
+        self.assertEqual(selection["effectiveExecutor"], SSH_EXECUTOR)
+        self.assertEqual(
+            selection["fallbackReason"],
+            "runner-ineligible: local direct runner preflight is unavailable",
+        )
+        self.assertIsNone(selection["publicContract"])
+        self.assertIsNone(selection["runnerPreflight"])
+
+    def test_public_contract_failure_keeps_its_preflight_provenance(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = RepositoryFixture(Path(temporary))
+            runtime = SimpleNamespace(PROJECT=fixture.project)
+            target = {
+                "host": STONEBASE_HOST,
+                "role": "kiosk",
+                "terminalType": "kiosk",
+                "clientId": "raspi4-kensaku-stonebase01-kiosk1",
+            }
+            with patch.object(
+                local_ansible,
+                "_public_contract",
+                side_effect=TerminalPreflightContractError("bounded contract failure"),
+            ):
+                selection = local_ansible.select_terminal_executor(
+                    "inventory.yml",
+                    target,
+                    fixture.previous,
+                    fixture.candidate,
+                    runtime=runtime,
+                )
+
+        self.assertEqual(selection["effectiveExecutor"], SSH_EXECUTOR)
+        self.assertEqual(
+            selection["fallbackReason"],
+            "runner-ineligible: local public inventory contract is unavailable",
+        )
+        self.assertIsNone(selection["publicContract"])
+        self.assertIsNone(selection["runnerPreflight"])
 
     def test_extra_member_symlink_and_secret_inventory_key_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
