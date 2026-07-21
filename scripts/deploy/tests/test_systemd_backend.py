@@ -175,6 +175,8 @@ class SystemdBackendTest(unittest.TestCase):
             'mode': 'target',
             'host': 'kiosk-a',
             'profile': 'kiosk',
+            'statusClientId': 'kiosk-a-client',
+            'requestedExecutor': 'ssh-ansible',
             'address': '100.64.0.10',
             'user': 'kiosk-a',
             'port': 22,
@@ -223,6 +225,7 @@ class SystemdBackendTest(unittest.TestCase):
             base64.b64decode(remote[-1]).decode('utf-8')
         )
         self.assertEqual(payload['targets'], [target])
+        self.assertEqual(payload['requestedExecutor'], 'ssh-ansible')
         self.assertNotIn('clientKey', json.dumps(payload))
         self.assertNotIn('secret', json.dumps(payload).lower())
 

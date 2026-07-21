@@ -153,6 +153,58 @@ class RecordingCommandRunner:
 
 
 class ReleaseApplicationTest(unittest.TestCase):
+    def test_local_preflight_promotes_effective_executor_runtime_and_fallback(self):
+        executor = {
+            "requestedExecutor": "stonebase-local-ansible-poc",
+            "effectiveExecutor": "ssh-ansible",
+            "fallbackReason": "candidate-requires-ssh-configuration",
+            "runtime": None,
+        }
+        terminal = CommandResult(
+            ("terminal-preflight",),
+            0,
+            stdout=json.dumps(
+                {
+                    "version": 1,
+                    "probe": "terminal",
+                    "status": "passed",
+                    "issues": [],
+                    "executor": executor,
+                    "targetCount": 1,
+                },
+                separators=(",", ":"),
+            ),
+        )
+        route = CommandResult(
+            ("route-preflight",),
+            0,
+            stdout=(
+                '{"version":1,"probe":"route","status":"passed",'
+                '"proofs":[],"issues":[],"warnings":[],"metrics":{}}'
+            ),
+        )
+        outcome, report = application._preflight_report(
+            SimpleNamespace(
+                run_id=RUN_ID,
+                sha=SHA,
+                inventory="inventory.yml",
+                limit="raspberrypi5:raspi4-kensaku-stonebase01",
+                stonebase_local_ansible_poc=True,
+            ),
+            migration_result=CommandResult(("migration-preflight",), 0),
+            route_result=route,
+            terminal_result=terminal,
+            selected_hosts=["raspberrypi5", "raspi4-kensaku-stonebase01"],
+            terminal_count=1,
+        )
+
+        self.assertEqual(outcome, 0)
+        self.assertEqual(report["requestedExecutor"], executor["requestedExecutor"])
+        self.assertEqual(report["effectiveExecutor"], executor["effectiveExecutor"])
+        self.assertEqual(report["fallbackReason"], executor["fallbackReason"])
+        self.assertIsNone(report["runtime"])
+        self.assertFalse(report["releaseSubmitted"])
+
     def launch(self, *, detach=False, start_result=None, observed=None, observe_error=None):
         systemd = FakeSystemd(start_result)
         control = FakeControl()

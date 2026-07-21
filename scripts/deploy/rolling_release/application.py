@@ -306,6 +306,39 @@ def _probe_record(name: str, result: Any, *, structured: bool = False) -> dict[s
             if isinstance(metrics, dict)
             else {}
         )
+        executor = payload.get("executor")
+        if name == "terminal" and executor is not None:
+            if (
+                not isinstance(executor, dict)
+                or set(executor)
+                != {
+                    "requestedExecutor",
+                    "effectiveExecutor",
+                    "fallbackReason",
+                    "runtime",
+                }
+                or executor.get("requestedExecutor")
+                not in {"ssh-ansible", "stonebase-local-ansible-poc"}
+                or executor.get("effectiveExecutor")
+                not in {"ssh-ansible", "stonebase-local-ansible-poc"}
+                or (
+                    executor.get("fallbackReason") is not None
+                    and not isinstance(executor.get("fallbackReason"), str)
+                )
+                or (
+                    executor.get("runtime") is not None
+                    and not isinstance(executor.get("runtime"), dict)
+                )
+            ):
+                record.update(
+                    {
+                        "status": "incomplete",
+                        "exitCode": EX_SOFTWARE,
+                        "issues": ["terminal.invalid-executor-report"],
+                    }
+                )
+            else:
+                record["executor"] = executor
         if payload.get("status") != status:
             record.update(
                 {
@@ -330,10 +363,17 @@ def _preflight_report(
     selected_hosts: list[str],
     terminal_count: int,
 ) -> tuple[int, dict[str, Any]]:
+    local_requested = spec.stonebase_local_ansible_poc
+    requested_executor = (
+        "stonebase-local-ansible-poc" if local_requested else "ssh-ansible"
+    )
+    terminal_probe = _probe_record(
+        "terminal", terminal_result, structured=local_requested
+    )
     probes = [
         _probe_record("migration", migration_result),
         _probe_record("route", route_result, structured=True),
-        _probe_record("terminal", terminal_result),
+        terminal_probe,
     ]
     if any(probe["status"] == "incomplete" for probe in probes):
         outcome = EX_SOFTWARE
@@ -344,6 +384,18 @@ def _preflight_report(
     else:
         outcome = 0
         status = "passed"
+    executor = terminal_probe.get("executor")
+    if not isinstance(executor, dict):
+        executor = {
+            "requestedExecutor": requested_executor,
+            "effectiveExecutor": (
+                "ssh-ansible" if local_requested else requested_executor
+            ),
+            "fallbackReason": (
+                "executor-preflight-unavailable" if local_requested else None
+            ),
+            "runtime": None,
+        }
     return outcome, {
         "version": 1,
         "preflightId": spec.run_id,
@@ -353,11 +405,7 @@ def _preflight_report(
         "status": status,
         "selectedHosts": selected_hosts,
         "terminalCount": terminal_count,
-        "requestedExecutor": (
-            "stonebase-local-ansible-poc"
-            if spec.stonebase_local_ansible_poc
-            else "ssh-ansible"
-        ),
+        **executor,
         "releaseSubmitted": False,
         "routeCoverage": [stage.id for stage in ROUTE_STAGES],
         "probes": probes,
@@ -391,9 +439,15 @@ def launch(args: Any, *, runtime: Any) -> int:
         if not selected:
             raise RuntimeError(f"--limit selected no hosts: {args.limit}")
         selected_release_hosts = runtime.release_hosts(inventory_data, selected)
+    requested_executor = (
+        "stonebase-local-ansible-poc"
+        if getattr(args, "stonebase_local_ansible_poc", False)
+        else "ssh-ansible"
+    )
     terminal_preflight_targets = build_target_contracts(
         inventory_data,
         [target for target in selected_release_hosts if target.get("role") != "server"],
+        requested_executor=requested_executor,
     )
     identity = validate_remote_server_identity(inventory_data, runtime=runtime)
 

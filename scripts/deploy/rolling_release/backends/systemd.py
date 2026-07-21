@@ -301,6 +301,11 @@ class SystemdBackend:
             'runId': spec.run_id,
             'sha': spec.sha,
             'expectedServerClientId': spec.expected_server_client_id,
+            'requestedExecutor': (
+                'stonebase-local-ansible-poc'
+                if spec.stonebase_local_ansible_poc
+                else 'ssh-ansible'
+            ),
             'targets': targets,
         }
         serialized = json.dumps(

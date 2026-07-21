@@ -15,6 +15,7 @@ from unittest.mock import Mock, patch
 
 from scripts.deploy.rolling_release.adapter_registry import adapter_for_profile
 from scripts.deploy.rolling_release import terminal_preflight
+from scripts.deploy.rolling_release import local_execution
 from scripts.deploy.rolling_release.terminal_preflight_contract import (
     TerminalPreflightContractError,
     build_target_contracts,
@@ -68,6 +69,8 @@ def target(host: str = "kiosk-a") -> dict[str, object]:
         "mode": "target",
         "host": host,
         "profile": "kiosk",
+        "statusClientId": f"{host}-client",
+        "requestedExecutor": "ssh-ansible",
         "address": "100.64.0.10",
         "user": "kiosk-a",
         "port": 22,
@@ -128,6 +131,102 @@ def candidate_success(argv, *, timeout):
 
 
 class TerminalPreflightTest(unittest.TestCase):
+    def test_local_runner_probe_uses_fixed_public_command_and_bounded_result(self):
+        selected = {
+            **target(terminal_preflight.STONEBASE_HOST),
+            "requestedExecutor": terminal_preflight.LOCAL_EXECUTOR,
+            "user": "stonebase",
+            "statusClientId": "stonebase-client",
+            "barcodeEnabled": True,
+        }
+        observation = {
+            "ready": True,
+            "host": terminal_preflight.STONEBASE_HOST,
+            "pythonVersion": local_execution.RUNTIME_PYTHON,
+            "ansibleCoreVersion": local_execution.RUNTIME_ANSIBLE_CORE,
+            "collections": dict(local_execution.RUNTIME_COLLECTIONS),
+            "freeBytes": local_execution.MIN_FREE_BYTES,
+            "runnerVersion": local_execution.SCHEMA_VERSION,
+            "configurationReady": True,
+        }
+        completed = subprocess.CompletedProcess(
+            [], 0, json.dumps(observation, separators=(",", ":")) + "\n", ""
+        )
+        with patch.object(
+            terminal_preflight, "_command", return_value=completed
+        ) as command:
+            value, issue = terminal_preflight._probe_local_runner(selected)
+
+        self.assertEqual(value, observation)
+        self.assertIsNone(issue)
+        argv = command.call_args.args[0]
+        self.assertEqual(argv[:2], [terminal_preflight.LOCAL_RUNNER, "preflight"])
+        self.assertIn("--expected-user", argv)
+        self.assertIn("--expected-client-id", argv)
+        self.assertEqual(argv.count("--require-agent"), 2)
+        self.assertNotIn("CLIENT_KEY", " ".join(argv))
+
+    def test_local_executor_evidence_reports_runtime_or_maintenance_free_fallback(self):
+        selected = {
+            **target(terminal_preflight.STONEBASE_HOST),
+            "requestedExecutor": terminal_preflight.LOCAL_EXECUTOR,
+            "user": "stonebase",
+            "statusClientId": "stonebase-client",
+        }
+        runner = {
+            "ready": True,
+            "host": terminal_preflight.STONEBASE_HOST,
+            "pythonVersion": local_execution.RUNTIME_PYTHON,
+            "ansibleCoreVersion": local_execution.RUNTIME_ANSIBLE_CORE,
+            "collections": dict(local_execution.RUNTIME_COLLECTIONS),
+            "freeBytes": local_execution.MIN_FREE_BYTES,
+            "runnerVersion": local_execution.SCHEMA_VERSION,
+            "configurationReady": True,
+        }
+        spec = {
+            "project": "/opt/RaspberryPiSystem_002",
+            "sha": SHA,
+            "requestedExecutor": terminal_preflight.LOCAL_EXECUTOR,
+            "targets": [selected],
+        }
+        source = Path(local_execution.__file__).read_text(encoding="utf-8")
+
+        def git_success(argv, **_kwargs):
+            return subprocess.CompletedProcess(argv, 0, "", "")
+
+        evidence = terminal_preflight._executor_evidence(
+            spec,
+            [
+                {
+                    "repositoryHead": SHA,
+                    "localRunnerPreflight": runner,
+                }
+            ],
+            source,
+            selection_run=git_success,
+        )
+        self.assertEqual(evidence["effectiveExecutor"], local_execution.LOCAL_EXECUTOR)
+        self.assertIsNone(evidence["fallbackReason"])
+        self.assertEqual(
+            evidence["runtime"],
+            {
+                "python": local_execution.RUNTIME_PYTHON,
+                "ansibleCore": local_execution.RUNTIME_ANSIBLE_CORE,
+                "collections": dict(local_execution.RUNTIME_COLLECTIONS),
+                "runnerVersion": local_execution.SCHEMA_VERSION,
+            },
+        )
+
+        fallback = terminal_preflight._executor_evidence(
+            spec,
+            [{"repositoryHead": SHA, "localRunnerPreflight": None}],
+            source,
+            selection_run=git_success,
+        )
+        self.assertEqual(fallback["effectiveExecutor"], local_execution.SSH_EXECUTOR)
+        self.assertIn("runner-ineligible", fallback["fallbackReason"])
+        self.assertIsNone(fallback["runtime"])
+
     def test_contract_builder_resolves_tailscale_address_and_omits_secrets(self):
         inventory = {
             "_meta": {
@@ -150,7 +249,8 @@ class TerminalPreflightTest(unittest.TestCase):
         }
 
         contracts = build_target_contracts(
-            inventory, [{"host": "kiosk-a", "role": "kiosk"}]
+            inventory,
+            [{"host": "kiosk-a", "role": "kiosk", "clientId": "kiosk-a-client"}],
         )
 
         self.assertEqual(contracts[0]["address"], "100.64.0.10")
@@ -186,7 +286,8 @@ class TerminalPreflightTest(unittest.TestCase):
         }
 
         contracts = build_target_contracts(
-            inventory, [{"host": "kiosk-a", "role": "kiosk"}]
+            inventory,
+            [{"host": "kiosk-a", "role": "kiosk", "clientId": "kiosk-a-client"}],
         )
 
         self.assertEqual(contracts[0]["address"], "100.64.0.10")
@@ -546,7 +647,10 @@ print("TERMINAL_PREFLIGHT_RESULT:" + encoded)
         }
 
         with self.assertRaisesRegex(TerminalPreflightContractError, "memory_required_mb"):
-            build_target_contracts(inventory, [{"host": "kiosk-a", "role": "kiosk"}])
+            build_target_contracts(
+                inventory,
+                [{"host": "kiosk-a", "role": "kiosk", "clientId": "kiosk-a-client"}],
+            )
 
     def test_parser_rejects_invalid_numeric_address(self):
         with self.assertRaisesRegex(
@@ -593,6 +697,7 @@ print("TERMINAL_PREFLIGHT_RESULT:" + encoded)
                 "runId": RUN_ID,
                 "sha": SHA,
                 "expectedServerClientId": "raspberrypi5-server",
+                "requestedExecutor": "ssh-ansible",
                 "targets": [target("kiosk-a"), {**target("kiosk-b"), "address": "100.64.0.11"}],
             }
             stderr = io.StringIO()
@@ -670,6 +775,7 @@ print("TERMINAL_PREFLIGHT_RESULT:" + encoded)
                 "runId": RUN_ID,
                 "sha": SHA,
                 "expectedServerClientId": "raspberrypi5-server",
+                "requestedExecutor": "ssh-ansible",
                 "targets": [selected],
             }
             stderr = io.StringIO()
@@ -765,6 +871,7 @@ print("TERMINAL_PREFLIGHT_RESULT:" + encoded)
                 "runId": RUN_ID,
                 "sha": SHA,
                 "expectedServerClientId": "raspberrypi5-server",
+                "requestedExecutor": "ssh-ansible",
                 "targets": [],
             }
             outcome = terminal_preflight.execute_orchestrator(
