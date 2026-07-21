@@ -50,12 +50,7 @@ assert migration < terminal < submission, (
 assert 'no release unit was submitted' in preflight
 assert 'for target in spec["targets"]' in preflight
 assert 'results.append(result)' in preflight
-assert 'os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW' in preflight
-assert 'StrictHostKeyChecking=yes' in preflight
-assert 'GlobalKnownHostsFile=/dev/null' in preflight
-assert 'UpdateHostKeys=no' in preflight
-assert 'HostKeyAlgorithms=ssh-ed25519' in preflight
-assert 'transport_security_options=local_transport_options' in preflight
+assert 'os.O_CREAT' not in preflight
 assert 'os.makedirs' not in preflight
 assert 'UserKnownHostsFile=/dev/null' in preflight
 assert 'candidate.artifact-missing' in preflight
@@ -954,15 +949,6 @@ ALLOWED_RELEASE_FILE_DESTINATIONS = {
     '{{ repo_path }}/clients/barcode-agent/.env',
     '{{ repo_path }}/clients/torque-agent/.env',
     '/usr/local/libexec/torque-bluetooth-adapter',
-    '/usr/local/libexec/raspi-local-ansible-runner',
-    '/usr/local/libexec/raspi_local_execution.py',
-    '/usr/local/libexec/raspi-terminal-ready-probe',
-    '/usr/local/libexec/raspi-terminal-maintenance-probe',
-    '/usr/local/libexec/raspi-local-runtime-install',
-    '/usr/local/libexec/raspi-local-runtime-lock.json',
-    '/usr/local/libexec/raspi-local-requirements-aarch64-py311.lock',
-    '/var/cache/raspi-local-ansible-artifacts/{{ stonebase_local_runtime_cache.cacheKey }}',
-    '/var/cache/raspi-local-ansible-artifacts/{{ stonebase_local_runtime_cache.cacheKey }}/{{ item.filename }}',
     '/etc/systemd/system/torque-bluetooth-adapter@.service',
     '/etc/udev/rules.d/90-torque-bluetooth-adapter.rules',
     '/etc/udev/rules.d/99-torque-wrench-hid.rules',
@@ -999,17 +985,6 @@ ALLOWED_RELEASE_FILE_DESTINATIONS = {
     '/etc/systemd/system/signage-daily-reboot.timer',
 }
 
-STONEBASE_BOOTSTRAP_SOURCES = {
-    '/usr/local/libexec/raspi-local-runtime-lock.json': (
-        '{{ repo_path }}/infrastructure/ansible/files/'
-        'stonebase-local-ansible/runtime-lock.json'
-    ),
-    '/usr/local/libexec/raspi-local-requirements-aarch64-py311.lock': (
-        '{{ repo_path }}/infrastructure/ansible/files/'
-        'stonebase-local-ansible/requirements-aarch64-py311.lock'
-    ),
-}
-
 MUTATING_SHELL = re.compile(
     r'(?:\b(?:apt(?:-get)?|chmod|chown|kill|ln|mkdir|mv|pkill|pnpm\s+install|'
     r'rm|sed\s+-i|systemd-tmpfiles\s+--create|tailscale\s+up|touch|truncate)\b|'
@@ -1030,8 +1005,7 @@ DOCKER_MUTATION = re.compile(
     re.IGNORECASE,
 )
 READ_ONLY_COMMAND = re.compile(
-    r'^(?:/usr/local/libexec/raspi-local-runtime-install\s+status|'
-    r'/usr/local/libexec/torque-bluetooth-adapter\s+--discover|'
+    r'^(?:/usr/local/libexec/torque-bluetooth-adapter\s+--discover|'
     r'docker\s+--version|ip\s+-brief|rsvg-convert\s+--version|'
     r'systemctl\s+(?:is-|list-unit-files|show|status)|'
     r'journalctl\s+--unit=torque-bluetooth-adapter@\{\{\s+torque_bluetooth_controller_discovery\.stdout\s+\|\s+trim\s+\}\}\.service\s+--lines=80\s+--no-pager\s+--output=short-iso$|'
@@ -1040,11 +1014,6 @@ READ_ONLY_COMMAND = re.compile(
 )
 
 APPROVED_RELEASE_COMMANDS = {
-    (
-        'roles/client/tasks/local-runner-bootstrap.yml',
-        'Bootstrap pinned StoneBase local executor runtime when needed',
-        '/usr/local/libexec/raspi-local-runtime-install --cache-root /var/cache/raspi-local-ansible-artifacts/{{ stonebase_local_runtime_cache.cacheKey }}',
-    ),
     (
         'roles/client/tasks/torque-agent.yml',
         'Reload udev rules for torque devices',
@@ -1199,20 +1168,9 @@ def audit_tasks(tasks, source, inherited_full):
             if module in FILE_MODULES:
                 dest = destination(value)
                 if module.endswith('file') and isinstance(value, dict):
-                    approved_runtime_cache_directory = (
-                        source.resolve()
-                        == (roles_root / 'client/tasks/local-runner-bootstrap.yml').resolve()
-                        and name == 'Create sealed StoneBase local runtime artifact cache'
-                        and dest == '/var/cache/raspi-local-ansible-artifacts/{{ stonebase_local_runtime_cache.cacheKey }}'
-                        and value.get('owner') == 'root'
-                        and value.get('group') == 'root'
-                        and value.get('mode') == '0755'
-                        and task.get('when') == 'stonebase_local_runtime_cache is defined'
+                    assert value.get('state', 'file') != 'directory', (
+                        f'{source}:{name}: release may not create/change directories'
                     )
-                    assert (
-                        value.get('state', 'file') != 'directory'
-                        or approved_runtime_cache_directory
-                    ), f'{source}:{name}: release may not create/change directories'
                     assert not value.get('recurse', False), (
                         f'{source}:{name}: recursive ownership is release-reachable'
                     )
@@ -1221,13 +1179,6 @@ def audit_tasks(tasks, source, inherited_full):
                 assert dest in ALLOWED_RELEASE_FILE_DESTINATIONS, (
                     f'{source}:{name}: destination is not manifest-backed: {dest}'
                 )
-                if dest in STONEBASE_BOOTSTRAP_SOURCES:
-                    assert value.get('remote_src') is True, (
-                        f'{source}:{name}: StoneBase lock must come from the immutable terminal checkout'
-                    )
-                    assert value.get('src') == STONEBASE_BOOTSTRAP_SOURCES[dest], (
-                        f'{source}:{name}: StoneBase lock source does not match the candidate path'
-                    )
 
             if module in SHELL_MODULES:
                 payload = command_text(value)
@@ -1247,27 +1198,12 @@ def audit_tasks(tasks, source, inherited_full):
                     )
                     docker_exceptions.append((source, name))
                 elif MUTATING_SHELL.search(payload):
-                    approved_ssh_reset = (
+                    assert (
                         source.resolve() == (roles_root / 'common/tasks/main.yml').resolve()
                         and name == 'Fetch and reset existing terminal repository to immutable release'
                         and 'git fetch --no-tags origin' in payload
                         and 'git reset --hard' in payload
-                    )
-                    approved_local_reset = (
-                        source.resolve() == (roles_root / 'common/tasks/main.yml').resolve()
-                        and name == 'Verify incremental bundle and reset existing terminal repository without network'
-                        and "terminal_release_transport | default('ssh-ansible') == 'local-artifact'"
-                        in [normalized(condition) for condition in when_items(task)]
-                        and 'git bundle verify' in payload
-                        and 'git fetch --no-tags' in payload
-                        and 'git reset --hard' in payload
-                        and ' origin ' not in f' {payload} '
-                        and 'git diff --quiet' in payload
-                        and 'git diff --cached --quiet' in payload
-                    )
-                    assert approved_ssh_reset or approved_local_reset, (
-                        f'{source}:{name}: mutating shell is not an approved release adapter'
-                    )
+                    ), f'{source}:{name}: mutating shell is not an approved release adapter'
 
             if module in COMMAND_MODULES:
                 payload = command_text(value)
@@ -1467,16 +1403,8 @@ captured_destinations = set(
         'signage', 'signageras3', '/home/signageras3', 'contract-run'
     )
 )
-non_operational_runtime_cache_destinations = {
-    '/var/cache/raspi-local-ansible-artifacts/{{ stonebase_local_runtime_cache.cacheKey }}',
-    '/var/cache/raspi-local-ansible-artifacts/{{ stonebase_local_runtime_cache.cacheKey }}/{{ item.filename }}',
-}
-assert non_operational_runtime_cache_destinations <= release_destinations, (
-    'sealed runtime cache transfer disappeared from the release audit'
-)
 concrete_release_destinations = {
-    concrete_destination(value)
-    for value in release_destinations - non_operational_runtime_cache_destinations
+    concrete_destination(value) for value in release_destinations
 }
 assert concrete_release_destinations <= captured_destinations, (
     'release mutation destinations missing from rollback manifest: '
@@ -1630,7 +1558,7 @@ def render_checkout(work):
         'safe_home="${HOME}"',
     )
     checkout = checkout.replace(
-        "{{ (git_environment | default({})).get('GIT_SSH_COMMAND', '') | quote }}",
+        "{{ git_environment.GIT_SSH_COMMAND | default('') | quote }}",
         "''",
     )
     checkout = checkout.replace('{{ repo_path }}', str(work))

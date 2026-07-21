@@ -230,14 +230,6 @@ _KIOSK_TERMINAL_PATHS = (
     "/usr/local/bin/clamav-kiosk-scan.sh",
     "/usr/local/bin/rkhunter-kiosk-scan.sh",
     "/var/spool/cron/crontabs/root",
-    "/usr/local/libexec/raspi-local-ansible-runner",
-    "/usr/local/libexec/raspi_local_execution.py",
-    "/usr/local/libexec/raspi-terminal-ready-probe",
-    "/usr/local/libexec/raspi-terminal-maintenance-probe",
-    "/usr/local/libexec/raspi-local-runtime-install",
-    "/usr/local/libexec/raspi-local-runtime-lock.json",
-    "/usr/local/libexec/raspi-local-requirements-aarch64-py311.lock",
-    "/opt/raspi-local-ansible-runtime/active",
 )
 
 _SIGNAGE_TERMINAL_PATHS = (
@@ -282,7 +274,6 @@ class Runtime(Protocol):
         run_id: str,
         *,
         rollback: bool = False,
-        runtime_artifact_vars: str | None = None,
     ) -> None: ...
 
 
@@ -2300,7 +2291,6 @@ def playbook(
     *,
     rollback: bool = False,
     playbook: str = "playbooks/deploy-staged.yml",
-    runtime_artifact_vars: str | None = None,
     runtime: Runtime,
 ) -> None:
     if rollback:
@@ -2331,28 +2321,17 @@ def playbook(
     ):
         raise ValueError("terminal profile playbook is unavailable")
     playbook_path = runtime.ANSIBLE_DIRECTORY / playbook
-    command = [
-        "ansible-playbook",
-        "-i",
-        inventory,
-        str(playbook_path),
-        "--limit",
-        host,
-        "-e",
-        extra,
-    ]
-    if runtime_artifact_vars is not None:
-        artifact_vars_path = Path(runtime_artifact_vars)
-        if (
-            not artifact_vars_path.is_absolute()
-            or not artifact_vars_path.is_file()
-            or artifact_vars_path.is_symlink()
-            or artifact_vars_path.name != "ansible-vars.json"
-        ):
-            raise ValueError("runtime artifact vars are unavailable")
-        command.extend(["-e", f"@{artifact_vars_path}"])
     runtime.run(
-        command,
+        [
+            "ansible-playbook",
+            "-i",
+            inventory,
+            str(playbook_path),
+            "--limit",
+            host,
+            "-e",
+            extra,
+        ],
         cwd=runtime.ANSIBLE_DIRECTORY,
         env=environment,
     )

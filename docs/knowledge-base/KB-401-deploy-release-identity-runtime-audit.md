@@ -1,7 +1,7 @@
 ---
 id: KB-401
 title: Deploy release identity, activation, and runtime audit
-status: local-canary-blocked-host-trust-remediation
+status: investigation-complete-implementation-go-live-no-go
 scope: standard Pi5, Kiosk, Signage, SSH Ansible, and experimental StoneBase Local Ansible release route
 date: 2026-07-21
 source_of_truth: true
@@ -17,62 +17,47 @@ related_docs:
   - ../plans/deploy-release-identity-architecture-execplan.md
   - ../plans/deploy-release-identity-readonly-evidence-manifest.md
   - ../plans/deploy-speed-phase-b-execplan.md
-validation: offline source audit, approved read-only evidence receipt f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8, accepted-main SSH runs 20260721-162403-d398c0, 20260721-172923-90a38b, and 20260721-184600-ea3eba, canonical Local-ready preflight 20260721-190514-541561, safely cancelled canary 20260721-191113-a1c6ef, dual-source StoneBase Ed25519 host-key observation, bounded StoneBase runtime evidence, 890 deploy Python tests, and the complete deploy aggregate
+validation: offline source audit, immutable Git range classification, 747 deploy Python tests, aggregate deploy contracts, 13 Kiosk ACK tests, pure typed-claim state model, and approved Pi5 plus StoneBase read-only evidence receipt f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8
 open_items:
-  - review and merge the pinned Local host-trust contract
-  - complete its exact-scope SSH migration and a later neutral Local canary
-  - keep Local rollout beyond StoneBase blocked until the canary completes
-  - keep FJV and every terminal other than StoneBase outside connection, planning, preflight, and execution
+  - implement the accepted typed-claim architecture through the staged ExecPlan
+  - keep every live retry and Local execution blocked until the offline acceptance gate passes
+  - request separate approval for the first Pi5 plus StoneBase canary only after that gate
 ---
 
 # KB-401: Deploy release identity, activation, and runtime audit
 
 ## Executive conclusion
 
-The typed-claim standard route and the sealed prefetch route are live. Canonical
-Runs `20260721-162403-d398c0` and `20260721-172923-90a38b` completed exact-scope Pi5 plus StoneBase SSH
-release with all eleven runtime members verified before notice, offline
-terminal installation, typed Web/repository evidence, cleanup, and maintenance
-clear. The second run installed the corrected immutable `r2` runtime, and
-independent preflight `20260721-174938-0c7310` proved every exact runtime pin
-and selected Local with no fallback.
+The standard route is safe against the observed failures but is not yet live in
+the distributed-systems sense: it can fail closed and restore StoneBase, but it
+does not always contain a deterministic transition that lets a stale Kiosk Web
+bundle acquire and acknowledge the newly verified Pi5 Web bundle.
 
-Two Local canary attempts remained **No-Go** before terminal maintenance. The
-first exposed a duplicated SSH-common-argument policy and the second exposed a
-deeper host-trust mismatch: aggregate preflight used
-`StrictHostKeyChecking=no` with an empty temporary trust store, while the
-locked Local backend used `StrictHostKeyChecking=yes` without supplying a
-trusted StoneBase key. Aggregate success therefore did not prove the locked
-transport. Neither event was an Ansible `-c local` execution failure.
+The current release planner treats a host as a mutation target based on files
+stored on that host. A Kiosk browser is also a consumer of the Pi5-hosted Web
+artifact, but that consumer relationship is absent from planning and durable
+fleet state. `apps/web/` is intentionally classified as `server-app`, and the
+tests intentionally produce a Pi5-only plan with zero terminal targets. At the
+same time, the Kiosk ready acknowledgement is sent by the compiled JavaScript
+bundle in the terminal browser and rejects a challenge for any other compiled
+SHA. An already running browser is restarted only when its local launch script,
+unit, or browser configuration changes.
 
-The structural remediation candidate owns one exact Ed25519 pin and one pure
-transport contract. Aggregate preflight loads both from the immutable candidate
-and stages a mode-0600 known-hosts file; the locked backend imports the same
-accepted contract and pin after checkout. Both use strict checking, disable the
-ambient global known-hosts store and automatic host-key updates, allow only
-Ed25519 host keys, cross no private-key path, and fail before terminal contact
-when the pin is absent or malformed.
+Those rules are each locally reasonable, but together they admit a state in
+which Pi5 is verified at release B, a terminal repository remains correctly at
+release A, the terminal browser also remains at Web release A, and fleet state
+still reports both hosts verified. A later terminal run can challenge that old
+browser for Web release B and time out even though SSH Ansible and terminal
+health succeeded. The state schema has no field that can expose this drift to
+planning.
 
-The audited pre-redesign planner treated only stored files as mutation targets
-and did not model a Kiosk browser as a consumer of the Pi5-hosted Web artifact.
-That admitted a verified Pi5 release B alongside a terminal repository and
-browser still at release A. The accepted architecture now separates mutation,
-activation, and verification targets and requires distinct Web and terminal
-repository claims, so the browser transition is planned and verified without
-manufacturing a terminal Git change.
-
-The remaining failure is now fully identified. `pip` generated Ansible console
-scripts with absolute shebangs pointing into the private staging directory.
-The installer verified that staging tree and then renamed it to the versioned
-runtime path without rebinding or revalidating the scripts. Python survived the
-rename, but every `ansible*` entry point returned `ENOENT`. The remediation uses
-a new immutable `r2` runtime identity, rewrites only the exact locked
-ansible-core console-script set to the final version path, revalidates after
-publication, and switches `active` only after success. The broken old version
-is retained; a failed `r2` publication is removed before activation. Staging
-uses a bounded `.install.<16-hex>` name so pip's Linux 127-byte direct-shebang
-limit is satisfied; the installer checks both staging and published production
-paths against that limit when it loads.
+The current production path and experimental Local executor therefore remain
+**No-Go for another live retry**. This is not authorization to weaken the ready
+check, extend its timeout, or restart every systemd service. The approved
+read-only evidence gate has closed the incident-specific uncertainty, so the
+accepted structural redesign is **Go for offline implementation only**. Live
+preflight beyond an approved read-only scope, bootstrap, reverify, deployment,
+and Local execution remain blocked.
 
 ## Safety state at the audit boundary
 
@@ -359,464 +344,15 @@ canonical runbook form, with the approved Pi5 host explicitly supplied, was
 used instead. This correction reduced options and did not broaden target or
 authority. The manifest records the corrected command for future use.
 
-## Runtime bootstrap observability addendum (2026-07-21)
-
-### Scope and safety boundary
-
-This addendum investigates the StoneBase runtime bootstrap as a release-route
-contract, not as a request to retry one installer command. The following remain
-frozen while the investigation is open: runtime bootstrap, Local Ansible,
-terminal maintenance, candidate transfer, `--reverify-selected`, and all
-deployment retries. FJV and every terminal other than StoneBase remain outside
-both connection and probe scope.
-
-The only post-implementation device interactions were canonical read-only
-`--print-plan` and `--preflight-only` commands limited to Pi5 plus StoneBase.
-The latter submitted no release, maintenance, artifact, or systemd unit.
-
-### New evidence timeline
-
-| Event | Observation | Finding |
-|---|---|---|
-| SSH bootstrap release `20260721-121936-a828c3` | StoneBase moved from `ee55f018…` to `59f50681…`; terminal apply and independent evidence succeeded; the runtime-bootstrap task took 95,015 ms and reported Ansible `ok`, not `changed`. | `CONFIRMED`: ordinary SSH release success and Local-runtime readiness are different claims. |
-| Local canary PR #1052 | Non-executable README-only child candidate was merged as `3a015621…`; local contract tests and required CI passed. | `CONFIRMED`: the candidate history is Local-safe and does not itself require SSH configuration. |
-| Canonical Local preflight `20260721-123603-b28b1e` | `releaseSubmitted=false`; requested executor was `stonebase-local-ansible-poc`; effective executor was `ssh-ansible`; fallback was `runner-ineligible: local runner preflight reports runtime-unavailable`; runtime evidence was null. | `CONFIRMED`: Local selection failed before notice, maintenance, transfer, or mutation. |
-
-### Confirmed observability gap
-
-The installer emits only `RUNTIME_INSTALL_CHANGED`, `RUNTIME_INSTALL_CURRENT`,
-or the generic `RUNTIME_INSTALL_FAILED`. Its subprocess output is discarded.
-The Ansible task deliberately keeps that raw command under `no_log`, treats a
-nonzero result as non-fatal for an ordinary SSH release, and reduces it to
-`changed|current|failed`. The runner then independently reduces an absent or
-unreadable active runtime to `runtime-unavailable`.
-
-This is safe for secrets and correctly prevents Local execution, but it cannot
-answer which sealed bootstrap transition failed: download, digest check,
-archive validation, wheel installation, collection installation, final lock
-validation, or atomic activation. The root cause of this particular failed
-bootstrap is therefore **INCONCLUSIVE**, not a confirmed network, package, or
-host defect. Retrying any one suspected step would be a near-sighted repair
-and is prohibited by this investigation.
-
-### Required contract audit
-
-The next design must model these distinct identities and outcomes without
-collapsing them into a host-level success:
-
-| Boundary | Required bounded fact | Current state | Required audit result |
-|---|---|---|---|
-| installer | phase, stable failure code, runtime-lock identity, cleanup outcome | generic failure only | prove secret-free diagnosis is sufficient to classify every installer exit |
-| Ansible bootstrap | installer observation plus whether SSH application may continue | `changed|current|failed` debug fact, no durable target field | decide and test the explicit non-fatal/blocked contract |
-| runner preflight | fixed Python, ansible-core, collection versions, storage, configuration, prior bootstrap observation | typed availability code, no installer phase | bind a safe prior-bootstrap observation without trusting it as runtime proof |
-| coordinator selection | requested, effective, fallback, exact preflight receipt | fail-closed SSH fallback | retain fallback as durable evidence and never promote it after maintenance |
-| route/fleet finalization | terminal repository, Local artifact, runtime, independent health claims | SSH success can coexist with missing runtime claim | make that coexistence visible rather than silently treating it as Local readiness |
-
-The installer state machine to audit is:
-
-    lock-read -> download -> digest-verify -> safe-extract
-      -> hash-locked Python packages -> collection-install
-      -> runtime-lock-verify -> atomic-active-link -> runner-preflight
-
-Each edge needs a precondition, bounded produced fact, response-loss behavior,
-cleanup owner, and a rule for whether an existing SSH release may continue.
-No error text, URL query, environment value, inventory value, `.env`, token,
-or key may enter telemetry, durable state, or a candidate artifact.
-
-### Scenario and test matrix
-
-| Scenario | Existing proof | Missing proof to add before remediation |
-|---|---|---|
-| valid runtime, Local selected | runner preflight validates exact versions | installer-to-runner lineage and durable runtime claim |
-| missing active runtime | `runtime-unavailable` fallback before maintenance | bounded installer phase and cleanup evidence |
-| digest, archive, wheel, collection, lock, link failures | installer has defensive branches | deterministic unit tests for every branch and no-secret output checks |
-| installer response loss | Local unit response loss is covered | bootstrap-specific reconciliation and no false `current` result |
-| SSH app success with Local unavailable | observed in `20260721-121936-a828c3` | durable state and operator status distinguish app success from Local readiness |
-| Local unit response loss | route tests retain maintenance and reconcile | runtime claim remains unknown until deterministic unit reconciliation |
-| terminal rollback with Pi5 forward | typed-claim tests cover separate Web/repository state | runtime bootstrap residue is not adopted as rollback authority |
-
-A pure, non-device state-machine prototype must cover normal ready, same-SHA
-no-op, bootstrap failure with SSH continuation, Local response loss, and
-sealed terminal rollback. It may use synthetic identities only; it must prove
-that a host cannot become Local-ready from an SSH success or an installer
-result alone.
-
-The prototype passed those five cases. Its assertions explicitly reject both
-`ssh_verified` alone and an `installer_observed` result alone as Local-ready.
-It is a temporary investigation artifact, not production code or a release
-simulation.
-
-### Investigation exit gate
-
-The investigation may recommend an offline remediation only when it supplies
-a closed, secret-free bootstrap observation schema; explicit persistence and
-compatibility rules; fault tests for every state-machine edge; and a route
-contract consumer for the observation. Otherwise the decision remains No-Go,
-and no bootstrap retry or Local execution is authorized.
-
-### Approved bounded evidence outcome
-
-The separately approved follow-up used only canonical status and bounded
-read-only commands. Canonical status for `20260721-121936-a828c3` reconfirmed
-that the SSH release and independent terminal evidence succeeded while the
-runtime bootstrap task ran once for 95,015 ms with Ansible outcome `ok`. The
-Pi5 unit journal was filtered to the three known bootstrap task names and the
-bounded marker; it recorded exactly:
-
-    STONEBASE_LOCAL_RUNTIME_BOOTSTRAP:failed
-
-This rejects the hypothesis that bootstrap was merely skipped or incorrectly
-classified as current. It confirms that the installer returned a failure and
-the ordinary SSH release deliberately continued.
-
-The workstation could not establish a new StoneBase read-only session: the
-direct Tailscale connection timed out, and a Pi5 ProxyJump reached SSH but had
-no StoneBase credential on the workstation side. Both attempts stopped before
-any StoneBase command executed. The already completed canonical aggregate
-preflight remains the authoritative terminal observation and reports
-`runtime-unavailable` before maintenance.
-
-Because the installer discarded subprocess output, removed temporary staging,
-and persisted no phase-specific observation, the historical failing phase is
-not recoverable through further read-only inspection. The structural root
-cause—loss of failure identity across installer, Ansible, runner, and durable
-run state—is **CONFIRMED**. The underlying download/package/collection/link
-failure remains **INCONCLUSIVE**. More connection retries cannot change that
-evidence grade and are not authorized by this audit.
-
-### Offline remediation and exit-gate result
-
-The remediation implements one closed, secret-free observation across the
-entire bootstrap boundary. The root-owned installer atomically persists a
-random attempt ID, current phase, stable failure code, runtime version, exact
-runtime-lock digest, cleanup state, and UTC observation time. It never stores
-subprocess output, URLs, environment values, inventory values, or Ansible
-variables. An interrupted process remains `running` at its last durable phase;
-a failed process becomes `failed` with one allowlisted code; only a completed
-install may become `changed` or `current`.
-
-The closed phases cover host and lock validation, staging preparation, Python
-download and safe extraction, hash-locked Python packages, collection download
-and installation, runtime verification and publish, active-link activation,
-cleanup, and internal observation failure. Primary failure identity is retained
-even if staging cleanup also fails. A missing or malformed observation is
-reported only as `unavailable` and never converted into runtime readiness.
-
-The non-fatal SSH bootstrap contract remains intentional: an ordinary SSH
-release may succeed while optional Local runtime bootstrap fails. The Ansible
-callback copies only the closed observation into durable run telemetry. The
-runner independently verifies the observation file ownership and mode, the
-current lock-file digest, exact Python/Ansible/collection versions, existing
-configuration, and storage. Neither SSH success nor the installer observation
-alone produces the typed `runtime` claim. Preflight exposes the same bounded
-observation even when it safely falls back to SSH.
-
-The sealed Local inventory now explicitly fixes
-`ansible_python_interpreter` to the active pinned runtime. This follows
-Ansible's standard local-connection contract: `ansible-playbook -c local` is
-standard, but an explicit inventory host does not receive the implicit
-localhost interpreter binding automatically. The historical failure occurred
-before any Local playbook ran; this interpreter correction prevents a separate
-future drift to the OS Python after bootstrap succeeds.
-
-Fault tests cover atomic observation, interruption, closed phase mapping,
-primary-plus-cleanup failure, malformed or missing evidence, runtime-lock
-digest mismatch, secret suppression, callback allowlisting, durable telemetry,
-SSH fallback visibility, fixed interpreter inventory, and the route invariant
-that SSH apply does not produce a runtime claim. The complete offline gate
-passed with 856 deploy Python tests, 20 isolated PostgreSQL/API tests, 24
-recovery tests, 99 Ansible template parses, lifecycle and safety contracts,
-both inventories, and every Ansible syntax/check contract.
-
-This closed the observability investigation gate for review and merge. It did
-not retroactively identify the historical failed dependency phase or assert
-that the pinned runtime was present on StoneBase. PR `#1053` and the canonical
-run below satisfied that gate and converted the next failure from speculation
-into the exact bounded `collection-install` observation.
-
-### Accepted-main bootstrap and UTF-8 locale root cause
-
-PR `#1053` was accepted as main SHA
-`74080402971c4b3f7698a20332757c11365d53b1`. Canonical plan and preflight
-selected only `raspberrypi5` and `raspi4-kensaku-stonebase01`; FJV and every
-other terminal remained explicitly excluded. Preflight
-`20260721-134900-0a3d34` passed and selected `ssh-ansible` before maintenance
-with fallback `candidate-requires-ssh-configuration`, as required for a
-candidate that changes its own runtime authority.
-
-Canonical run `20260721-135020-37ce54` completed successfully. Pi5 release and
-the fixed five-minute stability period took 623,410 ms, then both Pi5 image
-claims were independently verified. StoneBase received the full 60-second
-notice, entered maintenance, completed SSH Ansible in 340,008 ms, activated the
-Web consumer, acknowledged the exact compiled Web challenge, verified both
-`controlPlaneWeb` and `terminalRepository`, cleaned up, and cleared maintenance.
-No rollback was needed.
-
-The optional runtime observation was separately preserved as:
-
-    status=failed
-    phase=collection-install
-    failureCode=collection-install-failed
-    cleanup=complete
-    lockSha256=sha256:e3bb5ce5ff5087438d59100b74b391a55ffbdf4c5063aaeaea5fc04928eae38e
-
-The fixed collection artifact still matched SHA-256
-`618b2cad75706f2939a5607271bfdcf4a10d3b6f3fe792e1569910c270485399`.
-Running the same ansible-core 2.19.4 CLI under the installer's exact
-`LANG=C LC_ALL=C` environment reproduced Ansible's startup rejection because
-the detected locale encoding was not UTF-8. A clean Python environment using
-`C.UTF-8`, the sealed collection path, `--no-deps`, and `--force` installed and
-listed `community.general:11.4.1` successfully.
-
-The direct cause is therefore **CONFIRMED**: the wrapper violated Ansible's
-UTF-8 controller-locale requirement. It was not a raw `ansible-pull` or Local
-connection defect, and Local Ansible remains the standard
-`ansible-playbook -c local` mechanism. The remediation fixes every Ansible CLI
-boundary in both installer and runner to a closed `C.UTF-8` environment and
-forces the verified collection into the sealed runtime path so an unrelated
-global collection cannot satisfy or suppress the install. Local execution
-stays blocked until an accepted-main SSH bootstrap records a successful closed
-observation and subsequent canonical preflight independently verifies the
-exact runtime.
-
-### Accepted UTF-8 remediation and maintenance-time download failure
-
-PR `#1054` merged the `C.UTF-8` remediation as accepted main
-`c5baa5297b2f5e60cc122f9ac2db2bca638f94cb`. Canonical run
-`20260721-143844-16bae4` selected only Pi5 and StoneBase and completed the
-ordinary SSH release successfully. Pi5 completed its fixed five-minute hold;
-StoneBase completed the full notice, maintenance ACK, SSH apply, exact ready
-ACK, independent evidence, cleanup, and maintenance clear. Both typed release
-claims ended verified at accepted main, with no rollback. FJV and every other
-terminal were not contacted.
-
-The optional Local runtime observation was independently preserved as:
-
-    status=failed
-    phase=python-download
-    failureCode=python-download-failed
-    cleanup=complete
-    lockSha256=sha256:e3bb5ce5ff5087438d59100b74b391a55ffbdf4c5063aaeaea5fc04928eae38e
-
-The direct external route failure itself remains **INCONCLUSIVE** because the
-bounded observation intentionally stores no raw network error. The structural
-cause is **CONFIRMED**: after the terminal was already in maintenance, the
-installer downloaded the Python standalone archive, resolved nine wheels over
-the network, and downloaded the collection archive. Successful members lived
-only in attempt-local staging. Thus fixed versions and hashes protected
-integrity but did not provide liveness or reuse across a transient outage.
-
-During the same detached run, an external observer also temporarily lost Pi5
-reachability. The canonical unit continued, durable state reached success, and
-later status reconciliation returned `persisted-success-unit-unloaded`. This is
-**CONFIRMED** evidence that coordinator response-loss handling worked as
-designed; it does not explain or repair the terminal runtime download boundary.
-
-The accepted structural remedy is to prefetch and verify all eleven fixed
-members on Pi5 before terminal notice, retain them in a content-addressed cache,
-transfer the sealed set during the SSH bootstrap, and run terminal installation
-with `pip --no-index --find-links` plus the local collection archive. A prefetch
-failure remains pre-maintenance and performs only existing pre-mutation
-manifest cleanup. The Pi5 receipt is not trusted as runtime readiness; only a
-successful terminal observation and later exact runner preflight can produce
-the runtime claim.
-
-The offline remedy now passes the complete deploy aggregate. Its fixed lock is
-`sha256:ecde0bbe80d4065f9bb84ecdc9372c08f0530635af459898e6ac8cb233165e5c`;
-all eleven members were fetched in a temporary controller cache and matched
-their exact size and digest, totaling 59,603,748 bytes. This proof contacted no
-device. Unknown fallback reasons are excluded from prefetch, and each offline
-installer failure boundary retains a bounded fail-closed observation.
-
-The Pi5 cache specifically lives below the existing ignored durable release
-root at `/opt/RaspberryPiSystem_002/logs/deploy/local-runtime-artifacts`. The
-release unit runs as unprivileged `denkon5sd02`; cache directories and members
-must be owned by that exact effective identity and cannot be group/world
-writable. Only the transferred StoneBase cache is root-owned.
-
-PR #1055 merged the offline remedy as accepted main
-`89a765c5798302c3c6216a5367776ebdaed5d764`. Its first canonical read-only
-preflight, `20260721-161503-c1d96f`, correctly selected Pi5 plus StoneBase and
-effective SSH fallback `candidate-requires-ssh-configuration`. It also exposed
-a separate receipt bug: aggregate preflight passed requested/effective executor
-to the route contract but not the fallback reason, so its public receipt omitted
-the required prefetch stage. No mutation was started. The contract now rejects
-reasonless Local-to-SSH routes and binds the terminal probe reason explicitly;
-live execution remains No-Go until that fix is accepted and a repeated
-preflight returns `stonebase-local-bootstrap-success`.
-
-### Accepted prefetch bootstrap and relocatable-runtime root cause
-
-PR #1056 merged the route-receipt correction as accepted main
-`a4fb0c64b4173232e94b7fda01d387180c1eb04a`. Preflight
-`20260721-162318-686bfe` selected only Pi5 and StoneBase, effective SSH fallback
-`candidate-requires-ssh-configuration`, and scenario
-`stonebase-local-bootstrap-success`; its receipt placed
-`terminal.runtime-artifact-prefetch` before `terminal.notice`.
-
-Canonical run `20260721-162403-d398c0` then completed successfully. Pi5 passed
-its fixed five-minute stability hold and independent API/Web evidence.
-StoneBase sealed its manifests, and Pi5 downloaded and verified all eleven
-members (59,603,748 bytes) against lock
-`sha256:ecde0bbe80d4065f9bb84ecdc9372c08f0530635af459898e6ac8cb233165e5c`
-before the 60-second notice. Offline SSH apply took 333,426 ms. The exact Web
-and repository claims, independent evidence, cleanup, and maintenance clear
-all succeeded; Pi5 and StoneBase ended verified at accepted main. FJV and every
-other terminal remained outside the target and connection scope.
-
-The independent preflight `20260721-164634-7a7a94` correctly refused Local
-before maintenance. Its bounded observation proved bootstrap `changed`, phase
-`complete`, cleanup `complete`, the exact lock digest, and runtime version
-`cpython-3.11.15-20260510-ansible-core-2.19.4`, while the runner separately
-reported `runtime-unavailable`. This rejected download, package, collection,
-active-link, and missing-bootstrap hypotheses.
-
-Bounded StoneBase inspection then proved the publication defect. The active
-symlink and version directory were root-owned and present; the pinned Python
-reported 3.11.15. All ten ansible-core console scripts existed, but every
-shebang named the same removed staging path below
-`versions/.cpython-3.11.15-20260510-ansible-core-2.19.4.*/extract/python`.
-Executing `ansible` or `ansible-galaxy` therefore returned `ENOENT`. The cause
-is **CONFIRMED**: standard pip console scripts use an absolute interpreter
-shebang, and the installer validated before rename but not after rename. It is
-not a defect in Ansible's standard `ansible-playbook -c local` connection.
-
-The offline fix publishes a new
-`cpython-3.11.15-20260510-ansible-core-2.19.4-r2` directory. Before rename it
-accepts and rewrites only the exact ten ansible-core entry points from the exact
-staging interpreter to the immutable final interpreter. It then validates
-Python 3.11.15, ansible-core 2.19.4, and community.general 11.4.1 from the final
-path before switching the atomic `active` symlink. Unexpected, missing,
-symlinked, writable, oversized, or post-publication-invalid scripts fail closed;
-an unactivated `r2` directory is removed, while the old active version remains.
-The staging directory has a fixed short random name and the production staging
-and destination shebang sizes are code-checked at import, preventing pip's
-standard Linux long-shebang shell wrapper from entering this exact rewrite
-protocol. The Local artifact runtime claim now includes the `r2` build identity.
-
-Regression and complete aggregate validation passed 872 deploy Python tests,
-20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template
-parses, deploy safety and lifecycle contracts, and all inventory/playbook
-syntax and check-mode contracts. This is offline evidence only. Local remains
-No-Go until the fix is reviewed and merged, a canonical exact-scope SSH run
-installs `r2`, and a later canonical preflight independently returns effective
-Local with no fallback.
-
-## Direct transport parity addendum
-
-PR #1057 merged at `0deb78228f8abbf36543796ea23144384712775a` after its
-long-shebang review finding was fixed. Canonical run
-`20260721-172923-90a38b` used the unchanged serial SSH route, kept the fixed
-Pi5 stability and terminal notice windows, installed `r2`, and finished with
-ready ACK, independent evidence, cleanup, and maintenance clear. Independent
-preflight `20260721-174938-0c7310` then observed bootstrap `changed/complete`,
-the exact supply lock, Python 3.11.15, ansible-core 2.19.4,
-community.general 11.4.1, runner v3, and runtime identity
-`sha256:f607570e67d68855078486c54bfd5fe467b082e150582deab1862b0413310dd2`.
-
-Canary `20260721-175030-81ee22` did not enter Local execution. The coordinator's
-locked repeat selection fell back before Pi5 mutation was committed to the
-terminal route, with public contract and runner evidence both null. Source
-audit confirmed two coupled contract defects:
-
-1. aggregate preflight proved the Local runner through Ansible but did not
-   apply the direct backend's connection-contract policy;
-2. the direct backend rejected the inherited global inventory string
-   `-o StrictHostKeyChecking=no`, then collapsed that transport exception into
-   the misleading reason `local public inventory contract is malformed`.
-
-The value is not needed by Local and must not weaken it. The fixed backend
-accepts only that exact legacy string as an ignored compatibility value,
-continues to construct its own command with `StrictHostKeyChecking=yes`, and
-still rejects ProxyJump and every other nonempty SSH common argument. Separate
-public-contract and direct-runner fallback codes prevent recurrence from being
-misdiagnosed. The canary was cancelled through the canonical durable control
-path before notice or maintenance; StoneBase remained untouched by that run.
-
-PR #1058 merged that correction as accepted main
-`e98060520c7d26909887073de2e13b203024e8d8`. The next exact-scope preflight,
-`20260721-181758-b97f76`, proved the pinned runtime unchanged but still selected
-SSH fallback `candidate-requires-ssh-configuration`. This was not another
-transport or Ansible failure. The release-wide impact registry classified the
-two changed coordinator modules as terminal-neutral `deploy-control`, while
-the Local eligibility gate maintained a second path list and rejected the same
-modules as terminal configuration. The duplicated classification authority is
-the confirmed cause.
-
-The structural remediation makes the terminal profile registry the canonical
-owner for neutral and deploy-control paths. It separately classifies every
-script installed by `local-runner-bootstrap.yml` as
-`local-executor-runtime`, scoped by an explicit StoneBase inventory capability.
-Those installed files still require the ordinary SSH bootstrap route. A
-contract test derives the installed script sources from the Ansible task and
-requires every one to retain runtime impact, so a future helper cannot silently
-inherit coordinator-only treatment. This change itself includes terminal
-runtime and inventory contracts and therefore deliberately requires one final
-SSH bootstrap before a later Local-only canary.
-
-PR #1059 merged the shared policy as accepted main
-`0ff5fc2de5a6d14523570bb7f5753076bc3380e3`. Canonical run
-`20260721-184600-ea3eba` selected the expected pre-maintenance SSH fallback
-because the candidate history contained the inventory capability and installed
-runtime contract. Pi5 release and fixed stability monitoring, StoneBase
-manifest sealing, 60-second notice, maintenance ACK, SSH apply, exact ready
-ACK, independent evidence, cleanup, and maintenance clear all succeeded. The
-terminal apply took 223,073 ms; independent evidence took 8,424 ms. FJV and
-every other terminal remained outside connection and execution scope.
-
-Independent preflight `20260721-190514-541561` then selected requested and
-effective `stonebase-local-ansible-poc` with no fallback. It proved Python
-3.11.15, ansible-core 2.19.4, community.general 11.4.1, runner v3, runtime `r2`,
-and identity
-`sha256:f607570e67d68855078486c54bfd5fe467b082e150582deab1862b0413310dd2`.
-The implementation, bootstrap, and eligibility gates are therefore complete;
-the remaining No-Go applies only until one neutral fixed-SHA Local canary
-completes its own artifact, candidate ACK, independent evidence, and cleanup.
-
-## Pinned host-trust addendum
-
-Evidence-only commit `21d3cd86cc7bd2924c0de9e9f18dcea1bd946ea3` was accepted
-after preflight selected effective Local. Canary `20260721-191113-a1c6ef`
-then repeated locked selection and safely chose SSH fallback
-`runner-ineligible: local direct runner preflight is unavailable`. The operator
-requested canonical cancellation immediately. The unit honored cancellation at
-`after-pi5-stability`; Pi5 evidence and cancellation cleanup completed at
-`2026-07-21T19:20:50Z`. StoneBase remained `pending`, with no notice,
-maintenance, artifact, transfer, runner unit, or repository mutation.
-
-Source audit confirmed the mismatch. Aggregate preflight had constructed SSH
-with `StrictHostKeyChecking=no` and `UserKnownHostsFile=/dev/null`. The locked
-backend constructed `StrictHostKeyChecking=yes` and relied on an ambient trust
-store. Thus the two probes had the same address, user, port, and default client
-identity, but different server-authentication prerequisites. The cause is
-**CONFIRMED**; Ansible Local connection behavior is not implicated.
-
-The StoneBase Ed25519 public host key was observed through two independent,
-read-only paths: an authenticated exact-host Ansible command reading
-`/etc/ssh/ssh_host_ed25519_key.pub`, and `ssh-keyscan -t ed25519` from Pi5 to
-the resolved StoneBase address. Key type and base64 payload matched exactly.
-Only the public wildcard-scoped known-hosts record is stored; the documented
-fingerprint is `SHA256:dwaQeBhabIj6zN3FCNgWCV/+3oedfoVkVjP0ZYc9+Jc`.
-No inventory variables, private keys, tokens, or credentials were retained.
-
-The offline remediation rejects extra records, comments, RSA keys, malformed
-Ed25519 blobs, symlinks, noncanonical paths, arbitrary SSH common arguments,
-and Local-only private-key paths. A malformed candidate pin blocks before any
-terminal transport. The unchanged SSH route retains its prior compatibility
-behavior. The complete deploy Python discovery passed 889 tests; live Local
-remains No-Go until review, accepted-main SSH migration, repeated strict
-preflight, and a neutral canary complete.
-
 ## Go / No-Go decision
 
 Current split decision:
 
-- **Go**: the accepted typed-claim SSH route and offline implementation/review
-  of the relocatable `r2` publication fix.
-- **No-Go**: Local execution until the pinned host-trust change is accepted,
-  migrated through SSH, independently proved, and followed by one StoneBase
-  canary that completes artifact verification, candidate ACK, independent
-  evidence, and cleanup.
+- **Go**: implement the accepted typed-claim/activation architecture offline in
+  the dedicated staged ExecPlan.
+- **No-Go**: any production retry, bootstrap, reverify, Local execution, or
+  canary until the new offline acceptance gate is complete and a new exact
+  hardware approval is granted.
 
 Live rollout requires all of the following:
 

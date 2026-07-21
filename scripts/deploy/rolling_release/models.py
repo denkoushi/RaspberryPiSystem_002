@@ -14,7 +14,6 @@ FULL_SHA_RE = re.compile(r'^[0-9a-f]{40}$')
 UNIT_PREFIX = 'raspi-release-'
 UNIT_SUFFIX = '.service'
 _FORBIDDEN_REF_CHARACTERS = frozenset(' ~^:?*[\\')
-STONEBASE_LOCAL_LIMIT = 'raspberrypi5:raspi4-kensaku-stonebase01'
 
 
 def validate_lookup_run_id(run_id: str) -> str:
@@ -93,7 +92,6 @@ class LaunchSpec:
     skip_canary_hold: bool = False
     full_fleet: bool = False
     reverify_selected: bool = False
-    stonebase_local_ansible_poc: bool = False
 
     @property
     def unit_name(self) -> str:
@@ -118,17 +116,12 @@ class LaunchSpec:
             type(self.skip_canary_hold) is not bool
             or type(self.full_fleet) is not bool
             or type(self.reverify_selected) is not bool
-            or type(self.stonebase_local_ansible_poc) is not bool
         ):
             raise ValueError('release flags must be boolean')
         if self.full_fleet and self.limit:
             raise ValueError('full fleet cannot be combined with a limit')
         if self.reverify_selected and not self.limit:
             raise ValueError('selected re-verification requires a limit')
-        if self.stonebase_local_ansible_poc and self.limit != STONEBASE_LOCAL_LIMIT:
-            raise ValueError(
-                'StoneBase local Ansible POC requires the exact Pi5 + StoneBase limit'
-            )
         if self.reason is not None:
             validate_text(self.reason, name='reason', maximum=1000)
             if not self.emergency_override:
@@ -147,7 +140,7 @@ class LaunchSpec:
             raise ValueError('remote project must be an absolute path')
         if os.path.normpath(remote_project) != remote_project or '\x00' in remote_project:
             raise ValueError('remote project must be a normalized absolute path')
-        payload = {
+        return {
             'version': 2,
             'project': remote_project,
             'runId': self.run_id,
@@ -164,14 +157,6 @@ class LaunchSpec:
             'fullFleet': self.full_fleet,
             'reverifySelected': self.reverify_selected,
         }
-        if self.stonebase_local_ansible_poc:
-            payload.update(
-                {
-                    'version': 3,
-                    'stonebaseLocalAnsiblePoc': True,
-                }
-            )
-        return payload
 
 
 @dataclass(frozen=True)
