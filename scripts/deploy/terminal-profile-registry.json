@@ -52,7 +52,15 @@
           "/usr/local/bin/ibus-process-owner.sh",
           "/usr/local/bin/clamav-kiosk-scan.sh",
           "/usr/local/bin/rkhunter-kiosk-scan.sh",
-          "/var/spool/cron/crontabs/root"
+          "/var/spool/cron/crontabs/root",
+          "/usr/local/libexec/raspi-local-ansible-runner",
+          "/usr/local/libexec/raspi_local_execution.py",
+          "/usr/local/libexec/raspi-terminal-ready-probe",
+          "/usr/local/libexec/raspi-terminal-maintenance-probe",
+          "/usr/local/libexec/raspi-local-runtime-install",
+          "/usr/local/libexec/raspi-local-runtime-lock.json",
+          "/usr/local/libexec/raspi-local-requirements-aarch64-py311.lock",
+          "/opt/raspi-local-ansible-runtime/active"
         ],
         "healthProbeIds": [
           "display-manager",

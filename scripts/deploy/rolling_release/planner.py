@@ -28,6 +28,11 @@ try:
 except ImportError:
     from .release_claims import ClaimKind, release_claims_for_host
 
+try:
+    from rolling_release.route_contract import route_contract_receipt
+except ImportError:
+    from .route_contract import route_contract_receipt
+
 
 Target = dict[str, str]
 CanaryHoldPolicy = Callable[..., bool]
@@ -43,6 +48,10 @@ HOST_DECISION_FIELDS = (
 PROFILE_ID_RE = re.compile(r'^[a-z][a-z0-9-]{0,62}$')
 TARGET_ARCHITECTURE_VERSION = 1
 SSH_ANSIBLE_EXECUTOR = 'ssh-ansible'
+STONEBASE_LOCAL_ANSIBLE_EXECUTOR = 'stonebase-local-ansible-poc'
+EXECUTOR_IDS = frozenset(
+    {SSH_ANSIBLE_EXECUTOR, STONEBASE_LOCAL_ANSIBLE_EXECUTOR}
+)
 
 
 def required_claim_kinds(role: str) -> tuple[ClaimKind, ...]:
@@ -297,15 +306,43 @@ def build_target_architecture(
     }
 
 
-def executor_selection(*, preflight_passed: bool) -> dict[str, Any]:
-    """Expose the SSH default without overstating preflight authority."""
+def executor_selection(
+    *,
+    preflight_passed: bool,
+    requested_executor: str = SSH_ANSIBLE_EXECUTOR,
+    effective_executor: str | None = None,
+    fallback_reason: str | None = None,
+) -> dict[str, Any]:
+    """Expose requested/provisional/effective executor authority separately."""
     if type(preflight_passed) is not bool:
         raise TypeError('preflight_passed must be boolean')
+    if requested_executor not in EXECUTOR_IDS:
+        raise ValueError('requested executor is unsupported')
+    if effective_executor is not None and effective_executor not in EXECUTOR_IDS:
+        raise ValueError('effective executor is unsupported')
+    if fallback_reason is not None and not isinstance(fallback_reason, str):
+        raise TypeError('fallback reason must be text')
+    if not preflight_passed and (effective_executor is not None or fallback_reason is not None):
+        raise ValueError('unproven executor selection cannot be effective')
+    if preflight_passed and effective_executor is None:
+        effective_executor = requested_executor
+    if (
+        preflight_passed
+        and effective_executor == requested_executor
+        and fallback_reason is not None
+    ):
+        raise ValueError('non-fallback executor cannot retain a fallback reason')
+    if (
+        preflight_passed
+        and effective_executor != requested_executor
+        and not fallback_reason
+    ):
+        raise ValueError('fallback executor requires a reason')
     return {
-        'requestedExecutor': SSH_ANSIBLE_EXECUTOR,
-        'provisionalExecutor': SSH_ANSIBLE_EXECUTOR,
-        'effectiveExecutor': SSH_ANSIBLE_EXECUTOR if preflight_passed else None,
-        'fallbackReason': None,
+        'requestedExecutor': requested_executor,
+        'provisionalExecutor': requested_executor,
+        'effectiveExecutor': effective_executor if preflight_passed else None,
+        'fallbackReason': fallback_reason if preflight_passed else None,
     }
 
 
@@ -335,6 +372,9 @@ def build_fleet_plan_payload(
     verification_only_execution_enabled: bool = False,
     claim_scope_hosts: Iterable[str] | None = None,
     executor_preflight_passed: bool = False,
+    requested_executor: str = SSH_ANSIBLE_EXECUTOR,
+    effective_executor: str | None = None,
+    fallback_reason: str | None = None,
 ) -> dict[str, Any]:
     """Compose the fleet-aware public and persisted planning snapshot.
 
@@ -417,7 +457,7 @@ def build_fleet_plan_payload(
         canary_hold_policy(canary_candidates, index, skip=False)
         for index in range(len(canary_candidates))
     )
-    return {
+    payload = {
         'desiredSha': release_sha,
         'fullFleet': full_fleet,
         'reverifySelected': reverify_selected,
@@ -434,8 +474,19 @@ def build_fleet_plan_payload(
         'minimized': bool(excluded),
         'canaryHold': canary_hold,
         **target_architecture,
-        **executor_selection(preflight_passed=executor_preflight_passed),
+        **executor_selection(
+            preflight_passed=executor_preflight_passed,
+            requested_executor=requested_executor,
+            effective_executor=effective_executor,
+            fallback_reason=fallback_reason,
+        ),
     }
+    # Planning is pure, but it must still prove that its action combination is
+    # representable by the same closed route consumed by preflight and fault
+    # rehearsals.  The receipt is recomputed at later boundaries rather than
+    # persisted here, so legacy plan output remains additive-compatible.
+    route_contract_receipt(payload)
+    return payload
 
 
 def build_print_plan_payload(

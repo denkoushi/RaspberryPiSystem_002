@@ -5,8 +5,11 @@ import unittest
 from pathlib import Path
 
 from scripts.deploy.rolling_release.route_contract import (
+    ROUTE_SCENARIOS,
     ROUTE_STAGES,
+    execute_route_scenario,
     registered_boundary_calls,
+    route_contract_receipt,
     validate_route_contract,
 )
 
@@ -75,6 +78,22 @@ REHEARSAL_TESTS = {
         "scripts/deploy/tests/test_fleet_coordinator_transitions.py",
         "test_maintenance_ack_timeout_is_manifest_rollback_owned",
     ),
+    "local-artifact-seal-faults": (
+        "scripts/deploy/tests/test_stonebase_local_execution.py",
+        "test_safe_candidate_builds_incremental_secret_free_artifact",
+    ),
+    "local-single-transfer-response-loss-faults": (
+        "scripts/deploy/tests/test_stonebase_local_execution.py",
+        "test_response_loss_reconciles_before_rollback_authority",
+    ),
+    "local-unit-response-loss-faults": (
+        "scripts/deploy/tests/test_stonebase_local_execution.py",
+        "test_response_loss_reconciles_before_rollback_authority",
+    ),
+    "local-candidate-ack-identity-faults": (
+        "scripts/deploy/tests/test_stonebase_local_execution.py",
+        "test_success_order_persists_acceptance_before_wait_and_clears_last",
+    ),
     "apply-before-after-faults": (
         "scripts/deploy/tests/test_fleet_coordinator_transitions.py",
         "test_full_signage_failure_matrix_recovers_before_next_plan",
@@ -90,6 +109,10 @@ REHEARSAL_TESTS = {
     "finalization-before-after-faults": (
         "scripts/deploy/tests/test_fleet_coordinator_transitions.py",
         "test_forward_runtime_cleanup_failure_stays_unknown_without_rollback",
+    ),
+    "local-residue-cleanup-faults": (
+        "scripts/deploy/tests/test_stonebase_local_execution.py",
+        "test_success_order_persists_acceptance_before_wait_and_clears_last",
     ),
     "rollback-before-after-faults": (
         "scripts/deploy/tests/test_fleet_coordinator_transitions.py",
@@ -134,6 +157,124 @@ class RouteContractTest(unittest.TestCase):
         self.assertEqual(len(ROUTE_STAGES), len({stage.id for stage in ROUTE_STAGES}))
         self.assertTrue(all(stage.preflight_proof for stage in ROUTE_STAGES))
         self.assertTrue(all(stage.recovery_owner for stage in ROUTE_STAGES))
+        self.assertTrue(all(stage.required_phases for stage in ROUTE_STAGES))
+        self.assertTrue(all(stage.produced_phase for stage in ROUTE_STAGES))
+        self.assertTrue(all(stage.timeout_seconds > 0 for stage in ROUTE_STAGES))
+        self.assertTrue(
+            all(stage.response_loss_reconciliation for stage in ROUTE_STAGES)
+        )
+        self.assertTrue(all(stage.rollback_eligibility for stage in ROUTE_STAGES))
+
+    def test_shared_scenarios_execute_every_fault_boundary(self):
+        covered = set()
+        for scenario in ROUTE_SCENARIOS:
+            normal = execute_route_scenario(scenario.id)
+            self.assertEqual(normal.outcome, "completed")
+            self.assertEqual(normal.state.phase, scenario.expected_phase)
+            for stage_id in scenario.stages:
+                covered.add(stage_id)
+                for boundary in ("before-call", "after-call", "response-loss"):
+                    with self.subTest(
+                        scenario=scenario.id,
+                        stage=stage_id,
+                        boundary=boundary,
+                    ):
+                        fault = execute_route_scenario(
+                            scenario.id,
+                            fault_stage=stage_id,
+                            boundary=boundary,
+                        )
+                        self.assertEqual(fault.stage_id, stage_id)
+                        self.assertEqual(fault.boundary, boundary)
+                        self.assertTrue(fault.recovery_owner)
+                        if boundary == "response-loss":
+                            self.assertEqual(fault.outcome, "response-unknown")
+                            self.assertTrue(fault.response_loss_reconciliation)
+        self.assertEqual(covered, {stage.id for stage in ROUTE_STAGES})
+
+    def test_local_response_loss_retains_maintenance_and_blocks_rollback(self):
+        fault = execute_route_scenario(
+            "stonebase-local-success",
+            fault_stage="terminal.local-unit",
+            boundary="response-loss",
+        )
+        self.assertTrue(fault.state.maintenance)
+        self.assertEqual(fault.state.evidence, "unknown")
+        self.assertEqual(fault.state.local_unit_state, "unknown")
+        self.assertFalse(fault.rollback_eligible)
+        self.assertEqual(
+            fault.response_loss_reconciliation,
+            "reconcile-deterministic-local-unit-before-rollback",
+        )
+
+        ack_loss = execute_route_scenario(
+            "stonebase-local-success",
+            fault_stage="terminal.candidate-ready-ack",
+            boundary="response-loss",
+        )
+        self.assertNotIn("localArtifact", ack_loss.state.claims)
+        self.assertIn("runtime", ack_loss.state.claims)
+        self.assertTrue(ack_loss.state.maintenance)
+        self.assertEqual(ack_loss.state.evidence, "unknown")
+
+    def test_forward_pi5_claims_survive_terminal_rollback_scenario(self):
+        result = execute_route_scenario("forward-pi5-terminal-rollback")
+        self.assertIn("controlPlaneApi", result.state.claims)
+        self.assertIn("controlPlaneWeb", result.state.claims)
+        self.assertIn("terminalRepository", result.state.claims)
+        self.assertEqual(result.state.evidence, "verified")
+
+    def test_plan_receipt_binds_local_route_and_is_digest_stable(self):
+        plan = {
+            "pi5Required": False,
+            "requestedExecutor": "stonebase-local-ansible-poc",
+            "effectiveExecutor": "stonebase-local-ansible-poc",
+            "terminalWork": [
+                {
+                    "host": "raspi4-kensaku-stonebase01",
+                    "mutationRequired": True,
+                    "activationRequired": False,
+                    "verificationRequired": True,
+                }
+            ],
+        }
+        first = route_contract_receipt(plan)
+        second = route_contract_receipt(plan)
+        self.assertEqual(first, second)
+        self.assertEqual(first["scenarioId"], "stonebase-local-success")
+        self.assertIn("terminal.artifact-seal", first["stageIds"])
+        self.assertIn("terminal.candidate-ready-ack", first["stageIds"])
+        self.assertIn("terminal.local-residue-cleanup", first["stageIds"])
+        self.assertRegex(first["stageDigest"], r"^sha256:[0-9a-f]{64}$")
+
+        plan["terminalWork"][0]["host"] = "raspi4-fjv60-80"
+        with self.assertRaisesRegex(ValueError, "limited to StoneBase"):
+            route_contract_receipt(plan)
+
+    def test_plan_receipt_rejects_target_membership_or_verification_gaps(self):
+        plan = {
+            "pi5Required": False,
+            "mutationTargets": [{"host": "kiosk-a"}],
+            "activationTargets": [],
+            "verificationTargets": [{"host": "kiosk-a"}],
+            "terminalWork": [
+                {
+                    "host": "kiosk-a",
+                    "mutationRequired": True,
+                    "activationRequired": False,
+                    "verificationRequired": True,
+                }
+            ],
+        }
+        plan["terminalWork"][0]["mutationRequired"] = False
+        with self.assertRaisesRegex(ValueError, "does not match mutationTargets"):
+            route_contract_receipt(plan)
+
+        plan["terminalWork"][0]["mutationRequired"] = True
+        plan["terminalWork"][0]["verificationRequired"] = False
+        plan["verificationTargets"] = []
+        with self.assertRaisesRegex(ValueError, "requires verification"):
+            route_contract_receipt(plan)
 
     def test_terminal_commit_boundaries_name_typed_claim_proofs(self):
         stages = {stage.id: stage for stage in ROUTE_STAGES}

@@ -22,7 +22,7 @@ from .models import LaunchSpec
 from .planner import executor_selection, required_claim_kinds
 from .policy import server_identity
 from .reconcile import reconcile_status
-from .route_contract import ROUTE_STAGES
+from .route_contract import ROUTE_STAGES, route_contract_receipt
 from .terminal_preflight_contract import build_target_contracts
 
 
@@ -307,6 +307,67 @@ def _probe_record(name: str, result: Any, *, structured: bool = False) -> dict[s
             if isinstance(metrics, dict)
             else {}
         )
+        executor = payload.get("executor")
+        if name == "terminal" and executor is not None:
+            runtime_evidence = (
+                executor.get("runtime") if isinstance(executor, dict) else None
+            )
+            runtime_valid = runtime_evidence is None or (
+                isinstance(runtime_evidence, dict)
+                and set(runtime_evidence)
+                == {
+                    "identity",
+                    "python",
+                    "ansibleCore",
+                    "collections",
+                    "runnerVersion",
+                }
+                and isinstance(runtime_evidence.get("identity"), str)
+                and re.fullmatch(
+                    r"sha256:[0-9a-f]{64}", runtime_evidence["identity"]
+                )
+                is not None
+                and isinstance(runtime_evidence.get("collections"), dict)
+            )
+            if (
+                not isinstance(executor, dict)
+                or set(executor)
+                != {
+                    "requestedExecutor",
+                    "effectiveExecutor",
+                    "fallbackReason",
+                    "runtime",
+                }
+                or executor.get("requestedExecutor")
+                not in {"ssh-ansible", "stonebase-local-ansible-poc"}
+                or executor.get("effectiveExecutor")
+                not in {"ssh-ansible", "stonebase-local-ansible-poc"}
+                or not runtime_valid
+                or (
+                    executor.get("requestedExecutor")
+                    == executor.get("effectiveExecutor")
+                    and executor.get("fallbackReason") is not None
+                )
+                or (
+                    executor.get("requestedExecutor")
+                    != executor.get("effectiveExecutor")
+                    and not isinstance(executor.get("fallbackReason"), str)
+                )
+                or (
+                    executor.get("effectiveExecutor")
+                    == "stonebase-local-ansible-poc"
+                    and runtime_evidence is None
+                )
+            ):
+                record.update(
+                    {
+                        "status": "incomplete",
+                        "exitCode": EX_SOFTWARE,
+                        "issues": ["terminal.invalid-executor-report"],
+                    }
+                )
+            else:
+                record["executor"] = executor
         if payload.get("status") != status:
             record.update(
                 {
@@ -333,11 +394,23 @@ def _preflight_report(
     terminal_count: int,
     planning_snapshot: dict[str, Any] | None,
 ) -> tuple[int, dict[str, Any]]:
+    requested_executor = (
+        "stonebase-local-ansible-poc"
+        if spec.stonebase_local_ansible_poc
+        else "ssh-ansible"
+    )
+    terminal_probe = _probe_record(
+        "terminal",
+        terminal_result,
+        structured=spec.stonebase_local_ansible_poc,
+    )
     probes = [
         _probe_record("migration", migration_result),
         _probe_record("route", route_result, structured=True),
-        _probe_record("terminal", terminal_result),
+        terminal_probe,
     ]
+    executor = terminal_probe.get("executor")
+    route_receipt: dict[str, object] | None = None
     if planning_snapshot is None:
         target_planning = {
             "status": "deferred-to-locked-coordinator",
@@ -420,6 +493,25 @@ def _preflight_report(
                     "issues": ["verification-architecture.execution-disabled"],
                 }
             )
+        try:
+            route_receipt = route_contract_receipt(
+                planning_snapshot,
+                requested_executor=requested_executor,
+                effective_executor=(
+                    executor.get("effectiveExecutor")
+                    if isinstance(executor, dict)
+                    else None
+                ),
+            )
+        except (TypeError, ValueError):
+            probes.append(
+                {
+                    "probe": "route-transition-contract",
+                    "status": "blocked",
+                    "exitCode": EX_CONFIG,
+                    "issues": ["route-transition-contract.plan-unrepresentable"],
+                }
+            )
     if any(probe["status"] == "incomplete" for probe in probes):
         outcome = EX_SOFTWARE
         status = "incomplete"
@@ -429,6 +521,23 @@ def _preflight_report(
     else:
         outcome = 0
         status = "passed"
+    if outcome == 0 and isinstance(executor, dict):
+        selection = executor_selection(
+            preflight_passed=True,
+            requested_executor=requested_executor,
+            effective_executor=executor["effectiveExecutor"],
+            fallback_reason=executor["fallbackReason"],
+        )
+    elif outcome == 0 and not spec.stonebase_local_ansible_poc:
+        selection = executor_selection(
+            preflight_passed=True,
+            requested_executor=requested_executor,
+        )
+    else:
+        selection = executor_selection(
+            preflight_passed=False,
+            requested_executor=requested_executor,
+        )
     return outcome, {
         "version": 1,
         "preflightId": spec.run_id,
@@ -438,10 +547,21 @@ def _preflight_report(
         "status": status,
         "selectedHosts": selected_hosts,
         "targetPlanning": target_planning,
-        **executor_selection(preflight_passed=outcome == 0),
+        **selection,
+        "runtimeEvidence": (
+            executor.get("runtime") if isinstance(executor, dict) else None
+        ),
         "terminalCount": terminal_count,
         "releaseSubmitted": False,
         "routeCoverage": [stage.id for stage in ROUTE_STAGES],
+        "routeContract": (
+            route_receipt
+            if route_receipt is not None
+            else {
+                "schemaVersion": 1,
+                "status": "deferred-to-locked-coordinator",
+            }
+        ),
         "probes": probes,
     }
 
@@ -473,21 +593,42 @@ def launch(args: Any, *, runtime: Any) -> int:
         if not selected:
             raise RuntimeError(f"--limit selected no hosts: {args.limit}")
         selected_release_hosts = runtime.release_hosts(inventory_data, selected)
-    terminal_preflight_targets = build_target_contracts(
-        inventory_data,
-        [target for target in selected_release_hosts if target.get("role") != "server"],
+    requested_executor = (
+        "stonebase-local-ansible-poc"
+        if bool(getattr(args, "stonebase_local_ansible_poc", False))
+        else "ssh-ansible"
     )
+    terminal_target_inputs = [
+        target
+        for target in selected_release_hosts
+        if target.get("role") != "server"
+    ]
+    if requested_executor == "stonebase-local-ansible-poc":
+        terminal_preflight_targets = build_target_contracts(
+            inventory_data,
+            terminal_target_inputs,
+            requested_executor=requested_executor,
+        )
+    else:
+        terminal_preflight_targets = build_target_contracts(
+            inventory_data, terminal_target_inputs
+        )
     identity = validate_remote_server_identity(inventory_data, runtime=runtime)
 
     planning_snapshot = None
     build_print_plan = getattr(runtime, "build_print_plan", None)
     if callable(build_print_plan):
+        plan_options = {
+            "full_fleet": args.full_fleet,
+            "reverify_selected": args.reverify_selected,
+        }
+        if bool(getattr(args, "stonebase_local_ansible_poc", False)):
+            plan_options["stonebase_local_ansible_poc"] = True
         planning_snapshot = build_print_plan(
             args.branch,
             args.inventory,
             args.limit,
-            full_fleet=args.full_fleet,
-            reverify_selected=args.reverify_selected,
+            **plan_options,
         )
         if planning_snapshot.get("sha") != sha:
             raise RuntimeError("preflight planning SHA changed during launch")
@@ -506,6 +647,9 @@ def launch(args: Any, *, runtime: Any) -> int:
         skip_canary_hold=args.skip_canary_hold,
         full_fleet=args.full_fleet,
         reverify_selected=args.reverify_selected,
+        stonebase_local_ansible_poc=bool(
+            getattr(args, "stonebase_local_ansible_poc", False)
+        ),
     ).validate()
     systemd, control = build_backends(runtime)
     migration_preflight = systemd.preflight_migrations(spec)

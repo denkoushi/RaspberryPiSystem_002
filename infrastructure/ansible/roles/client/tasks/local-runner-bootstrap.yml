@@ -1,0 +1,74 @@
+---
+- name: Install trusted StoneBase local executor runner
+  ansible.builtin.copy:
+    src: "{{ repo_path }}/scripts/deploy/stonebase-local-ansible-runner.py"
+    dest: /usr/local/libexec/raspi-local-ansible-runner
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Install trusted StoneBase local executor contract module
+  ansible.builtin.copy:
+    src: "{{ repo_path }}/scripts/deploy/rolling_release/local_execution.py"
+    dest: /usr/local/libexec/raspi_local_execution.py
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Install trusted StoneBase candidate ready probe
+  ansible.builtin.copy:
+    src: "{{ repo_path }}/scripts/deploy/terminal-ready-probe.py"
+    dest: /usr/local/libexec/raspi-terminal-ready-probe
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Install trusted StoneBase maintenance probe
+  ansible.builtin.copy:
+    src: "{{ repo_path }}/scripts/deploy/terminal-local-maintenance-probe.py"
+    dest: /usr/local/libexec/raspi-terminal-maintenance-probe
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Install trusted StoneBase local runtime installer
+  ansible.builtin.copy:
+    src: "{{ repo_path }}/scripts/deploy/stonebase-local-runtime-install.py"
+    dest: /usr/local/libexec/raspi-local-runtime-install
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Install StoneBase local executor runtime lock
+  ansible.builtin.copy:
+    src: "{{ repo_path }}/infrastructure/ansible/files/stonebase-local-ansible/runtime-lock.json"
+    dest: /usr/local/libexec/raspi-local-runtime-lock.json
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Install StoneBase local executor Python requirements lock
+  ansible.builtin.copy:
+    src: "{{ repo_path }}/infrastructure/ansible/files/stonebase-local-ansible/requirements-aarch64-py311.lock"
+    dest: /usr/local/libexec/raspi-local-requirements-aarch64-py311.lock
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Bootstrap pinned StoneBase local executor runtime when needed
+  ansible.builtin.command:
+    argv:
+      - /usr/local/libexec/raspi-local-runtime-install
+  register: stonebase_local_runtime_install
+  changed_when: >-
+    stonebase_local_runtime_install.rc == 0
+    and 'RUNTIME_INSTALL_CHANGED' in stonebase_local_runtime_install.stdout
+  failed_when: false
+  no_log: true
