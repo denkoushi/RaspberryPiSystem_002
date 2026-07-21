@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from scripts.deploy.rolling_release import application
+from scripts.deploy.rolling_release import local_execution
 from scripts.deploy.rolling_release import policy
 from scripts.deploy.rolling_release.backends.command import CommandResult
 
@@ -161,7 +162,7 @@ class ReleaseApplicationTest(unittest.TestCase):
             "phase": "python-packages",
             "failureCode": "python-packages-failed",
             "cleanup": "complete",
-            "runtimeVersion": "cpython-3.11.15-20260510-ansible-core-2.19.4",
+            "runtimeVersion": local_execution.RUNTIME_VERSION,
             "lockSha256": "sha256:" + "d" * 64,
             "observedAt": "2026-07-21T12:00:00Z",
         }

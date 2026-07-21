@@ -1,7 +1,7 @@
 ---
 id: KB-401
 title: Deploy release identity, activation, and runtime audit
-status: runtime-prefetch-route-receipt-fix-local-live-no-go
+status: runtime-r2-shebang-fix-local-live-no-go
 scope: standard Pi5, Kiosk, Signage, SSH Ansible, and experimental StoneBase Local Ansible release route
 date: 2026-07-21
 source_of_truth: true
@@ -17,11 +17,11 @@ related_docs:
   - ../plans/deploy-release-identity-architecture-execplan.md
   - ../plans/deploy-release-identity-readonly-evidence-manifest.md
   - ../plans/deploy-speed-phase-b-execplan.md
-validation: offline source audit, approved read-only evidence receipt f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8, accepted-main SSH runs 20260721-135020-37ce54 and 20260721-143844-16bae4, exact ansible-core 2.19.4 locale reproduction, 868 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template parses, the complete deploy aggregate, and exact verification of all 11 fixed runtime members totaling 59,603,748 bytes
+validation: offline source audit, approved read-only evidence receipt f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8, accepted-main SSH run 20260721-162403-d398c0, canonical preflight 20260721-164634-7a7a94, bounded StoneBase runtime path evidence, 872 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template parses, and the complete deploy aggregate
 open_items:
-  - merge controller-side sealed runtime artifact prefetch before another bootstrap
-  - repeat only the canonical Pi5 plus StoneBase plan, preflight, and serial SSH bootstrap route
-  - keep Local execution blocked until offline bootstrap and runner preflight prove the exact pinned runtime
+  - review and merge the relocatable r2 runtime publication fix
+  - repeat only the canonical Pi5 plus StoneBase plan, preflight, and serial SSH bootstrap route from accepted main
+  - keep Local execution blocked until r2 bootstrap and runner preflight prove the exact pinned runtime
   - keep FJV and every terminal other than StoneBase outside connection, planning, preflight, and execution
 ---
 
@@ -29,10 +29,12 @@ open_items:
 
 ## Executive conclusion
 
-The typed-claim standard route is now live and has completed one exact-scope
-Pi5 plus StoneBase SSH release with bounded Web activation, independent
-evidence, cleanup, and maintenance clear. The optional StoneBase Local runtime
-remains unavailable and Local execution remains **No-Go**.
+The typed-claim standard route and the sealed prefetch route are live. Canonical
+run `20260721-162403-d398c0` completed one exact-scope Pi5 plus StoneBase SSH
+release with all eleven runtime members verified before notice, offline
+terminal installation, typed Web/repository evidence, cleanup, and maintenance
+clear. The optional StoneBase Local runtime still fails its independent
+runner probe, so Local execution remains **No-Go**.
 
 The audited pre-redesign planner treated only stored files as mutation targets
 and did not model a Kiosk browser as a consumer of the Pi5-hosted Web artifact.
@@ -42,15 +44,18 @@ activation, and verification targets and requires distinct Web and terminal
 repository claims, so the browser transition is planned and verified without
 manufacturing a terminal Git change.
 
-The accepted-main bootstrap first exposed and corrected a bounded UTF-8 locale
-failure. After that correction merged, a second accepted-main run completed the
-ordinary release but failed the optional bootstrap at `python-download`. The
-raw network cause is intentionally not retained, but the structural defect is
-confirmed: all fixed dependencies were still retrieved from external services
-after terminal maintenance began. The remedy is a Pi5 pre-maintenance sealed
-prefetch followed by terminal-offline installation. Another bootstrap and any
-Local execution remain blocked until that remedy is accepted and the runtime
-is independently proved.
+The remaining failure is now fully identified. `pip` generated Ansible console
+scripts with absolute shebangs pointing into the private staging directory.
+The installer verified that staging tree and then renamed it to the versioned
+runtime path without rebinding or revalidating the scripts. Python survived the
+rename, but every `ansible*` entry point returned `ENOENT`. The remediation uses
+a new immutable `r2` runtime identity, rewrites only the exact locked
+ansible-core console-script set to the final version path, revalidates after
+publication, and switches `active` only after success. The broken old version
+is retained; a failed `r2` publication is removed before activation. Staging
+uses a bounded `.install.<16-hex>` name so pip's Linux 127-byte direct-shebang
+limit is satisfied; the installer checks both staging and published production
+paths against that limit when it loads.
 
 ## Safety state at the audit boundary
 
@@ -623,14 +628,71 @@ reasonless Local-to-SSH routes and binds the terminal probe reason explicitly;
 live execution remains No-Go until that fix is accepted and a repeated
 preflight returns `stonebase-local-bootstrap-success`.
 
+### Accepted prefetch bootstrap and relocatable-runtime root cause
+
+PR #1056 merged the route-receipt correction as accepted main
+`a4fb0c64b4173232e94b7fda01d387180c1eb04a`. Preflight
+`20260721-162318-686bfe` selected only Pi5 and StoneBase, effective SSH fallback
+`candidate-requires-ssh-configuration`, and scenario
+`stonebase-local-bootstrap-success`; its receipt placed
+`terminal.runtime-artifact-prefetch` before `terminal.notice`.
+
+Canonical run `20260721-162403-d398c0` then completed successfully. Pi5 passed
+its fixed five-minute stability hold and independent API/Web evidence.
+StoneBase sealed its manifests, and Pi5 downloaded and verified all eleven
+members (59,603,748 bytes) against lock
+`sha256:ecde0bbe80d4065f9bb84ecdc9372c08f0530635af459898e6ac8cb233165e5c`
+before the 60-second notice. Offline SSH apply took 333,426 ms. The exact Web
+and repository claims, independent evidence, cleanup, and maintenance clear
+all succeeded; Pi5 and StoneBase ended verified at accepted main. FJV and every
+other terminal remained outside the target and connection scope.
+
+The independent preflight `20260721-164634-7a7a94` correctly refused Local
+before maintenance. Its bounded observation proved bootstrap `changed`, phase
+`complete`, cleanup `complete`, the exact lock digest, and runtime version
+`cpython-3.11.15-20260510-ansible-core-2.19.4`, while the runner separately
+reported `runtime-unavailable`. This rejected download, package, collection,
+active-link, and missing-bootstrap hypotheses.
+
+Bounded StoneBase inspection then proved the publication defect. The active
+symlink and version directory were root-owned and present; the pinned Python
+reported 3.11.15. All ten ansible-core console scripts existed, but every
+shebang named the same removed staging path below
+`versions/.cpython-3.11.15-20260510-ansible-core-2.19.4.*/extract/python`.
+Executing `ansible` or `ansible-galaxy` therefore returned `ENOENT`. The cause
+is **CONFIRMED**: standard pip console scripts use an absolute interpreter
+shebang, and the installer validated before rename but not after rename. It is
+not a defect in Ansible's standard `ansible-playbook -c local` connection.
+
+The offline fix publishes a new
+`cpython-3.11.15-20260510-ansible-core-2.19.4-r2` directory. Before rename it
+accepts and rewrites only the exact ten ansible-core entry points from the exact
+staging interpreter to the immutable final interpreter. It then validates
+Python 3.11.15, ansible-core 2.19.4, and community.general 11.4.1 from the final
+path before switching the atomic `active` symlink. Unexpected, missing,
+symlinked, writable, oversized, or post-publication-invalid scripts fail closed;
+an unactivated `r2` directory is removed, while the old active version remains.
+The staging directory has a fixed short random name and the production staging
+and destination shebang sizes are code-checked at import, preventing pip's
+standard Linux long-shebang shell wrapper from entering this exact rewrite
+protocol. The Local artifact runtime claim now includes the `r2` build identity.
+
+Regression and complete aggregate validation passed 872 deploy Python tests,
+20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template
+parses, deploy safety and lifecycle contracts, and all inventory/playbook
+syntax and check-mode contracts. This is offline evidence only. Local remains
+No-Go until the fix is reviewed and merged, a canonical exact-scope SSH run
+installs `r2`, and a later canonical preflight independently returns effective
+Local with no fallback.
+
 ## Go / No-Go decision
 
 Current split decision:
 
 - **Go**: the accepted typed-claim SSH route and offline implementation/review
-  of sealed Pi5 prefetch plus terminal-offline installation.
-- **No-Go**: another bootstrap until that structural remediation is on `main`,
-  and any Local execution until exact runtime readiness is independently proved.
+  of the relocatable `r2` publication fix.
+- **No-Go**: Local execution until the `r2` fix is accepted on `main`, installed
+  by the canonical exact-scope SSH route, and independently proved by preflight.
 
 Live rollout requires all of the following:
 

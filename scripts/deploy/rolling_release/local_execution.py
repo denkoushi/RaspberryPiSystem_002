@@ -33,7 +33,7 @@ MAX_ARTIFACT_BYTES = 128 * 1024 * 1024
 MAX_STAGING_BYTES = 256 * 1024 * 1024
 MIN_FREE_BYTES = MAX_STAGING_BYTES + MAX_ARTIFACT_BYTES
 RUNTIME_ROOT = "/opt/raspi-local-ansible-runtime"
-RUNTIME_VERSION = "cpython-3.11.15-20260510-ansible-core-2.19.4"
+RUNTIME_VERSION = "cpython-3.11.15-20260510-ansible-core-2.19.4-r2"
 RUNTIME_BOOTSTRAP_OBSERVATION = "/var/lib/raspi-release/local-runtime-bootstrap.json"
 RUNTIME_BOOTSTRAP_LOCK_SHA256 = (
     "sha256:ecde0bbe80d4065f9bb84ecdc9372c08f0530635af459898e6ac8cb233165e5c"
@@ -53,7 +53,7 @@ RUNTIME_PYTHON_DISTRIBUTION = {
 }
 RUNTIME_ANSIBLE_CORE = "2.19.4"
 RUNTIME_COLLECTIONS = (("community.general", "11.4.1"),)
-RUNTIME_ARTIFACT_LOCK_SCHEMA = 3
+RUNTIME_ARTIFACT_LOCK_SCHEMA = 4
 RUNNER_PREFLIGHT_FAILURE_CODES = frozenset(
     {
         "ready",
@@ -553,6 +553,7 @@ def runtime_prefetch_required(
 def runtime_lock_payload() -> dict[str, Any]:
     return {
         "schemaVersion": RUNTIME_ARTIFACT_LOCK_SCHEMA,
+        "runtimeVersion": RUNTIME_VERSION,
         "python": RUNTIME_PYTHON,
         "pythonDistribution": dict(RUNTIME_PYTHON_DISTRIBUTION),
         "ansibleCore": RUNTIME_ANSIBLE_CORE,
