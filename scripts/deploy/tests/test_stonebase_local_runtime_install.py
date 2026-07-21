@@ -161,7 +161,10 @@ class StoneBaseLocalRuntimeInstallTest(unittest.TestCase):
             env=environment,
         )
         self.assertEqual(locale_probe.returncode, 0, locale_probe.stderr)
-        if importlib.util.find_spec("ansible.cli") is not None:
+        if (
+            importlib.util.find_spec("ansible") is not None
+            and importlib.util.find_spec("ansible.cli") is not None
+        ):
             ansible_probe = subprocess.run(
                 [sys.executable, "-c", "import ansible.cli"],
                 check=False,
