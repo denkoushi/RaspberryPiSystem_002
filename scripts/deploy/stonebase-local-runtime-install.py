@@ -43,6 +43,7 @@ MAX_PYTHON_ARCHIVE_BYTES = 64 * 1024 * 1024
 MAX_PYTHON_EXTRACTED_BYTES = 512 * 1024 * 1024
 MAX_PYTHON_ARCHIVE_MEMBERS = 20_000
 MAX_COLLECTION_BYTES = 64 * 1024 * 1024
+ANSIBLE_LOCALE = "C.UTF-8"
 
 
 class InstallError(RuntimeError):
@@ -131,7 +132,31 @@ class Observation:
         self.write(status="running", phase=phase)
 
 
-def _run(arguments: list[str], *, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+def _runtime_environment(
+    runtime: Path | None = None, *, collections: bool = False
+) -> dict[str, str]:
+    path = "/usr/bin:/bin:/usr/local/bin"
+    if runtime is not None:
+        path = f"{runtime / 'bin'}:{path}"
+    environment = {
+        "PATH": path,
+        "LANG": ANSIBLE_LOCALE,
+        "LC_ALL": ANSIBLE_LOCALE,
+    }
+    if collections:
+        if runtime is None:
+            raise InstallError("runtime is required for the collection environment")
+        environment["ANSIBLE_COLLECTIONS_PATH"] = str(runtime / "collections")
+    return environment
+
+
+def _run(
+    arguments: list[str],
+    *,
+    cwd: Path | None = None,
+    runtime: Path | None = None,
+    collections: bool = False,
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         arguments,
         cwd=cwd,
@@ -139,7 +164,7 @@ def _run(arguments: list[str], *, cwd: Path | None = None) -> subprocess.Complet
         text=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
-        env={"PATH": "/usr/bin:/bin:/usr/local/bin", "LANG": "C", "LC_ALL": "C"},
+        env=_runtime_environment(runtime, collections=collections),
     )
 
 
@@ -191,12 +216,7 @@ def _collection_version(runtime: Path) -> str | None:
             check=False,
             capture_output=True,
             text=True,
-            env={
-                "PATH": f"{runtime / 'bin'}:/usr/bin:/bin",
-                "LANG": "C",
-                "LC_ALL": "C",
-                "ANSIBLE_COLLECTIONS_PATH": str(runtime / "collections"),
-            },
+            env=_runtime_environment(runtime, collections=True),
         )
     except OSError:
         return None
@@ -226,22 +246,14 @@ def _valid(runtime: Path) -> bool:
             check=False,
             capture_output=True,
             text=True,
-            env={
-                "PATH": f"{runtime / 'bin'}:/usr/bin:/bin",
-                "LANG": "C",
-                "LC_ALL": "C",
-            },
+            env=_runtime_environment(runtime),
         )
         ansible = subprocess.run(
             [str(runtime / "bin/ansible"), "--version"],
             check=False,
             capture_output=True,
             text=True,
-            env={
-                "PATH": f"{runtime / 'bin'}:/usr/bin:/bin",
-                "LANG": "C",
-                "LC_ALL": "C",
-            },
+            env=_runtime_environment(runtime),
         )
     except OSError:
         return False
@@ -411,7 +423,8 @@ def install(observation: Observation) -> bool:
                         "--require-hashes",
                         "-r",
                         str(REQUIREMENTS),
-                    ]
+                    ],
+                    runtime=temporary,
                 )
             except Exception as error:
                 raise InstallFailure("python-packages", "python-packages-failed") from error
@@ -440,7 +453,10 @@ def install(observation: Observation) -> bool:
                         "--collections-path",
                         str(temporary / "collections"),
                         "--no-deps",
-                    ]
+                        "--force",
+                    ],
+                    runtime=temporary,
+                    collections=True,
                 )
             except Exception as error:
                 raise InstallFailure(

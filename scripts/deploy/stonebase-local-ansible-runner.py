@@ -82,6 +82,7 @@ LOCAL_PLAYBOOK_MEMBER = Path(
 )
 EXECUTION_TIMEOUT_SECONDS = 15 * 60
 MAX_RESULT_BYTES = 16 * 1024
+ANSIBLE_LOCALE = "C.UTF-8"
 VERIFICATION_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 USER_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
 CLIENT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
@@ -90,6 +91,21 @@ AGENT_ENVIRONMENTS = {
     "barcode-agent": Path("/opt/RaspberryPiSystem_002/clients/barcode-agent/.env"),
     "torque-agent": Path("/opt/RaspberryPiSystem_002/clients/torque-agent/.env"),
 }
+
+
+def _ansible_environment(
+    runtime: Path, *, config: Path | None = None
+) -> dict[str, str]:
+    environment = {
+        "PATH": f"{runtime / 'bin'}:/usr/bin:/bin",
+        "LANG": ANSIBLE_LOCALE,
+        "LC_ALL": ANSIBLE_LOCALE,
+        "PYTHONNOUSERSITE": "1",
+        "ANSIBLE_COLLECTIONS_PATH": str(runtime / "collections"),
+    }
+    if config is not None:
+        environment["ANSIBLE_CONFIG"] = str(config)
+    return environment
 
 
 def _utc_now() -> str:
@@ -371,12 +387,7 @@ def _runtime_observation(
             check=False,
             capture_output=True,
             text=True,
-            env={
-                "PATH": f"{runtime / 'bin'}:/usr/bin:/bin",
-                "LANG": "C",
-                "LC_ALL": "C",
-                "ANSIBLE_COLLECTIONS_PATH": str(runtime / "collections"),
-            },
+            env=_ansible_environment(runtime),
         )
         if results[name].returncode != 0:
             raise LocalExecutionError("local runtime command failed")
@@ -720,14 +731,7 @@ def execute_candidate(
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 timeout=EXECUTION_TIMEOUT_SECONDS,
-                env={
-                    "PATH": f"{runtime / 'bin'}:/usr/bin:/bin",
-                    "LANG": "C",
-                    "LC_ALL": "C",
-                    "ANSIBLE_CONFIG": str(stage / "ansible.cfg"),
-                    "PYTHONNOUSERSITE": "1",
-                    "ANSIBLE_COLLECTIONS_PATH": str(runtime / "collections"),
-                },
+                env=_ansible_environment(runtime, config=stage / "ansible.cfg"),
             )
             return_code = completed.returncode if type(completed.returncode) is int else 70
             state = "success" if return_code == 0 else "failed"

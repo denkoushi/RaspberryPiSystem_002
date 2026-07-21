@@ -1,7 +1,7 @@
 ---
 id: deploy-release-identity-architecture
 title: Migrate deployment planning and evidence to typed release claims
-status: runtime-observability-remediation-review-pending-live-rollout-blocked
+status: utf8-locale-remediation-in-progress-local-live-blocked
 scope: rolling release planner, fleet and run state, Kiosk activation, SSH and Local executors, route contracts
 date: 2026-07-21
 source_of_truth: docs/plans/deploy-release-identity-architecture-execplan.md
@@ -14,10 +14,10 @@ related_docs:
   - docs/decisions/ADR-20260721-deploy-release-identity-and-activation.md
   - docs/plans/deploy-release-identity-readonly-evidence-manifest.md
   - docs/plans/deploy-speed-phase-b-execplan.md
-validation: Milestones 1 through 6 plus runtime-observability remediation complete offline with 856 deploy Python tests, 19 bounded Web activation tests, full aggregate deploy contracts, sealed runtime supply-chain verification, and approved read-only evidence sha256:f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8
+validation: Milestones 1 through 6 plus runtime-observability remediation complete offline with 857 deploy Python tests, 19 bounded Web activation tests, full aggregate deploy contracts, sealed runtime supply-chain verification, approved read-only evidence sha256:f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8, accepted-main SSH run 20260721-135020-37ce54, and exact ansible-core 2.19.4 locale reproduction
 open_items:
-  - publish and merge the runtime-observability remediation
-  - after merge, execute canonical Pi5 plus StoneBase-only plan and preflight under the existing operator authorization
+  - publish and merge the C.UTF-8 installer and runner remediation
+  - after merge, execute canonical Pi5 plus StoneBase-only plan, preflight, and serial SSH bootstrap
   - keep Local execution blocked until the serial SSH bootstrap proves the exact pinned runtime
   - keep FJV and every terminal other than StoneBase excluded
 ---
@@ -69,7 +69,11 @@ the exact pinned runtime.
 - [x] (2026-07-21 10:12Z) Completed Milestone 6 offline: made all 30 route stages executable transition contracts, bound planning and preflight to a deterministic receipt, and exercised before-call, after-call, and response-loss boundaries through shared scenarios.
 - [x] (2026-07-21 10:12Z) Passed the complete offline acceptance gate: 840 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, safety/lifecycle/shell contracts, 99 Ansible template parses, all playbook syntax/check contracts including the sealed Local playbook, 19 focused Web tests, Web typecheck/lint, and exact runtime artifact/hash checks.
 - [x] (2026-07-21 13:25Z) Completed the runtime-bootstrap observability remediation offline: closed atomic installer observations, durable Ansible telemetry, runner/lock lineage, fallback visibility, fixed Local Python interpreter, route non-trust invariant, and the complete 856-test aggregate. Detailed evidence remains only in [KB-401](../knowledge-base/KB-401-deploy-release-identity-runtime-audit.md#offline-remediation-and-exit-gate-result).
-- [ ] Publish and merge the remediation, then run the canonical exact-scope plan/preflight and serial SSH bootstrap under the existing operator authorization; keep Local execution blocked until runtime readiness is independently proved.
+- [x] (2026-07-21 13:43Z) Merged runtime observability as PR #1053 at `74080402971c4b3f7698a20332757c11365d53b1`; all required CI passed with no unresolved review.
+- [x] (2026-07-21 14:09Z) Completed canonical exact-scope SSH run `20260721-135020-37ce54`: Pi5 and StoneBase claims verified, cleanup completed, and maintenance cleared; FJV and all other terminals remained excluded.
+- [x] (2026-07-21 14:12Z) Used the new bounded observation to isolate `collection-install-failed`, then reproduced the exact ansible-core 2.19.4 UTF-8 locale rejection offline and rejected artifact, network, and Python-package hypotheses.
+- [x] (2026-07-21 14:16Z) Changed installer and Local runner Ansible CLI boundaries to fixed `C.UTF-8`, forced the digest-verified collection into the sealed runtime path, and passed 33 focused tests, all 857 deploy Python tests, plus a clean-runtime collection installation reproduction.
+- [ ] Publish and merge the UTF-8 remediation, repeat the canonical serial SSH bootstrap, and keep Local execution blocked until runtime readiness is independently proved.
 
 ## Surprises & Discoveries
 
@@ -220,7 +224,22 @@ the exact pinned runtime.
   automatic `ansible_playbook_python` binding. The remediation explicitly
   selects the active pinned runtime and asserts it inside the sealed playbook.
 
+- Observation: deterministic `LANG=C` is not a valid Ansible controller
+  environment.
+  Evidence: run `20260721-135020-37ce54` preserved
+  `collection-install-failed`; the same ansible-core 2.19.4 CLI and sealed
+  artifact reproduced the UTF-8 startup rejection under `C`, while a clean
+  runtime under `C.UTF-8` installed and listed `community.general:11.4.1`.
+  The runner's later `ansible-playbook` boundary had the same latent defect.
+
 ## Decision Log
+
+- Decision: give every pinned Ansible CLI a closed `C.UTF-8` environment and
+  force the verified collection into the runtime-owned collection path.
+  Rationale: inheriting host locale is nondeterministic, `C` violates
+  ansible-core's startup contract, and allowing global collection discovery
+  could suppress installation without satisfying the sealed runtime.
+  Date/Author: 2026-07-21 / Codex.
 
 - Decision: keep live operation No-Go and prohibit local symptom fixes.
   Rationale: increasing timeout, trusting a desired SHA, or restoring an

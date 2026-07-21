@@ -1,7 +1,7 @@
 ---
 id: KB-401
 title: Deploy release identity, activation, and runtime audit
-status: runtime-observability-remediation-implemented-review-pending-live-no-go
+status: runtime-utf8-remediation-review-pending-local-live-no-go
 scope: standard Pi5, Kiosk, Signage, SSH Ansible, and experimental StoneBase Local Ansible release route
 date: 2026-07-21
 source_of_truth: true
@@ -17,10 +17,11 @@ related_docs:
   - ../plans/deploy-release-identity-architecture-execplan.md
   - ../plans/deploy-release-identity-readonly-evidence-manifest.md
   - ../plans/deploy-speed-phase-b-execplan.md
-validation: offline source audit, approved Pi5 plus StoneBase read-only evidence receipt f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8, 856 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template parses, and the complete deploy aggregate
+validation: offline source audit, approved Pi5 plus StoneBase read-only evidence receipt f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8, accepted-main SSH run 20260721-135020-37ce54, exact ansible-core 2.19.4 locale reproduction, 857 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template parses, and the complete deploy aggregate
 open_items:
-  - publish and merge the reviewed runtime-observability remediation before another device operation
-  - after merge, use only the canonical Pi5 plus StoneBase plan, preflight, and serial bootstrap route
+  - publish and merge the reviewed C.UTF-8 runtime remediation before another bootstrap
+  - after merge, repeat only the canonical Pi5 plus StoneBase plan, preflight, and serial SSH bootstrap route
+  - keep Local execution blocked until runner preflight proves the exact pinned runtime
   - keep FJV and every terminal other than StoneBase outside connection, planning, preflight, and execution
 ---
 
@@ -28,36 +29,26 @@ open_items:
 
 ## Executive conclusion
 
-The standard route is safe against the observed failures but is not yet live in
-the distributed-systems sense: it can fail closed and restore StoneBase, but it
-does not always contain a deterministic transition that lets a stale Kiosk Web
-bundle acquire and acknowledge the newly verified Pi5 Web bundle.
+The typed-claim standard route is now live and has completed one exact-scope
+Pi5 plus StoneBase SSH release with bounded Web activation, independent
+evidence, cleanup, and maintenance clear. The optional StoneBase Local runtime
+remains unavailable and Local execution remains **No-Go**.
 
-The current release planner treats a host as a mutation target based on files
-stored on that host. A Kiosk browser is also a consumer of the Pi5-hosted Web
-artifact, but that consumer relationship is absent from planning and durable
-fleet state. `apps/web/` is intentionally classified as `server-app`, and the
-tests intentionally produce a Pi5-only plan with zero terminal targets. At the
-same time, the Kiosk ready acknowledgement is sent by the compiled JavaScript
-bundle in the terminal browser and rejects a challenge for any other compiled
-SHA. An already running browser is restarted only when its local launch script,
-unit, or browser configuration changes.
+The audited pre-redesign planner treated only stored files as mutation targets
+and did not model a Kiosk browser as a consumer of the Pi5-hosted Web artifact.
+That admitted a verified Pi5 release B alongside a terminal repository and
+browser still at release A. The accepted architecture now separates mutation,
+activation, and verification targets and requires distinct Web and terminal
+repository claims, so the browser transition is planned and verified without
+manufacturing a terminal Git change.
 
-Those rules are each locally reasonable, but together they admit a state in
-which Pi5 is verified at release B, a terminal repository remains correctly at
-release A, the terminal browser also remains at Web release A, and fleet state
-still reports both hosts verified. A later terminal run can challenge that old
-browser for Web release B and time out even though SSH Ansible and terminal
-health succeeded. The state schema has no field that can expose this drift to
-planning.
-
-The current production path and experimental Local executor therefore remain
-**No-Go for another live retry**. This is not authorization to weaken the ready
-check, extend its timeout, or restart every systemd service. The approved
-read-only evidence gate has closed the incident-specific uncertainty, so the
-accepted structural redesign is **Go for offline implementation only**. Live
-preflight beyond an approved read-only scope, bootstrap, reverify, deployment,
-and Local execution remain blocked.
+The accepted-main bootstrap run exposed a new bounded failure at
+`collection-install`. Exact offline reproduction confirms that the installer
+forced `LANG=C` and `LC_ALL=C`, while ansible-core 2.19.4 requires a UTF-8
+locale before any CLI command runs. The artifact, hash, Python package stage,
+SSH application, terminal claims, and rollback safety are not implicated.
+The fix is Go for review; another bootstrap and any Local execution remain
+blocked until that fix is accepted and the runtime is independently proved.
 
 ## Safety state at the audit boundary
 
@@ -513,24 +504,64 @@ passed with 856 deploy Python tests, 20 isolated PostgreSQL/API tests, 24
 recovery tests, 99 Ansible template parses, lifecycle and safety contracts,
 both inventories, and every Ansible syntax/check contract.
 
-This closes the observability investigation gate for review and merge. It does
-not retroactively identify the historical failed dependency phase, and it does
-not assert that the pinned runtime is already present on StoneBase. Device work
-remains No-Go until this exact remediation is accepted on `main` and canonical
-Pi5 plus StoneBase-only plan and preflight succeed. After that boundary, the
-already granted operator authorization permits the serial SSH bootstrap; any
-new bounded failure must be handled from its recorded phase rather than by a
-blind retry.
+This closed the observability investigation gate for review and merge. It did
+not retroactively identify the historical failed dependency phase or assert
+that the pinned runtime was present on StoneBase. PR `#1053` and the canonical
+run below satisfied that gate and converted the next failure from speculation
+into the exact bounded `collection-install` observation.
+
+### Accepted-main bootstrap and UTF-8 locale root cause
+
+PR `#1053` was accepted as main SHA
+`74080402971c4b3f7698a20332757c11365d53b1`. Canonical plan and preflight
+selected only `raspberrypi5` and `raspi4-kensaku-stonebase01`; FJV and every
+other terminal remained explicitly excluded. Preflight
+`20260721-134900-0a3d34` passed and selected `ssh-ansible` before maintenance
+with fallback `candidate-requires-ssh-configuration`, as required for a
+candidate that changes its own runtime authority.
+
+Canonical run `20260721-135020-37ce54` completed successfully. Pi5 release and
+the fixed five-minute stability period took 623,410 ms, then both Pi5 image
+claims were independently verified. StoneBase received the full 60-second
+notice, entered maintenance, completed SSH Ansible in 340,008 ms, activated the
+Web consumer, acknowledged the exact compiled Web challenge, verified both
+`controlPlaneWeb` and `terminalRepository`, cleaned up, and cleared maintenance.
+No rollback was needed.
+
+The optional runtime observation was separately preserved as:
+
+    status=failed
+    phase=collection-install
+    failureCode=collection-install-failed
+    cleanup=complete
+    lockSha256=sha256:e3bb5ce5ff5087438d59100b74b391a55ffbdf4c5063aaeaea5fc04928eae38e
+
+The fixed collection artifact still matched SHA-256
+`618b2cad75706f2939a5607271bfdcf4a10d3b6f3fe792e1569910c270485399`.
+Running the same ansible-core 2.19.4 CLI under the installer's exact
+`LANG=C LC_ALL=C` environment reproduced Ansible's startup rejection because
+the detected locale encoding was not UTF-8. A clean Python environment using
+`C.UTF-8`, the sealed collection path, `--no-deps`, and `--force` installed and
+listed `community.general:11.4.1` successfully.
+
+The direct cause is therefore **CONFIRMED**: the wrapper violated Ansible's
+UTF-8 controller-locale requirement. It was not a raw `ansible-pull` or Local
+connection defect, and Local Ansible remains the standard
+`ansible-playbook -c local` mechanism. The remediation fixes every Ansible CLI
+boundary in both installer and runner to a closed `C.UTF-8` environment and
+forces the verified collection into the sealed runtime path so an unrelated
+global collection cannot satisfy or suppress the install. Local execution
+stays blocked until an accepted-main SSH bootstrap records a successful closed
+observation and subsequent canonical preflight independently verifies the
+exact runtime.
 
 ## Go / No-Go decision
 
 Current split decision:
 
-- **Go**: implement the accepted typed-claim/activation architecture offline in
-  the dedicated staged ExecPlan.
-- **No-Go**: any production retry, bootstrap, reverify, Local execution, or
-  canary until the new offline acceptance gate is complete and a new exact
-  hardware approval is granted.
+- **Go**: the accepted typed-claim SSH route and the reviewed UTF-8 remediation.
+- **No-Go**: another bootstrap until the remediation is on `main`, and any
+  Local execution until exact runtime readiness is independently proved.
 
 Live rollout requires all of the following:
 
