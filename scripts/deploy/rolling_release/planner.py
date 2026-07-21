@@ -20,6 +20,7 @@ HOST_DECISION_FIELDS = (
     'targeted',
 )
 PROFILE_ID_RE = re.compile(r'^[a-z][a-z0-9-]{0,62}$')
+EXECUTOR_IDS = frozenset({'ssh-ansible', 'stonebase-local-ansible-poc'})
 
 
 def _public_host_decision(decision: dict[str, Any]) -> dict[str, Any]:
@@ -42,6 +43,7 @@ def build_fleet_plan_payload(
     canary_hold_policy: CanaryHoldPolicy,
     profile_ids: Iterable[str] | None = None,
     reverify_selected: bool = False,
+    requested_executor: str = 'ssh-ansible',
 ) -> dict[str, Any]:
     """Compose the fleet-aware public and persisted planning snapshot.
 
@@ -53,6 +55,8 @@ def build_fleet_plan_payload(
         raise TypeError('full_fleet must be boolean')
     if type(reverify_selected) is not bool:
         raise TypeError('reverify_selected must be boolean')
+    if requested_executor not in EXECUTOR_IDS:
+        raise ValueError('requested executor is unsupported')
     if not isinstance(decisions, list):
         raise TypeError('decisions must be a list')
 
@@ -93,6 +97,14 @@ def build_fleet_plan_payload(
         hosts.append(decision)
         public = _public_host_decision(decision)
         if decision['targeted']:
+            if role != 'server':
+                public.update(
+                    {
+                        'requestedExecutor': requested_executor,
+                        'effectiveExecutor': requested_executor,
+                        'fallbackReason': None,
+                    }
+                )
             targeted.append(public)
             if role != 'server':
                 terminal_targets.append({'host': host, 'terminalType': role})

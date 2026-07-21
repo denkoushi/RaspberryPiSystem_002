@@ -48,6 +48,7 @@ EXPECTED_KEYS = frozenset({
     'skipCanaryHold',
     'fullFleet',
     'reverifySelected',
+    'stonebaseLocalAnsiblePoc',
 })
 FORBIDDEN_REF_CHARACTERS = frozenset(' ~^:?*[\\')
 
@@ -109,8 +110,8 @@ def parse_spec(raw: str) -> dict[str, Any]:
     except (TypeError, json.JSONDecodeError) as error:
         raise BootstrapConfigError('bootstrap specification is not valid JSON') from error
     if not isinstance(payload, dict) or set(payload) != EXPECTED_KEYS:
-        raise BootstrapConfigError('bootstrap specification fields do not match version 2')
-    if payload.get('version') != 2 or type(payload.get('version')) is not int:
+        raise BootstrapConfigError('bootstrap specification fields do not match version 3')
+    if payload.get('version') != 3 or type(payload.get('version')) is not int:
         raise BootstrapConfigError('unsupported bootstrap specification version')
 
     project = _require_string(payload, 'project', maximum=4096)
@@ -150,6 +151,7 @@ def parse_spec(raw: str) -> dict[str, Any]:
         'skipCanaryHold',
         'fullFleet',
         'reverifySelected',
+        'stonebaseLocalAnsiblePoc',
     ):
         if type(payload.get(key)) is not bool:
             raise BootstrapConfigError(f'{key} must be boolean')
@@ -157,6 +159,12 @@ def parse_spec(raw: str) -> dict[str, Any]:
         raise BootstrapConfigError('fullFleet cannot be combined with limit')
     if payload['reverifySelected'] and not payload['limit']:
         raise BootstrapConfigError('reverifySelected requires limit')
+    if payload['stonebaseLocalAnsiblePoc'] and payload['limit'] != (
+        'raspberrypi5:raspi4-kensaku-stonebase01'
+    ):
+        raise BootstrapConfigError(
+            'stonebaseLocalAnsiblePoc requires the exact Pi5 + StoneBase limit'
+        )
     reason = payload.get('reason')
     if reason is not None:
         if not isinstance(reason, str) or '\x00' in reason or len(reason) > 1000:
@@ -234,6 +242,8 @@ def remote_arguments(spec: Mapping[str, Any]) -> list[str]:
         arguments.append('--full-fleet')
     if spec['reverifySelected']:
         arguments.append('--reverify-selected')
+    if spec['stonebaseLocalAnsiblePoc']:
+        arguments.append('--stonebase-local-ansible-poc')
     return arguments
 
 

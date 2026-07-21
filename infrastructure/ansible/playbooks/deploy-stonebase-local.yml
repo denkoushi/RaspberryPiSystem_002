@@ -1,0 +1,36 @@
+---
+# This playbook exists only inside a digest-sealed StoneBase candidate.  The
+# root-owned runner fixes inventory, connection, and playbook paths and sends
+# all output to /dev/null.  Coordinator-owned maintenance and rollback remain
+# outside this play.
+- name: Apply one sealed StoneBase candidate locally
+  hosts: stonebase_local
+  gather_facts: false
+  become: true
+  serial: 1
+  order: inventory
+  vars:
+    repo_version: "{{ local_execution_candidate_sha }}"
+
+  pre_tasks:
+    - name: Require one local target and no remote transport
+      ansible.builtin.assert:
+        that:
+          - ansible_play_hosts_all == ['raspi4-kensaku-stonebase01']
+          - ansible_connection == 'local'
+          - terminal_release_transport == 'local-artifact'
+          - repo_path == '/opt/RaspberryPiSystem_002'
+        quiet: true
+
+    - name: Check bounded local resources
+      ansible.builtin.include_tasks: "{{ local_execution_payload_root }}/infrastructure/ansible/tasks/resource-guard.yml"
+
+    - name: Verify and install the exact candidate from its incremental bundle
+      ansible.builtin.import_role:
+        name: common
+
+  tasks:
+    - name: Apply only secret-independent agent lifecycle tasks
+      ansible.builtin.import_role:
+        name: client
+        tasks_from: local-release

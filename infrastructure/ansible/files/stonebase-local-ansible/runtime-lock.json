@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "platform": "linux-aarch64",
+  "python": "3.11",
+  "ansibleCore": "2.19.4",
+  "collections": {
+    "community.general": {
+      "version": "11.4.1",
+      "source": "https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/artifacts/community-general-11.4.1.tar.gz",
+      "sha256": "618b2cad75706f2939a5607271bfdcf4a10d3b6f3fe792e1569910c270485399"
+    }
+  }
+}

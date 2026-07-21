@@ -79,6 +79,10 @@ REHEARSAL_TESTS = {
         "scripts/deploy/tests/test_fleet_coordinator_transitions.py",
         "test_full_signage_failure_matrix_recovers_before_next_plan",
     ),
+    "local-executor-faults": (
+        "scripts/deploy/tests/test_stonebase_local_execution.py",
+        "test_response_loss_reconciles_before_rollback_authority",
+    ),
     "ready-and-observation-failures": (
         "scripts/deploy/tests/test_fleet_coordinator_transitions.py",
         "test_kiosk_agent_death_after_playbook_is_caught_by_final_observation",

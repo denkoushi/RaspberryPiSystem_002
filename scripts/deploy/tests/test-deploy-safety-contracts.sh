@@ -949,6 +949,13 @@ ALLOWED_RELEASE_FILE_DESTINATIONS = {
     '{{ repo_path }}/clients/barcode-agent/.env',
     '{{ repo_path }}/clients/torque-agent/.env',
     '/usr/local/libexec/torque-bluetooth-adapter',
+    '/usr/local/libexec/raspi-local-ansible-runner',
+    '/usr/local/libexec/raspi_local_execution.py',
+    '/usr/local/libexec/raspi-terminal-ready-probe',
+    '/usr/local/libexec/raspi-terminal-maintenance-probe',
+    '/usr/local/libexec/raspi-local-runtime-install',
+    '/usr/local/libexec/raspi-local-runtime-lock.json',
+    '/usr/local/libexec/raspi-local-requirements-aarch64-py311.lock',
     '/etc/systemd/system/torque-bluetooth-adapter@.service',
     '/etc/udev/rules.d/90-torque-bluetooth-adapter.rules',
     '/etc/udev/rules.d/99-torque-wrench-hid.rules',
@@ -1014,6 +1021,11 @@ READ_ONLY_COMMAND = re.compile(
 )
 
 APPROVED_RELEASE_COMMANDS = {
+    (
+        'roles/client/tasks/local-runner-bootstrap.yml',
+        'Bootstrap pinned StoneBase local executor runtime when needed',
+        '/usr/local/libexec/raspi-local-runtime-install',
+    ),
     (
         'roles/client/tasks/torque-agent.yml',
         'Reload udev rules for torque devices',
@@ -1198,12 +1210,27 @@ def audit_tasks(tasks, source, inherited_full):
                     )
                     docker_exceptions.append((source, name))
                 elif MUTATING_SHELL.search(payload):
-                    assert (
+                    approved_ssh_reset = (
                         source.resolve() == (roles_root / 'common/tasks/main.yml').resolve()
                         and name == 'Fetch and reset existing terminal repository to immutable release'
                         and 'git fetch --no-tags origin' in payload
                         and 'git reset --hard' in payload
-                    ), f'{source}:{name}: mutating shell is not an approved release adapter'
+                    )
+                    approved_local_reset = (
+                        source.resolve() == (roles_root / 'common/tasks/main.yml').resolve()
+                        and name == 'Verify incremental bundle and reset existing terminal repository without network'
+                        and "terminal_release_transport | default('ssh-ansible') == 'local-artifact'"
+                        in [normalized(condition) for condition in when_items(task)]
+                        and 'git bundle verify' in payload
+                        and 'git fetch --no-tags' in payload
+                        and 'git reset --hard' in payload
+                        and ' origin ' not in f' {payload} '
+                        and 'git diff --quiet' in payload
+                        and 'git diff --cached --quiet' in payload
+                    )
+                    assert approved_ssh_reset or approved_local_reset, (
+                        f'{source}:{name}: mutating shell is not an approved release adapter'
+                    )
 
             if module in COMMAND_MODULES:
                 payload = command_text(value)

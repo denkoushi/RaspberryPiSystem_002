@@ -353,6 +353,11 @@ def _preflight_report(
         "status": status,
         "selectedHosts": selected_hosts,
         "terminalCount": terminal_count,
+        "requestedExecutor": (
+            "stonebase-local-ansible-poc"
+            if spec.stonebase_local_ansible_poc
+            else "ssh-ansible"
+        ),
         "releaseSubmitted": False,
         "routeCoverage": [stage.id for stage in ROUTE_STAGES],
         "probes": probes,
@@ -406,6 +411,9 @@ def launch(args: Any, *, runtime: Any) -> int:
         skip_canary_hold=args.skip_canary_hold,
         full_fleet=args.full_fleet,
         reverify_selected=args.reverify_selected,
+        stonebase_local_ansible_poc=bool(
+            getattr(args, "stonebase_local_ansible_poc", False)
+        ),
     ).validate()
     systemd, control = build_backends(runtime)
     migration_preflight = systemd.preflight_migrations(spec)

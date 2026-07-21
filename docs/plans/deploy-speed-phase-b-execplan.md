@@ -16,7 +16,7 @@ related_docs:
   - docs/plans/deploy-speed-optimization-execplan.md
 validation: local contracts and hosted checks passed; StoneBase Phase B production validation passed
 open_items:
-  - integrate the StoneBase local execution PoC into the coordinator only after separate review
+  - continue coordinator integration in the separate docs/plans/stonebase-local-ansible-execplan.md
   - obtain separate approval for a StoneBase maintenance-window reverify run that measures the healthy unchanged Compose-skipped path
   - make the local-execution ready acknowledgement bind the terminal candidate SHA; the existing kiosk ACK authority is the Pi5 control-plane SHA and terminal SHA is independently verified today
 ---
@@ -100,6 +100,8 @@ Phase B implementation is complete and production-validated on StoneBase. Run `2
 All three agent lifecycle tasks make Compose conditional on the existing fail-closed image/runtime decision plus a read-only pre-lifecycle HTTP probe. The command reports changed only when the service has no post-command container, receives a new container ID, or was previously not running. The unguarded final readiness retry remains in place. Status-agent configuration and unit changes notify targeted release-only handlers, systemd reload precedes those handlers, the unconditional release-only restart loop is suppressed, and the existing health loop always executes after `flush_handlers`.
 
 The local execution PoC is deliberately only a non-live boundary harness. It creates a no-secret archive with an assertion-only local playbook; validates archive and payload digests, exact member set, candidate SHA, host/status identity, pinned runtime, three sealed-authority digests, staged files, and an exclusive lock; then calls exactly `ansible-playbook -c local` in tests through an injectable process boundary. It does not transfer an artifact, change an actual checkout, run a release playbook, update fleet/run state, enter maintenance, wait for ready ACK, or perform rollback. Those remain open integration milestones. Apart from the separately approved canonical Pi5 + StoneBase Phase B validation recorded above, this worktree did not contact or change other terminals; FJV was never a connection target.
+
+The integration work moved to `docs/plans/stonebase-local-ansible-execplan.md` on a separate branch/PR as required. This Phase B plan remains the source of truth for Phase B behavior and production evidence; it does not claim the integrated local executor is part of PR #1046.
 
 ## Context and Orientation
 

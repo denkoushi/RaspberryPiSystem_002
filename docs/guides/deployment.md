@@ -15,6 +15,7 @@ last_verified: 2026-07-19
 
 ```text
 scripts/update-all-clients.sh <branch> <inventory> [--limit PATTERN] [--reverify-selected] [--full-fleet] [--detach]
+scripts/update-all-clients.sh <branch> <inventory> --limit 'raspberrypi5:raspi4-kensaku-stonebase01' --stonebase-local-ansible-poc [--reverify-selected]
 scripts/update-all-clients.sh <branch> <inventory> --print-plan
 scripts/update-all-clients.sh <branch> <inventory> --preflight-only [--limit PATTERN]
 scripts/update-all-clients.sh --status RUN_ID
@@ -40,6 +41,16 @@ scripts/update-all-clients.sh --cancel RUN_ID --reason TEXT
 - 全台を明示的に再検証するときだけ `--full-fleet` を使う。
 - 影響分類がno-opでも、承認済みの限定端末で同一SHAを再検証するときだけ `--limit PATTERN --reverify-selected` を使う。選択されたverified hostだけを対象へ戻し、選択外のunknown host、Pi5必須変更、通常の通知・安定化・ACK・rollback契約は迂回しない。`--print-plan`で正確な対象を確認してから実行する。
 - 端末はregistryのprofile順、profile内canary、残りのinventory順で、一台ずつ更新する。
+
+## StoneBase限定Local Ansible PoC
+
+`--stonebase-local-ansible-poc` は端末Applyだけを固定artifactのLocal Ansibleへ差し替える明示opt-inである。通常経路は引き続き`ssh-ansible`である。このflagは `--limit 'raspberrypi5:raspi4-kensaku-stonebase01'` とだけ併用でき、FJVや他端末を含むlimit、`--full-fleet`ではfail-closedに拒否する。端末は従来どおり一台ずつであり、並行配布は行わない。
+
+coordinatorはmaintenance前に、端末のcleanな現行SHA、候補がその子孫であること、全commit履歴が秘密・設定pathを変更していないこと、root所有runner、既存status identityと有効agentの`.env`、Python 3.11 / ansible-core 2.19.4 / community.general 11.4.1、空き容量を確認する。不適格なら同じrunのmaintenance開始前に既存SSH Ansibleへfallbackし、理由をrun stateへ保存する。maintenance開始後はSSHへforward fallbackせず、実行失敗時は既にsealしたmanifestだけでrollbackする。
+
+Local候補はPi5が固定SHAから作るincremental Git bundleと、固定playbook、生成した秘密なしStoneBase inventory、runtime lock、binding manifestだけで構成する。StoneBaseはGit network fetch、inventory/playbook選択、候補bytes再転送を行わない。root所有runnerが一回だけ受信し、決定的なtransient systemd unitと排他lockで `ansible-playbook -c local` を実行する。候補SHA ready ACK、Pi5によるGit/systemd/identity/agent healthの独立証跡、端末residue cleanupがすべて成功するまでmaintenanceを解除しない。
+
+初回は通常SSH経路でrunner/runtimeをbootstrapするrunと、後続のLocal `--reverify-selected` runを分ける。実機の`--print-plan`、`--preflight-only`、bootstrap、Local実行はいずれもPi5＋StoneBaseの対象を提示して個別の明示承認を得てから行う。直接SSH、端末上での手動playbook、fleet/run/manifest/maintenanceの手編集は禁止する。設計・受入れ状況の正本は `docs/plans/stonebase-local-ansible-execplan.md` である。
 
 判断の正本は `logs/deploy/fleet-release-state.json` である。手で編集しない。
 
@@ -100,7 +111,7 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
   --preflight-only
 ```
 
-`--preflight-only` はmigration、Pi5、選択した全端末の問題を途中で打ち切らず、一つのJSONとして表示する。JSONには不変SHA、対象host、24段階のroute coverage、各probeのproof・issue・安全な資源値が含まれ、`releaseSubmitted`は常に`false`である。完全合格は終了コード0、通常の前提不足は78、検査自体が欠落・破損・内部失敗した場合は70とする。70を前提不足として扱ったり、probeを省略して続行してはならない。
+`--preflight-only` はmigration、Pi5、選択した全端末の問題を途中で打ち切らず、一つのJSONとして表示する。JSONには不変SHA、対象host、29段階のroute coverage、各probeのproof・issue・安全な資源値が含まれ、`releaseSubmitted`は常に`false`である。完全合格は終了コード0、通常の前提不足は78、検査自体が欠落・破損・内部失敗した場合は70とする。70を前提不足として扱ったり、probeを省略して続行してはならない。
 
 Pi5 probeは既存fleet lockを全検査中保持し、実機identity、clean checkout、候補commit・protocol・実行成果物、通常Ansible設定とVault、inventory展開、Docker/Compose、空きディスク・メモリ、fleet/Blue-Green/deploy-statusの可読性、active run不在を同時に確認する。端末probeは候補SHAが所有する正確なagent health helperを端末へstdinで送り、現在有効なNFC・バーコード・トルクagentへ本番と同じ安定性判定を行う。各agentは、最大3回の範囲で2回連続してcontainer identity、必要なPC/SC、loopback JSON endpointの全証明に成功しなければならない。出力された問題は、正規のAnsible設定または別途承認された保守変更でまとめて解消し、同じコマンドを再実行する。エラーを一件ずつ見ながら個別service起動や手動checkoutで迂回してはならない。
 

@@ -2381,6 +2381,71 @@ class FleetScopeLimitTest(unittest.TestCase):
                     full_fleet=False,
                 )
 
+    def test_local_poc_scope_excludes_unknown_fjv_without_weakening_default_limit(self):
+        stonebase = "raspi4-kensaku-stonebase01"
+        fjv = "raspi4-fjv60-80"
+        inventory = json.loads(json.dumps(self.INVENTORY))
+        inventory["kiosk"]["hosts"] = [stonebase, fjv]
+        inventory["kiosk_canary"]["hosts"] = [stonebase]
+        inventory["_meta"]["hostvars"] = {
+            "raspberrypi5": inventory["_meta"]["hostvars"]["raspberrypi5"],
+            stonebase: {
+                "manage_kiosk_browser": True,
+                "status_agent_client_id": "stonebase-client",
+            },
+            fjv: {
+                "manage_kiosk_browser": True,
+                "status_agent_client_id": "fjv-client",
+            },
+        }
+        fleet = {
+            **self.FLEET,
+            "fleet": {
+                "raspberrypi5": _verified_fleet_record("server"),
+                stonebase: _verified_fleet_record("kiosk"),
+                fjv: {
+                    **_verified_fleet_record("kiosk"),
+                    "evidence": "unknown",
+                    "verifiedAt": None,
+                },
+            },
+        }
+        classification = {
+            "server": False,
+            "kiosk": True,
+            "signage": False,
+            "migration": False,
+            "components": ["kiosk-role"],
+        }
+        with patch.object(
+            MODULE, "classify_release_impact", return_value=(classification, [])
+        ):
+            plan, targets, _classifications, warnings = MODULE.build_fleet_scope(
+                sha=TARGET_SHA,
+                inventory_data=inventory,
+                fleet_state=fleet,
+                selected=["raspberrypi5", stonebase],
+                limit=f"raspberrypi5:{stonebase}",
+                full_fleet=False,
+                stonebase_local_ansible_poc=True,
+            )
+
+        self.assertEqual([target["host"] for target in targets], [stonebase])
+        self.assertIn(fjv, plan["excludedHosts"])
+        excluded = next(host for host in plan["hosts"] if host["host"] == fjv)
+        self.assertEqual(
+            excluded["targetReason"],
+            "outside explicit StoneBase local Ansible POC scope",
+        )
+        selected_target = next(
+            target for target in plan["targets"] if target["host"] == stonebase
+        )
+        self.assertEqual(
+            selected_target["requestedExecutor"],
+            "stonebase-local-ansible-poc",
+        )
+        self.assertEqual(warnings, [])
+
     def test_print_plan_propagates_zero_match_limit_failure(self):
         with patch.object(MODULE, 'resolve_release_sha', return_value=(TARGET_SHA, [])), \
                 patch.object(MODULE, 'validate_print_plan_checkout'), \
