@@ -439,6 +439,36 @@ compatibility rules; fault tests for every state-machine edge; and a route
 contract consumer for the observation. Otherwise the decision remains No-Go,
 and no bootstrap retry or Local execution is authorized.
 
+### Approved bounded evidence outcome
+
+The separately approved follow-up used only canonical status and bounded
+read-only commands. Canonical status for `20260721-121936-a828c3` reconfirmed
+that the SSH release and independent terminal evidence succeeded while the
+runtime bootstrap task ran once for 95,015 ms with Ansible outcome `ok`. The
+Pi5 unit journal was filtered to the three known bootstrap task names and the
+bounded marker; it recorded exactly:
+
+    STONEBASE_LOCAL_RUNTIME_BOOTSTRAP:failed
+
+This rejects the hypothesis that bootstrap was merely skipped or incorrectly
+classified as current. It confirms that the installer returned a failure and
+the ordinary SSH release deliberately continued.
+
+The workstation could not establish a new StoneBase read-only session: the
+direct Tailscale connection timed out, and a Pi5 ProxyJump reached SSH but had
+no StoneBase credential on the workstation side. Both attempts stopped before
+any StoneBase command executed. The already completed canonical aggregate
+preflight remains the authoritative terminal observation and reports
+`runtime-unavailable` before maintenance.
+
+Because the installer discarded subprocess output, removed temporary staging,
+and persisted no phase-specific observation, the historical failing phase is
+not recoverable through further read-only inspection. The structural root
+cause—loss of failure identity across installer, Ansible, runner, and durable
+run state—is **CONFIRMED**. The underlying download/package/collection/link
+failure remains **INCONCLUSIVE**. More connection retries cannot change that
+evidence grade and are not authorized by this audit.
+
 ## Go / No-Go decision
 
 Current split decision:
