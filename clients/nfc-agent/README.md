@@ -35,3 +35,5 @@ poetry run python -m nfc_agent
 
 2026-07-21のStoneBase限定canaryでは、この非実行ドキュメント変更だけを
 候補に使用します。agent設定、秘密情報、service定義、実行時の挙動は変更しません。
+この子候補は、SSHで導入済みの固定runtimeを使うLocal executorの伝送・検証経路だけを
+確認するもので、NFC agentの再設定や再生成は伴いません。
