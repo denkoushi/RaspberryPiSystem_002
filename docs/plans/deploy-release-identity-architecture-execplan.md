@@ -1,7 +1,7 @@
 ---
 id: deploy-release-identity-architecture
 title: Migrate deployment planning and evidence to typed release claims
-status: blocked-pending-readonly-evidence-and-adr-acceptance
+status: ready-for-offline-implementation-live-rollout-blocked
 scope: rolling release planner, fleet and run state, Kiosk activation, SSH and Local executors, route contracts
 date: 2026-07-21
 source_of_truth: docs/plans/deploy-release-identity-architecture-execplan.md
@@ -14,11 +14,11 @@ related_docs:
   - docs/decisions/ADR-20260721-deploy-release-identity-and-activation.md
   - docs/plans/deploy-release-identity-readonly-evidence-manifest.md
   - docs/plans/deploy-speed-phase-b-execplan.md
-validation: offline source audit, pure typed-claim prototype, 747 deploy Python tests, aggregate deploy contracts, and 13 current Kiosk ACK tests
+validation: offline source audit, pure typed-claim prototype, 747 deploy Python tests, aggregate deploy contracts, 13 Kiosk ACK tests, and approved read-only evidence sha256:f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8
 open_items:
-  - obtain separate approval and execute the bounded read-only evidence manifest
-  - accept or revise the ADR after the incident-specific evidence is classified
-  - keep production implementation and all hardware rollout blocked until the Go gate opens
+  - implement milestones 1 through 6 offline from a fresh current-main worktree
+  - keep all hardware rollout blocked until the complete offline acceptance gate passes
+  - request a new exact Pi5 plus StoneBase canary approval only after that gate
 ---
 
 # Migrate deployment planning and evidence to typed release claims
@@ -43,21 +43,21 @@ rollback, and Phase B changed-only service/container lifecycle remain. The
 default executor remains SSH Ansible. Local Ansible stays behind its StoneBase
 flag and is not rebased until the typed-claim SSH path is proven.
 
-This plan is currently blocked. It must not be used to change production code,
-retry a deployment, bootstrap a runtime, run Local Ansible, or connect to a
-device until the read-only evidence gate completes and
-`docs/decisions/ADR-20260721-deploy-release-identity-and-activation.md` is
-accepted.
+The evidence gate is complete and the related ADR is accepted, so this plan is
+ready for offline implementation from a fresh current-main worktree. This is
+not hardware authorization. It must not be used to retry a deployment,
+bootstrap a runtime, run Local Ansible, reverify, or connect to a device until
+the complete offline gate passes and a new exact hardware approval is granted.
 
 ## Progress
 
-- [x] (2026-07-21 08:30Z) Froze Local implementation and production retries after the final ready-ACK failure and successful sealed rollback.
+- [x] (2026-07-21 03:50Z) Froze Local implementation and production retries after the final ready-ACK failure and successful sealed rollback.
 - [x] (2026-07-21 04:05Z) Audited current planning, ACK, browser, terminal, runtime, rollback, and route-contract identity boundaries from `origin/main` at `79ee42ac44e4ffbf33a515df7cc894e910fc8d95`.
 - [x] (2026-07-21 04:10Z) Prototyped mutation, activation, and verification target sets plus typed claims in memory without production code or device access.
 - [x] (2026-07-21 04:15Z) Recorded the proposed architecture, compatibility rules, rejected local fixes, and current No-Go gate in the related ADR and KB-401.
 - [x] (2026-07-21 04:23Z) Passed 747 deploy Python tests, the complete aggregate deploy contract including isolated PostgreSQL ACK tests and Ansible syntax, 13 current Kiosk ACK tests, deploy safety, and the Phase B lifecycle contract without changing production code.
-- [ ] Obtain separate approval and collect only the evidence allowed by `docs/plans/deploy-release-identity-readonly-evidence-manifest.md`.
-- [ ] Resolve the incident-specific browser timeline as CONFIRMED, REJECTED, or INCONCLUSIVE and change the ADR status only if the Go conditions are satisfied.
+- [x] (2026-07-21 04:38Z) Executed the separately approved Pi5 plus StoneBase read-only manifest with no mutation or FJV contact; normalized evidence digest is `f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8`.
+- [x] (2026-07-21 04:38Z) Confirmed that the forward apply did not restart the Kiosk browser and sealed rollback did; accepted the ADR and opened offline implementation only.
 - [ ] Milestone 1: add typed claim models and dual-read state without changing live behavior.
 - [ ] Milestone 2: split planner targets and make the planned work observable without enabling new activation.
 - [ ] Milestone 3: add bounded Kiosk Web activation and the one-time old-bundle migration.
@@ -96,11 +96,30 @@ accepted.
   existence, not stage-specific preconditions, postconditions, progress, and
   response-loss reconciliation.
 
+- Observation: current planning labels an executor effective before aggregate
+  preflight can prove it.
+  Evidence: approved `--print-plan` reported Local effective with no fallback,
+  while preflight `20260721-043630-dd9ed9` reported SSH effective,
+  `candidate-requires-ssh-configuration`, runtime null, and no submission.
+
 ## Decision Log
 
-- Decision: keep the current state as No-Go and prohibit local symptom fixes.
+- Decision: keep live operation No-Go and prohibit local symptom fixes.
   Rationale: increasing timeout, trusting a desired SHA, or restoring an
   unconditional restart cannot represent the missing browser-consumer state.
+  Date/Author: 2026-07-21 / Codex.
+
+- Decision: open the accepted redesign for offline implementation while keeping
+  every hardware action blocked.
+  Rationale: the approved browser journal and durable state resolve the last
+  safety/progress-relevant inconclusive item, but no new activation or migration
+  code exists yet.
+  Date/Author: 2026-07-21 / Codex.
+
+- Decision: distinguish requested, provisional, and effective executor state.
+  Rationale: source/history planning and full runtime/candidate preflight proved
+  different executor outcomes for the same fixed candidate. Only the latter may
+  be called effective or authorize maintenance.
   Date/Author: 2026-07-21 / Codex.
 
 - Decision: preserve the immutable Local comparison ref
@@ -141,10 +160,10 @@ terminal-only SSH, Local, no-op, response-loss, and forward-Pi5/terminal-
 rollback states without sharing one SHA meaning. That is a feasibility result,
 not production acceptance.
 
-Implementation has not started. The incident-specific browser process timeline
-is still not observed under the new approval boundary, so the correct outcome
-at this stopping point is a documented No-Go with the current safe production
-state left untouched.
+Implementation has not started. The approved read-only browser timeline now
+confirms the stale-bundle cause, and the ADR is accepted for offline work. The
+correct outcome at this stopping point is offline implementation Go, live
+rollout No-Go, with the current safe production state left untouched.
 
 ## Context and Orientation
 
@@ -211,6 +230,12 @@ so the stage can be tested without reaching a device. A Web-only fixture must
 show Pi5 mutation, Kiosk activation/verification, and zero terminal Git/Ansible
 mutation. A same-SHA no-op is permitted only if all required consumer claims
 are already verified and current.
+
+At this milestone, split executor output into requested, provisional, and
+effective fields. `--print-plan` cannot call a source-only choice effective.
+Aggregate preflight promotes the choice only after candidate history, runtime,
+runner, and secret-reuse eligibility all pass; otherwise it records the exact
+SSH fallback before notice or maintenance.
 
 ### Milestone 3: bounded Kiosk Web activation
 
@@ -323,8 +348,9 @@ Run the complete offline gate before proposing hardware work:
     scripts/ci/run-deploy-contracts-local.sh
 
 Do not run `scripts/update-all-clients.sh`, SSH, inventory Ansible, bootstrap,
-Local execution, or `--reverify-selected` while this plan is blocked. The
-read-only evidence commands belong only to the separate approval manifest.
+Local execution, or `--reverify-selected` during offline implementation. The
+completed read-only evidence commands remain bounded by their separate
+manifest and do not authorize another hardware observation.
 
 ## Validation and Acceptance
 
@@ -390,6 +416,9 @@ Audit baseline:
     lifecycle contract: PASS
     typed-claim prototype: six normal/no-op/rollback scenarios PASS
     Local response-loss prototype: maintenance retained
+    approved normalized evidence: f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8
+    browser forward restart: absent
+    browser rollback restart: 2026-07-21T03:46:02Z–03:46:03Z
 
 The prototype was pure in-memory code and was not added to production. Its role
 was to prove that target and identity separation can represent the required
@@ -419,6 +448,12 @@ kinds. The planner output exposes `mutationTargets`, `activationTargets`, and
 `verificationTargets`. The coordinator consumes one combined terminal order
 and never starts two terminal operations concurrently.
 
+Executor selection exposes `requestedExecutor`, `provisionalExecutor`, and
+`effectiveExecutor`. Planning may write only the first two unless it executes
+the complete read-only eligibility proof. Aggregate preflight is the sole
+normal transition to effective and binds its proof receipt and fallback reason
+before notice or maintenance.
+
 The registry may name only closed claim kinds and activation strategy IDs. It
 must not contain shell commands. The compatibility adapter reads legacy
 `readyAuthority` and legacy fleet fields for one version, while new writes use
@@ -436,3 +471,8 @@ the full-route identity audit. It replaces immediate Local integration with an
 additive typed-claim and activation migration and records the separate evidence
 and hardware approval gates. Recorded the complete current offline contract
 baseline after validation.
+
+Revision note (2026-07-21 04:38Z): Recorded the approved evidence receipt and
+confirmed stale-browser timeline, accepted offline implementation Go, retained
+live rollout No-Go, and added the provisional executor state exposed by the
+plan/preflight difference.

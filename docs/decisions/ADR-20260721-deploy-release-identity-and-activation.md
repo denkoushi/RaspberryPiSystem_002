@@ -1,7 +1,7 @@
 ---
 id: ADR-20260721-deploy-release-identity-and-activation
 title: Typed release claims and separate activation targets
-status: proposed-live-evidence-pending
+status: accepted-offline-implementation-live-rollout-blocked
 date: 2026-07-21
 source_of_truth: true
 scope: Pi5 and registered terminal-profile rolling release planning, verification, persistence, and rollback
@@ -16,19 +16,20 @@ related_docs:
   - ../knowledge-base/KB-401-deploy-release-identity-runtime-audit.md
   - ../plans/deploy-release-identity-architecture-execplan.md
   - ../plans/deploy-release-identity-readonly-evidence-manifest.md
-validation: current-source audit, pure typed-claim scenario model, and complete current offline deploy contracts; production evidence pending separate approval
+validation: current-source audit, pure typed-claim scenario model, complete current offline deploy contracts, and approved read-only incident evidence sha256:f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8
 open_items:
-  - confirm or reject the run 20260721-032457-3fce3c browser timeline
-  - implement only after this ADR changes to accepted and the ExecPlan Go gate opens
+  - implement the decision through the staged offline ExecPlan
+  - retain the live rollout block until all migration and fault gates pass
 ---
 
 # ADR-20260721: Typed release claims and separate activation targets
 
 ## Status
 
-Proposed, with implementation and hardware rollout blocked. The architecture is
-the selected direction; its Go gate remains closed while KB-401 contains an
-incident-specific inconclusive item.
+Accepted for offline implementation. Hardware rollout remains blocked. The
+approved read-only evidence confirmed the exact stale-browser transition in
+KB-401 and removed the incident-specific inconclusive item. Acceptance of this
+ADR does not authorize bootstrap, reverify, deployment, or Local execution.
 
 ## Context
 
@@ -137,6 +138,20 @@ No ACK can satisfy more than one claim. Independent post-ACK observation still
 checks terminal Git, authenticated identity, systemd Result/is-active, Docker
 containers, and authenticated agent health. Local result files remain bounded
 reconciliation evidence and never promote host success alone.
+
+### Stage executor selection explicitly
+
+Executor state will use `requestedExecutor`, `provisionalExecutor`, and
+`effectiveExecutor`. Source/history classification may produce only a
+provisional choice. `effectiveExecutor` is written after aggregate preflight has
+proved candidate eligibility, runtime identity, and runner readiness. A
+fallback reason is mandatory whenever effective differs from requested.
+
+`--print-plan` either performs enough read-only proof to state an effective
+executor or labels the value provisional. `--preflight-only` remains the
+authoritative non-mutating transition to effective. Durable run state records
+both decisions and the proof receipt; maintenance cannot begin from a
+provisional Local choice.
 
 ### Add bounded browser activation
 
@@ -261,9 +276,10 @@ The pure typed-claim prototype expresses Web-only activation, Pi5 plus SSH,
 terminal-only SSH, StoneBase Local, terminal rollback with forward Pi5 Web,
 same-SHA no-op, and response-loss maintenance retention.
 
-Implementation remains No-Go until all conditions in KB-401 are met. Adoption
-also requires the implementation ExecPlan's complete offline suite, migration
-tests from strict legacy fixtures, Web reload tests across actual page reloads,
-coordinator fault injection at every new boundary, and a separately approved
-Pi5 plus StoneBase canary. FJV and other terminals are not part of that first
-hardware proof.
+Offline implementation is Go because the read-only incident evidence is
+confirmed and no safety- or progress-relevant inconclusive item remains in the
+investigation. Live adoption remains No-Go. It requires the implementation
+ExecPlan's complete offline suite, migration tests from strict legacy fixtures,
+Web reload tests across actual page reloads, coordinator fault injection at
+every new boundary, and a separately approved Pi5 plus StoneBase canary. FJV
+and other terminals are not part of that first hardware proof.

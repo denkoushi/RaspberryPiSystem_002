@@ -1,7 +1,7 @@
 ---
 id: KB-401
 title: Deploy release identity, activation, and runtime audit
-status: investigation-open-live-evidence-pending
+status: investigation-complete-implementation-go-live-no-go
 scope: standard Pi5, Kiosk, Signage, SSH Ansible, and experimental StoneBase Local Ansible release route
 date: 2026-07-21
 source_of_truth: true
@@ -17,11 +17,11 @@ related_docs:
   - ../plans/deploy-release-identity-architecture-execplan.md
   - ../plans/deploy-release-identity-readonly-evidence-manifest.md
   - ../plans/deploy-speed-phase-b-execplan.md
-validation: offline source audit, immutable Git range classification, 747 deploy Python tests, aggregate deploy contracts, 13 Kiosk ACK tests, changed-only lifecycle contract, and a pure typed-claim state model
+validation: offline source audit, immutable Git range classification, 747 deploy Python tests, aggregate deploy contracts, 13 Kiosk ACK tests, pure typed-claim state model, and approved Pi5 plus StoneBase read-only evidence receipt f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8
 open_items:
-  - obtain separate approval for the bounded Pi5 plus StoneBase read-only evidence manifest
-  - confirm or reject the browser process timeline for run 20260721-032457-3fce3c
-  - keep deployment and Local executor implementation frozen until the ADR Go gate is satisfied
+  - implement the accepted typed-claim architecture through the staged ExecPlan
+  - keep every live retry and Local execution blocked until the offline acceptance gate passes
+  - request separate approval for the first Pi5 plus StoneBase canary only after that gate
 ---
 
 # KB-401: Deploy release identity, activation, and runtime audit
@@ -53,10 +53,11 @@ planning.
 
 The current production path and experimental Local executor therefore remain
 **No-Go for another live retry**. This is not authorization to weaken the ready
-check, extend its timeout, or restart every systemd service. The structural
-remedy is specified in the related ADR and implementation ExecPlan, but remains
-blocked until the approved read-only evidence gate resolves the remaining
-incident-specific uncertainty.
+check, extend its timeout, or restart every systemd service. The approved
+read-only evidence gate has closed the incident-specific uncertainty, so the
+accepted structural redesign is **Go for offline implementation only**. Live
+preflight beyond an approved read-only scope, bootstrap, reverify, deployment,
+and Local execution remain blocked.
 
 ## Safety state at the audit boundary
 
@@ -69,9 +70,14 @@ that ref.
 The last run is terminal, not active. Pi5 remained stable at the candidate.
 StoneBase used the already sealed file and runtime manifests, returned to
 `651d056dbf5a6eea71cda210601dc618d7894415`, passed rollback ready and
-independent evidence, and cleared maintenance. No audit command has contacted a
-device. FJV and every terminal other than StoneBase remain outside the live
-scope.
+independent evidence, and cleared maintenance.
+
+After separate approval, the audit contacted only Pi5 and StoneBase with the
+bounded read-only manifest. It created no run, maintenance, bootstrap, Local
+unit, repository mutation, service mutation, or state edit. FJV appeared only
+as `outside explicit StoneBase local Ansible POC scope` in existing durable
+fleet output and was never connected to or probed. Every other terminal also
+remained outside the connection scope.
 
 ## Evidence grades
 
@@ -86,9 +92,9 @@ The audit distinguishes two questions that must not be collapsed:
 1. Does the architecture admit the failure?
 2. Did that exact admitted failure cause run `20260721-032457-3fce3c`?
 
-The first is confirmed offline. The second remains inconclusive until the
-browser unit timeline and durable run record are read under the separate
-approval gate.
+Both questions are now confirmed. The exact browser process timeline was
+collected under the separate read-only approval and matches the transition
+admitted by the source.
 
 ## Unified incident timeline
 
@@ -99,7 +105,7 @@ approval gate.
 | Bootstrap retry `20260721-023908-68527a` | Pi5 was not required. StoneBase reached `651d056d…`; SSH apply, control-plane ready, evidence, and cleanup succeeded. | `CONFIRMED`: ordinary SSH success did not prove optional Local runtime installation. Ready only proved the unchanged Pi5 Web authority. | No rollback. Maintenance cleared. |
 | Local gate `20260721-024809-e2a35e` | Effective executor was SSH with `runner-ineligible: local runner preflight is malformed`. | `CONFIRMED`: runtime selection correctly failed before maintenance. Approved read-only evidence found Debian 13 aarch64, Python 3.13.5, no Python 3.11 binary/package candidate, and no active pinned runtime. | No release submitted. |
 | Pinned runtime gate `20260721-032006-9a9b50` | Requested Local, effective SSH, fallback `candidate-requires-ssh-configuration`, runtime null, `releaseSubmitted=false`. | `CONFIRMED`: a candidate that changes its own runtime authority cannot bootstrap through Local and must use SSH first. | No release submitted. |
-| Final bootstrap `20260721-032457-3fce3c` | Pi5 reached `93d8bef4…`; StoneBase SSH apply succeeded in 412,856 ms. Forward ready timed out after 90,084 ms. Sealed rollback, rollback ready, independent evidence, cleanup, and maintenance clear succeeded. | `INCONCLUSIVE` for the exact process event; high-confidence hypothesis is that changed-only execution left the prior compiled browser bundle running. `CONFIRMED` that the code has no other stale-bundle activation step. | StoneBase returned to `651d056d…`; final evidence verified; maintenance cleared at `2026-07-21T03:46:31.968285Z`. |
+| Final bootstrap `20260721-032457-3fce3c` | Pi5 reached `93d8bef4…`; StoneBase SSH apply succeeded in 412,856 ms and ended at `03:44:14Z`. Forward ready timed out at `03:45:44Z`. The only browser lifecycle events in the approved `03:24:00Z–03:47:30Z` window were stop at `03:46:02Z` and start at `03:46:03Z`, during sealed rollback. | `CONFIRMED`: changed-only forward execution left the prior compiled browser bundle running. Rollback runtime restore restarted it, the new process loaded the still-forward Pi5 Web, and rollback ready recorded exact SHA `93d8bef4…`. | StoneBase returned to `651d056d…`; rollback evidence verified; maintenance cleared at `2026-07-21T03:46:31.968285Z`; browser remains active with `Result=success`. |
 
 The final candidate range from `651d056d…` to `93d8bef4…` classifies as
 server plus all terminal profiles because it contains deployment-control and
@@ -243,6 +249,22 @@ an unknown or active Local unit retains maintenance and blocks rollback until
 quiescence. The gap is above that executor boundary: a successful Local
 candidate claim is still not a Kiosk Web claim.
 
+### 7. A planned executor is labeled effective before aggregate preflight
+
+The approved `--print-plan` for fixed candidate `93d8bef4…` reported requested
+and effective executor as `stonebase-local-ansible-poc` with no fallback. The
+immediately following aggregate preflight `20260721-043630-dd9ed9` safely
+reported effective executor `ssh-ansible`, fallback
+`candidate-requires-ssh-configuration`, runtime null, and
+`releaseSubmitted=false`.
+
+The safety boundary works because preflight is authoritative, but the planning
+field name overstates what has been proved. Executor selection must have three
+states: requested, provisional after source/history classification, and
+effective only after every runtime and candidate eligibility proof succeeds.
+Durable planned state and operator output must not call a provisional choice
+effective.
+
 ## Preflight-to-execution comparison
 
 | Prerequisite | Current preflight | Execution dependency | Result |
@@ -287,41 +309,63 @@ maintenance and prohibited rollback while its claim remained unknown.
     local-response-loss=maintenance-retained
 
 This proves only that the proposed state split is internally expressible. It
-does not prove browser activation or the historical incident and cannot turn
-the current No-Go into Go.
+does not prove the future browser activation implementation. The historical
+incident is now independently confirmed, so the prototype and evidence are
+sufficient to open offline implementation; they are not sufficient for a live
+retry.
 
-## Read-only evidence still required
+## Approved read-only evidence receipt
 
-The separate manifest limits access to Pi5 and StoneBase and collects only:
+The separately approved manifest ran on 2026-07-21 and was limited to Pi5 and
+StoneBase. Raw output was retained only in a mode-0700 temporary directory,
+was not added to the repository, and was deleted after digest verification.
+The normalized allowlisted evidence digest is:
 
-- canonical durable status and sanitized timing for the named runs;
-- known task/result lines from the relevant Pi5 release-unit journals;
-- StoneBase `kiosk-browser.service` start/stop/result timestamps around the
-  final run;
-- current terminal HEAD, service state, and public Local runner preflight.
+    sha256:f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8
 
-The expected confirming pattern is: no forward Kiosk browser restart after the
-successful SSH apply, forward ready timeout, browser restart during sealed
-runtime restore, and prompt rollback ready ACK for the still-forward Pi5 Web
-SHA. A different pattern rejects the incident hypothesis but does not remove
-the independently confirmed architecture gap.
+It contains twelve source digests plus only the allowed derived fields. The
+commands established:
+
+- the four submitted runs are terminal; the two preflight-only IDs correctly
+  have no durable run record;
+- final forward apply completed without a browser lifecycle event;
+- the browser stopped and restarted only during rollback at
+  `2026-07-21T03:46:02Z–03:46:03Z`;
+- rollback ready used the forward Pi5 Web SHA `93d8bef4…` and rollback evidence
+  succeeded;
+- current StoneBase HEAD is `651d056d…`, browser is active/running with
+  `Result=success`, and status-agent service/timer results are healthy;
+- aggregate preflight passed with zero submission but resolved the Local
+  request to SSH fallback because the candidate requires SSH configuration.
+
+The first status command form in the initial manifest incorrectly combined a
+release branch with `--status`; the CLI rejected it before connection. The
+canonical runbook form, with the approved Pi5 host explicitly supplied, was
+used instead. This correction reduced options and did not broaden target or
+authority. The manifest records the corrected command for future use.
 
 ## Go / No-Go decision
 
-Current decision: **No-Go**.
+Current split decision:
 
-Go requires all of the following:
+- **Go**: implement the accepted typed-claim/activation architecture offline in
+  the dedicated staged ExecPlan.
+- **No-Go**: any production retry, bootstrap, reverify, Local execution, or
+  canary until the new offline acceptance gate is complete and a new exact
+  hardware approval is granted.
 
-1. The incident-specific browser timeline is confirmed or replaced by another
-   fully evidenced root cause.
-2. Fleet and run state can persist separate required claims without trusting a
+Live rollout requires all of the following:
+
+1. Fleet and run state can persist separate required claims without trusting a
    Local result, SSH success, or desired challenge as an observation.
-3. A Web-only plan creates activation and verification work for every affected
+2. A Web-only plan creates activation and verification work for every affected
    Kiosk consumer without creating unnecessary terminal Git/Ansible mutation.
-4. A stale bundle has a bounded steady-state activation path, and a pre-feature
+3. A stale bundle has a bounded steady-state activation path, and a pre-feature
    bundle has a separately manifest-owned one-time migration path.
-5. Critical scenarios and every route stage consume the same executable
+4. Critical scenarios and every route stage consume the same executable
    transition contract in tests.
+5. Requested, provisional, and effective executor values cannot be confused in
+   plan, preflight, or durable state.
 6. The default SSH route, Signage authority, fail-closed rollback, 60-second
    notice, five-minute Pi5 monitor, and serial terminal order remain intact.
 

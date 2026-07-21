@@ -1,7 +1,7 @@
 ---
 id: deploy-release-identity-readonly-evidence
 title: Pi5 and StoneBase read-only release identity evidence manifest
-status: approval-required-not-executed
+status: completed-readonly
 scope: named deployment runs on Pi5 and StoneBase only
 date: 2026-07-21
 source_of_truth: docs/plans/deploy-release-identity-readonly-evidence-manifest.md
@@ -9,19 +9,18 @@ related_docs:
   - docs/knowledge-base/KB-401-deploy-release-identity-runtime-audit.md
   - docs/decisions/ADR-20260721-deploy-release-identity-and-activation.md
   - docs/plans/deploy-release-identity-architecture-execplan.md
-validation: command review only; no command in this manifest has been executed
+validation: executed with explicit approval; normalized evidence sha256:f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8
 open_items:
-  - obtain explicit user approval for this exact read-only scope
-  - execute in order and stop on any target, command, or output mismatch
+  - require new approval for any additional hardware observation
 ---
 
 # Pi5 and StoneBase read-only release identity evidence manifest
 
 ## Approval boundary
 
-This is a command manifest, not authorization. No command below has been run.
-Execute it only after the user explicitly approves this read-only evidence
-collection as a new hardware action.
+The user explicitly approved this bounded collection, and it completed on
+2026-07-21 without a deployment or state mutation. This completed manifest is
+an audit record, not continuing authorization for another hardware action.
 
 Allowed devices are Pi5 `denkon5sd02@100.106.158.2` and StoneBase
 `raspi4-kensaku-stonebase01`. `raspi4-fjv60-80` and every other terminal are
@@ -76,12 +75,12 @@ that could change `scripts/update-all-clients.sh` or `scripts/deploy/`.
 First use the canonical status interface for each named run. These calls read
 durable state through Pi5 and do not submit a release:
 
-    scripts/update-all-clients.sh feat/stonebase-local-ansible-poc infrastructure/ansible/inventory.yml --status 20260720-232311-d2e8c8
-    scripts/update-all-clients.sh feat/stonebase-local-ansible-poc infrastructure/ansible/inventory.yml --status 20260721-021000-1ede52
-    scripts/update-all-clients.sh feat/stonebase-local-ansible-poc infrastructure/ansible/inventory.yml --status 20260721-023908-68527a
-    scripts/update-all-clients.sh feat/stonebase-local-ansible-poc infrastructure/ansible/inventory.yml --status 20260721-024809-e2a35e
-    scripts/update-all-clients.sh feat/stonebase-local-ansible-poc infrastructure/ansible/inventory.yml --status 20260721-032006-9a9b50
-    scripts/update-all-clients.sh feat/stonebase-local-ansible-poc infrastructure/ansible/inventory.yml --status 20260721-032457-3fce3c
+    RASPI_SERVER_HOST=denkon5sd02@100.106.158.2 scripts/update-all-clients.sh --status 20260720-232311-d2e8c8
+    RASPI_SERVER_HOST=denkon5sd02@100.106.158.2 scripts/update-all-clients.sh --status 20260721-021000-1ede52
+    RASPI_SERVER_HOST=denkon5sd02@100.106.158.2 scripts/update-all-clients.sh --status 20260721-023908-68527a
+    RASPI_SERVER_HOST=denkon5sd02@100.106.158.2 scripts/update-all-clients.sh --status 20260721-024809-e2a35e
+    RASPI_SERVER_HOST=denkon5sd02@100.106.158.2 scripts/update-all-clients.sh --status 20260721-032006-9a9b50
+    RASPI_SERVER_HOST=denkon5sd02@100.106.158.2 scripts/update-all-clients.sh --status 20260721-032457-3fce3c
 
 Next read only the final Pi5 unit's known task/result/timing lines. Keep the
 remote filter inside the quoted command so unfiltered journal output is not
@@ -110,8 +109,8 @@ preflight for Pi5 plus StoneBase. These commands must print the explicit target
 set, FJV exclusion, effective executor, runtime version/digest or bounded
 fallback reason, and zero release submission:
 
-    scripts/update-all-clients.sh feat/stonebase-local-ansible-poc infrastructure/ansible/inventory.yml --limit raspberrypi5:raspi4-kensaku-stonebase01 --stonebase-local-ansible-poc --print-plan
-    scripts/update-all-clients.sh feat/stonebase-local-ansible-poc infrastructure/ansible/inventory.yml --limit raspberrypi5:raspi4-kensaku-stonebase01 --stonebase-local-ansible-poc --preflight-only
+    RASPI_SERVER_HOST=denkon5sd02@100.106.158.2 scripts/update-all-clients.sh feat/stonebase-local-ansible-poc infrastructure/ansible/inventory.yml --limit raspberrypi5:raspi4-kensaku-stonebase01 --stonebase-local-ansible-poc --print-plan
+    RASPI_SERVER_HOST=denkon5sd02@100.106.158.2 scripts/update-all-clients.sh feat/stonebase-local-ansible-poc infrastructure/ansible/inventory.yml --limit raspberrypi5:raspi4-kensaku-stonebase01 --stonebase-local-ansible-poc --preflight-only
 
 Do not append `--reverify-selected`, `--foreground`, `--detach`, or any other
 execution option. Do not replace the explicit limit with a group or wildcard.
@@ -139,6 +138,44 @@ remove duplicate/noise lines, and compute a SHA-256 digest. Add only the digest,
 command identifier, observation timestamp, and derived CONFIRMED/REJECTED/
 INCONCLUSIVE facts to KB-401. Do not commit the raw output.
 
-Completion of this manifest does not authorize implementation or a retry. It
-only permits the audit to reconsider the ADR Go gate. A subsequent canary still
-requires its own exact target and mutation approval.
+Completion of this manifest does not authorize a retry. The audit separately
+opened offline architecture implementation after accepting the ADR. A
+subsequent preflight or canary still requires its own exact target and hardware
+approval.
+
+## Execution result
+
+The first drafted status form combined a positional release branch with
+`--status`; the CLI rejected it before connection. The canonical runbook form
+accepts only `--status RUN_ID` and requires the approved Pi5 through
+`RASPI_SERVER_HOST`. The corrected commands above are the ones that ran. This
+was a narrower syntax correction, not a scope expansion.
+
+The submitted runs were terminal. The two preflight-only IDs returned
+`not-found`, consistent with `releaseSubmitted=false`; no active or
+unreconciled run was found. The final run showed successful SSH apply, exact
+forward-ready timeout, sealed rollback, rollback ready at the still-forward Pi5
+Web SHA, verified rollback evidence, cleanup, and maintenance clear.
+
+StoneBase journal contained no browser lifecycle event during forward apply.
+Its only lifecycle events in the approved window were stop at
+`2026-07-21T03:46:02Z` and start at `03:46:03Z`, during rollback. Current HEAD
+is `651d056dbf5a6eea71cda210601dc618d7894415`; the browser and status-agent
+service/timer results are healthy.
+
+Preflight `20260721-043630-dd9ed9` passed with selected hosts exactly Pi5 and
+StoneBase and `releaseSubmitted=false`. It resolved the requested Local
+executor to SSH fallback `candidate-requires-ssh-configuration`; runtime stayed
+null. FJV was printed only as outside the explicit PoC scope and was never
+contacted.
+
+The Ansible read-only shell/command probes displayed `CHANGED` because those
+ad-hoc modules default their result flag to changed. Their commands were only
+`journalctl`, `git rev-parse`, and `systemctl show`; no host state changed.
+
+Raw output and the normalized temporary file were deleted after digest
+verification and are not recoverable from this worktree. Nothing was committed
+except the allowlisted derived facts and receipt digest. The normalized receipt,
+which contained twelve source digests and derived fields, is:
+
+    sha256:f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8
