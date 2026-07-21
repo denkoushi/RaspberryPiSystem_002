@@ -1,7 +1,7 @@
 ---
 id: KB-401
 title: Deploy release identity, activation, and runtime audit
-status: runtime-prefetch-remediation-review-ready-local-live-no-go
+status: runtime-prefetch-route-receipt-fix-local-live-no-go
 scope: standard Pi5, Kiosk, Signage, SSH Ansible, and experimental StoneBase Local Ansible release route
 date: 2026-07-21
 source_of_truth: true
@@ -611,6 +611,17 @@ root at `/opt/RaspberryPiSystem_002/logs/deploy/local-runtime-artifacts`. The
 release unit runs as unprivileged `denkon5sd02`; cache directories and members
 must be owned by that exact effective identity and cannot be group/world
 writable. Only the transferred StoneBase cache is root-owned.
+
+PR #1055 merged the offline remedy as accepted main
+`89a765c5798302c3c6216a5367776ebdaed5d764`. Its first canonical read-only
+preflight, `20260721-161503-c1d96f`, correctly selected Pi5 plus StoneBase and
+effective SSH fallback `candidate-requires-ssh-configuration`. It also exposed
+a separate receipt bug: aggregate preflight passed requested/effective executor
+to the route contract but not the fallback reason, so its public receipt omitted
+the required prefetch stage. No mutation was started. The contract now rejects
+reasonless Local-to-SSH routes and binds the terminal probe reason explicitly;
+live execution remains No-Go until that fix is accepted and a repeated
+preflight returns `stonebase-local-bootstrap-success`.
 
 ## Go / No-Go decision
 

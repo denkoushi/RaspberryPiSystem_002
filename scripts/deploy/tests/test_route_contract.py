@@ -291,6 +291,15 @@ class RouteContractTest(unittest.TestCase):
         self.assertNotIn(
             "terminal.runtime-artifact-prefetch", receipt["stageIds"]
         )
+        plan.pop("fallbackReason")
+        with self.assertRaisesRegex(ValueError, "requires an exact reason"):
+            route_contract_receipt(plan)
+        with self.assertRaisesRegex(ValueError, "requires an exact reason"):
+            route_contract_receipt(
+                plan,
+                requested_executor="stonebase-local-ansible-poc",
+                effective_executor="ssh-ansible",
+            )
 
     def test_plan_receipt_rejects_target_membership_or_verification_gaps(self):
         plan = {

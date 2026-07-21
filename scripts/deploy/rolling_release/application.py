@@ -543,6 +543,12 @@ def _preflight_report(
                     if isinstance(executor, dict)
                     else None
                 ),
+                fallback_reason=(
+                    executor.get("fallbackReason")
+                    if isinstance(executor, dict)
+                    and isinstance(executor.get("fallbackReason"), str)
+                    else None
+                ),
             )
         except (TypeError, ValueError):
             probes.append(
