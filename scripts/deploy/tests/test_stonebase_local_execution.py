@@ -64,7 +64,7 @@ def _bootstrap_observation(
     phase: str = "complete",
     failure_code: str | None = None,
     cleanup: str = "complete",
-    lock_sha256: str | None = "sha256:" + "d" * 64,
+    lock_sha256: str | None = local_execution.RUNTIME_BOOTSTRAP_LOCK_SHA256,
 ) -> dict[str, object]:
     return {
         "schemaVersion": 1,
@@ -1448,6 +1448,191 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
             "pi5-and-ssh-success",
         )
         self.assertFalse(any(event.startswith("local:artifact") for event in runtime.events))
+
+    def test_runtime_prefetch_failure_stops_before_notice_and_maintenance(self) -> None:
+        terminal = {
+            "host": STONEBASE_HOST,
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "raspi4-kensaku-stonebase01-kiosk1",
+        }
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", OLD_SHA),
+                STONEBASE_HOST: host_record("kiosk", OLD_SHA),
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan=self.local_plan(terminal),
+            targets=[terminal],
+        )
+        runtime.selected_hosts = lambda _inventory, _limit: ["pi5", STONEBASE_HOST]
+        runtime.release_hosts = lambda _inventory, selected=None: [
+            host
+            for host in runtime.hosts
+            if selected is None or host["host"] in set(selected)
+        ]
+        runtime.select_terminal_executor = lambda *_args: {
+            "requestedExecutor": LOCAL_EXECUTOR,
+            "effectiveExecutor": SSH_EXECUTOR,
+            "fallbackReason": "candidate-requires-ssh-configuration",
+            "changedPaths": ["scripts/deploy/stonebase-local-runtime-install.py"],
+            "publicContract": None,
+            "runnerPreflight": None,
+        }
+
+        def fail_prefetch():
+            runtime.events.append("runtime:prefetch")
+            raise RuntimeError("runtime artifact prefetch failed: python-distribution")
+
+        runtime.prefetch_terminal_runtime_artifacts = fail_prefetch
+        with self.assertRaisesRegex(RuntimeError, "runtime artifact prefetch failed"):
+            coordinator.execute(
+                coordinator_args(
+                    limit="raspberrypi5:raspi4-kensaku-stonebase01",
+                    stonebase_local_ansible_poc=True,
+                ),
+                runtime=runtime,
+                token=FakeToken(runtime.events),
+            )
+
+        self.assertIn(
+            f"manifest:capture:{STONEBASE_HOST}:{OLD_SHA}", runtime.events
+        )
+        self.assertIn("runtime:prefetch", runtime.events)
+        self.assertFalse(
+            any(event.startswith("status:put:") for event in runtime.events)
+        )
+        self.assertNotIn(f"playbook:{STONEBASE_HOST}", runtime.events)
+        self.assertIn(
+            f"manifest:cleanup:{STONEBASE_HOST}:run-1:committed",
+            runtime.events,
+        )
+        target = runtime.states[-1].target(STONEBASE_HOST)
+        self.assertNotIn("maintenanceStartedAt", target)
+        self.assertNotIn("runtimeArtifactPrefetch", target)
+
+    def test_runtime_prefetch_selection_is_an_explicit_safe_allowlist(self) -> None:
+        common = {
+            "requested_executor": LOCAL_EXECUTOR,
+            "effective_executor": SSH_EXECUTOR,
+            "mutation_required": True,
+        }
+        self.assertTrue(
+            local_execution.runtime_prefetch_required(
+                **common,
+                fallback_reason="candidate-requires-ssh-configuration",
+            )
+        )
+        self.assertTrue(
+            local_execution.runtime_prefetch_required(
+                **common,
+                fallback_reason="runner-ineligible: runtime-unavailable",
+            )
+        )
+        for reason in (
+            "candidate-history-touches-secret-path",
+            "history-ineligible: candidate is not a descendant",
+            "unknown-future-fallback",
+        ):
+            self.assertFalse(
+                local_execution.runtime_prefetch_required(
+                    **common,
+                    fallback_reason=reason,
+                ),
+                reason,
+            )
+
+    def test_runtime_prefetch_receipt_precedes_notice_and_is_not_runtime_claim(self) -> None:
+        terminal = {
+            "host": STONEBASE_HOST,
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "raspi4-kensaku-stonebase01-kiosk1",
+        }
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", OLD_SHA),
+                STONEBASE_HOST: host_record("kiosk", OLD_SHA),
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan=self.local_plan(terminal),
+            targets=[terminal],
+        )
+        runtime.selected_hosts = lambda _inventory, _limit: ["pi5", STONEBASE_HOST]
+        runtime.release_hosts = lambda _inventory, selected=None: [
+            host
+            for host in runtime.hosts
+            if selected is None or host["host"] in set(selected)
+        ]
+        runtime.select_terminal_executor = lambda *_args: {
+            "requestedExecutor": LOCAL_EXECUTOR,
+            "effectiveExecutor": SSH_EXECUTOR,
+            "fallbackReason": "candidate-requires-ssh-configuration",
+            "changedPaths": ["scripts/deploy/stonebase-local-runtime-install.py"],
+            "publicContract": None,
+            "runnerPreflight": None,
+        }
+        receipt = {
+            "schemaVersion": 1,
+            "state": "ready",
+            "lockSha256": "sha256:" + "a" * 64,
+            "manifestSha256": "sha256:" + "b" * 64,
+            "memberCount": 11,
+            "totalBytes": 59_603_748,
+            "cacheHits": 0,
+            "downloaded": 11,
+        }
+
+        def prefetch():
+            runtime.events.append("runtime:prefetch")
+            return {
+                "receipt": receipt,
+                "ansibleVarsPath": "/var/cache/sealed/ansible-vars.json",
+            }
+
+        def apply_profile(
+            _inventory,
+            host,
+            sha,
+            _run_id,
+            _profile,
+            *,
+            runtime_artifact_vars=None,
+        ):
+            runtime.events.append(f"playbook:{host}:{runtime_artifact_vars}")
+            runtime.deployed_sha[host] = sha
+
+        runtime.prefetch_terminal_runtime_artifacts = prefetch
+        runtime.apply_terminal_profile = apply_profile
+        result = coordinator.execute(
+            coordinator_args(
+                limit="raspberrypi5:raspi4-kensaku-stonebase01",
+                stonebase_local_ansible_poc=True,
+            ),
+            runtime=runtime,
+            token=FakeToken(runtime.events),
+        )
+        self.assertEqual(result, 0)
+        self.assertLess(
+            runtime.events.index("runtime:prefetch"),
+            next(
+                index
+                for index, event in enumerate(runtime.events)
+                if event.startswith("status:put:")
+            ),
+        )
+        self.assertIn(
+            f"playbook:{STONEBASE_HOST}:/var/cache/sealed/ansible-vars.json",
+            runtime.events,
+        )
+        target = runtime.states[-1].target(STONEBASE_HOST)
+        self.assertEqual(target["runtimeArtifactPrefetch"], receipt)
+        self.assertNotIn("ansibleVarsPath", json.dumps(target))
+        self.assertNotIn("runtime", target.get("releaseClaims", {}))
+        self.assertEqual(
+            runtime.states[-1].payload["routeContract"]["scenarioId"],
+            "stonebase-local-bootstrap-success",
+        )
 
     def test_changed_terminal_head_after_seal_fails_before_maintenance(self) -> None:
         terminal = {

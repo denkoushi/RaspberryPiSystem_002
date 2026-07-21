@@ -84,6 +84,28 @@ class TerminalExecutor:
 class SshAnsibleExecutor(TerminalExecutor):
     executor_id: str = SSH_EXECUTOR
 
+    def apply(
+        self,
+        inventory: str,
+        target_spec: dict[str, str],
+        target: dict[str, Any],
+        run_id: str,
+        prepared: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        artifact_vars = None
+        if prepared is not None:
+            artifact_vars = prepared.get("ansibleVarsPath")
+            if not isinstance(artifact_vars, str) or not artifact_vars:
+                raise RuntimeError("runtime artifact preparation is malformed")
+        self.adapter.apply(
+            inventory,
+            target_spec["host"],
+            target["desiredSha"],
+            run_id,
+            runtime_artifact_vars=artifact_vars,
+        )
+        return None
+
 
 @dataclass(frozen=True)
 class StoneBaseLocalAnsibleExecutor(TerminalExecutor):

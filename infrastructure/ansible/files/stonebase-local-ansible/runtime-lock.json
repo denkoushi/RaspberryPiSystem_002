@@ -1,18 +1,96 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "platform": "linux-aarch64",
   "python": "3.11.15",
   "pythonDistribution": {
     "version": "3.11.15",
+    "filename": "cpython-3.11.15+20260510-aarch64-unknown-linux-gnu-install_only.tar.gz",
     "source": "https://github.com/astral-sh/python-build-standalone/releases/download/20260510/cpython-3.11.15%2B20260510-aarch64-unknown-linux-gnu-install_only.tar.gz",
-    "sha256": "0bc1b7acbb888881addf3a1c887a47d510d4300db6e3ad2ba461154b982e456a"
+    "sha256": "0bc1b7acbb888881addf3a1c887a47d510d4300db6e3ad2ba461154b982e456a",
+    "size": 48884733
   },
   "ansibleCore": "2.19.4",
+  "pythonPackages": [
+    {
+      "name": "ansible-core",
+      "version": "2.19.4",
+      "filename": "ansible_core-2.19.4-py3-none-any.whl",
+      "source": "https://files.pythonhosted.org/packages/a3/76/eb7b15279bef040c4f693e01a49cd5b31c7649c74def78623776e705c0e9/ansible_core-2.19.4-py3-none-any.whl",
+      "sha256": "f218e2e8ce4cc95216c48c73badd9789f1dd6ea47e15667213491fb79589316c",
+      "size": 2405808
+    },
+    {
+      "name": "Jinja2",
+      "version": "3.1.6",
+      "filename": "jinja2-3.1.6-py3-none-any.whl",
+      "source": "https://files.pythonhosted.org/packages/62/a1/3d680cbfd5f4b8f15abc1d571870c5fc3e594bb582bc3b64ea099db13e56/jinja2-3.1.6-py3-none-any.whl",
+      "sha256": "85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67",
+      "size": 134899
+    },
+    {
+      "name": "PyYAML",
+      "version": "6.0.2",
+      "filename": "PyYAML-6.0.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+      "source": "https://files.pythonhosted.org/packages/ad/0c/c804f5f922a9a6563bab712d8dcc70251e8af811fce4524d57c2c0fd49a4/PyYAML-6.0.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+      "sha256": "5d225db5a45f21e78dd9358e58a98702a0302f2659a3c6cd320564b75b86f47c",
+      "size": 736829
+    },
+    {
+      "name": "cryptography",
+      "version": "46.0.3",
+      "filename": "cryptography-46.0.3-cp311-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
+      "source": "https://files.pythonhosted.org/packages/1c/67/38769ca6b65f07461eb200e85fc1639b438bdc667be02cf7f2cd6a64601c/cryptography-46.0.3-cp311-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
+      "sha256": "09859af8466b69bc3c27bdf4f5d84a665e0f7ab5088412e9e2ec49758eca5cbc",
+      "size": 4296667
+    },
+    {
+      "name": "packaging",
+      "version": "25.0",
+      "filename": "packaging-25.0-py3-none-any.whl",
+      "source": "https://files.pythonhosted.org/packages/20/12/38679034af332785aac8774540895e234f4d07f7545804097de4b666afd8/packaging-25.0-py3-none-any.whl",
+      "sha256": "29572ef2b1f17581046b3a2227d5c611fb25ec70ca1ba8554b24b0e69331a484",
+      "size": 66469
+    },
+    {
+      "name": "resolvelib",
+      "version": "1.2.1",
+      "filename": "resolvelib-1.2.1-py3-none-any.whl",
+      "source": "https://files.pythonhosted.org/packages/e2/23/c941a0d0353681ca138489983c4309e0f5095dfd902e1357004f2357ddf2/resolvelib-1.2.1-py3-none-any.whl",
+      "sha256": "fb06b66c8da04172d9e72a21d7d06186d8919e32ae5ab5cdf5b9d920be805ac2",
+      "size": 18737
+    },
+    {
+      "name": "MarkupSafe",
+      "version": "3.0.2",
+      "filename": "MarkupSafe-3.0.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+      "source": "https://files.pythonhosted.org/packages/f2/96/9cdafba8445d3a53cae530aaf83c38ec64c4d5427d975c974084af5bc5d2/MarkupSafe-3.0.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+      "sha256": "2cb8438c3cbb25e220c2ab33bb226559e7afb3baec11c4f218ffa7308603c832",
+      "size": 23984
+    },
+    {
+      "name": "cffi",
+      "version": "2.0.0",
+      "filename": "cffi-2.0.0-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
+      "source": "https://files.pythonhosted.org/packages/b8/56/6033f5e86e8cc9bb629f0077ba71679508bdf54a9a5e112a3c0b91870332/cffi-2.0.0-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
+      "sha256": "730cacb21e1bdff3ce90babf007d0a0917cc3e6492f336c2f0134101e0944f93",
+      "size": 216476
+    },
+    {
+      "name": "pycparser",
+      "version": "2.22",
+      "filename": "pycparser-2.22-py3-none-any.whl",
+      "source": "https://files.pythonhosted.org/packages/13/a3/a812df4e2dd5696d1f351d58b8fe16a405b234ad2886a0dab9183fb78109/pycparser-2.22-py3-none-any.whl",
+      "sha256": "c3702b6d3dd8c7abc1afa565d7e63d53a1d0bd86cdc24edd75470f4de499cfcc",
+      "size": 117552
+    }
+  ],
   "collections": {
     "community.general": {
       "version": "11.4.1",
+      "filename": "community-general-11.4.1.tar.gz",
       "source": "https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/artifacts/community-general-11.4.1.tar.gz",
-      "sha256": "618b2cad75706f2939a5607271bfdcf4a10d3b6f3fe792e1569910c270485399"
+      "sha256": "618b2cad75706f2939a5607271bfdcf4a10d3b6f3fe792e1569910c270485399",
+      "size": 2701594
     }
   }
 }

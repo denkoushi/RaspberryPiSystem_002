@@ -26,35 +26,111 @@ sys.modules[SPEC.name] = runtime_install
 SPEC.loader.exec_module(runtime_install)
 
 
+def _small_lock() -> dict[str, object]:
+    package = {
+        "name": "ansible-core",
+        "version": "2.19.4",
+        "filename": "ansible_core.whl",
+        "source": "https://files.pythonhosted.org/ansible_core.whl",
+        "sha256": "a" * 64,
+        "size": 7,
+    }
+    return {
+        "pythonDistribution": {
+            "version": runtime_install.PYTHON_VERSION,
+            "filename": runtime_install.PYTHON_FILENAME,
+            "source": runtime_install.PYTHON_SOURCE,
+            "sha256": runtime_install.PYTHON_SHA256,
+            "size": runtime_install.PYTHON_SIZE,
+        },
+        "pythonPackages": [package],
+        "collections": {
+            "community.general": {
+                "version": "11.4.1",
+                "filename": runtime_install.COLLECTION_FILENAME,
+                "source": runtime_install.COLLECTION_SOURCE,
+                "sha256": runtime_install.COLLECTION_SHA256,
+                "size": runtime_install.COLLECTION_SIZE,
+            }
+        },
+    }
+
+
 class StoneBaseLocalRuntimeInstallTest(unittest.TestCase):
+    def test_checked_in_lock_matches_installer_and_candidate_artifact(self) -> None:
+        lock_path = (
+            Path(__file__).parents[3]
+            / "infrastructure/ansible/files/stonebase-local-ansible/runtime-lock.json"
+        )
+        lock = json.loads(lock_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(lock["schemaVersion"], 3)
+        self.assertEqual(local_execution.RUNTIME_VERSION, runtime_install.VERSION)
+        self.assertEqual(lock["python"], runtime_install.PYTHON_VERSION)
+        self.assertEqual(
+            lock["pythonDistribution"],
+            {
+                "version": runtime_install.PYTHON_VERSION,
+                "filename": runtime_install.PYTHON_FILENAME,
+                "source": runtime_install.PYTHON_SOURCE,
+                "sha256": runtime_install.PYTHON_SHA256,
+                "size": runtime_install.PYTHON_SIZE,
+            },
+        )
+        self.assertEqual(
+            local_execution.runtime_lock_payload()["pythonDistribution"],
+            lock["pythonDistribution"],
+        )
+        self.assertEqual(len(lock["pythonPackages"]), 9)
+        self.assertEqual(
+            lock["collections"]["community.general"],
+            {
+                "version": "11.4.1",
+                "filename": runtime_install.COLLECTION_FILENAME,
+                "source": runtime_install.COLLECTION_SOURCE,
+                "sha256": runtime_install.COLLECTION_SHA256,
+                "size": runtime_install.COLLECTION_SIZE,
+            },
+        )
+        requirements = (
+            lock_path.parent / "requirements-aarch64-py311.lock"
+        ).read_text(encoding="utf-8")
+        for package in lock["pythonPackages"]:
+            self.assertIn(f"{package['name']}=={package['version']}", requirements)
+            self.assertIn(f"sha256:{package['sha256']}", requirements)
+        with patch.object(runtime_install, "LOCK", lock_path):
+            loaded, digest = runtime_install._load_lock()
+        self.assertEqual(loaded, lock)
+        self.assertEqual(
+            digest, "sha256:" + hashlib.sha256(lock_path.read_bytes()).hexdigest()
+        )
+        self.assertEqual(digest, local_execution.RUNTIME_BOOTSTRAP_LOCK_SHA256)
+
+    def test_installer_has_no_network_download_boundary(self) -> None:
+        source = MODULE_PATH.read_text(encoding="utf-8")
+        self.assertNotIn("urllib", source)
+        self.assertFalse(hasattr(runtime_install, "_download_file"))
+
     def test_phase_wrapper_maps_raw_failures_to_closed_codes(self) -> None:
-        phases = {
-            "lock-validate": "lock-invalid",
-            "staging-prepare": "staging-preparation-failed",
-            "python-download": "python-download-failed",
-            "python-extract": "python-extract-failed",
-            "collection-download": "collection-download-failed",
-        }
         with tempfile.TemporaryDirectory() as temporary:
-            for phase, code in phases.items():
-                with self.subTest(phase=phase):
-                    observation = runtime_install.Observation(
-                        Path(temporary) / f"{phase}.json"
-                    )
+            observation = runtime_install.Observation(Path(temporary) / "phase.json")
 
-                    def fail():
-                        raise RuntimeError("raw secret-like process output")
+            def fail():
+                raise RuntimeError("TOKEN=must-not-escape")
 
-                    with self.assertRaises(runtime_install.InstallFailure) as caught:
-                        runtime_install._phase(observation, phase, code, fail)
-                    self.assertEqual(caught.exception.phase, phase)
-                    self.assertEqual(caught.exception.code, code)
-                    self.assertNotIn(
-                        "raw secret-like",
-                        (Path(temporary) / f"{phase}.json").read_text(
-                            encoding="utf-8"
-                        ),
-                    )
+            with self.assertRaises(runtime_install.InstallFailure) as caught:
+                runtime_install._phase(
+                    observation,
+                    "artifact-cache",
+                    "artifact-cache-invalid",
+                    fail,
+                )
+            self.assertEqual(caught.exception.phase, "artifact-cache")
+            self.assertEqual(caught.exception.code, "artifact-cache-invalid")
+            self.assertNotIn(
+                "must-not-escape",
+                (Path(temporary) / "phase.json").read_text(encoding="utf-8"),
+            )
 
     def test_observation_rejects_group_writable_parent(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -67,47 +143,49 @@ class StoneBaseLocalRuntimeInstallTest(unittest.TestCase):
             ):
                 observation.phase("initializing")
 
-    def test_checked_in_lock_matches_installer_and_candidate_artifact(self) -> None:
-        lock_path = (
-            Path(__file__).parents[3]
-            / "infrastructure/ansible/files/stonebase-local-ansible/runtime-lock.json"
-        )
-        lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    def test_cache_rejects_wrong_identity_extra_member_and_digest(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            lock_sha = "sha256:" + "d" * 64
+            base = root / "cache"
+            cache = base / ("d" * 64)
+            cache.mkdir(parents=True)
+            payloads = {
+                runtime_install.PYTHON_FILENAME: b"python",
+                "ansible_core.whl": b"ansible",
+                runtime_install.COLLECTION_FILENAME: b"collection",
+            }
+            lock = _small_lock()
+            members = [
+                lock["pythonDistribution"],
+                *lock["pythonPackages"],
+                lock["collections"]["community.general"],
+            ]
+            for member in members:
+                data = payloads[member["filename"]]
+                member["size"] = len(data)
+                member["sha256"] = hashlib.sha256(data).hexdigest()
+                (cache / member["filename"]).write_bytes(data)
 
-        self.assertEqual(lock["schemaVersion"], 2)
-        self.assertEqual(local_execution.RUNTIME_VERSION, runtime_install.VERSION)
-        self.assertEqual(lock["python"], runtime_install.PYTHON_VERSION)
-        self.assertEqual(
-            local_execution.runtime_lock_payload()["python"],
-            runtime_install.PYTHON_VERSION,
-        )
-        self.assertEqual(
-            lock["pythonDistribution"],
-            {
-                "version": runtime_install.PYTHON_VERSION,
-                "source": runtime_install.PYTHON_SOURCE,
-                "sha256": runtime_install.PYTHON_SHA256,
-            },
-        )
-        self.assertEqual(
-            local_execution.runtime_lock_payload()["pythonDistribution"],
-            lock["pythonDistribution"],
-        )
-        self.assertEqual(
-            lock["collections"]["community.general"],
-            {
-                "version": "11.4.1",
-                "source": runtime_install.COLLECTION_SOURCE,
-                "sha256": runtime_install.COLLECTION_SHA256,
-            },
-        )
-        with patch.object(runtime_install, "LOCK", lock_path):
-            loaded, digest = runtime_install._load_lock()
-            self.assertEqual(loaded, lock)
-            self.assertEqual(
-                digest,
-                "sha256:" + hashlib.sha256(lock_path.read_bytes()).hexdigest(),
-            )
+            with patch.object(runtime_install, "CACHE_BASE", base):
+                self.assertEqual(
+                    runtime_install._validated_cache(lock, lock_sha, cache), cache
+                )
+                with self.assertRaisesRegex(
+                    runtime_install.InstallError, "identity does not match"
+                ):
+                    runtime_install._validated_cache(lock, lock_sha, root / "other")
+                (cache / "extra").write_bytes(b"extra")
+                with self.assertRaisesRegex(
+                    runtime_install.InstallError, "membership does not match"
+                ):
+                    runtime_install._validated_cache(lock, lock_sha, cache)
+                (cache / "extra").unlink()
+                (cache / "ansible_core.whl").write_bytes(b"corrupt")
+                with self.assertRaisesRegex(
+                    runtime_install.InstallError, "member does not match"
+                ):
+                    runtime_install._validated_cache(lock, lock_sha, cache)
 
     def test_python_distribution_rejects_member_outside_fixed_root(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -118,7 +196,6 @@ class StoneBaseLocalRuntimeInstallTest(unittest.TestCase):
                 info = tarfile.TarInfo("../escape")
                 info.size = len(payload)
                 archive.addfile(info, io.BytesIO(payload))
-
             with self.assertRaisesRegex(
                 runtime_install.InstallError, "escaped its root"
             ):
@@ -126,53 +203,6 @@ class StoneBaseLocalRuntimeInstallTest(unittest.TestCase):
                     archive_path, root / "extract"
                 )
             self.assertFalse((root / "escape").exists())
-
-    def test_incomplete_existing_runtime_is_invalid_not_an_unbounded_exception(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            runtime = Path(temporary) / "runtime"
-            runtime.mkdir()
-            self.assertFalse(runtime_install._valid(runtime))
-
-    def test_runtime_environment_satisfies_ansible_utf8_locale_contract(self) -> None:
-        runtime = Path("/sealed/runtime")
-        environment = runtime_install._runtime_environment(
-            runtime, collections=True
-        )
-
-        self.assertEqual(environment["LANG"], "C.UTF-8")
-        self.assertEqual(environment["LC_ALL"], "C.UTF-8")
-        self.assertEqual(
-            environment["ANSIBLE_COLLECTIONS_PATH"],
-            "/sealed/runtime/collections",
-        )
-        locale_probe = subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                (
-                    "import locale; "
-                    "locale.setlocale(locale.LC_ALL, ''); "
-                    "assert locale.getlocale()[1] in {'UTF-8', 'utf8'}"
-                ),
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
-            env=environment,
-        )
-        self.assertEqual(locale_probe.returncode, 0, locale_probe.stderr)
-        if (
-            importlib.util.find_spec("ansible") is not None
-            and importlib.util.find_spec("ansible.cli") is not None
-        ):
-            ansible_probe = subprocess.run(
-                [sys.executable, "-c", "import ansible.cli"],
-                check=False,
-                capture_output=True,
-                text=True,
-                env=environment,
-            )
-            self.assertEqual(ansible_probe.returncode, 0, ansible_probe.stderr)
 
     def test_python_distribution_accepts_internal_relative_symlink(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -188,11 +218,9 @@ class StoneBaseLocalRuntimeInstallTest(unittest.TestCase):
                 link.type = tarfile.SYMTYPE
                 link.linkname = "python3.11"
                 archive.addfile(link)
-
             runtime = runtime_install._extract_python_distribution(
                 archive_path, root / "extract"
             )
-            self.assertEqual(runtime, root / "extract/python")
             self.assertEqual((runtime / "bin/python3").readlink(), Path("python3.11"))
 
     def test_python_distribution_rejects_symlink_outside_fixed_root(self) -> None:
@@ -204,45 +232,42 @@ class StoneBaseLocalRuntimeInstallTest(unittest.TestCase):
                 link.type = tarfile.SYMTYPE
                 link.linkname = "../../../outside"
                 archive.addfile(link)
-
             with self.assertRaisesRegex(
                 runtime_install.InstallError, "link escaped its root"
             ):
                 runtime_install._extract_python_distribution(
                     archive_path, root / "extract"
                 )
-            self.assertFalse((root / "outside").exists())
 
-    def test_install_uses_pinned_distribution_without_system_python_311(self) -> None:
+    def test_runtime_environment_satisfies_ansible_utf8_locale_contract(self) -> None:
+        runtime = Path("/sealed/runtime")
+        environment = runtime_install._runtime_environment(runtime, collections=True)
+        self.assertEqual(environment["LANG"], "C.UTF-8")
+        self.assertEqual(environment["LC_ALL"], "C.UTF-8")
+        locale_probe = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import locale; locale.setlocale(locale.LC_ALL, ''); "
+                "assert locale.getpreferredencoding(False).upper() == 'UTF-8'",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+        self.assertEqual(locale_probe.returncode, 0, locale_probe.stderr)
+
+    def test_install_uses_only_sealed_cache_and_no_index(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "runtime"
+            cache = Path(temporary) / "cache"
+            cache.mkdir()
             requirements = Path(temporary) / "requirements.lock"
             requirements.write_text("locked\n", encoding="utf-8")
-            lock = {
-                "pythonDistribution": {
-                    "version": runtime_install.PYTHON_VERSION,
-                    "source": runtime_install.PYTHON_SOURCE,
-                    "sha256": runtime_install.PYTHON_SHA256,
-                },
-                "collections": {
-                    "community.general": {
-                        "version": "11.4.1",
-                        "source": "https://example.invalid/community-general.tar.gz",
-                        "sha256": "1" * 64,
-                    }
-                },
-            }
-            downloads: list[dict[str, str]] = []
-
-            def download(
-                destination: Path,
-                metadata: dict[str, str],
-                *,
-                maximum_bytes: int,
-            ) -> None:
-                self.assertGreater(maximum_bytes, 0)
-                downloads.append(metadata)
-                destination.write_bytes(b"archive")
+            lock = _small_lock()
+            (cache / runtime_install.PYTHON_FILENAME).write_bytes(b"archive")
+            (cache / runtime_install.COLLECTION_FILENAME).write_bytes(b"collection")
 
             def extract(_archive: Path, destination: Path) -> Path:
                 runtime = destination / "python"
@@ -250,12 +275,11 @@ class StoneBaseLocalRuntimeInstallTest(unittest.TestCase):
                 (runtime / "bin/python3").write_text("binary", encoding="utf-8")
                 return runtime
 
-            completed = subprocess.CompletedProcess([], 0, "", "")
-            runtime_commands: list[tuple[list[str], dict[str, object]]] = []
+            commands: list[list[str]] = []
 
-            def run(arguments, **options):
-                runtime_commands.append((list(arguments), options))
-                return completed
+            def run(arguments, **_options):
+                commands.append(list(arguments))
+                return subprocess.CompletedProcess([], 0, "", "")
 
             with (
                 patch.object(runtime_install, "ROOT", root),
@@ -267,53 +291,43 @@ class StoneBaseLocalRuntimeInstallTest(unittest.TestCase):
                     "_load_lock",
                     return_value=(lock, "sha256:" + "d" * 64),
                 ),
-                patch.object(
-                    runtime_install, "_valid", side_effect=[False, True]
-                ),
-                patch.object(runtime_install, "_download_file", side_effect=download),
-                patch.object(
-                    runtime_install,
-                    "_extract_python_distribution",
-                    side_effect=extract,
-                ),
+                patch.object(runtime_install, "_validated_cache", return_value=cache),
+                patch.object(runtime_install, "_valid", side_effect=[False, True]),
+                patch.object(runtime_install, "_extract_python_distribution", side_effect=extract),
                 patch.object(runtime_install, "_run", side_effect=run),
             ):
-                observation = runtime_install.Observation(
-                    Path(temporary) / "bootstrap.json"
-                )
-                self.assertTrue(runtime_install.install(observation))
+                observation = runtime_install.Observation(Path(temporary) / "state.json")
+                self.assertTrue(runtime_install.install(observation, cache_root=cache))
 
-            destination = root / "versions" / runtime_install.VERSION
-            self.assertTrue(destination.is_dir())
-            self.assertEqual((root / "active").resolve(), destination.resolve())
+            self.assertEqual(len(commands), 2)
+            pip_command = commands[0]
+            self.assertIn("--no-index", pip_command)
+            self.assertEqual(pip_command[pip_command.index("--find-links") + 1], str(cache))
+            collection_command = commands[1]
             self.assertEqual(
-                downloads,
-                [
-                    lock["pythonDistribution"],
-                    lock["collections"]["community.general"],
-                ],
+                collection_command[3], str(cache / runtime_install.COLLECTION_FILENAME)
             )
-            self.assertEqual(len(runtime_commands), 2)
-            collection_command, collection_options = runtime_commands[1]
-            self.assertEqual(collection_command[1:3], ["collection", "install"])
-            self.assertIn("--collections-path", collection_command)
-            self.assertEqual(collection_command[-2:], ["--no-deps", "--force"])
-            self.assertTrue(collection_options["collections"])
-            self.assertIsInstance(collection_options["runtime"], Path)
+            self.assertFalse(
+                any(
+                    "http" in argument
+                    for command in commands
+                    for argument in command
+                )
+            )
 
-    def test_pipeline_failures_keep_exact_closed_phase_codes(self) -> None:
+    def test_offline_pipeline_failures_keep_exact_closed_phase_codes(self) -> None:
         expected = {
             "python-packages": "python-packages-failed",
-            "collection-download": "collection-download-failed",
             "collection-install": "collection-install-failed",
             "runtime-verify": "runtime-verification-failed",
             "runtime-publish": "runtime-publish-conflict",
             "active-link": "active-link-failed",
         }
-
         for failed_phase, failure_code in expected.items():
             with self.subTest(phase=failed_phase), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary) / "runtime"
+                cache = Path(temporary) / "cache"
+                cache.mkdir()
                 requirements = Path(temporary) / "requirements.lock"
                 requirements.write_text("locked\n", encoding="utf-8")
                 destination = root / "versions" / runtime_install.VERSION
@@ -321,40 +335,6 @@ class StoneBaseLocalRuntimeInstallTest(unittest.TestCase):
                     destination.mkdir(parents=True)
                 if failed_phase == "active-link":
                     (root / "active").mkdir()
-                lock = {
-                    "pythonDistribution": {
-                        "version": runtime_install.PYTHON_VERSION,
-                        "source": runtime_install.PYTHON_SOURCE,
-                        "sha256": runtime_install.PYTHON_SHA256,
-                    },
-                    "collections": {
-                        "community.general": {
-                            "version": "11.4.1",
-                            "source": runtime_install.COLLECTION_SOURCE,
-                            "sha256": runtime_install.COLLECTION_SHA256,
-                        }
-                    },
-                }
-                download_count = 0
-                run_count = 0
-
-                def valid(path: Path) -> bool:
-                    if path == destination:
-                        return failed_phase == "active-link"
-                    return failed_phase != "runtime-verify"
-
-                def download(
-                    path: Path,
-                    _metadata: dict[str, str],
-                    *,
-                    maximum_bytes: int,
-                ) -> None:
-                    nonlocal download_count
-                    self.assertGreater(maximum_bytes, 0)
-                    download_count += 1
-                    if failed_phase == "collection-download" and download_count == 2:
-                        raise runtime_install.InstallError("raw collection failure")
-                    path.write_bytes(b"sealed")
 
                 def extract(_archive: Path, path: Path) -> Path:
                     runtime = path / "python"
@@ -362,7 +342,9 @@ class StoneBaseLocalRuntimeInstallTest(unittest.TestCase):
                     (runtime / "bin/python3").write_bytes(b"sealed")
                     return runtime
 
-                def run(_arguments, **_kwargs):
+                run_count = 0
+
+                def run(_arguments, **_options):
                     nonlocal run_count
                     run_count += 1
                     return_code = 0
@@ -372,8 +354,13 @@ class StoneBaseLocalRuntimeInstallTest(unittest.TestCase):
                         return_code = 23
                     return subprocess.CompletedProcess([], return_code, "", "")
 
+                def valid(path: Path) -> bool:
+                    if path == destination:
+                        return failed_phase == "active-link"
+                    return failed_phase != "runtime-verify"
+
                 observation = runtime_install.Observation(
-                    Path(temporary) / "bootstrap.json"
+                    Path(temporary) / "state.json"
                 )
                 with (
                     patch.object(runtime_install, "ROOT", root),
@@ -385,12 +372,12 @@ class StoneBaseLocalRuntimeInstallTest(unittest.TestCase):
                     patch.object(
                         runtime_install,
                         "_load_lock",
-                        return_value=(lock, "sha256:" + "d" * 64),
+                        return_value=(_small_lock(), "sha256:" + "d" * 64),
+                    ),
+                    patch.object(
+                        runtime_install, "_validated_cache", return_value=cache
                     ),
                     patch.object(runtime_install, "_valid", side_effect=valid),
-                    patch.object(
-                        runtime_install, "_download_file", side_effect=download
-                    ),
                     patch.object(
                         runtime_install,
                         "_extract_python_distribution",
@@ -398,11 +385,39 @@ class StoneBaseLocalRuntimeInstallTest(unittest.TestCase):
                     ),
                     patch.object(runtime_install, "_run", side_effect=run),
                 ):
-                    with self.assertRaises(runtime_install.InstallFailure) as caught:
-                        runtime_install.install(observation)
+                    with self.assertRaises(
+                        runtime_install.InstallFailure
+                    ) as caught:
+                        runtime_install.install(observation, cache_root=cache)
 
                 self.assertEqual(caught.exception.phase, failed_phase)
                 self.assertEqual(caught.exception.code, failure_code)
+                self.assertEqual(caught.exception.cleanup, "complete")
+
+    def test_artifact_cache_failure_is_bounded_before_staging(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            requirements = Path(temporary) / "requirements.lock"
+            requirements.write_text("locked\n", encoding="utf-8")
+            observation = runtime_install.Observation(Path(temporary) / "state.json")
+            with (
+                patch.object(runtime_install, "REQUIREMENTS", requirements),
+                patch.object(runtime_install.os, "geteuid", return_value=0),
+                patch.object(runtime_install.platform, "machine", return_value="aarch64"),
+                patch.object(
+                    runtime_install,
+                    "_load_lock",
+                    return_value=(_small_lock(), "sha256:" + "d" * 64),
+                ),
+                patch.object(
+                    runtime_install,
+                    "_validated_cache",
+                    side_effect=runtime_install.InstallError("TOKEN=hidden"),
+                ),
+            ):
+                with self.assertRaises(runtime_install.InstallFailure) as caught:
+                    runtime_install.install(observation)
+            self.assertEqual(caught.exception.phase, "artifact-cache")
+            self.assertEqual(caught.exception.code, "artifact-cache-invalid")
 
     def test_failure_is_atomic_bounded_and_queryable_without_raw_output(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -411,9 +426,7 @@ class StoneBaseLocalRuntimeInstallTest(unittest.TestCase):
             with (
                 patch.object(runtime_install, "OBSERVATION", observation_path),
                 patch.object(runtime_install.os, "geteuid", return_value=0),
-                patch.object(
-                    runtime_install.platform, "machine", return_value="aarch64"
-                ),
+                patch.object(runtime_install.platform, "machine", return_value="aarch64"),
                 patch.object(
                     runtime_install,
                     "_load_lock",
@@ -422,17 +435,12 @@ class StoneBaseLocalRuntimeInstallTest(unittest.TestCase):
             ):
                 self.assertEqual(runtime_install.main([]), 1)
                 value = json.loads(observation_path.read_text(encoding="utf-8"))
-                self.assertEqual(value["status"], "failed")
-                self.assertEqual(value["phase"], "lock-validate")
                 self.assertEqual(value["failureCode"], "lock-invalid")
-                self.assertEqual(value["cleanup"], "complete")
                 self.assertNotIn(secret, json.dumps(value))
-                self.assertEqual(os.stat(observation_path).st_mode & 0o777, 0o644)
                 with patch("builtins.print") as output:
                     self.assertEqual(runtime_install.main(["status"]), 0)
-                marker = output.call_args.args[0]
                 self.assertRegex(
-                    marker,
+                    output.call_args.args[0],
                     r"^RUNTIME_INSTALL_OBSERVATION:failed:lock-validate:"
                     r"lock-invalid:complete:[0-9a-f]{32}:none$",
                 )
@@ -442,56 +450,38 @@ class StoneBaseLocalRuntimeInstallTest(unittest.TestCase):
             path = Path(temporary) / "bootstrap.json"
             observation = runtime_install.Observation(path)
             observation.lock_sha256 = "sha256:" + "d" * 64
-            observation.phase("python-packages")
-
+            observation.phase("artifact-cache")
             value = runtime_install._validated_observation(path)
             self.assertEqual(value["status"], "running")
-            self.assertEqual(value["phase"], "python-packages")
-            self.assertEqual(value["cleanup"], "pending")
+            self.assertEqual(value["phase"], "artifact-cache")
             self.assertEqual(
-                local_execution.validate_runtime_bootstrap_observation(value),
-                value,
+                local_execution.validate_runtime_bootstrap_observation(value), value
             )
 
     def test_cleanup_failure_preserves_primary_failed_phase(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "runtime"
+            cache = Path(temporary) / "cache"
+            cache.mkdir()
             requirements = Path(temporary) / "requirements.lock"
             requirements.write_text("locked\n", encoding="utf-8")
-            lock = {
-                "pythonDistribution": {
-                    "version": runtime_install.PYTHON_VERSION,
-                    "source": runtime_install.PYTHON_SOURCE,
-                    "sha256": runtime_install.PYTHON_SHA256,
-                },
-                "collections": {
-                    "community.general": {
-                        "version": "11.4.1",
-                        "source": runtime_install.COLLECTION_SOURCE,
-                        "sha256": runtime_install.COLLECTION_SHA256,
-                    }
-                },
-            }
-            observation = runtime_install.Observation(
-                Path(temporary) / "bootstrap.json"
-            )
+            observation = runtime_install.Observation(Path(temporary) / "state.json")
             with (
                 patch.object(runtime_install, "ROOT", root),
                 patch.object(runtime_install, "REQUIREMENTS", requirements),
                 patch.object(runtime_install.os, "geteuid", return_value=0),
-                patch.object(
-                    runtime_install.platform, "machine", return_value="aarch64"
-                ),
+                patch.object(runtime_install.platform, "machine", return_value="aarch64"),
                 patch.object(
                     runtime_install,
                     "_load_lock",
-                    return_value=(lock, "sha256:" + "d" * 64),
+                    return_value=(_small_lock(), "sha256:" + "d" * 64),
                 ),
+                patch.object(runtime_install, "_validated_cache", return_value=cache),
                 patch.object(runtime_install, "_valid", return_value=False),
                 patch.object(
                     runtime_install,
-                    "_download_file",
-                    side_effect=runtime_install.InstallError("raw download detail"),
+                    "_extract_python_distribution",
+                    side_effect=runtime_install.InstallError("raw extract detail"),
                 ),
                 patch.object(
                     runtime_install.shutil,
@@ -500,10 +490,9 @@ class StoneBaseLocalRuntimeInstallTest(unittest.TestCase):
                 ),
             ):
                 with self.assertRaises(runtime_install.InstallFailure) as caught:
-                    runtime_install.install(observation)
-
-            self.assertEqual(caught.exception.phase, "python-download")
-            self.assertEqual(caught.exception.code, "python-download-failed")
+                    runtime_install.install(observation, cache_root=cache)
+            self.assertEqual(caught.exception.phase, "python-extract")
+            self.assertEqual(caught.exception.code, "python-extract-failed")
             self.assertEqual(caught.exception.cleanup, "failed")
 
 

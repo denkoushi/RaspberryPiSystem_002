@@ -155,7 +155,7 @@ class TerminalPreflightTest(unittest.TestCase):
                 "failureCode": None,
                 "cleanup": "complete",
                 "runtimeVersion": local_execution.RUNTIME_VERSION,
-                "lockSha256": "sha256:" + "d" * 64,
+                "lockSha256": local_execution.RUNTIME_BOOTSTRAP_LOCK_SHA256,
                 "observedAt": "2026-07-21T12:00:00Z",
             },
         }
@@ -203,7 +203,7 @@ class TerminalPreflightTest(unittest.TestCase):
                 "failureCode": None,
                 "cleanup": "complete",
                 "runtimeVersion": local_execution.RUNTIME_VERSION,
-                "lockSha256": "sha256:" + "d" * 64,
+                "lockSha256": local_execution.RUNTIME_BOOTSTRAP_LOCK_SHA256,
                 "observedAt": "2026-07-21T12:00:00Z",
             },
         }

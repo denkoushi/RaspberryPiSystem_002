@@ -1,7 +1,7 @@
 ---
 id: KB-401
 title: Deploy release identity, activation, and runtime audit
-status: runtime-utf8-remediation-review-pending-local-live-no-go
+status: runtime-prefetch-remediation-review-ready-local-live-no-go
 scope: standard Pi5, Kiosk, Signage, SSH Ansible, and experimental StoneBase Local Ansible release route
 date: 2026-07-21
 source_of_truth: true
@@ -17,11 +17,11 @@ related_docs:
   - ../plans/deploy-release-identity-architecture-execplan.md
   - ../plans/deploy-release-identity-readonly-evidence-manifest.md
   - ../plans/deploy-speed-phase-b-execplan.md
-validation: offline source audit, approved Pi5 plus StoneBase read-only evidence receipt f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8, accepted-main SSH run 20260721-135020-37ce54, exact ansible-core 2.19.4 locale reproduction, 857 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template parses, and the complete deploy aggregate
+validation: offline source audit, approved read-only evidence receipt f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8, accepted-main SSH runs 20260721-135020-37ce54 and 20260721-143844-16bae4, exact ansible-core 2.19.4 locale reproduction, 868 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template parses, the complete deploy aggregate, and exact verification of all 11 fixed runtime members totaling 59,603,748 bytes
 open_items:
-  - publish and merge the reviewed C.UTF-8 runtime remediation before another bootstrap
-  - after merge, repeat only the canonical Pi5 plus StoneBase plan, preflight, and serial SSH bootstrap route
-  - keep Local execution blocked until runner preflight proves the exact pinned runtime
+  - merge controller-side sealed runtime artifact prefetch before another bootstrap
+  - repeat only the canonical Pi5 plus StoneBase plan, preflight, and serial SSH bootstrap route
+  - keep Local execution blocked until offline bootstrap and runner preflight prove the exact pinned runtime
   - keep FJV and every terminal other than StoneBase outside connection, planning, preflight, and execution
 ---
 
@@ -42,13 +42,15 @@ activation, and verification targets and requires distinct Web and terminal
 repository claims, so the browser transition is planned and verified without
 manufacturing a terminal Git change.
 
-The accepted-main bootstrap run exposed a new bounded failure at
-`collection-install`. Exact offline reproduction confirms that the installer
-forced `LANG=C` and `LC_ALL=C`, while ansible-core 2.19.4 requires a UTF-8
-locale before any CLI command runs. The artifact, hash, Python package stage,
-SSH application, terminal claims, and rollback safety are not implicated.
-The fix is Go for review; another bootstrap and any Local execution remain
-blocked until that fix is accepted and the runtime is independently proved.
+The accepted-main bootstrap first exposed and corrected a bounded UTF-8 locale
+failure. After that correction merged, a second accepted-main run completed the
+ordinary release but failed the optional bootstrap at `python-download`. The
+raw network cause is intentionally not retained, but the structural defect is
+confirmed: all fixed dependencies were still retrieved from external services
+after terminal maintenance began. The remedy is a Pi5 pre-maintenance sealed
+prefetch followed by terminal-offline installation. Another bootstrap and any
+Local execution remain blocked until that remedy is accepted and the runtime
+is independently proved.
 
 ## Safety state at the audit boundary
 
@@ -555,13 +557,69 @@ stays blocked until an accepted-main SSH bootstrap records a successful closed
 observation and subsequent canonical preflight independently verifies the
 exact runtime.
 
+### Accepted UTF-8 remediation and maintenance-time download failure
+
+PR `#1054` merged the `C.UTF-8` remediation as accepted main
+`c5baa5297b2f5e60cc122f9ac2db2bca638f94cb`. Canonical run
+`20260721-143844-16bae4` selected only Pi5 and StoneBase and completed the
+ordinary SSH release successfully. Pi5 completed its fixed five-minute hold;
+StoneBase completed the full notice, maintenance ACK, SSH apply, exact ready
+ACK, independent evidence, cleanup, and maintenance clear. Both typed release
+claims ended verified at accepted main, with no rollback. FJV and every other
+terminal were not contacted.
+
+The optional Local runtime observation was independently preserved as:
+
+    status=failed
+    phase=python-download
+    failureCode=python-download-failed
+    cleanup=complete
+    lockSha256=sha256:e3bb5ce5ff5087438d59100b74b391a55ffbdf4c5063aaeaea5fc04928eae38e
+
+The direct external route failure itself remains **INCONCLUSIVE** because the
+bounded observation intentionally stores no raw network error. The structural
+cause is **CONFIRMED**: after the terminal was already in maintenance, the
+installer downloaded the Python standalone archive, resolved nine wheels over
+the network, and downloaded the collection archive. Successful members lived
+only in attempt-local staging. Thus fixed versions and hashes protected
+integrity but did not provide liveness or reuse across a transient outage.
+
+During the same detached run, an external observer also temporarily lost Pi5
+reachability. The canonical unit continued, durable state reached success, and
+later status reconciliation returned `persisted-success-unit-unloaded`. This is
+**CONFIRMED** evidence that coordinator response-loss handling worked as
+designed; it does not explain or repair the terminal runtime download boundary.
+
+The accepted structural remedy is to prefetch and verify all eleven fixed
+members on Pi5 before terminal notice, retain them in a content-addressed cache,
+transfer the sealed set during the SSH bootstrap, and run terminal installation
+with `pip --no-index --find-links` plus the local collection archive. A prefetch
+failure remains pre-maintenance and performs only existing pre-mutation
+manifest cleanup. The Pi5 receipt is not trusted as runtime readiness; only a
+successful terminal observation and later exact runner preflight can produce
+the runtime claim.
+
+The offline remedy now passes the complete deploy aggregate. Its fixed lock is
+`sha256:ecde0bbe80d4065f9bb84ecdc9372c08f0530635af459898e6ac8cb233165e5c`;
+all eleven members were fetched in a temporary controller cache and matched
+their exact size and digest, totaling 59,603,748 bytes. This proof contacted no
+device. Unknown fallback reasons are excluded from prefetch, and each offline
+installer failure boundary retains a bounded fail-closed observation.
+
+The Pi5 cache specifically lives below the existing ignored durable release
+root at `/opt/RaspberryPiSystem_002/logs/deploy/local-runtime-artifacts`. The
+release unit runs as unprivileged `denkon5sd02`; cache directories and members
+must be owned by that exact effective identity and cannot be group/world
+writable. Only the transferred StoneBase cache is root-owned.
+
 ## Go / No-Go decision
 
 Current split decision:
 
-- **Go**: the accepted typed-claim SSH route and the reviewed UTF-8 remediation.
-- **No-Go**: another bootstrap until the remediation is on `main`, and any
-  Local execution until exact runtime readiness is independently proved.
+- **Go**: the accepted typed-claim SSH route and offline implementation/review
+  of sealed Pi5 prefetch plus terminal-offline installation.
+- **No-Go**: another bootstrap until that structural remediation is on `main`,
+  and any Local execution until exact runtime readiness is independently proved.
 
 Live rollout requires all of the following:
 

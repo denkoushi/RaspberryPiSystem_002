@@ -37,6 +37,7 @@ from .local_execution import (
     SSH_EXECUTOR,
     STONEBASE_HOST,
     runtime_claim_identity,
+    runtime_prefetch_required,
 )
 from .terminal_adapters import TerminalAdapter
 from .terminal_executors import TerminalExecutor, executor_for
@@ -2514,7 +2515,56 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                 state.save()
                 raise
             state.save()
+            prepared_execution: dict[str, Any] | None = None
             try:
+                if runtime_prefetch_required(
+                    requested_executor=target.get("requestedExecutor"),
+                    effective_executor=target.get("effectiveExecutor"),
+                    fallback_reason=target.get("fallbackReason"),
+                    mutation_required=target.get("mutationRequired") is True,
+                ):
+                    with _measure_phase(
+                        state,
+                        runtime,
+                        "terminal-runtime-artifact-prefetch",
+                        host=host,
+                    ):
+                        prepared_execution = (
+                            runtime.prefetch_terminal_runtime_artifacts()
+                        )
+                    if (
+                        not isinstance(prepared_execution, dict)
+                        or set(prepared_execution)
+                        != {"receipt", "ansibleVarsPath"}
+                        or not isinstance(
+                            prepared_execution.get("ansibleVarsPath"), str
+                        )
+                    ):
+                        raise RuntimeError(
+                            "runtime artifact preparation result is malformed"
+                        )
+                    receipt = prepared_execution.get("receipt")
+                    if (
+                        not isinstance(receipt, dict)
+                        or set(receipt)
+                        != {
+                            "schemaVersion",
+                            "state",
+                            "lockSha256",
+                            "manifestSha256",
+                            "memberCount",
+                            "totalBytes",
+                            "cacheHits",
+                            "downloaded",
+                        }
+                        or receipt.get("schemaVersion") != 1
+                        or receipt.get("state") != "ready"
+                    ):
+                        raise RuntimeError(
+                            "runtime artifact preparation receipt is malformed"
+                        )
+                    target["runtimeArtifactPrefetch"] = receipt
+                    state.save()
                 if adapter.should_issue_notice(
                     emergency_override=args.emergency_override
                 ):
@@ -2593,7 +2643,6 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                 target["acknowledgedAt"] = runtime.utc_now()
                 token.checkpoint(f"before-playbook:{host}")
 
-                prepared_local: dict[str, Any] | None = None
                 if target["effectiveExecutor"] == LOCAL_EXECUTOR:
                     maintenance_state_sha256 = (
                         runtime.maintenance_ack_authority_sha256(
@@ -2607,25 +2656,25 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                         "terminal-local-artifact-seal",
                         host=host,
                     ):
-                        prepared_local = executor.prepare(
+                        prepared_execution = executor.prepare(
                             inventory,
                             target_spec,
                             target,
                             args.run_id,
                             maintenance_state_sha256,
                         )
-                    if not isinstance(prepared_local, dict):
+                    if not isinstance(prepared_execution, dict):
                         raise RuntimeError(
                             "local candidate artifact seal is malformed"
                         )
-                    target["localArtifact"] = prepared_local
-                    target["artifactSha256"] = prepared_local.get(
+                    target["localArtifact"] = prepared_execution
+                    target["artifactSha256"] = prepared_execution.get(
                         "artifactSha256"
                     )
-                    target["payloadSha256"] = prepared_local.get(
+                    target["payloadSha256"] = prepared_execution.get(
                         "payloadSha256"
                     )
-                    target["localUnitName"] = prepared_local.get("unitName")
+                    target["localUnitName"] = prepared_execution.get("unitName")
                     target["submissionState"] = "pending"
                     local_claims = _bind_local_release_claims(
                         runtime=runtime, target=target, run_id=args.run_id
@@ -2667,7 +2716,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                                     target_spec,
                                     target,
                                     args.run_id,
-                                    prepared_local,
+                                    prepared_execution,
                                 )
                         except Exception:
                             target["submissionState"] = "uncertain"
@@ -2733,7 +2782,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                                 target_spec,
                                 target,
                                 args.run_id,
-                                prepared_local,
+                                prepared_execution,
                             )
                 if target.get("activationRequired") is True:
                     activation_mode = target.get("activationMode")

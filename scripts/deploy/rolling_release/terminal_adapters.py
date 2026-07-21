@@ -228,11 +228,25 @@ class TerminalAdapter:
         host: str,
         revision: str,
         run_id: str,
+        *,
+        runtime_artifact_vars: str | None = None,
     ) -> None:
         apply_profile = getattr(self.runtime, "apply_terminal_profile", None)
         if callable(apply_profile):
-            apply_profile(inventory, host, revision, run_id, self.profile)
+            if runtime_artifact_vars is None:
+                apply_profile(inventory, host, revision, run_id, self.profile)
+            else:
+                apply_profile(
+                    inventory,
+                    host,
+                    revision,
+                    run_id,
+                    self.profile,
+                    runtime_artifact_vars=runtime_artifact_vars,
+                )
             return
+        if runtime_artifact_vars is not None:
+            raise RuntimeError("legacy terminal runtime cannot consume artifact vars")
         # Test and old injected runtimes retain the legacy executor shape.
         self.runtime.playbook(inventory, host, revision, run_id)
 

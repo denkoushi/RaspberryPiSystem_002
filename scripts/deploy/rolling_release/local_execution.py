@@ -35,17 +35,25 @@ MIN_FREE_BYTES = MAX_STAGING_BYTES + MAX_ARTIFACT_BYTES
 RUNTIME_ROOT = "/opt/raspi-local-ansible-runtime"
 RUNTIME_VERSION = "cpython-3.11.15-20260510-ansible-core-2.19.4"
 RUNTIME_BOOTSTRAP_OBSERVATION = "/var/lib/raspi-release/local-runtime-bootstrap.json"
+RUNTIME_BOOTSTRAP_LOCK_SHA256 = (
+    "sha256:ecde0bbe80d4065f9bb84ecdc9372c08f0530635af459898e6ac8cb233165e5c"
+)
 RUNTIME_PYTHON = "3.11.15"
 RUNTIME_PYTHON_DISTRIBUTION = {
     "version": "3.11.15",
+    "filename": (
+        "cpython-3.11.15+20260510-aarch64-unknown-linux-gnu-install_only.tar.gz"
+    ),
     "source": (
         "https://github.com/astral-sh/python-build-standalone/releases/download/"
         "20260510/cpython-3.11.15%2B20260510-aarch64-unknown-linux-gnu-install_only.tar.gz"
     ),
     "sha256": "0bc1b7acbb888881addf3a1c887a47d510d4300db6e3ad2ba461154b982e456a",
+    "size": 48_884_733,
 }
 RUNTIME_ANSIBLE_CORE = "2.19.4"
 RUNTIME_COLLECTIONS = (("community.general", "11.4.1"),)
+RUNTIME_ARTIFACT_LOCK_SCHEMA = 3
 RUNNER_PREFLIGHT_FAILURE_CODES = frozenset(
     {
         "ready",
@@ -61,6 +69,7 @@ RUNTIME_BOOTSTRAP_PHASES = frozenset(
         "initializing",
         "host-preflight",
         "lock-validate",
+        "artifact-cache",
         "staging-prepare",
         "python-download",
         "python-extract",
@@ -80,6 +89,7 @@ RUNTIME_BOOTSTRAP_FAILURE_CODES = frozenset(
         "host-ineligible",
         "lock-invalid",
         "requirements-missing",
+        "artifact-cache-invalid",
         "staging-preparation-failed",
         "python-download-failed",
         "python-extract-failed",
@@ -452,7 +462,7 @@ def validate_runner_preflight(value: Mapping[str, Any], *, host: str) -> dict[st
         observation["status"] not in {"changed", "current"}
         or observation["phase"] != "complete"
         or observation["cleanup"] != "complete"
-        or observation["lockSha256"] is None
+        or observation["lockSha256"] != RUNTIME_BOOTSTRAP_LOCK_SHA256
     ):
         raise LocalExecutionError("local runtime bootstrap proof is not ready")
     return result
@@ -518,14 +528,37 @@ def select_executor(
     )
 
 
+def runtime_prefetch_required(
+    *,
+    requested_executor: str,
+    effective_executor: str,
+    fallback_reason: str | None,
+    mutation_required: bool,
+) -> bool:
+    """Select only safe Local-to-SSH bootstrap fallbacks for prefetch."""
+
+    if (
+        requested_executor != LOCAL_EXECUTOR
+        or effective_executor != SSH_EXECUTOR
+        or mutation_required is not True
+        or not isinstance(fallback_reason, str)
+    ):
+        return False
+    return (
+        fallback_reason == "candidate-requires-ssh-configuration"
+        or fallback_reason.startswith("runner-ineligible:")
+    )
+
+
 def runtime_lock_payload() -> dict[str, Any]:
     return {
-        "schemaVersion": 2,
+        "schemaVersion": RUNTIME_ARTIFACT_LOCK_SCHEMA,
         "python": RUNTIME_PYTHON,
         "pythonDistribution": dict(RUNTIME_PYTHON_DISTRIBUTION),
         "ansibleCore": RUNTIME_ANSIBLE_CORE,
         "collections": dict(RUNTIME_COLLECTIONS),
         "runtimeRoot": RUNTIME_ROOT,
+        "bootstrapLockSha256": RUNTIME_BOOTSTRAP_LOCK_SHA256,
     }
 
 
