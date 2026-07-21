@@ -1,7 +1,7 @@
 ---
 id: KB-401
 title: Deploy release identity, activation, and runtime audit
-status: investigation-complete-implementation-go-live-no-go
+status: runtime-observability-remediation-implemented-review-pending-live-no-go
 scope: standard Pi5, Kiosk, Signage, SSH Ansible, and experimental StoneBase Local Ansible release route
 date: 2026-07-21
 source_of_truth: true
@@ -17,11 +17,11 @@ related_docs:
   - ../plans/deploy-release-identity-architecture-execplan.md
   - ../plans/deploy-release-identity-readonly-evidence-manifest.md
   - ../plans/deploy-speed-phase-b-execplan.md
-validation: offline source audit, immutable Git range classification, 747 deploy Python tests, aggregate deploy contracts, 13 Kiosk ACK tests, pure typed-claim state model, and approved Pi5 plus StoneBase read-only evidence receipt f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8
+validation: offline source audit, approved Pi5 plus StoneBase read-only evidence receipt f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8, 856 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template parses, and the complete deploy aggregate
 open_items:
-  - implement the accepted typed-claim architecture through the staged ExecPlan
-  - keep every live retry and Local execution blocked until the offline acceptance gate passes
-  - request separate approval for the first Pi5 plus StoneBase canary only after that gate
+  - publish and merge the reviewed runtime-observability remediation before another device operation
+  - after merge, use only the canonical Pi5 plus StoneBase plan, preflight, and serial bootstrap route
+  - keep FJV and every terminal other than StoneBase outside connection, planning, preflight, and execution
 ---
 
 # KB-401: Deploy release identity, activation, and runtime audit
@@ -343,6 +343,184 @@ release branch with `--status`; the CLI rejected it before connection. The
 canonical runbook form, with the approved Pi5 host explicitly supplied, was
 used instead. This correction reduced options and did not broaden target or
 authority. The manifest records the corrected command for future use.
+
+## Runtime bootstrap observability addendum (2026-07-21)
+
+### Scope and safety boundary
+
+This addendum investigates the StoneBase runtime bootstrap as a release-route
+contract, not as a request to retry one installer command. The following remain
+frozen while the investigation is open: runtime bootstrap, Local Ansible,
+terminal maintenance, candidate transfer, `--reverify-selected`, and all
+deployment retries. FJV and every terminal other than StoneBase remain outside
+both connection and probe scope.
+
+The only post-implementation device interactions were canonical read-only
+`--print-plan` and `--preflight-only` commands limited to Pi5 plus StoneBase.
+The latter submitted no release, maintenance, artifact, or systemd unit.
+
+### New evidence timeline
+
+| Event | Observation | Finding |
+|---|---|---|
+| SSH bootstrap release `20260721-121936-a828c3` | StoneBase moved from `ee55f018…` to `59f50681…`; terminal apply and independent evidence succeeded; the runtime-bootstrap task took 95,015 ms and reported Ansible `ok`, not `changed`. | `CONFIRMED`: ordinary SSH release success and Local-runtime readiness are different claims. |
+| Local canary PR #1052 | Non-executable README-only child candidate was merged as `3a015621…`; local contract tests and required CI passed. | `CONFIRMED`: the candidate history is Local-safe and does not itself require SSH configuration. |
+| Canonical Local preflight `20260721-123603-b28b1e` | `releaseSubmitted=false`; requested executor was `stonebase-local-ansible-poc`; effective executor was `ssh-ansible`; fallback was `runner-ineligible: local runner preflight reports runtime-unavailable`; runtime evidence was null. | `CONFIRMED`: Local selection failed before notice, maintenance, transfer, or mutation. |
+
+### Confirmed observability gap
+
+The installer emits only `RUNTIME_INSTALL_CHANGED`, `RUNTIME_INSTALL_CURRENT`,
+or the generic `RUNTIME_INSTALL_FAILED`. Its subprocess output is discarded.
+The Ansible task deliberately keeps that raw command under `no_log`, treats a
+nonzero result as non-fatal for an ordinary SSH release, and reduces it to
+`changed|current|failed`. The runner then independently reduces an absent or
+unreadable active runtime to `runtime-unavailable`.
+
+This is safe for secrets and correctly prevents Local execution, but it cannot
+answer which sealed bootstrap transition failed: download, digest check,
+archive validation, wheel installation, collection installation, final lock
+validation, or atomic activation. The root cause of this particular failed
+bootstrap is therefore **INCONCLUSIVE**, not a confirmed network, package, or
+host defect. Retrying any one suspected step would be a near-sighted repair
+and is prohibited by this investigation.
+
+### Required contract audit
+
+The next design must model these distinct identities and outcomes without
+collapsing them into a host-level success:
+
+| Boundary | Required bounded fact | Current state | Required audit result |
+|---|---|---|---|
+| installer | phase, stable failure code, runtime-lock identity, cleanup outcome | generic failure only | prove secret-free diagnosis is sufficient to classify every installer exit |
+| Ansible bootstrap | installer observation plus whether SSH application may continue | `changed|current|failed` debug fact, no durable target field | decide and test the explicit non-fatal/blocked contract |
+| runner preflight | fixed Python, ansible-core, collection versions, storage, configuration, prior bootstrap observation | typed availability code, no installer phase | bind a safe prior-bootstrap observation without trusting it as runtime proof |
+| coordinator selection | requested, effective, fallback, exact preflight receipt | fail-closed SSH fallback | retain fallback as durable evidence and never promote it after maintenance |
+| route/fleet finalization | terminal repository, Local artifact, runtime, independent health claims | SSH success can coexist with missing runtime claim | make that coexistence visible rather than silently treating it as Local readiness |
+
+The installer state machine to audit is:
+
+    lock-read -> download -> digest-verify -> safe-extract
+      -> hash-locked Python packages -> collection-install
+      -> runtime-lock-verify -> atomic-active-link -> runner-preflight
+
+Each edge needs a precondition, bounded produced fact, response-loss behavior,
+cleanup owner, and a rule for whether an existing SSH release may continue.
+No error text, URL query, environment value, inventory value, `.env`, token,
+or key may enter telemetry, durable state, or a candidate artifact.
+
+### Scenario and test matrix
+
+| Scenario | Existing proof | Missing proof to add before remediation |
+|---|---|---|
+| valid runtime, Local selected | runner preflight validates exact versions | installer-to-runner lineage and durable runtime claim |
+| missing active runtime | `runtime-unavailable` fallback before maintenance | bounded installer phase and cleanup evidence |
+| digest, archive, wheel, collection, lock, link failures | installer has defensive branches | deterministic unit tests for every branch and no-secret output checks |
+| installer response loss | Local unit response loss is covered | bootstrap-specific reconciliation and no false `current` result |
+| SSH app success with Local unavailable | observed in `20260721-121936-a828c3` | durable state and operator status distinguish app success from Local readiness |
+| Local unit response loss | route tests retain maintenance and reconcile | runtime claim remains unknown until deterministic unit reconciliation |
+| terminal rollback with Pi5 forward | typed-claim tests cover separate Web/repository state | runtime bootstrap residue is not adopted as rollback authority |
+
+A pure, non-device state-machine prototype must cover normal ready, same-SHA
+no-op, bootstrap failure with SSH continuation, Local response loss, and
+sealed terminal rollback. It may use synthetic identities only; it must prove
+that a host cannot become Local-ready from an SSH success or an installer
+result alone.
+
+The prototype passed those five cases. Its assertions explicitly reject both
+`ssh_verified` alone and an `installer_observed` result alone as Local-ready.
+It is a temporary investigation artifact, not production code or a release
+simulation.
+
+### Investigation exit gate
+
+The investigation may recommend an offline remediation only when it supplies
+a closed, secret-free bootstrap observation schema; explicit persistence and
+compatibility rules; fault tests for every state-machine edge; and a route
+contract consumer for the observation. Otherwise the decision remains No-Go,
+and no bootstrap retry or Local execution is authorized.
+
+### Approved bounded evidence outcome
+
+The separately approved follow-up used only canonical status and bounded
+read-only commands. Canonical status for `20260721-121936-a828c3` reconfirmed
+that the SSH release and independent terminal evidence succeeded while the
+runtime bootstrap task ran once for 95,015 ms with Ansible outcome `ok`. The
+Pi5 unit journal was filtered to the three known bootstrap task names and the
+bounded marker; it recorded exactly:
+
+    STONEBASE_LOCAL_RUNTIME_BOOTSTRAP:failed
+
+This rejects the hypothesis that bootstrap was merely skipped or incorrectly
+classified as current. It confirms that the installer returned a failure and
+the ordinary SSH release deliberately continued.
+
+The workstation could not establish a new StoneBase read-only session: the
+direct Tailscale connection timed out, and a Pi5 ProxyJump reached SSH but had
+no StoneBase credential on the workstation side. Both attempts stopped before
+any StoneBase command executed. The already completed canonical aggregate
+preflight remains the authoritative terminal observation and reports
+`runtime-unavailable` before maintenance.
+
+Because the installer discarded subprocess output, removed temporary staging,
+and persisted no phase-specific observation, the historical failing phase is
+not recoverable through further read-only inspection. The structural root
+cause—loss of failure identity across installer, Ansible, runner, and durable
+run state—is **CONFIRMED**. The underlying download/package/collection/link
+failure remains **INCONCLUSIVE**. More connection retries cannot change that
+evidence grade and are not authorized by this audit.
+
+### Offline remediation and exit-gate result
+
+The remediation implements one closed, secret-free observation across the
+entire bootstrap boundary. The root-owned installer atomically persists a
+random attempt ID, current phase, stable failure code, runtime version, exact
+runtime-lock digest, cleanup state, and UTC observation time. It never stores
+subprocess output, URLs, environment values, inventory values, or Ansible
+variables. An interrupted process remains `running` at its last durable phase;
+a failed process becomes `failed` with one allowlisted code; only a completed
+install may become `changed` or `current`.
+
+The closed phases cover host and lock validation, staging preparation, Python
+download and safe extraction, hash-locked Python packages, collection download
+and installation, runtime verification and publish, active-link activation,
+cleanup, and internal observation failure. Primary failure identity is retained
+even if staging cleanup also fails. A missing or malformed observation is
+reported only as `unavailable` and never converted into runtime readiness.
+
+The non-fatal SSH bootstrap contract remains intentional: an ordinary SSH
+release may succeed while optional Local runtime bootstrap fails. The Ansible
+callback copies only the closed observation into durable run telemetry. The
+runner independently verifies the observation file ownership and mode, the
+current lock-file digest, exact Python/Ansible/collection versions, existing
+configuration, and storage. Neither SSH success nor the installer observation
+alone produces the typed `runtime` claim. Preflight exposes the same bounded
+observation even when it safely falls back to SSH.
+
+The sealed Local inventory now explicitly fixes
+`ansible_python_interpreter` to the active pinned runtime. This follows
+Ansible's standard local-connection contract: `ansible-playbook -c local` is
+standard, but an explicit inventory host does not receive the implicit
+localhost interpreter binding automatically. The historical failure occurred
+before any Local playbook ran; this interpreter correction prevents a separate
+future drift to the OS Python after bootstrap succeeds.
+
+Fault tests cover atomic observation, interruption, closed phase mapping,
+primary-plus-cleanup failure, malformed or missing evidence, runtime-lock
+digest mismatch, secret suppression, callback allowlisting, durable telemetry,
+SSH fallback visibility, fixed interpreter inventory, and the route invariant
+that SSH apply does not produce a runtime claim. The complete offline gate
+passed with 856 deploy Python tests, 20 isolated PostgreSQL/API tests, 24
+recovery tests, 99 Ansible template parses, lifecycle and safety contracts,
+both inventories, and every Ansible syntax/check contract.
+
+This closes the observability investigation gate for review and merge. It does
+not retroactively identify the historical failed dependency phase, and it does
+not assert that the pinned runtime is already present on StoneBase. Device work
+remains No-Go until this exact remediation is accepted on `main` and canonical
+Pi5 plus StoneBase-only plan and preflight succeed. After that boundary, the
+already granted operator authorization permits the serial SSH bootstrap; any
+new bounded failure must be handled from its recorded phase rather than by a
+blind retry.
 
 ## Go / No-Go decision
 

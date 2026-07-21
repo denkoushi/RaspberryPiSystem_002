@@ -73,19 +73,33 @@
   failed_when: false
   no_log: true
 
-- name: Classify StoneBase local runtime bootstrap outcome without logs
+- name: Read bounded StoneBase local runtime bootstrap observation
+  ansible.builtin.command:
+    argv:
+      - /usr/local/libexec/raspi-local-runtime-install
+      - status
+  register: stonebase_local_runtime_status
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: Validate bounded StoneBase local runtime bootstrap observation
   ansible.builtin.set_fact:
     stonebase_local_runtime_bootstrap_outcome: >-
       {{
-        'changed'
-        if stonebase_local_runtime_install.rc == 0
-        and 'RUNTIME_INSTALL_CHANGED' in stonebase_local_runtime_install.stdout
-        else 'current'
-        if stonebase_local_runtime_install.rc == 0
-        else 'failed'
+        stonebase_local_runtime_status.stdout
+        if stonebase_local_runtime_status.rc == 0
+        and stonebase_local_runtime_status.stdout is match(
+          '^RUNTIME_INSTALL_OBSERVATION:'
+          ~ '(running|changed|current|failed):'
+          ~ '(initializing|host-preflight|lock-validate|staging-prepare|python-download|python-extract|python-packages|collection-download|collection-install|runtime-verify|runtime-publish|active-link|cleanup|complete|internal):'
+          ~ '(host-ineligible|lock-invalid|requirements-missing|staging-preparation-failed|python-download-failed|python-extract-failed|python-packages-failed|collection-download-failed|collection-install-failed|runtime-verification-failed|runtime-publish-conflict|active-link-failed|cleanup-failed|internal-error|none):'
+          ~ '(pending|complete|failed):[0-9a-f]{32}:(sha256:[0-9a-f]{64}|none)$'
+        )
+        else 'RUNTIME_INSTALL_OBSERVATION:unavailable'
       }}
   no_log: true
 
 - name: Report bounded StoneBase local runtime bootstrap outcome
   ansible.builtin.debug:
-    msg: "STONEBASE_LOCAL_RUNTIME_BOOTSTRAP:{{ stonebase_local_runtime_bootstrap_outcome }}"
+    msg: "{{ stonebase_local_runtime_bootstrap_outcome }}"

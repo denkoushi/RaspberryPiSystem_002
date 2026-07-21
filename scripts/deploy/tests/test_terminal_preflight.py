@@ -147,6 +147,17 @@ class TerminalPreflightTest(unittest.TestCase):
             "runnerVersion": local_execution.SCHEMA_VERSION,
             "configurationReady": True,
             "failureCode": "ready",
+            "bootstrapObservation": {
+                "schemaVersion": 1,
+                "attemptId": "1" * 32,
+                "status": "current",
+                "phase": "complete",
+                "failureCode": None,
+                "cleanup": "complete",
+                "runtimeVersion": local_execution.RUNTIME_VERSION,
+                "lockSha256": "sha256:" + "d" * 64,
+                "observedAt": "2026-07-21T12:00:00Z",
+            },
         }
         completed = subprocess.CompletedProcess(
             [], 0, json.dumps(observation, separators=(",", ":")) + "\n", ""
@@ -184,6 +195,17 @@ class TerminalPreflightTest(unittest.TestCase):
             "runnerVersion": local_execution.SCHEMA_VERSION,
             "configurationReady": True,
             "failureCode": "ready",
+            "bootstrapObservation": {
+                "schemaVersion": 1,
+                "attemptId": "1" * 32,
+                "status": "current",
+                "phase": "complete",
+                "failureCode": None,
+                "cleanup": "complete",
+                "runtimeVersion": local_execution.RUNTIME_VERSION,
+                "lockSha256": "sha256:" + "d" * 64,
+                "observedAt": "2026-07-21T12:00:00Z",
+            },
         }
         spec = {
             "project": "/opt/RaspberryPiSystem_002",
@@ -218,6 +240,9 @@ class TerminalPreflightTest(unittest.TestCase):
         self.assertEqual(
             evidence["runtime"]["python"], local_execution.RUNTIME_PYTHON
         )
+        self.assertEqual(
+            evidence["runtime"]["bootstrapObservation"]["status"], "current"
+        )
 
         fallback = terminal_preflight._executor_evidence(
             spec,
@@ -230,6 +255,33 @@ class TerminalPreflightTest(unittest.TestCase):
         )
         self.assertIn("runner-ineligible", fallback["fallbackReason"])
         self.assertIsNone(fallback["runtime"])
+
+        failed_runner = {
+            **runner,
+            "ready": False,
+            "pythonVersion": "",
+            "ansibleCoreVersion": "",
+            "collections": {},
+            "failureCode": "runtime-unavailable",
+            "bootstrapObservation": {
+                **runner["bootstrapObservation"],
+                "status": "failed",
+                "phase": "python-packages",
+                "failureCode": "python-packages-failed",
+            },
+        }
+        failed = terminal_preflight._executor_evidence(
+            spec,
+            [{"repositoryHead": SHA, "localRunnerPreflight": failed_runner}],
+            source,
+            selection_run=git_success,
+        )
+        self.assertEqual(failed["effectiveExecutor"], local_execution.SSH_EXECUTOR)
+        self.assertIsNone(failed["runtime"])
+        self.assertEqual(
+            failed["bootstrapObservation"]["failureCode"],
+            "python-packages-failed",
+        )
 
     def test_contract_builder_resolves_tailscale_address_and_omits_secrets(self):
         inventory = {

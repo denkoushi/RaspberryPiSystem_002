@@ -152,6 +152,14 @@ def test_methods(path: Path) -> set[str]:
 
 
 class RouteContractTest(unittest.TestCase):
+    def test_ssh_apply_observes_optional_runtime_without_producing_its_claim(self):
+        stage = next(stage for stage in ROUTE_STAGES if stage.id == "terminal.apply")
+        self.assertEqual(
+            stage.preflight_proof,
+            "terminal.candidate-applied-and-local-runtime-observation-bounded-not-trusted",
+        )
+        self.assertNotIn("runtime", stage.produced_claims)
+
     def test_route_contract_is_complete_and_unique(self):
         validate_route_contract()
         self.assertEqual(len(ROUTE_STAGES), len({stage.id for stage in ROUTE_STAGES}))

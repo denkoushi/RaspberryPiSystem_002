@@ -18,6 +18,7 @@ from .backends.systemd import (
     DEFAULT_REMOTE_USER,
     SystemdBackend,
 )
+from .local_execution import LocalExecutionError, validate_runtime_bootstrap_observation
 from .models import LaunchSpec
 from .planner import executor_selection, required_claim_kinds
 from .policy import server_identity
@@ -255,6 +256,14 @@ def _bounded_probe_details(result: Any) -> list[str]:
     return details
 
 
+def _valid_runtime_bootstrap_observation(value: Any) -> bool:
+    try:
+        validated = validate_runtime_bootstrap_observation(value)
+    except LocalExecutionError:
+        return False
+    return validated == value
+
+
 def _probe_record(name: str, result: Any, *, structured: bool = False) -> dict[str, Any]:
     returncode = result.returncode if type(result.returncode) is int else EX_SOFTWARE
     status = "passed" if returncode == 0 else ("blocked" if returncode == EX_CONFIG else "incomplete")
@@ -309,6 +318,15 @@ def _probe_record(name: str, result: Any, *, structured: bool = False) -> dict[s
         )
         executor = payload.get("executor")
         if name == "terminal" and executor is not None:
+            bootstrap_observation = (
+                executor.get("bootstrapObservation")
+                if isinstance(executor, dict)
+                else None
+            )
+            bootstrap_valid = (
+                bootstrap_observation is None
+                or _valid_runtime_bootstrap_observation(bootstrap_observation)
+            )
             runtime_evidence = (
                 executor.get("runtime") if isinstance(executor, dict) else None
             )
@@ -321,6 +339,7 @@ def _probe_record(name: str, result: Any, *, structured: bool = False) -> dict[s
                     "ansibleCore",
                     "collections",
                     "runnerVersion",
+                    "bootstrapObservation",
                 }
                 and isinstance(runtime_evidence.get("identity"), str)
                 and re.fullmatch(
@@ -328,6 +347,17 @@ def _probe_record(name: str, result: Any, *, structured: bool = False) -> dict[s
                 )
                 is not None
                 and isinstance(runtime_evidence.get("collections"), dict)
+                and _valid_runtime_bootstrap_observation(
+                    runtime_evidence.get("bootstrapObservation")
+                )
+                and runtime_evidence["bootstrapObservation"].get("status")
+                in {"changed", "current"}
+                and runtime_evidence["bootstrapObservation"].get("phase")
+                == "complete"
+                and runtime_evidence["bootstrapObservation"].get("cleanup")
+                == "complete"
+                and runtime_evidence["bootstrapObservation"].get("failureCode")
+                is None
             )
             if (
                 not isinstance(executor, dict)
@@ -337,12 +367,23 @@ def _probe_record(name: str, result: Any, *, structured: bool = False) -> dict[s
                     "effectiveExecutor",
                     "fallbackReason",
                     "runtime",
+                    "bootstrapObservation",
                 }
                 or executor.get("requestedExecutor")
                 not in {"ssh-ansible", "stonebase-local-ansible-poc"}
                 or executor.get("effectiveExecutor")
                 not in {"ssh-ansible", "stonebase-local-ansible-poc"}
                 or not runtime_valid
+                or not bootstrap_valid
+                or (
+                    runtime_evidence is not None
+                    and runtime_evidence.get("bootstrapObservation")
+                    != bootstrap_observation
+                )
+                or (
+                    executor.get("requestedExecutor") == "ssh-ansible"
+                    and bootstrap_observation is not None
+                )
                 or (
                     executor.get("requestedExecutor")
                     == executor.get("effectiveExecutor")
@@ -550,6 +591,11 @@ def _preflight_report(
         **selection,
         "runtimeEvidence": (
             executor.get("runtime") if isinstance(executor, dict) else None
+        ),
+        "runtimeBootstrapObservation": (
+            executor.get("bootstrapObservation")
+            if isinstance(executor, dict)
+            else None
         ),
         "terminalCount": terminal_count,
         "releaseSubmitted": False,

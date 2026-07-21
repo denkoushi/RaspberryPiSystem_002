@@ -1,7 +1,7 @@
 ---
 id: deploy-release-identity-architecture
 title: Migrate deployment planning and evidence to typed release claims
-status: offline-implementation-complete-live-rollout-blocked
+status: runtime-observability-remediation-review-pending-live-rollout-blocked
 scope: rolling release planner, fleet and run state, Kiosk activation, SSH and Local executors, route contracts
 date: 2026-07-21
 source_of_truth: docs/plans/deploy-release-identity-architecture-execplan.md
@@ -14,10 +14,11 @@ related_docs:
   - docs/decisions/ADR-20260721-deploy-release-identity-and-activation.md
   - docs/plans/deploy-release-identity-readonly-evidence-manifest.md
   - docs/plans/deploy-speed-phase-b-execplan.md
-validation: Milestones 1 through 6 complete with 840 deploy Python tests, 19 bounded Web activation tests, full aggregate deploy contracts, sealed runtime supply-chain verification, and approved read-only evidence sha256:f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8
+validation: Milestones 1 through 6 plus runtime-observability remediation complete offline with 856 deploy Python tests, 19 bounded Web activation tests, full aggregate deploy contracts, sealed runtime supply-chain verification, and approved read-only evidence sha256:f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8
 open_items:
-  - present canonical Pi5 plus StoneBase-only print-plan and preflight commands for a new exact hardware approval
-  - keep Local bootstrap, Local execution, and every hardware mutation blocked until that approval
+  - publish and merge the runtime-observability remediation
+  - after merge, execute canonical Pi5 plus StoneBase-only plan and preflight under the existing operator authorization
+  - keep Local execution blocked until the serial SSH bootstrap proves the exact pinned runtime
   - keep FJV and every terminal other than StoneBase excluded
 ---
 
@@ -43,11 +44,13 @@ rollback, and Phase B changed-only service/container lifecycle remain. The
 default executor remains SSH Ansible. Local Ansible stays behind its StoneBase
 flag and was rebased only after the typed-claim SSH path was proven and merged.
 
-The evidence gate, related ADR, and Milestones 1 through 6 offline
-implementation are complete. This is not hardware authorization. It must not
-be used to retry a deployment, bootstrap a runtime, run Local Ansible,
-reverify, or connect to a device until a new exact hardware approval is
-granted for the canonical Pi5 plus StoneBase-only gate.
+The evidence gate, related ADR, Milestones 1 through 6, and the bounded runtime
+observability remediation are complete offline. The operator has granted
+continuous authorization for normalization, but device work remains ordered:
+the remediation must first be accepted on `main`, then the canonical Pi5 plus
+StoneBase-only plan and preflight must pass. FJV and every other terminal stay
+excluded. Local execution remains blocked until a serial SSH bootstrap proves
+the exact pinned runtime.
 
 ## Progress
 
@@ -65,7 +68,8 @@ granted for the canonical Pi5 plus StoneBase-only gate.
 - [x] (2026-07-21 10:12Z) Completed Milestone 5 offline: ported the minimum sealed StoneBase Local executor behind its exact-scope flag, retained pre-maintenance SSH fallback and post-maintenance rollback-only behavior, and kept Web, repository, artifact, runtime, and independent-health proofs separate.
 - [x] (2026-07-21 10:12Z) Completed Milestone 6 offline: made all 30 route stages executable transition contracts, bound planning and preflight to a deterministic receipt, and exercised before-call, after-call, and response-loss boundaries through shared scenarios.
 - [x] (2026-07-21 10:12Z) Passed the complete offline acceptance gate: 840 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, safety/lifecycle/shell contracts, 99 Ansible template parses, all playbook syntax/check contracts including the sealed Local playbook, 19 focused Web tests, Web typecheck/lint, and exact runtime artifact/hash checks.
-- [ ] Obtain a new explicit approval for a Pi5 plus StoneBase-only canary; keep FJV and every other terminal excluded.
+- [x] (2026-07-21 13:25Z) Completed the runtime-bootstrap observability remediation offline: closed atomic installer observations, durable Ansible telemetry, runner/lock lineage, fallback visibility, fixed Local Python interpreter, route non-trust invariant, and the complete 856-test aggregate. Detailed evidence remains only in [KB-401](../knowledge-base/KB-401-deploy-release-identity-runtime-audit.md#offline-remediation-and-exit-gate-result).
+- [ ] Publish and merge the remediation, then run the canonical exact-scope plan/preflight and serial SSH bootstrap under the existing operator authorization; keep Local execution blocked until runtime readiness is independently proved.
 
 ## Surprises & Discoveries
 
@@ -208,6 +212,13 @@ granted for the canonical Pi5 plus StoneBase-only gate.
   local verification area and matched their checked-in SHA-256 values. The
   installer now accepts the exact collection URL and digest, not a domain
   prefix or digest-shaped string.
+
+- Observation: standard Local Ansible does not automatically pin modules to
+  the playbook interpreter for an explicit inventory host.
+  Evidence: the sealed inventory used `ansible_connection: local` but omitted
+  `ansible_python_interpreter`; only Ansible's implicit localhost receives the
+  automatic `ansible_playbook_python` binding. The remediation explicitly
+  selects the active pinned runtime and asserts it inside the sealed playbook.
 
 ## Decision Log
 
@@ -375,6 +386,14 @@ granted for the canonical Pi5 plus StoneBase-only gate.
   Rationale: target-set membership, required verification, produced claims,
   response loss, rollback eligibility, and recovery ownership must be rejected
   by the same model used by planner, preflight, and fault tests.
+  Date/Author: 2026-07-21 / Codex.
+
+- Decision: preserve optional, non-fatal runtime bootstrap during ordinary SSH
+  apply while making its outcome a durable bounded observation, never a
+  runtime claim.
+  Rationale: SSH application success and Local-runtime readiness are separate
+  facts. Blocking all SSH releases on optional Local readiness would reduce
+  availability, while hiding bootstrap failure caused the diagnostic gap.
   Date/Author: 2026-07-21 / Codex.
 
 ## Outcomes & Retrospective
@@ -881,3 +900,19 @@ typed ineligibility code instead of a malformed response when bootstrap is
 incomplete. SSH bootstrap remains pre-maintenance and non-fatal for an ordinary
 SSH release, but emits only a bounded `changed|current|failed` outcome; a Local
 run remains fail-closed until a later canonical preflight proves the full pin.
+
+Revision note (2026-07-21): Canonical SSH bootstrap run
+`20260721-121936-a828c3` successfully applied the terminal release but did
+not yield a usable pinned runtime. The later read-only Local preflight
+`20260721-123603-b28b1e` correctly fell back before maintenance with
+`runtime-unavailable`. Detailed evidence, the cross-boundary observation gap,
+and the frozen Go/No-Go audit are recorded only in
+[KB-401](../knowledge-base/KB-401-deploy-release-identity-runtime-audit.md#runtime-bootstrap-observability-addendum-2026-07-21).
+
+Revision note (2026-07-21 13:25Z): Completed the offline runtime-bootstrap
+observability remediation and closed its review gate with atomic closed phase
+evidence, durable telemetry, exact lock lineage, fixed Local interpreter, and
+the route invariant that SSH apply cannot produce a runtime claim. The complete
+aggregate passed 856 deploy Python tests plus all existing integration,
+recovery, safety, lifecycle, inventory, and Ansible contracts. Device execution
+remains ordered behind accepted `main` and canonical exact-scope preflight.

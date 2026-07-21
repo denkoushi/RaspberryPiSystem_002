@@ -28,11 +28,13 @@ LOCAL_EXECUTOR = "stonebase-local-ansible-poc"
 STONEBASE_HOST = "raspi4-kensaku-stonebase01"
 STONEBASE_PROFILE = "kiosk"
 LOCAL_PLAYBOOK = "infrastructure/ansible/playbooks/deploy-stonebase-local.yml"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 MAX_ARTIFACT_BYTES = 128 * 1024 * 1024
 MAX_STAGING_BYTES = 256 * 1024 * 1024
 MIN_FREE_BYTES = MAX_STAGING_BYTES + MAX_ARTIFACT_BYTES
 RUNTIME_ROOT = "/opt/raspi-local-ansible-runtime"
+RUNTIME_VERSION = "cpython-3.11.15-20260510-ansible-core-2.19.4"
+RUNTIME_BOOTSTRAP_OBSERVATION = "/var/lib/raspi-release/local-runtime-bootstrap.json"
 RUNTIME_PYTHON = "3.11.15"
 RUNTIME_PYTHON_DISTRIBUTION = {
     "version": "3.11.15",
@@ -50,7 +52,45 @@ RUNNER_PREFLIGHT_FAILURE_CODES = frozenset(
         "configuration-unavailable",
         "runtime-unavailable",
         "runtime-lock-mismatch",
+        "bootstrap-observation-unavailable",
         "storage-unavailable",
+    }
+)
+RUNTIME_BOOTSTRAP_PHASES = frozenset(
+    {
+        "initializing",
+        "host-preflight",
+        "lock-validate",
+        "staging-prepare",
+        "python-download",
+        "python-extract",
+        "python-packages",
+        "collection-download",
+        "collection-install",
+        "runtime-verify",
+        "runtime-publish",
+        "active-link",
+        "cleanup",
+        "complete",
+        "internal",
+    }
+)
+RUNTIME_BOOTSTRAP_FAILURE_CODES = frozenset(
+    {
+        "host-ineligible",
+        "lock-invalid",
+        "requirements-missing",
+        "staging-preparation-failed",
+        "python-download-failed",
+        "python-extract-failed",
+        "python-packages-failed",
+        "collection-download-failed",
+        "collection-install-failed",
+        "runtime-verification-failed",
+        "runtime-publish-conflict",
+        "active-link-failed",
+        "cleanup-failed",
+        "internal-error",
     }
 )
 
@@ -118,6 +158,7 @@ _PUBLIC_CONTRACT_KEYS = frozenset(
 _SEALED_INVENTORY_KEYS = frozenset(
     {
         "ansible_connection",
+        "ansible_python_interpreter",
         "ansible_user",
         "repo_path",
         "terminal_release_mode",
@@ -381,6 +422,7 @@ def validate_runner_preflight(value: Mapping[str, Any], *, host: str) -> dict[st
         "runnerVersion",
         "configurationReady",
         "failureCode",
+        "bootstrapObservation",
     }
     if not isinstance(value, Mapping) or set(value) != expected:
         raise LocalExecutionError("local runner preflight is malformed")
@@ -403,6 +445,16 @@ def validate_runner_preflight(value: Mapping[str, Any], *, host: str) -> dict[st
         or result["configurationReady"] is not True
     ):
         raise LocalExecutionError("local runner/runtime preflight did not match the lock")
+    observation = validate_runtime_bootstrap_observation(
+        result["bootstrapObservation"]
+    )
+    if (
+        observation["status"] not in {"changed", "current"}
+        or observation["phase"] != "complete"
+        or observation["cleanup"] != "complete"
+        or observation["lockSha256"] is None
+    ):
+        raise LocalExecutionError("local runtime bootstrap proof is not ready")
     return result
 
 
@@ -483,10 +535,67 @@ def runtime_claim_identity() -> str:
     return f"sha256:{sha256_bytes(canonical_json(runtime_lock_payload()))}"
 
 
+def validate_runtime_bootstrap_observation(value: Any) -> dict[str, Any]:
+    expected = {
+        "schemaVersion",
+        "attemptId",
+        "status",
+        "phase",
+        "failureCode",
+        "cleanup",
+        "runtimeVersion",
+        "lockSha256",
+        "observedAt",
+    }
+    if not isinstance(value, Mapping) or set(value) != expected:
+        raise LocalExecutionError("runtime bootstrap observation is malformed")
+    result = dict(value)
+    status = result["status"]
+    phase = result["phase"]
+    failure_code = result["failureCode"]
+    lock_sha = result["lockSha256"]
+    if (
+        result["schemaVersion"] != 1
+        or not isinstance(result["attemptId"], str)
+        or re.fullmatch(r"[0-9a-f]{32}", result["attemptId"]) is None
+        or status not in {"running", "changed", "current", "failed"}
+        or phase not in RUNTIME_BOOTSTRAP_PHASES
+        or result["cleanup"] not in {"pending", "complete", "failed"}
+        or result["runtimeVersion"] != RUNTIME_VERSION
+        or not isinstance(result["observedAt"], str)
+        or _UTC_TIMESTAMP_RE.fullmatch(result["observedAt"]) is None
+        or (
+            lock_sha is not None
+            and (
+                not isinstance(lock_sha, str)
+                or re.fullmatch(r"sha256:[0-9a-f]{64}", lock_sha) is None
+            )
+        )
+    ):
+        raise LocalExecutionError("runtime bootstrap observation is malformed")
+    if status == "failed":
+        if (
+            failure_code not in RUNTIME_BOOTSTRAP_FAILURE_CODES
+            or phase == "complete"
+            or result["cleanup"] == "pending"
+        ):
+            raise LocalExecutionError("runtime bootstrap failure code is malformed")
+    elif failure_code is not None:
+        raise LocalExecutionError("runtime bootstrap success contains a failure code")
+    if status == "running" and result["cleanup"] != "pending":
+        raise LocalExecutionError("runtime bootstrap running state is malformed")
+    if status in {"changed", "current"} and (
+        phase != "complete" or result["cleanup"] != "complete" or lock_sha is None
+    ):
+        raise LocalExecutionError("runtime bootstrap success is incomplete")
+    return result
+
+
 def _inventory(binding: CandidateBinding, public: Mapping[str, Any]) -> bytes:
     contract = validate_public_contract(public)
     host_vars = {
         "ansible_connection": "local",
+        "ansible_python_interpreter": f"{RUNTIME_ROOT}/active/bin/python3",
         "ansible_user": contract["user"],
         "repo_path": contract["repoPath"],
         "terminal_release_mode": "release-only",

@@ -252,7 +252,7 @@ ROUTE_STAGES: tuple[RouteStage, ...] = (
         "terminal",
         "mutation",
         ("apply",),
-        "terminal.candidate-and-runtime-ready",
+        "terminal.candidate-applied-and-local-runtime-observation-bounded-not-trusted",
         "manifest-rollback",
         "terminal-adapter",
         "apply-before-after-faults",
