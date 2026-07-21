@@ -241,6 +241,13 @@ def build_target_contracts(
             raise TerminalPreflightContractError(
                 f"{host} has unsupported Local SSH common arguments"
             )
+        local_key_path = values.get("ansible_ssh_private_key_file")
+        if requested_executor == "stonebase-local-ansible-poc" and (
+            local_key_path is not None and local_key_path != ""
+        ):
+            raise TerminalPreflightContractError(
+                f"{host} has an unsupported Local SSH private-key path"
+            )
 
         nfc_enabled = "nfc_agent_client_id" in values
         barcode_enabled = _boolean(values.get("barcode_agent_enabled"))

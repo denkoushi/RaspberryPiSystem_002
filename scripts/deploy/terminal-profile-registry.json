@@ -165,6 +165,7 @@
 
     {"match": "exact", "path": ".gitignore", "component": "deploy-control"},
     {"match": "exact", "path": "infrastructure/ansible/ansible-readonly.cfg", "component": "deploy-control"},
+    {"match": "exact", "path": "infrastructure/ansible/files/stonebase-local-ansible/ssh-known-hosts", "component": "local-executor-runtime"},
     {"match": "exact", "path": "scripts/update-all-clients.sh", "component": "deploy-control"},
     {"match": "exact", "path": "scripts/deploy/signage-runtime-proof.py", "component": "signage-role"},
     {"match": "exact", "path": "scripts/deploy/stonebase-local-ansible-runner.py", "component": "local-executor-runtime"},

@@ -25,6 +25,12 @@ from scripts.deploy.terminal_profile_registry import load_registry
 
 SHA = "a" * 40
 RUN_ID = "20260718-120000-a1b2c3"
+PROJECT = Path(__file__).resolve().parents[3]
+VALID_KNOWN_HOSTS = (
+    "* ssh-ed25519 "
+    "AAAAC3NzaC1lZDI1NTE5AAAAIFZUFszeD9xbuiKR9+X8lDn/"
+    "ZXW1tlLCUvasHb2N7ox+\n"
+)
 
 TORQUE_HELPER_PATH = (
     "infrastructure/ansible/roles/client/templates/torque-bluetooth-adapter.sh.j2"
@@ -131,18 +137,17 @@ def candidate_success(argv, *, timeout):
 
 class TerminalPreflightTest(unittest.TestCase):
     def test_exact_candidate_registry_classifier_runs_without_ambient_imports(self):
-        project = Path(__file__).resolve().parents[3]
-        source = (project / "scripts/deploy/terminal_profile_registry.py").read_text(
+        source = (PROJECT / "scripts/deploy/terminal_profile_registry.py").read_text(
             encoding="utf-8"
         )
-        payload = (project / "scripts/deploy/terminal-profile-registry.json").read_text(
+        payload = (PROJECT / "scripts/deploy/terminal-profile-registry.json").read_text(
             encoding="utf-8"
         )
 
         component_for = terminal_preflight._candidate_registry_component_for(
             source,
             payload,
-            repository_root=project,
+            repository_root=PROJECT,
         )
 
         self.assertEqual(
@@ -153,6 +158,117 @@ class TerminalPreflightTest(unittest.TestCase):
             component_for("scripts/deploy/stonebase-local-ansible-runner.py"),
             "local-executor-runtime",
         )
+
+    def test_candidate_local_transport_stages_exact_strict_pin(self) -> None:
+        source = (PROJECT / terminal_preflight.LOCAL_TRANSPORT_SOURCE).read_text(
+            encoding="utf-8"
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "known-hosts"
+            options = terminal_preflight._candidate_local_transport_options(
+                source,
+                VALID_KNOWN_HOSTS,
+                known_hosts_path=path,
+            )
+
+            self.assertEqual(path.read_text(encoding="ascii"), VALID_KNOWN_HOSTS)
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+            command = terminal_preflight._remote_probe_command(
+                target(terminal_preflight.STONEBASE_HOST),
+                transport_security_options=options,
+            )
+
+        self.assertIn("StrictHostKeyChecking=yes", command)
+        self.assertNotIn("StrictHostKeyChecking=no", command)
+        self.assertIn("GlobalKnownHostsFile=/dev/null", command)
+        self.assertIn("UpdateHostKeys=no", command)
+        self.assertIn("HostKeyAlgorithms=ssh-ed25519", command)
+        self.assertTrue(
+            any(value.startswith("UserKnownHostsFile=") for value in command)
+        )
+
+    def test_candidate_local_transport_rejects_malformed_pin_before_contact(self) -> None:
+        selected = {
+            **target(terminal_preflight.STONEBASE_HOST),
+            "requestedExecutor": terminal_preflight.LOCAL_EXECUTOR,
+            "statusClientId": "raspi4-kensaku-stonebase01-kiosk1",
+            "user": "raspi4-kensaku-stonebase01",
+        }
+        artifacts = dict(terminal_preflight._candidate_artifact_contract([selected]))
+
+        def candidate_runner(argv, *, timeout):
+            del timeout
+            if "blob" in argv:
+                relative = argv[-1].split(":", 1)[1]
+                sources = {
+                    terminal_preflight.LOCAL_TRANSPORT_SOURCE: (
+                        PROJECT / terminal_preflight.LOCAL_TRANSPORT_SOURCE
+                    ).read_text(encoding="utf-8"),
+                    terminal_preflight.LOCAL_KNOWN_HOSTS: "* ssh-rsa invalid\n",
+                    "scripts/deploy/rolling_release/local_execution.py": (
+                        PROJECT / "scripts/deploy/rolling_release/local_execution.py"
+                    ).read_text(encoding="utf-8"),
+                    "scripts/deploy/terminal_profile_registry.py": (
+                        PROJECT / "scripts/deploy/terminal_profile_registry.py"
+                    ).read_text(encoding="utf-8"),
+                    "scripts/deploy/terminal-profile-registry.json": (
+                        PROJECT / "scripts/deploy/terminal-profile-registry.json"
+                    ).read_text(encoding="utf-8"),
+                }
+                return subprocess.CompletedProcess(
+                    argv,
+                    0,
+                    sources.get(relative, "# exact candidate helper\n"),
+                    "",
+                )
+            if "-t" not in argv:
+                return subprocess.CompletedProcess(argv, 0, "", "")
+            relative = argv[-1].split(":", 1)[1]
+            return subprocess.CompletedProcess(
+                argv, 0, f"{artifacts.get(relative, 'blob')}\n", ""
+            )
+
+        calls: list[list[str]] = []
+
+        def must_not_contact(argv, **_kwargs):
+            calls.append(list(argv))
+            raise AssertionError("terminal transport must not run")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            lock = root / "logs/deploy/fleet-release-state.lock"
+            lock.parent.mkdir(parents=True)
+            lock.write_bytes(b"")
+            spec = {
+                "version": 1,
+                "mode": "orchestrator",
+                "project": str(root.resolve()),
+                "runId": RUN_ID,
+                "sha": SHA,
+                "expectedServerClientId": "raspberrypi5-server",
+                "requestedExecutor": terminal_preflight.LOCAL_EXECUTOR,
+                "targets": [selected],
+            }
+            with patch.object(
+                terminal_preflight,
+                "_executor_evidence",
+                return_value={
+                    "requestedExecutor": terminal_preflight.LOCAL_EXECUTOR,
+                    "effectiveExecutor": terminal_preflight.SSH_EXECUTOR,
+                    "fallbackReason": "executor-preflight-unavailable",
+                    "runtime": None,
+                },
+            ):
+                outcome = terminal_preflight.execute_orchestrator(
+                    spec,
+                    run_command=must_not_contact,
+                    candidate_run_command=candidate_runner,
+                    server_client_id_reader=lambda: "raspberrypi5-server",
+                    source="TRUSTED_SOURCE",
+                )
+
+        self.assertEqual(outcome, terminal_preflight.EX_CONFIG)
+        self.assertEqual(calls, [])
 
     def test_local_runner_probe_uses_fixed_public_command_and_bounded_result(self):
         selected = {
@@ -774,6 +890,44 @@ print("TERMINAL_PREFLIGHT_RESULT:" + encoded)
 
         with self.assertRaisesRegex(TerminalPreflightContractError, "memory_required_mb"):
             build_target_contracts(inventory, [{"host": "kiosk-a", "role": "kiosk"}])
+
+    def test_local_contract_rejects_private_key_path_but_ssh_keeps_it(self) -> None:
+        inventory = {
+            "_meta": {
+                "hostvars": {
+                    terminal_preflight.STONEBASE_HOST: {
+                        "ansible_host": "100.64.0.10",
+                        "ansible_user": "stonebase",
+                        "ansible_ssh_private_key_file": "/run/private/release-key",
+                    }
+                }
+            }
+        }
+        selected = [
+            {
+                "host": terminal_preflight.STONEBASE_HOST,
+                "role": "kiosk",
+                "clientId": "raspi4-kensaku-stonebase01-kiosk1",
+            }
+        ]
+
+        with self.assertRaisesRegex(
+            TerminalPreflightContractError, "private-key path"
+        ):
+            build_target_contracts(
+                inventory,
+                selected,
+                requested_executor=terminal_preflight.LOCAL_EXECUTOR,
+            )
+
+        self.assertEqual(
+            build_target_contracts(
+                inventory,
+                selected,
+                requested_executor=terminal_preflight.SSH_EXECUTOR,
+            )[0]["host"],
+            terminal_preflight.STONEBASE_HOST,
+        )
 
     def test_parser_rejects_invalid_numeric_address(self):
         with self.assertRaisesRegex(

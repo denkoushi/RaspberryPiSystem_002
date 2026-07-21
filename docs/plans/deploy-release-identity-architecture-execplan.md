@@ -1,7 +1,7 @@
 ---
 id: deploy-release-identity-architecture
 title: Migrate deployment planning and evidence to typed release claims
-status: local-canary-ready
+status: local-canary-blocked-host-trust-remediation
 scope: rolling release planner, fleet and run state, Kiosk activation, SSH and Local executors, route contracts
 date: 2026-07-21
 source_of_truth: docs/plans/deploy-release-identity-architecture-execplan.md
@@ -14,9 +14,10 @@ related_docs:
   - docs/decisions/ADR-20260721-deploy-release-identity-and-activation.md
   - docs/plans/deploy-release-identity-readonly-evidence-manifest.md
   - docs/plans/deploy-speed-phase-b-execplan.md
-validation: Milestones 1 through 7 accepted; shared candidate-impact policy merged as PR #1059 at 0ff5fc2de5a6d14523570bb7f5753076bc3380e3 after 880 deploy Python tests and the complete aggregate; exact Pi5 plus StoneBase SSH run 20260721-184600-ea3eba installed the contract and completed all typed evidence and cleanup; independent preflight 20260721-190514-541561 selected effective Local with no fallback and proved the exact r2 runtime
+validation: Milestones 1 through 7 accepted; shared candidate-impact policy merged as PR #1059 at 0ff5fc2de5a6d14523570bb7f5753076bc3380e3 after 880 deploy Python tests and the complete aggregate; exact Pi5 plus StoneBase SSH run 20260721-184600-ea3eba installed the contract and completed all typed evidence and cleanup; independent preflight 20260721-190514-541561 selected effective Local with no fallback and proved the exact r2 runtime; canary 20260721-191113-a1c6ef cancelled safely before terminal notice; pinned host-trust remediation passes 890 deploy Python tests
 open_items:
-  - merge this neutral evidence-only candidate and complete its exact-scope Local canary
+  - merge the pinned host-trust remediation and complete its exact-scope SSH migration
+  - use a later neutral candidate for the exact-scope Local canary
   - keep Local rollout beyond StoneBase blocked until the canary completes
   - keep FJV and every terminal other than StoneBase excluded
 ---
@@ -52,8 +53,12 @@ path, uses a fixed short staging name within pip's direct-shebang bound, and
 revalidates after publication. FJV and every other terminal stay
 excluded. The accepted-main SSH bootstrap and independent preflight now prove
 `r2`. The shared candidate-impact contract and its expected SSH bootstrap are
-now complete, and independent preflight selects Local with no fallback. The
-remaining gate is one successful exact-scope Local canary.
+now complete, and independent preflight selected Local with no fallback. The
+first later canary proved that aggregate preflight and locked execution still
+used different SSH host-trust prerequisites. The candidate-fixed Ed25519 pin
+and shared strict transport contract close that proof gap without weakening
+host checking. The remaining gates are its accepted-main SSH migration,
+repeated strict preflight, and one successful exact-scope Local canary.
 
 ## Progress
 
@@ -96,6 +101,10 @@ remaining gate is one successful exact-scope Local canary.
 - [x] (2026-07-21 18:44Z) Merged the impact-contract fix as PR #1059 at accepted main `0ff5fc2de5a6d14523570bb7f5753076bc3380e3`; every required CI check passed with no unresolved review thread.
 - [x] (2026-07-21 19:04Z) Completed exact-scope SSH bootstrap run `20260721-184600-ea3eba`: requested Local safely fell back on the inventory history, Pi5 stability and evidence passed, StoneBase apply took 223,073 ms, ready ACK and independent evidence passed, cleanup completed, and maintenance cleared. FJV and all other terminals remained excluded.
 - [x] (2026-07-21 19:05Z) Independent preflight `20260721-190514-541561` selected effective Local with no fallback and proved Python 3.11.15, ansible-core 2.19.4, community.general 11.4.1, runner v3, runtime `r2`, and exact runtime identity `sha256:f607570e67d68855078486c54bfd5fe467b082e150582deab1862b0413310dd2`.
+- [x] (2026-07-21 19:20Z) Cancelled canary `20260721-191113-a1c6ef` through the canonical durable path after locked selection diverged. Cancellation completed after Pi5 stability and evidence; StoneBase received no notice, maintenance, artifact, transfer, Local unit, or mutation.
+- [x] (2026-07-21 19:35Z) Confirmed the remaining cause as an SSH server-authentication proof gap, not Ansible Local execution: aggregate preflight disabled host checking while the locked backend required an ambient trusted key.
+- [x] (2026-07-21 19:45Z) Matched StoneBase's Ed25519 public key through authenticated read-only Ansible and independent Pi5 keyscan, then implemented one candidate-fixed strict transport contract consumed by both proof boundaries. Missing, malformed, extra, symlinked, or non-Ed25519 pins fail before terminal contact; Local private-key path drift is rejected.
+- [x] (2026-07-21 20:04Z) Passed 890 deploy Python tests and the complete deploy aggregate, including exact host-key blob, strict option, aggregate/direct parity, no-contact fail-closed, disabled automatic host-key updates, and unchanged SSH compatibility contracts.
 - [ ] Complete one exact-scope Local canary and final no-op proof before declaring the route normalized.
 
 ## Surprises & Discoveries
@@ -1110,3 +1119,14 @@ future drift fails closed. Because the remediation updates the installed
 contract module and explicit inventory capability, one ordinary SSH bootstrap
 is expected before the later Local canary; Local remains No-Go until both runs
 complete with independent evidence and cleanup.
+
+Revision note (2026-07-21 19:55Z): Canary `20260721-191113-a1c6ef` was
+canonically cancelled after locked selection returned direct-runner unavailable;
+it stopped after Pi5 stability and evidence with StoneBase still before notice
+and maintenance. Aggregate preflight had disabled host-key verification while
+the locked backend required strict ambient trust, so aggregate success did not
+prove its execution transport. The remediation binds a dual-observed StoneBase
+Ed25519 public key and a pure strict SSH option contract to the immutable
+candidate. Aggregate and locked boundaries consume that same source and pin,
+reject Local private-key-path drift, and fail before contact when trust cannot
+be staged exactly. The complete deploy Python discovery passed 889 tests.

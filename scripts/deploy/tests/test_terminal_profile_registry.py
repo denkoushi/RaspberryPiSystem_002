@@ -158,6 +158,17 @@ class TerminalProfileRegistryTest(unittest.TestCase):
             {source: "local-executor-runtime" for source in sources},
         )
 
+    def test_stonebase_host_trust_change_requires_ssh_migration(self):
+        registry = load_registry()
+
+        self.assertEqual(
+            registry.component_for(
+                "infrastructure/ansible/files/stonebase-local-ansible/"
+                "ssh-known-hosts"
+            ),
+            "local-executor-runtime",
+        )
+
     def test_profile_order_is_deterministic(self):
         self.payload["terminalProfiles"].reverse()
         registry = self.load_payload()
