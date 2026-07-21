@@ -1,7 +1,12 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "platform": "linux-aarch64",
-  "python": "3.11",
+  "python": "3.11.15",
+  "pythonDistribution": {
+    "version": "3.11.15",
+    "source": "https://github.com/astral-sh/python-build-standalone/releases/download/20260510/cpython-3.11.15%2B20260510-aarch64-unknown-linux-gnu-install_only.tar.gz",
+    "sha256": "0bc1b7acbb888881addf3a1c887a47d510d4300db6e3ad2ba461154b982e456a"
+  },
   "ansibleCore": "2.19.4",
   "collections": {
     "community.general": {

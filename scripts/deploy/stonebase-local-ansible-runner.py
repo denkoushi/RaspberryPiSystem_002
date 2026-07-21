@@ -373,7 +373,7 @@ def _runtime_observation(
                     if isinstance(version, str):
                         observed_collections[name] = version
     return {
-        "pythonVersion": python_version.removeprefix("Python ").rsplit(".", 1)[0],
+        "pythonVersion": python_version.removeprefix("Python "),
         "ansibleCoreVersion": (
             ansible_first[0].split("core ", 1)[1].split("]", 1)[0]
             if ansible_first and "core " in ansible_first[0]

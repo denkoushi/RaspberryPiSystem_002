@@ -32,7 +32,15 @@ MAX_ARTIFACT_BYTES = 128 * 1024 * 1024
 MAX_STAGING_BYTES = 256 * 1024 * 1024
 MIN_FREE_BYTES = MAX_STAGING_BYTES + MAX_ARTIFACT_BYTES
 RUNTIME_ROOT = "/opt/raspi-local-ansible-runtime"
-RUNTIME_PYTHON = "3.11"
+RUNTIME_PYTHON = "3.11.15"
+RUNTIME_PYTHON_DISTRIBUTION = {
+    "version": "3.11.15",
+    "source": (
+        "https://github.com/astral-sh/python-build-standalone/releases/download/"
+        "20260510/cpython-3.11.15%2B20260510-aarch64-unknown-linux-gnu-install_only.tar.gz"
+    ),
+    "sha256": "0bc1b7acbb888881addf3a1c887a47d510d4300db6e3ad2ba461154b982e456a",
+}
 RUNTIME_ANSIBLE_CORE = "2.19.4"
 RUNTIME_COLLECTIONS = (("community.general", "11.4.1"),)
 
@@ -441,8 +449,9 @@ def select_executor(
 
 def runtime_lock_payload() -> dict[str, Any]:
     return {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "python": RUNTIME_PYTHON,
+        "pythonDistribution": dict(RUNTIME_PYTHON_DISTRIBUTION),
         "ansibleCore": RUNTIME_ANSIBLE_CORE,
         "collections": dict(RUNTIME_COLLECTIONS),
         "runtimeRoot": RUNTIME_ROOT,

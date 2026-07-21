@@ -136,7 +136,7 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
         return {
             "ready": True,
             "host": STONEBASE_HOST,
-            "pythonVersion": "3.11",
+            "pythonVersion": local_execution.RUNTIME_PYTHON,
             "ansibleCoreVersion": "2.19.4",
             "collections": {"community.general": "11.4.1"},
             "freeBytes": local_execution.MIN_FREE_BYTES,
@@ -391,7 +391,7 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0, stdout="secret", stderr="secret")
 
             observation = {
-                "pythonVersion": "3.11",
+                "pythonVersion": local_execution.RUNTIME_PYTHON,
                 "ansibleCoreVersion": "2.19.4",
                 "collections": {"community.general": "11.4.1"},
             }
@@ -465,7 +465,7 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
 
     def test_runner_preflight_requires_existing_identity_environments_and_runtime(self) -> None:
         observation = {
-            "pythonVersion": "3.11",
+            "pythonVersion": local_execution.RUNTIME_PYTHON,
             "ansibleCoreVersion": "2.19.4",
             "collections": {"community.general": "11.4.1"},
         }
@@ -497,9 +497,39 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
             self.assertTrue(result["ready"])
             self.assertEqual(result["freeBytes"], local_execution.MIN_FREE_BYTES)
 
+    def test_runner_runtime_observation_preserves_exact_python_patch(self) -> None:
+        def fake_run(command, **_kwargs):
+            executable = Path(command[0]).name
+            if executable == "python3":
+                return subprocess.CompletedProcess(
+                    command, 0, stdout="Python 3.11.15\n", stderr=""
+                )
+            if executable == "ansible":
+                return subprocess.CompletedProcess(
+                    command, 0, stdout="ansible [core 2.19.4]\n", stderr=""
+                )
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=json.dumps(
+                    {
+                        "/runtime/collections": {
+                            "community.general": {"version": "11.4.1"}
+                        }
+                    }
+                ),
+                stderr="",
+            )
+
+        result = RUNNER._runtime_observation(
+            runtime=Path("/runtime"), run=fake_run
+        )
+
+        self.assertEqual(result["pythonVersion"], "3.11.15")
+
     def test_runner_rejects_tampered_staging_and_bounds_failure_results(self) -> None:
         observation = {
-            "pythonVersion": "3.11",
+            "pythonVersion": local_execution.RUNTIME_PYTHON,
             "ansibleCoreVersion": "2.19.4",
             "collections": {"community.general": "11.4.1"},
         }

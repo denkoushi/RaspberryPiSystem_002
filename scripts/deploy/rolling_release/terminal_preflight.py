@@ -1545,7 +1545,7 @@ def _runtime_evidence(value: Any) -> dict[str, Any] | None:
         or value.get("host") != STONEBASE_HOST
         or value.get("configurationReady") is not True
         or not isinstance(python_version, str)
-        or re.fullmatch(r"[0-9]+\.[0-9]+", python_version) is None
+        or re.fullmatch(r"[0-9]+(?:\.[0-9]+){1,3}", python_version) is None
         or not isinstance(ansible_core, str)
         or re.fullmatch(r"[0-9]+(?:\.[0-9]+){1,3}", ansible_core) is None
         or type(runner_version) is not int
