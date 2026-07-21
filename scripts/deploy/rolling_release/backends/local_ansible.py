@@ -5,9 +5,10 @@ import ipaddress
 import json
 import re
 import shlex
+import stat
 import subprocess
 import time
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol
 
 from ..local_execution import (
@@ -27,6 +28,11 @@ from ..terminal_preflight_contract import (
     build_target_contracts,
     local_direct_ssh_common_args_supported,
 )
+from ..local_transport_contract import (
+    LocalTransportContractError,
+    ssh_security_options,
+    validate_known_hosts_payload,
+)
 from . import ansible as ansible_backend
 
 try:
@@ -37,6 +43,9 @@ except ImportError:
 
 RUNNER = "/usr/local/libexec/raspi-local-ansible-runner"
 ARTIFACT_ROOT = Path("logs/deploy/local-artifacts")
+KNOWN_HOSTS_RELATIVE = Path(
+    "infrastructure/ansible/files/stonebase-local-ansible/ssh-known-hosts"
+)
 MAX_CONTROL_OUTPUT_BYTES = 64 * 1024
 LOCAL_TIMEOUT_SECONDS = 15 * 60
 POLL_SECONDS = 5
@@ -103,23 +112,34 @@ def _connection_contract(
         # deliberately not replayed: this backend always supplies
         # StrictHostKeyChecking=yes itself.
         raise LocalExecutionError("StoneBase requires unsupported SSH common arguments")
-    if key is not None and (
-        not isinstance(key, str)
-        or not PurePosixPath(key).is_absolute()
-        or "\x00" in key
-        or ".." in PurePosixPath(key).parts
-    ):
-        raise LocalExecutionError("StoneBase SSH key path is malformed")
-    return {"address": address, "user": user, "port": port, "key": key}
+    if key not in {None, ""}:
+        # Aggregate preflight deliberately crosses no private-key path. Local
+        # therefore uses only the release identity's default SSH key at both
+        # proof boundaries.
+        raise LocalExecutionError("StoneBase requires an unsupported SSH key path")
+    known_hosts = runtime.PROJECT / KNOWN_HOSTS_RELATIVE
+    try:
+        metadata = known_hosts.lstat()
+        if not stat.S_ISREG(metadata.st_mode):
+            raise OSError("known-hosts pin is not regular")
+        payload = known_hosts.read_bytes()
+        validate_known_hosts_payload(payload)
+        security_options = ssh_security_options(str(known_hosts))
+    except (OSError, LocalTransportContractError):
+        raise LocalExecutionError("StoneBase pinned host key is unavailable") from None
+    return {
+        "address": address,
+        "user": user,
+        "port": port,
+        "knownHostsPath": str(known_hosts),
+        "securityOptions": security_options,
+    }
 
 
 def _ssh_command(connection: Mapping[str, Any], remote: list[str]) -> list[str]:
     command = [
         "ssh",
-        "-o",
-        "BatchMode=yes",
-        "-o",
-        "StrictHostKeyChecking=yes",
+        *connection["securityOptions"],
         "-o",
         "ConnectTimeout=15",
         "-o",
@@ -129,8 +149,6 @@ def _ssh_command(connection: Mapping[str, Any], remote: list[str]) -> list[str]:
         "-p",
         str(connection["port"]),
     ]
-    if connection.get("key"):
-        command.extend(["-i", str(connection["key"])])
     command.extend(
         [f"{connection['user']}@{connection['address']}", shlex.join(remote)]
     )

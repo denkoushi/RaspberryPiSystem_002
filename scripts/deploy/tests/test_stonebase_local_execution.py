@@ -35,6 +35,9 @@ from scripts.deploy.rolling_release.local_execution import (  # noqa: E402
     inspect_candidate_artifact,
     select_executor,
 )
+from scripts.deploy.rolling_release.local_transport_contract import (  # noqa: E402
+    validate_known_hosts_payload,
+)
 from scripts.deploy.rolling_release.terminal_preflight_contract import (  # noqa: E402
     TerminalPreflightContractError,
 )
@@ -121,6 +124,13 @@ class RepositoryFixture:
             "---\n# common role\n",
         )
         _write(self.project, "clients/nfc-agent/app.py", "print('old')\n")
+        _write(
+            self.project,
+            str(local_ansible.KNOWN_HOSTS_RELATIVE),
+            "* ssh-ed25519 "
+            "AAAAC3NzaC1lZDI1NTE5AAAAIFZUFszeD9xbuiKR9+X8lDn/"
+            "ZXW1tlLCUvasHb2N7ox+\n",
+        )
         self.previous = _commit(self.project, "previous")
         _write(self.project, "clients/nfc-agent/app.py", "print('candidate')\n")
         self.candidate = _commit(self.project, "safe agent candidate")
@@ -479,6 +489,52 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
         self.assertEqual(len(commands), 1)
         self.assertIn("StrictHostKeyChecking=yes", commands[0])
         self.assertNotIn("StrictHostKeyChecking=no", commands[0])
+        self.assertIn("GlobalKnownHostsFile=/dev/null", commands[0])
+        self.assertIn("UpdateHostKeys=no", commands[0])
+        self.assertIn("HostKeyAlgorithms=ssh-ed25519", commands[0])
+        self.assertIn(
+            f"UserKnownHostsFile={fixture.project / local_ansible.KNOWN_HOSTS_RELATIVE}",
+            commands[0],
+        )
+
+    def test_direct_transport_rejects_missing_malformed_and_symlinked_pin(self) -> None:
+        for state in ("missing", "malformed", "symlink"):
+            with self.subTest(state=state), tempfile.TemporaryDirectory() as temporary:
+                fixture = RepositoryFixture(Path(temporary))
+                pin = fixture.project / local_ansible.KNOWN_HOSTS_RELATIVE
+                if state == "missing":
+                    pin.unlink()
+                elif state == "malformed":
+                    pin.write_text("* ssh-rsa not-an-ed25519-key\n", encoding="utf-8")
+                else:
+                    target = fixture.project / "public-host-key"
+                    target.write_text(
+                        validate_known_hosts_payload(
+                            "* ssh-ed25519 "
+                            "AAAAC3NzaC1lZDI1NTE5AAAAIFZUFszeD9xbuiKR9+X8lDn/"
+                            "ZXW1tlLCUvasHb2N7ox+\n"
+                        ),
+                        encoding="utf-8",
+                    )
+                    pin.unlink()
+                    pin.symlink_to(target)
+                runtime = SimpleNamespace(
+                    PROJECT=fixture.project,
+                    ANSIBLE_DIRECTORY=fixture.project / "infrastructure/ansible",
+                    run=lambda *_args, **_kwargs: json.dumps(
+                        {
+                            "ansible_host": "100.64.0.10",
+                            "ansible_user": "raspi4-kensaku-stonebase01",
+                        }
+                    ),
+                )
+
+                with self.assertRaisesRegex(
+                    LocalExecutionError, "pinned host key is unavailable"
+                ):
+                    local_ansible._connection_contract(
+                        "inventory.yml", STONEBASE_HOST, runtime=runtime
+                    )
 
     def test_direct_transport_rejects_other_inventory_ssh_arguments(self) -> None:
         runtime = SimpleNamespace(

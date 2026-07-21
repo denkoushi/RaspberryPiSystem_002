@@ -1,7 +1,7 @@
 ---
 id: KB-401
 title: Deploy release identity, activation, and runtime audit
-status: local-canary-ready
+status: local-canary-blocked-host-trust-remediation
 scope: standard Pi5, Kiosk, Signage, SSH Ansible, and experimental StoneBase Local Ansible release route
 date: 2026-07-21
 source_of_truth: true
@@ -17,9 +17,10 @@ related_docs:
   - ../plans/deploy-release-identity-architecture-execplan.md
   - ../plans/deploy-release-identity-readonly-evidence-manifest.md
   - ../plans/deploy-speed-phase-b-execplan.md
-validation: offline source audit, approved read-only evidence receipt f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8, accepted-main SSH runs 20260721-162403-d398c0, 20260721-172923-90a38b, and 20260721-184600-ea3eba, canonical Local-ready preflight 20260721-190514-541561, bounded StoneBase runtime evidence, 880 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template parses, and the complete deploy aggregate
+validation: offline source audit, approved read-only evidence receipt f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8, accepted-main SSH runs 20260721-162403-d398c0, 20260721-172923-90a38b, and 20260721-184600-ea3eba, canonical Local-ready preflight 20260721-190514-541561, safely cancelled canary 20260721-191113-a1c6ef, dual-source StoneBase Ed25519 host-key observation, bounded StoneBase runtime evidence, 890 deploy Python tests, and the complete deploy aggregate
 open_items:
-  - merge the neutral evidence-only candidate and complete its exact-scope Local canary
+  - review and merge the pinned Local host-trust contract
+  - complete its exact-scope SSH migration and a later neutral Local canary
   - keep Local rollout beyond StoneBase blocked until the canary completes
   - keep FJV and every terminal other than StoneBase outside connection, planning, preflight, and execution
 ---
@@ -36,13 +37,21 @@ clear. The second run installed the corrected immutable `r2` runtime, and
 independent preflight `20260721-174938-0c7310` proved every exact runtime pin
 and selected Local with no fallback.
 
-The first Local canary still remained **No-Go** before maintenance. Its locked
-coordinator repeated selection and rejected a global legacy inventory value,
-`-o StrictHostKeyChecking=no`, which the aggregate preflight had not modeled.
-The direct Local backend never forwards this value and always supplies
-`StrictHostKeyChecking=yes`; the remediation explicitly recognizes only that
-one legacy value as ignored, rejects every other SSH common argument, and
-preserves public-contract versus direct-runner failure provenance.
+Two Local canary attempts remained **No-Go** before terminal maintenance. The
+first exposed a duplicated SSH-common-argument policy and the second exposed a
+deeper host-trust mismatch: aggregate preflight used
+`StrictHostKeyChecking=no` with an empty temporary trust store, while the
+locked Local backend used `StrictHostKeyChecking=yes` without supplying a
+trusted StoneBase key. Aggregate success therefore did not prove the locked
+transport. Neither event was an Ansible `-c local` execution failure.
+
+The structural remediation candidate owns one exact Ed25519 pin and one pure
+transport contract. Aggregate preflight loads both from the immutable candidate
+and stages a mode-0600 known-hosts file; the locked backend imports the same
+accepted contract and pin after checkout. Both use strict checking, disable the
+ambient global known-hosts store and automatic host-key updates, allow only
+Ed25519 host keys, cross no private-key path, and fail before terminal contact
+when the pin is absent or malformed.
 
 The audited pre-redesign planner treated only stored files as mutation targets
 and did not model a Kiosk browser as a consumer of the Pi5-hosted Web artifact.
@@ -764,15 +773,50 @@ The implementation, bootstrap, and eligibility gates are therefore complete;
 the remaining No-Go applies only until one neutral fixed-SHA Local canary
 completes its own artifact, candidate ACK, independent evidence, and cleanup.
 
+## Pinned host-trust addendum
+
+Evidence-only commit `21d3cd86cc7bd2924c0de9e9f18dcea1bd946ea3` was accepted
+after preflight selected effective Local. Canary `20260721-191113-a1c6ef`
+then repeated locked selection and safely chose SSH fallback
+`runner-ineligible: local direct runner preflight is unavailable`. The operator
+requested canonical cancellation immediately. The unit honored cancellation at
+`after-pi5-stability`; Pi5 evidence and cancellation cleanup completed at
+`2026-07-21T19:20:50Z`. StoneBase remained `pending`, with no notice,
+maintenance, artifact, transfer, runner unit, or repository mutation.
+
+Source audit confirmed the mismatch. Aggregate preflight had constructed SSH
+with `StrictHostKeyChecking=no` and `UserKnownHostsFile=/dev/null`. The locked
+backend constructed `StrictHostKeyChecking=yes` and relied on an ambient trust
+store. Thus the two probes had the same address, user, port, and default client
+identity, but different server-authentication prerequisites. The cause is
+**CONFIRMED**; Ansible Local connection behavior is not implicated.
+
+The StoneBase Ed25519 public host key was observed through two independent,
+read-only paths: an authenticated exact-host Ansible command reading
+`/etc/ssh/ssh_host_ed25519_key.pub`, and `ssh-keyscan -t ed25519` from Pi5 to
+the resolved StoneBase address. Key type and base64 payload matched exactly.
+Only the public wildcard-scoped known-hosts record is stored; the documented
+fingerprint is `SHA256:dwaQeBhabIj6zN3FCNgWCV/+3oedfoVkVjP0ZYc9+Jc`.
+No inventory variables, private keys, tokens, or credentials were retained.
+
+The offline remediation rejects extra records, comments, RSA keys, malformed
+Ed25519 blobs, symlinks, noncanonical paths, arbitrary SSH common arguments,
+and Local-only private-key paths. A malformed candidate pin blocks before any
+terminal transport. The unchanged SSH route retains its prior compatibility
+behavior. The complete deploy Python discovery passed 889 tests; live Local
+remains No-Go until review, accepted-main SSH migration, repeated strict
+preflight, and a neutral canary complete.
+
 ## Go / No-Go decision
 
 Current split decision:
 
 - **Go**: the accepted typed-claim SSH route and offline implementation/review
   of the relocatable `r2` publication fix.
-- **No-Go**: rollout beyond the single StoneBase Local canary until that canary
-  completes artifact verification, candidate ACK, independent evidence, and
-  cleanup.
+- **No-Go**: Local execution until the pinned host-trust change is accepted,
+  migrated through SSH, independently proved, and followed by one StoneBase
+  canary that completes artifact verification, candidate ACK, independent
+  evidence, and cleanup.
 
 Live rollout requires all of the following:
 

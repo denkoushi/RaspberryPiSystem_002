@@ -50,7 +50,12 @@ assert migration < terminal < submission, (
 assert 'no release unit was submitted' in preflight
 assert 'for target in spec["targets"]' in preflight
 assert 'results.append(result)' in preflight
-assert 'os.O_CREAT' not in preflight
+assert 'os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW' in preflight
+assert 'StrictHostKeyChecking=yes' in preflight
+assert 'GlobalKnownHostsFile=/dev/null' in preflight
+assert 'UpdateHostKeys=no' in preflight
+assert 'HostKeyAlgorithms=ssh-ed25519' in preflight
+assert 'transport_security_options=local_transport_options' in preflight
 assert 'os.makedirs' not in preflight
 assert 'UserKnownHostsFile=/dev/null' in preflight
 assert 'candidate.artifact-missing' in preflight

@@ -170,6 +170,10 @@ SSH_EXECUTOR = "ssh-ansible"
 LOCAL_EXECUTOR = "stonebase-local-ansible-poc"
 STONEBASE_HOST = "raspi4-kensaku-stonebase01"
 LOCAL_RUNNER = "/usr/local/libexec/raspi-local-ansible-runner"
+LOCAL_TRANSPORT_SOURCE = "scripts/deploy/rolling_release/local_transport_contract.py"
+LOCAL_KNOWN_HOSTS = (
+    "infrastructure/ansible/files/stonebase-local-ansible/ssh-known-hosts"
+)
 MAX_LOCAL_RUNNER_RESULT_BYTES = 64 * 1024
 TARGET_LOADER = (
     "import json,sys;"
@@ -531,6 +535,8 @@ def _candidate_artifact_contract(
             artifacts.add(
                 ("scripts/deploy/rolling_release/local_execution.py", "blob")
             )
+            artifacts.add((LOCAL_TRANSPORT_SOURCE, "blob"))
+            artifacts.add((LOCAL_KNOWN_HOSTS, "blob"))
             artifacts.add(("scripts/deploy/terminal_profile_registry.py", "blob"))
             artifacts.add(("scripts/deploy/terminal-profile-registry.json", "blob"))
         artifacts.update(_PROFILE_CANDIDATE_ARTIFACTS[target["profile"]])
@@ -689,6 +695,83 @@ def _candidate_registry_component_for(
     finally:
         sys.modules.pop(module_name, None)
     return registry.component_for
+
+
+def _candidate_local_transport_options(
+    transport_source: str | None,
+    known_hosts_payload: str | None,
+    *,
+    known_hosts_path: Path,
+) -> tuple[str, ...]:
+    """Seal candidate host trust and return its exact strict SSH options."""
+
+    if (
+        not isinstance(transport_source, str)
+        or not transport_source.strip()
+        or not isinstance(known_hosts_payload, str)
+        or not known_hosts_payload.strip()
+        or len(known_hosts_payload.encode("utf-8")) > 1024
+        or "\x00" in known_hosts_payload
+    ):
+        raise TerminalPreflightConfigError(
+            "candidate Local transport contract is unavailable"
+        )
+    module_name = "_raspi_candidate_local_transport_contract"
+    module = types.ModuleType(module_name)
+    module.__file__ = "<candidate-local-transport-contract>"
+    sys.modules[module_name] = module
+    try:
+        exec(
+            compile(
+                transport_source,
+                "<candidate-local-transport-contract>",
+                "exec",
+            ),
+            module.__dict__,
+        )
+        normalized = module.validate_known_hosts_payload(known_hosts_payload)
+        if normalized != known_hosts_payload:
+            raise ValueError("known-hosts payload is not canonical")
+        descriptor = os.open(
+            known_hosts_path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+        )
+        try:
+            payload = normalized.encode("ascii")
+            written = os.write(descriptor, payload)
+            if written != len(payload):
+                raise OSError("short known-hosts write")
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        options = tuple(module.ssh_security_options(str(known_hosts_path)))
+        expected = (
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "StrictHostKeyChecking=yes",
+            "-o",
+            f"UserKnownHostsFile={known_hosts_path}",
+            "-o",
+            "GlobalKnownHostsFile=/dev/null",
+            "-o",
+            "UpdateHostKeys=no",
+            "-o",
+            "HostKeyAlgorithms=ssh-ed25519",
+        )
+        if options != expected:
+            raise ValueError("candidate Local SSH options are not strict")
+        metadata = known_hosts_path.lstat()
+        if not stat.S_ISREG(metadata.st_mode) or stat.S_IMODE(metadata.st_mode) != 0o600:
+            raise OSError("known-hosts staging is not a private regular file")
+        return options
+    except Exception as error:
+        raise TerminalPreflightConfigError(
+            "candidate Local transport contract failed closed"
+        ) from error
+    finally:
+        sys.modules.pop(module_name, None)
 
 
 def _candidate_runtime_manifest_source(
@@ -1561,7 +1644,11 @@ def _source_text() -> str:
     return source_path.read_text(encoding="utf-8")
 
 
-def _remote_probe_command(target: Mapping[str, Any]) -> list[str]:
+def _remote_probe_command(
+    target: Mapping[str, Any],
+    *,
+    transport_security_options: Sequence[str] | None = None,
+) -> list[str]:
     remote = shlex.join(
         [
             "/usr/bin/sudo",
@@ -1571,20 +1658,26 @@ def _remote_probe_command(target: Mapping[str, Any]) -> list[str]:
             TARGET_LOADER,
         ]
     )
+    if transport_security_options is None:
+        security_options = (
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+        )
+    else:
+        security_options = tuple(transport_security_options)
     return [
         "/usr/bin/ssh",
-        "-o",
-        "BatchMode=yes",
+        *security_options,
         "-o",
         "ConnectTimeout=12",
         "-o",
         "ServerAliveInterval=5",
         "-o",
         "ServerAliveCountMax=2",
-        "-o",
-        "StrictHostKeyChecking=no",
-        "-o",
-        "UserKnownHostsFile=/dev/null",
         "-p",
         str(target["port"]),
         "--",
@@ -1951,6 +2044,11 @@ def execute_orchestrator(
         local_execution_source: str | None = None
         local_registry_source: str | None = None
         local_registry_payload: str | None = None
+        local_transport_source: str | None = None
+        local_known_hosts_payload: str | None = None
+        local_transport_options: tuple[str, ...] | None = None
+        local_transport_blocked = False
+        local_transport_staging: tempfile.TemporaryDirectory[str] | None = None
         if spec.get("requestedExecutor", SSH_EXECUTOR) == LOCAL_EXECUTOR:
             local_execution_source, local_source_issues = _candidate_helper_source(
                 spec,
@@ -1973,65 +2071,132 @@ def execute_orchestrator(
                 run_command=candidate_run_command,
             )
             candidate_issues.extend(registry_payload_issues)
+            local_transport_source, transport_source_issues = _candidate_helper_source(
+                spec,
+                relative_path=LOCAL_TRANSPORT_SOURCE,
+                issue_scope="local-transport-source",
+                run_command=candidate_run_command,
+            )
+            candidate_issues.extend(transport_source_issues)
+            local_known_hosts_payload, known_hosts_issues = _candidate_helper_source(
+                spec,
+                relative_path=LOCAL_KNOWN_HOSTS,
+                issue_scope="local-known-hosts",
+                run_command=candidate_run_command,
+            )
+            candidate_issues.extend(known_hosts_issues)
+            if not transport_source_issues and not known_hosts_issues:
+                try:
+                    local_transport_staging = tempfile.TemporaryDirectory(
+                        prefix="raspi-local-known-hosts-"
+                    )
+                    local_transport_options = _candidate_local_transport_options(
+                        local_transport_source,
+                        local_known_hosts_payload,
+                        known_hosts_path=(
+                            Path(local_transport_staging.name) / "stonebase-known-hosts"
+                        ),
+                    )
+                except (OSError, TerminalPreflightConfigError):
+                    candidate_issues.append(
+                        {
+                            "code": "candidate.local-transport-contract",
+                            "message": "candidate Local transport trust failed closed",
+                        }
+                    )
+                    local_transport_blocked = True
+            else:
+                local_transport_blocked = True
         results: list[dict[str, Any]] = []
-        for target in spec["targets"]:
-            command = _remote_probe_command(target)
-            try:
-                probe_input = _remote_probe_input(
+        try:
+            for target in spec["targets"]:
+                if local_transport_blocked:
+                    results.append(
+                        {
+                            "version": 1,
+                            "host": target["host"],
+                            "profile": target["profile"],
+                            "ready": False,
+                            "issues": [
+                                {
+                                    "code": "transport.pinned-host-key",
+                                    "message": "Local pinned host trust is unavailable",
+                                }
+                            ],
+                        }
+                    )
+                    continue
+                command = _remote_probe_command(
                     target,
-                    probe_source,
-                    runtime_manifest_source or "",
-                    agent_health_source or "",
-                    torque_helper_template_source or "",
+                    transport_security_options=local_transport_options,
                 )
-            except TerminalPreflightConfigError as error:
-                results.append(
-                    {
+                try:
+                    probe_input = _remote_probe_input(
+                        target,
+                        probe_source,
+                        runtime_manifest_source or "",
+                        agent_health_source or "",
+                        torque_helper_template_source or "",
+                    )
+                except TerminalPreflightConfigError as error:
+                    results.append(
+                        {
+                            "version": 1,
+                            "host": target["host"],
+                            "profile": target["profile"],
+                            "ready": False,
+                            "issues": [
+                                {
+                                    "code": "transport.input",
+                                    "message": str(error),
+                                }
+                            ],
+                        }
+                    )
+                    continue
+                try:
+                    completed = run_command(
+                        command, timeout=60, input_text=probe_input
+                    )
+                except (OSError, subprocess.TimeoutExpired) as error:
+                    results.append(
+                        {
+                            "version": 1,
+                            "host": target["host"],
+                            "profile": target["profile"],
+                            "ready": False,
+                            "issues": [
+                                {
+                                    "code": "transport.failed",
+                                    "message": f"terminal preflight transport failed: {type(error).__name__}",
+                                }
+                            ],
+                        }
+                    )
+                    continue
+                output = f"{getattr(completed, 'stdout', '')}\n{getattr(completed, 'stderr', '')}"
+                try:
+                    result = _decode_marker(output)
+                except ValueError as error:
+                    result = {
                         "version": 1,
                         "host": target["host"],
                         "profile": target["profile"],
                         "ready": False,
-                        "issues": [
-                            {
-                                "code": "transport.input",
-                                "message": str(error),
-                            }
-                        ],
+                        "issues": [{"code": "transport.result", "message": str(error)}],
                     }
-                )
-                continue
-            try:
-                completed = run_command(
-                    command, timeout=60, input_text=probe_input
-                )
-            except (OSError, subprocess.TimeoutExpired) as error:
-                results.append(
-                    {
-                        "version": 1,
-                        "host": target["host"],
-                        "profile": target["profile"],
-                        "ready": False,
-                        "issues": [
-                            {
-                                "code": "transport.failed",
-                                "message": f"terminal preflight transport failed: {type(error).__name__}",
-                            }
-                        ],
-                    }
-                )
-                continue
-            output = f"{getattr(completed, 'stdout', '')}\n{getattr(completed, 'stderr', '')}"
-            try:
-                result = _decode_marker(output)
-            except ValueError as error:
-                result = {
-                    "version": 1,
-                    "host": target["host"],
-                    "profile": target["profile"],
-                    "ready": False,
-                    "issues": [{"code": "transport.result", "message": str(error)}],
-                }
-            results.append(result)
+                results.append(result)
+        finally:
+            if local_transport_staging is not None:
+                try:
+                    local_transport_staging.cleanup()
+                except OSError:
+                    candidate_issues.append(
+                        {
+                            "code": "candidate.local-transport-cleanup",
+                            "message": "candidate Local transport staging cleanup failed",
+                        }
+                    )
 
         failures = [result for result in results if result.get("ready") is not True]
         try:
