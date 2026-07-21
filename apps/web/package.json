@@ -19,7 +19,7 @@
     "@tanstack/react-virtual": "^3.11.2",
     "@xstate/react": "^6.0.0",
     "@zxing/library": "^0.21.3",
-    "axios": "^1.16.0",
+    "axios": "^1.18.0",
     "clsx": "^2.1.1",
     "idb": "^8.0.3",
     "react": "^18.2.0",
