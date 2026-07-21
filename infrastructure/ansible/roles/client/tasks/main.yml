@@ -50,6 +50,7 @@
     mode: '0644'
   when: status_agent_client_id is defined
   register: status_agent_config_result
+  notify: restart status-agent service after release configuration change
 
 - name: Copy status-agent systemd service file
   ansible.builtin.copy:
@@ -60,6 +61,9 @@
     mode: '0644'
     remote_src: true
   register: status_agent_service_result
+  notify:
+    - reload client systemd daemon after release unit change
+    - restart status-agent service after release configuration change
 
 - name: Copy status-agent systemd timer file
   ansible.builtin.copy:
@@ -70,11 +74,9 @@
     mode: '0644'
     remote_src: true
   register: status_agent_timer_result
-
-- name: Reload systemd daemon
-  ansible.builtin.systemd:
-    daemon_reload: true
-  when: status_agent_service_result.changed or status_agent_timer_result.changed
+  notify:
+    - reload client systemd daemon after release unit change
+    - restart status-agent timer after release configuration change
 
 - name: Enable and start status-agent timer
   ansible.builtin.systemd:
@@ -216,6 +218,10 @@
   loop: "{{ services_to_restart_filtered }}"
   loop_control:
     loop_var: service_name
+  when: terminal_release_mode | default('full') == 'full'
+
+- name: Apply changed-only release service handlers before health verification
+  ansible.builtin.meta: flush_handlers
 
 - name: Verify restarted client services and timers are healthy
   ansible.builtin.shell: |

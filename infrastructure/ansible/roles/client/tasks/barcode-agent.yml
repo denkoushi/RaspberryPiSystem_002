@@ -32,7 +32,6 @@
     group: "{{ ansible_user }}"
     mode: '0600'
   register: barcode_agent_env_result
-  notify: restart barcode-agent
 
 - name: Include barcode environment changes in lifecycle selection
   ansible.builtin.set_fact:

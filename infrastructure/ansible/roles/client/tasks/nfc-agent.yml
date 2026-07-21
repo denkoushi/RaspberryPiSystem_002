@@ -48,7 +48,6 @@
     group: "{{ ansible_user }}"
     mode: '0600'
   register: nfc_agent_env_result
-  notify: restart nfc-agent
 
 - name: Include NFC environment changes in lifecycle selection
   ansible.builtin.set_fact:
