@@ -66,6 +66,7 @@ granted for the canonical Pi5 plus StoneBase-only gate.
 - [x] (2026-07-21 10:12Z) Completed Milestone 6 offline: made all 30 route stages executable transition contracts, bound planning and preflight to a deterministic receipt, and exercised before-call, after-call, and response-loss boundaries through shared scenarios.
 - [x] (2026-07-21 10:12Z) Passed the complete offline acceptance gate: 840 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, safety/lifecycle/shell contracts, 99 Ansible template parses, all playbook syntax/check contracts including the sealed Local playbook, 19 focused Web tests, Web typecheck/lint, and exact runtime artifact/hash checks.
 - [ ] Obtain a new explicit approval for a Pi5 plus StoneBase-only canary; keep FJV and every other terminal excluded.
+- [ ] Complete the frozen runtime-bootstrap observability audit in [KB-401](../knowledge-base/KB-401-deploy-release-identity-runtime-audit.md#runtime-bootstrap-observability-addendum-2026-07-21); do not retry bootstrap or Local execution until its Go/No-Go gate closes.
 
 ## Surprises & Discoveries
 
@@ -881,3 +882,11 @@ typed ineligibility code instead of a malformed response when bootstrap is
 incomplete. SSH bootstrap remains pre-maintenance and non-fatal for an ordinary
 SSH release, but emits only a bounded `changed|current|failed` outcome; a Local
 run remains fail-closed until a later canonical preflight proves the full pin.
+
+Revision note (2026-07-21): Canonical SSH bootstrap run
+`20260721-121936-a828c3` successfully applied the terminal release but did
+not yield a usable pinned runtime. The later read-only Local preflight
+`20260721-123603-b28b1e` correctly fell back before maintenance with
+`runtime-unavailable`. Detailed evidence, the cross-boundary observation gap,
+and the frozen Go/No-Go audit are recorded only in
+[KB-401](../knowledge-base/KB-401-deploy-release-identity-runtime-audit.md#runtime-bootstrap-observability-addendum-2026-07-21).
