@@ -288,6 +288,12 @@ def fleet_execution_contract(targets, classification, inventory):
 
 
 class ReleaseStateReferenceTest(unittest.TestCase):
+    def test_entrypoint_clock_uses_claim_compatible_utc_seconds(self):
+        self.assertRegex(
+            MODULE.utc_now(),
+            r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+        )
+
     def test_target_reference_remains_live_across_multiple_saves(self):
         with tempfile.TemporaryDirectory() as temporary, patch.object(
             MODULE, 'utc_now', return_value='2026-07-15T00:00:00Z'
