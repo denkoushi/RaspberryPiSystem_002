@@ -1,9 +1,10 @@
 """Closed, strictly validated release identities for durable deploy state.
 
-The current coordinator still makes decisions from the legacy fleet fields.
-This module is the additive schema boundary for the typed-claim migration: it
-can validate new records and project already-independent legacy evidence, but
-it does not change planning, execution, ACK, or finalization behavior.
+Legacy fleet fields remain the mutation-decision authority during the staged
+migration.  This module validates typed records and projects independently
+verified legacy evidence; the planner may read those claims to model future
+activation and verification work, while execution, ACK, and finalization stay
+on the existing compatibility path and typed stages remain disabled.
 """
 
 from __future__ import annotations

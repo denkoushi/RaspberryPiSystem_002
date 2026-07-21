@@ -781,6 +781,353 @@ class GenericTerminalProfilePolicyTest(unittest.TestCase):
 
 
 class ReleasePlannerTest(unittest.TestCase):
+    @staticmethod
+    def _verified_claim(kind, sha, authority, *, verification_id=None):
+        return {
+            'expectedIdentity': sha,
+            'observedIdentity': sha,
+            'authority': authority,
+            'verificationId': verification_id,
+            'state': 'verified',
+            'observedAt': VERIFIED_AT,
+            'lastRunId': RUN_ID,
+        }
+
+    def test_typed_web_only_plan_separates_mutation_activation_and_verification(self):
+        decisions = [
+            {
+                'host': 'server-a',
+                'role': 'server',
+                'desiredSha': RELEASE_SHA,
+                'currentSha': CURRENT_SHA,
+                'evidence': 'verified',
+                'targetReason': 'server impact: server-app',
+                'targeted': True,
+            },
+            {
+                'host': 'kiosk-a',
+                'role': 'kiosk',
+                'desiredSha': CURRENT_SHA,
+                'currentSha': CURRENT_SHA,
+                'evidence': 'verified',
+                'targetReason': 'verified; no kiosk-impacting changes',
+                'targeted': False,
+            },
+            {
+                'host': 'signage-a',
+                'role': 'signage',
+                'desiredSha': CURRENT_SHA,
+                'currentSha': CURRENT_SHA,
+                'evidence': 'verified',
+                'targetReason': 'verified; no signage-impacting changes',
+                'targeted': False,
+            },
+            {
+                'host': 'kiosk-outside-limit',
+                'role': 'kiosk',
+                'desiredSha': CURRENT_SHA,
+                'currentSha': CURRENT_SHA,
+                'evidence': 'verified',
+                'targetReason': 'outside explicit --limit',
+                'targeted': False,
+            },
+        ]
+        kiosk = verified_record('kiosk')
+        kiosk['releaseClaims'] = {
+            'controlPlaneWeb': self._verified_claim(
+                'controlPlaneWeb',
+                CURRENT_SHA,
+                'kiosk-compiled-web-ready',
+                verification_id='c' * 32,
+            ),
+            'terminalRepository': self._verified_claim(
+                'terminalRepository',
+                CURRENT_SHA,
+                'terminal-repository-probe',
+            ),
+        }
+
+        canary_hold = Mock(return_value=False)
+        payload = PLANNER.build_fleet_plan_payload(
+            release_sha=RELEASE_SHA,
+            decisions=decisions,
+            full_fleet=False,
+            limit='',
+            canary_hold_policy=canary_hold,
+            fleet_records={
+                'server-a': verified_record('server'),
+                'kiosk-a': kiosk,
+                'signage-a': verified_record('signage'),
+                'kiosk-outside-limit': verified_record('kiosk'),
+            },
+            typed_target_planning=True,
+            claim_scope_hosts=('server-a', 'kiosk-a', 'signage-a'),
+        )
+
+        canary_hold.assert_called_once_with(
+            [{'host': 'kiosk-a', 'terminalType': 'kiosk'}],
+            0,
+            skip=False,
+        )
+        self.assertEqual(
+            [target['host'] for target in payload['mutationTargets']],
+            ['server-a'],
+        )
+        self.assertEqual(
+            [target['host'] for target in payload['activationTargets']],
+            ['kiosk-a'],
+        )
+        self.assertEqual(
+            [target['host'] for target in payload['verificationTargets']],
+            ['server-a', 'kiosk-a'],
+        )
+        self.assertEqual(len(payload['terminalWork']), 1)
+        self.assertEqual(
+            {
+                key: payload['terminalWork'][0][key]
+                for key in (
+                    'host',
+                    'mutationRequired',
+                    'activationRequired',
+                    'verificationRequired',
+                )
+            },
+            {
+                'host': 'kiosk-a',
+                'mutationRequired': False,
+                'activationRequired': True,
+                'verificationRequired': True,
+            },
+        )
+        self.assertEqual(
+            payload['terminalWork'][0]['claimRequirements'],
+            [
+                {
+                    'kind': 'controlPlaneWeb',
+                    'expectedIdentity': RELEASE_SHA,
+                    'status': 'stale-or-unverified',
+                },
+                {
+                    'kind': 'terminalRepository',
+                    'expectedIdentity': CURRENT_SHA,
+                    'status': 'current',
+                },
+            ],
+        )
+        self.assertFalse(payload['activationExecutionEnabled'])
+        self.assertEqual(payload['requestedExecutor'], 'ssh-ansible')
+        self.assertEqual(payload['provisionalExecutor'], 'ssh-ansible')
+        self.assertIsNone(payload['effectiveExecutor'])
+
+    def test_typed_same_sha_noop_requires_every_consumer_claim_current(self):
+        decisions = [
+            {
+                'host': host,
+                'role': role,
+                'desiredSha': RELEASE_SHA,
+                'currentSha': RELEASE_SHA,
+                'evidence': 'verified',
+                'targetReason': 'verified at desired SHA',
+                'targeted': False,
+            }
+            for host, role in (
+                ('server-a', 'server'),
+                ('kiosk-a', 'kiosk'),
+                ('signage-a', 'signage'),
+            )
+        ]
+        kiosk = verified_record('kiosk', current=RELEASE_SHA)
+        kiosk['releaseClaims'] = {
+            'controlPlaneWeb': self._verified_claim(
+                'controlPlaneWeb',
+                RELEASE_SHA,
+                'kiosk-compiled-web-ready',
+                verification_id='d' * 32,
+            ),
+            'terminalRepository': self._verified_claim(
+                'terminalRepository',
+                RELEASE_SHA,
+                'terminal-repository-probe',
+            ),
+        }
+        records = {
+            'server-a': verified_record('server', current=RELEASE_SHA),
+            'kiosk-a': kiosk,
+            'signage-a': verified_record('signage', current=RELEASE_SHA),
+        }
+
+        payload = PLANNER.build_fleet_plan_payload(
+            release_sha=RELEASE_SHA,
+            decisions=decisions,
+            full_fleet=False,
+            limit='',
+            canary_hold_policy=Mock(),
+            fleet_records=records,
+            typed_target_planning=True,
+        )
+        self.assertEqual(payload['mutationTargets'], [])
+        self.assertEqual(payload['activationTargets'], [])
+        self.assertEqual(payload['verificationTargets'], [])
+        self.assertEqual(payload['terminalWork'], [])
+
+        records['kiosk-a']['releaseClaims'].pop('controlPlaneWeb')
+        missing = PLANNER.build_fleet_plan_payload(
+            release_sha=RELEASE_SHA,
+            decisions=decisions,
+            full_fleet=False,
+            limit='',
+            canary_hold_policy=Mock(),
+            fleet_records=records,
+            typed_target_planning=True,
+        )
+        self.assertEqual(
+            [target['host'] for target in missing['activationTargets']],
+            ['kiosk-a'],
+        )
+        self.assertEqual(
+            [target['host'] for target in missing['verificationTargets']],
+            ['kiosk-a'],
+        )
+
+        records['kiosk-a']['releaseClaims']['controlPlaneWeb'] = (
+            self._verified_claim(
+                'controlPlaneWeb',
+                RELEASE_SHA,
+                'kiosk-compiled-web-ready',
+                verification_id='d' * 32,
+            )
+        )
+        records['signage-a']['releaseClaims'] = {}
+        verification_only = PLANNER.build_fleet_plan_payload(
+            release_sha=RELEASE_SHA,
+            decisions=decisions,
+            full_fleet=False,
+            limit='',
+            canary_hold_policy=Mock(),
+            fleet_records=records,
+            typed_target_planning=True,
+        )
+        self.assertEqual(verification_only['activationTargets'], [])
+        self.assertEqual(
+            [target['host'] for target in verification_only['verificationTargets']],
+            ['signage-a'],
+        )
+
+    def test_terminal_only_mutation_preserves_current_web_consumer_claim(self):
+        decisions = [
+            {
+                'host': 'server-a',
+                'role': 'server',
+                'desiredSha': CURRENT_SHA,
+                'currentSha': CURRENT_SHA,
+                'evidence': 'verified',
+                'targetReason': 'verified; no server-impacting changes',
+                'targeted': False,
+            },
+            {
+                'host': 'kiosk-a',
+                'role': 'kiosk',
+                'desiredSha': RELEASE_SHA,
+                'currentSha': CURRENT_SHA,
+                'evidence': 'verified',
+                'targetReason': 'kiosk impact: client-role',
+                'targeted': True,
+            },
+        ]
+        kiosk = verified_record('kiosk')
+        kiosk['releaseClaims'] = {
+            'controlPlaneWeb': self._verified_claim(
+                'controlPlaneWeb',
+                CURRENT_SHA,
+                'kiosk-compiled-web-ready',
+                verification_id='e' * 32,
+            ),
+            'terminalRepository': self._verified_claim(
+                'terminalRepository',
+                CURRENT_SHA,
+                'terminal-repository-probe',
+            ),
+        }
+
+        payload = PLANNER.build_fleet_plan_payload(
+            release_sha=RELEASE_SHA,
+            decisions=decisions,
+            full_fleet=False,
+            limit='',
+            canary_hold_policy=Mock(return_value=False),
+            fleet_records={
+                'server-a': verified_record('server'),
+                'kiosk-a': kiosk,
+            },
+            typed_target_planning=True,
+        )
+
+        self.assertEqual(
+            [target['host'] for target in payload['mutationTargets']],
+            ['kiosk-a'],
+        )
+        self.assertEqual(payload['activationTargets'], [])
+        self.assertEqual(
+            [target['host'] for target in payload['verificationTargets']],
+            ['kiosk-a'],
+        )
+        requirements = payload['terminalWork'][0]['claimRequirements']
+        self.assertEqual(requirements[0]['status'], 'current')
+        self.assertEqual(requirements[0]['expectedIdentity'], CURRENT_SHA)
+        self.assertEqual(requirements[1]['status'], 'stale-or-unverified')
+        self.assertEqual(requirements[1]['expectedIdentity'], RELEASE_SHA)
+
+    def test_disabled_typed_planning_never_schedules_activation(self):
+        decision = {
+            'host': 'server-a',
+            'role': 'server',
+            'desiredSha': RELEASE_SHA,
+            'currentSha': RELEASE_SHA,
+            'evidence': 'verified',
+            'targetReason': 'verified at desired SHA',
+            'targeted': False,
+        }
+        kiosk_decision = {
+            **decision,
+            'host': 'kiosk-a',
+            'role': 'kiosk',
+        }
+        payload = PLANNER.build_fleet_plan_payload(
+            release_sha=RELEASE_SHA,
+            decisions=[decision, kiosk_decision],
+            full_fleet=False,
+            limit='',
+            canary_hold_policy=Mock(),
+            fleet_records={
+                'server-a': verified_record('server', current=RELEASE_SHA),
+                'kiosk-a': verified_record('kiosk', current=RELEASE_SHA),
+            },
+            typed_target_planning=False,
+        )
+        self.assertFalse(payload['typedTargetPlanningEnabled'])
+        self.assertEqual(payload['activationTargets'], [])
+        self.assertEqual(payload['terminalWork'], [])
+
+    def test_effective_executor_requires_aggregate_preflight(self):
+        decision = {
+            'host': 'server-a',
+            'role': 'server',
+            'desiredSha': RELEASE_SHA,
+            'currentSha': CURRENT_SHA,
+            'evidence': 'verified',
+            'targetReason': 'server impact',
+            'targeted': True,
+        }
+        payload = PLANNER.build_fleet_plan_payload(
+            release_sha=RELEASE_SHA,
+            decisions=[decision],
+            full_fleet=False,
+            limit='',
+            canary_hold_policy=Mock(),
+            executor_preflight_passed=True,
+        )
+        self.assertEqual(payload['effectiveExecutor'], 'ssh-ansible')
+
     def test_fleet_payload_preserves_decision_order_and_explanations(self):
         decisions = [
             {

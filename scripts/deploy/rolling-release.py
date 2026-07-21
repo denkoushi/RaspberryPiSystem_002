@@ -74,6 +74,9 @@ CLEANUP_LOCK_CONFLICT = "another Pi5 Blue/Green operation is running"
 CLEANUP_LOCK_RETRY_TIMEOUT = 30
 CLEANUP_LOCK_RETRY_INTERVAL = 2
 READY_ACK_TIMEOUT_SECONDS = 90
+TYPED_TARGET_PLANNING_ENABLED = True
+ACTIVATION_EXECUTION_ENABLED = False
+VERIFICATION_ONLY_EXECUTION_ENABLED = False
 _ACTIVE_CANCELLATION_TOKEN: CancellationToken | None = None
 _ACTIVE_FLEET_LEASE: FleetLease | None = None
 _PREVIOUS_SHA_UNSET = object()
@@ -1157,6 +1160,7 @@ def build_fleet_scope(
     limit: str,
     full_fleet: bool,
     reverify_selected: bool = False,
+    executor_preflight_passed: bool = False,
 ) -> tuple[dict[str, Any], list[dict[str, str]], dict[str, dict[str, Any] | None], list[str]]:
     all_hosts = release_hosts(inventory_data)
     classifications, warnings = classify_fleet_baselines(sha, fleet_state)
@@ -1208,6 +1212,12 @@ def build_fleet_scope(
         limit=limit,
         canary_hold_policy=should_hold_after_canary,
         reverify_selected=reverify_selected,
+        fleet_records=fleet_state.get("fleet") or {},
+        typed_target_planning=TYPED_TARGET_PLANNING_ENABLED,
+        activation_execution_enabled=ACTIVATION_EXECUTION_ENABLED,
+        verification_only_execution_enabled=VERIFICATION_ONLY_EXECUTION_ENABLED,
+        claim_scope_hosts=selected,
+        executor_preflight_passed=executor_preflight_passed,
     )
     target_by_host = {target["host"]: target for target in all_hosts}
     terminal_targets = [

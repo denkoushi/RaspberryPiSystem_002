@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "pi5ControlPlane": {
     "id": "pi5",
     "inventoryGroup": "server",
@@ -62,7 +62,12 @@
           "torque-agent",
           "ready-sha"
         ],
-        "readyAuthority": "control-plane"
+        "readyAuthority": "control-plane",
+        "requiredClaims": [
+          "controlPlaneWeb",
+          "terminalRepository"
+        ],
+        "activationStrategyId": "kiosk-web-activation-v1"
       }
     },
     {
@@ -129,7 +134,11 @@
           "signage-endpoint",
           "ready-sha"
         ],
-        "readyAuthority": "terminal"
+        "readyAuthority": "terminal",
+        "requiredClaims": [
+          "terminalRepository"
+        ],
+        "activationStrategyId": null
       }
     }
   ],

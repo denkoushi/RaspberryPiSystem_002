@@ -22,6 +22,57 @@ SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$")
 
 
+def _require_executable_target_architecture(plan: dict[str, Any]) -> None:
+    # Old active runs and compatibility test runtimes do not carry Milestone 2
+    # planning fields. They remain on the legacy SSH path; newly composed plans
+    # always include the key and are checked strictly below.
+    if "activationTargets" not in plan:
+        return
+    for field in (
+        "mutationTargets",
+        "activationTargets",
+        "verificationTargets",
+    ):
+        if not isinstance(plan.get(field), list):
+            raise RuntimeError(f"planned {field} set is malformed")
+    activation_targets = plan["activationTargets"]
+    if activation_targets and plan.get("activationExecutionEnabled") is not True:
+        hosts = [
+            target.get("host")
+            for target in activation_targets
+            if isinstance(target, dict) and isinstance(target.get("host"), str)
+        ]
+        raise RuntimeError(
+            "release requires disabled activation execution before mutation: "
+            + ", ".join(hosts)
+        )
+    mutation_hosts = {
+        target.get("host")
+        for target in plan["mutationTargets"]
+        if isinstance(target, dict) and isinstance(target.get("host"), str)
+    }
+    activation_hosts = {
+        target.get("host")
+        for target in activation_targets
+        if isinstance(target, dict) and isinstance(target.get("host"), str)
+    }
+    verification_only_hosts = [
+        target.get("host")
+        for target in plan["verificationTargets"]
+        if isinstance(target, dict)
+        and isinstance(target.get("host"), str)
+        and target.get("host") not in mutation_hosts | activation_hosts
+    ]
+    if (
+        verification_only_hosts
+        and plan.get("verificationOnlyExecutionEnabled") is not True
+    ):
+        raise RuntimeError(
+            "release requires disabled verification-only execution before mutation: "
+            + ", ".join(verification_only_hosts)
+        )
+
+
 @contextmanager
 def _measure_phase(state: Any, runtime: Any, name: str, *, host: str | None = None):
     """Append non-authoritative timing data without influencing control flow."""
@@ -1142,6 +1193,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             limit=args.limit,
             full_fleet=bool(getattr(args, "full_fleet", False)),
             reverify_selected=bool(getattr(args, "reverify_selected", False)),
+            executor_preflight_passed=True,
         )
         if plan_warnings:
             plan["warnings"] = list(plan_warnings)
@@ -1152,6 +1204,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
         state.payload["plan"] = plan
         state.payload["fleetGeneration"] = fleet_state["generation"]
         state.save()
+        _require_executable_target_architecture(plan)
         token.checkpoint("plan-complete")
 
         pi5_required = bool(plan["pi5Required"])

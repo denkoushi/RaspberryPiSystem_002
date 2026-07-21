@@ -444,6 +444,23 @@ class ReleaseApplicationTest(unittest.TestCase):
         payload = json.loads(stdout.getvalue())
         self.assertFalse(payload["releaseSubmitted"])
         self.assertEqual(payload["selectedHosts"], ["raspberrypi5"])
+        self.assertEqual(payload["requestedExecutor"], "ssh-ansible")
+        self.assertEqual(payload["provisionalExecutor"], "ssh-ansible")
+        self.assertEqual(payload["effectiveExecutor"], "ssh-ansible")
+        self.assertIsNone(payload["fallbackReason"])
+        self.assertEqual(
+            payload["targetPlanning"]["selectedClaimRequirements"],
+            [
+                {
+                    "host": "raspberrypi5",
+                    "role": "server",
+                    "requiredClaims": ["controlPlaneApi", "controlPlaneWeb"],
+                    "reason": (
+                        "aggregate preflight scope; locked coordinator determines actions"
+                    ),
+                }
+            ],
+        )
         self.assertEqual(
             payload["routeCoverage"],
             [stage.id for stage in application.ROUTE_STAGES],
@@ -456,6 +473,173 @@ class ReleaseApplicationTest(unittest.TestCase):
                 ("terminal-preflight", RUN_ID, 0),
             ],
         )
+
+    def test_preflight_only_exposes_the_canonical_provisional_target_snapshot(self):
+        systemd = FakeSystemd()
+        control = FakeControl()
+        target = {
+            "host": "raspberrypi5",
+            "role": "server",
+            "requiredClaims": ["controlPlaneApi", "controlPlaneWeb"],
+            "reason": "server impact: server-app",
+        }
+        snapshot = {
+            "sha": SHA,
+            "typedTargetPlanningEnabled": True,
+            "activationExecutionEnabled": False,
+            "verificationOnlyExecutionEnabled": False,
+            "mutationTargets": [target],
+            "activationTargets": [],
+            "verificationTargets": [target],
+            "terminalWork": [],
+        }
+        patches = (
+            patch.object(application, "_require_clean_worktree"),
+            patch.object(application, "_remote_inventory", return_value="inventory.yml"),
+            patch.object(application, "new_run_id", return_value=RUN_ID),
+            patch.object(application, "build_backends", return_value=(systemd, control)),
+            patch.object(
+                application,
+                "validate_remote_server_identity",
+                return_value={
+                    "host": "raspberrypi5",
+                    "clientId": "raspberrypi5-server",
+                },
+            ),
+            patch.object(Runtime, "build_print_plan", return_value=snapshot, create=True),
+        )
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+            patches[5] as build_plan,
+            patch("sys.stdout", new_callable=io.StringIO) as stdout,
+        ):
+            outcome = application.launch(
+                release_args(preflight_only=True), runtime=Runtime
+            )
+
+        self.assertEqual(outcome, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(
+            payload["targetPlanning"],
+            {
+                "status": "provisional-read-only-snapshot",
+                "typedTargetPlanningEnabled": True,
+                "activationExecutionEnabled": False,
+                "verificationOnlyExecutionEnabled": False,
+                "mutationTargets": [target],
+                "activationTargets": [],
+                "verificationTargets": [target],
+                "terminalWork": [],
+                "selectedClaimRequirements": None,
+            },
+        )
+        build_plan.assert_called_once_with(
+            "main",
+            "infrastructure/ansible/inventory.yml",
+            "",
+            full_fleet=False,
+            reverify_selected=False,
+        )
+        self.assertNotIn("start", [event[0] for event in systemd.events])
+
+    def test_disabled_activation_blocks_preflight_and_executor_promotion(self):
+        spec = application.LaunchSpec(
+            run_id=RUN_ID,
+            branch="main",
+            sha=SHA,
+            inventory="inventory.yml",
+            expected_server_client_id="raspberrypi5-server",
+            limit="",
+            canary_hold_timeout=1800,
+            emergency_override=False,
+            reason=None,
+            skip_canary_hold=False,
+            full_fleet=False,
+            reverify_selected=False,
+        ).validate()
+        passed = CommandResult(("preflight",), 0)
+        route = CommandResult(
+            ("route-preflight",),
+            0,
+            stdout=(
+                '{"version":1,"probe":"route","status":"passed",'
+                '"proofs":[],"issues":[],"warnings":[],"metrics":{}}'
+            ),
+        )
+        activation = {
+            "host": "kiosk-a",
+            "role": "kiosk",
+            "requiredClaims": ["controlPlaneWeb", "terminalRepository"],
+            "reason": "controlPlaneWeb claim is stale-or-unverified",
+            "activationStrategyId": "kiosk-web-activation-v1",
+        }
+
+        outcome, report = application._preflight_report(
+            spec,
+            migration_result=passed,
+            route_result=route,
+            terminal_result=passed,
+            selected_hosts=["raspberrypi5", "kiosk-a"],
+            selected_target_roles=[
+                {"host": "raspberrypi5", "role": "server"},
+                {"host": "kiosk-a", "role": "kiosk"},
+            ],
+            terminal_count=1,
+            planning_snapshot={
+                "typedTargetPlanningEnabled": True,
+                "activationExecutionEnabled": False,
+                "verificationOnlyExecutionEnabled": False,
+                "mutationTargets": [],
+                "activationTargets": [activation],
+                "verificationTargets": [activation],
+                "terminalWork": [],
+            },
+        )
+
+        self.assertEqual(outcome, 78)
+        self.assertEqual(report["status"], "blocked")
+        self.assertIsNone(report["effectiveExecutor"])
+        self.assertEqual(
+            report["probes"][-1],
+            {
+                "probe": "activation-architecture",
+                "status": "blocked",
+                "exitCode": 78,
+                "issues": ["activation-architecture.execution-disabled"],
+            },
+        )
+
+        verification_outcome, verification_report = application._preflight_report(
+            spec,
+            migration_result=passed,
+            route_result=route,
+            terminal_result=passed,
+            selected_hosts=["raspberrypi5", "kiosk-a"],
+            selected_target_roles=[
+                {"host": "raspberrypi5", "role": "server"},
+                {"host": "kiosk-a", "role": "kiosk"},
+            ],
+            terminal_count=1,
+            planning_snapshot={
+                "typedTargetPlanningEnabled": True,
+                "activationExecutionEnabled": False,
+                "verificationOnlyExecutionEnabled": False,
+                "mutationTargets": [],
+                "activationTargets": [],
+                "verificationTargets": [activation],
+                "terminalWork": [],
+            },
+        )
+        self.assertEqual(verification_outcome, 78)
+        self.assertEqual(
+            verification_report["probes"][-1]["probe"],
+            "verification-architecture",
+        )
+        self.assertIsNone(verification_report["effectiveExecutor"])
 
     def test_aggregate_terminal_preflight_failure_stops_before_unit_submission(self):
         systemd = FakeSystemd(
@@ -554,6 +738,7 @@ class ReleaseApplicationTest(unittest.TestCase):
         payload = json.loads(stdout.getvalue())
         self.assertEqual(outcome, 70)
         self.assertEqual(payload["status"], "incomplete")
+        self.assertIsNone(payload["effectiveExecutor"])
         self.assertEqual(
             [probe["status"] for probe in payload["probes"]],
             ["blocked", "incomplete", "blocked"],

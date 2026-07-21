@@ -19,6 +19,7 @@ from .backends.systemd import (
     SystemdBackend,
 )
 from .models import LaunchSpec
+from .planner import executor_selection, required_claim_kinds
 from .policy import server_identity
 from .reconcile import reconcile_status
 from .route_contract import ROUTE_STAGES
@@ -328,13 +329,97 @@ def _preflight_report(
     route_result: Any,
     terminal_result: Any,
     selected_hosts: list[str],
+    selected_target_roles: list[dict[str, str]],
     terminal_count: int,
+    planning_snapshot: dict[str, Any] | None,
 ) -> tuple[int, dict[str, Any]]:
     probes = [
         _probe_record("migration", migration_result),
         _probe_record("route", route_result, structured=True),
         _probe_record("terminal", terminal_result),
     ]
+    if planning_snapshot is None:
+        target_planning = {
+            "status": "deferred-to-locked-coordinator",
+            "typedTargetPlanningEnabled": None,
+            "activationExecutionEnabled": None,
+            "verificationOnlyExecutionEnabled": None,
+            "mutationTargets": None,
+            "activationTargets": None,
+            "verificationTargets": None,
+            "terminalWork": None,
+            "selectedClaimRequirements": [
+                {
+                    "host": target["host"],
+                    "role": target["role"],
+                    "requiredClaims": [
+                        kind.value for kind in required_claim_kinds(target["role"])
+                    ],
+                    "reason": (
+                        "aggregate preflight scope; locked coordinator determines actions"
+                    ),
+                }
+                for target in selected_target_roles
+            ],
+        }
+    else:
+        target_planning = {
+            "status": "provisional-read-only-snapshot",
+            "typedTargetPlanningEnabled": planning_snapshot.get(
+                "typedTargetPlanningEnabled"
+            ),
+            "activationExecutionEnabled": planning_snapshot.get(
+                "activationExecutionEnabled"
+            ),
+            "verificationOnlyExecutionEnabled": planning_snapshot.get(
+                "verificationOnlyExecutionEnabled"
+            ),
+            "mutationTargets": planning_snapshot["mutationTargets"],
+            "activationTargets": planning_snapshot["activationTargets"],
+            "verificationTargets": planning_snapshot["verificationTargets"],
+            "terminalWork": planning_snapshot["terminalWork"],
+            "selectedClaimRequirements": None,
+        }
+        if (
+            planning_snapshot["activationTargets"]
+            and planning_snapshot.get("activationExecutionEnabled") is not True
+        ):
+            probes.append(
+                {
+                    "probe": "activation-architecture",
+                    "status": "blocked",
+                    "exitCode": EX_CONFIG,
+                    "issues": ["activation-architecture.execution-disabled"],
+                }
+            )
+        mutation_hosts = {
+            target.get("host")
+            for target in planning_snapshot["mutationTargets"]
+            if isinstance(target, dict) and isinstance(target.get("host"), str)
+        }
+        activation_hosts = {
+            target.get("host")
+            for target in planning_snapshot["activationTargets"]
+            if isinstance(target, dict) and isinstance(target.get("host"), str)
+        }
+        verification_only = [
+            target
+            for target in planning_snapshot["verificationTargets"]
+            if isinstance(target, dict)
+            and target.get("host") not in mutation_hosts | activation_hosts
+        ]
+        if (
+            verification_only
+            and planning_snapshot.get("verificationOnlyExecutionEnabled") is not True
+        ):
+            probes.append(
+                {
+                    "probe": "verification-architecture",
+                    "status": "blocked",
+                    "exitCode": EX_CONFIG,
+                    "issues": ["verification-architecture.execution-disabled"],
+                }
+            )
     if any(probe["status"] == "incomplete" for probe in probes):
         outcome = EX_SOFTWARE
         status = "incomplete"
@@ -352,6 +437,8 @@ def _preflight_report(
         "limit": spec.limit,
         "status": status,
         "selectedHosts": selected_hosts,
+        "targetPlanning": target_planning,
+        **executor_selection(preflight_passed=outcome == 0),
         "terminalCount": terminal_count,
         "releaseSubmitted": False,
         "routeCoverage": [stage.id for stage in ROUTE_STAGES],
@@ -392,6 +479,19 @@ def launch(args: Any, *, runtime: Any) -> int:
     )
     identity = validate_remote_server_identity(inventory_data, runtime=runtime)
 
+    planning_snapshot = None
+    build_print_plan = getattr(runtime, "build_print_plan", None)
+    if callable(build_print_plan):
+        planning_snapshot = build_print_plan(
+            args.branch,
+            args.inventory,
+            args.limit,
+            full_fleet=args.full_fleet,
+            reverify_selected=args.reverify_selected,
+        )
+        if planning_snapshot.get("sha") != sha:
+            raise RuntimeError("preflight planning SHA changed during launch")
+
     run_id = new_run_id()
     spec = LaunchSpec(
         run_id=run_id,
@@ -419,7 +519,12 @@ def launch(args: Any, *, runtime: Any) -> int:
         route_result=route_preflight,
         terminal_result=terminal_preflight_result,
         selected_hosts=[str(target["host"]) for target in selected_release_hosts],
+        selected_target_roles=[
+            {"host": str(target["host"]), "role": str(target["role"])}
+            for target in selected_release_hosts
+        ],
         terminal_count=len(terminal_preflight_targets),
+        planning_snapshot=planning_snapshot,
     )
     if getattr(args, "preflight_only", False):
         print(json.dumps(preflight_report, ensure_ascii=False, sort_keys=True))

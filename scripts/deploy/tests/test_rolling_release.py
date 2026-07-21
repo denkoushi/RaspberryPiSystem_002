@@ -95,6 +95,14 @@ def fleet_execution_contract(targets, classification, inventory):
             full_fleet=kwargs['full_fleet'],
             limit=kwargs['limit'],
             canary_hold_policy=MODULE.should_hold_after_canary,
+            fleet_records=fleet,
+            # These fixtures exercise the frozen legacy SSH mutation path.
+            # Typed target planning and its fail-closed activation gate have
+            # dedicated tests below.
+            typed_target_planning=False,
+            executor_preflight_passed=kwargs.get(
+                'executor_preflight_passed', False
+            ),
         )
         target_hosts = {
             decision['host']
@@ -1845,6 +1853,9 @@ class Pi5OnlyRemoteRunTest(unittest.TestCase):
         self.assertEqual(payload['targets'], [])
         self.assertEqual(payload['state'], 'success')
         self.assertTrue(payload['plan']['pi5Required'])
+        self.assertEqual(payload['plan']['requestedExecutor'], 'ssh-ansible')
+        self.assertEqual(payload['plan']['provisionalExecutor'], 'ssh-ansible')
+        self.assertEqual(payload['plan']['effectiveExecutor'], 'ssh-ansible')
         self.assertEqual(payload['plan']['targetHosts'], ['raspberrypi5'])
         self.assertEqual(payload['plan']['limit'], 'raspberrypi5')
 
@@ -1908,6 +1919,45 @@ class Pi5OnlyRemoteRunTest(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertEqual(payload['state'], 'success')
         ensure.assert_not_called()
+
+
+class TargetArchitectureExecutionGateTest(unittest.TestCase):
+    def test_activation_cannot_reach_mutation_while_repository_flag_is_disabled(self):
+        plan = {
+            'activationExecutionEnabled': False,
+            'verificationOnlyExecutionEnabled': False,
+            'mutationTargets': [],
+            'activationTargets': [{'host': 'kiosk-a'}],
+            'verificationTargets': [{'host': 'kiosk-a'}],
+        }
+        with self.assertRaisesRegex(
+            RuntimeError,
+            'disabled activation execution before mutation: kiosk-a',
+        ):
+            MODULE.release_coordinator._require_executable_target_architecture(plan)
+
+    def test_empty_activation_set_preserves_the_ssh_execution_path(self):
+        MODULE.release_coordinator._require_executable_target_architecture({
+            'activationExecutionEnabled': False,
+            'verificationOnlyExecutionEnabled': False,
+            'mutationTargets': [],
+            'activationTargets': [],
+            'verificationTargets': [],
+        })
+
+    def test_verification_only_work_cannot_be_misreported_as_a_noop(self):
+        plan = {
+            'activationExecutionEnabled': False,
+            'verificationOnlyExecutionEnabled': False,
+            'mutationTargets': [],
+            'activationTargets': [],
+            'verificationTargets': [{'host': 'signage-a'}],
+        }
+        with self.assertRaisesRegex(
+            RuntimeError,
+            'disabled verification-only execution before mutation: signage-a',
+        ):
+            MODULE.release_coordinator._require_executable_target_architecture(plan)
 
 
 class PrintPlanShadowTest(unittest.TestCase):
@@ -2085,7 +2135,23 @@ class PrintPlanShadowTest(unittest.TestCase):
         self.assertEqual(plan['classification'], classification)
         self.assertTrue(plan['pi5Required'])
         self.assertEqual(plan['terminalTargets'], [])
-        self.assertFalse(plan['canaryHold'])
+        self.assertTrue(plan['canaryHold'])
+        self.assertTrue(plan['typedTargetPlanningEnabled'])
+        self.assertFalse(plan['activationExecutionEnabled'])
+        self.assertFalse(plan['verificationOnlyExecutionEnabled'])
+        self.assertEqual(
+            [target['host'] for target in plan['mutationTargets']],
+            ['raspberrypi5'],
+        )
+        self.assertEqual(
+            [target['host'] for target in plan['activationTargets']],
+            ['kiosk-canary', 'kiosk-b'],
+        )
+        self.assertEqual(
+            [target['host'] for target in plan['verificationTargets']],
+            ['raspberrypi5', 'kiosk-canary', 'kiosk-b'],
+        )
+        self.assertIsNone(plan['effectiveExecutor'])
         self.assertIsNone(plan['limit'])
         self.assertTrue(plan['minimized'])
         self.assertEqual(plan['excludedHosts'], ['kiosk-canary', 'kiosk-b'])

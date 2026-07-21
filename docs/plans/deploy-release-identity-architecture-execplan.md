@@ -59,7 +59,7 @@ the complete offline gate passes and a new exact hardware approval is granted.
 - [x] (2026-07-21 04:38Z) Executed the separately approved Pi5 plus StoneBase read-only manifest with no mutation or FJV contact; normalized evidence digest is `f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8`.
 - [x] (2026-07-21 04:38Z) Confirmed that the forward apply did not restart the Kiosk browser and sealed rollback did; accepted the ADR and opened offline implementation only.
 - [x] (2026-07-21 05:03Z) Completed Milestone 1: added the closed typed-claim model, additive fleet/run readers, legacy evidence adapter, and golden compatibility fixtures. Passed the focused 50 tests plus lifecycle contract, 770 deploy Python tests, and the complete offline aggregate including shell, safety, Pi5/Signage lifecycle, isolated PostgreSQL ACK, inventory, and Ansible contracts.
-- [ ] Milestone 2: split planner targets and make the planned work observable without enabling new activation.
+- [x] (2026-07-21 05:43Z) Completed Milestone 2 offline: split ordered mutation, activation, and verification targets; moved required claims and activation strategy into registry schema v4; exposed provisional/effective SSH executor state; and added preflight/coordinator gates that prevent disabled activation or verification-only work from reaching mutation.
 - [ ] Milestone 3: add bounded Kiosk Web activation and the one-time old-bundle migration.
 - [ ] Milestone 4: migrate SSH Kiosk and Signage verification/finalization to typed claims.
 - [ ] Milestone 5: rebase the StoneBase Local executor behind its explicit flag.
@@ -115,6 +115,27 @@ the complete offline gate passes and a new exact hardware approval is granted.
   state. The compatibility adapter retains the observed SHA but marks the
   candidate-oriented typed claim `unknown`; it never converts drift into a
   verified expected claim.
+
+- Observation: target separation cannot safely hard-code the current terminal
+  profile names in the planner.
+  Evidence: the complete Python discovery initially stopped at the existing
+  core-independence contract. Registry schema v4 now owns the closed required
+  claim kinds and activation strategy ID; the planner consumes only registry
+  data and the contract passes.
+
+- Observation: activation gating alone does not make same-SHA no-op safe.
+  Evidence: a Signage record with a missing `terminalRepository` claim needs
+  verification but neither mutation nor browser activation. Milestone 2 now
+  identifies verification-only work and blocks it before mutation until a
+  bounded execution stage exists.
+
+- Observation: the CI aggregate wrapper requires workspace-local Node package
+  dependencies even when the changed deploy code is Python-only.
+  Evidence: the wrapper passed its then-current 780 Python tests and lifecycle
+  contracts, then stopped in the isolated PostgreSQL test because `tsc` was
+  absent from this fresh worktree. Deploy safety, 24 recovery tests, two inventory
+  contracts, all Ansible syntax checks, and the recovery check were rerun
+  separately and passed. No dependency install was performed.
 
 ## Decision Log
 
@@ -191,6 +212,21 @@ the complete offline gate passes and a new exact hardware approval is granted.
   and Web claims, so no browser claim is manufactured.
   Date/Author: 2026-07-21 / Codex.
 
+- Decision: enable typed target planning while keeping activation execution
+  and verification-only execution disabled by repository constants.
+  Rationale: `--print-plan` and preflight must expose missing consumer work,
+  but Milestone 2 has no device activation or verification-only executor. Both
+  cases therefore fail before Pi5 or terminal mutation instead of falling
+  through to a false no-op success.
+  Date/Author: 2026-07-21 / Codex.
+
+- Decision: put terminal required claims and activation strategy IDs in strict
+  registry schema v4 while retaining legacy `readyAuthority`.
+  Rationale: core planning remains profile-independent, commands cannot enter
+  registry data, and existing SSH ACK behavior stays readable until Milestone
+  4 migrates finalization.
+  Date/Author: 2026-07-21 / Codex.
+
 ## Outcomes & Retrospective
 
 The investigation phase produced a coherent state model and rejected the
@@ -204,9 +240,23 @@ strict model and dual-read boundary without routing any production decision
 through the new claims. Golden legacy records read without field insertion,
 mixed records round-trip their claims, corrupt mixed identities fail closed,
 and a typed record produces the same legacy planner decision. Complete
-aggregate validation passed. Milestones 2 through 6 and the separate future
+aggregate validation passed. Milestones 3 through 6 and the separate future
 hardware gate remain open. Live rollout remains No-Go and the current safe
 production state is untouched.
+
+Milestone 2 is complete offline on the same branch. Public and durable plans
+now contain ordered `mutationTargets`, `activationTargets`,
+`verificationTargets`, one de-duplicated terminal work order, detailed claim
+requirements, and requested/provisional/effective executor state. A Web-only
+fixture produces Pi5 mutation plus Kiosk activation/verification with no
+terminal mutation; terminal-only SSH preserves the current Web claim; and a
+same-SHA plan is empty only when every required claim is current. Canonical
+preflight uses a provisional read-only plan snapshot and promotes only the SSH
+executor after aggregate probes pass. Disabled activation and verification-
+only work are blocked in both preflight and the coordinator before mutation.
+No activation command, ACK change, timeout change, Local executor, or device
+operation was added. Live rollout and the hardware gate remain No-Go; Milestone
+3 is the next implementation step.
 
 ## Context and Orientation
 
@@ -537,3 +587,11 @@ authority validation, additive fleet/run dual-read support, explicit legacy
 projection that never infers a Kiosk browser claim, golden compatibility
 fixtures, and the complete offline aggregate. No planner, executor, ACK,
 restart, timeout, or hardware behavior was changed.
+
+Revision note (2026-07-21 05:43Z): Completed Milestone 2 with registry-owned
+claim requirements, three explicit target sets, provisional/effective SSH
+executor reporting, and fail-closed disabled-stage gates. Recorded 781 passing
+deploy Python tests, deploy safety, recovery, inventory, and Ansible syntax
+results. The monolithic aggregate wrapper remains an environment-only No-Go
+because this fresh worktree has no Node package dependencies for its unrelated
+isolated PostgreSQL step; no hardware gate was opened.
