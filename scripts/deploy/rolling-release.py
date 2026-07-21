@@ -87,7 +87,9 @@ def _runtime() -> Any:
 
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    """Return the durable-state clock format required by release claims."""
+
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def run(
