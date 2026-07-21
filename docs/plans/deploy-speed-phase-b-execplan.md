@@ -1,7 +1,7 @@
 ---
 id: deploy-speed-phase-b
 title: Deploy speed Phase B and StoneBase local execution PoC
-status: active
+status: phase-b-merged
 scope: rolling release terminal apply, StoneBase-only local execution preparation
 date: 2026-07-21
 source_of_truth: docs/plans/deploy-speed-phase-b-execplan.md
@@ -16,9 +16,8 @@ related_docs:
   - docs/plans/deploy-speed-optimization-execplan.md
 validation: local contracts and hosted checks passed; StoneBase Phase B production validation passed
 open_items:
-  - continue coordinator integration in the separate docs/plans/stonebase-local-ansible-execplan.md
   - obtain separate approval for a StoneBase maintenance-window reverify run that measures the healthy unchanged Compose-skipped path
-  - make the local-execution ready acknowledgement bind the terminal candidate SHA; the existing kiosk ACK authority is the Pi5 control-plane SHA and terminal SHA is independently verified today
+  - continue hardware acceptance of the integrated local executor under the separate docs/plans/stonebase-local-ansible-execplan.md
 ---
 
 # Optimize unchanged terminal releases and prepare a sealed local execution PoC
@@ -43,6 +42,7 @@ This plan also defines a non-live proof of concept for future StoneBase local ex
 - [x] (2026-07-20 23:22Z) Ran the approved canonical Pi5 + StoneBase-only `--print-plan` and `--preflight-only`; all three probes passed with zero issues and FJV was explicitly excluded.
 - [x] (2026-07-20 23:23Z) Ran the approved canonical serial release `20260720-232311-d2e8c8` for StoneBase only. It completed with exit 0, evidence `verified`, maintenance cleared, committed runtime cleanup, and terminal SHA `73b3dbe4fbacda6cb5cbdfc8f7375201780a4d6c`.
 - [x] (2026-07-20 23:29Z) Re-read the durable run state and ran the canonical no-mutation plan. StoneBase is `verified at desired SHA` and target selection is empty; FJV remains `outside explicit --limit`.
+- [x] (2026-07-21 01:37Z) Marked PR #1046 ready and merged its fixed head `c98c30dddd3778e3ed871aa8bee6b98fe215b20e` into `main` as merge commit `79ee42ac44e4ffbf33a515df7cc894e910fc8d95`; all hosted CI, CodeQL, and secret-scan workflows had succeeded.
 
 ## Surprises & Discoveries
 
@@ -101,7 +101,7 @@ All three agent lifecycle tasks make Compose conditional on the existing fail-cl
 
 The local execution PoC is deliberately only a non-live boundary harness. It creates a no-secret archive with an assertion-only local playbook; validates archive and payload digests, exact member set, candidate SHA, host/status identity, pinned runtime, three sealed-authority digests, staged files, and an exclusive lock; then calls exactly `ansible-playbook -c local` in tests through an injectable process boundary. It does not transfer an artifact, change an actual checkout, run a release playbook, update fleet/run state, enter maintenance, wait for ready ACK, or perform rollback. Those remain open integration milestones. Apart from the separately approved canonical Pi5 + StoneBase Phase B validation recorded above, this worktree did not contact or change other terminals; FJV was never a connection target.
 
-The integration work moved to `docs/plans/stonebase-local-ansible-execplan.md` on a separate branch/PR as required. This Phase B plan remains the source of truth for Phase B behavior and production evidence; it does not claim the integrated local executor is part of PR #1046.
+The integration work moved to `docs/plans/stonebase-local-ansible-execplan.md` on a separate branch/PR as required. PR #1046 merged only the Phase B behavior and its non-live assertion harness; it did not include the integrated local executor.
 
 ## Context and Orientation
 
@@ -206,9 +206,9 @@ For the local execution PoC, replaying the same terminal/run pair must be reject
 
 ## Artifacts and Notes
 
-The worktree branch starts at:
+Phase B is merged at:
 
-    332baa69377b61bcb23db5c0daced9e1295ba55b  origin/main
+    79ee42ac44e4ffbf33a515df7cc894e910fc8d95  origin/main merge of PR #1046
 
 Phase A performance evidence retained for comparison:
 
@@ -227,4 +227,4 @@ Phase B adds only repository-owned Ansible facts and tasks. Every agent lifecycl
 
 The non-live interface in `scripts/deploy/rolling_release/local_execution_poc.py` is `CandidateBinding`, `build_candidate_artifact(...)`, `inspect_candidate_artifact(...)`, `stage_candidate_artifact(...)`, and `run_staged_candidate(...)`. `CandidateBinding` carries explicit run ID, candidate SHA, host, status client ID, pinned Ansible/collection versions, and the three sealed-authority digests. Its process call is injectable and deliberately has no remote transport. Production integration must replace it with narrow backend interfaces such as `prepare_local_terminal_candidate(...)`, `transfer_local_terminal_candidate(...)`, and `run_local_terminal_candidate(...)`; it must validate the same fields before any subprocess call. Route-contract metadata is the only location that enumerates that future external boundary, and the coordinator remains the only owner of state transition, maintenance clearing, verification promotion, and rollback choice.
 
-Revision note (2026-07-20 23:08Z): Rehearsed the assertion-only candidate artifact through local Ansible. Corrected and regression-tested its generated fixed host group after the first rehearsal revealed that no target group had been declared. It remains intentionally detached from coordinator, transport, and all real hardware operations.
+Revision note (2026-07-21 01:37Z): Recorded the successful merge of PR #1046 after its hosted CI, CodeQL, and secret scan passed. Integrated Local execution remains owned by the separate ExecPlan and was not part of the Phase B merge.

@@ -1,7 +1,7 @@
 ---
 id: stonebase-local-ansible
 title: StoneBase sealed local Ansible executor
-status: implementation-complete-hardware-pending
+status: hardware-preflight-approved
 scope: opt-in StoneBase terminal apply executor below the rolling-release safety adapter
 date: 2026-07-21
 source_of_truth: docs/plans/stonebase-local-ansible-execplan.md
@@ -14,10 +14,10 @@ related_docs:
   - docs/guides/deployment.md
   - docs/plans/deploy-speed-phase-b-execplan.md
   - docs/runbooks/deploy-status-recovery.md
-validation: 760 deploy Python tests, aggregate deploy contracts, safety contracts, Ansible syntax, JSON and diff checks passed; no hardware execution performed
+validation: post-merge 760 deploy Python tests and aggregate deploy contracts passed, including safety, isolated PostgreSQL/API, inventories, and Ansible syntax; no hardware execution performed
 open_items:
-  - rebase from merged Phase B main because this branch is temporarily stacked on PR 1046 head c98c30dd
-  - obtain explicit approval before canonical Pi5 plus StoneBase print-plan or preflight
+  - publish the rebased candidate branch
+  - run the approved canonical Pi5 plus StoneBase print-plan and preflight
   - bootstrap the runner through an approved SSH executor run before the first local reverify run
 ---
 
@@ -42,8 +42,9 @@ This is not `ansible-pull`. StoneBase cannot choose a branch, fetch from a netwo
 - [x] (2026-07-21 00:54Z) Split transfer acceptance from unit waiting so durable run state records `pending`, `accepted`, or `uncertain` at the correct boundary. A running or unknown unit prevents rollback; only a proved-quiescent unit reaches manifest-bounded rollback.
 - [x] (2026-07-21 00:56Z) Verified the aarch64 Python 3.11 hash lock resolves exactly nine binary wheels for ansible-core 2.19.4 and its dependencies. Focused local runner, candidate ACK, coordinator, route, and legacy transition tests pass without hardware access.
 - [x] (2026-07-21 01:17Z) Passed complete deploy Python discovery (760 tests), the aggregate local deploy contract including isolated PostgreSQL/API integration, deployment safety contracts, both standard and local Ansible syntax checks, JSON validation, Python compilation, and `git diff --check`.
-- [ ] After PR #1046 merges, rebase this branch onto the new `origin/main`, rerun every local acceptance check, and ensure the diff contains only this PoC.
-- [x] (2026-07-21 01:17Z) Prepared the canonical Pi5 plus StoneBase `--print-plan` and `--preflight-only` commands without running them. A new explicit approval remains required before either command contacts Pi5 or StoneBase.
+- [x] (2026-07-21 01:37Z) Marked PR #1046 ready and merged its fixed head `c98c30dddd3778e3ed871aa8bee6b98fe215b20e` into `main` as `79ee42ac44e4ffbf33a515df7cc894e910fc8d95`, then rebased this branch without conflicts. The rebased Local executor commit is `4a41dd6c` before this living-plan update.
+- [x] (2026-07-21 01:43Z) Reran complete deploy Python discovery on merged Phase B main: 760 tests passed in 53.726 seconds. The aggregate deploy contract also passed, including template parsing, lifecycle/safety contracts, a second 760-test discovery, isolated PostgreSQL/API integration with 20 tests, inventories, and Ansible syntax.
+- [x] (2026-07-21 01:37Z) Obtained explicit approval for the canonical Pi5 plus StoneBase `--print-plan` and `--preflight-only`. Neither command has run yet; post-merge validation and candidate publication remain prerequisites.
 - [ ] In a later approved maintenance window, perform an SSH executor bootstrap run first, then a separate `--reverify-selected --stonebase-local-ansible-poc` run. Record exact run state, evidence, rollback authority, and timings here.
 
 ## Surprises & Discoveries
@@ -99,7 +100,7 @@ The non-live implementation now connects the sealed local executor to the real c
 
 Ambiguous execution remains deliberately slow and conservative. If the receiver response is lost or the unit is running/unknown, fleet evidence stays unknown, maintenance remains active, and rollback is not started in parallel. Once systemd proves the unit stopped, any invalid/missing result, ACK mismatch, evidence failure, or cleanup failure uses only the already sealed rollback manifests. No candidate artifact contains Vault, inventory/group/host vars, `.env`, key, token, or password path members.
 
-Hardware acceptance and timing remain open. The branch is also intentionally stacked on the still-open Phase B head and must be rebased after that PR merges; this is not a claim that the requested post-merge branch topology already exists.
+Hardware acceptance and timing remain open. Phase B is now merged and this branch is rebased onto that immutable merge; post-merge validation and publication must still complete before the approved read-only hardware gate runs.
 
 Local acceptance is complete. The final test pass contains 760 deployment Python tests, 11 dedicated integrated-local tests, deployment safety and route contracts, standard/local Ansible syntax, and the full aggregate contract including the isolated deploy-status PostgreSQL/API tests. The safety audit required the bootstrap copy tasks to use seven literal manifest-backed paths and required the local Git reset exception to prove bundle verification, no `origin` transport, and clean tracked/index state. This tightened the implementation instead of bypassing the contract.
 
@@ -148,9 +149,9 @@ Run complete acceptance from the repository root:
 
 The hash lock can be rehearsed without StoneBase by downloading for CPython 3.11 aarch64 with `pip download --only-binary=:all: --require-hashes` and the two manylinux aarch64 platform tags. Expect exactly ansible-core, Jinja2, PyYAML, cryptography, packaging, resolvelib, MarkupSafe, cffi, and pycparser.
 
-After Phase B merges, fetch and rebase this branch onto the new immutable `origin/main`, resolve only genuine Phase B overlap, and rerun all commands above. Do not push or open a PR unless explicitly requested.
+Phase B merge and rebase are complete. Rerun all commands above against immutable `origin/main` `79ee42ac44e4ffbf33a515df7cc894e910fc8d95`, then publish the exact validated candidate branch before invoking the canonical read-only hardware gate. Do not open a PR unless explicitly requested.
 
-For a future approved read-only hardware gate, present these exact canonical commands with the final branch name/SHA before running them:
+For the approved read-only hardware gate, confirm the final published branch SHA and then run these exact canonical commands:
 
     scripts/update-all-clients.sh feat/stonebase-local-ansible-poc infrastructure/ansible/inventory.yml \
       --limit 'raspberrypi5:raspi4-kensaku-stonebase01' \
@@ -160,7 +161,7 @@ For a future approved read-only hardware gate, present these exact canonical com
       --limit 'raspberrypi5:raspi4-kensaku-stonebase01' \
       --stonebase-local-ansible-poc --preflight-only
 
-Do not run either until a new explicit approval. Never add `raspi4-fjv60-80`, use direct SSH, edit fleet/run/manifest/maintenance files, or invoke the local playbook by hand.
+The approval was granted on 2026-07-21, but neither command may run until post-merge validation and branch publication succeed. Never add `raspi4-fjv60-80`, use direct SSH, edit fleet/run/manifest/maintenance files, or invoke the local playbook by hand.
 
 ## Validation and Acceptance
 
@@ -185,11 +186,11 @@ Never repair a live run by deleting receipts, locks, unit state, artifacts, mani
 
 ## Artifacts and Notes
 
-Current branch topology before Phase B merge:
+Current branch topology after Phase B merge and rebase:
 
-    origin/main                       332baa69377b61bcb23db5c0daced9e1295ba55b
+    origin/main                       79ee42ac44e4ffbf33a515df7cc894e910fc8d95
     Phase B PR #1046 head             c98c30dddd3778e3ed871aa8bee6b98fe215b20e
-    feat/stonebase-local-ansible-poc  based on c98c30dd
+    rebased Local executor commit     4a41dd6c (before this living-plan update)
 
 Focused evidence at 2026-07-21 00:56Z:
 
@@ -222,4 +223,4 @@ The public CLI adds `--stonebase-local-ansible-poc`. Executor IDs are `ssh-ansib
 
 The fixed runtime is Python 3.11, ansible-core 2.19.4, and community.general 11.4.1. Python packages are installed with aarch64 wheel hashes from `requirements-aarch64-py311.lock`; the collection tarball has a fixed SHA-256 in `runtime-lock.json`. Artifact and staging maximums are 128 MiB and 256 MiB. Local execution timeout is fifteen minutes. The route contract owns `terminal.artifact-seal`, `terminal.single-transfer`, `terminal.local-unit`, `terminal.candidate-ready-ack`, and `terminal.local-residue-cleanup`.
 
-Revision note (2026-07-21 01:17Z): Completed non-live acceptance, recorded all final contract evidence, added post-extraction staging integrity and bounded failure-result tests, and documented the safety-contract-driven fixed bootstrap destinations. Hardware preflight and release remain intentionally unexecuted pending a new explicit approval.
+Revision note (2026-07-21 01:43Z): Completed post-merge local acceptance without hardware access. Branch publication, the approved Pi5 plus StoneBase print-plan, and the approved preflight remain sequential pending work.
