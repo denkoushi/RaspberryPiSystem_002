@@ -36,10 +36,14 @@ MAX_JSON_BYTES = 1024 * 1024
 MAX_COMMAND_OUTPUT = 1024 * 1024
 COMMAND_TIMEOUT_SECONDS = 60
 SAFE_COMMAND_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+KIOSK_WEB_ACTIVATION_STRATEGY = "kiosk-web-activation-v1"
+KIOSK_WEB_ACTIVATION_TARGET_UNIT = "kiosk-browser.service"
+KIOSK_WEB_ACTIVATION_TIMEOUT_SECONDS = 60
 
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$")
 HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+ACTIVATION_UNIT_RE = re.compile(r"^raspi-kiosk-web-[0-9a-f]{20}\.service$")
 IMAGE_ID_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 CONTAINER_ID_RE = re.compile(r"^[0-9a-f]{12,64}$")
 PROJECT_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,62}$")
@@ -1541,6 +1545,200 @@ def _load_manifest(context: ManifestContext, *, require_paths: bool) -> dict[str
     )
 
 
+def kiosk_web_activation_unit_name(run_id: str, host: str) -> str:
+    safe_run = _validate_identity(run_id, RUN_ID_RE, "run ID")
+    safe_host = _validate_identity(host, HOST_RE, "host")
+    digest = hashlib.sha256(
+        f"{KIOSK_WEB_ACTIVATION_STRATEGY}\0{safe_run}\0{safe_host}".encode("utf-8")
+    ).hexdigest()[:20]
+    return f"raspi-kiosk-web-{digest}.service"
+
+
+def _activation_authority(
+    context: ManifestContext, expected_manifest_sha256: str
+) -> dict[str, Any]:
+    if (
+        not isinstance(expected_manifest_sha256, str)
+        or SHA256_RE.fullmatch(expected_manifest_sha256) is None
+    ):
+        raise RuntimeManifestError("expected runtime manifest digest is malformed")
+    manifest = _load_manifest(context, require_paths=True)
+    if not hmac.compare_digest(
+        manifest["manifestSha256"], expected_manifest_sha256
+    ):
+        raise RuntimeManifestError("runtime manifest differs from expected sealed digest")
+    _require_runtime_manifest_open(
+        context, manifest["manifestSha256"], "Kiosk Web activation"
+    )
+    matching = [
+        record
+        for record in manifest["units"]
+        if record["name"] == KIOSK_WEB_ACTIVATION_TARGET_UNIT
+    ]
+    if len(matching) != 1:
+        raise RuntimeManifestError(
+            "Kiosk Web activation target is not sealed by the runtime manifest"
+        )
+    if (
+        matching[0]["loadState"] != "loaded"
+        or matching[0]["activeState"] != "active"
+    ):
+        raise RuntimeManifestError(
+            "Kiosk Web activation target was not active when runtime authority was sealed"
+        )
+    return manifest
+
+
+def _activation_status(context: ManifestContext) -> dict[str, Any]:
+    operation_unit = kiosk_web_activation_unit_name(context.run_id, context.host)
+    if ACTIVATION_UNIT_RE.fullmatch(operation_unit) is None:
+        raise RuntimeManifestError("Kiosk Web activation unit identity is malformed")
+    expected = {
+        "LoadState",
+        "ActiveState",
+        "SubState",
+        "Result",
+        "ExecMainStatus",
+    }
+    result = _run_command(
+        [
+            "systemctl",
+            "show",
+            "--no-page",
+            *[f"--property={field}" for field in sorted(expected)],
+            operation_unit,
+        ]
+    )
+    values = _parse_key_values(result.stdout, expected, "activation systemctl show")
+    load_state = values["LoadState"]
+    active_state = values["ActiveState"]
+    sub_state = values["SubState"]
+    unit_result = values["Result"]
+    try:
+        exec_main_status = int(values["ExecMainStatus"])
+    except ValueError as error:
+        raise RuntimeManifestError(
+            "Kiosk Web activation exit status is malformed"
+        ) from error
+    if load_state == "not-found":
+        state = "absent"
+    elif load_state != "loaded":
+        raise RuntimeManifestError("Kiosk Web activation unit load state is malformed")
+    elif active_state in {"activating", "deactivating"} or (
+        active_state == "active" and sub_state != "exited"
+    ):
+        state = "running"
+    elif (
+        active_state == "active"
+        and sub_state == "exited"
+        and unit_result == "success"
+        and exec_main_status == 0
+    ):
+        state = "succeeded"
+    elif active_state in {"inactive", "failed"}:
+        state = "failed"
+    else:
+        raise RuntimeManifestError("Kiosk Web activation unit state is malformed")
+    return {
+        "strategyId": KIOSK_WEB_ACTIVATION_STRATEGY,
+        "operationUnit": operation_unit,
+        "targetUnit": KIOSK_WEB_ACTIVATION_TARGET_UNIT,
+        "state": state,
+        "activeState": active_state,
+        "result": unit_result or None,
+        "execMainStatus": exec_main_status,
+    }
+
+
+def activate_kiosk_web(
+    *,
+    root: os.PathLike[str] | str,
+    run_id: str,
+    host: str,
+    expected_manifest_sha256: str,
+) -> dict[str, Any]:
+    """Submit one manifest-authorized deterministic browser activation unit."""
+
+    context = _build_context(root=root, run_id=run_id, host=host, create=False)
+    with _HostLock(context.lock_path):
+        _activation_authority(context, expected_manifest_sha256)
+        status = _activation_status(context)
+        if status["state"] != "absent":
+            return status
+        _run_command(
+            [
+                "systemd-run",
+                f"--unit={status['operationUnit']}",
+                "--property=Type=oneshot",
+                "--property=RemainAfterExit=yes",
+                f"--property=TimeoutStartSec={KIOSK_WEB_ACTIVATION_TIMEOUT_SECONDS}s",
+                "--no-block",
+                "--",
+                "/usr/bin/systemctl",
+                "restart",
+                KIOSK_WEB_ACTIVATION_TARGET_UNIT,
+            ]
+        )
+        return _activation_status(context)
+
+
+def reconcile_kiosk_web_activation(
+    *,
+    root: os.PathLike[str] | str,
+    run_id: str,
+    host: str,
+    expected_manifest_sha256: str,
+) -> dict[str, Any]:
+    """Observe the deterministic unit without submitting another operation."""
+
+    context = _build_context(root=root, run_id=run_id, host=host, create=False)
+    with _HostLock(context.lock_path):
+        _activation_authority(context, expected_manifest_sha256)
+        return _activation_status(context)
+
+
+def cleanup_kiosk_web_activation(
+    *,
+    root: os.PathLike[str] | str,
+    run_id: str,
+    host: str,
+    expected_manifest_sha256: str,
+) -> dict[str, Any]:
+    """Unload only the quiescent run-bound transient activation unit."""
+
+    context = _build_context(root=root, run_id=run_id, host=host, create=False)
+    with _HostLock(context.lock_path):
+        manifest = _activation_authority(context, expected_manifest_sha256)
+        status = _activation_status(context)
+        if status["state"] == "running":
+            raise RuntimeManifestError(
+                "Kiosk Web activation is still running; cleanup is not permitted"
+            )
+        if status["state"] == "absent":
+            return {
+                "cleaned": True,
+                "alreadyClean": True,
+                "strategyId": KIOSK_WEB_ACTIVATION_STRATEGY,
+                "operationUnit": status["operationUnit"],
+                "manifestSha256": manifest["manifestSha256"],
+            }
+        _run_command(["systemctl", "stop", status["operationUnit"]])
+        _run_command(
+            ["systemctl", "reset-failed", status["operationUnit"]],
+            allowed_exit_codes=(0, 1),
+        )
+        final = _activation_status(context)
+        if final["state"] != "absent":
+            raise RuntimeManifestError("Kiosk Web activation unit did not unload")
+        return {
+            "cleaned": True,
+            "alreadyClean": False,
+            "strategyId": KIOSK_WEB_ACTIVATION_STRATEGY,
+            "operationUnit": status["operationUnit"],
+            "manifestSha256": manifest["manifestSha256"],
+        }
+
+
 def _receipt_value(context: ManifestContext, manifest_digest: str, kind: str) -> dict[str, Any]:
     base = {
         "version": RECEIPT_VERSION,
@@ -2616,6 +2814,15 @@ def main(argv: list[str] | None = None) -> int:
         "--outcome", required=True, choices=("committed", "restored")
     )
 
+    for command in (
+        "activate-kiosk-web",
+        "reconcile-kiosk-web-activation",
+        "cleanup-kiosk-web-activation",
+    ):
+        activation_parser = subparsers.add_parser(command)
+        _add_common_arguments(activation_parser)
+        activation_parser.add_argument("--expected-manifest-sha256", required=True)
+
     args = parser.parse_args(argv)
     try:
         if args.command in {"capture", "probe-capture"}:
@@ -2642,6 +2849,27 @@ def main(argv: list[str] | None = None) -> int:
             )
         elif args.command == "restore":
             result = restore(
+                root=args.root,
+                run_id=args.run_id,
+                host=args.host,
+                expected_manifest_sha256=args.expected_manifest_sha256,
+            )
+        elif args.command == "activate-kiosk-web":
+            result = activate_kiosk_web(
+                root=args.root,
+                run_id=args.run_id,
+                host=args.host,
+                expected_manifest_sha256=args.expected_manifest_sha256,
+            )
+        elif args.command == "reconcile-kiosk-web-activation":
+            result = reconcile_kiosk_web_activation(
+                root=args.root,
+                run_id=args.run_id,
+                host=args.host,
+                expected_manifest_sha256=args.expected_manifest_sha256,
+            )
+        elif args.command == "cleanup-kiosk-web-activation":
+            result = cleanup_kiosk_web_activation(
                 root=args.root,
                 run_id=args.run_id,
                 host=args.host,

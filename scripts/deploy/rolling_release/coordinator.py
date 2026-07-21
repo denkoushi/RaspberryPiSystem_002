@@ -13,13 +13,79 @@ from pathlib import Path
 from typing import Any
 
 from .adapter_registry import adapter_for_profile
+from .activation import (
+    ActivationUncertainError,
+    WEB_CONSUMER_ACTIVATION_STRATEGY,
+    WEB_CONSUMER_CAPABILITY_AUTHORITY,
+    WEB_CONSUMER_MIGRATION_MODE,
+    WEB_CONSUMER_STEADY_STATE_MODE,
+)
 from .cancellation import CancellationRequested, CancellationToken
+from .release_claims import (
+    ClaimAuthority,
+    ClaimKind,
+    ClaimState,
+    ReleaseClaim,
+    release_claims_for_host,
+    validate_release_claims,
+)
 from .terminal_adapters import TerminalAdapter
 
 
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$")
+
+
+def _require_executable_target_architecture(plan: dict[str, Any]) -> None:
+    # Old active runs and compatibility test runtimes do not carry Milestone 2
+    # planning fields. They remain on the legacy SSH path; newly composed plans
+    # always include the key and are checked strictly below.
+    if "activationTargets" not in plan:
+        return
+    for field in (
+        "mutationTargets",
+        "activationTargets",
+        "verificationTargets",
+    ):
+        if not isinstance(plan.get(field), list):
+            raise RuntimeError(f"planned {field} set is malformed")
+    activation_targets = plan["activationTargets"]
+    if activation_targets and plan.get("activationExecutionEnabled") is not True:
+        hosts = [
+            target.get("host")
+            for target in activation_targets
+            if isinstance(target, dict) and isinstance(target.get("host"), str)
+        ]
+        raise RuntimeError(
+            "release requires disabled activation execution before mutation: "
+            + ", ".join(hosts)
+        )
+    mutation_hosts = {
+        target.get("host")
+        for target in plan["mutationTargets"]
+        if isinstance(target, dict) and isinstance(target.get("host"), str)
+    }
+    activation_hosts = {
+        target.get("host")
+        for target in activation_targets
+        if isinstance(target, dict) and isinstance(target.get("host"), str)
+    }
+    verification_only_hosts = [
+        target.get("host")
+        for target in plan["verificationTargets"]
+        if isinstance(target, dict)
+        and isinstance(target.get("host"), str)
+        and target.get("host") not in mutation_hosts | activation_hosts
+    ]
+    if (
+        verification_only_hosts
+        and plan.get("verificationOnlyExecutionEnabled") is not True
+    ):
+        raise RuntimeError(
+            "release requires disabled verification-only execution before mutation: "
+            + ", ".join(verification_only_hosts)
+        )
 
 
 @contextmanager
@@ -123,13 +189,12 @@ def _seed_unverified_hosts(
         if not _host_needs_seed(record, role):
             continue
         token.checkpoint(f"before-evidence-seed:{host}")
+        adapter = None if role == "server" else _terminal_adapter(runtime, role)
         try:
             observation = (
                 runtime.observe_pi5_evidence(None)
                 if role == "server"
-                else _terminal_adapter(runtime, role).observe(
-                    inventory, host, host_spec["clientId"]
-                )
+                else adapter.observe(inventory, host, host_spec["clientId"])
             )
         except Exception as error:
             failures.append({"host": host, "error": str(error)})
@@ -138,15 +203,44 @@ def _seed_unverified_hosts(
             )
         else:
             current_sha = observation.get("currentSha")
-            current_state = runtime.fleet_mark_verified(
-                host,
-                role,
-                current_sha,
-                current_sha,
-                run_id,
-                previous_sha=None,
-                observation=observation,
+            observation["releaseClaims"] = _direct_release_claims(
+                role=role,
+                expected_sha=current_sha,
+                observed_sha=current_sha,
+                run_id=run_id,
+                observed_at=runtime.utc_now(),
             )
+            required_claims = (
+                {ClaimKind.CONTROL_PLANE_API, ClaimKind.CONTROL_PLANE_WEB}
+                if role == "server"
+                else {
+                    ClaimKind(value)
+                    for value in adapter.profile.adapter_options.required_claims
+                }
+            )
+            if set(observation["releaseClaims"]) == {
+                kind.value for kind in required_claims
+            }:
+                observation["releaseClaims"] = _require_verified_release_claims(
+                    observation["releaseClaims"], required_claims
+                )
+                current_state = runtime.fleet_mark_verified(
+                    host,
+                    role,
+                    current_sha,
+                    current_sha,
+                    run_id,
+                    previous_sha=None,
+                    observation=observation,
+                )
+            else:
+                current_state = runtime.fleet_mark_unknown(
+                    host,
+                    role,
+                    current_sha,
+                    run_id,
+                    release_claims=observation["releaseClaims"],
+                )
         token.checkpoint(f"after-evidence-seed:{host}")
     return current_state, failures
 
@@ -166,17 +260,341 @@ def _set_host_status(
     raise KeyError(host)
 
 
+def _set_host_release_claims(
+    state: Any, host: str, claims: dict[str, dict[str, Any]]
+) -> None:
+    validated = validate_release_claims(claims)
+    for record in state.payload.get("hosts") or []:
+        if record.get("host") == host:
+            record["releaseClaims"] = validated
+            return
+    raise KeyError(host)
+
+
+def _claim_record(
+    *,
+    kind: ClaimKind,
+    expected: str,
+    observed: str | None,
+    authority: ClaimAuthority,
+    verification_id: str | None,
+    observed_at: str | None,
+    run_id: str,
+) -> dict[str, Any]:
+    return ReleaseClaim(
+        kind=kind,
+        expected_identity=expected,
+        observed_identity=observed,
+        authority=authority,
+        verification_id=verification_id,
+        state=(
+            ClaimState.VERIFIED
+            if observed is not None and observed == expected
+            else ClaimState.UNKNOWN
+        ),
+        observed_at=observed_at,
+        last_run_id=run_id,
+    ).to_record()
+
+
+def _require_verified_release_claims(
+    claims: dict[str, dict[str, Any]], required: set[ClaimKind]
+) -> dict[str, dict[str, Any]]:
+    validated = validate_release_claims(claims)
+    if set(validated) != {kind.value for kind in required} or any(
+        claim.get("state") != ClaimState.VERIFIED.value
+        or claim.get("observedIdentity") != claim.get("expectedIdentity")
+        for claim in validated.values()
+    ):
+        raise RuntimeError("required release claim set is not fully verified")
+    return validated
+
+
+def _direct_release_claims(
+    *, role: str, expected_sha: str, observed_sha: str, run_id: str, observed_at: str
+) -> dict[str, dict[str, Any]]:
+    kinds = (
+        (
+            (ClaimKind.CONTROL_PLANE_API, ClaimAuthority.PI5_API_IMAGE),
+            (ClaimKind.CONTROL_PLANE_WEB, ClaimAuthority.PI5_WEB_IMAGE),
+        )
+        if role == "server"
+        else (
+            (
+                ClaimKind.TERMINAL_REPOSITORY,
+                ClaimAuthority.TERMINAL_REPOSITORY_PROBE,
+            ),
+        )
+    )
+    return {
+        kind.value: _claim_record(
+            kind=kind,
+            expected=expected_sha,
+            observed=observed_sha,
+            authority=authority,
+            verification_id=None,
+            observed_at=observed_at,
+            run_id=run_id,
+        )
+        for kind, authority in kinds
+    }
+
+
+def _pending_server_release_claims(
+    *, desired_sha: str, prior_record: dict[str, Any] | None, run_id: str
+) -> dict[str, dict[str, Any]]:
+    prior = (
+        release_claims_for_host(prior_record)
+        if isinstance(prior_record, dict)
+        else {}
+    )
+    result: dict[str, dict[str, Any]] = {}
+    for kind, authority in (
+        (ClaimKind.CONTROL_PLANE_API, ClaimAuthority.PI5_API_IMAGE),
+        (ClaimKind.CONTROL_PLANE_WEB, ClaimAuthority.PI5_WEB_IMAGE),
+    ):
+        previous = prior.get(kind.value)
+        if (
+            isinstance(previous, dict)
+            and previous.get("state") == ClaimState.VERIFIED.value
+            and previous.get("expectedIdentity") == desired_sha
+            and previous.get("observedIdentity") == desired_sha
+        ):
+            result[kind.value] = dict(previous)
+        else:
+            result[kind.value] = _claim_record(
+                kind=kind,
+                expected=desired_sha,
+                observed=None,
+                authority=authority,
+                verification_id=None,
+                observed_at=None,
+                run_id=run_id,
+            )
+    return validate_release_claims(result)
+
+
+def _claim_requirements(
+    target: dict[str, Any], adapter: TerminalAdapter
+) -> list[dict[str, str]] | None:
+    raw = target.get("claimRequirements")
+    if raw is None or raw == []:
+        return None
+    if not isinstance(raw, list):
+        raise RuntimeError("terminal claim requirements are malformed")
+    requirements: list[dict[str, str]] = []
+    seen: set[ClaimKind] = set()
+    for value in raw:
+        if not isinstance(value, dict) or set(value) != {
+            "kind",
+            "expectedIdentity",
+            "status",
+        }:
+            raise RuntimeError("terminal claim requirement is malformed")
+        try:
+            kind = ClaimKind(value["kind"])
+        except (TypeError, ValueError) as error:
+            raise RuntimeError("terminal claim kind is unsupported") from error
+        expected = value["expectedIdentity"]
+        if (
+            kind in seen
+            or not isinstance(expected, str)
+            or FULL_SHA_RE.fullmatch(expected) is None
+            or value["status"] not in {"current", "missing", "stale-or-unverified"}
+        ):
+            raise RuntimeError("terminal claim requirement identity is malformed")
+        seen.add(kind)
+        requirements.append({"kind": kind.value, "expectedIdentity": expected})
+    required_kinds = {
+        ClaimKind(value)
+        for value in adapter.profile.adapter_options.required_claims
+    }
+    if seen != required_kinds:
+        raise RuntimeError(
+            "terminal claim requirements do not match the profile contract"
+        )
+    return requirements
+
+
+def _pending_terminal_release_claims(
+    adapter: TerminalAdapter,
+    target: dict[str, Any],
+    prior_record: dict[str, Any] | None,
+    run_id: str,
+) -> dict[str, dict[str, Any]] | None:
+    requirements = _claim_requirements(target, adapter)
+    if requirements is None:
+        return None
+    prior = (
+        release_claims_for_host(prior_record)
+        if isinstance(prior_record, dict)
+        else {}
+    )
+    result: dict[str, dict[str, Any]] = {}
+    for requirement in requirements:
+        kind = ClaimKind(requirement["kind"])
+        expected = requirement["expectedIdentity"]
+        previous = prior.get(kind.value)
+        if (
+            isinstance(previous, dict)
+            and previous.get("state") == ClaimState.VERIFIED.value
+            and previous.get("expectedIdentity") == expected
+            and previous.get("observedIdentity") == expected
+        ):
+            result[kind.value] = dict(previous)
+            continue
+        result[kind.value] = _claim_record(
+            kind=kind,
+            expected=expected,
+            observed=None,
+            authority=adapter.release_claim_authority(kind),
+            verification_id=None,
+            observed_at=None,
+            run_id=run_id,
+        )
+    return validate_release_claims(result)
+
+
+def _unverified_terminal_release_claims(
+    adapter: TerminalAdapter,
+    target: dict[str, Any],
+    run_id: str,
+) -> dict[str, dict[str, Any]] | None:
+    """Clear every typed observation before rollback can mutate the host."""
+
+    requirements = _claim_requirements(target, adapter)
+    if requirements is None:
+        return None
+    return validate_release_claims(
+        {
+            requirement["kind"]: _claim_record(
+                kind=ClaimKind(requirement["kind"]),
+                expected=requirement["expectedIdentity"],
+                observed=None,
+                authority=adapter.release_claim_authority(
+                    ClaimKind(requirement["kind"])
+                ),
+                verification_id=None,
+                observed_at=None,
+                run_id=run_id,
+            )
+            for requirement in requirements
+        }
+    )
+
+
+def _terminal_observed_release_claims(
+    *,
+    runtime: Any,
+    adapter: TerminalAdapter,
+    target: dict[str, Any],
+    observation: dict[str, Any],
+    run_id: str,
+    rollback: bool,
+) -> dict[str, dict[str, Any]] | None:
+    requirements = _claim_requirements(target, adapter)
+    if requirements is None:
+        return None
+    ready_kind = adapter.ready_claim_kind()
+    release_key = "rollbackReadyReleaseSha" if rollback else "readyReleaseSha"
+    verification_key = (
+        "rollbackReadyVerificationId" if rollback else "readyVerificationId"
+    )
+    timestamp = runtime.utc_now()
+    claims: dict[str, dict[str, Any]] = {}
+    for requirement in requirements:
+        kind = ClaimKind(requirement["kind"])
+        expected = requirement["expectedIdentity"]
+        if rollback and kind is ClaimKind.TERMINAL_REPOSITORY:
+            expected = target.get("previousSha")
+            if not isinstance(expected, str) or FULL_SHA_RE.fullmatch(expected) is None:
+                raise RuntimeError("rollback repository claim identity is unavailable")
+        if kind is ready_kind:
+            observed = target.get(release_key)
+            verification_id = target.get(verification_key)
+        elif kind is ClaimKind.TERMINAL_REPOSITORY:
+            observed = observation.get("currentSha")
+            verification_id = None
+        else:
+            raise RuntimeError(f"terminal ready path cannot observe {kind.value}")
+        claim = _claim_record(
+            kind=kind,
+            expected=expected,
+            observed=observed,
+            authority=adapter.release_claim_authority(kind),
+            verification_id=verification_id,
+            observed_at=timestamp,
+            run_id=run_id,
+        )
+        if claim["state"] != ClaimState.VERIFIED.value:
+            raise RuntimeError(f"required release claim is not verified: {kind.value}")
+        claims[kind.value] = claim
+    return _require_verified_release_claims(
+        claims, {ClaimKind(value["kind"]) for value in requirements}
+    )
+
+
+def _premaintenance_recovery_claims(
+    *,
+    record: dict[str, Any],
+    expected_sha: str,
+    run_id: str,
+    observed_at: str,
+) -> dict[str, dict[str, Any]] | None:
+    if "releaseClaims" not in record:
+        return None
+    claims = validate_release_claims(record["releaseClaims"])
+    claims[ClaimKind.TERMINAL_REPOSITORY.value] = _claim_record(
+        kind=ClaimKind.TERMINAL_REPOSITORY,
+        expected=expected_sha,
+        observed=expected_sha,
+        authority=ClaimAuthority.TERMINAL_REPOSITORY_PROBE,
+        verification_id=None,
+        observed_at=observed_at,
+        run_id=run_id,
+    )
+    return validate_release_claims(claims)
+
+
 def _terminal_run_targets(
     terminal_targets: list[dict[str, str]], plan: dict[str, Any]
 ) -> list[dict[str, Any]]:
     decisions = {
         decision["host"]: decision
         for decision in plan.get("hosts") or []
-        if decision.get("targeted") and decision.get("role") != "server"
+        if decision.get("role") != "server"
+    }
+    planned_work = {
+        work["host"]: work
+        for work in plan.get("terminalWork") or []
+        if isinstance(work, dict) and isinstance(work.get("host"), str)
     }
     result: list[dict[str, Any]] = []
     for target in terminal_targets:
         decision = decisions[target["host"]]
+        work = planned_work.get(target["host"])
+        action_fields = (
+            {
+                "mutationRequired": work.get("mutationRequired") is True,
+                "activationRequired": work.get("activationRequired") is True,
+                "verificationRequired": work.get("verificationRequired") is True,
+                "activationStrategyId": work.get("activationStrategyId"),
+                "activationMode": work.get("activationMode"),
+                "claimRequirements": [
+                    dict(requirement)
+                    for requirement in work.get("claimRequirements") or []
+                ],
+            }
+            if isinstance(work, dict)
+            else {
+                "mutationRequired": True,
+                "activationRequired": False,
+                "verificationRequired": True,
+                "activationStrategyId": None,
+                "activationMode": None,
+                "claimRequirements": [],
+            }
+        )
         result.append(
             {
                 **target,
@@ -185,6 +603,7 @@ def _terminal_run_targets(
                 "currentSha": decision["currentSha"],
                 "evidence": decision["evidence"],
                 "targetReason": decision["targetReason"],
+                **action_fields,
                 "state": "pending",
             }
         )
@@ -391,6 +810,38 @@ def _verify_terminal_ready(
     target[verification_key] = ready["verificationId"]
     target[acknowledged_key] = ready["acknowledgedAt"]
     state.save()
+
+
+def _activation_capability_proof(
+    runtime: Any,
+    target: dict[str, Any],
+    run_id: str,
+    *,
+    rollback: bool,
+) -> dict[str, str] | None:
+    if target.get("activationRequired") is not True:
+        return None
+    release_key = "rollbackReadyReleaseSha" if rollback else "readyReleaseSha"
+    verification_key = (
+        "rollbackReadyVerificationId" if rollback else "readyVerificationId"
+    )
+    release_sha = target.get(release_key)
+    verification_id = target.get(verification_key)
+    if (
+        not isinstance(release_sha, str)
+        or FULL_SHA_RE.fullmatch(release_sha) is None
+        or not isinstance(verification_id, str)
+        or re.fullmatch(r"[0-9a-f]{32}", verification_id) is None
+    ):
+        raise RuntimeError("activation capability ACK identity is malformed")
+    return {
+        "strategyId": WEB_CONSUMER_ACTIVATION_STRATEGY,
+        "releaseSha": release_sha,
+        "verificationId": verification_id,
+        "proofAuthority": WEB_CONSUMER_CAPABILITY_AUTHORITY,
+        "verifiedAt": runtime.utc_now(),
+        "lastRunId": run_id,
+    }
 
 
 def _finalize_terminal_display(
@@ -650,6 +1101,23 @@ def _recover_interrupted_terminals(
             prior_target, host=host
         )
         if durable_completed_sha is not None:
+            carried_observation: dict[str, Any] = {}
+            if "releaseClaims" in prior_target:
+                carried_claims = validate_release_claims(
+                    prior_target["releaseClaims"]
+                )
+                requirements = _claim_requirements(prior_target, adapter)
+                if requirements is not None:
+                    carried_claims = _require_verified_release_claims(
+                        carried_claims,
+                        {ClaimKind(value["kind"]) for value in requirements},
+                    )
+                carried_observation["releaseClaims"] = carried_claims
+            capability = prior_target.get("activationCapabilityProof")
+            if isinstance(capability, dict):
+                carried_observation["activationCapabilities"] = {
+                    WEB_CONSUMER_ACTIVATION_STRATEGY: dict(capability)
+                }
             current_state = runtime.fleet_mark_verified(
                 host,
                 target_spec["role"],
@@ -657,6 +1125,7 @@ def _recover_interrupted_terminals(
                 durable_completed_sha,
                 run_id,
                 previous_sha=prior_target.get("previousSha"),
+                observation=carried_observation,
             )
             record["recovery"] = "durable-success-carried-forward"
             record["recoveryCarriedAt"] = runtime.utc_now()
@@ -667,9 +1136,23 @@ def _recover_interrupted_terminals(
         # Only the host whose recovery is about to execute becomes unknown.
         # A failure on this host must not erase verified evidence for later,
         # untouched terminals in the same abandoned run.
-        current_state = runtime.fleet_mark_unknown(
-            host, target_spec["role"], desired_sha, run_id
+        recovery_claims = (
+            validate_release_claims(record["releaseClaims"])
+            if "releaseClaims" in record
+            else None
         )
+        if recovery_claims is None:
+            current_state = runtime.fleet_mark_unknown(
+                host, target_spec["role"], desired_sha, run_id
+            )
+        else:
+            current_state = runtime.fleet_mark_unknown(
+                host,
+                target_spec["role"],
+                desired_sha,
+                run_id,
+                release_claims=recovery_claims,
+            )
         state.payload["fleetGeneration"] = current_state["generation"]
         state.save()
 
@@ -726,6 +1209,12 @@ def _recover_interrupted_terminals(
                 expected_sha=rollback_ready_sha,
                 rollback=True,
             )
+            rollback_capability = _activation_capability_proof(
+                runtime, record, authority_run_id, rollback=True
+            )
+            if rollback_capability is not None:
+                record["rollbackActivationCapabilityProof"] = rollback_capability
+                state.save()
             expected_sha = previous_sha
             recovered = "manifest-restored"
             cleanup_outcome = "restored"
@@ -847,6 +1336,66 @@ def _recover_interrupted_terminals(
             raise RuntimeError(
                 f"interrupted terminal recovery HEAD does not match: {host}"
             )
+        if maintenance_needs_cleanup:
+            recovered_claims = _terminal_observed_release_claims(
+                runtime=runtime,
+                adapter=adapter,
+                target=record,
+                observation=observation,
+                run_id=authority_run_id,
+                rollback=True,
+            )
+        elif "releaseClaims" in record and prior_target.get(
+            "maintenanceClearedAt"
+        ):
+            recovered_claims = validate_release_claims(record["releaseClaims"])
+            requirements = _claim_requirements(record, adapter)
+            if requirements is not None:
+                recovered_claims = _require_verified_release_claims(
+                    recovered_claims,
+                    {ClaimKind(value["kind"]) for value in requirements},
+                )
+            repository_claim = recovered_claims.get(
+                ClaimKind.TERMINAL_REPOSITORY.value
+            )
+            if (
+                not isinstance(repository_claim, dict)
+                or repository_claim.get("state") != ClaimState.VERIFIED.value
+                or repository_claim.get("observedIdentity") != expected_sha
+            ):
+                raise RuntimeError(
+                    f"interrupted terminal release claims do not match: {host}"
+                )
+        else:
+            recovered_claims = _premaintenance_recovery_claims(
+                record=record,
+                expected_sha=expected_sha,
+                run_id=run_id,
+                observed_at=runtime.utc_now(),
+            )
+        requirements = _claim_requirements(record, adapter)
+        claims_complete = requirements is None
+        if recovered_claims is not None:
+            record["releaseClaims"] = recovered_claims
+            observation["releaseClaims"] = recovered_claims
+            if requirements is not None:
+                try:
+                    _require_verified_release_claims(
+                        recovered_claims,
+                        {
+                            ClaimKind(value["kind"])
+                            for value in requirements
+                        },
+                    )
+                    claims_complete = True
+                except RuntimeError:
+                    claims_complete = False
+            state.save()
+        rollback_capability = record.get("rollbackActivationCapabilityProof")
+        if isinstance(rollback_capability, dict):
+            observation["activationCapabilities"] = {
+                WEB_CONSUMER_ACTIVATION_STRATEGY: dict(rollback_capability)
+            }
         # Persist the proven live outcome before removing maintenance.  A
         # crash after remove-client can then resume finalization without
         # guessing whether the live runtime was committed or restored.
@@ -856,6 +1405,12 @@ def _recover_interrupted_terminals(
         }
         state.save()
         if maintenance_needs_cleanup:
+            activation_cleanup = adapter.cleanup_activation(
+                inventory, target_spec, record, authority_run_id
+            )
+            if activation_cleanup is not None:
+                record["activationCleanup"] = activation_cleanup
+                state.save()
             adapter.clear_maintenance(target_spec, authority_run_id)
             record["maintenanceClearedAt"] = runtime.utc_now()
             state.save()
@@ -877,19 +1432,32 @@ def _recover_interrupted_terminals(
             cleanup_outcome,
         )
         state.save()
-        current_state = runtime.fleet_mark_verified(
-            host,
-            target_spec["role"],
-            desired_sha,
-            expected_sha,
-            run_id,
-            previous_sha=fleet_record.get("previousSha"),
-            observation=observation,
-        )
-        record["state"] = "recovered"
+        if claims_complete:
+            current_state = runtime.fleet_mark_verified(
+                host,
+                target_spec["role"],
+                desired_sha,
+                expected_sha,
+                run_id,
+                previous_sha=fleet_record.get("previousSha"),
+                observation=observation,
+            )
+            record["state"] = "recovered"
+            record["currentSha"] = expected_sha
+            record["evidence"] = "verified"
+        else:
+            current_state = runtime.fleet_mark_unknown(
+                host,
+                target_spec["role"],
+                desired_sha,
+                run_id,
+                release_claims=recovered_claims,
+            )
+            record["state"] = "recovered-claims-incomplete"
+            record["recoveryObservedSha"] = expected_sha
+            record["currentSha"] = None
+            record["evidence"] = "unknown"
         record["recovery"] = recovered
-        record["currentSha"] = expected_sha
-        record["evidence"] = "verified"
         state.payload["fleetGeneration"] = current_state["generation"]
         state.save()
     return current_state
@@ -1142,6 +1710,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             limit=args.limit,
             full_fleet=bool(getattr(args, "full_fleet", False)),
             reverify_selected=bool(getattr(args, "reverify_selected", False)),
+            executor_preflight_passed=True,
         )
         if plan_warnings:
             plan["warnings"] = list(plan_warnings)
@@ -1152,6 +1721,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
         state.payload["plan"] = plan
         state.payload["fleetGeneration"] = fleet_state["generation"]
         state.save()
+        _require_executable_target_architecture(plan)
         token.checkpoint("plan-complete")
 
         pi5_required = bool(plan["pi5Required"])
@@ -1165,11 +1735,23 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
         if pi5_required:
             # Unknown is authoritative before Phase 3 or any legacy progress
             # snapshot can describe the server as changing.
+            pending_server_claims = _pending_server_release_claims(
+                desired_sha=server["desiredSha"],
+                prior_record=(fleet_state.get("fleet") or {}).get(server["host"]),
+                run_id=args.run_id,
+            )
             fleet_state = runtime.fleet_mark_unknown(
-                server["host"], "server", server["desiredSha"], args.run_id
+                server["host"],
+                "server",
+                server["desiredSha"],
+                args.run_id,
+                release_claims=pending_server_claims,
             )
             _set_host_status(
                 state, server["host"], current_sha=None, evidence="unknown"
+            )
+            _set_host_release_claims(
+                state, server["host"], pending_server_claims
             )
             state.payload["fleetGeneration"] = fleet_state["generation"]
             state.save()
@@ -1241,6 +1823,17 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                 runtime.ensure_pi5_release(server["desiredSha"], state)
             with _measure_phase(state, runtime, "pi5-evidence", host=server["host"]):
                 observation = runtime.observe_pi5_evidence(server["desiredSha"])
+            observation["releaseClaims"] = _direct_release_claims(
+                role="server",
+                expected_sha=server["desiredSha"],
+                observed_sha=observation["currentSha"],
+                run_id=args.run_id,
+                observed_at=runtime.utc_now(),
+            )
+            observation["releaseClaims"] = _require_verified_release_claims(
+                observation["releaseClaims"],
+                {ClaimKind.CONTROL_PLANE_API, ClaimKind.CONTROL_PLANE_WEB},
+            )
             verification_options = {"observation": observation}
             prior_server_sha = server.get("currentSha")
             if (
@@ -1262,6 +1855,9 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                 current_sha=observation["currentSha"],
                 evidence="verified",
             )
+            _set_host_release_claims(
+                state, server["host"], observation["releaseClaims"]
+            )
             state.payload["fleetGeneration"] = fleet_state["generation"]
             state.save()
         else:
@@ -1279,27 +1875,47 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             # An unreachable terminal must become unknown even if the first
             # read-only HEAD probe fails.  This precedes notices, maintenance,
             # Ansible, and their per-run progress records.
-            fleet_state = runtime.fleet_mark_unknown(
-                host, role, target["desiredSha"], args.run_id
+            pending_claims = _pending_terminal_release_claims(
+                adapter,
+                target,
+                (fleet_state.get("fleet") or {}).get(host),
+                args.run_id,
             )
             target["currentSha"] = None
             target["evidence"] = "unknown"
+            if pending_claims is not None:
+                target["releaseClaims"] = pending_claims
             _set_host_status(state, host, current_sha=None, evidence="unknown")
+            if pending_claims is not None:
+                _set_host_release_claims(state, host, pending_claims)
+                fleet_state = runtime.fleet_mark_unknown(
+                    host,
+                    role,
+                    target["desiredSha"],
+                    args.run_id,
+                    release_claims=pending_claims,
+                )
+            else:
+                fleet_state = runtime.fleet_mark_unknown(
+                    host, role, target["desiredSha"], args.run_id
+                )
             state.payload["fleetGeneration"] = fleet_state["generation"]
             state.save()
 
-            # The optimized forward executor uses Ansible SSH pipelining. Prove
-            # the exact pipelining + become path before repository inspection,
-            # manifest capture, notice, maintenance, checkout, or service work.
-            # Rollback retains the previously accepted non-pipelined transport.
-            with _measure_phase(
-                state,
-                runtime,
-                "terminal-ansible-pipelining-preflight",
-                host=host,
-            ):
-                runtime.preflight_terminal_ansible_pipelining(inventory, host)
-            token.checkpoint(f"after-terminal-ansible-pipelining-preflight:{host}")
+            if target.get("mutationRequired") is True:
+                # Only the forward Ansible executor uses SSH pipelining. A
+                # Web-consumer activation retains the manifest and evidence
+                # transports but never pretends to be an Ansible apply.
+                with _measure_phase(
+                    state,
+                    runtime,
+                    "terminal-ansible-pipelining-preflight",
+                    host=host,
+                ):
+                    runtime.preflight_terminal_ansible_pipelining(inventory, host)
+                token.checkpoint(
+                    f"after-terminal-ansible-pipelining-preflight:{host}"
+                )
 
             with _measure_phase(state, runtime, "terminal-repository-baseline", host=host):
                 repository_baseline = adapter.prepare_repository(inventory, host)
@@ -1421,14 +2037,57 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                     "--phase",
                     "deploying",
                 )
-                # Ansible is not killed mid-operation.  Verification happens
-                # before the next cancellation checkpoint.
-                with _measure_phase(
-                    state, runtime, "terminal-ansible-apply", host=host
-                ):
-                    adapter.apply(
-                        inventory, host, target["desiredSha"], args.run_id
-                    )
+                if target.get("mutationRequired") is True:
+                    # Ansible is not killed mid-operation. Verification happens
+                    # before the next cancellation checkpoint.
+                    with _measure_phase(
+                        state, runtime, "terminal-ansible-apply", host=host
+                    ):
+                        adapter.apply(
+                            inventory, host, target["desiredSha"], args.run_id
+                        )
+                if target.get("activationRequired") is True:
+                    activation_mode = target.get("activationMode")
+                    if (
+                        target.get("activationStrategyId")
+                        != WEB_CONSUMER_ACTIVATION_STRATEGY
+                        or activation_mode
+                        not in {
+                            WEB_CONSUMER_MIGRATION_MODE,
+                            WEB_CONSUMER_STEADY_STATE_MODE,
+                        }
+                    ):
+                        raise RuntimeError(
+                            f"terminal activation contract is invalid: {host}"
+                        )
+                    target["activation"] = {
+                        "strategyId": WEB_CONSUMER_ACTIVATION_STRATEGY,
+                        "mode": activation_mode,
+                        "state": (
+                            "submission-pending"
+                            if activation_mode == WEB_CONSUMER_MIGRATION_MODE
+                            else "challenge-pending"
+                        ),
+                        "startedAt": runtime.utc_now(),
+                    }
+                    state.save()
+                    if activation_mode == WEB_CONSUMER_MIGRATION_MODE:
+                        with _measure_phase(
+                            state, runtime, "terminal-web-activation", host=host
+                        ):
+                            activation_result = adapter.activate(
+                                inventory, target_spec, target, args.run_id
+                            )
+                        target["activation"].update(
+                            {
+                                "state": "succeeded",
+                                "operationUnit": activation_result[
+                                    "operationUnit"
+                                ],
+                                "completedAt": runtime.utc_now(),
+                            }
+                        )
+                        state.save()
                 expected_ready_sha = _terminal_ready_sha(
                     state, adapter, target
                 )
@@ -1444,6 +2103,15 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                         expected_sha=expected_ready_sha,
                         rollback=False,
                     )
+                if target.get("activationRequired") is True:
+                    capability = _activation_capability_proof(
+                        runtime, target, args.run_id, rollback=False
+                    )
+                    if capability is None:
+                        raise RuntimeError("activation capability proof is missing")
+                    target["activationCapabilityProof"] = capability
+                    target["activation"]["state"] = "verified"
+                    state.save()
                 with _measure_phase(state, runtime, "terminal-evidence", host=host):
                     observation = adapter.observe(
                         inventory, host, target_spec["clientId"]
@@ -1452,6 +2120,24 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                     raise RuntimeError(
                         f"terminal HEAD does not match desired release: {host}"
                     )
+                release_claims = _terminal_observed_release_claims(
+                    runtime=runtime,
+                    adapter=adapter,
+                    target=target,
+                    observation=observation,
+                    run_id=args.run_id,
+                    rollback=False,
+                )
+                if release_claims is not None:
+                    target["releaseClaims"] = release_claims
+                    observation["releaseClaims"] = release_claims
+                    _set_host_release_claims(state, host, release_claims)
+                if target.get("activationRequired") is True:
+                    observation["activationCapabilities"] = {
+                        WEB_CONSUMER_ACTIVATION_STRATEGY: dict(
+                            target["activationCapabilityProof"]
+                        )
+                    }
                 target["runtimeFinalization"] = {
                     "outcome": "committed",
                     "verifiedSha": observation["currentSha"],
@@ -1460,9 +2146,25 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             except Exception as error:
                 # Rollback is itself a mutation, so it gets a fresh unknown
                 # transition even if target verification had just succeeded.
-                fleet_state = runtime.fleet_mark_unknown(
-                    host, role, target["desiredSha"], args.run_id
+                rollback_pending_claims = _unverified_terminal_release_claims(
+                    adapter, target, args.run_id
                 )
+                if rollback_pending_claims is None:
+                    fleet_state = runtime.fleet_mark_unknown(
+                        host, role, target["desiredSha"], args.run_id
+                    )
+                else:
+                    target["releaseClaims"] = rollback_pending_claims
+                    fleet_state = runtime.fleet_mark_unknown(
+                        host,
+                        role,
+                        target["desiredSha"],
+                        args.run_id,
+                        release_claims=rollback_pending_claims,
+                    )
+                    _set_host_release_claims(
+                        state, host, rollback_pending_claims
+                    )
                 target["currentSha"] = None
                 target["evidence"] = "unknown"
                 target["state"] = "rolling-back"
@@ -1471,6 +2173,62 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                 state.payload["fleetGeneration"] = fleet_state["generation"]
                 state.payload["phase"] = "rolling-back"
                 state.save()
+
+                if isinstance(error, ActivationUncertainError):
+                    # The deterministic activation unit may still own a
+                    # browser restart. Unknown activation and rollback must
+                    # never run concurrently. A later canonical recovery first
+                    # reconciles this exact unit through the sealed manifest.
+                    interrupted_recovery_pending = True
+                    target["state"] = "activation-uncertain"
+                    target["activationReconciliation"] = "unknown"
+                    target["completedAt"] = runtime.utc_now()
+                    state.payload["phase"] = "activation-reconciliation-required"
+                    state.save()
+                    raise RuntimeError(
+                        f"rollout stopped with unresolved activation for {host}"
+                    ) from error
+
+                if (
+                    target.get("activationRequired") is True
+                    and target.get("activationMode")
+                    == WEB_CONSUMER_MIGRATION_MODE
+                ):
+                    try:
+                        activation_reconciliation = adapter.reconcile_activation(
+                            inventory, target_spec, target, args.run_id
+                        )
+                    except Exception:
+                        interrupted_recovery_pending = True
+                        target["state"] = "activation-uncertain"
+                        # Persist only the bounded state. Transport exception
+                        # text can contain environment-specific details and is
+                        # never part of release evidence.
+                        target["activationReconciliation"] = "unknown"
+                        state.payload["phase"] = (
+                            "activation-reconciliation-required"
+                        )
+                        state.save()
+                        raise RuntimeError(
+                            f"rollout stopped with unresolved activation for {host}"
+                        ) from error
+                    if (
+                        not isinstance(activation_reconciliation, dict)
+                        or activation_reconciliation.get("state")
+                        not in {"absent", "succeeded", "failed"}
+                    ):
+                        interrupted_recovery_pending = True
+                        target["state"] = "activation-uncertain"
+                        target["activationReconciliation"] = "unknown"
+                        state.payload["phase"] = (
+                            "activation-reconciliation-required"
+                        )
+                        state.save()
+                        raise RuntimeError(
+                            f"rollout stopped with unresolved activation for {host}"
+                        ) from error
+                    target["activationReconciliation"] = activation_reconciliation
+                    state.save()
 
                 # Rollback wins over cancellation and is never interrupted.
                 rollback_reconciled = False
@@ -1507,6 +2265,14 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                             expected_sha=rollback_ready_sha,
                             rollback=True,
                         )
+                        rollback_capability = _activation_capability_proof(
+                            runtime, target, args.run_id, rollback=True
+                        )
+                        if rollback_capability is not None:
+                            target[
+                                "rollbackActivationCapabilityProof"
+                            ] = rollback_capability
+                            state.save()
                         with _measure_phase(
                             state, runtime, "terminal-rollback-evidence", host=host
                         ):
@@ -1523,11 +2289,36 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                             raise RuntimeError(
                                 f"rollback HEAD does not match previous release: {host}"
                             )
+                        rollback_claims = _terminal_observed_release_claims(
+                            runtime=runtime,
+                            adapter=adapter,
+                            target=target,
+                            observation=rollback_observation,
+                            run_id=args.run_id,
+                            rollback=True,
+                        )
+                        if rollback_claims is not None:
+                            target["releaseClaims"] = rollback_claims
+                            rollback_observation[
+                                "releaseClaims"
+                            ] = rollback_claims
+                        if rollback_capability is not None:
+                            rollback_observation["activationCapabilities"] = {
+                                WEB_CONSUMER_ACTIVATION_STRATEGY: dict(
+                                    rollback_capability
+                                )
+                            }
                         target["runtimeFinalization"] = {
                             "outcome": "restored",
                             "verifiedSha": rollback_observation["currentSha"],
                         }
                         state.save()
+                        activation_cleanup = adapter.cleanup_activation(
+                            inventory, target_spec, target, args.run_id
+                        )
+                        if activation_cleanup is not None:
+                            target["activationCleanup"] = activation_cleanup
+                            state.save()
                         # Cleanup is part of rollback evidence.  Never promote
                         # a host while maintenance remains active.
                         with _measure_phase(
@@ -1578,6 +2369,10 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                             current_sha=rollback_observation["currentSha"],
                             evidence="verified",
                         )
+                        if rollback_claims is not None:
+                            _set_host_release_claims(
+                                state, host, rollback_claims
+                            )
                         state.payload["fleetGeneration"] = fleet_state["generation"]
                         rollback_reconciled = True
                     except Exception as rollback_evidence_error:
@@ -1626,6 +2421,15 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             # and never mutate the healthy terminal again via rollback.
             fleet_promoted = False
             try:
+                with _measure_phase(
+                    state, runtime, "terminal-activation-cleanup", host=host
+                ):
+                    activation_cleanup = adapter.cleanup_activation(
+                        inventory, target_spec, target, args.run_id
+                    )
+                if activation_cleanup is not None:
+                    target["activationCleanup"] = activation_cleanup
+                    state.save()
                 with _measure_phase(
                     state, runtime, "terminal-maintenance-clear", host=host
                 ):

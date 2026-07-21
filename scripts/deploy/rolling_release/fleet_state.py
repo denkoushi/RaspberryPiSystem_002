@@ -25,6 +25,12 @@ from typing import Any
 from terminal_profile_registry import RegistryError, load_registry
 
 from .image_refs import image_matches_release
+from .activation import validate_activation_capabilities
+from .release_claims import (
+    ReleaseClaimError,
+    validate_host_claim_compatibility,
+    validate_release_claims,
+)
 
 
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -56,6 +62,7 @@ COMMON_HOST_FIELDS = frozenset(
 SERVER_HOST_FIELDS = frozenset(
     {"activeSlot", "apiImage", "webImage", "configDigest", "migrationDigest"}
 )
+OPTIONAL_HOST_FIELDS = frozenset({"releaseClaims", "activationCapabilities"})
 EVIDENCE_VALUES = frozenset({"unknown", "verified"})
 TERMINAL_RUN_STATUSES = frozenset({"success", "failed", "cancelled", "interrupted"})
 RUN_KINDS = frozenset({"release", "pi4-recovery"})
@@ -210,7 +217,9 @@ def _validate_host_record(host: str, value: Any) -> None:
         raise FleetStateCorruptError(f"fleet.{host} must be an object")
     role = value.get("role")
     expected_fields = COMMON_HOST_FIELDS | (SERVER_HOST_FIELDS if role == "server" else set())
-    if set(value) != expected_fields:
+    if not expected_fields <= set(value) or not set(value) <= (
+        expected_fields | OPTIONAL_HOST_FIELDS
+    ):
         raise FleetStateCorruptError(f"fleet.{host} fields do not match role {role!r}")
     if not isinstance(role, str) or role not in _release_roles():
         raise FleetStateCorruptError(f"fleet.{host}.role is unsupported")
@@ -268,6 +277,26 @@ def _validate_host_record(host: str, value: Any) -> None:
                     raise FleetStateCorruptError(
                         f"fleet.{host}.{image_field} does not match currentSha"
                     )
+
+    if "releaseClaims" in value:
+        try:
+            claims = validate_release_claims(
+                value["releaseClaims"], field=f"fleet.{host}.releaseClaims"
+            )
+            validate_host_claim_compatibility(value, claims)
+        except ReleaseClaimError as error:
+            raise FleetStateCorruptError(
+                f"fleet.{host}.releaseClaims is malformed: {error}"
+            ) from error
+    if "activationCapabilities" in value:
+        try:
+            validate_activation_capabilities(
+                value["activationCapabilities"],
+                role=role,
+                field=f"fleet.{host}.activationCapabilities",
+            )
+        except ValueError as error:
+            raise FleetStateCorruptError(str(error)) from error
 
 
 def validate_fleet_state(payload: Any) -> dict[str, Any]:
@@ -613,6 +642,7 @@ class FleetStateStore:
         run_id: str,
         *,
         expected_generation: int,
+        release_claims: Mapping[str, Any] | object = _UNSET,
         lease: FleetLease | None = None,
     ) -> dict[str, Any]:
         if not isinstance(host, str) or not HOST_RE.fullmatch(host):
@@ -623,6 +653,10 @@ class FleetStateStore:
             raise ValueError("desired SHA must be a full lowercase Git SHA")
         if not isinstance(run_id, str) or not RUN_ID_RE.fullmatch(run_id):
             raise ValueError("run ID is malformed")
+        if release_claims is not _UNSET:
+            release_claims = validate_release_claims(
+                release_claims, field=f"fleet.{host}.releaseClaims"
+            )
 
         def unknown(state: dict[str, Any]) -> None:
             self._require_active_run(state, run_id)
@@ -654,6 +688,16 @@ class FleetStateStore:
                         "migrationDigest": None,
                     }
                 )
+            if release_claims is not _UNSET:
+                record["releaseClaims"] = copy.deepcopy(release_claims)
+            if (
+                isinstance(previous_record, dict)
+                and previous_record.get("role") == role
+                and "activationCapabilities" in previous_record
+            ):
+                record["activationCapabilities"] = copy.deepcopy(
+                    previous_record["activationCapabilities"]
+                )
             state["fleet"][host] = record
 
         return self.mutate(expected_generation, unknown, lease=lease)
@@ -674,6 +718,8 @@ class FleetStateStore:
         web_image: str | None = None,
         config_digest: str | None = None,
         migration_digest: str | None = None,
+        release_claims: Mapping[str, Any] | object = _UNSET,
+        activation_capabilities: Mapping[str, Any] | object = _UNSET,
         lease: FleetLease | None = None,
     ) -> dict[str, Any]:
         if not isinstance(host, str) or not HOST_RE.fullmatch(host):
@@ -706,6 +752,16 @@ class FleetStateStore:
             )
         ):
             raise ValueError("Pi5 evidence is valid only for the server role")
+        if activation_capabilities is not _UNSET:
+            activation_capabilities = validate_activation_capabilities(
+                activation_capabilities,
+                role=role,
+                field=f"fleet.{host}.activationCapabilities",
+            )
+        if release_claims is not _UNSET:
+            release_claims = validate_release_claims(
+                release_claims, field=f"fleet.{host}.releaseClaims"
+            )
 
         timestamp = self._clock() if verified_at is None else verified_at
         supplied_record: dict[str, Any] = {
@@ -727,6 +783,12 @@ class FleetStateStore:
                     "migrationDigest": migration_digest,
                 }
             )
+        if activation_capabilities is not _UNSET:
+            supplied_record["activationCapabilities"] = copy.deepcopy(
+                activation_capabilities
+            )
+        if release_claims is not _UNSET:
+            supplied_record["releaseClaims"] = copy.deepcopy(release_claims)
         # Validate every supplied observation before the lock path can be created.
         _validate_host_record(host, supplied_record)
 
@@ -737,6 +799,23 @@ class FleetStateStore:
                 prior = state["fleet"].get(host)
                 if isinstance(prior, dict) and prior.get("role") == role:
                     record["previousSha"] = prior.get("currentSha") or prior.get("previousSha")
+            prior = state["fleet"].get(host)
+            if (
+                release_claims is _UNSET
+                and isinstance(prior, dict)
+                and prior.get("role") == role
+                and "releaseClaims" in prior
+            ):
+                record["releaseClaims"] = copy.deepcopy(prior["releaseClaims"])
+            if (
+                activation_capabilities is _UNSET
+                and isinstance(prior, dict)
+                and prior.get("role") == role
+                and "activationCapabilities" in prior
+            ):
+                record["activationCapabilities"] = copy.deepcopy(
+                    prior["activationCapabilities"]
+                )
             _validate_host_record(host, record)
             state["fleet"][host] = copy.deepcopy(record)
 

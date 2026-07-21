@@ -11,7 +11,13 @@ import re
 from collections.abc import Mapping
 from typing import Any, Iterable
 
-from terminal_profile_registry import TerminalProfileRegistry, load_registry
+try:
+    from terminal_profile_registry import TerminalProfileRegistry, load_registry
+except ImportError:
+    from scripts.deploy.terminal_profile_registry import (
+        TerminalProfileRegistry,
+        load_registry,
+    )
 
 try:  # Normal package import.
     from .adapter_registry import registered_adapter_ids, validate_adapter_profiles

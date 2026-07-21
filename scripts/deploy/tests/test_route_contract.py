@@ -79,6 +79,10 @@ REHEARSAL_TESTS = {
         "scripts/deploy/tests/test_fleet_coordinator_transitions.py",
         "test_full_signage_failure_matrix_recovers_before_next_plan",
     ),
+    "web-activation-response-loss-faults": (
+        "scripts/deploy/tests/test_fleet_coordinator_transitions.py",
+        "test_uncertain_kiosk_web_activation_retains_maintenance_without_rollback",
+    ),
     "ready-and-observation-failures": (
         "scripts/deploy/tests/test_fleet_coordinator_transitions.py",
         "test_kiosk_agent_death_after_playbook_is_caught_by_final_observation",
@@ -131,6 +135,22 @@ class RouteContractTest(unittest.TestCase):
         self.assertTrue(all(stage.preflight_proof for stage in ROUTE_STAGES))
         self.assertTrue(all(stage.recovery_owner for stage in ROUTE_STAGES))
 
+    def test_terminal_commit_boundaries_name_typed_claim_proofs(self):
+        stages = {stage.id: stage for stage in ROUTE_STAGES}
+
+        self.assertEqual(
+            stages["terminal.ready"].preflight_proof,
+            "terminal.complete-required-typed-claims-and-independent-health",
+        )
+        self.assertEqual(
+            stages["terminal.finalize"].preflight_proof,
+            "terminal.verified-typed-claims-independent-health-and-cleanup",
+        )
+        self.assertEqual(
+            stages["terminal.rollback"].preflight_proof,
+            "terminal.sealed-rollback-preflight-and-typed-claim-rebind",
+        )
+
     def test_every_route_rehearsal_resolves_to_an_existing_test(self):
         rehearsal_ids = {stage.rehearsal for stage in ROUTE_STAGES}
         self.assertEqual(rehearsal_ids, set(REHEARSAL_TESTS))
@@ -157,6 +177,8 @@ class RouteContractTest(unittest.TestCase):
             "expected_rollback_ready_sha",
             "interrupted_rollback_ready_sha",
             "notice_skip_reason",
+            "ready_claim_kind",
+            "release_claim_authority",
             "should_issue_notice",
         }
         self.assertEqual(

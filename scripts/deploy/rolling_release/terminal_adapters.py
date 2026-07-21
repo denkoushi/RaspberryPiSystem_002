@@ -11,6 +11,13 @@ import re
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
+from .activation import (
+    ActivationUncertainError,
+    KIOSK_WEB_ACTIVATION_STRATEGY,
+    KIOSK_WEB_MIGRATION_MODE,
+)
+from .release_claims import ClaimAuthority, ClaimKind
+
 try:
     from terminal_profile_registry import TerminalProfile
 except ImportError:  # Repository-root package imports used by contract tests.
@@ -228,6 +235,47 @@ class TerminalAdapter:
             return
         # Test and old injected runtimes retain the legacy executor shape.
         self.runtime.playbook(inventory, host, revision, run_id)
+
+    def activate(
+        self,
+        inventory: str,
+        target_spec: dict[str, str],
+        target: dict[str, Any],
+        run_id: str,
+    ) -> dict[str, Any]:
+        raise RuntimeError(
+            f"terminal profile {self.profile.id} does not support artifact activation"
+        )
+
+    def reconcile_activation(
+        self,
+        inventory: str,
+        target_spec: dict[str, str],
+        target: dict[str, Any],
+        run_id: str,
+    ) -> dict[str, Any] | None:
+        del inventory, target_spec, target, run_id
+        return None
+
+    def cleanup_activation(
+        self,
+        inventory: str,
+        target_spec: dict[str, str],
+        target: dict[str, Any],
+        run_id: str,
+    ) -> dict[str, Any] | None:
+        del inventory, target_spec, target, run_id
+        return None
+
+    def ready_claim_kind(self) -> ClaimKind | None:
+        return None
+
+    def release_claim_authority(self, kind: ClaimKind) -> ClaimAuthority:
+        if kind is ClaimKind.TERMINAL_REPOSITORY:
+            return ClaimAuthority.TERMINAL_REPOSITORY_PROBE
+        raise RuntimeError(
+            f"terminal profile {self.profile.id} cannot prove {kind.value}"
+        )
 
     def expected_ready_sha(self, state: Any, target: dict[str, Any]) -> str:
         if self.profile.adapter_options.ready_authority == "terminal":
@@ -475,6 +523,125 @@ class GenericSystemdAdapter(TerminalAdapter):
         {"display-manager", "status-agent", "nfc-agent", "barcode-agent", "torque-agent", "ready-sha"}
     )
 
+    def ready_claim_kind(self) -> ClaimKind | None:
+        if self.profile.adapter_options.ready_authority == "control-plane":
+            return ClaimKind.CONTROL_PLANE_WEB
+        return super().ready_claim_kind()
+
+    def release_claim_authority(self, kind: ClaimKind) -> ClaimAuthority:
+        if kind is ClaimKind.CONTROL_PLANE_WEB and (
+            self.profile.adapter_options.ready_authority == "control-plane"
+        ):
+            return ClaimAuthority.KIOSK_COMPILED_WEB_READY
+        return super().release_claim_authority(kind)
+
+    def _requires_kiosk_web_activation(
+        self, target: dict[str, Any]
+    ) -> bool:
+        return (
+            target.get("activationRequired") is True
+            and target.get("activationStrategyId")
+            == KIOSK_WEB_ACTIVATION_STRATEGY
+            and target.get("activationMode") == KIOSK_WEB_MIGRATION_MODE
+        )
+
+    def activate(
+        self,
+        inventory: str,
+        target_spec: dict[str, str],
+        target: dict[str, Any],
+        run_id: str,
+    ) -> dict[str, Any]:
+        if not self._requires_kiosk_web_activation(target):
+            raise RuntimeError("Kiosk Web activation strategy is not authorized")
+        if not isinstance(target.get("acknowledgedAt"), str):
+            raise RuntimeError(
+                "Kiosk Web activation requires acknowledged maintenance"
+            )
+        result = self.runtime.activate_kiosk_web(
+            inventory, target_spec, target, run_id
+        )
+        if result.get("state") != "succeeded":
+            raise ActivationUncertainError(
+                "Kiosk Web activation result is not proven quiescent and successful"
+            )
+        return result
+
+    def reconcile_activation(
+        self,
+        inventory: str,
+        target_spec: dict[str, str],
+        target: dict[str, Any],
+        run_id: str,
+    ) -> dict[str, Any] | None:
+        if not self._requires_kiosk_web_activation(target):
+            return None
+        return self.runtime.reconcile_kiosk_web_activation(
+            inventory, target_spec, target, run_id
+        )
+
+    def cleanup_activation(
+        self,
+        inventory: str,
+        target_spec: dict[str, str],
+        target: dict[str, Any],
+        run_id: str,
+    ) -> dict[str, Any] | None:
+        if not self._requires_kiosk_web_activation(target):
+            return None
+        return self.runtime.cleanup_kiosk_web_activation(
+            inventory, target_spec, target, run_id
+        )
+
+    def preflight_rollback(
+        self,
+        inventory: str,
+        target_spec: dict[str, str],
+        target: dict[str, Any],
+        run_id: str,
+    ) -> dict[str, Any]:
+        result = super().preflight_rollback(
+            inventory, target_spec, target, run_id
+        )
+        if not self._requires_kiosk_web_activation(target):
+            return result
+        try:
+            activation = self.reconcile_activation(
+                inventory, target_spec, target, run_id
+            )
+            if not isinstance(activation, dict) or activation.get("state") not in {
+                "absent",
+                "succeeded",
+                "failed",
+            }:
+                result["issues"].append(
+                    "Kiosk Web activation is not proven quiescent"
+                )
+            else:
+                result["activationReconciliation"] = activation
+        except Exception as error:
+            result["issues"].append(f"Kiosk Web activation: {error}")
+        result["ready"] = not result["issues"]
+        return result
+
+    def cleanup(
+        self,
+        inventory: str,
+        target_spec: dict[str, str],
+        target: dict[str, Any],
+        run_id: str,
+        outcome: str,
+    ) -> dict[str, Any]:
+        if "activationCleanup" not in target:
+            activation_cleanup = self.cleanup_activation(
+                inventory, target_spec, target, run_id
+            )
+            if activation_cleanup is not None:
+                target["activationCleanup"] = activation_cleanup
+        return super().cleanup(
+            inventory, target_spec, target, run_id, outcome
+        )
+
     def rollback_paths(self, user: str, home: str, run_id: str) -> tuple[str, ...]:
         base = super().rollback_paths(user, home, run_id)
         legacy_browser_paths = (
@@ -604,6 +771,14 @@ class SignageSystemdAdapter(TerminalAdapter):
     supported_health_probe_ids = frozenset(
         {"display-manager", "status-agent", "signage-endpoint", "ready-sha"}
     )
+
+    def ready_claim_kind(self) -> ClaimKind | None:
+        return ClaimKind.TERMINAL_REPOSITORY
+
+    def release_claim_authority(self, kind: ClaimKind) -> ClaimAuthority:
+        if kind is ClaimKind.TERMINAL_REPOSITORY:
+            return ClaimAuthority.SIGNAGE_READY
+        return super().release_claim_authority(kind)
 
     def rollback_paths(self, user: str, home: str, run_id: str) -> tuple[str, ...]:
         base = super().rollback_paths(user, home, run_id)

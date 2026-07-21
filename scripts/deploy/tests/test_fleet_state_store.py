@@ -15,6 +15,10 @@ if str(DEPLOY_DIRECTORY) not in sys.path:
     sys.path.insert(0, str(DEPLOY_DIRECTORY))
 
 from rolling_release import fleet_state as fleet_state_module  # noqa: E402
+from rolling_release.activation import (  # noqa: E402
+    KIOSK_WEB_ACTIVATION_STRATEGY,
+    KIOSK_WEB_CAPABILITY_AUTHORITY,
+)
 from rolling_release.fleet_state import (  # noqa: E402
     FleetLock,
     FleetLockBusyError,
@@ -37,6 +41,41 @@ SHA_C = "c" * 40
 DIGEST_A = "sha256:" + "a" * 64
 DIGEST_B = "sha256:" + "b" * 64
 INVENTORY = "infrastructure/ansible/inventory.yml"
+CLAIM_FIXTURES = Path(__file__).parent / "fixtures" / "release-claims"
+
+
+def kiosk_activation_capability(*, verification_id="d" * 32):
+    return {
+        KIOSK_WEB_ACTIVATION_STRATEGY: {
+            "strategyId": KIOSK_WEB_ACTIVATION_STRATEGY,
+            "releaseSha": SHA_A,
+            "verificationId": verification_id,
+            "proofAuthority": KIOSK_WEB_CAPABILITY_AUTHORITY,
+            "verifiedAt": "2026-07-15T00:00:00Z",
+            "lastRunId": RUN_ID,
+        }
+    }
+
+
+def terminal_claim(
+    expected_sha,
+    *,
+    observed_sha=None,
+    authority="terminal-repository-probe",
+    verification_id=None,
+    state="unknown",
+):
+    return {
+        "expectedIdentity": expected_sha,
+        "observedIdentity": observed_sha,
+        "authority": authority,
+        "verificationId": verification_id,
+        "state": state,
+        "observedAt": (
+            "2026-07-15T00:00:00Z" if observed_sha is not None else None
+        ),
+        "lastRunId": RUN_ID,
+    }
 
 
 class FleetStateStoreTest(unittest.TestCase):
@@ -70,6 +109,43 @@ class FleetStateStoreTest(unittest.TestCase):
         self.assertFalse(self.root.exists())
         self.assertFalse(self.state_path.exists())
         self.assertFalse(self.lock_path.exists())
+
+    def test_legacy_golden_state_reads_without_schema_insertion(self):
+        fixture = CLAIM_FIXTURES / "legacy-fleet.json"
+        self.root.mkdir(parents=True)
+        self.state_path.write_bytes(fixture.read_bytes())
+
+        state = self.store.read_only()
+
+        self.assertEqual(state, json.loads(fixture.read_text(encoding="utf-8")))
+        self.assertNotIn("releaseClaims", state["fleet"]["kiosk-a"])
+        self.assertEqual(self.state_path.read_bytes(), fixture.read_bytes())
+
+    def test_mixed_golden_state_round_trips_without_losing_claims(self):
+        fixture = CLAIM_FIXTURES / "mixed-fleet.json"
+        self.root.mkdir(parents=True)
+        self.state_path.write_bytes(fixture.read_bytes())
+        expected = json.loads(fixture.read_text(encoding="utf-8"))
+
+        state = self.store.read_only()
+        updated = self.store.mutate(state["generation"], lambda _state: None)
+
+        self.assertEqual(state, expected)
+        self.assertEqual(
+            updated["fleet"]["kiosk-a"]["releaseClaims"],
+            expected["fleet"]["kiosk-a"]["releaseClaims"],
+        )
+        self.assertEqual(updated["generation"], expected["generation"] + 1)
+
+    def test_corrupt_mixed_golden_state_fails_closed(self):
+        fixture = CLAIM_FIXTURES / "corrupt-mixed-fleet.json"
+        self.root.mkdir(parents=True)
+        self.state_path.write_bytes(fixture.read_bytes())
+
+        with self.assertRaisesRegex(
+            FleetStateCorruptError, "disagrees with legacy desiredSha"
+        ):
+            self.store.read_only()
 
     def test_begin_run_creates_generation_checked_active_summary(self):
         state = self.begin()
@@ -153,6 +229,138 @@ class FleetStateStoreTest(unittest.TestCase):
         )
         self.assertEqual(state["fleet"]["kiosk-a"]["previousSha"], SHA_A)
 
+    def test_unknown_and_verified_transitions_persist_explicit_release_claims(self):
+        state = self.begin()
+        pending = {
+            "terminalRepository": terminal_claim(
+                SHA_B, authority="signage-ready"
+            )
+        }
+        state = self.store.mark_host_unknown(
+            "signage-a",
+            "signage",
+            SHA_B,
+            RUN_ID,
+            expected_generation=state["generation"],
+            release_claims=pending,
+        )
+        self.assertEqual(
+            state["fleet"]["signage-a"]["releaseClaims"], pending
+        )
+
+        verified = {
+            "terminalRepository": terminal_claim(
+                SHA_B,
+                observed_sha=SHA_B,
+                authority="signage-ready",
+                verification_id="d" * 32,
+                state="verified",
+            )
+        }
+        state = self.store.mark_host_verified(
+            "signage-a",
+            "signage",
+            SHA_B,
+            SHA_B,
+            RUN_ID,
+            expected_generation=state["generation"],
+            release_claims=verified,
+        )
+        self.assertEqual(
+            state["fleet"]["signage-a"]["releaseClaims"], verified
+        )
+
+    def test_malformed_release_claim_is_rejected_without_state_mutation(self):
+        state = self.begin()
+        before = self.state_path.read_bytes()
+
+        with self.assertRaisesRegex(ValueError, "verificationId"):
+            self.store.mark_host_unknown(
+                "signage-a",
+                "signage",
+                SHA_B,
+                RUN_ID,
+                expected_generation=state["generation"],
+                release_claims={
+                    "terminalRepository": terminal_claim(
+                        SHA_B,
+                        observed_sha=SHA_B,
+                        authority="signage-ready",
+                        verification_id=None,
+                    )
+                },
+            )
+
+        self.assertEqual(self.state_path.read_bytes(), before)
+        self.assertEqual(self.store.read_only()["generation"], state["generation"])
+
+    def test_activation_capability_survives_unknown_and_default_verified_transitions(self):
+        state = self.begin()
+        capability = kiosk_activation_capability()
+        state = self.store.mark_host_verified(
+            "kiosk-a",
+            "kiosk",
+            SHA_A,
+            SHA_A,
+            RUN_ID,
+            expected_generation=state["generation"],
+            activation_capabilities=capability,
+        )
+        state = self.store.mark_host_unknown(
+            "kiosk-a",
+            "kiosk",
+            SHA_B,
+            RUN_ID,
+            expected_generation=state["generation"],
+        )
+        self.assertEqual(
+            state["fleet"]["kiosk-a"]["activationCapabilities"], capability
+        )
+
+        state = self.store.mark_host_verified(
+            "kiosk-a",
+            "kiosk",
+            SHA_B,
+            SHA_B,
+            RUN_ID,
+            expected_generation=state["generation"],
+        )
+        self.assertEqual(
+            state["fleet"]["kiosk-a"]["activationCapabilities"], capability
+        )
+
+    def test_activation_capability_is_kiosk_only_and_requires_exact_proof_identity(self):
+        state = self.begin()
+        invalid = (
+            ("signage", kiosk_activation_capability()),
+            ("kiosk", kiosk_activation_capability(verification_id="short")),
+            (
+                "kiosk",
+                {
+                    KIOSK_WEB_ACTIVATION_STRATEGY: {
+                        **kiosk_activation_capability()[
+                            KIOSK_WEB_ACTIVATION_STRATEGY
+                        ],
+                        "extra": True,
+                    }
+                },
+            ),
+        )
+        for role, capability in invalid:
+            with self.subTest(role=role, capability=capability), self.assertRaises(
+                ValueError
+            ):
+                self.store.mark_host_verified(
+                    f"{role}-a",
+                    role,
+                    SHA_A,
+                    SHA_A,
+                    RUN_ID,
+                    expected_generation=state["generation"],
+                    activation_capabilities=capability,
+                )
+        self.assertEqual(self.store.read_only()["generation"], state["generation"])
+
     def test_unknown_server_clears_runtime_identity_instead_of_reusing_stale_evidence(self):
         state = self.begin()
         state = self.store.mark_host_verified(
@@ -227,6 +435,59 @@ class FleetStateStoreTest(unittest.TestCase):
         self.assertEqual(record["currentSha"], SHA_A)
         self.assertEqual(record["evidence"], "verified")
         self.assertEqual(record["verifiedAt"], "2026-07-15T00:00:01Z")
+
+    def test_typed_rollback_rebinds_repository_to_the_sealed_previous_sha(self):
+        state = self.begin()
+        rollback_claims = {
+            "terminalRepository": terminal_claim(
+                SHA_A,
+                observed_sha=SHA_A,
+                authority="signage-ready",
+                verification_id="d" * 32,
+                state="verified",
+            )
+        }
+        state = self.store.mark_host_verified(
+            "signage-a",
+            "signage",
+            SHA_B,
+            SHA_A,
+            RUN_ID,
+            expected_generation=state["generation"],
+            previous_sha=SHA_A,
+            release_claims=rollback_claims,
+        )
+
+        record = state["fleet"]["signage-a"]
+        self.assertEqual(record["desiredSha"], SHA_B)
+        self.assertEqual(record["currentSha"], SHA_A)
+        self.assertEqual(
+            record["releaseClaims"]["terminalRepository"],
+            rollback_claims["terminalRepository"],
+        )
+
+        with self.assertRaisesRegex(
+            FleetStateCorruptError, "legacy desiredSha"
+        ):
+            self.store.mark_host_verified(
+                "signage-b",
+                "signage",
+                SHA_B,
+                SHA_C,
+                RUN_ID,
+                expected_generation=state["generation"],
+                previous_sha=SHA_A,
+                release_claims={
+                    "terminalRepository": terminal_claim(
+                        SHA_C,
+                        observed_sha=SHA_C,
+                        authority="signage-ready",
+                        verification_id="e" * 32,
+                        state="verified",
+                    )
+                },
+            )
+        self.assertEqual(self.store.read_only()["generation"], state["generation"])
 
     def test_verified_server_requires_complete_slot_image_and_digest_evidence(self):
         state = self.begin()

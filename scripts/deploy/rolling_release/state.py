@@ -21,6 +21,11 @@ from typing import Any, Callable, Mapping
 
 from .lock import RunLock
 from .models import unit_name_for, validate_lookup_run_id
+from .release_claims import (
+    ReleaseClaimError,
+    validate_host_claim_compatibility,
+    validate_release_claims,
+)
 
 
 TERMINAL_STATES = frozenset({'success', 'failed', 'cancelled', 'interrupted'})
@@ -164,6 +169,26 @@ def _validate_record_identity(
         raise RunRecordCorruptError(f'unsupported record version in {path}')
     if payload.get('runId') != run_id:
         raise RunRecordCorruptError(f'run ID does not match record path: {path}')
+
+
+def _validate_run_release_claims(payload: Mapping[str, Any], *, path: Path) -> None:
+    """Validate additive typed claims only where run host records can own them."""
+
+    for collection_name in ('hosts', 'targets'):
+        records = payload.get(collection_name)
+        if not isinstance(records, list):
+            continue
+        for index, record in enumerate(records):
+            if not isinstance(record, Mapping) or 'releaseClaims' not in record:
+                continue
+            field = f'{collection_name}[{index}].releaseClaims'
+            try:
+                claims = validate_release_claims(record['releaseClaims'], field=field)
+                validate_host_claim_compatibility(record, claims)
+            except ReleaseClaimError as error:
+                raise RunRecordCorruptError(
+                    f'malformed {field} in {path}: {error}'
+                ) from error
 
 
 class RunStateStore:
@@ -350,6 +375,7 @@ class RunStateStore:
             raise RunRecordCorruptError(f'run ID does not match state path: {path}')
         if not isinstance(state.get('state'), str) or not state['state']:
             raise RunRecordCorruptError(f'run state is missing a state value: {path}')
+        _validate_run_release_claims(state, path=path)
         return state
 
     @staticmethod
@@ -382,6 +408,7 @@ class RunStateStore:
         )
         if not isinstance(state.get('state'), str) or not state['state']:
             raise RunRecordCorruptError(f'run state is missing a state value: {paths.state}')
+        _validate_run_release_claims(state, path=paths.state)
         return state
 
     @staticmethod

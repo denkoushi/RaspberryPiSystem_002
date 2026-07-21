@@ -1,7 +1,7 @@
 ---
 id: deploy-speed-phase-b
 title: Deploy speed Phase B and StoneBase local execution PoC
-status: active
+status: frozen-superseded-by-release-identity-redesign
 scope: rolling release terminal apply, StoneBase-only local execution preparation
 date: 2026-07-21
 source_of_truth: docs/plans/deploy-speed-phase-b-execplan.md
@@ -14,11 +14,14 @@ related_docs:
   - docs/guides/deployment.md
   - docs/runbooks/deploy-status-recovery.md
   - docs/plans/deploy-speed-optimization-execplan.md
-validation: local contracts and hosted checks passed; StoneBase Phase B production validation passed
+  - docs/knowledge-base/KB-401-deploy-release-identity-runtime-audit.md
+  - docs/decisions/ADR-20260721-deploy-release-identity-and-activation.md
+  - docs/plans/deploy-release-identity-architecture-execplan.md
+validation: Phase B passed; Local integration frozen after full-route identity audit found a confirmed architecture gap
 open_items:
-  - integrate the StoneBase local execution PoC into the coordinator only after separate review
-  - obtain separate approval for a StoneBase maintenance-window reverify run that measures the healthy unchanged Compose-skipped path
-  - make the local-execution ready acknowledgement bind the terminal candidate SHA; the existing kiosk ACK authority is the Pi5 control-plane SHA and terminal SHA is independently verified today
+  - keep Local integration, reverify, bootstrap, timeout changes, and production retry frozen
+  - continue only through the accepted typed-release-claim architecture ExecPlan
+  - require a new exact hardware approval after that plan's offline gate
 ---
 
 # Optimize unchanged terminal releases and prepare a sealed local execution PoC
@@ -43,6 +46,8 @@ This plan also defines a non-live proof of concept for future StoneBase local ex
 - [x] (2026-07-20 23:22Z) Ran the approved canonical Pi5 + StoneBase-only `--print-plan` and `--preflight-only`; all three probes passed with zero issues and FJV was explicitly excluded.
 - [x] (2026-07-20 23:23Z) Ran the approved canonical serial release `20260720-232311-d2e8c8` for StoneBase only. It completed with exit 0, evidence `verified`, maintenance cleared, committed runtime cleanup, and terminal SHA `73b3dbe4fbacda6cb5cbdfc8f7375201780a4d6c`.
 - [x] (2026-07-20 23:29Z) Re-read the durable run state and ran the canonical no-mutation plan. StoneBase is `verified at desired SHA` and target selection is empty; FJV remains `outside explicit --limit`.
+- [x] (2026-07-21 04:15Z) Froze Local integration and live retries. The full-route audit confirmed that Kiosk browser Web identity, terminal Git identity, and Local candidate identity are not representable as separate durable claims; detailed evidence is held only in KB-401.
+- [x] (2026-07-21 04:38Z) Completed the separately approved read-only evidence gate and accepted the release-identity ADR for offline implementation only. This Local integration plan remains frozen and superseded.
 
 ## Surprises & Discoveries
 
@@ -93,13 +98,19 @@ This plan also defines a non-live proof of concept for future StoneBase local ex
   Rationale: the test harness cannot create deployment state, but it can make artifact construction impossible without explicit proof references. Production integration must obtain these digests in the current coordinator order before transfer; a result from an artifact without the same binding cannot be accepted.
   Date/Author: 2026-07-20 / Codex.
 
+- Decision: Freeze this plan's Local integration and all production retry work.
+  Rationale: KB-401 confirmed that one `readyAuthority` and one terminal SHA/evidence record cannot distinguish Pi5 Web, running browser Web, terminal Git, Local artifact, and runtime identities. A Local candidate ACK alone cannot close that gap. The replacement architecture and resumption criteria are in the related ADR and ExecPlan.
+  Date/Author: 2026-07-21 / Codex.
+
 ## Outcomes & Retrospective
 
-Phase B implementation is complete and production-validated on StoneBase. Run `20260720-232311-d2e8c8` completed successfully through the canonical serial route with terminal candidate SHA `73b3dbe4fbacda6cb5cbdfc8f7375201780a4d6c`, verified evidence, maintenance cleared only after evidence, committed runtime finalization/cleanup, and no rollback. `terminal-ansible-apply` was 241,853 ms (43.56% lower than the Phase A 428,523 ms comparison); the full Pi5 release elapsed time was 340,921 ms. The candidate itself changed lifecycle code, so the three Compose convergence tasks correctly reported changes; a separately approved healthy no-change reverify is still required to measure the Compose-skipped path.
+Phase B implementation is complete and production-validated on StoneBase. Run `20260720-232311-d2e8c8` completed successfully through the canonical serial route with terminal candidate SHA `73b3dbe4fbacda6cb5cbdfc8f7375201780a4d6c`, verified evidence, maintenance cleared only after evidence, committed runtime finalization/cleanup, and no rollback. `terminal-ansible-apply` was 241,853 ms (43.56% lower than the Phase A 428,523 ms comparison); the full Pi5 release elapsed time was 340,921 ms. The candidate itself changed lifecycle code, so the three Compose convergence tasks correctly reported changes. The healthy no-change measurement was not performed; any future performance measurement belongs to the replacement architecture plan and a new hardware approval.
 
 All three agent lifecycle tasks make Compose conditional on the existing fail-closed image/runtime decision plus a read-only pre-lifecycle HTTP probe. The command reports changed only when the service has no post-command container, receives a new container ID, or was previously not running. The unguarded final readiness retry remains in place. Status-agent configuration and unit changes notify targeted release-only handlers, systemd reload precedes those handlers, the unconditional release-only restart loop is suppressed, and the existing health loop always executes after `flush_handlers`.
 
 The local execution PoC is deliberately only a non-live boundary harness. It creates a no-secret archive with an assertion-only local playbook; validates archive and payload digests, exact member set, candidate SHA, host/status identity, pinned runtime, three sealed-authority digests, staged files, and an exclusive lock; then calls exactly `ansible-playbook -c local` in tests through an injectable process boundary. It does not transfer an artifact, change an actual checkout, run a release playbook, update fleet/run state, enter maintenance, wait for ready ACK, or perform rollback. Those remain open integration milestones. Apart from the separately approved canonical Pi5 + StoneBase Phase B validation recorded above, this worktree did not contact or change other terminals; FJV was never a connection target.
+
+This plan is now frozen rather than complete. Phase B's changed-only lifecycle remains accepted, but immediate Local coordinator integration and the healthy no-change reverify are superseded by `docs/plans/deploy-release-identity-architecture-execplan.md`. KB-401 is the only detailed source for the later failure sequence and No-Go decision.
 
 ## Context and Orientation
 
@@ -226,3 +237,7 @@ Phase B adds only repository-owned Ansible facts and tasks. Every agent lifecycl
 The non-live interface in `scripts/deploy/rolling_release/local_execution_poc.py` is `CandidateBinding`, `build_candidate_artifact(...)`, `inspect_candidate_artifact(...)`, `stage_candidate_artifact(...)`, and `run_staged_candidate(...)`. `CandidateBinding` carries explicit run ID, candidate SHA, host, status client ID, pinned Ansible/collection versions, and the three sealed-authority digests. Its process call is injectable and deliberately has no remote transport. Production integration must replace it with narrow backend interfaces such as `prepare_local_terminal_candidate(...)`, `transfer_local_terminal_candidate(...)`, and `run_local_terminal_candidate(...)`; it must validate the same fields before any subprocess call. Route-contract metadata is the only location that enumerates that future external boundary, and the coordinator remains the only owner of state transition, maintenance clearing, verification promotion, and rollback choice.
 
 Revision note (2026-07-20 23:08Z): Rehearsed the assertion-only candidate artifact through local Ansible. Corrected and regression-tested its generated fixed host group after the first rehearsal revealed that no target group had been declared. It remains intentionally detached from coordinator, transport, and all real hardware operations.
+
+Revision note (2026-07-21 04:15Z): Froze Local integration and live validation after the release-identity audit confirmed a planner/state/activation contract gap. Linked the single incident source, ADR, and replacement implementation ExecPlan without duplicating their detailed evidence.
+
+Revision note (2026-07-21 04:38Z): Marked this plan superseded after the approved evidence confirmed the stale-browser incident. Offline work continues only through the typed-claim architecture plan; live Local execution remains blocked.

@@ -33,7 +33,7 @@ class TerminalProfileRegistryTest(unittest.TestCase):
     def test_production_registry_contains_only_kiosk_and_signage(self):
         registry = load_registry()
 
-        self.assertEqual(registry.schema_version, 3)
+        self.assertEqual(registry.schema_version, 4)
         self.assertEqual(registry.profile_ids, ("kiosk", "signage"))
         self.assertEqual(registry.pi5_control_plane.inventory_group, "server")
         self.assertEqual(registry.pi5_control_plane.required_host_count, 1)
@@ -42,9 +42,22 @@ class TerminalProfileRegistryTest(unittest.TestCase):
         self.assertEqual(kiosk.adapter_id, "generic-systemd")
         self.assertEqual(kiosk.notice_seconds, 60)
         self.assertEqual(kiosk.approval_policy, "human")
+        self.assertEqual(
+            kiosk.adapter_options.required_claims,
+            ("controlPlaneWeb", "terminalRepository"),
+        )
+        self.assertEqual(
+            kiosk.adapter_options.activation_strategy_id,
+            "kiosk-web-activation-v1",
+        )
         self.assertEqual(signage.adapter_id, "signage-systemd")
         self.assertEqual(signage.notice_seconds, 0)
         self.assertEqual(signage.approval_policy, "health-only")
+        self.assertEqual(
+            signage.adapter_options.required_claims,
+            ("terminalRepository",),
+        )
+        self.assertIsNone(signage.adapter_options.activation_strategy_id)
         self.assertEqual(
             registry.profiles_for_components({"status-agent"}),
             ["kiosk", "signage"],
@@ -285,6 +298,38 @@ class TerminalProfileRegistryTest(unittest.TestCase):
                 with self.assertRaisesRegex(RegistryError, "readyAuthority"):
                     self.load_payload(payload)
 
+    def test_release_claims_and_activation_strategy_are_closed_data(self):
+        cases = (
+            ("requiredClaims", [], "requiredClaims"),
+            ("requiredClaims", ["terminalRepository", "shell"], "claim kind"),
+            ("requiredClaims", ["terminalRepository", "runtime"], "claim kind"),
+            (
+                "requiredClaims",
+                ["terminalRepository", "terminalRepository"],
+                "duplicate",
+            ),
+            ("requiredClaims", ["controlPlaneWeb"], "terminalRepository"),
+            ("activationStrategyId", "shell-restart", "unsupported"),
+        )
+        for field, value, message in cases:
+            with self.subTest(field=field, value=value):
+                payload = copy.deepcopy(self.payload)
+                payload["terminalProfiles"][0]["adapterOptions"][field] = value
+                with self.assertRaisesRegex(RegistryError, message):
+                    self.load_payload(payload)
+
+        no_web = copy.deepcopy(self.payload)
+        options = no_web["terminalProfiles"][0]["adapterOptions"]
+        options["requiredClaims"] = ["terminalRepository"]
+        with self.assertRaisesRegex(RegistryError, "Web activation"):
+            self.load_payload(no_web)
+
+        authority_mismatch = copy.deepcopy(self.payload)
+        options = authority_mismatch["terminalProfiles"][1]["adapterOptions"]
+        options["readyAuthority"] = "control-plane"
+        with self.assertRaisesRegex(RegistryError, "readyAuthority"):
+            self.load_payload(authority_mismatch)
+
     def test_profile_identity_and_order_fields_are_unique(self):
         fields = ("id", "inventoryGroup", "canaryGroup", "rolloutOrder")
         for field in fields:
@@ -414,7 +459,7 @@ class TerminalProfileRegistryTest(unittest.TestCase):
 
     def test_unsupported_schema_and_duplicate_profile_options_are_rejected(self):
         schema = copy.deepcopy(self.payload)
-        schema["schemaVersion"] = 4
+        schema["schemaVersion"] = 5
         with self.assertRaisesRegex(RegistryError, "schemaVersion"):
             self.load_payload(schema)
 

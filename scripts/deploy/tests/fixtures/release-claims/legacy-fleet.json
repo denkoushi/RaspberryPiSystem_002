@@ -1,0 +1,23 @@
+{
+  "generation": 7,
+  "activeRun": null,
+  "lastRun": {
+    "runId": "20260721-120000-a1b2c3",
+    "status": "success",
+    "desiredSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "inventory": "infrastructure/ansible/inventory.yml",
+    "startedAt": "2026-07-21T12:00:00Z",
+    "endedAt": "2026-07-21T12:10:00Z"
+  },
+  "fleet": {
+    "kiosk-a": {
+      "role": "kiosk",
+      "desiredSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "currentSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "previousSha": null,
+      "evidence": "verified",
+      "verifiedAt": "2026-07-21T12:09:00Z",
+      "lastRunId": "20260721-120000-a1b2c3"
+    }
+  }
+}

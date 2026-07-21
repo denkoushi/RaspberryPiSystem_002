@@ -13,6 +13,27 @@ export interface KioskReadyChallenge {
   verificationId: string;
 }
 
+export interface KioskVerificationChallenge {
+  desiredReleaseSha: string;
+  verificationId: string;
+}
+
+export function isFullReleaseSha(value: unknown): value is string {
+  return typeof value === 'string' && FULL_RELEASE_SHA_PATTERN.test(value);
+}
+
+export function resolveKioskVerificationChallenge(
+  status: DeployVerificationIdentity | undefined
+): KioskVerificationChallenge | null {
+  if (status?.isMaintenance !== true || status.phase !== 'verifying') return null;
+  if (!isFullReleaseSha(status.desiredReleaseSha)) return null;
+  if (typeof status.verificationId !== 'string' || !VERIFICATION_ID_PATTERN.test(status.verificationId)) return null;
+  return {
+    desiredReleaseSha: status.desiredReleaseSha,
+    verificationId: status.verificationId
+  };
+}
+
 /**
  * Return the immutable release identity this compiled bundle may acknowledge.
  *
@@ -24,12 +45,9 @@ export function resolveKioskReadyChallenge(
   status: DeployVerificationIdentity | undefined,
   compiledReleaseSha: string | undefined = import.meta.env.VITE_RELEASE_SHA
 ): KioskReadyChallenge | null {
-  if (status?.isMaintenance !== true || status.phase !== 'verifying') return null;
-  const desiredReleaseSha = status.desiredReleaseSha;
-  if (typeof desiredReleaseSha !== 'string' || !FULL_RELEASE_SHA_PATTERN.test(desiredReleaseSha)) return null;
-  if (typeof compiledReleaseSha !== 'string' || !FULL_RELEASE_SHA_PATTERN.test(compiledReleaseSha)) return null;
-  if (typeof status.verificationId !== 'string' || !VERIFICATION_ID_PATTERN.test(status.verificationId)) return null;
-  return compiledReleaseSha === desiredReleaseSha
-    ? { releaseSha: compiledReleaseSha, verificationId: status.verificationId }
+  const challenge = resolveKioskVerificationChallenge(status);
+  if (!challenge || !isFullReleaseSha(compiledReleaseSha)) return null;
+  return compiledReleaseSha === challenge.desiredReleaseSha
+    ? { releaseSha: compiledReleaseSha, verificationId: challenge.verificationId }
     : null;
 }

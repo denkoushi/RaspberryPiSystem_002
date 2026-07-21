@@ -13,7 +13,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REGISTRY_PATH = Path(__file__).with_name("terminal-profile-registry.json")
 _SAFE_ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,62}$")
@@ -77,9 +77,20 @@ _PROFILE_KEYS = frozenset(
     }
 )
 _ADAPTER_OPTION_KEYS = frozenset(
-    {"systemdUnits", "rollbackPaths", "healthProbeIds", "readyAuthority"}
+    {
+        "systemdUnits",
+        "rollbackPaths",
+        "healthProbeIds",
+        "readyAuthority",
+        "requiredClaims",
+        "activationStrategyId",
+    }
 )
 _READY_AUTHORITIES = frozenset({"control-plane", "terminal"})
+_TERMINAL_PROFILE_CLAIM_KINDS = frozenset(
+    {"controlPlaneWeb", "terminalRepository"}
+)
+_ACTIVATION_STRATEGY_IDS = frozenset({"kiosk-web-activation-v1"})
 _PATH_MAPPING_KEYS = frozenset({"match", "path", "component"})
 _COMPONENT_HOST_SELECTOR_KEYS = frozenset({"hostVar", "match"})
 _COMPONENT_HOST_SELECTOR_MATCHES = frozenset({"true", "non-empty-string"})
@@ -121,6 +132,8 @@ class AdapterOptions:
     rollback_paths: tuple[str, ...]
     health_probe_ids: tuple[str, ...]
     ready_authority: str
+    required_claims: tuple[str, ...]
+    activation_strategy_id: str | None
 
 
 @dataclass(frozen=True)
@@ -299,6 +312,12 @@ def _safe_component(value: Any, *, name: str) -> str:
     return value
 
 
+def _safe_release_claim_kind(value: Any, *, name: str) -> str:
+    if not isinstance(value, str) or value not in _TERMINAL_PROFILE_CLAIM_KINDS:
+        raise RegistryError(f"{name} must be a terminal profile claim kind")
+    return value
+
+
 def _bounded_int(value: Any, *, name: str, minimum: int, maximum: int) -> int:
     if type(value) is not int or not minimum <= value <= maximum:
         raise RegistryError(f"{name} must be an integer from {minimum} to {maximum}")
@@ -423,6 +442,45 @@ def _parse_adapter_options(value: Any, *, profile_id: str) -> AdapterOptions:
             f"terminal profile {profile_id} readyAuthority must be "
             "control-plane or terminal"
         )
+    required_claims = _unique_string_list(
+        item["requiredClaims"],
+        name=f"terminal profile {profile_id} requiredClaims",
+        maximum=len(_TERMINAL_PROFILE_CLAIM_KINDS),
+        validator=_safe_release_claim_kind,
+    )
+    if not required_claims:
+        raise RegistryError(
+            f"terminal profile {profile_id} requiredClaims cannot be empty"
+        )
+    if "terminalRepository" not in required_claims:
+        raise RegistryError(
+            f"terminal profile {profile_id} must require terminalRepository"
+        )
+    activation_strategy_id = item["activationStrategyId"]
+    if activation_strategy_id is not None and (
+        not isinstance(activation_strategy_id, str)
+        or activation_strategy_id not in _ACTIVATION_STRATEGY_IDS
+    ):
+        raise RegistryError(
+            f"terminal profile {profile_id} activationStrategyId is unsupported"
+        )
+    if (
+        activation_strategy_id is not None
+        and "controlPlaneWeb" not in required_claims
+    ):
+        raise RegistryError(
+            f"terminal profile {profile_id} Web activation requires controlPlaneWeb"
+        )
+    ready_claim = (
+        "controlPlaneWeb"
+        if ready_authority == "control-plane"
+        else "terminalRepository"
+    )
+    if ready_claim not in required_claims:
+        raise RegistryError(
+            f"terminal profile {profile_id} readyAuthority is not represented "
+            "by requiredClaims"
+        )
     return AdapterOptions(
         systemd_units=_unique_string_list(
             item["systemdUnits"],
@@ -443,6 +501,8 @@ def _parse_adapter_options(value: Any, *, profile_id: str) -> AdapterOptions:
             validator=_safe_identifier,
         ),
         ready_authority=ready_authority,
+        required_claims=required_claims,
+        activation_strategy_id=activation_strategy_id,
     )
 
 

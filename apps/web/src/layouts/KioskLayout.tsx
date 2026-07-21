@@ -24,6 +24,10 @@ import {
 } from '../features/kiosk/kioskImmersiveHeaderChrome';
 import { usesKioskImmersiveLayout } from '../features/kiosk/kioskImmersiveLayoutPolicy';
 import { resolveKioskReadyChallenge } from '../features/kiosk/kioskReleaseIdentity';
+import {
+  advanceKioskWebActivation,
+  kioskWebNavigation
+} from '../features/kiosk/kioskWebActivation';
 import { useKioskBottomCenterHeaderReveal } from '../hooks/useKioskBottomCenterHeaderReveal';
 
 export function KioskLayout() {
@@ -87,6 +91,50 @@ export function KioskLayout() {
         acknowledgedRunIdRef.current.notice = null;
       });
   }, [deployStatus?.preNotice, deployStatus?.runId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const advance = () => {
+      if (cancelled) return;
+      let storage: Storage;
+      try {
+        storage = window.sessionStorage;
+      } catch {
+        // A stale bundle without bounded retry storage must not navigate or
+        // manufacture evidence. The exact-SHA ready check remains separate.
+        return;
+      }
+      const decision = advanceKioskWebActivation({
+        status: {
+          isMaintenance: deployIsMaintenance,
+          phase: deployPhase,
+          desiredReleaseSha: deployDesiredReleaseSha,
+          verificationId: deployVerificationId
+        },
+        runId: deployRunId,
+        compiledReleaseSha: import.meta.env.VITE_RELEASE_SHA,
+        currentHref: window.location.href,
+        storage
+      });
+      if (decision.kind === 'reload') {
+        kioskWebNavigation.replace(decision.href);
+      } else if (decision.kind === 'wait') {
+        retryTimer = setTimeout(advance, decision.retryAfterMs);
+      }
+    };
+    advance();
+    return () => {
+      cancelled = true;
+      if (retryTimer !== undefined) clearTimeout(retryTimer);
+    };
+  }, [
+    deployDesiredReleaseSha,
+    deployIsMaintenance,
+    deployPhase,
+    deployRunId,
+    deployVerificationId
+  ]);
 
   useEffect(() => {
     const challenge = resolveKioskReadyChallenge({

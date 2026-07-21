@@ -7,12 +7,14 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import json
 import os
 import re
 import shlex
 import subprocess
 import tempfile
+import time
 import zipapp
 from contextlib import contextmanager
 from pathlib import Path
@@ -20,6 +22,11 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from ..adapter_registry import adapter_for_profile
 from .. import telemetry
+from ..activation import (
+    ActivationUncertainError,
+    KIOSK_WEB_ACTIVATION_STRATEGY,
+    KIOSK_WEB_ACTIVATION_TARGET_UNIT,
+)
 
 if TYPE_CHECKING:
     from ..terminal_adapters import TerminalRuntimeManifestContract
@@ -161,6 +168,11 @@ def _release_timing_environment(
 _TERMINAL_REPOSITORY = "/opt/RaspberryPiSystem_002"
 _ROLLBACK_MANIFEST_ROOT = "/var/lib/raspi-release/rollback-manifests"
 _RUNTIME_MANIFEST_ROOT = "/var/lib/raspi-release/rollback-runtime"
+_KIOSK_WEB_ACTIVATION_UNIT_RE = re.compile(
+    r"^raspi-kiosk-web-[0-9a-f]{20}\.service$"
+)
+_KIOSK_WEB_ACTIVATION_RECONCILE_ATTEMPTS = 65
+_KIOSK_WEB_ACTIVATION_RECONCILE_DELAY_SECONDS = 1
 _SERVER_CONFIG_PATHS = (
     f"{_TERMINAL_REPOSITORY}/apps/api/.env",
     f"{_TERMINAL_REPOSITORY}/apps/web/.env",
@@ -777,6 +789,216 @@ def _expected_manifest_path(run_id: str, host: str) -> str:
 
 def _expected_runtime_manifest_path(run_id: str, host: str) -> str:
     return f"{_RUNTIME_MANIFEST_ROOT}/{run_id}/{host}/manifest.json"
+
+
+def _expected_kiosk_web_activation_unit(run_id: str, host: str) -> str:
+    if _RUN_ID_RE.fullmatch(run_id) is None or _HOST_RE.fullmatch(host) is None:
+        raise ValueError("Kiosk Web activation identity is malformed")
+    digest = hashlib.sha256(
+        f"{KIOSK_WEB_ACTIVATION_STRATEGY}\0{run_id}\0{host}".encode("utf-8")
+    ).hexdigest()[:20]
+    return f"raspi-kiosk-web-{digest}.service"
+
+
+def _validated_kiosk_web_activation_result(
+    value: Any, *, run_id: str, host: str
+) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != {
+        "strategyId",
+        "operationUnit",
+        "targetUnit",
+        "state",
+        "activeState",
+        "result",
+        "execMainStatus",
+    }:
+        raise RuntimeError("Kiosk Web activation result is malformed")
+    expected_unit = _expected_kiosk_web_activation_unit(run_id, host)
+    if (
+        value.get("strategyId") != KIOSK_WEB_ACTIVATION_STRATEGY
+        or value.get("operationUnit") != expected_unit
+        or _KIOSK_WEB_ACTIVATION_UNIT_RE.fullmatch(expected_unit) is None
+        or value.get("targetUnit") != KIOSK_WEB_ACTIVATION_TARGET_UNIT
+        or value.get("state") not in {"absent", "running", "succeeded", "failed"}
+        or not isinstance(value.get("activeState"), str)
+        or value.get("result") is not None
+        and not isinstance(value.get("result"), str)
+        or isinstance(value.get("execMainStatus"), bool)
+        or not isinstance(value.get("execMainStatus"), int)
+    ):
+        raise RuntimeError("Kiosk Web activation result identity is invalid")
+    return dict(value)
+
+
+def _kiosk_web_activation_authority(
+    target_spec: dict[str, str], target: dict[str, Any], run_id: str
+) -> tuple[str, str]:
+    authority = _validated_terminal_rollback_authority(
+        target_spec, target, run_id
+    )
+    if authority["terminalType"] != "kiosk":
+        raise RuntimeError("Kiosk Web activation is valid only for the Kiosk profile")
+    runtime_manifest = authority["runtimeManifest"]
+    return authority["host"], runtime_manifest["manifestSha256"]
+
+
+def _run_kiosk_web_activation_helper(
+    inventory: str,
+    host: str,
+    run_id: str,
+    manifest_sha256: str,
+    command: str,
+    *,
+    runtime: Runtime,
+) -> dict[str, Any]:
+    value = _run_runtime_manifest_helper(
+        inventory,
+        host,
+        [
+            command,
+            "--root",
+            _RUNTIME_MANIFEST_ROOT,
+            "--run-id",
+            run_id,
+            "--host",
+            host,
+            "--expected-manifest-sha256",
+            manifest_sha256,
+        ],
+        runtime=runtime,
+    )
+    return _validated_kiosk_web_activation_result(
+        value, run_id=run_id, host=host
+    )
+
+
+def reconcile_kiosk_web_activation(
+    inventory: str,
+    target_spec: dict[str, str],
+    target: dict[str, Any],
+    run_id: str,
+    *,
+    runtime: Runtime,
+) -> dict[str, Any]:
+    host, manifest_sha256 = _kiosk_web_activation_authority(
+        target_spec, target, run_id
+    )
+    return _run_kiosk_web_activation_helper(
+        inventory,
+        host,
+        run_id,
+        manifest_sha256,
+        "reconcile-kiosk-web-activation",
+        runtime=runtime,
+    )
+
+
+def activate_kiosk_web(
+    inventory: str,
+    target_spec: dict[str, str],
+    target: dict[str, Any],
+    run_id: str,
+    *,
+    runtime: Runtime,
+) -> dict[str, Any]:
+    """Submit once and reconcile response loss through the deterministic unit."""
+
+    host, manifest_sha256 = _kiosk_web_activation_authority(
+        target_spec, target, run_id
+    )
+    submitted = False
+    try:
+        result = _run_kiosk_web_activation_helper(
+            inventory,
+            host,
+            run_id,
+            manifest_sha256,
+            "activate-kiosk-web",
+            runtime=runtime,
+        )
+        submitted = True
+    except RuntimeError:
+        # A missing result marker can mean the transient unit was accepted
+        # before the SSH response disappeared. The exact unit is the recovery
+        # authority; never infer success from the transport outcome.
+        result = reconcile_kiosk_web_activation(
+            inventory, target_spec, target, run_id, runtime=runtime
+        )
+    for _attempt in range(_KIOSK_WEB_ACTIVATION_RECONCILE_ATTEMPTS):
+        state = result["state"]
+        if state == "succeeded":
+            return result
+        if state == "failed":
+            raise RuntimeError("Kiosk Web activation unit failed quiescently")
+        if state == "absent" and not submitted:
+            # Reconciliation proved that the first submission was not
+            # accepted. Re-submit the same deterministic unit, never a second
+            # operation identity.
+            result = _run_kiosk_web_activation_helper(
+                inventory,
+                host,
+                run_id,
+                manifest_sha256,
+                "activate-kiosk-web",
+                runtime=runtime,
+            )
+            submitted = True
+            continue
+        time.sleep(_KIOSK_WEB_ACTIVATION_RECONCILE_DELAY_SECONDS)
+        result = reconcile_kiosk_web_activation(
+            inventory, target_spec, target, run_id, runtime=runtime
+        )
+    raise ActivationUncertainError(
+        "Kiosk Web activation remains non-quiescent after bounded reconciliation"
+    )
+
+
+def cleanup_kiosk_web_activation(
+    inventory: str,
+    target_spec: dict[str, str],
+    target: dict[str, Any],
+    run_id: str,
+    *,
+    runtime: Runtime,
+) -> dict[str, Any]:
+    host, manifest_sha256 = _kiosk_web_activation_authority(
+        target_spec, target, run_id
+    )
+    value = _run_runtime_manifest_helper(
+        inventory,
+        host,
+        [
+            "cleanup-kiosk-web-activation",
+            "--root",
+            _RUNTIME_MANIFEST_ROOT,
+            "--run-id",
+            run_id,
+            "--host",
+            host,
+            "--expected-manifest-sha256",
+            manifest_sha256,
+        ],
+        runtime=runtime,
+    )
+    expected_unit = _expected_kiosk_web_activation_unit(run_id, host)
+    if (
+        not isinstance(value, dict)
+        or set(value)
+        != {
+            "cleaned",
+            "alreadyClean",
+            "strategyId",
+            "operationUnit",
+            "manifestSha256",
+        }
+        or value.get("cleaned") is not True
+        or type(value.get("alreadyClean")) is not bool
+        or value.get("strategyId") != KIOSK_WEB_ACTIVATION_STRATEGY
+        or value.get("operationUnit") != expected_unit
+        or value.get("manifestSha256") != manifest_sha256
+    ):
+        raise RuntimeError("Kiosk Web activation cleanup result is malformed")
+    return value
 
 
 def _terminal_runtime_contract(terminal_type: str) -> tuple[list[str], list[str]]:
