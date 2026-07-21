@@ -14,7 +14,7 @@ related_docs:
   - docs/decisions/ADR-20260721-deploy-release-identity-and-activation.md
   - docs/plans/deploy-release-identity-readonly-evidence-manifest.md
   - docs/plans/deploy-speed-phase-b-execplan.md
-validation: Milestones 1 through 7 accepted; exact Pi5 plus StoneBase SSH run 20260721-162403-d398c0 succeeded with pre-notice sealed prefetch and offline bootstrap; preflight 20260721-164634-7a7a94 and bounded runtime evidence confirmed stale staging shebangs; the r2 publication fix passed 871 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template parses, and the complete deploy aggregate
+validation: Milestones 1 through 7 accepted; exact Pi5 plus StoneBase SSH run 20260721-162403-d398c0 succeeded with pre-notice sealed prefetch and offline bootstrap; preflight 20260721-164634-7a7a94 and bounded runtime evidence confirmed stale staging shebangs; the r2 publication fix passed 872 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template parses, and the complete deploy aggregate
 open_items:
   - review and merge the relocatable r2 runtime publication fix
   - repeat the canonical Pi5 plus StoneBase-only SSH bootstrap from accepted main
@@ -49,7 +49,8 @@ sealed prefetch bootstrap succeeded, but independent preflight exposed a third
 and final runtime-publication gap: pip entry points retained the removed
 staging interpreter path after rename. The exact evidence and root cause live
 only in KB-401. The current `r2` fix binds those scripts to the immutable final
-path and revalidates after publication. FJV and every other terminal stay
+path, uses a fixed short staging name within pip's direct-shebang bound, and
+revalidates after publication. FJV and every other terminal stay
 excluded. Local execution remains blocked until accepted-main SSH bootstrap
 and independent preflight prove `r2`.
 
@@ -84,7 +85,7 @@ and independent preflight prove `r2`.
 - [x] (2026-07-21 16:15Z) Canonical exact Pi5 plus StoneBase preflight `20260721-161503-c1d96f` passed and selected effective SSH with `candidate-requires-ssh-configuration`, but exposed that its route receipt omitted `terminal.runtime-artifact-prefetch` because the application did not forward the sealed fallback reason.
 - [x] (2026-07-21 16:23Z) Merged the route-receipt fix as PR #1056 at `a4fb0c64b4173232e94b7fda01d387180c1eb04a`; repeated preflight selected `stonebase-local-bootstrap-success` and the prefetch-before-notice route.
 - [x] (2026-07-21 16:47Z) Independent preflight `20260721-164634-7a7a94` refused Local with `runtime-unavailable`; bounded evidence confirmed all ten Ansible console scripts retained the removed staging interpreter shebang after publication.
-- [x] (2026-07-21 17:05Z) Implemented the versioned `r2` publication fix with exact shebang rebinding, post-publication validation, failed-version cleanup, runtime-claim build identity, and the complete 871-test aggregate.
+- [x] (2026-07-21 17:05Z) Implemented the versioned `r2` publication fix with exact shebang rebinding, bounded staging names, post-publication validation, failed-version cleanup, runtime-claim build identity, and the complete 872-test aggregate.
 - [ ] Review and merge `r2`, then run one canonical serial SSH bootstrap and require effective Local with no fallback before the Local canary.
 
 ## Surprises & Discoveries
@@ -270,8 +271,9 @@ and independent preflight prove `r2`.
 ## Decision Log
 
 - Decision: publish a new immutable `r2` runtime, bind the exact ansible-core
-  console scripts to its final interpreter path, and revalidate after rename
-  before switching `active`.
+  console scripts to its final interpreter path, keep the fixed production
+  staging path within pip's Linux 127-byte direct-shebang limit, and revalidate
+  after rename before switching `active`.
   Rationale: pip's standard absolute shebang is correct at installation time
   but is not relocatable. A new version preserves the old tree for rollback;
   exact script allowlisting and post-publication validation prevent a desired
@@ -1069,5 +1071,5 @@ independent preflight safely returned `runtime-unavailable`; KB-401 records the
 confirmed absolute staging-shebang cause. The versioned `r2` fix now rewrites
 only the exact ansible-core entry points, revalidates the published path before
 activation, removes an invalid unactivated version, and includes the build
-identity in the runtime claim. The complete 871-test aggregate passed. Local
+identity in the runtime claim. The complete 872-test aggregate passed. Local
 execution remains blocked until accepted-main `r2` bootstrap and preflight.

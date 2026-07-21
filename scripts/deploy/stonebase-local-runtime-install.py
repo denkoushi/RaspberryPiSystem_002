@@ -14,13 +14,13 @@ import stat
 import subprocess
 import sys
 import tarfile
-import tempfile
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 
-ROOT = Path("/opt/raspi-local-ansible-runtime")
+PRODUCTION_ROOT = Path("/opt/raspi-local-ansible-runtime")
+ROOT = PRODUCTION_ROOT
 VERSION = "cpython-3.11.15-20260510-ansible-core-2.19.4-r2"
 OBSERVATION = Path("/var/lib/raspi-release/local-runtime-bootstrap.json")
 LOCK = Path("/usr/local/libexec/raspi-local-runtime-lock.json")
@@ -61,6 +61,31 @@ ANSIBLE_CONSOLE_SCRIPTS = (
     "ansible-vault",
 )
 MAX_CONSOLE_SCRIPT_BYTES = 64 * 1024
+MAX_SIMPLE_SHEBANG_BYTES = 127
+STAGING_DIRECTORY_PREFIX = ".install."
+STAGING_TOKEN_BYTES = 8
+
+
+def _console_script_shebang_size(interpreter: Path) -> int:
+    return len(f"#!{interpreter}\n".encode("utf-8"))
+
+
+def _validate_production_shebang_layout() -> None:
+    staging = (
+        PRODUCTION_ROOT
+        / "versions"
+        / f"{STAGING_DIRECTORY_PREFIX}{'f' * (STAGING_TOKEN_BYTES * 2)}"
+        / "extract/python/bin/python3"
+    )
+    destination = PRODUCTION_ROOT / "versions" / VERSION / "bin/python3"
+    if any(
+        _console_script_shebang_size(interpreter) > MAX_SIMPLE_SHEBANG_BYTES
+        for interpreter in (staging, destination)
+    ):
+        raise RuntimeError("production runtime path exceeds the Linux shebang limit")
+
+
+_validate_production_shebang_layout()
 
 
 class InstallError(RuntimeError):
@@ -428,6 +453,27 @@ def _extract_python_distribution(archive_path: Path, destination: Path) -> Path:
     return runtime
 
 
+def _create_staging_directory(versions: Path) -> Path:
+    metadata = os.lstat(versions)
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or stat.S_ISLNK(metadata.st_mode)
+        or metadata.st_uid != os.getuid()
+        or stat.S_IMODE(metadata.st_mode) & 0o022
+    ):
+        raise InstallError("runtime versions directory is unsafe")
+    for _attempt in range(4):
+        candidate = versions / (
+            f"{STAGING_DIRECTORY_PREFIX}{secrets.token_hex(STAGING_TOKEN_BYTES)}"
+        )
+        try:
+            candidate.mkdir(mode=0o700)
+        except FileExistsError:
+            continue
+        return candidate
+    raise InstallError("could not allocate a unique runtime staging directory")
+
+
 def _rewrite_console_script_shebangs(runtime: Path, destination: Path) -> None:
     """Bind pip entry points to the immutable published runtime path.
 
@@ -443,9 +489,6 @@ def _rewrite_console_script_shebangs(runtime: Path, destination: Path) -> None:
         raise InstallError("runtime console script paths are malformed")
     source_shebang = f"#!{runtime / 'bin/python3'}".encode("utf-8")
     destination_shebang = f"#!{destination / 'bin/python3'}".encode("utf-8")
-    # Linux reads at most 256 bytes when resolving a script interpreter.
-    if len(destination_shebang) > 255:
-        raise InstallError("published runtime interpreter path is too long")
     bin_directory = runtime / "bin"
     bin_metadata = os.lstat(bin_directory)
     if (
@@ -544,7 +587,7 @@ def install(observation: Observation, *, cache_root: Path | None = None) -> bool
             observation,
             "staging-prepare",
             "staging-preparation-failed",
-            lambda: Path(tempfile.mkdtemp(prefix=f".{VERSION}.", dir=versions)),
+            lambda: _create_staging_directory(versions),
         )
         failure: BaseException | None = None
         published = False

@@ -17,7 +17,7 @@ related_docs:
   - ../plans/deploy-release-identity-architecture-execplan.md
   - ../plans/deploy-release-identity-readonly-evidence-manifest.md
   - ../plans/deploy-speed-phase-b-execplan.md
-validation: offline source audit, approved read-only evidence receipt f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8, accepted-main SSH run 20260721-162403-d398c0, canonical preflight 20260721-164634-7a7a94, bounded StoneBase runtime path evidence, 871 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template parses, and the complete deploy aggregate
+validation: offline source audit, approved read-only evidence receipt f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8, accepted-main SSH run 20260721-162403-d398c0, canonical preflight 20260721-164634-7a7a94, bounded StoneBase runtime path evidence, 872 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template parses, and the complete deploy aggregate
 open_items:
   - review and merge the relocatable r2 runtime publication fix
   - repeat only the canonical Pi5 plus StoneBase plan, preflight, and serial SSH bootstrap route from accepted main
@@ -52,7 +52,10 @@ rename, but every `ansible*` entry point returned `ENOENT`. The remediation uses
 a new immutable `r2` runtime identity, rewrites only the exact locked
 ansible-core console-script set to the final version path, revalidates after
 publication, and switches `active` only after success. The broken old version
-is retained; a failed `r2` publication is removed before activation.
+is retained; a failed `r2` publication is removed before activation. Staging
+uses a bounded `.install.<16-hex>` name so pip's Linux 127-byte direct-shebang
+limit is satisfied; the installer checks both staging and published production
+paths against that limit when it loads.
 
 ## Safety state at the audit boundary
 
@@ -669,9 +672,12 @@ Python 3.11.15, ansible-core 2.19.4, and community.general 11.4.1 from the final
 path before switching the atomic `active` symlink. Unexpected, missing,
 symlinked, writable, oversized, or post-publication-invalid scripts fail closed;
 an unactivated `r2` directory is removed, while the old active version remains.
-The Local artifact runtime claim now includes the `r2` build identity.
+The staging directory has a fixed short random name and the production staging
+and destination shebang sizes are code-checked at import, preventing pip's
+standard Linux long-shebang shell wrapper from entering this exact rewrite
+protocol. The Local artifact runtime claim now includes the `r2` build identity.
 
-Regression and complete aggregate validation passed 871 deploy Python tests,
+Regression and complete aggregate validation passed 872 deploy Python tests,
 20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template
 parses, deploy safety and lifecycle contracts, and all inventory/playbook
 syntax and check-mode contracts. This is offline evidence only. Local remains

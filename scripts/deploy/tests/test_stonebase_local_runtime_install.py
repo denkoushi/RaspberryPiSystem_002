@@ -263,6 +263,33 @@ class StoneBaseLocalRuntimeInstallTest(unittest.TestCase):
         )
         self.assertEqual(locale_probe.returncode, 0, locale_probe.stderr)
 
+    def test_production_staging_path_keeps_pip_console_shebang_direct(self) -> None:
+        staging = (
+            runtime_install.ROOT
+            / "versions"
+            / (
+                runtime_install.STAGING_DIRECTORY_PREFIX
+                + "f" * (runtime_install.STAGING_TOKEN_BYTES * 2)
+            )
+        )
+        interpreter = staging / "extract/python/bin/python3"
+        self.assertLessEqual(
+            runtime_install._console_script_shebang_size(interpreter),
+            runtime_install.MAX_SIMPLE_SHEBANG_BYTES,
+        )
+        runtime_install._validate_production_shebang_layout()
+        old_staging = (
+            runtime_install.ROOT
+            / "versions"
+            / f".{runtime_install.VERSION}.{'f' * 8}"
+        )
+        self.assertGreater(
+            runtime_install._console_script_shebang_size(
+                old_staging / "extract/python/bin/python3"
+            ),
+            runtime_install.MAX_SIMPLE_SHEBANG_BYTES,
+        )
+
     def test_install_uses_only_sealed_cache_and_no_index(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "runtime"
