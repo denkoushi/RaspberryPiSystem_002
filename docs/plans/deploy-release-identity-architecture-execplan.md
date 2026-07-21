@@ -857,3 +857,16 @@ pre-maintenance SSH fallback, post-maintenance rollback-only recovery, and an
 executable route/receipt/fault contract. Recorded the complete 840-test
 offline aggregate and retained the separate live canary approval gate. No
 device was contacted.
+
+Revision note (2026-07-21 11:07Z): A live run was cancelled at the Pi5
+stability checkpoint after its durable plan selected Local despite the approved
+preflight recording an SSH fallback. Pi5 reached its verified candidate; the
+StoneBase terminal received no notice, maintenance, artifact, transfer, or
+mutation. The corrective change seals the exact executor selection, fallback
+proof, and decision digest before Pi5 mutation; after that boundary the
+coordinator verifies the same terminal baseline and may not reselect or switch
+executors. A changed baseline or missing/mismatched seal fails closed before
+terminal maintenance. The standard SSH pipeline preflight ordering is retained.
+The complete local gate passed: 842 deploy Python tests, 24 recovery tests,
+99 Ansible templates, isolated PostgreSQL/API tests, and the deploy safety,
+Pi5 lifecycle, client, and Signage contracts.
