@@ -1,7 +1,7 @@
 ---
 id: stonebase-local-ansible
 title: StoneBase sealed local Ansible executor
-status: bootstrap-retry-approval-required
+status: local-reverify-preflight-pending
 scope: opt-in StoneBase terminal apply executor below the rolling-release safety adapter
 date: 2026-07-21
 source_of_truth: docs/plans/stonebase-local-ansible-execplan.md
@@ -14,10 +14,10 @@ related_docs:
   - docs/guides/deployment.md
   - docs/plans/deploy-speed-phase-b-execplan.md
   - docs/runbooks/deploy-status-recovery.md
-validation: bootstrap source-path fix passed 763 deploy Python tests and aggregate deploy contracts; preflight 20260721-023614-f12bd4 passed with maintenance-free SSH fallback and no release submission
+validation: SSH bootstrap retry 20260721-023908-68527a succeeded with verified StoneBase evidence, committed runtime cleanup, maintenance clear, and candidate SHA 651d056dbf5a6eea71cda210601dc618d7894415
 open_items:
-  - obtain explicit approval before retrying the Pi5 plus StoneBase SSH bootstrap release
-  - bootstrap the runner through an approved SSH executor run before the first local reverify run
+  - publish this evidence note and prove Local executor/runtime with reverify-selected print-plan and preflight
+  - obtain explicit approval before the first StoneBase Local executor reverify run
 ---
 
 # Execute a sealed StoneBase candidate with local Ansible
@@ -49,7 +49,8 @@ This is not `ansible-pull`. StoneBase cannot choose a branch, fetch from a netwo
 - [x] (2026-07-21 02:25Z) Ran the explicitly approved canonical SSH bootstrap release as `20260721-021000-1ede52`. Pi5 reached candidate `85874ca920645083840a903631eb1b3afcbce742` and stable evidence. StoneBase entered maintenance only after its sealed file/runtime manifests and 60-second notice, then SSH Ansible stopped at `client : Install StoneBase local executor runtime lock`. The coordinator used only the sealed manifests: rollback, rollback ready ACK, independent rollback evidence, runtime cleanup, maintenance clear, and cleanup all succeeded. StoneBase was verified back at `73b3dbe4fbacda6cb5cbdfc8f7375201780a4d6c`; FJV and every other terminal remained excluded.
 - [x] (2026-07-21 02:34Z) Diagnosed the failed task from the bounded Pi5 timing event and task-local journal. The two lock copies incorrectly used role-relative `src` values while their immutable files live under `infrastructure/ansible/files/stonebase-local-ansible`. Changed both to exact `{{ repo_path }}` candidate paths with `remote_src: true`, and added a release safety contract that binds each manifest-backed destination to that exact candidate source. Complete discovery passed 763 tests in 58.662 seconds; the aggregate contract repeated 763 tests, isolated PostgreSQL/API 20 tests, safety/inventory contracts, and every Ansible syntax check successfully.
 - [x] (2026-07-21 02:36Z) Published source-path fix `d99cfe26db1800bf210e4396d73db97736a91810` and ran the no-release gate. Print-plan targeted StoneBase only because Pi5 is already stable at `85874ca920645083840a903631eb1b3afcbce742` and this fix has no server impact; Pi5 remains the coordinator. Preflight `20260721-023614-f12bd4` passed for the exact Pi5 plus StoneBase limit with requested Local, effective `ssh-ansible`, fallback `candidate-requires-ssh-configuration`, and `releaseSubmitted: false`. FJV and all other terminals remained excluded.
-- [ ] In a later approved maintenance window, perform an SSH executor bootstrap run first, then a separate `--reverify-selected --stonebase-local-ansible-poc` run. Record exact run state, evidence, rollback authority, and timings here.
+- [x] (2026-07-21 02:44Z) Retried the explicitly approved SSH bootstrap as `20260721-023908-68527a`. Pi5 was coordinator-only and `pi5.state` was `not-required`. StoneBase completed manifest capture, 60-second notice, maintenance ACK, SSH Ansible, existing control-plane ready ACK, independent evidence, maintenance clear, and cleanup. The terminal finished at exact SHA `651d056dbf5a6eea71cda210601dc618d7894415` with `evidence: verified`, committed runtime state, and no rollback. SSH Ansible apply took 207198 ms; the whole coordinator run took about 302 seconds.
+- [ ] Publish this evidence-only revision, then run a separate `--reverify-selected --stonebase-local-ansible-poc` print-plan and preflight. Require effective Local executor plus the exact pinned runtime before seeking approval for the first Local mutation run.
 
 ## Surprises & Discoveries
 
@@ -114,7 +115,7 @@ The non-live implementation now connects the sealed local executor to the real c
 
 Ambiguous execution remains deliberately slow and conservative. If the receiver response is lost or the unit is running/unknown, fleet evidence stays unknown, maintenance remains active, and rollback is not started in parallel. Once systemd proves the unit stopped, any invalid/missing result, ACK mismatch, evidence failure, or cleanup failure uses only the already sealed rollback manifests. No candidate artifact contains Vault, inventory/group/host vars, `.env`, key, token, or password path members.
 
-The first hardware mutation attempt failed closed and demonstrated the intended recovery boundary. Pi5 safely remained on the stable candidate, while StoneBase returned to its exact prior Git/runtime state with verified health and maintenance cleared. The failure occurred before the runtime installer ran, and the five runner/probe files copied earlier in the play were removed by manifest rollback. The source-path defect is fixed and locally accepted. A new immutable candidate and read-only gate must be published before requesting approval for another ordinary SSH bootstrap release; Local execution is still premature.
+The first hardware mutation attempt failed closed and demonstrated the intended recovery boundary. The corrected retry then completed successfully through the same safety adapter. StoneBase now has the immutable candidate, root-owned runner/probes, and the bootstrap task's pinned runtime installation attempt, while all ordinary SSH evidence remains verified. Runtime installation is not inferred from SSH success because that task is deliberately non-fatal; the next canonical reverify preflight must independently prove runner identity, configuration, free space, Python 3.11, ansible-core 2.19.4, community.general 11.4.1, and runner schema before the Local executor may be effective.
 
 Local acceptance is complete for the executor-evidence revision. The final test pass contains 763 deployment Python tests, including candidate-selection and structured-report promotion coverage, deployment safety and route contracts, standard/local Ansible syntax, and the full aggregate contract including the isolated deploy-status PostgreSQL/API tests. The safety audit required the bootstrap copy tasks to use seven literal manifest-backed paths and required the local Git reset exception to prove bundle verification, no `origin` transport, and clean tracked/index state. This tightened the implementation instead of bypassing the contract.
 
@@ -262,6 +263,17 @@ Bootstrap retry read-only gate at source-path fix `d99cfe26db1800bf210e4396d73db
     fallbackReason = candidate-requires-ssh-configuration
     releaseSubmitted = false
 
+Successful SSH bootstrap retry at candidate `651d056dbf5a6eea71cda210601dc618d7894415`:
+
+    runId = 20260721-023908-68527a
+    Pi5 state = not-required; coordinator only
+    effectiveExecutor = ssh-ansible
+    terminal-ansible-apply = 207198 ms ... success
+    terminal-ready-ack = 5124 ms ... success
+    terminal-evidence = 8064 ms ... success
+    runtime cleanup = committed; maintenance clear = success
+    StoneBase SHA/evidence = 651d056dbf5a6eea71cda210601dc618d7894415 / verified
+
 Local Notes JA: `raspi4-fjv60-80` は明示的な新指示がない限り、接続・配布・preflight・中断復旧probeの対象外である。承認済みの読み取り専用確認ではPi5とStoneBaseだけへ接続し、FJVやその他端末には接続していない。maintenance、bootstrap、配布、release submitは実行していない。
 
 ## Interfaces and Dependencies
@@ -272,4 +284,4 @@ The public CLI adds `--stonebase-local-ansible-poc`. Executor IDs are `ssh-ansib
 
 The fixed runtime is Python 3.11, ansible-core 2.19.4, and community.general 11.4.1. Python packages are installed with aarch64 wheel hashes from `requirements-aarch64-py311.lock`; the collection tarball has a fixed SHA-256 in `runtime-lock.json`. Artifact and staging maximums are 128 MiB and 256 MiB. Local execution timeout is fifteen minutes. The route contract owns `terminal.artifact-seal`, `terminal.single-transfer`, `terminal.local-unit`, `terminal.candidate-ready-ack`, and `terminal.local-residue-cleanup`.
 
-Revision note (2026-07-21 02:37Z): The fixed immutable candidate passed the exact Pi5 plus StoneBase no-release gate and selected the expected SSH fallback. Only StoneBase requires mutation; Pi5 is already stable and remains coordinator-only. A retry requires renewed explicit approval.
+Revision note (2026-07-21 02:45Z): The corrected SSH bootstrap retry completed successfully with verified StoneBase evidence and maintenance cleared. The next separate gate is Local reverify print-plan/preflight; runtime readiness must be proven rather than inferred.
