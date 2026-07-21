@@ -38,6 +38,7 @@ class FakeRuntime:
         self.bind_source = bind_source
         self.calls: list[list[str]] = []
         self.units: dict[str, dict[str, str]] = {}
+        self.activation_units: dict[str, dict[str, str]] = {}
         self.unit_needs_reload: set[str] = set()
         self.unit_show_transitions: dict[str, list[str]] = {}
         self.stop_results_failed: set[str] = set()
@@ -181,6 +182,7 @@ class FakeRuntime:
     def clone(self) -> "FakeRuntime":
         cloned = FakeRuntime(compose=self.compose, bind_source=self.bind_source)
         cloned.units = copy.deepcopy(self.units)
+        cloned.activation_units = copy.deepcopy(self.activation_units)
         cloned.unit_needs_reload = set(self.unit_needs_reload)
         cloned.unit_show_transitions = copy.deepcopy(self.unit_show_transitions)
         cloned.stop_results_failed = set(self.stop_results_failed)
@@ -366,6 +368,24 @@ class FakeRuntime:
                 )
 
         if call[:2] == ["systemctl", "show"]:
+            if MODULE.ACTIVATION_UNIT_RE.fullmatch(call[-1]):
+                state = self.activation_units.get(
+                    call[-1],
+                    {
+                        "LoadState": "not-found",
+                        "ActiveState": "inactive",
+                        "SubState": "dead",
+                        "Result": "",
+                        "ExecMainStatus": "0",
+                    },
+                )
+                properties = [
+                    value.removeprefix("--property=")
+                    for value in call
+                    if value.startswith("--property=")
+                ]
+                output = "\n".join(f"{key}={state[key]}" for key in properties)
+                return self._result(0, output, allowed_exit_codes)
             state = self.units[call[-1]]
             values = {
                 **state,
@@ -387,6 +407,18 @@ class FakeRuntime:
             if transitions:
                 state["ActiveState"] = transitions.pop(0)
             return self._result(0, output, allowed_exit_codes)
+        if call[0] == "systemd-run":
+            unit_argument = next(value for value in call if value.startswith("--unit="))
+            unit = unit_argument.removeprefix("--unit=")
+            self.activation_units[unit] = {
+                "LoadState": "loaded",
+                "ActiveState": "active",
+                "SubState": "exited",
+                "Result": "success",
+                "ExecMainStatus": "0",
+            }
+            self._finish_mutation(mutation_ordinal)
+            return self._result(0, "", allowed_exit_codes)
         if call[:2] == ["systemctl", "daemon-reload"]:
             self.unit_needs_reload.clear()
             self._finish_mutation(mutation_ordinal)
@@ -394,6 +426,18 @@ class FakeRuntime:
         if call[0] == "systemctl":
             action = call[1]
             unit = call[-1]
+            if MODULE.ACTIVATION_UNIT_RE.fullmatch(unit):
+                if action == "stop":
+                    self.activation_units.pop(unit, None)
+                    self._finish_mutation(mutation_ordinal)
+                    return self._result(0, "", allowed_exit_codes)
+                if action == "reset-failed":
+                    return self._result(
+                        0 if unit in self.activation_units else 1,
+                        "",
+                        allowed_exit_codes,
+                    )
+                raise AssertionError(f"unexpected activation command: {call!r}")
             state = self.units[unit]
             runtime = "--runtime" in call
             if action == "start":
@@ -1039,6 +1083,105 @@ class TerminalRuntimeManifestTest(unittest.TestCase):
         self.assertEqual(
             self.fake.units["kiosk-browser.service"]["ActiveState"], "inactive"
         )
+
+    def test_kiosk_web_activation_is_manifest_bound_deterministic_and_idempotent(self):
+        self.fake.add_unit("kiosk-browser.service", active="active")
+        captured = self.capture(units=["kiosk-browser.service"])
+
+        first = MODULE.activate_kiosk_web(
+            root=self.storage,
+            run_id=self.run_id,
+            host=self.host,
+            expected_manifest_sha256=captured["manifestSha256"],
+        )
+        repeated = MODULE.activate_kiosk_web(
+            root=self.storage,
+            run_id=self.run_id,
+            host=self.host,
+            expected_manifest_sha256=captured["manifestSha256"],
+        )
+
+        expected_unit = MODULE.kiosk_web_activation_unit_name(
+            self.run_id, self.host
+        )
+        self.assertEqual(first, repeated)
+        self.assertEqual(first["state"], "succeeded")
+        self.assertEqual(first["operationUnit"], expected_unit)
+        submissions = [call for call in self.fake.calls if call[0] == "systemd-run"]
+        self.assertEqual(len(submissions), 1)
+        self.assertIn(f"--unit={expected_unit}", submissions[0])
+        self.assertEqual(
+            submissions[0][-3:],
+            ["/usr/bin/systemctl", "restart", "kiosk-browser.service"],
+        )
+
+    def test_kiosk_web_activation_rejects_unsealed_or_inactive_target_without_mutation(self):
+        self.fake.add_unit("status-agent.timer", active="active")
+        captured = self.capture(units=["status-agent.timer"])
+        self.fake.calls.clear()
+        with self.assertRaisesRegex(
+            MODULE.RuntimeManifestError, "target is not sealed"
+        ):
+            MODULE.activate_kiosk_web(
+                root=self.storage,
+                run_id=self.run_id,
+                host=self.host,
+                expected_manifest_sha256=captured["manifestSha256"],
+            )
+        self.assertEqual(self.fake.mutation_calls, [])
+
+        other_run = "run-inactive"
+        self.fake.add_unit("kiosk-browser.service", active="inactive")
+        inactive = self.capture(
+            units=["kiosk-browser.service"], run_id=other_run
+        )
+        self.fake.calls.clear()
+        with self.assertRaisesRegex(
+            MODULE.RuntimeManifestError, "was not active"
+        ):
+            MODULE.activate_kiosk_web(
+                root=self.storage,
+                run_id=other_run,
+                host=self.host,
+                expected_manifest_sha256=inactive["manifestSha256"],
+            )
+        self.assertEqual(self.fake.mutation_calls, [])
+
+    def test_kiosk_web_activation_cleanup_requires_quiescence_and_unloads_exact_unit(self):
+        self.fake.add_unit("kiosk-browser.service", active="active")
+        captured = self.capture(units=["kiosk-browser.service"])
+        MODULE.activate_kiosk_web(
+            root=self.storage,
+            run_id=self.run_id,
+            host=self.host,
+            expected_manifest_sha256=captured["manifestSha256"],
+        )
+        operation_unit = MODULE.kiosk_web_activation_unit_name(
+            self.run_id, self.host
+        )
+        self.fake.activation_units[operation_unit].update(
+            {"ActiveState": "activating", "SubState": "start"}
+        )
+        with self.assertRaisesRegex(MODULE.RuntimeManifestError, "still running"):
+            MODULE.cleanup_kiosk_web_activation(
+                root=self.storage,
+                run_id=self.run_id,
+                host=self.host,
+                expected_manifest_sha256=captured["manifestSha256"],
+            )
+
+        self.fake.activation_units[operation_unit].update(
+            {"ActiveState": "active", "SubState": "exited"}
+        )
+        cleaned = MODULE.cleanup_kiosk_web_activation(
+            root=self.storage,
+            run_id=self.run_id,
+            host=self.host,
+            expected_manifest_sha256=captured["manifestSha256"],
+        )
+        self.assertTrue(cleaned["cleaned"])
+        self.assertFalse(cleaned["alreadyClean"])
+        self.assertNotIn(operation_unit, self.fake.activation_units)
 
     def test_read_only_preflight_reports_every_missing_rollback_image(self):
         self.fake.add_container("nfc-agent", image_id("prior-nfc"), running=True)

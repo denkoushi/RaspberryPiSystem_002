@@ -300,6 +300,8 @@ def fleet_mark_verified(
     }
     if previous_sha is not _PREVIOUS_SHA_UNSET:
         options["previous_sha"] = previous_sha
+    if "activationCapabilities" in observed:
+        options["activation_capabilities"] = observed["activationCapabilities"]
     return store.mark_host_verified(
         host,
         role,
@@ -921,6 +923,39 @@ def rollback_terminal(
     )
 
 
+def activate_kiosk_web(
+    inventory: str,
+    target_spec: dict[str, str],
+    target: dict[str, Any],
+    run_id: str,
+) -> dict[str, Any]:
+    return ansible_backend.activate_kiosk_web(
+        inventory, target_spec, target, run_id, runtime=_runtime()
+    )
+
+
+def reconcile_kiosk_web_activation(
+    inventory: str,
+    target_spec: dict[str, str],
+    target: dict[str, Any],
+    run_id: str,
+) -> dict[str, Any]:
+    return ansible_backend.reconcile_kiosk_web_activation(
+        inventory, target_spec, target, run_id, runtime=_runtime()
+    )
+
+
+def cleanup_kiosk_web_activation(
+    inventory: str,
+    target_spec: dict[str, str],
+    target: dict[str, Any],
+    run_id: str,
+) -> dict[str, Any]:
+    return ansible_backend.cleanup_kiosk_web_activation(
+        inventory, target_spec, target, run_id, runtime=_runtime()
+    )
+
+
 def preflight_terminal_rollback(
     inventory: str,
     target_spec: dict[str, str],
@@ -1220,11 +1255,31 @@ def build_fleet_scope(
         executor_preflight_passed=executor_preflight_passed,
     )
     target_by_host = {target["host"]: target for target in all_hosts}
-    terminal_targets = [
-        target_by_host[decision["host"]]
-        for decision in decisions
-        if decision["targeted"] and decision["role"] != "server"
-    ]
+    if TYPED_TARGET_PLANNING_ENABLED and (
+        ACTIVATION_EXECUTION_ENABLED or VERIFICATION_ONLY_EXECUTION_ENABLED
+    ):
+        executable_hosts = {
+            work["host"]
+            for work in plan["terminalWork"]
+            if work["mutationRequired"]
+            or (work["activationRequired"] and ACTIVATION_EXECUTION_ENABLED)
+            or (
+                work["verificationRequired"]
+                and VERIFICATION_ONLY_EXECUTION_ENABLED
+            )
+        }
+        terminal_targets = [
+            target_by_host[decision["host"]]
+            for decision in decisions
+            if decision["host"] in executable_hosts
+            and decision["role"] != "server"
+        ]
+    else:
+        terminal_targets = [
+            target_by_host[decision["host"]]
+            for decision in decisions
+            if decision["targeted"] and decision["role"] != "server"
+        ]
     plan["terminalTargets"] = terminal_targets
     registry = load_registry()
     profile_ids = set(registry.profile_ids)

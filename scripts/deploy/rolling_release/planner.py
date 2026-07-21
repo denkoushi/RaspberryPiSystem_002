@@ -6,6 +6,19 @@ from collections.abc import Callable
 from typing import Any, Iterable
 
 try:
+    from rolling_release.activation import (
+        WEB_CONSUMER_ACTIVATION_STRATEGY,
+        WEB_CONSUMER_MIGRATION_MODE,
+        WEB_CONSUMER_STEADY_STATE_MODE,
+    )
+except ImportError:
+    from .activation import (
+        WEB_CONSUMER_ACTIVATION_STRATEGY,
+        WEB_CONSUMER_MIGRATION_MODE,
+        WEB_CONSUMER_STEADY_STATE_MODE,
+    )
+
+try:
     from terminal_profile_registry import load_registry
 except ImportError:
     from scripts.deploy.terminal_profile_registry import load_registry
@@ -108,6 +121,36 @@ def _target_entry(
     }
 
 
+def _activation_mode(
+    *,
+    strategy_id: str | None,
+    record: dict[str, Any] | None,
+    claims: dict[str, dict[str, Any]],
+) -> str | None:
+    if strategy_id != WEB_CONSUMER_ACTIVATION_STRATEGY:
+        return None
+    capabilities = (
+        record.get("activationCapabilities")
+        if isinstance(record, dict)
+        else None
+    )
+    capability = (
+        capabilities.get(strategy_id)
+        if isinstance(capabilities, dict)
+        else None
+    )
+    web_claim = claims.get(ClaimKind.CONTROL_PLANE_WEB.value)
+    if (
+        isinstance(capability, dict)
+        and isinstance(web_claim, dict)
+        and web_claim.get("state") == "verified"
+        and web_claim.get("observedIdentity") == capability.get("releaseSha")
+        and web_claim.get("verificationId") == capability.get("verificationId")
+    ):
+        return WEB_CONSUMER_STEADY_STATE_MODE
+    return WEB_CONSUMER_MIGRATION_MODE
+
+
 def build_target_architecture(
     *,
     decisions: list[dict[str, Any]],
@@ -186,6 +229,15 @@ def build_target_architecture(
                 for requirement in requirements
             )
         )
+        activation_mode = (
+            _activation_mode(
+                strategy_id=activation_strategy_id,
+                record=record if isinstance(record, dict) else None,
+                claims=claims,
+            )
+            if activation_required
+            else None
+        )
         verification_required = bool(
             mutation_required
             or activation_required
@@ -198,6 +250,7 @@ def build_target_architecture(
             'activationRequired': activation_required,
             'verificationRequired': verification_required,
             'activationStrategyId': activation_strategy_id,
+            'activationMode': activation_mode,
             'claimRequirements': requirements,
         }
         if mutation_required:
@@ -215,6 +268,7 @@ def build_target_architecture(
                 reason=f'controlPlaneWeb claim is {web_status}',
             )
             activation_target['activationStrategyId'] = activation_strategy_id
+            activation_target['activationMode'] = activation_mode
             activation_targets.append(activation_target)
         if verification_required:
             if non_current:

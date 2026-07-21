@@ -13,6 +13,13 @@ from pathlib import Path
 from typing import Any
 
 from .adapter_registry import adapter_for_profile
+from .activation import (
+    ActivationUncertainError,
+    WEB_CONSUMER_ACTIVATION_STRATEGY,
+    WEB_CONSUMER_CAPABILITY_AUTHORITY,
+    WEB_CONSUMER_MIGRATION_MODE,
+    WEB_CONSUMER_STEADY_STATE_MODE,
+)
 from .cancellation import CancellationRequested, CancellationToken
 from .terminal_adapters import TerminalAdapter
 
@@ -223,11 +230,39 @@ def _terminal_run_targets(
     decisions = {
         decision["host"]: decision
         for decision in plan.get("hosts") or []
-        if decision.get("targeted") and decision.get("role") != "server"
+        if decision.get("role") != "server"
+    }
+    planned_work = {
+        work["host"]: work
+        for work in plan.get("terminalWork") or []
+        if isinstance(work, dict) and isinstance(work.get("host"), str)
     }
     result: list[dict[str, Any]] = []
     for target in terminal_targets:
         decision = decisions[target["host"]]
+        work = planned_work.get(target["host"])
+        action_fields = (
+            {
+                "mutationRequired": work.get("mutationRequired") is True,
+                "activationRequired": work.get("activationRequired") is True,
+                "verificationRequired": work.get("verificationRequired") is True,
+                "activationStrategyId": work.get("activationStrategyId"),
+                "activationMode": work.get("activationMode"),
+                "claimRequirements": [
+                    dict(requirement)
+                    for requirement in work.get("claimRequirements") or []
+                ],
+            }
+            if isinstance(work, dict)
+            else {
+                "mutationRequired": True,
+                "activationRequired": False,
+                "verificationRequired": True,
+                "activationStrategyId": None,
+                "activationMode": None,
+                "claimRequirements": [],
+            }
+        )
         result.append(
             {
                 **target,
@@ -236,6 +271,7 @@ def _terminal_run_targets(
                 "currentSha": decision["currentSha"],
                 "evidence": decision["evidence"],
                 "targetReason": decision["targetReason"],
+                **action_fields,
                 "state": "pending",
             }
         )
@@ -442,6 +478,38 @@ def _verify_terminal_ready(
     target[verification_key] = ready["verificationId"]
     target[acknowledged_key] = ready["acknowledgedAt"]
     state.save()
+
+
+def _activation_capability_proof(
+    runtime: Any,
+    target: dict[str, Any],
+    run_id: str,
+    *,
+    rollback: bool,
+) -> dict[str, str] | None:
+    if target.get("activationRequired") is not True:
+        return None
+    release_key = "rollbackReadyReleaseSha" if rollback else "readyReleaseSha"
+    verification_key = (
+        "rollbackReadyVerificationId" if rollback else "readyVerificationId"
+    )
+    release_sha = target.get(release_key)
+    verification_id = target.get(verification_key)
+    if (
+        not isinstance(release_sha, str)
+        or FULL_SHA_RE.fullmatch(release_sha) is None
+        or not isinstance(verification_id, str)
+        or re.fullmatch(r"[0-9a-f]{32}", verification_id) is None
+    ):
+        raise RuntimeError("activation capability ACK identity is malformed")
+    return {
+        "strategyId": WEB_CONSUMER_ACTIVATION_STRATEGY,
+        "releaseSha": release_sha,
+        "verificationId": verification_id,
+        "proofAuthority": WEB_CONSUMER_CAPABILITY_AUTHORITY,
+        "verifiedAt": runtime.utc_now(),
+        "lastRunId": run_id,
+    }
 
 
 def _finalize_terminal_display(
@@ -777,6 +845,12 @@ def _recover_interrupted_terminals(
                 expected_sha=rollback_ready_sha,
                 rollback=True,
             )
+            rollback_capability = _activation_capability_proof(
+                runtime, record, authority_run_id, rollback=True
+            )
+            if rollback_capability is not None:
+                record["rollbackActivationCapabilityProof"] = rollback_capability
+                state.save()
             expected_sha = previous_sha
             recovered = "manifest-restored"
             cleanup_outcome = "restored"
@@ -898,6 +972,11 @@ def _recover_interrupted_terminals(
             raise RuntimeError(
                 f"interrupted terminal recovery HEAD does not match: {host}"
             )
+        rollback_capability = record.get("rollbackActivationCapabilityProof")
+        if isinstance(rollback_capability, dict):
+            observation["activationCapabilities"] = {
+                WEB_CONSUMER_ACTIVATION_STRATEGY: dict(rollback_capability)
+            }
         # Persist the proven live outcome before removing maintenance.  A
         # crash after remove-client can then resume finalization without
         # guessing whether the live runtime was committed or restored.
@@ -907,6 +986,12 @@ def _recover_interrupted_terminals(
         }
         state.save()
         if maintenance_needs_cleanup:
+            activation_cleanup = adapter.cleanup_activation(
+                inventory, target_spec, record, authority_run_id
+            )
+            if activation_cleanup is not None:
+                record["activationCleanup"] = activation_cleanup
+                state.save()
             adapter.clear_maintenance(target_spec, authority_run_id)
             record["maintenanceClearedAt"] = runtime.utc_now()
             state.save()
@@ -1341,18 +1426,20 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             state.payload["fleetGeneration"] = fleet_state["generation"]
             state.save()
 
-            # The optimized forward executor uses Ansible SSH pipelining. Prove
-            # the exact pipelining + become path before repository inspection,
-            # manifest capture, notice, maintenance, checkout, or service work.
-            # Rollback retains the previously accepted non-pipelined transport.
-            with _measure_phase(
-                state,
-                runtime,
-                "terminal-ansible-pipelining-preflight",
-                host=host,
-            ):
-                runtime.preflight_terminal_ansible_pipelining(inventory, host)
-            token.checkpoint(f"after-terminal-ansible-pipelining-preflight:{host}")
+            if target.get("mutationRequired") is True:
+                # Only the forward Ansible executor uses SSH pipelining. A
+                # Web-consumer activation retains the manifest and evidence
+                # transports but never pretends to be an Ansible apply.
+                with _measure_phase(
+                    state,
+                    runtime,
+                    "terminal-ansible-pipelining-preflight",
+                    host=host,
+                ):
+                    runtime.preflight_terminal_ansible_pipelining(inventory, host)
+                token.checkpoint(
+                    f"after-terminal-ansible-pipelining-preflight:{host}"
+                )
 
             with _measure_phase(state, runtime, "terminal-repository-baseline", host=host):
                 repository_baseline = adapter.prepare_repository(inventory, host)
@@ -1474,14 +1561,57 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                     "--phase",
                     "deploying",
                 )
-                # Ansible is not killed mid-operation.  Verification happens
-                # before the next cancellation checkpoint.
-                with _measure_phase(
-                    state, runtime, "terminal-ansible-apply", host=host
-                ):
-                    adapter.apply(
-                        inventory, host, target["desiredSha"], args.run_id
-                    )
+                if target.get("mutationRequired") is True:
+                    # Ansible is not killed mid-operation. Verification happens
+                    # before the next cancellation checkpoint.
+                    with _measure_phase(
+                        state, runtime, "terminal-ansible-apply", host=host
+                    ):
+                        adapter.apply(
+                            inventory, host, target["desiredSha"], args.run_id
+                        )
+                if target.get("activationRequired") is True:
+                    activation_mode = target.get("activationMode")
+                    if (
+                        target.get("activationStrategyId")
+                        != WEB_CONSUMER_ACTIVATION_STRATEGY
+                        or activation_mode
+                        not in {
+                            WEB_CONSUMER_MIGRATION_MODE,
+                            WEB_CONSUMER_STEADY_STATE_MODE,
+                        }
+                    ):
+                        raise RuntimeError(
+                            f"terminal activation contract is invalid: {host}"
+                        )
+                    target["activation"] = {
+                        "strategyId": WEB_CONSUMER_ACTIVATION_STRATEGY,
+                        "mode": activation_mode,
+                        "state": (
+                            "submission-pending"
+                            if activation_mode == WEB_CONSUMER_MIGRATION_MODE
+                            else "challenge-pending"
+                        ),
+                        "startedAt": runtime.utc_now(),
+                    }
+                    state.save()
+                    if activation_mode == WEB_CONSUMER_MIGRATION_MODE:
+                        with _measure_phase(
+                            state, runtime, "terminal-web-activation", host=host
+                        ):
+                            activation_result = adapter.activate(
+                                inventory, target_spec, target, args.run_id
+                            )
+                        target["activation"].update(
+                            {
+                                "state": "succeeded",
+                                "operationUnit": activation_result[
+                                    "operationUnit"
+                                ],
+                                "completedAt": runtime.utc_now(),
+                            }
+                        )
+                        state.save()
                 expected_ready_sha = _terminal_ready_sha(
                     state, adapter, target
                 )
@@ -1497,6 +1627,15 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                         expected_sha=expected_ready_sha,
                         rollback=False,
                     )
+                if target.get("activationRequired") is True:
+                    capability = _activation_capability_proof(
+                        runtime, target, args.run_id, rollback=False
+                    )
+                    if capability is None:
+                        raise RuntimeError("activation capability proof is missing")
+                    target["activationCapabilityProof"] = capability
+                    target["activation"]["state"] = "verified"
+                    state.save()
                 with _measure_phase(state, runtime, "terminal-evidence", host=host):
                     observation = adapter.observe(
                         inventory, host, target_spec["clientId"]
@@ -1505,6 +1644,12 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                     raise RuntimeError(
                         f"terminal HEAD does not match desired release: {host}"
                     )
+                if target.get("activationRequired") is True:
+                    observation["activationCapabilities"] = {
+                        WEB_CONSUMER_ACTIVATION_STRATEGY: dict(
+                            target["activationCapabilityProof"]
+                        )
+                    }
                 target["runtimeFinalization"] = {
                     "outcome": "committed",
                     "verifiedSha": observation["currentSha"],
@@ -1524,6 +1669,62 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                 state.payload["fleetGeneration"] = fleet_state["generation"]
                 state.payload["phase"] = "rolling-back"
                 state.save()
+
+                if isinstance(error, ActivationUncertainError):
+                    # The deterministic activation unit may still own a
+                    # browser restart. Unknown activation and rollback must
+                    # never run concurrently. A later canonical recovery first
+                    # reconciles this exact unit through the sealed manifest.
+                    interrupted_recovery_pending = True
+                    target["state"] = "activation-uncertain"
+                    target["activationReconciliation"] = "unknown"
+                    target["completedAt"] = runtime.utc_now()
+                    state.payload["phase"] = "activation-reconciliation-required"
+                    state.save()
+                    raise RuntimeError(
+                        f"rollout stopped with unresolved activation for {host}"
+                    ) from error
+
+                if (
+                    target.get("activationRequired") is True
+                    and target.get("activationMode")
+                    == WEB_CONSUMER_MIGRATION_MODE
+                ):
+                    try:
+                        activation_reconciliation = adapter.reconcile_activation(
+                            inventory, target_spec, target, args.run_id
+                        )
+                    except Exception:
+                        interrupted_recovery_pending = True
+                        target["state"] = "activation-uncertain"
+                        # Persist only the bounded state. Transport exception
+                        # text can contain environment-specific details and is
+                        # never part of release evidence.
+                        target["activationReconciliation"] = "unknown"
+                        state.payload["phase"] = (
+                            "activation-reconciliation-required"
+                        )
+                        state.save()
+                        raise RuntimeError(
+                            f"rollout stopped with unresolved activation for {host}"
+                        ) from error
+                    if (
+                        not isinstance(activation_reconciliation, dict)
+                        or activation_reconciliation.get("state")
+                        not in {"absent", "succeeded", "failed"}
+                    ):
+                        interrupted_recovery_pending = True
+                        target["state"] = "activation-uncertain"
+                        target["activationReconciliation"] = "unknown"
+                        state.payload["phase"] = (
+                            "activation-reconciliation-required"
+                        )
+                        state.save()
+                        raise RuntimeError(
+                            f"rollout stopped with unresolved activation for {host}"
+                        ) from error
+                    target["activationReconciliation"] = activation_reconciliation
+                    state.save()
 
                 # Rollback wins over cancellation and is never interrupted.
                 rollback_reconciled = False
@@ -1560,6 +1761,14 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                             expected_sha=rollback_ready_sha,
                             rollback=True,
                         )
+                        rollback_capability = _activation_capability_proof(
+                            runtime, target, args.run_id, rollback=True
+                        )
+                        if rollback_capability is not None:
+                            target[
+                                "rollbackActivationCapabilityProof"
+                            ] = rollback_capability
+                            state.save()
                         with _measure_phase(
                             state, runtime, "terminal-rollback-evidence", host=host
                         ):
@@ -1576,11 +1785,23 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                             raise RuntimeError(
                                 f"rollback HEAD does not match previous release: {host}"
                             )
+                        if rollback_capability is not None:
+                            rollback_observation["activationCapabilities"] = {
+                                WEB_CONSUMER_ACTIVATION_STRATEGY: dict(
+                                    rollback_capability
+                                )
+                            }
                         target["runtimeFinalization"] = {
                             "outcome": "restored",
                             "verifiedSha": rollback_observation["currentSha"],
                         }
                         state.save()
+                        activation_cleanup = adapter.cleanup_activation(
+                            inventory, target_spec, target, args.run_id
+                        )
+                        if activation_cleanup is not None:
+                            target["activationCleanup"] = activation_cleanup
+                            state.save()
                         # Cleanup is part of rollback evidence.  Never promote
                         # a host while maintenance remains active.
                         with _measure_phase(
@@ -1679,6 +1900,15 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             # and never mutate the healthy terminal again via rollback.
             fleet_promoted = False
             try:
+                with _measure_phase(
+                    state, runtime, "terminal-activation-cleanup", host=host
+                ):
+                    activation_cleanup = adapter.cleanup_activation(
+                        inventory, target_spec, target, args.run_id
+                    )
+                if activation_cleanup is not None:
+                    target["activationCleanup"] = activation_cleanup
+                    state.save()
                 with _measure_phase(
                     state, runtime, "terminal-maintenance-clear", host=host
                 ):

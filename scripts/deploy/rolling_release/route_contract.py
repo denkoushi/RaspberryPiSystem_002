@@ -209,6 +209,16 @@ ROUTE_STAGES: tuple[RouteStage, ...] = (
         "apply-before-after-faults",
     ),
     RouteStage(
+        "terminal.web-activation",
+        "terminal",
+        "mutation",
+        ("activate", "reconcile_activation", "cleanup_activation"),
+        "terminal.sealed-runtime-manifest-and-maintenance-ack",
+        "reconcile-deterministic-unit-before-rollback",
+        "terminal-adapter",
+        "web-activation-response-loss-faults",
+    ),
+    RouteStage(
         "terminal.ready",
         "terminal",
         "read",

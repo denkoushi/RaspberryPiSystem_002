@@ -914,10 +914,67 @@ class ReleasePlannerTest(unittest.TestCase):
                 },
             ],
         )
+        self.assertEqual(
+            payload['terminalWork'][0]['activationMode'],
+            'one-time-service-activation',
+        )
         self.assertFalse(payload['activationExecutionEnabled'])
         self.assertEqual(payload['requestedExecutor'], 'ssh-ansible')
         self.assertEqual(payload['provisionalExecutor'], 'ssh-ansible')
         self.assertIsNone(payload['effectiveExecutor'])
+
+        kiosk['activationCapabilities'] = {
+            'kiosk-web-activation-v1': {
+                'strategyId': 'kiosk-web-activation-v1',
+                'releaseSha': CURRENT_SHA,
+                'verificationId': 'c' * 32,
+                'proofAuthority': 'kiosk-compiled-web-ready',
+                'verifiedAt': VERIFIED_AT,
+                'lastRunId': RUN_ID,
+            }
+        }
+        steady = PLANNER.build_fleet_plan_payload(
+            release_sha=RELEASE_SHA,
+            decisions=decisions,
+            full_fleet=False,
+            limit='',
+            canary_hold_policy=Mock(return_value=False),
+            fleet_records={
+                'server-a': verified_record('server'),
+                'kiosk-a': kiosk,
+                'signage-a': verified_record('signage'),
+                'kiosk-outside-limit': verified_record('kiosk'),
+            },
+            typed_target_planning=True,
+            claim_scope_hosts=('server-a', 'kiosk-a', 'signage-a'),
+        )
+        self.assertEqual(
+            steady['terminalWork'][0]['activationMode'],
+            'steady-state-browser-reload',
+        )
+
+        kiosk['activationCapabilities']['kiosk-web-activation-v1'][
+            'verificationId'
+        ] = 'e' * 32
+        mismatched = PLANNER.build_fleet_plan_payload(
+            release_sha=RELEASE_SHA,
+            decisions=decisions,
+            full_fleet=False,
+            limit='',
+            canary_hold_policy=Mock(return_value=False),
+            fleet_records={
+                'server-a': verified_record('server'),
+                'kiosk-a': kiosk,
+                'signage-a': verified_record('signage'),
+                'kiosk-outside-limit': verified_record('kiosk'),
+            },
+            typed_target_planning=True,
+            claim_scope_hosts=('server-a', 'kiosk-a', 'signage-a'),
+        )
+        self.assertEqual(
+            mismatched['terminalWork'][0]['activationMode'],
+            'one-time-service-activation',
+        )
 
     def test_typed_same_sha_noop_requires_every_consumer_claim_current(self):
         decisions = [

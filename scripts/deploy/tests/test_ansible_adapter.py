@@ -1028,6 +1028,174 @@ class RollbackManifestAdapterTest(unittest.TestCase):
             )
 
 
+class KioskWebActivationAdapterTest(unittest.TestCase):
+    RUN_ID = "run-123"
+    HOST = "kiosk-a"
+    PREVIOUS_SHA = "a" * 40
+    DESIRED_SHA = "b" * 40
+    DIGEST = "c" * 64
+    RUNTIME_DIGEST = "d" * 64
+
+    def _rollback_target(self):
+        units, docker_services = ansible._terminal_runtime_contract("kiosk")
+        return {
+            "previousSha": self.PREVIOUS_SHA,
+            "desiredSha": self.DESIRED_SHA,
+            "rollbackManifest": {
+                "path": (
+                    "/var/lib/raspi-release/rollback-manifests/"
+                    f"{self.RUN_ID}/{self.HOST}/manifest.json"
+                ),
+                "manifestSha256": self.DIGEST,
+                "count": 2,
+                "runtime": {
+                    "path": (
+                        "/var/lib/raspi-release/rollback-runtime/"
+                        f"{self.RUN_ID}/{self.HOST}/manifest.json"
+                    ),
+                    "manifestSha256": self.RUNTIME_DIGEST,
+                    "unitCount": len(units),
+                    "dockerCount": len(docker_services),
+                },
+            },
+        }
+
+    def _activation_result(self, state="succeeded"):
+        active_state = {
+            "absent": "inactive",
+            "running": "activating",
+            "succeeded": "active",
+            "failed": "failed",
+        }[state]
+        return {
+            "strategyId": "kiosk-web-activation-v1",
+            "operationUnit": ansible._expected_kiosk_web_activation_unit(
+                self.RUN_ID, self.HOST
+            ),
+            "targetUnit": "kiosk-browser.service",
+            "state": state,
+            "activeState": active_state,
+            "result": "success" if state == "succeeded" else None,
+            "execMainStatus": 0 if state == "succeeded" else -1,
+        }
+
+    def test_activation_submits_only_the_manifest_bound_deterministic_operation(self):
+        target = self._rollback_target()
+        runtime = Runtime(runtime_marker(self._activation_result()))
+        runtime.PROJECT = PROJECT
+
+        result = ansible.activate_kiosk_web(
+            "inventory.yml",
+            {"host": self.HOST, "terminalType": "kiosk"},
+            target,
+            self.RUN_ID,
+            runtime=runtime,
+        )
+
+        self.assertEqual(result["state"], "succeeded")
+        self.assertEqual(len(runtime.calls), 1)
+        action = runtime.calls[0][0][-1]
+        self.assertIn(" activate-kiosk-web ", f" {action} ")
+        self.assertIn(f"--run-id {self.RUN_ID}", action)
+        self.assertIn(f"--host {self.HOST}", action)
+        self.assertIn(
+            f"--expected-manifest-sha256 {self.RUNTIME_DIGEST}", action
+        )
+        self.assertNotIn("systemctl restart", action)
+
+    def test_lost_submission_response_reconciles_without_resubmission(self):
+        target = self._rollback_target()
+        succeeded = self._activation_result()
+        with mock.patch.object(
+            ansible,
+            "_run_kiosk_web_activation_helper",
+            side_effect=RuntimeError("response disappeared"),
+        ) as submit, mock.patch.object(
+            ansible,
+            "reconcile_kiosk_web_activation",
+            return_value=succeeded,
+        ) as reconcile:
+            result = ansible.activate_kiosk_web(
+                "inventory.yml",
+                {"host": self.HOST, "terminalType": "kiosk"},
+                target,
+                self.RUN_ID,
+                runtime=Runtime("unused"),
+            )
+
+        self.assertEqual(result, succeeded)
+        self.assertEqual(submit.call_count, 1)
+        self.assertEqual(reconcile.call_count, 1)
+
+    def test_proven_absent_submission_reuses_the_same_operation_identity_once(self):
+        target = self._rollback_target()
+        absent = self._activation_result("absent")
+        succeeded = self._activation_result()
+        with mock.patch.object(
+            ansible,
+            "_run_kiosk_web_activation_helper",
+            side_effect=[RuntimeError("response disappeared"), succeeded],
+        ) as submit, mock.patch.object(
+            ansible,
+            "reconcile_kiosk_web_activation",
+            return_value=absent,
+        ):
+            result = ansible.activate_kiosk_web(
+                "inventory.yml",
+                {"host": self.HOST, "terminalType": "kiosk"},
+                target,
+                self.RUN_ID,
+                runtime=Runtime("unused"),
+            )
+
+        self.assertEqual(result, succeeded)
+        self.assertEqual(submit.call_count, 2)
+        first = submit.call_args_list[0].args
+        second = submit.call_args_list[1].args
+        self.assertEqual(first, second)
+        self.assertEqual(first[-1], "activate-kiosk-web")
+
+    def test_running_operation_exhaustion_is_uncertain_not_failed(self):
+        target = self._rollback_target()
+        running = self._activation_result("running")
+        with mock.patch.object(
+            ansible,
+            "_run_kiosk_web_activation_helper",
+            return_value=running,
+        ), mock.patch.object(
+            ansible,
+            "reconcile_kiosk_web_activation",
+            return_value=running,
+        ) as reconcile, mock.patch.object(
+            ansible, "_KIOSK_WEB_ACTIVATION_RECONCILE_ATTEMPTS", 2
+        ), mock.patch.object(
+            ansible.time, "sleep", return_value=None
+        ), self.assertRaises(ansible.ActivationUncertainError):
+            ansible.activate_kiosk_web(
+                "inventory.yml",
+                {"host": self.HOST, "terminalType": "kiosk"},
+                target,
+                self.RUN_ID,
+                runtime=Runtime("unused"),
+            )
+        self.assertEqual(reconcile.call_count, 2)
+
+    def test_cleanup_rejects_result_outside_the_bounded_schema(self):
+        target = self._rollback_target()
+        with mock.patch.object(
+            ansible,
+            "_run_runtime_manifest_helper",
+            return_value={"cleaned": True, "stdout": "must-not-persist"},
+        ), self.assertRaisesRegex(RuntimeError, "cleanup result is malformed"):
+            ansible.cleanup_kiosk_web_activation(
+                "inventory.yml",
+                {"host": self.HOST, "terminalType": "kiosk"},
+                target,
+                self.RUN_ID,
+                runtime=Runtime("unused"),
+            )
+
+
 class ServerConfigManifestAdapterTest(unittest.TestCase):
     HOST = "pi5"
     RUN_ID = "run-server-config"

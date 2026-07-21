@@ -2,6 +2,8 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { kioskWebNavigation } from '../features/kiosk/kioskWebActivation';
+
 import { KioskLayout } from './KioskLayout';
 
 const acknowledgeDeployStatus = vi.fn();
@@ -44,11 +46,14 @@ describe('KioskLayout deploy status handling', () => {
     deployStatus = undefined;
     acknowledgeDeployStatus.mockReset();
     acknowledgeDeployStatus.mockResolvedValue({ acknowledged: true });
+    vi.spyOn(kioskWebNavigation, 'replace').mockImplementation(() => undefined);
+    window.sessionStorage.clear();
     vi.stubEnv('VITE_RELEASE_SHA', BUNDLE_RELEASE_SHA);
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
     vi.unstubAllEnvs();
   });
 
@@ -110,6 +115,7 @@ describe('KioskLayout deploy status handling', () => {
       'maintenance'
     ));
     expect(acknowledgeDeployStatus.mock.calls.some(([, phase]) => phase === 'ready')).toBe(false);
+    expect(kioskWebNavigation.replace).toHaveBeenCalledOnce();
   });
 
   it.each([

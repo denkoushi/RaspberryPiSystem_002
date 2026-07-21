@@ -12,6 +12,7 @@ if str(DEPLOY_DIR) not in sys.path:
     sys.path.insert(0, str(DEPLOY_DIR))
 
 from rolling_release import coordinator  # noqa: E402
+from rolling_release.activation import ActivationUncertainError  # noqa: E402
 from rolling_release.cancellation import CancellationRequested  # noqa: E402
 from rolling_release.terminal_adapters import GenericSystemdAdapter  # noqa: E402
 from terminal_profile_registry import load_registry  # noqa: E402
@@ -214,6 +215,8 @@ class FakeRuntime:
         self.abandoned_run_id = None
         self.prior_runs = {}
         self.observed_runtime_health = []
+        self.activation_error = None
+        self.activation_reconciliation_state = "succeeded"
 
     def _snapshot(self):
         return copy.deepcopy(self.fleet)
@@ -253,6 +256,15 @@ class FakeRuntime:
             "evidence": "unknown",
             "verifiedAt": None,
             "lastRunId": run_id,
+            **(
+                {
+                    "activationCapabilities": copy.deepcopy(
+                        prior["activationCapabilities"]
+                    )
+                }
+                if "activationCapabilities" in prior
+                else {}
+            ),
         }
         return self._bump()
 
@@ -291,6 +303,24 @@ class FakeRuntime:
                 }
                 if role == "server"
                 else {}
+            ),
+            **(
+                {
+                    "activationCapabilities": copy.deepcopy(
+                        observation["activationCapabilities"]
+                    )
+                }
+                if isinstance(observation, dict)
+                and "activationCapabilities" in observation
+                else (
+                    {
+                        "activationCapabilities": copy.deepcopy(
+                            prior["activationCapabilities"]
+                        )
+                    }
+                    if "activationCapabilities" in prior
+                    else {}
+                )
             ),
         }
         return self._bump()
@@ -529,6 +559,50 @@ class FakeRuntime:
             raise self.playbook_error
         self.deployed_sha[host] = sha
 
+    def activate_kiosk_web(self, _inventory, target_spec, _target, run_id):
+        host = target_spec["host"]
+        self.events.append(f"activation:submit:{host}:{run_id}")
+        if self.activation_error is not None:
+            raise self.activation_error
+        return {
+            "strategyId": "kiosk-web-activation-v1",
+            "operationUnit": "raspi-kiosk-web-test.service",
+            "targetUnit": "kiosk-browser.service",
+            "state": "succeeded",
+            "activeState": "active",
+            "result": "success",
+            "execMainStatus": 0,
+        }
+
+    def reconcile_kiosk_web_activation(
+        self, _inventory, target_spec, _target, run_id
+    ):
+        host = target_spec["host"]
+        self.events.append(f"activation:reconcile:{host}:{run_id}")
+        state = self.activation_reconciliation_state
+        return {
+            "strategyId": "kiosk-web-activation-v1",
+            "operationUnit": "raspi-kiosk-web-test.service",
+            "targetUnit": "kiosk-browser.service",
+            "state": state,
+            "activeState": "activating" if state == "running" else "active",
+            "result": "success" if state == "succeeded" else "exit-code",
+            "execMainStatus": 0 if state == "succeeded" else 1,
+        }
+
+    def cleanup_kiosk_web_activation(
+        self, _inventory, target_spec, _target, run_id
+    ):
+        host = target_spec["host"]
+        self.events.append(f"activation:cleanup:{host}:{run_id}")
+        return {
+            "cleaned": True,
+            "alreadyClean": False,
+            "strategyId": "kiosk-web-activation-v1",
+            "operationUnit": "raspi-kiosk-web-test.service",
+            "manifestSha256": "d" * 64,
+        }
+
     def rollback_terminal(self, _inventory, target_spec, target, _run_id):
         self.events.append(f"rollback:{target_spec['host']}")
         if self.rollback_ok:
@@ -629,6 +703,134 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             runtime,
         )
         return runtime
+
+    def _kiosk_web_activation_runtime(self):
+        terminal = {
+            "host": "kiosk-a",
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "kiosk-a-client",
+        }
+        work = {
+            "host": terminal["host"],
+            "role": "kiosk",
+            "mutationRequired": False,
+            "activationRequired": True,
+            "verificationRequired": True,
+            "activationStrategyId": "kiosk-web-activation-v1",
+            "activationMode": "one-time-service-activation",
+            "claimRequirements": [
+                {
+                    "kind": "controlPlaneWeb",
+                    "expectedIdentity": NEW_SHA,
+                    "status": "stale-or-unverified",
+                },
+                {
+                    "kind": "terminalRepository",
+                    "expectedIdentity": OLD_SHA,
+                    "status": "current",
+                },
+            ],
+        }
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", NEW_SHA),
+                terminal["host"]: host_record("kiosk", OLD_SHA),
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan={
+                "pi5Required": False,
+                "activationExecutionEnabled": True,
+                "verificationOnlyExecutionEnabled": False,
+                "mutationTargets": [],
+                "activationTargets": [{"host": terminal["host"]}],
+                "verificationTargets": [{"host": terminal["host"]}],
+                "terminalWork": [work],
+                "hosts": [
+                    decision("pi5", "server", current=NEW_SHA, targeted=False),
+                    decision(
+                        terminal["host"],
+                        "kiosk",
+                        current=OLD_SHA,
+                        targeted=False,
+                        reason="Web consumer activation",
+                    ),
+                ],
+            },
+            targets=[terminal],
+        )
+        runtime.deployed_sha[terminal["host"]] = OLD_SHA
+        return runtime
+
+    def test_kiosk_web_activation_skips_ansible_and_persists_capability_after_exact_ack(self):
+        runtime = self._kiosk_web_activation_runtime()
+
+        result = coordinator.execute(
+            args(), runtime=runtime, token=FakeToken(runtime.events)
+        )
+
+        self.assertEqual(result, 0)
+        self.assertNotIn("playbook:kiosk-a", runtime.events)
+        self.assertNotIn("terminal:pipelining-preflight:kiosk-a", runtime.events)
+        self.assertIn("activation:submit:kiosk-a:run-1", runtime.events)
+        self.assertIn("activation:cleanup:kiosk-a:run-1", runtime.events)
+        target = runtime.states[-1].target("kiosk-a")
+        self.assertEqual(target["readyReleaseSha"], NEW_SHA)
+        self.assertEqual(target["currentSha"], OLD_SHA)
+        self.assertEqual(target["activation"]["state"], "verified")
+        capability = runtime.fleet["fleet"]["kiosk-a"][
+            "activationCapabilities"
+        ]["kiosk-web-activation-v1"]
+        self.assertEqual(capability["releaseSha"], NEW_SHA)
+        self.assertEqual(
+            capability["verificationId"], target["readyVerificationId"]
+        )
+        self.assertLess(
+            runtime.events.index("activation:cleanup:kiosk-a:run-1"),
+            runtime.events.index("status:remove-client:--run-id:run-1:--client:kiosk-a-client"),
+        )
+
+    def test_uncertain_kiosk_web_activation_retains_maintenance_without_rollback(self):
+        runtime = self._kiosk_web_activation_runtime()
+        runtime.activation_error = ActivationUncertainError("response lost")
+
+        with self.assertRaisesRegex(RuntimeError, "unresolved activation"):
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            )
+
+        target = runtime.states[-1].target("kiosk-a")
+        self.assertEqual(target["state"], "activation-uncertain")
+        self.assertNotIn("rollback:kiosk-a", runtime.events)
+        self.assertFalse(
+            any(event.startswith("status:remove-client") for event in runtime.events)
+        )
+        self.assertIsNotNone(runtime.fleet["activeRun"])
+
+    def test_quiescent_activation_failure_uses_sealed_rollback(self):
+        runtime = self._kiosk_web_activation_runtime()
+        runtime.activation_error = RuntimeError("submission response lost")
+        runtime.activation_reconciliation_state = "failed"
+
+        with self.assertRaisesRegex(RuntimeError, "rollout stopped"):
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            )
+
+        self.assertIn("activation:reconcile:kiosk-a:run-1", runtime.events)
+        self.assertIn("rollback:kiosk-a", runtime.events)
+        target = runtime.states[-1].target("kiosk-a")
+        self.assertEqual(target["rollbackEvidence"], "verified")
+        self.assertEqual(
+            target["rollbackActivationCapabilityProof"]["releaseSha"], NEW_SHA
+        )
+        capability = runtime.fleet["fleet"]["kiosk-a"][
+            "activationCapabilities"
+        ]["kiosk-web-activation-v1"]
+        self.assertEqual(capability["releaseSha"], NEW_SHA)
+        self.assertEqual(
+            capability["verificationId"], target["rollbackReadyVerificationId"]
+        )
 
     def test_synthetic_profile_runs_through_generic_coordinator(self):
         runtime = self._synthetic_runtime()

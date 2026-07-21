@@ -25,6 +25,7 @@ from typing import Any
 from terminal_profile_registry import RegistryError, load_registry
 
 from .image_refs import image_matches_release
+from .activation import validate_activation_capabilities
 from .release_claims import (
     ReleaseClaimError,
     validate_host_claim_compatibility,
@@ -61,7 +62,7 @@ COMMON_HOST_FIELDS = frozenset(
 SERVER_HOST_FIELDS = frozenset(
     {"activeSlot", "apiImage", "webImage", "configDigest", "migrationDigest"}
 )
-OPTIONAL_HOST_FIELDS = frozenset({"releaseClaims"})
+OPTIONAL_HOST_FIELDS = frozenset({"releaseClaims", "activationCapabilities"})
 EVIDENCE_VALUES = frozenset({"unknown", "verified"})
 TERMINAL_RUN_STATUSES = frozenset({"success", "failed", "cancelled", "interrupted"})
 RUN_KINDS = frozenset({"release", "pi4-recovery"})
@@ -287,6 +288,15 @@ def _validate_host_record(host: str, value: Any) -> None:
             raise FleetStateCorruptError(
                 f"fleet.{host}.releaseClaims is malformed: {error}"
             ) from error
+    if "activationCapabilities" in value:
+        try:
+            validate_activation_capabilities(
+                value["activationCapabilities"],
+                role=role,
+                field=f"fleet.{host}.activationCapabilities",
+            )
+        except ValueError as error:
+            raise FleetStateCorruptError(str(error)) from error
 
 
 def validate_fleet_state(payload: Any) -> dict[str, Any]:
@@ -673,6 +683,14 @@ class FleetStateStore:
                         "migrationDigest": None,
                     }
                 )
+            if (
+                isinstance(previous_record, dict)
+                and previous_record.get("role") == role
+                and "activationCapabilities" in previous_record
+            ):
+                record["activationCapabilities"] = copy.deepcopy(
+                    previous_record["activationCapabilities"]
+                )
             state["fleet"][host] = record
 
         return self.mutate(expected_generation, unknown, lease=lease)
@@ -693,6 +711,7 @@ class FleetStateStore:
         web_image: str | None = None,
         config_digest: str | None = None,
         migration_digest: str | None = None,
+        activation_capabilities: Mapping[str, Any] | object = _UNSET,
         lease: FleetLease | None = None,
     ) -> dict[str, Any]:
         if not isinstance(host, str) or not HOST_RE.fullmatch(host):
@@ -725,6 +744,12 @@ class FleetStateStore:
             )
         ):
             raise ValueError("Pi5 evidence is valid only for the server role")
+        if activation_capabilities is not _UNSET:
+            activation_capabilities = validate_activation_capabilities(
+                activation_capabilities,
+                role=role,
+                field=f"fleet.{host}.activationCapabilities",
+            )
 
         timestamp = self._clock() if verified_at is None else verified_at
         supplied_record: dict[str, Any] = {
@@ -746,6 +771,10 @@ class FleetStateStore:
                     "migrationDigest": migration_digest,
                 }
             )
+        if activation_capabilities is not _UNSET:
+            supplied_record["activationCapabilities"] = copy.deepcopy(
+                activation_capabilities
+            )
         # Validate every supplied observation before the lock path can be created.
         _validate_host_record(host, supplied_record)
 
@@ -756,6 +785,16 @@ class FleetStateStore:
                 prior = state["fleet"].get(host)
                 if isinstance(prior, dict) and prior.get("role") == role:
                     record["previousSha"] = prior.get("currentSha") or prior.get("previousSha")
+            prior = state["fleet"].get(host)
+            if (
+                activation_capabilities is _UNSET
+                and isinstance(prior, dict)
+                and prior.get("role") == role
+                and "activationCapabilities" in prior
+            ):
+                record["activationCapabilities"] = copy.deepcopy(
+                    prior["activationCapabilities"]
+                )
             _validate_host_record(host, record)
             state["fleet"][host] = copy.deepcopy(record)
 

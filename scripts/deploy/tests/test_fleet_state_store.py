@@ -15,6 +15,10 @@ if str(DEPLOY_DIRECTORY) not in sys.path:
     sys.path.insert(0, str(DEPLOY_DIRECTORY))
 
 from rolling_release import fleet_state as fleet_state_module  # noqa: E402
+from rolling_release.activation import (  # noqa: E402
+    KIOSK_WEB_ACTIVATION_STRATEGY,
+    KIOSK_WEB_CAPABILITY_AUTHORITY,
+)
 from rolling_release.fleet_state import (  # noqa: E402
     FleetLock,
     FleetLockBusyError,
@@ -38,6 +42,19 @@ DIGEST_A = "sha256:" + "a" * 64
 DIGEST_B = "sha256:" + "b" * 64
 INVENTORY = "infrastructure/ansible/inventory.yml"
 CLAIM_FIXTURES = Path(__file__).parent / "fixtures" / "release-claims"
+
+
+def kiosk_activation_capability(*, verification_id="d" * 32):
+    return {
+        KIOSK_WEB_ACTIVATION_STRATEGY: {
+            "strategyId": KIOSK_WEB_ACTIVATION_STRATEGY,
+            "releaseSha": SHA_A,
+            "verificationId": verification_id,
+            "proofAuthority": KIOSK_WEB_CAPABILITY_AUTHORITY,
+            "verifiedAt": "2026-07-15T00:00:00Z",
+            "lastRunId": RUN_ID,
+        }
+    }
 
 
 class FleetStateStoreTest(unittest.TestCase):
@@ -190,6 +207,73 @@ class FleetStateStoreTest(unittest.TestCase):
             expected_generation=state["generation"],
         )
         self.assertEqual(state["fleet"]["kiosk-a"]["previousSha"], SHA_A)
+
+    def test_activation_capability_survives_unknown_and_default_verified_transitions(self):
+        state = self.begin()
+        capability = kiosk_activation_capability()
+        state = self.store.mark_host_verified(
+            "kiosk-a",
+            "kiosk",
+            SHA_A,
+            SHA_A,
+            RUN_ID,
+            expected_generation=state["generation"],
+            activation_capabilities=capability,
+        )
+        state = self.store.mark_host_unknown(
+            "kiosk-a",
+            "kiosk",
+            SHA_B,
+            RUN_ID,
+            expected_generation=state["generation"],
+        )
+        self.assertEqual(
+            state["fleet"]["kiosk-a"]["activationCapabilities"], capability
+        )
+
+        state = self.store.mark_host_verified(
+            "kiosk-a",
+            "kiosk",
+            SHA_B,
+            SHA_B,
+            RUN_ID,
+            expected_generation=state["generation"],
+        )
+        self.assertEqual(
+            state["fleet"]["kiosk-a"]["activationCapabilities"], capability
+        )
+
+    def test_activation_capability_is_kiosk_only_and_requires_exact_proof_identity(self):
+        state = self.begin()
+        invalid = (
+            ("signage", kiosk_activation_capability()),
+            ("kiosk", kiosk_activation_capability(verification_id="short")),
+            (
+                "kiosk",
+                {
+                    KIOSK_WEB_ACTIVATION_STRATEGY: {
+                        **kiosk_activation_capability()[
+                            KIOSK_WEB_ACTIVATION_STRATEGY
+                        ],
+                        "extra": True,
+                    }
+                },
+            ),
+        )
+        for role, capability in invalid:
+            with self.subTest(role=role, capability=capability), self.assertRaises(
+                ValueError
+            ):
+                self.store.mark_host_verified(
+                    f"{role}-a",
+                    role,
+                    SHA_A,
+                    SHA_A,
+                    RUN_ID,
+                    expected_generation=state["generation"],
+                    activation_capabilities=capability,
+                )
+        self.assertEqual(self.store.read_only()["generation"], state["generation"])
 
     def test_unknown_server_clears_runtime_identity_instead_of_reusing_stale_evidence(self):
         state = self.begin()

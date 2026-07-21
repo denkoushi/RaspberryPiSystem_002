@@ -14,9 +14,9 @@ related_docs:
   - docs/decisions/ADR-20260721-deploy-release-identity-and-activation.md
   - docs/plans/deploy-release-identity-readonly-evidence-manifest.md
   - docs/plans/deploy-speed-phase-b-execplan.md
-validation: offline source audit, pure typed-claim prototype, Milestone 1 aggregate deploy contracts with 770 deploy Python tests, and approved read-only evidence sha256:f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8
+validation: Milestone 3 complete with 794 deploy Python tests, 19 bounded Web activation tests, full aggregate deploy contracts, and approved read-only evidence sha256:f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8
 open_items:
-  - implement milestones 2 through 6 offline from the accepted Milestone 1 branch
+  - implement milestones 4 through 6 offline from the accepted Milestone 3 branch
   - keep all hardware rollout blocked until the complete offline acceptance gate passes
   - request a new exact Pi5 plus StoneBase canary approval only after that gate
 ---
@@ -60,7 +60,7 @@ the complete offline gate passes and a new exact hardware approval is granted.
 - [x] (2026-07-21 04:38Z) Confirmed that the forward apply did not restart the Kiosk browser and sealed rollback did; accepted the ADR and opened offline implementation only.
 - [x] (2026-07-21 05:03Z) Completed Milestone 1: added the closed typed-claim model, additive fleet/run readers, legacy evidence adapter, and golden compatibility fixtures. Passed the focused 50 tests plus lifecycle contract, 770 deploy Python tests, and the complete offline aggregate including shell, safety, Pi5/Signage lifecycle, isolated PostgreSQL ACK, inventory, and Ansible contracts.
 - [x] (2026-07-21 05:43Z) Completed Milestone 2 offline: split ordered mutation, activation, and verification targets; moved required claims and activation strategy into registry schema v4; exposed provisional/effective SSH executor state; and added preflight/coordinator gates that prevent disabled activation or verification-only work from reaching mutation.
-- [ ] Milestone 3: add bounded Kiosk Web activation and the one-time old-bundle migration.
+- [x] (2026-07-21 06:50Z) Completed Milestone 3 offline: added bounded stale-bundle reload, manifest-owned one-time browser activation, deterministic response-loss reconciliation, durable capability proof, and cleanup-before-maintenance-clear while leaving activation execution disabled.
 - [ ] Milestone 4: migrate SSH Kiosk and Signage verification/finalization to typed claims.
 - [ ] Milestone 5: rebase the StoneBase Local executor behind its explicit flag.
 - [ ] Milestone 6: replace route metadata coverage with executable transitions and shared fault scenarios.
@@ -136,6 +136,35 @@ the complete offline gate passes and a new exact hardware approval is granted.
   absent from this fresh worktree. Deploy safety, 24 recovery tests, two inventory
   contracts, all Ansible syntax checks, and the recovery check were rerun
   separately and passed. No dependency install was performed.
+
+- Observation: a capability proof needs the ACK verification ID as well as the
+  compiled release SHA.
+  Evidence: matching only the old `controlPlaneWeb` observed SHA would allow a
+  proof from a different challenge to select steady-state reload. Milestone 3
+  binds and compares strategy, release SHA, verification ID, authority, run,
+  and timestamp before skipping the one-time migration.
+
+- Observation: the existing core-independence contract also applies to Python
+  identifier names, not only string policy branches.
+  Evidence: the first complete 794-test discovery rejected profile-specific
+  activation constant names in coordinator and planner. Core modules now use
+  generic Web-consumer activation names; the profile-specific strategy remains
+  in the adapter boundary and the complete discovery passes.
+
+- Observation: an activation transport error is not rollback authority.
+  Evidence: the deterministic transient unit may have been accepted before the
+  SSH response disappeared. Bounded reconciliation must prove it absent,
+  succeeded, or failed before sealed rollback; a running or unreadable unit
+  retains maintenance, active recovery ownership, and unknown evidence.
+
+- Observation: the complete aggregate can run in this fresh worktree without
+  installing dependencies by temporarily referencing the existing local
+  workspace dependency trees for each package that the isolated PostgreSQL
+  test builds.
+  Evidence: after the first environment-only `tsc` failure, the same aggregate
+  passed 794 Python tests, 20 isolated PostgreSQL ACK tests, 99 template parses,
+  deploy safety, lifecycle, recovery, inventory, and every Ansible syntax
+  check. All temporary references and generated build outputs were removed.
 
 ## Decision Log
 
@@ -227,6 +256,35 @@ the complete offline gate passes and a new exact hardware approval is granted.
   4 migrates finalization.
   Date/Author: 2026-07-21 / Codex.
 
+- Decision: bound steady-state Web activation to three same-origin reloads,
+  sixty seconds, and a two-second retry interval, keyed by run ID,
+  verification ID, desired Web SHA, and attempt.
+  Rationale: stale caches need a progress path, while malformed storage,
+  backwards time, changed challenges, and persistent stale content must not
+  create an unbounded loop or an ACK from a desired value.
+  Date/Author: 2026-07-21 / Codex.
+
+- Decision: implement the old-bundle migration as one deterministic transient
+  unit authorized by the sealed runtime manifest and acknowledged maintenance.
+  Rationale: the old bundle cannot self-reload. The operation restarts only the
+  allowlisted browser service, is not an Ansible/configuration change, and can
+  be reconciled by exact run/host identity after response loss.
+  Date/Author: 2026-07-21 / Codex.
+
+- Decision: persist activation capability only after an exact ready ACK and
+  retain the ACK verification ID in the proof; update the proof after a
+  verified rollback ACK as well.
+  Rationale: forward Pi5 plus terminal rollback can still load the new browser
+  bundle. The next run may use steady reload only when its typed Web claim and
+  the exact capability proof agree.
+  Date/Author: 2026-07-21 / Codex.
+
+- Decision: keep `ACTIVATION_EXECUTION_ENABLED` false after Milestone 3.
+  Rationale: Milestone 4 still owns typed Kiosk/Signage claim finalization.
+  Shipping the activation mechanism does not authorize the canonical route to
+  execute it before the full claim set can commit atomically.
+  Date/Author: 2026-07-21 / Codex.
+
 ## Outcomes & Retrospective
 
 The investigation phase produced a coherent state model and rejected the
@@ -240,7 +298,7 @@ strict model and dual-read boundary without routing any production decision
 through the new claims. Golden legacy records read without field insertion,
 mixed records round-trip their claims, corrupt mixed identities fail closed,
 and a typed record produces the same legacy planner decision. Complete
-aggregate validation passed. Milestones 3 through 6 and the separate future
+aggregate validation passed. Milestones 4 through 6 and the separate future
 hardware gate remain open. Live rollout remains No-Go and the current safe
 production state is untouched.
 
@@ -256,7 +314,20 @@ executor after aggregate probes pass. Disabled activation and verification-
 only work are blocked in both preflight and the coordinator before mutation.
 No activation command, ACK change, timeout change, Local executor, or device
 operation was added. Live rollout and the hardware gate remain No-Go; Milestone
-3 is the next implementation step.
+4 is the next implementation step.
+
+Milestone 3 is complete offline on the same branch. A stale Kiosk bundle now
+keeps maintenance visible and performs only bounded, same-origin,
+challenge-bound cache-busted reloads; only a newly compiled exact SHA can send
+the existing ready ACK. The first transition from an old bundle uses a
+manifest-owned deterministic transient unit that restarts only the sealed
+browser service after maintenance ACK. Coordinator and adapter logic reconcile
+response loss before rollback, keep maintenance on an unresolved unit, clean
+the unit before maintenance clear, and persist a verification-ID-bound
+capability for later steady-state reload. Web-only activation skips terminal
+Ansible, while the existing SSH mutation path remains unchanged. The production
+activation execution flag remains false until typed finalization in Milestone
+4. No device was contacted and live rollout remains No-Go.
 
 ## Context and Orientation
 
@@ -525,6 +596,20 @@ Milestone 1 validation:
     inventory and all Ansible syntax checks: PASS
     aggregate result: all checks passed
 
+Milestone 3 validation:
+
+    bounded Web activation and Kiosk layout: 19 tests PASS
+    focused activation, adapter, coordinator, route, and profile contracts: 121 tests PASS
+    deploy Python discovery: 794 tests PASS
+    Web TypeScript no-emit typecheck and targeted ESLint: PASS
+    Ansible Jinja templates: 99 parsed
+    isolated PostgreSQL deploy-status API: 20 tests PASS
+    deploy safety, Pi5 Blue/Green, Signage maintenance: PASS
+    recovery contract: 24 tests PASS
+    inventory and all Ansible syntax checks: PASS
+    aggregate result: all checks passed
+    temporary dependency references and generated outputs: removed
+
 The prototype was pure in-memory code and was not added to production. Its role
 was to prove that target and identity separation can represent the required
 states before any implementation resumes.
@@ -595,3 +680,11 @@ deploy Python tests, deploy safety, recovery, inventory, and Ansible syntax
 results. The monolithic aggregate wrapper remains an environment-only No-Go
 because this fresh worktree has no Node package dependencies for its unrelated
 isolated PostgreSQL step; no hardware gate was opened.
+
+Revision note (2026-07-21 06:50Z): Completed Milestone 3 with bounded
+challenge-keyed browser reload, manifest-owned deterministic old-bundle
+activation, response-loss reconciliation, verification-ID-bound capability
+state, rollback capability refresh, and cleanup-before-maintenance-clear.
+Recorded 794 passing deploy Python tests, 19 Web tests, Web typecheck/lint, and
+the complete offline aggregate. Activation execution remains disabled; no
+hardware gate was opened.

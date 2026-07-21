@@ -79,6 +79,10 @@ REHEARSAL_TESTS = {
         "scripts/deploy/tests/test_fleet_coordinator_transitions.py",
         "test_full_signage_failure_matrix_recovers_before_next_plan",
     ),
+    "web-activation-response-loss-faults": (
+        "scripts/deploy/tests/test_fleet_coordinator_transitions.py",
+        "test_uncertain_kiosk_web_activation_retains_maintenance_without_rollback",
+    ),
     "ready-and-observation-failures": (
         "scripts/deploy/tests/test_fleet_coordinator_transitions.py",
         "test_kiosk_agent_death_after_playbook_is_caught_by_final_observation",
