@@ -1,7 +1,7 @@
 ---
 id: stonebase-local-ansible
 title: StoneBase sealed local Ansible executor
-status: executor-evidence-preflight-pending
+status: bootstrap-approval-required
 scope: opt-in StoneBase terminal apply executor below the rolling-release safety adapter
 date: 2026-07-21
 source_of_truth: docs/plans/stonebase-local-ansible-execplan.md
@@ -14,9 +14,9 @@ related_docs:
   - docs/guides/deployment.md
   - docs/plans/deploy-speed-phase-b-execplan.md
   - docs/runbooks/deploy-status-recovery.md
-validation: post-merge executor-evidence revision passed 763 deploy Python tests and aggregate deploy contracts, including safety, isolated PostgreSQL/API, inventories, and Ansible syntax; approved Pi5 plus StoneBase read-only preflight submitted no release
+validation: executor-evidence revision passed 763 deploy Python tests and aggregate deploy contracts; approved Pi5 plus StoneBase preflight 20260721-020511-ed1637 proved a maintenance-free SSH fallback and submitted no release
 open_items:
-  - publish the executor-evidence revision and rerun the approved canonical Pi5 plus StoneBase print-plan and preflight
+  - obtain explicit approval for the Pi5 plus StoneBase SSH bootstrap release
   - bootstrap the runner through an approved SSH executor run before the first local reverify run
 ---
 
@@ -45,7 +45,7 @@ This is not `ansible-pull`. StoneBase cannot choose a branch, fetch from a netwo
 - [x] (2026-07-21 01:43Z) Reran complete deploy Python discovery on merged Phase B main: 760 tests passed in 53.726 seconds. The aggregate deploy contract also passed, including template parsing, lifecycle/safety contracts, a second 760-test discovery, isolated PostgreSQL/API integration with 20 tests, inventories, and Ansible syntax.
 - [x] (2026-07-21 01:44Z) Published the rebased candidate branch at `df382577d9f4af3b0527e21c0e1cd8270f77e21f`, then ran the explicitly approved canonical `--print-plan` and `--preflight-only` against only Pi5 plus StoneBase. Preflight `20260721-014527-2ad230` passed with `releaseSubmitted: false`, exactly two selected hosts, and one terminal. FJV and every other terminal remained excluded and were not connected or probed.
 - [x] (2026-07-21 02:01Z) Closed the acceptance gap exposed by that run: terminal preflight now executes the exact candidate's fail-closed eligibility selector using StoneBase's observed immutable HEAD and a bounded root-runner observation, then promotes requested/effective executor, stable fallback reason, and sanitized pinned runtime evidence into the canonical report. Complete discovery now passes 763 tests in 53.810 seconds; the aggregate deploy contract, isolated PostgreSQL/API 20-test integration, safety contracts, inventories, and every Ansible syntax check also pass.
-- [ ] Publish the executor-evidence revision and repeat the already approved read-only print-plan/preflight. Accept either the pinned Local executor or a stable maintenance-free SSH fallback; do not bootstrap or submit a release in this step.
+- [x] (2026-07-21 02:05Z) Published executor-evidence commit `3206b92b91bd47bd7bfc37d9dc0028c2836d46f0` and repeated the approved canonical no-release gate. Print-plan again selected only Pi5 plus StoneBase and excluded FJV. Preflight `20260721-020511-ed1637` passed with requested Local, effective `ssh-ansible`, stable fallback `candidate-requires-ssh-configuration`, no selected runtime, and `releaseSubmitted: false`. This is the expected first-run result because the range from StoneBase `73b3dbe4fbacda6cb5cbdfc8f7375201780a4d6c` contains runner/configuration changes.
 - [ ] In a later approved maintenance window, perform an SSH executor bootstrap run first, then a separate `--reverify-selected --stonebase-local-ansible-poc` run. Record exact run state, evidence, rollback authority, and timings here.
 
 ## Surprises & Discoveries
@@ -108,7 +108,7 @@ The non-live implementation now connects the sealed local executor to the real c
 
 Ambiguous execution remains deliberately slow and conservative. If the receiver response is lost or the unit is running/unknown, fleet evidence stays unknown, maintenance remains active, and rollback is not started in parallel. Once systemd proves the unit stopped, any invalid/missing result, ACK mismatch, evidence failure, or cleanup failure uses only the already sealed rollback manifests. No candidate artifact contains Vault, inventory/group/host vars, `.env`, key, token, or password path members.
 
-Hardware mutation acceptance and timing remain open. Phase B is merged, this branch is rebased and published, and the first approved read-only gate proved the exact host boundary and no-release behavior. It also exposed that executor eligibility was not yet part of the canonical report. That reporting gap is fixed and locally accepted; the revised candidate must be published and the same read-only gate repeated before any bootstrap proposal.
+Hardware mutation acceptance and timing remain open. Phase B is merged, this branch is rebased and published, and the approved read-only gates proved the exact host boundary, no-release behavior, and actual maintenance-free executor selection. The first report exposed that executor eligibility was not yet canonical; the revised report now proves that this initial candidate must use SSH because its history installs the runner and changes configuration. The next step is therefore a separately approved ordinary SSH release to Pi5 plus StoneBase, not a Local run.
 
 Local acceptance is complete for the executor-evidence revision. The final test pass contains 763 deployment Python tests, including candidate-selection and structured-report promotion coverage, deployment safety and route contracts, standard/local Ansible syntax, and the full aggregate contract including the isolated deploy-status PostgreSQL/API tests. The safety audit required the bootstrap copy tasks to use seven literal manifest-backed paths and required the local Git reset exception to prove bundle verification, no `origin` transport, and clean tracked/index state. This tightened the implementation instead of bypassing the contract.
 
@@ -228,6 +228,15 @@ Approved read-only hardware evidence at candidate `df382577d9f4af3b0527e21c0e1cd
     selectedHosts = [raspberrypi5, raspi4-kensaku-stonebase01]
     terminalCount = 1; releaseSubmitted = false
 
+Approved executor-evidence hardware gate at candidate `3206b92b91bd47bd7bfc37d9dc0028c2836d46f0`:
+
+    --print-plan selected raspberrypi5 and raspi4-kensaku-stonebase01 only
+    --preflight-only ID 20260721-020511-ed1637 ... passed
+    requestedExecutor = stonebase-local-ansible-poc
+    effectiveExecutor = ssh-ansible
+    fallbackReason = candidate-requires-ssh-configuration
+    runtime = null; releaseSubmitted = false
+
 Local Notes JA: `raspi4-fjv60-80` は明示的な新指示がない限り、接続・配布・preflight・中断復旧probeの対象外である。承認済みの読み取り専用確認ではPi5とStoneBaseだけへ接続し、FJVやその他端末には接続していない。maintenance、bootstrap、配布、release submitは実行していない。
 
 ## Interfaces and Dependencies
@@ -238,4 +247,4 @@ The public CLI adds `--stonebase-local-ansible-poc`. Executor IDs are `ssh-ansib
 
 The fixed runtime is Python 3.11, ansible-core 2.19.4, and community.general 11.4.1. Python packages are installed with aarch64 wheel hashes from `requirements-aarch64-py311.lock`; the collection tarball has a fixed SHA-256 in `runtime-lock.json`. Artifact and staging maximums are 128 MiB and 256 MiB. Local execution timeout is fifteen minutes. The route contract owns `terminal.artifact-seal`, `terminal.single-transfer`, `terminal.local-unit`, `terminal.candidate-ready-ack`, and `terminal.local-residue-cleanup`.
 
-Revision note (2026-07-21 02:01Z): Recorded the first approved read-only hardware gate, the executor-evidence acceptance gap it exposed, and the locally accepted fail-closed reporting revision. Publication and repetition of the same no-release gate remain pending; hardware mutation is still unapproved.
+Revision note (2026-07-21 02:06Z): The revised canonical gate proved an expected maintenance-free SSH fallback for the bootstrap/configuration candidate. Read-only acceptance is complete. Hardware mutation remains unapproved; the next gate is explicit approval for an ordinary Pi5 plus StoneBase SSH bootstrap release, followed by a separate Local reverify approval.
