@@ -1142,6 +1142,149 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
             local_execution.runtime_claim_identity(),
         )
 
+    def test_preflight_fallback_is_sealed_before_pi5_and_never_promoted(self) -> None:
+        terminal = {
+            "host": STONEBASE_HOST,
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "raspi4-kensaku-stonebase01-kiosk1",
+        }
+        plan = self.local_plan(terminal)
+        plan["pi5Required"] = True
+        server = plan["hosts"][0]
+        server["targeted"] = True
+        server["desiredSha"] = NEW_SHA
+        plan["terminalWork"][0]["claimRequirements"][0] = {
+            "kind": "controlPlaneWeb",
+            "expectedIdentity": NEW_SHA,
+            "status": "stale-or-unverified",
+        }
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", OLD_SHA),
+                STONEBASE_HOST: host_record("kiosk", OLD_SHA),
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan=plan,
+            targets=[terminal],
+        )
+        runtime.selected_hosts = lambda _inventory, _limit: ["pi5", STONEBASE_HOST]
+        runtime.release_hosts = lambda _inventory, selected=None: [
+            host
+            for host in runtime.hosts
+            if selected is None or host["host"] in set(selected)
+        ]
+
+        def fallback_selection(*_args, **_kwargs):
+            runtime.events.append("local:fallback-selection")
+            return {
+                "requestedExecutor": LOCAL_EXECUTOR,
+                "effectiveExecutor": SSH_EXECUTOR,
+                "fallbackReason": "history-ineligible: candidate is not a descendant of the terminal SHA",
+                "changedPaths": [],
+                "publicContract": None,
+                "runnerPreflight": None,
+            }
+
+        runtime.select_terminal_executor = fallback_selection
+
+        result = coordinator.execute(
+            coordinator_args(
+                limit="raspberrypi5:raspi4-kensaku-stonebase01",
+                stonebase_local_ansible_poc=True,
+            ),
+            runtime=runtime,
+            token=FakeToken(runtime.events),
+        )
+
+        self.assertEqual(result, 0)
+        self.assertEqual(runtime.events.count("local:fallback-selection"), 1)
+        self.assertLess(
+            runtime.events.index("local:fallback-selection"),
+            runtime.events.index("pi5:ensure"),
+        )
+        target = runtime.states[-1].target(STONEBASE_HOST)
+        self.assertEqual(target["effectiveExecutor"], SSH_EXECUTOR)
+        self.assertEqual(
+            target["fallbackReason"],
+            "history-ineligible: candidate is not a descendant of the terminal SHA",
+        )
+        self.assertRegex(target["executorDecisionSha256"], r"^sha256:[0-9a-f]{64}$")
+        self.assertEqual(
+            runtime.states[-1].payload["plan"]["effectiveExecutor"], SSH_EXECUTOR
+        )
+        self.assertEqual(
+            runtime.states[-1].payload["routeContract"]["scenarioId"],
+            "pi5-and-ssh-success",
+        )
+        self.assertFalse(any(event.startswith("local:artifact") for event in runtime.events))
+
+    def test_changed_terminal_head_after_seal_fails_before_maintenance(self) -> None:
+        terminal = {
+            "host": STONEBASE_HOST,
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "raspi4-kensaku-stonebase01-kiosk1",
+        }
+        plan = self.local_plan(terminal)
+        plan["pi5Required"] = True
+        server = plan["hosts"][0]
+        server["targeted"] = True
+        server["desiredSha"] = NEW_SHA
+        plan["terminalWork"][0]["claimRequirements"][0] = {
+            "kind": "controlPlaneWeb",
+            "expectedIdentity": NEW_SHA,
+            "status": "stale-or-unverified",
+        }
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", OLD_SHA),
+                STONEBASE_HOST: host_record("kiosk", OLD_SHA),
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan=plan,
+            targets=[terminal],
+        )
+        runtime.selected_hosts = lambda _inventory, _limit: ["pi5", STONEBASE_HOST]
+        runtime.release_hosts = lambda _inventory, selected=None: [
+            host
+            for host in runtime.hosts
+            if selected is None or host["host"] in set(selected)
+        ]
+        baselines = iter(
+            [
+                {"head": OLD_SHA, "repairedLegacyDocs": False, "count": 0},
+                {"head": NEW_SHA, "repairedLegacyDocs": False, "count": 0},
+            ]
+        )
+        runtime.prepare_terminal_repository = lambda *_args: next(baselines)
+        runtime.select_terminal_executor = lambda *_args: {
+            "requestedExecutor": LOCAL_EXECUTOR,
+            "effectiveExecutor": SSH_EXECUTOR,
+            "fallbackReason": "history-ineligible: candidate is not a descendant of the terminal SHA",
+            "changedPaths": [],
+            "publicContract": None,
+            "runnerPreflight": None,
+        }
+
+        with self.assertRaisesRegex(
+            RuntimeError, "terminal repository changed after sealed executor decision"
+        ):
+            coordinator.execute(
+                coordinator_args(
+                    limit="raspberrypi5:raspi4-kensaku-stonebase01",
+                    stonebase_local_ansible_poc=True,
+                ),
+                runtime=runtime,
+                token=FakeToken(runtime.events),
+            )
+
+        self.assertIn("pi5:ensure", runtime.events)
+        self.assertFalse(
+            any(event.startswith("status:maintenance") for event in runtime.events)
+        )
+        self.assertFalse(any(event.startswith("manifest:capture") for event in runtime.events))
+
 
 if __name__ == "__main__":
     unittest.main()

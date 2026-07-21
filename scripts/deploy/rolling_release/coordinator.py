@@ -6,6 +6,8 @@ per-run state that describes the same transition.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import time
 from contextlib import contextmanager
@@ -154,6 +156,7 @@ def _select_terminal_executor(
     target_spec: dict[str, str],
     target: dict[str, Any],
     adapter: TerminalAdapter,
+    persist: bool = True,
 ) -> TerminalExecutor:
     """Resolve the forward executor before maintenance can begin.
 
@@ -228,7 +231,8 @@ def _select_terminal_executor(
             requested_executor=requested,
             effective_executor=target["effectiveExecutor"],
         )
-        state.save()
+        if persist:
+            state.save()
     elif requested == SSH_EXECUTOR:
         target.update(
             {
@@ -241,6 +245,122 @@ def _select_terminal_executor(
     return executor_for(
         target["effectiveExecutor"], runtime=runtime, adapter=adapter
     )
+
+
+def _executor_decision_digest(target: dict[str, Any]) -> str:
+    """Bind the pre-maintenance executor decision to its exact public proof.
+
+    The selection contains no secret material: the public target contract and
+    runner preflight are already bounded, secret-free evidence.  Binding the
+    exact decision prevents a Local request from being silently promoted (or
+    demoted) after the Pi5 switch has started.
+    """
+
+    fields = {
+        "host": target.get("host"),
+        "previousSha": target.get("previousSha"),
+        "desiredSha": target.get("desiredSha"),
+        "requestedExecutor": target.get("requestedExecutor"),
+        "effectiveExecutor": target.get("effectiveExecutor"),
+        "fallbackReason": target.get("fallbackReason"),
+        "changedPaths": target.get("changedPaths"),
+        "publicContract": target.get("publicContract"),
+        "runnerPreflight": target.get("runnerPreflight"),
+    }
+    encoded = json.dumps(
+        fields,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _seal_local_executor_decisions(
+    *,
+    runtime: Any,
+    state: Any,
+    inventory: str,
+    target_specs: list[dict[str, str]],
+) -> None:
+    """Resolve and seal every requested Local executor before Pi5 mutation.
+
+    The public aggregate preflight protects submission, but a release unit
+    starts later and must not invent a different executor while its own plan
+    still says that Local is usable.  The coordinator repeats the selection
+    against a clean terminal HEAD before Pi5 convergence, persists the exact
+    result, and makes it immutable for the rest of the run.  A terminal that
+    changes while Pi5 is stabilising is rejected before maintenance rather
+    than being forwarded through a newly chosen executor.
+    """
+
+    by_host = {target["host"]: target for target in target_specs}
+    for target in state.payload.get("targets") or []:
+        if target.get("requestedExecutor") != LOCAL_EXECUTOR:
+            continue
+        host = target.get("host")
+        if not isinstance(host, str) or host not in by_host:
+            raise RuntimeError("local executor target is missing its inventory contract")
+        target_spec = by_host[host]
+        adapter = _terminal_adapter(runtime, target_spec["terminalType"])
+        with _measure_phase(
+            state, runtime, "terminal-executor-selection-preflight", host=host
+        ):
+            baseline = adapter.prepare_repository(inventory, host)
+        previous_sha = baseline.get("head") if isinstance(baseline, dict) else None
+        if not isinstance(previous_sha, str) or FULL_SHA_RE.fullmatch(previous_sha) is None:
+            raise RuntimeError("terminal executor selection baseline is malformed")
+        target["previousSha"] = previous_sha
+        target["repositoryBaseline"] = baseline
+        target["executorSelectionHead"] = previous_sha
+        _select_terminal_executor(
+            runtime=runtime,
+            state=state,
+            inventory=inventory,
+            target_spec=target_spec,
+            target=target,
+            adapter=adapter,
+            # The selection and its digest are one durable seal.  Do not
+            # leave a resumable run with an undecorated executor choice.
+            persist=False,
+        )
+        if (
+            target.get("mutationRequired") is True
+            and target.get("effectiveExecutor") == SSH_EXECUTOR
+        ):
+            # A Local-to-SSH fallback is chosen before Pi5 mutation, so the
+            # SSH transport proof belongs to the same sealed decision.
+            with _measure_phase(
+                state,
+                runtime,
+                "terminal-ansible-pipelining-preflight",
+                host=host,
+            ):
+                runtime.preflight_terminal_ansible_pipelining(inventory, host)
+        target["executorDecisionSha256"] = _executor_decision_digest(target)
+        target["executorDecisionSealedAt"] = runtime.utc_now()
+        state.save()
+
+
+def _sealed_local_executor(
+    *, runtime: Any, target: dict[str, Any], adapter: TerminalAdapter
+) -> TerminalExecutor:
+    """Return only the executor proven before the Pi5 switch.
+
+    This is intentionally not another selection opportunity.  Once the
+    decision has been persisted, a mismatch is a fail-closed pre-maintenance
+    error; it cannot convert an in-flight Local release into SSH or vice
+    versa.
+    """
+
+    digest = target.get("executorDecisionSha256")
+    if (
+        not isinstance(digest, str)
+        or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest)
+        or digest != _executor_decision_digest(target)
+    ):
+        raise RuntimeError("sealed terminal executor decision is missing or changed")
+    return executor_for(target["effectiveExecutor"], runtime=runtime, adapter=adapter)
 
 
 def _host_needs_seed(record: Any, role: str) -> bool:
@@ -2131,6 +2251,13 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             targets, plan, requested_executor=requested_executor
         )
         state.payload["plan"] = plan
+        if local_poc_requested:
+            _seal_local_executor_decisions(
+                runtime=runtime,
+                state=state,
+                inventory=inventory,
+                target_specs=targets,
+            )
         state.payload["routeContract"] = (
             route_contract_receipt(
                 plan,
@@ -2330,9 +2457,10 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                 target.get("mutationRequired") is True
                 and target.get("requestedExecutor") == SSH_EXECUTOR
             ):
-                # Only the forward Ansible executor uses SSH pipelining. A
-                # Web-consumer activation retains the manifest and evidence
-                # transports but never pretends to be an Ansible apply.
+                # Preserve the standard SSH route's established ordering:
+                # validate its Ansible transport before even the terminal
+                # repository baseline read.  Local fallback transport was
+                # already proven as part of its pre-Pi5 sealed decision.
                 with _measure_phase(
                     state,
                     runtime,
@@ -2346,35 +2474,24 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
 
             with _measure_phase(state, runtime, "terminal-repository-baseline", host=host):
                 repository_baseline = adapter.prepare_repository(inventory, host)
-            target["previousSha"] = repository_baseline["head"]
+            if target.get("requestedExecutor") == LOCAL_EXECUTOR:
+                if repository_baseline.get("head") != target.get("executorSelectionHead"):
+                    raise RuntimeError(
+                        "terminal repository changed after sealed executor decision"
+                    )
+                executor = _sealed_local_executor(
+                    runtime=runtime, target=target, adapter=adapter
+                )
+            else:
+                target["previousSha"] = repository_baseline["head"]
+                executor = executor_for(
+                    target["effectiveExecutor"], runtime=runtime, adapter=adapter
+                )
             target["repositoryBaseline"] = repository_baseline
             # Persist the verified pre-mutation HEAD before the remote manifest
             # call. If result delivery is interrupted, the next coordinator can
             # still prove this host remained at its prior clean release.
             state.save()
-            executor = _select_terminal_executor(
-                runtime=runtime,
-                state=state,
-                inventory=inventory,
-                target_spec=target_spec,
-                target=target,
-                adapter=adapter,
-            )
-            if (
-                target.get("mutationRequired") is True
-                and target["requestedExecutor"] == LOCAL_EXECUTOR
-                and target["effectiveExecutor"] == SSH_EXECUTOR
-            ):
-                with _measure_phase(
-                    state,
-                    runtime,
-                    "terminal-ansible-pipelining-preflight",
-                    host=host,
-                ):
-                    runtime.preflight_terminal_ansible_pipelining(inventory, host)
-                token.checkpoint(
-                    f"after-terminal-ansible-pipelining-preflight:{host}"
-                )
             # Seal every release-owned destination and the exact repository
             # HEAD before notices, maintenance, prestaging, checkout, or
             # service changes.  A capture failure is therefore mutation-free.
