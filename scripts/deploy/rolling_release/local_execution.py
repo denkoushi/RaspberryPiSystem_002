@@ -118,13 +118,6 @@ _UNIT_RE = re.compile(
 _SENSITIVE_COMPONENT_RE = re.compile(
     r"(?:^|[._-])(?:secret|token|password|passwd|credential|private[-_]?key|client[-_]?key)(?:$|[._-])"
 )
-_NEUTRAL_PREFIXES = (
-    "docs/",
-    ".cursor/",
-    ".agent/",
-    ".github/",
-    "scripts/deploy/tests/",
-)
 _LOCAL_MUTATION_PREFIXES = (
     "clients/nfc-agent/",
     "clients/barcode-agent/",
@@ -338,15 +331,28 @@ def path_may_contain_secret(path: str) -> bool:
     return any(_SENSITIVE_COMPONENT_RE.search(part) is not None for part in parts)
 
 
-def path_is_local_safe_mutation(path: str) -> bool:
+def path_is_local_safe_mutation(
+    path: str,
+    *,
+    component_for: Callable[[str], str] | None = None,
+) -> bool:
     path = _validated_path(path)
     if path_may_contain_secret(path):
         return False
+    # The caller must inject the exact candidate registry classifier.  This
+    # module is also installed beside the standalone terminal runner, where
+    # coordinator modules are intentionally absent, so importing ambient
+    # checkout policy here would make preflight and locked selection diverge.
+    component = "unknown"
+    try:
+        if component_for is not None:
+            component = component_for(path)
+    except (KeyError, OSError, TypeError, ValueError):
+        pass
     return (
         path in _LOCAL_MUTATION_EXACT
         or path.startswith(_LOCAL_MUTATION_PREFIXES)
-        or path.startswith(_NEUTRAL_PREFIXES)
-        or path in {"AGENTS.md", "README.md"}
+        or component in {"neutral", "deploy-control"}
     )
 
 
@@ -477,6 +483,7 @@ def select_executor(
     host: str,
     public_contract: Mapping[str, Any] | None,
     runner_preflight: Mapping[str, Any] | None,
+    component_for: Callable[[str], str] | None = None,
     run: Callable[..., subprocess.CompletedProcess[Any]] = subprocess.run,
 ) -> ExecutorSelection:
     if requested_executor == SSH_EXECUTOR:
@@ -501,7 +508,10 @@ def select_executor(
             "candidate-history-touches-secret-path",
             (),
         )
-    if any(not path_is_local_safe_mutation(path) for path in paths):
+    if any(
+        not path_is_local_safe_mutation(path, component_for=component_for)
+        for path in paths
+    ):
         return ExecutorSelection(
             LOCAL_EXECUTOR,
             SSH_EXECUTOR,

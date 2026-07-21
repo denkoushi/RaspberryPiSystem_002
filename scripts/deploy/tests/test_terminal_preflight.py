@@ -20,6 +20,7 @@ from scripts.deploy.rolling_release.terminal_preflight_contract import (
     TerminalPreflightContractError,
     build_target_contracts,
 )
+from scripts.deploy.terminal_profile_registry import load_registry
 
 
 SHA = "a" * 40
@@ -129,6 +130,30 @@ def candidate_success(argv, *, timeout):
 
 
 class TerminalPreflightTest(unittest.TestCase):
+    def test_exact_candidate_registry_classifier_runs_without_ambient_imports(self):
+        project = Path(__file__).resolve().parents[3]
+        source = (project / "scripts/deploy/terminal_profile_registry.py").read_text(
+            encoding="utf-8"
+        )
+        payload = (project / "scripts/deploy/terminal-profile-registry.json").read_text(
+            encoding="utf-8"
+        )
+
+        component_for = terminal_preflight._candidate_registry_component_for(
+            source,
+            payload,
+            repository_root=project,
+        )
+
+        self.assertEqual(
+            component_for("scripts/deploy/rolling_release/backends/local_ansible.py"),
+            "deploy-control",
+        )
+        self.assertEqual(
+            component_for("scripts/deploy/stonebase-local-ansible-runner.py"),
+            "local-executor-runtime",
+        )
+
     def test_local_runner_probe_uses_fixed_public_command_and_bounded_result(self):
         selected = {
             **target(terminal_preflight.STONEBASE_HOST),
@@ -227,6 +252,7 @@ class TerminalPreflightTest(unittest.TestCase):
             spec,
             [{"repositoryHead": SHA, "localRunnerPreflight": runner}],
             source,
+            component_for=load_registry().component_for,
             selection_run=git_success,
         )
         self.assertEqual(
@@ -248,6 +274,7 @@ class TerminalPreflightTest(unittest.TestCase):
             spec,
             [{"repositoryHead": SHA, "localRunnerPreflight": None}],
             source,
+            component_for=load_registry().component_for,
             selection_run=git_success,
         )
         self.assertEqual(
@@ -274,6 +301,7 @@ class TerminalPreflightTest(unittest.TestCase):
             spec,
             [{"repositoryHead": SHA, "localRunnerPreflight": failed_runner}],
             source,
+            component_for=load_registry().component_for,
             selection_run=git_success,
         )
         self.assertEqual(failed["effectiveExecutor"], local_execution.SSH_EXECUTOR)

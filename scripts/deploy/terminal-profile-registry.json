@@ -167,6 +167,11 @@
     {"match": "exact", "path": "infrastructure/ansible/ansible-readonly.cfg", "component": "deploy-control"},
     {"match": "exact", "path": "scripts/update-all-clients.sh", "component": "deploy-control"},
     {"match": "exact", "path": "scripts/deploy/signage-runtime-proof.py", "component": "signage-role"},
+    {"match": "exact", "path": "scripts/deploy/stonebase-local-ansible-runner.py", "component": "local-executor-runtime"},
+    {"match": "exact", "path": "scripts/deploy/rolling_release/local_execution.py", "component": "local-executor-runtime"},
+    {"match": "exact", "path": "scripts/deploy/terminal-ready-probe.py", "component": "local-executor-runtime"},
+    {"match": "exact", "path": "scripts/deploy/terminal-local-maintenance-probe.py", "component": "local-executor-runtime"},
+    {"match": "exact", "path": "scripts/deploy/stonebase-local-runtime-install.py", "component": "local-executor-runtime"},
     {"match": "prefix", "path": "scripts/deploy/", "component": "deploy-control"},
     {"match": "prefix", "path": "apps/api/prisma/migrations/", "component": "migration"},
     {"match": "prefix", "path": "apps/api/", "component": "server-app"},
@@ -205,6 +210,7 @@
   "componentProfiles": {
     "neutral": [],
     "deploy-control": [],
+    "local-executor-runtime": ["kiosk"],
     "migration": [],
     "server-app": [],
     "nfc-agent": ["kiosk"],
@@ -217,6 +223,7 @@
     "global": ["kiosk", "signage"]
   },
   "componentHostSelectors": {
+    "local-executor-runtime": {"hostVar": "stonebase_local_executor_enabled", "match": "true"},
     "nfc-agent": {"hostVar": "nfc_agent_client_id", "match": "non-empty-string"},
     "barcode-agent": {"hostVar": "barcode_agent_enabled", "match": "true"},
     "torque-agent": {"hostVar": "torque_agent_enabled", "match": "true"}

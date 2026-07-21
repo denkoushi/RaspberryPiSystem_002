@@ -3,6 +3,7 @@
   ansible.builtin.include_tasks: local-runner-bootstrap.yml
   when:
     - inventory_hostname == 'raspi4-kensaku-stonebase01'
+    - stonebase_local_executor_enabled | default(false) | bool
     - terminal_release_transport | default('ssh-ansible') == 'ssh-ansible'
 
 - name: Validate manifest-backed client destinations for release
