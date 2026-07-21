@@ -212,7 +212,27 @@ class ReleaseApplicationTest(unittest.TestCase):
                 {"host": "raspi4-kensaku-stonebase01", "role": "kiosk"},
             ],
             terminal_count=1,
-            planning_snapshot=None,
+            planning_snapshot={
+                "typedTargetPlanningEnabled": True,
+                "activationExecutionEnabled": True,
+                "verificationOnlyExecutionEnabled": True,
+                "mutationTargets": [
+                    {"host": "raspi4-kensaku-stonebase01", "role": "kiosk"}
+                ],
+                "activationTargets": [],
+                "verificationTargets": [
+                    {"host": "raspi4-kensaku-stonebase01", "role": "kiosk"}
+                ],
+                "terminalWork": [
+                    {
+                        "host": "raspi4-kensaku-stonebase01",
+                        "role": "kiosk",
+                        "mutationRequired": True,
+                        "activationRequired": False,
+                        "verificationRequired": True,
+                    }
+                ],
+            },
         )
 
         self.assertEqual(outcome, 0)
@@ -224,6 +244,14 @@ class ReleaseApplicationTest(unittest.TestCase):
             report["runtimeBootstrapObservation"], bootstrap_observation
         )
         self.assertFalse(report["releaseSubmitted"])
+        self.assertEqual(
+            report["routeContract"]["scenarioId"],
+            "stonebase-local-bootstrap-success",
+        )
+        self.assertIn(
+            "terminal.runtime-artifact-prefetch",
+            report["routeContract"]["stageIds"],
+        )
 
     def launch(self, *, detach=False, start_result=None, observed=None, observe_error=None):
         systemd = FakeSystemd(start_result)

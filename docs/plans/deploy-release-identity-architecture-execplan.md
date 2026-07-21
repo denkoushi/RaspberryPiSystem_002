@@ -1,7 +1,7 @@
 ---
 id: deploy-release-identity-architecture
 title: Migrate deployment planning and evidence to typed release claims
-status: runtime-artifact-prefetch-review-ready-local-live-blocked
+status: runtime-prefetch-route-receipt-fix-local-live-blocked
 scope: rolling release planner, fleet and run state, Kiosk activation, SSH and Local executors, route contracts
 date: 2026-07-21
 source_of_truth: docs/plans/deploy-release-identity-architecture-execplan.md
@@ -79,8 +79,11 @@ bootstrap proves the exact pinned runtime.
 - [x] (2026-07-21 15:03Z) Completed canonical Pi5 plus StoneBase-only run `20260721-143844-16bae4`. Pi5 and StoneBase finished at accepted main with complete typed claims, maintenance cleared, no rollback, and a temporary Pi5 observation outage reconciled from durable success without duplicate mutation. The optional runtime failed separately and safely at `python-download`.
 - [x] (2026-07-21 15:18Z) Reclassified the repeated runtime failure as a route design problem rather than another endpoint symptom: external Python, wheel, and collection retrieval must not begin after terminal notice or maintenance.
 - [x] (2026-07-21 16:02Z) Completed Milestone 7 offline: Pi5 content-addressed prefetch, exact lock-to-requirements validation, sealed Ansible transfer, terminal `--no-index` install, executable route stage, response-loss/failure tests, and the complete aggregate. All eleven public artifacts matched the fixed 59,603,748-byte lock (`sha256:ecde0bbe80d4065f9bb84ecdc9372c08f0530635af459898e6ac8cb233165e5c`); no device was contacted.
-- [ ] Publish, review, and merge Milestone 7 without weakening the safety contracts.
+- [x] (2026-07-21 16:14Z) Published, reviewed, and merged Milestone 7 without weakening the safety contracts.
 - [ ] After accepted-main canonical plan/preflight, run one serial SSH bootstrap and require exact runtime observation before Local execution.
+- [x] (2026-07-21 16:14Z) Merged Milestone 7 as PR #1055 at accepted main `89a765c5798302c3c6216a5367776ebdaed5d764`; all required CI passed and the one P1 review finding was resolved before merge.
+- [x] (2026-07-21 16:15Z) Canonical exact Pi5 plus StoneBase preflight `20260721-161503-c1d96f` passed and selected effective SSH with `candidate-requires-ssh-configuration`, but exposed that its route receipt omitted `terminal.runtime-artifact-prefetch` because the application did not forward the sealed fallback reason.
+- [ ] Merge the route-receipt binding fix, repeat canonical plan/preflight at its accepted SHA, and do not mutate either device until the receipt selects `stonebase-local-bootstrap-success`.
 
 ## Surprises & Discoveries
 
@@ -1032,3 +1035,11 @@ the already writable, ignored, durable release root
 `/opt/RaspberryPiSystem_002/logs/deploy/local-runtime-artifacts`; ownership and
 mode checks still require the exact current coordinator identity and reject
 group/world-writable directories. The StoneBase destination remains root-owned.
+
+Revision note (2026-07-21 16:18Z): Accepted-main preflight
+`20260721-161503-c1d96f` proved Pi5 and StoneBase readiness and the exact safe
+fallback, but the public route receipt still described `pi5-and-ssh-success`
+without the prefetch stage. Device mutation stayed blocked. The receipt API now
+binds and validates the exact fallback reason; Local-to-SSH without a reason is
+unrepresentable, and aggregate preflight passes the terminal probe reason into
+the same route contract used by the locked coordinator.

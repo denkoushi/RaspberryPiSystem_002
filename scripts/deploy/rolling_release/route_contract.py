@@ -822,6 +822,7 @@ def route_contract_receipt(
     *,
     requested_executor: str | None = None,
     effective_executor: str | None = None,
+    fallback_reason: str | None = None,
 ) -> dict[str, object]:
     """Validate a plan against the route and return its deterministic receipt."""
 
@@ -834,10 +835,24 @@ def route_contract_receipt(
         plan.get("requestedExecutor") or "ssh-ansible"
     )
     effective = effective_executor or plan.get("effectiveExecutor") or requested
+    fallback = (
+        fallback_reason
+        if fallback_reason is not None
+        else plan.get("fallbackReason")
+    )
     if requested not in {"ssh-ansible", "stonebase-local-ansible-poc"}:
         raise ValueError("route requested executor is unsupported")
     if effective not in {"ssh-ansible", "stonebase-local-ansible-poc"}:
         raise ValueError("route effective executor is unsupported")
+    if fallback is not None and (not isinstance(fallback, str) or not fallback):
+        raise ValueError("route fallback reason is malformed")
+    if requested == "ssh-ansible" and fallback is not None:
+        raise ValueError("SSH route cannot carry a fallback reason")
+    if requested == "stonebase-local-ansible-poc":
+        if effective == "ssh-ansible" and fallback is None:
+            raise ValueError("Local fallback route requires an exact reason")
+        if effective == "stonebase-local-ansible-poc" and fallback is not None:
+            raise ValueError("effective Local route cannot carry a fallback reason")
     if requested == "stonebase-local-ansible-poc" and any(
         not isinstance(work, dict)
         or work.get("host") != "raspi4-kensaku-stonebase01"
@@ -931,11 +946,7 @@ def route_contract_receipt(
         elif runtime_prefetch_required(
             requested_executor=requested,
             effective_executor=str(effective),
-            fallback_reason=(
-                plan.get("fallbackReason")
-                if isinstance(plan.get("fallbackReason"), str)
-                else None
-            ),
+            fallback_reason=fallback if isinstance(fallback, str) else None,
             mutation_required=mutation,
         ):
             selected.update(
@@ -967,11 +978,7 @@ def route_contract_receipt(
                 if runtime_prefetch_required(
                     requested_executor=requested,
                     effective_executor=str(effective),
-                    fallback_reason=(
-                        plan.get("fallbackReason")
-                        if isinstance(plan.get("fallbackReason"), str)
-                        else None
-                    ),
+                    fallback_reason=(fallback if isinstance(fallback, str) else None),
                     mutation_required=True,
                 )
                 and any(
