@@ -124,6 +124,8 @@ def _local_head(repo: Path) -> str:
         completed = subprocess.run(
             [
                 "git",
+                "-c",
+                f"safe.directory={repo}",
                 "-C",
                 str(repo),
                 "rev-parse",
@@ -133,6 +135,15 @@ def _local_head(repo: Path) -> str:
             check=True,
             text=True,
             capture_output=True,
+            env={
+                "PATH": "/usr/bin:/bin",
+                "LANG": "C",
+                "LC_ALL": "C",
+                "GIT_CONFIG_NOSYSTEM": "1",
+                "GIT_CONFIG_GLOBAL": "/dev/null",
+                "GIT_ATTR_NOSYSTEM": "1",
+                "GIT_TERMINAL_PROMPT": "0",
+            },
         )
     except (OSError, subprocess.SubprocessError) as error:
         raise RuntimeError("terminal repository HEAD cannot be verified") from error

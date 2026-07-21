@@ -28,6 +28,8 @@ services.
 - [x] (2026-07-22) Restored the production deployment tree from Local executor
   integration commit range `17d214b4..7d05b4b3` to the release-claims boundary
   `b2c7277a`.
+- [x] (2026-07-22) Preserved the post-boundary root ready-probe Git safety
+  override required by the normal SSH Kiosk/Signage acknowledgement path.
 - [ ] No Local executor implementation or hardware validation is authorized by
   this record.
 
@@ -59,6 +61,14 @@ services.
   CLI flag, runtime distribution, or device route. It must not be extended or
   used to justify hardware work.
   Date/Author: 2026-07-22 / Codex and user.
+
+- Decision: retain the constrained, per-invocation `safe.directory` Git command
+  in `terminal-ready-probe.py` even though it postdates the restoration boundary.
+  Rationale: the normal SSH route invokes the probe as root against a checkout
+  owned by the terminal user. Removing the one-command exception makes Git
+  reject the release SHA and prevents the ready acknowledgement. It does not
+  restore any Local executor capability.
+  Date/Author: 2026-07-22 / Codex and automated PR review.
 
 ## Outcomes & Retrospective
 

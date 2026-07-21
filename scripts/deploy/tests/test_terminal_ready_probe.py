@@ -106,6 +106,44 @@ class TerminalReadyProbeTest(unittest.TestCase):
             "verificationId": VERIFICATION_ID,
         }
 
+    def test_local_head_uses_one_safe_repository_and_a_constrained_git_environment(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = Path(temporary) / "repository"
+            repository.mkdir()
+            completed = subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout=RELEASE_SHA + "\n",
+                stderr="",
+            )
+            with patch.object(PROBE.subprocess, "run", return_value=completed) as run:
+                self.assertEqual(PROBE._local_head(repository), RELEASE_SHA)
+
+            run.assert_called_once_with(
+                [
+                    "git",
+                    "-c",
+                    f"safe.directory={repository}",
+                    "-C",
+                    str(repository),
+                    "rev-parse",
+                    "--verify",
+                    "HEAD^{commit}",
+                ],
+                check=True,
+                text=True,
+                capture_output=True,
+                env={
+                    "PATH": "/usr/bin:/bin",
+                    "LANG": "C",
+                    "LC_ALL": "C",
+                    "GIT_CONFIG_NOSYSTEM": "1",
+                    "GIT_CONFIG_GLOBAL": "/dev/null",
+                    "GIT_ATTR_NOSYSTEM": "1",
+                    "GIT_TERMINAL_PROMPT": "0",
+                },
+            )
+
     def test_probe_checks_head_and_posts_exact_ready_acknowledgement(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

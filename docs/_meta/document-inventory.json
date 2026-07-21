@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 537,
-    "totalLines": 154892,
-    "totalBytes": 11685399,
+    "totalLines": 154902,
+    "totalBytes": 11686042,
     "withFrontmatter": 223,
     "withStatus": 81,
     "sourceOfTruthDeclared": 53,
@@ -34275,8 +34275,8 @@
     },
     {
       "path": "docs/plans/stonebase-local-executor-freeze.md",
-      "lineCount": 81,
-      "byteSize": 3659,
+      "lineCount": 91,
+      "byteSize": 4302,
       "hasFrontmatter": true,
       "title": "StoneBase Local executor integration freeze",
       "status": "pending",
