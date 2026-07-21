@@ -38,7 +38,6 @@ from rolling_release import planner as release_planner
 from rolling_release import policy as release_policy
 from rolling_release.backends import ansible as ansible_backend
 from rolling_release.backends import evidence as evidence_backend
-from rolling_release.backends import local_ansible as local_ansible_backend
 from rolling_release.backends import pi5 as pi5_backend
 from rolling_release.backends import systemd as systemd_backend
 from rolling_release.cancellation import CancellationToken, token_from_environment
@@ -54,13 +53,6 @@ from rolling_release.lock import (
 from rolling_release.models import unit_name_for
 from rolling_release.state import RunStateStore, TERMINAL_STATES
 from rolling_release import telemetry as release_telemetry
-from rolling_release import runtime_artifacts as release_runtime_artifacts
-from rolling_release.local_execution import (
-    LOCAL_EXECUTOR,
-    SSH_EXECUTOR,
-    STONEBASE_HOST,
-    authority_digest,
-)
 
 
 PROJECT = Path(__file__).resolve().parents[2]
@@ -95,12 +87,7 @@ def _runtime() -> Any:
 
 
 def utc_now() -> str:
-    return (
-        datetime.now(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def run(
@@ -775,138 +762,6 @@ def preflight_terminal_ansible_pipelining(inventory: str, host: str) -> None:
     )
 
 
-def select_terminal_executor(
-    inventory: str,
-    target_spec: dict[str, str],
-    previous_sha: str,
-    candidate_sha: str,
-) -> dict[str, Any]:
-    return local_ansible_backend.select_terminal_executor(
-        inventory,
-        target_spec,
-        previous_sha,
-        candidate_sha,
-        runtime=_runtime(),
-    )
-
-
-def maintenance_ack_authority_sha256(run_id: str, client_id: str) -> str:
-    record = acknowledgement_record(run_id, client_id)
-    try:
-        status = json.loads(
-            (PROJECT / "config/deploy-status.json").read_text(encoding="utf-8")
-        )
-    except (FileNotFoundError, json.JSONDecodeError) as error:
-        raise RuntimeError(
-            "maintenance acknowledgement authority is unavailable"
-        ) from error
-    entry = ((status.get("kioskByClient") or {}).get(client_id) or {})
-    acknowledged_at = (
-        record.get("acknowledgedAt") if isinstance(record, dict) else None
-    )
-    if (
-        not isinstance(acknowledged_at, str)
-        or entry.get("runId") != run_id
-        or entry.get("maintenance") is not True
-        or entry.get("phase") not in {"preparing", "deploying"}
-    ):
-        raise RuntimeError(
-            "maintenance acknowledgement authority does not match the run"
-        )
-    return authority_digest(
-        {
-            "runId": run_id,
-            "clientId": client_id,
-            "acknowledgedAt": acknowledged_at,
-            "maintenance": True,
-            "phase": entry["phase"],
-        }
-    )
-
-
-def prepare_local_terminal_candidate(
-    inventory: str,
-    target_spec: dict[str, str],
-    target: dict[str, Any],
-    run_id: str,
-    maintenance_state_sha256: str,
-) -> dict[str, Any]:
-    return local_ansible_backend.prepare_local_terminal_candidate(
-        inventory,
-        target_spec,
-        target,
-        run_id,
-        maintenance_state_sha256,
-        runtime=_runtime(),
-    )
-
-
-def submit_local_terminal_candidate(
-    inventory: str,
-    target_spec: dict[str, str],
-    target: dict[str, Any],
-    run_id: str,
-    prepared: dict[str, Any],
-) -> dict[str, Any]:
-    return local_ansible_backend.submit_local_terminal_candidate(
-        inventory,
-        target_spec,
-        target,
-        run_id,
-        prepared,
-        runtime=_runtime(),
-    )
-
-
-def await_local_terminal_candidate(
-    inventory: str,
-    target_spec: dict[str, str],
-    target: dict[str, Any],
-) -> dict[str, Any]:
-    return local_ansible_backend.await_local_terminal_candidate(
-        inventory, target_spec, target, runtime=_runtime()
-    )
-
-
-def reconcile_local_terminal_candidate(
-    inventory: str,
-    target_spec: dict[str, str],
-    target: dict[str, Any],
-) -> dict[str, Any]:
-    return local_ansible_backend.reconcile_local_terminal_candidate(
-        inventory, target_spec, target, runtime=_runtime()
-    )
-
-
-def prove_local_terminal_ready(
-    inventory: str,
-    target_spec: dict[str, str],
-    run_id: str,
-    release_sha: str,
-    verification_id: str,
-    target: dict[str, Any],
-) -> None:
-    return local_ansible_backend.prove_local_terminal_ready(
-        inventory,
-        target_spec,
-        run_id,
-        release_sha,
-        verification_id,
-        target,
-        runtime=_runtime(),
-    )
-
-
-def cleanup_local_terminal_candidate(
-    inventory: str,
-    target_spec: dict[str, str],
-    target: dict[str, Any],
-) -> dict[str, Any]:
-    return local_ansible_backend.cleanup_local_terminal_candidate(
-        inventory, target_spec, target, runtime=_runtime()
-    )
-
-
 def prepare_terminal_repository(inventory: str, host: str) -> dict[str, Any]:
     return ansible_backend.prepare_terminal_repository(
         inventory, host, runtime=_runtime()
@@ -1043,7 +898,6 @@ def playbook(
     *,
     rollback: bool = False,
     playbook: str = "playbooks/deploy-staged.yml",
-    runtime_artifact_vars: str | None = None,
 ) -> None:
     return ansible_backend.playbook(
         inventory,
@@ -1052,7 +906,6 @@ def playbook(
         run_id,
         rollback=rollback,
         playbook=playbook,
-        runtime_artifact_vars=runtime_artifact_vars,
         runtime=_runtime(),
     )
 
@@ -1063,31 +916,13 @@ def apply_terminal_profile(
     revision: str,
     run_id: str,
     profile: TerminalProfile,
-    *,
-    runtime_artifact_vars: str | None = None,
 ) -> None:
     """Apply only the strictly validated playbook selected by a profile."""
 
-    options = (
-        {}
-        if runtime_artifact_vars is None
-        else {"runtime_artifact_vars": runtime_artifact_vars}
-    )
     if profile.playbook == "playbooks/deploy-staged.yml":
-        playbook(inventory, host, revision, run_id, **options)
+        playbook(inventory, host, revision, run_id)
     else:
-        playbook(
-            inventory,
-            host,
-            revision,
-            run_id,
-            playbook=profile.playbook,
-            **options,
-        )
-
-
-def prefetch_terminal_runtime_artifacts() -> dict[str, Any]:
-    return release_runtime_artifacts.prefetch_runtime_artifacts(PROJECT)
+        playbook(inventory, host, revision, run_id, playbook=profile.playbook)
 
 
 def rollback_terminal(
@@ -1374,7 +1209,6 @@ def build_fleet_scope(
     full_fleet: bool,
     reverify_selected: bool = False,
     executor_preflight_passed: bool = False,
-    stonebase_local_ansible_poc: bool = False,
 ) -> tuple[dict[str, Any], list[dict[str, str]], dict[str, dict[str, Any] | None], list[str]]:
     all_hosts = release_hosts(inventory_data)
     classifications, warnings = classify_fleet_baselines(sha, fleet_state)
@@ -1398,13 +1232,6 @@ def build_fleet_scope(
         release_hosts(inventory_data, selected)
         selected_set = set(selected)
         server = next(decision for decision in decisions if decision["role"] == "server")
-        if stonebase_local_ansible_poc and selected_set != {
-            server["host"],
-            STONEBASE_HOST,
-        }:
-            raise RuntimeError(
-                "StoneBase local Ansible POC resolved outside Pi5 + StoneBase"
-            )
         if server["targeted"] and server["host"] not in selected_set:
             raise RuntimeError(
                 f"--limit excludes required Pi5 server host {server['host']}: {limit}"
@@ -1416,7 +1243,7 @@ def build_fleet_scope(
             and decision["evidence"] != "verified"
             and decision["host"] not in selected_set
         ]
-        if unknown_outside and not stonebase_local_ansible_poc:
+        if unknown_outside:
             raise RuntimeError(
                 "--limit excludes required unknown-evidence hosts: "
                 + ", ".join(unknown_outside)
@@ -1424,11 +1251,7 @@ def build_fleet_scope(
         for decision in decisions:
             if decision["host"] not in selected_set:
                 decision["targeted"] = False
-                decision["targetReason"] = (
-                    "outside explicit StoneBase local Ansible POC scope"
-                    if stonebase_local_ansible_poc
-                    else "outside explicit --limit"
-                )
+                decision["targetReason"] = "outside explicit --limit"
 
     plan = release_planner.build_fleet_plan_payload(
         release_sha=sha,
@@ -1443,9 +1266,6 @@ def build_fleet_scope(
         verification_only_execution_enabled=VERIFICATION_ONLY_EXECUTION_ENABLED,
         claim_scope_hosts=selected,
         executor_preflight_passed=executor_preflight_passed,
-        requested_executor=(
-            LOCAL_EXECUTOR if stonebase_local_ansible_poc else SSH_EXECUTOR
-        ),
     )
     target_by_host = {target["host"]: target for target in all_hosts}
     if TYPED_TARGET_PLANNING_ENABLED and (
@@ -1524,7 +1344,6 @@ def build_print_plan(
     *,
     full_fleet: bool = False,
     reverify_selected: bool = False,
-    stonebase_local_ansible_poc: bool = False,
 ) -> dict[str, Any]:
     warnings: list[str] = []
     sha, current_warnings = resolve_release_sha(branch)
@@ -1563,7 +1382,6 @@ def build_print_plan(
         limit=limit,
         full_fleet=full_fleet,
         reverify_selected=reverify_selected,
-        stonebase_local_ansible_poc=stonebase_local_ansible_poc,
     )
     warnings.extend(scope_warnings)
     server_record = next(
@@ -1650,7 +1468,6 @@ def local_run(args: argparse.Namespace) -> int:
                     args.limit or "",
                     full_fleet=args.full_fleet,
                     reverify_selected=args.reverify_selected,
-                    stonebase_local_ansible_poc=args.stonebase_local_ansible_poc,
                 ),
                 ensure_ascii=False,
             )

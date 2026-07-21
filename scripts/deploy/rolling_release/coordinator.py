@@ -6,8 +6,6 @@ per-run state that describes the same transition.
 """
 from __future__ import annotations
 
-import hashlib
-import json
 import re
 import time
 from contextlib import contextmanager
@@ -31,16 +29,7 @@ from .release_claims import (
     release_claims_for_host,
     validate_release_claims,
 )
-from .route_contract import route_contract_receipt
-from .local_execution import (
-    LOCAL_EXECUTOR,
-    SSH_EXECUTOR,
-    STONEBASE_HOST,
-    runtime_claim_identity,
-    runtime_prefetch_required,
-)
 from .terminal_adapters import TerminalAdapter
-from .terminal_executors import TerminalExecutor, executor_for
 
 
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -147,221 +136,6 @@ def _terminal_adapter(runtime: Any, profile_id: str) -> TerminalAdapter:
     if callable(resolver):
         return resolver(profile_id)
     return adapter_for_profile(profile_id, runtime=runtime)
-
-
-def _select_terminal_executor(
-    *,
-    runtime: Any,
-    state: Any,
-    inventory: str,
-    target_spec: dict[str, str],
-    target: dict[str, Any],
-    adapter: TerminalAdapter,
-    persist: bool = True,
-) -> TerminalExecutor:
-    """Resolve the forward executor before maintenance can begin.
-
-    Aggregate preflight is deliberately repeated against the exact clean
-    terminal HEAD.  A requested Local executor may fall back only here; once
-    maintenance starts the selected executor is immutable and failures route
-    only through reconciliation and sealed rollback.
-    """
-
-    requested = target.get("requestedExecutor", SSH_EXECUTOR)
-    if requested == LOCAL_EXECUTOR:
-        if target.get("mutationRequired") is not True:
-            selection = {
-                "requestedExecutor": LOCAL_EXECUTOR,
-                "effectiveExecutor": SSH_EXECUTOR,
-                "fallbackReason": "local-executor-not-needed-for-nonmutation",
-                "changedPaths": [],
-                "publicContract": None,
-                "runnerPreflight": None,
-            }
-        else:
-            selection = runtime.select_terminal_executor(
-                inventory,
-                target_spec,
-                target["previousSha"],
-                target["desiredSha"],
-            )
-        if (
-            not isinstance(selection, dict)
-            or set(selection)
-            != {
-                "requestedExecutor",
-                "effectiveExecutor",
-                "fallbackReason",
-                "changedPaths",
-                "publicContract",
-                "runnerPreflight",
-            }
-            or selection.get("requestedExecutor") != LOCAL_EXECUTOR
-            or selection.get("effectiveExecutor")
-            not in {LOCAL_EXECUTOR, SSH_EXECUTOR}
-            or not isinstance(selection.get("changedPaths"), list)
-            or any(
-                not isinstance(path, str) or not path
-                for path in selection.get("changedPaths", [])
-            )
-            or (
-                selection.get("effectiveExecutor") == LOCAL_EXECUTOR
-                and (
-                    selection.get("fallbackReason") is not None
-                    or not isinstance(selection.get("publicContract"), dict)
-                    or not isinstance(selection.get("runnerPreflight"), dict)
-                )
-            )
-            or (
-                selection.get("effectiveExecutor") == SSH_EXECUTOR
-                and not isinstance(selection.get("fallbackReason"), str)
-            )
-        ):
-            raise RuntimeError("terminal executor selection is malformed")
-        target.update(selection)
-        if target["effectiveExecutor"] == LOCAL_EXECUTOR:
-            target["runtimeClaimIdentity"] = runtime_claim_identity()
-        state.payload["plan"].update(
-            {
-                "effectiveExecutor": target["effectiveExecutor"],
-                "fallbackReason": target["fallbackReason"],
-            }
-        )
-        state.payload["routeContract"] = route_contract_receipt(
-            state.payload["plan"],
-            requested_executor=requested,
-            effective_executor=target["effectiveExecutor"],
-        )
-        if persist:
-            state.save()
-    elif requested == SSH_EXECUTOR:
-        target.update(
-            {
-                "effectiveExecutor": SSH_EXECUTOR,
-                "fallbackReason": None,
-            }
-        )
-    else:
-        raise RuntimeError("requested terminal executor is unsupported")
-    return executor_for(
-        target["effectiveExecutor"], runtime=runtime, adapter=adapter
-    )
-
-
-def _executor_decision_digest(target: dict[str, Any]) -> str:
-    """Bind the pre-maintenance executor decision to its exact public proof.
-
-    The selection contains no secret material: the public target contract and
-    runner preflight are already bounded, secret-free evidence.  Binding the
-    exact decision prevents a Local request from being silently promoted (or
-    demoted) after the Pi5 switch has started.
-    """
-
-    fields = {
-        "host": target.get("host"),
-        "previousSha": target.get("previousSha"),
-        "desiredSha": target.get("desiredSha"),
-        "requestedExecutor": target.get("requestedExecutor"),
-        "effectiveExecutor": target.get("effectiveExecutor"),
-        "fallbackReason": target.get("fallbackReason"),
-        "changedPaths": target.get("changedPaths"),
-        "publicContract": target.get("publicContract"),
-        "runnerPreflight": target.get("runnerPreflight"),
-    }
-    encoded = json.dumps(
-        fields,
-        ensure_ascii=True,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return "sha256:" + hashlib.sha256(encoded).hexdigest()
-
-
-def _seal_local_executor_decisions(
-    *,
-    runtime: Any,
-    state: Any,
-    inventory: str,
-    target_specs: list[dict[str, str]],
-) -> None:
-    """Resolve and seal every requested Local executor before Pi5 mutation.
-
-    The public aggregate preflight protects submission, but a release unit
-    starts later and must not invent a different executor while its own plan
-    still says that Local is usable.  The coordinator repeats the selection
-    against a clean terminal HEAD before Pi5 convergence, persists the exact
-    result, and makes it immutable for the rest of the run.  A terminal that
-    changes while Pi5 is stabilising is rejected before maintenance rather
-    than being forwarded through a newly chosen executor.
-    """
-
-    by_host = {target["host"]: target for target in target_specs}
-    for target in state.payload.get("targets") or []:
-        if target.get("requestedExecutor") != LOCAL_EXECUTOR:
-            continue
-        host = target.get("host")
-        if not isinstance(host, str) or host not in by_host:
-            raise RuntimeError("local executor target is missing its inventory contract")
-        target_spec = by_host[host]
-        adapter = _terminal_adapter(runtime, target_spec["terminalType"])
-        with _measure_phase(
-            state, runtime, "terminal-executor-selection-preflight", host=host
-        ):
-            baseline = adapter.prepare_repository(inventory, host)
-        previous_sha = baseline.get("head") if isinstance(baseline, dict) else None
-        if not isinstance(previous_sha, str) or FULL_SHA_RE.fullmatch(previous_sha) is None:
-            raise RuntimeError("terminal executor selection baseline is malformed")
-        target["previousSha"] = previous_sha
-        target["repositoryBaseline"] = baseline
-        target["executorSelectionHead"] = previous_sha
-        _select_terminal_executor(
-            runtime=runtime,
-            state=state,
-            inventory=inventory,
-            target_spec=target_spec,
-            target=target,
-            adapter=adapter,
-            # The selection and its digest are one durable seal.  Do not
-            # leave a resumable run with an undecorated executor choice.
-            persist=False,
-        )
-        if (
-            target.get("mutationRequired") is True
-            and target.get("effectiveExecutor") == SSH_EXECUTOR
-        ):
-            # A Local-to-SSH fallback is chosen before Pi5 mutation, so the
-            # SSH transport proof belongs to the same sealed decision.
-            with _measure_phase(
-                state,
-                runtime,
-                "terminal-ansible-pipelining-preflight",
-                host=host,
-            ):
-                runtime.preflight_terminal_ansible_pipelining(inventory, host)
-        target["executorDecisionSha256"] = _executor_decision_digest(target)
-        target["executorDecisionSealedAt"] = runtime.utc_now()
-        state.save()
-
-
-def _sealed_local_executor(
-    *, runtime: Any, target: dict[str, Any], adapter: TerminalAdapter
-) -> TerminalExecutor:
-    """Return only the executor proven before the Pi5 switch.
-
-    This is intentionally not another selection opportunity.  Once the
-    decision has been persisted, a mismatch is a fail-closed pre-maintenance
-    error; it cannot convert an in-flight Local release into SSH or vice
-    versa.
-    """
-
-    digest = target.get("executorDecisionSha256")
-    if (
-        not isinstance(digest, str)
-        or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest)
-        or digest != _executor_decision_digest(target)
-    ):
-        raise RuntimeError("sealed terminal executor decision is missing or changed")
-    return executor_for(target["effectiveExecutor"], runtime=runtime, adapter=adapter)
 
 
 def _host_needs_seed(record: Any, role: str) -> bool:
@@ -601,10 +375,7 @@ def _pending_server_release_claims(
 
 
 def _claim_requirements(
-    target: dict[str, Any],
-    adapter: TerminalAdapter,
-    *,
-    include_executor: bool = True,
+    target: dict[str, Any], adapter: TerminalAdapter
 ) -> list[dict[str, str]] | None:
     raw = target.get("claimRequirements")
     if raw is None or raw == []:
@@ -625,15 +396,10 @@ def _claim_requirements(
         except (TypeError, ValueError) as error:
             raise RuntimeError("terminal claim kind is unsupported") from error
         expected = value["expectedIdentity"]
-        identity_pattern = (
-            re.compile(r"^sha256:[0-9a-f]{64}$")
-            if kind in {ClaimKind.LOCAL_ARTIFACT, ClaimKind.RUNTIME}
-            else FULL_SHA_RE
-        )
         if (
             kind in seen
             or not isinstance(expected, str)
-            or identity_pattern.fullmatch(expected) is None
+            or FULL_SHA_RE.fullmatch(expected) is None
             or value["status"] not in {"current", "missing", "stale-or-unverified"}
         ):
             raise RuntimeError("terminal claim requirement identity is malformed")
@@ -643,20 +409,6 @@ def _claim_requirements(
         ClaimKind(value)
         for value in adapter.profile.adapter_options.required_claims
     }
-    executor_kinds = {ClaimKind.LOCAL_ARTIFACT, ClaimKind.RUNTIME}
-    local_claims_bound = (
-        target.get("effectiveExecutor") == LOCAL_EXECUTOR
-        and isinstance(target.get("localArtifact"), dict)
-    )
-    if include_executor and local_claims_bound:
-        required_kinds.update(executor_kinds)
-    elif not include_executor:
-        requirements = [
-            requirement
-            for requirement in requirements
-            if ClaimKind(requirement["kind"]) not in executor_kinds
-        ]
-        seen.difference_update(executor_kinds)
     if seen != required_kinds:
         raise RuntimeError(
             "terminal claim requirements do not match the profile contract"
@@ -710,7 +462,7 @@ def _unverified_terminal_release_claims(
 ) -> dict[str, dict[str, Any]] | None:
     """Clear every typed observation before rollback can mutate the host."""
 
-    requirements = _claim_requirements(target, adapter, include_executor=False)
+    requirements = _claim_requirements(target, adapter)
     if requirements is None:
         return None
     return validate_release_claims(
@@ -740,9 +492,7 @@ def _terminal_observed_release_claims(
     run_id: str,
     rollback: bool,
 ) -> dict[str, dict[str, Any]] | None:
-    requirements = _claim_requirements(
-        target, adapter, include_executor=not rollback
-    )
+    requirements = _claim_requirements(target, adapter)
     if requirements is None:
         return None
     ready_kind = adapter.ready_claim_kind()
@@ -765,25 +515,6 @@ def _terminal_observed_release_claims(
         elif kind is ClaimKind.TERMINAL_REPOSITORY:
             observed = observation.get("currentSha")
             verification_id = None
-        elif kind in {ClaimKind.LOCAL_ARTIFACT, ClaimKind.RUNTIME}:
-            persisted = (target.get("releaseClaims") or {}).get(kind.value)
-            if not isinstance(persisted, dict):
-                raise RuntimeError(
-                    f"local executor claim is unavailable: {kind.value}"
-                )
-            persisted_claim = validate_release_claims(
-                {kind.value: persisted}
-            )[kind.value]
-            if (
-                persisted_claim.get("expectedIdentity") != expected
-                or persisted_claim.get("observedIdentity") != expected
-                or persisted_claim.get("state") != ClaimState.VERIFIED.value
-            ):
-                raise RuntimeError(
-                    f"local executor claim is not verified: {kind.value}"
-                )
-            claims[kind.value] = persisted_claim
-            continue
         else:
             raise RuntimeError(f"terminal ready path cannot observe {kind.value}")
         claim = _claim_record(
@@ -801,70 +532,6 @@ def _terminal_observed_release_claims(
     return _require_verified_release_claims(
         claims, {ClaimKind(value["kind"]) for value in requirements}
     )
-
-
-def _bind_local_release_claims(
-    *, runtime: Any, target: dict[str, Any], run_id: str
-) -> dict[str, dict[str, Any]]:
-    """Bind the sealed artifact and pinned runtime as separate typed claims."""
-
-    artifact = target.get("localArtifact")
-    artifact_sha = (
-        artifact.get("artifactSha256") if isinstance(artifact, dict) else None
-    )
-    runtime_identity = target.get("runtimeClaimIdentity")
-    if (
-        not isinstance(artifact_sha, str)
-        or SHA256_RE.fullmatch(artifact_sha) is None
-        or not isinstance(runtime_identity, str)
-        or re.fullmatch(r"sha256:[0-9a-f]{64}", runtime_identity) is None
-    ):
-        raise RuntimeError("local artifact/runtime claim identity is unavailable")
-    artifact_identity = f"sha256:{artifact_sha}"
-    requirements = target.get("claimRequirements")
-    if not isinstance(requirements, list):
-        raise RuntimeError("terminal claim requirements are malformed")
-    if any(
-        isinstance(requirement, dict)
-        and requirement.get("kind")
-        in {ClaimKind.LOCAL_ARTIFACT.value, ClaimKind.RUNTIME.value}
-        for requirement in requirements
-    ):
-        raise RuntimeError("local executor claims were already bound")
-    requirements.extend(
-        [
-            {
-                "kind": ClaimKind.LOCAL_ARTIFACT.value,
-                "expectedIdentity": artifact_identity,
-                "status": "missing",
-            },
-            {
-                "kind": ClaimKind.RUNTIME.value,
-                "expectedIdentity": runtime_identity,
-                "status": "missing",
-            },
-        ]
-    )
-    existing = validate_release_claims(target.get("releaseClaims") or {})
-    existing[ClaimKind.LOCAL_ARTIFACT.value] = _claim_record(
-        kind=ClaimKind.LOCAL_ARTIFACT,
-        expected=artifact_identity,
-        observed=None,
-        authority=ClaimAuthority.LOCAL_RUNNER_READY,
-        verification_id=None,
-        observed_at=None,
-        run_id=run_id,
-    )
-    existing[ClaimKind.RUNTIME.value] = _claim_record(
-        kind=ClaimKind.RUNTIME,
-        expected=runtime_identity,
-        observed=runtime_identity,
-        authority=ClaimAuthority.LOCAL_RUNTIME_PREFLIGHT,
-        verification_id=None,
-        observed_at=runtime.utc_now(),
-        run_id=run_id,
-    )
-    return validate_release_claims(existing)
 
 
 def _premaintenance_recovery_claims(
@@ -890,10 +557,7 @@ def _premaintenance_recovery_claims(
 
 
 def _terminal_run_targets(
-    terminal_targets: list[dict[str, str]],
-    plan: dict[str, Any],
-    *,
-    requested_executor: str = SSH_EXECUTOR,
+    terminal_targets: list[dict[str, str]], plan: dict[str, Any]
 ) -> list[dict[str, Any]]:
     decisions = {
         decision["host"]: decision
@@ -939,9 +603,6 @@ def _terminal_run_targets(
                 "currentSha": decision["currentSha"],
                 "evidence": decision["evidence"],
                 "targetReason": decision["targetReason"],
-                "requestedExecutor": requested_executor,
-                "effectiveExecutor": requested_executor,
-                "fallbackReason": None,
                 **action_fields,
                 "state": "pending",
             }
@@ -1148,103 +809,6 @@ def _verify_terminal_ready(
     target[release_key] = ready["releaseSha"]
     target[verification_key] = ready["verificationId"]
     target[acknowledged_key] = ready["acknowledgedAt"]
-    state.save()
-
-
-def _verify_local_artifact_ready(
-    *,
-    runtime: Any,
-    state: Any,
-    inventory: str,
-    run_id: str,
-    target_spec: dict[str, str],
-    executor: TerminalExecutor,
-    target: dict[str, Any],
-) -> None:
-    """Verify the Local artifact without substituting for the browser Web ACK."""
-
-    candidate_sha = target.get("desiredSha")
-    artifact = target.get("localArtifact")
-    artifact_sha = (
-        artifact.get("artifactSha256") if isinstance(artifact, dict) else None
-    )
-    if (
-        not isinstance(candidate_sha, str)
-        or FULL_SHA_RE.fullmatch(candidate_sha) is None
-        or not isinstance(artifact_sha, str)
-        or SHA256_RE.fullmatch(artifact_sha) is None
-    ):
-        raise RuntimeError("local candidate ACK identity is unavailable")
-    target["state"] = "local-artifact-verifying"
-    target["expectedLocalReadySha"] = candidate_sha
-    state.payload["phase"] = "verifying-local-artifact"
-    state.save()
-    runtime.state_command(
-        "set-phase",
-        "--run-id",
-        run_id,
-        "--client",
-        target_spec["clientId"],
-        "--phase",
-        "verifying",
-        "--desired-release-sha",
-        candidate_sha,
-    )
-    verification_id = runtime.active_verification_id(
-        run_id,
-        target_spec["clientId"],
-        release_sha=candidate_sha,
-        rollback=False,
-    )
-    target["expectedLocalReadyVerificationId"] = verification_id
-    state.save()
-    executor.prove_ready(
-        inventory,
-        target_spec,
-        run_id,
-        candidate_sha,
-        verification_id,
-        target,
-    )
-    if not runtime.wait_for_ack(
-        run_id,
-        target_spec["clientId"],
-        runtime.READY_ACK_TIMEOUT_SECONDS,
-        phase="ready",
-        release_sha=candidate_sha,
-        verification_id=verification_id,
-    ):
-        raise RuntimeError(
-            f"local candidate acknowledgement timed out for {target_spec['host']}"
-        )
-    ready_record = runtime.acknowledgement_record(
-        run_id, target_spec["clientId"]
-    )
-    ready = ready_record.get("ready") if isinstance(ready_record, dict) else None
-    if (
-        not isinstance(ready, dict)
-        or ready.get("releaseSha") != candidate_sha
-        or ready.get("verificationId") != verification_id
-        or not isinstance(ready.get("acknowledgedAt"), str)
-    ):
-        raise RuntimeError(
-            f"local candidate acknowledgement disappeared for {target_spec['host']}"
-        )
-    target["localReadyReleaseSha"] = candidate_sha
-    target["localReadyVerificationId"] = verification_id
-    target["localReadyAcknowledgedAt"] = ready["acknowledgedAt"]
-    claims = validate_release_claims(target.get("releaseClaims") or {})
-    artifact_identity = f"sha256:{artifact_sha}"
-    claims[ClaimKind.LOCAL_ARTIFACT.value] = _claim_record(
-        kind=ClaimKind.LOCAL_ARTIFACT,
-        expected=artifact_identity,
-        observed=artifact_identity,
-        authority=ClaimAuthority.LOCAL_RUNNER_READY,
-        verification_id=verification_id,
-        observed_at=runtime.utc_now(),
-        run_id=run_id,
-    )
-    target["releaseClaims"] = validate_release_claims(claims)
     state.save()
 
 
@@ -1465,25 +1029,6 @@ def _recover_interrupted_terminals(
         host_issues: list[str] = []
         rollback_ready_sha: str | None = None
         preflight: dict[str, Any] | None = None
-        if (
-            maintenance_needs_cleanup
-            and record.get("effectiveExecutor") == LOCAL_EXECUTOR
-            and isinstance(record.get("localArtifact"), dict)
-        ):
-            try:
-                local_executor = executor_for(
-                    LOCAL_EXECUTOR, runtime=runtime, adapter=adapter
-                )
-                local_reconciliation = local_executor.reconcile(
-                    inventory, target_spec, record
-                )
-                record["localReconciliation"] = local_reconciliation
-                if local_reconciliation.get("quiesced") is not True:
-                    raise RuntimeError(
-                        "local transient unit is still running or unknown"
-                    )
-            except Exception as error:
-                host_issues.append(f"local unit quiescence: {error}")
         if maintenance_needs_cleanup:
             try:
                 previous_sha = record.get("previousSha")
@@ -1550,11 +1095,6 @@ def _recover_interrupted_terminals(
     current_state = fleet_state
     for host, fleet_record, target_spec, record, authority_run_id in work_items:
         adapter = _terminal_adapter(runtime, target_spec["terminalType"])
-        recovery_executor = executor_for(
-            record.get("effectiveExecutor", SSH_EXECUTOR),
-            runtime=runtime,
-            adapter=adapter,
-        )
         prior_target = record
 
         durable_completed_sha = _durable_completed_terminal_sha(
@@ -1809,11 +1349,7 @@ def _recover_interrupted_terminals(
             "maintenanceClearedAt"
         ):
             recovered_claims = validate_release_claims(record["releaseClaims"])
-            requirements = _claim_requirements(
-                record,
-                adapter,
-                include_executor=cleanup_outcome == "committed",
-            )
+            requirements = _claim_requirements(record, adapter)
             if requirements is not None:
                 recovered_claims = _require_verified_release_claims(
                     recovered_claims,
@@ -1837,11 +1373,7 @@ def _recover_interrupted_terminals(
                 run_id=run_id,
                 observed_at=runtime.utc_now(),
             )
-        requirements = _claim_requirements(
-            record,
-            adapter,
-            include_executor=cleanup_outcome == "committed",
-        )
+        requirements = _claim_requirements(record, adapter)
         claims_complete = requirements is None
         if recovered_claims is not None:
             record["releaseClaims"] = recovered_claims
@@ -1872,15 +1404,6 @@ def _recover_interrupted_terminals(
             "verifiedSha": expected_sha,
         }
         state.save()
-        if (
-            record.get("effectiveExecutor") == LOCAL_EXECUTOR
-            and isinstance(record.get("localArtifact"), dict)
-            and not isinstance(record.get("localResidueCleanup"), dict)
-        ):
-            record["localResidueCleanup"] = recovery_executor.cleanup_residue(
-                inventory, target_spec, record
-            )
-            state.save()
         if maintenance_needs_cleanup:
             activation_cleanup = adapter.cleanup_activation(
                 inventory, target_spec, record, authority_run_id
@@ -2101,32 +1624,6 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
         if args.limit and selected == []:
             raise RuntimeError(f"--limit selected no hosts: {args.limit}")
         all_hosts = runtime.release_hosts(inventory_data)
-        local_poc_requested = bool(
-            getattr(args, "stonebase_local_ansible_poc", False)
-        )
-        requested_executor = (
-            LOCAL_EXECUTOR if local_poc_requested else SSH_EXECUTOR
-        )
-        operational_hosts = all_hosts
-        if local_poc_requested:
-            if selected is None:
-                raise RuntimeError(
-                    "StoneBase local Ansible POC requires an explicit host selection"
-                )
-            operational_hosts = runtime.release_hosts(inventory_data, selected)
-            operational_names = {record.get("host") for record in operational_hosts}
-            if (
-                operational_names != {identity["host"], STONEBASE_HOST}
-                or len(operational_hosts) != 2
-                or sum(
-                    record.get("role") == "server"
-                    for record in operational_hosts
-                )
-                != 1
-            ):
-                raise RuntimeError(
-                    "StoneBase local Ansible POC resolved outside Pi5 + StoneBase"
-                )
 
         # A hard-killed prior run can leave run-labelled validation workload
         # or a paused terminal scheduler even when fleet evidence
@@ -2151,7 +1648,6 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             "limitHosts": args.limit or "",
             "fullFleet": bool(getattr(args, "full_fleet", False)),
             "reverifySelected": bool(getattr(args, "reverify_selected", False)),
-            "requestedExecutor": requested_executor,
             "releaseSha": args.sha,
             "unitName": runtime.os.environ.get("ROLLING_RELEASE_UNIT"),
             "runner": "systemd-run",
@@ -2167,32 +1663,6 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
         state.save()
         interrupted_recovery_pending = abandoned_run_id is not None
         token.checkpoint("state-initialized")
-
-        if local_poc_requested and abandoned_run_id is not None:
-            operational_names = {
-                record["host"]
-                for record in operational_hosts
-                if isinstance(record, dict) and isinstance(record.get("host"), str)
-            }
-            outside_recovery = sorted(
-                host
-                for host, record in (fleet_state.get("fleet") or {}).items()
-                if host not in operational_names
-                and isinstance(record, dict)
-                and record.get("lastRunId") == abandoned_run_id
-            )
-            if outside_recovery:
-                # The POC is forbidden from probing or recovering another
-                # terminal, including FJV.  Silently ignoring its abandoned
-                # authority would also be unsafe, so retain the new active run
-                # as an explicit recovery gate without contacting that host.
-                state.payload["phase"] = "scoped-recovery-required"
-                state.payload["outsideRecoveryHosts"] = outside_recovery
-                state.save()
-                raise RuntimeError(
-                    "StoneBase local Ansible POC cannot recover an abandoned "
-                    "run outside Pi5 + StoneBase"
-                )
 
         # An abandoned host-config-only Ansible run may have replaced one or
         # more environment files without reaching its durable commit record.
@@ -2217,13 +1687,13 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             run_id=args.run_id,
             desired_sha=args.sha,
             abandoned_run_id=abandoned_run_id,
-            all_hosts=operational_hosts,
+            all_hosts=all_hosts,
             fleet_state=fleet_state,
         )
         interrupted_recovery_pending = False
 
         fleet_state, seed_failures = _seed_unverified_hosts(
-            operational_hosts,
+            all_hosts,
             fleet_state,
             inventory=inventory,
             run_id=args.run_id,
@@ -2241,36 +1711,14 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             full_fleet=bool(getattr(args, "full_fleet", False)),
             reverify_selected=bool(getattr(args, "reverify_selected", False)),
             executor_preflight_passed=True,
-            stonebase_local_ansible_poc=local_poc_requested,
         )
         if plan_warnings:
             plan["warnings"] = list(plan_warnings)
         if seed_failures:
             state.payload["evidenceSeedFailures"] = seed_failures
         state.payload["hosts"] = [dict(record) for record in plan["hosts"]]
-        state.payload["targets"] = _terminal_run_targets(
-            targets, plan, requested_executor=requested_executor
-        )
+        state.payload["targets"] = _terminal_run_targets(targets, plan)
         state.payload["plan"] = plan
-        if local_poc_requested:
-            _seal_local_executor_decisions(
-                runtime=runtime,
-                state=state,
-                inventory=inventory,
-                target_specs=targets,
-            )
-        state.payload["routeContract"] = (
-            route_contract_receipt(
-                plan,
-                requested_executor=requested_executor,
-                effective_executor=plan.get("effectiveExecutor"),
-            )
-            if "terminalWork" in plan
-            else {
-                "schemaVersion": 1,
-                "status": "legacy-ssh-adapter",
-            }
-        )
         state.payload["fleetGeneration"] = fleet_state["generation"]
         state.save()
         _require_executable_target_architecture(plan)
@@ -2454,14 +1902,10 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             state.payload["fleetGeneration"] = fleet_state["generation"]
             state.save()
 
-            if (
-                target.get("mutationRequired") is True
-                and target.get("requestedExecutor") == SSH_EXECUTOR
-            ):
-                # Preserve the standard SSH route's established ordering:
-                # validate its Ansible transport before even the terminal
-                # repository baseline read.  Local fallback transport was
-                # already proven as part of its pre-Pi5 sealed decision.
+            if target.get("mutationRequired") is True:
+                # Only the forward Ansible executor uses SSH pipelining. A
+                # Web-consumer activation retains the manifest and evidence
+                # transports but never pretends to be an Ansible apply.
                 with _measure_phase(
                     state,
                     runtime,
@@ -2475,19 +1919,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
 
             with _measure_phase(state, runtime, "terminal-repository-baseline", host=host):
                 repository_baseline = adapter.prepare_repository(inventory, host)
-            if target.get("requestedExecutor") == LOCAL_EXECUTOR:
-                if repository_baseline.get("head") != target.get("executorSelectionHead"):
-                    raise RuntimeError(
-                        "terminal repository changed after sealed executor decision"
-                    )
-                executor = _sealed_local_executor(
-                    runtime=runtime, target=target, adapter=adapter
-                )
-            else:
-                target["previousSha"] = repository_baseline["head"]
-                executor = executor_for(
-                    target["effectiveExecutor"], runtime=runtime, adapter=adapter
-                )
+            target["previousSha"] = repository_baseline["head"]
             target["repositoryBaseline"] = repository_baseline
             # Persist the verified pre-mutation HEAD before the remote manifest
             # call. If result delivery is interrupted, the next coordinator can
@@ -2515,56 +1947,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                 state.save()
                 raise
             state.save()
-            prepared_execution: dict[str, Any] | None = None
             try:
-                if runtime_prefetch_required(
-                    requested_executor=target.get("requestedExecutor"),
-                    effective_executor=target.get("effectiveExecutor"),
-                    fallback_reason=target.get("fallbackReason"),
-                    mutation_required=target.get("mutationRequired") is True,
-                ):
-                    with _measure_phase(
-                        state,
-                        runtime,
-                        "terminal-runtime-artifact-prefetch",
-                        host=host,
-                    ):
-                        prepared_execution = (
-                            runtime.prefetch_terminal_runtime_artifacts()
-                        )
-                    if (
-                        not isinstance(prepared_execution, dict)
-                        or set(prepared_execution)
-                        != {"receipt", "ansibleVarsPath"}
-                        or not isinstance(
-                            prepared_execution.get("ansibleVarsPath"), str
-                        )
-                    ):
-                        raise RuntimeError(
-                            "runtime artifact preparation result is malformed"
-                        )
-                    receipt = prepared_execution.get("receipt")
-                    if (
-                        not isinstance(receipt, dict)
-                        or set(receipt)
-                        != {
-                            "schemaVersion",
-                            "state",
-                            "lockSha256",
-                            "manifestSha256",
-                            "memberCount",
-                            "totalBytes",
-                            "cacheHits",
-                            "downloaded",
-                        }
-                        or receipt.get("schemaVersion") != 1
-                        or receipt.get("state") != "ready"
-                    ):
-                        raise RuntimeError(
-                            "runtime artifact preparation receipt is malformed"
-                        )
-                    target["runtimeArtifactPrefetch"] = receipt
-                    state.save()
                 if adapter.should_issue_notice(
                     emergency_override=args.emergency_override
                 ):
@@ -2643,54 +2026,6 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                 target["acknowledgedAt"] = runtime.utc_now()
                 token.checkpoint(f"before-playbook:{host}")
 
-                if target["effectiveExecutor"] == LOCAL_EXECUTOR:
-                    maintenance_state_sha256 = (
-                        runtime.maintenance_ack_authority_sha256(
-                            args.run_id, target_spec["clientId"]
-                        )
-                    )
-                    target["maintenanceStateSha256"] = maintenance_state_sha256
-                    with _measure_phase(
-                        state,
-                        runtime,
-                        "terminal-local-artifact-seal",
-                        host=host,
-                    ):
-                        prepared_execution = executor.prepare(
-                            inventory,
-                            target_spec,
-                            target,
-                            args.run_id,
-                            maintenance_state_sha256,
-                        )
-                    if not isinstance(prepared_execution, dict):
-                        raise RuntimeError(
-                            "local candidate artifact seal is malformed"
-                        )
-                    target["localArtifact"] = prepared_execution
-                    target["artifactSha256"] = prepared_execution.get(
-                        "artifactSha256"
-                    )
-                    target["payloadSha256"] = prepared_execution.get(
-                        "payloadSha256"
-                    )
-                    target["localUnitName"] = prepared_execution.get("unitName")
-                    target["submissionState"] = "pending"
-                    local_claims = _bind_local_release_claims(
-                        runtime=runtime, target=target, run_id=args.run_id
-                    )
-                    target["releaseClaims"] = local_claims
-                    _set_host_release_claims(state, host, local_claims)
-                    fleet_state = runtime.fleet_mark_unknown(
-                        host,
-                        role,
-                        target["desiredSha"],
-                        args.run_id,
-                        release_claims=local_claims,
-                    )
-                    state.payload["fleetGeneration"] = fleet_state["generation"]
-                    state.save()
-
                 target["state"] = "deploying"
                 state.save()
                 runtime.state_command(
@@ -2703,87 +2038,14 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                     "deploying",
                 )
                 if target.get("mutationRequired") is True:
-                    if target["effectiveExecutor"] == LOCAL_EXECUTOR:
-                        try:
-                            with _measure_phase(
-                                state,
-                                runtime,
-                                "terminal-local-single-transfer",
-                                host=host,
-                            ):
-                                submission = executor.apply(
-                                    inventory,
-                                    target_spec,
-                                    target,
-                                    args.run_id,
-                                    prepared_execution,
-                                )
-                        except Exception:
-                            target["submissionState"] = "uncertain"
-                            state.save()
-                            raise
-                        if (
-                            not isinstance(submission, dict)
-                            or submission.get("submission") != "accepted"
-                        ):
-                            target["submissionState"] = "uncertain"
-                            state.save()
-                            raise RuntimeError(
-                                "local candidate submission is not accepted"
-                            )
-                        target["submissionState"] = "accepted"
-                        state.save()
-                        with _measure_phase(
-                            state,
-                            runtime,
-                            "terminal-local-unit",
-                            host=host,
-                        ):
-                            execution_result = executor.await_completion(
-                                inventory, target_spec, target
-                            )
-                        if (
-                            not isinstance(execution_result, dict)
-                            or execution_result.get("state") != "success"
-                        ):
-                            raise RuntimeError(
-                                "local candidate did not return a successful result"
-                            )
-                        target["localResult"] = execution_result
-                        state.save()
-                        with _measure_phase(
-                            state,
-                            runtime,
-                            "terminal-local-candidate-ack",
-                            host=host,
-                        ):
-                            _verify_local_artifact_ready(
-                                runtime=runtime,
-                                state=state,
-                                inventory=inventory,
-                                run_id=args.run_id,
-                                target_spec=target_spec,
-                                executor=executor,
-                                target=target,
-                            )
-                        _set_host_release_claims(
-                            state, host, target["releaseClaims"]
+                    # Ansible is not killed mid-operation. Verification happens
+                    # before the next cancellation checkpoint.
+                    with _measure_phase(
+                        state, runtime, "terminal-ansible-apply", host=host
+                    ):
+                        adapter.apply(
+                            inventory, host, target["desiredSha"], args.run_id
                         )
-                    else:
-                        # Forward Ansible is not killed mid-operation.
-                        with _measure_phase(
-                            state,
-                            runtime,
-                            "terminal-ansible-apply",
-                            host=host,
-                        ):
-                            executor.apply(
-                                inventory,
-                                target_spec,
-                                target,
-                                args.run_id,
-                                prepared_execution,
-                            )
                 if target.get("activationRequired") is True:
                     activation_mode = target.get("activationMode")
                     if (
@@ -2882,57 +2144,6 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                 }
                 state.save()
             except Exception as error:
-                if (
-                    target.get("effectiveExecutor") == LOCAL_EXECUTOR
-                    and isinstance(target.get("localArtifact"), dict)
-                ):
-                    try:
-                        reconciliation = executor.reconcile(
-                            inventory, target_spec, target
-                        )
-                    except Exception:
-                        reconciliation = {
-                            "state": "unknown",
-                            "unitName": target.get("localUnitName"),
-                            "quiesced": False,
-                            "result": None,
-                        }
-                    target["localReconciliation"] = reconciliation
-                    state.save()
-                    if reconciliation.get("quiesced") is not True:
-                        preserved_claims = validate_release_claims(
-                            target.get("releaseClaims") or {}
-                        )
-                        fleet_state = runtime.fleet_mark_unknown(
-                            host,
-                            role,
-                            target["desiredSha"],
-                            args.run_id,
-                            release_claims=preserved_claims,
-                        )
-                        target["currentSha"] = None
-                        target["evidence"] = "unknown"
-                        target["state"] = "local-reconciliation-required"
-                        target["failure"] = str(error)
-                        target["recoveryRequired"] = "local-unit-quiescence"
-                        target["completedAt"] = runtime.utc_now()
-                        _set_host_status(
-                            state, host, current_sha=None, evidence="unknown"
-                        )
-                        _set_host_release_claims(
-                            state, host, preserved_claims
-                        )
-                        state.payload["fleetGeneration"] = fleet_state[
-                            "generation"
-                        ]
-                        state.payload["phase"] = (
-                            "local-reconciliation-required"
-                        )
-                        interrupted_recovery_pending = True
-                        state.save()
-                        raise RuntimeError(
-                            f"local unit state is unknown for {host}; rollback deferred"
-                        ) from error
                 # Rollback is itself a mutation, so it gets a fresh unknown
                 # transition even if target verification had just succeeded.
                 rollback_pending_claims = _unverified_terminal_release_claims(
@@ -3102,22 +2313,6 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                             "verifiedSha": rollback_observation["currentSha"],
                         }
                         state.save()
-                        if (
-                            target.get("effectiveExecutor") == LOCAL_EXECUTOR
-                            and isinstance(target.get("localArtifact"), dict)
-                        ):
-                            with _measure_phase(
-                                state,
-                                runtime,
-                                "terminal-local-residue-cleanup",
-                                host=host,
-                            ):
-                                target["localResidueCleanup"] = (
-                                    executor.cleanup_residue(
-                                        inventory, target_spec, target
-                                    )
-                                )
-                            state.save()
                         activation_cleanup = adapter.cleanup_activation(
                             inventory, target_spec, target, args.run_id
                         )
@@ -3226,20 +2421,6 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             # and never mutate the healthy terminal again via rollback.
             fleet_promoted = False
             try:
-                if (
-                    target.get("effectiveExecutor") == LOCAL_EXECUTOR
-                    and isinstance(target.get("localArtifact"), dict)
-                ):
-                    with _measure_phase(
-                        state,
-                        runtime,
-                        "terminal-local-residue-cleanup",
-                        host=host,
-                    ):
-                        target["localResidueCleanup"] = executor.cleanup_residue(
-                            inventory, target_spec, target
-                        )
-                    state.save()
                 with _measure_phase(
                     state, runtime, "terminal-activation-cleanup", host=host
                 ):

@@ -7,7 +7,6 @@ import re
 
 DEFAULT_CANARY_HOLD_TIMEOUT = 1800
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$")
-STONEBASE_LOCAL_LIMIT = "raspberrypi5:raspi4-kensaku-stonebase01"
 
 
 class UsageError(RuntimeError):
@@ -45,14 +44,6 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--detach", action="store_true")
     value.add_argument("--full-fleet", action="store_true")
     value.add_argument("--reverify-selected", action="store_true")
-    value.add_argument(
-        "--stonebase-local-ansible-poc",
-        action="store_true",
-        help=(
-            "request the sealed StoneBase-only local Ansible executor; "
-            "requires the exact Pi5 + StoneBase --limit"
-        ),
-    )
     value.add_argument("--follow", action="store_true", help=argparse.SUPPRESS)
     value.add_argument("--foreground", action="store_true", help=argparse.SUPPRESS)
     value.add_argument("--profile", action="store_true", help=argparse.SUPPRESS)
@@ -145,7 +136,6 @@ def normalize_arguments(args: argparse.Namespace) -> argparse.Namespace:
                 ("--skip-canary-hold", args.skip_canary_hold),
                 ("--full-fleet", args.full_fleet),
                 ("--reverify-selected", args.reverify_selected),
-                ("--stonebase-local-ansible-poc", args.stonebase_local_ansible_poc),
                 (
                     "--canary-hold-timeout",
                     args.canary_hold_timeout is not None,
@@ -195,11 +185,6 @@ def normalize_arguments(args: argparse.Namespace) -> argparse.Namespace:
         raise UsageError("--full-fleet cannot be combined with --limit")
     if args.reverify_selected and not args.limit:
         raise UsageError("--reverify-selected requires --limit PATTERN")
-    if args.stonebase_local_ansible_poc and args.limit != STONEBASE_LOCAL_LIMIT:
-        raise UsageError(
-            "--stonebase-local-ansible-poc requires exact --limit "
-            f"{STONEBASE_LOCAL_LIMIT}"
-        )
     if args.print_plan and (args.emergency_override or args.skip_canary_hold):
         raise UsageError("--print-plan cannot be combined with execution override options")
     if args.print_plan and args.canary_hold_timeout != DEFAULT_CANARY_HOLD_TIMEOUT:

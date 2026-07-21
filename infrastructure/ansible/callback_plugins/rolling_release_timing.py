@@ -4,23 +4,10 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import time
 from datetime import datetime, timezone
 
 from ansible.plugins.callback import CallbackBase
-
-
-_BOOTSTRAP_TASK = "Report bounded StoneBase local runtime bootstrap outcome"
-_BOOTSTRAP_MARKER = re.compile(
-    r"^RUNTIME_INSTALL_OBSERVATION:"
-    r"(?P<status>running|changed|current|failed):"
-    r"(?P<phase>[a-z][a-z-]{2,31}):"
-    r"(?P<failureCode>[a-z][a-z-]{2,47}|none):"
-    r"(?P<cleanup>pending|complete|failed):"
-    r"(?P<attemptId>[0-9a-f]{32}):"
-    r"(?P<lockSha256>sha256:[0-9a-f]{64}|none)$"
-)
 
 
 DOCUMENTATION = r"""
@@ -83,23 +70,6 @@ class CallbackModule(CallbackBase):
                 "endedAt": self._utc_now(),
                 "durationMs": round((time.monotonic() - started) * 1000),
             }
-            task_name = task.get_name()
-            message = result._result.get("msg")
-            if task_name.endswith(_BOOTSTRAP_TASK) and isinstance(message, str):
-                match = _BOOTSTRAP_MARKER.fullmatch(message)
-                if match is not None:
-                    observation = match.groupdict()
-                    observation["failureCode"] = (
-                        None
-                        if observation["failureCode"] == "none"
-                        else observation["failureCode"]
-                    )
-                    observation["lockSha256"] = (
-                        None
-                        if observation["lockSha256"] == "none"
-                        else observation["lockSha256"]
-                    )
-                    event["bootstrapObservation"] = observation
             encoded = (json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
             directory = os.path.dirname(self._path)
             os.makedirs(directory, mode=0o700, exist_ok=True)

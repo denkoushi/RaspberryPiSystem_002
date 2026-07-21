@@ -52,15 +52,7 @@
           "/usr/local/bin/ibus-process-owner.sh",
           "/usr/local/bin/clamav-kiosk-scan.sh",
           "/usr/local/bin/rkhunter-kiosk-scan.sh",
-          "/var/spool/cron/crontabs/root",
-          "/usr/local/libexec/raspi-local-ansible-runner",
-          "/usr/local/libexec/raspi_local_execution.py",
-          "/usr/local/libexec/raspi-terminal-ready-probe",
-          "/usr/local/libexec/raspi-terminal-maintenance-probe",
-          "/usr/local/libexec/raspi-local-runtime-install",
-          "/usr/local/libexec/raspi-local-runtime-lock.json",
-          "/usr/local/libexec/raspi-local-requirements-aarch64-py311.lock",
-          "/opt/raspi-local-ansible-runtime/active"
+          "/var/spool/cron/crontabs/root"
         ],
         "healthProbeIds": [
           "display-manager",
@@ -165,14 +157,8 @@
 
     {"match": "exact", "path": ".gitignore", "component": "deploy-control"},
     {"match": "exact", "path": "infrastructure/ansible/ansible-readonly.cfg", "component": "deploy-control"},
-    {"match": "exact", "path": "infrastructure/ansible/files/stonebase-local-ansible/ssh-known-hosts", "component": "local-executor-runtime"},
     {"match": "exact", "path": "scripts/update-all-clients.sh", "component": "deploy-control"},
     {"match": "exact", "path": "scripts/deploy/signage-runtime-proof.py", "component": "signage-role"},
-    {"match": "exact", "path": "scripts/deploy/stonebase-local-ansible-runner.py", "component": "local-executor-runtime"},
-    {"match": "exact", "path": "scripts/deploy/rolling_release/local_execution.py", "component": "local-executor-runtime"},
-    {"match": "exact", "path": "scripts/deploy/terminal-ready-probe.py", "component": "local-executor-runtime"},
-    {"match": "exact", "path": "scripts/deploy/terminal-local-maintenance-probe.py", "component": "local-executor-runtime"},
-    {"match": "exact", "path": "scripts/deploy/stonebase-local-runtime-install.py", "component": "local-executor-runtime"},
     {"match": "prefix", "path": "scripts/deploy/", "component": "deploy-control"},
     {"match": "prefix", "path": "apps/api/prisma/migrations/", "component": "migration"},
     {"match": "prefix", "path": "apps/api/", "component": "server-app"},
@@ -211,7 +197,6 @@
   "componentProfiles": {
     "neutral": [],
     "deploy-control": [],
-    "local-executor-runtime": ["kiosk"],
     "migration": [],
     "server-app": [],
     "nfc-agent": ["kiosk"],
@@ -224,7 +209,6 @@
     "global": ["kiosk", "signage"]
   },
   "componentHostSelectors": {
-    "local-executor-runtime": {"hostVar": "stonebase_local_executor_enabled", "match": "true"},
     "nfc-agent": {"hostVar": "nfc_agent_client_id", "match": "non-empty-string"},
     "barcode-agent": {"hostVar": "barcode_agent_enabled", "match": "true"},
     "torque-agent": {"hostVar": "torque_agent_enabled", "match": "true"}

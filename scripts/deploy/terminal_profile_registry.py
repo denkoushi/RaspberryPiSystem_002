@@ -31,7 +31,6 @@ _ALLOWED_ROLLBACK_PATHS = frozenset(
         "/etc/raspi-status-agent.conf",
         "/etc/udev/rules.d/90-torque-bluetooth-adapter.rules",
         "/etc/udev/rules.d/99-torque-wrench-hid.rules",
-        "/opt/raspi-local-ansible-runtime/active",
         "/usr/bin/chromium-browser",
     }
 )

@@ -1502,34 +1502,6 @@ class TerminalReleasePlaybookTest(unittest.TestCase):
         self.assertEqual(options["env"]["ANSIBLE_PIPELINING"], "true")
         self.assertEqual(options["env"]["ANSIBLE_SSH_PIPELINING"], "true")
 
-    def test_terminal_playbook_accepts_only_a_sealed_runtime_vars_file(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            manifest = Path(temporary) / "ansible-vars.json"
-            manifest.write_text("{}\n", encoding="utf-8")
-            runtime = Runtime("")
-            ansible.playbook(
-                "inventory.yml",
-                "kiosk-a",
-                "a" * 40,
-                "run-123",
-                runtime_artifact_vars=str(manifest),
-                runtime=runtime,
-            )
-            command = runtime.calls[0][0]
-            self.assertEqual(command[-2:], ["-e", f"@{manifest}"])
-
-            symlink = Path(temporary) / "sealed-link.json"
-            symlink.symlink_to(manifest)
-            with self.assertRaisesRegex(ValueError, "vars are unavailable"):
-                ansible.playbook(
-                    "inventory.yml",
-                    "kiosk-a",
-                    "a" * 40,
-                    "run-123",
-                    runtime_artifact_vars=str(symlink),
-                    runtime=Runtime(""),
-                )
-
     def test_terminal_playbook_rejects_legacy_rollback_mode_without_execution(self):
         runtime = Runtime("")
         with self.assertRaisesRegex(ValueError, "sealed manifest"):

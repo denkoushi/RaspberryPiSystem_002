@@ -94,21 +94,6 @@ def assert_repo_revision_is_readable_before_classification() -> None:
             raise AssertionError(f"Git revision contract is missing {register}")
     if "repo_prev_head_result: >-" not in text:
         raise AssertionError("Git command results must remain distinct from normalized SHA facts")
-    local_reset = task_block(
-        text,
-        "Verify incremental bundle and reset existing terminal repository without network",
-    )
-    require(
-        "printf '%s\\n' \"${expected_previous}\"",
-        local_reset,
-        "Local previous SHA result",
-    )
-    selection = task_block(text, "Select repository synchronization result")
-    require(
-        "git_local_result\n        if terminal_release_transport | default('ssh-ansible') == 'local-artifact'",
-        selection,
-        "Local previous SHA selection",
-    )
     require(
         'repo_prev_head: "{{ repo_prev_head_result.stdout | default(\'\') }}"',
         text,

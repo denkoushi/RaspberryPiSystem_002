@@ -88,57 +88,6 @@ class PureModuleBoundaryTest(unittest.TestCase):
                 self.assertEqual(imports & forbidden, set())
 
 
-class ExecutorSelectionTest(unittest.TestCase):
-    def test_local_executor_is_only_effective_after_preflight(self):
-        provisional = PLANNER.executor_selection(
-            preflight_passed=False,
-            requested_executor='stonebase-local-ansible-poc',
-        )
-        self.assertEqual(provisional, {
-            'requestedExecutor': 'stonebase-local-ansible-poc',
-            'provisionalExecutor': 'stonebase-local-ansible-poc',
-            'effectiveExecutor': None,
-            'fallbackReason': None,
-        })
-
-        effective = PLANNER.executor_selection(
-            preflight_passed=True,
-            requested_executor='stonebase-local-ansible-poc',
-        )
-        self.assertEqual(
-            effective['effectiveExecutor'], 'stonebase-local-ansible-poc'
-        )
-        self.assertIsNone(effective['fallbackReason'])
-
-    def test_local_fallback_requires_a_persisted_reason(self):
-        fallback = PLANNER.executor_selection(
-            preflight_passed=True,
-            requested_executor='stonebase-local-ansible-poc',
-            effective_executor='ssh-ansible',
-            fallback_reason='runner-ineligible: runtime mismatch',
-        )
-        self.assertEqual(fallback['effectiveExecutor'], 'ssh-ansible')
-        self.assertEqual(
-            fallback['fallbackReason'],
-            'runner-ineligible: runtime mismatch',
-        )
-        with self.assertRaisesRegex(ValueError, 'requires a reason'):
-            PLANNER.executor_selection(
-                preflight_passed=True,
-                requested_executor='stonebase-local-ansible-poc',
-                effective_executor='ssh-ansible',
-            )
-
-    def test_unproven_selection_cannot_claim_fallback_or_effective_executor(self):
-        with self.assertRaisesRegex(ValueError, 'cannot be effective'):
-            PLANNER.executor_selection(
-                preflight_passed=False,
-                requested_executor='stonebase-local-ansible-poc',
-                effective_executor='ssh-ansible',
-                fallback_reason='runner unavailable',
-            )
-
-
 class ReleasePolicyTest(unittest.TestCase):
     def setUp(self):
         self.inventory = {

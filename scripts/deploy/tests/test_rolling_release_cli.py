@@ -97,36 +97,6 @@ class RollingReleaseCliContractTest(unittest.TestCase):
                 "--reverify-selected",
             )
 
-    def test_local_ansible_poc_requires_exact_pi5_and_stonebase_scope(self):
-        exact_limit = "raspberrypi5:raspi4-kensaku-stonebase01"
-        args = parse(
-            "main",
-            "infrastructure/ansible/inventory.yml",
-            "--limit",
-            exact_limit,
-            "--stonebase-local-ansible-poc",
-        )
-        self.assertTrue(args.stonebase_local_ansible_poc)
-        self.assertEqual(args.limit, exact_limit)
-        for unsafe_limit in (
-            "",
-            "raspi4-kensaku-stonebase01",
-            "raspberrypi5:kiosk",
-            "raspberrypi5:raspi4-fjv60-80",
-            exact_limit + ":raspi4-fjv60-80",
-        ):
-            arguments = [
-                "main",
-                "infrastructure/ansible/inventory.yml",
-                "--stonebase-local-ansible-poc",
-            ]
-            if unsafe_limit:
-                arguments.extend(["--limit", unsafe_limit])
-            with self.subTest(limit=unsafe_limit), self.assertRaisesRegex(
-                UsageError, "requires exact --limit"
-            ):
-                parse(*arguments)
-
     def test_removed_minimization_alias_exits_two(self):
         with contextlib.redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit) as raised:

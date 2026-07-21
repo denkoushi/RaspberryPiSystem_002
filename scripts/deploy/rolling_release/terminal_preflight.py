@@ -22,8 +22,6 @@ import shutil
 import stat
 import subprocess
 import sys
-import tempfile
-import types
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
@@ -32,53 +30,6 @@ EX_OK = 0
 EX_SOFTWARE = 70
 EX_TEMPFAIL = 75
 EX_CONFIG = 78
-LOCAL_RUNNER_FAILURE_CODES = frozenset(
-    {
-        "ready",
-        "configuration-unavailable",
-        "runtime-unavailable",
-        "runtime-lock-mismatch",
-        "bootstrap-observation-unavailable",
-        "storage-unavailable",
-    }
-)
-RUNTIME_BOOTSTRAP_PHASES = frozenset(
-    {
-        "initializing",
-        "host-preflight",
-        "lock-validate",
-        "staging-prepare",
-        "python-download",
-        "python-extract",
-        "python-packages",
-        "collection-download",
-        "collection-install",
-        "runtime-verify",
-        "runtime-publish",
-        "active-link",
-        "cleanup",
-        "complete",
-        "internal",
-    }
-)
-RUNTIME_BOOTSTRAP_FAILURE_CODES = frozenset(
-    {
-        "host-ineligible",
-        "lock-invalid",
-        "requirements-missing",
-        "staging-preparation-failed",
-        "python-download-failed",
-        "python-extract-failed",
-        "python-packages-failed",
-        "collection-download-failed",
-        "collection-install-failed",
-        "runtime-verification-failed",
-        "runtime-publish-conflict",
-        "active-link-failed",
-        "cleanup-failed",
-        "internal-error",
-    }
-)
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 RUN_ID_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$")
 HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$")
@@ -166,15 +117,6 @@ _TORQUE_UNIT_ARTIFACT = _TORQUE_BLUETOOTH_DEPLOYMENT_ARTIFACTS[1]
 _TORQUE_UDEV_ARTIFACT = _TORQUE_BLUETOOTH_DEPLOYMENT_ARTIFACTS[2]
 _TORQUE_TASKS_ARTIFACT = _TORQUE_BLUETOOTH_DEPLOYMENT_ARTIFACTS[3]
 TARGET_INPUT_MAX_BYTES = 3 * 1024 * 1024
-SSH_EXECUTOR = "ssh-ansible"
-LOCAL_EXECUTOR = "stonebase-local-ansible-poc"
-STONEBASE_HOST = "raspi4-kensaku-stonebase01"
-LOCAL_RUNNER = "/usr/local/libexec/raspi-local-ansible-runner"
-LOCAL_TRANSPORT_SOURCE = "scripts/deploy/rolling_release/local_transport_contract.py"
-LOCAL_KNOWN_HOSTS = (
-    "infrastructure/ansible/files/stonebase-local-ansible/ssh-known-hosts"
-)
-MAX_LOCAL_RUNNER_RESULT_BYTES = 64 * 1024
 TARGET_LOADER = (
     "import json,sys;"
     "fail=lambda:(_ for _ in ()).throw(SystemExit(78));"
@@ -244,7 +186,7 @@ def parse_spec(raw: str) -> dict[str, Any]:
         raise TerminalPreflightConfigError("unsupported terminal preflight version")
     mode = payload.get("mode")
     if mode == "orchestrator":
-        required = {
+        expected = {
             "version",
             "mode",
             "project",
@@ -253,9 +195,8 @@ def parse_spec(raw: str) -> dict[str, Any]:
             "expectedServerClientId",
             "targets",
         }
-        if set(payload) not in {frozenset(required), frozenset(required | {"requestedExecutor"})}:
+        if set(payload) != expected:
             raise TerminalPreflightConfigError("orchestrator fields do not match version 1")
-        payload.setdefault("requestedExecutor", SSH_EXECUTOR)
         _safe_path(payload.get("project"), name="project")
         if not isinstance(payload.get("runId"), str) or RUN_ID_RE.fullmatch(payload["runId"]) is None:
             raise TerminalPreflightConfigError("runId is malformed")
@@ -265,23 +206,11 @@ def parse_spec(raw: str) -> dict[str, Any]:
             r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", payload["expectedServerClientId"]
         ) is None:
             raise TerminalPreflightConfigError("expectedServerClientId is malformed")
-        if payload.get("requestedExecutor") not in {SSH_EXECUTOR, LOCAL_EXECUTOR}:
-            raise TerminalPreflightConfigError("requestedExecutor is unsupported")
         targets = payload.get("targets")
         if not isinstance(targets, list) or len(targets) > 100:
             raise TerminalPreflightConfigError("targets must be a bounded list")
         for target in targets:
             _validate_target(target, routing=True)
-            if target.get("requestedExecutor", SSH_EXECUTOR) != payload["requestedExecutor"]:
-                raise TerminalPreflightConfigError(
-                    "orchestrator and target executors do not match"
-                )
-        if payload["requestedExecutor"] == LOCAL_EXECUTOR and (
-            len(targets) != 1 or targets[0]["host"] != STONEBASE_HOST
-        ):
-            raise TerminalPreflightConfigError(
-                "local executor preflight must target StoneBase only"
-            )
         return payload
     if mode == "target":
         _validate_target(payload, routing=False)
@@ -290,7 +219,7 @@ def parse_spec(raw: str) -> dict[str, Any]:
 
 
 def _validate_target(payload: Any, *, routing: bool) -> None:
-    required = {
+    expected = {
         "version",
         "mode",
         "host",
@@ -326,12 +255,7 @@ def _validate_target(payload: Any, *, routing: bool) -> None:
         "inventoryIssues",
         "runtimeManifestContract",
     }
-    optional = {"statusClientId", "requestedExecutor"}
-    if (
-        not isinstance(payload, dict)
-        or not required <= set(payload)
-        or set(payload) - required - optional
-    ):
+    if not isinstance(payload, dict) or set(payload) != expected:
         raise TerminalPreflightConfigError("target fields do not match version 1")
     if payload.get("version") != 1 or payload.get("mode") != "target":
         raise TerminalPreflightConfigError("target mode is malformed")
@@ -352,24 +276,6 @@ def _validate_target(payload: Any, *, routing: bool) -> None:
             raise TerminalPreflightConfigError("address is malformed")
     if payload.get("profile") not in {"kiosk", "signage"}:
         raise TerminalPreflightConfigError("profile is unsupported")
-    requested_executor = payload.get("requestedExecutor", SSH_EXECUTOR)
-    if requested_executor not in {SSH_EXECUTOR, LOCAL_EXECUTOR}:
-        raise TerminalPreflightConfigError("requestedExecutor is unsupported")
-    if (
-        requested_executor == LOCAL_EXECUTOR
-        and (
-            payload["host"] != STONEBASE_HOST
-            or not isinstance(payload.get("statusClientId"), str)
-            or re.fullmatch(
-                r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}",
-                payload["statusClientId"],
-            )
-            is None
-        )
-    ):
-        raise TerminalPreflightConfigError(
-            "local target identity escaped StoneBase"
-        )
     for key in ("torqueUsbVendorId", "torqueUsbProductId"):
         value = payload.get(key)
         if not isinstance(value, str) or (
@@ -531,14 +437,6 @@ def _candidate_artifact_contract(
 
     artifacts = set(_BASE_CANDIDATE_ARTIFACTS)
     for target in targets:
-        if target.get("requestedExecutor", SSH_EXECUTOR) == LOCAL_EXECUTOR:
-            artifacts.add(
-                ("scripts/deploy/rolling_release/local_execution.py", "blob")
-            )
-            artifacts.add((LOCAL_TRANSPORT_SOURCE, "blob"))
-            artifacts.add((LOCAL_KNOWN_HOSTS, "blob"))
-            artifacts.add(("scripts/deploy/terminal_profile_registry.py", "blob"))
-            artifacts.add(("scripts/deploy/terminal-profile-registry.json", "blob"))
         artifacts.update(_PROFILE_CANDIDATE_ARTIFACTS[target["profile"]])
         for flag, required in _FEATURE_CANDIDATE_ARTIFACTS.items():
             if target[flag]:
@@ -649,129 +547,6 @@ def _candidate_helper_source(
             }
         ]
     return source, []
-
-
-def _candidate_registry_component_for(
-    registry_source: str | None,
-    registry_payload: str | None,
-    *,
-    repository_root: Path,
-) -> Callable[[str], str]:
-    """Load the exact candidate path classifier without ambient imports."""
-
-    if (
-        not isinstance(registry_source, str)
-        or not registry_source.strip()
-        or not isinstance(registry_payload, str)
-        or not registry_payload.strip()
-    ):
-        raise TerminalPreflightConfigError(
-            "candidate terminal impact registry is unavailable"
-        )
-    module_name = "_raspi_candidate_terminal_profile_registry"
-    module = types.ModuleType(module_name)
-    module.__file__ = "<candidate-terminal-profile-registry>"
-    sys.modules[module_name] = module
-    try:
-        exec(
-            compile(
-                registry_source,
-                "<candidate-terminal-profile-registry>",
-                "exec",
-            ),
-            module.__dict__,
-        )
-        with tempfile.TemporaryDirectory(prefix="raspi-terminal-registry-") as root:
-            registry_path = Path(root) / "terminal-profile-registry.json"
-            registry_path.write_text(registry_payload, encoding="utf-8")
-            registry = module.load_registry(
-                registry_path,
-                repository_root=repository_root,
-            )
-    except Exception as error:
-        raise TerminalPreflightConfigError(
-            "candidate terminal impact registry failed closed"
-        ) from error
-    finally:
-        sys.modules.pop(module_name, None)
-    return registry.component_for
-
-
-def _candidate_local_transport_options(
-    transport_source: str | None,
-    known_hosts_payload: str | None,
-    *,
-    known_hosts_path: Path,
-) -> tuple[str, ...]:
-    """Seal candidate host trust and return its exact strict SSH options."""
-
-    if (
-        not isinstance(transport_source, str)
-        or not transport_source.strip()
-        or not isinstance(known_hosts_payload, str)
-        or not known_hosts_payload.strip()
-        or len(known_hosts_payload.encode("utf-8")) > 1024
-        or "\x00" in known_hosts_payload
-    ):
-        raise TerminalPreflightConfigError(
-            "candidate Local transport contract is unavailable"
-        )
-    module_name = "_raspi_candidate_local_transport_contract"
-    module = types.ModuleType(module_name)
-    module.__file__ = "<candidate-local-transport-contract>"
-    sys.modules[module_name] = module
-    try:
-        exec(
-            compile(
-                transport_source,
-                "<candidate-local-transport-contract>",
-                "exec",
-            ),
-            module.__dict__,
-        )
-        normalized = module.validate_known_hosts_payload(known_hosts_payload)
-        if normalized != known_hosts_payload:
-            raise ValueError("known-hosts payload is not canonical")
-        descriptor = os.open(
-            known_hosts_path,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-            0o600,
-        )
-        try:
-            payload = normalized.encode("ascii")
-            written = os.write(descriptor, payload)
-            if written != len(payload):
-                raise OSError("short known-hosts write")
-            os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
-        options = tuple(module.ssh_security_options(str(known_hosts_path)))
-        expected = (
-            "-o",
-            "BatchMode=yes",
-            "-o",
-            "StrictHostKeyChecking=yes",
-            "-o",
-            f"UserKnownHostsFile={known_hosts_path}",
-            "-o",
-            "GlobalKnownHostsFile=/dev/null",
-            "-o",
-            "UpdateHostKeys=no",
-            "-o",
-            "HostKeyAlgorithms=ssh-ed25519",
-        )
-        if options != expected:
-            raise ValueError("candidate Local SSH options are not strict")
-        metadata = known_hosts_path.lstat()
-        if not stat.S_ISREG(metadata.st_mode) or stat.S_IMODE(metadata.st_mode) != 0o600:
-            raise OSError("known-hosts staging is not a private regular file")
-        return options
-    except Exception as error:
-        raise TerminalPreflightConfigError(
-            "candidate Local transport contract failed closed"
-        ) from error
-    finally:
-        sys.modules.pop(module_name, None)
 
 
 def _candidate_runtime_manifest_source(
@@ -994,62 +769,6 @@ def _probe_candidate_torque_helper(
     return None
 
 
-def _probe_local_runner(
-    spec: Mapping[str, Any],
-) -> tuple[dict[str, Any] | None, str | None]:
-    """Return only the runner's bounded public runtime observation."""
-
-    if spec.get("requestedExecutor", SSH_EXECUTOR) != LOCAL_EXECUTOR:
-        return None, None
-    required_agents = [
-        name
-        for enabled, name in (
-            (spec["nfcEnabled"], "nfc-agent"),
-            (spec["barcodeEnabled"], "barcode-agent"),
-            (spec["torqueEnabled"], "torque-agent"),
-        )
-        if enabled
-    ]
-    command = [
-        LOCAL_RUNNER,
-        "preflight",
-        "--expected-user",
-        str(spec["user"]),
-        "--expected-client-id",
-        str(spec["statusClientId"]),
-        *[
-            value
-            for agent in required_agents
-            for value in ("--require-agent", agent)
-        ],
-    ]
-    completed = _command(command, timeout=60)
-    if completed.returncode != 0:
-        return None, "runner-command-unavailable"
-    raw = completed.stdout.encode("utf-8")
-    if len(raw) > MAX_LOCAL_RUNNER_RESULT_BYTES:
-        return None, "runner-result-too-large"
-    values: list[dict[str, Any]] = []
-    for line in completed.stdout.splitlines():
-        if not line.strip().startswith("{"):
-            continue
-        try:
-            value = json.loads(
-                line,
-                object_pairs_hook=_reject_duplicate_json_keys,
-                parse_constant=lambda constant: (_ for _ in ()).throw(
-                    ValueError(f"invalid JSON constant: {constant}")
-                ),
-            )
-        except (json.JSONDecodeError, ValueError):
-            continue
-        if isinstance(value, dict):
-            values.append(value)
-    if len(values) != 1:
-        return None, "runner-result-malformed"
-    return values[0], None
-
-
 def _issue(issues: list[dict[str, str]], code: str, message: str) -> None:
     issues.append({"code": code, "message": message})
 
@@ -1135,14 +854,12 @@ def _unit_exists(unit: str) -> bool:
     return result.returncode == 0 and result.stdout.strip() == "loaded"
 
 
-def _check_repository(
-    spec: Mapping[str, Any], issues: list[dict[str, str]]
-) -> str | None:
+def _check_repository(spec: Mapping[str, Any], issues: list[dict[str, str]]) -> None:
     repo = str(spec["repoPath"])
     _require_directory(issues, repo, "repo.directory")
     _require_directory(issues, os.path.join(repo, ".git"), "repo.git")
     if any(issue["code"] in {"repo.directory", "repo.git"} for issue in issues):
-        return None
+        return
     commands = (
         ["/usr/bin/git", "-c", f"safe.directory={repo}", "-C", repo, "diff", "--quiet"],
         ["/usr/bin/git", "-c", f"safe.directory={repo}", "-C", repo, "diff", "--cached", "--quiet"],
@@ -1183,8 +900,6 @@ def _check_repository(
     )
     if head.returncode != 0 or FULL_SHA_RE.fullmatch(head.stdout.strip()) is None:
         _issue(issues, "repo.head", "terminal repository HEAD is not an immutable commit")
-        return None
-    return head.stdout.strip()
 
 
 def _check_network(spec: Mapping[str, Any], issues: list[dict[str, str]]) -> None:
@@ -1476,7 +1191,7 @@ def run_target_probe(
     issues: list[dict[str, str]] = []
     for code in spec["inventoryIssues"]:
         _issue(issues, code, "inventory contract is incomplete or invalid")
-    repository_head = _check_repository(spec, issues)
+    _check_repository(spec, issues)
     _require_unit(issues, "lightdm.service", loaded=True, active=True)
     _check_network(spec, issues)
     _check_resources(spec, issues)
@@ -1590,17 +1305,12 @@ def run_target_probe(
         if torque_helper_issue is not None:
             issues.append(torque_helper_issue)
 
-    local_runner_preflight, local_runner_issue = _probe_local_runner(spec)
-
     return {
         "version": 1,
         "host": spec["host"],
         "profile": spec["profile"],
         "ready": not issues,
         "issues": issues,
-        "repositoryHead": repository_head,
-        "localRunnerPreflight": local_runner_preflight,
-        "localRunnerIssue": local_runner_issue,
     }
 
 
@@ -1644,11 +1354,7 @@ def _source_text() -> str:
     return source_path.read_text(encoding="utf-8")
 
 
-def _remote_probe_command(
-    target: Mapping[str, Any],
-    *,
-    transport_security_options: Sequence[str] | None = None,
-) -> list[str]:
+def _remote_probe_command(target: Mapping[str, Any]) -> list[str]:
     remote = shlex.join(
         [
             "/usr/bin/sudo",
@@ -1658,26 +1364,20 @@ def _remote_probe_command(
             TARGET_LOADER,
         ]
     )
-    if transport_security_options is None:
-        security_options = (
-            "-o",
-            "BatchMode=yes",
-            "-o",
-            "StrictHostKeyChecking=no",
-            "-o",
-            "UserKnownHostsFile=/dev/null",
-        )
-    else:
-        security_options = tuple(transport_security_options)
     return [
         "/usr/bin/ssh",
-        *security_options,
+        "-o",
+        "BatchMode=yes",
         "-o",
         "ConnectTimeout=12",
         "-o",
         "ServerAliveInterval=5",
         "-o",
         "ServerAliveCountMax=2",
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
         "-p",
         str(target["port"]),
         "--",
@@ -1716,270 +1416,6 @@ def _remote_probe_input(
     if len(serialized.encode("utf-8")) > TARGET_INPUT_MAX_BYTES:
         raise TerminalPreflightConfigError("terminal probe input exceeds its safety limit")
     return serialized
-
-
-def _bootstrap_evidence(
-    value: Any, *, runtime_version: str
-) -> dict[str, Any] | None:
-    expected = {
-        "schemaVersion",
-        "attemptId",
-        "status",
-        "phase",
-        "failureCode",
-        "cleanup",
-        "runtimeVersion",
-        "lockSha256",
-        "observedAt",
-    }
-    if not isinstance(value, dict) or set(value) != expected:
-        return None
-    status = value.get("status")
-    phase = value.get("phase")
-    failure_code = value.get("failureCode")
-    cleanup = value.get("cleanup")
-    lock_sha = value.get("lockSha256")
-    if (
-        value.get("schemaVersion") != 1
-        or not isinstance(value.get("attemptId"), str)
-        or re.fullmatch(r"[0-9a-f]{32}", value["attemptId"]) is None
-        or status not in {"running", "changed", "current", "failed"}
-        or phase not in RUNTIME_BOOTSTRAP_PHASES
-        or cleanup not in {"pending", "complete", "failed"}
-        or value.get("runtimeVersion") != runtime_version
-        or not isinstance(value.get("observedAt"), str)
-        or re.fullmatch(
-            r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
-            r"(?:\.[0-9]{1,6})?Z",
-            value["observedAt"],
-        )
-        is None
-        or (
-            lock_sha is not None
-            and (
-                not isinstance(lock_sha, str)
-                or re.fullmatch(r"sha256:[0-9a-f]{64}", lock_sha) is None
-            )
-        )
-    ):
-        return None
-    if status == "failed":
-        if (
-            failure_code not in RUNTIME_BOOTSTRAP_FAILURE_CODES
-            or phase == "complete"
-            or cleanup == "pending"
-        ):
-            return None
-    elif failure_code is not None:
-        return None
-    if status == "running" and cleanup != "pending":
-        return None
-    if status in {"changed", "current"} and (
-        phase != "complete" or cleanup != "complete" or lock_sha is None
-    ):
-        return None
-    return dict(value)
-
-
-def _runtime_evidence(
-    value: Any, *, runtime_identity: str, runtime_version: str
-) -> dict[str, Any] | None:
-    if not isinstance(value, dict) or set(value) != {
-        "ready",
-        "host",
-        "pythonVersion",
-        "ansibleCoreVersion",
-        "collections",
-        "freeBytes",
-        "runnerVersion",
-        "configurationReady",
-        "failureCode",
-        "bootstrapObservation",
-    }:
-        return None
-    collections = value.get("collections")
-    if (
-        not isinstance(collections, dict)
-        or any(
-            not isinstance(name, str)
-            or re.fullmatch(r"[a-z0-9_]+(?:\.[a-z0-9_]+)+", name) is None
-            or not isinstance(version, str)
-            or re.fullmatch(r"[0-9]+(?:\.[0-9]+){1,3}", version) is None
-            for name, version in collections.items()
-        )
-        or len(collections) > 16
-    ):
-        return None
-    python_version = value.get("pythonVersion")
-    ansible_core = value.get("ansibleCoreVersion")
-    runner_version = value.get("runnerVersion")
-    failure_code = value.get("failureCode")
-    bootstrap = _bootstrap_evidence(
-        value.get("bootstrapObservation"), runtime_version=runtime_version
-    )
-    if (
-        value.get("ready") is not True
-        or value.get("host") != STONEBASE_HOST
-        or value.get("configurationReady") is not True
-        or not isinstance(python_version, str)
-        or re.fullmatch(r"[0-9]+(?:\.[0-9]+){1,3}", python_version) is None
-        or not isinstance(ansible_core, str)
-        or re.fullmatch(r"[0-9]+(?:\.[0-9]+){1,3}", ansible_core) is None
-        or type(runner_version) is not int
-        or not 1 <= runner_version <= 100
-        or failure_code != "ready"
-        or failure_code not in LOCAL_RUNNER_FAILURE_CODES
-        or re.fullmatch(r"sha256:[0-9a-f]{64}", runtime_identity) is None
-        or bootstrap is None
-        or bootstrap["status"] not in {"changed", "current"}
-    ):
-        return None
-    return {
-        "identity": runtime_identity,
-        "python": python_version,
-        "ansibleCore": ansible_core,
-        "collections": collections,
-        "runnerVersion": runner_version,
-        "bootstrapObservation": bootstrap,
-    }
-
-
-def _executor_evidence(
-    spec: Mapping[str, Any],
-    results: Sequence[Mapping[str, Any]],
-    local_execution_source: str | None,
-    *,
-    registry_source: str | None = None,
-    registry_payload: str | None = None,
-    component_for: Callable[[str], str] | None = None,
-    selection_run: Callable[..., Any] | None = None,
-) -> dict[str, Any]:
-    requested = str(spec.get("requestedExecutor", SSH_EXECUTOR))
-    if requested == SSH_EXECUTOR:
-        return {
-            "requestedExecutor": SSH_EXECUTOR,
-            "effectiveExecutor": SSH_EXECUTOR,
-            "fallbackReason": None,
-            "runtime": None,
-            "bootstrapObservation": None,
-        }
-    if len(results) != 1 or spec["targets"][0]["host"] != STONEBASE_HOST:
-        raise TerminalPreflightConfigError(
-            "local executor evidence escaped StoneBase"
-        )
-    if not isinstance(local_execution_source, str) or not local_execution_source.strip():
-        raise TerminalPreflightConfigError(
-            "candidate local executor source is unavailable"
-        )
-    if component_for is None:
-        component_for = _candidate_registry_component_for(
-            registry_source,
-            registry_payload,
-            repository_root=Path(str(spec["project"])),
-        )
-
-    target = spec["targets"][0]
-    result = results[0]
-    previous_sha = result.get("repositoryHead")
-    runner_preflight = result.get("localRunnerPreflight")
-    public_contract = {
-        "host": target["host"],
-        "profile": target["profile"],
-        "user": target["user"],
-        "repoPath": target["repoPath"],
-        "nfcEnabled": target["nfcEnabled"],
-        "barcodeEnabled": target["barcodeEnabled"],
-        "torqueEnabled": target["torqueEnabled"],
-        "servicesToRestart": target["servicesToRestart"],
-    }
-    module_name = "_raspi_candidate_local_execution_preflight"
-    module = types.ModuleType(module_name)
-    module.__file__ = "<candidate-local-execution>"
-    sys.modules[module_name] = module
-    try:
-        exec(
-            compile(
-                local_execution_source,
-                "<candidate-local-execution>",
-                "exec",
-            ),
-            module.__dict__,
-        )
-        arguments: dict[str, Any] = {
-            "requested_executor": requested,
-            "project": Path(str(spec["project"])),
-            "previous_sha": previous_sha,
-            "candidate_sha": spec["sha"],
-            "host": target["host"],
-            "public_contract": public_contract,
-            "runner_preflight": runner_preflight,
-            "component_for": component_for,
-        }
-        if selection_run is not None:
-            arguments["run"] = selection_run
-        selection = module.select_executor(**arguments)
-        runtime_identity = module.runtime_claim_identity()
-        runtime_version = module.RUNTIME_VERSION
-    except Exception as error:
-        raise TerminalPreflightConfigError(
-            "candidate local executor selection failed closed"
-        ) from error
-    finally:
-        sys.modules.pop(module_name, None)
-    fallback_reason = selection.fallback_reason
-    if fallback_reason is not None and (
-        not isinstance(fallback_reason, str)
-        or not fallback_reason
-        or len(fallback_reason) > 256
-        or any(
-            ord(character) < 32 or ord(character) == 127
-            for character in fallback_reason
-        )
-    ):
-        raise TerminalPreflightConfigError(
-            "candidate local executor fallback reason is malformed"
-        )
-    runtime = _runtime_evidence(
-        runner_preflight,
-        runtime_identity=runtime_identity,
-        runtime_version=runtime_version,
-    )
-    bootstrap = _bootstrap_evidence(
-        (
-            runner_preflight.get("bootstrapObservation")
-            if isinstance(runner_preflight, dict)
-            else None
-        ),
-        runtime_version=runtime_version,
-    )
-    if selection.effective_executor == LOCAL_EXECUTOR and runtime is None:
-        raise TerminalPreflightConfigError(
-            "effective local executor has no runtime identity proof"
-        )
-    return {
-        "requestedExecutor": selection.requested_executor,
-        "effectiveExecutor": selection.effective_executor,
-        "fallbackReason": fallback_reason,
-        "runtime": runtime,
-        "bootstrapObservation": bootstrap,
-    }
-
-
-def _terminal_report(
-    *,
-    status: str,
-    issues: Sequence[str],
-    executor: Mapping[str, Any],
-    target_count: int,
-) -> dict[str, Any]:
-    return {
-        "version": 1,
-        "probe": "terminal",
-        "status": status,
-        "issues": [value[:256] for value in issues[:100]],
-        "executor": dict(executor),
-        "targetCount": target_count,
-    }
 
 
 def execute_orchestrator(
@@ -2041,187 +1477,67 @@ def execute_orchestrator(
         torque_helper_template_source = torque_bluetooth_sources.get(
             _TORQUE_HELPER_ARTIFACT, ""
         )
-        local_execution_source: str | None = None
-        local_registry_source: str | None = None
-        local_registry_payload: str | None = None
-        local_transport_source: str | None = None
-        local_known_hosts_payload: str | None = None
-        local_transport_options: tuple[str, ...] | None = None
-        local_transport_blocked = False
-        local_transport_staging: tempfile.TemporaryDirectory[str] | None = None
-        if spec.get("requestedExecutor", SSH_EXECUTOR) == LOCAL_EXECUTOR:
-            local_execution_source, local_source_issues = _candidate_helper_source(
-                spec,
-                relative_path="scripts/deploy/rolling_release/local_execution.py",
-                issue_scope="local-execution",
-                run_command=candidate_run_command,
-            )
-            candidate_issues.extend(local_source_issues)
-            local_registry_source, registry_source_issues = _candidate_helper_source(
-                spec,
-                relative_path="scripts/deploy/terminal_profile_registry.py",
-                issue_scope="terminal-impact-registry-source",
-                run_command=candidate_run_command,
-            )
-            candidate_issues.extend(registry_source_issues)
-            local_registry_payload, registry_payload_issues = _candidate_helper_source(
-                spec,
-                relative_path="scripts/deploy/terminal-profile-registry.json",
-                issue_scope="terminal-impact-registry-payload",
-                run_command=candidate_run_command,
-            )
-            candidate_issues.extend(registry_payload_issues)
-            local_transport_source, transport_source_issues = _candidate_helper_source(
-                spec,
-                relative_path=LOCAL_TRANSPORT_SOURCE,
-                issue_scope="local-transport-source",
-                run_command=candidate_run_command,
-            )
-            candidate_issues.extend(transport_source_issues)
-            local_known_hosts_payload, known_hosts_issues = _candidate_helper_source(
-                spec,
-                relative_path=LOCAL_KNOWN_HOSTS,
-                issue_scope="local-known-hosts",
-                run_command=candidate_run_command,
-            )
-            candidate_issues.extend(known_hosts_issues)
-            if not transport_source_issues and not known_hosts_issues:
-                try:
-                    local_transport_staging = tempfile.TemporaryDirectory(
-                        prefix="raspi-local-known-hosts-"
-                    )
-                    local_transport_options = _candidate_local_transport_options(
-                        local_transport_source,
-                        local_known_hosts_payload,
-                        known_hosts_path=(
-                            Path(local_transport_staging.name) / "stonebase-known-hosts"
-                        ),
-                    )
-                except (OSError, TerminalPreflightConfigError):
-                    candidate_issues.append(
-                        {
-                            "code": "candidate.local-transport-contract",
-                            "message": "candidate Local transport trust failed closed",
-                        }
-                    )
-                    local_transport_blocked = True
-            else:
-                local_transport_blocked = True
         results: list[dict[str, Any]] = []
-        try:
-            for target in spec["targets"]:
-                if local_transport_blocked:
-                    results.append(
-                        {
-                            "version": 1,
-                            "host": target["host"],
-                            "profile": target["profile"],
-                            "ready": False,
-                            "issues": [
-                                {
-                                    "code": "transport.pinned-host-key",
-                                    "message": "Local pinned host trust is unavailable",
-                                }
-                            ],
-                        }
-                    )
-                    continue
-                command = _remote_probe_command(
+        for target in spec["targets"]:
+            command = _remote_probe_command(target)
+            try:
+                probe_input = _remote_probe_input(
                     target,
-                    transport_security_options=local_transport_options,
+                    probe_source,
+                    runtime_manifest_source or "",
+                    agent_health_source or "",
+                    torque_helper_template_source or "",
                 )
-                try:
-                    probe_input = _remote_probe_input(
-                        target,
-                        probe_source,
-                        runtime_manifest_source or "",
-                        agent_health_source or "",
-                        torque_helper_template_source or "",
-                    )
-                except TerminalPreflightConfigError as error:
-                    results.append(
-                        {
-                            "version": 1,
-                            "host": target["host"],
-                            "profile": target["profile"],
-                            "ready": False,
-                            "issues": [
-                                {
-                                    "code": "transport.input",
-                                    "message": str(error),
-                                }
-                            ],
-                        }
-                    )
-                    continue
-                try:
-                    completed = run_command(
-                        command, timeout=60, input_text=probe_input
-                    )
-                except (OSError, subprocess.TimeoutExpired) as error:
-                    results.append(
-                        {
-                            "version": 1,
-                            "host": target["host"],
-                            "profile": target["profile"],
-                            "ready": False,
-                            "issues": [
-                                {
-                                    "code": "transport.failed",
-                                    "message": f"terminal preflight transport failed: {type(error).__name__}",
-                                }
-                            ],
-                        }
-                    )
-                    continue
-                output = f"{getattr(completed, 'stdout', '')}\n{getattr(completed, 'stderr', '')}"
-                try:
-                    result = _decode_marker(output)
-                except ValueError as error:
-                    result = {
+            except TerminalPreflightConfigError as error:
+                results.append(
+                    {
                         "version": 1,
                         "host": target["host"],
                         "profile": target["profile"],
                         "ready": False,
-                        "issues": [{"code": "transport.result", "message": str(error)}],
+                        "issues": [
+                            {
+                                "code": "transport.input",
+                                "message": str(error),
+                            }
+                        ],
                     }
-                results.append(result)
-        finally:
-            if local_transport_staging is not None:
-                try:
-                    local_transport_staging.cleanup()
-                except OSError:
-                    candidate_issues.append(
-                        {
-                            "code": "candidate.local-transport-cleanup",
-                            "message": "candidate Local transport staging cleanup failed",
-                        }
-                    )
+                )
+                continue
+            try:
+                completed = run_command(
+                    command, timeout=60, input_text=probe_input
+                )
+            except (OSError, subprocess.TimeoutExpired) as error:
+                results.append(
+                    {
+                        "version": 1,
+                        "host": target["host"],
+                        "profile": target["profile"],
+                        "ready": False,
+                        "issues": [
+                            {
+                                "code": "transport.failed",
+                                "message": f"terminal preflight transport failed: {type(error).__name__}",
+                            }
+                        ],
+                    }
+                )
+                continue
+            output = f"{getattr(completed, 'stdout', '')}\n{getattr(completed, 'stderr', '')}"
+            try:
+                result = _decode_marker(output)
+            except ValueError as error:
+                result = {
+                    "version": 1,
+                    "host": target["host"],
+                    "profile": target["profile"],
+                    "ready": False,
+                    "issues": [{"code": "transport.result", "message": str(error)}],
+                }
+            results.append(result)
 
         failures = [result for result in results if result.get("ready") is not True]
-        try:
-            executor = _executor_evidence(
-                spec,
-                results,
-                local_execution_source,
-                registry_source=local_registry_source,
-                registry_payload=local_registry_payload,
-            )
-        except TerminalPreflightConfigError:
-            candidate_issues.append(
-                {
-                    "code": "candidate.local-executor-selection",
-                    "message": "candidate local executor selection failed closed",
-                }
-            )
-            executor = {
-                "requestedExecutor": spec.get(
-                    "requestedExecutor", SSH_EXECUTOR
-                ),
-                "effectiveExecutor": SSH_EXECUTOR,
-                "fallbackReason": "executor-preflight-unavailable",
-                "runtime": None,
-            }
         if candidate_issues or failures:
             print("[ERROR] aggregate terminal preflight rejected the release:", file=sys.stderr)
             for issue in candidate_issues:
@@ -2248,40 +1564,9 @@ def execute_orchestrator(
                 "no release unit was submitted",
                 file=sys.stderr,
             )
-            report_issues = [
-                f"candidate.{issue.get('code')}" for issue in candidate_issues
-            ]
-            report_issues.extend(
-                f"{result.get('host')}.{issue.get('code')}"
-                for result in failures
-                for issue in (result.get("issues") or [])
-            )
-            print(
-                json.dumps(
-                    _terminal_report(
-                        status="blocked",
-                        issues=report_issues,
-                        executor=executor,
-                        target_count=len(results),
-                    ),
-                    ensure_ascii=True,
-                    sort_keys=True,
-                    separators=(",", ":"),
-                )
-            )
             return EX_CONFIG
         print(
-            json.dumps(
-                _terminal_report(
-                    status="passed",
-                    issues=[],
-                    executor=executor,
-                    target_count=len(results),
-                ),
-                ensure_ascii=True,
-                sort_keys=True,
-                separators=(",", ":"),
-            )
+            f"terminal preflight passed for {len(results)} selected terminal(s) at {spec['sha']}"
         )
         return EX_OK
     finally:

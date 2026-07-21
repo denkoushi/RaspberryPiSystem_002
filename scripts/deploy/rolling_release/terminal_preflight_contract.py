@@ -24,23 +24,10 @@ _UNIT_RE = re.compile(
 _SAFE_HID_LINK_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,126}-event-kbd$")
 _HEX4_RE = re.compile(r"^[0-9a-f]{4}$")
 _MAC_RE = re.compile(r"^[0-9a-f]{2}(?::[0-9a-f]{2}){5}$")
-_CLIENT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
-_EXECUTORS = frozenset({"ssh-ansible", "stonebase-local-ansible-poc"})
-_LOCAL_IGNORED_SSH_COMMON_ARGS = "-o StrictHostKeyChecking=no"
 
 
 class TerminalPreflightContractError(ValueError):
     """A selected inventory host cannot form a safe preflight contract."""
-
-
-def local_direct_ssh_common_args_supported(value: Any) -> bool:
-    """Match the direct Local backend's non-forwarded compatibility policy."""
-
-    return (
-        value is None
-        or value == ""
-        or value == _LOCAL_IGNORED_SSH_COMMON_ARGS
-    )
 
 
 def _boolean(value: Any, *, default: bool = False) -> bool:
@@ -186,15 +173,9 @@ def _restart_units(values: Mapping[str, Any]) -> list[str]:
 
 
 def build_target_contracts(
-    inventory: Mapping[str, Any],
-    targets: Iterable[Mapping[str, str]],
-    *,
-    requested_executor: str = "ssh-ansible",
+    inventory: Mapping[str, Any], targets: Iterable[Mapping[str, str]]
 ) -> list[dict[str, Any]]:
     """Return deterministic, secret-free target contracts in rollout order."""
-
-    if requested_executor not in _EXECUTORS:
-        raise TerminalPreflightContractError("terminal executor is unsupported")
 
     metadata = inventory.get("_meta")
     hostvars = metadata.get("hostvars") if isinstance(metadata, dict) else None
@@ -214,40 +195,12 @@ def build_target_contracts(
         values = hostvars.get(host)
         if not isinstance(values, dict):
             raise TerminalPreflightContractError(f"{host} has no inventory hostvars")
-        status_client_id = target.get("clientId")
-        if requested_executor == "stonebase-local-ansible-poc":
-            if (
-                not isinstance(status_client_id, str)
-                or _CLIENT_ID_RE.fullmatch(status_client_id) is None
-            ):
-                raise TerminalPreflightContractError(
-                    f"{host} has no safe status client identity"
-                )
-            if host != "raspi4-kensaku-stonebase01":
-                raise TerminalPreflightContractError(
-                    "local executor preflight escaped StoneBase"
-                )
         user = values.get("ansible_user")
         if not isinstance(user, str) or _USER_RE.fullmatch(user) is None:
             raise TerminalPreflightContractError(f"{host} has an unsafe ansible_user")
         port = values.get("ansible_port", 22)
         if type(port) is not int or not 1 <= port <= 65535:
             raise TerminalPreflightContractError(f"{host} has an unsafe ansible_port")
-        if requested_executor == "stonebase-local-ansible-poc" and not (
-            local_direct_ssh_common_args_supported(
-                values.get("ansible_ssh_common_args")
-            )
-        ):
-            raise TerminalPreflightContractError(
-                f"{host} has unsupported Local SSH common arguments"
-            )
-        local_key_path = values.get("ansible_ssh_private_key_file")
-        if requested_executor == "stonebase-local-ansible-poc" and (
-            local_key_path is not None and local_key_path != ""
-        ):
-            raise TerminalPreflightContractError(
-                f"{host} has an unsupported Local SSH private-key path"
-            )
 
         nfc_enabled = "nfc_agent_client_id" in values
         barcode_enabled = _boolean(values.get("barcode_agent_enabled"))
@@ -289,7 +242,8 @@ def build_target_contracts(
             profile, runtime=None
         ).runtime_manifest_contract.as_preflight_payload()
 
-        contract = {
+        contracts.append(
+            {
                 "version": 1,
                 "mode": "target",
                 "host": host,
@@ -361,12 +315,5 @@ def build_target_contracts(
                 "inventoryIssues": inventory_issues,
                 "runtimeManifestContract": runtime_manifest_contract,
             }
-        if requested_executor == "stonebase-local-ansible-poc":
-            contract.update(
-                {
-                    "statusClientId": status_client_id,
-                    "requestedExecutor": requested_executor,
-                }
-            )
-        contracts.append(contract)
+        )
     return contracts

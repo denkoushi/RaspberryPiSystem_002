@@ -529,23 +529,6 @@ class RemoteBootstrapTest(unittest.TestCase):
                 bootstrap.parse_spec(json.dumps(invalid))
         self.assertEqual(bootstrap.main(['{}']), bootstrap.EX_CONFIG)
 
-    def test_local_poc_uses_version_three_and_preserves_exact_remote_flag(self):
-        payload = self.spec(
-            limit='raspberrypi5:raspi4-kensaku-stonebase01',
-            stonebase_local_ansible_poc=True,
-        )
-
-        self.assertEqual(payload['version'], 3)
-        self.assertTrue(payload['stonebaseLocalAnsiblePoc'])
-        parsed = bootstrap.parse_spec(json.dumps(payload))
-        self.assertIn('--stonebase-local-ansible-poc', bootstrap.remote_arguments(parsed))
-        with self.assertRaisesRegex(
-            bootstrap.BootstrapConfigError, 'version 3 requires'
-        ):
-            bootstrap.parse_spec(
-                json.dumps({**payload, 'stonebaseLocalAnsiblePoc': False})
-            )
-
     def test_wrong_server_identity_stops_before_every_git_command(self):
         runner = RecordingRun(self.project)
 
