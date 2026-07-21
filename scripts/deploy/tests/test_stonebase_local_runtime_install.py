@@ -81,6 +81,11 @@ class StoneBaseLocalRuntimeInstallTest(unittest.TestCase):
             local_execution.runtime_lock_payload()["pythonDistribution"],
             lock["pythonDistribution"],
         )
+        self.assertEqual(local_execution.runtime_lock_payload()["schemaVersion"], 4)
+        self.assertEqual(
+            local_execution.runtime_lock_payload()["runtimeVersion"],
+            runtime_install.VERSION,
+        )
         self.assertEqual(len(lock["pythonPackages"]), 9)
         self.assertEqual(
             lock["collections"]["community.general"],
@@ -273,6 +278,13 @@ class StoneBaseLocalRuntimeInstallTest(unittest.TestCase):
                 runtime = destination / "python"
                 (runtime / "bin").mkdir(parents=True)
                 (runtime / "bin/python3").write_text("binary", encoding="utf-8")
+                for name in runtime_install.ANSIBLE_CONSOLE_SCRIPTS:
+                    script = runtime / "bin" / name
+                    script.write_text(
+                        f"#!{runtime / 'bin/python3'}\nentry-point\n",
+                        encoding="utf-8",
+                    )
+                    script.chmod(0o755)
                 return runtime
 
             commands: list[list[str]] = []
@@ -284,7 +296,11 @@ class StoneBaseLocalRuntimeInstallTest(unittest.TestCase):
             with (
                 patch.object(runtime_install, "ROOT", root),
                 patch.object(runtime_install, "REQUIREMENTS", requirements),
-                patch.object(runtime_install.os, "geteuid", return_value=0),
+                patch.object(
+                    runtime_install.os,
+                    "geteuid",
+                    side_effect=[0] + [os.geteuid()] * 32,
+                ),
                 patch.object(runtime_install.platform, "machine", return_value="aarch64"),
                 patch.object(
                     runtime_install,
@@ -292,7 +308,9 @@ class StoneBaseLocalRuntimeInstallTest(unittest.TestCase):
                     return_value=(lock, "sha256:" + "d" * 64),
                 ),
                 patch.object(runtime_install, "_validated_cache", return_value=cache),
-                patch.object(runtime_install, "_valid", side_effect=[False, True]),
+                patch.object(
+                    runtime_install, "_valid", side_effect=[False, True, True]
+                ),
                 patch.object(runtime_install, "_extract_python_distribution", side_effect=extract),
                 patch.object(runtime_install, "_run", side_effect=run),
             ):
@@ -314,6 +332,154 @@ class StoneBaseLocalRuntimeInstallTest(unittest.TestCase):
                     for argument in command
                 )
             )
+            destination = root / "versions" / runtime_install.VERSION
+            for name in runtime_install.ANSIBLE_CONSOLE_SCRIPTS:
+                self.assertEqual(
+                    (destination / "bin" / name)
+                    .read_bytes()
+                    .splitlines()[0],
+                    f"#!{destination / 'bin/python3'}".encode("utf-8"),
+                )
+
+    def test_publish_revalidates_relocated_console_scripts_before_activation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "runtime"
+            cache = Path(temporary) / "cache"
+            cache.mkdir()
+            requirements = Path(temporary) / "requirements.lock"
+            requirements.write_text("locked\n", encoding="utf-8")
+            destination = root / "versions" / runtime_install.VERSION
+
+            def extract(_archive: Path, staging: Path) -> Path:
+                runtime = staging / "python"
+                (runtime / "bin").mkdir(parents=True)
+                (runtime / "bin/python3").write_bytes(b"python")
+                for name in runtime_install.ANSIBLE_CONSOLE_SCRIPTS:
+                    script = runtime / "bin" / name
+                    script.write_text(
+                        f"#!{runtime / 'bin/python3'}\nentry-point\n",
+                        encoding="utf-8",
+                    )
+                    script.chmod(0o755)
+                return runtime
+
+            def valid(path: Path) -> bool:
+                if path == destination and not path.exists():
+                    return False
+                if not path.exists():
+                    return False
+                expected = f"#!{path / 'bin/python3'}".encode("utf-8")
+                return all(
+                    (path / "bin" / name).read_bytes().splitlines()[0] == expected
+                    for name in runtime_install.ANSIBLE_CONSOLE_SCRIPTS
+                )
+
+            with (
+                patch.object(runtime_install, "ROOT", root),
+                patch.object(runtime_install, "REQUIREMENTS", requirements),
+                patch.object(
+                    runtime_install.os,
+                    "geteuid",
+                    side_effect=[0] + [os.geteuid()] * 32,
+                ),
+                patch.object(runtime_install.platform, "machine", return_value="aarch64"),
+                patch.object(
+                    runtime_install,
+                    "_load_lock",
+                    return_value=(_small_lock(), "sha256:" + "d" * 64),
+                ),
+                patch.object(runtime_install, "_validated_cache", return_value=cache),
+                patch.object(
+                    runtime_install, "_extract_python_distribution", side_effect=extract
+                ),
+                patch.object(
+                    runtime_install,
+                    "_run",
+                    return_value=subprocess.CompletedProcess([], 0, "", ""),
+                ),
+                patch.object(runtime_install, "_valid", side_effect=valid),
+            ):
+                observation = runtime_install.Observation(Path(temporary) / "state.json")
+                self.assertTrue(runtime_install.install(observation, cache_root=cache))
+
+            self.assertEqual(
+                (root / "active").readlink(),
+                Path("versions") / runtime_install.VERSION,
+            )
+            self.assertTrue(valid(destination))
+
+    def test_publish_rejects_unexpected_console_script_shebang(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "runtime"
+            staging = root / "versions" / ".staging" / "python"
+            destination = root / "versions" / runtime_install.VERSION
+            (staging / "bin").mkdir(parents=True)
+            for name in runtime_install.ANSIBLE_CONSOLE_SCRIPTS:
+                script = staging / "bin" / name
+                interpreter = staging / "bin/python3"
+                if name == "ansible-playbook":
+                    interpreter = Path("/unsealed/python3")
+                script.write_text(f"#!{interpreter}\nentry-point\n", encoding="utf-8")
+                script.chmod(0o755)
+            with patch.object(runtime_install, "ROOT", root):
+                with self.assertRaisesRegex(
+                    runtime_install.InstallError,
+                    "console script interpreter is unexpected",
+                ):
+                    runtime_install._rewrite_console_script_shebangs(
+                        staging, destination
+                    )
+
+    def test_failed_post_publish_validation_removes_unactivated_version(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "runtime"
+            cache = Path(temporary) / "cache"
+            cache.mkdir()
+            requirements = Path(temporary) / "requirements.lock"
+            requirements.write_text("locked\n", encoding="utf-8")
+            destination = root / "versions" / runtime_install.VERSION
+
+            def extract(_archive: Path, staging: Path) -> Path:
+                runtime = staging / "python"
+                (runtime / "bin").mkdir(parents=True)
+                (runtime / "bin/python3").write_bytes(b"python")
+                return runtime
+
+            with (
+                patch.object(runtime_install, "ROOT", root),
+                patch.object(runtime_install, "REQUIREMENTS", requirements),
+                patch.object(runtime_install.os, "geteuid", return_value=0),
+                patch.object(runtime_install.platform, "machine", return_value="aarch64"),
+                patch.object(
+                    runtime_install,
+                    "_load_lock",
+                    return_value=(_small_lock(), "sha256:" + "d" * 64),
+                ),
+                patch.object(runtime_install, "_validated_cache", return_value=cache),
+                patch.object(
+                    runtime_install, "_extract_python_distribution", side_effect=extract
+                ),
+                patch.object(
+                    runtime_install,
+                    "_run",
+                    return_value=subprocess.CompletedProcess([], 0, "", ""),
+                ),
+                patch.object(
+                    runtime_install, "_valid", side_effect=[False, True, False]
+                ),
+                patch.object(
+                    runtime_install, "_rewrite_console_script_shebangs"
+                ),
+            ):
+                observation = runtime_install.Observation(Path(temporary) / "state.json")
+                with self.assertRaises(runtime_install.InstallFailure) as caught:
+                    runtime_install.install(observation, cache_root=cache)
+
+            self.assertEqual(caught.exception.phase, "runtime-verify")
+            self.assertEqual(caught.exception.code, "runtime-verification-failed")
+            self.assertEqual(caught.exception.cleanup, "complete")
+            self.assertFalse(destination.exists())
+            self.assertFalse((root / "active").exists())
 
     def test_offline_pipeline_failures_keep_exact_closed_phase_codes(self) -> None:
         expected = {
@@ -378,6 +544,9 @@ class StoneBaseLocalRuntimeInstallTest(unittest.TestCase):
                         runtime_install, "_validated_cache", return_value=cache
                     ),
                     patch.object(runtime_install, "_valid", side_effect=valid),
+                    patch.object(
+                        runtime_install, "_rewrite_console_script_shebangs"
+                    ),
                     patch.object(
                         runtime_install,
                         "_extract_python_distribution",

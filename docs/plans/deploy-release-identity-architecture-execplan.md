@@ -1,7 +1,7 @@
 ---
 id: deploy-release-identity-architecture
 title: Migrate deployment planning and evidence to typed release claims
-status: runtime-prefetch-route-receipt-fix-local-live-blocked
+status: runtime-r2-shebang-fix-local-live-blocked
 scope: rolling release planner, fleet and run state, Kiosk activation, SSH and Local executors, route contracts
 date: 2026-07-21
 source_of_truth: docs/plans/deploy-release-identity-architecture-execplan.md
@@ -14,11 +14,11 @@ related_docs:
   - docs/decisions/ADR-20260721-deploy-release-identity-and-activation.md
   - docs/plans/deploy-release-identity-readonly-evidence-manifest.md
   - docs/plans/deploy-speed-phase-b-execplan.md
-validation: Milestones 1 through 6 plus runtime-observability and UTF-8 remediations accepted; exact Pi5 plus StoneBase SSH run 20260721-143844-16bae4 succeeded while the optional runtime isolated a maintenance-time python-download failure; controller-side sealed prefetch and terminal-offline installation passed 868 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template parses, the complete deploy aggregate, and an exact 11-member 59,603,748-byte supply-chain fetch without contacting a device
+validation: Milestones 1 through 7 accepted; exact Pi5 plus StoneBase SSH run 20260721-162403-d398c0 succeeded with pre-notice sealed prefetch and offline bootstrap; preflight 20260721-164634-7a7a94 and bounded runtime evidence confirmed stale staging shebangs; the r2 publication fix passed 871 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template parses, and the complete deploy aggregate
 open_items:
-  - complete and merge the controller-side sealed runtime artifact prefetch
+  - review and merge the relocatable r2 runtime publication fix
   - repeat the canonical Pi5 plus StoneBase-only SSH bootstrap from accepted main
-  - keep Local execution blocked until the offline-installed pinned runtime is independently proved
+  - keep Local execution blocked until r2 is independently proved and the Local canary completes
   - keep FJV and every terminal other than StoneBase excluded
 ---
 
@@ -44,15 +44,14 @@ rollback, and Phase B changed-only service/container lifecycle remain. The
 default executor remains SSH Ansible. Local Ansible stays behind its StoneBase
 flag and was rebased only after the typed-claim SSH path was proven and merged.
 
-The evidence gate, related ADR, Milestones 1 through 6, bounded runtime
-observability, and the UTF-8 remediation are accepted. The next accepted-main
-SSH run proved the ordinary route but exposed a second structural liveness gap:
-the optional bootstrap still downloaded its fixed artifacts from external
-services while StoneBase was already in maintenance. Milestone 7 moves those
-downloads and all verification to the Pi5 before notice, then installs from a
-sealed terminal cache with networking disabled. FJV and every other terminal
-stay excluded. Local execution remains blocked until a later serial SSH
-bootstrap proves the exact pinned runtime.
+The evidence gate, related ADR, and Milestones 1 through 7 are accepted. The
+sealed prefetch bootstrap succeeded, but independent preflight exposed a third
+and final runtime-publication gap: pip entry points retained the removed
+staging interpreter path after rename. The exact evidence and root cause live
+only in KB-401. The current `r2` fix binds those scripts to the immutable final
+path and revalidates after publication. FJV and every other terminal stay
+excluded. Local execution remains blocked until accepted-main SSH bootstrap
+and independent preflight prove `r2`.
 
 ## Progress
 
@@ -80,10 +79,13 @@ bootstrap proves the exact pinned runtime.
 - [x] (2026-07-21 15:18Z) Reclassified the repeated runtime failure as a route design problem rather than another endpoint symptom: external Python, wheel, and collection retrieval must not begin after terminal notice or maintenance.
 - [x] (2026-07-21 16:02Z) Completed Milestone 7 offline: Pi5 content-addressed prefetch, exact lock-to-requirements validation, sealed Ansible transfer, terminal `--no-index` install, executable route stage, response-loss/failure tests, and the complete aggregate. All eleven public artifacts matched the fixed 59,603,748-byte lock (`sha256:ecde0bbe80d4065f9bb84ecdc9372c08f0530635af459898e6ac8cb233165e5c`); no device was contacted.
 - [x] (2026-07-21 16:14Z) Published, reviewed, and merged Milestone 7 without weakening the safety contracts.
-- [ ] After accepted-main canonical plan/preflight, run one serial SSH bootstrap and require exact runtime observation before Local execution.
+- [x] (2026-07-21 16:43Z) Completed canonical exact-scope SSH run `20260721-162403-d398c0`: prefetch verified all eleven members before notice, offline bootstrap completed, Pi5 and StoneBase claims verified, cleanup completed, and maintenance cleared.
 - [x] (2026-07-21 16:14Z) Merged Milestone 7 as PR #1055 at accepted main `89a765c5798302c3c6216a5367776ebdaed5d764`; all required CI passed and the one P1 review finding was resolved before merge.
 - [x] (2026-07-21 16:15Z) Canonical exact Pi5 plus StoneBase preflight `20260721-161503-c1d96f` passed and selected effective SSH with `candidate-requires-ssh-configuration`, but exposed that its route receipt omitted `terminal.runtime-artifact-prefetch` because the application did not forward the sealed fallback reason.
-- [ ] Merge the route-receipt binding fix, repeat canonical plan/preflight at its accepted SHA, and do not mutate either device until the receipt selects `stonebase-local-bootstrap-success`.
+- [x] (2026-07-21 16:23Z) Merged the route-receipt fix as PR #1056 at `a4fb0c64b4173232e94b7fda01d387180c1eb04a`; repeated preflight selected `stonebase-local-bootstrap-success` and the prefetch-before-notice route.
+- [x] (2026-07-21 16:47Z) Independent preflight `20260721-164634-7a7a94` refused Local with `runtime-unavailable`; bounded evidence confirmed all ten Ansible console scripts retained the removed staging interpreter shebang after publication.
+- [x] (2026-07-21 17:05Z) Implemented the versioned `r2` publication fix with exact shebang rebinding, post-publication validation, failed-version cleanup, runtime-claim build identity, and the complete 871-test aggregate.
+- [ ] Review and merge `r2`, then run one canonical serial SSH bootstrap and require effective Local with no fallback before the Local canary.
 
 ## Surprises & Discoveries
 
@@ -251,6 +253,13 @@ bootstrap proves the exact pinned runtime.
   staging, so a transient route outage could repeat indefinitely without
   violating any existing digest check.
 
+- Observation: validating a staged Python runtime does not prove a renamed
+  runtime's pip console scripts.
+  Evidence: accepted-main bootstrap completed from the sealed cache, but all
+  ten `ansible*` entry points retained the removed staging interpreter in their
+  absolute shebangs. Python remained executable while the independent runner
+  correctly returned `runtime-unavailable`.
+
 - Observation: coordinator response loss and runtime dependency failure are
   separate boundaries.
   Evidence: during the same run the status observer temporarily lost Pi5
@@ -259,6 +268,15 @@ bootstrap proves the exact pinned runtime.
   machine but does not make terminal-side external downloads safe.
 
 ## Decision Log
+
+- Decision: publish a new immutable `r2` runtime, bind the exact ansible-core
+  console scripts to its final interpreter path, and revalidate after rename
+  before switching `active`.
+  Rationale: pip's standard absolute shebang is correct at installation time
+  but is not relocatable. A new version preserves the old tree for rollback;
+  exact script allowlisting and post-publication validation prevent a desired
+  version or pre-rename success from becoming runtime evidence.
+  Date/Author: 2026-07-21 / Codex.
 
 - Decision: prefetch every fixed Local runtime artifact on Pi5 after terminal
   manifest seal but before notice, and make the terminal installer entirely
@@ -1043,3 +1061,13 @@ without the prefetch stage. Device mutation stayed blocked. The receipt API now
 binds and validates the exact fallback reason; Local-to-SSH without a reason is
 unrepresentable, and aggregate preflight passes the terminal probe reason into
 the same route contract used by the locked coordinator.
+
+Revision note (2026-07-21 17:05Z): PR #1056 and canonical run
+`20260721-162403-d398c0` proved prefetch-before-notice, offline bootstrap, the
+ordinary SSH release, typed evidence, cleanup, and maintenance clear. The next
+independent preflight safely returned `runtime-unavailable`; KB-401 records the
+confirmed absolute staging-shebang cause. The versioned `r2` fix now rewrites
+only the exact ansible-core entry points, revalidates the published path before
+activation, removes an invalid unactivated version, and includes the build
+identity in the runtime claim. The complete 871-test aggregate passed. Local
+execution remains blocked until accepted-main `r2` bootstrap and preflight.

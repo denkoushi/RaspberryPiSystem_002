@@ -21,7 +21,7 @@ from typing import Any
 
 
 ROOT = Path("/opt/raspi-local-ansible-runtime")
-VERSION = "cpython-3.11.15-20260510-ansible-core-2.19.4"
+VERSION = "cpython-3.11.15-20260510-ansible-core-2.19.4-r2"
 OBSERVATION = Path("/var/lib/raspi-release/local-runtime-bootstrap.json")
 LOCK = Path("/usr/local/libexec/raspi-local-runtime-lock.json")
 REQUIREMENTS = Path(
@@ -48,6 +48,19 @@ COLLECTION_SIZE = 2_701_594
 MAX_PYTHON_EXTRACTED_BYTES = 512 * 1024 * 1024
 MAX_PYTHON_ARCHIVE_MEMBERS = 20_000
 ANSIBLE_LOCALE = "C.UTF-8"
+ANSIBLE_CONSOLE_SCRIPTS = (
+    "ansible",
+    "ansible-config",
+    "ansible-console",
+    "ansible-doc",
+    "ansible-galaxy",
+    "ansible-inventory",
+    "ansible-playbook",
+    "ansible-pull",
+    "ansible-test",
+    "ansible-vault",
+)
+MAX_CONSOLE_SCRIPT_BYTES = 64 * 1024
 
 
 class InstallError(RuntimeError):
@@ -415,6 +428,83 @@ def _extract_python_distribution(archive_path: Path, destination: Path) -> Path:
     return runtime
 
 
+def _rewrite_console_script_shebangs(runtime: Path, destination: Path) -> None:
+    """Bind pip entry points to the immutable published runtime path.
+
+    ``pip`` writes an absolute shebang for the interpreter used during the
+    install.  This runtime is assembled in a private staging directory and
+    then renamed, so publishing it without rebinding those entry points makes
+    every Ansible command fail with ``ENOENT``.  Only the exact ansible-core
+    console-script set and the exact staging interpreter are accepted here.
+    """
+
+    expected_destination = ROOT / "versions" / VERSION
+    if destination != expected_destination or runtime == destination:
+        raise InstallError("runtime console script paths are malformed")
+    source_shebang = f"#!{runtime / 'bin/python3'}".encode("utf-8")
+    destination_shebang = f"#!{destination / 'bin/python3'}".encode("utf-8")
+    # Linux reads at most 256 bytes when resolving a script interpreter.
+    if len(destination_shebang) > 255:
+        raise InstallError("published runtime interpreter path is too long")
+    bin_directory = runtime / "bin"
+    bin_metadata = os.lstat(bin_directory)
+    if (
+        not stat.S_ISDIR(bin_metadata.st_mode)
+        or stat.S_ISLNK(bin_metadata.st_mode)
+        or bin_metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(bin_metadata.st_mode) & 0o022
+    ):
+        raise InstallError("runtime console script directory is unsafe")
+    for name in ANSIBLE_CONSOLE_SCRIPTS:
+        path = bin_directory / name
+        metadata = os.lstat(path)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or stat.S_ISLNK(metadata.st_mode)
+            or metadata.st_uid != os.geteuid()
+            or stat.S_IMODE(metadata.st_mode) & 0o022
+            or metadata.st_size <= 0
+            or metadata.st_size > MAX_CONSOLE_SCRIPT_BYTES
+        ):
+            raise InstallError("runtime console script metadata is unsafe")
+        raw = path.read_bytes()
+        first_line, separator, remainder = raw.partition(b"\n")
+        if not separator or first_line != source_shebang:
+            raise InstallError("runtime console script interpreter is unexpected")
+        temporary = bin_directory / f".{name}.{secrets.token_hex(8)}.tmp"
+        descriptor = os.open(
+            temporary,
+            os.O_CREAT
+            | os.O_EXCL
+            | os.O_WRONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            stat.S_IMODE(metadata.st_mode),
+        )
+        replaced = False
+        try:
+            with os.fdopen(descriptor, "wb", closefd=True) as stream:
+                descriptor = -1
+                stream.write(destination_shebang + b"\n" + remainder)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+            replaced = True
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+            if not replaced and temporary.exists():
+                temporary.unlink()
+    directory_descriptor = os.open(
+        bin_directory,
+        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0),
+    )
+    try:
+        os.fsync(directory_descriptor)
+    finally:
+        os.close(directory_descriptor)
+
+
 def _phase(observation: Observation, phase: str, code: str, action: Any) -> Any:
     observation.phase(phase)
     try:
@@ -457,6 +547,7 @@ def install(observation: Observation, *, cache_root: Path | None = None) -> bool
             lambda: Path(tempfile.mkdtemp(prefix=f".{VERSION}.", dir=versions)),
         )
         failure: BaseException | None = None
+        published = False
         try:
             python_archive = cache / lock["pythonDistribution"]["filename"]
             extract_root = temporary_root / "extract"
@@ -521,23 +612,40 @@ def install(observation: Observation, *, cache_root: Path | None = None) -> bool
                 raise InstallFailure(
                     "runtime-verify", "runtime-verification-failed"
                 )
+            _phase(
+                observation,
+                "runtime-verify",
+                "runtime-verification-failed",
+                lambda: _rewrite_console_script_shebangs(temporary, destination),
+            )
             observation.phase("runtime-publish")
-            if destination.exists():
+            if os.path.lexists(destination):
                 raise InstallFailure(
                     "runtime-publish", "runtime-publish-conflict"
                 )
             try:
                 os.replace(temporary, destination)
+                published = True
             except OSError as error:
                 raise InstallFailure(
                     "runtime-publish", "runtime-publish-conflict"
                 ) from error
+            observation.phase("runtime-verify")
+            if not _valid(destination):
+                raise InstallFailure(
+                    "runtime-verify", "runtime-verification-failed"
+                )
         except BaseException as error:
             failure = error
-        if temporary_root.exists():
+        cleanup_paths = [temporary_root]
+        if failure is not None and published:
+            cleanup_paths.append(destination)
+        if any(path.exists() for path in cleanup_paths):
             observation.phase("cleanup")
             try:
-                shutil.rmtree(temporary_root)
+                for path in cleanup_paths:
+                    if path.exists():
+                        shutil.rmtree(path)
             except OSError:
                 if isinstance(failure, InstallFailure):
                     failure.cleanup = "failed"
