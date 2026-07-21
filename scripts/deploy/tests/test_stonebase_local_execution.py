@@ -524,6 +524,11 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
             self.assertIs(options["stdin"], subprocess.DEVNULL)
             self.assertIs(options["stdout"], subprocess.DEVNULL)
             self.assertIs(options["stderr"], subprocess.DEVNULL)
+            self.assertEqual(options["env"]["LANG"], "C.UTF-8")
+            self.assertEqual(options["env"]["LC_ALL"], "C.UTF-8")
+            self.assertEqual(
+                options["env"]["ANSIBLE_CONFIG"], str(stage / "ansible.cfg")
+            )
             persisted = json.loads(
                 (root / "results" / f"{binding.run_id}.json").read_text(
                     encoding="utf-8"
@@ -658,7 +663,10 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
         self.assertNotIn("must not be disclosed", json.dumps(result))
 
     def test_runner_runtime_observation_preserves_exact_python_patch(self) -> None:
+        environments: list[dict[str, str]] = []
+
         def fake_run(command, **_kwargs):
+            environments.append(_kwargs["env"])
             executable = Path(command[0]).name
             if executable == "python3":
                 return subprocess.CompletedProcess(
@@ -686,6 +694,15 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
         )
 
         self.assertEqual(result["pythonVersion"], "3.11.15")
+        self.assertEqual(len(environments), 3)
+        for environment in environments:
+            self.assertEqual(environment["LANG"], "C.UTF-8")
+            self.assertEqual(environment["LC_ALL"], "C.UTF-8")
+            self.assertEqual(environment["PYTHONNOUSERSITE"], "1")
+            self.assertEqual(
+                environment["ANSIBLE_COLLECTIONS_PATH"],
+                "/runtime/collections",
+            )
 
     def test_runner_preserves_failed_bootstrap_and_binds_success_to_lock(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

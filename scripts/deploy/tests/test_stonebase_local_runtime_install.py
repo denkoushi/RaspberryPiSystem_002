@@ -133,6 +133,47 @@ class StoneBaseLocalRuntimeInstallTest(unittest.TestCase):
             runtime.mkdir()
             self.assertFalse(runtime_install._valid(runtime))
 
+    def test_runtime_environment_satisfies_ansible_utf8_locale_contract(self) -> None:
+        runtime = Path("/sealed/runtime")
+        environment = runtime_install._runtime_environment(
+            runtime, collections=True
+        )
+
+        self.assertEqual(environment["LANG"], "C.UTF-8")
+        self.assertEqual(environment["LC_ALL"], "C.UTF-8")
+        self.assertEqual(
+            environment["ANSIBLE_COLLECTIONS_PATH"],
+            "/sealed/runtime/collections",
+        )
+        locale_probe = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import locale; "
+                    "locale.setlocale(locale.LC_ALL, ''); "
+                    "assert locale.getlocale()[1] in {'UTF-8', 'utf8'}"
+                ),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+        self.assertEqual(locale_probe.returncode, 0, locale_probe.stderr)
+        if (
+            importlib.util.find_spec("ansible") is not None
+            and importlib.util.find_spec("ansible.cli") is not None
+        ):
+            ansible_probe = subprocess.run(
+                [sys.executable, "-c", "import ansible.cli"],
+                check=False,
+                capture_output=True,
+                text=True,
+                env=environment,
+            )
+            self.assertEqual(ansible_probe.returncode, 0, ansible_probe.stderr)
+
     def test_python_distribution_accepts_internal_relative_symlink(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -210,6 +251,12 @@ class StoneBaseLocalRuntimeInstallTest(unittest.TestCase):
                 return runtime
 
             completed = subprocess.CompletedProcess([], 0, "", "")
+            runtime_commands: list[tuple[list[str], dict[str, object]]] = []
+
+            def run(arguments, **options):
+                runtime_commands.append((list(arguments), options))
+                return completed
+
             with (
                 patch.object(runtime_install, "ROOT", root),
                 patch.object(runtime_install, "REQUIREMENTS", requirements),
@@ -229,7 +276,7 @@ class StoneBaseLocalRuntimeInstallTest(unittest.TestCase):
                     "_extract_python_distribution",
                     side_effect=extract,
                 ),
-                patch.object(runtime_install, "_run", return_value=completed),
+                patch.object(runtime_install, "_run", side_effect=run),
             ):
                 observation = runtime_install.Observation(
                     Path(temporary) / "bootstrap.json"
@@ -246,6 +293,13 @@ class StoneBaseLocalRuntimeInstallTest(unittest.TestCase):
                     lock["collections"]["community.general"],
                 ],
             )
+            self.assertEqual(len(runtime_commands), 2)
+            collection_command, collection_options = runtime_commands[1]
+            self.assertEqual(collection_command[1:3], ["collection", "install"])
+            self.assertIn("--collections-path", collection_command)
+            self.assertEqual(collection_command[-2:], ["--no-deps", "--force"])
+            self.assertTrue(collection_options["collections"])
+            self.assertIsInstance(collection_options["runtime"], Path)
 
     def test_pipeline_failures_keep_exact_closed_phase_codes(self) -> None:
         expected = {
