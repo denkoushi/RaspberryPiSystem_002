@@ -1,7 +1,7 @@
 ---
 id: KB-401
 title: Deploy release identity, activation, and runtime audit
-status: local-impact-contract-fix-live-no-go
+status: local-canary-ready
 scope: standard Pi5, Kiosk, Signage, SSH Ansible, and experimental StoneBase Local Ansible release route
 date: 2026-07-21
 source_of_truth: true
@@ -17,12 +17,10 @@ related_docs:
   - ../plans/deploy-release-identity-architecture-execplan.md
   - ../plans/deploy-release-identity-readonly-evidence-manifest.md
   - ../plans/deploy-speed-phase-b-execplan.md
-validation: offline source audit, approved read-only evidence receipt f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8, accepted-main SSH runs 20260721-162403-d398c0 and 20260721-172923-90a38b, canonical preflights 20260721-164634-7a7a94, 20260721-174938-0c7310, and 20260721-181758-b97f76, bounded StoneBase runtime evidence, 880 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template parses, and the complete deploy aggregate
+validation: offline source audit, approved read-only evidence receipt f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8, accepted-main SSH runs 20260721-162403-d398c0, 20260721-172923-90a38b, and 20260721-184600-ea3eba, canonical Local-ready preflight 20260721-190514-541561, bounded StoneBase runtime evidence, 880 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template parses, and the complete deploy aggregate
 open_items:
-  - review and merge the shared candidate-impact contract correction
-  - install its explicit Local runtime capability through the expected exact-scope SSH bootstrap
-  - require a later canonical preflight to prove Local runtime, direct transport, and candidate-impact eligibility before another canary
-  - keep Local execution blocked until the exact-scope Local canary completes
+  - merge the neutral evidence-only candidate and complete its exact-scope Local canary
+  - keep Local rollout beyond StoneBase blocked until the canary completes
   - keep FJV and every terminal other than StoneBase outside connection, planning, preflight, and execution
 ---
 
@@ -747,15 +745,34 @@ inherit coordinator-only treatment. This change itself includes terminal
 runtime and inventory contracts and therefore deliberately requires one final
 SSH bootstrap before a later Local-only canary.
 
+PR #1059 merged the shared policy as accepted main
+`0ff5fc2de5a6d14523570bb7f5753076bc3380e3`. Canonical run
+`20260721-184600-ea3eba` selected the expected pre-maintenance SSH fallback
+because the candidate history contained the inventory capability and installed
+runtime contract. Pi5 release and fixed stability monitoring, StoneBase
+manifest sealing, 60-second notice, maintenance ACK, SSH apply, exact ready
+ACK, independent evidence, cleanup, and maintenance clear all succeeded. The
+terminal apply took 223,073 ms; independent evidence took 8,424 ms. FJV and
+every other terminal remained outside connection and execution scope.
+
+Independent preflight `20260721-190514-541561` then selected requested and
+effective `stonebase-local-ansible-poc` with no fallback. It proved Python
+3.11.15, ansible-core 2.19.4, community.general 11.4.1, runner v3, runtime `r2`,
+and identity
+`sha256:f607570e67d68855078486c54bfd5fe467b082e150582deab1862b0413310dd2`.
+The implementation, bootstrap, and eligibility gates are therefore complete;
+the remaining No-Go applies only until one neutral fixed-SHA Local canary
+completes its own artifact, candidate ACK, independent evidence, and cleanup.
+
 ## Go / No-Go decision
 
 Current split decision:
 
 - **Go**: the accepted typed-claim SSH route and offline implementation/review
   of the relocatable `r2` publication fix.
-- **No-Go**: Local execution until the shared impact-contract correction is
-  accepted on `main`, installed through the expected SSH bootstrap, and one
-  later exact-scope Local canary completes.
+- **No-Go**: rollout beyond the single StoneBase Local canary until that canary
+  completes artifact verification, candidate ACK, independent evidence, and
+  cleanup.
 
 Live rollout requires all of the following:
 
