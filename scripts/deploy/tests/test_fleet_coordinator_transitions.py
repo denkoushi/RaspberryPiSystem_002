@@ -48,6 +48,18 @@ def host_record(role, sha):
     return record
 
 
+def verified_claim(sha, authority, *, verification_id=None):
+    return {
+        "expectedIdentity": sha,
+        "observedIdentity": sha,
+        "authority": authority,
+        "verificationId": verification_id,
+        "state": "verified",
+        "observedAt": "2026-07-15T00:00:00Z",
+        "lastRunId": "prior-run",
+    }
+
+
 def decision(host, role, *, current=OLD_SHA, targeted=True, reason="role impact"):
     return {
         "host": host,
@@ -115,6 +127,8 @@ def synthetic_terminal_profile():
         adapter_options=replace(
             base.adapter_options,
             ready_authority="terminal",
+            required_claims=("terminalRepository",),
+            activation_strategy_id=None,
         ),
     )
 
@@ -240,7 +254,9 @@ class FakeRuntime:
         self.fleet["activeRun"] = None
         return self._bump()
 
-    def fleet_mark_unknown(self, host, role, desired_sha, run_id):
+    def fleet_mark_unknown(
+        self, host, role, desired_sha, run_id, *, release_claims=None
+    ):
         self.events.append(f"fleet:unknown:{host}")
         prior = self.fleet["fleet"].get(host) or {}
         prior_current = prior.get("currentSha")
@@ -256,6 +272,11 @@ class FakeRuntime:
             "evidence": "unknown",
             "verifiedAt": None,
             "lastRunId": run_id,
+            **(
+                {"releaseClaims": copy.deepcopy(release_claims)}
+                if release_claims is not None
+                else {}
+            ),
             **(
                 {
                     "activationCapabilities": copy.deepcopy(
@@ -319,6 +340,20 @@ class FakeRuntime:
                         )
                     }
                     if "activationCapabilities" in prior
+                    else {}
+                )
+            ),
+            **(
+                {
+                    "releaseClaims": copy.deepcopy(
+                        observation["releaseClaims"]
+                    )
+                }
+                if isinstance(observation, dict)
+                and "releaseClaims" in observation
+                else (
+                    {"releaseClaims": copy.deepcopy(prior["releaseClaims"])}
+                    if "releaseClaims" in prior
                     else {}
                 )
             ),
@@ -691,6 +726,29 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             hosts=[{"host": "pi5", "role": "server"}, terminal],
             plan={
                 "pi5Required": False,
+                "activationExecutionEnabled": True,
+                "verificationOnlyExecutionEnabled": True,
+                "mutationTargets": [{"host": terminal["host"]}],
+                "activationTargets": [],
+                "verificationTargets": [{"host": terminal["host"]}],
+                "terminalWork": [
+                    {
+                        "host": terminal["host"],
+                        "role": profile.id,
+                        "mutationRequired": True,
+                        "activationRequired": False,
+                        "verificationRequired": True,
+                        "activationStrategyId": None,
+                        "activationMode": None,
+                        "claimRequirements": [
+                            {
+                                "kind": "terminalRepository",
+                                "expectedIdentity": NEW_SHA,
+                                "status": "stale-or-unverified",
+                            }
+                        ],
+                    }
+                ],
                 "hosts": [
                     decision("pi5", "server", targeted=False),
                     decision(terminal["host"], profile.id),
@@ -778,6 +836,25 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         self.assertEqual(target["readyReleaseSha"], NEW_SHA)
         self.assertEqual(target["currentSha"], OLD_SHA)
         self.assertEqual(target["activation"]["state"], "verified")
+        claims = runtime.fleet["fleet"]["kiosk-a"]["releaseClaims"]
+        self.assertEqual(
+            claims["controlPlaneWeb"]["authority"],
+            "kiosk-compiled-web-ready",
+        )
+        self.assertEqual(
+            claims["controlPlaneWeb"]["verificationId"],
+            target["readyVerificationId"],
+        )
+        self.assertEqual(
+            claims["controlPlaneWeb"]["observedIdentity"], NEW_SHA
+        )
+        self.assertEqual(
+            claims["terminalRepository"]["authority"],
+            "terminal-repository-probe",
+        )
+        self.assertEqual(
+            claims["terminalRepository"]["observedIdentity"], OLD_SHA
+        )
         capability = runtime.fleet["fleet"]["kiosk-a"][
             "activationCapabilities"
         ]["kiosk-web-activation-v1"]
@@ -831,6 +908,159 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         self.assertEqual(
             capability["verificationId"], target["rollbackReadyVerificationId"]
         )
+
+    def test_forward_web_claim_survives_typed_kiosk_repository_rollback(self):
+        terminal = {
+            "host": "kiosk-a",
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "kiosk-a-client",
+        }
+        kiosk = host_record("kiosk", OLD_SHA)
+        kiosk["releaseClaims"] = {
+            "controlPlaneWeb": verified_claim(
+                NEW_SHA,
+                "kiosk-compiled-web-ready",
+                verification_id="c" * 32,
+            ),
+            "terminalRepository": verified_claim(
+                OLD_SHA, "terminal-repository-probe"
+            ),
+        }
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", NEW_SHA),
+                terminal["host"]: kiosk,
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan={
+                "pi5Required": False,
+                "activationExecutionEnabled": True,
+                "verificationOnlyExecutionEnabled": True,
+                "mutationTargets": [{"host": terminal["host"]}],
+                "activationTargets": [],
+                "verificationTargets": [{"host": terminal["host"]}],
+                "terminalWork": [
+                    {
+                        "host": terminal["host"],
+                        "role": "kiosk",
+                        "mutationRequired": True,
+                        "activationRequired": False,
+                        "verificationRequired": True,
+                        "activationStrategyId": "kiosk-web-activation-v1",
+                        "activationMode": None,
+                        "claimRequirements": [
+                            {
+                                "kind": "controlPlaneWeb",
+                                "expectedIdentity": NEW_SHA,
+                                "status": "current",
+                            },
+                            {
+                                "kind": "terminalRepository",
+                                "expectedIdentity": NEW_SHA,
+                                "status": "stale-or-unverified",
+                            },
+                        ],
+                    }
+                ],
+                "hosts": [
+                    decision("pi5", "server", current=NEW_SHA, targeted=False),
+                    decision(terminal["host"], "kiosk"),
+                ],
+            },
+            targets=[terminal],
+        )
+        runtime.playbook_error = RuntimeError("candidate apply failed")
+
+        with self.assertRaisesRegex(RuntimeError, "rollout stopped"):
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            )
+
+        record = runtime.fleet["fleet"][terminal["host"]]
+        self.assertEqual(record["desiredSha"], NEW_SHA)
+        self.assertEqual(record["currentSha"], OLD_SHA)
+        claims = record["releaseClaims"]
+        self.assertEqual(set(claims), {"controlPlaneWeb", "terminalRepository"})
+        self.assertEqual(
+            claims["controlPlaneWeb"]["expectedIdentity"], NEW_SHA
+        )
+        self.assertEqual(
+            claims["controlPlaneWeb"]["observedIdentity"], NEW_SHA
+        )
+        self.assertEqual(
+            claims["controlPlaneWeb"]["verificationId"],
+            ROLLBACK_VERIFICATION_ID,
+        )
+        self.assertEqual(
+            claims["terminalRepository"]["expectedIdentity"], OLD_SHA
+        )
+        self.assertEqual(
+            claims["terminalRepository"]["observedIdentity"], OLD_SHA
+        )
+        self.assertTrue(
+            all(claim["state"] == "verified" for claim in claims.values())
+        )
+        target = runtime.states[-1].target(terminal["host"])
+        self.assertEqual(target["rollbackEvidence"], "verified")
+        self.assertIn("maintenanceClearedAt", target)
+
+    def test_typed_requirements_must_equal_the_profile_claim_set(self):
+        terminal = {
+            "host": "kiosk-a",
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "kiosk-a-client",
+        }
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", NEW_SHA),
+                terminal["host"]: host_record("kiosk", OLD_SHA),
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan={
+                "pi5Required": False,
+                "activationExecutionEnabled": True,
+                "verificationOnlyExecutionEnabled": True,
+                "mutationTargets": [{"host": terminal["host"]}],
+                "activationTargets": [],
+                "verificationTargets": [{"host": terminal["host"]}],
+                "terminalWork": [
+                    {
+                        "host": terminal["host"],
+                        "role": "kiosk",
+                        "mutationRequired": True,
+                        "activationRequired": False,
+                        "verificationRequired": True,
+                        "activationStrategyId": "kiosk-web-activation-v1",
+                        "activationMode": None,
+                        "claimRequirements": [
+                            {
+                                "kind": "terminalRepository",
+                                "expectedIdentity": NEW_SHA,
+                                "status": "stale-or-unverified",
+                            }
+                        ],
+                    }
+                ],
+                "hosts": [
+                    decision("pi5", "server", current=NEW_SHA, targeted=False),
+                    decision(terminal["host"], "kiosk"),
+                ],
+            },
+            targets=[terminal],
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "profile contract"):
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            )
+
+        self.assertNotIn("fleet:unknown:kiosk-a", runtime.events)
+        self.assertFalse(
+            any(event.startswith("terminal:") for event in runtime.events)
+        )
+        self.assertFalse(any(event.startswith("status:") for event in runtime.events))
 
     def test_synthetic_profile_runs_through_generic_coordinator(self):
         runtime = self._synthetic_runtime()
@@ -1002,6 +1232,74 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             runtime.events.index("observe:server:None"),
             runtime.events.index(f"fleet:verified:pi5:{OLD_SHA}"),
         )
+
+    def test_signage_seed_promotes_its_complete_repository_claim(self):
+        host = {
+            "host": "signage-a",
+            "role": "signage",
+            "terminalType": "signage",
+            "clientId": "s1",
+        }
+        runtime = FakeRuntime(fleet={}, hosts=[host], plan={}, targets=[])
+
+        state, failures = coordinator._seed_unverified_hosts(
+            [host],
+            runtime._snapshot(),
+            inventory="inventory.yml",
+            run_id="run-1",
+            desired_sha=NEW_SHA,
+            abandoned_run_id=None,
+            runtime=runtime,
+            token=FakeToken(runtime.events),
+        )
+
+        self.assertEqual(failures, [])
+        record = state["fleet"][host["host"]]
+        self.assertEqual(record["evidence"], "verified")
+        claim = record["releaseClaims"]["terminalRepository"]
+        self.assertEqual(claim["authority"], "terminal-repository-probe")
+        self.assertEqual(claim["expectedIdentity"], NEW_SHA)
+        self.assertEqual(claim["observedIdentity"], NEW_SHA)
+        self.assertEqual(claim["state"], "verified")
+
+    def test_kiosk_seed_stays_unknown_until_the_browser_claim_is_verified(self):
+        host = {
+            "host": "kiosk-a",
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "a",
+        }
+        runtime = FakeRuntime(fleet={}, hosts=[host], plan={}, targets=[])
+        runtime.deployed_sha[host["host"]] = OLD_SHA
+
+        state, failures = coordinator._seed_unverified_hosts(
+            [host],
+            runtime._snapshot(),
+            inventory="inventory.yml",
+            run_id="run-1",
+            desired_sha=NEW_SHA,
+            abandoned_run_id=None,
+            runtime=runtime,
+            token=FakeToken(runtime.events),
+        )
+
+        self.assertEqual(failures, [])
+        record = state["fleet"][host["host"]]
+        self.assertEqual(record["evidence"], "unknown")
+        self.assertIsNone(record["currentSha"])
+        self.assertEqual(record["desiredSha"], OLD_SHA)
+        self.assertEqual(set(record["releaseClaims"]), {"terminalRepository"})
+        self.assertEqual(
+            record["releaseClaims"]["terminalRepository"]["state"],
+            "verified",
+        )
+        self.assertEqual(
+            record["releaseClaims"]["terminalRepository"][
+                "expectedIdentity"
+            ],
+            OLD_SHA,
+        )
+        self.assertNotIn("controlPlaneWeb", record["releaseClaims"])
 
     def test_seed_never_repromotes_an_existing_authoritative_record(self):
         stale = host_record("kiosk", OLD_SHA)
@@ -1177,6 +1475,36 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             rollback_manifest("run-1", "kiosk-a"),
         )
 
+    def test_pi5_promotion_requires_both_typed_image_claims_at_candidate_sha(self):
+        plan = {
+            "pi5Required": True,
+            "hosts": [decision("pi5", "server")],
+        }
+        runtime = FakeRuntime(
+            fleet={"pi5": host_record("server", OLD_SHA)},
+            hosts=[{"host": "pi5", "role": "server"}],
+            plan=plan,
+            targets=[],
+        )
+        runtime.observe_pi5_evidence = lambda _expected: {
+            "currentSha": OLD_SHA,
+            "activeSlot": "green",
+            "apiImage": f"api:{OLD_SHA}-aaaaaaaaaaaa",
+            "webImage": f"web:{OLD_SHA}-bbbbbbbbbbbb",
+            "configDigest": "sha256:" + "c" * 64,
+            "migrationDigest": "sha256:" + "d" * 64,
+        }
+
+        with self.assertRaisesRegex(RuntimeError, "not fully verified"):
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            )
+
+        record = runtime.fleet["fleet"]["pi5"]
+        self.assertEqual(record["evidence"], "unknown")
+        self.assertIsNone(record["currentSha"])
+        self.assertNotIn(f"fleet:verified:pi5:{OLD_SHA}", runtime.events)
+
     def test_pipelining_preflight_failure_precedes_every_terminal_mutation(self):
         terminal = {
             "host": "kiosk-a",
@@ -1344,6 +1672,29 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             hosts=[{"host": "pi5", "role": "server"}, terminal],
             plan={
                 "pi5Required": False,
+                "activationExecutionEnabled": True,
+                "verificationOnlyExecutionEnabled": True,
+                "mutationTargets": [{"host": terminal["host"]}],
+                "activationTargets": [],
+                "verificationTargets": [{"host": terminal["host"]}],
+                "terminalWork": [
+                    {
+                        "host": terminal["host"],
+                        "role": "signage",
+                        "mutationRequired": True,
+                        "activationRequired": False,
+                        "verificationRequired": True,
+                        "activationStrategyId": None,
+                        "activationMode": None,
+                        "claimRequirements": [
+                            {
+                                "kind": "terminalRepository",
+                                "expectedIdentity": NEW_SHA,
+                                "status": "stale-or-unverified",
+                            }
+                        ],
+                    }
+                ],
                 "hosts": [
                     decision("pi5", "server", targeted=False),
                     decision("signage-a", "signage"),
@@ -1406,6 +1757,29 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             hosts=[{"host": "pi5", "role": "server"}, terminal],
             plan={
                 "pi5Required": False,
+                "activationExecutionEnabled": True,
+                "verificationOnlyExecutionEnabled": True,
+                "mutationTargets": [{"host": terminal["host"]}],
+                "activationTargets": [],
+                "verificationTargets": [{"host": terminal["host"]}],
+                "terminalWork": [
+                    {
+                        "host": terminal["host"],
+                        "role": "signage",
+                        "mutationRequired": True,
+                        "activationRequired": False,
+                        "verificationRequired": True,
+                        "activationStrategyId": None,
+                        "activationMode": None,
+                        "claimRequirements": [
+                            {
+                                "kind": "terminalRepository",
+                                "expectedIdentity": NEW_SHA,
+                                "status": "stale-or-unverified",
+                            }
+                        ],
+                    }
+                ],
                 "hosts": [
                     decision("pi5", "server", targeted=False),
                     decision("signage-a", "signage"),
@@ -1430,6 +1804,101 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         self.assertLess(refresh, promote)
         target = runtime.states[-1].target("signage-a")
         self.assertTrue(target["signageDisplayProof"]["maintenanceArtifactReplaced"])
+        claim = runtime.fleet["fleet"]["signage-a"]["releaseClaims"][
+            "terminalRepository"
+        ]
+        self.assertEqual(claim["authority"], "signage-ready")
+        self.assertEqual(claim["expectedIdentity"], NEW_SHA)
+        self.assertEqual(claim["observedIdentity"], NEW_SHA)
+        self.assertEqual(claim["verificationId"], FORWARD_VERIFICATION_ID)
+
+    def test_signage_verification_only_skips_ansible_and_promotes_ready_claim(self):
+        terminal = {
+            "host": "signage-a",
+            "role": "signage",
+            "terminalType": "signage",
+            "clientId": "s1",
+        }
+        signage = host_record("signage", NEW_SHA)
+        signage["releaseClaims"] = {
+            "terminalRepository": {
+                **verified_claim(NEW_SHA, "terminal-repository-probe"),
+                "state": "unknown",
+            }
+        }
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", NEW_SHA),
+                terminal["host"]: signage,
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan={
+                "pi5Required": False,
+                "activationExecutionEnabled": True,
+                "verificationOnlyExecutionEnabled": True,
+                "mutationTargets": [],
+                "activationTargets": [],
+                "verificationTargets": [{"host": terminal["host"]}],
+                "terminalWork": [
+                    {
+                        "host": terminal["host"],
+                        "role": "signage",
+                        "mutationRequired": False,
+                        "activationRequired": False,
+                        "verificationRequired": True,
+                        "activationStrategyId": None,
+                        "activationMode": None,
+                        "claimRequirements": [
+                            {
+                                "kind": "terminalRepository",
+                                "expectedIdentity": NEW_SHA,
+                                "status": "stale-or-unverified",
+                            }
+                        ],
+                    }
+                ],
+                "hosts": [
+                    decision("pi5", "server", current=NEW_SHA, targeted=False),
+                    decision(
+                        terminal["host"],
+                        "signage",
+                        current=NEW_SHA,
+                        targeted=False,
+                        reason="typed claim verification",
+                    ),
+                ],
+            },
+            targets=[terminal],
+        )
+        runtime.repository_baseline_result = {
+            "head": NEW_SHA,
+            "repairedLegacyDocs": False,
+            "count": 0,
+        }
+        runtime.deployed_sha[terminal["host"]] = NEW_SHA
+
+        self.assertEqual(
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            ),
+            0,
+        )
+
+        self.assertNotIn("playbook:signage-a", runtime.events)
+        self.assertNotIn(
+            "terminal:pipelining-preflight:signage-a", runtime.events
+        )
+        self.assertIn(
+            "signage:ready-proof:signage-a:run-1:s1:"
+            f"{NEW_SHA}:{FORWARD_VERIFICATION_ID}",
+            runtime.events,
+        )
+        claim = runtime.fleet["fleet"][terminal["host"]]["releaseClaims"][
+            "terminalRepository"
+        ]
+        self.assertEqual(claim["authority"], "signage-ready")
+        self.assertEqual(claim["state"], "verified")
+        self.assertEqual(claim["verificationId"], FORWARD_VERIFICATION_ID)
 
     def test_status_ready_success_cannot_mask_signage_image_key_failure(self):
         terminal = {
@@ -1576,6 +2045,29 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
                 hosts=[{"host": "pi5", "role": "server"}, terminal],
                 plan={
                     "pi5Required": False,
+                    "activationExecutionEnabled": True,
+                    "verificationOnlyExecutionEnabled": True,
+                    "mutationTargets": [{"host": terminal["host"]}],
+                    "activationTargets": [],
+                    "verificationTargets": [{"host": terminal["host"]}],
+                    "terminalWork": [
+                        {
+                            "host": terminal["host"],
+                            "role": "signage",
+                            "mutationRequired": True,
+                            "activationRequired": False,
+                            "verificationRequired": True,
+                            "activationStrategyId": None,
+                            "activationMode": None,
+                            "claimRequirements": [
+                                {
+                                    "kind": "terminalRepository",
+                                    "expectedIdentity": NEW_SHA,
+                                    "status": "stale-or-unverified",
+                                }
+                            ],
+                        }
+                    ],
                     "hosts": [
                         decision("pi5", "server", targeted=False),
                         decision("signage-a", "signage"),
@@ -1689,9 +2181,15 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
                 active = runtime.fleet["activeRun"]
                 self.assertEqual(active is not None, requires_recovery)
                 if not requires_recovery:
+                    recovered = runtime.fleet["fleet"]["signage-a"]
+                    self.assertEqual(recovered["evidence"], "verified")
+                    claim = recovered["releaseClaims"]["terminalRepository"]
+                    self.assertEqual(claim["state"], "verified")
                     self.assertEqual(
-                        runtime.fleet["fleet"]["signage-a"]["evidence"],
-                        "verified",
+                        claim["expectedIdentity"], recovered["currentSha"]
+                    )
+                    self.assertEqual(
+                        claim["observedIdentity"], recovered["currentSha"]
                     )
                     continue
 
@@ -1729,6 +2227,14 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
                 recovered = runtime.fleet["fleet"]["signage-a"]
                 self.assertEqual(recovered["evidence"], "verified")
                 self.assertEqual(recovered["lastRunId"], "recovery-run")
+                claim = recovered["releaseClaims"]["terminalRepository"]
+                self.assertEqual(claim["state"], "verified")
+                self.assertEqual(
+                    claim["expectedIdentity"], recovered["currentSha"]
+                )
+                self.assertEqual(
+                    claim["observedIdentity"], recovered["currentSha"]
+                )
                 self.assertIsNone(runtime.fleet["activeRun"])
 
     def test_terminal_only_kiosk_acks_the_verified_web_release(self):
@@ -2343,6 +2849,34 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         }
         plan = {
             "pi5Required": False,
+            "activationExecutionEnabled": True,
+            "verificationOnlyExecutionEnabled": True,
+            "mutationTargets": [{"host": terminal["host"]}],
+            "activationTargets": [],
+            "verificationTargets": [{"host": terminal["host"]}],
+            "terminalWork": [
+                {
+                    "host": terminal["host"],
+                    "role": "kiosk",
+                    "mutationRequired": True,
+                    "activationRequired": False,
+                    "verificationRequired": True,
+                    "activationStrategyId": "kiosk-web-activation-v1",
+                    "activationMode": None,
+                    "claimRequirements": [
+                        {
+                            "kind": "controlPlaneWeb",
+                            "expectedIdentity": OLD_SHA,
+                            "status": "current",
+                        },
+                        {
+                            "kind": "terminalRepository",
+                            "expectedIdentity": NEW_SHA,
+                            "status": "stale-or-unverified",
+                        },
+                    ],
+                }
+            ],
             "hosts": [
                 decision("pi5", "server", targeted=False),
                 decision("kiosk-a", "kiosk"),
@@ -2366,6 +2900,14 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             )
 
         self.assertEqual(runtime.fleet["fleet"]["kiosk-a"]["evidence"], "unknown")
+        claims = runtime.fleet["fleet"]["kiosk-a"]["releaseClaims"]
+        self.assertEqual(set(claims), {"controlPlaneWeb", "terminalRepository"})
+        self.assertTrue(
+            all(claim["state"] == "unknown" for claim in claims.values())
+        )
+        self.assertTrue(
+            all(claim["observedIdentity"] is None for claim in claims.values())
+        )
         target = runtime.states[-1].target("kiosk-a")
         self.assertIn("host unreachable", target["rollbackEvidence"])
         self.assertNotIn("maintenanceClearedAt", target)
@@ -3192,6 +3734,124 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         recovery = runtime.states[-1].payload["interruptedRecovery"]["targets"][0]
         self.assertEqual(recovery["recovery"], "pre-mutation-live-verified")
         self.assertEqual(recovery["rollbackAuthorityRunId"], "crashed-run")
+
+    def test_premaintenance_recovery_does_not_promote_incomplete_typed_claims(self):
+        terminal = {
+            "host": "kiosk-a",
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "a",
+        }
+        pending_claims = {
+            "controlPlaneWeb": {
+                "expectedIdentity": NEW_SHA,
+                "observedIdentity": None,
+                "authority": "kiosk-compiled-web-ready",
+                "verificationId": None,
+                "state": "unknown",
+                "observedAt": None,
+                "lastRunId": "crashed-run",
+            },
+            "terminalRepository": {
+                "expectedIdentity": NEW_SHA,
+                "observedIdentity": None,
+                "authority": "terminal-repository-probe",
+                "verificationId": None,
+                "state": "unknown",
+                "observedAt": None,
+                "lastRunId": "crashed-run",
+            },
+        }
+        interrupted = host_record("kiosk", OLD_SHA)
+        interrupted.update(
+            {
+                "desiredSha": NEW_SHA,
+                "currentSha": None,
+                "previousSha": OLD_SHA,
+                "evidence": "unknown",
+                "verifiedAt": None,
+                "lastRunId": "crashed-run",
+                "releaseClaims": copy.deepcopy(pending_claims),
+            }
+        )
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", NEW_SHA),
+                terminal["host"]: interrupted,
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan={
+                "pi5Required": False,
+                "hosts": [
+                    decision("pi5", "server", current=NEW_SHA, targeted=False),
+                    decision(
+                        terminal["host"],
+                        "kiosk",
+                        current=OLD_SHA,
+                        targeted=False,
+                    ),
+                ],
+            },
+            targets=[],
+        )
+        runtime.abandoned_run_id = "crashed-run"
+        runtime.deployed_sha[terminal["host"]] = OLD_SHA
+        runtime.prior_runs["crashed-run"] = {
+            "version": 1,
+            "runId": "crashed-run",
+            "state": "running",
+            "targets": [
+                {
+                    **terminal,
+                    "desiredSha": NEW_SHA,
+                    "previousSha": OLD_SHA,
+                    "currentSha": OLD_SHA,
+                    "evidence": "unknown",
+                    "state": "pending",
+                    "mutationRequired": True,
+                    "activationRequired": True,
+                    "verificationRequired": True,
+                    "activationStrategyId": "kiosk-web-activation-v1",
+                    "activationMode": "one-time-service-activation",
+                    "claimRequirements": [
+                        {
+                            "kind": "controlPlaneWeb",
+                            "expectedIdentity": NEW_SHA,
+                            "status": "stale-or-unverified",
+                        },
+                        {
+                            "kind": "terminalRepository",
+                            "expectedIdentity": NEW_SHA,
+                            "status": "stale-or-unverified",
+                        },
+                    ],
+                    "releaseClaims": copy.deepcopy(pending_claims),
+                }
+            ],
+        }
+
+        self.assertEqual(
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            ),
+            0,
+        )
+
+        record = runtime.fleet["fleet"][terminal["host"]]
+        self.assertEqual(record["evidence"], "unknown")
+        self.assertIsNone(record["currentSha"])
+        claims = record["releaseClaims"]
+        self.assertEqual(claims["controlPlaneWeb"]["state"], "unknown")
+        self.assertEqual(
+            claims["terminalRepository"]["expectedIdentity"], OLD_SHA
+        )
+        self.assertEqual(
+            claims["terminalRepository"]["observedIdentity"], OLD_SHA
+        )
+        self.assertEqual(claims["terminalRepository"]["state"], "verified")
+        recovery = runtime.states[-1].payload["interruptedRecovery"]["targets"][0]
+        self.assertEqual(recovery["state"], "recovered-claims-incomplete")
+        self.assertEqual(recovery["recoveryObservedSha"], OLD_SHA)
 
     def test_pre_mutation_interruption_preflights_sealed_runtime_health(self):
         terminal = {

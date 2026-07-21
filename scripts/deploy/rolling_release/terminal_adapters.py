@@ -16,6 +16,7 @@ from .activation import (
     KIOSK_WEB_ACTIVATION_STRATEGY,
     KIOSK_WEB_MIGRATION_MODE,
 )
+from .release_claims import ClaimAuthority, ClaimKind
 
 try:
     from terminal_profile_registry import TerminalProfile
@@ -266,6 +267,16 @@ class TerminalAdapter:
         del inventory, target_spec, target, run_id
         return None
 
+    def ready_claim_kind(self) -> ClaimKind | None:
+        return None
+
+    def release_claim_authority(self, kind: ClaimKind) -> ClaimAuthority:
+        if kind is ClaimKind.TERMINAL_REPOSITORY:
+            return ClaimAuthority.TERMINAL_REPOSITORY_PROBE
+        raise RuntimeError(
+            f"terminal profile {self.profile.id} cannot prove {kind.value}"
+        )
+
     def expected_ready_sha(self, state: Any, target: dict[str, Any]) -> str:
         if self.profile.adapter_options.ready_authority == "terminal":
             expected = target.get("desiredSha")
@@ -512,6 +523,18 @@ class GenericSystemdAdapter(TerminalAdapter):
         {"display-manager", "status-agent", "nfc-agent", "barcode-agent", "torque-agent", "ready-sha"}
     )
 
+    def ready_claim_kind(self) -> ClaimKind | None:
+        if self.profile.adapter_options.ready_authority == "control-plane":
+            return ClaimKind.CONTROL_PLANE_WEB
+        return super().ready_claim_kind()
+
+    def release_claim_authority(self, kind: ClaimKind) -> ClaimAuthority:
+        if kind is ClaimKind.CONTROL_PLANE_WEB and (
+            self.profile.adapter_options.ready_authority == "control-plane"
+        ):
+            return ClaimAuthority.KIOSK_COMPILED_WEB_READY
+        return super().release_claim_authority(kind)
+
     def _requires_kiosk_web_activation(
         self, target: dict[str, Any]
     ) -> bool:
@@ -748,6 +771,14 @@ class SignageSystemdAdapter(TerminalAdapter):
     supported_health_probe_ids = frozenset(
         {"display-manager", "status-agent", "signage-endpoint", "ready-sha"}
     )
+
+    def ready_claim_kind(self) -> ClaimKind | None:
+        return ClaimKind.TERMINAL_REPOSITORY
+
+    def release_claim_authority(self, kind: ClaimKind) -> ClaimAuthority:
+        if kind is ClaimKind.TERMINAL_REPOSITORY:
+            return ClaimAuthority.SIGNAGE_READY
+        return super().release_claim_authority(kind)
 
     def rollback_paths(self, user: str, home: str, run_id: str) -> tuple[str, ...]:
         base = super().rollback_paths(user, home, run_id)

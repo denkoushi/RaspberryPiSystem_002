@@ -269,6 +269,25 @@ class ReleaseClaimTest(unittest.TestCase):
                 }
             )
 
+    def test_explicit_rollback_claim_must_equal_the_sealed_previous_sha(self):
+        rollback = {
+            "role": "signage",
+            "desiredSha": SHA_B,
+            "currentSha": SHA_A,
+            "previousSha": SHA_A,
+            "evidence": "verified",
+            "verifiedAt": OBSERVED_AT,
+            "lastRunId": RUN_ID,
+            "releaseClaims": {"terminalRepository": claim_record()},
+        }
+
+        self.assertEqual(
+            release_claims_for_host(rollback), rollback["releaseClaims"]
+        )
+
+        with self.assertRaisesRegex(ReleaseClaimError, "legacy desiredSha"):
+            release_claims_for_host({**rollback, "previousSha": SHA_B})
+
     def test_legacy_projection_requires_an_explicit_host_role(self):
         self.assertEqual(
             project_legacy_host_claims(

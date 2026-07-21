@@ -61,7 +61,7 @@ the complete offline gate passes and a new exact hardware approval is granted.
 - [x] (2026-07-21 05:03Z) Completed Milestone 1: added the closed typed-claim model, additive fleet/run readers, legacy evidence adapter, and golden compatibility fixtures. Passed the focused 50 tests plus lifecycle contract, 770 deploy Python tests, and the complete offline aggregate including shell, safety, Pi5/Signage lifecycle, isolated PostgreSQL ACK, inventory, and Ansible contracts.
 - [x] (2026-07-21 05:43Z) Completed Milestone 2 offline: split ordered mutation, activation, and verification targets; moved required claims and activation strategy into registry schema v4; exposed provisional/effective SSH executor state; and added preflight/coordinator gates that prevent disabled activation or verification-only work from reaching mutation.
 - [x] (2026-07-21 06:50Z) Completed Milestone 3 offline: added bounded stale-bundle reload, manifest-owned one-time browser activation, deterministic response-loss reconciliation, durable capability proof, and cleanup-before-maintenance-clear while leaving activation execution disabled.
-- [ ] Milestone 4: migrate SSH Kiosk and Signage verification/finalization to typed claims.
+- [x] (2026-07-21 07:37Z) Completed Milestone 4 offline: mapped Kiosk Web and Signage repository ACKs to typed claims, required the complete profile claim set plus independent evidence before promotion, rebound rollback repository claims only to the sealed previous SHA, enabled activation and verification-only execution on the unchanged SSH executor, and passed 808 deploy tests plus the complete aggregate offline gate and 19 focused Web ACK tests.
 - [ ] Milestone 5: rebase the StoneBase Local executor behind its explicit flag.
 - [ ] Milestone 6: replace route metadata coverage with executable transitions and shared fault scenarios.
 - [ ] Obtain a new explicit approval for a Pi5 plus StoneBase-only canary; keep FJV and every other terminal excluded.
@@ -107,6 +107,27 @@ the complete offline gate passes and a new exact hardware approval is granted.
   deliberately permits evolving run payloads. Milestone 1 therefore accepts
   `releaseClaims` as the only optional fleet-host field and validates it only
   inside the existing run `hosts` and `targets` collections.
+
+- Observation: a pre-maintenance interrupted typed run can prove the live
+  repository while its browser claim remains unknown.
+  Evidence: the recovery path previously promoted legacy host evidence after
+  repository observation alone. Milestone 4 now persists the independently
+  observed repository claim but leaves the host `unknown`, forcing the next
+  locked plan to perform the missing activation or verification work.
+
+- Observation: rollback must invalidate claim observations before it mutates
+  the terminal, even when forward verification had already completed.
+  Evidence: retaining a verified forward repository claim through an
+  unverifiable rollback would let a later planner consume stale proof.
+  Milestone 4 clears all required observations before rollback and recreates
+  them only after exact rollback ACK and independent health evidence.
+
+- Observation: first-run seed cannot manufacture a Kiosk Web claim from a
+  repository and systemd probe.
+  Evidence: Signage's required set is fully observable from its repository
+  evidence, while Kiosk additionally requires `controlPlaneWeb`. A first-run
+  Kiosk therefore remains `unknown` with only its observed baseline repository
+  claim until the browser claim is verified.
 
 - Observation: legacy rollback evidence can be verified even when its recorded
   desired SHA differs from the restored current SHA.
@@ -285,6 +306,30 @@ the complete offline gate passes and a new exact hardware approval is granted.
   execute it before the full claim set can commit atomically.
   Date/Author: 2026-07-21 / Codex.
 
+- Decision: enable activation and verification-only execution after Milestone
+  4 while retaining `ssh-ansible` as requested, provisional, and effective
+  executor.
+  Rationale: the coordinator now validates the exact profile-required claim
+  set, binds each ACK to one claim kind, retains independent systemd, identity,
+  Docker, and authenticated health evidence, and refuses final promotion if
+  any claim is missing or stale. This supersedes only the Milestone 3 temporary
+  execution-disable decision; it does not enable Local Ansible.
+  Date/Author: 2026-07-21 / Codex.
+
+- Decision: permit a rollback terminal repository claim to differ from legacy
+  `desiredSha` only when it is exactly observed at the sealed `previousSha`.
+  Rationale: forward Pi5 Web may remain current while terminal Git returns to
+  its bounded previous release. Accepting any other verified drift would turn
+  an arbitrary observed SHA into rollback authority.
+  Date/Author: 2026-07-21 / Codex.
+
+- Decision: keep host evidence unknown when interrupted recovery has only a
+  partial typed claim set.
+  Rationale: repository liveness must not stand in for a browser ACK. The
+  observed repository claim remains durable for planning, but only a later
+  complete verification can promote the host.
+  Date/Author: 2026-07-21 / Codex.
+
 ## Outcomes & Retrospective
 
 The investigation phase produced a coherent state model and rejected the
@@ -298,9 +343,9 @@ strict model and dual-read boundary without routing any production decision
 through the new claims. Golden legacy records read without field insertion,
 mixed records round-trip their claims, corrupt mixed identities fail closed,
 and a typed record produces the same legacy planner decision. Complete
-aggregate validation passed. Milestones 4 through 6 and the separate future
-hardware gate remain open. Live rollout remains No-Go and the current safe
-production state is untouched.
+aggregate validation passed. At that milestone, Milestones 4 through 6 and the
+separate future hardware gate remained open. Live rollout remains No-Go and
+the current safe production state is untouched.
 
 Milestone 2 is complete offline on the same branch. Public and durable plans
 now contain ordered `mutationTargets`, `activationTargets`,
@@ -314,7 +359,7 @@ executor after aggregate probes pass. Disabled activation and verification-
 only work are blocked in both preflight and the coordinator before mutation.
 No activation command, ACK change, timeout change, Local executor, or device
 operation was added. Live rollout and the hardware gate remain No-Go; Milestone
-4 is the next implementation step.
+4 was the next implementation step at that milestone.
 
 Milestone 3 is complete offline on the same branch. A stale Kiosk bundle now
 keeps maintenance visible and performs only bounded, same-origin,
@@ -328,6 +373,25 @@ capability for later steady-state reload. Web-only activation skips terminal
 Ansible, while the existing SSH mutation path remains unchanged. The production
 activation execution flag remains false until typed finalization in Milestone
 4. No device was contacted and live rollout remains No-Go.
+
+Milestone 4 is complete offline on the same branch. Kiosk ready ACK now proves
+only `controlPlaneWeb`, its terminal HEAD probe proves only
+`terminalRepository`, and Signage ready ACK proves only
+`terminalRepository`; existing identity, systemd Result/is-active, Docker
+agent, authenticated endpoint, and display-finalization checks remain
+independent. The coordinator promotes Pi5 or terminal evidence only after the
+exact required claim set is verified. Before rollback it invalidates all
+forward observations, and after rollback it rebinds terminal repository proof
+only to the sealed previous SHA while preserving the forward Web identity.
+Interrupted pre-maintenance recovery with an incomplete claim set remains
+unknown and must re-enter canonical planning. Activation and verification-only
+execution are now enabled, but the requested/provisional/effective executor is
+still `ssh-ansible`; Local execution remains Milestone 5 work on a later fresh
+branch. Validation passed 808 deploy Python tests, 19 focused Kiosk Web tests,
+20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template
+parses, shell/lifecycle/safety contracts, both inventories, and all Ansible
+syntax/check-mode contracts. No device was contacted, no preflight or deploy
+was run, and live rollout remains No-Go.
 
 ## Context and Orientation
 

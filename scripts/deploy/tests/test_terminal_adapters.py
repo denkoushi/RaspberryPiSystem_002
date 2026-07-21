@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from scripts.deploy.terminal_profile_registry import load_registry
 from scripts.deploy.rolling_release import adapter_registry
+from scripts.deploy.rolling_release.release_claims import ClaimKind
 from scripts.deploy.rolling_release.terminal_adapters import (
     GenericSystemdAdapter,
     TerminalAdapter,
@@ -98,6 +99,8 @@ def synthetic_profile(**overrides):
         ),
         health_probe_ids=("display-manager", "status-agent", "ready-sha"),
         ready_authority="terminal",
+        required_claims=("terminalRepository",),
+        activation_strategy_id=None,
     )
     values = {
         "id": "inspection-panel",
@@ -112,6 +115,43 @@ def synthetic_profile(**overrides):
 
 
 class GenericTerminalAdapterTest(unittest.TestCase):
+    def test_ready_authorities_are_typed_without_merging_health_evidence(self):
+        runtime = Runtime()
+        registry = load_registry()
+        kiosk = adapter_registry.adapter_for_profile(
+            "kiosk", runtime=runtime, profile=registry.profile("kiosk")
+        )
+        signage = adapter_registry.adapter_for_profile(
+            "signage", runtime=runtime, profile=registry.profile("signage")
+        )
+        synthetic = GenericSystemdAdapter(synthetic_profile(), runtime)
+
+        self.assertEqual(kiosk.ready_claim_kind(), ClaimKind.CONTROL_PLANE_WEB)
+        self.assertEqual(
+            kiosk.release_claim_authority(ClaimKind.CONTROL_PLANE_WEB).value,
+            "kiosk-compiled-web-ready",
+        )
+        self.assertEqual(
+            kiosk.release_claim_authority(ClaimKind.TERMINAL_REPOSITORY).value,
+            "terminal-repository-probe",
+        )
+        self.assertEqual(
+            signage.ready_claim_kind(), ClaimKind.TERMINAL_REPOSITORY
+        )
+        self.assertEqual(
+            signage.release_claim_authority(
+                ClaimKind.TERMINAL_REPOSITORY
+            ).value,
+            "signage-ready",
+        )
+        self.assertIsNone(synthetic.ready_claim_kind())
+        self.assertEqual(
+            synthetic.release_claim_authority(
+                ClaimKind.TERMINAL_REPOSITORY
+            ).value,
+            "terminal-repository-probe",
+        )
+
     def test_rollback_observation_uses_sealed_runtime_not_future_profile_set(self):
         runtime = Runtime()
         adapter = GenericSystemdAdapter(load_registry().profile("kiosk"), runtime)

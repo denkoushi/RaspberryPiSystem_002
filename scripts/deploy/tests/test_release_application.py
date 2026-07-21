@@ -641,6 +641,71 @@ class ReleaseApplicationTest(unittest.TestCase):
         )
         self.assertIsNone(verification_report["effectiveExecutor"])
 
+    def test_enabled_typed_terminal_work_promotes_only_the_ssh_executor(self):
+        spec = application.LaunchSpec(
+            run_id=RUN_ID,
+            branch="main",
+            sha=SHA,
+            inventory="inventory.yml",
+            expected_server_client_id="raspberrypi5-server",
+            limit="",
+            canary_hold_timeout=1800,
+            emergency_override=False,
+            reason=None,
+            skip_canary_hold=False,
+            full_fleet=False,
+            reverify_selected=False,
+        ).validate()
+        passed = CommandResult(("preflight",), 0)
+        route = CommandResult(
+            ("route-preflight",),
+            0,
+            stdout=(
+                '{"version":1,"probe":"route","status":"passed",'
+                '"proofs":[],"issues":[],"warnings":[],"metrics":{}}'
+            ),
+        )
+        activation = {
+            "host": "kiosk-a",
+            "role": "kiosk",
+            "requiredClaims": ["controlPlaneWeb", "terminalRepository"],
+            "reason": "controlPlaneWeb claim is stale-or-unverified",
+            "activationStrategyId": "kiosk-web-activation-v1",
+        }
+
+        outcome, report = application._preflight_report(
+            spec,
+            migration_result=passed,
+            route_result=route,
+            terminal_result=passed,
+            selected_hosts=["raspberrypi5", "kiosk-a"],
+            selected_target_roles=[
+                {"host": "raspberrypi5", "role": "server"},
+                {"host": "kiosk-a", "role": "kiosk"},
+            ],
+            terminal_count=1,
+            planning_snapshot={
+                "typedTargetPlanningEnabled": True,
+                "activationExecutionEnabled": True,
+                "verificationOnlyExecutionEnabled": True,
+                "mutationTargets": [],
+                "activationTargets": [activation],
+                "verificationTargets": [activation],
+                "terminalWork": [],
+            },
+        )
+
+        self.assertEqual(outcome, 0)
+        self.assertEqual(report["status"], "passed")
+        self.assertEqual(report["requestedExecutor"], "ssh-ansible")
+        self.assertEqual(report["provisionalExecutor"], "ssh-ansible")
+        self.assertEqual(report["effectiveExecutor"], "ssh-ansible")
+        self.assertIsNone(report["fallbackReason"])
+        self.assertEqual(
+            [probe["probe"] for probe in report["probes"]],
+            ["migration", "route", "terminal"],
+        )
+
     def test_aggregate_terminal_preflight_failure_stops_before_unit_submission(self):
         systemd = FakeSystemd(
             terminal_preflight_result=CommandResult(

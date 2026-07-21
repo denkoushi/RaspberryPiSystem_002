@@ -75,8 +75,8 @@ CLEANUP_LOCK_RETRY_TIMEOUT = 30
 CLEANUP_LOCK_RETRY_INTERVAL = 2
 READY_ACK_TIMEOUT_SECONDS = 90
 TYPED_TARGET_PLANNING_ENABLED = True
-ACTIVATION_EXECUTION_ENABLED = False
-VERIFICATION_ONLY_EXECUTION_ENABLED = False
+ACTIVATION_EXECUTION_ENABLED = True
+VERIFICATION_ONLY_EXECUTION_ENABLED = True
 _ACTIVE_CANCELLATION_TOKEN: CancellationToken | None = None
 _ACTIVE_FLEET_LEASE: FleetLease | None = None
 _PREVIOUS_SHA_UNSET = object()
@@ -263,9 +263,19 @@ def fleet_begin_run(run_id: str, desired_sha: str, inventory: str) -> tuple[dict
     return state, abandoned
 
 
-def fleet_mark_unknown(host: str, role: str, desired_sha: str, run_id: str) -> dict[str, Any]:
+def fleet_mark_unknown(
+    host: str,
+    role: str,
+    desired_sha: str,
+    run_id: str,
+    *,
+    release_claims: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     store = _fleet_store()
     state = store.read_only()
+    options: dict[str, Any] = {}
+    if release_claims is not None:
+        options["release_claims"] = release_claims
     return store.mark_host_unknown(
         host,
         role,
@@ -273,6 +283,7 @@ def fleet_mark_unknown(host: str, role: str, desired_sha: str, run_id: str) -> d
         run_id,
         expected_generation=state["generation"],
         lease=_fleet_lease(),
+        **options,
     )
 
 
@@ -302,6 +313,8 @@ def fleet_mark_verified(
         options["previous_sha"] = previous_sha
     if "activationCapabilities" in observed:
         options["activation_capabilities"] = observed["activationCapabilities"]
+    if "releaseClaims" in observed:
+        options["release_claims"] = observed["releaseClaims"]
     return store.mark_host_verified(
         host,
         role,

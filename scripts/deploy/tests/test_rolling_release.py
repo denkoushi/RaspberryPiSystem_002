@@ -2134,11 +2134,14 @@ class PrintPlanShadowTest(unittest.TestCase):
         self.assertEqual(plan['sha'], sha)
         self.assertEqual(plan['classification'], classification)
         self.assertTrue(plan['pi5Required'])
-        self.assertEqual(plan['terminalTargets'], [])
+        self.assertEqual(
+            [target['host'] for target in plan['terminalTargets']],
+            ['kiosk-canary', 'kiosk-b'],
+        )
         self.assertTrue(plan['canaryHold'])
         self.assertTrue(plan['typedTargetPlanningEnabled'])
-        self.assertFalse(plan['activationExecutionEnabled'])
-        self.assertFalse(plan['verificationOnlyExecutionEnabled'])
+        self.assertTrue(plan['activationExecutionEnabled'])
+        self.assertTrue(plan['verificationOnlyExecutionEnabled'])
         self.assertEqual(
             [target['host'] for target in plan['mutationTargets']],
             ['raspberrypi5'],

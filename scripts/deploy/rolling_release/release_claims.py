@@ -1,10 +1,10 @@
 """Closed, strictly validated release identities for durable deploy state.
 
 Legacy fleet fields remain the mutation-decision authority during the staged
-migration.  This module validates typed records and projects independently
-verified legacy evidence; the planner may read those claims to model future
-activation and verification work, while execution, ACK, and finalization stay
-on the existing compatibility path and typed stages remain disabled.
+migration.  This module validates typed records, projects independently
+verified legacy evidence, and keeps each ACK authority bound to one identity
+kind.  SSH finalization may persist a complete claim set while older records
+continue through the compatibility adapter.
 """
 
 from __future__ import annotations
@@ -367,11 +367,23 @@ def validate_host_claim_compatibility(
         claim = claims.get(kind.value)
         if claim is None:
             continue
-        if claim.get("expectedIdentity") != record.get("desiredSha"):
+        expected_identity = claim.get("expectedIdentity")
+        legacy_desired = record.get("desiredSha")
+        rollback_expected = (
+            role != "server"
+            and kind is ClaimKind.TERMINAL_REPOSITORY
+            and claim.get("observedIdentity") == expected_identity
+            and expected_identity == record.get("previousSha")
+        )
+        if expected_identity != legacy_desired and not rollback_expected:
             raise ReleaseClaimError(
                 f"{kind.value}.expectedIdentity disagrees with legacy desiredSha"
             )
-        if claim.get("observedIdentity") != record.get("currentSha"):
+        legacy_current = record.get("currentSha")
+        if (
+            legacy_current is not None
+            and claim.get("observedIdentity") != legacy_current
+        ):
             raise ReleaseClaimError(
                 f"{kind.value}.observedIdentity disagrees with legacy currentSha"
             )

@@ -642,6 +642,7 @@ class FleetStateStore:
         run_id: str,
         *,
         expected_generation: int,
+        release_claims: Mapping[str, Any] | object = _UNSET,
         lease: FleetLease | None = None,
     ) -> dict[str, Any]:
         if not isinstance(host, str) or not HOST_RE.fullmatch(host):
@@ -652,6 +653,10 @@ class FleetStateStore:
             raise ValueError("desired SHA must be a full lowercase Git SHA")
         if not isinstance(run_id, str) or not RUN_ID_RE.fullmatch(run_id):
             raise ValueError("run ID is malformed")
+        if release_claims is not _UNSET:
+            release_claims = validate_release_claims(
+                release_claims, field=f"fleet.{host}.releaseClaims"
+            )
 
         def unknown(state: dict[str, Any]) -> None:
             self._require_active_run(state, run_id)
@@ -683,6 +688,8 @@ class FleetStateStore:
                         "migrationDigest": None,
                     }
                 )
+            if release_claims is not _UNSET:
+                record["releaseClaims"] = copy.deepcopy(release_claims)
             if (
                 isinstance(previous_record, dict)
                 and previous_record.get("role") == role
@@ -711,6 +718,7 @@ class FleetStateStore:
         web_image: str | None = None,
         config_digest: str | None = None,
         migration_digest: str | None = None,
+        release_claims: Mapping[str, Any] | object = _UNSET,
         activation_capabilities: Mapping[str, Any] | object = _UNSET,
         lease: FleetLease | None = None,
     ) -> dict[str, Any]:
@@ -750,6 +758,10 @@ class FleetStateStore:
                 role=role,
                 field=f"fleet.{host}.activationCapabilities",
             )
+        if release_claims is not _UNSET:
+            release_claims = validate_release_claims(
+                release_claims, field=f"fleet.{host}.releaseClaims"
+            )
 
         timestamp = self._clock() if verified_at is None else verified_at
         supplied_record: dict[str, Any] = {
@@ -775,6 +787,8 @@ class FleetStateStore:
             supplied_record["activationCapabilities"] = copy.deepcopy(
                 activation_capabilities
             )
+        if release_claims is not _UNSET:
+            supplied_record["releaseClaims"] = copy.deepcopy(release_claims)
         # Validate every supplied observation before the lock path can be created.
         _validate_host_record(host, supplied_record)
 
@@ -786,6 +800,13 @@ class FleetStateStore:
                 if isinstance(prior, dict) and prior.get("role") == role:
                     record["previousSha"] = prior.get("currentSha") or prior.get("previousSha")
             prior = state["fleet"].get(host)
+            if (
+                release_claims is _UNSET
+                and isinstance(prior, dict)
+                and prior.get("role") == role
+                and "releaseClaims" in prior
+            ):
+                record["releaseClaims"] = copy.deepcopy(prior["releaseClaims"])
             if (
                 activation_capabilities is _UNSET
                 and isinstance(prior, dict)
