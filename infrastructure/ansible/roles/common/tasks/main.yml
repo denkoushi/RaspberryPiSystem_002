@@ -4,6 +4,8 @@
     that:
       - terminal_release_mode | default('full') in ['full', 'release-only']
       - terminal_release_mode | default('full') != 'release-only' or 'server' not in group_names
+      - terminal_release_transport | default('ssh-ansible') in ['ssh-ansible', 'local-artifact']
+      - terminal_release_transport | default('ssh-ansible') != 'local-artifact' or terminal_release_mode | default('full') == 'release-only'
     fail_msg: >-
       terminal_release_mode must be full for provisioning/server convergence or
       release-only for one coordinator-owned terminal release.
@@ -110,7 +112,7 @@
     set -euo pipefail
     safe_home="$(/usr/bin/getent passwd {{ ansible_user | quote }} | /usr/bin/cut -d: -f6)"
     [[ "${safe_home}" == /* && -d "${safe_home}" ]]
-    ssh_command={{ git_environment.GIT_SSH_COMMAND | default('') | quote }}
+    ssh_command={{ (git_environment | default({})).get('GIT_SSH_COMMAND', '') | quote }}
     git() {
       local -a safe_environment=(
         "PATH=/usr/bin:/bin"
@@ -163,7 +165,66 @@
   become_user: "{{ ansible_user }}"
   register: repo_prev_head_release_result
   changed_when: false
-  when: terminal_release_mode | default('full') == 'release-only'
+  when:
+    - terminal_release_mode | default('full') == 'release-only'
+    - terminal_release_transport | default('ssh-ansible') == 'ssh-ansible'
+
+- name: Verify incremental bundle and reset existing terminal repository without network
+  ansible.builtin.shell: |
+    set -euo pipefail
+    safe_home="$(/usr/bin/getent passwd {{ ansible_user | quote }} | /usr/bin/cut -d: -f6)"
+    [[ "${safe_home}" == /* && -d "${safe_home}" ]]
+    git() {
+      /usr/bin/env -i \
+        PATH=/usr/bin:/bin \
+        HOME="${safe_home}" \
+        LANG=C LC_ALL=C \
+        GIT_CONFIG_NOSYSTEM=1 \
+        GIT_CONFIG_GLOBAL=/dev/null \
+        GIT_ATTR_NOSYSTEM=1 \
+        GIT_TERMINAL_PROMPT=0 \
+        GIT_OPTIONAL_LOCKS=0 \
+        /usr/bin/git \
+          -c safe.directory={{ repo_path | quote }} \
+          -c core.fsmonitor=false \
+          -c core.ignoreStat=false \
+          -c core.trustctime=true \
+          -c core.hooksPath=/dev/null \
+          -c maintenance.auto=false \
+          "$@"
+    }
+    cd {{ repo_path | quote }}
+    expected_previous={{ local_execution_previous_sha | quote }}
+    target={{ repo_version | quote }}
+    [[ "${expected_previous}" =~ ^[0-9a-f]{40}$ ]]
+    [[ "${target}" =~ ^[0-9a-f]{40}$ ]]
+    [[ "$(git rev-parse --verify HEAD)" == "${expected_previous}" ]]
+    git diff --quiet
+    git diff --cached --quiet
+    test -z "$(git status --porcelain --untracked-files=all)"
+    if [[ "${expected_previous}" == "${target}" ]]; then
+      [[ ! -e {{ local_execution_bundle_path | quote }} ]]
+    else
+      [[ -f {{ local_execution_bundle_path | quote }} && ! -L {{ local_execution_bundle_path | quote }} ]]
+      git bundle verify {{ local_execution_bundle_path | quote }} >/dev/null
+      [[ "$(git bundle list-heads {{ local_execution_bundle_path | quote }})" == "${target} HEAD" ]]
+      git fetch --no-tags {{ local_execution_bundle_path | quote }} HEAD
+      [[ "$(git rev-parse --verify FETCH_HEAD^{commit})" == "${target}" ]]
+      git cat-file -e "${target}^{commit}"
+      git reset --hard "${target}"
+    fi
+    [[ "$(git rev-parse --verify HEAD)" == "${target}" ]]
+    git diff --quiet
+    git diff --cached --quiet
+    test -z "$(git status --porcelain --untracked-files=all)"
+    printf '%s\n' "${expected_previous}"
+  args:
+    executable: /bin/bash
+  become_user: "{{ ansible_user }}"
+  register: git_local_result
+  when:
+    - terminal_release_mode | default('full') == 'release-only'
+    - terminal_release_transport | default('ssh-ansible') == 'local-artifact'
 
 - name: Sync repository for provisioning (with retries)
   ansible.builtin.shell: |
@@ -198,7 +259,7 @@
     set -euo pipefail
     safe_home="$(/usr/bin/getent passwd {{ ansible_user | quote }} | /usr/bin/cut -d: -f6)"
     [[ "${safe_home}" == /* && -d "${safe_home}" ]]
-    ssh_command={{ git_environment.GIT_SSH_COMMAND | default('') | quote }}
+    ssh_command={{ (git_environment | default({})).get('GIT_SSH_COMMAND', '') | quote }}
     git() {
       local -a safe_environment=(
         "PATH=/usr/bin:/bin"
@@ -260,21 +321,31 @@
   retries: 3
   delay: 10
   until: git_release_result.rc == 0
-  when: terminal_release_mode | default('full') == 'release-only'
+  when:
+    - terminal_release_mode | default('full') == 'release-only'
+    - terminal_release_transport | default('ssh-ansible') == 'ssh-ansible'
 
 - name: Select repository synchronization result
   ansible.builtin.set_fact:
     repo_prev_head_result: >-
       {{
-        repo_prev_head_release_result
-        if terminal_release_mode | default('full') == 'release-only'
-        else repo_prev_head_full_result
+        git_local_result
+        if terminal_release_transport | default('ssh-ansible') == 'local-artifact'
+        else (
+          repo_prev_head_release_result
+          if terminal_release_mode | default('full') == 'release-only'
+          else repo_prev_head_full_result
+        )
       }}
     git_result: >-
       {{
-        git_release_result
-        if terminal_release_mode | default('full') == 'release-only'
-        else git_full_result
+        git_local_result
+        if terminal_release_transport | default('ssh-ansible') == 'local-artifact'
+        else (
+          git_release_result
+          if terminal_release_mode | default('full') == 'release-only'
+          else git_full_result
+        )
       }}
 
 - name: Capture repo HEAD after sync

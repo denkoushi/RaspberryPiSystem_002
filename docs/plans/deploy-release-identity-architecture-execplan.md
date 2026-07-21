@@ -1,7 +1,7 @@
 ---
 id: deploy-release-identity-architecture
 title: Migrate deployment planning and evidence to typed release claims
-status: ready-for-offline-implementation-live-rollout-blocked
+status: offline-implementation-complete-live-rollout-blocked
 scope: rolling release planner, fleet and run state, Kiosk activation, SSH and Local executors, route contracts
 date: 2026-07-21
 source_of_truth: docs/plans/deploy-release-identity-architecture-execplan.md
@@ -14,11 +14,11 @@ related_docs:
   - docs/decisions/ADR-20260721-deploy-release-identity-and-activation.md
   - docs/plans/deploy-release-identity-readonly-evidence-manifest.md
   - docs/plans/deploy-speed-phase-b-execplan.md
-validation: Milestone 3 complete with 794 deploy Python tests, 19 bounded Web activation tests, full aggregate deploy contracts, and approved read-only evidence sha256:f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8
+validation: Milestones 1 through 6 complete with 840 deploy Python tests, 19 bounded Web activation tests, full aggregate deploy contracts, sealed runtime supply-chain verification, and approved read-only evidence sha256:f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8
 open_items:
-  - implement milestones 4 through 6 offline from the accepted Milestone 3 branch
-  - keep all hardware rollout blocked until the complete offline acceptance gate passes
-  - request a new exact Pi5 plus StoneBase canary approval only after that gate
+  - present canonical Pi5 plus StoneBase-only print-plan and preflight commands for a new exact hardware approval
+  - keep Local bootstrap, Local execution, and every hardware mutation blocked until that approval
+  - keep FJV and every terminal other than StoneBase excluded
 ---
 
 # Migrate deployment planning and evidence to typed release claims
@@ -41,13 +41,13 @@ The existing one-terminal-at-a-time order, sixty-second terminal notice,
 five-minute Pi5 stability monitor, fail-closed behavior, sealed manifest
 rollback, and Phase B changed-only service/container lifecycle remain. The
 default executor remains SSH Ansible. Local Ansible stays behind its StoneBase
-flag and is not rebased until the typed-claim SSH path is proven.
+flag and was rebased only after the typed-claim SSH path was proven and merged.
 
-The evidence gate is complete and the related ADR is accepted, so this plan is
-ready for offline implementation from a fresh current-main worktree. This is
-not hardware authorization. It must not be used to retry a deployment,
-bootstrap a runtime, run Local Ansible, reverify, or connect to a device until
-the complete offline gate passes and a new exact hardware approval is granted.
+The evidence gate, related ADR, and Milestones 1 through 6 offline
+implementation are complete. This is not hardware authorization. It must not
+be used to retry a deployment, bootstrap a runtime, run Local Ansible,
+reverify, or connect to a device until a new exact hardware approval is
+granted for the canonical Pi5 plus StoneBase-only gate.
 
 ## Progress
 
@@ -62,8 +62,9 @@ the complete offline gate passes and a new exact hardware approval is granted.
 - [x] (2026-07-21 05:43Z) Completed Milestone 2 offline: split ordered mutation, activation, and verification targets; moved required claims and activation strategy into registry schema v4; exposed provisional/effective SSH executor state; and added preflight/coordinator gates that prevent disabled activation or verification-only work from reaching mutation.
 - [x] (2026-07-21 06:50Z) Completed Milestone 3 offline: added bounded stale-bundle reload, manifest-owned one-time browser activation, deterministic response-loss reconciliation, durable capability proof, and cleanup-before-maintenance-clear while leaving activation execution disabled.
 - [x] (2026-07-21 07:37Z) Completed Milestone 4 offline: mapped Kiosk Web and Signage repository ACKs to typed claims, required the complete profile claim set plus independent evidence before promotion, rebound rollback repository claims only to the sealed previous SHA, enabled activation and verification-only execution on the unchanged SSH executor, and passed 808 deploy tests plus the complete aggregate offline gate and 19 focused Web ACK tests.
-- [ ] Milestone 5: rebase the StoneBase Local executor behind its explicit flag.
-- [ ] Milestone 6: replace route metadata coverage with executable transitions and shared fault scenarios.
+- [x] (2026-07-21 10:12Z) Completed Milestone 5 offline: ported the minimum sealed StoneBase Local executor behind its exact-scope flag, retained pre-maintenance SSH fallback and post-maintenance rollback-only behavior, and kept Web, repository, artifact, runtime, and independent-health proofs separate.
+- [x] (2026-07-21 10:12Z) Completed Milestone 6 offline: made all 30 route stages executable transition contracts, bound planning and preflight to a deterministic receipt, and exercised before-call, after-call, and response-loss boundaries through shared scenarios.
+- [x] (2026-07-21 10:12Z) Passed the complete offline acceptance gate: 840 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, safety/lifecycle/shell contracts, 99 Ansible template parses, all playbook syntax/check contracts including the sealed Local playbook, 19 focused Web tests, Web typecheck/lint, and exact runtime artifact/hash checks.
 - [ ] Obtain a new explicit approval for a Pi5 plus StoneBase-only canary; keep FJV and every other terminal excluded.
 
 ## Surprises & Discoveries
@@ -186,6 +187,27 @@ the complete offline gate passes and a new exact hardware approval is granted.
   passed 794 Python tests, 20 isolated PostgreSQL ACK tests, 99 template parses,
   deploy safety, lifecycle, recovery, inventory, and every Ansible syntax
   check. All temporary references and generated build outputs were removed.
+
+- Observation: a Local Git reset cannot use the SSH apply command result to
+  decide whether container images changed.
+  Evidence: the sealed Local playbook has its own reset result. Milestone 5
+  emits the exact previous HEAD and feeds that result into the unchanged Phase
+  B lifecycle selection, so a no-change Local run does not rebuild every
+  enabled image.
+
+- Observation: an accepted remote call with a lost response cannot produce a
+  typed claim in the pure route model.
+  Evidence: Milestone 6 initially advanced the simulated stage before marking
+  evidence unknown. The final transition contract preserves the pre-call claim
+  set, retains maintenance conservatively, and assigns progress only after the
+  named owner reconciles the deterministic effect.
+
+- Observation: version labels alone are insufficient runtime authority.
+  Evidence: the pinned aarch64 Python distribution, all nine hash-locked Python
+  wheels, and the `community.general` collection were downloaded in a temporary
+  local verification area and matched their checked-in SHA-256 values. The
+  installer now accepts the exact collection URL and digest, not a domain
+  prefix or digest-shaped string.
 
 ## Decision Log
 
@@ -330,6 +352,31 @@ the complete offline gate passes and a new exact hardware approval is granted.
   complete verification can promote the host.
   Date/Author: 2026-07-21 / Codex.
 
+- Decision: enable Local only through
+  `--stonebase-local-ansible-poc` with exact Pi5 plus StoneBase scope, while
+  leaving `ssh-ansible` as the unchanged default and fallback.
+  Rationale: eligibility can be proved before notice and maintenance; after
+  maintenance begins, switching forward executors would create unsealed
+  authority, so only quiescence reconciliation and manifest-bounded rollback
+  remain legal.
+  Date/Author: 2026-07-21 / Codex.
+
+- Decision: bind a Local artifact to the previous and candidate SHA, terminal
+  and status identity, runtime and rollback authorities, maintenance ACK, all
+  member hashes, and one deterministic systemd unit.
+  Rationale: a single transfer is safe only when the coordinator and runner can
+  independently reject replay, prerequisite loss, substitution, extra members,
+  unsafe paths, runtime drift, and result identity drift without reading a
+  secret value.
+  Date/Author: 2026-07-21 / Codex.
+
+- Decision: make route transitions and the plan receipt executable shared
+  contracts rather than metadata coverage.
+  Rationale: target-set membership, required verification, produced claims,
+  response loss, rollback eligibility, and recovery ownership must be rejected
+  by the same model used by planner, preflight, and fault tests.
+  Date/Author: 2026-07-21 / Codex.
+
 ## Outcomes & Retrospective
 
 The investigation phase produced a coherent state model and rejected the
@@ -392,6 +439,39 @@ branch. Validation passed 808 deploy Python tests, 19 focused Kiosk Web tests,
 parses, shell/lifecycle/safety contracts, both inventories, and all Ansible
 syntax/check-mode contracts. No device was contacted, no preflight or deploy
 was run, and live rollout remains No-Go.
+
+Milestone 5 is complete offline on `feat/stonebase-local-ansible-m5`, created
+from current main after the accepted Milestone 4 merge. The default SSH path
+remains byte-compatible and Local requires the explicit flag plus exact Pi5
+and StoneBase scope. Before maintenance, complete history, secret/config path,
+incremental-bundle prerequisite, runner, pinned runtime, existing configuration,
+and disk proofs either select Local or persist an exact SSH fallback reason.
+After maintenance, one digest-sealed artifact is transferred once and executed
+by a root-owned deterministic transient unit under an exclusive lock. Its
+bounded result and candidate ACK prove only `localArtifact`; terminal HEAD,
+runtime, Kiosk Web, systemd, identity, Docker agents, and authenticated health
+remain independent proofs. Response loss retains unknown evidence until unit
+quiescence is reconciled, and all failures use only the presealed rollback
+manifest. The Local playbook reuses existing secret files without reading or
+regenerating them and preserves Phase B changed-only lifecycle selection.
+
+Milestone 6 is complete offline on the same branch. All 30 route stages now
+declare durable phase preconditions and effects, required and produced claims,
+operation class, timeout, response-loss reconciliation, rollback eligibility,
+failure policy, and recovery owner. Planner and aggregate preflight consume a
+deterministic stage receipt and reject mismatched typed target membership,
+mutation or activation without verification, and Local scope escape. Six
+shared scenarios cover normal, no-op, stale browser, Local, forward-Pi5 plus
+terminal rollback, and operator cancel paths at before-call, after-call, and
+response-loss boundaries. Response loss never grants a produced claim.
+
+The complete offline gate passed after both milestones: 840 deploy Python
+tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, deploy safety,
+Pi5/Signage/client lifecycle and shell contracts, 99 parsed Ansible templates,
+all inventory and playbook syntax/check contracts, 19 focused Web tests,
+Web typecheck/lint, and independent verification of every pinned runtime
+artifact hash. No device was contacted, no production preflight or deployment
+was run, and live rollout remains blocked pending a new exact approval.
 
 ## Context and Orientation
 
@@ -547,12 +627,10 @@ notice, activation, mutation, ACK, independent evidence, and cleanup separately.
 
 ## Concrete Steps
 
-When the Go gate opens, create a fresh worktree from the latest remote main:
+Milestones 5 and 6 were implemented in a fresh worktree from merged PR #1047:
 
-    git fetch origin main
-    git worktree add ../RaspberryPiSystem_002-release-claims -b feat/deploy-release-claims origin/main
-    cd ../RaspberryPiSystem_002-release-claims
-    git status --short --branch
+    base: b2c7277a5f8bde1ecbbb99030b538e581dff466a
+    branch: feat/stonebase-local-ansible-m5
 
 Before editing, repeat the focused baseline:
 
@@ -563,13 +641,12 @@ Before editing, repeat the focused baseline:
       scripts.deploy.tests.test_terminal_adapters
     python3 scripts/deploy/tests/test-client-agent-lifecycle-selection.py
 
-Implement one milestone per reviewable commit. After every state-schema change,
-run the old-schema, corrupt-state, interrupted-recovery, and rollback fixtures
-before moving to target selection or browser activation. After Web changes, run
-the exact Kiosk ready test command recorded in `apps/web/package.json`; include
-reload-boundary tests, not only mocked function calls.
+The old-schema, corrupt-state, interrupted-recovery, rollback, reload-boundary,
+Local runner, runtime installer, and route fault fixtures were run before the
+complete aggregate gate.
 
-Run the complete offline gate before proposing hardware work:
+The complete offline gate used these canonical commands before proposing any
+hardware work:
 
     python3 -m unittest discover -s scripts/deploy/tests -p 'test_*.py'
     bash scripts/deploy/tests/test-deploy-safety-contracts.sh
@@ -674,6 +751,26 @@ Milestone 3 validation:
     aggregate result: all checks passed
     temporary dependency references and generated outputs: removed
 
+Milestones 5 and 6 validation:
+
+    focused Local, runtime, route, planner, and application tests: PASS
+    route transition stages: 30 with normal/before/after/response-loss coverage
+    shared route scenarios: 6 PASS
+    deploy Python discovery: 840 tests PASS
+    client lifecycle and Phase B changed-only selection: PASS
+    bounded Web activation and Kiosk layout: 19 tests PASS
+    Web TypeScript build and targeted ESLint: PASS
+    pinned Python aarch64 distribution: SHA-256 MATCH
+    nine hash-locked aarch64 Python packages: download verification PASS
+    pinned community.general 11.4.1: SHA-256 MATCH
+    Ansible Jinja templates: 99 parsed
+    isolated PostgreSQL deploy-status API: 20 tests PASS
+    deploy safety, Pi5 Blue/Green, Signage maintenance: PASS
+    recovery contract: 24 tests PASS
+    inventory and every Ansible syntax/check contract: PASS
+    aggregate result: all checks passed
+    hardware contact, preflight, bootstrap, reverify, deploy: NOT RUN
+
 The prototype was pure in-memory code and was not added to production. Its role
 was to prove that target and identity separation can represent the required
 states before any implementation resumes.
@@ -752,3 +849,11 @@ state, rollback capability refresh, and cleanup-before-maintenance-clear.
 Recorded 794 passing deploy Python tests, 19 Web tests, Web typecheck/lint, and
 the complete offline aggregate. Activation execution remains disabled; no
 hardware gate was opened.
+
+Revision note (2026-07-21 10:12Z): Completed Milestones 5 and 6 with the
+StoneBase-only sealed Local executor, exact runtime supply-chain locks,
+single-transfer deterministic-unit execution, distinct typed proofs,
+pre-maintenance SSH fallback, post-maintenance rollback-only recovery, and an
+executable route/receipt/fault contract. Recorded the complete 840-test
+offline aggregate and retained the separate live canary approval gate. No
+device was contacted.

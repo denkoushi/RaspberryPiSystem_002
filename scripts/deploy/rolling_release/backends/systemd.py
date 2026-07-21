@@ -303,6 +303,8 @@ class SystemdBackend:
             'expectedServerClientId': spec.expected_server_client_id,
             'targets': targets,
         }
+        if spec.stonebase_local_ansible_poc:
+            payload['requestedExecutor'] = 'stonebase-local-ansible-poc'
         serialized = json.dumps(
             payload,
             ensure_ascii=False,

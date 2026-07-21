@@ -949,6 +949,13 @@ ALLOWED_RELEASE_FILE_DESTINATIONS = {
     '{{ repo_path }}/clients/barcode-agent/.env',
     '{{ repo_path }}/clients/torque-agent/.env',
     '/usr/local/libexec/torque-bluetooth-adapter',
+    '/usr/local/libexec/raspi-local-ansible-runner',
+    '/usr/local/libexec/raspi_local_execution.py',
+    '/usr/local/libexec/raspi-terminal-ready-probe',
+    '/usr/local/libexec/raspi-terminal-maintenance-probe',
+    '/usr/local/libexec/raspi-local-runtime-install',
+    '/usr/local/libexec/raspi-local-runtime-lock.json',
+    '/usr/local/libexec/raspi-local-requirements-aarch64-py311.lock',
     '/etc/systemd/system/torque-bluetooth-adapter@.service',
     '/etc/udev/rules.d/90-torque-bluetooth-adapter.rules',
     '/etc/udev/rules.d/99-torque-wrench-hid.rules',
@@ -985,6 +992,17 @@ ALLOWED_RELEASE_FILE_DESTINATIONS = {
     '/etc/systemd/system/signage-daily-reboot.timer',
 }
 
+STONEBASE_BOOTSTRAP_SOURCES = {
+    '/usr/local/libexec/raspi-local-runtime-lock.json': (
+        '{{ repo_path }}/infrastructure/ansible/files/'
+        'stonebase-local-ansible/runtime-lock.json'
+    ),
+    '/usr/local/libexec/raspi-local-requirements-aarch64-py311.lock': (
+        '{{ repo_path }}/infrastructure/ansible/files/'
+        'stonebase-local-ansible/requirements-aarch64-py311.lock'
+    ),
+}
+
 MUTATING_SHELL = re.compile(
     r'(?:\b(?:apt(?:-get)?|chmod|chown|kill|ln|mkdir|mv|pkill|pnpm\s+install|'
     r'rm|sed\s+-i|systemd-tmpfiles\s+--create|tailscale\s+up|touch|truncate)\b|'
@@ -1014,6 +1032,11 @@ READ_ONLY_COMMAND = re.compile(
 )
 
 APPROVED_RELEASE_COMMANDS = {
+    (
+        'roles/client/tasks/local-runner-bootstrap.yml',
+        'Bootstrap pinned StoneBase local executor runtime when needed',
+        '/usr/local/libexec/raspi-local-runtime-install',
+    ),
     (
         'roles/client/tasks/torque-agent.yml',
         'Reload udev rules for torque devices',
@@ -1179,6 +1202,13 @@ def audit_tasks(tasks, source, inherited_full):
                 assert dest in ALLOWED_RELEASE_FILE_DESTINATIONS, (
                     f'{source}:{name}: destination is not manifest-backed: {dest}'
                 )
+                if dest in STONEBASE_BOOTSTRAP_SOURCES:
+                    assert value.get('remote_src') is True, (
+                        f'{source}:{name}: StoneBase lock must come from the immutable terminal checkout'
+                    )
+                    assert value.get('src') == STONEBASE_BOOTSTRAP_SOURCES[dest], (
+                        f'{source}:{name}: StoneBase lock source does not match the candidate path'
+                    )
 
             if module in SHELL_MODULES:
                 payload = command_text(value)
@@ -1198,12 +1228,27 @@ def audit_tasks(tasks, source, inherited_full):
                     )
                     docker_exceptions.append((source, name))
                 elif MUTATING_SHELL.search(payload):
-                    assert (
+                    approved_ssh_reset = (
                         source.resolve() == (roles_root / 'common/tasks/main.yml').resolve()
                         and name == 'Fetch and reset existing terminal repository to immutable release'
                         and 'git fetch --no-tags origin' in payload
                         and 'git reset --hard' in payload
-                    ), f'{source}:{name}: mutating shell is not an approved release adapter'
+                    )
+                    approved_local_reset = (
+                        source.resolve() == (roles_root / 'common/tasks/main.yml').resolve()
+                        and name == 'Verify incremental bundle and reset existing terminal repository without network'
+                        and "terminal_release_transport | default('ssh-ansible') == 'local-artifact'"
+                        in [normalized(condition) for condition in when_items(task)]
+                        and 'git bundle verify' in payload
+                        and 'git fetch --no-tags' in payload
+                        and 'git reset --hard' in payload
+                        and ' origin ' not in f' {payload} '
+                        and 'git diff --quiet' in payload
+                        and 'git diff --cached --quiet' in payload
+                    )
+                    assert approved_ssh_reset or approved_local_reset, (
+                        f'{source}:{name}: mutating shell is not an approved release adapter'
+                    )
 
             if module in COMMAND_MODULES:
                 payload = command_text(value)
@@ -1558,7 +1603,7 @@ def render_checkout(work):
         'safe_home="${HOME}"',
     )
     checkout = checkout.replace(
-        "{{ git_environment.GIT_SSH_COMMAND | default('') | quote }}",
+        "{{ (git_environment | default({})).get('GIT_SSH_COMMAND', '') | quote }}",
         "''",
     )
     checkout = checkout.replace('{{ repo_path }}', str(work))

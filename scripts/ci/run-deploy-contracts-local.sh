@@ -98,6 +98,7 @@ READ_ONLY_ANSIBLE_CONFIG="$ANSIBLE_DIRECTORY/ansible-readonly.cfg"
 STATIC_PLAYBOOKS=(
   playbooks/deploy.yml
   playbooks/deploy-terminal-profile.yml
+  playbooks/deploy-stonebase-local.yml
   playbooks/server-config-release.yml
   playbooks/update-clients.yml
   playbooks/health-check.yml

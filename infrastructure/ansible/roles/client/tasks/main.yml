@@ -1,4 +1,10 @@
 ---
+- name: Bootstrap the opt-in local executor only on StoneBase through SSH Ansible
+  ansible.builtin.include_tasks: local-runner-bootstrap.yml
+  when:
+    - inventory_hostname == 'raspi4-kensaku-stonebase01'
+    - terminal_release_transport | default('ssh-ansible') == 'ssh-ansible'
+
 - name: Validate manifest-backed client destinations for release
   ansible.builtin.assert:
     that:
