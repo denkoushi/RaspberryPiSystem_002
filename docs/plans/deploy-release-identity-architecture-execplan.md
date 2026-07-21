@@ -1,7 +1,7 @@
 ---
 id: deploy-release-identity-architecture
 title: Migrate deployment planning and evidence to typed release claims
-status: utf8-locale-remediation-in-progress-local-live-blocked
+status: runtime-artifact-prefetch-review-ready-local-live-blocked
 scope: rolling release planner, fleet and run state, Kiosk activation, SSH and Local executors, route contracts
 date: 2026-07-21
 source_of_truth: docs/plans/deploy-release-identity-architecture-execplan.md
@@ -14,11 +14,11 @@ related_docs:
   - docs/decisions/ADR-20260721-deploy-release-identity-and-activation.md
   - docs/plans/deploy-release-identity-readonly-evidence-manifest.md
   - docs/plans/deploy-speed-phase-b-execplan.md
-validation: Milestones 1 through 6 plus runtime-observability remediation complete offline with 857 deploy Python tests, 19 bounded Web activation tests, full aggregate deploy contracts, sealed runtime supply-chain verification, approved read-only evidence sha256:f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8, accepted-main SSH run 20260721-135020-37ce54, and exact ansible-core 2.19.4 locale reproduction
+validation: Milestones 1 through 6 plus runtime-observability and UTF-8 remediations accepted; exact Pi5 plus StoneBase SSH run 20260721-143844-16bae4 succeeded while the optional runtime isolated a maintenance-time python-download failure; controller-side sealed prefetch and terminal-offline installation passed 868 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template parses, the complete deploy aggregate, and an exact 11-member 59,603,748-byte supply-chain fetch without contacting a device
 open_items:
-  - publish and merge the C.UTF-8 installer and runner remediation
-  - after merge, execute canonical Pi5 plus StoneBase-only plan, preflight, and serial SSH bootstrap
-  - keep Local execution blocked until the serial SSH bootstrap proves the exact pinned runtime
+  - complete and merge the controller-side sealed runtime artifact prefetch
+  - repeat the canonical Pi5 plus StoneBase-only SSH bootstrap from accepted main
+  - keep Local execution blocked until the offline-installed pinned runtime is independently proved
   - keep FJV and every terminal other than StoneBase excluded
 ---
 
@@ -44,13 +44,15 @@ rollback, and Phase B changed-only service/container lifecycle remain. The
 default executor remains SSH Ansible. Local Ansible stays behind its StoneBase
 flag and was rebased only after the typed-claim SSH path was proven and merged.
 
-The evidence gate, related ADR, Milestones 1 through 6, and the bounded runtime
-observability remediation are complete offline. The operator has granted
-continuous authorization for normalization, but device work remains ordered:
-the remediation must first be accepted on `main`, then the canonical Pi5 plus
-StoneBase-only plan and preflight must pass. FJV and every other terminal stay
-excluded. Local execution remains blocked until a serial SSH bootstrap proves
-the exact pinned runtime.
+The evidence gate, related ADR, Milestones 1 through 6, bounded runtime
+observability, and the UTF-8 remediation are accepted. The next accepted-main
+SSH run proved the ordinary route but exposed a second structural liveness gap:
+the optional bootstrap still downloaded its fixed artifacts from external
+services while StoneBase was already in maintenance. Milestone 7 moves those
+downloads and all verification to the Pi5 before notice, then installs from a
+sealed terminal cache with networking disabled. FJV and every other terminal
+stay excluded. Local execution remains blocked until a later serial SSH
+bootstrap proves the exact pinned runtime.
 
 ## Progress
 
@@ -73,7 +75,12 @@ the exact pinned runtime.
 - [x] (2026-07-21 14:09Z) Completed canonical exact-scope SSH run `20260721-135020-37ce54`: Pi5 and StoneBase claims verified, cleanup completed, and maintenance cleared; FJV and all other terminals remained excluded.
 - [x] (2026-07-21 14:12Z) Used the new bounded observation to isolate `collection-install-failed`, then reproduced the exact ansible-core 2.19.4 UTF-8 locale rejection offline and rejected artifact, network, and Python-package hypotheses.
 - [x] (2026-07-21 14:16Z) Changed installer and Local runner Ansible CLI boundaries to fixed `C.UTF-8`, forced the digest-verified collection into the sealed runtime path, and passed 33 focused tests, all 857 deploy Python tests, plus a clean-runtime collection installation reproduction.
-- [ ] Publish and merge the UTF-8 remediation, repeat the canonical serial SSH bootstrap, and keep Local execution blocked until runtime readiness is independently proved.
+- [x] (2026-07-21 14:31Z) Merged the reviewed UTF-8 remediation as PR #1054 at accepted main `c5baa5297b2f5e60cc122f9ac2db2bca638f94cb`; all required CI passed.
+- [x] (2026-07-21 15:03Z) Completed canonical Pi5 plus StoneBase-only run `20260721-143844-16bae4`. Pi5 and StoneBase finished at accepted main with complete typed claims, maintenance cleared, no rollback, and a temporary Pi5 observation outage reconciled from durable success without duplicate mutation. The optional runtime failed separately and safely at `python-download`.
+- [x] (2026-07-21 15:18Z) Reclassified the repeated runtime failure as a route design problem rather than another endpoint symptom: external Python, wheel, and collection retrieval must not begin after terminal notice or maintenance.
+- [x] (2026-07-21 16:02Z) Completed Milestone 7 offline: Pi5 content-addressed prefetch, exact lock-to-requirements validation, sealed Ansible transfer, terminal `--no-index` install, executable route stage, response-loss/failure tests, and the complete aggregate. All eleven public artifacts matched the fixed 59,603,748-byte lock (`sha256:ecde0bbe80d4065f9bb84ecdc9372c08f0530635af459898e6ac8cb233165e5c`); no device was contacted.
+- [ ] Publish, review, and merge Milestone 7 without weakening the safety contracts.
+- [ ] After accepted-main canonical plan/preflight, run one serial SSH bootstrap and require exact runtime observation before Local execution.
 
 ## Surprises & Discoveries
 
@@ -232,7 +239,39 @@ the exact pinned runtime.
   runtime under `C.UTF-8` installed and listed `community.general:11.4.1`.
   The runner's later `ansible-playbook` boundary had the same latent defect.
 
+- Observation: fixed hashes do not make maintenance-time external retrieval
+  available or repeatable.
+  Evidence: accepted-main run `20260721-143844-16bae4` completed its ordinary
+  SSH release and all final evidence, but the optional bootstrap stopped at
+  `python-download-failed`. The installer still performed Python, wheel, and
+  collection network operations after maintenance began and discarded partial
+  staging, so a transient route outage could repeat indefinitely without
+  violating any existing digest check.
+
+- Observation: coordinator response loss and runtime dependency failure are
+  separate boundaries.
+  Evidence: during the same run the status observer temporarily lost Pi5
+  reachability, while the detached canonical unit completed and durable status
+  later reconciled to success. This validates the existing response-loss state
+  machine but does not make terminal-side external downloads safe.
+
 ## Decision Log
+
+- Decision: prefetch every fixed Local runtime artifact on Pi5 after terminal
+  manifest seal but before notice, and make the terminal installer entirely
+  offline.
+  Rationale: the terminal should enter maintenance only after the Python
+  distribution, all nine aarch64 wheels, and `community.general` archive have
+  exact size and SHA-256 proof. `pip --no-index --find-links` and a local
+  collection archive remove external liveness from the mutation window.
+  Date/Author: 2026-07-21 / Codex.
+
+- Decision: a prefetch receipt is preparation telemetry, not a runtime claim.
+  Rationale: Pi5 cache readiness proves only the transferable members. The
+  existing runner preflight must still prove the terminal's active Python,
+  ansible-core, collection, exact bootstrap-lock digest, configuration, and
+  storage before Local becomes effective.
+  Date/Author: 2026-07-21 / Codex.
 
 - Decision: give every pinned Ansible CLI a closed `C.UTF-8` environment and
   force the verified collection into the runtime-owned collection path.
@@ -649,7 +688,26 @@ manifest seal, notice, maintenance, SSH apply, Local submit/unit, browser
 activation, each typed ACK, independent evidence, cleanup, commit, rollback,
 cancel, and interrupted recovery.
 
-### Milestone 7: approved canary and performance proof
+### Milestone 7: sealed controller prefetch and offline runtime bootstrap
+
+Extend the runtime lock with exact filenames and byte sizes for the Python
+distribution, every hash-locked aarch64 wheel, and the collection archive.
+Before notice, the Pi5 stores each member in a content-addressed root-owned
+cache using atomic download, exact size and SHA-256 verification, strict member
+names, and a bounded secret-free receipt. A failed or uncertain prefetch cleans
+the pre-mutation manifest lifecycle and stops without notice or maintenance.
+
+Pass the sealed controller manifest only to the requested-Local/effective-SSH
+bootstrap route. Ansible transfers the exact eleven members into a root-owned
+StoneBase cache. The installer rejects symlinks, extra/missing members, unsafe
+ownership or modes, lock-digest mismatch, and any member size or digest drift.
+It has no download function and installs wheels only with `--no-index`, then
+installs the local collection archive with `--no-deps`. Ordinary SSH, secret or
+history-ineligible fallback, Local candidate transfer, and rollback remain
+unchanged. Add the prefetch boundary to the executable route and inject failure
+before/after/response-loss.
+
+### Milestone 8: approved canary and performance proof
 
 After all offline and hosted checks pass, present the exact candidate SHA,
 target sets, claim requirements, migration capability state, fault-test result,
@@ -669,6 +727,16 @@ Milestones 5 and 6 were implemented in a fresh worktree from merged PR #1047:
 
     base: b2c7277a5f8bde1ecbbb99030b538e581dff466a
     branch: feat/stonebase-local-ansible-m5
+
+Milestone 7 is implemented separately from accepted UTF-8 main:
+
+    base: c5baa5297b2f5e60cc122f9ac2db2bca638f94cb
+    branch: fix/stonebase-local-runtime-prefetch
+    worktree: work/RaspberryPiSystem_002-runtime-prefetch
+
+No device is contacted during Milestone 7 offline implementation or review.
+After merge, canonical plan and preflight must again bind exactly Pi5 and
+StoneBase before the serial SSH bootstrap.
 
 Before editing, repeat the focused baseline:
 
@@ -935,3 +1003,23 @@ the route invariant that SSH apply cannot produce a runtime claim. The complete
 aggregate passed 856 deploy Python tests plus all existing integration,
 recovery, safety, lifecycle, inventory, and Ansible contracts. Device execution
 remains ordered behind accepted `main` and canonical exact-scope preflight.
+
+Revision note (2026-07-21 15:18Z): PR #1054 merged the UTF-8 remediation and
+canonical exact-scope run `20260721-143844-16bae4` proved the ordinary SSH
+route, typed claims, cleanup, maintenance clear, and durable response-loss
+reconciliation. Its optional bootstrap isolated `python-download-failed`.
+Milestone 7 therefore removes every external dependency operation from the
+terminal maintenance window through Pi5-side content-addressed prefetch,
+sealed transfer, and terminal `--no-index` installation. Local remains blocked
+until that change is accepted and independently proved on StoneBase.
+
+Revision note (2026-07-21 16:02Z): Milestone 7 is complete offline. The
+controller accepts only the two explicit safe bootstrap fallbacks, validates
+all fixed names, versions, sizes, hashes, and requirements before notice, and
+durably publishes a content-addressed manifest. The terminal installer has no
+network download boundary and retains exact bounded phase codes for cache,
+package, collection, verification, publication, active-link, and cleanup
+failures. The complete aggregate passed 868 deploy Python tests plus all
+integration, recovery, lifecycle, safety, inventory, and Ansible contracts.
+Local remains live-blocked until review, merge, the serial SSH bootstrap, and
+independent exact-runtime preflight succeed.

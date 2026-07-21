@@ -70,6 +70,10 @@ REHEARSAL_TESTS = {
         "scripts/deploy/tests/test_fleet_coordinator_transitions.py",
         "test_manifest_capture_failure_precedes_every_terminal_mutation",
     ),
+    "runtime-prefetch-before-notice-faults": (
+        "scripts/deploy/tests/test_stonebase_local_execution.py",
+        "test_runtime_prefetch_failure_stops_before_notice_and_maintenance",
+    ),
     "notice-before-after-faults": (
         "scripts/deploy/tests/test_fleet_coordinator_transitions.py",
         "test_pre_mutation_recovery_removes_notice_on_either_side_of_notice_put",
@@ -258,6 +262,35 @@ class RouteContractTest(unittest.TestCase):
         plan["terminalWork"][0]["host"] = "raspi4-fjv60-80"
         with self.assertRaisesRegex(ValueError, "limited to StoneBase"):
             route_contract_receipt(plan)
+
+    def test_local_fallback_receipt_includes_prefetch_only_when_safe(self):
+        plan = {
+            "pi5Required": False,
+            "requestedExecutor": "stonebase-local-ansible-poc",
+            "effectiveExecutor": "ssh-ansible",
+            "fallbackReason": "candidate-requires-ssh-configuration",
+            "terminalWork": [
+                {
+                    "host": "raspi4-kensaku-stonebase01",
+                    "mutationRequired": True,
+                    "activationRequired": False,
+                    "verificationRequired": True,
+                }
+            ],
+        }
+        receipt = route_contract_receipt(plan)
+        self.assertEqual(
+            receipt["scenarioId"], "stonebase-local-bootstrap-success"
+        )
+        self.assertIn(
+            "terminal.runtime-artifact-prefetch", receipt["stageIds"]
+        )
+        plan["fallbackReason"] = "candidate-history-touches-secret-path"
+        receipt = route_contract_receipt(plan)
+        self.assertEqual(receipt["scenarioId"], "pi5-and-ssh-success")
+        self.assertNotIn(
+            "terminal.runtime-artifact-prefetch", receipt["stageIds"]
+        )
 
     def test_plan_receipt_rejects_target_membership_or_verification_gaps(self):
         plan = {

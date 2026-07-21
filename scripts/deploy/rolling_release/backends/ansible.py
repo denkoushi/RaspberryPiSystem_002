@@ -282,6 +282,7 @@ class Runtime(Protocol):
         run_id: str,
         *,
         rollback: bool = False,
+        runtime_artifact_vars: str | None = None,
     ) -> None: ...
 
 
@@ -2299,6 +2300,7 @@ def playbook(
     *,
     rollback: bool = False,
     playbook: str = "playbooks/deploy-staged.yml",
+    runtime_artifact_vars: str | None = None,
     runtime: Runtime,
 ) -> None:
     if rollback:
@@ -2329,17 +2331,28 @@ def playbook(
     ):
         raise ValueError("terminal profile playbook is unavailable")
     playbook_path = runtime.ANSIBLE_DIRECTORY / playbook
+    command = [
+        "ansible-playbook",
+        "-i",
+        inventory,
+        str(playbook_path),
+        "--limit",
+        host,
+        "-e",
+        extra,
+    ]
+    if runtime_artifact_vars is not None:
+        artifact_vars_path = Path(runtime_artifact_vars)
+        if (
+            not artifact_vars_path.is_absolute()
+            or not artifact_vars_path.is_file()
+            or artifact_vars_path.is_symlink()
+            or artifact_vars_path.name != "ansible-vars.json"
+        ):
+            raise ValueError("runtime artifact vars are unavailable")
+        command.extend(["-e", f"@{artifact_vars_path}"])
     runtime.run(
-        [
-            "ansible-playbook",
-            "-i",
-            inventory,
-            str(playbook_path),
-            "--limit",
-            host,
-            "-e",
-            extra,
-        ],
+        command,
         cwd=runtime.ANSIBLE_DIRECTORY,
         env=environment,
     )

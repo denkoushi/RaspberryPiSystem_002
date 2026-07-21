@@ -62,16 +62,71 @@
     group: root
     mode: '0644'
 
+- name: Validate sealed StoneBase local runtime artifact cache
+  ansible.builtin.assert:
+    that:
+      - stonebase_local_runtime_cache is mapping
+      - stonebase_local_runtime_cache.keys() | sort == ['cacheKey', 'lockSha256', 'members', 'schemaVersion']
+      - stonebase_local_runtime_cache.schemaVersion == 1
+      - stonebase_local_runtime_cache.cacheKey is match('^[0-9a-f]{64}$')
+      - stonebase_local_runtime_cache.lockSha256 == 'sha256:' ~ stonebase_local_runtime_cache.cacheKey
+      - stonebase_local_runtime_cache.members is sequence
+      - stonebase_local_runtime_cache.members | length == 11
+      - stonebase_local_runtime_cache.members | map(attribute='size') | sum == 59603748
+    fail_msg: StoneBase local runtime artifact cache is malformed
+  when: stonebase_local_runtime_cache is defined
+  no_log: true
+
+- name: Validate sealed StoneBase local runtime artifact members
+  ansible.builtin.assert:
+    that:
+      - item is mapping
+      - item.keys() | sort == ['filename', 'id', 'sha256', 'size', 'sourcePath']
+      - item.id is match('^(python-distribution|python-package:[0-8]:[A-Za-z0-9_.-]+|collection:community[.]general)$')
+      - item.filename is match('^[A-Za-z0-9][A-Za-z0-9._+-]{0,199}$')
+      - item.sourcePath == '/var/cache/raspi-release/local-runtime-artifacts/' ~ stonebase_local_runtime_cache.cacheKey ~ '/' ~ item.filename
+      - item.sha256 is match('^[0-9a-f]{64}$')
+      - item.size is integer
+      - item.size > 0
+      - item.size <= 67108864
+    fail_msg: StoneBase local runtime artifact member is malformed
+  loop: "{{ stonebase_local_runtime_cache.members }}"
+  when: stonebase_local_runtime_cache is defined
+  no_log: true
+
+- name: Create sealed StoneBase local runtime artifact cache
+  ansible.builtin.file:
+    path: "/var/cache/raspi-local-ansible-artifacts/{{ stonebase_local_runtime_cache.cacheKey }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  when: stonebase_local_runtime_cache is defined
+
+- name: Transfer sealed StoneBase local runtime artifact members
+  ansible.builtin.copy:
+    src: "{{ item.sourcePath }}"
+    dest: "/var/cache/raspi-local-ansible-artifacts/{{ stonebase_local_runtime_cache.cacheKey }}/{{ item.filename }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop: "{{ stonebase_local_runtime_cache.members }}"
+  when: stonebase_local_runtime_cache is defined
+  no_log: true
+
 - name: Bootstrap pinned StoneBase local executor runtime when needed
   ansible.builtin.command:
     argv:
       - /usr/local/libexec/raspi-local-runtime-install
+      - --cache-root
+      - "/var/cache/raspi-local-ansible-artifacts/{{ stonebase_local_runtime_cache.cacheKey }}"
   register: stonebase_local_runtime_install
   changed_when: >-
     stonebase_local_runtime_install.rc == 0
     and 'RUNTIME_INSTALL_CHANGED' in stonebase_local_runtime_install.stdout
   failed_when: false
   no_log: true
+  when: stonebase_local_runtime_cache is defined
 
 - name: Read bounded StoneBase local runtime bootstrap observation
   ansible.builtin.command:
@@ -92,8 +147,8 @@
         and stonebase_local_runtime_status.stdout is match(
           '^RUNTIME_INSTALL_OBSERVATION:'
           ~ '(running|changed|current|failed):'
-          ~ '(initializing|host-preflight|lock-validate|staging-prepare|python-download|python-extract|python-packages|collection-download|collection-install|runtime-verify|runtime-publish|active-link|cleanup|complete|internal):'
-          ~ '(host-ineligible|lock-invalid|requirements-missing|staging-preparation-failed|python-download-failed|python-extract-failed|python-packages-failed|collection-download-failed|collection-install-failed|runtime-verification-failed|runtime-publish-conflict|active-link-failed|cleanup-failed|internal-error|none):'
+          ~ '(initializing|host-preflight|lock-validate|artifact-cache|staging-prepare|python-download|python-extract|python-packages|collection-download|collection-install|runtime-verify|runtime-publish|active-link|cleanup|complete|internal):'
+          ~ '(host-ineligible|lock-invalid|requirements-missing|artifact-cache-invalid|staging-preparation-failed|python-download-failed|python-extract-failed|python-packages-failed|collection-download-failed|collection-install-failed|runtime-verification-failed|runtime-publish-conflict|active-link-failed|cleanup-failed|internal-error|none):'
           ~ '(pending|complete|failed):[0-9a-f]{32}:(sha256:[0-9a-f]{64}|none)$'
         )
         else 'RUNTIME_INSTALL_OBSERVATION:unavailable'

@@ -54,6 +54,7 @@ from rolling_release.lock import (
 from rolling_release.models import unit_name_for
 from rolling_release.state import RunStateStore, TERMINAL_STATES
 from rolling_release import telemetry as release_telemetry
+from rolling_release import runtime_artifacts as release_runtime_artifacts
 from rolling_release.local_execution import (
     LOCAL_EXECUTOR,
     SSH_EXECUTOR,
@@ -1042,6 +1043,7 @@ def playbook(
     *,
     rollback: bool = False,
     playbook: str = "playbooks/deploy-staged.yml",
+    runtime_artifact_vars: str | None = None,
 ) -> None:
     return ansible_backend.playbook(
         inventory,
@@ -1050,6 +1052,7 @@ def playbook(
         run_id,
         rollback=rollback,
         playbook=playbook,
+        runtime_artifact_vars=runtime_artifact_vars,
         runtime=_runtime(),
     )
 
@@ -1060,13 +1063,31 @@ def apply_terminal_profile(
     revision: str,
     run_id: str,
     profile: TerminalProfile,
+    *,
+    runtime_artifact_vars: str | None = None,
 ) -> None:
     """Apply only the strictly validated playbook selected by a profile."""
 
+    options = (
+        {}
+        if runtime_artifact_vars is None
+        else {"runtime_artifact_vars": runtime_artifact_vars}
+    )
     if profile.playbook == "playbooks/deploy-staged.yml":
-        playbook(inventory, host, revision, run_id)
+        playbook(inventory, host, revision, run_id, **options)
     else:
-        playbook(inventory, host, revision, run_id, playbook=profile.playbook)
+        playbook(
+            inventory,
+            host,
+            revision,
+            run_id,
+            playbook=profile.playbook,
+            **options,
+        )
+
+
+def prefetch_terminal_runtime_artifacts() -> dict[str, Any]:
+    return release_runtime_artifacts.prefetch_runtime_artifacts(PROJECT)
 
 
 def rollback_terminal(

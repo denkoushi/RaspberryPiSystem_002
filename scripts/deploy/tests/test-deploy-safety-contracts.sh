@@ -956,6 +956,8 @@ ALLOWED_RELEASE_FILE_DESTINATIONS = {
     '/usr/local/libexec/raspi-local-runtime-install',
     '/usr/local/libexec/raspi-local-runtime-lock.json',
     '/usr/local/libexec/raspi-local-requirements-aarch64-py311.lock',
+    '/var/cache/raspi-local-ansible-artifacts/{{ stonebase_local_runtime_cache.cacheKey }}',
+    '/var/cache/raspi-local-ansible-artifacts/{{ stonebase_local_runtime_cache.cacheKey }}/{{ item.filename }}',
     '/etc/systemd/system/torque-bluetooth-adapter@.service',
     '/etc/udev/rules.d/90-torque-bluetooth-adapter.rules',
     '/etc/udev/rules.d/99-torque-wrench-hid.rules',
@@ -1036,7 +1038,7 @@ APPROVED_RELEASE_COMMANDS = {
     (
         'roles/client/tasks/local-runner-bootstrap.yml',
         'Bootstrap pinned StoneBase local executor runtime when needed',
-        '/usr/local/libexec/raspi-local-runtime-install',
+        '/usr/local/libexec/raspi-local-runtime-install --cache-root /var/cache/raspi-local-ansible-artifacts/{{ stonebase_local_runtime_cache.cacheKey }}',
     ),
     (
         'roles/client/tasks/torque-agent.yml',
@@ -1192,9 +1194,20 @@ def audit_tasks(tasks, source, inherited_full):
             if module in FILE_MODULES:
                 dest = destination(value)
                 if module.endswith('file') and isinstance(value, dict):
-                    assert value.get('state', 'file') != 'directory', (
-                        f'{source}:{name}: release may not create/change directories'
+                    approved_runtime_cache_directory = (
+                        source.resolve()
+                        == (roles_root / 'client/tasks/local-runner-bootstrap.yml').resolve()
+                        and name == 'Create sealed StoneBase local runtime artifact cache'
+                        and dest == '/var/cache/raspi-local-ansible-artifacts/{{ stonebase_local_runtime_cache.cacheKey }}'
+                        and value.get('owner') == 'root'
+                        and value.get('group') == 'root'
+                        and value.get('mode') == '0755'
+                        and task.get('when') == 'stonebase_local_runtime_cache is defined'
                     )
+                    assert (
+                        value.get('state', 'file') != 'directory'
+                        or approved_runtime_cache_directory
+                    ), f'{source}:{name}: release may not create/change directories'
                     assert not value.get('recurse', False), (
                         f'{source}:{name}: recursive ownership is release-reachable'
                     )
@@ -1449,8 +1462,16 @@ captured_destinations = set(
         'signage', 'signageras3', '/home/signageras3', 'contract-run'
     )
 )
+non_operational_runtime_cache_destinations = {
+    '/var/cache/raspi-local-ansible-artifacts/{{ stonebase_local_runtime_cache.cacheKey }}',
+    '/var/cache/raspi-local-ansible-artifacts/{{ stonebase_local_runtime_cache.cacheKey }}/{{ item.filename }}',
+}
+assert non_operational_runtime_cache_destinations <= release_destinations, (
+    'sealed runtime cache transfer disappeared from the release audit'
+)
 concrete_release_destinations = {
-    concrete_destination(value) for value in release_destinations
+    concrete_destination(value)
+    for value in release_destinations - non_operational_runtime_cache_destinations
 }
 assert concrete_release_destinations <= captured_destinations, (
     'release mutation destinations missing from rollback manifest: '

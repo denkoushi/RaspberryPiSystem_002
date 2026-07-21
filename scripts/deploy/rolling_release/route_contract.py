@@ -12,6 +12,8 @@ import json
 from dataclasses import dataclass, replace
 from typing import Literal
 
+from .local_execution import runtime_prefetch_required
+
 
 RouteOwner = Literal["local", "pi5", "terminal"]
 OperationKind = Literal["read", "mutation", "commit"]
@@ -188,6 +190,16 @@ ROUTE_STAGES: tuple[RouteStage, ...] = (
         "terminal-capture-before-after-faults",
     ),
     RouteStage(
+        "terminal.runtime-artifact-prefetch",
+        "pi5",
+        "mutation",
+        ("prefetch_terminal_runtime_artifacts",),
+        "pi5.fixed-runtime-members-verified-before-terminal-notice",
+        "cleanup-pre-mutation-authority-and-stop-before-notice",
+        "controller-runtime-cache",
+        "runtime-prefetch-before-notice-faults",
+    ),
+    RouteStage(
         "terminal.notice",
         "terminal",
         "mutation",
@@ -362,6 +374,10 @@ _PHASE_TRANSITIONS: dict[str, tuple[tuple[str, ...], str]] = {
     "pi5.blue-green-release": (("fleet-active",), "fleet-active"),
     "terminal.apply-transport-preflight": (("fleet-active",), "fleet-active"),
     "terminal.baseline-and-manifest": (("fleet-active",), "terminal-prepared"),
+    "terminal.runtime-artifact-prefetch": (
+        ("terminal-prepared",),
+        "terminal-prepared",
+    ),
     "terminal.notice": (("terminal-prepared",), "terminal-prepared"),
     "terminal.maintenance": (("terminal-prepared",), "maintenance"),
     "terminal.artifact-seal": (("maintenance",), "maintenance"),
@@ -410,6 +426,7 @@ _TIMEOUT_SECONDS = {
     "pi5.bootstrap": 900,
     "pi5.blue-green-release": 1800,
     "terminal.apply": 1800,
+    "terminal.runtime-artifact-prefetch": 900,
     "terminal.local-unit": 1800,
     "terminal.rollback": 1800,
     "terminal.ready": 120,
@@ -419,6 +436,9 @@ _TIMEOUT_SECONDS = {
 
 _RESPONSE_LOSS = {
     "pi5.blue-green-release": "reconcile-phase3-owned-candidate-before-progress",
+    "terminal.runtime-artifact-prefetch": (
+        "revalidate-content-addressed-controller-cache-before-retry"
+    ),
     "terminal.single-transfer": "reconcile-deterministic-local-unit-before-rollback",
     "terminal.local-unit": "reconcile-deterministic-local-unit-before-rollback",
     "terminal.web-activation": "reconcile-deterministic-activation-unit-before-rollback",
@@ -428,6 +448,9 @@ _RESPONSE_LOSS = {
 }
 
 _ROLLBACK_ELIGIBILITY = {
+    "terminal.runtime-artifact-prefetch": (
+        "not-applicable-before-terminal-maintenance"
+    ),
     "terminal.maintenance": "sealed-manifest-and-maintenance-ack",
     "terminal.artifact-seal": "sealed-manifest-and-quiesced-local-owner",
     "terminal.single-transfer": "only-after-local-unit-quiescence-reconciliation",
@@ -467,6 +490,7 @@ def _make_executable(stage: RouteStage) -> RouteStage:
                 "terminal.aggregate-preflight",
                 "terminal.apply-transport-preflight",
                 "terminal.baseline-and-manifest",
+                "terminal.runtime-artifact-prefetch",
                 "terminal.notice",
             }
             else "sealed-manifest-and-quiesced-owner"
@@ -569,6 +593,23 @@ ROUTE_SCENARIOS: tuple[RouteScenario, ...] = (
             "terminal.web-activation",
             "terminal.ready",
             "terminal.finalize",
+            "pi5.fleet-finalize",
+        ),
+        "completed",
+    ),
+    RouteScenario(
+        "stonebase-local-bootstrap-success",
+        _COMMON_PREFIX
+        + (
+            "terminal.apply-transport-preflight",
+            "terminal.baseline-and-manifest",
+            "terminal.runtime-artifact-prefetch",
+            "terminal.notice",
+            "terminal.maintenance",
+            "terminal.apply",
+            "terminal.ready",
+            "terminal.finalize",
+            "pi5.canary-approval",
             "pi5.fleet-finalize",
         ),
         "completed",
@@ -887,6 +928,19 @@ def route_contract_receipt(
                     "terminal.local-residue-cleanup",
                 }
             )
+        elif runtime_prefetch_required(
+            requested_executor=requested,
+            effective_executor=str(effective),
+            fallback_reason=(
+                plan.get("fallbackReason")
+                if isinstance(plan.get("fallbackReason"), str)
+                else None
+            ),
+            mutation_required=mutation,
+        ):
+            selected.update(
+                {"terminal.runtime-artifact-prefetch", "terminal.apply"}
+            )
         elif mutation:
             selected.add("terminal.apply")
         if activation:
@@ -909,6 +963,23 @@ def route_contract_receipt(
                 for work in terminal_work
             )
             else (
+                "stonebase-local-bootstrap-success"
+                if runtime_prefetch_required(
+                    requested_executor=requested,
+                    effective_executor=str(effective),
+                    fallback_reason=(
+                        plan.get("fallbackReason")
+                        if isinstance(plan.get("fallbackReason"), str)
+                        else None
+                    ),
+                    mutation_required=True,
+                )
+                and any(
+                    isinstance(work, dict)
+                    and work.get("mutationRequired") is True
+                    for work in terminal_work
+                )
+                else (
                 "stale-browser-activation"
                 if terminal_work
                 and all(
@@ -917,6 +988,7 @@ def route_contract_receipt(
                     for work in terminal_work
                 )
                 else "pi5-and-ssh-success"
+                )
             )
         )
     )

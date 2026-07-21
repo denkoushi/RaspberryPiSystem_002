@@ -15,7 +15,6 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -28,21 +27,26 @@ LOCK = Path("/usr/local/libexec/raspi-local-runtime-lock.json")
 REQUIREMENTS = Path(
     "/usr/local/libexec/raspi-local-requirements-aarch64-py311.lock"
 )
+CACHE_BASE = Path("/var/cache/raspi-local-ansible-artifacts")
 PYTHON_VERSION = "3.11.15"
+PYTHON_FILENAME = (
+    "cpython-3.11.15+20260510-aarch64-unknown-linux-gnu-install_only.tar.gz"
+)
 PYTHON_SOURCE = (
     "https://github.com/astral-sh/python-build-standalone/releases/download/"
     "20260510/cpython-3.11.15%2B20260510-aarch64-unknown-linux-gnu-install_only.tar.gz"
 )
 PYTHON_SHA256 = "0bc1b7acbb888881addf3a1c887a47d510d4300db6e3ad2ba461154b982e456a"
+PYTHON_SIZE = 48_884_733
+COLLECTION_FILENAME = "community-general-11.4.1.tar.gz"
 COLLECTION_SOURCE = (
     "https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/"
     "collections/artifacts/community-general-11.4.1.tar.gz"
 )
 COLLECTION_SHA256 = "618b2cad75706f2939a5607271bfdcf4a10d3b6f3fe792e1569910c270485399"
-MAX_PYTHON_ARCHIVE_BYTES = 64 * 1024 * 1024
+COLLECTION_SIZE = 2_701_594
 MAX_PYTHON_EXTRACTED_BYTES = 512 * 1024 * 1024
 MAX_PYTHON_ARCHIVE_MEMBERS = 20_000
-MAX_COLLECTION_BYTES = 64 * 1024 * 1024
 ANSIBLE_LOCALE = "C.UTF-8"
 
 
@@ -177,6 +181,7 @@ def _load_lock() -> tuple[dict[str, Any], str]:
         "python",
         "pythonDistribution",
         "ansibleCore",
+        "pythonPackages",
         "collections",
     }
     if not isinstance(value, dict) or set(value) != expected:
@@ -184,22 +189,59 @@ def _load_lock() -> tuple[dict[str, Any], str]:
     python_distribution = value.get("pythonDistribution")
     collection = value.get("collections", {}).get("community.general")
     if (
-        value["schemaVersion"] != 2
+        value["schemaVersion"] != 3
         or value["platform"] != "linux-aarch64"
         or value["python"] != PYTHON_VERSION
         or not isinstance(python_distribution, dict)
-        or set(python_distribution) != {"version", "source", "sha256"}
+        or set(python_distribution)
+        != {"version", "filename", "source", "sha256", "size"}
         or python_distribution["version"] != PYTHON_VERSION
+        or python_distribution["filename"] != PYTHON_FILENAME
         or python_distribution["source"] != PYTHON_SOURCE
         or python_distribution["sha256"] != PYTHON_SHA256
+        or python_distribution["size"] != PYTHON_SIZE
         or value["ansibleCore"] != "2.19.4"
+        or not isinstance(value["pythonPackages"], list)
+        or len(value["pythonPackages"]) != 9
         or not isinstance(collection, dict)
-        or set(collection) != {"version", "source", "sha256"}
+        or set(collection) != {"version", "filename", "source", "sha256", "size"}
         or collection["version"] != "11.4.1"
+        or collection["filename"] != COLLECTION_FILENAME
         or collection["source"] != COLLECTION_SOURCE
         or collection["sha256"] != COLLECTION_SHA256
+        or collection["size"] != COLLECTION_SIZE
     ):
         raise InstallError("runtime lock does not match the supported runtime")
+    packages = value["pythonPackages"]
+    names: set[str] = set()
+    filenames: set[str] = {PYTHON_FILENAME, COLLECTION_FILENAME}
+    for package in packages:
+        if (
+            not isinstance(package, dict)
+            or set(package)
+            != {"name", "version", "filename", "source", "sha256", "size"}
+            or not isinstance(package["name"], str)
+            or not package["name"]
+            or package["name"] in names
+            or not isinstance(package["version"], str)
+            or not package["version"]
+            or not isinstance(package["filename"], str)
+            or not package["filename"].endswith(".whl")
+            or "/" in package["filename"]
+            or "\\" in package["filename"]
+            or package["filename"] in filenames
+            or not isinstance(package["source"], str)
+            or not package["source"].startswith("https://files.pythonhosted.org/")
+            or not isinstance(package["sha256"], str)
+            or len(package["sha256"]) != 64
+            or any(character not in "0123456789abcdef" for character in package["sha256"])
+            or type(package["size"]) is not int
+            or package["size"] <= 0
+            or package["size"] > 64 * 1024 * 1024
+        ):
+            raise InstallError("runtime Python package lock is malformed")
+        names.add(package["name"])
+        filenames.add(package["filename"])
     return value, "sha256:" + hashlib.sha256(raw).hexdigest()
 
 
@@ -266,29 +308,52 @@ def _valid(runtime: Path) -> bool:
     )
 
 
-def _download_file(
-    destination: Path,
-    metadata: dict[str, str],
-    *,
-    maximum_bytes: int,
-) -> None:
-    request = urllib.request.Request(
-        metadata["source"], headers={"User-Agent": "raspi-runtime-bootstrap/1"}
-    )
+def _file_digest(path: Path) -> tuple[int, str]:
     digest = hashlib.sha256()
-    written = 0
-    with urllib.request.urlopen(request, timeout=60) as response, destination.open("wb") as output:
-        while True:
-            block = response.read(1024 * 1024)
-            if not block:
-                break
-            written += len(block)
-            if written > maximum_bytes:
-                raise InstallError("runtime dependency exceeds the size bound")
+    size = 0
+    with path.open("rb") as stream:
+        while block := stream.read(1024 * 1024):
+            size += len(block)
             digest.update(block)
-            output.write(block)
-    if written == 0 or digest.hexdigest() != metadata["sha256"]:
-        raise InstallError("runtime dependency digest does not match")
+    return size, digest.hexdigest()
+
+
+def _validated_cache(
+    lock: dict[str, Any], lock_sha256: str, cache_root: Path | None
+) -> Path:
+    expected_root = CACHE_BASE / lock_sha256.removeprefix("sha256:")
+    selected = expected_root if cache_root is None else cache_root
+    if selected != expected_root:
+        raise InstallError("runtime artifact cache identity does not match")
+    metadata = os.lstat(selected)
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or stat.S_ISLNK(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(metadata.st_mode) & 0o022
+    ):
+        raise InstallError("runtime artifact cache is unsafe")
+    members = [
+        lock["pythonDistribution"],
+        *lock["pythonPackages"],
+        lock["collections"]["community.general"],
+    ]
+    expected_names = {member["filename"] for member in members}
+    actual_names = {entry.name for entry in selected.iterdir()}
+    if actual_names != expected_names:
+        raise InstallError("runtime artifact cache membership does not match")
+    for member in members:
+        path = selected / member["filename"]
+        file_metadata = os.lstat(path)
+        if (
+            not stat.S_ISREG(file_metadata.st_mode)
+            or stat.S_ISLNK(file_metadata.st_mode)
+            or file_metadata.st_uid != os.geteuid()
+            or stat.S_IMODE(file_metadata.st_mode) & 0o022
+            or _file_digest(path) != (member["size"], member["sha256"])
+        ):
+            raise InstallError("runtime artifact cache member does not match")
+    return selected
 
 
 def _safe_archive_path(name: str) -> PurePosixPath:
@@ -360,7 +425,7 @@ def _phase(observation: Observation, phase: str, code: str, action: Any) -> Any:
         raise InstallFailure(phase, code) from error
 
 
-def install(observation: Observation) -> bool:
+def install(observation: Observation, *, cache_root: Path | None = None) -> bool:
     observation.phase("host-preflight")
     if os.geteuid() != 0 or platform.machine() not in {"aarch64", "arm64"}:
         raise InstallFailure("host-preflight", "host-ineligible")
@@ -370,6 +435,12 @@ def install(observation: Observation) -> bool:
     observation.lock_sha256 = lock_sha256
     if not REQUIREMENTS.is_file():
         raise InstallFailure("lock-validate", "requirements-missing")
+    cache = _phase(
+        observation,
+        "artifact-cache",
+        "artifact-cache-invalid",
+        lambda: _validated_cache(lock, lock_sha256, cache_root),
+    )
     versions = ROOT / "versions"
     _phase(
         observation,
@@ -387,17 +458,7 @@ def install(observation: Observation) -> bool:
         )
         failure: BaseException | None = None
         try:
-            python_archive = temporary_root / "python.tar.gz"
-            _phase(
-                observation,
-                "python-download",
-                "python-download-failed",
-                lambda: _download_file(
-                    python_archive,
-                    lock["pythonDistribution"],
-                    maximum_bytes=MAX_PYTHON_ARCHIVE_BYTES,
-                ),
-            )
+            python_archive = cache / lock["pythonDistribution"]["filename"]
             extract_root = temporary_root / "extract"
             temporary = _phase(
                 observation,
@@ -405,10 +466,6 @@ def install(observation: Observation) -> bool:
                 "python-extract-failed",
                 lambda: _extract_python_distribution(python_archive, extract_root),
             )
-            try:
-                python_archive.unlink()
-            except OSError:
-                pass
             observation.phase("python-packages")
             try:
                 package_result = _run(
@@ -419,6 +476,9 @@ def install(observation: Observation) -> bool:
                         "install",
                         "--disable-pip-version-check",
                         "--no-input",
+                        "--no-index",
+                        "--find-links",
+                        str(cache),
                         "--only-binary=:all:",
                         "--require-hashes",
                         "-r",
@@ -431,17 +491,7 @@ def install(observation: Observation) -> bool:
             if package_result.returncode != 0:
                 raise InstallFailure("python-packages", "python-packages-failed")
             collection = lock["collections"]["community.general"]
-            archive = temporary_root / "community-general-11.4.1.tar.gz"
-            _phase(
-                observation,
-                "collection-download",
-                "collection-download-failed",
-                lambda: _download_file(
-                    archive,
-                    collection,
-                    maximum_bytes=MAX_COLLECTION_BYTES,
-                ),
-            )
+            archive = cache / collection["filename"]
             observation.phase("collection-install")
             try:
                 collection_result = _run(
@@ -466,10 +516,6 @@ def install(observation: Observation) -> bool:
                 raise InstallFailure(
                     "collection-install", "collection-install-failed"
                 )
-            try:
-                archive.unlink()
-            except OSError:
-                pass
             observation.phase("runtime-verify")
             if not _valid(temporary):
                 raise InstallFailure(
@@ -567,6 +613,7 @@ def _marker(value: dict[str, Any]) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("action", nargs="?", choices=("install", "status"), default="install")
+    parser.add_argument("--cache-root", type=Path)
     args = parser.parse_args(argv)
     if args.action == "status":
         try:
@@ -579,7 +626,7 @@ def main(argv: list[str] | None = None) -> int:
     observation = Observation()
     try:
         observation.phase("initializing")
-        changed = install(observation)
+        changed = install(observation, cache_root=args.cache_root)
         observation.write(
             status="changed" if changed else "current",
             phase="complete",
