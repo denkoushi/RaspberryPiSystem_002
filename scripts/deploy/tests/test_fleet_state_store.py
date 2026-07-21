@@ -37,6 +37,7 @@ SHA_C = "c" * 40
 DIGEST_A = "sha256:" + "a" * 64
 DIGEST_B = "sha256:" + "b" * 64
 INVENTORY = "infrastructure/ansible/inventory.yml"
+CLAIM_FIXTURES = Path(__file__).parent / "fixtures" / "release-claims"
 
 
 class FleetStateStoreTest(unittest.TestCase):
@@ -70,6 +71,43 @@ class FleetStateStoreTest(unittest.TestCase):
         self.assertFalse(self.root.exists())
         self.assertFalse(self.state_path.exists())
         self.assertFalse(self.lock_path.exists())
+
+    def test_legacy_golden_state_reads_without_schema_insertion(self):
+        fixture = CLAIM_FIXTURES / "legacy-fleet.json"
+        self.root.mkdir(parents=True)
+        self.state_path.write_bytes(fixture.read_bytes())
+
+        state = self.store.read_only()
+
+        self.assertEqual(state, json.loads(fixture.read_text(encoding="utf-8")))
+        self.assertNotIn("releaseClaims", state["fleet"]["kiosk-a"])
+        self.assertEqual(self.state_path.read_bytes(), fixture.read_bytes())
+
+    def test_mixed_golden_state_round_trips_without_losing_claims(self):
+        fixture = CLAIM_FIXTURES / "mixed-fleet.json"
+        self.root.mkdir(parents=True)
+        self.state_path.write_bytes(fixture.read_bytes())
+        expected = json.loads(fixture.read_text(encoding="utf-8"))
+
+        state = self.store.read_only()
+        updated = self.store.mutate(state["generation"], lambda _state: None)
+
+        self.assertEqual(state, expected)
+        self.assertEqual(
+            updated["fleet"]["kiosk-a"]["releaseClaims"],
+            expected["fleet"]["kiosk-a"]["releaseClaims"],
+        )
+        self.assertEqual(updated["generation"], expected["generation"] + 1)
+
+    def test_corrupt_mixed_golden_state_fails_closed(self):
+        fixture = CLAIM_FIXTURES / "corrupt-mixed-fleet.json"
+        self.root.mkdir(parents=True)
+        self.state_path.write_bytes(fixture.read_bytes())
+
+        with self.assertRaisesRegex(
+            FleetStateCorruptError, "disagrees with legacy desiredSha"
+        ):
+            self.store.read_only()
 
     def test_begin_run_creates_generation_checked_active_summary(self):
         state = self.begin()

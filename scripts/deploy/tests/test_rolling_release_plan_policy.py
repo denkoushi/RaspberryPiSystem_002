@@ -249,6 +249,47 @@ class ReleasePolicyTest(unittest.TestCase):
         self.assertEqual(server['evidence'], 'unknown')
         self.assertEqual(server['targetReason'], 'verified evidence incomplete')
 
+    def test_additive_release_claims_do_not_change_legacy_planning(self):
+        legacy = verified_record('kiosk')
+        mixed = copy.deepcopy(legacy)
+        mixed['releaseClaims'] = {
+            'terminalRepository': {
+                'expectedIdentity': CURRENT_SHA,
+                'observedIdentity': CURRENT_SHA,
+                'authority': 'terminal-repository-probe',
+                'verificationId': None,
+                'state': 'verified',
+                'observedAt': VERIFIED_AT,
+                'lastRunId': RUN_ID,
+            },
+            'controlPlaneWeb': {
+                'expectedIdentity': RELEASE_SHA,
+                'observedIdentity': None,
+                'authority': 'kiosk-compiled-web-ready',
+                'verificationId': 'c' * 32,
+                'state': 'unknown',
+                'observedAt': None,
+                'lastRunId': RUN_ID,
+            },
+        }
+
+        legacy_decision = POLICY.plan_target_decisions(
+            [self.hosts[2]],
+            {'kiosk-a': legacy},
+            RELEASE_SHA,
+            {CURRENT_SHA: classification()},
+            self.inventory,
+        )
+        mixed_decision = POLICY.plan_target_decisions(
+            [self.hosts[2]],
+            {'kiosk-a': mixed},
+            RELEASE_SHA,
+            {CURRENT_SHA: classification()},
+            self.inventory,
+        )
+
+        self.assertEqual(mixed_decision, legacy_decision)
+
     def test_run_scoped_server_images_remain_complete_verified_evidence(self):
         server_record = verified_record(
             'server', current=RELEASE_SHA, run_scoped=True

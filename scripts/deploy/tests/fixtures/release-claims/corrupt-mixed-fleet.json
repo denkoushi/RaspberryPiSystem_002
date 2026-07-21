@@ -1,0 +1,27 @@
+{
+  "generation": 8,
+  "activeRun": null,
+  "lastRun": null,
+  "fleet": {
+    "kiosk-a": {
+      "role": "kiosk",
+      "desiredSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "currentSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "previousSha": null,
+      "evidence": "verified",
+      "verifiedAt": "2026-07-21T12:09:00Z",
+      "lastRunId": "20260721-120000-a1b2c3",
+      "releaseClaims": {
+        "terminalRepository": {
+          "expectedIdentity": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "observedIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "authority": "terminal-repository-probe",
+          "verificationId": null,
+          "state": "unknown",
+          "observedAt": "2026-07-21T12:09:00Z",
+          "lastRunId": "20260721-120000-a1b2c3"
+        }
+      }
+    }
+  }
+}

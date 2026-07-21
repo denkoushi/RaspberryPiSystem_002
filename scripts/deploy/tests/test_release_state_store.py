@@ -25,6 +25,27 @@ from rolling_release.state import (  # noqa: E402
 from rolling_release import state as state_module  # noqa: E402
 
 
+CLAIM_FIXTURES = Path(__file__).parent / 'fixtures' / 'release-claims'
+SHA_A = 'a' * 40
+SHA_B = 'b' * 40
+RUN_ID = 'run-typed'
+VERIFICATION_ID = 'c' * 32
+
+
+def terminal_claim(**overrides):
+    claim = {
+        'expectedIdentity': SHA_A,
+        'observedIdentity': SHA_A,
+        'authority': 'terminal-repository-probe',
+        'verificationId': None,
+        'state': 'verified',
+        'observedAt': '2026-07-15T00:00:00Z',
+        'lastRunId': RUN_ID,
+    }
+    claim.update(overrides)
+    return claim
+
+
 class RunLockTest(unittest.TestCase):
     def test_nonblocking_contender_cannot_enter_held_per_run_lock(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -63,6 +84,114 @@ class RunStateStoreTest(unittest.TestCase):
             with self.subTest(run_id=run_id), self.assertRaises(InvalidRunIdError):
                 self.store.paths(run_id)
         self.assertFalse(self.root.exists())
+
+    def test_legacy_golden_run_reads_byte_for_byte_without_claim_insertion(self):
+        fixture = CLAIM_FIXTURES / 'legacy-run-v1.json'
+        self.root.mkdir(parents=True)
+        path = run_paths(self.root, 'run-legacy').state
+        path.write_bytes(fixture.read_bytes())
+
+        state = self.store.read_state('run-legacy')
+
+        self.assertEqual(state, json.loads(fixture.read_text(encoding='utf-8')))
+        self.assertNotIn('releaseClaims', state['hosts'][0])
+        self.assertEqual(path.read_bytes(), fixture.read_bytes())
+
+    def test_legacy_active_run_update_does_not_change_execution_schema(self):
+        fixture = CLAIM_FIXTURES / 'legacy-run-v1.json'
+        self.root.mkdir(parents=True)
+        path = run_paths(self.root, 'run-legacy').state
+        path.write_bytes(fixture.read_bytes())
+
+        updated = self.store.update_state(
+            'run-legacy', lambda state: state.update({'phase': 'preparing'})
+        )
+
+        self.assertEqual(updated['phase'], 'preparing')
+        self.assertNotIn('releaseClaims', updated)
+        self.assertNotIn('releaseClaims', updated['hosts'][0])
+
+    def test_typed_claims_round_trip_in_host_and_target_records(self):
+        record = {
+            'host': 'kiosk-a',
+            'role': 'kiosk',
+            'desiredSha': SHA_A,
+            'currentSha': SHA_A,
+            'evidence': 'verified',
+            'releaseClaims': {'terminalRepository': terminal_claim()},
+        }
+
+        created = self.store.create_state(
+            RUN_ID,
+            {
+                'state': 'running',
+                'hosts': [record],
+                'targets': [record],
+            },
+        )
+        updated = self.store.update_state(
+            RUN_ID, lambda state: state.update({'phase': 'preparing'})
+        )
+
+        self.assertEqual(
+            created['hosts'][0]['releaseClaims'],
+            updated['hosts'][0]['releaseClaims'],
+        )
+        self.assertEqual(
+            created['targets'][0]['releaseClaims'],
+            updated['targets'][0]['releaseClaims'],
+        )
+
+    def test_corrupt_mixed_run_claim_fails_before_state_write(self):
+        record = {
+            'host': 'kiosk-a',
+            'role': 'kiosk',
+            'desiredSha': SHA_A,
+            'currentSha': SHA_A,
+            'evidence': 'verified',
+            'releaseClaims': {
+                'terminalRepository': terminal_claim(
+                    expectedIdentity=SHA_B, observedIdentity=SHA_B
+                )
+            },
+        }
+
+        with self.assertRaisesRegex(
+            RunRecordCorruptError, 'disagrees with legacy desiredSha'
+        ):
+            self.store.create_state(
+                RUN_ID, {'state': 'running', 'hosts': [record], 'targets': []}
+            )
+        self.assertFalse(run_paths(self.root, RUN_ID).state.exists())
+
+    def test_corrupt_claim_read_fails_closed_without_mutating_record(self):
+        self.root.mkdir(parents=True)
+        path = run_paths(self.root, RUN_ID).state
+        payload = {
+            'version': 1,
+            'runId': RUN_ID,
+            'state': 'running',
+            'targets': [
+                {
+                    'host': 'signage-a',
+                    'role': 'signage',
+                    'desiredSha': SHA_A,
+                    'currentSha': SHA_A,
+                    'releaseClaims': {
+                        'terminalRepository': terminal_claim(
+                            authority='signage-ready',
+                            verificationId=VERIFICATION_ID.upper(),
+                        )
+                    },
+                }
+            ],
+        }
+        path.write_text(json.dumps(payload), encoding='utf-8')
+        before = path.read_bytes()
+
+        with self.assertRaisesRegex(RunRecordCorruptError, 'verificationId'):
+            self.store.read_state(RUN_ID)
+        self.assertEqual(path.read_bytes(), before)
 
     def test_state_and_control_are_distinct_and_progress_update_keeps_cancel(self):
         self.store.create_state('run-1', {'state': 'running', 'phase': 'planning'})

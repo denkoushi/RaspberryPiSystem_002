@@ -14,9 +14,9 @@ related_docs:
   - docs/decisions/ADR-20260721-deploy-release-identity-and-activation.md
   - docs/plans/deploy-release-identity-readonly-evidence-manifest.md
   - docs/plans/deploy-speed-phase-b-execplan.md
-validation: offline source audit, pure typed-claim prototype, 747 deploy Python tests, aggregate deploy contracts, 13 Kiosk ACK tests, and approved read-only evidence sha256:f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8
+validation: offline source audit, pure typed-claim prototype, Milestone 1 aggregate deploy contracts with 770 deploy Python tests, and approved read-only evidence sha256:f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8
 open_items:
-  - implement milestones 1 through 6 offline from a fresh current-main worktree
+  - implement milestones 2 through 6 offline from the accepted Milestone 1 branch
   - keep all hardware rollout blocked until the complete offline acceptance gate passes
   - request a new exact Pi5 plus StoneBase canary approval only after that gate
 ---
@@ -58,7 +58,7 @@ the complete offline gate passes and a new exact hardware approval is granted.
 - [x] (2026-07-21 04:23Z) Passed 747 deploy Python tests, the complete aggregate deploy contract including isolated PostgreSQL ACK tests and Ansible syntax, 13 current Kiosk ACK tests, deploy safety, and the Phase B lifecycle contract without changing production code.
 - [x] (2026-07-21 04:38Z) Executed the separately approved Pi5 plus StoneBase read-only manifest with no mutation or FJV contact; normalized evidence digest is `f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8`.
 - [x] (2026-07-21 04:38Z) Confirmed that the forward apply did not restart the Kiosk browser and sealed rollback did; accepted the ADR and opened offline implementation only.
-- [ ] Milestone 1: add typed claim models and dual-read state without changing live behavior.
+- [x] (2026-07-21 05:03Z) Completed Milestone 1: added the closed typed-claim model, additive fleet/run readers, legacy evidence adapter, and golden compatibility fixtures. Passed the focused 50 tests plus lifecycle contract, 770 deploy Python tests, and the complete offline aggregate including shell, safety, Pi5/Signage lifecycle, isolated PostgreSQL ACK, inventory, and Ansible contracts.
 - [ ] Milestone 2: split planner targets and make the planned work observable without enabling new activation.
 - [ ] Milestone 3: add bounded Kiosk Web activation and the one-time old-bundle migration.
 - [ ] Milestone 4: migrate SSH Kiosk and Signage verification/finalization to typed claims.
@@ -101,6 +101,20 @@ the complete offline gate passes and a new exact hardware approval is granted.
   Evidence: approved `--print-plan` reported Local effective with no fallback,
   while preflight `20260721-043630-dd9ed9` reported SSH effective,
   `candidate-requires-ssh-configuration`, runtime null, and no submission.
+
+- Observation: fleet and run persistence have different schema boundaries.
+  Evidence: `fleet_state.py` requires an exact host-key set, while `state.py`
+  deliberately permits evolving run payloads. Milestone 1 therefore accepts
+  `releaseClaims` as the only optional fleet-host field and validates it only
+  inside the existing run `hosts` and `targets` collections.
+
+- Observation: legacy rollback evidence can be verified even when its recorded
+  desired SHA differs from the restored current SHA.
+  Evidence: the existing fleet test
+  `test_verified_terminal_may_record_a_verified_rollback_drift` requires this
+  state. The compatibility adapter retains the observed SHA but marks the
+  candidate-oriented typed claim `unknown`; it never converts drift into a
+  verified expected claim.
 
 ## Decision Log
 
@@ -152,6 +166,31 @@ the complete offline gate passes and a new exact hardware approval is granted.
   and sealed manifests that existed when the run began.
   Date/Author: 2026-07-21 / Codex.
 
+- Decision: use Git SHA identity for `controlPlaneApi`, `controlPlaneWeb`, and
+  `terminalRepository`, and sha256-prefixed digest identity for `localArtifact`
+  and `runtime`.
+  Rationale: the current independent Pi5 and terminal evidence binds immutable
+  images and repository state to the release Git SHA, while Local artifact and
+  runtime locks are content-digest authorities. This avoids treating image tag
+  strings or runtime version labels as durable identities.
+  Date/Author: 2026-07-21 / Codex.
+
+- Decision: close authority IDs in code and distinguish ACK-backed authorities
+  from direct probes.
+  Rationale: Kiosk compiled-Web, Signage ready, and Local runner observations
+  require a 32-lowercase-hex verification ID. Pi5 image, terminal repository,
+  and Local runtime probes reject a verification ID so one field cannot silently
+  acquire two meanings.
+  Date/Author: 2026-07-21 / Codex.
+
+- Decision: expose legacy projection as an explicit compatibility adapter and
+  do not insert projected claims during a read or legacy write.
+  Rationale: byte-for-byte legacy behavior and old active-run recovery must stay
+  unchanged in Milestone 1. A Kiosk legacy record projects only
+  `terminalRepository`; only a complete verified Pi5 image record projects API
+  and Web claims, so no browser claim is manufactured.
+  Date/Author: 2026-07-21 / Codex.
+
 ## Outcomes & Retrospective
 
 The investigation phase produced a coherent state model and rejected the
@@ -160,10 +199,14 @@ terminal-only SSH, Local, no-op, response-loss, and forward-Pi5/terminal-
 rollback states without sharing one SHA meaning. That is a feasibility result,
 not production acceptance.
 
-Implementation has not started. The approved read-only browser timeline now
-confirms the stale-bundle cause, and the ADR is accepted for offline work. The
-correct outcome at this stopping point is offline implementation Go, live
-rollout No-Go, with the current safe production state left untouched.
+Milestone 1 is complete offline on `feat/deploy-release-claims`. It adds a
+strict model and dual-read boundary without routing any production decision
+through the new claims. Golden legacy records read without field insertion,
+mixed records round-trip their claims, corrupt mixed identities fail closed,
+and a typed record produces the same legacy planner decision. Complete
+aggregate validation passed. Milestones 2 through 6 and the separate future
+hardware gate remain open. Live rollout remains No-Go and the current safe
+production state is untouched.
 
 ## Context and Orientation
 
@@ -420,6 +463,18 @@ Audit baseline:
     browser forward restart: absent
     browser rollback restart: 2026-07-21T03:46:02Z–03:46:03Z
 
+Milestone 1 validation:
+
+    focused baseline: 50 tests PASS
+    client lifecycle selection: PASS
+    deploy Python discovery: 770 tests PASS
+    Ansible Jinja templates: 99 parsed
+    deploy safety, Pi5 Blue/Green, Signage maintenance: PASS
+    isolated PostgreSQL deploy-status API: 20 tests PASS
+    recovery contract: 24 tests PASS
+    inventory and all Ansible syntax checks: PASS
+    aggregate result: all checks passed
+
 The prototype was pure in-memory code and was not added to production. Its role
 was to prove that target and identity separation can represent the required
 states before any implementation resumes.
@@ -476,3 +531,9 @@ Revision note (2026-07-21 04:38Z): Recorded the approved evidence receipt and
 confirmed stale-browser timeline, accepted offline implementation Go, retained
 live rollout No-Go, and added the provisional executor state exposed by the
 plan/preflight difference.
+
+Revision note (2026-07-21 05:03Z): Completed Milestone 1 with closed claim and
+authority validation, additive fleet/run dual-read support, explicit legacy
+projection that never infers a Kiosk browser claim, golden compatibility
+fixtures, and the complete offline aggregate. No planner, executor, ACK,
+restart, timeout, or hardware behavior was changed.

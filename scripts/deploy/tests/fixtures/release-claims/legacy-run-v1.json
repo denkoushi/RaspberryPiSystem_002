@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "runId": "run-legacy",
+  "state": "running",
+  "phase": "planning",
+  "hosts": [
+    {
+      "host": "kiosk-a",
+      "role": "kiosk",
+      "desiredSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "currentSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "evidence": "verified"
+    }
+  ],
+  "targets": []
+}

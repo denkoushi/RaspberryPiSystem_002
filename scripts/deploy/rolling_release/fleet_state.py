@@ -25,6 +25,11 @@ from typing import Any
 from terminal_profile_registry import RegistryError, load_registry
 
 from .image_refs import image_matches_release
+from .release_claims import (
+    ReleaseClaimError,
+    validate_host_claim_compatibility,
+    validate_release_claims,
+)
 
 
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -56,6 +61,7 @@ COMMON_HOST_FIELDS = frozenset(
 SERVER_HOST_FIELDS = frozenset(
     {"activeSlot", "apiImage", "webImage", "configDigest", "migrationDigest"}
 )
+OPTIONAL_HOST_FIELDS = frozenset({"releaseClaims"})
 EVIDENCE_VALUES = frozenset({"unknown", "verified"})
 TERMINAL_RUN_STATUSES = frozenset({"success", "failed", "cancelled", "interrupted"})
 RUN_KINDS = frozenset({"release", "pi4-recovery"})
@@ -210,7 +216,9 @@ def _validate_host_record(host: str, value: Any) -> None:
         raise FleetStateCorruptError(f"fleet.{host} must be an object")
     role = value.get("role")
     expected_fields = COMMON_HOST_FIELDS | (SERVER_HOST_FIELDS if role == "server" else set())
-    if set(value) != expected_fields:
+    if not expected_fields <= set(value) or not set(value) <= (
+        expected_fields | OPTIONAL_HOST_FIELDS
+    ):
         raise FleetStateCorruptError(f"fleet.{host} fields do not match role {role!r}")
     if not isinstance(role, str) or role not in _release_roles():
         raise FleetStateCorruptError(f"fleet.{host}.role is unsupported")
@@ -268,6 +276,17 @@ def _validate_host_record(host: str, value: Any) -> None:
                     raise FleetStateCorruptError(
                         f"fleet.{host}.{image_field} does not match currentSha"
                     )
+
+    if "releaseClaims" in value:
+        try:
+            claims = validate_release_claims(
+                value["releaseClaims"], field=f"fleet.{host}.releaseClaims"
+            )
+            validate_host_claim_compatibility(value, claims)
+        except ReleaseClaimError as error:
+            raise FleetStateCorruptError(
+                f"fleet.{host}.releaseClaims is malformed: {error}"
+            ) from error
 
 
 def validate_fleet_state(payload: Any) -> dict[str, Any]:
