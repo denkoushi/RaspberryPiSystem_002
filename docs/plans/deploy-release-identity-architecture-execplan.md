@@ -1,7 +1,7 @@
 ---
 id: deploy-release-identity-architecture
 title: Migrate deployment planning and evidence to typed release claims
-status: local-impact-contract-fix-live-blocked
+status: local-canary-ready
 scope: rolling release planner, fleet and run state, Kiosk activation, SSH and Local executors, route contracts
 date: 2026-07-21
 source_of_truth: docs/plans/deploy-release-identity-architecture-execplan.md
@@ -14,12 +14,10 @@ related_docs:
   - docs/decisions/ADR-20260721-deploy-release-identity-and-activation.md
   - docs/plans/deploy-release-identity-readonly-evidence-manifest.md
   - docs/plans/deploy-speed-phase-b-execplan.md
-validation: Milestones 1 through 7 accepted; exact Pi5 plus StoneBase SSH runs 20260721-162403-d398c0 and 20260721-172923-90a38b succeeded; preflight 20260721-174938-0c7310 proved the exact r2 runtime and selected Local; the first canary exposed preflight/direct-transport inventory parity before maintenance; accepted-main preflight 20260721-181758-b97f76 then exposed duplicate candidate-impact policy; the shared registry correction passed 880 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template parses, and the complete deploy aggregate
+validation: Milestones 1 through 7 accepted; shared candidate-impact policy merged as PR #1059 at 0ff5fc2de5a6d14523570bb7f5753076bc3380e3 after 880 deploy Python tests and the complete aggregate; exact Pi5 plus StoneBase SSH run 20260721-184600-ea3eba installed the contract and completed all typed evidence and cleanup; independent preflight 20260721-190514-541561 selected effective Local with no fallback and proved the exact r2 runtime
 open_items:
-  - review and merge the shared candidate-impact contract correction
-  - install its explicit Local runtime capability through the expected exact-scope SSH bootstrap
-  - independently prove effective Local with no fallback from the later accepted main
-  - keep Local execution blocked until the exact-scope Local canary completes
+  - merge this neutral evidence-only candidate and complete its exact-scope Local canary
+  - keep Local rollout beyond StoneBase blocked until the canary completes
   - keep FJV and every terminal other than StoneBase excluded
 ---
 
@@ -53,8 +51,9 @@ only in KB-401. The current `r2` fix binds those scripts to the immutable final
 path, uses a fixed short staging name within pip's direct-shebang bound, and
 revalidates after publication. FJV and every other terminal stay
 excluded. The accepted-main SSH bootstrap and independent preflight now prove
-`r2`; Local execution remains blocked on the shared candidate-impact contract,
-its expected SSH bootstrap, and one later successful exact-scope canary.
+`r2`. The shared candidate-impact contract and its expected SSH bootstrap are
+now complete, and independent preflight selects Local with no fallback. The
+remaining gate is one successful exact-scope Local canary.
 
 ## Progress
 
@@ -94,7 +93,10 @@ its expected SSH bootstrap, and one later successful exact-scope canary.
 - [x] (2026-07-21 18:06Z) Unified the aggregate and direct SSH-common-argument policy, retained strict host-key checking, split fallback provenance, and passed the complete 877-test deploy aggregate.
 - [x] (2026-07-21 18:18Z) Merged the direct transport parity fix as PR #1058 at `e98060520c7d26909887073de2e13b203024e8d8`; exact-scope preflight `20260721-181758-b97f76` proved the runtime but exposed duplicate candidate-impact classification before notice or maintenance.
 - [x] (2026-07-21 18:38Z) Made the terminal profile registry the exact candidate path authority for both aggregate preflight and locked selection, separated installed Local helpers into a StoneBase-scoped runtime component, derived their mapping contract from the Ansible bootstrap task, and passed the complete 880-test aggregate.
-- [ ] Merge the impact-contract fix, complete its expected exact-scope SSH bootstrap, and then complete one Local canary before declaring the route normalized.
+- [x] (2026-07-21 18:44Z) Merged the impact-contract fix as PR #1059 at accepted main `0ff5fc2de5a6d14523570bb7f5753076bc3380e3`; every required CI check passed with no unresolved review thread.
+- [x] (2026-07-21 19:04Z) Completed exact-scope SSH bootstrap run `20260721-184600-ea3eba`: requested Local safely fell back on the inventory history, Pi5 stability and evidence passed, StoneBase apply took 223,073 ms, ready ACK and independent evidence passed, cleanup completed, and maintenance cleared. FJV and all other terminals remained excluded.
+- [x] (2026-07-21 19:05Z) Independent preflight `20260721-190514-541561` selected effective Local with no fallback and proved Python 3.11.15, ansible-core 2.19.4, community.general 11.4.1, runner v3, runtime `r2`, and exact runtime identity `sha256:f607570e67d68855078486c54bfd5fe467b082e150582deab1862b0413310dd2`.
+- [ ] Complete one exact-scope Local canary and final no-op proof before declaring the route normalized.
 
 ## Surprises & Discoveries
 
