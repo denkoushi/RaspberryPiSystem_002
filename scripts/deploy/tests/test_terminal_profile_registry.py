@@ -1,5 +1,6 @@
 import copy
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -93,6 +94,29 @@ class TerminalProfileRegistryTest(unittest.TestCase):
             "deploy-control",
         )
         self.assertEqual(
+            registry.component_for(
+                "scripts/deploy/rolling_release/backends/local_ansible.py"
+            ),
+            "deploy-control",
+        )
+        self.assertEqual(
+            registry.component_for("scripts/deploy/stonebase-local-ansible-runner.py"),
+            "local-executor-runtime",
+        )
+        self.assertEqual(
+            registry.profiles_for_components({"local-executor-runtime"}),
+            ["kiosk"],
+        )
+        self.assertTrue(
+            registry.components_apply_to_host(
+                {"local-executor-runtime"},
+                {"stonebase_local_executor_enabled": True},
+            )
+        )
+        self.assertFalse(
+            registry.components_apply_to_host({"local-executor-runtime"}, {})
+        )
+        self.assertEqual(
             registry.component_for("scripts/deploy/tests/test_future_control_step.py"),
             "neutral",
         )
@@ -117,6 +141,22 @@ class TerminalProfileRegistryTest(unittest.TestCase):
         self.assertEqual(torque.port_policy, "fixed")
         self.assertEqual(torque.default_port, 7073)
         self.assertEqual(torque.health_endpoint, "/health")
+
+    def test_every_terminal_installed_deploy_helper_has_runtime_impact(self):
+        registry = load_registry()
+        task = (
+            DEFAULT_REGISTRY_PATH.parents[2]
+            / "infrastructure/ansible/roles/client/tasks/local-runner-bootstrap.yml"
+        ).read_text(encoding="utf-8")
+        sources = re.findall(
+            r'src: "\{\{ repo_path \}\}/(scripts/deploy/[^"\n]+)"', task
+        )
+
+        self.assertGreater(len(sources), 0)
+        self.assertEqual(
+            {source: registry.component_for(source) for source in sources},
+            {source: "local-executor-runtime" for source in sources},
+        )
 
     def test_profile_order_is_deterministic(self):
         self.payload["terminalProfiles"].reverse()

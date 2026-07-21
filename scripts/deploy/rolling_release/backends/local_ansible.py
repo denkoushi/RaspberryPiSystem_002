@@ -29,6 +29,11 @@ from ..terminal_preflight_contract import (
 )
 from . import ansible as ansible_backend
 
+try:
+    from terminal_profile_registry import load_registry
+except ImportError:
+    from scripts.deploy.terminal_profile_registry import load_registry
+
 
 RUNNER = "/usr/local/libexec/raspi-local-ansible-runner"
 ARTIFACT_ROOT = Path("logs/deploy/local-artifacts")
@@ -262,6 +267,7 @@ def select_terminal_executor(
         host=host,
         public_contract=public,
         runner_preflight=runner_preflight,
+        component_for=load_registry().component_for,
     )
     if (
         eligibility_failure is not None

@@ -1,7 +1,7 @@
 ---
 id: KB-401
 title: Deploy release identity, activation, and runtime audit
-status: local-direct-transport-fix-live-no-go
+status: local-impact-contract-fix-live-no-go
 scope: standard Pi5, Kiosk, Signage, SSH Ansible, and experimental StoneBase Local Ansible release route
 date: 2026-07-21
 source_of_truth: true
@@ -17,10 +17,11 @@ related_docs:
   - ../plans/deploy-release-identity-architecture-execplan.md
   - ../plans/deploy-release-identity-readonly-evidence-manifest.md
   - ../plans/deploy-speed-phase-b-execplan.md
-validation: offline source audit, approved read-only evidence receipt f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8, accepted-main SSH runs 20260721-162403-d398c0 and 20260721-172923-90a38b, canonical preflights 20260721-164634-7a7a94 and 20260721-174938-0c7310, bounded StoneBase runtime evidence, 877 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template parses, and the complete deploy aggregate
+validation: offline source audit, approved read-only evidence receipt f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8, accepted-main SSH runs 20260721-162403-d398c0 and 20260721-172923-90a38b, canonical preflights 20260721-164634-7a7a94, 20260721-174938-0c7310, and 20260721-181758-b97f76, bounded StoneBase runtime evidence, 880 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template parses, and the complete deploy aggregate
 open_items:
-  - review and merge the direct-transport inventory parity fix
-  - require canonical preflight to prove both Local runtime and direct transport before another canary
+  - review and merge the shared candidate-impact contract correction
+  - install its explicit Local runtime capability through the expected exact-scope SSH bootstrap
+  - require a later canonical preflight to prove Local runtime, direct transport, and candidate-impact eligibility before another canary
   - keep Local execution blocked until the exact-scope Local canary completes
   - keep FJV and every terminal other than StoneBase outside connection, planning, preflight, and execution
 ---
@@ -725,14 +726,36 @@ public-contract and direct-runner fallback codes prevent recurrence from being
 misdiagnosed. The canary was cancelled through the canonical durable control
 path before notice or maintenance; StoneBase remained untouched by that run.
 
+PR #1058 merged that correction as accepted main
+`e98060520c7d26909887073de2e13b203024e8d8`. The next exact-scope preflight,
+`20260721-181758-b97f76`, proved the pinned runtime unchanged but still selected
+SSH fallback `candidate-requires-ssh-configuration`. This was not another
+transport or Ansible failure. The release-wide impact registry classified the
+two changed coordinator modules as terminal-neutral `deploy-control`, while
+the Local eligibility gate maintained a second path list and rejected the same
+modules as terminal configuration. The duplicated classification authority is
+the confirmed cause.
+
+The structural remediation makes the terminal profile registry the canonical
+owner for neutral and deploy-control paths. It separately classifies every
+script installed by `local-runner-bootstrap.yml` as
+`local-executor-runtime`, scoped by an explicit StoneBase inventory capability.
+Those installed files still require the ordinary SSH bootstrap route. A
+contract test derives the installed script sources from the Ansible task and
+requires every one to retain runtime impact, so a future helper cannot silently
+inherit coordinator-only treatment. This change itself includes terminal
+runtime and inventory contracts and therefore deliberately requires one final
+SSH bootstrap before a later Local-only canary.
+
 ## Go / No-Go decision
 
 Current split decision:
 
 - **Go**: the accepted typed-claim SSH route and offline implementation/review
   of the relocatable `r2` publication fix.
-- **No-Go**: Local execution until the direct-transport parity fix is accepted
-  on `main`, independently preflighted, and one exact-scope canary completes.
+- **No-Go**: Local execution until the shared impact-contract correction is
+  accepted on `main`, installed through the expected SSH bootstrap, and one
+  later exact-scope Local canary completes.
 
 Live rollout requires all of the following:
 

@@ -1,7 +1,7 @@
 ---
 id: deploy-release-identity-architecture
 title: Migrate deployment planning and evidence to typed release claims
-status: local-direct-transport-fix-live-blocked
+status: local-impact-contract-fix-live-blocked
 scope: rolling release planner, fleet and run state, Kiosk activation, SSH and Local executors, route contracts
 date: 2026-07-21
 source_of_truth: docs/plans/deploy-release-identity-architecture-execplan.md
@@ -14,10 +14,11 @@ related_docs:
   - docs/decisions/ADR-20260721-deploy-release-identity-and-activation.md
   - docs/plans/deploy-release-identity-readonly-evidence-manifest.md
   - docs/plans/deploy-speed-phase-b-execplan.md
-validation: Milestones 1 through 7 accepted; exact Pi5 plus StoneBase SSH runs 20260721-162403-d398c0 and 20260721-172923-90a38b succeeded; preflight 20260721-174938-0c7310 proved the exact r2 runtime and selected Local; the first canary exposed preflight/direct-transport inventory parity before maintenance; the parity fix passed 877 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template parses, and the complete deploy aggregate
+validation: Milestones 1 through 7 accepted; exact Pi5 plus StoneBase SSH runs 20260721-162403-d398c0 and 20260721-172923-90a38b succeeded; preflight 20260721-174938-0c7310 proved the exact r2 runtime and selected Local; the first canary exposed preflight/direct-transport inventory parity before maintenance; accepted-main preflight 20260721-181758-b97f76 then exposed duplicate candidate-impact policy; the shared registry correction passed 880 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template parses, and the complete deploy aggregate
 open_items:
-  - review and merge the direct-transport inventory parity fix
-  - independently prove effective Local with no fallback from accepted main
+  - review and merge the shared candidate-impact contract correction
+  - install its explicit Local runtime capability through the expected exact-scope SSH bootstrap
+  - independently prove effective Local with no fallback from the later accepted main
   - keep Local execution blocked until the exact-scope Local canary completes
   - keep FJV and every terminal other than StoneBase excluded
 ---
@@ -52,8 +53,8 @@ only in KB-401. The current `r2` fix binds those scripts to the immutable final
 path, uses a fixed short staging name within pip's direct-shebang bound, and
 revalidates after publication. FJV and every other terminal stay
 excluded. The accepted-main SSH bootstrap and independent preflight now prove
-`r2`; Local execution remains blocked on the direct-transport inventory parity
-fix and one successful exact-scope canary.
+`r2`; Local execution remains blocked on the shared candidate-impact contract,
+its expected SSH bootstrap, and one later successful exact-scope canary.
 
 ## Progress
 
@@ -91,7 +92,9 @@ fix and one successful exact-scope canary.
 - [x] (2026-07-21 17:50Z) Independent preflight `20260721-174938-0c7310` selected effective Local with no fallback and proved Python 3.11.15, ansible-core 2.19.4, community.general 11.4.1, runner v3, runtime `r2`, and the exact lock digest.
 - [x] (2026-07-21 17:51Z) First canary `20260721-175030-81ee22` exposed that aggregate preflight and locked direct transport interpreted the inherited legacy SSH common argument differently; cancellation was requested before terminal notice or maintenance.
 - [x] (2026-07-21 18:06Z) Unified the aggregate and direct SSH-common-argument policy, retained strict host-key checking, split fallback provenance, and passed the complete 877-test deploy aggregate.
-- [ ] Merge the parity fix, independently prove the direct transport, and complete one Local canary before declaring the route normalized.
+- [x] (2026-07-21 18:18Z) Merged the direct transport parity fix as PR #1058 at `e98060520c7d26909887073de2e13b203024e8d8`; exact-scope preflight `20260721-181758-b97f76` proved the runtime but exposed duplicate candidate-impact classification before notice or maintenance.
+- [x] (2026-07-21 18:38Z) Made the terminal profile registry the exact candidate path authority for both aggregate preflight and locked selection, separated installed Local helpers into a StoneBase-scoped runtime component, derived their mapping contract from the Ansible bootstrap task, and passed the complete 880-test aggregate.
+- [ ] Merge the impact-contract fix, complete its expected exact-scope SSH bootstrap, and then complete one Local canary before declaring the route normalized.
 
 ## Surprises & Discoveries
 
@@ -1091,3 +1094,17 @@ recognizes only the exact legacy spelling as ignored, still emits
 direct-runner failure provenance distinct from public inventory validation.
 The canary cancellation used the durable canonical control path, with
 StoneBase still pending and maintenance absent.
+
+Revision note (2026-07-21 18:25Z): PR #1058 accepted the direct transport
+parity correction at `e98060520c7d26909887073de2e13b203024e8d8`.
+Exact-scope preflight `20260721-181758-b97f76` then exposed a separate duplicate
+path-classification authority: the release registry correctly treated the
+changed coordinator modules as terminal-neutral deploy control, while Local
+eligibility called them terminal configuration. The remediation consumes the
+registry for neutral/deploy-control eligibility and gives every helper
+installed by the Local bootstrap a distinct StoneBase-scoped runtime component.
+An executable contract derives those helper paths from the Ansible task, so
+future drift fails closed. Because the remediation updates the installed
+contract module and explicit inventory capability, one ordinary SSH bootstrap
+is expected before the later Local canary; Local remains No-Go until both runs
+complete with independent evidence and cleanup.

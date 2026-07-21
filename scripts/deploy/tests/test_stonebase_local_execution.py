@@ -38,6 +38,7 @@ from scripts.deploy.rolling_release.local_execution import (  # noqa: E402
 from scripts.deploy.rolling_release.terminal_preflight_contract import (  # noqa: E402
     TerminalPreflightContractError,
 )
+from scripts.deploy.terminal_profile_registry import load_registry  # noqa: E402
 from scripts.deploy.tests.test_fleet_coordinator_transitions import (  # noqa: E402
     NEW_SHA,
     OLD_SHA,
@@ -222,6 +223,7 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
                 host=STONEBASE_HOST,
                 public_contract=self.public_contract(),
                 runner_preflight=self.runner_preflight(),
+                component_for=load_registry().component_for,
             )
             self.assertEqual(selection.effective_executor, LOCAL_EXECUTOR)
             artifact = build_candidate_artifact(
@@ -286,6 +288,7 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
                 host=STONEBASE_HOST,
                 public_contract=self.public_contract(),
                 runner_preflight=self.runner_preflight(),
+                component_for=load_registry().component_for,
             )
             self.assertEqual(selection.effective_executor, SSH_EXECUTOR)
             self.assertEqual(
@@ -307,6 +310,50 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
                 host=STONEBASE_HOST,
                 public_contract=self.public_contract(),
                 runner_preflight=self.runner_preflight(),
+                component_for=load_registry().component_for,
+            )
+            self.assertEqual(selection.effective_executor, SSH_EXECUTOR)
+            self.assertEqual(
+                selection.fallback_reason, "candidate-requires-ssh-configuration"
+            )
+
+    def test_canonical_impact_registry_distinguishes_control_and_runner_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = RepositoryFixture(Path(temporary))
+            _write(
+                fixture.project,
+                "scripts/deploy/rolling_release/backends/local_ansible.py",
+                "# coordinator-only transport policy\n",
+            )
+            coordinator_candidate = _commit(fixture.project, "coordinator control")
+            selection = select_executor(
+                requested_executor=LOCAL_EXECUTOR,
+                project=fixture.project,
+                previous_sha=fixture.candidate,
+                candidate_sha=coordinator_candidate,
+                host=STONEBASE_HOST,
+                public_contract=self.public_contract(),
+                runner_preflight=self.runner_preflight(),
+                component_for=load_registry().component_for,
+            )
+            self.assertEqual(selection.effective_executor, LOCAL_EXECUTOR)
+            self.assertIsNone(selection.fallback_reason)
+
+            _write(
+                fixture.project,
+                "scripts/deploy/stonebase-local-ansible-runner.py",
+                "# installed terminal runtime\n",
+            )
+            runner_candidate = _commit(fixture.project, "runner runtime")
+            selection = select_executor(
+                requested_executor=LOCAL_EXECUTOR,
+                project=fixture.project,
+                previous_sha=coordinator_candidate,
+                candidate_sha=runner_candidate,
+                host=STONEBASE_HOST,
+                public_contract=self.public_contract(),
+                runner_preflight=self.runner_preflight(),
+                component_for=load_registry().component_for,
             )
             self.assertEqual(selection.effective_executor, SSH_EXECUTOR)
             self.assertEqual(

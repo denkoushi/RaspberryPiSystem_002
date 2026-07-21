@@ -22,6 +22,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 import types
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
@@ -530,6 +531,8 @@ def _candidate_artifact_contract(
             artifacts.add(
                 ("scripts/deploy/rolling_release/local_execution.py", "blob")
             )
+            artifacts.add(("scripts/deploy/terminal_profile_registry.py", "blob"))
+            artifacts.add(("scripts/deploy/terminal-profile-registry.json", "blob"))
         artifacts.update(_PROFILE_CANDIDATE_ARTIFACTS[target["profile"]])
         for flag, required in _FEATURE_CANDIDATE_ARTIFACTS.items():
             if target[flag]:
@@ -640,6 +643,52 @@ def _candidate_helper_source(
             }
         ]
     return source, []
+
+
+def _candidate_registry_component_for(
+    registry_source: str | None,
+    registry_payload: str | None,
+    *,
+    repository_root: Path,
+) -> Callable[[str], str]:
+    """Load the exact candidate path classifier without ambient imports."""
+
+    if (
+        not isinstance(registry_source, str)
+        or not registry_source.strip()
+        or not isinstance(registry_payload, str)
+        or not registry_payload.strip()
+    ):
+        raise TerminalPreflightConfigError(
+            "candidate terminal impact registry is unavailable"
+        )
+    module_name = "_raspi_candidate_terminal_profile_registry"
+    module = types.ModuleType(module_name)
+    module.__file__ = "<candidate-terminal-profile-registry>"
+    sys.modules[module_name] = module
+    try:
+        exec(
+            compile(
+                registry_source,
+                "<candidate-terminal-profile-registry>",
+                "exec",
+            ),
+            module.__dict__,
+        )
+        with tempfile.TemporaryDirectory(prefix="raspi-terminal-registry-") as root:
+            registry_path = Path(root) / "terminal-profile-registry.json"
+            registry_path.write_text(registry_payload, encoding="utf-8")
+            registry = module.load_registry(
+                registry_path,
+                repository_root=repository_root,
+            )
+    except Exception as error:
+        raise TerminalPreflightConfigError(
+            "candidate terminal impact registry failed closed"
+        ) from error
+    finally:
+        sys.modules.pop(module_name, None)
+    return registry.component_for
 
 
 def _candidate_runtime_manifest_source(
@@ -1707,6 +1756,9 @@ def _executor_evidence(
     results: Sequence[Mapping[str, Any]],
     local_execution_source: str | None,
     *,
+    registry_source: str | None = None,
+    registry_payload: str | None = None,
+    component_for: Callable[[str], str] | None = None,
     selection_run: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
     requested = str(spec.get("requestedExecutor", SSH_EXECUTOR))
@@ -1725,6 +1777,12 @@ def _executor_evidence(
     if not isinstance(local_execution_source, str) or not local_execution_source.strip():
         raise TerminalPreflightConfigError(
             "candidate local executor source is unavailable"
+        )
+    if component_for is None:
+        component_for = _candidate_registry_component_for(
+            registry_source,
+            registry_payload,
+            repository_root=Path(str(spec["project"])),
         )
 
     target = spec["targets"][0]
@@ -1762,6 +1820,7 @@ def _executor_evidence(
             "host": target["host"],
             "public_contract": public_contract,
             "runner_preflight": runner_preflight,
+            "component_for": component_for,
         }
         if selection_run is not None:
             arguments["run"] = selection_run
@@ -1890,6 +1949,8 @@ def execute_orchestrator(
             _TORQUE_HELPER_ARTIFACT, ""
         )
         local_execution_source: str | None = None
+        local_registry_source: str | None = None
+        local_registry_payload: str | None = None
         if spec.get("requestedExecutor", SSH_EXECUTOR) == LOCAL_EXECUTOR:
             local_execution_source, local_source_issues = _candidate_helper_source(
                 spec,
@@ -1898,6 +1959,20 @@ def execute_orchestrator(
                 run_command=candidate_run_command,
             )
             candidate_issues.extend(local_source_issues)
+            local_registry_source, registry_source_issues = _candidate_helper_source(
+                spec,
+                relative_path="scripts/deploy/terminal_profile_registry.py",
+                issue_scope="terminal-impact-registry-source",
+                run_command=candidate_run_command,
+            )
+            candidate_issues.extend(registry_source_issues)
+            local_registry_payload, registry_payload_issues = _candidate_helper_source(
+                spec,
+                relative_path="scripts/deploy/terminal-profile-registry.json",
+                issue_scope="terminal-impact-registry-payload",
+                run_command=candidate_run_command,
+            )
+            candidate_issues.extend(registry_payload_issues)
         results: list[dict[str, Any]] = []
         for target in spec["targets"]:
             command = _remote_probe_command(target)
@@ -1961,7 +2036,11 @@ def execute_orchestrator(
         failures = [result for result in results if result.get("ready") is not True]
         try:
             executor = _executor_evidence(
-                spec, results, local_execution_source
+                spec,
+                results,
+                local_execution_source,
+                registry_source=local_registry_source,
+                registry_payload=local_registry_payload,
             )
         except TerminalPreflightConfigError:
             candidate_issues.append(
