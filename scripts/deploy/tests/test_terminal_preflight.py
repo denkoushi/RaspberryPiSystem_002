@@ -146,6 +146,7 @@ class TerminalPreflightTest(unittest.TestCase):
             "freeBytes": local_execution.MIN_FREE_BYTES,
             "runnerVersion": local_execution.SCHEMA_VERSION,
             "configurationReady": True,
+            "failureCode": "ready",
         }
         completed = subprocess.CompletedProcess(
             [], 0, json.dumps(observation, separators=(",", ":")) + "\n", ""
@@ -182,6 +183,7 @@ class TerminalPreflightTest(unittest.TestCase):
             "freeBytes": local_execution.MIN_FREE_BYTES,
             "runnerVersion": local_execution.SCHEMA_VERSION,
             "configurationReady": True,
+            "failureCode": "ready",
         }
         spec = {
             "project": "/opt/RaspberryPiSystem_002",

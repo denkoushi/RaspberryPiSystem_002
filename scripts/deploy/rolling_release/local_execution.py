@@ -44,6 +44,15 @@ RUNTIME_PYTHON_DISTRIBUTION = {
 }
 RUNTIME_ANSIBLE_CORE = "2.19.4"
 RUNTIME_COLLECTIONS = (("community.general", "11.4.1"),)
+RUNNER_PREFLIGHT_FAILURE_CODES = frozenset(
+    {
+        "ready",
+        "configuration-unavailable",
+        "runtime-unavailable",
+        "runtime-lock-mismatch",
+        "storage-unavailable",
+    }
+)
 
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -371,10 +380,16 @@ def validate_runner_preflight(value: Mapping[str, Any], *, host: str) -> dict[st
         "freeBytes",
         "runnerVersion",
         "configurationReady",
+        "failureCode",
     }
     if not isinstance(value, Mapping) or set(value) != expected:
         raise LocalExecutionError("local runner preflight is malformed")
     result = dict(value)
+    failure_code = result["failureCode"]
+    if not isinstance(failure_code, str) or failure_code not in RUNNER_PREFLIGHT_FAILURE_CODES:
+        raise LocalExecutionError("local runner preflight failure code is malformed")
+    if failure_code != "ready":
+        raise LocalExecutionError(f"local runner preflight reports {failure_code}")
     if (
         result["ready"] is not True
         or result["host"] != host

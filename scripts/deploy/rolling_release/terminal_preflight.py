@@ -31,6 +31,15 @@ EX_OK = 0
 EX_SOFTWARE = 70
 EX_TEMPFAIL = 75
 EX_CONFIG = 78
+LOCAL_RUNNER_FAILURE_CODES = frozenset(
+    {
+        "ready",
+        "configuration-unavailable",
+        "runtime-unavailable",
+        "runtime-lock-mismatch",
+        "storage-unavailable",
+    }
+)
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 RUN_ID_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$")
 HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$")
@@ -1541,6 +1550,7 @@ def _runtime_evidence(
         "freeBytes",
         "runnerVersion",
         "configurationReady",
+        "failureCode",
     }:
         return None
     collections = value.get("collections")
@@ -1559,6 +1569,7 @@ def _runtime_evidence(
     python_version = value.get("pythonVersion")
     ansible_core = value.get("ansibleCoreVersion")
     runner_version = value.get("runnerVersion")
+    failure_code = value.get("failureCode")
     if (
         value.get("ready") is not True
         or value.get("host") != STONEBASE_HOST
@@ -1569,6 +1580,8 @@ def _runtime_evidence(
         or re.fullmatch(r"[0-9]+(?:\.[0-9]+){1,3}", ansible_core) is None
         or type(runner_version) is not int
         or not 1 <= runner_version <= 100
+        or failure_code != "ready"
+        or failure_code not in LOCAL_RUNNER_FAILURE_CODES
         or re.fullmatch(r"sha256:[0-9a-f]{64}", runtime_identity) is None
     ):
         return None
