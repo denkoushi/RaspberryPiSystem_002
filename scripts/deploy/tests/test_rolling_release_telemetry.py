@@ -84,6 +84,74 @@ class TimingCollectionTest(unittest.TestCase):
             "outcome", "startedAt", "endedAt", "durationMs",
         } for event in events))
 
+    def test_callback_records_only_closed_bootstrap_observation(self):
+        class Named:
+            def __init__(self, name):
+                self._name = name
+
+            def get_name(self):
+                return self._name
+
+        class Play:
+            @staticmethod
+            def get_name():
+                return "deploy"
+
+        class Parent:
+            _play = Play()
+
+        class Task(Named):
+            _parent = Parent()
+            _uuid = "bootstrap-task"
+
+        class Result:
+            _host = Named("stonebase")
+
+            def __init__(self, task, message):
+                self._task = task
+                self._result = {
+                    "changed": False,
+                    "msg": message,
+                    "secret": "must-not-be-recorded",
+                }
+
+        valid = (
+            "RUNTIME_INSTALL_OBSERVATION:failed:python-packages:"
+            "python-packages-failed:complete:"
+            + "1" * 32
+            + ":sha256:"
+            + "d" * 64
+        )
+        invalid = valid + ":must-not-cross-boundary"
+        with tempfile.TemporaryDirectory() as directory:
+            raw = Path(directory) / "timing.jsonl"
+            environment = {
+                "RUN_ID": "run-123",
+                "ROLLING_RELEASE_TIMING_SCOPE": "terminal-apply",
+                "ROLLING_RELEASE_TIMING_PATH": str(raw),
+            }
+            with mock.patch.dict(os.environ, environment, clear=False):
+                callback = CallbackModule()
+                for index, message in enumerate((valid, invalid)):
+                    task = Task(
+                        "client : Report bounded StoneBase local runtime bootstrap outcome"
+                    )
+                    task._uuid = f"bootstrap-{index}"
+                    result = Result(task, message)
+                    callback.v2_runner_on_start(result._host, task)
+                    callback.v2_runner_on_ok(result)
+            events = [
+                json.loads(line)
+                for line in raw.read_text(encoding="utf-8").splitlines()
+            ]
+
+        self.assertEqual(
+            events[0]["bootstrapObservation"]["failureCode"],
+            "python-packages-failed",
+        )
+        self.assertNotIn("bootstrapObservation", events[1])
+        self.assertNotIn("must-not", json.dumps(events))
+
     def test_collects_and_sorts_secret_free_task_summary(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
@@ -104,6 +172,14 @@ class TimingCollectionTest(unittest.TestCase):
                         {
                             "schemaVersion": 1, "runId": "run-123", "scope": "server-config",
                             "host": "pi5", "play": "config", "task": "fast", "outcome": "changed", "startedAt": "2026-07-20T00:00:02Z", "endedAt": "2026-07-20T00:00:03Z", "durationMs": 30,
+                            "bootstrapObservation": {
+                                "status": "failed",
+                                "phase": "python-packages",
+                                "failureCode": "python-packages-failed",
+                                "cleanup": "complete",
+                                "attemptId": "1" * 32,
+                                "lockSha256": "sha256:" + "d" * 64,
+                            },
                         },
                     )
                 ) + "\n",
@@ -116,6 +192,10 @@ class TimingCollectionTest(unittest.TestCase):
             self.assertEqual(collected["slowTasks"][0]["task"], "slow")
             self.assertEqual(collected["slowTasks"][0]["durationMs"], 1000)
             self.assertEqual(collected["slowTasks"][0]["outcomes"], {"skipped": 1, "ok": 1})
+            self.assertEqual(
+                collected["bootstrapObservations"][0]["failureCode"],
+                "python-packages-failed",
+            )
             self.assertTrue(summary.is_file())
 
     def test_rejects_invalid_or_foreign_event_without_summary(self):
@@ -160,6 +240,36 @@ class TimingCollectionTest(unittest.TestCase):
         self.assertEqual(phase["name"], "terminal-ready-ack")
         self.assertEqual(phase["outcome"], "success")
         self.assertEqual(state.payload["telemetry"]["ansible"], {"state": "unavailable", "error": "ValueError"})
+
+    def test_bootstrap_observation_is_persisted_in_durable_run_telemetry(self):
+        observation = {
+            "scope": "terminal-apply",
+            "host": "stonebase",
+            "status": "failed",
+            "phase": "python-packages",
+            "failureCode": "python-packages-failed",
+            "cleanup": "complete",
+            "attemptId": "1" * 32,
+            "lockSha256": "sha256:" + "d" * 64,
+        }
+
+        class State:
+            payload = {}
+
+        class Runtime:
+            @staticmethod
+            def collect_ansible_timing(_run_id):
+                return {
+                    "state": "collected",
+                    "bootstrapObservations": [observation],
+                }
+
+        state = State()
+        _collect_ansible_timing(state, Runtime(), "run-123")
+        self.assertEqual(
+            state.payload["telemetry"]["ansible"]["bootstrapObservations"],
+            [observation],
+        )
 
 
 if __name__ == "__main__":

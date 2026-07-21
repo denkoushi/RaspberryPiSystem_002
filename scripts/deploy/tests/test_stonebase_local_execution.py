@@ -14,6 +14,7 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 
@@ -55,6 +56,27 @@ def _load_runner():
 
 
 RUNNER = _load_runner()
+
+
+def _bootstrap_observation(
+    *,
+    status: str = "current",
+    phase: str = "complete",
+    failure_code: str | None = None,
+    cleanup: str = "complete",
+    lock_sha256: str | None = "sha256:" + "d" * 64,
+) -> dict[str, object]:
+    return {
+        "schemaVersion": 1,
+        "attemptId": "1" * 32,
+        "status": status,
+        "phase": phase,
+        "failureCode": failure_code,
+        "cleanup": cleanup,
+        "runtimeVersion": local_execution.RUNTIME_VERSION,
+        "lockSha256": lock_sha256,
+        "observedAt": "2026-07-21T12:00:00Z",
+    }
 
 
 def _git(project: Path, *arguments: str) -> str:
@@ -143,6 +165,7 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
             "runnerVersion": local_execution.SCHEMA_VERSION,
             "configurationReady": True,
             "failureCode": "ready",
+            "bootstrapObservation": _bootstrap_observation(),
         }
 
     @staticmethod
@@ -226,6 +249,10 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
                     "hosts"
                 ][STONEBASE_HOST]
                 self.assertNotIn("token", json.dumps(host_vars).lower())
+                self.assertEqual(
+                    host_vars["ansible_python_interpreter"],
+                    "/opt/raspi-local-ansible-runtime/active/bin/python3",
+                )
                 bundle = root / "candidate.bundle"
                 bundle.write_bytes(archive.read("candidate.bundle"))
             verified = subprocess.run(
@@ -555,6 +582,11 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
                 ),
                 patch.object(RUNNER, "_require_existing_agent_environments") as environments,
                 patch.object(RUNNER, "_runtime_observation", return_value=observation),
+                patch.object(
+                    RUNNER,
+                    "_runtime_bootstrap_observation",
+                    return_value=(_bootstrap_observation(), True),
+                ),
                 patch.object(RUNNER.shutil, "disk_usage") as disk_usage,
             ):
                 disk_usage.return_value.free = local_execution.MIN_FREE_BYTES
@@ -586,6 +618,19 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
                 "_runtime_observation",
                 side_effect=RUNNER.LocalExecutionError("must not be disclosed"),
             ),
+            patch.object(
+                RUNNER,
+                "_runtime_bootstrap_observation",
+                return_value=(
+                    _bootstrap_observation(
+                        status="failed",
+                        phase="python-packages",
+                        failure_code="python-packages-failed",
+                        lock_sha256="sha256:" + "e" * 64,
+                    ),
+                    False,
+                ),
+            ),
             patch.object(RUNNER.shutil, "disk_usage") as disk_usage,
         ):
             disk_usage.return_value.free = local_execution.MIN_FREE_BYTES
@@ -600,12 +645,16 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
             {
                 "ready", "host", "pythonVersion", "ansibleCoreVersion",
                 "collections", "freeBytes", "runnerVersion",
-                "configurationReady", "failureCode",
+                "configurationReady", "failureCode", "bootstrapObservation",
             },
         )
         self.assertFalse(result["ready"])
         self.assertTrue(result["configurationReady"])
         self.assertEqual(result["failureCode"], "runtime-unavailable")
+        self.assertEqual(
+            result["bootstrapObservation"]["failureCode"],
+            "python-packages-failed",
+        )
         self.assertNotIn("must not be disclosed", json.dumps(result))
 
     def test_runner_runtime_observation_preserves_exact_python_patch(self) -> None:
@@ -637,6 +686,56 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
         )
 
         self.assertEqual(result["pythonVersion"], "3.11.15")
+
+    def test_runner_preserves_failed_bootstrap_and_binds_success_to_lock(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            observation_path = root / "bootstrap.json"
+            lock_path = root / "runtime-lock.json"
+            lock_path.write_text('{"schemaVersion":2}\n', encoding="utf-8")
+            real_lstat = os.lstat
+
+            def metadata(path):
+                real = real_lstat(path)
+                return SimpleNamespace(
+                    st_mode=real.st_mode,
+                    st_uid=0,
+                    st_size=real.st_size,
+                )
+
+            failed = _bootstrap_observation(
+                status="failed",
+                phase="python-packages",
+                failure_code="python-packages-failed",
+                lock_sha256="sha256:" + "e" * 64,
+            )
+            observation_path.write_text(json.dumps(failed), encoding="utf-8")
+            with patch.object(RUNNER.os, "lstat", side_effect=metadata):
+                observed, ready = RUNNER._runtime_bootstrap_observation(
+                    observation_path, lock_path
+                )
+            self.assertEqual(observed, failed)
+            self.assertFalse(ready)
+
+            success = _bootstrap_observation(
+                lock_sha256="sha256:"
+                + hashlib.sha256(lock_path.read_bytes()).hexdigest()
+            )
+            observation_path.write_text(json.dumps(success), encoding="utf-8")
+            with patch.object(RUNNER.os, "lstat", side_effect=metadata):
+                observed, ready = RUNNER._runtime_bootstrap_observation(
+                    observation_path, lock_path
+                )
+            self.assertEqual(observed, success)
+            self.assertTrue(ready)
+
+            success["lockSha256"] = "sha256:" + "f" * 64
+            observation_path.write_text(json.dumps(success), encoding="utf-8")
+            with patch.object(RUNNER.os, "lstat", side_effect=metadata):
+                _observed, ready = RUNNER._runtime_bootstrap_observation(
+                    observation_path, lock_path
+                )
+            self.assertFalse(ready)
 
     def test_runner_rejects_tampered_staging_and_bounds_failure_results(self) -> None:
         observation = {

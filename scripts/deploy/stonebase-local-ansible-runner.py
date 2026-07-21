@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import hashlib
 import json
 import os
 import pwd
@@ -31,9 +32,11 @@ try:
         MAX_STAGING_BYTES,
         MIN_FREE_BYTES,
         RUNTIME_ANSIBLE_CORE,
+        RUNTIME_BOOTSTRAP_OBSERVATION,
         RUNTIME_COLLECTIONS,
         RUNTIME_PYTHON,
         RUNTIME_ROOT,
+        RUNTIME_VERSION,
         SCHEMA_VERSION,
         STONEBASE_HOST,
         CandidateBinding,
@@ -42,6 +45,7 @@ try:
         local_unit_name,
         sha256_file,
         validate_local_result,
+        validate_runtime_bootstrap_observation,
     )
 except ModuleNotFoundError:
     from rolling_release.local_execution import (
@@ -49,9 +53,11 @@ except ModuleNotFoundError:
         MAX_STAGING_BYTES,
         MIN_FREE_BYTES,
         RUNTIME_ANSIBLE_CORE,
+        RUNTIME_BOOTSTRAP_OBSERVATION,
         RUNTIME_COLLECTIONS,
         RUNTIME_PYTHON,
         RUNTIME_ROOT,
+        RUNTIME_VERSION,
         SCHEMA_VERSION,
         STONEBASE_HOST,
         CandidateBinding,
@@ -60,12 +66,15 @@ except ModuleNotFoundError:
         local_unit_name,
         sha256_file,
         validate_local_result,
+        validate_runtime_bootstrap_observation,
     )
 
 
 STATE_ROOT = Path("/var/lib/raspi-local-release")
 RUNNER_PATH = Path("/usr/local/libexec/raspi-local-ansible-runner")
 ACTIVE_RUNTIME = Path(RUNTIME_ROOT) / "active"
+RUNTIME_LOCK_PATH = Path("/usr/local/libexec/raspi-local-runtime-lock.json")
+BOOTSTRAP_OBSERVATION_PATH = Path(RUNTIME_BOOTSTRAP_OBSERVATION)
 MAINTENANCE_PROBE = Path("/usr/local/libexec/raspi-terminal-maintenance-probe")
 READY_PROBE = Path("/usr/local/libexec/raspi-terminal-ready-probe")
 LOCAL_PLAYBOOK_MEMBER = Path(
@@ -457,6 +466,42 @@ def _require_existing_agent_environments(user: str, agents: Sequence[str]) -> No
             raise LocalExecutionError("local agent environment metadata is unsafe")
 
 
+def _runtime_bootstrap_observation(
+    path: Path = BOOTSTRAP_OBSERVATION_PATH,
+    lock_path: Path = RUNTIME_LOCK_PATH,
+) -> tuple[dict[str, Any], bool]:
+    metadata = os.lstat(path)
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or stat.S_ISLNK(metadata.st_mode)
+        or metadata.st_uid != 0
+        or stat.S_IMODE(metadata.st_mode) not in {0o600, 0o644}
+        or metadata.st_size > 4096
+    ):
+        raise LocalExecutionError("runtime bootstrap observation metadata is unsafe")
+    value = validate_runtime_bootstrap_observation(
+        json.loads(path.read_text(encoding="utf-8"))
+    )
+    if (
+        value["status"] not in {"changed", "current"}
+        or value["phase"] != "complete"
+        or value["cleanup"] != "complete"
+        or value["runtimeVersion"] != RUNTIME_VERSION
+    ):
+        return value, False
+    lock_metadata = os.lstat(lock_path)
+    if (
+        not stat.S_ISREG(lock_metadata.st_mode)
+        or stat.S_ISLNK(lock_metadata.st_mode)
+        or lock_metadata.st_uid != 0
+        or stat.S_IMODE(lock_metadata.st_mode) not in {0o600, 0o644}
+        or lock_metadata.st_size > 1024 * 1024
+    ):
+        raise LocalExecutionError("runtime lock metadata is unsafe")
+    expected_lock = "sha256:" + hashlib.sha256(lock_path.read_bytes()).hexdigest()
+    return value, value["lockSha256"] == expected_lock
+
+
 def preflight(
     expected_user: str,
     expected_client_id: str,
@@ -495,20 +540,28 @@ def preflight(
         and observation["ansibleCoreVersion"] == RUNTIME_ANSIBLE_CORE
         and observation["collections"] == dict(RUNTIME_COLLECTIONS)
     )
+    bootstrap_ready = False
+    try:
+        bootstrap_observation, bootstrap_ready = _runtime_bootstrap_observation()
+    except (OSError, UnicodeError, ValueError, LocalExecutionError):
+        bootstrap_observation = None
     if not configuration_ready:
         failure_code = "configuration-unavailable"
     elif not runtime_available:
         failure_code = "runtime-unavailable"
-    elif free_bytes < MIN_FREE_BYTES:
-        failure_code = "storage-unavailable"
     elif not runtime_matches:
         failure_code = "runtime-lock-mismatch"
+    elif not bootstrap_ready:
+        failure_code = "bootstrap-observation-unavailable"
+    elif free_bytes < MIN_FREE_BYTES:
+        failure_code = "storage-unavailable"
     else:
         failure_code = "ready"
     return {
         "ready": (
             configuration_ready
             and runtime_matches
+            and bootstrap_ready
             and free_bytes >= MIN_FREE_BYTES
         ),
         "host": STONEBASE_HOST,
@@ -517,6 +570,7 @@ def preflight(
         "runnerVersion": SCHEMA_VERSION,
         "configurationReady": configuration_ready,
         "failureCode": failure_code,
+        "bootstrapObservation": bootstrap_observation,
     }
 
 

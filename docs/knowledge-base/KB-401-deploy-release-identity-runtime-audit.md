@@ -1,7 +1,7 @@
 ---
 id: KB-401
 title: Deploy release identity, activation, and runtime audit
-status: investigation-complete-implementation-go-live-no-go
+status: runtime-observability-remediation-implemented-review-pending-live-no-go
 scope: standard Pi5, Kiosk, Signage, SSH Ansible, and experimental StoneBase Local Ansible release route
 date: 2026-07-21
 source_of_truth: true
@@ -17,11 +17,11 @@ related_docs:
   - ../plans/deploy-release-identity-architecture-execplan.md
   - ../plans/deploy-release-identity-readonly-evidence-manifest.md
   - ../plans/deploy-speed-phase-b-execplan.md
-validation: offline source audit, immutable Git range classification, 747 deploy Python tests, aggregate deploy contracts, 13 Kiosk ACK tests, pure typed-claim state model, and approved Pi5 plus StoneBase read-only evidence receipt f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8
+validation: offline source audit, approved Pi5 plus StoneBase read-only evidence receipt f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8, 856 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template parses, and the complete deploy aggregate
 open_items:
-  - implement the accepted typed-claim architecture through the staged ExecPlan
-  - keep every live retry and Local execution blocked until the offline acceptance gate passes
-  - request separate approval for the first Pi5 plus StoneBase canary only after that gate
+  - publish and merge the reviewed runtime-observability remediation before another device operation
+  - after merge, use only the canonical Pi5 plus StoneBase plan, preflight, and serial bootstrap route
+  - keep FJV and every terminal other than StoneBase outside connection, planning, preflight, and execution
 ---
 
 # KB-401: Deploy release identity, activation, and runtime audit
@@ -468,6 +468,59 @@ cause—loss of failure identity across installer, Ansible, runner, and durable
 run state—is **CONFIRMED**. The underlying download/package/collection/link
 failure remains **INCONCLUSIVE**. More connection retries cannot change that
 evidence grade and are not authorized by this audit.
+
+### Offline remediation and exit-gate result
+
+The remediation implements one closed, secret-free observation across the
+entire bootstrap boundary. The root-owned installer atomically persists a
+random attempt ID, current phase, stable failure code, runtime version, exact
+runtime-lock digest, cleanup state, and UTC observation time. It never stores
+subprocess output, URLs, environment values, inventory values, or Ansible
+variables. An interrupted process remains `running` at its last durable phase;
+a failed process becomes `failed` with one allowlisted code; only a completed
+install may become `changed` or `current`.
+
+The closed phases cover host and lock validation, staging preparation, Python
+download and safe extraction, hash-locked Python packages, collection download
+and installation, runtime verification and publish, active-link activation,
+cleanup, and internal observation failure. Primary failure identity is retained
+even if staging cleanup also fails. A missing or malformed observation is
+reported only as `unavailable` and never converted into runtime readiness.
+
+The non-fatal SSH bootstrap contract remains intentional: an ordinary SSH
+release may succeed while optional Local runtime bootstrap fails. The Ansible
+callback copies only the closed observation into durable run telemetry. The
+runner independently verifies the observation file ownership and mode, the
+current lock-file digest, exact Python/Ansible/collection versions, existing
+configuration, and storage. Neither SSH success nor the installer observation
+alone produces the typed `runtime` claim. Preflight exposes the same bounded
+observation even when it safely falls back to SSH.
+
+The sealed Local inventory now explicitly fixes
+`ansible_python_interpreter` to the active pinned runtime. This follows
+Ansible's standard local-connection contract: `ansible-playbook -c local` is
+standard, but an explicit inventory host does not receive the implicit
+localhost interpreter binding automatically. The historical failure occurred
+before any Local playbook ran; this interpreter correction prevents a separate
+future drift to the OS Python after bootstrap succeeds.
+
+Fault tests cover atomic observation, interruption, closed phase mapping,
+primary-plus-cleanup failure, malformed or missing evidence, runtime-lock
+digest mismatch, secret suppression, callback allowlisting, durable telemetry,
+SSH fallback visibility, fixed interpreter inventory, and the route invariant
+that SSH apply does not produce a runtime claim. The complete offline gate
+passed with 856 deploy Python tests, 20 isolated PostgreSQL/API tests, 24
+recovery tests, 99 Ansible template parses, lifecycle and safety contracts,
+both inventories, and every Ansible syntax/check contract.
+
+This closes the observability investigation gate for review and merge. It does
+not retroactively identify the historical failed dependency phase, and it does
+not assert that the pinned runtime is already present on StoneBase. Device work
+remains No-Go until this exact remediation is accepted on `main` and canonical
+Pi5 plus StoneBase-only plan and preflight succeed. After that boundary, the
+already granted operator authorization permits the serial SSH bootstrap; any
+new bounded failure must be handled from its recorded phase rather than by a
+blind retry.
 
 ## Go / No-Go decision
 

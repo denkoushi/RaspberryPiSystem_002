@@ -37,7 +37,45 @@ LOCAL_RUNNER_FAILURE_CODES = frozenset(
         "configuration-unavailable",
         "runtime-unavailable",
         "runtime-lock-mismatch",
+        "bootstrap-observation-unavailable",
         "storage-unavailable",
+    }
+)
+RUNTIME_BOOTSTRAP_PHASES = frozenset(
+    {
+        "initializing",
+        "host-preflight",
+        "lock-validate",
+        "staging-prepare",
+        "python-download",
+        "python-extract",
+        "python-packages",
+        "collection-download",
+        "collection-install",
+        "runtime-verify",
+        "runtime-publish",
+        "active-link",
+        "cleanup",
+        "complete",
+        "internal",
+    }
+)
+RUNTIME_BOOTSTRAP_FAILURE_CODES = frozenset(
+    {
+        "host-ineligible",
+        "lock-invalid",
+        "requirements-missing",
+        "staging-preparation-failed",
+        "python-download-failed",
+        "python-extract-failed",
+        "python-packages-failed",
+        "collection-download-failed",
+        "collection-install-failed",
+        "runtime-verification-failed",
+        "runtime-publish-conflict",
+        "active-link-failed",
+        "cleanup-failed",
+        "internal-error",
     }
 )
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -1538,8 +1576,71 @@ def _remote_probe_input(
     return serialized
 
 
+def _bootstrap_evidence(
+    value: Any, *, runtime_version: str
+) -> dict[str, Any] | None:
+    expected = {
+        "schemaVersion",
+        "attemptId",
+        "status",
+        "phase",
+        "failureCode",
+        "cleanup",
+        "runtimeVersion",
+        "lockSha256",
+        "observedAt",
+    }
+    if not isinstance(value, dict) or set(value) != expected:
+        return None
+    status = value.get("status")
+    phase = value.get("phase")
+    failure_code = value.get("failureCode")
+    cleanup = value.get("cleanup")
+    lock_sha = value.get("lockSha256")
+    if (
+        value.get("schemaVersion") != 1
+        or not isinstance(value.get("attemptId"), str)
+        or re.fullmatch(r"[0-9a-f]{32}", value["attemptId"]) is None
+        or status not in {"running", "changed", "current", "failed"}
+        or phase not in RUNTIME_BOOTSTRAP_PHASES
+        or cleanup not in {"pending", "complete", "failed"}
+        or value.get("runtimeVersion") != runtime_version
+        or not isinstance(value.get("observedAt"), str)
+        or re.fullmatch(
+            r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
+            r"(?:\.[0-9]{1,6})?Z",
+            value["observedAt"],
+        )
+        is None
+        or (
+            lock_sha is not None
+            and (
+                not isinstance(lock_sha, str)
+                or re.fullmatch(r"sha256:[0-9a-f]{64}", lock_sha) is None
+            )
+        )
+    ):
+        return None
+    if status == "failed":
+        if (
+            failure_code not in RUNTIME_BOOTSTRAP_FAILURE_CODES
+            or phase == "complete"
+            or cleanup == "pending"
+        ):
+            return None
+    elif failure_code is not None:
+        return None
+    if status == "running" and cleanup != "pending":
+        return None
+    if status in {"changed", "current"} and (
+        phase != "complete" or cleanup != "complete" or lock_sha is None
+    ):
+        return None
+    return dict(value)
+
+
 def _runtime_evidence(
-    value: Any, *, runtime_identity: str
+    value: Any, *, runtime_identity: str, runtime_version: str
 ) -> dict[str, Any] | None:
     if not isinstance(value, dict) or set(value) != {
         "ready",
@@ -1551,6 +1652,7 @@ def _runtime_evidence(
         "runnerVersion",
         "configurationReady",
         "failureCode",
+        "bootstrapObservation",
     }:
         return None
     collections = value.get("collections")
@@ -1570,6 +1672,9 @@ def _runtime_evidence(
     ansible_core = value.get("ansibleCoreVersion")
     runner_version = value.get("runnerVersion")
     failure_code = value.get("failureCode")
+    bootstrap = _bootstrap_evidence(
+        value.get("bootstrapObservation"), runtime_version=runtime_version
+    )
     if (
         value.get("ready") is not True
         or value.get("host") != STONEBASE_HOST
@@ -1583,6 +1688,8 @@ def _runtime_evidence(
         or failure_code != "ready"
         or failure_code not in LOCAL_RUNNER_FAILURE_CODES
         or re.fullmatch(r"sha256:[0-9a-f]{64}", runtime_identity) is None
+        or bootstrap is None
+        or bootstrap["status"] not in {"changed", "current"}
     ):
         return None
     return {
@@ -1591,6 +1698,7 @@ def _runtime_evidence(
         "ansibleCore": ansible_core,
         "collections": collections,
         "runnerVersion": runner_version,
+        "bootstrapObservation": bootstrap,
     }
 
 
@@ -1608,6 +1716,7 @@ def _executor_evidence(
             "effectiveExecutor": SSH_EXECUTOR,
             "fallbackReason": None,
             "runtime": None,
+            "bootstrapObservation": None,
         }
     if len(results) != 1 or spec["targets"][0]["host"] != STONEBASE_HOST:
         raise TerminalPreflightConfigError(
@@ -1658,6 +1767,7 @@ def _executor_evidence(
             arguments["run"] = selection_run
         selection = module.select_executor(**arguments)
         runtime_identity = module.runtime_claim_identity()
+        runtime_version = module.RUNTIME_VERSION
     except Exception as error:
         raise TerminalPreflightConfigError(
             "candidate local executor selection failed closed"
@@ -1678,7 +1788,17 @@ def _executor_evidence(
             "candidate local executor fallback reason is malformed"
         )
     runtime = _runtime_evidence(
-        runner_preflight, runtime_identity=runtime_identity
+        runner_preflight,
+        runtime_identity=runtime_identity,
+        runtime_version=runtime_version,
+    )
+    bootstrap = _bootstrap_evidence(
+        (
+            runner_preflight.get("bootstrapObservation")
+            if isinstance(runner_preflight, dict)
+            else None
+        ),
+        runtime_version=runtime_version,
     )
     if selection.effective_executor == LOCAL_EXECUTOR and runtime is None:
         raise TerminalPreflightConfigError(
@@ -1689,6 +1809,7 @@ def _executor_evidence(
         "effectiveExecutor": selection.effective_executor,
         "fallbackReason": fallback_reason,
         "runtime": runtime,
+        "bootstrapObservation": bootstrap,
     }
 
 

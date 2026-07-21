@@ -154,11 +154,23 @@ class RecordingCommandRunner:
 
 class ReleaseApplicationTest(unittest.TestCase):
     def test_local_preflight_promotes_effective_executor_and_fallback(self):
+        bootstrap_observation = {
+            "schemaVersion": 1,
+            "attemptId": "1" * 32,
+            "status": "failed",
+            "phase": "python-packages",
+            "failureCode": "python-packages-failed",
+            "cleanup": "complete",
+            "runtimeVersion": "cpython-3.11.15-20260510-ansible-core-2.19.4",
+            "lockSha256": "sha256:" + "d" * 64,
+            "observedAt": "2026-07-21T12:00:00Z",
+        }
         executor = {
             "requestedExecutor": "stonebase-local-ansible-poc",
             "effectiveExecutor": "ssh-ansible",
             "fallbackReason": "candidate-requires-ssh-configuration",
             "runtime": None,
+            "bootstrapObservation": bootstrap_observation,
         }
         terminal = CommandResult(
             ("terminal-preflight",),
@@ -208,6 +220,9 @@ class ReleaseApplicationTest(unittest.TestCase):
         self.assertEqual(report["effectiveExecutor"], executor["effectiveExecutor"])
         self.assertEqual(report["fallbackReason"], executor["fallbackReason"])
         self.assertIsNone(report["runtimeEvidence"])
+        self.assertEqual(
+            report["runtimeBootstrapObservation"], bootstrap_observation
+        )
         self.assertFalse(report["releaseSubmitted"])
 
     def launch(self, *, detach=False, start_result=None, observed=None, observe_error=None):

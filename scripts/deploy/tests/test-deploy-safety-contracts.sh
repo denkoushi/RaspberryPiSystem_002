@@ -1023,7 +1023,8 @@ DOCKER_MUTATION = re.compile(
     re.IGNORECASE,
 )
 READ_ONLY_COMMAND = re.compile(
-    r'^(?:/usr/local/libexec/torque-bluetooth-adapter\s+--discover|'
+    r'^(?:/usr/local/libexec/raspi-local-runtime-install\s+status|'
+    r'/usr/local/libexec/torque-bluetooth-adapter\s+--discover|'
     r'docker\s+--version|ip\s+-brief|rsvg-convert\s+--version|'
     r'systemctl\s+(?:is-|list-unit-files|show|status)|'
     r'journalctl\s+--unit=torque-bluetooth-adapter@\{\{\s+torque_bluetooth_controller_discovery\.stdout\s+\|\s+trim\s+\}\}\.service\s+--lines=80\s+--no-pager\s+--output=short-iso$|'
