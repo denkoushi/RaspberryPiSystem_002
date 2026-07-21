@@ -606,6 +606,12 @@ their exact size and digest, totaling 59,603,748 bytes. This proof contacted no
 device. Unknown fallback reasons are excluded from prefetch, and each offline
 installer failure boundary retains a bounded fail-closed observation.
 
+The Pi5 cache specifically lives below the existing ignored durable release
+root at `/opt/RaspberryPiSystem_002/logs/deploy/local-runtime-artifacts`. The
+release unit runs as unprivileged `denkon5sd02`; cache directories and members
+must be owned by that exact effective identity and cannot be group/world
+writable. Only the transferred StoneBase cache is root-owned.
+
 ## Go / No-Go decision
 
 Current split decision:

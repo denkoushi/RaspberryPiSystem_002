@@ -84,7 +84,7 @@
       - item.keys() | sort == ['filename', 'id', 'sha256', 'size', 'sourcePath']
       - item.id is match('^(python-distribution|python-package:[0-8]:[A-Za-z0-9_.-]+|collection:community[.]general)$')
       - item.filename is match('^[A-Za-z0-9][A-Za-z0-9._+-]{0,199}$')
-      - item.sourcePath == '/var/cache/raspi-release/local-runtime-artifacts/' ~ stonebase_local_runtime_cache.cacheKey ~ '/' ~ item.filename
+      - item.sourcePath == '/opt/RaspberryPiSystem_002/logs/deploy/local-runtime-artifacts/' ~ stonebase_local_runtime_cache.cacheKey ~ '/' ~ item.filename
       - item.sha256 is match('^[0-9a-f]{64}$')
       - item.size is integer
       - item.size > 0

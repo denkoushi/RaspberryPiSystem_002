@@ -18,7 +18,7 @@ LOCK_RELATIVE = Path(
     "infrastructure/ansible/files/stonebase-local-ansible/runtime-lock.json"
 )
 REQUIREMENTS_RELATIVE = LOCK_RELATIVE.parent / "requirements-aarch64-py311.lock"
-DEFAULT_CACHE_ROOT = Path("/var/cache/raspi-release/local-runtime-artifacts")
+DEFAULT_CACHE_RELATIVE = Path("logs/deploy/local-runtime-artifacts")
 MAX_MEMBER_BYTES = 64 * 1024 * 1024
 MAX_TOTAL_BYTES = 128 * 1024 * 1024
 ALLOWED_SOURCE_HOSTS = frozenset(
@@ -263,7 +263,7 @@ def _download(
 def prefetch_runtime_artifacts(
     project: Path,
     *,
-    cache_root: Path = DEFAULT_CACHE_ROOT,
+    cache_root: Path | None = None,
     opener: Callable[..., Any] = urllib.request.urlopen,
     retries: int = 3,
 ) -> dict[str, Any]:
@@ -272,9 +272,12 @@ def prefetch_runtime_artifacts(
     if retries < 1 or retries > 3:
         raise ValueError("runtime artifact retry bound is invalid")
     _lock, lock_sha256, members = load_runtime_artifact_lock(project)
+    selected_cache_root = (
+        project / DEFAULT_CACHE_RELATIVE if cache_root is None else cache_root
+    )
     cache_key = lock_sha256.removeprefix("sha256:")
-    _safe_directory(cache_root, create=True)
-    cache = cache_root / cache_key
+    _safe_directory(selected_cache_root, create=True)
+    cache = selected_cache_root / cache_key
     _safe_directory(cache, create=True)
     downloaded = 0
     hits = 0

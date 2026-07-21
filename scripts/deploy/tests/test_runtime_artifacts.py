@@ -54,7 +54,7 @@ class RuntimeArtifactsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             project, payloads = self._project(root / "project")
-            cache = root / "cache"
+            cache = project / runtime_artifacts.DEFAULT_CACHE_RELATIVE
             calls = []
 
             def opener(request, **_kwargs):
@@ -63,7 +63,7 @@ class RuntimeArtifactsTest(unittest.TestCase):
                 return _Response(payloads[filename])
 
             first = runtime_artifacts.prefetch_runtime_artifacts(
-                project, cache_root=cache, opener=opener, retries=1
+                project, opener=opener, retries=1
             )
             self.assertEqual(first["receipt"]["memberCount"], 11)
             self.assertEqual(first["receipt"]["downloaded"], 11)
@@ -78,7 +78,6 @@ class RuntimeArtifactsTest(unittest.TestCase):
 
             second = runtime_artifacts.prefetch_runtime_artifacts(
                 project,
-                cache_root=cache,
                 opener=lambda *_args, **_kwargs: self.fail("network used"),
                 retries=1,
             )

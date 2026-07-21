@@ -692,9 +692,10 @@ cancel, and interrupted recovery.
 
 Extend the runtime lock with exact filenames and byte sizes for the Python
 distribution, every hash-locked aarch64 wheel, and the collection archive.
-Before notice, the Pi5 stores each member in a content-addressed root-owned
-cache using atomic download, exact size and SHA-256 verification, strict member
-names, and a bounded secret-free receipt. A failed or uncertain prefetch cleans
+Before notice, the Pi5 stores each member in an ignored content-addressed cache
+under `logs/deploy`, owned by the unprivileged release coordinator identity,
+using atomic download, exact size and SHA-256 verification, strict member names,
+and a bounded secret-free receipt. A failed or uncertain prefetch cleans
 the pre-mutation manifest lifecycle and stops without notice or maintenance.
 
 Pass the sealed controller manifest only to the requested-Local/effective-SSH
@@ -1023,3 +1024,11 @@ failures. The complete aggregate passed 868 deploy Python tests plus all
 integration, recovery, lifecycle, safety, inventory, and Ansible contracts.
 Local remains live-blocked until review, merge, the serial SSH bootstrap, and
 independent exact-runtime preflight succeed.
+
+Revision note (2026-07-21 16:12Z): PR #1055 review identified that the Pi5
+release unit intentionally runs as unprivileged `denkon5sd02`, so it cannot
+create a new `/var/cache/raspi-release` root. The controller cache was moved to
+the already writable, ignored, durable release root
+`/opt/RaspberryPiSystem_002/logs/deploy/local-runtime-artifacts`; ownership and
+mode checks still require the exact current coordinator identity and reject
+group/world-writable directories. The StoneBase destination remains root-owned.
