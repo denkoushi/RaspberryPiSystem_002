@@ -1,7 +1,7 @@
 ---
 id: deploy-release-identity-architecture
 title: Migrate deployment planning and evidence to typed release claims
-status: runtime-r2-shebang-fix-local-live-blocked
+status: local-direct-transport-fix-live-blocked
 scope: rolling release planner, fleet and run state, Kiosk activation, SSH and Local executors, route contracts
 date: 2026-07-21
 source_of_truth: docs/plans/deploy-release-identity-architecture-execplan.md
@@ -14,11 +14,11 @@ related_docs:
   - docs/decisions/ADR-20260721-deploy-release-identity-and-activation.md
   - docs/plans/deploy-release-identity-readonly-evidence-manifest.md
   - docs/plans/deploy-speed-phase-b-execplan.md
-validation: Milestones 1 through 7 accepted; exact Pi5 plus StoneBase SSH run 20260721-162403-d398c0 succeeded with pre-notice sealed prefetch and offline bootstrap; preflight 20260721-164634-7a7a94 and bounded runtime evidence confirmed stale staging shebangs; the r2 publication fix passed 872 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template parses, and the complete deploy aggregate
+validation: Milestones 1 through 7 accepted; exact Pi5 plus StoneBase SSH runs 20260721-162403-d398c0 and 20260721-172923-90a38b succeeded; preflight 20260721-174938-0c7310 proved the exact r2 runtime and selected Local; the first canary exposed preflight/direct-transport inventory parity before maintenance; the parity fix passed 877 deploy Python tests, 20 isolated PostgreSQL/API tests, 24 recovery tests, 99 Ansible template parses, and the complete deploy aggregate
 open_items:
-  - review and merge the relocatable r2 runtime publication fix
-  - repeat the canonical Pi5 plus StoneBase-only SSH bootstrap from accepted main
-  - keep Local execution blocked until r2 is independently proved and the Local canary completes
+  - review and merge the direct-transport inventory parity fix
+  - independently prove effective Local with no fallback from accepted main
+  - keep Local execution blocked until the exact-scope Local canary completes
   - keep FJV and every terminal other than StoneBase excluded
 ---
 
@@ -51,8 +51,9 @@ staging interpreter path after rename. The exact evidence and root cause live
 only in KB-401. The current `r2` fix binds those scripts to the immutable final
 path, uses a fixed short staging name within pip's direct-shebang bound, and
 revalidates after publication. FJV and every other terminal stay
-excluded. Local execution remains blocked until accepted-main SSH bootstrap
-and independent preflight prove `r2`.
+excluded. The accepted-main SSH bootstrap and independent preflight now prove
+`r2`; Local execution remains blocked on the direct-transport inventory parity
+fix and one successful exact-scope canary.
 
 ## Progress
 
@@ -86,7 +87,11 @@ and independent preflight prove `r2`.
 - [x] (2026-07-21 16:23Z) Merged the route-receipt fix as PR #1056 at `a4fb0c64b4173232e94b7fda01d387180c1eb04a`; repeated preflight selected `stonebase-local-bootstrap-success` and the prefetch-before-notice route.
 - [x] (2026-07-21 16:47Z) Independent preflight `20260721-164634-7a7a94` refused Local with `runtime-unavailable`; bounded evidence confirmed all ten Ansible console scripts retained the removed staging interpreter shebang after publication.
 - [x] (2026-07-21 17:05Z) Implemented the versioned `r2` publication fix with exact shebang rebinding, bounded staging names, post-publication validation, failed-version cleanup, runtime-claim build identity, and the complete 872-test aggregate.
-- [ ] Review and merge `r2`, then run one canonical serial SSH bootstrap and require effective Local with no fallback before the Local canary.
+- [x] (2026-07-21 17:49Z) Merged `r2` as PR #1057 at `0deb78228f8abbf36543796ea23144384712775a`; canonical SSH run `20260721-172923-90a38b` installed it and completed all typed evidence, cleanup, and maintenance clear.
+- [x] (2026-07-21 17:50Z) Independent preflight `20260721-174938-0c7310` selected effective Local with no fallback and proved Python 3.11.15, ansible-core 2.19.4, community.general 11.4.1, runner v3, runtime `r2`, and the exact lock digest.
+- [x] (2026-07-21 17:51Z) First canary `20260721-175030-81ee22` exposed that aggregate preflight and locked direct transport interpreted the inherited legacy SSH common argument differently; cancellation was requested before terminal notice or maintenance.
+- [x] (2026-07-21 18:06Z) Unified the aggregate and direct SSH-common-argument policy, retained strict host-key checking, split fallback provenance, and passed the complete 877-test deploy aggregate.
+- [ ] Merge the parity fix, independently prove the direct transport, and complete one Local canary before declaring the route normalized.
 
 ## Surprises & Discoveries
 
@@ -1073,3 +1078,16 @@ only the exact ansible-core entry points, revalidates the published path before
 activation, removes an invalid unactivated version, and includes the build
 identity in the runtime claim. The complete 872-test aggregate passed. Local
 execution remains blocked until accepted-main `r2` bootstrap and preflight.
+
+Revision note (2026-07-21 17:55Z): PR #1057, SSH run
+`20260721-172923-90a38b`, and preflight `20260721-174938-0c7310` closed the
+runtime publication gate. The first Local canary then found a separate parity
+gap before terminal maintenance: aggregate preflight used Ansible transport,
+while locked selection additionally rejected the inherited global
+`-o StrictHostKeyChecking=no` inventory value and erased that cause when it
+fell back. The remediation does not forward or honor that insecure value; it
+recognizes only the exact legacy spelling as ignored, still emits
+`StrictHostKeyChecking=yes`, rejects every other SSH common argument, and keeps
+direct-runner failure provenance distinct from public inventory validation.
+The canary cancellation used the durable canonical control path, with
+StoneBase still pending and maintenance absent.
