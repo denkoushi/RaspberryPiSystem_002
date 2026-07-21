@@ -16,7 +16,6 @@ import pwd
 import re
 import shlex
 import shutil
-import socket
 import stat
 import subprocess
 import sys
@@ -30,6 +29,7 @@ try:
     from raspi_local_execution import (  # type: ignore[import-not-found]
         MAX_ARTIFACT_BYTES,
         MAX_STAGING_BYTES,
+        MIN_FREE_BYTES,
         RUNTIME_ANSIBLE_CORE,
         RUNTIME_COLLECTIONS,
         RUNTIME_PYTHON,
@@ -47,6 +47,7 @@ except ModuleNotFoundError:
     from rolling_release.local_execution import (
         MAX_ARTIFACT_BYTES,
         MAX_STAGING_BYTES,
+        MIN_FREE_BYTES,
         RUNTIME_ANSIBLE_CORE,
         RUNTIME_COLLECTIONS,
         RUNTIME_PYTHON,
@@ -200,6 +201,19 @@ def _require_expected_binding(
         raise LocalExecutionError("candidate artifact does not match receiver arguments")
 
 
+def _require_root() -> None:
+    if os.geteuid() != 0:
+        raise LocalExecutionError("local runner must run as root")
+
+
+def _require_status_identity(expected_client_id: str) -> None:
+    if (
+        CLIENT_ID_RE.fullmatch(expected_client_id) is None
+        or _configured_status_client_id() != expected_client_id
+    ):
+        raise LocalExecutionError("local status configuration identity does not match")
+
+
 def _read_exact(stream: BinaryIO, size: int) -> bytes:
     if isinstance(size, bool) or not 0 < size <= MAX_ARTIFACT_BYTES:
         raise LocalExecutionError("candidate transfer size is outside the bound")
@@ -227,11 +241,12 @@ def receive_and_submit(
 ) -> dict[str, Any]:
     """Receive the candidate once, validate it, then submit one unit."""
 
+    _require_root()
     binding.validate()
-    if os.geteuid() != 0:
-        raise LocalExecutionError("local receiver must run as root")
-    if socket.gethostname() != binding.host:
-        raise LocalExecutionError("local receiver hostname does not match")
+    # ``binding.host`` is a coordinator identity, not a mutable OS hostname.
+    # The locally configured status client ID is the terminal-held identity
+    # that is sealed into the artifact and independently verified by Pi5.
+    _require_status_identity(binding.status_client_id)
     paths = _directories(root, binding.run_id)
     for name in ("artifacts", "results", "locks", "receipts"):
         paths[name].mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -451,27 +466,57 @@ def preflight(
     runtime: Path = ACTIVE_RUNTIME,
     run: Callable[..., subprocess.CompletedProcess[Any]] = subprocess.run,
 ) -> dict[str, Any]:
-    if os.geteuid() != 0 or socket.gethostname() != STONEBASE_HOST:
-        raise LocalExecutionError("local runner identity does not match StoneBase root")
-    if (
-        CLIENT_ID_RE.fullmatch(expected_client_id) is None
-        or _configured_status_client_id() != expected_client_id
-    ):
-        raise LocalExecutionError("local status configuration identity does not match")
-    _require_existing_agent_environments(expected_user, required_agents)
-    observation = _runtime_observation(runtime=runtime, run=run)
-    free_bytes = shutil.disk_usage(root.parent if not root.exists() else root).free
+    # This is a public, bounded observation.  It must be well-formed even if
+    # a bootstrap is incomplete, so the coordinator records an ineligible
+    # Local executor instead of classifying the runner response as malformed.
+    configuration_ready = True
+    try:
+        _require_root()
+        _require_status_identity(expected_client_id)
+        _require_existing_agent_environments(expected_user, required_agents)
+    except (KeyError, OSError, UnicodeError, ValueError, LocalExecutionError):
+        configuration_ready = False
+    runtime_available = True
+    try:
+        observation = _runtime_observation(runtime=runtime, run=run)
+    except (OSError, LocalExecutionError):
+        runtime_available = False
+        observation = {
+            "pythonVersion": "",
+            "ansibleCoreVersion": "",
+            "collections": {},
+        }
+    try:
+        free_bytes = shutil.disk_usage(root.parent if not root.exists() else root).free
+    except OSError:
+        free_bytes = 0
+    runtime_matches = (
+        observation["pythonVersion"] == RUNTIME_PYTHON
+        and observation["ansibleCoreVersion"] == RUNTIME_ANSIBLE_CORE
+        and observation["collections"] == dict(RUNTIME_COLLECTIONS)
+    )
+    if not configuration_ready:
+        failure_code = "configuration-unavailable"
+    elif not runtime_available:
+        failure_code = "runtime-unavailable"
+    elif free_bytes < MIN_FREE_BYTES:
+        failure_code = "storage-unavailable"
+    elif not runtime_matches:
+        failure_code = "runtime-lock-mismatch"
+    else:
+        failure_code = "ready"
     return {
         "ready": (
-            observation["pythonVersion"] == RUNTIME_PYTHON
-            and observation["ansibleCoreVersion"] == RUNTIME_ANSIBLE_CORE
-            and observation["collections"] == dict(RUNTIME_COLLECTIONS)
+            configuration_ready
+            and runtime_matches
+            and free_bytes >= MIN_FREE_BYTES
         ),
         "host": STONEBASE_HOST,
         **observation,
         "freeBytes": free_bytes,
         "runnerVersion": SCHEMA_VERSION,
-        "configurationReady": True,
+        "configurationReady": configuration_ready,
+        "failureCode": failure_code,
     }
 
 
@@ -554,9 +599,9 @@ def execute_candidate(
 ) -> dict[str, Any]:
     """Execute the sealed command under one non-blocking global lock."""
 
-    if os.geteuid() != 0 or socket.gethostname() != STONEBASE_HOST:
-        raise LocalExecutionError("local worker identity does not match StoneBase root")
+    _require_root()
     binding = _binding_from_manifest(artifact)
+    _require_status_identity(binding.status_client_id)
     if artifact != _artifact_path(root, binding):
         raise LocalExecutionError("local worker artifact path is not canonical")
     manifest = inspect_candidate_artifact(artifact, artifact_sha256, binding)
@@ -739,9 +784,9 @@ def acknowledge_ready(
 ) -> dict[str, Any]:
     """Reprove the sealed success, then send one credential-local ready ACK."""
 
+    _require_root()
     binding.validate()
-    if os.geteuid() != 0 or socket.gethostname() != binding.host:
-        raise LocalExecutionError("local ready worker identity does not match StoneBase root")
+    _require_status_identity(binding.status_client_id)
     if VERIFICATION_ID_RE.fullmatch(verification_id) is None:
         raise LocalExecutionError("local ready verification ID is malformed")
     artifact = _artifact_path(root, binding)

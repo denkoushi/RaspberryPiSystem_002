@@ -870,3 +870,14 @@ terminal maintenance. The standard SSH pipeline preflight ordering is retained.
 The complete local gate passed: 842 deploy Python tests, 24 recovery tests,
 99 Ansible templates, isolated PostgreSQL/API tests, and the deploy safety,
 Pi5 lifecycle, client, and Signage contracts.
+
+Revision note (2026-07-21): Read-only StoneBase diagnosis found the
+installed runner source matched the reviewed candidate, while its active pinned
+runtime was absent and the OS hostname differed from the inventory identity.
+The remediation keeps the sealed StoneBase host and status-client binding, but
+uses the terminal-held status client ID—not mutable hostname text—at receive,
+execution, and ready-ACK boundaries. Runtime preflight now returns a bounded,
+typed ineligibility code instead of a malformed response when bootstrap is
+incomplete. SSH bootstrap remains pre-maintenance and non-fatal for an ordinary
+SSH release, but emits only a bounded `changed|current|failed` outcome; a Local
+run remains fail-closed until a later canonical preflight proves the full pin.

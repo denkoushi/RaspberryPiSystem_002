@@ -142,6 +142,7 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
             "freeBytes": local_execution.MIN_FREE_BYTES,
             "runnerVersion": local_execution.SCHEMA_VERSION,
             "configurationReady": True,
+            "failureCode": "ready",
         }
 
     @staticmethod
@@ -317,6 +318,35 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
                     runner_preflight=self.runner_preflight(),
                 )
 
+    def test_typed_runner_ineligibility_is_an_explicit_ssh_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = RepositoryFixture(Path(temporary))
+            runner = self.runner_preflight()
+            runner.update(
+                {
+                    "ready": False,
+                    "pythonVersion": "",
+                    "ansibleCoreVersion": "",
+                    "collections": {},
+                    "failureCode": "runtime-unavailable",
+                }
+            )
+            selection = select_executor(
+                requested_executor=LOCAL_EXECUTOR,
+                project=fixture.project,
+                previous_sha=fixture.previous,
+                candidate_sha=fixture.candidate,
+                host=STONEBASE_HOST,
+                public_contract=self.public_contract(),
+                runner_preflight=runner,
+            )
+
+        self.assertEqual(selection.effective_executor, SSH_EXECUTOR)
+        self.assertEqual(
+            selection.fallback_reason,
+            "runner-ineligible: local runner preflight reports runtime-unavailable",
+        )
+
     def test_extra_member_symlink_and_secret_inventory_key_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -434,7 +464,11 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
             }
             with (
                 patch.object(RUNNER.os, "geteuid", return_value=0),
-                patch.object(RUNNER.socket, "gethostname", return_value=STONEBASE_HOST),
+                patch.object(
+                    RUNNER,
+                    "_configured_status_client_id",
+                    return_value=binding.status_client_id,
+                ),
                 patch.object(RUNNER, "_runtime_observation", return_value=observation),
             ):
                 result = RUNNER.execute_candidate(
@@ -482,7 +516,11 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
 
             with (
                 patch.object(RUNNER.os, "geteuid", return_value=0),
-                patch.object(RUNNER.socket, "gethostname", return_value=STONEBASE_HOST),
+                patch.object(
+                    RUNNER,
+                    "_configured_status_client_id",
+                    return_value=binding.status_client_id,
+                ),
             ):
                 ready = RUNNER.acknowledge_ready(
                     RUNNER.CandidateBinding(**binding.__dict__),
@@ -510,7 +548,6 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
             root = Path(temporary) / "runner-state"
             with (
                 patch.object(RUNNER.os, "geteuid", return_value=0),
-                patch.object(RUNNER.socket, "gethostname", return_value=STONEBASE_HOST),
                 patch.object(
                     RUNNER,
                     "_configured_status_client_id",
@@ -532,7 +569,44 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
             )
             self.assertTrue(result["configurationReady"])
             self.assertTrue(result["ready"])
+            self.assertEqual(result["failureCode"], "ready")
             self.assertEqual(result["freeBytes"], local_execution.MIN_FREE_BYTES)
+
+    def test_runner_preflight_reports_incomplete_runtime_without_leaking_details(self) -> None:
+        with (
+            patch.object(RUNNER.os, "geteuid", return_value=0),
+            patch.object(
+                RUNNER,
+                "_configured_status_client_id",
+                return_value="raspi4-kensaku-stonebase01-kiosk1",
+            ),
+            patch.object(RUNNER, "_require_existing_agent_environments"),
+            patch.object(
+                RUNNER,
+                "_runtime_observation",
+                side_effect=RUNNER.LocalExecutionError("must not be disclosed"),
+            ),
+            patch.object(RUNNER.shutil, "disk_usage") as disk_usage,
+        ):
+            disk_usage.return_value.free = local_execution.MIN_FREE_BYTES
+            result = RUNNER.preflight(
+                "pi",
+                "raspi4-kensaku-stonebase01-kiosk1",
+                ["nfc-agent"],
+            )
+
+        self.assertEqual(
+            set(result),
+            {
+                "ready", "host", "pythonVersion", "ansibleCoreVersion",
+                "collections", "freeBytes", "runnerVersion",
+                "configurationReady", "failureCode",
+            },
+        )
+        self.assertFalse(result["ready"])
+        self.assertTrue(result["configurationReady"])
+        self.assertEqual(result["failureCode"], "runtime-unavailable")
+        self.assertNotIn("must not be disclosed", json.dumps(result))
 
     def test_runner_runtime_observation_preserves_exact_python_patch(self) -> None:
         def fake_run(command, **_kwargs):
@@ -595,7 +669,11 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
 
             with (
                 patch.object(RUNNER.os, "geteuid", return_value=0),
-                patch.object(RUNNER.socket, "gethostname", return_value=STONEBASE_HOST),
+                patch.object(
+                    RUNNER,
+                    "_configured_status_client_id",
+                    return_value=binding.status_client_id,
+                ),
                 patch.object(RUNNER, "_runtime_observation", return_value=observation),
                 patch.object(RUNNER, "_extract_verified", side_effect=tamper_after_extract),
             ):
@@ -636,7 +714,9 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
                     with (
                         patch.object(RUNNER.os, "geteuid", return_value=0),
                         patch.object(
-                            RUNNER.socket, "gethostname", return_value=STONEBASE_HOST
+                            RUNNER,
+                            "_configured_status_client_id",
+                            return_value=run_binding.status_client_id,
                         ),
                         patch.object(
                             RUNNER, "_runtime_observation", return_value=observation
@@ -731,7 +811,11 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
             root = base / "runner-state"
             with (
                 patch.object(RUNNER.os, "geteuid", return_value=0),
-                patch.object(RUNNER.socket, "gethostname", return_value=STONEBASE_HOST),
+                patch.object(
+                    RUNNER,
+                    "_configured_status_client_id",
+                    return_value=runner_binding.status_client_id,
+                ),
             ):
                 with self.assertRaisesRegex(RUNNER.LocalExecutionError, "exceeded"):
                     RUNNER.receive_and_submit(
@@ -773,6 +857,36 @@ class StoneBaseLocalExecutionTest(unittest.TestCase):
                             "replayed unit must not start"
                         ),
                     )
+
+    def test_runner_rejects_a_sealed_candidate_when_status_identity_differs(self) -> None:
+        binding = RUNNER.CandidateBinding(
+            run_id="run-status-identity",
+            previous_sha="a" * 40,
+            candidate_sha="b" * 40,
+            host=STONEBASE_HOST,
+            status_client_id="raspi4-kensaku-stonebase01-kiosk1",
+            rollback_manifest_sha256="c" * 64,
+            runtime_manifest_sha256="d" * 64,
+            maintenance_state_sha256="e" * 64,
+        )
+        with (
+            patch.object(RUNNER.os, "geteuid", return_value=0),
+            patch.object(
+                RUNNER,
+                "_configured_status_client_id",
+                return_value="another-terminal-client",
+            ),
+        ):
+            with self.assertRaisesRegex(
+                RUNNER.LocalExecutionError, "status configuration identity"
+            ):
+                RUNNER.receive_and_submit(
+                    binding,
+                    artifact_sha256="f" * 64,
+                    artifact_size=1,
+                    stream=io.BytesIO(b"x"),
+                    run=lambda *_args, **_kwargs: self.fail("must not submit"),
+                )
 
     def test_missing_unit_is_quiesced_only_after_receiver_lock_is_free(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
