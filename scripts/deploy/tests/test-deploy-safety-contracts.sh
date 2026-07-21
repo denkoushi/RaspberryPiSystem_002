@@ -992,6 +992,17 @@ ALLOWED_RELEASE_FILE_DESTINATIONS = {
     '/etc/systemd/system/signage-daily-reboot.timer',
 }
 
+STONEBASE_BOOTSTRAP_SOURCES = {
+    '/usr/local/libexec/raspi-local-runtime-lock.json': (
+        '{{ repo_path }}/infrastructure/ansible/files/'
+        'stonebase-local-ansible/runtime-lock.json'
+    ),
+    '/usr/local/libexec/raspi-local-requirements-aarch64-py311.lock': (
+        '{{ repo_path }}/infrastructure/ansible/files/'
+        'stonebase-local-ansible/requirements-aarch64-py311.lock'
+    ),
+}
+
 MUTATING_SHELL = re.compile(
     r'(?:\b(?:apt(?:-get)?|chmod|chown|kill|ln|mkdir|mv|pkill|pnpm\s+install|'
     r'rm|sed\s+-i|systemd-tmpfiles\s+--create|tailscale\s+up|touch|truncate)\b|'
@@ -1191,6 +1202,13 @@ def audit_tasks(tasks, source, inherited_full):
                 assert dest in ALLOWED_RELEASE_FILE_DESTINATIONS, (
                     f'{source}:{name}: destination is not manifest-backed: {dest}'
                 )
+                if dest in STONEBASE_BOOTSTRAP_SOURCES:
+                    assert value.get('remote_src') is True, (
+                        f'{source}:{name}: StoneBase lock must come from the immutable terminal checkout'
+                    )
+                    assert value.get('src') == STONEBASE_BOOTSTRAP_SOURCES[dest], (
+                        f'{source}:{name}: StoneBase lock source does not match the candidate path'
+                    )
 
             if module in SHELL_MODULES:
                 payload = command_text(value)

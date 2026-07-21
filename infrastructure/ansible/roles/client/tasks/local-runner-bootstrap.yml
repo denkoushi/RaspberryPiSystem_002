@@ -46,16 +46,18 @@
 
 - name: Install StoneBase local executor runtime lock
   ansible.builtin.copy:
-    src: stonebase-local-ansible/runtime-lock.json
+    src: "{{ repo_path }}/infrastructure/ansible/files/stonebase-local-ansible/runtime-lock.json"
     dest: /usr/local/libexec/raspi-local-runtime-lock.json
+    remote_src: true
     owner: root
     group: root
     mode: '0644'
 
 - name: Install StoneBase local executor Python requirements lock
   ansible.builtin.copy:
-    src: stonebase-local-ansible/requirements-aarch64-py311.lock
+    src: "{{ repo_path }}/infrastructure/ansible/files/stonebase-local-ansible/requirements-aarch64-py311.lock"
     dest: /usr/local/libexec/raspi-local-requirements-aarch64-py311.lock
+    remote_src: true
     owner: root
     group: root
     mode: '0644'
