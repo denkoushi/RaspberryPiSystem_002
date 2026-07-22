@@ -592,7 +592,14 @@ export function KioskAssemblyTemplateEditorPage() {
               <div className="flex min-w-0 items-start justify-between gap-2">
                 <div className="min-w-0">
                   <h2 className="text-[1.02rem] font-bold">締付条件</h2>
-                  {selectedBolt ? <div className="mt-1 truncate text-sm font-bold">丸数字 {selectedBolt.markerNo}</div> : null}
+                  {selectedBolt ? (
+                    <>
+                      <div className="mt-0.5 truncate text-sm font-bold">丸数字 {selectedBolt.markerNo}</div>
+                      <div className="mt-0.5 truncate text-[0.68rem] text-white/55">
+                        ページ: {selectedPage ? pageRefKey(currentPageRef!) : '未設定'}
+                      </div>
+                    </>
+                  ) : null}
                 </div>
                 {selectedBolt ? (
                   <Button type="button" variant="danger" className="min-h-8 shrink-0 !px-2 !py-1 text-xs" disabled={busy || readOnly} onClick={deleteSelectedBolt}>
@@ -601,32 +608,29 @@ export function KioskAssemblyTemplateEditorPage() {
                 ) : null}
               </div>
               {selectedBolt ? (
-                <div className="mt-3 grid min-w-0 gap-3">
-                  <div className="flex min-h-9 items-center justify-between gap-2 rounded border border-white/10 bg-slate-950/60 px-2">
-                    <span className="text-xs font-semibold text-white/70">
+                <div className="mt-2 grid min-w-0 gap-2">
+                  <div className="flex min-h-8 min-w-0 items-center gap-1 rounded border border-white/10 bg-slate-950/60 px-1.5 py-1">
+                    <span className="shrink-0 text-[0.68rem] font-semibold text-white/70">
                       {imageMarkerHasCalloutTip(selectedBolt) ? '矢視 あり' : '矢視 なし'}
                     </span>
                     <Button
                       type="button"
                       variant="ghostOnDark"
-                      className="min-h-8 !px-2 !py-1 text-xs"
+                      className="min-h-7 shrink-0 !px-1.5 !py-0.5 text-[0.68rem]"
                       disabled={busy || readOnly || !imageMarkerHasCalloutTip(selectedBolt)}
                       onClick={() => setBoltPatch(selectedBolt.id, clearImageMarkerCalloutTip())}
                     >
                       矢視削除
                     </Button>
+                    <ImageMarkerPositionNudge
+                      position={selectedBolt}
+                      disabled={busy || readOnly}
+                      groupLabel="締結マーカーの位置調整"
+                      className="min-w-0 flex-1 [&>button]:min-w-0 [&>button]:flex-1 [&>button]:px-1"
+                      onChange={(patch) => setBoltPatch(selectedBolt.id, patch)}
+                    />
                   </div>
-                  <ImageMarkerPositionNudge
-                    position={selectedBolt}
-                    disabled={busy || readOnly}
-                    groupLabel="締結マーカーの位置調整"
-                    className="min-w-0 [&>button]:min-w-0 [&>button]:flex-1"
-                    onChange={(patch) => setBoltPatch(selectedBolt.id, patch)}
-                  />
-                  <p className="text-xs text-white/55">
-                    ページ: {selectedPage ? pageRefKey(currentPageRef!) : '未設定'}
-                  </p>
-                  <label className="flex items-center gap-2 rounded border border-white/10 bg-slate-950/60 px-2 py-2 text-xs font-semibold text-white/80">
+                  <label className="flex min-h-8 min-w-0 items-center gap-2 rounded border border-white/10 bg-slate-950/60 px-2 py-1 text-[0.7rem] font-semibold text-white/80">
                     <input
                       type="checkbox"
                       checked={inheritCondition}
@@ -635,72 +639,78 @@ export function KioskAssemblyTemplateEditorPage() {
                     />
                     次の丸数字へこの条件を引き継ぐ
                   </label>
-                  <div className="grid min-w-0 grid-cols-2 items-end gap-2 rounded border border-cyan-300/20 bg-cyan-950/20 p-2">
-                    <label className="grid min-w-0 gap-1 text-[0.7rem] font-semibold text-white/70">
+                  <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-1 rounded border border-cyan-300/20 bg-cyan-950/20 p-1.5">
+                    <label className="grid min-w-0 gap-0.5 text-[0.65rem] font-semibold text-white/70">
                       反映開始
-                      <Input className="min-w-0" type="number" min={1} value={rangeStart} onChange={(e) => setRangeStart(Number(e.target.value))} />
+                      <Input className="h-8 min-w-0 !px-2 !py-1 text-sm" type="number" min={1} value={rangeStart} onChange={(e) => setRangeStart(Number(e.target.value))} />
                     </label>
-                    <label className="grid min-w-0 gap-1 text-[0.7rem] font-semibold text-white/70">
+                    <label className="grid min-w-0 gap-0.5 text-[0.65rem] font-semibold text-white/70">
                       反映終了
-                      <Input className="min-w-0" type="number" min={1} value={rangeEnd} onChange={(e) => setRangeEnd(Number(e.target.value))} />
+                      <Input className="h-8 min-w-0 !px-2 !py-1 text-sm" type="number" min={1} value={rangeEnd} onChange={(e) => setRangeEnd(Number(e.target.value))} />
                     </label>
-                    <Button type="button" variant="ghostOnDark" className="col-span-2 min-h-9 w-full !px-2 text-xs" disabled={busy || readOnly} onClick={applySelectedConditionToRange}>
+                    <Button type="button" variant="ghostOnDark" className="min-h-8 whitespace-nowrap !px-2 !py-1 text-[0.68rem]" disabled={busy || readOnly} onClick={applySelectedConditionToRange}>
                       条件反映
                     </Button>
                   </div>
-                  <div className="grid min-w-0 gap-2">
-                    <div className="grid min-w-0 grid-cols-2 gap-2">
-                      <label className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">
+                  <div data-testid="assembly-editor-bolt-fields" className="grid min-w-0 gap-1.5">
+                    <div className="grid min-w-0 grid-cols-[minmax(0,0.75fr)_minmax(0,0.75fr)_minmax(0,1.5fr)] gap-1.5">
+                      <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold text-white/70">
                         呼び径
-                        <Input className="min-w-0" value={selectedBolt.nominalDiameter ?? ''} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { nominalDiameter: e.target.value, capabilityGroupId: null })} />
+                        <Input className="h-8 min-w-0 !px-2 !py-1 text-sm" value={selectedBolt.nominalDiameter ?? ''} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { nominalDiameter: e.target.value, capabilityGroupId: null })} />
                       </label>
-                      <label className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">
+                      <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold text-white/70">
                         長さ (mm)
-                        <Input className="min-w-0" type="number" min={0} value={selectedBolt.boltLengthMm ?? ''} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { boltLengthMm: Number(e.target.value), capabilityGroupId: null })} />
+                        <Input className="h-8 min-w-0 !px-2 !py-1 text-sm" type="number" min={0} value={selectedBolt.boltLengthMm ?? ''} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { boltLengthMm: Number(e.target.value), capabilityGroupId: null })} />
                       </label>
-                      <label className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">
+                      <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold text-white/70">
                         材質
-                        <Input className="min-w-0" value={selectedBolt.material ?? ''} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { material: e.target.value, capabilityGroupId: null })} />
+                        <Input className="h-8 min-w-0 !px-2 !py-1 text-sm" value={selectedBolt.material ?? ''} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { material: e.target.value, capabilityGroupId: null })} />
                       </label>
-                      <label className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">
+                    </div>
+                    <div className="grid min-w-0 grid-cols-2 gap-1.5">
+                      <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold text-white/70">
                         強度区分
-                        <Input className="min-w-0" value={selectedBolt.strengthClass ?? ''} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { strengthClass: e.target.value, capabilityGroupId: null })} />
+                        <Input className="h-8 min-w-0 !px-2 !py-1 text-sm" value={selectedBolt.strengthClass ?? ''} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { strengthClass: e.target.value, capabilityGroupId: null })} />
+                      </label>
+                      <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold text-white/70">
+                        表示用ボルト仕様
+                        <Input className="h-8 min-w-0 !px-2 !py-1 text-sm" value={selectedBolt.boltSpec} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { boltSpec: e.target.value })} />
                       </label>
                     </div>
-                    <div className="grid min-w-0 grid-cols-3 gap-2">
-                    {([
-                      ['lowerLimit', '下限'],
-                      ['nominalTorque', '規定'],
-                      ['upperLimit', '上限']
-                    ] as const).map(([key, label]) => (
-                      <label key={key} className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">
-                        {label}
-                        <Input
-                          className="min-w-0"
-                          type="number"
-                          value={selectedBolt[key]}
+                    <div className="grid min-w-0 grid-cols-4 gap-1.5">
+                      {([
+                        ['lowerLimit', '下限'],
+                        ['nominalTorque', '規定'],
+                        ['upperLimit', '上限']
+                      ] as const).map(([key, label]) => (
+                        <label key={key} className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold text-white/70">
+                          {label}
+                          <Input
+                            className="h-8 min-w-0 !px-2 !py-1 text-sm"
+                            type="number"
+                            value={selectedBolt[key]}
+                            disabled={busy || readOnly}
+                            onChange={(e) => setBoltPatch(selectedBolt.id, { [key]: Number(e.target.value) })}
+                          />
+                        </label>
+                      ))}
+                      <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold text-white/70">
+                        単位
+                        <select
+                          className="h-8 min-w-0 w-full rounded border border-white/10 bg-slate-950 px-1.5 text-xs text-white"
+                          value={selectedBolt.unit}
                           disabled={busy || readOnly}
-                          onChange={(e) => setBoltPatch(selectedBolt.id, { [key]: Number(e.target.value) })}
-                        />
+                          onChange={(e) => setBoltPatch(selectedBolt.id, { unit: e.target.value })}
+                        >
+                          <option value="N·m">N·m</option>
+                          <option value="kgf·cm">kgf·cm</option>
+                        </select>
                       </label>
-                    ))}
                     </div>
-                    <label className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">
-                      単位
-                      <select
-                        className="min-h-10 min-w-0 w-full rounded border border-white/10 bg-slate-950 px-2 text-sm text-white"
-                        value={selectedBolt.unit}
-                        disabled={busy || readOnly}
-                        onChange={(e) => setBoltPatch(selectedBolt.id, { unit: e.target.value })}
-                      >
-                        <option value="N·m">N·m</option>
-                        <option value="kgf·cm">kgf·cm</option>
-                      </select>
-                    </label>
-                    <label className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">
+                    <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold text-white/70">
                       適合トルクレンチグループ
                       <select
-                        className="min-h-10 min-w-0 w-full rounded border border-white/10 bg-slate-950 px-2 text-sm text-white"
+                        className="h-8 min-w-0 w-full rounded border border-white/10 bg-slate-950 px-2 text-sm text-white"
                         value={selectedBolt.capabilityGroupId ?? ''}
                         disabled={busy || readOnly}
                         onChange={(e) => setBoltPatch(selectedBolt.id, { capabilityGroupId: e.target.value || null })}
@@ -710,10 +720,6 @@ export function KioskAssemblyTemplateEditorPage() {
                           <option key={group.id} value={group.id}>{group.name}（{group.models.length}型番）</option>
                         ))}
                       </select>
-                    </label>
-                    <label className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">
-                      表示用ボルト仕様
-                      <Input className="min-w-0" value={selectedBolt.boltSpec} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { boltSpec: e.target.value })} />
                     </label>
                   </div>
                 </div>
