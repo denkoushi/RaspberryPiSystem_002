@@ -131,18 +131,43 @@ self_test_parser() {
 probe_exact_controller() {
   local controller_name
   local controller_index
-  local controller_info
+  local controller_path
   local command_status
+  local hard_blocked=false
+  local match_count=0
+  local rfkill_device
+  local rfkill_path
+  local soft_blocked=false
 
   self_test_parser
   controller_name="$(discover_exact_controller)"
+  controller_path="$(readlink -f "${bluetooth_class_root}/${controller_name}")"
+  for rfkill_path in "${rfkill_class_root}"/rfkill*; do
+    [[ -r "${rfkill_path}/type" && "$(< "${rfkill_path}/type")" == bluetooth ]] || continue
+    rfkill_device="$(readlink -f "${rfkill_path}/device")"
+    if [[ "${rfkill_device}" == "${controller_path}" || "${rfkill_device}" == "${controller_path}/"* ]]; then
+      match_count=$((match_count + 1))
+      [[ "$(< "${rfkill_path}/hard")" == 1 ]] && hard_blocked=true
+      [[ "$(< "${rfkill_path}/soft")" == 1 ]] && soft_blocked=true
+    fi
+  done
+  if [[ "${match_count}" -ne 1 ]]; then
+    echo "expected exactly one rfkill entry for configured external Bluetooth controller; found ${match_count}" >&2
+    return 5
+  fi
+  if [[ "${hard_blocked}" == true ]]; then
+    echo "configured external Bluetooth controller is hard blocked" >&2
+    return 4
+  fi
+  # The guard-owned safe steady state is soft-blocked/OFF. Confirming the
+  # exact controller and its one rfkill node is sufficient and power-neutral.
+  if [[ "${soft_blocked}" == true ]]; then
+    return 0
+  fi
   controller_index="${controller_name#hci}"
   for _ in {1..3}; do
-    if controller_info="$(run_btmgmt info --index "${controller_index}" info)"; then
-      if ! controller_info_is_powered <<< "${controller_info}"; then
-        echo "configured external Bluetooth controller is not powered" >&2
-        return 7
-      fi
+    if run_btmgmt info --index "${controller_index}" info >/dev/null; then
+      :
     else
       command_status=$?
       if btmgmt_is_timeout_status "${command_status}"; then

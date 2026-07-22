@@ -153,11 +153,26 @@ class TorqueBluetoothAdapterTests(unittest.TestCase):
             env=environment,
         )
 
-    def test_probe_requires_three_powered_management_reads_without_powering(self) -> None:
+    def test_probe_requires_three_management_reads_without_powering(self) -> None:
         completed = self._run("--probe", "powered")
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual(self.calls_path.read_text(encoding="utf-8").splitlines(), ["info"] * 3)
+
+    def test_probe_accepts_unpowered_or_soft_blocked_safe_state(self) -> None:
+        self.state_path.write_text("unpowered\n", encoding="utf-8")
+        unpowered = self._run("--probe", "unpowered")
+        self.assertEqual(unpowered.returncode, 0, unpowered.stderr)
+        self.assertEqual(
+            self.calls_path.read_text(encoding="utf-8").splitlines(), ["info"] * 3
+        )
+
+        self.calls_path.write_text("", encoding="utf-8")
+        soft = self.sys_root / "devices" / "rfkill" / "rfkill-hci1" / "soft"
+        soft.write_text("1\n", encoding="utf-8")
+        blocked = self._run("--probe", "info-timeout")
+        self.assertEqual(blocked.returncode, 0, blocked.stderr)
+        self.assertEqual(self.calls_path.read_text(encoding="utf-8"), "")
 
     def test_btmgmt_keeps_a_non_readable_stdin_when_service_stdin_is_closed(self) -> None:
         stdin_temp = self.root / "stdin-temp"
