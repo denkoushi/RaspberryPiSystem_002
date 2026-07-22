@@ -81,8 +81,25 @@ export function KioskAssemblyTemplateEditorPreviewPage() {
   const [selectedBoltId, setSelectedBoltId] = useState<string | null>('bolt-1');
   const [selectedCheckItemId, setSelectedCheckItemId] = useState<string | null>(null);
   const [previewMode, setPreviewMode] = useState<'editor' | 'work'>('editor');
+  const [markerMode, setMarkerMode] = useState<'bolt' | 'check'>('bolt');
+  const [placementAction, setPlacementAction] = useState<'place' | 'callout'>('place');
   const selectedBolt = area.bolts.find((bolt) => bolt.id === selectedBoltId) ?? null;
   const selectedCheckItem = checkItems.find((item) => item.id === selectedCheckItemId) ?? null;
+
+  const deleteSelectedBolt = () => {
+    if (!selectedBolt) return;
+    setArea((current) => ({
+      ...current,
+      bolts: current.bolts.filter((bolt) => bolt.id !== selectedBolt.id)
+    }));
+    setSelectedBoltId(null);
+  };
+
+  const deleteSelectedCheckItem = () => {
+    if (!selectedCheckItem) return;
+    setCheckItems((current) => current.filter((item) => item.id !== selectedCheckItem.id));
+    setSelectedCheckItemId(null);
+  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 bg-slate-800 p-2 text-white">
@@ -98,7 +115,7 @@ export function KioskAssemblyTemplateEditorPreviewPage() {
           {previewMode === 'editor' ? '作業画面表示' : '編集画面表示'}
         </button>
       </div>
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-auto xl:grid-cols-[22rem_minmax(0,1fr)_24rem] xl:overflow-hidden">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-auto xl:grid-cols-[minmax(14rem,18rem)_minmax(0,1fr)_minmax(18rem,22rem)] xl:overflow-hidden">
         <section className="rounded border border-white/15 bg-slate-900/70 p-3">
           <h2 className="text-[1.02rem] font-bold">基本</h2>
           <div className="mt-3 grid gap-2 text-sm text-white/80">
@@ -108,17 +125,65 @@ export function KioskAssemblyTemplateEditorPreviewPage() {
           </div>
         </section>
         <section className="flex min-h-[32rem] flex-col overflow-hidden rounded border border-white/15 bg-slate-900/70 xl:min-h-0">
-          <div className="shrink-0 border-b border-white/10 p-3">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-[1.02rem] font-bold">手順書 / マーカー</h2>
-              <ImageCanvasZoomControls
-                enabled
-                onZoomIn={canvasZoom.zoomIn}
-                onZoomOut={canvasZoom.zoomOut}
-                onFitToView={canvasZoom.fitToView}
-                controlsClassName="rounded bg-slate-950/70 p-1"
-              />
+          <div
+            data-testid="assembly-editor-toolbar"
+            className="flex shrink-0 flex-wrap items-center gap-2 border-b border-white/10 px-3 py-2 xl:flex-nowrap xl:whitespace-nowrap"
+          >
+            <h2 className="shrink-0 text-[1.02rem] font-bold">手順書</h2>
+            <select className="min-h-9 min-w-36 flex-1 rounded border border-white/10 bg-slate-950 px-2 text-sm text-white xl:min-w-0" aria-label="ページ">
+              <option>1 / 3 組立手順書</option>
+            </select>
+            <div className="flex shrink-0 gap-1" role="group" aria-label="マーカー種別">
+              <button
+                type="button"
+                aria-label="締結マーカー"
+                aria-pressed={markerMode === 'bolt'}
+                className={markerMode === 'bolt' ? 'rounded bg-cyan-600 px-2 py-1 text-xs font-bold text-white' : 'rounded border border-white/20 px-2 py-1 text-xs font-bold'}
+                onClick={() => {
+                  setMarkerMode('bolt');
+                  setSelectedCheckItemId(null);
+                }}
+              >
+                締結
+              </button>
+              <button
+                type="button"
+                aria-label="チェックマーカー"
+                aria-pressed={markerMode === 'check'}
+                className={markerMode === 'check' ? 'rounded bg-cyan-600 px-2 py-1 text-xs font-bold text-white' : 'rounded border border-white/20 px-2 py-1 text-xs font-bold'}
+                onClick={() => {
+                  setMarkerMode('check');
+                  setSelectedBoltId(null);
+                }}
+              >
+                チェック
+              </button>
             </div>
+            <div className="flex shrink-0 gap-1" role="group" aria-label="マーカー操作">
+              <button
+                type="button"
+                aria-pressed={placementAction === 'place'}
+                className={placementAction === 'place' ? 'rounded bg-cyan-600 px-2 py-1 text-xs font-bold text-white' : 'rounded border border-white/20 px-2 py-1 text-xs font-bold'}
+                onClick={() => setPlacementAction('place')}
+              >
+                丸数字
+              </button>
+              <button
+                type="button"
+                aria-pressed={placementAction === 'callout'}
+                className={placementAction === 'callout' ? 'rounded bg-cyan-600 px-2 py-1 text-xs font-bold text-white' : 'rounded border border-white/20 px-2 py-1 text-xs font-bold'}
+                onClick={() => setPlacementAction('callout')}
+              >
+                矢視
+              </button>
+            </div>
+            <ImageCanvasZoomControls
+              enabled
+              onZoomIn={canvasZoom.zoomIn}
+              onZoomOut={canvasZoom.zoomOut}
+              onFitToView={canvasZoom.fitToView}
+              controlsClassName="shrink-0 rounded bg-slate-950/70 p-1"
+            />
           </div>
           <div className="min-h-0 flex-1">
             {previewMode === 'editor' ? (
@@ -129,19 +194,21 @@ export function KioskAssemblyTemplateEditorPreviewPage() {
                 selectedBoltId={selectedBoltId}
                 selectedCheckItemId={selectedCheckItemId}
                 onSelectBolt={(id) => {
+                  setMarkerMode('bolt');
                   setSelectedBoltId(id);
                   setSelectedCheckItemId(null);
                 }}
                 onSelectCheckItem={(id) => {
+                  setMarkerMode('check');
                   setSelectedCheckItemId(id);
                   setSelectedBoltId(null);
                 }}
-                onAddBolt={(xRatio, yRatio) => {
+                onAddBolt={markerMode === 'bolt' && placementAction === 'place' ? (xRatio, yRatio) => {
                   setArea((current) => ({
                     ...current,
                     bolts: [...current.bolts, createAssemblyBoltAt(current, xRatio, yRatio)]
                   }));
-                }}
+                } : undefined}
                 zoom={canvasZoom.zoom}
                 fitGeneration={canvasZoom.fitGeneration}
                 className="h-full"
@@ -158,47 +225,105 @@ export function KioskAssemblyTemplateEditorPreviewPage() {
             )}
           </div>
         </section>
-        <section className="rounded border border-white/15 bg-slate-900/70 p-3">
-          <h2 className="text-[1.02rem] font-bold">
-            {selectedCheckItem ? 'チェック項目' : '締付条件'}
-          </h2>
+        <section
+          data-testid="assembly-editor-settings-pane"
+          className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto rounded border border-white/15 bg-slate-900/70 p-3"
+        >
           {previewMode === 'work' ? (
-            <div className="mt-3 rounded border border-white/10 bg-slate-950 p-3 text-sm text-white/70">
-              保存済みマーカーと矢視を表示（位置調整はテンプレート編集で行います）
-            </div>
-          ) : selectedBolt ? (
-            <div className="mt-3 grid gap-3 rounded border border-white/10 bg-slate-950 p-3 text-sm text-white/80">
-              <div>{selectedBolt.tighteningId} / {selectedBolt.nominalTorque} {selectedBolt.unit}</div>
-              <ImageMarkerPositionNudge
-                position={selectedBolt}
-                groupLabel="締結マーカーの位置調整"
-                onChange={(patch) => {
-                  setArea((current) => ({
-                    ...current,
-                    bolts: current.bolts.map((bolt) =>
-                      bolt.id === selectedBolt.id ? { ...bolt, ...patch } : bolt
-                    )
-                  }));
-                }}
-              />
-            </div>
-          ) : selectedCheckItem ? (
-            <div className="mt-3 grid gap-3 rounded border border-white/10 bg-slate-950 p-3 text-sm text-white/80">
-              <div>{selectedCheckItem.label}</div>
-              <ImageMarkerPositionNudge
-                position={selectedCheckItem}
-                groupLabel="チェックマーカーの位置調整"
-                onChange={(patch) => {
-                  setCheckItems((current) => current.map((item) =>
-                    item.id === selectedCheckItem.id ? { ...item, ...patch } : item
-                  ));
-                }}
-              />
-            </div>
+            <>
+              <h2 className="text-[1.02rem] font-bold">締付条件</h2>
+              <div className="mt-3 rounded border border-white/10 bg-slate-950 p-3 text-sm text-white/70">
+                保存済みマーカーと矢視を表示（位置調整はテンプレート編集で行います）
+              </div>
+            </>
+          ) : markerMode === 'bolt' ? (
+            <>
+              <div className="flex min-w-0 items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <h2 className="text-[1.02rem] font-bold">締付条件</h2>
+                  {selectedBolt ? <div className="mt-1 truncate text-sm font-bold">丸数字 {selectedBolt.markerNo}</div> : null}
+                </div>
+                {selectedBolt ? (
+                  <button type="button" className="shrink-0 rounded border border-red-300/70 px-2 py-1 text-xs font-bold text-red-200" onClick={deleteSelectedBolt}>削除</button>
+                ) : null}
+              </div>
+              {selectedBolt ? (
+                <div className="mt-3 grid min-w-0 gap-3 text-sm text-white/80">
+                  <div className="flex min-h-9 min-w-0 items-center justify-between gap-2 rounded border border-white/10 bg-slate-950/60 px-2">
+                    <span className="text-xs font-semibold">矢視 あり</span>
+                    <button type="button" className="shrink-0 rounded border border-white/20 px-2 py-1 text-xs font-bold">矢視削除</button>
+                  </div>
+                  <ImageMarkerPositionNudge
+                    position={selectedBolt}
+                    groupLabel="締結マーカーの位置調整"
+                    className="min-w-0 [&>button]:min-w-0 [&>button]:flex-1"
+                    onChange={(patch) => {
+                      setArea((current) => ({
+                        ...current,
+                        bolts: current.bolts.map((bolt) => bolt.id === selectedBolt.id ? { ...bolt, ...patch } : bolt)
+                      }));
+                    }}
+                  />
+                  <div className="truncate text-xs text-white/55">ページ: assembly-procedure-document / preview / 1</div>
+                  <label className="flex min-w-0 items-center gap-2 rounded border border-white/10 bg-slate-950/60 px-2 py-2 text-xs font-semibold">
+                    <input type="checkbox" defaultChecked />次の丸数字へこの条件を引き継ぐ
+                  </label>
+                  <div className="grid min-w-0 grid-cols-2 gap-2 rounded border border-cyan-300/20 bg-cyan-950/20 p-2">
+                    <label className="grid min-w-0 gap-1 text-xs font-semibold">反映開始<input className="min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-2 text-sm" defaultValue="1" /></label>
+                    <label className="grid min-w-0 gap-1 text-xs font-semibold">反映終了<input className="min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-2 text-sm" defaultValue="35" /></label>
+                    <button type="button" className="col-span-2 rounded border border-white/20 px-2 py-2 text-xs font-bold">条件反映</button>
+                  </div>
+                  <div className="grid min-w-0 grid-cols-2 gap-2">
+                    <label className="grid min-w-0 gap-1 text-xs font-semibold">呼び径<input className="min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-2 text-sm" defaultValue="M6" /></label>
+                    <label className="grid min-w-0 gap-1 text-xs font-semibold">長さ (mm)<input className="min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-2 text-sm" defaultValue="30" /></label>
+                    <label className="grid min-w-0 gap-1 text-xs font-semibold">材質<input className="min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-2 text-sm" defaultValue="SCM435" /></label>
+                    <label className="grid min-w-0 gap-1 text-xs font-semibold">強度区分<input className="min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-2 text-sm" defaultValue="10.9" /></label>
+                  </div>
+                  <div className="grid min-w-0 grid-cols-3 gap-2">
+                    <label className="grid min-w-0 gap-1 text-xs font-semibold">下限<input className="min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-2 text-sm" defaultValue="81" /></label>
+                    <label className="grid min-w-0 gap-1 text-xs font-semibold">規定<input className="min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-2 text-sm" defaultValue="90" /></label>
+                    <label className="grid min-w-0 gap-1 text-xs font-semibold">上限<input className="min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-2 text-sm" defaultValue="99" /></label>
+                  </div>
+                  <label className="grid min-w-0 gap-1 text-xs font-semibold">単位<select className="min-w-0 w-full rounded border border-white/15 bg-slate-950 px-2 py-2 text-sm" defaultValue="kgf-cm"><option value="N-m">N·m</option><option value="kgf-cm">kgf·cm</option></select></label>
+                  <label className="grid min-w-0 gap-1 text-xs font-semibold">適合トルクレンチグループ<select className="min-w-0 w-full rounded border border-white/15 bg-slate-950 px-2 py-2 text-sm"><option>TC-100 長いグループ名称（3 型番）</option></select></label>
+                  <label className="grid min-w-0 gap-1 text-xs font-semibold">表示用ボルト仕様<input className="min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-2 text-sm" defaultValue={selectedBolt.boltSpec} /></label>
+                </div>
+              ) : (
+                <div className="mt-3 rounded border border-dashed border-white/20 p-3 text-sm text-white/60">手順書上の締結マーカーを選択</div>
+              )}
+            </>
           ) : (
-            <div className="mt-3 rounded border border-dashed border-white/20 p-3 text-sm text-white/60">
-              手順書上のマーカーを選択
-            </div>
+            <>
+              <div className="flex min-w-0 items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <h2 className="text-[1.02rem] font-bold">チェック項目</h2>
+                  {selectedCheckItem ? <div className="mt-1 truncate text-sm font-bold">チェック {selectedCheckItem.markerNo}</div> : null}
+                </div>
+                {selectedCheckItem ? (
+                  <button type="button" className="shrink-0 rounded border border-red-300/70 px-2 py-1 text-xs font-bold text-red-200" onClick={deleteSelectedCheckItem}>削除</button>
+                ) : null}
+              </div>
+              {selectedCheckItem ? (
+                <div className="mt-3 grid min-w-0 gap-3 text-sm text-white/80">
+                  <div className="flex min-h-9 min-w-0 items-center justify-between gap-2 rounded border border-white/10 bg-slate-950/60 px-2">
+                    <span className="text-xs font-semibold">矢視 あり</span>
+                    <button type="button" className="shrink-0 rounded border border-white/20 px-2 py-1 text-xs font-bold">矢視削除</button>
+                  </div>
+                  <ImageMarkerPositionNudge
+                    position={selectedCheckItem}
+                    groupLabel="チェックマーカーの位置調整"
+                    className="min-w-0 [&>button]:min-w-0 [&>button]:flex-1"
+                    onChange={(patch) => {
+                      setCheckItems((current) => current.map((item) => item.id === selectedCheckItem.id ? { ...item, ...patch } : item));
+                    }}
+                  />
+                  <label className="grid min-w-0 gap-1 text-xs font-semibold">ラベル<input className="min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-2 text-sm" defaultValue={selectedCheckItem.label ?? ''} /></label>
+                  <label className="flex min-w-0 items-center gap-2 text-xs font-semibold"><input type="checkbox" defaultChecked={selectedCheckItem.required ?? true} />必須チェック</label>
+                </div>
+              ) : (
+                <div className="mt-3 rounded border border-dashed border-white/20 p-3 text-sm text-white/60">手順書上のチェックマーカーを選択</div>
+              )}
+            </>
           )}
         </section>
       </div>

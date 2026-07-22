@@ -471,97 +471,84 @@ export function KioskAssemblyTemplateEditorPage() {
         </section>
 
         <section className="flex min-h-[32rem] flex-col overflow-hidden rounded border border-white/15 bg-slate-900/70 xl:min-h-0">
-          <div className="shrink-0 border-b border-white/10 p-3">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <h2 className="text-[1.02rem] font-bold">手順書 / マーカー</h2>
-                <p className="mt-1 truncate text-sm text-white/60">{selectedPage?.label ?? selectedDocument?.name ?? '手順書未選択'}</p>
-              </div>
-              <ImageCanvasZoomControls
-                enabled={Boolean(selectedPage?.imageRelativePath ?? selectedDocument?.imageRelativePath)}
-                onZoomIn={canvasZoom.zoomIn}
-                onZoomOut={canvasZoom.zoomOut}
-                onFitToView={canvasZoom.fitToView}
-                controlsClassName="shrink-0 rounded bg-slate-950/70 p-1"
-              />
+          <div
+            data-testid="assembly-editor-toolbar"
+            className="flex shrink-0 flex-wrap items-center gap-2 border-b border-white/10 px-3 py-2 xl:flex-nowrap xl:whitespace-nowrap"
+          >
+            <h2 className="shrink-0 text-[1.02rem] font-bold">手順書</h2>
+            <select
+              aria-label="ページ"
+              className="min-h-9 min-w-36 flex-1 rounded border border-white/10 bg-slate-950 px-2 text-sm text-white xl:min-w-0"
+              value={selectedPageKey}
+              disabled={pageOptions.length === 0}
+              onChange={(event) => setSelectedPageKey(event.target.value)}
+            >
+              {pageOptions.length === 0 ? <option value="">ページがありません</option> : null}
+              {pageOptions.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <div className="flex shrink-0 gap-1" role="group" aria-label="マーカー種別">
+              <Button
+                type="button"
+                aria-label="締結マーカー"
+                aria-pressed={markerMode === 'bolt'}
+                variant={markerMode === 'bolt' ? 'primary' : 'ghostOnDark'}
+                className="min-h-9 !px-2 !py-1 text-xs"
+                disabled={readOnly}
+                onClick={() => {
+                  setMarkerMode('bolt');
+                  setSelectedCheckItemId(null);
+                }}
+              >
+                締結
+              </Button>
+              <Button
+                type="button"
+                aria-label="チェックマーカー"
+                aria-pressed={markerMode === 'check'}
+                variant={markerMode === 'check' ? 'primary' : 'ghostOnDark'}
+                className="min-h-9 !px-2 !py-1 text-xs"
+                disabled={readOnly}
+                onClick={() => {
+                  setMarkerMode('check');
+                  setSelectedBoltId(null);
+                }}
+              >
+                チェック
+              </Button>
             </div>
-            <div className="mt-2 flex flex-wrap items-end gap-2">
-              <label className="grid min-w-52 flex-1 gap-1 text-xs font-semibold text-white/70">
-                ページ
-                <select
-                  className="min-h-9 rounded border border-white/10 bg-slate-950 px-2 text-sm text-white"
-                  value={selectedPageKey}
-                  disabled={pageOptions.length === 0}
-                  onChange={(event) => setSelectedPageKey(event.target.value)}
-                >
-                  {pageOptions.length === 0 ? <option value="">ページがありません</option> : null}
-                  {pageOptions.map((option) => (
-                    <option key={option.key} value={option.key}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant={markerMode === 'bolt' ? 'primary' : 'ghostOnDark'}
-                  className="min-h-9 !px-2 !py-1 text-xs"
-                  disabled={readOnly}
-                  onClick={() => {
-                    setMarkerMode('bolt');
-                    setSelectedCheckItemId(null);
-                  }}
-                >
-                  締結マーカー
-                </Button>
-                <Button
-                  type="button"
-                  variant={markerMode === 'check' ? 'primary' : 'ghostOnDark'}
-                  className="min-h-9 !px-2 !py-1 text-xs"
-                  disabled={readOnly}
-                  onClick={() => {
-                    setMarkerMode('check');
-                    setSelectedBoltId(null);
-                  }}
-                >
-                  チェックマーカー
-                </Button>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-semibold text-white/55">操作</span>
-                <Button
-                  type="button"
-                  variant={placementAction === 'place' ? 'primary' : 'ghostOnDark'}
-                  className="min-h-9 !px-2 !py-1 text-xs"
-                  disabled={readOnly}
-                  aria-pressed={placementAction === 'place'}
-                  onClick={() => setPlacementAction('place')}
-                >
-                  丸数字
-                </Button>
-                <Button
-                  type="button"
-                  variant={placementAction === 'callout' ? 'primary' : 'ghostOnDark'}
-                  className="min-h-9 !px-2 !py-1 text-xs"
-                  disabled={
-                    readOnly ||
-                    (markerMode === 'bolt' ? !selectedBolt : !selectedCheckItem)
-                  }
-                  aria-pressed={placementAction === 'callout'}
-                  onClick={() => setPlacementAction('callout')}
-                >
-                  矢視
-                </Button>
-              </div>
-              <p className="basis-full text-[0.72rem] font-semibold text-white/50">
-                {placementAction === 'callout'
-                  ? '選択中マーカーの矢視先端を手順書上でタップ。'
-                  : markerMode === 'bolt'
-                    ? '白/シアン: 締結位置。手順書をタップして追加。'
-                    : '緑系: チェック位置。手順書をタップして追加。'}
-              </p>
+            <div className="flex shrink-0 gap-1" role="group" aria-label="マーカー操作">
+              <Button
+                type="button"
+                variant={placementAction === 'place' ? 'primary' : 'ghostOnDark'}
+                className="min-h-9 !px-2 !py-1 text-xs"
+                disabled={readOnly}
+                aria-pressed={placementAction === 'place'}
+                onClick={() => setPlacementAction('place')}
+              >
+                丸数字
+              </Button>
+              <Button
+                type="button"
+                variant={placementAction === 'callout' ? 'primary' : 'ghostOnDark'}
+                className="min-h-9 !px-2 !py-1 text-xs"
+                disabled={readOnly || (markerMode === 'bolt' ? !selectedBolt : !selectedCheckItem)}
+                aria-pressed={placementAction === 'callout'}
+                onClick={() => setPlacementAction('callout')}
+              >
+                矢視
+              </Button>
             </div>
+            <ImageCanvasZoomControls
+              enabled={Boolean(selectedPage?.imageRelativePath ?? selectedDocument?.imageRelativePath)}
+              onZoomIn={canvasZoom.zoomIn}
+              onZoomOut={canvasZoom.zoomOut}
+              onFitToView={canvasZoom.fitToView}
+              controlsClassName="shrink-0 rounded bg-slate-950/70 p-1"
+            />
           </div>
           <div className="min-h-0 flex-1">
             <AssemblyProcedureCanvas
@@ -596,18 +583,25 @@ export function KioskAssemblyTemplateEditorPage() {
           </div>
         </section>
 
-        <section className="min-h-0 overflow-y-auto rounded border border-white/15 bg-slate-900/70 p-3">
+        <section
+          data-testid="assembly-editor-settings-pane"
+          className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto rounded border border-white/15 bg-slate-900/70 p-3"
+        >
           {markerMode === 'bolt' ? (
             <>
-              <h2 className="text-[1.02rem] font-bold">締付条件</h2>
+              <div className="flex min-w-0 items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <h2 className="text-[1.02rem] font-bold">締付条件</h2>
+                  {selectedBolt ? <div className="mt-1 truncate text-sm font-bold">丸数字 {selectedBolt.markerNo}</div> : null}
+                </div>
+                {selectedBolt ? (
+                  <Button type="button" variant="danger" className="min-h-8 shrink-0 !px-2 !py-1 text-xs" disabled={busy || readOnly} onClick={deleteSelectedBolt}>
+                    削除
+                  </Button>
+                ) : null}
+              </div>
               {selectedBolt ? (
-                <div className="mt-3 grid gap-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm font-bold">丸数字 {selectedBolt.markerNo}</div>
-                    <Button type="button" variant="danger" className="min-h-8 !px-2 !py-1 text-xs" disabled={busy || readOnly} onClick={deleteSelectedBolt}>
-                      削除
-                    </Button>
-                  </div>
+                <div className="mt-3 grid min-w-0 gap-3">
                   <div className="flex min-h-9 items-center justify-between gap-2 rounded border border-white/10 bg-slate-950/60 px-2">
                     <span className="text-xs font-semibold text-white/70">
                       {imageMarkerHasCalloutTip(selectedBolt) ? '矢視 あり' : '矢視 なし'}
@@ -626,6 +620,7 @@ export function KioskAssemblyTemplateEditorPage() {
                     position={selectedBolt}
                     disabled={busy || readOnly}
                     groupLabel="締結マーカーの位置調整"
+                    className="min-w-0 [&>button]:min-w-0 [&>button]:flex-1"
                     onChange={(patch) => setBoltPatch(selectedBolt.id, patch)}
                   />
                   <p className="text-xs text-white/55">
@@ -640,45 +635,48 @@ export function KioskAssemblyTemplateEditorPage() {
                     />
                     次の丸数字へこの条件を引き継ぐ
                   </label>
-                  <div className="grid grid-cols-[1fr_1fr_auto] items-end gap-2 rounded border border-cyan-300/20 bg-cyan-950/20 p-2">
-                    <label className="grid gap-1 text-[0.7rem] font-semibold text-white/70">
+                  <div className="grid min-w-0 grid-cols-2 items-end gap-2 rounded border border-cyan-300/20 bg-cyan-950/20 p-2">
+                    <label className="grid min-w-0 gap-1 text-[0.7rem] font-semibold text-white/70">
                       反映開始
-                      <Input className="max-w-20" type="number" min={1} value={rangeStart} onChange={(e) => setRangeStart(Number(e.target.value))} />
+                      <Input className="min-w-0" type="number" min={1} value={rangeStart} onChange={(e) => setRangeStart(Number(e.target.value))} />
                     </label>
-                    <label className="grid gap-1 text-[0.7rem] font-semibold text-white/70">
+                    <label className="grid min-w-0 gap-1 text-[0.7rem] font-semibold text-white/70">
                       反映終了
-                      <Input className="max-w-20" type="number" min={1} value={rangeEnd} onChange={(e) => setRangeEnd(Number(e.target.value))} />
+                      <Input className="min-w-0" type="number" min={1} value={rangeEnd} onChange={(e) => setRangeEnd(Number(e.target.value))} />
                     </label>
-                    <Button type="button" variant="ghostOnDark" className="min-h-9 !px-2 text-xs" disabled={busy || readOnly} onClick={applySelectedConditionToRange}>
+                    <Button type="button" variant="ghostOnDark" className="col-span-2 min-h-9 w-full !px-2 text-xs" disabled={busy || readOnly} onClick={applySelectedConditionToRange}>
                       条件反映
                     </Button>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <label className="grid gap-1 text-xs font-semibold text-white/70">
-                      呼び径
-                      <Input className="max-w-28" value={selectedBolt.nominalDiameter ?? ''} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { nominalDiameter: e.target.value, capabilityGroupId: null })} />
-                    </label>
-                    <label className="grid gap-1 text-xs font-semibold text-white/70">
-                      長さ (mm)
-                      <Input className="max-w-28" type="number" min={0} value={selectedBolt.boltLengthMm ?? ''} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { boltLengthMm: Number(e.target.value), capabilityGroupId: null })} />
-                    </label>
-                    <label className="grid gap-1 text-xs font-semibold text-white/70">
-                      材質
-                      <Input className="max-w-32" value={selectedBolt.material ?? ''} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { material: e.target.value, capabilityGroupId: null })} />
-                    </label>
-                    <label className="grid gap-1 text-xs font-semibold text-white/70">
-                      強度区分
-                      <Input className="max-w-28" value={selectedBolt.strengthClass ?? ''} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { strengthClass: e.target.value, capabilityGroupId: null })} />
-                    </label>
+                  <div className="grid min-w-0 gap-2">
+                    <div className="grid min-w-0 grid-cols-2 gap-2">
+                      <label className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">
+                        呼び径
+                        <Input className="min-w-0" value={selectedBolt.nominalDiameter ?? ''} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { nominalDiameter: e.target.value, capabilityGroupId: null })} />
+                      </label>
+                      <label className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">
+                        長さ (mm)
+                        <Input className="min-w-0" type="number" min={0} value={selectedBolt.boltLengthMm ?? ''} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { boltLengthMm: Number(e.target.value), capabilityGroupId: null })} />
+                      </label>
+                      <label className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">
+                        材質
+                        <Input className="min-w-0" value={selectedBolt.material ?? ''} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { material: e.target.value, capabilityGroupId: null })} />
+                      </label>
+                      <label className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">
+                        強度区分
+                        <Input className="min-w-0" value={selectedBolt.strengthClass ?? ''} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { strengthClass: e.target.value, capabilityGroupId: null })} />
+                      </label>
+                    </div>
+                    <div className="grid min-w-0 grid-cols-3 gap-2">
                     {([
                       ['lowerLimit', '下限'],
                       ['nominalTorque', '規定'],
                       ['upperLimit', '上限']
                     ] as const).map(([key, label]) => (
-                      <label key={key} className="grid gap-1 text-xs font-semibold text-white/70">
+                      <label key={key} className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">
                         {label}
                         <Input
-                          className="max-w-28"
+                          className="min-w-0"
                           type="number"
                           value={selectedBolt[key]}
                           disabled={busy || readOnly}
@@ -686,10 +684,11 @@ export function KioskAssemblyTemplateEditorPage() {
                         />
                       </label>
                     ))}
-                    <label className="grid gap-1 text-xs font-semibold text-white/70">
+                    </div>
+                    <label className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">
                       単位
                       <select
-                        className="min-h-10 max-w-32 rounded border border-white/10 bg-slate-950 px-2 text-sm text-white"
+                        className="min-h-10 min-w-0 w-full rounded border border-white/10 bg-slate-950 px-2 text-sm text-white"
                         value={selectedBolt.unit}
                         disabled={busy || readOnly}
                         onChange={(e) => setBoltPatch(selectedBolt.id, { unit: e.target.value })}
@@ -698,10 +697,10 @@ export function KioskAssemblyTemplateEditorPage() {
                         <option value="kgf·cm">kgf·cm</option>
                       </select>
                     </label>
-                    <label className="col-span-2 grid gap-1 text-xs font-semibold text-white/70">
+                    <label className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">
                       適合トルクレンチグループ
                       <select
-                        className="min-h-10 w-full rounded border border-white/10 bg-slate-950 px-2 text-sm text-white"
+                        className="min-h-10 min-w-0 w-full rounded border border-white/10 bg-slate-950 px-2 text-sm text-white"
                         value={selectedBolt.capabilityGroupId ?? ''}
                         disabled={busy || readOnly}
                         onChange={(e) => setBoltPatch(selectedBolt.id, { capabilityGroupId: e.target.value || null })}
@@ -712,9 +711,9 @@ export function KioskAssemblyTemplateEditorPage() {
                         ))}
                       </select>
                     </label>
-                    <label className="col-span-2 grid gap-1 text-xs font-semibold text-white/70">
+                    <label className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">
                       表示用ボルト仕様
-                      <Input value={selectedBolt.boltSpec} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { boltSpec: e.target.value })} />
+                      <Input className="min-w-0" value={selectedBolt.boltSpec} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { boltSpec: e.target.value })} />
                     </label>
                   </div>
                 </div>
@@ -726,15 +725,19 @@ export function KioskAssemblyTemplateEditorPage() {
             </>
           ) : (
             <>
-              <h2 className="text-[1.02rem] font-bold">チェック項目</h2>
+              <div className="flex min-w-0 items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <h2 className="text-[1.02rem] font-bold">チェック項目</h2>
+                  {selectedCheckItem ? <div className="mt-1 truncate text-sm font-bold">チェック {selectedCheckItem.markerNo}</div> : null}
+                </div>
+                {selectedCheckItem ? (
+                  <Button type="button" variant="danger" className="min-h-8 shrink-0 !px-2 !py-1 text-xs" disabled={busy || readOnly} onClick={deleteSelectedCheckItem}>
+                    削除
+                  </Button>
+                ) : null}
+              </div>
               {selectedCheckItem ? (
-                <div className="mt-3 grid gap-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm font-bold">チェック {selectedCheckItem.markerNo}</div>
-                    <Button type="button" variant="danger" className="min-h-8 !px-2 !py-1 text-xs" disabled={busy || readOnly} onClick={deleteSelectedCheckItem}>
-                      削除
-                    </Button>
-                  </div>
+                <div className="mt-3 grid min-w-0 gap-3">
                   <div className="flex min-h-9 items-center justify-between gap-2 rounded border border-white/10 bg-slate-950/60 px-2">
                     <span className="text-xs font-semibold text-white/70">
                       {imageMarkerHasCalloutTip(selectedCheckItem) ? '矢視 あり' : '矢視 なし'}
@@ -753,11 +756,13 @@ export function KioskAssemblyTemplateEditorPage() {
                     position={selectedCheckItem}
                     disabled={busy || readOnly}
                     groupLabel="チェックマーカーの位置調整"
+                    className="min-w-0 [&>button]:min-w-0 [&>button]:flex-1"
                     onChange={(patch) => setCheckItemPatch(selectedCheckItem.id, patch)}
                   />
-                  <label className="grid gap-1 text-xs font-semibold text-white/70">
+                  <label className="grid min-w-0 gap-1 text-xs font-semibold text-white/70">
                     ラベル
                     <Input
+                      className="min-w-0"
                       value={selectedCheckItem.label ?? ''}
                       disabled={busy || readOnly}
                       onChange={(e) => setCheckItemPatch(selectedCheckItem.id, { label: e.target.value })}
