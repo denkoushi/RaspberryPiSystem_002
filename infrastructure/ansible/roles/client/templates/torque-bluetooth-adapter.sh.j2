@@ -185,6 +185,7 @@ status_exact_controller() {
 }
 
 power_off_exact_controller() {
+  local requested_controller="${1:-}"
   local controller_name
   local controller_path
   local rfkill_path
@@ -192,6 +193,12 @@ power_off_exact_controller() {
   local match_count=0
 
   controller_name="$(discover_exact_controller)"
+  if [[ -n "${requested_controller}" ]]; then
+    if [[ ! "${requested_controller}" =~ ^hci[0-9]+$ || "${requested_controller}" != "${controller_name}" ]]; then
+      echo "requested Bluetooth controller does not match configured USB identity" >&2
+      return 3
+    fi
+  fi
   controller_path="$(readlink -f "${bluetooth_class_root}/${controller_name}")"
   for rfkill_path in "${rfkill_class_root}"/rfkill*; do
     [[ -r "${rfkill_path}/type" && "$(< "${rfkill_path}/type")" == bluetooth ]] || continue
@@ -232,7 +239,7 @@ if [[ "${hci_name}" == '--status' ]]; then
 fi
 
 if [[ "${hci_name}" == '--power-off' ]]; then
-  power_off_exact_controller
+  power_off_exact_controller "${2:-}"
   exit 0
 fi
 

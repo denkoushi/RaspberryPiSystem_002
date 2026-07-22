@@ -5,7 +5,7 @@ Requires=bluetooth.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/libexec/torque-bluetooth-adapter --power-off
+ExecStart=/usr/local/libexec/torque-bluetooth-adapter --power-off %I
 TimeoutStartSec=90
 TimeoutStopSec=10
 PrivateTmp=true

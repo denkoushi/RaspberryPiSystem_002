@@ -129,6 +129,7 @@ class TorqueBluetoothAdapterTests(unittest.TestCase):
         argument: str,
         mode: str,
         *,
+        extra_arguments: tuple[str, ...] = (),
         extra_environment: dict[str, str] | None = None,
     ) -> subprocess.CompletedProcess[str]:
         environment = {
@@ -144,7 +145,7 @@ class TorqueBluetoothAdapterTests(unittest.TestCase):
             **(extra_environment or {}),
         }
         return subprocess.run(
-            ["bash", "-s", "--", argument],
+            ["bash", "-s", "--", argument, *extra_arguments],
             input=self.rendered,
             text=True,
             capture_output=True,
@@ -233,6 +234,18 @@ class TorqueBluetoothAdapterTests(unittest.TestCase):
         exact_soft = self.sys_root / "devices" / "rfkill" / "rfkill-hci1" / "soft"
         self.assertEqual(exact_soft.read_text(encoding="utf-8").strip(), "1")
         self.assertEqual((internal_rfkill / "soft").read_text(encoding="utf-8").strip(), "0")
+
+    def test_power_off_instance_must_match_the_exact_usb_controller(self) -> None:
+        exact = self._run(
+            "--power-off", "powered", extra_arguments=("hci1",)
+        )
+        self.assertEqual(exact.returncode, 0, exact.stderr)
+
+        mismatch = self._run(
+            "--power-off", "powered", extra_arguments=("hci0",)
+        )
+        self.assertEqual(mismatch.returncode, 3, mismatch.stderr)
+        self.assertIn("does not match configured USB identity", mismatch.stderr)
 
     def test_management_failures_have_distinct_exit_statuses_and_diagnostics(self) -> None:
         cases = (

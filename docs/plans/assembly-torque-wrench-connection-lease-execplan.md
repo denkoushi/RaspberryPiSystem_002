@@ -32,6 +32,7 @@ The first production pilot is limited to `raspi4-kensaku-stonebase01` and `raspi
 - [x] (2026-07-22 18:14 JST) Updated the ADR, Runbook, global/AI indexes, two-terminal physical acceptance checklist, and document inventory.
 - [x] (2026-07-22 18:14 JST) Completed focused and full local validation without contacting production hosts.
 - [x] (2026-07-22 16:50 JST) Reached a safe local pause point requested for 17:00: no deployment, pairing, commit, push, or production-host contact was performed. Remaining guard/UI contract coverage and full validation are recorded below.
+- [x] (2026-07-22 19:22 JST) Published Draft PR #1068 and passed exact-head CI at `811138b1`. The first approved Release A aggregate preflight stopped before release-unit submission on two candidate Bluetooth contract mismatches and Assembly-01's not-yet-installed torque-agent. Scoped contract corrections and the complete local deploy-contract suite now pass; a new exact-head CI and release retry remain pending.
 
 ## Surprises & Discoveries
 
@@ -56,6 +57,9 @@ The first production pilot is limited to `raspi4-kensaku-stonebase01` and `raspi
 - Observation: A current lease row must not prevent ordinary deletion of its owner session or client device, while transition history must remain independent.
   Evidence: the first full API run exposed restrictive current-row foreign keys through 35 existing cleanup failures. Changing only the current row's owner FKs to `ON DELETE CASCADE`, recreating the disposable database, and rerunning the failed suites produced 46/46 passing tests; the history table retains scalar snapshots and no parent FK.
 
+- Observation: Aggregate preflight treated a legitimate guard restart as a competing controller start and required live health from an optional agent that the candidate was about to install for the first time.
+  Evidence: release attempt `20260722-095832-3740fa` was rejected before unit submission. Assembly-01 was clean at `5f7d041c`, its torque `.env` marker was absent, and existing NFC/host prerequisites passed. Reading the actual candidate assets reproduced the overly broad `state: restarted` match, which the previous synthetic fixture did not cover.
+
 ## Decision Log
 
 - Decision: Use one current lease row per `TorqueWrenchProfile`, serialized by a PostgreSQL row lock, plus append-only transition history.
@@ -77,6 +81,10 @@ The first production pilot is limited to `raspi4-kensaku-stonebase01` and `raspi
 - Decision: Separate Release A capability deployment from the irreversible per-profile enforcement activation.
   Rationale: the rollback baseline must already understand leases before the existing wrench is made lease-required.
   Date/Author: 2026-07-22 / Codex with user approval.
+
+- Decision: Pre-apply live health remains mandatory for installed optional agents, identified by their deployment-owned `.env` marker; a newly introduced optional agent is instead required by unchanged post-apply release evidence.
+  Rationale: this preserves the healthy outgoing runtime when one exists without making the first release of a complete candidate agent impossible. Candidate source, host prerequisites, final container identity, and final endpoint health remain fail-closed.
+  Date/Author: 2026-07-22 / Codex.
 
 ## Outcomes & Retrospective
 
@@ -172,3 +180,5 @@ Revision note 2026-07-22: Initial self-contained plan created from the user-appr
 Revision note 2026-07-22 16:50 JST: Recorded the safe pause boundary, focused validation evidence, and exact remaining work. The disposable local PostgreSQL container is stopped before handoff.
 
 Revision note 2026-07-22 18:14 JST: Resumed without the physical wrench, completed the remaining guard/UI/documentation work, hardened confirmation freshness and current-row deletion behavior, and completed full local validation. Production and physical acceptance remain gated.
+
+Revision note 2026-07-22 19:22 JST: Recorded Draft PR #1068 CI success, the mutation-free aggregate-preflight stop, and the scoped candidate Bluetooth/new-agent preflight correction. Release A remains unapplied until the correction passes a new exact-head CI.

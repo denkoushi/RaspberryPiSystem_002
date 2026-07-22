@@ -623,11 +623,23 @@ def _candidate_torque_bluetooth_contract_issues(
     rule = sources.get(_TORQUE_UDEV_ARTIFACT, "")
     tasks = sources.get(_TORQUE_TASKS_ARTIFACT, "")
 
+    task_blocks = re.split(r"(?m)(?=^- (?:name: |ansible\.builtin\.))", tasks)
+    controller_blocks = [
+        block for block in task_blocks if "torque-bluetooth-adapter@" in block
+    ]
+    synchronous_start_blocks = [
+        block
+        for block in controller_blocks
+        if re.search(r"(?m)^\s+state:\s+started\s*$", block)
+    ]
+    competing_controller_restart = any(
+        re.search(r"(?m)^\s+state:\s+(?:restarted|reloaded)\s*$", block)
+        for block in controller_blocks
+    )
     if (
-        "udevadm trigger --subsystem-match=bluetooth"
-        in tasks
-        or "state: restarted" in tasks
-        or "state: started" not in tasks
+        "udevadm trigger --subsystem-match=bluetooth" in tasks
+        or competing_controller_restart
+        or len(synchronous_start_blocks) != 1
     ):
         _issue(
             issues,
@@ -654,7 +666,7 @@ def _candidate_torque_bluetooth_contract_issues(
         for fragment in (
             "After=bluetooth.service systemd-rfkill.service",
             "Requires=bluetooth.service",
-            "ExecStart=/usr/local/libexec/torque-bluetooth-adapter %I",
+            "ExecStart=/usr/local/libexec/torque-bluetooth-adapter --power-off %I",
             "TimeoutStartSec=90",
             "TimeoutStopSec=10",
         )
@@ -1123,7 +1135,7 @@ def _enabled_agent_health_specs(
 def _probe_live_agent_health(
     spec: Mapping[str, Any], agent_health_source: str
 ) -> list[dict[str, str]]:
-    """Run the exact candidate health proof against every live enabled agent."""
+    """Prove installed enabled agents; newly introduced agents are checked post-apply."""
 
     selected = _enabled_agent_health_specs(spec)
     if not selected:
@@ -1140,6 +1152,14 @@ def _probe_live_agent_health(
         ]
     issues: list[dict[str, str]] = []
     for agent, require_pcscd in selected:
+        marker = Path(spec["repoPath"], "clients", agent, ".env")
+        if not marker.is_file():
+            # A candidate may enable an optional agent for the first time.  Its
+            # source and host prerequisites are proven elsewhere in this
+            # preflight, while final release evidence still requires the new
+            # container and endpoint.  An existing installation marker keeps
+            # the stronger pre-apply live-health requirement.
+            continue
         arguments = [
             "/usr/bin/python3",
             "-",

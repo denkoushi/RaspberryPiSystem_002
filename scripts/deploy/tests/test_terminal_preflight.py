@@ -23,6 +23,7 @@ from scripts.deploy.rolling_release.terminal_preflight_contract import (
 
 SHA = "a" * 40
 RUN_ID = "20260718-120000-a1b2c3"
+ROOT = Path(__file__).resolve().parents[3]
 
 TORQUE_HELPER_PATH = (
     "infrastructure/ansible/roles/client/templates/torque-bluetooth-adapter.sh.j2"
@@ -47,7 +48,7 @@ TORQUE_CANDIDATE_SOURCES = {
     "[[ \"${1:-}\" == '--probe' ]]\n",
     TORQUE_UNIT_PATH: "[Unit]\nAfter=bluetooth.service systemd-rfkill.service\n"
     "Requires=bluetooth.service\n[Service]\n"
-    "ExecStart=/usr/local/libexec/torque-bluetooth-adapter %I\n"
+    "ExecStart=/usr/local/libexec/torque-bluetooth-adapter --power-off %I\n"
     "TimeoutStartSec=90\nTimeoutStopSec=10\n",
     TORQUE_RULE_PATH: 'ACTION=="add", SUBSYSTEM=="bluetooth", ENV{DEVTYPE}=="host", '
     'ATTRS{idVendor}=="{{ torque_agent_bluetooth_adapter.usb_vendor_id }}", '
@@ -279,10 +280,39 @@ class TerminalPreflightTest(unittest.TestCase):
             ],
         )
 
+    def test_candidate_torque_bluetooth_contract_allows_guard_restart(self):
+        sources = dict(TORQUE_CANDIDATE_SOURCES)
+        sources[TORQUE_TASKS_PATH] += (
+            "- name: Restart the fail-closed guard\n"
+            "  ansible.builtin.systemd:\n"
+            "    name: torque-bluetooth-guard.service\n"
+            "    state: restarted\n"
+        )
+
+        self.assertEqual(
+            terminal_preflight._candidate_torque_bluetooth_contract_issues(sources),
+            [],
+        )
+
+    def test_repository_torque_bluetooth_assets_pass_candidate_contract(self):
+        sources = {
+            path: (ROOT / path).read_text(encoding="utf-8")
+            for path in terminal_preflight._TORQUE_BLUETOOTH_DEPLOYMENT_ARTIFACTS
+        }
+
+        self.assertEqual(
+            terminal_preflight._candidate_torque_bluetooth_contract_issues(sources),
+            [],
+        )
+
     def test_candidate_torque_bluetooth_contract_rejects_missing_diagnostics_and_evidence(self):
         sources = dict(TORQUE_CANDIDATE_SOURCES)
         sources[TORQUE_HELPER_PATH] = "#!/usr/bin/env bash\nprobe_exact_controller() { power on; }\n"
-        sources[TORQUE_TASKS_PATH] = "- ansible.builtin.systemd:\n    state: started\n"
+        sources[TORQUE_TASKS_PATH] = (
+            "- ansible.builtin.systemd:\n"
+            "    name: torque-bluetooth-adapter@hci1.service\n"
+            "    state: started\n"
+        )
 
         issues = terminal_preflight._candidate_torque_bluetooth_contract_issues(sources)
 
@@ -437,7 +467,7 @@ print("TERMINAL_PREFLIGHT_RESULT:" + encoded)
             )
         ]
 
-        with patch.object(
+        with patch.object(Path, "is_file", return_value=True), patch.object(
             terminal_preflight, "_command", side_effect=completed
         ) as run:
             issues = terminal_preflight._probe_live_agent_health(
@@ -461,7 +491,9 @@ print("TERMINAL_PREFLIGHT_RESULT:" + encoded)
         secret = "DO-NOT-LEAK-AGENT-SECRET"
         completed = subprocess.CompletedProcess([], 1, "", secret)
 
-        with patch.object(terminal_preflight, "_command", return_value=completed):
+        with patch.object(Path, "is_file", return_value=True), patch.object(
+            terminal_preflight, "_command", return_value=completed
+        ):
             issues = terminal_preflight._probe_live_agent_health(
                 target(), "# exact candidate health helper"
             )
@@ -476,6 +508,23 @@ print("TERMINAL_PREFLIGHT_RESULT:" + encoded)
             ],
         )
         self.assertNotIn(secret, json.dumps(issues))
+
+    def test_live_agent_health_skips_a_new_optional_agent_without_install_marker(self):
+        selected = {
+            **target(),
+            "nfcEnabled": False,
+            "torqueEnabled": True,
+        }
+
+        with patch.object(Path, "is_file", return_value=False), patch.object(
+            terminal_preflight, "_command"
+        ) as run:
+            issues = terminal_preflight._probe_live_agent_health(
+                selected, "# exact candidate health helper"
+            )
+
+        self.assertEqual(issues, [])
+        run.assert_not_called()
 
     def test_candidate_torque_helper_probe_runs_exact_rendered_source(self):
         selected = {
