@@ -111,7 +111,7 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
             "Prepare and synchronously verify the exact torque Bluetooth controller",
             "torque-bluetooth-adapter@{{ torque_bluetooth_controller_discovery.stdout | trim }}.service",
             "Require successful exact torque Bluetooth controller preparation",
-            "ExecMainCode=1",
+            "^ExecMainCode=(0|1)$",
             "ExecMainStatus=0",
             "state: started",
             "Start exact torque Bluetooth controller preparation without interruption",
@@ -128,6 +128,11 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
             r"torque-bluetooth-adapter@\{\{[^\n]+\n\s+state: restarted",
         )
         self.assertNotIn("ExecMainCode=exited", tasks)
+        self.assertIn("Verify guard initialized the exact external controller OFF", tasks)
+        self.assertIn(
+            "(torque_bluetooth_guard_initial_status.stdout | from_json).powered | bool",
+            tasks,
+        )
 
     def test_device_identity_files_are_in_the_sealed_rollback_contract(self) -> None:
         backend = (ROOT / "scripts/deploy/rolling_release/backends/ansible.py").read_text()

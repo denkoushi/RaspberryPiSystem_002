@@ -196,9 +196,15 @@
   ansible.builtin.assert:
     that:
       - "'Result=success' in torque_bluetooth_controller_unit_result.stdout_lines"
-      # systemctl show serializes the normal wait status (CLD_EXITED) as 1.
-      # "exited" is a human-readable status label, not this property's value.
-      - "'ExecMainCode=1' in torque_bluetooth_controller_unit_result.stdout_lines"
+      # systemd may retain CLD_EXITED (1) or clear the code to 0 after a
+      # successful non-RemainAfterExit oneshot becomes inactive. Result and
+      # ExecMainStatus establish success here; the exact powered-OFF state is
+      # verified below after the guard starts.
+      - >-
+        torque_bluetooth_controller_unit_result.stdout_lines
+        | select('match', '^ExecMainCode=(0|1)$')
+        | list
+        | length == 1
       - "'ExecMainStatus=0' in torque_bluetooth_controller_unit_result.stdout_lines"
     fail_msg: The exact external torque Bluetooth controller preparation unit did not complete successfully.
 

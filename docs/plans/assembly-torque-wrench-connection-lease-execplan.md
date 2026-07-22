@@ -1,14 +1,14 @@
 ---
 title: Assembly Torque Wrench Connection Lease
 id: plan-assembly-torque-wrench-connection-lease
-status: implemented_locally
+status: release_a_partial
 scope: Pi5-owned physical torque-wrench lease, torque-agent fencing, exact external Bluetooth controller guard, and two-terminal pilot
 date: 2026-07-22
 source_of_truth: this document
 related_code: apps/api/prisma/schema.prisma, apps/api/src/services/torque-wrenches, clients/torque-agent, infrastructure/ansible/roles/client, apps/web/src/pages/kiosk/KioskAssemblyWorkSessionPage.tsx
 related_docs: ../decisions/ADR-20260722-assembly-torque-wrench-connection-lease.md, ../runbooks/assembly-torque-agent.md, ./assembly-torque-wrench-traceability-execplan.md
-validation: local implementation validation complete; no production deployment is authorized by this plan
-open_items: production Release A, Release B, pairing, enforcement activation, and physical acceptance require separate approval and the physical wrench
+validation: Release A is verified on Pi5 and StoneBase; Assembly-01 rolled back safely after a systemd result-contract mismatch and the correction passes local deployment contracts
+open_items: corrected Assembly-01 Release A retry, Release B, pairing, enforcement activation, and physical acceptance
 ---
 
 # Add a Fleet-Wide Connection Lease for the Shared Torque Wrench
@@ -33,6 +33,8 @@ The first production pilot is limited to `raspi4-kensaku-stonebase01` and `raspi
 - [x] (2026-07-22 18:14 JST) Completed focused and full local validation without contacting production hosts.
 - [x] (2026-07-22 16:50 JST) Reached a safe local pause point requested for 17:00: no deployment, pairing, commit, push, or production-host contact was performed. Remaining guard/UI contract coverage and full validation are recorded below.
 - [x] (2026-07-22 19:22 JST) Published Draft PR #1068 and passed exact-head CI at `811138b1`. The first approved Release A aggregate preflight stopped before release-unit submission on two candidate Bluetooth contract mismatches and Assembly-01's not-yet-installed torque-agent. Scoped contract corrections and the complete local deploy-contract suite now pass; a new exact-head CI and release retry remain pending.
+- [x] (2026-07-22 20:02 JST) Passed exact-head CI at `ef7f3c4a`, then ran approved Release A `20260722-103023-77ca0e`. Pi5 and StoneBase converged and verified. Assembly-01 rejected a successful external-controller oneshot because systemd 257 reported the completed unit's cleared `ExecMainCode=0`; the standard release restored its repository and runtime to `5f7d041c`, verified kiosk/NFC health, and cleared maintenance.
+- [x] (2026-07-22 20:02 JST) Corrected the oneshot result contract to accept only numeric code 0 or CLD_EXITED 1 alongside `Result=success` and `ExecMainStatus=0`, while retaining the subsequent exact-controller powered-OFF proof. Focused tests, deployment safety contracts, Ansible syntax, and the complete local deploy-contract suite pass. New exact-head CI and the Assembly-01 retry remain pending.
 
 ## Surprises & Discoveries
 
@@ -60,6 +62,9 @@ The first production pilot is limited to `raspi4-kensaku-stonebase01` and `raspi
 - Observation: Aggregate preflight treated a legitimate guard restart as a competing controller start and required live health from an optional agent that the candidate was about to install for the first time.
   Evidence: release attempt `20260722-095832-3740fa` was rejected before unit submission. Assembly-01 was clean at `5f7d041c`, its torque `.env` marker was absent, and existing NFC/host prerequisites passed. Reading the actual candidate assets reproduced the overly broad `state: restarted` match, which the previous synthetic fixture did not cover.
 
+- Observation: systemd 257 may clear `ExecMainCode` to 0 after a successful `Type=oneshot` unit without `RemainAfterExit` becomes inactive, even though `Result=success`, `ExecMainStatus=0`, and the unit journal all prove successful execution.
+  Evidence: Assembly-01's controller unit journal recorded “Deactivated successfully” and “Finished”, but the `ExecMainCode=1` assertion alone failed. The standard rollback restored the old SHA and runtime and verified the terminal before clearing maintenance.
+
 ## Decision Log
 
 - Decision: Use one current lease row per `TorqueWrenchProfile`, serialized by a PostgreSQL row lock, plus append-only transition history.
@@ -86,9 +91,13 @@ The first production pilot is limited to `raspi4-kensaku-stonebase01` and `raspi
   Rationale: this preserves the healthy outgoing runtime when one exists without making the first release of a complete candidate agent impossible. Candidate source, host prerequisites, final container identity, and final endpoint health remain fail-closed.
   Date/Author: 2026-07-22 / Codex.
 
+- Decision: Treat `Result=success`, `ExecMainStatus=0`, and numeric `ExecMainCode` 0 or 1 as a successful bounded controller oneshot, then require the independent exact-controller powered-OFF status check after the guard starts.
+  Rationale: code 0 is the valid cleared state observed on systemd 257 and code 1 is retained CLD_EXITED on other supported versions. The independent hardware-state assertion remains the fail-closed safety invariant.
+  Date/Author: 2026-07-22 / Codex.
+
 ## Outcomes & Retrospective
 
-Release A capability is implemented and validated locally. The database/API, agent, host guard, kiosk flows, deployment contracts, Runbook, and rollback boundary are complete in the working tree. Full API/Web tests, builds, lint, agent checks, Bluetooth guard checks, migration/deploy contracts, Ansible syntax, and documentation audit pass. No production behavior is claimed: no managed host was contacted, and deployment, pairing, enforcement activation, and the physical two-terminal acceptance sequence remain deliberately open because the wrench is unavailable and each action requires separate approval.
+Release A capability is implemented and verified on Pi5 and StoneBase at `ef7f3c4a`. Assembly-01's first attempt exposed a systemd-version result-format mismatch after the controller preparation itself succeeded; the standard release restored its old repository/runtime and verified kiosk/NFC health before clearing maintenance. The scoped correction passes the complete local deployment-contract suite. Assembly-01 retry, pairing, enforcement activation, and the physical two-terminal acceptance sequence remain open. Pairing and enforcement were not performed.
 
 ## Context and Orientation
 
@@ -182,3 +191,5 @@ Revision note 2026-07-22 16:50 JST: Recorded the safe pause boundary, focused va
 Revision note 2026-07-22 18:14 JST: Resumed without the physical wrench, completed the remaining guard/UI/documentation work, hardened confirmation freshness and current-row deletion behavior, and completed full local validation. Production and physical acceptance remain gated.
 
 Revision note 2026-07-22 19:22 JST: Recorded Draft PR #1068 CI success, the mutation-free aggregate-preflight stop, and the scoped candidate Bluetooth/new-agent preflight correction. Release A remains unapplied until the correction passes a new exact-head CI.
+
+Revision note 2026-07-22 20:02 JST: Recorded Release A run `20260722-103023-77ca0e`, successful Pi5/StoneBase convergence, Assembly-01's verified automatic rollback, the systemd 257 oneshot result discovery, and the locally validated correction pending new CI and retry.
