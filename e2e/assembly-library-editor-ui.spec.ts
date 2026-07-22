@@ -75,6 +75,30 @@ async function expectCssPixelCalloutLayout(page: Page) {
   await expect(svg.locator('marker').first()).toHaveAttribute('markerHeight', '6');
 }
 
+async function expectNoHorizontalOverflow(locator: Locator) {
+  const metrics = await locator.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth
+  }));
+  expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
+}
+
+async function expectDirectChildrenOnOneRow(locator: Locator) {
+  const metrics = await locator.evaluate((element) => {
+    const centers = Array.from(element.children).map((child) => {
+      const rect = child.getBoundingClientRect();
+      return rect.top + rect.height / 2;
+    });
+    return {
+      centers,
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth
+    };
+  });
+  expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
+  expect(Math.max(...metrics.centers) - Math.min(...metrics.centers)).toBeLessThanOrEqual(1);
+}
+
 for (const viewport of viewports) {
   test(`assembly library is two-row and deploy notice stays movable/non-blocking at ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport);
@@ -160,6 +184,7 @@ for (const viewport of viewports) {
 
     const box = await image.boundingBox();
     expect(box).not.toBeNull();
+    await page.getByRole('button', { name: '締結マーカー' }).click();
     await page.mouse.click(box!.x + box!.width * 0.88, box!.y + box!.height * 0.86);
     await expect(canvas.locator('button[title^="P7-A13"]')).toHaveCount(3);
 
@@ -171,5 +196,28 @@ for (const viewport of viewports) {
     await expectCssPixelCalloutLayout(page);
     await expect(page.getByRole('group', { name: '締結マーカーの位置調整' })).toHaveCount(0);
     await expect(page.getByRole('group', { name: 'チェックマーカーの位置調整' })).toHaveCount(0);
+  });
+
+  test(`assembly editor keeps its toolbar on one row and settings pane free of horizontal scroll at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await mockKioskApis(page);
+    await page.goto('/dev/kiosk-assembly-template-editor', { waitUntil: 'networkidle' });
+
+    const toolbar = page.getByTestId('assembly-editor-toolbar');
+    const settingsPane = page.getByTestId('assembly-editor-settings-pane');
+    await expect(toolbar).toBeVisible();
+    await expect(settingsPane).toBeVisible();
+    await expectDirectChildrenOnOneRow(toolbar);
+    await expectNoHorizontalOverflow(settingsPane);
+
+    const canvas = page.getByTestId('assembly-procedure-canvas');
+    await expect(canvas.locator('button[title^="P7-A13"]')).toHaveCount(2);
+    await settingsPane.getByRole('button', { name: '削除', exact: true }).click();
+    await expect(canvas.locator('button[title^="P7-A13"]')).toHaveCount(1);
+    await expect(settingsPane.getByText('手順書上の締結マーカーを選択')).toBeVisible();
+
+    await canvas.getByRole('button', { name: '目視確認' }).click();
+    await expect(settingsPane.getByText('チェック 1')).toBeVisible();
+    await expectNoHorizontalOverflow(settingsPane);
   });
 }
