@@ -554,9 +554,14 @@ class GenericSystemdAdapter(TerminalAdapter):
     ) -> dict[str, Any]:
         if not self._requires_kiosk_web_activation(target):
             raise RuntimeError("Kiosk Web activation strategy is not authorized")
-        if not isinstance(target.get("acknowledgedAt"), str):
+        maintenance = target.get("maintenance")
+        if (
+            not isinstance(maintenance, dict)
+            or maintenance.get("state") not in {"acknowledged", "unconfirmed"}
+            or not isinstance(target.get("maintenanceStartedAt"), str)
+        ):
             raise RuntimeError(
-                "Kiosk Web activation requires acknowledged maintenance"
+                "Kiosk Web activation requires a durable maintenance request"
             )
         result = self.runtime.activate_kiosk_web(
             inventory, target_spec, target, run_id
