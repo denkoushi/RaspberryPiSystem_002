@@ -241,52 +241,60 @@ export function KioskAssemblyTemplateEditorPreviewPage() {
               <div className="flex min-w-0 items-start justify-between gap-2">
                 <div className="min-w-0">
                   <h2 className="text-[1.02rem] font-bold">締付条件</h2>
-                  {selectedBolt ? <div className="mt-1 truncate text-sm font-bold">丸数字 {selectedBolt.markerNo}</div> : null}
+                  {selectedBolt ? (
+                    <>
+                      <div className="mt-0.5 truncate text-sm font-bold">丸数字 {selectedBolt.markerNo}</div>
+                      <div className="mt-0.5 truncate text-[0.68rem] text-white/55">ページ: assembly-procedure-document / preview / 1</div>
+                    </>
+                  ) : null}
                 </div>
                 {selectedBolt ? (
                   <button type="button" className="shrink-0 rounded border border-red-300/70 px-2 py-1 text-xs font-bold text-red-200" onClick={deleteSelectedBolt}>削除</button>
                 ) : null}
               </div>
               {selectedBolt ? (
-                <div className="mt-3 grid min-w-0 gap-3 text-sm text-white/80">
-                  <div className="flex min-h-9 min-w-0 items-center justify-between gap-2 rounded border border-white/10 bg-slate-950/60 px-2">
-                    <span className="text-xs font-semibold">矢視 あり</span>
-                    <button type="button" className="shrink-0 rounded border border-white/20 px-2 py-1 text-xs font-bold">矢視削除</button>
+                <div className="mt-2 grid min-w-0 gap-2 text-sm text-white/80">
+                  <div className="flex min-h-8 min-w-0 items-center gap-1 rounded border border-white/10 bg-slate-950/60 px-1.5 py-1">
+                    <span className="shrink-0 text-[0.68rem] font-semibold">矢視 あり</span>
+                    <button type="button" className="min-h-7 shrink-0 rounded border border-white/20 px-1.5 py-0.5 text-[0.68rem] font-bold">矢視削除</button>
+                    <ImageMarkerPositionNudge
+                      position={selectedBolt}
+                      groupLabel="締結マーカーの位置調整"
+                      className="min-w-0 flex-1 [&>button]:min-w-0 [&>button]:flex-1 [&>button]:px-1"
+                      onChange={(patch) => {
+                        setArea((current) => ({
+                          ...current,
+                          bolts: current.bolts.map((bolt) => bolt.id === selectedBolt.id ? { ...bolt, ...patch } : bolt)
+                        }));
+                      }}
+                    />
                   </div>
-                  <ImageMarkerPositionNudge
-                    position={selectedBolt}
-                    groupLabel="締結マーカーの位置調整"
-                    className="min-w-0 [&>button]:min-w-0 [&>button]:flex-1"
-                    onChange={(patch) => {
-                      setArea((current) => ({
-                        ...current,
-                        bolts: current.bolts.map((bolt) => bolt.id === selectedBolt.id ? { ...bolt, ...patch } : bolt)
-                      }));
-                    }}
-                  />
-                  <div className="truncate text-xs text-white/55">ページ: assembly-procedure-document / preview / 1</div>
-                  <label className="flex min-w-0 items-center gap-2 rounded border border-white/10 bg-slate-950/60 px-2 py-2 text-xs font-semibold">
+                  <label className="flex min-h-8 min-w-0 items-center gap-2 rounded border border-white/10 bg-slate-950/60 px-2 py-1 text-[0.7rem] font-semibold">
                     <input type="checkbox" defaultChecked />次の丸数字へこの条件を引き継ぐ
                   </label>
-                  <div className="grid min-w-0 grid-cols-2 gap-2 rounded border border-cyan-300/20 bg-cyan-950/20 p-2">
-                    <label className="grid min-w-0 gap-1 text-xs font-semibold">反映開始<input className="min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-2 text-sm" defaultValue="1" /></label>
-                    <label className="grid min-w-0 gap-1 text-xs font-semibold">反映終了<input className="min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-2 text-sm" defaultValue="35" /></label>
-                    <button type="button" className="col-span-2 rounded border border-white/20 px-2 py-2 text-xs font-bold">条件反映</button>
+                  <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-1 rounded border border-cyan-300/20 bg-cyan-950/20 p-1.5">
+                    <label className="grid min-w-0 gap-0.5 text-[0.65rem] font-semibold">反映開始<input className="h-8 min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-1 text-sm" defaultValue="1" /></label>
+                    <label className="grid min-w-0 gap-0.5 text-[0.65rem] font-semibold">反映終了<input className="h-8 min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-1 text-sm" defaultValue="35" /></label>
+                    <button type="button" className="min-h-8 whitespace-nowrap rounded border border-white/20 px-2 py-1 text-[0.68rem] font-bold">条件反映</button>
                   </div>
-                  <div className="grid min-w-0 grid-cols-2 gap-2">
-                    <label className="grid min-w-0 gap-1 text-xs font-semibold">呼び径<input className="min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-2 text-sm" defaultValue="M6" /></label>
-                    <label className="grid min-w-0 gap-1 text-xs font-semibold">長さ (mm)<input className="min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-2 text-sm" defaultValue="30" /></label>
-                    <label className="grid min-w-0 gap-1 text-xs font-semibold">材質<input className="min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-2 text-sm" defaultValue="SCM435" /></label>
-                    <label className="grid min-w-0 gap-1 text-xs font-semibold">強度区分<input className="min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-2 text-sm" defaultValue="10.9" /></label>
+                  <div data-testid="assembly-editor-bolt-fields" className="grid min-w-0 gap-1.5">
+                    <div className="grid min-w-0 grid-cols-[minmax(0,0.75fr)_minmax(0,0.75fr)_minmax(0,1.5fr)] gap-1.5">
+                      <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold">呼び径<input className="h-8 min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-1 text-sm" defaultValue="M6" /></label>
+                      <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold">長さ (mm)<input className="h-8 min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-1 text-sm" defaultValue="30" /></label>
+                      <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold">材質<input className="h-8 min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-1 text-sm" defaultValue="SCM435" /></label>
+                    </div>
+                    <div className="grid min-w-0 grid-cols-2 gap-1.5">
+                      <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold">強度区分<input className="h-8 min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-1 text-sm" defaultValue="10.9" /></label>
+                      <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold">表示用ボルト仕様<input className="h-8 min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-1 text-sm" defaultValue={selectedBolt.boltSpec} /></label>
+                    </div>
+                    <div className="grid min-w-0 grid-cols-4 gap-1.5">
+                      <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold">下限<input className="h-8 min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-1 text-sm" defaultValue="81" /></label>
+                      <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold">規定<input className="h-8 min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-1 text-sm" defaultValue="90" /></label>
+                      <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold">上限<input className="h-8 min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-1 text-sm" defaultValue="99" /></label>
+                      <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold">単位<select className="h-8 min-w-0 w-full rounded border border-white/15 bg-slate-950 px-1.5 text-xs" defaultValue="kgf-cm"><option value="N-m">N·m</option><option value="kgf-cm">kgf·cm</option></select></label>
+                    </div>
+                    <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold">適合トルクレンチグループ<select className="h-8 min-w-0 w-full rounded border border-white/15 bg-slate-950 px-2 text-sm"><option>TC-100 長いグループ名称（3 型番）</option></select></label>
                   </div>
-                  <div className="grid min-w-0 grid-cols-3 gap-2">
-                    <label className="grid min-w-0 gap-1 text-xs font-semibold">下限<input className="min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-2 text-sm" defaultValue="81" /></label>
-                    <label className="grid min-w-0 gap-1 text-xs font-semibold">規定<input className="min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-2 text-sm" defaultValue="90" /></label>
-                    <label className="grid min-w-0 gap-1 text-xs font-semibold">上限<input className="min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-2 text-sm" defaultValue="99" /></label>
-                  </div>
-                  <label className="grid min-w-0 gap-1 text-xs font-semibold">単位<select className="min-w-0 w-full rounded border border-white/15 bg-slate-950 px-2 py-2 text-sm" defaultValue="kgf-cm"><option value="N-m">N·m</option><option value="kgf-cm">kgf·cm</option></select></label>
-                  <label className="grid min-w-0 gap-1 text-xs font-semibold">適合トルクレンチグループ<select className="min-w-0 w-full rounded border border-white/15 bg-slate-950 px-2 py-2 text-sm"><option>TC-100 長いグループ名称（3 型番）</option></select></label>
-                  <label className="grid min-w-0 gap-1 text-xs font-semibold">表示用ボルト仕様<input className="min-w-0 rounded border border-white/15 bg-slate-950 px-2 py-2 text-sm" defaultValue={selectedBolt.boltSpec} /></label>
                 </div>
               ) : (
                 <div className="mt-3 rounded border border-dashed border-white/20 p-3 text-sm text-white/60">手順書上の締結マーカーを選択</div>

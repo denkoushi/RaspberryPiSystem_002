@@ -75,12 +75,31 @@ async function expectCssPixelCalloutLayout(page: Page) {
   await expect(svg.locator('marker').first()).toHaveAttribute('markerHeight', '6');
 }
 
-async function expectNoHorizontalOverflow(locator: Locator) {
+async function expectNoSettingsPaneOverflow(locator: Locator) {
   const metrics = await locator.evaluate((element) => ({
+    clientHeight: element.clientHeight,
     clientWidth: element.clientWidth,
+    scrollHeight: element.scrollHeight,
     scrollWidth: element.scrollWidth
   }));
   expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
+  expect(metrics.scrollHeight).toBeLessThanOrEqual(metrics.clientHeight + 1);
+}
+
+async function expectAllControlsInsidePane(locator: Locator) {
+  const clippedControls = await locator.evaluate((element) => {
+    const paneRect = element.getBoundingClientRect();
+    return Array.from(element.querySelectorAll('button, input, select'))
+      .filter((control) => {
+        const rect = control.getBoundingClientRect();
+        return rect.left < paneRect.left - 1
+          || rect.right > paneRect.right + 1
+          || rect.top < paneRect.top - 1
+          || rect.bottom > paneRect.bottom + 1;
+      })
+      .map((control) => control.getAttribute('aria-label') || control.closest('label')?.textContent?.trim() || control.textContent?.trim() || control.tagName);
+  });
+  expect(clippedControls).toEqual([]);
 }
 
 async function expectDirectChildrenOnOneRow(locator: Locator) {
@@ -198,7 +217,7 @@ for (const viewport of viewports) {
     await expect(page.getByRole('group', { name: 'チェックマーカーの位置調整' })).toHaveCount(0);
   });
 
-  test(`assembly editor keeps its toolbar on one row and settings pane free of horizontal scroll at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+  test(`assembly editor keeps its toolbar on one row and all settings visible without scrolling at ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await mockKioskApis(page);
     await page.goto('/dev/kiosk-assembly-template-editor', { waitUntil: 'networkidle' });
@@ -208,7 +227,9 @@ for (const viewport of viewports) {
     await expect(toolbar).toBeVisible();
     await expect(settingsPane).toBeVisible();
     await expectDirectChildrenOnOneRow(toolbar);
-    await expectNoHorizontalOverflow(settingsPane);
+    await expectNoSettingsPaneOverflow(settingsPane);
+    await expectAllControlsInsidePane(settingsPane);
+    await expect(settingsPane.getByTestId('assembly-editor-bolt-fields')).toBeVisible();
 
     const canvas = page.getByTestId('assembly-procedure-canvas');
     await expect(canvas.locator('button[title^="P7-A13"]')).toHaveCount(2);
@@ -218,6 +239,7 @@ for (const viewport of viewports) {
 
     await canvas.getByRole('button', { name: '目視確認' }).click();
     await expect(settingsPane.getByText('チェック 1')).toBeVisible();
-    await expectNoHorizontalOverflow(settingsPane);
+    await expectNoSettingsPaneOverflow(settingsPane);
+    await expectAllControlsInsidePane(settingsPane);
   });
 }
