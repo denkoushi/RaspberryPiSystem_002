@@ -25,7 +25,7 @@ scripts/update-all-clients.sh --cancel RUN_ID --reason TEXT
 - 引数なしの通常実行は完了まで待つ。
 - `--detach` は開始後に `runId` を返す。状態は `--status` で確認する。
 - `--dry-run` は `--print-plan` の互換aliasとして使える。
-- `--preflight-only` はmigration、Pi5実行経路、選択端末の全前提条件を一括検査する。release run、systemd unit、fleet state、maintenance、checkout、service変更は作成・実行しない。
+- `--preflight-only` はmigration、Pi5実行経路、選択端末の全前提条件を一括検査する診断コマンドである。release run、systemd unit、fleet state、maintenance、checkout、service変更は作成・実行しない。通常実行は同じ検査をrelease unit作成の直前に必ず実施するため、通常手順で事前に実行する必要はない。
 - `human` profileのカナリア待機は `--approve RUN_ID` で現在のgateを明示承認する。複数profileでは順番に承認する。
 - 安定化時間を省略できるのは、緊急時に `--emergency-override --reason TEXT` を併用した場合だけである。
 
@@ -52,7 +52,7 @@ scripts/update-all-clients.sh --cancel RUN_ID --reason TEXT
 5. 正しいinventoryを選ぶ。
 6. まず `--print-plan` を実行し、対象hostと理由、`unknown` の有無を確認する。
 7. inventoryごとに実機実行の明示承認を得る。
-8. 承認された対象へ `--preflight-only` を実行し、全端末が合格することを確認する。
+8. 通常実行を開始する。release unit作成の直前に、同じ対象・同じ不変SHAに対する全量preflightが自動実行される。`--preflight-only` は、変更を起こさず問題を診断したい場合だけ使う。
 
 ローカルとGitHub Actionsの`deploy-contract`は、同じ実行入口を使う。
 
@@ -125,7 +125,7 @@ Pi5 probeは既存fleet lockを全検査中保持し、実機identity、clean ch
 scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
 ```
 
-通常実行も、release unitの作成前に`--preflight-only`と同じmigration・Pi5経路・全端末前提検査を再実行する。事前検査と実行の間に状態が変わっても、そこで停止し、端末通知、maintenance、checkout、service変更へは進まない。
+通常実行は、release unitの作成前にmigration・Pi5経路・全端末前提検査を一度だけ実行する。通常手順で別途`--preflight-only`を実行する必要はない。状態が変わっても、実行直前の検査で停止し、端末通知、maintenance、checkout、service変更へは進まない。
 
 前回runの中断復旧では、maintenance開始の有無にかかわらず、保存済みの全sealed runtime manifestを先にpreflightする。manifestはmaintenance前でもDocker rollback tagと当時のoptional-agent health authorityを所有し得るためである。復旧後の観測も同じsealed health contractと安定性判定を使う。active/failed run、manifest、rollback tag、fleet stateを手で削除・編集してこの連鎖を迂回してはならない。
 

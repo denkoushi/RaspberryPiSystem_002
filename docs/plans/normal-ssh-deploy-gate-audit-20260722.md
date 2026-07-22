@@ -17,9 +17,8 @@ related_code:
   - apps/web/src/layouts/KioskLayout.tsx
 validation: offline source and test audit only; no device connection, preflight, deployment, PR, or merge
 open_items:
-  - publish the first stabilization only after normal code review and hosted CI
-  - obtain separate approval before a Pi5 plus StoneBase release attempt
   - decide whether each live terminal-agent health probe is a release requirement or an operator warning
+  - do not replace the launch-time preflight with a reusable receipt unless a later, separately reviewed design binds freshness and ownership
 ---
 
 # Normal SSH Deployment Gate Audit
@@ -100,15 +99,17 @@ Whether an individual agent may be warning-only is a product/operations
 decision: it cannot be inferred safely from its implementation detail. This
 correction leaves all current agent gates intact.
 
-### Validation is duplicated today
+### Launch-time preflight is authoritative
 
-The documented operator sequence calls `--print-plan`, then
-`--preflight-only`, then normal launch. In addition, normal launch itself
-calls `build_print_plan()` and reruns migration, route, and aggregate terminal
-preflight before submitting the release unit. The independent plan remains a
-useful diagnosis, but its result is not an admission receipt. Consolidating
-this duplication is a later change; it is not mixed with the observer-gate
-fix.
+The independent `--print-plan` remains a useful scope and SHA diagnostic.
+`--preflight-only` remains a useful no-mutation diagnostic, but its result is
+not an admission receipt. Normal launch itself calls `build_print_plan()` and
+runs migration, route, and aggregate terminal preflight immediately before it
+submits the release unit. The ordinary operating sequence therefore no longer
+requires a separate `--preflight-only`: the launch-time check is the one
+authoritative pre-mutation gate. A future reusable receipt would require a
+separate design that binds freshness and each operation owner's state; it is
+not introduced by this correction.
 
 ## First Stabilization Implemented Locally
 
@@ -163,12 +164,19 @@ unconfirmed maintenance display.
 
 ## Next Steps
 
-1. Review and publish this isolated correction through normal CI.
-2. With separate deployment approval, measure one Pi5 plus StoneBase release.
-   It should either complete with warnings or stop at a remaining hard gate
-   with durable evidence.
-3. Use that result to make one next decision at a time: agent criticality,
-   duplicated admission/preflight, or measured terminal convergence time.
+1. Decide agent criticality one agent at a time; until then, keep each current
+   health gate fail-closed.
+2. Measure future ordinary releases before changing terminal convergence. The
+   FJV recovery run is not evidence that healthy, current terminals need a
+   new optimization.
+3. Treat a reusable admission/preflight receipt as a separate safety design,
+   not a follow-up to the operating-guide simplification.
 
 No Local executor, direct SSH command, hardware connection, preflight, or
 deployment is part of this audit or its local validation.
+
+Revision note (2026-07-22): The observer-gate correction was merged through
+PR #1064 and its approved Pi5/StoneBase acceptance completed. The operating
+guide now removes standalone `--preflight-only` from the normal execution
+sequence; launch still performs the same aggregate preflight immediately
+before release-unit submission.

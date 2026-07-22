@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 538,
-    "totalLines": 155077,
-    "totalBytes": 11695947,
+    "totalLines": 155085,
+    "totalBytes": 11696835,
     "withFrontmatter": 224,
     "withStatus": 82,
     "sourceOfTruthDeclared": 54,
@@ -18174,7 +18174,7 @@
     {
       "path": "docs/guides/deployment.md",
       "lineCount": 194,
-      "byteSize": 14703,
+      "byteSize": 15041,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -32854,8 +32854,8 @@
     },
     {
       "path": "docs/plans/normal-ssh-deploy-gate-audit-20260722.md",
-      "lineCount": 174,
-      "byteSize": 9750,
+      "lineCount": 182,
+      "byteSize": 10300,
       "hasFrontmatter": true,
       "title": "Normal SSH deployment gate audit and first stabilization",
       "status": "in-progress",
