@@ -1,10 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
+import { env } from '../../config/env.js';
 import { prisma } from '../../lib/prisma.js';
 import { AssemblyLotService } from '../../services/assembly/assembly-lot.service.js';
 import { AssemblyTemplateService } from '../../services/assembly/assembly-template.service.js';
 import { AssemblyWorkSessionService } from '../../services/assembly/assembly-work-session.service.js';
+import {
+  AssemblyTorqueTraceabilityService,
+  TorqueWrenchMasterService
+} from '../../services/torque-wrenches/index.js';
 import { createAuthHeader, createTestClientDevice, createTestUser } from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
@@ -19,6 +24,8 @@ describe('torque wrench traceability API', () => {
   });
 
   beforeEach(async () => {
+    await prisma.torqueWrenchConnectionLeaseHistory.deleteMany({});
+    await prisma.torqueWrenchConnectionLease.deleteMany({});
     await prisma.assemblyTorqueRecord.deleteMany({});
     await prisma.assemblyTorqueWrenchConfirmation.deleteMany({});
     await prisma.assemblyWorkSession.deleteMany({});
@@ -455,5 +462,402 @@ describe('torque wrench traceability API', () => {
       accepted: true
     });
     expect(stored.settingNominalTorqueSnapshot?.toString()).toBe('30');
+  });
+
+  it('serializes two-terminal acquisition, fences old generations, and accepts only current-generation events', async () => {
+    const master = new TorqueWrenchMasterService();
+    const traceability = new AssemblyTorqueTraceabilityService();
+    const clientA = await createTestClientDevice();
+    const clientB = await createTestClientDevice();
+    await prisma.clientDevice.update({
+      where: { id: clientA.id },
+      data: { name: 'StoneBase', location: '1F' }
+    });
+    await prisma.clientDevice.update({
+      where: { id: clientB.id },
+      data: { name: 'Assembly-01', location: '2F' }
+    });
+
+    const model = await master.createModel({
+      manufacturer: 'TOHNICHI',
+      modelNumber: `LEASE-${randomUUID()}`,
+      torqueMinNm: 10,
+      torqueMaxNm: 50
+    });
+    const group = await master.createCapabilityGroup({
+      name: `LEASE-GROUP-${randomUUID()}`,
+      nominalDiameter: 'M10',
+      boltLengthMm: 35,
+      material: 'SCM435',
+      strengthClass: '10.9',
+      modelIds: [model.id]
+    });
+    const profile = await master.createProfile({
+      name: 'lease fixture',
+      managementNumber: `LEASE-${randomUUID()}`,
+      modelId: model.id,
+      serialNumber: `LEASE-SERIAL-${randomUUID()}`,
+      storageLocation: 'TalkPlazaF1',
+      calibrationExpiryDate: new Date('2099-01-01T00:00:00.000Z')
+    });
+    await master.addSetting(profile.id, {
+      lowerLimit: 28,
+      nominalTorque: 30,
+      upperLimit: 32,
+      unit: 'N-m'
+    });
+    const document = await prisma.assemblyProcedureDocument.create({
+      data: {
+        name: `lease-${randomUUID()}`,
+        imageRelativePath: '/test/lease.png',
+        status: 'PUBLISHED',
+        publishedAt: new Date(),
+        isActive: true
+      }
+    });
+    const template = await new AssemblyTemplateService().create({
+      modelCode: `LEASE-${randomUUID()}`,
+      procedurePattern: 'standard',
+      name: 'connection lease fixture',
+      procedureDocumentId: document.id,
+      traceabilityMode: 'REQUIRED',
+      areas: [{
+        sortOrder: 0,
+        processNo: '1',
+        areaCode: 'A',
+        areaName: 'tightening',
+        unitCode: 'U1',
+        bolts: [{
+          sortOrder: 0,
+          markerNo: 1,
+          xRatio: 0.2,
+          yRatio: 0.2,
+          boltSpec: 'M10x35 SCM435 10.9',
+          nominalDiameter: 'M10',
+          boltLengthMm: 35,
+          material: 'SCM435',
+          strengthClass: '10.9',
+          capabilityGroupId: group.id,
+          lowerLimit: 28,
+          nominalTorque: 30,
+          upperLimit: 32,
+          unit: 'N-m'
+        }]
+      }]
+    });
+    const sessions = await Promise.all([clientA, clientB].map((client, index) =>
+      new AssemblyWorkSessionService().start({
+        templateId: template.id,
+        productNo: `LEASE-PRODUCT-${index}`,
+        serialNo: `LEASE-WORK-${randomUUID()}`,
+        operatorNameSnapshot: `operator-${index}`,
+        targetUnit: 'LEASE',
+        clientDeviceId: client.id,
+        clientDeviceNameSnapshot: client.name
+      })
+    ));
+    const boltId = template.areas[0]!.bolts[0]!.id;
+    const confirmations = await Promise.all(sessions.map((session, index) =>
+      traceability.confirm({
+        sessionId: session.id,
+        clientDeviceId: [clientA, clientB][index]!.id,
+        clientDeviceName: [clientA, clientB][index]!.name,
+        expectedTemplateBoltId: boltId,
+        torqueWrenchProfileId: profile.id,
+        physicalDisplayConfirmed: true
+      })
+    ));
+    const actors = [
+      { client: clientA, session: sessions[0]!, confirmation: confirmations[0]! },
+      { client: clientB, session: sessions[1]!, confirmation: confirmations[1]! }
+    ];
+    const acquire = (actor: typeof actors[number], requestId: string) => app.inject({
+      method: 'POST',
+      url: `/api/torque-wrenches/${profile.id}/connection-lease/acquire`,
+      headers: { 'x-client-key': actor.client.apiKey, 'content-type': 'application/json' },
+      payload: {
+        sessionId: actor.session.id,
+        confirmationId: actor.confirmation.id,
+        requestId
+      }
+    });
+
+    const confirmationFromOtherTerminal = await app.inject({
+      method: 'POST',
+      url: `/api/torque-wrenches/${profile.id}/connection-lease/acquire`,
+      headers: { 'x-client-key': actors[0]!.client.apiKey, 'content-type': 'application/json' },
+      payload: {
+        sessionId: actors[0]!.session.id,
+        confirmationId: actors[1]!.confirmation.id,
+        requestId: 'confirmation-from-other-terminal'
+      }
+    });
+    expect(confirmationFromOtherTerminal.statusCode).toBe(409);
+    expect(confirmationFromOtherTerminal.json().errorCode).toBe('CONFIRMATION_REQUIRED');
+
+    const simultaneous = await Promise.all([
+      acquire(actors[0]!, 'acquire-a'),
+      acquire(actors[1]!, 'acquire-b')
+    ]);
+    expect(simultaneous.map((response) => response.statusCode).sort()).toEqual([200, 409]);
+    const winnerIndex = simultaneous.findIndex((response) => response.statusCode === 200);
+    const loserIndex = winnerIndex === 0 ? 1 : 0;
+    const winner = actors[winnerIndex]!;
+    const loser = actors[loserIndex]!;
+    const firstLease = simultaneous[winnerIndex]!.json().lease as {
+      leaseId: string;
+      generation: number;
+    };
+    expect(firstLease.generation).toBe(1);
+
+    const hiddenOwner = await app.inject({
+      method: 'GET',
+      url: `/api/torque-wrenches/${profile.id}/connection-lease`,
+      headers: { 'x-client-key': loser.client.apiKey }
+    });
+    expect(hiddenOwner.statusCode).toBe(200);
+    expect(hiddenOwner.json().lease).toMatchObject({
+      state: 'owned_by_other',
+      owner: { clientDeviceName: winnerIndex === 0 ? 'StoneBase' : 'Assembly-01' }
+    });
+    expect(hiddenOwner.json().lease.owner).not.toHaveProperty('clientDeviceId');
+    expect(hiddenOwner.json().lease.owner).not.toHaveProperty('sessionId');
+    expect(hiddenOwner.json().lease).not.toHaveProperty('leaseId');
+    expect(hiddenOwner.json().lease).not.toHaveProperty('generation');
+
+    const renewed = await app.inject({
+      method: 'POST',
+      url: `/api/torque-wrenches/${profile.id}/connection-lease/renew`,
+      headers: { 'x-client-key': winner.client.apiKey, 'content-type': 'application/json' },
+      payload: {
+        sessionId: winner.session.id,
+        leaseId: firstLease.leaseId,
+        generation: firstLease.generation
+      }
+    });
+    expect(renewed.statusCode).toBe(200);
+    expect(renewed.json().lease.generation).toBe(1);
+    const nonOwnerRelease = await app.inject({
+      method: 'POST',
+      url: `/api/torque-wrenches/${profile.id}/connection-lease/release`,
+      headers: { 'x-client-key': loser.client.apiKey, 'content-type': 'application/json' },
+      payload: {
+        sessionId: loser.session.id,
+        leaseId: firstLease.leaseId,
+        generation: firstLease.generation,
+        reason: 'malicious non-owner release'
+      }
+    });
+    expect(nonOwnerRelease.statusCode).toBe(409);
+    expect(nonOwnerRelease.json().errorCode).toBe('TORQUE_WRENCH_LEASE_OWNER_MISMATCH');
+
+    const takeover = await app.inject({
+      method: 'POST',
+      url: `/api/torque-wrenches/${profile.id}/connection-lease/takeover`,
+      headers: { 'x-client-key': loser.client.apiKey, 'content-type': 'application/json' },
+      payload: {
+        sessionId: loser.session.id,
+        confirmationId: loser.confirmation.id,
+        requestId: 'physical-takeover',
+        physicalWrenchPresent: true,
+        reason: 'physical wrench is at this terminal'
+      }
+    });
+    expect(takeover.statusCode).toBe(200);
+    expect(takeover.json().lease).toMatchObject({ state: 'handoff_wait', generation: 2 });
+    expect(new Date(takeover.json().lease.connectAfter).getTime()).toBeGreaterThan(Date.now());
+    const secondLease = takeover.json().lease as { leaseId: string; generation: number };
+
+    const fencedRenew = await app.inject({
+      method: 'POST',
+      url: `/api/torque-wrenches/${profile.id}/connection-lease/renew`,
+      headers: { 'x-client-key': winner.client.apiKey, 'content-type': 'application/json' },
+      payload: {
+        sessionId: winner.session.id,
+        leaseId: firstLease.leaseId,
+        generation: firstLease.generation
+      }
+    });
+    expect(fencedRenew.statusCode).toBe(409);
+    expect(fencedRenew.json().errorCode).toBe('TORQUE_WRENCH_LEASE_FENCED');
+
+    const manager = await createTestUser('MANAGER');
+    const viewer = await createTestUser('VIEWER');
+    const activationPayload = { reason: 'two-terminal Release B acceptance completed' };
+    const activationUrl = `/api/torque-wrenches/${profile.id}/connection-lease/enforcement/enable`;
+    const activationBlocked = await app.inject({
+      method: 'POST',
+      url: activationUrl,
+      headers: { ...createAuthHeader(manager.token), 'content-type': 'application/json' },
+      payload: activationPayload
+    });
+    expect(activationBlocked.statusCode).toBe(409);
+    expect(activationBlocked.json().errorCode).toBe('TORQUE_CONNECTION_LEASE_ACTIVATION_DISABLED');
+    const activationForbidden = await app.inject({
+      method: 'POST',
+      url: activationUrl,
+      headers: { ...createAuthHeader(viewer.token), 'content-type': 'application/json' },
+      payload: activationPayload
+    });
+    expect(activationForbidden.statusCode).toBe(403);
+    const previousActivationGate = env.TORQUE_CONNECTION_LEASE_ACTIVATION_ALLOWED;
+    env.TORQUE_CONNECTION_LEASE_ACTIVATION_ALLOWED = true;
+    try {
+      const activated = await app.inject({
+        method: 'POST',
+        url: activationUrl,
+        headers: { ...createAuthHeader(manager.token), 'content-type': 'application/json' },
+        payload: activationPayload
+      });
+      expect(activated.statusCode).toBe(200);
+      expect(activated.json().torqueWrench).toMatchObject({
+        connectionLeaseEnforcementReason: activationPayload.reason,
+        connectionLeaseEnforcedByUserId: manager.user.id,
+        connectionLeaseEnforcedByUsername: manager.user.username
+      });
+      const firstEnforcedAt = activated.json().torqueWrench.connectionLeaseEnforcedAt;
+      const repeated = await app.inject({
+        method: 'POST',
+        url: activationUrl,
+        headers: { ...createAuthHeader(manager.token), 'content-type': 'application/json' },
+        payload: { reason: 'must not overwrite the activation audit' }
+      });
+      expect(repeated.statusCode).toBe(200);
+      expect(repeated.json().torqueWrench).toMatchObject({
+        connectionLeaseEnforcedAt: firstEnforcedAt,
+        connectionLeaseEnforcementReason: activationPayload.reason
+      });
+    } finally {
+      env.TORQUE_CONNECTION_LEASE_ACTIVATION_ALLOWED = previousActivationGate;
+    }
+    const noDisableApi = await app.inject({
+      method: 'POST',
+      url: `/api/torque-wrenches/${profile.id}/connection-lease/enforcement/disable`,
+      headers: { ...createAuthHeader(manager.token), 'content-type': 'application/json' },
+      payload: { reason: 'not supported' }
+    });
+    expect(noDisableApi.statusCode).toBe(404);
+    const torquePayload = (actor: typeof winner, sourceEventKey: string, lease?: { leaseId: string; generation: number }) => ({
+      sourceEventKey,
+      expectedTemplateBoltId: boltId,
+      confirmationId: actor.confirmation.id,
+      serialNumber: profile.serialNumber,
+      value: 30,
+      unit: 'N-m',
+      rawPayload: { sourceEventKey },
+      ...(lease
+        ? { connectionLeaseId: lease.leaseId, connectionLeaseGeneration: lease.generation }
+        : {})
+    });
+    const missingLease = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${winner.session.id}/record-torque`,
+      headers: { 'x-client-key': winner.client.apiKey, 'content-type': 'application/json' },
+      payload: torquePayload(winner, 'missing-lease')
+    });
+    expect(missingLease.statusCode).toBe(200);
+    expect(missingLease.json().outcome).toMatchObject({
+      kind: 'rejected',
+      rejectionReason: 'CONNECTION_LEASE_REQUIRED'
+    });
+    const fencedEvent = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${winner.session.id}/record-torque`,
+      headers: { 'x-client-key': winner.client.apiKey, 'content-type': 'application/json' },
+      payload: torquePayload(winner, 'old-generation', firstLease)
+    });
+    expect(fencedEvent.statusCode).toBe(200);
+    expect(fencedEvent.json().outcome).toMatchObject({
+      kind: 'rejected',
+      rejectionReason: 'CONNECTION_LEASE_FENCED'
+    });
+    const ownerMismatch = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${winner.session.id}/record-torque`,
+      headers: { 'x-client-key': winner.client.apiKey, 'content-type': 'application/json' },
+      payload: torquePayload(winner, 'wrong-owner', secondLease)
+    });
+    expect(ownerMismatch.statusCode).toBe(200);
+    expect(ownerMismatch.json().outcome).toMatchObject({
+      kind: 'rejected',
+      rejectionReason: 'CONNECTION_LEASE_OWNER_MISMATCH'
+    });
+    await prisma.assemblyWorkSession.update({
+      where: { id: winner.session.id },
+      data: { clientDeviceId: loser.client.id }
+    });
+    const sessionMismatch = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${winner.session.id}/record-torque`,
+      headers: { 'x-client-key': loser.client.apiKey, 'content-type': 'application/json' },
+      payload: torquePayload(winner, 'wrong-session', secondLease)
+    });
+    expect(sessionMismatch.statusCode).toBe(200);
+    expect(sessionMismatch.json().outcome).toMatchObject({
+      kind: 'rejected',
+      rejectionReason: 'CONNECTION_LEASE_SESSION_MISMATCH'
+    });
+    await prisma.assemblyWorkSession.update({
+      where: { id: winner.session.id },
+      data: { clientDeviceId: winner.client.id }
+    });
+
+    await prisma.torqueWrenchConnectionLease.update({
+      where: { torqueWrenchProfileId: profile.id },
+      data: { expiresAt: new Date(Date.now() - 1_000), connectAfter: new Date(Date.now() - 1_000) }
+    });
+    const delayedCurrentGeneration = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${loser.session.id}/record-torque`,
+      headers: { 'x-client-key': loser.client.apiKey, 'content-type': 'application/json' },
+      payload: torquePayload(loser, 'delayed-current-generation', secondLease)
+    });
+    expect(delayedCurrentGeneration.statusCode).toBe(200);
+    expect(delayedCurrentGeneration.json().outcome.kind).toBe('accepted_ok');
+    const storedDelayed = await prisma.assemblyTorqueRecord.findUniqueOrThrow({
+      where: { id: delayedCurrentGeneration.json().outcome.torqueRecordId as string }
+    });
+    expect(storedDelayed).toMatchObject({
+      connectionLeaseId: secondLease.leaseId,
+      connectionLeaseGeneration: 2
+    });
+
+    const expiredAcquire = await acquire(winner, 'expired-acquire');
+    expect(expiredAcquire.statusCode).toBe(200);
+    expect(expiredAcquire.json().lease.generation).toBe(3);
+    const thirdLease = expiredAcquire.json().lease as { leaseId: string; generation: number };
+    const released = await app.inject({
+      method: 'POST',
+      url: `/api/torque-wrenches/${profile.id}/connection-lease/release`,
+      headers: { 'x-client-key': winner.client.apiKey, 'content-type': 'application/json' },
+      payload: {
+        sessionId: winner.session.id,
+        leaseId: thirdLease.leaseId,
+        generation: thirdLease.generation,
+        reason: 'test complete'
+      }
+    });
+    expect(released.statusCode).toBe(200);
+    expect(released.json().lease.state).toBe('available');
+    await master.addSetting(profile.id, {
+      lowerLimit: 28,
+      nominalTorque: 30,
+      upperLimit: 32,
+      unit: 'N-m',
+      reason: 'invalidate the previous terminal confirmation'
+    });
+    const staleSettingConfirmation = await acquire(winner, 'stale-setting-confirmation');
+    expect(staleSettingConfirmation.statusCode).toBe(409);
+    expect(staleSettingConfirmation.json().errorCode).toBe('CONFIRMATION_REQUIRED');
+    expect(await prisma.torqueWrenchConnectionLeaseHistory.findMany({
+      where: { torqueWrenchProfileId: profile.id },
+      orderBy: { createdAt: 'asc' },
+      select: { action: true, generation: true }
+    })).toEqual([
+      { action: 'ACQUIRED', generation: 1 },
+      { action: 'TAKEN_OVER', generation: 2 },
+      { action: 'EXPIRED_ACQUIRED', generation: 3 },
+      { action: 'RELEASED', generation: 3 }
+    ]);
   });
 });

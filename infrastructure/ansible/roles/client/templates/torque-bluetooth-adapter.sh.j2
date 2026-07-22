@@ -3,7 +3,8 @@ set -euo pipefail
 
 readonly expected_vendor='{{ torque_agent_bluetooth_adapter.usb_vendor_id }}'
 readonly expected_product='{{ torque_agent_bluetooth_adapter.usb_product_id }}'
-readonly hci_name="${1:-}"
+readonly requested_operation="${1:-}"
+hci_name="${requested_operation}"
 readonly sys_root="$(readlink -f "${TORQUE_BLUETOOTH_SYS_ROOT:-/sys}")"
 readonly bluetooth_class_root="${sys_root}/class/bluetooth"
 readonly rfkill_class_root="${sys_root}/class/rfkill"
@@ -154,6 +155,62 @@ probe_exact_controller() {
   done
 }
 
+status_exact_controller() {
+  local controller_name
+  local controller_index
+  local controller_info
+  local controller_path
+  local rfkill_path
+  local rfkill_device
+  local powered=false
+
+  controller_name="$(discover_exact_controller)"
+  controller_path="$(readlink -f "${bluetooth_class_root}/${controller_name}")"
+  for rfkill_path in "${rfkill_class_root}"/rfkill*; do
+    [[ -r "${rfkill_path}/type" && "$(< "${rfkill_path}/type")" == bluetooth ]] || continue
+    rfkill_device="$(readlink -f "${rfkill_path}/device")"
+    if [[ "${rfkill_device}" == "${controller_path}" || "${rfkill_device}" == "${controller_path}/"* ]]; then
+      if [[ "$(< "${rfkill_path}/hard")" == 1 || "$(< "${rfkill_path}/soft")" == 1 ]]; then
+        printf '{"controller":"%s","powered":false}\n' "${controller_name}"
+        return 0
+      fi
+    fi
+  done
+  controller_index="${controller_name#hci}"
+  controller_info="$(run_btmgmt info --index "${controller_index}" info)"
+  if controller_info_is_powered <<< "${controller_info}"; then
+    powered=true
+  fi
+  printf '{"controller":"%s","powered":%s}\n' "${controller_name}" "${powered}"
+}
+
+power_off_exact_controller() {
+  local controller_name
+  local controller_path
+  local rfkill_path
+  local rfkill_device
+  local match_count=0
+
+  controller_name="$(discover_exact_controller)"
+  controller_path="$(readlink -f "${bluetooth_class_root}/${controller_name}")"
+  for rfkill_path in "${rfkill_class_root}"/rfkill*; do
+    [[ -r "${rfkill_path}/type" && "$(< "${rfkill_path}/type")" == bluetooth ]] || continue
+    rfkill_device="$(readlink -f "${rfkill_path}/device")"
+    if [[ "${rfkill_device}" == "${controller_path}" || "${rfkill_device}" == "${controller_path}/"* ]]; then
+      match_count=$((match_count + 1))
+      # Soft-block first: this is the bounded fail-closed operation. It targets
+      # only the rfkill node whose device resolves to the exact VID/PID controller.
+      if [[ "$(< "${rfkill_path}/soft")" != 1 ]]; then
+        printf '1\n' > "${rfkill_path}/soft"
+      fi
+    fi
+  done
+  if [[ "${match_count}" -ne 1 ]]; then
+    echo "expected exactly one rfkill entry for configured external Bluetooth controller; found ${match_count}" >&2
+    return 5
+  fi
+}
+
 if [[ "${hci_name}" == '--discover' ]]; then
   discover_exact_controller
   exit 0
@@ -167,6 +224,20 @@ fi
 if [[ "${hci_name}" == '--probe' ]]; then
   probe_exact_controller
   exit 0
+fi
+
+if [[ "${hci_name}" == '--status' ]]; then
+  status_exact_controller
+  exit 0
+fi
+
+if [[ "${hci_name}" == '--power-off' ]]; then
+  power_off_exact_controller
+  exit 0
+fi
+
+if [[ "${hci_name}" == '--power-on' ]]; then
+  hci_name="$(discover_exact_controller)"
 fi
 
 if [[ ! "${hci_name}" =~ ^hci[0-9]+$ ]]; then

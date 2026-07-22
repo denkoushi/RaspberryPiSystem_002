@@ -3,3 +3,4 @@ export * from './torque-wrench-normalization.js';
 export * from './torque-wrench-eligibility.policy.js';
 export * from './torque-wrench-master.service.js';
 export * from './assembly-torque-traceability.service.js';
+export * from './torque-wrench-connection-lease.service.js';

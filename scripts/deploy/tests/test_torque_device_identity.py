@@ -136,7 +136,9 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
 
         for destination in (
             "/usr/local/libexec/torque-bluetooth-adapter",
+            "/usr/local/libexec/torque-bluetooth-guard",
             "/etc/systemd/system/torque-bluetooth-adapter@.service",
+            "/etc/systemd/system/torque-bluetooth-guard.service",
             "/etc/udev/rules.d/90-torque-bluetooth-adapter.rules",
             "/etc/udev/rules.d/99-torque-wrench-hid.rules",
         ):

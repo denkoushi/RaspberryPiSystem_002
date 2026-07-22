@@ -12,8 +12,8 @@ from .api_client import OutboxSender
 from .binding import BindingStore
 from .cem3_btla_parser import Cem3BtlaHogpParser
 from .config import AgentConfig
+from .connection_lease import ConnectionLeaseManager
 from .ingestor import TorqueEventIngestor
-from .models import WorkBinding
 from .parser_registry import ParserRegistry, SyntheticDelimitedFixtureParser
 from .queue_store import QueueStore
 
@@ -25,6 +25,23 @@ class HeartbeatBody(BaseModel):
     currentTemplateBoltId: str | None
     confirmationId: str | None
     torqueWrenchProfileId: str | None
+
+
+class LeaseAcquireBody(BaseModel):
+    sessionId: str
+    currentTemplateBoltId: str
+    confirmationId: str
+    torqueWrenchProfileId: str
+    requestId: str
+
+
+class LeaseTakeoverBody(LeaseAcquireBody):
+    physicalWrenchPresent: bool
+    reason: str
+
+
+class LeaseReleaseBody(BaseModel):
+    reason: str = "CLIENT_RELEASE"
 
 
 def build_registry(config: AgentConfig) -> ParserRegistry:
@@ -39,7 +56,12 @@ def build_registry(config: AgentConfig) -> ParserRegistry:
     return registry
 
 
-def create_app(config: AgentConfig, binding_store: BindingStore, queue: QueueStore) -> FastAPI:
+def create_app(
+    config: AgentConfig,
+    binding_store: BindingStore,
+    queue: QueueStore,
+    lease_manager: ConnectionLeaseManager,
+) -> FastAPI:
     app = FastAPI(title="torque-agent", docs_url=None, redoc_url=None)
     app.add_middleware(
         CORSMiddleware,
@@ -52,26 +74,47 @@ def create_app(config: AgentConfig, binding_store: BindingStore, queue: QueueSto
     @app.get("/health")
     async def health() -> dict[str, object]:
         return {
-            "ok": True,
+            **lease_manager.snapshot(),
             "queuedEvents": queue.count(),
             "localAuditEvents": queue.local_error_count(),
-            "bound": binding_store.current() is not None,
         }
 
     @app.post("/heartbeat")
-    async def heartbeat(body: HeartbeatBody) -> dict[str, bool]:
-        if not body.currentTemplateBoltId or not body.confirmationId or not body.torqueWrenchProfileId:
-            binding_store.clear()
-            return {"ok": True, "bound": False}
-        binding_store.update(
-            WorkBinding(
-                session_id=body.sessionId,
-                current_template_bolt_id=body.currentTemplateBoltId,
-                confirmation_id=body.confirmationId,
-                torque_wrench_profile_id=body.torqueWrenchProfileId,
-            )
+    async def heartbeat(body: HeartbeatBody) -> dict[str, object]:
+        return await lease_manager.heartbeat(
+            session_id=body.sessionId,
+            current_template_bolt_id=body.currentTemplateBoltId,
+            confirmation_id=body.confirmationId,
+            profile_id=body.torqueWrenchProfileId,
         )
-        return {"ok": True, "bound": True}
+
+    @app.post("/lease/acquire")
+    async def acquire(body: LeaseAcquireBody) -> dict[str, object]:
+        return await lease_manager.acquire(
+            profile_id=body.torqueWrenchProfileId,
+            session_id=body.sessionId,
+            current_template_bolt_id=body.currentTemplateBoltId,
+            confirmation_id=body.confirmationId,
+            request_id=body.requestId,
+        )
+
+    @app.post("/lease/takeover")
+    async def takeover(body: LeaseTakeoverBody) -> dict[str, object]:
+        if not body.physicalWrenchPresent:
+            return {**lease_manager.snapshot(), "lastError": "PHYSICAL_WRENCH_CONFIRMATION_REQUIRED"}
+        return await lease_manager.acquire(
+            profile_id=body.torqueWrenchProfileId,
+            session_id=body.sessionId,
+            current_template_bolt_id=body.currentTemplateBoltId,
+            confirmation_id=body.confirmationId,
+            request_id=body.requestId,
+            takeover=True,
+            reason=body.reason,
+        )
+
+    @app.post("/lease/release")
+    async def release(body: LeaseReleaseBody) -> dict[str, object]:
+        return await lease_manager.release(body.reason)
 
     return app
 
@@ -83,6 +126,7 @@ async def run_agent(config: AgentConfig) -> None:
 
     queue = QueueStore(config.queue_path)
     bindings = BindingStore(config.heartbeat_ttl_seconds)
+    lease_manager = ConnectionLeaseManager(config, bindings)
     registry = build_registry(config)
     parsers = {device.path: registry.create(device.parser_profile) for device in config.devices}
     parser_profiles = {device.path: device.parser_profile for device in config.devices}
@@ -96,21 +140,44 @@ async def run_agent(config: AgentConfig) -> None:
         parser_profiles=parser_profiles,
     )
 
-    app = create_app(config, bindings, queue)
+    app = create_app(config, bindings, queue, lease_manager)
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=config.local_port, log_level="info"))
-    tasks = [asyncio.create_task(OutboxSender(config.api_base_url, config.client_key, queue, tls_verify=config.tls_verify).run()),
-             asyncio.create_task(server.serve())]
-    tasks.extend(
+    async def supervise_hid() -> None:
+        while True:
+            await lease_manager.active_event.wait()
+            readers = [
+                asyncio.create_task(
+                    read_hid_device(
+                        device.path,
+                        ingestor.on_line,
+                        ingestor.on_decode_error,
+                        frame_terminators[device.path],
+                        on_exclusive_state=lease_manager.mark_hid_exclusive,
+                    )
+                )
+                for device in config.devices
+            ]
+            try:
+                while lease_manager.active_event.is_set():
+                    await asyncio.sleep(0.1)
+            finally:
+                for reader in readers:
+                    reader.cancel()
+                await asyncio.gather(*readers, return_exceptions=True)
+
+    tasks = [
         asyncio.create_task(
-            read_hid_device(
-                device.path,
-                ingestor.on_line,
-                ingestor.on_decode_error,
-                frame_terminators[device.path],
-            )
-        )
-        for device in config.devices
-    )
+            OutboxSender(
+                config.api_base_url,
+                config.client_key,
+                queue,
+                tls_verify=config.tls_verify,
+            ).run()
+        ),
+        asyncio.create_task(lease_manager.run()),
+        asyncio.create_task(supervise_hid()),
+        asyncio.create_task(server.serve()),
+    ]
     await asyncio.gather(*tasks)
 
 

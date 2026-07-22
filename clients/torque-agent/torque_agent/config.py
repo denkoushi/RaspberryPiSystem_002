@@ -42,6 +42,11 @@ class AgentConfig:
     local_port: int = 7073
     tls_verify: bool = True
     synthetic_fixture_enabled: bool = False
+    connection_lease_enabled: bool = True
+    lease_renew_interval_seconds: float = 2.0
+    guard_intent_ttl_seconds: float = 3.0
+    guard_directory: Path = Path("/run/torque-bluetooth-guard")
+    boot_id_path: Path = Path("/proc/sys/kernel/random/boot_id")
 
     @classmethod
     def from_env(cls) -> "AgentConfig":
@@ -70,6 +75,12 @@ class AgentConfig:
         tls_verify_mode = os.environ.get("TORQUE_TLS_VERIFY_MODE", "system").strip().lower()
         if tls_verify_mode not in {"system", "insecure"}:
             raise ValueError("TORQUE_TLS_VERIFY_MODE must be either system or insecure")
+        lease_renew_interval_seconds = float(os.environ.get("TORQUE_LEASE_RENEW_INTERVAL_SECONDS", "2"))
+        guard_intent_ttl_seconds = float(os.environ.get("TORQUE_GUARD_INTENT_TTL_SECONDS", "3"))
+        if lease_renew_interval_seconds <= 0:
+            raise ValueError("TORQUE_LEASE_RENEW_INTERVAL_SECONDS must be greater than zero")
+        if guard_intent_ttl_seconds <= lease_renew_interval_seconds:
+            raise ValueError("TORQUE_GUARD_INTENT_TTL_SECONDS must exceed the renew interval")
         return cls(
             api_base_url=api_base_url,
             client_key=client_key,
@@ -80,4 +91,11 @@ class AgentConfig:
             local_port=int(os.environ.get("TORQUE_LOCAL_PORT", "7073")),
             tls_verify=tls_verify_mode == "system",
             synthetic_fixture_enabled=os.environ.get("TORQUE_ENABLE_SYNTHETIC_FIXTURE", "false").lower() == "true",
+            connection_lease_enabled=os.environ.get("TORQUE_CONNECTION_LEASE_ENABLED", "true").lower() == "true",
+            lease_renew_interval_seconds=lease_renew_interval_seconds,
+            guard_intent_ttl_seconds=guard_intent_ttl_seconds,
+            guard_directory=Path(
+                os.environ.get("TORQUE_BLUETOOTH_GUARD_DIRECTORY", "/run/torque-bluetooth-guard")
+            ),
+            boot_id_path=Path(os.environ.get("TORQUE_BOOT_ID_PATH", "/proc/sys/kernel/random/boot_id")),
         )

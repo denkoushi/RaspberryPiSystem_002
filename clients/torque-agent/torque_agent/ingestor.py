@@ -93,6 +93,8 @@ class TorqueEventIngestor:
                     "deviceRecordedAt": parsed.device_recorded_at,
                     "deviceMemoryCounter": parsed.memory_counter,
                     "deviceJudgement": parsed.device_judgement,
+                    "connectionLeaseId": binding.connection_lease_id,
+                    "connectionLeaseGeneration": binding.connection_lease_generation,
                     "rawPayload": {
                         "rawText": parsed.raw_text,
                         "devicePath": str(device_path),

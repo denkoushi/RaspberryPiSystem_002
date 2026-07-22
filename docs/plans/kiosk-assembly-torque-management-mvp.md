@@ -6,7 +6,7 @@ scope: kiosk assembly torque management, torque-wrench traceability, seiban star
 date: 2026-07-06
 source_of_truth: this file
 related_code: apps/api/src/routes/assembly/index.ts, apps/api/src/routes/kiosk-documents.ts, apps/api/src/routes/kiosk/assembly-procedure-order-auth.ts, apps/api/src/routes/storage/assembly-procedure-images.ts, apps/api/src/services/assembly, apps/web/src/features/assembly, apps/web/src/pages/kiosk/KioskAssemblyHomePage.tsx, apps/web/src/pages/kiosk/KioskAssemblyProcedureOrderSettingsPage.tsx, infrastructure/docker/docker-compose.server.yml, infrastructure/ansible/roles/server/tasks/main.yml
-related_docs: ../INDEX.md, ../guides/deployment.md, ./assembly-torque-wrench-traceability-execplan.md, ../runbooks/assembly-torque-agent.md, ../decisions/ADR-20260717-assembly-torque-wrench-traceability.md
+related_docs: ../INDEX.md, ../guides/deployment.md, ./assembly-torque-wrench-traceability-execplan.md, ./assembly-torque-wrench-connection-lease-execplan.md, ../runbooks/assembly-torque-agent.md, ../decisions/ADR-20260717-assembly-torque-wrench-traceability.md, ../decisions/ADR-20260722-assembly-torque-wrench-connection-lease.md
 validation: prior deployed MVP evidence below; 2026-07-17 traceability preview and disposable-Postgres/API/agent/infrastructure checks passed; 2026-07-18 assembly callout CSS-pixel parity passed; CEM3-BTLA normal and rapid fixtures, external-adapter bond/reconnect, strict parser registration, and persistent exact-device selection are implemented locally but not deployed
 open_items: complete local/Draft PR CI validation, record wrench firmware when available, perform authorized reboot and production-screen acceptance, deploy only after explicit authorization
 ---

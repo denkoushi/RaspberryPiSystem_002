@@ -291,6 +291,7 @@ all:
               barcode_agent_rest_port: 7072
               # 外付けRTL8761BUと実測済みCEM3-BTLAだけをtorque-agentへ公開する。
               torque_agent_enabled: true
+              torque_connection_lease_enabled: true
               torque_agent_api_base_url: "{{ server_base_url }}"
               torque_agent_client_key: "{{ status_agent_client_key }}"
               # Pi5 currently presents a self-signed Caddy certificate. This exception is scoped to StoneBase.
@@ -384,6 +385,26 @@ all:
               nfc_agent_api_base_url: "{{ api_base_url }}"
               nfc_agent_client_id: "raspi4-assembly-01-kiosk1"
               nfc_agent_client_secret: "client-key-raspi4-assembly-01-kiosk1"
+              # Release A installs the fail-closed lease path. Pairing remains a manual Release B gate.
+              torque_agent_enabled: true
+              torque_connection_lease_enabled: true
+              torque_agent_api_base_url: "{{ server_base_url }}"
+              torque_agent_client_key: "{{ status_agent_client_key }}"
+              torque_agent_tls_verify_mode: "insecure"
+              torque_agent_browser_origins:
+                - "{{ server_base_url }}"
+              torque_agent_bluetooth_adapter:
+                usb_vendor_id: "2357"
+                usb_product_id: "0604"
+              torque_agent_hid_links:
+                - link_name: "bluetooth-TOHNICHI_702902S-event-kbd"
+                  name: "TOHNICHI_702902S"
+                  uniq: "c4:90:43:98:7e:c3"
+                  vendor_id: "2f84"
+                  product_id: "0001"
+              torque_agent_hid_devices:
+                - path: "/dev/input/by-id/bluetooth-TOHNICHI_702902S-event-kbd"
+                  parserProfile: "cem3-btla-hogp-v1"
         signage:
           hosts:
             raspberrypi3:

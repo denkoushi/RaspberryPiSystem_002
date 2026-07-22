@@ -29,7 +29,11 @@ export const TORQUE_WRENCH_REJECTION_REASONS = [
   'STALE_TEMPLATE_BOLT',
   'UNSUPPORTED_TORQUE_UNIT',
   'DUPLICATE_WITHIN_1S',
-  'DEVICE_MEMORY_REPLAY'
+  'DEVICE_MEMORY_REPLAY',
+  'CONNECTION_LEASE_REQUIRED',
+  'CONNECTION_LEASE_FENCED',
+  'CONNECTION_LEASE_OWNER_MISMATCH',
+  'CONNECTION_LEASE_SESSION_MISMATCH'
 ] as const;
 
 export type TorqueWrenchRejectionReason = (typeof TORQUE_WRENCH_REJECTION_REASONS)[number];
@@ -141,6 +145,30 @@ export interface AgentTorqueEventPayload {
   deviceRecordedAt?: string | null;
   deviceMemoryCounter?: string | null;
   deviceJudgement?: string | null;
+  connectionLeaseId?: string | null;
+  connectionLeaseGeneration?: number | null;
+}
+
+export type TorqueWrenchConnectionLeaseState =
+  | 'available'
+  | 'owned_by_self'
+  | 'owned_by_other'
+  | 'handoff_wait'
+  | 'expired';
+
+export interface TorqueWrenchConnectionLeaseStatusDto {
+  torqueWrenchProfileId: string;
+  state: TorqueWrenchConnectionLeaseState;
+  owner: {
+    clientDeviceName: string;
+    clientDeviceLocation: string | null;
+    clientDeviceId?: string;
+    sessionId?: string;
+  } | null;
+  expiresAt: string | null;
+  connectAfter: string | null;
+  leaseId?: string;
+  generation?: number;
 }
 
 export type AssemblyTorqueRecordOutcomeKind =

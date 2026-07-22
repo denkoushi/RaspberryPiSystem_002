@@ -1,6 +1,7 @@
 import asyncio
 import json
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -9,6 +10,7 @@ from torque_agent.binding import BindingStore
 from torque_agent.api_client import OutboxSender
 from torque_agent.cem3_btla_parser import Cem3BtlaHogpParser
 from torque_agent.config import AgentConfig
+from torque_agent.connection_lease import ConnectionLeaseManager
 from torque_agent.hid_line_decoder import DecodedHidFrame, HidLineDecoder
 from torque_agent.ingestor import TorqueEventIngestor
 from torque_agent.main import build_registry, create_app
@@ -47,7 +49,7 @@ def test_unbound_and_malformed_hid_input_is_retained_in_local_sqlite_audit(tmp_p
     )
 
     asyncio.run(ingestor.on_line(device_path, "FIXTURE|serial=SN001|value=30|unit=N-m|memory=1"))
-    bindings.update(WorkBinding("session", "bolt", "confirmation", "profile"))
+    bindings.update(WorkBinding("session", "bolt", "confirmation", "profile", "lease", 1))
     asyncio.run(ingestor.on_line(device_path, "not-a-valid-fixture"))
     asyncio.run(ingestor.on_line(device_path, "FIXTURE|serial=SN001|value=30|unit=N-m|memory=2"))
 
@@ -66,6 +68,8 @@ def test_unbound_and_malformed_hid_input_is_retained_in_local_sqlite_audit(tmp_p
                     "deviceRecordedAt": None,
                     "deviceMemoryCounter": "2",
                     "deviceJudgement": None,
+                    "connectionLeaseId": "lease",
+                    "connectionLeaseGeneration": 1,
                     "rawPayload": {
                         "rawText": "FIXTURE|serial=SN001|value=30|unit=N-m|memory=2",
                         "devicePath": str(device_path),
@@ -248,11 +252,11 @@ def test_expired_binding_is_not_reused(monkeypatch: pytest.MonkeyPatch) -> None:
     now = 100.0
     monkeypatch.setattr("torque_agent.binding.time.monotonic", lambda: now)
     store = BindingStore(ttl_seconds=5)
-    store.update(WorkBinding("session", "bolt", "confirmation", "profile"))
+    store.update(WorkBinding("session", "bolt", "confirmation", "profile", "lease", 1))
     assert store.current() is not None
     store.clear()
     assert store.current() is None
-    store.update(WorkBinding("session", "bolt", "confirmation", "profile"))
+    store.update(WorkBinding("session", "bolt", "confirmation", "profile", "lease", 1))
     now = 106.0
     assert store.current() is None
 
@@ -330,16 +334,21 @@ def test_outbox_sender_uses_explicit_tls_verification_mode(tmp_path: Path, monke
 
 
 def test_loopback_api_health_and_disarm_contract(tmp_path: Path) -> None:
+    boot_id_path = tmp_path / "boot_id"
+    boot_id_path.write_text("boot-test\n")
     config = AgentConfig(
         api_base_url="http://127.0.0.1:3000",
         client_key="test-client",
         queue_path=tmp_path / "events.sqlite3",
         devices=(),
         browser_origins=("http://127.0.0.1:3000",),
+        guard_directory=tmp_path / "guard",
+        boot_id_path=boot_id_path,
     )
     bindings = BindingStore(ttl_seconds=5)
-    bindings.update(WorkBinding("session", "bolt", "confirmation", "profile"))
-    app = create_app(config, bindings, QueueStore(config.queue_path))
+    bindings.update(WorkBinding("session", "bolt", "confirmation", "profile", "lease", 1))
+    lease_manager = ConnectionLeaseManager(config, bindings)
+    app = create_app(config, bindings, QueueStore(config.queue_path), lease_manager)
 
     async def request_loopback_api() -> tuple[httpx.Response, httpx.Response]:
         transport = httpx.ASGITransport(app=app)
@@ -365,8 +374,95 @@ def test_loopback_api_health_and_disarm_contract(tmp_path: Path) -> None:
     assert health.json()["bound"] is True
     assert health.headers["access-control-allow-origin"] == "http://127.0.0.1:3000"
     assert disarm.status_code == 200
-    assert disarm.json() == {"ok": True, "bound": False}
+    assert disarm.json()["ok"] is True
+    assert disarm.json()["bound"] is False
+    assert disarm.json()["ready"] is False
     assert bindings.current() is None
+
+
+def test_connection_lease_manager_arms_only_after_explicit_acquire_and_fails_closed_on_fence(
+    tmp_path: Path,
+) -> None:
+    boot_id_path = tmp_path / "boot_id"
+    boot_id_path.write_text("boot-test\n")
+    config = AgentConfig(
+        api_base_url="http://127.0.0.1:3000",
+        client_key="test-client",
+        queue_path=tmp_path / "events.sqlite3",
+        devices=(),
+        guard_directory=tmp_path / "guard",
+        boot_id_path=boot_id_path,
+    )
+
+    class FakeLeaseApi:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str, dict[str, object] | None]] = []
+            self.responses: list[tuple[int, dict[str, Any]]] = [
+                (
+                    200,
+                    {
+                        "lease": {
+                            "state": "owned_by_self",
+                            "owner": {"clientDeviceName": "StoneBase", "clientDeviceLocation": "1F"},
+                            "leaseId": "lease-1",
+                            "generation": 1,
+                            "expiresAt": "2099-01-01T00:00:00.000Z",
+                            "connectAfter": "2000-01-01T00:00:00.000Z",
+                        }
+                    },
+                ),
+                (409, {"errorCode": "TORQUE_WRENCH_LEASE_FENCED"}),
+            ]
+
+        async def request(
+            self,
+            method: str,
+            path: str,
+            payload: dict[str, object] | None = None,
+        ) -> tuple[int, dict[str, Any]]:
+            self.calls.append((method, path, payload))
+            return self.responses.pop(0)
+
+    bindings = BindingStore(ttl_seconds=8)
+    fake_api = FakeLeaseApi()
+    manager = ConnectionLeaseManager(config, bindings, api=fake_api)
+    assert manager.snapshot()["leaseOwned"] is False
+    assert manager.intent_path.exists() is False
+
+    acquired = asyncio.run(
+        manager.acquire(
+            profile_id="profile",
+            session_id="session",
+            current_template_bolt_id="bolt",
+            confirmation_id="confirmation",
+            request_id="operator-action-1",
+        )
+    )
+    assert acquired["leaseOwned"] is True
+    assert manager.active_event.is_set()
+    intent = json.loads(manager.intent_path.read_text())
+    assert intent["leaseId"] == "lease-1"
+    assert intent["generation"] == 1
+    binding = bindings.current()
+    assert binding is not None
+    assert (binding.connection_lease_id, binding.connection_lease_generation) == ("lease-1", 1)
+
+    asyncio.run(manager._renew_once())
+    assert manager.active_event.is_set() is False
+    assert manager.intent_path.exists() is False
+    assert bindings.current() is None
+    assert manager.snapshot()["state"] == "fenced"
+
+    asyncio.run(
+        manager.heartbeat(
+            session_id="session",
+            current_template_bolt_id="bolt",
+            confirmation_id="confirmation",
+            profile_id="profile",
+        )
+    )
+    assert len(fake_api.calls) == 2
+    assert manager.snapshot()["leaseOwned"] is False
 
 
 @pytest.mark.parametrize(

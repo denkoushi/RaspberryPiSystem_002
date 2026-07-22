@@ -19,6 +19,7 @@
       - torque_agent_bluetooth_adapter.usb_product_id | default('') is match('^[0-9a-f]{4}$')
       - torque_agent_hid_links is defined
       - torque_agent_hid_links | length > 0
+      - torque_connection_lease_enabled | default(true) | bool
     fail_msg: torque-agent requires an API URL, registered client key, an explicit TLS verification mode, exact external adapter identity, stable HID links, and verified CEM3-BTLA /dev/input/by-id profiles.
 
 - name: Validate torque-wrench HID identity contracts
@@ -76,6 +77,24 @@
     mode: '0644'
   register: torque_bluetooth_unit_result
 
+- name: Deploy torque Bluetooth fail-closed guard
+  ansible.builtin.copy:
+    src: torque-bluetooth-guard.py
+    dest: /usr/local/libexec/torque-bluetooth-guard
+    owner: root
+    group: root
+    mode: '0755'
+  register: torque_bluetooth_guard_result
+
+- name: Deploy torque Bluetooth guard systemd unit
+  ansible.builtin.template:
+    src: torque-bluetooth-guard.service.j2
+    dest: /etc/systemd/system/torque-bluetooth-guard.service
+    owner: root
+    group: root
+    mode: '0644'
+  register: torque_bluetooth_guard_unit_result
+
 - name: Deploy exact external-controller udev rule
   ansible.builtin.template:
     src: 90-torque-bluetooth-adapter.rules.j2
@@ -97,7 +116,7 @@
 - name: Reload systemd for torque Bluetooth unit
   ansible.builtin.systemd:
     daemon_reload: true
-  when: torque_bluetooth_unit_result.changed
+  when: torque_bluetooth_unit_result.changed or torque_bluetooth_guard_unit_result.changed
 
 - name: Reload udev rules for torque devices
   ansible.builtin.command: udevadm control --reload-rules
@@ -182,6 +201,26 @@
       - "'ExecMainCode=1' in torque_bluetooth_controller_unit_result.stdout_lines"
       - "'ExecMainStatus=0' in torque_bluetooth_controller_unit_result.stdout_lines"
     fail_msg: The exact external torque Bluetooth controller preparation unit did not complete successfully.
+
+- name: Enable and start fail-closed torque Bluetooth guard during provisioning
+  ansible.builtin.systemd:
+    name: torque-bluetooth-guard.service
+    enabled: true
+    state: restarted
+  when: terminal_release_mode | default('full') == 'full'
+
+- name: Restart fail-closed torque Bluetooth guard after release changes
+  ansible.builtin.systemd:
+    name: torque-bluetooth-guard.service
+    state: restarted
+  when: terminal_release_mode | default('full') == 'release-only'
+
+- name: Verify guard initialized the exact external controller OFF
+  ansible.builtin.command: /usr/local/libexec/torque-bluetooth-adapter --status
+  register: torque_bluetooth_guard_initial_status
+  changed_when: false
+  failed_when: >-
+    (torque_bluetooth_guard_initial_status.stdout | from_json).powered | bool
 
 - name: Ensure torque-agent directory exists
   ansible.builtin.file:

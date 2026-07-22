@@ -2,7 +2,11 @@ import type { TorqueWrenchRejectionReason } from '@raspi-system/shared-types';
 import { Prisma, type AssemblyTemplateBolt } from '@prisma/client';
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
-import { runLockedAssemblyWorkSessionTransaction } from '../assembly/assembly-transaction.js';
+import {
+  runAssemblyTransaction,
+  runLockedAssemblyWorkSessionTransaction
+} from '../assembly/assembly-transaction.js';
+import { lockAssemblyWorkSession } from '../assembly/assembly-work-session-lock.repository.js';
 import { resolveAssemblyTraceabilityMode } from '../assembly/assembly-template.service.js';
 import {
   assemblyWorkSessionDetailInclude,
@@ -16,6 +20,10 @@ import {
   type TorqueWrenchCandidate
 } from './torque-wrench-eligibility.policy.js';
 import { normalizeTorqueWrenchKey } from './torque-wrench-normalization.js';
+import {
+  evaluateAgentConnectionLease,
+  lockTorqueWrenchProfile
+} from './torque-wrench-connection-lease.service.js';
 
 const profileEligibilityInclude = {
   measuringInstrument: true,
@@ -59,6 +67,8 @@ export type AgentTorqueRecordInput = {
   deviceRecordedAt?: Date | null;
   deviceMemoryCounter?: string | null;
   deviceJudgement?: string | null;
+  connectionLeaseId?: string | null;
+  connectionLeaseGeneration?: number | null;
 };
 
 function conditionFromBolt(bolt: AssemblyTemplateBolt): TorqueCondition {
@@ -334,7 +344,9 @@ export class AssemblyTorqueTraceabilityService {
         expectedTemplateBoltId: input.expectedTemplateBoltId,
         deviceRecordedAt: input.deviceRecordedAt ?? null,
         deviceMemoryCounter: input.deviceMemoryCounter?.slice(0, 120) ?? null,
-        deviceJudgement: input.deviceJudgement?.slice(0, 80) ?? null
+        deviceJudgement: input.deviceJudgement?.slice(0, 80) ?? null,
+        connectionLeaseId: input.connectionLeaseId ?? null,
+        connectionLeaseGeneration: input.connectionLeaseGeneration ?? null
       }
     });
     await tx.assemblyTorqueAgentEvent.create({
@@ -367,19 +379,40 @@ export class AssemblyTorqueTraceabilityService {
     });
     if (existingEvent) return this.resultForExisting(input.sessionId, existingEvent.torqueRecord);
 
+    const profileIdentity = await prisma.torqueWrenchProfile.findUnique({
+      where: { serialNumberKey: normalizeTorqueWrenchKey(input.serialNumber) },
+      select: { id: true }
+    });
+
     try {
-      const outcome = await runLockedAssemblyWorkSessionTransaction(input.sessionId, async (tx, session) => {
+      const outcome = await runAssemblyTransaction(async (tx) => {
+        if (profileIdentity) await lockTorqueWrenchProfile(tx, profileIdentity.id);
+        const session = await lockAssemblyWorkSession(tx, input.sessionId);
         if (session.status !== 'IN_PROGRESS') throw new ApiError(409, 'この作業は入力できない状態です');
         assertSessionClient(session, input.clientDeviceId);
         const bolt = findCurrentBolt(session);
         if (bolt.id !== input.expectedTemplateBoltId) {
           return this.ignored(tx, session, bolt, input, 'STALE_TEMPLATE_BOLT');
         }
-        const profile = await tx.torqueWrenchProfile.findUnique({
-          where: { serialNumberKey: normalizeTorqueWrenchKey(input.serialNumber) },
-          include: profileEligibilityInclude
-        });
+        const profile = profileIdentity
+          ? await tx.torqueWrenchProfile.findUnique({
+              where: { id: profileIdentity.id },
+              include: profileEligibilityInclude
+            })
+          : null;
         if (!profile) return this.ignored(tx, session, bolt, input, 'UNKNOWN_SERIAL_NUMBER');
+        if (profile.serialNumberKey !== normalizeTorqueWrenchKey(input.serialNumber)) {
+          return this.ignored(tx, session, bolt, input, 'UNKNOWN_SERIAL_NUMBER');
+        }
+        const connectionLeaseRejection = await evaluateAgentConnectionLease(tx, profile, {
+          leaseId: input.connectionLeaseId,
+          generation: input.connectionLeaseGeneration,
+          clientDeviceId: input.clientDeviceId,
+          sessionId: input.sessionId
+        });
+        if (connectionLeaseRejection) {
+          return this.ignored(tx, session, bolt, input, connectionLeaseRejection, profile);
+        }
         let valueNm: Prisma.Decimal;
         try {
           valueNm = TorqueUnitConverter.toNewtonMetres(input.value, input.unit);
@@ -458,7 +491,9 @@ export class AssemblyTorqueTraceabilityService {
             expectedTemplateBoltId: input.expectedTemplateBoltId,
             deviceRecordedAt: input.deviceRecordedAt ?? null,
             deviceMemoryCounter,
-            deviceJudgement: input.deviceJudgement?.slice(0, 80) ?? null
+            deviceJudgement: input.deviceJudgement?.slice(0, 80) ?? null,
+            connectionLeaseId: input.connectionLeaseId ?? null,
+            connectionLeaseGeneration: input.connectionLeaseGeneration ?? null
           }
         });
         await tx.assemblyTorqueAgentEvent.create({

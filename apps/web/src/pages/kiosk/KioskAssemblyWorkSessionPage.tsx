@@ -31,6 +31,46 @@ import {
 import type { TorqueWrenchProfileApi } from '../../api/domains/torque-wrenches';
 import type { AssemblyProcedureSequencePageDto, AssemblyWorkSessionDto } from '../../features/assembly/types';
 
+type TorqueAgentLeaseStatus = {
+  ok: boolean;
+  ready: boolean;
+  state: 'available' | 'owned_by_self' | 'owned_by_other' | 'handoff_wait' | 'expired' | 'communication_lost' | 'fenced';
+  owner: {
+    clientDeviceName: string;
+    clientDeviceLocation: string | null;
+  } | null;
+  bound: boolean;
+  leaseOwned: boolean;
+  bluetoothPowered: boolean;
+  hidExclusive: boolean;
+  lastError: string | null;
+};
+
+const TORQUE_AGENT_ORIGIN = 'http://127.0.0.1:7073';
+
+function torqueAgentStateLabel(status: TorqueAgentLeaseStatus | null, reachable: boolean): string {
+  if (!reachable) return '通信断';
+  if (!status) return '使用可能';
+  if (status.state === 'owned_by_other') return '別端末が使用中';
+  if (status.state === 'handoff_wait') return '引継ぎ待機中';
+  if (status.state === 'communication_lost') return '通信断';
+  if (status.state === 'fenced') return '接続権が移動済み';
+  if (status.ready) return '入力待機中';
+  if (status.leaseOwned) return 'Bluetooth接続待ち';
+  return '使用可能';
+}
+
+async function postTorqueAgent(path: string, payload: object, keepalive = false): Promise<TorqueAgentLeaseStatus> {
+  const response = await fetch(`${TORQUE_AGENT_ORIGIN}${path}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+    keepalive
+  });
+  if (!response.ok) throw new Error(`torque-agent ${response.status}`);
+  return response.json() as Promise<TorqueAgentLeaseStatus>;
+}
+
 export function KioskAssemblyWorkSessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const [session, setSession] = useState<AssemblyWorkSessionDto | null>(null);
@@ -46,7 +86,9 @@ export function KioskAssemblyWorkSessionPage() {
   const [selectedProfileId, setSelectedProfileId] = useState('');
   const [confirmation, setConfirmation] = useState<{ id: string; torqueWrenchProfileId: string; settingHistoryId: string } | null>(null);
   const [confirmationReused, setConfirmationReused] = useState(false);
-  const [agentConnected, setAgentConnected] = useState(false);
+  const [agentReachable, setAgentReachable] = useState(false);
+  const [agentStatus, setAgentStatus] = useState<TorqueAgentLeaseStatus | null>(null);
+  const [takeoverConfirmationVisible, setTakeoverConfirmationVisible] = useState(false);
 
   useEffect(() => {
     if (!sessionId) {
@@ -118,7 +160,8 @@ export function KioskAssemblyWorkSessionPage() {
     let cancelled = false;
     setConfirmation(null);
     setConfirmationReused(false);
-    setAgentConnected(false);
+    setAgentStatus(null);
+    setTakeoverConfirmationVisible(false);
     void Promise.all([
       listCompatibleTorqueWrenchesForSession(session.id),
       listCurrentTorqueWrenchConfirmations(session.id)
@@ -152,23 +195,21 @@ export function KioskAssemblyWorkSessionPage() {
   useEffect(() => {
     if (!session?.id || !traceabilityRequired) return;
     let cancelled = false;
-    setAgentConnected(false);
     const heartbeat = async () => {
+      if (session.currentBoltId && !confirmation) return;
       try {
-        const response = await fetch('http://127.0.0.1:7073/heartbeat', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            sessionId: session.id,
-            currentTemplateBoltId: session.currentBoltId,
-            confirmationId: confirmation?.id ?? null,
-            torqueWrenchProfileId: confirmation?.torqueWrenchProfileId ?? null
-          })
+        const status = await postTorqueAgent('/heartbeat', {
+          sessionId: session.id,
+          currentTemplateBoltId: session.currentBoltId,
+          confirmationId: confirmation?.id ?? null,
+          torqueWrenchProfileId: confirmation?.torqueWrenchProfileId ?? null
         });
-        if (!response.ok) throw new Error(`heartbeat ${response.status}`);
-        if (!cancelled) setAgentConnected(true);
+        if (!cancelled) {
+          setAgentReachable(true);
+          setAgentStatus(status);
+        }
       } catch {
-        if (!cancelled) setAgentConnected(false);
+        if (!cancelled) setAgentReachable(false);
       }
     };
     void heartbeat();
@@ -178,6 +219,13 @@ export function KioskAssemblyWorkSessionPage() {
       window.clearInterval(timer);
     };
   }, [confirmation, session?.currentBoltId, session?.id, traceabilityRequired]);
+
+  useEffect(() => {
+    if (!traceabilityRequired) return;
+    return () => {
+      void postTorqueAgent('/lease/release', { reason: 'PAGE_LEFT' }, true).catch(() => undefined);
+    };
+  }, [traceabilityRequired]);
 
   useEffect(() => {
     if (!session?.id || !traceabilityRequired || !confirmation) return;
@@ -274,8 +322,59 @@ export function KioskAssemblyWorkSessionPage() {
       });
       setConfirmation(next);
       setConfirmationReused(false);
-      setMessage('現物の製造番号と設定値を確認済みにしました。トルク入力を待っています。');
+      setMessage('現物の製造番号と設定値を確認済みにしました。「このレンチを使用開始」を押してください。');
     });
+
+  const startUsingWrench = () =>
+    runBusy(async () => {
+      if (!session?.currentBoltId || !confirmation) throw new Error('先に現物確認を完了してください。');
+      const status = await postTorqueAgent('/lease/acquire', {
+        sessionId: session.id,
+        currentTemplateBoltId: session.currentBoltId,
+        confirmationId: confirmation.id,
+        torqueWrenchProfileId: confirmation.torqueWrenchProfileId,
+        requestId: globalThis.crypto?.randomUUID?.() ?? `lease-${Date.now()}`
+      });
+      setAgentReachable(true);
+      setAgentStatus(status);
+      setTakeoverConfirmationVisible(false);
+      if (status.state === 'owned_by_other') {
+        setMessage('別端末が使用中です。現物が手元にある場合だけ引継ぎ操作を行ってください。');
+      } else if (status.lastError) {
+        setMessage(`接続権を取得できませんでした: ${status.lastError}`);
+      } else {
+        setMessage(status.state === 'handoff_wait' ? '旧端末の停止を待っています。' : '接続権を取得しました。Bluetooth接続を待っています。');
+      }
+    });
+
+  const takeoverWrench = () =>
+    runBusy(async () => {
+      if (!session?.currentBoltId || !confirmation) throw new Error('先に現物確認を完了してください。');
+      const status = await postTorqueAgent('/lease/takeover', {
+        sessionId: session.id,
+        currentTemplateBoltId: session.currentBoltId,
+        confirmationId: confirmation.id,
+        torqueWrenchProfileId: confirmation.torqueWrenchProfileId,
+        requestId: globalThis.crypto?.randomUUID?.() ?? `takeover-${Date.now()}`,
+        physicalWrenchPresent: true,
+        reason: '作業者が現物を手元で二段階確認'
+      });
+      setAgentReachable(true);
+      setAgentStatus(status);
+      setTakeoverConfirmationVisible(false);
+      setMessage(status.lastError ? `引継ぎできませんでした: ${status.lastError}` : '引継ぎました。旧端末のBluetooth停止後に接続します。');
+    });
+
+  const stopUsingWrench = async (reason = 'OPERATOR_RELEASE') => {
+    try {
+      const status = await postTorqueAgent('/lease/release', { reason });
+      setAgentReachable(true);
+      setAgentStatus(status);
+      setTakeoverConfirmationVisible(false);
+    } catch {
+      setAgentReachable(false);
+    }
+  };
 
   const toggleCheckItem = (checkItemId: string) =>
     runBusy(async () => {
@@ -299,6 +398,7 @@ export function KioskAssemblyWorkSessionPage() {
   const completeSession = () =>
     runBusy(async () => {
       if (!session) return;
+      await stopUsingWrench('WORK_SESSION_COMPLETED');
       const updated = await completeAssemblyWorkSession(session.id);
       setSession(updated);
       setMessage('作業を完了しました。');
@@ -390,7 +490,12 @@ export function KioskAssemblyWorkSessionPage() {
           ) : null}
           {traceabilityRequired ? (
             <div className="mt-3 grid gap-3 rounded border border-cyan-300/25 bg-cyan-950/20 p-3">
-              <div className="flex items-center justify-between text-sm"><span className="font-semibold">トルクエージェント</span><span className={agentConnected ? 'text-emerald-300' : 'text-amber-200'}>{agentConnected ? '接続済み' : '未接続'}</span></div>
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="font-semibold">トルクレンチ接続</span>
+                <span className={agentStatus?.ready ? 'text-emerald-300' : 'text-amber-200'}>
+                  {torqueAgentStateLabel(agentStatus, agentReachable)}
+                </span>
+              </div>
               <label className="grid gap-1 text-xs font-semibold text-white/70">
                 使用する物理トルクレンチ
                 <select className="min-h-11 rounded bg-slate-950 px-2 text-sm" value={selectedProfileId} disabled={busy || Boolean(confirmation)} onChange={(e) => setSelectedProfileId(e.target.value)}>
@@ -404,12 +509,44 @@ export function KioskAssemblyWorkSessionPage() {
               <Button type="button" variant="primary" disabled={busy || !selectedProfileId || Boolean(confirmation)} onClick={confirmPhysicalWrench}>
                 {confirmation ? '現物確認済み' : '製造番号と現物設定を確認'}
               </Button>
+              {confirmation && !agentStatus?.leaseOwned && agentStatus?.state !== 'owned_by_other' ? (
+                <Button type="button" variant="primary" disabled={busy} onClick={startUsingWrench}>
+                  このレンチを使用開始
+                </Button>
+              ) : null}
+              {agentStatus?.leaseOwned ? (
+                <Button type="button" variant="secondary" disabled={busy} onClick={() => void stopUsingWrench()}>
+                  使用終了
+                </Button>
+              ) : null}
+              {agentStatus?.state === 'owned_by_other' ? (
+                <div className="grid gap-2 rounded border border-amber-300/30 bg-amber-950/30 p-3 text-sm">
+                  <div className="font-semibold text-amber-100">
+                    {agentStatus.owner?.clientDeviceName ?? '別端末'}
+                    {agentStatus.owner?.clientDeviceLocation ? `（${agentStatus.owner.clientDeviceLocation}）` : ''} が使用中
+                  </div>
+                  {!takeoverConfirmationVisible ? (
+                    <Button type="button" variant="secondary" disabled={busy} onClick={() => setTakeoverConfirmationVisible(true)}>
+                      現物が手元にあるため引き継ぐ
+                    </Button>
+                  ) : (
+                    <div className="grid gap-2 rounded bg-slate-950/70 p-2">
+                      <p className="text-xs font-semibold text-amber-100">レンチ本体がこの端末の前にあることを、もう一度確認してください。</p>
+                      <Button type="button" variant="danger" disabled={busy} onClick={takeoverWrench}>
+                        現物を確認したので引き継ぐ
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ) : null}
               <div className="rounded bg-slate-950/70 px-3 py-2 text-center text-sm font-semibold">
-                {confirmation
-                  ? confirmationReused
-                    ? '同じ締付条件の確認を引継ぎ・トルク入力待機中'
-                    : '現物確認済み・トルク入力待機中'
-                  : '現物確認後に入力を受け付けます'}
+                {!confirmation
+                  ? '現物確認後に使用開始してください'
+                  : agentStatus?.ready
+                    ? '入力待機中'
+                    : confirmationReused
+                      ? '同じ締付条件の現物確認を引継ぎ済み・使用開始が必要です'
+                      : '現物確認済み・使用開始が必要です'}
               </div>
             </div>
           ) : (

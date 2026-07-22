@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 import subprocess
 import tempfile
 import unittest
@@ -110,6 +111,14 @@ class TorqueBluetoothAdapterTests(unittest.TestCase):
             "  esac\n"
             "  exit 0\n"
             "fi\n"
+            "if [ \"$last\" = off ]; then\n"
+            "  case \"$mode\" in\n"
+            "    power-off-timeout) exit 124 ;;\n"
+            "    power-off-fail) printf '%s\\n' 'management rejected power off' >&2; exit 44 ;;\n"
+            "    transition-off) printf '%s\\n' unpowered > \"$TORQUE_BLUETOOTH_TEST_STATE\" ;;\n"
+            "  esac\n"
+            "  exit 0\n"
+            "fi\n"
             "exit 64\n",
             encoding="utf-8",
         )
@@ -185,6 +194,45 @@ class TorqueBluetoothAdapterTests(unittest.TestCase):
             self.calls_path.read_text(encoding="utf-8").splitlines(),
             ["info", "on"] * 6,
         )
+
+    def test_new_power_commands_discover_exact_controller_and_are_idempotent(self) -> None:
+        powered_status = self._run("--status", "powered")
+        self.assertEqual(powered_status.returncode, 0, powered_status.stderr)
+        self.assertEqual(json.loads(powered_status.stdout), {"controller": "hci1", "powered": True})
+
+        self.calls_path.write_text("", encoding="utf-8")
+        powered_off = self._run("--power-off", "transition-off")
+        self.assertEqual(powered_off.returncode, 0, powered_off.stderr)
+        soft = self.sys_root / "devices" / "rfkill" / "rfkill-hci1" / "soft"
+        self.assertEqual(soft.read_text(encoding="utf-8").strip(), "1")
+        self.assertEqual(self.calls_path.read_text(encoding="utf-8").splitlines(), [])
+        blocked_status = self._run("--status", "powered")
+        self.assertEqual(json.loads(blocked_status.stdout), {"controller": "hci1", "powered": False})
+
+        self.calls_path.write_text("", encoding="utf-8")
+        powered_off_again = self._run("--power-off", "unpowered")
+        self.assertEqual(powered_off_again.returncode, 0, powered_off_again.stderr)
+        self.assertEqual(self.calls_path.read_text(encoding="utf-8").splitlines(), [])
+
+    def test_power_off_leaves_unrelated_internal_bluetooth_unblocked(self) -> None:
+        internal = self.sys_root / "devices" / "platform" / "internal-bluetooth" / "bluetooth" / "hci0"
+        internal.mkdir(parents=True)
+        (internal / "device").symlink_to(internal.parent.parent)
+        (self.sys_root / "class" / "bluetooth" / "hci0").symlink_to(internal)
+        internal_rfkill = self.sys_root / "devices" / "rfkill" / "rfkill-hci0"
+        internal_rfkill.mkdir(parents=True)
+        (internal_rfkill / "type").write_text("bluetooth\n", encoding="utf-8")
+        (internal_rfkill / "hard").write_text("0\n", encoding="utf-8")
+        (internal_rfkill / "soft").write_text("0\n", encoding="utf-8")
+        (internal_rfkill / "device").symlink_to(internal)
+        (self.sys_root / "class" / "rfkill" / "rfkill-hci0").symlink_to(internal_rfkill)
+
+        completed = self._run("--power-off", "powered")
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        exact_soft = self.sys_root / "devices" / "rfkill" / "rfkill-hci1" / "soft"
+        self.assertEqual(exact_soft.read_text(encoding="utf-8").strip(), "1")
+        self.assertEqual((internal_rfkill / "soft").read_text(encoding="utf-8").strip(), "0")
 
     def test_management_failures_have_distinct_exit_statuses_and_diagnostics(self) -> None:
         cases = (

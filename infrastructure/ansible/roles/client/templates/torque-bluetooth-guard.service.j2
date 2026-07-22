@@ -1,0 +1,22 @@
+[Unit]
+Description=Fail-closed external torque Bluetooth controller guard
+After=bluetooth.service systemd-rfkill.service
+Requires=bluetooth.service
+Before=docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/libexec/torque-bluetooth-guard --poll-seconds 1 --command-timeout-seconds 4
+Restart=always
+RestartSec=1
+RuntimeDirectory=torque-bluetooth-guard
+RuntimeDirectoryMode=0755
+TimeoutStopSec=10
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/run/torque-bluetooth-guard /sys/class/rfkill
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
