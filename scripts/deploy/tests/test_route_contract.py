@@ -73,7 +73,7 @@ REHEARSAL_TESTS = {
     ),
     "maintenance-before-after-faults": (
         "scripts/deploy/tests/test_fleet_coordinator_transitions.py",
-        "test_maintenance_ack_timeout_is_manifest_rollback_owned",
+        "test_maintenance_ack_timeout_is_a_warning_before_terminal_apply",
     ),
     "apply-before-after-faults": (
         "scripts/deploy/tests/test_fleet_coordinator_transitions.py",
