@@ -342,6 +342,9 @@ DRY_RUN=1 SERVER_IP=100.106.158.2 ./scripts/register-clients.sh
 
 # 問題なければ本実行
 SERVER_IP=100.106.158.2 ./scripts/register-clients.sh
+
+# 新規端末だけを登録し、既存端末のlastSeenAtを更新しない場合
+REGISTER_CLIENT_HOST=raspi4-assembly-01 SERVER_IP=100.106.158.2 ./scripts/register-clients.sh
 ```
 
 **確認ポイント**:
@@ -362,6 +365,9 @@ SERVER_IP=100.106.158.2 ./scripts/register-clients.sh
   - `status-agent`はlocationを送信しないため、DBの`location`は`status-agent`のheartbeatでは更新されない
   - 場所を設定する場合は、管理コンソールから直接編集するか、DB直接更新が必要（`UPDATE "ClientDevice" SET "location" = '...' WHERE "apiKey" = '...'`）
   - `inventory.yml`の`status_agent_location`を更新した場合は、Pi5へのデプロイで反映される（将来の`register-clients.sh`実行時に使用される）
+- **端末別のキオスク起動先について**:
+  - inventoryに`kiosk_initial_route`がある場合、登録時に`ClientDevice.kioskInitialRoute`へ反映する
+  - 組立専用端末は`kiosk_initial_route: assembly`とし、`/kiosk/assembly`を起動先にする
 - **vault管理のキーを直接登録する必要が出た場合**:
   - 将来的にAnsible経由での変数解決方式へ移行することを検討（詳細は [KB-278](../knowledge-base/infrastructure/security.md#kb-278-クライアント端末管理の重複登録inventory未解決テンプレキー混入) の「次のフェーズの検討タイミング」を参照）
 

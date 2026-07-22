@@ -168,6 +168,16 @@
     - kiosk_browser_result.changed
   changed_when: false
 
+- name: Ensure kiosk-browser is enabled and running
+  ansible.builtin.systemd:
+    name: kiosk-browser.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  when:
+    - terminal_release_mode | default('full') == 'full'
+    - manage_kiosk_browser | default(false) | bool
+
 # kiosk-launch（URL含む）やservice変更時は再起動して新設定を反映（clientロールの再起動はkioskロールより先に実行されるため）
 - name: Restart kiosk-browser if launch script or service changed
   ansible.builtin.systemd:
