@@ -95,6 +95,7 @@ _FEATURE_CANDIDATE_ARTIFACTS = {
         ("infrastructure/ansible/roles/client/tasks/torque-agent-lifecycle.yml", "blob"),
         ("infrastructure/ansible/roles/client/templates/torque-bluetooth-adapter.sh.j2", "blob"),
         ("infrastructure/ansible/roles/client/templates/torque-bluetooth-adapter@.service.j2", "blob"),
+        ("infrastructure/ansible/roles/client/templates/torque-bluetooth-guard.service.j2", "blob"),
         ("infrastructure/ansible/roles/client/templates/90-torque-bluetooth-adapter.rules.j2", "blob"),
         ("infrastructure/ansible/roles/client/templates/99-torque-wrench-hid.rules.j2", "blob"),
         ("infrastructure/ansible/templates/torque-agent.env.j2", "blob"),
@@ -109,13 +110,15 @@ _FEATURE_CANDIDATE_ARTIFACTS = {
 _TORQUE_BLUETOOTH_DEPLOYMENT_ARTIFACTS = (
     "infrastructure/ansible/roles/client/templates/torque-bluetooth-adapter.sh.j2",
     "infrastructure/ansible/roles/client/templates/torque-bluetooth-adapter@.service.j2",
+    "infrastructure/ansible/roles/client/templates/torque-bluetooth-guard.service.j2",
     "infrastructure/ansible/roles/client/templates/90-torque-bluetooth-adapter.rules.j2",
     "infrastructure/ansible/roles/client/tasks/torque-agent.yml",
 )
 _TORQUE_HELPER_ARTIFACT = _TORQUE_BLUETOOTH_DEPLOYMENT_ARTIFACTS[0]
 _TORQUE_UNIT_ARTIFACT = _TORQUE_BLUETOOTH_DEPLOYMENT_ARTIFACTS[1]
-_TORQUE_UDEV_ARTIFACT = _TORQUE_BLUETOOTH_DEPLOYMENT_ARTIFACTS[2]
-_TORQUE_TASKS_ARTIFACT = _TORQUE_BLUETOOTH_DEPLOYMENT_ARTIFACTS[3]
+_TORQUE_GUARD_UNIT_ARTIFACT = _TORQUE_BLUETOOTH_DEPLOYMENT_ARTIFACTS[2]
+_TORQUE_UDEV_ARTIFACT = _TORQUE_BLUETOOTH_DEPLOYMENT_ARTIFACTS[3]
+_TORQUE_TASKS_ARTIFACT = _TORQUE_BLUETOOTH_DEPLOYMENT_ARTIFACTS[4]
 TARGET_INPUT_MAX_BYTES = 3 * 1024 * 1024
 TARGET_LOADER = (
     "import json,sys;"
@@ -620,6 +623,7 @@ def _candidate_torque_bluetooth_contract_issues(
     issues: list[dict[str, str]] = []
     helper = sources.get(_TORQUE_HELPER_ARTIFACT, "")
     unit = sources.get(_TORQUE_UNIT_ARTIFACT, "")
+    guard_unit = sources.get(_TORQUE_GUARD_UNIT_ARTIFACT, "")
     rule = sources.get(_TORQUE_UDEV_ARTIFACT, "")
     tasks = sources.get(_TORQUE_TASKS_ARTIFACT, "")
 
@@ -683,12 +687,29 @@ def _candidate_torque_bluetooth_contract_issues(
             'ATTRS{idVendor}=="{{ torque_agent_bluetooth_adapter.usb_vendor_id }}"',
             'ATTRS{idProduct}=="{{ torque_agent_bluetooth_adapter.usb_product_id }}"',
             "ENV{SYSTEMD_WANTS}+=\"torque-bluetooth-adapter@%k.service\"",
+            "ENV{SYSTEMD_WANTS}+=\"torque-bluetooth-guard.service\"",
         )
     ):
         _issue(
             issues,
             "candidate.torque-bluetooth-udev",
             "candidate torque Bluetooth udev rule does not target the exact controller",
+        )
+    if not all(
+        fragment in guard_unit
+        for fragment in (
+            "After=bluetooth.service systemd-rfkill.service",
+            "Requires=bluetooth.service",
+            "ExecStart=/usr/local/libexec/torque-bluetooth-guard --poll-seconds 1 --command-timeout-seconds 4",
+            "Restart=always",
+            "RuntimeDirectory=torque-bluetooth-guard",
+            "TimeoutStopSec=10",
+        )
+    ):
+        _issue(
+            issues,
+            "candidate.torque-bluetooth-guard-unit",
+            "candidate torque Bluetooth guard lacks bounded fail-closed lifecycle ownership",
         )
     probe_start = helper.find("probe_exact_controller()")
     probe_end = helper.find("\n}\n", probe_start)

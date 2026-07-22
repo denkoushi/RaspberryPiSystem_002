@@ -1,14 +1,14 @@
 ---
 title: Assembly Torque Wrench Connection Lease
 id: plan-assembly-torque-wrench-connection-lease
-status: release_a_partial
+status: release_a_deployed_boot_acceptance_pending
 scope: Pi5-owned physical torque-wrench lease, torque-agent fencing, exact external Bluetooth controller guard, and two-terminal pilot
 date: 2026-07-22
 source_of_truth: this document
 related_code: apps/api/prisma/schema.prisma, apps/api/src/services/torque-wrenches, clients/torque-agent, infrastructure/ansible/roles/client, apps/web/src/pages/kiosk/KioskAssemblyWorkSessionPage.tsx
 related_docs: ../decisions/ADR-20260722-assembly-torque-wrench-connection-lease.md, ../runbooks/assembly-torque-agent.md, ./assembly-torque-wrench-traceability-execplan.md
-validation: Release A is verified on Pi5 and StoneBase; Assembly-01 rolled back safely, and both deployment corrections pass focused, full local, and read-only live probes
-open_items: corrected two-terminal Release A retry, Release B, pairing, enforcement activation, and physical acceptance
+validation: Release A is verified on Pi5, StoneBase, and Assembly-01; both pilot adapters are fail-closed OFF with no active lease or enforcement, and deterministic boot guard activation is pending one consolidated correction
+open_items: boot activation correction and reboot acceptance, Release B pairing, enforcement activation, and physical acceptance
 ---
 
 # Add a Fleet-Wide Connection Lease for the Shared Torque Wrench
@@ -36,6 +36,8 @@ The first production pilot is limited to `raspi4-kensaku-stonebase01` and `raspi
 - [x] (2026-07-22 20:02 JST) Passed exact-head CI at `ef7f3c4a`, then ran approved Release A `20260722-103023-77ca0e`. Pi5 and StoneBase converged and verified. Assembly-01 rejected a successful external-controller oneshot because systemd 257 reported the completed unit's cleared `ExecMainCode=0`; the standard release restored its repository and runtime to `5f7d041c`, verified kiosk/NFC health, and cleared maintenance.
 - [x] (2026-07-22 20:02 JST) Corrected the oneshot result contract to accept only numeric code 0 or CLD_EXITED 1 alongside `Result=success` and `ExecMainStatus=0`, while retaining the subsequent exact-controller powered-OFF proof. Focused tests, deployment safety contracts, Ansible syntax, and the complete local deploy-contract suite pass. New exact-head CI and the Assembly-01 retry remain pending.
 - [x] (2026-07-22 20:17 JST) Passed exact-head CI at `c68691f2`. Its approved retry stopped before unit submission because the read-only candidate helper probe still required the guard-owned external adapter to be powered. Changed the probe to accept the exact soft-blocked/OFF controller, retain three bounded management reads when unblocked, and never change power. Focused and safety tests pass, and executing the rendered candidate probe read-only on both pilot terminals returns success. New exact-head CI and retry remain pending.
+- [x] (2026-07-22 20:49 JST) Passed exact-head CI at `e4760ec3` and completed approved rolling release `20260722-113236-970014`. StoneBase and Assembly-01 both converged to the exact terminal SHA with verified release evidence; Pi5 remained verified at server SHA `ef7f3c4a`. Pairing and enforcement were not performed.
+- [x] (2026-07-22 21:07 JST) Audited every Release A failure gate before making another change. Pi5 has zero enforced profiles and zero live connection leases; both pilot adapters are OFF, torque-agent reports `ok=true` and expected `ready=false`, and both NFC readers are healthy. Classified the missing deterministic post-reboot guard start as one availability blocker, not a present safety violation, and grouped its udev/preflight/tests/docs correction into one candidate.
 
 ## Surprises & Discoveries
 
@@ -68,6 +70,9 @@ The first production pilot is limited to `raspi4-kensaku-stonebase01` and `raspi
 
 - Observation: After Release A introduces the guard, an aggregate preflight that requires the external adapter to be powered contradicts the fail-closed steady state and blocks all later releases.
   Evidence: preflight `20260722-111504-08a9c4` rejected both pilot terminals before unit submission with `torque.candidate-helper-probe`; both exact adapters were intentionally soft-blocked/OFF. The corrected rendered probe succeeds read-only on both terminals without making a management call while soft-blocked.
+
+- Observation: `systemctl is-enabled` is not a safety result by itself. The deployed guard is active and both exact controllers are OFF, but release-only intentionally does not change persistent unit enablement; without another boot activation path the next boot remains fail closed but cannot later honor a valid lease.
+  Evidence: both pilot units are active/disabled at `e4760ec3`; their exact adapters report `powered=false`, no enforcement or live lease exists, and the installed exact-controller udev rule starts only the OFF initialization oneshot.
 
 ## Decision Log
 
@@ -103,9 +108,31 @@ The first production pilot is limited to `raspi4-kensaku-stonebase01` and `raspi
   Rationale: release preflight must validate the safe guard-owned steady state without temporarily creating a Bluetooth connection window.
   Date/Author: 2026-07-22 / Codex.
 
+- Decision: Classify Release A gates by observable outcome: safety blocker, availability blocker, or expected/warning. Do not reject a release from an incidental systemd representation, expected no-lease `ready=false`, first-install absence, or negative-test log text when the owning contract succeeds.
+  Rationale: the rollout exposed three checks that described one implementation state rather than the fail-closed product invariant. Gate ownership and failure consequences must be explicit before correction.
+  Date/Author: 2026-07-22 / Codex with user approval.
+
+- Decision: Start the guard from the same exact VID/PID udev event that requests controller OFF initialization, while retaining provisioning-only persistent enablement and release-only rollback restrictions.
+  Rationale: boot and USB replug then establish both OFF-first convergence and the runtime lease owner without making persistent systemd enablement release-reachable.
+  Date/Author: 2026-07-22 / Codex with user approval.
+
+## Release A Gate Classification and State Transitions
+
+| Scenario | Required observable result | Classification when violated |
+| --- | --- | --- |
+| First install or normal release | Exact adapter identity is unique; candidate probe is read-only; final agent proof has `ok=true` | Safety blocker for wrong/ambiguous adapter; availability blocker for missing final agent |
+| No lease or no wrench | External adapter OFF; `ready=false` is expected; NFC and internal Bluetooth are unchanged | Safety blocker only if the external adapter is ON or unrelated hardware changes |
+| Reboot or exact USB replug | OFF initialization and guard are both requested by the exact VID/PID event; guard starts without relying on `is-enabled` text | Availability blocker if OFF is preserved but guard cannot run; safety blocker if the adapter is ON |
+| Valid current lease | Only the owner generation may write fresh intent and reach Bluetooth/HID readiness | Safety blocker for non-owner, stale generation, or overlapping ownership |
+| Agent stop, Pi5 loss, malformed intent, or expiry | Intent disappears or expires and the exact adapter reaches OFF within nine seconds | Safety blocker |
+| Physical takeover | Old generation is fenced immediately; new Bluetooth activation waits until `connectAfter` | Safety blocker |
+| Release failure or rollback | Repository, runtime, evidence, and maintenance state return to the verified baseline | Safety blocker |
+
+`Result=success` plus `ExecMainStatus=0` is the oneshot success contract across supported systemd representations. `ready=false` without a lease/HID, an absent optional agent before its first installation, `is-enabled=disabled` with a deterministic event activation path, and error text emitted by passing negative tests are not independent blockers.
+
 ## Outcomes & Retrospective
 
-Release A capability is implemented and verified on Pi5 and StoneBase at `ef7f3c4a`. Assembly-01's first attempt exposed a systemd-version result-format mismatch after the controller preparation itself succeeded; the standard release restored its old repository/runtime and verified kiosk/NFC health before clearing maintenance. A later retry exposed a mutation-free preflight contradiction with the guard-owned OFF state and submitted no release unit. Both scoped corrections pass focused safety tests, and the corrected rendered helper probe succeeds read-only on both pilot terminals. Two-terminal retry, pairing, enforcement activation, and the physical acceptance sequence remain open. Pairing and enforcement were not performed.
+Release A capability is deployed and verified on Pi5 at `ef7f3c4a` and both pilot terminals at `e4760ec3`. The successful run is `20260722-113236-970014`; maintenance cleared and terminal evidence is verified on both hosts. A post-release criteria audit found no active enforcement, no live lease, healthy NFC and agents, and exact external adapters OFF. One availability gap remains: release-only starts the guard for the current boot but the installed udev rule does not yet request it after reboot. The consolidated exact-event activation correction, one rolling release, reboot acceptance, pairing, enforcement activation, and physical wrench acceptance remain open. Pairing and enforcement were not performed.
 
 ## Context and Orientation
 
@@ -184,7 +211,7 @@ Final local validation evidence at 2026-07-22 18:14 JST:
     document inventory audit: passed
     git diff --check: passed
 
-Physical acceptance, deployment, pairing, and activation have not run. They require the wrench, access to both pilot terminals and Pi5, and separate explicit approvals.
+Release A deployment has completed. Physical wrench acceptance, pairing, and activation have not run; they require the wrench and remain separately gated.
 
 ## Interfaces and Dependencies
 
@@ -203,3 +230,5 @@ Revision note 2026-07-22 19:22 JST: Recorded Draft PR #1068 CI success, the muta
 Revision note 2026-07-22 20:02 JST: Recorded Release A run `20260722-103023-77ca0e`, successful Pi5/StoneBase convergence, Assembly-01's verified automatic rollback, the systemd 257 oneshot result discovery, and the locally validated correction pending new CI and retry.
 
 Revision note 2026-07-22 20:17 JST: Recorded exact-head CI at `c68691f2`, mutation-free preflight stop `20260722-111504-08a9c4`, the safe-OFF candidate probe correction, and successful read-only live probes on both pilot terminals.
+
+Revision note 2026-07-22 21:07 JST: Recorded successful two-terminal Release A `20260722-113236-970014`, the complete gate-classification audit, live no-enforcement/no-lease evidence, and the single consolidated boot guard activation correction pending validation and release.

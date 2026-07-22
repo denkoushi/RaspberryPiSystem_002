@@ -20,6 +20,7 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
             'ATTRS{idVendor}=="{{ torque_agent_bluetooth_adapter.usb_vendor_id }}"',
             'ATTRS{idProduct}=="{{ torque_agent_bluetooth_adapter.usb_product_id }}"',
             'torque-bluetooth-adapter@%k.service',
+            'torque-bluetooth-guard.service',
         ):
             self.assertIn(fragment, rule)
         for fragment in (
@@ -60,6 +61,15 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
         unit = (CLIENT_ROLE / "templates/torque-bluetooth-adapter@.service.j2").read_text()
         self.assertIn("TimeoutStartSec=90", unit)
         self.assertIn("TimeoutStopSec=10", unit)
+
+        guard_unit = (CLIENT_ROLE / "templates/torque-bluetooth-guard.service.j2").read_text()
+        for fragment in (
+            "ExecStart=/usr/local/libexec/torque-bluetooth-guard --poll-seconds 1 --command-timeout-seconds 4",
+            "Restart=always",
+            "RuntimeDirectory=torque-bluetooth-guard",
+            "TimeoutStopSec=10",
+        ):
+            self.assertIn(fragment, guard_unit)
 
     def test_hid_rule_requires_full_wrench_identity_before_creating_by_id_link(self) -> None:
         rule = (CLIENT_ROLE / "templates/99-torque-wrench-hid.rules.j2").read_text()

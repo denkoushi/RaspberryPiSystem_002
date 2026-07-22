@@ -1,2 +1,2 @@
-# Ansible managed: start preparation only for the configured external Bluetooth host.
-ACTION=="add", SUBSYSTEM=="bluetooth", ENV{DEVTYPE}=="host", ATTRS{idVendor}=="{{ torque_agent_bluetooth_adapter.usb_vendor_id }}", ATTRS{idProduct}=="{{ torque_agent_bluetooth_adapter.usb_product_id }}", TAG+="systemd", ENV{SYSTEMD_WANTS}+="torque-bluetooth-adapter@%k.service"
+# Ansible managed: fail closed and start the guard only for the configured external Bluetooth host.
+ACTION=="add", SUBSYSTEM=="bluetooth", ENV{DEVTYPE}=="host", ATTRS{idVendor}=="{{ torque_agent_bluetooth_adapter.usb_vendor_id }}", ATTRS{idProduct}=="{{ torque_agent_bluetooth_adapter.usb_product_id }}", TAG+="systemd", ENV{SYSTEMD_WANTS}+="torque-bluetooth-adapter@%k.service", ENV{SYSTEMD_WANTS}+="torque-bluetooth-guard.service"

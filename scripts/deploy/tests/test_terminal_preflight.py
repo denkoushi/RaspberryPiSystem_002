@@ -31,6 +31,9 @@ TORQUE_HELPER_PATH = (
 TORQUE_UNIT_PATH = (
     "infrastructure/ansible/roles/client/templates/torque-bluetooth-adapter@.service.j2"
 )
+TORQUE_GUARD_UNIT_PATH = (
+    "infrastructure/ansible/roles/client/templates/torque-bluetooth-guard.service.j2"
+)
 TORQUE_RULE_PATH = (
     "infrastructure/ansible/roles/client/templates/90-torque-bluetooth-adapter.rules.j2"
 )
@@ -50,10 +53,15 @@ TORQUE_CANDIDATE_SOURCES = {
     "Requires=bluetooth.service\n[Service]\n"
     "ExecStart=/usr/local/libexec/torque-bluetooth-adapter --power-off %I\n"
     "TimeoutStartSec=90\nTimeoutStopSec=10\n",
+    TORQUE_GUARD_UNIT_PATH: "[Unit]\nAfter=bluetooth.service systemd-rfkill.service\n"
+    "Requires=bluetooth.service\n[Service]\n"
+    "ExecStart=/usr/local/libexec/torque-bluetooth-guard --poll-seconds 1 --command-timeout-seconds 4\n"
+    "Restart=always\nRuntimeDirectory=torque-bluetooth-guard\nTimeoutStopSec=10\n",
     TORQUE_RULE_PATH: 'ACTION=="add", SUBSYSTEM=="bluetooth", ENV{DEVTYPE}=="host", '
     'ATTRS{idVendor}=="{{ torque_agent_bluetooth_adapter.usb_vendor_id }}", '
     'ATTRS{idProduct}=="{{ torque_agent_bluetooth_adapter.usb_product_id }}", '
-    'ENV{SYSTEMD_WANTS}+="torque-bluetooth-adapter@%k.service"\n',
+    'ENV{SYSTEMD_WANTS}+="torque-bluetooth-adapter@%k.service", '
+    'ENV{SYSTEMD_WANTS}+="torque-bluetooth-guard.service"\n',
     TORQUE_TASKS_PATH: "- ansible.builtin.systemd:\n"
     "    name: torque-bluetooth-adapter@hci1.service\n"
     "    state: started\n"
@@ -292,6 +300,24 @@ class TerminalPreflightTest(unittest.TestCase):
         self.assertEqual(
             terminal_preflight._candidate_torque_bluetooth_contract_issues(sources),
             [],
+        )
+
+    def test_candidate_torque_bluetooth_contract_requires_boot_guard_activation(self):
+        sources = dict(TORQUE_CANDIDATE_SOURCES)
+        sources[TORQUE_RULE_PATH] = sources[TORQUE_RULE_PATH].replace(
+            ', ENV{SYSTEMD_WANTS}+="torque-bluetooth-guard.service"',
+            "",
+        )
+        sources[TORQUE_GUARD_UNIT_PATH] = "[Service]\nRestart=no\n"
+
+        issues = terminal_preflight._candidate_torque_bluetooth_contract_issues(sources)
+
+        self.assertEqual(
+            {issue["code"] for issue in issues},
+            {
+                "candidate.torque-bluetooth-guard-unit",
+                "candidate.torque-bluetooth-udev",
+            },
         )
 
     def test_repository_torque_bluetooth_assets_pass_candidate_contract(self):
