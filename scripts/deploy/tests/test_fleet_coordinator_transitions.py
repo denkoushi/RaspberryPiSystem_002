@@ -822,6 +822,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
 
     def test_kiosk_web_activation_skips_ansible_and_persists_capability_after_exact_ack(self):
         runtime = self._kiosk_web_activation_runtime()
+        runtime.maintenance_ack = False
 
         result = coordinator.execute(
             args(), runtime=runtime, token=FakeToken(runtime.events)
@@ -833,6 +834,8 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         self.assertIn("activation:submit:kiosk-a:run-1", runtime.events)
         self.assertIn("activation:cleanup:kiosk-a:run-1", runtime.events)
         target = runtime.states[-1].target("kiosk-a")
+        self.assertEqual(target["maintenance"]["state"], "unconfirmed")
+        self.assertEqual(target["warnings"][0]["phase"], "maintenance")
         self.assertEqual(target["readyReleaseSha"], NEW_SHA)
         self.assertEqual(target["currentSha"], OLD_SHA)
         self.assertEqual(target["activation"]["state"], "verified")
@@ -1993,7 +1996,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             "after-maintenance:kiosk-a",
         )
 
-    def test_maintenance_ack_timeout_is_manifest_rollback_owned(self):
+    def test_maintenance_ack_timeout_is_a_warning_before_terminal_apply(self):
         terminal = {
             "host": "kiosk-a",
             "role": "kiosk",
@@ -2017,16 +2020,17 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         )
         runtime.maintenance_ack = False
 
-        with self.assertRaisesRegex(RuntimeError, "rollout stopped"):
-            coordinator.execute(
-                args(), runtime=runtime, token=FakeToken(runtime.events)
-            )
+        result = coordinator.execute(
+            args(), runtime=runtime, token=FakeToken(runtime.events)
+        )
 
-        self.assertIn("rollback:kiosk-a", runtime.events)
-        self.assertNotIn("playbook:kiosk-a", runtime.events)
+        self.assertEqual(result, 0)
+        self.assertNotIn("rollback:kiosk-a", runtime.events)
+        self.assertIn("playbook:kiosk-a", runtime.events)
         target = runtime.states[-1].target("kiosk-a")
-        self.assertIn("maintenance acknowledgement timed out", target["failure"])
-        self.assertEqual(target["rollbackEvidence"], "verified")
+        self.assertEqual(target["maintenance"]["state"], "unconfirmed")
+        self.assertEqual(target["warnings"][0]["phase"], "maintenance")
+        self.assertEqual(runtime.states[-1].payload["warnings"][0]["host"], "kiosk-a")
 
     def test_full_signage_failure_matrix_recovers_before_next_plan(self):
         terminal = {
@@ -2084,7 +2088,6 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
                 False,
             ),
             ("prestage", {"prestage_error": RuntimeError("prestage lost")}, False),
-            ("maintenance-ack", {"maintenance_ack": False}, False),
             ("playbook", {"playbook_error": RuntimeError("deploy failed")}, False),
             ("ready-ack", {"ready_ack_error": RuntimeError("ready lost")}, False),
             (
@@ -2165,7 +2168,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
                 True,
             ),
         )
-        self.assertEqual(len(cases), 17)
+        self.assertEqual(len(cases), 16)
 
         for name, injected, requires_recovery in cases:
             with self.subTest(name=name):

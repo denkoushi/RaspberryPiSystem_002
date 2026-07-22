@@ -36,6 +36,7 @@ from rolling_release import cli as release_cli
 from rolling_release import coordinator as release_coordinator
 from rolling_release import planner as release_planner
 from rolling_release import policy as release_policy
+from rolling_release.release_warnings import record_observer_warning
 from rolling_release.backends import ansible as ansible_backend
 from rolling_release.backends import evidence as evidence_backend
 from rolling_release.backends import pi5 as pi5_backend
@@ -627,9 +628,26 @@ def deliver_terminal_notice(
             NOTICE_ACK_TIMEOUT_SECONDS,
             phase="notice",
         ):
-            raise RuntimeError(
-                f'pre-deploy notice acknowledgement timed out for {target_spec["host"]}'
+            observed_at = utc_now()
+            target["notice"].update(
+                {
+                    "state": "unconfirmed",
+                    "outcome": "timeout",
+                    "observedAt": observed_at,
+                    "ackTimeoutSeconds": NOTICE_ACK_TIMEOUT_SECONDS,
+                }
             )
+            record_observer_warning(
+                state,
+                target,
+                host=target_spec["host"],
+                phase="notice",
+                outcome="timeout",
+                timeout_seconds=NOTICE_ACK_TIMEOUT_SECONDS,
+                observed_at=observed_at,
+            )
+            state.save()
+            return
         scheduled_at = notice_scheduled_at(run_id, target_spec["clientId"])
         if not scheduled_at:
             raise RuntimeError(

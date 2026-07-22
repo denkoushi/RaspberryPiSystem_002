@@ -775,7 +775,7 @@ class TerminalNoticeTest(unittest.TestCase):
         self.assertEqual(target['notice']['state'], 'completed')
         self.assertEqual(target['notice']['scheduledAt'], scheduled_at)
 
-    def test_notice_ack_timeout_clears_only_the_notice_entry_and_never_deploys(self):
+    def test_notice_ack_timeout_is_a_durable_warning(self):
         state = self._state()
         target = {}
         target_spec = {'host': 'kiosk-a', 'clientId': 'client-a', 'terminalType': 'kiosk'}
@@ -783,15 +783,14 @@ class TerminalNoticeTest(unittest.TestCase):
                 patch.object(MODULE, 'wait_for_ack', return_value=False), \
                 patch.object(MODULE, 'playbook') as playbook, \
                 patch.object(MODULE, 'utc_now', return_value='now'):
-            with self.assertRaisesRegex(RuntimeError, 'pre-deploy notice acknowledgement timed out'):
-                MODULE.deliver_terminal_notice(state, target_spec, target, 'run-1')
+            MODULE.deliver_terminal_notice(state, target_spec, target, 'run-1')
 
         self.assertEqual(command.call_args_list[0].args[0], 'put-notice')
-        self.assertEqual(
-            command.call_args_list[1].args[0],
-            'remove-client',
-        )
-        self.assertEqual(target['notice']['state'], 'failed')
+        self.assertEqual(command.call_count, 1)
+        self.assertEqual(target['notice']['state'], 'unconfirmed')
+        self.assertEqual(target['notice']['outcome'], 'timeout')
+        self.assertEqual(target['warnings'][0]['phase'], 'notice')
+        self.assertEqual(state.payload['warnings'][0]['host'], 'kiosk-a')
         playbook.assert_not_called()
 
     def test_activation_policy_requires_notices_except_for_emergency_or_signage(self):

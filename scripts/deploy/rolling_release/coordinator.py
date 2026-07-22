@@ -29,6 +29,7 @@ from .release_claims import (
     release_claims_for_host,
     validate_release_claims,
 )
+from .release_warnings import record_observer_warning
 from .terminal_adapters import TerminalAdapter
 
 
@@ -2003,6 +2004,10 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                 # manifest-owned rollback below.
                 target["state"] = "maintenance-requested"
                 target["maintenanceStartedAt"] = runtime.utc_now()
+                target["maintenance"] = {
+                    "state": "requested",
+                    "requestedAt": target["maintenanceStartedAt"],
+                }
                 state.payload["phase"] = "deploying"
                 state.save()
                 with _measure_phase(
@@ -2018,12 +2023,32 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                         args.run_id, target_spec["clientId"], phase="maintenance"
                     )
                 if not maintenance_acknowledged:
-                    if not args.emergency_override:
-                        raise RuntimeError(
-                            f"maintenance acknowledgement timed out for {host}"
-                        )
-                    target["ackOverrideReason"] = args.reason
-                target["acknowledgedAt"] = runtime.utc_now()
+                    observed_at = runtime.utc_now()
+                    target["maintenance"].update(
+                        {
+                            "state": "unconfirmed",
+                            "outcome": "timeout",
+                            "observedAt": observed_at,
+                        }
+                    )
+                    record_observer_warning(
+                        state,
+                        target,
+                        host=host,
+                        phase="maintenance",
+                        outcome="timeout",
+                        timeout_seconds=30,
+                        observed_at=observed_at,
+                    )
+                else:
+                    acknowledged_at = runtime.utc_now()
+                    target["maintenance"].update(
+                        {"state": "acknowledged", "acknowledgedAt": acknowledged_at}
+                    )
+                    # Kept for existing persisted run readers.  New logic uses
+                    # the explicit maintenance state above.
+                    target["acknowledgedAt"] = acknowledged_at
+                state.save()
                 token.checkpoint(f"before-playbook:{host}")
 
                 target["state"] = "deploying"
