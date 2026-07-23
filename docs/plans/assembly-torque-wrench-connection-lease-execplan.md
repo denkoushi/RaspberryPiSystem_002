@@ -1,14 +1,14 @@
 ---
 title: Assembly Torque Wrench Connection Lease
 id: plan-assembly-torque-wrench-connection-lease
-status: release_a_deployed_boot_acceptance_pending
+status: release_a_physical_acceptance_fix_in_progress
 scope: Pi5-owned physical torque-wrench lease, torque-agent fencing, exact external Bluetooth controller guard, and two-terminal pilot
 date: 2026-07-22
 source_of_truth: this document
 related_code: apps/api/prisma/schema.prisma, apps/api/src/services/torque-wrenches, clients/torque-agent, infrastructure/ansible/roles/client, apps/web/src/pages/kiosk/KioskAssemblyWorkSessionPage.tsx
 related_docs: ../decisions/ADR-20260722-assembly-torque-wrench-connection-lease.md, ../runbooks/assembly-torque-agent.md, ./assembly-torque-wrench-traceability-execplan.md
-validation: Release A is verified on Pi5, StoneBase, and Assembly-01; both pilot adapters are fail-closed OFF with no active lease or enforcement, and deterministic boot guard activation is pending one consolidated correction
-open_items: boot activation correction and reboot acceptance, Release B pairing, enforcement activation, and physical acceptance
+validation: Release A at terminal SHA 38c7df98 is boot-verified and paired on both pilot terminals; normal transfer, USB replug, screen departure, Pi5 loss, and agent-stop acceptance pass, while physical takeover awaits one locally validated state-display correction
+open_items: exact-head CI and two-terminal redeploy for the takeover correction, bidirectional takeover acceptance, separate-floor acceptance, and enforcement activation
 ---
 
 # Add a Fleet-Wide Connection Lease for the Shared Torque Wrench
@@ -38,6 +38,12 @@ The first production pilot is limited to `raspi4-kensaku-stonebase01` and `raspi
 - [x] (2026-07-22 20:17 JST) Passed exact-head CI at `c68691f2`. Its approved retry stopped before unit submission because the read-only candidate helper probe still required the guard-owned external adapter to be powered. Changed the probe to accept the exact soft-blocked/OFF controller, retain three bounded management reads when unblocked, and never change power. Focused and safety tests pass, and executing the rendered candidate probe read-only on both pilot terminals returns success. New exact-head CI and retry remain pending.
 - [x] (2026-07-22 20:49 JST) Passed exact-head CI at `e4760ec3` and completed approved rolling release `20260722-113236-970014`. StoneBase and Assembly-01 both converged to the exact terminal SHA with verified release evidence; Pi5 remained verified at server SHA `ef7f3c4a`. Pairing and enforcement were not performed.
 - [x] (2026-07-22 21:07 JST) Audited every Release A failure gate before making another change. Pi5 has zero enforced profiles and zero live connection leases; both pilot adapters are OFF, torque-agent reports `ok=true` and expected `ready=false`, and both NFC readers are healthy. Classified the missing deterministic post-reboot guard start as one availability blocker, not a present safety violation, and grouped its udev/preflight/tests/docs correction into one candidate.
+- [x] (2026-07-22) Passed exact-head CI at `38c7df98`, completed approved rolling release `20260722-122724-477f6e`, and rebooted StoneBase then Assembly-01. Both exact external adapters remained OFF without a lease, each guard started from the exact USB event, torque-agent returned `ok=true` and expected `ready=false`, and NFC/internal Bluetooth remained healthy.
+- [x] (2026-07-23) Paired the approved wrench with Assembly-01's exact UB500 Plus and verified that the wrench retained both host bonds. StoneBase-to-Assembly-01 and Assembly-01-to-StoneBase normal release/start transfers both reached `入力待機中`, accepted a real torque event, released the lease, and powered the owner adapter OFF.
+- [x] (2026-07-23 09:35 JST) Completed the independent fail-closed physical checks before changing code. Pi5 loss powered Assembly-01's external adapter OFF in 5.688 seconds and 3.332 seconds; agent stop powered it OFF in 7.676 seconds; neither a sustained communication recovery nor agent restart reacquired automatically. Page departure released ownership, exact USB removal left NFC healthy, and exact USB replug initialized OFF and retained the saved wrench bond.
+- [x] (2026-07-23 09:44 JST) Reproduced the physical takeover blocker without repeated production retries. Pi5 correctly returned `TORQUE_WRENCH_LEASE_HELD` and the remote owner, but torque-agent converted every no-lease `lastError` to `communication_lost`; the kiosk also retained an old acquisition message after later heartbeat state changes. Added focused regressions and a local correction that separates transport loss from business rejection and derives the connection notice from each latest heartbeat. Agent core 29 tests, Ruff, focused Web 8 tests, and Web ESLint pass.
+- [x] (2026-07-23 09:51 JST) Completed the correction's aggregate local validation: torque-agent 45 tests and Ruff, Web 297 files/1470 tests and production build, root lint, document audit, `git diff --check`, all 821 deploy-contract tests, disposable-PostgreSQL migration replay, deploy-status integration, and all Ansible syntax checks pass. API, database schema, guard, Bluetooth helper, NFC, and public API contracts are unchanged.
+- [ ] Publish one exact-head correction, complete CI as one aggregate result, redeploy StoneBase and Assembly-01 once, and rerun only the blocked takeover path in both directions before enforcement activation.
 
 ## Surprises & Discoveries
 
@@ -73,6 +79,12 @@ The first production pilot is limited to `raspi4-kensaku-stonebase01` and `raspi
 
 - Observation: `systemctl is-enabled` is not a safety result by itself. The deployed guard is active and both exact controllers are OFF, but release-only intentionally does not change persistent unit enablement; without another boot activation path the next boot remains fail closed but cannot later honor a valid lease.
   Evidence: both pilot units are active/disabled at `e4760ec3`; their exact adapters report `powered=false`, no enforcement or live lease exists, and the installed exact-controller udev rule starts only the OFF initialization oneshot.
+
+- Observation: `ConnectionLeaseManager.snapshot()` treated every `lastError` without a local lease as a transport failure, including the expected `TORQUE_WRENCH_LEASE_HELD` business rejection that carried a valid `owned_by_other` status and owner snapshot.
+  Evidence: the physical destination returned `state=communication_lost`, `lastError=TORQUE_WRENCH_LEASE_HELD`, and the StoneBase owner details. The focused regression fails before the correction with `communication_lost != owned_by_other`.
+
+- Observation: the kiosk's general `message` state captured the acquisition response once but heartbeat updated only `agentStatus`, so a later communication loss or agent restart left the yellow acquisition-success text visible beside the correct no-lease white status.
+  Evidence: the physical screen showed `接続権を取得しました。Bluetooth接続を待っています。` after the agent had already returned `ready=false`, `leaseOwned=false`, and `communication_lost`. The focused Web regression reproduces the stale text.
 
 ## Decision Log
 
@@ -116,6 +128,14 @@ The first production pilot is limited to `raspi4-kensaku-stonebase01` and `raspi
   Rationale: boot and USB replug then establish both OFF-first convergence and the runtime lease owner without making persistent systemd enablement release-reachable.
   Date/Author: 2026-07-22 / Codex with user approval.
 
+- Decision: Track Pi5 transport loss independently from the last API error in torque-agent, and preserve the API-provided public lease state for reachable business rejections.
+  Rationale: `TORQUE_WRENCH_LEASE_HELD` is the required path into the two-step takeover UI, while timeouts and network errors must still fail closed as `communication_lost`.
+  Date/Author: 2026-07-23 / Codex with user approval.
+
+- Decision: Keep lease-operation notices separate from general assembly messages and refresh them from every loopback heartbeat response.
+  Rationale: the visible notice must describe the current lease state after asynchronous communication loss, fencing, readiness, or release instead of preserving a past button result.
+  Date/Author: 2026-07-23 / Codex with user approval.
+
 ## Release A Gate Classification and State Transitions
 
 | Scenario | Required observable result | Classification when violated |
@@ -132,7 +152,7 @@ The first production pilot is limited to `raspi4-kensaku-stonebase01` and `raspi
 
 ## Outcomes & Retrospective
 
-Release A capability is deployed and verified on Pi5 at `ef7f3c4a` and both pilot terminals at `e4760ec3`. The successful run is `20260722-113236-970014`; maintenance cleared and terminal evidence is verified on both hosts. A post-release criteria audit found no active enforcement, no live lease, healthy NFC and agents, and exact external adapters OFF. One availability gap remains: release-only starts the guard for the current boot but the installed udev rule does not yet request it after reboot. The consolidated exact-event activation correction, one rolling release, reboot acceptance, pairing, enforcement activation, and physical wrench acceptance remain open. Pairing and enforcement were not performed.
+Release A capability is deployed and boot-verified on Pi5 at `ef7f3c4a` and both pilot terminals at `38c7df98`. Both pilot terminals are paired with the same wrench, normal transfer works in both directions, and the exact external adapter fails closed within nine seconds for Pi5 loss and agent stop while NFC remains healthy. Screen departure and exact USB replug also converge safely. Physical takeover exposed one availability blocker rather than a safety violation: the destination adapter stayed OFF, but the agent hid the remote-owner state behind `communication_lost`, so the kiosk could not present the approved two-step action. The correction is locally validated and awaits one exact-head CI, one two-terminal release, and bidirectional takeover acceptance. Enforcement remains disabled.
 
 ## Context and Orientation
 
@@ -211,7 +231,18 @@ Final local validation evidence at 2026-07-22 18:14 JST:
     document inventory audit: passed
     git diff --check: passed
 
-Release A deployment has completed. Physical wrench acceptance, pairing, and activation have not run; they require the wrench and remain separately gated.
+Release A deployment, reboot acceptance, pairing, and every physical check independent of takeover have completed. Bidirectional physical takeover and enforcement activation remain separately gated.
+
+Physical-acceptance correction evidence at 2026-07-23 09:51 JST:
+
+    torque-agent full suite: 45 passed
+    torque-agent Ruff: passed
+    Web full suite: 297 files, 1470 passed
+    Web production build: passed with existing bundle/browser-data warnings only
+    root lint: passed
+    deploy contracts: 821 passed; disposable PostgreSQL migration/deploy-status and Ansible syntax passed
+    document audit and git diff --check: passed
+    No API, database schema, guard, Bluetooth helper, NFC, or public Web contract changed
 
 ## Interfaces and Dependencies
 
@@ -232,3 +263,7 @@ Revision note 2026-07-22 20:02 JST: Recorded Release A run `20260722-103023-77ca
 Revision note 2026-07-22 20:17 JST: Recorded exact-head CI at `c68691f2`, mutation-free preflight stop `20260722-111504-08a9c4`, the safe-OFF candidate probe correction, and successful read-only live probes on both pilot terminals.
 
 Revision note 2026-07-22 21:07 JST: Recorded successful two-terminal Release A `20260722-113236-970014`, the complete gate-classification audit, live no-enforcement/no-lease evidence, and the single consolidated boot guard activation correction pending validation and release.
+
+Revision note 2026-07-23 09:44 JST: Recorded final Release A boot deployment, pairing and independent physical-acceptance evidence, the confirmed takeover/UI-message blocker, the approved minimal correction, and the exact remaining CI, release, takeover, and enforcement gates.
+
+Revision note 2026-07-23 09:51 JST: Recorded the aggregate local validation result for the single takeover correction candidate; exact-head CI and the approved two-terminal release remain next.

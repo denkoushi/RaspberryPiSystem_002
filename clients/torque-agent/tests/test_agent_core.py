@@ -465,6 +465,106 @@ def test_connection_lease_manager_arms_only_after_explicit_acquire_and_fails_clo
     assert manager.snapshot()["leaseOwned"] is False
 
 
+def test_connection_lease_manager_preserves_remote_owner_for_held_rejection(
+    tmp_path: Path,
+) -> None:
+    boot_id_path = tmp_path / "boot_id"
+    boot_id_path.write_text("boot-test\n")
+    config = AgentConfig(
+        api_base_url="http://127.0.0.1:3000",
+        client_key="test-client",
+        queue_path=tmp_path / "events.sqlite3",
+        devices=(),
+        guard_directory=tmp_path / "guard",
+        boot_id_path=boot_id_path,
+    )
+
+    class HeldLeaseApi:
+        async def request(
+            self,
+            method: str,
+            path: str,
+            payload: dict[str, object] | None = None,
+        ) -> tuple[int, dict[str, Any]]:
+            return (
+                409,
+                {
+                    "errorCode": "TORQUE_WRENCH_LEASE_HELD",
+                    "details": {
+                        "lease": {
+                            "state": "owned_by_other",
+                            "owner": {
+                                "clientDeviceName": "StoneBase",
+                                "clientDeviceLocation": "1F",
+                            },
+                            "expiresAt": "2099-01-01T00:00:00.000Z",
+                            "connectAfter": "2099-01-01T00:00:01.000Z",
+                        }
+                    },
+                },
+            )
+
+    manager = ConnectionLeaseManager(config, BindingStore(ttl_seconds=8), api=HeldLeaseApi())
+
+    rejected = asyncio.run(
+        manager.acquire(
+            profile_id="profile",
+            session_id="session",
+            current_template_bolt_id="bolt",
+            confirmation_id="confirmation",
+            request_id="operator-action-1",
+        )
+    )
+
+    assert rejected["state"] == "owned_by_other"
+    assert rejected["owner"] == {
+        "clientDeviceName": "StoneBase",
+        "clientDeviceLocation": "1F",
+    }
+    assert rejected["leaseOwned"] is False
+    assert rejected["lastError"] == "TORQUE_WRENCH_LEASE_HELD"
+
+
+def test_connection_lease_manager_reports_network_failure_as_communication_lost(
+    tmp_path: Path,
+) -> None:
+    boot_id_path = tmp_path / "boot_id"
+    boot_id_path.write_text("boot-test\n")
+    config = AgentConfig(
+        api_base_url="http://127.0.0.1:3000",
+        client_key="test-client",
+        queue_path=tmp_path / "events.sqlite3",
+        devices=(),
+        guard_directory=tmp_path / "guard",
+        boot_id_path=boot_id_path,
+    )
+
+    class UnavailableLeaseApi:
+        async def request(
+            self,
+            method: str,
+            path: str,
+            payload: dict[str, object] | None = None,
+        ) -> tuple[int, dict[str, Any]]:
+            raise httpx.ConnectError("Pi5 unavailable")
+
+    manager = ConnectionLeaseManager(config, BindingStore(ttl_seconds=8), api=UnavailableLeaseApi())
+
+    unavailable = asyncio.run(
+        manager.acquire(
+            profile_id="profile",
+            session_id="session",
+            current_template_bolt_id="bolt",
+            confirmation_id="confirmation",
+            request_id="operator-action-1",
+        )
+    )
+
+    assert unavailable["state"] == "communication_lost"
+    assert unavailable["leaseOwned"] is False
+    assert str(unavailable["lastError"]).startswith("LEASE_API_UNAVAILABLE:")
+
+
 @pytest.mark.parametrize(
     "path",
     [

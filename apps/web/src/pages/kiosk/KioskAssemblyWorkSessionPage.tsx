@@ -60,6 +60,27 @@ function torqueAgentStateLabel(status: TorqueAgentLeaseStatus | null, reachable:
   return '使用可能';
 }
 
+function torqueAgentConnectionMessage(status: TorqueAgentLeaseStatus | null, reachable: boolean): string | null {
+  if (!reachable) return 'torque-agentとの通信が切れました。接続状態を確認してください。';
+  if (!status) return null;
+  if (status.state === 'owned_by_other') {
+    return '別端末が使用中です。現物が手元にある場合だけ引継ぎ操作を行ってください。';
+  }
+  if (status.state === 'handoff_wait') return '旧端末のBluetooth停止を待っています。';
+  if (status.state === 'communication_lost') {
+    return 'Pi 5との通信が切れたため接続を停止しました。もう一度「このレンチを使用開始」を押してください。';
+  }
+  if (status.state === 'fenced') {
+    return '接続権が別端末へ移動しました。もう一度使用する場合は「このレンチを使用開始」を押してください。';
+  }
+  if (status.state === 'expired') {
+    return '接続権の期限が切れました。もう一度「このレンチを使用開始」を押してください。';
+  }
+  if (status.lastError) return `トルクレンチ接続を開始できませんでした: ${status.lastError}`;
+  if (status.leaseOwned && !status.ready) return '接続権を取得しました。Bluetooth接続を待っています。';
+  return null;
+}
+
 async function postTorqueAgent(path: string, payload: object, keepalive = false): Promise<TorqueAgentLeaseStatus> {
   const response = await fetch(`${TORQUE_AGENT_ORIGIN}${path}`, {
     method: 'POST',
@@ -88,6 +109,7 @@ export function KioskAssemblyWorkSessionPage() {
   const [confirmationReused, setConfirmationReused] = useState(false);
   const [agentReachable, setAgentReachable] = useState(false);
   const [agentStatus, setAgentStatus] = useState<TorqueAgentLeaseStatus | null>(null);
+  const [torqueConnectionMessage, setTorqueConnectionMessage] = useState<string | null>(null);
   const [takeoverConfirmationVisible, setTakeoverConfirmationVisible] = useState(false);
 
   useEffect(() => {
@@ -161,6 +183,7 @@ export function KioskAssemblyWorkSessionPage() {
     setConfirmation(null);
     setConfirmationReused(false);
     setAgentStatus(null);
+    setTorqueConnectionMessage(null);
     setTakeoverConfirmationVisible(false);
     void Promise.all([
       listCompatibleTorqueWrenchesForSession(session.id),
@@ -207,9 +230,13 @@ export function KioskAssemblyWorkSessionPage() {
         if (!cancelled) {
           setAgentReachable(true);
           setAgentStatus(status);
+          setTorqueConnectionMessage(torqueAgentConnectionMessage(status, true));
         }
       } catch {
-        if (!cancelled) setAgentReachable(false);
+        if (!cancelled) {
+          setAgentReachable(false);
+          setTorqueConnectionMessage(torqueAgentConnectionMessage(null, false));
+        }
       }
     };
     void heartbeat();
@@ -322,6 +349,7 @@ export function KioskAssemblyWorkSessionPage() {
       });
       setConfirmation(next);
       setConfirmationReused(false);
+      setTorqueConnectionMessage(null);
       setMessage('現物の製造番号と設定値を確認済みにしました。「このレンチを使用開始」を押してください。');
     });
 
@@ -338,13 +366,7 @@ export function KioskAssemblyWorkSessionPage() {
       setAgentReachable(true);
       setAgentStatus(status);
       setTakeoverConfirmationVisible(false);
-      if (status.state === 'owned_by_other') {
-        setMessage('別端末が使用中です。現物が手元にある場合だけ引継ぎ操作を行ってください。');
-      } else if (status.lastError) {
-        setMessage(`接続権を取得できませんでした: ${status.lastError}`);
-      } else {
-        setMessage(status.state === 'handoff_wait' ? '旧端末の停止を待っています。' : '接続権を取得しました。Bluetooth接続を待っています。');
-      }
+      setTorqueConnectionMessage(torqueAgentConnectionMessage(status, true));
     });
 
   const takeoverWrench = () =>
@@ -362,7 +384,7 @@ export function KioskAssemblyWorkSessionPage() {
       setAgentReachable(true);
       setAgentStatus(status);
       setTakeoverConfirmationVisible(false);
-      setMessage(status.lastError ? `引継ぎできませんでした: ${status.lastError}` : '引継ぎました。旧端末のBluetooth停止後に接続します。');
+      setTorqueConnectionMessage(torqueAgentConnectionMessage(status, true));
     });
 
   const stopUsingWrench = async (reason = 'OPERATOR_RELEASE') => {
@@ -370,9 +392,11 @@ export function KioskAssemblyWorkSessionPage() {
       const status = await postTorqueAgent('/lease/release', { reason });
       setAgentReachable(true);
       setAgentStatus(status);
+      setTorqueConnectionMessage(torqueAgentConnectionMessage(status, true));
       setTakeoverConfirmationVisible(false);
     } catch {
       setAgentReachable(false);
+      setTorqueConnectionMessage(torqueAgentConnectionMessage(null, false));
     }
   };
 
@@ -428,6 +452,7 @@ export function KioskAssemblyWorkSessionPage() {
     checkSummary && checkSummary.requiredTotal > 0
       ? `必須 ${checkSummary.requiredCompleted}/${checkSummary.requiredTotal}`
       : null;
+  const visibleMessage = torqueConnectionMessage ?? message;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 bg-slate-800 p-2 text-white">
@@ -440,7 +465,7 @@ export function KioskAssemblyWorkSessionPage() {
         requiredCheckLabel={requiredCheckLabel}
       />
 
-      {message ? <p className="rounded border border-white/15 bg-slate-900/80 px-3 py-2 text-sm font-semibold text-amber-200">{message}</p> : null}
+      {visibleMessage ? <p className="rounded border border-white/15 bg-slate-900/80 px-3 py-2 text-sm font-semibold text-amber-200">{visibleMessage}</p> : null}
 
       <main className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-auto xl:grid-cols-[minmax(0,1fr)_minmax(21rem,27rem)] xl:overflow-hidden">
         <section className="flex min-h-[32rem] flex-col overflow-hidden rounded border border-white/15 bg-slate-900/70 xl:min-h-0">

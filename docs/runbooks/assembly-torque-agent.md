@@ -2,7 +2,7 @@
 
 ## 目的と現在のゲート
 
-`torque-agent`は、許可済みBluetooth HIDトルクレンチをPi4上で排他取得し、組立作業画面の現在位置へ結び付け、SQLiteへ先に保存してからPi5 APIへ送る。Pi5/PostgreSQLの接続リースを正本とし、常に1本・1端末・1作業セッションだけを有効にする。CEM3-BTLAの通常3件・連続5件を匿名化して固定し、厳密な`cem3-btla-hogp-v1` profileを登録済みである。リース機能と外付けBluetoothガードはローカル実装・自動試験済みだが、まだデプロイしていない。
+`torque-agent`は、許可済みBluetooth HIDトルクレンチをPi4上で排他取得し、組立作業画面の現在位置へ結び付け、SQLiteへ先に保存してからPi5 APIへ送る。Pi5/PostgreSQLの接続リースを正本とし、常に1本・1端末・1作業セッションだけを有効にする。CEM3-BTLAの通常3件・連続5件を匿名化して固定し、厳密な`cem3-btla-hogp-v1` profileを登録済みである。Release Aのリース機能と外付けBluetoothガードはStoneBaseとAssembly-01へ配備・再起動確認済みで、対象レンチも両端末へペアリング済みである。対象レンチのenforcementは、2端末実機受入の完了と個別承認まで有効化しない。
 
 このRunbookは実機準備と安全な確認手順を定義する。デプロイ、実機設定変更、クライアントキー発行はそれぞれ明示的な承認後に行う。
 

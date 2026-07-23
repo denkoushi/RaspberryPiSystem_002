@@ -298,17 +298,22 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     mockListCurrentTorqueWrenchConfirmations.mockResolvedValue(reusableTorqueConfirmation);
     const remoteOwner = agentStatus({
       state: 'owned_by_other',
-      owner: { clientDeviceName: 'StoneBase', clientDeviceLocation: '1F' }
+      owner: { clientDeviceName: 'StoneBase', clientDeviceLocation: '1F' },
+      lastError: 'TORQUE_WRENCH_LEASE_HELD'
     });
-    const agentFetch = vi.fn().mockImplementation((url: string) => Promise.resolve(
-      jsonResponse(String(url).endsWith('/lease/takeover')
-        ? agentStatus({ state: 'handoff_wait', leaseOwned: true })
-        : remoteOwner)
-    ));
+    let acquireAttempted = false;
+    const agentFetch = vi.fn().mockImplementation((url: string) => {
+      if (String(url).endsWith('/lease/takeover')) {
+        return Promise.resolve(jsonResponse(agentStatus({ state: 'handoff_wait', leaseOwned: true })));
+      }
+      if (String(url).endsWith('/lease/acquire')) acquireAttempted = true;
+      return Promise.resolve(jsonResponse(acquireAttempted ? remoteOwner : agentStatus()));
+    });
     vi.stubGlobal('fetch', agentFetch);
 
     renderPage();
 
+    fireEvent.click(await screen.findByRole('button', { name: 'このレンチを使用開始' }));
     expect(await screen.findByText((_, element) => element?.textContent === 'StoneBase（1F） が使用中')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '現物が手元にあるため引き継ぐ' }));
     expect(agentFetch.mock.calls.some(([url]) => String(url).endsWith('/lease/takeover'))).toBe(false);
@@ -347,6 +352,36 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
       expect(agentFetch.mock.calls.some(([url]) => String(url).endsWith('/lease/release'))).toBe(true);
       expect(screen.getByText('使用可能')).toBeInTheDocument();
     });
+  });
+
+  it('replaces an acquired message when a later heartbeat reports communication loss', async () => {
+    mockGetAssemblyWorkSession.mockResolvedValue(requiredSession);
+    mockListCompatibleTorqueWrenches.mockResolvedValue(compatibleTorqueWrenches);
+    mockListCurrentTorqueWrenchConfirmations.mockResolvedValue(reusableTorqueConfirmation);
+    let acquired = false;
+    const agentFetch = vi.fn().mockImplementation((url: string) => {
+      if (String(url).endsWith('/lease/acquire')) {
+        acquired = true;
+        return Promise.resolve(jsonResponse(agentStatus({ state: 'owned_by_self', leaseOwned: true })));
+      }
+      if (String(url).endsWith('/heartbeat') && acquired) {
+        return Promise.resolve(jsonResponse(agentStatus({
+          state: 'communication_lost',
+          lastError: 'LEASE_RENEW_FAILED'
+        })));
+      }
+      return Promise.resolve(jsonResponse(agentStatus()));
+    });
+    vi.stubGlobal('fetch', agentFetch);
+
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'このレンチを使用開始' }));
+    expect(await screen.findByText('接続権を取得しました。Bluetooth接続を待っています。')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Pi 5との通信が切れたため接続を停止しました。もう一度「このレンチを使用開始」を押してください。')).toBeInTheDocument();
+    }, { timeout: 3500 });
+    expect(screen.queryByText('接続権を取得しました。Bluetooth接続を待っています。')).not.toBeInTheDocument();
   });
 
   it('shows communication loss when the loopback agent cannot be reached', async () => {

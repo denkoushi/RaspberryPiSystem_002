@@ -94,6 +94,7 @@ class ConnectionLeaseManager:
         self._lease: LocalLease | None = None
         self._public_lease: dict[str, Any] = {"state": "available", "owner": None}
         self._last_error: str | None = None
+        self._communication_lost = False
         self._blocked = False
         self._lock = asyncio.Lock()
         self._hid_paths: set[str] = set()
@@ -135,7 +136,7 @@ class ConnectionLeaseManager:
             and binding.connection_lease_generation == self._lease.generation
         )
         state = self._public_lease.get("state", "available")
-        if self._last_error and self._lease is None:
+        if self._communication_lost and self._lease is None:
             state = "communication_lost"
         if self._blocked and self._lease is None:
             state = "fenced"
@@ -176,12 +177,19 @@ class ConnectionLeaseManager:
         self.active_event.clear()
         self.intent_path.unlink(missing_ok=True)
 
-    def _clear_local(self, reason: str | None, *, fenced: bool = False) -> LocalLease | None:
+    def _clear_local(
+        self,
+        reason: str | None,
+        *,
+        fenced: bool = False,
+        communication_lost: bool = False,
+    ) -> LocalLease | None:
         previous = self._lease
         self._lease = None
         self._bindings.clear()
         self._disarm()
         self._last_error = reason
+        self._communication_lost = communication_lost
         self._blocked = fenced
         return previous
 
@@ -257,6 +265,7 @@ class ConnectionLeaseManager:
                 )
             except (httpx.TimeoutException, httpx.NetworkError) as error:
                 self._last_error = f"LEASE_API_UNAVAILABLE: {error}"
+                self._communication_lost = True
                 return self.snapshot()
             if status < 200 or status >= 300:
                 details = body.get("details")
@@ -280,6 +289,7 @@ class ConnectionLeaseManager:
             self._lease = lease
             self._public_lease = lease_body
             self._last_error = None
+            self._communication_lost = False
             self._blocked = False
             self._bindings.update(
                 WorkBinding(
@@ -339,10 +349,13 @@ class ConnectionLeaseManager:
             if 200 <= status < 300 and isinstance(body.get("lease"), dict):
                 self._public_lease = body["lease"]
                 self._last_error = None
+                self._communication_lost = False
             else:
                 self._last_error = str(body.get("errorCode") or f"HTTP_{status}")
+                self._communication_lost = False
         except (httpx.TimeoutException, httpx.NetworkError) as error:
             self._last_error = f"LEASE_RELEASE_UNCONFIRMED: {error}"
+            self._communication_lost = True
 
     async def release(self, reason: str = "CLIENT_RELEASE") -> dict[str, object]:
         async with self._lock:
@@ -374,7 +387,7 @@ class ConnectionLeaseManager:
                     },
                 )
             except (httpx.TimeoutException, httpx.NetworkError) as error:
-                self._clear_local(f"LEASE_RENEW_FAILED: {error}")
+                self._clear_local(f"LEASE_RENEW_FAILED: {error}", communication_lost=True)
                 return
             lease_body = body.get("lease")
             if status < 200 or status >= 300 or not isinstance(lease_body, dict):
@@ -392,6 +405,7 @@ class ConnectionLeaseManager:
             )
             self._public_lease = lease_body
             self._last_error = None
+            self._communication_lost = False
             self._reconcile_activation()
 
     async def run(self) -> None:
