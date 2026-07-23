@@ -4,13 +4,25 @@ import type {
   TorqueWrenchConnectionLeaseStatusDto,
   TorqueWrenchRejectionReason
 } from '@raspi-system/shared-types';
-import { Prisma, type AssemblyTemplateBolt } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 import { env } from '../../config/env.js';
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { runAssemblyTransaction } from '../assembly/assembly-transaction.js';
-import { torqueConditionFingerprint, type TorqueCondition } from './torque-wrench-eligibility.policy.js';
+import { TorqueWrenchConfirmationStateRepository } from './torque-wrench-confirmation-state.repository.js';
+import {
+  TorqueWrenchConfirmationUsePolicy,
+  type TorqueWrenchConfirmationExpectation
+} from './torque-wrench-confirmation-use.policy.js';
+import { TorqueWrenchEligibilityPolicy } from './torque-wrench-eligibility.policy.js';
+import {
+  candidateFromProfile,
+  capabilityGroupEligibilityInclude,
+  conditionFromBolt,
+  profileEligibilityInclude
+} from './torque-wrench-use-context.js';
+import { lockTorqueWrenchProfile } from './torque-wrench-lock.repository.js';
 
 export const TORQUE_CONNECTION_LEASE_TTL_MS = 8_000;
 export const TORQUE_CONNECTION_HANDOFF_GRACE_MS = 1_000;
@@ -46,6 +58,7 @@ type LeaseTokenInput = {
 export type AgentConnectionLeaseInput = {
   leaseId?: string | null;
   generation?: number | null;
+  confirmationId: string;
   clientDeviceId: string;
   sessionId: string;
 };
@@ -113,24 +126,9 @@ export function serializeConnectionLease(
   };
 }
 
-export async function lockTorqueWrenchProfile(
-  tx: Prisma.TransactionClient,
-  torqueWrenchProfileId: string
-): Promise<void> {
-  const rows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-    SELECT "id" FROM "TorqueWrenchProfile"
-    WHERE "id" = ${torqueWrenchProfileId}
-    FOR UPDATE
-  `);
-  if (rows.length === 0) {
-    throw new ApiError(404, '物理トルクレンチが見つかりません');
-  }
-}
-
 async function lockAssemblySession(
   tx: Prisma.TransactionClient,
-  sessionId: string,
-  clientDeviceId: string
+  sessionId: string
 ): Promise<{ currentBoltId: string | null }> {
   const rows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
     SELECT "id" FROM "AssemblyWorkSession"
@@ -140,76 +138,95 @@ async function lockAssemblySession(
   if (rows.length === 0) throw new ApiError(404, '作業セッションが見つかりません');
   const session = await tx.assemblyWorkSession.findUnique({
     where: { id: sessionId },
-    select: { status: true, clientDeviceId: true, currentBoltId: true }
+    select: { status: true, currentBoltId: true }
   });
   if (!session) throw new ApiError(404, '作業セッションが見つかりません');
   if (session.status !== 'IN_PROGRESS') {
     throw new ApiError(409, 'この作業はトルクレンチを接続できる状態ではありません', undefined, 'SESSION_STATE_CONFLICT');
   }
-  if (session.clientDeviceId !== clientDeviceId) {
-    throw new ApiError(403, 'この作業は別のクライアント端末に割り当てられています', undefined, 'SESSION_CLIENT_MISMATCH');
-  }
   return { currentBoltId: session.currentBoltId };
-}
-
-function conditionFromBolt(bolt: AssemblyTemplateBolt): TorqueCondition {
-  return {
-    templateBoltId: bolt.id,
-    nominalDiameter: bolt.nominalDiameter,
-    boltLengthMm: bolt.boltLengthMm,
-    material: bolt.material,
-    strengthClass: bolt.strengthClass,
-    capabilityGroupId: bolt.capabilityGroupId,
-    lowerLimit: bolt.lowerLimit,
-    nominalTorque: bolt.nominalTorque,
-    upperLimit: bolt.upperLimit,
-    unit: bolt.unit
-  };
 }
 
 async function validateConfirmation(
   tx: Prisma.TransactionClient,
   input: Pick<AcquireInput, 'confirmationId' | 'sessionId' | 'torqueWrenchProfileId' | 'clientDeviceId'> & {
     currentBoltId: string | null;
-  }
+    now: Date;
+  },
+  confirmationPolicy: TorqueWrenchConfirmationUsePolicy,
+  confirmationRepository: TorqueWrenchConfirmationStateRepository,
+  eligibilityPolicy: TorqueWrenchEligibilityPolicy
 ): Promise<void> {
-  const confirmation = await tx.assemblyTorqueWrenchConfirmation.findUnique({
-    where: { id: input.confirmationId },
-    select: {
-      sessionId: true,
-      torqueWrenchProfileId: true,
-      settingHistoryId: true,
-      conditionFingerprint: true,
-      clientDeviceId: true
-    }
-  });
-  if (!confirmation || confirmation.sessionId !== input.sessionId) {
+  const confirmation = await confirmationRepository.findConfirmation(tx, input.confirmationId);
+  if (!confirmation) {
     throw new ApiError(409, '現在の作業に有効なレンチ確認がありません', undefined, 'CONFIRMATION_REQUIRED');
-  }
-  if (confirmation.torqueWrenchProfileId !== input.torqueWrenchProfileId) {
-    throw new ApiError(409, '確認したレンチと接続要求が一致しません', undefined, 'WRONG_PHYSICAL_WRENCH');
-  }
-  if (confirmation.clientDeviceId !== input.clientDeviceId) {
-    throw new ApiError(409, 'この端末でトルクレンチを再確認してください', undefined, 'CONFIRMATION_REQUIRED');
   }
   if (!input.currentBoltId) {
     throw new ApiError(409, '現在の締付箇所がありません', undefined, 'CONFIRMATION_REQUIRED');
   }
   const bolt = await tx.assemblyTemplateBolt.findUnique({ where: { id: input.currentBoltId } });
-  if (
-    !bolt ||
-    confirmation.conditionFingerprint !== torqueConditionFingerprint(conditionFromBolt(bolt))
-  ) {
+  if (!bolt || !bolt.capabilityGroupId) {
     throw new ApiError(409, '現在の締付条件に対してトルクレンチを再確認してください', undefined, 'CONFIRMATION_REQUIRED');
   }
-  const latestSetting = await tx.torqueWrenchSettingHistory.findFirst({
-    where: { torqueWrenchProfileId: input.torqueWrenchProfileId },
-    orderBy: [{ effectiveAt: 'desc' }, { createdAt: 'desc' }],
-    select: { id: true }
-  });
-  if (!latestSetting || confirmation.settingHistoryId !== latestSetting.id) {
-    throw new ApiError(409, 'レンチ設定が更新されています。表示設定を再確認してください', undefined, 'CONFIRMATION_REQUIRED');
+  const [profile, capabilityGroup, lease] = await Promise.all([
+    tx.torqueWrenchProfile.findUnique({
+      where: { id: input.torqueWrenchProfileId },
+      include: profileEligibilityInclude
+    }),
+    tx.torqueWrenchCapabilityGroup.findUnique({
+      where: { id: bolt.capabilityGroupId },
+      include: capabilityGroupEligibilityInclude
+    }),
+    confirmationRepository.findLease(tx, input.torqueWrenchProfileId)
+  ]);
+  if (!profile) {
+    throw new ApiError(404, '物理トルクレンチが見つかりません');
   }
+  if (!capabilityGroup) {
+    throw new ApiError(409, '適合グループが見つかりません', undefined, 'WRONG_CAPABILITY_GROUP');
+  }
+  const eligibility = eligibilityPolicy.evaluate(
+    conditionFromBolt(bolt),
+    candidateFromProfile(profile, capabilityGroup)
+  );
+  if (!eligibility.eligible) {
+    throw new ApiError(
+      409,
+      'このトルクレンチは現在の締付条件に適合しません',
+      { reason: eligibility.reason },
+      eligibility.reason
+    );
+  }
+  const latestSetting = profile.settingHistories[0] ?? null;
+  if (!latestSetting) {
+    throw new ApiError(409, '現在設定が登録されていません', undefined, 'SETTING_HISTORY_MISSING');
+  }
+  const expected: TorqueWrenchConfirmationExpectation = {
+    sessionId: input.sessionId,
+    clientDeviceId: input.clientDeviceId,
+    torqueWrenchProfileId: input.torqueWrenchProfileId,
+    settingHistoryId: latestSetting.id,
+    conditionFingerprint: eligibility.conditionFingerprint
+  };
+  const decision = confirmationPolicy.evaluateLeaseAdoption({
+    confirmation,
+    lease,
+    expected,
+    now: input.now
+  });
+  if (decision.allowed) return;
+  if (decision.reason === 'WRONG_PHYSICAL_WRENCH') {
+    throw new ApiError(409, '確認したレンチと接続要求が一致しません', undefined, decision.reason);
+  }
+  if (decision.reason === 'CONFIRMATION_STALE') {
+    throw new ApiError(
+      409,
+      '締付条件またはレンチ設定が変更されています。表示設定を再確認してください',
+      undefined,
+      'CONFIRMATION_REQUIRED'
+    );
+  }
+  throw new ApiError(409, 'この端末でトルクレンチを再確認してください', undefined, 'CONFIRMATION_REQUIRED');
 }
 
 async function loadClient(
@@ -231,6 +248,7 @@ async function appendHistory(
     leaseId: string;
     generation: number;
     action: string;
+    adoptedConfirmationId?: string | null;
     ownerClientDeviceId: string;
     ownerClientDeviceName: string;
     ownerSessionId: string;
@@ -244,6 +262,7 @@ async function appendHistory(
       leaseId: input.leaseId,
       generation: input.generation,
       action: input.action,
+      adoptedConfirmationId: input.adoptedConfirmationId ?? null,
       ownerClientDeviceId: input.ownerClientDeviceId,
       ownerClientDeviceName: input.ownerClientDeviceName,
       ownerSessionId: input.ownerSessionId,
@@ -269,6 +288,12 @@ function assertLeaseToken(row: ConnectionLeaseRow | null, input: LeaseTokenInput
 }
 
 export class TorqueWrenchConnectionLeaseService {
+  constructor(
+    private readonly confirmationPolicy = new TorqueWrenchConfirmationUsePolicy(),
+    private readonly confirmationRepository = new TorqueWrenchConfirmationStateRepository(),
+    private readonly eligibilityPolicy = new TorqueWrenchEligibilityPolicy()
+  ) {}
+
   async getStatus(torqueWrenchProfileId: string, clientDeviceId: string) {
     const profile = await prisma.torqueWrenchProfile.findUnique({
       where: { id: torqueWrenchProfileId },
@@ -298,14 +323,20 @@ export class TorqueWrenchConnectionLeaseService {
   private async acquireInternal(input: AcquireInput, takeover: boolean) {
     return runAssemblyTransaction(async (tx) => {
       await lockTorqueWrenchProfile(tx, input.torqueWrenchProfileId);
-      const session = await lockAssemblySession(tx, input.sessionId, input.clientDeviceId);
-      await validateConfirmation(tx, { ...input, currentBoltId: session.currentBoltId });
-      const client = await loadClient(tx, input.clientDeviceId);
+      const session = await lockAssemblySession(tx, input.sessionId);
       const now = new Date();
       const existing = await tx.torqueWrenchConnectionLease.findUnique({
         where: { torqueWrenchProfileId: input.torqueWrenchProfileId },
         include: leaseInclude
       });
+      await validateConfirmation(
+        tx,
+        { ...input, currentBoltId: session.currentBoltId, now },
+        this.confirmationPolicy,
+        this.confirmationRepository,
+        this.eligibilityPolicy
+      );
+      const client = await loadClient(tx, input.clientDeviceId);
 
       if (existing && !releasedOrExpired(existing, now)) {
         if (
@@ -314,15 +345,33 @@ export class TorqueWrenchConnectionLeaseService {
         ) {
           const renewed = await tx.torqueWrenchConnectionLease.update({
             where: { torqueWrenchProfileId: input.torqueWrenchProfileId },
-            data: { requestId: input.requestId, renewedAt: now, expiresAt: expiryFrom(now) },
+            data: {
+              requestId: input.requestId,
+              adoptedConfirmationId: input.confirmationId,
+              renewedAt: now,
+              expiresAt: expiryFrom(now)
+            },
             include: leaseInclude
           });
+          if (existing.adoptedConfirmationId !== input.confirmationId) {
+            await appendHistory(tx, {
+              profileId: input.torqueWrenchProfileId,
+              leaseId: existing.leaseId,
+              generation: existing.generation,
+              action: 'CONFIRMATION_ADOPTED',
+              adoptedConfirmationId: input.confirmationId,
+              ownerClientDeviceId: client.id,
+              ownerClientDeviceName: client.name,
+              ownerSessionId: input.sessionId,
+              previous: existing
+            });
+          }
           return serializeConnectionLease(input.torqueWrenchProfileId, renewed, input.clientDeviceId, now);
         }
         if (!takeover) {
           throw new ApiError(
             409,
-            'このトルクレンチは別の端末で使用中です',
+            'このトルクレンチは別の作業または端末で使用中です',
             { lease: serializeConnectionLease(input.torqueWrenchProfileId, existing, input.clientDeviceId, now) },
             'TORQUE_WRENCH_LEASE_HELD'
           );
@@ -346,6 +395,7 @@ export class TorqueWrenchConnectionLeaseService {
           leaseId,
           generation,
           requestId: input.requestId,
+          adoptedConfirmationId: input.confirmationId,
           ownerClientDeviceId: input.clientDeviceId,
           ownerSessionId: input.sessionId,
           acquiredAt: now,
@@ -357,6 +407,7 @@ export class TorqueWrenchConnectionLeaseService {
           leaseId,
           generation,
           requestId: input.requestId,
+          adoptedConfirmationId: input.confirmationId,
           ownerClientDeviceId: input.clientDeviceId,
           ownerSessionId: input.sessionId,
           acquiredAt: now,
@@ -373,6 +424,7 @@ export class TorqueWrenchConnectionLeaseService {
         leaseId,
         generation,
         action,
+        adoptedConfirmationId: input.confirmationId,
         ownerClientDeviceId: client.id,
         ownerClientDeviceName: client.name,
         ownerSessionId: input.sessionId,
@@ -429,6 +481,7 @@ export class TorqueWrenchConnectionLeaseService {
         leaseId: row.leaseId,
         generation: row.generation,
         action: 'RELEASED',
+        adoptedConfirmationId: row.adoptedConfirmationId,
         ownerClientDeviceId: row.ownerClientDeviceId,
         ownerClientDeviceName: row.ownerClientDevice.name,
         ownerSessionId: row.ownerSessionId,
@@ -477,30 +530,19 @@ export class TorqueWrenchConnectionLeaseService {
 export async function evaluateAgentConnectionLease(
   tx: Prisma.TransactionClient,
   profile: { id: string; connectionLeaseEnforcedAt: Date | null },
-  input: AgentConnectionLeaseInput
+  input: AgentConnectionLeaseInput,
+  confirmationPolicy = new TorqueWrenchConfirmationUsePolicy(),
+  confirmationRepository = new TorqueWrenchConfirmationStateRepository()
 ): Promise<TorqueWrenchRejectionReason | null> {
-  const hasLeaseId = typeof input.leaseId === 'string' && input.leaseId.length > 0;
-  const hasGeneration = Number.isInteger(input.generation) && Number(input.generation) > 0;
-  if (!hasLeaseId || !hasGeneration) {
-    return profile.connectionLeaseEnforcedAt ? 'CONNECTION_LEASE_REQUIRED' : null;
-  }
-  const lease = await tx.torqueWrenchConnectionLease.findUnique({
-    where: { torqueWrenchProfileId: profile.id },
-    select: {
-      leaseId: true,
-      generation: true,
-      ownerClientDeviceId: true,
-      ownerSessionId: true
-    }
+  const lease = await confirmationRepository.findLease(tx, profile.id);
+  const decision = confirmationPolicy.evaluateAgentLease({
+    lease,
+    leaseEnforced: profile.connectionLeaseEnforcedAt !== null,
+    leaseId: input.leaseId,
+    generation: input.generation,
+    confirmationId: input.confirmationId,
+    clientDeviceId: input.clientDeviceId,
+    sessionId: input.sessionId
   });
-  if (!lease || lease.leaseId !== input.leaseId || lease.generation !== input.generation) {
-    return 'CONNECTION_LEASE_FENCED';
-  }
-  if (lease.ownerClientDeviceId !== input.clientDeviceId) {
-    return 'CONNECTION_LEASE_OWNER_MISMATCH';
-  }
-  if (lease.ownerSessionId !== input.sessionId) {
-    return 'CONNECTION_LEASE_SESSION_MISMATCH';
-  }
-  return null;
+  return decision.allowed ? null : decision.reason;
 }

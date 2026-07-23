@@ -19,6 +19,8 @@ The physical wrench is always used close to its selected terminal. The wrench ma
 
 Pi5/PostgreSQL owns one short-lived connection lease for each `TorqueWrenchProfile`. The lease identifies one client device and one assembly work session, expires after eight seconds, and is renewed every two seconds. Every acquisition or physical-presence takeover increments a fencing generation. Agent events snapshot the lease ID and generation, and a newer generation prevents an older terminal from advancing work.
 
+The retained lease also records the physical confirmation adopted by acquisition. That adopted confirmation may be reused by another work ID while the same terminal remains the retained owner and the wrench, latest setting, tightening condition, status, and calibration remain valid. The work session's recorded start terminal is audit data, not lease authorization. A different terminal must create a new physical confirmation before acquisition or takeover; the former terminal's adopted confirmation is no longer reusable.
+
 The kiosk requires an explicit use-start action after physical wrench confirmation. Confirmation reuse never silently acquires a connection. If another terminal still holds a live lease, the destination terminal displays that owner and permits a two-step takeover only after the operator confirms that the physical wrench is present. The old generation is fenced immediately, while the destination delays Bluetooth activation until the former lease deadline plus one second. A fenced old page cannot reacquire without another explicit operator action.
 
 Pairing remains an installation or handoff Runbook operation. The product does not add kiosk-driven Bluetooth discovery or pairing. If the wrench retains multiple host bonds, normal moves use saved bonds. If it retains only one bond, the operator performs manual pairing after acquiring the destination lease.
@@ -48,7 +50,7 @@ Validate with real-PostgreSQL acquisition races, agent/guard failure tests, UI s
 ## Supersedes / Superseded By
 
 - Supersedes: none. This extends `ADR-20260717-assembly-torque-wrench-traceability.md`.
-- Superseded by: none.
+- Superseded by: `ADR-20260723-assembly-torque-cross-work-id-confirmation-reuse.md` supersedes only the start-origin-client authorization and session-local confirmation boundaries. Lease generation, takeover, guard, and activation decisions remain accepted.
 
 ## Local Notes JA
 

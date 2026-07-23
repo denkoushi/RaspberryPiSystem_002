@@ -4,6 +4,7 @@ import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { runAssemblyTransaction } from '../assembly/assembly-transaction.js';
 import { TorqueUnitConverter } from './torque-unit-converter.js';
+import { lockTorqueWrenchProfile } from './torque-wrench-lock.repository.js';
 import { normalizeFastenerText, normalizeTorqueWrenchKey } from './torque-wrench-normalization.js';
 
 const profileInclude = {
@@ -189,14 +190,20 @@ export class TorqueWrenchMasterService {
   }
 
   async updateProfile(id: string, input: Partial<TorqueWrenchProfileInput>) {
-    const current = await prisma.torqueWrenchProfile.findUnique({ where: { id }, include: { measuringInstrument: true } });
-    if (!current) throw new ApiError(404, '物理トルクレンチが見つかりません');
     if (input.storageLocation !== undefined) assertStorageLocation(input.storageLocation);
-    if (input.modelId) {
-      const model = await prisma.torqueWrenchModel.findFirst({ where: { id: input.modelId, isActive: true } });
-      if (!model) throw new ApiError(400, '有効なトルクレンチ型番を指定してください');
-    }
     return runAssemblyTransaction(async (tx) => {
+      await lockTorqueWrenchProfile(tx, id);
+      const current = await tx.torqueWrenchProfile.findUnique({
+        where: { id },
+        include: { measuringInstrument: true }
+      });
+      if (!current) throw new ApiError(404, '物理トルクレンチが見つかりません');
+      if (input.modelId) {
+        const model = await tx.torqueWrenchModel.findFirst({
+          where: { id: input.modelId, isActive: true }
+        });
+        if (!model) throw new ApiError(400, '有効なトルクレンチ型番を指定してください');
+      }
       await tx.measuringInstrument.update({
         where: { id: current.measuringInstrumentId },
         data: {
@@ -223,8 +230,6 @@ export class TorqueWrenchMasterService {
   }
 
   async addSetting(profileId: string, input: TorqueWrenchSettingInput) {
-    const profile = await prisma.torqueWrenchProfile.findUnique({ where: { id: profileId }, include: { model: true } });
-    if (!profile) throw new ApiError(404, '物理トルクレンチが見つかりません');
     const lowerLimit = new Prisma.Decimal(input.lowerLimit);
     const nominalTorque = new Prisma.Decimal(input.nominalTorque);
     const upperLimit = new Prisma.Decimal(input.upperLimit);
@@ -232,28 +237,36 @@ export class TorqueWrenchMasterService {
     const lowerLimitNm = TorqueUnitConverter.toNewtonMetres(lowerLimit, input.unit);
     const nominalTorqueNm = TorqueUnitConverter.toNewtonMetres(nominalTorque, input.unit);
     const upperLimitNm = TorqueUnitConverter.toNewtonMetres(upperLimit, input.unit);
-    if (profile.model.torqueMinNm.gt(lowerLimitNm) || profile.model.torqueMaxNm.lt(upperLimitNm)) {
-      throw new ApiError(400, '設定値が型番の測定可能範囲外です');
-    }
     const effectiveAt = input.effectiveAt ?? new Date();
     if (effectiveAt.getTime() > Date.now()) {
       throw new ApiError(400, '適用日時に未来の日時は指定できません');
     }
-    return prisma.torqueWrenchSettingHistory.create({
-      data: {
-        torqueWrenchProfileId: profileId,
-        lowerLimit,
-        nominalTorque,
-        upperLimit,
-        unit: TorqueUnitConverter.canonicalUnit(input.unit),
-        lowerLimitNm,
-        nominalTorqueNm,
-        upperLimitNm,
-        effectiveAt,
-        actorUserId: input.actorUserId ?? null,
-        actorUsername: input.actorUsername?.slice(0, 120) ?? null,
-        reason: input.reason?.trim().slice(0, 500) || null
+    return runAssemblyTransaction(async (tx) => {
+      await lockTorqueWrenchProfile(tx, profileId);
+      const profile = await tx.torqueWrenchProfile.findUnique({
+        where: { id: profileId },
+        include: { model: true }
+      });
+      if (!profile) throw new ApiError(404, '物理トルクレンチが見つかりません');
+      if (profile.model.torqueMinNm.gt(lowerLimitNm) || profile.model.torqueMaxNm.lt(upperLimitNm)) {
+        throw new ApiError(400, '設定値が型番の測定可能範囲外です');
       }
+      return tx.torqueWrenchSettingHistory.create({
+        data: {
+          torqueWrenchProfileId: profileId,
+          lowerLimit,
+          nominalTorque,
+          upperLimit,
+          unit: TorqueUnitConverter.canonicalUnit(input.unit),
+          lowerLimitNm,
+          nominalTorqueNm,
+          upperLimitNm,
+          effectiveAt,
+          actorUserId: input.actorUserId ?? null,
+          actorUsername: input.actorUsername?.slice(0, 120) ?? null,
+          reason: input.reason?.trim().slice(0, 500) || null
+        }
+      });
     });
   }
 

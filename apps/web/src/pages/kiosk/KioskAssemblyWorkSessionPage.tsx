@@ -52,7 +52,7 @@ const TAKEOVER_CONFIRMATION_ARM_DELAY_MS = 1200;
 function torqueAgentStateLabel(status: TorqueAgentLeaseStatus | null, reachable: boolean): string {
   if (!reachable) return '通信断';
   if (!status) return '使用可能';
-  if (status.state === 'owned_by_other') return '別端末が使用中';
+  if (status.state === 'owned_by_other') return '別の作業または端末が使用中';
   if (status.state === 'handoff_wait') return '引継ぎ待機中';
   if (status.state === 'communication_lost') return '通信断';
   if (status.state === 'fenced') return '接続権が移動済み';
@@ -65,7 +65,7 @@ function torqueAgentConnectionMessage(status: TorqueAgentLeaseStatus | null, rea
   if (!reachable) return 'torque-agentとの通信が切れました。接続状態を確認してください。';
   if (!status) return null;
   if (status.state === 'owned_by_other') {
-    return '別端末が使用中です。現物が手元にある場合だけ引継ぎ操作を行ってください。';
+    return '別の作業または端末が使用中です。現物が手元にある場合だけ引継ぎ操作を行ってください。';
   }
   if (status.state === 'handoff_wait') return '旧端末のBluetooth停止を待っています。';
   if (status.state === 'communication_lost') {

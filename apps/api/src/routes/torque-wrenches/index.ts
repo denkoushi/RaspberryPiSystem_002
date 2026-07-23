@@ -233,9 +233,9 @@ export async function registerTorqueWrenchRoutes(app: FastifyInstance): Promise<
 
   app.get('/assembly/work-sessions/:id/compatible-torque-wrenches', async (request) => {
     const { id } = assemblyWorkSessionParamsSchema.parse(request.params);
-    const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
+    await requireKioskClientDevice(request.headers['x-client-key']);
     return {
-      torqueWrenches: await traceabilityService.listCompatible(id, clientDevice.id)
+      torqueWrenches: await traceabilityService.listCompatible(id)
     };
   });
 

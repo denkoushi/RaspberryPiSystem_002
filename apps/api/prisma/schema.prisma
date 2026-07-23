@@ -2815,6 +2815,7 @@ model TorqueWrenchConnectionLease {
   leaseId               String              @unique
   generation            Int
   requestId             String
+  adoptedConfirmationId String?
   ownerClientDeviceId   String
   ownerSessionId        String
   acquiredAt            DateTime            @default(now())
@@ -2840,6 +2841,7 @@ model TorqueWrenchConnectionLeaseHistory {
   leaseId                  String
   generation               Int
   action                   String
+  adoptedConfirmationId    String?
   ownerClientDeviceId      String
   ownerClientDeviceName    String
   ownerSessionId           String

@@ -63,7 +63,7 @@ Validate the decision with an interactive three-screen preview at 1920x1080 and 
 ## Supersedes / Superseded By
 
 - Supersedes: none. This extends the assembly MVP while retaining its legacy path.
-- Superseded by: none.
+- Superseded by: `ADR-20260723-assembly-torque-cross-work-id-confirmation-reuse.md` supersedes only the session-local confirmation-reuse boundary. The remaining traceability decisions stay accepted.
 
 ## References
 
