@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 540,
-    "totalLines": 155459,
-    "totalBytes": 11743421,
+    "totalLines": 155491,
+    "totalBytes": 11747785,
     "withFrontmatter": 226,
     "withStatus": 84,
     "sourceOfTruthDeclared": 55,
@@ -5914,7 +5914,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1984,
-      "byteSize": 340512,
+      "byteSize": 340677,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -31408,8 +31408,8 @@
     },
     {
       "path": "docs/plans/assembly-torque-wrench-connection-lease-execplan.md",
-      "lineCount": 273,
-      "byteSize": 34497,
+      "lineCount": 305,
+      "byteSize": 38431,
       "hasFrontmatter": true,
       "title": "Assembly Torque Wrench Connection Lease",
       "status": "release_a_physical_acceptance_fix_in_progress",
@@ -34839,7 +34839,7 @@
     {
       "path": "docs/runbooks/assembly-torque-agent.md",
       "lineCount": 281,
-      "byteSize": 20749,
+      "byteSize": 21014,
       "hasFrontmatter": false,
       "title": "組立 torque-agent 運用Runbook",
       "status": null,

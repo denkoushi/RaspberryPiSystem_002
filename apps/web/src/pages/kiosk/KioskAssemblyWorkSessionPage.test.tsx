@@ -292,7 +292,7 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     });
   });
 
-  it('shows remote ownership and requires the second physical-presence confirmation before takeover', async () => {
+  it('blocks rapid click-through and requires a delayed physical-presence checkbox before takeover', async () => {
     mockGetAssemblyWorkSession.mockResolvedValue(requiredSession);
     mockListCompatibleTorqueWrenches.mockResolvedValue(compatibleTorqueWrenches);
     mockListCurrentTorqueWrenchConfirmations.mockResolvedValue(reusableTorqueConfirmation);
@@ -318,7 +318,21 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     fireEvent.click(screen.getByRole('button', { name: '現物が手元にあるため引き継ぐ' }));
     expect(agentFetch.mock.calls.some(([url]) => String(url).endsWith('/lease/takeover'))).toBe(false);
     expect(screen.getByText('レンチ本体がこの端末の前にあることを、もう一度確認してください。')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '現物を確認したので引き継ぐ' }));
+    const presenceCheckbox = screen.getByRole('checkbox', { name: 'レンチ本体がこの端末の前にあることを確認しました' });
+    const takeoverButton = screen.getByRole('button', { name: '確認して接続権を引き継ぐ' });
+    expect(presenceCheckbox).toBeDisabled();
+    expect(takeoverButton).toBeDisabled();
+
+    presenceCheckbox.click();
+    takeoverButton.click();
+    expect(presenceCheckbox).not.toBeChecked();
+    expect(agentFetch.mock.calls.some(([url]) => String(url).endsWith('/lease/takeover'))).toBe(false);
+
+    await waitFor(() => expect(presenceCheckbox).toBeEnabled(), { timeout: 3000 });
+    expect(takeoverButton).toBeDisabled();
+    fireEvent.click(presenceCheckbox);
+    expect(takeoverButton).toBeEnabled();
+    fireEvent.click(takeoverButton);
     await waitFor(() => {
       expect(agentFetch.mock.calls.some(([url]) => String(url).endsWith('/lease/takeover'))).toBe(true);
       expect(screen.getByText('引継ぎ待機中')).toBeInTheDocument();

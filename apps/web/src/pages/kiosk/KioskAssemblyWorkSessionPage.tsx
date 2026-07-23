@@ -47,6 +47,7 @@ type TorqueAgentLeaseStatus = {
 };
 
 const TORQUE_AGENT_ORIGIN = 'http://127.0.0.1:7073';
+const TAKEOVER_CONFIRMATION_ARM_DELAY_MS = 1200;
 
 function torqueAgentStateLabel(status: TorqueAgentLeaseStatus | null, reachable: boolean): string {
   if (!reachable) return '通信断';
@@ -111,6 +112,29 @@ export function KioskAssemblyWorkSessionPage() {
   const [agentStatus, setAgentStatus] = useState<TorqueAgentLeaseStatus | null>(null);
   const [torqueConnectionMessage, setTorqueConnectionMessage] = useState<string | null>(null);
   const [takeoverConfirmationVisible, setTakeoverConfirmationVisible] = useState(false);
+  const [takeoverConfirmationArmed, setTakeoverConfirmationArmed] = useState(false);
+  const [takeoverPhysicalPresenceConfirmed, setTakeoverPhysicalPresenceConfirmed] = useState(false);
+
+  const closeTakeoverConfirmation = useCallback(() => {
+    setTakeoverConfirmationVisible(false);
+    setTakeoverConfirmationArmed(false);
+    setTakeoverPhysicalPresenceConfirmed(false);
+  }, []);
+
+  const openTakeoverConfirmation = useCallback(() => {
+    setTakeoverConfirmationArmed(false);
+    setTakeoverPhysicalPresenceConfirmed(false);
+    setTakeoverConfirmationVisible(true);
+  }, []);
+
+  useEffect(() => {
+    if (!takeoverConfirmationVisible) return;
+    const timer = window.setTimeout(
+      () => setTakeoverConfirmationArmed(true),
+      TAKEOVER_CONFIRMATION_ARM_DELAY_MS
+    );
+    return () => window.clearTimeout(timer);
+  }, [takeoverConfirmationVisible]);
 
   useEffect(() => {
     if (!sessionId) {
@@ -184,7 +208,7 @@ export function KioskAssemblyWorkSessionPage() {
     setConfirmationReused(false);
     setAgentStatus(null);
     setTorqueConnectionMessage(null);
-    setTakeoverConfirmationVisible(false);
+    closeTakeoverConfirmation();
     void Promise.all([
       listCompatibleTorqueWrenchesForSession(session.id),
       listCurrentTorqueWrenchConfirmations(session.id)
@@ -213,7 +237,7 @@ export function KioskAssemblyWorkSessionPage() {
     return () => {
       cancelled = true;
     };
-  }, [session?.currentBoltId, session?.id, traceabilityRequired]);
+  }, [closeTakeoverConfirmation, session?.currentBoltId, session?.id, traceabilityRequired]);
 
   useEffect(() => {
     if (!session?.id || !traceabilityRequired) return;
@@ -365,13 +389,16 @@ export function KioskAssemblyWorkSessionPage() {
       });
       setAgentReachable(true);
       setAgentStatus(status);
-      setTakeoverConfirmationVisible(false);
+      closeTakeoverConfirmation();
       setTorqueConnectionMessage(torqueAgentConnectionMessage(status, true));
     });
 
   const takeoverWrench = () =>
     runBusy(async () => {
       if (!session?.currentBoltId || !confirmation) throw new Error('先に現物確認を完了してください。');
+      if (!takeoverConfirmationArmed || !takeoverPhysicalPresenceConfirmed) {
+        throw new Error('レンチ本体が手元にあることを確認してください。');
+      }
       const status = await postTorqueAgent('/lease/takeover', {
         sessionId: session.id,
         currentTemplateBoltId: session.currentBoltId,
@@ -383,7 +410,7 @@ export function KioskAssemblyWorkSessionPage() {
       });
       setAgentReachable(true);
       setAgentStatus(status);
-      setTakeoverConfirmationVisible(false);
+      closeTakeoverConfirmation();
       setTorqueConnectionMessage(torqueAgentConnectionMessage(status, true));
     });
 
@@ -393,7 +420,7 @@ export function KioskAssemblyWorkSessionPage() {
       setAgentReachable(true);
       setAgentStatus(status);
       setTorqueConnectionMessage(torqueAgentConnectionMessage(status, true));
-      setTakeoverConfirmationVisible(false);
+      closeTakeoverConfirmation();
     } catch {
       setAgentReachable(false);
       setTorqueConnectionMessage(torqueAgentConnectionMessage(null, false));
@@ -551,15 +578,40 @@ export function KioskAssemblyWorkSessionPage() {
                     {agentStatus.owner?.clientDeviceLocation ? `（${agentStatus.owner.clientDeviceLocation}）` : ''} が使用中
                   </div>
                   {!takeoverConfirmationVisible ? (
-                    <Button type="button" variant="secondary" disabled={busy} onClick={() => setTakeoverConfirmationVisible(true)}>
+                    <Button type="button" variant="secondary" disabled={busy} onClick={openTakeoverConfirmation}>
                       現物が手元にあるため引き継ぐ
                     </Button>
                   ) : (
-                    <div className="grid gap-2 rounded bg-slate-950/70 p-2">
+                    <div className="grid gap-3 rounded border border-amber-200/25 bg-slate-950/70 p-3">
                       <p className="text-xs font-semibold text-amber-100">レンチ本体がこの端末の前にあることを、もう一度確認してください。</p>
-                      <Button type="button" variant="danger" disabled={busy} onClick={takeoverWrench}>
-                        現物を確認したので引き継ぐ
-                      </Button>
+                      <label className="flex min-h-12 items-center gap-3 rounded border border-white/15 bg-slate-900 px-3 py-2 text-sm font-semibold text-white">
+                        <input
+                          type="checkbox"
+                          className="h-5 w-5 shrink-0 accent-amber-400"
+                          checked={takeoverPhysicalPresenceConfirmed}
+                          disabled={busy || !takeoverConfirmationArmed}
+                          onChange={(event) => setTakeoverPhysicalPresenceConfirmed(event.target.checked)}
+                        />
+                        <span>レンチ本体がこの端末の前にあることを確認しました</span>
+                      </label>
+                      <p className="text-xs text-white/65" aria-live="polite">
+                        {takeoverConfirmationArmed
+                          ? '確認欄にチェックしてから、接続権の引継ぎを実行してください。'
+                          : '誤操作防止のため、確認欄が有効になるまで少しお待ちください。'}
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button type="button" variant="secondary" disabled={busy} onClick={closeTakeoverConfirmation}>
+                          やめる
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="danger"
+                          disabled={busy || !takeoverConfirmationArmed || !takeoverPhysicalPresenceConfirmed}
+                          onClick={takeoverWrench}
+                        >
+                          確認して接続権を引き継ぐ
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </div>

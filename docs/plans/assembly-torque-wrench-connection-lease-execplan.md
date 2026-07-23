@@ -7,8 +7,8 @@ date: 2026-07-22
 source_of_truth: this document
 related_code: apps/api/prisma/schema.prisma, apps/api/src/services/torque-wrenches, clients/torque-agent, infrastructure/ansible/roles/client, apps/web/src/pages/kiosk/KioskAssemblyWorkSessionPage.tsx
 related_docs: ../decisions/ADR-20260722-assembly-torque-wrench-connection-lease.md, ../runbooks/assembly-torque-agent.md, ./assembly-torque-wrench-traceability-execplan.md
-validation: Release A at terminal SHA 38c7df98 is boot-verified and paired on both pilot terminals; normal transfer, USB replug, screen departure, Pi5 loss, and agent-stop acceptance pass, while physical takeover awaits one locally validated state-display correction
-open_items: exact-head CI and two-terminal redeploy for the takeover correction, bidirectional takeover acceptance, separate-floor acceptance, and enforcement activation
+validation: Release A at exact SHA f64c4da2 is verified on Pi5 and both pilot terminals; normal transfer, USB replug, screen departure, Pi5 loss, agent-stop, and non-overlapping StoneBase-to-Assembly takeover pass, while the aggregate-validated rapid-click confirmation interlock awaits exact-head CI and redeployment
+open_items: exact-head CI and three-host redeploy for the takeover confirmation interlock, deliberate bidirectional takeover acceptance, separate-floor acceptance, cross-work-ID confirmation-reuse product decision, and enforcement activation
 ---
 
 # Add a Fleet-Wide Connection Lease for the Shared Torque Wrench
@@ -44,7 +44,11 @@ The first production pilot is limited to `raspi4-kensaku-stonebase01` and `raspi
 - [x] (2026-07-23 09:44 JST) Reproduced the physical takeover blocker without repeated production retries. Pi5 correctly returned `TORQUE_WRENCH_LEASE_HELD` and the remote owner, but torque-agent converted every no-lease `lastError` to `communication_lost`; the kiosk also retained an old acquisition message after later heartbeat state changes. Added focused regressions and a local correction that separates transport loss from business rejection and derives the connection notice from each latest heartbeat. Agent core 29 tests, Ruff, focused Web 8 tests, and Web ESLint pass.
 - [x] (2026-07-23 09:51 JST) Completed the correction's aggregate local validation: torque-agent 45 tests and Ruff, Web 297 files/1470 tests and production build, root lint, document audit, `git diff --check`, all 821 deploy-contract tests, disposable-PostgreSQL migration replay, deploy-status integration, and all Ansible syntax checks pass. API, database schema, guard, Bluetooth helper, NFC, and public API contracts are unchanged.
 - [x] (2026-07-23 10:35 JST) Classified the first correction CI result as two newly disclosed dependency-security blockers rather than torque regressions. Updated `fast-uri` to 3.1.4, Sharp to 0.35.3 with the required Node 20.9 baseline, and the Caddy build's effective gRPC replacement to 1.82.1. Local source scanning now reports zero tracked HIGH/CRITICAL findings; full API validation, production builds, and the complete deploy-contract suite pass, with exact-head CI remaining the authoritative current-database image scan.
-- [ ] Publish one exact-head correction, complete CI as one aggregate result, redeploy StoneBase and Assembly-01 once, and rerun only the blocked takeover path in both directions before enforcement activation.
+- [x] (2026-07-23 12:09 JST) Passed exact-head CI at `f64c4da2` and completed standard rolling release `20260723-022706-9b18a5` through Pi5, StoneBase canary approval, and Assembly-01. All three hosts reported the exact SHA with verified evidence; the same-SHA post-release print-plan returned `targets=[]` and `warnings=[]`.
+- [x] (2026-07-23 12:53 JST) Physically took generation 10 over from StoneBase to Assembly-01 as generation 11. Continuous controller sampling recorded StoneBase ON/Assembly OFF, then both OFF for seven seconds, then StoneBase OFF/Assembly ON with no overlap; the old agent was fenced and the new agent reached `ready=true`. The operator did not deliberately activate the final confirmation button, so the two-stage UI was rejected despite the safe transport result. Both adapters were returned OFF and generation 11 was released with `OPERATOR_RELEASE`.
+- [x] (2026-07-23 12:59 JST) Reproduced the confirmation defect as the absence of any temporal or separate-control interlock after replacing the first button in place. Added a 1.2-second disabled interval, a separately disabled physical-presence checkbox, a differently positioned final action, cancellation, and a regression that proves rapid activation cannot call `/lease/takeover`.
+- [x] (2026-07-23 13:07 JST) Completed the correction's aggregate local validation: the focused kiosk suite (8 tests), Web full suite (297 files/1470 tests), Web lint and production build, root lint, document audit, `git diff --check`, all 821 deploy-contract tests, disposable-PostgreSQL deploy-status integration (20 tests), Ansible contracts (24 tests), and all Ansible syntax checks pass.
+- [ ] Publish one exact-head correction, redeploy the same three hosts once, and rerun only deliberate two-stage takeover plus the reverse direction before enforcement activation.
 
 ## Surprises & Discoveries
 
@@ -65,6 +69,9 @@ The first production pilot is limited to `raspi4-kensaku-stonebase01` and `raspi
 
 - Observation: A business rejection must remain HTTP 200 so an old durable event cannot block the SQLite outbox head.
   Evidence: the real-PostgreSQL focused test receives `CONNECTION_LEASE_REQUIRED` and `CONNECTION_LEASE_FENCED` as retained rejected records with status 200, while a delayed event for the still-current generation is accepted.
+
+- Observation: Replacing the first takeover button in place with an immediately active final button is not a reliable two-stage physical confirmation on a kiosk. A repeated pointer/touch input can target the newly rendered action before the operator deliberately confirms it.
+  Evidence: the first production takeover safely fenced and delayed Bluetooth power, but the database recorded `TAKEN_OVER` at the first interaction while the operator reported never deliberately pressing the final action. The original Web test proved only two scripted clicks and had no delay, checkbox, or rapid-click rejection assertion.
 
 - Observation: A current lease row must not prevent ordinary deletion of its owner session or client device, while transition history must remain independent.
   Evidence: the first full API run exposed restrictive current-row foreign keys through 35 existing cleanup failures. Changing only the current row's owner FKs to `ON DELETE CASCADE`, recreating the disposable database, and rerunning the failed suites produced 46/46 passing tests; the history table retains scalar snapshots and no parent FK.
@@ -248,6 +255,27 @@ Physical-acceptance correction evidence at 2026-07-23 09:51 JST:
     document audit and git diff --check: passed
     No API, database schema, guard, Bluetooth helper, NFC, or public Web contract changed
 
+Release A correction deployment and first takeover evidence at 2026-07-23 12:53 JST:
+
+    exact-head CI at f64c4da2: passed
+    standard rolling release 20260723-022706-9b18a5: success
+    Pi5, StoneBase, and Assembly-01: exact SHA with verified evidence
+    post-release same-SHA plan: targets=[] and warnings=[]
+    StoneBase-to-Assembly controller sampling: no simultaneous ON; seven-second both-OFF handoff
+    lease history: generation 11 TAKEN_OVER, followed by OPERATOR_RELEASE
+    two-stage deliberate-confirmation acceptance: failed; corrective interlock pending validation
+
+Rapid-click interlock correction evidence at 2026-07-23 13:07 JST:
+
+    focused kiosk tests: 8 passed
+    Web full suite: 297 files, 1470 passed
+    Web lint and production build: passed
+    root lint, document audit, and git diff --check: passed
+    deploy contracts: 821 passed
+    disposable PostgreSQL deploy-status integration: 20 passed
+    Ansible contracts: 24 passed; all playbook syntax checks passed
+    No API, database schema, guard, Bluetooth helper, NFC, or public API contract changed
+
 ## Interfaces and Dependencies
 
 The Pi5 API adds `GET /api/torque-wrenches/:id/connection-lease` and POST actions `acquire`, `renew`, `release`, `takeover`, and `enforcement/enable`. Client actions authenticate with `x-client-key`; activation authenticates with ADMIN or MANAGER JWT. Lease status is one of `available`, `owned_by_self`, `owned_by_other`, `handoff_wait`, or `expired`. Only the owner response contains the opaque lease ID and generation.
@@ -271,3 +299,7 @@ Revision note 2026-07-22 21:07 JST: Recorded successful two-terminal Release A `
 Revision note 2026-07-23 09:44 JST: Recorded final Release A boot deployment, pairing and independent physical-acceptance evidence, the confirmed takeover/UI-message blocker, the approved minimal correction, and the exact remaining CI, release, takeover, and enforcement gates.
 
 Revision note 2026-07-23 09:51 JST: Recorded the aggregate local validation result for the single takeover correction candidate; exact-head CI and the approved two-terminal release remain next.
+
+Revision note 2026-07-23 12:59 JST: Recorded exact-head Release A deployment, the safe non-overlapping first physical takeover, the operator-observed final-confirmation click-through, safe release, and the focused temporal-plus-checkbox UI interlock pending aggregate validation.
+
+Revision note 2026-07-23 13:07 JST: Recorded complete aggregate local validation for the rapid-click interlock correction; exact-head CI and the approved three-host rolling redeploy remain next.
