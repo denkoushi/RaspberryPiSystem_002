@@ -77,6 +77,7 @@ function torqueAgentConnectionMessage(status: TorqueAgentLeaseStatus | null, rea
   if (status.state === 'expired') {
     return '接続権の期限が切れました。もう一度「このレンチを使用開始」を押してください。';
   }
+  if (status.lastError === 'BROWSER_DISARMED') return null;
   if (status.lastError) return `トルクレンチ接続を開始できませんでした: ${status.lastError}`;
   if (status.leaseOwned && !status.ready) return '接続権を取得しました。Bluetooth接続を待っています。';
   return null;

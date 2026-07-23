@@ -368,6 +368,25 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     });
   });
 
+  it('does not render browser disarming after the last bolt as a connection failure', async () => {
+    mockGetAssemblyWorkSession.mockResolvedValue({
+      ...requiredSession,
+      currentBoltId: null
+    });
+    const agentFetch = vi.fn().mockResolvedValue(jsonResponse(agentStatus({
+      lastError: 'BROWSER_DISARMED'
+    })));
+    vi.stubGlobal('fetch', agentFetch);
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(agentFetch.mock.calls.some(([url]) => String(url).endsWith('/heartbeat'))).toBe(true);
+      expect(screen.getByText('使用可能')).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/トルクレンチ接続を開始できませんでした/)).not.toBeInTheDocument();
+  });
+
   it('replaces an acquired message when a later heartbeat reports communication loss', async () => {
     mockGetAssemblyWorkSession.mockResolvedValue(requiredSession);
     mockListCompatibleTorqueWrenches.mockResolvedValue(compatibleTorqueWrenches);

@@ -1,14 +1,14 @@
 ---
 title: Assembly Torque Wrench Connection Lease
 id: plan-assembly-torque-wrench-connection-lease
-status: release_a_physical_acceptance_fix_in_progress
+status: release_a_terminal_completion_notice_fix_in_progress
 scope: Pi5-owned physical torque-wrench lease, torque-agent fencing, exact external Bluetooth controller guard, and two-terminal pilot
 date: 2026-07-22
 source_of_truth: this document
 related_code: apps/api/prisma/schema.prisma, apps/api/src/services/torque-wrenches, clients/torque-agent, infrastructure/ansible/roles/client, apps/web/src/pages/kiosk/KioskAssemblyWorkSessionPage.tsx
 related_docs: ../decisions/ADR-20260722-assembly-torque-wrench-connection-lease.md, ../runbooks/assembly-torque-agent.md, ./assembly-torque-wrench-traceability-execplan.md
-validation: Release A at exact SHA f64c4da2 is verified on Pi5 and both pilot terminals; normal transfer, USB replug, screen departure, Pi5 loss, agent-stop, and non-overlapping StoneBase-to-Assembly takeover pass, while the aggregate-validated rapid-click confirmation interlock awaits exact-head CI and redeployment
-open_items: exact-head CI and three-host redeploy for the takeover confirmation interlock, deliberate bidirectional takeover acceptance, separate-floor acceptance, cross-work-ID confirmation-reuse product decision, and enforcement activation
+validation: Release A and the rapid-click confirmation interlock at exact SHA d10fdafb are deployed and verified on Pi5 and both pilot terminals; the locally corrected final-bolt BROWSER_DISARMED notice passes nine focused tests, all 297 Web files and 1471 tests, Web lint and production build, document audit, and diff checks
+open_items: publish and deploy the final-bolt notice correction after separate approval, reproduce the unexplained HID disappearance that lost memory 033, complete separate-floor input acceptance, make the cross-work-ID confirmation-reuse product decision, and activate enforcement only after separate approval
 ---
 
 # Add a Fleet-Wide Connection Lease for the Shared Torque Wrench
@@ -48,7 +48,9 @@ The first production pilot is limited to `raspi4-kensaku-stonebase01` and `raspi
 - [x] (2026-07-23 12:53 JST) Physically took generation 10 over from StoneBase to Assembly-01 as generation 11. Continuous controller sampling recorded StoneBase ON/Assembly OFF, then both OFF for seven seconds, then StoneBase OFF/Assembly ON with no overlap; the old agent was fenced and the new agent reached `ready=true`. The operator did not deliberately activate the final confirmation button, so the two-stage UI was rejected despite the safe transport result. Both adapters were returned OFF and generation 11 was released with `OPERATOR_RELEASE`.
 - [x] (2026-07-23 12:59 JST) Reproduced the confirmation defect as the absence of any temporal or separate-control interlock after replacing the first button in place. Added a 1.2-second disabled interval, a separately disabled physical-presence checkbox, a differently positioned final action, cancellation, and a regression that proves rapid activation cannot call `/lease/takeover`.
 - [x] (2026-07-23 13:07 JST) Completed the correction's aggregate local validation: the focused kiosk suite (8 tests), Web full suite (297 files/1470 tests), Web lint and production build, root lint, document audit, `git diff --check`, all 821 deploy-contract tests, disposable-PostgreSQL deploy-status integration (20 tests), Ansible contracts (24 tests), and all Ansible syntax checks pass.
-- [ ] Publish one exact-head correction, redeploy the same three hosts once, and rerun only deliberate two-stage takeover plus the reverse direction before enforcement activation.
+- [x] (2026-07-23 13:48 JST) Passed exact-head CI at `d10fdafb`, completed standard rolling release `20260723-041748-4329b4`, and deliberately verified the two-stage takeover in both directions. Controller observation showed no simultaneous ON state, the new owner reached HID readiness, and the old owner was fenced and powered OFF.
+- [x] (2026-07-23 14:56 JST) Distinguished two physical-test symptoms. Memory 033 was absent from PostgreSQL after the approved HID path disappeared with `ENODEV`; its initiating HCI cause remains unknown and no reconnect implementation was made. Memories 034 and 035 were then accepted under passive HCI capture. The final accepted bolt deliberately released generation 17 with `BROWSER_DISARMED`, but the kiosk rendered that expected release as a yellow connection-start failure and inserted a top-level banner that shifted the layout. Added a focused failing regression and suppressed only that expected notice. All nine focused tests, 297 Web files and 1471 tests, Web lint and production build, document audit, and diff checks pass.
+- [ ] Reproduce the memory-033 HID disappearance under passive HCI capture before changing reconnect behavior. Publish, deploy, and physically verify the final-bolt notice correction only after the corresponding separate approvals.
 
 ## Surprises & Discoveries
 
@@ -96,6 +98,12 @@ The first production pilot is limited to `raspi4-kensaku-stonebase01` and `raspi
 
 - Observation: an exact-head rerun may expose newly published dependency advisories even when the feature correction and its earlier local validation are unchanged.
   Evidence: the first correction CI reported fixed-version HIGH findings in `fast-uri`, Sharp, and Caddy's embedded gRPC module. Updating the three dependency boundaries together removed the tracked source findings and preserved all feature and deployment contracts.
+
+- Observation: after the final accepted bolt clears `currentBoltId`, the kiosk intentionally sends an unarmed heartbeat and torque-agent releases the lease with `BROWSER_DISARMED`; treating every `lastError` as an acquisition failure turns this expected safety transition into a yellow top-level error banner and causes a visible layout shift.
+  Evidence: generation 17 stored memory 035 as accepted at 14:46:15 JST, released with `BROWSER_DISARMED` at 14:46:16, and then powered the exact external adapter OFF by a local-host HCI disconnect. The focused Web regression reproduced the erroneous `トルクレンチ接続を開始できませんでした: BROWSER_DISARMED` banner from the same state.
+
+- Observation: the earlier missing memory 033 and the later final-bolt notice are separate failures.
+  Evidence: memory 033 never reached the local outbox, audit store, or PostgreSQL after the stable HID path returned `ENODEV` and was recreated about six seconds later. Memories 034 and 035 traversed HID, agent, and PostgreSQL under passive capture without an unexpected controller disconnect. The first event predates HCI capture, so its initiating disconnect reason is unknown.
 
 ## Decision Log
 
@@ -145,6 +153,14 @@ The first production pilot is limited to `raspi4-kensaku-stonebase01` and `raspi
 
 - Decision: Keep lease-operation notices separate from general assembly messages and refresh them from every loopback heartbeat response.
   Rationale: the visible notice must describe the current lease state after asynchronous communication loss, fencing, readiness, or release instead of preserving a past button result.
+  Date/Author: 2026-07-23 / Codex with user approval.
+
+- Decision: Suppress only `BROWSER_DISARMED` in the kiosk connection-notice mapper, while retaining the agent's fail-closed release and database audit reason unchanged.
+  Rationale: final-bolt disarming is expected and must not create an acquisition-error banner or layout shift; other lease and transport errors must remain visible.
+  Date/Author: 2026-07-23 / Codex with user approval.
+
+- Decision: Do not change HID retry timing or reconnect behavior from the memory-033 incident.
+  Rationale: the failure boundary is known, but the initiating HCI reason was not captured and two later controlled inputs succeeded. A transport change without reproducing the disconnect would be speculative.
   Date/Author: 2026-07-23 / Codex with user approval.
 
 ## Release A Gate Classification and State Transitions
@@ -303,3 +319,5 @@ Revision note 2026-07-23 09:51 JST: Recorded the aggregate local validation resu
 Revision note 2026-07-23 12:59 JST: Recorded exact-head Release A deployment, the safe non-overlapping first physical takeover, the operator-observed final-confirmation click-through, safe release, and the focused temporal-plus-checkbox UI interlock pending aggregate validation.
 
 Revision note 2026-07-23 13:07 JST: Recorded complete aggregate local validation for the rapid-click interlock correction; exact-head CI and the approved three-host rolling redeploy remain next.
+
+Revision note 2026-07-23 14:56 JST: Recorded exact-head deployment and bidirectional takeover acceptance, separated the unresolved memory-033 HID disappearance from the confirmed final-bolt notice defect, and documented the locally passing UI-only correction. No commit, push, deployment, reconnect change, or enforcement activation is authorized by this update.
