@@ -291,6 +291,7 @@ all:
               barcode_agent_rest_port: 7072
               # 外付けRTL8761BUと実測済みCEM3-BTLAだけをtorque-agentへ公開する。
               torque_agent_enabled: true
+              torque_connection_lease_enabled: true
               torque_agent_api_base_url: "{{ server_base_url }}"
               torque_agent_client_key: "{{ status_agent_client_key }}"
               # Pi5 currently presents a self-signed Caddy certificate. This exception is scoped to StoneBase.
@@ -345,6 +346,65 @@ all:
               nfc_agent_api_base_url: "{{ api_base_url }}"
               nfc_agent_client_id: "raspi4-sessaku-01-kiosk1"
               nfc_agent_client_secret: "client-key-raspi4-sessaku-01-kiosk1"
+            raspi4-assembly-01:
+              # Assembly-01 キオスク（Pi4 6台目）
+              # NOTE: Tailscale IP 登録前は local_network にフォールバックする
+              ansible_host: "{{ current_network.raspi4_assembly_01_ip | default(local_network.raspi4_assembly_01_ip) }}"
+              ansible_user: raspi4-assembly-01
+              # pi4_recovery_enabled は実機復旧受入れ完了後に限り明示的に有効化する
+              kiosk_browser_engine: "firefox"
+              kiosk_browser_mode: "app-like"
+              ibus_owner_mode: "single-owner"
+              ibus_disable_competing_autostart: true
+              tailscale_enabled: true
+              # 新規/再構築時のTailscale参加キーはPi5の既存Vaultを参照し、平文を追加しない
+              tailscale_auth_key: "{{ hostvars['raspberrypi5'].vault_tailscale_auth_key | default('') }}"
+              ansible_command_timeout: 600
+              status_agent_client_id: raspi4-assembly-01-kiosk1
+              status_agent_client_key: "client-key-raspi4-assembly-01-kiosk1"
+              status_agent_location: "第2工場 - Assembly-01"
+              kiosk_initial_route: "assembly"
+              kiosk_url: "{{ kiosk_full_url }}?clientKey={{ status_agent_client_key }}"
+              manage_kiosk_browser: true
+              services_to_restart:
+                - kiosk-browser.service
+                - status-agent.service
+                - status-agent.timer
+              sudo_nopasswd_commands:
+                - /usr/bin/systemctl start kiosk-browser.service
+                - /usr/bin/systemctl stop kiosk-browser.service
+                - /usr/bin/systemctl restart kiosk-browser.service
+                - /usr/bin/systemctl reboot
+                - /usr/bin/systemctl poweroff
+                - /usr/bin/systemctl start status-agent.service
+                - /usr/bin/systemctl stop status-agent.service
+                - /usr/bin/systemctl restart status-agent.service
+                - /usr/bin/systemctl start status-agent.timer
+                - /usr/bin/systemctl stop status-agent.timer
+                - /usr/bin/systemctl restart status-agent.timer
+              nfc_agent_api_base_url: "{{ api_base_url }}"
+              nfc_agent_client_id: "raspi4-assembly-01-kiosk1"
+              nfc_agent_client_secret: "client-key-raspi4-assembly-01-kiosk1"
+              # Release A installs the fail-closed lease path. Pairing remains a manual Release B gate.
+              torque_agent_enabled: true
+              torque_connection_lease_enabled: true
+              torque_agent_api_base_url: "{{ server_base_url }}"
+              torque_agent_client_key: "{{ status_agent_client_key }}"
+              torque_agent_tls_verify_mode: "insecure"
+              torque_agent_browser_origins:
+                - "{{ server_base_url }}"
+              torque_agent_bluetooth_adapter:
+                usb_vendor_id: "2357"
+                usb_product_id: "0604"
+              torque_agent_hid_links:
+                - link_name: "bluetooth-TOHNICHI_702902S-event-kbd"
+                  name: "TOHNICHI_702902S"
+                  uniq: "c4:90:43:98:7e:c3"
+                  vendor_id: "2f84"
+                  product_id: "0001"
+              torque_agent_hid_devices:
+                - path: "/dev/input/by-id/bluetooth-TOHNICHI_702902S-event-kbd"
+                  parserProfile: "cem3-btla-hogp-v1"
         signage:
           hosts:
             raspberrypi3:

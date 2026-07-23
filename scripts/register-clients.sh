@@ -33,6 +33,7 @@ fi
 ADMIN_USERNAME="${ADMIN_USERNAME:-admin}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin1234}"
 DRY_RUN="${DRY_RUN:-0}"
+REGISTER_CLIENT_HOST="${REGISTER_CLIENT_HOST:-}"
 
 is_truthy() {
   local value="${1:-}"
@@ -91,16 +92,26 @@ register_client() {
   local name="$1"
   local api_key="$2"
   local location="$3"
+  local kiosk_initial_route="${4:-}"
 
   echo "[INFO] Registering client: ${name}"
 
+  case "${kiosk_initial_route}" in
+    ""|borrow_tag|borrow_photo|leader_order_board|assembly|production_schedule) ;;
+    *)
+      echo "[ERROR] Invalid kiosk_initial_route for ${name}: ${kiosk_initial_route}" >&2
+      return 1
+      ;;
+  esac
+
   if is_truthy "${DRY_RUN}"; then
-    echo "[INFO] [DRY-RUN] Skip API call for client=${name}, apiKey=$(mask_client_key "${api_key}"), location=${location}"
+    echo "[INFO] [DRY-RUN] Skip API call for client=${name}, apiKey=$(mask_client_key "${api_key}"), location=${location}, kioskInitialRoute=${kiosk_initial_route:-unchanged}"
     return 0
   fi
   
   # クライアントデバイスを登録（管理者専用 POST /clients）
-  RESPONSE=$(curl -sS "${curl_common_opts[@]}" -X POST "${API_BASE_URL}/clients" \
+  local response
+  response=$(curl -sS "${curl_common_opts[@]}" -X POST "${API_BASE_URL}/clients" \
     -H "Authorization: Bearer ${TOKEN}" \
     -H "Content-Type: application/json" \
     -d "{
@@ -109,13 +120,29 @@ register_client() {
       \"location\": \"${location}\"
     }")
 
-  if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
-    echo "[ERROR] Failed to register client ${name}: $(echo "$RESPONSE" | jq -r '.message // .error')"
+  if echo "$response" | jq -e '.error' > /dev/null 2>&1; then
+    echo "[ERROR] Failed to register client ${name}: $(echo "$response" | jq -r '.message // .error')"
     return 1
-  else
-    echo "[SUCCESS] Client ${name} registered successfully"
-    return 0
   fi
+
+  if [ -n "${kiosk_initial_route}" ]; then
+    local client_id route_response
+    client_id="$(echo "$response" | jq -r '.client.id // empty')"
+    if [ -z "${client_id}" ]; then
+      echo "[ERROR] Registered client ${name} response did not include client.id" >&2
+      return 1
+    fi
+    route_response=$(curl -sS "${curl_common_opts[@]}" -X PUT "${API_BASE_URL}/clients/${client_id}" \
+      -H "Authorization: Bearer ${TOKEN}" \
+      -H "Content-Type: application/json" \
+      -d "{\"kioskInitialRoute\":\"${kiosk_initial_route}\"}")
+    if ! echo "$route_response" | jq -e --arg route "${kiosk_initial_route}" '.client.kioskInitialRoute == $route' > /dev/null 2>&1; then
+      echo "[ERROR] Failed to set kiosk initial route for ${name}: $(echo "$route_response" | jq -r '.message // .error // .code // "unexpected response"')" >&2
+      return 1
+    fi
+  fi
+
+  echo "[SUCCESS] Client ${name} registered successfully"
 }
 
 inventory_path="${PROJECT_ROOT}/infrastructure/ansible/inventory.yml"
@@ -166,6 +193,7 @@ for host_name, host_vars in walk_hosts(all_node):
     client_id = host_vars.get("status_agent_client_id")
     client_key = host_vars.get("status_agent_client_key")
     location = host_vars.get("status_agent_location") or ""
+    kiosk_initial_route = host_vars.get("kiosk_initial_route") or ""
     if not client_id or not client_key:
         continue
 
@@ -177,6 +205,7 @@ for host_name, host_vars in walk_hosts(all_node):
             "clientId": str(client_id),
             "clientKey": str(client_key),
             "location": str(location),
+            "kioskInitialRoute": str(kiosk_initial_route),
         }
     )
 
@@ -195,27 +224,42 @@ if [ -f "${inventory_path}" ]; then
   fi
 
   if [ -n "${inventory_jsonl}" ]; then
+    if [ -n "${REGISTER_CLIENT_HOST}" ]; then
+      inventory_jsonl="$(printf '%s\n' "${inventory_jsonl}" | jq -c --arg host "${REGISTER_CLIENT_HOST}" 'select(.host == $host)')"
+      if [ -z "${inventory_jsonl}" ]; then
+        echo "[ERROR] REGISTER_CLIENT_HOST was not found in inventory: ${REGISTER_CLIENT_HOST}" >&2
+        exit 1
+      fi
+    fi
     echo "${inventory_jsonl}" | while IFS= read -r line; do
       [ -z "${line}" ] && continue
       name="$(echo "${line}" | jq -r '.name')"
       client_key="$(echo "${line}" | jq -r '.clientKey')"
       location="$(echo "${line}" | jq -r '.location')"
+      kiosk_initial_route="$(echo "${line}" | jq -r '.kioskInitialRoute')"
       if is_invalid_client_key "${client_key}"; then
         echo "[WARN] Skip client ${name}: unresolved/invalid status_agent_client_key detected (${client_key})" >&2
         continue
       fi
-      register_client "${name}" "${client_key}" "${location}"
+      register_client "${name}" "${client_key}" "${location}" "${kiosk_initial_route}"
     done
   else
+    if [ -n "${REGISTER_CLIENT_HOST}" ]; then
+      echo "[ERROR] Could not select REGISTER_CLIENT_HOST because inventory parsing returned no hosts: ${REGISTER_CLIENT_HOST}" >&2
+      exit 1
+    fi
     echo "[WARN] No status-agent hosts found in inventory.yml (or parse failed). Registering example entries." >&2
     register_client "raspberrypi4" "client-key-raspberrypi4-kiosk1" "ラズパイ4 - キオスク1"
     register_client "raspberrypi3" "client-key-raspberrypi3-signage1" "ラズパイ3 - サイネージ1"
   fi
 else
+  if [ -n "${REGISTER_CLIENT_HOST}" ]; then
+    echo "[ERROR] inventory.yml not found; cannot select REGISTER_CLIENT_HOST=${REGISTER_CLIENT_HOST}" >&2
+    exit 1
+  fi
   echo "[WARN] inventory.yml not found. Registering example entries." >&2
   register_client "raspberrypi4" "client-key-raspberrypi4-kiosk1" "ラズパイ4 - キオスク1"
   register_client "raspberrypi3" "client-key-raspberrypi3-signage1" "ラズパイ3 - サイネージ1"
 fi
 
 echo "[INFO] Client registration completed"
-

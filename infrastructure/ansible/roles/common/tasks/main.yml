@@ -186,6 +186,7 @@
     fi
   args:
     executable: /bin/bash
+  become_user: "{{ ansible_user }}"
   environment: "{{ git_environment }}"
   register: git_full_result
   retries: 3

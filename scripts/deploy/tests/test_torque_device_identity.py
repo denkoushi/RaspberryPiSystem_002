@@ -20,6 +20,7 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
             'ATTRS{idVendor}=="{{ torque_agent_bluetooth_adapter.usb_vendor_id }}"',
             'ATTRS{idProduct}=="{{ torque_agent_bluetooth_adapter.usb_product_id }}"',
             'torque-bluetooth-adapter@%k.service',
+            'torque-bluetooth-guard.service',
         ):
             self.assertIn(fragment, rule)
         for fragment in (
@@ -60,6 +61,15 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
         unit = (CLIENT_ROLE / "templates/torque-bluetooth-adapter@.service.j2").read_text()
         self.assertIn("TimeoutStartSec=90", unit)
         self.assertIn("TimeoutStopSec=10", unit)
+
+        guard_unit = (CLIENT_ROLE / "templates/torque-bluetooth-guard.service.j2").read_text()
+        for fragment in (
+            "ExecStart=/usr/local/libexec/torque-bluetooth-guard --poll-seconds 1 --command-timeout-seconds 4",
+            "Restart=always",
+            "RuntimeDirectory=torque-bluetooth-guard",
+            "TimeoutStopSec=10",
+        ):
+            self.assertIn(fragment, guard_unit)
 
     def test_hid_rule_requires_full_wrench_identity_before_creating_by_id_link(self) -> None:
         rule = (CLIENT_ROLE / "templates/99-torque-wrench-hid.rules.j2").read_text()
@@ -111,7 +121,7 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
             "Prepare and synchronously verify the exact torque Bluetooth controller",
             "torque-bluetooth-adapter@{{ torque_bluetooth_controller_discovery.stdout | trim }}.service",
             "Require successful exact torque Bluetooth controller preparation",
-            "ExecMainCode=1",
+            "^ExecMainCode=(0|1)$",
             "ExecMainStatus=0",
             "state: started",
             "Start exact torque Bluetooth controller preparation without interruption",
@@ -128,6 +138,11 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
             r"torque-bluetooth-adapter@\{\{[^\n]+\n\s+state: restarted",
         )
         self.assertNotIn("ExecMainCode=exited", tasks)
+        self.assertIn("Verify guard initialized the exact external controller OFF", tasks)
+        self.assertIn(
+            "(torque_bluetooth_guard_initial_status.stdout | from_json).powered | bool",
+            tasks,
+        )
 
     def test_device_identity_files_are_in_the_sealed_rollback_contract(self) -> None:
         backend = (ROOT / "scripts/deploy/rolling_release/backends/ansible.py").read_text()
@@ -136,7 +151,9 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
 
         for destination in (
             "/usr/local/libexec/torque-bluetooth-adapter",
+            "/usr/local/libexec/torque-bluetooth-guard",
             "/etc/systemd/system/torque-bluetooth-adapter@.service",
+            "/etc/systemd/system/torque-bluetooth-guard.service",
             "/etc/udev/rules.d/90-torque-bluetooth-adapter.rules",
             "/etc/udev/rules.d/99-torque-wrench-hid.rules",
         ):

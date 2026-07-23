@@ -5,7 +5,11 @@ import {
   assertKioskApiClientKeyValid,
   requireKioskClientDevice
 } from '../../services/clients/client-device-auth.service.js';
-import { AssemblyTorqueTraceabilityService, TorqueWrenchMasterService } from '../../services/torque-wrenches/index.js';
+import {
+  AssemblyTorqueTraceabilityService,
+  TorqueWrenchConnectionLeaseService,
+  TorqueWrenchMasterService
+} from '../../services/torque-wrenches/index.js';
 import {
   assemblyWorkSessionParamsSchema,
   capabilityGroupCreateSchema,
@@ -19,12 +23,17 @@ import {
   torqueWrenchProfileUpdateSchema,
   torqueWrenchSettingCreateSchema,
   torqueWrenchConfirmationCreateSchema,
-  torqueOverrideRecordSchema
+  torqueOverrideRecordSchema,
+  torqueWrenchConnectionLeaseAcquireSchema,
+  torqueWrenchConnectionLeaseEnforcementSchema,
+  torqueWrenchConnectionLeaseTakeoverSchema,
+  torqueWrenchConnectionLeaseTokenSchema
 } from './schemas.js';
 
 export async function registerTorqueWrenchRoutes(app: FastifyInstance): Promise<void> {
   const service = new TorqueWrenchMasterService();
   const traceabilityService = new AssemblyTorqueTraceabilityService();
+  const connectionLeaseService = new TorqueWrenchConnectionLeaseService();
   const canView = authorizeRoles('ADMIN', 'MANAGER', 'VIEWER');
   const canWrite = authorizeRoles('ADMIN', 'MANAGER');
 
@@ -125,6 +134,102 @@ export async function registerTorqueWrenchRoutes(app: FastifyInstance): Promise<
     });
     return reply.code(201).send({ setting });
   });
+
+  app.get(
+    '/torque-wrenches/:id/connection-lease',
+    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+    async (request) => {
+      const { id } = torqueWrenchIdParamsSchema.parse(request.params);
+      const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
+      return { lease: await connectionLeaseService.getStatus(id, clientDevice.id) };
+    }
+  );
+
+  app.post(
+    '/torque-wrenches/:id/connection-lease/acquire',
+    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+    async (request) => {
+      const { id } = torqueWrenchIdParamsSchema.parse(request.params);
+      const body = torqueWrenchConnectionLeaseAcquireSchema.parse(request.body);
+      const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
+      return {
+        lease: await connectionLeaseService.acquire({
+          torqueWrenchProfileId: id,
+          clientDeviceId: clientDevice.id,
+          ...body
+        })
+      };
+    }
+  );
+
+  app.post(
+    '/torque-wrenches/:id/connection-lease/takeover',
+    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+    async (request) => {
+      const { id } = torqueWrenchIdParamsSchema.parse(request.params);
+      const body = torqueWrenchConnectionLeaseTakeoverSchema.parse(request.body);
+      const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
+      return {
+        lease: await connectionLeaseService.takeover({
+          torqueWrenchProfileId: id,
+          clientDeviceId: clientDevice.id,
+          ...body
+        })
+      };
+    }
+  );
+
+  app.post(
+    '/torque-wrenches/:id/connection-lease/renew',
+    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+    async (request) => {
+      const { id } = torqueWrenchIdParamsSchema.parse(request.params);
+      const body = torqueWrenchConnectionLeaseTokenSchema.parse(request.body);
+      const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
+      return {
+        lease: await connectionLeaseService.renew({
+          torqueWrenchProfileId: id,
+          clientDeviceId: clientDevice.id,
+          sessionId: body.sessionId,
+          leaseId: body.leaseId,
+          generation: body.generation
+        })
+      };
+    }
+  );
+
+  app.post(
+    '/torque-wrenches/:id/connection-lease/release',
+    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+    async (request) => {
+      const { id } = torqueWrenchIdParamsSchema.parse(request.params);
+      const body = torqueWrenchConnectionLeaseTokenSchema.parse(request.body);
+      const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
+      return {
+        lease: await connectionLeaseService.release({
+          torqueWrenchProfileId: id,
+          clientDeviceId: clientDevice.id,
+          ...body
+        })
+      };
+    }
+  );
+
+  app.post(
+    '/torque-wrenches/:id/connection-lease/enforcement/enable',
+    { preHandler: canWrite },
+    async (request) => {
+      const { id } = torqueWrenchIdParamsSchema.parse(request.params);
+      const body = torqueWrenchConnectionLeaseEnforcementSchema.parse(request.body);
+      const torqueWrench = await connectionLeaseService.enableEnforcement({
+        torqueWrenchProfileId: id,
+        reason: body.reason,
+        actorUserId: request.user!.id,
+        actorUsername: request.user!.username
+      });
+      return { torqueWrench };
+    }
+  );
 
   app.get('/assembly/work-sessions/:id/compatible-torque-wrenches', async (request) => {
     const { id } = assemblyWorkSessionParamsSchema.parse(request.params);

@@ -29,6 +29,7 @@ async def _read_hid_connection(
     on_decode_error: Callable[[Path, DecodedHidFrame], Awaitable[None]] | None,
     frame_terminators: frozenset[str] | None,
     evdev: Any,
+    on_exclusive_state: Callable[[Path, bool], None] | None,
 ) -> None:
     try:
         device = evdev.InputDevice(str(path))
@@ -44,6 +45,8 @@ async def _read_hid_connection(
         except OSError as error:
             raise _HidConnectionUnavailable(str(error)) from error
         LOGGER.info("Exclusively grabbed HID device %s", path)
+        if on_exclusive_state is not None:
+            on_exclusive_state(path, True)
         try:
             iterator = device.async_read_loop().__aiter__()
         except OSError as error:
@@ -82,6 +85,8 @@ async def _read_hid_connection(
             if frame.text:
                 await on_line(path, frame.text)
     finally:
+        if on_exclusive_state is not None:
+            on_exclusive_state(path, False)
         try:
             if grabbed:
                 device.ungrab()
@@ -100,6 +105,7 @@ async def read_hid_device(
     on_decode_error: Callable[[Path, DecodedHidFrame], Awaitable[None]] | None = None,
     frame_terminators: frozenset[str] | None = None,
     retry_delay_seconds: float = 1.0,
+    on_exclusive_state: Callable[[Path, bool], None] | None = None,
 ) -> None:
     if retry_delay_seconds <= 0:
         raise ValueError("retry_delay_seconds must be greater than zero")
@@ -107,7 +113,14 @@ async def read_hid_device(
     unavailable_logged = False
     while True:
         try:
-            await _read_hid_connection(path, on_line, on_decode_error, frame_terminators, evdev)
+            await _read_hid_connection(
+                path,
+                on_line,
+                on_decode_error,
+                frame_terminators,
+                evdev,
+                on_exclusive_state,
+            )
         except _HidConnectionUnavailable as error:
             if error.was_connected or not unavailable_logged:
                 LOGGER.warning("HID device %s unavailable; retrying same configured path: %s", path, error)

@@ -603,6 +603,8 @@ function serializeSession(session: AssemblyWorkSessionDetail, sessionService: As
       deviceRecordedAt: dateToIso(record.deviceRecordedAt),
       deviceMemoryCounter: record.deviceMemoryCounter,
       deviceJudgement: record.deviceJudgement,
+      connectionLeaseId: record.connectionLeaseId,
+      connectionLeaseGeneration: record.connectionLeaseGeneration,
       overrideActorUsername: record.overrideActorUsername,
       overrideReason: record.overrideReason,
       recordedAt: record.recordedAt.toISOString(),

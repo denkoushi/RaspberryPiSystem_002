@@ -68,7 +68,7 @@ sudo journalctl -u backup-verify-quarterly.service -n 200
 ## Pi5本番の現在方針（2026-07-12）
 
 - `/app/storage/pdfs` は `enabled: false`。PDFは中核機能の稼働に必須ではないため、2GB Dropboxの推奨対象から外します。
-- `raspi4-sessaku-01` のNFCエージェント `.env`、運用ユーザーSSH、Tailscale状態、status-agent設定を `client-file` / `client-directory` として登録済みです。
+- `raspi4-sessaku-01` と `raspi4-assembly-01` のNFCエージェント `.env`、運用ユーザーSSH、Tailscale状態、status-agent設定を `client-file` / `client-directory` の推奨対象として管理します。
 - 上記クライアント対象は日次（`0 2 * * *`）、Dropbox、保持14日・最大4世代です。
 - 実機検証と容量回復の詳細は [バックアップ・リストア関連KB](../knowledge-base/infrastructure/backup-restore.md#backup-restore-20260712) を参照してください。
 

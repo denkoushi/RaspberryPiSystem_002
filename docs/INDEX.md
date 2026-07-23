@@ -26,6 +26,8 @@
 
 ### 最新アップデート（2026-07-17 · 組立トルクレンチ締付トレーサビリティ · ローカル実装済・実機parser待ち）
 
+- **共用トルクレンチの複数端末排他接続（2026-07-22）**: Pi5/PostgreSQLリース、世代fence、外付けBluetoothガード、明示的な使用開始・終了・現物引継ぎをRelease AとしてPi5・StoneBase・Assembly-01へ配備済み。通常移動と非重複の現物引継ぎは実機確認済みで、二段階確認の連続入力インターロック是正と逆方向受入を継続中。enforcementは未有効。**正本**: [ExecPlan](./plans/assembly-torque-wrench-connection-lease-execplan.md) · [Runbook](./runbooks/assembly-torque-agent.md) · [ADR](./decisions/ADR-20260722-assembly-torque-wrench-connection-lease.md)
+
 - **物理トルクレンチと締付実績の追跡**: `MeasuringInstrument`を物理資産の正本として再利用し、型番・製造番号・適合グループ・追記専用設定履歴、REQUIREDテンプレート、現物確認、誤レンチ拒否監査、冪等agent入力、管理者例外入力を追加。丸数字の同一条件反映と確認引継ぎを実装。CEM3-BTLA正式parserは実機fixture承認待ちで、未デプロイ。**正本**: [ExecPlan](./plans/assembly-torque-wrench-traceability-execplan.md) · [Assembly Plan](./plans/kiosk-assembly-torque-management-mvp.md) · [Torque Runbook](./runbooks/assembly-torque-agent.md) · [Client-agent Runbook](./runbooks/client-agent-addition.md) · [ADR](./decisions/ADR-20260717-assembly-torque-wrench-traceability.md)
 - **組立 作業用ID・製品構成・正式ID**: 作業開始IDを作業用IDとして扱い、完成済みサブアセンブリの階層構成と最上位正式IDの履歴付与を実装・ローカル検証済み。**正本**: [ExecPlan](./plans/assembly-work-id-traceability-execplan.md) · [ADR](./decisions/ADR-20260720-assembly-work-id-genealogy-and-formal-id.md)
 

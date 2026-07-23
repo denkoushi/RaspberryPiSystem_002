@@ -82,7 +82,7 @@ update-frequency: medium
 | **status-agent設定** | `/etc/raspi-status-agent.conf` | ✅ **推奨** | Pi5の`backup.json`に`client-file`ターゲットを登録 |
 | **NFCリーダー設定** | システム設定 | ❌ 不要 | ハードウェア設定、再設定可能 |
 
-**本番登録済み端末**: `raspi4-sessaku-01` を含むPi4キオスク5台。各対象は日次（`0 2 * * *`）、Dropbox、保持14日・最大4世代で運用します。クライアント端末のファイルは物理的に別マシン上に存在するため、Ansibleを使用してPi5へ取得してからバックアップします。
+**本番登録対象端末**: `raspi4-assembly-01` を含むPi4キオスク6台。各対象は日次（`0 2 * * *`）、Dropbox、保持14日・最大4世代で運用します。クライアント端末のファイルは物理的に別マシン上に存在するため、Ansibleを使用してPi5へ取得してからバックアップします。
 
 PDFの扱い、実機検証結果、Dropbox容量の復旧履歴は [KB: バックアップ・リストア関連](../knowledge-base/infrastructure/backup-restore.md#backup-restore-20260712) を正本とします。
 

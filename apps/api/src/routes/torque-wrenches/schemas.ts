@@ -91,7 +91,9 @@ export const agentTorqueRecordSchema = z.object({
   rawPayload: z.unknown(),
   deviceRecordedAt: z.coerce.date().nullable().optional(),
   deviceMemoryCounter: z.string().trim().max(120).nullable().optional(),
-  deviceJudgement: z.string().trim().max(80).nullable().optional()
+  deviceJudgement: z.string().trim().max(80).nullable().optional(),
+  connectionLeaseId: id.nullable().optional(),
+  connectionLeaseGeneration: z.number().int().positive().nullable().optional()
 }).superRefine((value, ctx) => {
   if (!Object.prototype.hasOwnProperty.call(value, 'rawPayload')) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['rawPayload'], message: '原文payloadが必要です' });
@@ -102,5 +104,27 @@ export const torqueOverrideRecordSchema = z.object({
   confirmationId: id,
   value: z.coerce.number().finite(),
   unit: z.string().trim().min(1).max(40),
+  reason: z.string().trim().min(1).max(500)
+});
+
+export const torqueWrenchConnectionLeaseAcquireSchema = z.object({
+  sessionId: id,
+  confirmationId: id,
+  requestId: z.string().trim().min(1).max(160)
+});
+
+export const torqueWrenchConnectionLeaseTakeoverSchema = torqueWrenchConnectionLeaseAcquireSchema.extend({
+  physicalWrenchPresent: z.literal(true),
+  reason: z.string().trim().min(1).max(500)
+});
+
+export const torqueWrenchConnectionLeaseTokenSchema = z.object({
+  sessionId: id,
+  leaseId: id,
+  generation: z.number().int().positive(),
+  reason: z.string().trim().max(500).nullable().optional()
+});
+
+export const torqueWrenchConnectionLeaseEnforcementSchema = z.object({
   reason: z.string().trim().min(1).max(500)
 });

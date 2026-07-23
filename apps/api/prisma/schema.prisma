@@ -262,17 +262,24 @@ model TorqueWrenchModel {
 
 /// 製造番号で識別する物理トルクレンチ。校正・保管・状態は MeasuringInstrument を正本とする。
 model TorqueWrenchProfile {
-  id                    String                             @id @default(uuid())
-  measuringInstrumentId String                             @unique
-  modelId               String
-  serialNumber          String
-  serialNumberKey       String                             @unique
-  createdAt             DateTime                           @default(now())
-  updatedAt             DateTime                           @updatedAt
-  measuringInstrument   MeasuringInstrument                @relation(fields: [measuringInstrumentId], references: [id], onDelete: Restrict)
-  model                 TorqueWrenchModel                  @relation(fields: [modelId], references: [id], onDelete: Restrict)
-  settingHistories      TorqueWrenchSettingHistory[]
-  confirmations         AssemblyTorqueWrenchConfirmation[]
+  id                                String                               @id @default(uuid())
+  measuringInstrumentId             String                               @unique
+  modelId                           String
+  serialNumber                      String
+  serialNumberKey                   String                               @unique
+  /// NULL keeps the expand-phase compatibility path. Once set, agent events require a valid connection lease.
+  connectionLeaseEnforcedAt         DateTime?
+  connectionLeaseEnforcementReason  String?
+  connectionLeaseEnforcedByUserId   String?
+  connectionLeaseEnforcedByUsername String?
+  createdAt                         DateTime                             @default(now())
+  updatedAt                         DateTime                             @updatedAt
+  measuringInstrument               MeasuringInstrument                  @relation(fields: [measuringInstrumentId], references: [id], onDelete: Restrict)
+  model                             TorqueWrenchModel                    @relation(fields: [modelId], references: [id], onDelete: Restrict)
+  settingHistories                  TorqueWrenchSettingHistory[]
+  confirmations                     AssemblyTorqueWrenchConfirmation[]
+  connectionLease                   TorqueWrenchConnectionLease?
+  connectionLeaseHistory            TorqueWrenchConnectionLeaseHistory[]
 
   @@index([modelId], map: "TorqueWrenchProfile_idx_model")
 }
@@ -431,6 +438,7 @@ model ClientDevice {
   machinePalletEvents                MachinePalletEvent[]
   haizenScanEvents                   HaizenScanEvent[]
   haizenCurrentPlacements            HaizenCurrentPlacement[]       @relation("HaizenCurrentLastDevice")
+  torqueWrenchConnectionLeases       TorqueWrenchConnectionLease[]
 
   @@index([statusClientId])
 }
@@ -2477,18 +2485,18 @@ model AssemblyProcedureOrderItem {
 
 /// 組立トルク管理: 型番/FHINCD + 手順パターンごとの締付テンプレート。
 model AssemblyTemplate {
-  id                  String                         @id @default(uuid())
+  id                  String                      @id @default(uuid())
   modelCode           String
   procedurePattern    String
   name                String
-  version             Int                            @default(1)
-  isActive            Boolean                        @default(true)
+  version             Int                         @default(1)
+  isActive            Boolean                     @default(true)
   procedureDocumentId String
   /// Expand-first rollout: NULL on pre-feature rows means LEGACY.
   traceabilityMode    String?
-  createdAt           DateTime                       @default(now())
-  updatedAt           DateTime                       @updatedAt
-  procedureDocument   AssemblyProcedureDocument      @relation(fields: [procedureDocumentId], references: [id], onDelete: Restrict)
+  createdAt           DateTime                    @default(now())
+  updatedAt           DateTime                    @updatedAt
+  procedureDocument   AssemblyProcedureDocument   @relation(fields: [procedureDocumentId], references: [id], onDelete: Restrict)
   areas               AssemblyTemplateArea[]
   checkItems          AssemblyTemplateCheckItem[]
   workSessions        AssemblyWorkSession[]
@@ -2596,15 +2604,15 @@ model AssemblyTemplateCheckItem {
 /// 組立キオスク: 作業開始時に払い出す全体一意の作業用ID。
 /// 物理テーブルと列名は旧シリアルNo.実装と互換に保つ。
 model AssemblyWorkUnit {
-  id                           String                              @id @default(uuid())
-  workId                       String                              @unique @map("serialNo")
-  createdAt                    DateTime                            @default(now())
-  updatedAt                    DateTime                            @updatedAt
-  lotSerial                    AssemblyLotSerial?
-  workSession                  AssemblyWorkSession?
-  parentCompositionLinks       AssemblyWorkUnitComposition[]       @relation("AssemblyCompositionParent")
-  childCompositionLinks        AssemblyWorkUnitComposition[]       @relation("AssemblyCompositionChild")
-  formalIdentifierAssignments  AssemblyFormalIdentifierAssignment[]
+  id                          String                               @id @default(uuid())
+  workId                      String                               @unique @map("serialNo")
+  createdAt                   DateTime                             @default(now())
+  updatedAt                   DateTime                             @updatedAt
+  lotSerial                   AssemblyLotSerial?
+  workSession                 AssemblyWorkSession?
+  parentCompositionLinks      AssemblyWorkUnitComposition[]        @relation("AssemblyCompositionParent")
+  childCompositionLinks       AssemblyWorkUnitComposition[]        @relation("AssemblyCompositionChild")
+  formalIdentifierAssignments AssemblyFormalIdentifierAssignment[]
 
   @@map("AssemblySerialRegistry")
 }
@@ -2648,36 +2656,37 @@ model AssemblyLotSerial {
 
 /// 組立トルク管理: 製番/シリアル単位の作業実績。
 model AssemblyWorkSession {
-  id                        String                             @id @default(uuid())
-  templateId                String
-  workUnitId                String?                            @unique @map("serialRegistryId")
-  lotSerialId               String?                            @unique
-  status                    AssemblyWorkSessionStatus          @default(IN_PROGRESS)
-  productNo                 String
-  workId                    String                             @map("serialNo")
-  nameplateNo               String
-  operatorEmployeeId        String?
-  operatorNameSnapshot      String
-  targetUnit                String
-  torqueWrenchId            String
-  clientDeviceId            String?
-  clientDeviceNameSnapshot  String?
-  currentAreaId             String?
-  currentBoltId             String?
-  startedAt                 DateTime                           @default(now())
-  completedAt               DateTime?
-  cancelledAt               DateTime?
-  cancelReason              String?
-  createdAt                 DateTime                           @default(now())
-  updatedAt                 DateTime                           @updatedAt
-  template                  AssemblyTemplate                   @relation(fields: [templateId], references: [id], onDelete: Restrict)
-  workUnit                  AssemblyWorkUnit?                  @relation(fields: [workUnitId], references: [id], onDelete: Restrict)
-  lotSerial                 AssemblyLotSerial?                 @relation(fields: [lotSerialId], references: [id], onDelete: SetNull)
-  torqueRecords             AssemblyTorqueRecord[]
-  checkRecords              AssemblyCheckRecord[]
-  restartLogs               AssemblyAreaRestartLog[]
-  approval                  AssemblyWorkSessionApproval?
-  torqueWrenchConfirmations AssemblyTorqueWrenchConfirmation[]
+  id                           String                             @id @default(uuid())
+  templateId                   String
+  workUnitId                   String?                            @unique @map("serialRegistryId")
+  lotSerialId                  String?                            @unique
+  status                       AssemblyWorkSessionStatus          @default(IN_PROGRESS)
+  productNo                    String
+  workId                       String                             @map("serialNo")
+  nameplateNo                  String
+  operatorEmployeeId           String?
+  operatorNameSnapshot         String
+  targetUnit                   String
+  torqueWrenchId               String
+  clientDeviceId               String?
+  clientDeviceNameSnapshot     String?
+  currentAreaId                String?
+  currentBoltId                String?
+  startedAt                    DateTime                           @default(now())
+  completedAt                  DateTime?
+  cancelledAt                  DateTime?
+  cancelReason                 String?
+  createdAt                    DateTime                           @default(now())
+  updatedAt                    DateTime                           @updatedAt
+  template                     AssemblyTemplate                   @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  workUnit                     AssemblyWorkUnit?                  @relation(fields: [workUnitId], references: [id], onDelete: Restrict)
+  lotSerial                    AssemblyLotSerial?                 @relation(fields: [lotSerialId], references: [id], onDelete: SetNull)
+  torqueRecords                AssemblyTorqueRecord[]
+  checkRecords                 AssemblyCheckRecord[]
+  restartLogs                  AssemblyAreaRestartLog[]
+  approval                     AssemblyWorkSessionApproval?
+  torqueWrenchConfirmations    AssemblyTorqueWrenchConfirmation[]
+  torqueWrenchConnectionLeases TorqueWrenchConnectionLease[]
 
   @@index([status, updatedAt], map: "AssemblyWorkSession_idx_status_updated")
   @@index([productNo, status], map: "AssemblyWorkSession_idx_product_status")
@@ -2687,20 +2696,20 @@ model AssemblyWorkSession {
 
 /// 組立キオスク: 作業用IDの親子構成履歴。unlinkedAt が NULL の行だけが現在有効。
 model AssemblyWorkUnitComposition {
-  id                             String           @id @default(uuid())
-  parentWorkUnitId               String
-  childWorkUnitId                String
-  linkedAt                       DateTime         @default(now())
-  linkedByUsernameSnapshot       String?
-  linkedByClientDeviceId          String?
-  linkedByClientDeviceNameSnapshot String?
-  unlinkedAt                     DateTime?
-  unlinkedByUsernameSnapshot     String?
-  unlinkedByClientDeviceId        String?
+  id                                 String           @id @default(uuid())
+  parentWorkUnitId                   String
+  childWorkUnitId                    String
+  linkedAt                           DateTime         @default(now())
+  linkedByUsernameSnapshot           String?
+  linkedByClientDeviceId             String?
+  linkedByClientDeviceNameSnapshot   String?
+  unlinkedAt                         DateTime?
+  unlinkedByUsernameSnapshot         String?
+  unlinkedByClientDeviceId           String?
   unlinkedByClientDeviceNameSnapshot String?
-  unlinkReason                   String?
-  parentWorkUnit                 AssemblyWorkUnit @relation("AssemblyCompositionParent", fields: [parentWorkUnitId], references: [id], onDelete: Restrict)
-  childWorkUnit                  AssemblyWorkUnit @relation("AssemblyCompositionChild", fields: [childWorkUnitId], references: [id], onDelete: Restrict)
+  unlinkReason                       String?
+  parentWorkUnit                     AssemblyWorkUnit @relation("AssemblyCompositionParent", fields: [parentWorkUnitId], references: [id], onDelete: Restrict)
+  childWorkUnit                      AssemblyWorkUnit @relation("AssemblyCompositionChild", fields: [childWorkUnitId], references: [id], onDelete: Restrict)
 
   @@index([parentWorkUnitId, unlinkedAt], map: "AssemblyWorkUnitComposition_idx_parent_active")
   @@index([childWorkUnitId, unlinkedAt], map: "AssemblyWorkUnitComposition_idx_child_active")
@@ -2708,19 +2717,19 @@ model AssemblyWorkUnitComposition {
 
 /// 組立キオスク: 最上位完成品へ後付けする正式IDの履歴。supersededAt が NULL の行だけが現在有効。
 model AssemblyFormalIdentifierAssignment {
-  id                               String           @id @default(uuid())
-  workUnitId                       String
-  formalId                         String           @unique
-  assignedAt                       DateTime         @default(now())
-  assignedByUsernameSnapshot       String?
-  assignedByClientDeviceId          String?
-  assignedByClientDeviceNameSnapshot String?
-  supersededAt                     DateTime?
-  supersededByUsernameSnapshot     String?
-  supersededByClientDeviceId        String?
+  id                                   String           @id @default(uuid())
+  workUnitId                           String
+  formalId                             String           @unique
+  assignedAt                           DateTime         @default(now())
+  assignedByUsernameSnapshot           String?
+  assignedByClientDeviceId             String?
+  assignedByClientDeviceNameSnapshot   String?
+  supersededAt                         DateTime?
+  supersededByUsernameSnapshot         String?
+  supersededByClientDeviceId           String?
   supersededByClientDeviceNameSnapshot String?
-  supersedeReason                  String?
-  workUnit                         AssemblyWorkUnit @relation(fields: [workUnitId], references: [id], onDelete: Restrict)
+  supersedeReason                      String?
+  workUnit                             AssemblyWorkUnit @relation(fields: [workUnitId], references: [id], onDelete: Restrict)
 
   @@index([workUnitId, supersededAt], map: "AssemblyFormalIdentifierAssignment_idx_work_unit_active")
 }
@@ -2750,17 +2759,17 @@ model AssemblyTorqueWrenchConfirmation {
 
 /// 組立トルク管理: トルクレンチ入力の履歴。NGや重複無視も削除せず残す。
 model AssemblyTorqueRecord {
-  id                           String                            @id @default(uuid())
+  id                           String                        @id @default(uuid())
   sessionId                    String
   templateBoltId               String
   attempt                      Int
-  inputSource                  AssemblyTorqueInputSource         @default(MANUAL)
+  inputSource                  AssemblyTorqueInputSource     @default(MANUAL)
   rawPayload                   Json?
-  value                        Decimal?                          @db.Decimal(18, 6)
+  value                        Decimal?                      @db.Decimal(18, 6)
   inputUnit                    String?
-  valueNm                      Decimal?                          @db.Decimal(18, 6)
+  valueNm                      Decimal?                      @db.Decimal(18, 6)
   judgement                    AssemblyTorqueRecordJudgement
-  accepted                     Boolean                           @default(false)
+  accepted                     Boolean                       @default(false)
   ignoredReason                String?
   torqueWrenchProfileId        String?
   confirmationId               String?
@@ -2768,9 +2777,9 @@ model AssemblyTorqueRecord {
   serialNumberSnapshot         String?
   manufacturerSnapshot         String?
   modelNumberSnapshot          String?
-  settingLowerLimitSnapshot    Decimal?                          @db.Decimal(18, 6)
-  settingNominalTorqueSnapshot Decimal?                          @db.Decimal(18, 6)
-  settingUpperLimitSnapshot    Decimal?                          @db.Decimal(18, 6)
+  settingLowerLimitSnapshot    Decimal?                      @db.Decimal(18, 6)
+  settingNominalTorqueSnapshot Decimal?                      @db.Decimal(18, 6)
+  settingUpperLimitSnapshot    Decimal?                      @db.Decimal(18, 6)
   settingUnitSnapshot          String?
   sourceClientDeviceId         String?
   sourceEventKey               String?
@@ -2781,10 +2790,12 @@ model AssemblyTorqueRecord {
   overrideActorUserId          String?
   overrideActorUsername        String?
   overrideReason               String?
-  recordedAt                   DateTime                          @default(now())
-  createdAt                    DateTime                          @default(now())
-  session                      AssemblyWorkSession               @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  templateBolt                 AssemblyTemplateBolt              @relation(fields: [templateBoltId], references: [id], onDelete: Restrict)
+  connectionLeaseId            String?
+  connectionLeaseGeneration    Int?
+  recordedAt                   DateTime                      @default(now())
+  createdAt                    DateTime                      @default(now())
+  session                      AssemblyWorkSession           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  templateBolt                 AssemblyTemplateBolt          @relation(fields: [templateBoltId], references: [id], onDelete: Restrict)
   agentEvent                   AssemblyTorqueAgentEvent?
 
   @@unique([sessionId, templateBoltId, attempt], map: "AssemblyTorqueRecord_unique_attempt")
@@ -2795,6 +2806,55 @@ model AssemblyTorqueRecord {
   @@index([torqueWrenchProfileId, deviceMemoryCounter, recordedAt], map: "AssemblyTorqueRecord_idx_profile_memory_recorded")
   @@index([confirmationId], map: "AssemblyTorqueRecord_idx_confirmation")
   @@index([settingHistoryId], map: "AssemblyTorqueRecord_idx_setting")
+}
+
+/// Pi5-authoritative current connection owner for one physical torque wrench.
+/// A retained released/expired row preserves the monotonic fencing generation.
+model TorqueWrenchConnectionLease {
+  torqueWrenchProfileId String              @id
+  leaseId               String              @unique
+  generation            Int
+  requestId             String
+  ownerClientDeviceId   String
+  ownerSessionId        String
+  acquiredAt            DateTime            @default(now())
+  renewedAt             DateTime            @default(now())
+  expiresAt             DateTime
+  connectAfter          DateTime
+  releasedAt            DateTime?
+  releaseReason         String?
+  updatedAt             DateTime            @updatedAt
+  torqueWrenchProfile   TorqueWrenchProfile @relation(fields: [torqueWrenchProfileId], references: [id], onDelete: Restrict)
+  ownerClientDevice     ClientDevice        @relation(fields: [ownerClientDeviceId], references: [id], onDelete: Cascade)
+  ownerSession          AssemblyWorkSession @relation(fields: [ownerSessionId], references: [id], onDelete: Cascade)
+
+  @@index([ownerClientDeviceId, expiresAt], map: "TorqueWrenchConnectionLease_idx_owner_expiry")
+  @@index([ownerSessionId], map: "TorqueWrenchConnectionLease_idx_session")
+  @@index([expiresAt], map: "TorqueWrenchConnectionLease_idx_expiry")
+}
+
+/// Append-only acquisition/release/takeover audit. Renewals update the current row only.
+model TorqueWrenchConnectionLeaseHistory {
+  id                       String              @id @default(uuid())
+  torqueWrenchProfileId    String
+  leaseId                  String
+  generation               Int
+  action                   String
+  ownerClientDeviceId      String
+  ownerClientDeviceName    String
+  ownerSessionId           String
+  previousClientDeviceId   String?
+  previousClientDeviceName String?
+  previousSessionId        String?
+  reason                   String?
+  actorUserId              String?
+  actorUsername            String?
+  createdAt                DateTime            @default(now())
+  torqueWrenchProfile      TorqueWrenchProfile @relation(fields: [torqueWrenchProfileId], references: [id], onDelete: Restrict)
+
+  @@index([torqueWrenchProfileId, createdAt], map: "TorqueWrenchConnectionLeaseHistory_idx_profile_time")
+  @@index([ownerClientDeviceId, createdAt], map: "TorqueWrenchConnectionLeaseHistory_idx_owner_time")
+  @@index([leaseId], map: "TorqueWrenchConnectionLeaseHistory_idx_lease")
 }
 
 /// Agent event idempotency claim. New-table PK preserves uniqueness without

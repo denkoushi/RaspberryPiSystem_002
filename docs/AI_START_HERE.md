@@ -48,6 +48,7 @@ If `EXEC_PLAN.md` must be touched, keep the entry short and limited to current s
 - Active self-inspection confirm guard + draft WIP: `docs/plans/self-inspection-confirm-guard-wip-draft.md`
 - Active DGX ComfyUI Phase 1 follow-up: `docs/plans/dgx-comfyui-single-image-edit-workflow.md`
 - Active assembly torque-wrench traceability: `docs/plans/assembly-torque-wrench-traceability-execplan.md`
+- Active fleet-wide assembly torque-wrench connection lease: `docs/plans/assembly-torque-wrench-connection-lease-execplan.md`
 - Deploy speed Phase B (SSH path, production-validated): `docs/plans/deploy-speed-phase-b-execplan.md`
 - StoneBase Local executor integration (pending; not a canonical device route): `docs/plans/stonebase-local-executor-freeze.md`
 - Normal SSH deployment gate audit and first stabilization (in progress; no hardware authorization): `docs/plans/normal-ssh-deploy-gate-audit-20260722.md`

@@ -15,17 +15,17 @@
     ]
   },
   "summary": {
-    "documentCount": 538,
-    "totalLines": 155085,
-    "totalBytes": 11696835,
-    "withFrontmatter": 224,
-    "withStatus": 82,
-    "sourceOfTruthDeclared": 54,
+    "documentCount": 540,
+    "totalLines": 155509,
+    "totalBytes": 11751291,
+    "withFrontmatter": 226,
+    "withStatus": 84,
+    "sourceOfTruthDeclared": 55,
     "execPlanReferences": 64,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 25,
-    "localLinkCount": 5556,
+    "localLinkCount": 5560,
     "brokenLocalLinkCount": 87,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -5742,7 +5742,7 @@
     {
       "path": "README.md",
       "lineCount": 320,
-      "byteSize": 16381,
+      "byteSize": 16380,
       "hasFrontmatter": false,
       "title": "Raspberry Pi NFC 工場持出返却システム",
       "status": null,
@@ -5898,8 +5898,8 @@
     },
     {
       "path": "docs/AI_START_HERE.md",
-      "lineCount": 101,
-      "byteSize": 4580,
+      "lineCount": 102,
+      "byteSize": 4706,
       "hasFrontmatter": true,
       "title": "AI Start Here",
       "status": null,
@@ -5913,8 +5913,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 1982,
-      "byteSize": 340015,
+      "lineCount": 1984,
+      "byteSize": 340677,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -6828,6 +6828,11 @@
         {
           "href": "./decisions/ADR-20260721-deploy-release-identity-and-activation.md",
           "targetPath": "docs/decisions/ADR-20260721-deploy-release-identity-and-activation.md",
+          "exists": true
+        },
+        {
+          "href": "./decisions/ADR-20260722-assembly-torque-wrench-connection-lease.md",
+          "targetPath": "docs/decisions/ADR-20260722-assembly-torque-wrench-connection-lease.md",
           "exists": true
         },
         {
@@ -10126,6 +10131,11 @@
           "exists": true
         },
         {
+          "href": "./plans/assembly-torque-wrench-connection-lease-execplan.md",
+          "targetPath": "docs/plans/assembly-torque-wrench-connection-lease-execplan.md",
+          "exists": true
+        },
+        {
           "href": "./plans/assembly-torque-wrench-traceability-execplan.md",
           "targetPath": "docs/plans/assembly-torque-wrench-traceability-execplan.md",
           "exists": true
@@ -11066,95 +11076,95 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 263,
+          "line": 265,
           "length": 1132
         },
         {
-          "line": 279,
+          "line": 281,
           "length": 1242
         },
         {
-          "line": 283,
+          "line": 285,
           "length": 1022
         },
         {
-          "line": 297,
+          "line": 299,
           "length": 1065
         },
         {
-          "line": 345,
+          "line": 347,
           "length": 1165
         },
         {
-          "line": 351,
+          "line": 353,
           "length": 1458
         },
         {
-          "line": 363,
+          "line": 365,
           "length": 1083
         },
         {
-          "line": 377,
+          "line": 379,
           "length": 1398
         },
         {
-          "line": 379,
+          "line": 381,
           "length": 1133
         },
         {
-          "line": 383,
+          "line": 385,
           "length": 1399
         },
         {
-          "line": 385,
+          "line": 387,
           "length": 1008
         },
         {
-          "line": 391,
+          "line": 393,
           "length": 1059
         },
         {
-          "line": 399,
+          "line": 401,
           "length": 1129
         },
         {
-          "line": 403,
+          "line": 405,
           "length": 1135
         },
         {
-          "line": 407,
+          "line": 409,
           "length": 1117
         },
         {
-          "line": 522,
+          "line": 524,
           "length": 1013
         },
         {
-          "line": 708,
+          "line": 710,
           "length": 2038
         },
         {
-          "line": 724,
+          "line": 726,
           "length": 1496
         },
         {
-          "line": 730,
+          "line": 732,
           "length": 1177
         },
         {
-          "line": 1072,
+          "line": 1074,
           "length": 1449
         },
         {
-          "line": 1108,
+          "line": 1110,
           "length": 1136
         },
         {
-          "line": 1110,
+          "line": 1112,
           "length": 1239
         },
         {
-          "line": 1146,
+          "line": 1148,
           "length": 1004
         }
       ],
@@ -16518,6 +16528,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/decisions/ADR-20260722-assembly-torque-wrench-connection-lease.md",
+      "lineCount": 56,
+      "byteSize": 5462,
+      "hasFrontmatter": true,
+      "title": "ADR-20260722: Fleet-Wide Torque Wrench Connection Lease",
+      "status": "accepted",
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/design-previews/README.md",
       "lineCount": 100,
       "byteSize": 19980,
@@ -17222,7 +17247,7 @@
     {
       "path": "docs/guides/backup-and-restore.md",
       "lineCount": 772,
-      "byteSize": 35998,
+      "byteSize": 35999,
       "hasFrontmatter": true,
       "title": "バックアップ・リストア手順",
       "status": null,
@@ -17308,7 +17333,7 @@
     {
       "path": "docs/guides/backup-configuration.md",
       "lineCount": 797,
-      "byteSize": 31227,
+      "byteSize": 31264,
       "hasFrontmatter": true,
       "title": "バックアップ設定ガイド",
       "status": null,
@@ -17819,8 +17844,8 @@
     },
     {
       "path": "docs/guides/client-initial-setup.md",
-      "lineCount": 674,
-      "byteSize": 24355,
+      "lineCount": 680,
+      "byteSize": 24807,
       "hasFrontmatter": true,
       "title": "新規クライアント端末の初期設定手順",
       "status": null,
@@ -31382,6 +31407,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/assembly-torque-wrench-connection-lease-execplan.md",
+      "lineCount": 323,
+      "byteSize": 41937,
+      "hasFrontmatter": true,
+      "title": "Assembly Torque Wrench Connection Lease",
+      "status": "release_a_terminal_completion_notice_fix_in_progress",
+      "source_of_truth": "this document",
+      "localLinks": [],
+      "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/assembly-torque-wrench-traceability-execplan.md",
       "lineCount": 705,
       "byteSize": 117611,
@@ -32136,7 +32176,7 @@
     {
       "path": "docs/plans/kiosk-assembly-torque-management-mvp.md",
       "lineCount": 427,
-      "byteSize": 40576,
+      "byteSize": 40701,
       "hasFrontmatter": true,
       "title": "Kiosk Assembly Torque Management MVP",
       "status": "active",
@@ -34798,8 +34838,8 @@
     },
     {
       "path": "docs/runbooks/assembly-torque-agent.md",
-      "lineCount": 245,
-      "byteSize": 15359,
+      "lineCount": 281,
+      "byteSize": 21014,
       "hasFrontmatter": false,
       "title": "組立 torque-agent 運用Runbook",
       "status": null,
@@ -34813,6 +34853,16 @@
         {
           "href": "../decisions/ADR-20260717-assembly-torque-wrench-traceability.md",
           "targetPath": "docs/decisions/ADR-20260717-assembly-torque-wrench-traceability.md",
+          "exists": true
+        },
+        {
+          "href": "../decisions/ADR-20260722-assembly-torque-wrench-connection-lease.md",
+          "targetPath": "docs/decisions/ADR-20260722-assembly-torque-wrench-connection-lease.md",
+          "exists": true
+        },
+        {
+          "href": "../plans/assembly-torque-wrench-connection-lease-execplan.md",
+          "targetPath": "docs/plans/assembly-torque-wrench-connection-lease-execplan.md",
           "exists": true
         },
         {

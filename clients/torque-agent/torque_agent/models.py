@@ -24,3 +24,5 @@ class WorkBinding:
     current_template_bolt_id: str
     confirmation_id: str
     torque_wrench_profile_id: str
+    connection_lease_id: str
+    connection_lease_generation: int

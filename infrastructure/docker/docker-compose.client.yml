@@ -43,6 +43,7 @@ services:
     volumes:
       - torque-agent-data:/data
       - /dev/input:/dev/input
+      - /run/torque-bluetooth-guard:/run/torque-bluetooth-guard
     healthcheck:
       test:
         - CMD

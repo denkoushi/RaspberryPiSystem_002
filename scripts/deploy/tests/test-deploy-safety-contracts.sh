@@ -949,7 +949,9 @@ ALLOWED_RELEASE_FILE_DESTINATIONS = {
     '{{ repo_path }}/clients/barcode-agent/.env',
     '{{ repo_path }}/clients/torque-agent/.env',
     '/usr/local/libexec/torque-bluetooth-adapter',
+    '/usr/local/libexec/torque-bluetooth-guard',
     '/etc/systemd/system/torque-bluetooth-adapter@.service',
+    '/etc/systemd/system/torque-bluetooth-guard.service',
     '/etc/udev/rules.d/90-torque-bluetooth-adapter.rules',
     '/etc/udev/rules.d/99-torque-wrench-hid.rules',
     '/etc/raspi-haizen-agent.conf',
@@ -1005,7 +1007,7 @@ DOCKER_MUTATION = re.compile(
     re.IGNORECASE,
 )
 READ_ONLY_COMMAND = re.compile(
-    r'^(?:/usr/local/libexec/torque-bluetooth-adapter\s+--discover|'
+    r'^(?:/usr/local/libexec/torque-bluetooth-adapter\s+--(?:discover|status)|'
     r'docker\s+--version|ip\s+-brief|rsvg-convert\s+--version|'
     r'systemctl\s+(?:is-|list-unit-files|show|status)|'
     r'journalctl\s+--unit=torque-bluetooth-adapter@\{\{\s+torque_bluetooth_controller_discovery\.stdout\s+\|\s+trim\s+\}\}\.service\s+--lines=80\s+--no-pager\s+--output=short-iso$|'
@@ -1284,6 +1286,13 @@ for fragment in (
     assert fragment in common_text, f'fixed Git/index release guard lost {fragment!r}'
 
 common_tasks = yaml.safe_load(common_text) or []
+provisioning_checkout = next(
+    task for task in common_tasks
+    if task.get('name') == 'Sync repository for provisioning (with retries)'
+)
+assert provisioning_checkout.get('become_user') == '{{ ansible_user }}', (
+    'full provisioning must clone and sync the terminal repository as the inventory user'
+)
 release_checkout = next(
     task for task in common_tasks
     if task.get('name') == 'Fetch and reset existing terminal repository to immutable release'

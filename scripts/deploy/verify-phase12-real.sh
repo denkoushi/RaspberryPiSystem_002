@@ -20,6 +20,7 @@ CLIENT_KEY_ROBODRILL="client-key-raspi4-robodrill01-kiosk1"
 CLIENT_KEY_FJV="client-key-raspi4-fjv60-80-kiosk1"
 CLIENT_KEY_STONEBASE="client-key-raspi4-kensaku-stonebase01-kiosk1"
 CLIENT_KEY_SESSAKU="client-key-raspi4-sessaku-01-kiosk1"
+CLIENT_KEY_ASSEMBLY="client-key-raspi4-assembly-01-kiosk1"
 
 PI5_USER="denkon5sd02"
 PI3_USER="signageras3"
@@ -28,6 +29,7 @@ PI4_ROBODRILL_USER="tools04"
 PI4_FJV_USER="raspi4-fjv60-80"
 PI4_STONEBASE_USER="raspi4-kensaku-stonebase01"
 PI4_SESSAKU_USER="raspi4-sessaku-01"
+PI4_ASSEMBLY_USER="raspi4-assembly-01"
 
 log_pass() {
   PASSED=$((PASSED + 1))
@@ -160,6 +162,7 @@ PY
 
 PI4_STONEBASE_IP="$(resolve_inventory_ip "raspi4_kensaku_stonebase01_ip" "192.168.10.238")"
 PI4_SESSAKU_IP="$(resolve_inventory_ip "raspi4_sessaku_01_ip" "192.168.128.187")"
+PI4_ASSEMBLY_IP="$(resolve_inventory_ip "raspi4_assembly_01_ip" "192.168.10.177")"
 
 BASE_URL="https://${PI5_IP}"
 
@@ -187,6 +190,9 @@ check_contains "deploy-status raspi4-kensaku-stonebase01" "${DEPLOY_STONEBASE}" 
 
 DEPLOY_SESSAKU="$(curl -sk "${BASE_URL}/api/system/deploy-status" -H "x-client-key: ${CLIENT_KEY_SESSAKU}" 2>&1 || true)"
 check_contains "deploy-status raspi4-sessaku-01" "${DEPLOY_SESSAKU}" '"isMaintenance":false'
+
+DEPLOY_ASSEMBLY="$(curl -sk "${BASE_URL}/api/system/deploy-status" -H "x-client-key: ${CLIENT_KEY_ASSEMBLY}" 2>&1 || true)"
+check_contains "deploy-status raspi4-assembly-01" "${DEPLOY_ASSEMBLY}" '"isMaintenance":false'
 
 KIOSK_CODE="$(curl -sk -o /dev/null -w "%{http_code}" "${BASE_URL}/api/tools/loans/active" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
 check_http_code "キオスクAPI /tools/loans/active" "${KIOSK_CODE}" "200"
@@ -388,6 +394,15 @@ elif printf "%s" "${PI4_SESSAKU_STATUS}" | grep -Ec '^active$' >/dev/null 2>&1 &
   log_pass "Pi4 sessaku-01 kiosk/status-agent"
 else
   log_fail "Pi4 sessaku-01 kiosk/status-agent" "${PI4_SESSAKU_STATUS}"
+fi
+
+PI4_ASSEMBLY_STATUS="$(ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "${PI5_USER}@${PI5_IP}" "ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no ${PI4_ASSEMBLY_USER}@${PI4_ASSEMBLY_IP} 'systemctl is-active kiosk-browser.service status-agent.timer' 2>&1" || true)"
+if printf "%s" "${PI4_ASSEMBLY_STATUS}" | grep -Eqi 'No route to host|timed out|Connection refused'; then
+  log_warn "Pi4 assembly-01 kiosk/status-agent" "Pi5 から ${PI4_ASSEMBLY_USER}@${PI4_ASSEMBLY_IP} へ SSH 不可。Tailscale と authorized_keys を確認"
+elif printf "%s" "${PI4_ASSEMBLY_STATUS}" | grep -Ec '^active$' >/dev/null 2>&1 && [ "$(printf "%s\n" "${PI4_ASSEMBLY_STATUS}" | grep -Ec '^active$' || true)" -ge 2 ]; then
+  log_pass "Pi4 assembly-01 kiosk/status-agent"
+else
+  log_fail "Pi4 assembly-01 kiosk/status-agent" "${PI4_ASSEMBLY_STATUS}"
 fi
 
 PI3_STATUS="$(ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "${PI5_USER}@${PI5_IP}" "ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no ${PI3_USER}@${PI3_IP} 'systemctl is-active signage-lite.service signage-lite-update.timer' 2>&1" || true)"

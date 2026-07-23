@@ -23,4 +23,9 @@ export const kioskFlagsEnvShape = {
     (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v),
     z.enum(['true', 'false']).default('false')
   ).transform((v) => v === 'true'),
+  /** Release B gate. Enforcement, once stored on a profile, is evaluated independently of this activation gate. */
+  TORQUE_CONNECTION_LEASE_ACTIVATION_ALLOWED: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v),
+    z.enum(['true', 'false']).default('false')
+  ).transform((v) => v === 'true'),
 } as const;

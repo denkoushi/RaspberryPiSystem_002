@@ -1,11 +1,11 @@
 [Unit]
-Description=Prepare exact external torque Bluetooth adapter %I
+Description=Fail-closed initialization of exact external torque Bluetooth adapter %I
 After=bluetooth.service systemd-rfkill.service
 Requires=bluetooth.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/libexec/torque-bluetooth-adapter %I
+ExecStart=/usr/local/libexec/torque-bluetooth-adapter --power-off %I
 TimeoutStartSec=90
 TimeoutStopSec=10
 PrivateTmp=true

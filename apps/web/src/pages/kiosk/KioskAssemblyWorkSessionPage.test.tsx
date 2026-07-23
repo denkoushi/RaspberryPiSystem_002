@@ -116,6 +116,60 @@ const session: AssemblyWorkSessionDto = {
   restartLogs: []
 };
 
+const requiredSession: AssemblyWorkSessionDto = {
+  ...session,
+  template: {
+    ...session.template,
+    traceabilityMode: 'REQUIRED',
+    areas: session.template.areas.map((area) => ({
+      ...area,
+      bolts: area.bolts.map((bolt) => ({
+        ...bolt,
+        nominalDiameter: 'M8',
+        boltLengthMm: '35',
+        material: 'SCM435',
+        strengthClass: '10.9',
+        capabilityGroupId: 'group-1'
+      }))
+    }))
+  }
+};
+
+const compatibleTorqueWrenches = [{
+  profile: {
+    id: 'profile-1',
+    serialNumber: 'TW-A103',
+    model: { modelNumber: 'CEM20N3X10D-BTLA' },
+    settingHistories: [{ nominalTorque: '10', unit: 'N·m' }]
+  },
+  conditionFingerprint: 'condition-1'
+}];
+
+const reusableTorqueConfirmation = [{
+  id: 'confirmation-1',
+  torqueWrenchProfileId: 'profile-1',
+  settingHistoryId: 'setting-1'
+}];
+
+function agentStatus(overrides: Record<string, unknown> = {}) {
+  return {
+    ok: true,
+    ready: false,
+    state: 'available',
+    owner: null,
+    bound: false,
+    leaseOwned: false,
+    bluetoothPowered: false,
+    hidExclusive: false,
+    lastError: null,
+    ...overrides
+  };
+}
+
+function jsonResponse(payload: object) {
+  return { ok: true, status: 200, json: async () => payload };
+}
+
 const configuredSequence: AssemblyProcedureSequenceDto = {
   mode: 'configured',
   reason: null,
@@ -217,50 +271,162 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     expect(await screen.findByText('手順書')).toBeInTheDocument();
   });
 
-  it('automatically reuses a current physical-wrench confirmation for the same tightening condition', async () => {
-    const requiredSession: AssemblyWorkSessionDto = {
-      ...session,
-      template: {
-        ...session.template,
-        traceabilityMode: 'REQUIRED',
-        areas: session.template.areas.map((area) => ({
-          ...area,
-          bolts: area.bolts.map((bolt) => ({
-            ...bolt,
-            nominalDiameter: 'M8',
-            boltLengthMm: '35',
-            material: 'SCM435',
-            strengthClass: '10.9',
-            capabilityGroupId: 'group-1'
-          }))
-        }))
-      }
-    };
+  it('reuses physical confirmation but requires an explicit connection-lease start action', async () => {
     mockGetAssemblyWorkSession.mockResolvedValue(requiredSession);
-    mockListCompatibleTorqueWrenches.mockResolvedValue([
-      {
-        profile: {
-          id: 'profile-1',
-          serialNumber: 'TW-A103',
-          model: { modelNumber: 'CEM20N3X10D-BTLA' },
-          settingHistories: [{ nominalTorque: '10', unit: 'N·m' }]
-        },
-        conditionFingerprint: 'condition-1'
-      }
-    ]);
-    mockListCurrentTorqueWrenchConfirmations.mockResolvedValue([
-      {
-        id: 'confirmation-1',
-        torqueWrenchProfileId: 'profile-1',
-        settingHistoryId: 'setting-1'
-      }
-    ]);
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
+    mockListCompatibleTorqueWrenches.mockResolvedValue(compatibleTorqueWrenches);
+    mockListCurrentTorqueWrenchConfirmations.mockResolvedValue(reusableTorqueConfirmation);
+    const agentFetch = vi.fn().mockResolvedValue(jsonResponse(agentStatus()));
+    vi.stubGlobal('fetch', agentFetch);
 
     renderPage();
 
-    expect(await screen.findByText('同じ締付条件の確認を引継ぎ・トルク入力待機中')).toBeInTheDocument();
+    expect(await screen.findByText('同じ締付条件の現物確認を引継ぎ済み・使用開始が必要です')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '現物確認済み' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'このレンチを使用開始' })).toBeEnabled();
     expect(mockListCurrentTorqueWrenchConfirmations).toHaveBeenCalledWith('session-1');
+    expect(agentFetch.mock.calls.some(([url]) => String(url).endsWith('/lease/acquire'))).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: 'このレンチを使用開始' }));
+    await waitFor(() => {
+      expect(agentFetch.mock.calls.some(([url]) => String(url).endsWith('/lease/acquire'))).toBe(true);
+    });
+  });
+
+  it('blocks rapid click-through and requires a delayed physical-presence checkbox before takeover', async () => {
+    mockGetAssemblyWorkSession.mockResolvedValue(requiredSession);
+    mockListCompatibleTorqueWrenches.mockResolvedValue(compatibleTorqueWrenches);
+    mockListCurrentTorqueWrenchConfirmations.mockResolvedValue(reusableTorqueConfirmation);
+    const remoteOwner = agentStatus({
+      state: 'owned_by_other',
+      owner: { clientDeviceName: 'StoneBase', clientDeviceLocation: '1F' },
+      lastError: 'TORQUE_WRENCH_LEASE_HELD'
+    });
+    let acquireAttempted = false;
+    const agentFetch = vi.fn().mockImplementation((url: string) => {
+      if (String(url).endsWith('/lease/takeover')) {
+        return Promise.resolve(jsonResponse(agentStatus({ state: 'handoff_wait', leaseOwned: true })));
+      }
+      if (String(url).endsWith('/lease/acquire')) acquireAttempted = true;
+      return Promise.resolve(jsonResponse(acquireAttempted ? remoteOwner : agentStatus()));
+    });
+    vi.stubGlobal('fetch', agentFetch);
+
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'このレンチを使用開始' }));
+    expect(await screen.findByText((_, element) => element?.textContent === 'StoneBase（1F） が使用中')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '現物が手元にあるため引き継ぐ' }));
+    expect(agentFetch.mock.calls.some(([url]) => String(url).endsWith('/lease/takeover'))).toBe(false);
+    expect(screen.getByText('レンチ本体がこの端末の前にあることを、もう一度確認してください。')).toBeInTheDocument();
+    const presenceCheckbox = screen.getByRole('checkbox', { name: 'レンチ本体がこの端末の前にあることを確認しました' });
+    const takeoverButton = screen.getByRole('button', { name: '確認して接続権を引き継ぐ' });
+    expect(presenceCheckbox).toBeDisabled();
+    expect(takeoverButton).toBeDisabled();
+
+    presenceCheckbox.click();
+    takeoverButton.click();
+    expect(presenceCheckbox).not.toBeChecked();
+    expect(agentFetch.mock.calls.some(([url]) => String(url).endsWith('/lease/takeover'))).toBe(false);
+
+    await waitFor(() => expect(presenceCheckbox).toBeEnabled(), { timeout: 3000 });
+    expect(takeoverButton).toBeDisabled();
+    fireEvent.click(presenceCheckbox);
+    expect(takeoverButton).toBeEnabled();
+    fireEvent.click(takeoverButton);
+    await waitFor(() => {
+      expect(agentFetch.mock.calls.some(([url]) => String(url).endsWith('/lease/takeover'))).toBe(true);
+      expect(screen.getByText('引継ぎ待機中')).toBeInTheDocument();
+    });
+  });
+
+  it('renders Bluetooth waiting and ready states and explicitly releases ownership', async () => {
+    mockGetAssemblyWorkSession.mockResolvedValue(requiredSession);
+    mockListCompatibleTorqueWrenches.mockResolvedValue(compatibleTorqueWrenches);
+    mockListCurrentTorqueWrenchConfirmations.mockResolvedValue(reusableTorqueConfirmation);
+    let heartbeatCount = 0;
+    const agentFetch = vi.fn().mockImplementation((url: string) => {
+      if (String(url).endsWith('/lease/release')) return Promise.resolve(jsonResponse(agentStatus()));
+      heartbeatCount += 1;
+      return Promise.resolve(jsonResponse(agentStatus({
+        state: 'owned_by_self',
+        leaseOwned: true,
+        ready: heartbeatCount > 1,
+        bluetoothPowered: heartbeatCount > 1,
+        hidExclusive: heartbeatCount > 1
+      })));
+    });
+    vi.stubGlobal('fetch', agentFetch);
+
+    renderPage();
+
+    expect(await screen.findByText('Bluetooth接続待ち')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByText('入力待機中').length).toBeGreaterThanOrEqual(1), { timeout: 3500 });
+    fireEvent.click(screen.getByRole('button', { name: '使用終了' }));
+    await waitFor(() => {
+      expect(agentFetch.mock.calls.some(([url]) => String(url).endsWith('/lease/release'))).toBe(true);
+      expect(screen.getByText('使用可能')).toBeInTheDocument();
+    });
+  });
+
+  it('does not render browser disarming after the last bolt as a connection failure', async () => {
+    mockGetAssemblyWorkSession.mockResolvedValue({
+      ...requiredSession,
+      currentBoltId: null
+    });
+    const agentFetch = vi.fn().mockResolvedValue(jsonResponse(agentStatus({
+      lastError: 'BROWSER_DISARMED'
+    })));
+    vi.stubGlobal('fetch', agentFetch);
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(agentFetch.mock.calls.some(([url]) => String(url).endsWith('/heartbeat'))).toBe(true);
+      expect(screen.getByText('使用可能')).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/トルクレンチ接続を開始できませんでした/)).not.toBeInTheDocument();
+  });
+
+  it('replaces an acquired message when a later heartbeat reports communication loss', async () => {
+    mockGetAssemblyWorkSession.mockResolvedValue(requiredSession);
+    mockListCompatibleTorqueWrenches.mockResolvedValue(compatibleTorqueWrenches);
+    mockListCurrentTorqueWrenchConfirmations.mockResolvedValue(reusableTorqueConfirmation);
+    let acquired = false;
+    const agentFetch = vi.fn().mockImplementation((url: string) => {
+      if (String(url).endsWith('/lease/acquire')) {
+        acquired = true;
+        return Promise.resolve(jsonResponse(agentStatus({ state: 'owned_by_self', leaseOwned: true })));
+      }
+      if (String(url).endsWith('/heartbeat') && acquired) {
+        return Promise.resolve(jsonResponse(agentStatus({
+          state: 'communication_lost',
+          lastError: 'LEASE_RENEW_FAILED'
+        })));
+      }
+      return Promise.resolve(jsonResponse(agentStatus()));
+    });
+    vi.stubGlobal('fetch', agentFetch);
+
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'このレンチを使用開始' }));
+    expect(await screen.findByText('接続権を取得しました。Bluetooth接続を待っています。')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Pi 5との通信が切れたため接続を停止しました。もう一度「このレンチを使用開始」を押してください。')).toBeInTheDocument();
+    }, { timeout: 3500 });
+    expect(screen.queryByText('接続権を取得しました。Bluetooth接続を待っています。')).not.toBeInTheDocument();
+  });
+
+  it('shows communication loss when the loopback agent cannot be reached', async () => {
+    mockGetAssemblyWorkSession.mockResolvedValue(requiredSession);
+    mockListCompatibleTorqueWrenches.mockResolvedValue(compatibleTorqueWrenches);
+    mockListCurrentTorqueWrenchConfirmations.mockResolvedValue(reusableTorqueConfirmation);
+    const agentFetch = vi.fn().mockRejectedValue(new TypeError('connection refused'));
+    vi.stubGlobal('fetch', agentFetch);
+
+    renderPage();
+
+    await waitFor(() => expect(agentFetch).toHaveBeenCalled());
+    expect(screen.getByText('通信断')).toBeInTheDocument();
   });
 });

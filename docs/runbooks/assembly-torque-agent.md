@@ -2,7 +2,7 @@
 
 ## 目的と現在のゲート
 
-`torque-agent`は、許可済みBluetooth HIDトルクレンチをPi4上で排他取得し、組立作業画面の現在位置へ結び付け、SQLiteへ先に保存してからPi5 APIへ送る。CEM3-BTLAの通常3件・連続5件を匿名化して固定し、厳密な`cem3-btla-hogp-v1` profileを登録済みである。外付けBluetooth設定とagentはまだデプロイしていない。
+`torque-agent`は、許可済みBluetooth HIDトルクレンチをPi4上で排他取得し、組立作業画面の現在位置へ結び付け、SQLiteへ先に保存してからPi5 APIへ送る。Pi5/PostgreSQLの接続リースを正本とし、常に1本・1端末・1作業セッションだけを有効にする。CEM3-BTLAの通常3件・連続5件を匿名化して固定し、厳密な`cem3-btla-hogp-v1` profileを登録済みである。Release Aのリース機能と外付けBluetoothガードはStoneBaseとAssembly-01へ配備・再起動確認済みで、対象レンチも両端末へペアリング済みである。対象レンチのenforcementは、2端末実機受入の完了と個別承認まで有効化しない。
 
 このRunbookは実機準備と安全な確認手順を定義する。デプロイ、実機設定変更、クライアントキー発行はそれぞれ明示的な承認後に行う。
 
@@ -11,7 +11,7 @@
 1. 管理画面`/admin/tools/torque-wrenches`で型番、物理製造番号、校正期限、保管場所、状態、設定履歴、適合グループを登録する。
 2. 検証済みCEM3-BTLA設定を使う。`Cn_o=ON`、`An_o=OFF`、`Jd_o=ON`、`Sn_o=ON`、`dt_o=ON`、`bA_o=OFF`、`Un_o=ON`、`dLm=TAB`、`End=ENTER`、`kEY=JP`、`ZEro=OFF`である。
 3. 実測の順序はメモリ番号、トルク、単位、合否判定、製造番号、日付、時刻の7項目である。設定または機種プロファイルを変えた場合は既存parserで推測せず、新しい実測fixtureとして扱う。
-4. Pi4でペアリング後、Ansibleが完全一致した対象だけへ作る安定名を確認する。
+4. 初回ペアリングは対象端末で接続リースを取得した後、このRunbookに従って手動実施する。画面からペアリングしない。ペアリング後、Ansibleが完全一致した対象だけへ作る安定名を確認する。
 
 ```bash
 find /dev/input/by-id -maxdepth 1 -type l -print
@@ -21,6 +21,8 @@ readlink -f /dev/input/by-id/<candidate>
 `/dev/input/event*`、`hciN`、一般キーボードを設定してはいけない。外付けコントローラーはUSB vendor/product、レンチはBluetooth HID bustype・vendor/product・name・uniqで別々に同定し、必ず対象レンチ固有の`/dev/input/by-id/*`を使う。
 
 ペアリングは本体電源ON後3分以内に開始する。ホスト側の登録を消した場合は、本体側のペアリング情報も消してから再登録する。`bluetoothctl`の文言だけを成功判定にせず、最終的に`Paired: yes`、`Bonded: yes`、HIDサービス解決、安定した`/dev/input/by-id/*`の全てを確認する。
+
+レンチが複数ホストのボンドを保持できない場合は、画面ペアリング機能を追加しない。移動先で明示的にリース取得または現物確認引継ぎを行い、旧端末の外付けBluetoothがOFFになったことを確認してから、移動先で手動再ペアリングする。
 
 ## 実機fixture採取（Milestone 2B）
 
@@ -164,6 +166,8 @@ torque_agent_hid_devices:
     parserProfile: cem3-btla-hogp-v1
 ```
 
+外付けBluetoothガードはUSB vendor/productが完全一致するコントローラーだけを操作する。`hciN`は保存せず、初期状態とリース無し状態はOFFである。内蔵BluetoothとNFCはガードの操作対象にしない。`/run/torque-bluetooth-guard/`の指示ファイルを手動作成してはいけない。
+
 APIとキオスクWebが同originなら`torque_agent_browser_origins`は空にし、別originのときだけWeb originを明示する。`TORQUE_ENABLE_SYNTHETIC_FIXTURE`は本番で常に`false`とする。生成される`clients/torque-agent/.env`は0600で、リポジトリへ追加しない。
 
 ## 起動とヘルス確認
@@ -177,17 +181,25 @@ curl --fail --silent http://127.0.0.1:7073/health
 docker compose -f infrastructure/docker/docker-compose.client.yml --profile torque logs --tail=100 torque-agent
 ```
 
-正常時の`/health`は`ok=true`を返す。`queuedEvents`はAPI送信待ち、`localAuditEvents`はbinding無しまたは解析失敗でサーバーへ割り当てなかった入力、`bound`は有効な作業画面heartbeatの有無である。
+`/health`の`ok=true`はプロセスが応答したことだけを表す。締付入力を開始できるのは`ready=true`のときだけであり、`ready`には有効なPi5リース、外付けBluetooth電源、対象HIDの存在、排他取得、作業画面heartbeatが全て含まれる。`queuedEvents`はAPI送信待ち、`localAuditEvents`はbinding無しまたは解析失敗でサーバーへ割り当てなかった入力である。
 
-レンチがOFFの状態でagentが先に起動しても異常ではない。agentは設定された同一by-id pathだけを待ち、ON・自動再接続後に排他取得する。切断途中の文字列は次回接続へ結合せず、新しいdecoderで再開する。
+リースが無い状態でagentが先に起動しても異常ではない。この状態では外付けBluetoothはOFFで、`ready=false`になる。agentは有効なリースを取得した後だけ設定済みの同一by-id pathを待ち、接続後に排他取得する。切断途中の文字列は次回接続へ結合せず、新しいdecoderで再開する。
 
 ## 作業前・作業中の確認
 
 1. REQUIRED組立作業を開き、現在の丸数字と締付条件を確認する。
 2. 候補の製造番号を選び、現物の製造番号と下限・規定・上限表示を照合して確認する。
-3. 画面が`接続済み`かつ`トルク入力待機中`になった後だけ締め付ける。
-4. 丸数字の切替時は一度bindingを解除する。同じ条件・同じ物理レンチ・同じ最新設定なら確認が自動再利用され、「トルク入力待機中」へ戻る。条件、レンチ、設定履歴が変わった場合は再確認する。
-5. 誤レンチ、校正切れ、状態不適合、設定不一致、現在位置不一致、未対応単位では位置が進まないことを確認する。
+3. `このレンチを使用開始`を押す。既存確認が再利用されても、自動的には接続リースを取得しない。
+4. `Bluetooth接続待ち`の間は締め付けない。`入力待機中`になった後だけ締め付ける。
+5. 所有中は作業終了前に`使用終了`を押す。作業完了時は自動解放される。画面離脱時の解放に失敗しても8秒TTLで回収される。
+6. 丸数字の切替後、同じ条件・同じ物理レンチ・同じ最新設定なら確認を再利用できるが、新しい使用開始操作が必要な状態では画面表示に従う。条件、レンチ、設定履歴が変わった場合は再確認する。
+7. 誤レンチ、校正切れ、状態不適合、設定不一致、現在位置不一致、未対応単位、リース無し、旧世代、別端末、別セッションでは位置が進まないことを確認する。
+
+### 別端末へ移動する
+
+通常は元端末で`使用終了`を押し、レンチを移動先の約1m以内へ持ち出し、移動先で確認後に`このレンチを使用開始`を押す。Pi4同士が10m以内でも別フロアで100m以上離れていても操作は同じである。
+
+元端末で終了を押し忘れた場合だけ、移動先で表示された所有端末名・場所を確認し、`現物が手元にあるため引き継ぐ`を押す。誤った連続入力を防ぐ待機時間の後、`レンチ本体がこの端末の前にあることを確認しました`へチェックし、別位置の`確認して接続権を引き継ぐ`で確定する。待機中や未チェックの状態で最終操作はできない。旧世代は即時fenceされるが、移動先のBluetoothは旧リース期限＋1秒までONにならない。旧端末の画面は自動再取得しない。
 
 最初の作業1件をウォームアップとして捨ててはいけない。最初のフレームが欠けた場合は作業を進めず、`HID_DECODE_FAILED`または不完全captureとして原因を確認する。
 
@@ -212,6 +224,9 @@ PY
 - `BINDING_MISSING_OR_EXPIRED`: 作業画面、7073到達性、heartbeat TTLを確認する。別セッションへ手動付替えしない。
 - `PAYLOAD_PARSE_FAILED`: 原文をfixture候補として保全し、parser profileと実機出力設定を確認する。推測パーサーを追加しない。
 - `HID_DECODE_FAILED`: 未対応キーを含むため、文字を黙って落としたpayloadはAPIへ送っていない。終端とキー監査を実機fixture調査へ回し、既知文字への推測変換はしない。
+- `CONNECTION_LEASE_REQUIRED`: 強制有効化後にリース無しで届いた入力である。使用開始操作とagentのリース状態を確認する。イベントは監査保存され、工程は進まない。
+- `CONNECTION_LEASE_FENCED`: 引継ぎ後の旧世代イベントである。再送を止めるためAPIは業務拒否をHTTP 200でackする。旧画面から自動再取得せず、新しい使用開始操作を行う。
+- `通信断`または`ready=false`: Pi5更新、ガード電源、HID存在、排他取得のいずれかが成立していない。9秒以内に外付けBluetoothがOFFになることを優先し、復旧前の締付入力は行わない。
 
 ## 安全な再起動
 
@@ -225,6 +240,8 @@ curl --fail --silent http://127.0.0.1:7073/health
 
 再起動後、未送信イベントは同じイベントIDで再送される。2xx確認後だけoutboxから消える。
 
+Pi再起動では`/run`のリース指示が消えるため、外付けBluetoothはOFFのまま起動する。作業画面で現物確認と新しい使用開始操作を行うまでONにしてはいけない。
+
 ## 切戻し
 
 異常時は締付作業を止め、対象端末のagentだけを停止する。API、既存DB、他エージェントは変更しない。
@@ -232,13 +249,32 @@ curl --fail --silent http://127.0.0.1:7073/health
 ```bash
 cd /opt/RaspberryPiSystem_002
 docker compose -f infrastructure/docker/docker-compose.client.yml --profile torque stop torque-agent
+sudo systemctl status torque-bluetooth-guard --no-pager
 ```
 
-volumeやSQLiteを削除しない。管理者例外入力は通信経路の代替であり、誤レンチ・校正・状態・設定などの安全条件を迂回できない。復旧後は現物確認をやり直し、拒否実績とローカル監査を照合する。
+停止後9秒以内に外付けBluetoothがOFFになることを確認する。volumeやSQLiteを削除しない。管理者例外入力は通信経路の代替であり、誤レンチ・校正・状態・設定や接続リースの安全条件を迂回できない。復旧後は現物確認と使用開始をやり直し、拒否実績とローカル監査を照合する。
+
+接続リース強制を有効にする公開APIはADMIN／MANAGER専用・理由必須で、一方向である。Release Aの単独StoneBase試験とlease-capable rollback基準を確認する前にactivation gateを開けない。有効化後は旧legacy版へ直接戻さず、やむを得ない場合は先に両端末のtorque-agentを停止する。
+
+## 2端末実機受入（工場で実施）
+
+この節はレンチ、StoneBase、Assembly-01、Pi5へ接続できる状態で、配備・ペアリング・有効化の個別承認後に実施する。自宅やレンチ不在時には実施済みにしない。
+
+1. enforcement未有効のRelease Aで、StoneBaseだけの従来トルク登録を確認する。
+2. 両端末がBluetooth圏内でも、所有端末の外付けBluetoothだけがONになることを確認する。
+3. StoneBaseで使用終了し、Assembly-01へ移動して使用開始・接続・登録を確認する。
+4. 終了押し忘れを再現し、現物確認引継ぎでStoneBaseのOFF後にAssembly-01がONになることを確認する。
+5. Assembly-01からStoneBaseへの通常切替と引継ぎを確認する。
+6. 別フロアへ移動して同じ操作が成立することを確認する。
+7. Pi5通信を遮断し、9秒以内の外付けBluetooth OFF、接続解除、入力停止を確認する。
+8. 両Piを再起動し、リース無しでは外付けBluetoothがOFFのままであることを確認する。
+9. 上記がすべて成功した後だけ、別承認で対象レンチのenforcementを有効化し、リース無し入力の拒否監査を確認する。
 
 ## 関連資料
 
 - [クライアント Docker agent 追加 Runbook](client-agent-addition.md)
+- [複数端末接続リースExecPlan](../plans/assembly-torque-wrench-connection-lease-execplan.md)
+- [複数端末接続リースADR](../decisions/ADR-20260722-assembly-torque-wrench-connection-lease.md)
 - [実装・検証ExecPlan](../plans/assembly-torque-wrench-traceability-execplan.md)
 - [設計判断ADR](../decisions/ADR-20260717-assembly-torque-wrench-traceability.md)
 - [組立トルク管理の現仕様](../plans/kiosk-assembly-torque-management-mvp.md)
