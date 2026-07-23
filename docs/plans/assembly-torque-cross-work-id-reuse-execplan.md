@@ -17,8 +17,10 @@ After this change, that remembered terminal remains audit data rather than torqu
 - [x] (2026-07-23 17:48+09:00) Removed work-session start-terminal authorization from kiosk torque selection/confirmation/lease paths while preserving the enforcement-off tokenless fallback.
 - [x] (2026-07-23 17:51+09:00) Updated kiosk messages, integration and policy tests, superseding ADR, prior ADR references, API/UI documentation, and the agent runbook.
 - [x] (2026-07-23 18:05+09:00) Completed unit, integration, agent, Web, build, lint, migration-validator, SQL, and EXPLAIN validation using disposable PostgreSQL resources.
-- [x] (2026-07-23 18:05+09:00) Recorded validation evidence and inspected the final diff. No commit, push, PR mutation, deployment, production database access, or production enforcement activation was performed.
+- [x] (2026-07-23 18:05+09:00) Recorded validation evidence and inspected the final diff. At this checkpoint, no commit, push, PR mutation, deployment, production database access, or production enforcement activation had been performed.
 - [x] (2026-07-23 18:25+09:00) Ran the complete API and Web suites, workspace lint, shared-package builds/tests, CI-policy tests, production Web build, and documentation inventory audit in preparation for the next-day rollout.
+- [x] (2026-07-23 18:35+09:00) Committed the reviewed 24-file scope as `508d25b3`, pushed `feat/assembly-torque-cross-work-id-reuse`, and opened Draft PR #1069 against `main`.
+- [x] (2026-07-23 18:43+09:00) Confirmed exact-head CI for `508d25b3`: 9 checks succeeded, 6 path-classified checks were skipped, and no check failed or remained pending.
 
 ## Surprises & Discoveries
 
@@ -78,7 +80,7 @@ After this change, that remembered terminal remains audit data rather than torqu
 
 ## Outcomes & Retrospective
 
-Implementation is complete in the uncommitted working tree on `feat/assembly-torque-cross-work-id-reuse`. A confirmation adopted by the retained lease can now be listed and explicitly re-acquired for another work ID or lot on the same terminal when physical profile, latest setting, tightening fingerprint, capability group, instrument state, and calibration remain eligible. The start-origin terminal remains unchanged on `AssemblyWorkSession`; the actual terminal, target session, lease generation, and adopted confirmation are audited separately.
+Implementation is complete on `feat/assembly-torque-cross-work-id-reuse` and published in Draft PR #1069. The reviewed implementation commit is `508d25b3`; its exact-head GitHub CI completed with all applicable checks successful. A confirmation adopted by the retained lease can now be listed and explicitly re-acquired for another work ID or lot on the same terminal when physical profile, latest setting, tightening fingerprint, capability group, instrument state, and calibration remain eligible. The start-origin terminal remains unchanged on `AssemblyWorkSession`; the actual terminal, target session, lease generation, and adopted confirmation are audited separately.
 
 Lease acquisition, expired acquisition, takeover, same-generation confirmation adoption, and release preserve `adoptedConfirmationId` in the lease/history as designed. Agent intake accepts cross-session evidence only with a complete token whose lease ID, generation, owner client, owner session, and adopted confirmation all match. The tokenless enforcement-off path still requires the original session, start terminal, and session-local confirmation. Admin override remains session-local. The HTTP paths and torque-agent payload are unchanged.
 
@@ -102,7 +104,7 @@ Validation completed:
 
 One intermediate test assertion incorrectly expected a renewed lease expiry to remain unchanged; it was corrected to assert the safety identity that must remain stable (lease ID and generation). The implementation itself did not need a workaround.
 
-No physical-device test is claimed here. No commit, push, PR mutation, merge, deployment, or production enforcement activation has been performed.
+No physical-device test is claimed here. No merge, deployment, production database access, or production enforcement activation has been performed.
 
 ## Context and Orientation
 
@@ -219,3 +221,5 @@ Revision note (2026-07-23 17:32+09:00): created the living plan after completing
 Revision note (2026-07-23 18:05+09:00): completed implementation and validation; added the shared physical-profile lock after final concurrency review, recorded disposable PostgreSQL evidence and cleanup, and closed all progress items without publishing or deploying.
 
 Revision note (2026-07-23 18:25+09:00): added full API/Web regression, workspace-quality, CI-policy, and document-inventory evidence after deployment and physical-wrench testing were explicitly deferred to the next day.
+
+Revision note (2026-07-23 18:44+09:00): recorded commit `508d25b3`, Draft PR #1069, and its exact-head CI success while preserving the separate approval boundaries for merge, deployment, physical testing, and enforcement activation.
