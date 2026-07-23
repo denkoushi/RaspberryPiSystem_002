@@ -43,6 +43,7 @@ The first production pilot is limited to `raspi4-kensaku-stonebase01` and `raspi
 - [x] (2026-07-23 09:35 JST) Completed the independent fail-closed physical checks before changing code. Pi5 loss powered Assembly-01's external adapter OFF in 5.688 seconds and 3.332 seconds; agent stop powered it OFF in 7.676 seconds; neither a sustained communication recovery nor agent restart reacquired automatically. Page departure released ownership, exact USB removal left NFC healthy, and exact USB replug initialized OFF and retained the saved wrench bond.
 - [x] (2026-07-23 09:44 JST) Reproduced the physical takeover blocker without repeated production retries. Pi5 correctly returned `TORQUE_WRENCH_LEASE_HELD` and the remote owner, but torque-agent converted every no-lease `lastError` to `communication_lost`; the kiosk also retained an old acquisition message after later heartbeat state changes. Added focused regressions and a local correction that separates transport loss from business rejection and derives the connection notice from each latest heartbeat. Agent core 29 tests, Ruff, focused Web 8 tests, and Web ESLint pass.
 - [x] (2026-07-23 09:51 JST) Completed the correction's aggregate local validation: torque-agent 45 tests and Ruff, Web 297 files/1470 tests and production build, root lint, document audit, `git diff --check`, all 821 deploy-contract tests, disposable-PostgreSQL migration replay, deploy-status integration, and all Ansible syntax checks pass. API, database schema, guard, Bluetooth helper, NFC, and public API contracts are unchanged.
+- [x] (2026-07-23 10:35 JST) Classified the first correction CI result as two newly disclosed dependency-security blockers rather than torque regressions. Updated `fast-uri` to 3.1.4, Sharp to 0.35.3 with the required Node 20.9 baseline, and the Caddy build's effective gRPC replacement to 1.82.1. Local source scanning now reports zero tracked HIGH/CRITICAL findings; full API validation, production builds, and the complete deploy-contract suite pass, with exact-head CI remaining the authoritative current-database image scan.
 - [ ] Publish one exact-head correction, complete CI as one aggregate result, redeploy StoneBase and Assembly-01 once, and rerun only the blocked takeover path in both directions before enforcement activation.
 
 ## Surprises & Discoveries
@@ -85,6 +86,9 @@ The first production pilot is limited to `raspi4-kensaku-stonebase01` and `raspi
 
 - Observation: the kiosk's general `message` state captured the acquisition response once but heartbeat updated only `agentStatus`, so a later communication loss or agent restart left the yellow acquisition-success text visible beside the correct no-lease white status.
   Evidence: the physical screen showed `接続権を取得しました。Bluetooth接続を待っています。` after the agent had already returned `ready=false`, `leaseOwned=false`, and `communication_lost`. The focused Web regression reproduces the stale text.
+
+- Observation: an exact-head rerun may expose newly published dependency advisories even when the feature correction and its earlier local validation are unchanged.
+  Evidence: the first correction CI reported fixed-version HIGH findings in `fast-uri`, Sharp, and Caddy's embedded gRPC module. Updating the three dependency boundaries together removed the tracked source findings and preserved all feature and deployment contracts.
 
 ## Decision Log
 

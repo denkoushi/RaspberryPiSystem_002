@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 540,
-    "totalLines": 155455,
-    "totalBytes": 11742459,
+    "totalLines": 155459,
+    "totalBytes": 11743421,
     "withFrontmatter": 226,
     "withStatus": 84,
     "sourceOfTruthDeclared": 55,
@@ -5742,7 +5742,7 @@
     {
       "path": "README.md",
       "lineCount": 320,
-      "byteSize": 16381,
+      "byteSize": 16380,
       "hasFrontmatter": false,
       "title": "Raspberry Pi NFC 工場持出返却システム",
       "status": null,
@@ -31408,8 +31408,8 @@
     },
     {
       "path": "docs/plans/assembly-torque-wrench-connection-lease-execplan.md",
-      "lineCount": 269,
-      "byteSize": 33534,
+      "lineCount": 273,
+      "byteSize": 34497,
       "hasFrontmatter": true,
       "title": "Assembly Torque Wrench Connection Lease",
       "status": "release_a_physical_acceptance_fix_in_progress",

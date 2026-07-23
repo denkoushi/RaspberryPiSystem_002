@@ -74,7 +74,7 @@ Codexを指示役、Cursorを実行役としてAI協調する場合は、[Codex/
 
 ## 開発準備
 
-1. Node.js 18.18 以上（推奨: 20.x）と pnpm をインストールし、`corepack enable` を実行
+1. Node.js 20.9 以上（推奨: 20.x）と pnpm をインストールし、`corepack enable` を実行
 2. Python 3.11 + Poetry をインストール
 3. ルートで `pnpm install` を実行してワークスペース依存を取得
 4. `poetry install -C clients/nfc-agent` で NFC エージェント依存をセットアップ
