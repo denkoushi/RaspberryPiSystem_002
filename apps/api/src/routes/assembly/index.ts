@@ -4,11 +4,9 @@ import { z } from 'zod';
 import { authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
 import {
-  importAssemblyProcedureDocumentPagesAndSave,
   resolveAssemblyProcedureMultipartReadLimit
 } from '../../lib/assembly-procedure-document-import.js';
 import { convertDrawingUploadToPreviewBuffer } from '../../lib/part-measurement-drawing-preview.js';
-import { AssemblyProcedureImageStorage } from '../../lib/assembly-procedure-image-storage.js';
 import { requireClientDevice } from '../kiosk/shared.js';
 import { requireKioskClientDevice } from '../../services/clients/client-device-auth.service.js';
 import { AssemblyTorqueTraceabilityService } from '../../services/torque-wrenches/index.js';
@@ -20,6 +18,8 @@ import {
   AssemblyProcedureOrderService,
   AssemblyProcedureSequenceService,
   AssemblyProcedureDocumentService,
+  AssemblyProcedureDraftImportService,
+  createAssemblyProcedureGmailImportService,
   AssemblySeibanLotQuantityService,
   AssemblySeibanStartService,
   AssemblyTemplateService,
@@ -714,6 +714,8 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
   };
 
   const procedureService = new AssemblyProcedureDocumentService();
+  const procedureDraftImportService = new AssemblyProcedureDraftImportService(procedureService);
+  const procedureGmailImportService = createAssemblyProcedureGmailImportService();
   const libraryFilterOptionsService = new AssemblyLibraryFilterOptionsService();
   const templateService = new AssemblyTemplateService();
   const sessionService = new AssemblyWorkSessionService();
@@ -860,19 +862,29 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
       }
     }
     if (!fileBuffer) throw new ApiError(400, '手順書ファイルが必要です');
-    const importResult = await importAssemblyProcedureDocumentPagesAndSave({ buffer: fileBuffer, mimetype, filename });
-    try {
-      const doc = await procedureService.create({
-        name: name || filename.replace(/\.[^.]+$/, '') || '組立手順書',
-        pages: importResult.pages.map((page) => ({ imageRelativePath: page.imageRelativePath }))
-      });
-      return { document: serializeProcedureDocument(doc) };
-    } catch (error) {
-      await Promise.all(
-        importResult.pages.map((page) => AssemblyProcedureImageStorage.deleteImage(page.imageRelativePath).catch(() => undefined))
-      );
-      throw error;
-    }
+    const doc = await procedureDraftImportService.importDraft({
+      name: name || filename.replace(/\.[^.]+$/, '') || '組立手順書',
+      buffer: fileBuffer,
+      mimetype,
+      filename
+    });
+    return { document: serializeProcedureDocument(doc) };
+  });
+
+  app.post('/assembly/procedure-documents/ingest-gmail', { preHandler: allowWriteKiosk }, async () => {
+    const result = await procedureGmailImportService.ingest();
+    return {
+      result: {
+        ...result,
+        items: result.items.map((item) => ({
+          messageId: item.messageId,
+          filename: item.filename,
+          status: item.status,
+          document: item.document ? serializeProcedureDocument(item.document) : null,
+          error: item.error
+        }))
+      }
+    };
   });
 
   app.post('/assembly/procedure-documents/:id/publish', { preHandler: allowWriteKiosk }, async (request) => {

@@ -29,6 +29,9 @@ import type { AssemblyProcedureDocumentDto, AssemblyProcedureDocumentSummaryDto 
 type Props = {
   refreshToken?: number;
   onRegisterClick: () => void;
+  onImportClick?: () => void;
+  importing?: boolean;
+  importMessage?: string | null;
   onChanged?: (message: string) => void;
   previewDocuments?: AssemblyProcedureDocumentSummaryDto[];
 };
@@ -36,6 +39,9 @@ type Props = {
 export function AssemblyProcedureLibrarySection({
   refreshToken,
   onRegisterClick,
+  onImportClick,
+  importing = false,
+  importMessage,
   onChanged,
   previewDocuments
 }: Props) {
@@ -166,11 +172,26 @@ export function AssemblyProcedureLibrarySection({
         >
           登録
         </Button>
+        {onImportClick ? (
+          <Button
+            type="button"
+            variant="ghostOnDark"
+            className="min-h-9 shrink-0 !px-2 !py-0 text-[0.86rem]"
+            disabled={importing}
+            onClick={onImportClick}
+          >
+            {importing ? '取込中…' : '取込'}
+          </Button>
+        ) : null}
       </div>
 
       <p className="px-1 text-[0.78rem] font-semibold text-white/55">
         インポート後は下書きです。「公開」してからテンプレート・表示順設定で使用してください。
       </p>
+
+      {importMessage ? (
+        <p className="px-1 text-[0.9rem] font-semibold text-amber-100">{importMessage}</p>
+      ) : null}
 
       {error ?? actionError ?? apiFilterOptions.error ? (
         <p className="text-[0.98rem] font-semibold text-amber-200">

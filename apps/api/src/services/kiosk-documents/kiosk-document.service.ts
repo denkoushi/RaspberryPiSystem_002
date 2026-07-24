@@ -9,6 +9,7 @@ import type { PdfFileStorePort } from './ports/pdf-file-store.port.js';
 import type { PdfRenderPort } from './ports/pdf-render.port.js';
 import type { HtmlToPdfPort } from './ports/html-to-pdf.port.js';
 import { normalizeKioskGmailLogicalKey } from './kiosk-document-gmail-logical-key.js';
+import { buildGmailAttachmentDedupeKey } from '../gmail/gmail-attachment-dedupe-key.js';
 
 export type KioskDocumentDetail = {
   document: KioskDocument;
@@ -23,7 +24,7 @@ export type KioskGmailImportResult =
   | { status: 'skipped'; reason: KioskGmailImportSkippedReason };
 
 export function buildGmailDedupeKey(messageId: string, attachmentFilename: string): string {
-  return createHash('sha256').update(`${messageId}|${attachmentFilename}`, 'utf8').digest('hex');
+  return buildGmailAttachmentDedupeKey(messageId, attachmentFilename);
 }
 
 /** Gmail HTML 添付を PDF 保存用ファイル名へ（storage は .pdf のみ） */

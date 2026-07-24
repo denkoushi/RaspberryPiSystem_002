@@ -82,6 +82,7 @@
 
 - **組立統合ワークフロー ExecPlan（Phase 1–4）**: 公開ゲート・複数ページ手順書・ページ単位ボルト/チェックマーカー・完了条件。**正本**: [Plan](./plans/assembly-unified-workflow-execplan.md)
 - **ページ単位マーカーと公開ゲート ADR**: ADR-20260707 閲覧順限定をテンプレートマーカー配置で部分 supersede。**正本**: [ADR](./decisions/ADR-20260708-assembly-page-level-markers-and-publish-gate.md)
+- **組立手順書 Gmail 取込**: 件名 `DocumentASM` のPDF/JPEG添付を下書き登録し、成功後だけ処理済みラベル付きでゴミ箱へ移動。**正本**: [Plan](./plans/assembly-procedure-gmail-import-execplan.md) · [ADR](./decisions/ADR-20260724-assembly-procedure-gmail-import.md) · [Gmail setup](./guides/gmail-setup-guide.md#3b-組立手順書ライブラリgmailpdf--jpeg-添付)
 
 ### 最新アップデート（2026-07-07 · 組立キオスク改良 第2弾（記録確認+NFC承認 / プレビュー認証修正 / トップUI統一） · 本番反映済）
 

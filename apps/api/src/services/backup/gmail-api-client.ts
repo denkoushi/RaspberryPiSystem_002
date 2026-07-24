@@ -6,38 +6,77 @@ import { GmailRequestGateService, GmailRateLimitedDeferredError } from './gmail-
 /**
  * Gmailメッセージ情報
  */
+export interface GmailMessagePart {
+  partId?: string;
+  mimeType?: string;
+  filename?: string;
+  headers?: Array<{ name: string; value: string }>;
+  body?: {
+    attachmentId?: string;
+    size?: number;
+  };
+  parts?: GmailMessagePart[];
+}
+
 export interface GmailMessage {
   id: string;
   threadId: string;
   labelIds: string[];
   snippet: string;
-  payload?: {
-    mimeType?: string;
-    filename?: string;
-    headers?: Array<{ name: string; value: string }>;
-    parts?: Array<{
-      partId: string;
-      mimeType: string;
-      filename?: string;
-      body?: {
-        attachmentId?: string;
-        size?: number;
-      };
-      parts?: Array<{
-        partId: string;
-        mimeType: string;
-        filename?: string;
-        body?: {
-          attachmentId?: string;
-          size?: number;
-        };
-      }>;
-    }>;
-    body?: {
-      attachmentId?: string;
-      size?: number;
-    };
+  internalDateMs: number;
+  payload?: GmailMessagePart;
+}
+
+export interface GmailAttachmentDescriptor {
+  attachmentId: string;
+  filename: string;
+  mimeType: string;
+  size?: number;
+  isInline: boolean;
+}
+
+function findPartHeader(part: GmailMessagePart, name: string): string | undefined {
+  return part.headers?.find((header) => header.name.toLowerCase() === name.toLowerCase())?.value;
+}
+
+/**
+ * Gmail MIMEツリーからattachmentIdを持つパートを再帰列挙する。
+ * Content-Disposition / Content-ID は呼び出し側が実添付とinlineを区別するため保持する。
+ */
+export function collectGmailAttachments(message: GmailMessage): GmailAttachmentDescriptor[] {
+  const results: GmailAttachmentDescriptor[] = [];
+  const seen = new Set<string>();
+
+  const walk = (part: GmailMessagePart | undefined): void => {
+    if (!part) return;
+    const attachmentId = part.body?.attachmentId;
+    if (attachmentId) {
+      // 監査用メタデータでは Gmail が返した添付名をそのまま保持する。
+      // 空白除去や NFC 正規化は、検証・重複キー生成を行う各ドメイン側の責務とする。
+      const filename = part.filename ?? '';
+      const disposition = findPartHeader(part, 'Content-Disposition')?.trim().toLowerCase() ?? '';
+      const contentId = findPartHeader(part, 'Content-ID')?.trim() ?? '';
+      const explicitlyAttached = disposition.startsWith('attachment');
+      const isInline = disposition.startsWith('inline') || (!explicitlyAttached && contentId.length > 0);
+      const key = `${attachmentId}|${filename}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        results.push({
+          attachmentId,
+          filename,
+          mimeType: part.mimeType?.trim() ?? '',
+          size: part.body?.size,
+          isInline
+        });
+      }
+    }
+    for (const child of part.parts ?? []) {
+      walk(child);
+    }
   };
+
+  walk(message.payload);
+  return results;
 }
 
 export interface GmailTrashCleanupResult {
@@ -277,6 +316,7 @@ export class GmailApiClient {
         threadId: message.threadId || '',
         labelIds: message.labelIds || [],
         snippet: message.snippet || '',
+        internalDateMs: Number.parseInt(String(message.internalDate ?? '0'), 10) || 0,
         payload: message.payload as GmailMessage['payload']
       };
     } catch (error) {
@@ -489,7 +529,6 @@ export class GmailApiClient {
     const { messageId, defaultFilename, defaultMimeType, matches } = params;
     const message = await this.getMessage(messageId);
     const results: Array<{ attachmentId: string; filename: string; mimeType: string }> = [];
-    const seen = new Set<string>();
 
     const pushIfMatch = (
       attachmentId: string | undefined,
@@ -501,11 +540,6 @@ export class GmailApiClient {
       }
       const normalizedFilename = filename || defaultFilename;
       const normalizedMimeType = mimeType || defaultMimeType;
-      const key = `${attachmentId}|${normalizedFilename}`;
-      if (seen.has(key)) {
-        return;
-      }
-      seen.add(key);
       results.push({
         attachmentId,
         filename: normalizedFilename,
@@ -513,25 +547,9 @@ export class GmailApiClient {
       });
     };
 
-    type PartsType = NonNullable<GmailMessage['payload']>['parts'];
-    const walk = (parts: PartsType | undefined): void => {
-      if (!parts || !Array.isArray(parts)) {
-        return;
-      }
-      for (const part of parts) {
-        pushIfMatch(part.body?.attachmentId, part.mimeType, part.filename);
-        if (part.parts) {
-          walk(part.parts);
-        }
-      }
-    };
-
-    if (!message.payload) {
-      return results;
+    for (const attachment of collectGmailAttachments(message)) {
+      pushIfMatch(attachment.attachmentId, attachment.mimeType, attachment.filename);
     }
-
-    pushIfMatch(message.payload.body?.attachmentId, message.payload.mimeType, message.payload.filename);
-    walk(message.payload.parts);
     return results;
   }
 
@@ -587,7 +605,7 @@ export class GmailApiClient {
     }
 
     // 添付ファイルを探す
-    type PartsType = NonNullable<GmailMessage['payload']>['parts'];
+    type PartsType = GmailMessagePart[];
     const findAttachment = (parts: PartsType | undefined): { attachmentId: string; filename: string } | null => {
       if (!parts || !Array.isArray(parts)) {
         return null;
@@ -696,4 +714,3 @@ export class GmailApiClient {
     }
   }
 }
-

@@ -22,6 +22,28 @@ export type AssemblyProcedureDocumentSummaryDto = AssemblyProcedureDocumentDto &
   totalTemplateCount: number;
 };
 
+export type AssemblyProcedureGmailImportItemDto = {
+  messageId: string;
+  filename: string | null;
+  status: 'imported' | 'duplicate' | 'import_failed' | 'cleanup_failed';
+  document: AssemblyProcedureDocumentDto | null;
+  error: string | null;
+};
+
+export type AssemblyProcedureGmailImportResultDto = {
+  query: string;
+  scanned: number;
+  exactMatched: number;
+  subjectMismatchSkipped: number;
+  attempted: number;
+  imported: number;
+  duplicates: number;
+  trashed: number;
+  failed: number;
+  remainingInInbox: number;
+  items: AssemblyProcedureGmailImportItemDto[];
+};
+
 export type AssemblyTemplateBoltDto = {
   id: string;
   areaId: string;

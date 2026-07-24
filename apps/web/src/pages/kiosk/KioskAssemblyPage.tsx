@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
-import { listAssemblyTemplateSummaries, retireAssemblyTemplate } from '../../api/client';
+import {
+  ingestAssemblyProcedureDocumentsFromGmail,
+  listAssemblyTemplateSummaries,
+  retireAssemblyTemplate
+} from '../../api/client';
 import { KioskFilterCombobox } from '../../components/kiosk/KioskFilterCombobox';
 import { Button, buttonClassName } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -33,6 +37,8 @@ export function KioskAssemblyPage() {
   const location = useLocation();
   const [message, setMessage] = useState<string | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [gmailImportBusy, setGmailImportBusy] = useState(false);
+  const [gmailImportMessage, setGmailImportMessage] = useState<string | null>(null);
   const [libraryRefreshToken, setLibraryRefreshToken] = useState(0);
   const [templateRefreshToken, setTemplateRefreshToken] = useState(0);
   const [historyTemplates, setHistoryTemplates] = useState<AssemblyTemplateSummaryDto[]>([]);
@@ -104,6 +110,36 @@ export function KioskAssemblyPage() {
     setTemplateRefreshToken((token) => token + 1);
   }, []);
 
+  const handleGmailImport = useCallback(async () => {
+    setGmailImportBusy(true);
+    setGmailImportMessage(null);
+    try {
+      const result = await ingestAssemblyProcedureDocumentsFromGmail();
+      if (result.imported > 0) {
+        setLibraryRefreshToken((token) => token + 1);
+      }
+      const failureDetails = result.items
+        .filter((item) => item.error)
+        .slice(0, 3)
+        .map((item) => `${item.filename ?? 'メール'}: ${item.error}`)
+        .join(' / ');
+      const summary =
+        `Gmail取込: 新規${result.imported}件、重複${result.duplicates}件、失敗${result.failed}件` +
+        `（受信箱残り${result.remainingInInbox}件）。`;
+      setGmailImportMessage(
+        failureDetails
+          ? `${summary} ${failureDetails}`
+          : result.imported > 0
+            ? `${summary} 取り込んだ手順書は下書きです。確認後に公開してください。`
+            : summary
+      );
+    } catch (error: unknown) {
+      setGmailImportMessage(readAssemblyApiErrorMessage(error, 'Gmailからの手順書取込に失敗しました。'));
+    } finally {
+      setGmailImportBusy(false);
+    }
+  }, []);
+
   const handleHistoryClick = async (key: string) => {
     const row = rowByKey.get(key);
     if (!row) return;
@@ -170,6 +206,9 @@ export function KioskAssemblyPage() {
         <AssemblyProcedureLibrarySection
           refreshToken={libraryRefreshToken}
           onRegisterClick={() => setUploadOpen(true)}
+          onImportClick={() => void handleGmailImport()}
+          importing={gmailImportBusy}
+          importMessage={gmailImportMessage}
           onChanged={handleLibraryChanged}
         />
 

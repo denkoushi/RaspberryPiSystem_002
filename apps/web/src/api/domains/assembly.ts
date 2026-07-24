@@ -5,6 +5,7 @@ import type {
   AssemblyCheckSummaryDto,
   AssemblyProcedureDocumentDto,
   AssemblyProcedureDocumentSummaryDto,
+  AssemblyProcedureGmailImportResultDto,
   AssemblyProcedureOrderDto,
   AssemblyProcedureOrderSaveInput,
   AssemblyProcedureSequenceDto,
@@ -109,6 +110,15 @@ export async function uploadAssemblyProcedureDocument(input: { name: string; fil
     headers: { 'Content-Type': 'multipart/form-data' }
   });
   return data.document;
+}
+
+export async function ingestAssemblyProcedureDocumentsFromGmail() {
+  const { data } = await api.post<{ result: AssemblyProcedureGmailImportResultDto }>(
+    '/assembly/procedure-documents/ingest-gmail',
+    undefined,
+    { timeout: 600_000 }
+  );
+  return data.result;
 }
 
 export async function renameAssemblyProcedureDocument(id: string, name: string) {
