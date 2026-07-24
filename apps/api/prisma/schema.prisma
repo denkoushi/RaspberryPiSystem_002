@@ -2423,29 +2423,40 @@ model PartMeasurementResult {
 
 /// 組立トルク管理: 手順書画像（先頭ページは imageRelativePath にも保持）。部品測定図面とは保存先・責務を分ける。
 model AssemblyProcedureDocument {
-  id                   String                          @id @default(uuid())
-  name                 String
+  id                 String                                 @id @default(uuid())
+  name               String
   /// 互換用: 先頭ページ（pageIndex=0）と同一画像パス
-  imageRelativePath    String
-  status               AssemblyProcedureDocumentStatus @default(DRAFT)
-  sourceType           AssemblyProcedureDocumentSource @default(MANUAL)
-  gmailMessageId       String?
-  sourceAttachmentName String?
-  gmailInternalDateMs  BigInt?
-  gmailDedupeKey       String?                         @unique
-  publishedAt          DateTime?
-  isActive             Boolean                         @default(true)
-  createdAt            DateTime                        @default(now())
-  updatedAt            DateTime                        @updatedAt
-  pages                AssemblyProcedureDocumentPage[]
-  templates            AssemblyTemplate[]
-  orderItems           AssemblyProcedureOrderItem[]
-  templateBolts        AssemblyTemplateBolt[]
-  templateCheckItems   AssemblyTemplateCheckItem[]
+  imageRelativePath  String
+  status             AssemblyProcedureDocumentStatus        @default(DRAFT)
+  publishedAt        DateTime?
+  isActive           Boolean                                @default(true)
+  createdAt          DateTime                               @default(now())
+  updatedAt          DateTime                               @updatedAt
+  source             AssemblyProcedureDocumentSourceRecord?
+  pages              AssemblyProcedureDocumentPage[]
+  templates          AssemblyTemplate[]
+  orderItems         AssemblyProcedureOrderItem[]
+  templateBolts      AssemblyTemplateBolt[]
+  templateCheckItems AssemblyTemplateCheckItem[]
 
   @@index([isActive, name], map: "AssemblyProcedureDocument_idx_active_name")
   @@index([isActive, updatedAt], map: "AssemblyProcedureDocument_idx_active_updated")
   @@index([status, isActive], map: "AssemblyProcedureDocument_idx_status_active")
+}
+
+/// 組立手順書の外部取込元。手動登録は行を持たず MANUAL と解釈する。
+model AssemblyProcedureDocumentSourceRecord {
+  id                   String                          @id @default(uuid())
+  documentId           String                          @unique(map: "AssemblyProcedureDocumentSourceRecord_documentId_key")
+  sourceType           AssemblyProcedureDocumentSource @default(MANUAL)
+  gmailMessageId       String?
+  sourceAttachmentName String?
+  gmailInternalDateMs  BigInt?
+  gmailDedupeKey       String?                         @unique(map: "AssemblyProcedureDocumentSourceRecord_gmailDedupeKey_key")
+  createdAt            DateTime                        @default(now())
+  document             AssemblyProcedureDocument       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([gmailMessageId], map: "AssemblyProcedureDocumentSourceRecord_gmailMessageId_idx")
 }
 
 /// 組立トルク管理: 手順書の各ページ画像。

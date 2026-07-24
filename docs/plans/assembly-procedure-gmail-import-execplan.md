@@ -36,6 +36,13 @@ scheduler.
 - [x] (2026-07-24) Added ADR and operator documentation.
 - [x] (2026-07-24) Validated migrations, SQL constraints, EXPLAIN, tests, lint, and builds
   against an isolated temporary PostgreSQL container.
+- [x] (2026-07-24) Release preflight rejected the original migration before any
+  production mutation because it altered an existing table with a default,
+  enum, and unique index.
+- [x] (2026-07-24) Replaced the unapplied migration with an expand-only source
+  sidecar table, validate the exact repair declaration, and rerun the complete
+  local migration/API gates. Production preflight remains to be rerun after
+  exact-head CI.
 
 ## Surprises & Discoveries
 
@@ -59,6 +66,10 @@ scheduler.
 - The Gmail MIME collector had trimmed filenames. Audit metadata now preserves
   the exact filename returned by Gmail; NFC normalization is applied only for
   validation, display-name derivation, and dedupe-key generation.
+- The release migration gate intentionally rejects a required/defaulted enum
+  column and unique index on an existing production table. The merged migration
+  had not been applied, so its safe replacement can create a new empty sidecar
+  table without locking or rewriting existing procedure-document rows.
 
 ## Decision Log
 
@@ -76,6 +87,14 @@ scheduler.
   85, with EXIF rotation and bounded quality reduction to the storage limit.
 - Decision: automated tests use fake Gmail gateways. No real mailbox is mutated
   without separate explicit authorization.
+- Decision: existing and manually registered documents have no source row and
+  are interpreted as `MANUAL`; Gmail imports create a one-to-one
+  `AssemblyProcedureDocumentSourceRecord`. This keeps all constraints on a new
+  empty table.
+- Decision: a merged-but-unapplied migration repair must declare the exact old
+  and new SHA-256 checksums and is enabled only by the repository candidate
+  validator. The production ledger validator does not accept repair
+  declarations, so an already-applied migration remains immutable.
 
 ## Context and Orientation
 
@@ -92,9 +111,10 @@ The procedure library UI is composed by `KioskAssemblyPage` and
 
 ## Plan of Work
 
-1. Add `AssemblyProcedureDocumentSource` and nullable Gmail source fields to
-   Prisma. Apply a unique constraint to `gmailDedupeKey`; existing rows default
-   to `MANUAL`.
+1. Add `AssemblyProcedureDocumentSource` and a one-to-one source record to
+   Prisma. Apply a unique constraint to the source record's `gmailDedupeKey`;
+   existing and manual documents have no source row and are interpreted as
+   `MANUAL`.
 2. Refactor Gmail message-part typing into a recursive shape and expose a pure
    attachment collector. Extract the Gmail dedupe-key helper into a Gmail
    utility so kiosk and assembly domains share it without depending on one
@@ -134,9 +154,9 @@ allocated loopback port, set a task-specific `DATABASE_URL`, and run:
     pnpm --filter @raspi-system/api prisma:deploy
     pnpm --filter @raspi-system/api exec prisma migrate status
 
-Use `psql` only against that temporary URL to inspect columns/indexes, exercise
-the unique constraint, and run `EXPLAIN (ANALYZE, BUFFERS)` for a
-`gmailDedupeKey` lookup.
+Use `psql` only against that temporary URL to inspect the source table and its
+indexes, exercise the one-to-one and dedupe constraints, and run
+`EXPLAIN (ANALYZE, BUFFERS)` for a `gmailDedupeKey` lookup.
 
 Finally run API/web tests, lint, builds, and:
 
@@ -162,10 +182,11 @@ Finally run API/web tests, lint, builds, and:
 
 ## Idempotence and Recovery
 
-The nullable unique Gmail dedupe key is the cross-process idempotency boundary.
-If an HTTP request times out after database commit, the retry finds the existing
-draft and only retries Gmail disposal. If file storage succeeds but database
-creation fails, all files created by that attempt are removed. Invalid input is
+The source record's nullable unique Gmail dedupe key is the cross-process
+idempotency boundary. If an HTTP request times out after database commit, the
+retry finds the existing draft and only retries Gmail disposal. If file storage
+succeeds but database creation fails, the nested source/document transaction is
+rolled back and all files created by that attempt are removed. Invalid input is
 safe to retry because neither DB nor Gmail state changes.
 
 Temporary Docker resources are always removed by an explicit trap. Existing
@@ -194,16 +215,16 @@ the kiosk UI are separated by narrow ports. Existing manual upload now shares
 the same durable draft writer and therefore also benefits from page-file
 rollback after database failure.
 
-An isolated `pgvector/pgvector:pg15` database applied all migrations. SQL
-inspection confirmed nullable Gmail metadata, `MANUAL` as the existing/manual
-default, and the nullable unique dedupe index. A duplicate insert was rejected,
-and `EXPLAIN (ANALYZE, BUFFERS)` used
-`AssemblyProcedureDocument_gmailDedupeKey_key` via an index scan. The focused
-assembly API suites passed 26 tests, and the full API suite passed 459 files /
-2,394 tests (with 2 files / 7 tests skipped). The pre-existing database,
-containers, volumes, and networks were not used or modified; the temporary
-container, volume, and network were removed by the cleanup trap and verified
-absent.
+An isolated `pgvector/pgvector:pg15` database applied all 153 migrations. SQL
+inspection confirmed that existing/manual documents require no source row,
+while Gmail metadata and both one-to-one and nullable dedupe constraints live
+on the new sidecar table. A duplicate insert was rejected, and
+`EXPLAIN (ANALYZE, BUFFERS)` used
+`AssemblyProcedureDocumentSourceRecord_gmailDedupeKey_key` via an index scan.
+The full API suite passed 459 files / 2,395 tests (with 2 files / 7 tests
+skipped). The pre-existing database, containers, volumes, and networks were not
+used or modified; the temporary container, volume, and network were removed by
+the cleanup trap and verified absent.
 
 API and Web lint, Prisma Client generation, and both production builds pass.
 The final Web suite passed 300 files / 1,497 tests, including the audit-filename

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "repairs": [
+    {
+      "migration": "20260724183000_assembly_procedure_gmail_import",
+      "oldChecksum": "7fa8226cf22389fcf6d4a5eff414d55b4609a917af2797bfd717e651b9a38f08",
+      "newChecksum": "360130d0ded95030a6038b83c49065cda13c5ab2cdfd335582af00638813457f",
+      "reason": "The migration was merged but remained unapplied in production; replace existing-table alterations with a new source sidecar table."
+    }
+  ]
+}

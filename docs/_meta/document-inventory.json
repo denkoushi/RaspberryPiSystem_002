@@ -15,9 +15,9 @@
     ]
   },
   "summary": {
-    "documentCount": 544,
-    "totalLines": 156111,
-    "totalBytes": 11810258,
+    "documentCount": 546,
+    "totalLines": 156417,
+    "totalBytes": 11826395,
     "withFrontmatter": 228,
     "withStatus": 86,
     "sourceOfTruthDeclared": 56,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 25,
-    "localLinkCount": 5568,
+    "localLinkCount": 5570,
     "brokenLocalLinkCount": 87,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -16241,7 +16241,7 @@
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
-      "inboundCount": 4,
+      "inboundCount": 5,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -16262,7 +16262,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 2,
+      "inboundCount": 3,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -16577,6 +16577,32 @@
       "source_of_truth": null,
       "localLinks": [],
       "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/decisions/ADR-20260724-assembly-procedure-gmail-import.md",
+      "lineCount": 65,
+      "byteSize": 3458,
+      "hasFrontmatter": false,
+      "title": "ADR-20260724: Gmail Import for Assembly Procedure Documents",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "./ADR-20260707-assembly-procedure-order-library-scope.md",
+          "targetPath": "docs/decisions/ADR-20260707-assembly-procedure-order-library-scope.md",
+          "exists": true
+        },
+        {
+          "href": "./ADR-20260708-assembly-page-level-markers-and-publish-gate.md",
+          "targetPath": "docs/decisions/ADR-20260708-assembly-page-level-markers-and-publish-gate.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -18253,8 +18279,8 @@
     },
     {
       "path": "docs/guides/deployment.md",
-      "lineCount": 194,
-      "byteSize": 15041,
+      "lineCount": 203,
+      "byteSize": 15757,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -31461,6 +31487,21 @@
       "source_of_truth": null,
       "localLinks": [],
       "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/assembly-procedure-gmail-import-execplan.md",
+      "lineCount": 232,
+      "byteSize": 11963,
+      "hasFrontmatter": false,
+      "title": "Assembly Procedure Gmail Import",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
