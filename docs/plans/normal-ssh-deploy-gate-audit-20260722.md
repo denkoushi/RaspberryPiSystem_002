@@ -15,10 +15,11 @@ related_code:
   - scripts/deploy/rolling_release/terminal_adapters.py
   - scripts/deploy/deploy-status-state.py
   - apps/web/src/layouts/KioskLayout.tsx
-validation: offline source and test audit only; no device connection, preflight, deployment, PR, or merge
+validation: offline contract suites plus read-only production preflight; no release unit submitted
 open_items:
   - decide whether each live terminal-agent health probe is a release requirement or an operator warning
   - do not replace the launch-time preflight with a reusable receipt unless a later, separately reviewed design binds freshness and ownership
+  - restore Pi5-to-StoneBase SSH reachability before retrying the blocked Gmail assembly-document release
 ---
 
 # Normal SSH Deployment Gate Audit
@@ -180,3 +181,29 @@ PR #1064 and its approved Pi5/StoneBase acceptance completed. The operating
 guide now removes standalone `--preflight-only` from the normal execution
 sequence; launch still performs the same aggregate preflight immediately
 before release-unit submission.
+
+## 2026-07-24 Release-Readiness Observation
+
+The Gmail assembly-document release exposed two independent pre-mutation
+failures. The production-ledger gate first rejected an unsafe migration shape;
+the feature migration was replaced with an additive sidecar table and the
+corrected migration contract passed local isolated PostgreSQL and production
+read-only checks.
+
+The remaining blocker is terminal transport, not the application or migration.
+Full-fleet preflights `20260724-105354-2ae5ba`,
+`20260724-114759-5a73fe`, and `20260724-120957-e40cb7` all stopped before
+release-unit submission because StoneBase returned no terminal marker.
+Fail-closed, secret-free diagnostics were then added: unexpected target
+exceptions return only their exception class, and pre-marker exits are
+classified without returning remote stdout or stderr. Scoped read-only
+preflight `20260724-122044-f77a35` identified SSH exit 255; refined scoped
+preflight `20260724-122704-c0119d` identified `transport.ssh-timeout`.
+
+The migration and Pi5 route probes passed, every preflight reported
+`releaseSubmitted: false`, and no terminal or production service was mutated.
+The evidence proves a Pi5-to-StoneBase SSH timeout; it does not distinguish a
+powered-off terminal from a Tailscale, network, or SSH-service outage. Normal
+deployment remains blocked until that route is reachable and the complete
+launch-time preflight passes. No host exclusion, emergency flag, or direct SSH
+repair is authorized by this observation.
