@@ -1407,6 +1407,52 @@ def _decode_marker(output: str) -> dict[str, Any]:
     return results[0]
 
 
+def _missing_marker_issue(completed: Any) -> dict[str, str]:
+    """Classify a pre-marker transport failure without returning remote output."""
+
+    returncode = (
+        completed.returncode
+        if type(getattr(completed, "returncode", None)) is int
+        else EX_SOFTWARE
+    )
+    stderr = str(getattr(completed, "stderr", "") or "").lower()
+    if returncode == 255:
+        return {
+            "code": "transport.ssh",
+            "message": "terminal SSH transport exited before returning a result marker",
+        }
+    if "sudo:" in stderr and any(
+        phrase in stderr
+        for phrase in (
+            "a password is required",
+            "a terminal is required",
+            "not allowed to execute",
+            "no valid sudoers sources found",
+        )
+    ):
+        return {
+            "code": "transport.privilege",
+            "message": "terminal privilege boundary rejected the read-only probe",
+        }
+    if returncode == EX_CONFIG:
+        return {
+            "code": "transport.loader",
+            "message": "terminal probe loader rejected the read-only envelope",
+        }
+    if returncode != 0:
+        return {
+            "code": "transport.process",
+            "message": (
+                "terminal probe process exited before returning a result marker "
+                f"(exit {returncode})"
+            ),
+        }
+    return {
+        "code": "transport.result",
+        "message": "terminal preflight result marker is missing",
+    }
+
+
 def _source_text() -> str:
     embedded = globals().get("EMBEDDED_TERMINAL_PREFLIGHT_SOURCE")
     if isinstance(embedded, str) and embedded.strip():
@@ -1589,12 +1635,17 @@ def execute_orchestrator(
             try:
                 result = _decode_marker(output)
             except ValueError as error:
+                issue = (
+                    _missing_marker_issue(completed)
+                    if str(error) == "terminal preflight result marker is missing"
+                    else {"code": "transport.result", "message": str(error)}
+                )
                 result = {
                     "version": 1,
                     "host": target["host"],
                     "profile": target["profile"],
                     "ready": False,
-                    "issues": [{"code": "transport.result", "message": str(error)}],
+                    "issues": [issue],
                 }
             results.append(result)
 

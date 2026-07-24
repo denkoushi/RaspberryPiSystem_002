@@ -440,6 +440,69 @@ print("TERMINAL_PREFLIGHT_RESULT:" + encoded)
         )
         self.assertNotIn(secret, stdout.getvalue())
 
+    def test_missing_marker_classifies_ssh_without_returning_remote_output(self):
+        secret = "DO-NOT-LEAK-SSH-OUTPUT"
+        completed = subprocess.CompletedProcess(
+            [],
+            255,
+            "",
+            f"ssh: connection closed; {secret}",
+        )
+
+        issue = terminal_preflight._missing_marker_issue(completed)
+
+        self.assertEqual(
+            issue,
+            {
+                "code": "transport.ssh",
+                "message": "terminal SSH transport exited before returning a result marker",
+            },
+        )
+        self.assertNotIn(secret, json.dumps(issue))
+
+    def test_missing_marker_classifies_sudo_rejection_without_returning_output(self):
+        secret = "DO-NOT-LEAK-SUDO-OUTPUT"
+        completed = subprocess.CompletedProcess(
+            [],
+            1,
+            "",
+            f"sudo: a password is required; {secret}",
+        )
+
+        issue = terminal_preflight._missing_marker_issue(completed)
+
+        self.assertEqual(
+            issue,
+            {
+                "code": "transport.privilege",
+                "message": "terminal privilege boundary rejected the read-only probe",
+            },
+        )
+        self.assertNotIn(secret, json.dumps(issue))
+
+    def test_missing_marker_classifies_loader_and_other_process_exits(self):
+        self.assertEqual(
+            terminal_preflight._missing_marker_issue(
+                subprocess.CompletedProcess([], terminal_preflight.EX_CONFIG, "", "")
+            ),
+            {
+                "code": "transport.loader",
+                "message": "terminal probe loader rejected the read-only envelope",
+            },
+        )
+        self.assertEqual(
+            terminal_preflight._missing_marker_issue(
+                subprocess.CompletedProcess([], 70, "", "")
+            ),
+            {
+                "code": "transport.process",
+                "message": (
+                    "terminal probe process exited before returning a result marker "
+                    "(exit 70)"
+                ),
+            },
+        )
+
     def test_runtime_probe_uses_shared_contract_and_accepts_bounded_result(self):
         selected = target()
         contract = selected["runtimeManifestContract"]
