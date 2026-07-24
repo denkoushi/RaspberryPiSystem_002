@@ -34,24 +34,30 @@ describe('assembly procedure Gmail import API and persistence', () => {
   const clientKey = 'documentasm-gmail-import-client';
   let app: Awaited<ReturnType<typeof buildServer>>;
 
+  async function deleteOwnedDocuments(): Promise<void> {
+    const sources = await prisma.assemblyProcedureDocumentSourceRecord.findMany({
+      where: { gmailMessageId: { startsWith: messagePrefix } },
+      select: { documentId: true }
+    });
+    await prisma.assemblyProcedureDocument.deleteMany({
+      where: { id: { in: sources.map((source) => source.documentId) } }
+    });
+  }
+
   beforeAll(async () => {
     app = await buildServer();
   });
 
   beforeEach(async () => {
     ingestRouteMock.mockReset();
-    await prisma.assemblyProcedureDocument.deleteMany({
-      where: { gmailMessageId: { startsWith: messagePrefix } }
-    });
+    await deleteOwnedDocuments();
     await prisma.clientDevice.deleteMany({ where: { apiKey: clientKey } });
     await fs.rm(process.env.PHOTO_STORAGE_DIR!, { recursive: true, force: true });
   });
 
   afterAll(async () => {
     await app.close();
-    await prisma.assemblyProcedureDocument.deleteMany({
-      where: { gmailMessageId: { startsWith: messagePrefix } }
-    });
+    await deleteOwnedDocuments();
     await prisma.clientDevice.deleteMany({ where: { apiKey: clientKey } });
     await fs.rm(process.env.PHOTO_STORAGE_DIR!, { recursive: true, force: true });
   });
@@ -133,17 +139,19 @@ describe('assembly procedure Gmail import API and persistence', () => {
 
     const stored = await prisma.assemblyProcedureDocument.findUniqueOrThrow({
       where: { id: first.document.id },
-      include: { pages: true }
+      include: { pages: true, source: true }
     });
     expect(stored).toMatchObject({
       name: '組立工程A',
       status: 'DRAFT',
-      sourceType: 'GMAIL',
-      gmailMessageId: messageId,
-      sourceAttachmentName: filename,
-      gmailDedupeKey
+      source: {
+        sourceType: 'GMAIL',
+        gmailMessageId: messageId,
+        sourceAttachmentName: filename,
+        gmailDedupeKey
+      }
     });
-    expect(stored.gmailInternalDateMs).toBe(1_784_880_000_000n);
+    expect(stored.source?.gmailInternalDateMs).toBe(1_784_880_000_000n);
     expect(stored.pages).toHaveLength(1);
 
     const retry = await writer.writeGmailDraft({

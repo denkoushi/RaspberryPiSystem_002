@@ -123,11 +123,15 @@ export class AssemblyProcedureDocumentService {
         status: 'DRAFT',
         ...(params.source
           ? {
-              sourceType: params.source.sourceType,
-              gmailMessageId: params.source.gmailMessageId,
-              sourceAttachmentName: params.source.sourceAttachmentName,
-              gmailInternalDateMs: BigInt(params.source.gmailInternalDateMs),
-              gmailDedupeKey: params.source.gmailDedupeKey
+              source: {
+                create: {
+                  sourceType: params.source.sourceType,
+                  gmailMessageId: params.source.gmailMessageId,
+                  sourceAttachmentName: params.source.sourceAttachmentName,
+                  gmailInternalDateMs: BigInt(params.source.gmailInternalDateMs),
+                  gmailDedupeKey: params.source.gmailDedupeKey
+                }
+              }
             }
           : {}),
         pages: {
@@ -142,10 +146,15 @@ export class AssemblyProcedureDocumentService {
   }
 
   async findByGmailDedupeKey(gmailDedupeKey: string): Promise<AssemblyProcedureDocumentRecord | null> {
-    return prisma.assemblyProcedureDocument.findUnique({
+    const source = await prisma.assemblyProcedureDocumentSourceRecord.findUnique({
       where: { gmailDedupeKey },
-      include: this.includePages
+      select: {
+        document: {
+          include: this.includePages
+        }
+      }
     });
+    return source?.document ?? null;
   }
 
   async rename(id: string, name: string): Promise<AssemblyProcedureDocumentRecord> {

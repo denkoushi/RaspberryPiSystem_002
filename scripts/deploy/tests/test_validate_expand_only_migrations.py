@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import json
 import pathlib
 import subprocess
 import sys
@@ -49,6 +50,34 @@ class GitFixture:
         path = self.path / validator.MIGRATION_ROOT / "migration_lock.toml"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text('provider = "postgresql"\n', encoding="utf-8")
+
+    def write_repair_manifest(
+        self,
+        migration: str,
+        old_checksum: str,
+        new_checksum: str,
+        *,
+        reason: str = "Merged migration is confirmed unapplied and needs a safe replacement.",
+    ) -> pathlib.Path:
+        path = self.path / validator.REPAIR_MANIFEST
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "repairs": [
+                        {
+                            "migration": migration,
+                            "oldChecksum": old_checksum,
+                            "newChecksum": new_checksum,
+                            "reason": reason,
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return path
 
     def commit(self, message: str, *, allow_empty: bool = False) -> str:
         self.git("add", "-A")
@@ -190,7 +219,12 @@ class RepositoryGateTests(unittest.TestCase):
         self.repo.close()
 
     def validate(
-        self, base: str, candidate: str, applied: dict[str, str] | None = None
+        self,
+        base: str,
+        candidate: str,
+        applied: dict[str, str] | None = None,
+        *,
+        allow_repairs: bool = False,
     ) -> None:
         validator.validate_repository(
             self.repo.path,
@@ -198,6 +232,7 @@ class RepositoryGateTests(unittest.TestCase):
             candidate,
             validator.MIGRATION_ROOT,
             applied or {},
+            allow_declared_unapplied_repairs=allow_repairs,
         )
 
     def test_restored_applied_migration_accepts_dml_when_checksum_matches(self) -> None:
@@ -270,6 +305,104 @@ class RepositoryGateTests(unittest.TestCase):
         candidate = self.repo.commit("modify migration")
         with self.assertRaisesRegex(ValueError, "additions only"):
             self.validate(base, candidate)
+
+    def test_exact_declared_unapplied_repair_is_revalidated_as_pending(self) -> None:
+        name = "202607140006_declared_repair"
+        path = self.repo.write_migration(
+            name, 'ALTER TABLE "Widget" ADD COLUMN "note" TEXT NOT NULL;\n'
+        )
+        old_checksum = hashlib.sha256(path.read_bytes()).hexdigest()
+        base = self.repo.commit("base")
+        path.write_text(
+            'CREATE TABLE "WidgetNote" ("id" TEXT NOT NULL, '
+            'CONSTRAINT "WidgetNote_pkey" PRIMARY KEY ("id"));\n',
+            encoding="utf-8",
+        )
+        new_checksum = hashlib.sha256(path.read_bytes()).hexdigest()
+        self.repo.write_repair_manifest(name, old_checksum, new_checksum)
+        candidate = self.repo.commit("repair unapplied migration")
+
+        self.validate(
+            base,
+            candidate,
+            {name: old_checksum},
+            allow_repairs=True,
+        )
+
+    def test_declared_repair_checksum_mismatch_is_rejected(self) -> None:
+        name = "202607140006_bad_repair_checksum"
+        path = self.repo.write_migration(
+            name, 'CREATE TABLE "Widget" ("id" INTEGER);\n'
+        )
+        old_checksum = hashlib.sha256(path.read_bytes()).hexdigest()
+        base = self.repo.commit("base")
+        path.write_text('CREATE TABLE "Widget" ("id" BIGINT);\n', encoding="utf-8")
+        new_checksum = hashlib.sha256(path.read_bytes()).hexdigest()
+        self.repo.write_repair_manifest(name, "0" * 64, new_checksum)
+        candidate = self.repo.commit("bad repair checksum")
+
+        with self.assertRaisesRegex(ValueError, "repair checksum mismatch"):
+            self.validate(
+                base,
+                candidate,
+                {name: old_checksum},
+                allow_repairs=True,
+            )
+
+    def test_declared_repair_still_requires_expand_only_sql(self) -> None:
+        name = "202607140006_unsafe_repair"
+        path = self.repo.write_migration(
+            name, 'CREATE TABLE "Widget" ("id" INTEGER);\n'
+        )
+        old_checksum = hashlib.sha256(path.read_bytes()).hexdigest()
+        base = self.repo.commit("base")
+        path.write_text('DROP TABLE "Widget";\n', encoding="utf-8")
+        new_checksum = hashlib.sha256(path.read_bytes()).hexdigest()
+        self.repo.write_repair_manifest(name, old_checksum, new_checksum)
+        candidate = self.repo.commit("unsafe repair")
+
+        with self.assertRaisesRegex(ValueError, "disallowed statement"):
+            self.validate(
+                base,
+                candidate,
+                {name: old_checksum},
+                allow_repairs=True,
+            )
+
+    def test_repair_manifest_never_changes_default_production_behavior(self) -> None:
+        name = "202607140006_production_applied"
+        path = self.repo.write_migration(
+            name, 'CREATE TABLE "Widget" ("id" INTEGER);\n'
+        )
+        old_checksum = hashlib.sha256(path.read_bytes()).hexdigest()
+        base = self.repo.commit("base")
+        path.write_text('CREATE TABLE "Widget" ("id" BIGINT);\n', encoding="utf-8")
+        new_checksum = hashlib.sha256(path.read_bytes()).hexdigest()
+        self.repo.write_repair_manifest(name, old_checksum, new_checksum)
+        candidate = self.repo.commit("declared but production applied")
+
+        with self.assertRaisesRegex(ValueError, "additions only"):
+            self.validate(base, candidate, {name: old_checksum})
+
+    def test_repair_manifest_is_read_from_candidate_commit(self) -> None:
+        name = "202607140006_manifest_object"
+        path = self.repo.write_migration(
+            name, 'CREATE TABLE "Widget" ("id" INTEGER);\n'
+        )
+        old_checksum = hashlib.sha256(path.read_bytes()).hexdigest()
+        base = self.repo.commit("base")
+        path.write_text('CREATE TABLE "Widget" ("id" BIGINT);\n', encoding="utf-8")
+        new_checksum = hashlib.sha256(path.read_bytes()).hexdigest()
+        manifest = self.repo.write_repair_manifest(name, old_checksum, new_checksum)
+        candidate = self.repo.commit("repair candidate")
+        manifest.write_text("{not-json", encoding="utf-8")
+
+        self.validate(
+            base,
+            candidate,
+            {name: old_checksum},
+            allow_repairs=True,
+        )
 
     def test_deleted_migration_is_rejected(self) -> None:
         path = self.repo.write_migration(

@@ -82,7 +82,9 @@ python3 "${SCRIPT_DIR}/validate-expand-only-migrations.py" \
   --repository "$PROJECT_DIR" \
   --base-ref "$BASE_SHA" \
   --candidate-ref "$CANDIDATE_SHA" \
-  --migration-root "$MIGRATION_ROOT"
+  --migration-root "$MIGRATION_ROOT" \
+  --allow-declared-unapplied-repairs \
+  --repair-manifest "scripts/deploy/migration-repairs.json"
 
 printf 'candidate migration preflight passed: base=%s candidate=%s\n' \
   "$BASE_SHA" "$CANDIDATE_SHA"

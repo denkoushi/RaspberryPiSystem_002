@@ -1,11 +1,28 @@
 CREATE TYPE "AssemblyProcedureDocumentSource" AS ENUM ('MANUAL', 'GMAIL');
 
-ALTER TABLE "AssemblyProcedureDocument"
-ADD COLUMN "sourceType" "AssemblyProcedureDocumentSource" NOT NULL DEFAULT 'MANUAL',
-ADD COLUMN "gmailMessageId" TEXT,
-ADD COLUMN "sourceAttachmentName" TEXT,
-ADD COLUMN "gmailInternalDateMs" BIGINT,
-ADD COLUMN "gmailDedupeKey" TEXT;
+CREATE TABLE "AssemblyProcedureDocumentSourceRecord" (
+    "id" TEXT NOT NULL,
+    "documentId" TEXT NOT NULL,
+    "sourceType" "AssemblyProcedureDocumentSource" NOT NULL DEFAULT 'MANUAL',
+    "gmailMessageId" TEXT,
+    "sourceAttachmentName" TEXT,
+    "gmailInternalDateMs" BIGINT,
+    "gmailDedupeKey" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-CREATE UNIQUE INDEX "AssemblyProcedureDocument_gmailDedupeKey_key"
-ON "AssemblyProcedureDocument"("gmailDedupeKey");
+    CONSTRAINT "AssemblyProcedureDocumentSourceRecord_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "AssemblyProcedureDocumentSourceRecord_documentId_fkey"
+        FOREIGN KEY ("documentId")
+        REFERENCES "AssemblyProcedureDocument"("id")
+        ON DELETE CASCADE
+        ON UPDATE CASCADE
+);
+
+CREATE UNIQUE INDEX "AssemblyProcedureDocumentSourceRecord_documentId_key"
+ON "AssemblyProcedureDocumentSourceRecord"("documentId");
+
+CREATE UNIQUE INDEX "AssemblyProcedureDocumentSourceRecord_gmailDedupeKey_key"
+ON "AssemblyProcedureDocumentSourceRecord"("gmailDedupeKey");
+
+CREATE INDEX "AssemblyProcedureDocumentSourceRecord_gmailMessageId_idx"
+ON "AssemblyProcedureDocumentSourceRecord"("gmailMessageId");

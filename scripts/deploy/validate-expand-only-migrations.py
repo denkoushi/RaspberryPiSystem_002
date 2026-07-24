@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 import hashlib
+import json
 import pathlib
 import re
 import subprocess
@@ -21,6 +22,7 @@ from typing import TextIO
 MIGRATION_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 CHECKSUM = re.compile(r"^[0-9a-f]{64}$")
 MIGRATION_ROOT = "apps/api/prisma/migrations"
+REPAIR_MANIFEST = "scripts/deploy/migration-repairs.json"
 IDENTIFIER = r"(?:Q|[A-Za-z_][A-Za-z0-9_$]*)"
 QUALIFIED_IDENTIFIER = rf"{IDENTIFIER}(?:\s*\.\s*{IDENTIFIER}){{0,2}}"
 
@@ -113,6 +115,14 @@ class CandidateMigration:
     path: str
     object_id: str
     content: bytes
+
+
+@dataclass(frozen=True)
+class MigrationRepair:
+    migration: str
+    old_checksum: str
+    new_checksum: str
+    reason: str
 
 
 def load_applied_checksums(stream: TextIO) -> dict[str, str]:
@@ -441,9 +451,68 @@ def _is_migration_path(path: str, migration_root: str) -> bool:
     return re.fullmatch(prefix + r"/[^/]+/migration\.sql", path) is not None
 
 
+def load_declared_repairs(
+    repository: pathlib.Path, candidate_commit: str, manifest_path: str
+) -> dict[str, MigrationRepair]:
+    path = pathlib.PurePosixPath(manifest_path)
+    if path.is_absolute() or ".." in path.parts or str(path) in ("", "."):
+        raise ValueError("repair manifest must be a repository-relative path")
+    raw = _run_git(repository, ["show", f"{candidate_commit}:{path}"])
+    try:
+        document = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"invalid migration repair manifest JSON: {error}") from error
+    if not isinstance(document, dict) or set(document) != {"version", "repairs"}:
+        raise ValueError("migration repair manifest must contain only version and repairs")
+    if type(document["version"]) is not int or document["version"] != 1:
+        raise ValueError("migration repair manifest version must be 1")
+    entries = document["repairs"]
+    if not isinstance(entries, list):
+        raise ValueError("migration repair manifest repairs must be an array")
+
+    repairs: dict[str, MigrationRepair] = {}
+    required_keys = {"migration", "oldChecksum", "newChecksum", "reason"}
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict) or set(entry) != required_keys:
+            raise ValueError(f"invalid migration repair entry at index {index}")
+        migration = entry["migration"]
+        old_checksum = entry["oldChecksum"]
+        new_checksum = entry["newChecksum"]
+        reason = entry["reason"]
+        if not isinstance(migration, str) or MIGRATION_NAME.fullmatch(migration) is None:
+            raise ValueError(f"invalid repaired migration name at index {index}")
+        if not isinstance(old_checksum, str) or CHECKSUM.fullmatch(old_checksum) is None:
+            raise ValueError(f"invalid old repair checksum for {migration}")
+        if not isinstance(new_checksum, str) or CHECKSUM.fullmatch(new_checksum) is None:
+            raise ValueError(f"invalid new repair checksum for {migration}")
+        if old_checksum == new_checksum:
+            raise ValueError(f"repair checksums must differ for {migration}")
+        if (
+            not isinstance(reason, str)
+            or len(reason.strip()) < 20
+            or len(reason) > 500
+        ):
+            raise ValueError(f"repair reason must contain 20-500 characters for {migration}")
+        if migration in repairs:
+            raise ValueError(f"duplicate migration repair declaration: {migration}")
+        repairs[migration] = MigrationRepair(
+            migration=migration,
+            old_checksum=old_checksum,
+            new_checksum=new_checksum,
+            reason=reason.strip(),
+        )
+    return repairs
+
+
 def validate_diff_contract(
-    repository: pathlib.Path, base_commit: str, candidate_commit: str, migration_root: str
-) -> None:
+    repository: pathlib.Path,
+    base_commit: str,
+    candidate_commit: str,
+    migration_root: str,
+    repairs: dict[str, MigrationRepair] | None = None,
+) -> set[str]:
+    repairs = repairs or {}
+    used_repairs: set[str] = set()
     output = _run_git(
         repository,
         [
@@ -482,11 +551,41 @@ def validate_diff_contract(
             raise ValueError("migration path is not valid UTF-8") from error
         index += path_count
         if any(_is_migration_path(path, migration_root) for path in paths):
+            if status == "A" and _is_migration_path(paths[-1], migration_root):
+                continue
+            if (
+                status == "M"
+                and len(paths) == 1
+                and _is_migration_path(paths[0], migration_root)
+            ):
+                migration = pathlib.PurePosixPath(paths[0]).parent.name
+                repair = repairs.get(migration)
+                if repair is not None:
+                    old_content = _run_git(
+                        repository, ["show", f"{base_commit}:{paths[0]}"]
+                    )
+                    new_content = _run_git(
+                        repository, ["show", f"{candidate_commit}:{paths[0]}"]
+                    )
+                    old_checksum = hashlib.sha256(old_content).hexdigest()
+                    new_checksum = hashlib.sha256(new_content).hexdigest()
+                    if (
+                        old_checksum != repair.old_checksum
+                        or new_checksum != repair.new_checksum
+                    ):
+                        raise ValueError(
+                            "migration repair checksum mismatch: "
+                            f"{migration} expected {repair.old_checksum} -> "
+                            f"{repair.new_checksum}, found {old_checksum} -> {new_checksum}"
+                        )
+                    used_repairs.add(migration)
+                    continue
             if status != "A" or not _is_migration_path(paths[-1], migration_root):
                 raise ValueError(
                     "base-to-candidate migration.sql changes must be additions only: "
                     f"{status} {' -> '.join(paths)}"
                 )
+    return used_repairs
 
 
 def load_candidate_migrations(
@@ -530,6 +629,8 @@ def validate_repository(
     migration_root: str,
     applied: dict[str, str],
     require_all_candidate_applied: bool = False,
+    allow_declared_unapplied_repairs: bool = False,
+    repair_manifest: str = REPAIR_MANIFEST,
 ) -> None:
     root = pathlib.PurePosixPath(migration_root)
     if root.is_absolute() or ".." in root.parts or str(root) in ("", "."):
@@ -537,13 +638,32 @@ def validate_repository(
     migration_root = str(root)
     base_commit = _resolve_commit(repository, base_ref, "base ref")
     candidate_commit = _resolve_commit(repository, candidate_ref, "candidate ref")
-    validate_diff_contract(repository, base_commit, candidate_commit, migration_root)
+    repairs = (
+        load_declared_repairs(repository, candidate_commit, repair_manifest)
+        if allow_declared_unapplied_repairs
+        else {}
+    )
+    used_repairs = validate_diff_contract(
+        repository, base_commit, candidate_commit, migration_root, repairs
+    )
     migrations = load_candidate_migrations(repository, candidate_commit, migration_root)
 
     for migration_name, expected_checksum in applied.items():
         migration = migrations.get(migration_name)
         if migration is None:
             raise ValueError(f"applied migration is missing from candidate: {migration_name}")
+        repair = repairs.get(migration_name)
+        if migration_name in used_repairs and repair is not None:
+            if expected_checksum != repair.old_checksum:
+                raise ValueError(
+                    "declared unapplied migration repair does not match the baseline "
+                    f"ledger: {migration_name}"
+                )
+            print(
+                f"declared unapplied migration repair will be revalidated: {migration_name}",
+                file=sys.stderr,
+            )
+            continue
         actual_checksum = hashlib.sha256(migration.content).hexdigest()
         if actual_checksum != expected_checksum:
             raise ValueError(f"applied migration checksum mismatch: {migration_name}")
@@ -577,6 +697,15 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Require every candidate migration and checksum in the applied ledger",
     )
+    parser.add_argument(
+        "--allow-declared-unapplied-repairs",
+        action="store_true",
+        help=(
+            "Allow exact checksum-bound repairs declared for migrations known to be "
+            "unapplied; never use with a production database ledger"
+        ),
+    )
+    parser.add_argument("--repair-manifest", default=REPAIR_MANIFEST)
     return parser.parse_args()
 
 
@@ -595,6 +724,8 @@ def main() -> int:
             args.migration_root,
             applied,
             args.require_all_candidate_applied,
+            args.allow_declared_unapplied_repairs,
+            args.repair_manifest,
         )
     except (OSError, UnicodeError, ValueError) as error:
         print(error, file=sys.stderr)

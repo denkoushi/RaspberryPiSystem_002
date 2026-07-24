@@ -2,7 +2,7 @@
 id: deployment-guide
 title: 標準デプロイ手順
 status: active
-last_verified: 2026-07-19
+last_verified: 2026-07-24
 ---
 
 # デプロイメントガイド
@@ -105,6 +105,15 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
 Pi5 probeは既存fleet lockを全検査中保持し、実機identity、clean checkout、候補commit・protocol・実行成果物、通常Ansible設定とVault、inventory展開、Docker/Compose、空きディスク・メモリ、fleet/Blue-Green/deploy-statusの可読性、active run不在を同時に確認する。端末probeは候補SHAが所有する正確なagent health helperを端末へstdinで送り、現在有効なNFC・バーコード・トルクagentへ本番と同じ安定性判定を行う。各agentは、最大3回の範囲で2回連続してcontainer identity、必要なPC/SC、loopback JSON endpointの全証明に成功しなければならない。出力された問題は、正規のAnsible設定または別途承認された保守変更でまとめて解消し、同じコマンドを再実行する。エラーを一件ずつ見ながら個別service起動や手動checkoutで迂回してはならない。
 
 候補SHAが所有するソースツリー、playbook、agent Dockerfile、Compose定義、設定テンプレートは、Pi5上の候補Git objectから検査する。端末の現在のcheckoutに次リリースで初めて追加されるディレクトリを要求してはならない。端末側の事前検査は、候補checkoutでは作れないOS package、systemd socket、Docker、NetworkManager、既存repository、メモリ、ディスクなどのhost資源だけを対象とする。NFCのPC/SC判定は全段階で`pcscd.socket=loaded/active/enabled`と`/run/pcscd/pcscd.comm`のUnix socketを正とし、`pcscd.service`の常時activeは要求しない。
+
+mainへmerge済みでも本番へ一度も適用されていないmigrationを修正する場合だけ、
+`scripts/deploy/migration-repairs.json`へmigration名、旧・新SQLの正確な
+SHA-256、理由を宣言する。候補検査はGit object上の両checksumを照合し、修正後
+SQLを未適用migrationとしてExpand-only検査する。この例外はrepository候補検査
+専用であり、本番DB台帳を読むpreflightとrelease内再検査では有効にならない。
+したがって、本番台帳に旧checksumが存在する場合は通常どおりchecksum不一致で
+停止する。`prisma migrate resolve`、台帳編集、適用済みmigrationの修正で迂回
+してはならない。
 
 ## Linux/Pi端末Typeを追加する
 

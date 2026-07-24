@@ -36,11 +36,15 @@ aggregate and an explicit draft/publish safety gate.
    Invalid or failed messages remain unread in the inbox.
 7. Reuse the existing Gmail OAuth/configuration and trash cleanup scheduler. Do
    not add a schedule or a second credential set for this use case.
+8. Store Gmail source/audit metadata in a one-to-one
+   `AssemblyProcedureDocumentSourceRecord`. Existing and manually registered
+   documents have no source record and are interpreted as `MANUAL`. This keeps
+   required fields and unique constraints off the populated document table.
 
 ## Consequences
 
-- `AssemblyProcedureDocument` records carry source/audit metadata and a nullable
-  unique Gmail key. Existing rows default to `MANUAL`.
+- A source sidecar record carries source/audit metadata and the nullable unique
+  Gmail key. Existing rows require no update or backfill.
 - A cleanup failure after DB commit is visible to the operator. Retrying the
   button does not create a second document and retries only the mail disposal.
 - Same-named drafts may coexist. This is intentional so review and publication
