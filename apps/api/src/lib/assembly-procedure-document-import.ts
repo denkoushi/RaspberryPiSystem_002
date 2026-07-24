@@ -70,6 +70,12 @@ async function savePreviewPage(preview: { buffer: Buffer; contentType: string })
   }
 }
 
+async function deleteSavedPagesQuietly(pages: AssemblyProcedureDocumentPageImportResult[]): Promise<void> {
+  await Promise.all(
+    pages.map((page) => AssemblyProcedureImageStorage.deleteImage(page.imageRelativePath).catch(() => undefined))
+  );
+}
+
 async function convertPdfBufferToPageBuffers(buffer: Buffer): Promise<Buffer[]> {
   const tempDir = path.join(os.tmpdir(), `assembly-procedure-import-${randomUUID()}`);
   const pdfPath = path.join(tempDir, 'input.pdf');
@@ -137,8 +143,13 @@ export async function importAssemblyProcedureDocumentPagesAndSave(
   if (kind === 'pdf') {
     const pageBuffers = await convertPdfBufferToPageBuffers(input.buffer);
     const pages: AssemblyProcedureDocumentPageImportResult[] = [];
-    for (const pageBuffer of pageBuffers) {
-      pages.push(await savePreviewPage({ buffer: pageBuffer, contentType: 'image/jpeg' }));
+    try {
+      for (const pageBuffer of pageBuffers) {
+        pages.push(await savePreviewPage({ buffer: pageBuffer, contentType: 'image/jpeg' }));
+      }
+    } catch (error) {
+      await deleteSavedPagesQuietly(pages);
+      throw error;
     }
     return {
       pages,

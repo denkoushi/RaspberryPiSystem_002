@@ -15,17 +15,17 @@
     ]
   },
   "summary": {
-    "documentCount": 542,
-    "totalLines": 155845,
-    "totalBytes": 11794641,
-    "withFrontmatter": 227,
-    "withStatus": 85,
-    "sourceOfTruthDeclared": 55,
+    "documentCount": 544,
+    "totalLines": 156111,
+    "totalBytes": 11810258,
+    "withFrontmatter": 228,
+    "withStatus": 86,
+    "sourceOfTruthDeclared": 56,
     "execPlanReferences": 64,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 25,
-    "localLinkCount": 5565,
+    "localLinkCount": 5568,
     "brokenLocalLinkCount": 87,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -5898,8 +5898,8 @@
     },
     {
       "path": "docs/AI_START_HERE.md",
-      "lineCount": 102,
-      "byteSize": 4706,
+      "lineCount": 103,
+      "byteSize": 4805,
       "hasFrontmatter": true,
       "title": "AI Start Here",
       "status": null,
@@ -5913,8 +5913,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 1985,
-      "byteSize": 341317,
+      "lineCount": 1986,
+      "byteSize": 341726,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -6841,6 +6841,11 @@
           "exists": true
         },
         {
+          "href": "./decisions/ADR-20260724-assembly-procedure-gmail-import.md",
+          "targetPath": "docs/decisions/ADR-20260724-assembly-procedure-gmail-import.md",
+          "exists": true
+        },
+        {
           "href": "./design-previews/kiosk-assembly-home-table-dense-3col-preview.html",
           "targetPath": "docs/design-previews/kiosk-assembly-home-table-dense-3col-preview.html",
           "exists": true
@@ -7217,6 +7222,11 @@
         },
         {
           "href": "./guides/gmail-setup-guide.md",
+          "targetPath": "docs/guides/gmail-setup-guide.md",
+          "exists": true
+        },
+        {
+          "href": "./guides/gmail-setup-guide.md#3b-組立手順書ライブラリgmailpdf--jpeg-添付",
           "targetPath": "docs/guides/gmail-setup-guide.md",
           "exists": true
         },
@@ -10136,6 +10146,11 @@
           "exists": true
         },
         {
+          "href": "./plans/assembly-procedure-gmail-import-execplan.md",
+          "targetPath": "docs/plans/assembly-procedure-gmail-import-execplan.md",
+          "exists": true
+        },
+        {
           "href": "./plans/assembly-torque-cross-work-id-reuse-execplan.md",
           "targetPath": "docs/plans/assembly-torque-cross-work-id-reuse-execplan.md",
           "exists": true
@@ -11086,95 +11101,95 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 266,
+          "line": 267,
           "length": 1132
         },
         {
-          "line": 282,
+          "line": 283,
           "length": 1242
         },
         {
-          "line": 286,
+          "line": 287,
           "length": 1022
         },
         {
-          "line": 300,
+          "line": 301,
           "length": 1065
         },
         {
-          "line": 348,
+          "line": 349,
           "length": 1165
         },
         {
-          "line": 354,
+          "line": 355,
           "length": 1458
         },
         {
-          "line": 366,
+          "line": 367,
           "length": 1083
         },
         {
-          "line": 380,
+          "line": 381,
           "length": 1398
         },
         {
-          "line": 382,
+          "line": 383,
           "length": 1133
         },
         {
-          "line": 386,
+          "line": 387,
           "length": 1399
         },
         {
-          "line": 388,
+          "line": 389,
           "length": 1008
         },
         {
-          "line": 394,
+          "line": 395,
           "length": 1059
         },
         {
-          "line": 402,
+          "line": 403,
           "length": 1129
         },
         {
-          "line": 406,
+          "line": 407,
           "length": 1135
         },
         {
-          "line": 410,
+          "line": 411,
           "length": 1117
         },
         {
-          "line": 525,
+          "line": 526,
           "length": 1013
         },
         {
-          "line": 711,
+          "line": 712,
           "length": 2038
         },
         {
-          "line": 727,
+          "line": 728,
           "length": 1496
         },
         {
-          "line": 733,
+          "line": 734,
           "length": 1177
         },
         {
-          "line": 1075,
+          "line": 1076,
           "length": 1449
         },
         {
-          "line": 1111,
+          "line": 1112,
           "length": 1136
         },
         {
-          "line": 1113,
+          "line": 1114,
           "length": 1239
         },
         {
-          "line": 1149,
+          "line": 1150,
           "length": 1004
         }
       ],
@@ -16568,6 +16583,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/decisions/ADR-20260724-assembly-torque-low-latency-refresh.md",
+      "lineCount": 93,
+      "byteSize": 4435,
+      "hasFrontmatter": true,
+      "title": "ADR-20260724: Assembly Torque Low-Latency Refresh",
+      "status": "accepted",
+      "source_of_truth": "docs/decisions/ADR-20260724-assembly-torque-low-latency-refresh.md",
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/design-previews/README.md",
       "lineCount": 100,
       "byteSize": 19980,
@@ -18778,8 +18808,8 @@
     },
     {
       "path": "docs/guides/gmail-setup-guide.md",
-      "lineCount": 454,
-      "byteSize": 24499,
+      "lineCount": 475,
+      "byteSize": 25954,
       "hasFrontmatter": true,
       "title": "Gmail連携セットアップガイド",
       "status": null,
@@ -18816,7 +18846,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 11,
+      "inboundCount": 12,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -31452,6 +31482,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/assembly-torque-display-latency-execplan.md",
+      "lineCount": 133,
+      "byteSize": 7024,
+      "hasFrontmatter": false,
+      "title": "Assembly torque display latency",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/assembly-torque-wrench-connection-lease-execplan.md",
       "lineCount": 323,
       "byteSize": 41937,
@@ -34883,8 +34928,8 @@
     },
     {
       "path": "docs/runbooks/assembly-torque-agent.md",
-      "lineCount": 286,
-      "byteSize": 22337,
+      "lineCount": 303,
+      "byteSize": 24532,
       "hasFrontmatter": false,
       "title": "組立 torque-agent 運用Runbook",
       "status": null,

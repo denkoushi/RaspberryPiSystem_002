@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -67,5 +67,38 @@ describe('assembly library two-row layout', () => {
     expect(within(table).queryByRole('columnheader', { name: '工程' })).not.toBeInTheDocument();
     expect(within(table).getByText('工程 4')).toBeInTheDocument();
     expect(within(table).getByText('締付 12')).toBeInTheDocument();
+  });
+
+  it('places the Gmail import action immediately after register and exposes its busy state', () => {
+    const onImportClick = vi.fn();
+    const { rerender } = render(
+      <MemoryRouter>
+        <AssemblyProcedureLibrarySection
+          onRegisterClick={vi.fn()}
+          onImportClick={onImportClick}
+          previewDocuments={[document]}
+        />
+      </MemoryRouter>
+    );
+
+    const register = screen.getByRole('button', { name: '登録' });
+    const importButton = screen.getByRole('button', { name: '取込' });
+    expect(register.nextElementSibling).toBe(importButton);
+    fireEvent.click(importButton);
+    expect(onImportClick).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <MemoryRouter>
+        <AssemblyProcedureLibrarySection
+          onRegisterClick={vi.fn()}
+          onImportClick={onImportClick}
+          importing
+          importMessage="Gmail取込: 新規1件"
+          previewDocuments={[document]}
+        />
+      </MemoryRouter>
+    );
+    expect(screen.getByRole('button', { name: '取込中…' })).toBeDisabled();
+    expect(screen.getByText('Gmail取込: 新規1件')).toBeInTheDocument();
   });
 });

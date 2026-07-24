@@ -283,9 +283,31 @@ CSV インポートとは別に、`backup.json` の **`kioskDocumentGmailIngest`
 - **管理画面での可視化（2026-04-08）**: `/admin/kiosk-documents` に **`kioskDocumentGmailIngest` の一覧**（件名パターン・cron・有効/無効・手動実行用 ID 反映）を表示。**CSV インポートのスケジュール画面とは別**（`csvImports` ではない）。
 - 設定例・cron・手動取り込み・トラブルシュートは [Runbook: キオスク要領書](../runbooks/kiosk-documents.md) の「Gmail 取り込み」「HTML 添付」を参照。
 
+### 3b. 組立手順書ライブラリ（Gmail・PDF / JPEG 添付）
+
+キオスクの **組立 > 手順書/テンプレート管理 > 手順書ライブラリ** では、
+「登録」の右にある **「取込」** からGmail受信箱を手動確認できる。
+
+- 対象は未読・受信箱内で、件名が大文字小文字を含め正確に
+  **`DocumentASM`** のメール。
+- 添付は1つだけ。形式は **PDF** または **JPEG（.jpg / .jpeg）**。
+  メール署名などのinline画像は添付数に含めない。
+- 1回の押下で古いメールから最大10件を処理する。
+- 添付ファイル名から拡張子を除いた値が手順書名になる。
+- PDFは最大40ページ。大きいJPEGは回転補正後、長辺3000px以内へ縮小する。
+- 取り込み直後は必ず **下書き**。内容を確認し「公開」してから
+  テンプレート・表示順で使用する。
+- 登録または同一メールの登録済み確認に成功したメールだけ、
+  `rps_processed` ラベルを付けてゴミ箱へ移動する。
+- 添付なし、複数添付、未対応形式、変換・保存失敗は画面に理由を表示し、
+  メールを未読の受信箱へ残す。
+
+OAuth・トークンはCSV取込と共通で、追加の `backup.json` スケジュール設定は
+不要。Gmail未設定や権限不足の場合は既存のOAuth設定・再認証手順を確認する。
+
 ### 4. ゴミ箱自動削除（深夜1回）
 
-CSVダッシュボード取り込みで処理済みメールをゴミ箱へ移動した場合、以下のルールで自動削除されます。
+CSVダッシュボードや組立手順書取り込みで処理済みメールをゴミ箱へ移動した場合、以下のルールで自動削除されます。
 
 - 削除対象: アプリがゴミ箱へ移動したメール（`rps_processed` ラベル付き）
 - 実行タイミング: 毎日深夜（デフォルト: `0 3 * * *` / Asia/Tokyo）
@@ -451,4 +473,3 @@ docker compose -f docker-compose.server.yml restart api
 - [PowerAutomate Gmail連携仕様](./powerautomate-gmail-integration.md): PowerAutomate側の設定仕様
 - [CSVインポート・エクスポート](./csv-import-export.md): CSVインポート機能の詳細
 - [バックアップ・リストア手順](./backup-and-restore.md): バックアップ設定の詳細
-

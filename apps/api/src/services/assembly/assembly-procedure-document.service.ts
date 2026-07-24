@@ -92,7 +92,17 @@ export class AssemblyProcedureDocumentService {
     });
   }
 
-  async create(params: { name: string; pages: Array<{ imageRelativePath: string }> }): Promise<AssemblyProcedureDocumentRecord> {
+  async create(params: {
+    name: string;
+    pages: Array<{ imageRelativePath: string }>;
+    source?: {
+      sourceType: 'GMAIL';
+      gmailMessageId: string;
+      sourceAttachmentName: string;
+      gmailInternalDateMs: number;
+      gmailDedupeKey: string;
+    };
+  }): Promise<AssemblyProcedureDocumentRecord> {
     const name = params.name.trim();
     if (!name) {
       throw new ApiError(400, '手順書名が必要です');
@@ -111,6 +121,15 @@ export class AssemblyProcedureDocumentService {
         name: name.slice(0, 200),
         imageRelativePath: params.pages[0]!.imageRelativePath,
         status: 'DRAFT',
+        ...(params.source
+          ? {
+              sourceType: params.source.sourceType,
+              gmailMessageId: params.source.gmailMessageId,
+              sourceAttachmentName: params.source.sourceAttachmentName,
+              gmailInternalDateMs: BigInt(params.source.gmailInternalDateMs),
+              gmailDedupeKey: params.source.gmailDedupeKey
+            }
+          : {}),
         pages: {
           create: params.pages.map((page, pageIndex) => ({
             pageIndex,
@@ -118,6 +137,13 @@ export class AssemblyProcedureDocumentService {
           }))
         }
       },
+      include: this.includePages
+    });
+  }
+
+  async findByGmailDedupeKey(gmailDedupeKey: string): Promise<AssemblyProcedureDocumentRecord | null> {
+    return prisma.assemblyProcedureDocument.findUnique({
+      where: { gmailDedupeKey },
       include: this.includePages
     });
   }
