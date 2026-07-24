@@ -13,9 +13,11 @@ from .binding import BindingStore
 from .cem3_btla_parser import Cem3BtlaHogpParser
 from .config import AgentConfig
 from .connection_lease import ConnectionLeaseManager
+from .delivery import AsyncioOutboxWakeSignal
 from .ingestor import TorqueEventIngestor
 from .parser_registry import ParserRegistry, SyntheticDelimitedFixtureParser
 from .queue_store import QueueStore
+from .websocket_stream import WebSocketDeliveryNotifier, register_delivery_stream
 
 LOGGER = logging.getLogger("torque_agent")
 
@@ -61,6 +63,7 @@ def create_app(
     binding_store: BindingStore,
     queue: QueueStore,
     lease_manager: ConnectionLeaseManager,
+    delivery_notifier: WebSocketDeliveryNotifier | None = None,
 ) -> FastAPI:
     app = FastAPI(title="torque-agent", docs_url=None, redoc_url=None)
     app.add_middleware(
@@ -69,6 +72,10 @@ def create_app(
         allow_methods=["POST", "GET"],
         allow_headers=["content-type"],
         max_age=600,
+    )
+    register_delivery_stream(
+        app,
+        delivery_notifier or WebSocketDeliveryNotifier(config.browser_origins),
     )
 
     @app.get("/health")
@@ -125,6 +132,8 @@ async def run_agent(config: AgentConfig) -> None:
     from .hid_reader import read_hid_device
 
     queue = QueueStore(config.queue_path)
+    wake_signal = AsyncioOutboxWakeSignal()
+    delivery_notifier = WebSocketDeliveryNotifier(config.browser_origins)
     bindings = BindingStore(config.heartbeat_ttl_seconds)
     lease_manager = ConnectionLeaseManager(config, bindings)
     registry = build_registry(config)
@@ -138,9 +147,10 @@ async def run_agent(config: AgentConfig) -> None:
         bindings=bindings,
         parsers=parsers,
         parser_profiles=parser_profiles,
+        wake_signal=wake_signal,
     )
 
-    app = create_app(config, bindings, queue, lease_manager)
+    app = create_app(config, bindings, queue, lease_manager, delivery_notifier)
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=config.local_port, log_level="info"))
     async def supervise_hid() -> None:
         while True:
@@ -172,6 +182,8 @@ async def run_agent(config: AgentConfig) -> None:
                 config.client_key,
                 queue,
                 tls_verify=config.tls_verify,
+                wake_signal=wake_signal,
+                notifier=delivery_notifier,
             ).run()
         ),
         asyncio.create_task(lease_manager.run()),

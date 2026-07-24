@@ -185,6 +185,19 @@ docker compose -f infrastructure/docker/docker-compose.client.yml --profile torq
 
 リースが無い状態でagentが先に起動しても異常ではない。この状態では外付けBluetoothはOFFで、`ready=false`になる。agentは有効なリースを取得した後だけ設定済みの同一by-id pathを待ち、接続後に排他取得する。切断途中の文字列は次回接続へ結合せず、新しいdecoderで再開する。
 
+### 右ペイン反映の低遅延経路
+
+完全なHIDフレームは従来どおりSQLiteへ先に保存される。保存完了後に送信処理を直ちに起こし、Pi5 APIが2xxを返してローカルoutboxから削除できた後だけ、`ws://127.0.0.1:7073/stream`から作業画面へ再取得の合図を送る。合図にはトルク値や製造番号を含めず、画面は既存の作業セッションAPIから確定値を読み直す。
+
+WebSocketが切断されても異常な記録経路へ切り替えない。現行の1.2秒ポーリングが継続し、次回取得で同じ確定レコードを表示する。画面を更新しても値が直ちに出ない場合は、次の順に確認する。
+
+1. `/health`の`queuedEvents`が増えている場合は、WebSocketではなくPi5 APIへの送信経路を調べる。SQLite行を削除しない。
+2. `queuedEvents=0`で約1.2秒後に表示される場合は、ブラウザOriginが`TORQUE_BROWSER_ORIGINS_JSON`またはAPI originに含まれるか確認する。ワイルドカードを追加しない。
+3. agentログの通知失敗は、API記録失敗や再送理由として扱わない。作業セッションAPIと右ペインの`sourceEventKey`を照合する。
+4. 値が表示された後に同じ通知が再度届いても、画面は同じ`sourceEventKey`を重複表示しない。
+
+ブラウザ開発者ツールでWebSocket接続を確認する場合も、localhost以外へ7073を公開しない。WebSocketを一時的に止めた検証では1.2秒ポーリングによる復旧を確認し、検証後に通常状態へ戻す。
+
 ## 作業前・作業中の確認
 
 1. REQUIRED組立作業を開き、現在の丸数字と締付条件を確認する。
@@ -243,6 +256,8 @@ curl --fail --silent http://127.0.0.1:7073/health
 
 再起動後、未送信イベントは同じイベントIDで再送される。2xx確認後だけoutboxから消える。
 
+旧版で作られたoutbox行には`capturedAt`が無い場合があるが、そのまま同じイベントIDで再送できる。時刻が無いことを理由に削除やイベントID変更を行わない。
+
 Pi再起動では`/run`のリース指示が消えるため、外付けBluetoothはOFFのまま起動する。作業画面で現物確認と新しい使用開始操作を行うまでONにしてはいけない。
 
 ## 切戻し
@@ -256,6 +271,8 @@ sudo systemctl status torque-bluetooth-guard --no-pager
 ```
 
 停止後9秒以内に外付けBluetoothがOFFになることを確認する。volumeやSQLiteを削除しない。管理者例外入力は通信経路の代替であり、誤レンチ・校正・状態・設定や接続リースの安全条件を迂回できない。復旧後は現物確認と使用開始をやり直し、拒否実績とローカル監査を照合する。
+
+低遅延経路だけを切り戻す場合も、DB migrationやSQLite変換は不要である。webとtorque-agentを同じ承認済み旧版へ戻し、volumeを維持してagentを再起動する。更新順が前後しても1.2秒ポーリングが残るため、片方だけが一時的に新旧混在しても確定記録の取得は継続する。
 
 接続リース強制を有効にする公開APIはADMIN／MANAGER専用・理由必須で、一方向である。Release Aの単独StoneBase試験とlease-capable rollback基準を確認する前にactivation gateを開けない。有効化後は旧legacy版へ直接戻さず、やむを得ない場合は先に両端末のtorque-agentを停止する。
 

@@ -3,10 +3,12 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
 from .binding import BindingStore
+from .delivery import NullOutboxWakeSignal, OutboxWakeSignal
 from .hid_line_decoder import DecodedHidFrame
 from .parser_registry import TorquePayloadParser
 from .queue_store import QueueStore
@@ -23,12 +25,18 @@ class TorqueEventIngestor:
         parsers: dict[Path, TorquePayloadParser],
         parser_profiles: dict[Path, str],
         event_id_factory: Callable[[], str] | None = None,
+        captured_at_factory: Callable[[], str] | None = None,
+        wake_signal: OutboxWakeSignal | None = None,
     ) -> None:
         self._queue = queue
         self._bindings = bindings
         self._parsers = parsers
         self._parser_profiles = parser_profiles
         self._event_id_factory = event_id_factory or (lambda: str(uuid4()))
+        self._captured_at_factory = captured_at_factory or (
+            lambda: datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        )
+        self._wake_signal = wake_signal or NullOutboxWakeSignal()
 
     async def on_decode_error(self, device_path: Path, frame: DecodedHidFrame) -> None:
         self._queue.record_local_error(
@@ -52,6 +60,7 @@ class TorqueEventIngestor:
         )
 
     async def on_line(self, device_path: Path, raw_text: str) -> None:
+        captured_at = self._captured_at_factory()
         event_id = self._event_id_factory()
         parser_profile = self._parser_profiles[device_path]
         binding = self._bindings.current()
@@ -80,10 +89,11 @@ class TorqueEventIngestor:
             LOGGER.warning("Retained malformed HID input from %s: %s", device_path, error)
             return
 
-        self._queue.enqueue(
+        inserted = self._queue.enqueue(
             event_id,
             {
                 "sessionId": binding.session_id,
+                "capturedAt": captured_at,
                 "payload": {
                     "expectedTemplateBoltId": binding.current_template_bolt_id,
                     "confirmationId": binding.confirmation_id,
@@ -103,3 +113,5 @@ class TorqueEventIngestor:
                 },
             },
         )
+        if inserted:
+            self._wake_signal.notify()

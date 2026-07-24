@@ -43,6 +43,7 @@ type TorqueAgentLeaseTakeoverPayload = TorqueAgentLeaseAcquirePayload & {
 };
 
 const TORQUE_AGENT_ORIGIN = 'http://127.0.0.1:7073';
+export const TORQUE_AGENT_STREAM_URL = `${TORQUE_AGENT_ORIGIN.replace(/^http/, 'ws')}/stream`;
 
 async function requestTorqueAgent(
   path: string,

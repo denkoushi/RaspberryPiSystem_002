@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -11,12 +12,14 @@ from torque_agent.api_client import OutboxSender
 from torque_agent.cem3_btla_parser import Cem3BtlaHogpParser
 from torque_agent.config import AgentConfig
 from torque_agent.connection_lease import ConnectionLeaseManager
+from torque_agent.delivery import AsyncioOutboxWakeSignal, TorqueRecordCommitted
 from torque_agent.hid_line_decoder import DecodedHidFrame, HidLineDecoder
 from torque_agent.ingestor import TorqueEventIngestor
 from torque_agent.main import build_registry, create_app
 from torque_agent.models import WorkBinding
 from torque_agent.parser_registry import ParserRegistry, SyntheticDelimitedFixtureParser
 from torque_agent.queue_store import QueueStore
+from torque_agent.websocket_stream import WebSocketDeliveryNotifier
 
 
 CEM3_FIXTURES = Path(__file__).parent / "fixtures" / "cem3_btla" / "SERIAL_A"
@@ -46,6 +49,7 @@ def test_unbound_and_malformed_hid_input_is_retained_in_local_sqlite_audit(tmp_p
         parsers={device_path: parser},
         parser_profiles={device_path: parser.PROFILE},
         event_id_factory=lambda: next(event_ids),
+        captured_at_factory=lambda: "2026-07-24T00:00:00Z",
     )
 
     asyncio.run(ingestor.on_line(device_path, "FIXTURE|serial=SN001|value=30|unit=N-m|memory=1"))
@@ -59,6 +63,7 @@ def test_unbound_and_malformed_hid_input_is_retained_in_local_sqlite_audit(tmp_p
             "valid-1",
             {
                 "sessionId": "session",
+                "capturedAt": "2026-07-24T00:00:00Z",
                 "payload": {
                     "expectedTemplateBoltId": "bolt",
                     "confirmationId": "confirmation",
@@ -319,6 +324,9 @@ def test_outbox_sender_uses_explicit_tls_verification_mode(tmp_path: Path, monke
         async def __aexit__(self, *args: object) -> None:
             return None
 
+        async def aclose(self) -> None:
+            captured["closed"] = True
+
         async def post(self, url: str, **kwargs: object) -> Response:
             captured["url"] = url
             captured.update(kwargs)
@@ -330,7 +338,235 @@ def test_outbox_sender_uses_explicit_tls_verification_mode(tmp_path: Path, monke
 
     assert delivered is True
     assert captured["verify"] is False
+    assert captured["closed"] is True
     assert queue.count() == 0
+
+
+def test_ingestor_wakes_sender_only_after_durable_enqueue(tmp_path: Path) -> None:
+    queue = QueueStore(tmp_path / "events.sqlite3")
+    bindings = BindingStore(ttl_seconds=5)
+    bindings.update(WorkBinding("session", "bolt", "confirmation", "profile", "lease", 1))
+    device_path = Path("/dev/input/by-id/test-wrench")
+    parser = SyntheticDelimitedFixtureParser()
+    observations: list[int] = []
+
+    class WakeSignal:
+        def notify(self) -> None:
+            observations.append(queue.count())
+
+        async def wait(self, timeout_seconds: float) -> None:
+            return None
+
+    ingestor = TorqueEventIngestor(
+        queue=queue,
+        bindings=bindings,
+        parsers={device_path: parser},
+        parser_profiles={device_path: parser.PROFILE},
+        event_id_factory=lambda: "event-1",
+        captured_at_factory=lambda: "2026-07-24T00:00:00Z",
+        wake_signal=WakeSignal(),
+    )
+
+    asyncio.run(ingestor.on_line(device_path, "FIXTURE|serial=SN001|value=30|unit=N-m|memory=1"))
+
+    assert observations == [1]
+    assert queue.pending()[0][1]["capturedAt"] == "2026-07-24T00:00:00Z"
+
+
+def test_sender_notifies_only_after_api_ack_and_local_queue_delete(tmp_path: Path) -> None:
+    queue = QueueStore(tmp_path / "events.sqlite3")
+    queue.enqueue(
+        "event-1",
+        {
+            "sessionId": "session-1",
+            "capturedAt": "2026-07-24T00:00:00Z",
+            "payload": {"value": 4.2},
+        },
+    )
+    notifications: list[TorqueRecordCommitted] = []
+
+    class Api:
+        async def post(self, session_id: str, event_id: str, payload: dict[str, object]) -> httpx.Response:
+            return httpx.Response(200, text="ok")
+
+    class Notifier:
+        async def committed(self, event: TorqueRecordCommitted) -> None:
+            assert queue.count() == 0
+            notifications.append(event)
+
+    sender = OutboxSender(
+        "https://server.example.test",
+        "client",
+        queue,
+        notifier=Notifier(),
+        acknowledged_at_factory=lambda: "2026-07-24T00:00:00.050Z",
+    )
+
+    delivered = asyncio.run(sender._send_once(Api()))
+
+    assert delivered is True
+    assert notifications == [
+        TorqueRecordCommitted(
+            session_id="session-1",
+            source_event_key="event-1",
+            captured_at="2026-07-24T00:00:00Z",
+            acknowledged_at="2026-07-24T00:00:00.050Z",
+        )
+    ]
+
+
+def test_notification_failure_does_not_requeue_committed_record(tmp_path: Path) -> None:
+    queue = QueueStore(tmp_path / "events.sqlite3")
+    queue.enqueue("event-1", {"sessionId": "session-1", "payload": {"value": 4.2}})
+
+    class Api:
+        async def post(self, session_id: str, event_id: str, payload: dict[str, object]) -> httpx.Response:
+            return httpx.Response(200, text="ok")
+
+    class FailingNotifier:
+        async def committed(self, event: TorqueRecordCommitted) -> None:
+            raise RuntimeError("browser unavailable")
+
+    sender = OutboxSender("https://server.example.test", "client", queue, notifier=FailingNotifier())
+
+    assert asyncio.run(sender._send_once(Api())) is True
+    assert queue.count() == 0
+
+
+def test_sender_reuses_http_client_and_wakes_without_one_second_delay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    queue = QueueStore(tmp_path / "events.sqlite3")
+    wake_signal = AsyncioOutboxWakeSignal()
+    created_clients = 0
+    posted = asyncio.Event()
+
+    class Response:
+        status_code = 200
+        text = "ok"
+
+    class Client:
+        def __init__(self, **kwargs: object) -> None:
+            nonlocal created_clients
+            created_clients += 1
+
+        async def aclose(self) -> None:
+            return None
+
+        async def post(self, url: str, **kwargs: object) -> Response:
+            posted.set()
+            return Response()
+
+    monkeypatch.setattr("torque_agent.api_client.httpx.AsyncClient", Client)
+
+    async def exercise() -> None:
+        sender = OutboxSender(
+            "https://server.example.test",
+            "client",
+            queue,
+            wake_signal=wake_signal,
+        )
+        task = asyncio.create_task(sender.run())
+        await asyncio.sleep(0)
+        queue.enqueue("event-1", {"sessionId": "session-1", "payload": {"value": 4.2}})
+        wake_signal.notify()
+        await asyncio.wait_for(posted.wait(), timeout=0.2)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(exercise())
+
+    assert created_clients == 1
+    assert queue.count() == 0
+
+
+def test_delivery_stream_filters_origin_and_sends_metadata_only() -> None:
+    notifier = WebSocketDeliveryNotifier(("http://127.0.0.1:3000",))
+    sent: list[dict[str, str | None]] = []
+
+    class FakeWebSocket:
+        def __init__(self, origin: str) -> None:
+            self.headers = {"origin": origin}
+            self.accepted = False
+            self.closed_code: int | None = None
+
+        async def accept(self) -> None:
+            self.accepted = True
+
+        async def close(self, code: int, reason: str) -> None:
+            self.closed_code = code
+
+        async def send_json(self, payload: dict[str, str | None]) -> None:
+            sent.append(payload)
+
+    async def exercise() -> tuple[FakeWebSocket, FakeWebSocket]:
+        allowed = FakeWebSocket("http://127.0.0.1:3000")
+        denied = FakeWebSocket("https://untrusted.example.test")
+        assert await notifier.accept(allowed) is True  # type: ignore[arg-type]
+        assert await notifier.accept(denied) is False  # type: ignore[arg-type]
+        await notifier.committed(
+            TorqueRecordCommitted(
+                session_id="session-1",
+                source_event_key="event-1",
+                captured_at="2026-07-24T00:00:00Z",
+                acknowledged_at="2026-07-24T00:00:00.050Z",
+            )
+        )
+        return allowed, denied
+
+    allowed, denied = asyncio.run(exercise())
+
+    assert allowed.accepted is True
+    assert denied.closed_code == 1008
+    assert sent == [{
+        "type": "torqueRecordCommitted",
+        "sessionId": "session-1",
+        "sourceEventKey": "event-1",
+        "capturedAt": "2026-07-24T00:00:00Z",
+        "acknowledgedAt": "2026-07-24T00:00:00.050Z",
+    }]
+    assert "value" not in sent[0]
+    assert "serialNumber" not in sent[0]
+
+
+def test_thirty_synthetic_events_clear_normal_path_latency_budget(tmp_path: Path) -> None:
+    queue = QueueStore(tmp_path / "events.sqlite3")
+    for index in range(30):
+        queue.enqueue(
+            f"event-{index:02d}",
+            {
+                "sessionId": "session-1",
+                "capturedAt": f"2026-07-24T00:00:{index:02d}Z",
+                "payload": {"value": 4.2},
+            },
+        )
+    delivered_at: list[float] = []
+
+    class Api:
+        async def post(self, session_id: str, event_id: str, payload: dict[str, object]) -> httpx.Response:
+            await asyncio.sleep(0)
+            return httpx.Response(200, text="ok")
+
+    class Notifier:
+        async def committed(self, event: TorqueRecordCommitted) -> None:
+            delivered_at.append(time.perf_counter())
+
+    async def exercise() -> tuple[float, list[float]]:
+        sender = OutboxSender("https://server.example.test", "client", queue, notifier=Notifier())
+        started_at = time.perf_counter()
+        assert await sender._send_once(Api()) is True
+        return started_at, delivered_at
+
+    started_at, completed = asyncio.run(exercise())
+    latencies = sorted(timestamp - started_at for timestamp in completed)
+    p95_index = int(len(latencies) * 0.95) - 1
+
+    assert len(latencies) == 30
+    assert queue.count() == 0
+    assert latencies[-1] <= 1.0
+    assert latencies[p95_index] <= 0.8
 
 
 def test_loopback_api_health_and_disarm_contract(tmp_path: Path) -> None:

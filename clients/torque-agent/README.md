@@ -1,6 +1,6 @@
 # torque-agent
 
-複数の許可済み `/dev/input/by-id/*` HID機器を排他取得し、入力イベントをSQLiteへ先に保存してから組立APIへ送るローカルエージェントです。ローカル制御APIは `127.0.0.1:7073` のみで待ち受けます。
+複数の許可済み `/dev/input/by-id/*` HID機器を排他取得し、入力イベントをSQLiteへ先に保存してから組立APIへ送るローカルエージェントです。ローカル制御APIは `127.0.0.1:7073` のみで待ち受けます。保存済みイベントは送信処理を直ちに起こし、APIの2xx確認とoutbox削除後に`/stream` WebSocketから作業画面へ再取得の合図を送ります。
 
 ## CEM3-BTLA parser contract
 
@@ -94,6 +94,8 @@ docker compose -f infrastructure/docker/docker-compose.client.yml --profile torq
 docker compose -f infrastructure/docker/docker-compose.client.yml --profile torque exec torque-agent \
   python -c 'from pathlib import Path; from torque_agent.queue_store import QueueStore; q=QueueStore(Path("/data/torque-events.sqlite3")); print({"queued": q.count(), "localAudit": q.local_error_count()})'
 ```
+
+`ws://127.0.0.1:7073/stream`は、許可済みブラウザOriginだけが接続できるローカル通知経路です。通知は`sessionId`、`sourceEventKey`、取得・確認時刻だけを含み、トルク値や製造番号は含みません。画面は通知後に既存APIを再取得し、WebSocket切断時は1.2秒ポーリングで復旧します。
 
 `queuedEvents`はAPI応答待ち、`localAuditEvents`はbinding無しまたは解析失敗でサーバーへ割り当てなかった入力である。SQLiteファイルを直接削除して復旧してはいけない。
 

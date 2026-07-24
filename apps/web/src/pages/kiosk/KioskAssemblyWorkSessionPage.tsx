@@ -31,7 +31,8 @@ import {
   resolveAssemblyCheckSummary,
   sessionCheckItemsToCanvas,
   takeoverTorqueAgentLease,
-  templateToCanvasBolts
+  templateToCanvasBolts,
+  useTorqueRecordLiveRefresh
 } from '../../features/assembly';
 
 import type { TorqueWrenchProfileApi } from '../../api/domains/torque-wrenches';
@@ -145,6 +146,22 @@ export function KioskAssemblyWorkSessionPage() {
   const canComplete = Boolean(session && allBoltsComplete && checksComplete && session.status === 'in_progress');
   const hasConfiguredProcedureSequence =
     procedureSequence?.mode === 'configured' && procedureSequence.documents.length > 0;
+  const knownTorqueSourceEventKeys = useMemo(
+    () => new Set(
+      session?.torqueRecords
+        .map((record) => record.sourceEventKey)
+        .filter((eventKey): eventKey is string => Boolean(eventKey)) ?? []
+    ),
+    [session?.torqueRecords]
+  );
+
+  useTorqueRecordLiveRefresh({
+    enabled: Boolean(session?.id && traceabilityRequired && confirmation),
+    sessionId: session?.id ?? null,
+    knownSourceEventKeys: knownTorqueSourceEventKeys,
+    loadSession: getAssemblyWorkSession,
+    onSessionLoaded: setSession
+  });
 
   useEffect(() => {
     if (!session?.id || !session.currentBoltId || !traceabilityRequired) {
@@ -233,20 +250,6 @@ export function KioskAssemblyWorkSessionPage() {
       void releaseTorqueAgentLease('PAGE_LEFT', true).catch(() => undefined);
     };
   }, [traceabilityRequired]);
-
-  useEffect(() => {
-    if (!session?.id || !traceabilityRequired || !confirmation) return;
-    let cancelled = false;
-    const timer = window.setInterval(() => {
-      void getAssemblyWorkSession(session.id).then((next) => {
-        if (!cancelled) setSession(next);
-      }).catch(() => undefined);
-    }, 1200);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [confirmation, session?.id, traceabilityRequired]);
 
   const fallbackPageRef = useMemo(() => {
     if (!session) return null;

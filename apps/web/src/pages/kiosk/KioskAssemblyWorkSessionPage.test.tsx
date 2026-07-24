@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -332,6 +332,73 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     await waitFor(() => {
       expect(agentFetch.mock.calls.some(([url]) => String(url).endsWith('/lease/acquire'))).toBe(true);
     });
+  });
+
+  it('refreshes the right-pane history immediately after a committed torque notification', async () => {
+    class MockWebSocket {
+      static instance: MockWebSocket | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onclose: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+
+      constructor(public readonly url: string) {
+        MockWebSocket.instance = this;
+      }
+
+      close() {
+        return undefined;
+      }
+    }
+
+    const committedSession: AssemblyWorkSessionDto = {
+      ...requiredSession,
+      torqueRecords: [{
+        id: 'record-1',
+        sessionId: 'session-1',
+        templateBoltId: 'bolt-1',
+        attempt: 1,
+        inputSource: 'agent',
+        value: '4.24',
+        judgement: 'ok',
+        accepted: true,
+        ignoredReason: null,
+        serialNumberSnapshot: 'TW-A103',
+        sourceEventKey: 'event-1',
+        recordedAt: '2026-07-24T00:00:00.000Z',
+        createdAt: '2026-07-24T00:00:00.000Z',
+        tighteningId: 'BOLT-1',
+        markerNo: 1,
+        areaId: 'area-1',
+        areaName: 'ストッパー取付'
+      }]
+    };
+    mockGetAssemblyWorkSession
+      .mockResolvedValueOnce(requiredSession)
+      .mockResolvedValue(committedSession);
+    mockListCompatibleTorqueWrenches.mockResolvedValue(compatibleTorqueWrenches);
+    mockListCurrentTorqueWrenchConfirmations.mockResolvedValue(reusableTorqueConfirmation);
+    vi.stubGlobal('WebSocket', MockWebSocket);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(agentStatus())));
+
+    renderPage();
+
+    await screen.findByText('同じ締付条件の現物確認を引継ぎ済み・使用開始が必要です');
+    await waitFor(() => expect(MockWebSocket.instance).not.toBeNull());
+    act(() => {
+      MockWebSocket.instance?.onmessage?.({
+        data: JSON.stringify({
+          type: 'torqueRecordCommitted',
+          sessionId: 'session-1',
+          sourceEventKey: 'event-1',
+          capturedAt: '2026-07-24T00:00:00.000Z',
+          acknowledgedAt: '2026-07-24T00:00:00.050Z'
+        })
+      } as MessageEvent);
+    });
+
+    expect(await screen.findByText('4.24')).toBeInTheDocument();
+    expect(screen.getByText('丸数字 1 / TW-A103')).toBeInTheDocument();
+    expect(mockGetAssemblyWorkSession).toHaveBeenCalledTimes(2);
   });
 
   it('reports a failed explicit acquire request as loopback communication loss', async () => {
