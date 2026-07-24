@@ -1417,6 +1417,46 @@ def _missing_marker_issue(completed: Any) -> dict[str, str]:
     )
     stderr = str(getattr(completed, "stderr", "") or "").lower()
     if returncode == 255:
+        ssh_failures = (
+            (
+                ("connection timed out", "operation timed out"),
+                "transport.ssh-timeout",
+                "terminal SSH transport timed out before returning a result marker",
+            ),
+            (
+                ("connection refused",),
+                "transport.ssh-refused",
+                "terminal rejected the SSH connection before returning a result marker",
+            ),
+            (
+                ("no route to host", "network is unreachable"),
+                "transport.ssh-route",
+                "terminal SSH network route is unavailable",
+            ),
+            (
+                ("permission denied", "authentication failed"),
+                "transport.ssh-auth",
+                "terminal SSH authentication was rejected",
+            ),
+            (
+                ("could not resolve hostname", "name or service not known"),
+                "transport.ssh-name",
+                "terminal SSH hostname could not be resolved",
+            ),
+            (
+                (
+                    "connection reset",
+                    "connection closed",
+                    "closed by remote host",
+                    "kex_exchange_identification",
+                ),
+                "transport.ssh-closed",
+                "terminal SSH connection closed before returning a result marker",
+            ),
+        )
+        for phrases, code, message in ssh_failures:
+            if any(phrase in stderr for phrase in phrases):
+                return {"code": code, "message": message}
         return {
             "code": "transport.ssh",
             "message": "terminal SSH transport exited before returning a result marker",
