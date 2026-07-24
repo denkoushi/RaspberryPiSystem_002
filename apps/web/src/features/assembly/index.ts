@@ -21,6 +21,7 @@ export * from './assemblyTorqueConnectionPresentation';
 export * from './assemblyUiHelpers';
 export * from './computeContainSize';
 export * from './torqueAgentClient';
+export * from './useTorqueRecordLiveRefresh';
 export * from './useAssemblyProcedureLibrary';
 export * from './useAssemblyTemplateLibrary';
 export * from './useAssemblyLibraryFilterOptions';

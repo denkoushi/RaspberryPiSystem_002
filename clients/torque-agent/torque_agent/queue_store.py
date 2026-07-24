@@ -47,12 +47,13 @@ class QueueStore:
         connection.row_factory = sqlite3.Row
         return connection
 
-    def enqueue(self, event_id: str, payload: dict[str, Any]) -> None:
+    def enqueue(self, event_id: str, payload: dict[str, Any]) -> bool:
         with self._connect() as connection:
-            connection.execute(
+            cursor = connection.execute(
                 "INSERT OR IGNORE INTO torque_outbox (event_id, payload) VALUES (?, ?)",
                 (event_id, json.dumps(payload, ensure_ascii=False)),
             )
+            return cursor.rowcount == 1
 
     def pending(self, limit: int = 100) -> list[tuple[str, dict[str, Any]]]:
         with self._connect() as connection:
