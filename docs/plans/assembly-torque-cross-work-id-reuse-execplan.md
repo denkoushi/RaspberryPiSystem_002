@@ -21,6 +21,10 @@ After this change, that remembered terminal remains audit data rather than torqu
 - [x] (2026-07-23 18:25+09:00) Ran the complete API and Web suites, workspace lint, shared-package builds/tests, CI-policy tests, production Web build, and documentation inventory audit in preparation for the next-day rollout.
 - [x] (2026-07-23 18:35+09:00) Committed the reviewed 24-file scope as `508d25b3`, pushed `feat/assembly-torque-cross-work-id-reuse`, and opened Draft PR #1069 against `main`.
 - [x] (2026-07-23 18:43+09:00) Confirmed exact-head CI for `508d25b3`: 9 checks succeeded, 6 path-classified checks were skipped, and no check failed or remained pending.
+- [x] (2026-07-24 11:54+09:00) Deployed the PR #1069 head through the standard rolling-release path and completed the available StoneBase/Assembly-01 physical acceptance while leaving connection-lease enforcement disabled.
+- [x] (2026-07-24 12:08+09:00) Traced two physical-test UI defects to an unobserved initial agent state and a conditionally mounted page-level message element; confirmed that neither defect came from the lease, database, Bluetooth guard, or torque input path.
+- [x] (2026-07-24 12:14+09:00) Added a read-only pre-confirmation health probe, pure connection-presentation policy, neutral preparation labels, and a persistent fixed-height status region. Focused Web validation passed 23 tests.
+- [x] (2026-07-24 12:32+09:00) Completed the UI follow-up validation: 25 focused Web tests, all 1,487 Web tests, Web lint/build, 29 torque-agent core tests, documentation audit, diff checks, and real-browser geometry at 1280×720 and 1920×1080 all passed.
 
 ## Surprises & Discoveries
 
@@ -47,6 +51,18 @@ After this change, that remembered terminal remains audit data rather than torqu
 
 - Observation: Poetry was unavailable on the Mac, but the checked-out torque-agent virtual environment already contained the required test dependencies.
   Evidence: `clients/torque-agent/.venv/bin/python -m pytest` passed all 45 tests.
+
+- Observation: The initial `agentReachable=false` value meant both “not measured yet” and “a loopback request failed”. The heartbeat effect deliberately skipped `POST /heartbeat` while a current bolt had no confirmation, so a healthy agent was labelled `通信断` before any request was made.
+  Evidence: physical testing showed `通信断` while the Assembly agent was healthy and locally available; `KioskAssemblyWorkSessionPage.tsx` returned from the heartbeat callback before changing the initial boolean.
+
+- Observation: A local torque-agent snapshot with `state=available` does not prove that the Pi5-authoritative lease is globally unowned.
+  Evidence: while StoneBase held generation 26, Assembly-01 had no local lease and reported `available` until the explicit acquire attempt returned `owned_by_other`. The UI must say `現物確認待ち` or `使用開始待ち` rather than claim `使用可能` before acquisition.
+
+- Observation: The page-level notification was mounted between the header and the flexible main region only while text existed.
+  Evidence: the physical screen moved vertically when the Bluetooth-wait message disappeared. Existing Web tests checked that old text was replaced or removed, but did not measure geometry or require a persistent fixed-height region.
+
+- Observation: `GET /health` is already a read-only, CORS-enabled torque-agent contract.
+  Evidence: `test_loopback_api_health_and_disarm_contract` verifies the GET response and allowed kiosk origin separately from the mutating/disarming heartbeat POST. No agent or wire-protocol change is needed to determine real loopback reachability before confirmation.
 
 ## Decision Log
 
@@ -78,6 +94,14 @@ After this change, that remembered terminal remains audit data rather than torqu
   Rationale: This keeps transaction ordering reusable and prevents a latest-setting, status, calibration, or profile mutation from interleaving with adoption. It also avoids coupling the master-data service to the connection-lease service.
   Date/Author: 2026-07-23, Codex.
 
+- Decision: Probe the existing local `GET /health` before physical confirmation and keep remote ownership discovery on the existing explicit acquire action.
+  Rationale: this distinguishes a real loopback failure from an unmeasured state without adding an API, changing agent binding, polling Pi5 ownership, or allowing automatic acquisition. A pre-confirmation health snapshot is intentionally presented as preparation state rather than global lease availability.
+  Date/Author: 2026-07-24, user and Codex.
+
+- Decision: Replace `使用可能` on an active tightening position with `現物確認待ち` or `使用開始待ち`, and reserve a fixed-height page notification region.
+  Rationale: the former label overstated what the local agent knew, while a persistent `h-14` region prevents transient connection and operation messages from resizing the main work area.
+  Date/Author: 2026-07-24, user and Codex.
+
 ## Outcomes & Retrospective
 
 Implementation is complete on `feat/assembly-torque-cross-work-id-reuse` and published in Draft PR #1069. The reviewed implementation commit is `508d25b3`; its exact-head GitHub CI completed with all applicable checks successful. A confirmation adopted by the retained lease can now be listed and explicitly re-acquired for another work ID or lot on the same terminal when physical profile, latest setting, tightening fingerprint, capability group, instrument state, and calibration remain eligible. The start-origin terminal remains unchanged on `AssemblyWorkSession`; the actual terminal, target session, lease generation, and adopted confirmation are audited separately.
@@ -101,10 +125,16 @@ Validation completed:
 - After `ANALYZE` with 20,000 lease and 50,000 confirmation fixtures, `EXPLAIN (ANALYZE, BUFFERS)` used the lease primary key (0.018 ms), confirmation primary key (0.009 ms), and existing session-condition index (0.013 ms).
 - Every disposable PostgreSQL run finished with `containers=0 volumes=0 networks=0`; no existing container or database was accessed or modified.
 - The final complete-suite disposable PostgreSQL run also finished with `containers=0 volumes=0 networks=0`.
+- The UI follow-up's pure presentation and kiosk-page suites passed 25 tests. The complete Web suite then passed 298 files and 1,487 tests; Web lint and the production build also passed.
+- The torque-agent core regression passed 29 tests, including the existing read-only `GET /health` and disarming-heartbeat contract. No agent code or payload changed.
+- A temporary Playwright network mock reproduced reusable confirmation, explicit acquisition, Bluetooth wait, ready/input wait, and release without touching a database or physical agent. At both 1280×720 and 1920×1080, the inner work `main` kept the same `top` and `height` in all four measured states: the maximum difference was 0 px. The status region retained `h-14 shrink-0 overflow-y-auto` with and without text.
+- Documentation inventory regeneration and `node scripts/docs/audit-docs.mjs --check` passed, as did `git diff --check`. No PostgreSQL run was needed because the follow-up changed only Web presentation and existing health-client use.
 
 One intermediate test assertion incorrectly expected a renewed lease expiry to remain unchanged; it was corrected to assert the safety identity that must remain stable (lease ID and generation). The implementation itself did not need a workaround.
 
-No physical-device test is claimed here. No merge, deployment, production database access, or production enforcement activation has been performed.
+Physical acceptance on 2026-07-24 confirmed the core feature with enforcement still disabled. StoneBase acquired D26IIII at generation 19 and recorded an input, then reused the adopted confirmation for D26HHHH at generation 20 without automatic connection and recorded to the selected work session. A later StoneBase D26GGGG run used a fresh destination confirmation at generation 26 because Assembly-01 had become the last owner. Assembly-01 then created a fresh D26HHHH confirmation and completed the two-stage takeover at generation 27. Continuous external-adapter observation showed StoneBase ON/Assembly-01 OFF through 11:47:57, both OFF from 11:47:59 through 11:48:04, and StoneBase OFF/Assembly-01 ON from 11:48:05; there was no simultaneous ON. The generation-27 input was accepted to D26HHHH with Assembly-01 as the source client and the adopted confirmation and lease generation matching. `OPERATOR_RELEASE` retained the adopted confirmation, and both external adapters were OFF at the end.
+
+The same physical run exposed the two UI defects described above. They did not cause a wrong torque record, simultaneous Bluetooth activation, or a lease violation. The follow-up is now implemented and locally validated: unmeasured and reachable preparation states no longer claim `通信断` or Pi5-wide availability, and the permanent notification slot prevents message transitions from moving the work area. A separate-lot same-condition physical run remains unavailable because the other observed lot used inactive template version 3; D26GGGG is an active-version same-lot case and is not claimed as separate-lot acceptance. The user approved committing, pushing, and deploying this UI follow-up on 2026-07-24; no post-change deployment result is claimed in this checkpoint. No merge or enforcement activation has been performed.
 
 ## Context and Orientation
 
@@ -223,3 +253,9 @@ Revision note (2026-07-23 18:05+09:00): completed implementation and validation;
 Revision note (2026-07-23 18:25+09:00): added full API/Web regression, workspace-quality, CI-policy, and document-inventory evidence after deployment and physical-wrench testing were explicitly deferred to the next day.
 
 Revision note (2026-07-23 18:44+09:00): recorded commit `508d25b3`, Draft PR #1069, and its exact-head CI success while preserving the separate approval boundaries for merge, deployment, physical testing, and enforcement activation.
+
+Revision note (2026-07-24 12:14+09:00): recorded production canary and physical acceptance, corrected the earlier no-physical-test outcome, documented the two observed UI root causes, and began the neutral-status and fixed-notification follow-up without changing API, database, agent, Bluetooth, or enforcement contracts.
+
+Revision note (2026-07-24 12:32+09:00): completed the UI follow-up and recorded focused/full Web, lint/build, torque-agent, documentation, diff, and two-viewport browser-geometry evidence.
+
+Revision note (2026-07-24 12:35+09:00): recorded the user's separate approval to commit, push, and deploy the UI follow-up while preserving the no-merge and no-enforcement boundaries.

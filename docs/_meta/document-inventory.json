@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 542,
-    "totalLines": 155804,
-    "totalBytes": 11786282,
+    "totalLines": 155845,
+    "totalBytes": 11794641,
     "withFrontmatter": 227,
     "withStatus": 85,
     "sourceOfTruthDeclared": 55,
@@ -30946,8 +30946,8 @@
     },
     {
       "path": "docs/modules/measuring-instruments/ui.md",
-      "lineCount": 156,
-      "byteSize": 15400,
+      "lineCount": 159,
+      "byteSize": 16184,
       "hasFrontmatter": false,
       "title": "計測機器管理 UI設計メモ",
       "status": null,
@@ -31438,8 +31438,8 @@
     },
     {
       "path": "docs/plans/assembly-torque-cross-work-id-reuse-execplan.md",
-      "lineCount": 225,
-      "byteSize": 25142,
+      "lineCount": 261,
+      "byteSize": 32079,
       "hasFrontmatter": false,
       "title": "Reuse one physical torque-wrench confirmation across work IDs",
       "status": null,
@@ -34883,8 +34883,8 @@
     },
     {
       "path": "docs/runbooks/assembly-torque-agent.md",
-      "lineCount": 284,
-      "byteSize": 21699,
+      "lineCount": 286,
+      "byteSize": 22337,
       "hasFrontmatter": false,
       "title": "組立 torque-agent 運用Runbook",
       "status": null,
