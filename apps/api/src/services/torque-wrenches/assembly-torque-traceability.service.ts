@@ -15,34 +15,25 @@ import {
 import { TorqueUnitConverter, UnsupportedTorqueUnitError } from './torque-unit-converter.js';
 import {
   TorqueWrenchEligibilityPolicy,
-  torqueConditionFingerprint,
-  type TorqueCondition,
-  type TorqueWrenchCandidate
+  torqueConditionFingerprint
 } from './torque-wrench-eligibility.policy.js';
 import { normalizeTorqueWrenchKey } from './torque-wrench-normalization.js';
+import { TorqueWrenchConfirmationStateRepository } from './torque-wrench-confirmation-state.repository.js';
 import {
-  evaluateAgentConnectionLease,
-  lockTorqueWrenchProfile
-} from './torque-wrench-connection-lease.service.js';
-
-const profileEligibilityInclude = {
-  measuringInstrument: true,
-  model: true,
-  settingHistories: {
-    orderBy: [{ effectiveAt: 'desc' as const }, { createdAt: 'desc' as const }],
-    take: 1
-  }
-} satisfies Prisma.TorqueWrenchProfileInclude;
-
-type EligibilityProfile = Prisma.TorqueWrenchProfileGetPayload<{ include: typeof profileEligibilityInclude }>;
-
-const capabilityGroupEligibilityInclude = {
-  models: { select: { modelId: true } }
-} satisfies Prisma.TorqueWrenchCapabilityGroupInclude;
-
-type EligibilityCapabilityGroup = Prisma.TorqueWrenchCapabilityGroupGetPayload<{
-  include: typeof capabilityGroupEligibilityInclude;
-}>;
+  TorqueWrenchConfirmationUsePolicy,
+  type TorqueWrenchConfirmationEvidence,
+  type TorqueWrenchLeaseEvidence
+} from './torque-wrench-confirmation-use.policy.js';
+import { evaluateAgentConnectionLease } from './torque-wrench-connection-lease.service.js';
+import { lockTorqueWrenchProfile } from './torque-wrench-lock.repository.js';
+import {
+  candidateFromProfile,
+  capabilityGroupEligibilityInclude,
+  conditionFromBolt,
+  type EligibilityCapabilityGroup,
+  type EligibilityProfile,
+  profileEligibilityInclude
+} from './torque-wrench-use-context.js';
 
 export type TraceabilityOutcome = {
   kind: 'accepted_ok' | 'recorded_ng' | 'rejected';
@@ -70,51 +61,6 @@ export type AgentTorqueRecordInput = {
   connectionLeaseId?: string | null;
   connectionLeaseGeneration?: number | null;
 };
-
-function conditionFromBolt(bolt: AssemblyTemplateBolt): TorqueCondition {
-  return {
-    templateBoltId: bolt.id,
-    nominalDiameter: bolt.nominalDiameter,
-    boltLengthMm: bolt.boltLengthMm,
-    material: bolt.material,
-    strengthClass: bolt.strengthClass,
-    capabilityGroupId: bolt.capabilityGroupId,
-    lowerLimit: bolt.lowerLimit,
-    nominalTorque: bolt.nominalTorque,
-    upperLimit: bolt.upperLimit,
-    unit: bolt.unit
-  };
-}
-
-function candidateFromProfile(
-  profile: EligibilityProfile,
-  capabilityGroup: EligibilityCapabilityGroup
-): TorqueWrenchCandidate {
-  const setting = profile.settingHistories[0] ?? null;
-  return {
-    profileId: profile.id,
-    modelId: profile.modelId,
-    status: profile.measuringInstrument.status,
-    calibrationExpiryDate: profile.measuringInstrument.calibrationExpiryDate,
-    modelTorqueMinNm: profile.model.torqueMinNm,
-    modelTorqueMaxNm: profile.model.torqueMaxNm,
-    capabilityGroupId: capabilityGroup.id,
-    capabilityGroupIsActive: capabilityGroup.isActive,
-    capabilityGroupNominalDiameter: capabilityGroup.nominalDiameter,
-    capabilityGroupBoltLengthMm: capabilityGroup.boltLengthMm,
-    capabilityGroupMaterial: capabilityGroup.material,
-    capabilityGroupStrengthClass: capabilityGroup.strengthClass,
-    capabilityModelIds: capabilityGroup.models.map((link) => link.modelId),
-    setting: setting
-      ? {
-          id: setting.id,
-          lowerLimitNm: setting.lowerLimitNm,
-          nominalTorqueNm: setting.nominalTorqueNm,
-          upperLimitNm: setting.upperLimitNm
-        }
-      : null
-  };
-}
 
 function findCurrentBolt(session: AssemblyWorkSessionDetail): AssemblyTemplateBolt {
   if (resolveAssemblyTraceabilityMode(session.template.traceabilityMode) !== 'REQUIRED') {
@@ -160,7 +106,11 @@ function isUniqueConstraintError(error: unknown): boolean {
 }
 
 export class AssemblyTorqueTraceabilityService {
-  constructor(private readonly policy = new TorqueWrenchEligibilityPolicy()) {}
+  constructor(
+    private readonly eligibilityPolicy = new TorqueWrenchEligibilityPolicy(),
+    private readonly confirmationPolicy = new TorqueWrenchConfirmationUsePolicy(),
+    private readonly confirmationRepository = new TorqueWrenchConfirmationStateRepository()
+  ) {}
 
   private async loadCapabilityGroup(capabilityGroupId: string): Promise<EligibilityCapabilityGroup> {
     const group = await prisma.torqueWrenchCapabilityGroup.findUnique({
@@ -171,13 +121,12 @@ export class AssemblyTorqueTraceabilityService {
     return group;
   }
 
-  async listCompatible(sessionId: string, clientDeviceId: string) {
+  async listCompatible(sessionId: string) {
     const session = await prisma.assemblyWorkSession.findUnique({
       where: { id: sessionId },
       include: assemblyWorkSessionDetailInclude
     });
     if (!session) throw new ApiError(404, '作業セッションが見つかりません');
-    assertSessionClient(session, clientDeviceId);
     const bolt = findCurrentBolt(session);
     if (!bolt.capabilityGroupId) throw new ApiError(409, '現在の締付箇所に適合グループがありません');
     const capabilityGroup = await this.loadCapabilityGroup(bolt.capabilityGroupId);
@@ -188,7 +137,7 @@ export class AssemblyTorqueTraceabilityService {
     });
     const condition = conditionFromBolt(bolt);
     return profiles.flatMap((profile) => {
-      const decision = this.policy.evaluate(
+      const decision = this.eligibilityPolicy.evaluate(
         condition,
         candidateFromProfile(profile, capabilityGroup)
       );
@@ -215,8 +164,9 @@ export class AssemblyTorqueTraceabilityService {
     if (!input.physicalDisplayConfirmed) {
       throw new ApiError(400, '現物の製造番号と設定表示の確認が必要です');
     }
-    return runLockedAssemblyWorkSessionTransaction(input.sessionId, async (tx, session) => {
-      assertSessionClient(session, input.clientDeviceId);
+    return runAssemblyTransaction(async (tx) => {
+      await lockTorqueWrenchProfile(tx, input.torqueWrenchProfileId);
+      const session = await lockAssemblyWorkSession(tx, input.sessionId);
       const bolt = findCurrentBolt(session);
       if (bolt.id !== input.expectedTemplateBoltId) {
         throw new ApiError(409, '表示中の丸数字が更新されています', undefined, 'STALE_TEMPLATE_BOLT');
@@ -231,7 +181,7 @@ export class AssemblyTorqueTraceabilityService {
         include: capabilityGroupEligibilityInclude
       });
       if (!capabilityGroup) throw new ApiError(409, '適合グループが見つかりません', undefined, 'WRONG_CAPABILITY_GROUP');
-      const decision = this.policy.evaluate(
+      const decision = this.eligibilityPolicy.evaluate(
         conditionFromBolt(bolt),
         candidateFromProfile(profile, capabilityGroup)
       );
@@ -262,36 +212,92 @@ export class AssemblyTorqueTraceabilityService {
       include: assemblyWorkSessionDetailInclude
     });
     if (!session) throw new ApiError(404, '作業セッションが見つかりません');
-    if (clientDeviceId) assertSessionClient(session, clientDeviceId);
     const bolt = findCurrentBolt(session);
     if (!bolt.capabilityGroupId) return [];
     const capabilityGroup = await this.loadCapabilityGroup(bolt.capabilityGroupId);
     const fingerprint = torqueConditionFingerprint(conditionFromBolt(bolt));
-    const confirmations = await prisma.assemblyTorqueWrenchConfirmation.findMany({
-      where: { sessionId, conditionFingerprint: fingerprint },
-      include: {
-        torqueWrenchProfile: { include: profileEligibilityInclude },
-        settingHistory: true
-      },
-      orderBy: { confirmedAt: 'desc' }
+    const profiles = await prisma.torqueWrenchProfile.findMany({
+      where: { modelId: { in: capabilityGroup.models.map((link) => link.modelId) } },
+      include: profileEligibilityInclude,
+      orderBy: { serialNumberKey: 'asc' }
     });
+    const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
+    const sessionConfirmations = await this.confirmationRepository.listCurrentSession(
+      prisma,
+      {
+        sessionId,
+        ...(clientDeviceId ? { clientDeviceId } : {}),
+        conditionFingerprint: fingerprint
+      }
+    );
+    const leaseRows = clientDeviceId
+      ? await this.confirmationRepository.listLeases(
+          prisma,
+          profiles.map((profile) => profile.id)
+        )
+      : [];
+    const leaseByProfileId = new Map(
+      leaseRows.map(({ torqueWrenchProfileId, lease }) => [torqueWrenchProfileId, lease])
+    );
+    const adoptedConfirmations = clientDeviceId
+      ? await this.confirmationRepository.listAdoptedForClient(prisma, {
+          clientDeviceId,
+          torqueWrenchProfileIds: profiles.map((profile) => profile.id)
+        })
+      : [];
+    const now = new Date();
+    const candidates: Array<{
+      confirmation: TorqueWrenchConfirmationEvidence;
+      lease: TorqueWrenchLeaseEvidence | null;
+      source: 'session' | 'adopted';
+    }> = [
+      ...sessionConfirmations.map((confirmation) => ({
+        confirmation,
+        lease: leaseByProfileId.get(confirmation.torqueWrenchProfileId) ?? null,
+        source: 'session' as const
+      })),
+      ...adoptedConfirmations.map(({ confirmation, lease }) => ({
+        confirmation,
+        lease,
+        source: 'adopted' as const
+      }))
+    ];
     const seenProfiles = new Set<string>();
-    return confirmations.flatMap((confirmation) => {
-      const profile = confirmation.torqueWrenchProfile;
+    return candidates.flatMap(({ confirmation, lease, source }) => {
+      const profile = profileById.get(confirmation.torqueWrenchProfileId);
+      if (!profile) return [];
       const latestSetting = profile.settingHistories[0] ?? null;
       if (seenProfiles.has(profile.id)) return [];
-      if (
-        !latestSetting ||
-        confirmation.settingHistoryId !== latestSetting.id ||
-        confirmation.conditionFingerprint !== fingerprint
-      ) {
-        return [];
-      }
-      const decision = this.policy.evaluate(
+      if (!latestSetting) return [];
+      const eligibility = this.eligibilityPolicy.evaluate(
         conditionFromBolt(bolt),
         candidateFromProfile(profile, capabilityGroup)
       );
-      if (!decision.eligible) return [];
+      if (!eligibility.eligible) return [];
+      if (clientDeviceId) {
+        const expected = {
+          sessionId,
+          clientDeviceId,
+          torqueWrenchProfileId: profile.id,
+          settingHistoryId: latestSetting.id,
+          conditionFingerprint: eligibility.conditionFingerprint
+        };
+        const useDecision = source === 'session'
+          ? this.confirmationPolicy.evaluateLeaseAdoption({
+              confirmation,
+              lease,
+              expected,
+              now
+            })
+          : this.confirmationPolicy.evaluateAdoptedReuse(confirmation, lease, expected);
+        if (!useDecision.allowed) return [];
+      } else if (
+        confirmation.sessionId !== sessionId ||
+        confirmation.settingHistoryId !== latestSetting.id ||
+        confirmation.conditionFingerprint !== eligibility.conditionFingerprint
+      ) {
+        return [];
+      }
       seenProfiles.add(profile.id);
       return [{
         id: confirmation.id,
@@ -389,7 +395,14 @@ export class AssemblyTorqueTraceabilityService {
         if (profileIdentity) await lockTorqueWrenchProfile(tx, profileIdentity.id);
         const session = await lockAssemblyWorkSession(tx, input.sessionId);
         if (session.status !== 'IN_PROGRESS') throw new ApiError(409, 'この作業は入力できない状態です');
-        assertSessionClient(session, input.clientDeviceId);
+        const hasConnectionLeaseToken =
+          typeof input.connectionLeaseId === 'string' &&
+          input.connectionLeaseId.length > 0 &&
+          Number.isInteger(input.connectionLeaseGeneration) &&
+          Number(input.connectionLeaseGeneration) > 0;
+        if (!hasConnectionLeaseToken) {
+          assertSessionClient(session, input.clientDeviceId);
+        }
         const bolt = findCurrentBolt(session);
         if (bolt.id !== input.expectedTemplateBoltId) {
           return this.ignored(tx, session, bolt, input, 'STALE_TEMPLATE_BOLT');
@@ -407,9 +420,10 @@ export class AssemblyTorqueTraceabilityService {
         const connectionLeaseRejection = await evaluateAgentConnectionLease(tx, profile, {
           leaseId: input.connectionLeaseId,
           generation: input.connectionLeaseGeneration,
+          confirmationId: input.confirmationId,
           clientDeviceId: input.clientDeviceId,
           sessionId: input.sessionId
-        });
+        }, this.confirmationPolicy, this.confirmationRepository);
         if (connectionLeaseRejection) {
           return this.ignored(tx, session, bolt, input, connectionLeaseRejection, profile);
         }
@@ -423,7 +437,11 @@ export class AssemblyTorqueTraceabilityService {
           throw error;
         }
         const confirmation = await tx.assemblyTorqueWrenchConfirmation.findUnique({ where: { id: input.confirmationId } });
-        if (!confirmation || confirmation.sessionId !== session.id) {
+        if (
+          !confirmation ||
+          confirmation.clientDeviceId !== input.clientDeviceId ||
+          (!hasConnectionLeaseToken && confirmation.sessionId !== session.id)
+        ) {
           return this.ignored(tx, session, bolt, input, 'CONFIRMATION_REQUIRED', profile, valueNm);
         }
         if (confirmation.torqueWrenchProfileId !== profile.id) {
@@ -444,7 +462,7 @@ export class AssemblyTorqueTraceabilityService {
           include: capabilityGroupEligibilityInclude
         });
         if (!capabilityGroup) return this.ignored(tx, session, bolt, input, 'WRONG_CAPABILITY_GROUP', profile, valueNm);
-        const decision = this.policy.evaluate(
+        const decision = this.eligibilityPolicy.evaluate(
           conditionFromBolt(bolt),
           candidateFromProfile(profile, capabilityGroup)
         );
@@ -593,7 +611,7 @@ export class AssemblyTorqueTraceabilityService {
       if (!capabilityGroup) {
         throw new ApiError(409, '適合グループが見つかりません', undefined, 'WRONG_CAPABILITY_GROUP');
       }
-      const decision = this.policy.evaluate(
+      const decision = this.eligibilityPolicy.evaluate(
         conditionFromBolt(bolt),
         candidateFromProfile(profile, capabilityGroup)
       );

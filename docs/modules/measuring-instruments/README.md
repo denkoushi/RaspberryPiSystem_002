@@ -38,9 +38,11 @@
 - 作業で記録するもの: 実際の物理製造番号、メーカー・型番、当時の最新設定履歴、入力値・単位、受付／拒否理由
 - 校正期限: Asia/Tokyoの当日を含めて有効。未登録・期限切れはREQUIRED作業で拒否
 - 設定値: 過去行を更新せず新しい履歴を追加。追加後は既存の現物確認を失効
+- 現物確認の再利用: 同じ端末が接続リースで採用した確認は、同一物理レンチ・同一最新設定・同一締付条件・有効な状態／校正であれば、ロットを越えた作業ID間で再利用可能。作業開始元端末は監査情報であり、利用端末の認可には使わない
+- 端末移動: 移動先で新しい現物確認を行い、通常取得または二段階引継ぎで採用する。旧端末の確認は再利用しない
 - 廃止: 参照済み資産は物理削除せずRETIRED、型番・適合グループは利用停止
 
-設計・検証の正本は[組立トルクレンチトレーサビリティExecPlan](../../plans/assembly-torque-wrench-traceability-execplan.md)、端末運用は[torque-agent Runbook](../../runbooks/assembly-torque-agent.md)を参照する。
+設計・検証の正本は[組立トルクレンチトレーサビリティExecPlan](../../plans/assembly-torque-wrench-traceability-execplan.md)と[作業ID間確認再利用ExecPlan](../../plans/assembly-torque-cross-work-id-reuse-execplan.md)、端末運用は[torque-agent Runbook](../../runbooks/assembly-torque-agent.md)を参照する。
 
 ## 持ち出しフロー
 

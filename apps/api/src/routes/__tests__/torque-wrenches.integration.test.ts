@@ -464,6 +464,281 @@ describe('torque wrench traceability API', () => {
     expect(stored.settingNominalTorqueSnapshot?.toString()).toBe('30');
   });
 
+  it('reuses an adopted physical confirmation across work IDs, lots, and start-origin terminals', async () => {
+    const master = new TorqueWrenchMasterService();
+    const stonebase = await createTestClientDevice();
+    const assembly = await createTestClientDevice();
+    await prisma.clientDevice.update({
+      where: { id: stonebase.id },
+      data: { name: 'StoneBase', location: '1F' }
+    });
+    await prisma.clientDevice.update({
+      where: { id: assembly.id },
+      data: { name: 'Assembly-01', location: '2F' }
+    });
+    const admin = await createTestUser('ADMIN');
+    const adminHeaders = { ...createAuthHeader(admin.token), 'content-type': 'application/json' };
+    const assemblyHeaders = { 'x-client-key': assembly.apiKey, 'content-type': 'application/json' };
+
+    const model = await master.createModel({
+      manufacturer: 'TOHNICHI',
+      modelNumber: `CROSS-WORK-${randomUUID()}`,
+      torqueMinNm: 10,
+      torqueMaxNm: 50
+    });
+    const group = await master.createCapabilityGroup({
+      name: `CROSS-WORK-GROUP-${randomUUID()}`,
+      nominalDiameter: 'M10',
+      boltLengthMm: 35,
+      material: 'SCM435',
+      strengthClass: '10.9',
+      modelIds: [model.id]
+    });
+    const profile = await master.createProfile({
+      name: 'cross-work fixture',
+      managementNumber: `CROSS-WORK-${randomUUID()}`,
+      modelId: model.id,
+      serialNumber: `CROSS-WORK-SERIAL-${randomUUID()}`,
+      storageLocation: 'TalkPlazaF1',
+      calibrationExpiryDate: new Date('2099-01-01T00:00:00.000Z')
+    });
+    await master.addSetting(profile.id, {
+      lowerLimit: 28,
+      nominalTorque: 30,
+      upperLimit: 32,
+      unit: 'N-m'
+    });
+    const document = await prisma.assemblyProcedureDocument.create({
+      data: {
+        name: `cross-work-${randomUUID()}`,
+        imageRelativePath: '/test/cross-work.png',
+        status: 'PUBLISHED',
+        publishedAt: new Date(),
+        isActive: true
+      }
+    });
+    const template = await new AssemblyTemplateService().create({
+      modelCode: `CROSS-${randomUUID()}`,
+      procedurePattern: 'standard',
+      name: 'cross-work confirmation fixture',
+      procedureDocumentId: document.id,
+      traceabilityMode: 'REQUIRED',
+      areas: [{
+        sortOrder: 0,
+        processNo: '1',
+        areaCode: 'A',
+        areaName: 'tightening',
+        unitCode: 'U1',
+        bolts: [{
+          sortOrder: 0,
+          markerNo: 1,
+          xRatio: 0.2,
+          yRatio: 0.2,
+          boltSpec: 'M10x35 SCM435 10.9',
+          nominalDiameter: 'M10',
+          boltLengthMm: 35,
+          material: 'SCM435',
+          strengthClass: '10.9',
+          capabilityGroupId: group.id,
+          lowerLimit: 28,
+          nominalTorque: 30,
+          upperLimit: 32,
+          unit: 'N-m'
+        }]
+      }]
+    });
+    const lotService = new AssemblyLotService();
+    const lots = await Promise.all(['D26IIII', 'D26HHHH'].map((workId, index) =>
+      lotService.create({
+        templateId: template.id,
+        productNo: `CROSS-LOT-${index + 1}`,
+        expectedQuantity: 1,
+        workIds: [`${workId}-${randomUUID()}`],
+        operatorNameSnapshot: `operator-${index + 1}`,
+        targetUnit: 'CROSS',
+        clientDeviceId: stonebase.id,
+        clientDeviceNameSnapshot: 'StoneBase'
+      })
+    ));
+    const sessions = await Promise.all(lots.map((lot) =>
+      lotService.startSerial({
+        lotId: lot.id,
+        lotSerialId: lot.serials[0]!.id,
+        clientDeviceId: stonebase.id,
+        clientDeviceNameSnapshot: 'StoneBase'
+      })
+    ));
+    const boltId = template.areas[0]!.bolts[0]!.id;
+
+    const compatible = await app.inject({
+      method: 'GET',
+      url: `/api/assembly/work-sessions/${sessions[0]!.id}/compatible-torque-wrenches`,
+      headers: assemblyHeaders
+    });
+    expect(compatible.statusCode).toBe(200);
+    expect(compatible.json().torqueWrenches).toHaveLength(1);
+    const confirmed = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${sessions[0]!.id}/torque-wrench-confirmations`,
+      headers: assemblyHeaders,
+      payload: {
+        expectedTemplateBoltId: boltId,
+        torqueWrenchProfileId: profile.id,
+        physicalDisplayConfirmed: true
+      }
+    });
+    expect(confirmed.statusCode).toBe(201);
+    let confirmationId = confirmed.json().confirmation.id as string;
+
+    const acquire = async (sessionId: string, requestId: string) => {
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/torque-wrenches/${profile.id}/connection-lease/acquire`,
+        headers: assemblyHeaders,
+        payload: { sessionId, confirmationId, requestId }
+      });
+      expect(response.statusCode).toBe(200);
+      return response.json().lease as { leaseId: string; generation: number };
+    };
+    const release = async (sessionId: string, lease: { leaseId: string; generation: number }) => {
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/torque-wrenches/${profile.id}/connection-lease/release`,
+        headers: assemblyHeaders,
+        payload: { sessionId, ...lease, reason: 'switch work ID' }
+      });
+      expect(response.statusCode).toBe(200);
+    };
+    const record = (sessionId: string, eventKey: string, lease?: { leaseId: string; generation: number }) =>
+      app.inject({
+        method: 'POST',
+        url: `/api/assembly/work-sessions/${sessionId}/record-torque`,
+        headers: assemblyHeaders,
+        payload: {
+          sourceEventKey: eventKey,
+          expectedTemplateBoltId: boltId,
+          confirmationId,
+          serialNumber: profile.serialNumber,
+          value: 30,
+          unit: 'N-m',
+          rawPayload: { eventKey },
+          ...(lease
+            ? {
+                connectionLeaseId: lease.leaseId,
+                connectionLeaseGeneration: lease.generation
+              }
+            : {})
+        }
+      });
+
+    const firstLease = await acquire(sessions[0]!.id, 'cross-work-first');
+    const reconfirmed = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${sessions[0]!.id}/torque-wrench-confirmations`,
+      headers: assemblyHeaders,
+      payload: {
+        expectedTemplateBoltId: boltId,
+        torqueWrenchProfileId: profile.id,
+        physicalDisplayConfirmed: true
+      }
+    });
+    expect(reconfirmed.statusCode).toBe(201);
+    confirmationId = reconfirmed.json().confirmation.id as string;
+    const readoptedLease = await acquire(sessions[0]!.id, 'cross-work-readopt');
+    expect(readoptedLease).toMatchObject({
+      leaseId: firstLease.leaseId,
+      generation: firstLease.generation
+    });
+    expect(await prisma.torqueWrenchConnectionLeaseHistory.findMany({
+      where: { torqueWrenchProfileId: profile.id },
+      orderBy: { createdAt: 'asc' },
+      select: { action: true, generation: true, adoptedConfirmationId: true }
+    })).toEqual([
+      { action: 'ACQUIRED', generation: 1, adoptedConfirmationId: confirmed.json().confirmation.id },
+      { action: 'CONFIRMATION_ADOPTED', generation: 1, adoptedConfirmationId: confirmationId }
+    ]);
+    const firstRecord = await record(sessions[0]!.id, 'cross-work-first-record', readoptedLease);
+    expect(firstRecord.statusCode).toBe(200);
+    expect(firstRecord.json().outcome.kind).toBe('accepted_ok');
+    await release(sessions[0]!.id, readoptedLease);
+
+    const listSecondSessionConfirmations = () =>
+      app.inject({
+        method: 'GET',
+        url: `/api/assembly/work-sessions/${sessions[1]!.id}/torque-wrench-confirmations/current`,
+        headers: assemblyHeaders
+      });
+    await master.updateProfile(profile.id, { status: 'MAINTENANCE' });
+    expect((await listSecondSessionConfirmations()).json().confirmations).toEqual([]);
+    await master.updateProfile(profile.id, {
+      status: 'AVAILABLE',
+      calibrationExpiryDate: new Date('2020-01-01T00:00:00.000Z')
+    });
+    expect((await listSecondSessionConfirmations()).json().confirmations).toEqual([]);
+    await master.updateProfile(profile.id, {
+      calibrationExpiryDate: new Date('2099-01-01T00:00:00.000Z')
+    });
+    await prisma.assemblyTemplateBolt.update({
+      where: { id: boltId },
+      data: { upperLimit: 31 }
+    });
+    expect((await listSecondSessionConfirmations()).json().confirmations).toEqual([]);
+    await prisma.assemblyTemplateBolt.update({
+      where: { id: boltId },
+      data: { upperLimit: 32 }
+    });
+
+    const reusable = await listSecondSessionConfirmations();
+    expect(reusable.statusCode).toBe(200);
+    expect(reusable.json().confirmations).toEqual([
+      expect.objectContaining({ id: confirmationId, torqueWrenchProfileId: profile.id })
+    ]);
+    const adminSessionOnly = await app.inject({
+      method: 'GET',
+      url: `/api/assembly/work-sessions/${sessions[1]!.id}/torque-wrench-confirmations/current`,
+      headers: adminHeaders
+    });
+    expect(adminSessionOnly.statusCode).toBe(200);
+    expect(adminSessionOnly.json().confirmations).toEqual([]);
+    const crossSessionOverride = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${sessions[1]!.id}/record-torque-override`,
+      headers: adminHeaders,
+      payload: {
+        confirmationId,
+        value: 30,
+        unit: 'N-m',
+        reason: 'cross-session override must remain forbidden'
+      }
+    });
+    expect(crossSessionOverride.statusCode).toBe(409);
+    expect(crossSessionOverride.json().errorCode).toBe('CONFIRMATION_REQUIRED');
+
+    const tokenlessCrossTerminal = await record(sessions[1]!.id, 'cross-work-tokenless');
+    expect(tokenlessCrossTerminal.statusCode).toBe(403);
+    expect(tokenlessCrossTerminal.json().errorCode).toBe('SESSION_CLIENT_MISMATCH');
+
+    const secondLease = await acquire(sessions[1]!.id, 'cross-work-second');
+    const secondRecord = await record(sessions[1]!.id, 'cross-work-second-record', secondLease);
+    expect(secondRecord.statusCode).toBe(200);
+    expect(secondRecord.json().outcome.kind).toBe('accepted_ok');
+    const stored = await prisma.assemblyTorqueRecord.findUniqueOrThrow({
+      where: { id: secondRecord.json().outcome.torqueRecordId as string }
+    });
+    expect(stored).toMatchObject({
+      sessionId: sessions[1]!.id,
+      confirmationId,
+      sourceClientDeviceId: assembly.id,
+      connectionLeaseId: secondLease.leaseId,
+      connectionLeaseGeneration: secondLease.generation
+    });
+    expect(await prisma.torqueWrenchProfile.findUniqueOrThrow({
+      where: { id: profile.id },
+      select: { connectionLeaseEnforcedAt: true }
+    })).toEqual({ connectionLeaseEnforcedAt: null });
+    await release(sessions[1]!.id, secondLease);
+  });
+
   it('serializes two-terminal acquisition, fences old generations, and accepts only current-generation events', async () => {
     const master = new TorqueWrenchMasterService();
     const traceability = new AssemblyTorqueTraceabilityService();
@@ -609,6 +884,10 @@ describe('torque wrench traceability API', () => {
       generation: number;
     };
     expect(firstLease.generation).toBe(1);
+    expect(await prisma.torqueWrenchConnectionLease.findUniqueOrThrow({
+      where: { torqueWrenchProfileId: profile.id },
+      select: { adoptedConfirmationId: true }
+    })).toEqual({ adoptedConfirmationId: winner.confirmation.id });
 
     const hiddenOwner = await app.inject({
       method: 'GET',
@@ -624,6 +903,21 @@ describe('torque wrench traceability API', () => {
     expect(hiddenOwner.json().lease.owner).not.toHaveProperty('sessionId');
     expect(hiddenOwner.json().lease).not.toHaveProperty('leaseId');
     expect(hiddenOwner.json().lease).not.toHaveProperty('generation');
+
+    const staleTakeover = await app.inject({
+      method: 'POST',
+      url: `/api/torque-wrenches/${profile.id}/connection-lease/takeover`,
+      headers: { 'x-client-key': loser.client.apiKey, 'content-type': 'application/json' },
+      payload: {
+        sessionId: loser.session.id,
+        confirmationId: loser.confirmation.id,
+        requestId: 'stale-physical-takeover',
+        physicalWrenchPresent: true,
+        reason: 'stale destination confirmation must not be adopted'
+      }
+    });
+    expect(staleTakeover.statusCode).toBe(409);
+    expect(staleTakeover.json().errorCode).toBe('CONFIRMATION_REQUIRED');
 
     const renewed = await app.inject({
       method: 'POST',
@@ -651,6 +945,26 @@ describe('torque wrench traceability API', () => {
     expect(nonOwnerRelease.statusCode).toBe(409);
     expect(nonOwnerRelease.json().errorCode).toBe('TORQUE_WRENCH_LEASE_OWNER_MISMATCH');
 
+    const freshLoserConfirmation = await traceability.confirm({
+      sessionId: loser.session.id,
+      clientDeviceId: loser.client.id,
+      clientDeviceName: loser.client.name,
+      expectedTemplateBoltId: boltId,
+      torqueWrenchProfileId: profile.id,
+      physicalDisplayConfirmed: true
+    });
+    const firstLeaseRow = await prisma.torqueWrenchConnectionLease.findUniqueOrThrow({
+      where: { torqueWrenchProfileId: profile.id },
+      select: { acquiredAt: true }
+    });
+    if (freshLoserConfirmation.confirmedAt.getTime() <= firstLeaseRow.acquiredAt.getTime()) {
+      freshLoserConfirmation.confirmedAt = new Date(firstLeaseRow.acquiredAt.getTime() + 1);
+      await prisma.assemblyTorqueWrenchConfirmation.update({
+        where: { id: freshLoserConfirmation.id },
+        data: { confirmedAt: freshLoserConfirmation.confirmedAt }
+      });
+    }
+    loser.confirmation = freshLoserConfirmation;
     const takeover = await app.inject({
       method: 'POST',
       url: `/api/torque-wrenches/${profile.id}/connection-lease/takeover`,
@@ -665,6 +979,10 @@ describe('torque wrench traceability API', () => {
     });
     expect(takeover.statusCode).toBe(200);
     expect(takeover.json().lease).toMatchObject({ state: 'handoff_wait', generation: 2 });
+    expect(await prisma.torqueWrenchConnectionLease.findUniqueOrThrow({
+      where: { torqueWrenchProfileId: profile.id },
+      select: { adoptedConfirmationId: true }
+    })).toEqual({ adoptedConfirmationId: loser.confirmation.id });
     expect(new Date(takeover.json().lease.connectAfter).getTime()).toBeGreaterThan(Date.now());
     const secondLease = takeover.json().lease as { leaseId: string; generation: number };
 
@@ -822,6 +1140,14 @@ describe('torque wrench traceability API', () => {
       connectionLeaseGeneration: 2
     });
 
+    winner.confirmation = await traceability.confirm({
+      sessionId: winner.session.id,
+      clientDeviceId: winner.client.id,
+      clientDeviceName: winner.client.name,
+      expectedTemplateBoltId: boltId,
+      torqueWrenchProfileId: profile.id,
+      physicalDisplayConfirmed: true
+    });
     const expiredAcquire = await acquire(winner, 'expired-acquire');
     expect(expiredAcquire.statusCode).toBe(200);
     expect(expiredAcquire.json().lease.generation).toBe(3);

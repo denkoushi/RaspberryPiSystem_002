@@ -271,6 +271,47 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     expect(await screen.findByText('手順書')).toBeInTheDocument();
   });
 
+  it('checks loopback health before confirmation without reporting false availability or acquiring a lease', async () => {
+    mockGetAssemblyWorkSession.mockResolvedValue(requiredSession);
+    mockListCompatibleTorqueWrenches.mockResolvedValue(compatibleTorqueWrenches);
+    mockListCurrentTorqueWrenchConfirmations.mockResolvedValue([]);
+    const agentFetch = vi.fn().mockResolvedValue(jsonResponse(agentStatus()));
+    vi.stubGlobal('fetch', agentFetch);
+
+    renderPage();
+
+    expect(await screen.findByText('現物確認待ち')).toBeInTheDocument();
+    expect(screen.queryByText('通信断')).not.toBeInTheDocument();
+    expect(screen.queryByText('使用可能')).not.toBeInTheDocument();
+    expect(agentFetch.mock.calls.some(([url, init]) =>
+      String(url).endsWith('/health') && (init as RequestInit | undefined)?.method === undefined
+    )).toBe(true);
+    expect(agentFetch.mock.calls.some(([url]) => String(url).endsWith('/heartbeat'))).toBe(false);
+    expect(agentFetch.mock.calls.some(([url]) => String(url).endsWith('/lease/acquire'))).toBe(false);
+  });
+
+  it('reports an observed loopback failure and recovers to physical-confirmation wait', async () => {
+    mockGetAssemblyWorkSession.mockResolvedValue(requiredSession);
+    mockListCompatibleTorqueWrenches.mockResolvedValue(compatibleTorqueWrenches);
+    mockListCurrentTorqueWrenchConfirmations.mockResolvedValue([]);
+    let healthAttempts = 0;
+    const agentFetch = vi.fn().mockImplementation((url: string) => {
+      if (String(url).endsWith('/health')) {
+        healthAttempts += 1;
+        if (healthAttempts === 1) return Promise.reject(new TypeError('connection refused'));
+      }
+      return Promise.resolve(jsonResponse(agentStatus()));
+    });
+    vi.stubGlobal('fetch', agentFetch);
+
+    renderPage();
+
+    expect(await screen.findByText('通信断')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('現物確認待ち')).toBeInTheDocument(), { timeout: 3500 });
+    expect(screen.queryByText('torque-agentとの通信が切れました。接続状態を確認してください。')).not.toBeInTheDocument();
+    expect(healthAttempts).toBeGreaterThanOrEqual(2);
+  });
+
   it('reuses physical confirmation but requires an explicit connection-lease start action', async () => {
     mockGetAssemblyWorkSession.mockResolvedValue(requiredSession);
     mockListCompatibleTorqueWrenches.mockResolvedValue(compatibleTorqueWrenches);
@@ -281,6 +322,7 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     renderPage();
 
     expect(await screen.findByText('同じ締付条件の現物確認を引継ぎ済み・使用開始が必要です')).toBeInTheDocument();
+    expect(screen.getByText('使用開始待ち')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '現物確認済み' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'このレンチを使用開始' })).toBeEnabled();
     expect(mockListCurrentTorqueWrenchConfirmations).toHaveBeenCalledWith('session-1');
@@ -290,6 +332,25 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     await waitFor(() => {
       expect(agentFetch.mock.calls.some(([url]) => String(url).endsWith('/lease/acquire'))).toBe(true);
     });
+  });
+
+  it('reports a failed explicit acquire request as loopback communication loss', async () => {
+    mockGetAssemblyWorkSession.mockResolvedValue(requiredSession);
+    mockListCompatibleTorqueWrenches.mockResolvedValue(compatibleTorqueWrenches);
+    mockListCurrentTorqueWrenchConfirmations.mockResolvedValue(reusableTorqueConfirmation);
+    const agentFetch = vi.fn().mockImplementation((url: string) => {
+      if (String(url).endsWith('/lease/acquire')) {
+        return Promise.reject(new TypeError('connection refused'));
+      }
+      return Promise.resolve(jsonResponse(agentStatus()));
+    });
+    vi.stubGlobal('fetch', agentFetch);
+
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'このレンチを使用開始' }));
+    expect(await screen.findByText('通信断')).toBeInTheDocument();
+    expect(screen.getByText('torque-agentとの通信が切れました。接続状態を確認してください。')).toBeInTheDocument();
   });
 
   it('blocks rapid click-through and requires a delayed physical-presence checkbox before takeover', async () => {
@@ -346,6 +407,7 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     let heartbeatCount = 0;
     const agentFetch = vi.fn().mockImplementation((url: string) => {
       if (String(url).endsWith('/lease/release')) return Promise.resolve(jsonResponse(agentStatus()));
+      if (String(url).endsWith('/health')) return Promise.resolve(jsonResponse(agentStatus()));
       heartbeatCount += 1;
       return Promise.resolve(jsonResponse(agentStatus({
         state: 'owned_by_self',
@@ -360,11 +422,17 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     renderPage();
 
     expect(await screen.findByText('Bluetooth接続待ち')).toBeInTheDocument();
+    const statusRegion = screen.getByTestId('assembly-work-session-status');
+    expect(statusRegion).toHaveClass('h-14', 'shrink-0', 'overflow-y-auto');
+    expect(screen.getByText('接続権を取得しました。Bluetooth接続を待っています。')).toBeInTheDocument();
     await waitFor(() => expect(screen.getAllByText('入力待機中').length).toBeGreaterThanOrEqual(1), { timeout: 3500 });
+    expect(screen.queryByText('接続権を取得しました。Bluetooth接続を待っています。')).not.toBeInTheDocument();
+    expect(screen.getByTestId('assembly-work-session-status')).toBe(statusRegion);
+    expect(statusRegion).toHaveClass('h-14', 'shrink-0', 'overflow-y-auto');
     fireEvent.click(screen.getByRole('button', { name: '使用終了' }));
     await waitFor(() => {
       expect(agentFetch.mock.calls.some(([url]) => String(url).endsWith('/lease/release'))).toBe(true);
-      expect(screen.getByText('使用可能')).toBeInTheDocument();
+      expect(screen.getByText('使用開始待ち')).toBeInTheDocument();
     });
   });
 
@@ -382,7 +450,7 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
 
     await waitFor(() => {
       expect(agentFetch.mock.calls.some(([url]) => String(url).endsWith('/heartbeat'))).toBe(true);
-      expect(screen.getByText('使用可能')).toBeInTheDocument();
+      expect(screen.getByText('待機中')).toBeInTheDocument();
     });
     expect(screen.queryByText(/トルクレンチ接続を開始できませんでした/)).not.toBeInTheDocument();
   });
@@ -393,6 +461,9 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     mockListCurrentTorqueWrenchConfirmations.mockResolvedValue(reusableTorqueConfirmation);
     let acquired = false;
     const agentFetch = vi.fn().mockImplementation((url: string) => {
+      if (String(url).endsWith('/health')) {
+        return Promise.resolve(jsonResponse(agentStatus()));
+      }
       if (String(url).endsWith('/lease/acquire')) {
         acquired = true;
         return Promise.resolve(jsonResponse(agentStatus({ state: 'owned_by_self', leaseOwned: true })));
