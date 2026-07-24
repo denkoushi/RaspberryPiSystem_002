@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 546,
-    "totalLines": 156417,
-    "totalBytes": 11826395,
+    "totalLines": 156444,
+    "totalBytes": 11827992,
     "withFrontmatter": 228,
     "withStatus": 86,
     "sourceOfTruthDeclared": 56,
@@ -33025,8 +33025,8 @@
     },
     {
       "path": "docs/plans/normal-ssh-deploy-gate-audit-20260722.md",
-      "lineCount": 182,
-      "byteSize": 10300,
+      "lineCount": 209,
+      "byteSize": 11897,
       "hasFrontmatter": true,
       "title": "Normal SSH deployment gate audit and first stabilization",
       "status": "in-progress",
