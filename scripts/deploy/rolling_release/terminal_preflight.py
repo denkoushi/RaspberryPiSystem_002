@@ -1360,6 +1360,26 @@ def _encode_marker(payload: Mapping[str, Any]) -> str:
     return base64.urlsafe_b64encode(raw).decode("ascii")
 
 
+def _internal_probe_error(spec: Mapping[str, Any], error: Exception) -> dict[str, Any]:
+    """Return fail-closed, secret-free evidence for an unexpected target error."""
+
+    error_type = type(error).__name__
+    if re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,99}", error_type) is None:
+        error_type = "Exception"
+    return {
+        "version": 1,
+        "host": spec["host"],
+        "profile": spec["profile"],
+        "ready": False,
+        "issues": [
+            {
+                "code": "probe.internal",
+                "message": f"terminal preflight probe raised {error_type}",
+            }
+        ],
+    }
+
+
 def _decode_marker(output: str) -> dict[str, Any]:
     matches = TARGET_MARKER_RE.findall(output)
     if not matches:
@@ -1631,26 +1651,29 @@ def main(argv: Sequence[str] | None = None) -> int:
         torque_helper_template_source = globals().get(
             "EMBEDDED_TORQUE_HELPER_TEMPLATE_SOURCE"
         )
-        result = run_target_probe(
-            spec,
-            runtime_manifest_source=(
-                runtime_source
-                if isinstance(runtime_source, str) and runtime_source.strip()
-                else None
-            ),
-            agent_health_source=(
-                agent_health_source
-                if isinstance(agent_health_source, str)
-                and agent_health_source.strip()
-                else None
-            ),
-            torque_helper_template_source=(
-                torque_helper_template_source
-                if isinstance(torque_helper_template_source, str)
-                and torque_helper_template_source.strip()
-                else None
-            ),
-        )
+        try:
+            result = run_target_probe(
+                spec,
+                runtime_manifest_source=(
+                    runtime_source
+                    if isinstance(runtime_source, str) and runtime_source.strip()
+                    else None
+                ),
+                agent_health_source=(
+                    agent_health_source
+                    if isinstance(agent_health_source, str)
+                    and agent_health_source.strip()
+                    else None
+                ),
+                torque_helper_template_source=(
+                    torque_helper_template_source
+                    if isinstance(torque_helper_template_source, str)
+                    and torque_helper_template_source.strip()
+                    else None
+                ),
+            )
+        except Exception as error:
+            result = _internal_probe_error(spec, error)
         print(f"TERMINAL_PREFLIGHT_RESULT:{_encode_marker(result)}")
         return EX_OK if result["ready"] else EX_CONFIG
     return execute_orchestrator(spec)

@@ -410,6 +410,36 @@ print("TERMINAL_PREFLIGHT_RESULT:" + encoded)
             len(terminal_preflight._remote_probe_command(target())[-1]), 131_072
         )
 
+    def test_target_main_reports_unexpected_probe_error_without_its_message(self):
+        secret = "DO-NOT-LEAK-TARGET-ERROR"
+        stdout = io.StringIO()
+
+        with patch.object(
+            terminal_preflight,
+            "run_target_probe",
+            side_effect=UnicodeDecodeError("utf-8", b"x", 0, 1, secret),
+        ), patch("sys.stdout", stdout):
+            outcome = terminal_preflight.main([json.dumps(target())])
+
+        self.assertEqual(outcome, terminal_preflight.EX_CONFIG)
+        result = terminal_preflight._decode_marker(stdout.getvalue())
+        self.assertEqual(
+            result,
+            {
+                "version": 1,
+                "host": "kiosk-a",
+                "profile": "kiosk",
+                "ready": False,
+                "issues": [
+                    {
+                        "code": "probe.internal",
+                        "message": "terminal preflight probe raised UnicodeDecodeError",
+                    }
+                ],
+            },
+        )
+        self.assertNotIn(secret, stdout.getvalue())
+
     def test_runtime_probe_uses_shared_contract_and_accepts_bounded_result(self):
         selected = target()
         contract = selected["runtimeManifestContract"]
