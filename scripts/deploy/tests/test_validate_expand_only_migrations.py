@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import errno
 import hashlib
 import importlib.util
 import json
@@ -8,6 +9,7 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -26,9 +28,19 @@ class GitFixture:
         self.git("init", "-q")
         self.git("config", "user.name", "Migration Gate Test")
         self.git("config", "user.email", "migration-gate@example.invalid")
+        self.git("config", "gc.auto", "0")
+        self.git("config", "maintenance.auto", "false")
+        self.git("config", "core.fsmonitor", "false")
 
     def close(self) -> None:
-        self.temporary.cleanup()
+        for attempt in range(5):
+            try:
+                self.temporary.cleanup()
+                return
+            except OSError as error:
+                if error.errno != errno.ENOTEMPTY or attempt == 4:
+                    raise
+                time.sleep(0.05 * (attempt + 1))
 
     def git(self, *arguments: str) -> str:
         result = subprocess.run(
