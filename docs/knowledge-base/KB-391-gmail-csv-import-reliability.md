@@ -70,7 +70,11 @@ Some Gmail csvDashboards CSV imports were skipped or failed silently in producti
 - At production-scale synthetic cardinality (59,141 main rows and 111,975 supplemental keys), the old query exceeded a 15-second timeout; the new query returned the expected 20,000 winners in 420.180 ms.
 - Production had 3,728 source rows eligible by business date before applying the current-winner protection.
 - The old 15:24 JST in-flight cycle eventually completed at 15:56 JST; the 16:00 rigging cycle then started, confirming that the shared lock released without forced termination.
-- Production deployment and scheduler-drain verification remain pending the PR and exact-main CI.
+- PR [#1084](https://github.com/denkoushi/RaspberryPiSystem_002/pull/1084) passed required CI and was squash-merged as immutable main SHA `e59db98c6218f7e3bf927589231a0ec13b0b0ac7`.
+- Exact-SHA `--print-plan` and `--preflight-only` passed before standard Pi5-only deployment run `20260725-073820-042768`. API/Web release claims were verified and health returned HTTP 200.
+- A production read-only execution of the new winner query over all 111,975 source rows returned 27,687 winners in 3.177 seconds. The deployed 16:54 and 17:24 OrderSupplement schedules had no matching unread message and completed in 1.301 and 1.326 seconds, so the next non-empty cycle remains the final end-to-end source-retention observation.
+- Later schedules completed instead of being blocked: 17:00 rigging processed ten messages in 51.558 seconds, 17:15 MeasuringInstrumentLoans disposed ten invalid BOM-only messages in 45.026 seconds, and 17:21 machine inspection imported ten messages / 1,840 rows in 52.441 seconds. All reported zero failed messages.
+- Final production checks showed API health 200, zero `CsvImportHistory` rows in `PROCESSING`, zero last-hour `CsvDashboardIngestRun` rows in `PROCESSING`, and zero database queries active for more than five seconds.
 
 ## Symptoms Or Trigger
 
@@ -211,7 +215,8 @@ Per [csv-import-export.md §Gmail csvDashboards スケジュール衝突](../gui
 - [ ] If post-ingest `createMany` timeout recurs at ~80k rows, extend or batch `fkojunst-status-mail-sync.pipeline` (not observed on 2026-06-18 admin manual run).
 - [x] Deploy the Gmail API request-timeout fix to Pi5 through the standard rolling workflow; the 15:15 MeasuringInstrumentLoans cycle released the shared lock and the 15:21 machine-inspection cycle completed.
 - [x] Recover the common Pi5/Pi4 outbound path by restarting the router after read-only cross-device probes confirmed the same failure; release-readiness external probes then passed 27/27.
-- [ ] Deploy the OrderSupplement one-pass winner lookup and verify the backlog drains without later schedules being skipped.
+- [x] Deploy the OrderSupplement one-pass winner lookup and verify the backlog drains without later schedules being skipped (PR **#1084**, main **`e59db98c`**, run **`20260725-073820-042768`**).
+- [ ] Observe the next non-empty OrderSupplement message and record `sourceRowsPruned`; no unread matching message was available in the two post-deploy scheduled cycles.
 
 ## Local Notes JA
 
@@ -224,3 +229,4 @@ Per [csv-import-export.md §Gmail csvDashboards スケジュール衝突](../gui
 - Plan (completion timeout): `.cursor/plans/gmail_csv_recovery_f8ebbce7.plan.md` (Cursor workspace)
 - PR: [#452](https://github.com/denkoushi/RaspberryPiSystem_002/pull/452) (squash merge **`5ec5cee1`**)
 - PR: [#457](https://github.com/denkoushi/RaspberryPiSystem_002/pull/457) (squash merge **`e111dda3`**)
+- PR: [#1084](https://github.com/denkoushi/RaspberryPiSystem_002/pull/1084) (OrderSupplement one-pass lookup and guarded retention; squash merge **`e59db98c`**)

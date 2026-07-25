@@ -21,9 +21,10 @@ This change must preserve the exact existing winner rule and supplement results 
 - [x] (2026-07-25 07:11Z) Audited existing retention and production date distribution; added guarded one-year source retention for old unmatched rows only.
 - [x] (2026-07-25 07:11Z) Re-ran focused validation: unit 18/18, disposable-PostgreSQL integration 4/4, API build, API lint, and `git diff --check`.
 - [x] (2026-07-25 07:14Z) Committed and pushed `3333373c`; opened draft PR #1084.
-- [ ] Wait for PR #1084 CI, mark ready, merge, and verify the immutable main SHA.
-- [ ] Run `--print-plan`, the release-readiness preflight, and the standard Pi5-only rolling deployment.
-- [ ] Verify the backlog drains, later schedules are not skipped, health remains OK, and close this plan.
+- [x] (2026-07-25 07:27Z) Required PR #1084 CI passed; the PR was marked ready and squash-merged as immutable main SHA `e59db98c6218f7e3bf927589231a0ec13b0b0ac7`.
+- [x] (2026-07-25 07:50Z) Exact-SHA `--print-plan` and release-readiness preflight passed; standard Pi5-only rolling run `20260725-073820-042768` completed with verified API/Web claims.
+- [x] (2026-07-25 08:24Z) Verified production health, a 3.177-second read-only winner lookup over all 111,975 source rows, and successful later rigging, MeasuringInstrumentLoans, and machine-inspection cycles with no shared-lock blockage.
+- [ ] Observe the next non-empty OrderSupplement cycle and record `sourceRowsPruned`; the 16:54 and 17:24 post-deploy schedules had no matching unread message.
 
 ## Surprises & Discoveries
 
@@ -51,6 +52,12 @@ This change must preserve the exact existing winner rule and supplement results 
 - Observation: the in-flight old production query eventually completed without intervention.
   Evidence: the 15:24 JST OrderSupplement cycle completed at 15:56 JST with `scanned=111975`, `matched=27687`, `unmatched=84288`; at 16:00 JST the next rigging Gmail cycle started and processed messages, proving the shared lock was released.
 
+- Observation: the deployed one-pass winner lookup remains bounded at real production cardinality.
+  Evidence: a read-only transaction over all 111,975 supplemental rows returned 27,687 winners in 3.177 seconds with a 15-second statement timeout. No database query remained active for more than five seconds afterward.
+
+- Observation: Gmail circulation resumed across unrelated schedules after deployment.
+  Evidence: the 17:00 rigging, 17:15 MeasuringInstrumentLoans, and 17:21 machine-inspection cycles all completed in 45–53 seconds; the 17:24 OrderSupplement cycle then completed in 1.326 seconds rather than being skipped.
+
 ## Decision Log
 
 - Decision: do not add `管理番号` or any other header alias to the MeasuringInstrumentLoans dashboard.
@@ -77,9 +84,15 @@ This change must preserve the exact existing winner rule and supplement results 
   Rationale: storage convergence must not turn an otherwise successful Gmail import into another shared-lock blocker. The cleanup is idempotent, dashboard-scoped, and chunked.
   Date/Author: 2026-07-25 / Codex
 
+- Decision: do not manufacture or re-mark a Gmail message merely to exercise the post-ingest hook.
+  Rationale: a read-only full-cardinality query proves the former bottleneck without mutating Gmail or production data. The normal next non-empty message will safely exercise replacement and guarded retention through the canonical orchestrator.
+  Date/Author: 2026-07-25 / Codex
+
 ## Outcomes & Retrospective
 
-Work is in progress. The Gmail network timeout and router path are already healthy; the remaining blocker is a CPU-bound OrderSupplement projection during backlog recovery.
+Operational restoration is complete. The Gmail request timeout bounds stalled network calls, the router path is healthy, and the OrderSupplement winner lookup now completes in seconds at production cardinality instead of holding the shared cycle for about 32 minutes. Exact-SHA CI, preflight, standard Pi5 Blue/Green deployment, release claims, health, and three later non-OrderSupplement schedules are verified.
+
+The only remaining observation is the cleanup count from the next non-empty OrderSupplement message. This is not an active throughput blocker: both post-deploy empty cycles completed in about 1.3 seconds, later schedules completed normally, and production has no current import-history or recent ingest-run processing row.
 
 ## Context and Orientation
 
@@ -181,3 +194,5 @@ Revision note (2026-07-25 06:49Z): recorded the rejected repeated-index approach
 Revision note (2026-07-25 07:11Z): added the production retention audit, guarded one-year source-row cleanup, completion of the old in-flight query, and refreshed focused validation evidence.
 
 Revision note (2026-07-25 07:14Z): recorded commit `3333373c` and draft PR #1084.
+
+Revision note (2026-07-25 08:24Z): recorded required CI, immutable-main deployment, production full-cardinality timing, successful later Gmail schedules, and the deliberately deferred non-empty retention observation.

@@ -11,6 +11,9 @@ related_code:
   - scripts/deploy/rolling_release/backends/systemd.py
   - scripts/deploy/rolling_release/route_contract.py
   - scripts/deploy/rolling_release/route_preflight.py
+  - scripts/deploy/verify-phase12-real.sh
+  - scripts/deploy/tests/test-verify-phase12-real.sh
+  - scripts/ci/run-deploy-contracts-local.sh
   - scripts/deploy/tests/test_route_contract.py
   - scripts/deploy/tests/test_route_preflight.py
 related_docs:
@@ -19,8 +22,7 @@ related_docs:
   - docs/plans/normal-ssh-deploy-gate-audit-20260722.md
 validation: focused unit tests, full deploy contracts, CI, then production read-only preflight
 open_items:
-  - publish the reviewed change and wait for required CI
-  - deploy only after the candidate SHA passes CI and the launch-time review
+  - publish the Phase12 Blue/Green active-API verification follow-up and wait for required CI
 ---
 
 # Add a Build-Aware Release-Readiness Review
@@ -72,10 +74,18 @@ recovery, and regression test.
 - [x] (2026-07-25 04:38Z) Ran 60 focused tests, all 841 deploy unit tests, the
   deploy safety contracts, the complete local deploy-contract suite, the
   documentation audit, Python compilation, and diff checks successfully.
-- [ ] Merge only after required CI succeeds, then rerun production
-  `--preflight-only`.
-- [ ] Use only `scripts/update-all-clients.sh` for the real deployment and
-  prove production health and Gmail CSV circulation afterward.
+- [x] (2026-07-25 07:37Z) Merged the reviewed implementation after required
+  CI succeeded, then passed `--print-plan` and `--preflight-only` for immutable
+  main SHA `e59db98c6218f7e3bf927589231a0ec13b0b0ac7`.
+- [x] (2026-07-25 08:24Z) Completed standard Pi5-only deployment run
+  `20260725-073820-042768`, verified exact API/Web release claims, health 200,
+  and four later Gmail CSV schedules in `COMPLETED` state.
+- [x] (2026-07-25 08:24Z) Corrected the post-deploy Phase12 verifier to inspect
+  the single running Blue/Green API container, retain the legacy fallback, and
+  fail closed if more than one active API is found. The focused contract,
+  complete deploy-contract suite, and real Phase12 run passed
+  `47 / 0 / 0`.
+- [ ] Publish the Phase12 verifier follow-up and wait for required CI.
 
 ## Surprises & Discoveries
 
@@ -117,6 +127,14 @@ recovery, and regression test.
   rounds for all nine registered endpoints in about two seconds.
   Evidence: the success-count result was `3` for Docker auth, Docker registry,
   GitHub, Go proxy, npm, Playwright, Prisma, PyPI files, and PyPI index.
+
+- Observation: the legacy Phase12 verifier still assumed the Compose service
+  name `api`, although the canonical rolling release runs
+  `bluegreen-api-blue-1` or `bluegreen-api-green-1`.
+  Evidence: the first post-deploy run reported one migration FAIL and one
+  scheduler-log WARN; direct inspection showed the active API healthy and all
+  153 migrations current. Resolving the single running Blue/Green API made the
+  same real check pass `47 / 0 / 0`.
 
 ## Decision Log
 
@@ -167,15 +185,26 @@ recovery, and regression test.
   exception behavior and still stops before submission.
   Date/Author: 2026-07-25 / Codex.
 
+- Decision: post-deploy checks select exactly one running Blue/Green API and
+  fall back to the legacy Compose service only when no Blue/Green API exists.
+  Rationale: accepting the first of multiple containers could verify the wrong
+  slot during a release, while removing the legacy path would break older
+  installations. Ambiguous discovery remains a hard verification failure.
+  Date/Author: 2026-07-25 / Codex.
+
 ## Outcomes & Retrospective
 
-The local implementation and validation milestone is complete. The existing
-framework remains the sole deployment path, now with a version-2 route probe,
-eight reviewed gate definitions, per-run applicability, and conditional
-three-round TLS evidence for nine build endpoints. Local regression evidence
-is green. Publication, required CI, the production read-only preflight, the
-actual deployment, and Gmail scheduler acceptance remain and will be recorded
-here.
+The build-aware release-readiness review is deployed and production-validated.
+The existing framework remains the sole deployment path, now with a version-2
+route probe, eight reviewed gate definitions, per-run applicability, and
+conditional three-round TLS evidence for nine build endpoints. The exact main
+SHA passed required CI, read-only preflight, standard Blue/Green deployment,
+release-claim verification, health checks, and Gmail scheduler acceptance.
+
+The post-deploy Phase12 check exposed one separate legacy-name false negative.
+Its minimal Blue/Green-aware fix passes the focused contract, the complete
+deploy-contract suite, and real Phase12 `47 / 0 / 0`; publication and required
+CI for that follow-up remain.
 
 ## Context and Orientation
 
@@ -384,3 +413,7 @@ Revision note (2026-07-25): Created after the post-incident audit showed that
 the canonical aggregate preflight did not observe external image-build
 dependencies. The plan deliberately extends the existing launch-time gate
 rather than creating a second deployment path.
+
+Revision note (2026-07-25 08:24Z): Recorded exact-SHA preflight, production
+deployment, Gmail circulation acceptance, and the Blue/Green-aware Phase12
+verification follow-up discovered during post-deploy validation.
