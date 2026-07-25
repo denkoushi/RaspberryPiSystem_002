@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 import type { CsvImportType } from './csv-importer.types.js';
+import { assertCsvGmailSubjectPatternAllowed } from '../gmail/gmail-subject-reservation.policy.js';
 
 export type CsvImportSubjectPatternInput = {
   importType: CsvImportType;
@@ -31,6 +32,7 @@ export class CsvImportSubjectPatternService {
   }
 
   async create(input: CsvImportSubjectPatternInput) {
+    assertCsvGmailSubjectPatternAllowed(input.pattern);
     try {
       return await prisma.csvImportSubjectPattern.create({
         data: {
@@ -54,6 +56,7 @@ export class CsvImportSubjectPatternService {
     if (!existing) {
       throw new ApiError(404, '件名パターンが見つかりません');
     }
+    assertCsvGmailSubjectPatternAllowed(update.pattern ?? existing.pattern);
 
     try {
       return await prisma.csvImportSubjectPattern.update({

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import { getApiErrorMessage } from '../../../api/errors';
 import {
   useCsvImportSubjectPatterns,
   useCsvImportSubjectPatternMutations,
@@ -27,6 +28,7 @@ export function CsvImportSubjectPatternSection() {
   const { data: csvDashboardsData } = useCsvDashboards({ enabled: true });
 
   const [patternDrafts, setPatternDrafts] = useState<CsvImportSubjectPattern[]>([]);
+  const [mutationError, setMutationError] = useState<string | null>(null);
   const [subjectPatternDashboardId, setSubjectPatternDashboardId] = useState<string>('');
   const [newPatternDrafts, setNewPatternDrafts] = useState<Record<CsvImportSubjectPatternType, {
     pattern: string;
@@ -60,6 +62,14 @@ export function CsvImportSubjectPatternSection() {
   return (
     <div className="mt-8">
       <Card title="Gmail件名パターン管理（DB）">
+        <p className="mb-3 text-xs text-slate-600">
+          「DocumentASM」は組立手順書専用です。この件名に一致する短い文字列（例: ASM）も登録できません。
+        </p>
+        {mutationError && (
+          <p role="alert" className="mb-3 text-sm font-semibold text-rose-600">
+            {mutationError}
+          </p>
+        )}
         {isLoadingPatterns ? (
           <p className="text-sm font-semibold text-slate-700">読み込み中...</p>
         ) : (
@@ -142,16 +152,21 @@ export function CsvImportSubjectPatternSection() {
                           </label>
                           <Button
                             className="px-3 py-1 text-xs"
-                            onClick={() =>
-                              updatePattern.mutateAsync({
-                                id: pattern.id,
-                                data: {
-                                  pattern: pattern.pattern,
-                                  priority: pattern.priority,
-                                  enabled: pattern.enabled
-                                }
-                              })
-                            }
+                            onClick={async () => {
+                              setMutationError(null);
+                              try {
+                                await updatePattern.mutateAsync({
+                                  id: pattern.id,
+                                  data: {
+                                    pattern: pattern.pattern,
+                                    priority: pattern.priority,
+                                    enabled: pattern.enabled
+                                  }
+                                });
+                              } catch (error) {
+                                setMutationError(getApiErrorMessage(error, '件名パターンの保存に失敗しました。'));
+                              }
+                            }}
                             disabled={updatePattern.isPending}
                           >
                             {updatePattern.isPending ? '保存中...' : '保存'}
@@ -224,17 +239,22 @@ export function CsvImportSubjectPatternSection() {
                           alert('CSVダッシュボードを選択してください');
                           return;
                         }
-                        await createPattern.mutateAsync({
-                          importType: type.value,
-                          dashboardId: type.value === 'csvDashboards' ? subjectPatternDashboardId : undefined,
-                          pattern: newDraft.pattern.trim(),
-                          priority: newDraft.priority,
-                          enabled: newDraft.enabled
-                        });
-                        setNewPatternDrafts((prev) => ({
-                          ...prev,
-                          [type.value]: { ...prev[type.value], pattern: '' }
-                        }));
+                        setMutationError(null);
+                        try {
+                          await createPattern.mutateAsync({
+                            importType: type.value,
+                            dashboardId: type.value === 'csvDashboards' ? subjectPatternDashboardId : undefined,
+                            pattern: newDraft.pattern.trim(),
+                            priority: newDraft.priority,
+                            enabled: newDraft.enabled
+                          });
+                          setNewPatternDrafts((prev) => ({
+                            ...prev,
+                            [type.value]: { ...prev[type.value], pattern: '' }
+                          }));
+                        } catch (error) {
+                          setMutationError(getApiErrorMessage(error, '件名パターンの追加に失敗しました。'));
+                        }
                       }}
                       disabled={createPattern.isPending}
                     >

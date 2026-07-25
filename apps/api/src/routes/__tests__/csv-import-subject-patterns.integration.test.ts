@@ -98,6 +98,27 @@ describe('CSV Import Subject Patterns API', () => {
     expect(response.statusCode).toBe(409);
   });
 
+  it('rejects a pattern that can match the reserved assembly subject', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/csv-import-subject-patterns',
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: {
+        importType: 'items',
+        pattern: 'ASM',
+        priority: 0,
+        enabled: true
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      message: '「DocumentASM」は組立手順書専用の件名です。このメールに一致するCSV件名パターンは登録できません。',
+      errorCode: 'GMAIL_SUBJECT_PATTERN_RESERVED'
+    });
+    expect(await prisma.csvImportSubjectPattern.count()).toBe(0);
+  });
+
   it('should reorder patterns by priority', async () => {
     const first = await prisma.csvImportSubjectPattern.create({
       data: {

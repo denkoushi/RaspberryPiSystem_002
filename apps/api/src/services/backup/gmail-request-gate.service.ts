@@ -2,6 +2,10 @@ import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
 import { isRecord, toErrorInfo } from '../../lib/type-guards.js';
 import { GmailCooldownStateMachine } from './gmail-cooldown-state-machine.js';
+import {
+  sharedGmailRequestSerializer,
+  type GmailRequestSerializer,
+} from '../gmail/gmail-request-serializer.js';
 
 export class GmailRateLimitedDeferredError extends Error {
   readonly cooldownUntil: Date;
@@ -39,6 +43,16 @@ type GmailRateLimitStateRow = {
   version: number;
 };
 
+class GmailCooldownObservedAfterQueueError extends Error {
+  constructor(
+    readonly cooldownUntil: Date,
+    readonly retryAfterMs: number
+  ) {
+    super('Gmail cooldown became active while waiting for the request queue');
+    this.name = 'GmailCooldownObservedAfterQueueError';
+  }
+}
+
 /**
  * Gmail APIの429（rate limit）をスケジュール横断で調停するゲート。
  *
@@ -59,6 +73,7 @@ export class GmailRequestGateService {
       sleep?: (ms: number) => Promise<void>;
       cacheTtlMs?: number;
       jitterMaxMs?: number;
+      requestSerializer?: GmailRequestSerializer;
     } = {}
   ) {}
 
@@ -91,79 +106,111 @@ export class GmailRequestGateService {
     opts: { allowWait: boolean }
   ): Promise<T> {
     const { allowWait } = opts;
+    const serializer = this.deps.requestSerializer ?? sharedGmailRequestSerializer;
 
-    const cooldownUntil = await this.getCooldownUntil();
-    const now = this.now();
-    if (cooldownUntil && now.getTime() < cooldownUntil.getTime()) {
-      const waitMs = cooldownUntil.getTime() - now.getTime();
-      if (!allowWait) {
-        throw new GmailRateLimitedDeferredError({
-          operation,
-          cooldownUntil,
-          retryAfterMs: waitMs,
-        });
-      }
-      await this.sleep(waitMs);
-    }
-
-    try {
-      return await fn();
-    } catch (error) {
-      if (!isGmailRateLimitError(error)) {
-        throw error;
-      }
-
-      const retryAfterMs = extractRetryAfterMs(error);
-      const rateLimitDetails = extractRateLimitDetails(error);
-      const jitter = Math.floor(Math.random() * this.jitterMaxMs());
+    for (;;) {
+      const cooldownUntil = await this.getCooldownUntil();
       const now = this.now();
-      const current = await this.getOrCreateStateRow();
-      const decision = this.stateMachine.nextCooldown({
-        last429At: current.last429At,
-        lastRetryAfterMs: current.lastRetryAfterMs,
-        now,
-        retryAfterMsFromGmail: retryAfterMs,
-      });
-      const cooldownUntilNext = new Date(decision.cooldownUntil.getTime() + jitter);
+      if (cooldownUntil && now.getTime() < cooldownUntil.getTime()) {
+        const waitMs = cooldownUntil.getTime() - now.getTime();
+        if (!allowWait) {
+          throw new GmailRateLimitedDeferredError({
+            operation,
+            cooldownUntil,
+            retryAfterMs: waitMs,
+          });
+        }
+        await this.sleep(waitMs);
+        continue;
+      }
 
       try {
-        await this.persistCooldown({
-          cooldownUntil: cooldownUntilNext,
-          last429At: now,
-          lastRetryAfterMs: decision.effectiveRetryAfterMs,
+        return await serializer.runExclusive(operation, async () => {
+          // A queued predecessor may have observed 429. Re-read after acquiring the
+          // exclusive slot so no request starts behind an already active cooldown.
+          const queuedCooldownUntil = await this.getCooldownUntil(true);
+          const queuedNow = this.now();
+          if (queuedCooldownUntil && queuedNow.getTime() < queuedCooldownUntil.getTime()) {
+            throw new GmailCooldownObservedAfterQueueError(
+              queuedCooldownUntil,
+              queuedCooldownUntil.getTime() - queuedNow.getTime()
+            );
+          }
+
+          try {
+            return await fn();
+          } catch (error) {
+            if (!isGmailRateLimitError(error)) {
+              throw error;
+            }
+
+            const retryAfterMs = extractRetryAfterMs(error);
+            const rateLimitDetails = extractRateLimitDetails(error);
+            const jitter = Math.floor(Math.random() * this.jitterMaxMs());
+            const rateLimitedAt = this.now();
+            const current = await this.getOrCreateStateRow();
+            const decision = this.stateMachine.nextCooldown({
+              last429At: current.last429At,
+              lastRetryAfterMs: current.lastRetryAfterMs,
+              now: rateLimitedAt,
+              retryAfterMsFromGmail: retryAfterMs,
+            });
+            const cooldownUntilNext = new Date(decision.cooldownUntil.getTime() + jitter);
+
+            try {
+              await this.persistCooldown({
+                cooldownUntil: cooldownUntilNext,
+                last429At: rateLimitedAt,
+                lastRetryAfterMs: decision.effectiveRetryAfterMs,
+              });
+            } catch (persistError) {
+              // 永続化に失敗しても“今のリクエスト”は429なので、呼び出し元にはdeferを返す。
+              logger?.error(
+                { err: persistError, operation, cooldownUntilNext: cooldownUntilNext.toISOString(), retryAfterMs },
+                '[GmailRequestGate] Failed to persist cooldown'
+              );
+            }
+
+            logger?.warn(
+              {
+                operation,
+                retryAfterMs,
+                retryAfterHeaderSeconds: rateLimitDetails.retryAfterHeaderSeconds,
+                status: rateLimitDetails.status,
+                apiErrorStatus: rateLimitDetails.apiErrorStatus,
+                apiErrorCode: rateLimitDetails.apiErrorCode,
+                apiErrorReason: rateLimitDetails.apiErrorReason,
+                apiErrorMessage: rateLimitDetails.apiErrorMessage,
+                effectiveRetryAfterMs: decision.effectiveRetryAfterMs,
+                relockLevel: decision.relockLevel,
+                state: decision.mode,
+                cooldownUntil: cooldownUntilNext.toISOString(),
+              },
+              '[GmailRequestGate] Rate limit detected; entering cooldown'
+            );
+
+            throw new GmailRateLimitedDeferredError({
+              operation,
+              cooldownUntil: cooldownUntilNext,
+              retryAfterMs: decision.effectiveRetryAfterMs,
+              cause: error,
+            });
+          }
         });
-      } catch (persistError) {
-        // 永続化に失敗しても“今のリクエスト”は429なので、呼び出し元にはdeferを返す。
-        logger?.error(
-          { err: persistError, operation, cooldownUntilNext: cooldownUntilNext.toISOString(), retryAfterMs },
-          '[GmailRequestGate] Failed to persist cooldown'
-        );
+      } catch (error) {
+        if (!(error instanceof GmailCooldownObservedAfterQueueError)) {
+          throw error;
+        }
+        if (!allowWait) {
+          throw new GmailRateLimitedDeferredError({
+            operation,
+            cooldownUntil: error.cooldownUntil,
+            retryAfterMs: error.retryAfterMs,
+          });
+        }
+        // The serializer's finally has already released the slot at this point.
+        await this.sleep(error.retryAfterMs);
       }
-
-      logger?.warn(
-        {
-          operation,
-          retryAfterMs,
-          retryAfterHeaderSeconds: rateLimitDetails.retryAfterHeaderSeconds,
-          status: rateLimitDetails.status,
-          apiErrorStatus: rateLimitDetails.apiErrorStatus,
-          apiErrorCode: rateLimitDetails.apiErrorCode,
-          apiErrorReason: rateLimitDetails.apiErrorReason,
-          apiErrorMessage: rateLimitDetails.apiErrorMessage,
-          effectiveRetryAfterMs: decision.effectiveRetryAfterMs,
-          relockLevel: decision.relockLevel,
-          state: decision.mode,
-          cooldownUntil: cooldownUntilNext.toISOString(),
-        },
-        '[GmailRequestGate] Rate limit detected; entering cooldown'
-      );
-
-      throw new GmailRateLimitedDeferredError({
-        operation,
-        cooldownUntil: cooldownUntilNext,
-        retryAfterMs: decision.effectiveRetryAfterMs,
-        cause: error,
-      });
     }
   }
 
@@ -195,9 +242,9 @@ export class GmailRequestGateService {
     };
   }
 
-  private async getCooldownUntil(): Promise<Date | null> {
+  private async getCooldownUntil(forceRefresh = false): Promise<Date | null> {
     const nowEpoch = this.now().getTime();
-    if (nowEpoch < this.cacheValidUntilEpochMs) {
+    if (!forceRefresh && nowEpoch < this.cacheValidUntilEpochMs) {
       return this.cachedCooldownUntil;
     }
 
@@ -404,4 +451,3 @@ function extractRateLimitDetails(error: unknown): {
     apiErrorMessage,
   };
 }
-

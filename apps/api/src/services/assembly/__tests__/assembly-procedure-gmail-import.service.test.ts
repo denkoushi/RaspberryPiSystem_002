@@ -72,7 +72,10 @@ function fakeDocument(id: string, name: string): AssemblyProcedureDocumentRecord
   };
 }
 
-function createHarness(messages: GmailMessage[]) {
+function createHarness(
+  messages: GmailMessage[],
+  options: { csvImportRunning?: boolean } = {}
+) {
   const messageMap = new Map(messages.map((message) => [message.id, message]));
   const trashed: string[] = [];
   const writes: Array<Parameters<AssemblyProcedureDraftWriter['writeGmailDraft']>[0]> = [];
@@ -90,11 +93,15 @@ function createHarness(messages: GmailMessage[]) {
       return { status: 'created', document: fakeDocument(params.gmailMessageId, params.name) };
     })
   };
+  const createMailGateway = vi.fn(async () => gateway);
   const service = new AssemblyProcedureGmailImportService({
-    createMailGateway: async () => gateway,
-    draftWriter: writer
+    createMailGateway,
+    draftWriter: writer,
+    csvImportActivity: {
+      isCsvImportRunning: () => options.csvImportRunning ?? false
+    }
   });
-  return { service, gateway, writer, writes, trashed };
+  return { service, gateway, writer, writes, trashed, createMailGateway };
 }
 
 describe('assembly procedure Gmail helpers', () => {
@@ -174,6 +181,23 @@ describe('assembly procedure Gmail helpers', () => {
 });
 
 describe('AssemblyProcedureGmailImportService', () => {
+  it('rejects before creating a Gmail client or touching data while Gmail CSV is running', async () => {
+    const harness = createHarness(
+      [makeMessage({ id: 'not-touched', internalDateMs: 1 })],
+      { csvImportRunning: true }
+    );
+
+    await expect(harness.service.ingest()).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'ASSEMBLY_PROCEDURE_GMAIL_CSV_BUSY',
+      message: 'CSV自動取込中です。少し待ってから再実行してください。'
+    });
+    expect(harness.createMailGateway).not.toHaveBeenCalled();
+    expect(harness.gateway.searchMessagesAll).not.toHaveBeenCalled();
+    expect(harness.gateway.getAttachment).not.toHaveBeenCalled();
+    expect(harness.writer.writeGmailDraft).not.toHaveBeenCalled();
+  });
+
   it('processes exact-subject messages oldest first and caps each request at ten', async () => {
     const messages = Array.from({ length: 12 }, (_, index) =>
       makeMessage({

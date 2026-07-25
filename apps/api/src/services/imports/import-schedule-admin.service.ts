@@ -13,6 +13,7 @@ import { FKOJUNST_STATUS_MAIL_CSV_IMPORT_SCHEDULE_ID } from './fkojunst-status-m
 import { SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID } from './seiban-machine-name-supplement-import-schedule.policy.js';
 import { RIGGING_SLINGS_INSPECTION_CSV_IMPORT_SCHEDULE_ID } from './slings-inspection-import-schedule.policy.js';
 import { normalizeSystemCsvImportRowForPersistence } from './system-csv-import-schedule-invariants.js';
+import { assertCsvGmailSubjectPatternAllowed } from '../gmail/gmail-subject-reservation.policy.js';
 
 type CsvImportSchedule = NonNullable<BackupConfig['csvImports']>[number];
 
@@ -74,6 +75,27 @@ export class ImportScheduleAdminService {
     private readonly getScheduler: () => CsvImportSchedulerPort = () => getCsvImportScheduler()
   ) {}
 
+  private assertGmailScheduleSubjectPatternsAllowed(
+    config: BackupConfig,
+    schedule: CsvImportSchedule
+  ): void {
+    const provider = schedule.provider ?? config.storage.provider;
+    if (provider !== 'gmail') return;
+
+    for (const target of schedule.targets ?? []) {
+      // csvDashboards targets store a dashboard UUID, not a Gmail subject.
+      if (target.type !== 'csvDashboards') {
+        assertCsvGmailSubjectPatternAllowed(target.source);
+      }
+    }
+    if (schedule.employeesPath) {
+      assertCsvGmailSubjectPatternAllowed(schedule.employeesPath);
+    }
+    if (schedule.itemsPath) {
+      assertCsvGmailSubjectPatternAllowed(schedule.itemsPath);
+    }
+  }
+
   private async loadConfigEnsured(): Promise<{ config: BackupConfig; repaired: boolean }> {
     const config = await this.store.load();
     const ensured = ensureProductionScheduleCsvImportSchedules(config);
@@ -117,6 +139,7 @@ export class ImportScheduleAdminService {
       autoBackupAfterImport: input.autoBackupAfterImport ?? { enabled: false, targets: ['csv'] },
       retryConfig: input.retryConfig,
     };
+    this.assertGmailScheduleSubjectPatternsAllowed(config, newSchedule);
 
     config.csvImports = [...(config.csvImports ?? []), newSchedule];
     const warnings = detectGmailScheduleMinuteCollisions(config);
@@ -150,6 +173,7 @@ export class ImportScheduleAdminService {
     };
 
     const canonicalSchedule = normalizeSystemCsvImportRowForPersistence(updatedSchedule);
+    this.assertGmailScheduleSubjectPatternsAllowed(config, canonicalSchedule);
     config.csvImports![scheduleIndex] = canonicalSchedule;
     const warnings = detectGmailScheduleMinuteCollisions(config);
     await this.store.save(config);

@@ -4,7 +4,8 @@
 - Date: 2026-07-24
 - Scope: assembly procedure library, Gmail attachment ingestion, processed-mail disposal
 - Related: [ADR-20260707](./ADR-20260707-assembly-procedure-order-library-scope.md), [ADR-20260708](./ADR-20260708-assembly-page-level-markers-and-publish-gate.md)
-- Related plan: `docs/plans/assembly-procedure-gmail-import-execplan.md`
+- Related plans: `docs/plans/assembly-procedure-gmail-import-execplan.md`,
+  `docs/plans/gmail-import-conflict-guards-20260725.md`
 
 ## Context
 
@@ -40,6 +41,15 @@ aggregate and an explicit draft/publish safety gate.
    `AssemblyProcedureDocumentSourceRecord`. Existing and manually registered
    documents have no source record and are interpreted as `MANUAL`. This keeps
    required fields and unique constraints off the populated document table.
+9. Reserve `DocumentASM` for this flow. CSV subject settings that could match
+   that exact subject under CSV's case-insensitive substring rule, including
+   `ASM`, are rejected both when saved and immediately before Gmail search.
+10. If a Gmail-backed CSV import is already executing, a new assembly import is
+    rejected with HTTP 409 before a Gmail client is created. The operator is
+    told `CSV自動取込中です。少し待ってから再実行してください。`.
+11. Do not lock a complete import. Individual Google Gmail API requests from all
+    features use one process-wide FIFO queue; conversion, parsing, and database
+    work remain able to run concurrently.
 
 ## Consequences
 
@@ -52,6 +62,9 @@ aggregate and an explicit draft/publish safety gate.
 - Messages moved to trash with `rps_processed` are subject to the existing
   nightly permanent deletion and must be treated as non-recoverable after that
   job runs.
+- Gmail API calls cannot overlap inside the active API process. A future
+  horizontally scaled API must replace the injected queue port with a
+  distributed implementation.
 
 ## Alternatives
 

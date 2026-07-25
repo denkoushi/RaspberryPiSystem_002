@@ -275,6 +275,11 @@ ping -c 1 raspberrypi.tail7312a3.ts.net
      - 指数バックオフ: チェック（推奨）
 4. 「保存」をクリック
 
+`DocumentASM` は組立手順書専用の予約件名である。CSV件名には
+`DocumentASM`、大文字小文字違い、前後空白付き、`ASM` のように
+`DocumentASM`へ部分一致する文字列を設定できない。管理画面が具体的な理由を
+表示した場合は、組立メールと重ならない固有のCSV件名へ変更する。
+
 ### 3a. キオスク要領書（Gmail・PDF / HTML 添付）
 
 CSV インポートとは別に、`backup.json` の **`kioskDocumentGmailIngest`** で **未読メール**から要領書を取り込める。件名は各エントリの `subjectPattern`（例: `要領書HTML研削`）。**PDF 添付**に加え、**HTML 添付**（`text/html` や `.html` / `.htm`）は API 内で PDF 化してから既存の要領書パイプラインへ載せる。
@@ -304,6 +309,12 @@ CSV インポートとは別に、`backup.json` の **`kioskDocumentGmailIngest`
 
 OAuth・トークンはCSV取込と共通で、追加の `backup.json` スケジュール設定は
 不要。Gmail未設定や権限不足の場合は既存のOAuth設定・再認証手順を確認する。
+
+CSV取込が実行中に「取込」を押すと、処理は開始せず
+**「CSV自動取込中です。少し待ってから再実行してください。」** と表示する。
+CSV完了後にもう一度押す。組立取込が先に始まった場合は両処理を継続するが、
+Gmail APIへの呼出しだけを1本ずつ順番に実行する。PDF変換やCSVのDB処理は
+互いを待たない。
 
 ### 4. ゴミ箱自動削除（深夜1回）
 

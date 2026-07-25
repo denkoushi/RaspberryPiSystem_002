@@ -6,11 +6,11 @@
 |-------|-------|
 | id | KB-391 |
 | status | active |
-| scope | Gmail csvDashboards scheduled import, FKOJUNST_Status mail ingest, OrderSupplement projection, admin CSV import schedule UI |
+| scope | Gmail csvDashboards scheduled import, assembly DocumentASM manual import, FKOJUNST_Status mail ingest, OrderSupplement projection, admin CSV import schedule UI |
 | date | 2026-07-25 |
 | source_of_truth | this file |
-| related_code | `fkojunst-status-mail-critical-lock.ts`, `fkojunst-status-mail-ingest-publication.ts`, `import-schedule-policy.ts`, `CsvImportSchedulePage.tsx`, `csv-dashboard-ingestor.ts`, `gmail-api-client.ts`, `order-supplement-sync.pipeline.ts` |
-| related_docs | [csv-import-export.md](../guides/csv-import-export.md), [deployment.md](../guides/deployment.md) |
+| related_code | `gmail-request-serializer.ts`, `gmail-subject-reservation.policy.ts`, `assembly-procedure-gmail-import.service.ts`, `csv-import-scheduler.ts`, `fkojunst-status-mail-critical-lock.ts`, `fkojunst-status-mail-ingest-publication.ts`, `import-schedule-policy.ts`, `CsvImportSchedulePage.tsx`, `csv-dashboard-ingestor.ts`, `gmail-api-client.ts`, `order-supplement-sync.pipeline.ts` |
+| related_docs | [Gmail conflict guard plan](../plans/gmail-import-conflict-guards-20260725.md), [csv-import-export.md](../guides/csv-import-export.md), [deployment.md](../guides/deployment.md) |
 
 ## Context
 
@@ -19,6 +19,36 @@ Some Gmail csvDashboards CSV imports were skipped or failed silently in producti
 1. **`FKOJUNST_Status` ingest** failed with Prisma `Failed to deserialize column of type 'void'` because `pg_advisory_xact_lock` was called via `$queryRaw` (void return).
 2. **Schedule collisions** between enabled Gmail csvDashboards jobs caused later runs to be skipped by `GmailImportOrchestrator` without import history.
 3. **Admin visibility** for collision risk was insufficient (minute-only detection; warnings not shown on list/create/update).
+
+## DocumentASM concurrency and subject-reservation follow-up (2026-07-25)
+
+### Risk
+
+The operator-triggered assembly procedure importer and the scheduled CSV
+importer shared credentials and cooldown state but had no common operation
+guard. Distinct current subject patterns prevented the same message from being
+consumed, but simultaneous Gmail API calls could increase rate-limit pressure.
+A future CSV pattern such as `ASM` could also match and dispose a
+`DocumentASM` procedure email before the assembly flow saw it.
+
+### Prevention
+
+- `DocumentASM` is the one canonical reserved subject. CSV pattern create and
+  update paths reject exact, case/space variants, and any substring that could
+  match it. The Gmail storage provider repeats the check before
+  `messages.list`, covering old or directly edited settings without touching
+  the mailbox.
+- `CsvImportScheduler` exposes only whether an effective Gmail CSV execution is
+  active. Assembly import returns HTTP 409 before client creation when it is
+  active.
+- Individual Gmail API calls use one process-wide FIFO serializer. A queued
+  request rechecks cooldown after admission; 429 cooldown persistence completes
+  before the next request, while cooldown sleep happens outside the exclusive
+  slot.
+- No schema migration or production Gmail/config mutation is required.
+
+Implementation and validation evidence are maintained in
+[the ExecPlan](../plans/gmail-import-conflict-guards-20260725.md).
 
 ## Gmail transport hang follow-up (2026-07-25)
 
@@ -217,6 +247,7 @@ Per [csv-import-export.md §Gmail csvDashboards スケジュール衝突](../gui
 - [x] Recover the common Pi5/Pi4 outbound path by restarting the router after read-only cross-device probes confirmed the same failure; release-readiness external probes then passed 27/27.
 - [x] Deploy the OrderSupplement one-pass winner lookup and verify the backlog drains without later schedules being skipped (PR **#1084**, main **`e59db98c`**, run **`20260725-073820-042768`**).
 - [ ] Observe the next non-empty OrderSupplement message and record `sourceRowsPruned`; no unread matching message was available in the two post-deploy scheduled cycles.
+- [ ] Deploy and production-validate the DocumentASM/CSV conflict guards from the linked ExecPlan.
 
 ## Local Notes JA
 

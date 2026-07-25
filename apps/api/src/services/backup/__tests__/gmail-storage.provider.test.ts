@@ -46,6 +46,23 @@ describe('GmailStorageProvider', () => {
   });
 
   describe('download', () => {
+    it('rejects a reserved CSV subject before searching Gmail', async () => {
+      const provider = new GmailStorageProvider({
+        oauth2Client,
+        accessToken: 'test-access-token',
+        oauthService: mockOAuthService,
+        onTokenUpdate
+      });
+
+      await expect(provider.download('ASM')).rejects.toMatchObject({
+        statusCode: 400,
+        code: 'GMAIL_SUBJECT_PATTERN_RESERVED'
+      });
+      expect(mockGmailApiClient.searchMessages).not.toHaveBeenCalled();
+      expect(mockGmailApiClient.getFirstAttachment).not.toHaveBeenCalled();
+      expect(mockGmailApiClient.archiveMessage).not.toHaveBeenCalled();
+    });
+
     it('should download file from Gmail using subject pattern', async () => {
       const provider = new GmailStorageProvider({
         oauth2Client,
@@ -416,6 +433,23 @@ describe('GmailStorageProvider', () => {
   });
 
   describe('downloadAllBySubjectPatterns', () => {
+    it('fails closed before unified mailbox search when a stored pattern is reserved', async () => {
+      const provider = new GmailStorageProvider({
+        oauth2Client,
+        accessToken: 'test-access-token',
+        oauthService: mockOAuthService,
+        onTokenUpdate
+      });
+
+      await expect(
+        provider.downloadAllBySubjectPatterns(['FKOBAINO', 'ASM'])
+      ).rejects.toMatchObject({
+        statusCode: 400,
+        code: 'GMAIL_SUBJECT_PATTERN_RESERVED'
+      });
+      expect(mockGmailApiClient.searchMessagesLimited).not.toHaveBeenCalled();
+    });
+
     it('should fetch messages with OR condition and group by pattern', async () => {
       const provider = new GmailStorageProvider({
         oauth2Client,
