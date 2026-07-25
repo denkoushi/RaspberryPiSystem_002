@@ -1,5 +1,5 @@
 ---
-status: in_progress
+status: complete
 scope: Gmail CSV imports and assembly procedure document Gmail import
 date: 2026-07-25
 source_of_truth: this execution plan
@@ -14,9 +14,8 @@ related_docs:
   - docs/decisions/ADR-20260724-assembly-procedure-gmail-import.md
   - docs/guides/gmail-setup-guide.md
   - docs/knowledge-base/KB-391-gmail-csv-import-reliability.md
-validation: local_passed
-open_items:
-  - implement and validate all milestones
+validation: production_passed
+open_items: []
 ---
 
 # Prevent Gmail import conflicts without blocking non-Gmail work
@@ -55,9 +54,13 @@ cannot consume a procedure-document message.
 - [x] (2026-07-25 10:45Z) Published draft PR
   [#1086](https://github.com/denkoushi/RaspberryPiSystem_002/pull/1086) from
   `fix/gmail-import-conflict-guards`.
-- [ ] Obtain all required green checks, merge, and deploy the exact merged SHA through the
-  standard rolling Blue/Green workflow.
-- [ ] Record production validation and complete this plan.
+- [x] (2026-07-25 11:19Z) Passed required CI, CodeQL, and secret scanning; squash-merged PR
+  #1086 as `d5a58bc4885b3e8bca02d0a53c4eef3e6b448dbe`; passed `--print-plan` and
+  read-only `--preflight-only`; deployed Pi5 through standard Blue/Green run
+  `20260725-110632-e1e6ea`.
+- [x] (2026-07-25 11:25Z) Confirmed exact API/Web release claims, health `status=ok`,
+  one scheduler leader, normal Gmail cooldown, zero `PROCESSING` CSV histories, successful
+  post-deploy CSV cycles, Phase12 47/0/0, and an exact-SHA no-op plan.
 
 ## Surprises & Discoveries
 
@@ -86,6 +89,13 @@ cannot consume a procedure-document message.
   Evidence: isolated PostgreSQL 15 with all 153 migrations used a Bitmap Index Scan for a
   20,000-row enabled-pattern lookup and completed in 0.041 ms; the fixture transaction was
   rolled back to zero rows.
+
+- Observation: the public rolling-release CLI accepts a branch and resolves it to an
+  immutable SHA; passing the SHA in the branch position is rejected before any production
+  connection or mutation.
+  Evidence: the initial SHA-position `--print-plan` stopped at local `origin/<sha>`
+  resolution. Re-running with `main` resolved the approved SHA and the checkout guard proved
+  local `HEAD` matched it exactly.
 
 ## Decision Log
 
@@ -117,7 +127,21 @@ cannot consume a procedure-document message.
 
 ## Outcomes & Retrospective
 
-Implementation and production validation are pending.
+The guard is live on Pi5. CSV subject configuration cannot reserve a value that could
+consume `DocumentASM`, assembly import is rejected with the operator-facing 409 while a
+Gmail CSV execution is active, and all Gmail clients share the FIFO request serializer.
+The implementation required no schema migration and did not change production Gmail
+messages or subject configuration.
+
+Production run `20260725-110632-e1e6ea` completed with exit code 0 and verified both
+`controlPlaneApi` and `controlPlaneWeb` at
+`d5a58bc4885b3e8bca02d0a53c4eef3e6b448dbe`. After release, API health was `ok`,
+the scheduler lock and CSV scheduler each started once, Gmail cooldown was `NORMAL`, and
+there were no `PROCESSING` CSV histories or `Cycle skipped because previous cycle is
+running` logs. `MeasuringInstrumentLoans` completed in 14.218 seconds and the next
+machine-inspection import completed in 16.030 seconds. Phase12 passed 47 checks with zero
+warnings and failures. A final `--print-plan` selected no targets because Pi5 was verified
+at the desired SHA.
 
 ## Context and Orientation
 
@@ -204,9 +228,12 @@ Then run the repository-equivalent API and web test suites, lint, build, deploy-
 checks, documentation checks, and `git diff --check`. Commit coherent milestones, push this
 branch, and open a pull request. Wait for CI, CodeQL, secret scanning, and review gates.
 
-After merge, identify the exact immutable `main` SHA. Run:
+After merge, identify the exact immutable SHA resolved by `origin/main`, ensure the clean
+local checkout is at that SHA, and run:
 
-    scripts/update-all-clients.sh <exact-main-sha> infrastructure/ansible/inventory.yml --print-plan
+    RASPI_SERVER_HOST=denkon5sd02@100.106.158.2 \
+      scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
+      --limit raspberrypi5 --print-plan
 
 Review every blocker and warning, perform the documented read-only preflight, and only then
 run the same standard workflow without `--print-plan`. Never invoke Ansible, SSH update
@@ -278,6 +305,22 @@ Local validation evidence as of 2026-07-25 10:37Z:
     implementation commit: d7a2f0c960b6d4a90375ceabce23915ae7ab3324
     draft PR: https://github.com/denkoushi/RaspberryPiSystem_002/pull/1086
 
+Production evidence as of 2026-07-25 11:25Z:
+
+    PR #1086 squash merge: d5a58bc4885b3e8bca02d0a53c4eef3e6b448dbe
+    exact-SHA CI / CodeQL / secret scan: passed
+    read-only preflight: 20260725-110509-e3918b, passed, releaseSubmitted=false
+    readiness review: passed; 25 route stages; build TLS dependencies 27/27
+    Blue/Green run: 20260725-110632-e1e6ea, success, exitCode=0
+    API/Web release claims: verified at d5a58bc4885b3e8bca02d0a53c4eef3e6b448dbe
+    API health: status=ok
+    scheduler lock / CSV scheduler starts: 1 / 1
+    Gmail cooldown / stale CSV history: NORMAL / PROCESSING=0
+    post-deploy CSV: MeasuringInstrumentLoans COMPLETED; machine inspection COMPLETED
+    skipped-cycle / new rate-limit logs: 0 / 0
+    Phase12: PASS 47, WARN 0, FAIL 0
+    final exact-SHA print-plan: no targets
+
 ## Interfaces and Dependencies
 
 The reserved-subject module exports the canonical constant, normalization and collision
@@ -315,3 +358,7 @@ of the final isolated PostgreSQL container, volume, and network.
 
 Revision note (2026-07-25 10:45Z): Recorded implementation commit `d7a2f0c9` and draft
 PR #1086 before required-gate monitoring.
+
+Revision note (2026-07-25 11:25Z): Recorded the squash merge, exact-SHA readiness evidence,
+successful standard Pi5 Blue/Green run, post-deploy Gmail/CSV observations, Phase12 result,
+and final no-op plan; marked the ExecPlan complete.
