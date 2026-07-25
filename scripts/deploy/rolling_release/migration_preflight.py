@@ -35,6 +35,8 @@ ALLOWED_UNTRACKED = frozenset({"?? power-actions/"})
 EXPECTED_KEYS = frozenset(
     {"version", "project", "runId", "branch", "sha", "expectedServerClientId"}
 )
+PROBE_NAME = "migration"
+CAPABILITY = "migration.production-ledger"
 
 
 class MigrationPreflightConfigError(ValueError):
@@ -59,8 +61,8 @@ def parse_spec(raw: str) -> dict[str, str | int]:
     except (TypeError, json.JSONDecodeError) as error:
         raise MigrationPreflightConfigError("migration preflight is not valid JSON") from error
     if not isinstance(payload, dict) or set(payload) != EXPECTED_KEYS:
-        raise MigrationPreflightConfigError("migration preflight fields do not match version 1")
-    if type(payload.get("version")) is not int or payload.get("version") != 1:
+        raise MigrationPreflightConfigError("migration preflight fields do not match version 2")
+    if type(payload.get("version")) is not int or payload.get("version") != 2:
         raise MigrationPreflightConfigError("unsupported migration preflight version")
 
     for key, maximum in (
@@ -88,6 +90,50 @@ def parse_spec(raw: str) -> dict[str, str | int]:
     ) is None:
         raise MigrationPreflightConfigError("expectedServerClientId is malformed")
     return payload
+
+
+def _report(
+    exit_code: int,
+    *,
+    issue_code: str | None = None,
+    proofs: Sequence[str] = (),
+) -> int:
+    """Emit the one secret-free version 2 result consumed by policy."""
+
+    status = (
+        "passed"
+        if exit_code == EX_OK
+        else ("blocked" if exit_code == EX_CONFIG else "incomplete")
+    )
+    issues = (
+        [
+            {
+                "code": issue_code,
+                "host": "pi5",
+                "capability": CAPABILITY,
+            }
+        ]
+        if issue_code is not None
+        else []
+    )
+    print(
+        json.dumps(
+            {
+                "version": 2,
+                "probe": PROBE_NAME,
+                "capability": CAPABILITY,
+                "host": "pi5",
+                "status": status,
+                "issues": issues,
+                "warnings": [],
+                "proofs": list(proofs),
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    )
+    return exit_code
 
 
 def _read_server_client_id(path: str = "/etc/raspi-status-agent.conf") -> str:
@@ -155,16 +201,22 @@ def execute(
             fcntl.flock(lock_descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except (BlockingIOError, OSError) as error:
             print(f"[ERROR] migration preflight could not acquire the fleet lock: {error}", file=sys.stderr)
-            return EX_TEMPFAIL
+            return _report(
+                EX_TEMPFAIL, issue_code="migration.fleet-lock-unavailable"
+            )
 
         try:
             client_id = (server_client_id_reader or _read_server_client_id)()
         except (OSError, UnicodeError) as error:
             print(f"[ERROR] migration preflight could not verify Pi5 identity: {error}", file=sys.stderr)
-            return EX_CONFIG
+            return _report(
+                EX_CONFIG, issue_code="migration.pi5-identity-unavailable"
+            )
         if client_id != spec["expectedServerClientId"]:
             print("[ERROR] migration preflight Pi5 identity mismatch", file=sys.stderr)
-            return EX_CONFIG
+            return _report(
+                EX_CONFIG, issue_code="migration.pi5-identity-mismatch"
+            )
 
         status = run_command(
             ["/usr/bin/git", "status", "--porcelain=v1", "--untracked-files=normal"],
@@ -173,7 +225,9 @@ def execute(
         )
         if getattr(status, "returncode", 1) != 0:
             print("[ERROR] migration preflight could not inspect the Pi5 checkout", file=sys.stderr)
-            return EX_SOFTWARE
+            return _report(
+                EX_SOFTWARE, issue_code="migration.checkout-inspection-failed"
+            )
         dirty = [
             line
             for line in str(getattr(status, "stdout", "")).splitlines()
@@ -181,7 +235,7 @@ def execute(
         ]
         if dirty:
             print("[ERROR] migration preflight refuses a dirty Pi5 checkout", file=sys.stderr)
-            return EX_CONFIG
+            return _report(EX_CONFIG, issue_code="migration.checkout-dirty")
 
         fetch_succeeded = False
         for attempt in range(1, GIT_FETCH_ATTEMPTS + 1):
@@ -206,7 +260,9 @@ def execute(
                 sleep(GIT_FETCH_RETRY_DELAY_SECONDS)
         if not fetch_succeeded:
             print("[ERROR] migration preflight could not fetch the candidate", file=sys.stderr)
-            return EX_SOFTWARE
+            return _report(
+                EX_SOFTWARE, issue_code="migration.candidate-fetch-failed"
+            )
         commit = run_command(
             ["/usr/bin/git", "cat-file", "-e", f'{spec["sha"]}^{{commit}}'],
             cwd=project,
@@ -214,7 +270,9 @@ def execute(
         )
         if getattr(commit, "returncode", 1) != 0:
             print("[ERROR] migration preflight candidate object is unavailable", file=sys.stderr)
-            return EX_CONFIG
+            return _report(
+                EX_CONFIG, issue_code="migration.candidate-object-unavailable"
+            )
 
         temporary_directory = tempfile.mkdtemp(prefix="raspi-migration-preflight-")
         os.chmod(temporary_directory, 0o700)
@@ -239,12 +297,23 @@ def execute(
                 + (f": {detail}" if detail else ""),
                 file=sys.stderr,
             )
-            return EX_CONFIG
+            return _report(
+                EX_CONFIG, issue_code="migration.production-ledger-rejected"
+            )
         if not os.path.isfile(evidence) or os.path.islink(evidence):
             print("[ERROR] migration preflight produced no sealed evidence", file=sys.stderr)
-            return EX_SOFTWARE
-        print(f'migration preflight passed for immutable candidate {spec["sha"]}')
-        return EX_OK
+            return _report(
+                EX_SOFTWARE, issue_code="migration.sealed-evidence-missing"
+            )
+        return _report(
+            EX_OK,
+            proofs=(
+                "migration.pi5-identity",
+                "migration.candidate-object",
+                "migration.production-ledger",
+                "migration.sealed-evidence",
+            ),
+        )
     finally:
         if temporary_directory is not None:
             evidence = os.path.join(temporary_directory, "migration-plan.json")
@@ -264,12 +333,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     if len(arguments) != 1:
         print("[ERROR] migration preflight requires exactly one JSON specification", file=sys.stderr)
-        return EX_CONFIG
+        return _report(
+            EX_CONFIG, issue_code="migration.invalid-invocation"
+        )
     try:
         spec = parse_spec(arguments[0])
     except MigrationPreflightConfigError as error:
         print(f"[ERROR] {error}", file=sys.stderr)
-        return EX_CONFIG
+        return _report(
+            EX_CONFIG, issue_code="migration.invalid-contract"
+        )
     return execute(spec)
 
 

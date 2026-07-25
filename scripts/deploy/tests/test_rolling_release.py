@@ -2167,6 +2167,18 @@ class PrintPlanShadowTest(unittest.TestCase):
         self.assertEqual(plan['affectedProfiles'], [])
         self.assertEqual(plan['serverIdentity']['clientId'], 'raspberrypi5-server')
         self.assertEqual(plan['warnings'], [])
+        self.assertIn(
+            'route.external-server-build',
+            plan['readinessPlan']['applicableGates'],
+        )
+        terminal_probe = next(
+            probe
+            for probe in plan['readinessPlan']['probes']
+            if probe['capability'] == 'terminal.selected-prerequisites'
+        )
+        self.assertEqual(
+            terminal_probe['hosts'], ['kiosk-canary', 'kiosk-b']
+        )
 
     def test_print_plan_remote_state_uses_the_shared_server_transport(self):
         transport = Mock()

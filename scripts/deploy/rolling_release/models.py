@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Any
 
+from .readiness_policy import parse_admission
+
 
 NEW_RUN_ID_RE = re.compile(r'^[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$')
 SAFE_RUN_ID_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$')
@@ -92,6 +94,7 @@ class LaunchSpec:
     skip_canary_hold: bool = False
     full_fleet: bool = False
     reverify_selected: bool = False
+    readiness_admission: dict[str, Any] | None = None
 
     @property
     def unit_name(self) -> str:
@@ -132,6 +135,8 @@ class LaunchSpec:
             self.emergency_override and self.reason and self.reason.strip()
         ):
             raise ValueError('skip canary hold requires emergency override and a reason')
+        if self.readiness_admission is not None:
+            parse_admission(self.readiness_admission)
         return self
 
     def bootstrap_payload(self, remote_project: str) -> dict[str, Any]:
@@ -141,7 +146,7 @@ class LaunchSpec:
         if os.path.normpath(remote_project) != remote_project or '\x00' in remote_project:
             raise ValueError('remote project must be a normalized absolute path')
         return {
-            'version': 2,
+            'version': 3,
             'project': remote_project,
             'runId': self.run_id,
             'unitName': self.unit_name,
@@ -156,6 +161,7 @@ class LaunchSpec:
             'skipCanaryHold': self.skip_canary_hold,
             'fullFleet': self.full_fleet,
             'reverifySelected': self.reverify_selected,
+            'readinessAdmission': self.readiness_admission,
         }
 
 

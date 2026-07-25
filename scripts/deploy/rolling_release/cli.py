@@ -60,6 +60,7 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--sha", help=argparse.SUPPRESS)
     value.add_argument("--run-id", help=argparse.SUPPRESS)
     value.add_argument("--expected-server-client-id", help=argparse.SUPPRESS)
+    value.add_argument("--readiness-admission-json", help=argparse.SUPPRESS)
     value.add_argument("--skip-canary-hold", action="store_true")
     value.add_argument(
         "--canary-hold-timeout",
@@ -132,6 +133,7 @@ def normalize_arguments(args: argparse.Namespace) -> argparse.Namespace:
                 ("--sha", args.sha is not None),
                 ("--run-id", args.run_id is not None),
                 ("--expected-server-client-id", args.expected_server_client_id is not None),
+                ("--readiness-admission-json", args.readiness_admission_json is not None),
                 ("--emergency-override", args.emergency_override),
                 ("--skip-canary-hold", args.skip_canary_hold),
                 ("--full-fleet", args.full_fleet),
@@ -175,10 +177,6 @@ def normalize_arguments(args: argparse.Namespace) -> argparse.Namespace:
         raise UsageError("--preflight-only cannot be combined with --print-plan")
     if args.preflight_only and (args.emergency_override or args.skip_canary_hold):
         raise UsageError("--preflight-only cannot be combined with execution override options")
-    if args.preflight_only and args.full_fleet:
-        raise UsageError("--preflight-only checks the selected universe and cannot use --full-fleet")
-    if args.preflight_only and args.reverify_selected:
-        raise UsageError("--preflight-only checks the selected universe and cannot use --reverify-selected")
     if args.preflight_only and args.canary_hold_timeout != DEFAULT_CANARY_HOLD_TIMEOUT:
         raise UsageError("--preflight-only cannot be combined with --canary-hold-timeout")
     if args.full_fleet and args.limit:
@@ -210,8 +208,14 @@ def normalize_arguments(args: argparse.Namespace) -> argparse.Namespace:
             raise UsageError(
                 "--remote-run cannot be combined with --detach, --print-plan or --preflight-only"
             )
-    elif args.sha or args.run_id or args.expected_server_client_id:
+    elif (
+        args.sha
+        or args.run_id
+        or args.expected_server_client_id
+        or args.readiness_admission_json
+    ):
         raise UsageError(
-            "--sha, --run-id and --expected-server-client-id are internal remote-run options"
+            "--sha, --run-id, --expected-server-client-id and "
+            "--readiness-admission-json are internal remote-run options"
         )
     return args

@@ -1,0 +1,298 @@
+{
+  "schemaVersion": 1,
+  "gates": [
+    {
+      "id": "local.source-and-scope",
+      "owner": "local",
+      "classification": "safety",
+      "mode": "enforce",
+      "protects": "an immutable candidate SHA, clean operator checkout, valid inventory, and correct Pi5 identity",
+      "failureImpact": "the wrong source or host could receive a release",
+      "observation": "local Git, read-only inventory expansion, target planning, and the public Pi5 client ID",
+      "when": {"always": true},
+      "scope": {"kind": "none"},
+      "capability": "local.source-and-scope",
+      "issuePrefixes": ["=local.source-and-scope.incomplete"],
+      "timeoutSeconds": 60,
+      "recovery": "correct the local checkout, branch, inventory, or RASPI_SERVER_HOST and rerun",
+      "regressionTest": "scripts/deploy/tests/test_release_application.py::test_preflight_only_returns_json_when_local_preparation_fails",
+      "enforcementBasis": {
+        "kind": "existing-contract",
+        "reason": "This pre-submission source and identity blocker was enforced before the registry migration."
+      }
+    },
+    {
+      "id": "migration.production-ledger",
+      "owner": "pi5",
+      "classification": "safety",
+      "mode": "enforce",
+      "protects": "the live production migration ledger and additive migration contract",
+      "failureImpact": "an unsafe or divergent database migration could make rollback impossible",
+      "observation": "the sealed production ledger and exact candidate migration files",
+      "when": {"always": true},
+      "scope": {"kind": "pi5"},
+      "capability": "migration.production-ledger",
+      "issuePrefixes": [
+        "=migration.fleet-lock-unavailable",
+        "=migration.pi5-identity-unavailable",
+        "=migration.pi5-identity-mismatch",
+        "=migration.checkout-inspection-failed",
+        "=migration.checkout-dirty",
+        "=migration.candidate-fetch-failed",
+        "=migration.candidate-object-unavailable",
+        "=migration.production-ledger-rejected",
+        "=migration.sealed-evidence-missing",
+        "=migration.invalid-invocation",
+        "=migration.invalid-contract"
+      ],
+      "timeoutSeconds": 60,
+      "recovery": "repair the migration contract or ledger evidence without changing production, then rerun",
+      "regressionTest": "scripts/deploy/tests/test_migration_preflight.py::test_success_requires_sealed_evidence_and_cleans_temporary_directory",
+      "enforcementBasis": {
+        "kind": "existing-contract",
+        "reason": "This production-ledger blocker was enforced before the registry migration."
+      }
+    },
+    {
+      "id": "route.pi5-authority-and-resources",
+      "owner": "pi5",
+      "classification": "safety",
+      "mode": "enforce",
+      "protects": "the Pi5 execution identity, fleet lock, recovery authority, tools, configuration, disk, and memory",
+      "failureImpact": "the coordinator could mutate an unowned or unrecoverable host",
+      "observation": "the standard-library Pi5 route probe over the canonical SSH transport",
+      "when": {"always": true},
+      "scope": {"kind": "pi5"},
+      "capability": "route.pi5-authority-and-resources",
+      "issuePrefixes": [
+        "=pi5.ansible-config",
+        "=pi5.ansible-inventory",
+        "=pi5.ansible-vault",
+        "=pi5.blue-green-state-readable",
+        "=pi5.candidate-commit",
+        "=pi5.candidate-protocol",
+        "=pi5.clean-checkout",
+        "=pi5.deploy-status-readable",
+        "=pi5.disk-free",
+        "=pi5.docker",
+        "=pi5.docker-compose",
+        "=pi5.fleet-lock",
+        "=pi5.fleet-lock-held",
+        "=pi5.fleet-state-not-initialized",
+        "=pi5.fleet-state-readable",
+        "=pi5.identity",
+        "=pi5.interrupted-run-authority",
+        "=pi5.inventory-file",
+        "=pi5.memory-available",
+        "=pi5.normal-inventory-and-vault",
+        "=pi5.project-directory",
+        "=pi5.systemd-run-sudo",
+        "pi5.candidate-artifact:",
+        "pi5.executable:"
+      ],
+      "timeoutSeconds": 60,
+      "recovery": "resolve every reported Pi5 issue while preserving durable fleet authority, then rerun",
+      "regressionTest": "scripts/deploy/tests/test_route_preflight.py::test_reports_all_detected_issues_in_one_result",
+      "enforcementBasis": {
+        "kind": "existing-contract",
+        "reason": "This Pi5 authority and resource blocker was enforced before the registry migration."
+      }
+    },
+    {
+      "id": "route.external-server-build",
+      "owner": "pi5",
+      "classification": "correctness",
+      "mode": "enforce",
+      "protects": "the outbound TLS routes required to build candidate API and Web images",
+      "failureImpact": "candidate image creation can stall or fail after a release unit has started",
+      "observation": "three bounded TLS-handshake rounds from Pi5 to every registered build dependency",
+      "when": {"componentAny": ["server-app", "unknown"]},
+      "scope": {"kind": "pi5"},
+      "capability": "route.external-server-build",
+      "issuePrefixes": ["pi5.external-tls:"],
+      "timeoutSeconds": 30,
+      "recovery": "restore stable outbound routing or the named dependency, then rerun preflight",
+      "regressionTest": "scripts/deploy/tests/test_route_preflight.py::test_external_build_dependencies_require_every_tls_round",
+      "enforcementBasis": {
+        "kind": "existing-contract",
+        "reason": "This build-route blocker was enforced before the registry migration."
+      }
+    },
+    {
+      "id": "terminal.selected-prerequisites",
+      "owner": "terminal",
+      "classification": "safety",
+      "mode": "enforce",
+      "protects": "work-target terminal transport, rollback prerequisites, runtime resources, and required agents",
+      "failureImpact": "a terminal mutation could begin without a usable rollback or verification route",
+      "observation": "the aggregate terminal preflight using exact candidate-owned probe sources",
+      "when": {
+        "terminalWorkAny": {
+          "actions": ["mutation", "activation", "verification"],
+          "profiles": []
+        }
+      },
+      "scope": {
+        "kind": "terminalWork",
+        "actions": ["mutation", "activation", "verification"],
+        "profiles": []
+      },
+      "capability": "terminal.selected-prerequisites",
+      "issuePrefixes": [
+        "terminal.agent.",
+        "terminal.candidate.",
+        "terminal.command.",
+        "terminal.docker.",
+        "terminal.identity.",
+        "terminal.inventory.",
+        "terminal.kiosk.",
+        "terminal.networkmanager.",
+        "terminal.nfc.",
+        "terminal.package.",
+        "terminal.polkit.",
+        "terminal.probe.",
+        "terminal.repo.",
+        "terminal.resource.",
+        "terminal.runtime.",
+        "terminal.signage.",
+        "terminal.tailscale.",
+        "terminal.torque.",
+        "terminal.transport.",
+        "terminal.unit.",
+        "=terminal.scope-mismatch"
+      ],
+      "timeoutSeconds": 60,
+      "recovery": "restore the reported terminal prerequisite and rerun before submission",
+      "regressionTest": "scripts/deploy/tests/test_terminal_preflight.py::test_orchestrator_reports_all_issues_before_any_release_unit",
+      "enforcementBasis": {
+        "kind": "existing-contract",
+        "reason": "This terminal prerequisite blocker was enforced before the registry migration."
+      }
+    },
+    {
+      "id": "architecture.activation-executor",
+      "owner": "architecture",
+      "classification": "correctness",
+      "mode": "enforce",
+      "protects": "an implemented executor for every planned terminal activation",
+      "failureImpact": "the plan could claim work that the selected executor cannot perform",
+      "observation": "the read-only target plan and activation execution feature state",
+      "when": {
+        "terminalWorkAny": {
+          "actions": ["activation"],
+          "profiles": []
+        }
+      },
+      "scope": {
+        "kind": "terminalWork",
+        "actions": ["activation"],
+        "profiles": []
+      },
+      "capability": "architecture.activation-executor",
+      "issuePrefixes": ["=activation-architecture.execution-disabled"],
+      "timeoutSeconds": 1,
+      "recovery": "enable the reviewed activation executor or remove the unsupported target from the design",
+      "regressionTest": "scripts/deploy/tests/test_release_application.py::test_disabled_activation_blocks_preflight_and_executor_promotion",
+      "enforcementBasis": {
+        "kind": "existing-contract",
+        "reason": "This architecture blocker was enforced before the registry migration."
+      }
+    },
+    {
+      "id": "architecture.verification-executor",
+      "owner": "architecture",
+      "classification": "correctness",
+      "mode": "enforce",
+      "protects": "an implemented executor for every verification-only target",
+      "failureImpact": "a release could be reported without executing its required verification",
+      "observation": "the read-only target plan and verification-only execution feature state",
+      "when": {
+        "terminalWorkAny": {
+          "actions": ["verification-only"],
+          "profiles": []
+        }
+      },
+      "scope": {
+        "kind": "terminalWork",
+        "actions": ["verification-only"],
+        "profiles": []
+      },
+      "capability": "architecture.verification-executor",
+      "issuePrefixes": ["=verification-architecture.execution-disabled"],
+      "timeoutSeconds": 1,
+      "recovery": "enable the reviewed verification executor or correct the target plan",
+      "regressionTest": "scripts/deploy/tests/test_release_application.py::test_disabled_activation_blocks_preflight_and_executor_promotion",
+      "enforcementBasis": {
+        "kind": "existing-contract",
+        "reason": "This architecture blocker was enforced before the registry migration."
+      }
+    },
+    {
+      "id": "route.interrupted-run-recovery",
+      "owner": "pi5",
+      "classification": "warning",
+      "mode": "observe",
+      "protects": "operator visibility when readable interrupted-run authority requires reconciliation",
+      "failureImpact": "the next coordinator must reconcile the retained authority before new mutation",
+      "observation": "the fleet state and matching durable release-run record",
+      "when": {"always": true},
+      "scope": {"kind": "pi5"},
+      "capability": "route.interrupted-run-recovery",
+      "issuePrefixes": ["=pi5.interrupted-run-recovery-required"],
+      "timeoutSeconds": 1,
+      "recovery": "allow the lock-owning coordinator to reconcile it or inspect the durable run state",
+      "regressionTest": "scripts/deploy/tests/test_route_preflight.py::test_readable_active_run_is_reported_for_recovery_without_blocking",
+      "enforcementBasis": {
+        "kind": "observe",
+        "requiredProductionRuns": 3,
+        "productionRunIds": []
+      }
+    }
+  ],
+  "componentCoverage": {
+    "barcode-agent": {"gateIds": ["terminal.selected-prerequisites"]},
+    "client-role": {"gateIds": ["terminal.selected-prerequisites"]},
+    "deploy-control": {
+      "gateIds": [
+        "local.source-and-scope",
+        "migration.production-ledger",
+        "route.pi5-authority-and-resources",
+        "terminal.selected-prerequisites"
+      ]
+    },
+    "global": {
+      "gateIds": [
+        "local.source-and-scope",
+        "migration.production-ledger",
+        "route.pi5-authority-and-resources",
+        "route.external-server-build",
+        "terminal.selected-prerequisites"
+      ]
+    },
+    "kiosk-role": {"gateIds": ["terminal.selected-prerequisites"]},
+    "migration": {"gateIds": ["migration.production-ledger"]},
+    "neutral": {
+      "noAdditionalGateReason": "Documentation and classification-only changes retain the always-on source, migration, and Pi5 authority gates."
+    },
+    "nfc-agent": {"gateIds": ["terminal.selected-prerequisites"]},
+    "server-app": {
+      "gateIds": [
+        "migration.production-ledger",
+        "route.pi5-authority-and-resources",
+        "route.external-server-build"
+      ]
+    },
+    "signage-role": {"gateIds": ["terminal.selected-prerequisites"]},
+    "status-agent": {"gateIds": ["terminal.selected-prerequisites"]},
+    "torque-agent": {"gateIds": ["terminal.selected-prerequisites"]},
+    "unknown": {
+      "gateIds": [
+        "local.source-and-scope",
+        "migration.production-ledger",
+        "route.pi5-authority-and-resources",
+        "route.external-server-build",
+        "terminal.selected-prerequisites"
+      ]
+    }
+  }
+}

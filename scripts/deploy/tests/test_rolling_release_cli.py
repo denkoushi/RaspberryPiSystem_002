@@ -43,11 +43,18 @@ class RollingReleaseCliContractTest(unittest.TestCase):
         args = parse(*base, "--limit", "raspberrypi5:kiosk-a")
         self.assertTrue(args.preflight_only)
         self.assertEqual(args.limit, "raspberrypi5:kiosk-a")
+        self.assertTrue(parse(*base, "--full-fleet").full_fleet)
+        self.assertTrue(
+            parse(
+                *base,
+                "--reverify-selected",
+                "--limit",
+                "kiosk-a",
+            ).reverify_selected
+        )
         for extra in (
             ("--detach",),
             ("--print-plan",),
-            ("--full-fleet",),
-            ("--reverify-selected", "--limit", "kiosk-a"),
             ("--canary-hold-timeout", "10"),
             ("--emergency-override", "--reason", "incident"),
         ):

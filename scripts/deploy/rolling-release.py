@@ -36,6 +36,7 @@ from rolling_release import cli as release_cli
 from rolling_release import coordinator as release_coordinator
 from rolling_release import planner as release_planner
 from rolling_release import policy as release_policy
+from rolling_release import readiness_policy as release_readiness
 from rolling_release.release_warnings import record_observer_warning
 from rolling_release.backends import ansible as ansible_backend
 from rolling_release.backends import evidence as evidence_backend
@@ -1425,6 +1426,14 @@ def build_print_plan(
         warnings=warnings,
     )
     payload["serverIdentity"] = server_identity
+    readiness_registry = release_readiness.load_registry()
+    readiness_selection = release_readiness.select_readiness(
+        readiness_registry,
+        release_readiness.facts_from_plan(payload),
+    )
+    payload["readinessPlan"] = release_readiness.readiness_plan_payload(
+        readiness_selection
+    )
     return payload
 
 

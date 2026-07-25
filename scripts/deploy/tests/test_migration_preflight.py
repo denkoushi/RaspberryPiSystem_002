@@ -19,7 +19,7 @@ SHA = "a" * 40
 class MigrationPreflightTest(unittest.TestCase):
     def spec(self, project: Path) -> dict[str, object]:
         return {
-            "version": 1,
+            "version": 2,
             "project": str(project),
             "runId": RUN_ID,
             "branch": "feat/safe-migration",

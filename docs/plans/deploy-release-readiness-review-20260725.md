@@ -1,7 +1,7 @@
 ---
 id: deploy-release-readiness-review-20260725
 title: Build-aware deployment release-readiness review
-status: in-progress
+status: completed-superseded
 scope: canonical SSH rolling release before release-unit submission
 date: 2026-07-25
 source_of_truth: docs/plans/deploy-release-readiness-review-20260725.md
@@ -20,9 +20,10 @@ related_docs:
   - docs/guides/deployment.md
   - docs/runbooks/deploy-recovery.md
   - docs/plans/normal-ssh-deploy-gate-audit-20260722.md
+  - docs/plans/deploy-readiness-policy-engine-20260726.md
 validation: focused unit tests, full deploy contracts, CI, then production read-only preflight
 open_items:
-  - publish the Phase12 Blue/Green active-API verification follow-up and wait for required CI
+  - none; data-driven applicability continues in deploy-readiness-policy-engine-20260726.md
 ---
 
 # Add a Build-Aware Release-Readiness Review
@@ -85,7 +86,10 @@ recovery, and regression test.
   fail closed if more than one active API is found. The focused contract,
   complete deploy-contract suite, and real Phase12 run passed
   `47 / 0 / 0`.
-- [ ] Publish the Phase12 verifier follow-up and wait for required CI.
+- [x] (2026-07-25 23:30Z) Published the Phase12 verifier follow-up as
+  `8ce00283` in PR #1085 and completed required CI. The broader data-driven
+  applicability and sealed-scope continuation is now owned by
+  `docs/plans/deploy-readiness-policy-engine-20260726.md`.
 
 ## Surprises & Discoveries
 

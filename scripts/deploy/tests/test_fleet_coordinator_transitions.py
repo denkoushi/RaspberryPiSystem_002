@@ -1,5 +1,6 @@
 import argparse
 import copy
+import json
 import sys
 import unittest
 from dataclasses import replace
@@ -12,6 +13,7 @@ if str(DEPLOY_DIR) not in sys.path:
     sys.path.insert(0, str(DEPLOY_DIR))
 
 from rolling_release import coordinator  # noqa: E402
+from rolling_release import readiness_policy  # noqa: E402
 from rolling_release.activation import ActivationUncertainError  # noqa: E402
 from rolling_release.cancellation import CancellationRequested  # noqa: E402
 from rolling_release.terminal_adapters import GenericSystemdAdapter  # noqa: E402
@@ -710,6 +712,41 @@ def args(**overrides):
 
 
 class FleetCoordinatorTransitionTest(unittest.TestCase):
+    def _readiness_plan(self, runtime, *, terminal_work=None):
+        return {
+            **runtime.plan,
+            "desiredSha": NEW_SHA,
+            "classificationComponents": ["client-role"],
+            "fullFleet": False,
+            "reverifySelected": False,
+            "typedTargetPlanningEnabled": True,
+            **(
+                {"terminalWork": terminal_work}
+                if terminal_work is not None
+                else {}
+            ),
+        }
+
+    def _admission_payload(self, plan):
+        registry = readiness_policy.load_registry()
+        selection = readiness_policy.select_readiness(
+            registry, readiness_policy.facts_from_plan(plan)
+        )
+        evidence = tuple(
+            readiness_policy.ProbeEvidence(
+                capability=request.capability,
+                status="passed",
+                hosts=request.hosts,
+            )
+            for request in selection.probes
+        )
+        decision = readiness_policy.evaluate_readiness(
+            registry, selection, evidence
+        )
+        return readiness_policy.make_admission(
+            selection, decision
+        ).as_payload()
+
     def _synthetic_runtime(self):
         profile = synthetic_terminal_profile()
         terminal = {
@@ -761,6 +798,52 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             runtime,
         )
         return runtime
+
+    def test_locked_plan_matching_admission_is_saved_before_new_release_work(self):
+        runtime = self._kiosk_web_activation_runtime()
+        runtime.plan = self._readiness_plan(runtime)
+        admission = self._admission_payload(runtime.plan)
+
+        result = coordinator.execute(
+            args(readiness_admission_json=json.dumps(admission)),
+            runtime=runtime,
+            token=FakeToken(runtime.events),
+        )
+
+        self.assertEqual(result, 0)
+        saved = runtime.states[-1].payload["readinessAdmission"]
+        self.assertEqual(saved["scopeMatch"], "passed")
+        self.assertEqual(saved["scopeDigest"], admission["scopeDigest"])
+        self.assertLess(
+            runtime.events.index("fleet:begin"),
+            runtime.events.index("activation:submit:kiosk-a:run-1"),
+        )
+
+    def test_locked_plan_scope_expansion_stops_before_candidate_mutation(self):
+        runtime = self._kiosk_web_activation_runtime()
+        runtime.plan = self._readiness_plan(runtime)
+        admitted_plan = self._readiness_plan(runtime, terminal_work=[])
+        admitted_plan["mutationTargets"] = []
+        admitted_plan["verificationTargets"] = []
+        admission = self._admission_payload(admitted_plan)
+
+        with self.assertRaisesRegex(
+            RuntimeError, "scope exceeds readiness admission"
+        ):
+            coordinator.execute(
+                args(readiness_admission_json=json.dumps(admission)),
+                runtime=runtime,
+                token=FakeToken(runtime.events),
+            )
+
+        saved = runtime.states[-1].payload["readinessAdmission"]
+        self.assertEqual(saved["scopeMatch"], "blocked")
+        self.assertTrue(
+            any("host-added:kiosk-a" in issue for issue in saved["scopeIssues"])
+        )
+        self.assertFalse(
+            any(event.startswith("activation:submit:") for event in runtime.events)
+        )
 
     def _kiosk_web_activation_runtime(self):
         terminal = {

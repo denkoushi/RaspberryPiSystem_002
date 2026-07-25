@@ -61,6 +61,30 @@ class Runtime:
     def selected_hosts(_inventory, _limit):
         raise AssertionError("local launch must not use the mutating host selector")
 
+    @staticmethod
+    def build_print_plan(
+        _branch,
+        _inventory,
+        _limit,
+        *,
+        full_fleet=False,
+        reverify_selected=False,
+    ):
+        return {
+            "sha": SHA,
+            "classificationComponents": ["neutral"],
+            "pi5Required": False,
+            "fullFleet": full_fleet,
+            "reverifySelected": reverify_selected,
+            "typedTargetPlanningEnabled": True,
+            "activationExecutionEnabled": True,
+            "verificationOnlyExecutionEnabled": True,
+            "mutationTargets": [],
+            "activationTargets": [],
+            "verificationTargets": [],
+            "terminalWork": [],
+        }
+
 
 def release_args(
     *,
@@ -84,6 +108,59 @@ def release_args(
     )
 
 
+def terminal_passed_result(*hosts: str) -> CommandResult:
+    return CommandResult(
+        ("terminal-preflight",),
+        0,
+        stdout=json.dumps(
+            {
+                "version": 2,
+                "probe": "terminal",
+                "capability": "terminal.selected-prerequisites",
+                "status": "passed",
+                "proofs": ["terminal.exact-work-target-prerequisites"],
+                "issues": [],
+                "warnings": [],
+                "targets": [
+                    {
+                        "host": host,
+                        "profile": "kiosk",
+                        "status": "passed",
+                        "issues": [],
+                    }
+                    for host in hosts
+                ],
+            }
+        ),
+    )
+
+
+def route_passed_result(*, external: bool = False) -> CommandResult:
+    required = (
+        list(application.BUILD_EXTERNAL_DEPENDENCY_IDS) if external else []
+    )
+    return CommandResult(
+        ("route-preflight",),
+        0,
+        stdout=json.dumps(
+            {
+                "version": 2,
+                "probe": "route",
+                "status": "passed",
+                "proofs": ["pi5.bootstrap-readiness"],
+                "issues": [],
+                "warnings": [],
+                "metrics": {},
+                "externalDependencies": {
+                    "required": required,
+                    "rounds": 3,
+                    "successes": {value: 3 for value in required},
+                },
+            }
+        ),
+    )
+
+
 class FakeSystemd:
     def __init__(
         self,
@@ -93,9 +170,25 @@ class FakeSystemd:
         route_preflight_result=None,
     ):
         self.start_result = start_result or CommandResult(("systemd-run",), 0)
-        self.preflight_result = preflight_result or CommandResult(("migration-preflight",), 0)
+        self.preflight_result = preflight_result or CommandResult(
+            ("migration-preflight",),
+            0,
+            stdout=(
+                '{"version":2,"probe":"migration",'
+                '"capability":"migration.production-ledger","host":"pi5",'
+                '"status":"passed","proofs":["migration.production-ledger"],'
+                '"issues":[],"warnings":[]}'
+            ),
+        )
         self.terminal_preflight_result = terminal_preflight_result or CommandResult(
-            ("terminal-preflight",), 0
+            ("terminal-preflight",),
+            0,
+            stdout=(
+                '{"version":2,"probe":"terminal",'
+                '"capability":"terminal.selected-prerequisites",'
+                '"status":"passed","proofs":[],"issues":[],"warnings":[],'
+                '"targets":[]}'
+            ),
         )
         self.route_preflight_result = route_preflight_result or CommandResult(
             ("route-preflight",),
@@ -350,7 +443,6 @@ class ReleaseApplicationTest(unittest.TestCase):
             [
                 ("migration-preflight", RUN_ID),
                 ("route-preflight", RUN_ID),
-                ("terminal-preflight", RUN_ID, 0),
             ],
         )
 
@@ -378,20 +470,120 @@ class ReleaseApplicationTest(unittest.TestCase):
         outcome, output, systemd, _control = self.launch(detach=True)
         self.assertEqual(outcome, 0)
         self.assertIn(RUN_ID, output)
+        self.assertIsNotNone(systemd.start_specs[0].readiness_admission)
+        self.assertRegex(
+            systemd.start_specs[0].readiness_admission["scopeDigest"],
+            r"^sha256:[0-9a-f]{64}$",
+        )
         self.assertEqual(
             systemd.events,
             [
                 ("migration-preflight", RUN_ID),
                 ("route-preflight", RUN_ID),
-                ("terminal-preflight", RUN_ID, 0),
                 ("start", RUN_ID, False),
             ],
         )
 
+    def test_terminal_preflight_uses_only_six_exact_kiosk_work_hosts(self):
+        terminal_report = {
+            "version": 2,
+            "probe": "terminal",
+            "capability": "terminal.selected-prerequisites",
+            "status": "passed",
+            "proofs": ["terminal.exact-work-target-prerequisites"],
+            "issues": [],
+            "warnings": [],
+            "targets": [
+                {
+                    "host": f"kiosk-{index}",
+                    "profile": "kiosk",
+                    "status": "passed",
+                    "issues": [],
+                }
+                for index in range(1, 7)
+            ],
+        }
+        systemd = FakeSystemd(
+            terminal_preflight_result=CommandResult(
+                ("terminal-preflight",),
+                0,
+                stdout=json.dumps(terminal_report),
+            )
+        )
+        control = FakeControl()
+        terminal_work = [
+            {
+                "host": f"kiosk-{index}",
+                "role": "kiosk",
+                "mutationRequired": True,
+                "activationRequired": False,
+                "verificationRequired": True,
+                "activationStrategyId": None,
+                "activationMode": None,
+                "claimRequirements": [{"kind": "terminalRepository"}],
+            }
+            for index in range(1, 7)
+        ]
+        snapshot = {
+            **Runtime.build_print_plan("main", "inventory.yml", ""),
+            "classificationComponents": ["torque-agent"],
+            "terminalWork": terminal_work,
+        }
+        runtime = type(
+            "SixKioskRuntime",
+            (Runtime,),
+            {"build_print_plan": staticmethod(lambda *_args, **_kwargs: snapshot)},
+        )
+        captured = Mock(
+            return_value=[
+                {"host": f"kiosk-{index}"} for index in range(1, 7)
+            ]
+        )
+        with patch.object(
+            application, "_require_clean_worktree"
+        ), patch.object(
+            application, "_remote_inventory", return_value="inventory.yml"
+        ), patch.object(
+            application, "new_run_id", return_value=RUN_ID
+        ), patch.object(
+            application, "build_backends", return_value=(systemd, control)
+        ), patch.object(
+            application,
+            "validate_remote_server_identity",
+            return_value={
+                "host": "raspberrypi5",
+                "clientId": "raspberrypi5-server",
+            },
+        ), patch.object(
+            application, "build_target_contracts", captured
+        ), patch(
+            "sys.stdout", new_callable=io.StringIO
+        ):
+            outcome = application.launch(
+                release_args(preflight_only=True), runtime=runtime
+            )
+
+        self.assertEqual(outcome, 0)
+        target_roles = captured.call_args.args[1]
+        self.assertEqual(
+            [target["host"] for target in target_roles],
+            [f"kiosk-{index}" for index in range(1, 7)],
+        )
+        self.assertNotIn("raspberrypi3-signage", json.dumps(target_roles))
+        self.assertIn(("terminal-preflight", RUN_ID, 6), systemd.events)
+
     def test_production_ledger_preflight_failure_stops_before_unit_submission(self):
         systemd = FakeSystemd(
             preflight_result=CommandResult(
-                ("migration-preflight",), 78, stderr="disallowed candidate SQL"
+                ("migration-preflight",),
+                78,
+                stdout=(
+                    '{"version":2,"probe":"migration",'
+                    '"capability":"migration.production-ledger","host":"pi5",'
+                    '"status":"blocked","proofs":[],"warnings":[],'
+                    '"issues":[{"code":"migration.production-ledger-rejected",'
+                    '"host":"pi5","capability":"migration.production-ledger"}]}'
+                ),
             )
         )
         control = FakeControl()
@@ -417,7 +609,6 @@ class ReleaseApplicationTest(unittest.TestCase):
             [
                 ("migration-preflight", RUN_ID),
                 ("route-preflight", RUN_ID),
-                ("terminal-preflight", RUN_ID, 0),
             ],
         )
 
@@ -436,9 +627,16 @@ class ReleaseApplicationTest(unittest.TestCase):
                         "warnings": [],
                         "metrics": {},
                         "externalDependencies": {
-                            "required": ["docker-auth"],
+                            "required": list(
+                                application.BUILD_EXTERNAL_DEPENDENCY_IDS
+                            ),
                             "rounds": 3,
-                            "successes": {"docker-auth": 2},
+                            "successes": {
+                                dependency: (
+                                    2 if dependency == "docker-auth" else 3
+                                )
+                                for dependency in application.BUILD_EXTERNAL_DEPENDENCY_IDS
+                            },
                         },
                     }
                 ),
@@ -459,9 +657,26 @@ class ReleaseApplicationTest(unittest.TestCase):
                 },
             ),
         )
+        server_runtime = type(
+            "ServerRuntime",
+            (Runtime,),
+            {
+                "build_print_plan": staticmethod(
+                    lambda *_args, **_kwargs: {
+                        **Runtime.build_print_plan(
+                            "main",
+                            "inventory.yml",
+                            "",
+                        ),
+                        "classificationComponents": ["server-app"],
+                        "pi5Required": True,
+                    }
+                )
+            },
+        )
         with patches[0], patches[1], patches[2], patches[3], patches[4]:
             with self.assertRaisesRegex(RuntimeError, "aggregate preflight blocked"):
-                application.launch(release_args(), runtime=Runtime)
+                application.launch(release_args(), runtime=server_runtime)
 
         self.assertNotIn("start", [event[0] for event in systemd.events])
         self.assertEqual(
@@ -503,16 +718,7 @@ class ReleaseApplicationTest(unittest.TestCase):
         self.assertIsNone(payload["fallbackReason"])
         self.assertEqual(
             payload["targetPlanning"]["selectedClaimRequirements"],
-            [
-                {
-                    "host": "raspberrypi5",
-                    "role": "server",
-                    "requiredClaims": ["controlPlaneApi", "controlPlaneWeb"],
-                    "reason": (
-                        "aggregate preflight scope; locked coordinator determines actions"
-                    ),
-                }
-            ],
+            None,
         )
         self.assertEqual(
             payload["routeCoverage"],
@@ -523,21 +729,18 @@ class ReleaseApplicationTest(unittest.TestCase):
         gates = {
             gate["id"]: gate for gate in payload["readinessReview"]["gates"]
         }
-        self.assertTrue(gates["route.external-server-build"]["applies_now"])
+        self.assertFalse(gates["route.external-server-build"]["applies_now"])
         self.assertFalse(gates["terminal.selected-prerequisites"]["applies_now"])
-        self.assertIsNone(
-            gates["architecture.activation-executor"]["applies_now"]
-        )
+        self.assertFalse(gates["architecture.activation-executor"]["applies_now"])
         self.assertEqual(
             systemd.route_external_dependencies,
-            [application.BUILD_EXTERNAL_DEPENDENCY_IDS],
+            [()],
         )
         self.assertEqual(
             systemd.events,
             [
                 ("migration-preflight", RUN_ID),
                 ("route-preflight", RUN_ID),
-                ("terminal-preflight", RUN_ID, 0),
             ],
         )
 
@@ -577,7 +780,9 @@ class ReleaseApplicationTest(unittest.TestCase):
         )
 
     def test_preflight_only_exposes_the_canonical_provisional_target_snapshot(self):
-        systemd = FakeSystemd()
+        systemd = FakeSystemd(
+            route_preflight_result=route_passed_result(external=True)
+        )
         control = FakeControl()
         target = {
             "host": "raspberrypi5",
@@ -588,6 +793,9 @@ class ReleaseApplicationTest(unittest.TestCase):
         snapshot = {
             "sha": SHA,
             "classificationComponents": ["server-app"],
+            "pi5Required": True,
+            "fullFleet": False,
+            "reverifySelected": False,
             "typedTargetPlanningEnabled": True,
             "activationExecutionEnabled": False,
             "verificationOnlyExecutionEnabled": False,
@@ -653,33 +861,25 @@ class ReleaseApplicationTest(unittest.TestCase):
             [application.BUILD_EXTERNAL_DEPENDENCY_IDS],
         )
 
-    def test_external_build_probe_applies_only_to_server_or_unknown_impact(self):
-        expected = application.BUILD_EXTERNAL_DEPENDENCY_IDS
-        self.assertEqual(application._required_external_dependencies(None), expected)
-        self.assertEqual(
-            application._required_external_dependencies(
-                {"classificationComponents": None}
-            ),
-            expected,
-        )
-        self.assertEqual(
-            application._required_external_dependencies(
-                {"classificationComponents": ["unknown"]}
-            ),
-            expected,
-        )
-        self.assertEqual(
-            application._required_external_dependencies(
-                {"classificationComponents": ["server-app"]}
-            ),
-            expected,
-        )
-        self.assertEqual(
-            application._required_external_dependencies(
-                {"classificationComponents": ["migration", "neutral"]}
-            ),
-            (),
-        )
+    def test_external_build_probe_is_selected_by_registry_components(self):
+        registry = application.readiness_policy.load_registry()
+        for components, expected in (
+            (["neutral"], False),
+            (["migration", "neutral"], False),
+            (["unknown"], True),
+            (["server-app"], True),
+        ):
+            current = Runtime.build_print_plan("main", "inventory.yml", "")
+            current["classificationComponents"] = components
+            selection = application.readiness_policy.select_readiness(
+                registry,
+                application.readiness_policy.facts_from_plan(current),
+            )
+            self.assertEqual(
+                "route.external-server-build"
+                in {request.capability for request in selection.probes},
+                expected,
+            )
 
     def test_disabled_activation_blocks_preflight_and_executor_promotion(self):
         spec = application.LaunchSpec(
@@ -696,7 +896,8 @@ class ReleaseApplicationTest(unittest.TestCase):
             full_fleet=False,
             reverify_selected=False,
         ).validate()
-        passed = CommandResult(("preflight",), 0)
+        migration = FakeSystemd().preflight_result
+        terminal = terminal_passed_result("kiosk-a")
         route = CommandResult(
             ("route-preflight",),
             0,
@@ -713,67 +914,97 @@ class ReleaseApplicationTest(unittest.TestCase):
             "reason": "controlPlaneWeb claim is stale-or-unverified",
             "activationStrategyId": "kiosk-web-activation-v1",
         }
-
+        activation_work = {
+            "host": "kiosk-a",
+            "role": "kiosk",
+            "mutationRequired": False,
+            "activationRequired": True,
+            "verificationRequired": True,
+            "activationStrategyId": "kiosk-web-activation-v1",
+            "activationMode": "steady-state",
+            "claimRequirements": [
+                {"kind": "controlPlaneWeb"},
+                {"kind": "terminalRepository"},
+            ],
+        }
+        snapshot = {
+            "sha": SHA,
+            "classificationComponents": ["neutral"],
+            "pi5Required": False,
+            "fullFleet": False,
+            "reverifySelected": False,
+            "typedTargetPlanningEnabled": True,
+            "activationExecutionEnabled": False,
+            "verificationOnlyExecutionEnabled": True,
+            "mutationTargets": [],
+            "activationTargets": [activation],
+            "verificationTargets": [activation],
+            "terminalWork": [activation_work],
+        }
+        registry = application.readiness_policy.load_registry()
+        selection = application.readiness_policy.select_readiness(
+            registry,
+            application.readiness_policy.facts_from_plan(snapshot),
+        )
         outcome, report = application._preflight_report(
             spec,
-            migration_result=passed,
+            registry=registry,
+            selection=selection,
+            migration_result=migration,
             route_result=route,
-            terminal_result=passed,
+            terminal_result=terminal,
             selected_hosts=["raspberrypi5", "kiosk-a"],
-            selected_target_roles=[
-                {"host": "raspberrypi5", "role": "server"},
-                {"host": "kiosk-a", "role": "kiosk"},
-            ],
             terminal_count=1,
-            planning_snapshot={
-                "typedTargetPlanningEnabled": True,
-                "activationExecutionEnabled": False,
-                "verificationOnlyExecutionEnabled": False,
-                "mutationTargets": [],
-                "activationTargets": [activation],
-                "verificationTargets": [activation],
-                "terminalWork": [],
-            },
+            planning_snapshot=snapshot,
         )
 
         self.assertEqual(outcome, 78)
         self.assertEqual(report["status"], "blocked")
         self.assertIsNone(report["effectiveExecutor"])
+        activation_gate = next(
+            gate
+            for gate in report["readinessReview"]["gates"]
+            if gate["id"] == "architecture.activation-executor"
+        )
+        self.assertEqual(activation_gate["status"], "blocked")
         self.assertEqual(
-            report["probes"][-1],
-            {
-                "probe": "activation-architecture",
-                "status": "blocked",
-                "exitCode": 78,
-                "issues": ["activation-architecture.execution-disabled"],
-            },
+            activation_gate["issues"],
+            ["activation-architecture.execution-disabled"],
         )
 
+        verification_work = {
+            **activation_work,
+            "activationRequired": False,
+        }
+        verification_snapshot = {
+            **snapshot,
+            "activationTargets": [],
+            "terminalWork": [verification_work],
+            "verificationOnlyExecutionEnabled": False,
+        }
+        verification_selection = application.readiness_policy.select_readiness(
+            registry,
+            application.readiness_policy.facts_from_plan(verification_snapshot),
+        )
         verification_outcome, verification_report = application._preflight_report(
             spec,
-            migration_result=passed,
+            registry=registry,
+            selection=verification_selection,
+            migration_result=migration,
             route_result=route,
-            terminal_result=passed,
+            terminal_result=terminal,
             selected_hosts=["raspberrypi5", "kiosk-a"],
-            selected_target_roles=[
-                {"host": "raspberrypi5", "role": "server"},
-                {"host": "kiosk-a", "role": "kiosk"},
-            ],
             terminal_count=1,
-            planning_snapshot={
-                "typedTargetPlanningEnabled": True,
-                "activationExecutionEnabled": False,
-                "verificationOnlyExecutionEnabled": False,
-                "mutationTargets": [],
-                "activationTargets": [],
-                "verificationTargets": [activation],
-                "terminalWork": [],
-            },
+            planning_snapshot=verification_snapshot,
         )
         self.assertEqual(verification_outcome, 78)
         self.assertEqual(
-            verification_report["probes"][-1]["probe"],
-            "verification-architecture",
+            next(
+                gate
+                for gate in verification_report["readinessReview"]["gates"]
+                if gate["id"] == "architecture.verification-executor"
+            )["status"],
+            "blocked",
         )
         self.assertIsNone(verification_report["effectiveExecutor"])
 
@@ -792,7 +1023,8 @@ class ReleaseApplicationTest(unittest.TestCase):
             full_fleet=False,
             reverify_selected=False,
         ).validate()
-        passed = CommandResult(("preflight",), 0)
+        migration = FakeSystemd().preflight_result
+        terminal = terminal_passed_result("kiosk-a")
         route = CommandResult(
             ("route-preflight",),
             0,
@@ -809,27 +1041,49 @@ class ReleaseApplicationTest(unittest.TestCase):
             "reason": "controlPlaneWeb claim is stale-or-unverified",
             "activationStrategyId": "kiosk-web-activation-v1",
         }
-
+        snapshot = {
+            "sha": SHA,
+            "classificationComponents": ["neutral"],
+            "pi5Required": False,
+            "fullFleet": False,
+            "reverifySelected": False,
+            "typedTargetPlanningEnabled": True,
+            "activationExecutionEnabled": True,
+            "verificationOnlyExecutionEnabled": True,
+            "mutationTargets": [],
+            "activationTargets": [activation],
+            "verificationTargets": [activation],
+            "terminalWork": [
+                {
+                    "host": "kiosk-a",
+                    "role": "kiosk",
+                    "mutationRequired": False,
+                    "activationRequired": True,
+                    "verificationRequired": True,
+                    "activationStrategyId": "kiosk-web-activation-v1",
+                    "activationMode": "steady-state",
+                    "claimRequirements": [
+                        {"kind": "controlPlaneWeb"},
+                        {"kind": "terminalRepository"},
+                    ],
+                }
+            ],
+        }
+        registry = application.readiness_policy.load_registry()
+        selection = application.readiness_policy.select_readiness(
+            registry,
+            application.readiness_policy.facts_from_plan(snapshot),
+        )
         outcome, report = application._preflight_report(
             spec,
-            migration_result=passed,
+            registry=registry,
+            selection=selection,
+            migration_result=migration,
             route_result=route,
-            terminal_result=passed,
+            terminal_result=terminal,
             selected_hosts=["raspberrypi5", "kiosk-a"],
-            selected_target_roles=[
-                {"host": "raspberrypi5", "role": "server"},
-                {"host": "kiosk-a", "role": "kiosk"},
-            ],
             terminal_count=1,
-            planning_snapshot={
-                "typedTargetPlanningEnabled": True,
-                "activationExecutionEnabled": True,
-                "verificationOnlyExecutionEnabled": True,
-                "mutationTargets": [],
-                "activationTargets": [activation],
-                "verificationTargets": [activation],
-                "terminalWork": [],
-            },
+            planning_snapshot=snapshot,
         )
 
         self.assertEqual(outcome, 0)
@@ -848,9 +1102,19 @@ class ReleaseApplicationTest(unittest.TestCase):
             terminal_preflight_result=CommandResult(
                 ("terminal-preflight",),
                 78,
-                stderr=(
-                    "- kiosk-a: unit.pcscd.socket.active\n"
-                    "- kiosk-a: package.pcsc-tools\n"
+                stdout=(
+                    '{"version":2,"probe":"terminal",'
+                    '"capability":"terminal.selected-prerequisites",'
+                    '"status":"blocked","proofs":[],"warnings":[],'
+                    '"issues":['
+                    '{"code":"terminal.unit.pcscd.socket.active",'
+                    '"host":"kiosk-a","capability":"terminal.selected-prerequisites"},'
+                    '{"code":"terminal.package.pcsc-tools",'
+                    '"host":"kiosk-a","capability":"terminal.selected-prerequisites"}'
+                    '],"targets":[{"host":"kiosk-a","profile":"kiosk",'
+                    '"status":"blocked","issues":['
+                    '"terminal.unit.pcscd.socket.active",'
+                    '"terminal.package.pcsc-tools"]}]}'
                 ),
             )
         )
@@ -869,15 +1133,44 @@ class ReleaseApplicationTest(unittest.TestCase):
                 },
             ),
         )
-        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+        terminal_plan = Runtime.build_print_plan("main", "inventory.yml", "")
+        terminal_plan.update(
+            {
+                "classificationComponents": ["client-role"],
+                "terminalWork": [
+                    {
+                        "host": "kiosk-a",
+                        "role": "kiosk",
+                        "mutationRequired": True,
+                        "activationRequired": False,
+                        "verificationRequired": True,
+                        "activationStrategyId": None,
+                        "activationMode": None,
+                        "claimRequirements": [
+                            {"kind": "terminalRepository"}
+                        ],
+                    }
+                ],
+            }
+        )
+        terminal_runtime = type(
+            "TerminalRuntime",
+            (Runtime,),
+            {"build_print_plan": staticmethod(lambda *_args, **_kwargs: terminal_plan)},
+        )
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patch.object(
+            application,
+            "build_target_contracts",
+            return_value=[{"host": "kiosk-a"}],
+        ):
             with self.assertRaisesRegex(RuntimeError, "aggregate preflight blocked"):
-                application.launch(release_args(), runtime=Runtime)
+                application.launch(release_args(), runtime=terminal_runtime)
         self.assertEqual(
             systemd.events,
             [
                 ("migration-preflight", RUN_ID),
                 ("route-preflight", RUN_ID),
-                ("terminal-preflight", RUN_ID, 0),
+                ("terminal-preflight", RUN_ID, 1),
             ],
         )
 
@@ -893,7 +1186,6 @@ class ReleaseApplicationTest(unittest.TestCase):
                     [
                         ("migration-preflight", RUN_ID),
                         ("route-preflight", RUN_ID),
-                        ("terminal-preflight", RUN_ID, 0),
                         ("start", RUN_ID, True),
                     ],
                 )
@@ -901,10 +1193,15 @@ class ReleaseApplicationTest(unittest.TestCase):
     def test_preflight_only_aggregates_blockers_and_incomplete_probes(self):
         systemd = FakeSystemd(
             preflight_result=CommandResult(
-                ("migration-preflight",), 78, stderr="migration.blocked"
-            ),
-            terminal_preflight_result=CommandResult(
-                ("terminal-preflight",), 78, stderr="terminal.blocked"
+                ("migration-preflight",),
+                78,
+                stdout=(
+                    '{"version":2,"probe":"migration",'
+                    '"capability":"migration.production-ledger","host":"pi5",'
+                    '"status":"blocked","proofs":[],"warnings":[],'
+                    '"issues":[{"code":"migration.production-ledger-rejected",'
+                    '"host":"pi5","capability":"migration.production-ledger"}]}'
+                ),
             ),
             route_preflight_result=CommandResult(
                 ("route-preflight",),
@@ -944,14 +1241,13 @@ class ReleaseApplicationTest(unittest.TestCase):
         self.assertIsNone(payload["effectiveExecutor"])
         self.assertEqual(
             [probe["status"] for probe in payload["probes"]],
-            ["blocked", "incomplete", "blocked"],
+            ["blocked", "incomplete"],
         )
         self.assertEqual(
             systemd.events,
             [
                 ("migration-preflight", RUN_ID),
                 ("route-preflight", RUN_ID),
-                ("terminal-preflight", RUN_ID, 0),
             ],
         )
 

@@ -30,6 +30,8 @@ EX_OK = 0
 EX_SOFTWARE = 70
 EX_TEMPFAIL = 75
 EX_CONFIG = 78
+PROBE_NAME = "terminal"
+CAPABILITY = "terminal.selected-prerequisites"
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 RUN_ID_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$")
 HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$")
@@ -185,10 +187,14 @@ def parse_spec(raw: str) -> dict[str, Any]:
         )
     except (TypeError, json.JSONDecodeError, ValueError) as error:
         raise TerminalPreflightConfigError("terminal preflight is not valid JSON") from error
-    if not isinstance(payload, dict) or payload.get("version") != 1:
-        raise TerminalPreflightConfigError("unsupported terminal preflight version")
+    if not isinstance(payload, dict):
+        raise TerminalPreflightConfigError("terminal preflight must be an object")
     mode = payload.get("mode")
     if mode == "orchestrator":
+        if payload.get("version") != 2 or type(payload.get("version")) is not int:
+            raise TerminalPreflightConfigError(
+                "unsupported terminal orchestrator version"
+            )
         expected = {
             "version",
             "mode",
@@ -199,7 +205,7 @@ def parse_spec(raw: str) -> dict[str, Any]:
             "targets",
         }
         if set(payload) != expected:
-            raise TerminalPreflightConfigError("orchestrator fields do not match version 1")
+            raise TerminalPreflightConfigError("orchestrator fields do not match version 2")
         _safe_path(payload.get("project"), name="project")
         if not isinstance(payload.get("runId"), str) or RUN_ID_RE.fullmatch(payload["runId"]) is None:
             raise TerminalPreflightConfigError("runId is malformed")
@@ -216,6 +222,10 @@ def parse_spec(raw: str) -> dict[str, Any]:
             _validate_target(target, routing=True)
         return payload
     if mode == "target":
+        if payload.get("version") != 1 or type(payload.get("version")) is not int:
+            raise TerminalPreflightConfigError(
+                "unsupported terminal target version"
+            )
         _validate_target(payload, routing=False)
         return payload
     raise TerminalPreflightConfigError("terminal preflight mode is unsupported")
@@ -1565,6 +1575,98 @@ def _remote_probe_input(
     return serialized
 
 
+def _orchestrator_report(
+    exit_code: int,
+    *,
+    results: Sequence[Mapping[str, Any]] = (),
+    candidate_issues: Sequence[Mapping[str, Any]] = (),
+    orchestrator_issue: str | None = None,
+) -> int:
+    """Emit one bounded, secret-free version 2 aggregate result."""
+
+    status = (
+        "passed"
+        if exit_code == EX_OK
+        else ("blocked" if exit_code == EX_CONFIG else "incomplete")
+    )
+    issues: list[dict[str, str]] = []
+    if orchestrator_issue is not None:
+        issues.append(
+            {
+                "code": orchestrator_issue,
+                "host": "pi5",
+                "capability": CAPABILITY,
+            }
+        )
+    for issue in candidate_issues:
+        code = issue.get("code")
+        if isinstance(code, str) and code:
+            qualified = (
+                f"terminal.{code}"
+                if code.startswith("candidate.")
+                else f"terminal.candidate.{code}"
+            )
+            issues.append(
+                {
+                    "code": qualified,
+                    "host": "pi5",
+                    "capability": CAPABILITY,
+                }
+            )
+    targets: list[dict[str, Any]] = []
+    for result in results:
+        host = result.get("host")
+        profile = result.get("profile")
+        target_codes: list[str] = []
+        for issue in result.get("issues") or []:
+            code = issue.get("code") if isinstance(issue, Mapping) else None
+            if (
+                isinstance(host, str)
+                and host
+                and isinstance(code, str)
+                and code
+            ):
+                qualified = f"terminal.{code}"
+                target_codes.append(qualified)
+                issues.append(
+                    {
+                        "code": qualified,
+                        "host": host,
+                        "capability": CAPABILITY,
+                    }
+                )
+        targets.append(
+            {
+                "host": host if isinstance(host, str) else None,
+                "profile": profile if isinstance(profile, str) else None,
+                "status": "passed" if result.get("ready") is True else "blocked",
+                "issues": target_codes,
+            }
+        )
+    print(
+        json.dumps(
+            {
+                "version": 2,
+                "probe": PROBE_NAME,
+                "capability": CAPABILITY,
+                "status": status,
+                "issues": issues,
+                "warnings": [],
+                "proofs": (
+                    ["terminal.exact-work-target-prerequisites"]
+                    if status == "passed"
+                    else []
+                ),
+                "targets": targets,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    )
+    return exit_code
+
+
 def execute_orchestrator(
     spec: Mapping[str, Any],
     *,
@@ -1586,15 +1688,24 @@ def execute_orchestrator(
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except (BlockingIOError, OSError) as error:
             print(f"[ERROR] terminal preflight could not acquire the fleet lock: {error}", file=sys.stderr)
-            return EX_TEMPFAIL
+            return _orchestrator_report(
+                EX_TEMPFAIL,
+                orchestrator_issue="terminal.orchestrator.fleet-lock-unavailable",
+            )
         try:
             client_id = (server_client_id_reader or _read_server_client_id)()
         except (OSError, UnicodeError) as error:
             print(f"[ERROR] terminal preflight could not verify Pi5 identity: {error}", file=sys.stderr)
-            return EX_CONFIG
+            return _orchestrator_report(
+                EX_CONFIG,
+                orchestrator_issue="terminal.orchestrator.pi5-identity-unavailable",
+            )
         if client_id != spec["expectedServerClientId"]:
             print("[ERROR] terminal preflight Pi5 identity mismatch", file=sys.stderr)
-            return EX_CONFIG
+            return _orchestrator_report(
+                EX_CONFIG,
+                orchestrator_issue="terminal.orchestrator.pi5-identity-mismatch",
+            )
 
         probe_source = source or _source_text()
         candidate_issues = _candidate_artifact_issues(
@@ -1716,11 +1827,12 @@ def execute_orchestrator(
                 "no release unit was submitted",
                 file=sys.stderr,
             )
-            return EX_CONFIG
-        print(
-            f"terminal preflight passed for {len(results)} selected terminal(s) at {spec['sha']}"
-        )
-        return EX_OK
+            return _orchestrator_report(
+                EX_CONFIG,
+                results=results,
+                candidate_issues=candidate_issues,
+            )
+        return _orchestrator_report(EX_OK, results=results)
     finally:
         if descriptor is not None:
             os.close(descriptor)
@@ -1730,12 +1842,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     if len(arguments) != 1:
         print("[ERROR] terminal preflight requires exactly one JSON specification", file=sys.stderr)
-        return EX_CONFIG
+        return _orchestrator_report(
+            EX_CONFIG,
+            orchestrator_issue="terminal.orchestrator.invalid-invocation",
+        )
     try:
         spec = parse_spec(arguments[0])
     except TerminalPreflightConfigError as error:
         print(f"[ERROR] {error}", file=sys.stderr)
-        return EX_CONFIG
+        return _orchestrator_report(
+            EX_CONFIG,
+            orchestrator_issue="terminal.orchestrator.invalid-contract",
+        )
     if spec["mode"] == "target":
         runtime_source = globals().get("EMBEDDED_RUNTIME_MANIFEST_SOURCE")
         agent_health_source = globals().get("EMBEDDED_AGENT_HEALTH_SOURCE")

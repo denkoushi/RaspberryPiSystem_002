@@ -784,7 +784,7 @@ print("TERMINAL_PREFLIGHT_RESULT:" + encoded)
             lock.parent.mkdir(parents=True)
             lock.write_bytes(b"")
             spec = {
-                "version": 1,
+                "version": 2,
                 "mode": "orchestrator",
                 "project": str(Path(temporary).resolve()),
                 "runId": RUN_ID,
@@ -861,7 +861,7 @@ print("TERMINAL_PREFLIGHT_RESULT:" + encoded)
             lock.parent.mkdir(parents=True)
             lock.write_bytes(b"")
             spec = {
-                "version": 1,
+                "version": 2,
                 "mode": "orchestrator",
                 "project": str(Path(temporary).resolve()),
                 "runId": RUN_ID,
@@ -956,7 +956,7 @@ print("TERMINAL_PREFLIGHT_RESULT:" + encoded)
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             spec = {
-                "version": 1,
+                "version": 2,
                 "mode": "orchestrator",
                 "project": str(root.resolve()),
                 "runId": RUN_ID,

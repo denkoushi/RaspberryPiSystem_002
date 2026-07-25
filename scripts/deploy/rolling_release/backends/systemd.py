@@ -264,7 +264,7 @@ class SystemdBackend:
         """Build the read-only gate that must pass before a release unit exists."""
         spec.validate()
         payload = {
-            'version': 1,
+            'version': 2,
             'project': str(self.remote_project),
             'runId': spec.run_id,
             'branch': spec.branch,
@@ -295,7 +295,7 @@ class SystemdBackend:
         """Build the aggregate read-only terminal gate run before submission."""
         spec.validate()
         payload = {
-            'version': 1,
+            'version': 2,
             'mode': 'orchestrator',
             'project': str(self.remote_project),
             'runId': spec.run_id,

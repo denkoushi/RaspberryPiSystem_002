@@ -52,6 +52,7 @@ EXPECTED_KEYS = frozenset({
     'skipCanaryHold',
     'fullFleet',
     'reverifySelected',
+    'readinessAdmission',
 })
 FORBIDDEN_REF_CHARACTERS = frozenset(' ~^:?*[\\')
 
@@ -113,8 +114,8 @@ def parse_spec(raw: str) -> dict[str, Any]:
     except (TypeError, json.JSONDecodeError) as error:
         raise BootstrapConfigError('bootstrap specification is not valid JSON') from error
     if not isinstance(payload, dict) or set(payload) != EXPECTED_KEYS:
-        raise BootstrapConfigError('bootstrap specification fields do not match version 2')
-    if payload.get('version') != 2 or type(payload.get('version')) is not int:
+        raise BootstrapConfigError('bootstrap specification fields do not match version 3')
+    if payload.get('version') != 3 or type(payload.get('version')) is not int:
         raise BootstrapConfigError('unsupported bootstrap specification version')
 
     project = _require_string(payload, 'project', maximum=4096)
@@ -175,7 +176,103 @@ def parse_spec(raw: str) -> dict[str, Any]:
         raise BootstrapConfigError(
             'skipCanaryHold requires emergencyOverride and a reason'
         )
+    _validate_readiness_admission(payload.get('readinessAdmission'))
     return payload
+
+
+def _validate_readiness_admission(value: Any) -> None:
+    """Validate the bounded transport envelope without importing target code."""
+
+    # Compatibility for direct unit-level backend callers during the v2-to-v3
+    # transition.  The canonical application always supplies an admission and
+    # the coordinator rejects its absence before new-release mutation.
+    if value is None:
+        return
+    if not isinstance(value, dict) or set(value) != {
+        'version',
+        'sha',
+        'policyDigest',
+        'components',
+        'pi5Required',
+        'terminalWork',
+        'gateIds',
+        'capabilities',
+        'scopeDigest',
+    }:
+        raise BootstrapConfigError('readinessAdmission fields are malformed')
+    if value.get('version') != 1 or type(value.get('version')) is not int:
+        raise BootstrapConfigError('readinessAdmission version is unsupported')
+    if not isinstance(value.get('sha'), str) or FULL_SHA_RE.fullmatch(value['sha']) is None:
+        raise BootstrapConfigError('readinessAdmission sha is malformed')
+    for key in ('policyDigest', 'scopeDigest'):
+        if not isinstance(value.get(key), str) or re.fullmatch(
+            r'sha256:[0-9a-f]{64}', value[key]
+        ) is None:
+            raise BootstrapConfigError(f'readinessAdmission {key} is malformed')
+    for key in ('components', 'gateIds', 'capabilities'):
+        items = value.get(key)
+        if (
+            not isinstance(items, list)
+            or not items
+            or len(items) > 100
+            or len(items) != len(set(items))
+            or any(
+                not isinstance(item, str)
+                or not item
+                or len(item) > 128
+                or '\x00' in item
+                for item in items
+            )
+        ):
+            raise BootstrapConfigError(f'readinessAdmission {key} is malformed')
+    if type(value.get('pi5Required')) is not bool:
+        raise BootstrapConfigError('readinessAdmission pi5Required is malformed')
+    work = value.get('terminalWork')
+    if not isinstance(work, list) or len(work) > 100:
+        raise BootstrapConfigError('readinessAdmission terminalWork is malformed')
+    seen: set[str] = set()
+    for item in work:
+        if not isinstance(item, dict) or set(item) != {
+            'host',
+            'profile',
+            'mutationRequired',
+            'activationRequired',
+            'verificationRequired',
+            'claims',
+        }:
+            raise BootstrapConfigError(
+                'readinessAdmission terminalWork entry is malformed'
+            )
+        host = item.get('host')
+        profile = item.get('profile')
+        claims = item.get('claims')
+        if (
+            not isinstance(host, str)
+            or not host
+            or host in seen
+            or len(host) > 255
+            or not isinstance(profile, str)
+            or not profile
+            or len(profile) > 128
+            or not isinstance(claims, list)
+            or len(claims) > 20
+            or len(claims) != len(set(claims))
+            or any(not isinstance(claim, str) or not claim for claim in claims)
+            or any(
+                type(item.get(key)) is not bool
+                for key in (
+                    'mutationRequired',
+                    'activationRequired',
+                    'verificationRequired',
+                )
+            )
+        ):
+            raise BootstrapConfigError(
+                'readinessAdmission terminalWork entry is malformed'
+            )
+        seen.add(host)
+    if len(json.dumps(value, separators=(',', ':')).encode('utf-8')) > 65536:
+        raise BootstrapConfigError('readinessAdmission exceeds its size limit')
 
 
 def control_file(spec: Mapping[str, Any]) -> str:
@@ -238,6 +335,18 @@ def remote_arguments(spec: Mapping[str, Any]) -> list[str]:
         arguments.append('--full-fleet')
     if spec['reverifySelected']:
         arguments.append('--reverify-selected')
+    if spec['readinessAdmission'] is not None:
+        arguments.extend(
+            [
+                '--readiness-admission-json',
+                json.dumps(
+                    spec['readinessAdmission'],
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(',', ':'),
+                ),
+            ]
+        )
     return arguments
 
 

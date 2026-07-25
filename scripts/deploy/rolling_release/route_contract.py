@@ -7,9 +7,11 @@ and recovery owner.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, dataclass
 from typing import Literal, Mapping
 
+from .readiness_policy import load_registry
 
 RouteOwner = Literal["local", "pi5", "terminal"]
 OperationKind = Literal["read", "mutation", "commit"]
@@ -302,95 +304,25 @@ ROUTE_STAGES: tuple[RouteStage, ...] = (
     ),
 )
 
-READINESS_GATES: tuple[ReadinessGate, ...] = (
+_READINESS_REGISTRY = load_registry()
+
+# Compatibility projection for older internal imports.  The data-only JSON is
+# the sole source; new selection and evaluation use readiness_policy directly.
+READINESS_GATES: tuple[ReadinessGate, ...] = tuple(
     ReadinessGate(
-        "local.source-and-scope",
-        "safety",
-        "an immutable candidate SHA, clean operator checkout, valid inventory, and correct Pi5 identity",
-        "the wrong source or host could receive a release",
-        "local Git, read-only inventory expansion, target planning, and the public Pi5 client ID",
-        "every normal launch and preflight-only run",
-        60,
-        "correct the local checkout, branch, inventory, or RASPI_SERVER_HOST and rerun",
-        "scripts/deploy/tests/test_release_application.py::test_preflight_only_returns_json_when_local_preparation_fails",
-    ),
-    ReadinessGate(
-        "migration.production-ledger",
-        "safety",
-        "the live production migration ledger and additive migration contract",
-        "an unsafe or divergent database migration could make rollback impossible",
-        "the sealed production ledger and exact candidate migration files",
-        "every normal launch and preflight-only run",
-        60,
-        "repair the migration contract or ledger evidence without changing production, then rerun",
-        "scripts/deploy/tests/test_migration_preflight.py::test_success_requires_sealed_evidence_and_cleans_temporary_directory",
-    ),
-    ReadinessGate(
-        "route.pi5-authority-and-resources",
-        "safety",
-        "the Pi5 execution identity, fleet lock, recovery authority, tools, configuration, disk, and memory",
-        "the coordinator could mutate an unowned or unrecoverable host",
-        "the standard-library Pi5 route probe over the canonical SSH transport",
-        "every normal launch and preflight-only run",
-        60,
-        "resolve every reported Pi5 issue while preserving durable fleet authority, then rerun",
-        "scripts/deploy/tests/test_route_preflight.py::test_reports_all_detected_issues_in_one_result",
-    ),
-    ReadinessGate(
-        "route.external-server-build",
-        "correctness",
-        "the outbound TLS routes required to build candidate API and Web images",
-        "candidate image creation can stall or fail after a release unit has started",
-        "three bounded TLS-handshake rounds from Pi5 to every registered build dependency",
-        "only when target planning reports server-app or unknown impact",
-        30,
-        "restore stable outbound routing or the named dependency, then rerun preflight",
-        "scripts/deploy/tests/test_route_preflight.py::test_external_build_dependencies_require_every_tls_round",
-    ),
-    ReadinessGate(
-        "terminal.selected-prerequisites",
-        "safety",
-        "selected terminal transport, rollback prerequisites, runtime resources, and required agents",
-        "a terminal mutation could begin without a usable rollback or verification route",
-        "the aggregate terminal preflight using exact candidate-owned probe sources",
-        "when one or more terminals are selected for work or verification",
-        60,
-        "restore the reported terminal prerequisite and rerun before submission",
-        "scripts/deploy/tests/test_terminal_preflight.py::test_orchestrator_reports_all_issues_before_any_release_unit",
-    ),
-    ReadinessGate(
-        "architecture.activation-executor",
-        "correctness",
-        "an implemented executor for every planned terminal activation",
-        "the plan could claim work that the selected executor cannot perform",
-        "the read-only target plan and activation execution feature state",
-        "when target planning contains activation targets",
-        1,
-        "enable the reviewed activation executor or remove the unsupported target from the design",
-        "scripts/deploy/tests/test_release_application.py::test_disabled_activation_blocks_preflight_and_executor_promotion",
-    ),
-    ReadinessGate(
-        "architecture.verification-executor",
-        "correctness",
-        "an implemented executor for every verification-only target",
-        "a release could be reported without executing its required verification",
-        "the read-only target plan and verification execution feature state",
-        "when target planning contains verification-only targets",
-        1,
-        "enable the reviewed verification executor or correct the target plan",
-        "scripts/deploy/tests/test_release_application.py::test_disabled_activation_blocks_preflight_and_executor_promotion",
-    ),
-    ReadinessGate(
-        "route.interrupted-run-recovery",
-        "warning",
-        "operator visibility when readable interrupted-run authority requires reconciliation",
-        "the next coordinator must reconcile the retained authority before new mutation",
-        "the fleet state and matching durable release-run record",
-        "when fleet state names a readable interrupted run",
-        1,
-        "allow the lock-owning coordinator to reconcile it or inspect the durable run state",
-        "scripts/deploy/tests/test_route_preflight.py::test_readable_active_run_is_reported_for_recovery_without_blocking",
-    ),
+        id=gate.id,
+        classification=gate.classification,
+        protects=gate.protects,
+        failure_impact=gate.failure_impact,
+        observation=gate.observation,
+        applicability=json.dumps(
+            gate.when, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ),
+        timeout_seconds=gate.timeout_seconds,
+        recovery=gate.recovery,
+        regression_test=gate.regression_test,
+    )
+    for gate in _READINESS_REGISTRY.gates
 )
 
 
