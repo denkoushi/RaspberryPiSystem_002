@@ -16,6 +16,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
@@ -24,6 +25,9 @@ EX_OK = 0
 EX_SOFTWARE = 70
 EX_TEMPFAIL = 75
 EX_CONFIG = 78
+GIT_FETCH_ATTEMPTS = 3
+GIT_FETCH_RETRY_DELAY_SECONDS = 2
+GIT_FETCH_TIMEOUT_SECONDS = 30
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 RUN_ID_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$")
 FORBIDDEN_REF_CHARACTERS = frozenset(" ~^:?*[\\")
@@ -111,10 +115,19 @@ def _read_server_client_id(path: str = "/etc/raspi-status-agent.conf") -> str:
 
 
 def _default_run(
-    argv: Sequence[str], *, cwd: str, capture_output: bool = False
+    argv: Sequence[str],
+    *,
+    cwd: str,
+    capture_output: bool = False,
+    timeout: int | None = None,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        list(argv), cwd=cwd, text=True, capture_output=capture_output, check=False
+        list(argv),
+        cwd=cwd,
+        text=True,
+        capture_output=capture_output,
+        check=False,
+        timeout=timeout,
     )
 
 
@@ -123,6 +136,7 @@ def execute(
     *,
     run_command: Callable[..., Any] = _default_run,
     server_client_id_reader: Callable[[], str] | None = None,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> int:
     project = str(spec["project"])
     lock_path = os.path.join(project, "logs", "deploy", "fleet-release-state.lock")
@@ -169,12 +183,28 @@ def execute(
             print("[ERROR] migration preflight refuses a dirty Pi5 checkout", file=sys.stderr)
             return EX_CONFIG
 
-        fetch = run_command(
-            ["/usr/bin/git", "fetch", "--no-tags", "origin", str(spec["branch"])],
-            cwd=project,
-            capture_output=True,
-        )
-        if getattr(fetch, "returncode", 1) != 0:
+        fetch_succeeded = False
+        for attempt in range(1, GIT_FETCH_ATTEMPTS + 1):
+            try:
+                fetch = run_command(
+                    ["/usr/bin/git", "fetch", "--no-tags", "origin", str(spec["branch"])],
+                    cwd=project,
+                    capture_output=True,
+                    timeout=GIT_FETCH_TIMEOUT_SECONDS,
+                )
+                fetch_succeeded = getattr(fetch, "returncode", 1) == 0
+            except subprocess.TimeoutExpired:
+                fetch_succeeded = False
+            if fetch_succeeded:
+                break
+            if attempt < GIT_FETCH_ATTEMPTS:
+                print(
+                    f"[WARN] migration preflight candidate fetch failed "
+                    f"(attempt {attempt}/{GIT_FETCH_ATTEMPTS}); retrying",
+                    file=sys.stderr,
+                )
+                sleep(GIT_FETCH_RETRY_DELAY_SECONDS)
+        if not fetch_succeeded:
             print("[ERROR] migration preflight could not fetch the candidate", file=sys.stderr)
             return EX_SOFTWARE
         commit = run_command(

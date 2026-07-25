@@ -16,6 +16,7 @@ import signal
 import stat
 import subprocess
 import sys
+import time
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Mapping, Sequence
 
@@ -25,6 +26,9 @@ EX_SOFTWARE = 70
 EX_TEMPFAIL = 75
 EX_CONFIG = 78
 EX_CANCELLED = 130
+GIT_FETCH_ATTEMPTS = 3
+GIT_FETCH_RETRY_DELAY_SECONDS = 2
+GIT_FETCH_TIMEOUT_SECONDS = 30
 PROTOCOL_PATH = Path("scripts/deploy/rolling_release/PROTOCOL")
 PROTOCOL_VALUE = "raspi-rolling-release-v2\n"
 ALLOWED_PRECHECK_UNTRACKED = frozenset({'?? power-actions/'})
@@ -271,6 +275,7 @@ def _default_run(
     *,
     cwd: str,
     capture_output: bool = False,
+    timeout: int | None = None,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         list(argv),
@@ -278,6 +283,7 @@ def _default_run(
         text=True,
         capture_output=capture_output,
         check=False,
+        timeout=timeout,
     )
 
 
@@ -294,6 +300,7 @@ def execute(
     signal_requested: Callable[[], bool] = lambda: False,
     environ: Mapping[str, str] | None = None,
     server_client_id_reader: Callable[[], str] | None = None,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> int:
     """Own the kernel lock before every fetch, checkout, or coordinator write."""
     project = str(spec['project'])
@@ -347,13 +354,34 @@ def execute(
         if cancelled():
             return EX_CANCELLED
 
-        fetch = run_command(
-            ['/usr/bin/git', 'fetch', '--no-tags', 'origin', str(spec['branch'])],
-            cwd=project,
-            capture_output=False,
-        )
-        if getattr(fetch, 'returncode', 1) != 0:
-            return _exit_code(fetch)
+        fetch_succeeded = False
+        fetch_exit_code = 1
+        for attempt in range(1, GIT_FETCH_ATTEMPTS + 1):
+            try:
+                fetch = run_command(
+                    ['/usr/bin/git', 'fetch', '--no-tags', 'origin', str(spec['branch'])],
+                    cwd=project,
+                    capture_output=False,
+                    timeout=GIT_FETCH_TIMEOUT_SECONDS,
+                )
+                fetch_exit_code = _exit_code(fetch)
+                fetch_succeeded = getattr(fetch, 'returncode', 1) == 0
+            except subprocess.TimeoutExpired:
+                fetch_succeeded = False
+                fetch_exit_code = EX_TEMPFAIL
+            if fetch_succeeded:
+                break
+            if cancelled():
+                return EX_CANCELLED
+            if attempt < GIT_FETCH_ATTEMPTS:
+                print(
+                    f'[WARN] candidate fetch failed '
+                    f'(attempt {attempt}/{GIT_FETCH_ATTEMPTS}); retrying',
+                    file=sys.stderr,
+                )
+                sleep(GIT_FETCH_RETRY_DELAY_SECONDS)
+        if not fetch_succeeded:
+            return fetch_exit_code
         if cancelled():
             return EX_CANCELLED
 

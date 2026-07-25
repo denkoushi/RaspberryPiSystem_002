@@ -34,7 +34,7 @@ class RecordingRun:
         self.fleet_lock_was_held: list[bool] = []
         self.after_call = None
 
-    def __call__(self, argv, *, cwd, capture_output=False):
+    def __call__(self, argv, *, cwd, capture_output=False, timeout=None):
         command = tuple(argv)
         self.calls.append((command, cwd, capture_output))
         fleet_descriptor = os.open(
@@ -273,6 +273,66 @@ class RemoteBootstrapTest(unittest.TestCase):
 
         runner.after_call = after_call
         result = bootstrap.execute(spec, run_command=runner)
+
+        self.assertEqual(result, bootstrap.EX_CANCELLED)
+        self.assertEqual([call[0][1] for call in runner.calls], ['status', 'fetch'])
+
+    def test_failed_candidate_fetch_is_retried_with_a_finite_timeout(self):
+        class RetryRun(RecordingRun):
+            def __init__(self, project):
+                super().__init__(project)
+                self.fetch_attempts = 0
+                self.fetch_timeouts = []
+
+            def __call__(self, argv, **options):
+                completed = super().__call__(argv, **options)
+                if tuple(argv)[1:3] == ('fetch', '--no-tags'):
+                    self.fetch_attempts += 1
+                    self.fetch_timeouts.append(options.get('timeout'))
+                    if self.fetch_attempts == 1:
+                        return subprocess.CompletedProcess(argv, 1)
+                return completed
+
+        runner = RetryRun(self.project)
+        sleeps = []
+
+        def fake_exec(*_arguments):
+            raise ExecIntercept
+
+        with self.assertRaises(ExecIntercept):
+            bootstrap.execute(
+                self.spec(),
+                run_command=runner,
+                execve=fake_exec,
+                sleep=sleeps.append,
+            )
+
+        self.assertEqual(runner.fetch_attempts, 2)
+        self.assertEqual(
+            runner.fetch_timeouts,
+            [bootstrap.GIT_FETCH_TIMEOUT_SECONDS, bootstrap.GIT_FETCH_TIMEOUT_SECONDS],
+        )
+        self.assertEqual(sleeps, [bootstrap.GIT_FETCH_RETRY_DELAY_SECONDS])
+
+    def test_cancellation_between_failed_fetch_attempts_stops_retrying(self):
+        spec = self.spec()
+        control = Path(bootstrap.control_file(spec))
+
+        class FailingRun(RecordingRun):
+            def __call__(self, argv, **options):
+                completed = super().__call__(argv, **options)
+                if tuple(argv)[1:3] == ('fetch', '--no-tags'):
+                    control.parent.mkdir(parents=True)
+                    control.write_text('{"cancel":true}\n', encoding='utf-8')
+                    return subprocess.CompletedProcess(argv, 1)
+                return completed
+
+        runner = FailingRun(self.project)
+        result = bootstrap.execute(
+            spec,
+            run_command=runner,
+            sleep=lambda _seconds: None,
+        )
 
         self.assertEqual(result, bootstrap.EX_CANCELLED)
         self.assertEqual([call[0][1] for call in runner.calls], ['status', 'fetch'])
