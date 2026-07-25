@@ -50,6 +50,23 @@ A future CSV pattern such as `ASM` could also match and dispose a
 Implementation and validation evidence are maintained in
 [the ExecPlan](../plans/gmail-import-conflict-guards-20260725.md).
 
+### Production validation
+
+- PR [#1086](https://github.com/denkoushi/RaspberryPiSystem_002/pull/1086) passed required
+  CI, CodeQL, and secret scanning and was squash-merged as
+  `d5a58bc4885b3e8bca02d0a53c4eef3e6b448dbe`.
+- Exact-SHA `--print-plan` and read-only preflight passed before standard Pi5 Blue/Green
+  run `20260725-110632-e1e6ea`. API/Web release claims were verified at the merged SHA,
+  API health was `ok`, and the final same-SHA plan selected no targets.
+- The active API held the scheduler leader lock once and started the CSV scheduler once.
+  Gmail cooldown was `NORMAL`, CSV `PROCESSING` history count was zero, and the new
+  container logged no skipped Gmail cycles or new Gmail rate-limit cooldown.
+- Post-deploy scheduled imports completed normally:
+  `MeasuringInstrumentLoans` completed from 11:15:00Z to 11:15:14Z, followed by the
+  machine-inspection import from 11:21:00Z to 11:21:16Z.
+- Phase12 passed **47 / 0 / 0**. No production Gmail message or CSV subject setting was
+  created or changed for this validation.
+
 ## Gmail transport hang follow-up (2026-07-25)
 
 ### Symptoms Or Trigger
@@ -247,7 +264,8 @@ Per [csv-import-export.md §Gmail csvDashboards スケジュール衝突](../gui
 - [x] Recover the common Pi5/Pi4 outbound path by restarting the router after read-only cross-device probes confirmed the same failure; release-readiness external probes then passed 27/27.
 - [x] Deploy the OrderSupplement one-pass winner lookup and verify the backlog drains without later schedules being skipped (PR **#1084**, main **`e59db98c`**, run **`20260725-073820-042768`**).
 - [ ] Observe the next non-empty OrderSupplement message and record `sourceRowsPruned`; no unread matching message was available in the two post-deploy scheduled cycles.
-- [ ] Deploy and production-validate the DocumentASM/CSV conflict guards from the linked ExecPlan.
+- [x] Deploy and production-validate the DocumentASM/CSV conflict guards (PR **#1086**,
+  main **`d5a58bc`**, run **`20260725-110632-e1e6ea`**, Phase12 **47/0/0**).
 
 ## Local Notes JA
 
@@ -261,3 +279,4 @@ Per [csv-import-export.md §Gmail csvDashboards スケジュール衝突](../gui
 - PR: [#452](https://github.com/denkoushi/RaspberryPiSystem_002/pull/452) (squash merge **`5ec5cee1`**)
 - PR: [#457](https://github.com/denkoushi/RaspberryPiSystem_002/pull/457) (squash merge **`e111dda3`**)
 - PR: [#1084](https://github.com/denkoushi/RaspberryPiSystem_002/pull/1084) (OrderSupplement one-pass lookup and guarded retention; squash merge **`e59db98c`**)
+- PR: [#1086](https://github.com/denkoushi/RaspberryPiSystem_002/pull/1086) (DocumentASM reservation, Gmail API FIFO, CSV-running assembly 409; squash merge **`d5a58bc`**)
