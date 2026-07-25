@@ -52,8 +52,11 @@ cannot consume a procedure-document message.
 - [x] (2026-07-25 10:37Z) Tracked effective Gmail CSV executions and rejected assembly Gmail import before side effects.
 - [x] (2026-07-25 10:37Z) Updated the kiosk and administration error behavior and the relevant operational documents.
 - [x] (2026-07-25 10:41Z) Passed focused and full API/Web tests, route-level API tests, package lint/build, deploy contracts, and isolated PostgreSQL migration/SQL/EXPLAIN validation; every exact-name temporary Docker resource was removed.
-- [ ] Publish a pull request, obtain all required green checks, merge, and deploy the exact
-  merged SHA through the standard rolling Blue/Green workflow.
+- [x] (2026-07-25 10:45Z) Published draft PR
+  [#1086](https://github.com/denkoushi/RaspberryPiSystem_002/pull/1086) from
+  `fix/gmail-import-conflict-guards`.
+- [ ] Obtain all required green checks, merge, and deploy the exact merged SHA through the
+  standard rolling Blue/Green workflow.
 - [ ] Record production validation and complete this plan.
 
 ## Surprises & Discoveries
@@ -272,6 +275,8 @@ Local validation evidence as of 2026-07-25 10:37Z:
     deploy contracts: passed, including 841 release-safety tests
     temporary PostgreSQL: 153 migrations current; rollback confirmed; index path confirmed
     temporary Docker resources: exact container, volume, and network names absent after each completed run
+    implementation commit: d7a2f0c960b6d4a90375ceabce23915ae7ab3324
+    draft PR: https://github.com/denkoushi/RaspberryPiSystem_002/pull/1086
 
 ## Interfaces and Dependencies
 
@@ -307,3 +312,6 @@ evidence before PR publication.
 
 Revision note (2026-07-25 10:41Z): Recorded final full-suite counts and confirmed cleanup
 of the final isolated PostgreSQL container, volume, and network.
+
+Revision note (2026-07-25 10:45Z): Recorded implementation commit `d7a2f0c9` and draft
+PR #1086 before required-gate monitoring.

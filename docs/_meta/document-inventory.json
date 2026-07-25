@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 549,
-    "totalLines": 157490,
-    "totalBytes": 11895939,
+    "totalLines": 157498,
+    "totalBytes": 11896348,
     "withFrontmatter": 230,
     "withStatus": 88,
     "sourceOfTruthDeclared": 58,
@@ -32064,8 +32064,8 @@
     },
     {
       "path": "docs/plans/gmail-import-conflict-guards-20260725.md",
-      "lineCount": 309,
-      "byteSize": 17080,
+      "lineCount": 317,
+      "byteSize": 17489,
       "hasFrontmatter": true,
       "title": "Prevent Gmail import conflicts without blocking non-Gmail work",
       "status": "in_progress",
