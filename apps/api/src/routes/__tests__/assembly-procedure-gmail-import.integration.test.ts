@@ -24,6 +24,7 @@ process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-1234567890';
 process.env.PHOTO_STORAGE_DIR = '/tmp/test-assembly-procedure-gmail-import';
 
 import { buildServer } from '../../app.js';
+import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { buildGmailAttachmentDedupeKey } from '../../services/gmail/gmail-attachment-dedupe-key.js';
 import { PrismaAssemblyProcedureDraftWriter } from '../../services/assembly/adapters/assembly-procedure-draft-writer.adapter.js';
@@ -107,6 +108,30 @@ describe('assembly procedure Gmail import API and persistence', () => {
       trashed: 1,
       remainingInInbox: 0,
       items: [{ filename: '工程A.pdf', status: 'imported' }]
+    });
+  });
+
+  it('returns the typed CSV-busy response to an authorized kiosk client', async () => {
+    const client = await createTestClientDevice(clientKey);
+    ingestRouteMock.mockRejectedValueOnce(
+      new ApiError(
+        409,
+        'CSV自動取込中です。少し待ってから再実行してください。',
+        undefined,
+        'ASSEMBLY_PROCEDURE_GMAIL_CSV_BUSY'
+      )
+    );
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/procedure-documents/ingest-gmail',
+      headers: { 'x-client-key': client.apiKey }
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      message: 'CSV自動取込中です。少し待ってから再実行してください。',
+      errorCode: 'ASSEMBLY_PROCEDURE_GMAIL_CSV_BUSY'
     });
   });
 

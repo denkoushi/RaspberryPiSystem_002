@@ -13,10 +13,12 @@ import {
 } from '../backup/gmail-api-client.js';
 import { GmailRateLimitedDeferredError } from '../backup/gmail-request-gate.service.js';
 import { buildGmailAttachmentDedupeKey } from '../gmail/gmail-attachment-dedupe-key.js';
+import { ASSEMBLY_PROCEDURE_GMAIL_SUBJECT } from '../gmail/gmail-subject-reservation.policy.js';
 import type { AssemblyProcedureDocumentRecord } from './assembly-procedure-document.service.js';
 
-export const ASSEMBLY_PROCEDURE_GMAIL_SUBJECT = 'DocumentASM';
-export const ASSEMBLY_PROCEDURE_GMAIL_QUERY = 'in:inbox is:unread subject:"DocumentASM"';
+export { ASSEMBLY_PROCEDURE_GMAIL_SUBJECT };
+export const ASSEMBLY_PROCEDURE_GMAIL_QUERY =
+  `in:inbox is:unread subject:"${ASSEMBLY_PROCEDURE_GMAIL_SUBJECT}"`;
 export const ASSEMBLY_PROCEDURE_GMAIL_MAX_MESSAGES_PER_REQUEST = 10;
 
 export interface AssemblyProcedureMailGateway {
@@ -43,6 +45,10 @@ export interface AssemblyProcedureDraftWriter {
 
 export interface AssemblyProcedureJpegNormalizer {
   normalize(buffer: Buffer): Promise<Buffer>;
+}
+
+export interface CsvImportActivityReader {
+  isCsvImportRunning(): boolean;
 }
 
 export type AssemblyProcedureGmailImportItemStatus =
@@ -217,6 +223,7 @@ export class AssemblyProcedureGmailImportService {
       createMailGateway: () => Promise<AssemblyProcedureMailGateway>;
       draftWriter: AssemblyProcedureDraftWriter;
       jpegNormalizer?: AssemblyProcedureJpegNormalizer;
+      csvImportActivity?: CsvImportActivityReader;
     }
   ) {}
 
@@ -231,6 +238,14 @@ export class AssemblyProcedureGmailImportService {
     }
     this.isRunning = true;
     try {
+      if (this.deps.csvImportActivity?.isCsvImportRunning()) {
+        throw new ApiError(
+          409,
+          'CSV自動取込中です。少し待ってから再実行してください。',
+          undefined,
+          'ASSEMBLY_PROCEDURE_GMAIL_CSV_BUSY'
+        );
+      }
       return await this.ingestUnlocked();
     } finally {
       this.isRunning = false;

@@ -7,6 +7,7 @@ import { GmailOAuthService, GmailReauthRequiredError, isInvalidGrantMessage } fr
 import { OAuth2Client } from 'google-auth-library';
 import { GmailRequestGateService, GmailRateLimitedDeferredError } from '../gmail-request-gate.service.js';
 import { AdaptiveRateController } from '../adaptive-rate-controller.js';
+import { assertCsvGmailSubjectPatternAllowed } from '../../gmail/gmail-subject-reservation.policy.js';
 
 export class NoMatchingMessageError extends Error {
   constructor(query: string) {
@@ -175,6 +176,7 @@ export class GmailStorageProvider implements StorageProvider {
     // 件名パターン（pathパラメータまたは設定のsubjectPattern）
     const subjectPattern = path || this.subjectPattern;
     if (subjectPattern) {
+      assertCsvGmailSubjectPatternAllowed(subjectPattern);
       // 正規表現パターンの場合はそのまま使用、固定文字列の場合はsubject:で検索
       if (subjectPattern.startsWith('/') && subjectPattern.endsWith('/')) {
         // 正規表現パターン（例: /CSV Import/）
@@ -199,6 +201,7 @@ export class GmailStorageProvider implements StorageProvider {
 
   private buildSearchQueryFromSubjectPatterns(subjectPatterns: string[]): string {
     const patterns = subjectPatterns.map((v) => v.trim()).filter((v) => v.length > 0);
+    patterns.forEach(assertCsvGmailSubjectPatternAllowed);
     const queries: string[] = [];
     if (patterns.length > 0) {
       const escaped = patterns.map((pattern) => `subject:"${pattern.replace(/"/g, '\\"')}"`);
@@ -596,4 +599,3 @@ export class GmailStorageProvider implements StorageProvider {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
-

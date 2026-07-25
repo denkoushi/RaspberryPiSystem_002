@@ -64,7 +64,8 @@ export function CsvDashboardBasicSettingsFields({ editor, selected }: CsvDashboa
           placeholder="例: 生産日程_三島_研削工程"
         />
         <p className="mt-1 text-xs text-slate-500">
-          GmailからCSVを取得する際の件名パターン。スケジュール実行時に使用されます。
+          GmailからCSVを取得する際の件名パターン。組立手順書専用の「DocumentASM」と、
+          それに一致する短い文字列（例: ASM）は使用できません。
         </p>
       </div>
 

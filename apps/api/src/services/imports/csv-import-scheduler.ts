@@ -45,6 +45,7 @@ export class CsvImportScheduler {
   private createProductionScheduleCleanupService: () => ProductionScheduleCleanupService;
   private createCsvDashboardDedupCleanupService: () => CsvDashboardDedupCleanupService;
   private gmailOrchestrator: GmailImportOrchestrator;
+  private activeGmailCsvRuns = 0;
   private readonly minIntervalMinutes = 5;
 
   constructor(overrides: {
@@ -70,7 +71,7 @@ export class CsvImportScheduler {
     this.createCsvDashboardDedupCleanupService = () => new CsvDashboardDedupCleanupService();
     this.gmailOrchestrator = new GmailImportOrchestrator({
       executeSchedule: async ({ config, importSchedule, isManual }) =>
-        this.executeSingleRun({ config, importSchedule, isManual }),
+        this.executeTrackedSingleRun({ config, importSchedule, isManual }),
     });
 
     if (overrides.historyService) this.historyService = overrides.historyService;
@@ -117,6 +118,25 @@ export class CsvImportScheduler {
   ): boolean {
     const resolvedProvider = importSchedule.provider ?? config.storage.provider;
     return resolvedProvider === 'gmail' && this.hasCsvDashboardTarget(importSchedule);
+  }
+
+  private isGmailImportSchedule(
+    config: BackupConfig,
+    importSchedule: NonNullable<BackupConfig['csvImports']>[0]
+  ): boolean {
+    return (importSchedule.provider ?? config.storage.provider) === 'gmail';
+  }
+
+  private async executeTrackedSingleRun(
+    params: Parameters<CsvImportScheduler['executeSingleRun']>[0]
+  ): ReturnType<CsvImportScheduler['executeSingleRun']> {
+    const tracked = this.isGmailImportSchedule(params.config, params.importSchedule);
+    if (tracked) this.activeGmailCsvRuns += 1;
+    try {
+      return await this.executeSingleRun(params);
+    } finally {
+      if (tracked) this.activeGmailCsvRuns = Math.max(0, this.activeGmailCsvRuns - 1);
+    }
   }
 
   private async executeSingleRun(params: {
@@ -372,7 +392,7 @@ export class CsvImportScheduler {
               isManual: false,
             });
           } else {
-            await this.executeSingleRun({ config, importSchedule, isManual: false });
+            await this.executeTrackedSingleRun({ config, importSchedule, isManual: false });
           }
         } finally {
           this.runningImports.delete(taskId);
@@ -817,6 +837,10 @@ export class CsvImportScheduler {
     return this.runningImports.has(importId);
   }
 
+  isGmailImportRunning(): boolean {
+    return this.activeGmailCsvRuns > 0;
+  }
+
   async runImport(importId: string): Promise<Awaited<ReturnType<CsvImportScheduler['executeSingleRun']>>> {
     const { config } = await loadBackupConfigWithFkojunstImportScheduleEnsured();
     const importSchedule = config.csvImports?.find(imp => imp.id === importId);
@@ -836,7 +860,7 @@ export class CsvImportScheduler {
 
     this.runningImports.add(importId);
     try {
-      return await this.executeSingleRun({ config, importSchedule, isManual: true });
+      return await this.executeTrackedSingleRun({ config, importSchedule, isManual: true });
     } finally {
       this.runningImports.delete(importId);
     }

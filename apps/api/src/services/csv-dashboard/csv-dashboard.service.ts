@@ -11,6 +11,7 @@ import type {
   DashboardPageData,
 } from './csv-dashboard.types.js';
 import type { Prisma, CsvDashboard } from '@prisma/client';
+import { assertCsvGmailSubjectPatternAllowed } from '../gmail/gmail-subject-reservation.policy.js';
 
 export class CsvDashboardService {
   /**
@@ -56,6 +57,9 @@ export class CsvDashboardService {
     // バリデーション
     this.validateColumnDefinitions(input.columnDefinitions);
     this.validateTemplateConfig(input.templateType || 'TABLE', input.templateConfig);
+    if (input.gmailSubjectPattern?.trim()) {
+      assertCsvGmailSubjectPatternAllowed(input.gmailSubjectPattern);
+    }
 
     return await prisma.csvDashboard.create({
       data: {
@@ -96,6 +100,13 @@ export class CsvDashboardService {
     if (input.templateConfig !== undefined) {
       const effectiveTemplateType = (input.templateType ?? existing.templateType) as 'TABLE' | 'CARD_GRID';
       this.validateTemplateConfig(effectiveTemplateType, input.templateConfig);
+    }
+    const effectiveGmailSubjectPattern =
+      input.gmailSubjectPattern !== undefined
+        ? input.gmailSubjectPattern
+        : existing.gmailSubjectPattern;
+    if (effectiveGmailSubjectPattern?.trim()) {
+      assertCsvGmailSubjectPatternAllowed(effectiveGmailSubjectPattern);
     }
 
     const updateData: Prisma.CsvDashboardUpdateInput = {};

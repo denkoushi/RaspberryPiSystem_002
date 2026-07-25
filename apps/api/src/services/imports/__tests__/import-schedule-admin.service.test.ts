@@ -80,6 +80,28 @@ describe('ImportScheduleAdminService', () => {
     ).rejects.toMatchObject({ statusCode: 409 });
   });
 
+  it('createSchedule: Gmailの予約件名へ一致するフォールバック件名を拒否する', async () => {
+    const config = createBaseConfig();
+    const store = {
+      load: vi.fn(async () => config),
+      save: vi.fn(async () => {}),
+    };
+    const scheduler = { reload: vi.fn(async () => {}), runImport: vi.fn(async () => ({})) };
+    const service = new ImportScheduleAdminService(store, () => scheduler);
+
+    await expect(
+      service.createSchedule({
+        id: 'reserved-subject',
+        provider: 'gmail',
+        targets: [{ type: 'employees', source: 'ASM' }],
+        schedule: '0 5 * * *',
+      })
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      code: 'GMAIL_SUBJECT_PATTERN_RESERVED',
+    });
+  });
+
   it('updateSchedule: 存在しないIDは404を返す', async () => {
     const store = {
       load: vi.fn(async () => createBaseConfig()),
@@ -91,6 +113,34 @@ describe('ImportScheduleAdminService', () => {
     await expect(
       service.updateSchedule('missing-id', { enabled: false })
     ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('updateSchedule: legacy Gmail件名の予約競合を拒否する', async () => {
+    const config = createBaseConfig();
+    config.csvImports = [
+      {
+        id: 'legacy-gmail',
+        provider: 'gmail',
+        employeesPath: 'employees',
+        schedule: '0 4 * * *',
+        enabled: true,
+        replaceExisting: false,
+        autoBackupAfterImport: { enabled: false, targets: ['csv'] },
+      },
+    ];
+    const store = {
+      load: vi.fn(async () => config),
+      save: vi.fn(async () => {}),
+    };
+    const scheduler = { reload: vi.fn(async () => {}), runImport: vi.fn(async () => ({})) };
+    const service = new ImportScheduleAdminService(store, () => scheduler);
+
+    await expect(
+      service.updateSchedule('legacy-gmail', { employeesPath: 'DocumentASM' })
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      code: 'GMAIL_SUBJECT_PATTERN_RESERVED',
+    });
   });
 
   it('updateSchedule: システム予約IDでも有効なcronは上書きされず保持される', async () => {

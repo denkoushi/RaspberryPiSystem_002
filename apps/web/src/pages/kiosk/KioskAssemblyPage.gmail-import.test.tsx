@@ -34,7 +34,10 @@ vi.mock('../../features/assembly', () => ({
   AssemblyTemplateLibraryTable: () => null,
   KIOSK_ASSEMBLY_HOME_PATH: '/kiosk/assembly',
   parseAssemblyLibrarySearch: () => ({}),
-  readAssemblyApiErrorMessage: (_error: unknown, fallback: string) => fallback,
+  readAssemblyApiErrorMessage: (error: unknown, fallback: string) => {
+    const message = (error as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+    return typeof message === 'string' ? message : fallback;
+  },
   useAssemblyLibraryFilterOptions: () => ({
     options: [],
     loading: false,
@@ -128,6 +131,26 @@ describe('KioskAssemblyPage Gmail procedure import', () => {
     fireEvent.click(screen.getByRole('button', { name: '取込' }));
 
     await screen.findByText(/Gmail取込: 新規0件、重複0件、失敗0件/);
+    expect(screen.getByTestId('procedure-refresh-token')).toHaveTextContent('0');
+  });
+
+  it('shows the CSV busy guidance returned by the API', async () => {
+    ingestMock.mockRejectedValueOnce({
+      response: {
+        status: 409,
+        data: {
+          message: 'CSV自動取込中です。少し待ってから再実行してください。',
+          errorCode: 'ASSEMBLY_PROCEDURE_GMAIL_CSV_BUSY'
+        }
+      }
+    });
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: '取込' }));
+
+    expect(
+      await screen.findByText('CSV自動取込中です。少し待ってから再実行してください。')
+    ).toBeInTheDocument();
     expect(screen.getByTestId('procedure-refresh-token')).toHaveTextContent('0');
   });
 

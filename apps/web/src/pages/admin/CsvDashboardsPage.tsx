@@ -1,3 +1,4 @@
+import { getApiErrorMessage } from '../../api/errors';
 import { Button } from '../../components/ui/Button';
 import { CsvDashboardBasicSettingsFields } from '../../features/admin/csv-dashboards/CsvDashboardBasicSettingsFields';
 import { CsvDashboardColumnDefinitionsTable } from '../../features/admin/csv-dashboards/CsvDashboardColumnDefinitionsTable';
@@ -44,7 +45,9 @@ export function CsvDashboardsPage() {
                   設定を保存
                 </Button>
                 {editor.updateMutation.isError && (
-                  <span className="text-sm text-rose-600">保存に失敗しました。</span>
+                  <span role="alert" className="text-sm text-rose-600">
+                    {getApiErrorMessage(editor.updateMutation.error, '保存に失敗しました。')}
+                  </span>
                 )}
                 {editor.updateMutation.isSuccess && (
                   <span className="text-sm text-emerald-700">保存しました。</span>
