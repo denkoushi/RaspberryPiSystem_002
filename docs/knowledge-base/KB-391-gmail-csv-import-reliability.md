@@ -9,7 +9,7 @@
 | scope | Gmail csvDashboards scheduled import, FKOJUNST_Status mail ingest, admin CSV import schedule UI |
 | date | 2026-06-18 |
 | source_of_truth | this file |
-| related_code | `fkojunst-status-mail-critical-lock.ts`, `fkojunst-status-mail-ingest-publication.ts`, `import-schedule-policy.ts`, `CsvImportSchedulePage.tsx`, `csv-dashboard-ingestor.ts` |
+| related_code | `fkojunst-status-mail-critical-lock.ts`, `fkojunst-status-mail-ingest-publication.ts`, `import-schedule-policy.ts`, `CsvImportSchedulePage.tsx`, `csv-dashboard-ingestor.ts`, `gmail-api-client.ts` |
 | related_docs | [csv-import-export.md](../guides/csv-import-export.md), [deployment.md](../guides/deployment.md) |
 
 ## Context
@@ -19,6 +19,30 @@ Some Gmail csvDashboards CSV imports were skipped or failed silently in producti
 1. **`FKOJUNST_Status` ingest** failed with Prisma `Failed to deserialize column of type 'void'` because `pg_advisory_xact_lock` was called via `$queryRaw` (void return).
 2. **Schedule collisions** between enabled Gmail csvDashboards jobs caused later runs to be skipped by `GmailImportOrchestrator` without import history.
 3. **Admin visibility** for collision risk was insufficient (minute-only detection; warnings not shown on list/create/update).
+
+## Gmail transport hang follow-up (2026-07-25)
+
+### Symptoms Or Trigger
+
+- Pi5 production stopped processing all scheduled Gmail CSV imports after `MeasuringInstrumentLoans`.
+- API logs showed `Starting Gmail import cycle` and `Starting scheduled CSV import`, but no Gmail search completion or failure.
+- The import-history watchdog changed stale `PROCESSING` rows to `FAILED`, while the in-process `GmailImportOrchestrator.running` lock remained held.
+- Restarting only the active API container cleared the lock, but the next `MeasuringInstrumentLoans` run hung again.
+
+### Investigation And Root Cause
+
+- PostgreSQL had no long-running active query for the import.
+- The API network namespace had Google TCP/443 connections stalled for more than 30 minutes after sending only a few hundred bytes.
+- Pi5 HTTPS probes to the eight current `gmail.googleapis.com` IPv4 answers were deterministic during the check: four reached Gmail and returned HTTP 404, while four timed out. The same eight addresses were all reachable from the operator Mac.
+- This establishes a Pi5/upstream path failure to part of the Google frontend address set. The exact router/ISP fault remains outside the application evidence.
+- `GmailApiClient` passed `retry: false` but no request timeout to `googleapis`/`gaxios`. A stalled TCP/TLS request therefore never settled, so the orchestrator's `finally` block could not release its lock.
+
+### Fix And Validation
+
+- `GmailApiClient` now applies `GMAIL_API_REQUEST_TIMEOUT_MS` to every Gmail API call, defaulting to 30 seconds.
+- Installed `gaxios 7.1.3` converts this option to `AbortSignal.timeout()`.
+- Validation: Gmail client/orchestrator tests **26 passed**, API TypeScript build passed, targeted ESLint passed, and `git diff --check` passed.
+- Production deployment and backlog verification are pending explicit approval and successful CI for an immutable branch/SHA.
 
 ## Symptoms Or Trigger
 
@@ -157,6 +181,8 @@ Per [csv-import-export.md §Gmail csvDashboards スケジュール衝突](../gui
 - [ ] Confirm production admin shows collision warnings for current enabled Gmail schedules (operator visual check).
 - [ ] Monitor next **scheduled** FKOJUNST_Status cycle at production cron **`43 6 * * *`** (operator-set; was `43 4 * * *`).
 - [ ] If post-ingest `createMany` timeout recurs at ~80k rows, extend or batch `fkojunst-status-mail-sync.pipeline` (not observed on 2026-06-18 admin manual run).
+- [ ] Deploy the Gmail API request-timeout fix to Pi5 through the standard rolling workflow, then verify the orchestrator lock releases on a deliberately unreachable endpoint or observed transport timeout.
+- [ ] Verify queued Gmail CSV messages drain successfully and investigate the Pi5/router/ISP path failure to part of the Google frontend IPv4 set.
 
 ## Local Notes JA
 

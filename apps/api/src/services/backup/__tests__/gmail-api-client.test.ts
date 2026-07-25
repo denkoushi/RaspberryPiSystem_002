@@ -82,7 +82,23 @@ describe('GmailApiClient', () => {
           q: mockQuery,
           maxResults: 10
         },
-        expect.objectContaining({ retry: false })
+        expect.objectContaining({ retry: false, timeout: 30_000 })
+      );
+    });
+
+    it('uses an explicitly configured request timeout', async () => {
+      const configuredClient = new GmailApiClient(oauth2Client, {
+        gate: gate as any,
+        allowWait: false,
+        requestTimeoutMs: 1_234,
+      });
+      mockGmailMessages.list.mockResolvedValueOnce({ data: { messages: [] } });
+
+      await configuredClient.searchMessages('subject:CSV Import');
+
+      expect(mockGmailMessages.list).toHaveBeenCalledWith(
+        expect.objectContaining({ q: 'subject:CSV Import' }),
+        expect.objectContaining({ retry: false, timeout: 1_234 })
       );
     });
 
@@ -658,4 +674,3 @@ describe('GmailApiClient', () => {
     });
   });
 });
-
