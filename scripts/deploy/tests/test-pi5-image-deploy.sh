@@ -121,13 +121,28 @@ fi
   eval "$(sed -n '/^build_candidate_service_with_retry() {/,/^}/p' "$SCRIPT")"
   BUILD_ATTEMPTS=3
   BUILD_RETRY_DELAY_SECONDS=5
+  BUILD_ATTEMPT_TIMEOUT_SECONDS=1800
+  BASE_COMPOSE=base.yml
+  PHASE2_COMPOSE=phase2.yml
+  BUILD_OVERRIDE=
+  ENV_FILE=.env
   REF="$(printf 'a%.0s' {1..40})"
   SEALED_CONFIG_HASH="$(printf 'b%.0s' {1..64})"
   BUILD_CALLS=0
   API_ARGS=(--build-arg TEST=value)
-  compose() {
+  docker() {
     BUILD_CALLS=$((BUILD_CALLS + 1))
     ((BUILD_CALLS >= 3))
+  }
+  timeout() {
+    while [[ "$1" == --* ]]; do shift; done
+    shift
+    [[ "$1" == env ]] || return 97
+    shift
+    while [[ "$1" == *=* ]]; do export "$1"; shift; done
+    [[ "$1" == docker ]] || return 98
+    shift
+    docker "$@"
   }
   sleep() { :; }
   log() { :; }
@@ -136,7 +151,7 @@ fi
   [[ "$BUILD_CALLS" -eq 3 ]] || fail "candidate build retry count is incorrect"
 
   BUILD_CALLS=0
-  compose() {
+  docker() {
     BUILD_CALLS=$((BUILD_CALLS + 1))
     return 1
   }
@@ -610,6 +625,12 @@ grep -Fq 'BUILD_COMMIT=${REF}' "$SCRIPT" \
 grep -Fq 'LABEL org.opencontainers.image.revision=${BUILD_COMMIT}' \
   "$ROOT/infrastructure/docker/Dockerfile.api" "$ROOT/infrastructure/docker/Dockerfile.web" \
   || fail "candidate images do not seal their source revision"
+[[ "$(grep -Fc 'network: host' "$ROOT/infrastructure/docker/docker-compose.server.yml")" -eq 2 ]] \
+  || fail "server Compose does not force both candidate builds through the Pi5 host network"
+grep -Fq 'BUILD_ATTEMPT_TIMEOUT_SECONDS=1800' "$SCRIPT" \
+  || fail "candidate image build attempts do not have a finite timeout"
+grep -Fq 'timeout --signal=TERM --kill-after=30s "$BUILD_ATTEMPT_TIMEOUT_SECONDS"' "$SCRIPT" \
+  || fail "candidate image build does not enforce its timeout"
 for dockerfile in \
   "$ROOT/infrastructure/docker/Dockerfile.api" \
   "$ROOT/infrastructure/docker/Dockerfile.web"; do

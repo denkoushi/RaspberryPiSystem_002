@@ -30,6 +30,8 @@ services:
     build:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile.api
+      # Pi5 の実経路 MTU を継承し、BuildKit bridge の 1500-byte PMTU blackhole を避ける。
+      network: host
       args:
         INSTALL_PLAYWRIGHT_CHROMIUM: ${INSTALL_PLAYWRIGHT_CHROMIUM:-true}
     restart: always
@@ -123,6 +125,8 @@ services:
     build:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile.web
+      # API と同じ host build network を使い、外部取得の経路条件を揃える。
+      network: host
       args:
         VITE_AGENT_WS_URL: ${VITE_AGENT_WS_URL:-ws://localhost:7071/stream}
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
