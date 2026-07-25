@@ -114,6 +114,38 @@ fi
   || [[ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("event"))' "$TMP/drift-state.json")" == failed ]] \
   || fail "build-argument drift left prepared candidate state"
 
+# Candidate image builds are immutable and remain outside public routing, so a
+# transient registry failure is retried finitely without weakening fail-closed
+# behavior. Exhaustion must still stop before candidate validation or switching.
+(
+  eval "$(sed -n '/^build_candidate_service_with_retry() {/,/^}/p' "$SCRIPT")"
+  BUILD_ATTEMPTS=3
+  BUILD_RETRY_DELAY_SECONDS=5
+  REF="$(printf 'a%.0s' {1..40})"
+  SEALED_CONFIG_HASH="$(printf 'b%.0s' {1..64})"
+  BUILD_CALLS=0
+  API_ARGS=(--build-arg TEST=value)
+  compose() {
+    BUILD_CALLS=$((BUILD_CALLS + 1))
+    ((BUILD_CALLS >= 3))
+  }
+  sleep() { :; }
+  log() { :; }
+  build_candidate_service_with_retry api api:test web:test "${API_ARGS[@]}" \
+    || fail "candidate build did not recover within its retry budget"
+  [[ "$BUILD_CALLS" -eq 3 ]] || fail "candidate build retry count is incorrect"
+
+  BUILD_CALLS=0
+  compose() {
+    BUILD_CALLS=$((BUILD_CALLS + 1))
+    return 1
+  }
+  if build_candidate_service_with_retry web api:test web:test "${API_ARGS[@]}"; then
+    fail "candidate build exhaustion did not fail closed"
+  fi
+  [[ "$BUILD_CALLS" -eq 3 ]] || fail "candidate build exhaustion exceeded its retry budget"
+)
+
 # The exact validation container remains cleanup-owned until removal succeeds
 # or Docker explicitly proves it absent. A transient first rm must be retried.
 (

@@ -20,6 +20,8 @@ LOAD_SAMPLE_COUNT="${PI5_CANDIDATE_LOAD_SAMPLE_COUNT:-3}"
 LOAD_SAMPLE_INTERVAL_SECONDS="${PI5_CANDIDATE_LOAD_SAMPLE_INTERVAL_SECONDS:-20}"
 LOAD_WAIT_SECONDS="${PI5_CANDIDATE_LOAD_WAIT_SECONDS:-180}"
 EVIDENCE_TTL_SECONDS="${PI5_CANDIDATE_EVIDENCE_TTL_SECONDS:-300}"
+BUILD_ATTEMPTS=3
+BUILD_RETRY_DELAY_SECONDS=5
 DRY_RUN="${PI5_DEPLOY_DRY_RUN:-0}"
 REF=""
 RUN_ID=""
@@ -943,6 +945,27 @@ reconcile_candidate_build_residue() {
     || die 'could not reconcile an owned run-scoped candidate image tag'
 }
 
+build_candidate_service_with_retry() {
+  local service="$1" api="$2" web="$3"
+  local attempt
+  shift 3
+  local -a build_args=("$@")
+  for ((attempt = 1; attempt <= BUILD_ATTEMPTS; attempt++)); do
+    if compose "$api" "$web" build "${build_args[@]}" \
+      --build-arg "BUILD_COMMIT=${REF}" \
+      --build-arg "BUILD_CONFIG_HASH=${SEALED_CONFIG_HASH}" "$service"; then
+      return 0
+    fi
+    if ((attempt < BUILD_ATTEMPTS)); then
+      log "candidate ${service} image build failed " \
+        "(attempt ${attempt}/${BUILD_ATTEMPTS}); retrying"
+      sleep "$BUILD_RETRY_DELAY_SECONDS"
+    fi
+  done
+  log "ERROR: candidate ${service} image build failed after ${BUILD_ATTEMPTS} attempts" >&2
+  return 1
+}
+
 image_deploy_cleanup() {
   local rc=$? container_rc=0 resume_rc=0
   if [[ "$DRY_RUN" != 1 && -n "$CANDIDATE_CONTAINER_ID" ]]; then
@@ -996,11 +1019,11 @@ prepare() {
       load_sealed_build_args api api_build_args
       load_sealed_build_args web web_build_args
       assert_effective_build_args_unchanged "$config_hash" api-build
-      compose "$api" "$web" build "${api_build_args[@]}" \
-        --build-arg "BUILD_COMMIT=${REF}" --build-arg "BUILD_CONFIG_HASH=${config_hash}" api
+      build_candidate_service_with_retry api "$api" "$web" "${api_build_args[@]}" \
+        || die 'candidate API image build exhausted its retry budget'
       assert_effective_build_args_unchanged "$config_hash" web-build
-      compose "$api" "$web" build "${web_build_args[@]}" \
-        --build-arg "BUILD_COMMIT=${REF}" --build-arg "BUILD_CONFIG_HASH=${config_hash}" web
+      build_candidate_service_with_retry web "$api" "$web" "${web_build_args[@]}" \
+        || die 'candidate Web image build exhausted its retry budget'
     fi
   fi
   # Once the reuse decision is made, discard the prior proof. A failed retry
