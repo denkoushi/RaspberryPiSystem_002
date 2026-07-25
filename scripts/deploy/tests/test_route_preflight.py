@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from collections import defaultdict
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -13,14 +14,17 @@ from scripts.deploy.rolling_release import route_preflight
 SHA = "a" * 40
 
 
-def spec(project: str) -> dict[str, object]:
+def spec(
+    project: str, dependencies: tuple[str, ...] = ()
+) -> dict[str, object]:
     return {
-        "version": 1,
+        "version": 2,
         "project": project,
         "runId": "20260719-010203-a1b2c3",
         "sha": SHA,
         "inventory": "inventory.yml",
         "expectedServerClientId": "raspberrypi5-server",
+        "requiredExternalDependencies": list(dependencies),
     }
 
 
@@ -32,6 +36,14 @@ class RoutePreflightTest(unittest.TestCase):
             route_preflight.parse_spec(json.dumps(value))
         value = spec("/opt/RaspberryPiSystem_002")
         value["inventory"] = "../inventory.yml"
+        with self.assertRaises(route_preflight.RoutePreflightConfigError):
+            route_preflight.parse_spec(json.dumps(value))
+        value = spec("/opt/RaspberryPiSystem_002")
+        value["requiredExternalDependencies"] = ["unknown-service"]
+        with self.assertRaises(route_preflight.RoutePreflightConfigError):
+            route_preflight.parse_spec(json.dumps(value))
+        value = spec("/opt/RaspberryPiSystem_002")
+        value["requiredExternalDependencies"] = ["docker-auth", "docker-auth"]
         with self.assertRaises(route_preflight.RoutePreflightConfigError):
             route_preflight.parse_spec(json.dumps(value))
 
@@ -88,6 +100,97 @@ class RoutePreflightTest(unittest.TestCase):
             flattened = "\n".join(" ".join(command) for command in commands)
             for forbidden in ("checkout", "playbook", "systemctl start", "systemctl stop"):
                 self.assertNotIn(forbidden, flattened)
+            self.assertEqual(
+                report["externalDependencies"],
+                {"required": [], "rounds": 3, "successes": {}},
+            )
+
+    def test_external_build_dependencies_require_every_tls_round(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Path(temporary)
+            ansible = project / "infrastructure/ansible"
+            ansible.mkdir(parents=True)
+            lock = project / "logs/deploy/fleet-release-state.lock"
+            lock.parent.mkdir(parents=True)
+            lock.write_text("", encoding="utf-8")
+            for name, content in (
+                ("ansible.cfg", "[defaults]\n"),
+                (".vault-pass", "secret\n"),
+                ("inventory.yml", "all:\n  hosts: {}\n"),
+            ):
+                (ansible / name).write_text(content, encoding="utf-8")
+
+            def run(argv, **_kwargs):
+                if "status" in argv:
+                    return SimpleNamespace(returncode=0, stdout="", stderr="")
+                if "show" in argv:
+                    return SimpleNamespace(
+                        returncode=0,
+                        stdout="raspi-rolling-release-v2\n",
+                        stderr="",
+                    )
+                if "ansible-inventory" in argv[0]:
+                    return SimpleNamespace(returncode=0, stdout="{}", stderr="")
+                return SimpleNamespace(returncode=0, stdout="ok\n", stderr="")
+
+            calls: defaultdict[str, int] = defaultdict(int)
+
+            def external_probe(dependency_id: str) -> bool:
+                calls[dependency_id] += 1
+                return not (
+                    dependency_id == "npm-registry"
+                    and calls[dependency_id] == 2
+                )
+
+            real_isfile = route_preflight.os.path.isfile
+            with patch.object(
+                route_preflight.os.path,
+                "isfile",
+                side_effect=lambda path: str(path).startswith("/usr/bin/")
+                or real_isfile(path),
+            ), patch.object(route_preflight.os, "access", return_value=True):
+                code, report = route_preflight.execute(
+                    spec(
+                        str(project),
+                        ("docker-auth", "npm-registry"),
+                    ),
+                    run_command=run,
+                    client_id_reader=lambda: "raspberrypi5-server",
+                    disk_free_reader=lambda _path: 8192,
+                    memory_available_reader=lambda: 2048,
+                    external_dependency_probe=external_probe,
+                )
+
+            self.assertEqual(code, 78)
+            self.assertEqual(report["status"], "blocked")
+            self.assertEqual(
+                report["issues"], ["pi5.external-tls:npm-registry"]
+            )
+            self.assertEqual(
+                report["externalDependencies"],
+                {
+                    "required": ["docker-auth", "npm-registry"],
+                    "rounds": 3,
+                    "successes": {"docker-auth": 3, "npm-registry": 2},
+                },
+            )
+            self.assertEqual(calls, {"docker-auth": 3, "npm-registry": 3})
+            self.assertNotIn("external-server-build-readiness", report["proofs"])
+
+    def test_external_build_dependency_total_failure_is_bounded_and_counted(self):
+        calls = 0
+
+        def failed_probe(_dependency_id: str) -> bool:
+            nonlocal calls
+            calls += 1
+            return False
+
+        successes = route_preflight._probe_external_dependencies(
+            ("docker-auth",), failed_probe
+        )
+
+        self.assertEqual(successes, {"docker-auth": 0})
+        self.assertEqual(calls, route_preflight.EXTERNAL_TLS_ROUNDS)
 
     def test_reports_all_detected_issues_in_one_result(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -325,16 +325,21 @@ class SystemdBackend:
     ) -> CommandResult:
         return self.transport.run(self.build_terminal_preflight_command(spec, targets))
 
-    def build_route_preflight_command(self, spec: LaunchSpec) -> tuple[str, ...]:
+    def build_route_preflight_command(
+        self,
+        spec: LaunchSpec,
+        required_external_dependencies: tuple[str, ...] = (),
+    ) -> tuple[str, ...]:
         """Build the read-only Pi5 route gate run before release submission."""
         spec.validate()
         payload = {
-            'version': 1,
+            'version': 2,
             'project': str(self.remote_project),
             'runId': spec.run_id,
             'sha': spec.sha,
             'inventory': spec.inventory,
             'expectedServerClientId': spec.expected_server_client_id,
+            'requiredExternalDependencies': list(required_external_dependencies),
         }
         serialized = json.dumps(
             payload,
@@ -351,8 +356,16 @@ class SystemdBackend:
             _encode_argument(serialized),
         )
 
-    def preflight_route(self, spec: LaunchSpec) -> CommandResult:
-        return self.transport.run(self.build_route_preflight_command(spec))
+    def preflight_route(
+        self,
+        spec: LaunchSpec,
+        required_external_dependencies: tuple[str, ...] = (),
+    ) -> CommandResult:
+        return self.transport.run(
+            self.build_route_preflight_command(
+                spec, required_external_dependencies
+            )
+        )
 
     def show(self, run_id: str) -> UnitObservation:
         unit_name = unit_name_for(run_id)

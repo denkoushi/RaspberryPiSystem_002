@@ -101,12 +101,14 @@ class FakeSystemd:
             ("route-preflight",),
             0,
             stdout=(
-                '{"version":1,"probe":"route","status":"passed",'
-                '"proofs":["pi5.bootstrap-readiness"],"issues":[],"warnings":[],"metrics":{}}'
+                '{"version":2,"probe":"route","status":"passed",'
+                '"proofs":["pi5.bootstrap-readiness"],"issues":[],"warnings":[],'
+                '"metrics":{},"externalDependencies":{"required":[],"rounds":3,"successes":{}}}'
             ),
         )
         self.events = []
         self.start_specs = []
+        self.route_external_dependencies = []
 
     def preflight_migrations(self, spec):
         self.events.append(("migration-preflight", spec.run_id))
@@ -116,8 +118,11 @@ class FakeSystemd:
         self.events.append(("terminal-preflight", spec.run_id, len(targets)))
         return self.terminal_preflight_result
 
-    def preflight_route(self, spec):
+    def preflight_route(self, spec, required_external_dependencies=()):
         self.events.append(("route-preflight", spec.run_id))
+        self.route_external_dependencies.append(
+            tuple(required_external_dependencies)
+        )
         return self.route_preflight_result
 
     def start(self, spec, *, wait):
@@ -416,6 +421,54 @@ class ReleaseApplicationTest(unittest.TestCase):
             ],
         )
 
+    def test_external_route_failure_stops_before_unit_submission(self):
+        systemd = FakeSystemd(
+            route_preflight_result=CommandResult(
+                ("route-preflight",),
+                78,
+                stdout=json.dumps(
+                    {
+                        "version": 2,
+                        "probe": "route",
+                        "status": "blocked",
+                        "proofs": [],
+                        "issues": ["pi5.external-tls:docker-auth"],
+                        "warnings": [],
+                        "metrics": {},
+                        "externalDependencies": {
+                            "required": ["docker-auth"],
+                            "rounds": 3,
+                            "successes": {"docker-auth": 2},
+                        },
+                    }
+                ),
+            )
+        )
+        control = FakeControl()
+        patches = (
+            patch.object(application, "_require_clean_worktree"),
+            patch.object(application, "_remote_inventory", return_value="inventory.yml"),
+            patch.object(application, "new_run_id", return_value=RUN_ID),
+            patch.object(application, "build_backends", return_value=(systemd, control)),
+            patch.object(
+                application,
+                "validate_remote_server_identity",
+                return_value={
+                    "host": "raspberrypi5",
+                    "clientId": "raspberrypi5-server",
+                },
+            ),
+        )
+        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+            with self.assertRaisesRegex(RuntimeError, "aggregate preflight blocked"):
+                application.launch(release_args(), runtime=Runtime)
+
+        self.assertNotIn("start", [event[0] for event in systemd.events])
+        self.assertEqual(
+            systemd.route_external_dependencies,
+            [application.BUILD_EXTERNAL_DEPENDENCY_IDS],
+        )
+
     def test_preflight_only_never_submits_a_release_unit(self):
         systemd = FakeSystemd()
         control = FakeControl()
@@ -465,6 +518,20 @@ class ReleaseApplicationTest(unittest.TestCase):
             payload["routeCoverage"],
             [stage.id for stage in application.ROUTE_STAGES],
         )
+        self.assertEqual(payload["readinessReview"]["status"], "passed")
+        self.assertEqual(payload["readinessReview"]["gateCount"], 8)
+        gates = {
+            gate["id"]: gate for gate in payload["readinessReview"]["gates"]
+        }
+        self.assertTrue(gates["route.external-server-build"]["applies_now"])
+        self.assertFalse(gates["terminal.selected-prerequisites"]["applies_now"])
+        self.assertIsNone(
+            gates["architecture.activation-executor"]["applies_now"]
+        )
+        self.assertEqual(
+            systemd.route_external_dependencies,
+            [application.BUILD_EXTERNAL_DEPENDENCY_IDS],
+        )
         self.assertEqual(
             systemd.events,
             [
@@ -472,6 +539,41 @@ class ReleaseApplicationTest(unittest.TestCase):
                 ("route-preflight", RUN_ID),
                 ("terminal-preflight", RUN_ID, 0),
             ],
+        )
+
+    def test_preflight_only_returns_json_when_local_preparation_fails(self):
+        with patch.object(
+            application,
+            "_require_clean_worktree",
+            side_effect=RuntimeError("raw local detail must not escape"),
+        ), patch("sys.stdout", new_callable=io.StringIO) as stdout:
+            outcome = application.launch(
+                release_args(preflight_only=True), runtime=Runtime
+            )
+
+        self.assertEqual(outcome, 70)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["status"], "incomplete")
+        self.assertFalse(payload["releaseSubmitted"])
+        self.assertEqual(payload["sha"], None)
+        self.assertEqual(
+            payload["probes"],
+            [
+                {
+                    "probe": "local",
+                    "status": "incomplete",
+                    "exitCode": 70,
+                    "issues": ["local.source-and-scope.incomplete"],
+                }
+            ],
+        )
+        self.assertNotIn("raw local detail", stdout.getvalue())
+        self.assertTrue(
+            next(
+                gate
+                for gate in payload["readinessReview"]["gates"]
+                if gate["id"] == "local.source-and-scope"
+            )["applies_now"]
         )
 
     def test_preflight_only_exposes_the_canonical_provisional_target_snapshot(self):
@@ -485,6 +587,7 @@ class ReleaseApplicationTest(unittest.TestCase):
         }
         snapshot = {
             "sha": SHA,
+            "classificationComponents": ["server-app"],
             "typedTargetPlanningEnabled": True,
             "activationExecutionEnabled": False,
             "verificationOnlyExecutionEnabled": False,
@@ -545,6 +648,38 @@ class ReleaseApplicationTest(unittest.TestCase):
             reverify_selected=False,
         )
         self.assertNotIn("start", [event[0] for event in systemd.events])
+        self.assertEqual(
+            systemd.route_external_dependencies,
+            [application.BUILD_EXTERNAL_DEPENDENCY_IDS],
+        )
+
+    def test_external_build_probe_applies_only_to_server_or_unknown_impact(self):
+        expected = application.BUILD_EXTERNAL_DEPENDENCY_IDS
+        self.assertEqual(application._required_external_dependencies(None), expected)
+        self.assertEqual(
+            application._required_external_dependencies(
+                {"classificationComponents": None}
+            ),
+            expected,
+        )
+        self.assertEqual(
+            application._required_external_dependencies(
+                {"classificationComponents": ["unknown"]}
+            ),
+            expected,
+        )
+        self.assertEqual(
+            application._required_external_dependencies(
+                {"classificationComponents": ["server-app"]}
+            ),
+            expected,
+        )
+        self.assertEqual(
+            application._required_external_dependencies(
+                {"classificationComponents": ["migration", "neutral"]}
+            ),
+            (),
+        )
 
     def test_disabled_activation_blocks_preflight_and_executor_promotion(self):
         spec = application.LaunchSpec(
@@ -566,8 +701,9 @@ class ReleaseApplicationTest(unittest.TestCase):
             ("route-preflight",),
             0,
             stdout=(
-                '{"version":1,"probe":"route","status":"passed",'
-                '"proofs":[],"issues":[],"warnings":[],"metrics":{}}'
+                '{"version":2,"probe":"route","status":"passed",'
+                '"proofs":[],"issues":[],"warnings":[],"metrics":{},'
+                '"externalDependencies":{"required":[],"rounds":3,"successes":{}}}'
             ),
         )
         activation = {
@@ -661,8 +797,9 @@ class ReleaseApplicationTest(unittest.TestCase):
             ("route-preflight",),
             0,
             stdout=(
-                '{"version":1,"probe":"route","status":"passed",'
-                '"proofs":[],"issues":[],"warnings":[],"metrics":{}}'
+                '{"version":2,"probe":"route","status":"passed",'
+                '"proofs":[],"issues":[],"warnings":[],"metrics":{},'
+                '"externalDependencies":{"required":[],"rounds":3,"successes":{}}}'
             ),
         )
         activation = {
@@ -773,8 +910,9 @@ class ReleaseApplicationTest(unittest.TestCase):
                 ("route-preflight",),
                 70,
                 stdout=(
-                    '{"version":1,"probe":"route","status":"incomplete",'
-                    '"proofs":[],"issues":["route.internal-error"],"warnings":[],"metrics":{}}'
+                    '{"version":2,"probe":"route","status":"incomplete",'
+                    '"proofs":[],"issues":["route.internal-error"],"warnings":[],'
+                    '"metrics":{},"externalDependencies":{"required":[],"rounds":3,"successes":{}}}'
                 ),
             ),
         )

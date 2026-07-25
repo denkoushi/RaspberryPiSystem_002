@@ -22,7 +22,11 @@ from .models import LaunchSpec
 from .planner import executor_selection, required_claim_kinds
 from .policy import server_identity
 from .reconcile import reconcile_status
-from .route_contract import ROUTE_STAGES
+from .route_contract import ROUTE_STAGES, readiness_review_payload
+from .route_preflight import (
+    BUILD_EXTERNAL_DEPENDENCY_IDS,
+    EXTERNAL_TLS_ROUNDS,
+)
 from .terminal_preflight_contract import build_target_contracts
 
 
@@ -269,7 +273,11 @@ def _probe_record(name: str, result: Any, *, structured: bool = False) -> dict[s
             payload = json.loads((result.stdout or "").strip())
         except (TypeError, json.JSONDecodeError):
             payload = None
-        if not isinstance(payload, dict) or payload.get("probe") != name:
+        if (
+            not isinstance(payload, dict)
+            or payload.get("probe") != name
+            or payload.get("version") != 2
+        ):
             record.update(
                 {
                     "status": "incomplete",
@@ -307,6 +315,52 @@ def _probe_record(name: str, result: Any, *, structured: bool = False) -> dict[s
             if isinstance(metrics, dict)
             else {}
         )
+        external_dependencies = payload.get("externalDependencies")
+        if not isinstance(external_dependencies, dict):
+            record.update(
+                {
+                    "status": "incomplete",
+                    "exitCode": EX_SOFTWARE,
+                    "issues": [f"{name}.invalid-external-dependencies"],
+                }
+            )
+        else:
+            required = external_dependencies.get("required")
+            rounds = external_dependencies.get("rounds")
+            successes = external_dependencies.get("successes")
+            if (
+                isinstance(required, list)
+                and required == sorted(required)
+                and len(required) == len(set(required))
+                and all(
+                    isinstance(value, str)
+                    and value in BUILD_EXTERNAL_DEPENDENCY_IDS
+                    for value in required
+                )
+                and type(rounds) is int
+                and rounds == EXTERNAL_TLS_ROUNDS
+                and isinstance(successes, dict)
+                and set(successes) == set(required)
+                and all(
+                    key in BUILD_EXTERNAL_DEPENDENCY_IDS
+                    and type(value) is int
+                    and 0 <= value <= rounds
+                    for key, value in successes.items()
+                )
+            ):
+                record["externalDependencies"] = {
+                    "required": required,
+                    "rounds": rounds,
+                    "successes": successes,
+                }
+            else:
+                record.update(
+                    {
+                        "status": "incomplete",
+                        "exitCode": EX_SOFTWARE,
+                        "issues": [f"{name}.invalid-external-dependencies"],
+                    }
+                )
         if payload.get("status") != status:
             record.update(
                 {
@@ -322,6 +376,24 @@ def _probe_record(name: str, result: Any, *, structured: bool = False) -> dict[s
     return record
 
 
+def _required_external_dependencies(
+    planning_snapshot: dict[str, Any] | None,
+) -> tuple[str, ...]:
+    """Fail closed only for plans that can require a server image build."""
+
+    if planning_snapshot is None:
+        return BUILD_EXTERNAL_DEPENDENCY_IDS
+    components = planning_snapshot.get("classificationComponents")
+    if (
+        not isinstance(components, list)
+        or any(type(component) is not str for component in components)
+    ):
+        return BUILD_EXTERNAL_DEPENDENCY_IDS
+    if set(components) & {"server-app", "unknown"}:
+        return BUILD_EXTERNAL_DEPENDENCY_IDS
+    return ()
+
+
 def _preflight_report(
     spec: LaunchSpec,
     *,
@@ -332,6 +404,7 @@ def _preflight_report(
     selected_target_roles: list[dict[str, str]],
     terminal_count: int,
     planning_snapshot: dict[str, Any] | None,
+    required_external_dependencies: tuple[str, ...] = (),
 ) -> tuple[int, dict[str, Any]]:
     probes = [
         _probe_record("migration", migration_result),
@@ -420,6 +493,28 @@ def _preflight_report(
                     "issues": ["verification-architecture.execution-disabled"],
                 }
             )
+    route_warnings = probes[1].get("warnings")
+    readiness_applicability: dict[str, bool | None] = {
+        "local.source-and-scope": True,
+        "migration.production-ledger": True,
+        "route.pi5-authority-and-resources": True,
+        "route.external-server-build": bool(required_external_dependencies),
+        "terminal.selected-prerequisites": terminal_count > 0,
+        "architecture.activation-executor": (
+            None
+            if planning_snapshot is None
+            else bool(planning_snapshot["activationTargets"])
+        ),
+        "architecture.verification-executor": (
+            None
+            if planning_snapshot is None
+            else bool(verification_only)
+        ),
+        "route.interrupted-run-recovery": (
+            isinstance(route_warnings, list)
+            and "pi5.interrupted-run-recovery-required" in route_warnings
+        ),
+    }
     if any(probe["status"] == "incomplete" for probe in probes):
         outcome = EX_SOFTWARE
         status = "incomplete"
@@ -442,11 +537,12 @@ def _preflight_report(
         "terminalCount": terminal_count,
         "releaseSubmitted": False,
         "routeCoverage": [stage.id for stage in ROUTE_STAGES],
+        "readinessReview": readiness_review_payload(readiness_applicability),
         "probes": probes,
     }
 
 
-def launch(args: Any, *, runtime: Any) -> int:
+def _launch(args: Any, *, runtime: Any) -> int:
     _require_clean_worktree(runtime=runtime)
     remote_inventory = _remote_inventory(args.inventory, runtime=runtime)
     runtime.run(["git", "-C", str(runtime.PROJECT), "fetch", "origin", args.branch])
@@ -509,7 +605,12 @@ def launch(args: Any, *, runtime: Any) -> int:
     ).validate()
     systemd, control = build_backends(runtime)
     migration_preflight = systemd.preflight_migrations(spec)
-    route_preflight = systemd.preflight_route(spec)
+    required_external_dependencies = _required_external_dependencies(
+        planning_snapshot
+    )
+    route_preflight = systemd.preflight_route(
+        spec, required_external_dependencies
+    )
     terminal_preflight_result = systemd.preflight_terminals(
         spec, terminal_preflight_targets
     )
@@ -525,6 +626,7 @@ def launch(args: Any, *, runtime: Any) -> int:
         ],
         terminal_count=len(terminal_preflight_targets),
         planning_snapshot=planning_snapshot,
+        required_external_dependencies=required_external_dependencies,
     )
     if getattr(args, "preflight_only", False):
         print(json.dumps(preflight_report, ensure_ascii=False, sort_keys=True))
@@ -573,3 +675,67 @@ def launch(args: Any, *, runtime: Any) -> int:
     if outcome == "cancelled":
         return 130
     return 1
+
+
+def _local_incomplete_preflight_report(args: Any) -> dict[str, Any]:
+    readiness_applicability = {
+        "local.source-and-scope": True,
+        "migration.production-ledger": None,
+        "route.pi5-authority-and-resources": None,
+        "route.external-server-build": None,
+        "terminal.selected-prerequisites": None,
+        "architecture.activation-executor": None,
+        "architecture.verification-executor": None,
+        "route.interrupted-run-recovery": None,
+    }
+    return {
+        "version": 1,
+        "preflightId": None,
+        "sha": None,
+        "inventory": getattr(args, "inventory", None),
+        "limit": getattr(args, "limit", None) or "",
+        "status": "incomplete",
+        "selectedHosts": [],
+        "targetPlanning": {
+            "status": "unavailable",
+            "typedTargetPlanningEnabled": None,
+            "activationExecutionEnabled": None,
+            "verificationOnlyExecutionEnabled": None,
+            "mutationTargets": None,
+            "activationTargets": None,
+            "verificationTargets": None,
+            "terminalWork": None,
+            "selectedClaimRequirements": None,
+        },
+        **executor_selection(preflight_passed=False),
+        "terminalCount": 0,
+        "releaseSubmitted": False,
+        "routeCoverage": [stage.id for stage in ROUTE_STAGES],
+        "readinessReview": readiness_review_payload(readiness_applicability),
+        "probes": [
+            {
+                "probe": "local",
+                "status": "incomplete",
+                "exitCode": EX_SOFTWARE,
+                "issues": ["local.source-and-scope.incomplete"],
+            }
+        ],
+    }
+
+
+def launch(args: Any, *, runtime: Any) -> int:
+    """Run launch, preserving one secret-free JSON result for diagnostic mode."""
+
+    if not getattr(args, "preflight_only", False):
+        return _launch(args, runtime=runtime)
+    try:
+        return _launch(args, runtime=runtime)
+    except Exception:
+        print(
+            json.dumps(
+                _local_incomplete_preflight_report(args),
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
+        return EX_SOFTWARE
