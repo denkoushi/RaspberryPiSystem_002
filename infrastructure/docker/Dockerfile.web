@@ -4,7 +4,14 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
 COPY apps/web/package.json apps/web/
 COPY packages ./packages
-RUN corepack enable && pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=raspi-pnpm-store,target=/pnpm/store,sharing=locked \
+  corepack enable \
+  && npm_config_fetch_retries=5 \
+    npm_config_fetch_retry_factor=1 \
+    npm_config_fetch_retry_mintimeout=2000 \
+    npm_config_fetch_retry_maxtimeout=5000 \
+    npm_config_fetch_timeout=30000 \
+    pnpm install --frozen-lockfile --store-dir=/pnpm/store --network-concurrency=4
 WORKDIR /app/packages/shared-types
 RUN pnpm build
 WORKDIR /app/packages/part-search-core
