@@ -9,7 +9,10 @@ import {
   PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID,
 } from './constants.js';
 import { normalizeProductionScheduleResourceCd } from './policies/resource-category-policy.service.js';
-import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
+import {
+  buildMaxProductNoLogicalKeyPartitionExprs,
+  buildMaxProductNoWinnerSelectionOrderBySql,
+} from './row-resolver/index.js';
 import { acquireProductionScheduleParentRowLockInTransaction } from './order-split/production-schedule-parent-row-lock.service.js';
 
 const CREATE_MANY_CHUNK_SIZE = 200;
@@ -18,6 +21,7 @@ const UPDATE_CHUNK_SIZE = 100;
 const REPLACEMENT_TX_TIMEOUT_MS = 60_000;
 const REPLACEMENT_TX_MAX_WAIT_MS = 15_000;
 const RETENTION_YEARS = 1;
+const SOURCE_RETENTION_DELETE_CHUNK_SIZE = 2_000;
 
 export type SupplementNormalizedRow = {
   sourceRowId: string;
@@ -209,9 +213,11 @@ export async function resolveWinnerIdByKey(
     })
   );
   const lookupKeysJson = JSON.stringify(lookupKeys);
+  const logicalKeyPartitionExprs = buildMaxProductNoLogicalKeyPartitionExprs('schedule_row');
+  const winnerOrderBy = buildMaxProductNoWinnerSelectionOrderBySql('schedule_row');
 
-  const winnerRows = await client.$queryRaw<WinnerKeyRow[]>`
-    WITH input_keys AS (
+  const winnerRows = await client.$queryRaw<WinnerKeyRow[]>(Prisma.sql`
+    WITH input_keys AS MATERIALIZED (
       SELECT DISTINCT
         "productNo",
         "resourceCd",
@@ -221,20 +227,32 @@ export async function resolveWinnerIdByKey(
         "resourceCd" text,
         "processOrder" text
       )
+    ),
+    ranked_schedule AS MATERIALIZED (
+      SELECT
+        "schedule_row"."id" AS "id",
+        NULLIF(BTRIM("schedule_row"."rowData"->>'ProductNo'), '') AS "productNo",
+        UPPER(BTRIM("schedule_row"."rowData"->>'FSIGENCD')) AS "resourceCd",
+        NULLIF(BTRIM("schedule_row"."rowData"->>'FKOJUN'), '') AS "processOrder",
+        ROW_NUMBER() OVER (
+          PARTITION BY ${Prisma.raw(logicalKeyPartitionExprs)}
+          ORDER BY ${Prisma.raw(winnerOrderBy)}
+        ) AS "winnerRank"
+      FROM "CsvDashboardRow" AS "schedule_row"
+      WHERE "schedule_row"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     )
     SELECT
-      "CsvDashboardRow"."id" AS "id",
-      "CsvDashboardRow"."rowData"->>'ProductNo' AS "productNo",
-      UPPER(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD')) AS "resourceCd",
-      BTRIM("CsvDashboardRow"."rowData"->>'FKOJUN') AS "processOrder"
-    FROM "CsvDashboardRow"
+      ranked_schedule."id",
+      ranked_schedule."productNo",
+      ranked_schedule."resourceCd",
+      ranked_schedule."processOrder"
+    FROM ranked_schedule
     INNER JOIN input_keys
-      ON input_keys."productNo" = "CsvDashboardRow"."rowData"->>'ProductNo'
-      AND input_keys."resourceCd" = UPPER(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD'))
-      AND input_keys."processOrder" = BTRIM("CsvDashboardRow"."rowData"->>'FKOJUN')
-    WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
-  `;
+      ON input_keys."productNo" = ranked_schedule."productNo"
+      AND input_keys."resourceCd" = ranked_schedule."resourceCd"
+      AND input_keys."processOrder" = ranked_schedule."processOrder"
+    WHERE ranked_schedule."winnerRank" = 1
+  `);
 
   const winnerIdByKey = new Map<string, string>();
   for (const row of winnerRows) {
@@ -245,6 +263,56 @@ export async function resolveWinnerIdByKey(
     winnerIdByKey.set(buildOrderSupplementKey({ productNo, resourceCd, processOrder }), row.id);
   }
   return winnerIdByKey;
+}
+
+/**
+ * Bounds the accumulated DEDUP source rows without removing usable work.
+ *
+ * The source dashboard has no date column, so `occurredAt` is the import time
+ * and cannot express the business retention period. Prefer the planned end
+ * date (then planned start date), and only expire a row when its exact key no
+ * longer has a current production-schedule winner. This keeps long-running
+ * current work, future work, and rows whose business date is unknown.
+ */
+export function collectExpiredUnmatchedSupplementSourceRowIds(params: {
+  normalizedRows: SupplementNormalizedRow[];
+  winnerIdByKey: ReadonlyMap<string, string>;
+  now: Date;
+}): string[] {
+  const retentionCutoff = new Date(params.now);
+  retentionCutoff.setUTCFullYear(retentionCutoff.getUTCFullYear() - RETENTION_YEARS);
+
+  return params.normalizedRows.flatMap((row) => {
+    const retentionBasis = row.plannedEndDate ?? row.plannedStartDate;
+    if (!retentionBasis || retentionBasis >= retentionCutoff) {
+      return [];
+    }
+    const key = buildOrderSupplementKey({
+      productNo: row.productNo,
+      resourceCd: row.resourceCd,
+      processOrder: row.processOrder,
+    });
+    return params.winnerIdByKey.has(key) ? [] : [row.sourceRowId];
+  });
+}
+
+export async function deleteExpiredUnmatchedSupplementSourceRows(
+  client: PrismaClient,
+  sourceRowIds: string[]
+): Promise<number> {
+  let deletedCount = 0;
+  for (let i = 0; i < sourceRowIds.length; i += SOURCE_RETENTION_DELETE_CHUNK_SIZE) {
+    const ids = sourceRowIds.slice(i, i + SOURCE_RETENTION_DELETE_CHUNK_SIZE);
+    if (ids.length === 0) continue;
+    const deleted = await client.csvDashboardRow.deleteMany({
+      where: {
+        id: { in: ids },
+        csvDashboardId: PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID,
+      },
+    });
+    deletedCount += deleted.count;
+  }
+  return deletedCount;
 }
 
 export function buildReplacementCreateInputs(
