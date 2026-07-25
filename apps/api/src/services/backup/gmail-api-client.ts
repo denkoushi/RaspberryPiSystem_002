@@ -94,8 +94,10 @@ export class GmailApiClient {
   private gmail: ReturnType<typeof google.gmail>;
   private readonly gate: GmailRequestGateService;
   private readonly allowWait: boolean;
+  private readonly requestTimeoutMs: number;
   private static readonly DEFAULT_PDF_FILENAME = 'document.pdf';
   private static readonly DEFAULT_HTML_FILENAME = 'document.html';
+  private static readonly DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
   constructor(
     oauth2Client: OAuth2Client,
@@ -106,21 +108,39 @@ export class GmailApiClient {
        * falseの場合、クールダウン中は即座にdeferする（scheduled用途向け）。
        */
       allowWait?: boolean;
+      /**
+       * Gmail API 1リクエストの上限時間。
+       * Google側の一部IPへ到達できない場合でも、スケジューラの実行ロックを永久保持しないために必須。
+       */
+      requestTimeoutMs?: number;
     }
   ) {
     this.gmail = google.gmail({ version: 'v1', auth: oauth2Client });
     this.gate = opts?.gate ?? new GmailRequestGateService();
     this.allowWait = opts?.allowWait ?? false;
+    const configuredTimeoutMs =
+      opts?.requestTimeoutMs ?? Number.parseInt(process.env.GMAIL_API_REQUEST_TIMEOUT_MS || '', 10);
+    this.requestTimeoutMs =
+      Number.isFinite(configuredTimeoutMs) && configuredTimeoutMs > 0
+        ? Math.floor(configuredTimeoutMs)
+        : GmailApiClient.DEFAULT_REQUEST_TIMEOUT_MS;
   }
 
   private async gateExecute<T>(operation: string, fn: () => Promise<T>): Promise<T> {
     return await this.gate.execute(operation, fn, { allowWait: this.allowWait });
   }
 
+  private requestOptions(): { retry: false; timeout: number } {
+    return {
+      retry: false,
+      timeout: this.requestTimeoutMs,
+    };
+  }
+
   private async findLabelIdByName(labelName: string): Promise<string | undefined> {
     const response = await this.gateExecute('gmail.users.labels.list', async () =>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (this.gmail.users.labels.list as any)({ userId: 'me' }, { retry: false })
+      (this.gmail.users.labels.list as any)({ userId: 'me' }, this.requestOptions())
     );
     const labels = response.data.labels || [];
     const found = labels.find((label: { id?: string; name?: string }) => label.name === labelName);
@@ -144,7 +164,7 @@ export class GmailApiClient {
             messageListVisibility: 'show',
           },
         },
-        { retry: false }
+        this.requestOptions()
       )
     );
 
@@ -180,7 +200,7 @@ export class GmailApiClient {
             q: query,
             maxResults: safeMaxResults,
           },
-          { retry: false }
+          this.requestOptions()
         )
       );
 
@@ -227,7 +247,7 @@ export class GmailApiClient {
               maxResults: 100,
               pageToken,
             },
-            { retry: false }
+            this.requestOptions()
           )
         );
 
@@ -273,7 +293,7 @@ export class GmailApiClient {
             id: messageId,
             format: 'minimal',
           },
-          { retry: false }
+          this.requestOptions()
         )
       );
       const raw = (response.data as { internalDate?: string })?.internalDate;
@@ -306,7 +326,7 @@ export class GmailApiClient {
             id: messageId,
             format: 'full',
           },
-          { retry: false }
+          this.requestOptions()
         )
       );
 
@@ -347,7 +367,7 @@ export class GmailApiClient {
             messageId,
             id: attachmentId,
           },
-          { retry: false }
+          this.requestOptions()
         )
       );
 
@@ -386,7 +406,7 @@ export class GmailApiClient {
               removeLabelIds: ['INBOX'],
             },
           },
-          { retry: false }
+          this.requestOptions()
         )
       );
 
@@ -419,7 +439,7 @@ export class GmailApiClient {
               removeLabelIds: ['UNREAD'],
             },
           },
-          { retry: false }
+          this.requestOptions()
         )
       );
 
@@ -454,13 +474,13 @@ export class GmailApiClient {
               addLabelIds: [processedLabelId],
             },
           },
-          { retry: false }
+          this.requestOptions()
         )
       );
 
       await this.gateExecute('gmail.users.messages.trash', async () =>
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (this.gmail.users.messages.trash as any)({ userId: 'me', id: messageId }, { retry: false })
+        (this.gmail.users.messages.trash as any)({ userId: 'me', id: messageId }, this.requestOptions())
       );
 
       logger?.info({ messageId }, '[GmailApiClient] Message trashed');
@@ -491,7 +511,7 @@ export class GmailApiClient {
         try {
           await this.gateExecute('gmail.users.messages.delete', async () =>
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (this.gmail.users.messages.delete as any)({ userId: 'me', id: messageId }, { retry: false })
+            (this.gmail.users.messages.delete as any)({ userId: 'me', id: messageId }, this.requestOptions())
           );
           deletedCount += 1;
         } catch (error) {
@@ -664,7 +684,7 @@ export class GmailApiClient {
               },
             },
           },
-          { retry: false }
+          this.requestOptions()
         )
       );
       const id = response.data.id as string | undefined;
@@ -697,7 +717,7 @@ export class GmailApiClient {
               raw: encodedMessage,
             },
           },
-          { retry: false }
+          this.requestOptions()
         )
       );
       const id = response.data.id as string | undefined;
