@@ -16,7 +16,14 @@ COPY packages/shared-types/package.json ./packages/shared-types/package.json
 COPY packages/part-search-core/package.json ./packages/part-search-core/package.json
 COPY packages/shelf-layout-core/package.json ./packages/shelf-layout-core/package.json
 
-RUN corepack enable && pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=raspi-pnpm-store,target=/pnpm/store,sharing=locked \
+  corepack enable \
+  && npm_config_fetch_retries=5 \
+    npm_config_fetch_retry_factor=1 \
+    npm_config_fetch_retry_mintimeout=2000 \
+    npm_config_fetch_retry_maxtimeout=5000 \
+    npm_config_fetch_timeout=30000 \
+    pnpm install --frozen-lockfile --store-dir=/pnpm/store --network-concurrency=4
 
 COPY apps/api ./apps/api
 COPY packages ./packages
@@ -67,8 +74,15 @@ COPY --from=base /app/packages/shared-types/package.json ./packages/shared-types
 COPY --from=base /app/packages/part-search-core/package.json ./packages/part-search-core/package.json
 COPY --from=base /app/packages/shelf-layout-core/package.json ./packages/shelf-layout-core/package.json
 WORKDIR /app
-RUN corepack enable \
-  && pnpm install --prod --recursive --frozen-lockfile
+RUN --mount=type=cache,id=raspi-pnpm-store,target=/pnpm/store,sharing=locked \
+  corepack enable \
+  && npm_config_fetch_retries=5 \
+    npm_config_fetch_retry_factor=1 \
+    npm_config_fetch_retry_mintimeout=2000 \
+    npm_config_fetch_retry_maxtimeout=5000 \
+    npm_config_fetch_timeout=30000 \
+    pnpm install --prod --recursive --frozen-lockfile \
+      --store-dir=/pnpm/store --network-concurrency=4
 
 # Chromium for Playwright (signage playwright_html, kiosk document HTML→PDF; bundled browser).
 # prod install 後に実行（playwright パッケージが node_modules に入った後）。

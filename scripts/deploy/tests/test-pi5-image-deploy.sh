@@ -610,6 +610,18 @@ grep -Fq 'BUILD_COMMIT=${REF}' "$SCRIPT" \
 grep -Fq 'LABEL org.opencontainers.image.revision=${BUILD_COMMIT}' \
   "$ROOT/infrastructure/docker/Dockerfile.api" "$ROOT/infrastructure/docker/Dockerfile.web" \
   || fail "candidate images do not seal their source revision"
+for dockerfile in \
+  "$ROOT/infrastructure/docker/Dockerfile.api" \
+  "$ROOT/infrastructure/docker/Dockerfile.web"; do
+  grep -Fq \
+    'mount=type=cache,id=raspi-pnpm-store,target=/pnpm/store,sharing=locked' \
+    "$dockerfile" \
+    || fail "$dockerfile does not preserve the content-addressed pnpm store across retries"
+  grep -Fq -- '--network-concurrency=4' "$dockerfile" \
+    || fail "$dockerfile does not bound pnpm network concurrency"
+  grep -Fq 'npm_config_fetch_retries=5' "$dockerfile" \
+    || fail "$dockerfile does not bound and retry pnpm fetches"
+done
 python3 - \
   "$ROOT/infrastructure/docker/Dockerfile.api" \
   "$ROOT/infrastructure/docker/Dockerfile.web" <<'PY'
