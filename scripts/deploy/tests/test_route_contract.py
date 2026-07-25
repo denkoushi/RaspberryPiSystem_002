@@ -5,8 +5,10 @@ import unittest
 from pathlib import Path
 
 from scripts.deploy.rolling_release.route_contract import (
+    READINESS_GATES,
     ROUTE_STAGES,
     registered_boundary_calls,
+    validate_readiness_gates,
     validate_route_contract,
 )
 
@@ -134,6 +136,22 @@ class RouteContractTest(unittest.TestCase):
         self.assertEqual(len(ROUTE_STAGES), len({stage.id for stage in ROUTE_STAGES}))
         self.assertTrue(all(stage.preflight_proof for stage in ROUTE_STAGES))
         self.assertTrue(all(stage.recovery_owner for stage in ROUTE_STAGES))
+
+    def test_every_readiness_gate_has_meaning_and_a_real_test_owner(self):
+        validate_readiness_gates()
+        self.assertEqual(
+            len(READINESS_GATES), len({gate.id for gate in READINESS_GATES})
+        )
+        self.assertEqual(
+            {gate.classification for gate in READINESS_GATES},
+            {"safety", "correctness", "warning"},
+        )
+        for gate in READINESS_GATES:
+            relative_path, method = gate.regression_test.split("::", 1)
+            path = PROJECT / relative_path
+            with self.subTest(gate=gate.id):
+                self.assertTrue(path.is_file(), path)
+                self.assertIn(method, test_methods(path))
 
     def test_terminal_commit_boundaries_name_typed_claim_proofs(self):
         stages = {stage.id: stage for stage in ROUTE_STAGES}

@@ -8,6 +8,7 @@ checks out source, runs a playbook, builds an image, or changes a service.
 """
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import fcntl
 import os
@@ -24,7 +25,7 @@ EX_SOFTWARE = 70
 EX_CONFIG = 78
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 RUN_ID_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$")
-EXPECTED_KEYS = frozenset(
+VERSION_1_KEYS = frozenset(
     {
         "version",
         "project",
@@ -34,7 +35,36 @@ EXPECTED_KEYS = frozenset(
         "expectedServerClientId",
     }
 )
+VERSION_2_KEYS = VERSION_1_KEYS | {"requiredExternalDependencies"}
 ALLOWED_UNTRACKED = frozenset({"?? power-actions/"})
+BUILD_EXTERNAL_DEPENDENCIES = {
+    "docker-auth": ("auth.docker.io", 443),
+    "docker-registry": ("registry-1.docker.io", 443),
+    "github": ("github.com", 443),
+    "go-proxy": ("proxy.golang.org", 443),
+    "npm-registry": ("registry.npmjs.org", 443),
+    "playwright-cdn": ("cdn.playwright.dev", 443),
+    "prisma-binaries": ("binaries.prisma.sh", 443),
+    "pypi-files": ("files.pythonhosted.org", 443),
+    "pypi-index": ("pypi.org", 443),
+}
+BUILD_EXTERNAL_DEPENDENCY_IDS = tuple(BUILD_EXTERNAL_DEPENDENCIES)
+EXTERNAL_TLS_ROUNDS = 3
+EXTERNAL_TLS_TIMEOUT_SECONDS = 5
+_TLS_PROBE_SOURCE = """\
+import socket
+import ssl
+import sys
+
+host = sys.argv[1]
+port = int(sys.argv[2])
+timeout = float(sys.argv[3])
+with socket.create_connection((host, port), timeout=timeout) as connection:
+    connection.settimeout(timeout)
+    context = ssl.create_default_context()
+    with context.wrap_socket(connection, server_hostname=host):
+        pass
+"""
 REQUIRED_CANDIDATE_ARTIFACTS = (
     "scripts/deploy/rolling_release/PROTOCOL",
     "scripts/deploy/rolling-release.py",
@@ -66,9 +96,14 @@ def parse_spec(raw: str) -> dict[str, Any]:
         payload = json.loads(raw)
     except (TypeError, json.JSONDecodeError) as error:
         raise RoutePreflightConfigError("route preflight is not valid JSON") from error
-    if not isinstance(payload, dict) or set(payload) != EXPECTED_KEYS:
-        raise RoutePreflightConfigError("route preflight fields do not match version 1")
-    if payload.get("version") != 1 or type(payload.get("version")) is not int:
+    if not isinstance(payload, dict):
+        raise RoutePreflightConfigError("route preflight must be an object")
+    version = payload.get("version")
+    expected_keys = {
+        1: VERSION_1_KEYS,
+        2: VERSION_2_KEYS,
+    }.get(version) if type(version) is int else None
+    if expected_keys is None or set(payload) != expected_keys:
         raise RoutePreflightConfigError("unsupported route preflight version")
     project = payload.get("project")
     run_id = payload.get("runId")
@@ -99,6 +134,18 @@ def parse_spec(raw: str) -> dict[str, Any]:
         r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", client_id
     ) is None:
         raise RoutePreflightConfigError("expectedServerClientId is malformed")
+    if version == 2:
+        dependencies = payload.get("requiredExternalDependencies")
+        if (
+            not isinstance(dependencies, list)
+            or any(type(value) is not str for value in dependencies)
+            or dependencies != sorted(dependencies)
+            or len(dependencies) != len(set(dependencies))
+            or any(value not in BUILD_EXTERNAL_DEPENDENCIES for value in dependencies)
+        ):
+            raise RoutePreflightConfigError(
+                "requiredExternalDependencies is malformed"
+            )
     return payload
 
 
@@ -157,6 +204,55 @@ def _memory_available_mb() -> int:
     memory_text = Path("/proc/meminfo").read_text(encoding="utf-8")
     match = re.search(r"^MemAvailable:\s+(\d+)\s+kB$", memory_text, re.MULTILINE)
     return int(match.group(1)) // 1024 if match else 0
+
+
+def _probe_external_dependency(dependency_id: str) -> bool:
+    """Run one certificate-validating TLS handshake in a time-bounded child."""
+
+    host, port = BUILD_EXTERNAL_DEPENDENCIES[dependency_id]
+    try:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                _TLS_PROBE_SOURCE,
+                host,
+                str(port),
+                str(EXTERNAL_TLS_TIMEOUT_SECONDS),
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=EXTERNAL_TLS_TIMEOUT_SECONDS + 2,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0
+
+
+def _probe_external_dependencies(
+    dependencies: Sequence[str],
+    probe: Callable[[str], bool],
+) -> dict[str, int]:
+    successes = {dependency_id: 0 for dependency_id in dependencies}
+    if not dependencies:
+        return successes
+    for _round in range(EXTERNAL_TLS_ROUNDS):
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=len(dependencies)
+        ) as executor:
+            futures = {
+                dependency_id: executor.submit(probe, dependency_id)
+                for dependency_id in dependencies
+            }
+            for dependency_id in dependencies:
+                try:
+                    passed = futures[dependency_id].result()
+                except Exception:
+                    passed = False
+                if passed is True:
+                    successes[dependency_id] += 1
+    return successes
 
 
 def _acquire_existing_fleet_lock(project: str) -> int:
@@ -240,6 +336,7 @@ def execute(
     disk_free_reader: Callable[[str], int] = _disk_free_mb,
     memory_available_reader: Callable[[], int] = _memory_available_mb,
     fleet_lock_acquirer: Callable[[str], int] = _acquire_existing_fleet_lock,
+    external_dependency_probe: Callable[[str], bool] = _probe_external_dependency,
 ) -> tuple[int, dict[str, Any]]:
     project = str(spec["project"])
     sha = str(spec["sha"])
@@ -247,6 +344,9 @@ def execute(
     proofs: list[str] = []
     warnings: list[str] = []
     fleet_lock_descriptor: int | None = None
+    required_external_dependencies = tuple(
+        str(value) for value in spec.get("requiredExternalDependencies", [])
+    )
 
     _add(issues, os.path.isdir(project), "pi5.project-directory")
     if os.path.isdir(project):
@@ -343,6 +443,20 @@ def execute(
         memory_mb = 0
     _add(issues, memory_mb >= 512, "pi5.memory-available")
 
+    external_successes = _probe_external_dependencies(
+        required_external_dependencies, external_dependency_probe
+    )
+    for dependency_id in required_external_dependencies:
+        _add(
+            issues,
+            external_successes[dependency_id] == EXTERNAL_TLS_ROUNDS,
+            f"pi5.external-tls:{dependency_id}",
+        )
+    if required_external_dependencies and all(
+        count == EXTERNAL_TLS_ROUNDS for count in external_successes.values()
+    ):
+        proofs.append("pi5.external-server-build-readiness")
+
     fleet_path = os.path.join(project, "logs", "deploy", "fleet-release-state.json")
     if os.path.exists(fleet_path):
         try:
@@ -411,7 +525,7 @@ def execute(
             ]
         )
     report = {
-        "version": 1,
+        "version": 2,
         "probe": "route",
         "sha": sha,
         "status": "passed" if not issues else "blocked",
@@ -419,6 +533,11 @@ def execute(
         "issues": issues,
         "warnings": warnings,
         "metrics": {"diskFreeMb": free_mb, "memoryAvailableMb": memory_mb},
+        "externalDependencies": {
+            "required": list(required_external_dependencies),
+            "rounds": EXTERNAL_TLS_ROUNDS,
+            "successes": external_successes,
+        },
     }
     if fleet_lock_descriptor is not None:
         os.close(fleet_lock_descriptor)
@@ -428,7 +547,24 @@ def execute(
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     if len(arguments) != 1:
-        print(json.dumps({"version": 1, "probe": "route", "status": "incomplete", "proofs": [], "issues": ["route.arguments"], "warnings": [], "metrics": {}}))
+        print(
+            json.dumps(
+                {
+                    "version": 2,
+                    "probe": "route",
+                    "status": "incomplete",
+                    "proofs": [],
+                    "issues": ["route.arguments"],
+                    "warnings": [],
+                    "metrics": {},
+                    "externalDependencies": {
+                        "required": [],
+                        "rounds": EXTERNAL_TLS_ROUNDS,
+                        "successes": {},
+                    },
+                }
+            )
+        )
         return EX_SOFTWARE
     try:
         spec = parse_spec(arguments[0])
@@ -436,13 +572,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (RoutePreflightConfigError, OSError, subprocess.SubprocessError):
         code = EX_SOFTWARE
         report = {
-            "version": 1,
+            "version": 2,
             "probe": "route",
             "status": "incomplete",
             "proofs": [],
             "issues": ["route.internal-error"],
             "warnings": [],
             "metrics": {},
+            "externalDependencies": {
+                "required": [],
+                "rounds": EXTERNAL_TLS_ROUNDS,
+                "successes": {},
+            },
         }
     print(json.dumps(report, ensure_ascii=True, sort_keys=True, separators=(",", ":")))
     return code

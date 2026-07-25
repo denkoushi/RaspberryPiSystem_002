@@ -229,7 +229,8 @@ class SystemdBackendTest(unittest.TestCase):
     def test_route_preflight_is_read_only_and_carries_the_exact_release_contract(self):
         backend, runner = self.backend()
 
-        result = backend.preflight_route(self.spec())
+        dependencies = ("docker-auth", "npm-registry")
+        result = backend.preflight_route(self.spec(), dependencies)
 
         self.assertEqual(result.returncode, 0)
         remote = self.remote_argv(runner)
@@ -249,6 +250,7 @@ class SystemdBackendTest(unittest.TestCase):
         self.assertEqual(payload['runId'], RUN_ID)
         self.assertEqual(payload['inventory'], 'inventory.yml')
         self.assertEqual(payload['expectedServerClientId'], 'raspberrypi5-server')
+        self.assertEqual(payload['requiredExternalDependencies'], list(dependencies))
 
     def test_exact_multiline_bootstrap_source_survives_ssh_quoting(self):
         runner = FakeRunner()
