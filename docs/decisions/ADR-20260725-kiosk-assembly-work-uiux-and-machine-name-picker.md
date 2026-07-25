@@ -142,7 +142,7 @@ network after validation.
 
 ## Open Items
 
-- Release readiness review、read-only preflight、標準Deploy、Deploy後確認。
+- なし。
 
 ## Implementation Result
 
@@ -157,3 +157,15 @@ shared-types/API/Web production build、`git diff --check` も合格した。
 約655px、履歴約203px、1920×1080相当でドキュメントペイン約967px、履歴約515pxとなり、
 全体横overflowは発生しなかった。機種名pickerも小さいviewport内に収まり、
 テンキーと補助文字のAND検索が動作した。
+
+最終SHA `5dbb98eb488009a6e9351bc0b898b3d39e4869e5` についてGitHubのCI、CodeQL、
+gitleaksと、Pi5および実対象キオスク6台のread-only preflightが成功した。標準Deploy
+run `20260725-150046-020a76` はPi5のBlue/Green安定監視、stonebase canary、
+残り5台のrolling activationを完了し、API/Webはいずれも `verified`、キオスク6台は
+全台 `success` となった。Deploy後の同一範囲print-planは対象0件、ヘルスAPIは
+`status: ok`、runtimeは `cleaned / verified / consistent` を返した。
+
+全inventory preflightで検出したsignage端末 `raspberrypi3` の低メモリは、この変更の
+mutation、activation、verification対象外であることをprint-planと契約に照らして確認し、
+同端末を触らない明示範囲でDeployした。安全基準、canary hold、rollback、証跡確認は
+緩和していない。Prisma migrationと本番DB schema変更はない。

@@ -2,7 +2,7 @@
 title: キオスク組立作業 UI/UX・機種名選択改善 ExecPlan
 tags: [kiosk, assembly, uiux, machine-name, execplan]
 audience: [operator, developer, reviewer]
-last-verified: 2026-07-25
+last-verified: 2026-07-26
 related:
   - ../decisions/ADR-20260725-kiosk-assembly-work-uiux-and-machine-name-picker.md
   - ../design-previews/kiosk-assembly-work-uiux-preview.html
@@ -45,9 +45,11 @@ this change can continue from the repository alone.
 - [x] (2026-07-25) 新規・雛形作成の機種名選択ダイアログを実装した。
 - [x] (2026-07-25) focused tests、全API/Webテスト、lint、build、
   隔離Docker/Postgres検証、製品React画面の寸法・目視確認を完了した。
-- [ ] Deploy対象SHAを確定し、Release readiness reviewとread-only preflightを
-  通過させてから標準Deployを実行する。
-- [ ] Deploy後確認と本計画の最終結果を反映する。
+- [x] (2026-07-26) Deploy対象SHA `5dbb98eb488009a6e9351bc0b898b3d39e4869e5`
+  を確定し、Release readiness review、GitHub required checks、実対象すべての
+  read-only preflightを通過させた。
+- [x] (2026-07-26) 標準Deploy run `20260725-150046-020a76` を実行し、
+  API/Webと対象キオスク6台の検証、Deploy後のno-op再計画まで完了した。
 
 ## Surprises & Discoveries
 
@@ -89,6 +91,21 @@ this change can continue from the repository alone.
   1366×768と1920×1080の同じassertionで失敗した。製品画面のsnapshotは新見出しを正常に
   表示しており、期待値を正式表示名へ更新後、同specの6テストがローカルChromiumで合格した。
   Evidence: GitHub Actions run `30161991786`、job `89688728013` とローカルfocused E2E。
+- Observation: 最終SHAのrequired checksはCI `30162222742`、CodeQL
+  `30162223659`、gitleaks `30162224702` がすべて成功した。初回E2Eの旧文言期待以外に、
+  新API、UI、cache、build成果物を阻害する問題は検出されなかった。
+- Observation: 全inventoryを指定しない最終preflightは、今回のmutation、activation、
+  verification対象ではない `raspberrypi3` のavailable memoryが120MB基準を下回ったため
+  fail-closedで停止した。read-only再計測は約110〜119MBで、同端末を実際の作業対象へ
+  含める根拠はなかった。
+  Evidence: 最終print-planで同端末はsignageかつ対象外。実作業対象はPi5とキオスク6台で、
+  それぞれのread-only preflight run `20260725-145120-ed00ed`、
+  `20260725-145335-c8d870`、`20260725-145443-517dc6`、
+  `20260725-145546-199ae9`、`20260725-145643-5eb1df`、
+  `20260725-145746-66647c`、`20260725-145845-3ea97d` が成功した。
+- Observation: ローカルMacのNode engine警告とは独立して、本番candidate imageは
+  repository指定どおりNode 20でbuildされ、API/WebのBlue/Green安定監視を通過した。
+  したがってローカルNode 18警告は本releaseのruntime機能ブロッカーではなかった。
 
 ## Decision Log
 
@@ -131,6 +148,12 @@ this change can continue from the repository alone.
   Rationale: 実装ごとに異なる新しい失敗点もDeploy開始前にまとめて解消し、
   実行中の個別修正と後戻りを避けるため。
   Date/Author: 2026-07-25 / User and Codex
+- Decision: DeployはPi5と、print-planがactivation/verification対象としたキオスク6台を
+  明示した標準 `--limit` で実行し、signageの `raspberrypi3` は変更も検証も行わない。
+  memory基準、canary hold、rollback、端末証跡のいずれも緩和・迂回しない。
+  Rationale: NG基準は実害と適用対象を一致させる必要がある。今回の変更を受け取らない
+  signage端末の低メモリは別途扱うべき運用課題であり、本releaseの安全性を表さない。
+  Date/Author: 2026-07-26 / Codex
 
 ## Outcomes & Retrospective
 
@@ -140,8 +163,14 @@ V3デザインプレビュー承認後、作業画面、共通テーマ、機種
 shared-types/API/Web buildも完了した。製品React画面は2解像度で横overflowなし、
 ドキュメント領域と履歴領域の拡大、ダイアログ内包を確認した。
 
-残る作業はRelease readiness review、read-only preflight、標準Deploy、Deploy後の
-稼働確認である。
+Deploy前にはdeploy safety 841テスト、terminal profile contract 24テスト、
+隔離Postgresのdeploy-status 20テスト、Ansible契約と最終GitHub required checksを
+通過させた。対象範囲をPi5とキオスク6台へ確定し、各対象のread-only preflight成功後、
+標準Deploy run `20260725-150046-020a76` を実行した。Pi5は新SHAへBlue/Green切替後、
+5分の安定監視とcleanupまで成功し、キオスクはstonebaseをcanaryとして検証後に残る
+5台をrolling activationした。最終状態はAPI/Webが `verified`、全6台が `success`、
+failureなしである。Deploy後の同一範囲print-planは `targets: []`、ヘルスAPIは
+`status: ok`、Blue/Green runtimeは `cleaned / verified / consistent` となった。
 
 ## Context and Orientation
 
@@ -314,6 +343,18 @@ trapで削除する。migrationは一時DBにのみ `migrate deploy` する。�
   - Browser実測は1366×769（要求768に対してemulation丸め1px）と
     1919×1080（要求1920に対して丸め1px）で、双方ともdocument rootの横overflowなし。
   - 機種名pickerは1366×769のviewport内に収まり、数字`3`と文字`KP`のAND検索を確認した。
+- Release evidence:
+  - Deploy SHA: `5dbb98eb488009a6e9351bc0b898b3d39e4869e5`。
+  - Standard Deploy run: `20260725-150046-020a76`、
+    unit: `raspi-release-20260725-150046-020a76.service`。
+  - Pi5 API/Webは5分間の安定監視を含むBlue/Green releaseを通過し、
+    control-plane claimsはいずれも `verified`。
+  - Canary `raspi4-kensaku-stonebase01` と、`raspberrypi4`、
+    `raspi4-robodrill01`、`raspi4-fjv60-80`、`raspi4-sessaku-01`、
+    `raspi4-assembly-01` は全台 `success`。
+  - 終了状態は `state: success`、`phase: completed`、systemd result `success`、
+    failureなし。Deploy後print-planはmutation、activation、verification対象が0件。
+  - Prisma migrationは追加しておらず、本番DB schema変更も発生していない。
 
 ## Interfaces and Dependencies
 
@@ -340,3 +381,6 @@ Web API関数 `listAssemblyMachineNameCandidates`、同DTO、作業用
 実測値を追記した。またユーザーの明示許可に従い、終点をRelease readiness review、
 標準Deploy、Deploy後確認まで拡張した。これはDeploy開始後の個別修正と後戻りを避ける
 ため、今回新たに加わったAPI、cache、UI、build成果物を実機変更前に一括監査するためである。
+
+2026-07-26に、最終required checks、対象別preflight、NG基準の適用範囲判断、標準Deploy、
+canary承認、全対象の最終証跡、no-op再計画を追記し、本ExecPlanを完了した。
