@@ -6,10 +6,10 @@
 |-------|-------|
 | id | KB-391 |
 | status | active |
-| scope | Gmail csvDashboards scheduled import, FKOJUNST_Status mail ingest, admin CSV import schedule UI |
-| date | 2026-06-18 |
+| scope | Gmail csvDashboards scheduled import, FKOJUNST_Status mail ingest, OrderSupplement projection, admin CSV import schedule UI |
+| date | 2026-07-25 |
 | source_of_truth | this file |
-| related_code | `fkojunst-status-mail-critical-lock.ts`, `fkojunst-status-mail-ingest-publication.ts`, `import-schedule-policy.ts`, `CsvImportSchedulePage.tsx`, `csv-dashboard-ingestor.ts`, `gmail-api-client.ts` |
+| related_code | `fkojunst-status-mail-critical-lock.ts`, `fkojunst-status-mail-ingest-publication.ts`, `import-schedule-policy.ts`, `CsvImportSchedulePage.tsx`, `csv-dashboard-ingestor.ts`, `gmail-api-client.ts`, `order-supplement-sync.pipeline.ts` |
 | related_docs | [csv-import-export.md](../guides/csv-import-export.md), [deployment.md](../guides/deployment.md) |
 
 ## Context
@@ -42,7 +42,35 @@ Some Gmail csvDashboards CSV imports were skipped or failed silently in producti
 - `GmailApiClient` now applies `GMAIL_API_REQUEST_TIMEOUT_MS` to every Gmail API call, defaulting to 30 seconds.
 - Installed `gaxios 7.1.3` converts this option to `AbortSignal.timeout()`.
 - Validation: Gmail client/orchestrator tests **26 passed**, API TypeScript build passed, targeted ESLint passed, and `git diff --check` passed.
-- Production deployment and backlog verification are pending explicit approval and successful CI for an immutable branch/SHA.
+- The fix from PR **#1076** was included in immutable main SHA **`01ff7e46d056e2155eae8f19a11db21d75244f37`** and deployed to Pi5 by standard run **`20260725-052801-50f15e`**. The 15:15 MeasuringInstrumentLoans cycle released the lock and the 15:21 machine-inspection cycle completed.
+
+## OrderSupplement backlog projection follow-up (2026-07-25)
+
+### Symptoms Or Trigger
+
+- After the Gmail request-timeout fix and router restart restored downloads, `ProductionSchedule_OrderSupplement` ingested one 22,843-row message but remained inside post-ingest projection.
+- PostgreSQL stayed near 100% CPU on `resolveWinnerIdByKey()` for more than 22 minutes.
+- The shared `GmailImportOrchestrator` lock caused the 15:30 MeasuringInstrumentLoans and rigging jobs, the 15:36 machine-inspection job, and later jobs to skip.
+
+### Investigation And Root Cause
+
+- Production contained 59,141 main production-schedule rows and 111,975 accumulated OrderSupplement source rows.
+- The old query passed every supplemental triple through `jsonb_to_recordset`, joined candidate rows, and evaluated the correlated maximum-ProductNo winner subquery repeatedly.
+- A normalized expression-index variant still exceeded a bounded 30-second probe under production load, so changing only the candidate predicate did not remove the cardinality multiplier.
+- The ten queued MeasuringInstrumentLoans attachments were a separate upstream-input condition: every saved file was exactly three bytes and contained only UTF-8 BOM bytes. Adding a header alias would not make those files valid.
+
+### Fix And Validation
+
+- `resolveWinnerIdByKey()` now ranks the main production rows once with `ROW_NUMBER()`, using the existing canonical logical-key partition and maximum-ProductNo ordering helpers, then joins supplemental keys to the materialized winners.
+- The data model, Gmail behavior, and winner rule are unchanged; no migration is required.
+- Existing generic retention did not enforce a rolling year for this source: all 111,975 source rows had import timestamps from April–July 2026 even though their planned business dates span 2025–2027.
+- After a successful supplement sync, source rows are now pruned only when the planned end date (falling back to planned start date) is older than one rolling year **and** the exact key has no current production-schedule winner. Current long-running work, future/recent work, and unknown-date rows are retained. Cleanup is dashboard-scoped, chunked, and warning-only so it cannot block Gmail throughput.
+- Focused unit tests pass, including a SQL-shape contract that prevents reintroducing per-key winner evaluation.
+- Disposable PostgreSQL integration proves that only the maximum-ProductNo row of a duplicate logical key receives the supplement and that old unmatched source data is deleted while an old current-key row is retained.
+- At production-scale synthetic cardinality (59,141 main rows and 111,975 supplemental keys), the old query exceeded a 15-second timeout; the new query returned the expected 20,000 winners in 420.180 ms.
+- Production had 3,728 source rows eligible by business date before applying the current-winner protection.
+- The old 15:24 JST in-flight cycle eventually completed at 15:56 JST; the 16:00 rigging cycle then started, confirming that the shared lock released without forced termination.
+- Production deployment and scheduler-drain verification remain pending the PR and exact-main CI.
 
 ## Symptoms Or Trigger
 
@@ -181,8 +209,9 @@ Per [csv-import-export.md §Gmail csvDashboards スケジュール衝突](../gui
 - [ ] Confirm production admin shows collision warnings for current enabled Gmail schedules (operator visual check).
 - [ ] Monitor next **scheduled** FKOJUNST_Status cycle at production cron **`43 6 * * *`** (operator-set; was `43 4 * * *`).
 - [ ] If post-ingest `createMany` timeout recurs at ~80k rows, extend or batch `fkojunst-status-mail-sync.pipeline` (not observed on 2026-06-18 admin manual run).
-- [ ] Deploy the Gmail API request-timeout fix to Pi5 through the standard rolling workflow, then verify the orchestrator lock releases on a deliberately unreachable endpoint or observed transport timeout.
-- [ ] Verify queued Gmail CSV messages drain successfully and investigate the Pi5/router/ISP path failure to part of the Google frontend IPv4 set.
+- [x] Deploy the Gmail API request-timeout fix to Pi5 through the standard rolling workflow; the 15:15 MeasuringInstrumentLoans cycle released the shared lock and the 15:21 machine-inspection cycle completed.
+- [x] Recover the common Pi5/Pi4 outbound path by restarting the router after read-only cross-device probes confirmed the same failure; release-readiness external probes then passed 27/27.
+- [ ] Deploy the OrderSupplement one-pass winner lookup and verify the backlog drains without later schedules being skipped.
 
 ## Local Notes JA
 

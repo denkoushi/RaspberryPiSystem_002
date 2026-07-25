@@ -237,4 +237,132 @@ describe('order-supplement-sync.service (integration)', () => {
     expect(splits.map((split) => split.splitQuantity)).toEqual([2, 3]);
     expect(splits.reduce((sum, split) => sum + split.splitQuantity, 0)).toBe(5);
   });
+
+  it('同一論理キーでは最大ProductNoのwinnerだけを補助行へ照合する', async () => {
+    const mainRows = await Promise.all(
+      [
+        { suffix: 'low', productNo: '1000000001' },
+        { suffix: 'high', productNo: '1000000002' },
+      ].map(({ suffix, productNo }) =>
+        prisma.csvDashboardRow.create({
+          data: {
+            csvDashboardId: MAIN_DASHBOARD_ID,
+            occurredAt: new Date('2026-06-20T00:00:00.000Z'),
+            dataHash: `${DATA_HASH_PREFIX}-winner-${suffix}-main`,
+            rowData: {
+              ProductNo: productNo,
+              FSEIBAN: 'SYNC-WINNER',
+              FHINCD: 'PART-WINNER',
+              FSIGENCD: '503',
+              FKOJUN: '200',
+            },
+          },
+          select: { id: true },
+        })
+      )
+    );
+
+    await prisma.csvDashboardRow.createMany({
+      data: [
+        {
+          csvDashboardId: SUPPLEMENT_DASHBOARD_ID,
+          occurredAt: new Date('2026-06-20T00:00:00.000Z'),
+          dataHash: `${DATA_HASH_PREFIX}-winner-low-source`,
+          rowData: {
+            ProductNo: '1000000001',
+            FSIGENCD: '503',
+            FKOJUN: '200',
+            plannedQuantity: '1',
+          },
+        },
+        {
+          csvDashboardId: SUPPLEMENT_DASHBOARD_ID,
+          occurredAt: new Date('2026-06-20T00:00:00.000Z'),
+          dataHash: `${DATA_HASH_PREFIX}-winner-high-source`,
+          rowData: {
+            ProductNo: '1000000002',
+            FSIGENCD: '503',
+            FKOJUN: '200',
+            plannedQuantity: '2',
+          },
+        },
+      ],
+    });
+
+    const result = await new ProductionScheduleOrderSupplementSyncService().syncFromSupplementDashboard();
+    const supplements = await prisma.productionScheduleOrderSupplement.findMany({
+      where: {
+        csvDashboardRowId: { in: mainRows.map((row) => row.id) },
+      },
+      select: {
+        csvDashboardRowId: true,
+        productNo: true,
+        plannedQuantity: true,
+      },
+    });
+
+    expect(result).toEqual({
+      scanned: 2,
+      normalized: 2,
+      matched: 1,
+      unmatched: 1,
+      upserted: 1,
+      pruned: 0,
+    });
+    expect(supplements).toEqual([
+      {
+        csvDashboardRowId: mainRows[1]?.id,
+        productNo: '1000000002',
+        plannedQuantity: 2,
+      },
+    ]);
+  });
+
+  it('1年超のsource行は未照合だけ削除し、現行日程に残る長期案件は保持する', async () => {
+    await prisma.csvDashboardRow.create({
+      data: {
+        csvDashboardId: MAIN_DASHBOARD_ID,
+        occurredAt: new Date('2026-07-20T00:00:00.000Z'),
+        dataHash: `${DATA_HASH_PREFIX}-retention-current-main`,
+        rowData: {
+          ProductNo: '1000000010',
+          FSEIBAN: 'SYNC-RETENTION',
+          FHINCD: 'PART-RETENTION',
+          FSIGENCD: '503',
+          FKOJUN: '200',
+        },
+      },
+    });
+    const sourceRows = await Promise.all(
+      [
+        { suffix: 'current', productNo: '1000000010' },
+        { suffix: 'unmatched', productNo: '1000000011' },
+      ].map(({ suffix, productNo }) =>
+        prisma.csvDashboardRow.create({
+          data: {
+            csvDashboardId: SUPPLEMENT_DASHBOARD_ID,
+            occurredAt: new Date('2026-07-20T00:00:00.000Z'),
+            dataHash: `${DATA_HASH_PREFIX}-retention-${suffix}-source`,
+            rowData: {
+              ProductNo: productNo,
+              FSIGENCD: '503',
+              FKOJUN: '200',
+              plannedQuantity: '1',
+              plannedStartDate: '2024-01-01',
+              plannedEndDate: '2024-12-31',
+            },
+          },
+          select: { id: true },
+        })
+      )
+    );
+
+    await new ProductionScheduleOrderSupplementSyncService().syncFromSupplementDashboard();
+
+    const retainedRows = await prisma.csvDashboardRow.findMany({
+      where: { id: { in: sourceRows.map((row) => row.id) } },
+      select: { id: true },
+    });
+    expect(retainedRows.map((row) => row.id)).toEqual([sourceRows[0]?.id]);
+  });
 });

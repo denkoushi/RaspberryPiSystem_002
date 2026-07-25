@@ -3,10 +3,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID, PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID } from '../constants.js';
 import { ProductionScheduleOrderSupplementSyncService } from '../order-supplement-sync.service.js';
-import { resolveWinnerIdByKey, toSupplementNormalizedRow } from '../order-supplement-sync.pipeline.js';
+import {
+  buildOrderSupplementKey,
+  collectExpiredUnmatchedSupplementSourceRowIds,
+  resolveWinnerIdByKey,
+  toSupplementNormalizedRow,
+} from '../order-supplement-sync.pipeline.js';
 
 type PrismaMock = {
-  csvDashboardRow: { findMany: ReturnType<typeof vi.fn> };
+  csvDashboardRow: {
+    findMany: ReturnType<typeof vi.fn>;
+    deleteMany: ReturnType<typeof vi.fn>;
+  };
   productionScheduleOrderSupplement: {
     findMany: ReturnType<typeof vi.fn>;
     deleteMany: ReturnType<typeof vi.fn>;
@@ -31,6 +39,7 @@ const { prismaMock } = vi.hoisted(() => {
   const mock: PrismaMock = {
     csvDashboardRow: {
       findMany: vi.fn(),
+      deleteMany: vi.fn(),
     },
     productionScheduleOrderSupplement: {
       findMany: vi.fn(),
@@ -66,6 +75,7 @@ describe('order-supplement-sync.service', () => {
       fn(prismaMock)
     );
     prismaMock.productionScheduleOrderSupplement.findMany.mockResolvedValue([] as never);
+    prismaMock.csvDashboardRow.deleteMany.mockResolvedValue({ count: 0 } as never);
     prismaMock.productionScheduleOrderSupplement.deleteMany.mockResolvedValue({ count: 0 } as never);
     prismaMock.productionScheduleOrderSupplement.createMany.mockResolvedValue({ count: 0 } as never);
     prismaMock.productionScheduleOrderSupplement.update.mockResolvedValue({ id: 'updated-1' } as never);
@@ -100,6 +110,59 @@ describe('order-supplement-sync.service', () => {
     expect(normalized?.plannedEndDate?.toISOString()).toBe('2027-03-05T00:00:00.000Z');
   });
 
+  it('1年超かつ照合先がないsource行だけを保持期間削除の候補にする', () => {
+    const currentWinnerKey = buildOrderSupplementKey({
+      productNo: 'CURRENT',
+      resourceCd: 'R1',
+      processOrder: '10',
+    });
+    const baseRow = {
+      plannedQuantity: 1,
+      plannedStartDate: null,
+    };
+
+    const candidates = collectExpiredUnmatchedSupplementSourceRowIds({
+      normalizedRows: [
+        {
+          ...baseRow,
+          sourceRowId: 'expired-unmatched',
+          productNo: 'OLD',
+          resourceCd: 'R1',
+          processOrder: '10',
+          plannedEndDate: new Date('2025-06-30T00:00:00.000Z'),
+        },
+        {
+          ...baseRow,
+          sourceRowId: 'expired-current-long-running',
+          productNo: 'CURRENT',
+          resourceCd: 'R1',
+          processOrder: '10',
+          plannedEndDate: new Date('2025-06-30T00:00:00.000Z'),
+        },
+        {
+          ...baseRow,
+          sourceRowId: 'future-unmatched',
+          productNo: 'FUTURE',
+          resourceCd: 'R1',
+          processOrder: '10',
+          plannedEndDate: new Date('2027-06-30T00:00:00.000Z'),
+        },
+        {
+          ...baseRow,
+          sourceRowId: 'unknown-date-unmatched',
+          productNo: 'UNKNOWN',
+          resourceCd: 'R1',
+          processOrder: '10',
+          plannedEndDate: null,
+        },
+      ],
+      winnerIdByKey: new Map([[currentWinnerKey, 'winner-current']]),
+      now: new Date('2026-07-25T00:00:00.000Z'),
+    });
+
+    expect(candidates).toEqual(['expired-unmatched']);
+  });
+
   it('winner lookup は大量キーでも bind 変数数を増やさず JSON 1 引数で渡す', async () => {
     vi.mocked(prisma.$queryRaw).mockResolvedValue([] as never);
     const rows = Array.from({ length: 40_000 }, (_, index) => ({
@@ -115,10 +178,43 @@ describe('order-supplement-sync.service', () => {
     await resolveWinnerIdByKey(prisma as never, rows);
 
     const queryArgs = vi.mocked(prisma.$queryRaw).mock.calls[0] ?? [];
-    const lookupKeysJson = queryArgs.find((arg): arg is string => typeof arg === 'string' && arg.startsWith('[{'));
+    const query = queryArgs[0] as { values?: unknown[] } | undefined;
+    const lookupKeysJson = query?.values?.find(
+      (arg): arg is string => typeof arg === 'string' && arg.startsWith('[{')
+    );
     expect(lookupKeysJson).toBeDefined();
     expect(JSON.parse(lookupKeysJson ?? '[]')).toHaveLength(40_000);
-    expect(queryArgs.length).toBeLessThan(10);
+    expect(query?.values?.length).toBeLessThan(10);
+  });
+
+  it('winner lookup は全行を1回だけ順位付けして既存winner規則を保つ', async () => {
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([] as never);
+
+    await resolveWinnerIdByKey(prisma as never, [
+      {
+        sourceRowId: 'src-index-contract',
+        productNo: '0003602728',
+        resourceCd: '035',
+        processOrder: '210',
+        plannedQuantity: 1,
+        plannedStartDate: null,
+        plannedEndDate: null,
+      },
+    ]);
+
+    const queryArgs = vi.mocked(prisma.$queryRaw).mock.calls[0] ?? [];
+    const query = queryArgs[0] as { strings?: readonly string[] } | undefined;
+    const sql = query?.strings?.join(' ? ') ?? '';
+
+    expect(sql).toContain('ranked_schedule AS MATERIALIZED');
+    expect(sql).toContain('ROW_NUMBER() OVER');
+    expect(sql).toContain(
+      `PARTITION BY COALESCE("schedule_row"."rowData"->>'FSEIBAN', ''), COALESCE("schedule_row"."rowData"->>'FHINCD', ''), COALESCE("schedule_row"."rowData"->>'FSIGENCD', ''), COALESCE("schedule_row"."rowData"->>'FKOJUN', '')`
+    );
+    expect(sql).toContain(`WHEN ("schedule_row"."rowData"->>'ProductNo') ~ '^[0-9]+$'`);
+    expect(sql).toContain('"schedule_row"."createdAt" DESC');
+    expect(sql).toContain('"schedule_row"."id" DESC');
+    expect(sql).toContain('WHERE ranked_schedule."winnerRank" = 1');
   });
 
   it('AA1S2M02 / 0003602728 の生産システム列名予定日を winner 行へ 2027 年予定日として反映する', async () => {
@@ -293,6 +389,31 @@ describe('order-supplement-sync.service', () => {
     expect(result.upserted).toBe(0);
     expect(prisma.productionScheduleOrderSupplement.createMany).not.toHaveBeenCalled();
     expect(prisma.productionScheduleOrderSupplement.update).not.toHaveBeenCalled();
+  });
+
+  it('1年超で照合不能なsource行は補助同期成功後に削除する', async () => {
+    vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([
+      {
+        id: 'src-expired',
+        rowData: {
+          ProductNo: '0000000001',
+          FSIGENCD: 'R99',
+          FKOJUN: '999',
+          plannedEndDate: '2024-01-31',
+        },
+      },
+    ] as never);
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([] as never);
+    vi.mocked(prisma.csvDashboardRow.deleteMany).mockResolvedValue({ count: 1 } as never);
+
+    await new ProductionScheduleOrderSupplementSyncService().syncFromSupplementDashboard();
+
+    expect(prisma.csvDashboardRow.deleteMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['src-expired'] },
+        csvDashboardId: PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID,
+      },
+    });
   });
 
   it('既存manual着手日はCSV同期で上書きしない', async () => {
