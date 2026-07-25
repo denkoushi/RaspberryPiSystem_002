@@ -22,6 +22,7 @@ LOAD_WAIT_SECONDS="${PI5_CANDIDATE_LOAD_WAIT_SECONDS:-180}"
 EVIDENCE_TTL_SECONDS="${PI5_CANDIDATE_EVIDENCE_TTL_SECONDS:-300}"
 BUILD_ATTEMPTS=3
 BUILD_RETRY_DELAY_SECONDS=5
+BUILD_ATTEMPT_TIMEOUT_SECONDS=1800
 DRY_RUN="${PI5_DEPLOY_DRY_RUN:-0}"
 REF=""
 RUN_ID=""
@@ -102,6 +103,8 @@ validate_protocol_policy() {
   [[ "$LOAD_SAMPLE_INTERVAL_SECONDS" == 20 ]] || die 'rolling-release candidate load sample interval is fixed at 20 seconds'
   [[ "$LOAD_WAIT_SECONDS" == 180 ]] || die 'rolling-release candidate load wait timeout is fixed at 180 seconds'
   [[ "$EVIDENCE_TTL_SECONDS" == 300 ]] || die 'rolling-release candidate evidence TTL is fixed at 300 seconds'
+  [[ "$BUILD_ATTEMPT_TIMEOUT_SECONDS" == 1800 ]] \
+    || die 'rolling-release candidate image build timeout is fixed at 1800 seconds'
   for control_name in DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_DEFAULT_PLATFORM \
     BUILDKIT_HOST BUILDX_CONFIG COMPOSE_FILE COMPOSE_PROJECT_NAME COMPOSE_PROFILES \
     COMPOSE_ENV_FILES COMPOSE_PATH_SEPARATOR; do
@@ -950,10 +953,15 @@ build_candidate_service_with_retry() {
   local attempt
   shift 3
   local -a build_args=("$@")
+  local -a compose_files=(-f "$BASE_COMPOSE" -f "$PHASE2_COMPOSE")
+  [[ -z "$BUILD_OVERRIDE" ]] || compose_files+=(-f "$BUILD_OVERRIDE")
   for ((attempt = 1; attempt <= BUILD_ATTEMPTS; attempt++)); do
-    if compose "$api" "$web" build "${build_args[@]}" \
-      --build-arg "BUILD_COMMIT=${REF}" \
-      --build-arg "BUILD_CONFIG_HASH=${SEALED_CONFIG_HASH}" "$service"; then
+    if timeout --signal=TERM --kill-after=30s "$BUILD_ATTEMPT_TIMEOUT_SECONDS" \
+      env VITE_RELEASE_SHA="${REF:-}" PI5_API_IMAGE="$api" PI5_WEB_IMAGE="$web" \
+      docker compose --env-file "$ENV_FILE" "${compose_files[@]}" \
+      build "${build_args[@]}" \
+        --build-arg "BUILD_COMMIT=${REF}" \
+        --build-arg "BUILD_CONFIG_HASH=${SEALED_CONFIG_HASH}" "$service"; then
       return 0
     fi
     if ((attempt < BUILD_ATTEMPTS)); then
