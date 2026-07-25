@@ -33,6 +33,27 @@ export async function listAssemblySeibanCandidates(params: { prefix: string; lim
   return data.candidates;
 }
 
+export type AssemblyMachineNameCandidatesDto = {
+  candidates: string[];
+  hasMore: boolean;
+};
+
+export async function listAssemblyMachineNameCandidates(params: {
+  digitQuery?: string;
+  q?: string;
+  limit?: number;
+} = {}): Promise<AssemblyMachineNameCandidatesDto> {
+  const qs = new URLSearchParams();
+  if (params.digitQuery) qs.set('digitQuery', params.digitQuery);
+  if (params.q) qs.set('q', params.q);
+  if (params.limit) qs.set('limit', String(params.limit));
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  const { data } = await api.get<AssemblyMachineNameCandidatesDto>(
+    `/assembly/machine-name-candidates${suffix}`
+  );
+  return data;
+}
+
 export async function listAssemblySeibanLotQuantities(productNos: string[]) {
   if (productNos.length === 0) return [] as Array<{ productNo: string; lotQty: number }>;
   const qs = new URLSearchParams({ productNos: productNos.join(',') });

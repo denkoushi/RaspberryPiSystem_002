@@ -6,6 +6,8 @@ export * from './AssemblyLotPane';
 export * from './AssemblyStartPane';
 export * from './AssemblyProcedureCanvas';
 export * from './AssemblyProcedureSequenceViewer';
+export * from './AssemblyMachineNamePickerDialog';
+export * from './assemblyWorkActionPresentation';
 export * from './AssemblyProcedureLibrarySection';
 export * from './AssemblyProcedureRenameModal';
 export * from './AssemblyProcedureUploadModal';

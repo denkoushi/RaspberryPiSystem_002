@@ -16,6 +16,7 @@ type Props = {
   boltMarkers?: AssemblyCanvasBolt[];
   checkMarkers?: AssemblyCanvasCheckItem[];
   selectedBoltId?: string | null;
+  inputTargetBoltId?: string | null;
   onToggleCheckItem?: (checkItemId: string) => void;
   onCurrentPageChange?: (page: AssemblyProcedureSequencePageDto | null) => void;
 };
@@ -36,6 +37,7 @@ export function AssemblyProcedureSequenceViewer({
   boltMarkers = [],
   checkMarkers = [],
   selectedBoltId,
+  inputTargetBoltId,
   onToggleCheckItem,
   onCurrentPageChange
 }: Props) {
@@ -120,27 +122,30 @@ export function AssemblyProcedureSequenceViewer({
 
   return (
     <div className={`flex min-h-0 flex-col bg-slate-950 ${className ?? ''}`}>
-      <div className="shrink-0 border-b border-white/10 bg-slate-900/80 p-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-bold text-white">{document.label?.trim() || displayTitle(document)}</p>
-            <p className="truncate text-xs font-semibold text-white/55">
-              {displayTitle(document)} / {pageIndex + 1}/{pageEntries.length}ページ / 全{totalPages}ページ
-            </p>
-          </div>
-          <div className="flex shrink-0 flex-wrap justify-end gap-1">
-            <Button type="button" variant="ghostOnDark" className="min-h-9 !px-2 !py-1 text-sm" disabled={documentIndex === 0} onClick={goPrevDocument}>前書</Button>
-            <Button type="button" variant="ghostOnDark" className="min-h-9 !px-2 !py-1 text-sm" disabled={pageIndex === 0} onClick={goPrevPage}>前頁</Button>
-            <Button type="button" variant="ghostOnDark" className="min-h-9 !px-2 !py-1 text-sm" disabled={pageIndex === pageEntries.length - 1} onClick={goNextPage}>次頁</Button>
-            <Button type="button" variant="ghostOnDark" className="min-h-9 !px-2 !py-1 text-sm" disabled={documentIndex === documents.length - 1} onClick={goNextDocument}>次書</Button>
-          </div>
+      <div
+        className="grid h-[45px] shrink-0 grid-cols-[minmax(10rem,auto)_minmax(0,1fr)_auto] items-center gap-2 border-b border-white/10 bg-slate-900/80 px-2"
+        data-testid="assembly-procedure-sequence-toolbar"
+      >
+        <div className="min-w-0">
+          <p className="truncate text-sm font-bold text-white" title={displayTitle(document)}>
+            {document.label?.trim() || displayTitle(document)}
+          </p>
+          <p className="truncate text-[11px] font-semibold text-white/55">
+            {pageIndex + 1}/{pageEntries.length}ページ / 全{totalPages}ページ
+          </p>
         </div>
-        <div className="mt-2 flex gap-1 overflow-x-auto">
+        <div className="flex min-w-0 gap-1 overflow-x-auto">
           {documents.map((item, index) => (
-            <button key={item.orderItemId} type="button" className={`shrink-0 rounded border px-2 py-1 text-xs font-semibold ${index === documentIndex ? 'border-cyan-300 bg-cyan-900/45 text-cyan-100' : 'border-white/10 bg-slate-950/70 text-white/65 hover:bg-slate-800'}`} onClick={() => { setDocumentIndex(index); setPageIndex(0); }}>
+            <button key={item.orderItemId} type="button" className={`min-h-9 shrink-0 rounded border px-2 text-xs font-semibold ${index === documentIndex ? 'border-cyan-300 bg-cyan-900/45 text-cyan-100' : 'border-white/10 bg-slate-950/70 text-white/65 hover:bg-slate-800'}`} onClick={() => { setDocumentIndex(index); setPageIndex(0); }}>
               {index + 1}. {item.label?.trim() || item.displayTitle || item.title}
             </button>
           ))}
+        </div>
+        <div className="flex shrink-0 justify-end gap-1">
+          <Button type="button" variant="ghostOnDark" className="min-h-9 !px-2 !py-1 text-xs" disabled={documentIndex === 0} onClick={goPrevDocument}>前書</Button>
+          <Button type="button" variant="ghostOnDark" className="min-h-9 !px-2 !py-1 text-xs" disabled={pageIndex === 0} onClick={goPrevPage}>前頁</Button>
+          <Button type="button" variant="ghostOnDark" className="min-h-9 !px-2 !py-1 text-xs" disabled={pageIndex === pageEntries.length - 1} onClick={goNextPage}>次頁</Button>
+          <Button type="button" variant="ghostOnDark" className="min-h-9 !px-2 !py-1 text-xs" disabled={documentIndex === documents.length - 1} onClick={goNextDocument}>次書</Button>
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden p-2">
@@ -153,6 +158,7 @@ export function AssemblyProcedureSequenceViewer({
           bolts={boltMarkers}
           checkItems={checkMarkers}
           selectedBoltId={selectedBoltId}
+          inputTargetBoltId={inputTargetBoltId}
           onToggleCheckItem={onToggleCheckItem}
         />
       </div>

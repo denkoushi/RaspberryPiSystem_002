@@ -51,7 +51,7 @@ function TemplateTablePane({
           </colgroup>
           <thead className="sticky top-0 bg-slate-900 text-[0.72rem] text-white/70">
             <tr className="border-b border-white/10">
-              <th className="px-2 py-1.5 font-bold">型番</th>
+              <th className="px-2 py-1.5 font-bold">機種名</th>
               <th className="px-2 py-1.5 font-bold">手順</th>
               <th className="px-2 py-1.5 font-bold">手順書</th>
             </tr>

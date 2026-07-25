@@ -15,6 +15,7 @@ import { Button, buttonClassName } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import {
   AssemblyProcedureCanvas,
+  AssemblyMachineNamePickerDialog,
   applyAssemblyBoltConditionRange,
   buildAssemblyEditorPageOptions,
   createAssemblyBoltAt,
@@ -75,6 +76,7 @@ export function KioskAssemblyTemplateEditorPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [machineNamePickerOpen, setMachineNamePickerOpen] = useState(false);
   const [inheritCondition, setInheritCondition] = useState(true);
   const [rangeStart, setRangeStart] = useState(1);
   const [rangeEnd, setRangeEnd] = useState(35);
@@ -83,6 +85,7 @@ export function KioskAssemblyTemplateEditorPage() {
   const fitCanvasToView = canvasZoom.fitToView;
 
   const readOnly = Boolean(templateId && loadedTemplate && !loadedTemplate.isActive);
+  const machineNameSelectionRequired = !templateId;
   const selectedDocument = useMemo(
     () => documents.find((document) => document.id === selectedDocumentId) ?? loadedTemplate?.procedureDocument ?? null,
     [documents, loadedTemplate?.procedureDocument, selectedDocumentId]
@@ -330,6 +333,9 @@ export function KioskAssemblyTemplateEditorPage() {
     setBusy(true);
     setMessage(null);
     try {
+      if (machineNameSelectionRequired && !modelCode.trim()) {
+        throw new Error('機種名を選択してください。');
+      }
       if (!selectedDocumentId) throw new Error('手順書を選択してください。');
       if (selectedDocument && !selectedDocument.isActive) throw new Error('有効な手順書を選択してください。');
       if (selectedDocument && resolveAssemblyDocumentStatus(selectedDocument) !== 'published') {
@@ -385,7 +391,13 @@ export function KioskAssemblyTemplateEditorPage() {
               雛形
             </Link>
           ) : null}
-          <Button type="button" variant="primary" className="min-h-10 text-[0.95rem]" disabled={busy || readOnly} onClick={() => void saveTemplate()}>
+          <Button
+            type="button"
+            variant="primary"
+            className="min-h-10 text-[0.95rem]"
+            disabled={busy || readOnly || (machineNameSelectionRequired && !modelCode.trim())}
+            onClick={() => void saveTemplate()}
+          >
             {busy ? '保存中…' : templateId ? '新しい版で保存' : '保存'}
           </Button>
         </div>
@@ -415,10 +427,30 @@ export function KioskAssemblyTemplateEditorPage() {
                 ))}
               </select>
             </label>
-            <label className="grid gap-1 text-xs font-semibold text-white/70">
-              型番/FHINCD
-              <Input value={modelCode} disabled={busy || readOnly} onChange={(e) => setModelCode(e.target.value)} />
-            </label>
+            {machineNameSelectionRequired ? (
+              <div className="grid gap-1 text-xs font-semibold text-white/70">
+                機種名
+                <div className="rounded border border-white/10 bg-slate-950 p-2">
+                  <div className="min-h-6 truncate text-sm font-bold text-white" title={modelCode || undefined}>
+                    {modelCode || <span className="text-amber-200">未選択</span>}
+                  </div>
+                  <Button
+                    type="button"
+                    variant={modelCode ? 'secondary' : 'primary'}
+                    className="mt-2 min-h-10 w-full"
+                    disabled={busy || readOnly}
+                    onClick={() => setMachineNamePickerOpen(true)}
+                  >
+                    機種名を選択
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <label className="grid gap-1 text-xs font-semibold text-white/70">
+                機種名
+                <Input value={modelCode} disabled={busy || readOnly} onChange={(e) => setModelCode(e.target.value)} />
+              </label>
+            )}
             <label className="grid gap-1 text-xs font-semibold text-white/70">
               手順パターン
               <Input value={procedurePattern} disabled={busy || readOnly} onChange={(e) => setProcedurePattern(e.target.value)} />
@@ -793,6 +825,16 @@ export function KioskAssemblyTemplateEditorPage() {
           )}
         </section>
       </div>
+      <AssemblyMachineNamePickerDialog
+        isOpen={machineNamePickerOpen}
+        currentValue={modelCode}
+        disabled={busy}
+        onCancel={() => setMachineNamePickerOpen(false)}
+        onConfirm={(machineName) => {
+          setModelCode(machineName);
+          setMachineNamePickerOpen(false);
+        }}
+      />
     </div>
   );
 }

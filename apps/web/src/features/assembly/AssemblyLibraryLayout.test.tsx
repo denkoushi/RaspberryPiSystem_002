@@ -63,7 +63,7 @@ describe('assembly library two-row layout', () => {
     );
     const table = screen.getByRole('table');
     expect(within(table).getAllByRole('row')).toHaveLength(3);
-    expect(within(table).getByRole('columnheader', { name: '型番' })).toBeInTheDocument();
+    expect(within(table).getByRole('columnheader', { name: '機種名' })).toBeInTheDocument();
     expect(within(table).queryByRole('columnheader', { name: '工程' })).not.toBeInTheDocument();
     expect(within(table).getByText('工程 4')).toBeInTheDocument();
     expect(within(table).getByText('締付 12')).toBeInTheDocument();

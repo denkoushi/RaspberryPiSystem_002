@@ -1,0 +1,1216 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>キオスク組立 UI/UX 改善プレビュー</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, "Noto Sans JP", "Yu Gothic UI", "Hiragino Kaku Gothic ProN", sans-serif;
+      --ink: #f8fafc;
+      --muted: #94a3b8;
+      --panel: #111827;
+      --panel-2: #172033;
+      --line: #334155;
+      --green: #059669;
+      --green-hi: #10b981;
+      --red: #dc2626;
+      --sky: #38bdf8;
+      --neutral: #475569;
+      --disabled: #273244;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-width: 320px; min-height: 100%; background: #020617; color: var(--ink); }
+    button, input { font: inherit; }
+    button { color: inherit; }
+    button:focus-visible, input:focus-visible {
+      outline: 3px solid #38bdf8;
+      outline-offset: 2px;
+    }
+    .preview-shell { height: 100vh; min-height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+    .preview-menu-toggle {
+      position: fixed;
+      right: 12px;
+      bottom: 12px;
+      z-index: 50;
+      min-height: 44px;
+      border: 1px solid #64748b;
+      border-radius: 10px;
+      padding: 8px 12px;
+      background: rgb(15 23 42 / .9);
+      color: #e2e8f0;
+      box-shadow: 0 8px 28px rgb(0 0 0 / .38);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 800;
+      backdrop-filter: blur(5px);
+    }
+    .preview-tools {
+      position: fixed;
+      right: 12px;
+      bottom: 64px;
+      z-index: 49;
+      width: min(820px, calc(100vw - 24px));
+      max-height: calc(100vh - 80px);
+      padding: 12px;
+      border: 1px solid #475569;
+      border-radius: 12px;
+      background: rgb(11 18 32 / .98);
+      display: none;
+      grid-template-columns: 1fr;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 18px 60px rgb(0 0 0 / .5);
+      overflow-y: auto;
+      backdrop-filter: blur(6px);
+    }
+    .preview-tools.open { display: grid; }
+    .preview-title { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .preview-title strong { display: block; font-size: 15px; }
+    .preview-title small { display: block; margin-top: 2px; color: #fbbf24; font-size: 12px; }
+    .preview-close {
+      width: 40px;
+      height: 40px;
+      flex: 0 0 40px;
+      border: 1px solid #475569;
+      border-radius: 8px;
+      background: #1e293b;
+      cursor: pointer;
+      font-size: 20px;
+    }
+    .tool-group { display: flex; align-items: center; justify-content: flex-start; gap: 7px; flex-wrap: wrap; }
+    .tool-group.end { justify-content: flex-start; }
+    .tab-button, .state-button, .small-button {
+      min-height: 38px;
+      border: 1px solid #475569;
+      border-radius: 9px;
+      padding: 7px 12px;
+      background: #1e293b;
+      color: #cbd5e1;
+      cursor: pointer;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .tab-button[aria-selected="true"], .state-button[aria-pressed="true"] {
+      border-color: #38bdf8;
+      background: #0c4a6e;
+      color: white;
+      box-shadow: inset 0 0 0 1px #38bdf8;
+    }
+    .resolution-note { color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .preview-stage { position: relative; flex: 1; min-height: 0; }
+    .screen { position: absolute; inset: 0; display: none; min-width: 0; background: #0f172a; }
+    .screen.active { display: flex; flex-direction: column; }
+
+    /* Assembly work screen */
+    .work-header {
+      height: 58px;
+      flex: 0 0 58px;
+      display: grid;
+      grid-template-columns: minmax(290px, 0.8fr) minmax(400px, 1.45fr) minmax(190px, 0.5fr);
+      align-items: center;
+      gap: 16px;
+      padding: 3px 10px;
+      border-bottom: 1px solid #334155;
+      background: #0b1220;
+    }
+    .work-product, .header-status, .header-nav { min-width: 0; }
+    .work-product .eyebrow, .header-status .status-label {
+      color: #7dd3fc;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .08em;
+    }
+    .work-product-name {
+      margin-top: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 16px;
+      font-weight: 800;
+    }
+    .work-product-meta {
+      margin-top: 3px;
+      color: #cbd5e1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 12px;
+    }
+    .header-status {
+      align-self: stretch;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: center;
+      gap: 12px;
+      border-inline: 1px solid #334155;
+      padding-inline: 16px;
+    }
+    .status-step { min-width: 118px; }
+    .status-step strong { display: block; margin-top: 2px; font-size: 16px; }
+    .status-message-wrap {
+      min-width: 0;
+      border-radius: 8px;
+      background: #172033;
+      padding: 8px 12px;
+    }
+    .status-message {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #fef3c7;
+      font-size: 15px;
+      font-weight: 800;
+    }
+    .header-nav { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+    .header-nav button {
+      min-height: 46px;
+      border: 1px solid #475569;
+      border-radius: 9px;
+      padding: 0 14px;
+      background: #1e293b;
+      font-weight: 800;
+    }
+    .work-main {
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 368px;
+      gap: 6px;
+      padding: 6px;
+    }
+    .procedure-panel, .action-panel {
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      background: var(--panel);
+      box-shadow: 0 14px 38px rgb(0 0 0 / .18);
+    }
+    .procedure-panel { display: flex; flex-direction: column; }
+    .viewer-toolbar {
+      min-height: 42px;
+      display: grid;
+      grid-template-columns: minmax(180px, 1fr) auto auto;
+      align-items: center;
+      gap: 10px;
+      padding: 4px 7px;
+      border-bottom: 1px solid #334155;
+      background: #172033;
+    }
+    .viewer-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 800; }
+    .viewer-tools { display: flex; gap: 6px; }
+    .viewer-tools button, .document-tab {
+      min-height: 32px;
+      border: 1px solid #475569;
+      border-radius: 7px;
+      background: #263449;
+      padding: 5px 11px;
+      color: #e2e8f0;
+      font-weight: 700;
+    }
+    .document-tabs {
+      display: flex;
+      gap: 7px;
+      align-items: center;
+      padding: 0;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+    .document-tab.active { border-color: #38bdf8; color: white; background: #075985; }
+    .document-stage {
+      position: relative;
+      flex: 1;
+      min-height: 0;
+      margin: 4px;
+      border-radius: 8px;
+      overflow: hidden;
+      background:
+        linear-gradient(90deg, rgb(15 23 42 / .04) 1px, transparent 1px) 0 0 / 32px 32px,
+        linear-gradient(rgb(15 23 42 / .04) 1px, transparent 1px) 0 0 / 32px 32px,
+        #f8fafc;
+    }
+    .document-stage svg { width: 100%; height: 100%; display: block; }
+    .bolt-marker {
+      position: absolute;
+      width: 42px;
+      height: 42px;
+      transform: translate(-50%, -50%);
+      display: grid;
+      place-items: center;
+      border: 2px solid #334155;
+      border-radius: 999px;
+      background: white;
+      color: #0f172a;
+      font-size: 19px;
+      font-weight: 900;
+      box-shadow: 0 2px 7px rgb(15 23 42 / .28);
+      z-index: 3;
+    }
+    .bolt-marker.ok { background: #10b981; border-color: #047857; color: white; }
+    .bolt-marker.ng { background: #ef4444; border-color: #b91c1c; color: white; }
+    .bolt-marker.target {
+      box-shadow: 0 0 0 4px #38bdf8, 0 2px 7px rgb(15 23 42 / .28);
+    }
+    .legend {
+      position: absolute;
+      left: 12px;
+      bottom: 12px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: rgb(255 255 255 / .92);
+      padding: 7px 10px;
+      color: #334155;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .legend-dot { width: 17px; height: 17px; border: 2px solid #475569; border-radius: 99px; background: white; }
+    .legend-dot.ok { border-color: #047857; background: #10b981; }
+    .legend-dot.ng { border-color: #b91c1c; background: #ef4444; }
+    .legend-dot.target { box-shadow: 0 0 0 3px #38bdf8; margin-inline: 3px; }
+
+    .action-panel { display: flex; flex-direction: column; }
+    .action-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 10px; }
+    .data-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 7px;
+      margin-bottom: 8px;
+    }
+    .data-card { min-width: 0; border: 1px solid #334155; border-radius: 8px; padding: 7px 9px; background: #172033; }
+    .data-card span { display: block; color: #94a3b8; font-size: 11px; }
+    .data-card strong { display: block; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; }
+    .input-row { display: grid; grid-template-columns: minmax(0, 1fr) 112px; gap: 7px; margin-bottom: 8px; }
+    .torque-input {
+      min-width: 0;
+      height: 50px;
+      border: 2px solid #64748b;
+      border-radius: 8px;
+      background: #020617;
+      padding: 0 10px;
+      color: white;
+      font-size: 22px;
+      font-weight: 800;
+      text-align: right;
+    }
+    .flow-button {
+      width: 100%;
+      min-height: 48px;
+      border: 1px solid transparent;
+      border-radius: 9px;
+      padding: 8px 10px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .flow-button.primary { background: var(--green); border-color: var(--green-hi); color: white; box-shadow: 0 0 0 1px rgb(16 185 129 / .35), 0 6px 16px rgb(5 150 105 / .25); }
+    .flow-button.neutral { background: var(--neutral); border-color: #64748b; color: #f8fafc; }
+    .flow-button.danger { background: var(--red); border-color: #f87171; color: white; box-shadow: 0 6px 16px rgb(220 38 38 / .24); }
+    .flow-button:disabled, .flow-button.disabled {
+      cursor: not-allowed;
+      background: var(--disabled);
+      border-color: #334155;
+      color: #64748b;
+      box-shadow: none;
+      opacity: .72;
+    }
+    .button-stack { display: grid; gap: 7px; }
+    .button-stack.two-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .button-stack.two-columns .span-two { grid-column: 1 / -1; }
+    #restartButton { grid-column: 1 / -1; }
+    .section-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin: 9px 0 6px;
+      color: #cbd5e1;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .05em;
+    }
+    .section-label::after { content: ""; flex: 1; height: 1px; background: #334155; }
+    .history {
+      display: grid;
+      gap: 5px;
+      margin-top: 4px;
+    }
+    .history-row {
+      min-height: 48px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 78px 72px;
+      align-items: center;
+      gap: 7px;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 5px 8px;
+      background: #172033;
+    }
+    .history-meta { min-width: 0; color: #94a3b8; font-size: 11px; }
+    .history-meta strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #e2e8f0; font-size: 12px; }
+    .history-value, .history-result {
+      text-align: right;
+      font-size: 24px;
+      line-height: 1;
+      font-weight: 900;
+      font-variant-numeric: tabular-nums;
+    }
+    .history-result.ok { color: #34d399; }
+    .history-result.ng { color: #fb7185; }
+    .history-result.ignored { color: #94a3b8; font-size: 12px; letter-spacing: -.02em; }
+    .state-help { margin-top: 8px; color: #94a3b8; font-size: 11px; line-height: 1.4; }
+
+    /* Template editor and picker */
+    .library-header {
+      height: 66px;
+      flex: 0 0 66px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 9px 16px;
+      border-bottom: 1px solid #334155;
+      background: #0b1220;
+    }
+    .library-header h1 { margin: 0; font-size: 20px; }
+    .library-header p { margin: 3px 0 0; color: #94a3b8; font-size: 12px; }
+    .library-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 350px minmax(0, 1fr); gap: 10px; padding: 10px; }
+    .editor-pane, .editor-canvas {
+      min-width: 0;
+      min-height: 0;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      background: #111827;
+      overflow: hidden;
+    }
+    .editor-pane { padding: 14px; }
+    .field-label { display: block; margin-bottom: 6px; color: #cbd5e1; font-size: 13px; font-weight: 800; }
+    .selected-machine {
+      min-height: 58px;
+      display: flex;
+      align-items: center;
+      margin-bottom: 8px;
+      border: 1px solid #475569;
+      border-radius: 8px;
+      padding: 9px 11px;
+      background: #020617;
+      overflow-wrap: anywhere;
+      font-size: 16px;
+      font-weight: 800;
+    }
+    .selected-machine.empty { color: #64748b; font-weight: 600; }
+    .editor-block { margin-bottom: 15px; }
+    .editor-input {
+      width: 100%;
+      min-height: 46px;
+      border: 1px solid #475569;
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: #020617;
+      color: white;
+    }
+    .save-note { margin: 8px 0 0; color: #fbbf24; font-size: 12px; line-height: 1.5; }
+    .editor-canvas { position: relative; padding: 52px 26px 26px; background: #f8fafc; color: #1e293b; }
+    .editor-canvas::before {
+      content: "ページ1 / 組立手順書";
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 42px;
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      border-bottom: 1px solid #cbd5e1;
+      background: #e2e8f0;
+      font-weight: 800;
+    }
+    .editor-drawing { height: 100%; display: grid; place-items: center; border: 2px dashed #94a3b8; border-radius: 10px; }
+    .editor-drawing strong { color: #334155; font-size: clamp(30px, 5vw, 74px); opacity: .2; }
+    .modal-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 30;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      background: rgb(2 6 23 / .78);
+      backdrop-filter: blur(2px);
+    }
+    .modal-layer.open { display: flex; }
+    .picker-dialog {
+      width: min(1040px, 96vw);
+      max-height: min(790px, calc(100vh - 116px));
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid #64748b;
+      border-radius: 15px;
+      background: #111827;
+      box-shadow: 0 26px 80px rgb(0 0 0 / .55);
+    }
+    .dialog-header {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 16px;
+      border-bottom: 1px solid #334155;
+    }
+    .dialog-header h2 { margin: 0; font-size: 20px; }
+    .dialog-header p { margin: 3px 0 0; color: #94a3b8; font-size: 12px; }
+    .close-button {
+      width: 44px;
+      height: 44px;
+      border: 1px solid #475569;
+      border-radius: 9px;
+      background: #1e293b;
+      font-size: 22px;
+      cursor: pointer;
+    }
+    .dialog-content {
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 302px minmax(0, 1fr);
+      gap: 14px;
+      padding: 14px;
+      overflow: hidden;
+    }
+    .keypad-pane { min-height: 0; overflow-y: auto; }
+    .query-readout {
+      min-height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      border: 2px solid #64748b;
+      border-radius: 9px;
+      padding: 7px 12px;
+      background: #020617;
+      font-size: 24px;
+      font-weight: 900;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: .08em;
+    }
+    .query-readout.empty { color: #64748b; font-size: 14px; font-weight: 600; letter-spacing: 0; }
+    .tenkey { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-top: 8px; }
+    .tenkey button {
+      min-height: 52px;
+      border: 1px solid #64748b;
+      border-radius: 9px;
+      background: #334155;
+      color: white;
+      font-size: 21px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .tenkey button:hover { background: #475569; }
+    .tenkey .reset { background: #7f1d1d; border-color: #b91c1c; font-size: 14px; }
+    .tenkey .backspace { background: #1e3a5f; border-color: #0369a1; font-size: 14px; }
+    .text-filter { margin-top: 11px; }
+    .text-filter input {
+      width: 100%;
+      min-height: 46px;
+      border: 1px solid #64748b;
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: #020617;
+      color: white;
+      text-transform: uppercase;
+    }
+    .query-hint { margin: 6px 0 0; color: #94a3b8; font-size: 11px; line-height: 1.45; }
+    .candidate-pane { min-height: 0; display: flex; flex-direction: column; }
+    .candidate-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-height: 28px;
+      margin-bottom: 6px;
+    }
+    .candidate-heading strong { font-size: 14px; }
+    .candidate-heading span { color: #94a3b8; font-size: 12px; }
+    .candidate-list {
+      flex: 1;
+      min-height: 180px;
+      overflow-y: auto;
+      border: 1px solid #334155;
+      border-radius: 9px;
+      background: #0b1220;
+    }
+    .candidate-button {
+      width: 100%;
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border: 0;
+      border-bottom: 1px solid #273449;
+      padding: 8px 12px;
+      background: transparent;
+      color: #e2e8f0;
+      text-align: left;
+      cursor: pointer;
+      overflow-wrap: anywhere;
+    }
+    .candidate-button:hover { background: #1e293b; }
+    .candidate-button.selected { background: #064e3b; box-shadow: inset 4px 0 #34d399; color: white; font-weight: 900; }
+    .candidate-check { color: #6ee7b7; font-weight: 900; }
+    .candidate-message {
+      min-height: 180px;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      color: #94a3b8;
+      text-align: center;
+      line-height: 1.7;
+    }
+    .more-note {
+      display: none;
+      margin-top: 6px;
+      border-radius: 7px;
+      padding: 7px 10px;
+      background: #422006;
+      color: #fde68a;
+      font-size: 12px;
+    }
+    .more-note.visible { display: block; }
+    .preset-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+    .preset-row button {
+      min-height: 34px;
+      border: 1px solid #475569;
+      border-radius: 7px;
+      padding: 5px 9px;
+      background: #1e293b;
+      color: #cbd5e1;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .dialog-footer {
+      flex: 0 0 auto;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      align-items: center;
+      gap: 9px;
+      padding: 11px 14px;
+      border-top: 1px solid #334155;
+      background: #0b1220;
+    }
+    .temporary-selection { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #cbd5e1; font-size: 13px; }
+    .temporary-selection strong { color: white; }
+
+    @media (max-width: 1500px) {
+      .work-main { grid-template-columns: minmax(0, 1fr) 350px; }
+      .work-header { grid-template-columns: minmax(270px, .75fr) minmax(390px, 1.4fr) 180px; gap: 10px; }
+      .header-status { gap: 8px; padding-inline: 10px; }
+      .status-message { font-size: 14px; }
+    }
+    @media (max-width: 1100px) {
+      .preview-tools { width: calc(100vw - 24px); }
+      .work-header { height: 72px; flex-basis: 72px; grid-template-columns: minmax(230px, .7fr) minmax(370px, 1.45fr) 160px; }
+      .header-nav button { padding-inline: 8px; }
+      .work-main { grid-template-columns: minmax(0, 1fr) 330px; }
+    }
+
+    /*
+     * Browser screenshot helpers. They are inert during normal use and make the
+     * documented 1366×768 review surface reproducible via ?capture=1366x768.
+     */
+    html.capture-1366,
+    html.capture-1366 body {
+      width: 1366px;
+      height: 768px;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+    }
+    html.capture-1366 .preview-shell { width: 1366px; height: 768px; min-height: 768px; }
+    html.capture-1366 .work-main { grid-template-columns: minmax(0, 1fr) 350px; }
+    html.capture-1366 .work-header {
+      grid-template-columns: minmax(270px, .75fr) minmax(390px, 1.4fr) 180px;
+      gap: 10px;
+    }
+    html.capture-1366 .header-status { gap: 8px; padding-inline: 10px; }
+    html.capture-1366 .status-message { font-size: 14px; }
+    html.capture-1366 .picker-dialog { max-height: 652px; }
+    html.capture-1366 .preview-menu-toggle,
+    html.capture-1366 .preview-tools,
+    html.capture-1920 .preview-menu-toggle,
+    html.capture-1920 .preview-tools { display: none !important; }
+  </style>
+</head>
+<body>
+  <main class="preview-shell">
+    <button id="previewMenuButton" class="preview-menu-toggle" type="button" aria-expanded="false" aria-controls="previewTools">⚙ プレビュー操作</button>
+    <header id="previewTools" class="preview-tools" aria-label="プレビュー操作">
+      <div class="preview-title">
+        <div>
+          <strong>組立 UI/UX 改善プレビュー</strong>
+          <small>設計確認用・画面領域を消費しないオーバーレイ操作</small>
+        </div>
+        <button id="previewMenuClose" class="preview-close" type="button" aria-label="プレビュー操作を閉じる">×</button>
+      </div>
+      <div class="tool-group">
+        <button class="tab-button" type="button" data-screen="work" aria-selected="true">組立作業画面</button>
+        <button class="tab-button" type="button" data-screen="picker" aria-selected="false">機種名選択</button>
+        <span id="workStateControls" class="tool-group">
+          <button class="state-button" type="button" data-state="input" aria-pressed="true">通常入力</button>
+          <button class="state-button" type="button" data-state="ng" aria-pressed="false">NG現在位置</button>
+          <button class="state-button" type="button" data-state="next" aria-pressed="false">次工程待ち</button>
+          <button class="state-button" type="button" data-state="complete" aria-pressed="false">完了待ち</button>
+          <button class="state-button" type="button" data-state="trace-confirm" aria-pressed="false">現物確認</button>
+          <button class="state-button" type="button" data-state="trace-start" aria-pressed="false">使用開始</button>
+          <button class="state-button" type="button" data-state="takeover" aria-pressed="false">引継ぎ確定</button>
+        </span>
+      </div>
+      <div class="tool-group end">
+        <span class="resolution-note" id="resolutionNote">viewportを取得中</span>
+      </div>
+    </header>
+
+    <div class="preview-stage">
+      <section id="workScreen" class="screen active" aria-label="組立作業画面プレビュー">
+        <header class="work-header">
+          <div class="work-product">
+            <div class="work-product-name" title="超長尺仕様・高精度多軸マシニングセンタ L300KP-2 特別仕様">超長尺仕様・高精度多軸マシニングセンタ L300KP-2 特別仕様</div>
+            <div class="work-product-meta">製番 FH240725-001　S/N 00012　担当: 山田 太郎</div>
+          </div>
+          <div class="header-status">
+            <div class="status-step">
+              <strong id="stepLabel">締付工程 1 / ③</strong>
+            </div>
+            <div class="status-message-wrap" role="status" aria-live="polite" aria-atomic="true">
+              <span class="status-message" id="statusMessage">丸数字③の締付トルクを入力してください。</span>
+            </div>
+          </div>
+          <nav class="header-nav" aria-label="組立画面ナビゲーション">
+            <button type="button">組立トップ</button>
+          </nav>
+        </header>
+
+        <div class="work-main">
+          <section class="procedure-panel" aria-label="組立ドキュメント">
+            <div class="viewer-toolbar">
+              <div class="viewer-title">主軸ユニット組立手順書 — 締付工程 1</div>
+              <div class="document-tabs" aria-label="ドキュメント切替">
+                <button class="document-tab active" type="button">組立手順書</button>
+                <button class="document-tab" type="button">部品図</button>
+                <button class="document-tab" type="button">注意事項</button>
+              </div>
+              <div class="viewer-tools">
+                <button type="button">◀ 前へ</button>
+                <button type="button">2 / 6</button>
+                <button type="button">次へ ▶</button>
+              </div>
+            </div>
+            <div class="document-stage">
+              <svg viewBox="0 0 900 560" role="img" aria-label="主軸ユニット組立図の簡略図">
+                <defs>
+                  <linearGradient id="metal" x1="0" x2="1">
+                    <stop offset="0" stop-color="#cbd5e1"/>
+                    <stop offset=".46" stop-color="#f8fafc"/>
+                    <stop offset="1" stop-color="#94a3b8"/>
+                  </linearGradient>
+                </defs>
+                <rect x="175" y="115" width="550" height="320" rx="32" fill="url(#metal)" stroke="#475569" stroke-width="5"/>
+                <circle cx="450" cy="275" r="120" fill="#e2e8f0" stroke="#475569" stroke-width="5"/>
+                <circle cx="450" cy="275" r="64" fill="#64748b" stroke="#334155" stroke-width="5"/>
+                <rect x="105" y="214" width="105" height="122" rx="18" fill="#94a3b8" stroke="#475569" stroke-width="5"/>
+                <rect x="690" y="214" width="105" height="122" rx="18" fill="#94a3b8" stroke="#475569" stroke-width="5"/>
+                <path d="M260 160h380M260 390h380" stroke="#64748b" stroke-width="9" stroke-linecap="round"/>
+                <g fill="#334155">
+                  <circle cx="300" cy="205" r="16"/><circle cx="600" cy="205" r="16"/>
+                  <circle cx="300" cy="345" r="16"/><circle cx="600" cy="345" r="16"/>
+                </g>
+                <text x="450" y="505" text-anchor="middle" fill="#334155" font-size="25" font-weight="700">締付順序どおり、対角に締め付けること</text>
+              </svg>
+              <span class="bolt-marker ok" style="left: 34%; top: 34%" aria-label="丸数字1 OK">①</span>
+              <span id="marker2" class="bolt-marker ok" style="left: 66%; top: 34%" aria-label="丸数字2 OK">②</span>
+              <span id="marker3" class="bolt-marker target" style="left: 34%; top: 68%" aria-label="丸数字3 現在入力対象">③</span>
+              <span id="marker4" class="bolt-marker" style="left: 66%; top: 68%" aria-label="丸数字4 未入力">④</span>
+              <div class="legend" aria-label="マーカー凡例">
+                <span class="legend-dot"></span>未入力
+                <span class="legend-dot ok"></span>OK
+                <span class="legend-dot ng"></span>NG
+                <span class="legend-dot target"></span>現在入力
+              </div>
+            </div>
+          </section>
+
+          <aside class="action-panel" aria-label="組立操作と履歴">
+            <div class="action-scroll">
+              <div class="data-grid">
+                <div class="data-card"><span>丸数字</span><strong id="currentBoltLabel">③</strong></div>
+                <div class="data-card"><span>規定トルク</span><strong>42.0 N·m</strong></div>
+                <div class="data-card"><span>レンチ</span><strong>TW-0038</strong></div>
+                <div class="data-card"><span>判定範囲</span><strong>40.0–44.0</strong></div>
+              </div>
+
+              <div class="input-row">
+                <input id="torqueInput" class="torque-input" type="text" inputmode="decimal" value="42.1" aria-label="トルク測定値">
+                <button id="recordButton" class="flow-button primary" type="button">トルク記録</button>
+              </div>
+
+              <div class="button-stack two-columns">
+                <button id="nextButton" class="flow-button disabled" type="button" disabled>次工程へ</button>
+                <button id="completeButton" class="flow-button disabled" type="button" disabled>作業完了</button>
+                <button id="restartButton" class="flow-button neutral span-two" type="button">やり直し</button>
+              </div>
+
+              <div class="section-label">トレーサビリティ</div>
+              <div class="button-stack two-columns">
+                <button id="physicalButton" class="flow-button disabled" type="button" disabled>現物確認</button>
+                <button id="startButton" class="flow-button disabled" type="button" disabled>使用開始</button>
+                <button id="stopButton" class="flow-button disabled" type="button" disabled>使用終了</button>
+                <button id="takeoverButton" class="flow-button disabled" type="button" disabled>接続権を引き継ぐ</button>
+              </div>
+
+              <div class="section-label">入力履歴</div>
+              <div class="history">
+                <div class="history-row">
+                  <div class="history-meta"><strong>②　TW-0038</strong>14:32:18</div>
+                  <div class="history-value">42.3</div>
+                  <div class="history-result ok">OK</div>
+                </div>
+                <div class="history-row">
+                  <div class="history-meta"><strong>①　TW-0038</strong>14:31:44</div>
+                  <div class="history-value">39.7</div>
+                  <div class="history-result ng">NG</div>
+                </div>
+                <div class="history-row">
+                  <div class="history-meta"><strong>①　TW-0038</strong>14:31:56</div>
+                  <div class="history-value">—</div>
+                  <div class="history-result ignored">IGNORED</div>
+                </div>
+              </div>
+              <p class="state-help">緑は「今すぐ行う必須操作」、グレーは補助操作、薄いグレーは実行不可です。赤は危険な確定操作だけに使用します。</p>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section id="pickerScreen" class="screen" aria-label="機種名選択プレビュー">
+        <header class="library-header">
+          <div>
+            <h1>組立テンプレート — 新規作成</h1>
+            <p>利用者向け表示は「機種名」に統一。内部modelCode / API / DB / Excelは維持。</p>
+          </div>
+          <button type="button" class="small-button">テンプレート一覧へ</button>
+        </header>
+        <div class="library-body">
+          <aside class="editor-pane">
+            <div class="editor-block">
+              <label class="field-label">機種名 <span style="color:#fb7185">必須</span></label>
+              <div id="selectedMachine" class="selected-machine empty">機種名が未選択です</div>
+              <button id="openPickerButton" type="button" class="flow-button primary">機種名を選択</button>
+            </div>
+            <div class="editor-block">
+              <label class="field-label" for="templateName">テンプレート名</label>
+              <input id="templateName" class="editor-input" value="主軸ユニット組立">
+            </div>
+            <div class="editor-block">
+              <label class="field-label" for="revision">版</label>
+              <input id="revision" class="editor-input" value="1">
+            </div>
+            <button id="saveTemplateButton" type="button" class="flow-button disabled" disabled>新規テンプレートを保存</button>
+            <p id="saveNote" class="save-note">候補から機種名を選択すると保存できます。</p>
+          </aside>
+          <section class="editor-canvas" aria-label="テンプレート編集キャンバス">
+            <div class="editor-drawing"><strong>ASSEMBLY DRAWING</strong></div>
+          </section>
+        </div>
+
+        <div id="pickerLayer" class="modal-layer open">
+          <section class="picker-dialog" role="dialog" aria-modal="true" aria-labelledby="pickerTitle">
+            <header class="dialog-header">
+              <div>
+                <h2 id="pickerTitle">機種名を選択</h2>
+                <p>数字テンキーで主検索し、必要な場合だけ文字条件を追加します（AND検索）。</p>
+              </div>
+              <button id="closePickerButton" class="close-button" type="button" aria-label="機種名選択を閉じる">×</button>
+            </header>
+            <div class="dialog-content">
+              <div class="keypad-pane">
+                <label class="field-label">数字で絞り込み</label>
+                <div id="digitReadout" class="query-readout empty">数字を入力してください</div>
+                <div class="tenkey" aria-label="数字テンキー">
+                  <button type="button" data-digit="7" aria-label="数字7">7</button>
+                  <button type="button" data-digit="8" aria-label="数字8">8</button>
+                  <button type="button" data-digit="9" aria-label="数字9">9</button>
+                  <button type="button" data-digit="4" aria-label="数字4">4</button>
+                  <button type="button" data-digit="5" aria-label="数字5">5</button>
+                  <button type="button" data-digit="6" aria-label="数字6">6</button>
+                  <button type="button" data-digit="1" aria-label="数字1">1</button>
+                  <button type="button" data-digit="2" aria-label="数字2">2</button>
+                  <button type="button" data-digit="3" aria-label="数字3">3</button>
+                  <button type="button" class="reset" data-action="reset" aria-label="数字検索をリセット">リセット</button>
+                  <button type="button" data-digit="0" aria-label="数字0">0</button>
+                  <button type="button" class="backspace" data-action="backspace" aria-label="数字を一文字削除">⌫ 1文字削除</button>
+                </div>
+                <div class="text-filter">
+                  <label class="field-label" for="textQuery">文字でさらに絞り込み（補助）</label>
+                  <input id="textQuery" type="text" autocomplete="off" placeholder="例: KP">
+                  <p class="query-hint">数字と文字の両方を指定した場合、両方に一致する機種名だけを表示します。</p>
+                </div>
+                <div class="preset-row" aria-label="プレビュー状態">
+                  <button type="button" data-preset="normal">候補あり</button>
+                  <button type="button" data-preset="none">候補なし</button>
+                  <button type="button" data-preset="many">40件超過</button>
+                </div>
+              </div>
+              <div class="candidate-pane">
+                <div class="candidate-heading">
+                  <strong>機種名候補</strong>
+                  <span id="candidateCount">読込中…</span>
+                </div>
+                <div id="candidateList" class="candidate-list" aria-live="polite"></div>
+                <div id="moreNote" class="more-note">40件を表示しています。数字または文字を追加して、さらに絞り込んでください。</div>
+              </div>
+            </div>
+            <footer class="dialog-footer">
+              <div id="temporarySelection" class="temporary-selection">候補を1件選択してください</div>
+              <button id="cancelPickerButton" type="button" class="flow-button neutral" style="width:auto;min-width:112px">キャンセル</button>
+              <button id="confirmPickerButton" type="button" class="flow-button disabled" style="width:auto;min-width:190px" disabled>この機種名を使用</button>
+            </footer>
+          </section>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    (() => {
+      const previewParams = new URLSearchParams(window.location.search);
+      const captureMode = previewParams.get("capture");
+      if (captureMode === "1366x768") document.documentElement.classList.add("capture-1366");
+      if (captureMode === "1920x1080") document.documentElement.classList.add("capture-1920");
+
+      const previewTools = document.getElementById("previewTools");
+      const previewMenuButton = document.getElementById("previewMenuButton");
+      const setPreviewMenuOpen = (open) => {
+        previewTools.classList.toggle("open", open);
+        previewMenuButton.setAttribute("aria-expanded", String(open));
+        if (open) previewTools.querySelector("button").focus();
+        else previewMenuButton.focus();
+      };
+      previewMenuButton.addEventListener("click", () => setPreviewMenuOpen(true));
+      document.getElementById("previewMenuClose").addEventListener("click", () => setPreviewMenuOpen(false));
+
+      const workStates = {
+        input: {
+          step: "締付工程 1 / ③",
+          message: "丸数字③の締付トルクを入力してください。",
+          current: "③",
+          torque: "42.1",
+          marker3: "target",
+          marker4: "",
+          actions: { record: "primary", next: "disabled", complete: "disabled", restart: "neutral" }
+        },
+        ng: {
+          step: "締付工程 1 / ③",
+          message: "測定値 47.8 N·m は規定範囲外です。内容を確認し、丸数字③を再測定してください。",
+          current: "③",
+          torque: "47.8",
+          marker3: "ng target",
+          marker4: "",
+          actions: { record: "primary", next: "disabled", complete: "disabled", restart: "neutral" }
+        },
+        next: {
+          step: "締付工程 1 / 完了",
+          message: "この工程の入力が完了しました。内容を確認して「次工程へ」を押してください。",
+          current: "—",
+          torque: "",
+          marker3: "ok",
+          marker4: "ok",
+          actions: { record: "disabled", next: "primary", complete: "disabled", restart: "neutral" }
+        },
+        complete: {
+          step: "全工程 / 入力完了",
+          message: "すべての締付工程と確認項目が完了しました。内容を確認して作業を完了してください。",
+          current: "—",
+          torque: "",
+          marker3: "ok",
+          marker4: "ok",
+          actions: { record: "disabled", next: "disabled", complete: "primary", restart: "neutral" }
+        },
+        "trace-confirm": {
+          step: "レンチ接続 / 現物確認",
+          message: "画面の製造番号と手元のトルクレンチが一致することを確認してください。",
+          current: "—",
+          torque: "",
+          marker3: "",
+          marker4: "",
+          actions: { record: "disabled", next: "disabled", complete: "disabled", restart: "neutral", physical: "primary" }
+        },
+        "trace-start": {
+          step: "レンチ接続 / 使用開始",
+          message: "現物確認が完了しました。「使用開始」を押して入力待機状態にしてください。",
+          current: "—",
+          torque: "",
+          marker3: "",
+          marker4: "",
+          actions: { record: "disabled", next: "disabled", complete: "disabled", restart: "neutral", physical: "neutral", start: "primary" }
+        },
+        takeover: {
+          step: "接続権 / 引継ぎ確認",
+          message: "別端末が使用中です。現物と作業者を再確認した場合のみ、接続権を引き継いでください。",
+          current: "—",
+          torque: "",
+          marker3: "",
+          marker4: "",
+          actions: { record: "disabled", next: "disabled", complete: "disabled", restart: "neutral", physical: "neutral", start: "neutral", stop: "neutral", takeover: "danger" }
+        }
+      };
+
+      const buttonMap = {
+        record: document.getElementById("recordButton"),
+        next: document.getElementById("nextButton"),
+        complete: document.getElementById("completeButton"),
+        restart: document.getElementById("restartButton"),
+        physical: document.getElementById("physicalButton"),
+        start: document.getElementById("startButton"),
+        stop: document.getElementById("stopButton"),
+        takeover: document.getElementById("takeoverButton")
+      };
+      const applyButtonState = (button, state = "disabled") => {
+        button.className = `flow-button ${state}`;
+        button.disabled = state === "disabled";
+      };
+      const renderWorkState = (name) => {
+        const state = workStates[name];
+        document.getElementById("stepLabel").textContent = state.step;
+        document.getElementById("statusMessage").textContent = state.message;
+        document.getElementById("currentBoltLabel").textContent = state.current;
+        document.getElementById("torqueInput").value = state.torque;
+        document.getElementById("torqueInput").disabled = state.actions.record === "disabled";
+        document.getElementById("marker3").className = `bolt-marker ${state.marker3}`.trim();
+        document.getElementById("marker4").className = `bolt-marker ${state.marker4}`.trim();
+        Object.entries(buttonMap).forEach(([key, button]) => applyButtonState(button, state.actions[key]));
+        document.querySelectorAll("[data-state]").forEach((button) => {
+          button.setAttribute("aria-pressed", String(button.dataset.state === name));
+        });
+      };
+
+      document.querySelectorAll("[data-state]").forEach((button) => {
+        button.addEventListener("click", () => {
+          renderWorkState(button.dataset.state);
+          setPreviewMenuOpen(false);
+        });
+      });
+      document.getElementById("torqueInput").addEventListener("input", (event) => {
+        const valid = Number.isFinite(Number(event.target.value)) && event.target.value.trim() !== "";
+        applyButtonState(buttonMap.record, valid ? "primary" : "disabled");
+      });
+
+      const screens = {
+        work: document.getElementById("workScreen"),
+        picker: document.getElementById("pickerScreen")
+      };
+      const workStateControls = document.getElementById("workStateControls");
+      document.querySelectorAll("[data-screen]").forEach((button) => {
+        button.addEventListener("click", () => {
+          Object.entries(screens).forEach(([name, screen]) => screen.classList.toggle("active", name === button.dataset.screen));
+          document.querySelectorAll("[data-screen]").forEach((tab) => tab.setAttribute("aria-selected", String(tab === button)));
+          workStateControls.style.display = button.dataset.screen === "work" ? "" : "none";
+          if (button.dataset.screen === "picker") openPicker();
+          setPreviewMenuOpen(false);
+        });
+      });
+
+      const baseCandidates = [
+        "L300KP", "L300KP-2", "L300KP-2 超長尺仕様・高精度多軸マシニングセンタ",
+        "L300KPX", "L300MA", "FJV60-80", "FJV250", "M300X", "M500S",
+        "ROBODRILL-αD21MiB5", "CNC5000", "HMC400", "VTC-800/30SR",
+        ...Array.from({ length: 48 }, (_, index) => `LX7${String(index + 1).padStart(2, "0")}-STANDARD`)
+      ];
+      let digitQuery = "300";
+      let temporarySelection = "";
+      let committedSelection = "";
+      let renderTimer = 0;
+      const pickerLayer = document.getElementById("pickerLayer");
+      const digitReadout = document.getElementById("digitReadout");
+      const textQuery = document.getElementById("textQuery");
+      const candidateList = document.getElementById("candidateList");
+      const candidateCount = document.getElementById("candidateCount");
+      const moreNote = document.getElementById("moreNote");
+      const temporarySelectionLabel = document.getElementById("temporarySelection");
+      const confirmPickerButton = document.getElementById("confirmPickerButton");
+      const selectedMachine = document.getElementById("selectedMachine");
+      const saveTemplateButton = document.getElementById("saveTemplateButton");
+      const saveNote = document.getElementById("saveNote");
+
+      const normalize = (value) => value.normalize("NFKC").trim().toUpperCase();
+      const renderDigitReadout = () => {
+        digitReadout.textContent = digitQuery || "数字を入力してください";
+        digitReadout.classList.toggle("empty", !digitQuery);
+      };
+      const clearTemporarySelection = () => {
+        temporarySelection = "";
+        temporarySelectionLabel.textContent = "候補を1件選択してください";
+        applyButtonState(confirmPickerButton, "disabled");
+      };
+      const filteredCandidates = () => {
+        const normalizedText = normalize(textQuery.value);
+        return baseCandidates
+          .filter((name) => !digitQuery || normalize(name).replace(/\D/g, "").includes(digitQuery))
+          .filter((name) => !normalizedText || normalize(name).includes(normalizedText))
+          .sort((a, b) => a.localeCompare(b, "ja", { numeric: true, sensitivity: "base" }));
+      };
+      const renderCandidatesNow = () => {
+        const matches = filteredCandidates();
+        const shown = matches.slice(0, 40);
+        candidateList.replaceChildren();
+        candidateCount.textContent = `${matches.length}件${matches.length > 40 ? "（先頭40件）" : ""}`;
+        moreNote.classList.toggle("visible", matches.length > 40);
+        if (shown.length === 0) {
+          const message = document.createElement("div");
+          message.className = "candidate-message";
+          message.innerHTML = "<div><strong>候補が見つかりません</strong><br>数字または文字の条件を減らしてください。</div>";
+          candidateList.append(message);
+          return;
+        }
+        shown.forEach((name) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = `candidate-button${temporarySelection === name ? " selected" : ""}`;
+          button.dataset.candidate = name;
+          const label = document.createElement("span");
+          label.textContent = name;
+          const check = document.createElement("span");
+          check.className = "candidate-check";
+          check.textContent = temporarySelection === name ? "✓ 選択中" : "";
+          button.append(label, check);
+          button.addEventListener("click", () => {
+            temporarySelection = name;
+            temporarySelectionLabel.innerHTML = `仮選択: <strong>${name}</strong>`;
+            applyButtonState(confirmPickerButton, "primary");
+            renderCandidatesNow();
+          });
+          candidateList.append(button);
+        });
+      };
+      const scheduleCandidateRender = () => {
+        clearTemporarySelection();
+        candidateCount.textContent = "読込中…";
+        candidateList.innerHTML = '<div class="candidate-message">候補を読み込んでいます…</div>';
+        moreNote.classList.remove("visible");
+        window.clearTimeout(renderTimer);
+        renderTimer = window.setTimeout(renderCandidatesNow, 200);
+      };
+      const openPicker = () => {
+        pickerLayer.classList.add("open");
+        temporarySelection = "";
+        temporarySelectionLabel.textContent = committedSelection ? `確定済み: ${committedSelection}` : "候補を1件選択してください";
+        applyButtonState(confirmPickerButton, "disabled");
+        renderCandidatesNow();
+        window.setTimeout(() => document.querySelector('.tenkey button[data-digit="7"]').focus(), 0);
+      };
+      const closePicker = () => {
+        pickerLayer.classList.remove("open");
+        document.getElementById("openPickerButton").focus();
+      };
+
+      document.querySelectorAll("[data-digit]").forEach((button) => {
+        button.addEventListener("click", () => {
+          digitQuery += button.dataset.digit;
+          renderDigitReadout();
+          scheduleCandidateRender();
+        });
+      });
+      document.querySelector('[data-action="reset"]').addEventListener("click", () => {
+        digitQuery = "";
+        renderDigitReadout();
+        scheduleCandidateRender();
+      });
+      document.querySelector('[data-action="backspace"]').addEventListener("click", () => {
+        digitQuery = digitQuery.slice(0, -1);
+        renderDigitReadout();
+        scheduleCandidateRender();
+      });
+      textQuery.addEventListener("input", scheduleCandidateRender);
+      document.querySelectorAll("[data-preset]").forEach((button) => {
+        button.addEventListener("click", () => {
+          if (button.dataset.preset === "normal") {
+            digitQuery = "300";
+            textQuery.value = "KP";
+          } else if (button.dataset.preset === "none") {
+            digitQuery = "99999";
+            textQuery.value = "ZZZ";
+          } else {
+            digitQuery = "7";
+            textQuery.value = "";
+          }
+          renderDigitReadout();
+          scheduleCandidateRender();
+        });
+      });
+      confirmPickerButton.addEventListener("click", () => {
+        if (!temporarySelection) return;
+        committedSelection = temporarySelection;
+        selectedMachine.textContent = committedSelection;
+        selectedMachine.classList.remove("empty");
+        applyButtonState(saveTemplateButton, "primary");
+        saveNote.textContent = "候補から選択済みです。新規テンプレートを保存できます。";
+        saveNote.style.color = "#6ee7b7";
+        closePicker();
+      });
+      document.getElementById("openPickerButton").addEventListener("click", openPicker);
+      document.getElementById("closePickerButton").addEventListener("click", closePicker);
+      document.getElementById("cancelPickerButton").addEventListener("click", closePicker);
+      pickerLayer.addEventListener("click", (event) => {
+        if (event.target === pickerLayer) closePicker();
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && pickerLayer.classList.contains("open")) closePicker();
+        if (event.key !== "Tab" || !pickerLayer.classList.contains("open")) return;
+        const focusable = [...pickerLayer.querySelectorAll('button:not([disabled]), input:not([disabled])')];
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      });
+
+      const updateResolution = () => {
+        document.getElementById("resolutionNote").textContent =
+          captureMode === "1366x768"
+            ? "1366 × 768"
+            : captureMode === "1920x1080"
+              ? "1920 × 1080"
+              : `${window.innerWidth} × ${window.innerHeight}`;
+      };
+      window.addEventListener("resize", updateResolution);
+      updateResolution();
+      renderDigitReadout();
+      renderCandidatesNow();
+      const initialState = previewParams.get("state");
+      renderWorkState(initialState && workStates[initialState] ? initialState : "input");
+      if (previewParams.get("screen") === "picker") {
+        screens.work.classList.remove("active");
+        screens.picker.classList.add("active");
+        document.querySelectorAll("[data-screen]").forEach((tab) => {
+          tab.setAttribute("aria-selected", String(tab.dataset.screen === "picker"));
+        });
+        workStateControls.style.display = "none";
+        if (previewParams.get("preset") === "many") {
+          digitQuery = "7";
+          textQuery.value = "";
+          renderDigitReadout();
+        }
+        openPicker();
+      }
+    })();
+  </script>
+</body>
+</html>
