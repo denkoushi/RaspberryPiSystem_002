@@ -20,7 +20,8 @@ This change must preserve the exact existing winner rule and supplement results 
 - [x] (2026-07-25 06:49Z) Implemented one canonical window ranking of the main schedule before joining supplemental keys; no schema or winner-rule change.
 - [x] (2026-07-25 07:11Z) Audited existing retention and production date distribution; added guarded one-year source retention for old unmatched rows only.
 - [x] (2026-07-25 07:11Z) Re-ran focused validation: unit 18/18, disposable-PostgreSQL integration 4/4, API build, API lint, and `git diff --check`.
-- [ ] Commit, push, open a PR, wait for CI, merge, and verify the immutable main SHA.
+- [x] (2026-07-25 07:14Z) Committed and pushed `3333373c`; opened draft PR #1084.
+- [ ] Wait for PR #1084 CI, mark ready, merge, and verify the immutable main SHA.
 - [ ] Run `--print-plan`, the release-readiness preflight, and the standard Pi5-only rolling deployment.
 - [ ] Verify the backlog drains, later schedules are not skipped, health remains OK, and close this plan.
 
@@ -178,3 +179,5 @@ Revision note (2026-07-25 06:32Z): created after production evidence showed the 
 Revision note (2026-07-25 06:49Z): recorded the rejected repeated-index approach, the canonical one-pass winner materialization decision, focused test results, and full-scale disposable-database benchmark.
 
 Revision note (2026-07-25 07:11Z): added the production retention audit, guarded one-year source-row cleanup, completion of the old in-flight query, and refreshed focused validation evidence.
+
+Revision note (2026-07-25 07:14Z): recorded commit `3333373c` and draft PR #1084.
