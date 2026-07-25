@@ -121,7 +121,7 @@ fi
   eval "$(sed -n '/^build_candidate_service_with_retry() {/,/^}/p' "$SCRIPT")"
   BUILD_ATTEMPTS=3
   BUILD_RETRY_DELAY_SECONDS=5
-  BUILD_ATTEMPT_TIMEOUT_SECONDS=1800
+  BUILD_TOTAL_TIMEOUT_SECONDS=1800
   BASE_COMPOSE=base.yml
   PHASE2_COMPOSE=phase2.yml
   BUILD_OVERRIDE=
@@ -627,10 +627,12 @@ grep -Fq 'LABEL org.opencontainers.image.revision=${BUILD_COMMIT}' \
   || fail "candidate images do not seal their source revision"
 [[ "$(grep -Fc 'network: host' "$ROOT/infrastructure/docker/docker-compose.server.yml")" -eq 2 ]] \
   || fail "server Compose does not force both candidate builds through the Pi5 host network"
-grep -Fq 'BUILD_ATTEMPT_TIMEOUT_SECONDS=1800' "$SCRIPT" \
-  || fail "candidate image build attempts do not have a finite timeout"
-grep -Fq 'timeout --signal=TERM --kill-after=30s "$BUILD_ATTEMPT_TIMEOUT_SECONDS"' "$SCRIPT" \
-  || fail "candidate image build does not enforce its timeout"
+grep -Fq 'BUILD_ATTEMPTS=30' "$SCRIPT" \
+  || fail "candidate image build does not tolerate short-lived registry failures"
+grep -Fq 'BUILD_TOTAL_TIMEOUT_SECONDS=1800' "$SCRIPT" \
+  || fail "candidate image build does not have a finite total timeout"
+grep -Fq 'timeout --signal=TERM --kill-after=30s "$remaining_seconds"' "$SCRIPT" \
+  || fail "candidate image build does not enforce its remaining total budget"
 for dockerfile in \
   "$ROOT/infrastructure/docker/Dockerfile.api" \
   "$ROOT/infrastructure/docker/Dockerfile.web"; do
