@@ -84,6 +84,11 @@ this change can continue from the repository alone.
   ドキュメントペイン約655px、履歴約203px、横overflowなしだった。1920×1080相当では
   ドキュメントペイン約967px、履歴約515pxだった。
   Evidence: Viteの実装画面をmock read APIへ接続し、Browser viewportとDOM矩形を計測した。
+- Observation: 初回のGitHub full E2Eは、一覧見出しを仕様どおり「型番」から「機種名」へ
+  変更した一方、`e2e/assembly-library-editor-ui.spec.ts` が旧文言を固定期待していたため、
+  1366×768と1920×1080の同じassertionで失敗した。製品画面のsnapshotは新見出しを正常に
+  表示しており、期待値を正式表示名へ更新後、同specの6テストがローカルChromiumで合格した。
+  Evidence: GitHub Actions run `30161991786`、job `89688728013` とローカルfocused E2E。
 
 ## Decision Log
 

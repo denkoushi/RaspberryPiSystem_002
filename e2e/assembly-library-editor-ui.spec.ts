@@ -127,7 +127,7 @@ for (const viewport of viewports) {
     const procedureTable = page.getByRole('table', { name: '手順書ライブラリ' });
     await expect(procedureTable).toBeVisible();
     await expect(procedureTable.locator('tbody tr')).toHaveCount(4);
-    await expect(page.locator('th', { hasText: '型番' }).first()).toBeVisible();
+    await expect(page.locator('th', { hasText: '機種名' }).first()).toBeVisible();
 
     const combo = page.getByRole('combobox', { name: '手順書名で検索' });
     await combo.click();
