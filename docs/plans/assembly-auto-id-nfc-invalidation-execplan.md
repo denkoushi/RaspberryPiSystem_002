@@ -118,8 +118,8 @@ LinuxキオスクUA＋WebSocket mockのPlaywrightは2件成功した。EXPLAIN�
 ロット内有効個体、アクセス履歴、無効化requestIdで想定索引を使用した。正式ID候補は
 有効率90%では逐次走査が最適だったが、索引適用可能性も確認した。
 
-Node 22の最終検証では、API全体464ファイル・2,449テスト、Web全体305ファイル・
-1,515テストが成功した。追加監査修正後もAPI lint/build、組立統合29テスト、
+Node 22の最終検証では、API全体465ファイル・2,450テスト、Web全体305ファイル・
+1,516テストが成功した。追加監査修正後もAPI lint/build、組立統合29テスト、
 Web lint/build、直接照会3テストが成功し、対象Playwright 2件とCI E2E smoke
 3件も成功した。API全体7件とMFA smoke 2件は既存テスト条件によりskipされた。
 本番DB migration、push、PR、merge、deploy、実機操作は行っていない。
@@ -199,11 +199,11 @@ START、RESUME、invalidateはUUID requestIdで冪等化する。同じrequestId
     Prisma migrate status: Database schema is up to date
     API relevant integration: 3 files, 37 tests passed
     API assembly/torque unit: 9 files, 60 tests passed
-    API full Node 22: 464 files, 2449 passed, 7 skipped
+    API full Node 22: 465 files, 2450 passed, 7 skipped
     API final audit Node 22: lint/build, 3 unit files/9 tests,
       assembly integration 1 file/29 tests passed
     Web relevant Vitest: 9 files, 58 tests passed
-    Web full Node 22: 305 files, 1515 tests passed
+    Web full Node 22: 305 files, 1516 tests passed
     Web final audit Node 22: lint/build, traceability 1 file/3 tests passed
     Playwright NFC/hot-zone: 2 tests passed
     CI E2E smoke: 3 passed, 2 skipped by existing CI policy
