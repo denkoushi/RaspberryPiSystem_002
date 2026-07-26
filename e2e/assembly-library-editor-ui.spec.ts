@@ -5,6 +5,38 @@ const viewports = [
   { width: 1920, height: 1080 }
 ] as const;
 
+const procedureImage =
+  'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800"%3E%3Crect width="1200" height="800" fill="%23f8fafc"/%3E%3Cpath d="M100 400h1000M600 100v600" stroke="%2364758b" stroke-width="8"/%3E%3C/svg%3E';
+
+const unifiedEditorDocuments = [
+  {
+    id: 'procedure-primary',
+    name: '統合エディター 主手順書',
+    imageRelativePath: procedureImage,
+    status: 'published',
+    publishedAt: '2026-07-26T00:00:00.000Z',
+    isActive: true,
+    pages: [{ pageIndex: 0, imageRelativePath: procedureImage }],
+    activeTemplateCount: 0,
+    totalTemplateCount: 0,
+    createdAt: '2026-07-26T00:00:00.000Z',
+    updatedAt: '2026-07-26T00:00:00.000Z'
+  },
+  {
+    id: 'procedure-secondary',
+    name: '統合エディター 補助手順書',
+    imageRelativePath: procedureImage,
+    status: 'published',
+    publishedAt: '2026-07-26T00:00:00.000Z',
+    isActive: true,
+    pages: [{ pageIndex: 0, imageRelativePath: procedureImage }],
+    activeTemplateCount: 0,
+    totalTemplateCount: 0,
+    createdAt: '2026-07-26T00:00:00.000Z',
+    updatedAt: '2026-07-26T00:00:00.000Z'
+  }
+] as const;
+
 async function mockKioskApis(page: Page, deployNotice = false): Promise<void> {
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -39,6 +71,26 @@ async function mockKioskApis(page: Page, deployNotice = false): Promise<void> {
     }
     if (path.includes('/kiosk/call/targets')) {
       await route.fulfill({ json: { selfClientId: 'assembly-ui-e2e', targets: [] } });
+      return;
+    }
+    if (path.includes('/assembly/procedure-documents/summary')) {
+      await route.fulfill({ json: { documents: unifiedEditorDocuments } });
+      return;
+    }
+    if (path.includes('/kiosk/assembly/templates/verify-access-password')) {
+      await route.fulfill({ json: { success: true } });
+      return;
+    }
+    if (path.includes('/assembly/templates/summary')) {
+      await route.fulfill({ json: { templates: [] } });
+      return;
+    }
+    if (path.includes('/assembly/library/filter-options')) {
+      await route.fulfill({ json: { options: [] } });
+      return;
+    }
+    if (path.includes('/torque-wrench-capability-groups/compatible')) {
+      await route.fulfill({ json: { capabilityGroups: [] } });
       return;
     }
     await route.fulfill({ json: {} });
@@ -119,6 +171,71 @@ async function expectDirectChildrenOnOneRow(locator: Locator) {
 }
 
 for (const viewport of viewports) {
+  test(`unified assembly editor maximizes one document and preserves usable canvas with all panes at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    const pageErrors: string[] = [];
+    const navigationUrls: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.stack ?? error.message));
+    page.on('framenavigated', (frame) => {
+      if (frame === page.mainFrame()) navigationUrls.push(frame.url());
+    });
+    await page.setViewportSize(viewport);
+    await mockKioskApis(page);
+    await page.goto('/kiosk/assembly/templates/new?procedureDocumentId=procedure-primary', {
+      waitUntil: 'networkidle'
+    });
+
+    await page.getByPlaceholder('パスワード').fill('2520');
+    await page.getByRole('button', { name: '認証' }).click();
+
+    const workspace = page.getByTestId('assembly-unified-editor-workspace');
+    const canvasPane = page.getByTestId('assembly-unified-editor-canvas-pane');
+    const toolbar = page.getByTestId('assembly-editor-toolbar');
+    await expect(workspace).toBeVisible();
+    await expect(canvasPane).toBeVisible();
+    await expect(page.locator('#assembly-procedure-pane')).toHaveCount(0);
+    await expectDirectChildrenOnOneRow(toolbar);
+
+    const oneDocumentRatio = await workspace.evaluate((element) => {
+      const canvas = element.querySelector<HTMLElement>('[data-testid="assembly-unified-editor-canvas-pane"]');
+      return canvas ? canvas.getBoundingClientRect().width / element.getBoundingClientRect().width : 0;
+    });
+    expect(oneDocumentRatio).toBeGreaterThanOrEqual(0.8);
+
+    await page.getByRole('button', { name: '文書/工程 (1)' }).click();
+    await page.getByRole('button', { name: '文書追加' }).click();
+    const dialog = page.getByRole('dialog', { name: '文書ライブラリ' });
+    await expect(dialog).toBeVisible();
+    await dialog
+      .getByRole('listitem')
+      .filter({ hasText: '統合エディター 補助手順書' })
+      .getByRole('button', { name: '追加' })
+      .click();
+    await expect(page.locator('#assembly-procedure-pane')).toContainText('統合エディター 補助手順書');
+
+    const canvas = page.getByTestId('assembly-procedure-canvas');
+    await expect(canvas.locator('img')).toBeVisible();
+    const canvasBox = await canvas.boundingBox();
+    expect(canvasBox).not.toBeNull();
+    await page.mouse.click(
+      canvasBox!.x + canvasBox!.width * 0.5,
+      canvasBox!.y + canvasBox!.height * 0.5
+    );
+    await expect(page.getByTestId('assembly-editor-settings-pane')).toBeVisible();
+    await expect(page).toHaveURL(/\/kiosk\/assembly\/templates\/new/);
+    await expect(
+      toolbar,
+      [...pageErrors, `navigations: ${navigationUrls.join(' -> ')}`].join('\n')
+    ).toBeAttached();
+    await expectDirectChildrenOnOneRow(toolbar);
+
+    const allPanesRatio = await workspace.evaluate((element) => {
+      const canvas = element.querySelector<HTMLElement>('[data-testid="assembly-unified-editor-canvas-pane"]');
+      return canvas ? canvas.getBoundingClientRect().width / element.getBoundingClientRect().width : 0;
+    });
+    expect(allPanesRatio).toBeGreaterThanOrEqual(0.55);
+    expect(pageErrors).toEqual([]);
+  });
+
   test(`assembly library is two-row and deploy notice stays movable/non-blocking at ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await mockKioskApis(page, true);
@@ -243,3 +360,57 @@ for (const viewport of viewports) {
     await expectAllControlsInsidePane(settingsPane);
   });
 }
+
+test('unified assembly editor stacks panels and keeps touch targets usable on a narrow viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 900 });
+  await mockKioskApis(page);
+  await page.goto('/kiosk/assembly/templates/new?procedureDocumentId=procedure-primary', {
+    waitUntil: 'networkidle'
+  });
+
+  await page.getByPlaceholder('パスワード').fill('2520');
+  await page.getByRole('button', { name: '認証' }).click();
+  await page.getByRole('button', { name: '文書/工程 (1)' }).click();
+
+  const workspace = page.getByTestId('assembly-unified-editor-workspace');
+  const procedurePane = page.locator('#assembly-procedure-pane');
+  const canvasPane = page.getByTestId('assembly-unified-editor-canvas-pane');
+  await expect(procedurePane).toBeVisible();
+  await expect(canvasPane).toBeVisible();
+
+  const layout = await workspace.evaluate((element) => {
+    const procedure = element.querySelector<HTMLElement>('#assembly-procedure-pane');
+    const canvas = element.querySelector<HTMLElement>(
+      '[data-testid="assembly-unified-editor-canvas-pane"]'
+    );
+    if (!procedure || !canvas) return null;
+    const workspaceRect = element.getBoundingClientRect();
+    const procedureRect = procedure.getBoundingClientRect();
+    const canvasRect = canvas.getBoundingClientRect();
+    return {
+      procedureTop: procedureRect.top,
+      procedureBottom: procedureRect.bottom,
+      canvasTop: canvasRect.top,
+      procedureWidthRatio: procedureRect.width / workspaceRect.width,
+      canvasWidthRatio: canvasRect.width / workspaceRect.width
+    };
+  });
+  expect(layout).not.toBeNull();
+  expect(layout!.canvasTop).toBeGreaterThanOrEqual(layout!.procedureBottom - 1);
+  expect(layout!.procedureWidthRatio).toBeGreaterThanOrEqual(0.95);
+  expect(layout!.canvasWidthRatio).toBeGreaterThanOrEqual(0.95);
+
+  for (const buttonName of ['文書追加', '前頁', '次頁', '保存']) {
+    const button = page.getByRole('button', { name: buttonName, exact: true });
+    await expect(button).toBeVisible();
+    const box = await button.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.height).toBeGreaterThanOrEqual(40);
+  }
+});
+
+test('legacy procedure-order URL redirects to the filtered template library', async ({ page }) => {
+  await mockKioskApis(page);
+  await page.goto('/kiosk/assembly/procedure-order-settings?machineName=MH-AX');
+  await expect(page).toHaveURL(/\/kiosk\/assembly\/library\?focus=templates&modelCode=MH-AX$/);
+});

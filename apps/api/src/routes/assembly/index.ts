@@ -15,7 +15,6 @@ import {
   AssemblyExcelExportService,
   AssemblyLibraryFilterOptionsService,
   AssemblyLotService,
-  AssemblyProcedureOrderService,
   AssemblyProcedureSequenceService,
   AssemblyProcedureDocumentService,
   AssemblyProcedureDraftImportService,
@@ -33,8 +32,7 @@ import {
   TORQUE_INPUT_PORT_SOURCES,
   toPrismaTorqueInputSource,
   type AssemblyProcedureDocumentSummary,
-  type AssemblyProcedureOrder,
-  type AssemblyProcedureOrderDocumentSummary,
+  type AssemblyProcedureSequenceDocumentSummary,
   type AssemblyProcedureSequence,
   type AssemblySeibanCandidate,
   type AssemblyLotSummary,
@@ -119,6 +117,23 @@ const areaInputSchema = z.object({
   bolts: z.array(boltInputSchema).min(1)
 });
 
+const documentSequenceItemBodySchema = z
+  .object({
+    kioskDocumentId: z.string().uuid().optional().nullable(),
+    assemblyProcedureDocumentId: z.string().uuid().optional().nullable(),
+    label: z.string().trim().max(120).optional().nullable()
+  })
+  .superRefine((item, ctx) => {
+    const hasKiosk = Boolean(item.kioskDocumentId);
+    const hasAssembly = Boolean(item.assemblyProcedureDocumentId);
+    if (hasKiosk === hasAssembly) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '要領書PDFまたは組立手順書のどちらか一方を指定してください'
+      });
+    }
+  });
+
 const templateBodySchema = z.object({
   modelCode: z.string().trim().min(1).max(120),
   procedurePattern: z.string().trim().min(1).max(120),
@@ -126,12 +141,15 @@ const templateBodySchema = z.object({
   procedureDocumentId: z.string().uuid(),
   areas: z.array(areaInputSchema).min(1),
   checkItems: z.array(checkItemInputSchema).optional(),
-  traceabilityMode: z.enum(['LEGACY', 'REQUIRED']).optional().default('LEGACY')
+  traceabilityMode: z.enum(['LEGACY', 'REQUIRED']).optional().default('LEGACY'),
+  procedureItems: z.array(documentSequenceItemBodySchema).min(1).max(50).optional(),
+  accessPassword: z.string().max(128).optional()
 });
 
 const templateReviseBodySchema = templateBodySchema.partial().extend({
   areas: z.array(areaInputSchema).min(1).optional(),
-  checkItems: z.array(checkItemInputSchema).optional()
+  checkItems: z.array(checkItemInputSchema).optional(),
+  procedureItems: z.array(documentSequenceItemBodySchema).min(1).max(50).optional()
 });
 
 const recordCheckBodySchema = z.object({
@@ -182,29 +200,6 @@ const createAssemblyLotBodySchema = z
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'workIds または serialNos のどちらか一方だけを指定してください', path: ['workIds'] });
     }
   });
-
-const procedureOrderItemBodySchema = z
-  .object({
-    kioskDocumentId: z.string().uuid().optional().nullable(),
-    assemblyProcedureDocumentId: z.string().uuid().optional().nullable(),
-    label: z.string().trim().max(120).optional().nullable()
-  })
-  .superRefine((item, ctx) => {
-    const hasKiosk = Boolean(item.kioskDocumentId);
-    const hasAssembly = Boolean(item.assemblyProcedureDocumentId);
-    if (hasKiosk === hasAssembly) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: '要領書PDFまたは組立手順書のどちらか一方を指定してください'
-      });
-    }
-  });
-
-const procedureOrderSaveBodySchema = z.object({
-  machineName: z.string().trim().min(1).max(120),
-  accessPassword: z.string().min(1).max(128),
-  items: z.array(procedureOrderItemBodySchema).max(50)
-});
 
 const recordTorqueBodySchema = z.object({
   value: z.coerce.number(),
@@ -278,6 +273,8 @@ function serializeTemplateSummary(template: AssemblyTemplateSummary) {
     traceabilityMode: template.traceabilityMode,
     procedureDocumentId: template.procedureDocumentId,
     procedureDocumentName: template.procedureDocumentName,
+    procedureItemCount: template.procedureItemCount,
+    usesLegacyProcedureSequence: template.procedureItemCount === 0,
     areaCount: template.areaCount,
     boltCount: template.boltCount,
     createdAt: template.createdAt.toISOString(),
@@ -294,7 +291,9 @@ function serializeSeibanCandidate(candidate: AssemblySeibanCandidate) {
   };
 }
 
-function serializeProcedureOrderDocument(document: AssemblyProcedureOrderDocumentSummary) {
+function serializeProcedureSequenceDocumentSummary(
+  document: AssemblyProcedureSequenceDocumentSummary
+) {
   return {
     id: document.id,
     documentType: document.documentType,
@@ -310,27 +309,10 @@ function serializeProcedureOrderDocument(document: AssemblyProcedureOrderDocumen
   };
 }
 
-function serializeProcedureOrder(order: AssemblyProcedureOrder) {
-  return {
-    id: order.id,
-    machineName: order.machineName,
-    machineNameKey: order.machineNameKey,
-    configured: order.configured,
-    items: order.items.map((item) => ({
-      id: item.id,
-      sortOrder: item.sortOrder,
-      label: item.label,
-      documentType: item.documentType,
-      kioskDocumentId: item.kioskDocumentId,
-      assemblyProcedureDocumentId: item.assemblyProcedureDocumentId,
-      document: serializeProcedureOrderDocument(item.document)
-    }))
-  };
-}
-
 function serializeProcedureSequence(sequence: AssemblyProcedureSequence) {
   return {
     mode: sequence.mode,
+    source: sequence.source,
     reason: sequence.mode === 'fallback' ? sequence.reason : null,
     machineName: sequence.machineName,
     machineNameKey: sequence.machineNameKey,
@@ -422,6 +404,21 @@ function serializeCheckRecord(record: {
 }
 
 function serializeTemplate(template: AssemblyTemplateDetail | AssemblyTemplateDetailRow) {
+  const procedureSequence =
+    'procedureSequence' in template
+      ? {
+          source: template.procedureSequence.source,
+          items: template.procedureSequence.items.map((item) => ({
+            id: item.id,
+            sortOrder: item.sortOrder,
+            label: item.label,
+            documentType: item.documentType,
+            kioskDocumentId: item.kioskDocumentId,
+            assemblyProcedureDocumentId: item.assemblyProcedureDocumentId,
+            document: serializeProcedureSequenceDocumentSummary(item.document)
+          }))
+        }
+      : null;
   return {
     id: template.id,
     modelCode: template.modelCode,
@@ -434,6 +431,7 @@ function serializeTemplate(template: AssemblyTemplateDetail | AssemblyTemplateDe
     createdAt: template.createdAt.toISOString(),
     updatedAt: template.updatedAt.toISOString(),
     procedureDocument: serializeProcedureDocument(template.procedureDocument),
+    ...(procedureSequence ? { procedureSequence } : {}),
     checkItems: template.checkItems.map((item) => ({
       id: item.id,
       markerNo: item.markerNo,
@@ -725,8 +723,7 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
   const assemblyTraceabilityService = new AssemblyTraceabilityService();
   const seibanStartService = new AssemblySeibanStartService();
   const seibanLotQuantityService = new AssemblySeibanLotQuantityService();
-  const procedureOrderService = new AssemblyProcedureOrderService();
-  const procedureSequenceService = new AssemblyProcedureSequenceService(procedureOrderService);
+  const procedureSequenceService = new AssemblyProcedureSequenceService();
   const excelService = new AssemblyExcelExportService(sessionService);
 
   app.get('/assembly/seiban-candidates', { preHandler: allowView }, async (request) => {
@@ -760,22 +757,6 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
     const resolved = await resolveAssemblyOperatorNfcUid(body.uid);
     if (!resolved) return reply.status(404).send({ message: '社員タグが見つかりません' });
     return resolved;
-  });
-
-  app.get('/assembly/procedure-orders', { preHandler: allowView }, async (request) => {
-    const q = z
-      .object({
-        machineName: z.string().trim().min(1).max(120)
-      })
-      .parse(request.query);
-    const order = await procedureOrderService.getByMachineName(q.machineName);
-    return { order: serializeProcedureOrder(order) };
-  });
-
-  app.put('/assembly/procedure-orders', { preHandler: allowWriteKiosk }, async (request) => {
-    const body = procedureOrderSaveBodySchema.parse(request.body);
-    const order = await procedureOrderService.save(body);
-    return { order: serializeProcedureOrder(order) };
   });
 
   app.get('/assembly/library/filter-options', { preHandler: allowView }, async (request) => {
@@ -908,10 +889,6 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
 
   app.delete('/assembly/procedure-documents/:id', { preHandler: allowWriteKiosk }, async (request, reply) => {
     const params = idParamSchema.parse(request.params);
-    const orderReferenceCount = await procedureOrderService.countAssemblyProcedureDocumentReferences(params.id);
-    if (orderReferenceCount > 0) {
-      return reply.status(409).send({ message: '組立の閲覧順設定で使用中の手順書は削除できません' });
-    }
     const usage = await procedureService.getReferenceUsage(params.id);
     if (usage.inBoltPageRef || usage.inCheckPageRef) {
       return reply.status(409).send({ message: 'マーカー参照で使用中の手順書は削除できません' });

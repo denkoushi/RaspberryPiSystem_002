@@ -46,15 +46,15 @@ async function main() {
   });
 
   await withKioskPage(async (page) => {
-    await page.goto(`${WEB_BASE}/kiosk/assembly/procedure-order-settings?machineName=PERF-MACHINE-A`, {
+    await page.goto(`${WEB_BASE}/kiosk/assembly/library?focus=templates&modelCode=PERF-MACHINE-A`, {
       waitUntil: 'domcontentloaded',
       timeout: NAV_TIMEOUT_MS,
     });
-    await page.getByPlaceholder('パスワード').fill('2520');
-    await page.getByRole('button', { name: '認証' }).click();
-    await page.getByRole('button').filter({ hasText: /PERF-DOC-/ }).first().waitFor({ timeout: NAV_TIMEOUT_MS });
-    await page.screenshot({ path: path.join(outDir, 'assembly-procedure-order-settings.png'), fullPage: true });
-    console.log('saved assembly-procedure-order-settings.png');
+    await page.getByRole('heading', { name: '組立 手順書/テンプレート管理' }).waitFor({
+      timeout: NAV_TIMEOUT_MS,
+    });
+    await page.screenshot({ path: path.join(outDir, 'assembly-template-library.png'), fullPage: true });
+    console.log('saved assembly-template-library.png');
   });
 
   await withKioskPage(async (page) => {

@@ -1,10 +1,17 @@
 import { prisma } from '../../lib/prisma.js';
+import { logger } from '../../lib/logger.js';
 import { PdfStorageRenderAdapter } from '../kiosk-documents/adapters/pdf-storage-render.adapter.js';
+import { normalizeMachineNameForCompare } from '../production-schedule/machine-name-compare.js';
+import { AssemblyLegacyProcedureOrderService } from './assembly-legacy-procedure-order.service.js';
 import {
-  AssemblyProcedureOrderService,
-  type AssemblyProcedureOrderDocumentType,
-  type AssemblyProcedureOrderItemSummary
-} from './assembly-procedure-order.service.js';
+  type AssemblyProcedureSequenceDocumentType,
+  type AssemblyProcedureSequenceItemSummary
+} from './assembly-procedure-sequence-item.js';
+import {
+  assemblyTemplateProcedureItemsInclude,
+  mapTemplateProcedureItem,
+  type AssemblyTemplateProcedureSequenceSource
+} from './assembly-template-procedure-sequence.service.js';
 
 export type AssemblyProcedureSequenceFallbackReason = 'not_configured' | 'no_enabled_documents' | 'no_page_images';
 
@@ -19,7 +26,7 @@ export type AssemblyProcedureSequenceDocument = {
   orderItemId: string;
   sortOrder: number;
   label: string | null;
-  documentType: AssemblyProcedureOrderDocumentType;
+  documentType: AssemblyProcedureSequenceDocumentType;
   kioskDocumentId: string | null;
   assemblyProcedureDocumentId: string | null;
   title: string;
@@ -36,6 +43,7 @@ export type AssemblyProcedureSequenceDocument = {
 export type AssemblyProcedureSequence =
   | {
       mode: 'configured';
+      source: AssemblyTemplateProcedureSequenceSource;
       machineName: string;
       machineNameKey: string;
       documents: AssemblyProcedureSequenceDocument[];
@@ -47,6 +55,7 @@ export type AssemblyProcedureSequence =
     }
   | {
       mode: 'fallback';
+      source: AssemblyTemplateProcedureSequenceSource;
       reason: AssemblyProcedureSequenceFallbackReason;
       machineName: string;
       machineNameKey: string;
@@ -80,7 +89,7 @@ function buildKioskProcedurePages(documentId: string, pageUrls: string[]): Assem
 }
 
 async function toSequenceDocument(
-  item: AssemblyProcedureOrderItemSummary,
+  item: AssemblyProcedureSequenceItemSummary,
   render: PdfStorageRenderAdapter,
   assemblyPagesByDocumentId: Map<string, Array<{ pageIndex: number; imageRelativePath: string }>>
 ): Promise<AssemblyProcedureSequenceDocument | null> {
@@ -211,7 +220,7 @@ async function buildFallbackSequenceDocuments(
 
 export class AssemblyProcedureSequenceService {
   constructor(
-    private readonly orderService = new AssemblyProcedureOrderService(),
+    private readonly legacyOrderService = new AssemblyLegacyProcedureOrderService(),
     private readonly render = new PdfStorageRenderAdapter()
   ) {}
 
@@ -222,25 +231,48 @@ export class AssemblyProcedureSequenceService {
         targetUnit: true,
         template: {
           select: {
+            id: true,
             procedureDocument: {
               select: {
                 id: true,
                 name: true,
                 imageRelativePath: true
               }
-            }
+            },
+            procedureItems: assemblyTemplateProcedureItemsInclude
           }
         }
       }
     });
     if (!session) return null;
 
-    const order = await this.orderService.getByMachineName(session.targetUnit);
     const fallbackProcedureDocument = session.template.procedureDocument ?? null;
+    const storedItems = session.template.procedureItems.map(mapTemplateProcedureItem);
+    const order =
+      storedItems.length > 0
+        ? {
+            machineName: session.targetUnit.trim(),
+            machineNameKey: normalizeMachineNameForCompare(session.targetUnit),
+            items: storedItems
+          }
+        : await this.legacyOrderService.getByMachineName(session.targetUnit);
+    const source: AssemblyTemplateProcedureSequenceSource =
+      storedItems.length > 0
+        ? 'template_version'
+        : order.items.length > 0
+          ? 'legacy_machine_order'
+          : 'primary_fallback';
+    if (source !== 'template_version') {
+      logger.info(
+        { sessionId, templateId: session.template.id, targetUnit: session.targetUnit, source },
+        'assembly_work_session_template_procedure_sequence_fallback'
+      );
+    }
     if (order.items.length === 0) {
       const documents = await buildFallbackSequenceDocuments(fallbackProcedureDocument?.id);
       return {
         mode: 'fallback',
+        source,
         reason: documents.length > 0 ? 'not_configured' : 'not_configured',
         machineName: order.machineName,
         machineNameKey: order.machineNameKey,
@@ -258,6 +290,7 @@ export class AssemblyProcedureSequenceService {
       const documents = await buildFallbackSequenceDocuments(fallbackProcedureDocument?.id);
       return {
         mode: 'fallback',
+        source,
         reason: 'no_enabled_documents',
         machineName: order.machineName,
         machineNameKey: order.machineNameKey,
@@ -292,6 +325,7 @@ export class AssemblyProcedureSequenceService {
       const fallbackDocuments = await buildFallbackSequenceDocuments(fallbackProcedureDocument?.id);
       return {
         mode: 'fallback',
+        source,
         reason: 'no_page_images',
         machineName: order.machineName,
         machineNameKey: order.machineNameKey,
@@ -302,6 +336,7 @@ export class AssemblyProcedureSequenceService {
 
     return {
       mode: 'configured',
+      source,
       machineName: order.machineName,
       machineNameKey: order.machineNameKey,
       documents,

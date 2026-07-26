@@ -46,7 +46,7 @@ export function KioskAssemblyPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
   const templateLibrary = useAssemblyTemplateLibrary({ refreshToken: templateRefreshToken });
-  const { filters, templates } = templateLibrary;
+  const { filters, templates, setModelCode } = templateLibrary;
   const modelCodeOptions = useAssemblyLibraryFilterOptions({
     field: 'templateModelCode',
     query: filters.modelCode,
@@ -59,12 +59,13 @@ export function KioskAssemblyPage() {
   });
 
   useEffect(() => {
-    const { focus } = parseAssemblyLibrarySearch(location.search);
+    const { focus, modelCode } = parseAssemblyLibrarySearch(location.search);
+    if (modelCode) setModelCode(modelCode);
     if (!focus) return;
     const targetId =
       focus === 'procedures' ? 'assembly-procedure-library-heading' : 'assembly-template-pane-heading';
     document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [location.search]);
+  }, [location.search, setModelCode]);
 
   const groupedTemplates = useMemo(() => {
     const map = new Map<string, AssemblyTemplateSummaryDto[]>();

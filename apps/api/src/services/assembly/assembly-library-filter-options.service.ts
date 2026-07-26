@@ -48,14 +48,31 @@ export class AssemblyLibraryFilterOptionsService {
         break;
       case 'templateProcedureDocumentName':
         rows = await prisma.$queryRaw<FilterOptionRow[]>(Prisma.sql`
-          SELECT MIN(BTRIM(d."name")) AS "value"
-          FROM "AssemblyTemplate" AS t
-          INNER JOIN "AssemblyProcedureDocument" AS d ON d."id" = t."procedureDocumentId"
-          WHERE BTRIM(d."name") <> ''
-            AND (${input.includeInactive === true} OR t."isActive" = true)
-            AND (${query} = '' OR STRPOS(LOWER(BTRIM(d."name")), LOWER(${query})) > 0)
-          GROUP BY LOWER(BTRIM(d."name"))
-          ORDER BY LOWER(MIN(BTRIM(d."name"))) ASC
+          WITH "template_document_names" AS (
+            SELECT t."id" AS "templateId", t."isActive", d."name"
+            FROM "AssemblyTemplate" AS t
+            INNER JOIN "AssemblyProcedureDocument" AS d ON d."id" = t."procedureDocumentId"
+            UNION
+            SELECT i."templateId", t."isActive", d."name"
+            FROM "AssemblyTemplateProcedureItem" AS i
+            INNER JOIN "AssemblyTemplate" AS t ON t."id" = i."templateId"
+            INNER JOIN "AssemblyProcedureDocument" AS d ON d."id" = i."assemblyProcedureDocumentId"
+            UNION
+            SELECT
+              i."templateId",
+              t."isActive",
+              COALESCE(NULLIF(BTRIM(d."displayTitle"), ''), d."title") AS "name"
+            FROM "AssemblyTemplateProcedureItem" AS i
+            INNER JOIN "AssemblyTemplate" AS t ON t."id" = i."templateId"
+            INNER JOIN "KioskDocument" AS d ON d."id" = i."kioskDocumentId"
+          )
+          SELECT MIN(BTRIM(n."name")) AS "value"
+          FROM "template_document_names" AS n
+          WHERE BTRIM(n."name") <> ''
+            AND (${input.includeInactive === true} OR n."isActive" = true)
+            AND (${query} = '' OR STRPOS(LOWER(BTRIM(n."name")), LOWER(${query})) > 0)
+          GROUP BY LOWER(BTRIM(n."name"))
+          ORDER BY LOWER(MIN(BTRIM(n."name"))) ASC
           LIMIT ${limit}
         `);
         break;

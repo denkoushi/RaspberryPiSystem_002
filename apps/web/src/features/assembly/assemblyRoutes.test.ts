@@ -42,9 +42,12 @@ describe('assemblyRoutes', () => {
     expect(kioskAssemblyLibraryPath({ focus: 'procedures' })).toBe('/kiosk/assembly/library?focus=procedures');
     expect(kioskAssemblyLibraryPath({ focus: 'templates' })).toBe('/kiosk/assembly/library?focus=templates');
     expect(kioskAssemblyLibraryPath()).toBe(KIOSK_ASSEMBLY_LIBRARY_PATH);
-    expect(parseAssemblyLibrarySearch('?focus=procedures')).toEqual({ focus: 'procedures' });
-    expect(parseAssemblyLibrarySearch('?focus=templates')).toEqual({ focus: 'templates' });
-    expect(parseAssemblyLibrarySearch('?focus=unknown')).toEqual({ focus: null });
+    expect(parseAssemblyLibrarySearch('?focus=procedures')).toEqual({ focus: 'procedures', modelCode: null });
+    expect(parseAssemblyLibrarySearch('?focus=templates')).toEqual({ focus: 'templates', modelCode: null });
+    expect(parseAssemblyLibrarySearch('?focus=unknown')).toEqual({ focus: null, modelCode: null });
+    expect(kioskAssemblyLibraryPath({ focus: 'templates', modelCode: 'MH-AX' })).toBe(
+      '/kiosk/assembly/library?focus=templates&modelCode=MH-AX'
+    );
   });
 
   it('builds and parses procedure order settings query params', () => {

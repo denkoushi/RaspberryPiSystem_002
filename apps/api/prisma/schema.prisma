@@ -1969,59 +1969,60 @@ enum PartMeasurementDrawingOcrStatus {
 
 /// キオスク「要領書」用PDF（手動アップロード / Gmail取り込み）
 model KioskDocument {
-  id                          String                         @id @default(uuid())
-  title                       String
-  displayTitle                String?
-  filename                    String
-  filePath                    String
-  fileHash                    String?
-  sourceType                  KioskDocumentSource
-  gmailMessageId              String?
-  sourceAttachmentName        String?
+  id                             String                          @id @default(uuid())
+  title                          String
+  displayTitle                   String?
+  filename                       String
+  filePath                       String
+  fileHash                       String?
+  sourceType                     KioskDocumentSource
+  gmailMessageId                 String?
+  sourceAttachmentName           String?
   /// Gmail: 正規化済み添付名。同一キーはより新しいメール（gmailInternalDateMs）で上書き
-  gmailLogicalKey             String?                        @unique
+  gmailLogicalKey                String?                         @unique
   /// Gmail API messages.get internalDate（ミリ秒）。上書き判定用
-  gmailInternalDateMs         BigInt?
+  gmailInternalDateMs            BigInt?
   /// Gmail同一添付の再取り込み防止（例: messageId + 元ファイル名のハッシュ）
-  gmailDedupeKey              String?                        @unique
-  pageCount                   Int?
-  extractedText               String?
-  ocrStatus                   KioskDocumentOcrStatus         @default(PENDING)
-  ocrEngine                   String?
-  ocrStartedAt                DateTime?
-  ocrFinishedAt               DateTime?
-  ocrRetryCount               Int                            @default(0)
-  ocrFailureReason            String?
-  ocrTargetPages              Int?
-  candidateFhincd             String?
-  candidateDrawingNumber      String?
-  candidateProcessName        String?
-  candidateResourceCd         String?
-  confidenceFhincd            Float?
-  confidenceDrawingNumber     Float?
-  confidenceProcessName       Float?
-  confidenceResourceCd        Float?
-  confirmedFhincd             String?
-  confirmedDrawingNumber      String?
-  confirmedProcessName        String?
-  confirmedResourceCd         String?
-  documentCategory            String?
+  gmailDedupeKey                 String?                         @unique
+  pageCount                      Int?
+  extractedText                  String?
+  ocrStatus                      KioskDocumentOcrStatus          @default(PENDING)
+  ocrEngine                      String?
+  ocrStartedAt                   DateTime?
+  ocrFinishedAt                  DateTime?
+  ocrRetryCount                  Int                             @default(0)
+  ocrFailureReason               String?
+  ocrTargetPages                 Int?
+  candidateFhincd                String?
+  candidateDrawingNumber         String?
+  candidateProcessName           String?
+  candidateResourceCd            String?
+  confidenceFhincd               Float?
+  confidenceDrawingNumber        Float?
+  confidenceProcessName          Float?
+  confidenceResourceCd           Float?
+  confirmedFhincd                String?
+  confirmedDrawingNumber         String?
+  confirmedProcessName           String?
+  confirmedResourceCd            String?
+  documentCategory               String?
   /// ISO 等の文書番号（OCR 候補・人手確定）
-  candidateDocumentNumber     String?
-  confidenceDocumentNumber    Float?
-  confirmedDocumentNumber     String?
+  candidateDocumentNumber        String?
+  confidenceDocumentNumber       Float?
+  confirmedDocumentNumber        String?
   /// 本文類推用要約（OCR が最大3候補、人手で確定テキストをスナップショット保存）
-  summaryCandidate1           String?
-  summaryCandidate2           String?
-  summaryCandidate3           String?
-  confirmedSummaryText        String?
-  enabled                     Boolean                        @default(true)
-  createdAt                   DateTime                       @default(now())
-  updatedAt                   DateTime                       @updatedAt
-  metadataHistories           KioskDocumentMetadataHistory[]
-  assemblyProcedureOrderItems AssemblyProcedureOrderItem[]
-  assemblyTemplateBolts       AssemblyTemplateBolt[]
-  assemblyTemplateCheckItems  AssemblyTemplateCheckItem[]
+  summaryCandidate1              String?
+  summaryCandidate2              String?
+  summaryCandidate3              String?
+  confirmedSummaryText           String?
+  enabled                        Boolean                         @default(true)
+  createdAt                      DateTime                        @default(now())
+  updatedAt                      DateTime                        @updatedAt
+  metadataHistories              KioskDocumentMetadataHistory[]
+  assemblyProcedureOrderItems    AssemblyProcedureOrderItem[]
+  assemblyTemplateProcedureItems AssemblyTemplateProcedureItem[]
+  assemblyTemplateBolts          AssemblyTemplateBolt[]
+  assemblyTemplateCheckItems     AssemblyTemplateCheckItem[]
 
   @@index([enabled])
   @@index([title])
@@ -2423,21 +2424,22 @@ model PartMeasurementResult {
 
 /// 組立トルク管理: 手順書画像（先頭ページは imageRelativePath にも保持）。部品測定図面とは保存先・責務を分ける。
 model AssemblyProcedureDocument {
-  id                 String                                 @id @default(uuid())
-  name               String
+  id                     String                                 @id @default(uuid())
+  name                   String
   /// 互換用: 先頭ページ（pageIndex=0）と同一画像パス
-  imageRelativePath  String
-  status             AssemblyProcedureDocumentStatus        @default(DRAFT)
-  publishedAt        DateTime?
-  isActive           Boolean                                @default(true)
-  createdAt          DateTime                               @default(now())
-  updatedAt          DateTime                               @updatedAt
-  source             AssemblyProcedureDocumentSourceRecord?
-  pages              AssemblyProcedureDocumentPage[]
-  templates          AssemblyTemplate[]
-  orderItems         AssemblyProcedureOrderItem[]
-  templateBolts      AssemblyTemplateBolt[]
-  templateCheckItems AssemblyTemplateCheckItem[]
+  imageRelativePath      String
+  status                 AssemblyProcedureDocumentStatus        @default(DRAFT)
+  publishedAt            DateTime?
+  isActive               Boolean                                @default(true)
+  createdAt              DateTime                               @default(now())
+  updatedAt              DateTime                               @updatedAt
+  source                 AssemblyProcedureDocumentSourceRecord?
+  pages                  AssemblyProcedureDocumentPage[]
+  templates              AssemblyTemplate[]
+  orderItems             AssemblyProcedureOrderItem[]
+  templateProcedureItems AssemblyTemplateProcedureItem[]
+  templateBolts          AssemblyTemplateBolt[]
+  templateCheckItems     AssemblyTemplateCheckItem[]
 
   @@index([isActive, name], map: "AssemblyProcedureDocument_idx_active_name")
   @@index([isActive, updatedAt], map: "AssemblyProcedureDocument_idx_active_updated")
@@ -2504,20 +2506,40 @@ model AssemblyProcedureOrderItem {
   @@index([assemblyProcedureDocumentId], map: "AssemblyProcedureOrderItem_idx_assembly_document")
 }
 
+/// 組立テンプレート版が所有する、再現可能な手順書閲覧順。
+model AssemblyTemplateProcedureItem {
+  id                          String                     @id @default(uuid())
+  templateId                  String
+  kioskDocumentId             String?
+  assemblyProcedureDocumentId String?
+  sortOrder                   Int
+  label                       String?
+  createdAt                   DateTime                   @default(now())
+  updatedAt                   DateTime                   @updatedAt
+  template                    AssemblyTemplate           @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  kioskDocument               KioskDocument?             @relation(fields: [kioskDocumentId], references: [id], onDelete: Restrict)
+  assemblyProcedureDocument   AssemblyProcedureDocument? @relation(fields: [assemblyProcedureDocumentId], references: [id], onDelete: Restrict)
+
+  @@unique([templateId, sortOrder], map: "AssemblyTemplateProcedureItem_unique_template_sort")
+  @@index([kioskDocumentId], map: "AssemblyTemplateProcedureItem_idx_kiosk_document")
+  @@index([assemblyProcedureDocumentId], map: "AssemblyTemplateProcedureItem_idx_assembly_document")
+}
+
 /// 組立トルク管理: 型番/FHINCD + 手順パターンごとの締付テンプレート。
 model AssemblyTemplate {
-  id                  String                      @id @default(uuid())
+  id                  String                          @id @default(uuid())
   modelCode           String
   procedurePattern    String
   name                String
-  version             Int                         @default(1)
-  isActive            Boolean                     @default(true)
+  version             Int                             @default(1)
+  isActive            Boolean                         @default(true)
   procedureDocumentId String
   /// Expand-first rollout: NULL on pre-feature rows means LEGACY.
   traceabilityMode    String?
-  createdAt           DateTime                    @default(now())
-  updatedAt           DateTime                    @updatedAt
-  procedureDocument   AssemblyProcedureDocument   @relation(fields: [procedureDocumentId], references: [id], onDelete: Restrict)
+  createdAt           DateTime                        @default(now())
+  updatedAt           DateTime                        @updatedAt
+  procedureDocument   AssemblyProcedureDocument       @relation(fields: [procedureDocumentId], references: [id], onDelete: Restrict)
+  procedureItems      AssemblyTemplateProcedureItem[]
   areas               AssemblyTemplateArea[]
   checkItems          AssemblyTemplateCheckItem[]
   workSessions        AssemblyWorkSession[]

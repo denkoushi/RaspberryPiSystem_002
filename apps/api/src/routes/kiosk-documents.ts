@@ -7,7 +7,7 @@ import { authorizeRoles } from '../lib/auth.js';
 import { ApiError } from '../lib/errors.js';
 import { authorizeKioskClientKeyOrJwtRoles } from '../lib/kiosk-document-auth.js';
 import { BackupConfigLoader } from '../services/backup/backup-config.loader.js';
-import { AssemblyProcedureOrderService } from '../services/assembly/assembly-procedure-order.service.js';
+import { AssemblyProcedureReferenceService } from '../services/assembly/assembly-procedure-reference.service.js';
 import { PdfStorageFileStoreAdapter } from '../services/kiosk-documents/adapters/pdf-storage-file-store.adapter.js';
 import { PdfStorageRenderAdapter } from '../services/kiosk-documents/adapters/pdf-storage-render.adapter.js';
 import { PlaywrightHtmlToPdfAdapter } from '../services/kiosk-documents/adapters/playwright-html-to-pdf.adapter.js';
@@ -170,7 +170,7 @@ export function registerKioskDocumentRoutes(app: FastifyInstance): void {
   );
   const processingService = createDefaultKioskDocumentProcessingService(repo);
   const gmailIngestion = new KioskDocumentGmailIngestionService(service);
-  const assemblyProcedureOrderService = new AssemblyProcedureOrderService();
+  const assemblyProcedureReferenceService = new AssemblyProcedureReferenceService();
 
   const canManage = authorizeRoles('ADMIN', 'MANAGER');
 
@@ -313,11 +313,12 @@ export function registerKioskDocumentRoutes(app: FastifyInstance): void {
 
   app.delete('/kiosk-documents/:id', { preHandler: [canManage] }, async (request) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
-    const assemblyReferenceCount = await assemblyProcedureOrderService.countKioskDocumentReferences(id);
+    const assemblyReferenceCount =
+      await assemblyProcedureReferenceService.countKioskDocumentReferences(id);
     if (assemblyReferenceCount > 0) {
       throw new ApiError(
         409,
-        '組立の閲覧順設定で使用中の要領書は削除できません',
+        '組立テンプレートの手順書列で使用中の要領書は削除できません',
         undefined,
         'KIOSK_DOC_ASSEMBLY_ORDER_IN_USE'
       );

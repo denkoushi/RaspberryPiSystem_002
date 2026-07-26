@@ -33,17 +33,26 @@ export function kioskAssemblyWorkSessionPath(sessionId: string): string {
 
 export type AssemblyLibraryFocus = 'procedures' | 'templates';
 
-export function kioskAssemblyLibraryPath(params?: { focus?: AssemblyLibraryFocus }): string {
+export function kioskAssemblyLibraryPath(params?: {
+  focus?: AssemblyLibraryFocus;
+  modelCode?: string | null;
+}): string {
   const query = new URLSearchParams();
   if (params?.focus) query.set('focus', params.focus);
+  const modelCode = params?.modelCode?.trim();
+  if (modelCode) query.set('modelCode', modelCode);
   const suffix = query.toString();
   return suffix ? `${KIOSK_ASSEMBLY_LIBRARY_PATH}?${suffix}` : KIOSK_ASSEMBLY_LIBRARY_PATH;
 }
 
-export function parseAssemblyLibrarySearch(search: string): { focus: AssemblyLibraryFocus | null } {
-  const focus = new URLSearchParams(search).get('focus');
-  if (focus === 'procedures' || focus === 'templates') return { focus };
-  return { focus: null };
+export function parseAssemblyLibrarySearch(search: string): {
+  focus: AssemblyLibraryFocus | null;
+  modelCode: string | null;
+} {
+  const query = new URLSearchParams(search);
+  const focusValue = query.get('focus');
+  const focus = focusValue === 'procedures' || focusValue === 'templates' ? focusValue : null;
+  return { focus, modelCode: query.get('modelCode') };
 }
 
 export function kioskAssemblyProcedureOrderSettingsPath(params?: { machineName?: string | null }): string {
