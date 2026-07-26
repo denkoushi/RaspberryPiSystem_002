@@ -31,6 +31,11 @@ This plan follows `.agent/PLANS.md`.
 - [x] (2026-07-26) ADR・KB・索引を更新した。
 - [x] (2026-07-26) 隔離PostgreSQLで全migration、関連統合37テスト、SQL、EXPLAINを検証した。
 - [x] (2026-07-26) Node 22でlint、build、全Vitest、対象Playwright、CI smokeを最終再検証した。
+- [x] (2026-07-26) ユーザーからpush、PR、merge、本番migration、標準deploy、実機操作検証の明示承認を得た。
+- [ ] featureブランチをpushし、ready PRを作成する。
+- [ ] 必須CIとレビュー結果を確認し、mainへmergeする。
+- [ ] merge SHAのCI成功後、標準ローリング更新のplanを確認して本番へ適用する。
+- [ ] deploy status、同一SHAのno-op plan、実機の組立/NFC/右下ホットゾーンを確認する。
 
 ## Surprises & Discoveries
 
@@ -105,6 +110,12 @@ This plan follows `.agent/PLANS.md`.
   Rationale: 現在のチェック入力者を正しく表示しつつ、過去担当者を失わない。
   Date: 2026-07-26
 
+- Decision: 公開と本番反映はready PRの必須CI・レビューを通過したmainの不変SHAを
+  対象に、`scripts/update-all-clients.sh`の標準ローリング更新だけで行う。
+  Rationale: ユーザーの追加承認を監査可能にし、migration、Pi5、端末の順序と
+  rollback証跡を既存オーケストレーターへ一元化する。
+  Date: 2026-07-26
+
 ## Outcomes & Retrospective
 
 作業用IDの自動発行、START/RESUMEごとの社員NFC履歴、不可逆なWorkUnit論理無効化、
@@ -122,7 +133,8 @@ Node 22の最終検証では、API全体465ファイル・2,450テスト、Web�
 1,516テストが成功した。追加監査修正後もAPI lint/build、組立統合29テスト、
 Web lint/build、直接照会3テストが成功し、対象Playwright 2件とCI E2E smoke
 3件も成功した。API全体7件とMFA smoke 2件は既存テスト条件によりskipされた。
-本番DB migration、push、PR、merge、deploy、実機操作は行っていない。
+本番DB migration、push、PR、merge、deploy、実機操作は追加承認済みであり、
+以降のProgressへ結果を追記する。
 
 ## Context and Orientation
 
