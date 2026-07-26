@@ -1397,6 +1397,368 @@ describe('assembly torque management API', () => {
     expect(succeeded.json()).toEqual({ success: true });
   });
 
+  it('creates one immutable template version with document sequence, areas and markers', async () => {
+    const client = await createTestClientDevice();
+    const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
+    const primary = await uploadPublishedProcedureDocument(app, headers, '統合 主手順書');
+    const secondary = await uploadPublishedProcedureDocument(app, headers, '統合 補助手順書');
+    const kiosk = await createKioskDocumentWithRenderedPages({ title: '統合PDF', pageCount: 2 });
+    const payload = {
+      ...buildTemplatePayload(primary.id, {
+        modelCode: 'UNIFIED-001',
+        procedurePattern: '標準',
+        name: '統合テンプレート'
+      }),
+      accessPassword: '2520',
+      procedureItems: [
+        { kioskDocumentId: kiosk.id, label: '準備' },
+        { assemblyProcedureDocumentId: primary.id, label: '主工程' },
+        { assemblyProcedureDocumentId: secondary.id, label: '確認' }
+      ]
+    };
+
+    const unlistedKiosk = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload
+    });
+    expect(unlistedKiosk.statusCode).toBe(400);
+    expect(unlistedKiosk.json().message).toContain(
+      '要領書PDFは既存の閲覧順からのみ引き継げます'
+    );
+
+    const legacyOrder = await app.inject({
+      method: 'PUT',
+      url: '/api/assembly/procedure-orders',
+      headers,
+      payload: {
+        machineName: 'UNIFIED-001',
+        accessPassword: '2520',
+        items: [
+          { kioskDocumentId: kiosk.id, label: '準備' },
+          { assemblyProcedureDocumentId: primary.id, label: '主工程' },
+          { assemblyProcedureDocumentId: secondary.id, label: '確認' }
+        ]
+      }
+    });
+    expect(legacyOrder.statusCode).toBe(200);
+
+    const wrongPassword = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload: { ...payload, accessPassword: '0000' }
+    });
+    expect(wrongPassword.statusCode).toBe(403);
+    expect(await prisma.assemblyTemplate.count({ where: { modelCode: 'UNIFIED-001' } })).toBe(0);
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload
+    });
+    expect(created.statusCode).toBe(200);
+    expect(created.json().template.procedureSequence).toMatchObject({
+      source: 'template_version',
+      items: [
+        expect.objectContaining({ kioskDocumentId: kiosk.id, label: '準備', sortOrder: 0 }),
+        expect.objectContaining({
+          assemblyProcedureDocumentId: primary.id,
+          label: '主工程',
+          sortOrder: 1
+        }),
+        expect.objectContaining({
+          assemblyProcedureDocumentId: secondary.id,
+          label: '確認',
+          sortOrder: 2
+        })
+      ]
+    });
+    expect(created.json().template.areas[0].bolts[0]).toMatchObject({
+      assemblyProcedureDocumentId: primary.id,
+      kioskDocumentId: null,
+      pageIndex: 0
+    });
+    expect(
+      await prisma.assemblyTemplateProcedureItem.count({
+        where: { templateId: created.json().template.id }
+      })
+    ).toBe(3);
+
+    const summary = await app.inject({
+      method: 'GET',
+      url: `/api/assembly/templates/summary?procedureDocumentId=${secondary.id}`,
+      headers
+    });
+    expect(summary.statusCode).toBe(200);
+    expect(summary.json().templates[0]).toMatchObject({
+      id: created.json().template.id,
+      procedureItemCount: 3,
+      usesLegacyProcedureSequence: false
+    });
+    const kioskNameSearch = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/templates/summary?q=%E7%B5%B1%E5%90%88PDF',
+      headers
+    });
+    expect(kioskNameSearch.statusCode).toBe(200);
+    expect(kioskNameSearch.json().templates[0].id).toBe(created.json().template.id);
+    const kioskNameOptions = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/library/filter-options?field=templateProcedureDocumentName&q=%E7%B5%B1%E5%90%88PDF',
+      headers
+    });
+    expect(kioskNameOptions.statusCode).toBe(200);
+    expect(kioskNameOptions.json().options).toContain('統合PDF');
+
+    const unpublishReferenced = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/procedure-documents/${secondary.id}/unpublish`,
+      headers: { 'x-client-key': client.apiKey }
+    });
+    expect(unpublishReferenced.statusCode).toBe(409);
+
+    const admin = await createTestUser('ADMIN');
+    const deleteReferencedKiosk = await app.inject({
+      method: 'DELETE',
+      url: `/api/kiosk-documents/${kiosk.id}`,
+      headers: createAuthHeader(admin.token)
+    });
+    expect(deleteReferencedKiosk.statusCode).toBe(409);
+  });
+
+  it('keeps a work session on its template-version sequence after revision and legacy-order changes', async () => {
+    const client = await createTestClientDevice();
+    const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
+    const primary = await uploadPublishedProcedureDocument(app, headers, '固定版 主手順書');
+    const kioskV1 = await createKioskDocumentWithRenderedPages({ title: '固定版V1', pageCount: 1 });
+    const kioskV2 = await createKioskDocumentWithRenderedPages({ title: '固定版V2', pageCount: 1 });
+    const initialLegacyOrder = await app.inject({
+      method: 'PUT',
+      url: '/api/assembly/procedure-orders',
+      headers,
+      payload: {
+        machineName: 'IMMUTABLE-001',
+        accessPassword: '2520',
+        items: [
+          { assemblyProcedureDocumentId: primary.id, label: '主工程' },
+          { kioskDocumentId: kioskV1.id, label: 'V1 PDF' }
+        ]
+      }
+    });
+    expect(initialLegacyOrder.statusCode).toBe(200);
+    const createV1 = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload: {
+        ...buildTemplatePayload(primary.id, {
+          modelCode: 'IMMUTABLE-001',
+          procedurePattern: '標準',
+          name: '固定版 v1'
+        }),
+        accessPassword: '2520',
+        procedureItems: [
+          { assemblyProcedureDocumentId: primary.id, label: '主工程' },
+          { kioskDocumentId: kioskV1.id, label: 'V1 PDF' }
+        ]
+      }
+    });
+    expect(createV1.statusCode).toBe(200);
+    const v1Id = createV1.json().template.id as string;
+
+    const started = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/work-sessions',
+      headers,
+      payload: {
+        templateId: v1Id,
+        productNo: 'IMMUTABLE-PRODUCT',
+        serialNo: 'IMMUTABLE-SERIAL',
+        operatorNameSnapshot: '版固定確認者',
+        targetUnit: 'IMMUTABLE-001',
+        torqueWrenchId: 'CEM20N3X10D-BTLA'
+      }
+    });
+    expect(started.statusCode).toBe(200);
+
+    const prepareV2LegacyOrder = await app.inject({
+      method: 'PUT',
+      url: '/api/assembly/procedure-orders',
+      headers,
+      payload: {
+        machineName: 'IMMUTABLE-001',
+        accessPassword: '2520',
+        items: [
+          { assemblyProcedureDocumentId: primary.id, label: '主工程' },
+          { kioskDocumentId: kioskV2.id, label: 'V2 PDF' }
+        ]
+      }
+    });
+    expect(prepareV2LegacyOrder.statusCode).toBe(200);
+
+    const revised = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/templates/${v1Id}/revise`,
+      headers,
+      payload: {
+        name: '固定版 v2',
+        procedureDocumentId: primary.id,
+        accessPassword: '2520',
+        procedureItems: [
+          { assemblyProcedureDocumentId: primary.id, label: '主工程' },
+          { kioskDocumentId: kioskV2.id, label: 'V2 PDF' }
+        ]
+      }
+    });
+    expect(revised.statusCode).toBe(200);
+
+    const changedLegacyOrder = await app.inject({
+      method: 'PUT',
+      url: '/api/assembly/procedure-orders',
+      headers,
+      payload: {
+        machineName: 'IMMUTABLE-001',
+        accessPassword: '2520',
+        items: [{ kioskDocumentId: kioskV2.id, label: '後日設定' }]
+      }
+    });
+    expect(changedLegacyOrder.statusCode).toBe(200);
+
+    const sequence = await app.inject({
+      method: 'GET',
+      url: `/api/assembly/work-sessions/${started.json().session.id}/procedure-sequence`,
+      headers
+    });
+    expect(sequence.statusCode).toBe(200);
+    expect(sequence.json().sequence.source).toBe('template_version');
+    expect(
+      sequence
+        .json()
+        .sequence.documents.map((document: { kioskDocumentId: string | null }) => document.kioskDocumentId)
+    ).toEqual([null, kioskV1.id]);
+  });
+
+  it('rejects marker-orphaning and stale revisions without changing the active version', async () => {
+    const client = await createTestClientDevice();
+    const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
+    const primary = await uploadPublishedProcedureDocument(app, headers, '競合 主手順書');
+    const kiosk = await createKioskDocumentWithRenderedPages({ title: '競合PDF', pageCount: 1 });
+    const legacyOrder = await app.inject({
+      method: 'PUT',
+      url: '/api/assembly/procedure-orders',
+      headers,
+      payload: {
+        machineName: 'UNIFIED-LOCK',
+        accessPassword: '2520',
+        items: [
+          { assemblyProcedureDocumentId: primary.id },
+          { kioskDocumentId: kiosk.id }
+        ]
+      }
+    });
+    expect(legacyOrder.statusCode).toBe(200);
+    const payload = buildTemplatePayload(primary.id, {
+      modelCode: 'UNIFIED-LOCK',
+      procedurePattern: '標準',
+      name: '競合 v1'
+    });
+    payload.areas[0]!.bolts[0] = {
+      ...payload.areas[0]!.bolts[0]!,
+      kioskDocumentId: kiosk.id,
+      pageIndex: 0
+    };
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload: {
+        ...payload,
+        accessPassword: '2520',
+        procedureItems: [
+          { assemblyProcedureDocumentId: primary.id },
+          { kioskDocumentId: kiosk.id }
+        ]
+      }
+    });
+    expect(created.statusCode).toBe(200);
+    const v1Id = created.json().template.id as string;
+
+    const orphaning = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/templates/${v1Id}/revise`,
+      headers,
+      payload: {
+        accessPassword: '2520',
+        procedureDocumentId: primary.id,
+        procedureItems: [{ assemblyProcedureDocumentId: primary.id }]
+      }
+    });
+    expect(orphaning.statusCode).toBe(409);
+    expect(await prisma.assemblyTemplate.count({ where: { modelCode: 'UNIFIED-LOCK' } })).toBe(1);
+    expect(await prisma.assemblyTemplate.findUnique({ where: { id: v1Id }, select: { isActive: true } })).toEqual({
+      isActive: true
+    });
+
+    const [firstRevision, staleRevision] = await Promise.all([
+      app.inject({
+        method: 'POST',
+        url: `/api/assembly/templates/${v1Id}/revise`,
+        headers,
+        payload: { name: '競合 v2-A' }
+      }),
+      app.inject({
+        method: 'POST',
+        url: `/api/assembly/templates/${v1Id}/revise`,
+        headers,
+        payload: { name: '競合 v2-B' }
+      })
+    ]);
+    expect([firstRevision.statusCode, staleRevision.statusCode].sort()).toEqual([200, 409]);
+    expect(
+      await prisma.assemblyTemplate.count({
+        where: { modelCode: 'UNIFIED-LOCK', isActive: true }
+      })
+    ).toBe(1);
+    const activeTemplate = await prisma.assemblyTemplate.findFirst({
+      where: { modelCode: 'UNIFIED-LOCK', isActive: true },
+      select: { id: true, _count: { select: { procedureItems: true } } }
+    });
+    expect(activeTemplate?._count.procedureItems).toBe(2);
+
+    const [movedLineage, staleMovedLineage] = await Promise.all([
+      app.inject({
+        method: 'POST',
+        url: `/api/assembly/templates/${activeTemplate!.id}/revise`,
+        headers,
+        payload: { modelCode: 'UNIFIED-LOCK-MOVED-A' }
+      }),
+      app.inject({
+        method: 'POST',
+        url: `/api/assembly/templates/${activeTemplate!.id}/revise`,
+        headers,
+        payload: { modelCode: 'UNIFIED-LOCK-MOVED-B' }
+      })
+    ]);
+    expect([movedLineage.statusCode, staleMovedLineage.statusCode].sort()).toEqual([200, 409]);
+    expect(
+      await prisma.assemblyTemplate.findUnique({
+        where: { id: activeTemplate!.id },
+        select: { isActive: true }
+      })
+    ).toEqual({ isActive: false });
+    expect(
+      await prisma.assemblyTemplate.count({
+        where: {
+          modelCode: { in: ['UNIFIED-LOCK-MOVED-A', 'UNIFIED-LOCK-MOVED-B'] },
+          isActive: true
+        }
+      })
+    ).toBe(1);
+  });
+
   it('saves procedure order settings with password verification and resolves a work-session page sequence', async () => {
     const client = await createTestClientDevice();
     const headers = { 'x-client-key': client.apiKey };
@@ -1494,6 +1856,7 @@ describe('assembly torque management API', () => {
     });
     expect(sequence.statusCode).toBe(200);
     expect(sequence.json().sequence).toMatchObject({
+      source: 'legacy_machine_order',
       mode: 'configured',
       machineName: 'MH-AX',
       machineNameKey: 'MH-AX'
@@ -1545,6 +1908,7 @@ describe('assembly torque management API', () => {
     });
     expect(fallbackSequence.statusCode).toBe(200);
     expect(fallbackSequence.json().sequence).toMatchObject({
+      source: 'primary_fallback',
       mode: 'fallback',
       reason: 'not_configured',
       machineNameKey: 'NO-ORDER',
@@ -1668,6 +2032,7 @@ describe('assembly torque management API', () => {
     });
     expect(sequence.statusCode).toBe(200);
     expect(sequence.json().sequence).toMatchObject({
+      source: 'legacy_machine_order',
       mode: 'configured',
       machineNameKey: 'MH-AX'
     });

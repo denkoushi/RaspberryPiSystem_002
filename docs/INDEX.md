@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 組立テンプレート・文書順統合エディター（2026-07-26 · ローカル実装・検証）
+
+- **文書順・工程・締付/チェックマーカーを一画面・一版へ統合**: テンプレート版が1～50文書の順序を所有し、作業セッションは開始時の版を再現する。単一文書では文書/工程ペインを閉じてcanvasを最大化し、複数文書は同画面で追加・並替え・ラベル編集する。旧機種名別閲覧順は未改版テンプレートのfallback/API互換として残し、旧UI URLはテンプレート一覧へredirectする。**正本**: [ExecPlan](./plans/assembly-unified-template-editor-execplan.md) · [ADR](./decisions/ADR-20260726-assembly-template-owned-procedure-sequence.md)
+
 ### 標準Deploy release identity監査（2026-07-21 · 調査完了・offline実装Go・実機No-Go）
 
 - **Pi5 Web・browser・terminal Git・Local artifact/runtimeのidentity分離**: approved read-only evidenceでstale browser原因を確認。typed release claimsとmutation/activation/verification target分離はoffline実装Go、bootstrap・Local実行・再配布は新しい実機承認までNo-Go。**正本**: [KB-401](./knowledge-base/KB-401-deploy-release-identity-runtime-audit.md) · [ADR](./decisions/ADR-20260721-deploy-release-identity-and-activation.md) · [Ready ExecPlan](./plans/deploy-release-identity-architecture-execplan.md) · [Completed evidence manifest](./plans/deploy-release-identity-readonly-evidence-manifest.md)
@@ -1798,6 +1802,7 @@ APIの概要と詳細。
 
 | ファイル | 説明 |
 |---------|------|
+| [assembly-unified-template-editor-execplan.md](./plans/assembly-unified-template-editor-execplan.md) | **組立テンプレート・文書順統合エディター実行計画** |
 | [production-deployment-management-plan.md](./plans/production-deployment-management-plan.md) | プロダクション環境デプロイメント・更新・デバッグ管理計画 |
 | [production-deployment-phase2-execplan.md](./plans/production-deployment-phase2-execplan.md) | クライアント状態可視化とデバッグ支援システム実行計画 |
 | [production-documents-feature-plan.md](./plans/production-documents-feature-plan.md) | **写真付きドキュメント表示機能の実装計画**（設計検討中） |

@@ -1,22 +1,26 @@
 import clsx from 'clsx';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useReducer, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import {
   createAssemblyTemplate,
-  getAssemblyProcedureOrder,
-  getAssemblyTemplate,
   getKioskDocumentDetail,
   listCompatibleTorqueWrenchCapabilityGroups,
-  listAssemblyProcedureDocumentSummaries,
-  reviseAssemblyTemplate
+  reviseAssemblyTemplate,
+  verifyAssemblyProcedureOrderAccessPassword
 } from '../../api/client';
 import { Button, buttonClassName } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import {
   AssemblyProcedureCanvas,
+  AssemblyTemplateDocumentLibraryDialog,
+  AssemblyTemplateProcedurePane,
+  appendAssemblyProcedureDocument,
   applyAssemblyBoltConditionRange,
-  buildAssemblyEditorPageOptions,
+  assemblyTemplateProcedureDraftToInput,
+  assemblyTemplateProcedureDraftReducer,
+  buildProcedureDraftPageOptions,
+  canRemoveAssemblyTemplateProcedureItem,
   createAssemblyBoltAt,
   createAssemblyCheckItemAt,
   draftAreasToInput,
@@ -27,11 +31,15 @@ import {
   kioskAssemblyTemplateEditPath,
   kioskAssemblyTemplateNewPath,
   KIOSK_ASSEMBLY_LIBRARY_PATH,
+  getPrimaryAssemblyProcedureDocumentId,
+  hasAssemblyProcedureDocument,
+  loadAssemblyTemplateEditorData,
   pageRefKey,
   parseAssemblyTemplateNewSearch,
   readAssemblyApiErrorMessage,
   renumberDraftCheckItems,
   resolveAssemblyDocumentStatus,
+  templateToProcedureDraftItems,
   templateToDraftAreas,
   templateToDraftCheckItems
 } from '../../features/assembly';
@@ -43,9 +51,16 @@ import {
   setImageMarkerCalloutTip,
   useImageCanvasZoom
 } from '../../features/kiosk/image-canvas';
+import { useUnsavedChangesGuard } from '../../features/navigation/useUnsavedChangesGuard';
 
 import type { TorqueWrenchCapabilityGroupApi } from '../../api/domains/torque-wrenches';
-import type { AssemblyDraftArea, AssemblyDraftBolt, AssemblyDraftCheckItem, AssemblyEditorPageOption } from '../../features/assembly';
+import type {
+  AssemblyDraftArea,
+  AssemblyDraftBolt,
+  AssemblyDraftCheckItem,
+  AssemblyEditorPageOption,
+  AssemblyTemplateProcedureDraftItem
+} from '../../features/assembly';
 import type { AssemblyProcedureDocumentSummaryDto, AssemblyTemplateDto } from '../../features/assembly/types';
 
 function selectFirstAreaId(areas: AssemblyDraftArea[]): string {
@@ -60,6 +75,16 @@ export function KioskAssemblyTemplateEditorPage() {
   const [documents, setDocuments] = useState<AssemblyProcedureDocumentSummaryDto[]>([]);
   const [loadedTemplate, setLoadedTemplate] = useState<AssemblyTemplateDto | null>(null);
   const [selectedDocumentId, setSelectedDocumentId] = useState(query.procedureDocumentId ?? '');
+  const [procedureItems, dispatchProcedureItems] = useReducer(
+    assemblyTemplateProcedureDraftReducer,
+    []
+  );
+  const [procedurePaneOpen, setProcedurePaneOpen] = useState(true);
+  const [documentLibraryOpen, setDocumentLibraryOpen] = useState(false);
+  const [documentSearch, setDocumentSearch] = useState('');
+  const [accessPassword, setAccessPassword] = useState<string | null>(null);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [baselineSnapshot, setBaselineSnapshot] = useState<string | null>(null);
   const [templateName, setTemplateName] = useState('組立トルクテンプレート');
   const [modelCode, setModelCode] = useState('');
   const [procedurePattern, setProcedurePattern] = useState('手順7');
@@ -83,6 +108,7 @@ export function KioskAssemblyTemplateEditorPage() {
   const fitCanvasToView = canvasZoom.fitToView;
 
   const readOnly = Boolean(templateId && loadedTemplate && !loadedTemplate.isActive);
+  const accessGranted = readOnly || accessPassword != null;
   const selectedDocument = useMemo(
     () => documents.find((document) => document.id === selectedDocumentId) ?? loadedTemplate?.procedureDocument ?? null,
     [documents, loadedTemplate?.procedureDocument, selectedDocumentId]
@@ -91,6 +117,33 @@ export function KioskAssemblyTemplateEditorPage() {
   const selectedBolt = selectedArea?.bolts.find((bolt) => bolt.id === selectedBoltId) ?? null;
   const selectedCheckItem = checkItems.find((item) => item.id === selectedCheckItemId) ?? null;
   const selectedPage = pageOptions.find((option) => option.key === selectedPageKey) ?? pageOptions[0] ?? null;
+  const selectedPageIndex = selectedPage
+    ? pageOptions.findIndex((option) => option.key === selectedPage.key)
+    : -1;
+  const draftSnapshot = useMemo(
+    () =>
+      JSON.stringify({
+        templateName,
+        modelCode,
+        procedurePattern,
+        procedureItems: assemblyTemplateProcedureDraftToInput(procedureItems),
+        areas: draftAreasToInput(areas),
+        checkItems: draftCheckItemsToInput(checkItems)
+      }),
+    [areas, checkItems, modelCode, procedureItems, procedurePattern, templateName]
+  );
+  const isDirty = baselineSnapshot != null && baselineSnapshot !== draftSnapshot;
+  const markerSettingsOpen = Boolean(selectedBolt || selectedCheckItem);
+  useUnsavedChangesGuard(isDirty && !busy && !readOnly);
+
+  useEffect(() => {
+    const primaryDocumentId = getPrimaryAssemblyProcedureDocumentId(procedureItems) ?? '';
+    setSelectedDocumentId(primaryDocumentId);
+  }, [procedureItems]);
+
+  useEffect(() => {
+    if (!loading && baselineSnapshot == null) setBaselineSnapshot(draftSnapshot);
+  }, [baselineSnapshot, draftSnapshot, loading]);
 
   useEffect(() => {
     if (!selectedBolt?.nominalDiameter) {
@@ -132,15 +185,21 @@ export function KioskAssemblyTemplateEditorPage() {
     let cancelled = false;
     setLoading(true);
     setMessage(null);
-    void Promise.all([
-      listAssemblyProcedureDocumentSummaries({ includeInactive: true, limit: 200 }),
-      templateId || query.sourceTemplateId ? getAssemblyTemplate(templateId ?? query.sourceTemplateId!) : Promise.resolve(null)
-    ])
-      .then(([nextDocuments, template]) => {
+    setBaselineSnapshot(null);
+    setAccessPassword(null);
+    setPasswordInput('');
+    void loadAssemblyTemplateEditorData({
+      templateId,
+      sourceTemplateId: query.sourceTemplateId
+    })
+      .then(({ documents: nextDocuments, template }) => {
         if (cancelled) return;
         setDocuments(nextDocuments);
         if (template) {
           setLoadedTemplate(template);
+          const nextProcedureItems = templateToProcedureDraftItems(template);
+          dispatchProcedureItems({ type: 'replace', items: nextProcedureItems });
+          setProcedurePaneOpen(nextProcedureItems.length > 1);
           const nextAreas = templateToDraftAreas(template);
           const nextCheckItems = templateToDraftCheckItems(template);
           setAreas(nextAreas.length > 0 ? nextAreas : [emptyAssemblyArea()]);
@@ -148,7 +207,6 @@ export function KioskAssemblyTemplateEditorPage() {
           setSelectedAreaId(selectFirstAreaId(nextAreas));
           setSelectedBoltId(null);
           setSelectedCheckItemId(null);
-          setSelectedDocumentId(template.procedureDocumentId);
           if (templateId) {
             setTemplateName(template.name);
             setModelCode(template.modelCode);
@@ -160,7 +218,21 @@ export function KioskAssemblyTemplateEditorPage() {
           }
         } else {
           setLoadedTemplate(null);
-          setSelectedDocumentId((current) => current || query.procedureDocumentId || nextDocuments.find((doc) => doc.isActive)?.id || '');
+          const initialDocumentId =
+            query.procedureDocumentId ||
+            nextDocuments.find(
+              (document) =>
+                document.isActive && resolveAssemblyDocumentStatus(document) === 'published'
+            )?.id ||
+            '';
+          const initialDocument = nextDocuments.find((document) => document.id === initialDocumentId);
+          dispatchProcedureItems({
+            type: 'replace',
+            items: initialDocument
+              ? [appendAssemblyProcedureDocument([], initialDocument)[0]!]
+              : []
+          });
+          setProcedurePaneOpen(false);
         }
       })
       .catch((e: unknown) => {
@@ -179,40 +251,37 @@ export function KioskAssemblyTemplateEditorPage() {
     let cancelled = false;
 
     const buildOptions = async () => {
-      const orderAssemblyDocuments: AssemblyProcedureDocumentSummaryDto[] = [];
-      const kioskPages: Array<{ documentId: string; title: string; pageUrls: string[] }> = [];
-
-      if (modelCode.trim()) {
+      const kioskPagesByDocumentId = new Map<string, { title: string; pageUrls: string[] }>();
+      const kioskDocumentIds = [
+        ...new Set(
+          procedureItems
+            .map((item) => item.kioskDocumentId)
+            .filter((id): id is string => id != null)
+        )
+      ];
+      await Promise.all(
+        kioskDocumentIds.map(async (documentId) => {
         try {
-          const order = await getAssemblyProcedureOrder(modelCode.trim());
-          for (const item of order.items) {
-            if (item.documentType === 'assembly_procedure_document' && item.assemblyProcedureDocumentId) {
-              const doc = documents.find((candidate) => candidate.id === item.assemblyProcedureDocumentId);
-              if (doc) orderAssemblyDocuments.push(doc);
-            }
-            if (item.documentType === 'kiosk_document' && item.kioskDocumentId && item.document.enabled) {
-              try {
-                const detail = await getKioskDocumentDetail(item.kioskDocumentId);
-                kioskPages.push({
-                  documentId: item.kioskDocumentId,
-                  title: item.document.displayTitle?.trim() || item.document.title,
-                  pageUrls: detail.pageUrls ?? []
-                });
-              } catch {
-                // ignore missing kiosk preview pages
-              }
-            }
-          }
+            const detail = await getKioskDocumentDetail(documentId);
+            kioskPagesByDocumentId.set(documentId, {
+              title:
+                detail.document.displayTitle?.trim() ||
+                detail.document.title ||
+                procedureItems.find((item) => item.kioskDocumentId === documentId)?.document.title ||
+                '要領書',
+              pageUrls: detail.pageUrls ?? []
+            });
         } catch {
-          // order not configured
+            // 旧文書列の参照先が欠けている場合も他の文書は表示する。
         }
-      }
+        })
+      );
 
       if (cancelled) return;
-      const nextOptions = buildAssemblyEditorPageOptions({
-        primaryDocument: selectedDocument,
-        orderAssemblyDocuments,
-        kioskPages
+      const nextOptions = buildProcedureDraftPageOptions({
+        items: procedureItems,
+        assemblyDocuments: documents,
+        kioskPagesByDocumentId
       });
       setPageOptions(nextOptions);
       setSelectedPageKey((current) => (nextOptions.some((option) => option.key === current) ? current : nextOptions[0]?.key ?? ''));
@@ -222,7 +291,7 @@ export function KioskAssemblyTemplateEditorPage() {
     return () => {
       cancelled = true;
     };
-  }, [documents, modelCode, selectedDocument]);
+  }, [documents, procedureItems]);
 
   const currentPageRef = useMemo(() => {
     if (!selectedPage) return null;
@@ -325,12 +394,80 @@ export function KioskAssemblyTemplateEditorPage() {
     }
   };
 
+  const verifyEditorPassword = async () => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await verifyAssemblyProcedureOrderAccessPassword({ password: passwordInput });
+      if (!result.success) {
+        setMessage('パスワードが違います。');
+        return;
+      }
+      setAccessPassword(passwordInput);
+      setPasswordInput('');
+    } catch (error: unknown) {
+      setMessage(readAssemblyApiErrorMessage(error, '認証に失敗しました。'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const addProcedureDocument = (document: AssemblyProcedureDocumentSummaryDto) => {
+    if (hasAssemblyProcedureDocument(procedureItems, document.id)) {
+      setMessage('同じ組立手順書は新たに重複追加できません。');
+      return;
+    }
+    if (procedureItems.length >= 50) {
+      setMessage('文書順は50件までです。');
+      return;
+    }
+    dispatchProcedureItems({ type: 'append_assembly_document', document });
+    setDocumentLibraryOpen(false);
+    setMessage(null);
+  };
+
+  const moveProcedureItem = (index: number, delta: -1 | 1) => {
+    dispatchProcedureItems({ type: 'move', index, delta });
+  };
+
+  const removeProcedureItem = (index: number) => {
+    const markerRefs = [
+      ...areas.flatMap((area) => area.bolts),
+      ...checkItems
+    ].map((marker) =>
+      marker.kioskDocumentId || marker.assemblyProcedureDocumentId
+        ? marker
+        : { ...marker, assemblyProcedureDocumentId: selectedDocumentId }
+    );
+    const result = canRemoveAssemblyTemplateProcedureItem({
+      items: procedureItems,
+      index,
+      markerRefs
+    });
+    if (!result.allowed) {
+      setMessage(result.message);
+      return;
+    }
+    dispatchProcedureItems({ type: 'remove', index });
+    setMessage(null);
+  };
+
+  const focusProcedureItem = (item: AssemblyTemplateProcedureDraftItem) => {
+    const firstPage = pageOptions.find((option) => option.key.startsWith(`${item.localId}:`));
+    if (firstPage) setSelectedPageKey(firstPage.key);
+  };
+
   const saveTemplate = async () => {
     if (readOnly) return;
     setBusy(true);
     setMessage(null);
     try {
-      if (!selectedDocumentId) throw new Error('手順書を選択してください。');
+      if (!accessPassword) throw new Error('編集パスワードを認証してください。');
+      if (procedureItems.length < 1 || procedureItems.length > 50) {
+        throw new Error('文書順は1件以上50件以下にしてください。');
+      }
+      const primaryDocumentId = getPrimaryAssemblyProcedureDocumentId(procedureItems);
+      if (!primaryDocumentId) throw new Error('主手順書となる組立手順書を選択してください。');
       if (selectedDocument && !selectedDocument.isActive) throw new Error('有効な手順書を選択してください。');
       if (selectedDocument && resolveAssemblyDocumentStatus(selectedDocument) !== 'published') {
         throw new Error('手順書を公開してから保存してください。');
@@ -339,15 +476,23 @@ export function KioskAssemblyTemplateEditorPage() {
         name: templateName,
         modelCode,
         procedurePattern,
-        procedureDocumentId: selectedDocumentId,
+        procedureDocumentId: primaryDocumentId,
         areas: draftAreasToInput(areas),
         checkItems: draftCheckItemsToInput(checkItems),
-        traceabilityMode: 'REQUIRED' as const
+        traceabilityMode: 'REQUIRED' as const,
+        procedureItems: assemblyTemplateProcedureDraftToInput(procedureItems),
+        accessPassword
       };
       const saved = templateId ? await reviseAssemblyTemplate(templateId, payload) : await createAssemblyTemplate(payload);
+      setBaselineSnapshot(draftSnapshot);
       navigate(kioskAssemblyTemplateEditPath(saved.id), { replace: true });
     } catch (e: unknown) {
-      setMessage(e instanceof Error ? e.message : readAssemblyApiErrorMessage(e, 'テンプレートの保存に失敗しました。'));
+      setMessage(
+        readAssemblyApiErrorMessage(
+          e,
+          e instanceof Error ? e.message : 'テンプレートの保存に失敗しました。'
+        )
+      );
     } finally {
       setBusy(false);
     }
@@ -361,26 +506,104 @@ export function KioskAssemblyTemplateEditorPage() {
     );
   }
 
+  if (!accessGranted) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col bg-slate-800 p-3 text-white">
+        <section className="rounded border border-white/15 bg-slate-900/75 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-bold">組立テンプレート編集</h1>
+              <p className="mt-1 text-sm font-semibold text-white/65">
+                文書順・工程・マーカーを編集する前にパスワードを入力してください。
+              </p>
+            </div>
+            <Link
+              to={KIOSK_ASSEMBLY_LIBRARY_PATH}
+              className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center')}
+            >
+              一覧へ
+            </Link>
+          </div>
+          <div className="mt-4 grid max-w-md grid-cols-[1fr_auto] gap-2">
+            <Input
+              value={passwordInput}
+              type="password"
+              inputMode="numeric"
+              autoFocus
+              placeholder="パスワード"
+              className="min-h-12 text-lg"
+              disabled={busy}
+              onChange={(event) => setPasswordInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') void verifyEditorPassword();
+              }}
+            />
+            <Button
+              type="button"
+              variant="primary"
+              className="min-h-12"
+              disabled={!passwordInput || busy}
+              onClick={() => void verifyEditorPassword()}
+            >
+              認証
+            </Button>
+          </div>
+          {message ? (
+            <p className="mt-3 rounded border border-amber-400/30 bg-amber-500/15 px-3 py-2 text-sm text-amber-100">
+              {message}
+            </p>
+          ) : null}
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 bg-slate-800 p-2 text-white">
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-white/15 bg-slate-900/70 p-2">
-        <div className="min-w-0">
-          <h1 className="text-[1.28rem] font-bold leading-tight">
+      <header className="flex min-h-12 flex-wrap items-center justify-between gap-2 rounded border border-white/15 bg-slate-900/70 px-2 py-1.5">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <h1 className="text-[1.12rem] font-bold leading-tight">
             {templateId ? '組立テンプレート編集' : '組立テンプレート新規'}
           </h1>
-          {readOnly ? <p className="mt-1 text-[0.86rem] font-semibold text-amber-200">旧版は表示のみです。</p> : null}
+          {loadedTemplate ? (
+            <span className="rounded border border-white/15 bg-slate-950/60 px-2 py-1 text-xs font-bold text-white/70">
+              v{loadedTemplate.version} {loadedTemplate.isActive ? '有効' : '旧版'}
+            </span>
+          ) : null}
+          {loadedTemplate?.procedureSequence?.source !== 'template_version' ? (
+            <span className="rounded border border-amber-300/30 bg-amber-500/10 px-2 py-1 text-xs font-bold text-amber-100">
+              旧形式を取込
+            </span>
+          ) : null}
+          {readOnly ? (
+            <span className="text-xs font-semibold text-amber-200">表示のみ</span>
+          ) : isDirty ? (
+            <span className="text-xs font-bold text-amber-200">未保存あり</span>
+          ) : (
+            <span className="text-xs font-semibold text-emerald-200">保存済み</span>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="ghostOnDark"
+            className="min-h-10 text-[0.88rem]"
+            aria-expanded={procedurePaneOpen}
+            aria-controls="assembly-procedure-pane"
+            onClick={() => setProcedurePaneOpen((current) => !current)}
+          >
+            {procedurePaneOpen ? '文書/工程を閉じる' : `文書/工程 (${procedureItems.length})`}
+          </Button>
           <Link
             to={KIOSK_ASSEMBLY_LIBRARY_PATH}
-            className={buttonClassName('ghostOnDark', 'inline-flex min-h-10 items-center text-[0.95rem]')}
+            className={buttonClassName('ghostOnDark', 'inline-flex min-h-10 items-center text-[0.88rem]')}
           >
             一覧へ
           </Link>
           {loadedTemplate ? (
             <Link
               to={kioskAssemblyTemplateNewPath({ sourceTemplateId: loadedTemplate.id })}
-              className={buttonClassName('ghostOnDark', 'inline-flex min-h-10 items-center text-[0.95rem]')}
+              className={buttonClassName('ghostOnDark', 'inline-flex min-h-10 items-center text-[0.88rem]')}
             >
               雛形
             </Link>
@@ -389,88 +612,57 @@ export function KioskAssemblyTemplateEditorPage() {
             {busy ? '保存中…' : templateId ? '新しい版で保存' : '保存'}
           </Button>
         </div>
-      </div>
+      </header>
 
       {message ? <p className="rounded border border-white/15 bg-slate-900/80 px-3 py-2 text-sm font-semibold text-amber-200">{message}</p> : null}
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-auto xl:grid-cols-[minmax(14rem,18rem)_minmax(0,1fr)_minmax(18rem,22rem)] xl:overflow-hidden">
-        <section className="min-h-0 overflow-y-auto rounded border border-white/15 bg-slate-900/70 p-3">
-          <h2 className="text-[1.02rem] font-bold">基本</h2>
-          <div className="mt-3 grid gap-3">
-            <label className="grid gap-1 text-xs font-semibold text-white/70">
-              手順書
-              <select
-                className="min-h-10 rounded border border-white/10 bg-slate-950 px-2 text-sm text-white"
-                value={selectedDocumentId}
-                disabled={busy || readOnly}
-                onChange={(event) => setSelectedDocumentId(event.target.value)}
-              >
-                <option value="">未選択</option>
-                {documents.map((document) => (
-                  <option key={document.id} value={document.id}>
-                    {document.name}
-                    {resolveAssemblyDocumentStatus(document) === 'draft' ? '（下書き）' : ''}
-                    {document.isActive ? '' : '（無効）'}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-1 text-xs font-semibold text-white/70">
-              型番/FHINCD
-              <Input value={modelCode} disabled={busy || readOnly} onChange={(e) => setModelCode(e.target.value)} />
-            </label>
-            <label className="grid gap-1 text-xs font-semibold text-white/70">
-              手順パターン
-              <Input value={procedurePattern} disabled={busy || readOnly} onChange={(e) => setProcedurePattern(e.target.value)} />
-            </label>
-            <label className="grid gap-1 text-xs font-semibold text-white/70">
-              テンプレート名
-              <Input value={templateName} disabled={busy || readOnly} onChange={(e) => setTemplateName(e.target.value)} />
-            </label>
-          </div>
-          <h2 className="mt-5 text-[1.02rem] font-bold">工程</h2>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {areas.map((area) => (
-              <Button
-                key={area.id}
-                type="button"
-                variant={area.id === selectedAreaId ? 'primary' : 'ghostOnDark'}
-                className="min-h-9 !px-2 !py-1 text-xs"
-                onClick={() => {
-                  setSelectedAreaId(area.id);
-                  setSelectedBoltId(null);
-                  setSelectedCheckItemId(null);
-                }}
-              >
-                {area.processNo}-{area.areaCode}
-              </Button>
-            ))}
-            <Button type="button" variant="ghostOnDark" className="min-h-9 !px-2 !py-1 text-xs" disabled={readOnly} onClick={addArea}>
-              追加
-            </Button>
-          </div>
-          {selectedArea ? (
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              {([
-                ['processNo', '工程No.'],
-                ['areaCode', 'エリア'],
-                ['unitCode', 'ユニット'],
-                ['areaName', 'エリア名']
-              ] as const).map(([key, label]) => (
-                <label key={key} className={clsx('grid gap-1 text-xs font-semibold text-white/70', key === 'areaName' ? 'col-span-2' : '')}>
-                  {label}
-                  <Input
-                    value={selectedArea[key]}
-                    disabled={busy || readOnly}
-                    onChange={(e) => setAreaPatch(selectedArea.id, { [key]: e.target.value })}
-                  />
-                </label>
-              ))}
-            </div>
-          ) : null}
-        </section>
+      <div
+        data-testid="assembly-unified-editor-workspace"
+        className={clsx(
+          'grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-auto xl:overflow-hidden',
+          procedurePaneOpen && markerSettingsOpen && 'xl:grid-cols-[16rem_minmax(0,1fr)_20rem]',
+          procedurePaneOpen && !markerSettingsOpen && 'xl:grid-cols-[16rem_minmax(0,1fr)]',
+          !procedurePaneOpen && markerSettingsOpen && 'xl:grid-cols-[minmax(0,1fr)_20rem]',
+          !procedurePaneOpen && !markerSettingsOpen && 'xl:grid-cols-1'
+        )}
+      >
+        {procedurePaneOpen ? (
+          <AssemblyTemplateProcedurePane
+            items={procedureItems}
+            selectedPageKey={selectedPageKey}
+            selectedDocumentId={selectedDocumentId}
+            areas={areas}
+            selectedArea={selectedArea}
+            selectedAreaId={selectedAreaId}
+            templateName={templateName}
+            modelCode={modelCode}
+            procedurePattern={procedurePattern}
+            busy={busy}
+            readOnly={readOnly}
+            onOpenDocumentLibrary={() => setDocumentLibraryOpen(true)}
+            onFocusItem={focusProcedureItem}
+            onMoveItem={moveProcedureItem}
+            onRemoveItem={removeProcedureItem}
+            onLabelChange={(localId, label) =>
+              dispatchProcedureItems({ type: 'set_label', localId, label })
+            }
+            onTemplateNameChange={setTemplateName}
+            onModelCodeChange={setModelCode}
+            onProcedurePatternChange={setProcedurePattern}
+            onSelectArea={(areaId) => {
+              setSelectedAreaId(areaId);
+              setSelectedBoltId(null);
+              setSelectedCheckItemId(null);
+            }}
+            onAddArea={addArea}
+            onAreaPatch={setAreaPatch}
+          />
+        ) : null}
 
-        <section className="flex min-h-[32rem] flex-col overflow-hidden rounded border border-white/15 bg-slate-900/70 xl:min-h-0">
+        <section
+          data-testid="assembly-unified-editor-canvas-pane"
+          className="flex min-h-[32rem] flex-col overflow-hidden rounded border border-white/15 bg-slate-900/70 xl:min-h-0"
+        >
           <div
             data-testid="assembly-editor-toolbar"
             className="flex shrink-0 flex-wrap items-center gap-2 border-b border-white/10 px-3 py-2 xl:flex-nowrap xl:whitespace-nowrap"
@@ -490,6 +682,28 @@ export function KioskAssemblyTemplateEditorPage() {
                 </option>
               ))}
             </select>
+            <div className="flex shrink-0 gap-1" role="group" aria-label="ページ移動">
+              <Button
+                type="button"
+                variant="ghostOnDark"
+                className="min-h-10 !px-2 !py-1 text-xs"
+                disabled={selectedPageIndex <= 0}
+                onClick={() => setSelectedPageKey(pageOptions[selectedPageIndex - 1]!.key)}
+              >
+                前頁
+              </Button>
+              <Button
+                type="button"
+                variant="ghostOnDark"
+                className="min-h-10 !px-2 !py-1 text-xs"
+                disabled={
+                  selectedPageIndex < 0 || selectedPageIndex >= pageOptions.length - 1
+                }
+                onClick={() => setSelectedPageKey(pageOptions[selectedPageIndex + 1]!.key)}
+              >
+                次頁
+              </Button>
+            </div>
             <div className="flex shrink-0 gap-1" role="group" aria-label="マーカー種別">
               <Button
                 type="button"
@@ -583,6 +797,7 @@ export function KioskAssemblyTemplateEditorPage() {
           </div>
         </section>
 
+        {markerSettingsOpen ? (
         <section
           data-testid="assembly-editor-settings-pane"
           className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto rounded border border-white/15 bg-slate-900/70 p-3"
@@ -792,7 +1007,19 @@ export function KioskAssemblyTemplateEditorPage() {
             </>
           )}
         </section>
+        ) : null}
       </div>
+
+      <AssemblyTemplateDocumentLibraryDialog
+        open={documentLibraryOpen}
+        documents={documents}
+        procedureItems={procedureItems}
+        search={documentSearch}
+        readOnly={readOnly}
+        onSearchChange={setDocumentSearch}
+        onAdd={addProcedureDocument}
+        onClose={() => setDocumentLibraryOpen(false)}
+      />
     </div>
   );
 }

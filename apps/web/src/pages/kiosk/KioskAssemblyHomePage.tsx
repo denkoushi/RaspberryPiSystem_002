@@ -17,7 +17,6 @@ import {
   AssemblyStartPane,
   AssemblyWipPane,
   kioskAssemblyLibraryPath,
-  kioskAssemblyProcedureOrderSettingsPath,
   kioskAssemblyRecordApprovalPath,
   kioskAssemblyTraceabilityPath,
   kioskAssemblyWorkSessionPath,
@@ -385,12 +384,6 @@ export function KioskAssemblyHomePage() {
             className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1.02rem]')}
           >
             組立テンプレート
-          </Link>
-          <Link
-            to={kioskAssemblyProcedureOrderSettingsPath({ machineName: selectedCandidate?.machineName ?? null })}
-            className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1.02rem]')}
-          >
-            閲覧順設定
           </Link>
           <Link
             to={kioskAssemblyRecordApprovalPath()}

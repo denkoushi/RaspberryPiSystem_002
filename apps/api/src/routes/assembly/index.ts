@@ -119,6 +119,23 @@ const areaInputSchema = z.object({
   bolts: z.array(boltInputSchema).min(1)
 });
 
+const documentSequenceItemBodySchema = z
+  .object({
+    kioskDocumentId: z.string().uuid().optional().nullable(),
+    assemblyProcedureDocumentId: z.string().uuid().optional().nullable(),
+    label: z.string().trim().max(120).optional().nullable()
+  })
+  .superRefine((item, ctx) => {
+    const hasKiosk = Boolean(item.kioskDocumentId);
+    const hasAssembly = Boolean(item.assemblyProcedureDocumentId);
+    if (hasKiosk === hasAssembly) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '要領書PDFまたは組立手順書のどちらか一方を指定してください'
+      });
+    }
+  });
+
 const templateBodySchema = z.object({
   modelCode: z.string().trim().min(1).max(120),
   procedurePattern: z.string().trim().min(1).max(120),
@@ -126,12 +143,15 @@ const templateBodySchema = z.object({
   procedureDocumentId: z.string().uuid(),
   areas: z.array(areaInputSchema).min(1),
   checkItems: z.array(checkItemInputSchema).optional(),
-  traceabilityMode: z.enum(['LEGACY', 'REQUIRED']).optional().default('LEGACY')
+  traceabilityMode: z.enum(['LEGACY', 'REQUIRED']).optional().default('LEGACY'),
+  procedureItems: z.array(documentSequenceItemBodySchema).min(1).max(50).optional(),
+  accessPassword: z.string().max(128).optional()
 });
 
 const templateReviseBodySchema = templateBodySchema.partial().extend({
   areas: z.array(areaInputSchema).min(1).optional(),
-  checkItems: z.array(checkItemInputSchema).optional()
+  checkItems: z.array(checkItemInputSchema).optional(),
+  procedureItems: z.array(documentSequenceItemBodySchema).min(1).max(50).optional()
 });
 
 const recordCheckBodySchema = z.object({
@@ -183,27 +203,10 @@ const createAssemblyLotBodySchema = z
     }
   });
 
-const procedureOrderItemBodySchema = z
-  .object({
-    kioskDocumentId: z.string().uuid().optional().nullable(),
-    assemblyProcedureDocumentId: z.string().uuid().optional().nullable(),
-    label: z.string().trim().max(120).optional().nullable()
-  })
-  .superRefine((item, ctx) => {
-    const hasKiosk = Boolean(item.kioskDocumentId);
-    const hasAssembly = Boolean(item.assemblyProcedureDocumentId);
-    if (hasKiosk === hasAssembly) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: '要領書PDFまたは組立手順書のどちらか一方を指定してください'
-      });
-    }
-  });
-
 const procedureOrderSaveBodySchema = z.object({
   machineName: z.string().trim().min(1).max(120),
   accessPassword: z.string().min(1).max(128),
-  items: z.array(procedureOrderItemBodySchema).max(50)
+  items: z.array(documentSequenceItemBodySchema).max(50)
 });
 
 const recordTorqueBodySchema = z.object({
@@ -278,6 +281,8 @@ function serializeTemplateSummary(template: AssemblyTemplateSummary) {
     traceabilityMode: template.traceabilityMode,
     procedureDocumentId: template.procedureDocumentId,
     procedureDocumentName: template.procedureDocumentName,
+    procedureItemCount: template.procedureItemCount,
+    usesLegacyProcedureSequence: template.procedureItemCount === 0,
     areaCount: template.areaCount,
     boltCount: template.boltCount,
     createdAt: template.createdAt.toISOString(),
@@ -331,6 +336,7 @@ function serializeProcedureOrder(order: AssemblyProcedureOrder) {
 function serializeProcedureSequence(sequence: AssemblyProcedureSequence) {
   return {
     mode: sequence.mode,
+    source: sequence.source,
     reason: sequence.mode === 'fallback' ? sequence.reason : null,
     machineName: sequence.machineName,
     machineNameKey: sequence.machineNameKey,
@@ -422,6 +428,21 @@ function serializeCheckRecord(record: {
 }
 
 function serializeTemplate(template: AssemblyTemplateDetail | AssemblyTemplateDetailRow) {
+  const procedureSequence =
+    'procedureSequence' in template
+      ? {
+          source: template.procedureSequence.source,
+          items: template.procedureSequence.items.map((item) => ({
+            id: item.id,
+            sortOrder: item.sortOrder,
+            label: item.label,
+            documentType: item.documentType,
+            kioskDocumentId: item.kioskDocumentId,
+            assemblyProcedureDocumentId: item.assemblyProcedureDocumentId,
+            document: serializeProcedureOrderDocument(item.document)
+          }))
+        }
+      : null;
   return {
     id: template.id,
     modelCode: template.modelCode,
@@ -434,6 +455,7 @@ function serializeTemplate(template: AssemblyTemplateDetail | AssemblyTemplateDe
     createdAt: template.createdAt.toISOString(),
     updatedAt: template.updatedAt.toISOString(),
     procedureDocument: serializeProcedureDocument(template.procedureDocument),
+    ...(procedureSequence ? { procedureSequence } : {}),
     checkItems: template.checkItems.map((item) => ({
       id: item.id,
       markerNo: item.markerNo,

@@ -344,14 +344,18 @@ export class AssemblyProcedureOrderService {
   }
 
   async countKioskDocumentReferences(kioskDocumentId: string): Promise<number> {
-    return prisma.assemblyProcedureOrderItem.count({
-      where: { kioskDocumentId }
-    });
+    const [legacyOrderCount, templateSequenceCount] = await Promise.all([
+      prisma.assemblyProcedureOrderItem.count({ where: { kioskDocumentId } }),
+      prisma.assemblyTemplateProcedureItem.count({ where: { kioskDocumentId } })
+    ]);
+    return legacyOrderCount + templateSequenceCount;
   }
 
   async countAssemblyProcedureDocumentReferences(assemblyProcedureDocumentId: string): Promise<number> {
-    return prisma.assemblyProcedureOrderItem.count({
-      where: { assemblyProcedureDocumentId }
-    });
+    const [legacyOrderCount, templateSequenceCount] = await Promise.all([
+      prisma.assemblyProcedureOrderItem.count({ where: { assemblyProcedureDocumentId } }),
+      prisma.assemblyTemplateProcedureItem.count({ where: { assemblyProcedureDocumentId } })
+    ]);
+    return legacyOrderCount + templateSequenceCount;
   }
 }

@@ -198,7 +198,7 @@ describe('KioskAssemblyHomePage', () => {
       'href',
       '/kiosk/assembly/library?focus=templates'
     );
-    expect(screen.getByRole('link', { name: '閲覧順設定' })).toHaveAttribute('href', '/kiosk/assembly/procedure-order-settings');
+    expect(screen.queryByRole('link', { name: '閲覧順設定' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: '記録確認' })).toHaveAttribute('href', '/kiosk/assembly/record-approvals');
     fireEvent.change(screen.getByLabelText('製番'), { target: { value: 'asmtest-a' } });
 
@@ -206,10 +206,6 @@ describe('KioskAssemblyHomePage', () => {
       expect(mockListAssemblySeibanCandidates).toHaveBeenCalledWith({ prefix: 'ASMTEST-A', limit: 20 })
     );
     fireEvent.click(await screen.findByText('ASMTEST-A1'));
-    expect(screen.getByRole('link', { name: '閲覧順設定' })).toHaveAttribute(
-      'href',
-      '/kiosk/assembly/procedure-order-settings?machineName=MH-AX'
-    );
     await waitFor(() => expect(screen.getByText('入力済み 0/2')).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText('作業用ID追加'), { target: { value: 's001' } });
     await waitFor(() => expect(screen.getByLabelText('作業用ID追加')).toHaveValue('S001'));

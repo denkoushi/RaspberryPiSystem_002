@@ -1,8 +1,9 @@
 import { Suspense, lazy, type ReactNode } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import { KioskRedirect } from './components/KioskRedirect';
 import { RequireAuth } from './components/RequireAuth';
+import { kioskAssemblyLibraryPath, parseAssemblyProcedureOrderSettingsSearch } from './features/assembly';
 import { INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED } from './features/part-measurement/inspection-drawing/inspectionDrawingPrintConstants';
 import { CallAutoSwitchLayout } from './features/webrtc/components/CallAutoSwitchLayout';
 import { AdminLayout } from './layouts/AdminLayout';
@@ -36,7 +37,6 @@ import { VisualizationDashboardsPage } from './pages/admin/VisualizationDashboar
 import { LoadBalancingOverviewChartPreviewPage } from './pages/dev/LoadBalancingOverviewChartPreviewPage';
 import { KioskAssemblyHomePage } from './pages/kiosk/KioskAssemblyHomePage';
 import { KioskAssemblyPage } from './pages/kiosk/KioskAssemblyPage';
-import { KioskAssemblyProcedureOrderSettingsPage } from './pages/kiosk/KioskAssemblyProcedureOrderSettingsPage';
 import { KioskAssemblyRecordApprovalPage } from './pages/kiosk/KioskAssemblyRecordApprovalPage';
 import { KioskAssemblyTraceabilityPage } from './pages/kiosk/KioskAssemblyTraceabilityPage';
 import { KioskBorrowPage } from './pages/kiosk/KioskBorrowPage';
@@ -191,7 +191,7 @@ function App() {
           <Route path="/kiosk/assembly/library" element={<KioskAssemblyPage />} />
           <Route
             path="/kiosk/assembly/procedure-order-settings"
-            element={<KioskAssemblyProcedureOrderSettingsPage />}
+            element={<AssemblyProcedureOrderRedirect />}
           />
           <Route path="/kiosk/assembly/record-approvals" element={<KioskAssemblyRecordApprovalPage />} />
           <Route path="/kiosk/assembly/traceability" element={<KioskAssemblyTraceabilityPage />} />
@@ -379,3 +379,13 @@ function App() {
 }
 
 export default App;
+function AssemblyProcedureOrderRedirect() {
+  const location = useLocation();
+  const { machineName } = parseAssemblyProcedureOrderSettingsSearch(location.search);
+  return (
+    <Navigate
+      to={kioskAssemblyLibraryPath({ focus: 'templates', modelCode: machineName })}
+      replace
+    />
+  );
+}

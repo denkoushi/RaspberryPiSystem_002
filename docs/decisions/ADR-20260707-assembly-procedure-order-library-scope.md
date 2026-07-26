@@ -1,7 +1,8 @@
 # ADR-20260707: Assembly Procedure Order Scoped to Assembly Library Documents
 
-- Status: accepted
+- Status: accepted; procedure-order ownership and standalone settings UI partially superseded on 2026-07-26
 - Date: 2026-07-07
+- Superseded (partial): [ADR-20260726-assembly-template-owned-procedure-sequence](./ADR-20260726-assembly-template-owned-procedure-sequence.md) — new template versions own their ordered document sequence; the machine-name order remains only as a compatibility fallback/API
 - Scope: kiosk assembly procedure order settings (`/kiosk/assembly/procedure-order-settings`), assembly work session procedure sequence, assembly library page, assembly home page
 - related_code:
   - `apps/api/prisma/migrations/20260707035701_assembly_procedure_order_item_assembly_document/migration.sql`
@@ -40,6 +41,7 @@ Related changes shipped together (same feature request, recorded here to avoid a
 - Existing production order sets referencing `KioskDocument` keep working (list, save, sequence, viewer fallback).
 - New order items are expected to reference assembly library documents; the KioskDocument add-path no longer exists in the UI.
 - NFC input requires the kiosk NFC agent WebSocket (`useNfcStream` policy); on non-kiosk hosts the field stays manual-input only.
+- Since 2026-07-26, the standalone order-settings route redirects to the template library. This ADR remains authoritative only for legacy order payload/storage compatibility and fallback resolution.
 
 ## Validation
 

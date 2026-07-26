@@ -3,6 +3,10 @@ import type { AssemblyTorqueTraceabilityMode } from '@raspi-system/shared-types'
 import type { Prisma } from '@prisma/client';
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
+import {
+  SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
+  verifyDueManagementAccessPassword
+} from '../production-schedule/production-schedule-settings.service.js';
 import { TorqueUnitConverter, normalizeFastenerText } from '../torque-wrenches/index.js';
 import {
   assertMarkerPageRefValid,
@@ -10,6 +14,16 @@ import {
   normalizeMarkerPageRef,
   type AssemblyMarkerPageRefInput
 } from './assembly-check-summary.js';
+import { acquireAssemblyTemplateLineageTransactionLock } from './assembly-template-lineage-lock.js';
+import {
+  AssemblyTemplateProcedureSequenceService,
+  assemblyTemplateProcedureItemsInclude,
+  collectTemplateProcedureDocumentKeys,
+  normalizeAssemblyTemplateProcedureItems,
+  type AssemblyTemplateProcedureItemInput,
+  type AssemblyTemplateProcedureSequence,
+  type NormalizedAssemblyTemplateProcedureItem
+} from './assembly-template-procedure-sequence.service.js';
 import { runAssemblyTransaction } from './assembly-transaction.js';
 
 const procedureDocumentInclude = {
@@ -22,6 +36,7 @@ export const assemblyTemplateDetailInclude = {
   procedureDocument: {
     include: procedureDocumentInclude
   },
+  procedureItems: assemblyTemplateProcedureItemsInclude,
   checkItems: {
     orderBy: { sortOrder: 'asc' }
   },
@@ -41,6 +56,7 @@ export type AssemblyTemplateDetailRow = Prisma.AssemblyTemplateGetPayload<{
 
 export type AssemblyTemplateDetail = Omit<AssemblyTemplateDetailRow, 'traceabilityMode'> & {
   traceabilityMode: AssemblyTorqueTraceabilityMode;
+  procedureSequence: AssemblyTemplateProcedureSequence;
 };
 
 /** Existing rows have NULL because the production migration is expand-only. */
@@ -53,11 +69,13 @@ export function resolveAssemblyTraceabilityMode(
 }
 
 export function resolveAssemblyTemplateDetail(
-  template: AssemblyTemplateDetailRow
+  template: AssemblyTemplateDetailRow,
+  procedureSequence: AssemblyTemplateProcedureSequence
 ): AssemblyTemplateDetail {
   return {
     ...template,
-    traceabilityMode: resolveAssemblyTraceabilityMode(template.traceabilityMode)
+    traceabilityMode: resolveAssemblyTraceabilityMode(template.traceabilityMode),
+    procedureSequence
   };
 }
 
@@ -71,6 +89,7 @@ export type AssemblyTemplateSummary = {
   traceabilityMode: AssemblyTorqueTraceabilityMode;
   procedureDocumentId: string;
   procedureDocumentName: string;
+  procedureItemCount: number;
   areaCount: number;
   boltCount: number;
   createdAt: Date;
@@ -132,6 +151,14 @@ export type AssemblyTemplateUpsertInput = {
   areas: AssemblyTemplateAreaInput[];
   checkItems?: AssemblyTemplateCheckItemInput[];
   traceabilityMode?: AssemblyTorqueTraceabilityMode;
+  procedureItems?: AssemblyTemplateProcedureItemInput[];
+  accessPassword?: string;
+};
+
+type AssemblyTemplateCreateOptions = {
+  expectedActiveSourceId?: string;
+  requireProcedurePassword?: boolean;
+  carriedKioskDocumentIds?: ReadonlySet<string>;
 };
 
 function normalizeKey(value: string, fieldName: string): string {
@@ -348,7 +375,66 @@ async function validateTemplateMarkerRefs(
   }
 }
 
+function materializeOmittedBoltPageRefs(
+  areas: AssemblyTemplateAreaInput[],
+  procedureDocumentId: string
+): AssemblyTemplateAreaInput[] {
+  return areas.map((area) => ({
+    ...area,
+    bolts: area.bolts.map((bolt) =>
+      bolt.kioskDocumentId || bolt.assemblyProcedureDocumentId
+        ? bolt
+        : {
+            ...bolt,
+            kioskDocumentId: null,
+            assemblyProcedureDocumentId: procedureDocumentId,
+            pageIndex: 0
+          }
+    )
+  }));
+}
+
+function assertMarkersBelongToProcedureSequence(
+  areas: AssemblyTemplateAreaInput[],
+  checkItems: AssemblyTemplateCheckItemInput[],
+  procedureItems: NormalizedAssemblyTemplateProcedureItem[],
+  statusCode = 400
+): void {
+  const allowed = collectTemplateProcedureDocumentKeys(procedureItems);
+  const assertBelongs = (ref: AssemblyMarkerPageRefInput, label: string) => {
+    const normalized = normalizeMarkerPageRef(ref, { allowOmitted: false });
+    const key = normalized.kioskDocumentId
+      ? `kiosk_document:${normalized.kioskDocumentId}`
+      : `assembly_procedure_document:${normalized.assemblyProcedureDocumentId}`;
+    if (!allowed.has(key)) {
+      throw new ApiError(statusCode, `${label}: マーカーの手順書を閲覧順へ追加してください`);
+    }
+  };
+  for (const area of areas) {
+    for (const bolt of area.bolts) {
+      assertBelongs(bolt, `丸数字${bolt.markerNo}`);
+    }
+  }
+  for (const item of checkItems) {
+    assertBelongs(item, `チェック項目 ${item.markerNo}`);
+  }
+}
+
+async function requireTemplateProcedureAccessPassword(password: string | undefined): Promise<void> {
+  const result = await verifyDueManagementAccessPassword({
+    location: SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
+    password: password ?? ''
+  });
+  if (!result.success) {
+    throw new ApiError(403, '組立テンプレート編集パスワードが違います');
+  }
+}
+
 export class AssemblyTemplateService {
+  constructor(
+    private readonly procedureSequenceService = new AssemblyTemplateProcedureSequenceService()
+  ) {}
+
   async list(params: {
     includeInactive?: boolean;
     modelCode?: string;
@@ -378,7 +464,16 @@ export class AssemblyTemplateService {
       orderBy: [{ updatedAt: 'desc' }, { modelCode: 'asc' }, { procedurePattern: 'asc' }],
       take: Math.min(Math.max(params.limit ?? 100, 1), 200)
     });
-    return templates.map(resolveAssemblyTemplateDetail);
+    const sequences = await this.procedureSequenceService.resolveManyForTemplates(templates);
+    return templates.map((template) =>
+      resolveAssemblyTemplateDetail(
+        template,
+        sequences.get(template.id) ?? {
+          source: 'primary_fallback',
+          items: []
+        }
+      )
+    );
   }
 
   async listSummary(params: {
@@ -394,29 +489,98 @@ export class AssemblyTemplateService {
     const procedurePattern = params.procedurePattern?.trim();
     const procedureDocumentName = params.procedureDocumentName?.trim();
     const q = params.q?.trim();
+    const sequenceFilters: Prisma.AssemblyTemplateWhereInput[] = [];
+    if (params.procedureDocumentId) {
+      sequenceFilters.push({
+        OR: [
+          { procedureDocumentId: params.procedureDocumentId },
+          {
+            procedureItems: {
+              some: { assemblyProcedureDocumentId: params.procedureDocumentId }
+            }
+          }
+        ]
+      });
+    }
+    if (procedureDocumentName) {
+      sequenceFilters.push({
+        OR: [
+          {
+            procedureDocument: {
+              name: { contains: procedureDocumentName, mode: 'insensitive' }
+            }
+          },
+          {
+            procedureItems: {
+              some: {
+                OR: [
+                  {
+                    assemblyProcedureDocument: {
+                      name: { contains: procedureDocumentName, mode: 'insensitive' }
+                    }
+                  },
+                  {
+                    kioskDocument: {
+                      OR: [
+                        {
+                          displayTitle: {
+                            contains: procedureDocumentName,
+                            mode: 'insensitive'
+                          }
+                        },
+                        {
+                          title: {
+                            contains: procedureDocumentName,
+                            mode: 'insensitive'
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      });
+    }
+    if (q) {
+      sequenceFilters.push({
+        OR: [
+          { modelCode: { contains: q, mode: 'insensitive' } },
+          { procedurePattern: { contains: q, mode: 'insensitive' } },
+          { name: { contains: q, mode: 'insensitive' } },
+          { procedureDocument: { name: { contains: q, mode: 'insensitive' } } },
+          {
+            procedureItems: {
+              some: {
+                OR: [
+                  {
+                    assemblyProcedureDocument: {
+                      name: { contains: q, mode: 'insensitive' }
+                    }
+                  },
+                  {
+                    kioskDocument: {
+                      OR: [
+                        { displayTitle: { contains: q, mode: 'insensitive' } },
+                        { title: { contains: q, mode: 'insensitive' } }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      });
+    }
     const templates = await prisma.assemblyTemplate.findMany({
       where: {
         ...(params.includeInactive ? {} : { isActive: true }),
         ...(modelCode ? { modelCode: { equals: modelCode, mode: 'insensitive' } } : {}),
         ...(procedurePattern ? { procedurePattern: { equals: procedurePattern, mode: 'insensitive' } } : {}),
-        ...(params.procedureDocumentId ? { procedureDocumentId: params.procedureDocumentId } : {}),
-        ...(procedureDocumentName
-          ? {
-              procedureDocument: {
-                name: { contains: procedureDocumentName, mode: 'insensitive' }
-              }
-            }
-          : {}),
-        ...(q
-          ? {
-              OR: [
-                { modelCode: { contains: q, mode: 'insensitive' } },
-                { procedurePattern: { contains: q, mode: 'insensitive' } },
-                { name: { contains: q, mode: 'insensitive' } },
-                { procedureDocument: { name: { contains: q, mode: 'insensitive' } } }
-              ]
-            }
-          : {})
+        ...(sequenceFilters.length > 0 ? { AND: sequenceFilters } : {})
       },
       select: {
         id: true,
@@ -432,6 +596,11 @@ export class AssemblyTemplateService {
         procedureDocument: {
           select: {
             name: true
+          }
+        },
+        _count: {
+          select: {
+            procedureItems: true
           }
         },
         areas: {
@@ -457,6 +626,7 @@ export class AssemblyTemplateService {
       traceabilityMode: resolveAssemblyTraceabilityMode(template.traceabilityMode),
       procedureDocumentId: template.procedureDocumentId,
       procedureDocumentName: template.procedureDocument.name,
+      procedureItemCount: template._count.procedureItems,
       areaCount: template.areas.length,
       boltCount: template.areas.reduce((sum, area) => sum + area._count.bolts, 0),
       createdAt: template.createdAt,
@@ -472,23 +642,68 @@ export class AssemblyTemplateService {
       },
       include: assemblyTemplateDetailInclude
     });
-    return template ? resolveAssemblyTemplateDetail(template) : null;
+    if (!template) return null;
+    const procedureSequence = await this.procedureSequenceService.resolveForTemplate(template);
+    return resolveAssemblyTemplateDetail(template, procedureSequence);
   }
 
-  async create(input: AssemblyTemplateUpsertInput): Promise<AssemblyTemplateDetail> {
+  async create(
+    input: AssemblyTemplateUpsertInput,
+    options: AssemblyTemplateCreateOptions = {}
+  ): Promise<AssemblyTemplateDetail> {
     const modelCode = normalizeKey(input.modelCode, '型番/FHINCD').slice(0, 120);
     const procedurePattern = normalizeKey(input.procedurePattern, '手順パターン').slice(0, 120);
     const name = normalizeKey(input.name, 'テンプレート名').slice(0, 200);
     const traceabilityMode = input.traceabilityMode ?? 'LEGACY';
-    const areas = normalizeAreas(input.areas, traceabilityMode);
+    const procedureItems =
+      input.procedureItems == null
+        ? null
+        : normalizeAssemblyTemplateProcedureItems(input.procedureDocumentId, input.procedureItems);
+    if (procedureItems && options.requireProcedurePassword !== false) {
+      await requireTemplateProcedureAccessPassword(input.accessPassword);
+    }
+    const normalizedAreas = normalizeAreas(input.areas, traceabilityMode);
+    const areas = procedureItems
+      ? materializeOmittedBoltPageRefs(normalizedAreas, input.procedureDocumentId)
+      : normalizedAreas;
     const checkItems = normalizeCheckItems(input.checkItems ?? []);
 
-    return runAssemblyTransaction(async (tx) => {
+    const detail = await runAssemblyTransaction(async (tx) => {
+      await acquireAssemblyTemplateLineageTransactionLock(tx, modelCode, procedurePattern);
+      if (options.expectedActiveSourceId) {
+        const [source] = await tx.$queryRaw<Array<{ isActive: boolean }>>`
+          SELECT "isActive"
+          FROM "AssemblyTemplate"
+          WHERE id = ${options.expectedActiveSourceId}
+          FOR UPDATE
+        `;
+        if (!source?.isActive) {
+          throw new ApiError(409, 'テンプレートは既に改版されています。最新の有効版を開き直してください');
+        }
+      }
+
       const doc = await tx.assemblyProcedureDocument.findFirst({
         where: { id: input.procedureDocumentId, isActive: true, status: 'PUBLISHED' }
       });
       if (!doc) throw new ApiError(400, '公開済みで有効な手順書を指定してください');
 
+      if (procedureItems) {
+        const allowedKioskDocumentIds = new Set(options.carriedKioskDocumentIds ?? []);
+        const legacyKioskDocumentIds =
+          await this.procedureSequenceService.findLegacyKioskDocumentIds(tx, modelCode);
+        for (const id of legacyKioskDocumentIds) allowedKioskDocumentIds.add(id);
+        await this.procedureSequenceService.validateDocuments(
+          tx,
+          procedureItems,
+          allowedKioskDocumentIds
+        );
+        assertMarkersBelongToProcedureSequence(
+          areas,
+          checkItems,
+          procedureItems,
+          options.expectedActiveSourceId ? 409 : 400
+        );
+      }
       await validateTemplateMarkerRefs(tx, { areas, checkItems });
       await validateRequiredCapabilityGroups(tx, areas, traceabilityMode);
 
@@ -497,6 +712,14 @@ export class AssemblyTemplateService {
         _max: { version: true }
       });
       const version = (versionAgg._max.version ?? 0) + 1;
+      if (options.expectedActiveSourceId) {
+        // modelCode/procedurePatternを改版時に変更した場合も、編集元を必ず
+        // 非active化して同じ旧版からの二重新版作成を防ぐ。
+        await tx.assemblyTemplate.update({
+          where: { id: options.expectedActiveSourceId },
+          data: { isActive: false }
+        });
+      }
       await tx.assemblyTemplate.updateMany({
         where: { modelCode, procedurePattern, isActive: true },
         data: { isActive: false }
@@ -536,6 +759,9 @@ export class AssemblyTemplateService {
           }
         }
       });
+      if (procedureItems) {
+        await this.procedureSequenceService.createItems(tx, created.id, procedureItems);
+      }
       for (const area of areas) {
         const createdArea = await tx.assemblyTemplateArea.create({
           data: {
@@ -590,8 +816,10 @@ export class AssemblyTemplateService {
         include: assemblyTemplateDetailInclude
       });
       if (!detail) throw new ApiError(500, '作成したテンプレートを取得できませんでした');
-      return resolveAssemblyTemplateDetail(detail);
+      return detail;
     });
+    const procedureSequence = await this.procedureSequenceService.resolveForTemplate(detail);
+    return resolveAssemblyTemplateDetail(detail, procedureSequence);
   }
 
   async revise(id: string, input: Partial<AssemblyTemplateUpsertInput>): Promise<AssemblyTemplateDetail> {
@@ -644,15 +872,41 @@ export class AssemblyTemplateService {
         assemblyProcedureDocumentId: item.assemblyProcedureDocumentId,
         pageIndex: item.pageIndex
       }));
-    return this.create({
-      modelCode: input.modelCode ?? source.modelCode,
-      procedurePattern: input.procedurePattern ?? source.procedurePattern,
-      name: input.name ?? source.name,
-      procedureDocumentId: input.procedureDocumentId ?? source.procedureDocumentId,
-      areas,
-      checkItems,
-      traceabilityMode: input.traceabilityMode ?? source.traceabilityMode
-    });
+    const copiedProcedureItems =
+      input.procedureItems ??
+      (source.procedureItems.length > 0
+        ? source.procedureItems.map((item) => ({
+            kioskDocumentId: item.kioskDocumentId,
+            assemblyProcedureDocumentId: item.assemblyProcedureDocumentId,
+            label: item.label
+          }))
+        : undefined);
+    const carriedKioskDocumentIds =
+      copiedProcedureItems == null
+        ? undefined
+        : new Set(
+            (await this.procedureSequenceService.resolveForTemplate(source)).items
+              .map((item) => item.kioskDocumentId)
+              .filter((documentId): documentId is string => documentId != null)
+          );
+    return this.create(
+      {
+        modelCode: input.modelCode ?? source.modelCode,
+        procedurePattern: input.procedurePattern ?? source.procedurePattern,
+        name: input.name ?? source.name,
+        procedureDocumentId: input.procedureDocumentId ?? source.procedureDocumentId,
+        areas,
+        checkItems,
+        traceabilityMode: input.traceabilityMode ?? source.traceabilityMode,
+        procedureItems: copiedProcedureItems,
+        accessPassword: input.accessPassword
+      },
+      {
+        expectedActiveSourceId: id,
+        requireProcedurePassword: input.procedureItems != null,
+        carriedKioskDocumentIds
+      }
+    );
   }
 
   async retire(id: string) {

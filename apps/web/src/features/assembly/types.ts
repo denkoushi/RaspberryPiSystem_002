@@ -113,6 +113,10 @@ export type AssemblyTemplateDto = {
   createdAt: string;
   updatedAt: string;
   procedureDocument: AssemblyProcedureDocumentDto;
+  procedureSequence?: {
+    source: 'template_version' | 'legacy_machine_order' | 'primary_fallback';
+    items: AssemblyProcedureOrderItemDto[];
+  };
   areas: AssemblyTemplateAreaDto[];
   checkItems: AssemblyTemplateCheckItemDto[];
 };
@@ -127,6 +131,8 @@ export type AssemblyTemplateSummaryDto = {
   traceabilityMode?: 'LEGACY' | 'REQUIRED';
   procedureDocumentId: string;
   procedureDocumentName: string;
+  procedureItemCount: number;
+  usesLegacyProcedureSequence: boolean;
   areaCount: number;
   boltCount: number;
   createdAt: string;
@@ -410,6 +416,7 @@ export type AssemblyProcedureSequenceDocumentDto = {
 
 export type AssemblyProcedureSequenceDto = {
   mode: 'configured' | 'fallback';
+  source: 'template_version' | 'legacy_machine_order' | 'primary_fallback';
   reason: 'not_configured' | 'no_enabled_documents' | 'no_page_images' | null;
   machineName: string;
   machineNameKey: string;
@@ -476,6 +483,12 @@ export type AssemblyTemplateCreateInput = {
   areas: AssemblyTemplateAreaInput[];
   checkItems?: AssemblyTemplateCheckItemInput[];
   traceabilityMode?: 'LEGACY' | 'REQUIRED';
+  procedureItems?: Array<{
+    kioskDocumentId?: string | null;
+    assemblyProcedureDocumentId?: string | null;
+    label?: string | null;
+  }>;
+  accessPassword?: string;
 };
 
 export type AssemblyWorkSessionStartInput = {

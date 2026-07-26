@@ -24,6 +24,8 @@ export type AssemblyProcedureDocumentReferenceUsage = {
   inProcedureOrder: boolean;
   inTemplatePrimary: boolean;
   inActiveTemplatePrimary: boolean;
+  inTemplateProcedureSequence: boolean;
+  inActiveTemplateProcedureSequence: boolean;
   inBoltPageRef: boolean;
   inCheckPageRef: boolean;
 };
@@ -60,25 +62,53 @@ export class AssemblyProcedureDocumentService {
     const documentIds = documents.map((document) => document.id);
     if (documentIds.length === 0) return [];
 
-    const [totalCounts, activeCounts] = await Promise.all([
-      prisma.assemblyTemplate.groupBy({
-        by: ['procedureDocumentId'],
-        where: { procedureDocumentId: { in: documentIds } },
-        _count: { _all: true }
-      }),
-      prisma.assemblyTemplate.groupBy({
-        by: ['procedureDocumentId'],
-        where: { procedureDocumentId: { in: documentIds }, isActive: true },
-        _count: { _all: true }
-      })
-    ]);
-    const totalCountByDocument = new Map(totalCounts.map((row) => [row.procedureDocumentId, row._count._all]));
-    const activeCountByDocument = new Map(activeCounts.map((row) => [row.procedureDocumentId, row._count._all]));
+    const templateReferences = await prisma.assemblyTemplate.findMany({
+      where: {
+        OR: [
+          { procedureDocumentId: { in: documentIds } },
+          {
+            procedureItems: {
+              some: { assemblyProcedureDocumentId: { in: documentIds } }
+            }
+          }
+        ]
+      },
+      select: {
+        id: true,
+        isActive: true,
+        procedureDocumentId: true,
+        procedureItems: {
+          where: { assemblyProcedureDocumentId: { in: documentIds } },
+          select: { assemblyProcedureDocumentId: true }
+        }
+      }
+    });
+    const totalTemplateIdsByDocument = new Map<string, Set<string>>();
+    const activeTemplateIdsByDocument = new Map<string, Set<string>>();
+    for (const template of templateReferences) {
+      const referencedDocumentIds = new Set([
+        template.procedureDocumentId,
+        ...template.procedureItems
+          .map((item) => item.assemblyProcedureDocumentId)
+          .filter((id): id is string => id != null)
+      ]);
+      for (const documentId of referencedDocumentIds) {
+        if (!documentIds.includes(documentId)) continue;
+        const totalIds = totalTemplateIdsByDocument.get(documentId) ?? new Set<string>();
+        totalIds.add(template.id);
+        totalTemplateIdsByDocument.set(documentId, totalIds);
+        if (template.isActive) {
+          const activeIds = activeTemplateIdsByDocument.get(documentId) ?? new Set<string>();
+          activeIds.add(template.id);
+          activeTemplateIdsByDocument.set(documentId, activeIds);
+        }
+      }
+    }
 
     return documents.map((document) => ({
       ...document,
-      activeTemplateCount: activeCountByDocument.get(document.id) ?? 0,
-      totalTemplateCount: totalCountByDocument.get(document.id) ?? 0
+      activeTemplateCount: activeTemplateIdsByDocument.get(document.id)?.size ?? 0,
+      totalTemplateCount: totalTemplateIdsByDocument.get(document.id)?.size ?? 0
     }));
   }
 
@@ -207,18 +237,36 @@ export class AssemblyProcedureDocumentService {
     });
   }
 
-  async getReferenceUsage(id: string): Promise<AssemblyProcedureDocumentReferenceUsage> {
-    const [orderCount, templateCount, activeTemplateCount, boltRefCount, checkRefCount] = await Promise.all([
-      prisma.assemblyProcedureOrderItem.count({ where: { assemblyProcedureDocumentId: id } }),
-      prisma.assemblyTemplate.count({ where: { procedureDocumentId: id } }),
-      prisma.assemblyTemplate.count({ where: { procedureDocumentId: id, isActive: true } }),
-      prisma.assemblyTemplateBolt.count({ where: { assemblyProcedureDocumentId: id } }),
-      prisma.assemblyTemplateCheckItem.count({ where: { assemblyProcedureDocumentId: id } })
+  async getReferenceUsage(
+    id: string,
+    tx?: Prisma.TransactionClient
+  ): Promise<AssemblyProcedureDocumentReferenceUsage> {
+    const db = tx ?? prisma;
+    const [
+      orderCount,
+      templateCount,
+      activeTemplateCount,
+      templateSequenceCount,
+      activeTemplateSequenceCount,
+      boltRefCount,
+      checkRefCount
+    ] = await Promise.all([
+      db.assemblyProcedureOrderItem.count({ where: { assemblyProcedureDocumentId: id } }),
+      db.assemblyTemplate.count({ where: { procedureDocumentId: id } }),
+      db.assemblyTemplate.count({ where: { procedureDocumentId: id, isActive: true } }),
+      db.assemblyTemplateProcedureItem.count({ where: { assemblyProcedureDocumentId: id } }),
+      db.assemblyTemplateProcedureItem.count({
+        where: { assemblyProcedureDocumentId: id, template: { isActive: true } }
+      }),
+      db.assemblyTemplateBolt.count({ where: { assemblyProcedureDocumentId: id } }),
+      db.assemblyTemplateCheckItem.count({ where: { assemblyProcedureDocumentId: id } })
     ]);
     return {
       inProcedureOrder: orderCount > 0,
       inTemplatePrimary: templateCount > 0,
       inActiveTemplatePrimary: activeTemplateCount > 0,
+      inTemplateProcedureSequence: templateSequenceCount > 0,
+      inActiveTemplateProcedureSequence: activeTemplateSequenceCount > 0,
       inBoltPageRef: boltRefCount > 0,
       inCheckPageRef: checkRefCount > 0
     };
@@ -229,6 +277,8 @@ export class AssemblyProcedureDocumentService {
       usage.inProcedureOrder ||
       usage.inTemplatePrimary ||
       usage.inActiveTemplatePrimary ||
+      usage.inTemplateProcedureSequence ||
+      usage.inActiveTemplateProcedureSequence ||
       usage.inBoltPageRef ||
       usage.inCheckPageRef
     );
@@ -236,6 +286,12 @@ export class AssemblyProcedureDocumentService {
 
   buildInUseMessage(usage: AssemblyProcedureDocumentReferenceUsage): string {
     if (usage.inProcedureOrder) return '組立の閲覧順設定で使用中の手順書は公開取り消しできません';
+    if (usage.inActiveTemplateProcedureSequence) {
+      return '有効なテンプレートの文書順で使用中の手順書は公開取り消しできません';
+    }
+    if (usage.inTemplateProcedureSequence) {
+      return 'テンプレートの文書順で使用中の手順書は公開取り消しできません';
+    }
     if (usage.inActiveTemplatePrimary) return '有効なテンプレートで使用中の手順書は公開取り消しできません';
     if (usage.inTemplatePrimary) return 'テンプレートで使用中の手順書は公開取り消しできません';
     if (usage.inBoltPageRef || usage.inCheckPageRef) return 'マーカー参照で使用中の手順書は公開取り消しできません';
@@ -261,7 +317,7 @@ export class AssemblyProcedureDocumentService {
       });
       if (!doc) return 'not_found' as const;
 
-      const usage = await this.getReferenceUsage(id);
+      const usage = await this.getReferenceUsage(id, tx);
       if (this.isReferenced(usage)) return 'in_use' as const;
 
       await tx.assemblyProcedureDocument.delete({ where: { id } });

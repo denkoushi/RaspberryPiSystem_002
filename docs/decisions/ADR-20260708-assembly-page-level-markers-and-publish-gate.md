@@ -1,9 +1,10 @@
 # ADR-20260708: Assembly Page-Level Markers and Procedure Publish Gate
 
-- Status: accepted
+- Status: accepted; sequence-membership ownership partially superseded on 2026-07-26
 - Date: 2026-07-08
 - Scope: assembly procedure library, template bolt/check markers, work-session completion, procedure sequence resolution
 - Supersedes (partial): [ADR-20260707-assembly-procedure-order-library-scope](./ADR-20260707-assembly-procedure-order-library-scope.md) — marker placement is no longer limited to assembly-library documents for templates; kiosk PDF pages are valid marker targets again at the template layer
+- Superseded (partial): [ADR-20260726-assembly-template-owned-procedure-sequence](./ADR-20260726-assembly-template-owned-procedure-sequence.md) — marker targets must belong to the template version's owned document sequence
 - related_code:
   - `apps/api/prisma/migrations/20260708101417_assembly_unified_workflow_p1_schema/migration.sql`
   - `apps/api/prisma/schema.prisma` (assembly models)
@@ -40,7 +41,7 @@ The assembly kiosk MVP stored each procedure document as a single image (`Assemb
 
 - Phase 2 must implement publish/unpublish endpoints and enforce `PUBLISHED` in order/template/session services.
 - Phase 3 must add dual marker editing and sequence overlay keyed by `(source, documentId, pageIndex)`.
-- ADR-20260707 remains authoritative for **viewing-order settings UI listing** (assembly library docs as add source); template markers may reference kiosk PDF pages even when order items do not.
+- ADR-20260707 remains authoritative for the legacy order API/storage add-source contract. New edits use the integrated template editor; template markers may target legacy kiosk PDF pages only when those pages are retained in the template-owned sequence.
 
 ## Validation
 
