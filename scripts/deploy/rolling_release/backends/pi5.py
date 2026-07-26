@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from typing import Any, Protocol
 
+from .. import telemetry
 from ..image_refs import image_matches_release
 
 
@@ -91,17 +92,20 @@ def phase3_release(sha: str, state: Any, *, runtime: Runtime) -> None:
 
     state.payload["pi5"] = {"state": "migration-planning", "sha": sha}
     state.save()
-    runtime.run(
-        [
-            str(migration_planner),
-            "--ref",
-            sha,
-            "--run-id",
-            run_id,
-            "--output",
-            str(migration_plan),
-        ]
-    )
+    with telemetry.measure_phase(
+        state, runtime, "pi5-migration-plan", performance=True
+    ):
+        runtime.run(
+            [
+                str(migration_planner),
+                "--ref",
+                sha,
+                "--run-id",
+                run_id,
+                "--output",
+                str(migration_plan),
+            ]
+        )
     state.payload["pi5"] = {
         "state": "migration-plan-ready",
         "sha": sha,
@@ -109,17 +113,20 @@ def phase3_release(sha: str, state: Any, *, runtime: Runtime) -> None:
     }
     state.save()
 
-    runtime.run(
-        [
-            str(runtime.CANDIDATE_BUILD),
-            "--ref",
-            sha,
-            "--run-id",
-            run_id,
-            "--resource-evidence",
-            str(resource_evidence),
-        ]
-    )
+    with telemetry.measure_phase(
+        state, runtime, "pi5-candidate-build", performance=True
+    ):
+        runtime.run(
+            [
+                str(runtime.CANDIDATE_BUILD),
+                "--ref",
+                sha,
+                "--run-id",
+                run_id,
+                "--resource-evidence",
+                str(resource_evidence),
+            ]
+        )
     try:
         candidate_state = runtime.json.loads(
             (runtime.PROJECT / "logs/deploy/pi5-image-deploy-state.json").read_text(
@@ -160,25 +167,31 @@ def phase3_release(sha: str, state: Any, *, runtime: Runtime) -> None:
         "resourceEvidence": str(resource_evidence),
     }
     state.save()
-    runtime.run(
-        [
-            str(runtime.PHASE3),
-            "prepare",
-            "--api-image",
-            candidate["api"],
-            "--web-image",
-            candidate["web"],
-            "--run-id",
-            run_id,
-            "--migration-plan",
-            str(migration_plan),
-            "--resource-evidence",
-            str(resource_evidence),
-        ]
-    )
+    with telemetry.measure_phase(
+        state, runtime, "pi5-inactive-slot-prepare", performance=True
+    ):
+        runtime.run(
+            [
+                str(runtime.PHASE3),
+                "prepare",
+                "--api-image",
+                candidate["api"],
+                "--web-image",
+                candidate["web"],
+                "--run-id",
+                run_id,
+                "--migration-plan",
+                str(migration_plan),
+                "--resource-evidence",
+                str(resource_evidence),
+            ]
+        )
     state.payload["pi5"]["state"] = "switching"
     state.save()
-    runtime.run([str(runtime.PHASE3), "switch"])
+    with telemetry.measure_phase(
+        state, runtime, "pi5-traffic-switch", performance=True
+    ):
+        runtime.run([str(runtime.PHASE3), "switch"])
     state.payload["pi5"] = {
         "candidate": candidate,
         "state": "stability-monitoring",
@@ -192,21 +205,27 @@ def phase3_release(sha: str, state: Any, *, runtime: Runtime) -> None:
 def wait_for_pi5_stability(state: Any, *, runtime: Runtime) -> None:
     # Keep the monitor in the coordinator-owned foreground. The executor may
     # persist failure evidence, but it never decides or performs switchback.
-    runtime.run([str(runtime.PHASE3), "monitor"])
+    with telemetry.measure_phase(
+        state, runtime, "pi5-stability-monitor", performance=True
+    ):
+        runtime.run([str(runtime.PHASE3), "monitor"])
     # Reaching the monitor deadline commits the workflow to forward-only,
     # resumable cleanup. A scheduler leadership change in the small interval
     # before status observation must not be reclassified as rollback failure.
     state.payload["pi5"]["state"] = "cleanup"
     state.save()
-    phase3 = runtime.json.loads(
-        runtime.run([str(runtime.PHASE3), "status"], capture=True)
-    )
-    if phase3.get("runtimeStatus") != "consistent":
-        raise RuntimeError("Pi5 Blue/Green monitor reported inconsistent state")
-    stable_until = phase3.get("stableUntil")
-    if isinstance(stable_until, int) and stable_until > int(runtime.time.time()):
-        raise RuntimeError("Pi5 Blue/Green monitor returned before the stability window ended")
-    runtime.cleanup_after_pi5_stability()
+    with telemetry.measure_phase(state, runtime, "pi5-cleanup", performance=True):
+        phase3 = runtime.json.loads(
+            runtime.run([str(runtime.PHASE3), "status"], capture=True)
+        )
+        if phase3.get("runtimeStatus") != "consistent":
+            raise RuntimeError("Pi5 Blue/Green monitor reported inconsistent state")
+        stable_until = phase3.get("stableUntil")
+        if isinstance(stable_until, int) and stable_until > int(runtime.time.time()):
+            raise RuntimeError(
+                "Pi5 Blue/Green monitor returned before the stability window ended"
+            )
+        runtime.cleanup_after_pi5_stability()
     state.payload["pi5"]["state"] = "stable"
     state.save()
 

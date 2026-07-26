@@ -9,6 +9,7 @@ import re
 import subprocess
 import sys
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -55,6 +56,7 @@ from rolling_release.lock import (
 from rolling_release.models import unit_name_for
 from rolling_release.state import RunStateStore, TERMINAL_STATES
 from rolling_release import telemetry as release_telemetry
+from rolling_release import pi5_performance as release_pi5_performance
 
 
 PROJECT = Path(__file__).resolve().parents[2]
@@ -81,6 +83,7 @@ ACTIVATION_EXECUTION_ENABLED = True
 VERIFICATION_ONLY_EXECUTION_ENABLED = True
 _ACTIVE_CANCELLATION_TOKEN: CancellationToken | None = None
 _ACTIVE_FLEET_LEASE: FleetLease | None = None
+_ACTIVE_PI5_PERFORMANCE: release_pi5_performance.Recorder | None = None
 _PREVIOUS_SHA_UNSET = object()
 
 
@@ -415,6 +418,38 @@ def status_file(run_id: str) -> Path:
 
 def collect_ansible_timing(run_id: str) -> dict[str, Any]:
     return release_telemetry.collect(PROJECT, run_id)
+
+
+def start_pi5_performance(run_id: str) -> None:
+    global _ACTIVE_PI5_PERFORMANCE
+    if _ACTIVE_PI5_PERFORMANCE is not None:
+        raise RuntimeError("Pi5 performance sampler is already active")
+    _ACTIVE_PI5_PERFORMANCE = release_pi5_performance.Recorder(PROJECT, run_id)
+
+
+def baseline_pi5_performance() -> None:
+    if _ACTIVE_PI5_PERFORMANCE is None:
+        raise RuntimeError("Pi5 performance sampler is not active")
+    _ACTIVE_PI5_PERFORMANCE.baseline()
+
+
+def pi5_performance_phase(name: str) -> Any:
+    if _ACTIVE_PI5_PERFORMANCE is None:
+        return nullcontext()
+    return _ACTIVE_PI5_PERFORMANCE.phase(name)
+
+
+def finish_pi5_performance(run_id: str) -> dict[str, Any]:
+    global _ACTIVE_PI5_PERFORMANCE
+    recorder = _ACTIVE_PI5_PERFORMANCE
+    if recorder is None:
+        raise RuntimeError("Pi5 performance sampler is not active")
+    if recorder.run_id != run_id:
+        raise RuntimeError("Pi5 performance sampler run ID does not match")
+    try:
+        return recorder.finish(PROJECT)
+    finally:
+        _ACTIVE_PI5_PERFORMANCE = None
 
 
 def read_release_run(run_id: str) -> dict[str, Any] | None:
