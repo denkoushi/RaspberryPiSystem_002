@@ -2024,6 +2024,7 @@ model KioskDocument {
   metadataHistories              KioskDocumentMetadataHistory[]
   assemblyProcedureOrderItems    AssemblyProcedureOrderItem[]
   assemblyTemplateProcedureItems AssemblyTemplateProcedureItem[]
+  assemblyTemplateProcedureSteps AssemblyTemplateProcedureStep[]
   assemblyTemplateBolts          AssemblyTemplateBolt[]
   assemblyTemplateCheckItems     AssemblyTemplateCheckItem[]
 
@@ -2203,6 +2204,17 @@ enum AssemblyProcedureDocumentStatus {
 enum AssemblyProcedureDocumentSource {
   MANUAL
   GMAIL
+}
+
+enum AssemblyProcedureStepViewMode {
+  FULL_PAGE
+  CROP
+}
+
+enum AssemblyProcedureStepEmphasis {
+  NORMAL
+  IMPORTANT
+  CAUTION
 }
 
 /// 同一測定対象（製造order・工程・資源CD）に複数の記録表をぶら下げる親集約。
@@ -2453,6 +2465,7 @@ model AssemblyProcedureDocument {
   templates              AssemblyTemplate[]
   orderItems             AssemblyProcedureOrderItem[]
   templateProcedureItems AssemblyTemplateProcedureItem[]
+  templateProcedureSteps AssemblyTemplateProcedureStep[]
   templateBolts          AssemblyTemplateBolt[]
   templateCheckItems     AssemblyTemplateCheckItem[]
 
@@ -2540,6 +2553,33 @@ model AssemblyTemplateProcedureItem {
   @@index([assemblyProcedureDocumentId], map: "AssemblyTemplateProcedureItem_idx_assembly_document")
 }
 
+/// 組立テンプレート版が所有する、ページ全体または矩形フォーカスの表示ステップ。
+model AssemblyTemplateProcedureStep {
+  id                          String                         @id @default(uuid())
+  templateId                  String
+  kioskDocumentId             String?
+  assemblyProcedureDocumentId String?
+  sortOrder                   Int
+  pageIndex                   Int
+  viewMode                    AssemblyProcedureStepViewMode
+  cropXRatio                  Decimal?                       @db.Decimal(10, 8)
+  cropYRatio                  Decimal?                       @db.Decimal(10, 8)
+  cropWidthRatio              Decimal?                       @db.Decimal(10, 8)
+  cropHeightRatio             Decimal?                       @db.Decimal(10, 8)
+  title                       String?
+  instructionText             String?
+  emphasis                    AssemblyProcedureStepEmphasis  @default(NORMAL)
+  createdAt                   DateTime                       @default(now())
+  updatedAt                   DateTime                       @updatedAt
+  template                    AssemblyTemplate               @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  kioskDocument               KioskDocument?                 @relation(fields: [kioskDocumentId], references: [id], onDelete: Restrict)
+  assemblyProcedureDocument   AssemblyProcedureDocument?     @relation(fields: [assemblyProcedureDocumentId], references: [id], onDelete: Restrict)
+
+  @@unique([templateId, sortOrder], map: "AssemblyTemplateProcedureStep_unique_template_sort")
+  @@index([kioskDocumentId], map: "AssemblyTemplateProcedureStep_idx_kiosk_document")
+  @@index([assemblyProcedureDocumentId], map: "AssemblyTemplateProcedureStep_idx_assembly_document")
+}
+
 /// 組立トルク管理: 型番/FHINCD + 手順パターンごとの締付テンプレート。
 model AssemblyTemplate {
   id                  String                          @id @default(uuid())
@@ -2555,6 +2595,7 @@ model AssemblyTemplate {
   updatedAt           DateTime                        @updatedAt
   procedureDocument   AssemblyProcedureDocument       @relation(fields: [procedureDocumentId], references: [id], onDelete: Restrict)
   procedureItems      AssemblyTemplateProcedureItem[]
+  procedureSteps      AssemblyTemplateProcedureStep[]
   areas               AssemblyTemplateArea[]
   checkItems          AssemblyTemplateCheckItem[]
   workSessions        AssemblyWorkSession[]

@@ -12,6 +12,12 @@ import {
   mapTemplateProcedureItem,
   type AssemblyTemplateProcedureSequenceSource
 } from './assembly-template-procedure-sequence.service.js';
+import {
+  AssemblyTemplateProcedureStepService,
+  assemblyTemplateProcedureStepsInclude,
+  type AssemblyTemplateProcedureStepSource,
+  type AssemblyTemplateProcedureStepSummary
+} from './assembly-template-procedure-step.service.js';
 
 export type AssemblyProcedureSequenceFallbackReason = 'not_configured' | 'no_enabled_documents' | 'no_page_images';
 
@@ -40,6 +46,12 @@ export type AssemblyProcedureSequenceDocument = {
   pages: AssemblyProcedureSequencePage[];
 };
 
+export type AssemblyProcedureSequenceStep = AssemblyTemplateProcedureStepSummary & {
+  documentType: AssemblyProcedureSequenceDocumentType;
+  documentTitle: string;
+  pageUrl: string;
+};
+
 export type AssemblyProcedureSequence =
   | {
       mode: 'configured';
@@ -47,6 +59,8 @@ export type AssemblyProcedureSequence =
       machineName: string;
       machineNameKey: string;
       documents: AssemblyProcedureSequenceDocument[];
+      stepSource: AssemblyTemplateProcedureStepSource;
+      steps: AssemblyProcedureSequenceStep[];
       fallbackProcedureDocument: {
         id: string;
         name: string;
@@ -60,6 +74,8 @@ export type AssemblyProcedureSequence =
       machineName: string;
       machineNameKey: string;
       documents: AssemblyProcedureSequenceDocument[];
+      stepSource: AssemblyTemplateProcedureStepSource;
+      steps: AssemblyProcedureSequenceStep[];
       fallbackProcedureDocument: {
         id: string;
         name: string;
@@ -218,10 +234,73 @@ async function buildFallbackSequenceDocuments(
   ];
 }
 
+function buildProcedureSteps(
+  documents: AssemblyProcedureSequenceDocument[],
+  storedSteps: AssemblyTemplateProcedureStepSummary[]
+): {
+  stepSource: AssemblyTemplateProcedureStepSource;
+  steps: AssemblyProcedureSequenceStep[];
+} {
+  const documentsByKey = new Map(
+    documents.map((document) => [
+      document.kioskDocumentId
+        ? `kiosk_document:${document.kioskDocumentId}`
+        : `assembly_procedure_document:${document.assemblyProcedureDocumentId}`,
+      document
+    ])
+  );
+  if (storedSteps.length > 0) {
+    return {
+      stepSource: 'template_steps',
+      steps: storedSteps.flatMap((step) => {
+        const key = step.kioskDocumentId
+          ? `kiosk_document:${step.kioskDocumentId}`
+          : `assembly_procedure_document:${step.assemblyProcedureDocumentId}`;
+        const document = documentsByKey.get(key);
+        const page = document?.pages.find((candidate) => candidate.pageIndex === step.pageIndex);
+        if (!document || !page) return [];
+        return [
+          {
+            ...step,
+            documentType: document.documentType,
+            documentTitle: document.displayTitle || document.title,
+            pageUrl: page.pageUrl
+          }
+        ];
+      })
+    };
+  }
+  let sortOrder = 0;
+  return {
+    stepSource: 'document_expansion',
+    steps: documents.flatMap((document) =>
+      document.pages.map((page) => ({
+        id: `document-expansion:${page.source}:${page.documentId}:${page.pageIndex}`,
+        sortOrder: sortOrder++,
+        kioskDocumentId: document.kioskDocumentId,
+        assemblyProcedureDocumentId: document.assemblyProcedureDocumentId,
+        pageIndex: page.pageIndex,
+        viewMode: 'FULL_PAGE' as const,
+        cropXRatio: null,
+        cropYRatio: null,
+        cropWidthRatio: null,
+        cropHeightRatio: null,
+        title: null,
+        instructionText: null,
+        emphasis: 'NORMAL' as const,
+        documentType: document.documentType,
+        documentTitle: document.displayTitle || document.title,
+        pageUrl: page.pageUrl
+      }))
+    )
+  };
+}
+
 export class AssemblyProcedureSequenceService {
   constructor(
     private readonly legacyOrderService = new AssemblyLegacyProcedureOrderService(),
-    private readonly render = new PdfStorageRenderAdapter()
+    private readonly render = new PdfStorageRenderAdapter(),
+    private readonly procedureStepService = new AssemblyTemplateProcedureStepService()
   ) {}
 
   async resolveForWorkSession(sessionId: string): Promise<AssemblyProcedureSequence | null> {
@@ -240,6 +319,8 @@ export class AssemblyProcedureSequenceService {
               }
             },
             procedureItems: assemblyTemplateProcedureItemsInclude
+            ,
+            procedureSteps: assemblyTemplateProcedureStepsInclude
           }
         }
       }
@@ -248,6 +329,9 @@ export class AssemblyProcedureSequenceService {
 
     const fallbackProcedureDocument = session.template.procedureDocument ?? null;
     const storedItems = session.template.procedureItems.map(mapTemplateProcedureItem);
+    const storedSteps = this.procedureStepService.mapStoredSteps(
+      session.template.procedureSteps
+    );
     const order =
       storedItems.length > 0
         ? {
@@ -270,6 +354,7 @@ export class AssemblyProcedureSequenceService {
     }
     if (order.items.length === 0) {
       const documents = await buildFallbackSequenceDocuments(fallbackProcedureDocument?.id);
+      const procedureSteps = buildProcedureSteps(documents, storedSteps);
       return {
         mode: 'fallback',
         source,
@@ -277,6 +362,7 @@ export class AssemblyProcedureSequenceService {
         machineName: order.machineName,
         machineNameKey: order.machineNameKey,
         documents,
+        ...procedureSteps,
         fallbackProcedureDocument
       };
     }
@@ -288,6 +374,7 @@ export class AssemblyProcedureSequenceService {
     });
     if (enabledItems.length === 0) {
       const documents = await buildFallbackSequenceDocuments(fallbackProcedureDocument?.id);
+      const procedureSteps = buildProcedureSteps(documents, storedSteps);
       return {
         mode: 'fallback',
         source,
@@ -295,6 +382,7 @@ export class AssemblyProcedureSequenceService {
         machineName: order.machineName,
         machineNameKey: order.machineNameKey,
         documents,
+        ...procedureSteps,
         fallbackProcedureDocument
       };
     }
@@ -323,6 +411,7 @@ export class AssemblyProcedureSequenceService {
     ).filter((document): document is AssemblyProcedureSequenceDocument => document != null && document.pages.length > 0);
     if (documents.length === 0) {
       const fallbackDocuments = await buildFallbackSequenceDocuments(fallbackProcedureDocument?.id);
+      const procedureSteps = buildProcedureSteps(fallbackDocuments, storedSteps);
       return {
         mode: 'fallback',
         source,
@@ -330,16 +419,19 @@ export class AssemblyProcedureSequenceService {
         machineName: order.machineName,
         machineNameKey: order.machineNameKey,
         documents: fallbackDocuments,
+        ...procedureSteps,
         fallbackProcedureDocument
       };
     }
 
+    const procedureSteps = buildProcedureSteps(documents, storedSteps);
     return {
       mode: 'configured',
       source,
       machineName: order.machineName,
       machineNameKey: order.machineNameKey,
       documents,
+      ...procedureSteps,
       fallbackProcedureDocument
     };
   }

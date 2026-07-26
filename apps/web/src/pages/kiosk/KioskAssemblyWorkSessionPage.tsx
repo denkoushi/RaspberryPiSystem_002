@@ -556,6 +556,19 @@ export function KioskAssemblyWorkSessionPage() {
                 boltMarkers={visibleBoltMarkers}
                 checkMarkers={visibleCheckMarkers}
                 selectedBoltId={session.currentBoltId}
+                currentMarker={
+                  currentBolt
+                    ? {
+                        kioskDocumentId: currentBolt.kioskDocumentId,
+                        assemblyProcedureDocumentId:
+                          currentBolt.assemblyProcedureDocumentId ??
+                          session.template.procedureDocumentId,
+                        pageIndex: currentBolt.pageIndex,
+                        xRatio: Number(currentBolt.xRatio),
+                        yRatio: Number(currentBolt.yRatio)
+                      }
+                    : null
+                }
                 onToggleCheckItem={sessionActive ? (checkItemId) => void toggleCheckItem(checkItemId) : undefined}
                 onCurrentPageChange={handleCurrentPageChange}
               />

@@ -13,14 +13,22 @@ import { Button, buttonClassName } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import {
   AssemblyProcedureCanvas,
+  AssemblyMarkerOverlay,
+  AssemblyProcedureCropView,
+  AssemblyProcedureStoryboard,
+  AssemblyProcedureStepInspector,
   AssemblyTemplateDocumentLibraryDialog,
   AssemblyTemplateProcedurePane,
   appendAssemblyProcedureDocument,
   applyAssemblyBoltConditionRange,
   assemblyTemplateProcedureDraftToInput,
   assemblyTemplateProcedureDraftReducer,
+  assemblyProcedureStepDraftReducer,
   buildProcedureDraftPageOptions,
   canRemoveAssemblyTemplateProcedureItem,
+  canRemoveProcedureStep,
+  createCropStepDraft,
+  createFullPageStepDraft,
   createAssemblyBoltAt,
   createAssemblyCheckItemAt,
   draftAreasToInput,
@@ -28,20 +36,27 @@ import {
   emptyAssemblyArea,
   filterDraftBoltsForPage,
   filterDraftCheckItemsForPage,
+  findMarkerWithoutVisibleProcedureStep,
+  findPageForProcedureStep,
   kioskAssemblyTemplateEditPath,
   kioskAssemblyTemplateNewPath,
   KIOSK_ASSEMBLY_LIBRARY_PATH,
   getPrimaryAssemblyProcedureDocumentId,
+  getPrimaryAssemblyDocumentIdFromSteps,
   hasAssemblyProcedureDocument,
   loadAssemblyTemplateEditorData,
   pageRefKey,
+  orderProcedureItemsByFirstStep,
   parseAssemblyTemplateNewSearch,
+  procedureStepDraftToInput,
   readAssemblyApiErrorMessage,
   renumberDraftCheckItems,
   resolveAssemblyDocumentStatus,
   templateToProcedureDraftItems,
+  templateToProcedureStepDrafts,
   templateToDraftAreas,
-  templateToDraftCheckItems
+  templateToDraftCheckItems,
+  transformMarkerForProcedureStep
 } from '../../features/assembly';
 import {
   clearImageMarkerCalloutTip,
@@ -59,6 +74,7 @@ import type {
   AssemblyDraftBolt,
   AssemblyDraftCheckItem,
   AssemblyEditorPageOption,
+  AssemblyProcedureStepDraft,
   AssemblyTemplateProcedureDraftItem
 } from '../../features/assembly';
 import type { AssemblyProcedureDocumentSummaryDto, AssemblyTemplateDto } from '../../features/assembly/types';
@@ -79,6 +95,14 @@ export function KioskAssemblyTemplateEditorPage() {
     assemblyTemplateProcedureDraftReducer,
     []
   );
+  const [procedureSteps, dispatchProcedureSteps] = useReducer(
+    assemblyProcedureStepDraftReducer,
+    []
+  );
+  const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
+  const [leftPaneTab, setLeftPaneTab] = useState<'steps' | 'documents'>('steps');
+  const [inspectorTab, setInspectorTab] = useState<'step' | 'markers'>('step');
+  const [showFullPage, setShowFullPage] = useState(false);
   const [procedurePaneOpen, setProcedurePaneOpen] = useState(true);
   const [documentLibraryOpen, setDocumentLibraryOpen] = useState(false);
   const [documentSearch, setDocumentSearch] = useState('');
@@ -94,7 +118,7 @@ export function KioskAssemblyTemplateEditorPage() {
   const [selectedBoltId, setSelectedBoltId] = useState<string | null>(null);
   const [selectedCheckItemId, setSelectedCheckItemId] = useState<string | null>(null);
   const [markerMode, setMarkerMode] = useState<'bolt' | 'check'>('bolt');
-  const [placementAction, setPlacementAction] = useState<'place' | 'callout'>('place');
+  const [placementAction, setPlacementAction] = useState<'place' | 'callout' | 'crop'>('place');
   const [pageOptions, setPageOptions] = useState<AssemblyEditorPageOption[]>([]);
   const [selectedPageKey, setSelectedPageKey] = useState('');
   const [loading, setLoading] = useState(true);
@@ -117,6 +141,11 @@ export function KioskAssemblyTemplateEditorPage() {
   const selectedBolt = selectedArea?.bolts.find((bolt) => bolt.id === selectedBoltId) ?? null;
   const selectedCheckItem = checkItems.find((item) => item.id === selectedCheckItemId) ?? null;
   const selectedPage = pageOptions.find((option) => option.key === selectedPageKey) ?? pageOptions[0] ?? null;
+  const selectedStep =
+    procedureSteps.find((step) => step.localId === selectedStepId) ?? procedureSteps[0] ?? null;
+  const selectedStepPage = selectedStep
+    ? findPageForProcedureStep(selectedStep, pageOptions)
+    : null;
   const selectedPageIndex = selectedPage
     ? pageOptions.findIndex((option) => option.key === selectedPage.key)
     : -1;
@@ -127,19 +156,24 @@ export function KioskAssemblyTemplateEditorPage() {
         modelCode,
         procedurePattern,
         procedureItems: assemblyTemplateProcedureDraftToInput(procedureItems),
+        procedureSteps: procedureStepDraftToInput(procedureSteps),
         areas: draftAreasToInput(areas),
         checkItems: draftCheckItemsToInput(checkItems)
       }),
-    [areas, checkItems, modelCode, procedureItems, procedurePattern, templateName]
+    [areas, checkItems, modelCode, procedureItems, procedurePattern, procedureSteps, templateName]
   );
   const isDirty = baselineSnapshot != null && baselineSnapshot !== draftSnapshot;
   const markerSettingsOpen = Boolean(selectedBolt || selectedCheckItem);
+  const settingsPaneOpen = Boolean(selectedStep || markerSettingsOpen);
   useUnsavedChangesGuard(isDirty && !busy && !readOnly);
 
   useEffect(() => {
-    const primaryDocumentId = getPrimaryAssemblyProcedureDocumentId(procedureItems) ?? '';
+    const primaryDocumentId =
+      getPrimaryAssemblyDocumentIdFromSteps(procedureSteps) ??
+      getPrimaryAssemblyProcedureDocumentId(procedureItems) ??
+      '';
     setSelectedDocumentId(primaryDocumentId);
-  }, [procedureItems]);
+  }, [procedureItems, procedureSteps]);
 
   useEffect(() => {
     if (!loading && baselineSnapshot == null) setBaselineSnapshot(draftSnapshot);
@@ -199,6 +233,14 @@ export function KioskAssemblyTemplateEditorPage() {
           setLoadedTemplate(template);
           const nextProcedureItems = templateToProcedureDraftItems(template);
           dispatchProcedureItems({ type: 'replace', items: nextProcedureItems });
+          setLeftPaneTab(
+            typeof window !== 'undefined' && window.innerWidth >= 1366
+              ? 'steps'
+              : 'documents'
+          );
+          const nextProcedureSteps = templateToProcedureStepDrafts(template);
+          dispatchProcedureSteps({ type: 'replace', steps: nextProcedureSteps });
+          setSelectedStepId(nextProcedureSteps[0]?.localId ?? null);
           setProcedurePaneOpen(nextProcedureItems.length > 1);
           const nextAreas = templateToDraftAreas(template);
           const nextCheckItems = templateToDraftCheckItems(template);
@@ -232,6 +274,8 @@ export function KioskAssemblyTemplateEditorPage() {
               ? [appendAssemblyProcedureDocument([], initialDocument)[0]!]
               : []
           });
+          dispatchProcedureSteps({ type: 'replace', steps: [] });
+          setSelectedStepId(null);
           setProcedurePaneOpen(false);
         }
       })
@@ -293,6 +337,23 @@ export function KioskAssemblyTemplateEditorPage() {
     };
   }, [documents, procedureItems]);
 
+  useEffect(() => {
+    if (pageOptions.length === 0 || procedureSteps.length > 0) return;
+    const initialSteps = pageOptions.map(createFullPageStepDraft);
+    dispatchProcedureSteps({ type: 'replace', steps: initialSteps });
+    setSelectedStepId(initialSteps[0]?.localId ?? null);
+  }, [pageOptions, procedureSteps.length]);
+
+  useEffect(() => {
+    if (procedureSteps.length === 0) {
+      setSelectedStepId(null);
+      return;
+    }
+    if (!procedureSteps.some((step) => step.localId === selectedStepId)) {
+      setSelectedStepId(procedureSteps[0]!.localId);
+    }
+  }, [procedureSteps, selectedStepId]);
+
   const currentPageRef = useMemo(() => {
     if (!selectedPage) return null;
     return {
@@ -311,6 +372,48 @@ export function KioskAssemblyTemplateEditorPage() {
     if (!currentPageRef || !selectedDocumentId) return [];
     return filterDraftCheckItemsForPage(checkItems, currentPageRef, selectedDocumentId);
   }, [checkItems, currentPageRef, selectedDocumentId]);
+
+  const allStepMarkers = useMemo(
+    () =>
+      [...areas.flatMap((area) => area.bolts), ...checkItems].map((marker) =>
+        marker.kioskDocumentId || marker.assemblyProcedureDocumentId
+          ? marker
+          : {
+              ...marker,
+              kioskDocumentId: null,
+              assemblyProcedureDocumentId: selectedDocumentId,
+              pageIndex: marker.pageIndex ?? 0
+            }
+      ),
+    [areas, checkItems, selectedDocumentId]
+  );
+
+  const cropVisibleBolts = useMemo(
+    () =>
+      selectedStep
+        ? visibleBolts.flatMap((marker) => {
+            const transformed = transformMarkerForProcedureStep(marker, selectedStep);
+            return transformed ? [transformed] : [];
+          })
+        : [],
+    [selectedStep, visibleBolts]
+  );
+  const cropVisibleCheckItems = useMemo(
+    () =>
+      selectedStep
+        ? visibleCheckItems.flatMap((marker) => {
+            const transformed = transformMarkerForProcedureStep(marker, selectedStep);
+            return transformed ? [transformed] : [];
+          })
+        : [],
+    [selectedStep, visibleCheckItems]
+  );
+  const showSelectedCrop =
+    selectedStep?.viewMode === 'crop' &&
+    selectedStep.crop != null &&
+    selectedStepPage?.key === selectedPage?.key &&
+    !showFullPage &&
+    placementAction !== 'crop';
 
   const setAreaPatch = (areaId: string, patch: Partial<AssemblyDraftArea>) => {
     setAreas((prev) => prev.map((area) => (area.id === areaId ? { ...area, ...patch } : area)));
@@ -366,6 +469,7 @@ export function KioskAssemblyTemplateEditorPage() {
     setAreas((prev) => prev.map((area) => (area.id === selectedArea.id ? { ...area, bolts: [...area.bolts, next] } : area)));
     setSelectedBoltId(next.id);
     setSelectedCheckItemId(null);
+    setInspectorTab('markers');
   };
 
   const applySelectedConditionToRange = () => {
@@ -381,6 +485,7 @@ export function KioskAssemblyTemplateEditorPage() {
     setCheckItems((prev) => renumberDraftCheckItems([...prev, next]));
     setSelectedCheckItemId(next.id);
     setSelectedBoltId(null);
+    setInspectorTab('markers');
   };
 
   const placeSelectedCalloutAt = (xRatio: number, yRatio: number) => {
@@ -412,7 +517,10 @@ export function KioskAssemblyTemplateEditorPage() {
     }
   };
 
-  const addProcedureDocument = (document: AssemblyProcedureDocumentSummaryDto) => {
+  const addProcedureDocument = (
+    document: AssemblyProcedureDocumentSummaryDto,
+    mode: 'all_pages' | 'document_only'
+  ) => {
     if (hasAssemblyProcedureDocument(procedureItems, document.id)) {
       setMessage('同じ組立手順書は新たに重複追加できません。');
       return;
@@ -422,6 +530,15 @@ export function KioskAssemblyTemplateEditorPage() {
       return;
     }
     dispatchProcedureItems({ type: 'append_assembly_document', document });
+    if (mode === 'all_pages') {
+      const draftItem = appendAssemblyProcedureDocument([], document)[0]!;
+      const pages = buildProcedureDraftPageOptions({
+        items: [draftItem],
+        assemblyDocuments: [document],
+        kioskPagesByDocumentId: new Map()
+      });
+      dispatchProcedureSteps({ type: 'append_pages', pages });
+    }
     setDocumentLibraryOpen(false);
     setMessage(null);
   };
@@ -431,6 +548,18 @@ export function KioskAssemblyTemplateEditorPage() {
   };
 
   const removeProcedureItem = (index: number) => {
+    const item = procedureItems[index];
+    if (
+      item &&
+      procedureSteps.some(
+        (step) =>
+          step.kioskDocumentId === item.kioskDocumentId &&
+          step.assemblyProcedureDocumentId === item.assemblyProcedureDocumentId
+      )
+    ) {
+      setMessage('この文書を使う表示ステップを先に削除してください。');
+      return;
+    }
     const markerRefs = [
       ...areas.flatMap((area) => area.bolts),
       ...checkItems
@@ -457,6 +586,69 @@ export function KioskAssemblyTemplateEditorPage() {
     if (firstPage) setSelectedPageKey(firstPage.key);
   };
 
+  const focusProcedureStep = (step: AssemblyProcedureStepDraft) => {
+    setSelectedStepId(step.localId);
+    setInspectorTab('step');
+    setShowFullPage(false);
+    const page = findPageForProcedureStep(step, pageOptions);
+    if (page) setSelectedPageKey(page.key);
+  };
+
+  const addCurrentFullPageStep = () => {
+    if (!selectedPage || procedureSteps.length >= 300) return;
+    const step = createFullPageStepDraft(selectedPage);
+    dispatchProcedureSteps({
+      type: 'insert',
+      step,
+      afterLocalId: selectedStep?.localId
+    });
+    focusProcedureStep(step);
+  };
+
+  const addCurrentCropStep = (crop: NonNullable<AssemblyProcedureStepDraft['crop']>) => {
+    if (!selectedPage || procedureSteps.length >= 300) return;
+    const step = createCropStepDraft(selectedPage, crop);
+    dispatchProcedureSteps({
+      type: 'insert',
+      step,
+      afterLocalId: selectedStep?.localId
+    });
+    setPlacementAction('place');
+    focusProcedureStep(step);
+  };
+
+  const patchProcedureStep = (
+    localId: string,
+    patch: Partial<AssemblyProcedureStepDraft>
+  ) => {
+    const nextSteps = procedureSteps.map((step) =>
+      step.localId === localId ? { ...step, ...patch } : step
+    );
+    const hiddenMarker = findMarkerWithoutVisibleProcedureStep(nextSteps, allStepMarkers);
+    if (hiddenMarker) {
+      setMessage(
+        `丸数字／チェック${hiddenMarker.markerNo}が見える最後の範囲は外せません。`
+      );
+      return;
+    }
+    dispatchProcedureSteps({ type: 'update', localId, patch });
+    setMessage(null);
+  };
+
+  const removeProcedureStep = (localId: string) => {
+    const result = canRemoveProcedureStep({
+      steps: procedureSteps,
+      localId,
+      markers: allStepMarkers
+    });
+    if (!result.allowed) {
+      setMessage(result.message);
+      return;
+    }
+    dispatchProcedureSteps({ type: 'remove', localId });
+    setMessage(null);
+  };
+
   const saveTemplate = async () => {
     if (readOnly) return;
     setBusy(true);
@@ -466,7 +658,26 @@ export function KioskAssemblyTemplateEditorPage() {
       if (procedureItems.length < 1 || procedureItems.length > 50) {
         throw new Error('文書順は1件以上50件以下にしてください。');
       }
-      const primaryDocumentId = getPrimaryAssemblyProcedureDocumentId(procedureItems);
+      if (procedureSteps.length < 1 || procedureSteps.length > 300) {
+        throw new Error('表示ステップは1件以上300件以下にしてください。');
+      }
+      const hiddenMarker = findMarkerWithoutVisibleProcedureStep(
+        procedureSteps,
+        allStepMarkers
+      );
+      if (hiddenMarker) {
+        throw new Error(
+          `丸数字／チェック${hiddenMarker.markerNo}が見える表示ステップを残してください。`
+        );
+      }
+      const orderedProcedureItems = orderProcedureItemsByFirstStep(
+        procedureItems,
+        procedureSteps
+      );
+      if (orderedProcedureItems.length !== procedureItems.length) {
+        throw new Error('各文書を表示ステップで1回以上使用してください。');
+      }
+      const primaryDocumentId = getPrimaryAssemblyDocumentIdFromSteps(procedureSteps);
       if (!primaryDocumentId) throw new Error('主手順書となる組立手順書を選択してください。');
       if (selectedDocument && !selectedDocument.isActive) throw new Error('有効な手順書を選択してください。');
       if (selectedDocument && resolveAssemblyDocumentStatus(selectedDocument) !== 'published') {
@@ -480,7 +691,8 @@ export function KioskAssemblyTemplateEditorPage() {
         areas: draftAreasToInput(areas),
         checkItems: draftCheckItemsToInput(checkItems),
         traceabilityMode: 'REQUIRED' as const,
-        procedureItems: assemblyTemplateProcedureDraftToInput(procedureItems),
+        procedureItems: assemblyTemplateProcedureDraftToInput(orderedProcedureItems),
+        procedureSteps: procedureStepDraftToInput(procedureSteps),
         accessPassword
       };
       const saved = templateId ? await reviseAssemblyTemplate(templateId, payload) : await createAssemblyTemplate(payload);
@@ -590,9 +802,16 @@ export function KioskAssemblyTemplateEditorPage() {
             className="min-h-10 text-[0.88rem]"
             aria-expanded={procedurePaneOpen}
             aria-controls="assembly-procedure-pane"
-            onClick={() => setProcedurePaneOpen((current) => !current)}
+            onClick={() =>
+              setProcedurePaneOpen((current) => {
+                if (!current && typeof window !== 'undefined' && window.innerWidth < 1366) {
+                  setLeftPaneTab('documents');
+                }
+                return !current;
+              })
+            }
           >
-            {procedurePaneOpen ? '文書/工程を閉じる' : `文書/工程 (${procedureItems.length})`}
+          {procedurePaneOpen ? '文書/工程を閉じる' : `文書/工程 (${procedureItems.length})`}
           </Button>
           <Link
             to={KIOSK_ASSEMBLY_LIBRARY_PATH}
@@ -620,43 +839,88 @@ export function KioskAssemblyTemplateEditorPage() {
         data-testid="assembly-unified-editor-workspace"
         className={clsx(
           'grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-auto xl:overflow-hidden',
-          procedurePaneOpen && markerSettingsOpen && 'xl:grid-cols-[16rem_minmax(0,1fr)_20rem]',
-          procedurePaneOpen && !markerSettingsOpen && 'xl:grid-cols-[16rem_minmax(0,1fr)]',
-          !procedurePaneOpen && markerSettingsOpen && 'xl:grid-cols-[minmax(0,1fr)_20rem]',
-          !procedurePaneOpen && !markerSettingsOpen && 'xl:grid-cols-1'
+          procedurePaneOpen && settingsPaneOpen && 'xl:grid-cols-[16rem_minmax(0,1fr)_20rem]',
+          procedurePaneOpen && !settingsPaneOpen && 'xl:grid-cols-[16rem_minmax(0,1fr)]',
+          !procedurePaneOpen && settingsPaneOpen && 'xl:grid-cols-[minmax(0,1fr)_20rem]',
+          !procedurePaneOpen && !settingsPaneOpen && 'xl:grid-cols-1'
         )}
       >
         {procedurePaneOpen ? (
-          <AssemblyTemplateProcedurePane
-            items={procedureItems}
-            selectedPageKey={selectedPageKey}
-            selectedDocumentId={selectedDocumentId}
-            areas={areas}
-            selectedArea={selectedArea}
-            selectedAreaId={selectedAreaId}
-            templateName={templateName}
-            modelCode={modelCode}
-            procedurePattern={procedurePattern}
-            busy={busy}
-            readOnly={readOnly}
-            onOpenDocumentLibrary={() => setDocumentLibraryOpen(true)}
-            onFocusItem={focusProcedureItem}
-            onMoveItem={moveProcedureItem}
-            onRemoveItem={removeProcedureItem}
-            onLabelChange={(localId, label) =>
-              dispatchProcedureItems({ type: 'set_label', localId, label })
-            }
-            onTemplateNameChange={setTemplateName}
-            onModelCodeChange={setModelCode}
-            onProcedurePatternChange={setProcedurePattern}
-            onSelectArea={(areaId) => {
-              setSelectedAreaId(areaId);
-              setSelectedBoltId(null);
-              setSelectedCheckItemId(null);
-            }}
-            onAddArea={addArea}
-            onAreaPatch={setAreaPatch}
-          />
+          <aside className="flex min-h-0 flex-col overflow-hidden rounded border border-white/15 bg-slate-900/70">
+            <div className="grid shrink-0 grid-cols-2 gap-1 border-b border-white/10 p-1">
+              <Button
+                type="button"
+                variant={leftPaneTab === 'steps' ? 'primary' : 'ghostOnDark'}
+                className="min-h-10 !px-1 text-xs"
+                onClick={() => setLeftPaneTab('steps')}
+              >
+                手順
+              </Button>
+              <Button
+                type="button"
+                variant={leftPaneTab === 'documents' ? 'primary' : 'ghostOnDark'}
+                className="min-h-10 !px-1 text-xs"
+                onClick={() => setLeftPaneTab('documents')}
+              >
+                文書・工程
+              </Button>
+            </div>
+            {leftPaneTab === 'steps' ? (
+              <AssemblyProcedureStoryboard
+                steps={procedureSteps}
+                pages={pageOptions}
+                selectedLocalId={selectedStep?.localId ?? null}
+                readOnly={readOnly}
+                onSelect={(localId) => {
+                  const step = procedureSteps.find((item) => item.localId === localId);
+                  if (step) focusProcedureStep(step);
+                }}
+                onMove={(localId, delta) =>
+                  dispatchProcedureSteps({ type: 'move', localId, delta })
+                }
+                onMoveTo={(localId, targetIndex) =>
+                  dispatchProcedureSteps({ type: 'move_to', localId, targetIndex })
+                }
+                onDuplicate={(localId) =>
+                  dispatchProcedureSteps({ type: 'duplicate', localId })
+                }
+                onRemove={removeProcedureStep}
+              />
+            ) : (
+              <div className="min-h-0 flex-1 overflow-auto">
+                <AssemblyTemplateProcedurePane
+                  items={procedureItems}
+                  selectedPageKey={selectedPageKey}
+                  selectedDocumentId={selectedDocumentId}
+                  areas={areas}
+                  selectedArea={selectedArea}
+                  selectedAreaId={selectedAreaId}
+                  templateName={templateName}
+                  modelCode={modelCode}
+                  procedurePattern={procedurePattern}
+                  busy={busy}
+                  readOnly={readOnly}
+                  onOpenDocumentLibrary={() => setDocumentLibraryOpen(true)}
+                  onFocusItem={focusProcedureItem}
+                  onMoveItem={moveProcedureItem}
+                  onRemoveItem={removeProcedureItem}
+                  onLabelChange={(localId, label) =>
+                    dispatchProcedureItems({ type: 'set_label', localId, label })
+                  }
+                  onTemplateNameChange={setTemplateName}
+                  onModelCodeChange={setModelCode}
+                  onProcedurePatternChange={setProcedurePattern}
+                  onSelectArea={(areaId) => {
+                    setSelectedAreaId(areaId);
+                    setSelectedBoltId(null);
+                    setSelectedCheckItemId(null);
+                  }}
+                  onAddArea={addArea}
+                  onAreaPatch={setAreaPatch}
+                />
+              </div>
+            )}
+          </aside>
         ) : null}
 
         <section
@@ -702,6 +966,44 @@ export function KioskAssemblyTemplateEditorPage() {
                 onClick={() => setSelectedPageKey(pageOptions[selectedPageIndex + 1]!.key)}
               >
                 次頁
+              </Button>
+            </div>
+            <div className="flex shrink-0 gap-1" role="group" aria-label="表示ステップ操作">
+              <Button
+                type="button"
+                variant="ghostOnDark"
+                className="min-h-10 !px-2 !py-1 text-xs"
+                disabled={readOnly || !selectedPage || procedureSteps.length >= 300}
+                onClick={addCurrentFullPageStep}
+              >
+                全体追加
+              </Button>
+              <Button
+                type="button"
+                variant={placementAction === 'crop' ? 'primary' : 'ghostOnDark'}
+                className="min-h-10 !px-2 !py-1 text-xs"
+                disabled={readOnly || !selectedPage || procedureSteps.length >= 300}
+                aria-pressed={placementAction === 'crop'}
+                onClick={() => {
+                  setPlacementAction('crop');
+                  setShowFullPage(true);
+                }}
+              >
+                矩形追加
+              </Button>
+              <Button
+                type="button"
+                variant="ghostOnDark"
+                className="min-h-10 !px-2 !py-1 text-xs"
+                disabled={readOnly || selectedStep?.viewMode !== 'crop'}
+                onClick={() => {
+                  if (!selectedStep || !selectedStepPage) return;
+                  setSelectedPageKey(selectedStepPage.key);
+                  setShowFullPage(true);
+                  setInspectorTab('step');
+                }}
+              >
+                範囲修正
               </Button>
             </div>
             <div className="flex shrink-0 gap-1" role="group" aria-label="マーカー種別">
@@ -765,6 +1067,35 @@ export function KioskAssemblyTemplateEditorPage() {
             />
           </div>
           <div className="min-h-0 flex-1">
+            {showSelectedCrop && selectedStep?.crop && selectedPage ? (
+              <div className="relative h-full w-full bg-slate-950 p-2">
+                <AssemblyProcedureCropView
+                  pageUrl={selectedPage.imageRelativePath}
+                  crop={selectedStep.crop}
+                  className="h-full w-full"
+                  overlay={
+                    <AssemblyMarkerOverlay
+                      bolts={cropVisibleBolts}
+                      checkItems={cropVisibleCheckItems}
+                      selectedBoltId={selectedBoltId}
+                      selectedCheckItemId={selectedCheckItemId}
+                      onSelectBolt={(id) => {
+                        setInspectorTab('markers');
+                        setMarkerMode('bolt');
+                        setSelectedBoltId(id);
+                        setSelectedCheckItemId(null);
+                      }}
+                      onSelectCheckItem={(id) => {
+                        setInspectorTab('markers');
+                        setMarkerMode('check');
+                        setSelectedCheckItemId(id);
+                        setSelectedBoltId(null);
+                      }}
+                    />
+                  }
+                />
+              </div>
+            ) : (
             <AssemblyProcedureCanvas
               imageRelativePath={selectedPage?.imageRelativePath ?? selectedDocument?.imageRelativePath}
               bolts={visibleBolts}
@@ -772,11 +1103,13 @@ export function KioskAssemblyTemplateEditorPage() {
               selectedBoltId={selectedBoltId}
               selectedCheckItemId={selectedCheckItemId}
               onSelectBolt={(id) => {
+                setInspectorTab('markers');
                 setMarkerMode('bolt');
                 setSelectedBoltId(id);
                 setSelectedCheckItemId(null);
               }}
               onSelectCheckItem={(id) => {
+                setInspectorTab('markers');
                 setMarkerMode('check');
                 setSelectedCheckItemId(id);
                 setSelectedBoltId(null);
@@ -788,21 +1121,65 @@ export function KioskAssemblyTemplateEditorPage() {
                   ? undefined
                   : placeSelectedCalloutAt
               }
+              onCreateCrop={
+                readOnly || placementAction !== 'crop' ? undefined : addCurrentCropStep
+              }
+              cropRect={
+                selectedStep?.viewMode === 'crop' &&
+                selectedStepPage?.key === selectedPage?.key
+                  ? selectedStep.crop
+                  : null
+              }
+              onCropChange={
+                readOnly || selectedStep?.viewMode !== 'crop'
+                  ? undefined
+                  : (crop) => patchProcedureStep(selectedStep.localId, { crop })
+              }
               placementMode={markerMode}
               placementAction={placementAction}
               zoom={canvasZoom.zoom}
               fitGeneration={canvasZoom.fitGeneration}
               className="h-full"
             />
+            )}
           </div>
         </section>
 
-        {markerSettingsOpen ? (
+        {settingsPaneOpen ? (
         <section
           data-testid="assembly-editor-settings-pane"
           className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto rounded border border-white/15 bg-slate-900/70 p-3"
         >
-          {markerMode === 'bolt' ? (
+          <div className="mb-3 grid grid-cols-2 gap-1 border-b border-white/10 pb-2">
+            <Button
+              type="button"
+              variant={inspectorTab === 'step' ? 'primary' : 'ghostOnDark'}
+              className="min-h-10 !px-1 text-xs"
+              disabled={!selectedStep}
+              onClick={() => setInspectorTab('step')}
+            >
+              手順指示
+            </Button>
+            <Button
+              type="button"
+              variant={inspectorTab === 'markers' ? 'primary' : 'ghostOnDark'}
+              className="min-h-10 !px-1 text-xs"
+              disabled={!markerSettingsOpen}
+              onClick={() => setInspectorTab('markers')}
+            >
+              丸数字／チェック設定
+            </Button>
+          </div>
+          {inspectorTab === 'step' && selectedStep ? (
+            <AssemblyProcedureStepInspector
+              step={selectedStep}
+              page={selectedStepPage}
+              readOnly={readOnly || busy}
+              showFullPage={showFullPage}
+              onShowFullPageChange={setShowFullPage}
+              onPatch={(patch) => patchProcedureStep(selectedStep.localId, patch)}
+            />
+          ) : markerMode === 'bolt' ? (
             <>
               <div className="flex min-w-0 items-start justify-between gap-2">
                 <div className="min-w-0">

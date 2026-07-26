@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AssemblyProcedureSequenceViewer } from './AssemblyProcedureSequenceViewer';
@@ -57,5 +57,74 @@ describe('AssemblyProcedureSequenceViewer', () => {
     render(<AssemblyProcedureSequenceViewer sequence={pdfSequence} />);
     expect(mockUseProtectedImageBlobUrl).toHaveBeenCalledWith(null);
     expect(screen.getByRole('img').getAttribute('src')).toContain('/api/storage/pdf-pages/doc/page-1.png');
+  });
+
+  it('navigates explicit crop steps with instructions, minimap, and crop-local marker coordinates', () => {
+    const sequence: AssemblyProcedureSequenceDto = {
+      ...assemblySequence,
+      stepSource: 'template_steps',
+      steps: [
+        {
+          id: 'step-1',
+          sortOrder: 0,
+          kioskDocumentId: null,
+          assemblyProcedureDocumentId: 'doc-1',
+          pageIndex: 0,
+          viewMode: 'crop',
+          cropXRatio: 0.2,
+          cropYRatio: 0.2,
+          cropWidthRatio: 0.4,
+          cropHeightRatio: 0.4,
+          title: '重点締付',
+          instructionText: '丸数字を確認',
+          emphasis: 'important',
+          documentType: 'assembly_procedure_document',
+          documentTitle: 'MH-AX 締付手順',
+          pageUrl: '/api/storage/assembly-procedure-images/mh-ax.png'
+        },
+        {
+          id: 'step-2',
+          sortOrder: 1,
+          kioskDocumentId: null,
+          assemblyProcedureDocumentId: 'doc-1',
+          pageIndex: 0,
+          viewMode: 'full_page',
+          cropXRatio: null,
+          cropYRatio: null,
+          cropWidthRatio: null,
+          cropHeightRatio: null,
+          title: '全体確認',
+          instructionText: null,
+          emphasis: 'normal',
+          documentType: 'assembly_procedure_document',
+          documentTitle: 'MH-AX 締付手順',
+          pageUrl: '/api/storage/assembly-procedure-images/mh-ax.png'
+        }
+      ]
+    };
+    render(
+      <AssemblyProcedureSequenceViewer
+        sequence={sequence}
+        boltMarkers={[
+          {
+            id: 'bolt-1',
+            markerNo: 1,
+            xRatio: 0.4,
+            yRatio: 0.4,
+            label: '丸数字1'
+          }
+        ]}
+      />
+    );
+    expect(screen.getByText(/手順 1\/2/)).toBeInTheDocument();
+    expect(screen.getByText('丸数字を確認')).toBeInTheDocument();
+    expect(screen.getByTestId('assembly-procedure-crop-minimap')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '丸数字1' })).toHaveStyle({
+      left: '50%',
+      top: '50%'
+    });
+    fireEvent.click(screen.getByRole('button', { name: '次手順' }));
+    expect(screen.getByText(/手順 2\/2/)).toBeInTheDocument();
+    expect(screen.getAllByText(/全体確認/).length).toBeGreaterThan(0);
   });
 });

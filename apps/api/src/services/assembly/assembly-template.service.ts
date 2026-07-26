@@ -20,6 +20,13 @@ import {
   type AssemblyTemplateProcedureSequence,
   type NormalizedAssemblyTemplateProcedureItem
 } from './assembly-template-procedure-sequence.service.js';
+import {
+  AssemblyTemplateProcedureStepService,
+  assemblyTemplateProcedureStepsInclude,
+  normalizeAssemblyTemplateProcedureSteps,
+  normalizeProcedureItemsForExplicitSteps,
+  type AssemblyTemplateProcedureStepInput
+} from './assembly-template-procedure-step.service.js';
 import { AssemblyTemplateAccessService } from './assembly-template-access.service.js';
 import { runAssemblyTransaction } from './assembly-transaction.js';
 
@@ -34,6 +41,7 @@ export const assemblyTemplateDetailInclude = {
     include: procedureDocumentInclude
   },
   procedureItems: assemblyTemplateProcedureItemsInclude,
+  procedureSteps: assemblyTemplateProcedureStepsInclude,
   checkItems: {
     orderBy: { sortOrder: 'asc' }
   },
@@ -149,6 +157,7 @@ export type AssemblyTemplateUpsertInput = {
   checkItems?: AssemblyTemplateCheckItemInput[];
   traceabilityMode?: AssemblyTorqueTraceabilityMode;
   procedureItems?: AssemblyTemplateProcedureItemInput[];
+  procedureSteps?: AssemblyTemplateProcedureStepInput[];
   accessPassword?: string;
 };
 
@@ -420,6 +429,7 @@ function assertMarkersBelongToProcedureSequence(
 export class AssemblyTemplateService {
   constructor(
     private readonly procedureSequenceService = new AssemblyTemplateProcedureSequenceService(),
+    private readonly procedureStepService = new AssemblyTemplateProcedureStepService(),
     private readonly accessService = new AssemblyTemplateAccessService()
   ) {}
 
@@ -458,7 +468,9 @@ export class AssemblyTemplateService {
         template,
         sequences.get(template.id) ?? {
           source: 'primary_fallback',
-          items: []
+          items: [],
+          stepSource: 'document_expansion',
+          steps: []
         }
       )
     );
@@ -643,11 +655,25 @@ export class AssemblyTemplateService {
     const procedurePattern = normalizeKey(input.procedurePattern, '手順パターン').slice(0, 120);
     const name = normalizeKey(input.name, 'テンプレート名').slice(0, 200);
     const traceabilityMode = input.traceabilityMode ?? 'LEGACY';
-    const procedureItems =
+    let procedureItems =
       input.procedureItems == null
         ? null
         : normalizeAssemblyTemplateProcedureItems(input.procedureDocumentId, input.procedureItems);
-    if (procedureItems && options.requireProcedurePassword !== false) {
+    const procedureSteps =
+      input.procedureSteps == null
+        ? null
+        : normalizeAssemblyTemplateProcedureSteps(input.procedureSteps);
+    if (procedureSteps && !procedureItems) {
+      throw new ApiError(400, '表示ステップを保存する場合は文書列も指定してください');
+    }
+    if (procedureSteps && procedureItems) {
+      procedureItems = normalizeProcedureItemsForExplicitSteps(
+        input.procedureDocumentId,
+        procedureItems,
+        procedureSteps
+      );
+    }
+    if ((procedureItems || procedureSteps) && options.requireProcedurePassword !== false) {
       await this.accessService.requireAccessPassword(input.accessPassword);
     }
     const normalizedAreas = normalizeAreas(input.areas, traceabilityMode);
@@ -693,6 +719,13 @@ export class AssemblyTemplateService {
         );
       }
       await validateTemplateMarkerRefs(tx, { areas, checkItems });
+      if (procedureSteps) {
+        await this.procedureStepService.validatePages(tx, procedureSteps);
+        this.procedureStepService.assertMarkersVisible(procedureSteps, [
+          ...areas.flatMap((area) => area.bolts),
+          ...checkItems
+        ]);
+      }
       await validateRequiredCapabilityGroups(tx, areas, traceabilityMode);
 
       const versionAgg = await tx.assemblyTemplate.aggregate({
@@ -749,6 +782,9 @@ export class AssemblyTemplateService {
       });
       if (procedureItems) {
         await this.procedureSequenceService.createItems(tx, created.id, procedureItems);
+      }
+      if (procedureSteps) {
+        await this.procedureStepService.createSteps(tx, created.id, procedureSteps);
       }
       for (const area of areas) {
         const createdArea = await tx.assemblyTemplateArea.create({
@@ -869,6 +905,11 @@ export class AssemblyTemplateService {
             label: item.label
           }))
         : undefined);
+    const copiedProcedureSteps =
+      input.procedureSteps ??
+      (source.procedureSteps.length > 0
+        ? this.procedureStepService.copyInput(source.procedureSteps)
+        : undefined);
     const carriedKioskDocumentIds =
       copiedProcedureItems == null
         ? undefined
@@ -887,11 +928,13 @@ export class AssemblyTemplateService {
         checkItems,
         traceabilityMode: input.traceabilityMode ?? source.traceabilityMode,
         procedureItems: copiedProcedureItems,
+        procedureSteps: copiedProcedureSteps,
         accessPassword: input.accessPassword
       },
       {
         expectedActiveSourceId: id,
-        requireProcedurePassword: input.procedureItems != null,
+        requireProcedurePassword:
+          input.procedureItems != null || input.procedureSteps != null,
         carriedKioskDocumentIds
       }
     );

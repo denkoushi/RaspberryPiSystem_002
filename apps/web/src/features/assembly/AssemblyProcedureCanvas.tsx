@@ -1,3 +1,4 @@
+import { normalizeAssemblyProcedureCropRect } from '@raspi-system/shared-types';
 import clsx from 'clsx';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
@@ -12,6 +13,7 @@ import {
 import { computeContainSize } from './computeContainSize';
 
 import type { ZoomedImageCanvasLayout } from '../kiosk/image-canvas';
+import type { AssemblyProcedureCropRect, AssemblyProcedurePoint } from '@raspi-system/shared-types';
 import type { MouseEvent, ReactNode, RefObject } from 'react';
 
 type AssemblyCanvasCallout = {
@@ -50,8 +52,11 @@ type Props = {
   onAddBolt?: (xRatio: number, yRatio: number) => void;
   onAddCheckItem?: (xRatio: number, yRatio: number) => void;
   onPlaceCallout?: (xRatio: number, yRatio: number) => void;
+  onCreateCrop?: (crop: AssemblyProcedureCropRect) => void;
+  cropRect?: AssemblyProcedureCropRect | null;
+  onCropChange?: (crop: AssemblyProcedureCropRect) => void;
   placementMode?: 'bolt' | 'check';
-  placementAction?: 'place' | 'callout';
+  placementAction?: 'place' | 'callout' | 'crop';
   zoom?: number;
   fitGeneration?: number;
   className?: string;
@@ -258,6 +263,9 @@ export function AssemblyProcedureCanvas({
   onAddBolt,
   onAddCheckItem,
   onPlaceCallout,
+  onCreateCrop,
+  cropRect,
+  onCropChange,
   placementMode = 'bolt',
   placementAction = 'place',
   zoom = 1,
@@ -271,7 +279,14 @@ export function AssemblyProcedureCanvas({
     startClientX: number;
     startClientY: number;
     maxMovementPx: number;
+    cropStart?: AssemblyProcedurePoint;
   } | null>(null);
+  const cropHandleRef = useRef<{
+    pointerId: number;
+    handle: 'nw' | 'ne' | 'sw' | 'se';
+    original: AssemblyProcedureCropRect;
+  } | null>(null);
+  const [cropPreview, setCropPreview] = useState<AssemblyProcedureCropRect | null>(null);
   const layout = useZoomedImageCanvasLayout(
     viewportRef,
     { w: natural.width, h: natural.height },
@@ -290,6 +305,8 @@ export function AssemblyProcedureCanvas({
 
   const placementHandler = placementAction === 'callout'
     ? onPlaceCallout
+    : placementAction === 'crop'
+      ? undefined
     : placementMode === 'check'
       ? onAddCheckItem
       : onAddBolt;
@@ -309,30 +326,111 @@ export function AssemblyProcedureCanvas({
   };
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || !placementHandler || !layout) return;
+    if (
+      event.button !== 0 ||
+      (!placementHandler && !(placementAction === 'crop' && onCreateCrop)) ||
+      !layout
+    ) {
+      return;
+    }
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const cropStart =
+      placementAction === 'crop'
+        ? pointerClientToZoomedImageRatios(
+            event.clientX,
+            event.clientY,
+            viewport.getBoundingClientRect(),
+            viewport.scrollLeft,
+            viewport.scrollTop,
+            layout
+          )
+        : null;
+    if (placementAction === 'crop' && !cropStart) return;
     pendingPointerRef.current = {
       pointerId: event.pointerId,
       startClientX: event.clientX,
       startClientY: event.clientY,
-      maxMovementPx: 0
+      maxMovementPx: 0,
+      cropStart: cropStart ?? undefined
     };
     viewportRef.current?.setPointerCapture(event.pointerId);
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (cropHandleRef.current?.pointerId === event.pointerId && layout) {
+      const viewport = viewportRef.current;
+      if (!viewport) return;
+      const point = pointerClientToZoomedImageRatios(
+        event.clientX,
+        event.clientY,
+        viewport.getBoundingClientRect(),
+        viewport.scrollLeft,
+        viewport.scrollTop,
+        layout
+      );
+      if (!point) return;
+      const { handle, original } = cropHandleRef.current;
+      const opposite = {
+        xRatio: handle.includes('w')
+          ? original.xRatio + original.widthRatio
+          : original.xRatio,
+        yRatio: handle.includes('n')
+          ? original.yRatio + original.heightRatio
+          : original.yRatio
+      };
+      onCropChange?.(normalizeAssemblyProcedureCropRect(opposite, point));
+      return;
+    }
     const pending = pendingPointerRef.current;
     if (!pending || pending.pointerId !== event.pointerId) return;
     pending.maxMovementPx = Math.max(
       pending.maxMovementPx,
       Math.hypot(event.clientX - pending.startClientX, event.clientY - pending.startClientY)
     );
+    if (pending.cropStart && layout) {
+      const viewport = viewportRef.current;
+      if (!viewport) return;
+      const point = pointerClientToZoomedImageRatios(
+        event.clientX,
+        event.clientY,
+        viewport.getBoundingClientRect(),
+        viewport.scrollLeft,
+        viewport.scrollTop,
+        layout
+      );
+      if (point) setCropPreview(normalizeAssemblyProcedureCropRect(pending.cropStart, point));
+    }
   };
 
   const handlePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (cropHandleRef.current?.pointerId === event.pointerId) {
+      cropHandleRef.current = null;
+      clearPendingPointer(event.pointerId);
+      return;
+    }
     const pending = pendingPointerRef.current;
     if (!pending || pending.pointerId !== event.pointerId) return;
     const maxMovementPx = pending.maxMovementPx;
     clearPendingPointer(event.pointerId);
+    if (pending.cropStart && placementAction === 'crop' && onCreateCrop && layout) {
+      const viewport = viewportRef.current;
+      if (!viewport) return;
+      const end = pointerClientToZoomedImageRatios(
+        event.clientX,
+        event.clientY,
+        viewport.getBoundingClientRect(),
+        viewport.scrollLeft,
+        viewport.scrollTop,
+        layout
+      );
+      const crop = end
+        ? normalizeAssemblyProcedureCropRect(pending.cropStart, end)
+        : cropPreview;
+      setCropPreview(null);
+      if (crop) onCreateCrop(crop);
+      return;
+    }
     if (!shouldConfirmImageCanvasTap(maxMovementPx) || !placementHandler || !layout) return;
     const viewport = viewportRef.current;
     if (!viewport) return;
@@ -409,6 +507,42 @@ export function AssemblyProcedureCanvas({
                 onSelectCheckItem={onSelectCheckItem}
                 onToggleCheckItem={onToggleCheckItem}
               />
+              {cropRect || cropPreview ? (
+                <div
+                  data-testid="assembly-procedure-crop-selection"
+                  className="pointer-events-none absolute border-2 border-cyan-400 bg-cyan-300/15"
+                  style={{
+                    left: `${(cropPreview ?? cropRect)!.xRatio * 100}%`,
+                    top: `${(cropPreview ?? cropRect)!.yRatio * 100}%`,
+                    width: `${(cropPreview ?? cropRect)!.widthRatio * 100}%`,
+                    height: `${(cropPreview ?? cropRect)!.heightRatio * 100}%`
+                  }}
+                >
+                  {cropRect && onCropChange
+                    ? (['nw', 'ne', 'sw', 'se'] as const).map((handle) => (
+                        <button
+                          key={handle}
+                          type="button"
+                          aria-label={`矩形${handle}ハンドル`}
+                          className={clsx(
+                            'pointer-events-auto absolute h-5 w-5 rounded-full border-2 border-slate-950 bg-cyan-300',
+                            handle.includes('n') ? '-top-2.5' : '-bottom-2.5',
+                            handle.includes('w') ? '-left-2.5' : '-right-2.5'
+                          )}
+                          onPointerDown={(event) => {
+                            event.stopPropagation();
+                            cropHandleRef.current = {
+                              pointerId: event.pointerId,
+                              handle,
+                              original: cropRect
+                            };
+                            viewportRef.current?.setPointerCapture(event.pointerId);
+                          }}
+                        />
+                      ))
+                    : null}
+                </div>
+              ) : null}
             </div>
           </div>
         ) : (

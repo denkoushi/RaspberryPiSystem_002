@@ -11,6 +11,11 @@ import {
   mapAssemblyProcedureSequenceItem,
   type AssemblyProcedureSequenceItemSummary
 } from './assembly-procedure-sequence-item.js';
+import {
+  AssemblyTemplateProcedureStepService,
+  type AssemblyTemplateProcedureStepSource,
+  type AssemblyTemplateProcedureStepSummary
+} from './assembly-template-procedure-step.service.js';
 
 export type AssemblyTemplateProcedureSequenceSource =
   | 'template_version'
@@ -32,6 +37,8 @@ export type NormalizedAssemblyTemplateProcedureItem = {
 export type AssemblyTemplateProcedureSequence = {
   source: AssemblyTemplateProcedureSequenceSource;
   items: AssemblyProcedureSequenceItemSummary[];
+  stepSource: AssemblyTemplateProcedureStepSource;
+  steps: AssemblyTemplateProcedureStepSummary[];
 };
 
 export const assemblyTemplateProcedureItemsInclude = {
@@ -71,6 +78,21 @@ type TemplateForSequence = {
     pages: Array<{ pageIndex: number; imageRelativePath: string }>;
   };
   procedureItems: ProcedureItemRow[];
+  procedureSteps: Array<{
+    id: string;
+    sortOrder: number;
+    kioskDocumentId: string | null;
+    assemblyProcedureDocumentId: string | null;
+    pageIndex: number;
+    viewMode: 'FULL_PAGE' | 'CROP';
+    cropXRatio: Prisma.Decimal | null;
+    cropYRatio: Prisma.Decimal | null;
+    cropWidthRatio: Prisma.Decimal | null;
+    cropHeightRatio: Prisma.Decimal | null;
+    title: string | null;
+    instructionText: string | null;
+    emphasis: 'NORMAL' | 'IMPORTANT' | 'CAUTION';
+  }>;
 };
 
 function normalizeReferenceId(value: string | null | undefined): string | null {
@@ -166,8 +188,30 @@ function buildPrimaryFallback(template: TemplateForSequence): AssemblyProcedureS
 
 export class AssemblyTemplateProcedureSequenceService {
   constructor(
-    private readonly legacyOrderService = new AssemblyLegacyProcedureOrderService()
+    private readonly legacyOrderService = new AssemblyLegacyProcedureOrderService(),
+    private readonly procedureStepService = new AssemblyTemplateProcedureStepService()
   ) {}
+
+  private withSteps(
+    template: TemplateForSequence,
+    source: AssemblyTemplateProcedureSequenceSource,
+    items: AssemblyProcedureSequenceItemSummary[]
+  ): AssemblyTemplateProcedureSequence {
+    if (template.procedureSteps.length > 0) {
+      return {
+        source,
+        items,
+        stepSource: 'template_steps',
+        steps: this.procedureStepService.mapStoredSteps(template.procedureSteps)
+      };
+    }
+    return {
+      source,
+      items,
+      stepSource: 'document_expansion',
+      steps: this.procedureStepService.expandDocuments(items)
+    };
+  }
 
   async validateDocuments(
     tx: Prisma.TransactionClient,
@@ -259,10 +303,11 @@ export class AssemblyTemplateProcedureSequenceService {
 
   async resolveForTemplate(template: TemplateForSequence): Promise<AssemblyTemplateProcedureSequence> {
     if (template.procedureItems.length > 0) {
-      return {
-        source: 'template_version',
-        items: template.procedureItems.map(mapTemplateProcedureItem)
-      };
+      return this.withSteps(
+        template,
+        'template_version',
+        template.procedureItems.map(mapTemplateProcedureItem)
+      );
     }
     const legacy = await this.legacyOrderService.getByMachineName(template.modelCode);
     if (legacy.items.length > 0) {
@@ -270,9 +315,9 @@ export class AssemblyTemplateProcedureSequenceService {
         { templateId: template.id, modelCode: template.modelCode },
         'assembly_template_legacy_procedure_order_fallback'
       );
-      return { source: 'legacy_machine_order', items: legacy.items };
+      return this.withSteps(template, 'legacy_machine_order', legacy.items);
     }
-    return { source: 'primary_fallback', items: [buildPrimaryFallback(template)] };
+    return this.withSteps(template, 'primary_fallback', [buildPrimaryFallback(template)]);
   }
 
   async resolveManyForTemplates(
@@ -282,10 +327,14 @@ export class AssemblyTemplateProcedureSequenceService {
     const legacyTemplates: TemplateForSequence[] = [];
     for (const template of templates) {
       if (template.procedureItems.length > 0) {
-        result.set(template.id, {
-          source: 'template_version',
-          items: template.procedureItems.map(mapTemplateProcedureItem)
-        });
+        result.set(
+          template.id,
+          this.withSteps(
+            template,
+            'template_version',
+            template.procedureItems.map(mapTemplateProcedureItem)
+          )
+        );
       } else {
         legacyTemplates.push(template);
       }
@@ -315,12 +364,15 @@ export class AssemblyTemplateProcedureSequenceService {
       const items =
         itemsByMachineName.get(normalizeMachineNameForCompare(template.modelCode)) ?? [];
       if (items.length > 0) {
-        result.set(template.id, { source: 'legacy_machine_order', items });
+        result.set(
+          template.id,
+          this.withSteps(template, 'legacy_machine_order', items)
+        );
       } else {
-        result.set(template.id, {
-          source: 'primary_fallback',
-          items: [buildPrimaryFallback(template)]
-        });
+        result.set(
+          template.id,
+          this.withSteps(template, 'primary_fallback', [buildPrimaryFallback(template)])
+        );
       }
     }
     return result;
