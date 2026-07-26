@@ -32,7 +32,7 @@ This plan follows `.agent/PLANS.md`.
 - [x] (2026-07-26) 隔離PostgreSQLで全migration、関連統合37テスト、SQL、EXPLAINを検証した。
 - [x] (2026-07-26) Node 22でlint、build、全Vitest、対象Playwright、CI smokeを最終再検証した。
 - [x] (2026-07-26) ユーザーからpush、PR、merge、本番migration、標準deploy、実機操作検証の明示承認を得た。
-- [ ] featureブランチをpushし、ready PRを作成する。
+- [x] (2026-07-26) featureブランチをpushし、ready PR #1091を作成した。
 - [ ] 必須CIとレビュー結果を確認し、mainへmergeする。
 - [ ] merge SHAのCI成功後、標準ローリング更新のplanを確認して本番へ適用する。
 - [ ] deploy status、同一SHAのno-op plan、実機の組立/NFC/右下ホットゾーンを確認する。
