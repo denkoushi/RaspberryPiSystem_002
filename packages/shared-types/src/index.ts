@@ -33,3 +33,5 @@ export * from './part-measurement/index.js';
 // トルクレンチ・組立締付トレーサビリティ
 export * from './torque-wrenches/index.js';
 
+// 組立作業用ID
+export * from './assembly/index.js';

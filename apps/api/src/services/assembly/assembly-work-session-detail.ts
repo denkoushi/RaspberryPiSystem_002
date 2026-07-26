@@ -9,7 +9,15 @@ export const assemblyWorkSessionDetailInclude = {
   },
   checkRecords: { orderBy: [{ checkedAt: 'asc' }, { createdAt: 'asc' }] },
   restartLogs: { orderBy: { createdAt: 'asc' } },
+  operatorAccesses: {
+    orderBy: [{ accessedAt: 'asc' }, { createdAt: 'asc' }]
+  },
   approval: true,
+  workUnit: {
+    include: {
+      invalidation: true
+    }
+  },
 } satisfies Prisma.AssemblyWorkSessionInclude;
 
 export type AssemblyWorkSessionDetail = Prisma.AssemblyWorkSessionGetPayload<{

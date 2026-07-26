@@ -105,29 +105,30 @@ enum MachinePalletEventActionType {
 }
 
 model Employee {
-  id                                 String                         @id @default(uuid())
-  employeeCode                       String                         @unique
-  displayName                        String
-  lastName                           String? // 苗字（CSVインポート用）
-  firstName                          String? // 名前（CSVインポート用）
-  nfcTagUid                          String?                        @unique
-  department                         String? // 部署（例: 製造担当部門）
-  section                            String? // セクション（例: 加工担当部署）
-  contact                            String?
-  status                             EmployeeStatus                 @default(ACTIVE)
-  createdAt                          DateTime                       @default(now())
-  updatedAt                          DateTime                       @updatedAt
-  loans                              Loan[]
-  inspectionRecords                  InspectionRecord[]
-  riggingInspectionRecords           RiggingInspectionRecord[]
-  transactions                       Transaction[]                  @relation("EmployeeActor")
-  partMeasurementSheetsWorker        PartMeasurementSheet[]         @relation("PartMeasurementSheetWorker")
-  partMeasurementSheetsCreated       PartMeasurementSheet[]         @relation("PartMeasurementSheetCreatedBy")
-  partMeasurementSheetsFinalized     PartMeasurementSheet[]         @relation("PartMeasurementSheetFinalizedBy")
-  selfInspectionLotEntries           SelfInspectionLotEntry[]
-  selfInspectionInspectorEntries     SelfInspectionInspectorEntry[] @relation("SelfInspectionInspectorEntryEmployee")
-  selfInspectionRecordApprovals      SelfInspectionRecordApproval[] @relation("SelfInspectionRecordApprover")
-  assemblyWorkSessionRecordApprovals AssemblyWorkSessionApproval[]  @relation("AssemblyWorkSessionRecordApprover")
+  id                                  String                              @id @default(uuid())
+  employeeCode                        String                              @unique
+  displayName                         String
+  lastName                            String? // 苗字（CSVインポート用）
+  firstName                           String? // 名前（CSVインポート用）
+  nfcTagUid                           String?                             @unique
+  department                          String? // 部署（例: 製造担当部門）
+  section                             String? // セクション（例: 加工担当部署）
+  contact                             String?
+  status                              EmployeeStatus                      @default(ACTIVE)
+  createdAt                           DateTime                            @default(now())
+  updatedAt                           DateTime                            @updatedAt
+  loans                               Loan[]
+  inspectionRecords                   InspectionRecord[]
+  riggingInspectionRecords            RiggingInspectionRecord[]
+  transactions                        Transaction[]                       @relation("EmployeeActor")
+  partMeasurementSheetsWorker         PartMeasurementSheet[]              @relation("PartMeasurementSheetWorker")
+  partMeasurementSheetsCreated        PartMeasurementSheet[]              @relation("PartMeasurementSheetCreatedBy")
+  partMeasurementSheetsFinalized      PartMeasurementSheet[]              @relation("PartMeasurementSheetFinalizedBy")
+  selfInspectionLotEntries            SelfInspectionLotEntry[]
+  selfInspectionInspectorEntries      SelfInspectionInspectorEntry[]      @relation("SelfInspectionInspectorEntryEmployee")
+  selfInspectionRecordApprovals       SelfInspectionRecordApproval[]      @relation("SelfInspectionRecordApprover")
+  assemblyWorkSessionRecordApprovals  AssemblyWorkSessionApproval[]       @relation("AssemblyWorkSessionRecordApprover")
+  assemblyWorkSessionOperatorAccesses AssemblyWorkSessionOperatorAccess[]
 }
 
 model Item {
@@ -405,40 +406,42 @@ model Machine {
 }
 
 model ClientDevice {
-  id                                 String                         @id @default(uuid())
-  name                               String
-  location                           String?
-  apiKey                             String                         @unique
-  statusClientId                     String? // ClientStatus.clientId への紐づけ（x-client-key → statusClientId）
-  defaultMode                        String?                        @default("TAG") // 'PHOTO' | 'TAG'（デフォルト: 'TAG'）
-  kioskInitialRoute                  String? // 端末ごとのキオスク起動先（borrow_tag | borrow_photo | leader_order_board | assembly。production_schedule は旧互換）
+  id                                  String                              @id @default(uuid())
+  name                                String
+  location                            String?
+  apiKey                              String                              @unique
+  statusClientId                      String? // ClientStatus.clientId への紐づけ（x-client-key → statusClientId）
+  defaultMode                         String?                             @default("TAG") // 'PHOTO' | 'TAG'（デフォルト: 'TAG'）
+  kioskInitialRoute                   String? // 端末ごとのキオスク起動先（borrow_tag | borrow_photo | leader_order_board | assembly。production_schedule は旧互換）
   /// キオスクのサイネージプレビューで参照する `ClientDevice.apiKey`（サイネージ用途端末のみ許可。未設定時は自端末キーでプレビュー）
-  signagePreviewTargetApiKey         String?
+  signagePreviewTargetApiKey          String?
   /// Zero2W 棚番エッジ等: 端末に固定する棚番（`西-北-01` 形式・trim 保存）
-  haizenPresetShelfCodeRaw           String?
+  haizenPresetShelfCodeRaw            String?
   /// Zero2W / haizen-agent からの配膳スキャン対象端末（キオスク設定・API 抽出の正）
-  haizenEdgeEnabled                  Boolean                        @default(false)
+  haizenEdgeEnabled                   Boolean                             @default(false)
   /// キオスク棚レイアウト編集（区画フロアプラン・マス割当）を許可する端末
-  shelfLayoutEditEnabled             Boolean                        @default(false)
-  lastSeenAt                         DateTime?
-  createdAt                          DateTime                       @default(now())
-  updatedAt                          DateTime                       @updatedAt
-  loans                              Loan[]
-  transactions                       Transaction[]
-  partMeasurementSheets              PartMeasurementSheet[]         @relation("PartMeasurementSheetOwningDevice")
-  partMeasurementEditLocks           PartMeasurementSheet[]         @relation("PartMeasurementSheetEditLock")
-  selfInspectionSessions             SelfInspectionSession[]
-  selfInspectionPaperReports         SelfInspectionPaperReport[]
-  selfInspectionInspectorEntries     SelfInspectionInspectorEntry[]
-  selfInspectionRecordApprovals      SelfInspectionRecordApproval[]
-  assemblyWorkSessionRecordApprovals AssemblyWorkSessionApproval[]
-  mobilePlacementEvents              MobilePlacementEvent[]
-  orderPlacementEvents               OrderPlacementEvent[]
-  mobilePlacementShelvesCreated      MobilePlacementShelf[]
-  machinePalletEvents                MachinePalletEvent[]
-  haizenScanEvents                   HaizenScanEvent[]
-  haizenCurrentPlacements            HaizenCurrentPlacement[]       @relation("HaizenCurrentLastDevice")
-  torqueWrenchConnectionLeases       TorqueWrenchConnectionLease[]
+  shelfLayoutEditEnabled              Boolean                             @default(false)
+  lastSeenAt                          DateTime?
+  createdAt                           DateTime                            @default(now())
+  updatedAt                           DateTime                            @updatedAt
+  loans                               Loan[]
+  transactions                        Transaction[]
+  partMeasurementSheets               PartMeasurementSheet[]              @relation("PartMeasurementSheetOwningDevice")
+  partMeasurementEditLocks            PartMeasurementSheet[]              @relation("PartMeasurementSheetEditLock")
+  selfInspectionSessions              SelfInspectionSession[]
+  selfInspectionPaperReports          SelfInspectionPaperReport[]
+  selfInspectionInspectorEntries      SelfInspectionInspectorEntry[]
+  selfInspectionRecordApprovals       SelfInspectionRecordApproval[]
+  assemblyWorkSessionRecordApprovals  AssemblyWorkSessionApproval[]
+  assemblyWorkSessionOperatorAccesses AssemblyWorkSessionOperatorAccess[]
+  assemblyWorkUnitInvalidations       AssemblyWorkUnitInvalidation[]
+  mobilePlacementEvents               MobilePlacementEvent[]
+  orderPlacementEvents                OrderPlacementEvent[]
+  mobilePlacementShelvesCreated       MobilePlacementShelf[]
+  machinePalletEvents                 MachinePalletEvent[]
+  haizenScanEvents                    HaizenScanEvent[]
+  haizenCurrentPlacements             HaizenCurrentPlacement[]            @relation("HaizenCurrentLastDevice")
+  torqueWrenchConnectionLeases        TorqueWrenchConnectionLease[]
 
   @@index([statusClientId])
 }
@@ -2168,6 +2171,18 @@ enum AssemblyWorkSessionStatus {
   CANCELLED
 }
 
+enum AssemblyOperatorAccessType {
+  START
+  RESUME
+}
+
+enum AssemblyWorkUnitInvalidationState {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  APPROVED
+}
+
 enum AssemblyTorqueInputSource {
   MANUAL
   MOCK
@@ -2649,14 +2664,17 @@ model AssemblyTemplateCheckItem {
 model AssemblyWorkUnit {
   id                          String                               @id @default(uuid())
   workId                      String                               @unique @map("serialNo")
+  invalidatedAt               DateTime?
   createdAt                   DateTime                             @default(now())
   updatedAt                   DateTime                             @updatedAt
   lotSerial                   AssemblyLotSerial?
   workSession                 AssemblyWorkSession?
+  invalidation                AssemblyWorkUnitInvalidation?
   parentCompositionLinks      AssemblyWorkUnitComposition[]        @relation("AssemblyCompositionParent")
   childCompositionLinks       AssemblyWorkUnitComposition[]        @relation("AssemblyCompositionChild")
   formalIdentifierAssignments AssemblyFormalIdentifierAssignment[]
 
+  @@index([invalidatedAt, updatedAt], map: "AssemblyWorkUnit_idx_invalidation_updated")
   @@map("AssemblySerialRegistry")
 }
 
@@ -2699,13 +2717,13 @@ model AssemblyLotSerial {
 
 /// 組立トルク管理: 製番/シリアル単位の作業実績。
 model AssemblyWorkSession {
-  id                           String                             @id @default(uuid())
+  id                           String                              @id @default(uuid())
   templateId                   String
-  workUnitId                   String?                            @unique @map("serialRegistryId")
-  lotSerialId                  String?                            @unique
-  status                       AssemblyWorkSessionStatus          @default(IN_PROGRESS)
+  workUnitId                   String?                             @unique @map("serialRegistryId")
+  lotSerialId                  String?                             @unique
+  status                       AssemblyWorkSessionStatus           @default(IN_PROGRESS)
   productNo                    String
-  workId                       String                             @map("serialNo")
+  workId                       String                              @map("serialNo")
   nameplateNo                  String
   operatorEmployeeId           String?
   operatorNameSnapshot         String
@@ -2715,19 +2733,20 @@ model AssemblyWorkSession {
   clientDeviceNameSnapshot     String?
   currentAreaId                String?
   currentBoltId                String?
-  startedAt                    DateTime                           @default(now())
+  startedAt                    DateTime                            @default(now())
   completedAt                  DateTime?
   cancelledAt                  DateTime?
   cancelReason                 String?
-  createdAt                    DateTime                           @default(now())
-  updatedAt                    DateTime                           @updatedAt
-  template                     AssemblyTemplate                   @relation(fields: [templateId], references: [id], onDelete: Restrict)
-  workUnit                     AssemblyWorkUnit?                  @relation(fields: [workUnitId], references: [id], onDelete: Restrict)
-  lotSerial                    AssemblyLotSerial?                 @relation(fields: [lotSerialId], references: [id], onDelete: SetNull)
+  createdAt                    DateTime                            @default(now())
+  updatedAt                    DateTime                            @updatedAt
+  template                     AssemblyTemplate                    @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  workUnit                     AssemblyWorkUnit?                   @relation(fields: [workUnitId], references: [id], onDelete: Restrict)
+  lotSerial                    AssemblyLotSerial?                  @relation(fields: [lotSerialId], references: [id], onDelete: SetNull)
   torqueRecords                AssemblyTorqueRecord[]
   checkRecords                 AssemblyCheckRecord[]
   restartLogs                  AssemblyAreaRestartLog[]
   approval                     AssemblyWorkSessionApproval?
+  operatorAccesses             AssemblyWorkSessionOperatorAccess[]
   torqueWrenchConfirmations    AssemblyTorqueWrenchConfirmation[]
   torqueWrenchConnectionLeases TorqueWrenchConnectionLease[]
 
@@ -2735,6 +2754,53 @@ model AssemblyWorkSession {
   @@index([productNo, status], map: "AssemblyWorkSession_idx_product_status")
   @@index([productNo, workId, status, updatedAt], map: "AssemblyWorkSession_idx_product_serial_status")
   @@index([templateId, status], map: "AssemblyWorkSession_idx_template_status")
+}
+
+/// 組立キオスク: 作業開始・再開ごとの社員NFCアクセス履歴（append-only）。
+model AssemblyWorkSessionOperatorAccess {
+  id                        String                     @id @default(uuid())
+  sessionId                 String
+  employeeId                String?
+  accessType                AssemblyOperatorAccessType
+  requestId                 String                     @unique @db.VarChar(120)
+  employeeCodeSnapshot      String
+  employeeNameSnapshot      String
+  employeeNfcTagUidSnapshot String
+  clientDeviceId            String?
+  clientDeviceNameSnapshot  String?
+  accessedAt                DateTime                   @default(now())
+  createdAt                 DateTime                   @default(now())
+  session                   AssemblyWorkSession        @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  employee                  Employee?                  @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  clientDevice              ClientDevice?              @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId, accessedAt], map: "AssemblyOperatorAccess_idx_session_accessed")
+  @@index([employeeId, accessedAt], map: "AssemblyOperatorAccess_idx_employee_accessed")
+  @@index([clientDeviceId, accessedAt], map: "AssemblyOperatorAccess_idx_client_accessed")
+}
+
+/// 組立キオスク: WorkUnitを画面上から除外した不可逆の監査記録。
+model AssemblyWorkUnitInvalidation {
+  id                                    String                            @id @default(uuid())
+  workUnitId                            String                            @unique
+  requestId                             String                            @unique @db.VarChar(120)
+  sourceState                           AssemblyWorkUnitInvalidationState
+  productNoSnapshot                     String?
+  workIdSnapshot                        String
+  lotIdSnapshot                         String?
+  lotSerialIdSnapshot                   String?
+  workSessionIdSnapshot                 String?
+  reason                                String
+  invalidatedByUsernameSnapshot         String?
+  invalidatedByClientDeviceId           String?
+  invalidatedByClientDeviceNameSnapshot String?
+  invalidatedAt                         DateTime                          @default(now())
+  createdAt                             DateTime                          @default(now())
+  workUnit                              AssemblyWorkUnit                  @relation(fields: [workUnitId], references: [id], onDelete: Restrict)
+  clientDevice                          ClientDevice?                     @relation(fields: [invalidatedByClientDeviceId], references: [id], onDelete: SetNull)
+
+  @@index([invalidatedAt], map: "AssemblyWorkUnitInvalidation_idx_invalidated")
+  @@index([invalidatedByClientDeviceId, invalidatedAt], map: "AssemblyWorkUnitInvalidation_idx_client_time")
 }
 
 /// 組立キオスク: 作業用IDの親子構成履歴。unlinkedAt が NULL の行だけが現在有効。

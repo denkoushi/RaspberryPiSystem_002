@@ -62,6 +62,25 @@ describe('assembly transaction policy', () => {
     );
   });
 
+  it('rejects every shared session mutation after its WorkUnit is invalidated', async () => {
+    vi.mocked(lockAssemblyWorkSession).mockResolvedValue({
+      id: 'session-invalidated',
+      workUnit: {
+        invalidatedAt: new Date('2026-07-26T00:00:00.000Z')
+      }
+    } as never);
+    const work = vi.fn(async () => 'must-not-run');
+
+    await expect(
+      runLockedAssemblyWorkSessionTransaction('session-invalidated', work)
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'ASSEMBLY_WORK_UNIT_INVALIDATED'
+    });
+
+    expect(work).not.toHaveBeenCalled();
+  });
+
   it('prevents assembly and torque-wrench services from bypassing the shared policy', () => {
     const servicesRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
     const policyFile = join(servicesRoot, 'assembly', 'assembly-transaction.ts');

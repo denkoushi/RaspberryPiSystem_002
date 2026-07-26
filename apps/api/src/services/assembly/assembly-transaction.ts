@@ -7,6 +7,7 @@ import {
 } from './assembly-work-session-lock.repository.js';
 
 import type { AssemblyWorkSessionDetail } from './assembly-work-session-detail.js';
+import { ApiError } from '../../lib/errors.js';
 
 /**
  * 組立業務の interactive transaction 共通予算。
@@ -36,6 +37,14 @@ export function runLockedAssemblyWorkSessionTransaction<T>(
 ): Promise<T> {
   return runAssemblyTransaction(async (tx) => {
     const session = await lockAssemblyWorkSession(tx, sessionId);
+    if (session.workUnit?.invalidatedAt) {
+      throw new ApiError(
+        409,
+        '削除済みの作業用IDは変更できません',
+        undefined,
+        'ASSEMBLY_WORK_UNIT_INVALIDATED'
+      );
+    }
     return work(tx, session);
   });
 }

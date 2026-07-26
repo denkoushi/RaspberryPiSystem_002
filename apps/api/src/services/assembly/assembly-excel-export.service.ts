@@ -52,6 +52,7 @@ export class AssemblyExcelExportService {
     this.addSummarySheet(workbook, session, traceability);
     this.addResultSheet(workbook, session);
     this.addNgHistorySheet(workbook, session);
+    this.addOperatorAndInvalidationHistorySheet(workbook, session);
     this.addTraceabilityHistorySheet(workbook, traceability);
 
     const raw = await workbook.xlsx.writeBuffer();
@@ -249,5 +250,49 @@ export class AssemblyExcelExportService {
     }
     sheet.getColumn('value').numFmt = '0.000';
     sheet.getColumn('valueNm').numFmt = '0.000000';
+  }
+
+  private addOperatorAndInvalidationHistorySheet(
+    workbook: ExcelJS.Workbook,
+    session: AssemblyWorkSessionDetail
+  ): void {
+    const sheet = workbook.addWorksheet('作業者・無効化履歴');
+    sheet.columns = [
+      { header: '種別', key: 'kind', width: 16 },
+      { header: '日時', key: 'occurredAt', width: 22 },
+      { header: '状態', key: 'state', width: 16 },
+      { header: '社員コード', key: 'employeeCode', width: 16 },
+      { header: '作業者', key: 'operatorName', width: 22 },
+      { header: '端末', key: 'clientDevice', width: 22 },
+      { header: '操作者', key: 'actor', width: 18 },
+      { header: '理由', key: 'reason', width: 40 },
+      { header: 'requestId', key: 'requestId', width: 38 }
+    ];
+    styleHeader(sheet.getRow(1));
+
+    for (const access of session.operatorAccesses) {
+      sheet.addRow({
+        kind: access.accessType === 'START' ? '作業開始' : '作業再開',
+        occurredAt: fmtDate(access.accessedAt),
+        state: access.accessType,
+        employeeCode: access.employeeCodeSnapshot,
+        operatorName: access.employeeNameSnapshot,
+        clientDevice: access.clientDeviceNameSnapshot ?? '',
+        requestId: access.requestId
+      });
+    }
+
+    const invalidation = session.workUnit?.invalidation;
+    if (invalidation) {
+      sheet.addRow({
+        kind: '作業用ID削除',
+        occurredAt: fmtDate(invalidation.invalidatedAt),
+        state: invalidation.sourceState,
+        clientDevice: invalidation.invalidatedByClientDeviceNameSnapshot ?? '',
+        actor: invalidation.invalidatedByUsernameSnapshot ?? '',
+        reason: invalidation.reason,
+        requestId: invalidation.requestId
+      });
+    }
   }
 }

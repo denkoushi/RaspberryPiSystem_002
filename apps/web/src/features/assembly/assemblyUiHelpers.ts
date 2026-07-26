@@ -1,12 +1,16 @@
-export function toHalfWidthAscii(value: string): string {
-  return value
-    .replace(/[\uFF01-\uFF5E]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
-    .replace(/\u3000/g, ' ');
-}
+export {
+  buildAssemblyLotWorkIds,
+  normalizeAssemblyUpperIdentifier,
+  toHalfWidthAscii
+} from '@raspi-system/shared-types';
 
-export function normalizeAssemblyUpperIdentifier(value: string | null | undefined): string {
-  if (value == null) return '';
-  return toHalfWidthAscii(String(value)).trim().toUpperCase();
+export function createAssemblyRequestId(): string {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (character) => {
+    const random = Math.floor(Math.random() * 16);
+    const value = character === 'x' ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
 }
 
 export function readAssemblyApiErrorMessage(error: unknown, fallback: string): string {

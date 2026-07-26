@@ -138,11 +138,18 @@ async function lockAssemblySession(
   if (rows.length === 0) throw new ApiError(404, '作業セッションが見つかりません');
   const session = await tx.assemblyWorkSession.findUnique({
     where: { id: sessionId },
-    select: { status: true, currentBoltId: true }
+    select: {
+      status: true,
+      currentBoltId: true,
+      workUnit: { select: { invalidatedAt: true } }
+    }
   });
   if (!session) throw new ApiError(404, '作業セッションが見つかりません');
   if (session.status !== 'IN_PROGRESS') {
     throw new ApiError(409, 'この作業はトルクレンチを接続できる状態ではありません', undefined, 'SESSION_STATE_CONFLICT');
+  }
+  if (session.workUnit?.invalidatedAt) {
+    throw new ApiError(409, '削除済みの作業用IDにはトルクレンチを接続できません', undefined, 'ASSEMBLY_WORK_UNIT_INVALIDATED');
   }
   return { currentBoltId: session.currentBoltId };
 }

@@ -22,13 +22,17 @@ describe('resolveAssemblyOperatorNfcUid', () => {
   it('returns employee when tag matches', async () => {
     vi.mocked(prisma.employee.findFirst).mockResolvedValue({
       id: 'emp-1',
+      employeeCode: 'E001',
       displayName: '山田太郎',
-      nfcTagUid: 'UID-1'
+      nfcTagUid: 'UID-1',
+      status: 'ACTIVE'
     } as never);
 
     await expect(resolveAssemblyOperatorNfcUid('UID-1')).resolves.toEqual({
       employeeId: 'emp-1',
-      displayName: '山田太郎'
+      employeeCode: 'E001',
+      displayName: '山田太郎',
+      nfcTagUid: 'UID-1'
     });
   });
 
@@ -36,5 +40,19 @@ describe('resolveAssemblyOperatorNfcUid', () => {
     vi.mocked(prisma.employee.findFirst).mockResolvedValue(null as never);
 
     await expect(resolveAssemblyOperatorNfcUid('UNKNOWN')).resolves.toBeNull();
+  });
+
+  it('rejects an inactive employee tag', async () => {
+    vi.mocked(prisma.employee.findFirst).mockResolvedValue({
+      id: 'emp-2',
+      employeeCode: 'E002',
+      displayName: '休止社員',
+      nfcTagUid: 'UID-2',
+      status: 'INACTIVE'
+    } as never);
+
+    await expect(resolveAssemblyOperatorNfcUid('UID-2')).rejects.toMatchObject({
+      statusCode: 403
+    });
   });
 });

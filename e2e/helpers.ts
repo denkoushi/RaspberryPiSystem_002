@@ -64,12 +64,12 @@ export async function clickByRoleSafe(
 
 /**
  * 沉浸式キオスク（下端ヘッダー既定非表示）ではナビがビューポート外になり得る。
- * 下辺中央1/3へマウスを移してヘッダーを表示する（`useKioskBottomCenterHeaderReveal` と同型）。
+ * 右下24×24pxへマウスを移してヘッダーを表示する（`useKioskBottomRightHeaderReveal` と同型）。
  */
 export async function revealKioskHeader(page: Page): Promise<void> {
   const size = page.viewportSize();
   if (!size) return;
-  await page.mouse.move(size.width / 2, size.height - 2);
+  await page.mouse.move(size.width - 2, size.height - 2);
   await page.waitForFunction(
     () => {
       const h = document.querySelector('header');
@@ -144,4 +144,3 @@ export async function createTestItem(
     },
   });
 }
-

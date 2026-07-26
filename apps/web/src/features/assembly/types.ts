@@ -225,6 +225,7 @@ export type AssemblyAreaTorqueSummaryDto = {
 
 export type AssemblyWorkSessionDto = {
   id: string;
+  workUnitId: string;
   lotSerialId: string | null;
   templateId: string;
   status: 'in_progress' | 'completed' | 'cancelled';
@@ -270,6 +271,7 @@ export type AssemblySeibanCandidateDto = {
 
 export type AssemblyWorkSessionSummaryDto = {
   id: string;
+  workUnitId: string;
   lotSerialId: string | null;
   templateId: string;
   status: 'in_progress' | 'completed' | 'cancelled';
@@ -303,6 +305,7 @@ export type AssemblyLotSerialStatusDto = 'not_started' | 'in_progress' | 'comple
 
 export type AssemblyLotSerialDto = {
   id: string;
+  workUnitId: string;
   lotId: string;
   sortOrder: number;
   workId?: string;
@@ -330,7 +333,7 @@ export type AssemblyLotSummaryDto = {
   isWorkComplete: boolean;
   isFullyApproved: boolean;
   operatorEmployeeId: string | null;
-  operatorNameSnapshot: string;
+  operatorNameSnapshot: string | null;
   targetUnit: string;
   torqueWrenchId: string;
   clientDeviceId: string | null;
@@ -480,8 +483,8 @@ export type AssemblyWorkSessionStartInput = {
   /** 旧API互換。新規呼び出しは workId を使用する。 */
   serialNo?: string;
   nameplateNo?: string | null;
-  operatorEmployeeId?: string | null;
-  operatorNameSnapshot: string;
+  operatorNfcTagUid: string;
+  requestId: string;
   targetUnit: string;
   torqueWrenchId?: string | null;
 };
@@ -490,13 +493,34 @@ export type AssemblyLotCreateInput = {
   templateId: string;
   productNo: string;
   expectedQuantity: number;
+  workIdMode?: 'auto' | 'manual';
   workIds?: string[];
   /** 旧API互換。新規呼び出しは workIds を使用する。 */
   serialNos?: string[];
   operatorEmployeeId?: string | null;
-  operatorNameSnapshot: string;
+  operatorNameSnapshot?: string | null;
   targetUnit: string;
   torqueWrenchId?: string | null;
+};
+
+export type AssemblyOperatorAccessInput = {
+  operatorNfcTagUid: string;
+  requestId: string;
+};
+
+export type AssemblyWorkUnitInvalidationInput = {
+  accessPassword: string;
+  reason: string;
+  requestId: string;
+};
+
+export type AssemblyWorkUnitInvalidationDto = {
+  id: string;
+  workUnitId: string;
+  workId: string;
+  sourceState: 'not_started' | 'in_progress' | 'completed' | 'approved';
+  reason: string;
+  invalidatedAt: string;
 };
 
 export type AssemblyTorqueRecordOutcome = {
@@ -517,6 +541,11 @@ export type AssemblyTraceabilityWorkUnitDto = {
   targetUnit: string | null;
   templateName: string | null;
   completedAt: string | null;
+  invalidation: {
+    reason: string;
+    invalidatedAt: string;
+    sourceState: string;
+  } | null;
 };
 
 export type AssemblyFormalIdentifierDto = {

@@ -12,7 +12,8 @@ const mockListAssemblySeibanCandidates = vi.fn();
 const mockListAssemblyWorkSessionSummaries = vi.fn();
 const mockStartAssemblyLotSerial = vi.fn();
 const mockListAssemblySeibanLotQuantities = vi.fn();
-const mockResolveAssemblyOperatorNfc = vi.fn();
+const mockInvalidateAssemblyWorkUnit = vi.fn();
+let mockNfcEvent: { uid: string; timestamp: string } | null = null;
 
 vi.mock('../../api/client', () => ({
   createAssemblyLot: (...args: unknown[]) => mockCreateAssemblyLot(...args),
@@ -21,11 +22,11 @@ vi.mock('../../api/client', () => ({
   listAssemblyWorkSessionSummaries: (...args: unknown[]) => mockListAssemblyWorkSessionSummaries(...args),
   startAssemblyLotSerial: (...args: unknown[]) => mockStartAssemblyLotSerial(...args),
   listAssemblySeibanLotQuantities: (...args: unknown[]) => mockListAssemblySeibanLotQuantities(...args),
-  resolveAssemblyOperatorNfc: (...args: unknown[]) => mockResolveAssemblyOperatorNfc(...args)
+  invalidateAssemblyWorkUnit: (...args: unknown[]) => mockInvalidateAssemblyWorkUnit(...args)
 }));
 
 vi.mock('../../hooks/useNfcStream', () => ({
-  useNfcStream: () => null
+  useNfcStream: () => mockNfcEvent
 }));
 
 const candidate: AssemblySeibanCandidateDto = {
@@ -50,6 +51,7 @@ const candidateWithoutTemplate: AssemblySeibanCandidateDto = {
 
 const inProgressSession: AssemblyWorkSessionSummaryDto = {
   id: 'session-2',
+  workUnitId: 'work-unit-session-2',
   lotSerialId: null,
   templateId: 'template-1',
   status: 'in_progress',
@@ -122,6 +124,7 @@ const registeredLot: AssemblyLotSummaryDto = {
   serials: [
     {
       id: 'lot-serial-1',
+      workUnitId: 'work-unit-lot-1',
       lotId: 'lot-1',
       sortOrder: 0,
       serialNo: 'S001',
@@ -135,6 +138,7 @@ const registeredLot: AssemblyLotSummaryDto = {
     },
     {
       id: 'lot-serial-2',
+      workUnitId: 'work-unit-lot-2',
       lotId: 'lot-1',
       sortOrder: 1,
       serialNo: 'S002',
@@ -168,7 +172,8 @@ describe('KioskAssemblyHomePage', () => {
     mockListAssemblyWorkSessionSummaries.mockReset();
     mockStartAssemblyLotSerial.mockReset();
     mockListAssemblySeibanLotQuantities.mockReset();
-    mockResolveAssemblyOperatorNfc.mockReset();
+    mockInvalidateAssemblyWorkUnit.mockReset();
+    mockNfcEvent = null;
     mockListAssemblyLotSummaries.mockResolvedValue([]);
     mockListAssemblySeibanCandidates.mockResolvedValue([candidate]);
     mockListAssemblyWorkSessionSummaries.mockImplementation((params: { status?: string } = {}) =>
@@ -182,6 +187,10 @@ describe('KioskAssemblyHomePage', () => {
     );
     mockCreateAssemblyLot.mockResolvedValue(registeredLot);
     mockStartAssemblyLotSerial.mockResolvedValue({ id: 'session-1' });
+    mockInvalidateAssemblyWorkUnit.mockResolvedValue({
+      id: 'invalidation-1',
+      workUnitId: 'work-unit-session-2'
+    });
     mockListAssemblySeibanLotQuantities.mockImplementation((productNos: string[]) =>
       Promise.resolve(productNos.map((productNo) => ({ productNo, lotQty: productNo === 'ASMTEST-A1' ? 2 : 1 })))
     );
@@ -206,14 +215,9 @@ describe('KioskAssemblyHomePage', () => {
       expect(mockListAssemblySeibanCandidates).toHaveBeenCalledWith({ prefix: 'ASMTEST-A', limit: 20 })
     );
     fireEvent.click(await screen.findByText('ASMTEST-A1'));
-    await waitFor(() => expect(screen.getByText('入力済み 0/2')).toBeInTheDocument());
-    fireEvent.change(screen.getByLabelText('作業用ID追加'), { target: { value: 's001' } });
-    await waitFor(() => expect(screen.getByLabelText('作業用ID追加')).toHaveValue('S001'));
-    fireEvent.click(screen.getByRole('button', { name: '追加' }));
-    fireEvent.change(screen.getByLabelText('作業用ID追加'), { target: { value: 's002' } });
-    await waitFor(() => expect(screen.getByLabelText('作業用ID追加')).toHaveValue('S002'));
-    fireEvent.click(screen.getByRole('button', { name: '追加' }));
-    fireEvent.change(screen.getByLabelText('作業者'), { target: { value: '佐藤' } });
+    await waitFor(() => expect(screen.getByText('発行予定 2/2')).toBeInTheDocument());
+    expect(screen.getByText('ASMTEST-A1-001')).toBeInTheDocument();
+    expect(screen.getByText('ASMTEST-A1-002')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'ロット登録' }));
 
@@ -222,9 +226,7 @@ describe('KioskAssemblyHomePage', () => {
         templateId: 'template-1',
         productNo: 'ASMTEST-A1',
         expectedQuantity: 2,
-        workIds: ['S001', 'S002'],
-        operatorEmployeeId: null,
-        operatorNameSnapshot: '佐藤',
+        workIdMode: 'auto',
         targetUnit: 'MH-AX',
         torqueWrenchId: 'CEM20N3X10D-BTLA'
       })
@@ -233,6 +235,7 @@ describe('KioskAssemblyHomePage', () => {
   });
 
   it('starts a not-started serial from a registered lot', async () => {
+    mockNfcEvent = { uid: 'NFC-001', timestamp: '2099-01-01T00:00:00.000Z' };
     mockListAssemblyLotSummaries.mockResolvedValue([registeredLot]);
     renderPage();
 
@@ -240,8 +243,62 @@ describe('KioskAssemblyHomePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ASMTEST-A1・S001 の詳細を開く' }));
     fireEvent.click(screen.getByRole('button', { name: '開始' }));
 
-    await waitFor(() => expect(mockStartAssemblyLotSerial).toHaveBeenCalledWith('lot-1', 'lot-serial-1'));
+    await waitFor(() =>
+      expect(mockStartAssemblyLotSerial).toHaveBeenCalledWith(
+        'lot-1',
+        'lot-serial-1',
+        expect.objectContaining({ operatorNfcTagUid: 'NFC-001', requestId: expect.any(String) })
+      )
+    );
     expect(await screen.findByText('session opened')).toBeInTheDocument();
+  });
+
+  it('does not call the start API until the NFC gate receives a scan', async () => {
+    mockListAssemblyLotSummaries.mockResolvedValue([registeredLot]);
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'ASMTEST-A1・S001 の詳細を開く' }));
+    fireEvent.click(screen.getByRole('button', { name: '開始' }));
+
+    expect(screen.getByRole('dialog', { name: '作業者確認' })).toBeInTheDocument();
+    expect(mockStartAssemblyLotSerial).not.toHaveBeenCalled();
+  });
+
+  it('opens the shared invalidation dialog from all three panes and submits password plus reason', async () => {
+    mockListAssemblyLotSummaries.mockResolvedValue([registeredLot]);
+    renderPage();
+
+    const cases = [
+      { toggle: 'ASMTEST-A1・S001 の詳細を開く', detail: 'ASMTEST-A1・S001 の詳細' },
+      { toggle: 'ASM-START-001・S002 の詳細を開く', detail: 'ASM-START-001・S002 の詳細' },
+      { toggle: 'ASM-DONE-001・S002 の詳細を開く', detail: 'ASM-DONE-001・S002 の詳細' }
+    ];
+    for (const [index, item] of cases.entries()) {
+      fireEvent.click(await screen.findByRole('button', { name: item.toggle }));
+      const detail = screen.getByRole('region', { name: item.detail });
+      fireEvent.click(within(detail).getByRole('button', { name: '削除' }));
+      expect(screen.getByRole('dialog', { name: '作業アイテムを削除' })).toBeInTheDocument();
+      if (index < cases.length - 1) {
+        fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
+      }
+    }
+
+    fireEvent.change(screen.getByLabelText('管理パスワード'), { target: { value: '2520' } });
+    fireEvent.change(screen.getByLabelText('削除理由（必須・500文字以内）'), {
+      target: { value: '誤登録を一覧から除外' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }));
+
+    await waitFor(() =>
+      expect(mockInvalidateAssemblyWorkUnit).toHaveBeenCalledWith(
+        'work-unit-session-2',
+        expect.objectContaining({
+          accessPassword: '2520',
+          reason: '誤登録を一覧から除外',
+          requestId: expect.any(String)
+        })
+      )
+    );
   });
 
   it('renders in-progress sessions with links back to the work session', async () => {
@@ -273,7 +330,6 @@ describe('KioskAssemblyHomePage', () => {
     const fseibanInput = screen.getByLabelText('製番');
     const serialInput = screen.getByLabelText('作業用ID追加');
     const fseibanPad = within(screen.getByRole('group', { name: '製番入力パッド' }));
-    const serialPad = within(screen.getByRole('group', { name: '作業用ID入力パッド' }));
 
     fireEvent.click(fseibanPad.getByRole('button', { name: 'A' }));
     fireEvent.click(fseibanPad.getByRole('button', { name: '1' }));
@@ -287,7 +343,16 @@ describe('KioskAssemblyHomePage', () => {
 
     fireEvent.change(fseibanInput, { target: { value: 'asmtest-a' } });
     fireEvent.click(await screen.findByText('ASMTEST-A1'));
-    await waitFor(() => expect(screen.getByText('入力済み 0/2')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('発行予定 2/2')).toBeInTheDocument());
+    expect(screen.getByText('作業用IDを手動修正').closest('details')).not.toHaveAttribute('open');
+    fireEvent.click(screen.getByText('作業用IDを手動修正'));
+    fireEvent.click(screen.getByLabelText('手動修正を使用する'));
+    fireEvent.click(screen.getByText('ソフトウェアキーボードを表示'));
+    expect(screen.getByText('ソフトウェアキーボードを表示').closest('details')).toHaveAttribute('open');
+    for (const removeButton of screen.getAllByRole('button', { name: '削除' })) {
+      fireEvent.click(removeButton);
+    }
+    const serialPad = within(screen.getByRole('group', { name: '作業用ID入力パッド' }));
     fireEvent.click(serialPad.getByRole('button', { name: 'S' }));
     fireEvent.click(serialPad.getByRole('button', { name: '2' }));
     expect(fseibanInput).toHaveValue('ASMTEST-A1');
@@ -397,16 +462,8 @@ describe('KioskAssemblyHomePage', () => {
     expect(screen.getByLabelText('ロット数（手入力）')).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('ロット数（手入力）'), { target: { value: '2' } });
-    await waitFor(() => expect(screen.getByText('入力済み 0/2')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('発行予定 2/2')).toBeInTheDocument());
     expect(screen.getByText('2（手入力）')).toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText('作業用ID追加'), { target: { value: 's001' } });
-    await waitFor(() => expect(screen.getByLabelText('作業用ID追加')).toHaveValue('S001'));
-    fireEvent.click(screen.getByRole('button', { name: '追加' }));
-    fireEvent.change(screen.getByLabelText('作業用ID追加'), { target: { value: 's002' } });
-    await waitFor(() => expect(screen.getByLabelText('作業用ID追加')).toHaveValue('S002'));
-    fireEvent.click(screen.getByRole('button', { name: '追加' }));
-    fireEvent.change(screen.getByLabelText('作業者'), { target: { value: '佐藤' } });
 
     fireEvent.click(screen.getByRole('button', { name: 'ロット登録' }));
 
@@ -415,9 +472,7 @@ describe('KioskAssemblyHomePage', () => {
         templateId: 'template-1',
         productNo: 'ASMTEST-A1',
         expectedQuantity: 2,
-        workIds: ['S001', 'S002'],
-        operatorEmployeeId: null,
-        operatorNameSnapshot: '佐藤',
+        workIdMode: 'auto',
         targetUnit: 'MH-AX',
         torqueWrenchId: 'CEM20N3X10D-BTLA'
       })
@@ -429,10 +484,10 @@ describe('KioskAssemblyHomePage', () => {
 
     fireEvent.change(screen.getByLabelText('製番'), { target: { value: 'asmtest-a' } });
     fireEvent.click(await screen.findByText('ASMTEST-A1'));
-    await waitFor(() => expect(screen.getByText('入力済み 0/2')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('発行予定 2/2')).toBeInTheDocument());
 
     expect(screen.queryByLabelText('ロット数（手入力）')).not.toBeInTheDocument();
-    expect(screen.queryByText(/手入力/)).not.toBeInTheDocument();
+    expect(screen.queryByText('2（手入力）')).not.toBeInTheDocument();
   });
 
   it('looks up lot quantity with normalized product number keys', async () => {
@@ -441,7 +496,7 @@ describe('KioskAssemblyHomePage', () => {
 
     fireEvent.change(screen.getByLabelText('製番'), { target: { value: 'asmtest-a' } });
     fireEvent.click(await screen.findByText('ASMTEST-A1'));
-    await waitFor(() => expect(screen.getByText('入力済み 0/2')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('発行予定 2/2')).toBeInTheDocument());
     expect(screen.queryByLabelText('ロット数（手入力）')).not.toBeInTheDocument();
   });
 

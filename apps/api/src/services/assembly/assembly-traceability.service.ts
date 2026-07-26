@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { normalizeAssemblyUpperIdentifier } from './assembly-identifiers.js';
+import { isAssemblyUniqueConstraintError } from './assembly-prisma-errors.js';
 import { runAssemblyTransaction } from './assembly-transaction.js';
 import { AssemblyTraceabilityAccessService } from './assembly-traceability-access.service.js';
 import {
@@ -27,6 +28,11 @@ export type AssemblyTraceabilityWorkUnitSummary = {
   targetUnit: string | null;
   templateName: string | null;
   completedAt: Date | null;
+  invalidation: {
+    reason: string;
+    invalidatedAt: Date;
+    sourceState: string;
+  } | null;
 };
 
 function normalizeRequiredIdentifier(value: string, label: string): string {
@@ -41,10 +47,6 @@ function requireReason(value: string | null | undefined): string {
   return reason;
 }
 
-function isUniqueConstraintError(error: unknown): boolean {
-  return Boolean(error && typeof error === 'object' && (error as { code?: string }).code === 'P2002');
-}
-
 function sessionStatus(value: string | undefined): AssemblyTraceabilityWorkUnitSummary['status'] {
   if (value === 'IN_PROGRESS') return 'in_progress';
   if (value === 'COMPLETED') return 'completed';
@@ -55,6 +57,12 @@ function sessionStatus(value: string | undefined): AssemblyTraceabilityWorkUnitS
 function serializeWorkUnit(unit: {
   id: string;
   workId: string;
+  invalidatedAt: Date | null;
+  invalidation: {
+    reason: string;
+    invalidatedAt: Date;
+    sourceState: string;
+  } | null;
   workSession: {
     id: string;
     status: string;
@@ -71,7 +79,14 @@ function serializeWorkUnit(unit: {
     productNo: unit.workSession?.productNo ?? null,
     targetUnit: unit.workSession?.targetUnit ?? null,
     templateName: unit.workSession ? `${unit.workSession.template.name} v${unit.workSession.template.version}` : null,
-    completedAt: unit.workSession?.completedAt ?? null
+    completedAt: unit.workSession?.completedAt ?? null,
+    invalidation: unit.invalidation
+      ? {
+          reason: unit.invalidation.reason,
+          invalidatedAt: unit.invalidation.invalidatedAt,
+          sourceState: unit.invalidation.sourceState.toLowerCase()
+        }
+      : null
   };
 }
 
@@ -217,10 +232,17 @@ export class AssemblyTraceabilityService {
           where: { workId: { in: [parentWorkId, childWorkId] } },
           select: { ...workUnitWithSessionSelect, formalIdentifierAssignments: { where: { supersededAt: null }, select: { id: true } } }
         });
-        const parent = units.find((unit) => unit.workId === parentWorkId);
-        const child = units.find((unit) => unit.workId === childWorkId);
+        const parentCandidate = units.find((unit) => unit.workId === parentWorkId);
+        const childCandidate = units.find((unit) => unit.workId === childWorkId);
+        if (!parentCandidate || !childCandidate) throw new ApiError(404, '親または子の作業用IDが見つかりません');
+        await this.repository.lockWorkUnits(tx, [parentCandidate.id, childCandidate.id]);
+        const lockedUnits = await tx.assemblyWorkUnit.findMany({
+          where: { id: { in: [parentCandidate.id, childCandidate.id] } },
+          select: { ...workUnitWithSessionSelect, formalIdentifierAssignments: { where: { supersededAt: null }, select: { id: true } } }
+        });
+        const parent = lockedUnits.find((unit) => unit.id === parentCandidate.id);
+        const child = lockedUnits.find((unit) => unit.id === childCandidate.id);
         if (!parent || !child) throw new ApiError(404, '親または子の作業用IDが見つかりません');
-        await this.repository.lockWorkUnits(tx, [parent.id, child.id]);
         await this.repository.lockActiveCompositionForWorkUnit(tx, child.id);
         await this.assertCanBeParent(tx, parent);
         await this.assertCanBeChild(tx, child);
@@ -241,7 +263,7 @@ export class AssemblyTraceabilityService {
         return { id: link.id };
       });
     } catch (error) {
-      if (isUniqueConstraintError(error)) throw new ApiError(409, 'この子の作業用IDは既に別の親へ紐付いています');
+      if (isAssemblyUniqueConstraintError(error)) throw new ApiError(409, 'この子の作業用IDは既に別の親へ紐付いています');
       throw error;
     }
   }
@@ -286,20 +308,27 @@ export class AssemblyTraceabilityService {
         if (newParent.id === child.id) throw new ApiError(409, '同じ作業用IDを親子にはできません');
         if (newParent.id === link.parentWorkUnitId) throw new ApiError(400, '同じ親への変更はできません');
         await this.repository.lockWorkUnits(tx, [link.parentWorkUnitId, newParent.id, child.id]);
-        await this.assertCanBeParent(tx, newParent);
-        await this.assertCanBeChild(tx, child);
-        if (child.formalIdentifierAssignments?.length) throw new ApiError(409, '正式ID付与済みの完成品を子にすることはできません');
-        if (await this.repository.hasActiveDescendant(tx, child.id, newParent.id)) {
+        const lockedUnits = await tx.assemblyWorkUnit.findMany({
+          where: { id: { in: [newParent.id, child.id] } },
+          select: { ...workUnitWithSessionSelect, formalIdentifierAssignments: { where: { supersededAt: null }, select: { id: true } } }
+        });
+        const lockedParent = lockedUnits.find((unit) => unit.id === newParent.id);
+        const lockedChild = lockedUnits.find((unit) => unit.id === child.id);
+        if (!lockedParent || !lockedChild) throw new ApiError(404, '親または子の作業用IDが見つかりません');
+        await this.assertCanBeParent(tx, lockedParent);
+        await this.assertCanBeChild(tx, lockedChild);
+        if (lockedChild.formalIdentifierAssignments?.length) throw new ApiError(409, '正式ID付与済みの完成品を子にすることはできません');
+        if (await this.repository.hasActiveDescendant(tx, lockedChild.id, lockedParent.id)) {
           throw new ApiError(409, '循環する製品構成は登録できません');
         }
         await tx.assemblyWorkUnitComposition.update({ where: { id: link.id }, data: actorUnlinkData(input.actor, reason) });
         const replacement = await tx.assemblyWorkUnitComposition.create({
-          data: { parentWorkUnitId: newParent.id, childWorkUnitId: child.id, ...actorCreateData(input.actor) }
+          data: { parentWorkUnitId: lockedParent.id, childWorkUnitId: lockedChild.id, ...actorCreateData(input.actor) }
         });
         return { id: replacement.id, replacedLinkId: link.id };
       });
     } catch (error) {
-      if (isUniqueConstraintError(error)) throw new ApiError(409, 'この子の作業用IDは既に別の親へ紐付いています');
+      if (isAssemblyUniqueConstraintError(error)) throw new ApiError(409, 'この子の作業用IDは既に別の親へ紐付いています');
       throw error;
     }
   }
@@ -310,11 +339,13 @@ export class AssemblyTraceabilityService {
     const formalId = normalizeRequiredIdentifier(input.formalId, '正式ID');
     try {
       return await runAssemblyTransaction(async (tx) => {
-        const unit = await tx.assemblyWorkUnit.findUnique({ where: { workId }, select: workUnitWithSessionSelect });
+        const candidate = await tx.assemblyWorkUnit.findUnique({ where: { workId }, select: { id: true } });
+        if (!candidate) throw new ApiError(404, '作業用IDが見つかりません');
+        await this.repository.lockWorkUnits(tx, [candidate.id]);
+        const unit = await tx.assemblyWorkUnit.findUnique({ where: { id: candidate.id }, select: workUnitWithSessionSelect });
         if (!unit) throw new ApiError(404, '作業用IDが見つかりません');
-        await this.repository.lockWorkUnits(tx, [unit.id]);
         await this.repository.lockActiveCompositionForWorkUnit(tx, unit.id);
-        await this.assertCanReceiveFormalIdentifier(tx, unit.id, unit.workSession?.status);
+        await this.assertCanReceiveFormalIdentifier(tx, unit);
         const assignment = await tx.assemblyFormalIdentifierAssignment.create({
           data: {
             workUnitId: unit.id,
@@ -327,7 +358,7 @@ export class AssemblyTraceabilityService {
         return { id: assignment.id, formalId: assignment.formalId };
       });
     } catch (error) {
-      if (isUniqueConstraintError(error)) throw new ApiError(409, 'この正式IDまたは作業用IDは既に登録されています');
+      if (isAssemblyUniqueConstraintError(error)) throw new ApiError(409, 'この正式IDまたは作業用IDは既に登録されています');
       throw error;
     }
   }
@@ -348,7 +379,7 @@ export class AssemblyTraceabilityService {
         await this.repository.lockActiveCompositionForWorkUnit(tx, previous.workUnitId);
         const unit = await tx.assemblyWorkUnit.findUnique({ where: { id: previous.workUnitId }, select: workUnitWithSessionSelect });
         if (!unit) throw new ApiError(404, '作業用IDが見つかりません');
-        await this.assertCanReceiveFormalIdentifier(tx, unit.id, unit.workSession?.status);
+        await this.assertCanReceiveFormalIdentifier(tx, unit);
         await tx.assemblyFormalIdentifierAssignment.update({
           where: { id: previous.id },
           data: {
@@ -371,7 +402,7 @@ export class AssemblyTraceabilityService {
         return { id: assignment.id, formalId: assignment.formalId, correctedAssignmentId: previous.id };
       });
     } catch (error) {
-      if (isUniqueConstraintError(error)) throw new ApiError(409, 'この正式IDは現在または過去に使用されています');
+      if (isAssemblyUniqueConstraintError(error)) throw new ApiError(409, 'この正式IDは現在または過去に使用されています');
       throw error;
     }
   }
@@ -383,13 +414,25 @@ export class AssemblyTraceabilityService {
     return this.resolve(selected.root.workUnit.workId);
   }
 
-  private async assertCanBeParent(_tx: AssemblyTraceabilityTransaction, parent: { workSession: { status: string } | null }) {
+  private async assertCanBeParent(
+    _tx: AssemblyTraceabilityTransaction,
+    parent: { invalidatedAt: Date | null; workSession: { status: string } | null }
+  ) {
+    if (parent.invalidatedAt) {
+      throw new ApiError(409, '削除済みの作業用IDは親にできません');
+    }
     if (!parent.workSession || parent.workSession.status === 'CANCELLED') {
       throw new ApiError(409, '親の作業用IDは進行中または完了済みである必要があります');
     }
   }
 
-  private async assertCanBeChild(_tx: AssemblyTraceabilityTransaction, child: { workSession: { status: string } | null }) {
+  private async assertCanBeChild(
+    _tx: AssemblyTraceabilityTransaction,
+    child: { invalidatedAt: Date | null; workSession: { status: string } | null }
+  ) {
+    if (child.invalidatedAt) {
+      throw new ApiError(409, '削除済みの作業用IDは子にできません');
+    }
     if (!child.workSession || child.workSession.status !== 'COMPLETED') {
       throw new ApiError(409, '子の作業用IDは完了済みである必要があります');
     }
@@ -397,12 +440,12 @@ export class AssemblyTraceabilityService {
 
   private async assertCanReceiveFormalIdentifier(
     tx: AssemblyTraceabilityTransaction,
-    workUnitId: string,
-    status: string | undefined
+    unit: { id: string; invalidatedAt: Date | null; workSession: { status: string } | null }
   ) {
-    if (status !== 'COMPLETED') throw new ApiError(409, '正式IDは完了済みの作業用IDにのみ付与できます');
+    if (unit.invalidatedAt) throw new ApiError(409, '削除済みの作業用IDには正式IDを付与できません');
+    if (unit.workSession?.status !== 'COMPLETED') throw new ApiError(409, '正式IDは完了済みの作業用IDにのみ付与できます');
     const activeParent = await tx.assemblyWorkUnitComposition.findFirst({
-      where: { childWorkUnitId: workUnitId, unlinkedAt: null },
+      where: { childWorkUnitId: unit.id, unlinkedAt: null },
       select: { id: true }
     });
     if (activeParent) throw new ApiError(409, '正式IDは最上位の完成品にのみ付与できます');

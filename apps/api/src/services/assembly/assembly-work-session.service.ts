@@ -7,6 +7,13 @@ import {
   type AssemblyTemplateDetailRow
 } from './assembly-template.service.js';
 import { normalizeAssemblyUpperIdentifier } from './assembly-identifiers.js';
+import { isAssemblyUniqueConstraintError } from './assembly-prisma-errors.js';
+import {
+  assemblyOperatorAccessConflict,
+  appendAssemblyOperatorAccess,
+  findIdempotentAssemblyOperatorAccess
+} from './assembly-operator-access.service.js';
+import { resolveActiveAssemblyOperatorNfcUid } from './assembly-operator-nfc-resolve.service.js';
 import { computeAssemblyCheckSummary, type AssemblyCheckSummary } from './assembly-check-summary.js';
 import {
   assemblyWorkSessionDetailInclude,
@@ -16,6 +23,8 @@ import {
   runAssemblyTransaction,
   runLockedAssemblyWorkSessionTransaction
 } from './assembly-transaction.js';
+import { lockAssemblyWorkId } from './assembly-work-id-lock.js';
+import { lockAssemblyWorkUnits } from './assembly-work-unit-lock.repository.js';
 export { assemblyWorkSessionDetailInclude, type AssemblyWorkSessionDetail } from './assembly-work-session-detail.js';
 
 export type AssemblyStartInput = {
@@ -25,8 +34,8 @@ export type AssemblyStartInput = {
   /** Legacy boundary name. New callers should use workId. */
   serialNo?: string;
   nameplateNo?: string | null;
-  operatorEmployeeId?: string | null;
-  operatorNameSnapshot: string;
+  operatorNfcTagUid: string;
+  requestId: string;
   targetUnit: string;
   torqueWrenchId?: string | null;
   clientDeviceId?: string | null;
@@ -36,12 +45,15 @@ export type AssemblyStartInput = {
 export type AssemblyRegisteredSerialStartInput = {
   lotId: string;
   lotSerialId: string;
+  operatorNfcTagUid: string;
+  requestId: string;
   clientDeviceId?: string | null;
   clientDeviceNameSnapshot?: string | null;
 };
 
 export type AssemblyWorkSessionSummary = {
   id: string;
+  workUnitId: string | null;
   lotSerialId: string | null;
   templateId: string;
   status: string;
@@ -177,10 +189,6 @@ function recentlyAcceptedDuplicate(session: AssemblyWorkSessionDetail, now: Date
   return now.getTime() - last.recordedAt.getTime() < DUPLICATE_SUPPRESSION_MS;
 }
 
-function isUniqueConstraintError(error: unknown): boolean {
-  return Boolean(error && typeof error === 'object' && 'code' in error && (error as { code?: string }).code === 'P2002');
-}
-
 function duplicateWorkIdError(workId: string): ApiError {
   return new ApiError(409, `作業用ID ${workId} は既に登録済みです`);
 }
@@ -223,29 +231,63 @@ export class AssemblyWorkSessionService {
   async start(input: AssemblyStartInput): Promise<AssemblyWorkSessionDetail> {
     const productNo = required(normalizeAssemblyUpperIdentifier(input.productNo), '製番').slice(0, 120);
     const workId = required(normalizeAssemblyUpperIdentifier(input.workId ?? input.serialNo), '作業用ID').slice(0, 120);
-    const template = await prisma.assemblyTemplate.findFirst({
-      where: { id: input.templateId, isActive: true },
-      include: assemblyTemplateDetailInclude
-    });
-    if (!template) throw new ApiError(404, '有効な組立テンプレートが見つかりません');
-
-    const first = firstPosition(template);
     const nameplateNo = (input.nameplateNo?.trim() || workId).slice(0, 120);
+    const targetUnit = required(normalizeAssemblyUpperIdentifier(input.targetUnit), '機種名').slice(0, 120);
     try {
       return await runAssemblyTransaction(async (tx) => {
+        await lockAssemblyWorkId(tx, workId);
+        const idempotent = await findIdempotentAssemblyOperatorAccess(tx, {
+          requestId: input.requestId,
+          accessType: 'START',
+          operatorNfcTagUid: input.operatorNfcTagUid,
+          workId
+        });
+        if (idempotent) {
+          const torqueWrenchId =
+            resolveAssemblyTraceabilityMode(idempotent.template.traceabilityMode) === 'LEGACY'
+              ? required(input.torqueWrenchId ?? '', '使用トルクレンチ').slice(0, 120)
+              : '';
+          if (
+            idempotent.templateId !== input.templateId ||
+            idempotent.productNo !== productNo ||
+            idempotent.workId !== workId ||
+            idempotent.nameplateNo !== nameplateNo ||
+            idempotent.targetUnit !== targetUnit ||
+            idempotent.torqueWrenchId !== torqueWrenchId
+          ) {
+            throw assemblyOperatorAccessConflict(
+              '同じrequestIdを異なる作業開始内容には使用できません'
+            );
+          }
+          return idempotent;
+        }
+
+        const operator = await resolveActiveAssemblyOperatorNfcUid(
+          tx,
+          input.operatorNfcTagUid
+        );
+        const template = await tx.assemblyTemplate.findFirst({
+          where: { id: input.templateId, isActive: true },
+          include: assemblyTemplateDetailInclude
+        });
+        if (!template) throw new ApiError(404, '有効な組立テンプレートが見つかりません');
+        const first = firstPosition(template);
+
         const workUnit = await tx.assemblyWorkUnit.findUnique({
           where: { workId },
           include: { lotSerial: true }
         });
         let workUnitId = workUnit?.id ?? null;
         if (workUnit) {
+          if (workUnit.invalidatedAt) {
+            throw sessionStateConflict('削除済みの作業用IDは開始できません');
+          }
           const existing = await tx.assemblyWorkSession.findUnique({
             where: { workUnitId: workUnit.id },
             include: assemblyWorkSessionDetailInclude
           });
           if (existing) {
-            if (existing.status === 'IN_PROGRESS' && existing.productNo === productNo) return existing;
-            throw duplicateWorkIdError(workId);
+            throw sessionStateConflict('この作業用IDは既に開始されています。仕掛中から再開してください。');
           }
           if (workUnit.lotSerial) throw duplicateWorkIdError(workId);
         } else {
@@ -254,16 +296,16 @@ export class AssemblyWorkSessionService {
         }
         if (!workUnitId) throw duplicateWorkIdError(workId);
 
-        return tx.assemblyWorkSession.create({
+        const session = await tx.assemblyWorkSession.create({
           data: {
             templateId: template.id,
             workUnitId,
             productNo,
             workId,
             nameplateNo,
-            operatorEmployeeId: input.operatorEmployeeId?.trim() || null,
-            operatorNameSnapshot: required(input.operatorNameSnapshot, '作業者名').slice(0, 120),
-            targetUnit: required(normalizeAssemblyUpperIdentifier(input.targetUnit), '機種名').slice(0, 120),
+            operatorEmployeeId: operator.employeeId,
+            operatorNameSnapshot: operator.displayName,
+            targetUnit,
             torqueWrenchId:
               resolveAssemblyTraceabilityMode(template.traceabilityMode) === 'LEGACY'
                 ? required(input.torqueWrenchId ?? '', '使用トルクレンチ').slice(0, 120)
@@ -275,9 +317,21 @@ export class AssemblyWorkSessionService {
           },
           include: assemblyWorkSessionDetailInclude
         });
+        await appendAssemblyOperatorAccess(tx, {
+          sessionId: session.id,
+          accessType: 'START',
+          requestId: input.requestId,
+          operatorNfcTagUid: input.operatorNfcTagUid,
+          actor: {
+            clientDeviceId: input.clientDeviceId ?? null,
+            clientDeviceNameSnapshot: input.clientDeviceNameSnapshot ?? null
+          },
+          operator
+        });
+        return session;
       });
     } catch (error) {
-      if (isUniqueConstraintError(error)) throw duplicateWorkIdError(workId);
+      if (isAssemblyUniqueConstraintError(error)) throw duplicateWorkIdError(workId);
       throw error;
     }
   }
@@ -285,6 +339,29 @@ export class AssemblyWorkSessionService {
   async startRegisteredSerial(input: AssemblyRegisteredSerialStartInput): Promise<AssemblyWorkSessionDetail> {
     try {
       return await runAssemblyTransaction(async (tx) => {
+        const idempotent = await findIdempotentAssemblyOperatorAccess(tx, {
+          requestId: input.requestId,
+          accessType: 'START',
+          operatorNfcTagUid: input.operatorNfcTagUid,
+          lotSerialId: input.lotSerialId
+        });
+        if (idempotent) return idempotent;
+
+        const target = await tx.assemblyLotSerial.findFirst({
+          where: { id: input.lotSerialId, lotId: input.lotId },
+          select: { id: true, workUnitId: true }
+        });
+        if (!target) throw new ApiError(404, 'ロット内シリアルが見つかりません');
+        await lockAssemblyWorkUnits(tx, [target.workUnitId]);
+
+        const idempotentAfterLock = await findIdempotentAssemblyOperatorAccess(tx, {
+          requestId: input.requestId,
+          accessType: 'START',
+          operatorNfcTagUid: input.operatorNfcTagUid,
+          lotSerialId: input.lotSerialId
+        });
+        if (idempotentAfterLock) return idempotentAfterLock;
+
         const lotSerial = await tx.assemblyLotSerial.findFirst({
           where: { id: input.lotSerialId, lotId: input.lotId },
           include: {
@@ -300,10 +377,12 @@ export class AssemblyWorkSessionService {
           }
         });
         if (!lotSerial) throw new ApiError(404, 'ロット内シリアルが見つかりません');
+        if (lotSerial.workUnit.invalidatedAt) {
+          throw new ApiError(409, '削除済みの作業用IDは開始できません');
+        }
 
         if (lotSerial.workSession) {
-          if (lotSerial.workSession.status === 'IN_PROGRESS') return lotSerial.workSession;
-          throw duplicateWorkIdError(lotSerial.workUnit.workId);
+          throw sessionStateConflict('この作業用IDは既に開始されています。再読込して仕掛中から再開してください。');
         }
 
         const existing = await tx.assemblyWorkSession.findUnique({
@@ -311,12 +390,15 @@ export class AssemblyWorkSessionService {
           include: assemblyWorkSessionDetailInclude
         });
         if (existing) {
-          if (existing.status === 'IN_PROGRESS' && existing.lotSerialId === lotSerial.id) return existing;
-          throw duplicateWorkIdError(lotSerial.workUnit.workId);
+          throw sessionStateConflict('この作業用IDは既に開始されています。再読込して仕掛中から再開してください。');
         }
 
+        const operator = await resolveActiveAssemblyOperatorNfcUid(
+          tx,
+          input.operatorNfcTagUid
+        );
         const first = firstPosition(lotSerial.lot.template);
-        return tx.assemblyWorkSession.create({
+        const session = await tx.assemblyWorkSession.create({
           data: {
             templateId: lotSerial.lot.templateId,
             workUnitId: lotSerial.workUnitId,
@@ -324,8 +406,8 @@ export class AssemblyWorkSessionService {
             productNo: lotSerial.lot.productNo,
             workId: lotSerial.workUnit.workId,
             nameplateNo: lotSerial.workUnit.workId,
-            operatorEmployeeId: lotSerial.lot.operatorEmployeeId,
-            operatorNameSnapshot: lotSerial.lot.operatorNameSnapshot,
+            operatorEmployeeId: operator.employeeId,
+            operatorNameSnapshot: operator.displayName,
             targetUnit: lotSerial.lot.targetUnit,
             torqueWrenchId: lotSerial.lot.torqueWrenchId,
             clientDeviceId: input.clientDeviceId ?? lotSerial.lot.clientDeviceId,
@@ -335,9 +417,22 @@ export class AssemblyWorkSessionService {
           },
           include: assemblyWorkSessionDetailInclude
         });
+        await appendAssemblyOperatorAccess(tx, {
+          sessionId: session.id,
+          accessType: 'START',
+          requestId: input.requestId,
+          operatorNfcTagUid: input.operatorNfcTagUid,
+          actor: {
+            clientDeviceId: input.clientDeviceId ?? lotSerial.lot.clientDeviceId,
+            clientDeviceNameSnapshot:
+              input.clientDeviceNameSnapshot ?? lotSerial.lot.clientDeviceNameSnapshot
+          },
+          operator
+        });
+        return session;
       });
     } catch (error) {
-      if (isUniqueConstraintError(error)) throw new ApiError(409, 'この作業用IDは既に作業に使用されています');
+      if (isAssemblyUniqueConstraintError(error)) throw new ApiError(409, 'この作業用IDは既に作業に使用されています');
       throw error;
     }
   }
@@ -371,6 +466,9 @@ export class AssemblyWorkSessionService {
     const sessions = await prisma.assemblyWorkSession.findMany({
       where: {
         ...(status ? { status } : {}),
+        workUnit: {
+          invalidatedAt: null
+        },
         ...(productNo ? { productNo: { equals: productNo, mode: 'insensitive' } } : {}),
         ...(normalizedWorkId ? { workId: { equals: normalizedWorkId, mode: 'insensitive' } } : {})
       },
@@ -421,6 +519,7 @@ export class AssemblyWorkSessionService {
       const currentArea = session.template.areas.find((area) => area.id === session.currentAreaId) ?? current?.area ?? null;
       return {
         id: session.id,
+        workUnitId: session.workUnitId,
         lotSerialId: session.lotSerialId,
         templateId: session.templateId,
         status: session.status,

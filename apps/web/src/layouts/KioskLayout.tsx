@@ -28,7 +28,7 @@ import {
   advanceKioskWebActivation,
   kioskWebNavigation
 } from '../features/kiosk/kioskWebActivation';
-import { useKioskBottomCenterHeaderReveal } from '../hooks/useKioskBottomCenterHeaderReveal';
+import { useKioskBottomRightHeaderReveal } from '../hooks/useKioskBottomRightHeaderReveal';
 
 export function KioskLayout() {
   const clientKey = getResolvedClientKey();
@@ -50,7 +50,7 @@ export function KioskLayout() {
   const acknowledgedReadyRef = useRef<string | null>(null);
   const [noticeScheduledAt, setNoticeScheduledAt] = useState<{ runId: string; scheduledAt: string } | null>(null);
   const immersiveKioskLayout = usesKioskImmersiveLayout(location.pathname);
-  const headerReveal = useKioskBottomCenterHeaderReveal(immersiveKioskLayout);
+  const headerReveal = useKioskBottomRightHeaderReveal(immersiveKioskLayout);
   const navTabOrder = normalizeKioskHeaderTabOrder(
     kioskConfig?.navTabOrder ?? DEFAULT_KIOSK_HEADER_TAB_ORDER
   );

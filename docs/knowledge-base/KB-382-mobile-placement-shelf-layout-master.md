@@ -23,7 +23,7 @@
 | **管理画面** | `/admin/clients` → **クライアント端末** 表 — 列 **「棚レイアウト編集」**（`shelfLayoutEditEnabled`）。**Zero2W配膳列（`haizenEdgeEnabled`）と混同しない** |
 | **表示名** | `{加工機名}{東\|西\|南\|北\|中央}`。加工機 0 台時 `置場-{方位}`。同区画重複時 `-2` サフィックス（[`shelf-layout-core`](../../packages/shelf-layout-core/)） |
 | **サイネージ** | 部品棚グリッド行に **`displayLabel` 主表示**・正本 ID 小さく併記。**Pi5 API の JPEG 正本** — **Pi3 専用デプロイは不要**（`displayLabel` は API 側レンダリング） |
-| **沉浸式ヘッダー** | 順位ボード・棚マスタ等は [`kioskImmersiveLayoutPolicy`](../../apps/web/src/features/kiosk/kioskImmersiveLayoutPolicy.ts) で **画面下配置・通常非表示**。**下辺中央 1/3 ホバー**でナビ表示（[KB-311](./KB-311-kiosk-immersive-header-allowlist.md)） |
+| **沉浸式ヘッダー** | 順位ボード・棚マスタ等は [`kioskImmersiveLayoutPolicy`](../../apps/web/src/features/kiosk/kioskImmersiveLayoutPolicy.ts) で **画面下配置・通常非表示**。**右下24×24pxホバー**でナビ表示（[KB-311](./KB-311-kiosk-immersive-header-allowlist.md)） |
 
 ### 操作フロー（オペレータ）
 
@@ -72,7 +72,7 @@
 | 症状 | 典型原因 |
 |------|----------|
 | **「棚マスタ」タブを押しても画面が変わらない** | 既に `/kiosk/mobile-placement/shelf-master` にいる（同 URL への NavLink — **正常**） |
-| **ヘッダーの「棚マスタ」が押せない** | 沉浸式レイアウトで **`pointer-events-none` + 非表示**。**画面下辺中央 1/3 にホバー**してナビを出してからクリック |
+| **ヘッダーの「棚マスタ」が押せない** | 沉浸式レイアウトで **`pointer-events-none` + 非表示**。**画面右下24×24pxにホバー**してナビを出してからクリック |
 | **区画詳細に「レイアウト」タブが出ない** | `client-capabilities` の **`shelfLayoutEditEnabled: false`**。管理画面で **別 ClientDevice**（例 Zero2W のみ ON）を編集した、またはキオスクの **`x-client-key` と不一致** |
 | **管理で ON にしたのにレイアウトが出ない** | Mac/Cursor ブラウザの **`clientKey`** が編集した端末と違う（既定 Mac: **`client-key-mac-kiosk1`** — [`config.ts`](../../apps/web/src/lib/client-key/config.ts)。URL / localStorage に StoneBase 等が残る場合あり） |
 | **再割当で「—」をタップしても無反応** | **再割当モードの仕様** — SHELF 未配置マス。先に **レイアウト編集**で部品置き場を割当 |

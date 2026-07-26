@@ -2,6 +2,8 @@ export * from './AssemblyCompletedPane';
 export * from './AssemblyItemCard';
 export * from './AssemblyItemPane';
 export * from './AssemblyKeypad';
+export * from './AssemblyOperatorNfcDialog';
+export * from './AssemblyWorkUnitInvalidationDialog';
 export * from './AssemblyLotPane';
 export * from './AssemblyStartPane';
 export * from './AssemblyProcedureCanvas';

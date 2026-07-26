@@ -33,7 +33,7 @@ const KIOSK_ASSEMBLY_PREFIX = '/kiosk/assembly';
 /** パレット可視化: 左・右の独立スクロールのためビューポート高を `h-dvh` で固定する */
 const KIOSK_PALLET_VISUALIZATION_PREFIX = '/kiosk/pallet-visualization';
 
-/** 持出タブ系（TAG / PHOTO / 計測・吊具）— キオスクナビは下端中央1/3リビールに統一 */
+/** 持出タブ系（TAG / PHOTO / 計測・吊具）— キオスクナビは右下24×24pxリビールに統一 */
 const KIOSK_BORROW_IMMERSIVE_PATH_EXACT = [
   '/kiosk/tag',
   '/kiosk/photo',
@@ -48,10 +48,10 @@ const IMMERSIVE_PATH_EXACT = new Set<string>([
 ]);
 
 /**
- * キオスクで「下辺中央1/3ホバーでヘッダーを出す」沉浸式レイアウト（全画面 flex + main flex-1）を使うか。
+ * キオスクで「右下24×24pxホバーでヘッダーを出す」沉浸式レイアウト（全画面 flex + main flex-1）を使うか。
  *
  * - allowlist のみ（計画納期・通話などは含めない）。持出タブ（`/kiosk/tag`・`/kiosk/photo` 等）は下端リビールに統一。
- * - マウス操作前提。`useKioskBottomCenterHeaderReveal` と併用。
+ * - マウス操作前提。`useKioskBottomRightHeaderReveal` と併用。
  *
  * ルート追加時は本モジュールと `kioskImmersiveLayoutPolicy.test.ts` を更新する。
  */
