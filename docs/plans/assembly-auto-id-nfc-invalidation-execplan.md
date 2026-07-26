@@ -34,6 +34,7 @@ This plan follows `.agent/PLANS.md`.
 - [x] (2026-07-26) ユーザーからpush、PR、merge、本番migration、標準deploy、実機操作検証の明示承認を得た。
 - [x] (2026-07-26) featureブランチをpushし、ready PR #1091を作成した。
 - [x] (2026-07-26) CIのExpand-only指摘に従い、Lot作業者列のNOT NULL互換を維持する安全修正を検証した。
+- [x] (2026-07-26) npm Registryのgzip header障害をfail-openせず回避するbulk audit loopback proxyを追加・検証した。
 - [ ] 必須CIとレビュー結果を確認し、mainへmergeする。
 - [ ] merge SHAのCI成功後、標準ローリング更新のplanを確認して本番へ適用する。
 - [ ] deploy status、同一SHAのno-op plan、実機の組立/NFC/右下ホットゾーンを確認する。
@@ -91,6 +92,13 @@ This plan follows `.agent/PLANS.md`.
   Evidence: GitHub Actions run 30192377110 / deploy-contract job 89767892158。
   Consequence: 既存NOT NULL列は変更せず、未確定値は空文字で保存してAPI DTOで
   `null`へ正規化する。candidate migrationをローカル正本コマンドで再検証する。
+
+- Observation: PR #1091の全選択CIは成功したが、`workspace-quality`のpnpm 11.4
+  bulk auditだけが2回連続でgzip本文をJSONとして解析して失敗した。pnpm 11.17でも
+  ローカル再現し、npm bulk endpointは`Accept-Encoding: identity`なら正常なJSONを返した。
+  Evidence: GitHub Actions run 30192747172 attempts 1/2、およびローカルpnpm/curl probe。
+  Consequence: loopback限定のaudit proxyで公式bulk endpointへidentity指定で転送し、
+  advisory判定、critical fail-closed、high informational、3回retryは固定pnpmへ維持する。
 
 ## Decision Log
 
@@ -154,6 +162,9 @@ PR初回CIのExpand-only指摘後、既存Lot作業者列のNOT NULLを維持す
 修正版は一時PostgreSQLで全155 migration、status、組立統合29テストに成功し、
 API DTOの`null`とDB互換値の空文字を同時に確認した。不変コミット`08792edb`の
 candidate migration preflightと、ローカルdeploy-contract全体も成功した。
+pnpm bulk audit proxyは固定pnpm 11.4のcritical gateをローカルで成功させ、critical 0件、
+既存のhigh 3件は従来契約どおり情報警告として報告した。proxyのgzip自己テストと
+CI workflow契約テストも成功した。
 
 ## Context and Orientation
 
@@ -242,6 +253,7 @@ START、RESUME、invalidateはUUID requestIdで冪等化する。同じrequestId
     Expand-only compatibility fix: all 155 migrations and 29 assembly integration tests passed
     Candidate migration preflight: 08792edb passed
     Local deploy-contract: all checks passed
+    Pinned pnpm 11.4 bulk audit through loopback proxy: critical gate passed
     EXPLAIN execution: WIP 0.240ms, completed 0.191ms,
       lot serials 2.275ms, access 0.274ms, invalidation requestId 0.008ms,
       formal candidates 5.986ms
@@ -269,3 +281,5 @@ Revision note (2026-07-26): implementation、競合監査修正、直接照会�
 隔離DB/EXPLAIN、Node 22全検証とCI smokeの完了結果を記録した。
 同日のPR初回CI指摘によりLot作業者の物理NOT NULLを維持する互換方式へ変更し、
 candidate migration preflightとローカルdeploy-contractの成功を追記した。
+npm Registryのgzip header障害に対するfail-closed loopback proxyとローカルaudit成功も
+追記した。
