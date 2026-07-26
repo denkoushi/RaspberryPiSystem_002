@@ -12,6 +12,7 @@ import {
   PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID,
   SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL
 } from '../../services/production-schedule/constants.js';
+import { normalizeMachineNameForCompare } from '../../services/production-schedule/machine-name-compare.js';
 import { SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION } from '../../services/production-schedule/production-schedule-settings.service.js';
 import { createAuthHeader, createTestClientDevice, createTestEmployee, createTestUser } from './helpers.js';
 
@@ -123,6 +124,32 @@ async function uploadPublishedProcedureDocument(
   expect(document.pages.length).toBeGreaterThan(0);
   await publishProcedureDocument(app, headers, document.id);
   return document;
+}
+
+async function seedLegacyProcedureOrder(
+  machineName: string,
+  items: Array<{
+    kioskDocumentId?: string | null;
+    assemblyProcedureDocumentId?: string | null;
+    label?: string | null;
+  }>
+): Promise<void> {
+  const machineNameKey = normalizeMachineNameForCompare(machineName);
+  const set = await prisma.assemblyProcedureOrderSet.upsert({
+    where: { machineNameKey },
+    create: { machineName: machineNameKey, machineNameKey },
+    update: { machineName: machineNameKey }
+  });
+  await prisma.assemblyProcedureOrderItem.deleteMany({ where: { setId: set.id } });
+  await prisma.assemblyProcedureOrderItem.createMany({
+    data: items.map((item, sortOrder) => ({
+      setId: set.id,
+      sortOrder,
+      label: item.label ?? null,
+      kioskDocumentId: item.kioskDocumentId ?? null,
+      assemblyProcedureDocumentId: item.assemblyProcedureDocumentId ?? null
+    }))
+  });
 }
 
 async function cleanAssemblyTables() {
@@ -1374,13 +1401,13 @@ describe('assembly torque management API', () => {
     });
   });
 
-  it('verifies the shared 2520 password before assembly procedure order settings', async () => {
+  it('verifies the shared 2520 password for template editing and removes legacy order APIs', async () => {
     const client = await createTestClientDevice();
     const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
 
     const failed = await app.inject({
       method: 'POST',
-      url: '/api/kiosk/assembly/procedure-order-settings/verify-access-password',
+      url: '/api/kiosk/assembly/templates/verify-access-password',
       headers,
       payload: { password: '0000' }
     });
@@ -1389,12 +1416,35 @@ describe('assembly torque management API', () => {
 
     const succeeded = await app.inject({
       method: 'POST',
-      url: '/api/kiosk/assembly/procedure-order-settings/verify-access-password',
+      url: '/api/kiosk/assembly/templates/verify-access-password',
       headers,
       payload: { password: '2520' }
     });
     expect(succeeded.statusCode).toBe(200);
     expect(succeeded.json()).toEqual({ success: true });
+
+    const removedAuth = await app.inject({
+      method: 'POST',
+      url: '/api/kiosk/assembly/procedure-order-settings/verify-access-password',
+      headers,
+      payload: { password: '2520' }
+    });
+    expect(removedAuth.statusCode).toBe(404);
+
+    const removedRead = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/procedure-orders?machineName=MH-AX',
+      headers
+    });
+    expect(removedRead.statusCode).toBe(404);
+
+    const removedWrite = await app.inject({
+      method: 'PUT',
+      url: '/api/assembly/procedure-orders',
+      headers,
+      payload: { machineName: 'MH-AX', accessPassword: '2520', items: [] }
+    });
+    expect(removedWrite.statusCode).toBe(404);
   });
 
   it('creates one immutable template version with document sequence, areas and markers', async () => {
@@ -1428,21 +1478,11 @@ describe('assembly torque management API', () => {
       '要領書PDFは既存の閲覧順からのみ引き継げます'
     );
 
-    const legacyOrder = await app.inject({
-      method: 'PUT',
-      url: '/api/assembly/procedure-orders',
-      headers,
-      payload: {
-        machineName: 'UNIFIED-001',
-        accessPassword: '2520',
-        items: [
-          { kioskDocumentId: kiosk.id, label: '準備' },
-          { assemblyProcedureDocumentId: primary.id, label: '主工程' },
-          { assemblyProcedureDocumentId: secondary.id, label: '確認' }
-        ]
-      }
-    });
-    expect(legacyOrder.statusCode).toBe(200);
+    await seedLegacyProcedureOrder('UNIFIED-001', [
+      { kioskDocumentId: kiosk.id, label: '準備' },
+      { assemblyProcedureDocumentId: primary.id, label: '主工程' },
+      { assemblyProcedureDocumentId: secondary.id, label: '確認' }
+    ]);
 
     const wrongPassword = await app.inject({
       method: 'POST',
@@ -1535,20 +1575,10 @@ describe('assembly torque management API', () => {
     const primary = await uploadPublishedProcedureDocument(app, headers, '固定版 主手順書');
     const kioskV1 = await createKioskDocumentWithRenderedPages({ title: '固定版V1', pageCount: 1 });
     const kioskV2 = await createKioskDocumentWithRenderedPages({ title: '固定版V2', pageCount: 1 });
-    const initialLegacyOrder = await app.inject({
-      method: 'PUT',
-      url: '/api/assembly/procedure-orders',
-      headers,
-      payload: {
-        machineName: 'IMMUTABLE-001',
-        accessPassword: '2520',
-        items: [
-          { assemblyProcedureDocumentId: primary.id, label: '主工程' },
-          { kioskDocumentId: kioskV1.id, label: 'V1 PDF' }
-        ]
-      }
-    });
-    expect(initialLegacyOrder.statusCode).toBe(200);
+    await seedLegacyProcedureOrder('IMMUTABLE-001', [
+      { assemblyProcedureDocumentId: primary.id, label: '主工程' },
+      { kioskDocumentId: kioskV1.id, label: 'V1 PDF' }
+    ]);
     const createV1 = await app.inject({
       method: 'POST',
       url: '/api/assembly/templates',
@@ -1584,20 +1614,10 @@ describe('assembly torque management API', () => {
     });
     expect(started.statusCode).toBe(200);
 
-    const prepareV2LegacyOrder = await app.inject({
-      method: 'PUT',
-      url: '/api/assembly/procedure-orders',
-      headers,
-      payload: {
-        machineName: 'IMMUTABLE-001',
-        accessPassword: '2520',
-        items: [
-          { assemblyProcedureDocumentId: primary.id, label: '主工程' },
-          { kioskDocumentId: kioskV2.id, label: 'V2 PDF' }
-        ]
-      }
-    });
-    expect(prepareV2LegacyOrder.statusCode).toBe(200);
+    await seedLegacyProcedureOrder('IMMUTABLE-001', [
+      { assemblyProcedureDocumentId: primary.id, label: '主工程' },
+      { kioskDocumentId: kioskV2.id, label: 'V2 PDF' }
+    ]);
 
     const revised = await app.inject({
       method: 'POST',
@@ -1615,17 +1635,9 @@ describe('assembly torque management API', () => {
     });
     expect(revised.statusCode).toBe(200);
 
-    const changedLegacyOrder = await app.inject({
-      method: 'PUT',
-      url: '/api/assembly/procedure-orders',
-      headers,
-      payload: {
-        machineName: 'IMMUTABLE-001',
-        accessPassword: '2520',
-        items: [{ kioskDocumentId: kioskV2.id, label: '後日設定' }]
-      }
-    });
-    expect(changedLegacyOrder.statusCode).toBe(200);
+    await seedLegacyProcedureOrder('IMMUTABLE-001', [
+      { kioskDocumentId: kioskV2.id, label: '後日設定' }
+    ]);
 
     const sequence = await app.inject({
       method: 'GET',
@@ -1646,20 +1658,10 @@ describe('assembly torque management API', () => {
     const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
     const primary = await uploadPublishedProcedureDocument(app, headers, '競合 主手順書');
     const kiosk = await createKioskDocumentWithRenderedPages({ title: '競合PDF', pageCount: 1 });
-    const legacyOrder = await app.inject({
-      method: 'PUT',
-      url: '/api/assembly/procedure-orders',
-      headers,
-      payload: {
-        machineName: 'UNIFIED-LOCK',
-        accessPassword: '2520',
-        items: [
-          { assemblyProcedureDocumentId: primary.id },
-          { kioskDocumentId: kiosk.id }
-        ]
-      }
-    });
-    expect(legacyOrder.statusCode).toBe(200);
+    await seedLegacyProcedureOrder('UNIFIED-LOCK', [
+      { assemblyProcedureDocumentId: primary.id },
+      { kioskDocumentId: kiosk.id }
+    ]);
     const payload = buildTemplatePayload(primary.id, {
       modelCode: 'UNIFIED-LOCK',
       procedurePattern: '標準',
@@ -1759,7 +1761,7 @@ describe('assembly torque management API', () => {
     ).toBe(1);
   });
 
-  it('saves procedure order settings with password verification and resolves a work-session page sequence', async () => {
+  it('reads the retained legacy sequence internally for an unversioned work session', async () => {
     const client = await createTestClientDevice();
     const headers = { 'x-client-key': client.apiKey };
 
@@ -1786,51 +1788,9 @@ describe('assembly torque management API', () => {
     const docX = await createKioskDocumentWithRenderedPages({ title: 'X軸', pageCount: 2 });
     const docY = await createKioskDocumentWithRenderedPages({ title: 'Y軸', pageCount: 1 });
 
-    const wrongPassword = await app.inject({
-      method: 'PUT',
-      url: '/api/assembly/procedure-orders',
-      headers: { ...headers, 'Content-Type': 'application/json' },
-      payload: {
-        machineName: 'ｍｈ－ａｘ',
-        accessPassword: '0000',
-        items: [{ kioskDocumentId: docX.id, label: 'X軸' }]
-      }
-    });
-    expect(wrongPassword.statusCode).toBe(403);
-
-    const saved = await app.inject({
-      method: 'PUT',
-      url: '/api/assembly/procedure-orders',
-      headers: { ...headers, 'Content-Type': 'application/json' },
-      payload: {
-        machineName: 'ｍｈ－ａｘ',
-        accessPassword: '2520',
-        items: [
-          { kioskDocumentId: docY.id, label: 'Y軸' },
-          { kioskDocumentId: docX.id, label: 'X軸-1' }
-        ]
-      }
-    });
-    expect(saved.statusCode).toBe(200);
-    expect(saved.json().order).toMatchObject({
-      machineName: 'MH-AX',
-      machineNameKey: 'MH-AX',
-      configured: true
-    });
-    expect(saved.json().order.items.map((item: { label: string; kioskDocumentId: string; sortOrder: number }) => item)).toEqual([
-      expect.objectContaining({ kioskDocumentId: docY.id, label: 'Y軸', sortOrder: 0 }),
-      expect.objectContaining({ kioskDocumentId: docX.id, label: 'X軸-1', sortOrder: 1 })
-    ]);
-
-    const fetched = await app.inject({
-      method: 'GET',
-      url: '/api/assembly/procedure-orders?machineName=mh-ax',
-      headers
-    });
-    expect(fetched.statusCode).toBe(200);
-    expect(fetched.json().order.items.map((item: { kioskDocumentId: string }) => item.kioskDocumentId)).toEqual([
-      docY.id,
-      docX.id
+    await seedLegacyProcedureOrder('ｍｈ－ａｘ', [
+      { kioskDocumentId: docY.id, label: 'Y軸' },
+      { kioskDocumentId: docX.id, label: 'X軸-1' }
     ]);
 
     const startRes = await app.inject({
@@ -1916,22 +1876,14 @@ describe('assembly torque management API', () => {
     });
   });
 
-  it('rejects deleting a KioskDocument while it is used by an assembly procedure order', async () => {
+  it('protects KioskDocument rows retained by an internal legacy sequence', async () => {
     const client = await createTestClientDevice();
     const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
     const doc = await createKioskDocumentWithRenderedPages({ title: '削除保護', pageCount: 1 });
 
-    const saved = await app.inject({
-      method: 'PUT',
-      url: '/api/assembly/procedure-orders',
-      headers,
-      payload: {
-        machineName: 'MH-LOCK',
-        accessPassword: '2520',
-        items: [{ kioskDocumentId: doc.id, label: '保護対象' }]
-      }
-    });
-    expect(saved.statusCode).toBe(200);
+    await seedLegacyProcedureOrder('MH-LOCK', [
+      { kioskDocumentId: doc.id, label: '保護対象' }
+    ]);
 
     const admin = await createTestUser('ADMIN');
     const deleted = await app.inject({
@@ -1945,7 +1897,7 @@ describe('assembly torque management API', () => {
     });
   });
 
-  it('saves assembly procedure documents in procedure order settings and resolves them in work-session sequence', async () => {
+  it('resolves retained assembly-document legacy items in a work-session sequence', async () => {
     const client = await createTestClientDevice();
     const headers = { 'x-client-key': client.apiKey };
 
@@ -1973,41 +1925,9 @@ describe('assembly torque management API', () => {
     expect(templateRes.statusCode).toBe(200);
     const templateId = templateRes.json().template.id as string;
 
-    const saved = await app.inject({
-      method: 'PUT',
-      url: '/api/assembly/procedure-orders',
-      headers: { ...headers, 'Content-Type': 'application/json' },
-      payload: {
-        machineName: 'MH-AX',
-        accessPassword: '2520',
-        items: [{ assemblyProcedureDocumentId: procedureDocument.id, label: '組立手順' }]
-      }
-    });
-    expect(saved.statusCode).toBe(200);
-    expect(saved.json().order.items).toEqual([
-      expect.objectContaining({
-        documentType: 'assembly_procedure_document',
-        assemblyProcedureDocumentId: procedureDocument.id,
-        kioskDocumentId: null,
-        label: '組立手順',
-        document: expect.objectContaining({
-          documentType: 'assembly_procedure_document',
-          title: procedureDocument.name,
-          imageRelativePath: procedureDocument.imageRelativePath
-        })
-      })
+    await seedLegacyProcedureOrder('MH-AX', [
+      { assemblyProcedureDocumentId: procedureDocument.id, label: '組立手順' }
     ]);
-
-    const fetched = await app.inject({
-      method: 'GET',
-      url: '/api/assembly/procedure-orders?machineName=MH-AX',
-      headers
-    });
-    expect(fetched.statusCode).toBe(200);
-    expect(fetched.json().order.items[0]).toMatchObject({
-      assemblyProcedureDocumentId: procedureDocument.id,
-      documentType: 'assembly_procedure_document'
-    });
 
     const startRes = await app.inject({
       method: 'POST',
@@ -2056,7 +1976,7 @@ describe('assembly torque management API', () => {
     ]);
   });
 
-  it('rejects deleting an AssemblyProcedureDocument while it is used by an assembly procedure order', async () => {
+  it('protects an AssemblyProcedureDocument retained by an internal legacy sequence', async () => {
     const client = await createTestClientDevice();
     const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
 
@@ -2071,17 +1991,9 @@ describe('assembly torque management API', () => {
     const procedureDocumentId = procedureDocRes.json().document.id as string;
     await publishProcedureDocument(app, headers, procedureDocumentId);
 
-    const saved = await app.inject({
-      method: 'PUT',
-      url: '/api/assembly/procedure-orders',
-      headers,
-      payload: {
-        machineName: 'MH-LOCK-PROC',
-        accessPassword: '2520',
-        items: [{ assemblyProcedureDocumentId: procedureDocumentId, label: '保護対象' }]
-      }
-    });
-    expect(saved.statusCode).toBe(200);
+    await seedLegacyProcedureOrder('MH-LOCK-PROC', [
+      { assemblyProcedureDocumentId: procedureDocumentId, label: '保護対象' }
+    ]);
 
     const deleted = await app.inject({
       method: 'DELETE',
@@ -2090,38 +2002,8 @@ describe('assembly torque management API', () => {
     });
     expect(deleted.statusCode).toBe(409);
     expect(deleted.json()).toMatchObject({
-      message: '組立の閲覧順設定で使用中の手順書は削除できません'
+      message: 'テンプレートで使用中の手順書は削除できません'
     });
-  });
-
-  it('rejects procedure order items that specify both or neither document reference', async () => {
-    const client = await createTestClientDevice();
-    const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
-    const doc = await createKioskDocumentWithRenderedPages({ title: '両方指定', pageCount: 1 });
-
-    const both = await app.inject({
-      method: 'PUT',
-      url: '/api/assembly/procedure-orders',
-      headers,
-      payload: {
-        machineName: 'MH-INVALID',
-        accessPassword: '2520',
-        items: [{ kioskDocumentId: doc.id, assemblyProcedureDocumentId: doc.id, label: 'invalid' }]
-      }
-    });
-    expect(both.statusCode).toBe(400);
-
-    const neither = await app.inject({
-      method: 'PUT',
-      url: '/api/assembly/procedure-orders',
-      headers,
-      payload: {
-        machineName: 'MH-INVALID',
-        accessPassword: '2520',
-        items: [{ label: 'invalid' }]
-      }
-    });
-    expect(neither.statusCode).toBe(400);
   });
 
   it('approves completed assembly work session records via NFC and exposes approval in summary/detail', async () => {
@@ -2354,18 +2236,6 @@ describe('assembly torque management API', () => {
       });
       expect(unpublishInUse.statusCode).toBe(409);
 
-      const orderSaveDraft = await app.inject({
-        method: 'PUT',
-        url: '/api/assembly/procedure-orders',
-        headers,
-        payload: {
-          machineName: 'UWF-P2',
-          accessPassword: '2520',
-          items: [{ assemblyProcedureDocumentId: draftDocumentId, label: '下書き' }]
-        }
-      });
-      expect(orderSaveDraft.statusCode).toBe(400);
-
       const unpublishUnused = await app.inject({
         method: 'POST',
         url: `/api/assembly/procedure-documents/${draftDocumentId}/unpublish`,
@@ -2515,16 +2385,9 @@ describe('assembly torque management API', () => {
       });
       const templateId = templateRes.json().template.id as string;
 
-      await app.inject({
-        method: 'PUT',
-        url: '/api/assembly/procedure-orders',
-        headers,
-        payload: {
-          machineName: 'UWF-SEQ',
-          accessPassword: '2520',
-          items: [{ assemblyProcedureDocumentId: publishedDoc.id, label: '公開' }]
-        }
-      });
+      await seedLegacyProcedureOrder('UWF-SEQ', [
+        { assemblyProcedureDocumentId: publishedDoc.id, label: '公開' }
+      ]);
 
       const orderSet = await prisma.assemblyProcedureOrderSet.findUnique({
         where: { machineNameKey: 'UWF-SEQ' }

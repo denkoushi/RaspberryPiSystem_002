@@ -3,10 +3,6 @@ import type { AssemblyTorqueTraceabilityMode } from '@raspi-system/shared-types'
 import type { Prisma } from '@prisma/client';
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
-import {
-  SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
-  verifyDueManagementAccessPassword
-} from '../production-schedule/production-schedule-settings.service.js';
 import { TorqueUnitConverter, normalizeFastenerText } from '../torque-wrenches/index.js';
 import {
   assertMarkerPageRefValid,
@@ -24,6 +20,7 @@ import {
   type AssemblyTemplateProcedureSequence,
   type NormalizedAssemblyTemplateProcedureItem
 } from './assembly-template-procedure-sequence.service.js';
+import { AssemblyTemplateAccessService } from './assembly-template-access.service.js';
 import { runAssemblyTransaction } from './assembly-transaction.js';
 
 const procedureDocumentInclude = {
@@ -420,19 +417,10 @@ function assertMarkersBelongToProcedureSequence(
   }
 }
 
-async function requireTemplateProcedureAccessPassword(password: string | undefined): Promise<void> {
-  const result = await verifyDueManagementAccessPassword({
-    location: SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
-    password: password ?? ''
-  });
-  if (!result.success) {
-    throw new ApiError(403, '組立テンプレート編集パスワードが違います');
-  }
-}
-
 export class AssemblyTemplateService {
   constructor(
-    private readonly procedureSequenceService = new AssemblyTemplateProcedureSequenceService()
+    private readonly procedureSequenceService = new AssemblyTemplateProcedureSequenceService(),
+    private readonly accessService = new AssemblyTemplateAccessService()
   ) {}
 
   async list(params: {
@@ -660,7 +648,7 @@ export class AssemblyTemplateService {
         ? null
         : normalizeAssemblyTemplateProcedureItems(input.procedureDocumentId, input.procedureItems);
     if (procedureItems && options.requireProcedurePassword !== false) {
-      await requireTemplateProcedureAccessPassword(input.accessPassword);
+      await this.accessService.requireAccessPassword(input.accessPassword);
     }
     const normalizedAreas = normalizeAreas(input.areas, traceabilityMode);
     const areas = procedureItems

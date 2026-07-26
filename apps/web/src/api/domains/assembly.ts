@@ -6,8 +6,6 @@ import type {
   AssemblyProcedureDocumentDto,
   AssemblyProcedureDocumentSummaryDto,
   AssemblyProcedureGmailImportResultDto,
-  AssemblyProcedureOrderDto,
-  AssemblyProcedureOrderSaveInput,
   AssemblyProcedureSequenceDto,
   AssemblyLotCreateInput,
   AssemblyLotSummaryDto,
@@ -50,25 +48,12 @@ export async function resolveAssemblyOperatorNfc(uid: string) {
   return data;
 }
 
-export async function verifyAssemblyProcedureOrderAccessPassword(payload: { password: string }) {
+export async function verifyAssemblyTemplateAccessPassword(payload: { password: string }) {
   const { data } = await api.post<{ success: boolean }>(
-    '/kiosk/assembly/procedure-order-settings/verify-access-password',
+    '/kiosk/assembly/templates/verify-access-password',
     payload
   );
   return data;
-}
-
-export async function getAssemblyProcedureOrder(machineName: string) {
-  const qs = new URLSearchParams({ machineName });
-  const { data } = await api.get<{ order: AssemblyProcedureOrderDto }>(
-    `/assembly/procedure-orders?${qs.toString()}`
-  );
-  return data.order;
-}
-
-export async function saveAssemblyProcedureOrder(payload: AssemblyProcedureOrderSaveInput) {
-  const { data } = await api.put<{ order: AssemblyProcedureOrderDto }>('/assembly/procedure-orders', payload);
-  return data.order;
 }
 
 export async function getAssemblyWorkSessionProcedureSequence(sessionId: string) {

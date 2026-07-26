@@ -77,7 +77,7 @@ async function mockKioskApis(page: Page, deployNotice = false): Promise<void> {
       await route.fulfill({ json: { documents: unifiedEditorDocuments } });
       return;
     }
-    if (path.includes('/kiosk/assembly/procedure-order-settings/verify-access-password')) {
+    if (path.includes('/kiosk/assembly/templates/verify-access-password')) {
       await route.fulfill({ json: { success: true } });
       return;
     }

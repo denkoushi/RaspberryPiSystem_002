@@ -115,7 +115,7 @@ export type AssemblyTemplateDto = {
   procedureDocument: AssemblyProcedureDocumentDto;
   procedureSequence?: {
     source: 'template_version' | 'legacy_machine_order' | 'primary_fallback';
-    items: AssemblyProcedureOrderItemDto[];
+    items: AssemblyProcedureSequenceItemDto[];
   };
   areas: AssemblyTemplateAreaDto[];
   checkItems: AssemblyTemplateCheckItemDto[];
@@ -347,7 +347,7 @@ export type AssemblyLotSummaryDto = {
   serials: AssemblyLotSerialDto[];
 };
 
-export type AssemblyProcedureOrderDocumentDto = {
+export type AssemblyProcedureSequenceDocumentSummaryDto = {
   id: string;
   documentType: 'kiosk_document' | 'assembly_procedure_document';
   title: string;
@@ -361,32 +361,14 @@ export type AssemblyProcedureOrderDocumentDto = {
   imageRelativePath: string | null;
 };
 
-export type AssemblyProcedureOrderItemDto = {
+export type AssemblyProcedureSequenceItemDto = {
   id: string;
   sortOrder: number;
   label: string | null;
   documentType: 'kiosk_document' | 'assembly_procedure_document';
   kioskDocumentId: string | null;
   assemblyProcedureDocumentId: string | null;
-  document: AssemblyProcedureOrderDocumentDto;
-};
-
-export type AssemblyProcedureOrderDto = {
-  id: string | null;
-  machineName: string;
-  machineNameKey: string;
-  configured: boolean;
-  items: AssemblyProcedureOrderItemDto[];
-};
-
-export type AssemblyProcedureOrderSaveInput = {
-  machineName: string;
-  accessPassword: string;
-  items: Array<{
-    kioskDocumentId?: string | null;
-    assemblyProcedureDocumentId?: string | null;
-    label?: string | null;
-  }>;
+  document: AssemblyProcedureSequenceDocumentSummaryDto;
 };
 
 export type AssemblyProcedureSequencePageDto = {

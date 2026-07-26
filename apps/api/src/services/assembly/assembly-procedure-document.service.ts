@@ -285,7 +285,9 @@ export class AssemblyProcedureDocumentService {
   }
 
   buildInUseMessage(usage: AssemblyProcedureDocumentReferenceUsage): string {
-    if (usage.inProcedureOrder) return '組立の閲覧順設定で使用中の手順書は公開取り消しできません';
+    if (usage.inProcedureOrder) {
+      return '旧形式テンプレートの互換手順書列で使用中の手順書は公開取り消しできません';
+    }
     if (usage.inActiveTemplateProcedureSequence) {
       return '有効なテンプレートの文書順で使用中の手順書は公開取り消しできません';
     }

@@ -1,7 +1,7 @@
 ---
 id: assembly-unified-template-editor-execplan
 title: 組立テンプレート・閲覧順統合エディター
-status: completed
+status: active
 last_verified: 2026-07-26
 ---
 
@@ -24,6 +24,10 @@ This ExecPlan is a living document and must be maintained in accordance with
 - [x] (2026-07-26) 統合エディター、共通未保存guard、旧導線redirectを実装した。
 - [x] (2026-07-26) API全2444件、Web全1511件、Playwright 10件、隔離PostgreSQL上の全154 migration、制約、参照整合性、実行計画を検証した。
 - [x] (2026-07-26) local commit後に`validate-candidate-migrations.sh origin/main HEAD`を実行し、既存153 migrationのchecksumと新規migrationのExpand-only契約が成功することを確認した。
+- [x] (2026-07-26) ユーザー承認により、旧閲覧順APIの完全削除、push、PR merge、本番デプロイをfollow-up scopeへ追加した。
+- [x] (2026-07-26) 旧GET/PUT/auth API、旧Web client/pageを削除し、既存DB行の内部read-only fallbackだけを残した。旧3 endpointの404、新template認証、隔離PostgreSQL上のAPI全2443件、Web全1509件、Playwright 10件を再検証した。
+- [ ] feature branchをpushし、PRの必須CI成功後にmainへmergeする。
+- [ ] 標準オーケストレーターで本番へローリング反映し、status、health、同一SHAのno-op planを確認する。
 
 ## Surprises & Discoveries
 
@@ -50,6 +54,8 @@ This ExecPlan is a living document and must be maintained in accordance with
   Rationale: 旧データを失わず、新規追加元を公開済み・有効な組立手順書に限定するAPI境界を守るため。
 - Decision: 画面の状態更新は純粋なdraft reducer、取得処理はloader、文書ライブラリと文書順ペインは表示コンポーネント、離脱保護は共通hookへ分割する。
   Rationale: 保存transactionを担うAPIと同様に、Webでも取得、状態遷移、表示、ナビゲーション保護を疎結合にして再利用と単体試験を可能にするため。
+- Decision: 機種名別閲覧順の外部GET/PUT/auth APIは削除し、既存DB行はread-only compatibility adapterからだけ読む。
+  Rationale: 統合後に二つの書込正本を残さず、未改版templateの作業継続と本番データ保護を両立するため。
 
 ## Outcomes & Retrospective
 
@@ -57,13 +63,15 @@ This ExecPlan is a living document and must be maintained in accordance with
 
 Webは単一文書で左ペインを閉じ、複数文書で開く統合画面になった。1366x768では単一文書・マーカー未選択時にcanvas比率80%以上、両ペイン表示時に55%以上を実ブラウザで確認した。旧閲覧順URLは対象機種で絞ったテンプレート一覧へ転送され、組立トップの独立導線は削除した。
 
-最終ソースに対し、API 464 test filesの2444 tests、Web 305 test filesの1511 tests、Playwright 10 testsが成功した。固有名の一時`pgvector/pgvector:pg16`環境では、既存テンプレート行を投入して153 migrationから154 migrationへupgradeし、既存行を変更しないことを確認した。XOR CHECK、順序一意、文書削除RESTRICT、テンプレート削除CASCADEが機能し、`AssemblyTemplateProcedureItem_unique_template_sort`、`AssemblyTemplateProcedureItem_idx_kiosk_document`、`AssemblyTemplateProcedureItem_idx_assembly_document`が各検索の実行計画で使われた。一時container、volume、networkはtrapによる終了処理後に0件である。
+統合機能の初回最終ソースに対し、API 464 test filesの2444 tests、Web 305 test filesの1511 tests、Playwright 10 testsが成功した。固有名の一時`pgvector/pgvector:pg16`環境では、既存テンプレート行を投入して153 migrationから154 migrationへupgradeし、既存行を変更しないことを確認した。XOR CHECK、順序一意、文書削除RESTRICT、テンプレート削除CASCADEが機能し、`AssemblyTemplateProcedureItem_unique_template_sort`、`AssemblyTemplateProcedureItem_idx_kiosk_document`、`AssemblyTemplateProcedureItem_idx_assembly_document`が各検索の実行計画で使われた。一時container、volume、networkはtrapによる終了処理後に0件である。
 
-計画した実装とローカル検証は完了した。本番デプロイと旧閲覧順APIの完全削除は当初どおり対象外である。
+follow-upでは、旧`GET/PUT /assembly/procedure-orders`と旧認証endpointを公開routeから完全に削除し、新しいtemplate認証endpointへ置き換えた。旧Web clientと独立設定pageも削除した。隔離PostgreSQLへ全154 migrationを適用した状態でAPI 464 test filesの2443 testsが成功し、旧3 endpointの404と既存DB行からの内部fallbackを同時に確認した。Web 304 test filesの1509 tests、Playwright 10 tests、API/Web lint・build、docs auditも成功した。検証用container、volume、networkは終了後に0件である。
+
+初回計画の実装とローカル検証は完了した。2026-07-26の追加承認により、旧閲覧順API削除と本番反映をfollow-upとして実行中である。
 
 ## Context and Orientation
 
-中心となる既存実装は、APIの`assembly-template.service.ts`、`assembly-procedure-order.service.ts`、`assembly-procedure-sequence.service.ts`、Webの`KioskAssemblyTemplateEditorPage.tsx`と`KioskAssemblyProcedureOrderSettingsPage.tsx`である。`AssemblyTemplate`は版管理されるが、`AssemblyProcedureOrderSet`は機種名単位で可変である。新規テーブルを両者の互換境界として追加し、旧order serviceはfallback adapterとして残す。
+中心となる実装は、APIの`assembly-template.service.ts`、`assembly-template-procedure-sequence.service.ts`、`assembly-procedure-sequence.service.ts`、`assembly-legacy-procedure-order.service.ts`と、Webの`KioskAssemblyTemplateEditorPage.tsx`である。`AssemblyTemplateProcedureItem`が新しい正本であり、`AssemblyProcedureOrderSet`は外部書込を持たない既存行専用fallbackである。
 
 ## Plan of Work
 
@@ -74,6 +82,8 @@ Webは単一文書で左ペインを閉じ、複数文書で開く統合画面�
 5. editor draftと表示部品を分割し、認証、文書追加・並替え・削除、折畳ペイン、一括保存、未保存guardを実装する。
 6. 旧閲覧順画面をテンプレート一覧redirectへ置換し、組立トップの独立導線を削除する。
 7. Unit/API/E2Eと隔離PostgreSQLでmigration、制約、EXPLAINを検証する。
+8. 旧機種名別orderのGET/PUT/auth routeとWeb client/pageを削除する。read-only adapter、既存参照削除guard、旧URL redirectは残す。
+9. 必須CI成功後にmainへmergeし、`scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml`だけを使って本番へ反映する。
 
 ## Concrete Steps
 
@@ -94,6 +104,9 @@ Repository root:
 - 参照外マーカー、無効/下書き文書、XOR違反、stale reviseは拒否され、active版は変化しない。
 - 1366x768の単一文書・マーカー未選択でcanvas workspace幅80%以上、両ペイン表示でも55%以上を確保する。
 - API/Web lint・build・全test、対象Playwright、candidate migration validatorが成功する。
+- 旧GET/PUT/auth APIが404になり、新しいtemplate認証APIが2520を検証する。
+- 未改版templateは既存機種名別DB行を内部fallbackとして引き続き解決できる。
+- mainの必須CI成功後、標準deploy runがsuccess、全対象hostがverified、再planがno-opになる。
 
 ## Idempotence and Recovery
 
@@ -109,6 +122,6 @@ Migrationは新規テーブル作成のみで再実行可能なPrisma ledgerへ�
 - Extended template input: `procedureItems`, `accessPassword`
 - Extended template output: `procedureSequence`, summary `procedureItemCount`
 - Sequence source: `template_version | legacy_machine_order | primary_fallback`
-- Existing `procedureDocumentId`, legacy procedure-order API, work-session response fields remain compatible.
+- Existing `procedureDocumentId` and work-session response fields remain compatible. The legacy procedure-order API is removed; only the read-only internal fallback for pre-migration templates remains.
 
-Revision note (2026-07-26): 実装結果、API境界で見つかったKiosk文書引継ぎ条件、Prisma advisory lockの実装上の注意、実ブラウザで補ったページ移動、全テストと隔離DB検証の証跡を反映した。local commit後のcandidate migration validator成功を記録し、計画を完了状態にした。
+Revision note (2026-07-26): 実装結果、API境界で見つかったKiosk文書引継ぎ条件、Prisma advisory lockの実装上の注意、実ブラウザで補ったページ移動、全テストと隔離DB検証の証跡を反映した。その後のユーザー承認に基づき旧API削除、push、merge、本番ローリング反映をfollow-up scopeへ追加し、計画を再度activeにした。

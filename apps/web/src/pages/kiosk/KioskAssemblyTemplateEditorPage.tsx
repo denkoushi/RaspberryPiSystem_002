@@ -7,7 +7,7 @@ import {
   getKioskDocumentDetail,
   listCompatibleTorqueWrenchCapabilityGroups,
   reviseAssemblyTemplate,
-  verifyAssemblyProcedureOrderAccessPassword
+  verifyAssemblyTemplateAccessPassword
 } from '../../api/client';
 import { Button, buttonClassName } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -398,7 +398,7 @@ export function KioskAssemblyTemplateEditorPage() {
     setBusy(true);
     setMessage(null);
     try {
-      const result = await verifyAssemblyProcedureOrderAccessPassword({ password: passwordInput });
+      const result = await verifyAssemblyTemplateAccessPassword({ password: passwordInput });
       if (!result.success) {
         setMessage('パスワードが違います。');
         return;

@@ -30,7 +30,7 @@ export * from './domains/torque-wrenches';
 export type {
   AssemblyProcedureDocumentDto,
   AssemblyProcedureDocumentSummaryDto,
-  AssemblyProcedureOrderDto,
+  AssemblyProcedureSequenceItemDto,
   AssemblyProcedureSequenceDto,
   AssemblyLotSummaryDto,
   AssemblySeibanCandidateDto,

@@ -10,8 +10,8 @@ import type {
 import type {
   AssemblyProcedureDocumentDto,
   AssemblyProcedureDocumentSummaryDto,
-  AssemblyProcedureOrderDocumentDto,
-  AssemblyProcedureOrderItemDto,
+  AssemblyProcedureSequenceDocumentSummaryDto,
+  AssemblyProcedureSequenceItemDto,
   AssemblyTemplateDto
 } from './types';
 
@@ -21,7 +21,7 @@ export type AssemblyTemplateProcedureDraftItem = {
   kioskDocumentId: string | null;
   assemblyProcedureDocumentId: string | null;
   label: string;
-  document: AssemblyProcedureOrderDocumentDto;
+  document: AssemblyProcedureSequenceDocumentSummaryDto;
 };
 
 export type AssemblyTemplateMarkerDocumentRef = {
@@ -68,7 +68,9 @@ export function assemblyProcedureDocumentToDraftItem(
   };
 }
 
-function orderItemToDraft(item: AssemblyProcedureOrderItemDto): AssemblyTemplateProcedureDraftItem {
+function sequenceItemToDraft(
+  item: AssemblyProcedureSequenceItemDto
+): AssemblyTemplateProcedureDraftItem {
   return {
     localId: createLocalId(item.id),
     documentType: item.documentType,
@@ -83,7 +85,7 @@ export function templateToProcedureDraftItems(
   template: AssemblyTemplateDto
 ): AssemblyTemplateProcedureDraftItem[] {
   const effectiveItems = template.procedureSequence?.items ?? [];
-  if (effectiveItems.length > 0) return effectiveItems.map(orderItemToDraft);
+  if (effectiveItems.length > 0) return effectiveItems.map(sequenceItemToDraft);
   return [assemblyProcedureDocumentToDraftItem(template.procedureDocument)];
 }
 

@@ -1,16 +1,15 @@
 # ADR-20260707: Assembly Procedure Order Scoped to Assembly Library Documents
 
-- Status: accepted; procedure-order ownership and standalone settings UI partially superseded on 2026-07-26
+- Status: superseded on 2026-07-26
 - Date: 2026-07-07
-- Superseded (partial): [ADR-20260726-assembly-template-owned-procedure-sequence](./ADR-20260726-assembly-template-owned-procedure-sequence.md) — new template versions own their ordered document sequence; the machine-name order remains only as a compatibility fallback/API
+- Superseded by: [ADR-20260726-assembly-template-owned-procedure-sequence](./ADR-20260726-assembly-template-owned-procedure-sequence.md) — template versions own their ordered document sequence; machine-name rows remain only as an internal read-only fallback
 - Scope: kiosk assembly procedure order settings (`/kiosk/assembly/procedure-order-settings`), assembly work session procedure sequence, assembly library page, assembly home page
 - related_code:
   - `apps/api/prisma/migrations/20260707035701_assembly_procedure_order_item_assembly_document/migration.sql`
-  - `apps/api/src/services/assembly/assembly-procedure-order.service.ts`
+  - `apps/api/src/services/assembly/assembly-legacy-procedure-order.service.ts`
   - `apps/api/src/services/assembly/assembly-procedure-sequence.service.ts`
   - `apps/api/src/services/assembly/assembly-seiban-lot-quantity.service.ts`
   - `apps/api/src/services/assembly/assembly-operator-nfc-resolve.service.ts`
-  - `apps/web/src/pages/kiosk/KioskAssemblyProcedureOrderSettingsPage.tsx`
   - `apps/web/src/pages/kiosk/KioskAssemblyHomePage.tsx`
   - `apps/web/src/features/assembly/AssemblyCompletedPane.tsx`
 - related_docs: `docs/plans/kiosk-assembly-torque-management-mvp.md`, `docs/decisions/ADR-20260706-kiosk-display-performance-optimizations.md`
@@ -38,10 +37,10 @@ Related changes shipped together (same feature request, recorded here to avoid a
 
 ## Consequences
 
-- Existing production order sets referencing `KioskDocument` keep working (list, save, sequence, viewer fallback).
-- New order items are expected to reference assembly library documents; the KioskDocument add-path no longer exists in the UI.
+- Existing production order sets referencing `KioskDocument` remain available to internal fallback resolution, but cannot be listed or saved through an external API.
+- New ordered items are written only as template-version-owned `AssemblyTemplateProcedureItem` rows.
 - NFC input requires the kiosk NFC agent WebSocket (`useNfcStream` policy); on non-kiosk hosts the field stays manual-input only.
-- Since 2026-07-26, the standalone order-settings route redirects to the template library. This ADR remains authoritative only for legacy order payload/storage compatibility and fallback resolution.
+- Since 2026-07-26, the standalone order-settings route redirects to the template library and the old GET/PUT/auth APIs are removed. This ADR is historical; ADR-20260726 owns the current behavior.
 
 ## Validation
 

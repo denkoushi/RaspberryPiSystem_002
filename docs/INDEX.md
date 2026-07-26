@@ -10,7 +10,7 @@
 
 ### 組立テンプレート・文書順統合エディター（2026-07-26 · ローカル実装・検証）
 
-- **文書順・工程・締付/チェックマーカーを一画面・一版へ統合**: テンプレート版が1～50文書の順序を所有し、作業セッションは開始時の版を再現する。単一文書では文書/工程ペインを閉じてcanvasを最大化し、複数文書は同画面で追加・並替え・ラベル編集する。旧機種名別閲覧順は未改版テンプレートのfallback/API互換として残し、旧UI URLはテンプレート一覧へredirectする。**正本**: [ExecPlan](./plans/assembly-unified-template-editor-execplan.md) · [ADR](./decisions/ADR-20260726-assembly-template-owned-procedure-sequence.md)
+- **文書順・工程・締付/チェックマーカーを一画面・一版へ統合**: テンプレート版が1～50文書の順序を所有し、作業セッションは開始時の版を再現する。単一文書では文書/工程ペインを閉じてcanvasを最大化する。旧機種名別閲覧順の外部APIは廃止し、既存DB行だけを未改版テンプレートのread-only fallbackにする。旧UI URLはテンプレート一覧へredirectする。**正本**: [ExecPlan](./plans/assembly-unified-template-editor-execplan.md) · [ADR](./decisions/ADR-20260726-assembly-template-owned-procedure-sequence.md)
 
 ### 標準Deploy release identity監査（2026-07-21 · 調査完了・offline実装Go・実機No-Go）
 

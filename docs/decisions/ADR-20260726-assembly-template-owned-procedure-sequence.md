@@ -17,7 +17,7 @@
 1. 新しい`AssemblyTemplateProcedureItem`を追加し、順序付き文書列をtemplate版の一部として保存する。
 2. template作成・改版は、文書列、工程、締付/チェックマーカーを一transactionで保存する。
 3. 作業セッションはtemplate所有列を優先する。列がない既存templateだけ機種名別order、その後primary documentへfallbackする。
-4. 新形式保存は共有2520パスワードを要求する。旧payloadと旧order APIはローリング互換用に残す。
+4. 新形式保存は共有2520パスワードを要求する。旧template payloadはローリング互換用に受理するが、機種名別orderのGET/PUT APIと旧認証APIは統合Webの配備時に削除する。
 5. 既存templateは一括backfillせず、次回改版時に新形式へ固定する。
 6. 新規追加元は公開済みの`AssemblyProcedureDocument`に限定し、既存`KioskDocument`参照は互換表示・改版を維持する。
 
@@ -26,4 +26,4 @@
 - template版に紐づく作業手順は再現可能になる。
 - 旧templateは改版まで従来fallbackを使うため、構造化ログで残存を観測する。
 - `procedureDocumentId`は互換用に維持し、文書列で最初に現れる組立手順書と一致させる。
-- 独立した閲覧順編集UIは廃止するが、APIとDBはこのreleaseでは削除しない。
+- 独立した閲覧順編集UIと外部APIは削除する。既存`AssemblyProcedureOrderSet`/`AssemblyProcedureOrderItem`行は、未改版templateを読むためのread-only fallbackとしてDBに残す。

@@ -15,17 +15,17 @@
     ]
   },
   "summary": {
-    "documentCount": 549,
-    "totalLines": 157564,
-    "totalBytes": 11900555,
-    "withFrontmatter": 230,
-    "withStatus": 88,
-    "sourceOfTruthDeclared": 58,
+    "documentCount": 553,
+    "totalLines": 158169,
+    "totalBytes": 11940574,
+    "withFrontmatter": 233,
+    "withStatus": 91,
+    "sourceOfTruthDeclared": 60,
     "execPlanReferences": 64,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 25,
-    "localLinkCount": 5571,
+    "localLinkCount": 5577,
     "brokenLocalLinkCount": 87,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -5913,8 +5913,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 1986,
-      "byteSize": 341726,
+      "lineCount": 1991,
+      "byteSize": 342649,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -6843,6 +6843,11 @@
         {
           "href": "./decisions/ADR-20260724-assembly-procedure-gmail-import.md",
           "targetPath": "docs/decisions/ADR-20260724-assembly-procedure-gmail-import.md",
+          "exists": true
+        },
+        {
+          "href": "./decisions/ADR-20260726-assembly-template-owned-procedure-sequence.md",
+          "targetPath": "docs/decisions/ADR-20260726-assembly-template-owned-procedure-sequence.md",
           "exists": true
         },
         {
@@ -10166,6 +10171,11 @@
           "exists": true
         },
         {
+          "href": "./plans/assembly-unified-template-editor-execplan.md",
+          "targetPath": "docs/plans/assembly-unified-template-editor-execplan.md",
+          "exists": true
+        },
+        {
           "href": "./plans/assembly-unified-workflow-execplan.md",
           "targetPath": "docs/plans/assembly-unified-workflow-execplan.md",
           "exists": true
@@ -11101,95 +11111,95 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 267,
+          "line": 271,
           "length": 1132
         },
         {
-          "line": 283,
+          "line": 287,
           "length": 1242
         },
         {
-          "line": 287,
+          "line": 291,
           "length": 1022
         },
         {
-          "line": 301,
+          "line": 305,
           "length": 1065
         },
         {
-          "line": 349,
+          "line": 353,
           "length": 1165
         },
         {
-          "line": 355,
+          "line": 359,
           "length": 1458
         },
         {
-          "line": 367,
+          "line": 371,
           "length": 1083
         },
         {
-          "line": 381,
+          "line": 385,
           "length": 1398
         },
         {
-          "line": 383,
+          "line": 387,
           "length": 1133
         },
         {
-          "line": 387,
+          "line": 391,
           "length": 1399
         },
         {
-          "line": 389,
+          "line": 393,
           "length": 1008
         },
         {
-          "line": 395,
+          "line": 399,
           "length": 1059
         },
         {
-          "line": 403,
+          "line": 407,
           "length": 1129
         },
         {
-          "line": 407,
+          "line": 411,
           "length": 1135
         },
         {
-          "line": 411,
+          "line": 415,
           "length": 1117
         },
         {
-          "line": 526,
+          "line": 530,
           "length": 1013
         },
         {
-          "line": 712,
+          "line": 716,
           "length": 2038
         },
         {
-          "line": 728,
+          "line": 732,
           "length": 1496
         },
         {
-          "line": 734,
+          "line": 738,
           "length": 1177
         },
         {
-          "line": 1076,
+          "line": 1080,
           "length": 1449
         },
         {
-          "line": 1112,
+          "line": 1116,
           "length": 1136
         },
         {
-          "line": 1114,
+          "line": 1118,
           "length": 1239
         },
         {
-          "line": 1150,
+          "line": 1154,
           "length": 1004
         }
       ],
@@ -16200,7 +16210,7 @@
     {
       "path": "docs/decisions/ADR-20260706-kiosk-display-performance-optimizations.md",
       "lineCount": 66,
-      "byteSize": 6886,
+      "byteSize": 6892,
       "hasFrontmatter": false,
       "title": "ADR-20260706: Kiosk Display Performance Optimizations (Drawings, Leader Order Board, Assembly Procedure Documents)",
       "status": null,
@@ -16234,14 +16244,20 @@
     },
     {
       "path": "docs/decisions/ADR-20260707-assembly-procedure-order-library-scope.md",
-      "lineCount": 57,
-      "byteSize": 5685,
+      "lineCount": 58,
+      "byteSize": 6115,
       "hasFrontmatter": false,
       "title": "ADR-20260707: Assembly Procedure Order Scoped to Assembly Library Documents",
       "status": null,
       "source_of_truth": null,
-      "localLinks": [],
-      "inboundCount": 5,
+      "localLinks": [
+        {
+          "href": "./ADR-20260726-assembly-template-owned-procedure-sequence.md",
+          "targetPath": "docs/decisions/ADR-20260726-assembly-template-owned-procedure-sequence.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 6,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -16249,8 +16265,8 @@
     },
     {
       "path": "docs/decisions/ADR-20260708-assembly-page-level-markers-and-publish-gate.md",
-      "lineCount": 58,
-      "byteSize": 4449,
+      "lineCount": 59,
+      "byteSize": 4800,
       "hasFrontmatter": false,
       "title": "ADR-20260708: Assembly Page-Level Markers and Procedure Publish Gate",
       "status": null,
@@ -16260,9 +16276,14 @@
           "href": "./ADR-20260707-assembly-procedure-order-library-scope.md",
           "targetPath": "docs/decisions/ADR-20260707-assembly-procedure-order-library-scope.md",
           "exists": true
+        },
+        {
+          "href": "./ADR-20260726-assembly-template-owned-procedure-sequence.md",
+          "targetPath": "docs/decisions/ADR-20260726-assembly-template-owned-procedure-sequence.md",
+          "exists": true
         }
       ],
-      "inboundCount": 3,
+      "inboundCount": 4,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -16616,6 +16637,52 @@
       "title": "ADR-20260724: Assembly Torque Low-Latency Refresh",
       "status": "accepted",
       "source_of_truth": "docs/decisions/ADR-20260724-assembly-torque-low-latency-refresh.md",
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/decisions/ADR-20260726-assembly-template-owned-procedure-sequence.md",
+      "lineCount": 29,
+      "byteSize": 2377,
+      "hasFrontmatter": false,
+      "title": "ADR-20260726: Assembly Template-Owned Procedure Sequence",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "./ADR-20260707-assembly-procedure-order-library-scope.md",
+          "targetPath": "docs/decisions/ADR-20260707-assembly-procedure-order-library-scope.md",
+          "exists": true
+        },
+        {
+          "href": "./ADR-20260708-assembly-page-level-markers-and-publish-gate.md",
+          "targetPath": "docs/decisions/ADR-20260708-assembly-page-level-markers-and-publish-gate.md",
+          "exists": true
+        },
+        {
+          "href": "../plans/assembly-unified-template-editor-execplan.md",
+          "targetPath": "docs/plans/assembly-unified-template-editor-execplan.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 3,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/decisions/ADR-20260726-deploy-readiness-policy-engine.md",
+      "lineCount": 98,
+      "byteSize": 4832,
+      "hasFrontmatter": true,
+      "title": "Data-driven release-readiness policy and sealed admission",
+      "status": "accepted",
+      "source_of_truth": "true",
       "localLinks": [],
       "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
@@ -18279,8 +18346,8 @@
     },
     {
       "path": "docs/guides/deployment.md",
-      "lineCount": 205,
-      "byteSize": 16441,
+      "lineCount": 207,
+      "byteSize": 17429,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -31582,6 +31649,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/assembly-unified-template-editor-execplan.md",
+      "lineCount": 127,
+      "byteSize": 12696,
+      "hasFrontmatter": true,
+      "title": "組立テンプレート・閲覧順統合エディター",
+      "status": "active",
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/assembly-unified-workflow-execplan.md",
       "lineCount": 363,
       "byteSize": 17855,
@@ -31643,6 +31725,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/deploy-readiness-policy-engine-20260726.md",
+      "lineCount": 338,
+      "byteSize": 17161,
+      "hasFrontmatter": true,
+      "title": "Data-driven deploy release-readiness policy engine",
+      "status": "completed",
+      "source_of_truth": "docs/plans/deploy-readiness-policy-engine-20260726.md",
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/deploy-release-identity-architecture-execplan.md",
       "lineCount": 754,
       "byteSize": 42814,
@@ -31674,11 +31771,11 @@
     },
     {
       "path": "docs/plans/deploy-release-readiness-review-20260725.md",
-      "lineCount": 419,
-      "byteSize": 20656,
+      "lineCount": 423,
+      "byteSize": 20917,
       "hasFrontmatter": true,
       "title": "Build-aware deployment release-readiness review",
-      "status": "in-progress",
+      "status": "completed-superseded",
       "source_of_truth": "docs/plans/deploy-release-readiness-review-20260725.md",
       "localLinks": [],
       "inboundCount": 0,
@@ -32357,7 +32454,7 @@
     {
       "path": "docs/plans/kiosk-assembly-torque-management-mvp.md",
       "lineCount": 427,
-      "byteSize": 40701,
+      "byteSize": 40695,
       "hasFrontmatter": true,
       "title": "Kiosk Assembly Torque Management MVP",
       "status": "active",
@@ -32406,11 +32503,6 @@
         {
           "href": "../../apps/web/src/pages/kiosk/KioskAssemblyPage.tsx",
           "targetPath": "apps/web/src/pages/kiosk/KioskAssemblyPage.tsx",
-          "exists": true
-        },
-        {
-          "href": "../../apps/web/src/pages/kiosk/KioskAssemblyProcedureOrderSettingsPage.tsx",
-          "targetPath": "apps/web/src/pages/kiosk/KioskAssemblyProcedureOrderSettingsPage.tsx",
           "exists": true
         },
         {

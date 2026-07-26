@@ -26,7 +26,7 @@ vi.mock('../../api/client', () => ({
   listAssemblyProcedureDocumentSummaries: mocks.listDocuments,
   listCompatibleTorqueWrenchCapabilityGroups: vi.fn().mockResolvedValue([]),
   reviseAssemblyTemplate: mocks.reviseTemplate,
-  verifyAssemblyProcedureOrderAccessPassword: mocks.verifyPassword
+  verifyAssemblyTemplateAccessPassword: mocks.verifyPassword
 }));
 
 vi.mock('../../features/assembly/AssemblyProcedureCanvas', () => ({

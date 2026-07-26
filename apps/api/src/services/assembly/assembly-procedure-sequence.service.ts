@@ -2,11 +2,11 @@ import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
 import { PdfStorageRenderAdapter } from '../kiosk-documents/adapters/pdf-storage-render.adapter.js';
 import { normalizeMachineNameForCompare } from '../production-schedule/machine-name-compare.js';
+import { AssemblyLegacyProcedureOrderService } from './assembly-legacy-procedure-order.service.js';
 import {
-  AssemblyProcedureOrderService,
-  type AssemblyProcedureOrderDocumentType,
-  type AssemblyProcedureOrderItemSummary
-} from './assembly-procedure-order.service.js';
+  type AssemblyProcedureSequenceDocumentType,
+  type AssemblyProcedureSequenceItemSummary
+} from './assembly-procedure-sequence-item.js';
 import {
   assemblyTemplateProcedureItemsInclude,
   mapTemplateProcedureItem,
@@ -26,7 +26,7 @@ export type AssemblyProcedureSequenceDocument = {
   orderItemId: string;
   sortOrder: number;
   label: string | null;
-  documentType: AssemblyProcedureOrderDocumentType;
+  documentType: AssemblyProcedureSequenceDocumentType;
   kioskDocumentId: string | null;
   assemblyProcedureDocumentId: string | null;
   title: string;
@@ -89,7 +89,7 @@ function buildKioskProcedurePages(documentId: string, pageUrls: string[]): Assem
 }
 
 async function toSequenceDocument(
-  item: AssemblyProcedureOrderItemSummary,
+  item: AssemblyProcedureSequenceItemSummary,
   render: PdfStorageRenderAdapter,
   assemblyPagesByDocumentId: Map<string, Array<{ pageIndex: number; imageRelativePath: string }>>
 ): Promise<AssemblyProcedureSequenceDocument | null> {
@@ -220,7 +220,7 @@ async function buildFallbackSequenceDocuments(
 
 export class AssemblyProcedureSequenceService {
   constructor(
-    private readonly orderService = new AssemblyProcedureOrderService(),
+    private readonly legacyOrderService = new AssemblyLegacyProcedureOrderService(),
     private readonly render = new PdfStorageRenderAdapter()
   ) {}
 
@@ -255,7 +255,7 @@ export class AssemblyProcedureSequenceService {
             machineNameKey: normalizeMachineNameForCompare(session.targetUnit),
             items: storedItems
           }
-        : await this.orderService.getByMachineName(session.targetUnit);
+        : await this.legacyOrderService.getByMachineName(session.targetUnit);
     const source: AssemblyTemplateProcedureSequenceSource =
       storedItems.length > 0
         ? 'template_version'

@@ -4,10 +4,13 @@ import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { prisma } from '../../lib/prisma.js';
 import { normalizeMachineNameForCompare } from '../production-schedule/machine-name-compare.js';
+import { AssemblyLegacyProcedureOrderService } from './assembly-legacy-procedure-order.service.js';
 import {
-  AssemblyProcedureOrderService,
-  type AssemblyProcedureOrderItemSummary
-} from './assembly-procedure-order.service.js';
+  assemblyProcedureSequenceAssemblyDocumentSelect,
+  assemblyProcedureSequenceKioskDocumentSelect,
+  mapAssemblyProcedureSequenceItem,
+  type AssemblyProcedureSequenceItemSummary
+} from './assembly-procedure-sequence-item.js';
 
 export type AssemblyTemplateProcedureSequenceSource =
   | 'template_version'
@@ -28,40 +31,14 @@ export type NormalizedAssemblyTemplateProcedureItem = {
 
 export type AssemblyTemplateProcedureSequence = {
   source: AssemblyTemplateProcedureSequenceSource;
-  items: AssemblyProcedureOrderItemSummary[];
+  items: AssemblyProcedureSequenceItemSummary[];
 };
-
-const kioskDocumentSelect = {
-  id: true,
-  title: true,
-  displayTitle: true,
-  filename: true,
-  confirmedDocumentNumber: true,
-  confirmedSummaryText: true,
-  pageCount: true,
-  enabled: true,
-  updatedAt: true,
-  filePath: true
-} as const;
-
-const assemblyProcedureDocumentSelect = {
-  id: true,
-  name: true,
-  imageRelativePath: true,
-  isActive: true,
-  status: true,
-  updatedAt: true,
-  pages: {
-    orderBy: { pageIndex: 'asc' as const },
-    select: { pageIndex: true, imageRelativePath: true }
-  }
-} as const;
 
 export const assemblyTemplateProcedureItemsInclude = {
   orderBy: [{ sortOrder: 'asc' as const }, { createdAt: 'asc' as const }],
   include: {
-    kioskDocument: { select: kioskDocumentSelect },
-    assemblyProcedureDocument: { select: assemblyProcedureDocumentSelect }
+    kioskDocument: { select: assemblyProcedureSequenceKioskDocumentSelect },
+    assemblyProcedureDocument: { select: assemblyProcedureSequenceAssemblyDocumentSelect }
   }
 };
 
@@ -154,63 +131,13 @@ export function collectTemplateProcedureDocumentKeys(
   );
 }
 
-export function mapTemplateProcedureItem(item: ProcedureItemLike): AssemblyProcedureOrderItemSummary {
-  if (item.kioskDocument && item.kioskDocumentId) {
-    const document = item.kioskDocument;
-    return {
-      id: item.id,
-      sortOrder: item.sortOrder,
-      label: item.label,
-      documentType: 'kiosk_document',
-      kioskDocumentId: item.kioskDocumentId,
-      assemblyProcedureDocumentId: null,
-      document: {
-        id: document.id,
-        documentType: 'kiosk_document',
-        title: document.title,
-        displayTitle: document.displayTitle,
-        filename: document.filename,
-        confirmedDocumentNumber: document.confirmedDocumentNumber,
-        confirmedSummaryText: document.confirmedSummaryText,
-        pageCount: document.pageCount,
-        enabled: document.enabled,
-        status: null,
-        updatedAt: document.updatedAt,
-        filePath: document.filePath,
-        imageRelativePath: null
-      }
-    };
-  }
-  if (item.assemblyProcedureDocument && item.assemblyProcedureDocumentId) {
-    const document = item.assemblyProcedureDocument;
-    return {
-      id: item.id,
-      sortOrder: item.sortOrder,
-      label: item.label,
-      documentType: 'assembly_procedure_document',
-      kioskDocumentId: null,
-      assemblyProcedureDocumentId: item.assemblyProcedureDocumentId,
-      document: {
-        id: document.id,
-        documentType: 'assembly_procedure_document',
-        title: document.name,
-        displayTitle: null,
-        filename: document.name,
-        confirmedDocumentNumber: null,
-        confirmedSummaryText: null,
-        pageCount: document.pages.length > 0 ? document.pages.length : 1,
-        enabled: document.isActive,
-        status: document.status === 'PUBLISHED' ? 'published' : 'draft',
-        updatedAt: document.updatedAt,
-        filePath: null,
-        imageRelativePath: document.imageRelativePath
-      }
-    };
-  }
-  throw new ApiError(500, 'テンプレート手順書閲覧順の参照先が不正です');
+export function mapTemplateProcedureItem(
+  item: ProcedureItemLike
+): AssemblyProcedureSequenceItemSummary {
+  return mapAssemblyProcedureSequenceItem(item);
 }
 
-function buildPrimaryFallback(template: TemplateForSequence): AssemblyProcedureOrderItemSummary {
+function buildPrimaryFallback(template: TemplateForSequence): AssemblyProcedureSequenceItemSummary {
   const document = template.procedureDocument;
   return {
     id: `template-primary:${template.id}`,
@@ -238,7 +165,9 @@ function buildPrimaryFallback(template: TemplateForSequence): AssemblyProcedureO
 }
 
 export class AssemblyTemplateProcedureSequenceService {
-  constructor(private readonly orderService = new AssemblyProcedureOrderService()) {}
+  constructor(
+    private readonly legacyOrderService = new AssemblyLegacyProcedureOrderService()
+  ) {}
 
   async validateDocuments(
     tx: Prisma.TransactionClient,
@@ -335,7 +264,7 @@ export class AssemblyTemplateProcedureSequenceService {
         items: template.procedureItems.map(mapTemplateProcedureItem)
       };
     }
-    const legacy = await this.orderService.getByMachineName(template.modelCode);
+    const legacy = await this.legacyOrderService.getByMachineName(template.modelCode);
     if (legacy.items.length > 0) {
       logger.info(
         { templateId: template.id, modelCode: template.modelCode },

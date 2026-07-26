@@ -11,7 +11,7 @@
   - `apps/api/src/routes/kiosk-documents.ts`
   - `apps/api/src/services/kiosk-documents/adapters/prisma-kiosk-document.repository.ts`
   - `apps/web/src/features/part-measurement/usePartMeasurementDrawingBlobUrl.ts`
-  - `apps/web/src/pages/kiosk/KioskAssemblyProcedureOrderSettingsPage.tsx`
+  - `apps/web/src/pages/kiosk/KioskAssemblyTemplateEditorPage.tsx`
   - `apps/web/src/features/assembly/AssemblyProcedureSequenceViewer.tsx`
   - `scripts/perf/` (seed, measurement, scale scripts)
 - related_docs: `docs/guides/deployment.md`, `docs/plans/kiosk-assembly-torque-management-mvp.md`
@@ -29,7 +29,7 @@ Kiosk pages showed slow display paths on the Pi4 kiosk + Pi5 server LAN environm
 1. **Drawing derivatives**: serve display-width WebP derivatives via `GET /api/storage/part-measurement-drawings/:filename?w=1280|1920|2560` (whitelist only). Derivatives are generated with sharp (WebP q80, `withoutEnlargement`), cached on FS under `part-measurement-drawings-derivatives/w{width}/`, regenerated when the source mtime is newer, deduplicated with an in-flight map. Requests without `w` keep the exact previous behavior. Display-only pages (`KioskInspectionDrawingEditPage`, `KioskSelfInspectionSessionPage`) request a snapped width from `min(2560, innerWidth × devicePixelRatio)`; create/edit template pages keep full resolution. Client blob LRU cache grew 10 → 30 entries.
 2. **Response compression**: register `@fastify/compress` globally (`threshold: 1024`, encodings gzip + brotli, brotli quality uses plugin default 4). Images (`image/*`) are not compressed by the plugin.
 3. **Leaderboard hydrate SQL**: replace per-row correlated subqueries with the same `buildLeaderboardShellRankJoinContext` LATERAL JOIN used by the shell list query.
-4. **Kiosk documents list contract**: add explicit `fields=summary` (omits `extractedText`, returned as `null`), `limit` (1–500) and `offset` query parameters to `GET /api/kiosk-documents`. Unspecified parameters keep the response fully backward compatible. Assembly procedure order settings and the kiosk documents tab list use `fields=summary` + server-side `q` search; the admin page keeps the legacy full response. `AssemblyProcedureSequenceViewer` prefetches the next 1–2 pages and the next document's first page.
+4. **Kiosk documents list contract**: add explicit `fields=summary` (omits `extractedText`, returned as `null`), `limit` (1–500) and `offset` query parameters to `GET /api/kiosk-documents`. Unspecified parameters keep the response fully backward compatible. The assembly template editor's document library and the kiosk documents tab list use `fields=summary` + server-side `q` search; the admin page keeps the legacy full response. `AssemblyProcedureSequenceViewer` prefetches the next 1–2 pages and the next document's first page.
 
 ## Alternatives
 
