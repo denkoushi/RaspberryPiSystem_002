@@ -61,10 +61,11 @@ admission in release status.
   version 2 migration and terminal evidence into the existing CLI contract.
 - [x] (2026-07-26 00:20Z) Sealed the admission into bootstrap version 3, rejected locked-plan
   scope expansion before new-release mutation, and persist its summary.
-- [ ] Pass focused and complete local deployment contracts (completed: 213
-  focused tests, 854 complete Python deploy tests, Python compilation, and
-  `git diff --check`; remaining: canonical shell/Ansible/PostgreSQL contract
-  runner and cleanup proof).
+- [x] (2026-07-26 00:03Z) Passed 213 focused tests, all 855 Python Deploy
+  tests, Python compilation, root lint, `git diff --check`, and the canonical
+  `run-deploy-contracts-local.sh` shell/Ansible/PostgreSQL contract runner.
+  Its cleanup trap removed the isolated PostgreSQL container, volume, and
+  network.
 - [ ] Publish the exact commit, wait for required CI, run exact-head read-only
   preflight, then perform and verify the standard production deployment.
 
@@ -150,9 +151,11 @@ admission in release status.
 The offline implementation now selects probes from strict registry data, skips
 terminal SSH for no-work plans, emits structured version 2 migration and
 terminal evidence, and stops locked-plan expansion with a saved admission
-audit. The focused suite passed 213 tests and the complete Python Deploy suite
-passed 854 tests. Canonical shell, Ansible, isolated PostgreSQL contracts, CI,
-production preflight, rollout, and no-op proof remain.
+audit. The focused suite passed 213 tests, the complete Python Deploy suite
+passed 855 tests, and the canonical contract runner passed its shell, Ansible,
+safety, terminal-profile, and isolated PostgreSQL migration/API checks. Its
+temporary Docker resources were removed. Required CI, exact-head production
+preflight, rollout, and no-op proof remain.
 
 ## Context and Orientation
 
