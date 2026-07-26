@@ -2281,6 +2281,147 @@ describe('assembly torque management API', () => {
     expect(deleteReferencedKiosk.statusCode).toBe(409);
   });
 
+  it('stores crop/full steps, copies them on revision, and keeps a started session on its original steps', async () => {
+    const client = await createTestClientDevice();
+    const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
+    const primary = await uploadPublishedProcedureDocument(app, headers, 'ステップ 主手順書');
+    const secondary = await uploadPublishedProcedureDocument(app, headers, 'ステップ 補助手順書');
+    const payload = {
+      ...buildTemplatePayload(primary.id, {
+        modelCode: 'STEP-STORY-001',
+        procedurePattern: '標準',
+        name: 'ステップ v1'
+      }),
+      accessPassword: '2520',
+      procedureItems: [
+        { assemblyProcedureDocumentId: secondary.id, label: '補助' },
+        { assemblyProcedureDocumentId: primary.id, label: '主' }
+      ],
+      procedureSteps: [
+        {
+          assemblyProcedureDocumentId: primary.id,
+          pageIndex: 0,
+          viewMode: 'crop',
+          cropXRatio: 0.1,
+          cropYRatio: 0.1,
+          cropWidthRatio: 0.4,
+          cropHeightRatio: 0.4,
+          title: '締付点を確認',
+          instructionText: '丸数字1を締め付ける',
+          emphasis: 'important'
+        },
+        {
+          assemblyProcedureDocumentId: primary.id,
+          pageIndex: 0,
+          viewMode: 'full_page',
+          title: '全体確認'
+        },
+        {
+          assemblyProcedureDocumentId: secondary.id,
+          pageIndex: 0,
+          viewMode: 'full_page',
+          emphasis: 'caution'
+        }
+      ]
+    };
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload
+    });
+    expect(created.statusCode).toBe(200);
+    const v1 = created.json().template;
+    expect(v1.procedureSequence).toMatchObject({
+      source: 'template_version',
+      stepSource: 'template_steps',
+      items: [
+        expect.objectContaining({ assemblyProcedureDocumentId: primary.id, sortOrder: 0 }),
+        expect.objectContaining({ assemblyProcedureDocumentId: secondary.id, sortOrder: 1 })
+      ],
+      steps: [
+        expect.objectContaining({
+          sortOrder: 0,
+          viewMode: 'crop',
+          cropXRatio: 0.1,
+          emphasis: 'important'
+        }),
+        expect.objectContaining({ sortOrder: 1, viewMode: 'full_page' }),
+        expect.objectContaining({ sortOrder: 2, assemblyProcedureDocumentId: secondary.id })
+      ]
+    });
+    expect(
+      await prisma.assemblyTemplateProcedureStep.count({ where: { templateId: v1.id } })
+    ).toBe(3);
+
+    const started = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/work-sessions',
+      headers,
+      payload: {
+        templateId: v1.id,
+        productNo: 'STEP-STORY-PRODUCT',
+        serialNo: 'STEP-STORY-SERIAL',
+        operatorNfcTagUid: directStartOperatorNfcTagUid,
+        requestId: randomUUID(),
+        targetUnit: 'STEP-STORY-001',
+        torqueWrenchId: 'CEM20N3X10D-BTLA'
+      }
+    });
+    expect(started.statusCode).toBe(200);
+
+    const revised = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/templates/${v1.id}/revise`,
+      headers,
+      payload: { name: 'ステップ v2' }
+    });
+    expect(revised.statusCode).toBe(200);
+    expect(revised.json().template.procedureSequence.steps).toHaveLength(3);
+    expect(revised.json().template.procedureSequence.stepSource).toBe('template_steps');
+
+    const sessionSequence = await app.inject({
+      method: 'GET',
+      url: `/api/assembly/work-sessions/${started.json().session.id}/procedure-sequence`,
+      headers
+    });
+    expect(sessionSequence.statusCode).toBe(200);
+    expect(sessionSequence.json().sequence.stepSource).toBe('template_steps');
+    expect(sessionSequence.json().sequence.steps).toHaveLength(3);
+    expect(sessionSequence.json().sequence.steps[0]).toMatchObject({
+      title: '締付点を確認',
+      viewMode: 'crop',
+      documentTitle: 'ステップ 主手順書'
+    });
+
+    const markerHidden = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/templates/${revised.json().template.id}/revise`,
+      headers,
+      payload: {
+        accessPassword: '2520',
+        procedureSteps: [
+          {
+            assemblyProcedureDocumentId: primary.id,
+            pageIndex: 0,
+            viewMode: 'crop',
+            cropXRatio: 0.6,
+            cropYRatio: 0.6,
+            cropWidthRatio: 0.2,
+            cropHeightRatio: 0.2
+          },
+          {
+            assemblyProcedureDocumentId: secondary.id,
+            pageIndex: 0,
+            viewMode: 'full_page'
+          }
+        ]
+      }
+    });
+    expect(markerHidden.statusCode).toBe(400);
+    expect(markerHidden.json().message).toContain('マーカーが見える表示ステップ');
+  });
+
   it('keeps a work session on its template-version sequence after revision and legacy-order changes', async () => {
     const client = await createTestClientDevice();
     const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };

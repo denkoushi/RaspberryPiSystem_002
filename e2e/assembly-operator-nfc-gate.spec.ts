@@ -109,6 +109,80 @@ const fallbackProcedureSequence = {
   }
 };
 
+const explicitProcedureSequence = {
+  mode: 'configured',
+  source: 'template_version',
+  reason: null,
+  machineName: 'MH-E2E',
+  machineNameKey: 'MH-E2E',
+  documents: [
+    {
+      orderItemId: 'procedure-item-e2e',
+      sortOrder: 0,
+      label: null,
+      documentType: 'assembly_procedure_document',
+      kioskDocumentId: null,
+      assemblyProcedureDocumentId: 'procedure-e2e',
+      title: 'E2E 手順書',
+      displayTitle: null,
+      filename: 'E2E 手順書',
+      confirmedDocumentNumber: null,
+      confirmedSummaryText: null,
+      pageCount: 1,
+      updatedAt: timestamp,
+      pageUrls: [procedureImage],
+      pages: [
+        {
+          source: 'assembly_procedure_document',
+          documentId: 'procedure-e2e',
+          pageIndex: 0,
+          pageUrl: procedureImage
+        }
+      ]
+    }
+  ],
+  stepSource: 'template_steps',
+  steps: [
+    {
+      id: 'crop-step',
+      sortOrder: 0,
+      kioskDocumentId: null,
+      assemblyProcedureDocumentId: 'procedure-e2e',
+      pageIndex: 0,
+      viewMode: 'crop',
+      cropXRatio: 0.25,
+      cropYRatio: 0.25,
+      cropWidthRatio: 0.5,
+      cropHeightRatio: 0.5,
+      title: '中央を重点確認',
+      instructionText: '丸数字1を確認してから締め付ける',
+      emphasis: 'caution',
+      documentType: 'assembly_procedure_document',
+      documentTitle: 'E2E 手順書',
+      pageUrl: procedureImage
+    },
+    {
+      id: 'full-step',
+      sortOrder: 1,
+      kioskDocumentId: null,
+      assemblyProcedureDocumentId: 'procedure-e2e',
+      pageIndex: 0,
+      viewMode: 'full_page',
+      cropXRatio: null,
+      cropYRatio: null,
+      cropWidthRatio: null,
+      cropHeightRatio: null,
+      title: '全体を再確認',
+      instructionText: '周辺部品との位置関係を見る',
+      emphasis: 'important',
+      documentType: 'assembly_procedure_document',
+      documentTitle: 'E2E 手順書',
+      pageUrl: procedureImage
+    }
+  ],
+  fallbackProcedureDocument: null
+};
+
 type ApiEvidence = {
   operatorAccessBodies: Array<Record<string, unknown>>;
   procedureRequestCount: number;
@@ -181,7 +255,11 @@ async function emitNfc(page: Page, uid: string): Promise<void> {
   }, uid);
 }
 
-async function mockAssemblyApis(page: Page, evidence: ApiEvidence): Promise<void> {
+async function mockAssemblyApis(
+  page: Page,
+  evidence: ApiEvidence,
+  procedureSequence: Record<string, unknown> = fallbackProcedureSequence
+): Promise<void> {
   await page.route('**/api/**', async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
@@ -204,7 +282,7 @@ async function mockAssemblyApis(page: Page, evidence: ApiEvidence): Promise<void
     }
     if (path.endsWith('/procedure-sequence')) {
       evidence.procedureRequestCount += 1;
-      await route.fulfill({ json: { sequence: fallbackProcedureSequence } });
+      await route.fulfill({ json: { sequence: procedureSequence } });
       return;
     }
     if (path.endsWith('/operator-access') && request.method() === 'POST') {
@@ -295,3 +373,80 @@ test('immersive header reveals only inside the bottom-right 24px zone', async ({
   await expect(header).toHaveClass(/translate-y-0/);
   await expect(header).not.toHaveClass(/invisible/);
 });
+
+for (const viewport of [
+  { width: 1366, height: 768 },
+  { width: 1920, height: 1080 },
+  { width: 900, height: 900 }
+]) {
+  test(`explicit work steps keep crop markers aligned and navigate at ${viewport.width}x${viewport.height}`, async ({
+    page
+  }) => {
+    const evidence: ApiEvidence = {
+      operatorAccessBodies: [],
+      procedureRequestCount: 0
+    };
+    await page.setViewportSize(viewport);
+    await installMockNfcWebSocket(page);
+    await mockAssemblyApis(page, evidence, explicitProcedureSequence);
+    await page.goto(`/kiosk/assembly/work-sessions/${inProgressSession.id}`, {
+      waitUntil: 'networkidle'
+    });
+    await emitNfc(page, `NFC-STEPS-${viewport.width}`);
+
+    await expect(page.getByText('手順 1/2 · 中央を重点確認')).toBeVisible();
+    await expect(page.getByText('丸数字1を確認してから締め付ける')).toBeVisible();
+    await expect(page.getByText('⚠ 注意 · 中央を重点確認')).toBeVisible();
+    const cropView = page.getByTestId('assembly-procedure-crop-view');
+    const marker = cropView.getByRole('button', { name: 'BOLT-E2E' });
+    await expect(cropView).toBeVisible();
+    await expect(marker).toBeVisible();
+    await expect(page.getByTestId('assembly-procedure-crop-minimap')).toBeVisible();
+    const alignment = await cropView.evaluate((element, markerElement) => {
+      const cropRect = element.getBoundingClientRect();
+      const markerRect = (markerElement as HTMLElement).getBoundingClientRect();
+      return {
+        xError: Math.abs(
+          markerRect.left + markerRect.width / 2 - (cropRect.left + cropRect.width / 2)
+        ),
+        yError: Math.abs(
+          markerRect.top + markerRect.height / 2 - (cropRect.top + cropRect.height / 2)
+        )
+      };
+    }, await marker.elementHandle());
+    expect(alignment.xError).toBeLessThanOrEqual(1);
+    expect(alignment.yError).toBeLessThanOrEqual(1);
+
+    if (viewport.width >= 1366) {
+      await expect(page.getByTestId('assembly-work-step-storyboard')).toBeVisible();
+    } else {
+      await expect(page.getByTestId('assembly-work-step-storyboard')).toHaveCount(0);
+      await page.getByRole('button', { name: '全手順' }).click();
+      await expect(page.getByTestId('assembly-work-step-storyboard')).toBeVisible();
+    }
+    await expect(page.getByLabel('文書区間の全体マップ')).toBeVisible();
+
+    for (const buttonName of ['全手順', '現在の丸数字へ', '前手順', '次手順']) {
+      const button = page.getByRole('button', { name: buttonName, exact: true });
+      const box = await button.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.height).toBeGreaterThanOrEqual(40);
+    }
+
+    await page.getByRole('button', { name: '全体を一時表示' }).click();
+    await expect(page.getByTestId('assembly-procedure-image-with-markers')).toBeVisible();
+    await expect(page.getByTestId('assembly-procedure-crop-view')).toHaveCount(0);
+    await page.getByRole('button', { name: '矩形へ戻る' }).click();
+    await expect(cropView).toBeVisible();
+    await page.getByRole('button', { name: '次手順' }).click();
+    await expect(page.getByText('手順 2/2 · 全体を再確認')).toBeVisible();
+    await page.getByRole('button', { name: '前手順' }).click();
+    await expect(page.getByText('手順 1/2 · 中央を重点確認')).toBeVisible();
+
+    const pageOverflow = await page.evaluate(() => ({
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth
+    }));
+    expect(pageOverflow.scrollWidth).toBeLessThanOrEqual(pageOverflow.clientWidth + 1);
+  });
+}

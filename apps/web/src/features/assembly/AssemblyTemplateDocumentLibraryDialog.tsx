@@ -16,7 +16,10 @@ type Props = {
   search: string;
   readOnly: boolean;
   onSearchChange: (value: string) => void;
-  onAdd: (document: AssemblyProcedureDocumentSummaryDto) => void;
+  onAdd: (
+    document: AssemblyProcedureDocumentSummaryDto,
+    mode: 'all_pages' | 'document_only'
+  ) => void;
   onClose: () => void;
 };
 
@@ -96,15 +99,27 @@ export function AssemblyTemplateDocumentLibraryDialog({
                       <p className="truncate text-sm font-bold">{document.name}</p>
                       <p className="text-xs text-white/50">{document.pages.length || 1}ページ</p>
                     </div>
-                    <Button
-                      type="button"
-                      variant={alreadyAdded ? 'ghostOnDark' : 'primary'}
-                      className="min-h-11 shrink-0"
-                      disabled={alreadyAdded || readOnly}
-                      onClick={() => onAdd(document)}
-                    >
-                      {alreadyAdded ? '追加済み' : '追加'}
-                    </Button>
+                    <div className="flex shrink-0 gap-1">
+                      <Button
+                        type="button"
+                        aria-label={alreadyAdded ? '追加済み' : '追加'}
+                        variant={alreadyAdded ? 'ghostOnDark' : 'primary'}
+                        className="min-h-11"
+                        disabled={alreadyAdded || readOnly}
+                        onClick={() => onAdd(document, 'all_pages')}
+                      >
+                        {alreadyAdded ? '追加済み' : '全ページを手順へ追加'}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghostOnDark"
+                        className="min-h-11"
+                        disabled={alreadyAdded || readOnly}
+                        onClick={() => onAdd(document, 'document_only')}
+                      >
+                        文書だけ追加
+                      </Button>
+                    </div>
                   </li>
                 );
               })}

@@ -8,9 +8,13 @@
 
 ## 🎯 目的別インデックス
 
+### 組立手順 矩形フォーカス・独立ステップ・全体俯瞰（2026-07-26 · ローカル実装中）
+
+- **複数文書の任意ページ／矩形を最大300の表示ステップへ構成**: 元画像とページ座標の丸数字・チェック・矢視を共有し、ストーリーボード、指示・重要度、cropミニマップ、平坦な前後手順を追加する。旧テンプレートはDBバックフィルせず従来の全ページ順を動的展開する。**正本**: [ExecPlan](./plans/assembly-procedure-step-storyboard-execplan.md) · [ADR](./decisions/ADR-20260726-assembly-template-procedure-steps.md)
+
 ### 組立テンプレート・文書順統合エディター（2026-07-26 · ローカル実装・検証）
 
-- **文書順・工程・締付/チェックマーカーを一画面・一版へ統合**: テンプレート版が1～50文書の順序を所有し、作業セッションは開始時の版を再現する。単一文書では文書/工程ペインを閉じてcanvasを最大化する。旧機種名別閲覧順の外部APIは廃止し、既存DB行だけを未改版テンプレートのread-only fallbackにする。旧UI URLはテンプレート一覧へredirectする。**正本**: [ExecPlan](./plans/assembly-unified-template-editor-execplan.md) · [ADR](./decisions/ADR-20260726-assembly-template-owned-procedure-sequence.md)
+- **文書順・工程・締付/チェックマーカーを一画面・一版へ統合**: テンプレート版が1～50文書の順序を所有し、作業セッションは開始時の版を再現する。単一文書では文書/工程ペインを閉じてcanvasを最大化する。旧機種名別閲覧順の外部APIは廃止し、既存DB行だけを未改版テンプレートのread-only fallbackにする。旧UI URLはテンプレート一覧へredirectする。表示単位をページ／矩形ステップへ拡張する後継は上記「矩形フォーカス」計画を参照。**正本**: [ExecPlan](./plans/assembly-unified-template-editor-execplan.md) · [ADR](./decisions/ADR-20260726-assembly-template-owned-procedure-sequence.md)
 
 ### 標準Deploy release identity監査（2026-07-21 · 調査完了・offline実装Go・実機No-Go）
 

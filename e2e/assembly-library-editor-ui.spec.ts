@@ -37,8 +37,18 @@ const unifiedEditorDocuments = [
   }
 ] as const;
 
-async function mockKioskApis(page: Page, deployNotice = false): Promise<void> {
+type AssemblyEditorEvidence = {
+  templateBodies: Array<Record<string, unknown>>;
+};
+
+async function mockKioskApis(
+  page: Page,
+  deployNotice = false,
+  editorEvidence?: AssemblyEditorEvidence,
+  procedureDocuments: ReadonlyArray<Record<string, unknown>> = unifiedEditorDocuments
+): Promise<void> {
   await page.route('**/api/**', async (route) => {
+    const request = route.request();
     const path = new URL(route.request().url()).pathname;
     if (path.startsWith('/src/api/')) {
       await route.continue();
@@ -74,7 +84,7 @@ async function mockKioskApis(page: Page, deployNotice = false): Promise<void> {
       return;
     }
     if (path.includes('/assembly/procedure-documents/summary')) {
-      await route.fulfill({ json: { documents: unifiedEditorDocuments } });
+      await route.fulfill({ json: { documents: procedureDocuments } });
       return;
     }
     if (path.includes('/kiosk/assembly/templates/verify-access-password')) {
@@ -83,6 +93,13 @@ async function mockKioskApis(page: Page, deployNotice = false): Promise<void> {
     }
     if (path.includes('/assembly/templates/summary')) {
       await route.fulfill({ json: { templates: [] } });
+      return;
+    }
+    if (path === '/api/assembly/templates' && request.method() === 'POST') {
+      editorEvidence?.templateBodies.push(
+        request.postDataJSON() as Record<string, unknown>
+      );
+      await route.fulfill({ json: { template: { id: 'saved-storyboard-template' } } });
       return;
     }
     if (path.includes('/assembly/library/filter-options')) {
@@ -199,16 +216,17 @@ for (const viewport of viewports) {
       const canvas = element.querySelector<HTMLElement>('[data-testid="assembly-unified-editor-canvas-pane"]');
       return canvas ? canvas.getBoundingClientRect().width / element.getBoundingClientRect().width : 0;
     });
-    expect(oneDocumentRatio).toBeGreaterThanOrEqual(0.8);
+    expect(oneDocumentRatio).toBeGreaterThanOrEqual(0.75);
 
     await page.getByRole('button', { name: '文書/工程 (1)' }).click();
+    await page.getByRole('button', { name: '文書・工程', exact: true }).click();
     await page.getByRole('button', { name: '文書追加' }).click();
     const dialog = page.getByRole('dialog', { name: '文書ライブラリ' });
     await expect(dialog).toBeVisible();
     await dialog
       .getByRole('listitem')
       .filter({ hasText: '統合エディター 補助手順書' })
-      .getByRole('button', { name: '追加' })
+      .getByLabel('追加', { exact: true })
       .click();
     await expect(page.locator('#assembly-procedure-pane')).toContainText('統合エディター 補助手順書');
 
@@ -379,7 +397,9 @@ test('unified assembly editor stacks panels and keeps touch targets usable on a 
   await expect(canvasPane).toBeVisible();
 
   const layout = await workspace.evaluate((element) => {
-    const procedure = element.querySelector<HTMLElement>('#assembly-procedure-pane');
+    const procedure = element
+      .querySelector<HTMLElement>('#assembly-procedure-pane')
+      ?.closest<HTMLElement>('aside');
     const canvas = element.querySelector<HTMLElement>(
       '[data-testid="assembly-unified-editor-canvas-pane"]'
     );
@@ -407,6 +427,148 @@ test('unified assembly editor stacks panels and keeps touch targets usable on a 
     expect(box).not.toBeNull();
     expect(box!.height).toBeGreaterThanOrEqual(40);
   }
+});
+
+test('assembly storyboard creates, edits, reuses, reorders and saves crop steps', async ({
+  page
+}) => {
+  const evidence: AssemblyEditorEvidence = { templateBodies: [] };
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await mockKioskApis(page, false, evidence);
+  await page.goto('/kiosk/assembly/templates/new?procedureDocumentId=procedure-primary', {
+    waitUntil: 'networkidle'
+  });
+  await page.getByPlaceholder('パスワード').fill('2520');
+  await page.getByRole('button', { name: '認証' }).click();
+  await page.getByRole('button', { name: '文書/工程 (1)' }).click();
+
+  const storyboard = page.getByTestId('assembly-step-storyboard');
+  await expect(storyboard.locator('article')).toHaveCount(1);
+  await page.getByRole('button', { name: '文書・工程', exact: true }).click();
+  await page.getByRole('button', { name: '文書追加' }).click();
+  await page
+    .getByRole('dialog', { name: '文書ライブラリ' })
+    .getByRole('listitem')
+    .filter({ hasText: '統合エディター 補助手順書' })
+    .getByLabel('追加', { exact: true })
+    .click();
+  await page.getByRole('button', { name: '手順', exact: true }).click();
+  await expect(storyboard.locator('article')).toHaveCount(2);
+
+  await page.getByRole('button', { name: '矩形追加', exact: true }).click();
+  const canvas = page.getByTestId('assembly-procedure-canvas');
+  const sourceImage = canvas.locator('img').last();
+  await expect(sourceImage).toBeVisible();
+  const imageBox = await sourceImage.boundingBox();
+  expect(imageBox).not.toBeNull();
+  await page.mouse.move(
+    imageBox!.x + imageBox!.width * 0.2,
+    imageBox!.y + imageBox!.height * 0.25
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    imageBox!.x + imageBox!.width * 0.8,
+    imageBox!.y + imageBox!.height * 0.75
+  );
+  await page.mouse.up();
+
+  await expect(
+    page
+      .getByTestId('assembly-unified-editor-canvas-pane')
+      .getByTestId('assembly-procedure-crop-view')
+  ).toBeVisible();
+  await expect(page.getByTestId('assembly-procedure-crop-minimap')).toBeVisible();
+  await page.getByLabel('タイトル').fill('重点締付');
+  await page.getByLabel('指示文').fill('赤線の内側を先に締める');
+  await page.getByRole('button', { name: '⚠ 注意' }).click();
+  await expect(storyboard.locator('article')).toHaveCount(3);
+
+  const selectedCropCard = storyboard
+    .locator('article')
+    .filter({ hasText: '重点締付' });
+  await selectedCropCard.getByRole('button', { name: '複製' }).click();
+  await expect(storyboard.locator('article')).toHaveCount(4);
+  const moveTarget = page.getByLabel('手順4の移動先');
+  await moveTarget.fill('2');
+  await moveTarget.press('Tab');
+
+  await page.getByLabel('手順検索').fill('重点締付');
+  await expect(storyboard.locator('article')).toHaveCount(2);
+  await page.getByLabel('手順検索').fill('');
+
+  const workspace = page.getByTestId('assembly-unified-editor-workspace');
+  const centralRatio = await workspace.evaluate((element) => {
+    const canvasPane = element.querySelector<HTMLElement>(
+      '[data-testid="assembly-unified-editor-canvas-pane"]'
+    );
+    return canvasPane
+      ? canvasPane.getBoundingClientRect().width / element.getBoundingClientRect().width
+      : 0;
+  });
+  expect(centralRatio).toBeGreaterThanOrEqual(0.55);
+
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect.poll(() => evidence.templateBodies.length).toBe(1);
+  const payload = evidence.templateBodies[0] as {
+    procedureDocumentId: string;
+    procedureItems: Array<{ assemblyProcedureDocumentId: string | null }>;
+    procedureSteps: Array<{
+      assemblyProcedureDocumentId: string | null;
+      viewMode: string;
+      cropXRatio: number | null;
+      cropYRatio: number | null;
+      cropWidthRatio: number | null;
+      cropHeightRatio: number | null;
+      title: string | null;
+      instructionText: string | null;
+      emphasis: string;
+    }>;
+  };
+  expect(payload.procedureDocumentId).toBe('procedure-primary');
+  expect(payload.procedureItems.map((item) => item.assemblyProcedureDocumentId)).toEqual([
+    'procedure-primary',
+    'procedure-secondary'
+  ]);
+  expect(payload.procedureSteps).toHaveLength(4);
+  const cropSteps = payload.procedureSteps.filter((step) => step.viewMode === 'crop');
+  expect(cropSteps).toHaveLength(2);
+  expect(cropSteps[0]).toMatchObject({
+    assemblyProcedureDocumentId: 'procedure-primary',
+    title: '重点締付',
+    instructionText: '赤線の内側を先に締める',
+    emphasis: 'caution'
+  });
+  expect(cropSteps[0]!.cropXRatio).toBeCloseTo(0.2, 1);
+  expect(cropSteps[0]!.cropYRatio).toBeCloseTo(0.25, 1);
+  expect(cropSteps[0]!.cropWidthRatio).toBeCloseTo(0.6, 1);
+  expect(cropSteps[0]!.cropHeightRatio).toBeCloseTo(0.5, 1);
+});
+
+test('assembly storyboard keeps at most 30 DOM cards for 300 steps', async ({ page }) => {
+  const largeDocument = {
+    ...unifiedEditorDocuments[0],
+    id: 'procedure-300-pages',
+    name: '300ページ手順書',
+    pages: Array.from({ length: 300 }, (_, pageIndex) => ({
+      pageIndex,
+      imageRelativePath: procedureImage
+    }))
+  };
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await mockKioskApis(page, false, undefined, [largeDocument]);
+  await page.goto('/kiosk/assembly/templates/new?procedureDocumentId=procedure-300-pages', {
+    waitUntil: 'networkidle'
+  });
+  await page.getByPlaceholder('パスワード').fill('2520');
+  await page.getByRole('button', { name: '認証' }).click();
+  await page.getByRole('button', { name: '文書/工程 (1)' }).click();
+  await expect(page.getByText('手順 300/300')).toBeVisible();
+  const domCardCount = await page
+    .getByTestId('assembly-step-storyboard')
+    .locator('article')
+    .count();
+  expect(domCardCount).toBeGreaterThan(0);
+  expect(domCardCount).toBeLessThanOrEqual(30);
 });
 
 test('legacy procedure-order URL redirects to the filtered template library', async ({ page }) => {

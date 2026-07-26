@@ -69,6 +69,10 @@ follow-upでは、旧`GET/PUT /assembly/procedure-orders`と旧認証endpointを
 
 初回計画の実装とローカル検証は完了した。2026-07-26の追加承認により、旧閲覧順API削除と本番反映をfollow-upとして実行中である。
 
+表示単位を文書内の全ページからページ全体／矩形の独立ステップへ拡張する後継計画は
+[`assembly-procedure-step-storyboard-execplan.md`](./assembly-procedure-step-storyboard-execplan.md)
+で扱う。本計画の履歴と文書列正本は変更しない。
+
 ## Context and Orientation
 
 中心となる実装は、APIの`assembly-template.service.ts`、`assembly-template-procedure-sequence.service.ts`、`assembly-procedure-sequence.service.ts`、`assembly-legacy-procedure-order.service.ts`と、Webの`KioskAssemblyTemplateEditorPage.tsx`である。`AssemblyTemplateProcedureItem`が新しい正本であり、`AssemblyProcedureOrderSet`は外部書込を持たない既存行専用fallbackである。

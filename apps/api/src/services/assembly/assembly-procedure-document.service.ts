@@ -26,6 +26,8 @@ export type AssemblyProcedureDocumentReferenceUsage = {
   inActiveTemplatePrimary: boolean;
   inTemplateProcedureSequence: boolean;
   inActiveTemplateProcedureSequence: boolean;
+  inTemplateProcedureStep: boolean;
+  inActiveTemplateProcedureStep: boolean;
   inBoltPageRef: boolean;
   inCheckPageRef: boolean;
 };
@@ -70,6 +72,11 @@ export class AssemblyProcedureDocumentService {
             procedureItems: {
               some: { assemblyProcedureDocumentId: { in: documentIds } }
             }
+          },
+          {
+            procedureSteps: {
+              some: { assemblyProcedureDocumentId: { in: documentIds } }
+            }
           }
         ]
       },
@@ -78,6 +85,10 @@ export class AssemblyProcedureDocumentService {
         isActive: true,
         procedureDocumentId: true,
         procedureItems: {
+          where: { assemblyProcedureDocumentId: { in: documentIds } },
+          select: { assemblyProcedureDocumentId: true }
+        },
+        procedureSteps: {
           where: { assemblyProcedureDocumentId: { in: documentIds } },
           select: { assemblyProcedureDocumentId: true }
         }
@@ -90,6 +101,9 @@ export class AssemblyProcedureDocumentService {
         template.procedureDocumentId,
         ...template.procedureItems
           .map((item) => item.assemblyProcedureDocumentId)
+          .filter((id): id is string => id != null),
+        ...template.procedureSteps
+          .map((step) => step.assemblyProcedureDocumentId)
           .filter((id): id is string => id != null)
       ]);
       for (const documentId of referencedDocumentIds) {
@@ -248,6 +262,8 @@ export class AssemblyProcedureDocumentService {
       activeTemplateCount,
       templateSequenceCount,
       activeTemplateSequenceCount,
+      templateStepCount,
+      activeTemplateStepCount,
       boltRefCount,
       checkRefCount
     ] = await Promise.all([
@@ -256,6 +272,10 @@ export class AssemblyProcedureDocumentService {
       db.assemblyTemplate.count({ where: { procedureDocumentId: id, isActive: true } }),
       db.assemblyTemplateProcedureItem.count({ where: { assemblyProcedureDocumentId: id } }),
       db.assemblyTemplateProcedureItem.count({
+        where: { assemblyProcedureDocumentId: id, template: { isActive: true } }
+      }),
+      db.assemblyTemplateProcedureStep.count({ where: { assemblyProcedureDocumentId: id } }),
+      db.assemblyTemplateProcedureStep.count({
         where: { assemblyProcedureDocumentId: id, template: { isActive: true } }
       }),
       db.assemblyTemplateBolt.count({ where: { assemblyProcedureDocumentId: id } }),
@@ -267,6 +287,8 @@ export class AssemblyProcedureDocumentService {
       inActiveTemplatePrimary: activeTemplateCount > 0,
       inTemplateProcedureSequence: templateSequenceCount > 0,
       inActiveTemplateProcedureSequence: activeTemplateSequenceCount > 0,
+      inTemplateProcedureStep: templateStepCount > 0,
+      inActiveTemplateProcedureStep: activeTemplateStepCount > 0,
       inBoltPageRef: boltRefCount > 0,
       inCheckPageRef: checkRefCount > 0
     };
@@ -279,6 +301,8 @@ export class AssemblyProcedureDocumentService {
       usage.inActiveTemplatePrimary ||
       usage.inTemplateProcedureSequence ||
       usage.inActiveTemplateProcedureSequence ||
+      usage.inTemplateProcedureStep ||
+      usage.inActiveTemplateProcedureStep ||
       usage.inBoltPageRef ||
       usage.inCheckPageRef
     );
@@ -291,8 +315,14 @@ export class AssemblyProcedureDocumentService {
     if (usage.inActiveTemplateProcedureSequence) {
       return '有効なテンプレートの文書順で使用中の手順書は公開取り消しできません';
     }
+    if (usage.inActiveTemplateProcedureStep) {
+      return '有効なテンプレートの表示ステップで使用中の手順書は公開取り消しできません';
+    }
     if (usage.inTemplateProcedureSequence) {
       return 'テンプレートの文書順で使用中の手順書は公開取り消しできません';
+    }
+    if (usage.inTemplateProcedureStep) {
+      return 'テンプレートの表示ステップで使用中の手順書は公開取り消しできません';
     }
     if (usage.inActiveTemplatePrimary) return '有効なテンプレートで使用中の手順書は公開取り消しできません';
     if (usage.inTemplatePrimary) return 'テンプレートで使用中の手順書は公開取り消しできません';

@@ -136,6 +136,25 @@ const documentSequenceItemBodySchema = z
     }
   });
 
+const procedureStepBodySchema = z.object({
+  kioskDocumentId: z.string().uuid().optional().nullable(),
+  assemblyProcedureDocumentId: z.string().uuid().optional().nullable(),
+  pageIndex: z.coerce.number().int().min(0),
+  viewMode: z
+    .enum(['full_page', 'crop'])
+    .transform((value) => (value === 'crop' ? 'CROP' : 'FULL_PAGE') as 'CROP' | 'FULL_PAGE'),
+  cropXRatio: z.coerce.number().min(0).max(1).optional().nullable(),
+  cropYRatio: z.coerce.number().min(0).max(1).optional().nullable(),
+  cropWidthRatio: z.coerce.number().min(0.02).max(1).optional().nullable(),
+  cropHeightRatio: z.coerce.number().min(0.02).max(1).optional().nullable(),
+  title: z.string().trim().max(120).optional().nullable(),
+  instructionText: z.string().trim().max(1000).optional().nullable(),
+  emphasis: z
+    .enum(['normal', 'important', 'caution'])
+    .optional()
+    .transform((value) => (value?.toUpperCase() ?? 'NORMAL') as 'NORMAL' | 'IMPORTANT' | 'CAUTION')
+});
+
 const templateBodySchema = z.object({
   modelCode: z.string().trim().min(1).max(120),
   procedurePattern: z.string().trim().min(1).max(120),
@@ -145,13 +164,15 @@ const templateBodySchema = z.object({
   checkItems: z.array(checkItemInputSchema).optional(),
   traceabilityMode: z.enum(['LEGACY', 'REQUIRED']).optional().default('LEGACY'),
   procedureItems: z.array(documentSequenceItemBodySchema).min(1).max(50).optional(),
+  procedureSteps: z.array(procedureStepBodySchema).min(1).max(300).optional(),
   accessPassword: z.string().max(128).optional()
 });
 
 const templateReviseBodySchema = templateBodySchema.partial().extend({
   areas: z.array(areaInputSchema).min(1).optional(),
   checkItems: z.array(checkItemInputSchema).optional(),
-  procedureItems: z.array(documentSequenceItemBodySchema).min(1).max(50).optional()
+  procedureItems: z.array(documentSequenceItemBodySchema).min(1).max(50).optional(),
+  procedureSteps: z.array(procedureStepBodySchema).min(1).max(300).optional()
 });
 
 const recordCheckBodySchema = z.object({
@@ -333,6 +354,12 @@ function serializeProcedureSequence(sequence: AssemblyProcedureSequence) {
     reason: sequence.mode === 'fallback' ? sequence.reason : null,
     machineName: sequence.machineName,
     machineNameKey: sequence.machineNameKey,
+    stepSource: sequence.stepSource,
+    steps: sequence.steps.map((step) => ({
+      ...step,
+      viewMode: step.viewMode === 'CROP' ? 'crop' : 'full_page',
+      emphasis: step.emphasis.toLowerCase()
+    })),
     documents: sequence.documents.map((document) => ({
       orderItemId: document.orderItemId,
       sortOrder: document.sortOrder,
@@ -426,6 +453,12 @@ function serializeTemplate(template: AssemblyTemplateDetail | AssemblyTemplateDe
     'procedureSequence' in template
       ? {
           source: template.procedureSequence.source,
+          stepSource: template.procedureSequence.stepSource,
+          steps: template.procedureSequence.steps.map((step) => ({
+            ...step,
+            viewMode: step.viewMode === 'CROP' ? 'crop' : 'full_page',
+            emphasis: step.emphasis.toLowerCase()
+          })),
           items: template.procedureSequence.items.map((item) => ({
             id: item.id,
             sortOrder: item.sortOrder,

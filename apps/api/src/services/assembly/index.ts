@@ -16,6 +16,7 @@ export * from './assembly-procedure-gmail-import.factory.js';
 export * from './assembly-procedure-gmail-import.service.js';
 export * from './assembly-seiban-start.service.js';
 export * from './assembly-template.service.js';
+export * from './assembly-template-procedure-step.service.js';
 export * from './assembly-template-access.service.js';
 export * from './assembly-traceability-access.service.js';
 export * from './assembly-traceability.service.js';

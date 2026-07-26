@@ -115,6 +115,8 @@ export type AssemblyTemplateDto = {
   procedureDocument: AssemblyProcedureDocumentDto;
   procedureSequence?: {
     source: 'template_version' | 'legacy_machine_order' | 'primary_fallback';
+    stepSource?: AssemblyProcedureStepSourceDto;
+    steps?: AssemblyTemplateProcedureStepDto[];
     items: AssemblyProcedureSequenceItemDto[];
   };
   areas: AssemblyTemplateAreaDto[];
@@ -381,6 +383,32 @@ export type AssemblyProcedureSequencePageDto = {
   pageUrl: string;
 };
 
+export type AssemblyProcedureStepSourceDto = 'template_steps' | 'document_expansion';
+export type AssemblyProcedureStepViewModeDto = 'full_page' | 'crop';
+export type AssemblyProcedureStepEmphasisDto = 'normal' | 'important' | 'caution';
+
+export type AssemblyTemplateProcedureStepDto = {
+  id: string;
+  sortOrder: number;
+  kioskDocumentId: string | null;
+  assemblyProcedureDocumentId: string | null;
+  pageIndex: number;
+  viewMode: AssemblyProcedureStepViewModeDto;
+  cropXRatio: number | null;
+  cropYRatio: number | null;
+  cropWidthRatio: number | null;
+  cropHeightRatio: number | null;
+  title: string | null;
+  instructionText: string | null;
+  emphasis: AssemblyProcedureStepEmphasisDto;
+};
+
+export type AssemblyProcedureSequenceStepDto = AssemblyTemplateProcedureStepDto & {
+  documentType: 'kiosk_document' | 'assembly_procedure_document';
+  documentTitle: string;
+  pageUrl: string;
+};
+
 export type AssemblyProcedureSequenceDocumentDto = {
   orderItemId: string;
   sortOrder: number;
@@ -406,6 +434,8 @@ export type AssemblyProcedureSequenceDto = {
   machineName: string;
   machineNameKey: string;
   documents: AssemblyProcedureSequenceDocumentDto[];
+  stepSource?: AssemblyProcedureStepSourceDto;
+  steps?: AssemblyProcedureSequenceStepDto[];
   fallbackProcedureDocument: {
     id: string;
     name: string;
@@ -472,6 +502,19 @@ export type AssemblyTemplateCreateInput = {
     kioskDocumentId?: string | null;
     assemblyProcedureDocumentId?: string | null;
     label?: string | null;
+  }>;
+  procedureSteps?: Array<{
+    kioskDocumentId?: string | null;
+    assemblyProcedureDocumentId?: string | null;
+    pageIndex: number;
+    viewMode: AssemblyProcedureStepViewModeDto;
+    cropXRatio?: number | null;
+    cropYRatio?: number | null;
+    cropWidthRatio?: number | null;
+    cropHeightRatio?: number | null;
+    title?: string | null;
+    instructionText?: string | null;
+    emphasis?: AssemblyProcedureStepEmphasisDto;
   }>;
   accessPassword?: string;
 };

@@ -120,7 +120,7 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     });
   });
 
-  it('authenticates once, starts single-document mode collapsed, and saves reordered documents together', async () => {
+  it('authenticates once, adds document pages, and derives document order from the step storyboard', async () => {
     renderEditor();
 
     expect(await screen.findByText('文書順・工程・マーカーを編集する前にパスワードを入力してください。')).toBeInTheDocument();
@@ -155,12 +155,18 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     await waitFor(() =>
       expect(mocks.createTemplate).toHaveBeenCalledWith(
         expect.objectContaining({
-          procedureDocumentId: documents[1]!.id,
+          procedureDocumentId: documents[0]!.id,
           accessPassword: '2520',
           procedureItems: [
-            expect.objectContaining({ assemblyProcedureDocumentId: documents[1]!.id }),
-            expect.objectContaining({ assemblyProcedureDocumentId: documents[0]!.id })
-          ]
+            expect.objectContaining({ assemblyProcedureDocumentId: documents[0]!.id }),
+            expect.objectContaining({ assemblyProcedureDocumentId: documents[1]!.id })
+          ],
+          procedureSteps: expect.arrayContaining([
+            expect.objectContaining({
+              assemblyProcedureDocumentId: documents[1]!.id,
+              viewMode: 'full_page'
+            })
+          ])
         })
       )
     );
