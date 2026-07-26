@@ -47,4 +47,3 @@ export function buildAssemblyLotWorkIds(
   }
   return workIds;
 }
-

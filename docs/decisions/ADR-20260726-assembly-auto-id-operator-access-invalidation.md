@@ -47,4 +47,3 @@ open_items: none
 
 - Extends: `ADR-20260720-assembly-work-id-genealogy-and-formal-id`
 - Superseded by: none
-

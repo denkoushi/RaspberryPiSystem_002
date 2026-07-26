@@ -79,4 +79,3 @@ CREATE INDEX "AssemblyWorkUnitInvalidation_idx_client_time"
   ON "AssemblyWorkUnitInvalidation"("invalidatedByClientDeviceId", "invalidatedAt");
 CREATE INDEX "AssemblyWorkUnit_idx_invalidation_updated"
   ON "AssemblySerialRegistry"("invalidatedAt", "updatedAt");
-

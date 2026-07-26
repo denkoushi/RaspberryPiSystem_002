@@ -13,4 +13,3 @@ export async function lockAssemblyWorkUnits(
     Prisma.sql`SELECT "id" FROM "AssemblySerialRegistry" WHERE "id" IN (${Prisma.join(distinctIds)}) ORDER BY "id" FOR UPDATE`
   );
 }
-
