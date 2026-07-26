@@ -6,6 +6,7 @@ import os
 import re
 import secrets
 import shlex
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -19,10 +20,11 @@ from .backends.systemd import (
     SystemdBackend,
 )
 from .models import LaunchSpec
-from .planner import executor_selection, required_claim_kinds
+from .planner import executor_selection
 from .policy import server_identity
+from . import readiness_policy
 from .reconcile import reconcile_status
-from .route_contract import ROUTE_STAGES, readiness_review_payload
+from .route_contract import ROUTE_STAGES
 from .route_preflight import (
     BUILD_EXTERNAL_DEPENDENCY_IDS,
     EXTERNAL_TLS_ROUNDS,
@@ -290,11 +292,60 @@ def _probe_record(name: str, result: Any, *, structured: bool = False) -> dict[s
         proofs = payload.get("proofs")
         warnings = payload.get("warnings")
         metrics = payload.get("metrics")
-        record["issues"] = (
-            [value[:256] for value in issues if isinstance(value, str)][:100]
-            if isinstance(issues, list)
-            else [f"{name}.invalid-issues"]
-        )
+        issue_records: list[dict[str, str | None]] = []
+        if isinstance(issues, list):
+            for value in issues[:100]:
+                if isinstance(value, str):
+                    issue_records.append(
+                        {"code": value[:256], "host": None, "capability": None}
+                    )
+                elif isinstance(value, dict):
+                    code = value.get("code")
+                    host = value.get("host")
+                    capability = value.get("capability")
+                    if (
+                        isinstance(code, str)
+                        and code
+                        and (host is None or isinstance(host, str))
+                        and (capability is None or isinstance(capability, str))
+                    ):
+                        issue_records.append(
+                            {
+                                "code": code[:256],
+                                "host": host[:256] if isinstance(host, str) else None,
+                                "capability": (
+                                    capability[:256]
+                                    if isinstance(capability, str)
+                                    else None
+                                ),
+                            }
+                        )
+                        continue
+                    issue_records.append(
+                        {
+                            "code": f"{name}.invalid-issue-record",
+                            "host": None,
+                            "capability": None,
+                        }
+                    )
+                else:
+                    issue_records.append(
+                        {
+                            "code": f"{name}.invalid-issue-record",
+                            "host": None,
+                            "capability": None,
+                        }
+                    )
+        else:
+            issue_records.append(
+                {
+                    "code": f"{name}.invalid-issues",
+                    "host": None,
+                    "capability": None,
+                }
+            )
+        record["issueRecords"] = issue_records
+        record["issues"] = [str(value["code"]) for value in issue_records]
         record["proofs"] = (
             [value[:256] for value in proofs if isinstance(value, str)][:100]
             if isinstance(proofs, list)
@@ -315,16 +366,98 @@ def _probe_record(name: str, result: Any, *, structured: bool = False) -> dict[s
             if isinstance(metrics, dict)
             else {}
         )
+        if isinstance(payload.get("capability"), str):
+            record["capability"] = payload["capability"]
+        if isinstance(payload.get("host"), str):
+            record["host"] = payload["host"]
+        if isinstance(payload.get("targets"), list):
+            record["targets"] = payload["targets"][:100]
+        if name == "terminal":
+            targets = payload.get("targets")
+            valid_targets = isinstance(targets, list) and len(targets) <= 100
+            seen_hosts: set[str] = set()
+            target_issue_codes: set[str] = set()
+            if valid_targets:
+                for target in targets:
+                    if not isinstance(target, dict) or set(target) != {
+                        "host",
+                        "profile",
+                        "status",
+                        "issues",
+                    }:
+                        valid_targets = False
+                        break
+                    host = target.get("host")
+                    profile = target.get("profile")
+                    target_status = target.get("status")
+                    target_issues = target.get("issues")
+                    if (
+                        not isinstance(host, str)
+                        or not host
+                        or host in seen_hosts
+                        or not isinstance(profile, str)
+                        or not profile
+                        or target_status not in {"passed", "blocked"}
+                        or not isinstance(target_issues, list)
+                        or any(
+                            not isinstance(issue, str) or not issue
+                            for issue in target_issues
+                        )
+                        or (target_status == "passed" and target_issues)
+                        or (target_status == "blocked" and not target_issues)
+                    ):
+                        valid_targets = False
+                        break
+                    seen_hosts.add(host)
+                    target_issue_codes.update(target_issues)
+            top_issue_codes = {
+                str(value.get("code"))
+                for value in issue_records
+                if isinstance(value, dict)
+            }
+            if (
+                not valid_targets
+                or not target_issue_codes <= top_issue_codes
+                or (
+                    payload.get("status") == "passed"
+                    and any(
+                        target.get("status") != "passed"
+                        for target in targets
+                        if isinstance(target, dict)
+                    )
+                )
+            ):
+                record.update(
+                    {
+                        "status": "incomplete",
+                        "exitCode": EX_SOFTWARE,
+                        "issues": ["terminal.invalid-target-report"],
+                        "issueRecords": [
+                            {
+                                "code": "terminal.invalid-target-report",
+                                "host": None,
+                                "capability": None,
+                            }
+                        ],
+                    }
+                )
         external_dependencies = payload.get("externalDependencies")
-        if not isinstance(external_dependencies, dict):
+        if name == "route" and not isinstance(external_dependencies, dict):
             record.update(
                 {
                     "status": "incomplete",
                     "exitCode": EX_SOFTWARE,
                     "issues": [f"{name}.invalid-external-dependencies"],
+                    "issueRecords": [
+                        {
+                            "code": f"{name}.invalid-external-dependencies",
+                            "host": None,
+                            "capability": None,
+                        }
+                    ],
                 }
             )
-        else:
+        elif name == "route":
             required = external_dependencies.get("required")
             rounds = external_dependencies.get("rounds")
             successes = external_dependencies.get("successes")
@@ -359,6 +492,13 @@ def _probe_record(name: str, result: Any, *, structured: bool = False) -> dict[s
                         "status": "incomplete",
                         "exitCode": EX_SOFTWARE,
                         "issues": [f"{name}.invalid-external-dependencies"],
+                        "issueRecords": [
+                            {
+                                "code": f"{name}.invalid-external-dependencies",
+                                "host": None,
+                                "capability": None,
+                            }
+                        ],
                     }
                 )
         if payload.get("status") != status:
@@ -376,156 +516,236 @@ def _probe_record(name: str, result: Any, *, structured: bool = False) -> dict[s
     return record
 
 
-def _required_external_dependencies(
-    planning_snapshot: dict[str, Any] | None,
-) -> tuple[str, ...]:
-    """Fail closed only for plans that can require a server image build."""
-
-    if planning_snapshot is None:
-        return BUILD_EXTERNAL_DEPENDENCY_IDS
-    components = planning_snapshot.get("classificationComponents")
-    if (
-        not isinstance(components, list)
-        or any(type(component) is not str for component in components)
-    ):
-        return BUILD_EXTERNAL_DEPENDENCY_IDS
-    if set(components) & {"server-app", "unknown"}:
-        return BUILD_EXTERNAL_DEPENDENCY_IDS
-    return ()
-
-
 def _preflight_report(
     spec: LaunchSpec,
     *,
-    migration_result: Any,
-    route_result: Any,
-    terminal_result: Any,
+    registry: readiness_policy.ReadinessRegistry,
+    selection: readiness_policy.ReadinessSelection,
+    migration_result: Any | None,
+    route_result: Any | None,
+    terminal_result: Any | None,
     selected_hosts: list[str],
-    selected_target_roles: list[dict[str, str]],
     terminal_count: int,
-    planning_snapshot: dict[str, Any] | None,
-    required_external_dependencies: tuple[str, ...] = (),
+    planning_snapshot: dict[str, Any],
 ) -> tuple[int, dict[str, Any]]:
-    probes = [
-        _probe_record("migration", migration_result),
-        _probe_record("route", route_result, structured=True),
-        _probe_record("terminal", terminal_result),
-    ]
-    if planning_snapshot is None:
-        target_planning = {
-            "status": "deferred-to-locked-coordinator",
-            "typedTargetPlanningEnabled": None,
-            "activationExecutionEnabled": None,
-            "verificationOnlyExecutionEnabled": None,
-            "mutationTargets": None,
-            "activationTargets": None,
-            "verificationTargets": None,
-            "terminalWork": None,
-            "selectedClaimRequirements": [
-                {
-                    "host": target["host"],
-                    "role": target["role"],
-                    "requiredClaims": [
-                        kind.value for kind in required_claim_kinds(target["role"])
-                    ],
-                    "reason": (
-                        "aggregate preflight scope; locked coordinator determines actions"
-                    ),
-                }
-                for target in selected_target_roles
-            ],
-        }
-    else:
-        target_planning = {
-            "status": "provisional-read-only-snapshot",
-            "typedTargetPlanningEnabled": planning_snapshot.get(
-                "typedTargetPlanningEnabled"
-            ),
-            "activationExecutionEnabled": planning_snapshot.get(
-                "activationExecutionEnabled"
-            ),
-            "verificationOnlyExecutionEnabled": planning_snapshot.get(
-                "verificationOnlyExecutionEnabled"
-            ),
-            "mutationTargets": planning_snapshot["mutationTargets"],
-            "activationTargets": planning_snapshot["activationTargets"],
-            "verificationTargets": planning_snapshot["verificationTargets"],
-            "terminalWork": planning_snapshot["terminalWork"],
-            "selectedClaimRequirements": None,
-        }
-        if (
-            planning_snapshot["activationTargets"]
-            and planning_snapshot.get("activationExecutionEnabled") is not True
-        ):
-            probes.append(
-                {
-                    "probe": "activation-architecture",
-                    "status": "blocked",
-                    "exitCode": EX_CONFIG,
-                    "issues": ["activation-architecture.execution-disabled"],
-                }
+    requested = {probe.capability for probe in selection.probes}
+    records: dict[str, dict[str, Any]] = {}
+    for name, result in (
+        ("migration", migration_result),
+        ("route", route_result),
+        ("terminal", terminal_result),
+    ):
+        if result is not None:
+            records[name] = _probe_record(name, result, structured=True)
+
+    def evidence_for(
+        capability: str,
+        record_name: str,
+    ) -> readiness_policy.ProbeEvidence:
+        record = records.get(record_name)
+        if record is None:
+            return readiness_policy.ProbeEvidence(
+                capability=capability,
+                status="incomplete",
+                issues=(f"{capability}.missing-probe-result",),
             )
-        mutation_hosts = {
-            target.get("host")
-            for target in planning_snapshot["mutationTargets"]
-            if isinstance(target, dict) and isinstance(target.get("host"), str)
-        }
-        activation_hosts = {
-            target.get("host")
-            for target in planning_snapshot["activationTargets"]
-            if isinstance(target, dict) and isinstance(target.get("host"), str)
-        }
-        verification_only = [
-            target
-            for target in planning_snapshot["verificationTargets"]
-            if isinstance(target, dict)
-            and target.get("host") not in mutation_hosts | activation_hosts
-        ]
-        if (
-            verification_only
-            and planning_snapshot.get("verificationOnlyExecutionEnabled") is not True
-        ):
-            probes.append(
-                {
-                    "probe": "verification-architecture",
-                    "status": "blocked",
-                    "exitCode": EX_CONFIG,
-                    "issues": ["verification-architecture.execution-disabled"],
-                }
+        declared = record.get("capability")
+        if record_name != "route" and declared != capability:
+            return readiness_policy.ProbeEvidence(
+                capability=capability,
+                status="incomplete",
+                issues=(f"{record_name}.capability-mismatch",),
             )
-    route_warnings = probes[1].get("warnings")
-    readiness_applicability: dict[str, bool | None] = {
-        "local.source-and-scope": True,
-        "migration.production-ledger": True,
-        "route.pi5-authority-and-resources": True,
-        "route.external-server-build": bool(required_external_dependencies),
-        "terminal.selected-prerequisites": terminal_count > 0,
-        "architecture.activation-executor": (
-            None
-            if planning_snapshot is None
-            else bool(planning_snapshot["activationTargets"])
+        if record_name == "terminal":
+            expected_hosts = next(
+                request.hosts
+                for request in selection.probes
+                if request.capability == capability
+            )
+            reported_hosts = tuple(
+                target.get("host")
+                for target in record.get("targets", [])
+                if isinstance(target, dict)
+                and isinstance(target.get("host"), str)
+            )
+            if (
+                len(reported_hosts) != len(set(reported_hosts))
+                or set(reported_hosts) != set(expected_hosts)
+            ):
+                return readiness_policy.ProbeEvidence(
+                    capability=capability,
+                    status="incomplete",
+                    issues=("terminal.scope-mismatch",),
+                )
+        hosts = tuple(
+            value.get("host")
+            for value in record.get("issueRecords", [])
+            if isinstance(value, dict) and isinstance(value.get("host"), str)
+        )
+        return readiness_policy.ProbeEvidence(
+            capability=capability,
+            status=str(record["status"]),
+            issues=tuple(str(value) for value in record.get("issues", [])),
+            warnings=tuple(str(value) for value in record.get("warnings", [])),
+            hosts=tuple(dict.fromkeys(hosts)),
+        )
+
+    evidence: list[readiness_policy.ProbeEvidence] = []
+    if "local.source-and-scope" in requested:
+        evidence.append(
+            readiness_policy.ProbeEvidence(
+                capability="local.source-and-scope", status="passed"
+            )
+        )
+    if "migration.production-ledger" in requested:
+        evidence.append(
+            evidence_for("migration.production-ledger", "migration")
+        )
+    route_record = records.get("route")
+    route_status = (
+        str(route_record["status"]) if route_record is not None else "incomplete"
+    )
+    route_issues = (
+        tuple(str(value) for value in route_record.get("issues", []))
+        if route_record is not None
+        else ("route.missing-probe-result",)
+    )
+    route_warnings = (
+        tuple(str(value) for value in route_record.get("warnings", []))
+        if route_record is not None
+        else ()
+    )
+    if "route.pi5-authority-and-resources" in requested:
+        base_issues = tuple(
+            value
+            for value in route_issues
+            if not value.startswith("pi5.external-tls:")
+        )
+        evidence.append(
+            readiness_policy.ProbeEvidence(
+                capability="route.pi5-authority-and-resources",
+                status=(
+                    "incomplete"
+                    if route_status == "incomplete"
+                    else ("blocked" if base_issues else "passed")
+                ),
+                issues=base_issues,
+                warnings=tuple(
+                    value
+                    for value in route_warnings
+                    if value != "pi5.interrupted-run-recovery-required"
+                ),
+                hosts=("pi5",),
+            )
+        )
+    if "route.external-server-build" in requested:
+        external_issues = tuple(
+            value
+            for value in route_issues
+            if value.startswith("pi5.external-tls:")
+        )
+        external_contract = (
+            route_record.get("externalDependencies")
+            if route_record is not None
+            else None
+        )
+        external_contract_matches = (
+            isinstance(external_contract, dict)
+            and external_contract.get("required")
+            == list(BUILD_EXTERNAL_DEPENDENCY_IDS)
+        )
+        if not external_contract_matches:
+            external_issues = (
+                *external_issues,
+                "pi5.external-tls:contract-mismatch",
+            )
+        evidence.append(
+            readiness_policy.ProbeEvidence(
+                capability="route.external-server-build",
+                status=(
+                    "incomplete"
+                    if route_status == "incomplete" or not external_contract_matches
+                    else ("blocked" if external_issues else "passed")
+                ),
+                issues=external_issues,
+                hosts=("pi5",),
+            )
+        )
+    if "route.interrupted-run-recovery" in requested:
+        interrupted = tuple(
+            value
+            for value in route_warnings
+            if value == "pi5.interrupted-run-recovery-required"
+        )
+        evidence.append(
+            readiness_policy.ProbeEvidence(
+                capability="route.interrupted-run-recovery",
+                status="incomplete" if route_status == "incomplete" else "passed",
+                warnings=interrupted,
+                hosts=("pi5",),
+            )
+        )
+    if "terminal.selected-prerequisites" in requested:
+        evidence.append(
+            evidence_for("terminal.selected-prerequisites", "terminal")
+        )
+    if "architecture.activation-executor" in requested:
+        enabled = planning_snapshot.get("activationExecutionEnabled") is True
+        evidence.append(
+            readiness_policy.ProbeEvidence(
+                capability="architecture.activation-executor",
+                status="passed" if enabled else "blocked",
+                issues=(
+                    ()
+                    if enabled
+                    else ("activation-architecture.execution-disabled",)
+                ),
+            )
+        )
+    if "architecture.verification-executor" in requested:
+        enabled = (
+            planning_snapshot.get("verificationOnlyExecutionEnabled") is True
+        )
+        evidence.append(
+            readiness_policy.ProbeEvidence(
+                capability="architecture.verification-executor",
+                status="passed" if enabled else "blocked",
+                issues=(
+                    ()
+                    if enabled
+                    else ("verification-architecture.execution-disabled",)
+                ),
+            )
+        )
+    decision = readiness_policy.evaluate_readiness(
+        registry, selection, tuple(evidence)
+    )
+    outcome = decision.exit_code
+    status = decision.status
+    admission = (
+        readiness_policy.make_admission(selection, decision).as_payload()
+        if outcome == 0
+        else None
+    )
+    target_planning = {
+        "status": "provisional-read-only-snapshot",
+        "typedTargetPlanningEnabled": planning_snapshot.get(
+            "typedTargetPlanningEnabled"
         ),
-        "architecture.verification-executor": (
-            None
-            if planning_snapshot is None
-            else bool(verification_only)
+        "activationExecutionEnabled": planning_snapshot.get(
+            "activationExecutionEnabled"
         ),
-        "route.interrupted-run-recovery": (
-            isinstance(route_warnings, list)
-            and "pi5.interrupted-run-recovery-required" in route_warnings
+        "verificationOnlyExecutionEnabled": planning_snapshot.get(
+            "verificationOnlyExecutionEnabled"
         ),
+        "mutationTargets": planning_snapshot["mutationTargets"],
+        "activationTargets": planning_snapshot["activationTargets"],
+        "verificationTargets": planning_snapshot["verificationTargets"],
+        "terminalWork": planning_snapshot["terminalWork"],
+        "selectedClaimRequirements": None,
     }
-    if any(probe["status"] == "incomplete" for probe in probes):
-        outcome = EX_SOFTWARE
-        status = "incomplete"
-    elif any(probe["status"] == "blocked" for probe in probes):
-        outcome = EX_CONFIG
-        status = "blocked"
-    else:
-        outcome = 0
-        status = "passed"
     return outcome, {
-        "version": 1,
+        "version": 2,
         "preflightId": spec.run_id,
         "sha": spec.sha,
         "inventory": spec.inventory,
@@ -537,8 +757,12 @@ def _preflight_report(
         "terminalCount": terminal_count,
         "releaseSubmitted": False,
         "routeCoverage": [stage.id for stage in ROUTE_STAGES],
-        "readinessReview": readiness_review_payload(readiness_applicability),
-        "probes": probes,
+        "readinessPlan": readiness_policy.readiness_plan_payload(selection),
+        "readinessReview": readiness_policy.readiness_review_payload(
+            registry, decision
+        ),
+        "readinessAdmission": admission,
+        "probes": list(records.values()),
     }
 
 
@@ -569,24 +793,52 @@ def _launch(args: Any, *, runtime: Any) -> int:
         if not selected:
             raise RuntimeError(f"--limit selected no hosts: {args.limit}")
         selected_release_hosts = runtime.release_hosts(inventory_data, selected)
-    terminal_preflight_targets = build_target_contracts(
-        inventory_data,
-        [target for target in selected_release_hosts if target.get("role") != "server"],
-    )
     identity = validate_remote_server_identity(inventory_data, runtime=runtime)
 
-    planning_snapshot = None
     build_print_plan = getattr(runtime, "build_print_plan", None)
-    if callable(build_print_plan):
-        planning_snapshot = build_print_plan(
-            args.branch,
-            args.inventory,
-            args.limit,
-            full_fleet=args.full_fleet,
-            reverify_selected=args.reverify_selected,
+    if not callable(build_print_plan):
+        raise RuntimeError("read-only target planning is unavailable")
+    planning_snapshot = build_print_plan(
+        args.branch,
+        args.inventory,
+        args.limit,
+        full_fleet=args.full_fleet,
+        reverify_selected=args.reverify_selected,
+    )
+    if planning_snapshot.get("sha") != sha:
+        raise RuntimeError("preflight planning SHA changed during launch")
+    readiness_registry = readiness_policy.load_registry()
+    readiness_selection = readiness_policy.select_readiness(
+        readiness_registry,
+        readiness_policy.facts_from_plan(planning_snapshot),
+    )
+    terminal_request = next(
+        (
+            request
+            for request in readiness_selection.probes
+            if request.capability == "terminal.selected-prerequisites"
+        ),
+        None,
+    )
+    terminal_work = {
+        work.get("host"): work
+        for work in planning_snapshot["terminalWork"]
+        if isinstance(work, dict) and isinstance(work.get("host"), str)
+    }
+    terminal_target_roles = [
+        {"host": host, "role": str(terminal_work[host]["role"])}
+        for host in (terminal_request.hosts if terminal_request else ())
+        if host in terminal_work
+    ]
+    if terminal_request is not None and len(terminal_target_roles) != len(
+        terminal_request.hosts
+    ):
+        raise RuntimeError(
+            "readiness terminal scope is inconsistent with target planning"
         )
-        if planning_snapshot.get("sha") != sha:
-            raise RuntimeError("preflight planning SHA changed during launch")
+    terminal_preflight_targets = build_target_contracts(
+        inventory_data, terminal_target_roles
+    )
 
     run_id = new_run_id()
     spec = LaunchSpec(
@@ -604,29 +856,44 @@ def _launch(args: Any, *, runtime: Any) -> int:
         reverify_selected=args.reverify_selected,
     ).validate()
     systemd, control = build_backends(runtime)
-    migration_preflight = systemd.preflight_migrations(spec)
-    required_external_dependencies = _required_external_dependencies(
-        planning_snapshot
+    requested_capabilities = {
+        request.capability for request in readiness_selection.probes
+    }
+    migration_preflight = (
+        systemd.preflight_migrations(spec)
+        if "migration.production-ledger" in requested_capabilities
+        else None
     )
-    route_preflight = systemd.preflight_route(
-        spec, required_external_dependencies
+    route_capabilities = {
+        "route.pi5-authority-and-resources",
+        "route.external-server-build",
+        "route.interrupted-run-recovery",
+    }
+    required_external_dependencies = (
+        BUILD_EXTERNAL_DEPENDENCY_IDS
+        if "route.external-server-build" in requested_capabilities
+        else ()
     )
-    terminal_preflight_result = systemd.preflight_terminals(
-        spec, terminal_preflight_targets
+    route_preflight = (
+        systemd.preflight_route(spec, required_external_dependencies)
+        if requested_capabilities & route_capabilities
+        else None
+    )
+    terminal_preflight_result = (
+        systemd.preflight_terminals(spec, terminal_preflight_targets)
+        if terminal_request is not None
+        else None
     )
     preflight_code, preflight_report = _preflight_report(
         spec,
+        registry=readiness_registry,
+        selection=readiness_selection,
         migration_result=migration_preflight,
         route_result=route_preflight,
         terminal_result=terminal_preflight_result,
         selected_hosts=[str(target["host"]) for target in selected_release_hosts],
-        selected_target_roles=[
-            {"host": str(target["host"]), "role": str(target["role"])}
-            for target in selected_release_hosts
-        ],
         terminal_count=len(terminal_preflight_targets),
         planning_snapshot=planning_snapshot,
-        required_external_dependencies=required_external_dependencies,
     )
     if getattr(args, "preflight_only", False):
         print(json.dumps(preflight_report, ensure_ascii=False, sort_keys=True))
@@ -637,6 +904,10 @@ def _launch(args: Any, *, runtime: Any) -> int:
             f"{preflight_report['status']}: "
             + json.dumps(preflight_report["probes"], ensure_ascii=True, sort_keys=True)
         )
+    admission_payload = preflight_report.get("readinessAdmission")
+    if not isinstance(admission_payload, dict):
+        raise RuntimeError("passing preflight did not produce a readiness admission")
+    spec = replace(spec, readiness_admission=admission_payload).validate()
     try:
         result = systemd.start(spec, wait=not args.detach)
     except Exception as error:
@@ -678,18 +949,9 @@ def _launch(args: Any, *, runtime: Any) -> int:
 
 
 def _local_incomplete_preflight_report(args: Any) -> dict[str, Any]:
-    readiness_applicability = {
-        "local.source-and-scope": True,
-        "migration.production-ledger": None,
-        "route.pi5-authority-and-resources": None,
-        "route.external-server-build": None,
-        "terminal.selected-prerequisites": None,
-        "architecture.activation-executor": None,
-        "architecture.verification-executor": None,
-        "route.interrupted-run-recovery": None,
-    }
+    registry = readiness_policy.load_registry()
     return {
-        "version": 1,
+        "version": 2,
         "preflightId": None,
         "sha": None,
         "inventory": getattr(args, "inventory", None),
@@ -711,7 +973,11 @@ def _local_incomplete_preflight_report(args: Any) -> dict[str, Any]:
         "terminalCount": 0,
         "releaseSubmitted": False,
         "routeCoverage": [stage.id for stage in ROUTE_STAGES],
-        "readinessReview": readiness_review_payload(readiness_applicability),
+        "readinessPlan": None,
+        "readinessReview": readiness_policy.unavailable_readiness_review(
+            registry, "local.source-and-scope.incomplete"
+        ),
+        "readinessAdmission": None,
         "probes": [
             {
                 "probe": "local",

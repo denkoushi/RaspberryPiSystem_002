@@ -6,6 +6,7 @@ per-run state that describes the same transition.
 """
 from __future__ import annotations
 
+import json
 import re
 import time
 from contextlib import contextmanager
@@ -30,6 +31,7 @@ from .release_claims import (
     validate_release_claims,
 )
 from .release_warnings import record_observer_warning
+from . import readiness_policy
 from .terminal_adapters import TerminalAdapter
 
 
@@ -1584,6 +1586,21 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
     fleet_started = False
     fleet_finished = False
     interrupted_recovery_pending = False
+    admission = None
+    if hasattr(args, "readiness_admission_json"):
+        raw_admission = getattr(args, "readiness_admission_json")
+        if not isinstance(raw_admission, str) or not raw_admission:
+            raise RuntimeError("remote release requires a readiness admission")
+        try:
+            admission_payload = json.loads(raw_admission)
+        except (TypeError, json.JSONDecodeError) as error:
+            raise RuntimeError("readiness admission is not valid JSON") from error
+        try:
+            admission = readiness_policy.parse_admission(admission_payload)
+        except readiness_policy.ReadinessPolicyError as error:
+            raise RuntimeError("readiness admission is invalid") from error
+        if admission.sha != args.sha:
+            raise RuntimeError("readiness admission does not match release SHA")
 
     def finish_fleet(status: str) -> dict[str, Any] | None:
         nonlocal fleet_finished
@@ -1658,6 +1675,11 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             "targets": [],
             "fleetGeneration": fleet_state["generation"],
         }
+        if admission is not None:
+            initial["readinessAdmission"] = {
+                **admission.as_payload(),
+                "scopeMatch": "pending",
+            }
         if abandoned_run_id is not None:
             initial["abandonedFleetRunId"] = abandoned_run_id
         state = runtime.ReleaseState(runtime.status_file(args.run_id), initial)
@@ -1723,6 +1745,36 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
         state.payload["fleetGeneration"] = fleet_state["generation"]
         state.save()
         _require_executable_target_architecture(plan)
+        if admission is not None:
+            try:
+                locked_registry = readiness_policy.load_registry()
+                locked_selection = readiness_policy.select_readiness(
+                    locked_registry,
+                    readiness_policy.facts_from_plan(plan),
+                )
+                admission_issues = readiness_policy.compare_admission(
+                    admission, locked_selection
+                )
+            except readiness_policy.ReadinessPolicyError as error:
+                admission_issues = (
+                    "readiness-admission.locked-plan-incomplete",
+                )
+                state.payload["readinessAdmission"]["scopeError"] = type(
+                    error
+                ).__name__
+            state.payload["readinessAdmission"]["scopeMatch"] = (
+                "blocked" if admission_issues else "passed"
+            )
+            state.payload["readinessAdmission"]["scopeIssues"] = list(
+                admission_issues
+            )
+            state.payload["readinessAdmission"]["checkedAt"] = runtime.utc_now()
+            state.save()
+            if admission_issues:
+                raise RuntimeError(
+                    "locked release scope exceeds readiness admission: "
+                    + ", ".join(admission_issues)
+                )
         token.checkpoint("plan-complete")
 
         pi5_required = bool(plan["pi5Required"])

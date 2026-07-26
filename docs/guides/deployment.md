@@ -16,7 +16,7 @@ last_verified: 2026-07-25
 ```text
 scripts/update-all-clients.sh <branch> <inventory> [--limit PATTERN] [--reverify-selected] [--full-fleet] [--detach]
 scripts/update-all-clients.sh <branch> <inventory> --print-plan
-scripts/update-all-clients.sh <branch> <inventory> --preflight-only [--limit PATTERN]
+scripts/update-all-clients.sh <branch> <inventory> --preflight-only [--limit PATTERN] [--reverify-selected]
 scripts/update-all-clients.sh --status RUN_ID
 scripts/update-all-clients.sh --approve RUN_ID
 scripts/update-all-clients.sh --cancel RUN_ID --reason TEXT
@@ -25,7 +25,7 @@ scripts/update-all-clients.sh --cancel RUN_ID --reason TEXT
 - 引数なしの通常実行は完了まで待つ。
 - `--detach` は開始後に `runId` を返す。状態は `--status` で確認する。
 - `--dry-run` は `--print-plan` の互換aliasとして使える。
-- `--preflight-only` はmigration、Pi5実行経路、選択端末の全前提条件を一括検査する診断コマンドである。release run、systemd unit、fleet state、maintenance、checkout、service変更は作成・実行しない。通常実行は同じ検査をrelease unit作成の直前に必ず実施するため、通常手順で事前に実行する必要はない。
+- `--preflight-only` はmigration、Pi5実行経路、実作業計画に含まれる端末だけの全前提条件を一括検査する診断コマンドである。release run、systemd unit、fleet state、maintenance、checkout、service変更は作成・実行しない。`--full-fleet` と `--limit PATTERN --reverify-selected` もread-only計画のまま検査できる。通常実行は同じ検査をrelease unit作成の直前に必ず実施するため、通常手順で事前に実行する必要はない。
 - `human` profileのカナリア待機は `--approve RUN_ID` で現在のgateを明示承認する。複数profileでは順番に承認する。
 - 安定化時間を省略できるのは、緊急時に `--emergency-override --reason TEXT` を併用した場合だけである。
 
@@ -100,7 +100,7 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
   --preflight-only
 ```
 
-`--preflight-only` はmigration、Pi5、選択した全端末の問題を途中で打ち切らず、一つのJSONとして表示する。ローカルGit取得など、SHA確定前の検査自体が失敗した場合も、内部詳細を漏らさず`status: incomplete`のJSONを一つ返す。JSONには不変SHA、対象host、25段階のroute coverage、各probeのproof・issue・安全な資源値と、全readiness gateの分類・守る要件・失敗時の実害・適用条件・timeout・復旧方法・対応testが含まれ、`releaseSubmitted`は常に`false`である。完全合格は終了コード0、通常の前提不足は78、検査自体が欠落・破損・内部失敗した場合は70とする。70を前提不足として扱ったり、probeを省略して続行してはならない。
+`--preflight-only` はmigration、Pi5、plannerの`terminalWork`に入った端末の問題を途中で打ち切らず、一つのversion 2 JSONとして表示する。inventory全端末を代替対象にはしない。ローカルGit取得や計画情報の検査自体が失敗した場合も、内部詳細を漏らさず`status: incomplete`のJSONを一つ返す。JSONには不変SHA、実作業host、25段階のroute coverage、data-only readiness policyのdigest、適用gate、probe capability、proof、host付きstable issue code、復旧方法、対応test、合格scopeを封印した`readinessAdmission`が含まれ、`releaseSubmitted`は常に`false`である。完全合格またはobserve警告だけなら終了コード0、enforce判定失敗は78、未登録issue・証拠欠落・契約不整合は70とする。70を前提不足として扱ったり、probeを省略して続行してはならない。
 
 Pi5 probeは既存fleet lockを全検査中保持し、実機identity、clean checkout、候補commit・protocol・実行成果物、通常Ansible設定とVault、inventory展開、Docker/Compose、空きディスク・メモリ、fleet/Blue-Green/deploy-statusの可読性、active run不在を同時に確認する。影響分類が`server-app`または`unknown`なら、Docker Hub、npm、Prisma、GitHub、PyPI、Playwright、Go module proxyへの証明書検証付きTLS接続を3回ずつPi5から並列確認する。一つでも失敗すれば全取得先の結果をまとめて表示し、release unitを作成しない。image buildを行わない既知の変更にはこの外部接続判定を適用しない。
 
@@ -136,7 +136,9 @@ SQLを未適用migrationとしてExpand-only検査する。この例外はreposi
 scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
 ```
 
-通常実行は、release unitの作成前にmigration・Pi5経路・全端末前提検査を一度だけ実行する。通常手順で別途`--preflight-only`を実行する必要はない。状態が変わっても、実行直前の検査で停止し、端末通知、maintenance、checkout、service変更へは進まない。
+通常実行は、release unitの作成前にdata-only policyが選んだmigration・Pi5経路・実作業端末の検査を一度だけ実行する。通常手順で別途`--preflight-only`を実行する必要はない。合格時のSHA、policy digest、component、host、action、claim、capabilityは`ReadinessAdmission`としてrelease unitへ渡される。coordinatorがlock下で再計画したscopeが減る場合は続行できるが、host追加、action昇格、claim追加、capability追加は新releaseの変更前に停止する。過去runのsealed authorityによる復旧はこの比較より先に完了できる。
+
+readiness判定の正本は`scripts/deploy/readiness-gates.json`である。新しい判定は原則`observe`で登録し、3件以上の本番run証跡と人によるレビューを別変更で行うまで`enforce`へ昇格しない。安全上の即時blockだけは、具体的な実害と即時理由を台帳へ登録する。コマンド、Python import、任意コードは台帳に登録できない。
 
 前回runの中断復旧では、maintenance開始の有無にかかわらず、保存済みの全sealed runtime manifestを先にpreflightする。manifestはmaintenance前でもDocker rollback tagと当時のoptional-agent health authorityを所有し得るためである。復旧後の観測も同じsealed health contractと安定性判定を使う。active/failed run、manifest、rollback tag、fleet stateを手で削除・編集してこの連鎖を迂回してはならない。
 

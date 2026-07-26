@@ -13,6 +13,7 @@ from pathlib import Path, PurePosixPath
 from scripts.deploy.rolling_release import bootstrap
 from scripts.deploy.rolling_release import migration_preflight
 from scripts.deploy.rolling_release import route_preflight
+from scripts.deploy.rolling_release import readiness_policy
 from scripts.deploy.rolling_release import terminal_preflight
 from scripts.deploy.rolling_release.adapter_registry import adapter_for_profile
 from scripts.deploy.rolling_release.backends import systemd as backend_module
@@ -48,6 +49,37 @@ class FakeRunner:
 
 
 class SystemdBackendTest(unittest.TestCase):
+    def admission(self):
+        registry = readiness_policy.load_registry()
+        facts = readiness_policy.facts_from_plan(
+            {
+                "sha": SHA,
+                "classificationComponents": ["neutral"],
+                "pi5Required": False,
+                "fullFleet": False,
+                "reverifySelected": False,
+                "typedTargetPlanningEnabled": True,
+                "activationExecutionEnabled": True,
+                "verificationOnlyExecutionEnabled": True,
+                "terminalWork": [],
+            }
+        )
+        selection = readiness_policy.select_readiness(registry, facts)
+        decision = readiness_policy.evaluate_readiness(
+            registry,
+            selection,
+            tuple(
+                readiness_policy.ProbeEvidence(
+                    capability=request.capability,
+                    status="passed",
+                )
+                for request in selection.probes
+            ),
+        )
+        return readiness_policy.make_admission(
+            selection, decision
+        ).as_payload()
+
     def spec(self, **overrides):
         values = {
             'run_id': RUN_ID,
@@ -139,6 +171,27 @@ class SystemdBackendTest(unittest.TestCase):
             'raspberrypi5:stonebase-a',
         )
 
+    def test_readiness_admission_survives_bootstrap_and_remote_arguments(self):
+        backend, runner = self.backend()
+        admission = self.admission()
+
+        backend.start(
+            self.spec(readiness_admission=admission),
+            wait=False,
+        )
+
+        remote = self.remote_argv(runner)
+        payload = bootstrap.parse_spec(
+            base64.b64decode(remote[-1]).decode('utf-8')
+        )
+        self.assertEqual(payload['version'], 3)
+        self.assertEqual(payload['readinessAdmission'], admission)
+        arguments = bootstrap.remote_arguments(payload)
+        encoded = arguments[
+            arguments.index('--readiness-admission-json') + 1
+        ]
+        self.assertEqual(json.loads(encoded), admission)
+
     def test_detach_omits_wait_but_still_waits_for_unit_start(self):
         backend, runner = self.backend()
 
@@ -165,6 +218,7 @@ class SystemdBackendTest(unittest.TestCase):
         payload = migration_preflight.parse_spec(
             base64.b64decode(remote[-1]).decode('utf-8')
         )
+        self.assertEqual(payload['version'], 2)
         self.assertEqual(payload['sha'], SHA)
         self.assertEqual(payload['runId'], RUN_ID)
 
@@ -222,6 +276,7 @@ class SystemdBackendTest(unittest.TestCase):
         payload = terminal_preflight.parse_spec(
             base64.b64decode(remote[-1]).decode('utf-8')
         )
+        self.assertEqual(payload['version'], 2)
         self.assertEqual(payload['targets'], [target])
         self.assertNotIn('clientKey', json.dumps(payload))
         self.assertNotIn('secret', json.dumps(payload).lower())
