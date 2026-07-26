@@ -1,21 +1,25 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useMatch, useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 
 import {
   createAssemblyLot,
+  invalidateAssemblyWorkUnit,
   listAssemblyLotSummaries,
   listAssemblySeibanCandidates,
   listAssemblySeibanLotQuantities,
   listAssemblyWorkSessionSummaries,
-  resolveAssemblyOperatorNfc,
   startAssemblyLotSerial
 } from '../../api/client';
 import { buttonClassName } from '../../components/ui/Button';
 import {
   AssemblyCompletedPane,
   AssemblyLotPane,
+  AssemblyOperatorNfcDialog,
   AssemblyStartPane,
+  AssemblyWorkUnitInvalidationDialog,
   AssemblyWipPane,
+  buildAssemblyLotWorkIds,
+  createAssemblyRequestId,
   kioskAssemblyLibraryPath,
   kioskAssemblyRecordApprovalPath,
   kioskAssemblyTraceabilityPath,
@@ -24,8 +28,8 @@ import {
   readAssemblyApiErrorMessage,
   toHalfWidthAscii
 } from '../../features/assembly';
-import { useNfcStream } from '../../hooks/useNfcStream';
 
+import type { AssemblyWorkUnitInvalidationTarget } from '../../features/assembly';
 import type { AssemblyLotSummaryDto, AssemblySeibanCandidateDto, AssemblyWorkSessionSummaryDto } from '../../features/assembly/types';
 
 const DEFAULT_TORQUE_WRENCH_ID = 'CEM20N3X10D-BTLA';
@@ -47,22 +51,18 @@ function parsePositiveIntegerLotQty(value: string): number | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
   const parsed = Number.parseInt(trimmed, 10);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  return Number.isInteger(parsed) && parsed > 0 && parsed <= 500 ? parsed : null;
 }
 
 export function KioskAssemblyHomePage() {
   const navigate = useNavigate();
-  const isActiveRoute = useMatch('/kiosk/assembly');
-  const nfcEvent = useNfcStream(Boolean(isActiveRoute));
-  const lastNfcKeyRef = useRef<string | null>(null);
   const [fseibanInput, setFseibanInput] = useState('');
   const [selectedCandidate, setSelectedCandidate] = useState<AssemblySeibanCandidateDto | null>(null);
   const [candidates, setCandidates] = useState<AssemblySeibanCandidateDto[]>([]);
   const [candidateLoading, setCandidateLoading] = useState(false);
   const [serialDraft, setSerialDraft] = useState('');
   const [lotSerialNos, setLotSerialNos] = useState<string[]>([]);
-  const [operatorNameSnapshot, setOperatorNameSnapshot] = useState('');
-  const [operatorEmployeeId, setOperatorEmployeeId] = useState<string | null>(null);
+  const [workIdMode, setWorkIdMode] = useState<'auto' | 'manual'>('auto');
   const [torqueWrenchId, setTorqueWrenchId] = useState(DEFAULT_TORQUE_WRENCH_ID);
   const [lots, setLots] = useState<AssemblyLotSummaryDto[]>([]);
   const [sessions, setSessions] = useState<AssemblyWorkSessionSummaryDto[]>([]);
@@ -75,6 +75,11 @@ export function KioskAssemblyHomePage() {
   const [manualLotQtyDraft, setManualLotQtyDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [busySerialId, setBusySerialId] = useState<string | null>(null);
+  const [pendingStart, setPendingStart] = useState<{ lotId: string; lotSerialId: string } | null>(null);
+  const [operatorGateError, setOperatorGateError] = useState<string | null>(null);
+  const [invalidationTarget, setInvalidationTarget] = useState<AssemblyWorkUnitInvalidationTarget | null>(null);
+  const [invalidationBusy, setInvalidationBusy] = useState(false);
+  const [invalidationError, setInvalidationError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const normalizedFseiban = useMemo(() => normalizeIdentifier(fseibanInput), [fseibanInput]);
@@ -91,12 +96,20 @@ export function KioskAssemblyHomePage() {
       : null;
   const manualLotQty = autoLotQty == null ? parsePositiveIntegerLotQty(manualLotQtyDraft) : null;
   const expectedLotQuantity = autoLotQty ?? manualLotQty ?? null;
-  const serialDraftDuplicate = normalizedSerialDraft.length > 0 && lotSerialNos.includes(normalizedSerialDraft);
+  const autoWorkIds = useMemo(() => {
+    if (!selectedCandidate || expectedLotQuantity == null) return [];
+    try {
+      return buildAssemblyLotWorkIds(selectedCandidate.fseiban, expectedLotQuantity);
+    } catch {
+      return [];
+    }
+  }, [expectedLotQuantity, selectedCandidate]);
+  const registrationWorkIds = workIdMode === 'auto' ? autoWorkIds : lotSerialNos;
+  const serialDraftDuplicate = normalizedSerialDraft.length > 0 && registrationWorkIds.includes(normalizedSerialDraft);
   const canRegisterLot =
     !!selectedCandidate?.activeTemplate &&
     expectedLotQuantity != null &&
-    lotSerialNos.length === expectedLotQuantity &&
-    operatorNameSnapshot.trim().length > 0 &&
+    registrationWorkIds.length === expectedLotQuantity &&
     torqueWrenchId.trim().length > 0;
 
   const productNosForLotQty = useMemo(() => {
@@ -189,6 +202,7 @@ export function KioskAssemblyHomePage() {
     if (selectedCandidate) return;
     setSerialDraft('');
     setLotSerialNos([]);
+    setWorkIdMode('auto');
     setManualLotQtyDraft('');
   }, [selectedCandidate]);
 
@@ -221,23 +235,6 @@ export function KioskAssemblyHomePage() {
     };
   }, [normalizedFseiban]);
 
-  useEffect(() => {
-    if (!nfcEvent || busy) return;
-    const key = `${nfcEvent.uid}:${nfcEvent.timestamp}`;
-    if (lastNfcKeyRef.current === key) return;
-    lastNfcKeyRef.current = key;
-    void (async () => {
-      try {
-        const resolved = await resolveAssemblyOperatorNfc(nfcEvent.uid);
-        setOperatorNameSnapshot(resolved.displayName);
-        setOperatorEmployeeId(resolved.employeeId);
-        setMessage(null);
-      } catch (e: unknown) {
-        setMessage(readAssemblyApiErrorMessage(e, '社員タグの解決に失敗しました。'));
-      }
-    })();
-  }, [nfcEvent, busy]);
-
   const appendFseiban = (key: string) => {
     setFseibanInput((current) => normalizeIdentifier(`${current}${key}`));
   };
@@ -267,6 +264,7 @@ export function KioskAssemblyHomePage() {
     setFseibanInput(candidate.fseiban);
     setSerialDraft('');
     setLotSerialNos([]);
+    setWorkIdMode('auto');
     setManualLotQtyDraft('');
     setMessage(null);
   };
@@ -275,9 +273,13 @@ export function KioskAssemblyHomePage() {
     setManualLotQtyDraft(normalizeManualLotQtyDraft(value));
   };
 
-  const changeOperatorName = (value: string) => {
-    setOperatorNameSnapshot(value.slice(0, 120));
-    setOperatorEmployeeId(null);
+  const changeWorkIdMode = (mode: 'auto' | 'manual') => {
+    if (mode === 'manual') {
+      setLotSerialNos(autoWorkIds);
+    }
+    setWorkIdMode(mode);
+    setSerialDraft('');
+    setMessage(null);
   };
 
   const addSerialToLot = () => {
@@ -291,11 +293,11 @@ export function KioskAssemblyHomePage() {
       );
       return;
     }
-    if (lotSerialNos.length >= expectedLotQuantity) {
+    if (registrationWorkIds.length >= expectedLotQuantity) {
       setMessage('ロット数を超える作業用IDは登録できません。');
       return;
     }
-    if (lotSerialNos.includes(next)) {
+    if (registrationWorkIds.includes(next)) {
       setMessage('同じ作業用IDは登録できません。');
       return;
     }
@@ -325,13 +327,13 @@ export function KioskAssemblyHomePage() {
         templateId: selectedCandidate.activeTemplate.id,
         productNo: selectedCandidate.fseiban,
         expectedQuantity: expectedLotQuantity,
-        workIds: lotSerialNos,
-        operatorEmployeeId,
-        operatorNameSnapshot: operatorNameSnapshot.trim(),
+        workIdMode,
+        ...(workIdMode === 'manual' ? { workIds: registrationWorkIds } : {}),
         targetUnit: selectedCandidate.machineName,
         torqueWrenchId: torqueWrenchId.trim()
       });
       setLotSerialNos([]);
+      setWorkIdMode('auto');
       setSerialDraft('');
       setMessage('ロットを登録しました。登録済みロットから作業用IDごとに開始してください。');
       await reloadLots();
@@ -342,16 +344,48 @@ export function KioskAssemblyHomePage() {
     }
   };
 
-  const startRegisteredSerial = async (lotId: string, lotSerialId: string) => {
-    setBusySerialId(lotSerialId);
-    setMessage(null);
+  const openStartNfcGate = (lotId: string, lotSerialId: string) => {
+    setPendingStart({ lotId, lotSerialId });
+    setOperatorGateError(null);
+  };
+
+  const startRegisteredSerial = async (operatorNfcTagUid: string) => {
+    if (!pendingStart) return;
+    const requestId = createAssemblyRequestId();
+    setBusySerialId(pendingStart.lotSerialId);
+    setOperatorGateError(null);
     try {
-      const session = await startAssemblyLotSerial(lotId, lotSerialId);
-      navigate(kioskAssemblyWorkSessionPath(session.id));
+      const session = await startAssemblyLotSerial(pendingStart.lotId, pendingStart.lotSerialId, {
+        operatorNfcTagUid,
+        requestId
+      });
+      setPendingStart(null);
+      navigate(kioskAssemblyWorkSessionPath(session.id), {
+        state: { assemblyOperatorAccessGrant: { sessionId: session.id, requestId } }
+      });
     } catch (e: unknown) {
-      setMessage(readAssemblyApiErrorMessage(e, '作業用IDの組立開始に失敗しました。'));
+      setOperatorGateError(readAssemblyApiErrorMessage(e, '社員タグを確認できませんでした。'));
     } finally {
       setBusySerialId(null);
+    }
+  };
+
+  const confirmInvalidation = async (input: { accessPassword: string; reason: string }) => {
+    if (!invalidationTarget) return;
+    setInvalidationBusy(true);
+    setInvalidationError(null);
+    try {
+      await invalidateAssemblyWorkUnit(invalidationTarget.workUnitId, {
+        ...input,
+        requestId: createAssemblyRequestId()
+      });
+      setInvalidationTarget(null);
+      setMessage('作業アイテムを削除しました。作業用IDと履歴は監査用に保持されます。');
+      await Promise.all([reloadLots(), reloadSessions(), reloadCompletedSessions()]);
+    } catch (error: unknown) {
+      setInvalidationError(readAssemblyApiErrorMessage(error, '作業アイテムを削除できませんでした。'));
+    } finally {
+      setInvalidationBusy(false);
     }
   };
 
@@ -409,13 +443,29 @@ export function KioskAssemblyHomePage() {
             loading={lotLoading}
             busySerialId={busySerialId}
             onReload={() => void reloadLots()}
-            onStartSerial={(lotId, lotSerialId) => void startRegisteredSerial(lotId, lotSerialId)}
+            onStartSerial={openStartNfcGate}
+            onInvalidate={(target) => {
+              setInvalidationTarget(target);
+              setInvalidationError(null);
+            }}
           />
-          <AssemblyWipPane sessions={sessions} loading={sessionLoading} onReload={() => void reloadSessions()} />
+          <AssemblyWipPane
+            sessions={sessions}
+            loading={sessionLoading}
+            onReload={() => void reloadSessions()}
+            onInvalidate={(target) => {
+              setInvalidationTarget(target);
+              setInvalidationError(null);
+            }}
+          />
           <AssemblyCompletedPane
             sessions={completedSessions}
             loading={completedLoading}
             onReload={() => void reloadCompletedSessions()}
+            onInvalidate={(target) => {
+              setInvalidationTarget(target);
+              setInvalidationError(null);
+            }}
           />
         </div>
         <AssemblyStartPane
@@ -429,8 +479,10 @@ export function KioskAssemblyHomePage() {
           candidateLoading={candidateLoading}
           selectedCandidate={selectedCandidate}
           onSelectCandidate={selectCandidate}
+          workIdMode={workIdMode}
+          onWorkIdModeChange={changeWorkIdMode}
           serialDraft={serialDraft}
-          serialNos={lotSerialNos}
+          serialNos={registrationWorkIds}
           expectedLotQuantity={expectedLotQuantity}
           serialDraftDuplicate={serialDraftDuplicate}
           onSerialDraftChange={changeSerialDraft}
@@ -439,8 +491,6 @@ export function KioskAssemblyHomePage() {
           onSerialClear={() => setSerialDraft('')}
           onSerialAdd={addSerialToLot}
           onSerialRemove={removeSerialFromLot}
-          operatorNameSnapshot={operatorNameSnapshot}
-          onOperatorNameChange={changeOperatorName}
           selectedLotQty={selectedLotQty}
           autoLotQty={autoLotQty}
           manualLotQtyDraft={manualLotQtyDraft}
@@ -453,6 +503,28 @@ export function KioskAssemblyHomePage() {
           onRegisterLot={() => void registerLot()}
         />
       </main>
+      <AssemblyOperatorNfcDialog
+        open={pendingStart != null}
+        title="作業者確認"
+        description="作業開始前に、実際に作業する社員のNFCタグをスキャンしてください。"
+        busy={busySerialId != null}
+        error={operatorGateError}
+        onScan={(uid) => void startRegisteredSerial(uid)}
+        onCancel={() => {
+          setPendingStart(null);
+          setOperatorGateError(null);
+        }}
+      />
+      <AssemblyWorkUnitInvalidationDialog
+        target={invalidationTarget}
+        busy={invalidationBusy}
+        error={invalidationError}
+        onConfirm={(input) => void confirmInvalidation(input)}
+        onCancel={() => {
+          setInvalidationTarget(null);
+          setInvalidationError(null);
+        }}
+      />
     </div>
   );
 }

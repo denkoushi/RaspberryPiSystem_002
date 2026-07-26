@@ -9,6 +9,7 @@ import type {
   AssemblyProcedureSequenceDto,
   AssemblyLotCreateInput,
   AssemblyLotSummaryDto,
+  AssemblyOperatorAccessInput,
   AssemblyFormalIdentifierDto,
   AssemblyTraceabilityDetailDto,
   AssemblyTraceabilityWorkUnitDto,
@@ -20,6 +21,8 @@ import type {
   AssemblyWorkSessionDto,
   AssemblyWorkSessionSummaryDto,
   AssemblyWorkSessionStartInput,
+  AssemblyWorkUnitInvalidationDto,
+  AssemblyWorkUnitInvalidationInput,
 } from '../../features/assembly/types';
 
 export async function listAssemblySeibanCandidates(params: { prefix: string; limit?: number }) {
@@ -233,12 +236,38 @@ export async function getAssemblyLot(id: string) {
   return data.lot;
 }
 
-export async function startAssemblyLotSerial(lotId: string, lotSerialId: string) {
+export async function startAssemblyLotSerial(
+  lotId: string,
+  lotSerialId: string,
+  payload: AssemblyOperatorAccessInput
+) {
   const { data } = await api.post<{ session: AssemblyWorkSessionDto }>(
     `/assembly/lots/${lotId}/serials/${lotSerialId}/start`,
-    {}
+    payload
   );
   return data.session;
+}
+
+export async function recordAssemblyOperatorAccess(
+  sessionId: string,
+  payload: AssemblyOperatorAccessInput
+) {
+  const { data } = await api.post<{ session: AssemblyWorkSessionDto }>(
+    `/assembly/work-sessions/${sessionId}/operator-access`,
+    payload
+  );
+  return data.session;
+}
+
+export async function invalidateAssemblyWorkUnit(
+  workUnitId: string,
+  payload: AssemblyWorkUnitInvalidationInput
+) {
+  const { data } = await api.post<{ invalidation: AssemblyWorkUnitInvalidationDto }>(
+    `/assembly/work-units/${workUnitId}/invalidate`,
+    payload
+  );
+  return data.invalidation;
 }
 
 export async function listAssemblyWorkSessionSummaries(params?: {

@@ -1,86 +1,66 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  BOTTOM_CENTER_KIOSK_HEADER_REVEAL_HOT_ZONE,
+  BOTTOM_RIGHT_KIOSK_HEADER_REVEAL_HOT_ZONE,
   isPointerInKioskHeaderRevealHotZone,
-  KIOSK_HEADER_REVEAL_BAND_DEPTH_PX
+  KIOSK_HEADER_REVEAL_HOT_ZONE_SIZE_PX
 } from './kioskHeaderRevealHotZone';
 
 const VIEW_W = 900;
 const VIEW_H = 600;
 
-const bottomCenter = {
-  ...BOTTOM_CENTER_KIOSK_HEADER_REVEAL_HOT_ZONE,
+const bottomRight = {
+  ...BOTTOM_RIGHT_KIOSK_HEADER_REVEAL_HOT_ZONE,
   viewportWidth: VIEW_W,
   viewportHeight: VIEW_H
 };
 
 describe('isPointerInKioskHeaderRevealHotZone', () => {
-  it('true at bottom center within band', () => {
+  it('is true inside the bottom-right 24x24 zone', () => {
     expect(
       isPointerInKioskHeaderRevealHotZone({
-        ...bottomCenter,
-        clientX: VIEW_W / 2,
+        ...bottomRight,
+        clientX: VIEW_W - 1,
         clientY: VIEW_H - 1
       })
     ).toBe(true);
   });
 
-  it('true at top edge of bottom band (y = height - depth)', () => {
+  it('is true at the top-left boundary of the zone', () => {
     expect(
       isPointerInKioskHeaderRevealHotZone({
-        ...bottomCenter,
-        clientX: VIEW_W / 2,
-        clientY: VIEW_H - KIOSK_HEADER_REVEAL_BAND_DEPTH_PX
+        ...bottomRight,
+        clientX: VIEW_W - KIOSK_HEADER_REVEAL_HOT_ZONE_SIZE_PX,
+        clientY: VIEW_H - KIOSK_HEADER_REVEAL_HOT_ZONE_SIZE_PX
       })
     ).toBe(true);
   });
 
-  it('false just above bottom band', () => {
+  it('is false just above the zone', () => {
     expect(
       isPointerInKioskHeaderRevealHotZone({
-        ...bottomCenter,
-        clientX: VIEW_W / 2,
-        clientY: VIEW_H - KIOSK_HEADER_REVEAL_BAND_DEPTH_PX - 1
+        ...bottomRight,
+        clientX: VIEW_W - 1,
+        clientY: VIEW_H - KIOSK_HEADER_REVEAL_HOT_ZONE_SIZE_PX - 1
       })
     ).toBe(false);
   });
 
-  it('true at horizontal left boundary (x = width/3)', () => {
+  it('is false just left of the zone', () => {
     expect(
       isPointerInKioskHeaderRevealHotZone({
-        ...bottomCenter,
-        clientX: VIEW_W / 3,
-        clientY: VIEW_H - 1
-      })
-    ).toBe(true);
-  });
-
-  it('true at horizontal right boundary (x = 2*width/3)', () => {
-    expect(
-      isPointerInKioskHeaderRevealHotZone({
-        ...bottomCenter,
-        clientX: (2 * VIEW_W) / 3,
-        clientY: VIEW_H - 1
-      })
-    ).toBe(true);
-  });
-
-  it('false in left third at bottom', () => {
-    expect(
-      isPointerInKioskHeaderRevealHotZone({
-        ...bottomCenter,
-        clientX: VIEW_W / 3 - 1,
+        ...bottomRight,
+        clientX: VIEW_W - KIOSK_HEADER_REVEAL_HOT_ZONE_SIZE_PX - 1,
         clientY: VIEW_H - 1
       })
     ).toBe(false);
   });
 
-  it('false in right third at bottom', () => {
+  it('is false at the bottom center', () => {
     expect(
       isPointerInKioskHeaderRevealHotZone({
-        ...bottomCenter,
-        clientX: (2 * VIEW_W) / 3 + 1,
+        ...bottomRight,
+        clientX: VIEW_W / 2,
         clientY: VIEW_H - 1
       })
     ).toBe(false);
@@ -89,8 +69,8 @@ describe('isPointerInKioskHeaderRevealHotZone', () => {
   it('false at top of viewport', () => {
     expect(
       isPointerInKioskHeaderRevealHotZone({
-        ...bottomCenter,
-        clientX: VIEW_W / 2,
+        ...bottomRight,
+        clientX: VIEW_W - 1,
         clientY: 0
       })
     ).toBe(false);
@@ -99,7 +79,7 @@ describe('isPointerInKioskHeaderRevealHotZone', () => {
   it('false when viewport dimensions are zero', () => {
     expect(
       isPointerInKioskHeaderRevealHotZone({
-        ...bottomCenter,
+        ...bottomRight,
         viewportWidth: 0,
         viewportHeight: VIEW_H,
         clientX: 0,

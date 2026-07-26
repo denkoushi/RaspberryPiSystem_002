@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 
-import { buttonClassName } from '../../components/ui/Button';
+import { Button, buttonClassName } from '../../components/ui/Button';
 
 import { presentCompletedAssemblyItems } from './assemblyHomeItemPresentation';
 import { AssemblyItemCard } from './AssemblyItemCard';
@@ -9,15 +9,17 @@ import { AssemblyItemPane } from './AssemblyItemPane';
 import { kioskAssemblyRecordApprovalPath, kioskAssemblyTraceabilityPath } from './assemblyRoutes';
 import { useAssemblyRowExpansion } from './assemblyRowExpansion';
 
+import type { AssemblyWorkUnitInvalidationTarget } from './AssemblyWorkUnitInvalidationDialog';
 import type { AssemblyWorkSessionSummaryDto } from './types';
 
 type Props = {
   sessions: AssemblyWorkSessionSummaryDto[];
   loading: boolean;
   onReload: () => void;
+  onInvalidate: (target: AssemblyWorkUnitInvalidationTarget) => void;
 };
 
-export function AssemblyCompletedPane({ sessions, loading, onReload }: Props) {
+export function AssemblyCompletedPane({ sessions, loading, onReload, onInvalidate }: Props) {
   const items = useMemo(() => presentCompletedAssemblyItems(sessions), [sessions]);
   const sessionById = useMemo(() => new Map(sessions.map((session) => [session.id, session])), [sessions]);
   const { isExpanded, toggle } = useAssemblyRowExpansion();
@@ -63,6 +65,19 @@ export function AssemblyCompletedPane({ sessions, loading, onReload }: Props) {
                 >
                   正式IDを確認・登録
                 </Link>
+                <Button
+                  type="button"
+                  variant="danger"
+                  className="min-h-10 w-full text-sm"
+                  onClick={() => onInvalidate({
+                    workUnitId: item.workUnitId,
+                    productNo: item.productNo,
+                    workId: item.serialNo,
+                    stateLabel: session?.approval ? '承認済み' : '完了'
+                  })}
+                >
+                  削除
+                </Button>
               </div>}
             />
           );

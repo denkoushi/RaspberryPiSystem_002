@@ -15,6 +15,7 @@ import {
   AssemblyExcelExportService,
   AssemblyLibraryFilterOptionsService,
   AssemblyLotService,
+  AssemblyOperatorAccessService,
   AssemblyProcedureSequenceService,
   AssemblyProcedureDocumentService,
   AssemblyProcedureDraftImportService,
@@ -24,6 +25,7 @@ import {
   AssemblyTemplateService,
   AssemblyWorkSessionService,
   AssemblyWorkSessionRecordApprovalService,
+  AssemblyWorkUnitLifecycleService,
   AssemblyTraceabilityService,
   resolveAssemblyOperatorNfcUid,
   buildAssemblyLotSummary,
@@ -184,16 +186,20 @@ const createAssemblyLotBodySchema = z
   templateId: z.string().uuid(),
   productNo: z.string().trim().min(1).max(120),
   expectedQuantity: z.coerce.number().int().min(1).max(500),
+  workIdMode: z.enum(['auto', 'manual']).optional(),
   workIds: z.array(z.string().trim().min(1).max(120)).min(1).max(500).optional(),
   /** 旧クライアント互換。新規クライアントは workIds を送信する。 */
   serialNos: z.array(z.string().trim().min(1).max(120)).min(1).max(500).optional(),
   operatorEmployeeId: z.string().trim().max(120).optional().nullable(),
-  operatorNameSnapshot: z.string().trim().min(1).max(120),
+  operatorNameSnapshot: z.string().trim().min(1).max(120).optional().nullable(),
   targetUnit: z.string().trim().min(1).max(120),
   torqueWrenchId: z.string().trim().min(1).max(120).optional().nullable()
   })
   .superRefine((value, ctx) => {
-    if (!value.workIds && !value.serialNos) {
+    if (value.workIdMode === 'auto' && (value.workIds || value.serialNos)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: '自動発行時は作業用IDを指定しないでください', path: ['workIds'] });
+    }
+    if (value.workIdMode !== 'auto' && !value.workIds && !value.serialNos) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: '作業用IDが必要です', path: ['workIds'] });
     }
     if (value.workIds && value.serialNos) {
@@ -215,6 +221,17 @@ const approveAssemblyRecordApprovalBodySchema = z.object({
 const lotSerialParamsSchema = z.object({
   lotId: z.string().uuid(),
   lotSerialId: z.string().uuid()
+});
+
+const operatorAccessBodySchema = z.object({
+  operatorNfcTagUid: z.string().trim().min(1).max(200),
+  requestId: z.string().uuid()
+});
+
+const invalidateAssemblyWorkUnitBodySchema = z.object({
+  accessPassword: z.string().max(128),
+  reason: z.string().trim().min(1).max(500),
+  requestId: z.string().uuid()
 });
 
 function decimalToString(value: { toString(): string } | number | string | null | undefined): string | null {
@@ -367,6 +384,7 @@ function serializeAssemblyLotSummary(lot: AssemblyLotSummary) {
     serials: lot.serials.map((serial) => ({
       id: serial.id,
       lotId: serial.lotId,
+      workUnitId: serial.workUnitId,
       sortOrder: serial.sortOrder,
       workId: serial.workId,
       serialNo: serial.serialNo,
@@ -493,6 +511,7 @@ function serializeTemplate(template: AssemblyTemplateDetail | AssemblyTemplateDe
 function serializeSessionSummary(session: AssemblyWorkSessionSummary) {
   return {
     id: session.id,
+    workUnitId: session.workUnitId,
     lotSerialId: session.lotSerialId,
     templateId: session.templateId,
     status: session.status.toLowerCase(),
@@ -550,6 +569,7 @@ function serializeSession(session: AssemblyWorkSessionDetail, sessionService: As
   const checkSummary = sessionService.buildCheckSummary(session);
   return {
     id: session.id,
+    workUnitId: session.workUnitId,
     lotSerialId: session.lotSerialId,
     templateId: session.templateId,
     status: session.status.toLowerCase(),
@@ -720,6 +740,8 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
   const traceabilityService = new AssemblyTorqueTraceabilityService();
   const lotService = new AssemblyLotService(sessionService);
   const recordApprovalService = new AssemblyWorkSessionRecordApprovalService();
+  const operatorAccessService = new AssemblyOperatorAccessService();
+  const workUnitLifecycleService = new AssemblyWorkUnitLifecycleService();
   const assemblyTraceabilityService = new AssemblyTraceabilityService();
   const seibanStartService = new AssemblySeibanStartService();
   const seibanLotQuantityService = new AssemblySeibanLotQuantityService();
@@ -995,14 +1017,53 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
 
   app.post('/assembly/lots/:lotId/serials/:lotSerialId/start', { preHandler: allowWriteKiosk }, async (request) => {
     const params = lotSerialParamsSchema.parse(request.params);
+    const body = operatorAccessBodySchema.parse(request.body ?? {});
     const clientDevice = await tryGetClientDevice(request.headers);
     const session = await lotService.startSerial({
       lotId: params.lotId,
       lotSerialId: params.lotSerialId,
+      operatorNfcTagUid: body.operatorNfcTagUid,
+      requestId: body.requestId,
       clientDeviceId: clientDevice?.id ?? null,
       clientDeviceNameSnapshot: clientDevice?.name ?? null
     });
     return { session: serializeSession(session, sessionService) };
+  });
+
+  app.post('/assembly/work-sessions/:id/operator-access', { preHandler: allowWriteKiosk }, async (request) => {
+    const params = idParamSchema.parse(request.params);
+    const body = operatorAccessBodySchema.parse(request.body ?? {});
+    const clientDevice = await tryGetClientDevice(request.headers);
+    const session = await operatorAccessService.recordResume({
+      sessionId: params.id,
+      operatorNfcTagUid: body.operatorNfcTagUid,
+      requestId: body.requestId,
+      actor: {
+        clientDeviceId: clientDevice?.id ?? null,
+        clientDeviceNameSnapshot: clientDevice?.name ?? null
+      }
+    });
+    return { session: serializeSession(session, sessionService) };
+  });
+
+  app.post('/assembly/work-units/:id/invalidate', { preHandler: allowWriteKiosk }, async (request) => {
+    const params = idParamSchema.parse(request.params);
+    const body = invalidateAssemblyWorkUnitBodySchema.parse(request.body ?? {});
+    const invalidation = await workUnitLifecycleService.invalidate({
+      workUnitId: params.id,
+      ...body,
+      actor: await buildAssemblyTraceabilityActor(request)
+    });
+    return {
+      invalidation: {
+        id: invalidation.id,
+        workUnitId: invalidation.workUnitId,
+        workId: invalidation.workIdSnapshot,
+        sourceState: invalidation.sourceState.toLowerCase(),
+        reason: invalidation.reason,
+        invalidatedAt: invalidation.invalidatedAt.toISOString()
+      }
+    };
   });
 
   app.post('/assembly/work-sessions', { preHandler: allowWriteKiosk }, async (request) => {

@@ -28,6 +28,8 @@ describe('torque wrench traceability API', () => {
     await prisma.torqueWrenchConnectionLease.deleteMany({});
     await prisma.assemblyTorqueRecord.deleteMany({});
     await prisma.assemblyTorqueWrenchConfirmation.deleteMany({});
+    await prisma.assemblyWorkSessionOperatorAccess.deleteMany({});
+    await prisma.assemblyWorkUnitInvalidation.deleteMany({});
     await prisma.assemblyWorkSession.deleteMany({});
     await prisma.assemblyLotSerial.deleteMany({});
     await prisma.assemblyLot.deleteMany({});
@@ -560,10 +562,21 @@ describe('torque wrench traceability API', () => {
         clientDeviceNameSnapshot: 'StoneBase'
       })
     ));
+    const operatorNfcTagUid = `CROSS-WORK-NFC-${randomUUID()}`;
+    await prisma.employee.create({
+      data: {
+        employeeCode: `CROSS-WORK-${randomUUID()}`,
+        displayName: 'cross-work operator',
+        nfcTagUid: operatorNfcTagUid,
+        status: 'ACTIVE'
+      }
+    });
     const sessions = await Promise.all(lots.map((lot) =>
       lotService.startSerial({
         lotId: lot.id,
         lotSerialId: lot.serials[0]!.id,
+        operatorNfcTagUid,
+        requestId: randomUUID(),
         clientDeviceId: stonebase.id,
         clientDeviceNameSnapshot: 'StoneBase'
       })

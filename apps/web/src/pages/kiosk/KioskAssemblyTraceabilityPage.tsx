@@ -15,6 +15,7 @@ import { Button, buttonClassName } from '../../components/ui/Button';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { Input } from '../../components/ui/Input';
 import {
+  formatAssemblyTimestamp,
   KIOSK_ASSEMBLY_HOME_PATH,
   normalizeAssemblyUpperIdentifier,
   readAssemblyApiErrorMessage
@@ -274,6 +275,22 @@ export function KioskAssemblyTraceabilityPage() {
               </div>
               <span className="rounded bg-cyan-500/15 px-2 py-1 text-xs font-bold text-cyan-100">{detail.root.workUnit.status === 'completed' ? '完了済み' : detail.root.workUnit.status}</span>
             </div>
+
+            {detail.workUnit.invalidation ? (
+              <section
+                className="grid gap-1 rounded border border-rose-300/35 bg-rose-500/10 p-3 text-sm"
+                aria-label="作業用IDの削除履歴"
+              >
+                <h3 className="font-bold text-rose-100">削除済み（読み取り専用）</h3>
+                <p>
+                  削除日時: {formatAssemblyTimestamp(detail.workUnit.invalidation.invalidatedAt)}
+                </p>
+                <p>削除前状態: {detail.workUnit.invalidation.sourceState}</p>
+                <p className="whitespace-pre-wrap break-words">
+                  削除理由: {detail.workUnit.invalidation.reason}
+                </p>
+              </section>
+            ) : null}
 
             <section className="grid gap-2 rounded border border-white/10 p-2">
               <h3 className="font-bold">子アセンブリを追加</h3>

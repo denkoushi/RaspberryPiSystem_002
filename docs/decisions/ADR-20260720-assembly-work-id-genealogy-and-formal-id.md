@@ -47,5 +47,5 @@ Apply the migration to an isolated PostgreSQL instance, test multi-level constru
 
 ## Local Notes JA
 
-- 作業用IDは製番の後に番号を付与する将来ルールにも対応するが、v1は利用者入力と重複拒否だけを担う。
+- 作業用IDはv1では利用者入力と重複拒否だけを担った。2026-07-26以降のロット自動発行、永久予約、論理無効化は [ADR-20260726](./ADR-20260726-assembly-auto-id-operator-access-invalidation.md) が拡張する。
 - 正式IDの採番・BOM照合・出荷ブロックはこの決定には含めない。

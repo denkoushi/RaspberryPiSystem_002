@@ -7,6 +7,12 @@ import {
   type AssemblyTemplateDetailRow
 } from './assembly-template.service.js';
 import { normalizeAssemblyUpperIdentifier } from './assembly-identifiers.js';
+import { isAssemblyUniqueConstraintError } from './assembly-prisma-errors.js';
+import {
+  appendAssemblyOperatorAccess,
+  findIdempotentAssemblyOperatorAccess
+} from './assembly-operator-access.service.js';
+import { resolveActiveAssemblyOperatorNfcUid } from './assembly-operator-nfc-resolve.service.js';
 import { computeAssemblyCheckSummary, type AssemblyCheckSummary } from './assembly-check-summary.js';
 import {
   assemblyWorkSessionDetailInclude,
@@ -16,6 +22,7 @@ import {
   runAssemblyTransaction,
   runLockedAssemblyWorkSessionTransaction
 } from './assembly-transaction.js';
+import { lockAssemblyWorkUnits } from './assembly-work-unit-lock.repository.js';
 export { assemblyWorkSessionDetailInclude, type AssemblyWorkSessionDetail } from './assembly-work-session-detail.js';
 
 export type AssemblyStartInput = {
@@ -36,12 +43,15 @@ export type AssemblyStartInput = {
 export type AssemblyRegisteredSerialStartInput = {
   lotId: string;
   lotSerialId: string;
+  operatorNfcTagUid: string;
+  requestId: string;
   clientDeviceId?: string | null;
   clientDeviceNameSnapshot?: string | null;
 };
 
 export type AssemblyWorkSessionSummary = {
   id: string;
+  workUnitId: string | null;
   lotSerialId: string | null;
   templateId: string;
   status: string;
@@ -177,10 +187,6 @@ function recentlyAcceptedDuplicate(session: AssemblyWorkSessionDetail, now: Date
   return now.getTime() - last.recordedAt.getTime() < DUPLICATE_SUPPRESSION_MS;
 }
 
-function isUniqueConstraintError(error: unknown): boolean {
-  return Boolean(error && typeof error === 'object' && 'code' in error && (error as { code?: string }).code === 'P2002');
-}
-
 function duplicateWorkIdError(workId: string): ApiError {
   return new ApiError(409, `作業用ID ${workId} は既に登録済みです`);
 }
@@ -277,7 +283,7 @@ export class AssemblyWorkSessionService {
         });
       });
     } catch (error) {
-      if (isUniqueConstraintError(error)) throw duplicateWorkIdError(workId);
+      if (isAssemblyUniqueConstraintError(error)) throw duplicateWorkIdError(workId);
       throw error;
     }
   }
@@ -285,6 +291,29 @@ export class AssemblyWorkSessionService {
   async startRegisteredSerial(input: AssemblyRegisteredSerialStartInput): Promise<AssemblyWorkSessionDetail> {
     try {
       return await runAssemblyTransaction(async (tx) => {
+        const idempotent = await findIdempotentAssemblyOperatorAccess(tx, {
+          requestId: input.requestId,
+          accessType: 'START',
+          operatorNfcTagUid: input.operatorNfcTagUid,
+          lotSerialId: input.lotSerialId
+        });
+        if (idempotent) return idempotent;
+
+        const target = await tx.assemblyLotSerial.findFirst({
+          where: { id: input.lotSerialId, lotId: input.lotId },
+          select: { id: true, workUnitId: true }
+        });
+        if (!target) throw new ApiError(404, 'ロット内シリアルが見つかりません');
+        await lockAssemblyWorkUnits(tx, [target.workUnitId]);
+
+        const idempotentAfterLock = await findIdempotentAssemblyOperatorAccess(tx, {
+          requestId: input.requestId,
+          accessType: 'START',
+          operatorNfcTagUid: input.operatorNfcTagUid,
+          lotSerialId: input.lotSerialId
+        });
+        if (idempotentAfterLock) return idempotentAfterLock;
+
         const lotSerial = await tx.assemblyLotSerial.findFirst({
           where: { id: input.lotSerialId, lotId: input.lotId },
           include: {
@@ -300,10 +329,12 @@ export class AssemblyWorkSessionService {
           }
         });
         if (!lotSerial) throw new ApiError(404, 'ロット内シリアルが見つかりません');
+        if (lotSerial.workUnit.invalidatedAt) {
+          throw new ApiError(409, '削除済みの作業用IDは開始できません');
+        }
 
         if (lotSerial.workSession) {
-          if (lotSerial.workSession.status === 'IN_PROGRESS') return lotSerial.workSession;
-          throw duplicateWorkIdError(lotSerial.workUnit.workId);
+          throw sessionStateConflict('この作業用IDは既に開始されています。再読込して仕掛中から再開してください。');
         }
 
         const existing = await tx.assemblyWorkSession.findUnique({
@@ -311,12 +342,15 @@ export class AssemblyWorkSessionService {
           include: assemblyWorkSessionDetailInclude
         });
         if (existing) {
-          if (existing.status === 'IN_PROGRESS' && existing.lotSerialId === lotSerial.id) return existing;
-          throw duplicateWorkIdError(lotSerial.workUnit.workId);
+          throw sessionStateConflict('この作業用IDは既に開始されています。再読込して仕掛中から再開してください。');
         }
 
+        const operator = await resolveActiveAssemblyOperatorNfcUid(
+          tx,
+          input.operatorNfcTagUid
+        );
         const first = firstPosition(lotSerial.lot.template);
-        return tx.assemblyWorkSession.create({
+        const session = await tx.assemblyWorkSession.create({
           data: {
             templateId: lotSerial.lot.templateId,
             workUnitId: lotSerial.workUnitId,
@@ -324,8 +358,8 @@ export class AssemblyWorkSessionService {
             productNo: lotSerial.lot.productNo,
             workId: lotSerial.workUnit.workId,
             nameplateNo: lotSerial.workUnit.workId,
-            operatorEmployeeId: lotSerial.lot.operatorEmployeeId,
-            operatorNameSnapshot: lotSerial.lot.operatorNameSnapshot,
+            operatorEmployeeId: operator.employeeId,
+            operatorNameSnapshot: operator.displayName,
             targetUnit: lotSerial.lot.targetUnit,
             torqueWrenchId: lotSerial.lot.torqueWrenchId,
             clientDeviceId: input.clientDeviceId ?? lotSerial.lot.clientDeviceId,
@@ -335,9 +369,22 @@ export class AssemblyWorkSessionService {
           },
           include: assemblyWorkSessionDetailInclude
         });
+        await appendAssemblyOperatorAccess(tx, {
+          sessionId: session.id,
+          accessType: 'START',
+          requestId: input.requestId,
+          operatorNfcTagUid: input.operatorNfcTagUid,
+          actor: {
+            clientDeviceId: input.clientDeviceId ?? lotSerial.lot.clientDeviceId,
+            clientDeviceNameSnapshot:
+              input.clientDeviceNameSnapshot ?? lotSerial.lot.clientDeviceNameSnapshot
+          },
+          operator
+        });
+        return session;
       });
     } catch (error) {
-      if (isUniqueConstraintError(error)) throw new ApiError(409, 'この作業用IDは既に作業に使用されています');
+      if (isAssemblyUniqueConstraintError(error)) throw new ApiError(409, 'この作業用IDは既に作業に使用されています');
       throw error;
     }
   }
@@ -371,6 +418,9 @@ export class AssemblyWorkSessionService {
     const sessions = await prisma.assemblyWorkSession.findMany({
       where: {
         ...(status ? { status } : {}),
+        workUnit: {
+          invalidatedAt: null
+        },
         ...(productNo ? { productNo: { equals: productNo, mode: 'insensitive' } } : {}),
         ...(normalizedWorkId ? { workId: { equals: normalizedWorkId, mode: 'insensitive' } } : {})
       },
@@ -421,6 +471,7 @@ export class AssemblyWorkSessionService {
       const currentArea = session.template.areas.find((area) => area.id === session.currentAreaId) ?? current?.area ?? null;
       return {
         id: session.id,
+        workUnitId: session.workUnitId,
         lotSerialId: session.lotSerialId,
         templateId: session.templateId,
         status: session.status,

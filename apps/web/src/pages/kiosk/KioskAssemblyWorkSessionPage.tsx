@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import {
   advanceAssemblyArea,
@@ -9,6 +9,7 @@ import {
   listCurrentTorqueWrenchConfirmations,
   listCompatibleTorqueWrenchesForSession,
   confirmAssemblyTorqueWrench,
+  recordAssemblyOperatorAccess,
   recordAssemblyCheck,
   recordAssemblyTorque,
   restartAssemblyArea
@@ -17,10 +18,12 @@ import { Button, buttonClassName } from '../../components/ui/Button';
 import {
   AssemblyProcedureCanvas,
   AssemblyProcedureSequenceViewer,
+  AssemblyOperatorNfcDialog,
   AssemblyWorkSessionHeader,
   acquireTorqueAgentLease,
   currentAssemblyArea,
   currentAssemblyBolt,
+  createAssemblyRequestId,
   getTorqueAgentHealth,
   heartbeatTorqueAgent,
   KIOSK_ASSEMBLY_HOME_PATH,
@@ -47,7 +50,17 @@ const TAKEOVER_CONFIRMATION_ARM_DELAY_MS = 1200;
 
 export function KioskAssemblyWorkSessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const incomingAccessGrant =
+    (location.state as { assemblyOperatorAccessGrant?: { sessionId?: string } } | null)
+      ?.assemblyOperatorAccessGrant?.sessionId === sessionId;
   const [session, setSession] = useState<AssemblyWorkSessionDto | null>(null);
+  const [authorizedSessionId, setAuthorizedSessionId] = useState<string | null>(
+    incomingAccessGrant ? sessionId ?? null : null
+  );
+  const [operatorGateBusy, setOperatorGateBusy] = useState(false);
+  const [operatorGateError, setOperatorGateError] = useState<string | null>(null);
   const [procedureSequence, setProcedureSequence] = useState<Awaited<ReturnType<typeof getAssemblyWorkSessionProcedureSequence>> | null>(null);
   const [procedureSequenceLoading, setProcedureSequenceLoading] = useState(false);
   const [currentSequencePage, setCurrentSequencePage] = useState<AssemblyProcedureSequencePageDto | null>(null);
@@ -66,6 +79,16 @@ export function KioskAssemblyWorkSessionPage() {
   const [takeoverConfirmationVisible, setTakeoverConfirmationVisible] = useState(false);
   const [takeoverConfirmationArmed, setTakeoverConfirmationArmed] = useState(false);
   const [takeoverPhysicalPresenceConfirmed, setTakeoverPhysicalPresenceConfirmed] = useState(false);
+  const operatorAuthorized = Boolean(
+    session && (session.status !== 'in_progress' || authorizedSessionId === session.id)
+  );
+  const sessionActive = Boolean(operatorAuthorized && session?.status === 'in_progress');
+
+  useEffect(() => {
+    if (!incomingAccessGrant) return;
+    setAuthorizedSessionId(sessionId ?? null);
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [incomingAccessGrant, location.pathname, location.search, navigate, sessionId]);
 
   const closeTakeoverConfirmation = useCallback(() => {
     setTakeoverConfirmationVisible(false);
@@ -113,7 +136,7 @@ export function KioskAssemblyWorkSessionPage() {
   }, [sessionId]);
 
   useEffect(() => {
-    if (!session?.id) {
+    if (!session?.id || !operatorAuthorized) {
       setProcedureSequence(null);
       return;
     }
@@ -132,7 +155,7 @@ export function KioskAssemblyWorkSessionPage() {
     return () => {
       cancelled = true;
     };
-  }, [session?.id]);
+  }, [operatorAuthorized, session?.id]);
 
   const statusByBolt = useMemo(() => (session ? latestStatusByBolt(session) : new Map()), [session]);
   const checkSummary = useMemo(() => (session ? resolveAssemblyCheckSummary(session) : null), [session]);
@@ -156,7 +179,7 @@ export function KioskAssemblyWorkSessionPage() {
   );
 
   useTorqueRecordLiveRefresh({
-    enabled: Boolean(session?.id && traceabilityRequired && confirmation),
+    enabled: Boolean(sessionActive && session?.id && traceabilityRequired && confirmation),
     sessionId: session?.id ?? null,
     knownSourceEventKeys: knownTorqueSourceEventKeys,
     loadSession: getAssemblyWorkSession,
@@ -164,7 +187,7 @@ export function KioskAssemblyWorkSessionPage() {
   });
 
   useEffect(() => {
-    if (!session?.id || !session.currentBoltId || !traceabilityRequired) {
+    if (!sessionActive || !session?.id || !session.currentBoltId || !traceabilityRequired) {
       setCompatibleWrenches([]);
       setSelectedProfileId('');
       setConfirmation(null);
@@ -210,10 +233,10 @@ export function KioskAssemblyWorkSessionPage() {
     return () => {
       cancelled = true;
     };
-  }, [closeTakeoverConfirmation, session?.currentBoltId, session?.id, traceabilityRequired]);
+  }, [closeTakeoverConfirmation, session?.currentBoltId, session?.id, sessionActive, traceabilityRequired]);
 
   useEffect(() => {
-    if (!session?.id || !traceabilityRequired) return;
+    if (!sessionActive || !session?.id || !traceabilityRequired) return;
     let cancelled = false;
     const pollAgent = async () => {
       try {
@@ -242,14 +265,14 @@ export function KioskAssemblyWorkSessionPage() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [confirmation, session?.currentBoltId, session?.id, traceabilityRequired]);
+  }, [confirmation, session?.currentBoltId, session?.id, sessionActive, traceabilityRequired]);
 
   useEffect(() => {
-    if (!traceabilityRequired) return;
+    if (!sessionActive || !traceabilityRequired) return;
     return () => {
       void releaseTorqueAgentLease('PAGE_LEFT', true).catch(() => undefined);
     };
-  }, [traceabilityRequired]);
+  }, [sessionActive, traceabilityRequired]);
 
   const fallbackPageRef = useMemo(() => {
     if (!session) return null;
@@ -419,6 +442,25 @@ export function KioskAssemblyWorkSessionPage() {
       setMessage('作業を完了しました。');
     });
 
+  const resumeWithOperatorNfc = async (operatorNfcTagUid: string) => {
+    if (!session) return;
+    setOperatorGateBusy(true);
+    setOperatorGateError(null);
+    try {
+      const requestId = createAssemblyRequestId();
+      const updated = await recordAssemblyOperatorAccess(session.id, {
+        operatorNfcTagUid,
+        requestId
+      });
+      setSession(updated);
+      setAuthorizedSessionId(updated.id);
+    } catch (error: unknown) {
+      setOperatorGateError(readAssemblyApiErrorMessage(error, '社員タグを確認できませんでした。'));
+    } finally {
+      setOperatorGateBusy(false);
+    }
+  };
+
   if (loading) {
     return <div className="flex min-h-0 flex-1 items-center justify-center bg-slate-800 text-white">読込中…</div>;
   }
@@ -432,6 +474,33 @@ export function KioskAssemblyWorkSessionPage() {
         <p className="rounded border border-white/15 bg-slate-900/80 px-3 py-2 text-sm font-semibold text-amber-200">
           {message ?? '作業データが見つかりません。'}
         </p>
+      </div>
+    );
+  }
+
+  if (session.status === 'in_progress' && !operatorAuthorized) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col gap-2 bg-slate-800 p-2 text-white">
+        <AssemblyWorkSessionHeader
+          productNo={session.productNo}
+          modelCode={session.template.modelCode}
+          procedurePattern={session.template.procedurePattern}
+          procedureModeLabel="作業"
+          currentPositionLabel="作業者確認待ち"
+          requiredCheckLabel={null}
+        />
+        <div className="flex min-h-0 flex-1 items-center justify-center rounded border border-white/15 bg-slate-900/70">
+          <p className="text-base font-bold text-cyan-100">NFC確認後に手順書と作業機器を開始します。</p>
+        </div>
+        <AssemblyOperatorNfcDialog
+          open
+          title="作業者確認"
+          description="仕掛作業を再開する社員のNFCタグをスキャンしてください。再読込・直開きのたびに確認が必要です。"
+          busy={operatorGateBusy}
+          error={operatorGateError}
+          onScan={(uid) => void resumeWithOperatorNfc(uid)}
+          onCancel={() => navigate(KIOSK_ASSEMBLY_HOME_PATH)}
+        />
       </div>
     );
   }
@@ -487,7 +556,7 @@ export function KioskAssemblyWorkSessionPage() {
                 boltMarkers={visibleBoltMarkers}
                 checkMarkers={visibleCheckMarkers}
                 selectedBoltId={session.currentBoltId}
-                onToggleCheckItem={(checkItemId) => void toggleCheckItem(checkItemId)}
+                onToggleCheckItem={sessionActive ? (checkItemId) => void toggleCheckItem(checkItemId) : undefined}
                 onCurrentPageChange={handleCurrentPageChange}
               />
             ) : (
@@ -496,7 +565,7 @@ export function KioskAssemblyWorkSessionPage() {
                 bolts={visibleBoltMarkers}
                 checkItems={visibleCheckMarkers}
                 selectedBoltId={session.currentBoltId}
-                onToggleCheckItem={(checkItemId) => void toggleCheckItem(checkItemId)}
+                onToggleCheckItem={sessionActive ? (checkItemId) => void toggleCheckItem(checkItemId) : undefined}
                 className="h-full"
               />
             )}
@@ -533,7 +602,7 @@ export function KioskAssemblyWorkSessionPage() {
               </div>
               <label className="grid gap-1 text-xs font-semibold text-white/70">
                 使用する物理トルクレンチ
-                <select className="min-h-11 rounded bg-slate-950 px-2 text-sm" value={selectedProfileId} disabled={busy || Boolean(confirmation)} onChange={(e) => setSelectedProfileId(e.target.value)}>
+                <select className="min-h-11 rounded bg-slate-950 px-2 text-sm" value={selectedProfileId} disabled={!sessionActive || busy || Boolean(confirmation)} onChange={(e) => setSelectedProfileId(e.target.value)}>
                   {compatibleWrenches.length === 0 ? <option value="">適合レンチなし</option> : null}
                   {compatibleWrenches.map(({ profile }) => {
                     const setting = profile.settingHistories[0];
@@ -541,7 +610,7 @@ export function KioskAssemblyWorkSessionPage() {
                   })}
                 </select>
               </label>
-              <Button type="button" variant="primary" disabled={busy || !selectedProfileId || Boolean(confirmation)} onClick={confirmPhysicalWrench}>
+              <Button type="button" variant="primary" disabled={!sessionActive || busy || !selectedProfileId || Boolean(confirmation)} onClick={confirmPhysicalWrench}>
                 {confirmation ? '現物確認済み' : '製造番号と現物設定を確認'}
               </Button>
               {confirmation && !agentStatus?.leaseOwned && agentStatus?.state !== 'owned_by_other' ? (
@@ -615,19 +684,21 @@ export function KioskAssemblyWorkSessionPage() {
             <input
               className="rounded bg-slate-950 px-3 py-3 text-lg"
               value={torqueValue}
+              disabled={!sessionActive}
               onChange={(event) => setTorqueValue(event.target.value)}
               placeholder="トルク値"
             />
             <select
               className="rounded bg-slate-950 px-2 text-sm"
               value={torqueSource}
+              disabled={!sessionActive}
               onChange={(event) => setTorqueSource(event.target.value as 'manual' | 'mock')}
             >
               <option value="manual">手入力</option>
               <option value="mock">mock</option>
             </select>
           </div>
-          <Button type="button" variant="primary" disabled={busy || !session.currentBoltId} className="mt-2 min-h-12 w-full" onClick={recordTorque}>
+          <Button type="button" variant="primary" disabled={!sessionActive || busy || !session.currentBoltId} className="mt-2 min-h-12 w-full" onClick={recordTorque}>
             トルク記録
           </Button>
           </>
@@ -636,7 +707,7 @@ export function KioskAssemblyWorkSessionPage() {
             <Button
               type="button"
               variant="secondary"
-              disabled={busy || Boolean(session.currentBoltId) || allBoltsComplete}
+              disabled={!sessionActive || busy || Boolean(session.currentBoltId) || allBoltsComplete}
               onClick={() => void runBusy(async () => setSession(await advanceAssemblyArea(session.id)))}
             >
               次工程へ
@@ -644,7 +715,7 @@ export function KioskAssemblyWorkSessionPage() {
             <Button
               type="button"
               variant="danger"
-              disabled={busy || !session.currentAreaId}
+              disabled={!sessionActive || busy || !session.currentAreaId}
               onClick={() => void runBusy(async () => setSession(await restartAssemblyArea(session.id, { reason: '画面操作によるエリアやり直し' })))}
             >
               やり直し

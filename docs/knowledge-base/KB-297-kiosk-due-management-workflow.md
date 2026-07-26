@@ -468,7 +468,7 @@ category: knowledge-base
 - **Context**:
   - 手動順番専用ルートでキオスク最上段メニューを畳みつつ操作領域を確保し、端末カードの情報密度とグリッド列数を調整したい。
 - **Fix（仕様）**:
-  - **ルート限定ヘッダー**: [`useKioskBottomCenterHeaderReveal`](../../apps/web/src/hooks/useKioskBottomCenterHeaderReveal.ts) と [`KioskLayout`](../../apps/web/src/layouts/KioskLayout.tsx) で **`/kiosk/production-schedule/manual-order` のときのみ** 既定で `KioskLayout` ヘッダーを非表示。現行は画面下辺中央付近へポインタを寄せるとスライドイン（タッチ専用代替は未実装）。
+  - **ルート限定ヘッダー（当時）**: 2026-03-21時点は`useKioskBottomCenterHeaderReveal`で下辺中央から表示していた。現行は [`useKioskBottomRightHeaderReveal`](../../apps/web/src/hooks/useKioskBottomRightHeaderReveal.ts) と [`KioskLayout`](../../apps/web/src/layouts/KioskLayout.tsx) に統一され、沉浸式ルートでは**右下24×24px**へポインタを寄せるとスライドインする（タッチ専用代替は未実装、[KB-311](./KB-311-kiosk-immersive-header-allowlist.md)）。
   - **カード**: `ManualOrderActiveDeviceBanner` を廃止。編集状態は [`ManualOrderDeviceCardHeaderRow`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderDeviceCardHeaderRow.tsx) / [`ManualOrderDeviceCard`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderDeviceCard.tsx) の「編集中」表示とグレーアウトで示す。複数資源時は先頭のみヘッダー1行、2件目以降はブロック内に `資源CD·件数`（全体仕様は本ファイル「手動順番 専用ページ」節の Spec を参照）。
   - **行表示**: [`presentManualOrderRow`](../../apps/web/src/features/kiosk/manualOrder/manualOrderRowPresentation.ts)（純関数・Vitest [`manualOrderRowPresentation.test.ts`](../../apps/web/src/features/kiosk/manualOrder/manualOrderRowPresentation.test.ts)）。
   - **グリッド**: [`ManualOrderOverviewPane`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderOverviewPane.tsx) で `md:grid-cols-4` / `xl:grid-cols-6`。
@@ -517,7 +517,7 @@ category: knowledge-base
     - [`stripSitePrefixFromDeviceLabel`](../../apps/web/src/features/kiosk/manualOrder/manualOrderDeviceDisplayLabel.ts) で `{siteKey} - ` プレフィックスのみ除去（[`useManualOrderPageController`](../../apps/web/src/features/kiosk/productionSchedule/useManualOrderPageController.ts) に集約）。
     - 下ペインのツールバー＋資源帯は [`ManualOrderLowerPaneCollapsibleToolbar`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderLowerPaneCollapsibleToolbar.tsx) で包み、**見た目の開閉は [`useTimedHoverReveal`](../../apps/web/src/hooks/useTimedHoverReveal.ts) の `isVisible` のみ**（絞り込み有無とは独立）。
     - 一覧取得の `enabled`・空状態「検索してください」・`showFetching` 等は従来どおり [`hasScheduleFilterQuery`](../../apps/web/src/pages/kiosk/ProductionScheduleManualOrderPage.tsx)（`hasQuery || hasResourceCategoryResourceSelection`）。
-    - キオスクヘッダーは [`useKioskBottomCenterHeaderReveal`](../../apps/web/src/hooks/useKioskBottomCenterHeaderReveal.ts) が同フック系を拡張利用。
+    - キオスクヘッダーは現行の [`useKioskBottomRightHeaderReveal`](../../apps/web/src/hooks/useKioskBottomRightHeaderReveal.ts) が同フック系を拡張利用（当時は下辺中央フック）。
 - **Deploy / verify（実績、2026-03-21）**:
   - ブランチ **`feat/manual-order-pane-assignment-label-toolbar`**（API 割当のみ・ラベル短縮・当時の下ペイン折りたたみ初版）。[deployment.md](../guides/deployment.md) 標準。**対象**: Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）、`--limit` 1台ずつ、`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`、`--detach --follow`。
   - **Run ID**: `20260321-145746-1455`（Pi5）/ `20260321-150253-8405`（raspberrypi4）/ `20260321-150735-6173`（raspi4-robodrill01）、いずれも success。

@@ -1,20 +1,20 @@
 ---
-title: KB-311 キオスク沉浸式レイアウト（下端ヘッダーリビール）の URL allowlist
+title: KB-311 キオスク沉浸式レイアウト（右下ヘッダーリビール）の URL allowlist
 tags: [キオスク, フロントエンド, KioskLayout, Ansible]
 audience: [開発者, 運用者]
-last-verified: 2026-05-22
+last-verified: 2026-07-26
 category: knowledge-base
 ---
 
-# KB-311: キオスク沉浸式レイアウト（下端ヘッダーリビール）の URL allowlist
+# KB-311: キオスク沉浸式レイアウト（右下ヘッダーリビール）の URL allowlist
 
 ## Context
 
-`KioskLayout` では、特定ルートのみキオスクナビ（`KioskHeader`）を既定で隠し、**画面下辺の中央 1/3** へマウスを寄せるとヘッダーが**下から上へ**スライド表示する「沉浸式」レイアウトを使う。
+`KioskLayout` では、特定ルートのみキオスクナビ（`KioskHeader`）を既定で隠し、**画面右下の24×24px**へマウスを寄せるとヘッダーが**下から上へ**スライド表示する「沉浸式」レイアウトを使う。
 
 - **判定の単一情報源**: [`kioskImmersiveLayoutPolicy.ts`](../../apps/web/src/features/kiosk/kioskImmersiveLayoutPolicy.ts) の `usesKioskImmersiveLayout(pathname)`
 - **ホットゾーン幾何**: [`kioskHeaderRevealHotZone.ts`](../../apps/web/src/features/kiosk/kioskHeaderRevealHotZone.ts)（Vitest: [`kioskHeaderRevealHotZone.test.ts`](../../apps/web/src/features/kiosk/kioskHeaderRevealHotZone.test.ts)）
-- **フック**: [`useKioskBottomCenterHeaderReveal.ts`](../../apps/web/src/hooks/useKioskBottomCenterHeaderReveal.ts) → 内部 [`useKioskEdgeHeaderReveal.ts`](../../apps/web/src/hooks/useKioskEdgeHeaderReveal.ts) + [`useTimedHoverReveal.ts`](../../apps/web/src/hooks/useTimedHoverReveal.ts)
+- **フック**: [`useKioskBottomRightHeaderReveal.ts`](../../apps/web/src/hooks/useKioskBottomRightHeaderReveal.ts) → 内部 [`useKioskEdgeHeaderReveal.ts`](../../apps/web/src/hooks/useKioskEdgeHeaderReveal.ts) + [`useTimedHoverReveal.ts`](../../apps/web/src/hooks/useTimedHoverReveal.ts)
 - **Chrome（Tailwind プリセット）**: [`kioskImmersiveHeaderChrome.ts`](../../apps/web/src/features/kiosk/kioskImmersiveHeaderChrome.ts)
 
 **履歴**:
@@ -22,7 +22,8 @@ category: knowledge-base
 | 時期 | 挙動 |
 |------|------|
 | 〜2026-03-21 | 上端全幅ホバー（`useKioskTopEdgeHeaderReveal`） |
-| 2026-05-22 以降（正本） | **下端・中央 1/3**・14px 帯（`feat/kiosk-bottom-center-header-reveal`） |
+| 2026-05-22〜2026-07-25 | **下端・中央 1/3**・14px 帯（`feat/kiosk-bottom-center-header-reveal`） |
+| 2026-07-26 以降（コード正本） | **右下24×24px**（`feat/assembly-auto-id-nfc-invalidation`） |
 
 **持出タブ**（`/kiosk/tag`・`/kiosk/photo`・計測/吊具持出）は下端リビールに統一（2026-05-22 以前は `/kiosk/photo` のみ上辺常時表示）。
 
@@ -35,11 +36,11 @@ category: knowledge-base
 
 | 項目 | 値 |
 |------|-----|
-| ホットゾーン高さ | **14px**（下端帯） |
-| ホットゾーン幅 | ビューポート幅の **中央 1/3**（`x ∈ [width/3, 2×width/3]`、`y` は下端 14px 内） |
+| ホットゾーン高さ | **24px**（右下隅） |
+| ホットゾーン幅 | **24px**（`x ∈ [width-24, width]`、`y ∈ [height-24, height]`） |
 | 非表示 | `translate-y-full` + **`pointer-events-none`** + **`invisible`**（下辺全域の誤 `mouseenter` 防止） |
 | 表示 | `translate-y-0`（下から出る） |
-| 開くトリガ | (1) 下端中央 DOM ホットゾーン `onMouseEnter` (2) `window` `mousemove` で純関数命中時のみ `open()` |
+| 開くトリガ | (1) 右下 DOM ホットゾーン `onMouseEnter` (2) `window` `mousemove` で純関数命中時のみ `open()` |
 | 閉じる | ヘッダー `mouseleave` 後 **200ms**（`KIOSK_REVEAL_CLOSE_DELAY_MS`） |
 | タッチ | 未対応（マウス前提） |
 | 視覚ガイド | なし |
@@ -47,13 +48,13 @@ category: knowledge-base
 **実装メモ（保守）**:
 
 - ヘッダー全幅の `mouseenter` では**開かない**（`useKioskEdgeHeaderReveal`）。開くのはホットゾーン命中時のみ。
-- E2E は [`revealKioskHeader`](../../e2e/helpers.ts) が **ビューポート下辺中央**へ `mouse.move` し、ヘッダーがビューポート内に入るまで `waitForFunction`。
+- E2E は [`revealKioskHeader`](../../e2e/helpers.ts) が **`(width-2, height-2)`**へ `mouse.move` し、ヘッダーがビューポート内に入るまで `waitForFunction`。
 
 ## Symptoms / 運用上の問い
 
 - 新しいキオスク画面を追加したとき、同じヘッダー挙動にしたいが、どこを直せばよいか分からない。
 - なぜ `/kiosk/production-schedule` だけ完全一致で、子パスは別扱いなのか。
-- 手動順番の下ペイン（右端スライダーホバー）とナビが競合しないか → 下辺は**中央 1/3 のみ**がホットゾーン。
+- 手動順番の下ペイン（右端スライダーホバー）とナビが競合しないか → **右下24×24pxだけ**がホットゾーン。
 - Pi5 で新 UI・Pi4 だけ旧 UI（上端リビール・ナビ常時表示）に見える。
 
 ## Decision / Fix（コミット系列）
@@ -66,13 +67,14 @@ category: knowledge-base
 | `74bc7f50` | KB: Pi4 SPA キャッシュ事象の追記 |
 | `e9a860e1` | `/kiosk/photo` を沉浸式 allowlist に追加 |
 | `cbeb6bbc` | E2E: `revealKioskHeader` **後**にナビ可視性 assert（CI 回帰修正） |
+| 2026-07-26 実装 | DOM・純関数・E2Eを右下24×24pxへ統一し、中央1/3の反応を廃止 |
 
 ### 対象（true）
 
 | 種別 | パス |
 |------|------|
 | 完全一致（末尾 `/` 正規化後） | `/kiosk/tag`, `/kiosk/photo`, `/kiosk/instruments/borrow`, `/kiosk/rigging/borrow`, `/kiosk/production-schedule`, `/kiosk/documents`（要領書 PDF・[KB-313](./KB-313-kiosk-documents.md)） |
-| `startsWith` | `KIOSK_MANUAL_ORDER_PATH_PREFIX`（手動順番）, `/kiosk/production-schedule/progress-overview`, `/kiosk/part-measurement`（部品測定）, `/kiosk/pallet-visualization`（[KB-355](./api.md)） |
+| `startsWith` | `KIOSK_MANUAL_ORDER_PATH_PREFIX`（手動順番）, `/kiosk/production-schedule/progress-overview`, `/kiosk/production-schedule/load-balancing`, `/kiosk/part-measurement`（部品測定）, `/kiosk/mobile-placement`, `/kiosk/purchase-order-lookup`, `/kiosk/assembly`, `/kiosk/pallet-visualization`（[KB-355](./api.md)） |
 
 定数 **`KIOSK_BORROW_IMMERSIVE_PATH_EXACT`** に持出系 4 パスを集約（`e9a860e1`）。
 
@@ -108,13 +110,14 @@ category: knowledge-base
 - **CI**: `26262397906` success（E2E 修正後。初回 `26261933696` は `kiosk.spec.ts` が沉浸式前に assert で失敗）
 - **実機 UI**: StoneBase01 **OK**（下端中央リビール・`/kiosk/photo` 沉浸式）。他 3 台は同チェックリストで spot 確認推奨。
 
-### 実機 UI チェックリスト
+### 2026-07-26以降の実機 UI チェックリスト
 
-1. 下辺**左右 1/3** にマウス → ナビが**出ない**
-2. 下辺**中央 1/3** → ナビが**下から**スライド表示
-3. `/kiosk/photo` でも (1)(2) と同様（上辺常時表示にならない）
+1. 画面中央・右辺上部・下辺の右下以外にマウス → ナビが**出ない**
+2. 右下24×24px → ナビが**下から**スライド表示
+3. `/kiosk/photo` 等の沉浸式ルートでも (1)(2) と同様
 4. `/kiosk/production-schedule/due-management` → ヘッダー**常時表示**（沉浸式 OFF）
-5. 手動順番: 下ペイン右スライダーとナビが干渉しない（中央 1/3 のみ）
+
+2026-05-22の本番反映記録にある「下端中央1/3」は当時の履歴であり、現行コードの受入基準ではない。
 
 ### 過去のデプロイ記録
 
@@ -133,7 +136,7 @@ category: knowledge-base
 
 ### ナビが出ない（仕様どおりの可能性）
 
-- 下辺**左右 1/3** では開かない。**中央 1/3**（幅 33%〜66% 付近）を確認。
+- 下辺中央や右辺上部では開かない。**右下24×24px**を確認。
 
 ### Pi5/Mac は新 UI・Pi4 だけ旧挙動
 

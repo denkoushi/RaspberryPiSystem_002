@@ -28,7 +28,7 @@ The assembly procedure order settings page listed all enabled `KioskDocument` ro
 Related changes shipped together (same feature request, recorded here to avoid a second source of truth):
 
 - Assembly library page header keeps only 「組立トップ」 (renamed from 「組立開始へ」); 「検査図面へ」「新規」 were removed, and the per-template 「作業」 button plus the dead `/kiosk/assembly/work/start` page/routes were deleted (start flow is unified on the assembly home page).
-- Assembly home page adds a 完了した製品 pane (`GET /api/assembly/work-sessions/summary?status=completed`), lot quantity display via `GET /api/assembly/seiban-lot-quantities` (production actual hours: `DISTINCT (fseiban, lotNo, lotQty)` then sum per fseiban), and NFC operator input via `useNfcStream` + `POST /api/assembly/operators/resolve-nfc` (`Employee.nfcTagUid`; sets `operatorNameSnapshot` and `operatorEmployeeId`; manual edit clears the employee id).
+- Assembly home page adds a 完了した製品 pane (`GET /api/assembly/work-sessions/summary?status=completed`) and lot quantity display via `GET /api/assembly/seiban-lot-quantities` (production actual hours: `DISTINCT (fseiban, lotNo, lotQty)` then sum per fseiban). The original home-wide NFC operator input was superseded on 2026-07-26 by the per-start/per-resume gate in [ADR-20260726](./ADR-20260726-assembly-auto-id-operator-access-invalidation.md).
 
 ## Alternatives
 

@@ -1,7 +1,13 @@
 import type { Prisma } from '@prisma/client';
+import {
+  ASSEMBLY_LOT_MAX_QUANTITY,
+  buildAssemblyLotWorkIds
+} from '@raspi-system/shared-types';
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { normalizeAssemblyUpperIdentifier } from './assembly-identifiers.js';
+import { lockAssemblyLotProduct } from './assembly-lot-product-lock.js';
+import { isAssemblyUniqueConstraintError } from './assembly-prisma-errors.js';
 import { resolveAssemblyTraceabilityMode } from './assembly-template.service.js';
 import { runAssemblyTransaction } from './assembly-transaction.js';
 import { AssemblyWorkSessionService } from './assembly-work-session.service.js';
@@ -17,6 +23,11 @@ const assemblyLotInclude = {
     }
   },
   serials: {
+    where: {
+      workUnit: {
+        invalidatedAt: null
+      }
+    },
     orderBy: { sortOrder: 'asc' },
     include: {
       workUnit: true,
@@ -39,11 +50,12 @@ export type AssemblyLotCreateInput = {
   templateId: string;
   productNo: string;
   expectedQuantity: number;
+  workIdMode?: 'auto' | 'manual';
   /** Legacy boundary name. New callers should use workIds. */
   serialNos?: string[];
   workIds?: string[];
   operatorEmployeeId?: string | null;
-  operatorNameSnapshot: string;
+  operatorNameSnapshot?: string | null;
   targetUnit: string;
   torqueWrenchId?: string | null;
   clientDeviceId?: string | null;
@@ -76,10 +88,6 @@ function ensureUniqueWorkIds(workIds: string[]) {
   }
 }
 
-function isUniqueConstraintError(error: unknown): boolean {
-  return Boolean(error && typeof error === 'object' && 'code' in error && (error as { code?: string }).code === 'P2002');
-}
-
 function lotSerialStatus(serial: AssemblyLotDetail['serials'][number]) {
   if (!serial.workSession) return 'NOT_STARTED' as const;
   return serial.workSession.status;
@@ -91,6 +99,7 @@ export function buildAssemblyLotSummary(lot: AssemblyLotDetail) {
     return {
       id: serial.id,
       lotId: serial.lotId,
+      workUnitId: serial.workUnitId,
       sortOrder: serial.sortOrder,
       workId: serial.workUnit.workId,
       // 既存画面/API利用者向けの互換フィールド。新規画面は workId を使用する。
@@ -117,8 +126,8 @@ export function buildAssemblyLotSummary(lot: AssemblyLotDetail) {
     completedCount,
     cancelledCount: serials.filter((serial) => serial.status === 'CANCELLED').length,
     approvedCount,
-    isWorkComplete: lot.serials.length === lot.expectedQuantity && completedCount === lot.expectedQuantity,
-    isFullyApproved: lot.serials.length === lot.expectedQuantity && approvedCount === lot.expectedQuantity,
+    isWorkComplete: serials.length > 0 && completedCount === serials.length,
+    isFullyApproved: serials.length > 0 && approvedCount === serials.length,
     operatorEmployeeId: lot.operatorEmployeeId,
     operatorNameSnapshot: lot.operatorNameSnapshot,
     targetUnit: lot.targetUnit,
@@ -137,22 +146,49 @@ export class AssemblyLotService {
 
   async create(input: AssemblyLotCreateInput): Promise<AssemblyLotDetail> {
     const expectedQuantity = Math.trunc(input.expectedQuantity);
-    if (!Number.isInteger(input.expectedQuantity) || expectedQuantity <= 0) {
-      throw new ApiError(400, 'ロット数は正の整数で指定してください');
-    }
-    const requestedWorkIds = input.workIds ?? input.serialNos ?? [];
-    if (requestedWorkIds.length !== expectedQuantity) {
-      throw new ApiError(400, `作業用IDはロット数 ${expectedQuantity} 件ちょうど入力してください`);
+    if (
+      !Number.isInteger(input.expectedQuantity) ||
+      expectedQuantity <= 0 ||
+      expectedQuantity > ASSEMBLY_LOT_MAX_QUANTITY
+    ) {
+      throw new ApiError(400, `ロット数は1〜${ASSEMBLY_LOT_MAX_QUANTITY}の整数で指定してください`);
     }
 
     const productNo = required(normalizeAssemblyUpperIdentifier(input.productNo), '製番').slice(0, 120);
     const targetUnit = required(normalizeAssemblyUpperIdentifier(input.targetUnit), '機種名').slice(0, 120);
-    const workIds = normalizeWorkIds(requestedWorkIds);
+    const workIdMode = input.workIdMode ?? 'manual';
+    let workIds: string[];
+    if (workIdMode === 'auto') {
+      if (input.workIds || input.serialNos) {
+        throw new ApiError(400, '自動発行時は作業用IDを指定しないでください');
+      }
+      try {
+        workIds = buildAssemblyLotWorkIds(productNo, expectedQuantity);
+      } catch (error) {
+        throw new ApiError(
+          400,
+          error instanceof Error ? error.message : '作業用IDを自動発行できません'
+        );
+      }
+    } else {
+      const requestedWorkIds = input.workIds ?? input.serialNos ?? [];
+      if (requestedWorkIds.length !== expectedQuantity) {
+        throw new ApiError(400, `作業用IDはロット数 ${expectedQuantity} 件ちょうど入力してください`);
+      }
+      workIds = normalizeWorkIds(requestedWorkIds);
+    }
     ensureUniqueWorkIds(workIds);
 
-    const operatorNameSnapshot = required(input.operatorNameSnapshot, '作業者名').slice(0, 120);
     try {
       const lotId = await runAssemblyTransaction(async (tx) => {
+        await lockAssemblyLotProduct(tx, productNo);
+        const existingLot = await tx.assemblyLot.findFirst({
+          where: { productNo },
+          select: { id: true }
+        });
+        if (existingLot) {
+          throw new ApiError(409, `製番 ${productNo} のロットは既に登録されています`);
+        }
         const template = await tx.assemblyTemplate.findFirst({
           where: { id: input.templateId, isActive: true },
           select: { id: true, traceabilityMode: true }
@@ -178,7 +214,7 @@ export class AssemblyLotService {
             productNo,
             expectedQuantity,
             operatorEmployeeId: input.operatorEmployeeId?.trim() || null,
-            operatorNameSnapshot,
+            operatorNameSnapshot: input.operatorNameSnapshot?.trim().slice(0, 120) || null,
             targetUnit,
             torqueWrenchId,
             clientDeviceId: input.clientDeviceId ?? null,
@@ -202,7 +238,7 @@ export class AssemblyLotService {
       });
       return this.getRequired(lotId);
     } catch (error) {
-      if (isUniqueConstraintError(error)) throw new ApiError(409, '登録済みの作業用IDがあります');
+      if (isAssemblyUniqueConstraintError(error)) throw new ApiError(409, '登録済みの作業用IDがあります');
       throw error;
     }
   }
@@ -212,7 +248,14 @@ export class AssemblyLotService {
     const limit = Math.min(Math.max(Math.trunc(params.limit ?? 30), 1), 100);
     const lots = await prisma.assemblyLot.findMany({
       where: {
-        ...(productNo ? { productNo: { equals: productNo, mode: 'insensitive' } } : {})
+        ...(productNo ? { productNo: { equals: productNo, mode: 'insensitive' } } : {}),
+        serials: {
+          some: {
+            workUnit: {
+              invalidatedAt: null
+            }
+          }
+        }
       },
       include: assemblyLotInclude,
       orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
@@ -242,6 +285,8 @@ export class AssemblyLotService {
   async startSerial(input: {
     lotId: string;
     lotSerialId: string;
+    operatorNfcTagUid: string;
+    requestId: string;
     clientDeviceId?: string | null;
     clientDeviceNameSnapshot?: string | null;
   }) {

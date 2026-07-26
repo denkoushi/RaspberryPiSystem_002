@@ -167,6 +167,9 @@ export class AssemblyTorqueTraceabilityService {
     return runAssemblyTransaction(async (tx) => {
       await lockTorqueWrenchProfile(tx, input.torqueWrenchProfileId);
       const session = await lockAssemblyWorkSession(tx, input.sessionId);
+      if (session.workUnit?.invalidatedAt) {
+        throw new ApiError(409, '削除済みの作業用IDは変更できません', undefined, 'ASSEMBLY_WORK_UNIT_INVALIDATED');
+      }
       const bolt = findCurrentBolt(session);
       if (bolt.id !== input.expectedTemplateBoltId) {
         throw new ApiError(409, '表示中の丸数字が更新されています', undefined, 'STALE_TEMPLATE_BOLT');
@@ -395,6 +398,9 @@ export class AssemblyTorqueTraceabilityService {
         if (profileIdentity) await lockTorqueWrenchProfile(tx, profileIdentity.id);
         const session = await lockAssemblyWorkSession(tx, input.sessionId);
         if (session.status !== 'IN_PROGRESS') throw new ApiError(409, 'この作業は入力できない状態です');
+        if (session.workUnit?.invalidatedAt) {
+          throw new ApiError(409, '削除済みの作業用IDは入力できません', undefined, 'ASSEMBLY_WORK_UNIT_INVALIDATED');
+        }
         const hasConnectionLeaseToken =
           typeof input.connectionLeaseId === 'string' &&
           input.connectionLeaseId.length > 0 &&

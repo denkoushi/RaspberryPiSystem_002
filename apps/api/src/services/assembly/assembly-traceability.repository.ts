@@ -1,12 +1,21 @@
 import { Prisma, type AssemblyWorkSessionStatus } from '@prisma/client';
 
 import type { AssemblyTransactionWork } from './assembly-transaction.js';
+import { lockAssemblyWorkUnits } from './assembly-work-unit-lock.repository.js';
 
 export type AssemblyTraceabilityTransaction = Parameters<AssemblyTransactionWork<unknown>>[0];
 
 export const workUnitWithSessionSelect = {
   id: true,
   workId: true,
+  invalidatedAt: true,
+  invalidation: {
+    select: {
+      reason: true,
+      invalidatedAt: true,
+      sourceState: true
+    }
+  },
   createdAt: true,
   workSession: {
     select: {
@@ -23,11 +32,7 @@ export const workUnitWithSessionSelect = {
 /** 永続化に閉じたクエリ。業務判定は AssemblyTraceabilityService が担当する。 */
 export class AssemblyTraceabilityRepository {
   async lockWorkUnits(tx: AssemblyTraceabilityTransaction, ids: string[]): Promise<void> {
-    const distinctIds = [...new Set(ids)].sort();
-    if (distinctIds.length === 0) return;
-    await tx.$queryRaw(
-      Prisma.sql`SELECT "id" FROM "AssemblySerialRegistry" WHERE "id" IN (${Prisma.join(distinctIds)}) ORDER BY "id" FOR UPDATE`
-    );
+    await lockAssemblyWorkUnits(tx, ids);
   }
 
   async lockActiveCompositionForWorkUnit(tx: AssemblyTraceabilityTransaction, workUnitId: string): Promise<void> {
@@ -56,6 +61,7 @@ export class AssemblyTraceabilityRepository {
   async findTopLevelCompleted(tx: AssemblyTraceabilityTransaction, params: { query?: string; limit: number }) {
     return tx.assemblyWorkUnit.findMany({
       where: {
+        invalidatedAt: null,
         workSession: { status: 'COMPLETED' as AssemblyWorkSessionStatus },
         childCompositionLinks: { none: { unlinkedAt: null } },
         ...(params.query

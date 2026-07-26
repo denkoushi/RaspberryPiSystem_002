@@ -10,6 +10,7 @@ export type AssemblyItemDetail = {
 
 export type AssemblyHomeItemView = {
   id: string;
+  workUnitId: string;
   productNo: string;
   serialNo: string;
   machineName: string;
@@ -33,6 +34,7 @@ export function presentNotStartedAssemblyItems(lots: AssemblyLotSummaryDto[]): N
       .filter((serial) => serial.status === 'not_started')
       .map((serial) => ({
         id: serial.id,
+        workUnitId: serial.workUnitId,
         lotId: lot.id,
         lotSerialId: serial.id,
         productNo: lot.productNo,
@@ -42,7 +44,7 @@ export function presentNotStartedAssemblyItems(lots: AssemblyLotSummaryDto[]): N
         progressPercent: 0,
         details: [
           { label: 'ロット数量', value: `${lot.expectedQuantity}個` },
-          { label: '作業者', value: lot.operatorNameSnapshot },
+          { label: '作業者', value: lot.operatorNameSnapshot ?? '開始時にNFC確認' },
           { label: 'テンプレート', value: templateText(lot.template) },
           { label: 'トルクレンチ', value: lot.torqueWrenchId },
           { label: '登録', value: formatAssemblyTimestamp(lot.createdAt) },
@@ -55,6 +57,7 @@ export function presentNotStartedAssemblyItems(lots: AssemblyLotSummaryDto[]): N
 export function presentWipAssemblyItems(sessions: AssemblyWorkSessionSummaryDto[]): AssemblyHomeItemView[] {
   return sessions.map((session) => ({
     id: session.id,
+    workUnitId: session.workUnitId,
     productNo: session.productNo,
     serialNo: session.workId ?? session.serialNo,
     machineName: session.targetUnit || session.templateModelCode,
@@ -77,6 +80,7 @@ export function presentWipAssemblyItems(sessions: AssemblyWorkSessionSummaryDto[
 export function presentCompletedAssemblyItems(sessions: AssemblyWorkSessionSummaryDto[]): AssemblyHomeItemView[] {
   return sessions.map((session) => ({
     id: session.id,
+    workUnitId: session.workUnitId,
     productNo: session.productNo,
     serialNo: session.workId ?? session.serialNo,
     machineName: session.targetUnit || session.templateModelCode,

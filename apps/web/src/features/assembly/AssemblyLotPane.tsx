@@ -7,6 +7,7 @@ import { AssemblyItemCard } from './AssemblyItemCard';
 import { AssemblyItemPane } from './AssemblyItemPane';
 import { useAssemblyRowExpansion } from './assemblyRowExpansion';
 
+import type { AssemblyWorkUnitInvalidationTarget } from './AssemblyWorkUnitInvalidationDialog';
 import type { AssemblyLotSummaryDto } from './types';
 
 type Props = {
@@ -15,9 +16,10 @@ type Props = {
   busySerialId: string | null;
   onReload: () => void;
   onStartSerial: (lotId: string, lotSerialId: string) => void;
+  onInvalidate: (target: AssemblyWorkUnitInvalidationTarget) => void;
 };
 
-export function AssemblyLotPane({ lots, loading, busySerialId, onReload, onStartSerial }: Props) {
+export function AssemblyLotPane({ lots, loading, busySerialId, onReload, onStartSerial, onInvalidate }: Props) {
   const items = useMemo(() => presentNotStartedAssemblyItems(lots), [lots]);
   const { isExpanded, toggle } = useAssemblyRowExpansion();
 
@@ -43,7 +45,7 @@ export function AssemblyLotPane({ lots, loading, busySerialId, onReload, onStart
           expanded={isExpanded(item.id)}
           onToggle={() => toggle(item.id)}
           tone="cyan"
-          action={
+          action={<div className="grid gap-2">
             <Button
               type="button"
               variant="primary"
@@ -53,7 +55,20 @@ export function AssemblyLotPane({ lots, loading, busySerialId, onReload, onStart
             >
               {busySerialId === item.lotSerialId ? '開始中…' : '開始'}
             </Button>
-          }
+            <Button
+              type="button"
+              variant="danger"
+              className="min-h-10 w-full text-sm"
+              onClick={() => onInvalidate({
+                workUnitId: item.workUnitId,
+                productNo: item.productNo,
+                workId: item.serialNo,
+                stateLabel: '着手前'
+              })}
+            >
+              削除
+            </Button>
+          </div>}
         />
       ))}
     </AssemblyItemPane>

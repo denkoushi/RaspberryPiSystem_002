@@ -15,6 +15,8 @@ const mockCompleteAssemblyWorkSession = vi.fn();
 const mockListCompatibleTorqueWrenches = vi.fn();
 const mockListCurrentTorqueWrenchConfirmations = vi.fn();
 const mockConfirmAssemblyTorqueWrench = vi.fn();
+const mockRecordAssemblyOperatorAccess = vi.fn();
+let mockNfcEvent: { uid: string; timestamp: string } | null = null;
 
 vi.mock('../../api/client', () => ({
   getAssemblyWorkSession: (...args: unknown[]) => mockGetAssemblyWorkSession(...args),
@@ -27,7 +29,12 @@ vi.mock('../../api/client', () => ({
   listCompatibleTorqueWrenchesForSession: (...args: unknown[]) => mockListCompatibleTorqueWrenches(...args),
   listCurrentTorqueWrenchConfirmations: (...args: unknown[]) => mockListCurrentTorqueWrenchConfirmations(...args),
   confirmAssemblyTorqueWrench: (...args: unknown[]) => mockConfirmAssemblyTorqueWrench(...args),
+  recordAssemblyOperatorAccess: (...args: unknown[]) => mockRecordAssemblyOperatorAccess(...args),
   resolveKioskDocumentPageImageUrl: (path: string) => path
+}));
+
+vi.mock('../../hooks/useNfcStream', () => ({
+  useNfcStream: () => mockNfcEvent
 }));
 
 vi.mock('../../features/assembly', async () => {
@@ -40,6 +47,7 @@ vi.mock('../../features/assembly', async () => {
 
 const session: AssemblyWorkSessionDto = {
   id: 'session-1',
+  workUnitId: 'work-unit-1',
   lotSerialId: null,
   templateId: 'template-1',
   status: 'in_progress',
@@ -200,9 +208,16 @@ const configuredSequence: AssemblyProcedureSequenceDto = {
   ]
 };
 
-function renderPage() {
+function renderPage(withAccessGrant = true) {
   return render(
-    <MemoryRouter initialEntries={['/kiosk/assembly/work-sessions/session-1']}>
+    <MemoryRouter
+      initialEntries={[{
+        pathname: '/kiosk/assembly/work-sessions/session-1',
+        state: withAccessGrant
+          ? { assemblyOperatorAccessGrant: { sessionId: 'session-1', requestId: 'request-1' } }
+          : null
+      }]}
+    >
       <Routes>
         <Route path="/kiosk/assembly/work-sessions/:sessionId" element={<KioskAssemblyWorkSessionPage />} />
       </Routes>
@@ -225,8 +240,36 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     mockListCompatibleTorqueWrenches.mockReset();
     mockListCurrentTorqueWrenchConfirmations.mockReset();
     mockConfirmAssemblyTorqueWrench.mockReset();
+    mockRecordAssemblyOperatorAccess.mockReset();
+    mockNfcEvent = null;
     mockGetAssemblyWorkSession.mockResolvedValue(session);
     mockGetProcedureSequence.mockResolvedValue(configuredSequence);
+    mockRecordAssemblyOperatorAccess.mockResolvedValue(session);
+  });
+
+  it('requires NFC on a direct resume and starts no procedure or wrench side effects before access', async () => {
+    renderPage(false);
+
+    expect(await screen.findByRole('dialog', { name: '作業者確認' })).toBeInTheDocument();
+    expect(mockGetProcedureSequence).not.toHaveBeenCalled();
+    expect(mockListCompatibleTorqueWrenches).not.toHaveBeenCalled();
+    expect(screen.queryByText('fallback procedure canvas')).not.toBeInTheDocument();
+  });
+
+  it('records RESUME access from the NFC gate before starting procedure side effects', async () => {
+    mockNfcEvent = { uid: 'NFC-RESUME', timestamp: '2099-01-01T00:00:00.000Z' };
+    renderPage(false);
+
+    await waitFor(() =>
+      expect(mockRecordAssemblyOperatorAccess).toHaveBeenCalledWith(
+        'session-1',
+        expect.objectContaining({
+          operatorNfcTagUid: 'NFC-RESUME',
+          requestId: expect.any(String)
+        })
+      )
+    );
+    await waitFor(() => expect(mockGetProcedureSequence).toHaveBeenCalledWith('session-1'));
   });
 
   it('renders operator header without template or excel actions', async () => {

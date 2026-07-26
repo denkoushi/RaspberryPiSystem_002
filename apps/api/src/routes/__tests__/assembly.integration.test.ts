@@ -155,6 +155,8 @@ async function seedLegacyProcedureOrder(
 async function cleanAssemblyTables() {
   await prisma.assemblyProcedureOrderItem.deleteMany({});
   await prisma.assemblyProcedureOrderSet.deleteMany({});
+  await prisma.assemblyWorkSessionOperatorAccess.deleteMany({});
+  await prisma.assemblyWorkUnitInvalidation.deleteMany({});
   await prisma.assemblyWorkSessionApproval.deleteMany({});
   await prisma.assemblyAreaRestartLog.deleteMany({});
   await prisma.assemblyTorqueRecord.deleteMany({});
@@ -1324,11 +1326,15 @@ describe('assembly torque management API', () => {
     expect(duplicateExisting.statusCode).toBe(409);
 
     const firstSerial = lot.serials[0];
+    const startRequestId = randomUUID();
     const start = await app.inject({
       method: 'POST',
       url: `/api/assembly/lots/${lot.id}/serials/${firstSerial.id}/start`,
       headers,
-      payload: {}
+      payload: {
+        operatorNfcTagUid: approver.nfcTagUid,
+        requestId: startRequestId
+      }
     });
     expect(start.statusCode).toBe(200);
     const session = start.json().session;
@@ -1344,7 +1350,10 @@ describe('assembly torque management API', () => {
       method: 'POST',
       url: `/api/assembly/lots/${lot.id}/serials/${firstSerial.id}/start`,
       headers,
-      payload: {}
+      payload: {
+        operatorNfcTagUid: approver.nfcTagUid,
+        requestId: startRequestId
+      }
     });
     expect(restart.statusCode).toBe(200);
     expect(restart.json().session.id).toBe(session.id);
@@ -1399,6 +1408,562 @@ describe('assembly torque management API', () => {
       isWorkComplete: false,
       isFullyApproved: false
     });
+  });
+
+  it('auto-issues normalized work IDs, serializes same-product registration, and permanently reserves invalidated IDs', async () => {
+    const client = await createTestClientDevice();
+    const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
+    const publishedDoc = await uploadPublishedProcedureDocument(app, headers, '自動採番手順');
+    const templateRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload: buildTemplatePayload(publishedDoc.id, {
+        modelCode: 'AUTO-ID',
+        procedurePattern: '自動'
+      })
+    });
+    expect(templateRes.statusCode).toBe(200);
+    const templateId = templateRes.json().template.id as string;
+
+    const createAutoLot = (productNo: string, expectedQuantity: number) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/assembly/lots',
+        headers,
+        payload: {
+          templateId,
+          productNo,
+          expectedQuantity,
+          workIdMode: 'auto',
+          targetUnit: 'auto-machine',
+          torqueWrenchId: 'CEM20N3X10D-BTLA'
+        }
+      });
+
+    const autoLotRes = await createAutoLot('ａｕｔｏ－ｌｏｔ', 3);
+    expect(autoLotRes.statusCode).toBe(200);
+    const autoLot = autoLotRes.json().lot;
+    expect(autoLot.operatorNameSnapshot).toBeNull();
+    expect(
+      autoLot.serials.map((serial: { workId: string }) => serial.workId)
+    ).toEqual(['AUTO-LOT-001', 'AUTO-LOT-002', 'AUTO-LOT-003']);
+
+    const tooLong = await createAutoLot('A'.repeat(117), 1);
+    expect(tooLong.statusCode).toBe(400);
+
+    const concurrent = await Promise.all([
+      createAutoLot('AUTO-RACE', 1),
+      createAutoLot('auto-race', 1)
+    ]);
+    expect(concurrent.map((response) => response.statusCode).sort()).toEqual([200, 409]);
+    expect(await prisma.assemblyLot.count({ where: { productNo: 'AUTO-RACE' } })).toBe(1);
+
+    const firstSerial = autoLot.serials[0] as { workUnitId: string; workId: string };
+    const invalidationRequestId = randomUUID();
+    const wrongPassword = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-units/${firstSerial.workUnitId}/invalidate`,
+      headers,
+      payload: {
+        accessPassword: '0000',
+        reason: '誤登録',
+        requestId: randomUUID()
+      }
+    });
+    expect(wrongPassword.statusCode).toBe(403);
+
+    const firstInvalidation = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-units/${firstSerial.workUnitId}/invalidate`,
+      headers,
+      payload: {
+        accessPassword: '2520',
+        reason: '誤登録',
+        requestId: invalidationRequestId
+      }
+    });
+    expect(firstInvalidation.statusCode).toBe(200);
+    expect(firstInvalidation.json().invalidation).toMatchObject({
+      workId: 'AUTO-LOT-001',
+      sourceState: 'not_started',
+      reason: '誤登録'
+    });
+    const idempotentInvalidation = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-units/${firstSerial.workUnitId}/invalidate`,
+      headers,
+      payload: {
+        accessPassword: '2520',
+        reason: '誤登録',
+        requestId: invalidationRequestId
+      }
+    });
+    expect(idempotentInvalidation.statusCode).toBe(200);
+    expect(idempotentInvalidation.json().invalidation.id).toBe(
+      firstInvalidation.json().invalidation.id
+    );
+
+    for (const serial of autoLot.serials.slice(1) as Array<{ workUnitId: string }>) {
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/assembly/work-units/${serial.workUnitId}/invalidate`,
+        headers,
+        payload: {
+          accessPassword: '2520',
+          reason: 'ロット登録取消',
+          requestId: randomUUID()
+        }
+      });
+      expect(response.statusCode).toBe(200);
+    }
+
+    const summary = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/lots/summary?productNo=AUTO-LOT',
+      headers
+    });
+    expect(summary.statusCode).toBe(200);
+    expect(summary.json().lots).toEqual([]);
+
+    const directLookup = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/traceability/work-units/resolve',
+      headers,
+      payload: { workId: firstSerial.workId }
+    });
+    expect(directLookup.statusCode).toBe(200);
+    expect(directLookup.json().workUnit.invalidation).toMatchObject({
+      reason: '誤登録',
+      sourceState: 'not_started'
+    });
+    expect((await createAutoLot('AUTO-LOT', 1)).statusCode).toBe(409);
+  });
+
+  it('requires ACTIVE NFC for start/resume, records idempotent access history, and cancels WIP on invalidation', async () => {
+    const client = await createTestClientDevice();
+    const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
+    const firstOperator = await createTestEmployee({ displayName: '開始作業者' });
+    const resumedOperator = await createTestEmployee({ displayName: '再開作業者' });
+    const inactiveOperator = await createTestEmployee({ displayName: '停止作業者' });
+    await prisma.employee.update({
+      where: { id: inactiveOperator.id },
+      data: { status: 'INACTIVE' }
+    });
+    const publishedDoc = await uploadPublishedProcedureDocument(app, headers, 'NFCゲート手順');
+    const templateRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload: buildTemplatePayload(publishedDoc.id, {
+        modelCode: 'NFC-GATE',
+        procedurePattern: 'NFC'
+      })
+    });
+    const templateId = templateRes.json().template.id as string;
+    const lotRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/lots',
+      headers,
+      payload: {
+        templateId,
+        productNo: 'NFC-GATE-LOT',
+        expectedQuantity: 1,
+        workIdMode: 'auto',
+        targetUnit: 'NFC機',
+        torqueWrenchId: 'CEM20N3X10D-BTLA'
+      }
+    });
+    expect(lotRes.statusCode).toBe(200);
+    const lot = lotRes.json().lot;
+    const serial = lot.serials[0] as {
+      id: string;
+      workUnitId: string;
+      workId: string;
+    };
+    const startUrl = `/api/assembly/lots/${lot.id}/serials/${serial.id}/start`;
+
+    expect((await app.inject({
+      method: 'POST',
+      url: startUrl,
+      headers,
+      payload: { operatorNfcTagUid: 'UNKNOWN-TAG', requestId: randomUUID() }
+    })).statusCode).toBe(404);
+    expect((await app.inject({
+      method: 'POST',
+      url: startUrl,
+      headers,
+      payload: { operatorNfcTagUid: inactiveOperator.nfcTagUid, requestId: randomUUID() }
+    })).statusCode).toBe(403);
+
+    const startRequestId = randomUUID();
+    const start = await app.inject({
+      method: 'POST',
+      url: startUrl,
+      headers,
+      payload: {
+        operatorNfcTagUid: firstOperator.nfcTagUid,
+        requestId: startRequestId
+      }
+    });
+    expect(start.statusCode).toBe(200);
+    expect(start.json().session.operatorNameSnapshot).toBe('開始作業者');
+    const sessionId = start.json().session.id as string;
+    const retry = await app.inject({
+      method: 'POST',
+      url: startUrl,
+      headers,
+      payload: {
+        operatorNfcTagUid: firstOperator.nfcTagUid,
+        requestId: startRequestId
+      }
+    });
+    expect(retry.statusCode).toBe(200);
+    expect(retry.json().session.id).toBe(sessionId);
+
+    const resumeRequestId = randomUUID();
+    const resume = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${sessionId}/operator-access`,
+      headers,
+      payload: {
+        operatorNfcTagUid: resumedOperator.nfcTagUid,
+        requestId: resumeRequestId
+      }
+    });
+    expect(resume.statusCode).toBe(200);
+    expect(resume.json().session.operatorNameSnapshot).toBe('再開作業者');
+    const resumeRetry = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${sessionId}/operator-access`,
+      headers,
+      payload: {
+        operatorNfcTagUid: resumedOperator.nfcTagUid,
+        requestId: resumeRequestId
+      }
+    });
+    expect(resumeRetry.statusCode).toBe(200);
+    expect(resumeRetry.json().session.id).toBe(sessionId);
+    expect(await prisma.assemblyWorkSessionOperatorAccess.count({
+      where: { sessionId }
+    })).toBe(2);
+    expect((await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${sessionId}/operator-access`,
+      headers,
+      payload: {
+        operatorNfcTagUid: inactiveOperator.nfcTagUid,
+        requestId: randomUUID()
+      }
+    })).statusCode).toBe(403);
+
+    const invalidate = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-units/${serial.workUnitId}/invalidate`,
+      headers,
+      payload: {
+        accessPassword: '2520',
+        reason: '仕掛品の作業取消',
+        requestId: randomUUID()
+      }
+    });
+    expect(invalidate.statusCode).toBe(200);
+    expect(invalidate.json().invalidation.sourceState).toBe('in_progress');
+    const cancelled = await prisma.assemblyWorkSession.findUniqueOrThrow({
+      where: { id: sessionId }
+    });
+    expect(cancelled).toMatchObject({
+      status: 'CANCELLED',
+      cancelReason: '仕掛品の作業取消'
+    });
+    expect(await prisma.assemblyWorkSessionOperatorAccess.count({
+      where: { sessionId }
+    })).toBe(2);
+    expect((await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${sessionId}/record-torque`,
+      headers,
+      payload: { value: 10, source: 'manual' }
+    })).statusCode).toBe(409);
+
+    const workbookRes = await app.inject({
+      method: 'GET',
+      url: `/api/assembly/work-sessions/${sessionId}/export.xlsx`,
+      headers
+    });
+    expect(workbookRes.statusCode).toBe(200);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(workbookRes.rawPayload);
+    expect(workbook.getWorksheet('作業者・無効化履歴')?.rowCount).toBe(4);
+
+    const reservedWorkId = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/lots',
+      headers,
+      payload: {
+        templateId,
+        productNo: 'NFC-GATE-OTHER',
+        expectedQuantity: 1,
+        workIdMode: 'manual',
+        workIds: [serial.workId],
+        targetUnit: 'NFC機',
+        torqueWrenchId: 'CEM20N3X10D-BTLA'
+      }
+    });
+    expect(reservedWorkId.statusCode).toBe(409);
+  });
+
+  it('serializes start, torque, and approval races against invalidation without 500s or orphan history', async () => {
+    const client = await createTestClientDevice();
+    const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
+    const operator = await createTestEmployee({ displayName: '競合作業者' });
+    const approver = await createTestEmployee({ displayName: '競合承認者' });
+    const publishedDoc = await uploadPublishedProcedureDocument(app, headers, '削除競合手順');
+    const templateRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload: buildTemplatePayload(publishedDoc.id, {
+        modelCode: 'INVALIDATION-RACE',
+        procedurePattern: '競合'
+      })
+    });
+    const templateId = templateRes.json().template.id as string;
+
+    const createLot = async (productNo: string) => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/assembly/lots',
+        headers,
+        payload: {
+          templateId,
+          productNo,
+          expectedQuantity: 1,
+          workIdMode: 'auto',
+          targetUnit: '競合試験機',
+          torqueWrenchId: 'CEM20N3X10D-BTLA'
+        }
+      });
+      expect(response.statusCode).toBe(200);
+      return response.json().lot as {
+        id: string;
+        serials: Array<{ id: string; workUnitId: string }>;
+      };
+    };
+    const startLot = async (productNo: string) => {
+      const lot = await createLot(productNo);
+      const serial = lot.serials[0];
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/assembly/lots/${lot.id}/serials/${serial.id}/start`,
+        headers,
+        payload: {
+          operatorNfcTagUid: operator.nfcTagUid,
+          requestId: randomUUID()
+        }
+      });
+      expect(response.statusCode).toBe(200);
+      return {
+        lot,
+        serial,
+        sessionId: response.json().session.id as string
+      };
+    };
+    const invalidate = (workUnitId: string, reason: string) =>
+      app.inject({
+        method: 'POST',
+        url: `/api/assembly/work-units/${workUnitId}/invalidate`,
+        headers,
+        payload: {
+          accessPassword: '2520',
+          reason,
+          requestId: randomUUID()
+        }
+      });
+
+    const startRaceLot = await createLot('RACE-START');
+    const startRaceSerial = startRaceLot.serials[0];
+    const [startRace, startInvalidation] = await Promise.all([
+      app.inject({
+        method: 'POST',
+        url: `/api/assembly/lots/${startRaceLot.id}/serials/${startRaceSerial.id}/start`,
+        headers,
+        payload: {
+          operatorNfcTagUid: operator.nfcTagUid,
+          requestId: randomUUID()
+        }
+      }),
+      invalidate(startRaceSerial.workUnitId, '開始との競合')
+    ]);
+    expect(startInvalidation.statusCode).toBe(200);
+    expect([200, 409]).toContain(startRace.statusCode);
+    expect(startRace.statusCode).not.toBe(500);
+    expect(await prisma.assemblyWorkUnitInvalidation.count({
+      where: { workUnitId: startRaceSerial.workUnitId }
+    })).toBe(1);
+    const startRaceSession = await prisma.assemblyWorkSession.findUnique({
+      where: { workUnitId: startRaceSerial.workUnitId }
+    });
+    if (startRaceSession) expect(startRaceSession.status).toBe('CANCELLED');
+
+    const torqueRace = await startLot('RACE-TORQUE');
+    const [torqueRecord, torqueInvalidation] = await Promise.all([
+      app.inject({
+        method: 'POST',
+        url: `/api/assembly/work-sessions/${torqueRace.sessionId}/record-torque`,
+        headers,
+        payload: { value: 10, source: 'manual' }
+      }),
+      invalidate(torqueRace.serial.workUnitId, 'トルク入力との競合')
+    ]);
+    expect(torqueInvalidation.statusCode).toBe(200);
+    expect([200, 409]).toContain(torqueRecord.statusCode);
+    expect(torqueRecord.statusCode).not.toBe(500);
+    expect((await prisma.assemblyWorkSession.findUniqueOrThrow({
+      where: { id: torqueRace.sessionId }
+    })).status).toBe('CANCELLED');
+    expect(await prisma.assemblyTorqueRecord.count({
+      where: { sessionId: torqueRace.sessionId }
+    })).toBe(torqueRecord.statusCode === 200 ? 1 : 0);
+
+    const approvalRace = await startLot('RACE-APPROVAL');
+    expect((await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${approvalRace.sessionId}/record-torque`,
+      headers,
+      payload: { value: 10, source: 'manual' }
+    })).statusCode).toBe(200);
+    expect((await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${approvalRace.sessionId}/complete`,
+      headers,
+      payload: {}
+    })).statusCode).toBe(200);
+    const [approval, completedInvalidation] = await Promise.all([
+      app.inject({
+        method: 'POST',
+        url: `/api/assembly/work-sessions/${approvalRace.sessionId}/record-approval/approve`,
+        headers,
+        payload: { approverEmployeeTagUid: approver.nfcTagUid }
+      }),
+      invalidate(approvalRace.serial.workUnitId, '完了承認との競合')
+    ]);
+    expect(completedInvalidation.statusCode).toBe(200);
+    expect([200, 409]).toContain(approval.statusCode);
+    expect(approval.statusCode).not.toBe(500);
+    expect((await prisma.assemblyWorkSession.findUniqueOrThrow({
+      where: { id: approvalRace.sessionId }
+    })).status).toBe('COMPLETED');
+    expect(await prisma.assemblyTorqueRecord.count({
+      where: { sessionId: approvalRace.sessionId }
+    })).toBe(1);
+    expect(await prisma.assemblyWorkUnitInvalidation.count({
+      where: { workUnitId: approvalRace.serial.workUnitId }
+    })).toBe(1);
+  });
+
+  it('blocks invalidation for active composition or formal IDs and preserves approved completed sessions', async () => {
+    const client = await createTestClientDevice();
+    const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
+    const approver = await createTestEmployee({ displayName: '削除監査承認者' });
+    const publishedDoc = await uploadPublishedProcedureDocument(app, headers, '削除ブロック手順');
+    const templateRes = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload: buildTemplatePayload(publishedDoc.id, {
+        modelCode: 'INVALIDATION-BLOCK',
+        procedurePattern: '監査'
+      })
+    });
+    const templateId = templateRes.json().template.id as string;
+
+    const createCompleted = async (workId: string) => {
+      const workUnit = await prisma.assemblyWorkUnit.create({ data: { workId } });
+      const session = await prisma.assemblyWorkSession.create({
+        data: {
+          templateId,
+          workUnitId: workUnit.id,
+          productNo: `PRODUCT-${workId}`,
+          workId,
+          nameplateNo: workId,
+          status: 'COMPLETED',
+          operatorNameSnapshot: '完了作業者',
+          targetUnit: '監査機',
+          torqueWrenchId: 'CEM20N3X10D-BTLA',
+          completedAt: new Date()
+        }
+      });
+      return { workUnit, session };
+    };
+    const invalidate = (workUnitId: string, reason: string) =>
+      app.inject({
+        method: 'POST',
+        url: `/api/assembly/work-units/${workUnitId}/invalidate`,
+        headers,
+        payload: {
+          accessPassword: '2520',
+          reason,
+          requestId: randomUUID()
+        }
+      });
+
+    const parent = await createCompleted('BLOCK-PARENT');
+    const child = await createCompleted('BLOCK-CHILD');
+    const link = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/traceability/links',
+      headers,
+      payload: {
+        parentWorkId: parent.workUnit.workId,
+        childWorkId: child.workUnit.workId,
+        accessPassword: '2520'
+      }
+    });
+    expect(link.statusCode).toBe(200);
+    expect((await invalidate(child.workUnit.id, '構成中の削除')).statusCode).toBe(409);
+
+    const unlink = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/traceability/links/${link.json().link.id as string}/unlink`,
+      headers,
+      payload: {
+        accessPassword: '2520',
+        reason: '正式IDブロック試験へ移行'
+      }
+    });
+    expect(unlink.statusCode).toBe(200);
+    const formal = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/traceability/formal-identifiers',
+      headers,
+      payload: {
+        workId: parent.workUnit.workId,
+        formalId: 'BLOCK-FORMAL-ID',
+        accessPassword: '2520'
+      }
+    });
+    expect(formal.statusCode).toBe(200);
+    expect((await invalidate(parent.workUnit.id, '正式IDありの削除')).statusCode).toBe(409);
+
+    const approved = await createCompleted('APPROVED-PRESERVED');
+    const approval = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${approved.session.id}/record-approval/approve`,
+      headers,
+      payload: { approverEmployeeTagUid: approver.nfcTagUid }
+    });
+    expect(approval.statusCode).toBe(200);
+    const invalidation = await invalidate(approved.workUnit.id, '承認済み誤登録');
+    expect(invalidation.statusCode).toBe(200);
+    expect(invalidation.json().invalidation.sourceState).toBe('approved');
+    const preserved = await prisma.assemblyWorkSession.findUniqueOrThrow({
+      where: { id: approved.session.id },
+      include: { approval: true }
+    });
+    expect(preserved.status).toBe('COMPLETED');
+    expect(preserved.approval).not.toBeNull();
+    expect(preserved.cancelledAt).toBeNull();
   });
 
   it('verifies the shared 2520 password for template editing and removes legacy order APIs', async () => {

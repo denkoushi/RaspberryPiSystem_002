@@ -25,13 +25,13 @@ vi.mock('../../features/barcode-scan', () => ({ useSerialBarcodeStream: vi.fn() 
 
 const detail = {
   workUnit: {
-    id: 'final-id', workId: 'FINAL-001', status: 'completed' as const, productNo: 'P-001', targetUnit: '完成品', templateName: '標準 v1', completedAt: '2026-07-20T00:00:00.000Z'
+    id: 'final-id', workId: 'FINAL-001', status: 'completed' as const, productNo: 'P-001', targetUnit: '完成品', templateName: '標準 v1', completedAt: '2026-07-20T00:00:00.000Z', invalidation: null
   },
   activeParent: null,
   activeChildren: [],
   root: {
     workUnit: {
-      id: 'final-id', workId: 'FINAL-001', status: 'completed' as const, productNo: 'P-001', targetUnit: '完成品', templateName: '標準 v1', completedAt: '2026-07-20T00:00:00.000Z'
+      id: 'final-id', workId: 'FINAL-001', status: 'completed' as const, productNo: 'P-001', targetUnit: '完成品', templateName: '標準 v1', completedAt: '2026-07-20T00:00:00.000Z', invalidation: null
     },
     formalIdentifier: null
   },
@@ -96,5 +96,28 @@ describe('KioskAssemblyTraceabilityPage', () => {
     await waitFor(() => expect(mockAssignFormal).toHaveBeenCalledWith({
       workId: 'FINAL-001', formalId: 'formal-001', accessPassword: '2520'
     }));
+  });
+
+  it('shows invalidation reason and timestamp for a directly resolved work ID', async () => {
+    mockResolve.mockResolvedValueOnce({
+      ...detail,
+      workUnit: {
+        ...detail.workUnit,
+        invalidation: {
+          reason: '誤った製番で登録したため',
+          invalidatedAt: '2026-07-26T06:30:00.000Z',
+          sourceState: 'completed'
+        }
+      }
+    });
+    renderPage();
+
+    const parentInput = await screen.findByPlaceholderText('作業用IDをスキャンまたは入力');
+    fireEvent.change(parentInput, { target: { value: 'FINAL-001' } });
+    fireEvent.click(screen.getByRole('button', { name: '確認' }));
+
+    expect(await screen.findByText('削除済み（読み取り専用）')).toBeInTheDocument();
+    expect(screen.getByText('削除理由: 誤った製番で登録したため')).toBeInTheDocument();
+    expect(screen.getByLabelText('作業用IDの削除履歴')).toHaveTextContent('削除日時:');
   });
 });

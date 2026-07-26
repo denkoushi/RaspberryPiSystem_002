@@ -19,6 +19,8 @@ type Props = {
   candidateLoading: boolean;
   selectedCandidate: AssemblySeibanCandidateDto | null;
   onSelectCandidate: (candidate: AssemblySeibanCandidateDto) => void;
+  workIdMode: 'auto' | 'manual';
+  onWorkIdModeChange: (mode: 'auto' | 'manual') => void;
   serialDraft: string;
   serialNos: string[];
   expectedLotQuantity: number | null;
@@ -29,8 +31,6 @@ type Props = {
   onSerialClear: () => void;
   onSerialAdd: () => void;
   onSerialRemove: (serialNo: string) => void;
-  operatorNameSnapshot: string;
-  onOperatorNameChange: (value: string) => void;
   selectedLotQty: number | null;
   autoLotQty: number | null;
   manualLotQtyDraft: string;
@@ -60,6 +60,8 @@ export function AssemblyStartPane({
   candidateLoading,
   selectedCandidate,
   onSelectCandidate,
+  workIdMode,
+  onWorkIdModeChange,
   serialDraft,
   serialNos,
   expectedLotQuantity,
@@ -70,8 +72,6 @@ export function AssemblyStartPane({
   onSerialClear,
   onSerialAdd,
   onSerialRemove,
-  operatorNameSnapshot,
-  onOperatorNameChange,
   selectedLotQty,
   autoLotQty,
   manualLotQtyDraft,
@@ -85,7 +85,7 @@ export function AssemblyStartPane({
 }: Props) {
   const fseibanInputLocked = busy;
   const serialLimitReached = expectedLotQuantity != null && serialNos.length >= expectedLotQuantity;
-  const serialInputLocked = busy || expectedLotQuantity == null || serialLimitReached;
+  const serialInputLocked = busy || workIdMode !== 'manual' || expectedLotQuantity == null || serialLimitReached;
   const serialAddDisabled = serialInputLocked || !serialDraft || serialDraftDuplicate;
   const showManualLotQtyInput = !!selectedCandidate && !lotQtyLoading && autoLotQty == null;
   const usingManualLotQty = autoLotQty == null && expectedLotQuantity != null;
@@ -173,7 +173,23 @@ export function AssemblyStartPane({
             作業用ID
           </h3>
 
-          <div className="grid grid-cols-1 gap-2 min-[1500px]:grid-cols-[minmax(0,1fr)_7.5rem]">
+          <p className="rounded border border-cyan-300/25 bg-cyan-500/10 px-2 py-2 text-xs font-semibold text-cyan-100">
+            {workIdMode === 'auto'
+              ? '製番からロット数分を自動発行します。'
+              : '手動修正モードです。入力した作業用IDを登録します。'}
+          </p>
+
+          <details className="rounded border border-white/10 bg-slate-950/40 p-2">
+            <summary className="cursor-pointer text-sm font-bold text-white/80">作業用IDを手動修正</summary>
+            <label className="mt-3 flex min-h-10 items-center gap-2 text-xs font-semibold text-white/75">
+              <input
+                type="checkbox"
+                checked={workIdMode === 'manual'}
+                disabled={busy}
+                onChange={(event) => onWorkIdModeChange(event.target.checked ? 'manual' : 'auto')}
+              />
+              手動修正を使用する
+            </label>
             <label className="grid gap-1 text-xs font-semibold text-white/70">
               作業用ID追加
               <Input
@@ -190,34 +206,30 @@ export function AssemblyStartPane({
                 }}
               />
             </label>
-            <label className="grid gap-1 text-xs font-semibold text-white/70">
-              作業者
-              <Input
-                value={operatorNameSnapshot}
-                onChange={(event) => onOperatorNameChange(event.target.value)}
-                placeholder="作業者（NFCタグでも入力可）"
-                className="min-h-10"
-                disabled={busy}
-              />
-            </label>
-          </div>
-
-          <AssemblyKeypad
-            ariaLabel="作業用ID入力パッド"
-            disabled={serialInputLocked}
-            onKey={onSerialKey}
-            onBackspace={onSerialBackspace}
-            onClear={onSerialClear}
-          />
+            <details className="mt-2 rounded border border-white/10 bg-slate-900/60 p-2">
+              <summary className="cursor-pointer text-xs font-bold text-white/70">ソフトウェアキーボードを表示</summary>
+              <div className="mt-2">
+                <AssemblyKeypad
+                  ariaLabel="作業用ID入力パッド"
+                  disabled={serialInputLocked}
+                  onKey={onSerialKey}
+                  onBackspace={onSerialBackspace}
+                  onClear={onSerialClear}
+                />
+              </div>
+            </details>
+          </details>
 
           <div className="grid gap-2 rounded border border-white/10 bg-slate-950/45 p-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs font-bold text-white/60">
-                入力済み {serialNos.length}/{expectedLotQuantity ?? '-'}
+                {workIdMode === 'auto' ? '発行予定' : '入力済み'} {serialNos.length}/{expectedLotQuantity ?? '-'}
               </span>
-              <Button type="button" variant="ghostOnDark" className="min-h-9 !px-3 !py-0 text-xs" disabled={serialAddDisabled} onClick={onSerialAdd}>
-                追加
-              </Button>
+              {workIdMode === 'manual' ? (
+                <Button type="button" variant="ghostOnDark" className="min-h-9 !px-3 !py-0 text-xs" disabled={serialAddDisabled} onClick={onSerialAdd}>
+                  追加
+                </Button>
+              ) : null}
             </div>
             {selectedCandidate && lotQtyLoading ? (
               <p className="rounded border border-white/10 bg-slate-950/55 px-2 py-1.5 text-xs font-semibold text-white/70">
@@ -259,15 +271,17 @@ export function AssemblyStartPane({
                   <div key={serialNo} className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2 rounded border border-white/10 bg-slate-900/60 px-2 py-1">
                     <span className="text-xs font-bold tabular-nums text-white/45">{index + 1}</span>
                     <span className="truncate text-sm font-bold tabular-nums text-white">{serialNo}</span>
-                    <Button
-                      type="button"
-                      variant="ghostOnDark"
-                      className="min-h-8 !px-2 !py-0 text-xs"
-                      disabled={busy}
-                      onClick={() => onSerialRemove(serialNo)}
-                    >
-                      削除
-                    </Button>
+                    {workIdMode === 'manual' ? (
+                      <Button
+                        type="button"
+                        variant="ghostOnDark"
+                        className="min-h-8 !px-2 !py-0 text-xs"
+                        disabled={busy}
+                        onClick={() => onSerialRemove(serialNo)}
+                      >
+                        削除
+                      </Button>
+                    ) : <span aria-hidden="true" />}
                   </div>
                 ))
               )}

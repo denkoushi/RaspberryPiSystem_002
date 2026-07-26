@@ -34,7 +34,7 @@
 - **トルクレンチ現物確認の全作業ID間再利用（2026-07-23）**: 作業開始元端末を監査情報として残しつつ、現在端末の接続リースが採用した確認を、同一レンチ・最新設定・締付条件・状態・校正を満たす別作業ID／別ロットで再利用する。別端末移動では新規確認と取得／二段階引継ぎが必須で、enforcementは未有効。**正本**: [ExecPlan](./plans/assembly-torque-cross-work-id-reuse-execplan.md) · [ADR](./decisions/ADR-20260723-assembly-torque-cross-work-id-confirmation-reuse.md) · [Runbook](./runbooks/assembly-torque-agent.md)
 
 - **物理トルクレンチと締付実績の追跡**: `MeasuringInstrument`を物理資産の正本として再利用し、型番・製造番号・適合グループ・追記専用設定履歴、REQUIREDテンプレート、現物確認、誤レンチ拒否監査、冪等agent入力、管理者例外入力を追加。丸数字の同一条件反映と確認引継ぎを実装。CEM3-BTLA正式parserは実機fixture承認待ちで、未デプロイ。**正本**: [ExecPlan](./plans/assembly-torque-wrench-traceability-execplan.md) · [Assembly Plan](./plans/kiosk-assembly-torque-management-mvp.md) · [Torque Runbook](./runbooks/assembly-torque-agent.md) · [Client-agent Runbook](./runbooks/client-agent-addition.md) · [ADR](./decisions/ADR-20260717-assembly-torque-wrench-traceability.md)
-- **組立 作業用ID・製品構成・正式ID**: 作業開始IDを作業用IDとして扱い、完成済みサブアセンブリの階層構成と最上位正式IDの履歴付与を実装・ローカル検証済み。**正本**: [ExecPlan](./plans/assembly-work-id-traceability-execplan.md) · [ADR](./decisions/ADR-20260720-assembly-work-id-genealogy-and-formal-id.md)
+- **組立 作業用ID・製品構成・正式ID**: 作業開始IDを作業用IDとして扱い、完成済みサブアセンブリの階層構成と最上位正式IDの履歴付与を実装。2026-07-26からロットは`${製番}-${3桁連番}`を自動発行し、開始／再開NFC履歴と不可逆な論理無効化を採用。**正本**: [自動採番等ExecPlan](./plans/assembly-auto-id-nfc-invalidation-execplan.md) · [新ADR](./decisions/ADR-20260726-assembly-auto-id-operator-access-invalidation.md) · [作業用ID ADR](./decisions/ADR-20260720-assembly-work-id-genealogy-and-formal-id.md)
 
 ### 最新アップデート（2026-07-14 · Deploy事前案内 + 組立ライブラリ／テンプレート編集UI · 実装済・未デプロイ）
 
@@ -334,7 +334,7 @@
 
 ### 🆕 最新アップデート（2026-05-22 · キオスク下端リビール）
 
-- **キオスク沉浸式ヘッダー・下端中央1/3リビール（Web + Pi4 Ansible・本番反映済）**: 上端全幅廃止→**下端14px×中央1/3**で `KioskHeader` を下から表示。**`/kiosk/photo`** を沉浸式 allowlist に追加。Pi4 は **`_appRef`** + Firefox キャッシュ無効。**ブランチ**: **`feat/kiosk-bottom-center-header-reveal`**（**`cbeb6bbc`**·CI **`26262397906` success**）·**本番**: Pi5 → StoneBase01 → Pi4×3 · Detach **`20260522-101951-717`** ほか 5 本·**Phase12** **43/0/0**·**StoneBase01 実機 UI OK**。**記録**: [KB-311](./knowledge-base/KB-311-kiosk-immersive-header-allowlist.md)·[deployment §下端リビール](archive/deployments/2026-05.md#kiosk-bottom-center-header-reveal-2026-05-22)·[deploy-status-recovery](./runbooks/deploy-status-recovery.md)·[`EXEC_PLAN.md`](../EXEC_PLAN.md)。**運用デプロイ（マージ後）**: **`./scripts/update-all-clients.sh main … --limit <host>`**（キオスク Web は Pi5 配信だが Pi4 は起動 URL・キャッシュのため **Pi4 も反映**）。
+- **キオスク沉浸式ヘッダー・右下24×24pxリビール（コード正本）**: 2026-07-26に反応域を下端中央1/3から**右下24×24pxだけ**へ縮小。DOM、純粋幾何モデル、E2Eヘルパーを統一した。2026-05-22の下端中央1/3（`cbeb6bbc`・Pi5+Pi4×4本番）は履歴として保持。**正本**: [KB-311](./knowledge-base/KB-311-kiosk-immersive-header-allowlist.md) · [今回ExecPlan](./plans/assembly-auto-id-nfc-invalidation-execplan.md) · [過去deployment](archive/deployments/2026-05.md#kiosk-bottom-center-header-reveal-2026-05-22)。
 
 ### 🆕 最新アップデート（2026-05-21 · shell 初回最適化 第1弾）
 
