@@ -36,9 +36,11 @@ This plan follows `.agent/PLANS.md`.
 - [x] (2026-07-26) CIのExpand-only指摘に従い、Lot作業者列のNOT NULL互換を維持する安全修正を検証した。
 - [x] (2026-07-26) npm Registryのgzip header障害をfail-openせず回避するbulk audit loopback proxyを追加・検証した。
 - [x] (2026-07-26) PRレビューのP1指摘を受け、旧`POST /assembly/work-sessions`もACTIVE社員NFC・START履歴・requestIdを必須化した。
-- [ ] 必須CIとレビュー結果を確認し、mainへmergeする。
-- [ ] merge SHAのCI成功後、標準ローリング更新のplanを確認して本番へ適用する。
-- [ ] deploy status、同一SHAのno-op plan、実機の組立/NFC/右下ホットゾーンを確認する。
+- [x] (2026-07-26) 必須CIとレビュー結果を確認し、PR #1091をmainへsquash mergeした。
+- [x] (2026-07-26) merge SHAのCI成功後、標準ローリング更新run
+  `20260726-082705-9af18d`で本番migration・Pi5・キオスク6台へ適用した。
+- [x] (2026-07-26) deploy status、同一SHAのno-op plan、実機配信/NFC agent証跡、
+  本番組立画面のNFCゲート・削除確認・右下24×24pxホットゾーンを非破壊で確認した。
 
 ## Surprises & Discoveries
 
@@ -106,6 +108,15 @@ This plan follows `.agent/PLANS.md`.
   Evidence: unresolved review thread `PRRT_kwDOQXvIwM6T1IHU`（P1）。
   Consequence: 公開される全開始経路をACTIVE社員NFC、UUID requestId、append-only START履歴へ
   統一し、ロット外の未登録WorkUnitも作業用ID advisory lockで並行開始を直列化した。
+
+- Observation: 本番はBlue/Green構成の`api-green`が稼働しており、
+  legacy server composeの`api` serviceは停止している。
+  Evidence: `docker ps`は`bluegreen-api-green-1`をhealthyとして表示し、
+  `docker compose -p bluegreen -f infrastructure/docker/docker-compose.phase3.yml
+  exec -T api-green pnpm prisma migrate status`が155 migration、
+  `Database schema is up to date!`を返した。
+  Consequence: 稼働slotのmigration statusはBlue/Green composeを正本として確認し、
+  停止中のlegacy serviceを異常扱いしない。
 
 ## Decision Log
 
@@ -184,6 +195,35 @@ ACTIVE NFC 200、同一requestId再送200、別requestIdでの再開始409を返
 `operatorNameSnapshot`を受け付けないことを隔離DBで確認した。同一作業用IDの並行開始は
 1件だけ成功し、START履歴も1件だけ保存された。Node 22の組立・レンチ統合32テスト、
 API lint/build、Web buildは成功し、一時container/volume/networkは残っていない。
+
+PR #1091の最終feature SHAは`754cbbe65e32360ebc1b964d519fee6cad628425`で、
+必須CI、CodeQL、gitleaks、レビュー修正を通過した。squash merge後のmain SHA
+`197f82d0a40dc38c6c8154bfa549b7686e1caee8`でもCI 15/15、CodeQL、
+Secret scanが成功した。
+
+標準ローリング更新run `20260726-082705-9af18d`は
+`state=success`、`phase=completed`、exit 0で完了した。Pi5のAPI/Web image claimは
+main SHAと一致し、組立端末`raspi4-assembly-01`を含むキオスク6台すべてでcompiled Web
+claim、ready acknowledgement、terminal evidence、maintenance解除、cleanupが成功した。
+本番の稼働`api-green`でPrisma 155 migrationがup to dateであることも再確認した。
+同じmain SHAの最終`--print-plan`はtargets、mutationTargets、activationTargets、
+verificationTargets、terminalWorkがすべて空で、warningsも空だった。
+
+本番URLをMac側PlaywrightのLinuxキオスクUA・1280×720で非破壊確認した。
+`/kiosk/assembly`はHTTP 200、viewport内に収まり、自動採番説明を表示し、
+手動修正欄は折りたたまれていた。ヘッダーは初期非表示、下端中央では非表示のまま、
+右下の実測24×24px（x=1256、y=696）でのみ表示された。着手前の「開始」は
+社員NFC必須ダイアログを開き、削除ボタンは製番・作業用ID・状態・管理パスワード・
+必須理由を表示した。いずれもキャンセルして本番データを変更していない。
+仕掛の「再開」直開きと再読込では毎回NFCゲートが表示され、スキャン前の通信は
+session読取GETだけで、mutation、手順書、トルクレンチ、agent/lease通信は0件だった。
+
+物理社員カードのタップは、対象社員カードがリモート環境に存在せず、実行すると
+本番セッションへSTART/RESUME履歴と現在作業者を記録するため実施していない。
+NFCハードウェア層は標準deployの端末probeで、組立実機のPC/SC socket、NFC agent、
+loopback health、container identityを確認した。したがって配信・ハードウェア・
+スキャン直前までのUI/API境界は実機証跡あり、社員カード読取を含む現場最終確認だけは
+次回の実作業開始時に行う。
 
 ## Context and Orientation
 
