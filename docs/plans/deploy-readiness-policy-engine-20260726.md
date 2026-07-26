@@ -1,7 +1,7 @@
 ---
 id: deploy-readiness-policy-engine-20260726
 title: Data-driven deploy release-readiness policy engine
-status: in-progress
+status: completed
 scope: canonical SSH rolling release before release-unit submission
 date: 2026-07-26
 source_of_truth: docs/plans/deploy-readiness-policy-engine-20260726.md
@@ -16,8 +16,7 @@ related_docs:
   - docs/plans/deploy-release-readiness-review-20260725.md
   - docs/guides/deployment.md
 validation: focused tests, complete deploy contracts, required CI, exact-head read-only preflight, then standard production deployment
-open_items:
-  - implement, validate, and roll out the approved policy engine
+open_items: []
 ---
 
 # Automate Data-Driven Deploy Release Readiness
@@ -66,8 +65,17 @@ admission in release status.
   `run-deploy-contracts-local.sh` shell/Ansible/PostgreSQL contract runner.
   Its cleanup trap removed the isolated PostgreSQL container, volume, and
   network.
-- [ ] Publish the exact commit, wait for required CI, run exact-head read-only
-  preflight, then perform and verify the standard production deployment.
+- [x] (2026-07-26 00:46Z) Published PR #1088, passed required CI, CodeQL,
+  gitleaks, and repository policy, then squash-merged the tested tree as
+  `5661a9cb`.
+- [x] (2026-07-26 00:46Z) Passed the exact-head all-target read-only preflight
+  `20260726-001909-abcd54` and the Pi5 plus assembly-only reverify preflight
+  `20260726-002055-d367a8`. The latter ran the terminal probe only for
+  `raspi4-assembly-01`.
+- [x] (2026-07-26 00:46Z) Completed standard production release
+  `20260726-002143-2aeaf0`. The saved admission matched the locked plan, Pi5
+  and all six Kiosk activations were verified, every maintenance marker was
+  cleared, and the post-deploy plan contained no targets or terminal work.
 
 ## Surprises & Discoveries
 
@@ -148,14 +156,20 @@ admission in release status.
 
 ## Outcomes & Retrospective
 
-The offline implementation now selects probes from strict registry data, skips
-terminal SSH for no-work plans, emits structured version 2 migration and
-terminal evidence, and stops locked-plan expansion with a saved admission
-audit. The focused suite passed 213 tests, the complete Python Deploy suite
-passed 855 tests, and the canonical contract runner passed its shell, Ansible,
-safety, terminal-profile, and isolated PostgreSQL migration/API checks. Its
-temporary Docker resources were removed. Required CI, exact-head production
-preflight, rollout, and no-op proof remain.
+The data-driven policy engine is implemented and running in production. It
+selects probes from strict registry data, skips unrelated terminal SSH, emits
+structured version 2 migration and terminal evidence, and stops locked-plan
+expansion with a saved admission audit.
+
+The focused suite passed 213 tests, the complete Python Deploy suite passed
+855 tests, and the canonical contract runner passed its shell, Ansible,
+safety, terminal-profile, and isolated PostgreSQL migration/API checks. PR
+#1088 and the resulting main commit passed required CI, CodeQL, gitleaks, and
+repository policy. Both production read-only preflights passed. Release
+`20260726-002143-2aeaf0` finished successfully with scope admission
+`sha256:77698f08394dedf7c6a1ee1d3373ec6745f32a736764a643488026f8c0a41b41`;
+Pi5 and all six Kiosk activations were verified, every terminal recorded
+`maintenanceClearedAt`, and the next standard plan was a no-op.
 
 ## Context and Orientation
 
