@@ -28,6 +28,9 @@ related:
 - [x] 2026-07-26: Codex同梱Node 24でlint/build、全API/Web test、対象Playwrightを実行した。
 - [x] 2026-07-26: 固有名の一時PostgreSQL環境でfresh/upgrade migration、SQL制約、20,100件fixtureのEXPLAIN、関連・全API統合testを実行し、資源の残存0件を確認した。
 - [x] 2026-07-26: ADR、INDEX、後継リンク、検証結果、retrospectiveを完成させた。
+- [x] 2026-07-26: PR #1094を`main`へsquash mergeし、main push CI、CodeQL、secret scanの成功を確認した。
+- [x] 2026-07-26: 標準rolling release run `20260726-125509-839a17`でPi5、Pi4 Kiosk 6台、Pi3 Signage 1台へ本番反映し、全台のrelease identityとmaintenance解除を確認した。
+- [x] 2026-07-26: 本番データを変更しない互換API・DB・配信assetのspot checkと、Phase12実機検証`PASS 47 / WARN 0 / FAIL 0`を完了した。
 
 ## Surprises & Discoveries
 
@@ -81,6 +84,19 @@ related:
 - 20,100件のステップを投入して`ANALYZE`後に`EXPLAIN (ANALYZE, BUFFERS)`を実行し、テンプレート順読込は`AssemblyTemplateProcedureStep_unique_template_sort`、組立手順書参照は`AssemblyTemplateProcedureStep_idx_assembly_document`、Kiosk文書参照は`AssemblyTemplateProcedureStep_idx_kiosk_document`を選択した。実測はいずれも約0.05ms以内だった。
 - migration検証は `scripts/deploy/validate-candidate-migrations.sh origin/main HEAD` を通過した。検証終了後、専用labelによるcontainer/volume/network残存は0件だった。
 
+## Production Deployment and Real-device Verification
+
+- PR [#1094](https://github.com/denkoushi/RaspberryPiSystem_002/pull/1094)をsquash mergeした。デプロイ対象の`main` SHAは`37935581fe75e664e60dfaf74675cc96ec51807d`で、main push CI、CodeQL、secret scanはすべて成功した。
+- `scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan`で8対象とPi5必須、migration、Kiosk canary holdを確認後、標準rolling releaseをdetach実行した。Run IDは`20260726-125509-839a17`。
+- Pi5では候補API/Web imageのbuild、migration `20260726173000_assembly_template_procedure_steps`、inactive slot準備、traffic switch、302秒のstability monitor、cleanupが成功した。API/Webのobserved identityはいずれも対象SHAと一致し`verified`になった。
+- Kiosk canary `raspi4-kensaku-stonebase01`のrepository、compiled Web ready ACK、evidence、maintenance解除成功後に残りKioskを承認した。`raspberrypi4`、`raspi4-robodrill01`、`raspi4-fjv60-80`、`raspi4-sessaku-01`、`raspi4-assembly-01`も同じSHAで`verified`になり、maintenanceを解除した。
+- 主対象`raspi4-assembly-01`はNFC、barcode、torque-agent、トルクレンチBluetooth HID/udev/fail-closed guard、Kiosk browserの実機ロールを通過した。compiled Web ready verification IDは`ac421a1fd919b7cabe5d69afd1c1deb0`。
+- Pi3 `raspberrypi3`はsignage ready ACK、repository identity、`signage-lite`/timerを確認し、同じSHAで`verified`になった。runは`success / completed`、全対象のmaintenanceは解除済み。
+- 同一SHAで再度`--print-plan`を実行し、`targets: []`、8台すべて`verified at desired SHA`のno-opを確認した。
+- `scripts/deploy/verify-phase12-real.sh`はTailscale実機経路で`PASS 47 / WARN 0 / FAIL 0`。API health、全Kiosk deploy-status、Signage image、認可401、Prisma migration status、fallback 0件、auto-tuning、全Pi4 Kiosk/status-agent、Pi3 signage、`verify-services-real.sh`を含む。
+- 本番の組立Kiosk identityで既存テンプレート5件を読み取り、DBバックフィルなしで全件が`stepSource: document_expansion`、`full_page`の`steps`を返すことを確認した。新テーブルは既存行0件、制約10件、索引4件で、既存業務データは変更していない。
+- 本番配信chunkに、エディタの`手順指示`、`文書・工程`、`矩形追加`、`全体を一時表示`と、作業画面の`現在の丸数字へ`が含まれることを確認した。Macの自動ブラウザ目視は自己署名証明書を安全に通過できず、Chrome拡張も未導入だったため実施していない。代わりに実機Kioskのcompiled Web ready ACK、配信asset、API互換、サービス状態を証跡とした。productionで明示cropステップを作る操作は業務データを変えるため実施していない。
+
 ## Idempotence and Recovery
 
 migrationは新規ファイルのみとし、再適用はPrismaのmigration ledgerに委ねる。テンプレート作成・改版は既存のlineage lockと単一トランザクションを使用し、失敗時は文書列・ステップ・工程・マーカーをすべてrollbackする。
@@ -95,4 +111,4 @@ Docker検証資源は実行ごとにUUIDを含む名前とlabelを使う。既�
 
 既存テンプレートはDB更新なしで従来の文書順・ページ順に展開され、既存セッションは開始時のテンプレート版を使い続ける。既存`documents`、`procedureItems`、source表示、締付・必須チェックによる完了条件も維持した。
 
-Expand-only migration、fresh/upgrade、SQL制約、索引利用、全API/Web test、対象Playwright、lint/buildは上記の通り完了した。検証用Docker資源は削除済みである。本番デプロイ、crop画像やPDFの永続生成、印刷再出力、閲覧監査・閲覧必須ゲートは実施していない。
+Expand-only migration、fresh/upgrade、SQL制約、索引利用、全API/Web test、対象Playwright、lint/buildは上記の通り完了した。検証用Docker資源は削除済みである。本番デプロイと実機自動検証も完了した。crop画像やPDFの永続生成、印刷再出力、閲覧監査・閲覧必須ゲートは実施していない。

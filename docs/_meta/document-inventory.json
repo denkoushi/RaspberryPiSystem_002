@@ -15,17 +15,17 @@
     ]
   },
   "summary": {
-    "documentCount": 553,
-    "totalLines": 158169,
-    "totalBytes": 11940574,
-    "withFrontmatter": 233,
-    "withStatus": 91,
-    "sourceOfTruthDeclared": 60,
+    "documentCount": 557,
+    "totalLines": 158730,
+    "totalBytes": 11986260,
+    "withFrontmatter": 236,
+    "withStatus": 94,
+    "sourceOfTruthDeclared": 61,
     "execPlanReferences": 64,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 25,
-    "localLinkCount": 5577,
+    "localLinkCount": 5581,
     "brokenLocalLinkCount": 87,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -5913,8 +5913,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 1991,
-      "byteSize": 342649,
+      "lineCount": 1995,
+      "byteSize": 343151,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -6846,8 +6846,18 @@
           "exists": true
         },
         {
+          "href": "./decisions/ADR-20260726-assembly-auto-id-operator-access-invalidation.md",
+          "targetPath": "docs/decisions/ADR-20260726-assembly-auto-id-operator-access-invalidation.md",
+          "exists": true
+        },
+        {
           "href": "./decisions/ADR-20260726-assembly-template-owned-procedure-sequence.md",
           "targetPath": "docs/decisions/ADR-20260726-assembly-template-owned-procedure-sequence.md",
+          "exists": true
+        },
+        {
+          "href": "./decisions/ADR-20260726-assembly-template-procedure-steps.md",
+          "targetPath": "docs/decisions/ADR-20260726-assembly-template-procedure-steps.md",
           "exists": true
         },
         {
@@ -10151,8 +10161,18 @@
           "exists": true
         },
         {
+          "href": "./plans/assembly-auto-id-nfc-invalidation-execplan.md",
+          "targetPath": "docs/plans/assembly-auto-id-nfc-invalidation-execplan.md",
+          "exists": true
+        },
+        {
           "href": "./plans/assembly-procedure-gmail-import-execplan.md",
           "targetPath": "docs/plans/assembly-procedure-gmail-import-execplan.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/assembly-procedure-step-storyboard-execplan.md",
+          "targetPath": "docs/plans/assembly-procedure-step-storyboard-execplan.md",
           "exists": true
         },
         {
@@ -10178,11 +10198,6 @@
         {
           "href": "./plans/assembly-unified-workflow-execplan.md",
           "targetPath": "docs/plans/assembly-unified-workflow-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "./plans/assembly-work-id-traceability-execplan.md",
-          "targetPath": "docs/plans/assembly-work-id-traceability-execplan.md",
           "exists": true
         },
         {
@@ -11111,95 +11126,95 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 271,
+          "line": 275,
           "length": 1132
         },
         {
-          "line": 287,
+          "line": 291,
           "length": 1242
         },
         {
-          "line": 291,
+          "line": 295,
           "length": 1022
         },
         {
-          "line": 305,
+          "line": 309,
           "length": 1065
         },
         {
-          "line": 353,
+          "line": 357,
           "length": 1165
         },
         {
-          "line": 359,
+          "line": 363,
           "length": 1458
         },
         {
-          "line": 371,
+          "line": 375,
           "length": 1083
         },
         {
-          "line": 385,
+          "line": 389,
           "length": 1398
         },
         {
-          "line": 387,
+          "line": 391,
           "length": 1133
         },
         {
-          "line": 391,
+          "line": 395,
           "length": 1399
         },
         {
-          "line": 393,
+          "line": 397,
           "length": 1008
         },
         {
-          "line": 399,
+          "line": 403,
           "length": 1059
         },
         {
-          "line": 407,
+          "line": 411,
           "length": 1129
         },
         {
-          "line": 411,
+          "line": 415,
           "length": 1135
         },
         {
-          "line": 415,
+          "line": 419,
           "length": 1117
         },
         {
-          "line": 530,
+          "line": 534,
           "length": 1013
         },
         {
-          "line": 716,
+          "line": 720,
           "length": 2038
         },
         {
-          "line": 732,
+          "line": 736,
           "length": 1496
         },
         {
-          "line": 738,
+          "line": 742,
           "length": 1177
         },
         {
-          "line": 1080,
+          "line": 1084,
           "length": 1449
         },
         {
-          "line": 1116,
+          "line": 1120,
           "length": 1136
         },
         {
-          "line": 1118,
+          "line": 1122,
           "length": 1239
         },
         {
-          "line": 1154,
+          "line": 1158,
           "length": 1004
         }
       ],
@@ -13340,7 +13355,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 189,
+      "inboundCount": 188,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [
@@ -16245,12 +16260,17 @@
     {
       "path": "docs/decisions/ADR-20260707-assembly-procedure-order-library-scope.md",
       "lineCount": 58,
-      "byteSize": 6115,
+      "byteSize": 6105,
       "hasFrontmatter": false,
       "title": "ADR-20260707: Assembly Procedure Order Scoped to Assembly Library Documents",
       "status": null,
       "source_of_truth": null,
       "localLinks": [
+        {
+          "href": "./ADR-20260726-assembly-auto-id-operator-access-invalidation.md",
+          "targetPath": "docs/decisions/ADR-20260726-assembly-auto-id-operator-access-invalidation.md",
+          "exists": true
+        },
         {
           "href": "./ADR-20260726-assembly-template-owned-procedure-sequence.md",
           "targetPath": "docs/decisions/ADR-20260726-assembly-template-owned-procedure-sequence.md",
@@ -16546,12 +16566,18 @@
     {
       "path": "docs/decisions/ADR-20260720-assembly-work-id-genealogy-and-formal-id.md",
       "lineCount": 51,
-      "byteSize": 3849,
+      "byteSize": 3955,
       "hasFrontmatter": true,
       "title": "ADR-20260720: Assembly Work ID Genealogy and Formal Identifier History",
       "status": "accepted",
       "source_of_truth": "this file",
-      "localLinks": [],
+      "localLinks": [
+        {
+          "href": "./ADR-20260726-assembly-auto-id-operator-access-invalidation.md",
+          "targetPath": "docs/decisions/ADR-20260726-assembly-auto-id-operator-access-invalidation.md",
+          "exists": true
+        }
+      ],
       "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
@@ -16645,6 +16671,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/decisions/ADR-20260726-assembly-auto-id-operator-access-invalidation.md",
+      "lineCount": 54,
+      "byteSize": 3014,
+      "hasFrontmatter": true,
+      "title": "ADR-20260726: Assembly auto work IDs, operator access, and invalidation",
+      "status": "accepted",
+      "source_of_truth": "this file",
+      "localLinks": [],
+      "inboundCount": 3,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/decisions/ADR-20260726-assembly-template-owned-procedure-sequence.md",
       "lineCount": 29,
       "byteSize": 2377,
@@ -16670,6 +16711,21 @@
         }
       ],
       "inboundCount": 3,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/decisions/ADR-20260726-assembly-template-procedure-steps.md",
+      "lineCount": 36,
+      "byteSize": 2810,
+      "hasFrontmatter": true,
+      "title": "組立テンプレート版が表示ステップを所有する",
+      "status": "accepted",
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -21488,7 +21544,7 @@
     {
       "path": "docs/knowledge-base/KB-297-kiosk-due-management-workflow.md",
       "lineCount": 3195,
-      "byteSize": 433743,
+      "byteSize": 433874,
       "hasFrontmatter": true,
       "title": "KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装",
       "status": null,
@@ -21835,10 +21891,10 @@
     },
     {
       "path": "docs/knowledge-base/KB-311-kiosk-immersive-header-allowlist.md",
-      "lineCount": 168,
-      "byteSize": 11437,
+      "lineCount": 171,
+      "byteSize": 11765,
       "hasFrontmatter": true,
-      "title": "KB-311 キオスク沉浸式レイアウト（下端ヘッダーリビール）の URL allowlist",
+      "title": "KB-311 キオスク沉浸式レイアウト（右下ヘッダーリビール）の URL allowlist",
       "status": null,
       "source_of_truth": null,
       "localLinks": [
@@ -24778,7 +24834,7 @@
     {
       "path": "docs/knowledge-base/KB-382-mobile-placement-shelf-layout-master.md",
       "lineCount": 592,
-      "byteSize": 54132,
+      "byteSize": 54126,
       "hasFrontmatter": false,
       "title": "KB-382: 配膳棚レイアウトマスタ（キオスク shelf-master）",
       "status": null,
@@ -26990,7 +27046,7 @@
     {
       "path": "docs/knowledge-base/index.md",
       "lineCount": 867,
-      "byteSize": 261748,
+      "byteSize": 261600,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - 索引",
       "status": null,
@@ -26999,11 +27055,6 @@
         {
           "href": "../api/mobile-placement.md",
           "targetPath": "docs/api/mobile-placement.md",
-          "exists": true
-        },
-        {
-          "href": "../archive/deployments/2026-05.md#kiosk-bottom-center-header-reveal-2026-05-22",
-          "targetPath": "docs/archive/deployments/2026-05.md",
           "exists": true
         },
         {
@@ -31565,12 +31616,42 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/assembly-auto-id-nfc-invalidation-execplan.md",
+      "lineCount": 346,
+      "byteSize": 23157,
+      "hasFrontmatter": false,
+      "title": "組立画面 自動採番・作業者NFCゲート・論理無効化",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/assembly-procedure-gmail-import-execplan.md",
       "lineCount": 232,
       "byteSize": 11963,
       "hasFrontmatter": false,
       "title": "Assembly Procedure Gmail Import",
       "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/assembly-procedure-step-storyboard-execplan.md",
+      "lineCount": 114,
+      "byteSize": 15509,
+      "hasFrontmatter": true,
+      "title": "組立手順 仮想ステップ・矩形フォーカス・全体俯瞰 ExecPlan",
+      "status": "completed",
       "source_of_truth": null,
       "localLinks": [],
       "inboundCount": 1,
@@ -31650,8 +31731,8 @@
     },
     {
       "path": "docs/plans/assembly-unified-template-editor-execplan.md",
-      "lineCount": 127,
-      "byteSize": 12696,
+      "lineCount": 131,
+      "byteSize": 12989,
       "hasFrontmatter": true,
       "title": "組立テンプレート・閲覧順統合エディター",
       "status": "active",
@@ -31703,7 +31784,7 @@
       "status": "complete",
       "source_of_truth": "this file",
       "localLinks": [],
-      "inboundCount": 1,
+      "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
