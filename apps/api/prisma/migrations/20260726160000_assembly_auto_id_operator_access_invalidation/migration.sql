@@ -5,9 +5,6 @@
 CREATE TYPE "AssemblyOperatorAccessType" AS ENUM ('START', 'RESUME');
 CREATE TYPE "AssemblyWorkUnitInvalidationState" AS ENUM ('NOT_STARTED', 'IN_PROGRESS', 'COMPLETED', 'APPROVED');
 
-ALTER TABLE "AssemblyLot"
-  ALTER COLUMN "operatorNameSnapshot" DROP NOT NULL;
-
 ALTER TABLE "AssemblySerialRegistry"
   ADD COLUMN "invalidatedAt" TIMESTAMP(3);
 

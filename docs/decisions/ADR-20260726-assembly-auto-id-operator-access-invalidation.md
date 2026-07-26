@@ -31,6 +31,8 @@ open_items: none
 5. 有効な製品構成リンクまたは正式IDを持つWorkUnitの無効化は拒否する。
 6. 採番、開始、無効化、traceability変更はPostgreSQLロックとrequestIdで競合・再送を
    安全に処理する。
+7. 既存`AssemblyLot.operatorNameSnapshot`のNOT NULL契約はBlue/Green互換のため維持し、
+   未確定ロットは空文字を保存してAPI DTOで`null`へ正規化する。
 
 ## Consequences
 

@@ -1446,6 +1446,12 @@ describe('assembly torque management API', () => {
     const autoLot = autoLotRes.json().lot;
     expect(autoLot.operatorNameSnapshot).toBeNull();
     expect(
+      await prisma.assemblyLot.findUniqueOrThrow({
+        where: { id: autoLot.id as string },
+        select: { operatorNameSnapshot: true }
+      })
+    ).toEqual({ operatorNameSnapshot: '' });
+    expect(
       autoLot.serials.map((serial: { workId: string }) => serial.workId)
     ).toEqual(['AUTO-LOT-001', 'AUTO-LOT-002', 'AUTO-LOT-003']);
 

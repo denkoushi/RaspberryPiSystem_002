@@ -33,6 +33,7 @@ This plan follows `.agent/PLANS.md`.
 - [x] (2026-07-26) Node 22でlint、build、全Vitest、対象Playwright、CI smokeを最終再検証した。
 - [x] (2026-07-26) ユーザーからpush、PR、merge、本番migration、標準deploy、実機操作検証の明示承認を得た。
 - [x] (2026-07-26) featureブランチをpushし、ready PR #1091を作成した。
+- [ ] CIのExpand-only指摘に従い、Lot作業者列のNOT NULL互換を維持する安全修正を検証する。
 - [ ] 必須CIとレビュー結果を確認し、mainへmergeする。
 - [ ] merge SHAのCI成功後、標準ローリング更新のplanを確認して本番へ適用する。
 - [ ] deploy status、同一SHAのno-op plan、実機の組立/NFC/右下ホットゾーンを確認する。
@@ -85,6 +86,12 @@ This plan follows `.agent/PLANS.md`.
   Consequence: 組立ドメイン共通判定を追加し、START/RESUME/invalidateおよび既存の
   ロット・構成競合を明示的な業務409へ変換した。
 
+- Observation: PR #1091の`deploy-contract`は既存列の
+  `ALTER COLUMN "operatorNameSnapshot" DROP NOT NULL`をExpand-only違反として拒否した。
+  Evidence: GitHub Actions run 30192377110 / deploy-contract job 89767892158。
+  Consequence: 既存NOT NULL列は変更せず、未確定値は空文字で保存してAPI DTOで
+  `null`へ正規化する。candidate migrationをローカル正本コマンドで再検証する。
+
 ## Decision Log
 
 - Decision: 作業用IDはサーバー正本で`${normalizedProductNo}-${NNN}`を生成し、
@@ -114,6 +121,13 @@ This plan follows `.agent/PLANS.md`.
   対象に、`scripts/update-all-clients.sh`の標準ローリング更新だけで行う。
   Rationale: ユーザーの追加承認を監査可能にし、migration、Pi5、端末の順序と
   rollback証跡を既存オーケストレーターへ一元化する。
+  Date: 2026-07-26
+
+- Decision: `AssemblyLot.operatorNameSnapshot`の物理NOT NULL契約は維持し、
+  自動採番ロットの未確定作業者を空文字の互換値として保存する。API/Web契約では
+  空文字を`null`として公開する。
+  Rationale: Blue/Green中の旧API互換とExpand-only migration契約を守りながら、
+  ロット登録時に作業者を確定しない利用者向け意味を維持する。
   Date: 2026-07-26
 
 ## Outcomes & Retrospective
@@ -157,8 +171,9 @@ WorkUnit削除は`RESTRICT`される。よって無効化状態をWorkUnitへ追
 
 1. 共有パッケージに識別子正規化とロット作業用ID生成を追加する。APIとWebの重複した
    正規化実装を共有関数へ寄せる。
-2. PrismaへWorkUnit無効化日時、無効化監査、作業者アクセス履歴、nullableなLot作業者を
-   追加し、加算的migrationを作る。
+2. PrismaへWorkUnit無効化日時、無効化監査、作業者アクセス履歴を追加する。
+   既存Lot作業者列のNOT NULLは維持し、未確定値をAPI境界でnullableに正規化する
+   加算的migrationを作る。
 3. productNo advisory lock、社員NFC resolver、operator access repository/service、
    WorkUnit lifecycle repository/serviceを実装する。ロック順序はWorkUnit、session、
    active traceability rowsとする。

@@ -129,7 +129,7 @@ export function buildAssemblyLotSummary(lot: AssemblyLotDetail) {
     isWorkComplete: serials.length > 0 && completedCount === serials.length,
     isFullyApproved: serials.length > 0 && approvedCount === serials.length,
     operatorEmployeeId: lot.operatorEmployeeId,
-    operatorNameSnapshot: lot.operatorNameSnapshot,
+    operatorNameSnapshot: lot.operatorNameSnapshot.trim() || null,
     targetUnit: lot.targetUnit,
     torqueWrenchId: lot.torqueWrenchId,
     clientDeviceId: lot.clientDeviceId,
@@ -214,7 +214,9 @@ export class AssemblyLotService {
             productNo,
             expectedQuantity,
             operatorEmployeeId: input.operatorEmployeeId?.trim() || null,
-            operatorNameSnapshot: input.operatorNameSnapshot?.trim().slice(0, 120) || null,
+            // Blue/Greenの旧API互換のためDBの既存NOT NULL列は維持し、
+            // 「ロット登録時点では未確定」をAPI境界でnullへ正規化する。
+            operatorNameSnapshot: input.operatorNameSnapshot?.trim().slice(0, 120) || '',
             targetUnit,
             torqueWrenchId,
             clientDeviceId: input.clientDeviceId ?? null,

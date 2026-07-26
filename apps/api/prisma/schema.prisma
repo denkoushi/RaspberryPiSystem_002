@@ -2685,7 +2685,7 @@ model AssemblyLot {
   productNo                String
   expectedQuantity         Int
   operatorEmployeeId       String?
-  operatorNameSnapshot     String?
+  operatorNameSnapshot     String
   targetUnit               String
   torqueWrenchId           String
   clientDeviceId           String?
