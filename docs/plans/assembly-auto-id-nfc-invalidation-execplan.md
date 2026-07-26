@@ -35,6 +35,7 @@ This plan follows `.agent/PLANS.md`.
 - [x] (2026-07-26) featureブランチをpushし、ready PR #1091を作成した。
 - [x] (2026-07-26) CIのExpand-only指摘に従い、Lot作業者列のNOT NULL互換を維持する安全修正を検証した。
 - [x] (2026-07-26) npm Registryのgzip header障害をfail-openせず回避するbulk audit loopback proxyを追加・検証した。
+- [x] (2026-07-26) PRレビューのP1指摘を受け、旧`POST /assembly/work-sessions`もACTIVE社員NFC・START履歴・requestIdを必須化した。
 - [ ] 必須CIとレビュー結果を確認し、mainへmergeする。
 - [ ] merge SHAのCI成功後、標準ローリング更新のplanを確認して本番へ適用する。
 - [ ] deploy status、同一SHAのno-op plan、実機の組立/NFC/右下ホットゾーンを確認する。
@@ -100,6 +101,12 @@ This plan follows `.agent/PLANS.md`.
   Consequence: loopback限定のaudit proxyで公式bulk endpointへidentity指定で転送し、
   advisory判定、critical fail-closed、high informational、3回retryは固定pnpmへ維持する。
 
+- Observation: PR #1091の自動レビューで、ロット個体開始APIとは別に既存の
+  `POST /assembly/work-sessions`から任意の作業者名だけで開始できる経路が検出された。
+  Evidence: unresolved review thread `PRRT_kwDOQXvIwM6T1IHU`（P1）。
+  Consequence: 公開される全開始経路をACTIVE社員NFC、UUID requestId、append-only START履歴へ
+  統一し、ロット外の未登録WorkUnitも作業用ID advisory lockで並行開始を直列化した。
+
 ## Decision Log
 
 - Decision: 作業用IDはサーバー正本で`${normalizedProductNo}-${NNN}`を生成し、
@@ -138,6 +145,12 @@ This plan follows `.agent/PLANS.md`.
   ロット登録時に作業者を確定しない利用者向け意味を維持する。
   Date: 2026-07-26
 
+- Decision: 旧`POST /assembly/work-sessions`は廃止せず、`operatorNfcTagUid`と
+  UUID `requestId`を必須にして、サーバー解決した社員だけをセッションとSTART履歴へ保存する。
+  Rationale: 旧URLを利用する呼び出しの機能を維持しつつ、ロット開始APIを迂回する
+  作業者偽装経路を残さない。
+  Date: 2026-07-26
+
 ## Outcomes & Retrospective
 
 作業用IDの自動発行、START/RESUMEごとの社員NFC履歴、不可逆なWorkUnit論理無効化、
@@ -165,6 +178,12 @@ candidate migration preflightと、ローカルdeploy-contract全体も成功し
 pnpm bulk audit proxyは固定pnpm 11.4のcritical gateをローカルで成功させ、critical 0件、
 既存のhigh 3件は従来契約どおり情報警告として報告した。proxyのgzip自己テストと
 CI workflow契約テストも成功した。
+
+PRレビューP1への追加修正後、旧開始APIはNFCなし400、不明NFC 404、非ACTIVE 403、
+ACTIVE NFC 200、同一requestId再送200、別requestIdでの再開始409を返し、任意の
+`operatorNameSnapshot`を受け付けないことを隔離DBで確認した。同一作業用IDの並行開始は
+1件だけ成功し、START履歴も1件だけ保存された。Node 22の組立・レンチ統合32テスト、
+API lint/build、Web buildは成功し、一時container/volume/networkは残っていない。
 
 ## Context and Orientation
 
@@ -270,6 +289,7 @@ Docker検証は毎回、固有名、ループバック自動割当ポート、tm
 - API:
   - `POST /assembly/lots` with `workIdMode`
   - `POST /assembly/lots/:lotId/serials/:lotSerialId/start`
+  - `POST /assembly/work-sessions` with `operatorNfcTagUid` and UUID `requestId`
   - `POST /assembly/work-sessions/:id/operator-access`
   - `POST /assembly/work-units/:id/invalidate`
 - PostgreSQL:
@@ -282,4 +302,5 @@ Revision note (2026-07-26): implementation、競合監査修正、直接照会�
 同日のPR初回CI指摘によりLot作業者の物理NOT NULLを維持する互換方式へ変更し、
 candidate migration preflightとローカルdeploy-contractの成功を追記した。
 npm Registryのgzip header障害に対するfail-closed loopback proxyとローカルaudit成功も
-追記した。
+追記した。PRレビューP1により旧開始APIのNFC強制、START履歴、作業用ID直列化と
+隔離DB回帰結果を追記した。

@@ -260,9 +260,13 @@ async function createKioskDocumentWithRenderedPages(params: {
 
 describe('assembly torque management API', () => {
   let app: Awaited<ReturnType<typeof buildServer>>;
+  let directStartOperatorNfcTagUid: string;
 
   beforeAll(async () => {
     app = await buildServer();
+    directStartOperatorNfcTagUid = (
+      await createTestEmployee({ displayName: '佐藤' })
+    ).nfcTagUid;
   });
 
   afterAll(async () => {
@@ -298,7 +302,8 @@ describe('assembly torque management API', () => {
         templateId: templateRes.json().template.id,
         productNo: 'LOCK-PRODUCT',
         serialNo: 'LOCK-SERIAL',
-        operatorNameSnapshot: '競合テスト',
+        operatorNfcTagUid: directStartOperatorNfcTagUid,
+        requestId: randomUUID(),
         targetUnit: 'LOCK-UNIT',
         torqueWrenchId: 'LOCK-WRENCH',
       },
@@ -361,7 +366,8 @@ describe('assembly torque management API', () => {
         templateId: templateRes.json().template.id,
         productNo: 'LOCK-BUDGET-PRODUCT',
         serialNo: 'LOCK-BUDGET-SERIAL',
-        operatorNameSnapshot: '長時間ロック待機テスト',
+        operatorNfcTagUid: directStartOperatorNfcTagUid,
+        requestId: randomUUID(),
         targetUnit: 'LOCK-BUDGET-UNIT',
         torqueWrenchId: 'LOCK-BUDGET-WRENCH'
       }
@@ -495,7 +501,8 @@ describe('assembly torque management API', () => {
         productNo: 'M-001',
         serialNo: 'S-001',
         nameplateNo: 'NP-001',
-        operatorNameSnapshot: '佐藤',
+        operatorNfcTagUid: directStartOperatorNfcTagUid,
+        requestId: randomUUID(),
         targetUnit: 'X軸',
         torqueWrenchId: 'CEM20N3X10D-BTLA'
       }
@@ -679,7 +686,8 @@ describe('assembly torque management API', () => {
         templateId: revisedTemplate.id,
         productNo: 'CALLOUT-PRODUCT',
         serialNo: 'CALLOUT-SERIAL',
-        operatorNameSnapshot: '矢視確認者',
+        operatorNfcTagUid: directStartOperatorNfcTagUid,
+        requestId: randomUUID(),
         targetUnit: 'CALLOUT-01',
         torqueWrenchId: 'CALLOUT-WRENCH'
       }
@@ -1128,7 +1136,8 @@ describe('assembly torque management API', () => {
       templateId,
       productNo: 'ａｓｍ-start-001',
       serialNo: 's001',
-      operatorNameSnapshot: '佐藤',
+      operatorNfcTagUid: directStartOperatorNfcTagUid,
+      requestId: randomUUID(),
       targetUnit: 'machine-x',
       torqueWrenchId: 'CEM20N3X10D-BTLA'
     };
@@ -1149,7 +1158,7 @@ describe('assembly torque management API', () => {
       method: 'POST',
       url: '/api/assembly/work-sessions',
       headers: { ...headers, 'Content-Type': 'application/json' },
-      payload: { ...startPayload, operatorNameSnapshot: '田中' }
+      payload: startPayload
     });
     expect(duplicateStart.statusCode).toBe(200);
     expect(duplicateStart.json().session.id).toBe(firstSession.id);
@@ -1158,7 +1167,7 @@ describe('assembly torque management API', () => {
       method: 'POST',
       url: '/api/assembly/work-sessions',
       headers: { ...headers, 'Content-Type': 'application/json' },
-      payload: { ...startPayload, serialNo: 'S002' }
+      payload: { ...startPayload, serialNo: 'S002', requestId: randomUUID() }
     });
     expect(secondSerialStart.statusCode).toBe(200);
     const secondSession = secondSerialStart.json().session;
@@ -1211,7 +1220,7 @@ describe('assembly torque management API', () => {
       method: 'POST',
       url: '/api/assembly/work-sessions',
       headers: { ...headers, 'Content-Type': 'application/json' },
-      payload: startPayload
+      payload: { ...startPayload, requestId: randomUUID() }
     });
     expect(cancelledSerialRestart.statusCode).toBe(409);
   });
@@ -1567,6 +1576,138 @@ describe('assembly torque management API', () => {
       })
     });
     const templateId = templateRes.json().template.id as string;
+    const directStartPayload = {
+      templateId,
+      productNo: 'NFC-DIRECT-LOT',
+      workId: 'NFC-DIRECT-LOT-001',
+      targetUnit: 'NFC機',
+      torqueWrenchId: 'CEM20N3X10D-BTLA'
+    };
+    expect((await app.inject({
+      method: 'POST',
+      url: '/api/assembly/work-sessions',
+      headers,
+      payload: directStartPayload
+    })).statusCode).toBe(400);
+    expect((await app.inject({
+      method: 'POST',
+      url: '/api/assembly/work-sessions',
+      headers,
+      payload: {
+        ...directStartPayload,
+        operatorNfcTagUid: 'UNKNOWN-DIRECT-TAG',
+        requestId: randomUUID()
+      }
+    })).statusCode).toBe(404);
+    expect((await app.inject({
+      method: 'POST',
+      url: '/api/assembly/work-sessions',
+      headers,
+      payload: {
+        ...directStartPayload,
+        operatorNfcTagUid: inactiveOperator.nfcTagUid,
+        requestId: randomUUID()
+      }
+    })).statusCode).toBe(403);
+    const directStartRequestId = randomUUID();
+    const directStart = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/work-sessions',
+      headers,
+      payload: {
+        ...directStartPayload,
+        operatorNfcTagUid: firstOperator.nfcTagUid,
+        requestId: directStartRequestId,
+        operatorNameSnapshot: '偽装した作業者名'
+      }
+    });
+    expect(directStart.statusCode).toBe(200);
+    expect(directStart.json().session.operatorNameSnapshot).toBe('開始作業者');
+    expect(await prisma.assemblyWorkSessionOperatorAccess.findUnique({
+      where: { requestId: directStartRequestId },
+      select: { accessType: true, employeeId: true }
+    })).toEqual({
+      accessType: 'START',
+      employeeId: firstOperator.id
+    });
+    const directRetry = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/work-sessions',
+      headers,
+      payload: {
+        ...directStartPayload,
+        operatorNfcTagUid: firstOperator.nfcTagUid,
+        requestId: directStartRequestId
+      }
+    });
+    expect(directRetry.statusCode).toBe(200);
+    expect(directRetry.json().session.id).toBe(directStart.json().session.id);
+    expect((await app.inject({
+      method: 'POST',
+      url: '/api/assembly/work-sessions',
+      headers,
+      payload: {
+        ...directStartPayload,
+        productNo: 'NFC-DIRECT-ALTERED',
+        operatorNfcTagUid: firstOperator.nfcTagUid,
+        requestId: directStartRequestId
+      }
+    })).statusCode).toBe(409);
+    expect((await app.inject({
+      method: 'POST',
+      url: '/api/assembly/work-sessions',
+      headers,
+      payload: {
+        ...directStartPayload,
+        operatorNfcTagUid: firstOperator.nfcTagUid,
+        requestId: randomUUID()
+      }
+    })).statusCode).toBe(409);
+    const directRacePayload = {
+      ...directStartPayload,
+      workId: 'NFC-DIRECT-RACE-001',
+      operatorNfcTagUid: firstOperator.nfcTagUid
+    };
+    const directRace = await Promise.all([
+      app.inject({
+        method: 'POST',
+        url: '/api/assembly/work-sessions',
+        headers,
+        payload: { ...directRacePayload, requestId: randomUUID() }
+      }),
+      app.inject({
+        method: 'POST',
+        url: '/api/assembly/work-sessions',
+        headers,
+        payload: { ...directRacePayload, requestId: randomUUID() }
+      })
+    ]);
+    expect(directRace.filter((response) => response.statusCode === 200)).toHaveLength(1);
+    expect(directRace.filter((response) => response.statusCode === 409)).toHaveLength(1);
+    const directRaceSession = await prisma.assemblyWorkSession.findFirstOrThrow({
+      where: { workId: directRacePayload.workId }
+    });
+    expect(await prisma.assemblyWorkSessionOperatorAccess.count({
+      where: { sessionId: directRaceSession.id, accessType: 'START' }
+    })).toBe(1);
+    await prisma.assemblyWorkUnit.create({
+      data: {
+        workId: 'NFC-DIRECT-INVALIDATED-001',
+        invalidatedAt: new Date()
+      }
+    });
+    expect((await app.inject({
+      method: 'POST',
+      url: '/api/assembly/work-sessions',
+      headers,
+      payload: {
+        ...directStartPayload,
+        workId: 'NFC-DIRECT-INVALIDATED-001',
+        operatorNfcTagUid: firstOperator.nfcTagUid,
+        requestId: randomUUID()
+      }
+    })).statusCode).toBe(409);
+
     const lotRes = await app.inject({
       method: 'POST',
       url: '/api/assembly/lots',
@@ -2178,7 +2319,8 @@ describe('assembly torque management API', () => {
         templateId: v1Id,
         productNo: 'IMMUTABLE-PRODUCT',
         serialNo: 'IMMUTABLE-SERIAL',
-        operatorNameSnapshot: '版固定確認者',
+        operatorNfcTagUid: directStartOperatorNfcTagUid,
+        requestId: randomUUID(),
         targetUnit: 'IMMUTABLE-001',
         torqueWrenchId: 'CEM20N3X10D-BTLA'
       }
@@ -2372,7 +2514,8 @@ describe('assembly torque management API', () => {
         templateId,
         productNo: 'ASM-PDF-001',
         serialNo: 'S001',
-        operatorNameSnapshot: '佐藤',
+        operatorNfcTagUid: directStartOperatorNfcTagUid,
+        requestId: randomUUID(),
         targetUnit: 'mh-ax',
         torqueWrenchId: 'CEM20N3X10D-BTLA'
       }
@@ -2425,7 +2568,8 @@ describe('assembly torque management API', () => {
         templateId,
         productNo: 'ASM-PDF-002',
         serialNo: 'S002',
-        operatorNameSnapshot: '佐藤',
+        operatorNfcTagUid: directStartOperatorNfcTagUid,
+        requestId: randomUUID(),
         targetUnit: 'NO-ORDER',
         torqueWrenchId: 'CEM20N3X10D-BTLA'
       }
@@ -2508,7 +2652,8 @@ describe('assembly torque management API', () => {
         templateId,
         productNo: 'ASM-PROC-001',
         serialNo: 'S001',
-        operatorNameSnapshot: '佐藤',
+        operatorNfcTagUid: directStartOperatorNfcTagUid,
+        requestId: randomUUID(),
         targetUnit: 'MH-AX',
         torqueWrenchId: 'CEM20N3X10D-BTLA'
       }
@@ -2611,7 +2756,8 @@ describe('assembly torque management API', () => {
         templateId,
         productNo: 'ASM-APPROVAL-001',
         serialNo: 'S-APPROVAL-001',
-        operatorNameSnapshot: '作業者A',
+        operatorNfcTagUid: directStartOperatorNfcTagUid,
+        requestId: randomUUID(),
         targetUnit: 'X軸',
         torqueWrenchId: 'CEM20N3X10D-BTLA'
       }
@@ -2708,7 +2854,8 @@ describe('assembly torque management API', () => {
         templateId,
         productNo: 'ASM-GUARD-001',
         serialNo: 'S-GUARD-001',
-        operatorNameSnapshot: '作業者B',
+        operatorNfcTagUid: directStartOperatorNfcTagUid,
+        requestId: randomUUID(),
         targetUnit: 'Y軸',
         torqueWrenchId: 'CEM20N3X10D-BTLA'
       }
@@ -2864,7 +3011,8 @@ describe('assembly torque management API', () => {
           templateId: template.id,
           productNo: 'UWF-CHECK-001',
           serialNo: 'CHK-001',
-          operatorNameSnapshot: '佐藤',
+          operatorNfcTagUid: directStartOperatorNfcTagUid,
+          requestId: randomUUID(),
           targetUnit: 'UWF-CHECK',
           torqueWrenchId: 'CEM20N3X10D-BTLA'
         }
@@ -2985,7 +3133,8 @@ describe('assembly torque management API', () => {
           templateId,
           productNo: 'UWF-SEQ-001',
           serialNo: 'SEQ-001',
-          operatorNameSnapshot: '佐藤',
+          operatorNfcTagUid: directStartOperatorNfcTagUid,
+          requestId: randomUUID(),
           targetUnit: 'UWF-SEQ',
           torqueWrenchId: 'CEM20N3X10D-BTLA'
         }
@@ -3035,7 +3184,8 @@ describe('assembly torque management API', () => {
           templateId: templateRes.json().template.id,
           productNo: 'UWF-LEGACY-001',
           serialNo: 'LEG-001',
-          operatorNameSnapshot: '佐藤',
+          operatorNfcTagUid: directStartOperatorNfcTagUid,
+          requestId: randomUUID(),
           targetUnit: 'UWF-LEGACY',
           torqueWrenchId: 'CEM20N3X10D-BTLA'
         }

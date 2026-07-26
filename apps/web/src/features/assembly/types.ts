@@ -483,8 +483,8 @@ export type AssemblyWorkSessionStartInput = {
   /** 旧API互換。新規呼び出しは workId を使用する。 */
   serialNo?: string;
   nameplateNo?: string | null;
-  operatorEmployeeId?: string | null;
-  operatorNameSnapshot: string;
+  operatorNfcTagUid: string;
+  requestId: string;
   targetUnit: string;
   torqueWrenchId?: string | null;
 };

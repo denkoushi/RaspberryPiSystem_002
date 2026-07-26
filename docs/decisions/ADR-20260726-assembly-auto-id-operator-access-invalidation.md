@@ -33,6 +33,9 @@ open_items: none
    安全に処理する。
 7. 既存`AssemblyLot.operatorNameSnapshot`のNOT NULL契約はBlue/Green互換のため維持し、
    未確定ロットは空文字を保存してAPI DTOで`null`へ正規化する。
+8. 既存の直接開始APIもACTIVE社員NFCとUUID requestIdを必須にし、サーバーが解決した
+   社員スナップショットとSTART履歴を同一トランザクションで保存する。任意の作業者名を
+   受け取る開始経路は残さない。
 
 ## Consequences
 

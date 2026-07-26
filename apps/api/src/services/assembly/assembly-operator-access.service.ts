@@ -33,6 +33,7 @@ export async function findIdempotentAssemblyOperatorAccess(
     operatorNfcTagUid: string;
     sessionId?: string;
     lotSerialId?: string;
+    workId?: string;
   }
 ): Promise<AssemblyWorkSessionDetail | null> {
   const existing = await tx.assemblyWorkSessionOperatorAccess.findUnique({
@@ -47,7 +48,8 @@ export async function findIdempotentAssemblyOperatorAccess(
     existing.accessType !== input.accessType ||
     existing.employeeNfcTagUidSnapshot !== expectedUid ||
     (input.sessionId != null && existing.sessionId !== input.sessionId) ||
-    (input.lotSerialId != null && existing.session.lotSerialId !== input.lotSerialId)
+    (input.lotSerialId != null && existing.session.lotSerialId !== input.lotSerialId) ||
+    (input.workId != null && existing.session.workId !== input.workId)
   ) {
     throw assemblyOperatorAccessConflict('同じrequestIdを別の作業者アクセスには使用できません');
   }

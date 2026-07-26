@@ -167,8 +167,8 @@ const startSessionBodySchema = z
   /** 旧クライアント互換。新規クライアントは workId を送信する。 */
   serialNo: z.string().trim().min(1).max(120).optional(),
   nameplateNo: z.string().trim().min(1).max(120).optional().nullable(),
-  operatorEmployeeId: z.string().trim().max(120).optional().nullable(),
-  operatorNameSnapshot: z.string().trim().min(1).max(120),
+  operatorNfcTagUid: z.string().trim().min(1).max(200),
+  requestId: z.string().uuid(),
   targetUnit: z.string().trim().min(1).max(120),
   torqueWrenchId: z.string().trim().min(1).max(120).optional().nullable()
   })

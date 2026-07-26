@@ -10,7 +10,7 @@ import {
   AssemblyTorqueTraceabilityService,
   TorqueWrenchMasterService
 } from '../../services/torque-wrenches/index.js';
-import { createAuthHeader, createTestClientDevice, createTestUser } from './helpers.js';
+import { createAuthHeader, createTestClientDevice, createTestEmployee, createTestUser } from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
@@ -225,11 +225,13 @@ describe('torque wrench traceability API', () => {
     });
     expect(template.areas[0].bolts[0].tighteningId).toMatch(/^TIGHTENING-1-/);
 
+    const operator = await createTestEmployee({ displayName: '試験作業者' });
     const session = await new AssemblyWorkSessionService().start({
       templateId: template.id,
       productNo: 'TRACE-PRODUCT',
       serialNo: `TRACE-${randomUUID()}`,
-      operatorNameSnapshot: '試験作業者',
+      operatorNfcTagUid: operator.nfcTagUid,
+      requestId: randomUUID(),
       targetUnit: 'TRACE-001',
       clientDeviceId: client.id
     });
@@ -367,7 +369,8 @@ describe('torque wrench traceability API', () => {
       templateId: template.id,
       productNo: 'TRACE-PRODUCT-OTHER',
       serialNo: `TRACE-OTHER-${randomUUID()}`,
-      operatorNameSnapshot: '別作業者',
+      operatorNfcTagUid: operator.nfcTagUid,
+      requestId: randomUUID(),
       targetUnit: 'TRACE-001',
       clientDeviceId: client.id
     });
@@ -833,12 +836,14 @@ describe('torque wrench traceability API', () => {
         }]
       }]
     });
+    const operator = await createTestEmployee({ displayName: 'lease operator' });
     const sessions = await Promise.all([clientA, clientB].map((client, index) =>
       new AssemblyWorkSessionService().start({
         templateId: template.id,
         productNo: `LEASE-PRODUCT-${index}`,
         serialNo: `LEASE-WORK-${randomUUID()}`,
-        operatorNameSnapshot: `operator-${index}`,
+        operatorNfcTagUid: operator.nfcTagUid,
+        requestId: randomUUID(),
         targetUnit: 'LEASE',
         clientDeviceId: client.id,
         clientDeviceNameSnapshot: client.name

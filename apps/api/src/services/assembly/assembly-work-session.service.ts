@@ -9,6 +9,7 @@ import {
 import { normalizeAssemblyUpperIdentifier } from './assembly-identifiers.js';
 import { isAssemblyUniqueConstraintError } from './assembly-prisma-errors.js';
 import {
+  assemblyOperatorAccessConflict,
   appendAssemblyOperatorAccess,
   findIdempotentAssemblyOperatorAccess
 } from './assembly-operator-access.service.js';
@@ -22,6 +23,7 @@ import {
   runAssemblyTransaction,
   runLockedAssemblyWorkSessionTransaction
 } from './assembly-transaction.js';
+import { lockAssemblyWorkId } from './assembly-work-id-lock.js';
 import { lockAssemblyWorkUnits } from './assembly-work-unit-lock.repository.js';
 export { assemblyWorkSessionDetailInclude, type AssemblyWorkSessionDetail } from './assembly-work-session-detail.js';
 
@@ -32,8 +34,8 @@ export type AssemblyStartInput = {
   /** Legacy boundary name. New callers should use workId. */
   serialNo?: string;
   nameplateNo?: string | null;
-  operatorEmployeeId?: string | null;
-  operatorNameSnapshot: string;
+  operatorNfcTagUid: string;
+  requestId: string;
   targetUnit: string;
   torqueWrenchId?: string | null;
   clientDeviceId?: string | null;
@@ -229,29 +231,63 @@ export class AssemblyWorkSessionService {
   async start(input: AssemblyStartInput): Promise<AssemblyWorkSessionDetail> {
     const productNo = required(normalizeAssemblyUpperIdentifier(input.productNo), '製番').slice(0, 120);
     const workId = required(normalizeAssemblyUpperIdentifier(input.workId ?? input.serialNo), '作業用ID').slice(0, 120);
-    const template = await prisma.assemblyTemplate.findFirst({
-      where: { id: input.templateId, isActive: true },
-      include: assemblyTemplateDetailInclude
-    });
-    if (!template) throw new ApiError(404, '有効な組立テンプレートが見つかりません');
-
-    const first = firstPosition(template);
     const nameplateNo = (input.nameplateNo?.trim() || workId).slice(0, 120);
+    const targetUnit = required(normalizeAssemblyUpperIdentifier(input.targetUnit), '機種名').slice(0, 120);
     try {
       return await runAssemblyTransaction(async (tx) => {
+        await lockAssemblyWorkId(tx, workId);
+        const idempotent = await findIdempotentAssemblyOperatorAccess(tx, {
+          requestId: input.requestId,
+          accessType: 'START',
+          operatorNfcTagUid: input.operatorNfcTagUid,
+          workId
+        });
+        if (idempotent) {
+          const torqueWrenchId =
+            resolveAssemblyTraceabilityMode(idempotent.template.traceabilityMode) === 'LEGACY'
+              ? required(input.torqueWrenchId ?? '', '使用トルクレンチ').slice(0, 120)
+              : '';
+          if (
+            idempotent.templateId !== input.templateId ||
+            idempotent.productNo !== productNo ||
+            idempotent.workId !== workId ||
+            idempotent.nameplateNo !== nameplateNo ||
+            idempotent.targetUnit !== targetUnit ||
+            idempotent.torqueWrenchId !== torqueWrenchId
+          ) {
+            throw assemblyOperatorAccessConflict(
+              '同じrequestIdを異なる作業開始内容には使用できません'
+            );
+          }
+          return idempotent;
+        }
+
+        const operator = await resolveActiveAssemblyOperatorNfcUid(
+          tx,
+          input.operatorNfcTagUid
+        );
+        const template = await tx.assemblyTemplate.findFirst({
+          where: { id: input.templateId, isActive: true },
+          include: assemblyTemplateDetailInclude
+        });
+        if (!template) throw new ApiError(404, '有効な組立テンプレートが見つかりません');
+        const first = firstPosition(template);
+
         const workUnit = await tx.assemblyWorkUnit.findUnique({
           where: { workId },
           include: { lotSerial: true }
         });
         let workUnitId = workUnit?.id ?? null;
         if (workUnit) {
+          if (workUnit.invalidatedAt) {
+            throw sessionStateConflict('削除済みの作業用IDは開始できません');
+          }
           const existing = await tx.assemblyWorkSession.findUnique({
             where: { workUnitId: workUnit.id },
             include: assemblyWorkSessionDetailInclude
           });
           if (existing) {
-            if (existing.status === 'IN_PROGRESS' && existing.productNo === productNo) return existing;
-            throw duplicateWorkIdError(workId);
+            throw sessionStateConflict('この作業用IDは既に開始されています。仕掛中から再開してください。');
           }
           if (workUnit.lotSerial) throw duplicateWorkIdError(workId);
         } else {
@@ -260,16 +296,16 @@ export class AssemblyWorkSessionService {
         }
         if (!workUnitId) throw duplicateWorkIdError(workId);
 
-        return tx.assemblyWorkSession.create({
+        const session = await tx.assemblyWorkSession.create({
           data: {
             templateId: template.id,
             workUnitId,
             productNo,
             workId,
             nameplateNo,
-            operatorEmployeeId: input.operatorEmployeeId?.trim() || null,
-            operatorNameSnapshot: required(input.operatorNameSnapshot, '作業者名').slice(0, 120),
-            targetUnit: required(normalizeAssemblyUpperIdentifier(input.targetUnit), '機種名').slice(0, 120),
+            operatorEmployeeId: operator.employeeId,
+            operatorNameSnapshot: operator.displayName,
+            targetUnit,
             torqueWrenchId:
               resolveAssemblyTraceabilityMode(template.traceabilityMode) === 'LEGACY'
                 ? required(input.torqueWrenchId ?? '', '使用トルクレンチ').slice(0, 120)
@@ -281,6 +317,18 @@ export class AssemblyWorkSessionService {
           },
           include: assemblyWorkSessionDetailInclude
         });
+        await appendAssemblyOperatorAccess(tx, {
+          sessionId: session.id,
+          accessType: 'START',
+          requestId: input.requestId,
+          operatorNfcTagUid: input.operatorNfcTagUid,
+          actor: {
+            clientDeviceId: input.clientDeviceId ?? null,
+            clientDeviceNameSnapshot: input.clientDeviceNameSnapshot ?? null
+          },
+          operator
+        });
+        return session;
       });
     } catch (error) {
       if (isAssemblyUniqueConstraintError(error)) throw duplicateWorkIdError(workId);
