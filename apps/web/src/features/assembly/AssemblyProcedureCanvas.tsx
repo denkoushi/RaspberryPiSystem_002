@@ -10,7 +10,7 @@ import {
   useZoomedImageCanvasLayout
 } from '../kiosk/image-canvas';
 
-import { computeContainSize } from './computeContainSize';
+import { useAssemblyProcedureContainBox } from './useAssemblyProcedureContainBox';
 
 import type { ZoomedImageCanvasLayout } from '../kiosk/image-canvas';
 import type { AssemblyProcedureCropRect, AssemblyProcedurePoint } from '@raspi-system/shared-types';
@@ -154,35 +154,6 @@ export function AssemblyMarkerOverlay({
       ))}
     </>
   );
-}
-
-function useContainFitBox(
-  viewportRef: RefObject<HTMLElement | null>,
-  naturalWidth: number,
-  naturalHeight: number
-): { width: number; height: number } {
-  const [box, setBox] = useState({ width: 0, height: 0 });
-
-  useLayoutEffect(() => {
-    const el = viewportRef.current;
-    if (!el) return;
-
-    const update = () => {
-      const rect = el.getBoundingClientRect();
-      setBox(computeContainSize(rect.width, rect.height, naturalWidth, naturalHeight));
-    };
-
-    update();
-    if (typeof ResizeObserver === 'undefined') {
-      window.addEventListener('resize', update);
-      return () => window.removeEventListener('resize', update);
-    }
-    const observer = new ResizeObserver(update);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [viewportRef, naturalWidth, naturalHeight]);
-
-  return box;
 }
 
 function useElementSize(elementRef: RefObject<HTMLElement | null>): {
@@ -595,7 +566,11 @@ export function AssemblyProcedureImageWithMarkers({
   const viewportRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const natural = useNaturalSizeFromImg(fitToParent ? viewportRef : frameRef, [imageContent, fitToParent]);
-  const fitted = useContainFitBox(viewportRef, natural.width, natural.height);
+  const fitted = useAssemblyProcedureContainBox(
+    viewportRef,
+    natural.width,
+    natural.height
+  );
   const frameSize = useElementSize(frameRef);
   const calloutLayout = zeroOffsetLayout(frameSize.width, frameSize.height);
 

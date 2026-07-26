@@ -655,14 +655,18 @@ export class AssemblyTemplateService {
     const procedurePattern = normalizeKey(input.procedurePattern, '手順パターン').slice(0, 120);
     const name = normalizeKey(input.name, 'テンプレート名').slice(0, 200);
     const traceabilityMode = input.traceabilityMode ?? 'LEGACY';
-    let procedureItems =
-      input.procedureItems == null
-        ? null
-        : normalizeAssemblyTemplateProcedureItems(input.procedureDocumentId, input.procedureItems);
     const procedureSteps =
       input.procedureSteps == null
         ? null
         : normalizeAssemblyTemplateProcedureSteps(input.procedureSteps);
+    let procedureItems =
+      input.procedureItems == null
+        ? null
+        : normalizeAssemblyTemplateProcedureItems(
+            input.procedureDocumentId,
+            input.procedureItems,
+            { enforcePrimaryOrder: procedureSteps == null }
+          );
     if (procedureSteps && !procedureItems) {
       throw new ApiError(400, '表示ステップを保存する場合は文書列も指定してください');
     }

@@ -288,16 +288,19 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     expect(screen.getAllByText('丸数字 1').length).toBeGreaterThanOrEqual(1);
   });
 
-  it('renders configured PDF procedure sequence with page navigation', async () => {
+  it('renders configured PDF procedure sequence with flat step navigation', async () => {
     renderPage();
 
     expect(await screen.findByRole('heading', { name: '組立作業' })).toBeInTheDocument();
     // session 取得直後は sequence 未解決で fallback になり得るため、configured UI を待つ
-    expect(await screen.findByText('X軸', undefined, { timeout: 5000 })).toBeInTheDocument();
-    expect(await screen.findByText(/1\/2ページ/, undefined, { timeout: 5000 })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '次頁' }));
+    expect(
+      await screen.findByText(/手順 1\/2/, undefined, { timeout: 5000 })
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '次手順' }));
     // CIランナーが遅い場合に1秒のデフォルトwaitForで拾えずフレークするため延長
-    await waitFor(() => expect(screen.getByText(/2\/2ページ/)).toBeInTheDocument(), { timeout: 5000 });
+    await waitFor(() => expect(screen.getByText(/手順 2\/2/)).toBeInTheDocument(), {
+      timeout: 5000
+    });
   });
 
   it('falls back to existing procedure canvas when sequence is not configured', async () => {

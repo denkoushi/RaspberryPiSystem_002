@@ -11,6 +11,7 @@ type CacheEntry = {
 
 const cache = new Map<string, CacheEntry>();
 const inFlightFetches = new Map<string, Promise<string>>();
+const pendingConsumers = new Map<string, number>();
 
 function normalizePath(path: string): string {
   return path.replace(/^\/api\//, '');
@@ -39,6 +40,16 @@ function release(path: string): void {
   evict();
 }
 
+function reservePending(path: string): void {
+  pendingConsumers.set(path, (pendingConsumers.get(path) ?? 0) + 1);
+}
+
+function releasePending(path: string): void {
+  const next = (pendingConsumers.get(path) ?? 0) - 1;
+  if (next > 0) pendingConsumers.set(path, next);
+  else pendingConsumers.delete(path);
+}
+
 function revoke(blobUrl: string): void {
   if (typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(blobUrl);
 }
@@ -47,7 +58,7 @@ function evict(): void {
   while (cache.size > PROTECTED_IMAGE_BLOB_CACHE_MAX_ENTRIES) {
     let removed = false;
     for (const [path, entry] of cache) {
-      if (entry.refCount > 0) continue;
+      if (entry.refCount > 0 || (pendingConsumers.get(path) ?? 0) > 0) continue;
       cache.delete(path);
       revoke(entry.blobUrl);
       removed = true;
@@ -117,14 +128,20 @@ export function useProtectedImageBlobUrl(imagePath: string | null | undefined): 
       setBlobUrl(cached);
       return releaseHeld;
     }
+    reservePending(path);
     void fetchBlobUrl(path)
       .then((url) => {
-        if (cancelled) return;
-        acquire(path);
-        heldPath = path;
-        setBlobUrl(url);
+        if (!cancelled) {
+          acquire(path);
+          heldPath = path;
+          setBlobUrl(url);
+        }
+        releasePending(path);
+        evict();
       })
       .catch(() => {
+        releasePending(path);
+        evict();
         if (!cancelled) setError('画像の読み込みに失敗しました');
       });
     return () => {
@@ -141,6 +158,7 @@ export function __resetProtectedImageBlobUrlCacheForTests(): void {
   for (const entry of cache.values()) revoke(entry.blobUrl);
   cache.clear();
   inFlightFetches.clear();
+  pendingConsumers.clear();
 }
 
 /** @internal */

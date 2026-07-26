@@ -78,4 +78,27 @@ describe('useProtectedImageBlobUrl', () => {
     );
     expect(revokeObjectURL).toHaveBeenCalled();
   });
+
+  it('does not evict a newly fetched image before its pending visible consumer acquires it', async () => {
+    apiGet.mockImplementation(async () => ({ data: new Blob(['x']) }) as never);
+    const protectedHooks = [];
+    for (let index = 0; index < PROTECTED_IMAGE_BLOB_CACHE_MAX_ENTRIES; index += 1) {
+      const rendered = renderHook(() =>
+        useProtectedImageBlobUrl(`/api/storage/protected-${index}.png`)
+      );
+      protectedHooks.push(rendered);
+      await waitFor(() => expect(rendered.result.current.blobUrl).not.toBeNull());
+    }
+
+    const newest = renderHook(() => useProtectedImageBlobUrl('/api/storage/newest.png'));
+    await waitFor(() => expect(newest.result.current.blobUrl).toBe('blob:assembly-12'));
+    expect(revokeObjectURL).not.toHaveBeenCalledWith('blob:assembly-12');
+
+    protectedHooks[0]?.unmount();
+    expect(__protectedImageBlobCacheSizeForTests()).toBe(
+      PROTECTED_IMAGE_BLOB_CACHE_MAX_ENTRIES
+    );
+    for (const rendered of protectedHooks.slice(1)) rendered.unmount();
+    newest.unmount();
+  });
 });

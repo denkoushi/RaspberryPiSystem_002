@@ -1,7 +1,7 @@
 import { resolveKioskDocumentPageImageUrl } from '../../api/domains/signage';
 import { useProtectedImageBlobUrl } from '../../hooks/useProtectedImageBlobUrl';
 
-import type { ReactNode } from 'react';
+import type { ReactEventHandler, ReactNode } from 'react';
 
 export function isAssemblyProcedureImagePath(imagePath: string): boolean {
   return imagePath.includes('/storage/assembly-procedure-images/');
@@ -13,6 +13,7 @@ type KioskDocumentPageImageProps = {
   className?: string;
   loadingFallback?: ReactNode;
   errorFallback?: ReactNode;
+  onLoad?: ReactEventHandler<HTMLImageElement>;
 };
 
 export function KioskDocumentPageImage({
@@ -20,7 +21,8 @@ export function KioskDocumentPageImage({
   alt = '',
   className,
   loadingFallback = null,
-  errorFallback = null
+  errorFallback = null,
+  onLoad
 }: KioskDocumentPageImageProps) {
   const protectedPath = isAssemblyProcedureImagePath(pageUrl);
   const { blobUrl, error } = useProtectedImageBlobUrl(protectedPath ? pageUrl : null);
@@ -32,7 +34,15 @@ export function KioskDocumentPageImage({
     if (!blobUrl) {
       return <>{loadingFallback}</>;
     }
-    return <img src={blobUrl} alt={alt} className={className} draggable={false} />;
+    return (
+      <img
+        src={blobUrl}
+        alt={alt}
+        className={className}
+        draggable={false}
+        onLoad={onLoad}
+      />
+    );
   }
 
   return (
@@ -41,6 +51,7 @@ export function KioskDocumentPageImage({
       alt={alt}
       className={className}
       draggable={false}
+      onLoad={onLoad}
     />
   );
 }

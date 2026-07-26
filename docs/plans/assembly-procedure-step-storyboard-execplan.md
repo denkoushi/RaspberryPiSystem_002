@@ -1,6 +1,6 @@
 ---
 title: 組立手順 仮想ステップ・矩形フォーカス・全体俯瞰 ExecPlan
-status: active
+status: completed
 created: 2026-07-26
 branch: feat/assembly-procedure-step-storyboard
 related:
@@ -25,8 +25,9 @@ related:
 - [x] 2026-07-26: Expand-only migration、共有幾何、API契約、専用ステップサービス、参照ガードを実装した。
 - [x] 2026-07-26: 統合エディタへ仮想ストーリーボード、矩形drag/四隅編集、指示・重要度、保存前マーカー可視性検証を実装した。
 - [x] 2026-07-26: 作業画面へ平坦な前後手順、crop表示、全体マップ、ミニマップ、現在丸数字ジャンプ、最大12件LRUを実装した。
-- [ ] Node要件、単体・統合・Playwright、隔離PostgreSQL、SQL制約、EXPLAINを検証する。
-- [ ] ADR、INDEX、後継リンク、検証結果、retrospectiveを完成させる。
+- [x] 2026-07-26: Codex同梱Node 24でlint/build、全API/Web test、対象Playwrightを実行した。
+- [x] 2026-07-26: 固有名の一時PostgreSQL環境でfresh/upgrade migration、SQL制約、20,100件fixtureのEXPLAIN、関連・全API統合testを実行し、資源の残存0件を確認した。
+- [x] 2026-07-26: ADR、INDEX、後継リンク、検証結果、retrospectiveを完成させた。
 
 ## Surprises & Discoveries
 
@@ -37,6 +38,9 @@ related:
 - Mac既定Nodeは18だが、Codex同梱Node 24を利用できる。
 - Codex同梱runtimeの現在のfallback `pnpm` は11系で、既存pnpm 9配置の`node_modules`再構成を要求した。依存を変更せず、同梱Node 24から既存のPrisma/TypeScript/Vitest実体を直接実行して検証する。
 - 既存Web test fixtureの作業手順レスポンスには`pages`がなく`pageUrls`だけのものがある。新viewerの旧契約fallbackは既存`getSequenceDocumentPages` adapterを再利用し、両形式を受ける。
+- 明示ステップでは、入力文書列の順序を先に既存ルールで拒否すると「ステップ初出順へ正規化する」という新仕様へ到達できない。明示ステップ時だけ主文書先頭の事前強制を外し、検証後に初出順と主手順書を同じトランザクション内で正規化する。
+- LRUは取得完了からReactの利用参照取得までに短い空白があり、既存12件がすべて表示中だと新着画像自身を追い出し得た。取得待ちconsumerも保護対象に数え、表示中参照を解放した時点で12件へ収束させる。
+- `object-fit: contain` の余白を無視してcropとマーカーを親要素比率で配置すると、縦横比が異なる画像で1px精度を守れない。画像の実寸からcontain領域を算出する共通hookを作り、画像、crop、マーカーを同じ座標枠へ載せた。
 
 ## Decision Log
 
@@ -67,11 +71,15 @@ related:
 
 ## Validation and Acceptance
 
-- 共通幾何は逆向きdrag、境界、最小矩形、元座標との往復、マーカー包含を検証する。
-- APIは作成・改版・競合rollback・互換展開・最大件数・無効座標・孤立マーカー・参照削除防止を検証する。
-- Webはステップ追加・重複・移動・削除、crop表示、指示、重要度、300件仮想化、LRUを検証する。
-- Playwrightは1366×768、1920×1080、900×900で操作、overflow、touch target、canvas幅、座標精度を検証する。
-- 固有名の一時 `pgvector/pgvector:pg15` container/volume/networkを動的localhostポートで使い、fresh/upgrade migration、SQL制約、2万件以上のfixtureに対する `EXPLAIN (ANALYZE, BUFFERS)`、関連統合テストを行う。EXIT/INT/TERM trapで必ず削除し残存0件を確認する。
+- 共有型、API、WebのlintとbuildはCodex同梱Node 24.14.0で成功した。
+- API全testは466ファイル成功・2ファイルskip、2,461件成功・7件skip。隔離DBに向けた組立統合testは30/30件成功した。
+- Web全testは307ファイル・1,523件すべて成功した。共有幾何、reducer、crop、マーカー変換、LRUと同時fetch重複排除を含む。
+- Playwrightは対象2 spec、17/17件成功した。1366×768、1920×1080、900×900で、複数文書、矩形drag、同一ページ再利用、並べ替え、保存payload、平坦な前後手順、全体マップ、ミニマップ、丸数字jump、横overflowなし、40px以上の操作対象、中央canvas 55%以上、crop内マーカー誤差1 CSS px以内、300ステップ時のDOMカード30件以下を確認した。
+- `pgvector/pgvector:pg15` の固有名container/volume/networkと動的localhost portを使用した。全156 migrationのfresh deploy/statusが成功した。
+- `origin/main` の全migration適用後に既存テンプレート、文書列、丸数字、チェックを投入し、候補migrationを適用した。前後の既存行snapshotは同一で、ステップ行は0件のままだった。
+- 直接SQLで文書参照XOR、非負ページ番号、crop必須/null・範囲・最小幅高、テンプレート内順序一意、テンプレートCASCADE、文書RESTRICTを確認した。
+- 20,100件のステップを投入して`ANALYZE`後に`EXPLAIN (ANALYZE, BUFFERS)`を実行し、テンプレート順読込は`AssemblyTemplateProcedureStep_unique_template_sort`、組立手順書参照は`AssemblyTemplateProcedureStep_idx_assembly_document`、Kiosk文書参照は`AssemblyTemplateProcedureStep_idx_kiosk_document`を選択した。実測はいずれも約0.05ms以内だった。
+- migration検証は `scripts/deploy/validate-candidate-migrations.sh origin/main HEAD` を通過した。検証終了後、専用labelによるcontainer/volume/network残存は0件だった。
 
 ## Idempotence and Recovery
 
@@ -81,4 +89,10 @@ Docker検証資源は実行ごとにUUIDを含む名前とlabelを使う。既�
 
 ## Outcomes & Retrospective
 
-実装完了時に、利用者が得る動作、互換性、migration/SQL/EXPLAIN、テスト件数、画面検証、残課題、本番未反映であることをここへ記録する。
+テンプレート版は、複数文書の任意ページを全体または複数の矩形として最大300ステップまで任意順で保持できるようになった。各ステップは独立した番号、タイトル、指示、重要度を持つが、画像とマーカーの正本は元ページのままである。cropでは矩形内の丸数字、チェック、矢視だけが同じcontain座標枠へ変換される。
+
+エディタは文書・工程とストーリーボードを分離し、検索、文書区間マップ、仮想リスト、数値移動、複製、矩形作成・四隅編集、ミニマップ、指示インスペクタを提供する。作業画面は文書境界を意識せず前手順・次手順で進み、cropと元ページの位置関係を常に確認できる。画像は派生保存せず、可視サムネイルと現在・次だけを最大12件LRU/in-flight dedupe経由で取得する。
+
+既存テンプレートはDB更新なしで従来の文書順・ページ順に展開され、既存セッションは開始時のテンプレート版を使い続ける。既存`documents`、`procedureItems`、source表示、締付・必須チェックによる完了条件も維持した。
+
+Expand-only migration、fresh/upgrade、SQL制約、索引利用、全API/Web test、対象Playwright、lint/buildは上記の通り完了した。検証用Docker資源は削除済みである。本番デプロイ、crop画像やPDFの永続生成、印刷再出力、閲覧監査・閲覧必須ゲートは実施していない。

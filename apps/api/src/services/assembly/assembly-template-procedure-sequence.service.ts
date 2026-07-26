@@ -107,7 +107,8 @@ function normalizeLabel(value: string | null | undefined): string | null {
 
 export function normalizeAssemblyTemplateProcedureItems(
   procedureDocumentId: string,
-  items: AssemblyTemplateProcedureItemInput[]
+  items: AssemblyTemplateProcedureItemInput[],
+  options: { enforcePrimaryOrder?: boolean } = {}
 ): NormalizedAssemblyTemplateProcedureItem[] {
   if (items.length < 1 || items.length > 50) {
     throw new ApiError(400, '手順書閲覧順は1件以上50件以下にしてください');
@@ -135,7 +136,7 @@ export function normalizeAssemblyTemplateProcedureItems(
   if (!firstAssemblyDocumentId) {
     throw new ApiError(400, '手順書閲覧順には組立手順書が1件以上必要です');
   }
-  if (firstAssemblyDocumentId !== procedureDocumentId) {
+  if (options.enforcePrimaryOrder !== false && firstAssemblyDocumentId !== procedureDocumentId) {
     throw new ApiError(400, '主手順書は閲覧順で最初の組立手順書と一致させてください');
   }
   return normalized;

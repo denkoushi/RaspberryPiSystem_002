@@ -929,7 +929,7 @@ export function KioskAssemblyTemplateEditorPage() {
         >
           <div
             data-testid="assembly-editor-toolbar"
-            className="flex shrink-0 flex-wrap items-center gap-2 border-b border-white/10 px-3 py-2 xl:flex-nowrap xl:whitespace-nowrap"
+            className="flex shrink-0 flex-wrap items-center gap-1 border-b border-white/10 px-2 py-2 xl:flex-nowrap xl:whitespace-nowrap"
           >
             <h2 className="shrink-0 text-[1.02rem] font-bold">手順書</h2>
             <select
