@@ -103,6 +103,18 @@ class Pi5BackendTest(unittest.TestCase):
                 "stability-monitoring",
             ],
         )
+        self.assertEqual(
+            [
+                phase["name"]
+                for phase in state.payload["telemetry"]["phases"]
+            ],
+            [
+                "pi5-migration-plan",
+                "pi5-candidate-build",
+                "pi5-inactive-slot-prepare",
+                "pi5-traffic-switch",
+            ],
+        )
 
     def test_rejects_candidate_state_from_another_run_before_prepare(self) -> None:
         runtime = Runtime(self.project, candidate_run_id="other-run")
@@ -115,6 +127,47 @@ class Pi5BackendTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "run ID"):
             pi5.phase3_release(self.sha, State("bad/run"), runtime=runtime)
         self.assertEqual(runtime.commands, [])
+
+    def test_records_monitor_and_cleanup_as_distinct_phases(self) -> None:
+        class StabilityRuntime:
+            PHASE3 = Path("/deploy/pi5-blue-green.sh")
+            json = json
+
+            class time:
+                @staticmethod
+                def time() -> int:
+                    return 100
+
+            def __init__(self) -> None:
+                self.commands: list[list[str]] = []
+                self.cleaned = False
+
+            def run(self, command: list[str], **_kwargs: object) -> str:
+                self.commands.append(command)
+                if command[1] == "status":
+                    return json.dumps(
+                        {"runtimeStatus": "consistent", "stableUntil": 99}
+                    )
+                return ""
+
+            def cleanup_after_pi5_stability(self) -> None:
+                self.cleaned = True
+
+        runtime = StabilityRuntime()
+        state = State()
+        state.payload["pi5"] = {"state": "stability-monitoring"}
+
+        pi5.wait_for_pi5_stability(state, runtime=runtime)
+
+        self.assertTrue(runtime.cleaned)
+        self.assertEqual(state.payload["pi5"]["state"], "stable")
+        self.assertEqual(
+            [
+                phase["name"]
+                for phase in state.payload["telemetry"]["phases"]
+            ],
+            ["pi5-stability-monitor", "pi5-cleanup"],
+        )
 
     def test_cleanup_stage_failure_never_enters_switchback(self) -> None:
         class CleanupFailureRuntime:

@@ -10,7 +10,11 @@ from unittest import mock
 
 from infrastructure.ansible.callback_plugins.rolling_release_timing import CallbackModule
 from scripts.deploy.rolling_release import telemetry
-from scripts.deploy.rolling_release.coordinator import _collect_ansible_timing, _measure_phase
+from scripts.deploy.rolling_release.coordinator import (
+    _collect_ansible_timing,
+    _measure_phase,
+    _pi5_performance_session,
+)
 
 
 class TimingCollectionTest(unittest.TestCase):
@@ -160,6 +164,39 @@ class TimingCollectionTest(unittest.TestCase):
         self.assertEqual(phase["name"], "terminal-ready-ack")
         self.assertEqual(phase["outcome"], "success")
         self.assertEqual(state.payload["telemetry"]["ansible"], {"state": "unavailable", "error": "ValueError"})
+
+    def test_pi5_performance_failure_never_changes_release_control_flow(self):
+        class State:
+            def __init__(self):
+                self.payload = {}
+                self.saves = 0
+
+            def save(self):
+                self.saves += 1
+
+        class Runtime:
+            @staticmethod
+            def start_pi5_performance(_run_id):
+                pass
+
+            @staticmethod
+            def baseline_pi5_performance():
+                raise RuntimeError("sampler failed")
+
+            @staticmethod
+            def finish_pi5_performance(_run_id):
+                return {"state": "collected", "eventCount": 3}
+
+        state = State()
+        with self.assertRaisesRegex(RuntimeError, "release failure"):
+            with _pi5_performance_session(state, Runtime(), "run-123"):
+                raise RuntimeError("release failure")
+
+        self.assertEqual(
+            state.payload["telemetry"]["pi5Performance"],
+            {"state": "collected", "eventCount": 3},
+        )
+        self.assertEqual(state.saves, 1)
 
 
 if __name__ == "__main__":

@@ -8,10 +8,9 @@ from __future__ import annotations
 
 import json
 import re
-import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from .adapter_registry import adapter_for_profile
 from .activation import (
@@ -31,7 +30,7 @@ from .release_claims import (
     validate_release_claims,
 )
 from .release_warnings import record_observer_warning
-from . import readiness_policy
+from . import readiness_policy, telemetry
 from .terminal_adapters import TerminalAdapter
 
 
@@ -91,35 +90,7 @@ def _require_executable_target_architecture(plan: dict[str, Any]) -> None:
         )
 
 
-@contextmanager
-def _measure_phase(state: Any, runtime: Any, name: str, *, host: str | None = None):
-    """Append non-authoritative timing data without influencing control flow."""
-
-    started_at = runtime.utc_now()
-    started = time.monotonic()
-    outcome = "success"
-    try:
-        yield
-    except BaseException as error:
-        outcome = type(error).__name__
-        raise
-    finally:
-        try:
-            telemetry = state.payload.setdefault("telemetry", {})
-            phases = telemetry.setdefault("phases", [])
-            event = {
-                "name": name,
-                "startedAt": started_at,
-                "endedAt": runtime.utc_now(),
-                "durationMs": round((time.monotonic() - started) * 1000),
-                "outcome": outcome,
-            }
-            if host is not None:
-                event["host"] = host
-            phases.append(event)
-        except Exception:
-            # Metrics must never change a release outcome.
-            pass
+_measure_phase = telemetry.measure_phase
 
 
 def _collect_ansible_timing(state: Any, runtime: Any, run_id: str) -> None:
@@ -132,6 +103,49 @@ def _collect_ansible_timing(state: Any, runtime: Any, run_id: str) -> None:
         state.payload.setdefault("telemetry", {})["ansible"] = {
             "state": "unavailable", "error": type(error).__name__,
         }
+
+
+@contextmanager
+def _pi5_performance_session(
+    state: Any,
+    runtime: Any,
+    run_id: str,
+) -> Iterator[None]:
+    """Run optional Pi5 sampling without allowing it to affect the release."""
+
+    starter = getattr(runtime, "start_pi5_performance", None)
+    baseline = getattr(runtime, "baseline_pi5_performance", None)
+    finisher = getattr(runtime, "finish_pi5_performance", None)
+    active = False
+    try:
+        if all(callable(item) for item in (starter, baseline, finisher)):
+            try:
+                starter(run_id)
+                active = True
+                state.payload.setdefault("telemetry", {})["pi5Performance"] = {
+                    "state": "collecting"
+                }
+                baseline()
+            except Exception as error:
+                state.payload.setdefault("telemetry", {})["pi5Performance"] = {
+                    "state": "unavailable",
+                    "error": type(error).__name__,
+                }
+        yield
+    finally:
+        if active:
+            try:
+                result = finisher(run_id)
+            except Exception as error:
+                result = {"state": "unavailable", "error": type(error).__name__}
+            try:
+                state.payload.setdefault("telemetry", {})[
+                    "pi5Performance"
+                ] = result
+                state.save()
+            except Exception:
+                # Metrics must never change a release outcome.
+                pass
 
 
 def _terminal_adapter(runtime: Any, profile_id: str) -> TerminalAdapter:
@@ -1831,51 +1845,62 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             server_config["rollbackManifest"] = manifest
             server_config["state"] = "captured"
             state.save()
-            try:
-                with _measure_phase(
-                    state, runtime, "server-config-apply", host=server["host"]
-                ):
-                    runtime.converge_server_config(
-                        inventory,
-                        server["host"],
-                        server["desiredSha"],
-                        args.run_id,
-                        manifest,
-                    )
-            except Exception as config_error:
+            with _pi5_performance_session(state, runtime, args.run_id):
                 try:
-                    restored = runtime.restore_server_config_manifest(
-                        inventory, server["host"], args.run_id, manifest
-                    )
-                except Exception as restore_error:
-                    server_config["state"] = "restore-failed"
+                    with _measure_phase(
+                        state,
+                        runtime,
+                        "server-config-apply",
+                        host=server["host"],
+                        performance=True,
+                    ):
+                        runtime.converge_server_config(
+                            inventory,
+                            server["host"],
+                            server["desiredSha"],
+                            args.run_id,
+                            manifest,
+                        )
+                except Exception as config_error:
+                    try:
+                        restored = runtime.restore_server_config_manifest(
+                            inventory, server["host"], args.run_id, manifest
+                        )
+                    except Exception as restore_error:
+                        server_config["state"] = "restore-failed"
+                        server_config["failure"] = str(config_error)
+                        server_config["restoreFailure"] = str(restore_error)
+                        state.save()
+                        raise RuntimeError(
+                            "Pi5 server config convergence and restore failed"
+                        ) from restore_error
+                    server_config["state"] = "restored"
                     server_config["failure"] = str(config_error)
-                    server_config["restoreFailure"] = str(restore_error)
+                    server_config["restoredAt"] = runtime.utc_now()
+                    server_config["restoreEvidence"] = restored
+                    interrupted_recovery_pending = False
                     state.save()
-                    raise RuntimeError(
-                        "Pi5 server config convergence and restore failed"
-                    ) from restore_error
-                server_config["state"] = "restored"
-                server_config["failure"] = str(config_error)
-                server_config["restoredAt"] = runtime.utc_now()
-                server_config["restoreEvidence"] = restored
+                    raise
+                server_config["state"] = "converged"
+                server_config["convergedAt"] = runtime.utc_now()
                 interrupted_recovery_pending = False
                 state.save()
-                raise
-            server_config["state"] = "converged"
-            server_config["convergedAt"] = runtime.utc_now()
-            interrupted_recovery_pending = False
-            state.save()
-            token.checkpoint("after-pi5-host-config")
+                token.checkpoint("after-pi5-host-config")
 
-            # The five-minute Blue/Green switch monitor and cleanup form one
-            # atomic safety window. Cancellation is observed only after it.
-            with _measure_phase(
-                state, runtime, "pi5-release-and-stability", host=server["host"]
-            ):
-                runtime.ensure_pi5_release(server["desiredSha"], state)
-            with _measure_phase(state, runtime, "pi5-evidence", host=server["host"]):
-                observation = runtime.observe_pi5_evidence(server["desiredSha"])
+                # The five-minute Blue/Green switch monitor and cleanup form one
+                # atomic safety window. Cancellation is observed only after it.
+                with _measure_phase(
+                    state, runtime, "pi5-release-and-stability", host=server["host"]
+                ):
+                    runtime.ensure_pi5_release(server["desiredSha"], state)
+                with _measure_phase(
+                    state,
+                    runtime,
+                    "pi5-evidence",
+                    host=server["host"],
+                    performance=True,
+                ):
+                    observation = runtime.observe_pi5_evidence(server["desiredSha"])
             observation["releaseClaims"] = _direct_release_claims(
                 role="server",
                 expected_sha=server["desiredSha"],

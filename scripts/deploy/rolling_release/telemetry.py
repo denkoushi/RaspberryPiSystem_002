@@ -5,13 +5,80 @@ import json
 import os
 import re
 import tempfile
+import time
+from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 _OUTCOMES = frozenset({"ok", "changed", "skipped", "failed", "unreachable"})
 _MAX_EVENTS = 10_000
 _MAX_BYTES = 10 * 1024 * 1024
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$")
+
+
+def _utc_now(runtime: Any) -> str:
+    clock = getattr(runtime, "utc_now", None)
+    if callable(clock):
+        try:
+            value = clock()
+            if isinstance(value, str):
+                return value
+        except Exception:
+            pass
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+@contextmanager
+def measure_phase(
+    state: Any,
+    runtime: Any,
+    name: str,
+    *,
+    host: str | None = None,
+    performance: bool = False,
+) -> Iterator[None]:
+    """Append non-authoritative timing and optional Pi5 sample boundaries."""
+
+    performance_manager: Any = None
+    if performance:
+        provider = getattr(runtime, "pi5_performance_phase", None)
+        if callable(provider):
+            try:
+                performance_manager = provider(name)
+                performance_manager.__enter__()
+            except Exception:
+                performance_manager = None
+    started_at = _utc_now(runtime)
+    started = time.monotonic()
+    outcome = "success"
+    try:
+        yield
+    except BaseException as error:
+        outcome = type(error).__name__
+        raise
+    finally:
+        if performance_manager is not None:
+            try:
+                performance_manager.__exit__(None, None, None)
+            except Exception:
+                pass
+        try:
+            telemetry = state.payload.setdefault("telemetry", {})
+            phases = telemetry.setdefault("phases", [])
+            event = {
+                "name": name,
+                "startedAt": started_at,
+                "endedAt": _utc_now(runtime),
+                "durationMs": round((time.monotonic() - started) * 1000),
+                "outcome": outcome,
+            }
+            if host is not None:
+                event["host"] = host
+            phases.append(event)
+        except Exception:
+            # Metrics must never change a release outcome.
+            pass
 
 
 def paths(project: Path, run_id: str) -> tuple[Path, Path]:

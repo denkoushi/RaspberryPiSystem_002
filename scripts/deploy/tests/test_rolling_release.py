@@ -201,6 +201,15 @@ def fleet_execution_contract(targets, classification, inventory):
             )
         )
         stack.enter_context(patch.object(MODULE, 'converge_server_config'))
+        stack.enter_context(patch.object(MODULE, 'start_pi5_performance'))
+        stack.enter_context(patch.object(MODULE, 'baseline_pi5_performance'))
+        stack.enter_context(
+            patch.object(
+                MODULE,
+                'finish_pi5_performance',
+                return_value={'state': 'collected', 'eventCount': 0},
+            )
+        )
         stack.enter_context(patch.object(MODULE, 'ensure_pi5_release', ensure))
         stack.enter_context(
             patch.object(MODULE, 'observe_pi5_evidence', return_value=pi5_observation)
