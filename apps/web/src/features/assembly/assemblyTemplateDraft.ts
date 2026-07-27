@@ -15,8 +15,17 @@ import type {
   AssemblyWorkSessionDto
 } from './types';
 
-export type AssemblyDraftBolt = AssemblyTemplateBoltInput & {
+export type AssemblyDraftBolt = Omit<
+  AssemblyTemplateBoltInput,
+  'boltSpec' | 'boltLengthMm' | 'nominalTorque' | 'lowerLimit' | 'upperLimit'
+> & {
   id: string;
+  boltSpecMode: 'auto' | 'custom';
+  boltSpecCustom: string;
+  boltLengthMm: number | null;
+  nominalTorque: number | null;
+  lowerLimit: number | null;
+  upperLimit: number | null;
   kioskDocumentId?: string | null;
   assemblyProcedureDocumentId?: string | null;
   pageIndex?: number | null;
@@ -188,10 +197,10 @@ export function buildAssemblyEditorPageOptions(input: {
 export const emptyAssemblyArea = (index = 0): AssemblyDraftArea => ({
   id: crypto.randomUUID(),
   sortOrder: index,
-  processNo: index === 0 ? '7' : String(index + 1),
-  areaCode: index === 0 ? '13' : String(index + 1),
-  areaName: index === 0 ? 'ストッパー取付' : `工程${index + 1}`,
-  unitCode: index === 0 ? 'U1' : `U${index + 1}`,
+  processNo: '',
+  areaCode: '',
+  areaName: '',
+  unitCode: '',
   requireManualAdvance: true,
   bolts: []
 });
@@ -200,7 +209,8 @@ export const formatTighteningId = (area: Pick<AssemblyDraftArea, 'processNo' | '
   `P${area.processNo}-A${area.areaCode}-U${area.unitCode}-B${index + 1}`;
 
 export const ASSEMBLY_BOLT_CONDITION_KEYS = [
-  'boltSpec',
+  'boltSpecMode',
+  'boltSpecCustom',
   'nominalDiameter',
   'boltLengthMm',
   'material',
@@ -214,6 +224,33 @@ export const ASSEMBLY_BOLT_CONDITION_KEYS = [
 
 export type AssemblyBoltConditionKey = (typeof ASSEMBLY_BOLT_CONDITION_KEYS)[number];
 
+function formatBoltLength(value: number | null | undefined): string {
+  return value == null || !Number.isFinite(value) ? '' : String(value);
+}
+
+export function buildAutomaticAssemblyBoltSpec(
+  bolt: Pick<AssemblyDraftBolt, 'nominalDiameter' | 'boltLengthMm' | 'material' | 'strengthClass'>
+): string {
+  const diameter = bolt.nominalDiameter?.trim() ?? '';
+  const length = formatBoltLength(bolt.boltLengthMm);
+  const material = bolt.material?.trim() ?? '';
+  const strengthClass = bolt.strengthClass?.trim() ?? '';
+  if (!diameter || !length || !material || !strengthClass) return '';
+  return `${diameter}×${length} / ${material} / ${strengthClass}`;
+}
+
+export function resolveAssemblyBoltSpec(
+  bolt: Pick<
+    AssemblyDraftBolt,
+    'boltSpecMode' | 'boltSpecCustom' | 'nominalDiameter' | 'boltLengthMm' | 'material' | 'strengthClass'
+  >
+): string {
+  if (bolt.boltSpecMode === 'custom' && bolt.boltSpecCustom.trim()) {
+    return bolt.boltSpecCustom.trim();
+  }
+  return buildAutomaticAssemblyBoltSpec(bolt);
+}
+
 export function nextAssemblyMarkerNo(areas: AssemblyDraftArea[]): number {
   const used = new Set(areas.flatMap((area) => area.bolts.map((bolt) => bolt.markerNo)));
   let markerNo = 1;
@@ -224,7 +261,8 @@ export function nextAssemblyMarkerNo(areas: AssemblyDraftArea[]): number {
 export function copyAssemblyBoltCondition(source: AssemblyDraftBolt, target: AssemblyDraftBolt): AssemblyDraftBolt {
   return {
     ...target,
-    boltSpec: source.boltSpec,
+    boltSpecMode: source.boltSpecMode,
+    boltSpecCustom: source.boltSpecCustom,
     nominalDiameter: source.nominalDiameter,
     boltLengthMm: source.boltLengthMm,
     material: source.material,
@@ -273,22 +311,23 @@ export function createAssemblyBoltAt(
   const created: AssemblyDraftBolt = {
     id: crypto.randomUUID(),
     sortOrder: index,
-    tighteningId: formatTighteningId(area, index),
+    tighteningId: '',
     markerNo,
     xRatio,
     yRatio,
     calloutTipXRatio: null,
     calloutTipYRatio: null,
-    boltSpec: 'M6x30',
-    nominalDiameter: 'M6',
-    boltLengthMm: 30,
-    material: 'STEEL',
-    strengthClass: '8.8',
+    boltSpecMode: 'auto',
+    boltSpecCustom: '',
+    nominalDiameter: '',
+    boltLengthMm: null,
+    material: '',
+    strengthClass: '',
     capabilityGroupId: null,
-    nominalTorque: 90,
-    lowerLimit: 81,
-    upperLimit: 99,
-    unit: 'kgf-cm',
+    nominalTorque: null,
+    lowerLimit: null,
+    upperLimit: null,
+    unit: '',
     kioskDocumentId: pageRef?.source === 'kiosk_document' ? pageRef.documentId : null,
     assemblyProcedureDocumentId: pageRef?.source === 'assembly_procedure_document' ? pageRef.documentId : null,
     pageIndex: pageRef?.pageIndex ?? null
@@ -342,7 +381,8 @@ export function dtoBoltToDraft(bolt: AssemblyTemplateBoltDto): AssemblyDraftBolt
     yRatio: toNumber(bolt.yRatio),
     calloutTipXRatio: bolt.calloutTipXRatio == null ? null : toNumber(bolt.calloutTipXRatio),
     calloutTipYRatio: bolt.calloutTipYRatio == null ? null : toNumber(bolt.calloutTipYRatio),
-    boltSpec: bolt.boltSpec,
+    boltSpecMode: 'custom',
+    boltSpecCustom: bolt.boltSpec,
     nominalDiameter: bolt.nominalDiameter,
     boltLengthMm: bolt.boltLengthMm == null ? null : toNumber(bolt.boltLengthMm),
     material: bolt.material,
@@ -383,7 +423,16 @@ export function templateToDraftCheckItems(template: AssemblyTemplateDto): Assemb
   return (template.checkItems ?? []).map(dtoCheckItemToDraft);
 }
 
-export function draftAreasToInput(areas: AssemblyDraftArea[]): AssemblyTemplateAreaInput[] {
+function requiredDraftNumber(value: number | null, label: string): number {
+  if (value == null || !Number.isFinite(value)) {
+    throw new Error(`${label}が未入力です。`);
+  }
+  return value;
+}
+
+export function serializeAssemblyTemplateDraftAreas(
+  areas: AssemblyDraftArea[]
+): AssemblyTemplateAreaInput[] {
   return areas.map((area, areaIndex) => ({
     sortOrder: areaIndex,
     processNo: area.processNo,
@@ -393,21 +442,21 @@ export function draftAreasToInput(areas: AssemblyDraftArea[]): AssemblyTemplateA
     requireManualAdvance: area.requireManualAdvance ?? true,
     bolts: area.bolts.map((bolt, boltIndex) => ({
       sortOrder: boltIndex,
-      tighteningId: bolt.tighteningId,
+      tighteningId: bolt.tighteningId?.trim() || undefined,
       markerNo: bolt.markerNo,
       xRatio: bolt.xRatio,
       yRatio: bolt.yRatio,
       calloutTipXRatio: bolt.calloutTipXRatio ?? null,
       calloutTipYRatio: bolt.calloutTipYRatio ?? null,
-      boltSpec: bolt.boltSpec,
+      boltSpec: resolveAssemblyBoltSpec(bolt),
       nominalDiameter: bolt.nominalDiameter ?? null,
       boltLengthMm: bolt.boltLengthMm ?? null,
       material: bolt.material ?? null,
       strengthClass: bolt.strengthClass ?? null,
       capabilityGroupId: bolt.capabilityGroupId ?? null,
-      nominalTorque: bolt.nominalTorque,
-      lowerLimit: bolt.lowerLimit,
-      upperLimit: bolt.upperLimit,
+      nominalTorque: requiredDraftNumber(bolt.nominalTorque, `丸数字${bolt.markerNo}の規定値`),
+      lowerLimit: requiredDraftNumber(bolt.lowerLimit, `丸数字${bolt.markerNo}の下限値`),
+      upperLimit: requiredDraftNumber(bolt.upperLimit, `丸数字${bolt.markerNo}の上限値`),
       unit: bolt.unit,
       kioskDocumentId: bolt.kioskDocumentId ?? null,
       assemblyProcedureDocumentId: bolt.assemblyProcedureDocumentId ?? null,
@@ -415,6 +464,8 @@ export function draftAreasToInput(areas: AssemblyDraftArea[]): AssemblyTemplateA
     }))
   }));
 }
+
+export const draftAreasToInput = serializeAssemblyTemplateDraftAreas;
 
 export function draftCheckItemsToInput(checkItems: AssemblyDraftCheckItem[]): AssemblyTemplateCheckItemInput[] {
   return checkItems.map((item, index) => ({
@@ -456,7 +507,7 @@ export function filterDraftBoltsForPage(
         yRatio: bolt.yRatio,
         calloutTipXRatio: bolt.calloutTipXRatio ?? null,
         calloutTipYRatio: bolt.calloutTipYRatio ?? null,
-        label: bolt.tighteningId ?? `丸数字${bolt.markerNo}`,
+        label: bolt.tighteningId?.trim() || `丸数字${bolt.markerNo}`,
         status: 'pending' as const
       }))
   );
@@ -491,7 +542,7 @@ export function draftToCanvasBolts(areas: AssemblyDraftArea[]): AssemblyCanvasBo
       yRatio: bolt.yRatio,
       calloutTipXRatio: bolt.calloutTipXRatio ?? null,
       calloutTipYRatio: bolt.calloutTipYRatio ?? null,
-      label: bolt.tighteningId ?? `丸数字${bolt.markerNo}`,
+      label: bolt.tighteningId?.trim() || `丸数字${bolt.markerNo}`,
       status: 'pending' as const
     }))
   );

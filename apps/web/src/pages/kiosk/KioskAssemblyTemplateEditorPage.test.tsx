@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { KioskAssemblyTemplateEditorPage } from './KioskAssemblyTemplateEditorPage';
 
+import type { TorqueWrenchCapabilityGroupApi } from '../../api/domains/torque-wrenches';
 import type {
   AssemblyProcedureDocumentSummaryDto,
   AssemblyTemplateCreateInput,
@@ -14,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   createTemplate: vi.fn(),
   getKioskDocumentDetail: vi.fn(),
   getTemplate: vi.fn(),
+  listCapabilityGroups: vi.fn(),
   listMachineNameCandidates: vi.fn(),
   listDocuments: vi.fn(),
   reviseTemplate: vi.fn(),
@@ -26,7 +28,7 @@ vi.mock('../../api/client', () => ({
   getKioskDocumentDetail: mocks.getKioskDocumentDetail,
   listAssemblyMachineNameCandidates: mocks.listMachineNameCandidates,
   listAssemblyProcedureDocumentSummaries: mocks.listDocuments,
-  listCompatibleTorqueWrenchCapabilityGroups: vi.fn().mockResolvedValue([]),
+  listTorqueWrenchCapabilityGroups: mocks.listCapabilityGroups,
   reviseAssemblyTemplate: mocks.reviseTemplate,
   verifyAssemblyTemplateAccessPassword: mocks.verifyPassword
 }));
@@ -36,6 +38,10 @@ vi.mock('../../features/assembly/AssemblyProcedureCanvas', () => ({
 }));
 
 const NOW = '2026-07-26T00:00:00.000Z';
+const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
+const SECOND_DOCUMENT_ID = '22222222-2222-4222-8222-222222222222';
+const GROUP_ID = '99999999-9999-4999-8999-999999999999';
+const KIOSK_DOCUMENT_ID = '55555555-5555-4555-8555-555555555555';
 
 function documentFixture(id: string, name: string): AssemblyProcedureDocumentSummaryDto {
   return {
@@ -57,13 +63,152 @@ function documentFixture(id: string, name: string): AssemblyProcedureDocumentSum
 }
 
 const documents = [
-  documentFixture('11111111-1111-4111-8111-111111111111', '主手順書'),
-  documentFixture('22222222-2222-4222-8222-222222222222', '追加手順書')
+  documentFixture(DOCUMENT_ID, '主手順書'),
+  documentFixture(SECOND_DOCUMENT_ID, '追加手順書')
 ];
 
-function renderEditor() {
+function capabilityGroupFixture(): TorqueWrenchCapabilityGroupApi {
+  return {
+    id: GROUP_ID,
+    name: 'M6 標準',
+    nominalDiameter: 'M6',
+    boltLengthMm: '30',
+    material: 'SCM435',
+    strengthClass: '10.9',
+    isActive: true,
+    models: []
+  };
+}
+
+function procedureItem(
+  id: string,
+  documentId: string,
+  title: string
+): NonNullable<AssemblyTemplateDto['procedureSequence']>['items'][number] {
+  return {
+    id,
+    sortOrder: 0,
+    label: null,
+    documentType: 'assembly_procedure_document',
+    kioskDocumentId: null,
+    assemblyProcedureDocumentId: documentId,
+    document: {
+      id: documentId,
+      documentType: 'assembly_procedure_document',
+      title,
+      displayTitle: null,
+      filename: `${title}.pdf`,
+      confirmedDocumentNumber: null,
+      confirmedSummaryText: null,
+      pageCount: 2,
+      enabled: true,
+      updatedAt: NOW,
+      imageRelativePath: `/api/${documentId}.png`
+    }
+  };
+}
+
+function procedureStep(
+  id: string,
+  documentId: string | null = DOCUMENT_ID,
+  kioskDocumentId: string | null = null
+): NonNullable<
+  NonNullable<AssemblyTemplateDto['procedureSequence']>['steps']
+>[number] {
+  return {
+    id,
+    sortOrder: 0,
+    kioskDocumentId,
+    assemblyProcedureDocumentId: documentId,
+    pageIndex: 0,
+    viewMode: 'full_page',
+    cropXRatio: null,
+    cropYRatio: null,
+    cropWidthRatio: null,
+    cropHeightRatio: null,
+    title: null,
+    instructionText: null,
+    emphasis: 'normal'
+  };
+}
+
+function areaFixture(
+  id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  markerNo = 1
+): AssemblyTemplateDto['areas'][number] {
+  return {
+    id,
+    templateId: '88888888-8888-4888-8888-888888888888',
+    sortOrder: markerNo - 1,
+    processNo: `${markerNo * 10}`,
+    areaCode: `A${markerNo}`,
+    areaName: `工程${markerNo}`,
+    unitCode: `U${markerNo}`,
+    requireManualAdvance: true,
+    createdAt: NOW,
+    updatedAt: NOW,
+    bolts: [
+      {
+        id: `bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb${markerNo}`,
+        areaId: id,
+        templateId: '88888888-8888-4888-8888-888888888888',
+        sortOrder: 0,
+        tighteningId: `T-${markerNo}`,
+        markerNo,
+        xRatio: '0.5',
+        yRatio: '0.5',
+        calloutTipXRatio: null,
+        calloutTipYRatio: null,
+        boltSpec: `保存済み独自表記${markerNo}`,
+        nominalDiameter: 'M6',
+        boltLengthMm: '30',
+        material: 'SCM435',
+        strengthClass: '10.9',
+        capabilityGroupId: GROUP_ID,
+        nominalTorque: '10',
+        lowerLimit: '9',
+        upperLimit: '11',
+        unit: 'N·m',
+        kioskDocumentId: null,
+        assemblyProcedureDocumentId: DOCUMENT_ID,
+        pageIndex: 0,
+        createdAt: NOW,
+        updatedAt: NOW
+      }
+    ]
+  };
+}
+
+function templateFixture(
+  overrides: Partial<AssemblyTemplateDto> = {}
+): AssemblyTemplateDto {
+  return {
+    id: '88888888-8888-4888-8888-888888888888',
+    modelCode: 'SOURCE-MACHINE',
+    procedurePattern: '標準',
+    name: '雛形元テンプレート',
+    version: 1,
+    isActive: true,
+    traceabilityMode: 'REQUIRED',
+    procedureDocumentId: DOCUMENT_ID,
+    procedureDocument: documents[0]!,
+    procedureSequence: {
+      source: 'template_version',
+      stepSource: 'template_steps',
+      items: [procedureItem('item-primary', DOCUMENT_ID, '主手順書')],
+      steps: [procedureStep('step-primary')]
+    },
+    areas: [areaFixture()],
+    checkItems: [],
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...overrides
+  };
+}
+
+function renderRoute(route: string) {
   return render(
-    <MemoryRouter initialEntries={['/kiosk/assembly/templates/new']}>
+    <MemoryRouter initialEntries={[route]}>
       <Routes>
         <Route
           path="/kiosk/assembly/templates/new"
@@ -71,23 +216,6 @@ function renderEditor() {
         />
         <Route
           path="/kiosk/assembly/templates/:templateId/edit"
-          element={<div>保存後画面</div>}
-        />
-      </Routes>
-    </MemoryRouter>
-  );
-}
-
-function renderCloneEditor(sourceTemplateId: string) {
-  return render(
-    <MemoryRouter
-      initialEntries={[
-        `/kiosk/assembly/templates/new?sourceTemplateId=${sourceTemplateId}`
-      ]}
-    >
-      <Routes>
-        <Route
-          path="/kiosk/assembly/templates/new"
           element={<KioskAssemblyTemplateEditorPage />}
         />
       </Routes>
@@ -95,16 +223,24 @@ function renderCloneEditor(sourceTemplateId: string) {
   );
 }
 
-function renderExistingEditor(templateId: string) {
-  return render(
-    <MemoryRouter initialEntries={[`/kiosk/assembly/templates/${templateId}/edit`]}>
-      <Routes>
-        <Route
-          path="/kiosk/assembly/templates/:templateId/edit"
-          element={<KioskAssemblyTemplateEditorPage />}
-        />
-      </Routes>
-    </MemoryRouter>
+async function authenticate() {
+  fireEvent.change(await screen.findByPlaceholderText('パスワード'), {
+    target: { value: '2520' }
+  });
+  fireEvent.click(screen.getByRole('button', { name: '認証' }));
+  await waitFor(() =>
+    expect(mocks.verifyPassword).toHaveBeenCalledWith({ password: '2520' })
+  );
+}
+
+async function selectMachineName() {
+  fireEvent.click(screen.getByRole('button', { name: '機種名を選ぶ' }));
+  const dialog = await screen.findByRole('dialog', { name: '機種名を選択' });
+  fireEvent.click(
+    await within(dialog).findByRole('button', { name: 'L300KP' })
+  );
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'この機種名を使用' })
   );
 }
 
@@ -112,118 +248,142 @@ describe('KioskAssemblyTemplateEditorPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.listDocuments.mockResolvedValue(documents);
+    mocks.listCapabilityGroups.mockResolvedValue([capabilityGroupFixture()]);
     mocks.listMachineNameCandidates.mockResolvedValue({
       candidates: ['L300KP'],
       hasMore: false
     });
     mocks.getKioskDocumentDetail.mockResolvedValue({
       document: {
-        id: '55555555-5555-4555-8555-555555555555',
+        id: KIOSK_DOCUMENT_ID,
         title: '旧PDF要領書',
         displayTitle: '旧PDF要領書'
       },
       pageUrls: ['/api/legacy-kiosk-1.png']
     });
     mocks.verifyPassword.mockResolvedValue({ success: true });
-    mocks.createTemplate.mockImplementation(async (payload: AssemblyTemplateCreateInput) => {
-      return {
-        id: '33333333-3333-4333-8333-333333333333',
-        version: 1,
-        isActive: true,
-        createdAt: NOW,
-        updatedAt: NOW,
-        procedureDocument: documents.find(
-          (document) => document.id === payload.procedureDocumentId
-        ),
-        procedureSequence: { source: 'template_version', items: [] },
-        areas: [],
-        checkItems: [],
-        ...payload
-      } as unknown as AssemblyTemplateDto;
-    });
+    mocks.createTemplate.mockImplementation(
+      async (payload: AssemblyTemplateCreateInput) =>
+        templateFixture({
+          id: '33333333-3333-4333-8333-333333333333',
+          modelCode: payload.modelCode,
+          procedurePattern: payload.procedurePattern,
+          name: payload.name
+        })
+    );
   });
 
-  it('authenticates once, adds document pages, and derives document order from the step storyboard', async () => {
-    renderEditor();
+  it('starts blank, does not select the first document, and keeps save disabled after only a machine name is selected', async () => {
+    renderRoute('/kiosk/assembly/templates/new');
+    await authenticate();
 
-    expect(await screen.findByText('文書順・工程・マーカーを編集する前にパスワードを入力してください。')).toBeInTheDocument();
-    fireEvent.change(screen.getByPlaceholderText('パスワード'), {
-      target: { value: '2520' }
-    });
-    fireEvent.click(screen.getByRole('button', { name: '認証' }));
-    await waitFor(() => expect(mocks.verifyPassword).toHaveBeenCalledWith({ password: '2520' }));
-
-    expect(await screen.findByRole('heading', { name: '組立テンプレート新規' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: '文書順' })).not.toBeInTheDocument();
-
-    const pageSelect = screen.getByRole('combobox', { name: 'ページ' }) as HTMLSelectElement;
-    expect(screen.getByRole('button', { name: '前頁' })).toBeDisabled();
-    await waitFor(() => expect(screen.getByRole('button', { name: '次頁' })).toBeEnabled());
-    fireEvent.click(screen.getByRole('button', { name: '次頁' }));
-    expect(pageSelect.selectedIndex).toBe(1);
-    fireEvent.click(screen.getByRole('button', { name: '前頁' }));
-    expect(pageSelect.selectedIndex).toBe(0);
-
-    fireEvent.click(screen.getByRole('button', { name: '文書/工程 (1)' }));
-    expect(screen.getByRole('heading', { name: '文書順' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: '組立テンプレート新規' })
+    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '使用文書' })).toBeInTheDocument();
+    expect(screen.queryByText('主手順書')).not.toBeInTheDocument();
+    expect(screen.queryByText('旧形式を取込')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /文書を上へ/ })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
-    fireEvent.click(screen.getByText('基本設定'));
-    fireEvent.click(screen.getByRole('button', { name: '機種名を選ぶ' }));
-    const machineNameDialog = await screen.findByRole('dialog', { name: '機種名を選択' });
-    fireEvent.click(await within(machineNameDialog).findByRole('button', { name: 'L300KP' }));
-    fireEvent.click(within(machineNameDialog).getByRole('button', { name: 'この機種名を使用' }));
-    fireEvent.click(screen.getByRole('button', { name: '文書追加' }));
 
-    const dialog = screen.getByRole('dialog', { name: '文書ライブラリ' });
-    fireEvent.click(within(dialog).getAllByRole('button', { name: '追加' })[0]!);
-    expect(screen.getByText('追加手順書')).toBeInTheDocument();
+    await selectMachineName();
 
-    fireEvent.click(screen.getByRole('button', { name: '2番目の文書を上へ' }));
+    expect(screen.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
+    expect(mocks.createTemplate).not.toHaveBeenCalled();
+  });
+
+  it('moves from an unfinished guide item to its field', async () => {
+    renderRoute('/kiosk/assembly/templates/new');
+    await authenticate();
+    await screen.findByRole('heading', { name: '組立テンプレート新規' });
+
+    fireEvent.click(
+      screen.getByRole('button', { name: '手順パターンを入力してください。' })
+    );
+
+    await waitFor(() =>
+      expect(
+        document.getElementById('assembly-template-procedure-pattern')
+      ).toHaveFocus()
+    );
+  });
+
+  it('posts only after a complete clone is given a machine name and preserves its custom bolt display name', async () => {
+    const source = templateFixture();
+    mocks.getTemplate.mockResolvedValue(source);
+    renderRoute(`/kiosk/assembly/templates/new?sourceTemplateId=${source.id}`);
+    await authenticate();
+    await screen.findByRole('heading', { name: '組立テンプレート新規' });
+
+    expect(screen.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
+    await selectMachineName();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '保存', exact: true })).toBeEnabled()
+    );
     fireEvent.click(screen.getByRole('button', { name: '保存', exact: true }));
 
     await waitFor(() =>
       expect(mocks.createTemplate).toHaveBeenCalledWith(
         expect.objectContaining({
-          procedureDocumentId: documents[0]!.id,
           modelCode: 'L300KP',
+          traceabilityMode: 'REQUIRED',
           accessPassword: '2520',
-          procedureItems: [
-            expect.objectContaining({ assemblyProcedureDocumentId: documents[0]!.id }),
-            expect.objectContaining({ assemblyProcedureDocumentId: documents[1]!.id })
-          ],
-          procedureSteps: expect.arrayContaining([
+          areas: [
             expect.objectContaining({
-              assemblyProcedureDocumentId: documents[1]!.id,
-              viewMode: 'full_page'
+              bolts: [
+                expect.objectContaining({
+                  boltSpec: '保存済み独自表記1',
+                  capabilityGroupId: GROUP_ID
+                })
+              ]
             })
-          ])
+          ]
         })
       )
     );
   });
 
-  it('shows an inactive legacy template read-only without password authentication', async () => {
-    mocks.getTemplate.mockResolvedValue({
-      id: '44444444-4444-4444-8444-444444444444',
-      modelCode: 'LEGACY-001',
-      procedurePattern: '標準',
-      name: '旧版テンプレート',
-      version: 1,
-      isActive: false,
-      traceabilityMode: 'LEGACY',
-      procedureDocumentId: documents[0]!.id,
-      procedureDocument: documents[0],
-      procedureSequence: {
-        source: 'primary_fallback',
-        items: []
-      },
-      areas: [],
-      checkItems: [],
-      createdAt: NOW,
-      updatedAt: NOW
-    } satisfies AssemblyTemplateDto);
+  it('requires confirmation with the affected bolt count before deleting an area', async () => {
+    const source = templateFixture({
+      areas: [
+        areaFixture(),
+        areaFixture('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 2)
+      ]
+    });
+    mocks.getTemplate.mockResolvedValue(source);
+    renderRoute(`/kiosk/assembly/templates/new?sourceTemplateId=${source.id}`);
+    await authenticate();
+    await screen.findByRole('heading', { name: '組立テンプレート新規' });
 
-    renderExistingEditor('44444444-4444-4444-8444-444444444444');
+    fireEvent.click(screen.getByRole('button', { name: '工程1を削除' }));
+    const dialog = screen.getByRole('dialog');
+    expect(
+      within(dialog).getByText(/締付点1件も、すべての表示手順から削除/)
+    ).toBeInTheDocument();
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: '工程を削除' })
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '工程1を削除' })).toBeDisabled()
+    );
+  });
+
+  it('shows an inactive imported legacy template read-only without authentication', async () => {
+    mocks.getTemplate.mockResolvedValue(
+      templateFixture({
+        modelCode: 'LEGACY-001',
+        name: '旧版テンプレート',
+        isActive: false,
+        traceabilityMode: 'LEGACY',
+        procedureSequence: {
+          source: 'primary_fallback',
+          items: []
+        }
+      })
+    );
+
+    renderRoute('/kiosk/assembly/templates/44444444-4444-4444-8444-444444444444/edit');
 
     expect(
       await screen.findByRole('heading', { name: '組立テンプレート編集' })
@@ -235,86 +395,24 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     expect(mocks.verifyPassword).not.toHaveBeenCalled();
   });
 
-  it('requires selecting a machine name again when creating from a template', async () => {
-    const sourceTemplate = {
-      id: '88888888-8888-4888-8888-888888888888',
-      modelCode: 'SOURCE-MACHINE',
-      procedurePattern: '標準',
-      name: '雛形元テンプレート',
-      version: 1,
-      isActive: true,
-      traceabilityMode: 'LEGACY',
-      procedureDocumentId: documents[0]!.id,
-      procedureDocument: documents[0]!,
-      procedureSequence: {
-        source: 'primary_fallback',
-        items: []
-      },
-      areas: [],
-      checkItems: [],
-      createdAt: NOW,
-      updatedAt: NOW
-    } satisfies AssemblyTemplateDto;
-    mocks.getTemplate.mockResolvedValue(sourceTemplate);
-
-    renderCloneEditor(sourceTemplate.id);
-    fireEvent.change(await screen.findByPlaceholderText('パスワード'), {
-      target: { value: '2520' }
-    });
-    fireEvent.click(screen.getByRole('button', { name: '認証' }));
-
-    expect(await screen.findByRole('heading', { name: '組立テンプレート新規' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '文書/工程 (1)' }));
-    fireEvent.click(screen.getByText('基本設定'));
-    expect(screen.getByText('未選択')).toBeInTheDocument();
-    expect(screen.queryByDisplayValue('SOURCE-MACHINE')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
-  });
-
-  it('imports an active legacy sequence and preserves its existing KioskDocument on revision', async () => {
-    const legacyTemplate = {
-      id: '66666666-6666-4666-8666-666666666666',
+  it('preserves an existing KioskDocument when revising an imported legacy sequence', async () => {
+    const legacy = templateFixture({
       modelCode: 'LEGACY-IMPORT',
-      procedurePattern: '標準',
       name: '旧形式テンプレート',
-      version: 1,
-      isActive: true,
-      traceabilityMode: 'LEGACY',
-      procedureDocumentId: documents[0]!.id,
-      procedureDocument: documents[0]!,
       procedureSequence: {
         source: 'legacy_machine_order',
+        stepSource: 'document_expansion',
         items: [
-          {
-            id: 'legacy-primary',
-            sortOrder: 0,
-            label: '主工程',
-            documentType: 'assembly_procedure_document',
-            kioskDocumentId: null,
-            assemblyProcedureDocumentId: documents[0]!.id,
-            document: {
-              id: documents[0]!.id,
-              documentType: 'assembly_procedure_document',
-              title: documents[0]!.name,
-              displayTitle: null,
-              filename: documents[0]!.name,
-              confirmedDocumentNumber: null,
-              confirmedSummaryText: null,
-              pageCount: 2,
-              enabled: true,
-              updatedAt: NOW,
-              imageRelativePath: documents[0]!.imageRelativePath
-            }
-          },
+          procedureItem('legacy-primary', DOCUMENT_ID, '主手順書'),
           {
             id: 'legacy-kiosk',
             sortOrder: 1,
             label: '準備資料',
             documentType: 'kiosk_document',
-            kioskDocumentId: '55555555-5555-4555-8555-555555555555',
+            kioskDocumentId: KIOSK_DOCUMENT_ID,
             assemblyProcedureDocumentId: null,
             document: {
-              id: '55555555-5555-4555-8555-555555555555',
+              id: KIOSK_DOCUMENT_ID,
               documentType: 'kiosk_document',
               title: '旧PDF要領書',
               displayTitle: '旧PDF要領書',
@@ -327,47 +425,39 @@ describe('KioskAssemblyTemplateEditorPage', () => {
               imageRelativePath: null
             }
           }
+        ],
+        steps: [
+          procedureStep('legacy-primary-step'),
+          {
+            ...procedureStep('legacy-kiosk-step', null, KIOSK_DOCUMENT_ID),
+            sortOrder: 1
+          }
         ]
-      },
-      areas: [],
-      checkItems: [],
-      createdAt: NOW,
-      updatedAt: NOW
-    } satisfies AssemblyTemplateDto;
-    mocks.getTemplate.mockResolvedValue(legacyTemplate);
-    mocks.reviseTemplate.mockResolvedValue({
-      ...legacyTemplate,
-      id: '77777777-7777-4777-8777-777777777777',
-      version: 2,
-      procedureSequence: {
-        source: 'template_version',
-        items: legacyTemplate.procedureSequence.items
       }
-    } satisfies AssemblyTemplateDto);
-
-    renderExistingEditor(legacyTemplate.id);
-    fireEvent.change(await screen.findByPlaceholderText('パスワード'), {
-      target: { value: '2520' }
     });
-    fireEvent.click(screen.getByRole('button', { name: '認証' }));
+    mocks.getTemplate.mockResolvedValue(legacy);
+    mocks.reviseTemplate.mockResolvedValue({
+      ...legacy,
+      id: '77777777-7777-4777-8777-777777777777',
+      version: 2
+    });
 
+    renderRoute(`/kiosk/assembly/templates/${legacy.id}/edit`);
+    await authenticate();
     expect(await screen.findByText('旧形式を取込')).toBeInTheDocument();
-    expect(screen.getByText('準備資料')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '新しい版で保存' })).toBeEnabled()
+    );
     fireEvent.click(screen.getByRole('button', { name: '新しい版で保存' }));
 
     await waitFor(() =>
       expect(mocks.reviseTemplate).toHaveBeenCalledWith(
-        legacyTemplate.id,
+        legacy.id,
         expect.objectContaining({
-          accessPassword: '2520',
-          procedureItems: [
-            expect.objectContaining({
-              assemblyProcedureDocumentId: documents[0]!.id
-            }),
-            expect.objectContaining({
-              kioskDocumentId: '55555555-5555-4555-8555-555555555555'
-            })
-          ]
+          procedureItems: expect.arrayContaining([
+            expect.objectContaining({ assemblyProcedureDocumentId: DOCUMENT_ID }),
+            expect.objectContaining({ kioskDocumentId: KIOSK_DOCUMENT_ID })
+          ])
         })
       )
     );

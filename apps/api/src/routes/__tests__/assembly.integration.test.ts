@@ -280,6 +280,128 @@ describe('assembly torque management API', () => {
     await cleanAssemblySeibanSearchFixtures();
   });
 
+  it('REQUIREDテンプレートは適合グループ付きで作成し、不完全な締付条件は一切残さない', async () => {
+    const client = await createTestClientDevice();
+    const headers = {
+      'x-client-key': client.apiKey,
+      'Content-Type': 'application/json'
+    };
+    const document = await uploadPublishedProcedureDocument(
+      app,
+      headers,
+      'ガイド作成契約'
+    );
+    const capabilityGroup = await prisma.torqueWrenchCapabilityGroup.create({
+      data: {
+        name: `Assembly Guided Create ${randomUUID()}`,
+        nominalDiameter: 'M6',
+        boltLengthMm: 30,
+        material: 'SCM435',
+        strengthClass: '10.9'
+      }
+    });
+    const requiredPayload = (modelCode: string) => ({
+      modelCode,
+      procedurePattern: '標準',
+      name: `${modelCode} 標準`,
+      procedureDocumentId: document.id,
+      traceabilityMode: 'REQUIRED',
+      areas: [
+        {
+          sortOrder: 0,
+          processNo: '10',
+          areaCode: 'A1',
+          areaName: '本体組立',
+          unitCode: 'U1',
+          requireManualAdvance: true,
+          bolts: [
+            {
+              sortOrder: 0,
+              markerNo: 1,
+              xRatio: 0.5,
+              yRatio: 0.5,
+              boltSpec: 'M6×30 / SCM435 / 10.9',
+              nominalDiameter: 'Ｍ ６',
+              boltLengthMm: 30,
+              material: 'scm 435',
+              strengthClass: '10.9',
+              capabilityGroupId: capabilityGroup.id,
+              nominalTorque: 10,
+              lowerLimit: 9,
+              upperLimit: 11,
+              unit: 'N·m'
+            }
+          ]
+        }
+      ]
+    });
+
+    const createdResponse = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload: requiredPayload('GUIDED-VALID')
+    });
+    expect(createdResponse.statusCode).toBe(200);
+    const createdId = createdResponse.json().template.id as string;
+    const stored = await prisma.assemblyTemplate.findUniqueOrThrow({
+      where: { id: createdId },
+      include: {
+        procedureDocument: true,
+        areas: { include: { bolts: true } }
+      }
+    });
+    expect(stored).toMatchObject({
+      modelCode: 'GUIDED-VALID',
+      traceabilityMode: 'REQUIRED',
+      procedureDocument: { id: document.id }
+    });
+    expect(stored.areas).toHaveLength(1);
+    expect(stored.areas[0]!.bolts).toHaveLength(1);
+    expect(stored.areas[0]!.bolts[0]).toMatchObject({
+      nominalDiameter: 'M6',
+      material: 'SCM435',
+      strengthClass: '10.9',
+      capabilityGroupId: capabilityGroup.id
+    });
+
+    const withoutBolts = requiredPayload('GUIDED-NO-BOLTS');
+    withoutBolts.areas[0]!.bolts = [];
+    const withoutBoltsResponse = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload: withoutBolts
+    });
+    expect(withoutBoltsResponse.statusCode).toBe(400);
+
+    const withoutCondition = requiredPayload('GUIDED-NO-CONDITION');
+    withoutCondition.areas[0]!.bolts[0]!.nominalDiameter = '';
+    const withoutConditionResponse = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload: withoutCondition
+    });
+    expect(withoutConditionResponse.statusCode).toBe(400);
+
+    const mismatchedGroup = requiredPayload('GUIDED-GROUP-MISMATCH');
+    mismatchedGroup.areas[0]!.bolts[0]!.material = 'SUS304';
+    const mismatchedGroupResponse = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload: mismatchedGroup
+    });
+    expect(mismatchedGroupResponse.statusCode).toBe(400);
+
+    expect(
+      await prisma.assemblyTemplate.count({
+        where: { modelCode: { startsWith: 'GUIDED-', not: 'GUIDED-VALID' } }
+      })
+    ).toBe(0);
+  });
+
   it('同一作業セッションの同時取消は1件だけ成功する', async () => {
     const client = await createTestClientDevice();
     const headers = { 'x-client-key': client.apiKey };
