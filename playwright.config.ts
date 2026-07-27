@@ -21,7 +21,7 @@ export default defineConfig({
     : undefined,
   reporter: 'html',
   use: {
-    baseURL: 'http://localhost:4173',
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:4173',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -74,4 +74,3 @@ export default defineConfig({
     },
   ] : undefined,
 });
-

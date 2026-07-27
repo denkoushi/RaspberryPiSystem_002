@@ -5,7 +5,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   createAssemblyTemplate,
   getKioskDocumentDetail,
-  listCompatibleTorqueWrenchCapabilityGroups,
+  listTorqueWrenchCapabilityGroups,
   reviseAssemblyTemplate,
   verifyAssemblyTemplateAccessPassword
 } from '../../api/client';
@@ -19,6 +19,8 @@ import {
   AssemblyProcedureStoryboard,
   AssemblyProcedureStepInspector,
   AssemblyTemplateDocumentLibraryDialog,
+  AssemblyTemplateBoltInspector,
+  AssemblyTemplateCreationGuide,
   AssemblyTemplateProcedurePane,
   appendAssemblyProcedureDocument,
   AssemblyMachineNamePickerDialog,
@@ -34,9 +36,9 @@ import {
   createFullPageStepDraft,
   createAssemblyBoltAt,
   createAssemblyCheckItemAt,
-  draftAreasToInput,
   draftCheckItemsToInput,
   emptyAssemblyArea,
+  evaluateAssemblyTemplateReadiness,
   filterDraftBoltsForPage,
   filterDraftCheckItemsForPage,
   findMarkerWithoutVisibleProcedureStep,
@@ -51,12 +53,15 @@ import {
   loadAssemblyTemplateEditorData,
   pageRefKey,
   orderProcedureItemsByFirstStep,
+  orderProcedureItemsForDisplay,
   parseAssemblyTemplateNewSearch,
   procedureStepDraftToInput,
   projectAssemblyProcedureMarkersToCrop,
   readAssemblyApiErrorMessage,
   renumberDraftCheckItems,
   resolveAssemblyDocumentStatus,
+  isAssemblyCapabilityGroupCompatible,
+  serializeAssemblyTemplateDraftAreas,
   templateToProcedureDraftItems,
   templateToProcedureStepDrafts,
   templateToDraftAreas,
@@ -79,7 +84,9 @@ import type {
   AssemblyDraftCheckItem,
   AssemblyEditorPageOption,
   AssemblyProcedureStepDraft,
-  AssemblyTemplateProcedureDraftItem
+  AssemblyTemplateProcedureDraftItem,
+  AssemblyTemplateReadinessIssue,
+  AssemblyTemplateReadinessStage
 } from '../../features/assembly';
 import type { AssemblyProcedureDocumentSummaryDto, AssemblyTemplateDto } from '../../features/assembly/types';
 
@@ -90,6 +97,12 @@ function selectFirstAreaId(areas: AssemblyDraftArea[]): string {
 type PendingMarkerDelete =
   | { kind: 'bolt'; id: string; markerNo: number; affectedStepCount: number }
   | { kind: 'check'; id: string; markerNo: number; affectedStepCount: number };
+
+type PendingAreaDelete = {
+  id: string;
+  label: string;
+  boltCount: number;
+};
 
 export function KioskAssemblyTemplateEditorPage() {
   const navigate = useNavigate();
@@ -117,9 +130,9 @@ export function KioskAssemblyTemplateEditorPage() {
   const [accessPassword, setAccessPassword] = useState<string | null>(null);
   const [passwordInput, setPasswordInput] = useState('');
   const [baselineSnapshot, setBaselineSnapshot] = useState<string | null>(null);
-  const [templateName, setTemplateName] = useState('組立トルクテンプレート');
+  const [templateName, setTemplateName] = useState('');
   const [modelCode, setModelCode] = useState('');
-  const [procedurePattern, setProcedurePattern] = useState('手順7');
+  const [procedurePattern, setProcedurePattern] = useState('');
   const [areas, setAreas] = useState<AssemblyDraftArea[]>(() => [emptyAssemblyArea()]);
   const [checkItems, setCheckItems] = useState<AssemblyDraftCheckItem[]>([]);
   const [selectedAreaId, setSelectedAreaId] = useState('');
@@ -134,11 +147,17 @@ export function KioskAssemblyTemplateEditorPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [pendingMarkerDelete, setPendingMarkerDelete] =
     useState<PendingMarkerDelete | null>(null);
+  const [pendingAreaDelete, setPendingAreaDelete] =
+    useState<PendingAreaDelete | null>(null);
   const [machineNamePickerOpen, setMachineNamePickerOpen] = useState(false);
   const [inheritCondition, setInheritCondition] = useState(true);
   const [rangeStart, setRangeStart] = useState(1);
   const [rangeEnd, setRangeEnd] = useState(35);
   const [capabilityGroups, setCapabilityGroups] = useState<TorqueWrenchCapabilityGroupApi[]>([]);
+  const [capabilityCatalogStatus, setCapabilityCatalogStatus] =
+    useState<'loading' | 'ready' | 'error'>('loading');
+  const [capabilityCatalogReload, setCapabilityCatalogReload] = useState(0);
+  const [guideExpanded, setGuideExpanded] = useState(true);
   const canvasZoom = useImageCanvasZoom();
   const fitCanvasToView = canvasZoom.fitToView;
 
@@ -169,7 +188,7 @@ export function KioskAssemblyTemplateEditorPage() {
         procedurePattern,
         procedureItems: assemblyTemplateProcedureDraftToInput(procedureItems),
         procedureSteps: procedureStepDraftToInput(procedureSteps),
-        areas: draftAreasToInput(areas),
+        areas,
         checkItems: draftCheckItemsToInput(checkItems)
       }),
     [areas, checkItems, modelCode, procedureItems, procedurePattern, procedureSteps, templateName]
@@ -192,27 +211,23 @@ export function KioskAssemblyTemplateEditorPage() {
   }, [baselineSnapshot, draftSnapshot, loading]);
 
   useEffect(() => {
-    if (!selectedBolt?.nominalDiameter) {
-      setCapabilityGroups([]);
-      return;
-    }
     let cancelled = false;
-    void listCompatibleTorqueWrenchCapabilityGroups({
-      nominalDiameter: selectedBolt.nominalDiameter,
-      boltLengthMm: selectedBolt.boltLengthMm,
-      material: selectedBolt.material,
-      strengthClass: selectedBolt.strengthClass
-    })
+    setCapabilityCatalogStatus('loading');
+    void listTorqueWrenchCapabilityGroups(false)
       .then((groups) => {
-        if (!cancelled) setCapabilityGroups(groups);
+        if (cancelled) return;
+        setCapabilityGroups(groups);
+        setCapabilityCatalogStatus('ready');
       })
       .catch(() => {
-        if (!cancelled) setCapabilityGroups([]);
+        if (cancelled) return;
+        setCapabilityGroups([]);
+        setCapabilityCatalogStatus('error');
       });
     return () => {
       cancelled = true;
     };
-  }, [selectedBolt?.boltLengthMm, selectedBolt?.material, selectedBolt?.nominalDiameter, selectedBolt?.strengthClass]);
+  }, [capabilityCatalogReload]);
 
   useEffect(() => {
     fitCanvasToView();
@@ -246,14 +261,16 @@ export function KioskAssemblyTemplateEditorPage() {
           const nextProcedureItems = templateToProcedureDraftItems(template);
           dispatchProcedureItems({ type: 'replace', items: nextProcedureItems });
           setLeftPaneTab(
-            typeof window !== 'undefined' && window.innerWidth >= 1366
+            !templateId
+              ? 'documents'
+              : typeof window !== 'undefined' && window.innerWidth >= 1366
               ? 'steps'
               : 'documents'
           );
           const nextProcedureSteps = templateToProcedureStepDrafts(template);
           dispatchProcedureSteps({ type: 'replace', steps: nextProcedureSteps });
           setSelectedStepId(nextProcedureSteps[0]?.localId ?? null);
-          setProcedurePaneOpen(nextProcedureItems.length > 1);
+          setProcedurePaneOpen(!templateId || nextProcedureItems.length > 1);
           const nextAreas = templateToDraftAreas(template);
           const nextCheckItems = templateToDraftCheckItems(template);
           setAreas(nextAreas.length > 0 ? nextAreas : [emptyAssemblyArea()]);
@@ -272,13 +289,16 @@ export function KioskAssemblyTemplateEditorPage() {
           }
         } else {
           setLoadedTemplate(null);
-          const initialDocumentId =
-            query.procedureDocumentId ||
-            nextDocuments.find(
-              (document) =>
-                document.isActive && resolveAssemblyDocumentStatus(document) === 'published'
-            )?.id ||
-            '';
+          setTemplateName('');
+          setModelCode('');
+          setProcedurePattern('');
+          const initialArea = emptyAssemblyArea();
+          setAreas([initialArea]);
+          setCheckItems([]);
+          setSelectedAreaId(initialArea.id);
+          setSelectedBoltId(null);
+          setSelectedCheckItemId(null);
+          const initialDocumentId = query.procedureDocumentId || '';
           const initialDocument = nextDocuments.find((document) => document.id === initialDocumentId);
           dispatchProcedureItems({
             type: 'replace',
@@ -288,7 +308,9 @@ export function KioskAssemblyTemplateEditorPage() {
           });
           dispatchProcedureSteps({ type: 'replace', steps: [] });
           setSelectedStepId(null);
-          setProcedurePaneOpen(false);
+          setProcedurePaneOpen(true);
+          setLeftPaneTab('documents');
+          setGuideExpanded(true);
         }
       })
       .catch((e: unknown) => {
@@ -398,6 +420,66 @@ export function KioskAssemblyTemplateEditorPage() {
             }
       ),
     [areas, checkItems, selectedDocumentId]
+  );
+  const capabilityCatalog = useMemo(
+    () => ({
+      status: capabilityCatalogStatus,
+      groups: capabilityGroups
+    }),
+    [capabilityCatalogStatus, capabilityGroups]
+  );
+  const readiness = useMemo(
+    () =>
+      evaluateAssemblyTemplateReadiness({
+        modelCode,
+        procedurePattern,
+        templateName,
+        procedureItems,
+        procedureSteps,
+        pageOptions,
+        areas,
+        checkItems,
+        documents,
+        capabilityCatalog
+      }),
+    [
+      areas,
+      capabilityCatalog,
+      checkItems,
+      documents,
+      modelCode,
+      pageOptions,
+      procedureItems,
+      procedurePattern,
+      procedureSteps,
+      templateName
+    ]
+  );
+  const displayProcedureItems = useMemo(
+    () => orderProcedureItemsForDisplay(procedureItems, procedureSteps),
+    [procedureItems, procedureSteps]
+  );
+  const incompleteAreaIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const issue of readiness.issues) {
+      if (issue.target.kind === 'area' && issue.target.id) ids.add(issue.target.id);
+      if (issue.target.kind === 'bolt' && issue.target.id) {
+        const owner = areas.find((area) =>
+          area.bolts.some((bolt) => bolt.id === issue.target.id)
+        );
+        if (owner) ids.add(owner.id);
+      }
+    }
+    return ids;
+  }, [areas, readiness.issues]);
+  const compatibleCapabilityGroups = useMemo(
+    () =>
+      selectedBolt
+        ? capabilityGroups.filter((group) =>
+            isAssemblyCapabilityGroupCompatible(group, selectedBolt)
+          )
+        : [],
+    [capabilityGroups, selectedBolt]
   );
 
   const cropVisibleBolts = useMemo(
@@ -559,6 +641,48 @@ export function KioskAssemblyTemplateEditorPage() {
     setSelectedCheckItemId(null);
   };
 
+  const moveArea = (areaId: string, delta: -1 | 1) => {
+    setAreas((current) => {
+      const index = current.findIndex((area) => area.id === areaId);
+      const target = index + delta;
+      if (index < 0 || target < 0 || target >= current.length) return current;
+      const next = [...current];
+      [next[index], next[target]] = [next[target]!, next[index]!];
+      return next.map((area, sortOrder) => ({ ...area, sortOrder }));
+    });
+  };
+
+  const requestDeleteArea = (areaId: string) => {
+    if (areas.length <= 1) return;
+    const area = areas.find((candidate) => candidate.id === areaId);
+    if (!area) return;
+    setPendingAreaDelete({
+      id: area.id,
+      label:
+        area.areaName.trim() ||
+        [area.processNo.trim(), area.areaCode.trim()].filter(Boolean).join('-') ||
+        '未入力の工程',
+      boltCount: area.bolts.length
+    });
+  };
+
+  const confirmDeleteArea = () => {
+    if (!pendingAreaDelete || areas.length <= 1) return;
+    const removedIndex = areas.findIndex((area) => area.id === pendingAreaDelete.id);
+    const nextAreas = areas
+      .filter((area) => area.id !== pendingAreaDelete.id)
+      .map((area, sortOrder) => ({ ...area, sortOrder }));
+    setAreas(nextAreas);
+    const nextSelection =
+      nextAreas[Math.min(Math.max(removedIndex, 0), nextAreas.length - 1)] ??
+      nextAreas[0];
+    setSelectedAreaId(nextSelection?.id ?? '');
+    setSelectedBoltId(null);
+    setSelectedCheckItemId(null);
+    setPendingAreaDelete(null);
+    setMessage(null);
+  };
+
   const requestDeleteSelectedBolt = () => {
     if (!selectedBolt) return;
     setPendingMarkerDelete({
@@ -705,11 +829,8 @@ export function KioskAssemblyTemplateEditorPage() {
     setMessage(null);
   };
 
-  const moveProcedureItem = (index: number, delta: -1 | 1) => {
-    dispatchProcedureItems({ type: 'move', index, delta });
-  };
-
-  const removeProcedureItem = (index: number) => {
+  const removeProcedureItem = (localId: string) => {
+    const index = procedureItems.findIndex((candidate) => candidate.localId === localId);
     const item = procedureItems[index];
     if (
       item &&
@@ -825,8 +946,132 @@ export function KioskAssemblyTemplateEditorPage() {
     setMessage(null);
   };
 
+  const focusElementById = (id: string) => {
+    window.setTimeout(() => {
+      const element = document.getElementById(id);
+      element?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+      if (element instanceof HTMLElement) element.focus();
+    }, 0);
+  };
+
+  const focusReadinessIssue = (issue: AssemblyTemplateReadinessIssue) => {
+    setGuideExpanded(true);
+    if (issue.target.kind === 'basic') {
+      setProcedurePaneOpen(true);
+      setLeftPaneTab('documents');
+      const idByField: Record<string, string> = {
+        modelCode: 'assembly-template-model-code',
+        procedurePattern: 'assembly-template-procedure-pattern',
+        templateName: 'assembly-template-name'
+      };
+      focusElementById(
+        idByField[issue.target.field ?? ''] ?? 'assembly-template-basic-settings'
+      );
+      return;
+    }
+    if (issue.target.kind === 'document') {
+      setProcedurePaneOpen(true);
+      setLeftPaneTab('documents');
+      const item = procedureItems.find((candidate) => candidate.localId === issue.target.id);
+      if (item) focusProcedureItem(item);
+      if (issue.target.id) focusElementById(`assembly-document-${issue.target.id}`);
+      return;
+    }
+    if (issue.target.kind === 'step') {
+      setProcedurePaneOpen(true);
+      setLeftPaneTab('steps');
+      const step = procedureSteps.find((candidate) => candidate.localId === issue.target.id);
+      if (step) focusProcedureStep(step);
+      return;
+    }
+    if (issue.target.kind === 'area') {
+      setProcedurePaneOpen(true);
+      setLeftPaneTab('documents');
+      if (issue.target.id) {
+        setSelectedAreaId(issue.target.id);
+        setSelectedBoltId(null);
+        focusElementById(
+          issue.target.field
+            ? `assembly-area-${issue.target.id}-${issue.target.field}`
+            : `assembly-area-${issue.target.id}`
+        );
+      }
+      return;
+    }
+    if (issue.target.kind === 'bolt' && issue.target.id) {
+      const area = areas.find((candidate) =>
+        candidate.bolts.some((bolt) => bolt.id === issue.target.id)
+      );
+      const bolt = area?.bolts.find((candidate) => candidate.id === issue.target.id);
+      if (!area || !bolt) return;
+      setSelectedAreaId(area.id);
+      setSelectedBoltId(bolt.id);
+      setSelectedCheckItemId(null);
+      setMarkerMode('bolt');
+      setInspectorTab('markers');
+      const page = pageOptions.find(
+        (candidate) =>
+          candidate.source ===
+            (bolt.kioskDocumentId ? 'kiosk_document' : 'assembly_procedure_document') &&
+          candidate.documentId ===
+            (bolt.kioskDocumentId ?? bolt.assemblyProcedureDocumentId ?? selectedDocumentId) &&
+          candidate.pageIndex === (bolt.pageIndex ?? 0)
+      );
+      if (page) setSelectedPageKey(page.key);
+      focusElementById(
+        issue.target.field
+          ? `assembly-bolt-${bolt.id}-${issue.target.field}`
+          : `assembly-bolt-${bolt.id}-nominalDiameter`
+      );
+    }
+  };
+
+  const handleGuideStageClick = (stage: AssemblyTemplateReadinessStage) => {
+    if (stage === 'review') {
+      setGuideExpanded(true);
+      return;
+    }
+    const issue = readiness.issues.find((candidate) => candidate.stage === stage);
+    if (issue) {
+      focusReadinessIssue(issue);
+      return;
+    }
+    if (stage === 'basic' || stage === 'areas') {
+      setProcedurePaneOpen(true);
+      setLeftPaneTab('documents');
+      focusElementById(
+        stage === 'basic'
+          ? 'assembly-template-basic-settings'
+          : selectedArea
+            ? `assembly-area-${selectedArea.id}`
+            : 'assembly-procedure-pane'
+      );
+      return;
+    }
+    setProcedurePaneOpen(true);
+    setLeftPaneTab('steps');
+  };
+
   const saveTemplate = async () => {
     if (readOnly) return;
+    const currentReadiness = evaluateAssemblyTemplateReadiness({
+      modelCode,
+      procedurePattern,
+      templateName,
+      procedureItems,
+      procedureSteps,
+      pageOptions,
+      areas,
+      checkItems,
+      documents,
+      capabilityCatalog
+    });
+    if (!currentReadiness.isReady) {
+      setMessage('未完了項目を入力してから保存してください。');
+      const firstIssue = currentReadiness.issues[0];
+      if (firstIssue) focusReadinessIssue(firstIssue);
+      return;
+    }
     setBusy(true);
     setMessage(null);
     try {
@@ -867,7 +1112,7 @@ export function KioskAssemblyTemplateEditorPage() {
         modelCode,
         procedurePattern,
         procedureDocumentId: primaryDocumentId,
-        areas: draftAreasToInput(areas),
+        areas: serializeAssemblyTemplateDraftAreas(areas),
         checkItems: draftCheckItemsToInput(checkItems),
         traceabilityMode: 'REQUIRED' as const,
         procedureItems: assemblyTemplateProcedureDraftToInput(orderedProcedureItems),
@@ -903,7 +1148,9 @@ export function KioskAssemblyTemplateEditorPage() {
         <section className="rounded border border-white/15 bg-slate-900/75 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h1 className="text-2xl font-bold">組立テンプレート編集</h1>
+              <h1 className="text-2xl font-bold">
+                {templateId ? '組立テンプレート編集' : '組立テンプレート新規'}
+              </h1>
               <p className="mt-1 text-sm font-semibold text-white/65">
                 文書順・工程・マーカーを編集する前にパスワードを入力してください。
               </p>
@@ -961,7 +1208,8 @@ export function KioskAssemblyTemplateEditorPage() {
               v{loadedTemplate.version} {loadedTemplate.isActive ? '有効' : '旧版'}
             </span>
           ) : null}
-          {loadedTemplate?.procedureSequence?.source !== 'template_version' ? (
+          {loadedTemplate &&
+          loadedTemplate.procedureSequence?.source !== 'template_version' ? (
             <span className="rounded border border-amber-300/30 bg-amber-500/10 px-2 py-1 text-xs font-bold text-amber-100">
               旧形式を取込
             </span>
@@ -1010,13 +1258,25 @@ export function KioskAssemblyTemplateEditorPage() {
             type="button"
             variant="primary"
             className="min-h-10 text-[0.95rem]"
-            disabled={busy || readOnly || (machineNameSelectionRequired && !modelCode.trim())}
+            disabled={busy || readOnly || !readiness.isReady}
             onClick={() => void saveTemplate()}
           >
             {busy ? '保存中…' : templateId ? '新しい版で保存' : '保存'}
           </Button>
         </div>
       </header>
+
+      <AssemblyTemplateCreationGuide
+        readiness={readiness}
+        expanded={guideExpanded}
+        readOnly={readOnly}
+        onExpandedChange={setGuideExpanded}
+        onStageClick={handleGuideStageClick}
+        onIssueClick={focusReadinessIssue}
+        onRetryCapabilityCatalog={() =>
+          setCapabilityCatalogReload((current) => current + 1)
+        }
+      />
 
       {message ? <p className="rounded border border-white/15 bg-slate-900/80 px-3 py-2 text-sm font-semibold text-amber-200">{message}</p> : null}
 
@@ -1031,7 +1291,7 @@ export function KioskAssemblyTemplateEditorPage() {
         )}
       >
         {procedurePaneOpen ? (
-          <aside className="flex min-h-0 flex-col overflow-hidden rounded border border-white/15 bg-slate-900/70">
+          <aside className="flex min-h-[32rem] flex-col overflow-hidden rounded border border-white/15 bg-slate-900/70 xl:min-h-0">
             <div className="grid shrink-0 grid-cols-2 gap-1 border-b border-white/10 p-1">
               <Button
                 type="button"
@@ -1075,10 +1335,11 @@ export function KioskAssemblyTemplateEditorPage() {
             ) : (
               <div className="min-h-0 flex-1 overflow-auto">
                 <AssemblyTemplateProcedurePane
-                  items={procedureItems}
+                  items={displayProcedureItems}
                   selectedPageKey={selectedPageKey}
                   selectedDocumentId={selectedDocumentId}
                   areas={areas}
+                  incompleteAreaIds={incompleteAreaIds}
                   selectedArea={selectedArea}
                   selectedAreaId={selectedAreaId}
                   templateName={templateName}
@@ -1089,7 +1350,6 @@ export function KioskAssemblyTemplateEditorPage() {
                   readOnly={readOnly}
                   onOpenDocumentLibrary={() => setDocumentLibraryOpen(true)}
                   onFocusItem={focusProcedureItem}
-                  onMoveItem={moveProcedureItem}
                   onRemoveItem={removeProcedureItem}
                   onLabelChange={(localId, label) =>
                     dispatchProcedureItems({ type: 'set_label', localId, label })
@@ -1104,6 +1364,8 @@ export function KioskAssemblyTemplateEditorPage() {
                     setSelectedCheckItemId(null);
                   }}
                   onAddArea={addArea}
+                  onMoveArea={moveArea}
+                  onDeleteArea={requestDeleteArea}
                   onAreaPatch={setAreaPatch}
                 />
               </div>
@@ -1343,7 +1605,7 @@ export function KioskAssemblyTemplateEditorPage() {
         {settingsPaneOpen ? (
         <section
           data-testid="assembly-editor-settings-pane"
-          className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto rounded border border-white/15 bg-slate-900/70 p-3"
+          className="min-h-[32rem] min-w-0 overflow-x-hidden overflow-y-auto rounded border border-white/15 bg-slate-900/70 p-3 xl:min-h-0"
         >
           <div className="mb-3 grid grid-cols-2 gap-1 border-b border-white/10 pb-2">
             <Button
@@ -1375,147 +1637,24 @@ export function KioskAssemblyTemplateEditorPage() {
               onPatch={(patch) => patchProcedureStep(selectedStep.localId, patch)}
             />
           ) : markerMode === 'bolt' ? (
-            <>
-              <div className="flex min-w-0 items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <h2 className="text-[1.02rem] font-bold">締付条件</h2>
-                  {selectedBolt ? (
-                    <>
-                      <div className="mt-0.5 truncate text-sm font-bold">丸数字 {selectedBolt.markerNo}</div>
-                      <div className="mt-0.5 truncate text-[0.68rem] text-white/55">
-                        ページ: {selectedPage ? pageRefKey(currentPageRef!) : '未設定'}
-                      </div>
-                    </>
-                  ) : null}
-                </div>
-                {selectedBolt ? (
-                  <Button type="button" variant="danger" className="min-h-8 shrink-0 !px-2 !py-1 text-xs" disabled={busy || readOnly} onClick={requestDeleteSelectedBolt}>
-                    削除
-                  </Button>
-                ) : null}
-              </div>
-              {selectedBolt ? (
-                <div className="mt-2 grid min-w-0 gap-2">
-                  <div className="flex min-h-8 min-w-0 items-center gap-1 rounded border border-white/10 bg-slate-950/60 px-1.5 py-1">
-                    <span className="shrink-0 text-[0.68rem] font-semibold text-white/70">
-                      {imageMarkerHasCalloutTip(selectedBolt) ? '矢視 あり' : '矢視 なし'}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="ghostOnDark"
-                      className="min-h-7 shrink-0 !px-1.5 !py-0.5 text-[0.68rem]"
-                      disabled={busy || readOnly || !imageMarkerHasCalloutTip(selectedBolt)}
-                      onClick={() => setBoltPatch(selectedBolt.id, clearImageMarkerCalloutTip())}
-                    >
-                      矢視削除
-                    </Button>
-                    <ImageMarkerPositionNudge
-                      position={selectedBolt}
-                      disabled={busy || readOnly}
-                      groupLabel="締結マーカーの位置調整"
-                      className="min-w-0 flex-1 [&>button]:min-w-0 [&>button]:flex-1 [&>button]:px-1"
-                      onChange={(patch) => setBoltPatch(selectedBolt.id, patch)}
-                    />
-                  </div>
-                  <label className="flex min-h-8 min-w-0 items-center gap-2 rounded border border-white/10 bg-slate-950/60 px-2 py-1 text-[0.7rem] font-semibold text-white/80">
-                    <input
-                      type="checkbox"
-                      checked={inheritCondition}
-                      disabled={busy || readOnly}
-                      onChange={(event) => setInheritCondition(event.target.checked)}
-                    />
-                    次の丸数字へこの条件を引き継ぐ
-                  </label>
-                  <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-1 rounded border border-cyan-300/20 bg-cyan-950/20 p-1.5">
-                    <label className="grid min-w-0 gap-0.5 text-[0.65rem] font-semibold text-white/70">
-                      反映開始
-                      <Input className="h-8 min-w-0 !px-2 !py-1 text-sm" type="number" min={1} value={rangeStart} onChange={(e) => setRangeStart(Number(e.target.value))} />
-                    </label>
-                    <label className="grid min-w-0 gap-0.5 text-[0.65rem] font-semibold text-white/70">
-                      反映終了
-                      <Input className="h-8 min-w-0 !px-2 !py-1 text-sm" type="number" min={1} value={rangeEnd} onChange={(e) => setRangeEnd(Number(e.target.value))} />
-                    </label>
-                    <Button type="button" variant="ghostOnDark" className="min-h-8 whitespace-nowrap !px-2 !py-1 text-[0.68rem]" disabled={busy || readOnly} onClick={applySelectedConditionToRange}>
-                      条件反映
-                    </Button>
-                  </div>
-                  <div data-testid="assembly-editor-bolt-fields" className="grid min-w-0 gap-1.5">
-                    <div className="grid min-w-0 grid-cols-[minmax(0,0.75fr)_minmax(0,0.75fr)_minmax(0,1.5fr)] gap-1.5">
-                      <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold text-white/70">
-                        呼び径
-                        <Input className="h-8 min-w-0 !px-2 !py-1 text-sm" value={selectedBolt.nominalDiameter ?? ''} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { nominalDiameter: e.target.value, capabilityGroupId: null })} />
-                      </label>
-                      <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold text-white/70">
-                        長さ (mm)
-                        <Input className="h-8 min-w-0 !px-2 !py-1 text-sm" type="number" min={0} value={selectedBolt.boltLengthMm ?? ''} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { boltLengthMm: Number(e.target.value), capabilityGroupId: null })} />
-                      </label>
-                      <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold text-white/70">
-                        材質
-                        <Input className="h-8 min-w-0 !px-2 !py-1 text-sm" value={selectedBolt.material ?? ''} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { material: e.target.value, capabilityGroupId: null })} />
-                      </label>
-                    </div>
-                    <div className="grid min-w-0 grid-cols-2 gap-1.5">
-                      <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold text-white/70">
-                        強度区分
-                        <Input className="h-8 min-w-0 !px-2 !py-1 text-sm" value={selectedBolt.strengthClass ?? ''} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { strengthClass: e.target.value, capabilityGroupId: null })} />
-                      </label>
-                      <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold text-white/70">
-                        表示用ボルト仕様
-                        <Input className="h-8 min-w-0 !px-2 !py-1 text-sm" value={selectedBolt.boltSpec} disabled={busy || readOnly} onChange={(e) => setBoltPatch(selectedBolt.id, { boltSpec: e.target.value })} />
-                      </label>
-                    </div>
-                    <div className="grid min-w-0 grid-cols-4 gap-1.5">
-                      {([
-                        ['lowerLimit', '下限'],
-                        ['nominalTorque', '規定'],
-                        ['upperLimit', '上限']
-                      ] as const).map(([key, label]) => (
-                        <label key={key} className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold text-white/70">
-                          {label}
-                          <Input
-                            className="h-8 min-w-0 !px-2 !py-1 text-sm"
-                            type="number"
-                            value={selectedBolt[key]}
-                            disabled={busy || readOnly}
-                            onChange={(e) => setBoltPatch(selectedBolt.id, { [key]: Number(e.target.value) })}
-                          />
-                        </label>
-                      ))}
-                      <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold text-white/70">
-                        単位
-                        <select
-                          className="h-8 min-w-0 w-full rounded border border-white/10 bg-slate-950 px-1.5 text-xs text-white"
-                          value={selectedBolt.unit}
-                          disabled={busy || readOnly}
-                          onChange={(e) => setBoltPatch(selectedBolt.id, { unit: e.target.value })}
-                        >
-                          <option value="N·m">N·m</option>
-                          <option value="kgf·cm">kgf·cm</option>
-                        </select>
-                      </label>
-                    </div>
-                    <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold text-white/70">
-                      適合トルクレンチグループ
-                      <select
-                        className="h-8 min-w-0 w-full rounded border border-white/10 bg-slate-950 px-2 text-sm text-white"
-                        value={selectedBolt.capabilityGroupId ?? ''}
-                        disabled={busy || readOnly}
-                        onChange={(e) => setBoltPatch(selectedBolt.id, { capabilityGroupId: e.target.value || null })}
-                      >
-                        <option value="">締結条件を入力して選択</option>
-                        {capabilityGroups.map((group) => (
-                          <option key={group.id} value={group.id}>{group.name}（{group.models.length}型番）</option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                </div>
-              ) : (
-                <div className="mt-3 rounded border border-dashed border-white/20 p-3 text-sm text-white/60">
-                  手順書上の締結マーカーを選択
-                </div>
-              )}
-            </>
+            <AssemblyTemplateBoltInspector
+              bolt={selectedBolt}
+              pageLabel={
+                selectedPage && currentPageRef ? pageRefKey(currentPageRef) : '未設定'
+              }
+              compatibleGroups={compatibleCapabilityGroups}
+              busy={busy}
+              readOnly={readOnly}
+              inheritCondition={inheritCondition}
+              rangeStart={rangeStart}
+              rangeEnd={rangeEnd}
+              onPatch={setBoltPatch}
+              onDelete={requestDeleteSelectedBolt}
+              onInheritConditionChange={setInheritCondition}
+              onRangeStartChange={setRangeStart}
+              onRangeEndChange={setRangeEnd}
+              onApplyRange={applySelectedConditionToRange}
+            />
           ) : (
             <>
               <div className="flex min-w-0 items-start justify-between gap-2">
@@ -1591,6 +1730,22 @@ export function KioskAssemblyTemplateEditorPage() {
         onSearchChange={setDocumentSearch}
         onAdd={addProcedureDocument}
         onClose={() => setDocumentLibraryOpen(false)}
+      />
+      <ConfirmDialog
+        isOpen={pendingAreaDelete != null}
+        title={`工程「${pendingAreaDelete?.label ?? ''}」を削除`}
+        description={
+          pendingAreaDelete
+            ? pendingAreaDelete.boltCount > 0
+              ? `この工程に含まれる締付点${pendingAreaDelete.boltCount}件も、すべての表示手順から削除されます。`
+              : 'この工程を削除します。'
+            : undefined
+        }
+        confirmLabel="工程を削除"
+        cancelLabel="キャンセル"
+        tone="danger"
+        onConfirm={confirmDeleteArea}
+        onCancel={() => setPendingAreaDelete(null)}
       />
       <ConfirmDialog
         isOpen={pendingMarkerDelete != null}

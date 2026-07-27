@@ -163,7 +163,7 @@ test.describe('自主検査一覧の表レイアウト', () => {
       await expect(page.getByText(/仕掛中（.*全端末共通/)).toHaveCount(0);
       await expect(page.getByRole('button', { name: '移動票スキャン' })).toBeVisible();
       await expect(page.getByRole('button', { name: '氏名スキャン' })).toBeVisible();
-      await expect(page.getByRole('button', { name: '記録承認' })).toBeVisible();
+      await expect(page.getByRole('button', { name: '記録確認・承認' })).toBeVisible();
       await expect(page.getByRole('combobox', { name: '製造order / 製番 / 品番' })).toBeVisible();
       await expect(page.getByRole('combobox', { name: '資源CD' })).toBeVisible();
 

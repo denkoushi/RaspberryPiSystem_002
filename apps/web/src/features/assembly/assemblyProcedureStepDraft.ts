@@ -284,6 +284,20 @@ export function orderProcedureItemsByFirstStep(
   });
 }
 
+export function orderProcedureItemsForDisplay(
+  items: AssemblyTemplateProcedureDraftItem[],
+  steps: AssemblyProcedureStepDraft[]
+): Array<{ item: AssemblyTemplateProcedureDraftItem; used: boolean }> {
+  const ordered = orderProcedureItemsByFirstStep(items, steps);
+  const usedIds = new Set(ordered.map((item) => item.localId));
+  return [
+    ...ordered.map((item) => ({ item, used: true })),
+    ...items
+      .filter((item) => !usedIds.has(item.localId))
+      .map((item) => ({ item, used: false }))
+  ];
+}
+
 export function getPrimaryAssemblyDocumentIdFromSteps(
   steps: AssemblyProcedureStepDraft[]
 ): string | null {

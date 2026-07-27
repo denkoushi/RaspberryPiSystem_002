@@ -14,6 +14,13 @@ export type TorqueWrenchStorageLocation = (typeof TORQUE_WRENCH_STORAGE_LOCATION
 
 export type AssemblyTorqueTraceabilityMode = 'LEGACY' | 'REQUIRED';
 
+/**
+ * 締結条件の照合に使う文字列をAPI/Webで同じ規則へ正規化する。
+ */
+export function normalizeFastenerText(value: string): string {
+  return value.normalize('NFKC').trim().replace(/\s+/g, '').toUpperCase();
+}
+
 export const TORQUE_WRENCH_REJECTION_REASONS = [
   'UNKNOWN_SERIAL_NUMBER',
   'WRONG_PHYSICAL_WRENCH',
