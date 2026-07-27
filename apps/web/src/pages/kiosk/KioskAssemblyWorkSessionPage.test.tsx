@@ -551,8 +551,26 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     });
 
     expect(await screen.findByText('4.24')).toBeInTheDocument();
+    expect(screen.getByText('4.24')).toHaveClass('text-2xl', 'font-bold', 'tabular-nums');
+    expect(screen.getByText('OK')).toHaveClass('text-2xl', 'font-bold', 'tabular-nums');
     expect(screen.getByText('丸数字 1 / TW-A103')).toBeInTheDocument();
     expect(mockGetAssemblyWorkSession).toHaveBeenCalledTimes(2);
+  });
+
+  it('enables and highlights manual torque recording only for a valid numeric value', async () => {
+    renderPage();
+    await screen.findByRole('heading', { name: '組立作業' });
+
+    const recordButton = screen.getByRole('button', { name: 'トルク記録' });
+    expect(recordButton).toBeDisabled();
+    expect(recordButton).not.toHaveClass('bg-emerald-500');
+
+    fireEvent.change(screen.getByPlaceholderText('トルク値'), { target: { value: 'invalid' } });
+    expect(recordButton).toBeDisabled();
+
+    fireEvent.change(screen.getByPlaceholderText('トルク値'), { target: { value: '10.5' } });
+    expect(recordButton).toBeEnabled();
+    expect(recordButton).toHaveClass('bg-emerald-500');
   });
 
   it('reports a failed explicit acquire request as loopback communication loss', async () => {
@@ -644,12 +662,13 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
 
     expect(await screen.findByText('Bluetooth接続待ち')).toBeInTheDocument();
     const statusRegion = screen.getByTestId('assembly-work-session-status');
-    expect(statusRegion).toHaveClass('h-14', 'shrink-0', 'overflow-y-auto');
+    expect(statusRegion).not.toHaveClass('h-14', 'overflow-y-auto');
+    expect(statusRegion.closest('header')).not.toBeNull();
     expect(screen.getByText('接続権を取得しました。Bluetooth接続を待っています。')).toBeInTheDocument();
     await waitFor(() => expect(screen.getAllByText('入力待機中').length).toBeGreaterThanOrEqual(1), { timeout: 3500 });
     expect(screen.queryByText('接続権を取得しました。Bluetooth接続を待っています。')).not.toBeInTheDocument();
     expect(screen.getByTestId('assembly-work-session-status')).toBe(statusRegion);
-    expect(statusRegion).toHaveClass('h-14', 'shrink-0', 'overflow-y-auto');
+    expect(statusRegion.closest('header')).not.toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '使用終了' }));
     await waitFor(() => {
       expect(agentFetch.mock.calls.some(([url]) => String(url).endsWith('/lease/release'))).toBe(true);

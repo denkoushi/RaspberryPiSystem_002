@@ -12,6 +12,7 @@ export type AssemblyWorkSessionHeaderProps = {
   procedureModeLabel: string;
   currentPositionLabel: string;
   requiredCheckLabel: string | null;
+  statusMessage?: string | null;
 };
 
 /**
@@ -24,19 +25,29 @@ export function AssemblyWorkSessionHeader({
   procedurePattern,
   procedureModeLabel,
   currentPositionLabel,
-  requiredCheckLabel
+  requiredCheckLabel,
+  statusMessage
 }: AssemblyWorkSessionHeaderProps) {
   return (
-    <header className="grid shrink-0 grid-cols-[minmax(0,auto)_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0 rounded border border-white/15 bg-slate-900/70 px-2 py-1">
+    <header className="grid h-[58px] shrink-0 grid-cols-[minmax(0,auto)_minmax(10rem,1fr)_auto_auto] items-center gap-x-3 rounded border border-white/15 bg-slate-900/70 px-2">
       <div className="flex min-w-0 items-baseline gap-2 overflow-hidden whitespace-nowrap">
         <h1 className="shrink-0 text-[0.95rem] font-bold leading-none">組立作業</h1>
         <p className="min-w-0 truncate text-xs text-white/60" title={`${productNo} / ${modelCode} / ${procedurePattern}`}>
           {productNo} / {modelCode} / {procedurePattern}
         </p>
       </div>
-      <div className="flex min-w-0 items-center gap-x-2 overflow-hidden whitespace-nowrap text-xs text-white/60">
+      <div
+        className="min-w-0 truncate rounded border border-white/10 bg-slate-950/65 px-3 py-2 text-sm font-semibold text-amber-200"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        data-testid="assembly-work-session-status"
+        title={statusMessage ?? undefined}
+      >
+        {statusMessage ?? ' '}
+      </div>
+      <div className="flex min-w-0 items-center gap-x-2 whitespace-nowrap text-xs text-white/60">
         <span className="shrink-0">{procedureModeLabel}</span>
-        <span className="h-3 w-px shrink-0 bg-white/15" aria-hidden="true" />
         <span className="min-w-0 truncate" title={currentPositionLabel}>
           現在 <span className="font-semibold text-white">{currentPositionLabel}</span>
         </span>

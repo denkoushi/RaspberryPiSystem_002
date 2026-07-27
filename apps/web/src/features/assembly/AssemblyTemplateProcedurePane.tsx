@@ -15,6 +15,7 @@ type Props = {
   selectedAreaId: string;
   templateName: string;
   modelCode: string;
+  machineNameSelectionRequired: boolean;
   procedurePattern: string;
   busy: boolean;
   readOnly: boolean;
@@ -25,6 +26,7 @@ type Props = {
   onLabelChange: (localId: string, label: string) => void;
   onTemplateNameChange: (value: string) => void;
   onModelCodeChange: (value: string) => void;
+  onOpenMachineNamePicker: () => void;
   onProcedurePatternChange: (value: string) => void;
   onSelectArea: (areaId: string) => void;
   onAddArea: () => void;
@@ -40,6 +42,7 @@ export function AssemblyTemplateProcedurePane({
   selectedAreaId,
   templateName,
   modelCode,
+  machineNameSelectionRequired,
   procedurePattern,
   busy,
   readOnly,
@@ -50,6 +53,7 @@ export function AssemblyTemplateProcedurePane({
   onLabelChange,
   onTemplateNameChange,
   onModelCodeChange,
+  onOpenMachineNamePicker,
   onProcedurePatternChange,
   onSelectArea,
   onAddArea,
@@ -149,15 +153,38 @@ export function AssemblyTemplateProcedurePane({
       <details className="mt-3 rounded border border-white/10 bg-slate-950/35 p-2">
         <summary className="min-h-11 cursor-pointer text-sm font-bold">基本設定</summary>
         <div className="mt-2 grid gap-2">
-          <label className="grid gap-1 text-xs font-semibold text-white/70">
-            型番/FHINCD
-            <Input
-              className="min-h-11"
-              value={modelCode}
-              disabled={busy || readOnly}
-              onChange={(event) => onModelCodeChange(event.target.value)}
-            />
-          </label>
+          {machineNameSelectionRequired ? (
+            <div className="grid gap-1 text-xs font-semibold text-white/70">
+              機種名
+              <div className="rounded border border-white/10 bg-slate-950 p-2">
+                <div
+                  className="min-h-6 truncate text-sm font-bold text-white"
+                  title={modelCode || undefined}
+                >
+                  {modelCode || <span className="text-amber-200">未選択</span>}
+                </div>
+                <Button
+                  type="button"
+                  variant={modelCode ? 'secondary' : 'primary'}
+                  className="mt-2 min-h-11 w-full"
+                  disabled={busy || readOnly}
+                  onClick={onOpenMachineNamePicker}
+                >
+                  {modelCode ? '機種名を変更' : '機種名を選ぶ'}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <label className="grid gap-1 text-xs font-semibold text-white/70">
+              機種名
+              <Input
+                className="min-h-11"
+                value={modelCode}
+                disabled={busy || readOnly}
+                onChange={(event) => onModelCodeChange(event.target.value)}
+              />
+            </label>
+          )}
           <label className="grid gap-1 text-xs font-semibold text-white/70">
             手順パターン
             <Input

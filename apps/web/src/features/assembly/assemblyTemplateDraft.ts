@@ -547,9 +547,7 @@ export const latestStatusByBolt = (session: AssemblyWorkSessionDto): Map<string,
   for (const record of session.torqueRecords) {
     if (record.judgement === 'ok' && record.accepted) map.set(record.templateBoltId, 'ok');
     else if (record.judgement === 'ng') map.set(record.templateBoltId, 'ng');
-    else if (record.judgement === 'ignored') map.set(record.templateBoltId, 'ignored');
   }
-  if (session.currentBoltId) map.set(session.currentBoltId, 'current');
   return map;
 };
 

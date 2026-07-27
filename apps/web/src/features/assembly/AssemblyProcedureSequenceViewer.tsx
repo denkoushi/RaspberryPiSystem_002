@@ -31,6 +31,7 @@ type Props = {
   boltMarkers?: AssemblyCanvasBolt[];
   checkMarkers?: AssemblyCanvasCheckItem[];
   selectedBoltId?: string | null;
+  inputTargetBoltId?: string | null;
   currentMarker?: {
     kioskDocumentId?: string | null;
     assemblyProcedureDocumentId?: string | null;
@@ -92,10 +93,18 @@ function stepMatchesMarker(
 function AssemblyWorkStepStoryboard({
   steps,
   currentIndex,
+  currentStep,
+  boltMarkers,
+  checkMarkers,
+  inputTargetBoltId,
   onSelect
 }: {
   steps: AssemblyProcedureSequenceStepDto[];
   currentIndex: number;
+  currentStep: AssemblyProcedureSequenceStepDto;
+  boltMarkers: AssemblyCanvasBolt[];
+  checkMarkers: AssemblyCanvasCheckItem[];
+  inputTargetBoltId?: string | null;
   onSelect: (index: number) => void;
 }) {
   const parentRef = useRef<HTMLDivElement>(null);
@@ -113,6 +122,23 @@ function AssemblyWorkStepStoryboard({
       <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
         {virtualizer.getVirtualItems().map((row) => {
           const step = steps[row.index]!;
+          const sharesCurrentPage =
+            step.pageIndex === currentStep.pageIndex &&
+            step.kioskDocumentId === currentStep.kioskDocumentId &&
+            step.assemblyProcedureDocumentId === currentStep.assemblyProcedureDocumentId;
+          const crop = stepCrop(step);
+          const thumbnailBolts = sharesCurrentPage
+            ? boltMarkers.flatMap((marker) => {
+                const projected = projectAssemblyProcedureMarkerToCrop(marker, crop);
+                return projected ? [projected] : [];
+              })
+            : [];
+          const thumbnailChecks = sharesCurrentPage
+            ? checkMarkers.flatMap((marker) => {
+                const projected = projectAssemblyProcedureMarkerToCrop(marker, crop);
+                return projected ? [projected] : [];
+              })
+            : [];
           return (
             <div
               key={step.id}
@@ -121,23 +147,46 @@ function AssemblyWorkStepStoryboard({
               className="absolute left-0 top-0 w-full p-1"
               style={{ transform: `translateY(${row.start}px)` }}
             >
-              <button
-                type="button"
+              <div
                 className={clsx(
-                  'min-h-14 w-full rounded border px-2 py-1 text-left',
+                  'flex min-h-14 w-full items-center gap-2 rounded border p-1',
                   row.index === currentIndex
                     ? 'border-cyan-300 bg-cyan-950/60'
                     : 'border-white/10 bg-slate-950/55'
                 )}
-                onClick={() => onSelect(row.index)}
               >
-                <span className="block truncate text-xs font-bold">
-                  {row.index + 1}. {step.title || step.documentTitle}
-                </span>
-                <span className="block truncate text-[0.65rem] text-white/50">
-                  P{step.pageIndex + 1} · {step.viewMode === 'crop' ? '矩形' : '全体'}
-                </span>
-              </button>
+                <div
+                  className="h-12 w-16 shrink-0 overflow-hidden rounded border border-white/15 bg-white"
+                  aria-hidden="true"
+                  data-testid={`assembly-work-step-thumbnail-${row.index}`}
+                >
+                  <AssemblyProcedureCropView
+                    pageUrl={step.pageUrl}
+                    crop={crop}
+                    className="h-full w-full"
+                    overlay={
+                      <AssemblyProcedureMarkerLayer
+                        bolts={thumbnailBolts}
+                        checkItems={thumbnailChecks}
+                        inputTargetBoltId={inputTargetBoltId}
+                        density="compact"
+                      />
+                    }
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="min-h-12 min-w-0 flex-1 px-1 text-left"
+                  onClick={() => onSelect(row.index)}
+                >
+                  <span className="block truncate text-xs font-bold">
+                    {row.index + 1}. {step.title || step.documentTitle}
+                  </span>
+                  <span className="block truncate text-[0.65rem] text-white/50">
+                    P{step.pageIndex + 1} · {step.viewMode === 'crop' ? '矩形' : '全体'}
+                  </span>
+                </button>
+              </div>
             </div>
           );
         })}
@@ -152,6 +201,7 @@ export function AssemblyProcedureSequenceViewer({
   boltMarkers = [],
   checkMarkers = [],
   selectedBoltId,
+  inputTargetBoltId,
   currentMarker,
   onToggleCheckItem,
   onCurrentPageChange
@@ -243,8 +293,11 @@ export function AssemblyProcedureSequenceViewer({
 
   return (
     <div className={clsx('flex min-h-0 flex-col bg-slate-950', className)}>
-      <header className="shrink-0 border-b border-white/10 bg-slate-900/90 p-2">
-        <div className="flex items-center justify-between gap-2">
+      <header className="shrink-0 border-b border-white/10 bg-slate-900/90 px-2 py-1">
+        <div
+          className="grid min-h-12 grid-cols-[minmax(10rem,1fr)_minmax(4rem,0.45fr)_auto] items-center gap-2"
+          data-testid="assembly-procedure-sequence-toolbar"
+        >
           <div className="min-w-0">
             <p className="truncate text-sm font-bold">
               手順 {stepIndex + 1}/{steps.length} · {currentStep.title || currentStep.documentTitle}
@@ -252,6 +305,26 @@ export function AssemblyProcedureSequenceViewer({
             <p className="truncate text-xs text-white/50">
               {currentStep.documentTitle} / {currentStep.pageIndex + 1}ページ
             </p>
+          </div>
+          <div
+            className="flex h-3 min-w-16 overflow-hidden rounded bg-slate-950"
+            aria-label="文書区間の全体マップ"
+          >
+            {segments.map((segment, index) => (
+              <button
+                key={`${segment.key}:${segment.start}`}
+                type="button"
+                aria-label={`${segment.start + 1}手順目へ移動`}
+                className={clsx(
+                  'min-w-1 border-r border-slate-950',
+                  index % 3 === 0 && 'bg-cyan-500',
+                  index % 3 === 1 && 'bg-violet-500',
+                  index % 3 === 2 && 'bg-emerald-500'
+                )}
+                style={{ flexGrow: segment.count }}
+                onClick={() => setStepIndex(segment.start)}
+              />
+            ))}
           </div>
           <div className="flex shrink-0 gap-1">
             <Button
@@ -291,24 +364,8 @@ export function AssemblyProcedureSequenceViewer({
             </Button>
           </div>
         </div>
-        <div className="mt-2 flex h-4 overflow-hidden rounded bg-slate-950" aria-label="文書区間の全体マップ">
-          {segments.map((segment, index) => (
-            <button
-              key={`${segment.key}:${segment.start}`}
-              type="button"
-              className={clsx(
-                'min-w-1 border-r border-slate-950',
-                index % 3 === 0 && 'bg-cyan-500',
-                index % 3 === 1 && 'bg-violet-500',
-                index % 3 === 2 && 'bg-emerald-500'
-              )}
-              style={{ flexGrow: segment.count }}
-              onClick={() => setStepIndex(segment.start)}
-            />
-          ))}
-        </div>
         {currentStep.title || currentStep.instructionText ? (
-          <div className={clsx('mt-2 rounded border px-3 py-2', emphasisClass)}>
+          <div className={clsx('mt-1 rounded border px-3 py-2', emphasisClass)}>
             <p className="text-sm font-bold">
               {currentStep.emphasis === 'caution'
                 ? '⚠ 注意'
@@ -329,11 +386,18 @@ export function AssemblyProcedureSequenceViewer({
             <AssemblyWorkStepStoryboard
               steps={steps}
               currentIndex={stepIndex}
+              currentStep={currentStep}
+              boltMarkers={boltMarkers}
+              checkMarkers={checkMarkers}
+              inputTargetBoltId={inputTargetBoltId}
               onSelect={setStepIndex}
             />
           </aside>
         ) : null}
-        <div className="relative min-h-0 flex-1 overflow-hidden p-2">
+        <div
+          className="relative min-h-0 flex-1 overflow-hidden p-2"
+          data-testid="assembly-work-step-canvas"
+        >
           {crop && !showFullPage ? (
             <AssemblyProcedureCropView
               pageUrl={currentStep.pageUrl}
@@ -344,6 +408,7 @@ export function AssemblyProcedureSequenceViewer({
                   bolts={visibleBolts}
                   checkItems={visibleChecks}
                   selectedBoltId={selectedBoltId}
+                  inputTargetBoltId={inputTargetBoltId}
                   onToggleCheckItem={onToggleCheckItem}
                 />
               }
@@ -362,6 +427,7 @@ export function AssemblyProcedureSequenceViewer({
               bolts={boltMarkers}
               checkItems={checkMarkers}
               selectedBoltId={selectedBoltId}
+              inputTargetBoltId={inputTargetBoltId}
               onToggleCheckItem={onToggleCheckItem}
             />
           )}

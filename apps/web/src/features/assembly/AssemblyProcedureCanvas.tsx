@@ -27,6 +27,7 @@ type Props = {
   bolts: AssemblyCanvasBolt[];
   checkItems?: AssemblyCanvasCheckItem[];
   selectedBoltId?: string | null;
+  inputTargetBoltId?: string | null;
   selectedCheckItemId?: string | null;
   onSelectBolt?: (id: string) => void;
   onSelectCheckItem?: (id: string) => void;
@@ -76,6 +77,7 @@ export function AssemblyProcedureCanvas({
   bolts,
   checkItems = [],
   selectedBoltId,
+  inputTargetBoltId,
   selectedCheckItemId,
   onSelectBolt,
   onSelectCheckItem,
@@ -318,6 +320,7 @@ export function AssemblyProcedureCanvas({
                 checkItems={checkItems}
                 layoutSize={{ width: layout.image.width, height: layout.image.height }}
                 selectedBoltId={selectedBoltId}
+                inputTargetBoltId={inputTargetBoltId}
                 selectedCheckItemId={selectedCheckItemId}
                 onSelectBolt={onSelectBolt}
                 onSelectCheckItem={onSelectCheckItem}
@@ -387,6 +390,7 @@ export function AssemblyProcedureImageWithMarkers({
   bolts,
   checkItems = [],
   selectedBoltId,
+  inputTargetBoltId,
   selectedCheckItemId,
   onSelectBolt,
   onSelectCheckItem,
@@ -399,6 +403,7 @@ export function AssemblyProcedureImageWithMarkers({
   bolts: AssemblyCanvasBolt[];
   checkItems?: AssemblyCanvasCheckItem[];
   selectedBoltId?: string | null;
+  inputTargetBoltId?: string | null;
   selectedCheckItemId?: string | null;
   onSelectBolt?: (id: string) => void;
   onSelectCheckItem?: (id: string) => void;
@@ -427,6 +432,7 @@ export function AssemblyProcedureImageWithMarkers({
           : undefined
       }
       selectedBoltId={selectedBoltId}
+      inputTargetBoltId={inputTargetBoltId}
       selectedCheckItemId={selectedCheckItemId}
       onSelectBolt={onSelectBolt}
       onSelectCheckItem={onSelectCheckItem}

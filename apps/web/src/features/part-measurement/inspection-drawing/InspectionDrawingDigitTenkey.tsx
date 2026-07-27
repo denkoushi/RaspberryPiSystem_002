@@ -1,4 +1,5 @@
-const DIGIT_KEYS = ['7', '8', '9', '4', '5', '6', '1', '2', '3', '0'] as const;
+import { KioskDigitTenkey } from '../../kiosk/KioskDigitTenkey';
+
 const DIGIT_QUERY_MAX_LENGTH = 200;
 
 type Props = {
@@ -16,30 +17,15 @@ const resetClassName =
 /** Menubar digit tenkey — digits + reset only (no input field / title / help text). */
 export function InspectionDrawingDigitTenkey({ value, onChange, disabled = false }: Props) {
   return (
-    <div
-      role="group"
-      aria-label="図面名数字テンキー"
+    <KioskDigitTenkey
+      value={value}
+      onChange={onChange}
+      disabled={disabled}
+      maxLength={DIGIT_QUERY_MAX_LENGTH}
+      ariaLabel="図面名数字テンキー"
       className="flex min-w-0 flex-1 items-center justify-center gap-0.5"
-    >
-      {DIGIT_KEYS.map((digit) => (
-        <button
-          key={digit}
-          type="button"
-          className={keyClassName}
-          disabled={disabled || value.length >= DIGIT_QUERY_MAX_LENGTH}
-          onClick={() => onChange(`${value}${digit}`)}
-        >
-          {digit}
-        </button>
-      ))}
-      <button
-        type="button"
-        className={resetClassName}
-        disabled={disabled || value.length === 0}
-        onClick={() => onChange('')}
-      >
-        リセット
-      </button>
-    </div>
+      keyClassName={keyClassName}
+      resetClassName={resetClassName}
+    />
   );
 }

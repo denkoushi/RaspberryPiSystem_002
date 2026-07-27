@@ -237,8 +237,8 @@ export function KioskAssemblyPage() {
               <KioskFilterCombobox
                 value={filters.modelCode}
                 onChange={templateLibrary.setModelCode}
-                placeholder="型番/FHINCD"
-                ariaLabel="型番/FHINCD"
+                placeholder="機種名"
+                ariaLabel="機種名"
                 options={modelCodeOptions.options}
                 loading={modelCodeOptions.loading}
                 optionUpdateMode="live"

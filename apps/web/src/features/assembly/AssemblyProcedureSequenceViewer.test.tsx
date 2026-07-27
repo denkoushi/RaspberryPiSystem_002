@@ -7,6 +7,19 @@ import type { AssemblyProcedureSequenceDto } from './types';
 
 const mockUseProtectedImageBlobUrl = vi.fn();
 
+vi.mock('@tanstack/react-virtual', () => ({
+  useVirtualizer: ({ count }: { count: number }) => ({
+    getVirtualItems: () =>
+      Array.from({ length: Math.min(count, 10) }, (_, index) => ({
+        index,
+        start: index * 62
+      })),
+    getTotalSize: () => count * 62,
+    measureElement: vi.fn(),
+    scrollToIndex: vi.fn()
+  })
+}));
+
 vi.mock('../../hooks/useProtectedImageBlobUrl', () => ({
   useProtectedImageBlobUrl: (...args: unknown[]) => mockUseProtectedImageBlobUrl(...args)
 }));
@@ -61,7 +74,7 @@ describe('AssemblyProcedureSequenceViewer', () => {
     expect(screen.getByRole('img').getAttribute('src')).toContain('/api/storage/pdf-pages/doc/page-1.png');
   });
 
-  it('navigates explicit crop steps with instructions, minimap, and crop-local marker coordinates', () => {
+  it('navigates explicit crop steps with instructions, minimap, and crop-local marker coordinates', async () => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       x: 0,
       y: 0,
@@ -140,6 +153,7 @@ describe('AssemblyProcedureSequenceViewer', () => {
             checked: true
           }
         ]}
+        inputTargetBoltId="bolt-1"
       />
     );
     expect(screen.getByText(/手順 1\/2/)).toBeInTheDocument();
@@ -154,6 +168,12 @@ describe('AssemblyProcedureSequenceViewer', () => {
       'data-marker-id',
       'check-1'
     );
+    fireEvent.click(screen.getByRole('button', { name: '全手順' }));
+    const cropThumbnail = await screen.findByTestId('assembly-work-step-thumbnail-0');
+    expect(cropThumbnail.querySelector('[data-marker-id="bolt-1"]')).toHaveClass(
+      'outline-sky-400'
+    );
+    expect(cropThumbnail.querySelector('[data-marker-id="check-1"]')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '次手順' }));
     expect(screen.getByText(/手順 2\/2/)).toBeInTheDocument();
     expect(screen.getAllByText(/全体確認/).length).toBeGreaterThan(0);
@@ -165,5 +185,36 @@ describe('AssemblyProcedureSequenceViewer', () => {
       'data-marker-id',
       'check-1'
     );
+  });
+
+  it('keeps the open storyboard virtualized for 300 steps', async () => {
+    const sequence: AssemblyProcedureSequenceDto = {
+      ...assemblySequence,
+      stepSource: 'template_steps',
+      steps: Array.from({ length: 300 }, (_, index) => ({
+        id: `step-${index}`,
+        sortOrder: index,
+        kioskDocumentId: null,
+        assemblyProcedureDocumentId: 'doc-1',
+        pageIndex: 0,
+        viewMode: 'full_page' as const,
+        cropXRatio: null,
+        cropYRatio: null,
+        cropWidthRatio: null,
+        cropHeightRatio: null,
+        title: `手順 ${index + 1}`,
+        instructionText: null,
+        emphasis: 'normal' as const,
+        documentType: 'assembly_procedure_document' as const,
+        documentTitle: 'MH-AX 締付手順',
+        pageUrl: '/api/storage/assembly-procedure-images/mh-ax.png'
+      }))
+    };
+
+    render(<AssemblyProcedureSequenceViewer sequence={sequence} />);
+    fireEvent.click(screen.getByRole('button', { name: '全手順' }));
+
+    expect(await screen.findAllByTestId(/assembly-work-step-thumbnail-/)).toHaveLength(10);
+    expect(screen.getAllByTestId(/assembly-work-step-thumbnail-/).length).toBeLessThanOrEqual(30);
   });
 });

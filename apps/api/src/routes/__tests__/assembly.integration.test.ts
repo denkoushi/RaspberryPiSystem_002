@@ -13,6 +13,7 @@ import {
   SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL
 } from '../../services/production-schedule/constants.js';
 import { normalizeMachineNameForCompare } from '../../services/production-schedule/machine-name-compare.js';
+import { resetMachineNameFseibanMatchCaches } from '../../services/production-schedule/machine-name-fseiban-match.service.js';
 import { SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION } from '../../services/production-schedule/production-schedule-settings.service.js';
 import { createAuthHeader, createTestClientDevice, createTestEmployee, createTestUser } from './helpers.js';
 
@@ -274,6 +275,7 @@ describe('assembly torque management API', () => {
   });
 
   beforeEach(async () => {
+    resetMachineNameFseibanMatchCaches();
     await cleanAssemblyTables();
     await cleanAssemblySeibanSearchFixtures();
   });
@@ -1106,6 +1108,71 @@ describe('assembly torque management API', () => {
       machineNameSource: 'unregistered',
       activeTemplate: null
     });
+  });
+
+  it('lists authenticated assembly machine-name candidates from winner and supplement data', async () => {
+    await ensureProductionScheduleDashboard();
+    const client = await createTestClientDevice();
+    const headers = { 'x-client-key': client.apiKey };
+
+    await createScheduleRow({
+      FSEIBAN: 'ASMTEST-MACHINE-1',
+      FHINCD: 'MH001',
+      FHINMEI: 'Ｌ３００ＫＰ－２',
+      FSIGENCD: 'R1',
+      FKOJUN: '1',
+      ProductNo: '1'
+    });
+    await prisma.productionScheduleSeibanMachineNameSupplement.create({
+      data: {
+        sourceCsvDashboardId: PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID,
+        fseiban: 'ASMTEST-MACHINE-2',
+        machineName: 'L300KP-10'
+      }
+    });
+    resetMachineNameFseibanMatchCaches();
+
+    const unauthorized = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/machine-name-candidates?digitQuery=300&q=kp'
+    });
+    expect(unauthorized.statusCode).toBe(401);
+
+    const invalid = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/machine-name-candidates?digitQuery=30A',
+      headers
+    });
+    expect(invalid.statusCode).toBe(400);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/machine-name-candidates?digitQuery=300&q=kp&limit=40',
+      headers
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      candidates: ['Ｌ３００ＫＰ－２', 'L300KP-10'],
+      hasMore: false
+    });
+
+    await prisma.productionScheduleSeibanMachineNameSupplement.createMany({
+      data: Array.from({ length: 41 }, (_, index) => ({
+        sourceCsvDashboardId: PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID,
+        fseiban: `ASMTEST-CAP-${index + 1}`,
+        machineName: `CAPMODEL-${index + 1}`
+      }))
+    });
+    resetMachineNameFseibanMatchCaches();
+    const limited = await app.inject({
+      method: 'GET',
+      url: '/api/assembly/machine-name-candidates?q=capmodel&limit=40',
+      headers
+    });
+    expect(limited.statusCode).toBe(200);
+    expect(limited.json().candidates).toHaveLength(40);
+    expect(limited.json().candidates.slice(0, 3)).toEqual(['CAPMODEL-1', 'CAPMODEL-2', 'CAPMODEL-3']);
+    expect(limited.json().hasMore).toBe(true);
   });
 
   it('resumes in-progress work by seiban and serial and lists in-progress summaries', async () => {

@@ -15,6 +15,7 @@ import {
   AssemblyExcelExportService,
   AssemblyLibraryFilterOptionsService,
   AssemblyLotService,
+  AssemblyMachineNameCandidatesService,
   AssemblyOperatorAccessService,
   AssemblyProcedureSequenceService,
   AssemblyProcedureDocumentService,
@@ -54,6 +55,11 @@ const optionalTrueOnlyBooleanSchema = z
   .transform((value) => value === true || value === 'true');
 
 const idParamSchema = z.object({ id: z.string().uuid() });
+const machineNameCandidatesQuerySchema = z.object({
+  digitQuery: z.string().regex(/^[0-9]*$/, 'digitQueryは半角数字のみ指定できます').max(120).optional(),
+  q: z.string().max(120).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
 
 function validateCalloutTipPair(
   value: { calloutTipXRatio?: number | null; calloutTipYRatio?: number | null },
@@ -772,6 +778,7 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
   const sessionService = new AssemblyWorkSessionService();
   const traceabilityService = new AssemblyTorqueTraceabilityService();
   const lotService = new AssemblyLotService(sessionService);
+  const machineNameCandidatesService = new AssemblyMachineNameCandidatesService();
   const recordApprovalService = new AssemblyWorkSessionRecordApprovalService();
   const operatorAccessService = new AssemblyOperatorAccessService();
   const workUnitLifecycleService = new AssemblyWorkUnitLifecycleService();
@@ -780,6 +787,11 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
   const seibanLotQuantityService = new AssemblySeibanLotQuantityService();
   const procedureSequenceService = new AssemblyProcedureSequenceService();
   const excelService = new AssemblyExcelExportService(sessionService);
+
+  app.get('/assembly/machine-name-candidates', { preHandler: allowView }, async (request) => {
+    const query = machineNameCandidatesQuerySchema.parse(request.query);
+    return machineNameCandidatesService.list(query);
+  });
 
   app.get('/assembly/seiban-candidates', { preHandler: allowView }, async (request) => {
     const q = z
