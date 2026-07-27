@@ -6,6 +6,7 @@ branch: feat/assembly-procedure-step-storyboard
 related:
   - ../decisions/ADR-20260726-assembly-template-procedure-steps.md
   - ./assembly-unified-template-editor-execplan.md
+  - ./assembly-crop-shared-marker-followup-execplan.md
 ---
 
 # 組立手順 仮想ステップ・矩形フォーカス・全体俯瞰 ExecPlan

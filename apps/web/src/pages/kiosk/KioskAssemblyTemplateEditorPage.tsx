@@ -10,11 +10,12 @@ import {
   verifyAssemblyTemplateAccessPassword
 } from '../../api/client';
 import { Button, buttonClassName } from '../../components/ui/Button';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { Input } from '../../components/ui/Input';
 import {
   AssemblyProcedureCanvas,
-  AssemblyMarkerOverlay,
   AssemblyProcedureCropView,
+  AssemblyProcedureMarkerLayer,
   AssemblyProcedureStoryboard,
   AssemblyProcedureStepInspector,
   AssemblyTemplateDocumentLibraryDialog,
@@ -24,6 +25,7 @@ import {
   assemblyTemplateProcedureDraftToInput,
   assemblyTemplateProcedureDraftReducer,
   assemblyProcedureStepDraftReducer,
+  assemblyProcedureViewPointToSourcePoint,
   buildProcedureDraftPageOptions,
   canRemoveAssemblyTemplateProcedureItem,
   canRemoveProcedureStep,
@@ -44,19 +46,20 @@ import {
   getPrimaryAssemblyProcedureDocumentId,
   getPrimaryAssemblyDocumentIdFromSteps,
   hasAssemblyProcedureDocument,
+  isMarkerVisibleInProcedureStep,
   loadAssemblyTemplateEditorData,
   pageRefKey,
   orderProcedureItemsByFirstStep,
   parseAssemblyTemplateNewSearch,
   procedureStepDraftToInput,
+  projectAssemblyProcedureMarkersToCrop,
   readAssemblyApiErrorMessage,
   renumberDraftCheckItems,
   resolveAssemblyDocumentStatus,
   templateToProcedureDraftItems,
   templateToProcedureStepDrafts,
   templateToDraftAreas,
-  templateToDraftCheckItems,
-  transformMarkerForProcedureStep
+  templateToDraftCheckItems
 } from '../../features/assembly';
 import {
   clearImageMarkerCalloutTip,
@@ -82,6 +85,10 @@ import type { AssemblyProcedureDocumentSummaryDto, AssemblyTemplateDto } from '.
 function selectFirstAreaId(areas: AssemblyDraftArea[]): string {
   return areas[0]?.id ?? '';
 }
+
+type PendingMarkerDelete =
+  | { kind: 'bolt'; id: string; markerNo: number; affectedStepCount: number }
+  | { kind: 'check'; id: string; markerNo: number; affectedStepCount: number };
 
 export function KioskAssemblyTemplateEditorPage() {
   const navigate = useNavigate();
@@ -124,6 +131,8 @@ export function KioskAssemblyTemplateEditorPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [pendingMarkerDelete, setPendingMarkerDelete] =
+    useState<PendingMarkerDelete | null>(null);
   const [inheritCondition, setInheritCondition] = useState(true);
   const [rangeStart, setRangeStart] = useState(1);
   const [rangeEnd, setRangeEnd] = useState(35);
@@ -389,25 +398,58 @@ export function KioskAssemblyTemplateEditorPage() {
   );
 
   const cropVisibleBolts = useMemo(
-    () =>
-      selectedStep
-        ? visibleBolts.flatMap((marker) => {
-            const transformed = transformMarkerForProcedureStep(marker, selectedStep);
-            return transformed ? [transformed] : [];
-          })
-        : [],
+    () => projectAssemblyProcedureMarkersToCrop(visibleBolts, selectedStep?.crop ?? null),
     [selectedStep, visibleBolts]
   );
   const cropVisibleCheckItems = useMemo(
     () =>
-      selectedStep
-        ? visibleCheckItems.flatMap((marker) => {
-            const transformed = transformMarkerForProcedureStep(marker, selectedStep);
-            return transformed ? [transformed] : [];
-          })
-        : [],
+      projectAssemblyProcedureMarkersToCrop(
+        visibleCheckItems,
+        selectedStep?.crop ?? null
+      ),
     [selectedStep, visibleCheckItems]
   );
+  const markerProjectionByStepId = useMemo(() => {
+    const pageMarkers = new Map<
+      string,
+      { bolts: typeof visibleBolts; checkItems: typeof visibleCheckItems }
+    >();
+    for (const page of pageOptions) {
+      const pageRef = {
+        source: page.source,
+        documentId: page.documentId,
+        pageIndex: page.pageIndex
+      } as const;
+      pageMarkers.set(page.key, {
+        bolts: filterDraftBoltsForPage(areas, pageRef, selectedDocumentId),
+        checkItems: filterDraftCheckItemsForPage(
+          checkItems,
+          pageRef,
+          selectedDocumentId
+        )
+      });
+    }
+    return new Map(
+      procedureSteps.flatMap((step) => {
+        const page = findPageForProcedureStep(step, pageOptions);
+        if (!page) return [];
+        const markers = pageMarkers.get(page.key);
+        if (!markers) return [];
+        return [
+          [
+            step.localId,
+            {
+              bolts: projectAssemblyProcedureMarkersToCrop(markers.bolts, step.crop),
+              checkItems: projectAssemblyProcedureMarkersToCrop(
+                markers.checkItems,
+                step.crop
+              )
+            }
+          ] as const
+        ];
+      })
+    );
+  }, [areas, checkItems, pageOptions, procedureSteps, selectedDocumentId]);
   const showSelectedCrop =
     selectedStep?.viewMode === 'crop' &&
     selectedStep.crop != null &&
@@ -415,11 +457,56 @@ export function KioskAssemblyTemplateEditorPage() {
     !showFullPage &&
     placementAction !== 'crop';
 
+  const countVisibleProcedureSteps = (
+    marker: AssemblyDraftBolt | AssemblyDraftCheckItem
+  ): number => {
+    const markerReference =
+      marker.kioskDocumentId || marker.assemblyProcedureDocumentId
+        ? marker
+        : {
+            ...marker,
+            assemblyProcedureDocumentId: selectedDocumentId,
+            pageIndex: marker.pageIndex ?? 0
+          };
+    return procedureSteps.filter((step) =>
+      isMarkerVisibleInProcedureStep(markerReference, step)
+    ).length;
+  };
+
   const setAreaPatch = (areaId: string, patch: Partial<AssemblyDraftArea>) => {
     setAreas((prev) => prev.map((area) => (area.id === areaId ? { ...area, ...patch } : area)));
   };
 
   const setBoltPatch = (boltId: string, patch: Partial<AssemblyDraftBolt>) => {
+    const source = areas.flatMap((area) => area.bolts).find((bolt) => bolt.id === boltId);
+    if (source && (patch.xRatio != null || patch.yRatio != null)) {
+      const nextMarker = { ...source, ...patch };
+      const markerReference =
+        nextMarker.kioskDocumentId || nextMarker.assemblyProcedureDocumentId
+          ? nextMarker
+          : {
+              ...nextMarker,
+              assemblyProcedureDocumentId: selectedDocumentId,
+              pageIndex: nextMarker.pageIndex ?? 0
+            };
+      const beforeCount = countVisibleProcedureSteps(source);
+      const afterCount = procedureSteps.filter((step) =>
+        isMarkerVisibleInProcedureStep(markerReference, step)
+      ).length;
+      if (afterCount === 0) {
+        setMessage(
+          `丸数字${source.markerNo}が見える表示ステップを1件以上残してください。`
+        );
+        return;
+      }
+      if (afterCount < beforeCount) {
+        setMessage(
+          `丸数字${source.markerNo}が${beforeCount - afterCount}件の矩形手順から見えなくなります。`
+        );
+      } else {
+        setMessage(null);
+      }
+    }
     setAreas((prev) =>
       prev.map((area) => ({
         ...area,
@@ -429,6 +516,35 @@ export function KioskAssemblyTemplateEditorPage() {
   };
 
   const setCheckItemPatch = (checkItemId: string, patch: Partial<AssemblyDraftCheckItem>) => {
+    const source = checkItems.find((item) => item.id === checkItemId);
+    if (source && (patch.xRatio != null || patch.yRatio != null)) {
+      const nextMarker = { ...source, ...patch };
+      const markerReference =
+        nextMarker.kioskDocumentId || nextMarker.assemblyProcedureDocumentId
+          ? nextMarker
+          : {
+              ...nextMarker,
+              assemblyProcedureDocumentId: selectedDocumentId,
+              pageIndex: nextMarker.pageIndex ?? 0
+            };
+      const beforeCount = countVisibleProcedureSteps(source);
+      const afterCount = procedureSteps.filter((step) =>
+        isMarkerVisibleInProcedureStep(markerReference, step)
+      ).length;
+      if (afterCount === 0) {
+        setMessage(
+          `チェック${source.markerNo}が見える表示ステップを1件以上残してください。`
+        );
+        return;
+      }
+      if (afterCount < beforeCount) {
+        setMessage(
+          `チェック${source.markerNo}が${beforeCount - afterCount}件の矩形手順から見えなくなります。`
+        );
+      } else {
+        setMessage(null);
+      }
+    }
     setCheckItems((prev) => prev.map((item) => (item.id === checkItemId ? { ...item, ...patch } : item)));
   };
 
@@ -440,24 +556,48 @@ export function KioskAssemblyTemplateEditorPage() {
     setSelectedCheckItemId(null);
   };
 
-  const deleteSelectedBolt = () => {
-    if (!selectedBolt || !selectedArea) return;
-    setAreas((prev) =>
-      prev.map((area) => {
-        if (area.id !== selectedArea.id) return area;
-        const bolts = area.bolts
-          .filter((bolt) => bolt.id !== selectedBolt.id)
-          .map((bolt, index) => ({ ...bolt, sortOrder: index }));
-        return { ...area, bolts };
-      })
-    );
-    setSelectedBoltId(null);
+  const requestDeleteSelectedBolt = () => {
+    if (!selectedBolt) return;
+    setPendingMarkerDelete({
+      kind: 'bolt',
+      id: selectedBolt.id,
+      markerNo: selectedBolt.markerNo,
+      affectedStepCount: countVisibleProcedureSteps(selectedBolt)
+    });
   };
 
-  const deleteSelectedCheckItem = () => {
+  const requestDeleteSelectedCheckItem = () => {
     if (!selectedCheckItem) return;
-    setCheckItems((prev) => renumberDraftCheckItems(prev.filter((item) => item.id !== selectedCheckItem.id)));
-    setSelectedCheckItemId(null);
+    setPendingMarkerDelete({
+      kind: 'check',
+      id: selectedCheckItem.id,
+      markerNo: selectedCheckItem.markerNo,
+      affectedStepCount: countVisibleProcedureSteps(selectedCheckItem)
+    });
+  };
+
+  const confirmDeleteMarker = () => {
+    if (!pendingMarkerDelete) return;
+    if (pendingMarkerDelete.kind === 'bolt') {
+      const boltId = pendingMarkerDelete.id;
+      setAreas((prev) =>
+        prev.map((area) => {
+          const bolts = area.bolts
+            .filter((bolt) => bolt.id !== boltId)
+            .map((bolt, index) => ({ ...bolt, sortOrder: index }));
+          return bolts.length === area.bolts.length ? area : { ...area, bolts };
+        })
+      );
+      setSelectedBoltId(null);
+    } else {
+      const checkItemId = pendingMarkerDelete.id;
+      setCheckItems((prev) =>
+        renumberDraftCheckItems(prev.filter((item) => item.id !== checkItemId))
+      );
+      setSelectedCheckItemId(null);
+    }
+    setPendingMarkerDelete(null);
+    setMessage(null);
   };
 
   const addBoltAt = (xRatio: number, yRatio: number) => {
@@ -496,6 +636,25 @@ export function KioskAssemblyTemplateEditorPage() {
     }
     if (markerMode === 'check' && selectedCheckItem) {
       setCheckItemPatch(selectedCheckItem.id, calloutTip);
+    }
+  };
+
+  const placeOnSelectedCropAt = (xRatio: number, yRatio: number) => {
+    if (readOnly || !selectedStep?.crop) return;
+    const sourcePoint = assemblyProcedureViewPointToSourcePoint(
+      { xRatio, yRatio },
+      selectedStep.crop
+    );
+    if (placementAction === 'place') {
+      if (markerMode === 'bolt') {
+        addBoltAt(sourcePoint.xRatio, sourcePoint.yRatio);
+      } else {
+        addCheckItemAt(sourcePoint.xRatio, sourcePoint.yRatio);
+      }
+      return;
+    }
+    if (placementAction === 'callout') {
+      placeSelectedCalloutAt(sourcePoint.xRatio, sourcePoint.yRatio);
     }
   };
 
@@ -621,6 +780,7 @@ export function KioskAssemblyTemplateEditorPage() {
     localId: string,
     patch: Partial<AssemblyProcedureStepDraft>
   ) => {
+    const currentStep = procedureSteps.find((step) => step.localId === localId);
     const nextSteps = procedureSteps.map((step) =>
       step.localId === localId ? { ...step, ...patch } : step
     );
@@ -632,7 +792,20 @@ export function KioskAssemblyTemplateEditorPage() {
       return;
     }
     dispatchProcedureSteps({ type: 'update', localId, patch });
-    setMessage(null);
+    const nextStep = nextSteps.find((step) => step.localId === localId);
+    const removedMarkerCount =
+      currentStep && nextStep
+        ? allStepMarkers.filter(
+            (marker) =>
+              isMarkerVisibleInProcedureStep(marker, currentStep) &&
+              !isMarkerVisibleInProcedureStep(marker, nextStep)
+          ).length
+        : 0;
+    setMessage(
+      removedMarkerCount > 0
+        ? `${removedMarkerCount}件の丸数字／チェックがこの矩形手順から見えなくなります。`
+        : null
+    );
   };
 
   const removeProcedureStep = (localId: string) => {
@@ -885,6 +1058,7 @@ export function KioskAssemblyTemplateEditorPage() {
                   dispatchProcedureSteps({ type: 'duplicate', localId })
                 }
                 onRemove={removeProcedureStep}
+                markerProjectionByStepId={markerProjectionByStepId}
               />
             ) : (
               <div className="min-h-0 flex-1 overflow-auto">
@@ -1074,7 +1248,7 @@ export function KioskAssemblyTemplateEditorPage() {
                   crop={selectedStep.crop}
                   className="h-full w-full"
                   overlay={
-                    <AssemblyMarkerOverlay
+                    <AssemblyProcedureMarkerLayer
                       bolts={cropVisibleBolts}
                       checkItems={cropVisibleCheckItems}
                       selectedBoltId={selectedBoltId}
@@ -1092,6 +1266,13 @@ export function KioskAssemblyTemplateEditorPage() {
                         setSelectedBoltId(null);
                       }}
                     />
+                  }
+                  onPlacementClick={
+                    readOnly ||
+                    (placementAction === 'callout' &&
+                      (markerMode === 'bolt' ? !selectedBolt : !selectedCheckItem))
+                      ? undefined
+                      : placeOnSelectedCropAt
                   }
                 />
               </div>
@@ -1194,7 +1375,7 @@ export function KioskAssemblyTemplateEditorPage() {
                   ) : null}
                 </div>
                 {selectedBolt ? (
-                  <Button type="button" variant="danger" className="min-h-8 shrink-0 !px-2 !py-1 text-xs" disabled={busy || readOnly} onClick={deleteSelectedBolt}>
+                  <Button type="button" variant="danger" className="min-h-8 shrink-0 !px-2 !py-1 text-xs" disabled={busy || readOnly} onClick={requestDeleteSelectedBolt}>
                     削除
                   </Button>
                 ) : null}
@@ -1329,7 +1510,7 @@ export function KioskAssemblyTemplateEditorPage() {
                   {selectedCheckItem ? <div className="mt-1 truncate text-sm font-bold">チェック {selectedCheckItem.markerNo}</div> : null}
                 </div>
                 {selectedCheckItem ? (
-                  <Button type="button" variant="danger" className="min-h-8 shrink-0 !px-2 !py-1 text-xs" disabled={busy || readOnly} onClick={deleteSelectedCheckItem}>
+                  <Button type="button" variant="danger" className="min-h-8 shrink-0 !px-2 !py-1 text-xs" disabled={busy || readOnly} onClick={requestDeleteSelectedCheckItem}>
                     削除
                   </Button>
                 ) : null}
@@ -1396,6 +1577,24 @@ export function KioskAssemblyTemplateEditorPage() {
         onSearchChange={setDocumentSearch}
         onAdd={addProcedureDocument}
         onClose={() => setDocumentLibraryOpen(false)}
+      />
+      <ConfirmDialog
+        isOpen={pendingMarkerDelete != null}
+        title={
+          pendingMarkerDelete?.kind === 'bolt'
+            ? `丸数字${pendingMarkerDelete.markerNo}を削除`
+            : `チェック${pendingMarkerDelete?.markerNo ?? ''}を削除`
+        }
+        description={
+          pendingMarkerDelete
+            ? `このマーカーは元ページの共通マーカーです。全体・矩形${pendingMarkerDelete.affectedStepCount}件から削除されます。`
+            : undefined
+        }
+        confirmLabel="すべてから削除"
+        cancelLabel="キャンセル"
+        tone="danger"
+        onConfirm={confirmDeleteMarker}
+        onCancel={() => setPendingMarkerDelete(null)}
       />
     </div>
   );

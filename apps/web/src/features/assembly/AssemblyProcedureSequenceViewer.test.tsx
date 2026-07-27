@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AssemblyProcedureSequenceViewer } from './AssemblyProcedureSequenceViewer';
 
@@ -38,6 +38,8 @@ const assemblySequence: AssemblyProcedureSequenceDto = {
 };
 
 describe('AssemblyProcedureSequenceViewer', () => {
+  afterEach(() => vi.restoreAllMocks());
+
   beforeEach(() => {
     mockUseProtectedImageBlobUrl.mockReset();
     mockUseProtectedImageBlobUrl.mockReturnValue({ blobUrl: 'blob:sequence-image', error: null });
@@ -60,6 +62,17 @@ describe('AssemblyProcedureSequenceViewer', () => {
   });
 
   it('navigates explicit crop steps with instructions, minimap, and crop-local marker coordinates', () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      width: 400,
+      height: 300,
+      top: 0,
+      right: 400,
+      bottom: 300,
+      left: 0,
+      toJSON: () => ({})
+    });
     const sequence: AssemblyProcedureSequenceDto = {
       ...assemblySequence,
       stepSource: 'template_steps',
@@ -111,7 +124,20 @@ describe('AssemblyProcedureSequenceViewer', () => {
             markerNo: 1,
             xRatio: 0.4,
             yRatio: 0.4,
+            calloutTipXRatio: 0.8,
+            calloutTipYRatio: 0.4,
             label: '丸数字1'
+          }
+        ]}
+        checkMarkers={[
+          {
+            id: 'check-1',
+            markerNo: 2,
+            xRatio: 0.5,
+            yRatio: 0.5,
+            label: '共有チェック',
+            required: true,
+            checked: true
           }
         ]}
       />
@@ -123,8 +149,21 @@ describe('AssemblyProcedureSequenceViewer', () => {
       left: '50%',
       top: '50%'
     });
+    expect(screen.getByTestId('image-marker-callout-svg')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '共有チェック' })).toHaveAttribute(
+      'data-marker-id',
+      'check-1'
+    );
     fireEvent.click(screen.getByRole('button', { name: '次手順' }));
     expect(screen.getByText(/手順 2\/2/)).toBeInTheDocument();
     expect(screen.getAllByText(/全体確認/).length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: '丸数字1' })).toHaveAttribute(
+      'data-marker-id',
+      'bolt-1'
+    );
+    expect(screen.getByRole('button', { name: '共有チェック' })).toHaveAttribute(
+      'data-marker-id',
+      'check-1'
+    );
   });
 });

@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 557,
-    "totalLines": 158730,
-    "totalBytes": 11986260,
+    "totalLines": 158740,
+    "totalBytes": 11987905,
     "withFrontmatter": 236,
     "withStatus": 94,
     "sourceOfTruthDeclared": 61,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 25,
-    "localLinkCount": 5581,
+    "localLinkCount": 5582,
     "brokenLocalLinkCount": 87,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -5914,7 +5914,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 1995,
-      "byteSize": 343151,
+      "byteSize": 343348,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -10163,6 +10163,11 @@
         {
           "href": "./plans/assembly-auto-id-nfc-invalidation-execplan.md",
           "targetPath": "docs/plans/assembly-auto-id-nfc-invalidation-execplan.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/assembly-crop-shared-marker-followup-execplan.md",
+          "targetPath": "docs/plans/assembly-crop-shared-marker-followup-execplan.md",
           "exists": true
         },
         {
@@ -16718,8 +16723,8 @@
     },
     {
       "path": "docs/decisions/ADR-20260726-assembly-template-procedure-steps.md",
-      "lineCount": 36,
-      "byteSize": 2810,
+      "lineCount": 45,
+      "byteSize": 4203,
       "hasFrontmatter": true,
       "title": "組立テンプレート版が表示ステップを所有する",
       "status": "accepted",
@@ -31647,8 +31652,8 @@
     },
     {
       "path": "docs/plans/assembly-procedure-step-storyboard-execplan.md",
-      "lineCount": 114,
-      "byteSize": 15509,
+      "lineCount": 115,
+      "byteSize": 15564,
       "hasFrontmatter": true,
       "title": "組立手順 仮想ステップ・矩形フォーカス・全体俯瞰 ExecPlan",
       "status": "completed",

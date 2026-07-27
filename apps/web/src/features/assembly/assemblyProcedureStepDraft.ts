@@ -1,10 +1,10 @@
 import {
   ASSEMBLY_PROCEDURE_STEP_MAX_COUNT,
-  clipAssemblyProcedureLineToCrop,
   isAssemblyProcedurePointInCrop,
-  sourcePointToAssemblyProcedureCropPoint,
   type AssemblyProcedureCropRect
 } from '@raspi-system/shared-types';
+
+import { projectAssemblyProcedureMarkerToCrop } from './assemblyProcedureMarkerProjection';
 
 import type { AssemblyEditorPageOption } from './assemblyTemplateDraft';
 import type { AssemblyTemplateProcedureDraftItem } from './assemblyTemplateProcedureDraft';
@@ -298,25 +298,5 @@ export function transformMarkerForProcedureStep<T extends AssemblyProcedureSourc
   step: AssemblyProcedureStepDraft
 ): T | null {
   if (!isMarkerVisibleInProcedureStep(marker, step)) return null;
-  if (step.viewMode === 'full_page' || !step.crop) return marker;
-  const position = sourcePointToAssemblyProcedureCropPoint(marker, step.crop);
-  const callout =
-    marker.calloutTipXRatio != null && marker.calloutTipYRatio != null
-      ? clipAssemblyProcedureLineToCrop(
-          {
-            start: { xRatio: marker.xRatio, yRatio: marker.yRatio },
-            end: {
-              xRatio: marker.calloutTipXRatio,
-              yRatio: marker.calloutTipYRatio
-            }
-          },
-          step.crop
-        )
-      : null;
-  return {
-    ...marker,
-    ...position,
-    calloutTipXRatio: callout?.end.xRatio ?? null,
-    calloutTipYRatio: callout?.end.yRatio ?? null
-  };
+  return projectAssemblyProcedureMarkerToCrop(marker, step.crop);
 }
