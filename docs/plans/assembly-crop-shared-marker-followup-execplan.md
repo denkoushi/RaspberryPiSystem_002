@@ -1,6 +1,6 @@
 ---
 title: 組立矩形ページ 共通マーカー表示編集 Follow-up ExecPlan
-status: in_progress
+status: completed
 created: 2026-07-27
 branch: fix/assembly-crop-shared-marker-projection
 related:
@@ -27,7 +27,9 @@ related:
 - [x] 2026-07-27: 左サムネイル、中央エディタ、作業画面へ同じ投影結果を接続した。
 - [x] 2026-07-27: 共通削除確認、可視範囲変更警告、最後の表示を失う変更の拒否を実装した。
 - [x] 2026-07-27: 対象回帰test、Web全test 1,528件、lint、build、Playwright 17件、ドキュメント監査を完了した。
-- [ ] PR、必須CI、main統合、標準rolling release、実機E2E検証を完了する。
+- [x] 2026-07-27: PR #1096の必須CI、CodeQL、secret scan成功後、`dc4f3c63e31016b1d95fc289427ca8dccd91f0bb`としてmainへ統合した。
+- [x] 2026-07-27: 標準rolling release `20260727-003217-c1fd9a`で全対象へ反映し、release identity、maintenance解除、Phase12 `PASS 47 / WARN 0 / FAIL 0`を確認した。
+- [x] 2026-07-27: `raspi4-assembly-01`の専用検証テンプレートでエディタと作業画面の実機E2Eを完了し、検証作業を監査履歴付きで無効化、検証テンプレートを無効化した。
 
 ## Surprises & Discoveries
 
@@ -41,6 +43,10 @@ related:
   Evidence: 2026-07-27に対象Vitestを実行し、`Test Files 4 passed`、`Tests 10 passed`。
 - Observation: zoom中の矢視SVG寸法をResizeObserverだけで追うと、画像拡大直後の1描画で古い寸法が残る。
   Evidence: PlaywrightのCSS pixel検証でrendered widthとviewBox widthに165px差が出た。zoom canvasが既に持つ確定layout寸法を共通レイヤーへ渡すことで差を1px未満へ戻した。
+- Observation: 実機Firefoxの作業ステップ見出しはAT-SPI上で独立した名前を持たず、ストーリーボード項目とマーカーbuttonが操作可能な正本だった。
+  Evidence: NFC認証後の`raspi4-assembly-01`で、全体は丸数字1〜4、cropは同じIDの丸数字1、2、4を公開し、範囲外の丸数字3だけを公開しなかった。作業操作はこの差分と前後遷移で検証した。
+- Observation: 作業再開は画面再読込ごとに実在社員NFCを要求し、過去イベントを再利用しない。
+  Evidence: 専用検証ロットの開始と再開でそれぞれ新しい物理スキャンを行い、NFC値を取得・記録・代入せずに実機受入を完了した。
 
 ## Decision Log
 
@@ -59,7 +65,13 @@ related:
 
 ## Outcomes & Retrospective
 
-実装完了時に、達成した表示・編集・実機検証、残件、再発防止上の学びを記録する。
+PR #1096でWeb内部の投影責務と共通描画レイヤーを統合し、REST API、DB、Prisma migrationを変更せずに全体・cropを同じ元ページのビューとして扱えるようにした。丸数字、チェック、矢視は元ページ上の同じIDと座標を共有し、cropからの追加・編集・削除も元マーカー一件へ反映する。
+
+実機エディタでは、全体から作ったcropに既存丸数字と矢視が表示されること、cropから丸数字4、`CROP-CHECK`、矢視を追加して全体へ反映されること、左サムネイル表示、共通削除の取消・確定、最後の表示を失うステップ削除の拒否を確認した。保存後のAPI正本でも丸数字4とチェックは元ページ比率座標を保持し、丸数字4の矢視先端座標を保持した。
+
+実機作業画面では、全体に丸数字1〜4、cropに同一IDの丸数字1、2、4と同一チェックを表示した。crop上で`CROP-CHECK`を完了するとAPIの必須進捗が`1/1`となり、全体へ戻っても同じチェックが表示された。現在の締付対象は両ビューで同じ丸数字1のIDを共有し、「現在の丸数字へ」はそのマーカーを最初に含む全体ステップへ戻った。締付OKの色状態はWeb回帰testで固定し、実機では物理レンチを代用せず、現在対象の共有状態までを確認した。
+
+専用証跡はテンプレート`【検証用】矩形共通マーカー`、製番`TEST-CROP-20260727`、作業ID`TEST-CROP-20260727-001`で残した。業務テンプレートは変更していない。受入後は作業アイテムを理由付きで無効化し、検証テンプレートを`isActive=false`にした。AT-SPIとxdotoolはDebian packageを`/tmp`へ展開しただけで、検証後にPi4・Pi5双方から削除し、通常の`kiosk-browser.service`へ復帰した。
 
 ## Context and Orientation
 
@@ -100,6 +112,9 @@ DBとAPI契約を変更しないためmigrationとDocker PostgreSQL検証は不�
 - Codex同梱Node 24.14.0でWeb全testを実行し、309ファイル、1,528件が成功した。
 - Web lintとproduction buildが成功した。新しいproduction chunkには共通投影moduleが分離された。
 - 対象Playwright 2 specは17/17件成功した。エディタのcrop直接追加・矢視・サムネイル・削除確認と、作業画面の3解像度を含む。
+- PR #1096のmain統合SHAは`dc4f3c63e31016b1d95fc289427ca8dccd91f0bb`。GitHub Actions run `30227297503`とCodeQL run `30227297481`を含む必須checkが成功した。
+- rolling release `20260727-003217-c1fd9a`後、Pi5 API/WebとPi4キオスク6台のrelease identityを統合SHAで確認した。
+- 実機受入と後処理の完了後にPhase12を再実行し、`PASS 47 / WARN 0 / FAIL 0`だった。
 
 ## Interfaces and Dependencies
 
