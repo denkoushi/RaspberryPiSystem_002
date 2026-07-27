@@ -119,6 +119,57 @@ export function InspectionDrawingValuePanel({
     );
   }
 
+  if (point.valueKind === 'judgement') {
+    const inputStatus = resolveMeasurementPointInputStatus(point);
+    const pointDisplayName = formatInspectionDrawingPointDisplayName(point);
+    const chooseJudgement = (value: 'PASS' | 'FAIL') => {
+      if (readOnly) return;
+      onValueChange(value);
+      emitCommit(value, 'dropdown');
+    };
+    return (
+      <div className="flex flex-col gap-3 rounded-lg border border-white/15 bg-slate-900/60 p-4 text-white">
+        <div>
+          <p className="text-lg font-bold">
+            {pointDisplayName}（No.{point.markerNo}）
+          </p>
+          <p className="text-2xl text-white/80">管用ネジ形状の判定</p>
+        </div>
+        <div className="grid grid-cols-2 gap-2" role="group" aria-label="管用ネジの判定">
+          <button
+            type="button"
+            disabled={readOnly}
+            className={clsx(
+              'min-h-16 rounded-md border text-xl font-extrabold disabled:cursor-not-allowed disabled:opacity-40',
+              point.testValue === 'PASS'
+                ? 'border-emerald-300 bg-emerald-400 text-emerald-950'
+                : 'border-emerald-300/40 bg-emerald-950/40 text-emerald-100 hover:bg-emerald-900/60'
+            )}
+            onClick={() => chooseJudgement('PASS')}
+          >
+            OK
+          </button>
+          <button
+            type="button"
+            disabled={readOnly}
+            className={clsx(
+              'min-h-16 rounded-md border text-xl font-extrabold disabled:cursor-not-allowed disabled:opacity-40',
+              point.testValue === 'FAIL'
+                ? 'border-red-300 bg-red-400 text-red-950'
+                : 'border-red-300/40 bg-red-950/40 text-red-100 hover:bg-red-900/60'
+            )}
+            onClick={() => chooseJudgement('FAIL')}
+          >
+            NG
+          </button>
+        </div>
+        <p className={clsx('text-base font-bold', STATUS_CLASS[inputStatus])}>
+          {MEASUREMENT_POINT_INPUT_STATUS_LABEL[inputStatus]}
+        </p>
+      </div>
+    );
+  }
+
   const bounds = toleranceBoundsFromPoint(point);
   const inputStatus = resolveMeasurementPointInputStatus(point);
 

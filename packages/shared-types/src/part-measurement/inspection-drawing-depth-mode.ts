@@ -3,7 +3,7 @@ export type InspectionDrawingDepthMode = 'measured' | 'through';
 export const INSPECTION_DRAWING_DEPTH_MODE_MEASURED: InspectionDrawingDepthMode = 'measured';
 export const INSPECTION_DRAWING_DEPTH_MODE_THROUGH: InspectionDrawingDepthMode = 'through';
 
-export const INSPECTION_DRAWING_DEPTH_MODE_LABELS = new Set(['深さ', 'ネジ穴深さ']);
+export const INSPECTION_DRAWING_DEPTH_MODE_LABELS = new Set(['深さ', 'ネジ穴深さ', 'キリ穴深さ']);
 
 export function isInspectionDrawingDepthLabel(label: string | null | undefined): boolean {
   return INSPECTION_DRAWING_DEPTH_MODE_LABELS.has(String(label ?? '').trim());

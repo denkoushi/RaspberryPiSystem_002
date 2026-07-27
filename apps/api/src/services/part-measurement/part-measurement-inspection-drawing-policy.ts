@@ -10,6 +10,7 @@ type TemplateItemMarkerFields = {
   markerYRatio: Prisma.Decimal | string | number | null;
   lowerLimit: Prisma.Decimal | string | number | null;
   upperLimit: Prisma.Decimal | string | number | null;
+  valueKind?: 'NUMERIC' | 'JUDGEMENT' | string | null;
 };
 
 type TemplateForDrawingSupport = {
@@ -24,12 +25,13 @@ function parseMarkerRatio(raw: Prisma.Decimal | string | number | null | undefin
 }
 
 export function templateItemSupportsInspectionDrawing(item: TemplateItemMarkerFields): boolean {
-  return (
-    parseMarkerRatio(item.markerXRatio) != null &&
-    parseMarkerRatio(item.markerYRatio) != null &&
-    parseMarkerRatio(item.lowerLimit) != null &&
-    parseMarkerRatio(item.upperLimit) != null
-  );
+  if (parseMarkerRatio(item.markerXRatio) == null || parseMarkerRatio(item.markerYRatio) == null) {
+    return false;
+  }
+  if (String(item.valueKind ?? 'NUMERIC').toUpperCase() === 'JUDGEMENT') {
+    return true;
+  }
+  return parseMarkerRatio(item.lowerLimit) != null && parseMarkerRatio(item.upperLimit) != null;
 }
 
 /** テンプレ全体が図面中心UI対象か（図面パスあり・全項目に座標と上下限） */

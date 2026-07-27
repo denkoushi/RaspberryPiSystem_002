@@ -40,6 +40,8 @@ function sortByMarkerNo(points: InspectionDrawingPoint[]): InspectionDrawingPoin
 
 function displayRaw(raw: string): string {
   const t = raw.trim();
+  if (t === 'PASS') return 'OK';
+  if (t === 'FAIL') return 'NG';
   return t.length > 0 ? t : '—';
 }
 
@@ -129,6 +131,8 @@ export function InspectionDrawingPointSummaryList({
                         </span>
                       ) : null}
                     </span>
+                  ) : pt.valueKind === 'judgement' ? (
+                    <span className="truncate font-semibold text-cyan-100">OK/NG判定</span>
                   ) : isInspectionDrawingThroughDepthMode(pt.depthMode) ? (
                     <span className="truncate font-semibold text-cyan-100">通し</span>
                   ) : (

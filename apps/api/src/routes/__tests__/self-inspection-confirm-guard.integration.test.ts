@@ -35,6 +35,8 @@ function buildMultipartPng(name: string, png: Buffer) {
 }
 
 async function cleanTables() {
+  await prisma.selfInspectionMeasurementOperation.deleteMany({});
+  await prisma.selfInspectionMeasurementActorAuthentication.deleteMany({});
   await prisma.selfInspectionMeasurementValue.deleteMany({});
   await prisma.selfInspectionLotEntry.deleteMany({});
   await prisma.selfInspectionSession.deleteMany({});
@@ -195,15 +197,27 @@ describe('self-inspection confirm guard + draft WIP', () => {
     };
   }
 
+  async function authenticateActor(sessionId: string) {
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/self-inspection/sessions/${sessionId}/measurement-actor-authentications`,
+      headers: { 'x-client-key': kioskClient.apiKey },
+      payload: { employeeTagUid: employee.nfcTagUid, measurementMode: 'operator' }
+    });
+    expect(response.statusCode).toBe(200);
+    return response.json().authentication.id as string;
+  }
+
   it('does not demote CONFIRMED when draft upsert is called', async () => {
     const { sessionId, templateItemId } = await createFirstLastSession();
+    const measurementActorAuthenticationId = await authenticateActor(sessionId);
     const createEntryRes = await app.inject({
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries`,
-      headers: createAuthHeader(adminToken),
+      headers: { 'x-client-key': kioskClient.apiKey },
       payload: {
         entryIndex: 0,
-        employeeTagUid: employee.nfcTagUid,
+        measurementActorAuthenticationId,
         values: [{ templateItemId, value: '10.01' }]
       }
     });
@@ -216,7 +230,7 @@ describe('self-inspection confirm guard + draft WIP', () => {
       headers: { 'x-client-key': kioskClient.apiKey },
       payload: {
         entryIndex: 0,
-        employeeTagUid: employee.nfcTagUid,
+        measurementActorAuthenticationId,
         values: [{ templateItemId, value: '10.02' }]
       }
     });
@@ -232,13 +246,14 @@ describe('self-inspection confirm guard + draft WIP', () => {
 
   it('lists draft-only sessions as in_progress with completedEntryCount 0', async () => {
     const { sessionId, productNo, templateItemId } = await createFirstLastSession();
+    const measurementActorAuthenticationId = await authenticateActor(sessionId);
     const draftRes = await app.inject({
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/entries/draft`,
       headers: { 'x-client-key': kioskClient.apiKey },
       payload: {
         entryIndex: 0,
-        employeeTagUid: employee.nfcTagUid,
+        measurementActorAuthenticationId,
         values: [{ templateItemId, value: '10.00' }]
       }
     });

@@ -31,6 +31,7 @@ import {
   selfInspectionUpdateInspectorEntryBodySchema,
   selfInspectionInspectorJudgementsBodySchema,
   selfInspectionInstrumentPreUseInspectionBodySchema,
+  selfInspectionMeasurementActorAuthenticationBodySchema,
   selfInspectionResetSessionBodySchema,
   approveSelfInspectionOutOfToleranceReviewBodySchema,
   listSelfInspectionRecordApprovalsQuerySchema,
@@ -53,6 +54,9 @@ import {
   type PartMeasurementRouteDeps
 } from './shared.js';
 
+// NFC UID の総当たり・認証レコードの過剰作成を防ぎつつ、キオスクの再スキャンを許容する。
+const selfInspectionMeasurementActorAuthenticationRateLimit = { max: 20, timeWindow: '1 minute' };
+
 export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMeasurementRouteDeps): void {
   const {
     allowView,
@@ -70,6 +74,26 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
       const result = await resolveSelfInspectionNfcTagUid(body.uid);
       return { result };
     });
+
+    app.post(
+      '/part-measurement/self-inspection/sessions/:id/measurement-actor-authentications',
+      {
+        preHandler: allowWriteKiosk,
+        config: { rateLimit: selfInspectionMeasurementActorAuthenticationRateLimit }
+      },
+      async (request) => {
+        const params = selfInspectionSessionIdParamsSchema.parse(request.params);
+        const body = selfInspectionMeasurementActorAuthenticationBodySchema.parse(request.body);
+        const clientDeviceId = await tryGetClientDeviceId(request.headers);
+        return {
+          authentication: await selfInspectionService.authenticateMeasurementActor(params.id, {
+            employeeTagUid: body.employeeTagUid,
+            measurementMode: body.measurementMode,
+            clientDeviceId
+          })
+        };
+      }
+    );
 
     app.get('/part-measurement/self-inspection/registration-policy', { preHandler: allowView }, async () => {
       const policy = await getSelfInspectionRegistrationPolicy();
@@ -185,11 +209,13 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
     app.post('/part-measurement/self-inspection/sessions/:id/entries', { preHandler: allowWriteKiosk }, async (request) => {
       const params = selfInspectionSessionIdParamsSchema.parse(request.params);
       const body = selfInspectionCreateEntryBodySchema.parse(request.body);
+      const clientDeviceId = await tryGetClientDeviceId(request.headers);
       const entry = await selfInspectionService.createEntry(params.id, {
         entryIndex: body.entryIndex,
-        employeeTagUid: body.employeeTagUid,
+        measurementActorAuthenticationId: body.measurementActorAuthenticationId,
         measuringInstrumentTagUid: body.measuringInstrumentTagUid,
-        values: body.values
+        values: body.values,
+        clientDeviceId
       });
       return { entry };
     });
@@ -197,12 +223,14 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
     app.post('/part-measurement/self-inspection/sessions/:id/entries/draft', { preHandler: allowWriteKiosk }, async (request) => {
       const params = selfInspectionSessionIdParamsSchema.parse(request.params);
       const body = selfInspectionUpsertDraftEntryBodySchema.parse(request.body);
+      const clientDeviceId = await tryGetClientDeviceId(request.headers);
       const entry = await selfInspectionService.upsertDraftEntry(params.id, {
         entryIndex: body.entryIndex,
-        employeeTagUid: body.employeeTagUid,
+        measurementActorAuthenticationId: body.measurementActorAuthenticationId,
         measuringInstrumentTagUid: body.measuringInstrumentTagUid,
         ifUnmodifiedSince: body.ifUnmodifiedSince,
-        values: body.values
+        values: body.values,
+        clientDeviceId
       });
       return { entry };
     });
@@ -213,7 +241,7 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
       const clientDeviceId = await tryGetClientDeviceId(request.headers);
       const entry = await selfInspectionService.createInspectorEntry(params.id, {
         entryIndex: body.entryIndex,
-        employeeTagUid: body.employeeTagUid,
+        measurementActorAuthenticationId: body.measurementActorAuthenticationId,
         measuringInstrumentTagUid: body.measuringInstrumentTagUid,
         values: body.values,
         clientDeviceId
@@ -228,7 +256,7 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
       const entry = await selfInspectionService.updateInspectorEntry(params.id, params.entryId, {
         entryIndex: body.entryIndex,
         ifUnmodifiedSince: body.ifUnmodifiedSince,
-        employeeTagUid: body.employeeTagUid,
+        measurementActorAuthenticationId: body.measurementActorAuthenticationId,
         measuringInstrumentTagUid: body.measuringInstrumentTagUid,
         values: body.values,
         clientDeviceId
@@ -248,9 +276,10 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
       const body = selfInspectionUpdateEntryBodySchema.parse(request.body);
       const entry = await selfInspectionService.updateEntry(params.id, params.entryId, {
         ifUnmodifiedSince: body.ifUnmodifiedSince,
-        employeeTagUid: body.employeeTagUid,
+        measurementActorAuthenticationId: body.measurementActorAuthenticationId,
         measuringInstrumentTagUid: body.measuringInstrumentTagUid,
-        values: body.values
+        values: body.values,
+        clientDeviceId: await tryGetClientDeviceId(request.headers)
       });
       return { entry };
     });
@@ -264,7 +293,7 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
         const clientDeviceId = await tryGetClientDeviceId(request.headers);
         return selfInspectionService.recordInstrumentPreUseInspection(params.id, params.entryIndex, {
           instrumentTagUid: body.instrumentTagUid,
-          employeeTagUid: body.employeeTagUid,
+          measurementActorAuthenticationId: body.measurementActorAuthenticationId,
           clientDeviceId
         });
       }
@@ -279,7 +308,7 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
         const clientDeviceId = await tryGetClientDeviceId(request.headers);
         return selfInspectionService.recordInspectorInstrumentPreUseInspection(params.id, params.entryIndex, {
           instrumentTagUid: body.instrumentTagUid,
-          employeeTagUid: body.employeeTagUid,
+          measurementActorAuthenticationId: body.measurementActorAuthenticationId,
           clientDeviceId
         });
       }
