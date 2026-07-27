@@ -17,8 +17,11 @@ export function buildSelfInspectionEntryDraft(
         : null;
   return Object.fromEntries(
     session.template.items.map((item) => {
+      const savedValue = valueSource?.values.find((value) => value.templateItemId === item.id);
       const existingValue =
-        valueSource?.values.find((value) => value.templateItemId === item.id)?.value ?? '';
+        item.valueKind === 'judgement'
+          ? savedValue?.judgementResult ?? ''
+          : savedValue?.value ?? '';
       return [item.id, existingValue ?? ''];
     })
   );
@@ -65,6 +68,9 @@ export function selfInspectionEntryDraftHasNg(
 ): boolean {
   return session.template.items.some((item) => {
     const point = templateItemToDrawingPoint(item, draft[item.id] ?? '');
+    if (item.valueKind === 'judgement') {
+      return point.testValue === 'FAIL';
+    }
     const bounds = toleranceBoundsFromPoint(point);
     if ('error' in bounds) return true;
     return statusForPoint(point.testValue, bounds.lowerLimit, bounds.upperLimit) === 'ng';

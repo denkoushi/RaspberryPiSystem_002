@@ -23,6 +23,7 @@ import {
   getSelfInspectionRegistrationPolicy,
   updateSelfInspectionRegistrationPolicy,
   resolveSelfInspectionRecordApprovalApprover,
+  authenticateSelfInspectionMeasurementActor,
   verifyKioskSelfInspectionRecordApprovalAccessPassword,
   resetSelfInspectionSession
 } from '../client';
@@ -154,6 +155,18 @@ export function useResolveSelfInspectionSession() {
       void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
       void queryClient.invalidateQueries({ queryKey: ['self-inspection-session', session.id] });
     }
+  });
+}
+
+export function useAuthenticateSelfInspectionMeasurementActor() {
+  return useMutation({
+    mutationFn: ({
+      sessionId,
+      body
+    }: {
+      sessionId: string;
+      body: Parameters<typeof authenticateSelfInspectionMeasurementActor>[1];
+    }) => authenticateSelfInspectionMeasurementActor(sessionId, body)
   });
 }
 

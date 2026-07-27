@@ -24,6 +24,7 @@ export const DEFAULT_INSPECTION_DRAWING_MEASUREMENT_LABELS: readonly string[] = 
   '穴ピッチ',
   '深さ',
   'ネジ穴深さ',
+  'キリ穴深さ',
   '面粗度',
   '振れ',
   '平行度',
@@ -142,7 +143,7 @@ export function buildInspectionDrawingToleranceCandidateValues(
   return values;
 }
 
-const DEPTH_TOLERANCE_CANDIDATE_LABELS = new Set(['深さ', 'ネジ穴深さ']);
+const DEPTH_TOLERANCE_CANDIDATE_LABELS = new Set(['深さ', 'ネジ穴深さ', 'キリ穴深さ']);
 
 function buildDepthToleranceCandidateValues(): string[] {
   return Array.from({ length: 21 }, (_, index) => String(index));

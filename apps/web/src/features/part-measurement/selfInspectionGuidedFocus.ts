@@ -115,7 +115,11 @@ export function isPointInputComplete(
   outOfToleranceAcknowledgedByPointId: Record<string, boolean> = {}
 ): boolean {
   const status = resolvePointInputStatus(point);
-  return status === 'ok' || (status === 'ng' && outOfToleranceAcknowledgedByPointId[point.id] === true);
+  return (
+    status === 'ok' ||
+    (status === 'ng' &&
+      (point.valueKind === 'judgement' || outOfToleranceAcknowledgedByPointId[point.id] === true))
+  );
 }
 
 export function isPointCommitEligible(
@@ -220,7 +224,10 @@ export function applySelfInspectionGuidedCommit(input: {
   const inputStatus = resolvePointInputStatus(committedPoint);
   if (
     !shouldAdvanceGuideOnCommit(input.commit.source) ||
-    !isPointCommitEligible(inputStatus, input.commit.outOfToleranceConfirmed === true)
+    !isPointCommitEligible(
+      inputStatus,
+      committedPoint.valueKind === 'judgement' || input.commit.outOfToleranceConfirmed === true
+    )
   ) {
     return {
       kind: 'stay',

@@ -91,6 +91,9 @@ export function resolveCurrentEntryDraftSaveBlockReason(
       continue;
     }
     if (status === 'ng') {
+      if (point.valueKind === 'judgement') {
+        continue;
+      }
       if (outOfToleranceAcknowledgedByPointId[point.id] === true) {
         continue;
       }

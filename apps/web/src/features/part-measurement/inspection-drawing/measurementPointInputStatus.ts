@@ -22,6 +22,12 @@ export const MEASUREMENT_POINT_INPUT_STATUS_LABEL: Record<MeasurementPointInputS
 export function resolveMeasurementPointInputStatus(
   point: InspectionDrawingPoint
 ): MeasurementPointInputStatus {
+  if (point.valueKind === 'judgement') {
+    if (point.testValue.trim() === '') return 'empty';
+    if (point.testValue === 'PASS') return 'ok';
+    if (point.testValue === 'FAIL') return 'ng';
+    return 'invalid';
+  }
   const bounds = toleranceBoundsFromPoint(point);
   if ('error' in bounds) return 'tolerance_error';
   const parsed = parseMeasurementNumber(point.testValue);

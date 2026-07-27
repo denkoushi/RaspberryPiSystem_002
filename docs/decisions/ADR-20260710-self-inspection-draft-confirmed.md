@@ -29,6 +29,8 @@ Operators lose in-progress measurements on refresh. Confirm must remain strict (
 - Session NFC gate: first employee tag unlocks measurement; confirm still uses per-entry registration (copy first employee into empty later drafts)
 - Debounced autosave (~400ms) to draft API;「入力を保存」= confirm
 - **Amendment (2026-07-11)**: draft upsert on an existing CONFIRMED entry is a **no-op** (no demotion). Autosave must not target confirmed entries. WIP **list** includes sessions with any lot entry (DRAFT or CONFIRMED) as `in_progress`; WIP **progress counts** remain CONFIRMED-only. Details: [Plan](../plans/self-inspection-confirm-guard-wip-draft.md).
+- **Amendment (2026-07-27)**: each measurement page requires a short-lived, session/mode/client-bound NFC actor authentication. The authentication ID is held only in page memory and is required by draft, confirm, inspector-entry, and pre-use mutations. Entry ownership snapshots remain immutable; later operations are recorded separately in the operation audit.
+- Pipe-inspection items may use an explicit `JUDGEMENT` value kind. These items accept only `PASS` / `FAIL` (shown as OK / NG) and never accept a numeric value. Numeric items continue to reject judgement values.
 
 ## Alternatives
 
@@ -41,6 +43,9 @@ Operators lose in-progress measurements on refresh. Confirm must remain strict (
 - WIP hub **shows** draft-only sessions so operators can resume
 - Draft and confirm validation stay in separate modules
 - CONFIRMED rows are not rewritten by autosave
+- A reload or session/mode change requires NFC re-authentication
+- Measurement authorship and subsequent operating actor are independently auditable
+- Numeric tolerance and OK/NG judgement values remain type-separated end to end
 
 ## Validation
 

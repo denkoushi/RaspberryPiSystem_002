@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import type {
   PartMeasurementProcessGroup,
+  InspectionResult,
   SelfInspectionMeasurementReviewStatus,
   SelfInspectionMode
 } from '@prisma/client';
@@ -84,7 +85,8 @@ export function parseDecimal(value: string | number | null | undefined): Prisma.
 export function hasInspectionDrawingTemplate(template: SelfInspectionTemplate): boolean {
   if (!template.isActive || !template.visualTemplate?.drawingImageRelativePath?.trim()) return false;
   return template.items.length > 0 && template.items.every((item) => {
-    return item.markerXRatio != null && item.markerYRatio != null && item.lowerLimit != null && item.upperLimit != null;
+    if (item.markerXRatio == null || item.markerYRatio == null) return false;
+    return item.valueKind === 'JUDGEMENT' || (item.lowerLimit != null && item.upperLimit != null);
   });
 }
 
@@ -202,13 +204,15 @@ export type SelfInspectionInspectorMeasurementState =
 
 export type SelfInspectionMeasurementPayloadValue = {
   templateItemId: string;
-  value: string | number | null;
+  value?: string | number | null;
+  judgementResult?: InspectionResult | null;
   outOfToleranceAcknowledged?: boolean;
 };
 
 export type ExistingMeasurementReviewValue = {
   templateItemId: string;
   value: Prisma.Decimal | null;
+  judgementResult: InspectionResult | null;
   reviewStatus: SelfInspectionMeasurementReviewStatus;
   outOfToleranceAcknowledgedAt: Date | null;
   approvedAt: Date | null;
@@ -219,7 +223,8 @@ export type ExistingMeasurementReviewValue = {
 
 export type NormalizedMeasurementValue = {
   templateItemId: string;
-  value: Prisma.Decimal;
+  value: Prisma.Decimal | null;
+  judgementResult: InspectionResult | null;
   reviewStatus: SelfInspectionMeasurementReviewStatus;
   outOfToleranceAcknowledgedAt: Date | null;
   approvedAt: Date | null;
@@ -233,6 +238,7 @@ export type InspectorEntryValueCompletionSource = {
   values: Array<{
     templateItemId: string;
     inspectorValue: Prisma.Decimal | null;
+    inspectorJudgementResult: InspectionResult | null;
   }>;
 };
 
@@ -279,7 +285,7 @@ export function buildInspectorMeasurementCompletion(input: {
     const valuesByItemId = new Map(entry.values.map((value) => [value.templateItemId, value]));
     const hasMissingValue = requiredItemIds.some((itemId) => {
       const value = valuesByItemId.get(itemId);
-      return value?.inspectorValue == null;
+      return value?.inspectorValue == null && value?.inspectorJudgementResult == null;
     });
     if (hasMissingValue) {
       incompleteValueEntryCount += 1;

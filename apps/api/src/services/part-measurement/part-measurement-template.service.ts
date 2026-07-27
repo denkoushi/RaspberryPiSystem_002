@@ -49,7 +49,28 @@ export type TemplateItemInput = {
   lowerLimit?: number | null;
   upperLimit?: number | null;
   depthMode?: 'measured' | 'through';
+  valueKind?: 'numeric' | 'judgement';
 };
+
+function isPipeThreadJudgementItem(item: TemplateItemInput): boolean {
+  return item.measurementLabel.trim() === 'ネジ穴深さ' && item.measurementPoint.split(/\s+/).includes('管用');
+}
+
+function normalizeTemplateItemValueKind(item: TemplateItemInput): 'NUMERIC' | 'JUDGEMENT' {
+  const valueKind = item.valueKind === 'judgement' ? 'JUDGEMENT' : 'NUMERIC';
+  const isPipeThread = isPipeThreadJudgementItem(item);
+  if (valueKind === 'JUDGEMENT') {
+    if (!isPipeThread || item.depthMode === 'through') {
+      throw new ApiError(400, 'OK/NG判定は「ネジ穴深さ / 管用」の測定点だけに設定できます');
+    }
+    if (item.nominalValue != null || item.lowerLimit != null || item.upperLimit != null) {
+      throw new ApiError(400, '管用ネジのOK/NG判定には基準値・公差を設定できません');
+    }
+  } else if (isPipeThread) {
+    throw new ApiError(400, '管用ネジはOK/NG判定として設定してください');
+  }
+  return valueKind;
+}
 
 function optionalDecimal(value: number | null | undefined): Prisma.Decimal | null {
   if (value === null || value === undefined) return null;
@@ -170,6 +191,7 @@ function copyTemplateItemsFromDb(
     lowerLimit?: unknown;
     upperLimit?: unknown;
     depthMode?: 'MEASURED' | 'THROUGH' | string | null;
+    valueKind?: 'NUMERIC' | 'JUDGEMENT' | string | null;
   }>
 ): TemplateItemInput[] {
   return items.map((item) => ({
@@ -188,7 +210,8 @@ function copyTemplateItemsFromDb(
     nominalValue: item.nominalValue != null ? Number(item.nominalValue) : null,
     lowerLimit: item.lowerLimit != null ? Number(item.lowerLimit) : null,
     upperLimit: item.upperLimit != null ? Number(item.upperLimit) : null,
-    depthMode: String(item.depthMode ?? 'MEASURED').toUpperCase() === 'THROUGH' ? 'through' : 'measured'
+    depthMode: String(item.depthMode ?? 'MEASURED').toUpperCase() === 'THROUGH' ? 'through' : 'measured',
+    valueKind: String(item.valueKind ?? 'NUMERIC').toUpperCase() === 'JUDGEMENT' ? 'judgement' : 'numeric'
   }));
 }
 
@@ -254,6 +277,7 @@ async function insertNextTemplateVersionInTransaction(
           const yRatio = clampRatio(item.markerYRatio);
           const tipXRatio = clampRatio(item.calloutTipXRatio);
           const tipYRatio = clampRatio(item.calloutTipYRatio);
+          const valueKind = normalizeTemplateItemValueKind(item);
           return {
             sortOrder: item.sortOrder,
             datumSurface: item.datumSurface.trim(),
@@ -270,7 +294,8 @@ async function insertNextTemplateVersionInTransaction(
             nominalValue: optionalDecimal(item.nominalValue),
             lowerLimit: optionalDecimal(item.lowerLimit),
             upperLimit: optionalDecimal(item.upperLimit),
-            depthMode: item.depthMode === 'through' ? 'THROUGH' : 'MEASURED'
+            depthMode: item.depthMode === 'through' ? 'THROUGH' : 'MEASURED',
+            valueKind
           };
         })
       }

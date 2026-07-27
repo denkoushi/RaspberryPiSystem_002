@@ -208,6 +208,8 @@ export async function resolveRegistrationPatchForUpdate(
   input: {
     employeeTagUid?: string | null;
     measuringInstrumentTagUid?: string | null;
+    createdByEmployeeId?: string | null;
+    createdByEmployeeNameSnapshot?: string | null;
   },
   registrationPolicy: SelfInspectionRegistrationRequirementPolicy
 ) {
@@ -230,9 +232,14 @@ export async function resolveRegistrationPatchForUpdate(
   });
 
   if (!existingEntry.createdByEmployeeId) {
-    const actor = await resolveEntryActorRequired(input.employeeTagUid);
-    patch.createdByEmployeeId = actor.createdByEmployeeId;
-    patch.createdByEmployeeNameSnapshot = actor.createdByEmployeeNameSnapshot;
+    if (input.createdByEmployeeId) {
+      patch.createdByEmployeeId = input.createdByEmployeeId;
+      patch.createdByEmployeeNameSnapshot = normalizeText(input.createdByEmployeeNameSnapshot) || undefined;
+    } else {
+      const actor = await resolveEntryActorRequired(input.employeeTagUid);
+      patch.createdByEmployeeId = actor.createdByEmployeeId;
+      patch.createdByEmployeeNameSnapshot = actor.createdByEmployeeNameSnapshot;
+    }
   }
 
   if (!existingEntry.measuringInstrumentId && (input.measuringInstrumentTagUid ?? '').trim()) {
@@ -295,6 +302,10 @@ export async function resolveInspectorRegistrationForSave(
   input: {
     employeeTagUid?: string | null;
     measuringInstrumentTagUid?: string | null;
+    inspectorEmployeeId?: string | null;
+    inspectorEmployeeCodeSnapshot?: string | null;
+    inspectorEmployeeNameSnapshot?: string | null;
+    inspectorEmployeeNfcTagUidSnapshot?: string | null;
   },
   registrationPolicy: SelfInspectionRegistrationRequirementPolicy
 ) {
@@ -316,7 +327,17 @@ export async function resolveInspectorRegistrationForSave(
   });
 
   if (!inspectorEmployeeId) {
-    const employee = await resolveInspectorEmployeeRequired(db, input.employeeTagUid);
+    const employee = input.inspectorEmployeeId
+      ? {
+          id: input.inspectorEmployeeId,
+          employeeCode: input.inspectorEmployeeCodeSnapshot ?? '',
+          displayName: input.inspectorEmployeeNameSnapshot ?? '',
+          nfcTagUid: input.inspectorEmployeeNfcTagUidSnapshot ?? ''
+        }
+      : await resolveInspectorEmployeeRequired(db, input.employeeTagUid);
+    if (!employee.id || !employee.employeeCode || !employee.displayName || !employee.nfcTagUid) {
+      throw new ApiError(403, '有効な検査員NFC認証が必要です');
+    }
     if (operatorEntry.createdByEmployeeId && operatorEntry.createdByEmployeeId === employee.id) {
       throw new ApiError(409, '検査員はオペレータ本人とは別の社員を登録してください');
     }
