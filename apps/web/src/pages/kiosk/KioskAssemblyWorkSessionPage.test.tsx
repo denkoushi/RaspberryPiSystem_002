@@ -41,7 +41,7 @@ vi.mock('../../features/assembly', async () => {
   const actual = await vi.importActual<typeof import('../../features/assembly')>('../../features/assembly');
   return {
     ...actual,
-    AssemblyProcedureCanvas: () => <div>fallback procedure canvas</div>
+    AssemblyProcedureCanvas: () => <div data-testid="legacy-assembly-procedure-canvas" />
   };
 });
 
@@ -180,6 +180,7 @@ function jsonResponse(payload: object) {
 
 const configuredSequence: AssemblyProcedureSequenceDto = {
   mode: 'configured',
+  source: 'template_version',
   reason: null,
   machineName: 'MH-AX',
   machineNameKey: 'MH-AX',
@@ -204,6 +205,66 @@ const configuredSequence: AssemblyProcedureSequenceDto = {
       pageCount: 2,
       updatedAt: '2026-07-06T00:00:00.000Z',
       pageUrls: ['/api/storage/pdf-pages/doc-1/page-1.jpg', '/api/storage/pdf-pages/doc-1/page-2.jpg']
+    }
+  ]
+};
+
+const expandedFallbackSequence: AssemblyProcedureSequenceDto = {
+  mode: 'fallback',
+  source: 'primary_fallback',
+  reason: 'not_configured',
+  machineName: 'MH-AX',
+  machineNameKey: 'MH-AX',
+  fallbackProcedureDocument: {
+    id: 'procedure-1',
+    name: '単一画像手順書',
+    imageRelativePath: '/api/storage/assembly-procedure-images/procedure.png'
+  },
+  documents: [
+    {
+      orderItemId: '',
+      sortOrder: 0,
+      label: null,
+      documentType: 'assembly_procedure_document',
+      kioskDocumentId: null,
+      assemblyProcedureDocumentId: 'procedure-1',
+      title: '単一画像手順書',
+      displayTitle: null,
+      filename: '単一画像手順書',
+      confirmedDocumentNumber: null,
+      confirmedSummaryText: null,
+      pageCount: 1,
+      updatedAt: '2026-07-06T00:00:00.000Z',
+      pageUrls: ['/api/storage/assembly-procedure-images/procedure.png'],
+      pages: [
+        {
+          source: 'assembly_procedure_document',
+          documentId: 'procedure-1',
+          pageIndex: 0,
+          pageUrl: '/api/storage/assembly-procedure-images/procedure.png'
+        }
+      ]
+    }
+  ],
+  stepSource: 'document_expansion',
+  steps: [
+    {
+      id: 'document-expansion:assembly_procedure_document:procedure-1:0',
+      sortOrder: 0,
+      kioskDocumentId: null,
+      assemblyProcedureDocumentId: 'procedure-1',
+      pageIndex: 0,
+      viewMode: 'full_page',
+      cropXRatio: null,
+      cropYRatio: null,
+      cropWidthRatio: null,
+      cropHeightRatio: null,
+      title: null,
+      instructionText: null,
+      emphasis: 'normal',
+      documentType: 'assembly_procedure_document',
+      documentTitle: '単一画像手順書',
+      pageUrl: '/api/storage/assembly-procedure-images/procedure.png'
     }
   ]
 };
@@ -253,7 +314,7 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     expect(await screen.findByRole('dialog', { name: '作業者確認' })).toBeInTheDocument();
     expect(mockGetProcedureSequence).not.toHaveBeenCalled();
     expect(mockListCompatibleTorqueWrenches).not.toHaveBeenCalled();
-    expect(screen.queryByText('fallback procedure canvas')).not.toBeInTheDocument();
+    expect(screen.queryByText('要領書を準備しています')).not.toBeInTheDocument();
   });
 
   it('records RESUME access from the NFC gate before starting procedure side effects', async () => {
@@ -303,18 +364,65 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     });
   });
 
-  it('falls back to existing procedure canvas when sequence is not configured', async () => {
-    mockGetProcedureSequence.mockResolvedValue({
-      ...configuredSequence,
-      mode: 'fallback',
-      reason: 'not_configured',
-      documents: []
-    });
+  it('renders document-expanded fallback procedures in the new step viewer', async () => {
+    mockGetProcedureSequence.mockResolvedValue(expandedFallbackSequence);
     renderPage();
 
     await waitFor(() => expect(mockGetProcedureSequence).toHaveBeenCalledWith('session-1'));
-    expect(await screen.findByText('fallback procedure canvas')).toBeInTheDocument();
-    expect(await screen.findByText('手順書')).toBeInTheDocument();
+    expect(await screen.findByText(/手順 1\/1/)).toBeInTheDocument();
+    expect(screen.getByText((_, element) =>
+      element?.tagName === 'SPAN' && element.textContent === '要領書'
+    )).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'BOLT-1' })).toHaveAttribute(
+      'data-marker-id',
+      'bolt-1'
+    );
+    expect(screen.getByRole('button', { name: '全手順' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '現在の丸数字へ' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '前手順' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '次手順' })).toBeDisabled();
+  });
+
+  it('shows only the new procedure loading state before the sequence resolves', async () => {
+    let resolveSequence!: (sequence: AssemblyProcedureSequenceDto) => void;
+    mockGetProcedureSequence.mockReturnValue(new Promise((resolve) => {
+      resolveSequence = resolve;
+    }));
+    renderPage();
+
+    await waitFor(() => expect(mockGetProcedureSequence).toHaveBeenCalledWith('session-1'));
+    expect(screen.getByText('要領書を準備しています')).toBeInTheDocument();
+    expect(screen.queryByTestId('assembly-procedure-image-with-markers')).not.toBeInTheDocument();
+
+    resolveSequence(expandedFallbackSequence);
+    expect(await screen.findByText(/手順 1\/1/)).toBeInTheDocument();
+  });
+
+  it('retries a failed sequence request without showing the legacy procedure canvas', async () => {
+    mockGetProcedureSequence
+      .mockRejectedValueOnce(new Error('network unavailable'))
+      .mockResolvedValueOnce(expandedFallbackSequence);
+    renderPage();
+
+    expect(await screen.findByText('要領書の取得に失敗しました。')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(screen.getByText('要領書を準備しています')).toBeInTheDocument();
+    expect(await screen.findByText(/手順 1\/1/)).toBeInTheDocument();
+    expect(mockGetProcedureSequence).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses the new viewer empty state when no procedure page is available', async () => {
+    mockGetProcedureSequence.mockResolvedValue({
+      ...expandedFallbackSequence,
+      documents: [],
+      steps: []
+    });
+    renderPage();
+
+    expect(await screen.findByText('表示できる要領書ページがありません')).toBeInTheDocument();
+    expect(screen.getByText((_, element) =>
+      element?.tagName === 'SPAN' && element.textContent === '要領書'
+    )).toBeInTheDocument();
   });
 
   it('checks loopback health before confirmation without reporting false availability or acquiring a lease', async () => {

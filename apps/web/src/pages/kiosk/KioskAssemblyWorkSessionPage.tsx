@@ -5,7 +5,6 @@ import {
   advanceAssemblyArea,
   completeAssemblyWorkSession,
   getAssemblyWorkSession,
-  getAssemblyWorkSessionProcedureSequence,
   listCurrentTorqueWrenchConfirmations,
   listCompatibleTorqueWrenchesForSession,
   confirmAssemblyTorqueWrench,
@@ -16,7 +15,6 @@ import {
 } from '../../api/client';
 import { Button, buttonClassName } from '../../components/ui/Button';
 import {
-  AssemblyProcedureCanvas,
   AssemblyProcedureSequenceViewer,
   AssemblyOperatorNfcDialog,
   AssemblyWorkSessionHeader,
@@ -35,6 +33,7 @@ import {
   sessionCheckItemsToCanvas,
   takeoverTorqueAgentLease,
   templateToCanvasBolts,
+  useAssemblyWorkProcedureSequence,
   useTorqueRecordLiveRefresh
 } from '../../features/assembly';
 
@@ -61,8 +60,6 @@ export function KioskAssemblyWorkSessionPage() {
   );
   const [operatorGateBusy, setOperatorGateBusy] = useState(false);
   const [operatorGateError, setOperatorGateError] = useState<string | null>(null);
-  const [procedureSequence, setProcedureSequence] = useState<Awaited<ReturnType<typeof getAssemblyWorkSessionProcedureSequence>> | null>(null);
-  const [procedureSequenceLoading, setProcedureSequenceLoading] = useState(false);
   const [currentSequencePage, setCurrentSequencePage] = useState<AssemblyProcedureSequencePageDto | null>(null);
   const [torqueValue, setTorqueValue] = useState('');
   const [torqueSource, setTorqueSource] = useState<'manual' | 'mock'>('manual');
@@ -83,6 +80,13 @@ export function KioskAssemblyWorkSessionPage() {
     session && (session.status !== 'in_progress' || authorizedSessionId === session.id)
   );
   const sessionActive = Boolean(operatorAuthorized && session?.status === 'in_progress');
+  const {
+    state: procedureSequenceState,
+    retry: retryProcedureSequence
+  } = useAssemblyWorkProcedureSequence({
+    sessionId: session?.id ?? null,
+    enabled: operatorAuthorized
+  });
 
   useEffect(() => {
     if (!incomingAccessGrant) return;
@@ -135,28 +139,6 @@ export function KioskAssemblyWorkSessionPage() {
     };
   }, [sessionId]);
 
-  useEffect(() => {
-    if (!session?.id || !operatorAuthorized) {
-      setProcedureSequence(null);
-      return;
-    }
-    let cancelled = false;
-    setProcedureSequenceLoading(true);
-    void getAssemblyWorkSessionProcedureSequence(session.id)
-      .then((next) => {
-        if (!cancelled) setProcedureSequence(next);
-      })
-      .catch(() => {
-        if (!cancelled) setProcedureSequence(null);
-      })
-      .finally(() => {
-        if (!cancelled) setProcedureSequenceLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [operatorAuthorized, session?.id]);
-
   const statusByBolt = useMemo(() => (session ? latestStatusByBolt(session) : new Map()), [session]);
   const checkSummary = useMemo(() => (session ? resolveAssemblyCheckSummary(session) : null), [session]);
   const currentArea = session ? currentAssemblyArea(session) : null;
@@ -167,8 +149,6 @@ export function KioskAssemblyWorkSessionPage() {
     : false;
   const checksComplete = checkSummary?.allRequiredCompleted ?? true;
   const canComplete = Boolean(session && allBoltsComplete && checksComplete && session.status === 'in_progress');
-  const hasConfiguredProcedureSequence =
-    procedureSequence?.mode === 'configured' && procedureSequence.documents.length > 0;
   const knownTorqueSourceEventKeys = useMemo(
     () => new Set(
       session?.torqueRecords
@@ -274,25 +254,20 @@ export function KioskAssemblyWorkSessionPage() {
     };
   }, [sessionActive, traceabilityRequired]);
 
-  const fallbackPageRef = useMemo(() => {
-    if (!session) return null;
-    return {
-      source: 'assembly_procedure_document' as const,
-      documentId: session.template.procedureDocumentId,
-      pageIndex: 0
-    };
-  }, [session]);
-
   const activePageRef = useMemo(() => {
-    if (hasConfiguredProcedureSequence && currentSequencePage) {
-      return {
-        source: currentSequencePage.source,
-        documentId: currentSequencePage.documentId,
-        pageIndex: currentSequencePage.pageIndex
-      };
+    if (!currentSequencePage) return null;
+    return {
+      source: currentSequencePage.source,
+      documentId: currentSequencePage.documentId,
+      pageIndex: currentSequencePage.pageIndex
+    };
+  }, [currentSequencePage]);
+
+  useEffect(() => {
+    if (procedureSequenceState.status !== 'ready') {
+      setCurrentSequencePage(null);
     }
-    return fallbackPageRef;
-  }, [currentSequencePage, fallbackPageRef, hasConfiguredProcedureSequence]);
+  }, [procedureSequenceState.status, session?.id]);
 
   const visibleBoltMarkers = useMemo(() => {
     if (!session || !activePageRef) return [];
@@ -505,7 +480,8 @@ export function KioskAssemblyWorkSessionPage() {
     );
   }
 
-  const currentPositionLabel = procedureSequenceLoading
+  const currentPositionLabel =
+    procedureSequenceState.status === 'idle' || procedureSequenceState.status === 'loading'
     ? '要領書を確認中'
     : currentBolt ? `丸数字 ${currentBolt.markerNo}` : (allBoltsComplete ? '全締付完了' : '次工程待ち');
   const requiredCheckLabel =
@@ -527,7 +503,7 @@ export function KioskAssemblyWorkSessionPage() {
         productNo={session.productNo}
         modelCode={session.template.modelCode}
         procedurePattern={session.template.procedurePattern}
-        procedureModeLabel={hasConfiguredProcedureSequence ? '要領書' : '手順書'}
+        procedureModeLabel="要領書"
         currentPositionLabel={currentPositionLabel}
         requiredCheckLabel={requiredCheckLabel}
       />
@@ -549,9 +525,9 @@ export function KioskAssemblyWorkSessionPage() {
       <main className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-auto xl:grid-cols-[minmax(0,1fr)_minmax(21rem,27rem)] xl:overflow-hidden">
         <section className="flex min-h-[32rem] flex-col overflow-hidden rounded border border-white/15 bg-slate-900/70 xl:min-h-0">
           <div className="min-h-0 flex-1">
-            {hasConfiguredProcedureSequence && procedureSequence ? (
+            {procedureSequenceState.status === 'ready' ? (
               <AssemblyProcedureSequenceViewer
-                sequence={procedureSequence}
+                sequence={procedureSequenceState.sequence}
                 className="h-full"
                 boltMarkers={visibleBoltMarkers}
                 checkMarkers={visibleCheckMarkers}
@@ -572,15 +548,35 @@ export function KioskAssemblyWorkSessionPage() {
                 onToggleCheckItem={sessionActive ? (checkItemId) => void toggleCheckItem(checkItemId) : undefined}
                 onCurrentPageChange={handleCurrentPageChange}
               />
+            ) : procedureSequenceState.status === 'error' ? (
+              <div
+                className="flex h-full min-h-[18rem] flex-col items-center justify-center gap-4 bg-slate-950 px-6 text-center"
+                role="alert"
+              >
+                <div className="grid gap-1">
+                  <p className="text-sm font-semibold text-rose-200">
+                    要領書の取得に失敗しました。
+                  </p>
+                  {procedureSequenceState.error !== '要領書の取得に失敗しました。' ? (
+                    <p className="text-xs text-white/65">{procedureSequenceState.error}</p>
+                  ) : null}
+                </div>
+                <Button
+                  type="button"
+                  variant="primary"
+                  className="min-h-10"
+                  onClick={retryProcedureSequence}
+                >
+                  再試行
+                </Button>
+              </div>
             ) : (
-              <AssemblyProcedureCanvas
-                imageRelativePath={session.template.procedureDocument.imageRelativePath}
-                bolts={visibleBoltMarkers}
-                checkItems={visibleCheckMarkers}
-                selectedBoltId={session.currentBoltId}
-                onToggleCheckItem={sessionActive ? (checkItemId) => void toggleCheckItem(checkItemId) : undefined}
-                className="h-full"
-              />
+              <div
+                className="flex h-full min-h-[18rem] items-center justify-center bg-slate-950 text-sm font-semibold text-cyan-100"
+                role="status"
+              >
+                要領書を準備しています
+              </div>
             )}
           </div>
         </section>
