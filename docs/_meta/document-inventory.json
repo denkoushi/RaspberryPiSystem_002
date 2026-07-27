@@ -15,12 +15,12 @@
     ]
   },
   "summary": {
-    "documentCount": 562,
-    "totalLines": 159904,
-    "totalBytes": 12071919,
-    "withFrontmatter": 240,
-    "withStatus": 96,
-    "sourceOfTruthDeclared": 61,
+    "documentCount": 563,
+    "totalLines": 160043,
+    "totalBytes": 12079938,
+    "withFrontmatter": 241,
+    "withStatus": 97,
+    "sourceOfTruthDeclared": 62,
     "execPlanReferences": 64,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
@@ -25552,6 +25552,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/knowledge-base/KB-402-assembly-approved-uiux-feature-branch-overwrite.md",
+      "lineCount": 77,
+      "byteSize": 3619,
+      "hasFrontmatter": true,
+      "title": "Assembly approved UI/UX was overwritten after feature-branch deployment",
+      "status": "remediation-in-progress",
+      "source_of_truth": "true",
+      "localLinks": [],
+      "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md",
       "lineCount": 203,
       "byteSize": 12918,
@@ -31662,8 +31677,8 @@
     },
     {
       "path": "docs/plans/assembly-approved-uiux-regression-recovery-execplan.md",
-      "lineCount": 340,
-      "byteSize": 18236,
+      "lineCount": 402,
+      "byteSize": 22636,
       "hasFrontmatter": true,
       "title": "Assembly Approved V3 UI/UX Regression Recovery ExecPlan",
       "status": null,
