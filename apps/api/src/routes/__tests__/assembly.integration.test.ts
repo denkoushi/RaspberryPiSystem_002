@@ -2728,8 +2728,18 @@ describe('assembly torque management API', () => {
       mode: 'fallback',
       reason: 'not_configured',
       machineNameKey: 'NO-ORDER',
+      stepSource: 'document_expansion',
       fallbackProcedureDocument: expect.objectContaining({ id: procedureDocumentId })
     });
+    expect(fallbackSequence.json().sequence.documents).toHaveLength(1);
+    expect(fallbackSequence.json().sequence.steps).toEqual([
+      expect.objectContaining({
+        assemblyProcedureDocumentId: procedureDocumentId,
+        pageIndex: 0,
+        viewMode: 'full_page',
+        documentType: 'assembly_procedure_document'
+      })
+    ]);
   });
 
   it('protects KioskDocument rows retained by an internal legacy sequence', async () => {

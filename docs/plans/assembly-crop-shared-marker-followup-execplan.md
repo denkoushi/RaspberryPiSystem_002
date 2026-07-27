@@ -5,6 +5,7 @@ created: 2026-07-27
 branch: fix/assembly-crop-shared-marker-projection
 related:
   - ./assembly-procedure-step-storyboard-execplan.md
+  - ./assembly-work-sequence-viewer-only-execplan.md
   - ../decisions/ADR-20260726-assembly-template-procedure-steps.md
 ---
 

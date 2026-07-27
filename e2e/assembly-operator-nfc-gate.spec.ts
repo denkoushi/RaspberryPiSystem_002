@@ -103,7 +103,53 @@ const fallbackProcedureSequence = {
   reason: 'not_configured',
   machineName: 'MH-E2E',
   machineNameKey: 'MH-E2E',
-  documents: [],
+  documents: [
+    {
+      orderItemId: '',
+      sortOrder: 0,
+      label: null,
+      documentType: 'assembly_procedure_document',
+      kioskDocumentId: null,
+      assemblyProcedureDocumentId: 'procedure-e2e',
+      title: 'E2E 手順書',
+      displayTitle: null,
+      filename: 'E2E 手順書',
+      confirmedDocumentNumber: null,
+      confirmedSummaryText: null,
+      pageCount: 1,
+      updatedAt: timestamp,
+      pageUrls: [procedureImage],
+      pages: [
+        {
+          source: 'assembly_procedure_document',
+          documentId: 'procedure-e2e',
+          pageIndex: 0,
+          pageUrl: procedureImage
+        }
+      ]
+    }
+  ],
+  stepSource: 'document_expansion',
+  steps: [
+    {
+      id: 'document-expansion:assembly_procedure_document:procedure-e2e:0',
+      sortOrder: 0,
+      kioskDocumentId: null,
+      assemblyProcedureDocumentId: 'procedure-e2e',
+      pageIndex: 0,
+      viewMode: 'full_page',
+      cropXRatio: null,
+      cropYRatio: null,
+      cropWidthRatio: null,
+      cropHeightRatio: null,
+      title: null,
+      instructionText: null,
+      emphasis: 'normal',
+      documentType: 'assembly_procedure_document',
+      documentTitle: 'E2E 手順書',
+      pageUrl: procedureImage
+    }
+  ],
   fallbackProcedureDocument: {
     id: 'procedure-e2e',
     name: 'E2E 手順書',
@@ -381,6 +427,45 @@ for (const viewport of [
   { width: 1920, height: 1080 },
   { width: 900, height: 900 }
 ]) {
+  test(`document-expanded fallback uses only the new step UI at ${viewport.width}x${viewport.height}`, async ({
+    page
+  }) => {
+    const evidence: ApiEvidence = {
+      operatorAccessBodies: [],
+      procedureRequestCount: 0
+    };
+    await page.setViewportSize(viewport);
+    await installMockNfcWebSocket(page);
+    await mockAssemblyApis(page, evidence);
+    await page.goto(`/kiosk/assembly/work-sessions/${inProgressSession.id}`, {
+      waitUntil: 'networkidle'
+    });
+    await emitNfc(page, `NFC-FALLBACK-${viewport.width}`);
+
+    await expect(page.getByText('手順 1/1 · E2E 手順書')).toBeVisible();
+    const workHeader = page.locator('header').filter({
+      has: page.getByRole('heading', { name: '組立作業' })
+    });
+    await expect(workHeader.getByText('要領書', { exact: true })).toBeVisible();
+    const fullPageView = page.getByTestId('assembly-procedure-image-with-markers');
+    await expect(fullPageView).toBeVisible();
+    await expect(fullPageView.getByRole('button', { name: 'BOLT-E2E' })).toHaveAttribute(
+      'data-marker-id',
+      'bolt-e2e'
+    );
+    await expect(fullPageView.locator('svg line')).toHaveCount(1);
+    await expect(page.getByRole('button', { name: '全手順' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '現在の丸数字へ' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '前手順' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '次手順' })).toBeDisabled();
+
+    const pageOverflow = await page.evaluate(() => ({
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth
+    }));
+    expect(pageOverflow.scrollWidth).toBeLessThanOrEqual(pageOverflow.clientWidth + 1);
+  });
+
   test(`explicit work steps keep crop markers aligned and navigate at ${viewport.width}x${viewport.height}`, async ({
     page
   }) => {

@@ -36,3 +36,4 @@ export * from './useTorqueRecordLiveRefresh';
 export * from './useAssemblyProcedureLibrary';
 export * from './useAssemblyTemplateLibrary';
 export * from './useAssemblyLibraryFilterOptions';
+export * from './useAssemblyWorkProcedureSequence';
