@@ -186,8 +186,11 @@ export type SelfInspectionRecordApprovalState =
   | 'input_incomplete'
   | 'inspector_measurement_pending'
   | 'registration_incomplete'
+  | 'final_judgement_pending'
+  | 'finalization_ready'
   | 'approvable'
-  | 'approved';
+  | 'approved'
+  | 'completed';
 
 export type SelfInspectionRecordApprovalDto = {
   id: string;

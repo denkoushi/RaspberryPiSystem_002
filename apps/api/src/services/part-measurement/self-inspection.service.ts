@@ -350,19 +350,32 @@ export class SelfInspectionService {
     const productNo = normalizeText(query.productNo);
     const resourceCd = normalizeText(query.resourceCd);
     const state = query.state ?? 'active';
+    const completionWhere =
+      state === 'approved'
+        ? { recordApproval: { isNot: null } }
+        : state === 'completed'
+          ? {
+              decisionWorkflow: 'INSPECTOR_FINAL_JUDGEMENT' as const,
+              completedAt: { not: null }
+            }
+          : {
+              completedAt: null,
+              OR: [
+                { decisionWorkflow: 'INSPECTOR_FINAL_JUDGEMENT' as const },
+                { decisionWorkflow: null, recordApproval: { is: null } },
+                {
+                  decisionWorkflow: 'LEGACY_RECORD_APPROVAL' as const,
+                  recordApproval: { is: null }
+                }
+              ]
+            };
     const rows = await prisma.selfInspectionSession.findMany({
       where: {
         recordApprovalRequiredAt: { not: null },
-        OR: [
-          { decisionWorkflow: null },
-          { decisionWorkflow: 'LEGACY_RECORD_APPROVAL' }
-        ],
         ...(productNo ? { productNo: { contains: productNo, mode: 'insensitive' } } : {}),
         ...(resourceCd ? { resourceCd: { equals: resourceCd, mode: 'insensitive' } } : {}),
         ...(query.processGroup ? { processGroup: query.processGroup } : {}),
-        ...(state === 'approved'
-          ? { recordApproval: { isNot: null } }
-          : { completedAt: null, recordApproval: { is: null } })
+        ...completionWhere
       },
       include: recordApprovalSessionInclude,
       orderBy: [{ updatedAt: 'desc' }],
@@ -386,12 +399,8 @@ export class SelfInspectionService {
       where: { id: sessionId },
       include: recordApprovalSessionInclude
     });
-    if (
-      !session ||
-      !session.recordApprovalRequiredAt ||
-      session.decisionWorkflow === 'INSPECTOR_FINAL_JUDGEMENT'
-    ) {
-      throw new ApiError(404, '検査記録承認対象の自主検査セッションが見つかりません');
+    if (!session || !session.recordApprovalRequiredAt) {
+      throw new ApiError(404, '検査記録確認対象の自主検査セッションが見つかりません');
     }
     const registrationPolicy = await getSelfInspectionRegistrationPolicy();
     const summary = serializeRecordApprovalSessionListItem(session, registrationPolicy);

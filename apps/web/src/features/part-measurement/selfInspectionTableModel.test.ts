@@ -90,6 +90,10 @@ describe('self-inspection workflow actions', () => {
       href: kioskSelfInspectionInspectorSessionPath(session.id),
       label: '検査員測定'
     });
+    expect(row.recordViewAction).toEqual({
+      href: `${KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH}?sessionId=${session.id}`,
+      label: '記録確認'
+    });
     expect(row.statusLabel).toBe('最終判定待ち');
   });
 

@@ -33,8 +33,11 @@ const STATE_OPTIONS: Array<{ value: RecordApprovalFilterState; label: string }> 
   { value: 'input_incomplete', label: '入力途中' },
   { value: 'inspector_measurement_pending', label: '検査員待ち' },
   { value: 'registration_incomplete', label: '点検不足' },
+  { value: 'final_judgement_pending', label: '最終判定待ち' },
+  { value: 'finalization_ready', label: '最終確定可能' },
   { value: 'approvable', label: '承認可能' },
-  { value: 'approved', label: '承認済み' }
+  { value: 'approved', label: '承認済み' },
+  { value: 'completed', label: '完了済み' }
 ];
 
 function stateLabel(state: SelfInspectionRecordApprovalState): string {
@@ -43,10 +46,16 @@ function stateLabel(state: SelfInspectionRecordApprovalState): string {
       return '承認済み';
     case 'approvable':
       return '承認可能';
+    case 'finalization_ready':
+      return '最終確定可能';
+    case 'final_judgement_pending':
+      return '最終判定待ち';
     case 'registration_incomplete':
       return '点検不足';
     case 'inspector_measurement_pending':
       return '検査員待ち';
+    case 'completed':
+      return '完了済み';
     case 'input_incomplete':
     default:
       return '入力途中';
@@ -59,10 +68,16 @@ function stateClassName(state: SelfInspectionRecordApprovalState): string {
       return 'bg-emerald-400/20 text-emerald-100';
     case 'approvable':
       return 'bg-sky-400/25 text-sky-100';
+    case 'finalization_ready':
+      return 'bg-cyan-400/25 text-cyan-100';
+    case 'final_judgement_pending':
+      return 'bg-red-400/20 text-red-100';
     case 'registration_incomplete':
       return 'bg-amber-400/25 text-amber-100';
     case 'inspector_measurement_pending':
       return 'bg-red-400/20 text-red-100';
+    case 'completed':
+      return 'bg-emerald-400/20 text-emerald-100';
     case 'input_incomplete':
     default:
       return 'bg-slate-500/35 text-white/80';
@@ -140,7 +155,13 @@ function SessionListItem({
             : ''}
         {session.incompleteRegistrationEntryCount > 0 ? ` / 点検不足 ${session.incompleteRegistrationEntryCount}件` : ''}
         {session.inspectorIncompleteRegistrationEntryCount > 0 ? ` / 検査員点検不足 ${session.inspectorIncompleteRegistrationEntryCount}件` : ''}
-        {session.pendingReviewCount > 0 ? ` / 公差外 ${session.pendingReviewCount}点` : ''}
+        {session.pendingReviewCount > 0
+          ? ` / ${
+              session.decisionWorkflow === 'INSPECTOR_FINAL_JUDGEMENT'
+                ? '最終判定待ち'
+                : '公差外'
+            } ${session.pendingReviewCount}点`
+          : ''}
       </p>
       <p className="text-xs text-white/55">
         更新 {formatDateTime(session.updatedAt)} / 入力者 {formatParticipantNames(session.participantEmployeeNames)}
@@ -325,7 +346,13 @@ export function KioskSelfInspectionRecordApprovalPage() {
   const [state, setState] = useState<RecordApprovalFilterState>('active');
   const [productNo, setProductNo] = useState('');
   const [resourceCd, setResourceCd] = useState('');
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const requestedSessionId = useMemo(
+    () => new URLSearchParams(location.search).get('sessionId'),
+    [location.search]
+  );
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
+    () => requestedSessionId
+  );
   const [approver, setApprover] = useState<{
     employeeCode: string;
     displayName: string;
@@ -349,6 +376,7 @@ export function KioskSelfInspectionRecordApprovalPage() {
   });
   const resolveApproverMutation = useResolveSelfInspectionRecordApprovalApprover();
   const approveMutation = useApproveSelfInspectionRecordApproval();
+  const selectedSession = detailQuery.data ?? null;
 
   const requestAccessPassword = useCallback(async () => {
     const password = typeof window !== 'undefined' ? window.prompt('検査記録確認パスワードを入力してください') : null;
@@ -379,15 +407,19 @@ export function KioskSelfInspectionRecordApprovalPage() {
 
   useEffect(() => {
     if (sessions.length === 0) {
-      setSelectedSessionId(null);
+      if (!listQuery.isLoading && !requestedSessionId) {
+        setSelectedSessionId(null);
+      }
       return;
     }
+    if (requestedSessionId && selectedSessionId === requestedSessionId) return;
     if (!selectedSessionId || !sessions.some((session) => session.id === selectedSessionId)) {
       setSelectedSessionId(sessions[0].id);
     }
-  }, [selectedSessionId, sessions]);
+  }, [listQuery.isLoading, requestedSessionId, selectedSessionId, sessions]);
 
   useEffect(() => {
+    if (selectedSession?.decisionWorkflow === 'INSPECTOR_FINAL_JUDGEMENT') return;
     if (!nfcEvent?.uid) return;
     const key = `${nfcEvent.uid}:${nfcEvent.timestamp ?? ''}`;
     if (lastProcessedNfcKeyRef.current === key) return;
@@ -416,10 +448,14 @@ export function KioskSelfInspectionRecordApprovalPage() {
         setApprover(null);
         setStatusMessage(readApiErrorMessage(error, '承認者NFCの確認に失敗しました。'));
       });
-  }, [nfcEvent, resolveApproverMutation]);
+  }, [nfcEvent, resolveApproverMutation, selectedSession?.decisionWorkflow]);
 
-  const selectedSession = detailQuery.data ?? null;
-  const canApprove = selectedSession?.recordApprovalState === 'approvable' && approver != null;
+  const isInspectorFinalJudgement =
+    selectedSession?.decisionWorkflow === 'INSPECTOR_FINAL_JUDGEMENT';
+  const canApprove =
+    !isInspectorFinalJudgement &&
+    selectedSession?.recordApprovalState === 'approvable' &&
+    approver != null;
   const approveDisabledReason = useMemo(() => {
     if (!selectedSession) return '承認する検査記録を選択してください。';
     if (selectedSession.recordApprovalState === 'inspector_measurement_pending') {
@@ -429,6 +465,43 @@ export function KioskSelfInspectionRecordApprovalPage() {
     if (!approver) return '承認者の社員NFCタグをタッチしてください。';
     return null;
   }, [approver, selectedSession]);
+  const inspectorWorkflowAction = useMemo(() => {
+    if (!selectedSession || !isInspectorFinalJudgement) return null;
+    switch (selectedSession.recordApprovalState) {
+      case 'input_incomplete':
+        return {
+          href: kioskSelfInspectionSessionPath(selectedSession.id),
+          label: '作業者入力へ'
+        };
+      case 'registration_incomplete':
+        return selectedSession.inspectorIncompleteRegistrationEntryCount > 0
+          ? {
+              href: kioskSelfInspectionInspectorSessionPath(selectedSession.id),
+              label: '検査員点検へ'
+            }
+          : {
+              href: kioskSelfInspectionSessionPath(selectedSession.id),
+              label: '作業者点検へ'
+            };
+      case 'inspector_measurement_pending':
+        return {
+          href: kioskSelfInspectionInspectorSessionPath(selectedSession.id),
+          label: '検査員測定へ'
+        };
+      case 'final_judgement_pending':
+        return {
+          href: kioskSelfInspectionInspectorSessionPath(selectedSession.id),
+          label: '最終判定へ'
+        };
+      case 'finalization_ready':
+        return {
+          href: kioskSelfInspectionInspectorSessionPath(selectedSession.id),
+          label: '最終確定へ'
+        };
+      default:
+        return null;
+    }
+  }, [isInspectorFinalJudgement, selectedSession]);
 
   const approveSelectedSession = async () => {
     if (!selectedSession || !approver || !canApprove) return;
@@ -499,7 +572,7 @@ export function KioskSelfInspectionRecordApprovalPage() {
           <div>
             <h1 className="text-2xl font-bold">検査記録確認</h1>
             <p className="mt-1 text-sm text-white/65">
-              入力途中、点検不足、承認可能な自主検査を確認します。
+              作業者・検査員の入力値と、承認・最終判定の進捗を確認します。
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-2">
@@ -621,7 +694,10 @@ export function KioskSelfInspectionRecordApprovalPage() {
                     {selectedSession.fseiban ? ` / 製番 ${selectedSession.fseiban}` : ''}
                   </p>
                   <p className="text-xs text-white/50">
-                    入力 {selectedSession.completedRequiredEntryCount}/{selectedSession.requiredEntryCount}件 / 公差外承認待ち {selectedSession.pendingReviewCount}点
+                    入力 {selectedSession.completedRequiredEntryCount}/{selectedSession.requiredEntryCount}件
+                    {isInspectorFinalJudgement
+                      ? ` / 最終判定待ち ${selectedSession.pendingReviewCount}点`
+                      : ` / 公差外承認待ち ${selectedSession.pendingReviewCount}点`}
                     {selectedSession.recordApproval
                       ? ` / 承認 ${formatDateTime(selectedSession.recordApproval.approvedAt)} ${selectedSession.recordApproval.approverEmployeeNameSnapshot}`
                       : ''}
@@ -646,29 +722,57 @@ export function KioskSelfInspectionRecordApprovalPage() {
                 </div>
               </div>
 
-              <div className="grid gap-2 rounded border border-white/10 bg-slate-950/40 p-3 md:grid-cols-[1fr_auto]">
-                <div>
-                  <p className="text-sm font-semibold text-white/80">承認者NFC</p>
-                  <p className={clsx('mt-1 rounded border px-3 py-2 text-sm', approver ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-100' : 'border-white/15 bg-white/5 text-white/55')}>
-                    {approver ? `${approver.employeeCode} ${approver.displayName}` : '社員タグをタッチしてください'}
-                  </p>
-                  {statusMessage ? (
-                    <p className="mt-2 rounded border border-amber-400/40 bg-amber-500/15 px-3 py-2 text-sm text-amber-100">
-                      {statusMessage}
+              {isInspectorFinalJudgement ? (
+                <div className="grid gap-2 rounded border border-cyan-300/20 bg-cyan-500/10 p-3 md:grid-cols-[1fr_auto]">
+                  <div>
+                    <p className="text-sm font-semibold text-cyan-100">
+                      検査員最終判定フロー（閲覧専用）
                     </p>
-                  ) : approveDisabledReason ? (
-                    <p className="mt-2 text-xs text-white/55">{approveDisabledReason}</p>
-                  ) : null}
+                    <p className="mt-1 text-xs text-white/65">
+                      この画面では作業者・検査員の入力結果を変更しません。必要な測定・最終判定・確定は検査員画面で行います。
+                    </p>
+                  </div>
+                  {inspectorWorkflowAction ? (
+                    <Link
+                      to={inspectorWorkflowAction.href}
+                      className={buttonClassName(
+                        'secondary',
+                        'inline-flex min-w-44 items-center justify-center self-end'
+                      )}
+                    >
+                      {inspectorWorkflowAction.label}
+                    </Link>
+                  ) : (
+                    <span className="self-end rounded bg-emerald-400/20 px-3 py-2 text-sm font-semibold text-emerald-100">
+                      最終確定済み
+                    </span>
+                  )}
                 </div>
-                <Button
-                  type="button"
-                  disabled={!canApprove || approveMutation.isPending}
-                  onClick={() => void approveSelectedSession()}
-                  className="min-w-44 self-end"
-                >
-                  承認して完了
-                </Button>
-              </div>
+              ) : (
+                <div className="grid gap-2 rounded border border-white/10 bg-slate-950/40 p-3 md:grid-cols-[1fr_auto]">
+                  <div>
+                    <p className="text-sm font-semibold text-white/80">承認者NFC</p>
+                    <p className={clsx('mt-1 rounded border px-3 py-2 text-sm', approver ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-100' : 'border-white/15 bg-white/5 text-white/55')}>
+                      {approver ? `${approver.employeeCode} ${approver.displayName}` : '社員タグをタッチしてください'}
+                    </p>
+                    {statusMessage ? (
+                      <p className="mt-2 rounded border border-amber-400/40 bg-amber-500/15 px-3 py-2 text-sm text-amber-100">
+                        {statusMessage}
+                      </p>
+                    ) : approveDisabledReason ? (
+                      <p className="mt-2 text-xs text-white/55">{approveDisabledReason}</p>
+                    ) : null}
+                  </div>
+                  <Button
+                    type="button"
+                    disabled={!canApprove || approveMutation.isPending}
+                    onClick={() => void approveSelectedSession()}
+                    className="min-w-44 self-end"
+                  >
+                    承認して完了
+                  </Button>
+                </div>
+              )}
 
               <DetailTable
                 session={selectedSession}

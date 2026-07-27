@@ -73,30 +73,43 @@ function TablePane({ rows, onCandidateSelect }: Props) {
                   </span>
                 </td>
                 <td className="px-2 py-1.5">
-                  {row.action.kind === 'link' ? (
-                    <Link
-                      to={row.action.href}
-                      className={buttonClassName(
-                        'primary',
-                        clsx(kioskButtonPrimaryClassName, 'inline-flex min-h-11 w-full items-center justify-center px-2 text-xs')
-                      )}
-                    >
-                      {row.action.label}
-                    </Link>
-                  ) : (
-                    <button
-                      type="button"
-                      className={clsx(
-                        row.statusLabel === '入力中' || row.statusLabel === '完了'
-                          ? kioskButtonPrimaryClassName
-                          : buttonClassName('ghostOnDark'),
-                        'inline-flex min-h-11 w-full items-center justify-center px-2 text-xs'
-                      )}
-                      onClick={() => onCandidateSelect(row.id)}
-                    >
-                      {row.action.label}
-                    </button>
-                  )}
+                  <div className="grid gap-1">
+                    {row.action.kind === 'link' ? (
+                      <Link
+                        to={row.action.href}
+                        className={buttonClassName(
+                          'primary',
+                          clsx(kioskButtonPrimaryClassName, 'inline-flex min-h-11 w-full items-center justify-center px-2 text-xs')
+                        )}
+                      >
+                        {row.action.label}
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        className={clsx(
+                          row.statusLabel === '入力中' || row.statusLabel === '完了'
+                            ? kioskButtonPrimaryClassName
+                            : buttonClassName('ghostOnDark'),
+                          'inline-flex min-h-11 w-full items-center justify-center px-2 text-xs'
+                        )}
+                        onClick={() => onCandidateSelect(row.id)}
+                      >
+                        {row.action.label}
+                      </button>
+                    )}
+                    {row.kind === 'session' && row.recordViewAction ? (
+                      <Link
+                        to={row.recordViewAction.href}
+                        className={buttonClassName(
+                          'ghostOnDark',
+                          'inline-flex min-h-9 w-full items-center justify-center px-2 text-xs'
+                        )}
+                      >
+                        {row.recordViewAction.label}
+                      </Link>
+                    ) : null}
+                  </div>
                 </td>
               </tr>
               <tr className="border-b border-white/15 bg-slate-950/25">

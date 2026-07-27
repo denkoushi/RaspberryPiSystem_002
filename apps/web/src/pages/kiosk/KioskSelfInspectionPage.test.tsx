@@ -263,7 +263,7 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
 
     expect(screen.queryByText(/仕掛中（全端末共通）を表示します/)).not.toBeInTheDocument();
     expect(screen.queryByText(/仕掛中（.*全端末共通/)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '記録承認' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '記録確認・承認' })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: '製造order / 製番 / 品番' })).toHaveAttribute(
       'placeholder',
       '製造order・製番・品番'

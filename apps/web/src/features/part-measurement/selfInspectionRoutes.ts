@@ -23,3 +23,8 @@ export function kioskSelfInspectionSessionPath(sessionId: string): string {
 export function kioskSelfInspectionInspectorSessionPath(sessionId: string): string {
   return `${kioskSelfInspectionSessionPath(sessionId)}/inspector`;
 }
+
+export function kioskSelfInspectionRecordConfirmationPath(sessionId?: string): string {
+  if (!sessionId) return KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH;
+  return `${KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH}?sessionId=${encodeURIComponent(sessionId)}`;
+}
