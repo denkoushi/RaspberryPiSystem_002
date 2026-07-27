@@ -8,9 +8,9 @@
 
 ## 🎯 目的別インデックス
 
-### 組立手順 矩形フォーカス・独立ステップ・全体俯瞰（2026-07-26 · ローカル実装中）
+### 組立手順 矩形フォーカス・独立ステップ・全体俯瞰（2026-07-27 · 本番反映済み／共通マーカーfollow-up）
 
-- **複数文書の任意ページ／矩形を最大300の表示ステップへ構成**: 元画像とページ座標の丸数字・チェック・矢視を共有し、ストーリーボード、指示・重要度、cropミニマップ、平坦な前後手順を追加する。旧テンプレートはDBバックフィルせず従来の全ページ順を動的展開する。**正本**: [ExecPlan](./plans/assembly-procedure-step-storyboard-execplan.md) · [ADR](./decisions/ADR-20260726-assembly-template-procedure-steps.md)
+- **複数文書の任意ページ／矩形を最大300の表示ステップへ構成**: 元画像とページ座標の丸数字・チェック・矢視を共有し、ストーリーボード、指示・重要度、cropミニマップ、平坦な前後手順を追加する。全体・crop間の共通マーカー表示編集はfollow-upで補完する。旧テンプレートはDBバックフィルせず従来の全ページ順を動的展開する。**正本**: [ExecPlan](./plans/assembly-procedure-step-storyboard-execplan.md) · [共通マーカーFollow-up](./plans/assembly-crop-shared-marker-followup-execplan.md) · [ADR](./decisions/ADR-20260726-assembly-template-procedure-steps.md)
 
 ### 組立テンプレート・文書順統合エディター（2026-07-26 · ローカル実装・検証）
 

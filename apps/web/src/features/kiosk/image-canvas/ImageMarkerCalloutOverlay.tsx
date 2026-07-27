@@ -18,13 +18,15 @@ type Props = {
   items: ImageMarkerCallout[];
   selectedId?: string | null;
   layout: ZoomedImageCanvasLayout;
+  density?: 'default' | 'compact';
 };
 
 /** ドメインに依存せず、比率座標から同番号の矢視線と先端バッジを描画する。 */
 export function ImageMarkerCalloutOverlay({
   items,
   selectedId,
-  layout
+  layout,
+  density = 'default'
 }: Props) {
   const { image, contentWidth, contentHeight } = layout;
   const prefix = useId().replace(/[^a-zA-Z0-9_-]/g, '');
@@ -53,13 +55,16 @@ export function ImageMarkerCalloutOverlay({
               <marker
                 key={`arrow-${item.id}`}
                 id={`${prefix}-callout-${item.id}`}
-                markerWidth="6"
-                markerHeight="6"
-                refX="5"
-                refY="3"
+                markerWidth={density === 'compact' ? '4' : '6'}
+                markerHeight={density === 'compact' ? '4' : '6'}
+                refX={density === 'compact' ? '3.5' : '5'}
+                refY={density === 'compact' ? '2' : '3'}
                 orient="auto"
               >
-                <path d="M0,0 L6,3 L0,6 Z" fill={color} />
+                <path
+                  d={density === 'compact' ? 'M0,0 L4,2 L0,4 Z' : 'M0,0 L6,3 L0,6 Z'}
+                  fill={color}
+                />
               </marker>
             );
           })}
@@ -78,7 +83,9 @@ export function ImageMarkerCalloutOverlay({
               x2={tipX}
               y2={tipY}
               stroke={colorFor(item)}
-              strokeWidth={active ? 2.2 : 1.8}
+              strokeWidth={
+                density === 'compact' ? (active ? 1.4 : 1) : active ? 2.2 : 1.8
+              }
               markerEnd={`url(#${prefix}-callout-${item.id})`}
             />
           );
@@ -91,7 +98,10 @@ export function ImageMarkerCalloutOverlay({
           <div
             key={`tip-${item.id}`}
             className={clsx(
-              'absolute flex h-[22px] w-[22px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 text-[0.68rem] font-extrabold text-slate-900 shadow',
+              'absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full font-extrabold text-slate-900 shadow',
+              density === 'compact'
+                ? 'h-3 w-3 border text-[0.42rem]'
+                : 'h-[22px] w-[22px] border-2 text-[0.68rem]',
               active
                 ? 'border-cyan-400 bg-cyan-300'
                 : lime

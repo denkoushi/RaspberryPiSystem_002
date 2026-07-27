@@ -7,6 +7,11 @@ import { Input } from '../../components/ui/Input';
 
 import { AssemblyProcedureCropView } from './AssemblyProcedureCropView';
 import {
+  AssemblyProcedureMarkerLayer,
+  type AssemblyCanvasBolt,
+  type AssemblyCanvasCheckItem
+} from './AssemblyProcedureMarkerLayer';
+import {
   assemblyProcedureStepDocumentKey,
   findPageForProcedureStep
 } from './assemblyProcedureStepDraft';
@@ -24,6 +29,10 @@ type Props = {
   onMoveTo: (localId: string, targetIndex: number) => void;
   onDuplicate: (localId: string) => void;
   onRemove: (localId: string) => void;
+  markerProjectionByStepId?: ReadonlyMap<
+    string,
+    { bolts: AssemblyCanvasBolt[]; checkItems: AssemblyCanvasCheckItem[] }
+  >;
 };
 
 const emphasisLabel = {
@@ -41,7 +50,8 @@ export function AssemblyProcedureStoryboard({
   onMove,
   onMoveTo,
   onDuplicate,
-  onRemove
+  onRemove,
+  markerProjectionByStepId
 }: Props) {
   const [search, setSearch] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -123,6 +133,7 @@ export function AssemblyProcedureStoryboard({
           {virtualizer.getVirtualItems().map((virtualRow) => {
             const item = visible[virtualRow.index]!;
             const { step, sourceIndex, page } = item;
+            const markerProjection = markerProjectionByStepId?.get(step.localId);
             return (
               <article
                 key={step.localId}
@@ -154,6 +165,15 @@ export function AssemblyProcedureStoryboard({
                         pageUrl={page.imageRelativePath}
                         crop={step.crop}
                         className="h-full w-full"
+                        overlay={
+                          markerProjection ? (
+                            <AssemblyProcedureMarkerLayer
+                              bolts={markerProjection.bolts}
+                              checkItems={markerProjection.checkItems}
+                              density="compact"
+                            />
+                          ) : null
+                        }
                       />
                     ) : null}
                     <span className="absolute left-1 top-1 rounded bg-slate-950/85 px-1 text-xs font-bold text-white">

@@ -1,7 +1,5 @@
 import {
-  clipAssemblyProcedureLineToCrop,
   isAssemblyProcedurePointInCrop,
-  sourcePointToAssemblyProcedureCropPoint,
   type AssemblyProcedureCropRect
 } from '@raspi-system/shared-types';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -10,11 +8,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Button } from '../../components/ui/Button';
 
-import { AssemblyMarkerOverlay, AssemblyProcedureImageWithMarkers } from './AssemblyProcedureCanvas';
+import { AssemblyProcedureImageWithMarkers } from './AssemblyProcedureCanvas';
 import {
   AssemblyProcedureCropMinimap,
   AssemblyProcedureCropView
 } from './AssemblyProcedureCropView';
+import { AssemblyProcedureMarkerLayer } from './AssemblyProcedureMarkerLayer';
+import { projectAssemblyProcedureMarkerToCrop } from './assemblyProcedureMarkerProjection';
 import { getSequenceDocumentPages } from './assemblyTemplateDraft';
 import { KioskDocumentPageImage } from './KioskDocumentPageImage';
 
@@ -24,13 +24,6 @@ import type {
   AssemblyProcedureSequencePageDto,
   AssemblyProcedureSequenceStepDto
 } from './types';
-
-type SourceMarker = {
-  xRatio: number;
-  yRatio: number;
-  calloutTipXRatio?: number | null;
-  calloutTipYRatio?: number | null;
-};
 
 type Props = {
   sequence: AssemblyProcedureSequenceDto;
@@ -82,34 +75,6 @@ function stepCrop(step: AssemblyProcedureSequenceStepDto): AssemblyProcedureCrop
         heightRatio: step.cropHeightRatio!
       }
     : null;
-}
-
-function transformMarkerForStep<T extends SourceMarker>(
-  marker: T,
-  crop: AssemblyProcedureCropRect | null
-): T | null {
-  if (!crop) return marker;
-  if (!isAssemblyProcedurePointInCrop(marker, crop)) return null;
-  const position = sourcePointToAssemblyProcedureCropPoint(marker, crop);
-  const callout =
-    marker.calloutTipXRatio != null && marker.calloutTipYRatio != null
-      ? clipAssemblyProcedureLineToCrop(
-          {
-            start: marker,
-            end: {
-              xRatio: marker.calloutTipXRatio,
-              yRatio: marker.calloutTipYRatio
-            }
-          },
-          crop
-        )
-      : null;
-  return {
-    ...marker,
-    ...position,
-    calloutTipXRatio: callout?.end.xRatio ?? null,
-    calloutTipYRatio: callout?.end.yRatio ?? null
-  };
 }
 
 function stepMatchesMarker(
@@ -217,14 +182,14 @@ export function AssemblyProcedureSequenceViewer({
   );
   const visibleBolts = useMemo(
     () => boltMarkers.flatMap((marker) => {
-      const transformed = transformMarkerForStep(marker, crop);
+      const transformed = projectAssemblyProcedureMarkerToCrop(marker, crop);
       return transformed ? [transformed] : [];
     }),
     [boltMarkers, crop]
   );
   const visibleChecks = useMemo(
     () => checkMarkers.flatMap((marker) => {
-      const transformed = transformMarkerForStep(marker, crop);
+      const transformed = projectAssemblyProcedureMarkerToCrop(marker, crop);
       return transformed ? [transformed] : [];
     }),
     [checkMarkers, crop]
@@ -375,7 +340,7 @@ export function AssemblyProcedureSequenceViewer({
               crop={crop}
               className="h-full w-full"
               overlay={
-                <AssemblyMarkerOverlay
+                <AssemblyProcedureMarkerLayer
                   bolts={visibleBolts}
                   checkItems={visibleChecks}
                   selectedBoltId={selectedBoltId}

@@ -26,6 +26,7 @@ export * from './assemblySessionPresentation';
 export * from './assemblyTemplateDraft';
 export * from './assemblyTemplateProcedureDraft';
 export * from './assemblyProcedureStepDraft';
+export * from './assemblyProcedureMarkerProjection';
 export * from './loadAssemblyTemplateEditorData';
 export * from './assemblyTorqueConnectionPresentation';
 export * from './assemblyUiHelpers';

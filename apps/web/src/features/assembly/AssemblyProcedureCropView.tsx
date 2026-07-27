@@ -5,7 +5,7 @@ import { KioskDocumentPageImage } from './KioskDocumentPageImage';
 import { useAssemblyProcedureContainBox } from './useAssemblyProcedureContainBox';
 
 import type { AssemblyProcedureCropRect } from '@raspi-system/shared-types';
-import type { ReactEventHandler, ReactNode } from 'react';
+import type { MouseEvent, ReactEventHandler, ReactNode } from 'react';
 
 type Props = {
   pageUrl: string;
@@ -13,6 +13,7 @@ type Props = {
   className?: string;
   overlay?: ReactNode;
   alt?: string;
+  onPlacementClick?: (xRatio: number, yRatio: number) => void;
 };
 
 export function AssemblyProcedureCropView({
@@ -20,9 +21,11 @@ export function AssemblyProcedureCropView({
   crop,
   className,
   overlay,
-  alt = ''
+  alt = '',
+  onPlacementClick
 }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
   const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
   const effectiveCrop = crop ?? {
     xRatio: 0,
@@ -43,6 +46,17 @@ export function AssemblyProcedureCropView({
         : { width: image.naturalWidth, height: image.naturalHeight }
     );
   };
+  const handleClick = (event: MouseEvent<HTMLDivElement>) => {
+    if (!onPlacementClick) return;
+    const frame = frameRef.current;
+    if (!frame) return;
+    const rect = frame.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const xRatio = (event.clientX - rect.left) / rect.width;
+    const yRatio = (event.clientY - rect.top) / rect.height;
+    if (xRatio < 0 || xRatio > 1 || yRatio < 0 || yRatio > 1) return;
+    onPlacementClick(xRatio, yRatio);
+  };
 
   return (
     <div
@@ -50,8 +64,13 @@ export function AssemblyProcedureCropView({
       className={clsx('flex h-full w-full items-center justify-center overflow-hidden', className)}
     >
       <div
+        ref={frameRef}
         data-testid={crop ? 'assembly-procedure-crop-view' : 'assembly-procedure-full-page-view'}
-        className="relative overflow-hidden bg-white"
+        className={clsx(
+          'relative overflow-hidden bg-white',
+          onPlacementClick && 'cursor-crosshair'
+        )}
+        onClick={handleClick}
         style={{
           width: fitted.width > 0 ? fitted.width : '100%',
           height: fitted.height > 0 ? fitted.height : '100%'

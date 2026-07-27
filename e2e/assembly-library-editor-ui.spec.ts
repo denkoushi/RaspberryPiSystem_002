@@ -455,12 +455,25 @@ test('assembly storyboard creates, edits, reuses, reorders and saves crop steps'
   await page.getByRole('button', { name: '手順', exact: true }).click();
   await expect(storyboard.locator('article')).toHaveCount(2);
 
-  await page.getByRole('button', { name: '矩形追加', exact: true }).click();
   const canvas = page.getByTestId('assembly-procedure-canvas');
   const sourceImage = canvas.locator('img').last();
   await expect(sourceImage).toBeVisible();
   const imageBox = await sourceImage.boundingBox();
   expect(imageBox).not.toBeNull();
+  await page.mouse.click(
+    imageBox!.x + imageBox!.width * 0.4,
+    imageBox!.y + imageBox!.height * 0.5
+  );
+  const sharedBolt = canvas.locator('button[title^="P7-A13"]').first();
+  await expect(sharedBolt).toBeVisible();
+  await page.getByRole('button', { name: '矢視', exact: true }).click();
+  await page.mouse.click(
+    imageBox!.x + imageBox!.width * 0.7,
+    imageBox!.y + imageBox!.height * 0.5
+  );
+  await expect(canvas.locator('svg line')).toHaveCount(1);
+
+  await page.getByRole('button', { name: '矩形追加', exact: true }).click();
   await page.mouse.move(
     imageBox!.x + imageBox!.width * 0.2,
     imageBox!.y + imageBox!.height * 0.25
@@ -477,6 +490,11 @@ test('assembly storyboard creates, edits, reuses, reorders and saves crop steps'
       .getByTestId('assembly-unified-editor-canvas-pane')
       .getByTestId('assembly-procedure-crop-view')
   ).toBeVisible();
+  const cropView = page
+    .getByTestId('assembly-unified-editor-canvas-pane')
+    .getByTestId('assembly-procedure-crop-view');
+  await expect(cropView.locator('[data-marker-id]')).toHaveCount(1);
+  await expect(cropView.locator('svg line')).toHaveCount(1);
   await expect(page.getByTestId('assembly-procedure-crop-minimap')).toBeVisible();
   await page.getByLabel('タイトル').fill('重点締付');
   await page.getByLabel('指示文').fill('赤線の内側を先に締める');
@@ -486,6 +504,62 @@ test('assembly storyboard creates, edits, reuses, reorders and saves crop steps'
   const selectedCropCard = storyboard
     .locator('article')
     .filter({ hasText: '重点締付' });
+  await expect(selectedCropCard.locator('[data-marker-id]')).toHaveCount(1);
+  await expect(selectedCropCard.locator('svg line')).toHaveCount(1);
+
+  const cropBox = await cropView.boundingBox();
+  expect(cropBox).not.toBeNull();
+  await page.getByRole('button', { name: 'チェックマーカー' }).click();
+  await page.getByRole('button', { name: '丸数字', exact: true }).click();
+  await page.mouse.click(
+    cropBox!.x + cropBox!.width * 0.25,
+    cropBox!.y + cropBox!.height * 0.25
+  );
+  await expect(cropView.getByRole('button', { name: 'チェック1' })).toBeVisible();
+  await page.getByRole('button', { name: '矢視', exact: true }).click();
+  await page.mouse.click(
+    cropBox!.x + cropBox!.width * 0.45,
+    cropBox!.y + cropBox!.height * 0.25
+  );
+
+  await page.getByRole('button', { name: '締結マーカー' }).click();
+  await page.getByRole('button', { name: '丸数字', exact: true }).click();
+  await page.mouse.click(
+    cropBox!.x + cropBox!.width * 0.6,
+    cropBox!.y + cropBox!.height * 0.6
+  );
+  await expect(cropView.locator('button[title^="P7-A13"]')).toHaveCount(2);
+  await page.getByRole('button', { name: '矢視', exact: true }).click();
+  await page.mouse.click(
+    cropBox!.x + cropBox!.width * 0.75,
+    cropBox!.y + cropBox!.height * 0.6
+  );
+  await expect(cropView.locator('svg line')).toHaveCount(3);
+
+  await page.getByRole('button', { name: '丸数字', exact: true }).click();
+  await page.mouse.click(
+    cropBox!.x + cropBox!.width * 0.5,
+    cropBox!.y + cropBox!.height * 0.8
+  );
+  await expect(cropView.locator('button[title^="P7-A13"]')).toHaveCount(3);
+  const settingsPane = page.getByTestId('assembly-editor-settings-pane');
+  await settingsPane.getByRole('button', { name: '削除', exact: true }).click();
+  const deleteDialog = page.getByRole('dialog', { name: /丸数字.*を削除/ });
+  await expect(deleteDialog).toContainText('全体・矩形2件から削除');
+  await deleteDialog.getByRole('button', { name: 'キャンセル' }).click();
+  await expect(cropView.locator('button[title^="P7-A13"]')).toHaveCount(3);
+  await settingsPane.getByRole('button', { name: '削除', exact: true }).click();
+  await deleteDialog.getByRole('button', { name: 'すべてから削除' }).click();
+  await expect(cropView.locator('button[title^="P7-A13"]')).toHaveCount(2);
+
+  await page.getByRole('button', { name: '手順指示' }).click();
+  await page.getByRole('button', { name: '全体を一時表示' }).click();
+  const fullPageView = page.getByTestId('assembly-procedure-canvas');
+  await expect(fullPageView.locator('button[title^="P7-A13"]')).toHaveCount(2);
+  await expect(fullPageView.getByRole('button', { name: 'チェック1' })).toBeVisible();
+  await expect(fullPageView.locator('svg line')).toHaveCount(3);
+  await page.getByRole('button', { name: '矩形へ戻る' }).click();
+
   await selectedCropCard.getByRole('button', { name: '複製' }).click();
   await expect(storyboard.locator('article')).toHaveCount(4);
   const moveTarget = page.getByLabel('手順4の移動先');
@@ -512,6 +586,20 @@ test('assembly storyboard creates, edits, reuses, reorders and saves crop steps'
   const payload = evidence.templateBodies[0] as {
     procedureDocumentId: string;
     procedureItems: Array<{ assemblyProcedureDocumentId: string | null }>;
+    areas: Array<{
+      bolts: Array<{
+        xRatio: number;
+        yRatio: number;
+        calloutTipXRatio: number | null;
+        calloutTipYRatio: number | null;
+      }>;
+    }>;
+    checkItems: Array<{
+      xRatio: number;
+      yRatio: number;
+      calloutTipXRatio: number | null;
+      calloutTipYRatio: number | null;
+    }>;
     procedureSteps: Array<{
       assemblyProcedureDocumentId: string | null;
       viewMode: string;
@@ -542,6 +630,19 @@ test('assembly storyboard creates, edits, reuses, reorders and saves crop steps'
   expect(cropSteps[0]!.cropYRatio).toBeCloseTo(0.25, 1);
   expect(cropSteps[0]!.cropWidthRatio).toBeCloseTo(0.6, 1);
   expect(cropSteps[0]!.cropHeightRatio).toBeCloseTo(0.5, 1);
+  expect(payload.areas[0]!.bolts).toHaveLength(2);
+  expect(payload.areas[0]!.bolts[0]!.xRatio).toBeCloseTo(0.4, 2);
+  expect(payload.areas[0]!.bolts[0]!.yRatio).toBeCloseTo(0.5, 2);
+  expect(payload.areas[0]!.bolts[0]!.calloutTipXRatio).toBeCloseTo(0.7, 2);
+  expect(payload.areas[0]!.bolts[0]!.calloutTipYRatio).toBeCloseTo(0.5, 2);
+  expect(payload.areas[0]!.bolts[1]!.xRatio).toBeCloseTo(0.56, 2);
+  expect(payload.areas[0]!.bolts[1]!.yRatio).toBeCloseTo(0.55, 2);
+  expect(payload.areas[0]!.bolts[1]!.calloutTipXRatio).toBeCloseTo(0.65, 2);
+  expect(payload.areas[0]!.bolts[1]!.calloutTipYRatio).toBeCloseTo(0.55, 2);
+  expect(payload.checkItems[0]!.xRatio).toBeCloseTo(0.35, 2);
+  expect(payload.checkItems[0]!.yRatio).toBeCloseTo(0.375, 2);
+  expect(payload.checkItems[0]!.calloutTipXRatio).toBeCloseTo(0.47, 2);
+  expect(payload.checkItems[0]!.calloutTipYRatio).toBeCloseTo(0.375, 2);
 });
 
 test('assembly storyboard keeps at most 30 DOM cards for 300 steps', async ({ page }) => {

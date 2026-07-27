@@ -1,7 +1,10 @@
 import { render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { AssemblyProcedureImageWithMarkers } from './AssemblyProcedureCanvas';
+import {
+  AssemblyProcedureImageWithMarkers,
+  AssemblyProcedureMarkerLayer
+} from './AssemblyProcedureCanvas';
 
 describe('AssemblyProcedureImageWithMarkers', () => {
   afterEach(() => vi.restoreAllMocks());
@@ -41,5 +44,49 @@ describe('AssemblyProcedureImageWithMarkers', () => {
       'viewBox',
       '0 0 900 620'
     );
+  });
+
+  it('renders marker numbers and callouts through the shared normal and compact layers', async () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      width: 200,
+      height: 100,
+      top: 0,
+      right: 200,
+      bottom: 100,
+      left: 0,
+      toJSON: () => ({})
+    });
+
+    const marker = {
+      id: 'shared-bolt',
+      markerNo: 7,
+      xRatio: 0.5,
+      yRatio: 0.5,
+      calloutTipXRatio: 1,
+      calloutTipYRatio: 0.5,
+      label: '共通丸数字7'
+    };
+    const { rerender } = render(
+      <div className="relative h-[100px] w-[200px]">
+        <AssemblyProcedureMarkerLayer bolts={[marker]} />
+      </div>
+    );
+
+    expect(await screen.findByRole('button', { name: '共通丸数字7' })).toHaveStyle({
+      left: '50%',
+      top: '50%'
+    });
+    expect(screen.getByTestId('image-marker-callout-svg')).toBeInTheDocument();
+
+    rerender(
+      <div className="relative h-[100px] w-[200px]">
+        <AssemblyProcedureMarkerLayer bolts={[marker]} density="compact" />
+      </div>
+    );
+    expect(screen.queryByRole('button', { name: '共通丸数字7' })).not.toBeInTheDocument();
+    expect(document.querySelector('[data-marker-id="shared-bolt"]')).toHaveTextContent('7');
+    expect(screen.getByTestId('image-marker-callout-svg')).toBeInTheDocument();
   });
 });

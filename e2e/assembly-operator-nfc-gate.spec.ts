@@ -71,6 +71,8 @@ const inProgressSession = {
             markerNo: 1,
             xRatio: '0.5',
             yRatio: '0.5',
+            calloutTipXRatio: '0.8',
+            calloutTipYRatio: '0.5',
             boltSpec: 'M8',
             nominalTorque: '10',
             lowerLimit: '9',
@@ -401,6 +403,7 @@ for (const viewport of [
     const marker = cropView.getByRole('button', { name: 'BOLT-E2E' });
     await expect(cropView).toBeVisible();
     await expect(marker).toBeVisible();
+    await expect(cropView.locator('svg line')).toHaveCount(1);
     await expect(page.getByTestId('assembly-procedure-crop-minimap')).toBeVisible();
     const alignment = await cropView.evaluate((element, markerElement) => {
       const cropRect = element.getBoundingClientRect();
@@ -434,7 +437,13 @@ for (const viewport of [
     }
 
     await page.getByRole('button', { name: '全体を一時表示' }).click();
-    await expect(page.getByTestId('assembly-procedure-image-with-markers')).toBeVisible();
+    const fullPageView = page.getByTestId('assembly-procedure-image-with-markers');
+    await expect(fullPageView).toBeVisible();
+    await expect(fullPageView.locator('svg line')).toHaveCount(1);
+    await expect(fullPageView.getByRole('button', { name: 'BOLT-E2E' })).toHaveAttribute(
+      'data-marker-id',
+      'bolt-e2e'
+    );
     await expect(page.getByTestId('assembly-procedure-crop-view')).toHaveCount(0);
     await page.getByRole('button', { name: '矩形へ戻る' }).click();
     await expect(cropView).toBeVisible();
