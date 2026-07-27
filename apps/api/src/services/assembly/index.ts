@@ -4,6 +4,7 @@ export * from './assembly-identifiers.js';
 export * from './assembly-library-filter-options.service.js';
 export * from './assembly-lot.service.js';
 export * from './assembly-legacy-procedure-order.service.js';
+export * from './assembly-machine-name-candidates.service.js';
 export * from './assembly-operator-nfc-resolve.service.js';
 export * from './assembly-operator-access.service.js';
 export * from './assembly-seiban-lot-quantity.service.js';

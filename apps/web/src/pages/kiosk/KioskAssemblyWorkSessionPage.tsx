@@ -28,6 +28,7 @@ import {
   latestStatusByBolt,
   readAssemblyApiErrorMessage,
   releaseTorqueAgentLease,
+  resolveAssemblyWorkActionPresentation,
   resolveTorqueConnectionPresentation,
   resolveAssemblyCheckSummary,
   sessionCheckItemsToCanvas,
@@ -36,6 +37,7 @@ import {
   useAssemblyWorkProcedureSequence,
   useTorqueRecordLiveRefresh
 } from '../../features/assembly';
+import { kioskFlowButtonClass } from '../../features/kiosk/kioskFlowButtonTheme';
 
 import type { TorqueWrenchProfileApi } from '../../api/domains/torque-wrenches';
 import type {
@@ -496,6 +498,20 @@ export function KioskAssemblyWorkSessionPage() {
     status: agentStatus
   });
   const visibleMessage = torqueConnectionPresentation.connectionMessage ?? message;
+  const torqueValueValid = torqueValue.trim().length > 0 && Number.isFinite(Number(torqueValue));
+  const actionPresentation = resolveAssemblyWorkActionPresentation({
+    sessionActive,
+    busy,
+    hasCurrentBolt: Boolean(session.currentBoltId),
+    hasCurrentArea: Boolean(session.currentAreaId),
+    allBoltsComplete,
+    canComplete,
+    torqueValueValid,
+    selectedProfileId,
+    hasConfirmation: Boolean(confirmation),
+    leaseOwned: Boolean(agentStatus?.leaseOwned),
+    ownedByOther: agentStatus?.state === 'owned_by_other'
+  });
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 bg-slate-800 p-2 text-white">
@@ -506,24 +522,17 @@ export function KioskAssemblyWorkSessionPage() {
         procedureModeLabel="要領書"
         currentPositionLabel={currentPositionLabel}
         requiredCheckLabel={requiredCheckLabel}
+        statusMessage={visibleMessage}
       />
 
-      <div
-        className="h-14 shrink-0 overflow-y-auto"
-        role="status"
-        aria-live="polite"
-        aria-atomic="true"
-        data-testid="assembly-work-session-status"
+      <main
+        className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-auto xl:grid-cols-[minmax(0,1fr)_minmax(21rem,27rem)] xl:overflow-hidden"
+        data-testid="assembly-work-layout"
       >
-        {visibleMessage ? (
-          <p className="flex min-h-full items-center rounded border border-white/15 bg-slate-900/80 px-3 py-2 text-sm font-semibold text-amber-200">
-            {visibleMessage}
-          </p>
-        ) : null}
-      </div>
-
-      <main className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-auto xl:grid-cols-[minmax(0,1fr)_minmax(21rem,27rem)] xl:overflow-hidden">
-        <section className="flex min-h-[32rem] flex-col overflow-hidden rounded border border-white/15 bg-slate-900/70 xl:min-h-0">
+        <section
+          className="flex min-h-[32rem] flex-col overflow-hidden rounded border border-white/15 bg-slate-900/70 xl:min-h-0"
+          data-testid="assembly-work-procedure-pane"
+        >
           <div className="min-h-0 flex-1">
             {procedureSequenceState.status === 'ready' ? (
               <AssemblyProcedureSequenceViewer
@@ -531,7 +540,7 @@ export function KioskAssemblyWorkSessionPage() {
                 className="h-full"
                 boltMarkers={visibleBoltMarkers}
                 checkMarkers={visibleCheckMarkers}
-                selectedBoltId={session.currentBoltId}
+                inputTargetBoltId={session.currentBoltId}
                 currentMarker={
                   currentBolt
                     ? {
@@ -581,20 +590,20 @@ export function KioskAssemblyWorkSessionPage() {
           </div>
         </section>
 
-        <section className="min-h-0 overflow-y-auto rounded border border-white/15 bg-slate-900/70 p-3">
+        <section className="flex min-h-0 flex-col overflow-hidden rounded border border-white/15 bg-slate-900/70 p-2">
           <h2 className="text-[1.02rem] font-bold">締付</h2>
-          <div className="mt-3 rounded border border-white/10 bg-slate-950 p-3">
+          <div className="mt-2 rounded border border-white/10 bg-slate-950 p-2">
             <div className="text-sm text-white/60">現在</div>
             <div className="mt-1 text-lg font-bold">{currentBolt ? `丸数字 ${currentBolt.markerNo}` : (allBoltsComplete ? '全締付完了' : '次工程待ち')}</div>
             <div className="mt-1 text-sm text-white/70">{currentArea?.areaName ?? ''}</div>
             {currentBolt ? (
-              <div className="mt-2 text-sm text-white/80">
+              <div className="mt-1 text-sm text-white/80">
                 規定 {currentBolt.nominalTorque} / 下限 {currentBolt.lowerLimit} / 上限 {currentBolt.upperLimit} {currentBolt.unit}
               </div>
             ) : null}
           </div>
           {checkSummary && checkSummary.requiredTotal > 0 ? (
-            <div className="mt-3 rounded border border-lime-300/20 bg-lime-500/10 p-3 text-sm">
+            <div className="mt-2 rounded border border-lime-300/20 bg-lime-500/10 p-2 text-sm">
               <div className="font-semibold text-lime-100">チェック進捗</div>
               <div className="mt-1 text-lime-50">
                 必須 {checkSummary.requiredCompleted}/{checkSummary.requiredTotal}
@@ -602,14 +611,14 @@ export function KioskAssemblyWorkSessionPage() {
             </div>
           ) : null}
           {traceabilityRequired ? (
-            <div className="mt-3 grid gap-3 rounded border border-cyan-300/25 bg-cyan-950/20 p-3">
-              <div className="flex items-center justify-between gap-3 text-sm">
+            <div className="mt-2 grid grid-cols-2 gap-2 rounded border border-cyan-300/25 bg-cyan-950/20 p-2">
+              <div className="col-span-2 flex items-center justify-between gap-3 text-sm">
                 <span className="font-semibold">トルクレンチ接続</span>
                 <span className={agentStatus?.ready ? 'text-emerald-300' : 'text-amber-200'}>
                   {torqueConnectionPresentation.stateLabel}
                 </span>
               </div>
-              <label className="grid gap-1 text-xs font-semibold text-white/70">
+              <label className="col-span-2 grid gap-1 text-xs font-semibold text-white/70">
                 使用する物理トルクレンチ
                 <select className="min-h-11 rounded bg-slate-950 px-2 text-sm" value={selectedProfileId} disabled={!sessionActive || busy || Boolean(confirmation)} onChange={(e) => setSelectedProfileId(e.target.value)}>
                   {compatibleWrenches.length === 0 ? <option value="">適合レンチなし</option> : null}
@@ -619,29 +628,49 @@ export function KioskAssemblyWorkSessionPage() {
                   })}
                 </select>
               </label>
-              <Button type="button" variant="primary" disabled={!sessionActive || busy || !selectedProfileId || Boolean(confirmation)} onClick={confirmPhysicalWrench}>
+              <button
+                type="button"
+                className={kioskFlowButtonClass(actionPresentation.confirmPhysicalWrench)}
+                disabled={actionPresentation.confirmPhysicalWrench.disabled}
+                onClick={confirmPhysicalWrench}
+              >
                 {confirmation ? '現物確認済み' : '製造番号と現物設定を確認'}
-              </Button>
+              </button>
               {confirmation && !agentStatus?.leaseOwned && agentStatus?.state !== 'owned_by_other' ? (
-                <Button type="button" variant="primary" disabled={busy} onClick={startUsingWrench}>
+                <button
+                  type="button"
+                  className={kioskFlowButtonClass(actionPresentation.startUsingWrench)}
+                  disabled={actionPresentation.startUsingWrench.disabled}
+                  onClick={startUsingWrench}
+                >
                   このレンチを使用開始
-                </Button>
+                </button>
               ) : null}
               {agentStatus?.leaseOwned ? (
-                <Button type="button" variant="secondary" disabled={busy} onClick={() => void stopUsingWrench()}>
+                <button
+                  type="button"
+                  className={kioskFlowButtonClass(actionPresentation.stopUsingWrench)}
+                  disabled={actionPresentation.stopUsingWrench.disabled}
+                  onClick={() => void stopUsingWrench()}
+                >
                   使用終了
-                </Button>
+                </button>
               ) : null}
               {agentStatus?.state === 'owned_by_other' ? (
-                <div className="grid gap-2 rounded border border-amber-300/30 bg-amber-950/30 p-3 text-sm">
+                <div className="col-span-2 grid gap-2 rounded border border-amber-300/30 bg-amber-950/30 p-3 text-sm">
                   <div className="font-semibold text-amber-100">
                     {agentStatus.owner?.clientDeviceName ?? '別端末'}
                     {agentStatus.owner?.clientDeviceLocation ? `（${agentStatus.owner.clientDeviceLocation}）` : ''} が使用中
                   </div>
                   {!takeoverConfirmationVisible ? (
-                    <Button type="button" variant="secondary" disabled={busy} onClick={openTakeoverConfirmation}>
+                    <button
+                      type="button"
+                      className={kioskFlowButtonClass({ disabled: busy })}
+                      disabled={busy}
+                      onClick={openTakeoverConfirmation}
+                    >
                       現物が手元にあるため引き継ぐ
-                    </Button>
+                    </button>
                   ) : (
                     <div className="grid gap-3 rounded border border-amber-200/25 bg-slate-950/70 p-3">
                       <p className="text-xs font-semibold text-amber-100">レンチ本体がこの端末の前にあることを、もう一度確認してください。</p>
@@ -661,9 +690,14 @@ export function KioskAssemblyWorkSessionPage() {
                           : '誤操作防止のため、確認欄が有効になるまで少しお待ちください。'}
                       </p>
                       <div className="grid grid-cols-2 gap-2">
-                        <Button type="button" variant="secondary" disabled={busy} onClick={closeTakeoverConfirmation}>
+                        <button
+                          type="button"
+                          className={kioskFlowButtonClass({ disabled: busy })}
+                          disabled={busy}
+                          onClick={closeTakeoverConfirmation}
+                        >
                           やめる
-                        </Button>
+                        </button>
                         <Button
                           type="button"
                           variant="danger"
@@ -677,7 +711,7 @@ export function KioskAssemblyWorkSessionPage() {
                   )}
                 </div>
               ) : null}
-              <div className="rounded bg-slate-950/70 px-3 py-2 text-center text-sm font-semibold">
+              <div className="col-span-2 rounded bg-slate-950/70 px-3 py-2 text-center text-sm font-semibold">
                 {!confirmation
                   ? '現物確認後に使用開始してください'
                   : agentStatus?.ready
@@ -707,52 +741,60 @@ export function KioskAssemblyWorkSessionPage() {
               <option value="mock">mock</option>
             </select>
           </div>
-          <Button type="button" variant="primary" disabled={!sessionActive || busy || !session.currentBoltId} className="mt-2 min-h-12 w-full" onClick={recordTorque}>
+          <button
+            type="button"
+            className={kioskFlowButtonClass({ ...actionPresentation.recordTorque, wide: true }) + ' mt-2 w-full'}
+            disabled={actionPresentation.recordTorque.disabled}
+            onClick={recordTorque}
+          >
             トルク記録
-          </Button>
+          </button>
           </>
           )}
           <div className="mt-2 grid grid-cols-2 gap-2">
-            <Button
+            <button
               type="button"
-              variant="secondary"
-              disabled={!sessionActive || busy || Boolean(session.currentBoltId) || allBoltsComplete}
+              className={kioskFlowButtonClass(actionPresentation.advanceArea)}
+              disabled={actionPresentation.advanceArea.disabled}
               onClick={() => void runBusy(async () => setSession(await advanceAssemblyArea(session.id)))}
             >
               次工程へ
-            </Button>
-            <Button
+            </button>
+            <button
               type="button"
-              variant="danger"
-              disabled={!sessionActive || busy || !session.currentAreaId}
-              onClick={() => void runBusy(async () => setSession(await restartAssemblyArea(session.id, { reason: '画面操作によるエリアやり直し' })))}
-            >
-              やり直し
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              disabled={busy || !canComplete}
-              className="col-span-2"
+              className={kioskFlowButtonClass(actionPresentation.complete)}
+              disabled={actionPresentation.complete.disabled}
               title={completeDisabledReason ?? undefined}
               onClick={completeSession}
             >
               作業完了
-            </Button>
+            </button>
+            <button
+              type="button"
+              className={kioskFlowButtonClass(actionPresentation.restartArea) + ' col-span-2'}
+              disabled={actionPresentation.restartArea.disabled}
+              onClick={() => void runBusy(async () => setSession(await restartAssemblyArea(session.id, { reason: '画面操作によるエリアやり直し' })))}
+            >
+              やり直し
+            </button>
           </div>
           {completeDisabledReason ? (
             <p className="mt-2 text-xs font-semibold text-amber-200">{completeDisabledReason}</p>
           ) : null}
-          <h3 className="mt-5 text-sm font-bold">履歴</h3>
-          <div className="mt-2 max-h-80 overflow-y-auto rounded border border-white/10">
+          <h3 className="mt-3 shrink-0 text-sm font-bold">履歴</h3>
+          <div className="mt-2 min-h-32 flex-1 overflow-y-auto rounded border border-white/10">
             {session.torqueRecords.slice().reverse().map((record) => (
-              <div key={record.id} className="grid grid-cols-[1fr_4rem_4rem] gap-2 border-b border-white/10 px-3 py-2 text-xs">
+              <div key={record.id} className="grid min-h-[4.5rem] grid-cols-[1fr_5.5rem_5.5rem] items-center gap-2 border-b border-white/10 px-3 py-2 text-xs">
                 <div>
                   <div className="font-semibold">丸数字 {record.markerNo}{record.serialNumberSnapshot ? ` / ${record.serialNumberSnapshot}` : ''}</div>
                   <div className="text-white/50">{new Date(record.recordedAt).toLocaleString()}</div>
                 </div>
-                <div>{record.value ?? '-'}</div>
-                <div className={record.judgement === 'ok' ? 'text-emerald-300' : record.judgement === 'ng' ? 'text-rose-300' : 'text-slate-300'}>
+                <div className="text-2xl font-bold tabular-nums">{record.value ?? '-'}</div>
+                <div className={
+                  record.judgement === 'ignored'
+                    ? 'text-sm font-semibold text-slate-300'
+                    : `text-2xl font-bold tabular-nums ${record.judgement === 'ok' ? 'text-emerald-300' : 'text-rose-300'}`
+                }>
                   {record.judgement.toUpperCase()}
                 </div>
               </div>

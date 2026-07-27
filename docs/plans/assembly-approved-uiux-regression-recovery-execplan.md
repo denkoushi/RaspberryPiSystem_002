@@ -38,17 +38,19 @@ acceptance on `raspi4-assembly-01`.
   branch head `8b4fc78d`, updated local `main`, and created
   `fix/assembly-approved-uiux-regression`.
 - [x] (2026-07-27) Created this recovery ExecPlan as the first tracked change.
-- [ ] Commit this initial ExecPlan before integrating the approved branch.
-- [ ] Merge approved branch head `8b4fc78d` with history and resolve every conflict
+- [x] (2026-07-27) Committed this initial ExecPlan as `97336561` before integration.
+- [x] (2026-07-27) Merged approved branch head `8b4fc78d` with history and resolved every conflict
   while preserving the current crop/NFC/step-viewer behavior.
-- [ ] Restore the approved work-screen layout, marker semantics, shared kiosk themes,
+- [x] (2026-07-27) Restored the approved work-screen layout, marker semantics, shared kiosk themes,
   machine-name picker, candidate API, and catalog repository.
-- [ ] Add regression tests for both the recovered V3 behavior and the later step/crop
+- [x] (2026-07-27) Added regression tests for both the recovered V3 behavior and the later step/crop
   behavior.
-- [ ] Validate the API against an isolated temporary Postgres, including SQL plans,
+- [x] (2026-07-27) Validated the API against an isolated temporary Postgres, including SQL plans,
   and remove every temporary Docker resource.
-- [ ] Run focused and full Web/API tests, lint, builds, Playwright, documentation audit,
-  and whitespace checks.
+- [x] (2026-07-27) Passed focused and full Web/API tests, lint, shared/API/Web builds,
+  target Playwright at all three viewports, and whitespace checks.
+- [x] (2026-07-27) Regenerated the document inventory and passed the final documentation
+  audit and `git diff --check`.
 - [ ] Open a PR, wait for required CI, CodeQL, and gitleaks, then merge the approved
   immutable head to `main`.
 - [ ] Deploy only merged `main` through the standard rolling updater and verify release
@@ -74,6 +76,21 @@ acceptance on `raspi4-assembly-01`.
   wholesale.
   Evidence: current `KioskAssemblyTemplateEditorPage` delegates the model value and
   mutation callback to that pane.
+- Observation: The current work viewer passed page-filtered markers to the central
+  full/crop canvas but its virtual storyboard cards were still text-only.
+  Evidence: `AssemblyWorkStepStoryboard` rendered no image or marker layer. Recovery
+  now renders only virtual visible thumbnails and reprojects the current source page's
+  markers into every matching full/crop card.
+- Observation: Running `tsc -b` directly against the API's development tsconfig emits
+  generated JavaScript and hits existing `rootDir` diagnostics for seed/scripts.
+  Evidence: the supported `pnpm --filter @raspi-system/api build` uses
+  `tsconfig.build.json` and passes. The accidental generated files were removed or
+  restored before continuing.
+- Observation: Once the work storyboard correctly rendered crop thumbnails, the crop
+  E2E locator matched both the thumbnail and the central viewer.
+  Evidence: The test now scopes its assertions to the explicit
+  `assembly-work-step-canvas` boundary; this preserves thumbnail coverage instead of
+  suppressing the second valid projection.
 
 ## Decision Log
 
@@ -102,12 +119,34 @@ acceptance on `raspi4-assembly-01`.
   Rationale: Deploying the feature branch before lineage integration caused this
   regression.
   Date/Author: 2026-07-27 / User and Codex.
+- Decision: Storyboard thumbnails display markers only for rows that share the current
+  viewer document and page, then apply each row's own crop projection.
+  Rationale: Work-page marker inputs are intentionally filtered to the active source
+  page. This renders shared full/crop views correctly without fabricating document
+  ownership or loading all markers into the viewer.
+  Date/Author: 2026-07-27 / Codex.
 
 ## Outcomes & Retrospective
 
-Implementation is in progress. At completion this section must state the merged and
-release SHA, PR, CI runs, temporary-DB evidence, rolling-release run ID, Phase12 result,
-post-release no-op result, and read-only physical acceptance observations.
+Implementation and local validation are complete; PR, rollout, and physical acceptance
+remain. Local evidence:
+
+- Web: 313 test files and 1,545 tests passed.
+- API: 468 test files passed, 2 skipped; 2,467 tests passed, 7 skipped, against a fresh
+  isolated database. The focused Assembly route suite also passed 31/31.
+- Database: all 156 migrations deployed fresh and reported up to date. A 20,000-row
+  production-schedule fixture used `csv_dashboard_row_winner_lookup_global_idx`; a
+  21,000-row supplement fixture used `PSSeibanMachNmSup_unique_src_fsb`.
+- Isolation: run token `assembly-uiux-1785131567-6829` used localhost port `59488`;
+  its container, volume, network, and scratch files were removed with labeled residue
+  count zero.
+- UI: all 23 target Playwright cases passed across 1366x768, 1920x1080, and 900x900
+  after the central-view locator was scoped explicitly. Shared types, lint, API build,
+  Web build, and `git diff --check` also passed.
+
+At completion this section must additionally state the merged and release SHA, PR, CI
+runs, rolling-release run ID, Phase12 result, post-release no-op result, and read-only
+physical acceptance observations.
 
 ## Context and Orientation
 
@@ -264,6 +303,18 @@ Record concise evidence here as implementation progresses: source/final ancestry
 focused and full test results, Postgres resource names and cleanup proof, SQL plan
 summary, PR and CI URLs, merge/release SHA, rolling run ID, Phase12 result, no-op plan,
 and physical screen observations.
+
+- Merge conflicts were resolved file-by-file; no unmerged paths or conflict markers
+  remain. Focused API catalog tests passed 5/5. Focused Web work/editor/viewer tests
+  passed 34/34 before the storyboard-thumbnail follow-up.
+- Supported production builds pass for both API and Web with bundled Node 24.
+- Isolated database token `assembly-uiux-1785130932-3967` used dynamic localhost port
+  `58814`. All 156 migrations deployed and status reported up to date. Assembly API
+  integration passed 31/31 tests. With 20,000 schedule rows, the winner subplan used
+  `csv_dashboard_row_winner_lookup_global_idx` and completed in about 253ms; the
+  supplement lookup used `PSSeibanMachNmSup_unique_src_fsb` and completed in about
+  0.16ms. Container, volume, network, and scratch data were removed; label residue was
+  zero.
 
 ## Interfaces and Dependencies
 

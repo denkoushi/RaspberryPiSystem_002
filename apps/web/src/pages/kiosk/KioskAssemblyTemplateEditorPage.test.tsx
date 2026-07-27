@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   createTemplate: vi.fn(),
   getKioskDocumentDetail: vi.fn(),
   getTemplate: vi.fn(),
+  listMachineNameCandidates: vi.fn(),
   listDocuments: vi.fn(),
   reviseTemplate: vi.fn(),
   verifyPassword: vi.fn()
@@ -23,6 +24,7 @@ vi.mock('../../api/client', () => ({
   createAssemblyTemplate: mocks.createTemplate,
   getAssemblyTemplate: mocks.getTemplate,
   getKioskDocumentDetail: mocks.getKioskDocumentDetail,
+  listAssemblyMachineNameCandidates: mocks.listMachineNameCandidates,
   listAssemblyProcedureDocumentSummaries: mocks.listDocuments,
   listCompatibleTorqueWrenchCapabilityGroups: vi.fn().mockResolvedValue([]),
   reviseAssemblyTemplate: mocks.reviseTemplate,
@@ -76,6 +78,23 @@ function renderEditor() {
   );
 }
 
+function renderCloneEditor(sourceTemplateId: string) {
+  return render(
+    <MemoryRouter
+      initialEntries={[
+        `/kiosk/assembly/templates/new?sourceTemplateId=${sourceTemplateId}`
+      ]}
+    >
+      <Routes>
+        <Route
+          path="/kiosk/assembly/templates/new"
+          element={<KioskAssemblyTemplateEditorPage />}
+        />
+      </Routes>
+    </MemoryRouter>
+  );
+}
+
 function renderExistingEditor(templateId: string) {
   return render(
     <MemoryRouter initialEntries={[`/kiosk/assembly/templates/${templateId}/edit`]}>
@@ -93,6 +112,10 @@ describe('KioskAssemblyTemplateEditorPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.listDocuments.mockResolvedValue(documents);
+    mocks.listMachineNameCandidates.mockResolvedValue({
+      candidates: ['L300KP'],
+      hasMore: false
+    });
     mocks.getKioskDocumentDetail.mockResolvedValue({
       document: {
         id: '55555555-5555-4555-8555-555555555555',
@@ -143,6 +166,12 @@ describe('KioskAssemblyTemplateEditorPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '文書/工程 (1)' }));
     expect(screen.getByRole('heading', { name: '文書順' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
+    fireEvent.click(screen.getByText('基本設定'));
+    fireEvent.click(screen.getByRole('button', { name: '機種名を選ぶ' }));
+    const machineNameDialog = await screen.findByRole('dialog', { name: '機種名を選択' });
+    fireEvent.click(await within(machineNameDialog).findByRole('button', { name: 'L300KP' }));
+    fireEvent.click(within(machineNameDialog).getByRole('button', { name: 'この機種名を使用' }));
     fireEvent.click(screen.getByRole('button', { name: '文書追加' }));
 
     const dialog = screen.getByRole('dialog', { name: '文書ライブラリ' });
@@ -156,6 +185,7 @@ describe('KioskAssemblyTemplateEditorPage', () => {
       expect(mocks.createTemplate).toHaveBeenCalledWith(
         expect.objectContaining({
           procedureDocumentId: documents[0]!.id,
+          modelCode: 'L300KP',
           accessPassword: '2520',
           procedureItems: [
             expect.objectContaining({ assemblyProcedureDocumentId: documents[0]!.id }),
@@ -203,6 +233,42 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     expect(screen.queryByPlaceholderText('パスワード')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '新しい版で保存' })).toBeDisabled();
     expect(mocks.verifyPassword).not.toHaveBeenCalled();
+  });
+
+  it('requires selecting a machine name again when creating from a template', async () => {
+    const sourceTemplate = {
+      id: '88888888-8888-4888-8888-888888888888',
+      modelCode: 'SOURCE-MACHINE',
+      procedurePattern: '標準',
+      name: '雛形元テンプレート',
+      version: 1,
+      isActive: true,
+      traceabilityMode: 'LEGACY',
+      procedureDocumentId: documents[0]!.id,
+      procedureDocument: documents[0]!,
+      procedureSequence: {
+        source: 'primary_fallback',
+        items: []
+      },
+      areas: [],
+      checkItems: [],
+      createdAt: NOW,
+      updatedAt: NOW
+    } satisfies AssemblyTemplateDto;
+    mocks.getTemplate.mockResolvedValue(sourceTemplate);
+
+    renderCloneEditor(sourceTemplate.id);
+    fireEvent.change(await screen.findByPlaceholderText('パスワード'), {
+      target: { value: '2520' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: '認証' }));
+
+    expect(await screen.findByRole('heading', { name: '組立テンプレート新規' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '文書/工程 (1)' }));
+    fireEvent.click(screen.getByText('基本設定'));
+    expect(screen.getByText('未選択')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('SOURCE-MACHINE')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
   });
 
   it('imports an active legacy sequence and preserves its existing KioskDocument on revision', async () => {

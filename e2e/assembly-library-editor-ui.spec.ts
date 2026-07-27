@@ -87,6 +87,18 @@ async function mockKioskApis(
       await route.fulfill({ json: { documents: procedureDocuments } });
       return;
     }
+    if (path === '/api/assembly/machine-name-candidates') {
+      const query = new URL(request.url()).searchParams;
+      const digitQuery = query.get('digitQuery') ?? '';
+      const textQuery = (query.get('q') ?? '').toUpperCase();
+      const candidates = ['L300KP', 'L300KP-2', 'SH500ZX'].filter(
+        (candidate) =>
+          (!digitQuery || candidate.replace(/\D/g, '').includes(digitQuery)) &&
+          (!textQuery || candidate.toUpperCase().includes(textQuery))
+      );
+      await route.fulfill({ json: { candidates, hasMore: false } });
+      return;
+    }
     if (path.includes('/kiosk/assembly/templates/verify-access-password')) {
       await route.fulfill({ json: { success: true } });
       return;
@@ -121,6 +133,27 @@ async function calloutLineGeometry(line: Locator) {
     x2: Number(element.getAttribute('x2')),
     y2: Number(element.getAttribute('y2'))
   }));
+}
+
+async function selectAssemblyMachineName(page: Page, machineName = 'L300KP'): Promise<void> {
+  const pane = page.locator('#assembly-procedure-pane');
+  if (await pane.count() === 0) {
+    await page.getByRole('button', { name: /文書\/工程/ }).click();
+  }
+  if (await page.getByRole('button', { name: '機種名を選ぶ' }).count() === 0) {
+    await page.getByRole('button', { name: '文書・工程', exact: true }).click();
+    await page.getByText('基本設定', { exact: true }).click();
+  }
+  await page.getByRole('button', { name: '機種名を選ぶ' }).click();
+  const dialog = page.getByRole('dialog', { name: '機種名を選択' });
+  await expect(dialog).toBeVisible();
+  await dialog
+    .getByRole('group', { name: '機種名数字テンキー' })
+    .getByRole('button', { name: '3', exact: true })
+    .click();
+  await dialog.getByRole('textbox', { name: '機種名文字検索' }).fill('KP');
+  await dialog.getByRole('button', { name: machineName, exact: true }).click();
+  await dialog.getByRole('button', { name: 'この機種名を使用' }).click();
 }
 
 async function expectCssPixelCalloutLayout(page: Page) {
@@ -262,7 +295,7 @@ for (const viewport of viewports) {
     const procedureTable = page.getByRole('table', { name: '手順書ライブラリ' });
     await expect(procedureTable).toBeVisible();
     await expect(procedureTable.locator('tbody tr')).toHaveCount(4);
-    await expect(page.locator('th', { hasText: '型番' }).first()).toBeVisible();
+    await expect(page.locator('th', { hasText: '機種名' }).first()).toBeVisible();
 
     const combo = page.getByRole('combobox', { name: '手順書名で検索' });
     await combo.click();
@@ -379,6 +412,37 @@ for (const viewport of viewports) {
   });
 }
 
+for (const viewport of [
+  { width: 1366, height: 768 },
+  { width: 1920, height: 1080 },
+  { width: 900, height: 900 }
+]) {
+  test(`new assembly template requires machine-name candidate selection at ${viewport.width}x${viewport.height}`, async ({
+    page
+  }) => {
+    await page.setViewportSize(viewport);
+    await mockKioskApis(page);
+    await page.goto('/kiosk/assembly/templates/new?procedureDocumentId=procedure-primary', {
+      waitUntil: 'networkidle'
+    });
+    await page.getByPlaceholder('パスワード').fill('2520');
+    await page.getByRole('button', { name: '認証' }).click();
+
+    const saveButton = page.getByRole('button', { name: '保存', exact: true });
+    await expect(saveButton).toBeDisabled();
+    await selectAssemblyMachineName(page);
+    await expect(page.getByText('L300KP', { exact: true })).toBeVisible();
+    await expect(saveButton).toBeEnabled();
+    await expect(page.getByText('型番/FHINCD', { exact: true })).toHaveCount(0);
+
+    const pageOverflow = await page.evaluate(() => ({
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth
+    }));
+    expect(pageOverflow.scrollWidth).toBeLessThanOrEqual(pageOverflow.clientWidth + 1);
+  });
+}
+
 test('unified assembly editor stacks panels and keeps touch targets usable on a narrow viewport', async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 900 });
   await mockKioskApis(page);
@@ -441,6 +505,10 @@ test('assembly storyboard creates, edits, reuses, reorders and saves crop steps'
   await page.getByPlaceholder('パスワード').fill('2520');
   await page.getByRole('button', { name: '認証' }).click();
   await page.getByRole('button', { name: '文書/工程 (1)' }).click();
+  await page.getByRole('button', { name: '文書・工程', exact: true }).click();
+  await page.getByText('基本設定', { exact: true }).click();
+  await selectAssemblyMachineName(page);
+  await page.getByRole('button', { name: '手順', exact: true }).click();
 
   const storyboard = page.getByTestId('assembly-step-storyboard');
   await expect(storyboard.locator('article')).toHaveCount(1);

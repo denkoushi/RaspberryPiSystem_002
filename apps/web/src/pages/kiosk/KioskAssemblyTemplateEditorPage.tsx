@@ -21,6 +21,7 @@ import {
   AssemblyTemplateDocumentLibraryDialog,
   AssemblyTemplateProcedurePane,
   appendAssemblyProcedureDocument,
+  AssemblyMachineNamePickerDialog,
   applyAssemblyBoltConditionRange,
   assemblyTemplateProcedureDraftToInput,
   assemblyTemplateProcedureDraftReducer,
@@ -133,6 +134,7 @@ export function KioskAssemblyTemplateEditorPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [pendingMarkerDelete, setPendingMarkerDelete] =
     useState<PendingMarkerDelete | null>(null);
+  const [machineNamePickerOpen, setMachineNamePickerOpen] = useState(false);
   const [inheritCondition, setInheritCondition] = useState(true);
   const [rangeStart, setRangeStart] = useState(1);
   const [rangeEnd, setRangeEnd] = useState(35);
@@ -142,6 +144,7 @@ export function KioskAssemblyTemplateEditorPage() {
 
   const readOnly = Boolean(templateId && loadedTemplate && !loadedTemplate.isActive);
   const accessGranted = readOnly || accessPassword != null;
+  const machineNameSelectionRequired = !templateId;
   const selectedDocument = useMemo(
     () => documents.find((document) => document.id === selectedDocumentId) ?? loadedTemplate?.procedureDocument ?? null,
     [documents, loadedTemplate?.procedureDocument, selectedDocumentId]
@@ -828,6 +831,9 @@ export function KioskAssemblyTemplateEditorPage() {
     setMessage(null);
     try {
       if (!accessPassword) throw new Error('編集パスワードを認証してください。');
+      if (machineNameSelectionRequired && !modelCode.trim()) {
+        throw new Error('機種名を選択してください。');
+      }
       if (procedureItems.length < 1 || procedureItems.length > 50) {
         throw new Error('文書順は1件以上50件以下にしてください。');
       }
@@ -1000,7 +1006,13 @@ export function KioskAssemblyTemplateEditorPage() {
               雛形
             </Link>
           ) : null}
-          <Button type="button" variant="primary" className="min-h-10 text-[0.95rem]" disabled={busy || readOnly} onClick={() => void saveTemplate()}>
+          <Button
+            type="button"
+            variant="primary"
+            className="min-h-10 text-[0.95rem]"
+            disabled={busy || readOnly || (machineNameSelectionRequired && !modelCode.trim())}
+            onClick={() => void saveTemplate()}
+          >
             {busy ? '保存中…' : templateId ? '新しい版で保存' : '保存'}
           </Button>
         </div>
@@ -1071,6 +1083,7 @@ export function KioskAssemblyTemplateEditorPage() {
                   selectedAreaId={selectedAreaId}
                   templateName={templateName}
                   modelCode={modelCode}
+                  machineNameSelectionRequired={machineNameSelectionRequired}
                   procedurePattern={procedurePattern}
                   busy={busy}
                   readOnly={readOnly}
@@ -1083,6 +1096,7 @@ export function KioskAssemblyTemplateEditorPage() {
                   }
                   onTemplateNameChange={setTemplateName}
                   onModelCodeChange={setModelCode}
+                  onOpenMachineNamePicker={() => setMachineNamePickerOpen(true)}
                   onProcedurePatternChange={setProcedurePattern}
                   onSelectArea={(areaId) => {
                     setSelectedAreaId(areaId);
@@ -1595,6 +1609,16 @@ export function KioskAssemblyTemplateEditorPage() {
         tone="danger"
         onConfirm={confirmDeleteMarker}
         onCancel={() => setPendingMarkerDelete(null)}
+      />
+      <AssemblyMachineNamePickerDialog
+        isOpen={machineNamePickerOpen}
+        currentValue={modelCode}
+        disabled={busy}
+        onCancel={() => setMachineNamePickerOpen(false)}
+        onConfirm={(machineName) => {
+          setModelCode(machineName);
+          setMachineNamePickerOpen(false);
+        }}
       />
     </div>
   );

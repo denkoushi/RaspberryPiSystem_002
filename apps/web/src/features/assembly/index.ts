@@ -13,6 +13,8 @@ export * from './AssemblyProcedureStepInspector';
 export * from './AssemblyTemplateDocumentLibraryDialog';
 export * from './AssemblyTemplateProcedurePane';
 export * from './AssemblyProcedureSequenceViewer';
+export * from './AssemblyMachineNamePickerDialog';
+export * from './assemblyWorkActionPresentation';
 export * from './AssemblyProcedureLibrarySection';
 export * from './AssemblyProcedureRenameModal';
 export * from './AssemblyProcedureUploadModal';

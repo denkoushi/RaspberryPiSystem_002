@@ -2,6 +2,11 @@ import clsx from 'clsx';
 import { useLayoutEffect, useRef, useState } from 'react';
 
 import { ImageMarkerCalloutOverlay } from '../kiosk/image-canvas';
+import {
+  KIOSK_MARKER_STATUS_CLASS,
+  kioskMarkerInputTargetOutlineClass,
+  type KioskMarkerStatus
+} from '../kiosk/kioskMarkerTheme';
 
 import type { ZoomedImageCanvasLayout } from '../kiosk/image-canvas';
 
@@ -33,6 +38,7 @@ export type AssemblyProcedureMarkerLayerProps = {
   bolts: AssemblyCanvasBolt[];
   checkItems?: AssemblyCanvasCheckItem[];
   selectedBoltId?: string | null;
+  inputTargetBoltId?: string | null;
   selectedCheckItemId?: string | null;
   onSelectBolt?: (id: string) => void;
   onSelectCheckItem?: (id: string) => void;
@@ -43,11 +49,9 @@ export type AssemblyProcedureMarkerLayerProps = {
 
 function boltMarkerClass(status: AssemblyCanvasBolt['status'], selected: boolean): string {
   if (selected) return 'bg-cyan-300 text-slate-950 ring-4 ring-cyan-100';
-  if (status === 'current') return 'bg-amber-300 text-slate-950 ring-4 ring-amber-100';
-  if (status === 'ok') return 'bg-emerald-500 text-white ring-2 ring-emerald-200';
-  if (status === 'ng') return 'bg-rose-600 text-white ring-2 ring-rose-200';
-  if (status === 'ignored') return 'bg-slate-500 text-white ring-2 ring-slate-200';
-  return 'bg-white text-slate-950 ring-2 ring-slate-400';
+  const markerStatus: KioskMarkerStatus =
+    status === 'ok' ? 'ok' : status === 'ng' ? 'ng' : 'pending';
+  return KIOSK_MARKER_STATUS_CLASS[markerStatus];
 }
 
 function checkMarkerClass(item: AssemblyCanvasCheckItem, selected: boolean): string {
@@ -80,6 +84,7 @@ export function AssemblyMarkerOverlay({
   bolts,
   checkItems = [],
   selectedBoltId,
+  inputTargetBoltId,
   selectedCheckItemId,
   onSelectBolt,
   onSelectCheckItem,
@@ -95,7 +100,9 @@ export function AssemblyMarkerOverlay({
             data-marker-id={bolt.id}
             className={clsx(
               'absolute flex h-4 w-4 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-[0.48rem] font-bold shadow',
-              boltMarkerClass(bolt.status, false)
+              boltMarkerClass(bolt.status, false),
+              inputTargetBoltId === bolt.id &&
+                'outline outline-2 outline-offset-1 outline-sky-400'
             )}
             style={{ left: `${bolt.xRatio * 100}%`, top: `${bolt.yRatio * 100}%` }}
           >
@@ -135,7 +142,8 @@ export function AssemblyMarkerOverlay({
           onPointerDown={(event) => event.stopPropagation()}
           className={clsx(
             'absolute z-10 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-sm font-bold shadow-lg',
-            boltMarkerClass(bolt.status, selectedBoltId === bolt.id)
+            boltMarkerClass(bolt.status, selectedBoltId === bolt.id),
+            kioskMarkerInputTargetOutlineClass(inputTargetBoltId === bolt.id)
           )}
           style={{ left: `${bolt.xRatio * 100}%`, top: `${bolt.yRatio * 100}%` }}
         >
@@ -175,6 +183,7 @@ export function AssemblyProcedureMarkerLayer({
   bolts,
   checkItems = [],
   selectedBoltId,
+  inputTargetBoltId,
   selectedCheckItemId,
   onSelectBolt,
   onSelectCheckItem,
@@ -230,6 +239,7 @@ export function AssemblyProcedureMarkerLayer({
         bolts={bolts}
         checkItems={checkItems}
         selectedBoltId={selectedBoltId}
+        inputTargetBoltId={inputTargetBoltId}
         selectedCheckItemId={selectedCheckItemId}
         onSelectBolt={onSelectBolt}
         onSelectCheckItem={onSelectCheckItem}

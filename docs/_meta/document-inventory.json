@@ -15,17 +15,17 @@
     ]
   },
   "summary": {
-    "documentCount": 559,
-    "totalLines": 158982,
-    "totalBytes": 12014745,
-    "withFrontmatter": 238,
+    "documentCount": 562,
+    "totalLines": 159904,
+    "totalBytes": 12071919,
+    "withFrontmatter": 240,
     "withStatus": 96,
     "sourceOfTruthDeclared": 61,
     "execPlanReferences": 64,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 25,
-    "localLinkCount": 5583,
+    "localLinkCount": 5587,
     "brokenLocalLinkCount": 87,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -5913,8 +5913,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 1995,
-      "byteSize": 343365,
+      "lineCount": 1999,
+      "byteSize": 343966,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -6843,6 +6843,11 @@
         {
           "href": "./decisions/ADR-20260724-assembly-procedure-gmail-import.md",
           "targetPath": "docs/decisions/ADR-20260724-assembly-procedure-gmail-import.md",
+          "exists": true
+        },
+        {
+          "href": "./decisions/ADR-20260725-kiosk-assembly-work-uiux-and-machine-name-picker.md",
+          "targetPath": "docs/decisions/ADR-20260725-kiosk-assembly-work-uiux-and-machine-name-picker.md",
           "exists": true
         },
         {
@@ -9966,6 +9971,11 @@
           "exists": true
         },
         {
+          "href": "./knowledge-base/KB-402-assembly-approved-uiux-feature-branch-overwrite.md",
+          "targetPath": "docs/knowledge-base/KB-402-assembly-approved-uiux-feature-branch-overwrite.md",
+          "exists": true
+        },
+        {
           "href": "./knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md",
           "targetPath": "docs/knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md",
           "exists": true
@@ -10158,6 +10168,11 @@
         {
           "href": "./plans/ansible-phase9-role-execplan.md",
           "targetPath": "docs/plans/ansible-phase9-role-execplan.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/assembly-approved-uiux-regression-recovery-execplan.md",
+          "targetPath": "docs/plans/assembly-approved-uiux-regression-recovery-execplan.md",
           "exists": true
         },
         {
@@ -11136,95 +11151,95 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 275,
+          "line": 279,
           "length": 1132
         },
         {
-          "line": 291,
+          "line": 295,
           "length": 1242
         },
         {
-          "line": 295,
+          "line": 299,
           "length": 1022
         },
         {
-          "line": 309,
+          "line": 313,
           "length": 1065
         },
         {
-          "line": 357,
+          "line": 361,
           "length": 1165
         },
         {
-          "line": 363,
+          "line": 367,
           "length": 1458
         },
         {
-          "line": 375,
+          "line": 379,
           "length": 1083
         },
         {
-          "line": 389,
+          "line": 393,
           "length": 1398
         },
         {
-          "line": 391,
+          "line": 395,
           "length": 1133
         },
         {
-          "line": 395,
+          "line": 399,
           "length": 1399
         },
         {
-          "line": 397,
+          "line": 401,
           "length": 1008
         },
         {
-          "line": 403,
+          "line": 407,
           "length": 1059
         },
         {
-          "line": 411,
+          "line": 415,
           "length": 1129
         },
         {
-          "line": 415,
+          "line": 419,
           "length": 1135
         },
         {
-          "line": 419,
+          "line": 423,
           "length": 1117
         },
         {
-          "line": 534,
+          "line": 538,
           "length": 1013
         },
         {
-          "line": 720,
+          "line": 724,
           "length": 2038
         },
         {
-          "line": 736,
+          "line": 740,
           "length": 1496
         },
         {
-          "line": 742,
+          "line": 746,
           "length": 1177
         },
         {
-          "line": 1084,
+          "line": 1088,
           "length": 1449
         },
         {
-          "line": 1120,
+          "line": 1124,
           "length": 1136
         },
         {
-          "line": 1122,
+          "line": 1126,
           "length": 1239
         },
         {
-          "line": 1158,
+          "line": 1162,
           "length": 1004
         }
       ],
@@ -16675,6 +16690,21 @@
       "source_of_truth": "docs/decisions/ADR-20260724-assembly-torque-low-latency-refresh.md",
       "localLinks": [],
       "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/decisions/ADR-20260725-kiosk-assembly-work-uiux-and-machine-name-picker.md",
+      "lineCount": 183,
+      "byteSize": 10637,
+      "hasFrontmatter": false,
+      "title": "ADR-20260725: Kiosk Assembly Work Semantics and Machine-name Picker",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -27055,8 +27085,8 @@
     },
     {
       "path": "docs/knowledge-base/index.md",
-      "lineCount": 867,
-      "byteSize": 261600,
+      "lineCount": 868,
+      "byteSize": 261934,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - 索引",
       "status": null,
@@ -29603,6 +29633,11 @@
           "exists": true
         },
         {
+          "href": "./KB-402-assembly-approved-uiux-feature-branch-overwrite.md",
+          "targetPath": "docs/knowledge-base/KB-402-assembly-approved-uiux-feature-branch-overwrite.md",
+          "exists": true
+        },
+        {
           "href": "./KB-investigation-kiosk-ime-and-power-regression.md",
           "targetPath": "docs/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md",
           "exists": true
@@ -31626,6 +31661,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/assembly-approved-uiux-regression-recovery-execplan.md",
+      "lineCount": 340,
+      "byteSize": 18236,
+      "hasFrontmatter": true,
+      "title": "Assembly Approved V3 UI/UX Regression Recovery ExecPlan",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/assembly-auto-id-nfc-invalidation-execplan.md",
       "lineCount": 346,
       "byteSize": 23157,
@@ -32661,6 +32711,21 @@
           "length": 1006
         }
       ],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/kiosk-assembly-work-uiux-improvements.md",
+      "lineCount": 394,
+      "byteSize": 27366,
+      "hasFrontmatter": true,
+      "title": "キオスク組立作業 UI/UX・機種名選択改善 ExecPlan",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
       "referencesExecPlan": false
     },
     {
