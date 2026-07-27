@@ -51,11 +51,13 @@ acceptance on `raspi4-assembly-01`.
   target Playwright at all three viewports, and whitespace checks.
 - [x] (2026-07-27) Regenerated the document inventory and passed the final documentation
   audit and `git diff --check`.
-- [ ] Open a PR, wait for required CI, CodeQL, and gitleaks, then merge the approved
-  immutable head to `main`.
-- [ ] Deploy only merged `main` through the standard rolling updater and verify release
-  identity, maintenance clearing, Phase12, and a post-release no-op plan.
-- [ ] Complete read-only acceptance on `raspi4-assembly-01`.
+- [x] (2026-07-27) Opened PR #1100, passed required CI, CodeQL, and gitleaks on the
+  immutable repaired head, and merged it to `main` as `9032cfb5`.
+- [x] (2026-07-27) Deployed merged `main` with rolling run
+  `20260727-061614-3974c2`; verified every release identity, maintenance clearing,
+  Phase12 `47/0/0`, no rollback, and a post-release plan with zero work.
+- [x] (2026-07-27) Completed read-only acceptance on `raspi4-assembly-01`, restored
+  the normal Assembly home screen, and removed all temporary verification files.
 
 ## Surprises & Discoveries
 
@@ -91,6 +93,23 @@ acceptance on `raspi4-assembly-01`.
   Evidence: The test now scopes its assertions to the explicit
   `assembly-work-step-canvas` boundary; this preserves thumbnail coverage instead of
   suppressing the second valid projection.
+- Observation: The first production submission was prevented before any mutation by
+  the aggregate readiness gate because the external Playwright CDN TLS probe timed
+  out. A fresh standard submission passed the same gate without an override.
+  Evidence: the stopped attempt allocated run `20260727-061443-2655e2` but was never
+  submitted; successful run `20260727-061614-3974c2` completed with exit code zero.
+- Observation: A Firefox screen capture through X11 returned a black image because the
+  kiosk desktop is composed by `labwc` on Wayland and Firefox runs through rootless
+  Xwayland.
+  Evidence: `grim` against `wayland-0` produced the actual 1920x1080 device image;
+  `xrandr` showed the connected 1920x1080 HDMI display and both kiosk-browser and
+  LightDM remained active.
+- Observation: The disabled crop acceptance session remains suitable for read-only
+  display validation even though normal summaries intentionally exclude invalidated
+  work units.
+  Evidence: read-only SQL found session `ea4101fc-1e0b-42b1-b4a0-af1f358c4939` with
+  one `FULL_PAGE` and one `CROP` step; its procedure-sequence API reported
+  `template_steps` without requiring any data restoration.
 
 ## Decision Log
 
@@ -128,8 +147,11 @@ acceptance on `raspi4-assembly-01`.
 
 ## Outcomes & Retrospective
 
-Implementation and local validation are complete; PR, rollout, and physical acceptance
-remain. Local evidence:
+The approved V3 lineage and the later step/crop lineage are now both part of production
+`main`. PR #1100 merged the repaired head `0d208bd0` as release SHA `9032cfb5`; approved
+head `8b4fc78d` and the repaired merge are both ancestors of `origin/main`.
+
+Local evidence:
 
 - Web: 313 test files and 1,545 tests passed.
 - API: 468 test files passed, 2 skipped; 2,467 tests passed, 7 skipped, against a fresh
@@ -144,9 +166,34 @@ remain. Local evidence:
   after the central-view locator was scoped explicitly. Shared types, lint, API build,
   Web build, and `git diff --check` also passed.
 
-At completion this section must additionally state the merged and release SHA, PR, CI
-runs, rolling-release run ID, Phase12 result, post-release no-op result, and read-only
-physical acceptance observations.
+Required CI run `30241450183` passed on its second attempt after the first attempt's
+Docker Hub image pull timeout; the rerun used the same source SHA. CodeQL run
+`30241450161` and gitleaks run `30241450169` passed.
+
+Standard rolling run `20260727-061614-3974c2` updated the Pi5 server, six kiosks, and
+one signage terminal. The canary completed with `failed=0` and `unreachable=0` before
+the remaining kiosk rollout was approved. Every host reported release identity
+`9032cfb5544b2658a225ab0c8d7969b00ee07d6e` as verified, every maintenance-clear phase
+succeeded, the run ended with exit code zero, and no rollback occurred. Phase12 passed
+`47 / 0 / 0`. A second `--print-plan` returned empty mutation, activation, verification,
+and target-host arrays with no warnings.
+
+Read-only device acceptance used completed fallback session
+`ad45bd93-e48d-4cdb-8a75-75340e140ee1` and disabled crop evidence session
+`ea4101fc-1e0b-42b1-b4a0-af1f358c4939`. The fallback screen showed the new sequence
+viewer, no empty 56px band, the approved compact right pane, two-column actions, and
+large monospaced OK history. The crop session showed full and crop steps, shared
+circle/check/arrow markers, the sky current-target outline without replacing marker
+state, projected storyboard thumbnails, and the crop minimap.
+
+The new-template screen showed `機種名`, `未選択`, and candidate selection rather than
+the old `型番/FHINCD` free-text input. The physical digit keypad entered `30`, auxiliary
+text `A` applied the AND filter, candidate `A30P4SY` was selected, and the draft field
+updated. Save was not invoked. A final production SQL read confirmed that no new
+template row was created; the newest template remained the prior crop evidence from
+`2026-07-27 02:15:01.97Z`. The kiosk browser was restarted to its normal Assembly home,
+and temporary `xdotool` packages were only extracted under a uniquely named `/tmp`
+directory, then removed from both Pi4 and Pi5 with absence checks.
 
 ## Context and Orientation
 
@@ -315,6 +362,21 @@ and physical screen observations.
   supplement lookup used `PSSeibanMachNmSup_unique_src_fsb` and completed in about
   0.16ms. Container, volume, network, and scratch data were removed; label residue was
   zero.
+- PR: `https://github.com/denkoushi/RaspberryPiSystem_002/pull/1100`. Repaired merge:
+  `0d208bd00ec0d7754bf374d59869c66a811fb0d5`. Production `main`:
+  `9032cfb5544b2658a225ab0c8d7969b00ee07d6e`.
+- CI: required run `30241450183` attempt 2 succeeded; CodeQL `30241450161` and gitleaks
+  `30241450169` succeeded. Approved head `8b4fc78d` is an ancestor of production
+  `main`.
+- Release: rolling run `20260727-061614-3974c2` completed with exit code zero. Pi5,
+  six kiosks, and Pi3 all reported the desired release identity as verified.
+  Maintenance clear succeeded for every terminal; rollback is null.
+- Production validation: Phase12 `PASS 47 / WARN 0 / FAIL 0`. The post-release plan had
+  no mutation, activation, verification, or target hosts and no warnings.
+- Physical acceptance: fallback and explicit crop screens passed on
+  `raspi4-assembly-01`; the V3 right pane, compact header/viewer, shared marker state,
+  current outline, thumbnails, minimap, and machine-name picker were visible. No torque,
+  check, area, completion, template-save, or deactivation write was performed.
 
 ## Interfaces and Dependencies
 
