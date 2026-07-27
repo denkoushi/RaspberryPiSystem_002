@@ -438,7 +438,7 @@ export function KioskSelfInspectionPage() {
           className={kioskButtonSecondaryClassName}
           onClick={() => navigate(KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH)}
         >
-          記録承認
+          記録確認・承認
         </button>
         <SelfInspectionFilterCombobox
           ariaLabel="製造order / 製番 / 品番"

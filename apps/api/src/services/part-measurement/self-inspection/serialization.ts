@@ -387,8 +387,11 @@ export type SelfInspectionRecordApprovalState =
   | 'input_incomplete'
   | 'inspector_measurement_pending'
   | 'registration_incomplete'
+  | 'final_judgement_pending'
+  | 'finalization_ready'
   | 'approvable'
-  | 'approved';
+  | 'approved'
+  | 'completed';
 
 export type SelfInspectionApproverResolveResult =
   | {
@@ -429,7 +432,9 @@ export function requiredRegistrationLabelForPolicy(
 function pendingReviewCountFromRecordApprovalSession(session: RecordApprovalSessionSource): number {
   let count = 0;
   for (const entry of session.entries) {
-    count += entry.values.filter((value) => value.reviewStatus === 'PENDING').length;
+    count += entry.values.filter(
+      (value) => (value.finalReviewStatus ?? value.reviewStatus) === 'PENDING'
+    ).length;
   }
   return count;
 }
@@ -568,8 +573,12 @@ export function buildRecordApprovalReadiness(
   }
 
   const pendingReviewCount = pendingReviewCountFromRecordApprovalSession(session);
+  const isInspectorFinalJudgement =
+    serializeDecisionWorkflow(session.decisionWorkflow) === 'INSPECTOR_FINAL_JUDGEMENT';
   const state: SelfInspectionRecordApprovalState = session.recordApproval
     ? 'approved'
+    : isInspectorFinalJudgement && session.completedAt
+      ? 'completed'
     : missingRequiredEntryCount > 0 || incompleteValueEntryCount > 0 || requiredSlots.length === 0
       ? 'input_incomplete'
       : incompleteRegistrationEntryCount > 0
@@ -578,7 +587,11 @@ export function buildRecordApprovalReadiness(
         ? 'inspector_measurement_pending'
       : inspectorIncompleteRegistrationEntryCount > 0
         ? 'registration_incomplete'
-        : 'approvable';
+        : isInspectorFinalJudgement
+          ? pendingReviewCount > 0
+            ? 'final_judgement_pending'
+            : 'finalization_ready'
+          : 'approvable';
 
   return {
     state,

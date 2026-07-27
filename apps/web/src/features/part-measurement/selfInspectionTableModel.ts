@@ -1,6 +1,7 @@
 import {
   KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH,
   kioskSelfInspectionInspectorSessionPath,
+  kioskSelfInspectionRecordConfirmationPath,
   kioskSelfInspectionSessionPath
 } from './selfInspectionRoutes';
 import { presentSelfInspectionWipCard } from './selfInspectionWipCardPresentation';
@@ -46,6 +47,7 @@ export type SelfInspectionTableRow =
   | (SelfInspectionTableRowBase & {
       kind: 'session';
       action: { kind: 'link'; href: string; label: string };
+      recordViewAction?: { href: string; label: string };
     })
   | (SelfInspectionTableRowBase & {
       kind: 'candidate';
@@ -158,7 +160,15 @@ export function presentSelfInspectionSessionRow(
       inspectorActive || inspectorComplete
         ? `氏名 ${card.participantNamesLine} / 指示数 ${session.plannedQuantity} / 検査員 ${session.inspectorCompletedRequiredEntryCount}/${session.inspectorRequiredEntryCount} 件`
         : `氏名 ${card.participantNamesLine} / 指示数 ${session.plannedQuantity} / 進捗 ${card.progressLine}`,
-    action
+    action,
+    recordViewAction:
+      session.recordApprovalRequiredAt &&
+      session.decisionWorkflow === 'INSPECTOR_FINAL_JUDGEMENT'
+        ? {
+            href: kioskSelfInspectionRecordConfirmationPath(session.id),
+            label: '記録確認'
+          }
+        : undefined
   };
 }
 

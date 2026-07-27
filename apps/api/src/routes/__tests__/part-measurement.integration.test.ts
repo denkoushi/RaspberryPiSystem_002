@@ -3795,6 +3795,46 @@ describe('part-measurement templates API', () => {
       expect(operatorEntryRes.json().entry.values[0]?.reviewStatus).toBe('PENDING');
     }
 
+    const inspectorPendingListRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?state=inspector_measurement_pending',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(inspectorPendingListRes.statusCode).toBe(200);
+    const inspectorPendingRow = (
+      inspectorPendingListRes.json().sessions as Array<{
+        id: string;
+        recordApprovalState: string;
+        pendingReviewCount: number;
+      }>
+    ).find((row) => row.id === session.id);
+    expect(inspectorPendingRow).toMatchObject({
+      id: session.id,
+      recordApprovalState: 'inspector_measurement_pending',
+      pendingReviewCount: 2
+    });
+
+    const operatorResultsDetailRes = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/self-inspection/record-approvals/sessions/${session.id}`,
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(operatorResultsDetailRes.statusCode).toBe(200);
+    expect(operatorResultsDetailRes.json().session.recordApprovalState).toBe(
+      'inspector_measurement_pending'
+    );
+    expect(
+      operatorResultsDetailRes.json().session.requiredEntries.map(
+        (entry: { values: Array<{ value: string; inspectorValue: string | null }> }) => ({
+          value: entry.values[0]?.value,
+          inspectorValue: entry.values[0]?.inspectorValue
+        })
+      )
+    ).toEqual([
+      { value: '10.5', inspectorValue: null },
+      { value: '10.6', inspectorValue: null }
+    ]);
+
     const inspectorEntryIds: string[] = [];
     for (const [entryIndex, value] of ['10.1', '10.2'].entries()) {
       const inspectorEntryRes = await app.inject({
@@ -3813,17 +3853,50 @@ describe('part-measurement templates API', () => {
       inspectorEntryIds.push(inspectorEntryRes.json().entry.id as string);
     }
 
-    const listedForLegacyApprovalRes = await app.inject({
+    const listedForRecordConfirmationRes = await app.inject({
       method: 'GET',
       url: '/api/part-measurement/self-inspection/record-approvals?state=active',
       headers: { 'x-client-key': kioskClient.apiKey }
     });
-    expect(listedForLegacyApprovalRes.statusCode).toBe(200);
+    expect(listedForRecordConfirmationRes.statusCode).toBe(200);
+    const finalJudgementPendingRow = (
+      listedForRecordConfirmationRes.json().sessions as Array<{
+        id: string;
+        recordApprovalState: string;
+        pendingReviewCount: number;
+      }>
+    ).find((row) => row.id === session.id);
+    expect(finalJudgementPendingRow).toMatchObject({
+      id: session.id,
+      recordApprovalState: 'final_judgement_pending',
+      pendingReviewCount: 2
+    });
+
+    const inspectorResultsDetailRes = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/self-inspection/record-approvals/sessions/${session.id}`,
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(inspectorResultsDetailRes.statusCode).toBe(200);
+    expect(inspectorResultsDetailRes.json().session.requiredEntries).toHaveLength(2);
     expect(
-      (listedForLegacyApprovalRes.json().sessions as Array<{ id: string }>).some(
-        (row) => row.id === session.id
+      inspectorResultsDetailRes.json().session.requiredEntries.map(
+        (entry: {
+          values: Array<{
+            value: string;
+            inspectorValue: string;
+            differenceValue: string;
+          }>;
+        }) => ({
+          value: entry.values[0]?.value,
+          inspectorValue: entry.values[0]?.inspectorValue,
+          differenceValue: entry.values[0]?.differenceValue
+        })
       )
-    ).toBe(false);
+    ).toEqual([
+      { value: '10.5', inspectorValue: '10.1', differenceValue: '-0.4' },
+      { value: '10.6', inspectorValue: '10.2', differenceValue: '-0.4' }
+    ]);
     const legacyApprovalAttemptRes = await app.inject({
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${session.id}/record-approval/approve`,
@@ -3892,6 +3965,24 @@ describe('part-measurement templates API', () => {
     expect(finalNgRes.json().entry.values[0]?.judgementStatus).toBe('FINAL_NG');
     expect(finalNgRes.json().entry.values[0]?.operatorReviewStatus).toBe('REJECTED');
 
+    const finalizationReadyListRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?state=finalization_ready',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(finalizationReadyListRes.statusCode).toBe(200);
+    expect(
+      (finalizationReadyListRes.json().sessions as Array<{
+        id: string;
+        recordApprovalState: string;
+        pendingReviewCount: number;
+      }>).find((row) => row.id === session.id)
+    ).toMatchObject({
+      id: session.id,
+      recordApprovalState: 'finalization_ready',
+      pendingReviewCount: 0
+    });
+
     const requireInstrumentPolicyRes = await app.inject({
       method: 'PUT',
       url: '/api/part-measurement/self-inspection/registration-policy',
@@ -3909,6 +4000,22 @@ describe('part-measurement templates API', () => {
     expect(completeWithInspectorRegistrationMissingRes.statusCode).toBe(409);
     expect(completeWithInspectorRegistrationMissingRes.json().message).toContain('検査員入力件 1');
     expect(completeWithInspectorRegistrationMissingRes.json().message).toContain('計測機器');
+
+    const registrationIncompleteListRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?state=registration_incomplete',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(registrationIncompleteListRes.statusCode).toBe(200);
+    expect(
+      (registrationIncompleteListRes.json().sessions as Array<{
+        id: string;
+        recordApprovalState: string;
+      }>).find((row) => row.id === session.id)
+    ).toMatchObject({
+      id: session.id,
+      recordApprovalState: 'registration_incomplete'
+    });
 
     const inspectorValuesAfterBlockedCompletion =
       await prisma.selfInspectionInspectorMeasurementValue.findMany({
@@ -3932,6 +4039,18 @@ describe('part-measurement templates API', () => {
       expect(registrationRes.statusCode).toBe(200);
     }
 
+    const readyAfterRegistrationRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?state=finalization_ready',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(readyAfterRegistrationRes.statusCode).toBe(200);
+    expect(
+      (readyAfterRegistrationRes.json().sessions as Array<{ id: string }>).some(
+        (row) => row.id === session.id
+      )
+    ).toBe(true);
+
     const completeRes = await app.inject({
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${session.id}/complete`,
@@ -3941,6 +4060,34 @@ describe('part-measurement templates API', () => {
     expect(completeRes.statusCode).toBe(200);
     expect(completeRes.json().session.status).toBe('completed');
     expect(completeRes.json().session.pendingReviewCount).toBe(0);
+
+    const completedRecordListRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?state=completed',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(completedRecordListRes.statusCode).toBe(200);
+    expect(
+      (completedRecordListRes.json().sessions as Array<{
+        id: string;
+        recordApprovalState: string;
+      }>).find((row) => row.id === session.id)
+    ).toMatchObject({
+      id: session.id,
+      recordApprovalState: 'completed'
+    });
+
+    const activeAfterCompletionRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/self-inspection/record-approvals?state=active',
+      headers: { 'x-client-key': kioskClient.apiKey }
+    });
+    expect(activeAfterCompletionRes.statusCode).toBe(200);
+    expect(
+      (activeAfterCompletionRes.json().sessions as Array<{ id: string }>).some(
+        (row) => row.id === session.id
+      )
+    ).toBe(false);
 
     const operatorValues = await prisma.selfInspectionMeasurementValue.findMany({
       where: { entry: { sessionId: session.id } },
