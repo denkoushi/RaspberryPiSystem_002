@@ -59,8 +59,8 @@ schema、labelの不一致は改ざんまたはproducer不整合として停止�
 rollbackは従来どおり実施する。正本は
 [ARM64成果物昇格ADR](../decisions/ADR-20260728-attested-arm64-release-artifact-promotion.md)
 である。公開packageでは実トークンを保存せず、隔離した一時GitHub CLI設定で
-OCI内の署名bundleを検証する。private packageへ変更する場合だけ、root専用設定
-のread-only tokenを使う。
+OCI内の署名bundleを検証する。private packageへ変更する場合だけ、root所有かつ
+release runner groupだけが読める設定のread-only tokenを使う。
 
 判断の正本は `logs/deploy/fleet-release-state.json` である。手で編集しない。
 

@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 575,
-    "totalLines": 162382,
-    "totalBytes": 12211888,
+    "totalLines": 162404,
+    "totalBytes": 12213303,
     "withFrontmatter": 252,
     "withStatus": 108,
     "sourceOfTruthDeclared": 72,
@@ -16869,8 +16869,8 @@
     },
     {
       "path": "docs/decisions/ADR-20260728-attested-arm64-release-artifact-promotion.md",
-      "lineCount": 111,
-      "byteSize": 5296,
+      "lineCount": 112,
+      "byteSize": 5394,
       "hasFrontmatter": true,
       "title": "Attested ARM64 API/Web release artifact promotion",
       "status": "accepted",
@@ -18647,7 +18647,7 @@
     {
       "path": "docs/guides/deployment.md",
       "lineCount": 237,
-      "byteSize": 19837,
+      "byteSize": 19881,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -32246,8 +32246,8 @@
     },
     {
       "path": "docs/plans/deploy-workflow-artifact-promotion-execplan.md",
-      "lineCount": 451,
-      "byteSize": 23407,
+      "lineCount": 472,
+      "byteSize": 24680,
       "hasFrontmatter": true,
       "title": "Promote attested ARM64 release images without weakening deployment safety",
       "status": "implemented",

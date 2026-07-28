@@ -142,8 +142,8 @@
     path: /etc/raspi-release
     state: directory
     owner: root
-    group: root
-    mode: '0700'
+    group: "{{ ansible_user }}"
+    mode: '0750'
 
 - name: Install the GitHub attestation verifier when promotion is enabled
   ansible.builtin.apt:
@@ -152,13 +152,13 @@
     update_cache: true
   when: pi5_artifact_promotion_enabled | default(false) | bool
 
-- name: Deploy root-only release artifact promotion policy
+- name: Deploy release-runner-only artifact promotion policy
   ansible.builtin.template:
     src: "{{ playbook_dir }}/../templates/artifact-promotion.json.j2"
     dest: /etc/raspi-release/artifact-promotion.json
     owner: root
-    group: root
-    mode: '0600'
+    group: "{{ ansible_user }}"
+    mode: '0640'
   no_log: true
 
 - name: Ensure Docker Compose .env directory exists

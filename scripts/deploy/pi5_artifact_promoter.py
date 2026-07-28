@@ -92,6 +92,25 @@ def _strict_object(items: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
+def _config_metadata_is_safe(
+    metadata: os.stat_result,
+    *,
+    effective_uid: int,
+    effective_gid: int,
+    supplementary_groups: Sequence[int],
+) -> bool:
+    mode = stat.S_IMODE(metadata.st_mode)
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > MAX_CONFIG_BYTES:
+        return False
+    if metadata.st_uid == effective_uid and mode == 0o600:
+        return True
+    if metadata.st_uid != 0 or mode != 0o640:
+        return False
+    if effective_uid == 0:
+        return True
+    return metadata.st_gid in {effective_gid, *supplementary_groups}
+
+
 @dataclass(frozen=True)
 class PromotionConfig:
     enabled: bool
@@ -134,21 +153,22 @@ def _run_command(
 
 
 def load_config(path: Path) -> PromotionConfig:
-    if not path.exists():
-        raise PromotionDisabled("artifact promotion config is not installed")
     try:
         metadata = path.lstat()
+    except FileNotFoundError as error:
+        raise PromotionDisabled("artifact promotion config is not installed") from error
     except OSError as error:
         raise PromotionUnavailable("artifact promotion config is unavailable") from error
     if (
         stat.S_ISLNK(metadata.st_mode)
-        or not stat.S_ISREG(metadata.st_mode)
-        or metadata.st_size > MAX_CONFIG_BYTES
-        or metadata.st_mode & 0o077
+        or not _config_metadata_is_safe(
+            metadata,
+            effective_uid=os.geteuid(),
+            effective_gid=os.getegid(),
+            supplementary_groups=os.getgroups(),
+        )
     ):
         raise PromotionIntegrityError("artifact promotion config permissions are unsafe")
-    if os.geteuid() == 0 and metadata.st_uid != 0:
-        raise PromotionIntegrityError("artifact promotion config is not root-owned")
     try:
         document = json.loads(
             path.read_text(encoding="utf-8"), object_pairs_hook=_strict_object

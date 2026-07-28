@@ -125,7 +125,7 @@ class AnsibleTemplateContractTests(unittest.TestCase):
         self.assertIn("no_log: true", playbook)
         self.assertNotIn("ansible.builtin.shell", playbook)
 
-    def test_artifact_promotion_policy_is_root_only_and_opt_in(self) -> None:
+    def test_artifact_promotion_policy_is_release_runner_only_and_opt_in(self) -> None:
         self.assertIn(
             "pi5_artifact_promotion_enabled: false",
             ARTIFACT_PROMOTION_DEFAULTS.read_text(encoding="utf-8"),
@@ -173,7 +173,26 @@ class AnsibleTemplateContractTests(unittest.TestCase):
 
         tasks = SERVER_ROLE_TASKS.read_text(encoding="utf-8")
         self.assertIn("dest: /etc/raspi-release/artifact-promotion.json", tasks)
-        self.assertIn("mode: '0600'", tasks)
+        self.assertIn(
+            "- name: Ensure release artifact configuration directory exists\n"
+            "  ansible.builtin.file:\n"
+            "    path: /etc/raspi-release\n"
+            "    state: directory\n"
+            "    owner: root\n"
+            '    group: "{{ ansible_user }}"\n'
+            "    mode: '0750'",
+            tasks,
+        )
+        self.assertIn(
+            "- name: Deploy release-runner-only artifact promotion policy\n"
+            "  ansible.builtin.template:\n"
+            '    src: "{{ playbook_dir }}/../templates/artifact-promotion.json.j2"\n'
+            "    dest: /etc/raspi-release/artifact-promotion.json\n"
+            "    owner: root\n"
+            '    group: "{{ ansible_user }}"\n'
+            "    mode: '0640'",
+            tasks,
+        )
         self.assertIn("no_log: true", tasks)
         self.assertIn(
             "when: pi5_artifact_promotion_enabled | default(false) | bool",

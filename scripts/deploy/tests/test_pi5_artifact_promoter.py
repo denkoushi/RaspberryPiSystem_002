@@ -3,11 +3,14 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import stat
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
 from scripts.deploy.pi5_artifact_promoter import (
+    _config_metadata_is_safe,
     CommandResult,
     PUBLIC_OCI_VERIFICATION_TOKEN,
     PromotionDisabled,
@@ -176,6 +179,38 @@ class Pi5ArtifactPromoterTests(unittest.TestCase):
             path = self.write_config(directory, value)
             with self.assertRaisesRegex(PromotionIntegrityError, "fields"):
                 load_config(path)
+
+    def test_config_accepts_root_owned_release_runner_group_read(self) -> None:
+        metadata = SimpleNamespace(
+            st_mode=stat.S_IFREG | 0o640,
+            st_size=512,
+            st_uid=0,
+            st_gid=2000,
+        )
+        self.assertTrue(
+            _config_metadata_is_safe(
+                metadata,  # type: ignore[arg-type]
+                effective_uid=1000,
+                effective_gid=2000,
+                supplementary_groups=(),
+            )
+        )
+        self.assertFalse(
+            _config_metadata_is_safe(
+                metadata,  # type: ignore[arg-type]
+                effective_uid=1001,
+                effective_gid=2001,
+                supplementary_groups=(2002,),
+            )
+        )
+
+    @patch("scripts.deploy.pi5_artifact_promoter.Path.lstat")
+    def test_inaccessible_config_is_available_for_local_fallback(
+        self, lstat: object
+    ) -> None:
+        lstat.side_effect = PermissionError("denied")  # type: ignore[attr-defined]
+        with self.assertRaises(PromotionUnavailable):
+            load_config(Path("/etc/raspi-release/artifact-promotion.json"))
 
     @patch("scripts.deploy.pi5_artifact_promoter.shutil.which")
     def test_promotes_exact_pair_without_serializing_token(self, which: object) -> None:
