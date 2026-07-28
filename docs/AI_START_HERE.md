@@ -45,7 +45,7 @@ If `EXEC_PLAN.md` must be touched, keep the entry short and limited to current s
 - Active inspection-drawing OCR candidate improvement: `docs/plans/inspection-drawing-ocr-local-candidates.md`
 - Active inspection-drawing OCR RapidOCR local secondary: `docs/plans/inspection-drawing-ocr-rapidocr-local.md`
 - Active self-inspection autosave / callout / template create lock: `docs/plans/self-inspection-autosave-callout-template-lock.md`
-- Accepted inspection-drawing dimension/tolerance 1-page SOP (AI-reproducible): `docs/plans/kiosk-inspection-drawing-dimension-tolerance-sop-1page.md`
+- Accepted inspection-drawing dimension/tolerance 1-page SOP (step-rail; AI-reproducible): `docs/plans/kiosk-inspection-drawing-dimension-tolerance-sop-1page.md`
 - Active self-inspection confirm guard + draft WIP: `docs/plans/self-inspection-confirm-guard-wip-draft.md`
 - Active DGX ComfyUI Phase 1 follow-up: `docs/plans/dgx-comfyui-single-image-edit-workflow.md`
 - Active assembly torque-wrench traceability: `docs/plans/assembly-torque-wrench-traceability-execplan.md`
