@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>操作手順 — 検査図面 既存編集（画面別ページ）</title>
+<style>
+/* Layout: ADR-20260728-inspection-drawing-sop-step-rail
+   Visual sample: kiosk-inspection-drawing-dimension-tolerance-sop-1page.html
+   Rule: one target screen = one A4 landscape sheet */
+  :root {
+    --slate-800: #1e293b;
+    --slate-900: #0f172a;
+    --emerald-500: #10b981;
+    --sky-400: #38bdf8;
+    --cyan-300: #67e8f9;
+    --amber-100: #fef3c7;
+    --font: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { background: #94a3b8; }
+  body {
+    font-family: var(--font);
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+    padding: 52px 12px 24px;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .bar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+    display: flex; align-items: center; gap: 12px;
+    padding: 8px 14px; background: #0f172a; color: #fff; font-size: .78rem;
+  }
+  .bar button {
+    margin-left: auto; border: 0; border-radius: 6px;
+    background: #2563eb; color: #fff; font: inherit; font-weight: 700;
+    padding: 6px 12px; cursor: pointer;
+  }
+
+  .sheet {
+    width: min(100%, 1280px);
+    aspect-ratio: 1280 / 720;
+    background: #dbe3ec;
+    color: #fff;
+    box-shadow: 0 18px 40px rgba(0,0,0,.3);
+    position: relative;
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: minmax(11.5rem, 18%) 1fr;
+    gap: 0;
+    flex-shrink: 0;
+  }
+  .step-rail {
+    position: relative;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    padding: 10px 8px 10px 10px;
+    background: #e8eef5;
+    border-right: 1px solid #b8c4d4;
+    color: #0f172a;
+  }
+  .step-rail h1 {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: #475569;
+    margin: 0 0 4px;
+    line-height: 1.3;
+  }
+  .page-badge {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-self: flex-start;
+    margin-bottom: 6px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    font-size: 9px;
+    font-weight: 800;
+    color: #334155;
+  }
+  .rail-note {
+    flex-shrink: 0;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1.25;
+    color: #64748b;
+    margin: 0 0 8px;
+  }
+  .step-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-height: 0;
+    overflow: auto;
+    flex: 1;
+  }
+  .step-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    padding: 6px 7px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: rgba(255,255,255,.72);
+    cursor: default;
+    transition: background .12s, border-color .12s, opacity .12s, box-shadow .12s;
+  }
+  .step-item:hover,
+  .step-item:focus-visible,
+  .step-item.is-active {
+    background: #fff7ed;
+    border-color: #e85d04;
+    box-shadow: 0 0 0 1px rgba(232,93,4,.25);
+    outline: none;
+  }
+  .sheet.is-dimming .step-item:not(.is-active) { opacity: .42; }
+  .step-n {
+    flex: 0 0 auto;
+    width: 1.35rem;
+    height: 1.35rem;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: #e85d04;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 900;
+    line-height: 1;
+  }
+  .step-t {
+    min-width: 0;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1.25;
+    color: #9a3412;
+    padding-top: 2px;
+  }
+
+  .stage {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--slate-800);
+    overflow: hidden;
+  }
+
+  /* —— Kiosk immersive header (production: fixed bottom) —— */
+  .kiosk-hdr {
+    height: 40px; flex-shrink: 0;
+    display: flex; align-items: center; gap: 6px;
+    padding: 0 10px;
+    background: rgba(15,23,42,.92);
+    border-top: 1px solid rgba(255,255,255,.1);
+    box-shadow: 0 -6px 16px rgba(0,0,0,.25);
+    order: 2;
+  }
+  .stage > .lib-page,
+  .stage > .page {
+    order: 1;
+  }
+  .kiosk-hdr .tab {
+    border: 0; border-radius: 6px;
+    min-height: 28px; padding: 0 12px;
+    font-size: .78rem; font-weight: 800;
+    background: transparent; color: rgba(255,255,255,.55);
+  }
+  .kiosk-hdr .tab.on {
+    background: rgba(245,158,11,.22);
+    color: #fde68a;
+    box-shadow: inset 0 0 0 1px rgba(251,191,36,.55);
+  }
+  .lib-page {
+    flex: 1; min-height: 0;
+    display: flex; flex-direction: column;
+    gap: 6px; padding: 8px;
+  }
+  .lib-title {
+    font-size: 1.05rem; font-weight: 800; color: #fff;
+  }
+  .lib-tools {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  }
+  .tenkey {
+    display: flex; flex-wrap: wrap; gap: 3px; max-width: 16rem;
+  }
+  .tenkey button {
+    min-width: 2rem; min-height: 2rem;
+    border-radius: 5px; border: 1px solid rgba(255,255,255,.2);
+    background: rgba(255,255,255,.06); color: #fff;
+    font-size: .8rem; font-weight: 700;
+  }
+  .lib-grid {
+    flex: 1; min-height: 0;
+    display: grid;
+    grid-template-columns: 1fr 1.35fr;
+    gap: 8px;
+  }
+  .lib-pane {
+    min-height: 0;
+    display: flex; flex-direction: column; gap: 6px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,.12);
+    background: rgba(2,6,23,.45);
+    padding: 8px;
+  }
+  .lib-pane h2 {
+    font-size: .78rem; font-weight: 800; color: rgba(255,255,255,.55);
+  }
+  .lib-card, .lib-row {
+    border-radius: 7px;
+    border: 1px solid rgba(255,255,255,.12);
+    background: rgba(15,23,42,.55);
+    padding: 8px 10px;
+  }
+  .lib-card .name, .lib-row .name { font-size: .9rem; font-weight: 800; color: #fff; }
+  .lib-card .sub, .lib-row .sub { margin-top: 3px; font-size: .75rem; font-weight: 600; color: rgba(255,255,255,.65); }
+  .lib-hint {
+    font-size: .72rem; font-weight: 700; color: rgba(251,191,36,.9);
+  }
+  .lib-row.sel {
+    border-color: #67e8f9;
+    box-shadow: 0 0 0 1px #67e8f9;
+  }
+  .lib-row-actions {
+    margin-top: 8px;
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+  }
+  .lib-row-actions .chip {
+    border-radius: 999px; border: 1px solid rgba(255,255,255,.2);
+    padding: 2px 8px; font-size: .7rem; font-weight: 700; color: rgba(255,255,255,.75);
+  }
+  .btn-edit {
+    border: 0; border-radius: 6px;
+    min-height: 36px; padding: 0 14px;
+    font-size: .88rem; font-weight: 800;
+    background: var(--emerald-500); color: #fff;
+  }
+  .btn-ghost-sm {
+    border: 1px solid rgba(255,255,255,.2); border-radius: 6px;
+    min-height: 36px; padding: 0 10px;
+    font-size: .8rem; font-weight: 700;
+    background: transparent; color: #fff;
+  }
+
+  /* —— Edit screen —— */
+  .page {
+    flex: 1; min-height: 0;
+    display: flex; flex-direction: column;
+    gap: 4px; padding: 4px; color: #fff;
+  }
+  .flat-band {
+    display: flex; flex-shrink: 0; flex-wrap: wrap; align-items: center;
+    gap: 4px 8px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,.15);
+    background: rgba(15,23,42,.6);
+    padding: 4px 8px;
+  }
+  .meta-row {
+    display: flex; flex-shrink: 1; min-width: 0; flex-wrap: nowrap;
+    align-items: center; gap: 8px; list-style: none;
+  }
+  .chip-meta {
+    display: inline-flex; align-items: baseline; gap: 6px;
+    white-space: nowrap; font-size: .9rem;
+  }
+  .chip-meta dt { font-weight: 600; color: #94a3b8; }
+  .chip-meta dd {
+    margin: 0; max-width: 11rem; overflow: hidden; text-overflow: ellipsis;
+    border-radius: 6px; border: 1px solid rgba(255,255,255,.2);
+    background: #fff; color: #0f172a;
+    padding: 2px 8px; font-size: .95rem; font-weight: 600;
+    height: 36px; display: inline-flex; align-items: center;
+  }
+  .chip-meta dd.ro { background: rgba(2,6,23,.6); color: #fff; }
+  .ver {
+    border-radius: 4px; border: 1px solid rgba(255,255,255,.2);
+    padding: 2px 6px; font-size: .75rem; color: rgba(255,255,255,.55);
+  }
+  .file-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: .75rem; color: rgba(255,255,255,.55);
+  }
+  .file-chip span.val {
+    border-radius: 4px; border: 1px solid rgba(255,255,255,.2);
+    background: rgba(2,6,23,.6); color: #fff; padding: 2px 6px;
+  }
+  .zoom { display: flex; align-items: center; gap: 2px; }
+  .zoom button {
+    min-height: 40px; min-width: 40px;
+    border-radius: 6px; border: 1px solid rgba(255,255,255,.2);
+    background: rgba(255,255,255,.05); color: #fff;
+    font-size: 1rem; font-weight: 600;
+  }
+  .toolbar {
+    margin-left: auto; display: flex; flex-wrap: wrap;
+    align-items: center; justify-content: flex-end; gap: 8px;
+  }
+  .btn {
+    border: 0; border-radius: 6px; padding: 0 16px;
+    min-height: 44px;
+    font-size: 1rem; font-weight: 600; color: #fff;
+    background: var(--emerald-500);
+  }
+  .btn.off { opacity: .4; filter: grayscale(1); }
+  .btn.ghost {
+    background: transparent; border: 1px solid rgba(255,255,255,.2);
+  }
+  .save-status {
+    display: inline-flex; min-height: 36px; align-items: center;
+    border-radius: 4px; border: 1px solid rgba(251,191,36,.55);
+    background: rgba(251,191,36,.15); color: #fef3c7;
+    padding: 0 6px; font-size: .85rem; font-weight: 600;
+  }
+
+  .workspace {
+    display: flex; min-height: 0; flex: 1; gap: 6px;
+  }
+  .canvas-col { display: flex; min-height: 0; min-width: 0; flex: 1; flex-direction: column; }
+  .viewport {
+    position: relative; min-height: 0; flex: 1;
+    overflow: hidden; border-radius: 8px;
+    border: 1px solid rgba(255,255,255,.15);
+    background: rgba(0,0,0,.4);
+  }
+  .drawing {
+    position: absolute; inset: 10px;
+    border-radius: 4px; overflow: hidden;
+    background: #f1f5f9;
+    border: 1px solid #94a3b8;
+  }
+  .drawing svg { width: 100%; height: 100%; display: block; }
+  .marker {
+    position: absolute; z-index: 5;
+    display: flex; align-items: center; justify-content: center;
+    height: 36px; min-width: 36px;
+    border-radius: 9999px; padding: 0 4px;
+    font-size: .875rem; font-weight: 700; font-variant-numeric: tabular-nums;
+    background: #fff; color: #0f172a;
+    box-shadow: 0 0 0 2px #94a3b8, 0 2px 6px rgba(0,0,0,.25);
+  }
+  .marker.active {
+    outline: 3px solid var(--sky-400);
+    outline-offset: 2px;
+  }
+  .marker.m1 { left: 48%; top: 32%; }
+  .marker.m2 { left: 70%; top: 55%; }
+
+  .aside {
+    width: 17rem; flex-shrink: 0;
+    display: flex; min-height: 0; flex-direction: column;
+    overflow: hidden; border-radius: 8px;
+    border: 1px solid rgba(255,255,255,.15);
+    background: rgba(15,23,42,.6);
+    padding: 6px;
+  }
+  .settings {
+    display: grid; width: 100%; gap: 8px;
+    border-radius: 8px; border: 1px solid rgba(255,255,255,.15);
+    background: rgba(15,23,42,.6); padding: 8px;
+  }
+  .nudge { display: flex; width: 100%; justify-content: center; gap: 4px; }
+  .nudge button {
+    display: inline-flex; min-height: 1.375rem; min-width: 2.75rem;
+    align-items: center; justify-content: center;
+    border-radius: 4px; border: 1px solid #cbd5e1;
+    background: #fff; color: #334155;
+    padding: 2px 8px; font-size: .875rem; font-weight: 700;
+  }
+  .settings-title { font-size: 1.02rem; font-weight: 700; }
+  .mode-row {
+    display: flex; min-height: 32px; min-width: 0; flex-wrap: nowrap;
+    align-items: center; gap: 4px;
+    border-radius: 6px; border: 1px solid rgba(252,211,77,.45);
+    background: rgba(251,191,36,.1); padding: 0 6px;
+  }
+  .mode-row .btn {
+    min-height: 26px !important; padding: 0 6px !important;
+    font-size: .72rem; line-height: 1;
+  }
+  .mode-row .status {
+    min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis;
+    font-size: .7rem; font-weight: 800; color: var(--amber-100);
+  }
+  .mode-row .clear {
+    min-height: 26px; border-radius: 4px;
+    border: 1px solid rgba(252,211,77,.5);
+    background: rgba(2,6,23,.55); color: var(--amber-100);
+    padding: 0 8px; font-size: .7rem; font-weight: 800;
+  }
+  .name-row { display: flex; min-width: 0; width: 100%; align-items: center; gap: 8px; }
+  .name-row > span { flex-shrink: 0; white-space: nowrap; font-size: .95rem; font-weight: 600; }
+  .name-row select, .supp select {
+    width: 100%; min-height: 44px; border-radius: 6px;
+    border: 1px solid rgba(255,255,255,.2);
+    background: rgba(2,6,23,.6); color: #fff;
+    padding: 0 12px; font-size: 1.02rem;
+  }
+  .supp {
+    display: grid;
+    grid-template-columns: minmax(0,.85fr) minmax(0,1fr) minmax(0,1.45fr);
+    gap: 6px;
+  }
+  .supp label {
+    display: grid; gap: 4px; min-width: 0;
+    font-size: .82rem; font-weight: 600; color: rgba(255,255,255,.7);
+  }
+  .supp input {
+    width: 100%; min-height: 44px; border-radius: 6px;
+    border: 1px solid rgba(255,255,255,.2);
+    background: #fff; color: #000; padding: 8px 12px;
+    font-size: 1.12rem;
+  }
+  .nominal {
+    display: flex; min-width: 0; align-items: center; gap: 8px;
+  }
+  .nominal > span { flex-shrink: 0; font-size: 1rem; font-weight: 600; }
+  .nominal input {
+    width: 7.5rem; flex-shrink: 0; min-height: 36px;
+    border-radius: 6px; border: 1px solid rgba(255,255,255,.2);
+    background: #fff; color: #000; padding: 6px 12px;
+    font-size: 1.12rem; font-weight: 700;
+  }
+  .tol { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .tol label { display: grid; gap: 4px; font-size: 1rem; font-weight: 600; }
+  .tol input {
+    width: 100%; min-height: 44px; border-radius: 6px;
+    border: 1px solid rgba(255,255,255,.2);
+    background: #fff; color: #000; padding: 8px 12px;
+    font-size: 1.12rem; font-weight: 700;
+  }
+  .dels { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .dels button {
+    min-height: 22px; border-radius: 6px; border: 1px solid rgba(255,255,255,.2);
+    background: rgba(255,255,255,.05); color: #fff;
+    padding: 0 8px; font-size: .78rem; font-weight: 600; line-height: 1;
+  }
+  .list-sec {
+    margin-top: 6px; display: flex; min-height: 0; flex: 1;
+    flex-direction: column; gap: 4px;
+    border-top: 1px solid rgba(255,255,255,.1); padding-top: 6px;
+  }
+  .list-title { flex-shrink: 0; font-size: .75rem; font-weight: 600; color: rgba(255,255,255,.5); }
+  .list { display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 4px; overflow: hidden; }
+  .card {
+    display: flex; width: 100%; flex-direction: column; gap: 2px;
+    border-radius: 8px; border: 1px solid rgba(255,255,255,.15);
+    background: rgba(15,23,42,.6); padding: 4px 8px;
+    text-align: left; font-size: .75rem; line-height: 1.25; color: #fff;
+  }
+  .card.sel {
+    border-color: #67e8f9; background: rgba(22,78,99,.55);
+    box-shadow: 0 0 0 2px #67e8f9;
+  }
+  .card .no { font-weight: 800; color: #67e8f9; }
+  .card:not(.sel) .no { color: rgba(255,255,255,.8); }
+  .card .name { margin-left: 4px; font-weight: 700; }
+  .card .vals { color: rgba(255,255,255,.65); }
+
+  .sop-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    pointer-events: none;
+  }
+  .sop-overlay .sop-pin { pointer-events: auto; }
+  .sop-pin {
+    position: absolute;
+    z-index: 40;
+    pointer-events: auto;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #e85d04;
+    color: #fff;
+    display: grid;
+    place-items: center;
+    font-size: 12px;
+    font-weight: 900;
+    line-height: 1;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 0 2px #fff, 0 1px 3px rgba(0,0,0,.35);
+    cursor: default;
+    transition: transform .12s, box-shadow .12s, opacity .12s;
+  }
+  .sop-pin span { pointer-events: none; }
+  .sop-pin.is-active {
+    transform: translate(-50%, -50%) scale(1.18);
+    box-shadow: 0 0 0 3px #fff, 0 0 0 5px rgba(232,93,4,.55), 0 2px 6px rgba(0,0,0,.35);
+  }
+  .sheet.is-dimming .sop-pin:not(.is-active) { opacity: .35; }
+
+  .leader-layer {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    overflow: visible;
+  }
+  .leader-layer line {
+    stroke: #e85d04;
+    stroke-width: 1.35;
+    stroke-linecap: round;
+    fill: none;
+    vector-effect: non-scaling-stroke;
+    opacity: 0;
+  }
+  .leader-layer line.is-on { opacity: .95; }
+
+  @page { size: A4 landscape; margin: 0; }
+  @media print {
+    html, body {
+      background: #fff !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      width: 297mm;
+      gap: 0 !important;
+      display: block !important;
+    }
+    .bar { display: none !important; }
+    .sheet {
+      box-shadow: none !important;
+      overflow: hidden !important;
+      page-break-after: always !important;
+      break-after: page !important;
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+    }
+    .sheet:last-of-type {
+      page-break-after: auto !important;
+      break-after: auto !important;
+    }
+    .leader-layer { display: none !important; }
+    .sheet.is-dimming .step-item,
+    .sheet.is-dimming .sop-pin { opacity: 1 !important; }
+    .sop-pin.is-active {
+      transform: translate(-50%, -50%) !important;
+      box-shadow: 0 0 0 2px #fff, 0 1px 3px rgba(0,0,0,.35) !important;
+    }
+    .step-item.is-active {
+      background: rgba(255,255,255,.72) !important;
+      border-color: transparent !important;
+      box-shadow: none !important;
+    }
+  }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <span>画面ごと1枚 · 左=手順 · 右下隅番号 · 引出線はホバー時のみ · 印刷でA4横×ページ数</span>
+    <button type="button" onclick="window.print()">印刷 / PDF</button>
+  </div>
+
+  <!-- ========== Page 1: Library ========== -->
+  <article class="sheet" data-sheet="library" aria-label="検査図面 既存編集 手順 1/2 一覧">
+    <nav class="step-rail" aria-label="一覧画面の操作手順">
+      <h1>既存図面編集<br />一覧</h1>
+      <span class="page-badge">1 / 2 · 一覧画面</span>
+      <p class="rail-note">有効テンプレがある図面は新規不可 → 「編集」</p>
+      <ol class="step-list">
+        <li class="step-item" data-step="1" tabindex="0"><span class="step-n">1</span><span class="step-t">検査図面を開く</span></li>
+        <li class="step-item" data-step="2" tabindex="0"><span class="step-n">2</span><span class="step-t">対象の編集を押す</span></li>
+      </ol>
+    </nav>
+    <div class="stage">
+      <div class="lib-page">
+        <p class="lib-title">検査図面</p>
+        <div class="lib-tools">
+          <div class="tenkey" aria-label="数字テンキー">
+            <button type="button">1</button><button type="button">2</button><button type="button">3</button>
+            <button type="button">4</button><button type="button">5</button><button type="button">6</button>
+            <button type="button">7</button><button type="button">8</button><button type="button">9</button>
+            <button type="button">0</button><button type="button">C</button>
+          </div>
+        </div>
+        <div class="lib-grid">
+          <section class="lib-pane">
+            <h2>図面ライブラリ</h2>
+            <div class="lib-card">
+              <div class="name">7161サドル.pdf</div>
+              <div class="sub">既存図面 · テンプレあり</div>
+            </div>
+            <p class="lib-hint">有効テンプレあり → ここから新規は不可</p>
+          </section>
+          <section class="lib-pane">
+            <h2>検査図面テンプレート</h2>
+            <div class="lib-row sel">
+              <div class="name">MD100469601</div>
+              <div class="sub">7161サドル · 切削 · 2点 · 資源 033</div>
+              <div class="lib-row-actions">
+                <span class="chip">v2 · 有効</span>
+                <button type="button" class="btn-edit" data-tap="2">編集</button>
+                <button type="button" class="btn-ghost-sm">帳票</button>
+                <button type="button" class="btn-ghost-sm">履歴</button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+      <div class="kiosk-hdr" aria-label="キオスクタブ">
+        <button type="button" class="tab">自主検査</button>
+        <button type="button" class="tab on" data-tap="1">検査図面</button>
+        <button type="button" class="tab">部品測定</button>
+      </div>
+    </div>
+    <div class="sop-overlay" aria-hidden="true">
+      <svg class="leader-layer" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <line data-leader="1" x1="0" y1="0" x2="0" y2="0" />
+        <line data-leader="2" x1="0" y1="0" x2="0" y2="0" />
+      </svg>
+      <div class="sop-pin" data-pin="1" hidden><span>1</span></div>
+      <div class="sop-pin" data-pin="2" hidden><span>2</span></div>
+    </div>
+  </article>
+
+  <!-- ========== Page 2: Edit ========== -->
+  <article class="sheet" data-sheet="edit" aria-label="検査図面 既存編集 手順 2/2 編集">
+    <nav class="step-rail" aria-label="編集画面の操作手順">
+      <h1>既存図面編集<br />編集</h1>
+      <span class="page-badge">2 / 2 · 編集画面</span>
+      <p class="rail-note">保存は改版（上書きではない）· 空所タップは新点追加</p>
+      <ol class="step-list">
+        <li class="step-item" data-step="3" tabindex="0"><span class="step-n">3</span><span class="step-t">直す点を選ぶ</span></li>
+        <li class="step-item" data-step="4" tabindex="0"><span class="step-n">4</span><span class="step-t">何を測るか選ぶ</span></li>
+        <li class="step-item" data-step="5" tabindex="0"><span class="step-n">5</span><span class="step-t">図面の寸法を入れる</span></li>
+        <li class="step-item" data-step="6" tabindex="0"><span class="step-n">6</span><span class="step-t">許される＋側</span></li>
+        <li class="step-item" data-step="7" tabindex="0"><span class="step-n">7</span><span class="step-t">許される−側</span></li>
+        <li class="step-item" data-step="8" tabindex="0"><span class="step-n">8</span><span class="step-t">ずれたら十字で直す</span></li>
+        <li class="step-item" data-step="9" tabindex="0"><span class="step-n">9</span><span class="step-t">（任意）矢視を置く</span></li>
+        <li class="step-item" data-step="10" tabindex="0"><span class="step-n">10</span><span class="step-t">（不足なら）点を増やす</span></li>
+        <li class="step-item" data-step="11" tabindex="0"><span class="step-n">11</span><span class="step-t">改版して残す</span></li>
+        <li class="step-item" data-step="12" tabindex="0"><span class="step-n">12</span><span class="step-t">一覧に戻る</span></li>
+      </ol>
+    </nav>
+    <div class="stage">
+      <div class="page">
+        <div class="flat-band">
+          <dl class="meta-row">
+            <div class="chip-meta"><dt>品番</dt><dd class="ro">MD100469601</dd></div>
+            <div class="chip-meta"><dt>資源</dt><dd class="ro">033</dd></div>
+            <div class="chip-meta"><dt>テンプレ</dt><dd>7161サドル</dd></div>
+            <div class="chip-meta"><dt>検査数</dt><dd class="ro">最初と最後</dd></div>
+          </dl>
+          <span class="ver">v2 · 有効</span>
+          <div class="file-chip">図面 <span class="val">既存: 7161サドル.pdf</span></div>
+          <div class="zoom">
+            <button type="button" aria-label="縮小">−</button>
+            <button type="button" aria-label="拡大">＋</button>
+            <button type="button" aria-label="全面表示">□</button>
+          </div>
+          <div class="toolbar">
+            <button type="button" class="btn" data-tap="11">保存</button>
+            <span class="save-status">未保存あり</span>
+            <button type="button" class="btn off">テスト入力</button>
+            <button type="button" class="btn off">ガイド試行</button>
+            <button type="button" class="btn ghost" data-tap="12">一覧へ戻る</button>
+          </div>
+        </div>
+
+        <div class="workspace">
+          <div class="canvas-col">
+            <div class="viewport">
+              <div class="drawing">
+                <svg viewBox="0 0 800 560" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                  <rect width="800" height="560" fill="#f8fafc"/>
+                  <rect x="48" y="40" width="704" height="480" fill="none" stroke="#334155" stroke-width="2"/>
+                  <rect x="120" y="100" width="420" height="280" fill="none" stroke="#0f172a" stroke-width="2.5"/>
+                  <circle cx="220" cy="200" r="36" fill="none" stroke="#0f172a" stroke-width="2"/>
+                  <circle cx="380" cy="260" r="28" fill="none" stroke="#0f172a" stroke-width="2"/>
+                  <circle cx="300" cy="320" r="18" fill="none" stroke="#0f172a" stroke-width="2"/>
+                  <path d="M120 420 H540" stroke="#0f172a" stroke-width="1.2"/>
+                  <path d="M120 412 V428 M540 412 V428" stroke="#0f172a" stroke-width="1.2"/>
+                  <text x="320" y="450" text-anchor="middle" font-size="14" fill="#334155" font-family="system-ui">420</text>
+                  <path d="M580 100 V380" stroke="#0f172a" stroke-width="1.2"/>
+                  <path d="M572 100 H588 M572 380 H588" stroke="#0f172a" stroke-width="1.2"/>
+                  <text x="610" y="250" font-size="14" fill="#334155" font-family="system-ui">280</text>
+                  <text x="60" y="30" font-size="12" fill="#64748b" font-family="system-ui">7161 SADDLE</text>
+                </svg>
+                <div class="marker m1 active">1</div>
+                <div class="marker m2">2</div>
+              </div>
+            </div>
+          </div>
+
+          <aside class="aside">
+            <div class="settings">
+              <div class="nudge" role="group" aria-label="測定点の位置調整" data-tap="8">
+                <button type="button">↑</button>
+                <button type="button">↓</button>
+                <button type="button">←</button>
+                <button type="button">→</button>
+              </div>
+              <p class="settings-title">測定点の設定（No.1）</p>
+              <div class="mode-row">
+                <button type="button" class="btn" data-tap="10">丸数字</button>
+                <button type="button" class="btn off" data-tap="9">矢視</button>
+                <span class="status">矢視 なし</span>
+                <button type="button" class="clear" disabled>削除</button>
+              </div>
+              <label class="name-row">
+                <span>名称</span>
+                <select aria-label="名称" data-tap="4"><option>外径</option><option>穴径</option></select>
+              </label>
+              <div class="supp">
+                <label>面
+                  <select><option>面なし</option><option>正面</option></select>
+                </label>
+                <label>呼び径
+                  <select><option>呼び径なし</option></select>
+                </label>
+                <label>直接入力
+                  <input value="" placeholder="例: 2箇所" readonly />
+                </label>
+              </div>
+              <div class="nominal">
+                <span>基準値</span>
+                <input value="125" readonly data-tap="5" />
+              </div>
+              <div class="tol">
+                <label>上限公差<input value="+0.1" readonly data-tap="6" /></label>
+                <label>下限公差<input value="-0.1" readonly data-tap="7" /></label>
+              </div>
+              <div class="dels">
+                <button type="button">一点削除</button>
+                <button type="button">全削除</button>
+              </div>
+            </div>
+            <div class="list-sec">
+              <p class="list-title">測定点一覧</p>
+              <div class="list">
+                <button type="button" class="card sel" data-tap="3">
+                  <span><span class="no">No.1</span><span class="name">外径</span></span>
+                  <span class="vals">125 · +0.1 · -0.1</span>
+                </button>
+                <button type="button" class="card">
+                  <span><span class="no">No.2</span><span class="name">穴径</span></span>
+                  <span class="vals">— · — · —</span>
+                </button>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+      <div class="kiosk-hdr" aria-label="キオスクタブ">
+        <button type="button" class="tab">自主検査</button>
+        <button type="button" class="tab on">検査図面</button>
+        <button type="button" class="tab">部品測定</button>
+      </div>
+    </div>
+    <div class="sop-overlay" aria-hidden="true">
+      <svg class="leader-layer" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <line data-leader="3" x1="0" y1="0" x2="0" y2="0" />
+        <line data-leader="4" x1="0" y1="0" x2="0" y2="0" />
+        <line data-leader="5" x1="0" y1="0" x2="0" y2="0" />
+        <line data-leader="6" x1="0" y1="0" x2="0" y2="0" />
+        <line data-leader="7" x1="0" y1="0" x2="0" y2="0" />
+        <line data-leader="8" x1="0" y1="0" x2="0" y2="0" />
+        <line data-leader="9" x1="0" y1="0" x2="0" y2="0" />
+        <line data-leader="10" x1="0" y1="0" x2="0" y2="0" />
+        <line data-leader="11" x1="0" y1="0" x2="0" y2="0" />
+        <line data-leader="12" x1="0" y1="0" x2="0" y2="0" />
+      </svg>
+      <div class="sop-pin" data-pin="3" hidden><span>3</span></div>
+      <div class="sop-pin" data-pin="4" hidden><span>4</span></div>
+      <div class="sop-pin" data-pin="5" hidden><span>5</span></div>
+      <div class="sop-pin" data-pin="6" hidden><span>6</span></div>
+      <div class="sop-pin" data-pin="7" hidden><span>7</span></div>
+      <div class="sop-pin" data-pin="8" hidden><span>8</span></div>
+      <div class="sop-pin" data-pin="9" hidden><span>9</span></div>
+      <div class="sop-pin" data-pin="10" hidden><span>10</span></div>
+      <div class="sop-pin" data-pin="11" hidden><span>11</span></div>
+      <div class="sop-pin" data-pin="12" hidden><span>12</span></div>
+    </div>
+  </article>
+
+<script>
+(function () {
+  const STAGE_W = 1280;
+  const STAGE_H = 720;
+  const sheets = Array.from(document.querySelectorAll('.sheet'));
+
+  function clearPrintFit(sheet) {
+    sheet.style.width = '';
+    sheet.style.height = '';
+    sheet.style.transform = '';
+    sheet.style.transformOrigin = '';
+    sheet.style.position = '';
+    sheet.style.left = '';
+    sheet.style.top = '';
+    sheet.style.margin = '';
+  }
+
+  function fitSheetToPrintPage(sheet, index, pageW, pageH) {
+    clearPrintFit(sheet);
+    sheet.style.width = STAGE_W + 'px';
+    sheet.style.height = STAGE_H + 'px';
+    const scale = Math.min(pageW / STAGE_W, pageH / STAGE_H);
+    const left = (pageW - STAGE_W * scale) / 2;
+    const top = (pageH - STAGE_H * scale) / 2;
+    sheet.style.position = 'absolute';
+    sheet.style.left = left + 'px';
+    sheet.style.top = (index * pageH + top) + 'px';
+    sheet.style.margin = '0';
+    sheet.style.transformOrigin = 'top left';
+    sheet.style.transform = 'scale(' + scale + ')';
+  }
+
+  function measurePrintPage() {
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:absolute;left:0;top:0;width:297mm;height:210mm;visibility:hidden;pointer-events:none;';
+    document.body.appendChild(probe);
+    const pageW = probe.offsetWidth;
+    const pageH = probe.offsetHeight;
+    probe.remove();
+    return { pageW, pageH };
+  }
+
+  function placePins(sheet) {
+    const s = sheet.getBoundingClientRect();
+    if (s.width < 2 || s.height < 2) return;
+    sheet.querySelectorAll('.sop-pin').forEach((pin) => {
+      const id = pin.getAttribute('data-pin');
+      const target = sheet.querySelector('[data-tap="' + id + '"]');
+      if (!target) return;
+      const t = target.getBoundingClientRect();
+      const tipX = t.right;
+      const tipY = t.bottom;
+      pin.style.left = ((tipX - s.left) / s.width * 100) + '%';
+      pin.style.top = ((tipY - s.top) / s.height * 100) + '%';
+      pin.hidden = false;
+    });
+  }
+
+  function setActive(sheet, id) {
+    const on = id != null;
+    sheet.classList.toggle('is-dimming', on);
+    sheet.querySelectorAll('.step-item').forEach((el) => {
+      el.classList.toggle('is-active', on && el.getAttribute('data-step') === id);
+    });
+    sheet.querySelectorAll('.sop-pin').forEach((el) => {
+      el.classList.toggle('is-active', on && el.getAttribute('data-pin') === id);
+    });
+    sheet.querySelectorAll('.leader-layer line').forEach((line) => {
+      const lid = line.getAttribute('data-leader');
+      if (!on || lid !== id) {
+        line.classList.remove('is-on');
+        return;
+      }
+      const item = sheet.querySelector('.step-item[data-step="' + id + '"]');
+      const pin = sheet.querySelector('.sop-pin[data-pin="' + id + '"]');
+      if (!item || !pin) {
+        line.classList.remove('is-on');
+        return;
+      }
+      const s = sheet.getBoundingClientRect();
+      const a = item.getBoundingClientRect();
+      const b = pin.getBoundingClientRect();
+      const x1 = ((a.right - 6) - s.left) / s.width * 100;
+      const y1 = ((a.top + a.height * 0.5) - s.top) / s.height * 100;
+      const x2 = ((b.left + b.width * 0.5) - s.left) / s.width * 100;
+      const y2 = ((b.top + b.height * 0.5) - s.top) / s.height * 100;
+      line.setAttribute('x1', x1.toFixed(2));
+      line.setAttribute('y1', y1.toFixed(2));
+      line.setAttribute('x2', x2.toFixed(2));
+      line.setAttribute('y2', y2.toFixed(2));
+      line.classList.add('is-on');
+    });
+  }
+
+  function bindSheet(sheet) {
+    const clear = () => setActive(sheet, null);
+    const bind = (el, id) => {
+      el.addEventListener('mouseenter', () => setActive(sheet, id));
+      el.addEventListener('mouseleave', clear);
+      el.addEventListener('focus', () => setActive(sheet, id));
+      el.addEventListener('blur', clear);
+    };
+    sheet.querySelectorAll('.step-item').forEach((el) => bind(el, el.getAttribute('data-step')));
+    sheet.querySelectorAll('.sop-pin').forEach((el) => bind(el, el.getAttribute('data-pin')));
+  }
+
+  function placeSoon() {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      sheets.forEach(placePins);
+    }));
+  }
+
+  function onBeforePrint() {
+    sheets.forEach((sheet) => setActive(sheet, null));
+    const { pageW, pageH } = measurePrintPage();
+    document.body.style.height = (pageH * sheets.length) + 'px';
+    sheets.forEach((sheet, index) => {
+      fitSheetToPrintPage(sheet, index, pageW, pageH);
+      placePins(sheet);
+    });
+  }
+  function onAfterPrint() {
+    document.body.style.height = '';
+    sheets.forEach(clearPrintFit);
+    placeSoon();
+  }
+
+  sheets.forEach(bindSheet);
+  placeSoon();
+  window.addEventListener('resize', placeSoon);
+  window.addEventListener('beforeprint', onBeforePrint);
+  window.addEventListener('afterprint', onAfterPrint);
+  if (window.matchMedia) {
+    const mql = window.matchMedia('print');
+    const onMql = (e) => { if (e.matches) onBeforePrint(); else onAfterPrint(); };
+    if (mql.addEventListener) mql.addEventListener('change', onMql);
+    else if (mql.addListener) mql.addListener(onMql);
+  }
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(placeSoon);
+})();
+</script>
+</body>
+</html>

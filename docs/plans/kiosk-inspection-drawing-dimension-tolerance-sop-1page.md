@@ -18,7 +18,9 @@ related_code:
 
 ## Purpose / Big Picture
 
-Ship a **single A4 landscape** operator SOP for kiosk path **自主検査 › 検査図面** → **寸法・公差設定**. Operators barely read prose: the mock UI is primary; a left numbered step list explains taps; on-screen badges mark targets.
+Ship a **single A4 landscape** **layout-pattern sample** for kiosk path **検査図面** → **寸法・公差コア（6 taps）**. Operators barely read prose: the mock UI is primary; a left numbered step list explains taps; on-screen badges mark targets.
+
+**Not the full existing-edit SOP.** For library → 編集 → 名称 → revise → 一覧戻り (one sheet per screen), use [kiosk-inspection-drawing-edit-existing-sop.md](./kiosk-inspection-drawing-edit-existing-sop.md).
 
 **Visual / implementation source of truth (frozen):**
 [`docs/design-previews/kiosk-inspection-drawing-dimension-tolerance-sop-1page.html`](../design-previews/kiosk-inspection-drawing-dimension-tolerance-sop-1page.html)
