@@ -28,12 +28,36 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Classify changes
+        id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/classify_event_changes.py \
+            --event-name "$EVENT_NAME" \
+            --base-sha "$BASE_SHA" \
+            --head-sha "$HEAD_SHA" \
+            --format none \
+            --github-output-file "$GITHUB_OUTPUT" \
+            --markdown-file "$GITHUB_STEP_SUMMARY"
 
       - name: Initialize CodeQL
+        if: ${{ steps.classify.outputs.codeql == 'true' }}
         uses: github/codeql-action/init@v4
         with:
           languages: javascript-typescript
           build-mode: none
 
       - name: Perform CodeQL Analysis
+        if: ${{ steps.classify.outputs.codeql == 'true' }}
         uses: github/codeql-action/analyze@v4
+
+      - name: Record intentional analysis skip
+        if: ${{ steps.classify.outputs.codeql != 'true' }}
+        run: echo "No JavaScript/TypeScript-impacting changes; the fixed codeql check succeeds without analysis." >> "$GITHUB_STEP_SUMMARY"

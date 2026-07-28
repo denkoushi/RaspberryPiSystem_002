@@ -19,6 +19,11 @@ added as required checks. They can be intentionally skipped. `ci-required`
 validates that every selected job succeeded and every non-selected job was
 skipped.
 
+Pull requests and safe `main` pushes use the shared change classifier. The
+fixed `codeql` check can succeed without analyzer initialization for a proven
+docs-only change; `gitleaks` remains independent and required. See
+[`ADR-20260728`](../docs/decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md).
+
 The repository has no `develop` branch. Do not create a duplicate protection
 rule for it.
 

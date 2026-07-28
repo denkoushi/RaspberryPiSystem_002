@@ -31,16 +31,22 @@ class ClassifyChangesTests(unittest.TestCase):
         result = self.classify(
             Change("M", "docs/guides/deployment.md"),
             Change("A", "README.md"),
+            Change("M", ".github/BRANCH_PROTECTION_SETUP.md"),
         )
         self.assertEqual(self.selected(result), {"repo_policy"})
         self.assertFalse(result["fullSuite"])
+        self.assertFalse(result["codeql"])
+        self.assertFalse(result["dockerApi"])
+        self.assertFalse(result["dockerWeb"])
 
     def test_api_web_shared_and_migration_paths(self) -> None:
         api = self.classify(Change("M", "apps/api/src/main.ts"))
         self.assertEqual(self.selected(api), {"repo_policy", "workspace_quality", "api"})
+        self.assertTrue(api["codeql"])
 
         web = self.classify(Change("M", "apps/web/src/main.tsx"))
         self.assertEqual(self.selected(web), {"repo_policy", "workspace_quality", "web"})
+        self.assertTrue(web["codeql"])
 
         shared = self.classify(Change("M", "packages/shared-types/src/index.ts"))
         self.assertEqual(
@@ -68,9 +74,54 @@ class ClassifyChangesTests(unittest.TestCase):
             self.selected(docker),
             {"repo_policy", "db_infra", "docker_security"},
         )
+        self.assertTrue(docker["dockerApi"])
+        self.assertFalse(docker["dockerWeb"])
 
         e2e = self.classify(Change("M", "e2e/kiosk.spec.ts"))
         self.assertEqual(self.selected(e2e), {"repo_policy", "e2e"})
+        self.assertTrue(e2e["codeql"])
+
+    def test_web_build_configuration_selects_only_web_image_contracts(self) -> None:
+        for path in (
+            "infrastructure/ansible/group_vars/server/web-build.yml",
+            "infrastructure/ansible/templates/docker.env.j2",
+            "infrastructure/ansible/templates/web.env.j2",
+            "infrastructure/docker/Dockerfile.web",
+            "infrastructure/docker/Caddyfile.production",
+        ):
+            with self.subTest(path=path):
+                result = self.classify(Change("M", path))
+                self.assertEqual(
+                    self.selected(result),
+                    {
+                        "repo_policy",
+                        "web",
+                        "deploy_contract",
+                        "docker_security",
+                    },
+                )
+                self.assertFalse(result["codeql"])
+                self.assertFalse(result["dockerApi"])
+                self.assertTrue(result["dockerWeb"])
+                self.assertEqual(
+                    [item["image"] for item in result["dockerMatrix"]],
+                    ["web"],
+                )
+
+    def test_general_inventory_and_dockerignore_remain_fail_closed(self) -> None:
+        inventory = self.classify(
+            Change("M", "infrastructure/ansible/inventory.yml")
+        )
+        self.assertEqual(
+            self.selected(inventory),
+            {"repo_policy", "db_infra", "deploy_contract"},
+        )
+
+        dockerignore = self.classify(Change("M", ".dockerignore"))
+        self.assertTrue(dockerignore["fullSuite"])
+        self.assertTrue(dockerignore["codeql"])
+        self.assertTrue(dockerignore["dockerApi"])
+        self.assertTrue(dockerignore["dockerWeb"])
 
     def test_workflow_unknown_delete_and_rename_fail_closed(self) -> None:
         cases = (
@@ -85,6 +136,9 @@ class ClassifyChangesTests(unittest.TestCase):
                 result = self.classify(change)
                 self.assertEqual(self.selected(result), set(CATEGORIES))
                 self.assertTrue(result["fullSuite"])
+                self.assertTrue(result["codeql"])
+                self.assertTrue(result["dockerApi"])
+                self.assertTrue(result["dockerWeb"])
                 self.assertTrue(result["failClosedReasons"])
 
     def test_name_status_parser_preserves_rename_source_and_destination(self) -> None:
@@ -120,6 +174,10 @@ class ClassifyChangesTests(unittest.TestCase):
                 "e2e=false",
                 "docker_security=false",
                 "full_suite=false",
+                "codeql=true",
+                "docker_api=false",
+                "docker_web=false",
+                'docker_matrix=[{"dockerfile":"./infrastructure/docker/Dockerfile.api","image":"api","tag":"raspisys-api:ci"},{"dockerfile":"./infrastructure/docker/Dockerfile.web","image":"web","tag":"raspisys-web:ci"}]',
             ],
         )
         markdown = render_markdown(result)

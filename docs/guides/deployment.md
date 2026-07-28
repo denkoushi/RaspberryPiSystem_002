@@ -41,6 +41,15 @@ scripts/update-all-clients.sh --cancel RUN_ID --reason TEXT
 - 影響分類がno-opでも、承認済みの限定端末で同一SHAを再検証するときだけ `--limit PATTERN --reverify-selected` を使う。選択されたverified hostだけを対象へ戻し、選択外のunknown host、Pi5必須変更、通常の通知・安定化・ACK・rollback契約は迂回しない。`--print-plan`で正確な対象を確認してから実行する。
 - 端末はregistryのprofile順、profile内canary、残りのinventory順で、一台ずつ更新する。
 
+Pi5専用Webビルド値は
+`infrastructure/ansible/group_vars/server/web-build.yml`が所有する。この
+ファイルとPi5 Web環境テンプレートは`server-app`であり、Pi5イメージ更新と
+Kioskブラウザのactivation／独立検証を選ぶ。KioskのGit checkoutやAnsible
+mutation、Signageは選ばない。一般inventory、共通role、未登録pathは
+`global`または`unknown`として従来どおり全対象へ広げる。詳細な判断は
+[ADR-20260728](../decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md)
+を参照する。
+
 判断の正本は `logs/deploy/fleet-release-state.json` である。手で編集しない。
 
 ## 実行前確認
@@ -66,7 +75,7 @@ scripts/ci/run-deploy-contracts-local.sh
 scripts/ci/run-deploy-contracts-local.sh --install-collections
 ```
 
-このコマンドは管理対象hostへ接続しない。全Ansible `.j2`ソースのJinja構文・shell/Jinja区切り衝突、deployment Python/shell契約、隔離Postgresによるdeploy-status統合、安全契約、両inventory、registryから導出したprofile playbook、Ansible syntax/checkを検証し、一時ファイルと隔離DB資源を終了時に削除する。実行可能なリリース重要テンプレートは、代表的な秘密を含まない変数でレンダーした結果にもネイティブ構文検査を持たせる。CIへ個別コマンドを追加せず、このスクリプトを更新してローカルとCIの検査内容を同時に変える。
+このコマンドは管理対象hostへ接続しない。全Ansible `.j2`ソースのJinja構文・shell/Jinja区切り衝突、deployment Python/shell契約、隔離Postgresによるdeploy-status統合、安全契約、両inventory、registryから導出したprofile playbook、Ansible syntax/checkを検証し、一時ファイルと隔離DB資源を終了時に削除する。隔離Postgresは固有名・固有label・ランダムloopback portを使い、migration台帳、`ClientDevice.apiKey`検索の`EXPLAIN (ANALYZE, BUFFERS)`、成功／失敗時の資源0件を確認する。実行可能なリリース重要テンプレートは、代表的な秘密を含まない変数でレンダーした結果にもネイティブ構文検査を持たせる。CIへ個別コマンドを追加せず、このスクリプトを更新してローカルとCIの検査内容を同時に変える。
 
 第2工場の標準inventory:
 

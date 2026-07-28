@@ -29,6 +29,18 @@ CATEGORIES = (
     "docker_security",
 )
 FULL_SUITE = frozenset(CATEGORIES)
+DOCKER_MATRIX_ITEMS = {
+    "api": {
+        "image": "api",
+        "dockerfile": "./infrastructure/docker/Dockerfile.api",
+        "tag": "raspisys-api:ci",
+    },
+    "web": {
+        "image": "web",
+        "dockerfile": "./infrastructure/docker/Dockerfile.web",
+        "tag": "raspisys-web:ci",
+    },
+}
 
 GLOBAL_PATHS = frozenset(
     {
@@ -55,6 +67,8 @@ class Change:
 class ClassifiedChange:
     change: Change
     categories: frozenset[str]
+    codeql: bool
+    docker_images: frozenset[str]
     fail_closed_reason: str | None = None
 
 
@@ -62,9 +76,13 @@ def _has_prefix(path: str, prefix: str) -> bool:
     return path == prefix or path.startswith(f"{prefix}/")
 
 
+def _normalize_path(path: str) -> str:
+    return PurePosixPath(path).as_posix().removeprefix("./")
+
+
 def categories_for_path(path: str) -> frozenset[str] | None:
     """Return categories for a known path, or ``None`` for an unknown path."""
-    normalized = PurePosixPath(path).as_posix().removeprefix("./")
+    normalized = _normalize_path(path)
 
     if normalized.startswith(".github/workflows/") or normalized.startswith(
         ".github/actions/"
@@ -75,7 +93,9 @@ def categories_for_path(path: str) -> frozenset[str] | None:
     if normalized in GLOBAL_PATHS:
         return FULL_SUITE
 
-    if _has_prefix(normalized, "docs") or (
+    if normalized == ".github/BRANCH_PROTECTION_SETUP.md" or _has_prefix(
+        normalized, "docs"
+    ) or (
         "/" not in normalized and normalized.lower().endswith(".md")
     ):
         return frozenset({"repo_policy"})
@@ -94,6 +114,14 @@ def categories_for_path(path: str) -> frozenset[str] | None:
     if _has_prefix(normalized, "scripts/kiosk"):
         return frozenset({"repo_policy", "client"})
 
+    if normalized in {
+        "infrastructure/ansible/group_vars/server/web-build.yml",
+        "infrastructure/ansible/templates/docker.env.j2",
+        "infrastructure/ansible/templates/web.env.j2",
+    }:
+        return frozenset(
+            {"repo_policy", "web", "deploy_contract", "docker_security"}
+        )
     if _has_prefix(normalized, "infrastructure/ansible"):
         return frozenset({"repo_policy", "db_infra", "deploy_contract"})
     if _has_prefix(normalized, "scripts/deploy") or normalized == "scripts/update-all-clients.sh":
@@ -101,6 +129,17 @@ def categories_for_path(path: str) -> frozenset[str] | None:
     if _has_prefix(normalized, "scripts/server"):
         return frozenset({"repo_policy", "db_infra", "deploy_contract"})
 
+    if normalized == "infrastructure/docker/Dockerfile.web" or (
+        _has_prefix(normalized, "infrastructure/docker")
+        and PurePosixPath(normalized).name.startswith("Caddyfile")
+    ):
+        return frozenset(
+            {"repo_policy", "web", "deploy_contract", "docker_security"}
+        )
+    if normalized == "infrastructure/docker/maintenance.html":
+        return frozenset(
+            {"repo_policy", "web", "deploy_contract", "docker_security"}
+        )
     if _has_prefix(normalized, "infrastructure/docker"):
         return frozenset({"repo_policy", "db_infra", "docker_security"})
     if _has_prefix(normalized, "e2e") or normalized == "playwright.config.ts":
@@ -109,18 +148,71 @@ def categories_for_path(path: str) -> frozenset[str] | None:
     return None
 
 
+def codeql_for_path(path: str) -> bool:
+    """Return whether a known path can change JavaScript/TypeScript analysis."""
+    normalized = _normalize_path(path)
+    return (
+        _has_prefix(normalized, "apps/api")
+        or _has_prefix(normalized, "apps/web")
+        or _has_prefix(normalized, "packages")
+        or _has_prefix(normalized, "e2e")
+        or normalized == "playwright.config.ts"
+        or normalized in {
+            "package.json",
+            "pnpm-lock.yaml",
+            "pnpm-workspace.yaml",
+            "tsconfig.base.json",
+            "turbo.json",
+        }
+        or normalized.startswith(".github/workflows/")
+        or normalized.startswith(".github/actions/")
+        or _has_prefix(normalized, "scripts/ci")
+    )
+
+
+def docker_images_for_path(path: str) -> frozenset[str]:
+    """Return Docker images whose filesystem may change for a known path."""
+    normalized = _normalize_path(path)
+    if normalized in {
+        "infrastructure/ansible/group_vars/server/web-build.yml",
+        "infrastructure/ansible/templates/docker.env.j2",
+        "infrastructure/ansible/templates/web.env.j2",
+        "infrastructure/docker/Dockerfile.web",
+        "infrastructure/docker/maintenance.html",
+    } or (
+        _has_prefix(normalized, "infrastructure/docker")
+        and PurePosixPath(normalized).name.startswith("Caddyfile")
+    ):
+        return frozenset({"web"})
+    if normalized == "infrastructure/docker/Dockerfile.api":
+        return frozenset({"api"})
+    if _has_prefix(normalized, "infrastructure/docker") or normalized in GLOBAL_PATHS:
+        return frozenset({"api", "web"})
+    if normalized.startswith(".github/workflows/") or normalized.startswith(
+        ".github/actions/"
+    ):
+        return frozenset({"api", "web"})
+    if _has_prefix(normalized, "scripts/ci"):
+        return frozenset({"api", "web"})
+    return frozenset()
+
+
 def classify_change(change: Change) -> ClassifiedChange:
     status_kind = change.status[:1]
     if status_kind in {"D", "R", "C"}:
         return ClassifiedChange(
             change=change,
             categories=FULL_SUITE,
+            codeql=True,
+            docker_images=frozenset({"api", "web"}),
             fail_closed_reason=f"{status_kind.lower()} change requires the full suite",
         )
     if status_kind not in {"A", "M"}:
         return ClassifiedChange(
             change=change,
             categories=FULL_SUITE,
+            codeql=True,
+            docker_images=frozenset({"api", "web"}),
             fail_closed_reason=f"unsupported git status {change.status!r}",
         )
 
@@ -129,15 +221,24 @@ def classify_change(change: Change) -> ClassifiedChange:
         return ClassifiedChange(
             change=change,
             categories=FULL_SUITE,
+            codeql=True,
+            docker_images=frozenset({"api", "web"}),
             fail_closed_reason=f"unknown path {change.path!r}",
         )
     if categories == FULL_SUITE:
         return ClassifiedChange(
             change=change,
             categories=categories,
+            codeql=True,
+            docker_images=frozenset({"api", "web"}),
             fail_closed_reason=f"global CI configuration path {change.path!r}",
         )
-    return ClassifiedChange(change=change, categories=categories)
+    return ClassifiedChange(
+        change=change,
+        categories=categories,
+        codeql=codeql_for_path(change.path),
+        docker_images=docker_images_for_path(change.path),
+    )
 
 
 def classify_changes(
@@ -145,21 +246,32 @@ def classify_changes(
 ) -> dict[str, object]:
     classified = [classify_change(change) for change in changes]
     selected: set[str] = set()
+    codeql = False
+    docker_images: set[str] = set()
     reasons: list[str] = []
     for item in classified:
         selected.update(item.categories)
+        codeql = codeql or item.codeql
+        docker_images.update(item.docker_images)
         if item.fail_closed_reason:
             reasons.append(item.fail_closed_reason)
 
     if force_full_reason:
         selected.update(FULL_SUITE)
+        codeql = True
+        docker_images.update({"api", "web"})
         reasons.append(force_full_reason)
 
+    matrix_images = sorted(docker_images) or ["api", "web"]
     return {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "mode": "enforced",
         "fileCount": len(classified),
         "fullSuite": selected == set(FULL_SUITE),
+        "codeql": codeql,
+        "dockerApi": "api" in docker_images,
+        "dockerWeb": "web" in docker_images,
+        "dockerMatrix": [DOCKER_MATRIX_ITEMS[image] for image in matrix_images],
         "categories": {category: category in selected for category in CATEGORIES},
         "failClosedReasons": reasons,
         "changes": [
@@ -172,6 +284,8 @@ def classify_changes(
                     else {}
                 ),
                 "categories": sorted(item.categories),
+                "codeql": item.codeql,
+                "dockerImages": sorted(item.docker_images),
                 **(
                     {"failClosedReason": item.fail_closed_reason}
                     if item.fail_closed_reason
@@ -222,6 +336,9 @@ def render_markdown(result: dict[str, object]) -> str:
         "",
         f"Changed files: **{result['fileCount']}**  ",
         f"Full suite classification: **{'yes' if result['fullSuite'] else 'no'}**",
+        f"CodeQL analysis: **{'yes' if result['codeql'] else 'no'}**  ",
+        f"Docker API image: **{'yes' if result['dockerApi'] else 'no'}**  ",
+        f"Docker Web image: **{'yes' if result['dockerWeb'] else 'no'}**",
         "",
         "| Category | Selected |",
         "| --- | --- |",
@@ -245,6 +362,13 @@ def render_github_output(result: dict[str, object]) -> str:
         for category in CATEGORIES
     ]
     lines.append(f"full_suite={'true' if result['fullSuite'] else 'false'}")
+    lines.append(f"codeql={'true' if result['codeql'] else 'false'}")
+    lines.append(f"docker_api={'true' if result['dockerApi'] else 'false'}")
+    lines.append(f"docker_web={'true' if result['dockerWeb'] else 'false'}")
+    lines.append(
+        "docker_matrix="
+        + json.dumps(result["dockerMatrix"], separators=(",", ":"), sort_keys=True)
+    )
     return "\n".join(lines) + "\n"
 
 

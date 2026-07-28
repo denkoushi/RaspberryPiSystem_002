@@ -14,8 +14,10 @@ bash -n "$TARGET"
 set +e
 failure_output="$(bash -c '
 docker() {
+  printf "mock-docker %s\\n" "$*" >&2
   case "$1" in
     ps|network|volume|run|rm) return 0 ;;
+    port) printf "%s\\n" "127.0.0.1:49152" ;;
     exec) return 1 ;;
     inspect) printf "%s\\n" "state=exited exitCode=1 error=fixture health=unhealthy" ;;
     logs) printf "%s\\n" "fixture PostgreSQL log" ;;
@@ -38,5 +40,11 @@ grep -Fq 'state=exited exitCode=1 error=fixture health=unhealthy' <<<"$failure_o
   || fail 'container state was not reported'
 grep -Fq 'fixture PostgreSQL log' <<<"$failure_output" \
   || fail 'container log tail was not reported'
+grep -Fq '[deploy-status-postgres] cleanup container=rolling-deploy-status-' <<<"$failure_output" \
+  || fail 'temporary container cleanup was not attempted'
+grep -Fq '[deploy-status-postgres] cleanup volume=rolling-deploy-status-' <<<"$failure_output" \
+  || fail 'temporary volume cleanup was not attempted'
+grep -Fq '[deploy-status-postgres] cleanup network=rolling-deploy-status-' <<<"$failure_output" \
+  || fail 'temporary network cleanup was not attempted'
 
 echo 'PASS: deploy-status PostgreSQL failure diagnostics'

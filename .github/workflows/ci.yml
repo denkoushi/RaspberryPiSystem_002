@@ -33,6 +33,10 @@ jobs:
       client: ${{ steps.classify.outputs.client }}
       e2e: ${{ steps.classify.outputs.e2e }}
       docker_security: ${{ steps.classify.outputs.docker_security }}
+      codeql: ${{ steps.classify.outputs.codeql }}
+      docker_api: ${{ steps.classify.outputs.docker_api }}
+      docker_web: ${{ steps.classify.outputs.docker_web }}
+      docker_matrix: ${{ steps.classify.outputs.docker_matrix }}
       full_suite: ${{ steps.classify.outputs.full_suite }}
     steps:
       - name: Checkout code with history
@@ -48,34 +52,13 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          changes_file="$(mktemp)"
-          trap 'rm -f "$changes_file"' EXIT
-
-          force_full_reason=""
-          if [[ "$EVENT_NAME" != "pull_request" ]]; then
-            force_full_reason="$EVENT_NAME always runs the full suite"
-          elif [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
-            force_full_reason="event has no stable diff base"
-          elif ! python3 scripts/ci/collect_changed_files.py \
+          python3 scripts/ci/classify_event_changes.py \
             --event-name "$EVENT_NAME" \
             --base-sha "$BASE_SHA" \
             --head-sha "$HEAD_SHA" \
-            > "$changes_file"; then
-            force_full_reason="stable diff base is unavailable"
-          fi
-
-          classifier_args=()
-          if [[ -n "$force_full_reason" ]]; then
-            classifier_args+=(--force-full-reason "$force_full_reason")
-          fi
-          python3 scripts/ci/classify_changes.py \
-            --format github-output \
-            "${classifier_args[@]}" \
-            < "$changes_file" >> "$GITHUB_OUTPUT"
-          python3 scripts/ci/classify_changes.py \
-            --format markdown \
-            "${classifier_args[@]}" \
-            < "$changes_file" >> "$GITHUB_STEP_SUMMARY"
+            --format none \
+            --github-output-file "$GITHUB_OUTPUT" \
+            --markdown-file "$GITHUB_STEP_SUMMARY"
 
   repo-policy:
     name: repo-policy
@@ -413,13 +396,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - image: api
-            dockerfile: ./infrastructure/docker/Dockerfile.api
-            tag: raspisys-api:ci
-          - image: web
-            dockerfile: ./infrastructure/docker/Dockerfile.web
-            tag: raspisys-web:ci
+        include: ${{ fromJSON(needs.change-classification.outputs.docker_matrix) }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6

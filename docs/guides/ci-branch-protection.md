@@ -14,9 +14,9 @@
 
 ## 段階型CI
 
-PRでは`repo-policy`、`workspace-quality`、`api`、`web`、`db-infra`、`deploy-contract`、`client`、`e2e-smoke`、`e2e-tests`、`docker-security`から必要なものを並列実行します。docsとroot Markdownだけの変更は`repo-policy`だけです。未知path、rename、delete、workflow、action、CI classifier変更はfail-closedでfull suiteになります。
+PRと安全な`push main`では、`repo-policy`、`workspace-quality`、`api`、`web`、`db-infra`、`deploy-contract`、`client`、`e2e-smoke`、`e2e-tests`、`docker-security`から必要なものを並列実行します。PRはmerge-base、`push main`はGitHub eventの`before -> head`を使います。docsとroot Markdownだけの変更は`repo-policy`だけで、固定`codeql` jobは成功したまま解析処理を省略します。Docker securityはAPI/Webを個別選択します。
 
-`push main`、`merge_group`、`workflow_dispatch`、毎日02:30 JSTのscheduleはpathに関係なくfull suiteです。PRのAPI testはcoverageなしで全件を1回実行し、full-suite eventではcoverage付き3 shardを実行します。
+基準SHA欠落、ゼロSHA、非ancestor、未知path、rename、copy、delete、workflow、action、CI classifier変更はfail-closedでfull suiteになります。`merge_group`、`workflow_dispatch`、毎日02:30 JSTのscheduleも従来どおりfull suiteです。PRのAPI testはcoverageなしで全件を1回実行し、full-suite eventではcoverage付き3 shardを実行します。判断の正本は[ADR-20260728](../decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md)です。
 
 ## `main` ruleset
 
@@ -116,6 +116,7 @@ expect(processingTime).toBeLessThan(maxTime);
 
 ## 更新履歴
 
+- 2026-07-28: 安全な`push main`を変更認識型へ変更し、CodeQL解析とAPI/Web Docker選択を分離
 - 2026-07-16: 段階型CI、固定`ci-required`、default-branch ruleset契約へ更新
 - 2026-04-21: 必須チェック名を現行ワークフロー（`lint-build-unit` 等）と `codeql` / `gitleaks` に同期
 - 2025-12-15: 初版作成、`continue-on-error`削除を実施

@@ -11,7 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from classify_changes import parse_name_status_z  # noqa: E402
-from collect_changed_files import collect_changed_files  # noqa: E402
+from collect_changed_files import DiffBaseError, collect_changed_files  # noqa: E402
 
 
 class CollectChangedFilesTests(unittest.TestCase):
@@ -71,6 +71,34 @@ class CollectChangedFilesTests(unittest.TestCase):
             )
 
         self.assertEqual([(change.status, change.path) for change in result], [("A", "pushed.txt")])
+
+    def test_push_rejects_nonancestor_before_sha(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            self.git(repo, "init", "-b", "main")
+            self.git(repo, "config", "user.name", "CI Test")
+            self.git(repo, "config", "user.email", "ci@example.invalid")
+            root = self.commit_file(repo, "root.txt", "root\n", "root")
+            self.git(repo, "switch", "-c", "other")
+            unrelated = self.commit_file(repo, "other.txt", "other\n", "other")
+            self.git(repo, "switch", "main")
+            head = self.commit_file(repo, "main.txt", "main\n", "main")
+
+            with self.assertRaisesRegex(DiffBaseError, "not an ancestor"):
+                collect_changed_files(repo, "push", unrelated, head)
+
+        self.assertNotEqual(root, unrelated)
+
+    def test_all_zero_sha_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            self.git(repo, "init", "-b", "main")
+            self.git(repo, "config", "user.name", "CI Test")
+            self.git(repo, "config", "user.email", "ci@example.invalid")
+            head = self.commit_file(repo, "root.txt", "root\n", "root")
+
+            with self.assertRaisesRegex(DiffBaseError, "all zeros"):
+                collect_changed_files(repo, "push", "0" * 40, head)
 
 
 if __name__ == "__main__":

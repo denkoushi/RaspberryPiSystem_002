@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 571,
-    "totalLines": 161274,
-    "totalBytes": 12151863,
+    "totalLines": 161289,
+    "totalBytes": 12153845,
     "withFrontmatter": 248,
     "withStatus": 104,
     "sourceOfTruthDeclared": 68,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 25,
-    "localLinkCount": 5613,
+    "localLinkCount": 5617,
     "brokenLocalLinkCount": 87,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -5898,8 +5898,8 @@
     },
     {
       "path": "docs/AI_START_HERE.md",
-      "lineCount": 109,
-      "byteSize": 5579,
+      "lineCount": 110,
+      "byteSize": 5725,
       "hasFrontmatter": true,
       "title": "AI Start Here",
       "status": null,
@@ -5913,8 +5913,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 2004,
-      "byteSize": 344803,
+      "lineCount": 2008,
+      "byteSize": 345358,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -6863,6 +6863,11 @@
         {
           "href": "./decisions/ADR-20260726-assembly-template-procedure-steps.md",
           "targetPath": "docs/decisions/ADR-20260726-assembly-template-procedure-steps.md",
+          "exists": true
+        },
+        {
+          "href": "./decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md",
+          "targetPath": "docs/decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md",
           "exists": true
         },
         {
@@ -10266,6 +10271,11 @@
           "exists": true
         },
         {
+          "href": "./plans/deploy-workflow-safe-shortening-execplan.md",
+          "targetPath": "docs/plans/deploy-workflow-safe-shortening-execplan.md",
+          "exists": true
+        },
+        {
           "href": "./plans/deployment-exhaustive-preflight-execplan.md",
           "targetPath": "docs/plans/deployment-exhaustive-preflight-execplan.md",
           "exists": true
@@ -11181,95 +11191,95 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 284,
+          "line": 288,
           "length": 1132
         },
         {
-          "line": 300,
+          "line": 304,
           "length": 1242
         },
         {
-          "line": 304,
+          "line": 308,
           "length": 1022
         },
         {
-          "line": 318,
+          "line": 322,
           "length": 1065
         },
         {
-          "line": 366,
+          "line": 370,
           "length": 1165
         },
         {
-          "line": 372,
+          "line": 376,
           "length": 1458
         },
         {
-          "line": 384,
+          "line": 388,
           "length": 1083
         },
         {
-          "line": 398,
+          "line": 402,
           "length": 1398
         },
         {
-          "line": 400,
+          "line": 404,
           "length": 1133
         },
         {
-          "line": 404,
+          "line": 408,
           "length": 1399
         },
         {
-          "line": 406,
+          "line": 410,
           "length": 1008
         },
         {
-          "line": 412,
+          "line": 416,
           "length": 1059
         },
         {
-          "line": 420,
+          "line": 424,
           "length": 1129
         },
         {
-          "line": 424,
+          "line": 428,
           "length": 1135
         },
         {
-          "line": 428,
+          "line": 432,
           "length": 1117
         },
         {
-          "line": 543,
+          "line": 547,
           "length": 1013
         },
         {
-          "line": 729,
+          "line": 733,
           "length": 2038
         },
         {
-          "line": 745,
+          "line": 749,
           "length": 1496
         },
         {
-          "line": 751,
+          "line": 755,
           "length": 1177
         },
         {
-          "line": 1093,
+          "line": 1097,
           "length": 1449
         },
         {
-          "line": 1129,
+          "line": 1133,
           "length": 1136
         },
         {
-          "line": 1131,
+          "line": 1135,
           "length": 1239
         },
         {
-          "line": 1167,
+          "line": 1171,
           "length": 1004
         }
       ],
@@ -18135,13 +18145,19 @@
     },
     {
       "path": "docs/guides/ci-branch-protection.md",
-      "lineCount": 121,
-      "byteSize": 5455,
+      "lineCount": 122,
+      "byteSize": 5945,
       "hasFrontmatter": false,
       "title": "段階型CIと`main` rulesetガイド",
       "status": null,
       "source_of_truth": null,
-      "localLinks": [],
+      "localLinks": [
+        {
+          "href": "../decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md",
+          "targetPath": "docs/decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md",
+          "exists": true
+        }
+      ],
       "inboundCount": 3,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
@@ -18585,8 +18601,8 @@
     },
     {
       "path": "docs/guides/deployment.md",
-      "lineCount": 207,
-      "byteSize": 17429,
+      "lineCount": 216,
+      "byteSize": 18220,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -18615,6 +18631,11 @@
         {
           "href": "../archive/deployments/legacy-operator-guide-through-2026-07.md",
           "targetPath": "docs/archive/deployments/legacy-operator-guide-through-2026-07.md",
+          "exists": true
+        },
+        {
+          "href": "../decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md",
+          "targetPath": "docs/decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md",
           "exists": true
         },
         {
