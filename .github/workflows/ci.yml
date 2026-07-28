@@ -922,10 +922,11 @@ jobs:
       - ci-required
     if: >-
       ${{
+        always() &&
         github.event_name == 'push' &&
         github.ref == 'refs/heads/main' &&
         needs.change-classification.outputs.release_pair == 'true' &&
-        needs.ci-required.result == 'success'
+        needs['ci-required'].result == 'success'
       }}
     runs-on: ubuntu-latest
     permissions:
@@ -957,10 +958,14 @@ jobs:
       - release-gates
     if: >-
       ${{
+        always() &&
         github.event_name == 'push' &&
         github.ref == 'refs/heads/main' &&
         needs.change-classification.outputs.release_pair == 'true' &&
-        needs.release-gates.result == 'success'
+        needs['release-build-contract'].result == 'success' &&
+        needs['release-api-image'].result == 'success' &&
+        needs['release-web-image'].result == 'success' &&
+        needs['release-gates'].result == 'success'
       }}
     runs-on: ubuntu-latest
     permissions:

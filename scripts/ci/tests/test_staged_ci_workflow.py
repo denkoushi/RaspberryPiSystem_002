@@ -156,9 +156,21 @@ class StagedCiWorkflowTests(unittest.TestCase):
         )
         self.assertIn('"linux/arm64"', RELEASE_IMAGE_BUILDER)
         self.assertIn("!(\n          github.event_name == 'push'", docker)
+        self.assertIn("always() &&", gates)
         self.assertIn("--required codeql", gates)
         self.assertIn("--required gitleaks", gates)
-        self.assertIn("needs.ci-required.result == 'success'", gates)
+        self.assertIn("needs['ci-required'].result == 'success'", gates)
+        self.assertIn("always() &&", release_set)
+        for dependency in (
+            "release-build-contract",
+            "release-api-image",
+            "release-web-image",
+            "release-gates",
+        ):
+            self.assertIn(
+                f"needs['{dependency}'].result == 'success'",
+                release_set,
+            )
         self.assertEqual(release_set.count("uses: actions/attest@v4"), 3)
         self.assertIn("attestations: write", release_set)
         self.assertIn("id-token: write", release_set)
