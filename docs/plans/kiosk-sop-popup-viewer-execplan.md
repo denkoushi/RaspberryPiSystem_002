@@ -1,7 +1,7 @@
 ---
 id: plan-kiosk-sop-popup-viewer
 title: Embed the inspection-drawing SOP in kiosk screens
-status: in_progress
+status: completed
 date: 2026-07-28
 source_of_truth: true
 scope: Web-only kiosk SOP viewer, release-bundled static HTML, and validation
@@ -59,8 +59,9 @@ development and an explicit validation build can enable it.
   production Caddy smoke path, then validated all 156 migrations, the
   inspection-drawing integration path, and EXPLAIN against a disposable PostgreSQL
   instance. All run-specific Docker resources were removed.
-- [ ] Update generated documentation inventory, commit, push, open a Draft PR, and
-  confirm full CI.
+- [x] (2026-07-28 12:56+09:00) Updated generated documentation inventory, committed
+  and pushed `cb7e01d5`, opened Draft PR #1110, and confirmed the full required CI
+  suite passed.
 
 ## Surprises & Discoveries
 
@@ -122,11 +123,11 @@ development and an explicit validation build can enable it.
 
 ## Outcomes & Retrospective
 
-The implementation is complete and awaiting commit, Draft PR, and CI. The library
-opens only sheet `library`; revision and fixed-count edit previews open only sheet
-`edit`; new creation has no launcher. The shared viewer uses the existing Dialog,
-keeps page state mounted, restores launcher focus, refuses backdrop dismissal, and
-validates both the iframe window and fixed message before child Escape closes it.
+The implementation and validation are complete on Draft PR #1110. The library opens
+only sheet `library`; revision and fixed-count edit previews open only sheet `edit`;
+new creation has no launcher. The shared viewer uses the existing Dialog, keeps page
+state mounted, restores launcher focus, refuses backdrop dismissal, and validates both
+the iframe window and fixed message before child Escape closes it.
 
 Validation completed as follows:
 
@@ -147,6 +148,9 @@ Validation completed as follows:
   `PartMeasurementTemplate_templateScope_fhincd_resourceCd_isActiv` and visual-template
   primary-key indexes, and completed in 0.067 ms on the small test fixture. Cleanup
   counts were container 0, volume 0, and network 0.
+- Draft PR #1110 passed change classification, required CI, API, Web, E2E, database
+  infrastructure, deploy contract, repository policy, workspace quality, CodeQL,
+  gitleaks, and both API/Web Docker security checks.
 
 The only remaining product gate is unchanged: shop-floor copy sign-off. The release
 flag therefore remains false by default, and no production deployment or flag
@@ -316,5 +320,6 @@ Vite raw imports, and the existing canonical HTML supply the complete implementa
 
 Revision note 2026-07-28: Created the implementation ExecPlan after repository and
 delivery-path analysis, then recorded the completed Web, browser, final-image, and
-disposable-database evidence. Delivery and CI confirmation remain pending. The feature
-remains production-default disabled because the operator copy is still draft.
+disposable-database evidence. Draft PR #1110 and the full required CI suite completed
+successfully. The feature remains production-default disabled because the operator
+copy is still draft.
