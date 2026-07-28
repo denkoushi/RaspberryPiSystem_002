@@ -116,6 +116,8 @@ all:
           web_agent_ws_mode: "local"
           # 納期管理キオスク新レイアウト（V2）有効化（実機検証後 true に切り替え）
           web_kiosk_due_mgmt_layout_v2_enabled: "true"
+          # 検査図面の画面内「取説」ポップアップ（2026-07-28 本番ON承認）
+          web_kiosk_sop_popup_enabled: "true"
           # 順位ボードの生産指示分割（Step 1 pilotまではfalse。API/Webで値を揃える）
           kiosk_production_schedule_order_split_enabled: "false"
           web_kiosk_production_schedule_order_split_enabled: "false"

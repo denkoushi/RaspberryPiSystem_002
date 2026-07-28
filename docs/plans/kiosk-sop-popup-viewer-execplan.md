@@ -1,10 +1,10 @@
 ---
 id: plan-kiosk-sop-popup-viewer
 title: Embed the inspection-drawing SOP in kiosk screens
-status: completed
+status: in_progress
 date: 2026-07-28
 source_of_truth: true
-scope: Web-only kiosk SOP viewer, release-bundled static HTML, and validation
+scope: Web-only kiosk SOP viewer, production enablement, deployment, and validation
 related_docs:
   - ../decisions/ADR-20260728-inspection-drawing-sop-step-rail.md
   - ./kiosk-inspection-drawing-edit-existing-sop.md
@@ -13,11 +13,15 @@ related_code:
   - apps/web/src/features/kiosk-sop/
   - apps/web/src/pages/kiosk/KioskInspectionDrawingLibraryPage.tsx
   - apps/web/src/pages/kiosk/KioskInspectionDrawingCreatePage.tsx
+  - infrastructure/ansible/inventory.yml
+  - infrastructure/ansible/templates/docker.env.j2
+  - infrastructure/docker/docker-compose.server.yml
 validation:
   - Web unit tests, lint, and build
   - Playwright kiosk layout and SOP interaction tests
   - disposable Web container smoke test
   - disposable PostgreSQL migration and inspection-drawing regression test
+  - deployment contract tests and standard fleet deployment evidence
 open_items:
   - Shop-floor copy sign-off before production-default enablement
 ---
@@ -38,8 +42,10 @@ template creation and the older measurement-sheet editor remain unchanged.
 The manual remains a single source file at
 `docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html`. Vite reads that
 file as a string at build time, and a sandboxed `iframe srcDoc` displays it. Production
-builds keep the button disabled by default until shop-floor wording is approved. Local
-development and an explicit validation build can enable it.
+builds keep the button disabled unless a deployment profile explicitly enables it.
+Local development enables it automatically. On 2026-07-28, the product owner explicitly
+directed production enablement and real-device deployment; the Docker/build fallback
+remains false while the production inventory now opts in.
 
 ## Progress
 
@@ -62,6 +68,19 @@ development and an explicit validation build can enable it.
 - [x] (2026-07-28 12:56+09:00) Updated generated documentation inventory, committed
   and pushed `cb7e01d5`, opened Draft PR #1110, and confirmed the full required CI
   suite passed.
+- [x] (2026-07-28 14:20+09:00) Received explicit direction to enable the production
+  flag, deploy, and perform real-device validation. Wired the flag through the
+  production inventory, rendered Docker environment, Compose Web build arguments,
+  and immutable build-argument seal while preserving a false fallback.
+- [x] (2026-07-28 14:22+09:00) Passed the complete local deployment-contract suite:
+  100 Jinja templates, 864 fleet/orchestrator cases, 24 inventory cases, the isolated
+  deploy-status PostgreSQL migration/API run, Pi5 image and Blue/Green lifecycles,
+  rollback safety, and Ansible syntax checks.
+- [ ] Merge PR #1110 after the updated required CI suite passes.
+- [ ] Run the standard fleet deployment from `main`, capture its run ID and terminal
+  status, then prove the same-SHA plan is a no-op.
+- [ ] Complete real-device and production UI verification and record rollback
+  coordinates.
 
 ## Surprises & Discoveries
 
@@ -117,6 +136,13 @@ development and an explicit validation build can enable it.
   Rationale: The manual Plan is still draft and shop-floor copy sign-off is open.
   Date/Author: 2026-07-28 / Codex.
 
+- Decision: Set `web_kiosk_sop_popup_enabled: "true"` only in the production
+  inventory while leaving every template and Compose fallback false.
+  Rationale: This implements the product owner's explicit production-ON direction
+  through the existing auditable release profile without silently changing other
+  environments or the image default.
+  Date/Author: 2026-07-28 / Product owner and Codex.
+
 - Decision: Do not add an API, database table, or migration.
   Rationale: The source is immutable release content and needs no runtime persistence.
   Date/Author: 2026-07-28 / Codex.
@@ -152,9 +178,11 @@ Validation completed as follows:
   infrastructure, deploy contract, repository policy, workspace quality, CodeQL,
   gitleaks, and both API/Web Docker security checks.
 
-The only remaining product gate is unchanged: shop-floor copy sign-off. The release
-flag therefore remains false by default, and no production deployment or flag
-enablement is part of this change.
+Formal shop-floor copy sign-off remains open in the source SOP Plan. Production
+enablement is nevertheless now in scope because the product owner explicitly directed
+it on 2026-07-28. The image-level fallback remains false; only the reviewed production
+inventory opts in. Final deployment and real-device evidence will be appended here
+before this ExecPlan returns to `completed`.
 
 ## Context and Orientation
 
@@ -244,8 +272,12 @@ unfinished or rolled-back rows and run `EXPLAIN (ANALYZE, BUFFERS)` for the
 inspection-drawing template/visual digit-search join. Remove the container, volume,
 and network and prove no resource matching the run ID remains.
 
-Finally update this document, run the document audit, commit intended files, push the
-feature branch, and open a Draft PR targeting `main`. Do not merge or deploy.
+Finally update this document, run the document audit, commit intended files, and push
+the existing Draft PR. After required CI passes, mark it ready and merge it to `main`.
+From a clean, current `main`, run the standard fleet orchestrator first with
+`--print-plan`, execute the approved inventory deployment, follow its run ID to a
+terminal state, and verify that the same-SHA plan is a no-op. Do not use direct SSH,
+individual playbooks, or internal phase scripts.
 
 ## Validation and Acceptance
 
