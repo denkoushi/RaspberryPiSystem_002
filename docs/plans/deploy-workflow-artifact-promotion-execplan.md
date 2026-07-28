@@ -100,9 +100,24 @@ remain unchanged.
   PostgreSQL migrations, 20 deploy-status tests, 24 inventory tests, 102
   Ansible templates, syntax checks, lint, document audit, and zero remaining
   run-owned container, volume, or network resources.
-- [ ] Merge the access correction after required CI, deploy only through the
-  standard orchestrator, and record terminal and same-SHA no-op evidence
-  outside the source commit.
+- [x] (2026-07-29 08:28+09:00) Merged the access correction through PR #1118
+  and deployed exact main SHA
+  `e320eb77fb3bc3c8e32f5bffbb156e74a99ad8ea`. Run
+  `20260728-230421-7f27db` completed Pi5 Blue/Green stability and all six
+  serialized Pi4 activation checks; Pi3 remained excluded and the same-SHA
+  plan returned no targets.
+- [x] (2026-07-29 08:40+09:00) Replaced the insufficient Debian `gh` package
+  selection with official GitHub CLI 2.96.0 for Linux ARM64, pinned its
+  published SHA-256, and added an Ansible capability probe for all four
+  attestation-policy flags. The exact package checksum and executable
+  interface passed in an isolated ARM64 container.
+- [x] (2026-07-29 08:42+09:00) Passed 18 focused tests, 42 CI policy tests,
+  892 orchestrator tests, all 156 disposable PostgreSQL migrations, 20
+  deploy-status tests, 24 inventory tests, 102 Ansible templates, syntax
+  checks, document audit, and zero run-owned database resources.
+- [ ] Merge the pinned-verifier correction after required CI, deploy only
+  through the standard orchestrator, and require candidate mode `promoted`
+  plus a same-SHA no-op before declaring production validation complete.
 
 ## Surprises & Discoveries
 
@@ -137,6 +152,14 @@ remain unchanged.
   verification; the same public OCI bundle verified with an inert token, and
   the complete promoter then validated the release set plus both image
   attestations without registry login.
+
+- Observation: the first production opt-in installed Debian's `gh` 2.46.0,
+  which has no `attestation` command.
+  Evidence: production run `20260728-230421-7f27db` recorded
+  `GitHub attestation verifier is unavailable`, safely used the accepted local
+  builder, completed Pi5 stability and all six Pi4 activation checks, and its
+  same-SHA plan was empty. A read-only `gh version` and
+  `gh attestation verify --help` probe confirmed the missing command.
 
 - Observation: Docker is running on the development Mac as ARM64 with zero
   containers, while unrelated persistent volumes and networks exist.
@@ -221,6 +244,16 @@ remain unchanged.
   Docker release authority. This permits the intended adapter without making
   the optional private-package token world-readable or executing mutable
   repository code through sudo.
+  Date/Author: 2026-07-29 / Codex.
+
+- Decision: install GitHub CLI 2.96.0 from its immutable upstream Linux ARM64
+  package with the published SHA-256, and capability-probe the exact policy
+  flags during server configuration convergence.
+  Rationale: Debian's package name alone does not guarantee the attestation
+  interface. Pinning both bytes and capabilities makes the production trust
+  dependency explicit; checksum or policy drift fails before candidate
+  preparation, while later registry transport failures retain the local
+  builder fallback.
   Date/Author: 2026-07-29 / Codex.
 
 ## Outcomes & Retrospective

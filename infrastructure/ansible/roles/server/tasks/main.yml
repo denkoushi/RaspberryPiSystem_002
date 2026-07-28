@@ -145,11 +145,59 @@
     group: "{{ ansible_user }}"
     mode: '0750'
 
-- name: Install the GitHub attestation verifier when promotion is enabled
+- name: Validate the pinned GitHub attestation verifier contract
+  ansible.builtin.assert:
+    that:
+      - ansible_architecture in ['aarch64', 'arm64']
+      - pi5_artifact_gh_version | string is match('^[0-9]+\.[0-9]+\.[0-9]+$')
+      - pi5_artifact_gh_arm64_sha256 | string is match('^[0-9a-f]{64}$')
+    fail_msg: The GitHub attestation verifier requires a pinned Linux ARM64 package.
+  when: pi5_artifact_promotion_enabled | default(false) | bool
+
+- name: Ensure pinned verifier package cache exists
+  ansible.builtin.file:
+    path: /var/cache/raspi-release
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  when: pi5_artifact_promotion_enabled | default(false) | bool
+
+- name: Download the pinned GitHub attestation verifier
+  ansible.builtin.get_url:
+    url: "https://github.com/cli/cli/releases/download/v{{ pi5_artifact_gh_version }}/gh_{{ pi5_artifact_gh_version }}_linux_arm64.deb"
+    dest: "/var/cache/raspi-release/gh_{{ pi5_artifact_gh_version }}_linux_arm64.deb"
+    checksum: "sha256:{{ pi5_artifact_gh_arm64_sha256 }}"
+    owner: root
+    group: root
+    mode: '0644'
+  when: pi5_artifact_promotion_enabled | default(false) | bool
+
+- name: Install the pinned GitHub attestation verifier
   ansible.builtin.apt:
-    name: gh
+    deb: "/var/cache/raspi-release/gh_{{ pi5_artifact_gh_version }}_linux_arm64.deb"
     state: present
-    update_cache: true
+  when: pi5_artifact_promotion_enabled | default(false) | bool
+
+- name: Probe the installed GitHub attestation verifier
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/gh
+      - attestation
+      - verify
+      - --help
+  register: pi5_artifact_gh_capability
+  changed_when: false
+  when: pi5_artifact_promotion_enabled | default(false) | bool
+
+- name: Require the complete GitHub attestation verification policy
+  ansible.builtin.assert:
+    that:
+      - "'--bundle-from-oci' in pi5_artifact_gh_capability.stdout"
+      - "'--deny-self-hosted-runners' in pi5_artifact_gh_capability.stdout"
+      - "'--source-digest' in pi5_artifact_gh_capability.stdout"
+      - "'--source-ref' in pi5_artifact_gh_capability.stdout"
+    fail_msg: The installed GitHub CLI cannot enforce the release attestation policy.
   when: pi5_artifact_promotion_enabled | default(false) | bool
 
 - name: Deploy release-runner-only artifact promotion policy
