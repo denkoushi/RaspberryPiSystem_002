@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### Deployワークフロー安全短縮 Phase 1（2026-07-28 · 実装中）
+
+- **安全ゲートを維持したCI／対象分類／build cache短縮**: 安全なmain pushだけを変更認識型にし、Pi5 Web設定を`server-app`として所有、Kioskは再読込のみ・Pi3は対象外とする。**正本**: [ExecPlan](./plans/deploy-workflow-safe-shortening-execplan.md) · [ADR](./decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md) · [CI Guide](./guides/ci-branch-protection.md) · [Deploy Guide](./guides/deployment.md)
+
 ### 検査図面 既存編集 SOP（2026-07-28 · 完全版ドラフト・画面別ページ）
 
 - **A4横×画面数（一覧1枚＋編集1枚）・手順番号は通し**: 左ステップレール＋画面上番号（右下隅）。引出線はホバー時のみ。寸法6手順HTMLはレイアウト見本。**正本**: [Plan](./plans/kiosk-inspection-drawing-edit-existing-sop.md) · [Viewer ExecPlan](./plans/kiosk-sop-popup-viewer-execplan.md) · [ADR](./decisions/ADR-20260728-inspection-drawing-sop-step-rail.md) · [Preview](./design-previews/kiosk-inspection-drawing-edit-existing-sop.html)

@@ -34,8 +34,11 @@ class StagedCiWorkflowTests(unittest.TestCase):
             self.assertIn("- cron: '30 17 * * *'", workflow)
             self.assertNotIn("develop", workflow)
         classifier = job_block(CI, "change-classification")
-        self.assertIn('if [[ "$EVENT_NAME" != "pull_request" ]]', classifier)
-        self.assertIn("always runs the full suite", classifier)
+        self.assertIn("scripts/ci/classify_event_changes.py", classifier)
+        self.assertIn('--event-name "$EVENT_NAME"', classifier)
+        self.assertIn('--base-sha "$BASE_SHA"', classifier)
+        self.assertIn('--head-sha "$HEAD_SHA"', classifier)
+        self.assertNotIn("collect_changed_files.py", classifier)
 
     def test_classifier_outputs_drive_every_conditional_job(self) -> None:
         categories = {
@@ -51,7 +54,12 @@ class StagedCiWorkflowTests(unittest.TestCase):
             "e2e-tests": "e2e",
         }
         classifier = job_block(CI, "change-classification")
-        for output in set(categories.values()):
+        for output in set(categories.values()) | {
+            "codeql",
+            "docker_api",
+            "docker_web",
+            "docker_matrix",
+        }:
             self.assertIn(f"      {output}: ${{{{ steps.classify.outputs.{output} }}}}", classifier)
         for job, output in categories.items():
             block = job_block(CI, job)
@@ -60,6 +68,13 @@ class StagedCiWorkflowTests(unittest.TestCase):
                 f"needs.change-classification.outputs.{output} == 'true'",
                 block,
             )
+
+    def test_docker_security_matrix_selects_api_and_web_independently(self) -> None:
+        docker = job_block(CI, "docker-security")
+        self.assertIn(
+            "fromJSON(needs.change-classification.outputs.docker_matrix)",
+            docker,
+        )
 
     def test_api_uses_one_noncoverage_pr_run_and_three_full_coverage_shards(self) -> None:
         api = job_block(CI, "api")
@@ -97,6 +112,13 @@ class StagedCiWorkflowTests(unittest.TestCase):
     def test_security_workflows_keep_fixed_required_names(self) -> None:
         self.assertIn("  codeql:\n    name: codeql", CODEQL)
         self.assertIn("  gitleaks:\n    name: gitleaks", GITLEAKS)
+        codeql = job_block(CODEQL, "codeql")
+        self.assertIn("scripts/ci/classify_event_changes.py", codeql)
+        self.assertIn(
+            "steps.classify.outputs.codeql == 'true'",
+            codeql,
+        )
+        self.assertIn("Record intentional analysis skip", codeql)
 
     def test_manual_gitleaks_scans_only_the_cumulative_main_branch_range(self) -> None:
         block = job_block(GITLEAKS, "gitleaks")

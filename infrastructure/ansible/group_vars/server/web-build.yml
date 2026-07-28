@@ -1,0 +1,10 @@
+---
+# Pi5 server Web build inputs. Keep these values as explicit strings because
+# Vite embeds them into the immutable Web image during the server release.
+web_api_base_url: "/api"
+web_ws_base_url: "/ws"
+web_agent_ws_url: "{{ websocket_agent_url }}"
+web_agent_ws_mode: "local"
+web_kiosk_due_mgmt_layout_v2_enabled: "true"
+web_kiosk_sop_popup_enabled: "true"
+web_kiosk_production_schedule_order_split_enabled: "false"

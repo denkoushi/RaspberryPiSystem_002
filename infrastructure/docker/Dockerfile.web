@@ -86,7 +86,9 @@ func main() {
 	caddycmd.Main()
 }
 EOF
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOMAXPROCS=1 \
+RUN --mount=type=cache,id=raspi-caddy-go-mod,target=/go/pkg/mod,sharing=locked \
+  --mount=type=cache,id=raspi-caddy-go-build,target=/root/.cache/go-build,sharing=locked \
+  CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOMAXPROCS=1 \
   nice -n 10 go build -p 1 -mod=mod -trimpath -ldflags="-s -w" -o /usr/bin/caddy main.go
 
 FROM alpine:3.23

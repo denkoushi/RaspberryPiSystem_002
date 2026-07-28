@@ -38,6 +38,36 @@ class ClassifyDeployImpactTest(unittest.TestCase):
         self.assertFalse(result['migration'])
         self.assertEqual(result['components'], ['server-app'])
 
+    def test_pi5_owned_web_build_configuration_is_server_only(self):
+        result = impact.classify(
+            [
+                'infrastructure/ansible/group_vars/server/web-build.yml',
+                'infrastructure/ansible/templates/docker.env.j2',
+                'infrastructure/ansible/templates/web.env.j2',
+                'infrastructure/ansible/roles/server/tasks/main.yml',
+                'infrastructure/ansible/playbooks/manage-app-configs.yml',
+                'infrastructure/ansible/playbooks/server-config-release.yml',
+            ]
+        )
+        self.assertTrue(result['server'])
+        self.assertFalse(result['kiosk'])
+        self.assertFalse(result['signage'])
+        self.assertFalse(result['migration'])
+        self.assertEqual(result['components'], ['server-app'])
+
+    def test_general_inventory_remains_global_and_dockerignore_unknown(self):
+        inventory = impact.classify(['infrastructure/ansible/inventory.yml'])
+        self.assertTrue(inventory['server'])
+        self.assertTrue(inventory['kiosk'])
+        self.assertTrue(inventory['signage'])
+        self.assertEqual(inventory['components'], ['global'])
+
+        dockerignore = impact.classify(['.dockerignore'])
+        self.assertTrue(dockerignore['server'])
+        self.assertTrue(dockerignore['kiosk'])
+        self.assertTrue(dockerignore['signage'])
+        self.assertEqual(dockerignore['components'], ['unknown'])
+
     def test_api_signage_path_is_server_only(self):
         result = impact.classify(['apps/api/src/routes/signage.ts'])
         self.assertTrue(result['server'])

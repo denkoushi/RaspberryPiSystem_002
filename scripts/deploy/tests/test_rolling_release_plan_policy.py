@@ -976,6 +976,102 @@ class ReleasePlannerTest(unittest.TestCase):
             'one-time-service-activation',
         )
 
+    def test_sop_web_build_fixture_targets_pi5_and_six_kiosk_activations(self):
+        kiosk_hosts = [f'kiosk-{index}' for index in range(1, 7)]
+        decisions = [
+            {
+                'host': 'server-a',
+                'role': 'server',
+                'desiredSha': RELEASE_SHA,
+                'currentSha': CURRENT_SHA,
+                'evidence': 'verified',
+                'targetReason': 'server impact: server-app',
+                'targeted': True,
+            },
+            *[
+                {
+                    'host': host,
+                    'role': 'kiosk',
+                    'desiredSha': CURRENT_SHA,
+                    'currentSha': CURRENT_SHA,
+                    'evidence': 'verified',
+                    'targetReason': 'verified; no kiosk mutation',
+                    'targeted': False,
+                }
+                for host in kiosk_hosts
+            ],
+            {
+                'host': 'signage-a',
+                'role': 'signage',
+                'desiredSha': CURRENT_SHA,
+                'currentSha': CURRENT_SHA,
+                'evidence': 'verified',
+                'targetReason': 'verified; no signage impact',
+                'targeted': False,
+            },
+        ]
+        fleet_records = {'server-a': verified_record('server')}
+        for host in kiosk_hosts:
+            record = verified_record('kiosk')
+            record['releaseClaims'] = {
+                'controlPlaneWeb': self._verified_claim(
+                    'controlPlaneWeb',
+                    CURRENT_SHA,
+                    'kiosk-compiled-web-ready',
+                    verification_id='c' * 32,
+                ),
+                'terminalRepository': self._verified_claim(
+                    'terminalRepository',
+                    CURRENT_SHA,
+                    'terminal-repository-probe',
+                ),
+            }
+            fleet_records[host] = record
+        fleet_records['signage-a'] = verified_record('signage')
+
+        payload = PLANNER.build_fleet_plan_payload(
+            release_sha=RELEASE_SHA,
+            decisions=decisions,
+            full_fleet=False,
+            limit='',
+            canary_hold_policy=Mock(return_value=False),
+            fleet_records=fleet_records,
+            typed_target_planning=True,
+            claim_scope_hosts=('server-a', *kiosk_hosts, 'signage-a'),
+        )
+
+        self.assertEqual(
+            [target['host'] for target in payload['mutationTargets']],
+            ['server-a'],
+        )
+        self.assertEqual(
+            [target['host'] for target in payload['activationTargets']],
+            kiosk_hosts,
+        )
+        self.assertEqual(
+            [target['host'] for target in payload['verificationTargets']],
+            ['server-a', *kiosk_hosts],
+        )
+        self.assertEqual(
+            [work['host'] for work in payload['terminalWork']],
+            kiosk_hosts,
+        )
+        self.assertTrue(
+            all(work['mutationRequired'] is False for work in payload['terminalWork'])
+        )
+        self.assertNotIn(
+            'signage-a',
+            {
+                target['host']
+                for key in (
+                    'mutationTargets',
+                    'activationTargets',
+                    'verificationTargets',
+                )
+                for target in payload[key]
+            },
+        )
+
     def test_typed_same_sha_noop_requires_every_consumer_claim_current(self):
         decisions = [
             {
