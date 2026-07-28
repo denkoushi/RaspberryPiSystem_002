@@ -37,6 +37,12 @@ RELEASE_BUILD_CONTRACT_PLAYBOOK = (
 ARTIFACT_PROMOTION_TEMPLATE = (
     ANSIBLE_ROOT / "templates/artifact-promotion.json.j2"
 )
+ARTIFACT_PROMOTION_DEFAULTS = (
+    ANSIBLE_ROOT / "group_vars/server/release-artifacts.yml"
+)
+PRIMARY_ARTIFACT_PROMOTION = (
+    ANSIBLE_ROOT / "host_vars/raspberrypi5/release-artifacts.yml"
+)
 SERVER_ROLE_TASKS = ANSIBLE_ROOT / "roles/server/tasks/main.yml"
 
 
@@ -120,6 +126,22 @@ class AnsibleTemplateContractTests(unittest.TestCase):
         self.assertNotIn("ansible.builtin.shell", playbook)
 
     def test_artifact_promotion_policy_is_root_only_and_opt_in(self) -> None:
+        self.assertIn(
+            "pi5_artifact_promotion_enabled: false",
+            ARTIFACT_PROMOTION_DEFAULTS.read_text(encoding="utf-8"),
+        )
+        self.assertIn(
+            "pi5_artifact_promotion_enabled: true",
+            PRIMARY_ARTIFACT_PROMOTION.read_text(encoding="utf-8"),
+        )
+        self.assertNotIn(
+            "pi5_artifact_promotion_enabled:",
+            PRIMARY_INVENTORY.read_text(encoding="utf-8"),
+        )
+        self.assertNotIn(
+            "pi5_artifact_promotion_enabled:",
+            TALKPLAZA_INVENTORY.read_text(encoding="utf-8"),
+        )
         environment = Environment(undefined=StrictUndefined)
         environment.filters["to_json"] = json.dumps
         environment.filters["bool"] = bool

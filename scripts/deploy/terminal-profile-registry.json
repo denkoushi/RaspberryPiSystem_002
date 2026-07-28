@@ -180,6 +180,7 @@
     {"match": "prefix", "path": "clients/status-agent/", "component": "status-agent"},
     {"match": "exact", "path": "infrastructure/ansible/group_vars/server/web-build.yml", "component": "server-app"},
     {"match": "exact", "path": "infrastructure/ansible/group_vars/server/release-artifacts.yml", "component": "server-app"},
+    {"match": "exact", "path": "infrastructure/ansible/host_vars/raspberrypi5/release-artifacts.yml", "component": "server-app"},
     {"match": "exact", "path": "infrastructure/ansible/templates/artifact-promotion.json.j2", "component": "server-app"},
     {"match": "exact", "path": "infrastructure/ansible/templates/release-build-contract.json.j2", "component": "server-app"},
     {"match": "exact", "path": "infrastructure/ansible/templates/docker.env.j2", "component": "server-app"},

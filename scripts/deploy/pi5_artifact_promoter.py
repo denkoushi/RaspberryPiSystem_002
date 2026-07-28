@@ -62,6 +62,7 @@ REQUIRED_ATTESTATION_OPTIONS = {
     "--source-digest",
     "--source-ref",
 }
+PUBLIC_OCI_VERIFICATION_TOKEN = "public-oci-attestation-verification"
 
 
 class PromotionUnavailable(RuntimeError):
@@ -302,13 +303,13 @@ def _resolve_repo_digest(
     return matches[0]
 
 
-def _verification_environment(config: PromotionConfig) -> dict[str, str]:
+def _verification_environment(
+    config: PromotionConfig, gh_config_directory: Path
+) -> dict[str, str]:
     environment = os.environ.copy()
-    if config.token:
-        environment["GH_TOKEN"] = config.token
-    else:
-        environment.pop("GH_TOKEN", None)
-        environment.pop("GITHUB_TOKEN", None)
+    environment["GH_CONFIG_DIR"] = str(gh_config_directory)
+    environment["GH_TOKEN"] = config.token or PUBLIC_OCI_VERIFICATION_TOKEN
+    environment.pop("GITHUB_TOKEN", None)
     return environment
 
 
@@ -371,12 +372,14 @@ def promote(
         f"{config.release_set_repository}:{sha}-{config_hash}"
     )
     container_name = f"raspi-release-set-{run_id}"
-    verifier_environment = _verification_environment(config)
-    _require_verifier_capability(runner, gh, verifier_environment)
     with tempfile.TemporaryDirectory(prefix=f"raspi-artifact-{run_id}-") as directory:
         temporary = Path(directory)
         docker_config = temporary / "docker"
         docker_config.mkdir(mode=0o700)
+        gh_config = temporary / "gh"
+        gh_config.mkdir(mode=0o700)
+        verifier_environment = _verification_environment(config, gh_config)
+        _require_verifier_capability(runner, gh, verifier_environment)
         release_json = temporary / "release-set.json"
         release_digest_ref = ""
         pulled_refs: list[str] = []
