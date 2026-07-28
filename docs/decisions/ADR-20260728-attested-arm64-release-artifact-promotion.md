@@ -18,15 +18,15 @@ related_docs:
   - ../guides/deployment.md
 validation: pure contract tests, workflow policy tests, deployment contracts, isolated ARM64 Docker exercise, and required hosted CI
 open_items:
-  - production opt-in, credentials, deployment, and real-device timing require separate explicit approval
+  - deployment and real-device timing require separate explicit approval
 ---
 
 # ADR-20260728: Attested ARM64 API/Web release artifact promotion
 
 ## Status
 
-Accepted for implementation. Production enablement, credentials, merge, and
-device access are outside this decision.
+Accepted for implementation. Production enablement, merge, and device access
+require a separate explicit approval.
 
 ## Context
 
@@ -69,11 +69,15 @@ Disabled promotion also uses the local build. Once signed content is
 discovered, a signature, source, configuration, platform, repository, digest,
 schema, or label mismatch is terminal and never falls back.
 
-The production inventory default remains disabled. A root-owned mode-0600
-configuration contains the optional read-only GHCR credential and is included
-in the existing server configuration rollback manifest. The credential is
-passed only through stdin or a child-process environment and is excluded from
-state, command arguments, and logs.
+The shared server default remains disabled. An explicitly approved production
+host may opt in without changing other server inventories. Public OCI pulls
+need no registry login. GitHub CLI still requires a nonempty `GH_TOKEN` before
+it will execute `--bundle-from-oci`, even though that mode verifies the public
+OCI bundle without an API credential. The verifier therefore runs with an
+isolated temporary config and an inert fixed token when no real token is
+configured. A real optional read-only credential remains supported for private
+packages and is passed only through stdin or a child-process environment. It
+is excluded from state, command arguments, and logs.
 
 The verifier and registry are deliberately not new hard readiness gates.
 Making registry reachability mandatory would remove the local builder's

@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from scripts.deploy.pi5_artifact_promoter import (
     CommandResult,
+    PUBLIC_OCI_VERIFICATION_TOKEN,
     PromotionDisabled,
     PromotionIntegrityError,
     PromotionInterrupted,
@@ -27,14 +28,16 @@ WEB_TAG = f"raspi-system-web:{SHA}-{CONFIG_HASH[:12]}-{'1' * 64}"
 TOKEN = "test-read-only-package-token"
 
 
-def config_document(enabled: bool = True) -> dict[str, object]:
+def config_document(
+    enabled: bool = True, token: str = TOKEN
+) -> dict[str, object]:
     return {
         "enabled": enabled,
         "repository": "denkoushi/RaspberryPiSystem_002",
         "workflow": ".github/workflows/ci.yml",
         "releaseSetRepository": "ghcr.io/denkoushi/raspisys-release-set",
         "username": "denkoushi",
-        "token": TOKEN,
+        "token": token,
     }
 
 
@@ -203,7 +206,18 @@ class Pi5ArtifactPromoterTests(unittest.TestCase):
             if "attestation" in command
         ]
         self.assertTrue(verifier_environments)
-        self.assertTrue(all(environment["GH_TOKEN"] == TOKEN for environment in verifier_environments))
+        self.assertTrue(
+            all(
+                environment["GH_TOKEN"] == TOKEN
+                for environment in verifier_environments
+            )
+        )
+        self.assertTrue(
+            all(
+                environment["GH_CONFIG_DIR"].endswith("/gh")
+                for environment in verifier_environments
+            )
+        )
         self.assertNotIn(TOKEN, json.dumps(result))
         self.assertTrue(
             any(
@@ -215,6 +229,47 @@ class Pi5ArtifactPromoterTests(unittest.TestCase):
                     API_TAG,
                 ]
                 for command, _, _ in runner.commands
+            )
+        )
+
+    @patch("scripts.deploy.pi5_artifact_promoter.shutil.which")
+    def test_public_release_uses_isolated_verifier_without_registry_login(
+        self, which: object
+    ) -> None:
+        which.side_effect = lambda name: f"/usr/bin/{name}"  # type: ignore[attr-defined]
+        with tempfile.TemporaryDirectory() as directory:
+            config = self.write_config(directory, config_document(token=""))
+            runner = FakeRunner()
+            result = promote(
+                config_path=config,
+                sha=SHA,
+                config_hash=CONFIG_HASH,
+                run_id=RUN_ID,
+                api_tag=API_TAG,
+                web_tag=WEB_TAG,
+                runner=runner,
+            )
+
+        self.assertEqual(result["status"], "promoted")
+        self.assertFalse(
+            any("login" in command for command, _, _ in runner.commands)
+        )
+        verifier_environments = [
+            environment
+            for command, _, environment in runner.commands
+            if "attestation" in command
+        ]
+        self.assertTrue(verifier_environments)
+        self.assertTrue(
+            all(
+                environment["GH_TOKEN"] == PUBLIC_OCI_VERIFICATION_TOKEN
+                for environment in verifier_environments
+            )
+        )
+        self.assertTrue(
+            all(
+                environment["GH_CONFIG_DIR"].endswith("/gh")
+                for environment in verifier_environments
             )
         )
 

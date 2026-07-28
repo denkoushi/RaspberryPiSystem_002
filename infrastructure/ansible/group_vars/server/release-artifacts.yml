@@ -1,6 +1,8 @@
 ---
 # CI-built image promotion is opt-in. The accepted local Pi5 builder remains
-# the default until a production credential and explicit rollout are approved.
+# the default unless one production host explicitly enables promotion.
 pi5_artifact_promotion_enabled: false
 pi5_artifact_ghcr_username: "denkoushi"
+# Optional for a private package. Public OCI pulls and bundle verification do
+# not require a real GitHub credential.
 pi5_artifact_ghcr_token: "{{ vault_pi5_artifact_ghcr_token | default('') }}"

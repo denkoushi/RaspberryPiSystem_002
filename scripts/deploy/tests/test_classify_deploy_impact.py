@@ -43,6 +43,7 @@ class ClassifyDeployImpactTest(unittest.TestCase):
             [
                 'infrastructure/ansible/group_vars/server/web-build.yml',
                 'infrastructure/ansible/group_vars/server/release-artifacts.yml',
+                'infrastructure/ansible/host_vars/raspberrypi5/release-artifacts.yml',
                 'infrastructure/ansible/templates/artifact-promotion.json.j2',
                 'infrastructure/ansible/templates/release-build-contract.json.j2',
                 'infrastructure/ansible/templates/docker.env.j2',

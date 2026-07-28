@@ -23,7 +23,7 @@ validation:
   - complete local deployment contract with disposable PostgreSQL
   - ARM64 Docker promotion exercise in an isolated local registry
 open_items:
-  - production registry credentials, merge, and deployment require separate explicit approval
+  - terminal production evidence is recorded only after the explicitly approved rollout
 ---
 
 # Promote attested ARM64 release images without weakening deployment safety
@@ -81,8 +81,17 @@ remain unchanged.
 - [x] (2026-07-28 22:45+09:00) Completed local unit, ARM64 Docker, disposable
   PostgreSQL, Ansible, shell lifecycle, and cleanup validation. Hosted CI
   remains the publication gate for the Draft PR.
-- [ ] Commit intended files once, push the feature branch once, and open one
-  Draft PR. Do not merge or deploy.
+- [x] (2026-07-29 06:37+09:00) Merged the implementation and follow-up
+  exact-digest scan and transitive release-gate fixes through PRs #1114,
+  #1115, and #1116. Exact main SHA `e873cda4cca16bb7a33f1777912af457709d064b`
+  published and attested one valid ARM64 release set.
+- [x] (2026-07-29 06:44+09:00) Received explicit production-deployment
+  approval. Verified the public release set and both images end to end with the
+  production promoter and no real credential, then removed every validation
+  image and container.
+- [ ] Merge the production-host opt-in after required CI, deploy only through
+  the standard orchestrator, and record terminal and same-SHA no-op evidence
+  outside the source commit.
 
 ## Surprises & Discoveries
 
@@ -109,6 +118,14 @@ remain unchanged.
   `scripts/deploy/rolling_release/backends/ansible.py` has exactly those three
   entries. Any managed registry credential must be added to the same sealed
   transaction before production enablement.
+
+- Observation: public GHCR pulls need no credential, while GitHub CLI refuses
+  to start attestation verification unless `GH_TOKEN` is nonempty even with
+  `--bundle-from-oci`.
+  Evidence: an isolated empty CLI config rejected the command before
+  verification; the same public OCI bundle verified with an inert token, and
+  the complete promoter then validated the release set plus both image
+  attestations without registry login.
 
 - Observation: Docker is running on the development Mac as ARM64 with zero
   containers, while unrelated persistent volumes and networks exist.
@@ -178,6 +195,14 @@ remain unchanged.
   the local builder; discovered but invalid signed content still stops.
   Date/Author: 2026-07-28 / Codex.
 
+- Decision: never copy the developer's broad GitHub token to Pi5 merely to
+  satisfy GitHub CLI startup.
+  Rationale: public OCI bundle verification does not use an API credential.
+  An isolated temporary CLI config plus an inert fixed token preserves the
+  exact signature policy without introducing a production secret. Private
+  packages may still use the existing optional read-only credential path.
+  Date/Author: 2026-07-29 / Codex.
+
 ## Outcomes & Retrospective
 
 The implementation is locally complete. It separates pure build identity,
@@ -206,10 +231,11 @@ and pull-by-digest flow passed. Run-owned Docker containers, volumes, networks,
 and validation image tags all returned to zero; unrelated existing resources
 and BuildKit caches were not pruned.
 
-No production credential, production opt-in, main merge, device connection, or
-deployment is authorized or performed. The Draft PR and its exact-head hosted
-checks are recorded in the PR rather than by adding a second evidence-only
-commit.
+Production deployment is now separately authorized. The primary production
+Pi5 opts in through its host vars while the shared server default and
+TalkPlaza remain disabled. Terminal deployment evidence is recorded in the
+standard release state and PR rather than by adding a post-deployment
+evidence-only source commit.
 
 ## Context and Orientation
 
