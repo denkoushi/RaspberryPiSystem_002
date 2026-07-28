@@ -508,6 +508,11 @@ jobs:
           )"
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
 
+      - name: Pull exact ARM64 API digest for scanning
+        env:
+          IMAGE_REFERENCE: ${{ steps.identity.outputs.repository }}@${{ steps.build.outputs.digest }}
+        run: docker pull --platform linux/arm64 "$IMAGE_REFERENCE"
+
       - name: Security scan exact ARM64 API digest
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
@@ -578,6 +583,11 @@ jobs:
               --metadata-file "$RUNNER_TEMP/release-web-metadata.json"
           )"
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Pull exact ARM64 Web digest for scanning
+        env:
+          IMAGE_REFERENCE: ${{ steps.identity.outputs.repository }}@${{ steps.build.outputs.digest }}
+        run: docker pull --platform linux/arm64 "$IMAGE_REFERENCE"
 
       - name: Security scan exact ARM64 Web digest
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0

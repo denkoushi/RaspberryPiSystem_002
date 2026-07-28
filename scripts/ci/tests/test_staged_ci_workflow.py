@@ -135,6 +135,25 @@ class StagedCiWorkflowTests(unittest.TestCase):
             self.assertIn("runs-on: ubuntu-24.04-arm", block)
             self.assertIn("packages: write", block)
             self.assertIn("Security scan exact ARM64", block)
+            self.assertIn(
+                'run: docker pull --platform linux/arm64 "$IMAGE_REFERENCE"',
+                block,
+            )
+            self.assertLess(
+                block.index("Pull exact ARM64"),
+                block.index("Security scan exact ARM64"),
+            )
+            self.assertIn("ignore-unfixed: true", block)
+            self.assertIn("severity: 'HIGH,CRITICAL'", block)
+            self.assertIn("exit-code: '1'", block)
+        self.assertIn(
+            "IMAGE_REFERENCE: ${{ steps.identity.outputs.repository }}@${{ steps.build.outputs.digest }}",
+            api,
+        )
+        self.assertIn(
+            "IMAGE_REFERENCE: ${{ steps.identity.outputs.repository }}@${{ steps.build.outputs.digest }}",
+            web,
+        )
         self.assertIn('"linux/arm64"', RELEASE_IMAGE_BUILDER)
         self.assertIn("!(\n          github.event_name == 'push'", docker)
         self.assertIn("--required codeql", gates)
