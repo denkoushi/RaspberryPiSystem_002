@@ -652,6 +652,9 @@ grep -Fq 'GOMAXPROCS=1' "$ROOT/infrastructure/docker/Dockerfile.web" \
   || fail "Web candidate build does not cap Go-based compiler parallelism"
 grep -Fq 'nice -n 10 go build -p 1' "$ROOT/infrastructure/docker/Dockerfile.web" \
   || fail "Caddy candidate build is not single-worker and low priority"
+grep -Fq 'replace golang.org/x/text => golang.org/x/text v0.39.0' \
+  "$ROOT/infrastructure/docker/Dockerfile.web" \
+  || fail "Web candidate build does not pin the fixed golang.org/x/text dependency"
 grep -Fq 'production-biased CPU scheduling' "$SCRIPT" \
   || fail "candidate build does not report its production-priority policy"
 python3 - \
