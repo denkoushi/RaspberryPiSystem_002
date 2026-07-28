@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 検査図面 寸法・公差 SOP（2026-07-28 · デザイン確定・静的1枚）
+
+- **A4横1枚・画面外周吹き出し・手なし**: 別AI再現用の正本。**正本**: [Plan](./plans/kiosk-inspection-drawing-dimension-tolerance-sop-1page.md) · [ADR](./decisions/ADR-20260728-inspection-drawing-sop-outer-callouts.md) · [Preview](./design-previews/kiosk-inspection-drawing-dimension-tolerance-sop-1page.html)
+
 ### 組立V3承認UI/UX 回帰復旧（2026-07-27 · main正式統合）
 
 - **右ペイン・空白帯・状態色・機種名候補選択を現行ステップUIへ復元**: 7月25日承認版を履歴ごと現在の矩形／共通マーカー／NFC／新viewerへ統合し、feature branch直接配備による再発を防ぐ。**正本**: [Recovery ExecPlan](./plans/assembly-approved-uiux-regression-recovery-execplan.md) · [KB-402](./knowledge-base/KB-402-assembly-approved-uiux-feature-branch-overwrite.md) · [ADR](./decisions/ADR-20260725-kiosk-assembly-work-uiux-and-machine-name-picker.md)
