@@ -29,6 +29,10 @@ type Props = {
   onSelectPointerDownCapture?: () => void;
   /** 入力値と OK/NG 等の状態を表示（自主検査セッション向け・opt-in） */
   showMeasurementStatus?: boolean;
+  measurementStatusOverrides?: Record<
+    string,
+    { label: string; tone: 'danger' | 'warning' }
+  >;
   variant: 'sidebar';
   /** 列数。自主検査セッション右ペインのみ twoColumn、作成/改版は oneColumn（既定） */
   layout?: InspectionDrawingPointSummaryListLayout;
@@ -52,6 +56,10 @@ const STATUS_CLASS: Record<string, string> = {
   tolerance_error: 'text-amber-300',
   invalid: 'text-amber-300'
 };
+const OVERRIDE_STATUS_CLASS = {
+  danger: 'text-red-300',
+  warning: 'text-amber-300'
+} as const;
 
 /** 測定点一覧 — 右ペイン縦スクロール・2行カード */
 export function InspectionDrawingPointSummaryList({
@@ -61,6 +69,7 @@ export function InspectionDrawingPointSummaryList({
   onSelectPoint,
   onSelectPointerDownCapture,
   showMeasurementStatus = false,
+  measurementStatusOverrides = {},
   variant,
   layout = 'oneColumn'
 }: Props) {
@@ -89,6 +98,7 @@ export function InspectionDrawingPointSummaryList({
             const displayName = formatInspectionDrawingPointDisplayName(pt, '（名称未選択）');
             const inputStatus = showMeasurementStatus ? resolveMeasurementPointInputStatus(pt) : null;
             const testValueDisplay = showMeasurementStatus ? displayRaw(pt.testValue) : null;
+            const statusOverride = measurementStatusOverrides[pt.id];
             return (
               <div key={pt.id} role="listitem" className="min-w-0">
                 <button
@@ -124,10 +134,12 @@ export function InspectionDrawingPointSummaryList({
                         <span
                           className={clsx(
                             'shrink-0 text-xs font-bold',
-                            STATUS_CLASS[inputStatus] ?? 'text-white/60'
+                            statusOverride
+                              ? OVERRIDE_STATUS_CLASS[statusOverride.tone]
+                              : STATUS_CLASS[inputStatus] ?? 'text-white/60'
                           )}
                         >
-                          {MEASUREMENT_POINT_INPUT_STATUS_LABEL[inputStatus]}
+                          {statusOverride?.label ?? MEASUREMENT_POINT_INPUT_STATUS_LABEL[inputStatus]}
                         </span>
                       ) : null}
                     </span>

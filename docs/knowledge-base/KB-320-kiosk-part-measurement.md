@@ -1864,6 +1864,24 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - 遠隔で可能な実機自動検証と API/DB/サービス確認は完了。現場で実際に NFC タグを使い、オペレータ測定 → 検査員再測定 → 検査記録確認 → 承認完了までの物理操作は未実施。
 - 検査員再測定開始後はオペレータ値を編集できない仕様のため、現場で入力ミスが見つかった場合は既存のセッションリセット/再開始運用を使う前提。
 
+## 自主検査 · 最終判定と公差外未確認の可視化（2026-07-28）
+
+### UI 契約
+
+- 検査員の **最終OK** は緑、**最終NG** は赤。未選択は色付きアウトライン、選択中は塗りつぶしで表示し、`aria-pressed` も同じ状態を返す。
+- 最終判定欄は `選択済み件数 / 必要件数` を常時表示し、全対象を選択するまで **最終判定を保存** を無効にする。
+- 数値の公差外値は、選択中の測定点に **NG・未確認** と **公差外のまま進む** を常設する。確認後は **NG・確認済み** となり、測定点一覧にも同じ状態を表示する。
+- 常設ボタンと入力確定時のダイアログは、同じ `outOfToleranceAcknowledgedByEntryIndex` と確認処理を使う。値を変更した場合は確認を解除し、保存済み値は `outOfToleranceAcknowledgedAt` から復元する。
+- `valueKind=JUDGEMENT` の `FAIL` は数値公差外の確認対象ではない。
+- 保存不可理由は保存ボタン付近へ常時表示する。未確認NGの正規文言は **「公差外（NG）の測定値が未確認です。『公差外のまま進む』で確認してください。」**。
+
+### MD004121632 / CUTTING / 021 の抜き取り1個補正
+
+- 対象固定CLI `correct:self-inspection-md004121632-021-single` は既定でdry-run。v5テンプレート、対象2セッション、13＋13測定値、最終判定件数を照合し、想定外の完了・紙帳票・entryIndex 1以上・別セッションがあれば無更新で終了する。
+- 実行時は標準改版サービスで同じ図面・測定点のv6 `SINGLE`を作り、次にトランザクションでv5と既存2セッションを`SINGLE`・必要数1へ整合する。
+- `SelfInspectionMeasurementValue` と `SelfInspectionInspectorMeasurementValue` は更新対象外。トランザクション内で補正前後の値・確認日時・最終判定snapshotが同一であることを検証する。
+- 実行中断後も再実行可能で、適用済みの場合はpostconditionを確認してno-op成功する。Prismaスキーマ変更とデータmigrationは伴わない。
+
 ## References
 
 - Runbook: [kiosk-part-measurement.md](../runbooks/kiosk-part-measurement.md)

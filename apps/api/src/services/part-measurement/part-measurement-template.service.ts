@@ -1159,6 +1159,33 @@ export class PartMeasurementTemplateService {
   }
 
   /**
+   * 図面・測定点の内容を変えず、自主検査頻度だけを標準の版上げで変更する。
+   * 運用補正CLI等から既存の改版契約を再利用するための内部サービス境界。
+   */
+  async reviseSelfInspectionPolicyOnly(
+    sourceTemplateId: string,
+    input: {
+      selfInspectionMode: SelfInspectionMode;
+      selfInspectionFixedCount: number | null;
+    }
+  ) {
+    const source = await prisma.partMeasurementTemplate.findUnique({
+      where: { id: sourceTemplateId },
+      include: { items: { orderBy: { sortOrder: 'asc' } } }
+    });
+    if (!source) {
+      throw new ApiError(404, 'テンプレートが見つかりません');
+    }
+    return this.reviseActiveTemplate(sourceTemplateId, {
+      name: source.name,
+      items: copyTemplateItemsFromDb(source.items),
+      visualTemplateId: source.visualTemplateId,
+      selfInspectionMode: input.selfInspectionMode,
+      selfInspectionFixedCount: input.selfInspectionFixedCount
+    });
+  }
+
+  /**
    * 最新の有効版を論理削除する（行の isActive のみ false。旧版は自動で有効化しない）。
    */
   async retireActiveTemplate(templateId: string) {

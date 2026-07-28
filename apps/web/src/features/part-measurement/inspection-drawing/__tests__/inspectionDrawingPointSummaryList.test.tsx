@@ -169,6 +169,25 @@ describe('InspectionDrawingPointSummaryList', () => {
     expect(screen.getByText('公差不備')).toBeInTheDocument();
   });
 
+  it('shows an explicit unconfirmed NG status override', () => {
+    const points = [makePoint({ id: 'p1', markerNo: 1, testValue: '12' })];
+
+    render(
+      <InspectionDrawingPointSummaryList
+        points={points}
+        selectedPointId="p1"
+        onSelectPoint={() => undefined}
+        showMeasurementStatus
+        measurementStatusOverrides={{
+          p1: { label: 'NG・未確認', tone: 'danger' }
+        }}
+        variant="sidebar"
+      />
+    );
+
+    expect(screen.getByText('NG・未確認')).toHaveClass('text-red-300');
+  });
+
   it('calls onSelectPointerDownCapture before selection', () => {
     const onCapture = vi.fn();
     const onSelect = vi.fn();
