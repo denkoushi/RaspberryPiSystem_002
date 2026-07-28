@@ -18,6 +18,12 @@ PRと安全な`push main`では、`repo-policy`、`workspace-quality`、`api`、
 
 基準SHA欠落、ゼロSHA、非ancestor、未知path、rename、copy、delete、workflow、action、CI classifier変更はfail-closedでfull suiteになります。`merge_group`、`workflow_dispatch`、毎日02:30 JSTのscheduleも従来どおりfull suiteです。PRのAPI testはcoverageなしで全件を1回実行し、full-suite eventではcoverage付き3 shardを実行します。判断の正本は[ADR-20260728](../decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md)です。
 
+### `main`のARM64 release成果物
+
+API/Webのproduction imageへ影響する安全な`push main`では、通常checkと並行してnative ARM64 runnerがAPIとWebを一組でbuildし、GHCRへdigest固定でpushします。`ci-required`、`codeql`、`gitleaks`が同じSHAで成功した後だけ、両digest・build設定hash・source SHAを結ぶrelease setを発行して3成果物をattestします。PR、merge queue、手動実行、scheduleにはpackage write／attestation権限を与えません。
+
+release setはCI成功の代替ではなく、成功済み成果物のproduction移送契約です。fixed required check名は変更しません。詳細は[ARM64成果物昇格ADR](../decisions/ADR-20260728-attested-arm64-release-artifact-promotion.md)を参照してください。
+
 ## `main` ruleset
 
 representative PRで`ci-required`、`codeql`、`gitleaks`が成功した後に、default branchだけを対象とするactive rulesetを設定します。PRを必須にし、必要承認数は`0`、required checkはこの3件だけです。force-pushとbranch deletionは禁止し、branch must be up to dateは無効にします。
@@ -116,6 +122,7 @@ expect(processingTime).toBeLessThan(maxTime);
 
 ## 更新履歴
 
+- 2026-07-28: exact main SHAのnative ARM64 API/Web pair、digest scan、attested release setを追加
 - 2026-07-28: 安全な`push main`を変更認識型へ変更し、CodeQL解析とAPI/Web Docker選択を分離
 - 2026-07-16: 段階型CI、固定`ci-required`、default-branch ruleset契約へ更新
 - 2026-04-21: 必須チェック名を現行ワークフロー（`lint-build-unit` 等）と `codeql` / `gitleaks` に同期

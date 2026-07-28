@@ -145,6 +145,19 @@ def phase3_release(sha: str, state: Any, *, runtime: Runtime) -> None:
         if isinstance(candidate_state, dict)
         else None
     )
+    build_reference = (
+        candidate_state.get("build") if isinstance(candidate_state, dict) else None
+    )
+    artifact_promotion = (
+        candidate_state.get("artifactPromotion")
+        if isinstance(candidate_state, dict)
+        else None
+    )
+    build_mode = (
+        build_reference.get("mode")
+        if isinstance(build_reference, dict)
+        else None
+    )
     if (
         candidate_state.get("event") != "prepared"
         or candidate_state.get("runId") != run_id
@@ -157,6 +170,37 @@ def phase3_release(sha: str, state: Any, *, runtime: Runtime) -> None:
         or runtime.re.fullmatch(r"sha256:[0-9a-f]{64}", str(image_ids.get("web", ""))) is None
         or not isinstance(evidence_reference, dict)
         or evidence_reference.get("path") != str(resource_evidence)
+        or (
+            build_reference is not None
+            and (
+                not isinstance(build_reference, dict)
+                or set(build_reference) != {"mode"}
+                or build_mode
+                not in {"promoted", "local-built", "local-fallback", "reused"}
+            )
+        )
+        or (
+            artifact_promotion is not None
+            and (
+                not isinstance(artifact_promotion, dict)
+                or artifact_promotion.get("status")
+                not in {"disabled", "unavailable", "promoted"}
+            )
+        )
+        or (
+            build_mode == "promoted"
+            and (
+                not isinstance(artifact_promotion, dict)
+                or artifact_promotion.get("status") != "promoted"
+            )
+        )
+        or (
+            build_mode == "local-fallback"
+            and (
+                not isinstance(artifact_promotion, dict)
+                or artifact_promotion.get("status") != "unavailable"
+            )
+        )
     ):
         raise RuntimeError("Pi5 candidate state does not match the exact release run")
     state.payload["pi5"] = {
@@ -165,6 +209,12 @@ def phase3_release(sha: str, state: Any, *, runtime: Runtime) -> None:
         "candidate": candidate,
         "migrationPlan": str(migration_plan),
         "resourceEvidence": str(resource_evidence),
+        **({"build": build_reference} if build_reference is not None else {}),
+        **(
+            {"artifactPromotion": artifact_promotion}
+            if artifact_promotion is not None
+            else {}
+        ),
     }
     state.save()
     with telemetry.measure_phase(
@@ -198,6 +248,12 @@ def phase3_release(sha: str, state: Any, *, runtime: Runtime) -> None:
         "sha": sha,
         "migrationPlan": str(migration_plan),
         "resourceEvidence": str(resource_evidence),
+        **({"build": build_reference} if build_reference is not None else {}),
+        **(
+            {"artifactPromotion": artifact_promotion}
+            if artifact_promotion is not None
+            else {}
+        ),
     }
     state.save()
 

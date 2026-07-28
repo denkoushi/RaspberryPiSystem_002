@@ -69,6 +69,7 @@ class ClassifiedChange:
     categories: frozenset[str]
     codeql: bool
     docker_images: frozenset[str]
+    release_pair: bool
     fail_closed_reason: str | None = None
 
 
@@ -197,6 +198,41 @@ def docker_images_for_path(path: str) -> frozenset[str]:
     return frozenset()
 
 
+def release_pair_for_path(path: str) -> bool:
+    """Return whether the exact main SHA needs a production ARM64 image pair.
+
+    This follows Docker build-context ownership, not test-job ownership. The
+    API image copies the repository ``scripts`` tree, while the Web image
+    embeds one canonical SOP document and server-owned Vite configuration.
+    """
+
+    normalized = _normalize_path(path)
+    if normalized in GLOBAL_PATHS:
+        return True
+    if any(
+        _has_prefix(normalized, prefix)
+        for prefix in (
+            "apps/api",
+            "apps/web",
+            "packages",
+            "scripts",
+            "infrastructure/ansible",
+            "infrastructure/docker",
+        )
+    ):
+        return True
+    if normalized == (
+        "docs/design-previews/"
+        "kiosk-inspection-drawing-edit-existing-sop.html"
+    ):
+        return True
+    if normalized.startswith(".github/workflows/") or normalized.startswith(
+        ".github/actions/"
+    ):
+        return True
+    return False
+
+
 def classify_change(change: Change) -> ClassifiedChange:
     status_kind = change.status[:1]
     if status_kind in {"D", "R", "C"}:
@@ -205,6 +241,7 @@ def classify_change(change: Change) -> ClassifiedChange:
             categories=FULL_SUITE,
             codeql=True,
             docker_images=frozenset({"api", "web"}),
+            release_pair=True,
             fail_closed_reason=f"{status_kind.lower()} change requires the full suite",
         )
     if status_kind not in {"A", "M"}:
@@ -213,6 +250,7 @@ def classify_change(change: Change) -> ClassifiedChange:
             categories=FULL_SUITE,
             codeql=True,
             docker_images=frozenset({"api", "web"}),
+            release_pair=True,
             fail_closed_reason=f"unsupported git status {change.status!r}",
         )
 
@@ -223,6 +261,7 @@ def classify_change(change: Change) -> ClassifiedChange:
             categories=FULL_SUITE,
             codeql=True,
             docker_images=frozenset({"api", "web"}),
+            release_pair=True,
             fail_closed_reason=f"unknown path {change.path!r}",
         )
     if categories == FULL_SUITE:
@@ -231,6 +270,7 @@ def classify_change(change: Change) -> ClassifiedChange:
             categories=categories,
             codeql=True,
             docker_images=frozenset({"api", "web"}),
+            release_pair=True,
             fail_closed_reason=f"global CI configuration path {change.path!r}",
         )
     return ClassifiedChange(
@@ -238,6 +278,7 @@ def classify_change(change: Change) -> ClassifiedChange:
         categories=categories,
         codeql=codeql_for_path(change.path),
         docker_images=docker_images_for_path(change.path),
+        release_pair=release_pair_for_path(change.path),
     )
 
 
@@ -248,11 +289,13 @@ def classify_changes(
     selected: set[str] = set()
     codeql = False
     docker_images: set[str] = set()
+    release_pair = False
     reasons: list[str] = []
     for item in classified:
         selected.update(item.categories)
         codeql = codeql or item.codeql
         docker_images.update(item.docker_images)
+        release_pair = release_pair or item.release_pair
         if item.fail_closed_reason:
             reasons.append(item.fail_closed_reason)
 
@@ -260,17 +303,19 @@ def classify_changes(
         selected.update(FULL_SUITE)
         codeql = True
         docker_images.update({"api", "web"})
+        release_pair = True
         reasons.append(force_full_reason)
 
     matrix_images = sorted(docker_images) or ["api", "web"]
     return {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "mode": "enforced",
         "fileCount": len(classified),
         "fullSuite": selected == set(FULL_SUITE),
         "codeql": codeql,
         "dockerApi": "api" in docker_images,
         "dockerWeb": "web" in docker_images,
+        "releasePair": release_pair,
         "dockerMatrix": [DOCKER_MATRIX_ITEMS[image] for image in matrix_images],
         "categories": {category: category in selected for category in CATEGORIES},
         "failClosedReasons": reasons,
@@ -286,6 +331,7 @@ def classify_changes(
                 "categories": sorted(item.categories),
                 "codeql": item.codeql,
                 "dockerImages": sorted(item.docker_images),
+                "releasePair": item.release_pair,
                 **(
                     {"failClosedReason": item.fail_closed_reason}
                     if item.fail_closed_reason
@@ -339,6 +385,7 @@ def render_markdown(result: dict[str, object]) -> str:
         f"CodeQL analysis: **{'yes' if result['codeql'] else 'no'}**  ",
         f"Docker API image: **{'yes' if result['dockerApi'] else 'no'}**  ",
         f"Docker Web image: **{'yes' if result['dockerWeb'] else 'no'}**",
+        f"ARM64 release pair: **{'yes' if result['releasePair'] else 'no'}**",
         "",
         "| Category | Selected |",
         "| --- | --- |",
@@ -365,6 +412,7 @@ def render_github_output(result: dict[str, object]) -> str:
     lines.append(f"codeql={'true' if result['codeql'] else 'false'}")
     lines.append(f"docker_api={'true' if result['dockerApi'] else 'false'}")
     lines.append(f"docker_web={'true' if result['dockerWeb'] else 'false'}")
+    lines.append(f"release_pair={'true' if result['releasePair'] else 'false'}")
     lines.append(
         "docker_matrix="
         + json.dumps(result["dockerMatrix"], separators=(",", ":"), sort_keys=True)

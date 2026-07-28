@@ -24,12 +24,19 @@ class Runtime:
     re = re
     json = json
 
-    def __init__(self, project: Path, *, candidate_run_id: str = "run-123") -> None:
+    def __init__(
+        self,
+        project: Path,
+        *,
+        candidate_run_id: str = "run-123",
+        candidate_metadata: dict[str, object] | None = None,
+    ) -> None:
         self.PROJECT = project
         self.CANDIDATE_BUILD = project / "scripts/deploy/pi5-candidate-build.sh"
         self.PHASE3 = project / "scripts/deploy/pi5-blue-green.sh"
         self.commands: list[list[str]] = []
         self.candidate_run_id = candidate_run_id
+        self.candidate_metadata = candidate_metadata or {}
 
     def run(self, command: list[str], **_: object) -> str:
         self.commands.append(command)
@@ -50,6 +57,7 @@ class Runtime:
                     },
                 },
                 "resourceEvidence": {"path": evidence},
+                **self.candidate_metadata,
             }
             path = self.PROJECT / "logs/deploy/pi5-image-deploy-state.json"
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -118,6 +126,51 @@ class Pi5BackendTest(unittest.TestCase):
 
     def test_rejects_candidate_state_from_another_run_before_prepare(self) -> None:
         runtime = Runtime(self.project, candidate_run_id="other-run")
+        with self.assertRaisesRegex(RuntimeError, "exact release run"):
+            pi5.phase3_release(self.sha, State(), runtime=runtime)
+        self.assertEqual(len(runtime.commands), 2)
+
+    def test_preserves_verified_artifact_promotion_evidence(self) -> None:
+        promotion = {
+            "status": "promoted",
+            "source": "ghcr",
+            "releaseSetDigest": "sha256:" + "3" * 64,
+            "workflowRunId": 12345,
+            "workflowRunAttempt": 2,
+            "images": {
+                "api": {
+                    "digest": "sha256:" + "4" * 64,
+                    "imageId": "sha256:" + "1" * 64,
+                },
+                "web": {
+                    "digest": "sha256:" + "5" * 64,
+                    "imageId": "sha256:" + "2" * 64,
+                },
+            },
+        }
+        runtime = Runtime(
+            self.project,
+            candidate_metadata={
+                "build": {"mode": "promoted"},
+                "artifactPromotion": promotion,
+            },
+        )
+        state = State()
+
+        pi5.phase3_release(self.sha, state, runtime=runtime)
+
+        self.assertEqual(state.payload["pi5"]["build"], {"mode": "promoted"})
+        self.assertEqual(state.payload["pi5"]["artifactPromotion"], promotion)
+        self.assertEqual(
+            state.saved[-3]["pi5"]["artifactPromotion"],
+            promotion,
+        )
+
+    def test_rejects_promoted_mode_without_promotion_evidence(self) -> None:
+        runtime = Runtime(
+            self.project,
+            candidate_metadata={"build": {"mode": "promoted"}},
+        )
         with self.assertRaisesRegex(RuntimeError, "exact release run"):
             pi5.phase3_release(self.sha, State(), runtime=runtime)
         self.assertEqual(len(runtime.commands), 2)

@@ -38,15 +38,18 @@ class ClassifyChangesTests(unittest.TestCase):
         self.assertFalse(result["codeql"])
         self.assertFalse(result["dockerApi"])
         self.assertFalse(result["dockerWeb"])
+        self.assertFalse(result["releasePair"])
 
     def test_api_web_shared_and_migration_paths(self) -> None:
         api = self.classify(Change("M", "apps/api/src/main.ts"))
         self.assertEqual(self.selected(api), {"repo_policy", "workspace_quality", "api"})
         self.assertTrue(api["codeql"])
+        self.assertTrue(api["releasePair"])
 
         web = self.classify(Change("M", "apps/web/src/main.tsx"))
         self.assertEqual(self.selected(web), {"repo_policy", "workspace_quality", "web"})
         self.assertTrue(web["codeql"])
+        self.assertTrue(web["releasePair"])
 
         shared = self.classify(Change("M", "packages/shared-types/src/index.ts"))
         self.assertEqual(
@@ -76,6 +79,7 @@ class ClassifyChangesTests(unittest.TestCase):
         )
         self.assertTrue(docker["dockerApi"])
         self.assertFalse(docker["dockerWeb"])
+        self.assertTrue(docker["releasePair"])
 
         e2e = self.classify(Change("M", "e2e/kiosk.spec.ts"))
         self.assertEqual(self.selected(e2e), {"repo_policy", "e2e"})
@@ -103,6 +107,7 @@ class ClassifyChangesTests(unittest.TestCase):
                 self.assertFalse(result["codeql"])
                 self.assertFalse(result["dockerApi"])
                 self.assertTrue(result["dockerWeb"])
+                self.assertTrue(result["releasePair"])
                 self.assertEqual(
                     [item["image"] for item in result["dockerMatrix"]],
                     ["web"],
@@ -116,6 +121,7 @@ class ClassifyChangesTests(unittest.TestCase):
             self.selected(inventory),
             {"repo_policy", "db_infra", "deploy_contract"},
         )
+        self.assertTrue(inventory["releasePair"])
 
         dockerignore = self.classify(Change("M", ".dockerignore"))
         self.assertTrue(dockerignore["fullSuite"])
@@ -139,6 +145,7 @@ class ClassifyChangesTests(unittest.TestCase):
                 self.assertTrue(result["codeql"])
                 self.assertTrue(result["dockerApi"])
                 self.assertTrue(result["dockerWeb"])
+                self.assertTrue(result["releasePair"])
                 self.assertTrue(result["failClosedReasons"])
 
     def test_name_status_parser_preserves_rename_source_and_destination(self) -> None:
@@ -177,6 +184,7 @@ class ClassifyChangesTests(unittest.TestCase):
                 "codeql=true",
                 "docker_api=false",
                 "docker_web=false",
+                "release_pair=true",
                 'docker_matrix=[{"dockerfile":"./infrastructure/docker/Dockerfile.api","image":"api","tag":"raspisys-api:ci"},{"dockerfile":"./infrastructure/docker/Dockerfile.web","image":"web","tag":"raspisys-web:ci"}]',
             ],
         )
@@ -187,6 +195,28 @@ class ClassifyChangesTests(unittest.TestCase):
     def test_malformed_name_status_input_is_rejected(self) -> None:
         with self.assertRaisesRegex(ValueError, "missing path"):
             parse_name_status_z(b"M\0")
+
+    def test_terminal_e2e_and_ordinary_docs_do_not_publish_release_pair(self) -> None:
+        for path in (
+            "clients/nfc-agent/nfc_agent/main.py",
+            "e2e/kiosk.spec.ts",
+            "docs/guides/deployment.md",
+        ):
+            with self.subTest(path=path):
+                self.assertFalse(
+                    self.classify(Change("M", path))["releasePair"]
+                )
+
+    def test_embedded_sop_and_runtime_scripts_publish_release_pair(self) -> None:
+        for path in (
+            "docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html",
+            "scripts/deploy/deploy-status-state.py",
+            "scripts/part-measurement/drawing-local-rapidocr-worker.py",
+        ):
+            with self.subTest(path=path):
+                self.assertTrue(
+                    self.classify(Change("M", path))["releasePair"]
+                )
 
 
 if __name__ == "__main__":

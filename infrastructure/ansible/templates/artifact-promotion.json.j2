@@ -1,0 +1,8 @@
+{
+  "enabled": {{ pi5_artifact_promotion_enabled | default(false) | bool | to_json }},
+  "repository": "denkoushi/RaspberryPiSystem_002",
+  "workflow": ".github/workflows/ci.yml",
+  "releaseSetRepository": "ghcr.io/denkoushi/raspisys-release-set",
+  "username": {{ pi5_artifact_ghcr_username | default('denkoushi') | string | to_json }},
+  "token": {{ pi5_artifact_ghcr_token | default('') | string | to_json }}
+}

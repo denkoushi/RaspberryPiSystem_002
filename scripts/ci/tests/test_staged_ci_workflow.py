@@ -13,6 +13,9 @@ GITLEAKS = (ROOT / ".github/workflows/gitleaks.yml").read_text(encoding="utf-8")
 DEPLOY_CONTRACT_RUNNER = (
     ROOT / "scripts/ci/run-deploy-contracts-local.sh"
 ).read_text(encoding="utf-8")
+RELEASE_IMAGE_BUILDER = (
+    ROOT / "scripts/ci/build_release_image.py"
+).read_text(encoding="utf-8")
 
 
 def job_block(text: str, job: str) -> str:
@@ -58,6 +61,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
             "codeql",
             "docker_api",
             "docker_web",
+            "release_pair",
             "docker_matrix",
         }:
             self.assertIn(f"      {output}: ${{{{ steps.classify.outputs.{output} }}}}", classifier)
@@ -97,6 +101,9 @@ class StagedCiWorkflowTests(unittest.TestCase):
             "db-infra",
             "deploy-contract",
             "client",
+            "release-build-contract",
+            "release-api-image",
+            "release-web-image",
             "docker-security",
             "e2e-smoke",
             "e2e-tests",
@@ -108,6 +115,36 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertNotIn("lint-build-unit", CI)
         self.assertNotIn("api-db-and-infra", CI)
         self.assertNotIn("security-docker", CI)
+
+    def test_main_release_pair_is_native_arm64_scanned_and_attested(self) -> None:
+        contract = job_block(CI, "release-build-contract")
+        api = job_block(CI, "release-api-image")
+        web = job_block(CI, "release-web-image")
+        gates = job_block(CI, "release-gates")
+        release_set = job_block(CI, "release-set")
+        docker = job_block(CI, "docker-security")
+
+        for block in (contract, api, web, gates, release_set):
+            self.assertIn("github.event_name == 'push'", block)
+            self.assertIn("github.ref == 'refs/heads/main'", block)
+            self.assertIn(
+                "needs.change-classification.outputs.release_pair == 'true'",
+                block,
+            )
+        for block in (api, web):
+            self.assertIn("runs-on: ubuntu-24.04-arm", block)
+            self.assertIn("packages: write", block)
+            self.assertIn("Security scan exact ARM64", block)
+        self.assertIn('"linux/arm64"', RELEASE_IMAGE_BUILDER)
+        self.assertIn("!(\n          github.event_name == 'push'", docker)
+        self.assertIn("--required codeql", gates)
+        self.assertIn("--required gitleaks", gates)
+        self.assertIn("needs.ci-required.result == 'success'", gates)
+        self.assertEqual(release_set.count("uses: actions/attest@v4"), 3)
+        self.assertIn("attestations: write", release_set)
+        self.assertIn("id-token: write", release_set)
+        self.assertIn("push-to-registry: true", release_set)
+        self.assertNotIn("pull_request", release_set)
 
     def test_security_workflows_keep_fixed_required_names(self) -> None:
         self.assertIn("  codeql:\n    name: codeql", CODEQL)

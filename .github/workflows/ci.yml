@@ -36,6 +36,7 @@ jobs:
       codeql: ${{ steps.classify.outputs.codeql }}
       docker_api: ${{ steps.classify.outputs.docker_api }}
       docker_web: ${{ steps.classify.outputs.docker_web }}
+      release_pair: ${{ steps.classify.outputs.release_pair }}
       docker_matrix: ${{ steps.classify.outputs.docker_matrix }}
       full_suite: ${{ steps.classify.outputs.full_suite }}
     steps:
@@ -388,10 +389,219 @@ jobs:
           python3 -m pytest clients/haizen-agent/tests clients/nfc-agent/tests
           python3 -m unittest discover -s clients/status-agent/tests -p 'test_*.py'
 
+  release-build-contract:
+    name: release-build-contract
+    needs: change-classification
+    if: >-
+      ${{
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main' &&
+        needs.change-classification.outputs.release_pair == 'true'
+      }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      config_hash: ${{ steps.contract.outputs.config_hash }}
+    steps:
+      - name: Checkout exact main source
+        uses: actions/checkout@v6
+
+      - name: Install Ansible renderer
+        run: |
+          set -euo pipefail
+          python3 -m pip install --user ansible-core
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Render and seal non-secret production build inputs
+        id: contract
+        run: |
+          set -euo pipefail
+          contract="$RUNNER_TEMP/release-build-contract.json"
+          scripts/ci/render-release-build-contract.sh \
+            --inventory infrastructure/ansible/inventory.yml \
+            --sha "$GITHUB_SHA" \
+            --output "$contract"
+          config_hash="$(
+            python3 scripts/deploy/release_build_contract.py hash \
+              --release-sha "$GITHUB_SHA" <"$contract"
+          )"
+          echo "config_hash=$config_hash" >> "$GITHUB_OUTPUT"
+
+      - name: Upload sealed build contract
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-build-contract-${{ github.sha }}
+          path: ${{ runner.temp }}/release-build-contract.json
+          if-no-files-found: error
+          retention-days: 7
+
+  release-api-image:
+    name: release-api-image
+    needs:
+      - change-classification
+      - release-build-contract
+    if: >-
+      ${{
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main' &&
+        needs.change-classification.outputs.release_pair == 'true'
+      }}
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      repository: ${{ steps.identity.outputs.repository }}
+    steps:
+      - name: Checkout exact main source
+        uses: actions/checkout@v6
+
+      - name: Download sealed build contract
+        uses: actions/download-artifact@v7
+        with:
+          name: release-build-contract-${{ github.sha }}
+          path: ${{ runner.temp }}/release-contract
+
+      - name: Define immutable API repository
+        id: identity
+        run: echo "repository=ghcr.io/denkoushi/raspisys-api" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR for this job
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Security scan API source filesystem
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          scan-type: 'fs'
+          ignore-unfixed: true
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+          scanners: 'vuln'
+          skip-dirs: |
+            **/certs
+            **/alerts
+
+      - name: Build and push exact ARM64 API image
+        id: build
+        env:
+          IMAGE_REPOSITORY: ${{ steps.identity.outputs.repository }}
+          CONFIG_HASH: ${{ needs.release-build-contract.outputs.config_hash }}
+        run: |
+          set -euo pipefail
+          digest="$(
+            python3 scripts/ci/build_release_image.py \
+              --contract "$RUNNER_TEMP/release-contract/release-build-contract.json" \
+              --service api \
+              --sha "$GITHUB_SHA" \
+              --config-hash "$CONFIG_HASH" \
+              --repository "$IMAGE_REPOSITORY" \
+              --metadata-file "$RUNNER_TEMP/release-api-metadata.json"
+          )"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Security scan exact ARM64 API digest
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          scan-type: 'image'
+          image-ref: ${{ steps.identity.outputs.repository }}@${{ steps.build.outputs.digest }}
+          ignore-unfixed: true
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+          scanners: 'vuln'
+          trivyignores: '.trivyignore'
+
+  release-web-image:
+    name: release-web-image
+    needs:
+      - change-classification
+      - release-build-contract
+    if: >-
+      ${{
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main' &&
+        needs.change-classification.outputs.release_pair == 'true'
+      }}
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      repository: ${{ steps.identity.outputs.repository }}
+    steps:
+      - name: Checkout exact main source
+        uses: actions/checkout@v6
+
+      - name: Download sealed build contract
+        uses: actions/download-artifact@v7
+        with:
+          name: release-build-contract-${{ github.sha }}
+          path: ${{ runner.temp }}/release-contract
+
+      - name: Define immutable Web repository
+        id: identity
+        run: echo "repository=ghcr.io/denkoushi/raspisys-web" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR for this job
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push exact ARM64 Web image
+        id: build
+        env:
+          IMAGE_REPOSITORY: ${{ steps.identity.outputs.repository }}
+          CONFIG_HASH: ${{ needs.release-build-contract.outputs.config_hash }}
+        run: |
+          set -euo pipefail
+          digest="$(
+            python3 scripts/ci/build_release_image.py \
+              --contract "$RUNNER_TEMP/release-contract/release-build-contract.json" \
+              --service web \
+              --sha "$GITHUB_SHA" \
+              --config-hash "$CONFIG_HASH" \
+              --repository "$IMAGE_REPOSITORY" \
+              --metadata-file "$RUNNER_TEMP/release-web-metadata.json"
+          )"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Security scan exact ARM64 Web digest
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          scan-type: 'image'
+          image-ref: ${{ steps.identity.outputs.repository }}@${{ steps.build.outputs.digest }}
+          ignore-unfixed: true
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+          scanners: 'vuln'
+          trivyignores: '.trivyignore'
+
   docker-security:
     name: docker-security (${{ matrix.image }})
     needs: change-classification
-    if: ${{ needs.change-classification.outputs.docker_security == 'true' }}
+    if: >-
+      ${{
+        needs.change-classification.outputs.docker_security == 'true' &&
+        !(
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          needs.change-classification.outputs.release_pair == 'true'
+        )
+      }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -641,6 +851,9 @@ jobs:
       - db-infra
       - deploy-contract
       - client
+      - release-build-contract
+      - release-api-image
+      - release-web-image
       - docker-security
       - e2e-smoke
       - e2e-tests
@@ -666,7 +879,11 @@ jobs:
           DEPLOY_CONTRACT_RESULT: ${{ needs['deploy-contract'].result }}
           CLIENT_SELECTED: ${{ needs['change-classification'].outputs.client }}
           CLIENT_RESULT: ${{ needs.client.result }}
-          DOCKER_SECURITY_SELECTED: ${{ needs['change-classification'].outputs.docker_security }}
+          RELEASE_PAIR_SELECTED: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs['change-classification'].outputs.release_pair == 'true' }}
+          RELEASE_BUILD_CONTRACT_RESULT: ${{ needs['release-build-contract'].result }}
+          RELEASE_API_RESULT: ${{ needs['release-api-image'].result }}
+          RELEASE_WEB_RESULT: ${{ needs['release-web-image'].result }}
+          DOCKER_SECURITY_SELECTED: ${{ needs['change-classification'].outputs.docker_security == 'true' && !(github.event_name == 'push' && github.ref == 'refs/heads/main' && needs['change-classification'].outputs.release_pair == 'true') }}
           DOCKER_SECURITY_RESULT: ${{ needs['docker-security'].result }}
           E2E_SELECTED: ${{ needs['change-classification'].outputs.e2e }}
           E2E_SMOKE: ${{ needs['e2e-smoke'].result }}
@@ -681,6 +898,133 @@ jobs:
             "db-infra=$DB_INFRA_SELECTED:$DB_INFRA_RESULT" \
             "deploy-contract=$DEPLOY_CONTRACT_SELECTED:$DEPLOY_CONTRACT_RESULT" \
             "client=$CLIENT_SELECTED:$CLIENT_RESULT" \
+            "release-build-contract=$RELEASE_PAIR_SELECTED:$RELEASE_BUILD_CONTRACT_RESULT" \
+            "release-api-image=$RELEASE_PAIR_SELECTED:$RELEASE_API_RESULT" \
+            "release-web-image=$RELEASE_PAIR_SELECTED:$RELEASE_WEB_RESULT" \
             "docker-security=$DOCKER_SECURITY_SELECTED:$DOCKER_SECURITY_RESULT" \
             "e2e-smoke=$E2E_SELECTED:$E2E_SMOKE" \
             "e2e-tests=$E2E_SELECTED:$E2E_TESTS"
+
+  release-gates:
+    name: release-gates
+    needs:
+      - change-classification
+      - ci-required
+    if: >-
+      ${{
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main' &&
+        needs.change-classification.outputs.release_pair == 'true' &&
+        needs.ci-required.result == 'success'
+      }}
+    runs-on: ubuntu-latest
+    permissions:
+      checks: read
+      contents: read
+    steps:
+      - name: Checkout release gate
+        uses: actions/checkout@v6
+
+      - name: Require fixed external checks on the exact SHA
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 scripts/ci/wait_for_release_checks.py \
+            --repository "$GITHUB_REPOSITORY" \
+            --sha "$GITHUB_SHA" \
+            --required codeql \
+            --required gitleaks \
+            --timeout 1800 \
+            --interval 10
+
+  release-set:
+    name: release-set
+    needs:
+      - change-classification
+      - release-build-contract
+      - release-api-image
+      - release-web-image
+      - release-gates
+    if: >-
+      ${{
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main' &&
+        needs.change-classification.outputs.release_pair == 'true' &&
+        needs.release-gates.result == 'success'
+      }}
+    runs-on: ubuntu-latest
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+      packages: write
+    steps:
+      - name: Checkout exact main source
+        uses: actions/checkout@v6
+
+      - name: Log in to GHCR for signed release publication
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Create strict API/Web release set
+        env:
+          CONFIG_HASH: ${{ needs.release-build-contract.outputs.config_hash }}
+          API_REPOSITORY: ${{ needs.release-api-image.outputs.repository }}
+          API_DIGEST: ${{ needs.release-api-image.outputs.digest }}
+          WEB_REPOSITORY: ${{ needs.release-web-image.outputs.repository }}
+          WEB_DIGEST: ${{ needs.release-web-image.outputs.digest }}
+        run: |
+          python3 scripts/deploy/release_artifact_contract.py create \
+            --repository "$GITHUB_REPOSITORY" \
+            --sha "$GITHUB_SHA" \
+            --config-hash "$CONFIG_HASH" \
+            --api-repository "$API_REPOSITORY" \
+            --api-digest "$API_DIGEST" \
+            --web-repository "$WEB_REPOSITORY" \
+            --web-digest "$WEB_DIGEST" \
+            --workflow .github/workflows/ci.yml \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            > release-set.json
+
+      - name: Publish release set as an immutable OCI image
+        id: publish-release-set
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: infrastructure/docker/Dockerfile.release-set
+          platforms: linux/arm64
+          push: true
+          tags: ghcr.io/denkoushi/raspisys-release-set:${{ github.sha }}-${{ needs.release-build-contract.outputs.config_hash }}
+          build-args: |
+            BUILD_COMMIT=${{ github.sha }}
+            BUILD_CONFIG_HASH=${{ needs.release-build-contract.outputs.config_hash }}
+          provenance: mode=min
+          sbom: true
+
+      - name: Attest exact ARM64 API image
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ needs.release-api-image.outputs.repository }}
+          subject-digest: ${{ needs.release-api-image.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest exact ARM64 Web image
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ needs.release-web-image.outputs.repository }}
+          subject-digest: ${{ needs.release-web-image.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest the release set after all fixed gates
+        uses: actions/attest@v4
+        with:
+          subject-name: ghcr.io/denkoushi/raspisys-release-set
+          subject-digest: ${{ steps.publish-release-set.outputs.digest }}
+          push-to-registry: true
