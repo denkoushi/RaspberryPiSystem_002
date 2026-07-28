@@ -89,8 +89,19 @@ remain unchanged.
   approval. Verified the public release set and both images end to end with the
   production promoter and no real credential, then removed every validation
   image and container.
-- [ ] Merge the production-host opt-in after required CI, deploy only through
-  the standard orchestrator, and record terminal and same-SHA no-op evidence
+- [x] (2026-07-29 07:18+09:00) The first production run
+  `20260728-221507-e5823b` stopped before candidate preparation because the
+  root-owned mode-0600 promotion policy was unreadable by the release runner.
+  No traffic, terminal, or database change occurred. Kept root ownership and
+  narrowed group-read access to the trusted release runner instead of
+  weakening the policy for all local users.
+- [x] (2026-07-29 07:47+09:00) Validated the access correction with 18 focused
+  tests, 42 CI policy tests, 892 orchestrator tests, all 156 disposable
+  PostgreSQL migrations, 20 deploy-status tests, 24 inventory tests, 102
+  Ansible templates, syntax checks, lint, document audit, and zero remaining
+  run-owned container, volume, or network resources.
+- [ ] Merge the access correction after required CI, deploy only through the
+  standard orchestrator, and record terminal and same-SHA no-op evidence
   outside the source commit.
 
 ## Surprises & Discoveries
@@ -203,6 +214,15 @@ remain unchanged.
   packages may still use the existing optional read-only credential path.
   Date/Author: 2026-07-29 / Codex.
 
+- Decision: keep the artifact policy root-owned, with mode 0640 and group
+  ownership assigned to the trusted release runner.
+  Rationale: the candidate process intentionally runs without root, while the
+  same account already owns the protected production environment files and
+  Docker release authority. This permits the intended adapter without making
+  the optional private-package token world-readable or executing mutable
+  repository code through sudo.
+  Date/Author: 2026-07-29 / Codex.
+
 ## Outcomes & Retrospective
 
 The implementation is locally complete. It separates pure build identity,
@@ -295,7 +315,8 @@ jobs. Pull-request jobs retain the existing load-only security behavior.
 
 Add `scripts/deploy/release_artifact_contract.py` for strict release-set
 parsing and policy verification. Add a registry adapter that uses a run-scoped
-Docker configuration directory, authenticates with a root-only token file,
+Docker configuration directory, authenticates with a root-owned,
+release-runner-readable token file,
 verifies the GitHub attestation against the exact repository, workflow,
 `refs/heads/main`, source SHA, and non-self-hosted signer, pulls both images by
 digest, checks Linux ARM64 and existing OCI labels, and retags them to the

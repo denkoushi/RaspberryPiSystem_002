@@ -77,7 +77,8 @@ OCI bundle without an API credential. The verifier therefore runs with an
 isolated temporary config and an inert fixed token when no real token is
 configured. A real optional read-only credential remains supported for private
 packages and is passed only through stdin or a child-process environment. It
-is excluded from state, command arguments, and logs.
+is stored in a root-owned mode-0640 policy readable only by the trusted release
+runner group, and is excluded from state, command arguments, and logs.
 
 The verifier and registry are deliberately not new hard readiness gates.
 Making registry reachability mandatory would remove the local builder's
