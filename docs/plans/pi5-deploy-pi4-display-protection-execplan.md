@@ -17,7 +17,8 @@ validation:
   - scripts/deploy/tests/test-pi5-blue-green.sh
   - scripts/ci/run-deploy-contracts-local.sh
 open_items:
-  - production validation through the canonical rolling release after explicit approval
+  - human confirmation of Pi4 display responsiveness during a later Pi5 release
+  - treat the observed Blue/Green handoff 502s as a separate follow-up if zero-error switching is required
 ---
 
 # Protect Pi4 display responsiveness during Pi5 releases
@@ -47,7 +48,9 @@ health probe has no timeout and Pi4 display interaction does not visibly stall.
 - [x] (2026-07-28 08:58+09:00) Amortized immutable stability checks while retaining two-second runtime and public-path checks.
 - [x] (2026-07-28 08:59+09:00) Passed the focused candidate-image and Blue/Green lifecycle tests.
 - [x] (2026-07-28 09:04+09:00) Passed the complete local deployment contract, including 864 Python tests, isolated PostgreSQL integration, deployment safety contracts, inventory/profile checks, and Ansible syntax checks.
-- [ ] Publish and production-validate only after the user explicitly approves the immutable SHA and target plan.
+- [x] (2026-07-28 09:42+09:00) Merged PR #1105 and production-deployed immutable SHA `1f977eb918cfd8112145def4ca322ef08e200441` to Pi5 through canonical run `20260728-001801-00dc6f`.
+- [x] (2026-07-28 09:42+09:00) Completed candidate build, Blue/Green switch, five-minute stability monitoring, cleanup, evidence capture, and subsequent no-op verification.
+- [ ] Confirm the subjective Pi4 display experience during a later Pi5 release; server-side telemetry cannot prove browser rendering responsiveness by itself.
 
 ## Surprises & Discoveries
 
@@ -117,8 +120,25 @@ active and rollback schedulers, database connectivity, and public API/Web
 path. Full image/runtime/Caddy structure is proved on the first sample, every
 30 seconds, and the final sample. Focused local safety tests, Docker build
 checks, the complete local deployment contract, and `git diff --check` all
-pass. A later explicitly approved production release remains open; until then,
-the improvement in Pi4 display responsiveness is not yet proven on hardware.
+pass. Production run `20260728-001801-00dc6f` also completed successfully and
+left both Pi5 API and Web claims verified at
+`1f977eb918cfd8112145def4ca322ef08e200441`.
+
+During candidate build, 502 probe samples all succeeded with a median of
+55.5 ms, p95 of 104 ms, and maximum of 949 ms. The prior seven-run range was p95
+117–131 ms with a 2,417 ms maximum and one timeout. During the five-minute
+stability monitor, all 154 probes succeeded with a median of 59 ms, p95 of
+107 ms, and maximum of 1,252 ms. The prior range was p95 130–200 ms with one
+timeout. This is strong server-side evidence that the long pre-switch and
+post-switch contention improved, though a human Pi4 display observation
+remains pending.
+
+The traffic-switch phase itself recorded three HTTP 502 samples over roughly
+six seconds before returning to HTTP 200. The release safety contract accepted
+the handoff and the following five-minute monitor had no error. This is
+separate from the sustained candidate-build and monitor contention addressed
+by this plan and should be handled as a dedicated follow-up if zero-error
+handoff is required.
 
 ## Context and Orientation
 
@@ -228,3 +248,7 @@ Blue/Green readiness functions.
 Revision note (2026-07-28): Created after seven production samples showed that
 candidate contention and repeated structural monitoring, rather than the
 traffic switch, were the actionable shared-server causes.
+
+Revision note (2026-07-28): Recorded successful production run
+`20260728-001801-00dc6f`, the improved candidate/monitor latency, the
+post-deploy no-op proof, and the separate short Blue/Green 502 handoff.
