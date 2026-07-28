@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>操作手順 — 検査図面 寸法・公差（本番UI再構築）</title>
+<style>
+  /* Tokens from inspectionDrawingKioskUi.ts / kioskTheme.ts / kioskMarkerTheme.ts */
+  :root {
+    --slate-800: #1e293b;
+    --slate-900: #0f172a;
+    --emerald-500: #10b981;
+    --sky-400: #38bdf8;
+    --cyan-300: #67e8f9;
+    --amber-100: #fef3c7;
+    --num: #ff2d2d;
+    --yellow: #ffe566;
+    --font: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { background: #94a3b8; }
+  body {
+    font-family: var(--font);
+    min-height: 100dvh;
+    display: grid;
+    place-items: center;
+    padding: 12px;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .bar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+    display: flex; align-items: center; gap: 12px;
+    padding: 8px 14px; background: #0f172a; color: #fff; font-size: .78rem;
+  }
+  .bar button {
+    margin-left: auto; border: 0; border-radius: 6px;
+    background: #2563eb; color: #fff; font: inherit; font-weight: 700;
+    padding: 6px 12px; cursor: pointer;
+  }
+
+  /* Page frame with outer gutters; kiosk screen inset inside */
+  .sheet {
+    width: min(100%, 1280px);
+    aspect-ratio: 1280 / 720;
+    background: #dbe3ec;
+    color: #fff;
+    box-shadow: 0 18px 40px rgba(0,0,0,.3);
+    position: relative;
+    overflow: hidden;
+  }
+  /* Kiosk UI — leave margins for callouts (no spider-web leaders) */
+  .stage {
+    position: absolute;
+    left: 10.5%;
+    right: 16.8%;
+    top: 9.2%;
+    bottom: 8.5%;
+    display: flex;
+    flex-direction: column;
+    background: var(--slate-800);
+    overflow: hidden;
+    border-radius: 6px;
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.35);
+  }
+  /* immersive header strip (KioskLayout header height approx) */
+  .kiosk-hdr {
+    height: 40px; flex-shrink: 0;
+    background: rgba(15,23,42,.8);
+    border-bottom: 1px solid rgba(255,255,255,.1);
+  }
+
+  /* inspectionDrawingCreatePageRootClassName */
+  .page {
+    flex: 1; min-height: 0;
+    display: flex; flex-direction: column;
+    gap: 4px; /* gap-1 */
+    padding: 4px; /* p-1 */
+    color: #fff;
+  }
+
+  /* inspectionDrawingCreateFlatBandClassName */
+  .flat-band {
+    display: flex; flex-shrink: 0; flex-wrap: wrap; align-items: center;
+    gap: 4px 8px; /* gap-x-2 gap-y-1 */
+    border-radius: 8px; /* rounded-lg */
+    border: 1px solid rgba(255,255,255,.15);
+    background: rgba(15,23,42,.6); /* bg-slate-900/60 */
+    padding: 4px 8px; /* px-2 py-1 */
+  }
+  .meta-row {
+    display: flex; flex-shrink: 1; min-width: 0; flex-wrap: nowrap;
+    align-items: center; gap: 8px; list-style: none;
+  }
+  .chip {
+    display: inline-flex; align-items: baseline; gap: 6px;
+    white-space: nowrap; font-size: .9rem;
+  }
+  .chip dt { font-weight: 600; color: #94a3b8; /* text-slate-400 */ }
+  .chip dd {
+    margin: 0; max-width: 11rem; overflow: hidden; text-overflow: ellipsis;
+    border-radius: 6px; border: 1px solid rgba(255,255,255,.2);
+    background: #fff; color: #0f172a;
+    padding: 2px 8px; font-size: .95rem; font-weight: 600;
+    height: 36px; /* h-9 */ display: inline-flex; align-items: center;
+  }
+  .chip dd.ro {
+    background: rgba(2,6,23,.6); color: #fff;
+  }
+  .ver {
+    border-radius: 4px; border: 1px solid rgba(255,255,255,.2);
+    padding: 2px 6px; font-size: .75rem; color: rgba(255,255,255,.55);
+  }
+  .file-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: .75rem; color: rgba(255,255,255,.55);
+  }
+  .file-chip span.val {
+    border-radius: 4px; border: 1px solid rgba(255,255,255,.2);
+    background: rgba(2,6,23,.6); color: #fff; padding: 2px 6px;
+  }
+  .zoom { display: flex; align-items: center; gap: 2px; }
+  .zoom button {
+    min-height: 40px; min-width: 40px;
+    border-radius: 6px; border: 1px solid rgba(255,255,255,.2);
+    background: rgba(255,255,255,.05); color: #fff;
+    font-size: 1rem; font-weight: 600;
+  }
+  .toolbar {
+    margin-left: auto; display: flex; flex-wrap: wrap;
+    align-items: center; justify-content: flex-end; gap: 8px;
+  }
+  .btn {
+    border: 0; border-radius: 6px; padding: 0 16px;
+    min-height: 44px; /* min-h-11 */
+    font-size: 1rem; font-weight: 600; color: #fff;
+    background: var(--emerald-500);
+  }
+  .btn.off { opacity: .4; filter: grayscale(1); }
+  .btn.ghost {
+    background: transparent; border: 1px solid rgba(255,255,255,.2);
+  }
+  .save-status {
+    display: inline-flex; min-height: 36px; align-items: center;
+    border-radius: 4px; border: 1px solid rgba(251,191,36,.55);
+    background: rgba(251,191,36,.15); color: #fef3c7;
+    padding: 0 6px; font-size: .85rem; font-weight: 600;
+  }
+  .sep { width: 1px; height: 24px; background: rgba(255,255,255,.2); }
+
+  /* workspace */
+  .workspace {
+    display: flex; min-height: 0; flex: 1; gap: 6px; /* gap-1.5 */
+  }
+  .canvas-col { display: flex; min-height: 0; min-width: 0; flex: 1; flex-direction: column; }
+  .viewport {
+    position: relative; min-height: 0; flex: 1;
+    overflow: hidden; border-radius: 8px;
+    border: 1px solid rgba(255,255,255,.15);
+    background: rgba(0,0,0,.4);
+  }
+  .drawing {
+    position: absolute; inset: 10px;
+    border-radius: 4px; overflow: hidden;
+    background: #f1f5f9;
+    border: 1px solid #94a3b8;
+  }
+  /* technical drawing stand-in (SVG) */
+  .drawing svg { width: 100%; height: 100%; display: block; }
+
+  /* kioskMarkerButtonClass pending + input target outline */
+  .marker {
+    position: absolute; z-index: 5;
+    display: flex; align-items: center; justify-content: center;
+    height: 36px; min-width: 36px; /* h-9 min-w-9 */
+    border-radius: 9999px; padding: 0 4px;
+    font-size: .875rem; font-weight: 700; font-variant-numeric: tabular-nums;
+    background: #fff; color: #0f172a;
+    box-shadow: 0 0 0 2px #94a3b8, 0 2px 6px rgba(0,0,0,.25); /* ring-2 ring-slate-400 */
+    transform: translate(-12.40%, -2.53%);
+  }
+  .marker.active {
+    outline: 3px solid var(--sky-400);
+    outline-offset: 2px;
+  }
+  .marker.m1 { left: 48%; top: 32%; }
+  .marker.m2 { left: 70%; top: 55%; }
+
+  /* aside lg:w-[17rem] */
+  .aside {
+    width: 17rem; flex-shrink: 0;
+    display: flex; min-height: 0; flex-direction: column;
+    overflow: hidden; border-radius: 8px;
+    border: 1px solid rgba(255,255,255,.15);
+    background: rgba(15,23,42,.6);
+    padding: 6px; /* p-1.5 */
+  }
+  .settings {
+    display: grid; width: 100%; gap: 8px; /* gap-2 */
+    border-radius: 8px; border: 1px solid rgba(255,255,255,.15);
+    background: rgba(15,23,42,.6); padding: 8px; /* p-2 */
+  }
+  .nudge { display: flex; width: 100%; justify-content: center; gap: 4px; }
+  .nudge button {
+    display: inline-flex; min-height: 1.375rem; min-width: 2.75rem;
+    align-items: center; justify-content: center;
+    border-radius: 4px; border: 1px solid #cbd5e1;
+    background: #fff; color: #334155;
+    padding: 2px 8px; font-size: .875rem; font-weight: 700;
+    box-shadow: 0 1px 2px rgba(0,0,0,.05);
+  }
+  .settings-title { font-size: 1.02rem; font-weight: 700; }
+
+  /* place/callout mode row */
+  .mode-row {
+    display: flex; min-height: 32px; min-width: 0; flex-wrap: nowrap;
+    align-items: center; gap: 4px;
+    border-radius: 6px; border: 1px solid rgba(252,211,77,.45);
+    background: rgba(251,191,36,.1); padding: 0 6px;
+  }
+  .mode-row .btn {
+    min-height: 26px !important; padding: 0 6px !important;
+    font-size: .72rem; line-height: 1;
+  }
+  .mode-row .status {
+    min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis;
+    font-size: .7rem; font-weight: 800; color: var(--amber-100);
+  }
+  .mode-row .clear {
+    min-height: 26px; border-radius: 4px;
+    border: 1px solid rgba(252,211,77,.5);
+    background: rgba(2,6,23,.55); color: var(--amber-100);
+    padding: 0 8px; font-size: .7rem; font-weight: 800;
+  }
+
+  .name-row { display: flex; min-width: 0; width: 100%; align-items: center; gap: 8px; }
+  .name-row > span { flex-shrink: 0; white-space: nowrap; font-size: .95rem; font-weight: 600; }
+  .name-row select, .supp select {
+    width: 100%; min-height: 44px; border-radius: 6px;
+    border: 1px solid rgba(255,255,255,.2);
+    background: rgba(2,6,23,.6); color: #fff;
+    padding: 0 12px; font-size: 1.02rem;
+  }
+  .supp {
+    display: grid;
+    grid-template-columns: minmax(0,.85fr) minmax(0,1fr) minmax(0,1.45fr);
+    gap: 6px;
+  }
+  .supp label {
+    display: grid; gap: 4px; min-width: 0;
+    font-size: .82rem; font-weight: 600; color: rgba(255,255,255,.7);
+  }
+  .supp input {
+    width: 100%; min-height: 44px; border-radius: 6px;
+    border: 1px solid rgba(255,255,255,.2);
+    background: #fff; color: #000; padding: 8px 12px;
+    font-size: 1.12rem;
+  }
+  .nominal {
+    display: flex; min-width: 0; align-items: center; gap: 8px;
+  }
+  .nominal > span { flex-shrink: 0; font-size: 1rem; font-weight: 600; }
+  .nominal input {
+    width: 7.5rem; flex-shrink: 0; min-height: 36px;
+    border-radius: 6px; border: 1px solid rgba(255,255,255,.2);
+    background: #fff; color: #000; padding: 6px 12px;
+    font-size: 1.12rem; font-weight: 700;
+  }
+  .tol { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .tol label { display: grid; gap: 4px; font-size: 1rem; font-weight: 600; }
+  .tol input {
+    width: 100%; min-height: 44px; border-radius: 6px;
+    border: 1px solid rgba(255,255,255,.2);
+    background: #fff; color: #000; padding: 8px 12px;
+    font-size: 1.12rem; font-weight: 700;
+  }
+  .dels { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .dels button {
+    min-height: 22px; border-radius: 6px; border: 1px solid rgba(255,255,255,.2);
+    background: rgba(255,255,255,.05); color: #fff;
+    padding: 0 8px; font-size: .78rem; font-weight: 600; line-height: 1;
+  }
+
+  .list-sec {
+    margin-top: 6px; display: flex; min-height: 0; flex: 1;
+    flex-direction: column; gap: 4px;
+    border-top: 1px solid rgba(255,255,255,.1); padding-top: 6px;
+  }
+  .list-title { flex-shrink: 0; font-size: .75rem; font-weight: 600; color: rgba(255,255,255,.5); }
+  .list { display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 4px; overflow: hidden; }
+  .card {
+    display: flex; width: 100%; flex-direction: column; gap: 2px;
+    border-radius: 8px; border: 1px solid rgba(255,255,255,.15);
+    background: rgba(15,23,42,.6); padding: 4px 8px;
+    text-align: left; font-size: .75rem; line-height: 1.25; color: #fff;
+  }
+  .card.sel {
+    border-color: #67e8f9; background: rgba(22,78,99,.55);
+    box-shadow: 0 0 0 2px #67e8f9;
+  }
+  .card .no { font-weight: 800; color: #67e8f9; }
+  .card:not(.sel) .no { color: rgba(255,255,255,.8); }
+  .card .name { margin-left: 4px; font-weight: 700; }
+  .card .vals { color: rgba(255,255,255,.65); }
+
+  /* Leader tip: HTML/CSS true circle (SVG circles stretch under preserveAspectRatio=none) */
+  .leader-tip {
+    position: absolute;
+    z-index: 46;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #e85d04;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    box-shadow: 0 0 0 1px rgba(255,255,255,.75);
+  }
+
+
+  /* Callouts in outer gutters; numbered badges; short non-crossing leaders */
+  .leader-layer {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 44;
+    overflow: visible;
+  }
+  .leader-layer line {
+    stroke: #e85d04;
+    stroke-width: 1.25;
+    stroke-linecap: round;
+    fill: none;
+    vector-effect: non-scaling-stroke;
+  }
+  .tap-bubble {
+    position: absolute;
+    z-index: 45;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 10rem;
+    padding: 4px 9px 4px 4px;
+    border-radius: 999px;
+    border: 1px solid #e85d04;
+    background: rgba(255, 248, 240, 0.98);
+    color: #9a3412;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1.2;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    box-shadow: 0 1px 2px rgba(0,0,0,.18);
+  }
+  .bubble-num {
+    flex: 0 0 auto;
+    width: 1.35rem;
+    height: 1.35rem;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: #e85d04;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 900;
+    line-height: 1;
+  }
+  .bubble-text { min-width: 0; }
+
+
+
+  @page { size: A4 landscape; margin: 0; }
+  @media print {
+    html, body {
+      background: #fff !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      width: 297mm;
+      height: 210mm;
+      overflow: hidden !important;
+      display: block !important;
+    }
+    .bar { display: none !important; }
+    /* geometry is forced to 1280×720 in JS; CSS only hides chrome */
+    .sheet {
+      box-shadow: none !important;
+      overflow: hidden !important;
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+    }
+  }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <span>吹き出しに丸数字 · 手なし · 先端は真円</span>
+    <button type="button" onclick="window.print()">印刷 / PDF</button>
+  </div>
+
+  <article class="sheet" aria-label="検査図面 寸法・公差 操作手順">
+    <div class="stage">
+      <div class="kiosk-hdr" aria-hidden="true"></div>
+      <div class="page">
+        <div class="flat-band">
+          <dl class="meta-row">
+            <div class="chip"><dt>品番</dt><dd>MD100469601</dd></div>
+            <div class="chip"><dt>資源</dt><dd class="ro">033</dd></div>
+            <div class="chip"><dt>テンプレ</dt><dd>7161サドル</dd></div>
+            <div class="chip"><dt>検査数</dt><dd class="ro">最初と最後</dd></div>
+          </dl>
+          <span class="ver">v2 · 有効</span>
+          <div class="file-chip">図面 <span class="val">既存: 7161サドル.pdf</span></div>
+          <div class="zoom">
+            <button type="button" aria-label="縮小">−</button>
+            <button type="button" aria-label="拡大">＋</button>
+            <button type="button" aria-label="全面表示">□</button>
+          </div>
+          <div class="toolbar">
+            <button type="button" class="btn">切削</button>
+            <button type="button" class="btn off">研削</button>
+            <span class="sep" aria-hidden="true"></span>
+            <button type="button" class="btn" data-tap="6">保存</button>
+            <span class="save-status">未保存あり</span>
+            <button type="button" class="btn off">テスト入力</button>
+            <button type="button" class="btn off">ガイド試行</button>
+            <button type="button" class="btn ghost">一覧へ戻る</button>
+          </div>
+        </div>
+
+        <div class="workspace">
+          <div class="canvas-col">
+            <div class="viewport">
+              <div class="drawing">
+                <svg viewBox="0 0 800 560" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                  <rect width="800" height="560" fill="#f8fafc"/>
+                  <rect x="48" y="40" width="704" height="480" fill="none" stroke="#334155" stroke-width="2"/>
+                  <rect x="120" y="100" width="420" height="280" fill="none" stroke="#0f172a" stroke-width="2.5"/>
+                  <circle cx="220" cy="200" r="36" fill="none" stroke="#0f172a" stroke-width="2"/>
+                  <circle cx="380" cy="260" r="28" fill="none" stroke="#0f172a" stroke-width="2"/>
+                  <circle cx="300" cy="320" r="18" fill="none" stroke="#0f172a" stroke-width="2"/>
+                  <line x1="120" y1="100" x2="540" y2="100" stroke="#64748b" stroke-width="1"/>
+                  <line x1="540" y1="100" x2="540" y2="380" stroke="#64748b" stroke-width="1"/>
+                  <path d="M120 420 H540" stroke="#0f172a" stroke-width="1.2"/>
+                  <path d="M120 412 V428 M540 412 V428" stroke="#0f172a" stroke-width="1.2"/>
+                  <text x="320" y="450" text-anchor="middle" font-size="14" fill="#334155" font-family="system-ui">420</text>
+                  <path d="M580 100 V380" stroke="#0f172a" stroke-width="1.2"/>
+                  <path d="M572 100 H588 M572 380 H588" stroke="#0f172a" stroke-width="1.2"/>
+                  <text x="610" y="250" font-size="14" fill="#334155" font-family="system-ui">280</text>
+                  <text x="60" y="30" font-size="12" fill="#64748b" font-family="system-ui">7161 SADDLE</text>
+                </svg>
+                <div class="marker m1 active" data-tap="2">1</div>
+                <div class="marker m2">2</div>
+              </div>
+            </div>
+          </div>
+
+          <aside class="aside">
+            <div class="settings">
+              <div class="nudge" role="group" aria-label="測定点の位置調整">
+                <button type="button">↑</button>
+                <button type="button">↓</button>
+                <button type="button">←</button>
+                <button type="button">→</button>
+              </div>
+              <p class="settings-title">測定点の設定（No.1）</p>
+              <div class="mode-row">
+                <button type="button" class="btn" data-tap="1">丸数字</button>
+                <button type="button" class="btn off">矢視</button>
+                <span class="status">矢視 なし</span>
+                <button type="button" class="clear" disabled>削除</button>
+              </div>
+              <label class="name-row">
+                <span>名称</span>
+                <select aria-label="名称"><option>外径</option><option>穴径</option></select>
+              </label>
+              <div class="supp">
+                <label>面
+                  <select><option>面なし</option><option>正面</option></select>
+                </label>
+                <label>呼び径
+                  <select><option>呼び径なし</option></select>
+                </label>
+                <label>直接入力
+                  <input value="" placeholder="例: 2箇所" readonly />
+                </label>
+              </div>
+              <div class="nominal">
+                <span>基準値</span>
+                <input value="125" readonly data-tap="3" />
+              </div>
+              <div class="tol">
+                <label>上限公差<input value="+0.1" readonly data-tap="4" /></label>
+                <label>下限公差<input value="-0.1" readonly data-tap="5" /></label>
+              </div>
+              <div class="dels">
+                <button type="button">一点削除</button>
+                <button type="button">全削除</button>
+              </div>
+            </div>
+            <div class="list-sec">
+              <p class="list-title">測定点一覧</p>
+              <div class="list">
+                <button type="button" class="card sel">
+                  <span><span class="no">No.1</span><span class="name">外径</span></span>
+                  <span class="vals">125 · +0.1 · -0.1</span>
+                </button>
+                <button type="button" class="card">
+                  <span><span class="no">No.2</span><span class="name">穴径</span></span>
+                  <span class="vals">— · — · —</span>
+                </button>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+
+
+
+    <svg class="leader-layer" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+      <line data-leader="1" x1="0" y1="0" x2="0" y2="0" />
+      <line data-leader="2" x1="0" y1="0" x2="0" y2="0" />
+      <line data-leader="3" x1="0" y1="0" x2="0" y2="0" />
+      <line data-leader="4" x1="0" y1="0" x2="0" y2="0" />
+      <line data-leader="5" x1="0" y1="0" x2="0" y2="0" />
+      <line data-leader="6" x1="0" y1="0" x2="0" y2="0" />
+    </svg>
+    <div class="leader-tip" data-leader-dot="1" hidden></div>
+    <div class="leader-tip" data-leader-dot="2" hidden></div>
+    <div class="leader-tip" data-leader-dot="3" hidden></div>
+    <div class="leader-tip" data-leader-dot="4" hidden></div>
+    <div class="leader-tip" data-leader-dot="5" hidden></div>
+    <div class="leader-tip" data-leader-dot="6" hidden></div>
+    <div class="tap-bubble" data-bubble="1" hidden><span class="bubble-num">1</span><span class="bubble-text">配置モードにする</span></div>
+    <div class="tap-bubble" data-bubble="2" hidden><span class="bubble-num">2</span><span class="bubble-text">ここに点を打つ</span></div>
+    <div class="tap-bubble" data-bubble="3" hidden><span class="bubble-num">3</span><span class="bubble-text">図面の寸法を入れる</span></div>
+    <div class="tap-bubble" data-bubble="4" hidden><span class="bubble-num">4</span><span class="bubble-text">許される＋側</span></div>
+    <div class="tap-bubble" data-bubble="5" hidden><span class="bubble-num">5</span><span class="bubble-text">許される−側</span></div>
+    <div class="tap-bubble" data-bubble="6" hidden><span class="bubble-num">6</span><span class="bubble-text">入力を確定する</span></div>
+  </article>
+
+<script>
+(function () {
+  const sheet = document.querySelector('.sheet');
+  const STAGE_W = 1280;
+  const STAGE_H = 720;
+
+  function clearPrintFit() {
+    sheet.style.width = '';
+    sheet.style.height = '';
+    sheet.style.transform = '';
+    sheet.style.transformOrigin = '';
+    sheet.style.position = '';
+    sheet.style.left = '';
+    sheet.style.top = '';
+    sheet.style.margin = '';
+  }
+
+  /** Fit fixed 1280×720 stage onto one A4 landscape page without changing layout ratios. */
+  function fitSheetToPrintPage() {
+    clearPrintFit();
+    sheet.style.width = STAGE_W + 'px';
+    sheet.style.height = STAGE_H + 'px';
+    // Use mm page box; convert via temporary probe
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:absolute;left:0;top:0;width:297mm;height:210mm;visibility:hidden;pointer-events:none;';
+    document.body.appendChild(probe);
+    const pageW = probe.offsetWidth;
+    const pageH = probe.offsetHeight;
+    probe.remove();
+    const scale = Math.min(pageW / STAGE_W, pageH / STAGE_H);
+    const left = (pageW - STAGE_W * scale) / 2;
+    const top = (pageH - STAGE_H * scale) / 2;
+    sheet.style.position = 'absolute';
+    sheet.style.left = left + 'px';
+    sheet.style.top = top + 'px';
+    sheet.style.margin = '0';
+    sheet.style.transformOrigin = 'top left';
+    sheet.style.transform = 'scale(' + scale + ')';
+  }
+
+  function placeHands() {
+    const s = sheet.getBoundingClientRect();
+    if (s.width < 2 || s.height < 2) return;
+
+    // Outer gutters only. Ordered so leaders do not cross:
+    // left: 2 · top: 6 · right stack (top→bottom): 1,3,4,5
+    const PARK = {
+      '1': { x: 91.6, y: 36.5 },
+      '2': { x: 5.2,  y: 47.0 },
+      '3': { x: 91.6, y: 50.5 },
+      '4': { x: 91.6, y: 60.5 },
+      '5': { x: 91.6, y: 70.5 },
+      '6': { x: 74.0, y: 4.4 }
+    };
+
+    for (let n = 1; n <= 6; n++) {
+      const id = String(n);
+      const target = sheet.querySelector('[data-tap="' + id + '"]');
+      const bubble = sheet.querySelector('[data-bubble="' + id + '"]');
+      const line = sheet.querySelector('[data-leader="' + id + '"]');
+      const tip = sheet.querySelector('[data-leader-dot="' + id + '"]');
+      if (!target || !bubble) continue;
+
+      const t = target.getBoundingClientRect();
+      // Contact: horizontal center, just below vertical center of control
+      const aimX = ((t.left + t.width * 0.50) - s.left) / s.width * 100;
+      const aimY = ((t.top + t.height * 0.68) - s.top) / s.height * 100;
+
+      const park = PARK[id] || { x: 5, y: 50 };
+      bubble.style.left = park.x + '%';
+      bubble.style.top = park.y + '%';
+      bubble.hidden = false;
+
+      if (line && tip) {
+        const b = bubble.getBoundingClientRect();
+        const bx = ((b.left + b.width * 0.5) - s.left) / s.width * 100;
+        const by = ((b.top + b.height * 0.5) - s.top) / s.height * 100;
+        const dx = aimX - bx;
+        const dy = aimY - by;
+        const len = Math.max(Math.hypot(dx, dy), 0.001);
+        const ux = dx / len;
+        const uy = dy / len;
+        const halfW = (b.width * 0.5) / s.width * 100;
+        const halfH = (b.height * 0.5) / s.height * 100;
+        const tx = Math.abs(ux) > 1e-6 ? halfW / Math.abs(ux) : 1e9;
+        const ty = Math.abs(uy) > 1e-6 ? halfH / Math.abs(uy) : 1e9;
+        const edge = Math.min(tx, ty) * 0.98;
+        const startX = bx + ux * edge;
+        const startY = by + uy * edge;
+        line.setAttribute('x1', startX.toFixed(2));
+        line.setAttribute('y1', startY.toFixed(2));
+        line.setAttribute('x2', aimX.toFixed(2));
+        line.setAttribute('y2', aimY.toFixed(2));
+        tip.style.left = aimX + '%';
+        tip.style.top = aimY + '%';
+        tip.hidden = false;
+      }
+    }
+  }
+
+  function placeHandsSoon() {
+    requestAnimationFrame(() => requestAnimationFrame(placeHands));
+  }
+
+  function onBeforePrint() {
+    fitSheetToPrintPage();
+    placeHands();
+  }
+
+  function onAfterPrint() {
+    clearPrintFit();
+    placeHandsSoon();
+  }
+
+  placeHandsSoon();
+  window.addEventListener('resize', placeHandsSoon);
+  window.addEventListener('beforeprint', onBeforePrint);
+  window.addEventListener('afterprint', onAfterPrint);
+  if (window.matchMedia) {
+    const mql = window.matchMedia('print');
+    const onMql = (e) => { if (e.matches) onBeforePrint(); else onAfterPrint(); };
+    if (mql.addEventListener) mql.addEventListener('change', onMql);
+    else if (mql.addListener) mql.addListener(onMql);
+  }
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(placeHandsSoon);
+})();
+</script>
+</body>
+</html>
