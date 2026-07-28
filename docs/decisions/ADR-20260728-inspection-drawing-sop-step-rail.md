@@ -7,6 +7,8 @@ source_of_truth: true
 supersedes:
   - ../decisions/ADR-20260728-inspection-drawing-sop-outer-callouts.md
 related_docs:
+  - ../plans/kiosk-inspection-drawing-edit-existing-sop.md
+  - ../design-previews/kiosk-inspection-drawing-edit-existing-sop.html
   - ../plans/kiosk-inspection-drawing-dimension-tolerance-sop-1page.md
   - ../design-previews/kiosk-inspection-drawing-dimension-tolerance-sop-1page.html
 ---
@@ -23,6 +25,7 @@ A4 landscape SOP for **検査図面 寸法・公差**. Always-on outer callouts 
 - On screen: **step badges only**, anchored to each target’s **bottom-right corner**
 - Leaders **hover/focus only** (one at a time); omitted in print
 - No hand illustrations
+- **One target kiosk screen → one A4 landscape sheet** (do not composite multiple screens onto one page)
 
 ## Alternatives
 

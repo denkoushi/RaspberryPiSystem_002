@@ -8,9 +8,10 @@
 
 ## 🎯 目的別インデックス
 
-### 検査図面 寸法・公差 SOP（2026-07-28 · デザイン確定・静的1枚）
+### 検査図面 既存編集 SOP（2026-07-28 · 完全版ドラフト・画面別ページ）
 
-- **A4横1枚・左ステップレール＋画面上番号（右下隅）・手なし**: 別AI再現用の正本。引出線はホバー時のみ。**正本**: [Plan](./plans/kiosk-inspection-drawing-dimension-tolerance-sop-1page.md) · [ADR](./decisions/ADR-20260728-inspection-drawing-sop-step-rail.md) · [Preview](./design-previews/kiosk-inspection-drawing-dimension-tolerance-sop-1page.html)
+- **A4横×画面数（一覧1枚＋編集1枚）・手順番号は通し**: 左ステップレール＋画面上番号（右下隅）。引出線はホバー時のみ。寸法6手順HTMLはレイアウト見本。**正本**: [Plan](./plans/kiosk-inspection-drawing-edit-existing-sop.md) · [ADR](./decisions/ADR-20260728-inspection-drawing-sop-step-rail.md) · [Preview](./design-previews/kiosk-inspection-drawing-edit-existing-sop.html)
+- **レイアウト見本（寸法・公差6手順・単画面）**: [Plan](./plans/kiosk-inspection-drawing-dimension-tolerance-sop-1page.md) · [Preview](./design-previews/kiosk-inspection-drawing-dimension-tolerance-sop-1page.html)
 
 ### 組立V3承認UI/UX 回帰復旧（2026-07-27 · main正式統合）
 
