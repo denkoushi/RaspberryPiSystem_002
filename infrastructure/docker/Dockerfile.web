@@ -13,11 +13,11 @@ RUN --mount=type=cache,id=raspi-pnpm-store,target=/pnpm/store,sharing=locked \
     npm_config_fetch_timeout=30000 \
     pnpm install --frozen-lockfile --store-dir=/pnpm/store --network-concurrency=4
 WORKDIR /app/packages/shared-types
-RUN pnpm build
+RUN nice -n 10 pnpm build
 WORKDIR /app/packages/part-search-core
-RUN pnpm build
+RUN nice -n 10 pnpm build
 WORKDIR /app/packages/shelf-layout-core
-RUN pnpm build
+RUN nice -n 10 pnpm build
 WORKDIR /app
 COPY apps/web ./apps/web
 # NFCエージェントのWebSocket URLをビルド時に設定可能にする
@@ -43,7 +43,7 @@ RUN if [ -n "$VITE_RELEASE_SHA" ] && ! printf '%s' "$VITE_RELEASE_SHA" | grep -E
       echo 'VITE_RELEASE_SHA must be empty or a full lowercase Git SHA' >&2; exit 1; \
     fi \
     && cd apps/web \
-    && VITE_RELEASE_SHA="$VITE_RELEASE_SHA" pnpm run build
+    && GOMAXPROCS=1 VITE_RELEASE_SHA="$VITE_RELEASE_SHA" nice -n 10 pnpm run build
 
 FROM golang:1.26.5-alpine AS caddy-build
 WORKDIR /src
@@ -83,7 +83,8 @@ func main() {
 	caddycmd.Main()
 }
 EOF
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -mod=mod -trimpath -ldflags="-s -w" -o /usr/bin/caddy main.go
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOMAXPROCS=1 \
+  nice -n 10 go build -p 1 -mod=mod -trimpath -ldflags="-s -w" -o /usr/bin/caddy main.go
 
 FROM alpine:3.23
 WORKDIR /srv
