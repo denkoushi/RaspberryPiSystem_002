@@ -12,8 +12,8 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Metric | Count |
 |--------|------:|
 | Documents | 571 |
-| Total lines | 161229 |
-| Total bytes | 12148789 |
+| Total lines | 161274 |
+| Total bytes | 12151863 |
 | With frontmatter | 248 |
 | With status | 104 |
 | source_of_truth declared | 68 |

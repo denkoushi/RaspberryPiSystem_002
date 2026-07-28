@@ -1,7 +1,7 @@
 ---
 id: plan-kiosk-sop-popup-viewer
 title: Embed the inspection-drawing SOP in kiosk screens
-status: in_progress
+status: completed
 date: 2026-07-28
 source_of_truth: true
 scope: Web-only kiosk SOP viewer, production enablement, deployment, and validation
@@ -23,7 +23,7 @@ validation:
   - disposable PostgreSQL migration and inspection-drawing regression test
   - deployment contract tests and standard fleet deployment evidence
 open_items:
-  - Shop-floor copy sign-off before production-default enablement
+  - Formal shop-floor copy sign-off remains tracked in the source SOP Plan
 ---
 
 # Embed the inspection-drawing SOP in kiosk screens
@@ -76,11 +76,17 @@ remains false while the production inventory now opts in.
   100 Jinja templates, 864 fleet/orchestrator cases, 24 inventory cases, the isolated
   deploy-status PostgreSQL migration/API run, Pi5 image and Blue/Green lifecycles,
   rollback safety, and Ansible syntax checks.
-- [ ] Merge PR #1110 after the updated required CI suite passes.
-- [ ] Run the standard fleet deployment from `main`, capture its run ID and terminal
-  status, then prove the same-SHA plan is a no-op.
-- [ ] Complete real-device and production UI verification and record rollback
-  coordinates.
+- [x] (2026-07-28 13:39+09:00) Marked PR #1110 ready after every required check
+  passed, merged it to `main`, and confirmed the merge SHA
+  `ea630046de96d381888d5e96f7fbf81735c6f463` passed the post-merge full CI suite.
+- [x] (2026-07-28 13:40–14:28+09:00) Ran the standard fleet orchestrator as release
+  `20260728-043928-0f1809`. Pi5, six Pi4 kiosks, and Pi3 all reached `success` with
+  verified release evidence at the merge SHA. A repeated `--print-plan` selected zero
+  targets because all eight hosts were already verified at the desired SHA.
+- [x] (2026-07-28 14:36+09:00) Completed read-only service checks on the real
+  devices and production UI checks against the Pi5-served application. Recorded the
+  rollback manifest coordinates and captured production screenshots for both SOP
+  sheets.
 
 ## Surprises & Discoveries
 
@@ -117,6 +123,18 @@ remains false while the production inventory now opts in.
   Evidence: local Prisma commands emitted an engine warning but passed; the final Web
   Docker build used the repository's Node 20 build stage and also passed.
 
+- Observation: The repository-wide `verify-phase12-real.sh` performs a production
+  `PUT .../global-rank/auto-generate` as part of its historical fallback check.
+  Evidence: the script was inspected before execution. For this feature rollout,
+  equivalent health, release, migration, and service checks were run read-only instead
+  so SOP verification would not recalculate unrelated production data.
+
+- Observation: Opening an existing-template edit route invokes the existing OCR
+  candidate endpoint automatically before any save action.
+  Evidence: the production browser probe observed one
+  `POST /api/part-measurement/visual-templates/:id/ocr/candidates`; no save, revision,
+  or other mutating request was made by the SOP interactions.
+
 ## Decision Log
 
 - Decision: Use `iframe srcDoc` with `sandbox="allow-scripts"` and no
@@ -149,11 +167,14 @@ remains false while the production inventory now opts in.
 
 ## Outcomes & Retrospective
 
-The implementation and validation are complete on Draft PR #1110. The library opens
-only sheet `library`; revision and fixed-count edit previews open only sheet `edit`;
-new creation has no launcher. The shared viewer uses the existing Dialog, keeps page
-state mounted, restores launcher focus, refuses backdrop dismissal, and validates both
-the iframe window and fixed message before child Escape closes it.
+The implementation, production enablement, fleet deployment, and real-device
+validation are complete. PR #1110 is merged, and release
+`20260728-043928-0f1809` deployed merge SHA
+`ea630046de96d381888d5e96f7fbf81735c6f463`. The library opens only sheet `library`;
+revision and fixed-count edit screens open only sheet `edit`; new creation has no
+launcher. The shared viewer uses the existing Dialog, keeps page state mounted,
+restores launcher focus, refuses backdrop dismissal, and validates both the iframe
+window and fixed message before child Escape closes it.
 
 Validation completed as follows:
 
@@ -174,15 +195,39 @@ Validation completed as follows:
   `PartMeasurementTemplate_templateScope_fhincd_resourceCd_isActiv` and visual-template
   primary-key indexes, and completed in 0.067 ms on the small test fixture. Cleanup
   counts were container 0, volume 0, and network 0.
-- Draft PR #1110 passed change classification, required CI, API, Web, E2E, database
+- PR #1110 passed change classification, required CI, API, Web, E2E, database
   infrastructure, deploy contract, repository policy, workspace quality, CodeQL,
   gitleaks, and both API/Web Docker security checks.
+- The standard deployment completed from `2026-07-28T04:40:48Z` through
+  `2026-07-28T05:28:13Z`. Pi5 completed candidate build, traffic switch, a five-minute
+  stability hold, and release-claim verification. The approved StoneBase canary and
+  the remaining five Pi4 kiosks then completed one by one, followed by Pi3. All seven
+  client targets reported `success`, `evidence=verified`, and the merge SHA; Pi5
+  reported the same SHA in stable state.
+- The captured Pi5 rollback manifest has three entries at
+  `/var/lib/raspi-release/rollback-manifests/20260728-043928-0f1809/raspberrypi5/manifest.json`
+  with manifest digest
+  `58d5c39d839882079967ef3bf622e29fa8bf0215dd5c59ccf02943424f9e28f1`.
+  No rollback was triggered.
+- A same-SHA standard `--print-plan` returned `targets: []` and excluded Pi5, all six
+  Pi4 kiosks, and Pi3 as already verified at the desired SHA.
+- Read-only real-device checks found all six Pi4 repositories at the merge SHA, all
+  six `kiosk-browser.service` units active, all six `status-agent.timer` units active,
+  and two Firefox kiosk processes per host. Pi3
+  `signage-lite.service` and `signage-lite-update.timer` were active. Pi5 API health
+  was `ok`, its active API container was healthy, the Web container was up, and Prisma
+  reported `Database schema is up to date!`.
+- Production UI probes against the Pi5 Caddy endpoint, which retained
+  `X-Frame-Options: DENY`, opened the srcDoc viewer without console errors. The
+  library showed only 1/2 and the revision showed only 2/2; new creation had zero SOP
+  launchers. Both buttons were 44 pixels high, initial leader count was zero, focused
+  leader count was one, iframe network request count was zero, edit test mode survived
+  open/close, and focus returned to the launcher.
 
 Formal shop-floor copy sign-off remains open in the source SOP Plan. Production
 enablement is nevertheless now in scope because the product owner explicitly directed
 it on 2026-07-28. The image-level fallback remains false; only the reviewed production
-inventory opts in. Final deployment and real-device evidence will be appended here
-before this ExecPlan returns to `completed`.
+inventory opts in.
 
 ## Context and Orientation
 
