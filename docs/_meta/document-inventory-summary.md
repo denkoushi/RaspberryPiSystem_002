@@ -11,17 +11,17 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 
 | Metric | Count |
 |--------|------:|
-| Documents | 569 |
-| Total lines | 160756 |
-| Total bytes | 12125983 |
-| With frontmatter | 246 |
-| With status | 102 |
-| source_of_truth declared | 66 |
+| Documents | 571 |
+| Total lines | 161229 |
+| Total bytes | 12148789 |
+| With frontmatter | 248 |
+| With status | 104 |
+| source_of_truth declared | 68 |
 | References to EXEC_PLAN.md | 64 |
 | Question-mark corruption documents | 1 |
 | Replacement-character documents | 1 |
 | Long-line documents | 25 |
-| Local links | 5609 |
+| Local links | 5613 |
 | Broken local links | 87 |
 | Documents over 1,000 lines | 28 |
 | Documents over 3,000 lines | 6 |
@@ -40,7 +40,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | `docs/archive/architecture/deployment-modules-legacy-through-2026-07.md` | 2522 | 128149 |
 | `docs/knowledge-base/infrastructure/backup-restore.md` | 2208 | 137917 |
 | `docs/knowledge-base/infrastructure/signage.md` | 2196 | 188323 |
-| `docs/INDEX.md` | 2004 | 344738 |
+| `docs/INDEX.md` | 2004 | 344803 |
 | `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1871 | 206136 |
 | `docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md` | 1654 | 153539 |
 | `docs/archive/deployments/legacy-operator-guide-through-2026-07.md` | 1600 | 108028 |

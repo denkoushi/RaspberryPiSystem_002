@@ -260,3 +260,4 @@ export {
   sheetUsesProductionInspectionDrawingUi
 } from './productionInspectionDrawingPolicy';
 export type { InspectionDrawingEditMode } from './productionInspectionDrawingPolicy';
+export { INSPECTION_DRAWING_SOP_BY_SCREEN } from './inspectionDrawingSop';

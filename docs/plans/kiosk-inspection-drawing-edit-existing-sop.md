@@ -7,11 +7,13 @@ source_of_truth: true
 scope: static design preview / operator SOP (print A4 landscape, one sheet per screen)
 related_docs:
   - ../decisions/ADR-20260728-inspection-drawing-sop-step-rail.md
+  - ./kiosk-sop-popup-viewer-execplan.md
   - ../plans/kiosk-inspection-drawing-dimension-tolerance-sop-1page.md
   - ../design-previews/kiosk-inspection-drawing-edit-existing-sop.html
   - ../design-previews/kiosk-inspection-drawing-dimension-tolerance-sop-1page.html
   - ../design-previews/README.md
 related_code:
+  - apps/web/src/features/kiosk-sop/
   - apps/web/src/pages/kiosk/KioskInspectionDrawingLibraryPage.tsx
   - apps/web/src/pages/kiosk/KioskInspectionDrawingCreatePage.tsx
   - apps/web/src/features/part-measurement/inspection-drawing/
@@ -41,6 +43,7 @@ The [dimension/tolerance SOP](./kiosk-inspection-drawing-dimension-tolerance-sop
 
 - [x] (2026-07-28) Gap analysis vs sample 6-step SOP
 - [x] (2026-07-28) Split by screen: library sheet + edit sheet
+- [x] Release-bundled popup viewer (implementation tracked separately; production default OFF)
 - [ ] Operator review / copy freeze
 - [ ] Optional: print PDF laminate (ops only)
 

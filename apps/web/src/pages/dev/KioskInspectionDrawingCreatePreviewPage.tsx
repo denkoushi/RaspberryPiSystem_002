@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 
+import { KioskSopLauncher } from '../../features/kiosk-sop';
 import {
+  INSPECTION_DRAWING_SOP_BY_SCREEN,
   InspectionDrawingCanvas,
   InspectionDrawingCanvasZoomControls,
   InspectionDrawingCreateCompactHeader,
@@ -117,6 +119,11 @@ export function KioskInspectionDrawingCreatePreviewPage() {
             hasMeasurementPoints={points.length > 0}
             saveDisabled
             saveStatus="blocked"
+            supplementalAction={
+              scenarioConfig.isEditing ? (
+                <KioskSopLauncher view={INSPECTION_DRAWING_SOP_BY_SCREEN.templateEdit} />
+              ) : undefined
+            }
             returnTo={inspectionReturn.inspectionDrawingReturnTo}
             returnLabel={inspectionReturn.inspectionDrawingReturnLabel}
           />

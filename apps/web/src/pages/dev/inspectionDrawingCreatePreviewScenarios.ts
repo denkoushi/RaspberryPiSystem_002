@@ -19,6 +19,7 @@ export function parseInspectionDrawingCreatePreviewScenario(
 }
 
 export type InspectionDrawingCreatePreviewScenarioConfig = {
+  isEditing: boolean;
   lineageLocked: boolean;
   fhincd: string;
   resourceCd: string;
@@ -51,6 +52,7 @@ export function getInspectionDrawingCreatePreviewScenarioConfig(
     case 'fixed_count':
       return {
         ...base,
+        isEditing: true,
         lineageLocked: true,
         selfInspectionMode: 'fixed_count',
         selfInspectionFixedCount: '3',
@@ -59,6 +61,7 @@ export function getInspectionDrawingCreatePreviewScenarioConfig(
     case 'create_new':
       return {
         ...base,
+        isEditing: false,
         lineageLocked: false,
         selfInspectionMode: 'first_last',
         selfInspectionFixedCount: '',
@@ -68,6 +71,7 @@ export function getInspectionDrawingCreatePreviewScenarioConfig(
     default:
       return {
         ...base,
+        isEditing: true,
         lineageLocked: true,
         selfInspectionMode: 'single',
         selfInspectionFixedCount: '',

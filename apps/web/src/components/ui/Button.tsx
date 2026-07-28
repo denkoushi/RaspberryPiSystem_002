@@ -1,4 +1,5 @@
 import clsx from 'clsx';
+import { forwardRef } from 'react';
 
 import type { ButtonHTMLAttributes } from 'react';
 
@@ -26,13 +27,16 @@ export function buttonClassName(variant: ButtonVariant = 'primary', className?: 
   return clsx(buttonBaseClassName, variantClass, className);
 }
 
-export function Button({ variant = 'primary', className, children, ...rest }: ButtonProps) {
-  return (
-    <button
-      className={buttonClassName(variant, className)}
-      {...rest}
-    >
-      {children}
-    </button>
-  );
-}
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
+  function Button({ variant = 'primary', className, children, ...rest }, ref) {
+    return (
+      <button
+        ref={ref}
+        className={buttonClassName(variant, className)}
+        {...rest}
+      >
+        {children}
+      </button>
+    );
+  }
+);
