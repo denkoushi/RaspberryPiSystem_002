@@ -27,6 +27,11 @@ import { useKioskProductionScheduleResources } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { formatResourceCdWithJapaneseNames } from '../../features/kiosk/leaderOrderBoard/formatResourceCdWithJapaneseNames';
 import {
+  KioskSopLauncher,
+  KIOSK_SOP_POPUP_ENABLED
+} from '../../features/kiosk-sop';
+import {
+  INSPECTION_DRAWING_SOP_BY_SCREEN,
   buildGeometricTolerancePointPatch,
   buildInspectionDrawingCreateDirtySnapshot,
   drawingPointToTemplateItemInput,
@@ -1344,6 +1349,11 @@ export function KioskInspectionDrawingCreatePage() {
               INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED && isEditing && templateId
                 ? kioskInspectionDrawingTemplatePrintPath(templateId)
                 : undefined
+            }
+            supplementalAction={
+              KIOSK_SOP_POPUP_ENABLED && isEditing ? (
+                <KioskSopLauncher view={INSPECTION_DRAWING_SOP_BY_SCREEN.templateEdit} />
+              ) : undefined
             }
             returnTo={inspectionReturn.inspectionDrawingReturnTo}
             returnLabel={inspectionReturn.inspectionDrawingReturnLabel}

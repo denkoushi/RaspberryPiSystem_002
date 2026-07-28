@@ -5,6 +5,11 @@ import { retirePartMeasurementTemplate } from '../../api/client';
 import { useKioskProductionScheduleResources } from '../../api/hooks';
 import { kioskPageTitleClassName } from '../../features/kiosk/kioskTheme';
 import {
+  KioskSopLauncher,
+  KIOSK_SOP_POPUP_ENABLED
+} from '../../features/kiosk-sop';
+import {
+  INSPECTION_DRAWING_SOP_BY_SCREEN,
   InspectionDrawingDigitTenkey,
   InspectionDrawingLibraryFilterBar,
   InspectionDrawingLibraryTemplateTable,
@@ -177,6 +182,9 @@ export function KioskInspectionDrawingLibraryPage() {
           <h1 className={kioskPageTitleClassName}>検査図面</h1>
         </div>
         <InspectionDrawingDigitTenkey value={digitQuery} onChange={setDigitQuery} disabled={retireBusy} />
+        {KIOSK_SOP_POPUP_ENABLED ? (
+          <KioskSopLauncher view={INSPECTION_DRAWING_SOP_BY_SCREEN.library} />
+        ) : null}
       </div>
 
       <KioskInspectionDrawingVisualUploadModal

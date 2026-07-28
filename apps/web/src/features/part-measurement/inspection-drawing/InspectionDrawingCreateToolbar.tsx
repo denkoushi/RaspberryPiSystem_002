@@ -13,6 +13,7 @@ import {
 } from './inspectionDrawingKioskUi';
 
 import type { PartMeasurementProcessGroup } from '../types';
+import type { ReactNode } from 'react';
 
 export type InspectionDrawingToolbarMode = 'place' | 'callout' | 'test' | 'guidedTrial';
 
@@ -35,6 +36,8 @@ type Props = {
   returnLabel?: string;
   /** 保存済みテンプレートの帳票プレビュー（新しいタブ）。未保存変更は反映されない */
   savedPrintPath?: string;
+  /** 画面固有の補助操作。右側操作群の戻るリンク直前に表示 */
+  supplementalAction?: ReactNode;
 };
 
 export function InspectionDrawingCreateToolbar({
@@ -51,7 +54,8 @@ export function InspectionDrawingCreateToolbar({
   showProcessGroup = true,
   returnTo,
   returnLabel,
-  savedPrintPath
+  savedPrintPath,
+  supplementalAction
 }: Props) {
   const toggleClass = (isActive: boolean) =>
     clsx(inspectionDrawingKioskToggleInactiveClass(isActive), inspectionDrawingKioskDisabledButtonClass);
@@ -152,6 +156,8 @@ export function InspectionDrawingCreateToolbar({
         >
           ガイド試行
         </Button>
+
+        {supplementalAction}
 
         {returnTo && returnLabel ? (
           <Link to={returnTo} className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1rem]')}>

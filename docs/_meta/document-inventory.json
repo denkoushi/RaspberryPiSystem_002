@@ -15,17 +15,17 @@
     ]
   },
   "summary": {
-    "documentCount": 569,
-    "totalLines": 160756,
-    "totalBytes": 12125983,
-    "withFrontmatter": 246,
-    "withStatus": 102,
-    "sourceOfTruthDeclared": 66,
+    "documentCount": 570,
+    "totalLines": 160872,
+    "totalBytes": 12130970,
+    "withFrontmatter": 247,
+    "withStatus": 103,
+    "sourceOfTruthDeclared": 67,
     "execPlanReferences": 64,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 25,
-    "localLinkCount": 5609,
+    "localLinkCount": 5613,
     "brokenLocalLinkCount": 87,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -5898,8 +5898,8 @@
     },
     {
       "path": "docs/AI_START_HERE.md",
-      "lineCount": 108,
-      "byteSize": 5482,
+      "lineCount": 109,
+      "byteSize": 5579,
       "hasFrontmatter": true,
       "title": "AI Start Here",
       "status": null,
@@ -5914,7 +5914,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 2004,
-      "byteSize": 344738,
+      "byteSize": 344803,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -10408,6 +10408,11 @@
         {
           "href": "./plans/kiosk-leaderboard-labor-minutes-toggle.md",
           "targetPath": "docs/plans/kiosk-leaderboard-labor-minutes-toggle.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/kiosk-sop-popup-viewer-execplan.md",
+          "targetPath": "docs/plans/kiosk-sop-popup-viewer-execplan.md",
           "exists": true
         },
         {
@@ -16893,7 +16898,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 4,
+      "inboundCount": 5,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -32992,7 +32997,38 @@
           "exists": true
         }
       ],
-      "inboundCount": 4,
+      "inboundCount": 5,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/kiosk-inspection-drawing-edit-existing-sop.md",
+      "lineCount": 115,
+      "byteSize": 4825,
+      "hasFrontmatter": true,
+      "title": "Multi-page SOP for editing an existing inspection-drawing template",
+      "status": "draft",
+      "source_of_truth": "true",
+      "localLinks": [
+        {
+          "href": "../decisions/ADR-20260728-inspection-drawing-sop-step-rail.md",
+          "targetPath": "docs/decisions/ADR-20260728-inspection-drawing-sop-step-rail.md",
+          "exists": true
+        },
+        {
+          "href": "../design-previews/kiosk-inspection-drawing-edit-existing-sop.html",
+          "targetPath": "docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html",
+          "exists": true
+        },
+        {
+          "href": "./kiosk-inspection-drawing-dimension-tolerance-sop-1page.md",
+          "targetPath": "docs/plans/kiosk-inspection-drawing-dimension-tolerance-sop-1page.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 3,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],

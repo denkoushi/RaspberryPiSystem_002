@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 
+import { KioskSopLauncher } from '../../features/kiosk-sop';
 import {
+  INSPECTION_DRAWING_SOP_BY_SCREEN,
   InspectionDrawingLibraryFilterBar,
   InspectionDrawingLibraryTemplateTable,
   InspectionDrawingDigitTenkey,
@@ -141,6 +143,7 @@ export function KioskInspectionDrawingLibraryPreviewPage() {
           <h1 className="text-[1.35rem] font-bold leading-tight">検査図面</h1>
         </div>
         <InspectionDrawingDigitTenkey value={digitQuery} onChange={setDigitQuery} />
+        <KioskSopLauncher view={INSPECTION_DRAWING_SOP_BY_SCREEN.library} />
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 items-stretch gap-2 overflow-auto 2xl:grid-cols-[31rem_minmax(0,1fr)] 2xl:overflow-hidden">

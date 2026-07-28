@@ -20,6 +20,7 @@ WORKDIR /app/packages/shelf-layout-core
 RUN nice -n 10 pnpm build
 WORKDIR /app
 COPY apps/web ./apps/web
+COPY docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html ./docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html
 # NFCエージェントのWebSocket URLをビルド時に設定可能にする
 ARG VITE_AGENT_WS_URL=ws://localhost:7071/stream
 ENV VITE_AGENT_WS_URL=${VITE_AGENT_WS_URL}
@@ -34,6 +35,8 @@ ARG VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED=false
 ENV VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED=${VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED}
 ARG VITE_KIOSK_LEADERBOARD_DEFER_RESIDUAL_SUMMARY_ENABLED=false
 ENV VITE_KIOSK_LEADERBOARD_DEFER_RESIDUAL_SUMMARY_ENABLED=${VITE_KIOSK_LEADERBOARD_DEFER_RESIDUAL_SUMMARY_ENABLED}
+ARG VITE_KIOSK_SOP_POPUP_ENABLED=false
+ENV VITE_KIOSK_SOP_POPUP_ENABLED=${VITE_KIOSK_SOP_POPUP_ENABLED}
 # Release identity belongs to the compiled app. Keep this argument after the
 # dependency layers so changing a release SHA only invalidates the Web build.
 # Empty is permitted for non-release development images; such bundles can

@@ -102,7 +102,19 @@ describe('KioskInspectionDrawingLibraryPage', () => {
     expect(screen.queryByRole('button', { name: '部品測定へ' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: '新規' })).not.toBeInTheDocument();
     expect(screen.getByRole('group', { name: '図面名数字テンキー' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'この画面の操作手順を開く' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '雛形' })).toBeInTheDocument();
+  });
+
+  it('opens the library sheet in the same page', async () => {
+    renderPage();
+    await screen.findAllByText('図面71-A61');
+
+    fireEvent.click(screen.getByRole('button', { name: 'この画面の操作手順を開く' }));
+
+    const frame = screen.getByTitle('検査図面 既存編集 — 1 / 2 · 一覧画面');
+    expect(frame).toHaveAttribute('sandbox', 'allow-scripts');
+    expect(frame.getAttribute('srcdoc')).toContain('.sheet[data-sheet="library"]');
   });
 
   it('keeps the retire action visible and uses 無効ON/OFF to show or hide inactive templates', async () => {
