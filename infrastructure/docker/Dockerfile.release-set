@@ -1,0 +1,8 @@
+# syntax=docker/dockerfile:1
+FROM scratch
+ARG BUILD_COMMIT
+ARG BUILD_CONFIG_HASH
+COPY release-set.json /release-set.json
+LABEL org.opencontainers.image.revision=${BUILD_COMMIT}
+LABEL org.opencontainers.image.config-hash=${BUILD_CONFIG_HASH}
+LABEL org.opencontainers.image.title="RaspberryPiSystem API/Web release set"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import tempfile
@@ -18,6 +19,7 @@ from ansible_template_contracts import (  # noqa: E402
     discover_templates,
     validate_template_tree,
 )
+from scripts.deploy.release_build_contract import parse_contract_json
 
 
 ANSIBLE_ROOT = ROOT / "infrastructure/ansible"
@@ -26,6 +28,16 @@ WEB_BUILD_VARS = ANSIBLE_ROOT / "group_vars/server/web-build.yml"
 PRIMARY_INVENTORY = ANSIBLE_ROOT / "inventory.yml"
 TALKPLAZA_INVENTORY = ANSIBLE_ROOT / "inventory-talkplaza.yml"
 WEB_ENV_TEMPLATE = ANSIBLE_ROOT / "templates/web.env.j2"
+RELEASE_BUILD_CONTRACT_TEMPLATE = (
+    ANSIBLE_ROOT / "templates/release-build-contract.json.j2"
+)
+RELEASE_BUILD_CONTRACT_PLAYBOOK = (
+    ANSIBLE_ROOT / "playbooks/render-release-build-contract.yml"
+)
+ARTIFACT_PROMOTION_TEMPLATE = (
+    ANSIBLE_ROOT / "templates/artifact-promotion.json.j2"
+)
+SERVER_ROLE_TASKS = ANSIBLE_ROOT / "roles/server/tasks/main.yml"
 
 
 class AnsibleTemplateContractTests(unittest.TestCase):
@@ -79,6 +91,72 @@ class AnsibleTemplateContractTests(unittest.TestCase):
         self.assertGreater(len(templates), 0)
         self.assertIn(TORQUE_HELPER, templates)
         self.assertEqual(validate_template_tree(ANSIBLE_ROOT), ())
+
+    def test_release_build_renderer_contains_only_the_strict_allowlist(self) -> None:
+        sha = "a" * 40
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["to_json"] = json.dumps
+        rendered = environment.from_string(
+            RELEASE_BUILD_CONTRACT_TEMPLATE.read_text(encoding="utf-8")
+        ).render(
+            api_install_playwright_chromium="true",
+            web_agent_ws_url="ws://100.64.0.1:7071/stream",
+            web_api_base_url="/api",
+            web_kiosk_due_mgmt_layout_v2_enabled="true",
+            web_kiosk_leaderboard_defer_residual_summary_enabled="false",
+            web_kiosk_production_schedule_order_split_enabled="false",
+            web_kiosk_sop_popup_enabled="true",
+            web_kiosk_target_location_selector_enabled="true",
+            release_build_contract_sha=sha,
+        )
+        contract = parse_contract_json(rendered, sha)
+        self.assertEqual(contract.release_sha, sha)
+        self.assertNotIn("vault_", rendered)
+        self.assertNotIn("secret", rendered.lower())
+
+        playbook = RELEASE_BUILD_CONTRACT_PLAYBOOK.read_text(encoding="utf-8")
+        self.assertIn("delegate_to: localhost", playbook)
+        self.assertIn("no_log: true", playbook)
+        self.assertNotIn("ansible.builtin.shell", playbook)
+
+    def test_artifact_promotion_policy_is_root_only_and_opt_in(self) -> None:
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["to_json"] = json.dumps
+        environment.filters["bool"] = bool
+        environment.filters["string"] = str
+        rendered = environment.from_string(
+            ARTIFACT_PROMOTION_TEMPLATE.read_text(encoding="utf-8")
+        ).render(
+            pi5_artifact_promotion_enabled=False,
+            pi5_artifact_ghcr_username="denkoushi",
+            pi5_artifact_ghcr_token="test-token",
+        )
+        policy = json.loads(rendered)
+        self.assertFalse(policy["enabled"])
+        self.assertEqual(
+            set(policy),
+            {
+                "enabled",
+                "repository",
+                "workflow",
+                "releaseSetRepository",
+                "username",
+                "token",
+            },
+        )
+        self.assertEqual(
+            policy["releaseSetRepository"],
+            "ghcr.io/denkoushi/raspisys-release-set",
+        )
+
+        tasks = SERVER_ROLE_TASKS.read_text(encoding="utf-8")
+        self.assertIn("dest: /etc/raspi-release/artifact-promotion.json", tasks)
+        self.assertIn("mode: '0600'", tasks)
+        self.assertIn("no_log: true", tasks)
+        self.assertIn(
+            "when: pi5_artifact_promotion_enabled | default(false) | bool",
+            tasks,
+        )
 
     def test_invalid_template_is_reported_with_source_location(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

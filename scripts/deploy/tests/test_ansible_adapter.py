@@ -1233,7 +1233,7 @@ class ServerConfigManifestAdapterTest(unittest.TestCase):
             "repository": None,
         }
 
-    def test_capture_seals_only_the_three_server_environment_files(self):
+    def test_capture_seals_only_the_exact_server_configuration_files(self):
         runtime = Runtime(manifest_marker(self._capture_result()))
 
         self.assertEqual(

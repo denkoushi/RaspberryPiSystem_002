@@ -42,10 +42,14 @@ class ClassifyDeployImpactTest(unittest.TestCase):
         result = impact.classify(
             [
                 'infrastructure/ansible/group_vars/server/web-build.yml',
+                'infrastructure/ansible/group_vars/server/release-artifacts.yml',
+                'infrastructure/ansible/templates/artifact-promotion.json.j2',
+                'infrastructure/ansible/templates/release-build-contract.json.j2',
                 'infrastructure/ansible/templates/docker.env.j2',
                 'infrastructure/ansible/templates/web.env.j2',
                 'infrastructure/ansible/roles/server/tasks/main.yml',
                 'infrastructure/ansible/playbooks/manage-app-configs.yml',
+                'infrastructure/ansible/playbooks/render-release-build-contract.yml',
                 'infrastructure/ansible/playbooks/server-config-release.yml',
             ]
         )

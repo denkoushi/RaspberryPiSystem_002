@@ -8,6 +8,7 @@ ENV_FILE="${PI5_ENV_FILE:-${PROJECT_DIR}/infrastructure/docker/.env}"
 STATE_FILE="${PI5_DEPLOY_STATE_FILE:-${PROJECT_DIR}/logs/deploy/pi5-image-deploy-state.json}"
 BLUE_GREEN_STATE_FILE="${PI5_BLUE_GREEN_STATE_FILE:-${PROJECT_DIR}/logs/deploy/pi5-blue-green-state.json}"
 LOCK_FILE="${PI5_DEPLOY_LOCK_FILE:-${PROJECT_DIR}/logs/.pi5-image-deploy.lock}"
+ARTIFACT_PROMOTION_CONFIG="${PI5_ARTIFACT_PROMOTION_CONFIG:-/etc/raspi-release/artifact-promotion.json}"
 API_REPOSITORY="${PI5_API_IMAGE_REPOSITORY:-raspi-system-api}"
 WEB_REPOSITORY="${PI5_WEB_IMAGE_REPOSITORY:-raspi-system-web}"
 HEALTH_URL="${PI5_HEALTH_URL:-https://127.0.0.1/api/system/health}"
@@ -41,6 +42,7 @@ BUILD_CONTEXT=""
 BUILD_OVERRIDE=""
 BUILD_ARGS_FILE=""
 BUILD_ARGS_RENDER_FILE=""
+PROMOTION_RESULT_FILE=""
 SEALED_CONFIG_HASH=""
 CANDIDATE_CONTAINER_ID=""
 CANDIDATE_CONTAINER_NAME=""
@@ -107,6 +109,8 @@ validate_protocol_policy() {
     || die 'rolling-release candidate image build retry count is fixed at 30'
   [[ "$BUILD_TOTAL_TIMEOUT_SECONDS" == 1800 ]] \
     || die 'rolling-release candidate image build total timeout is fixed at 1800 seconds'
+  [[ "$ARTIFACT_PROMOTION_CONFIG" == /etc/raspi-release/artifact-promotion.json ]] \
+    || die 'rolling-release artifact promotion config path is fixed'
   for control_name in DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_DEFAULT_PLATFORM \
     BUILDKIT_HOST BUILDX_CONFIG COMPOSE_FILE COMPOSE_PROJECT_NAME COMPOSE_PROFILES \
     COMPOSE_ENV_FILES COMPOSE_PATH_SEPARATOR; do
@@ -141,10 +145,11 @@ atomic_state() {
   local build_mode="${7:-}" api_id="${8:-}" web_id="${9:-}" evidence="${10:-}"
   mkdir -p "$(dirname "$STATE_FILE")"
   python3 - "$STATE_FILE" "$event" "$api_image" "$web_image" "$previous_api" "$previous_web" "$result" \
-    "$RUN_ID" "$REF" "$build_mode" "$api_id" "$web_id" "$evidence" "$SIGNAGE_CONTROL_EVENTS" <<'PY'
+    "$RUN_ID" "$REF" "$build_mode" "$api_id" "$web_id" "$evidence" "$SIGNAGE_CONTROL_EVENTS" \
+    "$PROMOTION_RESULT_FILE" <<'PY'
 import json, os, sys, tempfile
 from datetime import datetime, timezone
-path,event,api,web,prev_api,prev_web,result,run_id,ref,build_mode,api_id,web_id,evidence,signage_events=sys.argv[1:]
+path,event,api,web,prev_api,prev_web,result,run_id,ref,build_mode,api_id,web_id,evidence,signage_events,promotion_path=sys.argv[1:]
 try:
     with open(path, encoding="utf-8") as f: state = json.load(f)
 except (FileNotFoundError, json.JSONDecodeError): state = {"version": 1}
@@ -173,6 +178,30 @@ elif event == "rolled-back":
 if result: state["result"] = result
 if build_mode: state["build"]={"mode":build_mode}
 if evidence: state["resourceEvidence"]={"path":evidence}
+if promotion_path and os.path.isfile(promotion_path):
+    if os.path.getsize(promotion_path) > 65536:
+        raise SystemExit("artifact promotion result is too large")
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            if key in result:
+                raise ValueError(f"duplicate artifact promotion key: {key}")
+            result[key] = value
+        return result
+    with open(promotion_path, encoding="utf-8") as stream:
+        promotion = json.load(stream, object_pairs_hook=pairs)
+    serialized = json.dumps(promotion, sort_keys=True, separators=(",", ":"))
+    if (
+        not isinstance(promotion, dict)
+        or promotion.get("status") not in {
+            "disabled", "unavailable", "integrity-failure", "promoted"
+        }
+        or any(word in serialized.lower() for word in ("token", "password", "secret"))
+    ):
+        raise SystemExit("artifact promotion result is unsafe")
+    state["artifactPromotion"] = promotion
+elif event == "building":
+    state.pop("artifactPromotion", None)
 state["workloadControl"]={"signage":{"events":json.loads(signage_events)}}
 fd, tmp = tempfile.mkstemp(prefix=".pi5-deploy-", dir=os.path.dirname(path))
 with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -255,56 +284,13 @@ effective_build_args() {
   VITE_RELEASE_SHA="$REF" PI5_API_IMAGE=unused-api PI5_WEB_IMAGE=unused-web \
     docker compose --env-file "$ENV_FILE" -f "$BASE_COMPOSE" -f "$PHASE2_COMPOSE" \
       config --format json |
-    python3 -c '
-import json, sys
-
-def pairs(items):
-    result = {}
-    for key, value in items:
-        if key in result:
-            raise ValueError(f"duplicate Compose JSON key: {key}")
-        result[key] = value
-    return result
-
-document = json.load(sys.stdin, object_pairs_hook=pairs)
-services = document.get("services") if isinstance(document, dict) else None
-allowed = {
-    "api": {"INSTALL_PLAYWRIGHT_CHROMIUM"},
-    "web": {
-        "VITE_AGENT_WS_URL",
-        "VITE_API_BASE_URL",
-        "VITE_KIOSK_TARGET_LOCATION_SELECTOR_ENABLED",
-        "VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED",
-        "VITE_KIOSK_SOP_POPUP_ENABLED",
-        "VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED",
-        "VITE_KIOSK_LEADERBOARD_DEFER_RESIDUAL_SUMMARY_ENABLED",
-        "VITE_RELEASE_SHA",
-    },
-}
-sanitized = {}
-if not isinstance(services, dict):
-    raise SystemExit("effective Compose services are missing")
-for service, expected_keys in allowed.items():
-    record = services.get(service)
-    build = record.get("build") if isinstance(record, dict) else None
-    arguments = build.get("args") if isinstance(build, dict) else None
-    if not isinstance(arguments, dict) or set(arguments) != expected_keys:
-        raise SystemExit(f"effective {service} build arguments differ from the sealed allow-list")
-    if any(not isinstance(value, str) or "\0" in value for value in arguments.values()):
-        raise SystemExit(f"effective {service} build arguments contain a malformed value")
-    sanitized[service] = {key: arguments[key] for key in sorted(arguments)}
-json.dump(sanitized, sys.stdout, sort_keys=True, separators=(",", ":"), allow_nan=False)
-'
+    python3 "${SCRIPT_DIR}/release_build_contract.py" sanitize-compose \
+      --release-sha "$REF"
 }
 
 candidate_config_hash() {
-  effective_build_args | python3 -c '
-import hashlib, sys
-digest = hashlib.sha256()
-for block in iter(lambda: sys.stdin.buffer.read(1024 * 1024), b""):
-    digest.update(block)
-print(digest.hexdigest())
-'
+  effective_build_args |
+    python3 "${SCRIPT_DIR}/release_build_contract.py" hash --release-sha "$REF"
 }
 
 seal_effective_build_args() {
@@ -312,11 +298,10 @@ seal_effective_build_args() {
   chmod 600 "$BUILD_ARGS_FILE"
   effective_build_args >"$BUILD_ARGS_FILE" \
     || die 'could not resolve the sanitized effective build arguments'
-  SEALED_CONFIG_HASH="$(python3 - "$BUILD_ARGS_FILE" <<'PY'
-import hashlib, pathlib, sys
-print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())
-PY
-)"
+  SEALED_CONFIG_HASH="$(
+    python3 "${SCRIPT_DIR}/release_build_contract.py" hash --release-sha "$REF" \
+      <"$BUILD_ARGS_FILE"
+  )"
   [[ "$SEALED_CONFIG_HASH" =~ ^[0-9a-f]{64}$ ]] \
     || die 'sealed build-argument digest is malformed'
 }
@@ -337,35 +322,9 @@ load_sealed_build_args() {
   BUILD_ARGS_RENDER_FILE="$(mktemp "${TMPDIR:-/tmp}/pi5-candidate-build-args-rendered.XXXXXX")" \
     || die 'could not allocate sealed build-argument rendering'
   chmod 600 "$BUILD_ARGS_RENDER_FILE"
-  if ! python3 - "$BUILD_ARGS_FILE" "$service" >"$BUILD_ARGS_RENDER_FILE" <<'PY'
-import json, sys
-path, service = sys.argv[1:]
-with open(path, encoding='utf-8') as stream:
-    document = json.load(stream)
-arguments = document.get(service) if isinstance(document, dict) else None
-expected = {
-    'api': {'INSTALL_PLAYWRIGHT_CHROMIUM'},
-    'web': {
-        'VITE_AGENT_WS_URL',
-        'VITE_API_BASE_URL',
-        'VITE_KIOSK_TARGET_LOCATION_SELECTOR_ENABLED',
-        'VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED',
-        'VITE_KIOSK_SOP_POPUP_ENABLED',
-        'VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED',
-        'VITE_KIOSK_LEADERBOARD_DEFER_RESIDUAL_SUMMARY_ENABLED',
-        'VITE_RELEASE_SHA',
-    },
-}
-if set(document) != set(expected) or service not in expected:
-    raise SystemExit('sealed build-argument document is malformed')
-if not isinstance(arguments, dict) or set(arguments) != expected[service]:
-    raise SystemExit('sealed service build arguments are malformed')
-for key in sorted(arguments):
-    value = arguments[key]
-    if not isinstance(key, str) or not isinstance(value, str) or '\0' in key or '\0' in value:
-        raise SystemExit('sealed build argument is malformed')
-    sys.stdout.buffer.write(b'--build-arg\0' + f'{key}={value}'.encode() + b'\0')
-PY
+  if ! python3 "${SCRIPT_DIR}/release_build_contract.py" emit-build-args \
+    --release-sha "$REF" --service "$service" \
+    <"$BUILD_ARGS_FILE" >"$BUILD_ARGS_RENDER_FILE"
   then
     rm -f "$BUILD_ARGS_RENDER_FILE"
     BUILD_ARGS_RENDER_FILE=""
@@ -981,6 +940,46 @@ build_candidate_service_with_retry() {
   return 1
 }
 
+attempt_artifact_promotion() {
+  local api="$1" web="$2" config_hash="$3" rc
+  PROMOTION_RESULT_FILE="$(
+    mktemp "${TMPDIR:-/tmp}/pi5-artifact-promotion-result.XXXXXX"
+  )" || die 'could not allocate artifact promotion result'
+  chmod 600 "$PROMOTION_RESULT_FILE"
+  if python3 "${SCRIPT_DIR}/pi5_artifact_promoter.py" \
+      --config "$ARTIFACT_PROMOTION_CONFIG" \
+      --sha "$REF" \
+      --config-hash "$config_hash" \
+      --run-id "$RUN_ID" \
+      --api-tag "$api" \
+      --web-tag "$web" \
+      --result "$PROMOTION_RESULT_FILE"; then
+    rc=0
+  else
+    rc=$?
+  fi
+  case "$rc" in
+    0)
+      log "using attested ARM64 API/Web release pair"
+      return 0
+      ;;
+    76)
+      log "artifact promotion is disabled; using the accepted local builder"
+      return 2
+      ;;
+    75)
+      log "artifact promotion is unavailable; using the accepted local builder"
+      return 3
+      ;;
+    78)
+      die 'artifact promotion failed an integrity check'
+      ;;
+    *)
+      die "artifact promotion failed with an unsupported status: ${rc}"
+      ;;
+  esac
+}
+
 image_deploy_cleanup() {
   local rc=$? container_rc=0 resume_rc=0
   if [[ "$DRY_RUN" != 1 && -n "$CANDIDATE_CONTAINER_ID" ]]; then
@@ -996,6 +995,7 @@ image_deploy_cleanup() {
   [[ -z "$BUILD_OVERRIDE" ]] || rm -f "$BUILD_OVERRIDE"
   [[ -z "$BUILD_ARGS_FILE" ]] || rm -f "$BUILD_ARGS_FILE"
   [[ -z "$BUILD_ARGS_RENDER_FILE" ]] || rm -f "$BUILD_ARGS_RENDER_FILE"
+  [[ -z "${PROMOTION_RESULT_FILE:-}" ]] || rm -f "$PROMOTION_RESULT_FILE"
   ((LOCK_DIR_ACQUIRED == 0)) || rmdir "$LOCK_DIR" 2>/dev/null || true
   trap - EXIT
   exit "$rc"
@@ -1008,7 +1008,7 @@ prepare() {
   reconcile_candidate_build_residue
   require_sha
   resource_guard
-  local tag api web candidate_output candidate_reported_id build_mode api_id web_id maximum config_hash
+  local tag api web candidate_output candidate_reported_id build_mode api_id web_id maximum config_hash promotion_rc
   local -a api_build_args=() web_build_args=()
   seal_effective_build_args
   config_hash="$SEALED_CONFIG_HASH"
@@ -1024,21 +1024,34 @@ prepare() {
     build_mode=reused
     log "reusing exact run-scoped candidate images for ${REF}"
   else
-    build_mode=built
     rm -f "$RESOURCE_EVIDENCE_FILE"
-    log "building candidate images serially with production-biased CPU scheduling while production remains active"
     if [[ "$DRY_RUN" == 1 ]]; then
+      build_mode=local-built
       printf 'DRY-RUN: VITE_RELEASE_SHA=%q PI5_API_IMAGE=%q docker compose build api then PI5_WEB_IMAGE=%q docker compose build web\n' "$REF" "$api" "$web"
     else
-      prepare_build_context
-      load_sealed_build_args api api_build_args
-      load_sealed_build_args web web_build_args
-      assert_effective_build_args_unchanged "$config_hash" api-build
-      build_candidate_service_with_retry api "$api" "$web" "${api_build_args[@]}" \
-        || die 'candidate API image build exhausted its retry budget'
-      assert_effective_build_args_unchanged "$config_hash" web-build
-      build_candidate_service_with_retry web "$api" "$web" "${web_build_args[@]}" \
-        || die 'candidate Web image build exhausted its retry budget'
+      if attempt_artifact_promotion "$api" "$web" "$config_hash"; then
+        promotion_rc=0
+      else
+        promotion_rc=$?
+      fi
+      case "$promotion_rc" in
+        0) build_mode=promoted ;;
+        2) build_mode=local-built ;;
+        3) build_mode=local-fallback ;;
+        *) die "artifact promotion returned an unsupported decision: ${promotion_rc}" ;;
+      esac
+      if [[ "$build_mode" != promoted ]]; then
+        log "building candidate images serially with production-biased CPU scheduling while production remains active"
+        prepare_build_context
+        load_sealed_build_args api api_build_args
+        load_sealed_build_args web web_build_args
+        assert_effective_build_args_unchanged "$config_hash" api-build
+        build_candidate_service_with_retry api "$api" "$web" "${api_build_args[@]}" \
+          || die 'candidate API image build exhausted its retry budget'
+        assert_effective_build_args_unchanged "$config_hash" web-build
+        build_candidate_service_with_retry web "$api" "$web" "${web_build_args[@]}" \
+          || die 'candidate Web image build exhausted its retry budget'
+      fi
     fi
   fi
   # Once the reuse decision is made, discard the prior proof. A failed retry

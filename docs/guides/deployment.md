@@ -50,6 +50,16 @@ mutation、Signageは選ばない。一般inventory、共通role、未登録path
 [ADR-20260728](../decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md)
 を参照する。
 
+Pi5のCI成果物昇格は既定無効である。別途承認して有効化した場合だけ、
+exact main SHAとbuild設定hashに一致する署名済みLinux ARM64 API/Web pairを
+候補tagへ移す。release setの欠落・一時的な取得不能・tool不在は、従来の
+Pi5ローカルbuildへ戻る。署名、source、設定、platform、repository、digest、
+schema、labelの不一致は改ざんまたはproducer不整合として停止し、fallbackで
+隠さない。成果物取得後もmigration、health、Caddy、load、Blue/Green、5分監視、
+rollbackは従来どおり実施する。正本は
+[ARM64成果物昇格ADR](../decisions/ADR-20260728-attested-arm64-release-artifact-promotion.md)
+である。
+
 判断の正本は `logs/deploy/fleet-release-state.json` である。手で編集しない。
 
 ## 実行前確認
@@ -171,6 +181,8 @@ Pi5が対象の場合は、host設定、Expand-only migration、candidate image�
 - run全体が `success` である。
 - 対象hostの desired/current SHA が一致し、evidenceが `verified` である。
 - Pi5はactive slot、API/Web image、config digest、migration digestが一致する。
+- 成果物昇格を有効にしたrunは、candidateの`build.mode`が`promoted`であり、
+  `artifactPromotion`にrelease set digestと両image digestがある。
 - Kioskは新Web bundle SHA、Signageは更新済みrepo SHAを返す。
 - 必須serviceとtimerがactiveで、認証済みendpointが成功する。
 - maintenance表示が全端末で解除されている。
@@ -189,6 +201,13 @@ scripts/update-all-clients.sh --status RUN_ID
 processのkill、lockファイルの削除、fleet stateの手編集、直接checkout、個別Ansible実行はしない。詳細は [deploy status recovery](../runbooks/deploy-status-recovery.md) を参照する。
 
 Pi5 DBはdown migrationしない。rollbackはコード、image、設定、端末ファイルをrun専用manifestに従って戻し、databaseは旧API互換を保てるExpand-only migrationだけを許可する。
+
+成果物取得に失敗した場合、`disabled`または`unavailable`だけはローカルbuildへ
+自動復帰する。`integrity-failure`ではpromotion設定を手で書き換えたり、
+未検証tagを直接pullしたりせず、release set、attestation、source SHA、
+configuration hashを調査する。可用性問題で次回runも確実にローカルbuildへ
+戻す必要がある場合は、正規Ansible変数でpromotionを無効化し、
+`--print-plan`からやり直す。
 
 ## 禁止する迂回経路
 

@@ -177,6 +177,7 @@ _SERVER_CONFIG_PATHS = (
     f"{_TERMINAL_REPOSITORY}/apps/api/.env",
     f"{_TERMINAL_REPOSITORY}/apps/web/.env",
     f"{_TERMINAL_REPOSITORY}/infrastructure/docker/.env",
+    "/etc/raspi-release/artifact-promotion.json",
 )
 _COMMON_RUNTIME_UNITS = (
     "lightdm.service",
@@ -2111,7 +2112,7 @@ def capture_server_config_manifest(
     *,
     runtime: Runtime,
 ) -> dict[str, Any]:
-    """Seal only the three Pi5 release environment files before convergence."""
+    """Seal the bounded Pi5 release environment files before convergence."""
 
     _validated_server_config_identity(host, run_id)
     arguments = [

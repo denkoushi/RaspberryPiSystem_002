@@ -15,17 +15,17 @@
     ]
   },
   "summary": {
-    "documentCount": 571,
-    "totalLines": 161289,
-    "totalBytes": 12153845,
-    "withFrontmatter": 248,
-    "withStatus": 104,
-    "sourceOfTruthDeclared": 68,
+    "documentCount": 573,
+    "totalLines": 161818,
+    "totalBytes": 12182964,
+    "withFrontmatter": 250,
+    "withStatus": 106,
+    "sourceOfTruthDeclared": 70,
     "execPlanReferences": 64,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 25,
-    "localLinkCount": 5617,
+    "localLinkCount": 5621,
     "brokenLocalLinkCount": 87,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -5898,8 +5898,8 @@
     },
     {
       "path": "docs/AI_START_HERE.md",
-      "lineCount": 110,
-      "byteSize": 5725,
+      "lineCount": 111,
+      "byteSize": 5893,
       "hasFrontmatter": true,
       "title": "AI Start Here",
       "status": null,
@@ -5913,8 +5913,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 2008,
-      "byteSize": 345358,
+      "lineCount": 2009,
+      "byteSize": 345747,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -6863,6 +6863,11 @@
         {
           "href": "./decisions/ADR-20260726-assembly-template-procedure-steps.md",
           "targetPath": "docs/decisions/ADR-20260726-assembly-template-procedure-steps.md",
+          "exists": true
+        },
+        {
+          "href": "./decisions/ADR-20260728-attested-arm64-release-artifact-promotion.md",
+          "targetPath": "docs/decisions/ADR-20260728-attested-arm64-release-artifact-promotion.md",
           "exists": true
         },
         {
@@ -10271,6 +10276,11 @@
           "exists": true
         },
         {
+          "href": "./plans/deploy-workflow-artifact-promotion-execplan.md",
+          "targetPath": "docs/plans/deploy-workflow-artifact-promotion-execplan.md",
+          "exists": true
+        },
+        {
           "href": "./plans/deploy-workflow-safe-shortening-execplan.md",
           "targetPath": "docs/plans/deploy-workflow-safe-shortening-execplan.md",
           "exists": true
@@ -11191,95 +11201,95 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 288,
+          "line": 289,
           "length": 1132
         },
         {
-          "line": 304,
+          "line": 305,
           "length": 1242
         },
         {
-          "line": 308,
+          "line": 309,
           "length": 1022
         },
         {
-          "line": 322,
+          "line": 323,
           "length": 1065
         },
         {
-          "line": 370,
+          "line": 371,
           "length": 1165
         },
         {
-          "line": 376,
+          "line": 377,
           "length": 1458
         },
         {
-          "line": 388,
+          "line": 389,
           "length": 1083
         },
         {
-          "line": 402,
+          "line": 403,
           "length": 1398
         },
         {
-          "line": 404,
+          "line": 405,
           "length": 1133
         },
         {
-          "line": 408,
+          "line": 409,
           "length": 1399
         },
         {
-          "line": 410,
+          "line": 411,
           "length": 1008
         },
         {
-          "line": 416,
+          "line": 417,
           "length": 1059
         },
         {
-          "line": 424,
+          "line": 425,
           "length": 1129
         },
         {
-          "line": 428,
+          "line": 429,
           "length": 1135
         },
         {
-          "line": 432,
+          "line": 433,
           "length": 1117
         },
         {
-          "line": 547,
+          "line": 548,
           "length": 1013
         },
         {
-          "line": 733,
+          "line": 734,
           "length": 2038
         },
         {
-          "line": 749,
+          "line": 750,
           "length": 1496
         },
         {
-          "line": 755,
+          "line": 756,
           "length": 1177
         },
         {
-          "line": 1097,
+          "line": 1098,
           "length": 1449
         },
         {
-          "line": 1133,
+          "line": 1134,
           "length": 1136
         },
         {
-          "line": 1135,
+          "line": 1136,
           "length": 1239
         },
         {
-          "line": 1171,
+          "line": 1172,
           "length": 1004
         }
       ],
@@ -16858,6 +16868,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md",
+      "lineCount": 85,
+      "byteSize": 3837,
+      "hasFrontmatter": true,
+      "title": "Change-aware main CI and Pi5-owned Web build configuration",
+      "status": "accepted",
+      "source_of_truth": "true",
+      "localLinks": [],
+      "inboundCount": 3,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/decisions/ADR-20260728-inspection-drawing-sop-outer-callouts.md",
       "lineCount": 35,
       "byteSize": 1300,
@@ -18145,13 +18170,18 @@
     },
     {
       "path": "docs/guides/ci-branch-protection.md",
-      "lineCount": 122,
-      "byteSize": 5945,
+      "lineCount": 129,
+      "byteSize": 6845,
       "hasFrontmatter": false,
       "title": "段階型CIと`main` rulesetガイド",
       "status": null,
       "source_of_truth": null,
       "localLinks": [
+        {
+          "href": "../decisions/ADR-20260728-attested-arm64-release-artifact-promotion.md",
+          "targetPath": "docs/decisions/ADR-20260728-attested-arm64-release-artifact-promotion.md",
+          "exists": true
+        },
         {
           "href": "../decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md",
           "targetPath": "docs/decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md",
@@ -18601,8 +18631,8 @@
     },
     {
       "path": "docs/guides/deployment.md",
-      "lineCount": 216,
-      "byteSize": 18220,
+      "lineCount": 235,
+      "byteSize": 19616,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -18631,6 +18661,11 @@
         {
           "href": "../archive/deployments/legacy-operator-guide-through-2026-07.md",
           "targetPath": "docs/archive/deployments/legacy-operator-guide-through-2026-07.md",
+          "exists": true
+        },
+        {
+          "href": "../decisions/ADR-20260728-attested-arm64-release-artifact-promotion.md",
+          "targetPath": "docs/decisions/ADR-20260728-attested-arm64-release-artifact-promotion.md",
           "exists": true
         },
         {
@@ -22449,8 +22484,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-320-kiosk-part-measurement.md",
-      "lineCount": 1871,
-      "byteSize": 206136,
+      "lineCount": 1889,
+      "byteSize": 208323,
       "hasFrontmatter": false,
       "title": "KB-320: キオスク部品測定（テンプレ不一致・候補・スキャン）",
       "status": null,
@@ -32195,6 +32230,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/deploy-workflow-safe-shortening-execplan.md",
+      "lineCount": 361,
+      "byteSize": 17603,
+      "hasFrontmatter": true,
+      "title": "Shorten deployment lead time without relaxing release safety",
+      "status": "implemented",
+      "source_of_truth": "true",
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/deployment-exhaustive-preflight-execplan.md",
       "lineCount": 200,
       "byteSize": 25184,
@@ -36339,8 +36389,8 @@
     },
     {
       "path": "docs/runbooks/kiosk-part-measurement.md",
-      "lineCount": 1395,
-      "byteSize": 116558,
+      "lineCount": 1432,
+      "byteSize": 119197,
       "hasFrontmatter": false,
       "title": "キオスク: 部品測定記録（part-measurement）",
       "status": null,
