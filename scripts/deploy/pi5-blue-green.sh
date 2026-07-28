@@ -43,6 +43,10 @@ EVIDENCE_MIN_DISK_GB="${PI5_CANDIDATE_EVIDENCE_MIN_DISK_GB:-10}"
 EVIDENCE_MAX_LOAD_AVG="${PI5_CANDIDATE_MAX_LOAD_AVG:-}"
 STABLE_SECONDS="${PI5_BLUE_GREEN_STABLE_SECONDS:-300}"
 MONITOR_INTERVAL="${PI5_BLUE_GREEN_MONITOR_INTERVAL:-2}"
+# Runtime health remains sampled every MONITOR_INTERVAL. Immutable image,
+# Compose-runtime, and Caddy structure is re-proved every 30 seconds and on the
+# final sample instead of starting a Caddy validator process every two seconds.
+MONITOR_STRUCTURAL_SAMPLE_INTERVAL="${PI5_BLUE_GREEN_MONITOR_STRUCTURAL_SAMPLE_INTERVAL:-15}"
 READINESS_RETRIES="${PI5_BLUE_GREEN_READINESS_RETRIES:-45}"
 READINESS_INTERVAL="${PI5_BLUE_GREEN_READINESS_INTERVAL:-2}"
 # Pi5's Docker port handoff from legacy Web to the fixed gateway can take
@@ -175,6 +179,8 @@ validate_fixed_safety_policy() {
   if ((production == 1)); then
     [[ "$STABLE_SECONDS" == 300 ]] || die 'production Blue/Green stability hold is fixed at 300 seconds'
     [[ "$MONITOR_INTERVAL" == 2 ]] || die 'production Blue/Green monitor interval is fixed at 2 seconds'
+    [[ "$MONITOR_STRUCTURAL_SAMPLE_INTERVAL" == 15 ]] \
+      || die 'production Blue/Green structural monitor interval is fixed at 15 samples'
     if [[ "${ROLLING_RELEASE_PROTOCOL:-}" == 2 ]]; then
       [[ "$MAX_ERROR_RATE" == 0.05 ]] || die 'rolling-release maximum error rate is fixed at 0.05'
       [[ "$MIN_ERROR_SAMPLES" == 20 ]] || die 'rolling-release minimum error samples are fixed at 20'
@@ -209,6 +215,8 @@ validate_fixed_safety_policy() {
   else
     [[ "$STABLE_SECONDS" =~ ^[0-9]+$ ]] || die 'test stability hold must be a non-negative integer'
     [[ "$MONITOR_INTERVAL" =~ ^[0-9]+([.][0-9]+)?$ ]] || die 'test monitor interval is invalid'
+    [[ "$MONITOR_STRUCTURAL_SAMPLE_INTERVAL" =~ ^[1-9][0-9]*$ ]] \
+      || die 'test structural monitor interval is invalid'
   fi
   python3 - "$MAX_ERROR_RATE" <<'PY' || die 'maximum error rate must be finite and between 0 and 1'
 import math, sys
@@ -1684,13 +1692,20 @@ rollback() {
 }
 
 monitor_checks() {
-  local active="$1" rollback_slot="$2" samples="$3" error_rate
-  if ((STRUCTURAL_ONLY == 1)); then
-    slot_structural_ready "$active" standby || return 1
+  local active="$1" rollback_slot="$2" samples="$3" force_structural="${4:-0}" error_rate
+  if ((force_structural == 1 || samples == 1 || (samples - 1) % MONITOR_STRUCTURAL_SAMPLE_INTERVAL == 0)); then
+    if ((STRUCTURAL_ONLY == 1)); then
+      slot_structural_ready "$active" standby || return 1
+    else
+      slot_ready "$active" standby || return 1
+    fi
+    slot_runtime_ready "$rollback_slot" leader || return 1
   else
-    slot_ready "$active" standby || return 1
+    # Scheduler/database readiness and the public API/Web path are still
+    # checked every two seconds. Only immutable structure checks are amortized.
+    scheduler_readiness "$active" standby || return 1
+    scheduler_readiness "$rollback_slot" leader || return 1
   fi
-  slot_runtime_ready "$rollback_slot" leader || return 1
   external_smoke || return 1
   if [[ -n "$ERROR_RATE_URL" && "$samples" -ge "$MIN_ERROR_SAMPLES" && "$DRY_RUN" != 1 ]]; then
     error_rate="$(curl -kfsS --max-time 5 "$ERROR_RATE_URL" | python3 -c '
@@ -1728,7 +1743,7 @@ monitor() {
     now="$(date +%s)"
     if ((now >= deadline)); then
       samples=$((samples + 1))
-      if ! monitor_checks "$active" "$rollback_slot" "$samples"; then
+      if ! monitor_checks "$active" "$rollback_slot" "$samples" 1; then
         alert CRITICAL "stability monitor failed for ${active}; coordinator switchback is required"
         state_save monitor-failed "$ACTIVE_SLOT" "$CANDIDATE_SLOT" "$PREVIOUS_SLOT" \
           "$BLUE_API_IMAGE" "$BLUE_WEB_IMAGE" "$GREEN_API_IMAGE" "$GREEN_WEB_IMAGE" \

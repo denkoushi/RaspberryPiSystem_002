@@ -654,6 +654,41 @@ grep -Fq 'math.isfinite(value)' "$SCRIPT" \
   || fail "stability error-rate parsing does not reject non-finite values"
 grep -Fq '0 <= value <= 1' "$SCRIPT" \
   || fail "stability error-rate parsing does not enforce a probability range"
+(
+  eval "$(sed -n '/^monitor_checks() {/,/^}/p' "$SCRIPT")"
+  STRUCTURAL_ONLY=0
+  MONITOR_STRUCTURAL_SAMPLE_INTERVAL=15
+  ERROR_RATE_URL=
+  MIN_ERROR_SAMPLES=20
+  DRY_RUN=0
+  STRUCTURAL_CHECKS=0
+  RUNTIME_CHECKS=0
+  EXTERNAL_CHECKS=0
+  slot_ready() { STRUCTURAL_CHECKS=$((STRUCTURAL_CHECKS + 1)); }
+  slot_runtime_ready() { STRUCTURAL_CHECKS=$((STRUCTURAL_CHECKS + 1)); }
+  scheduler_readiness() { RUNTIME_CHECKS=$((RUNTIME_CHECKS + 1)); }
+  external_smoke() { EXTERNAL_CHECKS=$((EXTERNAL_CHECKS + 1)); }
+
+  monitor_checks blue green 1 \
+    || fail "first stability sample did not perform structural checks"
+  [[ "$STRUCTURAL_CHECKS" -eq 2 && "$RUNTIME_CHECKS" -eq 0 && "$EXTERNAL_CHECKS" -eq 1 ]] \
+    || fail "first stability sample did not use the structural contract"
+
+  monitor_checks blue green 2 \
+    || fail "ordinary stability sample did not perform runtime checks"
+  [[ "$STRUCTURAL_CHECKS" -eq 2 && "$RUNTIME_CHECKS" -eq 2 && "$EXTERNAL_CHECKS" -eq 2 ]] \
+    || fail "ordinary stability sample repeated structural work or skipped runtime health"
+
+  monitor_checks blue green 16 \
+    || fail "periodic structural stability sample failed"
+  [[ "$STRUCTURAL_CHECKS" -eq 4 && "$RUNTIME_CHECKS" -eq 2 && "$EXTERNAL_CHECKS" -eq 3 ]] \
+    || fail "30-second structural sample cadence is incorrect"
+
+  monitor_checks blue green 17 1 \
+    || fail "forced final structural stability sample failed"
+  [[ "$STRUCTURAL_CHECKS" -eq 6 && "$RUNTIME_CHECKS" -eq 2 && "$EXTERNAL_CHECKS" -eq 4 ]] \
+    || fail "final stability sample did not re-prove structure"
+)
 if grep -Fq 'migration_gate_validate' "$SCRIPT"; then
   fail "Blue/Green still owns a duplicate Expand-only migration gate"
 fi
@@ -705,6 +740,10 @@ rendered="$(PI5_BLUE_API_IMAGE="$OLD_API" PI5_GREEN_API_IMAGE="$NEW_API" \
 assert_contains "$rendered" 'JWT_ACCESS_SECRET: production-access-secret-0123456789-abcdefghijklmnopqrstuvwxyz'
 assert_contains "$rendered" 'JWT_REFRESH_SECRET: production-refresh-secret-0123456789-abcdefghijklmnopqrstuvwxyz'
 [[ "$(grep -c 'restart: unless-stopped' <<<"$rendered")" -eq 5 ]] || fail "all Phase 3 services must use unless-stopped"
+[[ "$(grep -c 'cpu_shares: 4096' <<<"$rendered")" -eq 2 ]] \
+  || fail "both Phase 3 API slots must retain production CPU priority"
+[[ "$(grep -c 'cpu_shares: 2048' <<<"$rendered")" -eq 3 ]] \
+  || fail "both Web slots and the gateway must retain request-serving CPU priority"
 
 legacy_restore_cfg="$(PI5_LEGACY_API_IMAGE="$OLD_API" PI5_LEGACY_WEB_IMAGE="$OLD_WEB" \
   PI5_PROJECT_DIR="$ROOT" PI5_ENV_FILE="$PROD_ENV" \

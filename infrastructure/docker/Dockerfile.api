@@ -30,17 +30,17 @@ COPY packages ./packages
 COPY scripts ./scripts
 
 WORKDIR /app/packages/shared-types
-RUN pnpm build
+RUN nice -n 10 pnpm build
 
 WORKDIR /app/packages/part-search-core
-RUN pnpm build
+RUN nice -n 10 pnpm build
 
 WORKDIR /app/packages/shelf-layout-core
-RUN pnpm build
+RUN nice -n 10 pnpm build
 
 WORKDIR /app/apps/api
-RUN pnpm prisma generate
-RUN pnpm run build
+RUN nice -n 10 pnpm prisma generate
+RUN nice -n 10 pnpm run build
 
 FROM node:20-bookworm-slim AS api
 WORKDIR /app
@@ -102,7 +102,7 @@ COPY --from=base --exclude=node_modules /app/packages/shelf-layout-core ./packag
 COPY --from=base /app/scripts ./scripts
 
 WORKDIR /app/apps/api
-RUN pnpm prisma generate
+RUN nice -n 10 pnpm prisma generate
 
 # ボリュームマウント先が存在しないと起動時に失敗するため事前に作成
 # npm/corepackキャッシュを削除（セキュリティスキャン対策: pnpmのみ使用するため）

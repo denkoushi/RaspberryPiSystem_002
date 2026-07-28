@@ -1024,7 +1024,7 @@ prepare() {
   else
     build_mode=built
     rm -f "$RESOURCE_EVIDENCE_FILE"
-    log "building candidate images serially from the sealed Git commit while production remains active"
+    log "building candidate images serially with production-biased CPU scheduling while production remains active"
     if [[ "$DRY_RUN" == 1 ]]; then
       printf 'DRY-RUN: VITE_RELEASE_SHA=%q PI5_API_IMAGE=%q docker compose build api then PI5_WEB_IMAGE=%q docker compose build web\n' "$REF" "$api" "$web"
     else

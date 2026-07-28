@@ -1,6 +1,9 @@
 services:
   db:
     image: pgvector/pgvector:pg15
+    # Candidate builds run on this host. Keep the live database ahead of
+    # best-effort build work whenever CPU is contended.
+    cpu_shares: 4096
     shm_size: "512mb"
     restart: unless-stopped
     healthcheck:
@@ -35,6 +38,8 @@ services:
       args:
         INSTALL_PLAYWRIGHT_CHROMIUM: ${INSTALL_PLAYWRIGHT_CHROMIUM:-true}
     restart: always
+    # Pi4 screens depend on this API while Pi5 builds the next release.
+    cpu_shares: 4096
     depends_on:
       db:
         condition: service_healthy
@@ -136,6 +141,7 @@ services:
         VITE_KIOSK_LEADERBOARD_DEFER_RESIDUAL_SUMMARY_ENABLED: ${VITE_KIOSK_LEADERBOARD_DEFER_RESIDUAL_SUMMARY_ENABLED:-false}
         VITE_RELEASE_SHA: ${VITE_RELEASE_SHA:-}
     restart: always
+    cpu_shares: 2048
     depends_on:
       api:
         condition: service_healthy

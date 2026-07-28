@@ -2,6 +2,9 @@ services:
   api-blue:
     image: ${PI5_BLUE_API_IMAGE:?PI5_BLUE_API_IMAGE is required}
     restart: unless-stopped
+    # Preserve Pi4-facing API capacity while candidate build work competes for
+    # Pi5 CPU. Shares are relative and do not reserve idle CPU.
+    cpu_shares: 4096
     healthcheck:
       test:
         [
@@ -63,6 +66,7 @@ services:
   api-green:
     image: ${PI5_GREEN_API_IMAGE:?PI5_GREEN_API_IMAGE is required}
     restart: unless-stopped
+    cpu_shares: 4096
     healthcheck:
       test:
         [
@@ -85,6 +89,7 @@ services:
   web-blue:
     image: ${PI5_BLUE_WEB_IMAGE:?PI5_BLUE_WEB_IMAGE is required}
     restart: unless-stopped
+    cpu_shares: 2048
     environment: &web-environment
       SLOT_API_UPSTREAM: api-blue:8080
       NFC_AGENT_HOST: ${NFC_AGENT_HOST:-192.168.10.224}
@@ -98,6 +103,7 @@ services:
   web-green:
     image: ${PI5_GREEN_WEB_IMAGE:?PI5_GREEN_WEB_IMAGE is required}
     restart: unless-stopped
+    cpu_shares: 2048
     environment:
       <<: *web-environment
       SLOT_API_UPSTREAM: api-green:8080
@@ -107,6 +113,7 @@ services:
   gateway:
     image: ${PI5_GATEWAY_IMAGE:?PI5_GATEWAY_IMAGE is required}
     restart: unless-stopped
+    cpu_shares: 2048
     environment:
       GATEWAY_CONFIG_FILE: /srv/bluegreen/Caddyfile
     volumes:

@@ -615,9 +615,9 @@ grep -Fq 'VITE_RELEASE_SHA: ${VITE_RELEASE_SHA:-}' \
   || fail "server Compose does not forward the immutable Web release SHA"
 grep -Fq 'ARG VITE_RELEASE_SHA=' "$ROOT/infrastructure/docker/Dockerfile.web" \
   || fail "Web image does not declare the late release SHA build argument"
-grep -Fq 'VITE_RELEASE_SHA="$VITE_RELEASE_SHA" pnpm run build' \
+grep -Fq 'GOMAXPROCS=1 VITE_RELEASE_SHA="$VITE_RELEASE_SHA" nice -n 10 pnpm run build' \
   "$ROOT/infrastructure/docker/Dockerfile.web" \
-  || fail "Web image does not bind its release SHA to the Vite build"
+  || fail "Web image does not bind its release SHA to the low-priority Vite build"
 grep -Fq 'safe_git archive --format=tar "$REF"' "$SCRIPT" \
   || fail "candidate build context is not materialized from the sealed Git commit"
 grep -Fq 'BUILD_COMMIT=${REF}' "$SCRIPT" \
@@ -644,7 +644,15 @@ for dockerfile in \
     || fail "$dockerfile does not bound pnpm network concurrency"
   grep -Fq 'npm_config_fetch_retries=5' "$dockerfile" \
     || fail "$dockerfile does not bound and retry pnpm fetches"
+  grep -Fq 'nice -n 10 pnpm build' "$dockerfile" \
+    || fail "$dockerfile does not lower candidate compiler scheduling priority"
 done
+grep -Fq 'GOMAXPROCS=1' "$ROOT/infrastructure/docker/Dockerfile.web" \
+  || fail "Web candidate build does not cap Go-based compiler parallelism"
+grep -Fq 'nice -n 10 go build -p 1' "$ROOT/infrastructure/docker/Dockerfile.web" \
+  || fail "Caddy candidate build is not single-worker and low priority"
+grep -Fq 'production-biased CPU scheduling' "$SCRIPT" \
+  || fail "candidate build does not report its production-priority policy"
 python3 - \
   "$ROOT/infrastructure/docker/Dockerfile.api" \
   "$ROOT/infrastructure/docker/Dockerfile.web" <<'PY'
