@@ -80,11 +80,15 @@ packages and is passed only through stdin or a child-process environment. It
 is stored in a root-owned mode-0640 policy readable only by the trusted release
 runner group, and is excluded from state, command arguments, and logs.
 
-The verifier and registry are deliberately not new hard readiness gates.
+The verifier and registry are deliberately not new fleet-readiness gates.
 Making registry reachability mandatory would remove the local builder's
-availability fallback. When promotion is enabled, Ansible installs the
-verifier; runtime tool or transport absence is recorded as unavailable and
-uses the accepted local path. Integrity failures still stop.
+availability fallback. When promotion is enabled, Ansible installs an
+immutable upstream ARM64 GitHub CLI package pinned by version and published
+SHA-256, then proves that every required attestation-policy option is present
+before candidate preparation. Runtime registry transport absence is recorded
+as unavailable and uses the accepted local path. Package checksum or
+capability mismatches stop during configuration convergence; discovered
+artifact integrity failures still stop.
 
 ## Consequences
 

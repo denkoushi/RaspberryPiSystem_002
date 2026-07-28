@@ -3,6 +3,11 @@
 # the default unless one production host explicitly enables promotion.
 pi5_artifact_promotion_enabled: false
 pi5_artifact_ghcr_username: "denkoushi"
+# Debian stable currently ships a gh build without the attestation command.
+# Pin an immutable upstream ARM64 package and its published SHA-256 so the
+# production verifier contract does not depend on the distro package version.
+pi5_artifact_gh_version: "2.96.0"
+pi5_artifact_gh_arm64_sha256: "334dd9c6704fc1656a48e475c5a3a9aa32bbadb87fa1777513bc626af4a99e89"
 # Optional for a private package. Public OCI pulls and bundle verification do
 # not require a real GitHub credential.
 pi5_artifact_ghcr_token: "{{ vault_pi5_artifact_ghcr_token | default('') }}"

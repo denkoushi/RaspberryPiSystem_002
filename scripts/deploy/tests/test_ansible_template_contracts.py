@@ -130,6 +130,13 @@ class AnsibleTemplateContractTests(unittest.TestCase):
             "pi5_artifact_promotion_enabled: false",
             ARTIFACT_PROMOTION_DEFAULTS.read_text(encoding="utf-8"),
         )
+        artifact_defaults = ARTIFACT_PROMOTION_DEFAULTS.read_text(encoding="utf-8")
+        self.assertIn('pi5_artifact_gh_version: "2.96.0"', artifact_defaults)
+        self.assertIn(
+            'pi5_artifact_gh_arm64_sha256: '
+            '"334dd9c6704fc1656a48e475c5a3a9aa32bbadb87fa1777513bc626af4a99e89"',
+            artifact_defaults,
+        )
         self.assertIn(
             "pi5_artifact_promotion_enabled: true",
             PRIMARY_ARTIFACT_PROMOTION.read_text(encoding="utf-8"),
@@ -198,6 +205,33 @@ class AnsibleTemplateContractTests(unittest.TestCase):
             "when: pi5_artifact_promotion_enabled | default(false) | bool",
             tasks,
         )
+        self.assertNotIn(
+            "ansible.builtin.apt:\n    name: gh",
+            tasks,
+        )
+        self.assertIn(
+            "gh_{{ pi5_artifact_gh_version }}_linux_arm64.deb",
+            tasks,
+        )
+        self.assertIn(
+            'checksum: "sha256:{{ pi5_artifact_gh_arm64_sha256 }}"',
+            tasks,
+        )
+        self.assertIn(
+            "- /usr/bin/gh\n"
+            "      - attestation\n"
+            "      - verify\n"
+            "      - --help",
+            tasks,
+        )
+        for required_option in (
+            "--bundle-from-oci",
+            "--deny-self-hosted-runners",
+            "--source-digest",
+            "--source-ref",
+        ):
+            with self.subTest(required_option=required_option):
+                self.assertIn(required_option, tasks)
 
     def test_invalid_template_is_reported_with_source_location(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

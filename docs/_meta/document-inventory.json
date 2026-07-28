@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 575,
-    "totalLines": 162404,
-    "totalBytes": 12213303,
+    "totalLines": 162441,
+    "totalBytes": 12215595,
     "withFrontmatter": 252,
     "withStatus": 108,
     "sourceOfTruthDeclared": 72,
@@ -16869,8 +16869,8 @@
     },
     {
       "path": "docs/decisions/ADR-20260728-attested-arm64-release-artifact-promotion.md",
-      "lineCount": 112,
-      "byteSize": 5394,
+      "lineCount": 116,
+      "byteSize": 5670,
       "hasFrontmatter": true,
       "title": "Attested ARM64 API/Web release artifact promotion",
       "status": "accepted",
@@ -32246,8 +32246,8 @@
     },
     {
       "path": "docs/plans/deploy-workflow-artifact-promotion-execplan.md",
-      "lineCount": 472,
-      "byteSize": 24680,
+      "lineCount": 505,
+      "byteSize": 26696,
       "hasFrontmatter": true,
       "title": "Promote attested ARM64 release images without weakening deployment safety",
       "status": "implemented",
