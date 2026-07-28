@@ -10,7 +10,7 @@
 
 ### 検査図面 寸法・公差 SOP（2026-07-28 · デザイン確定・静的1枚）
 
-- **A4横1枚・画面外周吹き出し・手なし**: 別AI再現用の正本。**正本**: [Plan](./plans/kiosk-inspection-drawing-dimension-tolerance-sop-1page.md) · [ADR](./decisions/ADR-20260728-inspection-drawing-sop-outer-callouts.md) · [Preview](./design-previews/kiosk-inspection-drawing-dimension-tolerance-sop-1page.html)
+- **A4横1枚・左ステップレール＋画面上番号（右下隅）・手なし**: 別AI再現用の正本。引出線はホバー時のみ。**正本**: [Plan](./plans/kiosk-inspection-drawing-dimension-tolerance-sop-1page.md) · [ADR](./decisions/ADR-20260728-inspection-drawing-sop-step-rail.md) · [Preview](./design-previews/kiosk-inspection-drawing-dimension-tolerance-sop-1page.html)
 
 ### 組立V3承認UI/UX 回帰復旧（2026-07-27 · main正式統合）
 

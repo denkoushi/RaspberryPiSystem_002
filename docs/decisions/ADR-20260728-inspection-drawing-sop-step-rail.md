@@ -1,0 +1,50 @@
+---
+id: ADR-20260728-inspection-drawing-sop-step-rail
+title: Step-rail list + on-screen badges for inspection-drawing dimension SOP
+status: accepted
+date: 2026-07-28
+source_of_truth: true
+supersedes:
+  - ../decisions/ADR-20260728-inspection-drawing-sop-outer-callouts.md
+related_docs:
+  - ../plans/kiosk-inspection-drawing-dimension-tolerance-sop-1page.md
+  - ../design-previews/kiosk-inspection-drawing-dimension-tolerance-sop-1page.html
+---
+
+# ADR-20260728: Step-rail SOP (badges on target corners)
+
+## Context
+
+A4 landscape SOP for **検査図面 寸法・公差**. Always-on outer callouts + leaders do not scale (spider web at ~30–50 steps). Hand PNGs added noise. Badges centered on controls covered labels.
+
+## Decision
+
+- Left **step rail**: numbered instructional list (scrollable for growth)
+- On screen: **step badges only**, anchored to each target’s **bottom-right corner**
+- Leaders **hover/focus only** (one at a time); omitted in print
+- No hand illustrations
+
+## Alternatives
+
+- Outer-gutter pills + always-on non-crossing leaders — superseded (fails at high step counts)
+- Hand PNG pointing at controls — rejected (overlap, noise)
+- Badge at fingertip contact (50% / 68%) — rejected (still covers control face)
+- Badge far outside controls — rejected (too detached)
+
+## Consequences
+
+- Scales better: more steps → longer/scrolling rail, not more permanent leaders
+- Frozen HTML + Plan are the reproduction source for other agents
+- Print remains list + badges without interactive leaders
+
+## Validation
+
+- Safari: badges on bottom-right of 丸数字 / marker / 基準値 / 公差 / 保存
+- Hover shows one leader; leave clears
+- Print preview: one A4 landscape page, no leaders
+
+## References
+
+- Plan: [kiosk-inspection-drawing-dimension-tolerance-sop-1page.md](../plans/kiosk-inspection-drawing-dimension-tolerance-sop-1page.md)
+- Preview: [kiosk-inspection-drawing-dimension-tolerance-sop-1page.html](../design-previews/kiosk-inspection-drawing-dimension-tolerance-sop-1page.html)
+- Supersedes: [ADR-20260728-inspection-drawing-sop-outer-callouts.md](./ADR-20260728-inspection-drawing-sop-outer-callouts.md)

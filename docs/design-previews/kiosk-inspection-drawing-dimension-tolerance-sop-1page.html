@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>操作手順 — 検査図面 寸法・公差（本番UI再構築）</title>
+<title>操作手順 — 検査図面 寸法・公差（番号リスト版）</title>
 <style>
-  /* Tokens from inspectionDrawingKioskUi.ts / kioskTheme.ts / kioskMarkerTheme.ts */
+/* Tokens from inspectionDrawingKioskUi.ts / kioskTheme.ts / kioskMarkerTheme.ts */
   :root {
     --slate-800: #1e293b;
     --slate-900: #0f172a;
@@ -39,30 +39,6 @@
     padding: 6px 12px; cursor: pointer;
   }
 
-  /* Page frame with outer gutters; kiosk screen inset inside */
-  .sheet {
-    width: min(100%, 1280px);
-    aspect-ratio: 1280 / 720;
-    background: #dbe3ec;
-    color: #fff;
-    box-shadow: 0 18px 40px rgba(0,0,0,.3);
-    position: relative;
-    overflow: hidden;
-  }
-  /* Kiosk UI — leave margins for callouts (no spider-web leaders) */
-  .stage {
-    position: absolute;
-    left: 10.5%;
-    right: 16.8%;
-    top: 9.2%;
-    bottom: 8.5%;
-    display: flex;
-    flex-direction: column;
-    background: var(--slate-800);
-    overflow: hidden;
-    border-radius: 6px;
-    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.35);
-  }
   /* immersive header strip (KioskLayout header height approx) */
   .kiosk-hdr {
     height: 40px; flex-shrink: 0;
@@ -303,59 +279,73 @@
   .card .name { margin-left: 4px; font-weight: 700; }
   .card .vals { color: rgba(255,255,255,.65); }
 
-  /* Leader tip: HTML/CSS true circle (SVG circles stretch under preserveAspectRatio=none) */
-  .leader-tip {
-    position: absolute;
-    z-index: 46;
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: #e85d04;
-    transform: translate(-50%, -50%);
-    pointer-events: none;
-    box-shadow: 0 0 0 1px rgba(255,255,255,.75);
-  }
 
-
-  /* Callouts in outer gutters; numbered badges; short non-crossing leaders */
-  .leader-layer {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    z-index: 44;
-    overflow: visible;
+  /* Page: left step list + kiosk stage */
+  .sheet {
+    width: min(100%, 1280px);
+    aspect-ratio: 1280 / 720;
+    background: #dbe3ec;
+    color: #fff;
+    box-shadow: 0 18px 40px rgba(0,0,0,.3);
+    position: relative;
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: minmax(11.5rem, 18%) 1fr;
+    gap: 0;
   }
-  .leader-layer line {
-    stroke: #e85d04;
-    stroke-width: 1.25;
-    stroke-linecap: round;
-    fill: none;
-    vector-effect: non-scaling-stroke;
+  .step-rail {
+    position: relative;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    padding: 10px 8px 10px 10px;
+    background: #e8eef5;
+    border-right: 1px solid #b8c4d4;
+    color: #0f172a;
   }
-  .tap-bubble {
-    position: absolute;
-    z-index: 45;
-    pointer-events: none;
-    transform: translate(-50%, -50%);
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    max-width: 10rem;
-    padding: 4px 9px 4px 4px;
-    border-radius: 999px;
-    border: 1px solid #e85d04;
-    background: rgba(255, 248, 240, 0.98);
-    color: #9a3412;
+  .step-rail h1 {
+    flex-shrink: 0;
     font-size: 11px;
     font-weight: 800;
-    line-height: 1.2;
-    letter-spacing: 0.02em;
-    white-space: nowrap;
-    box-shadow: 0 1px 2px rgba(0,0,0,.18);
+    letter-spacing: 0.04em;
+    color: #475569;
+    margin: 0 0 8px;
+    line-height: 1.3;
   }
-  .bubble-num {
+  .step-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-height: 0;
+    overflow: auto;
+    flex: 1;
+  }
+  .step-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    padding: 6px 7px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: rgba(255,255,255,.72);
+    cursor: default;
+    transition: background .12s, border-color .12s, opacity .12s, box-shadow .12s;
+  }
+  .step-item:hover,
+  .step-item:focus-visible,
+  .step-item.is-active {
+    background: #fff7ed;
+    border-color: #e85d04;
+    box-shadow: 0 0 0 1px rgba(232,93,4,.25);
+    outline: none;
+  }
+  .sheet.is-dimming .step-item:not(.is-active) { opacity: .42; }
+  .step-n {
     flex: 0 0 auto;
     width: 1.35rem;
     height: 1.35rem;
@@ -368,9 +358,87 @@
     font-weight: 900;
     line-height: 1;
   }
-  .bubble-text { min-width: 0; }
+  .step-t {
+    min-width: 0;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1.25;
+    color: #9a3412;
+    padding-top: 2px;
+  }
 
+  .stage {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--slate-800);
+    overflow: hidden;
+  }
 
+  .sop-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    pointer-events: none;
+  }
+  .sop-overlay .sop-pin { pointer-events: auto; }
+
+  .sop-pin {
+    position: absolute;
+    z-index: 40;
+    pointer-events: auto;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #e85d04;
+    color: #fff;
+    display: grid;
+    place-items: center;
+    font-size: 12px;
+    font-weight: 900;
+    line-height: 1;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 0 2px #fff, 0 1px 3px rgba(0,0,0,.35);
+    cursor: default;
+    transition: transform .12s, box-shadow .12s, opacity .12s;
+  }
+  .sop-pin span { pointer-events: none; }
+  .sop-pin.is-active {
+    transform: translate(-50%, -50%) scale(1.18);
+    box-shadow: 0 0 0 3px #fff, 0 0 0 5px rgba(232,93,4,.55), 0 2px 6px rgba(0,0,0,.35);
+  }
+  .sheet.is-dimming .sop-pin:not(.is-active) { opacity: .35; }
+
+  .leader-layer {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    overflow: visible;
+  }
+  .leader-layer line {
+    stroke: #e85d04;
+    stroke-width: 1.35;
+    stroke-linecap: round;
+    fill: none;
+    vector-effect: non-scaling-stroke;
+    opacity: 0;
+  }
+  .leader-layer line.is-on { opacity: .95; }
+
+  .bar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+    display: flex; align-items: center; gap: 12px;
+    padding: 8px 14px; background: #0f172a; color: #fff; font-size: .78rem;
+  }
+  .bar button {
+    margin-left: auto; border: 0; border-radius: 6px;
+    background: #2563eb; color: #fff; font: inherit; font-weight: 700;
+    padding: 6px 12px; cursor: pointer;
+  }
 
   @page { size: A4 landscape; margin: 0; }
   @media print {
@@ -384,24 +452,47 @@
       display: block !important;
     }
     .bar { display: none !important; }
-    /* geometry is forced to 1280×720 in JS; CSS only hides chrome */
     .sheet {
       box-shadow: none !important;
       overflow: hidden !important;
       page-break-inside: avoid !important;
       break-inside: avoid !important;
     }
+    .leader-layer { display: none !important; }
+    .sheet.is-dimming .step-item,
+    .sheet.is-dimming .sop-pin { opacity: 1 !important; }
+    .sop-pin.is-active {
+      transform: translate(-50%, -50%) !important;
+      box-shadow: 0 0 0 2px #fff, 0 1px 3px rgba(0,0,0,.35) !important;
+    }
+    .step-item.is-active {
+      background: rgba(255,255,255,.72) !important;
+      border-color: transparent !important;
+      box-shadow: none !important;
+    }
   }
 </style>
 </head>
 <body>
   <div class="bar">
-    <span>吹き出しに丸数字 · 手なし · 先端は真円</span>
+    <span>確定: 左=手順リスト · 画面上=右下隅番号 · 引出線はホバー時のみ</span>
     <button type="button" onclick="window.print()">印刷 / PDF</button>
   </div>
 
   <article class="sheet" aria-label="検査図面 寸法・公差 操作手順">
+    <nav class="step-rail" aria-label="操作手順">
+      <h1>寸法・公差<br />操作手順</h1>
+      <ol class="step-list">
+      <li class="step-item" data-step="1" tabindex="0"><span class="step-n">1</span><span class="step-t">配置モードにする</span></li>
+      <li class="step-item" data-step="2" tabindex="0"><span class="step-n">2</span><span class="step-t">ここに点を打つ</span></li>
+      <li class="step-item" data-step="3" tabindex="0"><span class="step-n">3</span><span class="step-t">図面の寸法を入れる</span></li>
+      <li class="step-item" data-step="4" tabindex="0"><span class="step-n">4</span><span class="step-t">許される＋側</span></li>
+      <li class="step-item" data-step="5" tabindex="0"><span class="step-n">5</span><span class="step-t">許される−側</span></li>
+      <li class="step-item" data-step="6" tabindex="0"><span class="step-n">6</span><span class="step-t">入力を確定する</span></li>
+      </ol>
+    </nav>
     <div class="stage">
+
       <div class="kiosk-hdr" aria-hidden="true"></div>
       <div class="page">
         <div class="flat-band">
@@ -518,28 +609,22 @@
       </div>
     </div>
 
-
-
-    <svg class="leader-layer" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-      <line data-leader="1" x1="0" y1="0" x2="0" y2="0" />
-      <line data-leader="2" x1="0" y1="0" x2="0" y2="0" />
-      <line data-leader="3" x1="0" y1="0" x2="0" y2="0" />
-      <line data-leader="4" x1="0" y1="0" x2="0" y2="0" />
-      <line data-leader="5" x1="0" y1="0" x2="0" y2="0" />
-      <line data-leader="6" x1="0" y1="0" x2="0" y2="0" />
-    </svg>
-    <div class="leader-tip" data-leader-dot="1" hidden></div>
-    <div class="leader-tip" data-leader-dot="2" hidden></div>
-    <div class="leader-tip" data-leader-dot="3" hidden></div>
-    <div class="leader-tip" data-leader-dot="4" hidden></div>
-    <div class="leader-tip" data-leader-dot="5" hidden></div>
-    <div class="leader-tip" data-leader-dot="6" hidden></div>
-    <div class="tap-bubble" data-bubble="1" hidden><span class="bubble-num">1</span><span class="bubble-text">配置モードにする</span></div>
-    <div class="tap-bubble" data-bubble="2" hidden><span class="bubble-num">2</span><span class="bubble-text">ここに点を打つ</span></div>
-    <div class="tap-bubble" data-bubble="3" hidden><span class="bubble-num">3</span><span class="bubble-text">図面の寸法を入れる</span></div>
-    <div class="tap-bubble" data-bubble="4" hidden><span class="bubble-num">4</span><span class="bubble-text">許される＋側</span></div>
-    <div class="tap-bubble" data-bubble="5" hidden><span class="bubble-num">5</span><span class="bubble-text">許される−側</span></div>
-    <div class="tap-bubble" data-bubble="6" hidden><span class="bubble-num">6</span><span class="bubble-text">入力を確定する</span></div>
+    <div class="sop-overlay" aria-hidden="true">
+      <svg class="leader-layer" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <line data-leader="1" x1="0" y1="0" x2="0" y2="0" />
+        <line data-leader="2" x1="0" y1="0" x2="0" y2="0" />
+        <line data-leader="3" x1="0" y1="0" x2="0" y2="0" />
+        <line data-leader="4" x1="0" y1="0" x2="0" y2="0" />
+        <line data-leader="5" x1="0" y1="0" x2="0" y2="0" />
+        <line data-leader="6" x1="0" y1="0" x2="0" y2="0" />
+      </svg>
+      <div class="sop-pin" data-pin="1" hidden><span>1</span></div>
+      <div class="sop-pin" data-pin="2" hidden><span>2</span></div>
+      <div class="sop-pin" data-pin="3" hidden><span>3</span></div>
+      <div class="sop-pin" data-pin="4" hidden><span>4</span></div>
+      <div class="sop-pin" data-pin="5" hidden><span>5</span></div>
+      <div class="sop-pin" data-pin="6" hidden><span>6</span></div>
+    </div>
   </article>
 
 <script>
@@ -559,12 +644,10 @@
     sheet.style.margin = '';
   }
 
-  /** Fit fixed 1280×720 stage onto one A4 landscape page without changing layout ratios. */
   function fitSheetToPrintPage() {
     clearPrintFit();
     sheet.style.width = STAGE_W + 'px';
     sheet.style.height = STAGE_H + 'px';
-    // Use mm page box; convert via temporary probe
     const probe = document.createElement('div');
     probe.style.cssText = 'position:absolute;left:0;top:0;width:297mm;height:210mm;visibility:hidden;pointer-events:none;';
     document.body.appendChild(probe);
@@ -582,82 +665,91 @@
     sheet.style.transform = 'scale(' + scale + ')';
   }
 
-  function placeHands() {
+  function placePins() {
     const s = sheet.getBoundingClientRect();
     if (s.width < 2 || s.height < 2) return;
-
-    // Outer gutters only. Ordered so leaders do not cross:
-    // left: 2 · top: 6 · right stack (top→bottom): 1,3,4,5
-    const PARK = {
-      '1': { x: 91.6, y: 36.5 },
-      '2': { x: 5.2,  y: 47.0 },
-      '3': { x: 91.6, y: 50.5 },
-      '4': { x: 91.6, y: 60.5 },
-      '5': { x: 91.6, y: 70.5 },
-      '6': { x: 74.0, y: 4.4 }
-    };
-
+    // Badge sits on the target bottom-right corner.
     for (let n = 1; n <= 6; n++) {
       const id = String(n);
       const target = sheet.querySelector('[data-tap="' + id + '"]');
-      const bubble = sheet.querySelector('[data-bubble="' + id + '"]');
-      const line = sheet.querySelector('[data-leader="' + id + '"]');
-      const tip = sheet.querySelector('[data-leader-dot="' + id + '"]');
-      if (!target || !bubble) continue;
-
+      const pin = sheet.querySelector('[data-pin="' + id + '"]');
+      if (!target || !pin) continue;
       const t = target.getBoundingClientRect();
-      // Contact: horizontal center, just below vertical center of control
-      const aimX = ((t.left + t.width * 0.50) - s.left) / s.width * 100;
-      const aimY = ((t.top + t.height * 0.68) - s.top) / s.height * 100;
-
-      const park = PARK[id] || { x: 5, y: 50 };
-      bubble.style.left = park.x + '%';
-      bubble.style.top = park.y + '%';
-      bubble.hidden = false;
-
-      if (line && tip) {
-        const b = bubble.getBoundingClientRect();
-        const bx = ((b.left + b.width * 0.5) - s.left) / s.width * 100;
-        const by = ((b.top + b.height * 0.5) - s.top) / s.height * 100;
-        const dx = aimX - bx;
-        const dy = aimY - by;
-        const len = Math.max(Math.hypot(dx, dy), 0.001);
-        const ux = dx / len;
-        const uy = dy / len;
-        const halfW = (b.width * 0.5) / s.width * 100;
-        const halfH = (b.height * 0.5) / s.height * 100;
-        const tx = Math.abs(ux) > 1e-6 ? halfW / Math.abs(ux) : 1e9;
-        const ty = Math.abs(uy) > 1e-6 ? halfH / Math.abs(uy) : 1e9;
-        const edge = Math.min(tx, ty) * 0.98;
-        const startX = bx + ux * edge;
-        const startY = by + uy * edge;
-        line.setAttribute('x1', startX.toFixed(2));
-        line.setAttribute('y1', startY.toFixed(2));
-        line.setAttribute('x2', aimX.toFixed(2));
-        line.setAttribute('y2', aimY.toFixed(2));
-        tip.style.left = aimX + '%';
-        tip.style.top = aimY + '%';
-        tip.hidden = false;
-      }
+      // Bottom-right corner of the target (pin centered on that corner via CSS translate)
+      const tipX = t.right;
+      const tipY = t.bottom;
+      pin.style.left = ((tipX - s.left) / s.width * 100) + '%';
+      pin.style.top = ((tipY - s.top) / s.height * 100) + '%';
+      pin.hidden = false;
     }
   }
 
-  function placeHandsSoon() {
-    requestAnimationFrame(() => requestAnimationFrame(placeHands));
+  function setActive(id) {
+    const on = id != null;
+    sheet.classList.toggle('is-dimming', on);
+    sheet.querySelectorAll('.step-item').forEach((el) => {
+      el.classList.toggle('is-active', on && el.getAttribute('data-step') === id);
+    });
+    sheet.querySelectorAll('.sop-pin').forEach((el) => {
+      el.classList.toggle('is-active', on && el.getAttribute('data-pin') === id);
+    });
+    sheet.querySelectorAll('.leader-layer line').forEach((line) => {
+      const lid = line.getAttribute('data-leader');
+      if (!on || lid !== id) {
+        line.classList.remove('is-on');
+        return;
+      }
+      const item = sheet.querySelector('.step-item[data-step="' + id + '"]');
+      const pin = sheet.querySelector('.sop-pin[data-pin="' + id + '"]');
+      if (!item || !pin) {
+        line.classList.remove('is-on');
+        return;
+      }
+      const s = sheet.getBoundingClientRect();
+      const a = item.getBoundingClientRect();
+      const b = pin.getBoundingClientRect();
+      const x1 = ((a.right - 6) - s.left) / s.width * 100;
+      const y1 = ((a.top + a.height * 0.5) - s.top) / s.height * 100;
+      const x2 = ((b.left + b.width * 0.5) - s.left) / s.width * 100;
+      const y2 = ((b.top + b.height * 0.5) - s.top) / s.height * 100;
+      line.setAttribute('x1', x1.toFixed(2));
+      line.setAttribute('y1', y1.toFixed(2));
+      line.setAttribute('x2', x2.toFixed(2));
+      line.setAttribute('y2', y2.toFixed(2));
+      line.classList.add('is-on');
+    });
+  }
+
+  function clearActive() { setActive(null); }
+
+  function bindHover() {
+    const bind = (el, id) => {
+      el.addEventListener('mouseenter', () => setActive(id));
+      el.addEventListener('mouseleave', clearActive);
+      el.addEventListener('focus', () => setActive(id));
+      el.addEventListener('blur', clearActive);
+    };
+    sheet.querySelectorAll('.step-item').forEach((el) => bind(el, el.getAttribute('data-step')));
+    sheet.querySelectorAll('.sop-pin').forEach((el) => bind(el, el.getAttribute('data-pin')));
+  }
+
+  function placeSoon() {
+    requestAnimationFrame(() => requestAnimationFrame(placePins));
   }
 
   function onBeforePrint() {
+    clearActive();
     fitSheetToPrintPage();
-    placeHands();
+    placePins();
   }
-
   function onAfterPrint() {
     clearPrintFit();
-    placeHandsSoon();
+    placeSoon();
   }
 
-  placeHandsSoon();
-  window.addEventListener('resize', placeHandsSoon);
+  bindHover();
+  placeSoon();
+  window.addEventListener('resize', placeSoon);
   window.addEventListener('beforeprint', onBeforePrint);
   window.addEventListener('afterprint', onAfterPrint);
   if (window.matchMedia) {
@@ -666,7 +758,7 @@
     if (mql.addEventListener) mql.addEventListener('change', onMql);
     else if (mql.addListener) mql.addListener(onMql);
   }
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(placeHandsSoon);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(placeSoon);
 })();
 </script>
 </body>
