@@ -273,7 +273,7 @@ export function selfInspectionActionReasonMessage(
     case 'invalid_value':
       return '不正な測定値があります。修正してから保存してください。';
     case 'ng_value':
-      return '公差外の測定値があるため保存できません。';
+      return '公差外（NG）の測定値が未確認です。「公差外のまま進む」で確認してください。';
     case 'tolerance_error':
       return '基準・公差が未設定の測定点があります。';
     case 'missing_required_entries':
