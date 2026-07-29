@@ -34,6 +34,7 @@ def contract_document() -> str:
     contract = normalize_build_arguments(
         {"INSTALL_PLAYWRIGHT_CHROMIUM": "true"},
         {
+            "VITE_AGENT_WS_MODE": "local",
             "VITE_AGENT_WS_URL": "ws://100.64.0.1:7071/stream",
             "VITE_API_BASE_URL": "/api",
             "VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED": "true",
@@ -75,6 +76,7 @@ class ReleaseImageWorkflowTests(unittest.TestCase):
         self.assertIn("--provenance=mode=min", command)
         self.assertIn("--sbom=true", command)
         self.assertIn(f"BUILD_COMMIT={SHA}", command)
+        self.assertIn("VITE_AGENT_WS_MODE=local", command)
         self.assertIn(f"VITE_RELEASE_SHA={SHA}", command)
         self.assertNotIn("TOKEN", joined)
         self.assertNotIn("SECRET", joined)

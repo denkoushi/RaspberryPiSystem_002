@@ -77,6 +77,7 @@ class AnsibleTemplateContractTests(unittest.TestCase):
             web_kiosk_production_schedule_order_split_enabled="false",
         )
         self.assertIn("VITE_API_BASE_URL=/api", rendered)
+        self.assertIn("VITE_AGENT_WS_MODE=local", rendered)
         self.assertIn("VITE_KIOSK_SOP_POPUP_ENABLED=true", rendered)
         self.assertIn(
             "VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED=false",
@@ -107,6 +108,7 @@ class AnsibleTemplateContractTests(unittest.TestCase):
             RELEASE_BUILD_CONTRACT_TEMPLATE.read_text(encoding="utf-8")
         ).render(
             api_install_playwright_chromium="true",
+            web_agent_ws_mode="local",
             web_agent_ws_url="ws://100.64.0.1:7071/stream",
             web_api_base_url="/api",
             web_kiosk_due_mgmt_layout_v2_enabled="true",
@@ -130,6 +132,7 @@ class AnsibleTemplateContractTests(unittest.TestCase):
         sha = "a" * 40
         variables = {
             "api_install_playwright_chromium": "true",
+            "web_agent_ws_mode": "local",
             "web_agent_ws_url": "ws://100.64.0.1:7071/stream",
             "web_api_base_url": "/api",
             "web_kiosk_due_mgmt_layout_v2_enabled": "true",

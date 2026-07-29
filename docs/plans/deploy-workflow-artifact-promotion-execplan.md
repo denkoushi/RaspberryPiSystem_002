@@ -130,11 +130,17 @@ remain unchanged.
   passed the unchanged five-minute stability monitor. The fallback exposed a
   build-contract drift before terminal activation: CI rendered the configured
   agent URL while Pi5 Compose silently used its localhost default.
-- [ ] Render the complete allowlisted Web build environment into Pi5 Compose,
-  prove it matches the CI contract from the same Ansible values, pass hosted
-  CI, and redeploy only through the standard orchestrator. Require candidate
-  mode `promoted` plus a same-SHA no-op before declaring production validation
-  complete.
+- [x] (2026-07-29 13:12+09:00) Diagnosed the Assembly-01 NFC regression without
+  mutating the terminal. The reader and local agent were healthy and queued
+  scans, while the compiled Web bundle lacked the server-owned
+  `VITE_AGENT_WS_MODE=local` value and therefore never selected the terminal's
+  loopback WebSocket.
+- [ ] Complete the build-contract correction (completed: carry
+  `VITE_AGENT_WS_MODE` through the Ansible Docker environment, Compose,
+  Dockerfile, strict release contract, focused regression tests, all local
+  deployment contracts, and a production Web build; remaining: hosted CI,
+  standard production rollout, physical Assembly-01 scan, and same-SHA no-op
+  proof).
 
 ## Surprises & Discoveries
 
@@ -196,6 +202,16 @@ remain unchanged.
   `VITE_AGENT_WS_URL`: CI resolved the server-owned
   `ws://100.106.158.2:7071/stream`, but `docker.env.j2` omitted the variable,
   so Compose used `ws://localhost:7071/stream`.
+
+- Observation: the later Pi5 Web build still omitted the separate stream-mode
+  variable even after the URL drift was corrected.
+  Evidence: Assembly-01 reported `readerConnected: true`, `lastError: null`,
+  and an increasing local queue at `http://localhost:7071/api/agent/status`,
+  while `group_vars/server/web-build.yml` defined
+  `web_agent_ws_mode: "local"` but Docker Compose, `Dockerfile.web`, and the
+  signed Web build allowlist carried only `VITE_AGENT_WS_URL`. The browser
+  therefore compiled the legacy candidate policy instead of
+  `ws://localhost:7071/stream`-only policy.
 
 - Observation: Docker is running on the development Mac as ARM64 with zero
   containers, while unrelated persistent volumes and networks exist.
@@ -301,6 +317,15 @@ remain unchanged.
   every API/Web value except the dynamically supplied release SHA.
   Date/Author: 2026-07-29 / Codex.
 
+- Decision: add `VITE_AGENT_WS_MODE` to the same exact non-secret Web build
+  allowlist rather than changing terminal configuration or restoring the
+  removed shared `/stream` proxy.
+  Rationale: the intended `local` value already has one server-owned source.
+  Carrying it through the immutable build boundary repairs all kiosk bundles
+  centrally, preserves endpoint isolation, and leaves an empty default for
+  environments that still require legacy behavior.
+  Date/Author: 2026-07-29 / Codex.
+
 ## Outcomes & Retrospective
 
 The implementation is locally complete. It separates pure build identity,
@@ -328,6 +353,14 @@ The API payload, Caddy configuration, platform, labels, strict release set,
 and pull-by-digest flow passed. Run-owned Docker containers, volumes, networks,
 and validation image tags all returned to zero; unrelated existing resources
 and BuildKit caches were not pruned.
+
+The Assembly-01 NFC correction has also passed 19 focused release/Ansible
+contract tests, four NFC stream tests, the Pi5 image lifecycle, all 903
+orchestrator tests, 24 inventory tests, 102 template parses, all 156
+disposable PostgreSQL migrations, and 20 deploy-status API tests. A production
+Web build contained both `mode:"local"` and the loopback stream URL. The
+run-owned PostgreSQL container, volume, and network returned to zero. Hosted CI
+and the approved production rollout remain the terminal acceptance steps.
 
 Production deployment is now separately authorized. The primary production
 Pi5 opts in through its host vars while the shared server default and
@@ -548,3 +581,7 @@ migrations, mutate terminal hosts, or decide rollback policy.
 Revision note (2026-07-28): Created after the product owner approved Phase 2
 implementation. It records the audited current contracts and fixes the
 implementation boundary before code changes begin.
+
+Revision note (2026-07-29): Recorded the Assembly-01 NFC production diagnosis
+and the missing `VITE_AGENT_WS_MODE` build-contract boundary before publishing
+the corrective change.

@@ -3,6 +3,7 @@
     "INSTALL_PLAYWRIGHT_CHROMIUM": {{ api_install_playwright_chromium | default('true') | string | to_json }}
   },
   "web": {
+    "VITE_AGENT_WS_MODE": {{ web_agent_ws_mode | default('') | string | to_json }},
     "VITE_AGENT_WS_URL": {{ web_agent_ws_url | string | to_json }},
     "VITE_API_BASE_URL": {{ web_api_base_url | default('/api') | string | to_json }},
     "VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED": {{ web_kiosk_due_mgmt_layout_v2_enabled | default('false') | string | to_json }},

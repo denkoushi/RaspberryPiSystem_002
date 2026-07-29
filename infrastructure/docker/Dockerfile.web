@@ -24,6 +24,10 @@ COPY docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html ./docs
 # NFCエージェントのWebSocket URLをビルド時に設定可能にする
 ARG VITE_AGENT_WS_URL=ws://localhost:7071/stream
 ENV VITE_AGENT_WS_URL=${VITE_AGENT_WS_URL}
+# local を指定したキオスクは、各端末の localhost NFC エージェントだけへ接続する。
+# 未指定時は既存の legacy 候補順を維持する。
+ARG VITE_AGENT_WS_MODE=
+ENV VITE_AGENT_WS_MODE=${VITE_AGENT_WS_MODE}
 # ラズパイ5のAPIサーバーのURLをビルド時に設定可能にする
 ARG VITE_API_BASE_URL=/api
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
