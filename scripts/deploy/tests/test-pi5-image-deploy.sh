@@ -92,6 +92,7 @@ playwright, release = sys.argv[1:]
 print(json.dumps({'services': {
   'api': {'build': {'args': {'INSTALL_PLAYWRIGHT_CHROMIUM': playwright}}},
   'web': {'build': {'args': {
+    'VITE_AGENT_WS_MODE': 'local',
     'VITE_AGENT_WS_URL': 'ws://localhost:7071/stream',
     'VITE_API_BASE_URL': '/api',
     'VITE_KIOSK_TARGET_LOCATION_SELECTOR_ENABLED': 'true',

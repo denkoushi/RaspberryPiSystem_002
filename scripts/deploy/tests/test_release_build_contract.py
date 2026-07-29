@@ -24,6 +24,7 @@ def valid_api() -> dict[str, str]:
 
 def valid_web() -> dict[str, str]:
     return {
+        "VITE_AGENT_WS_MODE": "local",
         "VITE_AGENT_WS_URL": "ws://100.64.0.1:7071/stream",
         "VITE_API_BASE_URL": "/api",
         "VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED": "true",
@@ -63,6 +64,10 @@ class ReleaseBuildContractTests(unittest.TestCase):
         contract = contract_from_compose_json(json.dumps(compose), SHA)
         reparsed = parse_contract_json(canonical_contract_json(contract), SHA)
         self.assertEqual(contract, reparsed)
+        self.assertEqual(
+            contract.service_arguments("web")["VITE_AGENT_WS_MODE"],
+            "local",
+        )
 
     def test_rejects_unknown_missing_and_non_string_arguments(self) -> None:
         cases = []
