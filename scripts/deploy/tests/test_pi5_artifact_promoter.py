@@ -3,22 +3,31 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import signal
 import stat
+import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from scripts.deploy.pi5_artifact_promoter import (
     _config_metadata_is_safe,
+    _run_command,
+    CommandExecution,
     CommandResult,
+    CommandTimedOut,
+    DEFAULT_TIMING_POLICY,
     PUBLIC_OCI_VERIFICATION_TOKEN,
+    PromotionBudget,
     PromotionDisabled,
     PromotionIntegrityError,
     PromotionInterrupted,
+    PromotionTimingPolicy,
     PromotionUnavailable,
     attestation_command,
     load_config,
+    main,
     promote,
 )
 
@@ -80,7 +89,14 @@ class FakeRunner:
         attestation_code: int = 0,
         verifier_help: str | None = None,
     ):
-        self.commands: list[tuple[list[str], str | None, dict[str, str] | None]] = []
+        self.commands: list[
+            tuple[
+                list[str],
+                str | None,
+                dict[str, str] | None,
+                CommandExecution,
+            ]
+        ] = []
         self.release_pull_code = release_pull_code
         self.attestation_code = attestation_code
         self.verifier_help = verifier_help or " ".join(
@@ -98,10 +114,11 @@ class FakeRunner:
         command: object,
         input_text: str | None,
         environment: object,
+        execution: CommandExecution,
     ) -> CommandResult:
         argv = list(command)  # type: ignore[arg-type]
         env = dict(environment) if environment is not None else None  # type: ignore[arg-type]
-        self.commands.append((argv, input_text, env))
+        self.commands.append((argv, input_text, env, execution))
         if argv[-1:] == ["--help"] and "attestation" in argv:
             return CommandResult(0, self.verifier_help, "")
         if "attestation" in argv:
@@ -168,6 +185,229 @@ class Pi5ArtifactPromoterTests(unittest.TestCase):
             with self.assertRaises(PromotionDisabled):
                 load_config(path)
 
+    def test_default_timing_policy_keeps_large_pulls_and_total_budget_bounded(
+        self,
+    ) -> None:
+        self.assertEqual(
+            DEFAULT_TIMING_POLICY,
+            PromotionTimingPolicy(
+                release_set_pull_timeout_seconds=120,
+                image_pull_timeout_seconds=600,
+                command_timeout_seconds=300,
+                total_timeout_seconds=900,
+                heartbeat_seconds=30,
+                cleanup_timeout_seconds=30,
+            ),
+        )
+        clock = Mock(side_effect=[0.0, 850.0])
+        budget = PromotionBudget(DEFAULT_TIMING_POLICY, clock=clock)
+        execution = budget.execution(
+            "api-image-pull",
+            DEFAULT_TIMING_POLICY.image_pull_timeout_seconds,
+        )
+        self.assertEqual(execution.timeout_seconds, 50)
+        self.assertEqual(execution.heartbeat_seconds, 30)
+
+        exhausted_clock = Mock(side_effect=[0.0, 901.0])
+        exhausted = PromotionBudget(DEFAULT_TIMING_POLICY, clock=exhausted_clock)
+        with self.assertRaises(PromotionUnavailable) as raised:
+            exhausted.execution("web-image-pull", 600)
+        self.assertEqual(raised.exception.reason_code, "promotion-budget-exhausted")
+        self.assertEqual(raised.exception.stage, "web-image-pull")
+        self.assertEqual(raised.exception.elapsed_seconds, 901)
+        self.assertEqual(raised.exception.timeout_seconds, 900)
+
+    def test_real_runner_emits_safe_heartbeat_and_stops_timed_out_child(
+        self,
+    ) -> None:
+        execution = CommandExecution(
+            stage="api-image-pull",
+            timeout_seconds=0.12,
+            heartbeat_seconds=0.03,
+        )
+        with patch("builtins.print") as output:
+            with self.assertRaises(CommandTimedOut) as raised:
+                _run_command(
+                    [
+                        sys.executable,
+                        "-c",
+                        "import sys,time; sys.stdin.read(); time.sleep(5)",
+                    ],
+                    TOKEN,
+                    None,
+                    execution,
+                )
+        self.assertEqual(raised.exception.stage, "api-image-pull")
+        self.assertEqual(raised.exception.timeout_seconds, 0.12)
+        serialized = repr(output.call_args_list)
+        self.assertIn('"state":"heartbeat"', serialized)
+        self.assertIn('"state":"timeout"', serialized)
+        self.assertNotIn(TOKEN, serialized)
+        self.assertNotIn(sys.executable, serialized)
+
+    def test_real_runner_labels_success_and_nonzero_completion(self) -> None:
+        execution = CommandExecution(
+            stage="release-set-pull",
+            timeout_seconds=1,
+            heartbeat_seconds=1,
+        )
+        with patch("builtins.print") as output:
+            success = _run_command(
+                [sys.executable, "-c", "raise SystemExit(0)"],
+                execution=execution,
+            )
+            result = _run_command(
+                [sys.executable, "-c", "raise SystemExit(7)"],
+                execution=execution,
+            )
+        self.assertEqual(success.returncode, 0)
+        self.assertEqual(result.returncode, 7)
+        serialized = repr(output.call_args_list)
+        self.assertIn('"state":"failed"', serialized)
+        self.assertIn('"state":"success"', serialized)
+
+    @patch("scripts.deploy.pi5_artifact_promoter.shutil.which")
+    def test_image_pull_timeout_is_structured_unavailable_and_cleans_partial_work(
+        self, which: object
+    ) -> None:
+        which.side_effect = lambda name: f"/usr/bin/{name}"  # type: ignore[attr-defined]
+
+        class TimedOutRunner(FakeRunner):
+            def __call__(
+                self,
+                command: object,
+                input_text: str | None,
+                environment: object,
+                execution: CommandExecution,
+            ) -> CommandResult:
+                argv = list(command)  # type: ignore[arg-type]
+                if "pull" in argv and "raspisys-api@sha256:" in argv[-1]:
+                    raise CommandTimedOut(
+                        execution.stage,
+                        elapsed_seconds=600,
+                        timeout_seconds=execution.timeout_seconds,
+                    )
+                return super().__call__(
+                    argv,
+                    input_text,
+                    environment,
+                    execution,
+                )
+
+        with tempfile.TemporaryDirectory() as directory:
+            config = self.write_config(directory, config_document())
+            runner = TimedOutRunner()
+            with self.assertRaises(PromotionUnavailable) as raised:
+                promote(
+                    config_path=config,
+                    sha=SHA,
+                    config_hash=CONFIG_HASH,
+                    run_id=RUN_ID,
+                    api_tag=API_TAG,
+                    web_tag=WEB_TAG,
+                    runner=runner,
+                )
+
+        self.assertEqual(raised.exception.reason_code, "artifact-pull-timeout")
+        self.assertEqual(raised.exception.stage, "api-image-pull")
+        self.assertEqual(raised.exception.elapsed_seconds, 600)
+        self.assertEqual(raised.exception.timeout_seconds, 600)
+        cleanup_commands = [
+            command
+            for command, _, _, _ in runner.commands
+            if "image" in command and "rm" in command
+        ]
+        self.assertTrue(
+            any("raspisys-release-set:" in command[-1] for command in cleanup_commands)
+        )
+
+    def test_main_serializes_structured_timeout_without_secret_detail(self) -> None:
+        error = PromotionUnavailable(
+            "api image pull timed out",
+            reason_code="artifact-pull-timeout",
+            stage="api-image-pull",
+            elapsed_seconds=600,
+            timeout_seconds=600,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            result_path = Path(directory) / "result.json"
+            with patch(
+                "scripts.deploy.pi5_artifact_promoter.promote",
+                side_effect=error,
+            ):
+                result = main(
+                    [
+                        "--config",
+                        str(Path(directory) / "config.json"),
+                        "--sha",
+                        SHA,
+                        "--config-hash",
+                        CONFIG_HASH,
+                        "--run-id",
+                        RUN_ID,
+                        "--api-tag",
+                        API_TAG,
+                        "--web-tag",
+                        WEB_TAG,
+                        "--result",
+                        str(result_path),
+                    ]
+                )
+            document = json.loads(result_path.read_text(encoding="utf-8"))
+        self.assertEqual(result, 75)
+        self.assertEqual(
+            document,
+            {
+                "status": "unavailable",
+                "reason": "api image pull timed out",
+                "reasonCode": "artifact-pull-timeout",
+                "stage": "api-image-pull",
+                "elapsedSeconds": 600,
+                "timeoutSeconds": 600,
+            },
+        )
+        self.assertNotIn(TOKEN, json.dumps(document))
+
+    def test_main_maps_sigterm_to_interrupted_result_and_restores_handler(self) -> None:
+        previous = signal.getsignal(signal.SIGTERM)
+
+        def terminate_during_promotion(**_kwargs: object) -> dict[str, object]:
+            os.kill(os.getpid(), signal.SIGTERM)
+            self.fail("SIGTERM handler did not interrupt promotion")
+
+        with tempfile.TemporaryDirectory() as directory:
+            result_path = Path(directory) / "result.json"
+            with patch(
+                "scripts.deploy.pi5_artifact_promoter.promote",
+                side_effect=terminate_during_promotion,
+            ):
+                result = main(
+                    [
+                        "--config",
+                        str(Path(directory) / "config.json"),
+                        "--sha",
+                        SHA,
+                        "--config-hash",
+                        CONFIG_HASH,
+                        "--run-id",
+                        RUN_ID,
+                        "--api-tag",
+                        API_TAG,
+                        "--web-tag",
+                        WEB_TAG,
+                        "--result",
+                        str(result_path),
+                    ]
+                )
+            document = json.loads(result_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(result, 128 + signal.SIGTERM)
+        self.assertEqual(
+            document,
+            {"status": "interrupted", "signal": signal.SIGTERM},
+        )
+        self.assertIs(signal.getsignal(signal.SIGTERM), previous)
+
     def test_config_rejects_unsafe_permissions_and_unknown_fields(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = self.write_config(directory, config_document())
@@ -229,15 +469,21 @@ class Pi5ArtifactPromoterTests(unittest.TestCase):
             )
         self.assertEqual(result["status"], "promoted")
         self.assertEqual(result["workflowRunId"], 9876)
-        serialized_commands = json.dumps([command for command, _, _ in runner.commands])
+        serialized_commands = json.dumps(
+            [command for command, _, _, _ in runner.commands]
+        )
         self.assertNotIn(TOKEN, serialized_commands)
         self.assertEqual(
-            [input_text for _, input_text, _ in runner.commands if input_text],
+            [
+                input_text
+                for _, input_text, _, _ in runner.commands
+                if input_text
+            ],
             [TOKEN],
         )
         verifier_environments = [
             environment
-            for command, _, environment in runner.commands
+            for command, _, environment, _ in runner.commands
             if "attestation" in command
         ]
         self.assertTrue(verifier_environments)
@@ -263,7 +509,7 @@ class Pi5ArtifactPromoterTests(unittest.TestCase):
                     "ghcr.io/denkoushi/raspisys-api@sha256:" + "2" * 64,
                     API_TAG,
                 ]
-                for command, _, _ in runner.commands
+                for command, _, _, _ in runner.commands
             )
         )
 
@@ -287,11 +533,11 @@ class Pi5ArtifactPromoterTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "promoted")
         self.assertFalse(
-            any("login" in command for command, _, _ in runner.commands)
+            any("login" in command for command, _, _, _ in runner.commands)
         )
         verifier_environments = [
             environment
-            for command, _, environment in runner.commands
+            for command, _, environment, _ in runner.commands
             if "attestation" in command
         ]
         self.assertTrue(verifier_environments)
@@ -387,11 +633,12 @@ class Pi5ArtifactPromoterTests(unittest.TestCase):
                 command: object,
                 input_text: str | None,
                 environment: object,
+                execution: CommandExecution,
             ) -> CommandResult:
                 argv = list(command)  # type: ignore[arg-type]
                 if "pull" in argv and "raspisys-api@sha256:" in argv[-1]:
                     raise PromotionInterrupted(15)
-                return super().__call__(argv, input_text, environment)
+                return super().__call__(argv, input_text, environment, execution)
 
         with tempfile.TemporaryDirectory() as directory:
             config = self.write_config(directory, config_document())
@@ -409,12 +656,70 @@ class Pi5ArtifactPromoterTests(unittest.TestCase):
 
         cleanup_commands = [
             command
-            for command, _, _ in runner.commands
+            for command, _, _, _ in runner.commands
             if "image" in command and "rm" in command
         ]
         self.assertTrue(cleanup_commands)
         self.assertTrue(
             any("raspisys-release-set:" in command[-1] for command in cleanup_commands)
+        )
+
+    @patch("scripts.deploy.pi5_artifact_promoter.shutil.which")
+    def test_cleanup_failure_does_not_hide_timeout_or_stop_later_cleanup(
+        self, which: object
+    ) -> None:
+        which.side_effect = lambda name: f"/usr/bin/{name}"  # type: ignore[attr-defined]
+
+        class CleanupFailureRunner(FakeRunner):
+            def __init__(self) -> None:
+                super().__init__()
+                self.cleanup_attempts: list[list[str]] = []
+
+            def __call__(
+                self,
+                command: object,
+                input_text: str | None,
+                environment: object,
+                execution: CommandExecution,
+            ) -> CommandResult:
+                argv = list(command)  # type: ignore[arg-type]
+                if "pull" in argv and "raspisys-api@sha256:" in argv[-1]:
+                    raise CommandTimedOut(
+                        execution.stage,
+                        elapsed_seconds=600,
+                        timeout_seconds=execution.timeout_seconds,
+                    )
+                if "rm" in argv:
+                    self.cleanup_attempts.append(argv)
+                    raise CommandTimedOut(
+                        execution.stage,
+                        elapsed_seconds=30,
+                        timeout_seconds=execution.timeout_seconds,
+                    )
+                return super().__call__(argv, input_text, environment, execution)
+
+        with tempfile.TemporaryDirectory() as directory:
+            config = self.write_config(directory, config_document())
+            runner = CleanupFailureRunner()
+            with patch("builtins.print"):
+                with self.assertRaises(PromotionUnavailable) as raised:
+                    promote(
+                        config_path=config,
+                        sha=SHA,
+                        config_hash=CONFIG_HASH,
+                        run_id=RUN_ID,
+                        api_tag=API_TAG,
+                        web_tag=WEB_TAG,
+                        runner=runner,
+                    )
+
+        self.assertEqual(raised.exception.reason_code, "artifact-pull-timeout")
+        self.assertGreaterEqual(len(runner.cleanup_attempts), 2)
+        self.assertTrue(
+            any(
+                "raspisys-release-set:" in command[-1]
+                for command in runner.cleanup_attempts
+            )
         )
 
 

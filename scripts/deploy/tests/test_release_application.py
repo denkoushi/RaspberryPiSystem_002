@@ -1313,5 +1313,89 @@ class ReleaseApplicationTest(unittest.TestCase):
         )
 
 
+class CanaryApprovalActionTest(unittest.TestCase):
+    def waiting_status(self) -> dict[str, object]:
+        return {
+            "runId": RUN_ID,
+            "state": "running",
+            "phase": "waiting-approval",
+            "canaryHold": {
+                "state": "waiting-verification",
+                "canary": "raspi4-kensaku-stonebase01",
+                "profile": "kiosk",
+                "since": "2026-07-29T01:15:28Z",
+                "expiresAt": 2_000,
+            },
+        }
+
+    def test_waiting_gate_exposes_one_run_scoped_operator_action(self):
+        action = application.canary_approval_action(
+            self.waiting_status(),
+            run_id=RUN_ID,
+            now_epoch=1_250,
+        )
+        self.assertEqual(
+            action,
+            {
+                "type": "canary-approval",
+                "runId": RUN_ID,
+                "canary": "raspi4-kensaku-stonebase01",
+                "openedAt": "2026-07-29T01:15:28Z",
+                "expiresAt": 2_000,
+                "remainingSeconds": 750,
+                "command": f"scripts/update-all-clients.sh --approve {RUN_ID}",
+            },
+        )
+
+    def test_action_is_absent_outside_a_live_unexpired_waiting_gate(self):
+        cases = [
+            {"state": "failed"},
+            {"phase": "deploying"},
+            {"canaryHold": {"state": "approved"}},
+            {"canaryHold": {"state": "expired"}},
+            {"canaryHold": {"state": "waiting-verification", "expiresAt": 1_250}},
+            {"canaryHold": {"state": "waiting-verification", "expiresAt": True}},
+        ]
+        for changes in cases:
+            with self.subTest(changes=changes):
+                status = self.waiting_status()
+                status.update(changes)
+                self.assertIsNone(
+                    application.canary_approval_action(
+                        status,
+                        run_id=RUN_ID,
+                        now_epoch=1_250,
+                    )
+                )
+
+    def test_observe_replaces_stale_remote_action_with_local_projection(self):
+        status = self.waiting_status()
+        status["actionRequired"] = {"type": "unsafe-remote-command"}
+        projected = {"type": "canary-approval", "runId": RUN_ID}
+        systemd = Mock()
+        systemd.show.return_value = object()
+        control = Mock()
+        control.snapshot.return_value = (object(), object())
+
+        with patch.object(
+            application,
+            "reconcile_status",
+            return_value=status,
+        ), patch.object(
+            application,
+            "canary_approval_action",
+            return_value=projected,
+        ) as derive:
+            observed = application.observe(
+                RUN_ID,
+                systemd=systemd,
+                control=control,
+            )
+
+        self.assertEqual(observed["actionRequired"], projected)
+        derive.assert_called_once()
+        self.assertEqual(derive.call_args.kwargs["run_id"], RUN_ID)
+
+
 if __name__ == "__main__":
     unittest.main()

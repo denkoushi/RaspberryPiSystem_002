@@ -1549,7 +1549,7 @@ class CanaryHoldTest(unittest.TestCase):
         ]
 
         def wait_for_canary_approval(_run_id, timeout):
-            raise RuntimeError(
+            raise MODULE.CanaryApprovalTimeout(
                 f'canary hold timed out after {timeout}s waiting for operator approval '
                 f'(client={MODULE.OPERATOR_CANARY_APPROVAL_CLIENT})'
             )
@@ -1579,6 +1579,7 @@ class CanaryHoldTest(unittest.TestCase):
         self.assertEqual(played, ['kiosk-canary'])
         self.assertEqual(payload['canaryHold']['state'], 'waiting-verification')
         self.assertEqual(payload['state'], 'failed')
+        self.assertEqual(payload['failureCode'], 'canary-approval-timeout')
 
     def test_skip_canary_hold_rolls_out_all_targets(self):
         targets = [
@@ -1731,7 +1732,10 @@ class CanaryHoldTest(unittest.TestCase):
         with patch.object(MODULE, 'canary_hold_record', side_effect=[waiting, expired]), \
                 patch.object(MODULE, 'state_command') as state_command, \
                 patch.object(MODULE.time, 'monotonic', side_effect=[0, 60]):
-            with self.assertRaisesRegex(RuntimeError, 'canary hold timed out'):
+            with self.assertRaisesRegex(
+                MODULE.CanaryApprovalTimeout,
+                'canary hold timed out',
+            ):
                 MODULE.wait_for_canary_approval('run-1', 60)
         state_command.assert_called_once_with('expire-canary-hold', '--run-id', 'run-1')
 

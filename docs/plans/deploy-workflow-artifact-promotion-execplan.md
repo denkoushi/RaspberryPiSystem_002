@@ -10,6 +10,7 @@ related_docs:
   - ../decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md
   - ../decisions/ADR-20260728-attested-arm64-release-artifact-promotion.md
   - ./deploy-workflow-safe-shortening-execplan.md
+  - ./deploy-artifact-timeout-canary-handoff-execplan.md
   - ../guides/deployment.md
 related_code:
   - .github/workflows/ci.yml
