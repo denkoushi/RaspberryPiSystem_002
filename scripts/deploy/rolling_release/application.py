@@ -19,7 +19,7 @@ from .backends.systemd import (
     DEFAULT_REMOTE_USER,
     SystemdBackend,
 )
-from .models import LaunchSpec
+from .models import LaunchSpec, validate_lookup_run_id
 from .planner import executor_selection
 from .policy import server_identity
 from . import readiness_policy
@@ -120,7 +120,62 @@ def observe(
 ) -> dict[str, Any]:
     unit = systemd.show(run_id)
     state, cancel = control.snapshot(run_id)
-    return reconcile_status(state, cancel, unit)
+    payload = reconcile_status(state, cancel, unit)
+    payload.pop("actionRequired", None)
+    action = canary_approval_action(
+        payload,
+        run_id=run_id,
+        now_epoch=int(datetime.now(timezone.utc).timestamp()),
+    )
+    if action is not None:
+        payload["actionRequired"] = action
+    return payload
+
+
+def canary_approval_action(
+    status: dict[str, Any],
+    *,
+    run_id: str,
+    now_epoch: int,
+) -> dict[str, Any] | None:
+    """Derive the one safe operator action from a live canary hold."""
+
+    validate_lookup_run_id(run_id)
+    if (
+        isinstance(now_epoch, bool)
+        or not isinstance(now_epoch, int)
+        or status.get("runId") != run_id
+        or status.get("state") != "running"
+        or status.get("phase") != "waiting-approval"
+    ):
+        return None
+    hold = status.get("canaryHold")
+    if not isinstance(hold, dict) or hold.get("state") != "waiting-verification":
+        return None
+    expires_at = hold.get("expiresAt")
+    canary = hold.get("canary")
+    opened_at = hold.get("openedAt") or hold.get("since")
+    if (
+        isinstance(expires_at, bool)
+        or not isinstance(expires_at, int)
+        or not isinstance(canary, str)
+        or not canary
+        or not isinstance(opened_at, str)
+        or not opened_at
+    ):
+        return None
+    remaining = expires_at - now_epoch
+    if remaining <= 0:
+        return None
+    return {
+        "type": "canary-approval",
+        "runId": run_id,
+        "canary": canary,
+        "openedAt": opened_at,
+        "expiresAt": expires_at,
+        "remainingSeconds": remaining,
+        "command": f"scripts/update-all-clients.sh --approve {run_id}",
+    }
 
 
 def status(run_id: str, *, runtime: Any) -> int:

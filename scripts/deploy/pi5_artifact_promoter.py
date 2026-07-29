@@ -17,6 +17,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
@@ -63,10 +64,38 @@ REQUIRED_ATTESTATION_OPTIONS = {
     "--source-ref",
 }
 PUBLIC_OCI_VERIFICATION_TOKEN = "public-oci-attestation-verification"
+PROCESS_TERMINATION_GRACE_SECONDS = 5
 
 
 class PromotionUnavailable(RuntimeError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason_code: str = "artifact-unavailable",
+        stage: str | None = None,
+        elapsed_seconds: int | float | None = None,
+        timeout_seconds: int | float | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.reason_code = reason_code
+        self.stage = stage
+        self.elapsed_seconds = elapsed_seconds
+        self.timeout_seconds = timeout_seconds
+
+    def result(self) -> dict[str, object]:
+        document: dict[str, object] = {
+            "status": "unavailable",
+            "reason": str(self),
+        }
+        if self.stage is not None:
+            document["reasonCode"] = self.reason_code
+            document["stage"] = self.stage
+        if self.elapsed_seconds is not None:
+            document["elapsedSeconds"] = self.elapsed_seconds
+        if self.timeout_seconds is not None:
+            document["timeoutSeconds"] = self.timeout_seconds
+        return document
 
 
 class PromotionDisabled(RuntimeError):
@@ -81,6 +110,20 @@ class PromotionInterrupted(RuntimeError):
     def __init__(self, signum: int) -> None:
         super().__init__(f"artifact promotion interrupted by signal {signum}")
         self.signum = signum
+
+
+class CommandTimedOut(RuntimeError):
+    def __init__(
+        self,
+        stage: str,
+        *,
+        elapsed_seconds: int | float,
+        timeout_seconds: int | float,
+    ) -> None:
+        super().__init__(f"{stage} timed out after {timeout_seconds}s")
+        self.stage = stage
+        self.elapsed_seconds = elapsed_seconds
+        self.timeout_seconds = timeout_seconds
 
 
 def _strict_object(items: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -122,6 +165,84 @@ class PromotionConfig:
 
 
 @dataclass(frozen=True)
+class PromotionTimingPolicy:
+    release_set_pull_timeout_seconds: int = 120
+    image_pull_timeout_seconds: int = 600
+    command_timeout_seconds: int = 300
+    total_timeout_seconds: int = 900
+    heartbeat_seconds: int = 30
+    cleanup_timeout_seconds: int = 30
+
+    def __post_init__(self) -> None:
+        values = (
+            self.release_set_pull_timeout_seconds,
+            self.image_pull_timeout_seconds,
+            self.command_timeout_seconds,
+            self.total_timeout_seconds,
+            self.heartbeat_seconds,
+            self.cleanup_timeout_seconds,
+        )
+        if any(type(value) is not int or value <= 0 for value in values):
+            raise ValueError("artifact promotion timing values must be positive integers")
+
+
+DEFAULT_TIMING_POLICY = PromotionTimingPolicy()
+
+
+@dataclass(frozen=True)
+class CommandExecution:
+    stage: str
+    timeout_seconds: int | float
+    heartbeat_seconds: int | float
+
+    def __post_init__(self) -> None:
+        if re.fullmatch(r"[a-z][a-z0-9-]{0,63}", self.stage) is None:
+            raise ValueError("command stage is malformed")
+        if (
+            isinstance(self.timeout_seconds, bool)
+            or not isinstance(self.timeout_seconds, (int, float))
+            or self.timeout_seconds <= 0
+            or isinstance(self.heartbeat_seconds, bool)
+            or not isinstance(self.heartbeat_seconds, (int, float))
+            or self.heartbeat_seconds <= 0
+        ):
+            raise ValueError("command timing must be positive")
+
+
+class PromotionBudget:
+    def __init__(
+        self,
+        policy: PromotionTimingPolicy,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self.policy = policy
+        self.clock = clock
+        self.started_at = clock()
+
+    def execution(
+        self,
+        stage: str,
+        requested_timeout_seconds: int | float,
+    ) -> CommandExecution:
+        elapsed = max(0.0, self.clock() - self.started_at)
+        remaining = self.policy.total_timeout_seconds - elapsed
+        if remaining <= 0:
+            raise PromotionUnavailable(
+                "artifact promotion exceeded its total time budget",
+                reason_code="promotion-budget-exhausted",
+                stage=stage,
+                elapsed_seconds=round(elapsed, 3),
+                timeout_seconds=self.policy.total_timeout_seconds,
+            )
+        return CommandExecution(
+            stage=stage,
+            timeout_seconds=min(requested_timeout_seconds, remaining),
+            heartbeat_seconds=self.policy.heartbeat_seconds,
+        )
+
+
+@dataclass(frozen=True)
 class CommandResult:
     returncode: int
     stdout: str
@@ -129,27 +250,115 @@ class CommandResult:
 
 
 CommandRunner = Callable[
-    [Sequence[str], str | None, Mapping[str, str] | None], CommandResult
+    [
+        Sequence[str],
+        str | None,
+        Mapping[str, str] | None,
+        CommandExecution,
+    ],
+    CommandResult,
 ]
+
+
+def _command_event(
+    execution: CommandExecution,
+    state: str,
+    elapsed_seconds: float,
+) -> None:
+    print(
+        "artifact-promotion "
+        + json.dumps(
+            {
+                "stage": execution.stage,
+                "state": state,
+                "elapsedSeconds": round(max(0.0, elapsed_seconds), 3),
+                "timeoutSeconds": execution.timeout_seconds,
+            },
+            separators=(",", ":"),
+            sort_keys=True,
+        ),
+        flush=True,
+    )
+
+
+def _stop_process(process: subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        process.terminate()
+    except ProcessLookupError:
+        return
+    try:
+        process.communicate(timeout=PROCESS_TERMINATION_GRACE_SECONDS)
+    except subprocess.TimeoutExpired:
+        try:
+            process.kill()
+        except ProcessLookupError:
+            return
+        process.communicate()
 
 
 def _run_command(
     command: Sequence[str],
     input_text: str | None = None,
     environment: Mapping[str, str] | None = None,
+    execution: CommandExecution = CommandExecution(
+        "command",
+        DEFAULT_TIMING_POLICY.command_timeout_seconds,
+        DEFAULT_TIMING_POLICY.heartbeat_seconds,
+    ),
 ) -> CommandResult:
-    completed = subprocess.run(
+    started_at = time.monotonic()
+    process = subprocess.Popen(
         list(command),
-        input=input_text,
+        stdin=subprocess.PIPE if input_text is not None else None,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        capture_output=True,
-        check=False,
-        timeout=300,
         env=dict(environment) if environment is not None else None,
     )
-    stdout = completed.stdout[-MAX_COMMAND_OUTPUT_BYTES:]
-    stderr = completed.stderr[-MAX_COMMAND_OUTPUT_BYTES:]
-    return CommandResult(completed.returncode, stdout, stderr)
+    _command_event(execution, "started", 0.0)
+    pending_input = input_text
+    try:
+        while True:
+            elapsed = max(0.0, time.monotonic() - started_at)
+            remaining = execution.timeout_seconds - elapsed
+            if remaining <= 0:
+                _command_event(execution, "timeout", elapsed)
+                raise CommandTimedOut(
+                    execution.stage,
+                    elapsed_seconds=round(elapsed, 3),
+                    timeout_seconds=execution.timeout_seconds,
+                )
+            try:
+                stdout, stderr = process.communicate(
+                    input=pending_input,
+                    timeout=min(execution.heartbeat_seconds, remaining),
+                )
+                elapsed = max(0.0, time.monotonic() - started_at)
+                _command_event(
+                    execution,
+                    "success" if process.returncode == 0 else "failed",
+                    elapsed,
+                )
+                return CommandResult(
+                    process.returncode,
+                    stdout[-MAX_COMMAND_OUTPUT_BYTES:],
+                    stderr[-MAX_COMMAND_OUTPUT_BYTES:],
+                )
+            except subprocess.TimeoutExpired:
+                pending_input = None
+                elapsed = max(0.0, time.monotonic() - started_at)
+                if elapsed >= execution.timeout_seconds:
+                    _command_event(execution, "timeout", elapsed)
+                    raise CommandTimedOut(
+                        execution.stage,
+                        elapsed_seconds=round(elapsed, 3),
+                        timeout_seconds=execution.timeout_seconds,
+                    )
+                _command_event(execution, "heartbeat", elapsed)
+    finally:
+        _stop_process(process)
 
 
 def load_config(path: Path) -> PromotionConfig:
@@ -240,20 +449,45 @@ def _require_success(
     runner: CommandRunner,
     command: Sequence[str],
     *,
+    execution: CommandExecution,
     input_text: str | None = None,
     environment: Mapping[str, str] | None = None,
     unavailable: bool = False,
     label: str,
 ) -> CommandResult:
     try:
-        result = runner(command, input_text, environment)
+        result = runner(command, input_text, environment, execution)
+    except CommandTimedOut as error:
+        if unavailable:
+            raise PromotionUnavailable(
+                f"{label} timed out after {error.timeout_seconds}s",
+                reason_code=(
+                    "artifact-pull-timeout"
+                    if error.stage.endswith("-pull")
+                    else "artifact-command-timeout"
+                ),
+                stage=error.stage,
+                elapsed_seconds=error.elapsed_seconds,
+                timeout_seconds=error.timeout_seconds,
+            ) from error
+        raise PromotionIntegrityError(
+            f"{label} could not be verified before its timeout"
+        ) from error
     except (OSError, subprocess.SubprocessError) as error:
         if unavailable:
-            raise PromotionUnavailable(f"{label} is unavailable") from error
+            raise PromotionUnavailable(
+                f"{label} is unavailable",
+                reason_code="artifact-command-unavailable",
+                stage=execution.stage,
+            ) from error
         raise PromotionIntegrityError(f"{label} could not be verified") from error
     if result.returncode != 0:
         if unavailable:
-            raise PromotionUnavailable(f"{label} is unavailable")
+            raise PromotionUnavailable(
+                f"{label} is unavailable",
+                reason_code="artifact-command-unavailable",
+                stage=execution.stage,
+            )
         raise PromotionIntegrityError(f"{label} verification failed")
     return result
 
@@ -271,10 +505,12 @@ def _inspect_image(
     reference: str,
     sha: str,
     config_hash: str,
+    execution: CommandExecution,
 ) -> str:
     result = _require_success(
         runner,
         [docker, "image", "inspect", reference],
+        execution=execution,
         label="Docker image inspection",
     )
     document = _json_output(result, "Docker image inspection")
@@ -305,10 +541,12 @@ def _resolve_repo_digest(
     docker: str,
     tagged_reference: str,
     repository: str,
+    execution: CommandExecution,
 ) -> str:
     result = _require_success(
         runner,
         [docker, "image", "inspect", "--format", "{{json .RepoDigests}}", tagged_reference],
+        execution=execution,
         label="release-set digest inspection",
     )
     values = _json_output(result, "release-set digest inspection")
@@ -337,10 +575,12 @@ def _require_verifier_capability(
     runner: CommandRunner,
     gh: str,
     environment: Mapping[str, str],
+    execution: CommandExecution,
 ) -> None:
     result = _require_success(
         runner,
         [gh, "attestation", "verify", "--help"],
+        execution=execution,
         environment=environment,
         unavailable=True,
         label="GitHub attestation verifier",
@@ -354,12 +594,32 @@ def _cleanup_image(
     docker: str,
     reference: str,
     docker_config: Path,
+    execution: CommandExecution,
 ) -> None:
-    runner(
+    _run_cleanup(
+        runner,
         [docker, "--config", str(docker_config), "image", "rm", reference],
-        None,
-        None,
+        execution,
     )
+
+
+def _run_cleanup(
+    runner: CommandRunner,
+    command: Sequence[str],
+    execution: CommandExecution,
+) -> None:
+    """Attempt one bounded cleanup without hiding the primary promotion result."""
+
+    try:
+        result = runner(command, None, None, execution)
+    except CommandTimedOut as error:
+        _command_event(execution, "cleanup-failed", float(error.elapsed_seconds))
+        return
+    except (OSError, subprocess.SubprocessError):
+        _command_event(execution, "cleanup-failed", 0.0)
+        return
+    if result.returncode != 0:
+        _command_event(execution, "cleanup-failed", 0.0)
 
 
 def promote(
@@ -371,6 +631,8 @@ def promote(
     api_tag: str,
     web_tag: str,
     runner: CommandRunner = _run_command,
+    timing_policy: PromotionTimingPolicy = DEFAULT_TIMING_POLICY,
+    clock: Callable[[], float] = time.monotonic,
 ) -> dict[str, object]:
     if (
         FULL_SHA_RE.fullmatch(sha) is None
@@ -388,6 +650,26 @@ def promote(
     if not docker or not gh:
         raise PromotionUnavailable("artifact promotion tools are unavailable")
 
+    budget = PromotionBudget(timing_policy, clock=clock)
+
+    def command_execution(
+        stage: str,
+        timeout_seconds: int | float | None = None,
+    ) -> CommandExecution:
+        return budget.execution(
+            stage,
+            timeout_seconds
+            if timeout_seconds is not None
+            else timing_policy.command_timeout_seconds,
+        )
+
+    def cleanup_execution(stage: str) -> CommandExecution:
+        return CommandExecution(
+            stage=stage,
+            timeout_seconds=timing_policy.cleanup_timeout_seconds,
+            heartbeat_seconds=timing_policy.heartbeat_seconds,
+        )
+
     release_tag = (
         f"{config.release_set_repository}:{sha}-{config_hash}"
     )
@@ -399,7 +681,12 @@ def promote(
         gh_config = temporary / "gh"
         gh_config.mkdir(mode=0o700)
         verifier_environment = _verification_environment(config, gh_config)
-        _require_verifier_capability(runner, gh, verifier_environment)
+        _require_verifier_capability(
+            runner,
+            gh,
+            verifier_environment,
+            command_execution("verifier-capability"),
+        )
         release_json = temporary / "release-set.json"
         release_digest_ref = ""
         pulled_refs: list[str] = []
@@ -418,6 +705,7 @@ def promote(
                         config.username,
                         "--password-stdin",
                     ],
+                    execution=command_execution("registry-login"),
                     input_text=config.token,
                     unavailable=True,
                     label="GHCR authentication",
@@ -425,20 +713,36 @@ def promote(
             _require_success(
                 runner,
                 [docker, "--config", str(docker_config), "pull", release_tag],
+                execution=command_execution(
+                    "release-set-pull",
+                    timing_policy.release_set_pull_timeout_seconds,
+                ),
                 unavailable=True,
                 label="signed release set",
             )
             pulled_refs.append(release_tag)
             release_digest_ref = _resolve_repo_digest(
-                runner, docker, release_tag, config.release_set_repository
+                runner,
+                docker,
+                release_tag,
+                config.release_set_repository,
+                command_execution("release-set-digest-inspect"),
             )
             _require_success(
                 runner,
                 attestation_command(gh, release_digest_ref, config, sha),
+                execution=command_execution("release-set-attestation"),
                 environment=verifier_environment,
                 label="release-set attestation",
             )
-            _inspect_image(runner, docker, release_digest_ref, sha, config_hash)
+            _inspect_image(
+                runner,
+                docker,
+                release_digest_ref,
+                sha,
+                config_hash,
+                command_execution("release-set-provenance-inspect"),
+            )
 
             _require_success(
                 runner,
@@ -450,16 +754,22 @@ def promote(
                     release_digest_ref,
                     "/release-set.json",
                 ],
+                execution=command_execution("release-set-extraction-create"),
                 label="release-set extraction container",
             )
             try:
                 _require_success(
                     runner,
                     [docker, "cp", f"{container_name}:/release-set.json", str(release_json)],
+                    execution=command_execution("release-set-extraction-copy"),
                     label="release-set extraction",
                 )
             finally:
-                runner([docker, "rm", "-f", container_name], None, None)
+                _run_cleanup(
+                    runner,
+                    [docker, "rm", "-f", container_name],
+                    cleanup_execution("release-set-container-cleanup"),
+                )
             try:
                 release_set = parse_release_set(release_json.read_text(encoding="utf-8"))
                 validate_release_set(
@@ -482,22 +792,33 @@ def promote(
                 _require_success(
                     runner,
                     attestation_command(gh, reference, config, sha),
+                    execution=command_execution(f"{service}-image-attestation"),
                     environment=verifier_environment,
                     label=f"{service} image attestation",
                 )
                 _require_success(
                     runner,
                     [docker, "--config", str(docker_config), "pull", reference],
+                    execution=command_execution(
+                        f"{service}-image-pull",
+                        timing_policy.image_pull_timeout_seconds,
+                    ),
                     unavailable=True,
                     label=f"{service} image",
                 )
                 pulled_refs.append(reference)
                 image_ids[service] = _inspect_image(
-                    runner, docker, reference, sha, config_hash
+                    runner,
+                    docker,
+                    reference,
+                    sha,
+                    config_hash,
+                    command_execution(f"{service}-image-provenance-inspect"),
                 )
                 _require_success(
                     runner,
                     [docker, "image", "tag", reference, local_tag],
+                    execution=command_execution(f"{service}-image-promotion"),
                     label=f"{service} image promotion",
                 )
                 promoted_tags.append(local_tag)
@@ -522,12 +843,28 @@ def promote(
             }
         except Exception:
             for tag in reversed(promoted_tags):
-                _cleanup_image(runner, docker, tag, docker_config)
+                _cleanup_image(
+                    runner,
+                    docker,
+                    tag,
+                    docker_config,
+                    cleanup_execution("promoted-tag-cleanup"),
+                )
             raise
         finally:
-            runner([docker, "rm", "-f", container_name], None, None)
+            _run_cleanup(
+                runner,
+                [docker, "rm", "-f", container_name],
+                cleanup_execution("release-set-container-cleanup"),
+            )
             for reference in reversed(pulled_refs):
-                _cleanup_image(runner, docker, reference, docker_config)
+                _cleanup_image(
+                    runner,
+                    docker,
+                    reference,
+                    docker_config,
+                    cleanup_execution("pulled-image-cleanup"),
+                )
 
 
 def _write_result(path: Path, document: Mapping[str, object]) -> None:
@@ -589,7 +926,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             _write_result(args.result, {"status": "disabled", "reason": str(error)})
             return EX_DISABLED
         except PromotionUnavailable as error:
-            _write_result(args.result, {"status": "unavailable", "reason": str(error)})
+            _write_result(args.result, error.result())
             return EX_UNAVAILABLE
         except (PromotionIntegrityError, ReleaseArtifactError) as error:
             _write_result(

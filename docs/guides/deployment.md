@@ -2,7 +2,7 @@
 id: deployment-guide
 title: 標準デプロイ手順
 status: active
-last_verified: 2026-07-25
+last_verified: 2026-07-29
 ---
 
 # デプロイメントガイド
@@ -26,7 +26,11 @@ scripts/update-all-clients.sh --cancel RUN_ID --reason TEXT
 - `--detach` は開始後に `runId` を返す。状態は `--status` で確認する。
 - `--dry-run` は `--print-plan` の互換aliasとして使える。
 - `--preflight-only` はmigration、Pi5実行経路、実作業計画に含まれる端末だけの全前提条件を一括検査する診断コマンドである。release run、systemd unit、fleet state、maintenance、checkout、service変更は作成・実行しない。`--full-fleet` と `--limit PATTERN --reverify-selected` もread-only計画のまま検査できる。通常実行は同じ検査をrelease unit作成の直前に必ず実施するため、通常手順で事前に実行する必要はない。
-- `human` profileのカナリア待機は `--approve RUN_ID` で現在のgateを明示承認する。複数profileでは順番に承認する。
+- `human` profileのカナリア待機は `--status RUN_ID` の
+  `actionRequired.type=canary-approval` を確認し、表示されたrun固有コマンドで
+  現在のgateだけを明示承認する。監視中は30秒以内の間隔でstatusを確認し、
+  `actionRequired`が出た時点で人へ判断を依頼する。事前のDeploy承認を流用した
+  自動承認はしない。複数profileでは順番に承認する。
 - 安定化時間を省略できるのは、緊急時に `--emergency-override --reason TEXT` を併用した場合だけである。
 
 ## 対象の決まり方
@@ -61,6 +65,13 @@ rollbackは従来どおり実施する。正本は
 である。公開packageでは実トークンを保存せず、隔離した一時GitHub CLI設定で
 OCI内の署名bundleを検証する。private packageへ変更する場合だけ、root所有かつ
 release runner groupだけが読める設定のread-only tokenを使う。
+
+成果物昇格の待機上限はrelease set取得120秒、API/Web image取得各600秒、
+その他の検証300秒、promotion全体900秒である。各処理は30秒ごとに安全な
+stage名と経過だけをheartbeatとして記録し、コマンド、token、環境変数は
+記録しない。pullのtimeoutまたは通信不能は`unavailable`としてローカルbuildへ
+戻る。署名、digest、platform、source、設定hashの不一致は
+`integrity-failure`として停止する。
 
 判断の正本は `logs/deploy/fleet-release-state.json` である。手で編集しない。
 
@@ -181,6 +192,8 @@ Pi5が対象の場合は、host設定、Expand-only migration、candidate image�
 `--status RUN_ID` で次を確認する。
 
 - run全体が `success` である。
+- 進行中に`actionRequired`が出た場合は、そのrun ID、canary、期限、残り秒数を
+  人が確認し、承認すると判断した場合だけ表示済みコマンドを実行する。
 - 対象hostの desired/current SHA が一致し、evidenceが `verified` である。
 - Pi5はactive slot、API/Web image、config digest、migration digestが一致する。
 - 成果物昇格を有効にしたrunは、candidateの`build.mode`が`promoted`であり、
@@ -210,6 +223,12 @@ Pi5 DBはdown migrationしない。rollbackはコード、image、設定、端�
 configuration hashを調査する。可用性問題で次回runも確実にローカルbuildへ
 戻す必要がある場合は、正規Ansible変数でpromotionを無効化し、
 `--print-plan`からやり直す。
+
+`artifactPromotion.status=unavailable`に`reasonCode`、`stage`、
+`elapsedSeconds`、`timeoutSeconds`がある場合は、その処理の可用性timeoutを
+示す。`failureCode=canary-approval-timeout`はcanary自体の更新失敗ではなく、
+1,800秒以内にrun固有の人承認が届かなかったことを示す。残り端末へ進まず、
+新しい実行は原因確認と`--print-plan`から始める。
 
 ## 禁止する迂回経路
 

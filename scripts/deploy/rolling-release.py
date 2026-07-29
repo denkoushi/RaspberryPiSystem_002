@@ -50,6 +50,7 @@ from rolling_release.fleet_state import (
     empty_fleet_state,
     parse_fleet_state_json,
 )
+from rolling_release.errors import CanaryApprovalTimeout
 from rolling_release.lock import (
     validate_inherited_fleet_lock,
 )
@@ -734,7 +735,9 @@ def wait_for_canary_approval(run_id: str, timeout: int) -> dict[str, Any]:
         if gate_state == "approved":
             return record
         if gate_state == "expired":
-            raise RuntimeError(f"canary hold timed out after {timeout}s waiting for operator approval")
+            raise CanaryApprovalTimeout(
+                f"canary hold timed out after {timeout}s waiting for operator approval"
+            )
         if gate_state != "waiting-verification":
             raise RuntimeError(f"canary hold entered unexpected state: {gate_state!r}")
         remaining = deadline - time.monotonic()
@@ -743,7 +746,9 @@ def wait_for_canary_approval(run_id: str, timeout: int) -> dict[str, Any]:
             record = canary_hold_record(run_id)
             if record.get("state") == "approved":
                 return record
-            raise RuntimeError(f"canary hold timed out after {timeout}s waiting for operator approval")
+            raise CanaryApprovalTimeout(
+                f"canary hold timed out after {timeout}s waiting for operator approval"
+            )
         time.sleep(min(5, max(1, remaining)))
 
 

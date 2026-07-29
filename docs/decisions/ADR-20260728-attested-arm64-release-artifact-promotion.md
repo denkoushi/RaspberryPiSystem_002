@@ -13,6 +13,7 @@ related_code:
   - scripts/deploy/pi5-image-deploy.sh
 related_docs:
   - ../plans/deploy-workflow-artifact-promotion-execplan.md
+  - ../plans/deploy-artifact-timeout-canary-handoff-execplan.md
   - ../plans/deploy-workflow-safe-shortening-execplan.md
   - ../guides/ci-branch-protection.md
   - ../guides/deployment.md
@@ -69,6 +70,13 @@ Disabled promotion also uses the local build. Once signed content is
 discovered, a signature, source, configuration, platform, repository, digest,
 schema, or label mismatch is terminal and never falls back.
 
+Promotion timing is explicit by operation rather than one shared command
+timeout. Release-set pull receives 120 seconds, each API/Web image pull 600
+seconds, ordinary inspection and attestation commands 300 seconds, and the
+whole promotion 900 seconds. A secret-free heartbeat reports only the stage
+and elapsed/limit values every 30 seconds. Pull timeout remains an availability
+fallback; integrity verification timeout or mismatch remains terminal.
+
 The shared server default remains disabled. An explicitly approved production
 host may opt in without changing other server inventories. Public OCI pulls
 need no registry login. GitHub CLI still requires a nonempty `GH_TOKEN` before
@@ -105,6 +113,11 @@ full suite and a release pair.
 Production may remain on the Phase 1 local builder indefinitely by leaving the
 opt-in false. Disabling promotion is the recovery action for availability
 problems; integrity failures require investigation rather than bypass.
+
+The longer image-pull allowance removes a false fallback on slow transfers
+without allowing registry work to exceed the bounded 15-minute promotion
+budget. Timeout results identify their stable reason, stage, elapsed time, and
+limit without persisting commands or credentials.
 
 ## Alternatives Considered
 

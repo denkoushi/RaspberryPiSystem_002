@@ -21,6 +21,7 @@ from .activation import (
     WEB_CONSUMER_STEADY_STATE_MODE,
 )
 from .cancellation import CancellationRequested, CancellationToken
+from .errors import CanaryApprovalTimeout
 from .release_claims import (
     ClaimAuthority,
     ClaimKind,
@@ -2743,6 +2744,10 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             state.payload["state"] = "failed"
             state.payload["phase"] = "completed"
             state.payload["failure"] = str(error)
+            if isinstance(error, CanaryApprovalTimeout):
+                state.payload["failureCode"] = "canary-approval-timeout"
+            else:
+                state.payload.pop("failureCode", None)
             if finished is not None:
                 state.payload["fleetGeneration"] = finished["generation"]
             if fleet_finish_error is not None:

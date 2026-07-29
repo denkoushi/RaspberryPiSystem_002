@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 575,
-    "totalLines": 162485,
-    "totalBytes": 12218194,
+    "totalLines": 162531,
+    "totalBytes": 12221800,
     "withFrontmatter": 252,
     "withStatus": 108,
     "sourceOfTruthDeclared": 72,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 25,
-    "localLinkCount": 5621,
+    "localLinkCount": 5622,
     "brokenLocalLinkCount": 87,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -5898,8 +5898,8 @@
     },
     {
       "path": "docs/AI_START_HERE.md",
-      "lineCount": 111,
-      "byteSize": 5893,
+      "lineCount": 112,
+      "byteSize": 6060,
       "hasFrontmatter": true,
       "title": "AI Start Here",
       "status": null,
@@ -5913,8 +5913,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 2009,
-      "byteSize": 345747,
+      "lineCount": 2010,
+      "byteSize": 346062,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -10256,6 +10256,11 @@
           "exists": true
         },
         {
+          "href": "./plans/deploy-artifact-timeout-canary-handoff-execplan.md",
+          "targetPath": "docs/plans/deploy-artifact-timeout-canary-handoff-execplan.md",
+          "exists": true
+        },
+        {
           "href": "./plans/deploy-release-identity-architecture-execplan.md",
           "targetPath": "docs/plans/deploy-release-identity-architecture-execplan.md",
           "exists": true
@@ -11201,95 +11206,95 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 289,
+          "line": 290,
           "length": 1132
         },
         {
-          "line": 305,
+          "line": 306,
           "length": 1242
         },
         {
-          "line": 309,
+          "line": 310,
           "length": 1022
         },
         {
-          "line": 323,
+          "line": 324,
           "length": 1065
         },
         {
-          "line": 371,
+          "line": 372,
           "length": 1165
         },
         {
-          "line": 377,
+          "line": 378,
           "length": 1458
         },
         {
-          "line": 389,
+          "line": 390,
           "length": 1083
         },
         {
-          "line": 403,
+          "line": 404,
           "length": 1398
         },
         {
-          "line": 405,
+          "line": 406,
           "length": 1133
         },
         {
-          "line": 409,
+          "line": 410,
           "length": 1399
         },
         {
-          "line": 411,
+          "line": 412,
           "length": 1008
         },
         {
-          "line": 417,
+          "line": 418,
           "length": 1059
         },
         {
-          "line": 425,
+          "line": 426,
           "length": 1129
         },
         {
-          "line": 429,
+          "line": 430,
           "length": 1135
         },
         {
-          "line": 433,
+          "line": 434,
           "length": 1117
         },
         {
-          "line": 548,
+          "line": 549,
           "length": 1013
         },
         {
-          "line": 734,
+          "line": 735,
           "length": 2038
         },
         {
-          "line": 750,
+          "line": 751,
           "length": 1496
         },
         {
-          "line": 756,
+          "line": 757,
           "length": 1177
         },
         {
-          "line": 1098,
+          "line": 1099,
           "length": 1449
         },
         {
-          "line": 1134,
+          "line": 1135,
           "length": 1136
         },
         {
-          "line": 1136,
+          "line": 1137,
           "length": 1239
         },
         {
-          "line": 1172,
+          "line": 1173,
           "length": 1004
         }
       ],
@@ -16869,8 +16874,8 @@
     },
     {
       "path": "docs/decisions/ADR-20260728-attested-arm64-release-artifact-promotion.md",
-      "lineCount": 116,
-      "byteSize": 5670,
+      "lineCount": 129,
+      "byteSize": 6464,
       "hasFrontmatter": true,
       "title": "Attested ARM64 API/Web release artifact promotion",
       "status": "accepted",
@@ -18646,8 +18651,8 @@
     },
     {
       "path": "docs/guides/deployment.md",
-      "lineCount": 237,
-      "byteSize": 19881,
+      "lineCount": 256,
+      "byteSize": 21296,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -32246,8 +32251,8 @@
     },
     {
       "path": "docs/plans/deploy-workflow-artifact-promotion-execplan.md",
-      "lineCount": 549,
-      "byteSize": 29295,
+      "lineCount": 550,
+      "byteSize": 29352,
       "hasFrontmatter": true,
       "title": "Promote attested ARM64 release images without weakening deployment safety",
       "status": "in_progress",
@@ -35744,8 +35749,8 @@
     },
     {
       "path": "docs/runbooks/deploy-status-recovery.md",
-      "lineCount": 79,
-      "byteSize": 3296,
+      "lineCount": 90,
+      "byteSize": 4154,
       "hasFrontmatter": true,
       "title": "デプロイ停止・復旧Runbook",
       "status": "active",

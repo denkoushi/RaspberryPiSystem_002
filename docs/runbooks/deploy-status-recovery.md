@@ -2,7 +2,7 @@
 id: deploy-status-recovery
 title: デプロイ停止・復旧Runbook
 status: active
-last_verified: 2026-07-16
+last_verified: 2026-07-29
 ---
 
 # デプロイ停止・復旧Runbook
@@ -21,8 +21,13 @@ scripts/update-all-clients.sh --status RUN_ID
 - hostごとのdesired/current SHA、evidence、対象理由
 - 実行中または失敗したhost
 - rollback結果とmaintenance状態
+- `actionRequired`の有無。`type=canary-approval`ならrun ID、canary、
+  `expiresAt`、`remainingSeconds`、表示された承認コマンド
 
 statusが進行中なら、同じinventoryへ別runを重ねない。
+監視は30秒以内の間隔で行い、`actionRequired`が出たら人へ承認判断を依頼する。
+事前承認を流用せず、承認された場合だけ同じobjectに表示されたrun固有コマンドを
+実行する。期限切れ後や別runへ承認を送らない。
 
 ## 2. 安全に中止する
 
@@ -73,6 +78,12 @@ lockはkernelがprocess終了・再起動時に解放する。残って見える
 ## 読み取り専用の追加確認
 
 原因調査では、status出力、CI log、systemd journal、serviceのactive状態、認証済みhealth endpointを読み取る。変更操作が必要になった場合は、原因、対象inventory、実行内容を整理し、新しい明示承認を得る。
+
+成果物取得timeoutは`artifactPromotion`の`reasonCode`、`stage`、
+`elapsedSeconds`、`timeoutSeconds`で処理を特定する。pullの可用性timeoutは
+ローカルbuildへ戻るが、`integrity-failure`はfallbackしない。
+`failureCode=canary-approval-timeout`では成功済みcanaryを自動rollbackせず、
+残り端末が未実行でmaintenanceが解除済みであることをstatusから確認する。
 
 Pi5本体の故障・停電は単体構成の対象外である。ハードウェア復旧後もfleet evidenceは自動的に信用せず、`unknown` として標準ワークフローで再検証する。
 
