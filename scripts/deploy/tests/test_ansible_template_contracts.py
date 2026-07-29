@@ -28,6 +28,7 @@ WEB_BUILD_VARS = ANSIBLE_ROOT / "group_vars/server/web-build.yml"
 PRIMARY_INVENTORY = ANSIBLE_ROOT / "inventory.yml"
 TALKPLAZA_INVENTORY = ANSIBLE_ROOT / "inventory-talkplaza.yml"
 WEB_ENV_TEMPLATE = ANSIBLE_ROOT / "templates/web.env.j2"
+DOCKER_ENV_TEMPLATE = ANSIBLE_ROOT / "templates/docker.env.j2"
 RELEASE_BUILD_CONTRACT_TEMPLATE = (
     ANSIBLE_ROOT / "templates/release-build-contract.json.j2"
 )
@@ -124,6 +125,45 @@ class AnsibleTemplateContractTests(unittest.TestCase):
         self.assertIn("delegate_to: localhost", playbook)
         self.assertIn("no_log: true", playbook)
         self.assertNotIn("ansible.builtin.shell", playbook)
+
+    def test_release_build_renderer_matches_pi5_compose_environment(self) -> None:
+        sha = "a" * 40
+        variables = {
+            "api_install_playwright_chromium": "true",
+            "web_agent_ws_url": "ws://100.64.0.1:7071/stream",
+            "web_api_base_url": "/api",
+            "web_kiosk_due_mgmt_layout_v2_enabled": "true",
+            "web_kiosk_leaderboard_defer_residual_summary_enabled": "false",
+            "web_kiosk_production_schedule_order_split_enabled": "false",
+            "web_kiosk_sop_popup_enabled": "true",
+            "web_kiosk_target_location_selector_enabled": "true",
+        }
+        environment = Environment()
+        environment.filters["to_json"] = json.dumps
+        rendered_contract = environment.from_string(
+            RELEASE_BUILD_CONTRACT_TEMPLATE.read_text(encoding="utf-8")
+        ).render(**variables, release_build_contract_sha=sha)
+        contract = parse_contract_json(rendered_contract, sha)
+
+        rendered_environment = environment.from_string(
+            DOCKER_ENV_TEMPLATE.read_text(encoding="utf-8")
+        ).render(**variables)
+        pi5_environment = {
+            key: value
+            for line in rendered_environment.splitlines()
+            if line and not line.startswith("#") and "=" in line
+            for key, value in (line.split("=", 1),)
+        }
+
+        self.assertEqual(
+            pi5_environment["INSTALL_PLAYWRIGHT_CHROMIUM"],
+            contract.service_arguments("api")["INSTALL_PLAYWRIGHT_CHROMIUM"],
+        )
+        for key, value in contract.service_arguments("web").items():
+            if key == "VITE_RELEASE_SHA":
+                continue
+            with self.subTest(key=key):
+                self.assertEqual(pi5_environment[key], value)
 
     def test_artifact_promotion_policy_is_release_runner_only_and_opt_in(self) -> None:
         self.assertIn(
