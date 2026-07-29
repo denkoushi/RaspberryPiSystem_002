@@ -1,7 +1,7 @@
 ---
 id: plan-deploy-workflow-artifact-promotion
 title: Promote attested ARM64 release images without weakening deployment safety
-status: implemented
+status: in_progress
 date: 2026-07-28
 source_of_truth: true
 scope: GitHub-built ARM64 API/Web release pairs, attested promotion, and safe Pi5 fallback
@@ -121,10 +121,19 @@ remain unchanged.
   `ansible_architecture`; rollback restored the four-file configuration
   manifest before candidate preparation, traffic switch, database work, or
   terminal activation.
-- [ ] Replace the unavailable global Ansible fact with a local read-only
-  `dpkg --print-architecture` probe, pass hosted CI, and deploy only through
-  the standard orchestrator. Require candidate mode `promoted` plus a
-  same-SHA no-op before declaring production validation complete.
+- [x] (2026-07-29 09:13+09:00) Replaced the unavailable global Ansible fact
+  with a local read-only `dpkg --print-architecture` probe through PR #1120.
+  Hosted CI and the exact-main release set succeeded.
+- [x] (2026-07-29 09:28+09:00) Production run
+  `20260729-001448-8a9011` safely used the local fallback, switched Pi5, and
+  passed the unchanged five-minute stability monitor. The fallback exposed a
+  build-contract drift before terminal activation: CI rendered the configured
+  agent URL while Pi5 Compose silently used its localhost default.
+- [ ] Render the complete allowlisted Web build environment into Pi5 Compose,
+  prove it matches the CI contract from the same Ansible values, pass hosted
+  CI, and redeploy only through the standard orchestrator. Require candidate
+  mode `promoted` plus a same-SHA no-op before declaring production validation
+  complete.
 
 ## Surprises & Discoveries
 
@@ -175,6 +184,17 @@ remain unchanged.
   restored its server configuration manifest, and never reached candidate
   preparation. The package architecture can instead be read locally and
   without mutation from `/usr/bin/dpkg --print-architecture`.
+
+- Observation: the signed release set was available, but CI and Pi5 calculated
+  different configuration hashes for the same exact main SHA.
+  Evidence: CI published configuration hash
+  `176b793c75a54824ff56987e6c31edc9d10d428650559fc341bdd378f37d3563`,
+  while Pi5 sealed
+  `9b34d0beff0acc72d6bcf9d2e5795f3ad4c4695b33101c8b147f587cc7049dd6`.
+  Their canonical non-secret contracts differed only at
+  `VITE_AGENT_WS_URL`: CI resolved the server-owned
+  `ws://100.106.158.2:7071/stream`, but `docker.env.j2` omitted the variable,
+  so Compose used `ws://localhost:7071/stream`.
 
 - Observation: Docker is running on the development Mac as ARM64 with zero
   containers, while unrelated persistent volumes and networks exist.
@@ -269,6 +289,15 @@ remain unchanged.
   dependency explicit; checksum or policy drift fails before candidate
   preparation, while later registry transport failures retain the local
   builder fallback.
+  Date/Author: 2026-07-29 / Codex.
+
+- Decision: render every allowlisted non-dynamic Web build input used by the
+  release contract into the Pi5 Compose environment from the same Ansible
+  variables.
+  Rationale: defaults are safe for standalone development but cannot define
+  production image identity independently of the signed CI contract. A
+  regression test now renders both adapters from one variable map and compares
+  every API/Web value except the dynamically supplied release SHA.
   Date/Author: 2026-07-29 / Codex.
 
 ## Outcomes & Retrospective
