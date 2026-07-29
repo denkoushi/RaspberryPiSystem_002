@@ -351,6 +351,74 @@ describe('クライアントテレメトリーAPI', () => {
     expect(duplicateAlertCount).toBe(1);
   });
 
+  it('POST /api/clients/status creates one sanitized terminal agent alert per episode', async () => {
+    const clientId = `pi-terminal-health-${Date.now()}`;
+    const episodeId = '3d594650-3436-4a9f-bf51-2524200ea34e';
+    const terminalHealthContext = {
+      category: 'terminal_agent_health',
+      action: 'unhealthy',
+      agent: 'nfc',
+      signal: 'queue',
+      severity: 'WARN',
+      episodeId,
+      observedAt: '2026-07-29T00:00:00Z',
+      consecutiveFailures: 2,
+      queueSize: 4,
+      uid: 'must-not-store',
+      lastEvent: { uid: 'must-not-store' },
+      token: 'must-not-store',
+      url: 'http://127.0.0.1:7071'
+    };
+    const payload = {
+      clientId,
+      hostname: 'pi-kiosk-terminal-health',
+      ipAddress: '192.168.0.33',
+      cpuUsage: 10,
+      memoryUsage: 20,
+      diskUsage: 30,
+      logs: [
+        {
+          level: 'WARN',
+          message: 'Terminal agent unhealthy: nfc/queue',
+          context: terminalHealthContext
+        }
+      ]
+    };
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/clients/status',
+        headers: {
+          'x-client-key': clientKey,
+          'Content-Type': 'application/json'
+        },
+        payload
+      });
+      expect(response.statusCode).toBe(200);
+    }
+
+    const alerts = await prisma.alert.findMany({
+      where: { type: 'terminal-agent-health-nfc-queue' }
+    });
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].severity).toBe(AlertSeverity.WARNING);
+    expect(alerts[0].message).toContain(clientId);
+    expect(JSON.stringify(alerts[0].details)).not.toContain('uid');
+    const storedLogs = await prisma.clientLog.findMany({ where: { clientId } });
+    expect(storedLogs).toHaveLength(2);
+    expect(JSON.stringify(storedLogs[0])).not.toContain('must-not-store');
+    expect(JSON.stringify(storedLogs[0])).not.toContain('127.0.0.1');
+
+    const delivery = await prisma.alertDelivery.findFirst({
+      where: { alertId: alerts[0].id }
+    });
+    expect(delivery).toMatchObject({
+      channel: AlertChannel.SLACK,
+      routeKey: 'ops',
+      status: AlertDeliveryStatus.PENDING
+    });
+  });
+
   it('POST /api/clients/status updates ClientDevice.statusClientId', async () => {
     const statusClientId = `pi-status-${Date.now()}`;
     const payload = {

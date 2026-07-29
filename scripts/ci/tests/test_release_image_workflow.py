@@ -18,6 +18,10 @@ from scripts.deploy.release_build_contract import (
     canonical_contract_json,
     normalize_build_arguments,
 )
+from scripts.deploy.production_config_contract import (
+    ConfigKind,
+    PRODUCTION_WEB_SETTINGS,
+)
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -31,19 +35,15 @@ CONTRACT_RENDERER = (
 
 
 def contract_document() -> str:
+    web = {
+        setting.key: str(setting.production_default)
+        for setting in PRODUCTION_WEB_SETTINGS
+        if setting.kind is ConfigKind.IMAGE
+    }
+    web["VITE_RELEASE_SHA"] = SHA
     contract = normalize_build_arguments(
         {"INSTALL_PLAYWRIGHT_CHROMIUM": "true"},
-        {
-            "VITE_AGENT_WS_MODE": "local",
-            "VITE_AGENT_WS_URL": "ws://100.64.0.1:7071/stream",
-            "VITE_API_BASE_URL": "/api",
-            "VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED": "true",
-            "VITE_KIOSK_LEADERBOARD_DEFER_RESIDUAL_SUMMARY_ENABLED": "false",
-            "VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED": "false",
-            "VITE_KIOSK_SOP_POPUP_ENABLED": "true",
-            "VITE_KIOSK_TARGET_LOCATION_SELECTOR_ENABLED": "true",
-            "VITE_RELEASE_SHA": SHA,
-        },
+        web,
         SHA,
     )
     return canonical_contract_json(contract)

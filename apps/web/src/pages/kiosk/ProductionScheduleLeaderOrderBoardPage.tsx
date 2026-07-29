@@ -13,6 +13,7 @@ import {
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
+import { readProductionBuildConfig } from '../../config/productionBuildConfig';
 import { applyLeaderBoardDisplayRequiredMinutesToGrouped } from '../../features/kiosk/leaderOrderBoard/applyLeaderBoardDisplayRequiredMinutes';
 import { buildLeaderBoardGroupedRows, buildLeaderBoardSortedGrouped } from '../../features/kiosk/leaderOrderBoard/buildLeaderBoardViewModel';
 import {
@@ -67,7 +68,7 @@ import type { LeaderBoardRow } from '../../features/kiosk/leaderOrderBoard/types
 
 const LEADER_ORDER_BOARD_SEARCH_STORAGE_KEY = 'leader-order-board-search-conditions';
 const MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED =
-  import.meta.env.VITE_KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED !== 'false';
+  readProductionBuildConfig().manualOrderDeviceScopeV2Enabled;
 
 export function ProductionScheduleLeaderOrderBoardPage() {
   const queryClient = useQueryClient();

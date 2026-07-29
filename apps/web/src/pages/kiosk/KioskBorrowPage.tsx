@@ -11,6 +11,7 @@ import {
   postClientLogs
 } from '../../api/client';
 import { useActiveLoans, useBorrowMutation, useKioskConfig } from '../../api/hooks';
+import { readProductionBuildConfig } from '../../config/productionBuildConfig';
 import { createBorrowMachine } from '../../features/kiosk/borrowMachine';
 import {
   kioskButtonSecondaryClassName,
@@ -195,7 +196,7 @@ export function KioskBorrowPage() {
 
   useEffect(() => {
     // デバッグログの出力制御（環境変数で制御可能、デフォルトは開発中は常に出力）
-    const enableDebugLogs = import.meta.env.VITE_ENABLE_DEBUG_LOGS !== 'false';
+    const enableDebugLogs = readProductionBuildConfig().debugLogsEnabled;
     
     if (enableDebugLogs) {
       console.log('NFC Event received:', nfcEvent);

@@ -22,6 +22,7 @@ import { ProductionScheduleResourceFilters } from '../../components/kiosk/Produc
 import { ProductionScheduleSeibanFilterDropdown } from '../../components/kiosk/ProductionScheduleSeibanFilterDropdown';
 import { ProductionScheduleTable } from '../../components/kiosk/ProductionScheduleTable';
 import { ProductionScheduleToolbar } from '../../components/kiosk/ProductionScheduleToolbar';
+import { readProductionBuildConfig } from '../../config/productionBuildConfig';
 import { type TableColumnDefinition } from '../../features/kiosk/columnWidth';
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
 import {
@@ -50,7 +51,7 @@ import type { ProductionScheduleSortMode } from '../../features/kiosk/production
 
 const NOTE_MAX_LENGTH = 100;
 const MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED =
-  import.meta.env.VITE_KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED !== 'false';
+  readProductionBuildConfig().manualOrderDeviceScopeV2Enabled;
 const PRODUCTION_SCHEDULE_MAC_TARGET_SITE_KEY = 'production-schedule-mac-target-site';
 const PRODUCTION_SCHEDULE_MAC_TARGET_DEVICE_KEY = 'production-schedule-mac-target-device';
 const DEFAULT_MAC_TARGET_SITES = ['第2工場', 'トークプラザ', '第1工場'] as const;
@@ -903,4 +904,3 @@ export function ProductionSchedulePage() {
     </div>
   );
 }
-

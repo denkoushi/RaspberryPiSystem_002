@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { useKioskProductionScheduleManualOrderSiteDevices } from '../../../api/hooks';
+import { readProductionBuildConfig } from '../../../config/productionBuildConfig';
 import { isMacEnvironment } from '../../../lib/client-key/resolver';
 
 const MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED =
-  import.meta.env.VITE_KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED !== 'false';
+  readProductionBuildConfig().manualOrderDeviceScopeV2Enabled;
 
 export const PRODUCTION_SCHEDULE_MAC_TARGET_SITE_KEY = 'production-schedule-mac-target-site';
 export const PRODUCTION_SCHEDULE_MAC_TARGET_DEVICE_KEY = 'production-schedule-mac-target-device';

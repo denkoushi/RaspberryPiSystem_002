@@ -161,6 +161,7 @@
     {"match": "exact", "path": ".gitignore", "component": "deploy-control"},
     {"match": "exact", "path": "infrastructure/ansible/ansible-readonly.cfg", "component": "deploy-control"},
     {"match": "exact", "path": "scripts/update-all-clients.sh", "component": "deploy-control"},
+    {"match": "exact", "path": "scripts/deploy/production_config_contract.py", "component": "server-app"},
     {"match": "exact", "path": "scripts/deploy/signage-runtime-proof.py", "component": "signage-role"},
     {"match": "prefix", "path": "scripts/deploy/", "component": "deploy-control"},
     {"match": "prefix", "path": "apps/api/prisma/migrations/", "component": "migration"},

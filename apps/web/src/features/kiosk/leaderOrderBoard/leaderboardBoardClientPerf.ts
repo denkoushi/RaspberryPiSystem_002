@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef } from 'react';
 
 import { postKioskProductionScheduleLeaderboardClientPerf } from '../../../api/client';
+import { readProductionBuildConfig } from '../../../config/productionBuildConfig';
 
 const STORAGE_KEY = 'leaderboardBoardPerfLog';
 let fallbackSessionCounter = 0;
@@ -53,8 +54,7 @@ function createSessionId(): string {
 }
 
 export function isLeaderboardBoardClientPerfEnabled(): boolean {
-  const env = import.meta.env.VITE_KIOSK_LEADERBOARD_BOARD_CLIENT_PERF_LOG;
-  if (env === 'true' || env === '1') return true;
+  if (readProductionBuildConfig().leaderboardBoardClientPerfLog) return true;
   if (typeof window === 'undefined') return false;
 
   const params = new URLSearchParams(window.location.search);

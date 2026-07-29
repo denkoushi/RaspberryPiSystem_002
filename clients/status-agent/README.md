@@ -94,6 +94,20 @@ kernel logは、既定では実行間隔+5分ぶんを見ます。1時間ごと�
 
 `WARN` / `ERROR` のSDヘルスログは、API側でDB `Alert` と `AlertDelivery(SLACK)` に昇格されます。Slack配送先は既存Alerts Dispatcherの `storage-*` ルートに従い、通常は `ops` です。同じ端末・同じsignalの未確認Alertが残っている間は追加Alertを作らず、通知連打を抑えます。
 
+### Pi4周辺機器ヘルス
+
+Ansibleはinventoryで有効なNFC、バーコード、トルクレンチAgentだけを毎分確認します。Pi3 signageでは無効です。最初の異常は`/run/raspi-status-agent/terminal-agent-health.json`へ記録するだけで、2回連続したときに既存の`ClientLog`とAlerts Dispatcherへ通知します。
+
+| Agent | 異常条件 |
+| --- | --- |
+| NFC | status到達不能、`readerConnected`がtrueでない、または`queueSize`が0でない |
+| Barcode | status到達不能、または`readerConnected`がtrueでない |
+| Torque | health到達不能、または`ok`がtrueでない |
+
+同一episodeでは通知を1件に抑え、復旧をINFOで記録した後の再発は新しいepisodeとして通知します。NFC UID、`lastEvent`、token、URL、Agentの生レスポンスは状態ファイル・ClientLog・Slackへ送りません。APIが受理できなかったログは通知済みにせず、次のtimer実行で再送します。Slack配送自体の一時失敗は、既存AlertDeliveryが再試行します。
+
+`TERMINAL_AGENT_HEALTH_*_ENABLED`は端末で手動変更せずinventoryを正本とします。NFCキュー滞留は自動削除しません。業務イベントの可能性があるため、原因を確認してから明示的に扱います。
+
 運用確認:
 
 ```bash
@@ -118,6 +132,7 @@ findmnt -no OPTIONS /
 clients/status-agent/
 ├── README.md
 ├── storage_health.py            # SDカード予防保全ログの判定
+├── terminal_agent_health.py     # 周辺機器の連続異常・episode判定
 ├── status-agent.py              # メトリクス収集 & 送信スクリプト
 ├── status-agent.conf.example    # 設定テンプレート
 ├── status-agent.service         # systemd service (oneshot)

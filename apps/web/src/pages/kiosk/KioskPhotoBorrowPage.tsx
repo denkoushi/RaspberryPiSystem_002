@@ -10,6 +10,7 @@ import {
   postClientLogs
 } from '../../api/client';
 import { useActiveLoans, useKioskConfig, usePhotoBorrowMutation } from '../../api/hooks';
+import { readProductionBuildConfig } from '../../config/productionBuildConfig';
 import {
   kioskButtonSecondaryClassName,
   kioskErrorPanelClassName,
@@ -111,7 +112,7 @@ export function KioskPhotoBorrowPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     // デバッグログの出力制御（環境変数で制御可能、デフォルトは開発中は常に出力）
-    const enableDebugLogs = import.meta.env.VITE_ENABLE_DEBUG_LOGS !== 'false';
+    const enableDebugLogs = readProductionBuildConfig().debugLogsEnabled;
     
     // ページマウント前、または処理中、またはNFCイベントがない場合はスキップ
     if (!pageMountedRef.current) {
@@ -335,7 +336,7 @@ export function KioskPhotoBorrowPage() {
           setIsCapturing(false);
           setSuccessLoan(loan);
           // デバッグログの出力制御（環境変数で制御可能、デフォルトは開発中は常に出力）
-          const enableDebugLogs = import.meta.env.VITE_ENABLE_DEBUG_LOGS !== 'false';
+          const enableDebugLogs = readProductionBuildConfig().debugLogsEnabled;
           if (enableDebugLogs) {
             console.log('[KioskPhotoBorrowPage] Photo borrow success:', loan.id);
           }

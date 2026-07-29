@@ -27,6 +27,8 @@ PROBE_SPEC.loader.exec_module(PROBE_MODULE)
 class AgentHandler(BaseHTTPRequestHandler):
     port = 0
     requests = 0
+    reader_connected = True
+    queue_size = 0
 
     def log_message(self, _format, *_args):
         return
@@ -39,9 +41,10 @@ class AgentHandler(BaseHTTPRequestHandler):
             return
         body = json.dumps(
             {
-                "readerConnected": True,
+                "readerConnected": type(self).reader_connected,
                 "message": "ready",
                 "restPort": type(self).port,
+                "queueSize": type(self).queue_size,
             }
         ).encode("utf-8")
         self.send_response(200)
@@ -56,6 +59,8 @@ class TerminalAgentHealthProbeTest(unittest.TestCase):
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), AgentHandler)
         AgentHandler.port = self.server.server_port
         AgentHandler.requests = 0
+        AgentHandler.reader_connected = True
+        AgentHandler.queue_size = 0
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.temporary = tempfile.TemporaryDirectory()
@@ -136,6 +141,16 @@ class TerminalAgentHealthProbeTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("not uniquely running", result.stderr)
         self.assertEqual(AgentHandler.requests, 0)
+
+    def test_barcode_reader_must_be_connected(self):
+        AgentHandler.reader_connected = False
+        with self.assertRaisesRegex(PROBE_MODULE.ProbeError, "not connected"):
+            PROBE_MODULE._endpoint("barcode-agent", self.server.server_port)
+
+    def test_nfc_queue_must_be_empty(self):
+        AgentHandler.queue_size = 1
+        with self.assertRaisesRegex(PROBE_MODULE.ProbeError, "queue must be empty"):
+            PROBE_MODULE._endpoint("nfc-agent", self.server.server_port)
 
     def test_rollback_probe_discovers_port_from_restored_container_environment(self):
         self._docker(

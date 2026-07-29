@@ -135,12 +135,16 @@ remain unchanged.
   scans, while the compiled Web bundle lacked the server-owned
   `VITE_AGENT_WS_MODE=local` value and therefore never selected the terminal's
   loopback WebSocket.
-- [ ] Complete the build-contract correction (completed: carry
+- [x] (2026-07-29 14:52+09:00) Completed the build-contract correction: carried
   `VITE_AGENT_WS_MODE` through the Ansible Docker environment, Compose,
   Dockerfile, strict release contract, focused regression tests, all local
-  deployment contracts, and a production Web build; remaining: hosted CI,
-  standard production rollout, physical Assembly-01 scan, and same-SHA no-op
-  proof).
+  deployment contracts, and a production Web build; PR #1123 merged as
+  `49ba82126ee77113ed6db23548a04ff18b2a05c6`. Standard run
+  `20260729-044121-7e34a6` passed Pi5 stability and all six kiosk activations,
+  Assembly-01 passed a physical NFC scan, and the same-SHA plan was a no-op.
+- [ ] Prove a production candidate with mode `promoted`. The most recent API
+  digest pull exceeded 600 seconds and safely selected the local builder, so
+  artifact-transfer availability remains unresolved.
 
 ## Surprises & Discoveries
 
@@ -354,13 +358,16 @@ and pull-by-digest flow passed. Run-owned Docker containers, volumes, networks,
 and validation image tags all returned to zero; unrelated existing resources
 and BuildKit caches were not pruned.
 
-The Assembly-01 NFC correction has also passed 19 focused release/Ansible
-contract tests, four NFC stream tests, the Pi5 image lifecycle, all 903
-orchestrator tests, 24 inventory tests, 102 template parses, all 156
-disposable PostgreSQL migrations, and 20 deploy-status API tests. A production
-Web build contained both `mode:"local"` and the loopback stream URL. The
-run-owned PostgreSQL container, volume, and network returned to zero. Hosted CI
-and the approved production rollout remain the terminal acceptance steps.
+The Assembly-01 NFC correction passed hosted CI and the standard production
+rollout through PR #1123 and run `20260729-044121-7e34a6`. Pi5 passed the
+unchanged five-minute stability monitor, all six kiosks passed serialized
+activation and verification, Assembly-01 passed a physical NFC scan, and the
+same-SHA plan returned no targets.
+
+Phase 2 is not yet complete: that run's signed API digest pull exceeded 600
+seconds and correctly fell back to the local builder. The safety and identity
+contracts worked, but production still lacks the required `promoted` candidate
+proof and on-device build elimination.
 
 Production deployment is now separately authorized. The primary production
 Pi5 opts in through its host vars while the shared server default and

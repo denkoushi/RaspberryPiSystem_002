@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { getNfcWsCandidates } from '../features/nfc/nfcEventSource';
-import { resolveNfcStreamPolicy, type NfcStreamPolicy } from '../features/nfc/nfcPolicy';
+import { resolveNfcRuntimeContract } from '../features/nfc/nfcRuntimeContract';
+
+import type { NfcStreamPolicy } from '../features/nfc/nfcPolicy';
 
 export interface NfcEvent {
   uid: string;
@@ -40,7 +41,8 @@ export function useNfcStream(enabled = false, policy?: NfcStreamPolicy) {
   const enabledAtRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const resolvedPolicy = policy ?? resolveNfcStreamPolicy();
+    const runtime = resolveNfcRuntimeContract(policy);
+    const resolvedPolicy = runtime.policy;
 
     if (!enabled || resolvedPolicy === 'disabled') {
       setEvent(null);
@@ -53,12 +55,7 @@ export function useNfcStream(enabled = false, policy?: NfcStreamPolicy) {
     const enabledAt = new Date().toISOString();
     enabledAtRef.current = enabledAt;
 
-    const wsCandidates = getNfcWsCandidates({
-      policy: resolvedPolicy,
-      envUrl: import.meta.env.VITE_AGENT_WS_URL ?? 'ws://localhost:7071/stream',
-      mode: String(import.meta.env.VITE_AGENT_WS_MODE ?? '').toLowerCase(),
-      location: isBrowser ? { protocol: window.location.protocol, host: window.location.host } : undefined,
-    });
+    const wsCandidates = runtime.streamUrls;
     let socket: WebSocket | null = null;
     let isMounted = true;
     let candidateIdx = 0;

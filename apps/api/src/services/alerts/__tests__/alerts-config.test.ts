@@ -31,6 +31,14 @@ describe('alerts-config', () => {
     expect(route).toBe('deploy');
   });
 
+  it('resolveRouteKey sends terminal agent health to ops', () => {
+    const route = resolveRouteKey('terminal-agent-health-nfc-reader', {
+      byTypePrefix: { 'terminal-agent-health-': 'ops' },
+      defaultRoute: 'support',
+    });
+    expect(route).toBe('ops');
+  });
+
   it('returns base config when ALERTS_CONFIG_PATH is invalid', async () => {
     process.env.ALERTS_CONFIG_PATH = '/path/not/found/config.json';
     process.env.ALERTS_DISPATCHER_ENABLED = 'true';

@@ -1,5 +1,6 @@
 import axios, { AxiosError, isAxiosError } from 'axios';
 
+import { readProductionBuildConfig } from '../config/productionBuildConfig';
 import { readViteApiTimeoutMs } from '../lib/api-timeout-ms';
 import {
   DEFAULT_CLIENT_KEY,
@@ -10,8 +11,8 @@ import {
 
 export { DEFAULT_CLIENT_KEY };
 
-export const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api';
-const wsBase = import.meta.env.VITE_WS_BASE_URL ?? '/ws';
+export const apiBase = readProductionBuildConfig().apiBaseUrl;
+const wsBase = readProductionBuildConfig().wsBaseUrl;
 const KIOSK_KEY_RESET_TS_KEY = 'kiosk-client-key-last-reset-at';
 const KIOSK_KEY_RESET_COOLDOWN_MS = 30000;
 

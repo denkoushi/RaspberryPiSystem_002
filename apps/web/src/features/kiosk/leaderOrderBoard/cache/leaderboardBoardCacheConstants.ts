@@ -1,3 +1,4 @@
+import { readProductionBuildConfig } from '../../../../config/productionBuildConfig';
 import { LEADER_BOARD_SCHEDULE_REFETCH_MS } from '../performance/leaderBoardRefetchPolicy';
 
 /** v3: 行に machineRequiredMinutes / laborRequiredMinutes を含む（v2 キャッシュは破棄） */
@@ -13,29 +14,21 @@ export const LEADERBOARD_BOARD_CACHE_SYNC_WARNING =
   '一覧の更新に失敗しました。表示は前回保存分です。';
 
 export function isLeaderboardBoardTerminalCacheEnabled(): boolean {
-  const raw = import.meta.env.VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_ENABLED;
-  if (raw === undefined || raw === '') return true;
-  return raw !== 'false' && raw !== '0';
+  return readProductionBuildConfig().leaderboardTerminalCacheEnabled;
 }
 
 /** Phase 2 SWR 表示（省略時 true・端末キャッシュ無効時は常に false） */
 export function isLeaderboardBoardTerminalCachePhase2SwrEnabled(): boolean {
   if (!isLeaderboardBoardTerminalCacheEnabled()) return false;
-  const raw = import.meta.env.VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_PHASE2_SWR;
-  if (raw === undefined || raw === '') return true;
-  return raw !== 'false' && raw !== '0';
+  return readProductionBuildConfig().leaderboardTerminalCachePhase2Swr;
 }
 
 /** mutation 成功時の IDB 即時ミラー（省略時 true・緊急オフは env false） */
 export function isLeaderboardBoardCacheWriteOnMutationEnabled(): boolean {
-  const raw = import.meta.env.VITE_KIOSK_LEADERBOARD_CACHE_WRITE_ON_MUTATION;
-  if (raw === undefined || raw === '') return true;
-  return raw !== 'false' && raw !== '0';
+  return readProductionBuildConfig().leaderboardCacheWriteOnMutation;
 }
 
 /** 登録製番 OR を無 `q` 完走 board へクライアントフィルタ（省略時 true） */
 export function isLeaderboardSeibanOrClientFilterEnabled(): boolean {
-  const raw = import.meta.env.VITE_KIOSK_LEADERBOARD_SEIBAN_OR_CLIENT_FILTER;
-  if (raw === undefined || raw === '') return true;
-  return raw !== 'false' && raw !== '0';
+  return readProductionBuildConfig().leaderboardSeibanOrClientFilter;
 }

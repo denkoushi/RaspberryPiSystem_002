@@ -25,7 +25,7 @@ class AgentConfig:
         queue_path = Path(os.environ.get("QUEUE_DB_PATH", "./data/nfc-agent-queue.db"))
         queue_path.parent.mkdir(parents=True, exist_ok=True)
         rest_port = int(os.environ.get("REST_PORT", os.environ.get("WEBSOCKET_PORT", "7071")))
-        rest_host = os.environ.get("REST_HOST", os.environ.get("WEBSOCKET_HOST", "0.0.0.0"))
+        rest_host = os.environ.get("REST_HOST", os.environ.get("WEBSOCKET_HOST", "127.0.0.1"))
         return cls(
             rest_host=rest_host,
             rest_port=rest_port,

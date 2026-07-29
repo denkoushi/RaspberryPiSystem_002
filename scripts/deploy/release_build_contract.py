@@ -16,20 +16,15 @@ import sys
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
+try:
+    from .production_config_contract import WEB_IMAGE_ARGUMENT_KEYS
+except ImportError:  # direct script execution from scripts/deploy
+    from production_config_contract import WEB_IMAGE_ARGUMENT_KEYS
+
 
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 API_BUILD_ARGUMENT_KEYS = ("INSTALL_PLAYWRIGHT_CHROMIUM",)
-WEB_BUILD_ARGUMENT_KEYS = (
-    "VITE_AGENT_WS_MODE",
-    "VITE_AGENT_WS_URL",
-    "VITE_API_BASE_URL",
-    "VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED",
-    "VITE_KIOSK_LEADERBOARD_DEFER_RESIDUAL_SUMMARY_ENABLED",
-    "VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED",
-    "VITE_KIOSK_SOP_POPUP_ENABLED",
-    "VITE_KIOSK_TARGET_LOCATION_SELECTOR_ENABLED",
-    "VITE_RELEASE_SHA",
-)
+WEB_BUILD_ARGUMENT_KEYS = WEB_IMAGE_ARGUMENT_KEYS
 SERVICE_KEYS = {
     "api": API_BUILD_ARGUMENT_KEYS,
     "web": WEB_BUILD_ARGUMENT_KEYS,

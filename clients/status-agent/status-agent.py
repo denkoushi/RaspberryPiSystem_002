@@ -22,6 +22,7 @@ from typing import Dict, Optional
 import shutil
 
 import storage_health
+import terminal_agent_health
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_STORAGE_HEALTH_STATE_FILE = Path("/run/raspi-status-agent/storage-health-last-run")
@@ -69,6 +70,13 @@ def parse_config_file(path: Path) -> Dict[str, str]:
     config.setdefault("STORAGE_HEALTH_DISK_ERROR_PCT", "90")
     config.setdefault("STORAGE_HEALTH_INTERVAL_SECONDS", str(storage_health.DEFAULT_INTERVAL_SECONDS))
     config.setdefault("STORAGE_HEALTH_STATE_FILE", str(DEFAULT_STORAGE_HEALTH_STATE_FILE))
+    config.setdefault("TERMINAL_AGENT_HEALTH_NFC_ENABLED", "0")
+    config.setdefault("TERMINAL_AGENT_HEALTH_BARCODE_ENABLED", "0")
+    config.setdefault("TERMINAL_AGENT_HEALTH_TORQUE_ENABLED", "0")
+    config.setdefault(
+        "TERMINAL_AGENT_HEALTH_STATE_FILE",
+        str(terminal_agent_health.DEFAULT_STATE_FILE),
+    )
     config.setdefault("STATUS_AGENT_LOG_SUCCESS", "0")
     return config
 
@@ -267,6 +275,7 @@ def build_payload(config: Dict[str, str], *, force_storage_health: bool = False)
             ]
         finally:
             mark_storage_health_checked(config)
+    logs.extend(terminal_agent_health.collect_logs(config))
     payload["logs"] = logs
 
     return payload
@@ -319,6 +328,7 @@ def main() -> int:
             return 0
 
         post_payload(config, payload)
+        terminal_agent_health.mark_logs_delivered(config, list(payload.get("logs", [])))
         if storage_health.is_truthy(config.get("STATUS_AGENT_LOG_SUCCESS")):
             location = config.get("LOCATION")
             suffix = f" ({location})" if location else ""

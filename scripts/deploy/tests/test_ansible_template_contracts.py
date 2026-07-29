@@ -20,6 +20,10 @@ from ansible_template_contracts import (  # noqa: E402
     validate_template_tree,
 )
 from scripts.deploy.release_build_contract import parse_contract_json
+from scripts.deploy.production_config_contract import (
+    ConfigKind,
+    PRODUCTION_WEB_SETTINGS,
+)
 
 
 ANSIBLE_ROOT = ROOT / "infrastructure/ansible"
@@ -29,6 +33,7 @@ PRIMARY_INVENTORY = ANSIBLE_ROOT / "inventory.yml"
 TALKPLAZA_INVENTORY = ANSIBLE_ROOT / "inventory-talkplaza.yml"
 WEB_ENV_TEMPLATE = ANSIBLE_ROOT / "templates/web.env.j2"
 DOCKER_ENV_TEMPLATE = ANSIBLE_ROOT / "templates/docker.env.j2"
+STATUS_AGENT_CONFIG_TEMPLATE = ANSIBLE_ROOT / "templates/status-agent.conf.j2"
 RELEASE_BUILD_CONTRACT_TEMPLATE = (
     ANSIBLE_ROOT / "templates/release-build-contract.json.j2"
 )
@@ -47,17 +52,17 @@ PRIMARY_ARTIFACT_PROMOTION = (
 SERVER_ROLE_TASKS = ANSIBLE_ROOT / "roles/server/tasks/main.yml"
 
 
+def production_web_variables() -> dict[str, str]:
+    return {
+        str(setting.ansible_variable): str(setting.production_default)
+        for setting in PRODUCTION_WEB_SETTINGS
+        if setting.kind is ConfigKind.IMAGE
+    }
+
+
 class AnsibleTemplateContractTests(unittest.TestCase):
     def test_pi5_web_build_values_have_one_server_owned_source(self) -> None:
-        expected = {
-            "web_api_base_url": "/api",
-            "web_ws_base_url": "/ws",
-            "web_agent_ws_url": "{{ websocket_agent_url }}",
-            "web_agent_ws_mode": "local",
-            "web_kiosk_due_mgmt_layout_v2_enabled": "true",
-            "web_kiosk_sop_popup_enabled": "true",
-            "web_kiosk_production_schedule_order_split_enabled": "false",
-        }
+        expected = production_web_variables()
         source = WEB_BUILD_VARS.read_text(encoding="utf-8")
         inventory = PRIMARY_INVENTORY.read_text(encoding="utf-8")
         for key, value in expected.items():
@@ -67,15 +72,7 @@ class AnsibleTemplateContractTests(unittest.TestCase):
 
         rendered = Environment(undefined=StrictUndefined).from_string(
             WEB_ENV_TEMPLATE.read_text(encoding="utf-8")
-        ).render(
-            web_api_base_url="/api",
-            web_ws_base_url="/ws",
-            web_agent_ws_url="ws://localhost:7071/stream",
-            web_agent_ws_mode="local",
-            web_kiosk_due_mgmt_layout_v2_enabled="true",
-            web_kiosk_sop_popup_enabled="true",
-            web_kiosk_production_schedule_order_split_enabled="false",
-        )
+        ).render(**expected)
         self.assertIn("VITE_API_BASE_URL=/api", rendered)
         self.assertIn("VITE_AGENT_WS_MODE=local", rendered)
         self.assertIn("VITE_KIOSK_SOP_POPUP_ENABLED=true", rendered)
@@ -132,14 +129,7 @@ class AnsibleTemplateContractTests(unittest.TestCase):
         sha = "a" * 40
         variables = {
             "api_install_playwright_chromium": "true",
-            "web_agent_ws_mode": "local",
-            "web_agent_ws_url": "ws://100.64.0.1:7071/stream",
-            "web_api_base_url": "/api",
-            "web_kiosk_due_mgmt_layout_v2_enabled": "true",
-            "web_kiosk_leaderboard_defer_residual_summary_enabled": "false",
-            "web_kiosk_production_schedule_order_split_enabled": "false",
-            "web_kiosk_sop_popup_enabled": "true",
-            "web_kiosk_target_location_selector_enabled": "true",
+            **production_web_variables(),
         }
         environment = Environment()
         environment.filters["to_json"] = json.dumps
@@ -167,6 +157,37 @@ class AnsibleTemplateContractTests(unittest.TestCase):
                 continue
             with self.subTest(key=key):
                 self.assertEqual(pi5_environment[key], value)
+
+    def test_status_agent_peripheral_collectors_follow_inventory_capabilities(self) -> None:
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["bool"] = lambda value: str(value).lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        template = environment.from_string(
+            STATUS_AGENT_CONFIG_TEMPLATE.read_text(encoding="utf-8")
+        )
+        base = {
+            "status_agent_api_base_url": "https://server.example/api",
+            "status_agent_client_id": "terminal-1",
+            "status_agent_client_key": "not-a-real-key",
+        }
+        kiosk = template.render(
+            **base,
+            nfc_agent_client_id="terminal-1-nfc",
+            barcode_agent_enabled=True,
+            torque_agent_enabled=True,
+        )
+        signage = template.render(**base)
+
+        self.assertIn('TERMINAL_AGENT_HEALTH_NFC_ENABLED="1"', kiosk)
+        self.assertIn('TERMINAL_AGENT_HEALTH_BARCODE_ENABLED="1"', kiosk)
+        self.assertIn('TERMINAL_AGENT_HEALTH_TORQUE_ENABLED="1"', kiosk)
+        self.assertIn('TERMINAL_AGENT_HEALTH_NFC_ENABLED="0"', signage)
+        self.assertIn('TERMINAL_AGENT_HEALTH_BARCODE_ENABLED="0"', signage)
+        self.assertIn('TERMINAL_AGENT_HEALTH_TORQUE_ENABLED="0"', signage)
 
     def test_artifact_promotion_policy_is_release_runner_only_and_opt_in(self) -> None:
         self.assertIn(

@@ -1,106 +1,55 @@
 import crypto from 'crypto';
-import { AlertChannel, AlertDeliveryStatus, AlertSeverity, Prisma } from '@prisma/client';
+import { AlertChannel, AlertDeliveryStatus, Prisma } from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { loadAlertsDispatcherConfig, resolveRouteKey } from '../alerts/alerts-config.js';
+import {
+  resolveTelemetryAlertDecision,
+  sanitizeClientTelemetryLogEntry,
+  type ClientTelemetryLogEntry
+} from './client-telemetry-alert-policy.js';
 
 const staleThresholdMs = 1000 * 60 * 60 * 12; // 12 hours
-const storageHealthCategory = 'storage_health';
-const storageHealthAlertTypePrefix = 'storage-health';
 
-type ClientTelemetryLogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
-type ClientTelemetryLogEntry = {
-  level: ClientTelemetryLogLevel;
-  message: string;
-  context?: Record<string, unknown>;
-};
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
-
-function isStorageHealthAlertLog(entry: ClientTelemetryLogEntry): boolean {
-  return (
-    (entry.level === 'WARN' || entry.level === 'ERROR') &&
-    isRecord(entry.context) &&
-    entry.context.category === storageHealthCategory
-  );
-}
-
-function storageHealthSignal(context: Record<string, unknown>): string {
-  const raw = context.signal;
-  return typeof raw === 'string' && raw.trim() ? raw.trim() : 'unknown_signal';
-}
-
-function storageHealthTimestamp(context: Record<string, unknown>): Date {
-  const observedAt = context.observedAt;
-  if (typeof observedAt === 'string') {
-    const parsed = new Date(observedAt);
-    if (!Number.isNaN(parsed.getTime())) {
-      return parsed;
-    }
-  }
-  return new Date();
-}
-
-async function createStorageHealthSlackAlerts(params: {
+async function createTelemetrySlackAlerts(params: {
   clientId: string;
   logs: ClientTelemetryLogEntry[];
   requestId: string;
 }): Promise<void> {
-  const alertLogs = params.logs.filter(isStorageHealthAlertLog);
-  if (alertLogs.length === 0) return;
-
   try {
     const config = await loadAlertsDispatcherConfig();
 
-    for (const entry of alertLogs) {
-      const context = entry.context ?? {};
-      const signal = storageHealthSignal(context);
-      const type = `${storageHealthAlertTypePrefix}-${signal}`;
-      const severity = entry.level === 'ERROR' ? AlertSeverity.ERROR : AlertSeverity.WARNING;
-      const fingerprint = crypto
-        .createHash('sha256')
-        .update(`${type}:${params.clientId}:${signal}`)
-        .digest('hex');
+    for (const entry of params.logs) {
+      const decision = resolveTelemetryAlertDecision(params.clientId, entry);
+      if (!decision) continue;
 
       const existingOpenAlert = await prisma.alert.findFirst({
         where: {
-          fingerprint,
-          acknowledged: false
+          fingerprint: decision.fingerprint,
+          ...(decision.dedupeAcrossAcknowledgedAlerts ? {} : { acknowledged: false })
         },
         select: { id: true }
       });
       if (existingOpenAlert) continue;
 
-      const routeKey = resolveRouteKey(type, config.routing);
+      const routeKey = resolveRouteKey(decision.type, config.routing);
       await prisma.$transaction(async (tx) => {
         const alert = await tx.alert.create({
           data: {
             id: crypto.randomUUID(),
-            type,
-            severity,
-            message: `SDカードヘルス異常: ${params.clientId}: ${entry.message.slice(0, 500)}`,
-            details: {
-              clientId: params.clientId,
-              level: entry.level,
-              signal,
-              logMessage: entry.message,
-              logContext: context
-            } as Prisma.InputJsonValue,
-            source: {
-              service: 'status-agent',
-              clientId: params.clientId,
-              category: storageHealthCategory
-            } as Prisma.InputJsonValue,
+            type: decision.type,
+            severity: decision.severity,
+            message: decision.message,
+            details: decision.details as Prisma.InputJsonValue,
+            source: decision.source as Prisma.InputJsonValue,
             context: {
               requestId: params.requestId
             } as Prisma.InputJsonValue,
-            fingerprint,
-            timestamp: storageHealthTimestamp(context),
+            fingerprint: decision.fingerprint,
+            timestamp: decision.timestamp,
             acknowledged: false
           }
         });
@@ -117,7 +66,7 @@ async function createStorageHealthSlackAlerts(params: {
       });
     }
   } catch (error) {
-    logger.warn({ err: error, clientId: params.clientId }, '[ClientTelemetry] failed to create storage health alert');
+    logger.warn({ err: error, clientId: params.clientId }, '[ClientTelemetry] failed to create telemetry alert');
   }
 }
 
@@ -269,7 +218,9 @@ export async function upsertClientStatus(params: {
     }
   });
 
-  const logEntries = metrics.logs ?? [];
+  const logEntries = (metrics.logs ?? [])
+    .map(sanitizeClientTelemetryLogEntry)
+    .filter((entry): entry is ClientTelemetryLogEntry => entry !== null);
   if (logEntries.length > 0) {
     await prisma.clientLog.createMany({
       data: logEntries.map((entry) => ({
@@ -279,7 +230,7 @@ export async function upsertClientStatus(params: {
         context: entry.context ? (entry.context as Prisma.InputJsonValue) : undefined
       }))
     });
-    await createStorageHealthSlackAlerts({
+    await createTelemetrySlackAlerts({
       clientId: metrics.clientId,
       logs: logEntries,
       requestId
@@ -300,7 +251,10 @@ export async function storeClientLogs(params: {
   logs: ClientTelemetryLogEntry[];
   requestId: string;
 }) {
-  const { clientKey, clientId, logs, requestId } = params;
+  const { clientKey, clientId, requestId } = params;
+  const logs = params.logs
+    .map(sanitizeClientTelemetryLogEntry)
+    .filter((entry): entry is ClientTelemetryLogEntry => entry !== null);
   await requireRegisteredClientDevice(clientKey, { lastSeenAt: new Date() });
 
   await prisma.clientLog.createMany({
@@ -311,7 +265,7 @@ export async function storeClientLogs(params: {
       context: entry.context ? (entry.context as Prisma.InputJsonValue) : undefined
     }))
   });
-  await createStorageHealthSlackAlerts({ clientId, logs, requestId });
+  await createTelemetrySlackAlerts({ clientId, logs, requestId });
 
   return { requestId, logsStored: logs.length };
 }

@@ -89,6 +89,10 @@ def categories_for_path(path: str) -> frozenset[str] | None:
         ".github/actions/"
     ):
         return FULL_SUITE
+    if normalized == "scripts/deploy/production_config_contract.py":
+        return frozenset(
+            {"repo_policy", "web", "deploy_contract", "docker_security"}
+        )
     if _has_prefix(normalized, "scripts/ci"):
         return FULL_SUITE
     if normalized in GLOBAL_PATHS:
@@ -116,6 +120,7 @@ def categories_for_path(path: str) -> frozenset[str] | None:
         return frozenset({"repo_policy", "client"})
 
     if normalized in {
+        "scripts/deploy/production_config_contract.py",
         "infrastructure/ansible/group_vars/server/web-build.yml",
         "infrastructure/ansible/templates/docker.env.j2",
         "infrastructure/ansible/templates/web.env.j2",
@@ -175,6 +180,7 @@ def docker_images_for_path(path: str) -> frozenset[str]:
     """Return Docker images whose filesystem may change for a known path."""
     normalized = _normalize_path(path)
     if normalized in {
+        "scripts/deploy/production_config_contract.py",
         "infrastructure/ansible/group_vars/server/web-build.yml",
         "infrastructure/ansible/templates/docker.env.j2",
         "infrastructure/ansible/templates/web.env.j2",

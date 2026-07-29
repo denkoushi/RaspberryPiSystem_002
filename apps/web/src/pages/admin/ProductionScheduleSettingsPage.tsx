@@ -17,13 +17,14 @@ import {
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
+import { readProductionBuildConfig } from '../../config/productionBuildConfig';
 
 import { ProductionScheduleLoadBalancingSettingsSection } from './ProductionScheduleLoadBalancingSettingsSection';
 
 const DEFAULT_LOCATION = 'shared';
 const LOCATION_SEGMENT_DELIMITER = ' - ';
 const WEB_ORDER_SPLIT_DEPLOYMENT_ENABLED =
-  import.meta.env.VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED === 'true';
+  readProductionBuildConfig().productionScheduleOrderSplitEnabled;
 
 const parseResourceCds = (value: string): string[] => {
   const unique = new Set<string>();

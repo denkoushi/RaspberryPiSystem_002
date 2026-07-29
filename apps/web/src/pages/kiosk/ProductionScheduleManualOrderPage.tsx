@@ -26,6 +26,7 @@ import { ProductionScheduleResourceFilters } from '../../components/kiosk/Produc
 import { ProductionScheduleSeibanFilterDropdown } from '../../components/kiosk/ProductionScheduleSeibanFilterDropdown';
 import { ProductionScheduleTable } from '../../components/kiosk/ProductionScheduleTable';
 import { ProductionScheduleToolbar } from '../../components/kiosk/ProductionScheduleToolbar';
+import { readProductionBuildConfig } from '../../config/productionBuildConfig';
 import { type TableColumnDefinition } from '../../features/kiosk/columnWidth';
 import { joinManualOrderResourceDisplayNames } from '../../features/kiosk/manualOrder/manualOrderOverviewCardPresentation';
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
@@ -60,7 +61,7 @@ import type { ProductionScheduleSortMode } from '../../features/kiosk/production
 const NOTE_MAX_LENGTH = 100;
 
 const MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED =
-  import.meta.env.VITE_KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED !== 'false';
+  readProductionBuildConfig().manualOrderDeviceScopeV2Enabled;
 const MANUAL_ORDER_PAGE_SEARCH_STORAGE_KEY = 'manual-order-page-search-conditions';
 const MANUAL_ORDER_PAGE_SORT_MODE_STORAGE_KEY = 'manual-order-page-sort-mode';
 const DUE_DATE_COLUMN_WIDTH = 110;

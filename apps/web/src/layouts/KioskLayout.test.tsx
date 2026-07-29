@@ -7,6 +7,7 @@ import { kioskWebNavigation } from '../features/kiosk/kioskWebActivation';
 import { KioskLayout } from './KioskLayout';
 
 const acknowledgeDeployStatus = vi.fn();
+const proveNfcRuntimeReady = vi.fn();
 let deployStatus: Record<string, unknown> | undefined;
 const BUNDLE_RELEASE_SHA = 'a'.repeat(40);
 const OTHER_RELEASE_SHA = 'b'.repeat(40);
@@ -28,6 +29,15 @@ vi.mock('../api/hooks', () => ({
   useKioskConfig: () => ({ data: {} })
 }));
 
+vi.mock('../features/nfc/nfcRuntimeContract', () => ({
+  resolveNfcRuntimeContract: () => ({
+    policy: 'localOnly',
+    streamUrls: ['ws://localhost:7071/stream'],
+    statusUrl: 'http://127.0.0.1:7071/api/agent/status'
+  }),
+  proveNfcRuntimeReady: (...args: unknown[]) => proveNfcRuntimeReady(...args)
+}));
+
 vi.mock('../components/kiosk/KioskHeader', () => ({ KioskHeader: () => <div>kiosk-header</div> }));
 vi.mock('../components/kiosk/KioskMaintenanceScreen', () => ({ KioskMaintenanceScreen: () => <div>maintenance-screen</div> }));
 vi.mock('../components/kiosk/KioskSupportModal', () => ({ KioskSupportModal: () => null }));
@@ -46,6 +56,8 @@ describe('KioskLayout deploy status handling', () => {
     deployStatus = undefined;
     acknowledgeDeployStatus.mockReset();
     acknowledgeDeployStatus.mockResolvedValue({ acknowledged: true });
+    proveNfcRuntimeReady.mockReset();
+    proveNfcRuntimeReady.mockResolvedValue(true);
     vi.spyOn(kioskWebNavigation, 'replace').mockImplementation(() => undefined);
     window.sessionStorage.clear();
     vi.stubEnv('VITE_RELEASE_SHA', BUNDLE_RELEASE_SHA);
@@ -97,6 +109,23 @@ describe('KioskLayout deploy status handling', () => {
       BUNDLE_RELEASE_SHA,
       RELEASE_VERIFICATION_ID
     ));
+  });
+
+  it('withholds ready acknowledgement while the local NFC proof is unhealthy', async () => {
+    proveNfcRuntimeReady.mockResolvedValue(false);
+    deployStatus = {
+      isMaintenance: true,
+      runId: 'run-nfc-unhealthy',
+      phase: 'verifying',
+      desiredReleaseSha: BUNDLE_RELEASE_SHA,
+      verificationId: RELEASE_VERIFICATION_ID
+    };
+    render(<MemoryRouter initialEntries={['/kiosk']}><KioskLayout /></MemoryRouter>);
+
+    await waitFor(() => expect(proveNfcRuntimeReady).toHaveBeenCalled());
+    expect(
+      acknowledgeDeployStatus.mock.calls.some(([, phase]) => phase === 'ready')
+    ).toBe(false);
   });
 
   it('does not let a cached stale bundle acknowledge a newer desired release', async () => {
