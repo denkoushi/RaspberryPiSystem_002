@@ -115,9 +115,16 @@ remain unchanged.
   892 orchestrator tests, all 156 disposable PostgreSQL migrations, 20
   deploy-status tests, 24 inventory tests, 102 Ansible templates, syntax
   checks, document audit, and zero run-owned database resources.
-- [ ] Merge the pinned-verifier correction after required CI, deploy only
-  through the standard orchestrator, and require candidate mode `promoted`
-  plus a same-SHA no-op before declaring production validation complete.
+- [x] (2026-07-29 08:58+09:00) Merged the pinned-verifier correction through
+  PR #1119. Production run `20260728-235649-158f9e` then stopped safely during
+  server configuration because that fact-less playbook did not define
+  `ansible_architecture`; rollback restored the four-file configuration
+  manifest before candidate preparation, traffic switch, database work, or
+  terminal activation.
+- [ ] Replace the unavailable global Ansible fact with a local read-only
+  `dpkg --print-architecture` probe, pass hosted CI, and deploy only through
+  the standard orchestrator. Require candidate mode `promoted` plus a
+  same-SHA no-op before declaring production validation complete.
 
 ## Surprises & Discoveries
 
@@ -160,6 +167,14 @@ remain unchanged.
   builder, completed Pi5 stability and all six Pi4 activation checks, and its
   same-SHA plan was empty. A read-only `gh version` and
   `gh attestation verify --help` probe confirmed the missing command.
+
+- Observation: `server-config-release.yml` intentionally disables global
+  Ansible fact collection, so the first pinned-verifier architecture assertion
+  could not read `ansible_architecture`.
+  Evidence: run `20260728-235649-158f9e` failed on that undefined variable,
+  restored its server configuration manifest, and never reached candidate
+  preparation. The package architecture can instead be read locally and
+  without mutation from `/usr/bin/dpkg --print-architecture`.
 
 - Observation: Docker is running on the development Mac as ARM64 with zero
   containers, while unrelated persistent volumes and networks exist.

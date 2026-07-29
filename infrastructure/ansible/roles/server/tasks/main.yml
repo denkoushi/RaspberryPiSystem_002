@@ -145,10 +145,19 @@
     group: "{{ ansible_user }}"
     mode: '0750'
 
+- name: Probe the Debian package architecture for the verifier
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/dpkg
+      - --print-architecture
+  register: pi5_artifact_debian_architecture
+  changed_when: false
+  when: pi5_artifact_promotion_enabled | default(false) | bool
+
 - name: Validate the pinned GitHub attestation verifier contract
   ansible.builtin.assert:
     that:
-      - ansible_architecture in ['aarch64', 'arm64']
+      - pi5_artifact_debian_architecture.stdout | trim == 'arm64'
       - pi5_artifact_gh_version | string is match('^[0-9]+\.[0-9]+\.[0-9]+$')
       - pi5_artifact_gh_arm64_sha256 | string is match('^[0-9a-f]{64}$')
     fail_msg: The GitHub attestation verifier requires a pinned Linux ARM64 package.

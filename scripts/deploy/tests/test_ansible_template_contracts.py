@@ -209,6 +209,16 @@ class AnsibleTemplateContractTests(unittest.TestCase):
             "ansible.builtin.apt:\n    name: gh",
             tasks,
         )
+        self.assertNotIn("ansible_architecture", tasks)
+        self.assertIn(
+            "- /usr/bin/dpkg\n"
+            "      - --print-architecture",
+            tasks,
+        )
+        self.assertIn(
+            "pi5_artifact_debian_architecture.stdout | trim == 'arm64'",
+            tasks,
+        )
         self.assertIn(
             "gh_{{ pi5_artifact_gh_version }}_linux_arm64.deb",
             tasks,

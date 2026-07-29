@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 575,
-    "totalLines": 162441,
-    "totalBytes": 12215595,
+    "totalLines": 162456,
+    "totalBytes": 12216533,
     "withFrontmatter": 252,
     "withStatus": 108,
     "sourceOfTruthDeclared": 72,
@@ -32246,8 +32246,8 @@
     },
     {
       "path": "docs/plans/deploy-workflow-artifact-promotion-execplan.md",
-      "lineCount": 505,
-      "byteSize": 26696,
+      "lineCount": 520,
+      "byteSize": 27634,
       "hasFrontmatter": true,
       "title": "Promote attested ARM64 release images without weakening deployment safety",
       "status": "implemented",
