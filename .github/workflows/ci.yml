@@ -519,6 +519,26 @@ jobs:
           IMAGE_REFERENCE: ${{ steps.identity.outputs.repository }}@${{ steps.build.outputs.digest }}
         run: docker pull --platform linux/arm64 "$IMAGE_REFERENCE"
 
+      - name: Select exact ARM64 API image manifest
+        env:
+          IMAGE_REFERENCE: ${{ steps.identity.outputs.repository }}@${{ steps.build.outputs.digest }}
+          IMAGE_REPOSITORY: ${{ steps.identity.outputs.repository }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools inspect --raw "$IMAGE_REFERENCE" \
+            > "$RUNNER_TEMP/release-api-index.json"
+          manifest_digest="$(
+            python3 scripts/ci/validate_release_image_budget.py select-linux-arm64 \
+              < "$RUNNER_TEMP/release-api-index.json"
+          )"
+          docker buildx imagetools inspect --raw "${IMAGE_REPOSITORY}@${manifest_digest}" \
+            > "$RUNNER_TEMP/release-api-manifest.json"
+
+      - name: Enforce compressed API image budget
+        run: >-
+          python3 scripts/ci/validate_release_image_budget.py validate-api
+          < "$RUNNER_TEMP/release-api-manifest.json"
+
       - name: Security scan exact ARM64 API digest
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:

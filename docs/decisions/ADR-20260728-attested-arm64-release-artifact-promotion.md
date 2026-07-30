@@ -15,6 +15,7 @@ related_docs:
   - ../plans/deploy-workflow-artifact-promotion-execplan.md
   - ../plans/deploy-artifact-timeout-canary-handoff-execplan.md
   - ../plans/deploy-workflow-safe-shortening-execplan.md
+  - ./ADR-20260730-bounded-api-runtime-artifact.md
   - ../guides/ci-branch-protection.md
   - ../guides/deployment.md
 validation: pure contract tests, workflow policy tests, deployment contracts, isolated ARM64 Docker exercise, and required hosted CI
@@ -71,11 +72,14 @@ discovered, a signature, source, configuration, platform, repository, digest,
 schema, or label mismatch is terminal and never falls back.
 
 Promotion timing is explicit by operation rather than one shared command
-timeout. Release-set pull receives 120 seconds, each API/Web image pull 600
-seconds, ordinary inspection and attestation commands 300 seconds, and the
-whole promotion 900 seconds. A secret-free heartbeat reports only the stage
-and elapsed/limit values every 30 seconds. Pull timeout remains an availability
-fallback; integrity verification timeout or mismatch remains terminal.
+timeout. The original allowance was 120 seconds for the release set, 600
+seconds for each image, 300 seconds for ordinary inspection and attestation,
+and 900 seconds for the whole promotion. Production byte evidence later
+replaced the API and whole-promotion values with the bounded values in
+[ADR-20260730](./ADR-20260730-bounded-api-runtime-artifact.md). A secret-free
+heartbeat reports only the stage and elapsed/limit values every 30 seconds.
+Pull timeout remains an availability fallback; integrity verification timeout
+or mismatch remains terminal.
 
 The shared server default remains disabled. An explicitly approved production
 host may opt in without changing other server inventories. Public OCI pulls
@@ -114,10 +118,12 @@ Production may remain on the Phase 1 local builder indefinitely by leaving the
 opt-in false. Disabling promotion is the recovery action for availability
 problems; integrity failures require investigation rather than bypass.
 
-The longer image-pull allowance removes a false fallback on slow transfers
-without allowing registry work to exceed the bounded 15-minute promotion
-budget. Timeout results identify their stable reason, stage, elapsed time, and
-limit without persisting commands or credentials.
+The operation-specific image-pull allowance removes a false fallback on slow
+transfers without making registry work unbounded. Current values and the OCI
+growth budget are owned by
+[ADR-20260730](./ADR-20260730-bounded-api-runtime-artifact.md). Timeout results
+identify their stable reason, stage, elapsed time, and limit without persisting
+commands or credentials.
 
 ## Alternatives Considered
 

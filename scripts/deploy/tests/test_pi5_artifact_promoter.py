@@ -256,30 +256,67 @@ class Pi5ArtifactPromoterTests(unittest.TestCase):
             DEFAULT_TIMING_POLICY,
             PromotionTimingPolicy(
                 release_set_pull_timeout_seconds=120,
-                image_pull_timeout_seconds=600,
+                api_image_pull_timeout_seconds=1200,
+                web_image_pull_timeout_seconds=600,
                 command_timeout_seconds=300,
-                total_timeout_seconds=900,
+                total_timeout_seconds=1500,
                 heartbeat_seconds=30,
                 cleanup_timeout_seconds=30,
             ),
         )
-        clock = Mock(side_effect=[0.0, 850.0])
+        clock = Mock(side_effect=[0.0, 1450.0])
         budget = PromotionBudget(DEFAULT_TIMING_POLICY, clock=clock)
         execution = budget.execution(
             "api-image-pull",
-            DEFAULT_TIMING_POLICY.image_pull_timeout_seconds,
+            DEFAULT_TIMING_POLICY.api_image_pull_timeout_seconds,
         )
         self.assertEqual(execution.timeout_seconds, 50)
         self.assertEqual(execution.heartbeat_seconds, 30)
 
-        exhausted_clock = Mock(side_effect=[0.0, 901.0])
+        exhausted_clock = Mock(side_effect=[0.0, 1501.0])
         exhausted = PromotionBudget(DEFAULT_TIMING_POLICY, clock=exhausted_clock)
         with self.assertRaises(PromotionUnavailable) as raised:
             exhausted.execution("web-image-pull", 600)
         self.assertEqual(raised.exception.reason_code, "promotion-budget-exhausted")
         self.assertEqual(raised.exception.stage, "web-image-pull")
-        self.assertEqual(raised.exception.elapsed_seconds, 901)
-        self.assertEqual(raised.exception.timeout_seconds, 900)
+        self.assertEqual(raised.exception.elapsed_seconds, 1501)
+        self.assertEqual(raised.exception.timeout_seconds, 1500)
+
+    @patch("scripts.deploy.pi5_artifact_promoter.shutil.which")
+    def test_api_and_web_pulls_receive_distinct_time_budgets(
+        self, which: object
+    ) -> None:
+        which.side_effect = lambda name: f"/usr/bin/{name}"  # type: ignore[attr-defined]
+        puller = FakePuller()
+        with tempfile.TemporaryDirectory() as directory:
+            config = self.write_config(directory, config_document())
+            promote(
+                config_path=config,
+                sha=SHA,
+                config_hash=CONFIG_HASH,
+                run_id=RUN_ID,
+                api_tag=API_TAG,
+                web_tag=WEB_TAG,
+                runner=FakeRunner(),
+                puller=puller,
+            )
+
+        executions = {
+            reference: execution
+            for reference, execution in puller.calls
+        }
+        self.assertEqual(
+            executions[
+                "ghcr.io/denkoushi/raspisys-api@sha256:" + "2" * 64
+            ].timeout_seconds,
+            1200,
+        )
+        self.assertEqual(
+            executions[
+                "ghcr.io/denkoushi/raspisys-web@sha256:" + "3" * 64
+            ].timeout_seconds,
+            600,
+        )
 
     def test_real_runner_emits_safe_heartbeat_and_stops_timed_out_child(
         self,
@@ -337,13 +374,13 @@ class Pi5ArtifactPromoterTests(unittest.TestCase):
         which.side_effect = lambda name: f"/usr/bin/{name}"  # type: ignore[attr-defined]
         timeout_snapshot = progress_snapshot(
             phase="downloading",
-            elapsed_seconds=600,
+            elapsed_seconds=1200,
             downloaded_bytes=512,
         )
         puller = FakePuller(
             api_error=PullTimedOut(
-                elapsed_seconds=600,
-                timeout_seconds=600,
+                elapsed_seconds=1200,
+                timeout_seconds=1200,
                 snapshot=timeout_snapshot,
             )
         )
@@ -365,8 +402,8 @@ class Pi5ArtifactPromoterTests(unittest.TestCase):
 
         self.assertEqual(raised.exception.reason_code, "artifact-pull-timeout")
         self.assertEqual(raised.exception.stage, "api-image-pull")
-        self.assertEqual(raised.exception.elapsed_seconds, 600)
-        self.assertEqual(raised.exception.timeout_seconds, 600)
+        self.assertEqual(raised.exception.elapsed_seconds, 1200)
+        self.assertEqual(raised.exception.timeout_seconds, 1200)
         self.assertEqual(
             raised.exception.result()["pullDiagnostics"]["phase"],  # type: ignore[index]
             "downloading",
