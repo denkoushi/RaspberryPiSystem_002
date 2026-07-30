@@ -23,12 +23,34 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 try:
+    from .docker_pull_progress import (
+        DockerEngineImagePuller,
+        DockerImagePuller,
+        PullCapabilityUnavailable,
+        PullExecution,
+        PullProgressSnapshot,
+        PullResult,
+        PullStreamUnavailable,
+        PullTimedOut,
+        safe_progress_event,
+    )
     from .release_artifact_contract import (
         ReleaseArtifactError,
         parse_release_set,
         validate_release_set,
     )
 except ImportError:
+    from docker_pull_progress import (  # type: ignore[no-redef]
+        DockerEngineImagePuller,
+        DockerImagePuller,
+        PullCapabilityUnavailable,
+        PullExecution,
+        PullProgressSnapshot,
+        PullResult,
+        PullStreamUnavailable,
+        PullTimedOut,
+        safe_progress_event,
+    )
     from release_artifact_contract import (  # type: ignore[no-redef]
         ReleaseArtifactError,
         parse_release_set,
@@ -76,12 +98,14 @@ class PromotionUnavailable(RuntimeError):
         stage: str | None = None,
         elapsed_seconds: int | float | None = None,
         timeout_seconds: int | float | None = None,
+        diagnostics: Mapping[str, object] | None = None,
     ) -> None:
         super().__init__(message)
         self.reason_code = reason_code
         self.stage = stage
         self.elapsed_seconds = elapsed_seconds
         self.timeout_seconds = timeout_seconds
+        self.diagnostics = dict(diagnostics) if diagnostics is not None else None
 
     def result(self) -> dict[str, object]:
         document: dict[str, object] = {
@@ -95,6 +119,8 @@ class PromotionUnavailable(RuntimeError):
             document["elapsedSeconds"] = self.elapsed_seconds
         if self.timeout_seconds is not None:
             document["timeoutSeconds"] = self.timeout_seconds
+        if self.diagnostics is not None:
+            document["pullDiagnostics"] = self.diagnostics
         return document
 
 
@@ -274,6 +300,25 @@ def _command_event(
                 "elapsedSeconds": round(max(0.0, elapsed_seconds), 3),
                 "timeoutSeconds": execution.timeout_seconds,
             },
+            separators=(",", ":"),
+            sort_keys=True,
+        ),
+        flush=True,
+    )
+
+
+def _pull_progress_event(
+    execution: CommandExecution,
+    snapshot: PullProgressSnapshot,
+) -> None:
+    print(
+        "artifact-promotion "
+        + json.dumps(
+            safe_progress_event(
+                execution.stage,
+                snapshot,
+                timeout_seconds=execution.timeout_seconds,
+            ),
             separators=(",", ":"),
             sort_keys=True,
         ),
@@ -622,6 +667,98 @@ def _run_cleanup(
         _command_event(execution, "cleanup-failed", 0.0)
 
 
+def _empty_pull_result(mode: str) -> PullResult:
+    return PullResult(
+        elapsed_seconds=0.0,
+        observability_mode=mode,
+        final_snapshot=PullProgressSnapshot(
+            phase="waiting",
+            elapsed_seconds=0.0,
+            downloaded_bytes=0,
+            download_total_bytes=0,
+            extracted_bytes=0,
+            extract_total_bytes=0,
+            bytes_advanced_since_last_heartbeat=0,
+            seconds_since_byte_progress=0.0,
+            known_layers=0,
+            completed_layers=0,
+            active_layer_ids=(),
+            unknown_statuses=0,
+        ),
+    )
+
+
+def _pull_image(
+    *,
+    puller: DockerImagePuller,
+    runner: CommandRunner,
+    docker: str,
+    docker_config: Path,
+    reference: str,
+    username: str,
+    token: str,
+    execution: CommandExecution,
+    label: str,
+) -> PullResult:
+    _command_event(execution, "started", 0.0)
+    pull_execution = PullExecution(
+        stage=execution.stage,
+        timeout_seconds=execution.timeout_seconds,
+        heartbeat_seconds=execution.heartbeat_seconds,
+    )
+    try:
+        result = puller.pull(
+            reference,
+            username=username,
+            token=token,
+            execution=pull_execution,
+            event_sink=lambda snapshot: _pull_progress_event(execution, snapshot),
+        )
+    except PullCapabilityUnavailable:
+        _command_event(execution, "cli-fallback", 0.0)
+        _require_success(
+            runner,
+            [docker, "--config", str(docker_config), "pull", reference],
+            execution=execution,
+            unavailable=True,
+            label=label,
+        )
+        return _empty_pull_result("cli-fallback")
+    except PullTimedOut as error:
+        _command_event(execution, "timeout", error.elapsed_seconds)
+        raise PromotionUnavailable(
+            f"{label} timed out after {error.timeout_seconds}s",
+            reason_code="artifact-pull-timeout",
+            stage=execution.stage,
+            elapsed_seconds=error.elapsed_seconds,
+            timeout_seconds=error.timeout_seconds,
+            diagnostics=error.snapshot.as_document(),
+        ) from error
+    except PullStreamUnavailable as error:
+        elapsed = (
+            error.snapshot.elapsed_seconds if error.snapshot is not None else 0.0
+        )
+        _command_event(execution, "failed", elapsed)
+        diagnostics = (
+            {
+                "transportReasonCode": error.reason_code,
+                **error.snapshot.as_document(),
+            }
+            if error.snapshot is not None
+            else {"transportReasonCode": error.reason_code}
+        )
+        raise PromotionUnavailable(
+            f"{label} is unavailable",
+            reason_code="artifact-pull-unavailable",
+            stage=execution.stage,
+            elapsed_seconds=round(elapsed, 3),
+            timeout_seconds=execution.timeout_seconds,
+            diagnostics=diagnostics,
+        ) from error
+    _command_event(execution, "success", result.elapsed_seconds)
+    return result
+
+
 def promote(
     *,
     config_path: Path,
@@ -631,6 +768,7 @@ def promote(
     api_tag: str,
     web_tag: str,
     runner: CommandRunner = _run_command,
+    puller: DockerImagePuller | None = None,
     timing_policy: PromotionTimingPolicy = DEFAULT_TIMING_POLICY,
     clock: Callable[[], float] = time.monotonic,
 ) -> dict[str, object]:
@@ -651,6 +789,7 @@ def promote(
         raise PromotionUnavailable("artifact promotion tools are unavailable")
 
     budget = PromotionBudget(timing_policy, clock=clock)
+    image_puller = puller or DockerEngineImagePuller(clock=clock)
 
     def command_execution(
         stage: str,
@@ -691,6 +830,7 @@ def promote(
         release_digest_ref = ""
         pulled_refs: list[str] = []
         promoted_tags: list[str] = []
+        pull_results: dict[str, PullResult] = {}
         try:
             if config.token:
                 _require_success(
@@ -710,17 +850,21 @@ def promote(
                     unavailable=True,
                     label="GHCR authentication",
                 )
-            _require_success(
-                runner,
-                [docker, "--config", str(docker_config), "pull", release_tag],
+            pulled_refs.append(release_tag)
+            pull_results["releaseSet"] = _pull_image(
+                puller=image_puller,
+                runner=runner,
+                docker=docker,
+                docker_config=docker_config,
+                reference=release_tag,
+                username=config.username,
+                token=config.token,
                 execution=command_execution(
                     "release-set-pull",
                     timing_policy.release_set_pull_timeout_seconds,
                 ),
-                unavailable=True,
                 label="signed release set",
             )
-            pulled_refs.append(release_tag)
             release_digest_ref = _resolve_repo_digest(
                 runner,
                 docker,
@@ -796,17 +940,21 @@ def promote(
                     environment=verifier_environment,
                     label=f"{service} image attestation",
                 )
-                _require_success(
-                    runner,
-                    [docker, "--config", str(docker_config), "pull", reference],
+                pulled_refs.append(reference)
+                pull_results[service] = _pull_image(
+                    puller=image_puller,
+                    runner=runner,
+                    docker=docker,
+                    docker_config=docker_config,
+                    reference=reference,
+                    username=config.username,
+                    token=config.token,
                     execution=command_execution(
                         f"{service}-image-pull",
                         timing_policy.image_pull_timeout_seconds,
                     ),
-                    unavailable=True,
                     label=f"{service} image",
                 )
-                pulled_refs.append(reference)
                 image_ids[service] = _inspect_image(
                     runner,
                     docker,
@@ -830,6 +978,10 @@ def promote(
                 "releaseSetDigest": release_digest_ref.split("@", 1)[1],
                 "workflowRunId": release_set.workflow.run_id,
                 "workflowRunAttempt": release_set.workflow.run_attempt,
+                "pulls": {
+                    name: pull_results[name].as_document()
+                    for name in ("releaseSet", "api", "web")
+                },
                 "images": {
                     "api": {
                         "digest": upstream["api"],

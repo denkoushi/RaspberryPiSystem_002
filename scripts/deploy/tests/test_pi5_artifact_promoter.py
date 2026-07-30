@@ -11,6 +11,14 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
+from scripts.deploy.docker_pull_progress import (
+    PullCapabilityUnavailable,
+    PullExecution,
+    PullProgressSnapshot,
+    PullResult,
+    PullStreamUnavailable,
+    PullTimedOut,
+)
 from scripts.deploy.pi5_artifact_promoter import (
     _config_metadata_is_safe,
     _run_command,
@@ -85,7 +93,6 @@ class FakeRunner:
     def __init__(
         self,
         *,
-        release_pull_code: int = 0,
         attestation_code: int = 0,
         verifier_help: str | None = None,
     ):
@@ -97,7 +104,6 @@ class FakeRunner:
                 CommandExecution,
             ]
         ] = []
-        self.release_pull_code = release_pull_code
         self.attestation_code = attestation_code
         self.verifier_help = verifier_help or " ".join(
             (
@@ -123,8 +129,6 @@ class FakeRunner:
             return CommandResult(0, self.verifier_help, "")
         if "attestation" in argv:
             return CommandResult(self.attestation_code, "", "")
-        if "pull" in argv and "raspisys-release-set:" in argv[-1]:
-            return CommandResult(self.release_pull_code, "", "")
         if argv[-3:-1] == ["--format", "{{json .RepoDigests}}"]:
             return CommandResult(
                 0,
@@ -168,6 +172,66 @@ class FakeRunner:
                 json.dumps(release_set_document()), encoding="utf-8"
             )
         return CommandResult(0, "container-id\n", "")
+
+
+def progress_snapshot(
+    *,
+    phase: str = "complete",
+    elapsed_seconds: float = 1.5,
+    downloaded_bytes: int = 1024,
+) -> PullProgressSnapshot:
+    return PullProgressSnapshot(
+        phase=phase,
+        elapsed_seconds=elapsed_seconds,
+        downloaded_bytes=downloaded_bytes,
+        download_total_bytes=downloaded_bytes,
+        extracted_bytes=downloaded_bytes,
+        extract_total_bytes=downloaded_bytes,
+        bytes_advanced_since_last_heartbeat=downloaded_bytes,
+        seconds_since_byte_progress=0.0,
+        known_layers=1,
+        completed_layers=1 if phase == "complete" else 0,
+        active_layer_ids=() if phase == "complete" else ("1" * 12,),
+        unknown_statuses=0,
+    )
+
+
+class FakePuller:
+    def __init__(
+        self,
+        *,
+        release_error: Exception | None = None,
+        api_error: Exception | None = None,
+        web_error: Exception | None = None,
+    ) -> None:
+        self.release_error = release_error
+        self.api_error = api_error
+        self.web_error = web_error
+        self.calls: list[tuple[str, PullExecution]] = []
+
+    def pull(
+        self,
+        reference: str,
+        *,
+        username: str,
+        token: str,
+        execution: PullExecution,
+        event_sink: object,
+    ) -> PullResult:
+        del username, token, event_sink
+        self.calls.append((reference, execution))
+        if "raspisys-release-set:" in reference and self.release_error is not None:
+            raise self.release_error
+        if "raspisys-api@sha256:" in reference and self.api_error is not None:
+            raise self.api_error
+        if "raspisys-web@sha256:" in reference and self.web_error is not None:
+            raise self.web_error
+        snapshot = progress_snapshot()
+        return PullResult(
+            elapsed_seconds=snapshot.elapsed_seconds,
+            final_snapshot=snapshot,
+            observability_mode="engine-api",
+        )
 
 
 class Pi5ArtifactPromoterTests(unittest.TestCase):
@@ -271,32 +335,22 @@ class Pi5ArtifactPromoterTests(unittest.TestCase):
         self, which: object
     ) -> None:
         which.side_effect = lambda name: f"/usr/bin/{name}"  # type: ignore[attr-defined]
-
-        class TimedOutRunner(FakeRunner):
-            def __call__(
-                self,
-                command: object,
-                input_text: str | None,
-                environment: object,
-                execution: CommandExecution,
-            ) -> CommandResult:
-                argv = list(command)  # type: ignore[arg-type]
-                if "pull" in argv and "raspisys-api@sha256:" in argv[-1]:
-                    raise CommandTimedOut(
-                        execution.stage,
-                        elapsed_seconds=600,
-                        timeout_seconds=execution.timeout_seconds,
-                    )
-                return super().__call__(
-                    argv,
-                    input_text,
-                    environment,
-                    execution,
-                )
+        timeout_snapshot = progress_snapshot(
+            phase="downloading",
+            elapsed_seconds=600,
+            downloaded_bytes=512,
+        )
+        puller = FakePuller(
+            api_error=PullTimedOut(
+                elapsed_seconds=600,
+                timeout_seconds=600,
+                snapshot=timeout_snapshot,
+            )
+        )
 
         with tempfile.TemporaryDirectory() as directory:
             config = self.write_config(directory, config_document())
-            runner = TimedOutRunner()
+            runner = FakeRunner()
             with self.assertRaises(PromotionUnavailable) as raised:
                 promote(
                     config_path=config,
@@ -306,12 +360,17 @@ class Pi5ArtifactPromoterTests(unittest.TestCase):
                     api_tag=API_TAG,
                     web_tag=WEB_TAG,
                     runner=runner,
+                    puller=puller,
                 )
 
         self.assertEqual(raised.exception.reason_code, "artifact-pull-timeout")
         self.assertEqual(raised.exception.stage, "api-image-pull")
         self.assertEqual(raised.exception.elapsed_seconds, 600)
         self.assertEqual(raised.exception.timeout_seconds, 600)
+        self.assertEqual(
+            raised.exception.result()["pullDiagnostics"]["phase"],  # type: ignore[index]
+            "downloading",
+        )
         cleanup_commands = [
             command
             for command, _, _, _ in runner.commands
@@ -319,6 +378,9 @@ class Pi5ArtifactPromoterTests(unittest.TestCase):
         ]
         self.assertTrue(
             any("raspisys-release-set:" in command[-1] for command in cleanup_commands)
+        )
+        self.assertTrue(
+            any("raspisys-api@sha256:" in command[-1] for command in cleanup_commands)
         )
 
     def test_main_serializes_structured_timeout_without_secret_detail(self) -> None:
@@ -328,6 +390,11 @@ class Pi5ArtifactPromoterTests(unittest.TestCase):
             stage="api-image-pull",
             elapsed_seconds=600,
             timeout_seconds=600,
+            diagnostics=progress_snapshot(
+                phase="downloading",
+                elapsed_seconds=600,
+                downloaded_bytes=512,
+            ).as_document(),
         )
         with tempfile.TemporaryDirectory() as directory:
             result_path = Path(directory) / "result.json"
@@ -364,6 +431,11 @@ class Pi5ArtifactPromoterTests(unittest.TestCase):
                 "stage": "api-image-pull",
                 "elapsedSeconds": 600,
                 "timeoutSeconds": 600,
+                "pullDiagnostics": progress_snapshot(
+                    phase="downloading",
+                    elapsed_seconds=600,
+                    downloaded_bytes=512,
+                ).as_document(),
             },
         )
         self.assertNotIn(TOKEN, json.dumps(document))
@@ -466,9 +538,17 @@ class Pi5ArtifactPromoterTests(unittest.TestCase):
                 api_tag=API_TAG,
                 web_tag=WEB_TAG,
                 runner=runner,
+                puller=FakePuller(),
             )
         self.assertEqual(result["status"], "promoted")
         self.assertEqual(result["workflowRunId"], 9876)
+        self.assertEqual(set(result["pulls"]), {"releaseSet", "api", "web"})  # type: ignore[arg-type]
+        self.assertTrue(
+            all(
+                pull["observabilityMode"] == "engine-api"
+                for pull in result["pulls"].values()  # type: ignore[union-attr]
+            )
+        )
         serialized_commands = json.dumps(
             [command for command, _, _, _ in runner.commands]
         )
@@ -529,6 +609,7 @@ class Pi5ArtifactPromoterTests(unittest.TestCase):
                 api_tag=API_TAG,
                 web_tag=WEB_TAG,
                 runner=runner,
+                puller=FakePuller(),
             )
 
         self.assertEqual(result["status"], "promoted")
@@ -567,8 +648,55 @@ class Pi5ArtifactPromoterTests(unittest.TestCase):
                     run_id=RUN_ID,
                     api_tag=API_TAG,
                     web_tag=WEB_TAG,
-                    runner=FakeRunner(release_pull_code=1),
+                    runner=FakeRunner(),
+                    puller=FakePuller(
+                        release_error=PullStreamUnavailable(
+                            "engine-pull-error",
+                            progress_snapshot(phase="downloading"),
+                        )
+                    ),
                 )
+
+    @patch("scripts.deploy.pi5_artifact_promoter.shutil.which")
+    def test_engine_capability_failure_uses_existing_cli_pull(
+        self, which: object
+    ) -> None:
+        which.side_effect = lambda name: f"/usr/bin/{name}"  # type: ignore[attr-defined]
+        with tempfile.TemporaryDirectory() as directory:
+            config = self.write_config(directory, config_document())
+            runner = FakeRunner()
+            result = promote(
+                config_path=config,
+                sha=SHA,
+                config_hash=CONFIG_HASH,
+                run_id=RUN_ID,
+                api_tag=API_TAG,
+                web_tag=WEB_TAG,
+                runner=runner,
+                puller=FakePuller(
+                    release_error=PullCapabilityUnavailable(
+                        "docker-engine-api-unavailable"
+                    ),
+                    api_error=PullCapabilityUnavailable(
+                        "docker-engine-api-unavailable"
+                    ),
+                    web_error=PullCapabilityUnavailable(
+                        "docker-engine-api-unavailable"
+                    ),
+                ),
+            )
+        cli_pulls = [
+            command
+            for command, _, _, _ in runner.commands
+            if "pull" in command
+        ]
+        self.assertEqual(len(cli_pulls), 3)
+        self.assertTrue(
+            all(
+                pull["observabilityMode"] == "cli-fallback"
+                for pull in result["pulls"].values()  # type: ignore[union-attr]
+            )
+        )
 
     @patch("scripts.deploy.pi5_artifact_promoter.shutil.which")
     def test_old_attestation_verifier_is_available_for_local_fallback(
@@ -586,6 +714,7 @@ class Pi5ArtifactPromoterTests(unittest.TestCase):
                     api_tag=API_TAG,
                     web_tag=WEB_TAG,
                     runner=FakeRunner(verifier_help="--source-digest"),
+                    puller=FakePuller(),
                 )
 
     @patch("scripts.deploy.pi5_artifact_promoter.shutil.which")
@@ -602,6 +731,7 @@ class Pi5ArtifactPromoterTests(unittest.TestCase):
                     api_tag=API_TAG,
                     web_tag=WEB_TAG,
                     runner=FakeRunner(attestation_code=1),
+                    puller=FakePuller(),
                 )
 
     def test_attestation_command_binds_workflow_source_and_runner(self) -> None:
@@ -627,22 +757,9 @@ class Pi5ArtifactPromoterTests(unittest.TestCase):
     ) -> None:
         which.side_effect = lambda name: f"/usr/bin/{name}"  # type: ignore[attr-defined]
 
-        class InterruptedRunner(FakeRunner):
-            def __call__(
-                self,
-                command: object,
-                input_text: str | None,
-                environment: object,
-                execution: CommandExecution,
-            ) -> CommandResult:
-                argv = list(command)  # type: ignore[arg-type]
-                if "pull" in argv and "raspisys-api@sha256:" in argv[-1]:
-                    raise PromotionInterrupted(15)
-                return super().__call__(argv, input_text, environment, execution)
-
         with tempfile.TemporaryDirectory() as directory:
             config = self.write_config(directory, config_document())
-            runner = InterruptedRunner()
+            runner = FakeRunner()
             with self.assertRaises(PromotionInterrupted):
                 promote(
                     config_path=config,
@@ -652,6 +769,7 @@ class Pi5ArtifactPromoterTests(unittest.TestCase):
                     api_tag=API_TAG,
                     web_tag=WEB_TAG,
                     runner=runner,
+                    puller=FakePuller(api_error=PromotionInterrupted(15)),
                 )
 
         cleanup_commands = [
@@ -683,12 +801,6 @@ class Pi5ArtifactPromoterTests(unittest.TestCase):
                 execution: CommandExecution,
             ) -> CommandResult:
                 argv = list(command)  # type: ignore[arg-type]
-                if "pull" in argv and "raspisys-api@sha256:" in argv[-1]:
-                    raise CommandTimedOut(
-                        execution.stage,
-                        elapsed_seconds=600,
-                        timeout_seconds=execution.timeout_seconds,
-                    )
                 if "rm" in argv:
                     self.cleanup_attempts.append(argv)
                     raise CommandTimedOut(
@@ -701,6 +813,16 @@ class Pi5ArtifactPromoterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             config = self.write_config(directory, config_document())
             runner = CleanupFailureRunner()
+            puller = FakePuller(
+                api_error=PullTimedOut(
+                    elapsed_seconds=600,
+                    timeout_seconds=600,
+                    snapshot=progress_snapshot(
+                        phase="downloading",
+                        elapsed_seconds=600,
+                    ),
+                )
+            )
             with patch("builtins.print"):
                 with self.assertRaises(PromotionUnavailable) as raised:
                     promote(
@@ -711,6 +833,7 @@ class Pi5ArtifactPromoterTests(unittest.TestCase):
                         api_tag=API_TAG,
                         web_tag=WEB_TAG,
                         runner=runner,
+                        puller=puller,
                     )
 
         self.assertEqual(raised.exception.reason_code, "artifact-pull-timeout")

@@ -68,10 +68,13 @@ release runner groupだけが読める設定のread-only tokenを使う。
 
 成果物昇格の待機上限はrelease set取得120秒、API/Web image取得各600秒、
 その他の検証300秒、promotion全体900秒である。各処理は30秒ごとに安全な
-stage名と経過だけをheartbeatとして記録し、コマンド、token、環境変数は
-記録しない。pullのtimeoutまたは通信不能は`unavailable`としてローカルbuildへ
-戻る。署名、digest、platform、source、設定hashの不一致は
-`integrity-failure`として停止する。
+stage名をheartbeatとして記録する。image pullはDocker Engineが返す転送量、
+展開量、layer数、処理段階、直近30秒の増加量、最後の進捗からの経過も記録する。
+コマンド、image参照、URL、token、認証header、生のdaemon errorは記録しない。
+pullのtimeoutまたは通信不能は`unavailable`としてローカルbuildへ戻る。
+署名、digest、platform、source、設定hashの不一致は
+`integrity-failure`として停止する。診断項目と既知の未確定原因は
+[KB-404](../knowledge-base/KB-404-pi5-ghcr-api-image-pull-timeout.md)を参照する。
 
 判断の正本は `logs/deploy/fleet-release-state.json` である。手で編集しない。
 
@@ -230,7 +233,13 @@ configuration hashを調査する。可用性問題で次回runも確実にロ�
 
 `artifactPromotion.status=unavailable`に`reasonCode`、`stage`、
 `elapsedSeconds`、`timeoutSeconds`がある場合は、その処理の可用性timeoutを
-示す。`failureCode=canary-approval-timeout`はcanary自体の更新失敗ではなく、
+示す。`pullDiagnostics`がある場合、`downloading`で転送量が増えなければ
+回線・registry・Docker転送境界、転送完了後の`verifying`／`extracting`停滞なら
+Pi5上のchecksum・展開・disk処理を調べる。転送量が増え続ける場合は、成果物容量と
+実効速度を比較する。`transportReasonCode`は安全な分類であり、生のDocker error
+ではない。診断方法は
+[KB-404](../knowledge-base/KB-404-pi5-ghcr-api-image-pull-timeout.md)を参照する。
+`failureCode=canary-approval-timeout`はcanary自体の更新失敗ではなく、
 1,800秒以内にrun固有の人承認が届かなかったことを示す。残り端末へ進まず、
 新しい実行は原因確認と`--print-plan`から始める。
 
