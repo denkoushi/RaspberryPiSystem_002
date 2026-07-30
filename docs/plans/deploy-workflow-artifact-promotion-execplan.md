@@ -11,6 +11,8 @@ related_docs:
   - ../decisions/ADR-20260728-attested-arm64-release-artifact-promotion.md
   - ./deploy-workflow-safe-shortening-execplan.md
   - ./deploy-artifact-timeout-canary-handoff-execplan.md
+  - ./artifact-pull-progress-diagnostics-execplan.md
+  - ../knowledge-base/KB-404-pi5-ghcr-api-image-pull-timeout.md
   - ../guides/deployment.md
 related_code:
   - .github/workflows/ci.yml
@@ -145,6 +147,10 @@ remain unchanged.
 - [ ] Prove a production candidate with mode `promoted`. The most recent API
   digest pull exceeded 600 seconds and safely selected the local builder, so
   artifact-transfer availability remains unresolved.
+- [ ] Diagnose that 600-second boundary with bounded Docker layer bytes and
+  phases. The implementation is tracked in
+  [the pull-progress ExecPlan](./artifact-pull-progress-diagnostics-execplan.md);
+  timeout values and fallback policy remain unchanged.
 
 ## Surprises & Discoveries
 
@@ -369,6 +375,12 @@ seconds and correctly fell back to the local builder. The safety and identity
 contracts worked, but production still lacks the required `promoted` candidate
 proof and on-device build elimination.
 
+The next corrective step does not guess at a larger timeout. It adds bounded
+Docker Engine layer progress and preserves the final snapshot on timeout, as
+specified by [KB-404](../knowledge-base/KB-404-pi5-ghcr-api-image-pull-timeout.md).
+Choosing API image slimming, network correction, or prefetch remains deferred
+until a separately approved production trace identifies the stopped layer.
+
 Production deployment is now separately authorized. The primary production
 Pi5 opts in through its host vars while the shared server default and
 TalkPlaza remain disabled. Terminal deployment evidence is recorded in the
@@ -592,3 +604,7 @@ implementation boundary before code changes begin.
 Revision note (2026-07-29): Recorded the Assembly-01 NFC production diagnosis
 and the missing `VITE_AGENT_WS_MODE` build-contract boundary before publishing
 the corrective change.
+
+Revision note (2026-07-30): Linked the unresolved 600-second API pull boundary
+to KB-404 and the bounded pull-progress diagnostic implementation. No timeout,
+fallback, trust, or deployment safety decision changed.

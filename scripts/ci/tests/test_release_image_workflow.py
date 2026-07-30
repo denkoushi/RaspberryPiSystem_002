@@ -29,6 +29,9 @@ SHA = "a" * 40
 DOCKER_VALIDATOR = (
     ROOT / "scripts/ci/validate-release-artifact-docker.sh"
 ).read_text(encoding="utf-8")
+PULL_PROGRESS_VALIDATOR = (
+    ROOT / "scripts/ci/validate-artifact-pull-progress-docker.sh"
+).read_text(encoding="utf-8")
 CONTRACT_RENDERER = (
     ROOT / "scripts/ci/render-release-build-contract.sh"
 ).read_text(encoding="utf-8")
@@ -171,6 +174,22 @@ class ReleaseImageWorkflowTests(unittest.TestCase):
         self.assertIn("trap cleanup EXIT INT TERM", DOCKER_VALIDATOR)
         self.assertIn("run-owned Docker resources remain after cleanup", DOCKER_VALIDATOR)
         self.assertNotIn("prune", DOCKER_VALIDATOR)
+
+    def test_pull_progress_validation_is_loopback_scoped_and_cleanup_owned(
+        self,
+    ) -> None:
+        self.assertIn("--network host", PULL_PROGRESS_VALIDATOR)
+        self.assertIn(
+            'REGISTRY_HTTP_ADDR=127.0.0.1:${REGISTRY_PORT}',
+            PULL_PROGRESS_VALIDATOR,
+        )
+        self.assertNotIn("-p ", PULL_PROGRESS_VALIDATOR)
+        self.assertIn("trap cleanup EXIT INT TERM", PULL_PROGRESS_VALIDATOR)
+        self.assertIn(
+            "run-owned Docker resources remain after cleanup",
+            PULL_PROGRESS_VALIDATOR,
+        )
+        self.assertNotIn("prune", PULL_PROGRESS_VALIDATOR)
 
     def test_contract_renderer_removes_its_temporary_vault_password(self) -> None:
         remove_index = CONTRACT_RENDERER.rindex('rm -f "$VAULT_PASSWORD_FILE"')

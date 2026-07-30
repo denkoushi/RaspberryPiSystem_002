@@ -137,6 +137,26 @@ class Pi5BackendTest(unittest.TestCase):
             "releaseSetDigest": "sha256:" + "3" * 64,
             "workflowRunId": 12345,
             "workflowRunAttempt": 2,
+            "pulls": {
+                "releaseSet": {
+                    "elapsedSeconds": 2.0,
+                    "observabilityMode": "engine-api",
+                    "progress": {"phase": "complete", "downloadedBytes": 1024},
+                },
+                "api": {
+                    "elapsedSeconds": 60.0,
+                    "observabilityMode": "engine-api",
+                    "progress": {
+                        "phase": "complete",
+                        "downloadedBytes": 1_262_151_764,
+                    },
+                },
+                "web": {
+                    "elapsedSeconds": 4.0,
+                    "observabilityMode": "engine-api",
+                    "progress": {"phase": "complete", "downloadedBytes": 43_403_033},
+                },
+            },
             "images": {
                 "api": {
                     "digest": "sha256:" + "4" * 64,
@@ -164,6 +184,43 @@ class Pi5BackendTest(unittest.TestCase):
         self.assertEqual(
             state.saved[-3]["pi5"]["artifactPromotion"],
             promotion,
+        )
+
+    def test_preserves_unavailable_pull_diagnostics(self) -> None:
+        promotion = {
+            "status": "unavailable",
+            "reason": "api image pull timed out after 600s",
+            "reasonCode": "artifact-pull-timeout",
+            "stage": "api-image-pull",
+            "elapsedSeconds": 600,
+            "timeoutSeconds": 600,
+            "pullDiagnostics": {
+                "phase": "downloading",
+                "downloadedBytes": 734_003_200,
+                "downloadTotalBytes": 1_262_151_764,
+                "bytesAdvancedSinceLastHeartbeat": 0,
+                "secondsSinceByteProgress": 94.0,
+                "knownLayers": 26,
+                "completedLayers": 24,
+                "activeLayerIds": ["5c8728e73c4b"],
+            },
+        }
+        runtime = Runtime(
+            self.project,
+            candidate_metadata={
+                "build": {"mode": "local-fallback"},
+                "artifactPromotion": promotion,
+            },
+        )
+        state = State()
+
+        pi5.phase3_release(self.sha, state, runtime=runtime)
+
+        self.assertEqual(state.payload["pi5"]["build"], {"mode": "local-fallback"})
+        self.assertEqual(state.payload["pi5"]["artifactPromotion"], promotion)
+        self.assertEqual(
+            state.saved[-3]["pi5"]["artifactPromotion"]["pullDiagnostics"],
+            promotion["pullDiagnostics"],
         )
 
     def test_rejects_promoted_mode_without_promotion_evidence(self) -> None:
