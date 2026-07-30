@@ -2480,6 +2480,46 @@ class FleetScopeLimitTest(unittest.TestCase):
                     full_fleet=False,
                 )
 
+    def test_unknown_terminal_admits_every_registered_component_without_widening_hosts(self):
+        fleet = {**self.FLEET, 'fleet': dict(self.FLEET['fleet'])}
+        fleet['fleet']['kiosk-a'] = {
+            **fleet['fleet']['kiosk-a'],
+            'currentSha': None,
+            'evidence': 'unknown',
+            'verifiedAt': None,
+        }
+        classification = {
+            'server': False,
+            'kiosk': False,
+            'signage': False,
+            'migration': False,
+            'components': ['deploy-control', 'neutral'],
+        }
+        with patch.object(
+            MODULE, 'classify_release_impact', return_value=(classification, [])
+        ):
+            plan, targets, _classifications, warnings = MODULE.build_fleet_scope(
+                sha=TARGET_SHA,
+                inventory_data=self.INVENTORY,
+                fleet_state=fleet,
+                selected=None,
+                limit='',
+                full_fleet=False,
+            )
+
+        registered_components = sorted(
+            MODULE.release_readiness.load_registry().component_coverage
+        )
+        self.assertEqual(plan['classificationComponents'], registered_components)
+        self.assertEqual(plan['affectedProfiles'], ['kiosk', 'signage'])
+        self.assertEqual(plan['targetHosts'], ['kiosk-a'])
+        self.assertEqual(
+            [target['host'] for target in plan['mutationTargets']],
+            ['kiosk-a'],
+        )
+        self.assertFalse(plan['pi5Required'])
+        self.assertEqual(warnings, [])
+
     def test_print_plan_propagates_zero_match_limit_failure(self):
         with patch.object(MODULE, 'resolve_release_sha', return_value=(TARGET_SHA, [])), \
                 patch.object(MODULE, 'validate_print_plan_checkout'), \

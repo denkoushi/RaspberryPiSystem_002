@@ -1358,7 +1358,10 @@ def build_fleet_scope(
     registry = load_registry()
     profile_ids = set(registry.profile_ids)
     affected_profiles: set[str] = set()
-    classification_unavailable = not classifications
+    classification_unavailable = not classifications or any(
+        decision["targeted"] and decision["evidence"] != "verified"
+        for decision in decisions
+    )
     for classification in classifications.values():
         if not isinstance(classification, dict):
             classification_unavailable = True
@@ -1394,6 +1397,15 @@ def build_fleet_scope(
         for component in classification.get("components") or []
         if isinstance(component, str)
     }
+    if classification_unavailable:
+        # A lock-owning recovery can turn an unknown record back into a
+        # verified historical baseline before the final plan is locked.  The
+        # resulting Git classification may contain any registered component,
+        # so the read-only admission must cover that possibility without
+        # widening hosts or actions.
+        components.update(
+            release_readiness.load_registry().component_coverage
+        )
     plan["classificationComponents"] = sorted(components) if components else None
     return plan, terminal_targets, classifications, warnings
 
