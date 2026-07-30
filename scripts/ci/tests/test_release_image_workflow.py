@@ -32,6 +32,10 @@ DOCKER_VALIDATOR = (
 PULL_PROGRESS_VALIDATOR = (
     ROOT / "scripts/ci/validate-artifact-pull-progress-docker.sh"
 ).read_text(encoding="utf-8")
+API_DOCKERFILE = (
+    ROOT / "infrastructure/docker/Dockerfile.api"
+).read_text(encoding="utf-8")
+CI_WORKFLOW = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 CONTRACT_RENDERER = (
     ROOT / "scripts/ci/render-release-build-contract.sh"
 ).read_text(encoding="utf-8")
@@ -195,6 +199,54 @@ class ReleaseImageWorkflowTests(unittest.TestCase):
         remove_index = CONTRACT_RENDERER.rindex('rm -f "$VAULT_PASSWORD_FILE"')
         clear_index = CONTRACT_RENDERER.index('VAULT_PASSWORD_FILE=""')
         self.assertLess(remove_index, clear_index)
+
+    def test_api_runtime_boundary_precedes_application_source_and_provenance(self) -> None:
+        runtime_boundary = API_DOCKERFILE.index("FROM api-runtime AS api")
+        workspace_boundary = API_DOCKERFILE.index(
+            "FROM node:20-bookworm-slim AS workspace"
+        )
+        build_boundary = API_DOCKERFILE.index("FROM workspace AS build")
+        runtime_stage = API_DOCKERFILE.index(
+            "FROM node:20-bookworm-slim AS api-runtime"
+        )
+        self.assertLess(workspace_boundary, build_boundary)
+        self.assertLess(build_boundary, runtime_stage)
+        self.assertLess(
+            runtime_stage,
+            runtime_boundary,
+        )
+        for application_instruction in (
+            "COPY --from=build --exclude=node_modules /app/apps/api",
+            "COPY --from=build /app/scripts",
+            "pnpm prisma generate",
+            "ARG BUILD_COMMIT=unknown",
+            "LABEL org.opencontainers.image.revision",
+        ):
+            self.assertGreater(
+                API_DOCKERFILE.rindex(application_instruction),
+                runtime_boundary,
+            )
+        runtime_definition = API_DOCKERFILE[runtime_stage:runtime_boundary]
+        self.assertNotIn("COPY --from=build", runtime_definition)
+        self.assertNotIn("BUILD_COMMIT", runtime_definition)
+
+    def test_release_api_job_validates_exact_arm64_manifest_before_scan(self) -> None:
+        build = CI_WORKFLOW.index("Build and push exact ARM64 API image")
+        select = CI_WORKFLOW.index("Select exact ARM64 API image manifest")
+        budget = CI_WORKFLOW.index("Enforce compressed API image budget")
+        scan = CI_WORKFLOW.index("Security scan exact ARM64 API digest")
+        self.assertLess(build, select)
+        self.assertLess(select, budget)
+        self.assertLess(budget, scan)
+        self.assertIn(
+            "scripts/ci/validate_release_image_budget.py select-linux-arm64",
+            CI_WORKFLOW,
+        )
+        self.assertIn(
+            "scripts/ci/validate_release_image_budget.py validate-api",
+            CI_WORKFLOW,
+        )
+        self.assertIn("${{ steps.build.outputs.digest }}", CI_WORKFLOW)
 
 
 if __name__ == "__main__":

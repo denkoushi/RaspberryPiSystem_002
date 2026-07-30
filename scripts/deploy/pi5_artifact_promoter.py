@@ -193,16 +193,18 @@ class PromotionConfig:
 @dataclass(frozen=True)
 class PromotionTimingPolicy:
     release_set_pull_timeout_seconds: int = 120
-    image_pull_timeout_seconds: int = 600
+    api_image_pull_timeout_seconds: int = 1200
+    web_image_pull_timeout_seconds: int = 600
     command_timeout_seconds: int = 300
-    total_timeout_seconds: int = 900
+    total_timeout_seconds: int = 1500
     heartbeat_seconds: int = 30
     cleanup_timeout_seconds: int = 30
 
     def __post_init__(self) -> None:
         values = (
             self.release_set_pull_timeout_seconds,
-            self.image_pull_timeout_seconds,
+            self.api_image_pull_timeout_seconds,
+            self.web_image_pull_timeout_seconds,
             self.command_timeout_seconds,
             self.total_timeout_seconds,
             self.heartbeat_seconds,
@@ -951,7 +953,11 @@ def promote(
                     token=config.token,
                     execution=command_execution(
                         f"{service}-image-pull",
-                        timing_policy.image_pull_timeout_seconds,
+                        (
+                            timing_policy.api_image_pull_timeout_seconds
+                            if service == "api"
+                            else timing_policy.web_image_pull_timeout_seconds
+                        ),
                     ),
                     label=f"{service} image",
                 )

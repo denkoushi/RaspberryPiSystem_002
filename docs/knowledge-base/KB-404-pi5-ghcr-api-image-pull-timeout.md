@@ -1,7 +1,7 @@
 ---
 id: KB-404
 title: Pi5 GHCR API image pull timeout without layer progress evidence
-status: investigating
+status: mitigated
 scope: signed ARM64 artifact acquisition on the production Pi5
 date: 2026-07-30
 source_of_truth: true
@@ -10,13 +10,15 @@ related_code:
   - scripts/deploy/pi5_artifact_promoter.py
 related_docs:
   - ../plans/artifact-pull-progress-diagnostics-execplan.md
+  - ../plans/api-image-runtime-boundary-execplan.md
   - ../plans/deploy-workflow-artifact-promotion-execplan.md
   - ../guides/deployment.md
   - ../decisions/ADR-20260728-attested-arm64-release-artifact-promotion.md
+  - ../decisions/ADR-20260730-bounded-api-runtime-artifact.md
 validation: focused progress/promoter tests, isolated loopback Docker registry, and full deployment contracts
 open_items:
-  - collect one production pull trace after separate merge and deployment approval
-  - choose image slimming, network correction, or prefetch only from measured evidence
+  - pass hosted CI for the bounded runtime artifact change
+  - verify one separately approved production API pull completes as promoted
 ---
 
 # KB-404: Pi5 GHCR API image pull timeout
@@ -33,6 +35,22 @@ across 26 layers. Its two largest layers were about 749 MB and 308 MB. A
 GitHub-hosted runner could retrieve the same artifact in about one minute, but
 that comparison does not identify the Pi5 bottleneck.
 
+After the progress diagnostic was deployed, production run
+`20260730-121829-96482d` supplied the missing evidence. Docker reported a
+1,189,680,246-byte download target for the active layers. Progress reached
+60,146,725 bytes at 30 seconds, 170,460,072 at 90 seconds, 256,443,304 at
+180 seconds, 334,037,928 at 240 seconds, 434,504,223 at 300 seconds, and
+492,175,903 at 420 seconds. It was unchanged for the 330-, 360-, and
+390-second observations, then resumed. At 540 seconds it had reached
+717,619,743 bytes. The 600-second timeout retained a final snapshot of
+793,117,215 bytes (66.7 percent), two completed layers, phase `downloading`,
+and no extraction progress.
+
+The effective average was about 1.32 MB/s. At that rate, the first complete
+pull needs roughly fifteen minutes. This is a slow transfer with one
+approximately 107-second stall, not a completed download blocked in
+verification or extraction.
+
 ## What is confirmed
 
 - The failure was availability, not a signature, digest, source SHA,
@@ -43,19 +61,21 @@ that comparison does not identify the Pi5 bottleneck.
 - Run-owned tags and temporary authentication state were cleaned.
 - The local builder fallback, Blue/Green checks, five-minute monitor, terminal
   rollout, and same-SHA no-op remained effective.
+- The diagnostic production run completed successfully after fallback. Traffic
+  switching and the 302.9-second stability monitor succeeded without rollback,
+  and the same-SHA plan was a no-op.
 
 ## What remains unknown
 
-The earlier heartbeat recorded only elapsed time. It did not record Docker
-layer bytes or phases, so existing evidence cannot distinguish:
+The trace proves that the artifact is too large to finish within 600 seconds at
+the observed effective rate. It does not isolate why the Pi5-to-GHCR transfer
+averaged that rate or paused for about 107 seconds.
 
-- a Pi5-to-GHCR network or registry stall;
-- a transfer that remained active but was too slow for the artifact size;
-- a completed download blocked in checksum verification or extraction;
-- a bounded Docker Engine transport error.
-
-Do not attribute the incident to the router, GHCR, Docker, disk, or image size
-without a progress trace.
+The operator Mac reached the Pi5 through a Tailscale DERP relay and showed
+unstable latency during the same period. That path is not the Pi5-to-GHCR
+download path, so it is not evidence that the home router caused the image
+pull delay. The trace likewise does not justify attributing the stall solely to
+GHCR or Docker.
 
 ## Diagnostic contract
 
@@ -92,10 +112,19 @@ fallback.
 - `transportReasonCode` identifies a bounded Engine API class; it is not a raw
   daemon message.
 
-One trace is evidence for the next investigation, not permission to weaken
-signatures or increase timeouts. Keep the 600-second per-image timeout,
-900-second total budget, exact-digest verification, and local fallback until a
-separate approved plan changes them.
+The measured response is bounded rather than open-ended. API image pull receives
+1,200 seconds, Web image pull remains at 600 seconds, and the whole promotion
+receives 1,500 seconds. Exact-digest and signature verification, thirty-second
+progress, integrity fail-closed behavior, cleanup, and the local-build
+availability fallback remain unchanged.
+
+The API Dockerfile also exposes a stable `api-runtime` boundary, and CI rejects
+the exact ARM64 OCI image above 1,400,000,000 compressed bytes, an
+850,000,000-byte single layer, or forty layers. This prevents silent growth and
+maximizes reuse of unchanged OCR, Chromium, and production-dependency layers.
+It does not create one extra 1.2 GB copy for every release: Docker reuses
+content-addressed layers and the release labels remain after filesystem
+changes.
 
 ## Validation and production boundary
 
@@ -106,7 +135,9 @@ changing existing Docker resources. The disposable PostgreSQL deployment
 runner remains the regression boundary for migration, status, readiness,
 rollback, and Ansible contracts.
 
-Production acceptance is separate: the next approved Pi5-changing deployment
-must show 30-second progress and retain the final safe snapshot on timeout.
-Only then should the team choose API image slimming, network correction, or
-safe prefetch.
+Production acceptance for the mitigation is separate: after hosted CI and a
+separately approved Pi5-changing deployment, the exact signed API pull must
+finish as `promoted` within the new bound, or preserve its progress and use the
+existing safe fallback. Further API slimming, prefetch, or service extraction
+will be considered only if that bounded first pull or later growth remains
+operationally unacceptable.

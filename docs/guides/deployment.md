@@ -66,15 +66,17 @@ rollbackは従来どおり実施する。正本は
 OCI内の署名bundleを検証する。private packageへ変更する場合だけ、root所有かつ
 release runner groupだけが読める設定のread-only tokenを使う。
 
-成果物昇格の待機上限はrelease set取得120秒、API/Web image取得各600秒、
-その他の検証300秒、promotion全体900秒である。各処理は30秒ごとに安全な
+成果物昇格の待機上限はrelease set取得120秒、API image取得1200秒、
+Web image取得600秒、その他の検証300秒、promotion全体1500秒である。
+各処理は30秒ごとに安全な
 stage名をheartbeatとして記録する。image pullはDocker Engineが返す転送量、
 展開量、layer数、処理段階、直近30秒の増加量、最後の進捗からの経過も記録する。
 コマンド、image参照、URL、token、認証header、生のdaemon errorは記録しない。
 pullのtimeoutまたは通信不能は`unavailable`としてローカルbuildへ戻る。
 署名、digest、platform、source、設定hashの不一致は
 `integrity-failure`として停止する。診断項目と既知の未確定原因は
-[KB-404](../knowledge-base/KB-404-pi5-ghcr-api-image-pull-timeout.md)を参照する。
+[KB-404](../knowledge-base/KB-404-pi5-ghcr-api-image-pull-timeout.md)と
+[bounded API runtime ADR](../decisions/ADR-20260730-bounded-api-runtime-artifact.md)を参照する。
 
 判断の正本は `logs/deploy/fleet-release-state.json` である。手で編集しない。
 

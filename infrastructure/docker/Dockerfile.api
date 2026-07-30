@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:20-bookworm-slim AS base
+FROM node:20-bookworm-slim AS workspace
 WORKDIR /app
 ENV NODE_OPTIONS=--max-old-space-size=4096
 
@@ -25,6 +25,8 @@ RUN --mount=type=cache,id=raspi-pnpm-store,target=/pnpm/store,sharing=locked \
     npm_config_fetch_timeout=30000 \
     pnpm install --frozen-lockfile --store-dir=/pnpm/store --network-concurrency=4
 
+FROM workspace AS build
+
 COPY apps/api ./apps/api
 COPY packages ./packages
 COPY scripts ./scripts
@@ -42,7 +44,7 @@ WORKDIR /app/apps/api
 RUN nice -n 10 pnpm prisma generate
 RUN nice -n 10 pnpm run build
 
-FROM node:20-bookworm-slim AS api
+FROM node:20-bookworm-slim AS api-runtime
 WORKDIR /app
 ARG NDLOCR_LITE_COMMIT=89f815899f0e85d236a1a90e75da012ca932dc7b
 # Bump the date to invalidate the cached apt layer; otherwise the CI build
@@ -65,14 +67,14 @@ RUN echo "apt refresh ${APT_CACHE_BUST}" \
   && rm -rf /var/lib/apt/lists/*
 
 # Manifests + prod install + Chromium before build artifacts: avoids invalidating heavy layers on API source changes.
-COPY --from=base /app/package.json ./package.json
-COPY --from=base /app/pnpm-lock.yaml ./pnpm-lock.yaml
-COPY --from=base /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
-COPY --from=base /app/apps/api/package.json ./apps/api/package.json
-COPY --from=base /app/apps/web/package.json ./apps/web/package.json
-COPY --from=base /app/packages/shared-types/package.json ./packages/shared-types/package.json
-COPY --from=base /app/packages/part-search-core/package.json ./packages/part-search-core/package.json
-COPY --from=base /app/packages/shelf-layout-core/package.json ./packages/shelf-layout-core/package.json
+COPY --from=workspace /app/package.json ./package.json
+COPY --from=workspace /app/pnpm-lock.yaml ./pnpm-lock.yaml
+COPY --from=workspace /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
+COPY --from=workspace /app/apps/api/package.json ./apps/api/package.json
+COPY --from=workspace /app/apps/web/package.json ./apps/web/package.json
+COPY --from=workspace /app/packages/shared-types/package.json ./packages/shared-types/package.json
+COPY --from=workspace /app/packages/part-search-core/package.json ./packages/part-search-core/package.json
+COPY --from=workspace /app/packages/shelf-layout-core/package.json ./packages/shelf-layout-core/package.json
 WORKDIR /app
 RUN --mount=type=cache,id=raspi-pnpm-store,target=/pnpm/store,sharing=locked \
   corepack enable \
@@ -94,26 +96,28 @@ RUN case "${INSTALL_PLAYWRIGHT_CHROMIUM}" in \
     *) echo "Skipping Playwright Chromium install (INSTALL_PLAYWRIGHT_CHROMIUM=${INSTALL_PLAYWRIGHT_CHROMIUM})" ;; \
   esac
 
-# base の dev node_modules は持ち込まない（--exclude=node_modules）。
-COPY --from=base --exclude=node_modules /app/apps/api ./apps/api
-COPY --from=base --exclude=node_modules /app/packages/shared-types ./packages/shared-types
-COPY --from=base --exclude=node_modules /app/packages/part-search-core ./packages/part-search-core
-COPY --from=base --exclude=node_modules /app/packages/shelf-layout-core ./packages/shelf-layout-core
-COPY --from=base /app/scripts ./scripts
-
-WORKDIR /app/apps/api
-RUN nice -n 10 pnpm prisma generate
-
-# ボリュームマウント先が存在しないと起動時に失敗するため事前に作成
-# npm/corepackキャッシュを削除（セキュリティスキャン対策: pnpmのみ使用するため）
+# Stable runtime boundary. Normal API source changes must not invalidate the
+# OCR, production dependency, or Chromium layers above this point.
 RUN mkdir -p /app/storage/photos \
   /app/storage/thumbnails \
   /app/storage/pdfs \
   /app/storage/pdf-pages \
   /app/storage/signage-rendered \
   /app/storage/assembly-procedure-images \
-  && rm -rf /usr/local/lib/node_modules/npm \
-  && rm -rf /root/.cache/node/corepack
+  && rm -rf /usr/local/lib/node_modules/npm
+
+FROM api-runtime AS api
+
+# build の dev node_modules は持ち込まない（--exclude=node_modules）。
+COPY --from=build --exclude=node_modules /app/apps/api ./apps/api
+COPY --from=build --exclude=node_modules /app/packages/shared-types ./packages/shared-types
+COPY --from=build --exclude=node_modules /app/packages/part-search-core ./packages/part-search-core
+COPY --from=build --exclude=node_modules /app/packages/shelf-layout-core ./packages/shelf-layout-core
+COPY --from=build /app/scripts ./scripts
+
+WORKDIR /app/apps/api
+RUN nice -n 10 pnpm prisma generate
+RUN rm -rf /root/.cache/node/corepack
 
 # Release provenance is image metadata only. Keep it after every filesystem
 # mutation so a new release SHA/config hash can reuse unchanged runtime layers.

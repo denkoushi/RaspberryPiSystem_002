@@ -14,6 +14,7 @@
 - **安全ゲートを維持したCI／対象分類／build cache短縮**: 安全なmain pushだけを変更認識型にし、Pi5 Web設定を`server-app`として所有、Kioskは再読込のみ・Pi3は対象外とする。**正本**: [ExecPlan](./plans/deploy-workflow-safe-shortening-execplan.md) · [ADR](./decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md) · [CI Guide](./guides/ci-branch-protection.md) · [Deploy Guide](./guides/deployment.md)
 - **署名済みARM64 API/Web pairの事前buildとPi5昇格**: exact main SHAと設定hashへ結合し、欠落時は既存local build、整合性不一致は停止する。共有既定OFF・本番Pi5だけ明示ON。**正本**: [ExecPlan](./plans/deploy-workflow-artifact-promotion-execplan.md) · [ADR](./decisions/ADR-20260728-attested-arm64-release-artifact-promotion.md)
 - **成果物取得timeoutとcanary承認handoffの修正**: 処理別上限・30秒heartbeat・構造化timeoutを追加し、`--status`からrun固有の人承認操作を明示する。**正本**: [ExecPlan](./plans/deploy-artifact-timeout-canary-handoff-execplan.md) · [Deploy Guide](./guides/deployment.md)
+- **Pi5 API成果物の有界runtime化**: 本番実測約1.32 MB/sに基づきAPI pullだけ1200秒、全体1500秒へ有界延長。OCR/Chromium/runtime層を明示境界へ固定し、正確なARM64 OCI容量をCIでfail-closed監査する。**正本**: [ADR](./decisions/ADR-20260730-bounded-api-runtime-artifact.md) · [KB-404](./knowledge-base/KB-404-pi5-ghcr-api-image-pull-timeout.md) · [ExecPlan](./plans/api-image-runtime-boundary-execplan.md)
 
 ### 検査図面 既存編集 SOP（2026-07-28 · 完全版ドラフト・画面別ページ）
 

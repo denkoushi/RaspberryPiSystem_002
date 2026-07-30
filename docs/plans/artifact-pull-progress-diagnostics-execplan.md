@@ -1,6 +1,6 @@
 ---
 id: plan-artifact-pull-progress-diagnostics
-status: in_progress
+status: completed
 scope: Pi5 Docker Engine pull progress, timeout evidence, and safe local fallback
 date: 2026-07-30
 source_of_truth: this document
@@ -16,8 +16,7 @@ validation:
   - isolated loopback Docker registry
   - disposable PostgreSQL deploy contracts
 open_items:
-  - publish one Draft PR and pass required CI
-  - collect production evidence only after separate approval
+  - bounded runtime mitigation and production acceptance continue in api-image-runtime-boundary-execplan.md
 ---
 
 # Make Pi5 artifact pull timeouts diagnosable without weakening fallback
@@ -68,10 +67,10 @@ authoritative.
   returned to zero.
 - [x] (2026-07-30 20:45+09:00) Added KB-404, Deploy guide interpretation, and
   Phase 2 links, then regenerated and verified the document inventory.
-- [ ] Publish one commit with one push and one Draft PR, then record required
-  hosted CI in the PR body without an evidence-only commit.
-- [ ] Collect a production pull trace only after separate merge and deployment
-  authorization.
+- [x] (2026-07-30) Published the diagnostic change through required hosted CI.
+- [x] (2026-07-30) Collected production run
+  `20260730-121829-96482d`: 793,117,215 of 1,189,680,246 reported bytes in
+  600 seconds, phase `downloading`, two completed layers, no extraction.
 
 ## Surprises & Discoveries
 
@@ -151,10 +150,16 @@ Run-owned Docker and PostgreSQL containers, volumes, and networks returned to
 zero; the seventeen pre-existing volumes and shared BuildKit cache were not
 changed.
 
-This outcome is diagnostic evidence, not a claim that Phase 2 promotion is
-complete. Phase 2 becomes complete only after a separately approved production
-run records a trustworthy `promoted` candidate. Publication and hosted CI are
-still pending.
+The diagnostic production acceptance is complete. Run
+`20260730-121829-96482d` proved an average transfer of about 1.32 MB/s and one
+approximately 107-second stall; it timed out while still downloading at 66.7
+percent and then completed safely through the local builder, Blue/Green switch,
+302.9-second monitor, and same-SHA no-op. The evidence rules out
+post-download extraction as the timeout stage but does not assign the slow
+Pi5-to-GHCR link to a particular router, registry, or Docker defect.
+
+The bounded response and remaining production acceptance are now owned by
+[the API runtime boundary plan](./api-image-runtime-boundary-execplan.md).
 
 ## Context and Orientation
 
