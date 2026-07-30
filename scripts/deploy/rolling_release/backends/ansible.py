@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from ..adapter_registry import adapter_for_profile
 from .. import telemetry
+from .. import terminal_device_maintenance
 from ..activation import (
     ActivationUncertainError,
     KIOSK_WEB_ACTIVATION_STRATEGY,
@@ -1668,13 +1669,13 @@ def probe_signage_endpoints(
     }
 
 
-def _kiosk_agent_specs(
+def _kiosk_agent_health_contract(
     inventory: str,
     host: str,
     expected_agents: list[str] | tuple[str, ...] | None = None,
     *,
     runtime: Runtime,
-) -> list[tuple[str, int | None, bool]]:
+) -> tuple[list[tuple[str, int | None, bool]], list[dict[str, str]]]:
     """Resolve the selected agent set without mixing release-time authorities.
 
     A normal deployment derives the set from current inventory.  A rollback
@@ -1777,6 +1778,34 @@ def _kiosk_agent_specs(
         raise RuntimeError(f"kiosk torque inventory port is malformed: {host}")
     if "torque-agent" in selected_agents:
         agents.append(("torque-agent", torque_port, False))
+    try:
+        leases = terminal_device_maintenance.parse_active_leases(
+            values.get("terminal_agent_maintenance_leases", {})
+        )
+    except terminal_device_maintenance.MaintenanceLeaseError as error:
+        raise RuntimeError(
+            f"kiosk maintenance lease contract is malformed: {host}"
+        ) from error
+    maintained = [
+        leases[agent].evidence() for agent in selected_agents if agent in leases
+    ]
+    if set(leases) - set(selected_agents):
+        raise RuntimeError(
+            f"kiosk maintenance lease targets a disabled agent: {host}"
+        )
+    return agents, maintained
+
+
+def _kiosk_agent_specs(
+    inventory: str,
+    host: str,
+    expected_agents: list[str] | tuple[str, ...] | None = None,
+    *,
+    runtime: Runtime,
+) -> list[tuple[str, int | None, bool]]:
+    agents, _maintained = _kiosk_agent_health_contract(
+        inventory, host, expected_agents, runtime=runtime
+    )
     return agents
 
 
@@ -1789,7 +1818,7 @@ def probe_kiosk_agents(
 ) -> dict[str, Any]:
     """Prove every selected kiosk agent with the legacy per-agent transport."""
 
-    agents = _kiosk_agent_specs(
+    agents, maintained = _kiosk_agent_health_contract(
         inventory, host, expected_agents, runtime=runtime
     )
 
@@ -1800,6 +1829,7 @@ def probe_kiosk_agents(
     if len(compose_files) != 1:
         raise RuntimeError("kiosk agent health Compose contract is malformed")
     endpoints: list[dict[str, Any]] = []
+    maintained_names = {entry["agent"] for entry in maintained}
     for agent, port, require_pcscd in agents:
         arguments = [
             str(source),
@@ -1811,6 +1841,11 @@ def probe_kiosk_agents(
             "--compose-file",
             compose_files[0],
             *(["--require-pcscd"] if require_pcscd else []),
+            *(
+                ["--allow-device-disconnected"]
+                if agent in maintained_names
+                else []
+            ),
             "--ansible-marker",
         ]
         output = runtime.run(
@@ -1838,11 +1873,14 @@ def probe_kiosk_agents(
         if port is not None and proven_port != port:
             raise RuntimeError(f"kiosk agent health could not be verified: {host}")
         endpoints.append({"agent": agent, "port": proven_port})
-    return {
+    result: dict[str, Any] = {
         "agentContainers": [value["agent"] for value in endpoints],
         "authenticatedAgentEndpoints": endpoints,
         "pcscdRequired": any(agent == "nfc-agent" for agent, _port, _pcsc in agents),
     }
+    if maintained:
+        result["maintenanceAgents"] = maintained
+    return result
 
 
 def probe_terminal_release_evidence(
@@ -1873,7 +1911,7 @@ def probe_terminal_release_evidence(
         or type(check_status_agent_result) is not bool
     ):
         raise ValueError("terminal service proof request is malformed")
-    agent_specs = _kiosk_agent_specs(
+    agent_specs, maintained = _kiosk_agent_health_contract(
         inventory, host, expected_agents, runtime=runtime
     )
     compose_files = _terminal_runtime_manifest_contract("kiosk").compose_config_files
@@ -1900,6 +1938,8 @@ def probe_terminal_release_evidence(
                 f"{1 if require_pcscd else 0}",
             )
         )
+    for maintained_agent in (entry["agent"] for entry in maintained):
+        arguments.extend(("--maintenance-agent", maintained_agent))
     with _bundled_script(
         runtime,
         main="scripts/deploy/rolling_release/terminal_release_evidence.py",
@@ -1977,7 +2017,7 @@ def probe_terminal_release_evidence(
         or value.get("pcscdRequired") != ("nfc-agent" in expected_agent_names)
     ):
         raise RuntimeError(f"terminal release evidence is malformed: {host}")
-    return {
+    result: dict[str, Any] = {
         "currentSha": value["currentSha"],
         "services": services,
         "oneshotServices": expected_oneshot,
@@ -1987,6 +2027,9 @@ def probe_terminal_release_evidence(
         "authenticatedAgentEndpoints": endpoints,
         "pcscdRequired": value["pcscdRequired"],
     }
+    if maintained:
+        result["maintenanceAgents"] = maintained
+    return result
 
 
 def refresh_signage_after_maintenance(

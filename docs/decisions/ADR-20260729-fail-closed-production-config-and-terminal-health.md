@@ -14,6 +14,7 @@ related_code:
   - apps/api/src/services/clients/client-telemetry-alert-policy.ts
 related_docs:
   - ../plans/fail-closed-production-config-and-terminal-health-execplan.md
+  - ../plans/terminal-device-maintenance-leases-execplan.md
   - ../knowledge-base/KB-403-production-config-contract-and-nfc-health.md
   - ../guides/deployment.md
 validation: pure configuration audits, browser and agent tests, ARM64 Docker exercises, disposable PostgreSQL, and full deployment contracts
@@ -78,6 +79,14 @@ queue deletion, automatic recovery, or automatic canary approval. The
 sixty-second notice, serialized terminals, human canary, five-minute Pi5
 monitor, and rollback contracts remain unchanged.
 
+An inventory-enabled peripheral may be intentionally detached under a narrow,
+host-specific maintenance lease. The lease is not a second enable switch: it
+contains only an agent name, sanitized reason code, and strict UTC expiry, and
+may have no more than seven days remaining. Deploy evidence records the lease,
+the one-minute collector suppresses only that agent until expiry, and all
+ordinary enforcement resumes automatically. Malformed, unknown, expired, or
+overlong leases never weaken health checks.
+
 ## Alternatives Considered
 
 Adding only the missing NFC build variable was rejected because it would leave
@@ -87,3 +96,9 @@ sample was rejected as noisy, while requiring manual polling was rejected
 because latent peripheral failures would remain invisible. Automatic queue
 flush and reader restart were rejected because they can destroy business data
 or conceal a hardware fault.
+
+Treating every enabled peripheral as permanently connected was also rejected
+after StoneBase preflight correctly found an intentionally detached barcode
+reader. Permanently marking such devices optional was rejected because an
+accidental disconnect would then be invisible. A short reviewed lease keeps
+normal Fail-Closed behavior as the default.

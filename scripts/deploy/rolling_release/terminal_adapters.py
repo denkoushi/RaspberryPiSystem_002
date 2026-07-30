@@ -696,16 +696,29 @@ class GenericSystemdAdapter(TerminalAdapter):
         if (
             not isinstance(result, dict)
             or set(result)
-            != {
-                "currentSha",
-                "services",
-                "oneshotServices",
-                "authenticatedEndpoint",
-                "statusClientId",
-                "agentContainers",
-                "authenticatedAgentEndpoints",
-                "pcscdRequired",
-            }
+            not in (
+                {
+                    "currentSha",
+                    "services",
+                    "oneshotServices",
+                    "authenticatedEndpoint",
+                    "statusClientId",
+                    "agentContainers",
+                    "authenticatedAgentEndpoints",
+                    "pcscdRequired",
+                },
+                {
+                    "currentSha",
+                    "services",
+                    "oneshotServices",
+                    "authenticatedEndpoint",
+                    "statusClientId",
+                    "agentContainers",
+                    "authenticatedAgentEndpoints",
+                    "pcscdRequired",
+                    "maintenanceAgents",
+                },
+            )
             or result.get("services") != services
             or result.get("oneshotServices") != expected_oneshot
             or result.get("authenticatedEndpoint") is not True
@@ -727,6 +740,14 @@ class GenericSystemdAdapter(TerminalAdapter):
             if isinstance(agents, dict)
             else None
         )
+        maintained = (
+            agents.get("maintenanceAgents", []) if isinstance(agents, dict) else None
+        )
+        maintained_names = (
+            [entry.get("agent") for entry in maintained]
+            if isinstance(maintained, list)
+            else []
+        )
         if (
             not isinstance(containers, list)
             or any(agent not in configured for agent in containers)
@@ -743,6 +764,17 @@ class GenericSystemdAdapter(TerminalAdapter):
                 for index, endpoint in enumerate(endpoints)
             )
             or type(agents.get("pcscdRequired")) is not bool
+            or not isinstance(maintained, list)
+            or any(
+                not isinstance(entry, dict)
+                or set(entry) != {"agent", "reasonCode", "expiresAt"}
+                or entry.get("agent") not in configured
+                or not isinstance(entry.get("reasonCode"), str)
+                or not isinstance(entry.get("expiresAt"), str)
+                for entry in maintained
+            )
+            or len(maintained_names) != len(set(maintained_names))
+            or not set(maintained_names) <= set(containers)
         ):
             raise RuntimeError(
                 f"{self.profile.id} agent health evidence is malformed: {host}"

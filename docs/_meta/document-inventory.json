@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 579,
-    "totalLines": 163621,
-    "totalBytes": 12280440,
+    "totalLines": 163649,
+    "totalBytes": 12282756,
     "withFrontmatter": 256,
     "withStatus": 112,
     "sourceOfTruthDeclared": 76,
@@ -16976,8 +16976,8 @@
     },
     {
       "path": "docs/decisions/ADR-20260729-fail-closed-production-config-and-terminal-health.md",
-      "lineCount": 89,
-      "byteSize": 4515,
+      "lineCount": 104,
+      "byteSize": 5431,
       "hasFrontmatter": true,
       "title": "Fail closed on production configuration and terminal peripheral health",
       "status": "accepted-for-implementation",
@@ -18681,8 +18681,8 @@
     },
     {
       "path": "docs/guides/deployment.md",
-      "lineCount": 258,
-      "byteSize": 22307,
+      "lineCount": 260,
+      "byteSize": 23011,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -25822,8 +25822,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-403-production-config-contract-and-nfc-health.md",
-      "lineCount": 93,
-      "byteSize": 4637,
+      "lineCount": 104,
+      "byteSize": 5333,
       "hasFrontmatter": true,
       "title": "Production configuration drift and latent terminal peripheral failure",
       "status": "implementation-complete-publication-pending",

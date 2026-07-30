@@ -9,6 +9,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import sys
 import tempfile
 import urllib.error
 import urllib.request
@@ -16,6 +17,14 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, Mapping, Optional
+
+
+ROLLING_RELEASE_MODULES = (
+    Path(__file__).resolve().parents[2] / "scripts/deploy/rolling_release"
+)
+if str(ROLLING_RELEASE_MODULES) not in sys.path:
+    sys.path.insert(0, str(ROLLING_RELEASE_MODULES))
+import terminal_device_maintenance  # noqa: E402
 
 
 DEFAULT_STATE_FILE = Path("/run/raspi-status-agent/terminal-agent-health.json")
@@ -55,6 +64,11 @@ AGENTS: Mapping[str, AgentSpec] = {
         "http://127.0.0.1:7073/health",
         ("endpoint", "runtime"),
     ),
+}
+MAINTENANCE_SIGNALS = {
+    "nfc": frozenset({"reader"}),
+    "barcode": frozenset({"reader"}),
+    "torque": frozenset({"runtime"}),
 }
 
 LogEntry = Dict[str, object]
@@ -231,12 +245,32 @@ def collect_logs(
     signals = dict(state["signals"])
     logs: list[LogEntry] = []
     observed_at = observed_at_iso(now)
+    leases = terminal_device_maintenance.parse_active_leases_json(
+        config.get("TERMINAL_AGENT_MAINTENANCE_LEASES_JSON", "{}"),
+        now=now,
+    )
+    enabled_agents = {
+        terminal_device_maintenance.STATUS_AGENT_NAMES[agent]
+        for agent, spec in AGENTS.items()
+        if is_truthy(config.get(spec.enabled_key))
+    }
+    if set(leases) - enabled_agents:
+        raise terminal_device_maintenance.MaintenanceLeaseError(
+            "maintenance lease targets a disabled terminal agent"
+        )
 
     for agent, spec in AGENTS.items():
         if not is_truthy(config.get(spec.enabled_key)):
             continue
+        deploy_agent = terminal_device_maintenance.STATUS_AGENT_NAMES[agent]
         for observation in probe_agent(agent, probe=probe):
             key = _signal_key(observation)
+            if (
+                deploy_agent in leases
+                and observation.signal in MAINTENANCE_SIGNALS[agent]
+            ):
+                signals.pop(key, None)
+                continue
             previous = signals.get(key)
             previous_record = previous if isinstance(previous, dict) else {}
             previous_count = int(previous_record.get("consecutiveFailures", 0))

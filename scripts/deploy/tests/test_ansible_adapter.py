@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import datetime as dt
 import json
 import os
 import shutil
@@ -1882,6 +1883,58 @@ class TerminalHealthAdapterTest(unittest.TestCase):
                     )
                 ),
             )
+
+    def test_kiosk_agent_maintenance_lease_skips_only_named_physical_probe(self):
+        expiry = (
+            dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=1)
+        ).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+        runtime = Runtime(
+            [
+                json.dumps(
+                    {
+                        "nfc_agent_client_id": "kiosk-a",
+                        "barcode_agent_enabled": True,
+                        "barcode_agent_rest_port": 7072,
+                        "torque_agent_enabled": True,
+                        "torque_agent_local_port": 7073,
+                        "terminal_agent_maintenance_leases": {
+                            "barcode-agent": {
+                                "reasonCode": "temporary-development-detach",
+                                "expiresAt": expiry,
+                            }
+                        },
+                    }
+                ),
+                "TERMINAL_AGENT_HEALTH_OK:nfc-agent:7071\n",
+                "TERMINAL_AGENT_HEALTH_OK:barcode-agent:7072\n",
+                "TERMINAL_AGENT_HEALTH_OK:torque-agent:7073\n",
+            ]
+        )
+
+        proof = ansible.probe_kiosk_agents(
+            "inventory.yml", "kiosk-a", runtime=runtime
+        )
+
+        self.assertEqual(
+            proof["agentContainers"],
+            ["nfc-agent", "barcode-agent", "torque-agent"],
+        )
+        self.assertEqual(
+            proof["maintenanceAgents"],
+            [
+                {
+                    "agent": "barcode-agent",
+                    "reasonCode": "temporary-development-detach",
+                    "expiresAt": expiry,
+                }
+            ],
+        )
+        commands = " ".join(
+            " ".join(command) for command, _options in runtime.calls[1:]
+        )
+        self.assertIn("--agent barcode-agent --port 7072", commands)
+        barcode_action = runtime.calls[2][0][-1]
+        self.assertIn("--allow-device-disconnected", barcode_action)
 
     def test_restored_agent_probe_uses_sealed_set_not_new_inventory_flags(self):
         runtime = Runtime(

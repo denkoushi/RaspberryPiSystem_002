@@ -280,6 +280,13 @@ all:
               barcode_agent_serial_device: "/dev/ttyACM0"
               barcode_agent_serial_baud: 9600
               barcode_agent_rest_port: 7072
+              # The reader is intentionally detached during development. The
+              # ordinary fail-closed health requirement resumes automatically
+              # at 2026-08-02 17:00 JST.
+              terminal_agent_maintenance_leases:
+                barcode-agent:
+                  reasonCode: "temporary-development-detach"
+                  expiresAt: "2026-08-02T08:00:00Z"
               # 外付けRTL8761BUと実測済みCEM3-BTLAだけをtorque-agentへ公開する。
               torque_agent_enabled: true
               torque_connection_lease_enabled: true
