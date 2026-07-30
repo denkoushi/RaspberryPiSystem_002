@@ -3501,6 +3501,9 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             targets=[],
         )
         runtime.abandoned_run_id = "failed-recovery"
+        runtime.rollback_preflight_by_host["kiosk-a"] = RuntimeError(
+            "a committed manifest must not be reopened"
+        )
         runtime.prior_runs["failed-recovery"] = {
             "version": 1,
             "runId": "failed-recovery",
@@ -3556,6 +3559,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
 
         self.assertNotIn("observe:terminal:kiosk-a", runtime.events)
         self.assertNotIn("rollback:kiosk-a", runtime.events)
+        self.assertNotIn("rollback:preflight:kiosk-a", runtime.events)
         self.assertFalse(
             any(
                 event.startswith("manifest:cleanup:kiosk-a:")
@@ -3571,7 +3575,15 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         kiosk_recovery = next(
             record for record in recovered if record["host"] == "kiosk-a"
         )
-        self.assertEqual(kiosk_recovery["recovery"], "durable-success-carried-forward")
+        self.assertEqual(
+            kiosk_recovery["recovery"], "durable-success-carried-forward"
+        )
+        audit = runtime.states[-1].payload["interruptedRecoveryPreflight"]
+        kiosk_audit = next(
+            record for record in audit["targets"] if record["host"] == "kiosk-a"
+        )
+        self.assertTrue(kiosk_audit["preflightSkipped"])
+        self.assertEqual(kiosk_audit["durableCompletedSha"], completed_sha)
 
     def test_durable_completed_terminal_rejects_malformed_cleanup_proof(self):
         manifest = rollback_manifest("original-run", "kiosk-a")
