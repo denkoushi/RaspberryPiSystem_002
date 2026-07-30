@@ -31,6 +31,7 @@ import { DueManagementResourceFilterControls } from '../../components/kiosk/dueM
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
+import { readProductionBuildConfig } from '../../config/productionBuildConfig';
 import { movePriorityItem, normalizeDueDateInput } from '../../features/kiosk/productionSchedule/dueManagement';
 import {
   DEFAULT_DUE_MANAGEMENT_FILTERS_STATE,
@@ -71,10 +72,11 @@ const NOTE_MAX_LENGTH = 100;
 const DUE_MANAGEMENT_TARGET_LOCATION_STORAGE_KEY = 'due-management-target-location';
 const DUE_MANAGEMENT_SECTION_OPEN_STORAGE_KEY = 'due-management-section-open';
 const DEFAULT_TARGET_LOCATIONS = ['第2工場', 'トークプラザ', '第1工場'] as const;
-const TARGET_LOCATION_SELECTOR_ENABLED = import.meta.env.VITE_KIOSK_TARGET_LOCATION_SELECTOR_ENABLED !== 'false';
-const DUE_MANAGEMENT_LAYOUT_V2_ENABLED = import.meta.env.VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED === 'true';
+const PRODUCTION_CONFIG = readProductionBuildConfig();
+const TARGET_LOCATION_SELECTOR_ENABLED = PRODUCTION_CONFIG.targetLocationSelectorEnabled;
+const DUE_MANAGEMENT_LAYOUT_V2_ENABLED = PRODUCTION_CONFIG.dueManagementLayoutV2Enabled;
 const MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED =
-  import.meta.env.VITE_KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED !== 'false';
+  PRODUCTION_CONFIG.manualOrderDeviceScopeV2Enabled;
 const DUE_MANAGEMENT_OVERVIEW_DEVICE_KEY = 'due-management-manual-order-overview-device';
 
 export function ProductionScheduleDueManagementPage() {

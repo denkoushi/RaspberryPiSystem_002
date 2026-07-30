@@ -136,7 +136,9 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
 
 Pi5 probeは既存fleet lockを全検査中保持し、実機identity、clean checkout、候補commit・protocol・実行成果物、通常Ansible設定とVault、inventory展開、Docker/Compose、空きディスク・メモリ、fleet/Blue-Green/deploy-statusの可読性、active run不在を同時に確認する。影響分類が`server-app`または`unknown`なら、Docker Hub、npm、Prisma、GitHub、PyPI、Playwright、Go module proxyへの証明書検証付きTLS接続を3回ずつPi5から並列確認する。一つでも失敗すれば全取得先の結果をまとめて表示し、release unitを作成しない。image buildを行わない既知の変更にはこの外部接続判定を適用しない。
 
-端末probeは候補SHAが所有する正確なagent health helperを端末へstdinで送り、現在有効なNFC・バーコード・トルクagentへ本番と同じ安定性判定を行う。各agentは、最大3回の範囲で2回連続してcontainer identity、必要なPC/SC、loopback JSON endpointの全証明に成功しなければならない。出力された問題は、正規のAnsible設定または別途承認された保守変更でまとめて解消し、同じコマンドを再実行する。エラーを一件ずつ見ながら個別service起動や手動checkoutで迂回してはならない。
+端末probeは候補SHAが所有する正確なagent health helperを端末へstdinで送り、現在有効なNFC・バーコード・トルクagentへ本番と同じ安定性判定を行う。各agentは、最大3回の範囲で2回連続してcontainer identity、必要なPC/SC、loopback JSON endpointの全証明に成功しなければならない。NFCとバーコードは`readerConnected=true`を必須とし、NFCは`queueSize=0`も必須とする。キューが1件でもあればbusiness eventを自動削除・flushせず、端末変更前に停止する。ブラウザ側のKiosk ready ACKも、local-only policy、正確なloopback endpoint、reader接続、queue 0を1秒間隔で2回確認するまで送らない。出力された問題は、正規のAnsible設定または別途承認された保守変更でまとめて解消し、同じコマンドを再実行する。エラーを一件ずつ見ながら個別service起動や手動checkoutで迂回してはならない。設定契約と周辺機器監視の正本は[KB-403](../knowledge-base/KB-403-production-config-contract-and-nfc-health.md)を参照する。
+
+運用中は既存`status-agent` timerが60秒ごとにinventoryで有効なNFC・バーコード・トルクを検査する。1回目の異常は端末内episode stateだけへ記録し、2回連続異常で既存operations Slack経路へsanitized alertを送る。同じepisodeは重複通知せず、送信失敗は次回再試行、復旧後の再発は新しいepisodeとする。カードUID、last event、token、raw URL、raw responseをログやSlackへ含めてはならない。
 
 候補SHAが所有するソースツリー、playbook、agent Dockerfile、Compose定義、設定テンプレートは、Pi5上の候補Git objectから検査する。端末の現在のcheckoutに次リリースで初めて追加されるディレクトリを要求してはならない。端末側の事前検査は、候補checkoutでは作れないOS package、systemd socket、Docker、NetworkManager、既存repository、メモリ、ディスクなどのhost資源だけを対象とする。NFCのPC/SC判定は全段階で`pcscd.socket=loaded/active/enabled`と`/run/pcscd/pcscd.comm`のUnix socketを正とし、`pcscd.service`の常時activeは要求しない。
 

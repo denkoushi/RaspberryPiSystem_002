@@ -46,6 +46,13 @@ class StatusAgentTest(unittest.TestCase):
         self.assertEqual(config["STORAGE_HEALTH_DISK_ERROR_PCT"], "90")
         self.assertEqual(config["STORAGE_HEALTH_INTERVAL_SECONDS"], "3600")
         self.assertEqual(config["STORAGE_HEALTH_STATE_FILE"], "/run/raspi-status-agent/storage-health-last-run")
+        self.assertEqual(config["TERMINAL_AGENT_HEALTH_NFC_ENABLED"], "0")
+        self.assertEqual(config["TERMINAL_AGENT_HEALTH_BARCODE_ENABLED"], "0")
+        self.assertEqual(config["TERMINAL_AGENT_HEALTH_TORQUE_ENABLED"], "0")
+        self.assertEqual(
+            config["TERMINAL_AGENT_HEALTH_STATE_FILE"],
+            "/run/raspi-status-agent/terminal-agent-health.json",
+        )
 
     def test_storage_health_runs_when_state_file_is_missing(self) -> None:
         status_agent = load_status_agent()

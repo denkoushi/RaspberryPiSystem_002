@@ -32,10 +32,12 @@ The code-level fixes in KB-393 (Batch A/B) are **deployed to production** (PR #9
 
 ## C-3. NFC agent reboot/poweroff + bind address (Critical)
 
-- Files: `clients/nfc-agent/nfc_agent/main.py` (reboot/poweroff routes), `config.py` (`REST_HOST` default `0.0.0.0`), `infrastructure/docker/docker-compose.client.yml` (`network_mode: host`, `privileged: true`), `nfc-agent.env.j2`.
-- Action: bind REST/WS to `127.0.0.1` (kiosk browser is same host — confirm the web build's agent WS URL first); add a shared-secret/token to reboot/poweroff or remove those endpoints; replace `privileged: true` with specific `devices`/`cap_add`; block 7071 from LAN via UFW.
-- Risk: if the kiosk browser reaches the agent via LAN IP (not localhost), binding to 127.0.0.1 breaks NFC input. Confirm `VITE_AGENT_WS_URL` / `websocket_agent_url` first (`group_vars/all.yml`).
-- Verify: NFC scan still drives kiosk; reboot endpoint rejects unauthenticated calls.
+- Status: code correction implemented locally; hosted CI, merge, and production rollout remain.
+- Files: `clients/nfc-agent/nfc_agent/main.py`, `config.py`, `resend_worker.py`, `infrastructure/ansible/templates/nfc-agent.env.j2`.
+- Correction: bind REST/WebSocket to `127.0.0.1`; remove unused flush, reboot, and poweroff routes; compile the kiosk Web bundle with the audited local-only NFC contract; delete queued events only after successful browser delivery.
+- Remaining hardening: replacing the existing privileged container/device access is outside this change and still needs a separately staged design.
+- Verify: status and WebSocket are loopback-only; removed routes return 404; browser readiness proves `readerConnected=true` and `queueSize=0` twice; a physical NFC scan drives the kiosk after separately approved rollout.
+- Source of truth: [KB-403](../knowledge-base/KB-403-production-config-contract-and-nfc-health.md) and [ADR-20260729](../decisions/ADR-20260729-fail-closed-production-config-and-terminal-health.md).
 
 ## C-4. Predictable client keys / admin1234 (High)
 

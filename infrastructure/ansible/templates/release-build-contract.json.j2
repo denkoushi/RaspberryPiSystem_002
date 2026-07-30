@@ -3,14 +3,24 @@
     "INSTALL_PLAYWRIGHT_CHROMIUM": {{ api_install_playwright_chromium | default('true') | string | to_json }}
   },
   "web": {
-    "VITE_AGENT_WS_MODE": {{ web_agent_ws_mode | default('') | string | to_json }},
-    "VITE_AGENT_WS_URL": {{ web_agent_ws_url | string | to_json }},
+    "VITE_AGENT_WS_MODE": {{ web_agent_ws_mode | default('local') | string | to_json }},
+    "VITE_AGENT_WS_URL": {{ web_agent_ws_url | default('ws://localhost:7071/stream') | string | to_json }},
     "VITE_API_BASE_URL": {{ web_api_base_url | default('/api') | string | to_json }},
-    "VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED": {{ web_kiosk_due_mgmt_layout_v2_enabled | default('false') | string | to_json }},
+    "VITE_API_TIMEOUT_MS": {{ web_api_timeout_ms | default('120000') | string | to_json }},
+    "VITE_BARCODE_AGENT_WS_URL": {{ web_barcode_agent_ws_url | default('ws://localhost:7072/stream') | string | to_json }},
+    "VITE_ENABLE_DEBUG_LOGS": {{ web_enable_debug_logs | default('false') | string | to_json }},
+    "VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED": {{ web_kiosk_due_mgmt_layout_v2_enabled | default('true') | string | to_json }},
+    "VITE_KIOSK_LEADERBOARD_BOARD_CLIENT_PERF_LOG": {{ web_kiosk_leaderboard_board_client_perf_log | default('false') | string | to_json }},
+    "VITE_KIOSK_LEADERBOARD_CACHE_WRITE_ON_MUTATION": {{ web_kiosk_leaderboard_cache_write_on_mutation | default('true') | string | to_json }},
     "VITE_KIOSK_LEADERBOARD_DEFER_RESIDUAL_SUMMARY_ENABLED": {{ web_kiosk_leaderboard_defer_residual_summary_enabled | default('false') | string | to_json }},
+    "VITE_KIOSK_LEADERBOARD_SEIBAN_OR_CLIENT_FILTER": {{ web_kiosk_leaderboard_seiban_or_client_filter | default('true') | string | to_json }},
+    "VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_ENABLED": {{ web_kiosk_leaderboard_terminal_cache_enabled | default('true') | string | to_json }},
+    "VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_PHASE2_SWR": {{ web_kiosk_leaderboard_terminal_cache_phase2_swr | default('true') | string | to_json }},
+    "VITE_KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED": {{ web_kiosk_manual_order_device_scope_v2_enabled | default('true') | string | to_json }},
     "VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED": {{ web_kiosk_production_schedule_order_split_enabled | default('false') | string | to_json }},
-    "VITE_KIOSK_SOP_POPUP_ENABLED": {{ web_kiosk_sop_popup_enabled | default('false') | string | to_json }},
+    "VITE_KIOSK_SOP_POPUP_ENABLED": {{ web_kiosk_sop_popup_enabled | default('true') | string | to_json }},
     "VITE_KIOSK_TARGET_LOCATION_SELECTOR_ENABLED": {{ web_kiosk_target_location_selector_enabled | default('true') | string | to_json }},
-    "VITE_RELEASE_SHA": {{ release_build_contract_sha | string | to_json }}
+    "VITE_RELEASE_SHA": {{ release_build_contract_sha | string | to_json }},
+    "VITE_WS_BASE_URL": {{ web_ws_base_url | default('/ws') | string | to_json }}
   }
 }

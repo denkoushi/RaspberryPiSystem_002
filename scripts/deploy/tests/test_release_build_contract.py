@@ -13,6 +13,10 @@ from scripts.deploy.release_build_contract import (
     normalize_build_arguments,
     parse_contract_json,
 )
+from scripts.deploy.production_config_contract import (
+    ConfigKind,
+    PRODUCTION_WEB_SETTINGS,
+)
 
 
 SHA = "a" * 40
@@ -23,17 +27,13 @@ def valid_api() -> dict[str, str]:
 
 
 def valid_web() -> dict[str, str]:
-    return {
-        "VITE_AGENT_WS_MODE": "local",
-        "VITE_AGENT_WS_URL": "ws://100.64.0.1:7071/stream",
-        "VITE_API_BASE_URL": "/api",
-        "VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED": "true",
-        "VITE_KIOSK_LEADERBOARD_DEFER_RESIDUAL_SUMMARY_ENABLED": "false",
-        "VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED": "false",
-        "VITE_KIOSK_SOP_POPUP_ENABLED": "true",
-        "VITE_KIOSK_TARGET_LOCATION_SELECTOR_ENABLED": "true",
-        "VITE_RELEASE_SHA": SHA,
+    values = {
+        setting.key: setting.production_default
+        for setting in PRODUCTION_WEB_SETTINGS
+        if setting.kind is ConfigKind.IMAGE
     }
+    values["VITE_RELEASE_SHA"] = SHA
+    return {key: str(value) for key, value in values.items()}
 
 
 class ReleaseBuildContractTests(unittest.TestCase):

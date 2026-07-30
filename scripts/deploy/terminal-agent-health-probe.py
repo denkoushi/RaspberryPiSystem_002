@@ -176,14 +176,14 @@ def _endpoint(agent: str, port: int) -> None:
         raise ProbeError("kiosk agent status validator is malformed")
     if (
         not isinstance(value, dict)
-        or type(value.get("readerConnected")) is not bool
+        or value.get("readerConnected") is not True
         or not isinstance(value.get("message"), str)
     ):
-        raise ProbeError("kiosk agent status contract is malformed")
+        raise ProbeError("kiosk agent reader is not connected")
     if validator == "nfc-agent-status-v1":
         queue_size = value.get("queueSize")
-        if isinstance(queue_size, bool) or not isinstance(queue_size, int) or queue_size < 0:
-            raise ProbeError("nfc-agent status contract is malformed")
+        if isinstance(queue_size, bool) or not isinstance(queue_size, int) or queue_size != 0:
+            raise ProbeError("nfc-agent queue must be empty before deployment")
     elif value.get("restPort") != port:
         raise ProbeError("barcode-agent status port does not match inventory")
 

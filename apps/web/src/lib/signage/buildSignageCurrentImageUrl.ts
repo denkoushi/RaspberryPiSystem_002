@@ -4,7 +4,7 @@
  */
 
 export function normalizeSignageApiBase(): string {
-  const base = import.meta.env.VITE_API_BASE_URL ?? '/api';
+  const base = readProductionBuildConfig().apiBaseUrl;
   return base.replace(/\/$/, '');
 }
 
@@ -38,3 +38,4 @@ export function buildSignageCurrentImageUrl(options: BuildSignageCurrentImageUrl
   const qs = buildSignageCurrentImageUrlSearchParams(options).toString();
   return `${normalized}/signage/current-image${qs ? `?${qs}` : ''}`;
 }
+import { readProductionBuildConfig } from '../../config/productionBuildConfig';

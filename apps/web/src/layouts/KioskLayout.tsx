@@ -11,6 +11,7 @@ import { KioskHeader } from '../components/kiosk/KioskHeader';
 import { KioskMaintenanceScreen } from '../components/kiosk/KioskMaintenanceScreen';
 import { KioskSupportModal } from '../components/kiosk/KioskSupportModal';
 import { KioskRedirect } from '../components/KioskRedirect';
+import { readProductionBuildConfig } from '../config/productionBuildConfig';
 import {
   VIEWPORT_HEIGHT_FULL,
   VIEWPORT_MIN_HEIGHT_FULL
@@ -28,6 +29,10 @@ import {
   advanceKioskWebActivation,
   kioskWebNavigation
 } from '../features/kiosk/kioskWebActivation';
+import {
+  proveNfcRuntimeReady,
+  resolveNfcRuntimeContract
+} from '../features/nfc/nfcRuntimeContract';
 import { useKioskBottomRightHeaderReveal } from '../hooks/useKioskBottomRightHeaderReveal';
 
 export function KioskLayout() {
@@ -113,7 +118,7 @@ export function KioskLayout() {
           verificationId: deployVerificationId
         },
         runId: deployRunId,
-        compiledReleaseSha: import.meta.env.VITE_RELEASE_SHA,
+        compiledReleaseSha: readProductionBuildConfig().releaseSha,
         currentHref: window.location.href,
         storage
       });
@@ -152,10 +157,18 @@ export function KioskLayout() {
     const acknowledgementKey = `${runId}:${verificationId}:${releaseSha}`;
     if (acknowledgedReadyRef.current === acknowledgementKey) return;
     let cancelled = false;
+    const abortController = new AbortController();
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let retryAttempt = 0;
-    const acknowledge = () => {
+    const acknowledge = async () => {
       if (cancelled) return;
+      const nfcReady = await proveNfcRuntimeReady(resolveNfcRuntimeContract(), {
+        signal: abortController.signal
+      });
+      if (cancelled || !nfcReady) {
+        if (!cancelled) retryTimer = setTimeout(() => void acknowledge(), 1000);
+        return;
+      }
       acknowledgedReadyRef.current = acknowledgementKey;
       void acknowledgeDeployStatus(runId, 'ready', releaseSha, verificationId)
         .catch(() => {
@@ -163,12 +176,13 @@ export function KioskLayout() {
           acknowledgedReadyRef.current = null;
           const delay = Math.min(1000 * (2 ** retryAttempt), 10_000);
           retryAttempt += 1;
-          retryTimer = setTimeout(acknowledge, delay);
+          retryTimer = setTimeout(() => void acknowledge(), delay);
         });
     };
-    acknowledge();
+    void acknowledge();
     return () => {
       cancelled = true;
+      abortController.abort();
       if (retryTimer !== undefined) clearTimeout(retryTimer);
     };
   }, [

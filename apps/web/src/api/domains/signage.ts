@@ -1,3 +1,4 @@
+import { readProductionBuildConfig } from '../../config/productionBuildConfig';
 import { resolveClientKey } from '../../lib/client-key';
 import { buildSignageCurrentImageUrl } from '../../lib/signage/buildSignageCurrentImageUrl';
 import { api } from '../http';
@@ -250,7 +251,7 @@ export async function getSignageContent() {
 
 /** 可視化ダッシュボードのレンダリング画像URL（Web /signage 表示用） */
 export function getSignageVisualizationImageUrl(dashboardId: string): string {
-  const base = import.meta.env.VITE_API_BASE_URL ?? '/api';
+  const base = readProductionBuildConfig().apiBaseUrl;
   const normalized = base.replace(/\/$/, '');
   return `${normalized}/signage/visualization-image/${dashboardId}`;
 }
@@ -274,7 +275,7 @@ export function getSignageCurrentImageUrl(
 
 /** 要領書PDFページ画像URL（/api/storage/pdf-pages/... をフルURL化） */
 export function resolveKioskDocumentPageImageUrl(apiPath: string): string {
-  const base = import.meta.env.VITE_API_BASE_URL ?? '/api';
+  const base = readProductionBuildConfig().apiBaseUrl;
   const normalized = base.replace(/\/$/, '');
   const suffix = apiPath.startsWith('/api') ? apiPath.slice(4) : apiPath.startsWith('/') ? apiPath : `/${apiPath}`;
   return `${normalized}${suffix}`;

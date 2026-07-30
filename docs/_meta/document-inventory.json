@@ -15,17 +15,17 @@
     ]
   },
   "summary": {
-    "documentCount": 576,
-    "totalLines": 162962,
-    "totalBytes": 12244230,
-    "withFrontmatter": 253,
-    "withStatus": 109,
-    "sourceOfTruthDeclared": 73,
+    "documentCount": 579,
+    "totalLines": 163621,
+    "totalBytes": 12280440,
+    "withFrontmatter": 256,
+    "withStatus": 112,
+    "sourceOfTruthDeclared": 76,
     "execPlanReferences": 64,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 25,
-    "localLinkCount": 5622,
+    "localLinkCount": 5629,
     "brokenLocalLinkCount": 87,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -5898,8 +5898,8 @@
     },
     {
       "path": "docs/AI_START_HERE.md",
-      "lineCount": 112,
-      "byteSize": 6060,
+      "lineCount": 113,
+      "byteSize": 6263,
       "hasFrontmatter": true,
       "title": "AI Start Here",
       "status": null,
@@ -5913,8 +5913,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 2010,
-      "byteSize": 346062,
+      "lineCount": 2011,
+      "byteSize": 346498,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -6878,6 +6878,11 @@
         {
           "href": "./decisions/ADR-20260728-inspection-drawing-sop-step-rail.md",
           "targetPath": "docs/decisions/ADR-20260728-inspection-drawing-sop-step-rail.md",
+          "exists": true
+        },
+        {
+          "href": "./decisions/ADR-20260729-fail-closed-production-config-and-terminal-health.md",
+          "targetPath": "docs/decisions/ADR-20260729-fail-closed-production-config-and-terminal-health.md",
           "exists": true
         },
         {
@@ -10001,6 +10006,11 @@
           "exists": true
         },
         {
+          "href": "./knowledge-base/KB-403-production-config-contract-and-nfc-health.md",
+          "targetPath": "docs/knowledge-base/KB-403-production-config-contract-and-nfc-health.md",
+          "exists": true
+        },
+        {
           "href": "./knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md",
           "targetPath": "docs/knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md",
           "exists": true
@@ -10318,6 +10328,11 @@
         {
           "href": "./plans/dgx-spark-photo-label-validation-plan.md",
           "targetPath": "docs/plans/dgx-spark-photo-label-validation-plan.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/fail-closed-production-config-and-terminal-health-execplan.md",
+          "targetPath": "docs/plans/fail-closed-production-config-and-terminal-health-execplan.md",
           "exists": true
         },
         {
@@ -11206,95 +11221,95 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 290,
+          "line": 291,
           "length": 1132
         },
         {
-          "line": 306,
+          "line": 307,
           "length": 1242
         },
         {
-          "line": 310,
+          "line": 311,
           "length": 1022
         },
         {
-          "line": 324,
+          "line": 325,
           "length": 1065
         },
         {
-          "line": 372,
+          "line": 373,
           "length": 1165
         },
         {
-          "line": 378,
+          "line": 379,
           "length": 1458
         },
         {
-          "line": 390,
+          "line": 391,
           "length": 1083
         },
         {
-          "line": 404,
+          "line": 405,
           "length": 1398
         },
         {
-          "line": 406,
+          "line": 407,
           "length": 1133
         },
         {
-          "line": 410,
+          "line": 411,
           "length": 1399
         },
         {
-          "line": 412,
+          "line": 413,
           "length": 1008
         },
         {
-          "line": 418,
+          "line": 419,
           "length": 1059
         },
         {
-          "line": 426,
+          "line": 427,
           "length": 1129
         },
         {
-          "line": 430,
+          "line": 431,
           "length": 1135
         },
         {
-          "line": 434,
+          "line": 435,
           "length": 1117
         },
         {
-          "line": 549,
+          "line": 550,
           "length": 1013
         },
         {
-          "line": 735,
+          "line": 736,
           "length": 2038
         },
         {
-          "line": 751,
+          "line": 752,
           "length": 1496
         },
         {
-          "line": 757,
+          "line": 758,
           "length": 1177
         },
         {
-          "line": 1099,
+          "line": 1100,
           "length": 1449
         },
         {
-          "line": 1135,
+          "line": 1136,
           "length": 1136
         },
         {
-          "line": 1137,
+          "line": 1138,
           "length": 1239
         },
         {
-          "line": 1173,
+          "line": 1174,
           "length": 1004
         }
       ],
@@ -16960,6 +16975,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/decisions/ADR-20260729-fail-closed-production-config-and-terminal-health.md",
+      "lineCount": 89,
+      "byteSize": 4515,
+      "hasFrontmatter": true,
+      "title": "Fail closed on production configuration and terminal peripheral health",
+      "status": "accepted-for-implementation",
+      "source_of_truth": "true",
+      "localLinks": [],
+      "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/design-previews/README.md",
       "lineCount": 102,
       "byteSize": 20881,
@@ -18651,8 +18681,8 @@
     },
     {
       "path": "docs/guides/deployment.md",
-      "lineCount": 256,
-      "byteSize": 21296,
+      "lineCount": 258,
+      "byteSize": 22307,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -18691,6 +18721,11 @@
         {
           "href": "../decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md",
           "targetPath": "docs/decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md",
+          "exists": true
+        },
+        {
+          "href": "../knowledge-base/KB-403-production-config-contract-and-nfc-health.md",
+          "targetPath": "docs/knowledge-base/KB-403-production-config-contract-and-nfc-health.md",
           "exists": true
         },
         {
@@ -25786,6 +25821,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/knowledge-base/KB-403-production-config-contract-and-nfc-health.md",
+      "lineCount": 93,
+      "byteSize": 4637,
+      "hasFrontmatter": true,
+      "title": "Production configuration drift and latent terminal peripheral failure",
+      "status": "implementation-complete-publication-pending",
+      "source_of_truth": "true",
+      "localLinks": [],
+      "inboundCount": 4,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md",
       "lineCount": 203,
       "byteSize": 12918,
@@ -27319,8 +27369,8 @@
     },
     {
       "path": "docs/knowledge-base/index.md",
-      "lineCount": 868,
-      "byteSize": 261934,
+      "lineCount": 869,
+      "byteSize": 262219,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - 索引",
       "status": null,
@@ -29872,6 +29922,11 @@
           "exists": true
         },
         {
+          "href": "./KB-403-production-config-contract-and-nfc-health.md",
+          "targetPath": "docs/knowledge-base/KB-403-production-config-contract-and-nfc-health.md",
+          "exists": true
+        },
+        {
           "href": "./KB-investigation-kiosk-ime-and-power-regression.md",
           "targetPath": "docs/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md",
           "exists": true
@@ -32266,8 +32321,8 @@
     },
     {
       "path": "docs/plans/deploy-workflow-artifact-promotion-execplan.md",
-      "lineCount": 587,
-      "byteSize": 31512,
+      "lineCount": 594,
+      "byteSize": 31949,
       "hasFrontmatter": true,
       "title": "Promote attested ARM64 release images without weakening deployment safety",
       "status": "in_progress",
@@ -32552,6 +32607,21 @@
       "replacementCharacterCount": 0,
       "longLines": [],
       "referencesExecPlan": true
+    },
+    {
+      "path": "docs/plans/fail-closed-production-config-and-terminal-health-execplan.md",
+      "lineCount": 463,
+      "byteSize": 24447,
+      "hasFrontmatter": true,
+      "title": "Fail closed on production configuration drift and terminal peripheral health",
+      "status": "in_progress",
+      "source_of_truth": "true",
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
     },
     {
       "path": "docs/plans/gmail-auto-protocol-progress.md",
@@ -37621,13 +37691,18 @@
     },
     {
       "path": "docs/runbooks/security-hardening-remediation.md",
-      "lineCount": 84,
-      "byteSize": 6553,
+      "lineCount": 86,
+      "byteSize": 6792,
       "hasFrontmatter": false,
       "title": "Runbook: Security hardening remediation (Batch C — operator actions)",
       "status": null,
       "source_of_truth": null,
       "localLinks": [
+        {
+          "href": "../decisions/ADR-20260729-fail-closed-production-config-and-terminal-health.md",
+          "targetPath": "docs/decisions/ADR-20260729-fail-closed-production-config-and-terminal-health.md",
+          "exists": true
+        },
         {
           "href": "../guides/api-key-policy.md",
           "targetPath": "docs/guides/api-key-policy.md",
@@ -37641,6 +37716,11 @@
         {
           "href": "../knowledge-base/KB-393-security-hardening-audit-2026-07.md",
           "targetPath": "docs/knowledge-base/KB-393-security-hardening-audit-2026-07.md",
+          "exists": true
+        },
+        {
+          "href": "../knowledge-base/KB-403-production-config-contract-and-nfc-health.md",
+          "targetPath": "docs/knowledge-base/KB-403-production-config-contract-and-nfc-health.md",
           "exists": true
         }
       ],

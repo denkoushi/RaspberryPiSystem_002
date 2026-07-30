@@ -43,7 +43,7 @@ export function resolveKioskVerificationChallenge(
  */
 export function resolveKioskReadyChallenge(
   status: DeployVerificationIdentity | undefined,
-  compiledReleaseSha: string | undefined = import.meta.env.VITE_RELEASE_SHA
+  compiledReleaseSha: string | undefined = readProductionBuildConfig().releaseSha
 ): KioskReadyChallenge | null {
   const challenge = resolveKioskVerificationChallenge(status);
   if (!challenge || !isFullReleaseSha(compiledReleaseSha)) return null;
@@ -51,3 +51,4 @@ export function resolveKioskReadyChallenge(
     ? { releaseSha: compiledReleaseSha, verificationId: challenge.verificationId }
     : null;
 }
+import { readProductionBuildConfig } from '../../config/productionBuildConfig';

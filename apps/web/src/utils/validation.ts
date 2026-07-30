@@ -1,6 +1,7 @@
 /**
  * バリデーション関数
  */
+import { readProductionBuildConfig } from '../config/productionBuildConfig';
 
 /**
  * APIキーの形式をチェック
@@ -54,7 +55,7 @@ export function validateAndSanitizeApiKey(apiKey: string | null | undefined, def
 
   if (!isValidApiKey(apiKey)) {
     // 開発環境でのみ警告を出力
-    if (import.meta.env.DEV) {
+    if (readProductionBuildConfig().isDevelopment) {
       console.warn(`[Validation] Invalid API key format detected: "${apiKey}". Using default: "${defaultValue}"`);
     }
     return defaultValue;
@@ -75,7 +76,7 @@ export function validateAndSanitizeUuid(uuid: string | null | undefined): string
 
   if (!isValidUuid(uuid)) {
     // 開発環境でのみ警告を出力
-    if (import.meta.env.DEV) {
+    if (readProductionBuildConfig().isDevelopment) {
       console.warn(`[Validation] Invalid UUID format detected: "${uuid}". Using empty string.`);
     }
     return '';

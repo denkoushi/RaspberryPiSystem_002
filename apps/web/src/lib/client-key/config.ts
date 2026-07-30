@@ -1,5 +1,7 @@
+import { readProductionBuildConfig } from '../../config/productionBuildConfig';
+
 export const DEFAULT_CLIENT_KEY =
-  import.meta.env.VITE_DEFAULT_CLIENT_KEY ?? 'client-key-raspberrypi4-kiosk1';
+  readProductionBuildConfig().defaultClientKey ?? 'client-key-raspberrypi4-kiosk1';
 
 export const CLIENT_KEY_CONFIG = {
   storageKey: 'kiosk-client-key',
