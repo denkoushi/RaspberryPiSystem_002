@@ -1751,6 +1751,30 @@ class TerminalRuntimeManifestTest(unittest.TestCase):
         )
         self.assertEqual(self.fake.mutation_calls, [])
 
+    def test_capture_waits_for_signage_update_within_bounded_window(self):
+        unit = "signage-lite-update.service"
+        self.fake.add_unit(unit, unit_file="static", active="active")
+        # Production observations show that this 30-second timer can spend
+        # 6-18 seconds fetching or falling back to its cached signage image.
+        # The read-only probe must wait for that legitimate invocation without
+        # weakening the finite fail-closed deadline.
+        active_observations = 18
+        self.fake.unit_show_transitions[unit] = (
+            ["active"] * (active_observations - 1) + ["inactive"]
+        )
+
+        with mock.patch.object(MODULE.time, "sleep") as sleep:
+            captured = self.capture(units=[unit])
+
+        self.assertEqual(captured["unitCount"], 1)
+        self.assertEqual(sleep.call_count, active_observations)
+        self.assertEqual(
+            MODULE.TRANSIENT_ONESHOT_STABILIZATION_TIMEOUT_SECONDS,
+            30,
+        )
+        self.assertEqual(self.fake.units[unit]["ActiveState"], "inactive")
+        self.assertEqual(self.fake.mutation_calls, [])
+
     def test_sealed_active_transient_oneshot_is_rejected_before_restore(self):
         self.fake.add_unit(
             "signage-daily-reboot.service", unit_file="static", active="inactive"
