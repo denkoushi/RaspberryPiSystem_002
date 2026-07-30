@@ -1029,10 +1029,34 @@ def _recover_interrupted_terminals(
     state.save()
 
     rollback_ready_shas: dict[str, str] = {}
+    durable_completed_shas: dict[str, str] = {}
     preflight_records: list[dict[str, Any]] = []
     preflight_issues: list[str] = []
     for host, _fleet_record, target_spec, record, authority_run_id in work_items:
         adapter = _terminal_adapter(runtime, target_spec["terminalType"])
+        durable_completed_sha = _durable_completed_terminal_sha(
+            record, host=host
+        )
+        if durable_completed_sha is not None:
+            # A committed terminal has already closed and cleaned its
+            # rollback-manifest lifecycle. Reopening that consumed manifest
+            # cannot improve recovery safety and can reject a valid durable
+            # success after an unrelated later terminal fails.
+            durable_completed_shas[host] = durable_completed_sha
+            preflight_records.append(
+                {
+                    "host": host,
+                    "ready": True,
+                    "durableCompletedSha": durable_completed_sha,
+                    "preflightSkipped": True,
+                    "fileManifestReady": None,
+                    "runtimeManifestReady": None,
+                    "restoredReceipt": None,
+                    "requiresRuntimeReconciliation": False,
+                    "issues": [],
+                }
+            )
+            continue
         maintenance_needs_cleanup = bool(
             record.get("maintenanceStartedAt")
             and not record.get("maintenanceClearedAt")
@@ -1115,9 +1139,7 @@ def _recover_interrupted_terminals(
         adapter = _terminal_adapter(runtime, target_spec["terminalType"])
         prior_target = record
 
-        durable_completed_sha = _durable_completed_terminal_sha(
-            prior_target, host=host
-        )
+        durable_completed_sha = durable_completed_shas.get(host)
         if durable_completed_sha is not None:
             carried_observation: dict[str, Any] = {}
             if "releaseClaims" in prior_target:
