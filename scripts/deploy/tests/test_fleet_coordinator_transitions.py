@@ -16,6 +16,9 @@ from rolling_release import coordinator  # noqa: E402
 from rolling_release import readiness_policy  # noqa: E402
 from rolling_release.activation import ActivationUncertainError  # noqa: E402
 from rolling_release.cancellation import CancellationRequested  # noqa: E402
+from rolling_release.release_claims import (  # noqa: E402
+    validate_host_claim_compatibility,
+)
 from rolling_release.terminal_adapters import GenericSystemdAdapter  # noqa: E402
 from terminal_profile_registry import load_registry  # noqa: E402
 
@@ -3950,6 +3953,138 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         recovery = runtime.states[-1].payload["interruptedRecovery"]["targets"][0]
         self.assertEqual(recovery["state"], "recovered-claims-incomplete")
         self.assertEqual(recovery["recoveryObservedSha"], OLD_SHA)
+
+    def test_interrupted_typed_claims_rebind_atomically_to_new_run_sha(self):
+        terminal = {
+            "host": "signage-a",
+            "role": "signage",
+            "terminalType": "signage",
+            "clientId": "s1",
+        }
+        prior_claims = {
+            "terminalRepository": {
+                "expectedIdentity": OLD_SHA,
+                "observedIdentity": None,
+                "authority": "signage-ready",
+                "verificationId": None,
+                "state": "unknown",
+                "observedAt": None,
+                "lastRunId": "crashed-run",
+            }
+        }
+        interrupted = host_record("signage", OLD_SHA)
+        interrupted.update(
+            {
+                "currentSha": None,
+                "previousSha": OLD_SHA,
+                "evidence": "unknown",
+                "verifiedAt": None,
+                "lastRunId": "crashed-run",
+                "releaseClaims": copy.deepcopy(prior_claims),
+            }
+        )
+
+        class StrictFleetRuntime(FakeRuntime):
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+                self.unknown_claim_transitions = []
+
+            def fleet_mark_unknown(
+                self,
+                host,
+                role,
+                desired_sha,
+                run_id,
+                *,
+                release_claims=None,
+            ):
+                if release_claims is not None:
+                    candidate = {
+                        "role": role,
+                        "desiredSha": desired_sha,
+                        "currentSha": None,
+                    }
+                    validate_host_claim_compatibility(
+                        candidate, release_claims
+                    )
+                    self.unknown_claim_transitions.append(
+                        copy.deepcopy(release_claims)
+                    )
+                return super().fleet_mark_unknown(
+                    host,
+                    role,
+                    desired_sha,
+                    run_id,
+                    release_claims=release_claims,
+                )
+
+        runtime = StrictFleetRuntime(
+            fleet={
+                "pi5": host_record("server", NEW_SHA),
+                terminal["host"]: interrupted,
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan={
+                "pi5Required": False,
+                "hosts": [
+                    decision("pi5", "server", current=NEW_SHA, targeted=False),
+                    decision(
+                        terminal["host"],
+                        "signage",
+                        current=OLD_SHA,
+                        targeted=False,
+                    ),
+                ],
+            },
+            targets=[],
+        )
+        runtime.abandoned_run_id = "crashed-run"
+        runtime.deployed_sha[terminal["host"]] = OLD_SHA
+        runtime.prior_runs["crashed-run"] = {
+            "version": 1,
+            "runId": "crashed-run",
+            "state": "failed",
+            "targets": [
+                {
+                    **terminal,
+                    "desiredSha": OLD_SHA,
+                    "previousSha": OLD_SHA,
+                    "currentSha": OLD_SHA,
+                    "evidence": "unknown",
+                    "state": "pending",
+                    "mutationRequired": True,
+                    "activationRequired": False,
+                    "verificationRequired": True,
+                    "activationStrategyId": None,
+                    "activationMode": None,
+                    "claimRequirements": [
+                        {
+                            "kind": "terminalRepository",
+                            "expectedIdentity": OLD_SHA,
+                            "status": "stale-or-unverified",
+                        }
+                    ],
+                    "releaseClaims": copy.deepcopy(prior_claims),
+                }
+            ],
+        }
+
+        self.assertEqual(
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            ),
+            0,
+        )
+
+        rebound = runtime.unknown_claim_transitions[0]["terminalRepository"]
+        self.assertEqual(rebound["expectedIdentity"], NEW_SHA)
+        self.assertIsNone(rebound["observedIdentity"])
+        self.assertEqual(rebound["state"], "unknown")
+        self.assertEqual(rebound["lastRunId"], "run-1")
+        self.assertEqual(
+            runtime.prior_runs["crashed-run"]["targets"][0]["releaseClaims"],
+            prior_claims,
+        )
 
     def test_pre_mutation_interruption_preflights_sealed_runtime_health(self):
         terminal = {
