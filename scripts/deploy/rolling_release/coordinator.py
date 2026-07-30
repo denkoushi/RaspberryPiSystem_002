@@ -473,6 +473,44 @@ def _pending_terminal_release_claims(
     return validate_release_claims(result)
 
 
+def _pending_interrupted_recovery_release_claims(
+    *,
+    adapter: TerminalAdapter,
+    record: dict[str, Any],
+    desired_sha: str,
+    run_id: str,
+) -> dict[str, dict[str, Any]] | None:
+    """Rebind forward claims without changing the sealed recovery authority.
+
+    The interrupted target remains the authority for proving or restoring its
+    old live SHA. The fleet record written by the new run describes a different
+    fact: every required claim for the new desired SHA is unverified. Reusing
+    the old claims there would mix two releases in one host record and violate
+    the compatibility contract.
+    """
+
+    if "releaseClaims" not in record:
+        return None
+    # Reject a corrupt old authority before deriving any new fleet state.
+    validate_release_claims(record["releaseClaims"])
+    requirements = _claim_requirements(record, adapter)
+    if requirements is None:
+        raise RuntimeError(
+            "interrupted typed release claims require claim requirements"
+        )
+    rebound = dict(record)
+    rebound["desiredSha"] = desired_sha
+    rebound["claimRequirements"] = [
+        {
+            "kind": requirement["kind"],
+            "expectedIdentity": desired_sha,
+            "status": "stale-or-unverified",
+        }
+        for requirement in requirements
+    ]
+    return _unverified_terminal_release_claims(adapter, rebound, run_id)
+
+
 def _unverified_terminal_release_claims(
     adapter: TerminalAdapter,
     target: dict[str, Any],
@@ -1176,10 +1214,11 @@ def _recover_interrupted_terminals(
         # Only the host whose recovery is about to execute becomes unknown.
         # A failure on this host must not erase verified evidence for later,
         # untouched terminals in the same abandoned run.
-        recovery_claims = (
-            validate_release_claims(record["releaseClaims"])
-            if "releaseClaims" in record
-            else None
+        recovery_claims = _pending_interrupted_recovery_release_claims(
+            adapter=adapter,
+            record=record,
+            desired_sha=desired_sha,
+            run_id=run_id,
         )
         if recovery_claims is None:
             current_state = runtime.fleet_mark_unknown(
