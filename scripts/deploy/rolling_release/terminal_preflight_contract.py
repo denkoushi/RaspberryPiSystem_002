@@ -13,6 +13,7 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 from .adapter_registry import adapter_for_profile
+from . import terminal_device_maintenance
 
 
 _HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$")
@@ -205,6 +206,32 @@ def build_target_contracts(
         nfc_enabled = "nfc_agent_client_id" in values
         barcode_enabled = _boolean(values.get("barcode_agent_enabled"))
         torque_enabled = _boolean(values.get("torque_agent_enabled"))
+        enabled_agents = {
+            agent
+            for enabled, agent in (
+                (nfc_enabled, "nfc-agent"),
+                (barcode_enabled, "barcode-agent"),
+                (torque_enabled, "torque-agent"),
+            )
+            if enabled
+        }
+        try:
+            maintenance_leases = terminal_device_maintenance.parse_active_leases(
+                values.get("terminal_agent_maintenance_leases", {})
+            )
+        except terminal_device_maintenance.MaintenanceLeaseError as error:
+            raise TerminalPreflightContractError(
+                f"{host} maintenance lease contract is malformed"
+            ) from error
+        if set(maintenance_leases) - enabled_agents:
+            raise TerminalPreflightContractError(
+                f"{host} maintenance lease targets a disabled agent"
+            )
+        maintenance_agents = [
+            maintenance_leases[agent].evidence()
+            for agent in terminal_device_maintenance.AGENTS
+            if agent in maintenance_leases
+        ]
         torque_adapter = values.get("torque_agent_bluetooth_adapter")
         torque_vendor_id = (
             str(torque_adapter.get("usb_vendor_id", ""))
@@ -244,7 +271,7 @@ def build_target_contracts(
 
         contracts.append(
             {
-                "version": 1,
+                "version": 2,
                 "mode": "target",
                 "host": host,
                 "profile": profile,
@@ -312,6 +339,7 @@ def build_target_contracts(
                     values.get("haizen_agent_install_evdev"), default=True
                 ),
                 "manageSignage": manage_signage,
+                "maintenanceAgents": maintenance_agents,
                 "inventoryIssues": inventory_issues,
                 "runtimeManifestContract": runtime_manifest_contract,
             }
