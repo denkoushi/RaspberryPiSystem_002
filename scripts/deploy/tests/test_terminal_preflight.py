@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import datetime as dt
 import io
 import json
 import shlex
@@ -73,7 +74,7 @@ TORQUE_CANDIDATE_SOURCES = {
 
 def target(host: str = "kiosk-a") -> dict[str, object]:
     return {
-        "version": 1,
+        "version": 2,
         "mode": "target",
         "host": host,
         "profile": "kiosk",
@@ -105,6 +106,7 @@ def target(host: str = "kiosk-a") -> dict[str, object]:
         "haizenHidDevice": "/dev/input/event0",
         "haizenInstallEvdev": True,
         "manageSignage": False,
+        "maintenanceAgents": [],
         "inventoryIssues": [],
         "runtimeManifestContract": adapter_for_profile(
             "kiosk", runtime=None
@@ -199,6 +201,47 @@ class TerminalPreflightTest(unittest.TestCase):
         )
 
         self.assertEqual(contracts[0]["address"], "100.64.0.10")
+
+    def test_contract_builder_carries_sanitized_active_maintenance_lease(self):
+        inventory = {
+            "_meta": {
+                "hostvars": {
+                    "kiosk-a": {
+                        "ansible_host": "100.64.0.10",
+                        "ansible_user": "kiosk-a",
+                        "barcode_agent_enabled": True,
+                        "terminal_agent_maintenance_leases": {
+                            "barcode-agent": {
+                                "reasonCode": "temporary-development-detach",
+                                "expiresAt": "2026-08-02T08:00:00Z",
+                            }
+                        },
+                    }
+                }
+            }
+        }
+
+        with patch(
+            "scripts.deploy.rolling_release.terminal_device_maintenance._utc_now",
+            return_value=dt.datetime(
+                2026, 7, 30, 9, 0, tzinfo=dt.timezone.utc
+            ),
+        ):
+            contracts = build_target_contracts(
+                inventory, [{"host": "kiosk-a", "role": "kiosk"}]
+            )
+
+        self.assertEqual(
+            contracts[0]["maintenanceAgents"],
+            [
+                {
+                    "agent": "barcode-agent",
+                    "reasonCode": "temporary-development-detach",
+                    "expiresAt": "2026-08-02T08:00:00Z",
+                }
+            ],
+        )
+        terminal_preflight.parse_spec(json.dumps(contracts[0]))
 
     def test_candidate_runtime_helper_source_is_read_from_exact_git_blob(self):
         observed: list[list[str]] = []
@@ -656,6 +699,60 @@ print("TERMINAL_PREFLIGHT_RESULT:" + encoded)
             ],
         )
         self.assertNotIn(secret, json.dumps(issues))
+
+    def test_live_agent_health_allows_only_active_maintained_device_disconnect(self):
+        selected = {
+            **target(),
+            "nfcEnabled": False,
+            "barcodeEnabled": True,
+            "maintenanceAgents": [
+                {
+                    "agent": "barcode-agent",
+                    "reasonCode": "temporary-development-detach",
+                    "expiresAt": "2026-08-02T08:00:00Z",
+                }
+            ],
+        }
+        completed = subprocess.CompletedProcess(
+            [], 0, "TERMINAL_AGENT_HEALTH_OK:barcode-agent:7072\n", ""
+        )
+        now = dt.datetime(2026, 7, 30, 9, 0, tzinfo=dt.timezone.utc)
+
+        with patch.object(Path, "is_file", return_value=True), patch.object(
+            terminal_preflight, "_command", return_value=completed
+        ) as run:
+            issues = terminal_preflight._probe_live_agent_health(
+                selected, "# exact candidate health helper", now=now
+            )
+
+        self.assertEqual(issues, [])
+        self.assertIn("--allow-device-disconnected", run.call_args.args[0])
+
+    def test_live_agent_health_does_not_allow_expired_maintenance(self):
+        selected = {
+            **target(),
+            "nfcEnabled": False,
+            "barcodeEnabled": True,
+            "maintenanceAgents": [
+                {
+                    "agent": "barcode-agent",
+                    "reasonCode": "temporary-development-detach",
+                    "expiresAt": "2026-07-30T08:59:59Z",
+                }
+            ],
+        }
+        completed = subprocess.CompletedProcess([], 1, "", "")
+        now = dt.datetime(2026, 7, 30, 9, 0, tzinfo=dt.timezone.utc)
+
+        with patch.object(Path, "is_file", return_value=True), patch.object(
+            terminal_preflight, "_command", return_value=completed
+        ) as run:
+            issues = terminal_preflight._probe_live_agent_health(
+                selected, "# exact candidate health helper", now=now
+            )
+
+        self.assertEqual(issues[0]["code"], "agent.barcode-agent.health")
+        self.assertNotIn("--allow-device-disconnected", run.call_args.args[0])
 
     def test_live_agent_health_skips_a_new_optional_agent_without_install_marker(self):
         selected = {

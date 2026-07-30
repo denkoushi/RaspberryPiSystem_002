@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import datetime as dt
 import fcntl
 import ipaddress
 import json
@@ -55,6 +56,14 @@ AGENT_HEALTH_MARKER_RE = re.compile(
     r"(nfc-agent|barcode-agent|torque-agent):([0-9]{1,5})"
     r"(?![A-Za-z0-9_:-])"
 )
+MAINTENANCE_AGENTS = frozenset(
+    {"nfc-agent", "barcode-agent", "torque-agent"}
+)
+MAINTENANCE_REASON_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+MAINTENANCE_EXPIRY_RE = re.compile(
+    r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+)
+MAINTENANCE_MAX_REMAINING = dt.timedelta(days=7, minutes=5)
 ALLOWED_UNTRACKED = frozenset({"power-actions"})
 _BASE_CANDIDATE_ARTIFACTS = (
     ("infrastructure/ansible/playbooks/deploy-staged.yml", "blob"),
@@ -176,6 +185,58 @@ def _require_bool(payload: Mapping[str, Any], key: str) -> bool:
     return value
 
 
+def _maintenance_expiry(value: Any) -> dt.datetime:
+    if not isinstance(value, str) or MAINTENANCE_EXPIRY_RE.fullmatch(value) is None:
+        raise TerminalPreflightConfigError("maintenance expiry is malformed")
+    try:
+        return dt.datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=dt.timezone.utc
+        )
+    except ValueError as error:
+        raise TerminalPreflightConfigError("maintenance expiry is invalid") from error
+
+
+def _maintenance_contract(
+    value: Any,
+    *,
+    now: dt.datetime | None = None,
+) -> dict[str, dt.datetime]:
+    if not isinstance(value, list):
+        raise TerminalPreflightConfigError("maintenance agents must be a list")
+    current = now or dt.datetime.now(dt.timezone.utc)
+    if current.tzinfo is None:
+        raise TerminalPreflightConfigError("maintenance clock is malformed")
+    current = current.astimezone(dt.timezone.utc)
+    agents: dict[str, dt.datetime] = {}
+    for entry in value:
+        if not isinstance(entry, dict) or set(entry) != {
+            "agent",
+            "reasonCode",
+            "expiresAt",
+        }:
+            raise TerminalPreflightConfigError(
+                "maintenance agent evidence is malformed"
+            )
+        agent = entry.get("agent")
+        reason = entry.get("reasonCode")
+        if (
+            agent not in MAINTENANCE_AGENTS
+            or agent in agents
+            or not isinstance(reason, str)
+            or MAINTENANCE_REASON_RE.fullmatch(reason) is None
+        ):
+            raise TerminalPreflightConfigError(
+                "maintenance agent evidence is malformed"
+            )
+        expires_at = _maintenance_expiry(entry.get("expiresAt"))
+        if expires_at - current > MAINTENANCE_MAX_REMAINING:
+            raise TerminalPreflightConfigError(
+                "maintenance lease exceeds the bounded duration"
+            )
+        agents[agent] = expires_at
+    return agents
+
+
 def parse_spec(raw: str) -> dict[str, Any]:
     try:
         payload = json.loads(
@@ -222,7 +283,7 @@ def parse_spec(raw: str) -> dict[str, Any]:
             _validate_target(target, routing=True)
         return payload
     if mode == "target":
-        if payload.get("version") != 1 or type(payload.get("version")) is not int:
+        if payload.get("version") != 2 or type(payload.get("version")) is not int:
             raise TerminalPreflightConfigError(
                 "unsupported terminal target version"
             )
@@ -265,12 +326,13 @@ def _validate_target(payload: Any, *, routing: bool) -> None:
         "haizenHidDevice",
         "haizenInstallEvdev",
         "manageSignage",
+        "maintenanceAgents",
         "inventoryIssues",
         "runtimeManifestContract",
     }
     if not isinstance(payload, dict) or set(payload) != expected:
-        raise TerminalPreflightConfigError("target fields do not match version 1")
-    if payload.get("version") != 1 or payload.get("mode") != "target":
+        raise TerminalPreflightConfigError("target fields do not match version 2")
+    if payload.get("version") != 2 or payload.get("mode") != "target":
         raise TerminalPreflightConfigError("target mode is malformed")
     if not isinstance(payload.get("host"), str) or HOST_RE.fullmatch(payload["host"]) is None:
         raise TerminalPreflightConfigError("host is malformed")
@@ -320,6 +382,20 @@ def _validate_target(payload: Any, *, routing: bool) -> None:
         "manageSignage",
     ):
         _require_bool(payload, key)
+    maintained = _maintenance_contract(payload.get("maintenanceAgents"))
+    enabled_agents = {
+        agent
+        for enabled, agent in (
+            (payload["nfcEnabled"], "nfc-agent"),
+            (payload["barcodeEnabled"], "barcode-agent"),
+            (payload["torqueEnabled"], "torque-agent"),
+        )
+        if enabled
+    }
+    if set(maintained) - enabled_agents:
+        raise TerminalPreflightConfigError(
+            "maintenance targets a disabled terminal agent"
+        )
     services = payload.get("servicesToRestart")
     if not isinstance(services, list) or any(
         not isinstance(unit, str) or UNIT_RE.fullmatch(unit) is None for unit in services
@@ -1164,13 +1240,24 @@ def _enabled_agent_health_specs(
 
 
 def _probe_live_agent_health(
-    spec: Mapping[str, Any], agent_health_source: str
+    spec: Mapping[str, Any],
+    agent_health_source: str,
+    *,
+    now: dt.datetime | None = None,
 ) -> list[dict[str, str]]:
     """Prove installed enabled agents; newly introduced agents are checked post-apply."""
 
     selected = _enabled_agent_health_specs(spec)
     if not selected:
         return []
+    current = now or dt.datetime.now(dt.timezone.utc)
+    maintained = {
+        agent
+        for agent, expires_at in _maintenance_contract(
+            spec["maintenanceAgents"], now=current
+        ).items()
+        if expires_at > current.astimezone(dt.timezone.utc)
+    }
     contract = spec["runtimeManifestContract"]
     compose = contract.get("compose")
     config_files = compose.get("configFiles") if isinstance(compose, dict) else None
@@ -1201,6 +1288,11 @@ def _probe_live_agent_health(
             "--compose-file",
             config_files[0],
             *(["--require-pcscd"] if require_pcscd else []),
+            *(
+                ["--allow-device-disconnected"]
+                if agent in maintained
+                else []
+            ),
             "--ansible-marker",
         ]
         completed = _command(

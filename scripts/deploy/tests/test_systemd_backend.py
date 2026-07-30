@@ -225,7 +225,7 @@ class SystemdBackendTest(unittest.TestCase):
     def test_terminal_preflight_is_read_only_and_carries_secret_free_targets(self):
         backend, runner = self.backend()
         target = {
-            'version': 1,
+            'version': 2,
             'mode': 'target',
             'host': 'kiosk-a',
             'profile': 'kiosk',
@@ -257,6 +257,7 @@ class SystemdBackendTest(unittest.TestCase):
             'haizenHidDevice': '/dev/input/event0',
             'haizenInstallEvdev': True,
             'manageSignage': False,
+            'maintenanceAgents': [],
             'inventoryIssues': [],
             'runtimeManifestContract': adapter_for_profile(
                 'kiosk', runtime=None

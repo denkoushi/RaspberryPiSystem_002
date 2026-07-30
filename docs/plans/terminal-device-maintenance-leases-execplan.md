@@ -38,10 +38,22 @@ malformed lease restores the ordinary blocking and alerting behavior.
   tests, disposable PostgreSQL with 156 migrations and SQL EXPLAIN, all
   Ansible/rollback contracts, document audit, and zero run-owned Docker
   residue.
-- [ ] Publish one Draft PR, merge only after required CI, then resume the
-  standard production release.
-- [ ] At 17:00 JST stop at a safe boundary if work is incomplete; do not
-  publish or deploy partially validated code.
+- [x] (2026-07-30 16:53+09:00) Published Draft PR #1125 at one fixed commit;
+  required PR checks and an additional hosted full suite passed.
+- [x] (2026-07-30 17:33+09:00) Resumed after the requested safe stop and
+  merged PR #1125 as main SHA `c5593d0906a88987057965642280f9ae75716849`.
+  Its required CI, ARM64 release pair, scans, and signed release set passed.
+- [x] (2026-07-30 17:46+09:00) Production aggregate preflight stopped before
+  release submission because the independent preflight contract had not
+  received the maintenance lease; Pi3 also returned one transient runtime
+  observation failure. Production remained unchanged.
+- [x] (2026-07-30 17:58+09:00) Added the version 2 aggregate target contract,
+  terminal-side expiry re-evaluation, and regression coverage. Passed all 916
+  Deploy Python tests, 47 CI classification tests, the complete disposable
+  PostgreSQL/Ansible contract runner, documentation audit, and zero run-owned
+  Docker residue.
+- [ ] Publish and merge the aggregate-preflight correction, then repeat
+  read-only plan and aggregate preflight before submitting any release.
 
 ## Surprises & Discoveries
 
@@ -57,6 +69,20 @@ malformed lease restores the ordinary blocking and alerting behavior.
   Evidence: `scripts/deploy/rolling_release/backends/ansible.py` derives all
   mandatory probes directly from those enable switches, and
   `clients/status-agent/terminal_agent_health.py` does the same for alerts.
+
+- Observation: the initial implementation covered normal pre-mutation and
+  final evidence probes but not the separate aggregate preflight that runs
+  before a release unit exists.
+  Evidence: main SHA `c5593d0906a88987057965642280f9ae75716849`
+  passed all hosted checks, but production preflight
+  `20260730-084317-4b2bd9` rejected StoneBase with
+  `terminal.agent.barcode-agent.health` and `releaseSubmitted=false`.
+
+- Observation: Pi3's simultaneous `terminal.runtime.contract` result was
+  transient rather than a persistent incompatible runtime.
+  Evidence: the exact candidate-owned read-only runtime capture was repeated
+  alone through Pi5 and returned `compatible=true`, `unitCount=11`,
+  `dockerCount=0`, and `presentDockerCount=0`.
 
 ## Decision Log
 
@@ -90,15 +116,26 @@ malformed lease restores the ordinary blocking and alerting behavior.
   response, or queued NFC business event.
   Date/Author: 2026-07-30 / Codex.
 
+- Decision: add sanitized lease evidence to version 2 of the aggregate
+  terminal target contract and re-evaluate its UTC expiry on the terminal.
+  Rationale: the pre-release gate is intentionally independent from the
+  Ansible backend. Making the lease an explicit typed field preserves that
+  isolation while ensuring an expired lease cannot authorize a later probe.
+  Every maintained agent still runs the same candidate-owned endpoint probe
+  with only the physical-disconnect assertion relaxed.
+  Date/Author: 2026-07-30 / Codex.
+
 ## Outcomes & Retrospective
 
 Implementation is in progress. Production remains unchanged because aggregate
 preflight stopped before a release run was submitted.
 
-The implementation now has one pure lease authority shared by Deploy and the
-one-minute collector. StoneBase’s barcode reader is the sole leased device;
-NFC and torque remain required. Local validation is complete. GitHub
-publication, hosted CI, main integration, and production rollout remain.
+The first PR established one pure lease authority shared by ordinary Deploy
+evidence and the one-minute collector. The production attempt exposed a third
+consumer: the candidate-owned aggregate terminal preflight. Its typed target
+contract is now being corrected on
+`fix/terminal-maintenance-aggregate-preflight`. StoneBase’s barcode reader is
+the sole leased device; NFC and torque remain required.
 
 ## Context and Orientation
 
@@ -225,7 +262,9 @@ Local validation on 2026-07-30 produced:
 
     focused release/Ansible contracts: 87 passed
     status-agent contracts: 22 passed
-    Deploy Python contracts: 913 passed
+    Deploy Python contracts before production preflight: 913 passed
+    Deploy Python contracts after aggregate-preflight correction: 916 passed
+    CI classification contracts after correction: 47 passed
     disposable PostgreSQL migrations: 156 applied, status current
     deploy-status API: 20 passed
     inventory contracts: 24 passed
