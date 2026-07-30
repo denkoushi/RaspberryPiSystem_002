@@ -166,6 +166,7 @@ class AnsibleTemplateContractTests(unittest.TestCase):
             "yes",
             "on",
         }
+        environment.filters["to_json"] = json.dumps
         template = environment.from_string(
             STATUS_AGENT_CONFIG_TEMPLATE.read_text(encoding="utf-8")
         )
@@ -179,12 +180,25 @@ class AnsibleTemplateContractTests(unittest.TestCase):
             nfc_agent_client_id="terminal-1-nfc",
             barcode_agent_enabled=True,
             torque_agent_enabled=True,
+            terminal_agent_maintenance_leases={
+                "barcode-agent": {
+                    "reasonCode": "temporary-development-detach",
+                    "expiresAt": "2026-08-02T08:00:00Z",
+                }
+            },
         )
         signage = template.render(**base)
 
         self.assertIn('TERMINAL_AGENT_HEALTH_NFC_ENABLED="1"', kiosk)
         self.assertIn('TERMINAL_AGENT_HEALTH_BARCODE_ENABLED="1"', kiosk)
         self.assertIn('TERMINAL_AGENT_HEALTH_TORQUE_ENABLED="1"', kiosk)
+        self.assertIn(
+            "TERMINAL_AGENT_MAINTENANCE_LEASES_JSON='"
+            '{"barcode-agent": {"reasonCode": "temporary-development-detach", '
+            '"expiresAt": "2026-08-02T08:00:00Z"}}'
+            "'",
+            kiosk,
+        )
         self.assertIn('TERMINAL_AGENT_HEALTH_NFC_ENABLED="0"', signage)
         self.assertIn('TERMINAL_AGENT_HEALTH_BARCODE_ENABLED="0"', signage)
         self.assertIn('TERMINAL_AGENT_HEALTH_TORQUE_ENABLED="0"', signage)

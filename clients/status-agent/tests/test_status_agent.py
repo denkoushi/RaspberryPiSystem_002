@@ -49,6 +49,7 @@ class StatusAgentTest(unittest.TestCase):
         self.assertEqual(config["TERMINAL_AGENT_HEALTH_NFC_ENABLED"], "0")
         self.assertEqual(config["TERMINAL_AGENT_HEALTH_BARCODE_ENABLED"], "0")
         self.assertEqual(config["TERMINAL_AGENT_HEALTH_TORQUE_ENABLED"], "0")
+        self.assertEqual(config["TERMINAL_AGENT_MAINTENANCE_LEASES_JSON"], "{}")
         self.assertEqual(
             config["TERMINAL_AGENT_HEALTH_STATE_FILE"],
             "/run/raspi-status-agent/terminal-agent-health.json",

@@ -73,6 +73,7 @@ def parse_config_file(path: Path) -> Dict[str, str]:
     config.setdefault("TERMINAL_AGENT_HEALTH_NFC_ENABLED", "0")
     config.setdefault("TERMINAL_AGENT_HEALTH_BARCODE_ENABLED", "0")
     config.setdefault("TERMINAL_AGENT_HEALTH_TORQUE_ENABLED", "0")
+    config.setdefault("TERMINAL_AGENT_MAINTENANCE_LEASES_JSON", "{}")
     config.setdefault(
         "TERMINAL_AGENT_HEALTH_STATE_FILE",
         str(terminal_agent_health.DEFAULT_STATE_FILE),

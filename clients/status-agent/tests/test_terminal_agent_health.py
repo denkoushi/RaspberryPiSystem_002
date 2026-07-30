@@ -123,6 +123,46 @@ class TerminalAgentHealthTest(unittest.TestCase):
             self.assertEqual(logs[0]["context"]["signal"], "endpoint")
             self.assertNotIn("7071", str(logs))
 
+    def test_active_maintenance_lease_skips_only_named_agent_until_expiry(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            config = {
+                "TERMINAL_AGENT_HEALTH_NFC_ENABLED": "1",
+                "TERMINAL_AGENT_HEALTH_BARCODE_ENABLED": "1",
+                "TERMINAL_AGENT_HEALTH_TORQUE_ENABLED": "0",
+                "TERMINAL_AGENT_HEALTH_STATE_FILE": str(
+                    Path(directory) / "health.json"
+                ),
+                "TERMINAL_AGENT_MAINTENANCE_LEASES_JSON": (
+                    '{"barcode-agent":{"reasonCode":"temporary-development-detach",'
+                    '"expiresAt":"2026-08-02T08:00:00Z"}}'
+                ),
+            }
+            endpoints: list[str] = []
+
+            def probe(endpoint: str, _timeout: float):
+                endpoints.append(endpoint)
+                return {
+                    "readerConnected": "7072" not in endpoint,
+                    "queueSize": 0,
+                }
+
+            self.assertEqual(health.collect_logs(config, probe=probe, now=NOW), [])
+            self.assertEqual(len(endpoints), 2)
+            self.assertIn("7071", endpoints[0])
+            self.assertIn("7072", endpoints[1])
+
+            after_expiry = dt.datetime(
+                2026, 8, 2, 8, 0, 1, tzinfo=dt.timezone.utc
+            )
+            self.assertEqual(
+                health.collect_logs(config, probe=probe, now=after_expiry), []
+            )
+            alerts = health.collect_logs(config, probe=probe, now=after_expiry)
+            self.assertEqual(len(endpoints), 6)
+            self.assertEqual(len(alerts), 1)
+            self.assertEqual(alerts[0]["context"]["agent"], "barcode")
+            self.assertEqual(alerts[0]["context"]["signal"], "reader")
+
 
 if __name__ == "__main__":
     unittest.main()

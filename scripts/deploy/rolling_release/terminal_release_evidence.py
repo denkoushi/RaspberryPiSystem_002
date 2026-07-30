@@ -90,6 +90,7 @@ def collect(
     services: list[str],
     check_status_agent_result: bool,
     agent_specs: list[str],
+    maintenance_agents: list[str] | None = None,
     repository: Path = REPOSITORY,
     compose_file: Path = COMPOSE_FILE,
 ) -> dict[str, Any]:
@@ -103,6 +104,12 @@ def collect(
     agent_names = [agent for agent, _port, _pcsc in parsed_agents]
     if len(agent_names) != len(set(agent_names)):
         raise EvidenceError("terminal agent proof request contains duplicates")
+    maintained = list(maintenance_agents or [])
+    if (
+        len(maintained) != len(set(maintained))
+        or any(agent not in agent_names for agent in maintained)
+    ):
+        raise EvidenceError("terminal maintenance agent proof request is malformed")
 
     current_sha = _current_sha(repository)
     for service in services:
@@ -137,6 +144,7 @@ def collect(
             repository=repository,
             compose_file=compose_file,
             require_pcscd=require_pcscd,
+            allow_device_disconnected=agent in maintained,
             ansible_marker=False,
         )
         agent_health._validate_arguments(probe_args)
@@ -163,6 +171,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--service", action="append", default=[])
     parser.add_argument("--check-status-agent-result", action="store_true")
     parser.add_argument("--agent-spec", action="append", default=[])
+    parser.add_argument("--maintenance-agent", action="append", default=[])
     parser.add_argument("--repository", type=Path, default=REPOSITORY)
     parser.add_argument("--compose-file", type=Path, default=COMPOSE_FILE)
     parser.add_argument("--ansible-marker", action="store_true")
@@ -173,6 +182,7 @@ def main(argv: list[str] | None = None) -> int:
             services=args.service,
             check_status_agent_result=args.check_status_agent_result,
             agent_specs=args.agent_spec,
+            maintenance_agents=args.maintenance_agent,
             repository=args.repository,
             compose_file=args.compose_file,
         )

@@ -147,6 +147,14 @@ class TerminalAgentHealthProbeTest(unittest.TestCase):
         with self.assertRaisesRegex(PROBE_MODULE.ProbeError, "not connected"):
             PROBE_MODULE._endpoint("barcode-agent", self.server.server_port)
 
+    def test_maintenance_still_requires_barcode_endpoint_but_allows_disconnect(self):
+        AgentHandler.reader_connected = False
+        PROBE_MODULE._endpoint(
+            "barcode-agent",
+            self.server.server_port,
+            allow_device_disconnected=True,
+        )
+
     def test_nfc_queue_must_be_empty(self):
         AgentHandler.queue_size = 1
         with self.assertRaisesRegex(PROBE_MODULE.ProbeError, "queue must be empty"):

@@ -15,6 +15,7 @@ related_code:
 related_docs:
   - ../decisions/ADR-20260729-fail-closed-production-config-and-terminal-health.md
   - ../plans/fail-closed-production-config-and-terminal-health-execplan.md
+  - ../plans/terminal-device-maintenance-leases-execplan.md
   - ../guides/deployment.md
 validation: focused and full Web/API/agent tests, ARM64 Docker exercises, 156 disposable migrations, SQL EXPLAIN, and full deployment contracts
 open_items:
@@ -77,6 +78,16 @@ flush it automatically. Confirm the business screen is open, restore the
 browser-to-loopback connection, and let actual WebSocket delivery drain the
 queue in order. A deployment that reports peripheral preflight or readiness
 failure must remain stopped until the reader and queue are reconciled.
+
+Inventory enablement means that the terminal owns and runs the agent; it does
+not mean the physical device can never be removed. For intentional development
+or maintenance, use a host-specific `terminal_agent_maintenance_leases` record
+with an allowed agent, sanitized reason code, and strict UTC expiry. A valid
+lease has at most seven days remaining. It suppresses only the named physical
+proof and its monitoring episode. Every other device remains required, and
+expiry automatically restores the ordinary Deploy block and two-sample alert.
+Do not set an agent disabled or extend a lease indefinitely merely to make a
+release pass.
 
 Alert payloads intentionally omit card UID, last event content, credentials,
 raw URLs, and raw agent responses. Use the terminal name, agent, signal,

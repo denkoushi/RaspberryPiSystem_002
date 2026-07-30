@@ -131,7 +131,9 @@ def _container_port(identifier: str, agent: str) -> int:
     return port
 
 
-def _endpoint(agent: str, port: int) -> None:
+def _endpoint(
+    agent: str, port: int, *, allow_device_disconnected: bool = False
+) -> None:
     opener = urllib.request.build_opener(
         urllib.request.ProxyHandler({}), _NoRedirect(), urllib.request.HTTPHandler()
     )
@@ -164,21 +166,25 @@ def _endpoint(agent: str, port: int) -> None:
     if validator == "torque-agent-health-v1":
         if (
             not isinstance(value, dict)
-            or value.get("ok") is not True
+            or type(value.get("ok")) is not bool
             or isinstance(value.get("queuedEvents"), bool)
             or not isinstance(value.get("queuedEvents"), int)
             or value["queuedEvents"] < 0
             or type(value.get("bound")) is not bool
         ):
             raise ProbeError("torque-agent health contract is malformed")
+        if not allow_device_disconnected and value["ok"] is not True:
+            raise ProbeError("torque-agent runtime is not healthy")
         return
     if validator not in {"nfc-agent-status-v1", "barcode-agent-status-v1"}:
         raise ProbeError("kiosk agent status validator is malformed")
     if (
         not isinstance(value, dict)
-        or value.get("readerConnected") is not True
+        or type(value.get("readerConnected")) is not bool
         or not isinstance(value.get("message"), str)
     ):
+        raise ProbeError("kiosk agent reader status is malformed")
+    if not allow_device_disconnected and value["readerConnected"] is not True:
         raise ProbeError("kiosk agent reader is not connected")
     if validator == "nfc-agent-status-v1":
         queue_size = value.get("queueSize")
@@ -211,6 +217,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--repository", type=Path, required=True)
     parser.add_argument("--compose-file", type=Path, required=True)
     parser.add_argument("--require-pcscd", action="store_true")
+    parser.add_argument("--allow-device-disconnected", action="store_true")
     parser.add_argument("--ansible-marker", action="store_true")
     return parser
 
@@ -232,7 +239,13 @@ def _probe_once(args: argparse.Namespace) -> int:
         _pcsc_runtime()
     identifier = _container(args.repository, args.compose_file, args.agent)
     port = args.port if args.port is not None else _container_port(identifier, args.agent)
-    _endpoint(args.agent, port)
+    _endpoint(
+        args.agent,
+        port,
+        allow_device_disconnected=getattr(
+            args, "allow_device_disconnected", False
+        ),
+    )
     return port
 
 

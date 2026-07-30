@@ -36,4 +36,5 @@ STORAGE_HEALTH_STATE_FILE="{{ status_agent_storage_health_state_file | default('
 TERMINAL_AGENT_HEALTH_NFC_ENABLED="{{ '1' if (nfc_agent_client_id | default('') | string | length > 0) else '0' }}"
 TERMINAL_AGENT_HEALTH_BARCODE_ENABLED="{{ '1' if (barcode_agent_enabled | default(false) | bool) else '0' }}"
 TERMINAL_AGENT_HEALTH_TORQUE_ENABLED="{{ '1' if (torque_agent_enabled | default(false) | bool) else '0' }}"
+TERMINAL_AGENT_MAINTENANCE_LEASES_JSON='{{ terminal_agent_maintenance_leases | default({}) | to_json }}'
 TERMINAL_AGENT_HEALTH_STATE_FILE="/run/raspi-status-agent/terminal-agent-health.json"
