@@ -32,10 +32,10 @@ const rows: SelfInspectionTableRow[] = Array.from({ length: 5 }, (_, index) => (
 describe('SelfInspectionTable', () => {
   it.each([
     [1279, 1],
-    [1280, 2],
-    [1535, 2],
-    [1536, 3],
-    [1920, 3]
+    [1280, 1],
+    [1535, 1],
+    [1536, 2],
+    [1920, 2]
   ])('resolves %ipx to %i panes', (width, expected) => {
     expect(resolveSelfInspectionPaneCount(width)).toBe(expected);
   });
@@ -54,8 +54,8 @@ describe('SelfInspectionTable', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByTestId('self-inspection-table-panes')).toHaveAttribute('data-pane-count', '3');
-    expect(screen.getAllByRole('table')).toHaveLength(3);
+    expect(screen.getByTestId('self-inspection-table-panes')).toHaveAttribute('data-pane-count', '2');
+    expect(screen.getAllByRole('table')).toHaveLength(2);
     const actions = screen.getAllByRole('button', { name: '検査方法を選択' });
     expect(actions).toHaveLength(5);
     fireEvent.click(actions[3]);
@@ -64,5 +64,44 @@ describe('SelfInspectionTable', () => {
     expect(deleteActions).toHaveLength(5);
     fireEvent.click(deleteActions[1]);
     expect(invalidated).toEqual(['row-2']);
+  });
+
+  it('uses horizontal compact actions and readable non-11px content', () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1280 });
+    render(
+      <MemoryRouter>
+        <SelfInspectionTable rows={rows.slice(0, 1)} onCandidateSelect={() => undefined} onInvalidate={() => undefined} />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTestId('self-inspection-row-actions')).toHaveClass('flex', 'flex-wrap');
+    for (const action of screen.getAllByRole('button')) {
+      expect(action).toHaveClass('!h-[30.8px]', '!min-h-[30.8px]', '!px-1', '!py-0', 'text-sm');
+      expect(action).not.toHaveClass('w-full');
+    }
+    expect(screen.getByText('製番 A-1').closest('td')).toHaveClass('text-sm');
+  });
+
+  it('clips long labels within their cells while exposing the full values through titles', () => {
+    const longRow: SelfInspectionTableRow = {
+      ...rows[0]!,
+      productNo: 'ORDER-VERY-LONG-1234567890',
+      resourceCd: 'RESOURCE-VERY-LONG-1234567890',
+      statusLabel: '非常に長い状態ラベル',
+      detailLine: '製番・品番・品名を含む非常に長い詳細情報',
+      progressLine: '非常に長い進捗情報'
+    };
+    render(
+      <MemoryRouter>
+        <SelfInspectionTable rows={[longRow]} onCandidateSelect={() => undefined} onInvalidate={() => undefined} />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTitle(longRow.productNo)).toHaveClass('truncate');
+    expect(screen.getByTitle(longRow.resourceCd)).toHaveClass('truncate');
+    expect(screen.getByTitle(longRow.statusLabel)).toHaveClass('truncate');
+    expect(screen.getByTitle(longRow.detailLine)).toHaveClass('line-clamp-1');
+    expect(screen.getByTitle(longRow.progressLine)).toHaveClass('line-clamp-1');
+    expect(screen.getByRole('table')).toHaveClass('w-full', 'table-fixed');
   });
 });

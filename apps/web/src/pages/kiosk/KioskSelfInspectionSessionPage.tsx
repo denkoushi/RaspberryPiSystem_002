@@ -30,15 +30,16 @@ import {
 } from '../../features/part-measurement/inspection-drawing';
 import { applySelfInspectionEntrySaveToSessionCache } from '../../features/part-measurement/mergeSelfInspectionSessionAfterEntrySave';
 import { resolveNextRequiredSelfInspectionEntryIndex } from '../../features/part-measurement/resolveNextRequiredSelfInspectionEntryIndex';
+import { SelfInspectionAutosaveBadge } from '../../features/part-measurement/SelfInspectionAutosaveBadge';
 import {
   buildSelfInspectionEntryDraft,
   selfInspectionEntryPageCountForSession,
   selfInspectionEntryPageForEntryIndex,
   selfInspectionEntrySlotsForPage
 } from '../../features/part-measurement/selfInspectionEntryDraft';
-import { selfInspectionModeDisplayLabel } from '../../features/part-measurement/selfInspectionEntrySlots';
 import { SelfInspectionInspectorJudgementPanel } from '../../features/part-measurement/SelfInspectionInspectorJudgementPanel';
 import { SelfInspectionKioskButton } from '../../features/part-measurement/SelfInspectionKioskButton';
+import { selfInspectionModeDisplayLabel } from '../../features/part-measurement/selfInspectionModeDisplayLabel';
 import { SelfInspectionNfcRegistrationPanel } from '../../features/part-measurement/SelfInspectionNfcRegistrationPanel';
 import { SelfInspectionOutOfToleranceControl } from '../../features/part-measurement/SelfInspectionOutOfToleranceControl';
 import {
@@ -66,6 +67,7 @@ import {
 } from '../../features/part-measurement/selfInspectionSessionDrawingPanelState';
 import { resolveSelfInspectionRequiredEntryCount } from '../../features/part-measurement/selfInspectionSessionEntryCount';
 import { SelfInspectionSessionHeader } from '../../features/part-measurement/SelfInspectionSessionHeader';
+import { resolveSelfInspectionSessionNotice } from '../../features/part-measurement/selfInspectionSessionNotice';
 import { shouldAutosaveSelfInspectionDraftEntry } from '../../features/part-measurement/shouldAutosaveSelfInspectionDraftEntry';
 import { usePartMeasurementDrawingBlobUrl, resolveKioskDrawingDisplayWidth } from '../../features/part-measurement/usePartMeasurementDrawingBlobUrl';
 import { useSelfInspectionGuidedFocus } from '../../features/part-measurement/useSelfInspectionGuidedFocus';
@@ -750,6 +752,21 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
           ? '測定者側でNGだった全測定点に最終OK／NGを入力してください。'
           : '検査員の必要件数をすべて保存すると最終判定を確定できます。'
     : selfInspectionActionReasonMessage(completeActionState.reason);
+  const saveReasonMessage = saveActionState.enabled
+    ? null
+    : selfInspectionActionReasonMessage(saveActionState.reason);
+  const visibleCompleteHint =
+    (completeActionState.reason === 'record_approval_required' || isInspectorMode)
+      ? completeActionHint
+      : null;
+  const sessionHeaderNotice = resolveSelfInspectionSessionNotice({
+    actionError,
+    nfcMessage: registration.message,
+    guideHint,
+    saveReason: saveReasonMessage,
+    saveReasonIsOutOfTolerance: saveActionState.reason === 'ng_value',
+    completeHint: visibleCompleteHint
+  });
 
   const resumeGuideActionState = useMemo(
     () =>
@@ -1096,6 +1113,9 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
         ) + (isInspectorMode ? ' / 検査員再測定' : '')}
         requiredEntryCount={requiredEntryCount}
         entryCountBlockedReason={session.entryCountBlockedReason ?? null}
+        actorLabel={measurementActorLabel}
+        actorDisplayName={activeMeasurementActorAuthentication?.employeeDisplayName}
+        notice={sessionHeaderNotice}
         guideMode={guideMode}
         guideActionsEnabled={guideActionsEnabled}
         canResumeGuide={resumeGuideActionState.enabled}
@@ -1161,11 +1181,6 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
         onConfirm={confirmOutOfToleranceCommit}
       />
 
-      {guideHint ? (
-        <p className="shrink-0 rounded border border-cyan-400/30 bg-cyan-500/10 px-2 py-1 text-xs text-cyan-100">
-          {guideHint}
-        </p>
-      ) : null}
       <div className="flex min-h-0 flex-1 flex-col gap-1 xl:flex-row">
         <div
           className={clsx(
@@ -1212,24 +1227,30 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
           ) : null}
         </div>
 
-        <div className="flex min-h-0 min-w-0 flex-col gap-2 xl:w-[360px] xl:shrink-0">
-          {activeMeasurementActorAuthentication ? (
-            <p className="shrink-0 rounded border border-cyan-300/30 bg-cyan-950/40 px-3 py-2 text-sm font-semibold text-cyan-100">
-              現在の{measurementActorLabel}: {activeMeasurementActorAuthentication.employeeDisplayName}
-              <span className="ml-2 text-xs font-normal text-cyan-100/75">別の社員タグで交代できます</span>
-            </p>
-          ) : null}
+        <div
+          className="flex min-h-0 min-w-0 flex-col gap-2 xl:w-[360px] xl:shrink-0"
+          data-testid="self-inspection-session-right-pane"
+        >
           <SelfInspectionNfcRegistrationPanel
             registration={registration}
             requireMeasuringInstrumentTag={requireMeasuringInstrumentTag}
             instrumentUsages={selectedSavedEntry?.instrumentUsages ?? []}
+            messagePlacement="external"
           />
 
           <div className="shrink-0 rounded border border-white/15 bg-slate-800/70 p-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-white/80">
-                入力件（{selectedSlotLabel} / {requiredEntryCount}）
-              </p>
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-1">
+                <p className="shrink-0 text-sm font-semibold text-white/80">
+                  入力件（{selectedSlotLabel} / {requiredEntryCount}）
+                </p>
+                {!isInspectorMode && sessionEmployeeGateReady ? (
+                  <SelfInspectionAutosaveBadge
+                    status={draftAutosaveStatus}
+                    savedAtLabel={draftAutosaveAtLabel}
+                  />
+                ) : null}
+              </div>
               {entryPageCount > 1 ? (
                 <div className="flex items-center gap-2 text-xs text-white/70">
                   <SelfInspectionKioskButton
@@ -1254,14 +1275,14 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
                 </div>
               ) : null}
             </div>
-            <div className="mt-1 flex flex-wrap gap-2" data-self-inspection-entry-slots>
+            <div className="mt-1 flex flex-wrap gap-1" data-self-inspection-entry-slots>
               {visibleEntrySlots.map((slot) => {
                 const isSelected = slot.entryIndex === selectedEntryIndex;
                 return (
                   <SelfInspectionKioskButton
                     key={`${slot.entrySlotKind}-${slot.entryIndex}`}
                     type="button"
-                    size="default"
+                    size="entryDense"
                     pressed={isSelected}
                     disabled={!sessionEmployeeGateReady}
                     aria-label={isSelected ? `${slot.entrySlotLabel}（選択中）` : slot.entrySlotLabel}
@@ -1280,25 +1301,14 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
                 );
               })}
             </div>
-            {!isInspectorMode && sessionEmployeeGateReady ? (
-              <div className="mt-2">
-                {draftAutosaveStatus === 'saved' && draftAutosaveAtLabel ? (
-                  <span className="inline-flex rounded-full border border-lime-300/40 bg-lime-400/10 px-2.5 py-0.5 text-[11px] font-semibold text-lime-100">
-                    下書き 自動保存済 {draftAutosaveAtLabel}
-                  </span>
-                ) : draftAutosaveStatus === 'unsynced' || draftAutosaveStatus === 'pending' ? (
-                  <span className="inline-flex rounded-full border border-amber-300/40 bg-amber-400/10 px-2.5 py-0.5 text-[11px] font-semibold text-amber-100">
-                    {draftAutosaveStatus === 'pending' ? '下書き 保存中…' : '下書き 未同期'}
-                  </span>
-                ) : null}
-              </div>
-            ) : null}
           </div>
 
           <div className="shrink-0">
             <InspectionDrawingValuePanel
               point={selectedPoint}
               valueInputMode="self_inspection_options"
+              hundredthsKeypadLayout="singleRowCompact"
+              showInputStatus={false}
               valueCommitScopeKey={
                 session ? `${session.id}:${selectedEntryIndex}` : undefined
               }
@@ -1347,11 +1357,6 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
           </div>
 
           <div className="flex shrink-0 flex-col gap-2 rounded border border-white/15 bg-slate-800/70 p-2">
-            {actionError ? (
-              <p className="rounded border border-amber-400/40 bg-amber-500/15 px-3 py-2 text-sm text-amber-100">
-                {actionError}
-              </p>
-            ) : null}
             {isInspectorMode ? (
               <SelfInspectionInspectorJudgementPanel
                 values={pendingInspectorJudgementValues}
@@ -1402,29 +1407,12 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
                     : '自主検査を完了'}
               </SelfInspectionKioskButton>
             </div>
-            {!actionError &&
-            !saveActionState.enabled &&
-            selfInspectionActionReasonMessage(saveActionState.reason) ? (
-              <p
-                className={clsx(
-                  'rounded border px-3 py-2 text-sm',
-                  saveActionState.reason === 'ng_value'
-                    ? 'border-red-400/40 bg-red-500/15 text-red-100'
-                    : 'border-white/15 bg-slate-950/35 text-white/70'
-                )}
-                data-self-inspection-save-reason
-              >
-                {selfInspectionActionReasonMessage(saveActionState.reason)}
-              </p>
-            ) : null}
-            {!actionError && (completeActionState.reason === 'record_approval_required' || isInspectorMode) && completeActionHint ? (
-              <p className="rounded border border-sky-400/30 bg-sky-500/15 px-3 py-2 text-sm text-sky-100">
-                {completeActionHint}
-              </p>
-            ) : null}
           </div>
 
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded border border-white/15 bg-slate-800/70 p-2">
+          <div
+            className="flex min-h-0 flex-1 flex-col overflow-hidden rounded border border-white/15 bg-slate-800/70 p-2"
+            data-testid="self-inspection-point-history-region"
+          >
             <InspectionDrawingPointSummaryList
               points={activeDraft?.points ?? []}
               selectedPointId={selectedPoint?.id ?? null}

@@ -6,7 +6,7 @@ import {
   kioskButtonSecondaryClassName
 } from './kioskTheme';
 
-export type KioskFlowButtonSize = 'default' | 'compact' | 'icon' | 'actionCompact';
+export type KioskFlowButtonSize = 'default' | 'compact' | 'icon' | 'actionCompact' | 'entryDense';
 export type KioskFlowButtonTone = 'default' | 'inactive' | 'success' | 'danger';
 
 export type KioskFlowButtonClassOptions = {
@@ -22,7 +22,8 @@ const sizeClass: Record<KioskFlowButtonSize, string> = {
   default: 'min-h-11 px-4 text-[15px]',
   compact: 'min-h-11 px-2 text-sm',
   icon: 'min-h-11 min-w-11 px-2 text-[1.25rem] font-semibold leading-none',
-  actionCompact: 'min-h-6 px-4 py-0 text-[15px] leading-none'
+  actionCompact: 'min-h-6 px-4 py-0 text-[15px] leading-none',
+  entryDense: 'h-[22px] min-h-[22px] px-2 py-0 text-base leading-none'
 };
 
 const compactPrimary =
