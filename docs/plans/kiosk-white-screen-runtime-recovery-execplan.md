@@ -18,7 +18,8 @@ After this change, missing assets return a real 404, HTML documents are not cach
 - [x] (2026-07-31 10:12Z) Added the production-build browser regression test and durable ADR/index link.
 - [x] (2026-07-31 10:17Z) Ran Node 20+, Web, Caddy, Docker, deployment, 157 migrations, ledger SQL, EXPLAIN, and related API validation; all passed and temporary Docker resources were removed.
 - [x] (2026-07-31 10:19Z) Reviewed the complete staged diff, documentation links, YAML, shell syntax, executable mode, and whitespace checks.
-- [ ] Commit, push, and open a draft PR; production deployment remains unauthorized.
+- [x] (2026-07-31 10:22Z) Committed and pushed the implementation, then opened draft PR #1138 against `main`; production deployment remains unauthorized.
+- [ ] Wait for every required GitHub check on PR #1138 to complete successfully and record the final result.
 
 ## Surprises & Discoveries
 
@@ -57,7 +58,7 @@ After this change, missing assets return a real 404, HTML documents are not cach
 
 ## Outcomes & Retrospective
 
-The implementation now prevents the reproduced unsafe server response and contains the corresponding browser failure. The pure policy, storage adapter, Error Boundary, visible loading state, four Caddy variants, isolated HTTP contract, production-build Playwright fault injection, CI wiring, and durable ADR are complete. Focused tests passed fifty cases, the full Web suite passed 1,628 cases in 326 files, and both Playwright fault scenarios passed.
+The implementation now prevents the reproduced unsafe server response and contains the corresponding browser failure. The pure policy, storage adapter, Error Boundary, visible loading state, four Caddy variants, isolated HTTP contract, production-build Playwright fault injection, CI wiring, and durable ADR are complete and published in draft PR #1138. Focused tests passed fifty cases, the full Web suite passed 1,628 cases in 326 files, and both Playwright fault scenarios passed.
 
 The complete offline deployment contract passed, including 929 rolling-release tests, blue-green and maintenance recovery, inventory and Ansible syntax validation, 157 migrations on a new isolated Postgres database, migration-ledger SQL, `EXPLAIN (ANALYZE, BUFFERS)`, and twenty deploy-status API tests. Cleanup reported zero run resources, and a separate Docker name scan found no matching container, volume, or network.
 
@@ -169,3 +170,5 @@ Revision note (2026-07-31 09:58Z): Created the living plan from the approved imp
 Revision note (2026-07-31 10:17Z): Recorded the completed implementation, production-build browser proof, full Web and deployment validation, isolated database evidence, and verified Docker cleanup before final review and publication.
 
 Revision note (2026-07-31 10:19Z): Recorded successful validation of every runtime Caddy variant and completion of the staged diff review; only GitHub publication remains.
+
+Revision note (2026-07-31 10:22Z): Recorded commit `8855e566`, the pushed feature branch, and draft PR #1138. GitHub checks are now the only incomplete implementation gate.
