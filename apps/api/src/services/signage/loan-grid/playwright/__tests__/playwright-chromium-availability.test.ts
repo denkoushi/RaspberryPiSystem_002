@@ -1,63 +1,83 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const accessSyncMock = vi.fn();
-const executablePathMock = vi.fn();
-
-vi.mock('node:fs', () => ({
-  accessSync: (...args: unknown[]) => accessSyncMock(...args),
-  constants: { X_OK: 1 },
-}));
+const launchMock = vi.fn();
 
 vi.mock('playwright', () => ({
   chromium: {
-    executablePath: () => executablePathMock(),
+    launch: (...args: unknown[]) => launchMock(...args),
   },
 }));
 
-import { probePlaywrightChromiumAvailability } from '../playwright-chromium-availability.js';
+import {
+  probePlaywrightChromiumAvailability,
+  resetPlaywrightChromiumAvailabilityProbeForTests,
+} from '../playwright-chromium-availability.js';
 
 describe('probePlaywrightChromiumAvailability', () => {
   beforeEach(() => {
-    accessSyncMock.mockReset();
-    executablePathMock.mockReset();
+    launchMock.mockReset();
+    resetPlaywrightChromiumAvailabilityProbeForTests();
   });
 
   afterEach(() => {
     vi.clearAllMocks();
   });
 
-  it('Chromium が実行可能なら available=true', () => {
-    executablePathMock.mockReturnValue('/ms-playwright/chromium-1234/chrome');
-    accessSyncMock.mockReturnValue(undefined);
-
-    const result = probePlaywrightChromiumAvailability();
-
-    expect(result.available).toBe(true);
-    expect(result.executablePath).toBe('/ms-playwright/chromium-1234/chrome');
-    expect(accessSyncMock).toHaveBeenCalledWith('/ms-playwright/chromium-1234/chrome', 1);
-  });
-
-  it('executablePath 解決失敗時は available=false', () => {
-    executablePathMock.mockImplementation(() => {
-      throw new Error('Executable not found');
+  it('headless Chromium を起動して終了できれば available=true', async () => {
+    const close = vi.fn().mockResolvedValue(undefined);
+    launchMock.mockResolvedValue({
+      close,
+      version: () => '123.0.0',
     });
 
-    const result = probePlaywrightChromiumAvailability();
+    const result = await probePlaywrightChromiumAvailability();
+
+    expect(result.available).toBe(true);
+    expect(result.browserVersion).toBe('123.0.0');
+    expect(launchMock).toHaveBeenCalledWith({ headless: true });
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it('起動失敗時は詳細を公開せず available=false', async () => {
+    launchMock.mockRejectedValue(new Error('/secret/runtime/path: executable not found'));
+
+    const result = await probePlaywrightChromiumAvailability();
 
     expect(result.available).toBe(false);
-    expect(result.message).toContain('Executable not found');
+    expect(result.message).not.toContain('/secret/runtime/path');
     expect(result.message).toContain('kiosk document HTML→PDF');
   });
 
-  it('実行権限が無い場合は available=false', () => {
-    executablePathMock.mockReturnValue('/ms-playwright/chromium-1234/chrome');
-    accessSyncMock.mockImplementation(() => {
-      throw new Error('EACCES');
+  it('並行呼び出しでも起動確認を一度だけ実行する', async () => {
+    const close = vi.fn().mockResolvedValue(undefined);
+    launchMock.mockResolvedValue({
+      close,
+      version: () => '123.0.0',
     });
 
-    const result = probePlaywrightChromiumAvailability();
+    const [first, second] = await Promise.all([
+      probePlaywrightChromiumAvailability(),
+      probePlaywrightChromiumAvailability(),
+    ]);
+
+    expect(first).toBe(second);
+    expect(launchMock).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it('終了失敗時は残ったブラウザを再度閉じて unavailable にする', async () => {
+    const close = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('close failed'))
+      .mockResolvedValueOnce(undefined);
+    launchMock.mockResolvedValue({
+      close,
+      version: () => '123.0.0',
+    });
+
+    const result = await probePlaywrightChromiumAvailability();
 
     expect(result.available).toBe(false);
-    expect(result.message).toContain('EACCES');
+    expect(close).toHaveBeenCalledTimes(2);
   });
 });

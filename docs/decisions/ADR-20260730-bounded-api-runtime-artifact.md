@@ -12,6 +12,7 @@ related_code:
   - .github/workflows/ci.yml
 related_docs:
   - ../plans/api-image-runtime-boundary-execplan.md
+  - ../plans/pi5-api-image-local-storage-scalability-execplan.md
   - ../knowledge-base/KB-404-pi5-ghcr-api-image-pull-timeout.md
   - ./ADR-20260728-attested-arm64-release-artifact-promotion.md
 validation: exact ARM64 OCI manifest, runtime/final Docker smoke, pure contracts, disposable PostgreSQL, and required hosted CI
@@ -48,11 +49,20 @@ Application build output, Prisma generation, and release metadata enter only
 in the final `api` stage. Static contracts prevent application source or
 release identity from moving above that boundary.
 
-Inspect the exact pushed Linux ARM64 OCI manifest in CI. Reject it if total
-compressed layer size exceeds 1,400,000,000 bytes, the largest layer exceeds
-850,000,000 bytes, or the image contains more than forty layers. The validator
-is pure, bounded, rejects duplicate or unknown data, and never reads
-credentials or mutable tags.
+Inspect the exact pushed Linux ARM64 OCI manifest in CI. The initial boundary
+used 1,400,000,000 total compressed bytes and an 850,000,000-byte largest
+layer. The approved 2026-07-31 footprint follow-up replaces those limits with
+1,000,000,000 total compressed bytes and a 700,000,000-byte largest layer,
+while retaining the forty-layer limit. The validator is pure, bounded, rejects
+duplicate or unknown data, and never reads credentials or mutable tags.
+
+The follow-up keeps the same runtime boundary while installing only API
+production workspace dependencies, Debian `ansible-core` without recommended
+community collections, and Playwright's headless shell without full Chromium.
+The one directory-backup task that depended on the non-Core archive module
+uses `ansible.builtin.command` with an argument vector to invoke `tar`; fetch,
+failure handling, and cleanup remain Core modules. The Playwright health probe
+launches and closes the real headless browser once and caches the result.
 
 Give API image pull 1,200 seconds, keep Web image pull at 600 seconds, and bound
 the complete promotion at 1,500 seconds. Release-set and ordinary command
@@ -70,6 +80,12 @@ A slow initial API pull may occupy up to twenty minutes, but it no longer
 performs ten minutes of transfer only to repeat work in the local builder.
 Subsequent releases reuse unchanged heavy layers, and any meaningful OCI growth
 requires an explicit reviewed budget change.
+
+The exact local ARM64 OCI evidence after the follow-up is 845,913,117
+compressed bytes across 26 layers, with a 530,496,867-byte largest layer. This
+is a 32.98 percent reduction from the recorded baseline. Hosted CI and the
+separately approved production pull are still required before claiming the
+network-timeout issue is resolved.
 
 No HTTP API, database, migration, Compose runtime service, Blue/Green pair,
 terminal order, canary, five-minute monitor, or rollback behavior changes.

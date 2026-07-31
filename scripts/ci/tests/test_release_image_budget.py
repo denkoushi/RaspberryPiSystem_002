@@ -68,6 +68,11 @@ def image_manifest(
 
 
 class ReleaseImageBudgetTests(unittest.TestCase):
+    def test_api_budget_enforces_the_reviewed_footprint(self) -> None:
+        self.assertEqual(API_IMAGE_BUDGET.max_total_bytes, 1_000_000_000)
+        self.assertEqual(API_IMAGE_BUDGET.max_layer_bytes, 700_000_000)
+        self.assertEqual(API_IMAGE_BUDGET.max_layers, 40)
+
     def test_selects_exact_linux_arm64_manifest_and_rejects_ambiguity(self) -> None:
         selected = select_linux_arm64_manifest(json.dumps(image_index()))
         self.assertEqual(selected, "sha256:" + "a" * 64)
