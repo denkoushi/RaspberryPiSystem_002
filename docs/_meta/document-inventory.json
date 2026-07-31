@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 592,
-    "totalLines": 166354,
-    "totalBytes": 12455602,
+    "totalLines": 166367,
+    "totalBytes": 12457904,
     "withFrontmatter": 266,
     "withStatus": 122,
     "sourceOfTruthDeclared": 86,
@@ -18772,8 +18772,8 @@
     },
     {
       "path": "docs/guides/deployment.md",
-      "lineCount": 285,
-      "byteSize": 25134,
+      "lineCount": 290,
+      "byteSize": 25518,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -33604,8 +33604,8 @@
     },
     {
       "path": "docs/plans/kiosk-self-inspection-layout-density-execplan.md",
-      "lineCount": 166,
-      "byteSize": 20298,
+      "lineCount": 174,
+      "byteSize": 22216,
       "hasFrontmatter": true,
       "title": "Kiosk Self-Inspection Layout Density ExecPlan",
       "status": "in_progress",

@@ -7,14 +7,14 @@ source_of_truth: this file
 related_code:
   - apps/web/src/features/part-measurement
   - apps/web/src/pages/kiosk/KioskSelfInspectionSessionPage.tsx
+  - scripts/deploy/classify-deploy-impact.py
 related_docs:
   - docs/knowledge-base/KB-320-kiosk-part-measurement.md
   - docs/runbooks/kiosk-part-measurement.md
 validation: passed_and_deployed
 open_items:
-  - merge the deployed feature branch into main
-  - redeploy and verify the merged main release across the production fleet
-  - reassess the previously deployed but unmerged PR 1044 change
+  - finish and verify merged-main release 20260731-224750-6f0a09 across the production fleet
+  - merge and deploy the remaining PR 1044 Pi5 impact-classification contract
 ---
 
 # Kiosk Self-Inspection Layout Density
@@ -44,9 +44,12 @@ Operators must be able to see the measurement-point list while entering values a
 - [x] (2026-08-01) Added post-restore daemon reload, unit-registration waits, timer-first ordering, and bounded retries; the complete deployment contract suite passed again under Node 20.20.2.
 - [x] (2026-08-01) Committed and pushed the post-restore hardening as `c118b4ef`; release `20260731-211900-195688` completed successfully with Pi5 and Pi3 verified and Pi3 runtime health confirmed directly.
 - [x] (2026-08-01) Audited the structured production release ledger against `main` and found that the current UI and Pi3 fixes were deployed from this feature branch but had not been submitted as a PR or merged.
-- [ ] Create and merge the feature PR after required CI succeeds.
-- [ ] Deploy merged `main`, verify Pi5, all Pi4 kiosks, and Pi3, and prove a repeated plan is a no-op.
-- [ ] Reassess open PR #1044 against the current deployment architecture and integrate only the still-required behavior.
+- [x] (2026-08-01) Created PR #1139, passed every required check, merged it as `0132e82f`, and confirmed local `main`, `origin/main`, and the merge-SHA CI were synchronized and successful.
+- [ ] Finish release `20260731-224750-6f0a09`, verify Pi5, all Pi4 kiosks, and Pi3, and prove a repeated plan is a no-op.
+- [x] (2026-08-01) Reassessed PR #1044: four effective behaviors already reached `main` through later commits, while the Pi5 impact classification for the migration validator remained absent.
+- [x] (2026-08-01) Created `fix/pi5-migration-validator-impact` from synchronized `main`, implemented only the missing classification and readiness contracts, and passed 58 focused classifier/registry/readiness tests.
+- [x] (2026-08-01) Passed the complete Node 20 deployment contract suite: 931 Python tests, Web production build, isolated PostgreSQL with all 157 migrations, deploy-status integration, rollback/safety contracts, and all Ansible/profile checks; cleanup proved zero temporary Docker resources.
+- [ ] Merge the follow-up PR, deploy the final `main` to the automatically selected scope, and close this plan with production evidence.
 
 ## Surprises & Discoveries
 
@@ -72,6 +75,8 @@ Operators must be able to see the measurement-point list while entering values a
   Evidence: the release failed only that loop item with `Could not find the requested service`; rollback restored and verified `ab57a4ab`, and subsequent read-only checks found lightdm, Signage, and every timer active and enabled. The same task/item and a successful retry are recorded in the historical deployment notes.
 - Observation: A clean and synchronized local `main` does not prove that a deployed feature branch has been integrated into `main`.
   Evidence: `main` and `origin/main` both pointed to `9a06ec1a`, while the production fleet was verified at `a8977fe2` or `c118b4ef` and this feature branch was four commits ahead with no PR.
+- Observation: PR #1044 accumulated unrelated historical work, but its final deployment fixes can be evaluated independently by behavior rather than merging the stale branch.
+  Evidence: new-table unique-index validation and indirect inventory resolution are present on `main` as `b5e51fed` and `02a3513f`; later SSH failure classification supersedes the raw transport excerpt, while `validate-expand-only-migrations.py` still resolved to non-server `deploy-control`.
 
 ## Decision Log
 
@@ -108,6 +113,9 @@ Operators must be able to see the measurement-point list while entering values a
 - Decision: Report worktree cleanliness, origin synchronization, main integration, and production SHA as four separate states, and do not close feature-branch production work before its PR is merged.
   Rationale: Conflating repository synchronization with integration concealed a real main-branch omission and could let a later main deployment revert verified behavior.
   Date/Author: 2026-08-01 / Codex after the user-requested integration audit.
+- Decision: Do not merge or cherry-pick stale PR #1044 wholesale; restore only the missing `pi5-control` classification and its regression test on a fresh branch from current `main`.
+  Rationale: The other effective fixes are already present or superseded, while the stale branch contains a large unrelated history. A narrow component boundary preserves the current deployment architecture and makes the Pi5 requirement explicit without manufacturing terminal or migration work.
+  Date/Author: 2026-08-01 / Codex after behavioral comparison with current `main`.
 
 ## Context and Orientation
 

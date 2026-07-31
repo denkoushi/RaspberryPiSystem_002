@@ -161,6 +161,20 @@ class ReadinessPolicyTest(unittest.TestCase):
         self.assertIn("route.external-server-build", capabilities)
         self.assertNotIn("terminal.selected-prerequisites", capabilities)
 
+    def test_pi5_control_requires_pi5_without_build_or_terminal_probe(self):
+        selection = readiness_policy.select_readiness(
+            self.registry,
+            readiness_policy.facts_from_plan(
+                plan(components=("pi5-control",), pi5_required=True)
+            ),
+        )
+
+        capabilities = {request.capability for request in selection.probes}
+        self.assertIn("migration.production-ledger", capabilities)
+        self.assertIn("route.pi5-authority-and-resources", capabilities)
+        self.assertNotIn("route.external-server-build", capabilities)
+        self.assertNotIn("terminal.selected-prerequisites", capabilities)
+
     def test_exact_six_kiosk_targets_exclude_signage(self):
         kiosks = tuple(work(f"kiosk-{index}") for index in range(1, 7))
         selection = readiness_policy.select_readiness(
