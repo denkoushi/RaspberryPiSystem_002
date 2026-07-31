@@ -19,7 +19,7 @@ After this change, missing assets return a real 404, HTML documents are not cach
 - [x] (2026-07-31 10:17Z) Ran Node 20+, Web, Caddy, Docker, deployment, 157 migrations, ledger SQL, EXPLAIN, and related API validation; all passed and temporary Docker resources were removed.
 - [x] (2026-07-31 10:19Z) Reviewed the complete staged diff, documentation links, YAML, shell syntax, executable mode, and whitespace checks.
 - [x] (2026-07-31 10:22Z) Committed and pushed the implementation, then opened draft PR #1138 against `main`; production deployment remains unauthorized.
-- [ ] Wait for every required GitHub check on PR #1138 to complete successfully and record the final result.
+- [x] (2026-07-31 10:38Z) Confirmed every required GitHub check on PR #1138 succeeded after correcting and revalidating the clean-checkout Web dependency build prerequisite; 15 checks succeeded with no failures or pending checks.
 
 ## Surprises & Discoveries
 
@@ -61,7 +61,7 @@ After this change, missing assets return a real 404, HTML documents are not cach
 
 ## Outcomes & Retrospective
 
-The implementation now prevents the reproduced unsafe server response and contains the corresponding browser failure. The pure policy, storage adapter, Error Boundary, visible loading state, four Caddy variants, isolated HTTP contract, production-build Playwright fault injection, CI wiring, and durable ADR are complete and published in draft PR #1138. Focused tests passed fifty cases, the full Web suite passed 1,628 cases in 326 files, and both Playwright fault scenarios passed.
+The implementation now prevents the reproduced unsafe server response and contains the corresponding browser failure. The pure policy, storage adapter, Error Boundary, visible loading state, four Caddy variants, isolated HTTP contract, production-build Playwright fault injection, CI wiring, and durable ADR are complete and published in draft PR #1138. Focused tests passed fifty cases, the full Web suite passed 1,628 cases in 326 files, and both Playwright fault scenarios passed. The final PR check set completed with fifteen successful checks, no failures, and no pending checks.
 
 The complete offline deployment contract passed, including 929 rolling-release tests, blue-green and maintenance recovery, inventory and Ansible syntax validation, 157 migrations on a new isolated Postgres database, migration-ledger SQL, `EXPLAIN (ANALYZE, BUFFERS)`, and twenty deploy-status API tests. Cleanup reported zero run resources, and a separate Docker name scan found no matching container, volume, or network.
 
@@ -177,3 +177,5 @@ Revision note (2026-07-31 10:19Z): Recorded successful validation of every runti
 Revision note (2026-07-31 10:22Z): Recorded commit `8855e566`, the pushed feature branch, and draft PR #1138. GitHub checks are now the only incomplete implementation gate.
 
 Revision note (2026-07-31 10:28Z): Recorded and corrected the clean-CI build prerequisite discovered by the first PR deploy-contract run; full revalidation and replacement checks remain pending.
+
+Revision note (2026-07-31 10:38Z): Closed the plan after the corrected deploy contract and all other required PR checks succeeded; production rollout remains explicitly out of scope.
