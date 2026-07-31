@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import { KioskRedirect } from './components/KioskRedirect';
 import { RequireAuth } from './components/RequireAuth';
+import { RouteLoadingScreen } from './components/RouteLoadingScreen';
 import { readProductionBuildConfig } from './config/productionBuildConfig';
 import { kioskAssemblyLibraryPath, parseAssemblyProcedureOrderSettingsSearch } from './features/assembly';
 import { INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED } from './features/part-measurement/inspection-drawing/inspectionDrawingPrintConstants';
@@ -147,7 +148,7 @@ const KioskSelfInspectionSessionPage = lazy(() =>
 );
 
 function lazyRouteElement(element: ReactNode) {
-  return <Suspense fallback={null}>{element}</Suspense>;
+  return <Suspense fallback={<RouteLoadingScreen />}>{element}</Suspense>;
 }
 
 function App() {
