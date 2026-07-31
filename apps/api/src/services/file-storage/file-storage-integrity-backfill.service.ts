@@ -75,9 +75,12 @@ export class FileStorageIntegrityBackfillService {
       )
         .flat()
         .sort((left, right) => left.localeCompare(right));
+      const resumeIndex = state.cursor ? allKeys.indexOf(state.cursor) : -1;
+      const remainingKeys =
+        state.cursor && resumeIndex >= 0 ? allKeys.slice(resumeIndex + 1) : allKeys;
       let bytesThisRun = 0;
-      for (const key of allKeys) {
-        if (state.cursor && key <= state.cursor) continue;
+      let processedThisRun = 0;
+      for (const key of remainingKeys) {
         const stat = await this.store.stat(key);
         if (stat.size > this.byteBudget) {
           throw Object.assign(
@@ -101,6 +104,7 @@ export class FileStorageIntegrityBackfillService {
           state.registeredCount += 1;
         }
         bytesThisRun += hashed.size;
+        processedThisRun += 1;
         state = {
           ...state,
           cursor: key,
@@ -110,7 +114,7 @@ export class FileStorageIntegrityBackfillService {
         };
         await this.catalog.writeState(state);
       }
-      const remaining = allKeys.some((key) => !state.cursor || key > state.cursor);
+      const remaining = processedThisRun < remainingKeys.length;
       state = {
         ...state,
         status: remaining ? 'pending' : 'complete',
