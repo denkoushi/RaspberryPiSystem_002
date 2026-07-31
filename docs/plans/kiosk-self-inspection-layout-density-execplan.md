@@ -1,8 +1,8 @@
 ---
 title: Kiosk Self-Inspection Layout Density ExecPlan
-status: in_progress
+status: completed
 scope: kiosk self-inspection layout delivery and constrained Pi3 deployment resilience
-date: 2026-07-31
+date: 2026-08-01
 source_of_truth: this file
 related_code:
   - apps/web/src/features/part-measurement
@@ -10,9 +10,8 @@ related_code:
 related_docs:
   - docs/knowledge-base/KB-320-kiosk-part-measurement.md
   - docs/runbooks/kiosk-part-measurement.md
-validation: passed_locally
-open_items:
-  - deploy remediated candidate and verify the fleet
+validation: passed_and_deployed
+open_items: []
 ---
 
 # Kiosk Self-Inspection Layout Density
@@ -40,7 +39,7 @@ Operators must be able to see the measurement-point list while entering values a
 - [x] (2026-08-01) Committed and pushed the initial Pi3 remediation, passed a new production-ledger/terminal preflight, and deployed the candidate to Pi5 and all six Pi4 kiosks with verified release evidence.
 - [x] (2026-08-01) Confirmed automatic Pi3 rollback to `ab57a4ab` after a transient systemd unit-registration failure; lightdm, Signage, and all timers recovered active and enabled.
 - [x] (2026-08-01) Added post-restore daemon reload, unit-registration waits, timer-first ordering, and bounded retries; the complete deployment contract suite passed again under Node 20.20.2.
-- [ ] Commit and push the post-restore hardening, redeploy Pi3 through the standard entrypoint, and verify final fleet convergence.
+- [x] (2026-08-01) Committed and pushed the post-restore hardening as `c118b4ef`; release `20260731-211900-195688` completed successfully with Pi5 and Pi3 verified and Pi3 runtime health confirmed directly.
 
 ## Surprises & Discoveries
 
@@ -146,4 +145,6 @@ No API, DTO, Prisma schema, migration, or stored-data contract changes are expec
 
 The requested presentation changes are implemented without changes to API, DTO, Prisma, migrations, or business workflows. Focused tests passed, the full Web suite passed 329 files and 1,657 tests, lint and production build passed, and eight fully mocked Chromium E2E cases passed at the target resolutions. The isolated `pgvector/pgvector:pg15` run applied and reported all 157 migrations current; `_prisma_migrations` returned `157|0`, both self-inspection columns existed, the focused API contract test passed, and the representative list query used indexed scans with 0.090ms execution in the one-row fixture. Cleanup reported zero matching containers, volumes, networks, and storage paths.
 
-The UI and first Pi3 remediation commits were pushed. Pi5 and all six Pi4 kiosks now hold verified evidence for `a8977fe2`. The first remediated Pi3 attempt safely rolled back after exposing a known transient unit-registration race in the post-lightdm restoration loop. The restoration path is now hardened and fully contract-tested; a final Pi3-only standard release remains before closing this plan.
+The UI and Pi3 remediation commits were pushed. Pi5 and all six Pi4 kiosks first received and verified the UI candidate `a8977fe2`. The first remediated Pi3 attempt safely rolled back after exposing a known transient unit-registration race in the post-lightdm restoration loop. The hardened restoration path then passed the complete deployment contract suite and production release `20260731-211900-195688`: Pi5 and Pi3 verified `c118b4ef`, while the six Pi4 kiosks retained their already-verified UI SHA `a8977fe2` because the final commit changed deployment control only.
+
+On Pi3, daemon reload succeeded, all four required units reported `loaded`, the three timers started before the display service, and `signage-lite.service` became active with `failed=0` and `unreachable=0`. Direct post-release checks found lightdm, Signage, all Signage timers, and `status-agent.timer` active; persistent units enabled; repository HEAD `c118b4ef`; `REQUEST_TIMEOUT="30"`; `throttled=0x0`; no OOM or thermal kernel records; and repeated healthy watchdog runs without interactive-authentication errors. Available memory was 104MB with 258MB of 415MB swap in use, so Pi3 remains capacity-constrained but the release and recovery paths now account for that constraint. `/proc/pressure/memory` is not exposed by the installed Pi3 kernel, so memory validation used `free`, resource guards, kernel logs, and observed service convergence.
