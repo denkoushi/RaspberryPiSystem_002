@@ -59,7 +59,3 @@ CREATE INDEX "SelfInspectionItemInvalidation_idx_client_time"
   ON "SelfInspectionItemInvalidation"("invalidatedByClientDeviceId", "invalidatedAt");
 CREATE INDEX "SelfInspectionSession_idx_invalidation_updated"
   ON "SelfInspectionSession"("invalidatedAt", "updatedAt");
--- 通常一覧は大半が有効行になり得るため、LIMIT + 更新日時降順を直接満たす部分索引も持つ。
-CREATE INDEX "SelfInspectionSession_idx_active_updated"
-  ON "SelfInspectionSession"("updatedAt" DESC)
-  WHERE "invalidatedAt" IS NULL;
