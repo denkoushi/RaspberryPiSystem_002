@@ -192,6 +192,8 @@ scripts/update-all-clients.sh --status RUN_ID
 
 Pi5が対象の場合は、host設定、Expand-only migration、candidate image、Blue/Green切替、load確認、5分間の安定化を完了してから端末へ進む。端末はprofile指定の通知（現在のKioskは60秒）後に一台ずつ更新する。
 
+`device_type_defaults`で`stop_lightdm: true`のSignage端末は、release-only適用中だけSignage runtimeとlightdmを停止してメモリを確保する。適用後は同じplayのpost-taskでlightdmとSignage runtimeを再開し、coordinatorがdisplay、status-agent、認証済みSignage endpoint、repo SHAを検証する。途中失敗時はsealed runtime manifestから復元し、手動のservice起動で成功扱いにしない。
+
 端末のforward Ansible playbookだけはSSH pipeliningを使う。各対象端末をdurable stateで`unknown`へ遷移した直後、repository baseline、manifest、通知、maintenance、checkout、service変更より前に、同じpipeliningと`become`で互換性を検査する。検査失敗は端末変更前にfail-closedで停止する。
 
 端末manifest取得は、SSH account identity、file manifest、runtime manifestを候補SHA所有の一つのbundleで検査・取得する。file/runtimeは別々のroot、digest、復元権限のままであり、一方だけ成功した場合や応答を失った場合は成功扱いにしない。Generic Kioskの最終証跡も、Git HEAD、systemd、status identity、各agentの安定性判定を候補SHA所有の一つのbundleで確認する。これらのbundleはpipeliningを使わず、検査内容と必須条件を減らさない。cleanupとrollbackは従来のAnsible transportとsealed manifestだけを使う。

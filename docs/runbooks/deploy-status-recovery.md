@@ -87,4 +87,6 @@ lockはkernelがprocess終了・再起動時に解放する。残って見える
 
 Pi5本体の故障・停電は単体構成の対象外である。ハードウェア復旧後もfleet evidenceは自動的に信用せず、`unknown` として標準ワークフローで再検証する。
 
+Pi3 Signageが`unknown`の場合は、標準planを迂回する前に、Pi5経由で可用メモリ、zram swap、`/opt`使用率、温度・throttling、`status-agent.service`の結果、Signage watchdogのjournalを読み取る。`device_type_defaults.pi3.stop_lightdm=true`はrelease-only適用中の一時停止として使い、通常表示中のlightdmを恒久停止しない。watchdogの自己復旧はinventoryで許可された`sudo -n /usr/bin/systemctl`の限定コマンドだけを使用する。
+
 通常手順は [デプロイメントガイド](../guides/deployment.md)、Pi5固有の診断観点は [Pi5 Blue/Green Runbook](./pi5-blue-green-deploy.md) を参照する。

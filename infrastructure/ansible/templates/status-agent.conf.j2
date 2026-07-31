@@ -17,7 +17,7 @@ LOG_FILE="/var/log/raspi-status-agent.log"
 STATUS_AGENT_LOG_SUCCESS="{{ status_agent_log_success | default('0') }}"
 
 # 任意: HTTPタイムアウト秒
-REQUEST_TIMEOUT=10
+REQUEST_TIMEOUT="{{ status_agent_request_timeout | default('10') }}"
 
 # 任意: 社内CAを使用していない場合は 1 に設定して TLS 検証を無効化（本番では推奨しない）
 TLS_SKIP_VERIFY="{{ status_agent_tls_skip_verify | default('0') }}"

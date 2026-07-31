@@ -417,6 +417,8 @@ all:
               status_agent_client_id: raspberrypi3-signage1
               status_agent_client_key: "{{ vault_status_agent_client_key | default('client-key-raspberrypi3-signage1') }}"
               status_agent_location: "第2工場 - signageMakoRoom"
+              # 低メモリ時のTLS handshake遅延を通常の10秒より長く許容する
+              status_agent_request_timeout: "30"
               signage_server_url: "{{ server_base_url }}"
               signage_client_key: "{{ vault_signage_client_key | default('client-key-raspberrypi3-signage1') }}"
               # signage-lite.serviceを管理対象にする
@@ -431,6 +433,7 @@ all:
                 - /usr/bin/systemctl start signage-lite.service
                 - /usr/bin/systemctl stop signage-lite.service
                 - /usr/bin/systemctl restart signage-lite.service
+                - /usr/bin/systemctl start signage-lite-update.service
                 - /usr/bin/systemctl start signage-lite-update.timer
                 - /usr/bin/systemctl stop signage-lite-update.timer
                 - /usr/bin/systemctl restart signage-lite-update.timer

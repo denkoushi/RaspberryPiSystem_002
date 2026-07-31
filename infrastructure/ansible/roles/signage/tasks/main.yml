@@ -15,6 +15,15 @@
     - signage-lite.service
   when: terminal_release_mode | default('full') == 'release-only'
 
+- name: Stop lightdm temporarily for constrained signage release
+  ansible.builtin.systemd:
+    name: lightdm
+    state: stopped
+  register: lightdm_stopped
+  when:
+    - terminal_release_mode | default('full') == 'release-only'
+    - stop_lightdm | default(false) | bool
+
 # NOTE:
 # - Pi3/Pi4のsignage-liteは feh + shell scripts で動作するため、pnpm依存のインストールは不要。
 # - 過去互換のため“オプション”として残すが、デフォルトでは実行しない（安全性/正確性のため）。

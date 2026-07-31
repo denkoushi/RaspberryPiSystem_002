@@ -21,7 +21,7 @@ if [[ ${AGE_SECONDS} -gt ${STALE_THRESHOLD_SECONDS} ]]; then
   echo "$(date): WARNING: Image update stalled (age: ${AGE_SECONDS}s). Attempting recovery..."
   
   # 1. まず update.service を手動実行
-  systemctl start signage-lite-update.service || true
+  sudo -n /usr/bin/systemctl start signage-lite-update.service || true
   sleep 5
   
   # 2. まだ古い場合は service を再起動
@@ -29,7 +29,7 @@ if [[ ${AGE_SECONDS} -gt ${STALE_THRESHOLD_SECONDS} ]]; then
   AGE_AFTER=$((CURRENT_TIME - LAST_MODIFIED_AFTER))
   if [[ ${AGE_AFTER} -gt ${STALE_THRESHOLD_SECONDS} ]]; then
     echo "$(date): Recovery failed, restarting signage-lite.service..."
-    systemctl restart signage-lite.service || true
+    sudo -n /usr/bin/systemctl restart signage-lite.service || true
   else
     echo "$(date): Recovery successful (update.service worked)"
   fi
@@ -39,4 +39,3 @@ else
 fi
 
 exit 0
-
