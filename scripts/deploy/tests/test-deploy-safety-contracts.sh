@@ -26,6 +26,8 @@ TERMINAL_PREFLIGHT="${ROOT_DIR}/scripts/deploy/rolling_release/terminal_prefligh
 TERMINAL_AGENT_HEALTH="${ROOT_DIR}/scripts/deploy/terminal-agent-health-probe.py"
 KIOSK_FIREFOX_TASKS="${ROOT_DIR}/infrastructure/ansible/roles/kiosk/tasks/firefox-chrome.yml"
 SIGNAGE_TASKS="${ROOT_DIR}/infrastructure/ansible/roles/signage/tasks/main.yml"
+SIGNAGE_WATCHDOG_TEMPLATE="${ROOT_DIR}/infrastructure/ansible/roles/signage/templates/signage-lite-watchdog.sh.j2"
+STATUS_AGENT_CONFIG_TEMPLATE="${ROOT_DIR}/infrastructure/ansible/templates/status-agent.conf.j2"
 KIOSK_LAUNCH_TEMPLATE="${ROOT_DIR}/infrastructure/ansible/templates/kiosk-launch.sh.j2"
 SIGNAGE_DISPLAY_TEMPLATES=(
   "${ROOT_DIR}/infrastructure/ansible/templates/signage-display.sh.j2"
@@ -122,6 +124,87 @@ if grep -Eq 'status_code:[[:space:]]*\[[^]]*401|until:.*401|failed_when:[[:space
   echo "[ERROR] terminal endpoint health must fail closed on HTTP 401" >&2
   exit 1
 fi
+
+python3 - "${SIGNAGE_TASKS}" "${PLAYBOOK}" "${SIGNAGE_WATCHDOG_TEMPLATE}" \
+  "${STATUS_AGENT_CONFIG_TEMPLATE}" "${MAIN_INVENTORY}" <<'PY'
+import sys
+from pathlib import Path
+
+import yaml
+
+signage_tasks_path, playbook_path, watchdog_path, status_config_path, inventory_path = map(
+    Path, sys.argv[1:]
+)
+signage_tasks = yaml.safe_load(signage_tasks_path.read_text(encoding='utf-8')) or []
+lightdm_stop = next(
+    task for task in signage_tasks
+    if task.get('name') == 'Stop lightdm temporarily for constrained signage release'
+)
+assert lightdm_stop['ansible.builtin.systemd'] == {'name': 'lightdm', 'state': 'stopped'}
+assert lightdm_stop.get('register') == 'lightdm_stopped'
+assert lightdm_stop.get('when') == [
+    "terminal_release_mode | default('full') == 'release-only'",
+    'stop_lightdm | default(false) | bool',
+]
+
+plays = yaml.safe_load(playbook_path.read_text(encoding='utf-8')) or []
+signage_play = next(play for play in plays if play.get('hosts') == 'signage')
+lightdm_start = next(
+    task for task in signage_play.get('post_tasks', [])
+    if task.get('name') == 'Start lightdm after deployment to restore GUI'
+)
+assert lightdm_start['ansible.builtin.systemd'] == {'name': 'lightdm', 'state': 'started'}
+assert 'lightdm_stopped is defined' in lightdm_start.get('when', [])
+assert 'lightdm_stopped is changed' in lightdm_start.get('when', [])
+
+signage_post_tasks = signage_play.get('post_tasks', [])
+systemd_reload = next(
+    task for task in signage_post_tasks
+    if task.get('name') == 'Reload systemd before restoring constrained signage services'
+)
+assert systemd_reload['ansible.builtin.systemd'] == {'daemon_reload': True}
+
+unit_wait = next(
+    task for task in signage_post_tasks
+    if task.get('name') == 'Wait for constrained signage units to be registered'
+)
+assert unit_wait.get('loop') == [
+    'signage-lite-update.timer',
+    'signage-lite-watchdog.timer',
+    'signage-daily-reboot.timer',
+    'signage-lite.service',
+]
+assert unit_wait.get('retries') == 5
+assert unit_wait.get('delay') == 3
+assert "signage_restore_unit.stdout | trim == 'loaded'" in unit_wait.get('until', [])
+
+service_restore = next(
+    task for task in signage_post_tasks
+    if task.get('name') == 'Start signage services after lightdm restore'
+)
+assert service_restore.get('loop') == [
+    'signage-lite-update.timer',
+    'signage-lite-watchdog.timer',
+    'signage-daily-reboot.timer',
+    'signage-lite.service',
+]
+assert service_restore.get('retries') == 3
+assert service_restore.get('delay') == 5
+assert service_restore.get('until') == 'signage_restore_service is succeeded'
+
+watchdog = watchdog_path.read_text(encoding='utf-8')
+assert 'sudo -n /usr/bin/systemctl start signage-lite-update.service' in watchdog
+assert 'sudo -n /usr/bin/systemctl restart signage-lite.service' in watchdog
+assert '\n  systemctl start signage-lite-update.service' not in watchdog
+assert '\n    systemctl restart signage-lite.service' not in watchdog
+
+status_config = status_config_path.read_text(encoding='utf-8')
+assert 'REQUEST_TIMEOUT="{{ status_agent_request_timeout | default(\'10\') }}"' in status_config
+
+inventory = inventory_path.read_text(encoding='utf-8')
+assert 'status_agent_request_timeout: "30"' in inventory
+assert '- /usr/bin/systemctl start signage-lite-update.service' in inventory
+PY
 
 python3 - "${RESTART_CLIENT_SERVICE}" "${ROOT_DIR}" <<'PY'
 import re
@@ -1152,9 +1235,11 @@ def audit_tasks(tasks, source, inherited_full):
                 )
                 state = normalized(value.get('state', ''))
                 if state == 'stopped':
-                    assert (
+                    signage_source = (
                         source.resolve() == (roles_root / 'signage/tasks/main.yml').resolve()
-                        and name == 'Stop signage runtime temporarily for release'
+                    )
+                    runtime_stop = (
+                        name == 'Stop signage runtime temporarily for release'
                         and task.get('loop') == [
                             'signage-lite-update.timer',
                             'signage-lite-watchdog.timer',
@@ -1163,7 +1248,19 @@ def audit_tasks(tasks, source, inherited_full):
                             'signage-lite-watchdog.service',
                             'signage-lite.service',
                         ]
-                    ), f'{source}:{name}: uncontrolled release stop set'
+                    )
+                    lightdm_stop = (
+                        name == 'Stop lightdm temporarily for constrained signage release'
+                        and value.get('name') == 'lightdm'
+                        and task.get('register') == 'lightdm_stopped'
+                        and task.get('when') == [
+                            "terminal_release_mode | default('full') == 'release-only'",
+                            'stop_lightdm | default(false) | bool',
+                        ]
+                    )
+                    assert signage_source and (runtime_stop or lightdm_stop), (
+                        f'{source}:{name}: uncontrolled release stop set'
+                    )
                 else:
                     assert state in {'', 'started', 'restarted', 'reloaded'}, (
                         f'{source}:{name}: uncontrolled systemd state {state!r}'

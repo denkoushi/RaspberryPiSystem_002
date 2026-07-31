@@ -91,6 +91,18 @@ pullのtimeoutまたは通信不能は`unavailable`としてローカルbuildへ
 7. inventoryごとに実機実行の明示承認を得る。
 8. 通常実行を開始する。release unit作成の直前に、同じ対象・同じ不変SHAに対する全量preflightが自動実行される。`--preflight-only` は、変更を起こさず問題を診断したい場合だけ使う。
 
+「mainが最新」「反映済み」と報告するときは、次の4項目を分けて確認する。ローカル
+`main`と`origin/main`が一致するだけでは、feature branchの実装がmainへ統合済みとは
+判定しない。
+
+1. worktreeがcleanか。
+2. ローカルbranchと対応するorigin branchが一致するか。
+3. デプロイ対象SHAが`origin/main`の祖先か、未統合なら対応PRと統合予定があるか。
+4. fleet stateの各hostで、実行中SHAと検証証跡が何か。
+
+feature branchを本番検証に使った場合は、同じ作業の完了条件にPR作成、必須CI、main
+統合を含める。main統合前の本番成功を「main反映済み」と表現してはならない。
+
 ローカルとGitHub Actionsの`deploy-contract`は、同じ実行入口を使う。
 
 ```bash
@@ -191,6 +203,8 @@ scripts/update-all-clients.sh --status RUN_ID
 ```
 
 Pi5が対象の場合は、host設定、Expand-only migration、candidate image、Blue/Green切替、load確認、5分間の安定化を完了してから端末へ進む。端末はprofile指定の通知（現在のKioskは60秒）後に一台ずつ更新する。
+
+`device_type_defaults`で`stop_lightdm: true`のSignage端末は、release-only適用中だけSignage runtimeとlightdmを停止してメモリを確保する。適用後は同じplayのpost-taskでlightdmとSignage runtimeを再開し、coordinatorがdisplay、status-agent、認証済みSignage endpoint、repo SHAを検証する。途中失敗時はsealed runtime manifestから復元し、手動のservice起動で成功扱いにしない。
 
 端末のforward Ansible playbookだけはSSH pipeliningを使う。各対象端末をdurable stateで`unknown`へ遷移した直後、repository baseline、manifest、通知、maintenance、checkout、service変更より前に、同じpipeliningと`become`で互換性を検査する。検査失敗は端末変更前にfail-closedで停止する。
 

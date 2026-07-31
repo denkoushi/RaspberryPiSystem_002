@@ -7,6 +7,7 @@ type Props = {
   registration: SelfInspectionNfcRegistrationView;
   requireMeasuringInstrumentTag: boolean;
   instrumentUsages?: SelfInspectionLotEntryDto['instrumentUsages'];
+  messagePlacement?: 'inline' | 'external';
 };
 
 function registrationValueClass(registered: boolean): string {
@@ -19,7 +20,8 @@ function registrationValueClass(registered: boolean): string {
 export function SelfInspectionNfcRegistrationPanel({
   registration,
   requireMeasuringInstrumentTag,
-  instrumentUsages = []
+  instrumentUsages = [],
+  messagePlacement = 'inline'
 }: Props) {
   const instrumentRegistered = instrumentUsages.length > 0 || Boolean(registration.measuringInstrumentDisplayName);
   return (
@@ -53,7 +55,7 @@ export function SelfInspectionNfcRegistrationPanel({
         </div>
       </div>
       {instrumentUsages.length > 0 ? <p className="mt-2 text-xs text-emerald-100">使用前点検済</p> : null}
-      {registration.message ? (
+      {messagePlacement === 'inline' && registration.message ? (
         <p className="mt-2 rounded border border-amber-400/40 bg-amber-500/15 px-2 py-1 text-xs text-amber-100">
           {registration.message}
         </p>

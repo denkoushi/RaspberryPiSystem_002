@@ -46,6 +46,8 @@ type Props = {
    * 同一 template 測定点 ID が複数入力件で再利用される自主検査向け。
    */
   valueCommitScopeKey?: string;
+  hundredthsKeypadLayout?: 'standard' | 'singleRowCompact';
+  showInputStatus?: boolean;
 };
 
 const STATUS_CLASS: Record<string, string> = {
@@ -62,7 +64,9 @@ export function InspectionDrawingValuePanel({
   onValueChange,
   valueInputMode = 'free_only',
   onCommitValue,
-  valueCommitScopeKey = ''
+  valueCommitScopeKey = '',
+  hundredthsKeypadLayout = 'standard',
+  showInputStatus = true
 }: Props) {
   const lastBlurCommitRef = useRef<{
     scopeKey: string;
@@ -128,7 +132,7 @@ export function InspectionDrawingValuePanel({
       emitCommit(value, 'dropdown');
     };
     return (
-      <div className="flex flex-col gap-3 rounded-lg border border-white/15 bg-slate-900/60 p-4 text-white">
+      <div className="flex flex-col gap-3 rounded-lg border border-white/15 bg-slate-900/60 p-4 text-white" data-testid="inspection-drawing-value-panel">
         <div>
           <p className="text-lg font-bold">
             {pointDisplayName}（No.{point.markerNo}）
@@ -163,9 +167,11 @@ export function InspectionDrawingValuePanel({
             NG
           </button>
         </div>
-        <p className={clsx('text-base font-bold', STATUS_CLASS[inputStatus])}>
-          {MEASUREMENT_POINT_INPUT_STATUS_LABEL[inputStatus]}
-        </p>
+        {showInputStatus ? (
+          <p className={clsx('text-base font-bold', STATUS_CLASS[inputStatus])} data-testid="inspection-drawing-input-status">
+            {MEASUREMENT_POINT_INPUT_STATUS_LABEL[inputStatus]}
+          </p>
+        ) : null}
       </div>
     );
   }
@@ -209,7 +215,7 @@ export function InspectionDrawingValuePanel({
       }}
       disabled={readOnly}
       inputMode="decimal"
-      className={kioskInputClassName}
+      className={clsx(kioskInputClassName, 'box-border w-full min-w-0 max-w-full')}
       autoFocus={!showDropdown}
       key={
         onCommitValue
@@ -234,7 +240,7 @@ export function InspectionDrawingValuePanel({
   };
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-white/15 bg-slate-900/60 p-4 text-white">
+    <div className="flex flex-col gap-3 rounded-lg border border-white/15 bg-slate-900/60 p-4 text-white" data-testid="inspection-drawing-value-panel">
       <div>
         <p className="text-lg font-bold">
           {pointDisplayName}（No.{point.markerNo}）
@@ -287,13 +293,24 @@ export function InspectionDrawingValuePanel({
                   {dimensionProvisionalDisplay ?? ''}
                 </span>
               </div>
-              <div className="grid grid-cols-5 gap-1">
+              <div
+                className={clsx(
+                  'grid gap-1',
+                  hundredthsKeypadLayout === 'singleRowCompact' ? 'grid-cols-10' : 'grid-cols-5'
+                )}
+                data-testid="inspection-drawing-hundredths-keypad"
+              >
                 {Array.from({ length: 10 }, (_, digit) => (
                   <button
                     key={digit}
                     type="button"
                     disabled={readOnly || (!dimensionTenthsBase && !point.testValue.trim())}
-                    className="min-h-11 rounded-md border border-white/20 bg-slate-950/60 text-lg font-bold text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                    className={clsx(
+                      'min-w-0 rounded-md border border-white/20 bg-slate-950/60 font-bold text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40',
+                      hundredthsKeypadLayout === 'singleRowCompact'
+                        ? 'h-[22px] min-h-[22px] text-base leading-none'
+                        : 'min-h-11 text-lg'
+                    )}
                     onClick={() => handleDimensionHundredthsClick(digit)}
                   >
                     {digit}
@@ -337,9 +354,11 @@ export function InspectionDrawingValuePanel({
         </>
       )}
       {dropdownHint ? <p className="text-xs text-white/55">{dropdownHint}</p> : null}
-      <p className={clsx('text-base font-bold', STATUS_CLASS[inputStatus])}>
-        {MEASUREMENT_POINT_INPUT_STATUS_LABEL[inputStatus]}
-      </p>
+      {showInputStatus ? (
+        <p className={clsx('text-base font-bold', STATUS_CLASS[inputStatus])} data-testid="inspection-drawing-input-status">
+          {MEASUREMENT_POINT_INPUT_STATUS_LABEL[inputStatus]}
+        </p>
+      ) : null}
     </div>
   );
 }

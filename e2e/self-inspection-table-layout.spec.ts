@@ -138,9 +138,9 @@ async function openSelfInspection(page: Page): Promise<void> {
 
 test.describe('自主検査一覧の表レイアウト', () => {
   for (const viewport of [
-    { width: 1280, height: 760, panes: 2 },
-    { width: 1536, height: 864, panes: 3 },
-    { width: 1920, height: 1080, panes: 3 }
+    { width: 1280, height: 760, panes: 1 },
+    { width: 1536, height: 864, panes: 2 },
+    { width: 1920, height: 1080, panes: 2 }
   ]) {
     test(`${viewport.width}x${viewport.height} で ${viewport.panes} ペインと1行ヘッダーを維持する`, async ({ page }) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
@@ -177,6 +177,29 @@ test.describe('自主検査一覧の表レイアウト', () => {
         .allTextContents();
       expect(productNos).toEqual(Array.from({ length: 12 }, (_, index) => `ORDER-${String(index + 1).padStart(2, '0')}`));
 
+      const paneOverflow = await panes.evaluate((element) => ({
+        clientWidth: element.clientWidth,
+        scrollWidth: element.scrollWidth
+      }));
+      expect(paneOverflow.scrollWidth).toBeLessThanOrEqual(paneOverflow.clientWidth + 1);
+      const rowActionMetrics = await panes
+        .getByTestId('self-inspection-row-actions')
+        .first()
+        .evaluate((element) => ({
+          display: getComputedStyle(element).display,
+          flexWrap: getComputedStyle(element).flexWrap,
+          buttonHeights: Array.from(element.querySelectorAll('button, a')).map(
+            (action) => action.getBoundingClientRect().height
+          ),
+          fontSizes: Array.from(element.querySelectorAll('button, a')).map(
+            (action) => getComputedStyle(action).fontSize
+          )
+        }));
+      expect(rowActionMetrics.display).toBe('flex');
+      expect(rowActionMetrics.flexWrap).toBe('wrap');
+      expect(rowActionMetrics.buttonHeights.every((height) => Math.abs(height - 30.8) <= 1)).toBe(true);
+      expect(rowActionMetrics.fontSizes.every((fontSize) => fontSize === '14px')).toBe(true);
+
       const screenshotDir = process.env.SELF_INSPECTION_E2E_SCREENSHOT_DIR?.replace(/\/$/, '');
       if (screenshotDir) {
         await page.screenshot({
@@ -201,6 +224,12 @@ test('検査図面タイトルバーから指定2ボタンだけを削除する'
   await expect(page.getByRole('link', { name: '新規', exact: true })).toHaveCount(0);
   await expect(page.getByRole('group', { name: '図面名数字テンキー' })).toBeVisible();
   await expect(page.getByRole('link', { name: '雛形' })).toBeVisible();
+  await expect(page.getByTestId('inspection-template-frequency')).toHaveText('頻度: 全数');
+  const frequencyImmediatelyBeforeActions = await page
+    .getByTestId('inspection-template-frequency')
+    .evaluate((element) => element.nextElementSibling?.hasAttribute('data-testid') === true &&
+      element.nextElementSibling?.getAttribute('data-testid') === 'inspection-template-secondary-actions');
+  expect(frequencyImmediatelyBeforeActions).toBe(true);
 
   const titleBar = page.getByRole('heading', { name: '検査図面', exact: true }).locator('..').locator('..');
   const titleBarMetrics = await titleBar.evaluate((element) => ({

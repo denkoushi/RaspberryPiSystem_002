@@ -55,6 +55,46 @@ describe('InspectionDrawingValuePanel', () => {
     expect(screen.queryByText(/候補（刻み/)).toBeNull();
   });
 
+  it('keeps the default keypad and status, but compacts only the requested self-inspection variant', () => {
+    const point = makePoint({ name: '外径', nominalRaw: '100', lowerToleranceRaw: '-0.05', upperToleranceRaw: '0.05' });
+    const { rerender } = render(
+      <InspectionDrawingValuePanel
+        point={point}
+        valueInputMode="self_inspection_options"
+        onValueChange={() => undefined}
+      />
+    );
+
+    expect(screen.getByTestId('inspection-drawing-hundredths-keypad')).toHaveClass('grid-cols-5');
+    expect(screen.getByText('未入力')).toBeInTheDocument();
+    expect(screen.getByLabelText('測定値（直接入力）')).toHaveClass(
+      'box-border',
+      'w-full',
+      'min-w-0',
+      'max-w-full'
+    );
+
+    rerender(
+      <InspectionDrawingValuePanel
+        point={point}
+        valueInputMode="self_inspection_options"
+        hundredthsKeypadLayout="singleRowCompact"
+        showInputStatus={false}
+        onValueChange={() => undefined}
+      />
+    );
+
+    expect(screen.getByTestId('inspection-drawing-hundredths-keypad')).toHaveClass('grid-cols-10');
+    for (const digit of Array.from({ length: 10 }, (_, index) => String(index))) {
+      expect(screen.getByRole('button', { name: digit })).toHaveClass(
+        'h-[22px]',
+        'min-h-[22px]',
+        'text-base'
+      );
+    }
+    expect(screen.queryByText('未入力')).not.toBeInTheDocument();
+  });
+
   it('shows invalid status via shared measurement point input status helper', () => {
     render(
       <InspectionDrawingValuePanel
@@ -110,5 +150,24 @@ describe('InspectionDrawingValuePanel', () => {
     expect(onCommitValue).toHaveBeenCalledWith(
       expect.objectContaining({ value: 'FAIL', source: 'dropdown' })
     );
+  });
+
+  it('can hide the duplicated judgement status without removing OK/NG inputs', () => {
+    const { container } = render(
+      <InspectionDrawingValuePanel
+        point={makePoint({
+          name: 'ネジ穴深さ',
+          valueKind: 'judgement',
+          testValue: 'FAIL'
+        })}
+        valueInputMode="self_inspection_options"
+        showInputStatus={false}
+        onValueChange={() => undefined}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: 'OK' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'NG' })).toBeInTheDocument();
+    expect(container.querySelector('p.text-base.font-bold')).toBeNull();
   });
 });

@@ -24,7 +24,7 @@ import {
   PART_MEASUREMENT_DRAWING_FILE_LABEL,
   PART_MEASUREMENT_DRAWING_FILE_REQUIRED_MESSAGE
 } from '../../features/part-measurement/partMeasurementDrawingFileInput';
-import { selfInspectionModeDisplayLabel } from '../../features/part-measurement/selfInspectionEntrySlots';
+import { selfInspectionModeDisplayLabel } from '../../features/part-measurement/selfInspectionModeDisplayLabel';
 import { buildSelfInspectionTemplateApiBody } from '../../features/part-measurement/selfInspectionTemplateForm';
 
 import type {

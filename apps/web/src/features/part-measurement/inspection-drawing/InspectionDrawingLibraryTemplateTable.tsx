@@ -2,6 +2,7 @@ import { Fragment } from 'react';
 import { Link } from 'react-router-dom';
 
 import { Button, buttonClassName } from '../../../components/ui/Button';
+import { selfInspectionModeDisplayLabel } from '../selfInspectionModeDisplayLabel';
 
 import {
   inspectionDrawingLibraryRowActionClassName,
@@ -138,7 +139,17 @@ function TemplateTablePane({
                         <InspectionDrawingResourceCdChipList
                           resourceCds={activeResourceCds}
                           resourceNameMap={resourceNameMap}
+                          className="flex-1"
                         />
+                        <span
+                          className="shrink-0 whitespace-nowrap font-semibold text-white/75"
+                          data-testid="inspection-template-frequency"
+                        >
+                          頻度: {selfInspectionModeDisplayLabel(
+                            template.selfInspectionMode,
+                            template.selfInspectionFixedCount
+                          )}
+                        </span>
                         <div
                           className={inspectionDrawingLibraryRowActionsWidthClassName}
                           data-testid="inspection-template-secondary-actions"

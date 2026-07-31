@@ -138,6 +138,7 @@ export function InspectionDrawingPointSummaryList({
                               ? OVERRIDE_STATUS_CLASS[statusOverride.tone]
                               : STATUS_CLASS[inputStatus] ?? 'text-white/60'
                           )}
+                          data-testid="measurement-point-summary-status"
                         >
                           {statusOverride?.label ?? MEASUREMENT_POINT_INPUT_STATUS_LABEL[inputStatus]}
                         </span>
