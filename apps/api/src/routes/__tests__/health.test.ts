@@ -85,6 +85,8 @@ describe('GET /api/system/health', () => {
     expect(body.checks.database.status).toBe('ok');
     expect(body.checks).toHaveProperty('playwright');
     expect(['ok', 'warning']).toContain(body.checks.playwright.status);
+    expect(body.checks).toHaveProperty('fileStorage');
+    expect(['ok', 'warning']).toContain(body.checks.fileStorage.status);
   });
 
   it('keeps health ok when allocated heap is high but process limit has room', async () => {

@@ -63,8 +63,10 @@ services:
       # 本番環境では強力なパスワードを環境変数で設定すること
       # infrastructure/docker/.envファイルにPOSTGRES_PASSWORDを設定
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/borrow_return
+      FILE_STORAGE_ROOT: /app/storage
       PHOTO_STORAGE_DIR: /app/storage
       PDF_STORAGE_DIR: /app/storage
+      CSV_DASHBOARD_STORAGE_DIR: /app/storage
       SIGNAGE_RENDER_DIR: /app/storage/signage-rendered
       SIGNAGE_PDF_DPI: "240"
       CAMERA_TYPE: mock
@@ -97,6 +99,8 @@ services:
       - measuring-instrument-genres-storage:/app/storage/measuring-instrument-genres
       # パレット可視化・加工機イラスト（未マウントだとデプロイでコンテナ再作成時にファイル消失）
       - pallet-machine-illustrations-storage:/app/storage/pallet-machine-illustrations
+      - csv-dashboard-storage:/app/storage/csv-dashboards
+      - file-integrity-storage:/app/storage/.integrity
       - /opt/RaspberryPiSystem_002/alerts:/app/alerts
       - /opt/RaspberryPiSystem_002/power-actions:/app/power-actions
       - /opt/RaspberryPiSystem_002/config:/app/config
@@ -247,3 +251,15 @@ volumes:
       type: none
       o: bind
       device: /opt/RaspberryPiSystem_002/storage/pallet-machine-illustrations
+  csv-dashboard-storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/RaspberryPiSystem_002/storage/csv-dashboards
+  file-integrity-storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/RaspberryPiSystem_002/storage/.integrity

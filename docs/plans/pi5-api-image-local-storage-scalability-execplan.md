@@ -11,10 +11,12 @@ related_code:
 related_docs:
   - ../knowledge-base/KB-404-pi5-ghcr-api-image-pull-timeout.md
   - ../decisions/ADR-20260730-bounded-api-runtime-artifact.md
+  - ../decisions/ADR-20260731-single-ssd-durable-file-storage.md
+  - ../runbooks/pi5-local-file-storage.md
 validation: PR1 and PR2 CI, disposable PostgreSQL, local filesystem fault tests, and production rollout evidence
 open_items:
-  - Complete PR1 and merge it before starting PR2
-  - Complete PR2 and request production-scope approval
+  - Complete PR2 hosted integration
+  - Request production-scope approval with immutable SHA and print-plan
 ---
 
 # Reduce the Pi5 API image and make single-SSD file storage safe
@@ -64,11 +66,21 @@ separation, and physical movement or deletion of existing files are excluded.
 - [x] (2026-07-31 14:07+09:00) Passed workspace lint, API and Web production
   builds, release-image unit contracts, and the complete local deployment
   contract suite, including its isolated PostgreSQL integration.
-- [ ] Commit, push, open, and merge PR1 only after hosted gates pass.
-- [ ] Create `feat/local-file-storage-safety` from the merged `main`.
-- [ ] Implement PR2 storage port, local adapter, integrity catalog, health and
-  capacity guard, scheduler backfill, Compose mounts, and documentation.
-- [ ] Validate, commit, push, and open PR2.
+- [x] (2026-07-31 14:17+09:00) Pushed PR1 as PR #1135, passed all hosted
+  checks, and squash-merged it as
+  `09fe5a9d0fd1e44aa7fcaafb5d34b0e1da7a0b21`. Main release CI run
+  `30606390289` also passed its release API image and release-set gates.
+- [x] (2026-07-31 14:20+09:00) Created
+  `feat/local-file-storage-safety` from the merged `main`.
+- [x] (2026-07-31 14:49+09:00) Implemented PR2 storage port, local adapter,
+  integrity catalog, health and capacity guard, scheduler backfill, Compose
+  mounts, and documentation.
+- [x] (2026-07-31 15:21+09:00) Applied all 157 migrations to a uniquely named
+  tmpfs PostgreSQL container and passed all 2,511 enabled API tests, focused
+  storage fault tests, workspace lint/build, Compose/Caddy validation, and the
+  complete deployment-contract suite. All run-owned containers, volumes,
+  networks, images, and OCI inspection files were removed.
+- [ ] Commit and push PR2, open its PR, and complete hosted integration.
 - [ ] Present immutable SHA, CI, impact, and print-plan evidence before any
   production deployment.
 
@@ -121,6 +133,31 @@ separation, and physical movement or deletion of existing files are excluded.
   server`; the same suite passed 473 files and 2,492 tests after applying all
   migrations to the isolated disposable database.
 
+- Observation: Thumbnails were written through the shared helper but read
+  directly by Caddy, which would bypass integrity verification.
+  Evidence: every Caddy runtime had a static
+  `handle_path /storage/thumbnails/*` file server. The public URL is now
+  preserved while Caddy internally forwards it to the typed API storage route.
+
+- Observation: The production root is composed from separate bind-backed
+  namespace mounts rather than one root bind.
+  Evidence: Compose maps photos, PDFs, drawings, images, CSV, and integrity
+  separately. Startup therefore probes every durable namespace instead of
+  proving only the container overlay or catalog mount.
+
+- Observation: Cache-only legacy settings must not select the durable storage
+  root.
+  Evidence: the signage integration test sets only `SIGNAGE_RENDER_DIR`; using
+  its parent as the business-file root selected macOS `/tmp`, which is a
+  symlink. Durable aliases now select the root, while the signage setting is
+  validated only for consistency in production.
+
+- Observation: Existing rendered PDF pages can legitimately outlive an
+  unavailable source PDF in read-only sequence fixtures.
+  Evidence: the assembly integration creates pre-rendered page fixtures with a
+  non-storage source path. Source-path and integrity checks now run only when a
+  cache miss requires conversion; existing page cache reads remain unchanged.
+
 ## Decision Log
 
 - Decision: Use two sequential PRs and merge PR1 before branching PR2.
@@ -152,16 +189,45 @@ separation, and physical movement or deletion of existing files are excluded.
   business-file retention.
   Date/Author: 2026-07-31 / Codex and user.
 
+- Decision: Await an active integrity scan before releasing scheduler
+  leadership.
+  Rationale: Clearing only the hourly timer could allow the old leader's scan
+  to overlap a new leader after PostgreSQL advisory-lock handoff.
+  Date/Author: 2026-07-31 / Codex.
+
+- Decision: Keep the thumbnail URL public and stable, but proxy its reads
+  through the API.
+  Rationale: Static Caddy reads cannot enforce the approved "cataloged reads
+  verify SHA-256" contract; an internal rewrite preserves all clients.
+  Date/Author: 2026-07-31 / Codex.
+
+- Decision: Make storage-helper capacity checks create and validate the
+  configured root before `statfs`, while production startup still probes every
+  configured mount.
+  Rationale: background jobs and isolated service tests may invoke a helper
+  without the API startup hook; this removes lifecycle coupling without
+  weakening production fail-closed checks.
+  Date/Author: 2026-07-31 / Codex.
+
 ## Outcomes & Retrospective
 
-PR1 implementation and local artifact validation are complete. The exact
+PR1 implementation, hosted integration, and main release gates are complete.
+The exact
 local ARM64 OCI is 845,913,117 compressed bytes across 26 layers, its largest
 layer is 530,496,867 bytes, and the reduction from baseline is 32.98 percent.
 The runtime retained and exercised every scoped capability. Prisma validation,
 generation, all 157 migrations, current status, all 2,492 enabled API tests,
 workspace lint, API and Web builds, and deployment contracts pass locally.
-Hosted CI and PR integration remain. No production system, database, business
-file, or existing Docker resource has been changed by this work.
+PR2 implementation and local validation are complete. Prisma validation and
+generation, all 157 migrations and current status, all 2,511 enabled API tests,
+34 final focused storage/scheduler tests, workspace lint and production builds,
+Compose/Caddy parsing, and the complete local deployment-contract suite pass.
+The first full API run exposed six initialization/path-order regressions; all
+were corrected and the formerly failing 72-test slice plus the final full suite
+pass. No production system, existing database, business file, or existing
+Docker resource has been changed. All disposable PostgreSQL and deployment
+contract resources, local OCI evidence, and run-owned helper images were
+removed.
 
 ## Context and Orientation
 
@@ -322,10 +388,12 @@ zero missing records, zero mismatches, and unchanged original files.
 Both PRs are additive or replace runtime packaging without data migration.
 PR1 rolls back by selecting the previous signed API image. PR2 sidecar files
 are ignored by the previous API, so code rollback requires no deletion. No
-down migration exists. Backfill is cursor-based and safe to retry; it creates a
-missing manifest only after hashing the source and never overwrites a mismatch.
-Temporary files and disposable Docker resources are owned by a unique run and
-cleaned without pruning shared resources.
+down migration exists. Backfill is cursor-based and safe to resume after an
+interruption; it creates a missing manifest only after hashing the source and
+never overwrites a mismatch. An explicit failed state remains stopped for
+investigation rather than retrying hourly. Temporary files and disposable
+Docker resources are owned by a unique run and cleaned without pruning shared
+resources.
 
 The monthly `docker builder prune -a --force` remains unchanged and never
 targets the bind-mounted storage root. No implementation command moves or
@@ -367,3 +435,8 @@ reconfirming the clean production baseline and approved single-SSD constraints.
 Revision note (2026-07-31 13:50+09:00): Recorded the completed PR1
 implementation, exact OCI evidence, the Ansible Core archive discovery and
 safe replacement, and the remaining hosted integration work.
+
+Revision note (2026-07-31 14:50+09:00): Recorded PR1 merge and main release
+success, PR2 implementation, per-mount startup probes, thumbnail read
+verification, scheduler handoff safety, focused validation, and remaining
+full integration work.

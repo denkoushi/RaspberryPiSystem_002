@@ -1,13 +1,15 @@
 import { createHash } from 'crypto';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { getFileStorageRoot } from '../services/file-storage/file-storage-config.js';
+import { writeAtomicFileAtRoot } from '../services/file-storage/secure-atomic-file.js';
 
 const LEGACY_CURRENT_IMAGE_NAME = 'current.jpg';
 // 履歴画像の保持設定（デフォルト: 保持しない。10年運用でのストレージ劣化を防ぐため）
 const KEEP_HISTORY = process.env.SIGNAGE_RENDER_KEEP_HISTORY === '1';
 
 function getRenderDir(): string {
-  return process.env.SIGNAGE_RENDER_DIR || '/opt/RaspberryPiSystem_002/storage/signage-rendered';
+  return process.env.SIGNAGE_RENDER_DIR || path.join(getFileStorageRoot(), 'signage-rendered');
 }
 
 function legacyCurrentImagePath(): string {
@@ -37,16 +39,14 @@ export class SignageRenderStorage {
     filename: string;
     filePath: string;
   }> {
-    await fs.mkdir(getRenderDir(), { recursive: true });
-
     const filePath = pathForClientCurrentImage(clientKey);
-    await fs.writeFile(filePath, buffer);
+    await writeAtomicFileAtRoot(getRenderDir(), path.basename(filePath), buffer, 'replace');
 
     let filename = path.basename(filePath);
     if (KEEP_HISTORY) {
       filename = `signage_${storageIdForClientKey(clientKey)}_${Date.now()}.jpg`;
       const historyPath = path.join(getRenderDir(), filename);
-      await fs.writeFile(historyPath, buffer);
+      await writeAtomicFileAtRoot(getRenderDir(), filename, buffer, 'create');
       return { filename, filePath: historyPath };
     }
 
@@ -61,8 +61,12 @@ export class SignageRenderStorage {
     filePath: string;
   }> {
     const legacyPath = legacyCurrentImagePath();
-    await fs.mkdir(getRenderDir(), { recursive: true });
-    await fs.writeFile(legacyPath, buffer);
+    await writeAtomicFileAtRoot(
+      getRenderDir(),
+      LEGACY_CURRENT_IMAGE_NAME,
+      buffer,
+      'replace'
+    );
     return { filename: LEGACY_CURRENT_IMAGE_NAME, filePath: legacyPath };
   }
 

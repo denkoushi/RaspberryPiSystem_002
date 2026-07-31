@@ -665,6 +665,8 @@ HOST_CONFIG_ALLOWED_PATHS = {
     '{{ repo_path }}/storage/assembly-procedure-images',
     '{{ repo_path }}/storage/measuring-instrument-genres',
     '{{ repo_path }}/storage/pallet-machine-illustrations',
+    '{{ repo_path }}/storage/csv-dashboards',
+    '{{ repo_path }}/storage/.integrity',
 }
 HOST_CONFIG_SHELL_TASKS = {
     'Verify exact clean Pi5 release checkout',

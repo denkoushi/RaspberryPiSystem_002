@@ -18,7 +18,6 @@ related_docs:
   - ../decisions/ADR-20260730-bounded-api-runtime-artifact.md
 validation: focused progress/promoter tests, isolated loopback Docker registry, and full deployment contracts
 open_items:
-  - pass hosted CI for the bounded runtime artifact change
   - verify one separately approved production API pull completes as promoted
 ---
 
@@ -135,9 +134,12 @@ executed the Core-only client-directory backup playbook.
 
 This does not create one extra full copy for every release: Docker reuses
 content-addressed layers and the release labels remain after filesystem
-changes. Hosted CI and an approved production artifact promotion remain the
-acceptance boundary; a local-build fallback is safe but does not prove the
-transfer improvement.
+changes. PR #1135 was merged as
+`09fe5a9d0fd1e44aa7fcaafb5d34b0e1da7a0b21`; main CI run
+`30606390289` passed, including the exact ARM64 release API image and release
+set. An approved production artifact promotion remains the final acceptance
+boundary; a local-build fallback is safe but does not prove the transfer
+improvement.
 
 ## Validation and production boundary
 

@@ -723,15 +723,18 @@ journalctl -u storage-maintenance.service -n 50
 **確認項目**:
 - ディスク使用量の確認: `df -h /`
 - Docker Build Cacheの確認: `docker builder du`
+- Docker全体の使用量確認: `docker system df`
 - signage-renderedディレクトリの確認: `ls -lh /opt/RaspberryPiSystem_002/storage/signage-rendered/`
+- 業務ファイル保存health: `curl -ksS https://127.0.0.1/api/system/health | jq '.checks.fileStorage'`
 - アラートの確認: 管理コンソールのダッシュボードで`storage-maintenance-failed`アラートがないことを確認
 
 **ストレージメンテナンスの内容**:
 1. **signage-renderedの履歴画像削除**: `signage_*.jpg`ファイルを削除（`current.jpg`は保持）
 2. **Docker Build Cache削除**: 月初（1日）のみ、`docker builder prune -a --force`を実行
-3. **失敗時のアラート生成**: メンテナンスが失敗した場合、`storage-maintenance-failed`アラートを生成
+3. **使用量の記録**: 月次cache削除後に`docker system df`をログへ記録
+4. **失敗時のアラート生成**: メンテナンスが失敗した場合、`storage-maintenance-failed`アラートを生成
 
-詳細は [KB-130](../knowledge-base/infrastructure/miscellaneous.md#kb-130-pi5のストレージ使用量が異常に高い問題docker-build-cacheとsignage-rendered履歴画像の削除) を参照してください。
+業務ファイル、DB、稼働中container、稼働imageはこの自動処理の削除対象ではありません。詳細は [単一SSD保存Runbook](../runbooks/pi5-local-file-storage.md) と [KB-130](../knowledge-base/infrastructure/miscellaneous.md#kb-130-pi5のストレージ使用量が異常に高い問題docker-build-cacheとsignage-rendered履歴画像の削除) を参照してください。
 
 #### 4. ログファイルのローテーション
 
@@ -844,4 +847,3 @@ BACKUP_FILE="/opt/backups/db_backup_YYYYMMDD_HHMMSS.sql.gz"
 - 2025-11-27: 初版作成
 - 2025-12-01: クライアント一括更新とクライアント状態監視のセクションを追加
 - 2026-03-06: 低レイヤー観測（eventLoop/worker）とPi5カナリア判定基準を追加
-

@@ -30,11 +30,10 @@
   }
   respond @admin_protect "Forbidden" 403
 
-  # サムネイルの静的ファイル配信（認証不要）
-  handle_path /storage/thumbnails/* {
-    root * /srv/storage/thumbnails
-    file_server
-    header Cache-Control "public, max-age=86400" # 1日キャッシュ
+  # 公開URLは維持しつつ、APIでSHA-256整合性を確認して配信する。
+  handle /storage/thumbnails/* {
+    uri replace /storage/thumbnails/ /api/storage/thumbnails/
+    reverse_proxy api:8080
   }
 
   @spa {

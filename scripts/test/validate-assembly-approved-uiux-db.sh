@@ -89,9 +89,11 @@ DATABASE_URL="$database_url" "$node24" "$prisma_cli" migrate status \
   cd "$repo_root/apps/api"
   DATABASE_URL="$database_url" \
   LOG_LEVEL=error \
-  PHOTO_STORAGE_DIR="$scratch_dir/photo-storage" \
-  PDF_STORAGE_DIR="$scratch_dir/pdf-storage" \
-  SIGNAGE_RENDER_DIR="$scratch_dir/signage-render" \
+  FILE_STORAGE_ROOT="$scratch_dir/file-storage" \
+  PHOTO_STORAGE_DIR="$scratch_dir/file-storage" \
+  PDF_STORAGE_DIR="$scratch_dir/file-storage" \
+  CSV_DASHBOARD_STORAGE_DIR="$scratch_dir/file-storage" \
+  SIGNAGE_RENDER_DIR="$scratch_dir/file-storage/signage-rendered" \
   "$node24" node_modules/vitest/vitest.mjs run \
     --config vitest.config.ts \
     --reporter=dot \
@@ -107,9 +109,11 @@ if [[ "${RUN_ALL_API_TESTS:-0}" == "1" ]]; then
     cd "$repo_root/apps/api"
     DATABASE_URL="$full_database_url" \
     LOG_LEVEL=error \
-    PHOTO_STORAGE_DIR="$scratch_dir/full-photo-storage" \
-    PDF_STORAGE_DIR="$scratch_dir/full-pdf-storage" \
-    SIGNAGE_RENDER_DIR="$scratch_dir/full-signage-render" \
+    FILE_STORAGE_ROOT="$scratch_dir/full-file-storage" \
+    PHOTO_STORAGE_DIR="$scratch_dir/full-file-storage" \
+    PDF_STORAGE_DIR="$scratch_dir/full-file-storage" \
+    CSV_DASHBOARD_STORAGE_DIR="$scratch_dir/full-file-storage" \
+    SIGNAGE_RENDER_DIR="$scratch_dir/full-file-storage/signage-rendered" \
     "$node24" node_modules/vitest/vitest.mjs run \
       --config vitest.config.ts \
       --reporter=dot

@@ -227,9 +227,12 @@ if [ "${USE_API}" = true ]; then
   echo "5. 復旧必須ディレクトリのバックアップを開始..."
   for directory_source in \
     "/app/storage/part-measurement-drawings" \
+    "/app/storage/assembly-procedure-images" \
     "/app/storage/measuring-instrument-genres" \
     "/app/storage/pallet-machine-illustrations" \
-    "/app/storage/pdfs"
+    "/app/storage/pdfs" \
+    "/app/storage/csv-dashboards" \
+    "/app/storage/.integrity"
   do
     if is_api_target_enabled "directory" "${directory_source}"; then
       backup_via_api "directory" "${directory_source}" "$(basename "${directory_source}")-${DATE}" || true

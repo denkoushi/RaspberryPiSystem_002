@@ -105,9 +105,11 @@ echo "running focused REQUIRED assembly-template API contract test"
   cd "$repo_root/apps/api"
   DATABASE_URL="$focused_url" \
   LOG_LEVEL=error \
-  PHOTO_STORAGE_DIR="$scratch_dir/focused-photo" \
-  PDF_STORAGE_DIR="$scratch_dir/focused-pdf" \
-  SIGNAGE_RENDER_DIR="$scratch_dir/focused-signage" \
+  FILE_STORAGE_ROOT="$scratch_dir/focused-file-storage" \
+  PHOTO_STORAGE_DIR="$scratch_dir/focused-file-storage" \
+  PDF_STORAGE_DIR="$scratch_dir/focused-file-storage" \
+  CSV_DASHBOARD_STORAGE_DIR="$scratch_dir/focused-file-storage" \
+  SIGNAGE_RENDER_DIR="$scratch_dir/focused-file-storage/signage-rendered" \
   "$node24" node_modules/vitest/vitest.mjs run \
     --config vitest.config.ts \
     --reporter=dot \
@@ -186,9 +188,11 @@ DATABASE_URL="$all_url" "$node24" "$prisma_cli" migrate deploy --schema "$schema
   cd "$repo_root/apps/api"
   DATABASE_URL="$all_url" \
   LOG_LEVEL=error \
-  PHOTO_STORAGE_DIR="$scratch_dir/all-photo" \
-  PDF_STORAGE_DIR="$scratch_dir/all-pdf" \
-  SIGNAGE_RENDER_DIR="$scratch_dir/all-signage" \
+  FILE_STORAGE_ROOT="$scratch_dir/all-file-storage" \
+  PHOTO_STORAGE_DIR="$scratch_dir/all-file-storage" \
+  PDF_STORAGE_DIR="$scratch_dir/all-file-storage" \
+  CSV_DASHBOARD_STORAGE_DIR="$scratch_dir/all-file-storage" \
+  SIGNAGE_RENDER_DIR="$scratch_dir/all-file-storage/signage-rendered" \
   "$node24" node_modules/vitest/vitest.mjs run --config vitest.config.ts --reporter=dot
 )
 (
