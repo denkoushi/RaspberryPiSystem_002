@@ -90,11 +90,11 @@ export async function buildServer(): Promise<FastifyInstance> {
     }
   }
 
-  const playwrightAvailability = probePlaywrightChromiumAvailability();
+  const playwrightAvailability = await probePlaywrightChromiumAvailability();
   if (playwrightAvailability.available) {
     app.log.info(
-      { executablePath: playwrightAvailability.executablePath },
-      'Playwright Chromium is available'
+      { browserVersion: playwrightAvailability.browserVersion },
+      'Playwright headless Chromium is available'
     );
   } else {
     app.log.warn(playwrightAvailability.message);

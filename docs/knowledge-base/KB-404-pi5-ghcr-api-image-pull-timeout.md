@@ -11,6 +11,7 @@ related_code:
 related_docs:
   - ../plans/artifact-pull-progress-diagnostics-execplan.md
   - ../plans/api-image-runtime-boundary-execplan.md
+  - ../plans/pi5-api-image-local-storage-scalability-execplan.md
   - ../plans/deploy-workflow-artifact-promotion-execplan.md
   - ../guides/deployment.md
   - ../decisions/ADR-20260728-attested-arm64-release-artifact-promotion.md
@@ -118,13 +119,25 @@ receives 1,500 seconds. Exact-digest and signature verification, thirty-second
 progress, integrity fail-closed behavior, cleanup, and the local-build
 availability fallback remain unchanged.
 
-The API Dockerfile also exposes a stable `api-runtime` boundary, and CI rejects
-the exact ARM64 OCI image above 1,400,000,000 compressed bytes, an
-850,000,000-byte single layer, or forty layers. This prevents silent growth and
-maximizes reuse of unchanged OCR, Chromium, and production-dependency layers.
-It does not create one extra 1.2 GB copy for every release: Docker reuses
+The API Dockerfile also exposes a stable `api-runtime` boundary. The
+2026-07-31 footprint follow-up removed the duplicate full Chromium browser,
+Ansible community collections, and Web-only pnpm dependencies without
+removing OCR or backup behavior. A local exact ARM64 OCI build measured
+845,913,117 compressed bytes across 26 layers, with a 530,496,867-byte largest
+layer. That is 32.98 percent below the 1,262,151,764-byte baseline.
+
+CI now rejects the exact ARM64 OCI image above 1,000,000,000 compressed bytes,
+a 700,000,000-byte single layer, or forty layers. It also fixes the intended
+minimum reduction above twenty percent. The image still keeps NDLOCR,
+RapidOCR, Tesseract.js, Poppler, PostgreSQL client tools, Ansible Core, and a
+Playwright headless shell. Runtime smoke rendered both PNG and PDF output and
+executed the Core-only client-directory backup playbook.
+
+This does not create one extra full copy for every release: Docker reuses
 content-addressed layers and the release labels remain after filesystem
-changes.
+changes. Hosted CI and an approved production artifact promotion remain the
+acceptance boundary; a local-build fallback is safe but does not prove the
+transfer improvement.
 
 ## Validation and production boundary
 

@@ -39,6 +39,9 @@ CI_WORKFLOW = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 CONTRACT_RENDERER = (
     ROOT / "scripts/ci/render-release-build-contract.sh"
 ).read_text(encoding="utf-8")
+CLIENT_DIRECTORY_BACKUP_PLAYBOOK = (
+    ROOT / "infrastructure/ansible/playbooks/backup-client-directory.yml"
+).read_text(encoding="utf-8")
 
 
 def contract_document() -> str:
@@ -229,6 +232,46 @@ class ReleaseImageWorkflowTests(unittest.TestCase):
         runtime_definition = API_DOCKERFILE[runtime_stage:runtime_boundary]
         self.assertNotIn("COPY --from=build", runtime_definition)
         self.assertNotIn("BUILD_COMMIT", runtime_definition)
+
+    def test_api_runtime_uses_only_required_production_dependencies(self) -> None:
+        runtime_boundary = API_DOCKERFILE.index("FROM api-runtime AS api")
+        runtime_stage = API_DOCKERFILE.index(
+            "FROM node:20-bookworm-slim AS api-runtime"
+        )
+        runtime_definition = API_DOCKERFILE[runtime_stage:runtime_boundary]
+
+        self.assertIn("ansible-core", runtime_definition)
+        self.assertNotRegex(runtime_definition, r"\bansible(?!-core)\b")
+        self.assertIn(
+            "pnpm install --prod --filter @raspi-system/api...",
+            runtime_definition,
+        )
+        self.assertNotIn("pnpm install --prod --recursive", runtime_definition)
+        self.assertIn("playwright install --only-shell chromium", runtime_definition)
+        self.assertNotIn("playwright install chromium", runtime_definition)
+        self.assertNotIn(
+            "COPY --from=workspace /app/apps/web/package.json",
+            runtime_definition,
+        )
+        self.assertNotIn("COPY apps/web/package.json", API_DOCKERFILE)
+        workspace_start = API_DOCKERFILE.index(
+            "FROM node:20-bookworm-slim AS workspace"
+        )
+        workspace_definition = API_DOCKERFILE[
+            workspace_start : API_DOCKERFILE.index("FROM workspace AS build")
+        ]
+        self.assertIn(
+            "pnpm install --filter @raspi-system/api...",
+            workspace_definition,
+        )
+        self.assertNotRegex(workspace_definition, r"\bansible(?!-core)\b")
+
+    def test_client_directory_backup_uses_ansible_core_modules_only(self) -> None:
+        self.assertNotIn("ansible.builtin.archive", CLIENT_DIRECTORY_BACKUP_PLAYBOOK)
+        self.assertIn("ansible.builtin.command", CLIENT_DIRECTORY_BACKUP_PLAYBOOK)
+        self.assertIn("argv:", CLIENT_DIRECTORY_BACKUP_PLAYBOOK)
+        self.assertIn("ansible.builtin.fetch", CLIENT_DIRECTORY_BACKUP_PLAYBOOK)
+        self.assertIn("ansible.builtin.file", CLIENT_DIRECTORY_BACKUP_PLAYBOOK)
 
     def test_release_api_job_validates_exact_arm64_manifest_before_scan(self) -> None:
         build = CI_WORKFLOW.index("Build and push exact ARM64 API image")

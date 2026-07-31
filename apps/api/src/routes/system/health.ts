@@ -70,7 +70,7 @@ export function registerSystemHealthRoute(app: FastifyInstance): void {
     const eventLoopHealth = evaluateEventLoopHealth(eventLoop);
     checks.eventLoop = eventLoopHealth;
 
-    const playwrightAvailability = probePlaywrightChromiumAvailability();
+    const playwrightAvailability = await probePlaywrightChromiumAvailability();
     checks.playwright = playwrightAvailability.available
       ? { status: 'ok' }
       : { status: 'warning', message: playwrightAvailability.message };
