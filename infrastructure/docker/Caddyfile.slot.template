@@ -23,12 +23,22 @@
     reverse_proxy ${SLOT_API_UPSTREAM}
   }
 
-  @spa {
+  @static_site {
     not path /api/* /ws/* /storage/*
-    not file
   }
-  rewrite @spa /index.html
-  file_server
+  route @static_site {
+    @spa {
+      not path /assets/*
+      not file
+    }
+    rewrite @spa /index.html
+
+    # HTML is always revalidated so an old entrypoint cannot reference a removed chunk.
+    @document path / /index.html
+    header @document Cache-Control "no-store, no-cache, must-revalidate"
+
+    file_server
+  }
 
   header {
     X-Content-Type-Options "nosniff"

@@ -33,13 +33,22 @@
     reverse_proxy api:8080
   }
 
-  @spa {
-    not path /api/*
-    not path /storage/*
-    not file
+  @static_site {
+    not path /api/* /storage/*
   }
-  rewrite @spa /index.html
-  file_server
+  route @static_site {
+    @spa {
+      not path /assets/*
+      not file
+    }
+    rewrite @spa /index.html
+
+    # HTMLは常に再検証し、配備前のentrypointから削除済みchunkを参照させない。
+    @document path / /index.html
+    header @document Cache-Control "no-store, no-cache, must-revalidate"
+
+    file_server
+  }
 
   # セキュリティヘッダー
   header {

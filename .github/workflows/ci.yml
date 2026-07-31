@@ -809,6 +809,9 @@ jobs:
           pnpm --filter @raspi-system/part-search-core build
           pnpm --filter @raspi-system/shelf-layout-core build
 
+      - name: Run kiosk runtime recovery browser contract
+        run: pnpm test:e2e:runtime-recovery
+
       - name: Generate Prisma Client
         run: pnpm --filter @raspi-system/api exec prisma generate
         env:

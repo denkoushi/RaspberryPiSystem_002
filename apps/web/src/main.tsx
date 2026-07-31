@@ -6,6 +6,7 @@ import { BrowserRouter } from 'react-router-dom';
 import '@digital-go-jp/design-tokens/dist/tokens.css';
 
 import App from './App';
+import { AppErrorBoundary } from './components/AppErrorBoundary';
 import { AuthProvider } from './contexts/AuthContext';
 import './index.css';
 
@@ -21,14 +22,16 @@ const root = document.getElementById('root');
 
 if (root) {
   ReactDOM.createRoot(root).render(
-    <React.StrictMode>
-      <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <BrowserRouter>
-            <App />
-          </BrowserRouter>
-        </AuthProvider>
-      </QueryClientProvider>
-    </React.StrictMode>
+    <AppErrorBoundary>
+      <React.StrictMode>
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>
+            <BrowserRouter>
+              <App />
+            </BrowserRouter>
+          </AuthProvider>
+        </QueryClientProvider>
+      </React.StrictMode>
+    </AppErrorBoundary>
   );
 }

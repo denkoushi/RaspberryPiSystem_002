@@ -62,6 +62,7 @@ If `EXEC_PLAN.md` must be touched, keep the entry short and limited to current s
 - Normal SSH deployment gate audit and first stabilization (in progress; no hardware authorization): `docs/plans/normal-ssh-deploy-gate-audit-20260722.md`
 - Build-aware deployment release-readiness review (in progress): `docs/plans/deploy-release-readiness-review-20260725.md`
 - Pi5 release Pi4 display protection (in progress): `docs/plans/pi5-deploy-pi4-display-protection-execplan.md`
+- Kiosk stale-chunk white-screen recovery (implementation; no production authorization): `docs/decisions/ADR-20260731-kiosk-runtime-chunk-recovery.md`, `docs/plans/kiosk-white-screen-runtime-recovery-execplan.md`
 - Gmail CSV / assembly DocumentASM conflict guards (in progress): `docs/plans/gmail-import-conflict-guards-20260725.md`
 - Pi5 API footprint and single-SSD file storage safety (in progress): `docs/plans/pi5-api-image-local-storage-scalability-execplan.md`
 
