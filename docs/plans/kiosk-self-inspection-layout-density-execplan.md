@@ -37,7 +37,10 @@ Operators must be able to see the measurement-point list while entering values a
 - [x] (2026-07-31) Deployed and stabilized Pi5 and verified the first Pi4 canary, then cooperatively cancelled before the remaining terminals to investigate Pi3 resource risk.
 - [x] (2026-07-31) Diagnosed Pi3 memory pressure, intermittent status-agent TLS timeouts, and an ineffective Signage watchdog recovery path.
 - [x] (2026-07-31) Added Pi3-only release quiescing, bounded watchdog sudo, and a 30-second status-agent timeout; passed the complete deployment contract suite under Node 20.20.2.
-- [ ] Commit and push the remediation, generate a new plan/preflight, deploy the remaining fleet, and verify convergence.
+- [x] (2026-08-01) Committed and pushed the initial Pi3 remediation, passed a new production-ledger/terminal preflight, and deployed the candidate to Pi5 and all six Pi4 kiosks with verified release evidence.
+- [x] (2026-08-01) Confirmed automatic Pi3 rollback to `ab57a4ab` after a transient systemd unit-registration failure; lightdm, Signage, and all timers recovered active and enabled.
+- [x] (2026-08-01) Added post-restore daemon reload, unit-registration waits, timer-first ordering, and bounded retries; the complete deployment contract suite passed again under Node 20.20.2.
+- [ ] Commit and push the post-restore hardening, redeploy Pi3 through the standard entrypoint, and verify final fleet convergence.
 
 ## Surprises & Discoveries
 
@@ -59,6 +62,8 @@ Operators must be able to see the measurement-point list while entering values a
   Evidence: Pi3 journal entries repeatedly reported `Interactive authentication required`; the installed script matched the repository template and exact NOPASSWD commands are available through inventory policy.
 - Observation: Intermittent `status-agent` exit status 2 came from TLS handshake/read timeouts, not malformed configuration.
   Evidence: `/var/log/raspi-status-agent.log` recorded handshake and read timeouts while later timer invocations succeeded with the same redacted config shape.
+- Observation: Pi3 release `20260731-202134-009670` reproduced the exact April 2026 transient in which `signage-lite-update.timer` was enabled and present during the role but appeared unregistered to the first post-lightdm `systemd` start.
+  Evidence: the release failed only that loop item with `Could not find the requested service`; rollback restored and verified `ab57a4ab`, and subsequent read-only checks found lightdm, Signage, and every timer active and enabled. The same task/item and a successful retry are recorded in the historical deployment notes.
 
 ## Decision Log
 
@@ -89,6 +94,9 @@ Operators must be able to see the measurement-point list while entering values a
 - Decision: Raise `REQUEST_TIMEOUT` from 10 to 30 seconds only for Pi3 through a reusable template variable.
   Rationale: The same configuration succeeds between transient TLS timeouts, and 30 seconds remains inside the ready-probe's enforced 60-second safety bound.
   Date/Author: 2026-07-31 / Codex after user-approved Pi3 investigation.
+- Decision: Treat Signage restoration as an explicit convergence sequence: reload systemd, wait for every required unit to report `loaded`, start timers before the heavier display service, and retry transient starts three times.
+  Rationale: Unit files and enablement were correct, rollback was healthy, and the identical historical failure converged on retry; bounded readiness and retry make that transient observable and recoverable without masking a persistent missing unit.
+  Date/Author: 2026-08-01 / Codex after the first remediated Pi3 deployment.
 
 ## Context and Orientation
 
@@ -138,4 +146,4 @@ No API, DTO, Prisma schema, migration, or stored-data contract changes are expec
 
 The requested presentation changes are implemented without changes to API, DTO, Prisma, migrations, or business workflows. Focused tests passed, the full Web suite passed 329 files and 1,657 tests, lint and production build passed, and eight fully mocked Chromium E2E cases passed at the target resolutions. The isolated `pgvector/pgvector:pg15` run applied and reported all 157 migrations current; `_prisma_migrations` returned `157|0`, both self-inspection columns existed, the focused API contract test passed, and the representative list query used indexed scans with 0.090ms execution in the one-row fixture. Cleanup reported zero matching containers, volumes, networks, and storage paths.
 
-The original UI commit was pushed and reached Pi5 plus the first Pi4 canary. The first run was cooperatively cancelled before Pi3 mutation when its unknown evidence and known resource constraints were reviewed. The remediated candidate now awaits commit, a fresh immutable plan, and a new standard release run.
+The UI and first Pi3 remediation commits were pushed. Pi5 and all six Pi4 kiosks now hold verified evidence for `a8977fe2`. The first remediated Pi3 attempt safely rolled back after exposing a known transient unit-registration race in the post-lightdm restoration loop. The restoration path is now hardened and fully contract-tested; a final Pi3-only standard release remains before closing this plan.

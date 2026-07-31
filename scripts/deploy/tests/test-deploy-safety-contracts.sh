@@ -157,6 +157,41 @@ assert lightdm_start['ansible.builtin.systemd'] == {'name': 'lightdm', 'state': 
 assert 'lightdm_stopped is defined' in lightdm_start.get('when', [])
 assert 'lightdm_stopped is changed' in lightdm_start.get('when', [])
 
+signage_post_tasks = signage_play.get('post_tasks', [])
+systemd_reload = next(
+    task for task in signage_post_tasks
+    if task.get('name') == 'Reload systemd before restoring constrained signage services'
+)
+assert systemd_reload['ansible.builtin.systemd'] == {'daemon_reload': True}
+
+unit_wait = next(
+    task for task in signage_post_tasks
+    if task.get('name') == 'Wait for constrained signage units to be registered'
+)
+assert unit_wait.get('loop') == [
+    'signage-lite-update.timer',
+    'signage-lite-watchdog.timer',
+    'signage-daily-reboot.timer',
+    'signage-lite.service',
+]
+assert unit_wait.get('retries') == 5
+assert unit_wait.get('delay') == 3
+assert "signage_restore_unit.stdout | trim == 'loaded'" in unit_wait.get('until', [])
+
+service_restore = next(
+    task for task in signage_post_tasks
+    if task.get('name') == 'Start signage services after lightdm restore'
+)
+assert service_restore.get('loop') == [
+    'signage-lite-update.timer',
+    'signage-lite-watchdog.timer',
+    'signage-daily-reboot.timer',
+    'signage-lite.service',
+]
+assert service_restore.get('retries') == 3
+assert service_restore.get('delay') == 5
+assert service_restore.get('until') == 'signage_restore_service is succeeded'
+
 watchdog = watchdog_path.read_text(encoding='utf-8')
 assert 'sudo -n /usr/bin/systemctl start signage-lite-update.service' in watchdog
 assert 'sudo -n /usr/bin/systemctl restart signage-lite.service' in watchdog
