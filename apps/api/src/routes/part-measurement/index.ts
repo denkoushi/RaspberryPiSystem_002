@@ -18,6 +18,7 @@ import { SelfInspectionPaperReportIssueService } from '../../services/part-measu
 import { SelfInspectionPaperReportResolver } from '../../services/part-measurement/self-inspection-paper-report-resolver.service.js';
 import { SelfInspectionPaperOcrReviewService } from '../../services/part-measurement/self-inspection-paper-ocr-review.service.js';
 import { SelfInspectionPaperImportService } from '../../services/part-measurement/self-inspection-paper-import.service.js';
+import { SelfInspectionItemLifecycleService } from '../../services/part-measurement/self-inspection-item-lifecycle.service.js';
 import { registerVisualTemplateRoutes } from './visual-templates.js';
 import { registerSheetRoutes } from './sheets.js';
 import { registerProductionTemplateReadRoutes } from './production-templates-read.js';
@@ -80,6 +81,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     const sheetService = new PartMeasurementSheetService();
     const templateService = new PartMeasurementTemplateService();
     const selfInspectionService = new SelfInspectionService();
+    const selfInspectionItemLifecycleService = new SelfInspectionItemLifecycleService();
     const paperReportIssueService = new SelfInspectionPaperReportIssueService();
     const paperReportResolver = new SelfInspectionPaperReportResolver();
     const paperOcrReviewService = new SelfInspectionPaperOcrReviewService(paperReportResolver);
@@ -133,6 +135,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     sheetService,
     templateService,
     selfInspectionService,
+    selfInspectionItemLifecycleService,
     paperReportIssueService,
     paperReportResolver,
     paperOcrReviewService,

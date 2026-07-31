@@ -4,6 +4,7 @@ import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { resolveProductionSchedulePlannedQuantity } from '../../production-schedule/self-inspection-schedule-eligibility.js';
 import { partMeasurementTemplateFullInclude } from '../part-measurement-template-include.js';
+import { assertSelfInspectionSessionActive } from '../self-inspection-invalidation-errors.js';
 import { SELF_INSPECTION_MAX_EXPECTED_ENTRY_COUNT } from '../self-inspection-config.js';
 import {
   isSelfInspectionLotEntryRegistrationCompleteForPolicy,
@@ -42,6 +43,7 @@ export async function loadSessionForMutation(
   if (!session) {
     throw new ApiError(404, '自主検査セッションが見つかりません');
   }
+  assertSelfInspectionSessionActive(session);
   if (session.completedAt) {
     throw new ApiError(409, '完了済みの自主検査は編集できません');
   }

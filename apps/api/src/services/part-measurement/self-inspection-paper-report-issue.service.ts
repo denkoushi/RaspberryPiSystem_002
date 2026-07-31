@@ -8,6 +8,11 @@ import { verifyProductionScheduleRowOrThrow } from '../production-schedule/verif
 
 import { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
 import { resetSelfInspectionMachineBoardScheduleRowCaches } from './self-inspection-machine-board-cache-invalidation.js';
+import {
+  assertSelfInspectionSessionActive,
+  selfInspectionInvalidationConflict
+} from './self-inspection-invalidation-errors.js';
+import { lockSelfInspectionItemBusinessKey } from './self-inspection-item-lock.repository.js';
 import { SelfInspectionPaperQrCodec } from './self-inspection-paper-qr-codec.js';
 import {
   buildSelfInspectionPaperReportPagePlans,
@@ -115,6 +120,16 @@ export class SelfInspectionPaperReportIssueService {
     });
 
     const report = await prisma.$transaction(async (tx) => {
+      await lockSelfInspectionItemBusinessKey(tx, sessionBusinessKey);
+      const invalidation = await tx.selfInspectionItemInvalidation.findUnique({
+        where: { itemBusinessKey: sessionBusinessKey },
+        select: { id: true }
+      });
+      if (invalidation) {
+        throw selfInspectionInvalidationConflict(
+          '削除済みの自主検査アイテムは紙帳票を再発行できません'
+        );
+      }
       const session = await tx.selfInspectionSession.upsert({
         where: { sessionBusinessKey },
         create: {
@@ -138,6 +153,7 @@ export class SelfInspectionPaperReportIssueService {
           template: true
         }
       });
+      assertSelfInspectionSessionActive(session);
       if (session.completedAt) {
         throw new ApiError(409, '完了済みの自主検査は紙帳票を再発行できません');
       }
@@ -206,6 +222,7 @@ export class SelfInspectionPaperReportIssueService {
     if (!report) {
       throw new ApiError(404, '紙帳票が見つかりません');
     }
+    assertSelfInspectionSessionActive(report.session);
     return report;
   }
 }

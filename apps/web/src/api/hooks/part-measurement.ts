@@ -25,7 +25,10 @@ import {
   resolveSelfInspectionRecordApprovalApprover,
   authenticateSelfInspectionMeasurementActor,
   verifyKioskSelfInspectionRecordApprovalAccessPassword,
-  resetSelfInspectionSession
+  resetSelfInspectionSession,
+  invalidateSelfInspectionItem,
+  listSelfInspectionInvalidations,
+  getSelfInspectionInvalidation
 } from '../client';
 
 import type { SelfInspectionStatus } from '../../features/part-measurement/types';
@@ -47,6 +50,50 @@ export function useSelfInspectionSessions(
     placeholderData: (previousData) => previousData,
     refetchInterval: interval,
     enabled: options?.enabled ?? true
+  });
+}
+
+export function useSelfInspectionInvalidations(
+  params?: Parameters<typeof listSelfInspectionInvalidations>[0],
+  options?: { enabled?: boolean; refetchIntervalMs?: number | false }
+) {
+  return useQuery({
+    queryKey: ['self-inspection-invalidations', params],
+    queryFn: () => listSelfInspectionInvalidations(params),
+    refetchInterval: options?.refetchIntervalMs ?? 30000,
+    enabled: options?.enabled ?? true
+  });
+}
+
+export function useSelfInspectionInvalidation(
+  id: string | null | undefined,
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: ['self-inspection-invalidation', id],
+    queryFn: () => getSelfInspectionInvalidation(id!),
+    enabled: Boolean(id) && (options?.enabled ?? true)
+  });
+}
+
+export function useInvalidateSelfInspectionItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: Parameters<typeof invalidateSelfInspectionItem>[0]) =>
+      invalidateSelfInspectionItem(payload),
+    onSuccess: async (invalidation) => {
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-session'] });
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-inspector-session'] });
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-record-approvals'] });
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-record-approval-session'] });
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-invalidations'] });
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-invalidation'] });
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-out-of-tolerance-reviews'] });
+      // 永続snapshotを先に破棄し、直後の再取得が削除前キャッシュをhydrateしないようにする。
+      await purgeLeaderboardBoardCacheForScheduleRow(invalidation.scheduleRowId);
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+    }
   });
 }
 

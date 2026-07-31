@@ -434,6 +434,7 @@ model ClientDevice {
   selfInspectionInspectorEntries      SelfInspectionInspectorEntry[]
   selfInspectionMeasurementActorAuthentications SelfInspectionMeasurementActorAuthentication[] @relation("SelfInspectionMeasurementActorAuthenticationClientDevice")
   selfInspectionRecordApprovals       SelfInspectionRecordApproval[]
+  selfInspectionItemInvalidations     SelfInspectionItemInvalidation[]
   assemblyWorkSessionRecordApprovals  AssemblyWorkSessionApproval[]
   assemblyWorkSessionOperatorAccesses AssemblyWorkSessionOperatorAccess[]
   assemblyWorkUnitInvalidations       AssemblyWorkUnitInvalidation[]
@@ -2185,6 +2186,14 @@ enum SelfInspectionInspectorMeasurementJudgementStatus {
   NOT_EVALUATED
 }
 
+enum SelfInspectionItemInvalidationState {
+  NOT_STARTED
+  IN_PROGRESS
+  REVIEW_PENDING
+  COMPLETED
+  APPROVED
+}
+
 enum AssemblyWorkSessionStatus {
   IN_PROGRESS
   COMPLETED
@@ -3116,6 +3125,7 @@ model SelfInspectionSession {
   recordApprovalWorkflowStartedAt  DateTime?
   inspectorRemeasurementRequiredAt DateTime?
   decisionWorkflow                 String?
+  invalidatedAt                    DateTime?
   createdAt                        DateTime                       @default(now())
   updatedAt                        DateTime                       @updatedAt
   template                         PartMeasurementTemplate        @relation(fields: [templateId], references: [id], onDelete: Restrict)
@@ -3126,6 +3136,7 @@ model SelfInspectionSession {
   recordApproval                   SelfInspectionRecordApproval?
   measurementActorAuthentications  SelfInspectionMeasurementActorAuthentication[]
   measurementOperations            SelfInspectionMeasurementOperation[]
+  invalidation                     SelfInspectionItemInvalidation?
 
   @@index([productNo, processGroup, resourceCd], map: "SelfInspectionSession_idx_business_lookup")
   @@index([scheduleRowId], map: "SelfInspectionSession_idx_schedule_row")
@@ -3135,6 +3146,40 @@ model SelfInspectionSession {
   @@index([recordApprovalRequiredAt], map: "SelfInspectionSession_idx_record_approval_required_at")
   @@index([recordApprovalWorkflowStartedAt], map: "SelfInspectionSession_idx_record_approval_workflow_started_at")
   @@index([inspectorRemeasurementRequiredAt], map: "SelfInspectionSession_idx_inspector_remeasurement_required_at")
+  @@index([invalidatedAt, updatedAt], map: "SelfInspectionSession_idx_invalidation_updated")
+  // migrationには通常一覧向けの partial index SelfInspectionSession_idx_active_updated も定義する。
+}
+
+/// キオスク自主検査の不可逆な論理無効化。日程行が消えても監査を保持する。
+model SelfInspectionItemInvalidation {
+  id                                    String                              @id @default(uuid())
+  itemBusinessKey                       String                              @unique
+  requestId                             String                              @unique @db.VarChar(120)
+  sessionId                             String?                             @unique
+  scheduleRowId                         String
+  sourceState                           SelfInspectionItemInvalidationState
+  templateIdSnapshot                    String?
+  productNoSnapshot                     String
+  processGroupSnapshot                  PartMeasurementProcessGroup
+  resourceCdSnapshot                    String
+  fseibanSnapshot                       String?
+  fhincdSnapshot                        String
+  fhinmeiSnapshot                       String
+  machineNameSnapshot                   String?
+  plannedQuantitySnapshot               Int?
+  expectedEntryCountSnapshot            Int?
+  reason                                String
+  invalidatedByUsernameSnapshot         String?
+  invalidatedByClientDeviceId           String?
+  invalidatedByClientDeviceNameSnapshot String?
+  invalidatedAt                         DateTime                            @default(now())
+  createdAt                             DateTime                            @default(now())
+  session                               SelfInspectionSession?              @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  clientDevice                          ClientDevice?                       @relation(fields: [invalidatedByClientDeviceId], references: [id], onDelete: SetNull)
+
+  @@index([invalidatedAt], map: "SelfInspectionItemInvalidation_idx_invalidated")
+  @@index([scheduleRowId, invalidatedAt], map: "SelfInspectionItemInvalidation_idx_schedule_time")
+  @@index([invalidatedByClientDeviceId, invalidatedAt], map: "SelfInspectionItemInvalidation_idx_client_time")
 }
 
 model SelfInspectionLotEntry {

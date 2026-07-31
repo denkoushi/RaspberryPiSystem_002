@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { prisma } from '../../lib/prisma.js';
 
 
 
@@ -44,6 +45,9 @@ import {
   selfInspectionPaperQrPayloadBodySchema,
   createSelfInspectionPaperOcrReviewBodySchema,
   confirmSelfInspectionPaperOcrReviewBodySchema,
+  invalidateSelfInspectionItemBodySchema,
+  listSelfInspectionInvalidationsQuerySchema,
+  selfInspectionInvalidationIdParamsSchema,
   serializeTemplate,
   serializeSelfInspectionPaperReportPage,
   serializeSelfInspectionPaperReport,
@@ -63,11 +67,69 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
     allowWriteKiosk,
     canWrite,
     selfInspectionService,
+    selfInspectionItemLifecycleService,
     paperReportIssueService,
     paperReportResolver,
     paperOcrReviewService,
     paperImportService
   } = deps;
+
+    app.post(
+      '/part-measurement/self-inspection/items/invalidate',
+      { preHandler: allowWriteKiosk },
+      async (request) => {
+        const body = invalidateSelfInspectionItemBodySchema.parse(request.body);
+        const clientDeviceId = await tryGetClientDeviceId(request.headers);
+        const clientDevice = clientDeviceId
+          ? await prisma.clientDevice.findUnique({
+              where: { id: clientDeviceId },
+              select: { name: true }
+            })
+          : null;
+        const target =
+          body.target.kind === 'session'
+            ? body.target
+            : {
+                ...body.target,
+                processGroup:
+                  body.target.processGroup === 'grinding'
+                    ? ('GRINDING' as const)
+                    : ('CUTTING' as const)
+              };
+        const invalidation = await selfInspectionItemLifecycleService.invalidate({
+          target,
+          accessPassword: body.accessPassword,
+          reason: body.reason,
+          requestId: body.requestId,
+          actor: {
+            username: request.user?.username ?? null,
+            clientDeviceId: clientDeviceId ?? null,
+            clientDeviceNameSnapshot: clientDevice?.name ?? null
+          }
+        });
+        return { invalidation };
+      }
+    );
+
+    app.get(
+      '/part-measurement/self-inspection/invalidations',
+      { preHandler: allowView },
+      async (request) => {
+        const query = listSelfInspectionInvalidationsQuerySchema.parse(request.query ?? {});
+        return selfInspectionItemLifecycleService.list(query);
+      }
+    );
+
+    app.get(
+      '/part-measurement/self-inspection/invalidations/:id',
+      { preHandler: allowView },
+      async (request) => {
+        const params = selfInspectionInvalidationIdParamsSchema.parse(request.params);
+        return {
+          invalidation: await selfInspectionItemLifecycleService.getById(params.id)
+        };
+      }
+    );
 
     app.post('/part-measurement/self-inspection/nfc-tags/resolve', { preHandler: allowView }, async (request) => {
       const body = z.object({ uid: z.string().min(1).max(200) }).parse(request.body);

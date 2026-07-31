@@ -11,6 +11,8 @@ const mockUseSelfInspectionRecordApprovalSession = vi.fn();
 const mockUseResolveApprover = vi.fn();
 const mockUseApproveRecordApproval = vi.fn();
 const mockVerifyAccessPassword = vi.fn();
+const mockUseSelfInspectionInvalidations = vi.fn();
+const mockUseSelfInspectionInvalidation = vi.fn();
 
 vi.mock('../../api/hooks', () => ({
   useSelfInspectionRegistrationPolicy: (...args: unknown[]) =>
@@ -23,6 +25,10 @@ vi.mock('../../api/hooks', () => ({
     mockUseSelfInspectionRecordApprovals(...args),
   useSelfInspectionRecordApprovalSession: (...args: unknown[]) =>
     mockUseSelfInspectionRecordApprovalSession(...args),
+  useSelfInspectionInvalidations: (...args: unknown[]) =>
+    mockUseSelfInspectionInvalidations(...args),
+  useSelfInspectionInvalidation: (...args: unknown[]) =>
+    mockUseSelfInspectionInvalidation(...args),
   useResolveSelfInspectionRecordApprovalApprover: () => mockUseResolveApprover(),
   useApproveSelfInspectionRecordApproval: () => mockUseApproveRecordApproval(),
   useVerifyKioskSelfInspectionRecordApprovalAccessPassword: () => ({
@@ -59,6 +65,8 @@ describe('KioskSelfInspectionRecordApprovalPage', () => {
     mockUseResolveApprover.mockReset();
     mockUseApproveRecordApproval.mockReset();
     mockVerifyAccessPassword.mockReset();
+    mockUseSelfInspectionInvalidations.mockReset();
+    mockUseSelfInspectionInvalidation.mockReset();
     vi.spyOn(window, 'prompt').mockReturnValue('2520');
     vi.spyOn(window, 'alert').mockImplementation(() => undefined);
 
@@ -76,6 +84,14 @@ describe('KioskSelfInspectionRecordApprovalPage', () => {
       isLoading: false
     });
     mockUseSelfInspectionRecordApprovalSession.mockReturnValue({
+      data: null,
+      isLoading: false
+    });
+    mockUseSelfInspectionInvalidations.mockReturnValue({
+      data: { invalidations: [], listLimit: 200, truncated: false },
+      isLoading: false
+    });
+    mockUseSelfInspectionInvalidation.mockReturnValue({
       data: null,
       isLoading: false
     });
@@ -328,5 +344,55 @@ describe('KioskSelfInspectionRecordApprovalPage', () => {
       'session-final',
       expect.any(Object)
     );
+  });
+
+  it('shows an unstarted invalidation as a fully read-only history record', async () => {
+    const invalidation = {
+      id: 'invalidation-1',
+      itemBusinessKey: 'business-1',
+      requestId: 'request-1',
+      sessionId: null,
+      scheduleRowId: 'schedule-1',
+      sourceState: 'NOT_STARTED',
+      templateIdSnapshot: 'template-1',
+      productNoSnapshot: 'ORDER-DELETED',
+      processGroupSnapshot: 'CUTTING',
+      resourceCdSnapshot: '581',
+      fseibanSnapshot: 'FS-DELETED',
+      fhincdSnapshot: 'FH-DELETED',
+      fhinmeiSnapshot: '削除品',
+      machineNameSnapshot: null,
+      plannedQuantitySnapshot: 5,
+      expectedEntryCountSnapshot: 5,
+      reason: '日程から除外されたため',
+      invalidatedByUsernameSnapshot: 'leader',
+      invalidatedByClientDeviceId: 'device-1',
+      invalidatedByClientDeviceNameSnapshot: 'Kiosk A',
+      invalidatedAt: '2026-07-31T01:02:03.000Z',
+      createdAt: '2026-07-31T01:02:03.000Z'
+    };
+    mockUseSelfInspectionInvalidations.mockReturnValue({
+      data: { invalidations: [invalidation], listLimit: 200, truncated: false },
+      isLoading: false
+    });
+    mockUseSelfInspectionInvalidation.mockReturnValue({
+      data: { ...invalidation, session: null },
+      isLoading: false
+    });
+
+    renderPage();
+    fireEvent.change(await screen.findByLabelText('状態'), {
+      target: { value: 'invalidated' }
+    });
+
+    expect(await screen.findByText('削除済み・閲覧専用')).toBeInTheDocument();
+    expect(screen.getAllByText('日程から除外されたため').length).toBeGreaterThan(0);
+    expect(screen.getByText('未開始で削除されたため、測定履歴はありません。')).toBeInTheDocument();
+    expect(screen.getByText('Kiosk A')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '入力画面' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '検査員画面' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /計測機器の使用前点検必須/ })
+    ).not.toBeInTheDocument();
   });
 });

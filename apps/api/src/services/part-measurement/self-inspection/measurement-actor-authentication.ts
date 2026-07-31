@@ -1,6 +1,7 @@
 import type { Prisma, SelfInspectionMeasurementActorMode } from '@prisma/client';
 
 import { ApiError } from '../../../lib/errors.js';
+import { assertSelfInspectionSessionActive } from '../self-inspection-invalidation-errors.js';
 
 export type MeasurementActorAuthenticationInput = {
   employeeTagUid: string;
@@ -37,9 +38,10 @@ export async function createMeasurementActorAuthentication(
   }
   const session = await db.selfInspectionSession.findUnique({
     where: { id: sessionId },
-    select: { id: true, completedAt: true }
+    select: { id: true, completedAt: true, invalidatedAt: true }
   });
   if (!session) throw new ApiError(404, '自主検査セッションが見つかりません');
+  assertSelfInspectionSessionActive(session);
   if (session.completedAt) throw new ApiError(409, '完了済みの自主検査は認証できません');
 
   const employee = await db.employee.findFirst({
@@ -98,6 +100,15 @@ export async function requireMeasurementActorAuthentication(
     clientDeviceId?: string | null;
   }
 ): Promise<MeasurementActorAuthenticationContext> {
+  const session = await db.selfInspectionSession.findUnique({
+    where: { id: input.sessionId },
+    select: { id: true, invalidatedAt: true }
+  });
+  if (!session) {
+    throw new ApiError(404, '自主検査セッションが見つかりません');
+  }
+  assertSelfInspectionSessionActive(session);
+
   const authenticationId = input.authenticationId?.trim();
   if (!authenticationId) {
     throw new ApiError(401, 'この画面で測定者NFCタグをスキャンしてください');

@@ -9,6 +9,11 @@ import { resolveProductionSchedulePlannedQuantity } from '../production-schedule
 import { verifyProductionScheduleRowOrThrow } from '../production-schedule/verify-production-schedule-row.js';
 import { MeasuringInstrumentLoanEventService } from '../measuring-instruments/measuring-instrument-loan-event.service.js';
 import { resetSelfInspectionMachineBoardScheduleRowCaches } from './self-inspection-machine-board-cache-invalidation.js';
+import {
+  assertSelfInspectionSessionActive,
+  selfInspectionInvalidationConflict
+} from './self-inspection-invalidation-errors.js';
+import { lockSelfInspectionItemBusinessKey } from './self-inspection-item-lock.repository.js';
 import { markSelfInspectionRecordApprovalRequiredAfterMeasurementSave } from './self-inspection-record-approval-saved-gate.js';
 import {
   collectParticipantEmployeeNames,
@@ -251,28 +256,40 @@ export class SelfInspectionService {
       _count: { select: confirmedEntriesCountSelect }
     } as const;
 
-    const session = await prisma.selfInspectionSession.upsert({
-      where: { sessionBusinessKey },
-      create: {
-        sessionBusinessKey,
-        templateId: template.id,
-        productNo,
-        processGroup: input.processGroup,
-        resourceCd,
-        scheduleRowId,
-        fseiban,
-        fhincd,
-        fhinmei,
-        machineName: normalizeText(input.machineName) || null,
-        plannedQuantity,
-        expectedEntryCount,
-        clientDeviceId: input.clientDeviceId ?? null,
-        startedAt: new Date(),
-        decisionWorkflow: 'INSPECTOR_FINAL_JUDGEMENT',
-        recordApprovalWorkflowStartedAt: new Date()
-      },
-      update: {},
-      include: sessionInclude
+    const session = await prisma.$transaction(async (tx) => {
+      await lockSelfInspectionItemBusinessKey(tx, sessionBusinessKey);
+      const invalidation = await tx.selfInspectionItemInvalidation.findUnique({
+        where: { itemBusinessKey: sessionBusinessKey },
+        select: { id: true }
+      });
+      if (invalidation) {
+        throw selfInspectionInvalidationConflict(
+          '削除済みの自主検査アイテムは再開始できません'
+        );
+      }
+      return tx.selfInspectionSession.upsert({
+        where: { sessionBusinessKey },
+        create: {
+          sessionBusinessKey,
+          templateId: template.id,
+          productNo,
+          processGroup: input.processGroup,
+          resourceCd,
+          scheduleRowId,
+          fseiban,
+          fhincd,
+          fhinmei,
+          machineName: normalizeText(input.machineName) || null,
+          plannedQuantity,
+          expectedEntryCount,
+          clientDeviceId: input.clientDeviceId ?? null,
+          startedAt: new Date(),
+          decisionWorkflow: 'INSPECTOR_FINAL_JUDGEMENT',
+          recordApprovalWorkflowStartedAt: new Date()
+        },
+        update: {},
+        include: sessionInclude
+      });
     });
 
     return serializeSessionSummaryWithAggregatedParticipantNames(session);
@@ -291,6 +308,7 @@ export class SelfInspectionService {
     }
     const rows = await prisma.selfInspectionSession.findMany({
       where: {
+        invalidatedAt: null,
         ...(productNo ? { productNo: { contains: productNo, mode: 'insensitive' } } : {}),
         ...(resourceCd ? { resourceCd: { equals: resourceCd, mode: 'insensitive' } } : {}),
         ...(query.processGroup ? { processGroup: query.processGroup } : {}),
@@ -371,6 +389,7 @@ export class SelfInspectionService {
             };
     const rows = await prisma.selfInspectionSession.findMany({
       where: {
+        invalidatedAt: null,
         recordApprovalRequiredAt: { not: null },
         ...(productNo ? { productNo: { contains: productNo, mode: 'insensitive' } } : {}),
         ...(resourceCd ? { resourceCd: { equals: resourceCd, mode: 'insensitive' } } : {}),
@@ -402,6 +421,7 @@ export class SelfInspectionService {
     if (!session || !session.recordApprovalRequiredAt) {
       throw new ApiError(404, '検査記録確認対象の自主検査セッションが見つかりません');
     }
+    assertSelfInspectionSessionActive(session);
     const registrationPolicy = await getSelfInspectionRegistrationPolicy();
     const summary = serializeRecordApprovalSessionListItem(session, registrationPolicy);
     const requiredSlots = listRequiredEntrySlots(
@@ -477,6 +497,7 @@ export class SelfInspectionService {
       if (!existing || !existing.recordApprovalRequiredAt) {
         throw new ApiError(404, '検査記録承認対象の自主検査セッションが見つかりません');
       }
+      assertSelfInspectionSessionActive(existing);
       if (existing.decisionWorkflow === 'INSPECTOR_FINAL_JUDGEMENT') {
         throw new ApiError(409, 'この自主検査は検査員が最終判定して完了してください');
       }
@@ -665,6 +686,7 @@ export class SelfInspectionService {
     if (!session) {
       throw new ApiError(404, '自主検査セッションが見つかりません');
     }
+    assertSelfInspectionSessionActive(session);
 
     const focusedEntryRow =
       entryIndex != null
@@ -830,6 +852,7 @@ export class SelfInspectionService {
     if (!session || !session.recordApprovalRequiredAt || !session.inspectorRemeasurementRequiredAt) {
       throw new ApiError(404, '検査員再測定対象の自主検査セッションが見つかりません');
     }
+    assertSelfInspectionSessionActive(session);
 
     const focusedEntryRow =
       entryIndex != null
@@ -984,16 +1007,11 @@ export class SelfInspectionService {
       this.loanEventService,
       sessionId,
       entryIndexInput,
-      { ...input, employeeTagUid: actor.employeeNfcTagUidSnapshot }
-    );
-    await prisma.$transaction((tx) =>
-      appendMeasurementOperation(tx, {
-        sessionId,
-        authenticationId: actor.id,
-        mode: 'INSPECTOR',
-        entryIndex: Math.floor(entryIndexInput),
-        operationKind: 'INSTRUMENT_PRE_USE'
-      })
+      {
+        ...input,
+        employeeTagUid: actor.employeeNfcTagUidSnapshot,
+        measurementActorAuthenticationId: actor.id
+      }
     );
     return result;
   }
@@ -1019,16 +1037,11 @@ export class SelfInspectionService {
       this.loanEventService,
       sessionId,
       entryIndexInput,
-      { ...input, employeeTagUid: actor.employeeNfcTagUidSnapshot }
-    );
-    await prisma.$transaction((tx) =>
-      appendMeasurementOperation(tx, {
-        sessionId,
-        authenticationId: actor.id,
-        mode: 'OPERATOR',
-        entryIndex: Math.floor(entryIndexInput),
-        operationKind: 'INSTRUMENT_PRE_USE'
-      })
+      {
+        ...input,
+        employeeTagUid: actor.employeeNfcTagUidSnapshot,
+        measurementActorAuthenticationId: actor.id
+      }
     );
     return result;
   }
@@ -1038,9 +1051,10 @@ export class SelfInspectionService {
     measurementMode: 'operator' | 'inspector';
     clientDeviceId?: string | null;
   }) {
-    return prisma.$transaction((tx) =>
-      createMeasurementActorAuthentication(tx, sessionId, input)
-    );
+    return prisma.$transaction(async (tx) => {
+      await lockSessionRow(tx, sessionId);
+      return createMeasurementActorAuthentication(tx, sessionId, input);
+    });
   }
 
   async createEntry(sessionId: string, input: {
@@ -1463,6 +1477,7 @@ export class SelfInspectionService {
       if (!existing) {
         throw new ApiError(404, '自主検査セッションが見つかりません');
       }
+      assertSelfInspectionSessionActive(existing);
       if (existing.completedAt) {
         return existing;
       }
@@ -1569,6 +1584,7 @@ export class SelfInspectionService {
         entry: {
           ...confirmedWhere,
           session: {
+            invalidatedAt: null,
             recordApprovalWorkflowStartedAt: null
           }
         }
@@ -1769,6 +1785,7 @@ export class SelfInspectionService {
       if (!existing) {
         throw new ApiError(404, '自主検査セッションが見つかりません');
       }
+      assertSelfInspectionSessionActive(existing);
       if (existing.recordApprovalWorkflowStartedAt) {
         throw new ApiError(409, 'この自主検査はキオスクの検査記録承認で承認してください');
       }
@@ -1868,6 +1885,7 @@ export class SelfInspectionService {
     if (!session) {
       throw new ApiError(404, '自主検査セッションが見つかりません');
     }
+    assertSelfInspectionSessionActive(session);
 
     let clientDeviceName: string | null = null;
     if (input.clientDeviceId) {
@@ -1879,6 +1897,7 @@ export class SelfInspectionService {
     }
 
     const result = await prisma.$transaction(async (tx) => {
+      await lockSelfInspectionItemBusinessKey(tx, session.sessionBusinessKey);
       await lockSessionRow(tx, sessionId);
       const lockedSession = await tx.selfInspectionSession.findUnique({
         where: { id: sessionId }
@@ -1886,6 +1905,7 @@ export class SelfInspectionService {
       if (!lockedSession) {
         throw new ApiError(404, '自主検査セッションが見つかりません');
       }
+      assertSelfInspectionSessionActive(lockedSession);
 
       assertSelfInspectionResetConfirmation({
         confirmDestructiveReset: input.confirmDestructiveReset,

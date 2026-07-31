@@ -15,6 +15,17 @@ const rows: SelfInspectionTableRow[] = Array.from({ length: 5 }, (_, index) => (
   statusTone: 'info',
   detailLine: `製番 A-${index + 1}`,
   progressLine: '指示数 10',
+  invalidationTarget: {
+    kind: 'schedule_row',
+    scheduleRowId: `00000000-0000-4000-8000-00000000000${index}`,
+    templateId: '00000000-0000-4000-8000-000000000099',
+    productNo: `100${index + 1}`,
+    processGroup: 'cutting',
+    resourceCd: '581',
+    fseiban: `A-${index + 1}`,
+    fhincd: 'P-1',
+    fhinmei: '部品'
+  },
   action: { kind: 'button', label: '検査方法を選択' }
 }));
 
@@ -32,9 +43,14 @@ describe('SelfInspectionTable', () => {
   it('renders balanced panes for the current viewport and preserves one action per item', () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1536 });
     const selected: string[] = [];
+    const invalidated: string[] = [];
     render(
       <MemoryRouter>
-        <SelfInspectionTable rows={rows} onCandidateSelect={(id) => selected.push(id)} />
+        <SelfInspectionTable
+          rows={rows}
+          onCandidateSelect={(id) => selected.push(id)}
+          onInvalidate={(row) => invalidated.push(row.id)}
+        />
       </MemoryRouter>
     );
 
@@ -44,5 +60,9 @@ describe('SelfInspectionTable', () => {
     expect(actions).toHaveLength(5);
     fireEvent.click(actions[3]);
     expect(selected).toEqual(['row-4']);
+    const deleteActions = screen.getAllByRole('button', { name: '削除' });
+    expect(deleteActions).toHaveLength(5);
+    fireEvent.click(deleteActions[1]);
+    expect(invalidated).toEqual(['row-2']);
   });
 });
