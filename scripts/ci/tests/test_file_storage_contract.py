@@ -1,0 +1,59 @@
+from pathlib import Path
+import unittest
+
+
+ROOT = Path(__file__).resolve().parents[3]
+SERVER_COMPOSE = (ROOT / "infrastructure/docker/docker-compose.server.yml").read_text()
+PHASE3_COMPOSE = (ROOT / "infrastructure/docker/docker-compose.phase3.yml").read_text()
+MAC_OVERRIDE = (
+    ROOT / "infrastructure/docker/docker-compose.mac-local.override.yml"
+).read_text()
+API_ENV = (ROOT / "infrastructure/ansible/templates/api.env.j2").read_text()
+
+
+class FileStorageContractTest(unittest.TestCase):
+    def test_server_compose_mounts_catalog_and_csv_on_the_existing_host_root(self):
+        self.assertIn("FILE_STORAGE_ROOT: /app/storage", SERVER_COMPOSE)
+        self.assertIn(
+            "csv-dashboard-storage:/app/storage/csv-dashboards", SERVER_COMPOSE
+        )
+        self.assertIn(
+            "file-integrity-storage:/app/storage/.integrity", SERVER_COMPOSE
+        )
+        self.assertIn(
+            "device: /opt/RaspberryPiSystem_002/storage/csv-dashboards",
+            SERVER_COMPOSE,
+        )
+        self.assertIn(
+            "device: /opt/RaspberryPiSystem_002/storage/.integrity",
+            SERVER_COMPOSE,
+        )
+
+    def test_blue_green_and_mac_overlays_keep_the_same_storage_boundaries(self):
+        for value in (
+            "csv-dashboard-storage:/app/storage/csv-dashboards",
+            "file-integrity-storage:/app/storage/.integrity",
+        ):
+            self.assertIn(value, PHASE3_COMPOSE)
+        self.assertIn(
+            "../../.docker/local/storage/csv-dashboards:/app/storage/csv-dashboards",
+            MAC_OVERRIDE,
+        )
+        self.assertIn(
+            "../../.docker/local/storage/.integrity:/app/storage/.integrity",
+            MAC_OVERRIDE,
+        )
+
+    def test_ansible_environment_uses_one_canonical_root_and_consistent_aliases(self):
+        for value in (
+            "FILE_STORAGE_ROOT={{ api_file_storage_root | default('/app/storage') }}",
+            "PHOTO_STORAGE_DIR={{ api_photo_storage_dir | default('/app/storage') }}",
+            "PDF_STORAGE_DIR={{ api_pdf_storage_dir | default('/app/storage') }}",
+            "CSV_DASHBOARD_STORAGE_DIR={{ api_csv_dashboard_storage_dir | default('/app/storage') }}",
+            "SIGNAGE_RENDER_DIR={{ api_signage_render_dir | default('/app/storage/signage-rendered') }}",
+        ):
+            self.assertIn(value, API_ENV)
+
+
+if __name__ == "__main__":
+    unittest.main()

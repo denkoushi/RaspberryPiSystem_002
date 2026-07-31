@@ -18,10 +18,9 @@
     }
   }
 
-  handle_path /storage/thumbnails/* {
-    root * /srv/storage/thumbnails
-    file_server
-    header Cache-Control "public, max-age=86400"
+  handle /storage/thumbnails/* {
+    uri replace /storage/thumbnails/ /api/storage/thumbnails/
+    reverse_proxy ${SLOT_API_UPSTREAM}
   }
 
   @spa {

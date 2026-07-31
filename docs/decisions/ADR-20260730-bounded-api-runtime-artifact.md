@@ -1,7 +1,7 @@
 ---
 id: ADR-20260730-bounded-api-runtime-artifact
 title: Bound and reuse the Pi5 API runtime artifact before service extraction
-status: accepted-for-implementation
+status: accepted
 date: 2026-07-30
 source_of_truth: true
 scope: API Docker runtime boundary, exact OCI size budget, and Pi5 promotion timing
@@ -17,7 +17,6 @@ related_docs:
   - ./ADR-20260728-attested-arm64-release-artifact-promotion.md
 validation: exact ARM64 OCI manifest, runtime/final Docker smoke, pure contracts, disposable PostgreSQL, and required hosted CI
 open_items:
-  - required hosted CI and Draft PR
   - production promotion requires separate approval
 ---
 
@@ -83,9 +82,11 @@ requires an explicit reviewed budget change.
 
 The exact local ARM64 OCI evidence after the follow-up is 845,913,117
 compressed bytes across 26 layers, with a 530,496,867-byte largest layer. This
-is a 32.98 percent reduction from the recorded baseline. Hosted CI and the
-separately approved production pull are still required before claiming the
-network-timeout issue is resolved.
+is a 32.98 percent reduction from the recorded baseline. PR #1135 merged as
+`09fe5a9d0fd1e44aa7fcaafb5d34b0e1da7a0b21`, and main CI run `30606390289`
+passed the release API image and release-set gates. The separately approved
+production pull is still required before claiming the network-timeout issue is
+resolved.
 
 No HTTP API, database, migration, Compose runtime service, Blue/Green pair,
 terminal order, canary, five-minute monitor, or rollback behavior changes.

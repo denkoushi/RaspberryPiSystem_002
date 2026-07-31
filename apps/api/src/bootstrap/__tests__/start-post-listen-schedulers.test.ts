@@ -129,6 +129,7 @@ describe('start-post-listen-schedulers naming contract', () => {
   it('keeps a stable ordered membership for Blue/Green stop guarantees', () => {
     expect(listPostListenSchedulerNames()).toEqual([
       'signage-render',
+      'file-storage-integrity-backfill',
       'backup',
       'csv-import',
       'kiosk-document-gmail',

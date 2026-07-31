@@ -53,6 +53,8 @@ services:
       - ../../.docker/local/storage/assembly-procedure-images:/app/storage/assembly-procedure-images
       - ../../.docker/local/storage/measuring-instrument-genres:/app/storage/measuring-instrument-genres
       - ../../.docker/local/storage/pallet-machine-illustrations:/app/storage/pallet-machine-illustrations
+      - ../../.docker/local/storage/csv-dashboards:/app/storage/csv-dashboards
+      - ../../.docker/local/storage/.integrity:/app/storage/.integrity
       - ../../.docker/local/alerts:/app/alerts
       - ../../.docker/local/power-actions:/app/power-actions
       - ../../.docker/local/config:/app/config

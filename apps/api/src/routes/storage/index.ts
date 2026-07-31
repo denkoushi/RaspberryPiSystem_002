@@ -6,6 +6,7 @@ import { registerPalletMachineIllustrationStorageRoutes } from './pallet-machine
 import { registerPhotoStorageRoutes } from './photos.js';
 import { registerPdfStorageRoutes } from './pdfs.js';
 import { registerPdfPageRoutes } from './pdf-pages.js';
+import { registerThumbnailStorageRoutes } from './thumbnails.js';
 
 /**
  * ストレージルートの登録
@@ -13,6 +14,7 @@ import { registerPdfPageRoutes } from './pdf-pages.js';
 export function registerStorageRoutes(app: FastifyInstance): void {
   registerAssemblyProcedureImageStorageRoutes(app);
   registerPhotoStorageRoutes(app);
+  registerThumbnailStorageRoutes(app);
   registerPdfStorageRoutes(app);
   registerPdfPageRoutes(app);
   registerPartMeasurementDrawingStorageRoutes(app);

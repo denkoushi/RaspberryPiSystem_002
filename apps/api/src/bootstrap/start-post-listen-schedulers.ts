@@ -14,6 +14,11 @@ import { loadAlertsDispatcherConfig } from '../services/alerts/alerts-config.js'
 import { getPhotoToolLabelScheduler } from '../services/tools/photo-tool-label/photo-tool-label.scheduler.js';
 import { getPartMeasurementDrawingOcrScheduler } from '../services/part-measurement/part-measurement-drawing-ocr.scheduler.js';
 import {
+  FileStorageIntegrityBackfillService,
+  getFileStorageIntegrityBackfillScheduler,
+} from '../services/file-storage/file-storage-integrity-backfill.service.js';
+import { getFileStorageRuntime } from '../services/file-storage/file-storage-runtime.js';
+import {
   errorForLog,
   isSchedulerStepStateAmbiguousError,
   SchedulerStartupCleanupError,
@@ -110,6 +115,21 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
 
   return [
     ...definitions,
+    {
+      name: 'file-storage-integrity-backfill',
+      start: () => {
+        const runtime = getFileStorageRuntime();
+        getFileStorageIntegrityBackfillScheduler().start(
+          new FileStorageIntegrityBackfillService(
+            runtime.root,
+            runtime.store,
+            runtime.catalog
+          )
+        );
+        logger.info('File storage integrity backfill scheduler started');
+      },
+      stop: () => getFileStorageIntegrityBackfillScheduler().stop(),
+    },
     {
       name: 'backup',
       start: async () => {
@@ -221,6 +241,7 @@ export function listPostListenSchedulerNames(): string[] {
   // Names only — used by unit tests to assert Backup/CSV membership without starting jobs.
   return [
     'signage-render',
+    'file-storage-integrity-backfill',
     'backup',
     'csv-import',
     'kiosk-document-gmail',

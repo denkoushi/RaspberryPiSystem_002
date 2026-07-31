@@ -3,10 +3,11 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 import { convertPdfToImages, type PdfConversionOptions } from './pdf-converter.js';
 import { logger } from './logger.js';
+import { getFileStorageRoot } from '../services/file-storage/file-storage-config.js';
+import { getFileStorageRuntime } from '../services/file-storage/file-storage-runtime.js';
+import { syncDirectory } from '../services/file-storage/secure-atomic-file.js';
 
-const getStorageBaseDir = () =>
-  process.env.PDF_STORAGE_DIR ||
-  (process.env.NODE_ENV === 'test' ? '/tmp/test-photo-storage' : '/opt/RaspberryPiSystem_002/storage');
+const getStorageBaseDir = () => getFileStorageRoot();
 const getPdfsDir = () => path.join(getStorageBaseDir(), 'pdfs');
 export const PDF_PAGES_DIR = path.join(getStorageBaseDir(), 'pdf-pages');
 
@@ -30,8 +31,7 @@ export class PdfStorage {
    * ストレージディレクトリを初期化する
    */
   static async initialize(): Promise<void> {
-    await fs.mkdir(getPdfsDir(), { recursive: true });
-    await fs.mkdir(PDF_PAGES_DIR, { recursive: true });
+    await getFileStorageRuntime().store.initialize(['pdfs', 'pdf-pages']);
   }
 
   /**
@@ -71,11 +71,12 @@ export class PdfStorage {
   ): Promise<PdfPathInfo> {
     const pathInfo = this.generatePdfPath(originalFilename);
 
-    // ディレクトリを作成（存在しない場合）
-    await fs.mkdir(getPdfsDir(), { recursive: true });
-
-    // ファイルを保存
-    await fs.writeFile(pathInfo.filePath, pdfBuffer);
+    await getFileStorageRuntime().store.write({
+      key: `pdfs/${pathInfo.filename}`,
+      data: pdfBuffer,
+      mode: 'create',
+      integrity: true,
+    });
 
     return pathInfo;
   }
@@ -88,17 +89,7 @@ export class PdfStorage {
   static async deletePdf(pdfUrl: string): Promise<void> {
     // URLからファイルパスを抽出
     const filename = path.basename(pdfUrl);
-    const fullPath = path.join(getPdfsDir(), filename);
-
-    // ファイルを削除（存在しない場合はエラーを無視）
-    try {
-      await fs.unlink(fullPath);
-    } catch (error) {
-      // ファイルが存在しない場合は無視
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-        throw error;
-      }
-    }
+    await getFileStorageRuntime().store.delete(`pdfs/${filename}`, { integrity: true });
   }
 
   /**
@@ -110,9 +101,9 @@ export class PdfStorage {
   static async readPdf(pdfUrl: string): Promise<Buffer> {
     // URLからファイルパスを抽出
     const filename = path.basename(pdfUrl);
-    const fullPath = path.join(getPdfsDir(), filename);
-
-    return await fs.readFile(fullPath);
+    return getFileStorageRuntime().store.read(`pdfs/${filename}`, {
+      verifyIntegrity: true,
+    });
   }
 
   /**
@@ -128,11 +119,13 @@ export class PdfStorage {
     pdfFilePath: string,
     renderOptions?: Partial<Pick<PdfConversionOptions, 'dpi' | 'quality'>>,
   ): Promise<string[]> {
+    if (!/^[a-zA-Z0-9_-]+$/.test(pdfId)) {
+      throw new Error('Invalid PDF page storage id');
+    }
     const outputDir = path.join(PDF_PAGES_DIR, pdfId);
     
     // 既に変換済みの場合は既存の画像を返す
     try {
-      await fs.mkdir(outputDir, { recursive: true });
       const existingFiles = await fs.readdir(outputDir);
       const pageFiles = existingFiles
         .filter((file) => file.endsWith('.jpg') || file.endsWith('.jpeg'))
@@ -149,16 +142,27 @@ export class PdfStorage {
       // ディレクトリが存在しない場合は変換を実行
     }
 
-    // PDFファイルの存在確認
+    const resolvedPdfPath = path.resolve(pdfFilePath);
+    const resolvedPdfsDir = path.resolve(getPdfsDir());
+    if (
+      path.dirname(resolvedPdfPath) !== resolvedPdfsDir ||
+      path.basename(resolvedPdfPath) !== pdfFilePath.split(path.sep).at(-1)
+    ) {
+      throw new Error('Invalid PDF storage path');
+    }
     try {
-      await fs.access(pdfFilePath);
+      await getFileStorageRuntime().store.read(`pdfs/${path.basename(resolvedPdfPath)}`, {
+        verifyIntegrity: true,
+      });
     } catch (error) {
-      // PDFファイルが存在しない場合はエラーログを出力して空配列を返す
-      logger.error(
-        { pdfId, pdfFilePath, error: (error as Error).message },
-        'PDFファイルが見つかりません。PDFを再アップロードするか、スケジュールからPDFを削除してください。'
-      );
-      return [];
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        logger.error(
+          { pdfId, pdfFilePath },
+          'PDFファイルが見つかりません。PDFを再アップロードするか、スケジュールからPDFを削除してください。'
+        );
+        return [];
+      }
+      throw error;
     }
 
     const defaultDpi = parseInt(process.env.SIGNAGE_PDF_DPI || '150', 10);
@@ -166,15 +170,26 @@ export class PdfStorage {
     const dpi = renderOptions?.dpi ?? defaultDpi;
     const quality = renderOptions?.quality ?? defaultQuality;
 
+    const temporaryOutputDir = path.join(
+      PDF_PAGES_DIR,
+      `.${pdfId}.${randomUUID()}.tmp`
+    );
     try {
-      await fs.mkdir(outputDir, { recursive: true });
-      await convertPdfToImages(pdfFilePath, outputDir, {
+      await fs.mkdir(temporaryOutputDir, { recursive: false });
+      await convertPdfToImages(pdfFilePath, temporaryOutputDir, {
         prefix: pdfId,
         format: 'jpeg',
         dpi,
         quality,
       });
-      
+      const generatedFiles = await fs.readdir(temporaryOutputDir);
+      if (!generatedFiles.some((file) => file.endsWith('.jpg') || file.endsWith('.jpeg'))) {
+        throw new Error('PDF conversion produced no pages');
+      }
+      await fs.rm(outputDir, { recursive: true, force: true });
+      await fs.rename(temporaryOutputDir, outputDir);
+      await syncDirectory(PDF_PAGES_DIR);
+
       // 変換された画像ファイルを取得
       const files = await fs.readdir(outputDir);
       const pageFiles = files
@@ -192,7 +207,7 @@ export class PdfStorage {
         'PDF変換エラーが発生しました'
       );
       try {
-        await fs.rm(outputDir, { recursive: true, force: true });
+        await fs.rm(temporaryOutputDir, { recursive: true, force: true });
       } catch (rmErr) {
         if ((rmErr as NodeJS.ErrnoException).code !== 'ENOENT') {
           logger.warn({ pdfId, outputDir, err: rmErr }, 'Failed to clean partial pdf-pages output after conversion error');
@@ -220,4 +235,3 @@ export class PdfStorage {
     }
   }
 }
-

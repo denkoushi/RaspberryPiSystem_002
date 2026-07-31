@@ -48,6 +48,9 @@ export class PhotoGallerySeedService {
     } catch (err) {
       const e = err instanceof Error ? err : new Error(String(err));
       log.error({ err: e }, 'Photo gallery seed image processing failed');
+      if (e instanceof ApiError) {
+        throw e;
+      }
       throw new ApiError(500, `画像の処理に失敗しました: ${e.message}`);
     }
 

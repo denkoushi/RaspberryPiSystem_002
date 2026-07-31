@@ -1,13 +1,6 @@
 import { randomUUID } from 'crypto';
-import { promises as fs } from 'fs';
 import path from 'path';
-
-const getStorageBaseDir = () =>
-  process.env.PHOTO_STORAGE_DIR ||
-  (process.env.NODE_ENV === 'test' ? '/tmp/test-photo-storage' : '/opt/RaspberryPiSystem_002/storage');
-
-/** 本番では `docker-compose.server.yml` で `measuring-instrument-genres-storage` をホストにバインドすること（未マウントだとコンテナ再作成で消失） */
-const getGenreImageDir = () => path.join(getStorageBaseDir(), 'measuring-instrument-genres');
+import { getFileStorageRuntime } from '../services/file-storage/file-storage-runtime.js';
 
 const MIME_TO_EXT: Record<string, string> = {
   'image/png': '.png',
@@ -20,7 +13,7 @@ const MAX_BYTES = 12 * 1024 * 1024;
 
 export class MeasuringInstrumentGenreImageStorage {
   static async initialize(): Promise<void> {
-    await fs.mkdir(getGenreImageDir(), { recursive: true });
+    await getFileStorageRuntime().store.initialize(['measuring-instrument-genres']);
   }
 
   static assertMime(mimetype: string): string {
@@ -41,9 +34,12 @@ export class MeasuringInstrumentGenreImageStorage {
     }
     const ext = this.assertMime(mimetype);
     const filename = `${randomUUID()}${ext}`;
-    const fullPath = path.join(getGenreImageDir(), filename);
-    await fs.mkdir(getGenreImageDir(), { recursive: true });
-    await fs.writeFile(fullPath, buffer);
+    await getFileStorageRuntime().store.write({
+      key: `measuring-instrument-genres/${filename}`,
+      data: buffer,
+      mode: 'create',
+      integrity: true,
+    });
     return {
       relativeUrl: `/api/storage/measuring-instrument-genres/${filename}`,
       contentType: mimetype.toLowerCase().startsWith('image/') ? mimetype : 'application/octet-stream'
@@ -68,8 +64,10 @@ export class MeasuringInstrumentGenreImageStorage {
           : ext === '.webp'
             ? 'image/webp'
             : 'application/octet-stream';
-    const fullPath = path.join(getGenreImageDir(), filename);
-    const buffer = await fs.readFile(fullPath);
+    const buffer = await getFileStorageRuntime().store.read(
+      `measuring-instrument-genres/${filename}`,
+      { verifyIntegrity: true }
+    );
     return { buffer, contentType };
   }
 }

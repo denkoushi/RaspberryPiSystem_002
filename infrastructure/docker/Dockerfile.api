@@ -105,6 +105,11 @@ RUN mkdir -p /app/storage/photos \
   /app/storage/pdf-pages \
   /app/storage/signage-rendered \
   /app/storage/assembly-procedure-images \
+  /app/storage/measuring-instrument-genres \
+  /app/storage/part-measurement-drawings \
+  /app/storage/pallet-machine-illustrations \
+  /app/storage/csv-dashboards \
+  /app/storage/.integrity \
   && rm -rf /usr/local/lib/node_modules/npm
 
 FROM api-runtime AS api

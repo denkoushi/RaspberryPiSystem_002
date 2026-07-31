@@ -54,6 +54,7 @@ export function registerPdfStorageRoutes(app: FastifyInstance): void {
       // PDFデータを返す
       return reply.send(pdfBuffer);
     } catch (error) {
+      if (error instanceof ApiError) throw error;
       const err = error instanceof Error ? error : new Error(String(error));
       
       // ファイルが存在しない場合
@@ -66,4 +67,3 @@ export function registerPdfStorageRoutes(app: FastifyInstance): void {
     }
   });
 }
-

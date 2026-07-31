@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { authorizeRoles } from '../../lib/auth.js';
 import { findClientDeviceByApiKey } from '../../services/clients/client-device-auth.service.js';
 import { MeasuringInstrumentGenreImageStorage } from '../../lib/measuring-instrument-genre-image-storage.js';
+import { ApiError } from '../../lib/errors.js';
 
 export function registerMeasuringInstrumentGenreStorageRoutes(app: FastifyInstance): void {
   const canView = authorizeRoles('ADMIN', 'MANAGER', 'VIEWER');
@@ -29,6 +30,7 @@ export function registerMeasuringInstrumentGenreStorageRoutes(app: FastifyInstan
       reply.type(contentType);
       return reply.send(buffer);
     } catch (error) {
+      if (error instanceof ApiError) throw error;
       const err = error instanceof Error ? error : new Error(String(error));
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
         return reply.status(404).send({ message: '画像が見つかりません' });

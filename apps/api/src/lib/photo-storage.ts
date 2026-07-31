@@ -3,10 +3,10 @@ import path from 'path';
 import { randomUUID } from 'node:crypto';
 
 import sharp from 'sharp';
+import { getFileStorageRoot } from '../services/file-storage/file-storage-config.js';
+import { getFileStorageRuntime } from '../services/file-storage/file-storage-runtime.js';
 
-const getStorageBaseDir = () =>
-  process.env.PHOTO_STORAGE_DIR ||
-  (process.env.NODE_ENV === 'test' ? '/tmp/test-photo-storage' : '/opt/RaspberryPiSystem_002/storage');
+const getStorageBaseDir = () => getFileStorageRoot();
 const getPhotosDir = () => path.join(getStorageBaseDir(), 'photos');
 const getThumbnailsDir = () => path.join(getStorageBaseDir(), 'thumbnails');
 
@@ -55,8 +55,7 @@ export class PhotoStorage {
    * ストレージディレクトリを初期化する
    */
   static async initialize(): Promise<void> {
-    await fs.mkdir(getPhotosDir(), { recursive: true });
-    await fs.mkdir(getThumbnailsDir(), { recursive: true });
+    await getFileStorageRuntime().store.initialize(['photos', 'thumbnails']);
   }
 
   /**
@@ -115,15 +114,20 @@ export class PhotoStorage {
   ): Promise<PhotoPathInfo> {
     const pathInfo = this.generatePhotoPath(employeeId);
 
-    // ディレクトリを作成（存在しない場合）
-    const yearMonthDir = path.join(getPhotosDir(), pathInfo.year, pathInfo.month);
-    const thumbnailYearMonthDir = path.join(getThumbnailsDir(), pathInfo.year, pathInfo.month);
-    await fs.mkdir(yearMonthDir, { recursive: true });
-    await fs.mkdir(thumbnailYearMonthDir, { recursive: true });
-
-    // ファイルを保存
-    await fs.writeFile(pathInfo.fullPath, originalImage);
-    await fs.writeFile(pathInfo.thumbnailPath, thumbnailImage);
+    await getFileStorageRuntime().store.writeBatch([
+      {
+        key: `photos/${pathInfo.year}/${pathInfo.month}/${pathInfo.filename}`,
+        data: originalImage,
+        mode: 'create',
+        integrity: true,
+      },
+      {
+        key: `thumbnails/${pathInfo.year}/${pathInfo.month}/${pathInfo.thumbnailFilename}`,
+        data: thumbnailImage,
+        mode: 'create',
+        integrity: true,
+      },
+    ]);
 
     return pathInfo;
   }
@@ -137,32 +141,16 @@ export class PhotoStorage {
     // URLからファイルパスを抽出
     // /api/storage/photos/YYYY/MM/filename.jpg -> /opt/RaspberryPiSystem_002/storage/photos/YYYY/MM/filename.jpg
     const relativePath = photoUrl.replace('/api/storage/photos/', '');
-    const fullPath = path.join(getPhotosDir(), relativePath);
+    const photoKey = `photos/${relativePath}`;
 
     // サムネイルのパスも生成
     const thumbnailRelativePath = photoUrl
       .replace('/api/storage/photos/', '/storage/thumbnails/')
       .replace('.jpg', '_thumb.jpg');
-    const thumbnailFullPath = thumbnailRelativePath.replace('/storage/thumbnails/', getThumbnailsDir() + '/');
-
-    // ファイルを削除（存在しない場合はエラーを無視）
-    try {
-      await fs.unlink(fullPath);
-    } catch (error) {
-      // ファイルが存在しない場合は無視
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-        throw error;
-      }
-    }
-
-    try {
-      await fs.unlink(thumbnailFullPath);
-    } catch (error) {
-      // ファイルが存在しない場合は無視
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-        throw error;
-      }
-    }
+    const thumbnailKey = `thumbnails/${thumbnailRelativePath.replace('/storage/thumbnails/', '')}`;
+    const store = getFileStorageRuntime().store;
+    await store.delete(photoKey, { integrity: true });
+    await store.delete(thumbnailKey, { integrity: true });
   }
 
   /**
@@ -184,7 +172,10 @@ export class PhotoStorage {
       const files = await fs.readdir(yearDir);
       for (const file of files) {
         if (file.endsWith('.jpg') && !file.endsWith('_thumb.jpg')) {
-          await fs.unlink(path.join(yearDir, file));
+          await getFileStorageRuntime().store.delete(
+            `photos/${targetYear}/${targetMonth}/${file}`,
+            { integrity: true }
+          );
           deletedCount++;
         }
       }
@@ -193,7 +184,10 @@ export class PhotoStorage {
       const thumbnailFiles = await fs.readdir(thumbnailYearDir);
       for (const file of thumbnailFiles) {
         if (file.endsWith('_thumb.jpg')) {
-          await fs.unlink(path.join(thumbnailYearDir, file));
+          await getFileStorageRuntime().store.delete(
+            `thumbnails/${targetYear}/${targetMonth}/${file}`,
+            { integrity: true }
+          );
         }
       }
     } catch (error) {
@@ -215,9 +209,10 @@ export class PhotoStorage {
   static async readPhoto(photoUrl: string): Promise<Buffer> {
     // URLからファイルパスを抽出
     const relativePath = photoUrl.replace('/api/storage/photos/', '');
-    const fullPath = resolvePathWithinBase(getPhotosDir(), relativePath);
-
-    return await fs.readFile(fullPath);
+    resolvePathWithinBase(getPhotosDir(), relativePath);
+    return getFileStorageRuntime().store.read(`photos/${relativePath}`, {
+      verifyIntegrity: true,
+    });
   }
 
   /**
@@ -230,8 +225,17 @@ export class PhotoStorage {
     }
     const relativePath = photoUrl.replace('/api/storage/photos/', '');
     const thumbnailRelativePath = relativePath.replace('.jpg', '_thumb.jpg');
-    const thumbnailFullPath = resolvePathWithinBase(getThumbnailsDir(), thumbnailRelativePath);
-    return await fs.readFile(thumbnailFullPath);
+    resolvePathWithinBase(getThumbnailsDir(), thumbnailRelativePath);
+    return getFileStorageRuntime().store.read(`thumbnails/${thumbnailRelativePath}`, {
+      verifyIntegrity: true,
+    });
+  }
+
+  static async readThumbnail(relativePath: string): Promise<Buffer> {
+    resolvePathWithinBase(getThumbnailsDir(), relativePath);
+    return getFileStorageRuntime().store.read(`thumbnails/${relativePath}`, {
+      verifyIntegrity: true,
+    });
   }
 
   /**

@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { PhotoStorage } from '../../lib/photo-storage.js';
 import { authorizeRoles } from '../../lib/auth.js';
 import { findClientDeviceByApiKey } from '../../services/clients/client-device-auth.service.js';
+import { ApiError } from '../../lib/errors.js';
 
 /**
  * 写真配信ルート
@@ -52,6 +53,7 @@ export function registerPhotoStorageRoutes(app: FastifyInstance): void {
       // 画像データを返す
       return reply.send(imageBuffer);
     } catch (error) {
+      if (error instanceof ApiError) throw error;
       const err = error instanceof Error ? error : new Error(String(error));
       
       // ファイルが存在しない場合
@@ -64,4 +66,3 @@ export function registerPhotoStorageRoutes(app: FastifyInstance): void {
     }
   });
 }
-

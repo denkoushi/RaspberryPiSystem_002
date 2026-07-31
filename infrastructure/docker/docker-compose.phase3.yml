@@ -49,6 +49,8 @@ services:
       - assembly-procedure-images-storage:/app/storage/assembly-procedure-images
       - measuring-instrument-genres-storage:/app/storage/measuring-instrument-genres
       - pallet-machine-illustrations-storage:/app/storage/pallet-machine-illustrations
+      - csv-dashboard-storage:/app/storage/csv-dashboards
+      - file-integrity-storage:/app/storage/.integrity
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/alerts:/app/alerts
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/power-actions:/app/power-actions
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/config:/app/config
@@ -158,3 +160,9 @@ volumes:
   pallet-machine-illustrations-storage:
     external: true
     name: ${PI5_VOLUME_PREFIX:-docker}_pallet-machine-illustrations-storage
+  csv-dashboard-storage:
+    external: true
+    name: ${PI5_VOLUME_PREFIX:-docker}_csv-dashboard-storage
+  file-integrity-storage:
+    external: true
+    name: ${PI5_VOLUME_PREFIX:-docker}_file-integrity-storage

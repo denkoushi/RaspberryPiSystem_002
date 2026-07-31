@@ -2,10 +2,10 @@ import { randomUUID } from 'crypto';
 import { promises as fs, type Stats } from 'fs';
 import path from 'path';
 import sharp from 'sharp';
+import { getFileStorageRoot } from '../services/file-storage/file-storage-config.js';
+import { getFileStorageRuntime } from '../services/file-storage/file-storage-runtime.js';
 
-const getStorageBaseDir = () =>
-  process.env.PHOTO_STORAGE_DIR ||
-  (process.env.NODE_ENV === 'test' ? '/tmp/test-photo-storage' : '/opt/RaspberryPiSystem_002/storage');
+const getStorageBaseDir = () => getFileStorageRoot();
 
 const getDrawingsDir = () => path.join(getStorageBaseDir(), 'part-measurement-drawings');
 
@@ -58,19 +58,26 @@ function derivativeGenerationKey(sourceFullPath: string, width: DerivativeWidth)
 }
 
 async function generateDerivativeWebp(
-  sourceFullPath: string,
+  sourceBuffer: Buffer,
   derivativeFullPath: string,
   width: DerivativeWidth
 ): Promise<void> {
-  await fs.mkdir(path.dirname(derivativeFullPath), { recursive: true });
-  await sharp(sourceFullPath, { failOn: 'none' })
+  const buffer = await sharp(sourceBuffer, { failOn: 'none' })
     .resize({ width, withoutEnlargement: true })
     .webp({ quality: DERIVATIVE_WEBP_QUALITY })
-    .toFile(derivativeFullPath);
+    .toBuffer();
+  const key = path.relative(getStorageBaseDir(), derivativeFullPath).split(path.sep).join('/');
+  await getFileStorageRuntime().store.write({
+    key,
+    data: buffer,
+    mode: 'replace',
+    integrity: false,
+  });
 }
 
 async function ensureDerivativeFile(
   sourceFullPath: string,
+  sourceBuffer: Buffer,
   sourceFilename: string,
   width: DerivativeWidth,
   sourceMtimeMs: number
@@ -99,7 +106,7 @@ async function ensureDerivativeFile(
     try {
       const derivativeStat = await fs.stat(derivativeFullPath).catch(() => null);
       if (!derivativeStat || derivativeStat.mtimeMs < sourceMtimeMs) {
-        await generateDerivativeWebp(sourceFullPath, derivativeFullPath, width);
+        await generateDerivativeWebp(sourceBuffer, derivativeFullPath, width);
       }
     } finally {
       derivativeGenerationInFlight.delete(inFlightKey);
@@ -138,7 +145,10 @@ function resolveDrawingFile(relativeUrl: string): { fullPath: string; contentTyp
  */
 export class PartMeasurementDrawingStorage {
   static async initialize(): Promise<void> {
-    await fs.mkdir(getDrawingsDir(), { recursive: true });
+    await getFileStorageRuntime().store.initialize([
+      'part-measurement-drawings',
+      'part-measurement-drawings-derivatives',
+    ]);
   }
 
   static assertMime(mimetype: string): string {
@@ -163,9 +173,12 @@ export class PartMeasurementDrawingStorage {
     const ext = this.assertMime(mimetype);
     const id = randomUUID();
     const filename = `${id}${ext}`;
-    const fullPath = path.join(getDrawingsDir(), filename);
-    await fs.mkdir(getDrawingsDir(), { recursive: true });
-    await fs.writeFile(fullPath, buffer);
+    await getFileStorageRuntime().store.write({
+      key: `part-measurement-drawings/${filename}`,
+      data: buffer,
+      mode: 'create',
+      integrity: true,
+    });
     return {
       relativeUrl: `/api/storage/part-measurement-drawings/${filename}`,
       contentType: mimetype.toLowerCase().startsWith('image/') ? mimetype : 'application/octet-stream'
@@ -177,12 +190,17 @@ export class PartMeasurementDrawingStorage {
    */
   static async statDrawing(relativeUrl: string): Promise<Stats> {
     const { fullPath } = resolveDrawingFile(relativeUrl);
-    return fs.stat(fullPath);
+    return getFileStorageRuntime().store.stat(
+      path.relative(getStorageBaseDir(), fullPath).split(path.sep).join('/')
+    );
   }
 
   static async readDrawing(relativeUrl: string): Promise<{ buffer: Buffer; contentType: string }> {
     const { fullPath, contentType } = resolveDrawingFile(relativeUrl);
-    const buffer = await fs.readFile(fullPath);
+    const key = path.relative(getStorageBaseDir(), fullPath).split(path.sep).join('/');
+    const buffer = await getFileStorageRuntime().store.read(key, {
+      verifyIntegrity: true,
+    });
     return { buffer, contentType };
   }
 
@@ -194,18 +212,22 @@ export class PartMeasurementDrawingStorage {
     width: DerivativeWidth
   ): Promise<{ buffer: Buffer; contentType: string; stat: Stats }> {
     const { fullPath, contentType } = resolveDrawingFile(relativeUrl);
-    const sourceStat = await fs.stat(fullPath);
-    const metadata = await sharp(fullPath, { failOn: 'none' }).metadata();
+    const sourceKey = path.relative(getStorageBaseDir(), fullPath).split(path.sep).join('/');
+    const [sourceStat, sourceBuffer] = await Promise.all([
+      getFileStorageRuntime().store.stat(sourceKey),
+      getFileStorageRuntime().store.read(sourceKey, { verifyIntegrity: true }),
+    ]);
+    const metadata = await sharp(sourceBuffer, { failOn: 'none' }).metadata();
     const sourceWidth = metadata.width ?? 0;
 
     if (sourceWidth > 0 && sourceWidth <= width) {
-      const buffer = await fs.readFile(fullPath);
-      return { buffer, contentType, stat: sourceStat };
+      return { buffer: sourceBuffer, contentType, stat: sourceStat };
     }
 
     const sourceFilename = relativeUrl.slice(DRAWING_URL_PREFIX.length);
     const derivativeFullPath = await ensureDerivativeFile(
       fullPath,
+      sourceBuffer,
       sourceFilename,
       width,
       sourceStat.mtimeMs
@@ -218,7 +240,8 @@ export class PartMeasurementDrawingStorage {
   static async deleteDrawing(relativeUrl: string): Promise<void> {
     try {
       const { fullPath } = resolveDrawingFile(relativeUrl);
-      await fs.unlink(fullPath).catch(() => undefined);
+      const key = path.relative(getStorageBaseDir(), fullPath).split(path.sep).join('/');
+      await getFileStorageRuntime().store.delete(key, { integrity: true });
     } catch {
       return;
     }

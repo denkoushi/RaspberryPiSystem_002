@@ -6,6 +6,7 @@ import {
   evaluateEventLoopHealth,
   snapshotEventLoopObservability,
 } from '../../services/system/event-loop-observability.js';
+import { getFileStorageRuntime } from '../../services/file-storage/file-storage-runtime.js';
 
 type HealthCheckStatus = 'ok' | 'error' | 'warning';
 
@@ -74,6 +75,12 @@ export function registerSystemHealthRoute(app: FastifyInstance): void {
     checks.playwright = playwrightAvailability.available
       ? { status: 'ok' }
       : { status: 'warning', message: playwrightAvailability.message };
+
+    const fileStorage = await getFileStorageRuntime().health.check();
+    checks.fileStorage = {
+      status: fileStorage.status,
+      ...(fileStorage.reason ? { message: fileStorage.reason } : {}),
+    };
 
     // 全体的なステータスを決定（warning のみでは degraded にしない）
     const hasError = Object.values(checks).some((check) => check.status === 'error');

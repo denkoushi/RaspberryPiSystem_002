@@ -80,6 +80,10 @@ if [ "${CURRENT_DAY}" = "01" ]; then
     fi
     log "削除後のBuild Cacheサイズ: ${after_size}"
     log "Docker Build Cacheの削除が完了しました"
+    log "Docker全体の使用量を確認します"
+    docker system df 2>&1 | while IFS= read -r line; do
+      log "docker system df: ${line}"
+    done
   else
     error_exit "Docker Build Cacheの削除に失敗しました"
   fi
@@ -98,4 +102,3 @@ elif [ "${disk_usage}" -gt 80 ]; then
 fi
 
 log "ストレージメンテナンスが完了しました"
-

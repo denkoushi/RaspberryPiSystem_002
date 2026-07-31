@@ -13,14 +13,7 @@ import { registerLocalLlmGateway } from './plugins/local-llm-gateway.js';
 import { registerRoutes } from './routes/index.js';
 import { initializeCsvImporters } from './services/imports/index.js';
 import { initializeVisualizationModules } from './services/visualization/index.js';
-import { MeasuringInstrumentGenreImageStorage } from './lib/measuring-instrument-genre-image-storage.js';
-import { AssemblyProcedureImageStorage } from './lib/assembly-procedure-image-storage.js';
-import { PartMeasurementDrawingStorage } from './lib/part-measurement-drawing-storage.js';
-import { PalletMachineIllustrationStorage } from './lib/pallet-machine-illustration-storage.js';
-import { PhotoStorage } from './lib/photo-storage.js';
-import { PdfStorage } from './lib/pdf-storage.js';
-import { SignageRenderStorage } from './lib/signage-render-storage.js';
-import { CsvDashboardStorage } from './lib/csv-dashboard-storage.js';
+import { initializeFileStorageRuntime } from './services/file-storage/file-storage-runtime.js';
 import { SignageRenderScheduler } from './services/signage/signage-render-scheduler.js';
 import { SignageRenderer } from './services/signage/signage.renderer.js';
 import { SignageService } from './services/signage/index.js';
@@ -67,27 +60,25 @@ export async function buildServer(): Promise<FastifyInstance> {
     }
   });
   
-  // ストレージディレクトリを初期化（I/O 並列化で起動クリティカルパス短縮）
-  const storageTasks: Array<{ label: string; run: () => Promise<unknown> }> = [
-    { label: 'Photo storage directories', run: () => PhotoStorage.initialize() },
-    { label: 'Assembly procedure image storage', run: () => AssemblyProcedureImageStorage.initialize() },
-    { label: 'Measuring instrument genre image storage', run: () => MeasuringInstrumentGenreImageStorage.initialize() },
-    { label: 'Part-measurement drawing storage', run: () => PartMeasurementDrawingStorage.initialize() },
-    { label: 'Pallet machine illustration storage', run: () => PalletMachineIllustrationStorage.initialize() },
-    { label: 'PDF storage directories', run: () => PdfStorage.initialize() },
-    { label: 'Signage render storage', run: () => SignageRenderStorage.initialize() },
-    { label: 'CSV dashboard storage', run: () => CsvDashboardStorage.initialize() }
-  ];
-
-  const settled = await Promise.allSettled(storageTasks.map((t) => t.run()));
-  for (let i = 0; i < settled.length; i += 1) {
-    const task = storageTasks[i]!;
-    const r = settled[i]!;
-    if (r.status === 'fulfilled') {
-      app.log.info(`${task.label} initialized`);
-    } else {
-      app.log.warn({ err: r.reason }, `${task.label}: init failed (may not be critical)`);
+  try {
+    const fileStorage = await initializeFileStorageRuntime();
+    const snapshot = fileStorage.health.snapshot();
+    if (snapshot.status === 'error' && env.NODE_ENV === 'production') {
+      throw new Error(`File storage startup check failed: ${snapshot.reason ?? 'unavailable'}`);
     }
+    app.log.info(
+      {
+        status: snapshot.status,
+        reason: snapshot.reason,
+        usagePercent: snapshot.usagePercent,
+      },
+      'File storage initialized'
+    );
+  } catch (error) {
+    if (env.NODE_ENV === 'production') {
+      throw error;
+    }
+    app.log.warn({ err: error }, 'File storage startup check failed outside production');
   }
 
   const playwrightAvailability = await probePlaywrightChromiumAvailability();

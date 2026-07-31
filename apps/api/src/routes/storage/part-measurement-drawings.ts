@@ -3,6 +3,7 @@ import { authorizeRoles } from '../../lib/auth.js';
 import { findClientDeviceByApiKey } from '../../services/clients/client-device-auth.service.js';
 import { PartMeasurementDrawingStorage, parseDerivativeWidth } from '../../lib/part-measurement-drawing-storage.js';
 import { buildPdfPageEtag, ifNoneMatchSatisfied } from './pdf-page-http-cache.js';
+import { ApiError } from '../../lib/errors.js';
 
 const PART_MEASUREMENT_DRAWING_CACHE_CONTROL = 'private, max-age=86400, immutable';
 
@@ -64,6 +65,7 @@ export function registerPartMeasurementDrawingStorageRoutes(app: FastifyInstance
       reply.type(contentType);
       return reply.send(buffer);
     } catch (error) {
+      if (error instanceof ApiError) throw error;
       const err = error instanceof Error ? error : new Error(String(error));
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
         return reply.status(404).send({ message: '図面が見つかりません' });
