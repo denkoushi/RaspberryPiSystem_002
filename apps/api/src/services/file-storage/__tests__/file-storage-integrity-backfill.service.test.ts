@@ -57,6 +57,20 @@ describe('FileStorageIntegrityBackfillService', () => {
     expect(after.map((stat) => stat.mtimeMs)).toEqual(before.map((stat) => stat.mtimeMs));
   });
 
+  it('does not skip locale-sorted storage keys that are lower in code-point order', async () => {
+    await fs.writeFile(path.join(root, 'pdfs', 'ä.pdf'), 'first');
+    await fs.writeFile(path.join(root, 'pdfs', 'Z.pdf'), 'second');
+    const backfill = new FileStorageIntegrityBackfillService(root, store, catalog);
+
+    await expect(backfill.runOnce()).resolves.toMatchObject({
+      status: 'complete',
+      scannedCount: 2,
+      registeredCount: 2,
+    });
+    await expect(catalog.get('pdfs/ä.pdf')).resolves.toBeTruthy();
+    await expect(catalog.get('pdfs/Z.pdf')).resolves.toBeTruthy();
+  });
+
   it('stops on a known mismatch and does not rewrite the source', async () => {
     await store.write({
       key: 'photos/corrupt.jpg',
