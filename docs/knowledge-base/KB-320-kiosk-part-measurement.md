@@ -1813,6 +1813,27 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - **トラブルシュート（デプロイ）**: **同じ `RASPI_SERVER_HOST` に対し、`update-all-clients.sh` を複数プロセスで同時起動しない**。2026-03-29 hardening 後は、2本目は Mac 側ローカルロック（`logs/.update-all-clients.local.lock`）または Pi5 ロック（`/opt/RaspberryPiSystem_002/logs/.update-all-clients.lock`）で停止する。ロックを手動削除する前に、`runPid` が生存していないことを確認する（[deployment.md](../guides/deployment.md) / [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)）。
 - **認可**: `Authorization` 付きで **403（権限不足）** のとき、書き込み系（例: `POST .../sheets`）では `x-client-key` にフォールバックしない（401 のみキー許可）。キオスクは通常キーのみで十分。
 
+## 自主検査アイテム削除（2026-07-31）
+
+自主検査一覧の **削除** は物理削除ではなく、管理パスワードと必須理由による不可逆な
+論理無効化である。未開始・入力中・承認待ち・完了・承認済みの全状態を対象にできる。
+
+- 削除後は一覧、記録承認、公差外承認、生産日程の自主検査装飾、順位ボード、加工機
+  ボードから除外され、同じ日程行をデジタル再開始・紙帳票再発行できない。
+- 発行中の紙帳票 `ISSUED` / `OCR_REVIEW` は `CANCELLED` になる。取込済みや再発行済みの
+  帳票、測定値、承認、NFC、操作、機器貸出履歴は変更・削除しない。
+- **自主検査 → 記録確認・承認 → 状態「削除済み」** から、削除理由、日時、削除前状態、
+  実行者、端末、開始済みの場合は測定・承認・紙帳票履歴を読取専用で確認できる。
+- 古い入力タブやQRから削除済みへアクセスした場合は
+  `409 SELF_INSPECTION_ITEM_INVALIDATION_CONFLICT` が正しい応答である。
+- 復元API、履歴の物理削除、削除に連動した機器返却はない。誤って削除した場合はDBを
+  直接更新せず、品質管理責任者へエスカレーションする。
+
+設計判断は
+[ADR-20260731](../decisions/ADR-20260731-self-inspection-item-invalidation.md)、操作と確認は
+[kiosk-part-measurement runbook](../runbooks/kiosk-part-measurement.md#自主検査アイテム削除)
+を参照する。
+
 ## 自主検査 · 工程内検査員再測定（2026-07-02）
 
 ### 状態と対象

@@ -6,7 +6,11 @@ import {
   issueSelfInspectionPaperReport,
   resolveSelfInspectionNfcTagUid
 } from '../../api/client';
-import { useKioskProductionSchedule, useSelfInspectionSessions } from '../../api/hooks';
+import {
+  useInvalidateSelfInspectionItem,
+  useKioskProductionSchedule,
+  useSelfInspectionSessions
+} from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { useKeyboardWedgeScan } from '../../features/barcode-scan';
 import {
@@ -18,6 +22,7 @@ import {
 import { kioskInspectionDrawingPaperReportPrintPath } from '../../features/part-measurement/inspection-drawing/kioskInspectionDrawingRoutes';
 import { normalizeManufacturingOrderScanText } from '../../features/part-measurement/manufacturingOrderScan';
 import { SelfInspectionFilterCombobox } from '../../features/part-measurement/SelfInspectionFilterCombobox';
+import { SelfInspectionItemInvalidationDialog } from '../../features/part-measurement/SelfInspectionItemInvalidationDialog';
 import { KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH } from '../../features/part-measurement/selfInspectionRoutes';
 import { SelfInspectionTable } from '../../features/part-measurement/SelfInspectionTable';
 import {
@@ -33,6 +38,7 @@ import {
 import { useNfcStream } from '../../hooks/useNfcStream';
 
 import type { ProductionScheduleRow } from '../../api/client';
+import type { SelfInspectionTableRow } from '../../features/part-measurement/selfInspectionTableModel';
 import type { SelfInspectionStatus } from '../../features/part-measurement/types';
 
 const CANDIDATE_PAGE_SIZE = 50;
@@ -53,6 +59,8 @@ type EmployeeFilter = {
 
 type SelfInspectionCandidateRow = SelfInspectionWorkflowTarget & {
   id: string;
+  processGroup: 'cutting' | 'grinding';
+  selfInspectionTemplateId: string;
   plannedQuantity: number | null;
   status: SelfInspectionStatus | null;
 };
@@ -74,8 +82,9 @@ function mapEligibleRow(row: ProductionScheduleRow): SelfInspectionCandidateRow 
     fhincd: String(rowData.FHINCD ?? '').trim(),
     fhinmei: String(rowData.FHINMEI ?? '').trim(),
     machineName: typeof row.resolvedMachineName === 'string' ? row.resolvedMachineName.trim() : null,
+    processGroup: row.partMeasurementProcessGroup === 'grinding' ? 'grinding' : 'cutting',
     plannedQuantity,
-    selfInspectionTemplateId: templateId.length > 0 ? templateId : null,
+    selfInspectionTemplateId: templateId,
     selfInspectionEntryPath: entryPath.length > 0 ? entryPath : null,
     status: row.selfInspectionStatus ?? null
   };
@@ -108,11 +117,15 @@ export function KioskSelfInspectionPage() {
   const [employeeFilter, setEmployeeFilter] = useState<EmployeeFilter | null>(null);
   const [scanStatus, setScanStatus] = useState<ScanStatus | null>(null);
   const [inspectionWorkflowTarget, setInspectionWorkflowTarget] = useState<SelfInspectionCandidateRow | null>(null);
+  const [invalidationRow, setInvalidationRow] = useState<SelfInspectionTableRow | null>(null);
+  const [invalidationError, setInvalidationError] = useState<string | null>(null);
+  const [hiddenInvalidatedIds, setHiddenInvalidatedIds] = useState<Set<string>>(() => new Set());
   const [page, setPage] = useState(1);
   const scanFocusRef = useRef<HTMLDivElement | null>(null);
   const autoOpenedScanKeyRef = useRef<string | null>(null);
   const lastNameNfcEventKeyRef = useRef<string | null>(null);
   const nfcEvent = useNfcStream(nameScanArmed);
+  const invalidateItemMutation = useInvalidateSelfInspectionItem();
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -169,8 +182,9 @@ export function KioskSelfInspectionPage() {
     () =>
       (scheduleQuery.data?.rows ?? [])
         .map(mapEligibleRow)
+        .filter((row) => !hiddenInvalidatedIds.has(row.id))
         .filter((row) => Boolean(row.selfInspectionEntryPath?.trim()) || Boolean(row.selfInspectionTemplateId?.trim())),
-    [scheduleQuery.data?.rows]
+    [hiddenInvalidatedIds, scheduleQuery.data?.rows]
   );
 
   const wipListLimit = Math.min(
@@ -192,12 +206,13 @@ export function KioskSelfInspectionPage() {
     () =>
       employeeFilter
         ? wipSessions.filter((session) =>
+            !hiddenInvalidatedIds.has(session.id) &&
             (session.participantEmployees ?? []).some(
               (participant) => participant.employeeId === employeeFilter.employeeId
             )
           )
-        : wipSessions,
-    [employeeFilter, wipSessions]
+        : wipSessions.filter((session) => !hiddenInvalidatedIds.has(session.id)),
+    [employeeFilter, hiddenInvalidatedIds, wipSessions]
   );
   const displayedFilterSources = hasSearchInput ? rows : filteredWipSessions;
   const productOptions = useMemo(
@@ -392,6 +407,51 @@ export function KioskSelfInspectionPage() {
     setPage(1);
   }, []);
 
+  const handleOpenInvalidation = useCallback((row: SelfInspectionTableRow) => {
+    setInspectionWorkflowTarget(null);
+    setInvalidationError(null);
+    setInvalidationRow(row);
+  }, []);
+
+  const handleConfirmInvalidation = useCallback(
+    async (input: {
+      row: SelfInspectionTableRow;
+      accessPassword: string;
+      reason: string;
+      requestId: string;
+    }) => {
+      setInvalidationError(null);
+      try {
+        const invalidation = await invalidateItemMutation.mutateAsync({
+          target: input.row.invalidationTarget,
+          accessPassword: input.accessPassword,
+          reason: input.reason,
+          requestId: input.requestId
+        });
+        setHiddenInvalidatedIds((current) => {
+          const next = new Set(current);
+          next.add(input.row.id);
+          next.add(invalidation.scheduleRowId);
+          if (invalidation.sessionId) next.add(invalidation.sessionId);
+          return next;
+        });
+        setInvalidationRow(null);
+        setScanStatus({
+          kind: 'success',
+          message: `自主検査アイテムを削除しました: ${invalidation.productNoSnapshot}`
+        });
+      } catch (error) {
+        setInvalidationError(
+          error && typeof error === 'object' && 'response' in error
+            ? ((error.response as { data?: { message?: string } } | undefined)?.data?.message ??
+              '自主検査アイテムの削除に失敗しました。')
+            : '自主検査アイテムの削除に失敗しました。'
+        );
+      }
+    },
+    [invalidateItemMutation]
+  );
+
   const scanStatusClassName =
     scanStatus?.kind === 'error'
       ? 'border-rose-400/40 bg-rose-400/10 text-rose-100'
@@ -507,6 +567,7 @@ export function KioskSelfInspectionPage() {
               </div>
               <SelfInspectionTable
                 rows={candidateTableRows}
+                onInvalidate={handleOpenInvalidation}
                 onCandidateSelect={(id) => {
                   const target = rows.find((row) => row.id === id);
                   if (target) setInspectionWorkflowTarget(target);
@@ -556,7 +617,11 @@ export function KioskSelfInspectionPage() {
                 仕掛中は最新 {wipListLimit} 件まで表示しています。それより古いセッションは検索対象外です。
               </p>
             ) : null}
-            <SelfInspectionTable rows={wipTableRows} onCandidateSelect={() => undefined} />
+            <SelfInspectionTable
+              rows={wipTableRows}
+              onCandidateSelect={() => undefined}
+              onInvalidate={handleOpenInvalidation}
+            />
           </>
         )}
       </main>
@@ -565,6 +630,17 @@ export function KioskSelfInspectionPage() {
         onClose={() => setInspectionWorkflowTarget(null)}
         onOpenDigitalInput={handleOpenInspectionDigitalInput}
         onOpenPaperPrint={(target) => void handleOpenInspectionPaperPrint(target)}
+      />
+      <SelfInspectionItemInvalidationDialog
+        row={invalidationRow}
+        isSubmitting={invalidateItemMutation.isPending}
+        errorMessage={invalidationError}
+        onClose={() => {
+          if (invalidateItemMutation.isPending) return;
+          setInvalidationRow(null);
+          setInvalidationError(null);
+        }}
+        onConfirm={handleConfirmInvalidation}
       />
     </div>
   );

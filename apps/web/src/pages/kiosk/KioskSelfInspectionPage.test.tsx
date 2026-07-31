@@ -12,6 +12,7 @@ const mockUseKioskProductionSchedule = vi.fn();
 const mockUseSelfInspectionSessions = vi.fn();
 const mockIssueSelfInspectionPaperReport = vi.fn();
 const mockResolveSelfInspectionNfcTagUid = vi.fn();
+const mockInvalidateSelfInspectionItem = vi.fn();
 const nfcStreamState = vi.hoisted(() => ({ event: null as NfcEvent | null, enabled: false }));
 
 let scheduleRows: ProductionScheduleRow[] = [];
@@ -20,7 +21,11 @@ let reviewPendingSessions: SelfInspectionSessionSummaryDto[] = [];
 
 vi.mock('../../api/hooks', () => ({
   useKioskProductionSchedule: (...args: unknown[]) => mockUseKioskProductionSchedule(...args),
-  useSelfInspectionSessions: (...args: unknown[]) => mockUseSelfInspectionSessions(...args)
+  useSelfInspectionSessions: (...args: unknown[]) => mockUseSelfInspectionSessions(...args),
+  useInvalidateSelfInspectionItem: () => ({
+    mutateAsync: mockInvalidateSelfInspectionItem,
+    isPending: false
+  })
 }));
 
 vi.mock('../../api/client', () => ({
@@ -141,6 +146,7 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
     mockUseSelfInspectionSessions.mockReset();
     mockIssueSelfInspectionPaperReport.mockReset();
     mockResolveSelfInspectionNfcTagUid.mockReset();
+    mockInvalidateSelfInspectionItem.mockReset();
     nfcStreamState.event = null;
     nfcStreamState.enabled = false;
 
@@ -164,6 +170,12 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
     }));
     mockIssueSelfInspectionPaperReport.mockResolvedValue({
       report: { id: 'paper-report-1' }
+    });
+    mockInvalidateSelfInspectionItem.mockResolvedValue({
+      id: 'invalidation-1',
+      scheduleRowId: 'schedule-row-1',
+      sessionId: null,
+      productNoSnapshot: '0002178005'
     });
   });
 
@@ -357,5 +369,38 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
 
     expect(await screen.findByText('氏名タグではありません。計測機器タグが読み取られました。')).toBeInTheDocument();
     expect(screen.getByText('ORDER-KEEP')).toBeInTheDocument();
+  });
+
+  it('requires a password and reason before invalidating a started row', async () => {
+    wipSessions = [buildWipSession()];
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: '削除' }));
+    expect(screen.getByRole('dialog', { name: '自主検査アイテムを削除' })).toBeInTheDocument();
+    expect(screen.getByText(/この操作は取り消せません/)).toBeInTheDocument();
+    const submit = screen.getByRole('button', { name: '削除する' });
+    expect(submit).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText('管理パスワード'), {
+      target: { value: '2520' }
+    });
+    fireEvent.change(screen.getByLabelText(/削除理由（必須）/), {
+      target: { value: '誤った対象を開始したため' }
+    });
+    expect(submit).toBeEnabled();
+    fireEvent.click(submit);
+
+    await waitFor(() => {
+      expect(mockInvalidateSelfInspectionItem).toHaveBeenCalledWith({
+        target: { kind: 'session', sessionId: 'session-1' },
+        accessPassword: '2520',
+        reason: '誤った対象を開始したため',
+        requestId: expect.stringMatching(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+        )
+      });
+    });
+    expect(await screen.findByText(/自主検査アイテムを削除しました/)).toBeInTheDocument();
+    expect(screen.queryByText('0002178005')).not.toBeInTheDocument();
   });
 });

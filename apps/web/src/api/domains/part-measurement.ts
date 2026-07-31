@@ -7,6 +7,10 @@ import type {
   PartMeasurementSheetDto,
   PartMeasurementSheetWithSession,
   SelfInspectionEntryValuePayload,
+  SelfInspectionItemInvalidationDetailDto,
+  SelfInspectionItemInvalidationDto,
+  SelfInspectionItemInvalidationsListDto,
+  SelfInspectionItemInvalidationTargetDto,
   SelfInspectionLotEntryDto,
   SelfInspectionOutOfToleranceReviewsListDto,
   SelfInspectionPaperOcrReviewDto,
@@ -371,6 +375,39 @@ export async function listSelfInspectionSessions(
     }
   );
   return data;
+}
+
+export async function invalidateSelfInspectionItem(payload: {
+  target: SelfInspectionItemInvalidationTargetDto;
+  accessPassword: string;
+  reason: string;
+  requestId: string;
+}): Promise<SelfInspectionItemInvalidationDto> {
+  const { data } = await api.post<{ invalidation: SelfInspectionItemInvalidationDto }>(
+    '/part-measurement/self-inspection/items/invalidate',
+    payload
+  );
+  return data.invalidation;
+}
+
+export async function listSelfInspectionInvalidations(params?: {
+  productNo?: string;
+  resourceCd?: string;
+}): Promise<SelfInspectionItemInvalidationsListDto> {
+  const { data } = await api.get<SelfInspectionItemInvalidationsListDto>(
+    '/part-measurement/self-inspection/invalidations',
+    { params }
+  );
+  return data;
+}
+
+export async function getSelfInspectionInvalidation(
+  id: string
+): Promise<SelfInspectionItemInvalidationDetailDto> {
+  const { data } = await api.get<{ invalidation: SelfInspectionItemInvalidationDetailDto }>(
+    `/part-measurement/self-inspection/invalidations/${id}`
+  );
+  return data.invalidation;
 }
 
 export async function listSelfInspectionOutOfToleranceReviews(): Promise<SelfInspectionOutOfToleranceReviewsListDto> {

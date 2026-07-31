@@ -220,6 +220,104 @@ export type SelfInspectionPaperReportStatus =
 
 export type SelfInspectionPaperOcrReviewStatus = 'OCR_REVIEW' | 'CONFIRMED' | 'CANCELLED';
 
+export type SelfInspectionItemInvalidationState =
+  | 'NOT_STARTED'
+  | 'IN_PROGRESS'
+  | 'REVIEW_PENDING'
+  | 'COMPLETED'
+  | 'APPROVED';
+
+export type SelfInspectionItemInvalidationTargetDto =
+  | {
+      kind: 'session';
+      sessionId: string;
+    }
+  | {
+      kind: 'schedule_row';
+      scheduleRowId: string;
+      templateId: string;
+      productNo: string;
+      processGroup: PartMeasurementProcessGroup;
+      resourceCd: string;
+      fseiban: string;
+      fhincd: string;
+      fhinmei: string;
+    };
+
+export type SelfInspectionItemInvalidationDto = {
+  id: string;
+  itemBusinessKey: string;
+  requestId: string;
+  sessionId: string | null;
+  scheduleRowId: string;
+  sourceState: SelfInspectionItemInvalidationState;
+  templateIdSnapshot: string | null;
+  productNoSnapshot: string;
+  processGroupSnapshot: 'CUTTING' | 'GRINDING';
+  resourceCdSnapshot: string;
+  fseibanSnapshot: string | null;
+  fhincdSnapshot: string;
+  fhinmeiSnapshot: string;
+  machineNameSnapshot: string | null;
+  plannedQuantitySnapshot: number | null;
+  expectedEntryCountSnapshot: number | null;
+  reason: string;
+  invalidatedByUsernameSnapshot: string | null;
+  invalidatedByClientDeviceId: string | null;
+  invalidatedByClientDeviceNameSnapshot: string | null;
+  invalidatedAt: string;
+  createdAt: string;
+};
+
+export type SelfInspectionItemInvalidationsListDto = {
+  invalidations: SelfInspectionItemInvalidationDto[];
+  listLimit: number;
+  truncated: boolean;
+};
+
+export type SelfInspectionInvalidationHistoryValueDto = {
+  id: string;
+  templateItemId: string;
+  value: string | null;
+  judgementResult?: 'PASS' | 'FAIL' | null;
+  inspectorValue?: string | null;
+  inspectorJudgementResult?: 'PASS' | 'FAIL' | null;
+  reviewStatus?: SelfInspectionMeasurementReviewStatus;
+  templateItem: {
+    displayMarker: string | null;
+    measurementLabel: string;
+    unit: string | null;
+  };
+};
+
+export type SelfInspectionInvalidationHistoryEntryDto = {
+  id: string;
+  entryIndex: number;
+  createdByEmployeeNameSnapshot?: string | null;
+  inspectorEmployeeNameSnapshot?: string | null;
+  values: SelfInspectionInvalidationHistoryValueDto[];
+};
+
+export type SelfInspectionItemInvalidationDetailDto = SelfInspectionItemInvalidationDto & {
+  session: null | {
+    id: string;
+    startedAt: string | null;
+    completedAt: string | null;
+    recordApproval: SelfInspectionRecordApprovalDto | null;
+    entries: SelfInspectionInvalidationHistoryEntryDto[];
+    inspectorEntries: SelfInspectionInvalidationHistoryEntryDto[];
+    paperReports: Array<
+      SelfInspectionPaperReportDto & {
+        pages: Array<
+          SelfInspectionPaperReportPageDto & {
+            ocrReviews: SelfInspectionPaperOcrReviewDto[];
+          }
+        >;
+      }
+    >;
+  };
+};
+
 export type SelfInspectionPaperReportPageDto = {
   id: string;
   reportId: string;

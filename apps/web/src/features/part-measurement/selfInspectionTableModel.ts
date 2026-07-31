@@ -6,7 +6,12 @@ import {
 } from './selfInspectionRoutes';
 import { presentSelfInspectionWipCard } from './selfInspectionWipCardPresentation';
 
-import type { SelfInspectionSessionSummaryDto, SelfInspectionStatus } from './types';
+import type {
+  PartMeasurementProcessGroup,
+  SelfInspectionItemInvalidationTargetDto,
+  SelfInspectionSessionSummaryDto,
+  SelfInspectionStatus
+} from './types';
 
 export type SelfInspectionCandidateDisplaySource = {
   id: string;
@@ -15,6 +20,8 @@ export type SelfInspectionCandidateDisplaySource = {
   resourceCd: string;
   fhincd: string;
   fhinmei: string;
+  processGroup: PartMeasurementProcessGroup;
+  selfInspectionTemplateId: string;
   plannedQuantity: number | null;
   status: SelfInspectionStatus | null;
 };
@@ -41,6 +48,7 @@ type SelfInspectionTableRowBase = {
   statusTone: 'danger' | 'info' | 'warning';
   detailLine: string;
   progressLine: string;
+  invalidationTarget: SelfInspectionItemInvalidationTargetDto;
 };
 
 export type SelfInspectionTableRow =
@@ -160,6 +168,7 @@ export function presentSelfInspectionSessionRow(
       inspectorActive || inspectorComplete
         ? `氏名 ${card.participantNamesLine} / 指示数 ${session.plannedQuantity} / 検査員 ${session.inspectorCompletedRequiredEntryCount}/${session.inspectorRequiredEntryCount} 件`
         : `氏名 ${card.participantNamesLine} / 指示数 ${session.plannedQuantity} / 進捗 ${card.progressLine}`,
+    invalidationTarget: { kind: 'session', sessionId: session.id },
     action,
     recordViewAction:
       session.recordApprovalRequiredAt &&
@@ -184,6 +193,17 @@ export function presentSelfInspectionCandidateRow(
     statusTone: 'info',
     detailLine: `製番 ${candidate.fseiban || '—'} / 品番 ${candidate.fhincd || '—'} ${candidate.fhinmei || ''}`.trim(),
     progressLine: `指示数 ${candidate.plannedQuantity ?? '—'}`,
+    invalidationTarget: {
+      kind: 'schedule_row',
+      scheduleRowId: candidate.id,
+      templateId: candidate.selfInspectionTemplateId,
+      productNo: candidate.productNo,
+      processGroup: candidate.processGroup,
+      resourceCd: candidate.resourceCd,
+      fseiban: candidate.fseiban,
+      fhincd: candidate.fhincd,
+      fhinmei: candidate.fhinmei
+    },
     action: { kind: 'button', label: '検査方法を選択' }
   };
 }

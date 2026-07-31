@@ -64,7 +64,7 @@ export async function fetchSelfInspectionSessionDetailsByScheduleRowIds(
   }
 
   const sessions = await prisma.selfInspectionSession.findMany({
-    where: { scheduleRowId: { in: uniqueIds } },
+    where: { scheduleRowId: { in: uniqueIds }, invalidatedAt: null },
     select: {
       id: true,
       scheduleRowId: true,

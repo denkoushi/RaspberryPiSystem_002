@@ -56,6 +56,7 @@ export type SelfInspectionSessionForDecoration = {
 export type SelfInspectionDecorationCache = {
   policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>;
   templateByKey: Map<string, SelfInspectionTemplate>;
+  invalidatedScheduleRowIds: Set<string>;
   /** 値 null = 問い合わせ済み・セッションなし（negative cache） */
   sessionsByScheduleRowId: Map<string, SelfInspectionSessionForDecoration | null>;
 };
@@ -100,6 +101,7 @@ export async function createSelfInspectionDecorationCache(scope?: {
   return {
     policy,
     templateByKey,
+    invalidatedScheduleRowIds: new Set(),
     sessionsByScheduleRowId: new Map()
   };
 }
@@ -154,25 +156,35 @@ export async function ensureSelfInspectionSessionsInCache(
   if (missingIds.length === 0) {
     return;
   }
-  const sessions = await prisma.selfInspectionSession.findMany({
-    where: { scheduleRowId: { in: missingIds } },
-    include: {
-      template: {
-        select: {
-          selfInspectionMode: true,
-          selfInspectionFixedCount: true,
-          selfInspectionSampleSize: true,
+  const [sessions, invalidations] = await Promise.all([
+    prisma.selfInspectionSession.findMany({
+      where: { scheduleRowId: { in: missingIds }, invalidatedAt: null },
+      include: {
+        template: {
+          select: {
+            selfInspectionMode: true,
+            selfInspectionFixedCount: true,
+            selfInspectionSampleSize: true,
+          },
         },
-      },
-      entries: {
-        select: {
-          entryIndex: true,
-          persistenceStatus: true,
+        entries: {
+          select: {
+            entryIndex: true,
+            persistenceStatus: true,
+          },
         },
+        _count: { select: confirmedEntriesCountSelect },
       },
-      _count: { select: confirmedEntriesCountSelect },
-    },
-  });
+    }),
+    prisma.selfInspectionItemInvalidation.findMany({
+      where: { scheduleRowId: { in: missingIds } },
+      select: { scheduleRowId: true }
+    })
+  ]);
+  for (const invalidation of invalidations) {
+    cache.invalidatedScheduleRowIds.add(invalidation.scheduleRowId);
+    cache.sessionsByScheduleRowId.set(invalidation.scheduleRowId, null);
+  }
   const pendingReviewCounts = await loadPendingReviewCountsBySessionIds(
     prisma,
     sessions.map((session) => session.id)
@@ -184,6 +196,9 @@ export async function ensureSelfInspectionSessionsInCache(
       pendingReviewCount: pendingReviewCounts.get(rawSession.id) ?? 0
     };
     if (!session.scheduleRowId) {
+      continue;
+    }
+    if (cache.invalidatedScheduleRowIds.has(session.scheduleRowId)) {
       continue;
     }
     foundScheduleRowIds.add(session.scheduleRowId);
@@ -314,6 +329,9 @@ export async function buildLeaderboardDecorations(
 
   return rows.map((row) => {
     if (row.id.startsWith(SPLIT_DISPLAY_ITEM_ID_PREFIX)) {
+      return emptyLeaderboardSelfInspectionDecoration(row.id);
+    }
+    if (activeCache.invalidatedScheduleRowIds.has(row.id)) {
       return emptyLeaderboardSelfInspectionDecoration(row.id);
     }
     const session =

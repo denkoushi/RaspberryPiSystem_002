@@ -31,6 +31,7 @@ function useResponsivePaneCount(): number {
 type Props = {
   rows: readonly SelfInspectionTableRow[];
   onCandidateSelect: (id: string) => void;
+  onInvalidate: (row: SelfInspectionTableRow) => void;
 };
 
 const toneClassNames: Record<SelfInspectionTableRow['statusTone'], string> = {
@@ -39,7 +40,7 @@ const toneClassNames: Record<SelfInspectionTableRow['statusTone'], string> = {
   warning: 'bg-yellow-400/20 text-yellow-100'
 };
 
-function TablePane({ rows, onCandidateSelect }: Props) {
+function TablePane({ rows, onCandidateSelect, onInvalidate }: Props) {
   return (
     <div className="min-w-0 overflow-hidden rounded border border-white/15 bg-slate-950/55">
       <table className="w-full table-fixed border-collapse text-left text-xs text-white">
@@ -109,6 +110,13 @@ function TablePane({ rows, onCandidateSelect }: Props) {
                         {row.recordViewAction.label}
                       </Link>
                     ) : null}
+                    <button
+                      type="button"
+                      className="inline-flex min-h-9 w-full items-center justify-center rounded border border-rose-300/50 bg-rose-500/15 px-2 text-xs font-semibold text-rose-100 hover:bg-rose-500/25"
+                      onClick={() => onInvalidate(row)}
+                    >
+                      削除
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -126,7 +134,7 @@ function TablePane({ rows, onCandidateSelect }: Props) {
   );
 }
 
-export function SelfInspectionTable({ rows, onCandidateSelect }: Props) {
+export function SelfInspectionTable({ rows, onCandidateSelect, onInvalidate }: Props) {
   const paneCount = useResponsivePaneCount();
   const panes = splitIntoBalancedPanes(rows, paneCount);
 
@@ -138,7 +146,12 @@ export function SelfInspectionTable({ rows, onCandidateSelect }: Props) {
       style={{ gridTemplateColumns: `repeat(${paneCount}, minmax(0, 1fr))` }}
     >
       {panes.map((paneRows, index) => (
-        <TablePane key={index} rows={paneRows} onCandidateSelect={onCandidateSelect} />
+        <TablePane
+          key={index}
+          rows={paneRows}
+          onCandidateSelect={onCandidateSelect}
+          onInvalidate={onInvalidate}
+        />
       ))}
     </div>
   );

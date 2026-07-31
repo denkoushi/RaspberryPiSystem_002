@@ -24,6 +24,7 @@ import type { SelfInspectionPaperReportIssueService } from '../../services/part-
 import type { SelfInspectionPaperReportResolver } from '../../services/part-measurement/self-inspection-paper-report-resolver.service.js';
 import type { SelfInspectionPaperOcrReviewService } from '../../services/part-measurement/self-inspection-paper-ocr-review.service.js';
 import type { SelfInspectionPaperImportService } from '../../services/part-measurement/self-inspection-paper-import.service.js';
+import type { SelfInspectionItemLifecycleService } from '../../services/part-measurement/self-inspection-item-lifecycle.service.js';
 import type {
   getPartMeasurementDrawingOcrService,
   PartMeasurementDrawingOcrQueuePriority
@@ -469,6 +470,40 @@ export const listSelfInspectionRecordApprovalsQuerySchema = z.object({
   resourceCd: z.string().max(120).optional(),
   processGroup: processGroupSchema.optional(),
   state: selfInspectionRecordApprovalStateSchema.optional()
+});
+
+const selfInspectionInvalidationScheduleRowTargetSchema = z.object({
+  kind: z.literal('schedule_row'),
+  scheduleRowId: z.string().uuid(),
+  templateId: z.string().uuid(),
+  productNo: z.string().trim().min(1).max(120),
+  processGroup: processGroupSchema,
+  resourceCd: z.string().trim().min(1).max(120),
+  fseiban: z.string().trim().min(1).max(120),
+  fhincd: z.string().trim().min(1).max(120),
+  fhinmei: z.string().trim().min(1).max(500)
+});
+
+export const invalidateSelfInspectionItemBodySchema = z.object({
+  target: z.discriminatedUnion('kind', [
+    z.object({
+      kind: z.literal('session'),
+      sessionId: z.string().uuid()
+    }),
+    selfInspectionInvalidationScheduleRowTargetSchema
+  ]),
+  accessPassword: z.string().min(1).max(128),
+  reason: z.string().trim().min(1).max(500),
+  requestId: z.string().uuid()
+});
+
+export const listSelfInspectionInvalidationsQuerySchema = z.object({
+  productNo: z.string().trim().max(120).optional(),
+  resourceCd: z.string().trim().max(120).optional()
+});
+
+export const selfInspectionInvalidationIdParamsSchema = z.object({
+  id: z.string().uuid()
 });
 
 export const resolveSelfInspectionRecordApprovalApproverBodySchema = z.object({
@@ -999,6 +1034,7 @@ export type PartMeasurementRouteDeps = {
   sheetService: PartMeasurementSheetService;
   templateService: PartMeasurementTemplateService;
   selfInspectionService: SelfInspectionService;
+  selfInspectionItemLifecycleService: SelfInspectionItemLifecycleService;
   paperReportIssueService: SelfInspectionPaperReportIssueService;
   paperReportResolver: SelfInspectionPaperReportResolver;
   paperOcrReviewService: SelfInspectionPaperOcrReviewService;

@@ -7,6 +7,8 @@ import {
   useVerifyKioskSelfInspectionRecordApprovalAccessPassword,
   useResolveSelfInspectionRecordApprovalApprover,
   useSelfInspectionRegistrationPolicy,
+  useSelfInspectionInvalidation,
+  useSelfInspectionInvalidations,
   useSelfInspectionRecordApprovalSession,
   useSelfInspectionRecordApprovals,
   useUpdateSelfInspectionRegistrationPolicy
@@ -21,12 +23,16 @@ import { useNfcStream } from '../../hooks/useNfcStream';
 import type {
   SelfInspectionRecordApprovalSessionDetailDto,
   SelfInspectionRecordApprovalSessionListItemDto,
-  SelfInspectionRecordApprovalState
+  SelfInspectionRecordApprovalState,
+  SelfInspectionItemInvalidationDetailDto,
+  SelfInspectionItemInvalidationDto,
+  SelfInspectionItemInvalidationState
 } from '../../features/part-measurement/types';
 
-type RecordApprovalFilterState = 'active' | SelfInspectionRecordApprovalState;
+type RecordApprovalFilterState = 'active' | 'invalidated' | SelfInspectionRecordApprovalState;
 
 const EMPTY_SESSIONS: SelfInspectionRecordApprovalSessionListItemDto[] = [];
+const EMPTY_INVALIDATIONS: SelfInspectionItemInvalidationDto[] = [];
 
 const STATE_OPTIONS: Array<{ value: RecordApprovalFilterState; label: string }> = [
   { value: 'active', label: '未完了' },
@@ -37,8 +43,17 @@ const STATE_OPTIONS: Array<{ value: RecordApprovalFilterState; label: string }> 
   { value: 'finalization_ready', label: '最終確定可能' },
   { value: 'approvable', label: '承認可能' },
   { value: 'approved', label: '承認済み' },
-  { value: 'completed', label: '完了済み' }
+  { value: 'completed', label: '完了済み' },
+  { value: 'invalidated', label: '削除済み' }
 ];
+
+const INVALIDATION_STATE_LABELS: Record<SelfInspectionItemInvalidationState, string> = {
+  NOT_STARTED: '未開始',
+  IN_PROGRESS: '入力中',
+  REVIEW_PENDING: '承認待ち',
+  COMPLETED: '完了',
+  APPROVED: '承認済み'
+};
 
 function stateLabel(state: SelfInspectionRecordApprovalState): string {
   switch (state) {
@@ -333,6 +348,183 @@ function DetailTable({
   );
 }
 
+function InvalidationListItem({
+  invalidation,
+  selected,
+  onSelect
+}: {
+  invalidation: SelfInspectionItemInvalidationDto;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={clsx(
+        'grid w-full gap-1 rounded border p-3 text-left transition-colors',
+        selected
+          ? 'border-rose-300 bg-rose-500/15'
+          : 'border-white/15 bg-slate-900/80 hover:border-white/35 hover:bg-slate-800'
+      )}
+    >
+      <div className="flex min-w-0 items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-base font-bold">{invalidation.productNoSnapshot}</p>
+          <p className="line-clamp-2 text-xs text-white/65">
+            {invalidation.fhincdSnapshot} / {invalidation.fhinmeiSnapshot} / 資源{' '}
+            {invalidation.resourceCdSnapshot}
+          </p>
+        </div>
+        <span className="shrink-0 rounded bg-rose-500/20 px-2 py-1 text-xs font-semibold text-rose-100">
+          削除済み
+        </span>
+      </div>
+      <p className="line-clamp-2 text-xs text-rose-100/85">{invalidation.reason}</p>
+      <p className="text-xs text-white/55">
+        {formatDateTime(invalidation.invalidatedAt)} / 削除前{' '}
+        {INVALIDATION_STATE_LABELS[invalidation.sourceState]}
+      </p>
+    </button>
+  );
+}
+
+function InvalidationHistoryDetail({
+  invalidation
+}: {
+  invalidation: SelfInspectionItemInvalidationDetailDto;
+}) {
+  const session = invalidation.session;
+  const inspectorEntryByIndex = new Map(
+    (session?.inspectorEntries ?? []).map((entry) => [entry.entryIndex, entry])
+  );
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="rounded border border-rose-300/50 bg-rose-500/15 p-3 text-rose-50">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-xl font-bold">{invalidation.productNoSnapshot}</h2>
+              <span className="rounded bg-rose-500/30 px-2 py-1 text-xs font-bold">削除済み・閲覧専用</span>
+            </div>
+            <p className="text-sm text-rose-100/85">
+              {invalidation.fhincdSnapshot} / {invalidation.fhinmeiSnapshot} / 資源{' '}
+              {invalidation.resourceCdSnapshot}
+              {invalidation.fseibanSnapshot ? ` / 製番 ${invalidation.fseibanSnapshot}` : ''}
+            </p>
+          </div>
+          <div className="text-right text-xs text-rose-100/80">
+            <p>削除 {formatDateTime(invalidation.invalidatedAt)}</p>
+            <p>削除前 {INVALIDATION_STATE_LABELS[invalidation.sourceState]}</p>
+          </div>
+        </div>
+        <dl className="mt-3 grid gap-x-3 gap-y-1 border-t border-rose-200/20 pt-3 text-sm sm:grid-cols-[7rem_1fr]">
+          <dt className="font-semibold text-rose-100/65">削除理由</dt>
+          <dd className="whitespace-pre-wrap font-semibold">{invalidation.reason}</dd>
+          <dt className="font-semibold text-rose-100/65">実行者</dt>
+          <dd>{invalidation.invalidatedByUsernameSnapshot ?? 'キオスク端末'}</dd>
+          <dt className="font-semibold text-rose-100/65">端末</dt>
+          <dd>
+            {invalidation.invalidatedByClientDeviceNameSnapshot ??
+              invalidation.invalidatedByClientDeviceId ??
+              '—'}
+          </dd>
+        </dl>
+      </div>
+
+      {!session ? (
+        <div className="rounded border border-white/15 bg-slate-950/40 py-12 text-center text-white/60">
+          未開始で削除されたため、測定履歴はありません。
+        </div>
+      ) : (
+        <>
+          <div className="min-h-0 overflow-auto rounded border border-white/10">
+            <table className="min-w-full text-left text-sm">
+              <thead className="sticky top-0 bg-slate-950 text-xs text-white/55">
+                <tr>
+                  <th className="px-3 py-2">入力件</th>
+                  <th className="px-3 py-2">測定点</th>
+                  <th className="px-3 py-2">作業者値</th>
+                  <th className="px-3 py-2">検査員値</th>
+                  <th className="px-3 py-2">入力者</th>
+                </tr>
+              </thead>
+              <tbody>
+                {session.entries.flatMap((entry) =>
+                  entry.values.map((value, valueIndex) => {
+                    const inspectorValue = inspectorEntryByIndex
+                      .get(entry.entryIndex)
+                      ?.values.find((candidate) => candidate.templateItemId === value.templateItemId);
+                    return (
+                      <tr key={`${entry.id}:${value.id}`} className="border-t border-white/10">
+                        {valueIndex === 0 ? (
+                          <td className="whitespace-nowrap px-3 py-2 align-top" rowSpan={entry.values.length}>
+                            #{entry.entryIndex + 1}
+                          </td>
+                        ) : null}
+                        <td className="px-3 py-2">
+                          <div className="font-semibold">
+                            {value.templateItem.displayMarker ?? '—'}{' '}
+                            {value.templateItem.measurementLabel}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 font-mono">
+                          {value.judgementResult ?? value.value ?? '未入力'}
+                          {value.value && value.templateItem.unit ? ` ${value.templateItem.unit}` : ''}
+                        </td>
+                        <td className="px-3 py-2 font-mono text-sky-100">
+                          {inspectorValue?.inspectorJudgementResult ??
+                            inspectorValue?.inspectorValue ??
+                            '—'}
+                        </td>
+                        {valueIndex === 0 ? (
+                          <td className="px-3 py-2 align-top text-white/70" rowSpan={entry.values.length}>
+                            {entry.createdByEmployeeNameSnapshot ?? '未登録'}
+                          </td>
+                        ) : null}
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-2">
+            <div className="rounded border border-white/10 bg-slate-950/40 p-3">
+              <h3 className="font-semibold">承認履歴</h3>
+              {session.recordApproval ? (
+                <p className="mt-2 text-sm text-white/70">
+                  {formatDateTime(session.recordApproval.approvedAt)} /{' '}
+                  {session.recordApproval.approverEmployeeNameSnapshot}
+                  {session.recordApproval.comment ? ` / ${session.recordApproval.comment}` : ''}
+                </p>
+              ) : (
+                <p className="mt-2 text-sm text-white/50">承認履歴なし</p>
+              )}
+            </div>
+            <div className="rounded border border-white/10 bg-slate-950/40 p-3">
+              <h3 className="font-semibold">紙帳票履歴</h3>
+              {session.paperReports.length > 0 ? (
+                <div className="mt-2 grid gap-1 text-sm text-white/70">
+                  {session.paperReports.map((report) => (
+                    <p key={report.id}>
+                      {formatDateTime(report.issuedAt)} / {report.status} / {report.pages.length}ページ
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-white/50">紙帳票履歴なし</p>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function KioskSelfInspectionRecordApprovalPage() {
   const location = useLocation();
   const [accessGranted, setAccessGranted] = useState(false);
@@ -361,22 +553,37 @@ export function KioskSelfInspectionRecordApprovalPage() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [policyMessage, setPolicyMessage] = useState<string | null>(null);
 
-  const registrationPolicyQuery = useSelfInspectionRegistrationPolicy({ enabled: accessGranted });
+  const registrationPolicyQuery = useSelfInspectionRegistrationPolicy({
+    enabled: accessGranted && state !== 'invalidated'
+  });
   const updateRegistrationPolicyMutation = useUpdateSelfInspectionRegistrationPolicy();
   const requireMeasuringInstrumentTag =
     registrationPolicyQuery.data?.requireMeasuringInstrumentTag ?? false;
   const listQuery = useSelfInspectionRecordApprovals({
-    state,
+    state: state === 'invalidated' ? 'active' : state,
     productNo: productNo.trim() || undefined,
     resourceCd: resourceCd.trim() || undefined
-  }, { enabled: accessGranted });
+  }, { enabled: accessGranted && state !== 'invalidated' });
   const sessions = listQuery.data?.sessions ?? EMPTY_SESSIONS;
+  const invalidationListQuery = useSelfInspectionInvalidations(
+    {
+      productNo: productNo.trim() || undefined,
+      resourceCd: resourceCd.trim() || undefined
+    },
+    { enabled: accessGranted && state === 'invalidated' }
+  );
+  const invalidations =
+    invalidationListQuery.data?.invalidations ?? EMPTY_INVALIDATIONS;
   const detailQuery = useSelfInspectionRecordApprovalSession(selectedSessionId, {
-    enabled: accessGranted && Boolean(selectedSessionId)
+    enabled: accessGranted && state !== 'invalidated' && Boolean(selectedSessionId)
+  });
+  const invalidationDetailQuery = useSelfInspectionInvalidation(selectedSessionId, {
+    enabled: accessGranted && state === 'invalidated' && Boolean(selectedSessionId)
   });
   const resolveApproverMutation = useResolveSelfInspectionRecordApprovalApprover();
   const approveMutation = useApproveSelfInspectionRecordApproval();
   const selectedSession = detailQuery.data ?? null;
+  const selectedInvalidation = invalidationDetailQuery.data ?? null;
 
   const requestAccessPassword = useCallback(async () => {
     const password = typeof window !== 'undefined' ? window.prompt('検査記録確認パスワードを入力してください') : null;
@@ -406,6 +613,19 @@ export function KioskSelfInspectionRecordApprovalPage() {
   }, [accessGranted, requestAccessPassword]);
 
   useEffect(() => {
+    if (state === 'invalidated') {
+      if (invalidations.length === 0) {
+        if (!invalidationListQuery.isLoading) setSelectedSessionId(null);
+        return;
+      }
+      if (
+        !selectedSessionId ||
+        !invalidations.some((invalidation) => invalidation.id === selectedSessionId)
+      ) {
+        setSelectedSessionId(invalidations[0].id);
+      }
+      return;
+    }
     if (sessions.length === 0) {
       if (!listQuery.isLoading && !requestedSessionId) {
         setSelectedSessionId(null);
@@ -416,9 +636,18 @@ export function KioskSelfInspectionRecordApprovalPage() {
     if (!selectedSessionId || !sessions.some((session) => session.id === selectedSessionId)) {
       setSelectedSessionId(sessions[0].id);
     }
-  }, [listQuery.isLoading, requestedSessionId, selectedSessionId, sessions]);
+  }, [
+    invalidationListQuery.isLoading,
+    invalidations,
+    listQuery.isLoading,
+    requestedSessionId,
+    selectedSessionId,
+    sessions,
+    state
+  ]);
 
   useEffect(() => {
+    if (state === 'invalidated') return;
     if (selectedSession?.decisionWorkflow === 'INSPECTOR_FINAL_JUDGEMENT') return;
     if (!nfcEvent?.uid) return;
     const key = `${nfcEvent.uid}:${nfcEvent.timestamp ?? ''}`;
@@ -448,7 +677,7 @@ export function KioskSelfInspectionRecordApprovalPage() {
         setApprover(null);
         setStatusMessage(readApiErrorMessage(error, '承認者NFCの確認に失敗しました。'));
       });
-  }, [nfcEvent, resolveApproverMutation, selectedSession?.decisionWorkflow]);
+  }, [nfcEvent, resolveApproverMutation, selectedSession?.decisionWorkflow, state]);
 
   const isInspectorFinalJudgement =
     selectedSession?.decisionWorkflow === 'INSPECTOR_FINAL_JUDGEMENT';
@@ -576,7 +805,8 @@ export function KioskSelfInspectionRecordApprovalPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-2">
-            <div className="grid gap-1 text-sm">
+            {state !== 'invalidated' ? (
+              <div className="grid gap-1 text-sm">
               <span className="text-white/65">計測機器の使用前点検必須</span>
               <button
                 type="button"
@@ -608,13 +838,19 @@ export function KioskSelfInspectionRecordApprovalPage() {
                 {requireMeasuringInstrumentTag ? 'ON' : 'OFF'}
               </button>
               {policyMessage ? <span className="max-w-48 text-xs text-amber-100">{policyMessage}</span> : null}
-            </div>
+              </div>
+            ) : null}
             <label className="grid gap-1 text-sm">
               <span className="text-white/65">状態</span>
               <select
                 className="rounded border border-white/15 bg-slate-950/70 px-3 py-2 text-white"
                 value={state}
-                onChange={(event) => setState(event.target.value as RecordApprovalFilterState)}
+                onChange={(event) => {
+                  setState(event.target.value as RecordApprovalFilterState);
+                  setSelectedSessionId(null);
+                  setApprover(null);
+                  setStatusMessage(null);
+                }}
               >
                 {STATE_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -650,7 +886,28 @@ export function KioskSelfInspectionRecordApprovalPage() {
 
       <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[22rem_1fr]">
         <aside className="min-h-0 overflow-auto rounded border border-white/15 bg-slate-950/45 p-2">
-          {listQuery.isLoading && sessions.length === 0 ? (
+          {state === 'invalidated' ? (
+            invalidationListQuery.isLoading && invalidations.length === 0 ? (
+              <div className="py-10 text-center text-white/55">削除履歴を読込中...</div>
+            ) : invalidations.length === 0 ? (
+              <div className="py-10 text-center text-white/55">削除済みの自主検査はありません。</div>
+            ) : (
+              <div className="grid gap-2">
+                {invalidations.map((invalidation) => (
+                  <InvalidationListItem
+                    key={invalidation.id}
+                    invalidation={invalidation}
+                    selected={invalidation.id === selectedSessionId}
+                    onSelect={() => {
+                      setSelectedSessionId(invalidation.id);
+                      setApprover(null);
+                      setStatusMessage(null);
+                    }}
+                  />
+                ))}
+              </div>
+            )
+          ) : listQuery.isLoading && sessions.length === 0 ? (
             <div className="py-10 text-center text-white/55">読込中...</div>
           ) : sessions.length === 0 ? (
             <div className="py-10 text-center text-white/55">対象の検査記録はありません。</div>
@@ -673,7 +930,17 @@ export function KioskSelfInspectionRecordApprovalPage() {
         </aside>
 
         <section className="flex min-h-0 flex-col gap-3 rounded border border-white/15 bg-slate-900/70 p-3">
-          {!selectedSessionId ? (
+          {state === 'invalidated' ? (
+            !selectedSessionId ? (
+              <div className="py-16 text-center text-white/55">左の一覧から削除履歴を選択してください。</div>
+            ) : invalidationDetailQuery.isLoading && !selectedInvalidation ? (
+              <div className="py-16 text-center text-white/55">削除履歴の詳細を読込中...</div>
+            ) : !selectedInvalidation ? (
+              <div className="py-16 text-center text-white/55">削除履歴を表示できません。</div>
+            ) : (
+              <InvalidationHistoryDetail invalidation={selectedInvalidation} />
+            )
+          ) : !selectedSessionId ? (
             <div className="py-16 text-center text-white/55">左の一覧から検査記録を選択してください。</div>
           ) : detailQuery.isLoading && !selectedSession ? (
             <div className="py-16 text-center text-white/55">詳細を読込中...</div>

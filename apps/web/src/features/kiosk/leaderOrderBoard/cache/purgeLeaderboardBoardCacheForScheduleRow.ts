@@ -7,7 +7,7 @@ import {
 import { parseLeaderboardBoardCacheRecord } from './leaderboardBoardCacheRecord';
 
 /**
- * 自主検査リセット後、端末 IndexedDB に残った古い `/sessions/:id` 装飾を避けるため、
+ * 自主検査のリセット・削除後、端末 IndexedDB に残った古い `/sessions/:id` 装飾を避けるため、
  * 該当 schedule row を含む board cache のみ削除する（スキーマ全消去はしない）。
  */
 export async function purgeLeaderboardBoardCacheForScheduleRow(scheduleRowId: string): Promise<number> {

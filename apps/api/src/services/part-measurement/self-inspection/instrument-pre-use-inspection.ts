@@ -20,6 +20,7 @@ import {
   lockSessionRow
 } from './mutation-guards.js';
 import { resolveInspectorEmployeeRequired } from './entry-registration.js';
+import { appendMeasurementOperation } from './measurement-actor-authentication.js';
 import {
   loadInspectorEntryForSerialization,
   loadLotEntryForSerialization,
@@ -36,6 +37,7 @@ export async function recordInspectorInstrumentPreUseInspection(
   input: {
     instrumentTagUid: string;
     employeeTagUid: string;
+    measurementActorAuthenticationId: string;
     clientDeviceId?: string | null;
   }
 ) {
@@ -162,6 +164,13 @@ export async function recordInspectorInstrumentPreUseInspection(
     );
     if (existingUsage) {
       const serializedEntry = await loadInspectorEntryForSerialization(tx, entry.id);
+      await appendMeasurementOperation(tx, {
+        sessionId,
+        authenticationId: input.measurementActorAuthenticationId,
+        mode: 'INSPECTOR',
+        entryIndex,
+        operationKind: 'INSTRUMENT_PRE_USE'
+      });
       return {
         entry: serializeInspectorEntry(serializedEntry),
         usage: serializeInstrumentUsage(existingUsage),
@@ -284,6 +293,13 @@ export async function recordInspectorInstrumentPreUseInspection(
     });
 
     const serializedEntry = await loadInspectorEntryForSerialization(tx, entry.id);
+    await appendMeasurementOperation(tx, {
+      sessionId,
+      authenticationId: input.measurementActorAuthenticationId,
+      mode: 'INSPECTOR',
+      entryIndex,
+      operationKind: 'INSTRUMENT_PRE_USE'
+    });
     return {
       entry: serializeInspectorEntry(serializedEntry),
       usage: serializeInstrumentUsage(usage),
@@ -333,6 +349,7 @@ export async function recordInstrumentPreUseInspection(
   input: {
     instrumentTagUid: string;
     employeeTagUid: string;
+    measurementActorAuthenticationId: string;
     clientDeviceId?: string | null;
   }
 ) {
@@ -430,6 +447,13 @@ export async function recordInstrumentPreUseInspection(
     );
     if (existingUsage) {
       const serializedEntry = await loadLotEntryForSerialization(tx, entry.id);
+      await appendMeasurementOperation(tx, {
+        sessionId,
+        authenticationId: input.measurementActorAuthenticationId,
+        mode: 'OPERATOR',
+        entryIndex,
+        operationKind: 'INSTRUMENT_PRE_USE'
+      });
       return {
         entry: serializeLotEntry(serializedEntry),
         usage: serializeInstrumentUsage(existingUsage),
@@ -548,6 +572,13 @@ export async function recordInstrumentPreUseInspection(
     }
 
     const serializedEntry = await loadLotEntryForSerialization(tx, entry.id);
+    await appendMeasurementOperation(tx, {
+      sessionId,
+      authenticationId: input.measurementActorAuthenticationId,
+      mode: 'OPERATOR',
+      entryIndex,
+      operationKind: 'INSTRUMENT_PRE_USE'
+    });
     return {
       entry: serializeLotEntry(serializedEntry),
       usage: serializeInstrumentUsage(usage),
