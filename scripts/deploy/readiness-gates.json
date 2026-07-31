@@ -275,6 +275,13 @@
       "noAdditionalGateReason": "Documentation and classification-only changes retain the always-on source, migration, and Pi5 authority gates."
     },
     "nfc-agent": {"gateIds": ["terminal.selected-prerequisites"]},
+    "pi5-control": {
+      "gateIds": [
+        "local.source-and-scope",
+        "migration.production-ledger",
+        "route.pi5-authority-and-resources"
+      ]
+    },
     "server-app": {
       "gateIds": [
         "migration.production-ledger",

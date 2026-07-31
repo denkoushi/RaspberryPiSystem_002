@@ -2,7 +2,7 @@
 id: deployment-guide
 title: 標準デプロイ手順
 status: active
-last_verified: 2026-07-29
+last_verified: 2026-08-01
 ---
 
 # デプロイメントガイド
@@ -53,6 +53,11 @@ mutation、Signageは選ばない。一般inventory、共通role、未登録path
 `global`または`unknown`として従来どおり全対象へ広げる。詳細な判断は
 [ADR-20260728](../decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md)
 を参照する。
+
+`scripts/deploy/validate-expand-only-migrations.py` は候補migrationを受理する前に
+Pi5 checkoutから実行されるため、一般的な `deploy-control` ではなく
+`pi5-control` として分類する。このvalidator自身の変更はmigrationや端末runtimeの
+変更を意味しないが、修正版を実行権限へ収束させるためPi5を対象に含める。
 
 Pi5のCI成果物昇格は既定無効である。別途承認して有効化した場合だけ、
 exact main SHAとbuild設定hashに一致する署名済みLinux ARM64 API/Web pairを

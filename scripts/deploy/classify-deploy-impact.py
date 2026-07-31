@@ -53,6 +53,13 @@ def classify(paths, *, registry: TerminalProfileRegistry = DEFAULT_REGISTRY):
             result['migration'] = result['server'] = True
             continue
 
+        if component == 'pi5-control':
+            # This component executes from the Pi5 checkout before candidate
+            # migrations are accepted. Its own fixes therefore require Pi5
+            # convergence without implying that a migration is present.
+            result['server'] = True
+            continue
+
         if component == 'server-app':
             result['server'] = True
             continue
