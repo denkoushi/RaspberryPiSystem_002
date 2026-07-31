@@ -38,6 +38,9 @@ vi.mock('../../../lib/prisma.js', () => ({
     selfInspectionSession: {
       findMany: vi.fn(),
     },
+    selfInspectionItemInvalidation: {
+      findMany: vi.fn(),
+    },
     productionScheduleOrderSplit: {
       findMany: vi.fn().mockResolvedValue([]),
     },
@@ -93,6 +96,7 @@ describe('production-schedule-query.service', () => {
     vi.mocked(prisma.productionScheduleResourceMaster.findMany).mockResolvedValue([]);
     vi.mocked(prisma.partMeasurementTemplate.findMany).mockResolvedValue([]);
     vi.mocked(prisma.selfInspectionSession.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.selfInspectionItemInvalidation.findMany).mockResolvedValue([]);
     vi.mocked(enrichProductionScheduleRowsWithResolvedMachineName).mockClear();
     vi.mocked(enrichProductionScheduleRowsWithCustomerName).mockClear();
   });
