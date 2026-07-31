@@ -38,6 +38,9 @@ After this change, missing assets return a real 404, HTML documents are not cach
 - Observation: The recovery contract needs a production build with a valid compile-time release SHA; the default development E2E server intentionally lacks that release identity.
   Evidence: A dedicated Playwright configuration builds with a forty-character SHA, aborts the emitted lazy chunk, and observed exactly two document navigations in both the recovered and exhausted cases.
 
+- Observation: The isolated Caddy contract's optional Web build must also build the Web workspace dependencies on a clean checkout.
+  Evidence: PR #1138's first `deploy-contract` run failed before Caddy startup because `@raspi-system/part-search-core` and `@raspi-system/shelf-layout-core` had no generated declarations. Local validation had inherited those artifacts from earlier tests. The script now owns all three shared-package build prerequisites.
+
 ## Decision Log
 
 - Decision: Protect the entire React tree with one dependency-free error boundary, but restrict automatic reload to recognized module-load failures on `/kiosk` paths.
@@ -172,3 +175,5 @@ Revision note (2026-07-31 10:17Z): Recorded the completed implementation, produc
 Revision note (2026-07-31 10:19Z): Recorded successful validation of every runtime Caddy variant and completion of the staged diff review; only GitHub publication remains.
 
 Revision note (2026-07-31 10:22Z): Recorded commit `8855e566`, the pushed feature branch, and draft PR #1138. GitHub checks are now the only incomplete implementation gate.
+
+Revision note (2026-07-31 10:28Z): Recorded and corrected the clean-CI build prerequisite discovered by the first PR deploy-contract run; full revalidation and replacement checks remain pending.

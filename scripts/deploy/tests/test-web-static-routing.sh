@@ -33,7 +33,13 @@ node -e '
 ' || fail 'Node 20.9 or newer is required'
 
 if [[ "${WEB_STATIC_ROUTING_SKIP_BUILD:-0}" != 1 ]]; then
-  (cd "$ROOT" && pnpm --filter @raspi-system/web build)
+  (
+    cd "$ROOT"
+    pnpm --filter @raspi-system/shared-types build
+    pnpm --filter @raspi-system/part-search-core build
+    pnpm --filter @raspi-system/shelf-layout-core build
+    pnpm --filter @raspi-system/web build
+  )
 fi
 [[ -f "$DIST_DIR/index.html" ]] || fail "Web build is missing: $DIST_DIR/index.html"
 
