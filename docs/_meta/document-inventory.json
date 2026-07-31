@@ -15,17 +15,17 @@
     ]
   },
   "summary": {
-    "documentCount": 584,
-    "totalLines": 164906,
-    "totalBytes": 12346469,
-    "withFrontmatter": 260,
-    "withStatus": 116,
-    "sourceOfTruthDeclared": 80,
+    "documentCount": 592,
+    "totalLines": 166354,
+    "totalBytes": 12455602,
+    "withFrontmatter": 266,
+    "withStatus": 122,
+    "sourceOfTruthDeclared": 86,
     "execPlanReferences": 64,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 25,
-    "localLinkCount": 5639,
+    "localLinkCount": 5645,
     "brokenLocalLinkCount": 87,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -5898,8 +5898,8 @@
     },
     {
       "path": "docs/AI_START_HERE.md",
-      "lineCount": 113,
-      "byteSize": 6263,
+      "lineCount": 116,
+      "byteSize": 6723,
       "hasFrontmatter": true,
       "title": "AI Start Here",
       "status": null,
@@ -5914,7 +5914,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 2012,
-      "byteSize": 346953,
+      "byteSize": 347201,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -6888,6 +6888,11 @@
         {
           "href": "./decisions/ADR-20260730-bounded-api-runtime-artifact.md",
           "targetPath": "docs/decisions/ADR-20260730-bounded-api-runtime-artifact.md",
+          "exists": true
+        },
+        {
+          "href": "./decisions/ADR-20260731-single-ssd-durable-file-storage.md",
+          "targetPath": "docs/decisions/ADR-20260731-single-ssd-durable-file-storage.md",
           "exists": true
         },
         {
@@ -10216,11 +10221,6 @@
           "exists": true
         },
         {
-          "href": "./plans/api-image-runtime-boundary-execplan.md",
-          "targetPath": "docs/plans/api-image-runtime-boundary-execplan.md",
-          "exists": true
-        },
-        {
           "href": "./plans/assembly-approved-uiux-regression-recovery-execplan.md",
           "targetPath": "docs/plans/assembly-approved-uiux-regression-recovery-execplan.md",
           "exists": true
@@ -10538,6 +10538,11 @@
         {
           "href": "./plans/pi4-sd-recovery-bootstrap.md",
           "targetPath": "docs/plans/pi4-sd-recovery-bootstrap.md",
+          "exists": true
+        },
+        {
+          "href": "./plans/pi5-api-image-local-storage-scalability-execplan.md",
+          "targetPath": "docs/plans/pi5-api-image-local-storage-scalability-execplan.md",
           "exists": true
         },
         {
@@ -10983,6 +10988,11 @@
         {
           "href": "./runbooks/pi5-blue-green-deploy.md",
           "targetPath": "docs/runbooks/pi5-blue-green-deploy.md",
+          "exists": true
+        },
+        {
+          "href": "./runbooks/pi5-local-file-storage.md",
+          "targetPath": "docs/runbooks/pi5-local-file-storage.md",
           "exists": true
         },
         {
@@ -17012,14 +17022,59 @@
     },
     {
       "path": "docs/decisions/ADR-20260730-bounded-api-runtime-artifact.md",
-      "lineCount": 84,
-      "byteSize": 4061,
+      "lineCount": 101,
+      "byteSize": 5197,
       "hasFrontmatter": true,
       "title": "Bound and reuse the Pi5 API runtime artifact before service extraction",
-      "status": "accepted-for-implementation",
+      "status": "accepted",
       "source_of_truth": "true",
       "localLinks": [],
       "inboundCount": 3,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/decisions/ADR-20260731-kiosk-runtime-chunk-recovery.md",
+      "lineCount": 51,
+      "byteSize": 4780,
+      "hasFrontmatter": true,
+      "title": "Bounded kiosk recovery for stale lazy chunks",
+      "status": "accepted-implementation-live-rollout-blocked",
+      "source_of_truth": "true",
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/decisions/ADR-20260731-self-inspection-item-invalidation.md",
+      "lineCount": 61,
+      "byteSize": 3921,
+      "hasFrontmatter": true,
+      "title": "ADR-20260731: 自主検査アイテムの不可逆な論理無効化",
+      "status": "accepted",
+      "source_of_truth": "this file",
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/decisions/ADR-20260731-single-ssd-durable-file-storage.md",
+      "lineCount": 93,
+      "byteSize": 5563,
+      "hasFrontmatter": true,
+      "title": "Keep business files on one Pi5 SSD behind a durable storage port",
+      "status": "accepted",
+      "source_of_truth": "true",
+      "localLinks": [],
+      "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -18717,8 +18772,8 @@
     },
     {
       "path": "docs/guides/deployment.md",
-      "lineCount": 271,
-      "byteSize": 23950,
+      "lineCount": 285,
+      "byteSize": 25134,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -19818,8 +19873,8 @@
     },
     {
       "path": "docs/guides/operation-manual.md",
-      "lineCount": 847,
-      "byteSize": 25656,
+      "lineCount": 849,
+      "byteSize": 26090,
       "hasFrontmatter": true,
       "title": "運用マニュアル",
       "status": null,
@@ -19913,6 +19968,11 @@
         {
           "href": "../plans/production-deployment-management-plan.md",
           "targetPath": "docs/plans/production-deployment-management-plan.md",
+          "exists": true
+        },
+        {
+          "href": "../runbooks/pi5-local-file-storage.md",
+          "targetPath": "docs/runbooks/pi5-local-file-storage.md",
           "exists": true
         },
         {
@@ -22585,8 +22645,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-320-kiosk-part-measurement.md",
-      "lineCount": 1889,
-      "byteSize": 208323,
+      "lineCount": 1935,
+      "byteSize": 213513,
       "hasFrontmatter": false,
       "title": "KB-320: キオスク部品測定（テンプレ不一致・候補・スキャン）",
       "status": null,
@@ -22755,6 +22815,11 @@
         {
           "href": "../decisions/ADR-20260710-self-inspection-draft-confirmed.md",
           "targetPath": "docs/decisions/ADR-20260710-self-inspection-draft-confirmed.md",
+          "exists": true
+        },
+        {
+          "href": "../decisions/ADR-20260731-self-inspection-item-invalidation.md",
+          "targetPath": "docs/decisions/ADR-20260731-self-inspection-item-invalidation.md",
           "exists": true
         },
         {
@@ -22953,6 +23018,11 @@
           "exists": true
         },
         {
+          "href": "../runbooks/kiosk-part-measurement.md#自主検査アイテム削除",
+          "targetPath": "docs/runbooks/kiosk-part-measurement.md",
+          "exists": true
+        },
+        {
           "href": "../runbooks/kiosk-part-measurement.md#自主検査セッション図面空白-2026-06-03",
           "targetPath": "docs/runbooks/kiosk-part-measurement.md",
           "exists": true
@@ -22963,7 +23033,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 149,
+      "inboundCount": 150,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [
@@ -25463,8 +25533,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-390-kiosk-leaderboard-inspection-workflow.md",
-      "lineCount": 367,
-      "byteSize": 23679,
+      "lineCount": 381,
+      "byteSize": 24799,
       "hasFrontmatter": false,
       "title": "KB-390: Kiosk leader order board inspection workflow and paper report OCR handoff",
       "status": null,
@@ -25883,8 +25953,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-404-pi5-ghcr-api-image-pull-timeout.md",
-      "lineCount": 143,
-      "byteSize": 6920,
+      "lineCount": 158,
+      "byteSize": 7815,
       "hasFrontmatter": true,
       "title": "Pi5 GHCR API image pull timeout without layer progress evidence",
       "status": "mitigated",
@@ -27431,7 +27501,7 @@
     {
       "path": "docs/knowledge-base/index.md",
       "lineCount": 870,
-      "byteSize": 262544,
+      "byteSize": 262547,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - 索引",
       "status": null,
@@ -32024,7 +32094,7 @@
       "status": "in_progress",
       "source_of_truth": "this document",
       "localLinks": [],
-      "inboundCount": 2,
+      "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -33518,6 +33588,36 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/kiosk-self-inspection-item-invalidation-execplan.md",
+      "lineCount": 178,
+      "byteSize": 11412,
+      "hasFrontmatter": false,
+      "title": "Kiosk self-inspection item invalidation",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/kiosk-self-inspection-layout-density-execplan.md",
+      "lineCount": 166,
+      "byteSize": 20298,
+      "hasFrontmatter": true,
+      "title": "Kiosk Self-Inspection Layout Density ExecPlan",
+      "status": "in_progress",
+      "source_of_truth": "this file",
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/kiosk-self-inspection-table-nfc.md",
       "lineCount": 184,
       "byteSize": 23549,
@@ -33583,6 +33683,21 @@
         }
       ],
       "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/kiosk-white-screen-runtime-recovery-execplan.md",
+      "lineCount": 181,
+      "byteSize": 18819,
+      "hasFrontmatter": false,
+      "title": "Prevent intermittent kiosk white screens from stale lazy chunks",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -34000,6 +34115,21 @@
       "title": "Pi4 SD-card recovery bootstrap",
       "status": null,
       "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/pi5-api-image-local-storage-scalability-execplan.md",
+      "lineCount": 442,
+      "byteSize": 22913,
+      "hasFrontmatter": true,
+      "title": "Pi5 API image and single-SSD file storage scalability",
+      "status": "in_progress",
+      "source_of_truth": "this ExecPlan",
       "localLinks": [],
       "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
@@ -35962,8 +36092,8 @@
     },
     {
       "path": "docs/runbooks/deploy-status-recovery.md",
-      "lineCount": 90,
-      "byteSize": 4154,
+      "lineCount": 92,
+      "byteSize": 4667,
       "hasFrontmatter": true,
       "title": "デプロイ停止・復旧Runbook",
       "status": "active",
@@ -36637,8 +36767,8 @@
     },
     {
       "path": "docs/runbooks/kiosk-part-measurement.md",
-      "lineCount": 1432,
-      "byteSize": 119197,
+      "lineCount": 1487,
+      "byteSize": 124259,
       "hasFrontmatter": false,
       "title": "キオスク: 部品測定記録（part-measurement）",
       "status": null,
@@ -36950,6 +37080,11 @@
           "exists": true
         },
         {
+          "href": "../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-一覧測定入力レイアウト契約-2026-07-31",
+          "targetPath": "docs/knowledge-base/KB-320-kiosk-part-measurement.md",
+          "exists": true
+        },
+        {
           "href": "../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-寸法百分台入力-公差外レビュー-2026-06-26",
           "targetPath": "docs/knowledge-base/KB-320-kiosk-part-measurement.md",
           "exists": true
@@ -36995,7 +37130,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 88,
+      "inboundCount": 89,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -37444,6 +37579,21 @@
         }
       ],
       "inboundCount": 4,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/runbooks/pi5-local-file-storage.md",
+      "lineCount": 108,
+      "byteSize": 5182,
+      "hasFrontmatter": true,
+      "title": "Pi5単一SSD・業務ファイル保存Runbook",
+      "status": "active",
+      "source_of_truth": "docs/runbooks/pi5-local-file-storage.md",
+      "localLinks": [],
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],

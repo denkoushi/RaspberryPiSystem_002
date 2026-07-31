@@ -1,6 +1,6 @@
 ---
 title: Kiosk Self-Inspection Layout Density ExecPlan
-status: completed
+status: in_progress
 scope: kiosk self-inspection layout delivery and constrained Pi3 deployment resilience
 date: 2026-08-01
 source_of_truth: this file
@@ -11,7 +11,10 @@ related_docs:
   - docs/knowledge-base/KB-320-kiosk-part-measurement.md
   - docs/runbooks/kiosk-part-measurement.md
 validation: passed_and_deployed
-open_items: []
+open_items:
+  - merge the deployed feature branch into main
+  - redeploy and verify the merged main release across the production fleet
+  - reassess the previously deployed but unmerged PR 1044 change
 ---
 
 # Kiosk Self-Inspection Layout Density
@@ -40,6 +43,10 @@ Operators must be able to see the measurement-point list while entering values a
 - [x] (2026-08-01) Confirmed automatic Pi3 rollback to `ab57a4ab` after a transient systemd unit-registration failure; lightdm, Signage, and all timers recovered active and enabled.
 - [x] (2026-08-01) Added post-restore daemon reload, unit-registration waits, timer-first ordering, and bounded retries; the complete deployment contract suite passed again under Node 20.20.2.
 - [x] (2026-08-01) Committed and pushed the post-restore hardening as `c118b4ef`; release `20260731-211900-195688` completed successfully with Pi5 and Pi3 verified and Pi3 runtime health confirmed directly.
+- [x] (2026-08-01) Audited the structured production release ledger against `main` and found that the current UI and Pi3 fixes were deployed from this feature branch but had not been submitted as a PR or merged.
+- [ ] Create and merge the feature PR after required CI succeeds.
+- [ ] Deploy merged `main`, verify Pi5, all Pi4 kiosks, and Pi3, and prove a repeated plan is a no-op.
+- [ ] Reassess open PR #1044 against the current deployment architecture and integrate only the still-required behavior.
 
 ## Surprises & Discoveries
 
@@ -63,6 +70,8 @@ Operators must be able to see the measurement-point list while entering values a
   Evidence: `/var/log/raspi-status-agent.log` recorded handshake and read timeouts while later timer invocations succeeded with the same redacted config shape.
 - Observation: Pi3 release `20260731-202134-009670` reproduced the exact April 2026 transient in which `signage-lite-update.timer` was enabled and present during the role but appeared unregistered to the first post-lightdm `systemd` start.
   Evidence: the release failed only that loop item with `Could not find the requested service`; rollback restored and verified `ab57a4ab`, and subsequent read-only checks found lightdm, Signage, and every timer active and enabled. The same task/item and a successful retry are recorded in the historical deployment notes.
+- Observation: A clean and synchronized local `main` does not prove that a deployed feature branch has been integrated into `main`.
+  Evidence: `main` and `origin/main` both pointed to `9a06ec1a`, while the production fleet was verified at `a8977fe2` or `c118b4ef` and this feature branch was four commits ahead with no PR.
 
 ## Decision Log
 
@@ -96,6 +105,9 @@ Operators must be able to see the measurement-point list while entering values a
 - Decision: Treat Signage restoration as an explicit convergence sequence: reload systemd, wait for every required unit to report `loaded`, start timers before the heavier display service, and retry transient starts three times.
   Rationale: Unit files and enablement were correct, rollback was healthy, and the identical historical failure converged on retry; bounded readiness and retry make that transient observable and recoverable without masking a persistent missing unit.
   Date/Author: 2026-08-01 / Codex after the first remediated Pi3 deployment.
+- Decision: Report worktree cleanliness, origin synchronization, main integration, and production SHA as four separate states, and do not close feature-branch production work before its PR is merged.
+  Rationale: Conflating repository synchronization with integration concealed a real main-branch omission and could let a later main deployment revert verified behavior.
+  Date/Author: 2026-08-01 / Codex after the user-requested integration audit.
 
 ## Context and Orientation
 
@@ -148,3 +160,7 @@ The requested presentation changes are implemented without changes to API, DTO, 
 The UI and Pi3 remediation commits were pushed. Pi5 and all six Pi4 kiosks first received and verified the UI candidate `a8977fe2`. The first remediated Pi3 attempt safely rolled back after exposing a known transient unit-registration race in the post-lightdm restoration loop. The hardened restoration path then passed the complete deployment contract suite and production release `20260731-211900-195688`: Pi5 and Pi3 verified `c118b4ef`, while the six Pi4 kiosks retained their already-verified UI SHA `a8977fe2` because the final commit changed deployment control only.
 
 On Pi3, daemon reload succeeded, all four required units reported `loaded`, the three timers started before the display service, and `signage-lite.service` became active with `failed=0` and `unreachable=0`. Direct post-release checks found lightdm, Signage, all Signage timers, and `status-agent.timer` active; persistent units enabled; repository HEAD `c118b4ef`; `REQUEST_TIMEOUT="30"`; `throttled=0x0`; no OOM or thermal kernel records; and repeated healthy watchdog runs without interactive-authentication errors. Available memory was 104MB with 258MB of 415MB swap in use, so Pi3 remains capacity-constrained but the release and recovery paths now account for that constraint. `/proc/pressure/memory` is not exposed by the installed Pi3 kernel, so memory validation used `free`, resource guards, kernel logs, and observed service convergence.
+
+The later integration audit found that this successful rollout did not complete the repository lifecycle: the deployed commits were still absent from `main`. The plan is reopened until the feature PR is merged, merged `main` is verified across the fleet, and the separately identified PR #1044 omission is resolved.
+
+Plan revision note (2026-08-01): reopened the plan after the main-integration audit exposed that production success had been recorded without the required PR and merge; added explicit integration, redeployment, and historical-omission follow-up work.
