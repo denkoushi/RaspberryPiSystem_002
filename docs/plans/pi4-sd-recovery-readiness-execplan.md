@@ -1,8 +1,9 @@
 # Restore production readiness for Pi4 SD-card recovery
 
 > Historical OAuth readiness plan, superseded on 2026-08-01 by
-> `pi4-sd-recovery-lan-provider-execplan.md` before any production OAuth client,
-> Vault change, Pi5 deployment, or physical recovery drill. Its implementation
+> `pi4-sd-recovery-dynamic-bootstrap-execplan.md` after the intermediate LAN
+> provider and before any production OAuth client, Vault change, or physical
+> recovery drill. Its implementation
 > history remains evidence, but its production instructions are no longer active.
 
 This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept current as work proceeds. Maintain this document in accordance with `.agent/PLANS.md`.

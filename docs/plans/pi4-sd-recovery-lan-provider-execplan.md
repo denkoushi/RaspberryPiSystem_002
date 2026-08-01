@@ -1,5 +1,11 @@
 # Move Pi4 SD-card recovery to the managed LAN
 
+> Historical fixed-endpoint plan. Live factory checks on 2026-08-01 showed two
+> healthy Pi4s at DHCP addresses different from these declarations. The merged
+> LAN foundation remains useful, but its fixed-target decision is superseded by
+> `pi4-sd-recovery-dynamic-bootstrap-execplan.md`. Do not use the fixed-address
+> instructions for a physical recovery.
+
 This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds. Maintain this document in accordance with `.agent/PLANS.md`.
 
 ## Purpose / Big Picture
