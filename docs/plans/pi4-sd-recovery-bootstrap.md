@@ -23,6 +23,7 @@ kiosk, status-agent, NFC, and optional barcode functions.
 - [x] 2026-07-13: Ran 92 Python regression tests, both recovery playbook syntax checks, and a synthetic-host Ansible check run.
 - [x] 2026-07-13: Ran the isolated Postgres integration: 144 migrations, SQL `EXPLAIN (ANALYZE, BUFFERS)`, and 8 deploy-status API tests passed; no labelled temporary Docker resources remained.
 - [ ] Future: Release the feature to Pi5 through the canonical rolling release and execute one blank-Pi4 acceptance drill.
+- [ ] Follow-up: complete `pi4-sd-recovery-readiness-execplan.md` before the physical drill.
 
 ## Surprises & Discoveries
 
