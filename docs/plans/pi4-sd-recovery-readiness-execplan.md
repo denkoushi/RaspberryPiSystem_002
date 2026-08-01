@@ -1,5 +1,10 @@
 # Restore production readiness for Pi4 SD-card recovery
 
+> Historical OAuth readiness plan, superseded on 2026-08-01 by
+> `pi4-sd-recovery-lan-provider-execplan.md` before any production OAuth client,
+> Vault change, Pi5 deployment, or physical recovery drill. Its implementation
+> history remains evidence, but its production instructions are no longer active.
+
 This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept current as work proceeds. Maintain this document in accordance with `.agent/PLANS.md`.
 
 ## Purpose / Big Picture
@@ -19,6 +24,7 @@ The Pi5 recovery command must be usable before a Pi4 fails, not merely pass mock
 - [x] (2026-08-01 JST) Verified the test-created PostgreSQL container, volume, and network were removed (`cleanup verified: run resources=0`), no temporary-resource delta remained, and the complete pre-existing Docker resource snapshots were unchanged.
 - [x] (2026-08-01 JST) Opened draft PR #1147, fixed the CI-only Vault password-file dependency in the new Ansible tests, and verified every required GitHub check including `deploy-contract` and `ci-required` passed at `f1e1df91`.
 - [x] (2026-08-01 JST) Recorded the remaining production-only work: OAuth credential creation, encrypted Vault update, canonical deployment, Assembly backup configuration, and the blank-SD physical drill.
+- [x] (2026-08-01 JST) User selected managed-LAN recovery; cancelled all OAuth/Vault production work and moved implementation to `feat/pi4-sd-recovery-lan-provider`.
 
 ## Surprises & Discoveries
 

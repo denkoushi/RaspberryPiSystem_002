@@ -47,19 +47,11 @@
     tailscale_connected: "{{ tailscale_backend_state | default('') == 'Running' }}"
   when: tailscale_status.rc == 0
 
-- name: Obtain a one-use recovery auth key only for a disconnected fresh host
-  ansible.builtin.include_role:
-    name: tailscale_recovery_auth
-  when:
-    - (tailscale_connected | default(false)) | bool == false
-    - tailscale_auth_provider | default('static') == 'recovery-oauth'
-
-- name: Select the existing static auth key outside recovery
+- name: Select the configured static auth key for a disconnected host
   ansible.builtin.set_fact:
     tailscale_effective_auth_key: "{{ tailscale_auth_key | default('') }}"
   when:
     - (tailscale_connected | default(false)) | bool == false
-    - tailscale_auth_provider | default('static') != 'recovery-oauth'
   no_log: true
 
 - name: Bring up Tailscale with the selected auth key
@@ -88,4 +80,3 @@
     - (tailscale_connected | default(false)) | bool == false
     - tailscale_effective_auth_key | default('') | length > 0
   no_log: true
-

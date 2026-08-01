@@ -39,8 +39,13 @@ from recovery.inventory import (
     AnsibleRecoveryInventoryResolver,
     RecoveryInventoryError,
     RecoveryInventoryResolver,
+    RecoveryNetworkReadiness,
     ResolvedRecoveryContract,
-    TailscaleAuthReadiness,
+)
+from recovery.network import (
+    LanRecoveryNetworkProvider,
+    RecoveryNetworkError,
+    RecoveryNetworkProvider,
 )
 
 
@@ -118,7 +123,7 @@ class RecoveryPlan:
     bootstrap_host: str
     release: Release
     runtime_override_exists: bool
-    tailscale_auth: TailscaleAuthReadiness
+    recovery_network: RecoveryNetworkReadiness
 
     def public_dict(self) -> dict[str, Any]:
         return {
@@ -134,17 +139,19 @@ class RecoveryPlan:
             'release': asdict(self.release),
             'runtimeOverrideExists': self.runtime_override_exists,
             'inventoryResolved': True,
-            'tailscaleAuth': {
-                'mode': self.tailscale_auth.mode,
-                'configured': self.tailscale_auth.configured,
-                'tag': self.tailscale_auth.tag,
+            'recoveryNetwork': {
+                'mode': self.recovery_network.mode,
+                'configured': self.recovery_network.configured,
+                'targetEndpoint': self.recovery_network.target_endpoint,
+                'serverEndpoint': self.recovery_network.server_endpoint,
             },
             'initialOsChecklist': [
                 'Raspberry Pi OS Desktop (64-bit) を使用する。',
                 f'既存端末と同じユーザー名 {self.target.user!r} を設定する。',
                 'Pi5 の公開鍵で SSH を有効化する。',
                 'sudo のパスワード要求を無効化する。',
-                f'Pi5 から到達できる一時LAN IP {self.bootstrap_host} を設定する。',
+                f'既存Pi4のDHCP予約または固定設定でLAN IP {self.bootstrap_host} を維持する。',
+                f'Pi4からPi5のLAN IP {self.recovery_network.server_endpoint} へ到達できることを確認する。',
             ],
         }
 
@@ -191,13 +198,6 @@ def parse_ipv4(value: str, *, field: str) -> ipaddress.IPv4Address:
     return parsed
 
 
-def is_tailscale_ipv4(value: str) -> bool:
-    try:
-        return parse_ipv4(value, field='Tailscale address') in ipaddress.ip_network('100.64.0.0/10')
-    except RecoveryError:
-        return False
-
-
 def redact_error(error: Exception) -> str:
     """Keep failure state useful without retaining accidental secret values."""
     message = str(error).replace('\n', ' ').strip()
@@ -226,6 +226,7 @@ class RecoveryCoordinator:
         tcp_reachable: Callable[[str, int], bool] | None = None,
         server_client_id_reader: Callable[[], str] | None = None,
         inventory_resolver: RecoveryInventoryResolver | None = None,
+        network_provider: RecoveryNetworkProvider | None = None,
     ) -> None:
         self.project = project.resolve()
         self.inventory = inventory.resolve()
@@ -240,6 +241,7 @@ class RecoveryCoordinator:
             inventory=self.inventory,
             runner=self.runner,
         )
+        self.network_provider = network_provider or LanRecoveryNetworkProvider()
 
     def _read_device_model(self) -> str:
         try:
@@ -296,20 +298,14 @@ class RecoveryCoordinator:
             )
         if not values.recovery_enabled:
             raise RecoveryError(
-                f'{target_name!r} does not enable the Tailscale Pi4 recovery capability'
+                f'{target_name!r} does not enable the Pi4 recovery capability'
             )
-        if not values.tailscale_enabled or not values.kiosk_managed:
-            raise RecoveryError(f'{target_name!r} must have Tailscale and kiosk browser management enabled')
-        if (
-            contract.tailscale_auth.mode != 'oauth'
-            or contract.tailscale_auth.tag != 'tag:kiosk'
-        ):
-            raise RecoveryError('recovery Tailscale authentication contract is unsupported')
-        if not contract.tailscale_auth.configured:
-            raise RecoveryError(
-                'Pi5 recovery OAuth credential is not configured; '
-                'set both recovery OAuth Vault values before relying on SD recovery'
-            )
+        if not values.kiosk_managed:
+            raise RecoveryError(f'{target_name!r} must have kiosk browser management enabled')
+        try:
+            self.network_provider.validate_contract(contract)
+        except RecoveryNetworkError as error:
+            raise RecoveryError(str(error)) from error
 
         override = self.load_runtime_override(target_name)
         original_host = values.inventory_endpoint
@@ -414,21 +410,22 @@ class RecoveryCoordinator:
         *,
         resolved_contract: ResolvedRecoveryContract | None = None,
     ) -> RecoveryPlan:
-        bootstrap = parse_ipv4(bootstrap_host, field='bootstrap host')
-        if bootstrap in ipaddress.ip_network('100.64.0.0/10'):
-            raise RecoveryError('bootstrap host must be a temporary LAN IPv4 address, not a Tailscale address')
         contract = resolved_contract or self.resolve_inventory_contract(target_name)
+        try:
+            bootstrap = self.network_provider.validate_bootstrap(
+                bootstrap_host, contract
+            )
+        except RecoveryNetworkError as error:
+            raise RecoveryError(str(error)) from error
         target, override_exists = self.resolve_target(contract)
-        if str(bootstrap) == target.original_host:
-            raise RecoveryError('bootstrap host must differ from the stale production endpoint')
         server_host = self.validate_inventory_server_identity(contract)
         release = self.resolve_active_release(server_host)
         return RecoveryPlan(
             target=target,
-            bootstrap_host=str(bootstrap),
+            bootstrap_host=bootstrap,
             release=release,
             runtime_override_exists=override_exists,
-            tailscale_auth=contract.tailscale_auth,
+            recovery_network=contract.recovery_network,
         )
 
     def assert_pi5(self) -> None:
@@ -466,6 +463,8 @@ class RecoveryCoordinator:
             '-e', 'recovery_authorized=true',
             '-e', f'repo_version={plan.release.sha}',
             '-e', f'ansible_host={plan.bootstrap_host}',
+            '-e', 'network_mode=local',
+            '-e', 'tailscale_enabled=false',
             '-e', f'recovery_result_path={result_path}',
         ], capture=False, cwd=self.project / 'infrastructure' / 'ansible')
 
@@ -474,20 +473,21 @@ class RecoveryCoordinator:
             payload = json.loads(path.read_text(encoding='utf-8'))
         except (OSError, json.JSONDecodeError) as error:
             raise RecoveryError('Ansible did not produce a valid recovery result') from error
-        address = payload.get('tailscaleIpv4') if isinstance(payload, dict) else None
-        if (
-            not isinstance(address, str)
-            or not is_tailscale_ipv4(address)
-            or payload.get('target') != plan.target.host
-            or payload.get('releaseSha') != plan.release.sha
-        ):
-            raise RecoveryError('Ansible recovery result does not prove the expected new Tailscale endpoint')
-        return address
+        try:
+            return self.network_provider.read_result(
+                payload,
+                target_host=plan.target.host,
+                release_sha=plan.release.sha,
+                expected_endpoint=plan.bootstrap_host,
+            )
+        except RecoveryNetworkError as error:
+            raise RecoveryError(str(error)) from error
 
-    def write_runtime_override(self, plan: RecoveryPlan, run_id: str, tailscale_ip: str) -> Path:
+    def write_runtime_override(self, plan: RecoveryPlan, run_id: str, endpoint: str) -> Path:
         path = self.runtime_override_path(plan.target.host)
+        runtime_values = self.network_provider.runtime_host_vars(endpoint)
         atomic_json(path, {
-            'ansible_host': tailscale_ip,
+            **runtime_values,
             'pi4_recovery': {
                 'run_id': run_id,
                 'recovered_at': utc_now(),
@@ -501,7 +501,7 @@ class RecoveryCoordinator:
         user = plan.target.user
         endpoint = self.runtime_override_endpoint(plan.target.host)
         if self._ssh_identity(endpoint, user) != user:
-            raise RecoveryError('new Tailscale endpoint authenticated as an unexpected user')
+            raise RecoveryError('new LAN endpoint authenticated as an unexpected user')
         self.runner.run(
             ['ansible', '-i', str(self.inventory), plan.target.host, '-m', 'ping'],
             capture=False,
@@ -527,8 +527,10 @@ class RecoveryCoordinator:
     def runtime_override_endpoint(self, target: str) -> str:
         override = self.load_runtime_override(target)
         endpoint = override.get('ansible_host') if isinstance(override, dict) else None
-        if not isinstance(endpoint, str) or not is_tailscale_ipv4(endpoint):
-            raise RecoveryError(f'local runtime override for {target!r} has no valid Tailscale endpoint')
+        if not isinstance(endpoint, str) or not self.network_provider.is_managed_endpoint(endpoint):
+            raise RecoveryError(f'local runtime override for {target!r} has no valid LAN endpoint')
+        if override.get('network_mode') != 'local' or override.get('tailscale_enabled') is not False:
+            raise RecoveryError(f'local runtime override for {target!r} does not enforce LAN mode')
         return endpoint
 
     def execute(self, target_name: str, bootstrap_host: str, reason: str, run_id: str | None = None) -> RecoveryState:
@@ -597,9 +599,9 @@ class RecoveryCoordinator:
                     raise RecoveryError('bootstrap host does not authenticate as the target inventory user')
                 legacy_state.transition('bootstrap-configuring')
                 self._run_bootstrap_playbook(plan, result_path)
-                tailscale_ip = self._read_result(result_path, plan)
-                legacy_state.transition('tailscale-endpoint-observed', tailscaleIpv4=tailscale_ip)
-                override_path = self.write_runtime_override(plan, generated_run_id, tailscale_ip)
+                lan_ip = self._read_result(result_path, plan)
+                legacy_state.transition('lan-endpoint-observed', lanIpv4=lan_ip)
+                override_path = self.write_runtime_override(plan, generated_run_id, lan_ip)
                 legacy_state.transition('runtime-endpoint-saved', runtimeOverride=str(override_path))
                 legacy_state.transition('validating')
                 observed_sha = self.validate_recovered_terminal(plan)
@@ -664,7 +666,7 @@ def parser() -> argparse.ArgumentParser:
     for name in ('plan', 'run'):
         subcommand = subcommands.add_parser(name)
         subcommand.add_argument('--target', required=True, help='existing Pi4 inventory hostname')
-        subcommand.add_argument('--bootstrap-host', required=True, help='new Pi4 temporary LAN IPv4 address')
+        subcommand.add_argument('--bootstrap-host', required=True, help='inventory-declared stable LAN IPv4 address for the rebuilt Pi4')
     run = subcommands.choices['run']
     run.add_argument('--confirm-recovery', action='store_true', help='required acknowledgement for mutating recovery')
     run.add_argument('--reason', required=True, help='operator incident reference or reason')

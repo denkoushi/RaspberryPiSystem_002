@@ -47,7 +47,7 @@
 
 ### 復旧（2026-07-13 · Pi4 SDカード故障）
 
-- **Pi5によるPi4再構成**: [Runbook](./runbooks/pi4-sd-recovery.md) · [ADR](./decisions/ADR-20260713-pi4-sd-recovery-bootstrap.md) · [ExecPlan](./plans/pi4-sd-recovery-bootstrap.md)
+- **Pi5によるPi4再構成（LAN方式）**: [Runbook](./runbooks/pi4-sd-recovery.md) · [ADR](./decisions/ADR-20260713-pi4-sd-recovery-bootstrap.md) · [ExecPlan](./plans/pi4-sd-recovery-lan-provider-execplan.md)
 
 ### 最新アップデート（2026-07-17 · 組立トルクレンチ締付トレーサビリティ · ローカル実装済・実機parser待ち）
 

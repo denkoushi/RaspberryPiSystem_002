@@ -1,5 +1,9 @@
 # Pi4 SD-card recovery bootstrap
 
+> Historical plan, superseded on 2026-08-01 by
+> `pi4-sd-recovery-lan-provider-execplan.md`. Do not use its Tailscale endpoint
+> steps for current recovery operations; use `docs/runbooks/pi4-sd-recovery.md`.
+
 This ExecPlan is a living document and follows `.agent/PLANS.md`. It records
 the implementation of a Pi5-operated recovery path for an inventory-managed
 Pi4 whose SD card has been replaced. A successful operator can run a read-only
@@ -24,6 +28,7 @@ kiosk, status-agent, NFC, and optional barcode functions.
 - [x] 2026-07-13: Ran the isolated Postgres integration: 144 migrations, SQL `EXPLAIN (ANALYZE, BUFFERS)`, and 8 deploy-status API tests passed; no labelled temporary Docker resources remained.
 - [ ] Future: Release the feature to Pi5 through the canonical rolling release and execute one blank-Pi4 acceptance drill.
 - [ ] Follow-up: complete `pi4-sd-recovery-readiness-execplan.md` before the physical drill.
+- [x] 2026-08-01: Superseded the unaccepted Tailscale recovery endpoint with the managed-LAN provider plan.
 
 ## Surprises & Discoveries
 

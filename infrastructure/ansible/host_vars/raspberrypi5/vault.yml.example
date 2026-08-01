@@ -33,12 +33,6 @@ vault_api_dgx_resource_aux_runtime_request_timeout_ms: "90000"
 # 通常導入用の既存Tailscale preauth key。SD復旧では使用しない。
 vault_tailscale_auth_key: ""
 
-# Pi4 SD復旧専用Tailscale OAuth client。
-# Tailscale Trust credentialsでAuth Keys作成権限とtag:kioskだけを許可する。
-# 長期secretはPi5の暗号化Vaultだけに保存し、Pi4や復旧ログへ配布しない。
-vault_tailscale_recovery_oauth_client_id: ""
-vault_tailscale_recovery_oauth_client_secret: ""
-
 # キオスクお問い合わせ（Slack通知）
 # 形式: https://hooks.slack.com/services/...
 vault_slack_kiosk_support_webhook_url: ""

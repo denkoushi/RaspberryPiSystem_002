@@ -1,149 +1,171 @@
 ---
-title: Pi4 SD-card recovery through Pi5
+title: Pi4 SD-card recovery through Pi5 over the managed LAN
 status: accepted
-scope: explicitly enabled standard-site Pi4 kiosk whose SD card was replaced after corruption or failure
-date: 2026-07-13
+scope: explicitly enabled standard Pi4 kiosk whose SD card was replaced after corruption or failure
+date: 2026-08-01
 source_of_truth: docs/runbooks/pi4-sd-recovery.md
 related_code:
   - scripts/deploy/recover-pi4.py
+  - infrastructure/ansible/playbooks/resolve-pi4-recovery-contract.yml
   - infrastructure/ansible/playbooks/recover-pi4.yml
   - infrastructure/ansible/playbooks/recover-pi4-verify.yml
 related_docs:
   - ../decisions/ADR-20260713-pi4-sd-recovery-bootstrap.md
   - ../guides/client-initial-setup.md
-validation: resolver, OAuth, recovery CLI, and isolated regression tests; blank-Pi4 acceptance drill pending
+  - ../plans/pi4-sd-recovery-lan-provider-execplan.md
+validation: LAN resolver and recovery CLI tests, Ansible checks, isolated regression tests; blank-Pi4 acceptance drill pending
 open_items:
-  - Create the recovery-scoped Tailscale OAuth client and store it in the encrypted Pi5 Vault.
+  - Prove Pi5 routing and DHCP reservations for every enabled terminal LAN.
   - Record the first physical recovery drill and measured elapsed time.
 ---
 
-# Pi4 SD-card recovery through Pi5
+# Pi4 SD-card recovery through Pi5 over the managed LAN
 
 ## Purpose and safety boundary
 
-Use this runbook only when an existing, inventory-managed Pi4 kiosk has a
-failed or corrupted SD card. It rebuilds the Pi4 from the Pi5's active immutable
-release and existing Inventory/Vault values. It is not a new-client setup and
-does not register a new `ClientDevice`.
+Use this runbook only when an existing, inventory-managed Pi4 kiosk has a failed
+or corrupted SD card. It rebuilds the Pi4 from the immutable release proven to
+be running on Pi5. It does not register a new `ClientDevice`, restore an old
+Tailscale identity, restore an SSH private key, or use a Tailscale account.
 
-The current recovery path is limited to standard-site hosts with
-`pi4_recovery_enabled: true` and Tailscale enabled. Talkplaza LAN/DNS recovery
-is not supported by this runbook and requires a separate ADR and procedure.
+Only the five standard Pi4 hosts with `pi4_recovery_enabled: true` are eligible.
+Assembly, Talkplaza, Pi3, Pi5, and replacement of the Pi4 board itself require
+separate acceptance. Run the command on Pi5 only. Use the normal release command
+for a healthy terminal.
 
-Run the recovery command on the Pi5 only. Normal application releases still use
-`scripts/update-all-clients.sh`; do not use this command for a healthy terminal
-or a normal version update.
+## One-time LAN preparation
 
-## One-time controller credential setup
+Each eligible host declares `pi4_recovery_lan_endpoint` in
+`infrastructure/ansible/inventory.yml`. That address is the recovery SSH address
+and the address saved for later Ansible runs. It must be stable; an arbitrary
+temporary DHCP lease is not acceptable.
 
-Before relying on this Runbook, create one Tailscale OAuth client for Pi4 SD
-recovery. Grant only Auth Keys creation and `tag:kiosk`; do not grant device,
-policy, DNS, or general administrative scopes. Store its values as
-`vault_tailscale_recovery_oauth_client_id` and
-`vault_tailscale_recovery_oauth_client_secret` in Pi5's encrypted
-`host_vars/raspberrypi5/vault.yml`. Never put either value in Inventory, shell
-history, tickets, recovery logs, or a Pi4 file. Revoke and replace the client
-if the Pi5 Vault or controller is suspected to be compromised.
+For the normal SD-only failure, the Pi4 board and its network-interface MAC
+address do not change. Preserve or create a DHCP reservation that maps that MAC
+address to the declared endpoint. If the Pi4 board is replaced, update the
+reservation and the reviewed Inventory value before recovery. Do not guess a
+free address.
 
-Recovery does not use `vault_tailscale_auth_key`. For each disconnected fresh
-Pi4, Pi5 requests a one-use, non-ephemeral, preauthorized `tag:kiosk` key whose
-unused lifetime is 600 seconds. The long-lived OAuth secret remains on Pi5.
-The recovery play sets Tailscale SSH off so the Pi5 public key continues to use
-standard OpenSSH, as required by the verification steps below.
+Pi5 must have an L3 route to the declared Pi4 address, and Pi4 must be able to
+reach the declared Pi5 LAN service address. `No route to host` is a hard stop;
+this procedure does not create inter-site routing. The current recorded
+addresses are:
 
-## Operator preparation
+| Inventory host | Pi4 LAN endpoint | Pi5 LAN service endpoint |
+| --- | --- | --- |
+| `raspberrypi4` | `192.168.10.224` | `192.168.10.230` |
+| `raspi4-robodrill01` | `192.168.10.236` | `192.168.10.230` |
+| `raspi4-fjv60-80` | `192.168.10.12` | `192.168.10.230` |
+| `raspi4-kensaku-stonebase01` | `192.168.10.238` | `192.168.10.230` |
+| `raspi4-sessaku-01` | `192.168.128.187` | `192.168.10.230` |
 
-First run the read-only plan command on Pi5. Replace the placeholders with the
-existing inventory hostname and a temporary LAN IPv4 address reachable from
-Pi5.
+The Sessaku entry crosses two private subnets and therefore needs an explicit
+router path. A successful read-only plan proves configuration, not live routing.
+
+## Read-only preparation
+
+Run `plan` on Pi5 with the target's declared LAN endpoint:
 
     cd /opt/RaspberryPiSystem_002
     python3 scripts/deploy/recover-pi4.py plan \
       --target <existing-pi4-hostname> \
-      --bootstrap-host <temporary-lan-ip>
+      --bootstrap-host <declared-lan-endpoint>
 
-The command must show the existing terminal user, a literal previous IPv4
-endpoint, an immutable 40-character release SHA, `"inventoryResolved": true`,
-and `"tailscaleAuth": {"mode": "oauth", "configured": true,
-"tag": "tag:kiosk"}`. If it reports missing OAuth credentials, an unresolved
-endpoint, an unavailable release marker, or inconsistent Blue/Green state,
-stop. Do not replace the SHA with `main`.
+The result must show the exact existing user, a literal previous endpoint, an
+immutable 40-character release SHA, `"inventoryResolved": true`, and:
 
-Write **Raspberry Pi OS Desktop (64-bit)** to the replacement SD card in
-Raspberry Pi Imager. In the same Imager customisation step, set all of the
-following:
+    "recoveryNetwork": {
+      "mode": "lan",
+      "configured": true,
+      "targetEndpoint": "<declared-lan-endpoint>",
+      "serverEndpoint": "<pi5-lan-endpoint>"
+    }
 
-1. The exact existing terminal user shown by `plan`.
-2. The correct Wi-Fi and a temporary LAN address that Pi5 can reach.
-3. SSH public-key authentication using the Pi5 controller public key.
-4. No password requirement for `sudo`.
+If the supplied address differs from Inventory, the LAN contract is absent, or
+Pi5 release evidence is inconsistent, stop. `plan` does not contact Pi4 and
+does not change Fleet State, runtime overrides, or recovery logs.
 
-The Pi5 public key is normally available as `~/.ssh/id_ed25519.pub` on Pi5.
+Before removing the failed SD, record the Pi4 board's wired or Wi-Fi MAC address
+from the router reservation. Isolate the old terminal from the network and keep
+its SD unmodified as a rollback artifact.
+
+## Replacement SD preparation
+
+Write Raspberry Pi OS Desktop (64-bit) with Raspberry Pi Imager. Configure the
+exact user printed by `plan`, the production Wi-Fi, SSH public-key access using
+Pi5's public key, and password-free sudo. Imager does not establish the router
+reservation; verify separately that the same Pi4 MAC receives the declared LAN
+address after boot.
+
 Do not manually install Git, Docker, Tailscale, NFC configuration, status-agent
-configuration, browser configuration, or application credentials on Pi4.
+configuration, browser configuration, or application credentials. Recovery
+recreates the application from the current Inventory/Vault and generates a
+fresh OS/SSH identity.
 
-Raspberry Pi Imager supports credentials, Wi-Fi, and remote access during OS
-customisation; Raspberry Pi OS also supports disabling the sudo password
-requirement during installation. See the [official getting-started guide](https://www.raspberrypi.com/documentation/computers/getting-started.html) and [official configuration guide](https://www.raspberrypi.com/documentation/computers/configuration.html).
+From Pi5, verify the route, expected host identity, and Pi4-to-Pi5 service path:
+
+    ping -c 3 <declared-lan-endpoint>
+    ssh -o BatchMode=yes <existing-user>@<declared-lan-endpoint> id -un
+    ssh <existing-user>@<declared-lan-endpoint> \
+      curl -kfsS https://<pi5-lan-endpoint>/api/system/health
+
+Stop if the address is assigned to a different device, SSH returns a different
+user, or the Pi5 service is unreachable.
 
 ## Recovery execution
 
-After the replacement Pi4 has booted and the specified temporary LAN address is
-reachable from Pi5, run:
+Run the confirmed command on Pi5:
 
     cd /opt/RaspberryPiSystem_002
     python3 scripts/deploy/recover-pi4.py run \
       --target <existing-pi4-hostname> \
-      --bootstrap-host <temporary-lan-ip> \
+      --bootstrap-host <declared-lan-endpoint> \
       --reason 'SD-card failure ticket or date' \
       --confirm-recovery
 
-The command first proves that the old production endpoint is not accepting SSH.
-It then confirms the supplied initial user, installs OS prerequisites, joins
-the new Pi4 to Tailscale, recreates configuration through existing Ansible
-roles, stores the new endpoint only on Pi5, and verifies standard SSH, Ansible,
-kiosk-browser, status-agent, NFC, optional barcode, and the kiosk URL.
+The coordinator acquires the shared Fleet Lock and resolves Inventory again. It
+refuses a reachable old production endpoint, confirms the bootstrap user,
+installs prerequisites, applies the shared/client/kiosk roles with
+`network_mode=local` and `tailscale_enabled=false`, observes the declared IPv4
+on Pi4, and only then saves the Pi5-local runtime override. The override keeps
+ordinary OpenSSH, Ansible, kiosk, status, and agent traffic on LAN for this host.
 
-Success is JSON with `"phase": "completed"`. The matching recovery record is
-under `logs/recovery/` on Pi5. The temporary LAN address is not retained as the
-normal endpoint; the Pi5-local runtime override contains the verified Tailscale
-address instead.
+Success is JSON with `"phase": "completed"`. The secret-free recovery record is
+under `logs/recovery/`; the ignored mode-0600 override is under
+`infrastructure/ansible/host_vars/<target>/recovery-runtime.yml` and must contain
+the LAN address, `network_mode: local`, and `tailscale_enabled: false`.
 
 ## Failure handling
 
 - `previous production endpoint still accepts TCP/22`: stop or isolate the old
-  Pi4 before retrying. This prevents two devices from sharing one identity.
-- `bootstrap host does not authenticate as the target inventory user`: rebuild
-  the SD settings with the user printed by `plan` and the Pi5 SSH public key.
-- Pi5 marker or Blue/Green validation failure: repair the Pi5 through its
-  standard release/runbook path first. Do not use a branch name as a substitute.
-- `Pi5 recovery OAuth credential is not configured`: create or rotate the
-  restricted OAuth client and update only the encrypted Pi5 Vault; do not fall
-  back to a reusable recovery key.
-- OAuth HTTP 401/403 or an unexpected key contract: stop and inspect the OAuth
-  scope and permitted tag. Transient connection, 429, and 5xx failures are
-  attempted at most three times; start a new confirmed run after correcting the
-  cause.
-- A failure after `runtime-endpoint-saved`: do not delete the new Tailscale node
-  automatically. Inspect the named recovery state JSON, correct the reported
-  issue, and repeat the confirmed command. The retained original endpoint makes
-  the duplicate-device check safe on retry.
+  terminal. Do not operate two devices as one inventory identity.
+- `bootstrap host must equal ... LAN recovery endpoint`: repair the DHCP
+  reservation or submit a reviewed Inventory change; do not bypass the check.
+- `bootstrap host does not authenticate as the target inventory user`: correct
+  the Imager user and Pi5 public key.
+- `No route to host`, timeout, or Pi5 health failure: repair the LAN/VLAN/router
+  path. This procedure has no external overlay fallback.
+- `does not own its ... LAN recovery address`: the rebuilt Pi4 did not receive
+  the declared address. Fix DHCP/static assignment and start a new run.
+- Pi5 release evidence failure: repair Pi5 through the normal release runbook;
+  never replace the immutable SHA with `main`.
+- Failure after `runtime-endpoint-saved`: inspect the named recovery JSON,
+  correct the fault, and use a new run ID. Do not delete the override until the
+  authoritative endpoint is known.
 
-No recovery command deletes old Tailscale nodes, restores Tailscale state, or
-restores user SSH private keys. Those actions require a separate operator
-decision because they can affect live identity and access control.
+A failed run does not restore Tailscale state, SSH private keys, or old machine
+identity. It closes the recovery Fleet run as failed and keeps the target
+evidence unknown.
 
 ## Physical acceptance drill
 
-Before relying on this in production, perform one drill with a disposable or
-known-empty Pi4 SD card. Start timing after OS/Wi-Fi/Imager configuration and
-the temporary LAN address are ready. Confirm that the command completes within
-60 minutes, then confirm the kiosk screen, one NFC read, barcode operation when
-enabled, and a normal Pi5 `ansible -i infrastructure/ansible/inventory.yml
-<target> -m ping`. Record the time and outcome in the next relevant incident or
-operations record; do not add narrative logs to `docs/INDEX.md`.
+First drill `raspberrypi4` with the original SD preserved and a blank or
+disposable replacement. Start timing after Imager, Wi-Fi, DHCP reservation, and
+Pi5 route checks are ready. Require `phase: completed` within 60 minutes.
 
-Also confirm that the new Tailscale node has `tag:kiosk`, and search the command
-output, recovery JSON, and runtime endpoint override for OAuth/auth-key
-material. None may be present. Preserve the old SD instead of erasing it, but
-do not restore its Tailscale state or SSH private keys to the replacement.
+Then verify normal OpenSSH, Ansible ping, `kiosk-browser.service`,
+`status-agent.timer`, the kiosk page through the Pi5 LAN endpoint, one real NFC
+read, and barcode only when enabled. Confirm that the runtime override contains
+only non-secret LAN/recovery metadata and that command/recovery output contains
+no status/NFC/client secrets. Record the deployed Pi5 SHA, Fleet run ID, elapsed
+time, route evidence, and functional results in the living ExecPlan.

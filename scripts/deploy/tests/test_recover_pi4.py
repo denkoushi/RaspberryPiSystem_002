@@ -8,6 +8,8 @@ from dataclasses import asdict
 from pathlib import Path
 from unittest import mock
 
+import yaml
+
 
 SCRIPT = Path(__file__).parents[1] / 'recover-pi4.py'
 SPEC = importlib.util.spec_from_file_location('recover_pi4', SCRIPT)
@@ -20,6 +22,8 @@ SPEC.loader.exec_module(MODULE)
 SHA = 'a' * 40
 PREVIOUS_SHA = 'b' * 40
 TIMESTAMP = '2026-07-15T00:00:00Z'
+LAN_TARGET = '192.168.10.55'
+LAN_SERVER = '192.168.10.230'
 
 
 def inventory_payload(
@@ -32,8 +36,7 @@ def inventory_payload(
         '_meta': {'hostvars': {
             server: {
                 'status_agent_client_id': 'raspberrypi5-server',
-                'vault_tailscale_recovery_oauth_client_id': 'oauth-client-id',
-                'vault_tailscale_recovery_oauth_client_secret': 'oauth-client-secret-not-written',
+                'lan_endpoint': LAN_SERVER,
             },
             target: {
                 'ansible_host': endpoint,
@@ -41,6 +44,7 @@ def inventory_payload(
                 'tailscale_enabled': True,
                 'manage_kiosk_browser': True,
                 'pi4_recovery_enabled': True,
+                'pi4_recovery_lan_endpoint': LAN_TARGET,
                 'status_agent_client_id': 'demo-status-client',
                 'status_agent_client_key': 'status-key-not-written',
                 'nfc_agent_client_id': 'demo-nfc-client',
@@ -61,14 +65,13 @@ def recovery_contract_payload(inventory, target):
     server = server_hosts[0]
     server_values = hostvars.get(server) or {}
     return {
-        'schemaVersion': 1,
+        'schemaVersion': 2,
         'target': {
             'host': target,
             'inventoryEndpoint': target_values.get('ansible_host', ''),
             'user': target_values.get('ansible_user', ''),
             'statusAgentClientId': target_values.get('status_agent_client_id', ''),
             'recoveryEnabled': target_values.get('pi4_recovery_enabled') is True,
-            'tailscaleEnabled': target_values.get('tailscale_enabled') is True,
             'kioskManaged': target_values.get('manage_kiosk_browser') is True,
             'nfcEnabled': bool(target_values.get('nfc_agent_client_id')),
             'barcodeEnabled': target_values.get('barcode_agent_enabled') is True,
@@ -85,13 +88,14 @@ def recovery_contract_payload(inventory, target):
             'host': server,
             'statusAgentClientId': server_values.get('status_agent_client_id', ''),
         },
-        'tailscaleAuth': {
-            'mode': 'oauth',
+        'recoveryNetwork': {
+            'mode': 'lan',
             'configured': bool(
-                server_values.get('vault_tailscale_recovery_oauth_client_id')
-                and server_values.get('vault_tailscale_recovery_oauth_client_secret')
+                target_values.get('pi4_recovery_lan_endpoint')
+                and server_values.get('lan_endpoint')
             ),
-            'tag': 'tag:kiosk',
+            'targetEndpoint': target_values.get('pi4_recovery_lan_endpoint', ''),
+            'serverEndpoint': server_values.get('lan_endpoint', ''),
         },
     }
 
@@ -163,6 +167,7 @@ class FakeRunner:
         fail_service=False,
         remote_sha=SHA,
         require_fleet_lock=False,
+        result_lan=LAN_TARGET,
     ):
         self.project = project
         self.inventory = inventory
@@ -171,6 +176,7 @@ class FakeRunner:
         self.fail_service = fail_service
         self.remote_sha = remote_sha
         self.require_fleet_lock = require_fleet_lock
+        self.result_lan = result_lan
         self.commands = []
 
     def run(self, command, *, capture=True, cwd=None):
@@ -218,7 +224,7 @@ class FakeRunner:
             result_path.parent.mkdir(parents=True, exist_ok=True)
             result_path.write_text(json.dumps({
                 'target': 'raspi4-demo',
-                'tailscaleIpv4': '100.100.5.6',
+                'lanIpv4': self.result_lan,
                 'releaseSha': SHA,
             }), encoding='utf-8')
             return ''
@@ -256,6 +262,32 @@ class RecoverPi4Test(unittest.TestCase):
                 'raspi4-demo', '192.168.10.55'
             )
         self.assertFalse((project / 'logs/deploy/fleet-release-state.lock').exists())
+
+    def test_production_inventory_enables_exactly_five_declared_lan_targets(self):
+        project = Path(__file__).parents[3]
+        inventory = yaml.safe_load(
+            (project / 'infrastructure/ansible/inventory.yml').read_text(
+                encoding='utf-8'
+            )
+        )
+        hosts = inventory['all']['children']['clients']['children']['kiosk']['hosts']
+        enabled = {
+            host: values.get('pi4_recovery_lan_endpoint')
+            for host, values in hosts.items()
+            if values.get('pi4_recovery_enabled') is True
+        }
+
+        self.assertEqual(
+            enabled,
+            {
+                'raspberrypi4': '{{ local_network.raspberrypi4_ip }}',
+                'raspi4-robodrill01': '{{ local_network.raspi4_robodrill01_ip }}',
+                'raspi4-fjv60-80': '{{ local_network.raspi4_fjv60_80_ip }}',
+                'raspi4-kensaku-stonebase01': '{{ local_network.raspi4_kensaku_stonebase01_ip }}',
+                'raspi4-sessaku-01': '{{ local_network.raspi4_sessaku_01_ip }}',
+            },
+        )
+        self.assertNotIn('pi4_recovery_enabled', hosts['raspi4-assembly-01'])
 
     def test_wrong_site_with_stale_active_run_changes_no_authoritative_state(self):
         temporary, project, inventory_path = self.make_project()
@@ -326,6 +358,23 @@ class RecoverPi4Test(unittest.TestCase):
         self.assertEqual(plan.release.sha, SHA)
         self.assertEqual(plan.release.source, 'fleet-state')
         self.assertFalse((project / 'logs/deploy/fleet-release-state.lock').exists())
+
+    def test_plan_changes_no_fleet_state_runtime_override_or_recovery_log(self):
+        temporary, project, inventory_path = self.make_project()
+        self.addCleanup(temporary.cleanup)
+        coordinator = self.coordinator(
+            project,
+            inventory_path,
+            FakeRunner(project, inventory_payload(), bluegreen_status()),
+        )
+        fleet_path = project / 'logs/deploy/fleet-release-state.json'
+        before = fleet_path.read_bytes()
+
+        coordinator.build_plan('raspi4-demo', LAN_TARGET)
+
+        self.assertEqual(fleet_path.read_bytes(), before)
+        self.assertFalse(coordinator.runtime_override_path('raspi4-demo').exists())
+        self.assertFalse((project / 'logs/recovery').exists())
 
     def test_plan_rejects_unknown_fleet_server(self):
         temporary, project, inventory_path = self.make_project()
@@ -452,6 +501,32 @@ class RecoverPi4Test(unittest.TestCase):
                         'raspi4-demo', '192.168.10.55'
                     )
 
+    def test_plan_rejects_non_rfc1918_recovery_endpoints(self):
+        for endpoint in ('100.100.5.6', '8.8.8.8', '127.0.0.1', 'fd7a:115c:a1e0::1'):
+            with self.subTest(endpoint=endpoint):
+                temporary, project, inventory_path = self.make_project()
+                self.addCleanup(temporary.cleanup)
+                inventory = inventory_payload()
+                inventory['_meta']['hostvars']['raspi4-demo'][
+                    'pi4_recovery_lan_endpoint'
+                ] = endpoint
+                runner = FakeRunner(project, inventory, bluegreen_status())
+
+                with self.assertRaisesRegex(MODULE.RecoveryError, 'RFC1918'):
+                    self.coordinator(project, inventory_path, runner).build_plan(
+                        'raspi4-demo', endpoint
+                    )
+
+    def test_plan_rejects_bootstrap_address_different_from_declared_lan(self):
+        temporary, project, inventory_path = self.make_project()
+        self.addCleanup(temporary.cleanup)
+        runner = FakeRunner(project, inventory_payload(), bluegreen_status())
+
+        with self.assertRaisesRegex(MODULE.RecoveryError, 'must equal'):
+            self.coordinator(project, inventory_path, runner).build_plan(
+                'raspi4-demo', '192.168.10.56'
+            )
+
     def test_plan_rejects_missing_required_secret_readiness(self):
         temporary, project, inventory_path = self.make_project()
         self.addCleanup(temporary.cleanup)
@@ -495,12 +570,14 @@ class RecoverPi4Test(unittest.TestCase):
         coordinator = self.coordinator(project, inventory_path, runner)
         initial_plan = MODULE.RecoveryPlan(
             target=MODULE.Target('raspi4-demo', 'demo-user', '100.80.10.20', 'client', True, False),
-            bootstrap_host='192.168.10.55',
+            bootstrap_host=LAN_TARGET,
             release=MODULE.Release(SHA, 'blue'),
             runtime_override_exists=False,
-            tailscale_auth=MODULE.TailscaleAuthReadiness('oauth', True, 'tag:kiosk'),
+            recovery_network=MODULE.RecoveryNetworkReadiness(
+                'lan', True, LAN_TARGET, LAN_SERVER
+            ),
         )
-        coordinator.write_runtime_override(initial_plan, 'pi4-recovery-test', '100.100.5.6')
+        coordinator.write_runtime_override(initial_plan, 'pi4-recovery-test', LAN_TARGET)
 
         contract = coordinator.resolve_inventory_contract('raspi4-demo')
         target, override_exists = coordinator.resolve_target(contract)
@@ -508,7 +585,9 @@ class RecoverPi4Test(unittest.TestCase):
         self.assertTrue(override_exists)
         self.assertEqual(target.original_host, '100.80.10.20')
         payload = json.loads(coordinator.runtime_override_path('raspi4-demo').read_text(encoding='utf-8'))
-        self.assertEqual(payload['ansible_host'], '100.100.5.6')
+        self.assertEqual(payload['ansible_host'], LAN_TARGET)
+        self.assertEqual(payload['network_mode'], 'local')
+        self.assertIs(payload['tailscale_enabled'], False)
         self.assertNotIn('secret', json.dumps(payload).lower())
 
     def test_failed_bootstrap_never_writes_runtime_override(self):
@@ -539,6 +618,30 @@ class RecoverPi4Test(unittest.TestCase):
         self.assertEqual(fleet['lastRun']['runId'], 'pi4-recovery-fail')
         self.assertEqual(fleet['lastRun']['status'], 'failed')
         self.assertEqual(fleet['fleet']['raspi4-demo']['evidence'], 'unknown')
+
+    def test_observed_lan_mismatch_never_writes_runtime_override(self):
+        temporary, project, inventory_path = self.make_project()
+        self.addCleanup(temporary.cleanup)
+        runner = FakeRunner(
+            project,
+            inventory_payload(),
+            bluegreen_status(),
+            result_lan='192.168.10.56',
+        )
+        coordinator = self.coordinator(project, inventory_path, runner)
+
+        with self.assertRaisesRegex(MODULE.RecoveryError, 'different LAN endpoint'):
+            coordinator.execute(
+                'raspi4-demo', LAN_TARGET, 'SD failure', 'pi4-recovery-lan-mismatch'
+            )
+
+        self.assertFalse(coordinator.runtime_override_path('raspi4-demo').exists())
+        state = json.loads(
+            (project / 'logs/recovery/pi4-recovery-lan-mismatch.json').read_text(
+                encoding='utf-8'
+            )
+        )
+        self.assertEqual(state['phase'], 'failed')
 
     def test_online_previous_endpoint_blocks_recovery_before_bootstrap(self):
         temporary, project, inventory_path = self.make_project()
@@ -618,7 +721,9 @@ class RecoverPi4Test(unittest.TestCase):
 
         self.assertEqual(state.payload['phase'], 'completed')
         override = json.loads(coordinator.runtime_override_path('raspi4-demo').read_text(encoding='utf-8'))
-        self.assertEqual(override['ansible_host'], '100.100.5.6')
+        self.assertEqual(override['ansible_host'], LAN_TARGET)
+        self.assertEqual(override['network_mode'], 'local')
+        self.assertIs(override['tailscale_enabled'], False)
         self.assertTrue(any(command[0] == 'ansible' and command[-2:] == ['-m', 'ping'] for command in runner.commands))
         self.assertTrue(any(command[0] == 'ansible-playbook' and str(command[3]).endswith('recover-pi4-verify.yml') for command in runner.commands))
         self.assertTrue(any(command[0] == 'ssh' and 'rev-parse' in command for command in runner.commands))
@@ -821,15 +926,38 @@ class RecoverPi4Test(unittest.TestCase):
             capture_output=True,
         )
 
-        self.assertEqual(json.loads(completed.stdout)['ansible_host'], '100.100.5.6')
+        values = json.loads(completed.stdout)
+        self.assertEqual(values['ansible_host'], LAN_TARGET)
+        self.assertEqual(values['network_mode'], 'local')
+        self.assertIs(values['tailscale_enabled'], False)
+        evaluated = subprocess.run(
+            [
+                'ansible',
+                '-i',
+                str(fixture),
+                'raspi4-recovery-precedence',
+                '-m',
+                'debug',
+                '-a',
+                'var=server_base_url',
+            ],
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        self.assertIn('server_base_url', evaluated.stdout)
+        self.assertIn(f'https://{LAN_SERVER}', evaluated.stdout)
 
-    def test_recovery_playbook_keeps_standard_openssh_enabled(self):
+    def test_recovery_playbook_enforces_lan_and_observes_the_address(self):
         playbook = (
             Path(__file__).parents[3]
             / 'infrastructure/ansible/playbooks/recover-pi4.yml'
         ).read_text(encoding='utf-8')
 
-        self.assertIn('tailscale_extra_args: --ssh=false', playbook)
+        self.assertIn("network_mode | default('') == 'local'", playbook)
+        self.assertIn('not (tailscale_enabled | default(true) | bool)', playbook)
+        self.assertIn('ip -o -4 address show scope global', playbook)
+        self.assertNotIn('tailscale status', playbook)
 
     def test_ansible_resolver_evaluates_templated_inventory_without_exporting_secrets(self):
         project = Path(__file__).parents[3]
@@ -855,12 +983,14 @@ class RecoverPi4Test(unittest.TestCase):
         self.assertEqual(contract.target.inventory_endpoint, '100.90.80.70')
         self.assertEqual(contract.target.user, 'template-user')
         self.assertTrue(contract.target.barcode_enabled)
-        self.assertTrue(contract.tailscale_auth.configured)
+        self.assertEqual(contract.recovery_network.target_endpoint, '192.168.10.77')
+        self.assertEqual(contract.recovery_network.server_endpoint, LAN_SERVER)
+        self.assertTrue(contract.recovery_network.configured)
         serialized = json.dumps(asdict(contract), sort_keys=True)
         self.assertNotIn('sentinel-', serialized)
         self.assertNotIn('clientKey', serialized)
 
-    def test_plan_reports_secret_free_resolver_and_oauth_readiness(self):
+    def test_plan_reports_secret_free_resolver_and_lan_readiness(self):
         temporary, project, inventory_path = self.make_project()
         self.addCleanup(temporary.cleanup)
         runner = FakeRunner(project, inventory_payload(), bluegreen_status())
@@ -871,21 +1001,24 @@ class RecoverPi4Test(unittest.TestCase):
 
         self.assertTrue(public_plan['inventoryResolved'])
         self.assertEqual(
-            public_plan['tailscaleAuth'],
-            {'mode': 'oauth', 'configured': True, 'tag': 'tag:kiosk'},
+            public_plan['recoveryNetwork'],
+            {
+                'mode': 'lan',
+                'configured': True,
+                'targetEndpoint': LAN_TARGET,
+                'serverEndpoint': LAN_SERVER,
+            },
         )
         self.assertNotIn('secret', json.dumps(public_plan).lower())
 
-    def test_plan_fails_closed_when_recovery_oauth_is_missing(self):
+    def test_plan_fails_closed_when_lan_contract_is_missing(self):
         temporary, project, inventory_path = self.make_project()
         self.addCleanup(temporary.cleanup)
         inventory = inventory_payload()
-        server_values = inventory['_meta']['hostvars']['raspberrypi5']
-        server_values['vault_tailscale_recovery_oauth_client_id'] = ''
-        server_values['vault_tailscale_recovery_oauth_client_secret'] = ''
+        inventory['_meta']['hostvars']['raspi4-demo']['pi4_recovery_lan_endpoint'] = ''
         runner = FakeRunner(project, inventory, bluegreen_status())
 
-        with self.assertRaisesRegex(MODULE.RecoveryError, 'OAuth credential is not configured'):
+        with self.assertRaisesRegex(MODULE.RecoveryError, 'LAN recovery is not configured'):
             self.coordinator(project, inventory_path, runner).build_plan(
                 'raspi4-demo', '192.168.10.55'
             )
