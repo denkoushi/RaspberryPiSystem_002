@@ -1451,13 +1451,63 @@ class DeployClassificationBaselineTest(unittest.TestCase):
             'activeRun': None,
             'lastRun': None,
             'fleet': {
-                'old-pi5': _verified_fleet_record('server', self.BASE),
-                'raspberrypi5': _verified_fleet_record('server', self.TARGET),
+                'old-pi5': _verified_fleet_record('server', BASE_SHA),
+                'raspberrypi5': _verified_fleet_record('server', TARGET_SHA),
             },
         }
         with patch.object(MODULE, 'read_fleet_release_state', return_value=fleet_state):
             self.assertIsNone(MODULE.read_verified_pi5_release())
 
+
+class MainIntegrationFacadeTest(unittest.TestCase):
+    def test_facade_reports_integrated_source_and_production(self):
+        hosts = [
+            {"currentSha": BASE_SHA},
+            {"currentSha": TARGET_SHA},
+        ]
+        with patch.object(
+            MODULE, "resolve_release_sha", return_value=(TARGET_SHA, [])
+        ), patch.object(MODULE, "_git_is_ancestor", return_value=True) as ancestry:
+            audit = MODULE.build_main_integration_audit(TARGET_SHA, hosts)
+
+        self.assertTrue(audit["completionEligible"])
+        self.assertEqual(audit["originMainSha"], TARGET_SHA)
+        self.assertEqual(audit["productionShas"], [TARGET_SHA, BASE_SHA])
+        self.assertEqual(ancestry.call_count, 3)
+
+    def test_facade_feature_branch_audit_adds_completion_warning(self):
+        payload = {
+            "sha": TARGET_SHA,
+            "hosts": [{"currentSha": BASE_SHA}],
+            "warnings": [],
+        }
+        with patch.object(
+            MODULE, "resolve_release_sha", return_value=(BASE_SHA, [])
+        ), patch.object(
+            MODULE,
+            "_git_is_ancestor",
+            side_effect=lambda candidate, _main: candidate == BASE_SHA,
+        ):
+            result = MODULE.attach_main_integration(payload)
+
+        self.assertTrue(result["mainIntegration"]["integrationPending"])
+        self.assertFalse(result["mainIntegration"]["completionEligible"])
+        self.assertIn("must not be reported complete", result["warnings"][-1])
+        self.assertEqual(payload["warnings"], [])
+
+    def test_remote_main_fallback_is_not_authoritative_for_completion(self):
+        with patch.object(
+            MODULE,
+            "resolve_release_sha",
+            return_value=(TARGET_SHA, ["used local origin/main ref; remote unreachable"]),
+        ), patch.object(MODULE, "_git_is_ancestor") as ancestry:
+            audit = MODULE.build_main_integration_audit(
+                TARGET_SHA, [{"currentSha": TARGET_SHA}]
+            )
+
+        self.assertEqual(audit["status"], "unavailable")
+        self.assertFalse(audit["completionEligible"])
+        ancestry.assert_not_called()
 
 class CanaryHoldTest(unittest.TestCase):
     TERMINAL_CLASSIFICATION = {
@@ -2135,6 +2185,7 @@ class PrintPlanShadowTest(unittest.TestCase):
             'main', 'infrastructure/ansible/inventory.yml', '--print-plan',
         ]))
         with patch.object(MODULE, 'resolve_release_sha', return_value=(sha, [])), \
+                patch.object(MODULE, '_git_is_ancestor', return_value=True), \
                 patch.object(MODULE, 'validate_print_plan_checkout'), \
                 patch.object(MODULE, 'canonical_print_plan_inventory', return_value='inventory.yml'), \
                 patch.object(
@@ -2180,6 +2231,7 @@ class PrintPlanShadowTest(unittest.TestCase):
         self.assertEqual(plan['affectedProfiles'], [])
         self.assertEqual(plan['serverIdentity']['clientId'], 'raspberrypi5-server')
         self.assertEqual(plan['warnings'], [])
+        self.assertTrue(plan['mainIntegration']['completionEligible'])
         self.assertIn(
             'route.external-server-build',
             plan['readinessPlan']['applicableGates'],

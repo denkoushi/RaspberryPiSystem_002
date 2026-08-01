@@ -38,6 +38,7 @@ from rolling_release import coordinator as release_coordinator
 from rolling_release import planner as release_planner
 from rolling_release import policy as release_policy
 from rolling_release import readiness_policy as release_readiness
+from rolling_release import main_integration as release_main_integration
 from rolling_release.release_warnings import record_observer_warning
 from rolling_release.backends import ansible as ansible_backend
 from rolling_release.backends import evidence as evidence_backend
@@ -1178,6 +1179,71 @@ def resolve_release_sha(branch: str) -> tuple[str | None, list[str]]:
         return None, [f"could not resolve SHA for branch {branch}: {error}"]
 
 
+def _git_is_ancestor(candidate: str, descendant: str) -> bool:
+    result = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(PROJECT),
+            "merge-base",
+            "--is-ancestor",
+            candidate,
+            descendant,
+        ],
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode == 0:
+        return True
+    if result.returncode == 1:
+        return False
+    raise RuntimeError("Git ancestry could not be evaluated")
+
+
+def build_main_integration_audit(
+    source_sha: Any,
+    hosts: Any,
+) -> dict[str, Any]:
+    """Bind source and production evidence to authoritative ``origin/main``."""
+
+    origin_main_sha, resolution_warnings = resolve_release_sha("main")
+    production_shas = (
+        [record.get("currentSha") for record in hosts if isinstance(record, dict)]
+        if isinstance(hosts, list)
+        else []
+    )
+    return release_main_integration.build_main_integration_audit(
+        source_sha=source_sha,
+        origin_main_sha=origin_main_sha,
+        production_shas=production_shas,
+        is_ancestor=_git_is_ancestor,
+        origin_main_authoritative=not resolution_warnings,
+    )
+
+
+def attach_main_integration(payload: dict[str, Any]) -> dict[str, Any]:
+    """Attach one completion audit to a plan or observed release payload."""
+
+    if not isinstance(payload, dict):
+        raise TypeError("release payload must be a dictionary")
+    result = dict(payload)
+    plan = result.get("plan") if isinstance(result.get("plan"), dict) else {}
+    source_sha = result.get("sha") or result.get("releaseSha") or plan.get("desiredSha")
+    hosts = result.get("hosts") if isinstance(result.get("hosts"), list) else plan.get("hosts")
+    audit = build_main_integration_audit(source_sha, hosts)
+    result["mainIntegration"] = audit
+    if audit["completionEligible"] is not True:
+        warning = (
+            "main integration is pending or unavailable; release verification may "
+            "continue, but repository work must not be reported complete"
+        )
+        warnings = list(result.get("warnings") or [])
+        if warning not in warnings:
+            warnings.append(warning)
+        result["warnings"] = warnings
+    return result
+
+
 def classify_release_impact(
     sha: str, release_marker: dict[str, Any] | None
 ) -> tuple[dict[str, Any] | None, list[str]]:
@@ -1486,7 +1552,7 @@ def build_print_plan(
     payload["readinessPlan"] = release_readiness.readiness_plan_payload(
         readiness_selection
     )
-    return payload
+    return attach_main_integration(payload)
 
 
 def _remote_run(args: argparse.Namespace) -> int:

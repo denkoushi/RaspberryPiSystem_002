@@ -50,6 +50,7 @@ If `EXEC_PLAN.md` must be touched, keep the entry short and limited to current s
 - Accepted inspection-drawing dimension/tolerance 1-page SOP (layout-pattern sample only; not full edit path): `docs/plans/kiosk-inspection-drawing-dimension-tolerance-sop-1page.md`
 - Active self-inspection confirm guard + draft WIP: `docs/plans/self-inspection-confirm-guard-wip-draft.md`
 - Completed kiosk self-inspection layout density: `docs/plans/kiosk-self-inspection-layout-density-execplan.md`
+- Active main-integration completion guard: `docs/plans/main-integration-completion-guard-execplan.md`
 - Active DGX ComfyUI Phase 1 follow-up: `docs/plans/dgx-comfyui-single-image-edit-workflow.md`
 - Active assembly torque-wrench traceability: `docs/plans/assembly-torque-wrench-traceability-execplan.md`
 - Active fleet-wide assembly torque-wrench connection lease: `docs/plans/assembly-torque-wrench-connection-lease-execplan.md`

@@ -17,6 +17,19 @@ from scripts.deploy.rolling_release.backends.command import CommandResult
 
 RUN_ID = "20260715-123456-a1b2c3"
 SHA = "a" * 40
+MAIN_INTEGRATION = {
+    "version": 1,
+    "status": "integrated",
+    "sourceSha": SHA,
+    "originMainSha": SHA,
+    "sourceShaIsInMain": True,
+    "productionSha": SHA,
+    "productionShas": [SHA],
+    "productionShaIsInMain": True,
+    "integrationPending": False,
+    "completionEligible": True,
+    "issues": [],
+}
 
 
 class Runtime:
@@ -83,7 +96,12 @@ class Runtime:
             "activationTargets": [],
             "verificationTargets": [],
             "terminalWork": [],
+            "mainIntegration": dict(MAIN_INTEGRATION),
         }
+
+    @staticmethod
+    def attach_main_integration(payload):
+        return {**payload, "mainIntegration": dict(MAIN_INTEGRATION)}
 
 
 def release_args(
@@ -469,7 +487,9 @@ class ReleaseApplicationTest(unittest.TestCase):
     def test_detach_returns_run_id_after_unit_acceptance(self):
         outcome, output, systemd, _control = self.launch(detach=True)
         self.assertEqual(outcome, 0)
-        self.assertIn(RUN_ID, output)
+        payload = json.loads(output)
+        self.assertEqual(payload["runId"], RUN_ID)
+        self.assertTrue(payload["mainIntegration"]["completionEligible"])
         self.assertIsNotNone(systemd.start_specs[0].readiness_admission)
         self.assertRegex(
             systemd.start_specs[0].readiness_admission["scopeDigest"],
@@ -483,6 +503,34 @@ class ReleaseApplicationTest(unittest.TestCase):
                 ("start", RUN_ID, False),
             ],
         )
+
+    def test_foreground_success_returns_the_sealed_main_integration_audit(self):
+        outcome, output, _systemd, _control = self.launch()
+
+        self.assertEqual(outcome, 0)
+        payload = json.loads(output)
+        self.assertEqual(payload["state"], "success")
+        self.assertEqual(payload["mainIntegration"], MAIN_INTEGRATION)
+
+    def test_status_attaches_a_fresh_main_integration_audit(self):
+        systemd = FakeSystemd()
+        control = FakeControl()
+        observed = {
+            "runId": RUN_ID,
+            "state": "success",
+            "releaseSha": SHA,
+            "hosts": [{"currentSha": SHA}],
+        }
+        with patch.object(
+            application, "build_backends", return_value=(systemd, control)
+        ), patch.object(
+            application, "observe", return_value=observed
+        ), patch("sys.stdout", new_callable=io.StringIO) as stdout:
+            outcome = application.status(RUN_ID, runtime=Runtime)
+
+        self.assertEqual(outcome, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["mainIntegration"], MAIN_INTEGRATION)
 
     def test_terminal_preflight_uses_only_six_exact_kiosk_work_hosts(self):
         terminal_report = {
@@ -803,6 +851,7 @@ class ReleaseApplicationTest(unittest.TestCase):
             "activationTargets": [],
             "verificationTargets": [target],
             "terminalWork": [],
+            "mainIntegration": dict(MAIN_INTEGRATION),
         }
         patches = (
             patch.object(application, "_require_clean_worktree"),

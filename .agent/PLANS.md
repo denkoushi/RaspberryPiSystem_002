@@ -21,6 +21,8 @@ NON-NEGOTIABLE REQUIREMENTS:
 * Every ExecPlan must enable a complete novice to implement the feature end-to-end without prior knowledge of this repo.
 * Every ExecPlan must produce a demonstrably working behavior, not merely code changes to "meet a definition".
 * Every ExecPlan must define every term of art in plain language or do not use it.
+* An ExecPlan that includes a commit, pull request, release, or production deployment must not be marked complete until the worktree is clean, the local branch matches its origin branch, every effective change and deployed SHA is contained in `origin/main`, and production SHA evidence is recorded separately. If `scripts/update-all-clients.sh` exposes `mainIntegration.completionEligible` and it is not `true`, the plan must remain in progress even when the release itself succeeded.
+* Approved feature-branch verification may proceed before merge, but its operational success is not repository completion. Record `integrationPending`, the PR or superseding change, required CI, main merge, and any merged-main verification as open work.
  
 Purpose and intent come first. Begin by explaining, in a few sentences, why the work matters from a user's perspective: what someone can do after this change that they could not do before, and how to see it working. Then guide the reader through the exact steps to achieve that outcome, including what to edit, what to run, and what they should observe.
  
