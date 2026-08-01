@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 593,
-    "totalLines": 166512,
-    "totalBytes": 12474819,
+    "totalLines": 166513,
+    "totalBytes": 12474926,
     "withFrontmatter": 267,
     "withStatus": 123,
     "sourceOfTruthDeclared": 87,
@@ -5898,8 +5898,8 @@
     },
     {
       "path": "docs/AI_START_HERE.md",
-      "lineCount": 117,
-      "byteSize": 6829,
+      "lineCount": 118,
+      "byteSize": 6936,
       "hasFrontmatter": true,
       "title": "AI Start Here",
       "status": null,
