@@ -108,6 +108,24 @@ pullのtimeoutまたは通信不能は`unavailable`としてローカルbuildへ
 feature branchを本番検証に使った場合は、同じ作業の完了条件にPR作成、必須CI、main
 統合を含める。main統合前の本番成功を「main反映済み」と表現してはならない。
 
+標準CLIは上記判断を `mainIntegration` JSONとして `--print-plan`、通常実行結果、
+`--status` に表示する。主要フィールドは次のとおり。
+
+- `sourceSha` / `originMainSha`: 候補SHAと権威あるremote `main` SHA
+- `sourceShaIsInMain`: 候補SHAが`origin/main`の祖先か
+- `productionSha`: 全hostが同じSHAならその値。混在時は`null`
+- `productionShas`: fleetで観測した重複なしの全SHA
+- `productionShaIsInMain`: 観測した全本番SHAが`origin/main`に含まれるか
+- `integrationPending`: 未統合または証拠不明が一つでもあれば`true`
+- `completionEligible`: main統合について作業完了を主張できる場合だけ`true`
+- `issues`: 判定不能理由を示す秘密を含まないstable code
+
+feature branchの先行検証では、release自体は`success`になり得るが、
+`mainIntegration.completionEligible=false`の間はExecPlanと作業報告を完了にしない。
+remote `main`へ到達できない、SHAが欠ける、Git ancestryを判定できない場合も
+Fail-Closedで`integrationPending=true`とする。この監査は対象host、canary、rollback、
+releaseの成功／失敗を変更せず、リポジトリ完了状態だけを別に表す。
+
 ローカルとGitHub Actionsの`deploy-contract`は、同じ実行入口を使う。
 
 ```bash

@@ -24,6 +24,13 @@
 - TalkPlaza Pi5は構想段階で実機が存在しないため、現時点では `inventory-talkplaza.yml` のplan確認までに留める。
 - 詳細な運用・復旧は `docs/guides/deployment.md` と `docs/runbooks/deploy-status-recovery.md` を現行正本とする。設計経緯は `docs/plans/deployment-foundation-refactor-execplan.md` に残す。Pi5本体故障・停電は単体構成の対象外である。
 
+## main統合と作業完了の必須監査（常時適用）
+
+- 実装、PR、リリース、デプロイを含む作業は、終了前に次の4状態をSHA付きで別々に確認する: (1) worktreeがclean、(2) ローカルbranchと対応するorigin branchが一致、(3) 有効な変更とデプロイ対象SHAが`origin/main`へ統合済み、(4) fleet各hostの本番実行SHAと検証証跡。
+- `scripts/update-all-clients.sh` の `--print-plan`、通常実行結果、`--status` にある `mainIntegration` を確認する。`completionEligible` が `true` でない場合、実機検証が成功していてもリポジトリ作業を「完了」「main反映済み」と報告してはならない。
+- feature branchからの承認済み先行検証は許可する。この場合、releaseの`success`と作業完了を区別し、`integrationPending=true`としてPR作成、必須CI、main merge、必要なmain再検証を未完了項目に残す。
+- staleまたは廃止branchを機械的に全mergeしない。有効な変更が別PR・別commitでmainへ到達した場合は、置換根拠を記録して元PRをsupersededとして扱う。
+
 ## ExecPlan（複雑な作業の必須手順）
 
 複雑な機能追加・大きなリファクタは、`.agent/PLANS.md` に従って ExecPlan を作成し、設計→実装→検証の順で進める。

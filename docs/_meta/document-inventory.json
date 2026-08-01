@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 592,
-    "totalLines": 166371,
-    "totalBytes": 12459510,
+    "totalLines": 166399,
+    "totalBytes": 12462780,
     "withFrontmatter": 266,
     "withStatus": 122,
     "sourceOfTruthDeclared": 86,
@@ -470,8 +470,8 @@
   "documents": [
     {
       "path": ".agent/PLANS.md",
-      "lineCount": 152,
-      "byteSize": 14540,
+      "lineCount": 154,
+      "byteSize": 15279,
       "hasFrontmatter": false,
       "title": "Codex Execution Plans (ExecPlans):",
       "status": null,
@@ -605,8 +605,8 @@
     },
     {
       "path": "AGENTS.md",
-      "lineCount": 86,
-      "byteSize": 6445,
+      "lineCount": 93,
+      "byteSize": 7611,
       "hasFrontmatter": false,
       "title": "AI Agent Entry Point",
       "status": null,
@@ -5898,8 +5898,8 @@
     },
     {
       "path": "docs/AI_START_HERE.md",
-      "lineCount": 116,
-      "byteSize": 6723,
+      "lineCount": 117,
+      "byteSize": 6826,
       "hasFrontmatter": true,
       "title": "AI Start Here",
       "status": null,
@@ -18772,8 +18772,8 @@
     },
     {
       "path": "docs/guides/deployment.md",
-      "lineCount": 290,
-      "byteSize": 25518,
+      "lineCount": 308,
+      "byteSize": 26780,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",

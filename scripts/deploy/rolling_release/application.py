@@ -181,6 +181,10 @@ def canary_approval_action(
 def status(run_id: str, *, runtime: Any) -> int:
     systemd, control = build_backends(runtime)
     payload = observe(run_id, systemd=systemd, control=control)
+    attach_main_integration = getattr(runtime, "attach_main_integration", None)
+    if not callable(attach_main_integration):
+        raise RuntimeError("main-integration audit adapter is unavailable")
+    payload = attach_main_integration(payload)
     print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
     return 1 if payload.get("state") == "not-found" else 0
 
@@ -862,6 +866,9 @@ def _launch(args: Any, *, runtime: Any) -> int:
     )
     if planning_snapshot.get("sha") != sha:
         raise RuntimeError("preflight planning SHA changed during launch")
+    main_integration = planning_snapshot.get("mainIntegration")
+    if not isinstance(main_integration, dict):
+        raise RuntimeError("preflight planning did not produce main-integration evidence")
     readiness_registry = readiness_policy.load_registry()
     readiness_selection = readiness_policy.select_readiness(
         readiness_registry,
@@ -977,7 +984,12 @@ def _launch(args: Any, *, runtime: Any) -> int:
             )
         print(
             json.dumps(
-                {"runId": run_id, "unitName": spec.unit_name, "state": "accepted"},
+                {
+                    "runId": run_id,
+                    "unitName": spec.unit_name,
+                    "state": "accepted",
+                    "mainIntegration": main_integration,
+                },
                 ensure_ascii=False,
                 sort_keys=True,
             )
@@ -994,6 +1006,7 @@ def _launch(args: Any, *, runtime: Any) -> int:
             f"release {run_id} was submitted but status reconciliation failed; "
             f"retry --status {run_id}: {error}"
         ) from error
+    payload["mainIntegration"] = main_integration
     print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
     outcome = payload.get("state")
     if outcome == "success":
