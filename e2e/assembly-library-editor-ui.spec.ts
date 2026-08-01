@@ -176,7 +176,7 @@ async function selectAssemblyMachineName(page: Page, machineName = 'L300KP'): Pr
 async function fillAssemblyTemplateStructure(page: Page): Promise<void> {
   const pane = page.locator('#assembly-procedure-pane');
   await pane.locator('#assembly-template-procedure-pattern').fill('標準');
-  await pane.locator('#assembly-template-name').fill('L300KP 標準組立');
+  await expect(pane.locator('#assembly-template-name')).toHaveValue('L300KP 標準 組立');
   await pane.locator('input[id$="-processNo"]').fill('10');
   await pane.locator('input[id$="-areaCode"]').fill('A1');
   await pane.locator('input[id$="-unitCode"]').fill('U1');
@@ -185,20 +185,18 @@ async function fillAssemblyTemplateStructure(page: Page): Promise<void> {
 
 async function fillSelectedAssemblyBolt(page: Page): Promise<void> {
   const settings = page.getByTestId('assembly-editor-settings-pane');
-  await settings.locator('input[id$="-nominalDiameter"]').fill('M6');
-  await settings.locator('input[id$="-boltLengthMm"]').fill('30');
-  await settings.locator('input[id$="-material"]').fill('SCM435');
-  await settings.locator('input[id$="-strengthClass"]').fill('10.9');
+  const groupSearch = settings.getByRole('combobox', {
+    name: '適合トルクレンチグループを検索'
+  });
+  await groupSearch.fill('M6 30mm');
+  await settings
+    .getByRole('option', { name: /M6 30mm 標準/ })
+    .click();
   await settings.locator('input[id$="-lowerLimit"]').fill('9');
   await settings.locator('input[id$="-nominalTorque"]').fill('10');
   await settings.locator('input[id$="-upperLimit"]').fill('11');
   await settings.locator('select[id$="-unit"]').selectOption('N·m');
-  await expect(
-    settings.locator('select[id$="-capabilityGroupId"] option')
-  ).toContainText(['締結条件を入力して選択', 'M6 30mm 標準（0型番）']);
-  await settings
-    .locator('select[id$="-capabilityGroupId"]')
-    .selectOption(guidedCreateCapabilityGroup.id);
+  await expect(settings).toContainText('M6 / 30mm / SCM435 / 10.9');
 }
 
 async function expectCssPixelCalloutLayout(page: Page) {
@@ -288,16 +286,47 @@ for (const viewport of viewports) {
     await expect(workspace).toBeVisible();
     await expect(canvasPane).toBeVisible();
     await expect(page.locator('#assembly-procedure-pane')).toBeVisible();
+    await expect(page.getByTestId('assembly-editor-settings-pane')).toHaveCount(0);
     await expectDirectChildrenOnOneRow(toolbar);
 
-    await page.getByRole('button', { name: '文書/工程を閉じる' }).click();
+    const header = page.getByTestId('assembly-template-editor-header');
+    const headerBox = await header.boundingBox();
+    expect(headerBox).not.toBeNull();
+    expect(headerBox!.height).toBeLessThanOrEqual(56);
+    await expectDirectChildrenOnOneRow(header);
+    await expect(page.getByTestId('assembly-template-creation-guide')).toHaveCount(0);
+
+    const initialRatio = await workspace.evaluate((element) => {
+      const canvas = element.querySelector<HTMLElement>('[data-testid="assembly-unified-editor-canvas-pane"]');
+      return canvas ? canvas.getBoundingClientRect().width / element.getBoundingClientRect().width : 0;
+    });
+    expect(initialRatio).toBeGreaterThanOrEqual(0.75);
+
+    const image = canvasPane.locator('img').last();
+    await expect(image).toBeVisible();
+    const beforeOverlay = await Promise.all([
+      workspace.boundingBox(),
+      canvasPane.boundingBox(),
+      image.boundingBox()
+    ]);
+    await page.getByRole('button', { name: /未完了 \d+件/ }).click();
+    await expect(page.getByRole('dialog', { name: 'テンプレートの未完了項目' })).toBeVisible();
+    const afterOverlay = await Promise.all([
+      workspace.boundingBox(),
+      canvasPane.boundingBox(),
+      image.boundingBox()
+    ]);
+    expect(afterOverlay).toEqual(beforeOverlay);
+    await page.keyboard.press('Escape');
+
+    await page.getByRole('button', { name: '文書/工程', exact: true }).click();
     const oneDocumentRatio = await workspace.evaluate((element) => {
       const canvas = element.querySelector<HTMLElement>('[data-testid="assembly-unified-editor-canvas-pane"]');
       return canvas ? canvas.getBoundingClientRect().width / element.getBoundingClientRect().width : 0;
     });
     expect(oneDocumentRatio).toBeGreaterThanOrEqual(0.75);
 
-    await page.getByRole('button', { name: '文書/工程 (1)' }).click();
+    await page.getByRole('button', { name: '文書/工程', exact: true }).click();
     await page.getByRole('button', { name: '文書・工程', exact: true }).click();
     await page.getByRole('button', { name: '文書追加' }).click();
     const dialog = page.getByRole('dialog', { name: '文書ライブラリ' });
@@ -521,7 +550,7 @@ for (const viewport of [
     expect(payload).toMatchObject({
       modelCode: 'L300KP',
       procedurePattern: '標準',
-      name: 'L300KP 標準組立'
+      name: 'L300KP 標準 組立'
     });
     expect(payload.areas[0]).toMatchObject({ processNo: '10' });
     expect(payload.areas[0]!.bolts[0]).toMatchObject({
@@ -645,22 +674,24 @@ test('assembly storyboard creates, edits, reuses, reorders and saves crop steps'
   );
   const sharedBolt = canvas.getByRole('button', { name: '丸数字1' });
   await expect(sharedBolt).toBeVisible();
+  const resizedImageBox = await sourceImage.boundingBox();
+  expect(resizedImageBox).not.toBeNull();
   await page.getByRole('button', { name: '矢視', exact: true }).click();
   await page.mouse.click(
-    imageBox!.x + imageBox!.width * 0.7,
-    imageBox!.y + imageBox!.height * 0.5
+    resizedImageBox!.x + resizedImageBox!.width * 0.7,
+    resizedImageBox!.y + resizedImageBox!.height * 0.5
   );
   await expect(canvas.locator('svg line')).toHaveCount(1);
 
   await page.getByRole('button', { name: '矩形追加', exact: true }).click();
   await page.mouse.move(
-    imageBox!.x + imageBox!.width * 0.2,
-    imageBox!.y + imageBox!.height * 0.25
+    resizedImageBox!.x + resizedImageBox!.width * 0.2,
+    resizedImageBox!.y + resizedImageBox!.height * 0.25
   );
   await page.mouse.down();
   await page.mouse.move(
-    imageBox!.x + imageBox!.width * 0.8,
-    imageBox!.y + imageBox!.height * 0.75
+    resizedImageBox!.x + resizedImageBox!.width * 0.8,
+    resizedImageBox!.y + resizedImageBox!.height * 0.75
   );
   await page.mouse.up();
 

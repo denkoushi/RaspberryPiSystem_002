@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import {
@@ -6,10 +8,12 @@ import {
   imageMarkerHasCalloutTip
 } from '../kiosk/image-canvas';
 
+import { AssemblyCapabilityGroupSelector } from './AssemblyCapabilityGroupSelector';
 import {
   buildAutomaticAssemblyBoltSpec,
   resolveAssemblyBoltSpec
 } from './assemblyTemplateDraft';
+import { capabilityGroupToAssemblyBoltCondition } from './assemblyTemplateInputAssistance';
 
 import type { AssemblyDraftBolt } from './assemblyTemplateDraft';
 import type { TorqueWrenchCapabilityGroupApi } from '../../api/domains/torque-wrenches';
@@ -17,7 +21,8 @@ import type { TorqueWrenchCapabilityGroupApi } from '../../api/domains/torque-wr
 type Props = {
   bolt: AssemblyDraftBolt | null;
   pageLabel: string;
-  compatibleGroups: TorqueWrenchCapabilityGroupApi[];
+  capabilityGroups: TorqueWrenchCapabilityGroupApi[];
+  capabilityCatalogStatus: 'loading' | 'ready' | 'error';
   busy: boolean;
   readOnly: boolean;
   inheritCondition: boolean;
@@ -29,6 +34,7 @@ type Props = {
   onRangeStartChange: (value: number) => void;
   onRangeEndChange: (value: number) => void;
   onApplyRange: () => void;
+  onRetryCapabilityCatalog: () => void;
 };
 
 function nullableNumber(raw: string): number | null {
@@ -40,7 +46,8 @@ function nullableNumber(raw: string): number | null {
 export function AssemblyTemplateBoltInspector({
   bolt,
   pageLabel,
-  compatibleGroups,
+  capabilityGroups,
+  capabilityCatalogStatus,
   busy,
   readOnly,
   inheritCondition,
@@ -51,8 +58,10 @@ export function AssemblyTemplateBoltInspector({
   onInheritConditionChange,
   onRangeStartChange,
   onRangeEndChange,
-  onApplyRange
+  onApplyRange,
+  onRetryCapabilityCatalog
 }: Props) {
+  const [rangeExpanded, setRangeExpanded] = useState(false);
   if (!bolt) {
     return (
       <>
@@ -64,9 +73,6 @@ export function AssemblyTemplateBoltInspector({
     );
   }
 
-  const currentGroupIsVisible = compatibleGroups.some(
-    (group) => group.id === bolt.capabilityGroupId
-  );
   const automaticSpec = buildAutomaticAssemblyBoltSpec(bolt);
   const effectiveSpec = resolveAssemblyBoltSpec(bolt);
 
@@ -124,6 +130,16 @@ export function AssemblyTemplateBoltInspector({
           次の丸数字へこの条件を引き継ぐ
         </label>
 
+        <Button
+          type="button"
+          variant="ghostOnDark"
+          className="min-h-10 w-full !px-2 !py-1 text-xs"
+          aria-expanded={rangeExpanded}
+          onClick={() => setRangeExpanded((current) => !current)}
+        >
+          条件を一括反映
+        </Button>
+        {rangeExpanded ? (
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-1 rounded border border-cyan-300/20 bg-cyan-950/20 p-1.5">
           <label className="grid min-w-0 gap-0.5 text-[0.65rem] font-semibold text-white/70">
             反映開始
@@ -155,79 +171,24 @@ export function AssemblyTemplateBoltInspector({
             条件反映
           </Button>
         </div>
+        ) : null}
 
         <div
           data-testid="assembly-editor-bolt-fields"
           className="grid min-w-0 gap-1.5"
         >
-          <div className="grid min-w-0 grid-cols-[minmax(0,0.75fr)_minmax(0,0.75fr)_minmax(0,1.5fr)] gap-1.5">
-            <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold text-white/70">
-              呼び径
-              <Input
-                id={`assembly-bolt-${bolt.id}-nominalDiameter`}
-                className="h-10 min-w-0 !px-2 !py-1 text-sm"
-                value={bolt.nominalDiameter ?? ''}
-                maxLength={40}
-                disabled={busy || readOnly}
-                onChange={(event) =>
-                  onPatch(bolt.id, {
-                    nominalDiameter: event.target.value,
-                    capabilityGroupId: null
-                  })
-                }
-              />
-            </label>
-            <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold text-white/70">
-              長さ (mm)
-              <Input
-                id={`assembly-bolt-${bolt.id}-boltLengthMm`}
-                className="h-10 min-w-0 !px-2 !py-1 text-sm"
-                type="number"
-                min={0}
-                value={bolt.boltLengthMm ?? ''}
-                disabled={busy || readOnly}
-                onChange={(event) =>
-                  onPatch(bolt.id, {
-                    boltLengthMm: nullableNumber(event.target.value),
-                    capabilityGroupId: null
-                  })
-                }
-              />
-            </label>
-            <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold text-white/70">
-              材質
-              <Input
-                id={`assembly-bolt-${bolt.id}-material`}
-                className="h-10 min-w-0 !px-2 !py-1 text-sm"
-                value={bolt.material ?? ''}
-                maxLength={80}
-                disabled={busy || readOnly}
-                onChange={(event) =>
-                  onPatch(bolt.id, {
-                    material: event.target.value,
-                    capabilityGroupId: null
-                  })
-                }
-              />
-            </label>
-          </div>
-
-          <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold text-white/70">
-            強度区分
-            <Input
-              id={`assembly-bolt-${bolt.id}-strengthClass`}
-              className="h-10 min-w-0 !px-2 !py-1 text-sm"
-              value={bolt.strengthClass ?? ''}
-              maxLength={80}
-              disabled={busy || readOnly}
-              onChange={(event) =>
-                onPatch(bolt.id, {
-                  strengthClass: event.target.value,
-                  capabilityGroupId: null
-                })
-              }
-            />
-          </label>
+          <AssemblyCapabilityGroupSelector
+            boltId={bolt.id}
+            selectedGroupId={bolt.capabilityGroupId ?? null}
+            storedCondition={bolt}
+            groups={capabilityGroups}
+            catalogStatus={capabilityCatalogStatus}
+            disabled={busy || readOnly}
+            onSelect={(group) =>
+              onPatch(bolt.id, capabilityGroupToAssemblyBoltCondition(group))
+            }
+            onRetry={onRetryCapabilityCatalog}
+          />
 
           <div className="grid min-w-0 grid-cols-4 gap-1.5">
             {([
@@ -267,29 +228,6 @@ export function AssemblyTemplateBoltInspector({
               </select>
             </label>
           </div>
-
-          <label className="grid min-w-0 gap-0.5 text-[0.68rem] font-semibold text-white/70">
-            適合トルクレンチグループ
-            <select
-              id={`assembly-bolt-${bolt.id}-capabilityGroupId`}
-              className="h-10 min-w-0 w-full rounded border border-white/10 bg-slate-950 px-2 text-sm text-white"
-              value={bolt.capabilityGroupId ?? ''}
-              disabled={busy || readOnly}
-              onChange={(event) =>
-                onPatch(bolt.id, { capabilityGroupId: event.target.value || null })
-              }
-            >
-              <option value="">締結条件を入力して選択</option>
-              {bolt.capabilityGroupId && !currentGroupIsVisible ? (
-                <option value={bolt.capabilityGroupId}>現在の選択は無効</option>
-              ) : null}
-              {compatibleGroups.map((group) => (
-                <option key={group.id} value={group.id}>
-                  {group.name}（{group.models.length}型番）
-                </option>
-              ))}
-            </select>
-          </label>
 
           <div className="rounded border border-white/10 bg-slate-950/55 p-2 text-[0.68rem]">
             <div className="font-semibold text-white/70">Excel出力用ボルト仕様</div>

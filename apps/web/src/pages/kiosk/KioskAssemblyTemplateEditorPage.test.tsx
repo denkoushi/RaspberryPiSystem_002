@@ -297,6 +297,7 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     await authenticate();
     await screen.findByRole('heading', { name: '組立テンプレート新規' });
 
+    fireEvent.click(screen.getByRole('button', { name: /未完了 \d+件/ }));
     fireEvent.click(
       screen.getByRole('button', { name: '手順パターンを入力してください。' })
     );
@@ -306,6 +307,43 @@ describe('KioskAssemblyTemplateEditorPage', () => {
         document.getElementById('assembly-template-procedure-pattern')
       ).toHaveFocus()
     );
+  });
+
+  it('keeps the right inspector closed until the operator requests step settings', async () => {
+    renderRoute(`/kiosk/assembly/templates/new?procedureDocumentId=${DOCUMENT_ID}`);
+    await authenticate();
+    await screen.findByRole('heading', { name: '組立テンプレート新規' });
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '手順設定' })).toBeEnabled()
+    );
+    expect(screen.queryByTestId('assembly-editor-settings-pane')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '手順設定' }));
+    expect(await screen.findByTestId('assembly-editor-settings-pane')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '設定を閉じる' }));
+    expect(screen.queryByTestId('assembly-editor-settings-pane')).not.toBeInTheDocument();
+  });
+
+  it('suggests a template name, preserves a manual override, and can restore automation', async () => {
+    renderRoute('/kiosk/assembly/templates/new');
+    await authenticate();
+    await screen.findByRole('heading', { name: '組立テンプレート新規' });
+    await selectMachineName();
+
+    const pattern = document.getElementById(
+      'assembly-template-procedure-pattern'
+    ) as HTMLInputElement;
+    const name = document.getElementById('assembly-template-name') as HTMLInputElement;
+    expect(pattern).toBeInstanceOf(HTMLInputElement);
+    expect(name).toBeInstanceOf(HTMLInputElement);
+    fireEvent.change(pattern, { target: { value: '標準' } });
+    expect(name).toHaveValue('L300KP 標準 組立');
+
+    fireEvent.change(name, { target: { value: '現場向け名称' } });
+    fireEvent.change(pattern, { target: { value: '夜勤' } });
+    expect(name).toHaveValue('現場向け名称');
+    fireEvent.click(screen.getByRole('button', { name: '自動提案に戻す' }));
+    expect(name).toHaveValue('L300KP 夜勤 組立');
   });
 
   it('posts only after a complete clone is given a machine name and preserves its custom bolt display name', async () => {

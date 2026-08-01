@@ -30,11 +30,11 @@ The observable result is on the kiosk assembly template create route. At 1366 by
 
 - [x] (2026-08-01 01:39Z) Confirmed a clean `main`, fast-forwarded from `origin/main`, and created `feat/assembly-template-editor-density`.
 - [x] (2026-08-01 01:39Z) Re-read the governing repository, documentation, architecture, UI-quality, Git, and test rules and inspected the current editor, readiness, API, persistence, and automated tests.
-- [ ] Commit this ExecPlan and its short discovery link before feature code.
-- [ ] Integrate the four-stage guide into the editor header and move issue details into a non-layout-shifting popover.
-- [ ] Decouple right-inspector visibility from the selected procedure step.
-- [ ] Add safe input assistance for the template name, document display label, capability group, range application, and area layout.
-- [ ] Add and update focused unit, component, page, and Playwright tests.
+- [x] (2026-08-01 01:42Z) Committed this ExecPlan and its short discovery link as `75432528` before feature code.
+- [x] (2026-08-01 01:57Z) Integrated the four-stage guide into the editor header and moved issue details into a viewport-clamped popover.
+- [x] (2026-08-01 01:57Z) Decoupled right-inspector visibility from the selected procedure step with explicit `closed`, `step`, and `markers` modes.
+- [x] (2026-08-01 01:57Z) Added safe input assistance for the template name, document display label, capability group, range application, and area layout.
+- [x] (2026-08-01 01:57Z) Added and updated focused unit, component, page, and Playwright tests; 331 Web test files with 1,665 tests passed, and the target Playwright file passed 15 of 16 scenarios before its one stale-geometry scenario was corrected and rerun successfully.
 - [ ] Run migration, isolated PostgreSQL, SQL, EXPLAIN, full test, build, and documentation validation and record evidence.
 
 ## Surprises & Discoveries
@@ -47,6 +47,8 @@ The observable result is on the kiosk assembly template create route. At 1366 by
   Evidence: process number, area code, unit code, and area name remain required by the API and are consumed by summaries or Excel output.
 - Observation: the repository already has an isolated end-to-end validation script that provisions labeled disposable PostgreSQL resources, checks SQL persistence, and requires the fastener index in EXPLAIN output.
   Evidence: `scripts/test/validate-assembly-template-guided-create.sh` owns a container, volume, network, dynamic port, and cleanup trap.
+- Observation: one storyboard E2E scenario cached the document image rectangle before the first marker selection; the new initial closed inspector intentionally changes that rectangle when marker settings open.
+  Evidence: the first target Playwright run passed 15 of 16 tests. Re-measuring the image after inspector opening made the crop scenario pass and better models the responsive UI.
 
 ## Decision Log
 
@@ -68,7 +70,7 @@ The observable result is on the kiosk assembly template create route. At 1366 by
 
 ## Outcomes & Retrospective
 
-Implementation is in progress. No public contract, existing database, deployment, or remote branch has been changed.
+The UI implementation and focused automated validation are complete. Isolated PostgreSQL, migration, SQL, EXPLAIN, full build, and final documentation validation remain. No public contract, existing database, deployment, or remote branch has been changed.
 
 ## Context and Orientation
 
@@ -132,4 +134,4 @@ Validation evidence will be appended here as implementation progresses.
 
 Add only Web-internal interfaces: a guide presentation model derived from readiness, an inspector mode union equivalent to `'closed' | 'step' | 'markers'`, a pure template-name suggestion function, and a pure capability-group-to-bolt snapshot function. Continue to use `AnchoredDropdownPortal` for viewport placement and existing button/input primitives for kiosk touch sizing. Do not introduce a new dependency.
 
-Revision note (2026-08-01): Created the implementation-ready plan after repository, contract, UI, test, and Docker validation analysis so work can be resumed safely from this file alone.
+Revision note (2026-08-01): Created the implementation-ready plan after repository, contract, UI, test, and Docker validation analysis so work can be resumed safely from this file alone. Updated at 01:57Z with implemented milestones, focused test evidence, and the responsive-geometry E2E discovery.
