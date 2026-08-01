@@ -16,7 +16,7 @@ When a Pi4 SD card fails, the operator buys a replacement SD card, installs Rasp
 - [x] (2026-08-01 JST) Corrected current/original endpoint history, duplicate SSH-identity guards, runtime metadata, CLI output, and recovery playbook address proof.
 - [x] (2026-08-01 JST) Expanded focused coverage from 37 to 43 tests, passed all three Ansible syntax checks and six production-shaped controller-only resolutions, and updated the Runbook, ADR, setup guide, and historical-plan status.
 - [x] (2026-08-01 JST) Passed Node 22.23.1/pnpm 9.15.9 canonical deploy contracts: 962 Python tests, 157 isolated migrations and current status, indexed SQL EXPLAIN, 20 API tests, Ansible contracts, and cleanup with zero new UUID resources.
-- [ ] Commit implementation, tests, and documentation by intent and prepare a reviewable handoff. Push, PR, merge, production deployment, and a physical SD drill remain separate gates requiring the relevant approval.
+- [x] (2026-08-01 JST) Committed implementation, tests, and documentation in three reviewable local intent commits and prepared a clean handoff. Push, PR, merge, production deployment, and a physical SD drill remain separate gates requiring the relevant approval.
 
 ## Surprises & Discoveries
 
@@ -58,7 +58,7 @@ When a Pi4 SD card fails, the operator buys a replacement SD card, installs Rasp
 
 ## Outcomes & Retrospective
 
-Local implementation and validation are complete. The base is the merged and Pi5-deployed LAN recovery implementation at `426d959f…`, whose read-only plans succeeded for all five enabled targets but whose fixed-address safety premise failed against two live factory terminals. The new schema-v3 contract resolves all five enabled production hosts as configured and keeps Assembly disabled; 43 focused tests and the complete 962-test deploy-contract suite prove dynamic addressing, SSH identity, isolated database, and deployment behavior. Intent commits, repository integration, production deployment, and the physical drill remain open. This plan is not complete until changes are in `origin/main`, Pi5 runs the exact merged SHA, all five dynamic plans succeed in their real networks, and a preserved-old-SD blank-card drill reaches verified completion with recorded evidence.
+Local implementation, validation, and intent commits are complete. The base is the merged and Pi5-deployed LAN recovery implementation at `426d959f…`, whose read-only plans succeeded for all five enabled targets but whose fixed-address safety premise failed against two live factory terminals. The new schema-v3 contract resolves all five enabled production hosts as configured and keeps Assembly disabled; 43 focused tests and the complete 962-test deploy-contract suite prove dynamic addressing, SSH identity, isolated database, and deployment behavior. Repository integration, production deployment, and the physical drill remain open. This plan is not complete until changes are in `origin/main`, Pi5 runs the exact merged SHA, all five dynamic plans succeed in their real networks, and a preserved-old-SD blank-card drill reaches verified completion with recorded evidence.
 
 ## Context and Orientation
 
@@ -125,6 +125,7 @@ Local intent commits:
 
     implementation: d31aa17cf282e5d26b295f9c2dff205778090073
     tests:          e4e93d740646298d048697ba278f584a54b5d270
+    documentation:  488d69abb3e2394fa603e5447ae164bf391a7a36
 
 Production evidence from the base implementation:
 
@@ -169,3 +170,5 @@ In `scripts/deploy/recovery/bootstrap.py`, expose immutable identity data and a 
 The concrete verifier may expose a context-managed pinned connection object instead if implementation proves that lifetime ownership clearer, but only public identity fields may enter plan JSON. `RecoveryNetworkProvider` stays pure and receives a dynamic bootstrap address plus schema-v3 `RecoveryNetworkReadiness`. `RecoveryCoordinator` owns sequencing, Fleet Lock/state, duplicate checks, temporary key-pinning lifetime, playbook calls, endpoint persistence, and verification. No HTTP API, Prisma schema, migration, or application database interface changes are permitted.
 
 Revision note (2026-08-01): Created after live factory evidence and user clarification established that the replacement SD's current IP may differ from the previous OS. This plan supersedes the fixed target endpoint decision in `pi4-sd-recovery-lan-provider-execplan.md` while retaining its external-service-free LAN design.
+
+Revision note (2026-08-01, local completion): Recorded the schema-v3 dynamic endpoint implementation, pinned SSH identity, repeat-recovery guards, 43 focused tests, six production resolver checks, full isolated PostgreSQL/deploy-contract evidence, Docker cleanup, and three local intent commits. Publication and production gates remain open.
