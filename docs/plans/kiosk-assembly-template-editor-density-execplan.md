@@ -13,7 +13,7 @@ related_docs:
 validation:
   - scripts/test/validate-assembly-template-guided-create.sh
 open_items:
-  - Implement and validate the density redesign on the feature branch.
+  - Push, PR, review, merge, and merged-main verification require separate authorization.
 ---
 
 # Reclaim the assembly template document workspace
@@ -35,7 +35,8 @@ The observable result is on the kiosk assembly template create route. At 1366 by
 - [x] (2026-08-01 01:57Z) Decoupled right-inspector visibility from the selected procedure step with explicit `closed`, `step`, and `markers` modes.
 - [x] (2026-08-01 01:57Z) Added safe input assistance for the template name, document display label, capability group, range application, and area layout.
 - [x] (2026-08-01 01:57Z) Added and updated focused unit, component, page, and Playwright tests; 331 Web test files with 1,665 tests passed, and the target Playwright file passed 15 of 16 scenarios before its one stale-geometry scenario was corrected and rerun successfully.
-- [ ] Run migration, isolated PostgreSQL, SQL, EXPLAIN, full test, build, and documentation validation and record evidence.
+- [x] (2026-08-01 02:12Z) Ran migration, isolated PostgreSQL, SQL, EXPLAIN, full test, lint, build, target Playwright, and cleanup validation successfully.
+- [ ] Integration pending: push, PR, review, merge, and merged-main verification are not authorized in this task.
 
 ## Surprises & Discoveries
 
@@ -49,6 +50,8 @@ The observable result is on the kiosk assembly template create route. At 1366 by
   Evidence: `scripts/test/validate-assembly-template-guided-create.sh` owns a container, volume, network, dynamic port, and cleanup trap.
 - Observation: one storyboard E2E scenario cached the document image rectangle before the first marker selection; the new initial closed inspector intentionally changes that rectangle when marker settings open.
   Evidence: the first target Playwright run passed 15 of 16 tests. Re-measuring the image after inspector opening made the crop scenario pass and better models the responsive UI.
+- Observation: the first full validation run exposed an existing environment-isolation defect in the measuring-instrument genre image integration test.
+  Evidence: the validator sets canonical `FILE_STORAGE_ROOT`, while the test changed only the lower-priority `PHOTO_STORAGE_DIR` and then asserted against that ignored directory. Preserving and setting both variables made the test independent of its caller; the second full run passed all 2,513 API tests.
 
 ## Decision Log
 
@@ -67,10 +70,15 @@ The observable result is on the kiosk assembly template create route. At 1366 by
 - Decision: Do not add an ADR unless implementation discovers a need to change a public or persisted contract.
   Rationale: this plan changes an existing presentation and interaction without a new architectural boundary.
   Date/Author: 2026-08-01 / Codex
+- Decision: Correct the existing genre-image integration test's storage-root isolation rather than weakening the all-API validation gate.
+  Rationale: the failure was deterministic under the validator's safe canonical storage root, and preserving/restoring both environment variables improves test isolation without changing production behavior.
+  Date/Author: 2026-08-01 / Codex
 
 ## Outcomes & Retrospective
 
-The UI implementation and focused automated validation are complete. Isolated PostgreSQL, migration, SQL, EXPLAIN, full build, and final documentation validation remain. No public contract, existing database, deployment, or remote branch has been changed.
+The local feature-branch implementation is complete. The four-stage guide now uses the local header and a non-layout-shifting issue popover; the initial right inspector is closed; optional controls are disclosed on demand; automatic naming and capability-group-first fastener entry reduce repeated input. Public API, Prisma, database, shared DTO, and Excel contracts did not change.
+
+The complete isolated validation passed after correcting one pre-existing test-environment isolation defect. No existing database or Docker resource was touched, and the validator reported zero labeled resource residue. Repository integration remains intentionally pending because push, PR, merge, and deployment were not authorized.
 
 ## Context and Orientation
 
@@ -128,10 +136,24 @@ Baseline evidence before implementation:
     expanded document image: 1033 x 689 px
     collapsed document image: 1357 x 905 px
 
-Validation evidence will be appended here as implementation progresses.
+Final validation evidence follows.
+
+Final local evidence:
+
+    candidate migration preflight: passed; no candidate migrations
+    Prisma schema: valid
+    fresh database migrations: 157 applied and current
+    REQUIRED traceability integration and SQL persistence checks: passed
+    EXPLAIN fixture count: 20100
+    EXPLAIN index: TorqueWrenchCapabilityGroup_idx_fastener_active
+    API: 478 files passed, 2 skipped; 2513 tests passed, 7 skipped
+    Web: 331 files passed; 1665 tests passed
+    lint and shared/API/Web production builds: passed
+    Playwright assembly editor: 16 passed at 1366x768, 1920x1080, and 900x900 coverage
+    Docker cleanup: container=0, volume=0, network=0 for the validation label
 
 ## Interfaces and Dependencies
 
 Add only Web-internal interfaces: a guide presentation model derived from readiness, an inspector mode union equivalent to `'closed' | 'step' | 'markers'`, a pure template-name suggestion function, and a pure capability-group-to-bolt snapshot function. Continue to use `AnchoredDropdownPortal` for viewport placement and existing button/input primitives for kiosk touch sizing. Do not introduce a new dependency.
 
-Revision note (2026-08-01): Created the implementation-ready plan after repository, contract, UI, test, and Docker validation analysis so work can be resumed safely from this file alone. Updated at 01:57Z with implemented milestones, focused test evidence, and the responsive-geometry E2E discovery.
+Revision note (2026-08-01): Created the implementation-ready plan after repository, contract, UI, test, and Docker validation analysis so work can be resumed safely from this file alone. Updated at 01:57Z with implemented milestones, focused test evidence, and the responsive-geometry E2E discovery. Updated at 02:12Z with full isolated validation, test-harness isolation recovery, cleanup evidence, and explicit integration-pending status.
