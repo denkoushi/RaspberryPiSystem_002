@@ -17,7 +17,7 @@
   "summary": {
     "documentCount": 593,
     "totalLines": 166512,
-    "totalBytes": 12474224,
+    "totalBytes": 12474819,
     "withFrontmatter": 267,
     "withStatus": 123,
     "sourceOfTruthDeclared": 87,
@@ -5899,7 +5899,7 @@
     {
       "path": "docs/AI_START_HERE.md",
       "lineCount": 117,
-      "byteSize": 6826,
+      "byteSize": 6829,
       "hasFrontmatter": true,
       "title": "AI Start Here",
       "status": null,
@@ -33900,10 +33900,10 @@
     {
       "path": "docs/plans/main-integration-completion-guard-execplan.md",
       "lineCount": 113,
-      "byteSize": 11444,
+      "byteSize": 12036,
       "hasFrontmatter": true,
       "title": "Main Integration Completion Guard ExecPlan",
-      "status": "in_progress",
+      "status": "complete",
       "source_of_truth": "this file",
       "localLinks": [],
       "inboundCount": 0,

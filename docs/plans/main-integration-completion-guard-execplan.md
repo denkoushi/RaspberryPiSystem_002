@@ -1,6 +1,6 @@
 ---
 title: Main Integration Completion Guard ExecPlan
-status: in_progress
+status: complete
 scope: repository completion policy and rolling-release integration evidence
 date: 2026-08-01
 source_of_truth: this file
@@ -12,10 +12,8 @@ related_code:
 related_docs:
   - docs/AI_START_HERE.md
   - docs/guides/deployment.md
-validation: passed_local
-open_items:
-  - create and merge the pull request after required CI
-  - synchronize main and record the final no-op production plan
+validation: passed
+open_items: []
 ---
 
 # Make main integration a mandatory completion check
@@ -36,7 +34,7 @@ Feature-branch production verification remains possible. A release may succeed o
 - [x] (2026-08-01) Added the audit to `--print-plan`, foreground/detached launch output, and `--status` without changing release mutation selection.
 - [x] (2026-08-01) Added agent and ExecPlan completion rules and updated the deployment runbook contract.
 - [x] (2026-08-01) Passed 154 focused Python tests, all 943 Python deployment-contract tests, the complete shell/Ansible/Web/PostgreSQL deployment contract, documentation audit, and Git checks.
-- [ ] Create a PR, pass required CI, merge it, synchronize local `main`, and prove the final production plan remains a no-op.
+- [x] (2026-08-01) Merged PR #1142 as `cd10814816757d03c76b46db26ab25abd3e484e9`, passed the main push CI, synchronized local `main`, and proved the production plan selects zero devices with `completionEligible=true`.
 
 ## Surprises & Discoveries
 
@@ -65,7 +63,9 @@ Feature-branch production verification remains possible. A release may succeed o
 
 ## Outcomes & Retrospective
 
-The implementation now emits one fail-closed `mainIntegration` object across planning, launch, and status paths while preserving release success and mutation selection. Repository instructions use that object as a mandatory completion gate. Local validation is complete; the plan remains in progress until the feature branch is merged, local `main` is synchronized, and the merged-main no-op plan is recorded with exact SHAs.
+The implementation emits one fail-closed `mainIntegration` object across planning, launch, and status paths while preserving release success and mutation selection. Repository instructions now use that object as a mandatory completion gate. PR #1142 passed every required check and merged as `cd10814816757d03c76b46db26ab25abd3e484e9`; the subsequent main push CI run `30676604995` also passed.
+
+The merged-main production plan observed all eight fleet hosts at verified application SHA `0132e82f8bbf3d672f1a68e12b2656cdf9942c8c`, selected zero mutation targets, and returned no warnings. Its audit reported source and `origin/main` as `cd10814816757d03c76b46db26ab25abd3e484e9`, both source and production ancestry as true, `integrationPending=false`, and `completionEligible=true`. This supplies the four distinct completion facts that were previously conflated: clean worktree, synchronized branch, main integration, and separate production runtime evidence.
 
 ## Context and Orientation
 
@@ -110,4 +110,4 @@ Do not commit test logs, generated caches, or temporary databases. Documentation
 
 The audit module will expose one function accepting `source_sha`, `origin_main_sha`, a collection of production SHAs, and an `is_ancestor(candidate, main)` callable. It returns JSON-compatible values only. The facade owns Git subprocess execution; the planner and state stores do not depend on Git. `application.py` depends only on a runtime callback supplied by the facade, preserving its testable adapter boundary.
 
-Plan revision note (2026-08-01): created after analyzing the existing four-state documentation rule and the absence of equivalent machine-readable completion evidence. Updated after the complete local contract suite and the pushed feature-branch production-plan acceptance check passed.
+Plan revision note (2026-08-01): created after analyzing the existing four-state documentation rule and the absence of equivalent machine-readable completion evidence. Updated after the complete local contract suite and the pushed feature-branch production-plan acceptance check passed. Closed after PR #1142, main CI, and the merged-main production no-op audit all succeeded.
