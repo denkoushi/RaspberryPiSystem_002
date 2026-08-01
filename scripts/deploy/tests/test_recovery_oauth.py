@@ -97,6 +97,10 @@ class RecoveryOAuthProviderTest(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         result_path = Path(temporary.name) / 'result.json'
+        vault_password_path = Path(temporary.name) / 'vault-password'
+        vault_password_path.write_text(
+            'recovery-oauth-test-only\n', encoding='utf-8'
+        )
         environment = os.environ.copy()
         environment['ANSIBLE_CONFIG'] = str(
             PROJECT / 'infrastructure/ansible/ansible.cfg'
@@ -104,6 +108,7 @@ class RecoveryOAuthProviderTest(unittest.TestCase):
         environment['ANSIBLE_ROLES_PATH'] = str(
             PROJECT / 'infrastructure/ansible/roles'
         )
+        environment['ANSIBLE_VAULT_PASSWORD_FILE'] = str(vault_password_path)
         try:
             completed = subprocess.run(
                 [

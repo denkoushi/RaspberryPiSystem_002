@@ -841,7 +841,16 @@ class RecoverPi4Test(unittest.TestCase):
             runner=runner,
         )
 
-        contract = resolver.resolve('raspi4-template')
+        with tempfile.TemporaryDirectory() as directory:
+            vault_password_path = Path(directory) / 'vault-password'
+            vault_password_path.write_text(
+                'recovery-resolver-test-only\n', encoding='utf-8'
+            )
+            with mock.patch.dict(
+                MODULE.os.environ,
+                {'ANSIBLE_VAULT_PASSWORD_FILE': str(vault_password_path)},
+            ):
+                contract = resolver.resolve('raspi4-template')
 
         self.assertEqual(contract.target.inventory_endpoint, '100.90.80.70')
         self.assertEqual(contract.target.user, 'template-user')
