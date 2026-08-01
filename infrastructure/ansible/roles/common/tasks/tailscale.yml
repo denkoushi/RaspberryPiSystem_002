@@ -47,23 +47,45 @@
     tailscale_connected: "{{ tailscale_backend_state | default('') == 'Running' }}"
   when: tailscale_status.rc == 0
 
-- name: Bring up Tailscale with auth key
-  ansible.builtin.command: >-
-    tailscale up {{ tailscale_extra_args }}
-    --authkey={{ tailscale_auth_key }}
+- name: Obtain a one-use recovery auth key only for a disconnected fresh host
+  ansible.builtin.include_role:
+    name: tailscale_recovery_auth
   when:
     - (tailscale_connected | default(false)) | bool == false
-    - tailscale_auth_key | default('') | length > 0
+    - tailscale_auth_provider | default('static') == 'recovery-oauth'
+
+- name: Select the existing static auth key outside recovery
+  ansible.builtin.set_fact:
+    tailscale_effective_auth_key: "{{ tailscale_auth_key | default('') }}"
+  when:
+    - (tailscale_connected | default(false)) | bool == false
+    - tailscale_auth_provider | default('static') != 'recovery-oauth'
   no_log: true
 
-- name: Fail when tailscale_auth_key is missing and Tailscale is not connected
-  ansible.builtin.fail:
-    msg: >-
-      tailscale_auth_key が未設定のため、{{ inventory_hostname }} で
-      Tailscale を自動で有効化できません。
-      先に vault_tailscale_auth_key を設定するか、
-      既に接続済みであることを確認してください。
+- name: Bring up Tailscale with the selected auth key
+  ansible.builtin.command: >-
+    tailscale up {{ tailscale_extra_args }}
+    --authkey={{ tailscale_effective_auth_key }}
   when:
     - (tailscale_connected | default(false)) | bool == false
-    - tailscale_auth_key | default('') | length == 0
+    - tailscale_effective_auth_key | default('') | length > 0
+  no_log: true
+
+- name: Fail when no auth provider supplied a key and Tailscale is not connected
+  ansible.builtin.fail:
+    msg: >-
+      Tailscale認証情報が未設定のため、{{ inventory_hostname }} で
+      Tailscaleを自動で有効化できません。選択した認証プロバイダーの
+      Vault設定または既存接続状態を確認してください。
+  when:
+    - (tailscale_connected | default(false)) | bool == false
+    - tailscale_effective_auth_key | default('') | length == 0
+
+- name: Remove the in-memory auth key after Tailscale authentication
+  ansible.builtin.set_fact:
+    tailscale_effective_auth_key: ""
+  when:
+    - (tailscale_connected | default(false)) | bool == false
+    - tailscale_effective_auth_key | default('') | length > 0
+  no_log: true
 

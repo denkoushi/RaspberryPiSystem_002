@@ -30,8 +30,14 @@ vault_api_dgx_resource_agent_container_runtime_control_token: ""
 vault_api_dgx_resource_agent_container_health_url: ""
 vault_api_dgx_resource_aux_runtime_request_timeout_ms: "90000"
 
-# Tailscale preauth key (reusable, tagged推奨)
+# 通常導入用の既存Tailscale preauth key。SD復旧では使用しない。
 vault_tailscale_auth_key: ""
+
+# Pi4 SD復旧専用Tailscale OAuth client。
+# Tailscale Trust credentialsでAuth Keys作成権限とtag:kioskだけを許可する。
+# 長期secretはPi5の暗号化Vaultだけに保存し、Pi4や復旧ログへ配布しない。
+vault_tailscale_recovery_oauth_client_id: ""
+vault_tailscale_recovery_oauth_client_secret: ""
 
 # キオスクお問い合わせ（Slack通知）
 # 形式: https://hooks.slack.com/services/...
@@ -64,4 +70,3 @@ vault_dropbox_access_token: ""
 # 空は未指定（strict時は code 既定 max=24 temp=0.05）。任意で上書き可
 # vault_photo_tool_label_first_pass_vision_max_tokens: ""
 # vault_photo_tool_label_first_pass_vision_temperature: ""
-

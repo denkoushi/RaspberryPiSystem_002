@@ -1,0 +1,14 @@
+---
+tailscale_recovery_oauth_base_url: https://api.tailscale.com
+tailscale_recovery_oauth_tag: tag:kiosk
+tailscale_recovery_oauth_auth_key_expiry_seconds: 600
+tailscale_recovery_oauth_retry_attempts: 3
+tailscale_recovery_oauth_retry_delay_seconds: 2
+tailscale_recovery_oauth_transient_statuses:
+  - -1
+  - 0
+  - 429
+  - 500
+  - 502
+  - 503
+  - 504
