@@ -35,13 +35,19 @@ from rolling_release.fleet_state import (
 )
 from rolling_release.bootstrap import read_local_server_client_id
 from rolling_release.image_refs import image_matches_release
+from recovery.inventory import (
+    AnsibleRecoveryInventoryResolver,
+    RecoveryInventoryError,
+    RecoveryInventoryResolver,
+    ResolvedRecoveryContract,
+    TailscaleAuthReadiness,
+)
 
 
 PROJECT = Path(__file__).resolve().parents[2]
 ANSIBLE_DIRECTORY = PROJECT / 'infrastructure' / 'ansible'
 DEFAULT_INVENTORY = ANSIBLE_DIRECTORY / 'inventory.yml'
 FULL_SHA_RE = re.compile(r'^[0-9a-f]{40}$')
-RECOVERY_HOST_RE = re.compile(r'^[a-z0-9][a-z0-9-]{0,79}$')
 RUN_ID_RE = re.compile(r'^[a-z0-9][a-z0-9-]{2,79}$')
 
 
@@ -97,7 +103,6 @@ class Target:
     status_agent_client_id: str
     nfc_enabled: bool
     barcode_enabled: bool
-    kiosk_url: str
 
 
 @dataclass(frozen=True)
@@ -113,6 +118,7 @@ class RecoveryPlan:
     bootstrap_host: str
     release: Release
     runtime_override_exists: bool
+    tailscale_auth: TailscaleAuthReadiness
 
     def public_dict(self) -> dict[str, Any]:
         return {
@@ -127,6 +133,12 @@ class RecoveryPlan:
             'bootstrapHost': self.bootstrap_host,
             'release': asdict(self.release),
             'runtimeOverrideExists': self.runtime_override_exists,
+            'inventoryResolved': True,
+            'tailscaleAuth': {
+                'mode': self.tailscale_auth.mode,
+                'configured': self.tailscale_auth.configured,
+                'tag': self.tailscale_auth.tag,
+            },
             'initialOsChecklist': [
                 'Raspberry Pi OS Desktop (64-bit) を使用する。',
                 f'既存端末と同じユーザー名 {self.target.user!r} を設定する。',
@@ -213,6 +225,7 @@ class RecoveryCoordinator:
         device_model_reader: Callable[[], str] | None = None,
         tcp_reachable: Callable[[str, int], bool] | None = None,
         server_client_id_reader: Callable[[], str] | None = None,
+        inventory_resolver: RecoveryInventoryResolver | None = None,
     ) -> None:
         self.project = project.resolve()
         self.inventory = inventory.resolve()
@@ -221,6 +234,11 @@ class RecoveryCoordinator:
         self.tcp_reachable = tcp_reachable or self._tcp_reachable
         self.server_client_id_reader = (
             server_client_id_reader or read_local_server_client_id
+        )
+        self.inventory_resolver = inventory_resolver or AnsibleRecoveryInventoryResolver(
+            project=self.project,
+            inventory=self.inventory,
+            runner=self.runner,
         )
 
     def _read_device_model(self) -> str:
@@ -261,46 +279,40 @@ class RecoveryCoordinator:
             raise RecoveryError(f'local runtime override is malformed: {path}')
         return payload
 
-    def inventory_data(self) -> dict[str, Any]:
-        output = self.runner.run(
-            ['ansible-inventory', '-i', str(self.inventory), '--list'],
-            cwd=self.project / 'infrastructure' / 'ansible',
-        )
+    def resolve_inventory_contract(self, target_name: str) -> ResolvedRecoveryContract:
         try:
-            payload = json.loads(output)
-        except json.JSONDecodeError as error:
-            raise RecoveryError('Ansible inventory output is not valid JSON') from error
-        if not isinstance(payload, dict):
-            raise RecoveryError('Ansible inventory output is not an object')
-        return payload
+            return self.inventory_resolver.resolve(target_name)
+        except RecoveryInventoryError as error:
+            raise RecoveryError(str(error)) from error
 
-    def resolve_target(self, target_name: str, inventory: dict[str, Any]) -> tuple[Target, bool]:
-        hosts = ((inventory.get('_meta') or {}).get('hostvars') or {})
-        values = hosts.get(target_name)
-        kiosk_hosts = (inventory.get('kiosk') or {}).get('hosts') or []
-        if (
-            not isinstance(values, dict)
-            or target_name not in kiosk_hosts
-            or not RECOVERY_HOST_RE.fullmatch(target_name)
-        ):
-            raise RecoveryError(f'{target_name!r} is not a supported, inventory-managed Pi4 kiosk')
-
-        missing = [
-            key for key in ('ansible_user', 'ansible_host', 'status_agent_client_id', 'status_agent_client_key',
-                            'nfc_agent_client_id', 'nfc_agent_client_secret', 'kiosk_url')
-            if not isinstance(values.get(key), str) or not values[key].strip()
-        ]
-        if missing:
-            raise RecoveryError(f'{target_name!r} is missing recovery inventory values: {", ".join(missing)}')
-        if values.get('pi4_recovery_enabled') is not True:
+    def resolve_target(
+        self, contract: ResolvedRecoveryContract
+    ) -> tuple[Target, bool]:
+        values = contract.target
+        target_name = values.host
+        if not values.required_secrets_configured:
+            raise RecoveryError(
+                f'{target_name!r} is missing required recovery inventory secrets'
+            )
+        if not values.recovery_enabled:
             raise RecoveryError(
                 f'{target_name!r} does not enable the Tailscale Pi4 recovery capability'
             )
-        if values.get('tailscale_enabled') is not True or values.get('manage_kiosk_browser') is not True:
+        if not values.tailscale_enabled or not values.kiosk_managed:
             raise RecoveryError(f'{target_name!r} must have Tailscale and kiosk browser management enabled')
+        if (
+            contract.tailscale_auth.mode != 'oauth'
+            or contract.tailscale_auth.tag != 'tag:kiosk'
+        ):
+            raise RecoveryError('recovery Tailscale authentication contract is unsupported')
+        if not contract.tailscale_auth.configured:
+            raise RecoveryError(
+                'Pi5 recovery OAuth credential is not configured; '
+                'set both recovery OAuth Vault values before relying on SD recovery'
+            )
 
         override = self.load_runtime_override(target_name)
-        original_host = values['ansible_host']
+        original_host = values.inventory_endpoint
         if override is not None:
             metadata = override.get('pi4_recovery')
             previous = metadata.get('original_ansible_host') if isinstance(metadata, dict) else None
@@ -310,12 +322,11 @@ class RecoveryCoordinator:
         parse_ipv4(original_host, field='inventory endpoint')
         return Target(
             host=target_name,
-            user=values['ansible_user'],
+            user=values.user,
             original_host=original_host,
-            status_agent_client_id=values['status_agent_client_id'],
-            nfc_enabled=True,
-            barcode_enabled=values.get('barcode_agent_enabled') is True,
-            kiosk_url=values['kiosk_url'],
+            status_agent_client_id=values.status_agent_client_id,
+            nfc_enabled=values.nfc_enabled,
+            barcode_enabled=values.barcode_enabled,
         ), override is not None
 
     def resolve_active_release(self, expected_server_host: str) -> Release:
@@ -382,27 +393,11 @@ class RecoveryCoordinator:
         return Release(sha=sha, active_slot=active_slot, source=source)
 
     def validate_inventory_server_identity(
-        self, inventory: dict[str, Any]
+        self, contract: ResolvedRecoveryContract
     ) -> str:
-        server_hosts = (inventory.get('server') or {}).get('hosts') or []
-        if (
-            not isinstance(server_hosts, list)
-            or len(server_hosts) != 1
-            or not isinstance(server_hosts[0], str)
-            or not server_hosts[0]
-        ):
-            raise RecoveryError('inventory server group must contain exactly one host')
-        server_values = ((inventory.get('_meta') or {}).get('hostvars') or {}).get(
-            server_hosts[0]
-        )
-        expected_client_id = (
-            server_values.get('status_agent_client_id')
-            if isinstance(server_values, dict)
-            else None
-        )
-        if not isinstance(expected_client_id, str) or not re.fullmatch(
-            r'[A-Za-z0-9][A-Za-z0-9._:-]{0,127}', expected_client_id
-        ):
+        server_host = contract.server.host
+        expected_client_id = contract.server.status_agent_client_id
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:-]{0,127}', expected_client_id):
             raise RecoveryError('inventory server has no safe status_agent_client_id')
         try:
             actual_client_id = self.server_client_id_reader()
@@ -410,25 +405,31 @@ class RecoveryCoordinator:
             raise RecoveryError('local Pi5 CLIENT_ID could not be verified') from error
         if actual_client_id != expected_client_id:
             raise RecoveryError('local Pi5 does not match the selected inventory server identity')
-        return server_hosts[0]
+        return server_host
 
     def build_plan(
         self,
         target_name: str,
         bootstrap_host: str,
         *,
-        inventory_data: dict[str, Any] | None = None,
+        resolved_contract: ResolvedRecoveryContract | None = None,
     ) -> RecoveryPlan:
         bootstrap = parse_ipv4(bootstrap_host, field='bootstrap host')
         if bootstrap in ipaddress.ip_network('100.64.0.0/10'):
             raise RecoveryError('bootstrap host must be a temporary LAN IPv4 address, not a Tailscale address')
-        inventory = inventory_data if inventory_data is not None else self.inventory_data()
-        target, override_exists = self.resolve_target(target_name, inventory)
+        contract = resolved_contract or self.resolve_inventory_contract(target_name)
+        target, override_exists = self.resolve_target(contract)
         if str(bootstrap) == target.original_host:
             raise RecoveryError('bootstrap host must differ from the stale production endpoint')
-        server_host = self.validate_inventory_server_identity(inventory)
+        server_host = self.validate_inventory_server_identity(contract)
         release = self.resolve_active_release(server_host)
-        return RecoveryPlan(target=target, bootstrap_host=str(bootstrap), release=release, runtime_override_exists=override_exists)
+        return RecoveryPlan(
+            target=target,
+            bootstrap_host=str(bootstrap),
+            release=release,
+            runtime_override_exists=override_exists,
+            tailscale_auth=contract.tailscale_auth,
+        )
 
     def assert_pi5(self) -> None:
         model = self.device_model_reader()
@@ -551,8 +552,8 @@ class RecoveryCoordinator:
         try:
             try:
                 self.assert_pi5()
-                inventory_data = self.inventory_data()
-                self.validate_inventory_server_identity(inventory_data)
+                resolved_contract = self.resolve_inventory_contract(target_name)
+                self.validate_inventory_server_identity(resolved_contract)
                 fleet_state = store.read_only()
                 stale_run = fleet_state.get('activeRun')
                 if isinstance(stale_run, dict):
@@ -564,7 +565,7 @@ class RecoveryCoordinator:
                 plan = self.build_plan(
                     target_name,
                     bootstrap_host,
-                    inventory_data=inventory_data,
+                    resolved_contract=resolved_contract,
                 )
                 fleet_state = store.read_only()
                 fleet_state = store.begin_run(

@@ -20,6 +20,8 @@ update-frequency: medium
 [`pi4-sd-recovery.md`](../runbooks/pi4-sd-recovery.md) を使用してください。SDへ
 Raspberry Pi OS Desktop (64-bit) とWi-Fiを書き込む際に、対象端末と同じユーザー名、
 Pi5公開鍵によるSSH、sudoパスワード不要もImagerで設定し、起動後のPi4側作業は行いません。
+復旧時のTailscale参加はPi5の復旧専用OAuth設定から単回キーを都度生成します。
+固定preauth keyの手入力や、旧SDのTailscale/SSH状態のコピーは行わないでください。
 
 **Zero 2 W をヘッドレスの棚番エッジ（キオスク UI なし・status-agent 中心）として載せる場合**は、[Zero 2 W 棚番エッジ Runbook](../runbooks/zero2w-tanaban-edge-setup.md) を先に参照してください（`inventory.yml` に自宅端末を載せず、インベントリ断片 + 専用 playbook で Pi 5 から適用する流れ）。
 

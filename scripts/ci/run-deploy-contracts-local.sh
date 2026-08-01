@@ -108,6 +108,7 @@ STATIC_PLAYBOOKS=(
   playbooks/rollback.yml
   playbooks/restart-services.yml
   playbooks/ping.yml
+  playbooks/resolve-pi4-recovery-contract.yml
   playbooks/recover-pi4.yml
   playbooks/recover-pi4-verify.yml
 )

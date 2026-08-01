@@ -7,14 +7,16 @@ source_of_truth: true
 scope: explicitly enabled standard-site Pi4 kiosk recovery after SD-card replacement
 related_code:
   - scripts/deploy/recover-pi4.py
+  - infrastructure/ansible/playbooks/resolve-pi4-recovery-contract.yml
   - infrastructure/ansible/playbooks/recover-pi4.yml
   - infrastructure/ansible/playbooks/recover-pi4-verify.yml
 related_docs:
   - ../runbooks/pi4-sd-recovery.md
   - ../plans/pi4-sd-recovery-bootstrap.md
   - ../guides/client-initial-setup.md
-validation: unit tests, Ansible syntax checks, isolated Postgres regression, and a future blank-Pi4 acceptance drill
+validation: resolver and OAuth contract tests, Ansible syntax checks, isolated Postgres regression, and a future blank-Pi4 acceptance drill
 open_items:
+  - Create the restricted OAuth client and configure the encrypted Pi5 Vault after approval.
   - Execute and record one blank-Pi4 acceptance drill after the feature is released to Pi5.
 ---
 
@@ -68,6 +70,24 @@ The release SHA is accepted only when the durable Pi5 marker, the active
 Blue/Green slot, and both active API/Web image tags agree. Missing or ambiguous
 state fails closed; recovery never substitutes `main`.
 
+The coordinator does not parse raw `_meta.hostvars` from
+`ansible-inventory --list`. Production endpoints are Jinja expressions and
+that listing can retain an expression instead of its IPv4 value. A
+connection-free resolver play asks Ansible to evaluate Inventory, Vault, and
+Pi5-local runtime host variables, then returns a strict JSON contract with only
+the endpoint, non-secret identifiers, feature flags, and credential-readiness
+booleans. `plan` fails if the result is ambiguous or credentials are absent.
+
+Fresh Pi4 recovery uses a dedicated Tailscale OAuth client held only in Pi5's
+encrypted Vault. The client is restricted to auth-key creation and
+`tag:kiosk`. When the new Pi4 is disconnected, Pi5 creates a non-reusable,
+non-ephemeral, preauthorized auth key with a 600-second unused lifetime and
+sends only that one-use key to the recovery task. OAuth and auth-key material
+is suppressed from Ansible output and never written to recovery artifacts.
+The recovery play explicitly disables Tailscale SSH because verification and
+normal Pi5 Ansible access use the Pi5 public key with standard OpenSSH. Normal
+deployments retain their existing authentication path and arguments.
+
 ## Alternatives
 
 - Keep a full SD-card clone and restore it — rejected as the primary path. It
@@ -77,6 +97,10 @@ state fails closed; recovery never substitutes `main`.
   device identity can disrupt the live Tailnet and access controls.
 - Edit tracked static Tailscale IPs after every recovery — rejected because it
   creates noisy commits and makes Pi5's live endpoint depend on manual edits.
+- Keep a reusable recovery preauth key in Vault — rejected because an auth key
+  expires within 90 days and can leave emergency recovery silently unusable.
+- Pass the long-lived OAuth client secret to Pi4 — rejected because Pi5 can
+  mint a one-use key without expanding long-lived secret exposure.
 - Extend the normal rolling-release coordinator — rejected because an offline
   bare-metal rebuild has different safety and maintenance semantics.
 
@@ -92,7 +116,10 @@ Pi5 or power-domain failure.
 
 ## Validation
 
-`scripts/deploy/tests/test_recover_pi4.py` covers immutable release validation,
-Pi4 inventory eligibility, secret-free endpoint persistence, failed bootstrap
-behavior, and final standard-Ansible verification. The Runbook defines the
-required physical acceptance drill.
+`scripts/deploy/tests/test_recover_pi4.py` covers evaluated templated inventory,
+immutable release validation, Pi4 eligibility, OAuth readiness, secret-free
+endpoint persistence, failed bootstrap behavior, and final standard-Ansible
+verification. `scripts/deploy/tests/test_recovery_oauth.py` uses an isolated
+local HTTP service to prove the one-use key capabilities, bounded transient
+retry, immediate authentication rejection, malformed-response rejection, and
+secret-free output. The Runbook defines the physical acceptance drill.

@@ -18,6 +18,21 @@
       - status-agent.timer
       - kiosk-browser.service
       - signage-lite.service
+    tailscale_auth_provider: recovery-oauth
+    # Recovery verification uses the Pi5 public key and standard OpenSSH.
+    # Do not let Tailscale SSH intercept port 22 on the rebuilt kiosk.
+    tailscale_extra_args: --ssh=false
+    tailscale_recovery_oauth_client_id: >-
+      {{
+        hostvars[(groups['server'] | first)].vault_tailscale_recovery_oauth_client_id
+        | default('')
+      }}
+    tailscale_recovery_oauth_client_secret: >-
+      {{
+        hostvars[(groups['server'] | first)].vault_tailscale_recovery_oauth_client_secret
+        | default('')
+      }}
+    tailscale_recovery_oauth_tag: tag:kiosk
   pre_tasks:
     - name: Require recovery coordinator authorization and result path
       ansible.builtin.assert:
