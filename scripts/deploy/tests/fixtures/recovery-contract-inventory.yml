@@ -1,0 +1,41 @@
+---
+all:
+  vars:
+    selected_network:
+      raspi4_template_ip: 100.90.80.70
+    server_origin: https://100.100.100.100
+  children:
+    server:
+      hosts:
+        raspberrypi5:
+          ansible_host: 100.100.100.100
+          status_agent_client_id: raspberrypi5-server
+          vault_tailscale_recovery_oauth_client_id: oauth-client-id
+          vault_tailscale_recovery_oauth_client_secret: sentinel-oauth-secret-never-export
+    clients:
+      children:
+        kiosk:
+          hosts:
+            raspi4-template:
+              ansible_host: "{{ selected_network.raspi4_template_ip }}"
+              ansible_user: template-user
+              pi4_recovery_enabled: true
+              tailscale_enabled: true
+              manage_kiosk_browser: true
+              status_agent_client_id: template-status
+              status_agent_client_key: sentinel-status-secret-never-export
+              nfc_agent_client_id: template-nfc
+              nfc_agent_client_secret: sentinel-nfc-secret-never-export
+              kiosk_url: "{{ server_origin }}/kiosk?clientKey={{ status_agent_client_key }}"
+              barcode_agent_enabled: true
+            raspi4-disabled:
+              ansible_host: 100.90.80.71
+              ansible_user: disabled-user
+              pi4_recovery_enabled: false
+              tailscale_enabled: true
+              manage_kiosk_browser: true
+              status_agent_client_id: disabled-status
+              status_agent_client_key: sentinel-disabled-status
+              nfc_agent_client_id: disabled-nfc
+              nfc_agent_client_secret: sentinel-disabled-nfc
+              kiosk_url: "{{ server_origin }}/kiosk?clientKey={{ status_agent_client_key }}"
