@@ -14,7 +14,8 @@ An operator must be able to rebuild an explicitly enabled Pi4 after its SD card 
 - [x] (2026-08-01 JST) Converted recovery execution, observed result, mode-0600 runtime override, Pi5 URL derivation, and final verification from Tailscale to LAN.
 - [x] (2026-08-01 JST) Removed the recovery-only OAuth role, Vault example fields, fake HTTP tests, and active documentation while preserving normal connected/static Tailscale behavior.
 - [x] (2026-08-01 JST) Passed 37 focused recovery tests, three recovery Ansible syntax checks, five production-shaped controller-only resolutions, and the canonical Node 22.23.1/pnpm 9.15.9 deploy-contract suite.
-- [ ] Commit by intent, publish a draft PR, pass required CI, merge, and synchronize local `main` before any production action.
+- [x] (2026-08-01 JST) Committed implementation, tests, and documentation by intent; pushed `feat/pi4-sd-recovery-lan-provider`; and opened draft PR #1148.
+- [ ] Pass required CI on PR #1148, merge, and synchronize local `main` before any production action.
 - [ ] After separate production approval, deploy the merged SHA to Pi5, run five read-only plans, and perform the blank-SD physical drill only where Pi5-to-terminal LAN routing is proven.
 
 ## Surprises & Discoveries
@@ -54,7 +55,7 @@ An operator must be able to rebuild an explicitly enabled Pi4 after its SD card 
 
 ## Outcomes & Retrospective
 
-Feature-branch implementation and local validation are complete. Five production inventory hosts resolve to `192.168.10.224`, `192.168.10.236`, `192.168.10.12`, `192.168.10.238`, and `192.168.128.187`, all with Pi5 service endpoint `192.168.10.230`, while Assembly resolves disabled and unconfigured. Recovery no longer has a Tailscale account, OAuth, auth-key, or recovery-secret dependency. The design does not create missing inter-site routing. PR/CI/main integration, Pi5 deployment, and a physical drill remain separate gates; this plan cannot be marked complete until effective changes are in `origin/main` and the deployed Pi5 SHA and drill evidence are recorded.
+Feature-branch implementation and local validation are complete, and draft PR #1148 is open. Five production inventory hosts resolve to `192.168.10.224`, `192.168.10.236`, `192.168.10.12`, `192.168.10.238`, and `192.168.128.187`, all with Pi5 service endpoint `192.168.10.230`, while Assembly resolves disabled and unconfigured. Recovery no longer has a Tailscale account, OAuth, auth-key, or recovery-secret dependency. The design does not create missing inter-site routing. Required CI/main integration, Pi5 deployment, and a physical drill remain separate gates; this plan cannot be marked complete until effective changes are in `origin/main` and the deployed Pi5 SHA and drill evidence are recorded.
 
 ## Context and Orientation
 
@@ -114,6 +115,14 @@ The starting evidence is:
     base:   a3dcdbf591b375835991e9bc7fe9388e773d36b7
     worktree at branch creation: clean
 
+Repository publication evidence is:
+
+    implementation: bcc474a8471c43b7a95507546f0d5044405b8eb3
+    tests:          b46d527e808cc7c5fc7f31fbc50886ab75f94fd0
+    documentation:  9b1784e5dc5fea2a0f71c05a08ff6416588562e0
+    draft PR:       https://github.com/denkoushi/RaspberryPiSystem_002/pull/1148
+    base at open:   a3dcdbf591b375835991e9bc7fe9388e773d36b7
+
 The known LAN contract candidates are `192.168.10.224`, `192.168.10.236`, `192.168.10.12`, `192.168.10.238`, and `192.168.128.187`; the Pi5 LAN service candidate is `192.168.10.230`. These are configuration inputs, not proof of current routing or DHCP reservation.
 
 Local validation evidence on 2026-08-01 JST is:
@@ -143,3 +152,5 @@ The exact plan-view type may be narrowed during implementation to avoid an impor
 Revision note (2026-08-01): Created after the user selected LAN recovery and after detailed inspection showed that endpoint, application URL, and Tailscale enablement must be switched together. This plan supersedes the un-deployed OAuth production setup while retaining its useful Ansible inventory resolver.
 
 Revision note (2026-08-01, implementation): Recorded the completed LAN provider implementation, OAuth removal, five-host resolution evidence, callback-format discovery, isolated PostgreSQL/index/API results, Docker cleanup evidence, and the still-open repository/production integration gates.
+
+Revision note (2026-08-01, publication): Recorded the three intent commits and draft PR #1148 without claiming CI, merge, production deployment, or physical-drill completion.
