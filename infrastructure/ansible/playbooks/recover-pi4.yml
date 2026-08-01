@@ -30,8 +30,9 @@
           - manage_kiosk_browser | default(false) | bool
           - network_mode | default('') == 'local'
           - not (tailscale_enabled | default(true) | bool)
-          - pi4_recovery_lan_endpoint is defined
-          - ansible_host | string == pi4_recovery_lan_endpoint | string
+          - recovery_bootstrap_ipv4 is defined
+          - recovery_bootstrap_ipv4 | string | length > 0
+          - ansible_host | string == recovery_bootstrap_ipv4 | string
           - nfc_agent_client_id is defined
           - nfc_agent_client_secret is defined
         fail_msg: >-
@@ -64,13 +65,13 @@
         recovery_observed_lan_ipv4: >-
           {{ recovery_lan_addresses.stdout | regex_findall('inet ([0-9.]+)/') }}
 
-    - name: Require the declared LAN recovery IPv4 on the rebuilt Pi4
+    - name: Require the supplied bootstrap IPv4 on the rebuilt Pi4
       ansible.builtin.assert:
         that:
-          - ansible_host | string in recovery_observed_lan_ipv4
+          - recovery_bootstrap_ipv4 | string in recovery_observed_lan_ipv4
         fail_msg: >-
-          The rebuilt Pi4 does not own its inventory-declared LAN recovery
-          address. Verify the DHCP reservation or static network assignment.
+          The rebuilt Pi4 no longer owns the supplied bootstrap address.
+          Verify its current DHCP address before retrying.
 
     - name: Write non-secret recovery result on the Pi5 controller
       ansible.builtin.copy:
@@ -79,7 +80,7 @@
           {{
             {
               'target': inventory_hostname,
-              'lanIpv4': ansible_host | string,
+              'lanIpv4': recovery_bootstrap_ipv4 | string,
               'releaseSha': repo_version
             } | to_nice_json
           }}

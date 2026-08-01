@@ -52,7 +52,6 @@ class ResolvedRecoveryServer:
 class RecoveryNetworkReadiness:
     mode: str
     configured: bool
-    target_endpoint: str
     server_endpoint: str
 
 
@@ -105,7 +104,7 @@ def _boolean(values: dict[str, object], key: str, *, field: str | None = None) -
 
 def parse_recovery_contract(payload: object, target_name: str) -> ResolvedRecoveryContract:
     root = _object(payload, field='root')
-    if root.get('schemaVersion') != 2:
+    if root.get('schemaVersion') != 3:
         raise RecoveryInventoryError('recovery inventory contract has an unsupported schema version')
 
     target_values = _object(root.get('target'), field='target')
@@ -150,9 +149,6 @@ def parse_recovery_contract(payload: object, target_name: str) -> ResolvedRecove
         mode=_string(network_values, 'mode', field='recoveryNetwork.mode'),
         configured=_boolean(
             network_values, 'configured', field='recoveryNetwork.configured'
-        ),
-        target_endpoint=_optional_string(
-            network_values, 'targetEndpoint', field='recoveryNetwork.targetEndpoint'
         ),
         server_endpoint=_optional_string(
             network_values, 'serverEndpoint', field='recoveryNetwork.serverEndpoint'

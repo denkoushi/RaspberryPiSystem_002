@@ -1,7 +1,7 @@
 # Pi4 SD-card recovery bootstrap
 
 > Historical plan, superseded on 2026-08-01 by
-> `pi4-sd-recovery-lan-provider-execplan.md`. Do not use its Tailscale endpoint
+> `pi4-sd-recovery-dynamic-bootstrap-execplan.md`. Do not use its Tailscale endpoint
 > steps for current recovery operations; use `docs/runbooks/pi4-sd-recovery.md`.
 
 This ExecPlan is a living document and follows `.agent/PLANS.md`. It records

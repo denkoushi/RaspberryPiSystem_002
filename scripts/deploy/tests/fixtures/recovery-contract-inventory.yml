@@ -22,7 +22,6 @@ all:
               ansible_host: "{{ selected_network.raspi4_template_ip }}"
               ansible_user: template-user
               pi4_recovery_enabled: true
-              pi4_recovery_lan_endpoint: "{{ local_network.raspi4_template_ip }}"
               tailscale_enabled: true
               manage_kiosk_browser: true
               status_agent_client_id: template-status
@@ -35,7 +34,6 @@ all:
               ansible_host: 100.90.80.71
               ansible_user: disabled-user
               pi4_recovery_enabled: false
-              pi4_recovery_lan_endpoint: "{{ local_network.raspi4_disabled_ip }}"
               tailscale_enabled: true
               manage_kiosk_browser: true
               status_agent_client_id: disabled-status

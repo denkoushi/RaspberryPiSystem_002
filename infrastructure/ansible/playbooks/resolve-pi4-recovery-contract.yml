@@ -48,7 +48,7 @@
         content: >-
           {{
             {
-              'schemaVersion': 2,
+              'schemaVersion': 3,
               'target': {
                 'host': inventory_hostname,
                 'inventoryEndpoint': ansible_host | string,
@@ -79,13 +79,10 @@
               'recoveryNetwork': {
                 'mode': 'lan',
                 'configured': (
-                  pi4_recovery_lan_endpoint is defined
-                  and pi4_recovery_lan_endpoint | string | trim | length > 0
-                  and local_network is defined
+                  local_network is defined
                   and (local_network | default({})).raspberrypi5_ip is defined
                   and (local_network | default({})).raspberrypi5_ip | string | trim | length > 0
                 ),
-                'targetEndpoint': pi4_recovery_lan_endpoint | default('') | string,
                 'serverEndpoint': (local_network | default({})).raspberrypi5_ip | default('') | string
               }
             } | to_nice_json

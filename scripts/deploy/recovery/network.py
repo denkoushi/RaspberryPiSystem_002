@@ -63,7 +63,7 @@ def _rfc1918_ipv4(value: str, *, field: str) -> ipaddress.IPv4Address:
 
 
 class LanRecoveryNetworkProvider:
-    """Use inventory-declared, Pi5-routable private LAN addresses."""
+    """Use one operator-reported, Pi5-routable private LAN address."""
 
     mode = 'lan'
 
@@ -73,32 +73,24 @@ class LanRecoveryNetworkProvider:
             raise RecoveryNetworkError('recovery network mode is unsupported')
         if not network.configured:
             raise RecoveryNetworkError(
-                'LAN recovery is not configured for this host; declare both target and Pi5 LAN endpoints'
+                'LAN recovery is not configured; declare the Pi5 LAN endpoint'
             )
-        target = _rfc1918_ipv4(
-            network.target_endpoint, field='recovery target endpoint'
-        )
-        server = _rfc1918_ipv4(
+        _rfc1918_ipv4(
             network.server_endpoint, field='recovery Pi5 endpoint'
         )
-        if target == server:
-            raise RecoveryNetworkError(
-                'recovery target endpoint must differ from the Pi5 LAN endpoint'
-            )
 
     def validate_bootstrap(
         self, bootstrap_host: str, contract: ResolvedRecoveryContract
     ) -> str:
         self.validate_contract(contract)
         bootstrap = _rfc1918_ipv4(bootstrap_host, field='bootstrap host')
-        expected = _rfc1918_ipv4(
-            contract.recovery_network.target_endpoint,
-            field='recovery target endpoint',
+        server = _rfc1918_ipv4(
+            contract.recovery_network.server_endpoint,
+            field='recovery Pi5 endpoint',
         )
-        if bootstrap != expected:
+        if bootstrap == server:
             raise RecoveryNetworkError(
-                'bootstrap host must equal the inventory-declared LAN recovery endpoint; '
-                'verify the DHCP reservation or update the approved inventory value'
+                'bootstrap host must differ from the Pi5 LAN endpoint'
             )
         return str(bootstrap)
 
