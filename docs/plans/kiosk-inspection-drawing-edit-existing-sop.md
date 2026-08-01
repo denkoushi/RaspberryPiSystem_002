@@ -1,9 +1,10 @@
 ---
 id: plan-kiosk-inspection-drawing-edit-existing-sop
 title: Multi-page SOP for editing an existing inspection-drawing template
-status: draft
+status: superseded
 date: 2026-07-28
-source_of_truth: true
+source_of_truth: false
+superseded_by: ./kiosk-sop-generated-maintenance-execplan.md
 scope: static design preview / operator SOP (print A4 landscape, one sheet per screen)
 related_docs:
   - ../decisions/ADR-20260728-inspection-drawing-sop-step-rail.md
@@ -20,6 +21,8 @@ related_code:
 ---
 
 # Plan: Inspection-drawing existing-edit SOP (multi-page)
+
+> 2026-08-01: 手書きモックを正本とする本計画は、[実コード連動型の生成・保守ExecPlan](./kiosk-sop-generated-maintenance-execplan.md) と [ADR-20260801](../decisions/ADR-20260801-kiosk-sop-generated-from-production-ui.md) に置き換えられた。以下は旧設計の履歴として保存する。
 
 ## Purpose / Big Picture
 

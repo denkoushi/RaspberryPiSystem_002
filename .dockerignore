@@ -36,7 +36,6 @@ storage
 alerts
 certs
 backups
-# Keep documentation out of image contexts except the one release-bundled kiosk SOP.
+# Keep documentation out of ordinary image contexts. The kiosk SOP generator
+# bind-mounts the canonical preview only for its independent stale check.
 docs/**
-!docs/design-previews/
-!docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html

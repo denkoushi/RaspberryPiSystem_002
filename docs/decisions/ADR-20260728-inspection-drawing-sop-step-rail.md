@@ -21,6 +21,8 @@ A4 landscape SOP for **検査図面 寸法・公差**. Always-on outer callouts 
 
 ## Decision
 
+> 2026-08-01: ステップレールの表示判断は継続する。凍結HTMLを再現元とする判断だけは [ADR-20260801](./ADR-20260801-kiosk-sop-generated-from-production-ui.md) により、本番Reactルートからの決定的生成へ置き換えられた。
+
 - Left **step rail**: numbered instructional list (scrollable for growth)
 - On screen: **step badges only**, anchored to each target’s **bottom-right corner**
 - Leaders **hover/focus only** (one at a time); omitted in print
@@ -37,7 +39,7 @@ A4 landscape SOP for **検査図面 寸法・公差**. Always-on outer callouts 
 ## Consequences
 
 - Scales better: more steps → longer/scrolling rail, not more permanent leaders
-- Frozen HTML + Plan are the reproduction source for other agents
+- 構造化定義、実画面PNG、生成manifestが再現元となる
 - Print remains list + badges without interactive leaders
 
 ## Validation

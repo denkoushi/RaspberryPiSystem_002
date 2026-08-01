@@ -32,6 +32,7 @@ jobs:
       deploy_contract: ${{ steps.classify.outputs.deploy_contract }}
       client: ${{ steps.classify.outputs.client }}
       e2e: ${{ steps.classify.outputs.e2e }}
+      kiosk_sop: ${{ steps.classify.outputs.kiosk_sop }}
       docker_security: ${{ steps.classify.outputs.docker_security }}
       codeql: ${{ steps.classify.outputs.codeql }}
       docker_api: ${{ steps.classify.outputs.docker_api }}
@@ -92,6 +93,7 @@ jobs:
       - name: Build shared packages
         run: |
           pnpm --filter @raspi-system/shared-types build
+          pnpm --filter @raspi-system/kiosk-sop-core build
           pnpm --filter @raspi-system/part-search-core build
           pnpm --filter @raspi-system/shelf-layout-core build
 
@@ -132,6 +134,7 @@ jobs:
       - name: Build shared packages
         run: |
           pnpm --filter @raspi-system/shared-types build
+          pnpm --filter @raspi-system/kiosk-sop-core build
           pnpm --filter @raspi-system/part-search-core build
           pnpm --filter @raspi-system/shelf-layout-core build
 
@@ -229,6 +232,7 @@ jobs:
       - name: Build shared packages
         run: |
           pnpm --filter @raspi-system/shared-types build
+          pnpm --filter @raspi-system/kiosk-sop-core build
           pnpm --filter @raspi-system/part-search-core build
           pnpm --filter @raspi-system/shelf-layout-core build
 
@@ -253,6 +257,7 @@ jobs:
       - name: Build shared packages
         run: |
           pnpm --filter @raspi-system/shared-types build
+          pnpm --filter @raspi-system/kiosk-sop-core build
           pnpm --filter @raspi-system/part-search-core build
           pnpm --filter @raspi-system/shelf-layout-core build
 
@@ -772,6 +777,7 @@ jobs:
       - name: Build shared packages (smoke)
         run: |
           pnpm --filter @raspi-system/shared-types build
+          pnpm --filter @raspi-system/kiosk-sop-core build
           pnpm --filter @raspi-system/part-search-core build
           pnpm --filter @raspi-system/shelf-layout-core build
 
@@ -785,6 +791,30 @@ jobs:
       - name: Cleanup PostgreSQL (smoke)
         if: always()
         run: docker stop postgres-e2e-smoke && docker rm postgres-e2e-smoke || true
+
+  kiosk-sop:
+    name: kiosk-sop
+    needs: change-classification
+    if: ${{ needs.change-classification.outputs.kiosk_sop == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Regenerate and verify production-route kiosk manuals
+        run: bash scripts/kiosk-sop/run-in-docker.sh check
+
+      - name: Upload committed kiosk SOP diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: kiosk-sop-diagnostics
+          path: |
+            apps/web/src/generated/kiosk-sop/
+            docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html
+          retention-days: 7
 
   e2e-tests:
     name: e2e-tests
@@ -806,6 +836,7 @@ jobs:
       - name: Build shared packages
         run: |
           pnpm --filter @raspi-system/shared-types build
+          pnpm --filter @raspi-system/kiosk-sop-core build
           pnpm --filter @raspi-system/part-search-core build
           pnpm --filter @raspi-system/shelf-layout-core build
 
@@ -896,6 +927,7 @@ jobs:
       - docker-security
       - e2e-smoke
       - e2e-tests
+      - kiosk-sop
     runs-on: ubuntu-latest
     steps:
       - name: Checkout aggregate validator
@@ -927,6 +959,8 @@ jobs:
           E2E_SELECTED: ${{ needs['change-classification'].outputs.e2e }}
           E2E_SMOKE: ${{ needs['e2e-smoke'].result }}
           E2E_TESTS: ${{ needs['e2e-tests'].result }}
+          KIOSK_SOP_SELECTED: ${{ needs['change-classification'].outputs.kiosk_sop }}
+          KIOSK_SOP_RESULT: ${{ needs['kiosk-sop'].result }}
         run: |
           python3 scripts/ci/validate_required_results.py \
             --classification-result "$CHANGE_CLASSIFICATION" \
@@ -942,7 +976,8 @@ jobs:
             "release-web-image=$RELEASE_PAIR_SELECTED:$RELEASE_WEB_RESULT" \
             "docker-security=$DOCKER_SECURITY_SELECTED:$DOCKER_SECURITY_RESULT" \
             "e2e-smoke=$E2E_SELECTED:$E2E_SMOKE" \
-            "e2e-tests=$E2E_SELECTED:$E2E_TESTS"
+            "e2e-tests=$E2E_SELECTED:$E2E_TESTS" \
+            "kiosk-sop=$KIOSK_SOP_SELECTED:$KIOSK_SOP_RESULT"
 
   release-gates:
     name: release-gates

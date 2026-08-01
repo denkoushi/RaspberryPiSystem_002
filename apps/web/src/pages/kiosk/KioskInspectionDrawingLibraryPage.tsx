@@ -10,6 +10,7 @@ import {
 } from '../../features/kiosk-sop';
 import {
   INSPECTION_DRAWING_SOP_BY_SCREEN,
+  inspectionDrawingSopTargetProps,
   InspectionDrawingDigitTenkey,
   InspectionDrawingLibraryFilterBar,
   InspectionDrawingLibraryTemplateTable,
@@ -177,13 +178,15 @@ export function KioskInspectionDrawingLibraryPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 bg-slate-800 p-2 text-white">
-      <div className="flex h-[60px] flex-nowrap items-center gap-2 overflow-hidden rounded border border-white/15 bg-slate-900/70 p-2">
-        <div className="min-w-0 shrink-0">
+      <div data-kiosk-sop-coverage className="flex h-[60px] flex-nowrap items-center gap-2 overflow-hidden rounded border border-white/15 bg-slate-900/70 p-2">
+        <div className="min-w-0 shrink-0" {...inspectionDrawingSopTargetProps('inspection-navigation')}>
           <h1 className={kioskPageTitleClassName}>検査図面</h1>
         </div>
-        <InspectionDrawingDigitTenkey value={digitQuery} onChange={setDigitQuery} disabled={retireBusy} />
+        <div className="min-w-0 flex-1" {...inspectionDrawingSopTargetProps('drawing-digit-search')}>
+          <InspectionDrawingDigitTenkey value={digitQuery} onChange={setDigitQuery} disabled={retireBusy} />
+        </div>
         {KIOSK_SOP_POPUP_ENABLED ? (
-          <KioskSopLauncher view={INSPECTION_DRAWING_SOP_BY_SCREEN.library} />
+          <KioskSopLauncher {...INSPECTION_DRAWING_SOP_BY_SCREEN.library} />
         ) : null}
       </div>
 

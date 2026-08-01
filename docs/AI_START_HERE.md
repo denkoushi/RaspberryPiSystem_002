@@ -45,7 +45,8 @@ If `EXEC_PLAN.md` must be touched, keep the entry short and limited to current s
 - Active inspection-drawing OCR candidate improvement: `docs/plans/inspection-drawing-ocr-local-candidates.md`
 - Active inspection-drawing OCR RapidOCR local secondary: `docs/plans/inspection-drawing-ocr-rapidocr-local.md`
 - Active self-inspection autosave / callout / template create lock: `docs/plans/self-inspection-autosave-callout-template-lock.md`
-- Draft inspection-drawing existing-edit SOP (one A4 sheet per screen; step-rail): `docs/plans/kiosk-inspection-drawing-edit-existing-sop.md`
+- Active generated kiosk SOP maintenance system (production-route capture, committed images, fail-closed CI): `docs/plans/kiosk-sop-generated-maintenance-execplan.md`
+- Superseded hand-authored inspection-drawing SOP history: `docs/plans/kiosk-inspection-drawing-edit-existing-sop.md`
 - Active release-bundled kiosk SOP popup viewer: `docs/plans/kiosk-sop-popup-viewer-execplan.md`
 - Accepted inspection-drawing dimension/tolerance 1-page SOP (layout-pattern sample only; not full edit path): `docs/plans/kiosk-inspection-drawing-dimension-tolerance-sop-1page.md`
 - Active self-inspection confirm guard + draft WIP: `docs/plans/self-inspection-confirm-guard-wip-draft.md`

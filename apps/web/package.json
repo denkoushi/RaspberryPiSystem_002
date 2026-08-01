@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@digital-go-jp/design-tokens": "1.1.9",
+    "@raspi-system/kiosk-sop-core": "workspace:*",
     "@raspi-system/part-search-core": "workspace:*",
     "@raspi-system/shared-types": "workspace:*",
     "@raspi-system/shelf-layout-core": "workspace:*",

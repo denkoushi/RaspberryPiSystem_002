@@ -121,7 +121,7 @@ export function KioskInspectionDrawingCreatePreviewPage() {
             saveStatus="blocked"
             supplementalAction={
               scenarioConfig.isEditing ? (
-                <KioskSopLauncher view={INSPECTION_DRAWING_SOP_BY_SCREEN.templateEdit} />
+                <KioskSopLauncher {...INSPECTION_DRAWING_SOP_BY_SCREEN.templateEdit} />
               ) : undefined
             }
             returnTo={inspectionReturn.inspectionDrawingReturnTo}

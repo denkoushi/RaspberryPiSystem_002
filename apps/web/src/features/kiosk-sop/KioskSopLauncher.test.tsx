@@ -7,33 +7,24 @@ import {
 } from './buildKioskSopSrcDoc';
 import { KioskSopLauncher } from './KioskSopLauncher';
 
-import type { KioskSopView } from './types';
-
-const view: KioskSopView = {
-  id: 'test-sop',
-  title: '検査図面 既存編集',
-  contextLabel: '1 / 2 · 一覧画面',
-  sheetId: 'library',
-  srcDoc: '<!doctype html><html><body>test</body></html>'
-};
-
 describe('KioskSopLauncher', () => {
   it('opens an isolated dialog, ignores unrelated messages, and returns focus on close', () => {
-    render(<KioskSopLauncher view={view} />);
+    render(<KioskSopLauncher manualId="inspection-drawing" initialSheetId="library-entry-search" />);
 
     const openButton = screen.getByRole('button', { name: 'この画面の操作手順を開く' });
     openButton.focus();
     fireEvent.click(openButton);
 
     const dialog = screen.getByRole('dialog', {
-      name: '取説 — 検査図面 既存編集 — 1 / 2 · 一覧画面'
+      name: '取説 — 検査図面 操作取説 — 一覧・検索'
     });
     const closeButton = screen.getByRole('button', { name: '閉じる' });
-    const frame = screen.getByTitle('検査図面 既存編集 — 1 / 2 · 一覧画面');
+    const frame = screen.getByTitle('検査図面 操作取説 — 一覧・検索');
 
     expect(frame).toHaveAttribute('sandbox', 'allow-scripts');
     expect(frame).toHaveAttribute('referrerpolicy', 'no-referrer');
-    expect(frame).toHaveAttribute('srcdoc', view.srcDoc);
+    expect(frame.getAttribute('srcdoc')).toContain('data-sheet="library-entry-search"');
+    expect(frame.getAttribute('srcdoc')).toContain('検査図面を開く');
     expect(closeButton).toHaveFocus();
 
     fireEvent.mouseDown(dialog);
@@ -72,7 +63,7 @@ describe('KioskSopLauncher', () => {
   });
 
   it('closes with Escape while focus remains in the parent document', () => {
-    render(<KioskSopLauncher view={view} />);
+    render(<KioskSopLauncher manualId="inspection-drawing" initialSheetId="edit-basics" />);
     fireEvent.click(screen.getByRole('button', { name: 'この画面の操作手順を開く' }));
 
     fireEvent.keyDown(window, { key: 'Escape' });

@@ -26,6 +26,7 @@ CATEGORIES = (
     "deploy_contract",
     "client",
     "e2e",
+    "kiosk_sop",
     "docker_security",
 )
 FULL_SUITE = frozenset(CATEGORIES)
@@ -98,6 +99,8 @@ def categories_for_path(path: str) -> frozenset[str] | None:
     if normalized in GLOBAL_PATHS:
         return FULL_SUITE
 
+    if normalized == "docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html":
+        return frozenset({"repo_policy", "kiosk_sop"})
     if normalized == ".github/BRANCH_PROTECTION_SETUP.md" or _has_prefix(
         normalized, "docs"
     ) or (
@@ -110,9 +113,12 @@ def categories_for_path(path: str) -> frozenset[str] | None:
     if _has_prefix(normalized, "apps/api"):
         return frozenset({"repo_policy", "workspace_quality", "api"})
     if _has_prefix(normalized, "apps/web"):
-        return frozenset({"repo_policy", "workspace_quality", "web"})
+        return frozenset({"repo_policy", "workspace_quality", "web", "kiosk_sop"})
     if _has_prefix(normalized, "packages"):
-        return frozenset({"repo_policy", "workspace_quality", "api", "web"})
+        return frozenset({"repo_policy", "workspace_quality", "api", "web", "kiosk_sop"})
+
+    if _has_prefix(normalized, "scripts/kiosk-sop"):
+        return frozenset({"repo_policy", "kiosk_sop"})
 
     if _has_prefix(normalized, "clients") or _has_prefix(normalized, "scripts/client"):
         return frozenset({"repo_policy", "client"})
@@ -135,6 +141,8 @@ def categories_for_path(path: str) -> frozenset[str] | None:
     if _has_prefix(normalized, "scripts/server"):
         return frozenset({"repo_policy", "db_infra", "deploy_contract"})
 
+    if normalized == "infrastructure/docker/Dockerfile.kiosk-sop-generator":
+        return frozenset({"repo_policy", "kiosk_sop", "docker_security"})
     if normalized == "infrastructure/docker/Dockerfile.web" or (
         _has_prefix(normalized, "infrastructure/docker")
         and PurePosixPath(normalized).name.startswith("Caddyfile")
@@ -148,6 +156,8 @@ def categories_for_path(path: str) -> frozenset[str] | None:
         )
     if _has_prefix(normalized, "infrastructure/docker"):
         return frozenset({"repo_policy", "db_infra", "docker_security"})
+    if normalized == "e2e/inspection-drawing-sop-popup.spec.ts":
+        return frozenset({"repo_policy", "e2e", "kiosk_sop"})
     if _has_prefix(normalized, "e2e") or normalized == "playwright.config.ts":
         return frozenset({"repo_policy", "e2e"})
 
@@ -209,7 +219,7 @@ def release_pair_for_path(path: str) -> bool:
 
     This follows Docker build-context ownership, not test-job ownership. The
     API image copies the repository ``scripts`` tree, while the Web image
-    embeds one canonical SOP document and server-owned Vite configuration.
+    embeds generated SOP artifacts under ``apps/web``.
     """
 
     normalized = _normalize_path(path)
@@ -225,11 +235,6 @@ def release_pair_for_path(path: str) -> bool:
             "infrastructure/ansible",
             "infrastructure/docker",
         )
-    ):
-        return True
-    if normalized == (
-        "docs/design-previews/"
-        "kiosk-inspection-drawing-edit-existing-sop.html"
     ):
         return True
     if normalized.startswith(".github/workflows/") or normalized.startswith(

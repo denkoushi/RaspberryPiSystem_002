@@ -112,9 +112,9 @@ describe('KioskInspectionDrawingLibraryPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'この画面の操作手順を開く' }));
 
-    const frame = screen.getByTitle('検査図面 既存編集 — 1 / 2 · 一覧画面');
+    const frame = screen.getByTitle('検査図面 操作取説 — 一覧・検索');
     expect(frame).toHaveAttribute('sandbox', 'allow-scripts');
-    expect(frame.getAttribute('srcdoc')).toContain('.sheet[data-sheet="library"]');
+    expect(frame.getAttribute('srcdoc')).toContain('.sheet[data-sheet="library-entry-search"]');
   });
 
   it('keeps the retire action visible and uses 無効ON/OFF to show or hide inactive templates', async () => {

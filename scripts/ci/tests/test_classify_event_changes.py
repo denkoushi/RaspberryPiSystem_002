@@ -58,6 +58,7 @@ class ClassifyEventChangesTests(unittest.TestCase):
                 "deploy_contract": False,
                 "client": False,
                 "e2e": False,
+                "kiosk_sop": False,
                 "docker_security": False,
             },
         )

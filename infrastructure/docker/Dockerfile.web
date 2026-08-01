@@ -14,13 +14,14 @@ RUN --mount=type=cache,id=raspi-pnpm-store,target=/pnpm/store,sharing=locked \
     pnpm install --frozen-lockfile --store-dir=/pnpm/store --network-concurrency=4
 WORKDIR /app/packages/shared-types
 RUN nice -n 10 pnpm build
+WORKDIR /app/packages/kiosk-sop-core
+RUN nice -n 10 pnpm build
 WORKDIR /app/packages/part-search-core
 RUN nice -n 10 pnpm build
 WORKDIR /app/packages/shelf-layout-core
 RUN nice -n 10 pnpm build
 WORKDIR /app
 COPY apps/web ./apps/web
-COPY docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html ./docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html
 # NFCエージェントのWebSocket URLをビルド時に設定可能にする
 ARG VITE_AGENT_WS_URL=ws://localhost:7071/stream
 ENV VITE_AGENT_WS_URL=${VITE_AGENT_WS_URL}
