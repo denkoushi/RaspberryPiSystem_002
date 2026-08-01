@@ -48,6 +48,8 @@ Feature-branch production verification remains possible. A release may succeed o
   Evidence: two environment-only attempts stopped before contract execution because Ansible was absent and a newer pnpm requested an interactive modules reinstall. With bundled Node 24, repository pnpm 9.15.9, pyenv Ansible 3.11.8, and `CI=true`, the complete suite passed without source changes.
 - Observation: The isolated PostgreSQL phase applies all 157 migrations and removes every container, volume, and network carrying the temporary-resource label.
   Evidence: migration deploy/status, schema SQL, focused API tests, and `EXPLAIN (ANALYZE, BUFFERS)` passed; a post-run Docker label query returned no resources.
+- Observation: The pushed feature branch proves the completion gate independently of deploy targeting.
+  Evidence: the production `--print-plan` for source `81b040a811e14ced52ef9a7350801949f8a346ac` selected zero devices, reported production SHA `0132e82f8bbf3d672f1a68e12b2656cdf9942c8c` as integrated, reported source integration as false against `origin/main` `da8a4506f9b85bb0be63753784562a26ace8f4e5`, and therefore emitted `integrationPending=true` and `completionEligible=false`.
 
 ## Decision Log
 
@@ -108,4 +110,4 @@ Do not commit test logs, generated caches, or temporary databases. Documentation
 
 The audit module will expose one function accepting `source_sha`, `origin_main_sha`, a collection of production SHAs, and an `is_ancestor(candidate, main)` callable. It returns JSON-compatible values only. The facade owns Git subprocess execution; the planner and state stores do not depend on Git. `application.py` depends only on a runtime callback supplied by the facade, preserving its testable adapter boundary.
 
-Plan revision note (2026-08-01): created after analyzing the existing four-state documentation rule and the absence of equivalent machine-readable completion evidence.
+Plan revision note (2026-08-01): created after analyzing the existing four-state documentation rule and the absence of equivalent machine-readable completion evidence. Updated after the complete local contract suite and the pushed feature-branch production-plan acceptance check passed.

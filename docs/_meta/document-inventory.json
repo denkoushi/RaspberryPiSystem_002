@@ -15,12 +15,12 @@
     ]
   },
   "summary": {
-    "documentCount": 592,
-    "totalLines": 166399,
-    "totalBytes": 12462780,
-    "withFrontmatter": 266,
-    "withStatus": 122,
-    "sourceOfTruthDeclared": 86,
+    "documentCount": 593,
+    "totalLines": 166512,
+    "totalBytes": 12474224,
+    "withFrontmatter": 267,
+    "withStatus": 123,
+    "sourceOfTruthDeclared": 87,
     "execPlanReferences": 64,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
@@ -33891,6 +33891,21 @@
           "exists": true
         }
       ],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/main-integration-completion-guard-execplan.md",
+      "lineCount": 113,
+      "byteSize": 11444,
+      "hasFrontmatter": true,
+      "title": "Main Integration Completion Guard ExecPlan",
+      "status": "in_progress",
+      "source_of_truth": "this file",
+      "localLinks": [],
       "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
