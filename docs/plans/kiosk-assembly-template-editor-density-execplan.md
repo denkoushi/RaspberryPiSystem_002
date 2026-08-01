@@ -13,7 +13,7 @@ related_docs:
 validation:
   - scripts/test/validate-assembly-template-guided-create.sh
 open_items:
-  - Push, PR, review, merge, and merged-main verification require separate authorization.
+  - Publish the branch, complete required CI and review, merge to main, and deploy the merged SHA with fleet evidence.
 ---
 
 # Reclaim the assembly template document workspace
@@ -36,7 +36,9 @@ The observable result is on the kiosk assembly template create route. At 1366 by
 - [x] (2026-08-01 01:57Z) Added safe input assistance for the template name, document display label, capability group, range application, and area layout.
 - [x] (2026-08-01 01:57Z) Added and updated focused unit, component, page, and Playwright tests; 331 Web test files with 1,665 tests passed, and the target Playwright file passed 15 of 16 scenarios before its one stale-geometry scenario was corrected and rerun successfully.
 - [x] (2026-08-01 02:12Z) Ran migration, isolated PostgreSQL, SQL, EXPLAIN, full test, lint, build, target Playwright, and cleanup validation successfully.
-- [ ] Integration pending: push, PR, review, merge, and merged-main verification are not authorized in this task.
+- [x] (2026-08-01 02:33Z) Received explicit authorization to continue through production deployment; confirmed the clean feature branch, GitHub authentication, standard rolling-deployment entry point, and recovery contract.
+- [ ] Publish the feature branch, open the PR, complete required CI and review, and merge the effective changes into `origin/main`.
+- [ ] Run the read-only merged-main deployment plan, execute the standard rolling update, and record fleet SHA and verification evidence.
 
 ## Surprises & Discoveries
 
@@ -78,7 +80,7 @@ The observable result is on the kiosk assembly template create route. At 1366 by
 
 The local feature-branch implementation is complete. The four-stage guide now uses the local header and a non-layout-shifting issue popover; the initial right inspector is closed; optional controls are disclosed on demand; automatic naming and capability-group-first fastener entry reduce repeated input. Public API, Prisma, database, shared DTO, and Excel contracts did not change.
 
-The complete isolated validation passed after correcting one pre-existing test-environment isolation defect. No existing database or Docker resource was touched, and the validator reported zero labeled resource residue. Repository integration remains intentionally pending because push, PR, merge, and deployment were not authorized.
+The complete isolated validation passed after correcting one pre-existing test-environment isolation defect. No existing database or Docker resource was touched, and the validator reported zero labeled resource residue. The user subsequently authorized publication, main integration, and production deployment; those operational milestones are now in progress and this plan remains open until merged-main fleet evidence is recorded.
 
 ## Context and Orientation
 
@@ -98,7 +100,7 @@ Then add pure helpers for the suggested name and capability-group snapshot. A di
 
 Build a dedicated searchable capability-group choice control that cannot commit arbitrary text. Show group name and its four condition values in each result. Selecting a group atomically replaces group ID and all four fastener fields and refreshes only an automatically managed bolt display specification. Preserve custom display specifications. Existing invalid or inactive selections show their stored snapshot and require a valid reselection; catalog failures preserve the retry path.
 
-Finally, update tests to exercise the new interaction rather than bypassing it. Keep payload assertions exact so any public-contract drift fails loudly. Record all commands and evidence below, then update this document's status and outcome without claiming repository completion: this branch is not authorized for push, PR, merge, or deployment.
+Finally, update tests to exercise the new interaction rather than bypassing it. Keep payload assertions exact so any public-contract drift fails loudly. After local validation, publish the feature branch, complete the required PR checks and review, merge to `main`, and use only `scripts/update-all-clients.sh` for the authorized production rollout. Do not claim completion until the deployed immutable SHA is contained in `origin/main`, fleet evidence is verified, maintenance is clear, and the same-SHA plan is a no-op.
 
 ## Concrete Steps
 
@@ -157,3 +159,4 @@ Final local evidence:
 Add only Web-internal interfaces: a guide presentation model derived from readiness, an inspector mode union equivalent to `'closed' | 'step' | 'markers'`, a pure template-name suggestion function, and a pure capability-group-to-bolt snapshot function. Continue to use `AnchoredDropdownPortal` for viewport placement and existing button/input primitives for kiosk touch sizing. Do not introduce a new dependency.
 
 Revision note (2026-08-01): Created the implementation-ready plan after repository, contract, UI, test, and Docker validation analysis so work can be resumed safely from this file alone. Updated at 01:57Z with implemented milestones, focused test evidence, and the responsive-geometry E2E discovery. Updated at 02:12Z with full isolated validation, test-harness isolation recovery, cleanup evidence, and explicit integration-pending status.
+Updated at 02:33Z after the user explicitly authorized publication, main integration, and production deployment; added the remaining PR, merged-main, rolling-release, and fleet-evidence milestones.

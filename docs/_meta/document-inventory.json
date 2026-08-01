@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 594,
-    "totalLines": 166672,
-    "totalBytes": 12491332,
+    "totalLines": 166675,
+    "totalBytes": 12492214,
     "withFrontmatter": 268,
     "withStatus": 124,
     "sourceOfTruthDeclared": 88,
@@ -33171,8 +33171,8 @@
     },
     {
       "path": "docs/plans/kiosk-assembly-template-editor-density-execplan.md",
-      "lineCount": 159,
-      "byteSize": 16406,
+      "lineCount": 162,
+      "byteSize": 17288,
       "hasFrontmatter": true,
       "title": "Reclaim the assembly template document workspace",
       "status": "in-progress",
