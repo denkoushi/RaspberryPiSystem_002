@@ -16,9 +16,10 @@
 - **成果物取得timeoutとcanary承認handoffの修正**: 処理別上限・30秒heartbeat・構造化timeoutを追加し、`--status`からrun固有の人承認操作を明示する。**正本**: [ExecPlan](./plans/deploy-artifact-timeout-canary-handoff-execplan.md) · [Deploy Guide](./guides/deployment.md)
 - **Pi5 API成果物の有界runtime化と単一SSD保存安全化**: API pull 1200秒・全体1500秒の有界運用を維持し、API専用依存・Ansible Core・headless shellでARM64 OCIを32.98%削減。業務ファイルは既存SSD上のまま、原子的保存・SHA-256 catalog・容量guard・leader backfillを追加する。**正本**: [Image ADR](./decisions/ADR-20260730-bounded-api-runtime-artifact.md) · [Storage ADR](./decisions/ADR-20260731-single-ssd-durable-file-storage.md) · [Storage Runbook](./runbooks/pi5-local-file-storage.md) · [KB-404](./knowledge-base/KB-404-pi5-ghcr-api-image-pull-timeout.md) · [ExecPlan](./plans/pi5-api-image-local-storage-scalability-execplan.md)
 
-### 検査図面 既存編集 SOP（2026-07-28 · 完全版ドラフト・画面別ページ）
+### 検査図面 取説の実コード生成・自動保守（2026-08-01 · ローカル実装）
 
-- **A4横×画面数（一覧1枚＋編集1枚）・手順番号は通し**: 左ステップレール＋画面上番号（右下隅）。引出線はホバー時のみ。寸法6手順HTMLはレイアウト見本。**正本**: [Plan](./plans/kiosk-inspection-drawing-edit-existing-sop.md) · [Viewer ExecPlan](./plans/kiosk-sop-popup-viewer-execplan.md) · [ADR](./decisions/ADR-20260728-inspection-drawing-sop-step-rail.md) · [Preview](./design-previews/kiosk-inspection-drawing-edit-existing-sop.html)
+- **本番Reactルートから9シートを決定的生成**: 固定Playwrightコンテナで実画面・注釈済みPNG・自己完結HTML・manifestを生成し、関連実装変更で成果物が古ければCIを停止する。必須は橙実線、任意は控えめなスレート破線。**正本**: [ExecPlan](./plans/kiosk-sop-generated-maintenance-execplan.md) · [ADR](./decisions/ADR-20260801-kiosk-sop-generated-from-production-ui.md) · [Preview](./design-previews/kiosk-inspection-drawing-edit-existing-sop.html)
+- **旧手書きSOP（履歴）**: [Superseded Plan](./plans/kiosk-inspection-drawing-edit-existing-sop.md) · [Viewer ExecPlan](./plans/kiosk-sop-popup-viewer-execplan.md) · [Step-rail ADR](./decisions/ADR-20260728-inspection-drawing-sop-step-rail.md)
 - **レイアウト見本（寸法・公差6手順・単画面）**: [Plan](./plans/kiosk-inspection-drawing-dimension-tolerance-sop-1page.md) · [Preview](./design-previews/kiosk-inspection-drawing-dimension-tolerance-sop-1page.html)
 
 ### 組立V3承認UI/UX 回帰復旧（2026-07-27 · main正式統合）

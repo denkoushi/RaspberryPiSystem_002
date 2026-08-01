@@ -12,6 +12,7 @@ import {
 
 import { matchesDigitQuery } from './inspectionDrawingDigitQuery';
 import { InspectionDrawingResourceCdChipList } from './InspectionDrawingResourceCdChipList';
+import { inspectionDrawingSopTargetProps } from './inspectionDrawingSopAnnotations';
 import { formatVisualLibraryTimestamp } from './inspectionDrawingVisualLibraryHelpers';
 import {
   INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE,
@@ -91,6 +92,7 @@ export function KioskInspectionDrawingVisualLibrarySection({
         </h2>
         <div className="w-[8.75rem] max-w-full shrink-0">
           <input
+            {...inspectionDrawingSopTargetProps('visual-name-search')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="図面名で検索"
@@ -100,6 +102,7 @@ export function KioskInspectionDrawingVisualLibrarySection({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
+            {...inspectionDrawingSopTargetProps('register-visual')}
             type="button"
             variant="ghostOnDark"
             className="min-h-11 shrink-0 !px-2 !py-0 text-sm"
@@ -181,6 +184,7 @@ export function KioskInspectionDrawingVisualLibrarySection({
                               </span>
                             ) : (
                               <Link
+                                {...inspectionDrawingSopTargetProps('create-from-visual')}
                                 to={kioskInspectionDrawingCreatePathWithVisual(visual.id)}
                                 state={INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE}
                                 title="新規作成"
@@ -193,6 +197,7 @@ export function KioskInspectionDrawingVisualLibrarySection({
                               </Link>
                             )}
                             <button
+                              {...inspectionDrawingSopTargetProps('rename-visual')}
                               type="button"
                               title="名称変更"
                               className={clsx(kioskButtonSecondaryClassName, 'min-h-11 shrink-0 whitespace-nowrap !px-1.5 !py-0 text-xs leading-none')}

@@ -261,3 +261,5 @@ export {
 } from './productionInspectionDrawingPolicy';
 export type { InspectionDrawingEditMode } from './productionInspectionDrawingPolicy';
 export { INSPECTION_DRAWING_SOP_BY_SCREEN } from './inspectionDrawingSop';
+export { inspectionDrawingSopTargetProps } from './inspectionDrawingSopAnnotations';
+export type { InspectionDrawingSopTargetId } from './inspectionDrawingSopAnnotations';

@@ -15,9 +15,9 @@
     ]
   },
   "summary": {
-    "documentCount": 594,
-    "totalLines": 166704,
-    "totalBytes": 12496000,
+    "documentCount": 597,
+    "totalLines": 167294,
+    "totalBytes": 12564222,
     "withFrontmatter": 268,
     "withStatus": 124,
     "sourceOfTruthDeclared": 88,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 25,
-    "localLinkCount": 5645,
+    "localLinkCount": 5651,
     "brokenLocalLinkCount": 87,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -605,8 +605,8 @@
     },
     {
       "path": "AGENTS.md",
-      "lineCount": 93,
-      "byteSize": 7611,
+      "lineCount": 104,
+      "byteSize": 9035,
       "hasFrontmatter": false,
       "title": "AI Agent Entry Point",
       "status": null,
@@ -5741,8 +5741,8 @@
     },
     {
       "path": "README.md",
-      "lineCount": 320,
-      "byteSize": 16380,
+      "lineCount": 332,
+      "byteSize": 17243,
       "hasFrontmatter": false,
       "title": "Raspberry Pi NFC 工場持出返却システム",
       "status": null,
@@ -5898,8 +5898,8 @@
     },
     {
       "path": "docs/AI_START_HERE.md",
-      "lineCount": 118,
-      "byteSize": 6936,
+      "lineCount": 121,
+      "byteSize": 7421,
       "hasFrontmatter": true,
       "title": "AI Start Here",
       "status": null,
@@ -5913,8 +5913,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 2012,
-      "byteSize": 347201,
+      "lineCount": 2013,
+      "byteSize": 347506,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -6893,6 +6893,11 @@
         {
           "href": "./decisions/ADR-20260731-single-ssd-durable-file-storage.md",
           "targetPath": "docs/decisions/ADR-20260731-single-ssd-durable-file-storage.md",
+          "exists": true
+        },
+        {
+          "href": "./decisions/ADR-20260801-kiosk-sop-generated-from-production-ui.md",
+          "targetPath": "docs/decisions/ADR-20260801-kiosk-sop-generated-from-production-ui.md",
           "exists": true
         },
         {
@@ -10466,6 +10471,11 @@
           "exists": true
         },
         {
+          "href": "./plans/kiosk-sop-generated-maintenance-execplan.md",
+          "targetPath": "docs/plans/kiosk-sop-generated-maintenance-execplan.md",
+          "exists": true
+        },
+        {
           "href": "./plans/kiosk-sop-popup-viewer-execplan.md",
           "targetPath": "docs/plans/kiosk-sop-popup-viewer-execplan.md",
           "exists": true
@@ -10536,8 +10546,8 @@
           "exists": true
         },
         {
-          "href": "./plans/pi4-sd-recovery-bootstrap.md",
-          "targetPath": "docs/plans/pi4-sd-recovery-bootstrap.md",
+          "href": "./plans/pi4-sd-recovery-lan-provider-execplan.md",
+          "targetPath": "docs/plans/pi4-sd-recovery-lan-provider-execplan.md",
           "exists": true
         },
         {
@@ -11246,95 +11256,95 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 292,
+          "line": 293,
           "length": 1132
         },
         {
-          "line": 308,
+          "line": 309,
           "length": 1242
         },
         {
-          "line": 312,
+          "line": 313,
           "length": 1022
         },
         {
-          "line": 326,
+          "line": 327,
           "length": 1065
         },
         {
-          "line": 374,
+          "line": 375,
           "length": 1165
         },
         {
-          "line": 380,
+          "line": 381,
           "length": 1458
         },
         {
-          "line": 392,
+          "line": 393,
           "length": 1083
         },
         {
-          "line": 406,
+          "line": 407,
           "length": 1398
         },
         {
-          "line": 408,
+          "line": 409,
           "length": 1133
         },
         {
-          "line": 412,
+          "line": 413,
           "length": 1399
         },
         {
-          "line": 414,
+          "line": 415,
           "length": 1008
         },
         {
-          "line": 420,
+          "line": 421,
           "length": 1059
         },
         {
-          "line": 428,
+          "line": 429,
           "length": 1129
         },
         {
-          "line": 432,
+          "line": 433,
           "length": 1135
         },
         {
-          "line": 436,
+          "line": 437,
           "length": 1117
         },
         {
-          "line": 551,
+          "line": 552,
           "length": 1013
         },
         {
-          "line": 737,
+          "line": 738,
           "length": 2038
         },
         {
-          "line": 753,
+          "line": 754,
           "length": 1496
         },
         {
-          "line": 759,
+          "line": 760,
           "length": 1177
         },
         {
-          "line": 1101,
+          "line": 1102,
           "length": 1449
         },
         {
-          "line": 1137,
+          "line": 1138,
           "length": 1136
         },
         {
-          "line": 1139,
+          "line": 1140,
           "length": 1239
         },
         {
-          "line": 1175,
+          "line": 1176,
           "length": 1004
         }
       ],
@@ -16625,10 +16635,10 @@
     },
     {
       "path": "docs/decisions/ADR-20260713-pi4-sd-recovery-bootstrap.md",
-      "lineCount": 98,
-      "byteSize": 4655,
+      "lineCount": 127,
+      "byteSize": 6613,
       "hasFrontmatter": true,
-      "title": "Pi4 SD-card recovery through Pi5 bootstrap and local endpoint override",
+      "title": "Pi4 SD recovery through a verified dynamic LAN bootstrap endpoint",
       "status": "accepted",
       "source_of_truth": "true",
       "localLinks": [],
@@ -16976,8 +16986,8 @@
     },
     {
       "path": "docs/decisions/ADR-20260728-inspection-drawing-sop-step-rail.md",
-      "lineCount": 53,
-      "byteSize": 2380,
+      "lineCount": 55,
+      "byteSize": 2658,
       "hasFrontmatter": true,
       "title": "Step-rail list + on-screen badges for inspection-drawing dimension SOP",
       "status": "accepted",
@@ -16986,6 +16996,11 @@
         {
           "href": "./ADR-20260728-inspection-drawing-sop-outer-callouts.md",
           "targetPath": "docs/decisions/ADR-20260728-inspection-drawing-sop-outer-callouts.md",
+          "exists": true
+        },
+        {
+          "href": "./ADR-20260801-kiosk-sop-generated-from-production-ui.md",
+          "targetPath": "docs/decisions/ADR-20260801-kiosk-sop-generated-from-production-ui.md",
           "exists": true
         },
         {
@@ -17083,7 +17098,7 @@
     {
       "path": "docs/design-previews/README.md",
       "lineCount": 102,
-      "byteSize": 20881,
+      "byteSize": 21096,
       "hasFrontmatter": false,
       "title": "デザインプレビュー（静的 HTML）",
       "status": null,
@@ -17117,6 +17132,11 @@
         {
           "href": "../decisions/ADR-20260728-inspection-drawing-sop-step-rail.md",
           "targetPath": "docs/decisions/ADR-20260728-inspection-drawing-sop-step-rail.md",
+          "exists": true
+        },
+        {
+          "href": "../decisions/ADR-20260801-kiosk-sop-generated-from-production-ui.md",
+          "targetPath": "docs/decisions/ADR-20260801-kiosk-sop-generated-from-production-ui.md",
           "exists": true
         },
         {
@@ -17400,13 +17420,13 @@
           "exists": true
         },
         {
-          "href": "../plans/kiosk-inspection-drawing-edit-existing-sop.md",
-          "targetPath": "docs/plans/kiosk-inspection-drawing-edit-existing-sop.md",
+          "href": "../plans/kiosk-inspection-drawing-server-digit-search-retire-mode.md",
+          "targetPath": "docs/plans/kiosk-inspection-drawing-server-digit-search-retire-mode.md",
           "exists": true
         },
         {
-          "href": "../plans/kiosk-inspection-drawing-server-digit-search-retire-mode.md",
-          "targetPath": "docs/plans/kiosk-inspection-drawing-server-digit-search-retire-mode.md",
+          "href": "../plans/kiosk-sop-generated-maintenance-execplan.md",
+          "targetPath": "docs/plans/kiosk-sop-generated-maintenance-execplan.md",
           "exists": true
         },
         {
@@ -18418,8 +18438,8 @@
     },
     {
       "path": "docs/guides/client-initial-setup.md",
-      "lineCount": 680,
-      "byteSize": 24807,
+      "lineCount": 685,
+      "byteSize": 25306,
       "hasFrontmatter": true,
       "title": "新規クライアント端末の初期設定手順",
       "status": null,
@@ -33394,16 +33414,21 @@
     },
     {
       "path": "docs/plans/kiosk-inspection-drawing-edit-existing-sop.md",
-      "lineCount": 115,
-      "byteSize": 4825,
+      "lineCount": 118,
+      "byteSize": 5222,
       "hasFrontmatter": true,
       "title": "Multi-page SOP for editing an existing inspection-drawing template",
-      "status": "draft",
-      "source_of_truth": "true",
+      "status": "superseded",
+      "source_of_truth": "false",
       "localLinks": [
         {
           "href": "../decisions/ADR-20260728-inspection-drawing-sop-step-rail.md",
           "targetPath": "docs/decisions/ADR-20260728-inspection-drawing-sop-step-rail.md",
+          "exists": true
+        },
+        {
+          "href": "../decisions/ADR-20260801-kiosk-sop-generated-from-production-ui.md",
+          "targetPath": "docs/decisions/ADR-20260801-kiosk-sop-generated-from-production-ui.md",
           "exists": true
         },
         {
@@ -33415,9 +33440,14 @@
           "href": "./kiosk-inspection-drawing-dimension-tolerance-sop-1page.md",
           "targetPath": "docs/plans/kiosk-inspection-drawing-dimension-tolerance-sop-1page.md",
           "exists": true
+        },
+        {
+          "href": "./kiosk-sop-generated-maintenance-execplan.md",
+          "targetPath": "docs/plans/kiosk-sop-generated-maintenance-execplan.md",
+          "exists": true
         }
       ],
-      "inboundCount": 3,
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -34139,14 +34169,59 @@
     },
     {
       "path": "docs/plans/pi4-sd-recovery-bootstrap.md",
-      "lineCount": 137,
-      "byteSize": 7758,
+      "lineCount": 143,
+      "byteSize": 8173,
       "hasFrontmatter": false,
       "title": "Pi4 SD-card recovery bootstrap",
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/pi4-sd-recovery-dynamic-bootstrap-execplan.md",
+      "lineCount": 185,
+      "byteSize": 21922,
+      "hasFrontmatter": false,
+      "title": "Recover a Pi4 from a user-reported dynamic LAN endpoint",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/pi4-sd-recovery-lan-provider-execplan.md",
+      "lineCount": 162,
+      "byteSize": 20885,
+      "hasFrontmatter": false,
+      "title": "Move Pi4 SD-card recovery to the managed LAN",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
       "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/pi4-sd-recovery-readiness-execplan.md",
+      "lineCount": 134,
+      "byteSize": 17154,
+      "hasFrontmatter": false,
+      "title": "Restore production readiness for Pi4 SD-card recovery",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -37575,10 +37650,10 @@
     },
     {
       "path": "docs/runbooks/pi4-sd-recovery.md",
-      "lineCount": 116,
-      "byteSize": 5609,
+      "lineCount": 153,
+      "byteSize": 7031,
       "hasFrontmatter": true,
-      "title": "Pi4 SD-card recovery through Pi5",
+      "title": "Pi4 SD-card recovery through Pi5 over the managed LAN",
       "status": "accepted",
       "source_of_truth": "docs/runbooks/pi4-sd-recovery.md",
       "localLinks": [],

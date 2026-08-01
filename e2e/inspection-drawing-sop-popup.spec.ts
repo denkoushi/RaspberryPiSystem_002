@@ -84,7 +84,7 @@ for (const viewport of [
   { width: 1280, height: 800 },
   { width: 1536, height: 864 }
 ] as const) {
-  test(`@production-smoke ${viewport.width}x${viewport.height}: 一覧の取説はオフラインでも1/2だけを安全に表示する`, async ({
+  test(`@production-smoke ${viewport.width}x${viewport.height}: 一覧の取説はオフラインでも生成シートを安全に表示する`, async ({
     page,
     context
   }) => {
@@ -119,13 +119,18 @@ for (const viewport of [
       await expect(frameElement).toHaveAttribute('referrerpolicy', 'no-referrer');
 
       const frame = page.frameLocator('[data-testid="kiosk-sop-frame"]');
-      await expect(frame.locator('.sheet[data-sheet="library"]')).toBeVisible();
-      await expect(frame.locator('.sheet[data-sheet="edit"]')).toBeHidden();
+      await expect(frame.locator('.sheet[data-sheet="library-entry-search"]')).toBeVisible();
+      await expect(frame.locator('.sheet[data-sheet="edit-basics"]')).toBeHidden();
       await expect(frame.getByText('検査図面を開く')).toBeVisible();
-      await expect(frame.locator('.leader-layer line.is-on')).toHaveCount(0);
+      await expect(frame.getByText('必須').first()).toBeVisible();
+      await expect(frame.getByText('任意').first()).toBeVisible();
 
-      await frame.locator('.step-item[data-step="1"]').focus();
-      await expect(frame.locator('.leader-layer line.is-on')).toHaveCount(1);
+      await frame.locator('.sheet[data-sheet="library-entry-search"] .step-item[data-step="1"]').focus();
+      await expect(frame.locator('.sheet[data-sheet="library-entry-search"] .leader-layer line[data-line="1"]')).toHaveCSS('opacity', '1');
+
+      await page.getByRole('button', { name: '次の手順' }).click();
+      await expect(frame.locator('.sheet[data-sheet="library-visual-management"]')).toBeVisible();
+      await expect(frame.getByText('図面を登録')).toBeVisible();
 
       const closeButton = page.getByRole('button', { name: '閉じる' });
       expect(await closeButton.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
@@ -145,7 +150,7 @@ for (const scenario of ['revise', 'fixed_count'] as const) {
       ? { width: 1280, height: 800 }
       : { width: 1536, height: 864 };
 
-  test(`${scenario} ${viewport.width}x${viewport.height}: 改版プレビューは取説2/2を表示して画面状態を維持する`, async ({ page }) => {
+  test(`${scenario} ${viewport.width}x${viewport.height}: 改版プレビューは生成取説を表示して画面状態を維持する`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await mockKioskLayoutApis(page);
     await page.goto(`/dev/kiosk-inspection-drawing-create?scenario=${scenario}`, {
@@ -158,10 +163,14 @@ for (const scenario of ['revise', 'fixed_count'] as const) {
 
     await page.getByRole('button', { name: 'この画面の操作手順を開く' }).click();
     const frame = page.frameLocator('[data-testid="kiosk-sop-frame"]');
-    await expect(frame.locator('.sheet[data-sheet="library"]')).toBeHidden();
-    await expect(frame.locator('.sheet[data-sheet="edit"]')).toBeVisible();
+    await expect(frame.locator('.sheet[data-sheet="library-entry-search"]')).toBeHidden();
+    await expect(frame.locator('.sheet[data-sheet="edit-basics"]')).toBeVisible();
+    await expect(frame.getByText('対象情報を確認')).toBeVisible();
+    await expect(frame.getByText('改版を保存')).toBeVisible();
+
+    await page.getByRole('button', { name: '次の手順' }).click();
+    await expect(frame.locator('.sheet[data-sheet="edit-required-point"]')).toBeVisible();
     await expect(frame.getByText('直す点を選ぶ')).toBeVisible();
-    await expect(frame.getByText('一覧に戻る')).toBeVisible();
 
     await page.getByRole('button', { name: '閉じる' }).click();
     await expect(testInputButton).toHaveAttribute('aria-pressed', 'true');

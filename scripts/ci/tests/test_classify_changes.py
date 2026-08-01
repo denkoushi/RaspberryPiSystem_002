@@ -47,14 +47,14 @@ class ClassifyChangesTests(unittest.TestCase):
         self.assertTrue(api["releasePair"])
 
         web = self.classify(Change("M", "apps/web/src/main.tsx"))
-        self.assertEqual(self.selected(web), {"repo_policy", "workspace_quality", "web"})
+        self.assertEqual(self.selected(web), {"repo_policy", "workspace_quality", "web", "kiosk_sop"})
         self.assertTrue(web["codeql"])
         self.assertTrue(web["releasePair"])
 
         shared = self.classify(Change("M", "packages/shared-types/src/index.ts"))
         self.assertEqual(
             self.selected(shared),
-            {"repo_policy", "workspace_quality", "api", "web"},
+            {"repo_policy", "workspace_quality", "api", "web", "kiosk_sop"},
         )
 
         migration = self.classify(
@@ -179,6 +179,7 @@ class ClassifyChangesTests(unittest.TestCase):
                 "deploy_contract=false",
                 "client=false",
                 "e2e=false",
+                "kiosk_sop=false",
                 "docker_security=false",
                 "full_suite=false",
                 "codeql=true",
@@ -207,9 +208,9 @@ class ClassifyChangesTests(unittest.TestCase):
                     self.classify(Change("M", path))["releasePair"]
                 )
 
-    def test_embedded_sop_and_runtime_scripts_publish_release_pair(self) -> None:
+    def test_runtime_sources_publish_release_pair(self) -> None:
         for path in (
-            "docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html",
+            "apps/web/src/generated/kiosk-sop/inspection-drawing/manual.html",
             "scripts/deploy/deploy-status-state.py",
             "scripts/part-measurement/drawing-local-rapidocr-worker.py",
         ):
@@ -217,6 +218,22 @@ class ClassifyChangesTests(unittest.TestCase):
                 self.assertTrue(
                     self.classify(Change("M", path))["releasePair"]
                 )
+
+        self.assertFalse(
+            self.classify(Change("M", "docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html"))["releasePair"]
+        )
+
+    def test_kiosk_sop_inputs_select_fail_closed_generation(self) -> None:
+        for path in (
+            "apps/web/src/pages/kiosk/KioskInspectionDrawingLibraryPage.tsx",
+            "packages/kiosk-sop-core/src/render.ts",
+            "scripts/kiosk-sop/generate.mjs",
+            "infrastructure/docker/Dockerfile.kiosk-sop-generator",
+            "e2e/inspection-drawing-sop-popup.spec.ts",
+            "docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html",
+        ):
+            with self.subTest(path=path):
+                self.assertIn("kiosk_sop", self.selected(self.classify(Change("M", path))))
 
 
 if __name__ == "__main__":

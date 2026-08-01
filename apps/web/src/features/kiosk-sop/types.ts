@@ -1,7 +1,13 @@
-export type KioskSopView = Readonly<{
+export type KioskSopSheetDescriptor = Readonly<{
+  id: string;
+  label: string;
+}>;
+
+export type KioskSopManual = Readonly<{
   id: string;
   title: string;
-  contextLabel: string;
-  sheetId: string;
-  srcDoc: string;
+  sourceHtml: string;
+  sheets: readonly KioskSopSheetDescriptor[];
 }>;
+
+export type KioskSopManualId = 'inspection-drawing';

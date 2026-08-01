@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:1
+FROM mcr.microsoft.com/playwright:v1.56.1-noble@sha256:f1e7e01021efd65dd1a2c56064be399f3e4de00fd021ac561325f2bfbb2b837a
+
+WORKDIR /workspace
+ENV CI=true \
+    TZ=Asia/Tokyo \
+    LANG=ja_JP.UTF-8 \
+    LC_ALL=ja_JP.UTF-8
+
+RUN corepack enable
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+COPY apps/web/package.json apps/web/package.json
+COPY packages/shared-types/package.json packages/shared-types/package.json
+COPY packages/kiosk-sop-core/package.json packages/kiosk-sop-core/package.json
+COPY packages/part-search-core/package.json packages/part-search-core/package.json
+COPY packages/shelf-layout-core/package.json packages/shelf-layout-core/package.json
+RUN --mount=type=cache,id=raspi-kiosk-sop-pnpm,target=/pnpm/store,sharing=locked \
+    pnpm install --frozen-lockfile --store-dir=/pnpm/store
+COPY packages ./packages
+RUN pnpm --filter @raspi-system/shared-types build \
+    && pnpm --filter @raspi-system/kiosk-sop-core build \
+    && pnpm --filter @raspi-system/part-search-core build \
+    && pnpm --filter @raspi-system/shelf-layout-core build
+COPY apps/web ./apps/web
+COPY scripts/kiosk-sop ./scripts/kiosk-sop
+RUN mkdir -p docs/design-previews
+
+CMD ["node", "scripts/kiosk-sop/generate.mjs", "check"]
