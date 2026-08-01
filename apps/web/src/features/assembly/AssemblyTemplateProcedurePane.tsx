@@ -1,4 +1,5 @@
 import clsx from 'clsx';
+import { useEffect, useState } from 'react';
 
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -18,6 +19,7 @@ type Props = {
   modelCode: string;
   machineNameSelectionRequired: boolean;
   procedurePattern: string;
+  templateNameAutomatic: boolean;
   busy: boolean;
   readOnly: boolean;
   onOpenDocumentLibrary: () => void;
@@ -25,6 +27,7 @@ type Props = {
   onRemoveItem: (localId: string) => void;
   onLabelChange: (localId: string, label: string) => void;
   onTemplateNameChange: (value: string) => void;
+  onRestoreSuggestedTemplateName: () => void;
   onModelCodeChange: (value: string) => void;
   onOpenMachineNamePicker: () => void;
   onProcedurePatternChange: (value: string) => void;
@@ -47,6 +50,7 @@ export function AssemblyTemplateProcedurePane({
   modelCode,
   machineNameSelectionRequired,
   procedurePattern,
+  templateNameAutomatic,
   busy,
   readOnly,
   onOpenDocumentLibrary,
@@ -54,6 +58,7 @@ export function AssemblyTemplateProcedurePane({
   onRemoveItem,
   onLabelChange,
   onTemplateNameChange,
+  onRestoreSuggestedTemplateName,
   onModelCodeChange,
   onOpenMachineNamePicker,
   onProcedurePatternChange,
@@ -63,6 +68,31 @@ export function AssemblyTemplateProcedurePane({
   onDeleteArea,
   onAreaPatch
 }: Props) {
+  const [expandedDocumentLabels, setExpandedDocumentLabels] = useState<Set<string>>(
+    () => new Set()
+  );
+
+  const toggleDocumentLabel = (localId: string) => {
+    setExpandedDocumentLabels((current) => {
+      const next = new Set(current);
+      if (next.has(localId)) next.delete(localId);
+      else next.add(localId);
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    const invalidLabelIds = items
+      .filter(({ item }) => item.label.length > 120)
+      .map(({ item }) => item.localId);
+    if (invalidLabelIds.length === 0) return;
+    setExpandedDocumentLabels((current) => {
+      const next = new Set(current);
+      invalidLabelIds.forEach((id) => next.add(id));
+      return next;
+    });
+  }, [items]);
+
   return (
     <section
       id="assembly-procedure-pane"
@@ -116,18 +146,35 @@ export function AssemblyTemplateProcedurePane({
                 </span>
               </span>
             </button>
-            <div className="mt-1 flex gap-1">
+            {item.label.trim() ? (
+              <p className="mt-1 truncate text-[0.65rem] text-white/60">
+                表示名: {item.label.trim()}
+              </p>
+            ) : null}
+            <div className="mt-1 grid grid-cols-2 gap-1">
+              <Button
+                type="button"
+                variant="ghostOnDark"
+                className="min-h-10 !px-1 !py-1 text-xs"
+                aria-expanded={expandedDocumentLabels.has(item.localId)}
+                onClick={() => toggleDocumentLabel(item.localId)}
+              >
+                {expandedDocumentLabels.has(item.localId)
+                  ? '表示名を閉じる'
+                  : '表示名を変更'}
+              </Button>
               <Button
                 type="button"
                 variant="danger"
                 aria-label={`${item.label.trim() || item.document.title}を削除`}
-                className="min-h-11 flex-1 !px-1 !py-1 text-xs"
+                className="min-h-10 !px-1 !py-1 text-xs"
                 disabled={busy || readOnly}
                 onClick={() => onRemoveItem(item.localId)}
               >
                 削除
               </Button>
             </div>
+            {expandedDocumentLabels.has(item.localId) ? (
             <label className="mt-1 grid gap-0.5 text-[0.65rem] font-semibold text-white/55">
               表示ラベル
               <Input
@@ -138,6 +185,7 @@ export function AssemblyTemplateProcedurePane({
                 onChange={(event) => onLabelChange(item.localId, event.target.value)}
               />
             </label>
+            ) : null}
           </div>
         ))}
       </div>
@@ -199,9 +247,6 @@ export function AssemblyTemplateProcedurePane({
           </label>
           <label className="grid gap-1 text-xs font-semibold text-white/70">
             テンプレート名
-            <span className="text-[0.65rem] font-normal text-white/50">
-              一覧に表示する分かりやすい名称です。
-            </span>
             <Input
               id="assembly-template-name"
               className="min-h-11"
@@ -210,6 +255,21 @@ export function AssemblyTemplateProcedurePane({
               disabled={busy || readOnly}
               onChange={(event) => onTemplateNameChange(event.target.value)}
             />
+            <span className="flex min-h-6 items-center justify-between gap-1 text-[0.65rem] font-normal text-white/50">
+              {templateNameAutomatic
+                ? '機種名と手順パターンから自動提案中'
+                : '個別の名称を使用中'}
+              {!templateNameAutomatic ? (
+                <button
+                  type="button"
+                  className="rounded px-1.5 py-1 font-semibold text-cyan-200 hover:bg-white/10 disabled:opacity-60"
+                  disabled={busy || readOnly}
+                  onClick={onRestoreSuggestedTemplateName}
+                >
+                  自動提案に戻す
+                </button>
+              ) : null}
+            </span>
           </label>
         </div>
       </section>
@@ -297,21 +357,9 @@ export function AssemblyTemplateProcedurePane({
           ] as const).map(([key, label]) => (
             <label
               key={key}
-              className={clsx(
-                'grid gap-1 text-xs font-semibold text-white/70',
-                key === 'areaName' ? 'col-span-2' : ''
-              )}
+              className="grid gap-1 text-xs font-semibold text-white/70"
             >
               {label}
-              <span className="text-[0.62rem] font-normal text-white/45">
-                {key === 'processNo'
-                  ? '作業工程の識別番号'
-                  : key === 'areaCode'
-                    ? '工程内の締付範囲'
-                    : key === 'unitCode'
-                      ? '対象ユニットの識別値'
-                      : '現場で読む表示名'}
-              </span>
               <Input
                 id={`assembly-area-${selectedArea.id}-${key}`}
                 className="min-h-11"

@@ -20,7 +20,7 @@ import {
   AssemblyProcedureStepInspector,
   AssemblyTemplateDocumentLibraryDialog,
   AssemblyTemplateBoltInspector,
-  AssemblyTemplateCreationGuide,
+  AssemblyTemplateHeaderGuide,
   AssemblyTemplateProcedurePane,
   appendAssemblyProcedureDocument,
   AssemblyMachineNamePickerDialog,
@@ -29,6 +29,7 @@ import {
   assemblyTemplateProcedureDraftReducer,
   assemblyProcedureStepDraftReducer,
   assemblyProcedureViewPointToSourcePoint,
+  buildAssemblyTemplateSuggestedName,
   buildProcedureDraftPageOptions,
   canRemoveAssemblyTemplateProcedureItem,
   canRemoveProcedureStep,
@@ -60,7 +61,6 @@ import {
   readAssemblyApiErrorMessage,
   renumberDraftCheckItems,
   resolveAssemblyDocumentStatus,
-  isAssemblyCapabilityGroupCompatible,
   serializeAssemblyTemplateDraftAreas,
   templateToProcedureDraftItems,
   templateToProcedureStepDrafts,
@@ -122,7 +122,7 @@ export function KioskAssemblyTemplateEditorPage() {
   );
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [leftPaneTab, setLeftPaneTab] = useState<'steps' | 'documents'>('steps');
-  const [inspectorTab, setInspectorTab] = useState<'step' | 'markers'>('step');
+  const [inspectorMode, setInspectorMode] = useState<'closed' | 'step' | 'markers'>('closed');
   const [showFullPage, setShowFullPage] = useState(false);
   const [procedurePaneOpen, setProcedurePaneOpen] = useState(true);
   const [documentLibraryOpen, setDocumentLibraryOpen] = useState(false);
@@ -131,6 +131,7 @@ export function KioskAssemblyTemplateEditorPage() {
   const [passwordInput, setPasswordInput] = useState('');
   const [baselineSnapshot, setBaselineSnapshot] = useState<string | null>(null);
   const [templateName, setTemplateName] = useState('');
+  const [templateNameMode, setTemplateNameMode] = useState<'auto' | 'manual'>('auto');
   const [modelCode, setModelCode] = useState('');
   const [procedurePattern, setProcedurePattern] = useState('');
   const [areas, setAreas] = useState<AssemblyDraftArea[]>(() => [emptyAssemblyArea()]);
@@ -157,7 +158,6 @@ export function KioskAssemblyTemplateEditorPage() {
   const [capabilityCatalogStatus, setCapabilityCatalogStatus] =
     useState<'loading' | 'ready' | 'error'>('loading');
   const [capabilityCatalogReload, setCapabilityCatalogReload] = useState(0);
-  const [guideExpanded, setGuideExpanded] = useState(true);
   const canvasZoom = useImageCanvasZoom();
   const fitCanvasToView = canvasZoom.fitToView;
 
@@ -195,8 +195,14 @@ export function KioskAssemblyTemplateEditorPage() {
   );
   const isDirty = baselineSnapshot != null && baselineSnapshot !== draftSnapshot;
   const markerSettingsOpen = Boolean(selectedBolt || selectedCheckItem);
-  const settingsPaneOpen = Boolean(selectedStep || markerSettingsOpen);
+  const settingsPaneOpen = inspectorMode !== 'closed';
   useUnsavedChangesGuard(isDirty && !busy && !readOnly);
+
+  useEffect(() => {
+    if (inspectorMode === 'markers' && !markerSettingsOpen) {
+      setInspectorMode('closed');
+    }
+  }, [inspectorMode, markerSettingsOpen]);
 
   useEffect(() => {
     const primaryDocumentId =
@@ -249,6 +255,7 @@ export function KioskAssemblyTemplateEditorPage() {
     setBaselineSnapshot(null);
     setAccessPassword(null);
     setPasswordInput('');
+    setInspectorMode('closed');
     void loadAssemblyTemplateEditorData({
       templateId,
       sourceTemplateId: query.sourceTemplateId
@@ -280,16 +287,19 @@ export function KioskAssemblyTemplateEditorPage() {
           setSelectedCheckItemId(null);
           if (templateId) {
             setTemplateName(template.name);
+            setTemplateNameMode('manual');
             setModelCode(template.modelCode);
             setProcedurePattern(template.procedurePattern);
           } else {
             setTemplateName(`${template.name} 雛形`);
+            setTemplateNameMode('manual');
             setModelCode('');
             setProcedurePattern(template.procedurePattern);
           }
         } else {
           setLoadedTemplate(null);
           setTemplateName('');
+          setTemplateNameMode('auto');
           setModelCode('');
           setProcedurePattern('');
           const initialArea = emptyAssemblyArea();
@@ -310,7 +320,6 @@ export function KioskAssemblyTemplateEditorPage() {
           setSelectedStepId(null);
           setProcedurePaneOpen(true);
           setLeftPaneTab('documents');
-          setGuideExpanded(true);
         }
       })
       .catch((e: unknown) => {
@@ -472,16 +481,6 @@ export function KioskAssemblyTemplateEditorPage() {
     }
     return ids;
   }, [areas, readiness.issues]);
-  const compatibleCapabilityGroups = useMemo(
-    () =>
-      selectedBolt
-        ? capabilityGroups.filter((group) =>
-            isAssemblyCapabilityGroupCompatible(group, selectedBolt)
-          )
-        : [],
-    [capabilityGroups, selectedBolt]
-  );
-
   const cropVisibleBolts = useMemo(
     () => projectAssemblyProcedureMarkersToCrop(visibleBolts, selectedStep?.crop ?? null),
     [selectedStep, visibleBolts]
@@ -560,6 +559,30 @@ export function KioskAssemblyTemplateEditorPage() {
 
   const setAreaPatch = (areaId: string, patch: Partial<AssemblyDraftArea>) => {
     setAreas((prev) => prev.map((area) => (area.id === areaId ? { ...area, ...patch } : area)));
+  };
+
+  const changeModelCode = (value: string) => {
+    setModelCode(value);
+    if (templateNameMode === 'auto') {
+      setTemplateName(buildAssemblyTemplateSuggestedName(value, procedurePattern));
+    }
+  };
+
+  const changeProcedurePattern = (value: string) => {
+    setProcedurePattern(value);
+    if (templateNameMode === 'auto') {
+      setTemplateName(buildAssemblyTemplateSuggestedName(modelCode, value));
+    }
+  };
+
+  const changeTemplateName = (value: string) => {
+    setTemplateNameMode('manual');
+    setTemplateName(value);
+  };
+
+  const restoreSuggestedTemplateName = () => {
+    setTemplateNameMode('auto');
+    setTemplateName(buildAssemblyTemplateSuggestedName(modelCode, procedurePattern));
   };
 
   const setBoltPatch = (boltId: string, patch: Partial<AssemblyDraftBolt>) => {
@@ -736,7 +759,7 @@ export function KioskAssemblyTemplateEditorPage() {
     setAreas((prev) => prev.map((area) => (area.id === selectedArea.id ? { ...area, bolts: [...area.bolts, next] } : area)));
     setSelectedBoltId(next.id);
     setSelectedCheckItemId(null);
-    setInspectorTab('markers');
+    setInspectorMode('markers');
   };
 
   const applySelectedConditionToRange = () => {
@@ -752,7 +775,7 @@ export function KioskAssemblyTemplateEditorPage() {
     setCheckItems((prev) => renumberDraftCheckItems([...prev, next]));
     setSelectedCheckItemId(next.id);
     setSelectedBoltId(null);
-    setInspectorTab('markers');
+    setInspectorMode('markers');
   };
 
   const placeSelectedCalloutAt = (xRatio: number, yRatio: number) => {
@@ -871,7 +894,7 @@ export function KioskAssemblyTemplateEditorPage() {
 
   const focusProcedureStep = (step: AssemblyProcedureStepDraft) => {
     setSelectedStepId(step.localId);
-    setInspectorTab('step');
+    setInspectorMode('step');
     setShowFullPage(false);
     const page = findPageForProcedureStep(step, pageOptions);
     if (page) setSelectedPageKey(page.key);
@@ -955,7 +978,6 @@ export function KioskAssemblyTemplateEditorPage() {
   };
 
   const focusReadinessIssue = (issue: AssemblyTemplateReadinessIssue) => {
-    setGuideExpanded(true);
     if (issue.target.kind === 'basic') {
       setProcedurePaneOpen(true);
       setLeftPaneTab('documents');
@@ -1008,7 +1030,7 @@ export function KioskAssemblyTemplateEditorPage() {
       setSelectedBoltId(bolt.id);
       setSelectedCheckItemId(null);
       setMarkerMode('bolt');
-      setInspectorTab('markers');
+      setInspectorMode('markers');
       const page = pageOptions.find(
         (candidate) =>
           candidate.source ===
@@ -1018,17 +1040,26 @@ export function KioskAssemblyTemplateEditorPage() {
           candidate.pageIndex === (bolt.pageIndex ?? 0)
       );
       if (page) setSelectedPageKey(page.key);
+      const conditionFields = new Set([
+        'nominalDiameter',
+        'boltLengthMm',
+        'material',
+        'strengthClass',
+        'capabilityGroupId'
+      ]);
+      const targetField = conditionFields.has(issue.target.field ?? '')
+        ? 'capabilityGroupId'
+        : issue.target.field;
       focusElementById(
-        issue.target.field
-          ? `assembly-bolt-${bolt.id}-${issue.target.field}`
-          : `assembly-bolt-${bolt.id}-nominalDiameter`
+        targetField
+          ? `assembly-bolt-${bolt.id}-${targetField}`
+          : `assembly-bolt-${bolt.id}-capabilityGroupId`
       );
     }
   };
 
   const handleGuideStageClick = (stage: AssemblyTemplateReadinessStage) => {
     if (stage === 'review') {
-      setGuideExpanded(true);
       return;
     }
     const issue = readiness.issues.find((candidate) => candidate.stage === stage);
@@ -1198,8 +1229,11 @@ export function KioskAssemblyTemplateEditorPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 bg-slate-800 p-2 text-white">
-      <header className="flex min-h-12 flex-wrap items-center justify-between gap-2 rounded border border-white/15 bg-slate-900/70 px-2 py-1.5">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <header
+        data-testid="assembly-template-editor-header"
+        className="grid min-h-12 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded border border-white/15 bg-slate-900/70 px-2 py-1 xl:min-h-14 xl:grid-cols-[auto_minmax(0,1fr)_auto] xl:gap-2"
+      >
+        <div className="col-start-1 row-start-1 flex min-w-0 flex-wrap items-center gap-2">
           <h1 className="text-[1.12rem] font-bold leading-tight">
             {templateId ? '組立テンプレート編集' : '組立テンプレート新規'}
           </h1>
@@ -1222,11 +1256,20 @@ export function KioskAssemblyTemplateEditorPage() {
             <span className="text-xs font-semibold text-emerald-200">保存済み</span>
           )}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <AssemblyTemplateHeaderGuide
+          readiness={readiness}
+          readOnly={readOnly}
+          onStageClick={handleGuideStageClick}
+          onIssueClick={focusReadinessIssue}
+          onRetryCapabilityCatalog={() =>
+            setCapabilityCatalogReload((current) => current + 1)
+          }
+        />
+        <div className="col-start-2 row-start-1 flex items-center justify-end gap-1 xl:col-start-3">
           <Button
             type="button"
             variant="ghostOnDark"
-            className="min-h-10 text-[0.88rem]"
+            className="min-h-10 whitespace-nowrap !px-2 text-xs"
             aria-expanded={procedurePaneOpen}
             aria-controls="assembly-procedure-pane"
             onClick={() =>
@@ -1238,18 +1281,31 @@ export function KioskAssemblyTemplateEditorPage() {
               })
             }
           >
-          {procedurePaneOpen ? '文書/工程を閉じる' : `文書/工程 (${procedureItems.length})`}
+          文書/工程
+          </Button>
+          <Button
+            type="button"
+            variant={inspectorMode === 'step' ? 'primary' : 'ghostOnDark'}
+            className="min-h-10 whitespace-nowrap !px-2 text-xs"
+            disabled={!selectedStep}
+            aria-expanded={settingsPaneOpen}
+            aria-controls="assembly-editor-settings-pane"
+            onClick={() =>
+              setInspectorMode((current) => (current === 'step' ? 'closed' : 'step'))
+            }
+          >
+            手順設定
           </Button>
           <Link
             to={KIOSK_ASSEMBLY_LIBRARY_PATH}
-            className={buttonClassName('ghostOnDark', 'inline-flex min-h-10 items-center text-[0.88rem]')}
+            className={buttonClassName('ghostOnDark', 'inline-flex min-h-10 items-center whitespace-nowrap !px-2 text-xs')}
           >
             一覧へ
           </Link>
           {loadedTemplate ? (
             <Link
               to={kioskAssemblyTemplateNewPath({ sourceTemplateId: loadedTemplate.id })}
-              className={buttonClassName('ghostOnDark', 'inline-flex min-h-10 items-center text-[0.88rem]')}
+              className={buttonClassName('ghostOnDark', 'inline-flex min-h-10 items-center whitespace-nowrap !px-2 text-xs')}
             >
               雛形
             </Link>
@@ -1257,7 +1313,7 @@ export function KioskAssemblyTemplateEditorPage() {
           <Button
             type="button"
             variant="primary"
-            className="min-h-10 text-[0.95rem]"
+            className="min-h-10 whitespace-nowrap !px-2 text-sm"
             disabled={busy || readOnly || !readiness.isReady}
             onClick={() => void saveTemplate()}
           >
@@ -1265,18 +1321,6 @@ export function KioskAssemblyTemplateEditorPage() {
           </Button>
         </div>
       </header>
-
-      <AssemblyTemplateCreationGuide
-        readiness={readiness}
-        expanded={guideExpanded}
-        readOnly={readOnly}
-        onExpandedChange={setGuideExpanded}
-        onStageClick={handleGuideStageClick}
-        onIssueClick={focusReadinessIssue}
-        onRetryCapabilityCatalog={() =>
-          setCapabilityCatalogReload((current) => current + 1)
-        }
-      />
 
       {message ? <p className="rounded border border-white/15 bg-slate-900/80 px-3 py-2 text-sm font-semibold text-amber-200">{message}</p> : null}
 
@@ -1346,6 +1390,7 @@ export function KioskAssemblyTemplateEditorPage() {
                   modelCode={modelCode}
                   machineNameSelectionRequired={machineNameSelectionRequired}
                   procedurePattern={procedurePattern}
+                  templateNameAutomatic={templateNameMode === 'auto'}
                   busy={busy}
                   readOnly={readOnly}
                   onOpenDocumentLibrary={() => setDocumentLibraryOpen(true)}
@@ -1354,10 +1399,11 @@ export function KioskAssemblyTemplateEditorPage() {
                   onLabelChange={(localId, label) =>
                     dispatchProcedureItems({ type: 'set_label', localId, label })
                   }
-                  onTemplateNameChange={setTemplateName}
-                  onModelCodeChange={setModelCode}
+                  onTemplateNameChange={changeTemplateName}
+                  onRestoreSuggestedTemplateName={restoreSuggestedTemplateName}
+                  onModelCodeChange={changeModelCode}
                   onOpenMachineNamePicker={() => setMachineNamePickerOpen(true)}
-                  onProcedurePatternChange={setProcedurePattern}
+                  onProcedurePatternChange={changeProcedurePattern}
                   onSelectArea={(areaId) => {
                     setSelectedAreaId(areaId);
                     setSelectedBoltId(null);
@@ -1450,7 +1496,7 @@ export function KioskAssemblyTemplateEditorPage() {
                   if (!selectedStep || !selectedStepPage) return;
                   setSelectedPageKey(selectedStepPage.key);
                   setShowFullPage(true);
-                  setInspectorTab('step');
+                  setInspectorMode('step');
                 }}
               >
                 範囲修正
@@ -1530,13 +1576,13 @@ export function KioskAssemblyTemplateEditorPage() {
                       selectedBoltId={selectedBoltId}
                       selectedCheckItemId={selectedCheckItemId}
                       onSelectBolt={(id) => {
-                        setInspectorTab('markers');
+                        setInspectorMode('markers');
                         setMarkerMode('bolt');
                         setSelectedBoltId(id);
                         setSelectedCheckItemId(null);
                       }}
                       onSelectCheckItem={(id) => {
-                        setInspectorTab('markers');
+                        setInspectorMode('markers');
                         setMarkerMode('check');
                         setSelectedCheckItemId(id);
                         setSelectedBoltId(null);
@@ -1560,13 +1606,13 @@ export function KioskAssemblyTemplateEditorPage() {
               selectedBoltId={selectedBoltId}
               selectedCheckItemId={selectedCheckItemId}
               onSelectBolt={(id) => {
-                setInspectorTab('markers');
+                setInspectorMode('markers');
                 setMarkerMode('bolt');
                 setSelectedBoltId(id);
                 setSelectedCheckItemId(null);
               }}
               onSelectCheckItem={(id) => {
-                setInspectorTab('markers');
+                setInspectorMode('markers');
                 setMarkerMode('check');
                 setSelectedCheckItemId(id);
                 setSelectedBoltId(null);
@@ -1604,30 +1650,40 @@ export function KioskAssemblyTemplateEditorPage() {
 
         {settingsPaneOpen ? (
         <section
+          id="assembly-editor-settings-pane"
           data-testid="assembly-editor-settings-pane"
           className="min-h-[32rem] min-w-0 overflow-x-hidden overflow-y-auto rounded border border-white/15 bg-slate-900/70 p-3 xl:min-h-0"
         >
-          <div className="mb-3 grid grid-cols-2 gap-1 border-b border-white/10 pb-2">
+          <div className="mb-3 grid grid-cols-[1fr_1fr_auto] gap-1 border-b border-white/10 pb-2">
             <Button
               type="button"
-              variant={inspectorTab === 'step' ? 'primary' : 'ghostOnDark'}
+              variant={inspectorMode === 'step' ? 'primary' : 'ghostOnDark'}
               className="min-h-10 !px-1 text-xs"
               disabled={!selectedStep}
-              onClick={() => setInspectorTab('step')}
+              onClick={() => setInspectorMode('step')}
             >
               手順指示
             </Button>
             <Button
               type="button"
-              variant={inspectorTab === 'markers' ? 'primary' : 'ghostOnDark'}
+              variant={inspectorMode === 'markers' ? 'primary' : 'ghostOnDark'}
               className="min-h-10 !px-1 text-xs"
               disabled={!markerSettingsOpen}
-              onClick={() => setInspectorTab('markers')}
+              onClick={() => setInspectorMode('markers')}
             >
               丸数字／チェック設定
             </Button>
+            <Button
+              type="button"
+              variant="ghostOnDark"
+              aria-label="設定を閉じる"
+              className="min-h-10 !px-2 text-xs"
+              onClick={() => setInspectorMode('closed')}
+            >
+              ×
+            </Button>
           </div>
-          {inspectorTab === 'step' && selectedStep ? (
+          {inspectorMode === 'step' && selectedStep ? (
             <AssemblyProcedureStepInspector
               step={selectedStep}
               page={selectedStepPage}
@@ -1642,7 +1698,8 @@ export function KioskAssemblyTemplateEditorPage() {
               pageLabel={
                 selectedPage && currentPageRef ? pageRefKey(currentPageRef) : '未設定'
               }
-              compatibleGroups={compatibleCapabilityGroups}
+              capabilityGroups={capabilityGroups}
+              capabilityCatalogStatus={capabilityCatalogStatus}
               busy={busy}
               readOnly={readOnly}
               inheritCondition={inheritCondition}
@@ -1654,6 +1711,9 @@ export function KioskAssemblyTemplateEditorPage() {
               onRangeStartChange={setRangeStart}
               onRangeEndChange={setRangeEnd}
               onApplyRange={applySelectedConditionToRange}
+              onRetryCapabilityCatalog={() =>
+                setCapabilityCatalogReload((current) => current + 1)
+              }
             />
           ) : (
             <>
@@ -1771,7 +1831,7 @@ export function KioskAssemblyTemplateEditorPage() {
         disabled={busy}
         onCancel={() => setMachineNamePickerOpen(false)}
         onConfirm={(machineName) => {
-          setModelCode(machineName);
+          changeModelCode(machineName);
           setMachineNamePickerOpen(false);
         }}
       />

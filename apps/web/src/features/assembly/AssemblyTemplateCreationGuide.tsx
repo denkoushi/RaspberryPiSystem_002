@@ -1,6 +1,10 @@
 import clsx from 'clsx';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 
+import { AnchoredDropdownPortal } from '../../components/kiosk/AnchoredDropdownPortal';
 import { Button } from '../../components/ui/Button';
+
+import { buildAssemblyTemplateGuidePresentation } from './assemblyTemplateGuidePresentation';
 
 import type {
   AssemblyTemplateReadiness,
@@ -8,76 +12,112 @@ import type {
   AssemblyTemplateReadinessStage
 } from './assemblyTemplateReadiness';
 
-const STAGES: Array<{
-  id: AssemblyTemplateReadinessStage;
-  step: number;
-  label: string;
-}> = [
-  { id: 'basic', step: 1, label: '基本設定' },
-  { id: 'procedure', step: 2, label: '文書と表示手順' },
-  { id: 'areas', step: 3, label: '工程と締付点' },
-  { id: 'review', step: 4, label: '確認して保存' }
-];
-
 type Props = {
   readiness: AssemblyTemplateReadiness;
-  expanded: boolean;
   readOnly: boolean;
-  onExpandedChange: (expanded: boolean) => void;
   onStageClick: (stage: AssemblyTemplateReadinessStage) => void;
   onIssueClick: (issue: AssemblyTemplateReadinessIssue) => void;
   onRetryCapabilityCatalog: () => void;
 };
 
-function statusLabel(status: AssemblyTemplateReadiness['stages'][AssemblyTemplateReadinessStage]) {
-  if (status === 'complete') return '完了';
-  if (status === 'checking') return '確認中';
-  return '未完了';
-}
-export function AssemblyTemplateCreationGuide({
+export function AssemblyTemplateHeaderGuide({
   readiness,
-  expanded,
   readOnly,
-  onExpandedChange,
   onStageClick,
   onIssueClick,
   onRetryCapabilityCatalog
 }: Props) {
-  const catalogUnavailable = readiness.issues.some(
-    (issue) => issue.code === 'capability_catalog.unavailable'
+  const [isOpen, setIsOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const panelId = useId();
+  const presentation = useMemo(
+    () => buildAssemblyTemplateGuidePresentation(readiness),
+    [readiness]
   );
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (
+        !(rootRef.current?.contains(target) ?? false) &&
+        !(panelRef.current?.contains(target) ?? false)
+      ) {
+        setIsOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setIsOpen(false);
+      triggerRef.current?.focus();
+    };
+    window.addEventListener('mousedown', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('mousedown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const timer = window.setTimeout(() => {
+      const panel = panelRef.current;
+      const firstControl = panel?.querySelector<HTMLElement>(
+        'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled)'
+      );
+      (firstControl ?? panel)?.focus();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [isOpen]);
+
+  const handleStageClick = (stage: AssemblyTemplateReadinessStage) => {
+    if (stage === 'review') {
+      setIsOpen(true);
+      return;
+    }
+    onStageClick(stage);
+  };
+
+  const handleIssueClick = (issue: AssemblyTemplateReadinessIssue) => {
+    setIsOpen(false);
+    onIssueClick(issue);
+  };
 
   return (
     <section
-      className="shrink-0 rounded border border-cyan-300/25 bg-slate-900/85 p-2"
+      className="col-span-2 row-start-2 min-w-0 xl:col-span-1 xl:col-start-2 xl:row-start-1"
       aria-label="テンプレート作成ガイド"
-      data-testid="assembly-template-creation-guide"
+      data-testid="assembly-template-header-guide"
     >
-      <div className="flex flex-wrap items-stretch gap-1.5">
-        {STAGES.map((stage) => {
-          const status = readiness.stages[stage.id];
+      <div ref={rootRef} className="flex min-w-0 items-center gap-1 overflow-x-auto">
+        {presentation.stages.map((stage) => {
+          const status = stage.status;
           return (
             <button
               key={stage.id}
               type="button"
               className={clsx(
-                'flex min-h-11 min-w-[10.5rem] flex-1 items-center gap-2 rounded border px-2 text-left',
+                'flex min-h-10 shrink-0 items-center gap-1 rounded border px-1.5 text-left',
                 status === 'complete'
                   ? 'border-emerald-300/35 bg-emerald-950/35'
                   : status === 'checking'
                     ? 'border-sky-300/35 bg-sky-950/35'
                     : 'border-amber-300/35 bg-amber-950/35'
               )}
-              onClick={() => onStageClick(stage.id)}
+              onClick={() => handleStageClick(stage.id)}
             >
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/10 text-xs font-black">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/10 text-[0.68rem] font-black">
                 {stage.step}
               </span>
               <span className="min-w-0">
-                <span className="block truncate text-xs font-bold">{stage.label}</span>
+                <span className="block whitespace-nowrap text-[0.7rem] font-bold">{stage.label}</span>
                 <span
                   className={clsx(
-                    'block text-[0.68rem] font-semibold',
+                    'block text-[0.62rem] font-semibold leading-tight',
                     status === 'complete'
                       ? 'text-emerald-200'
                       : status === 'checking'
@@ -85,7 +125,7 @@ export function AssemblyTemplateCreationGuide({
                         : 'text-amber-200'
                   )}
                 >
-                  {statusLabel(status)}
+                  {stage.statusLabel}
                 </span>
               </span>
             </button>
@@ -93,25 +133,34 @@ export function AssemblyTemplateCreationGuide({
         })}
         {!readOnly ? (
           <Button
+            ref={triggerRef}
             type="button"
             variant={readiness.isReady ? 'secondary' : 'ghostOnDark'}
-            className="min-h-11 shrink-0"
-            aria-expanded={expanded}
-            onClick={() => onExpandedChange(!expanded)}
+            className="min-h-10 shrink-0 whitespace-nowrap !px-2 !py-1 text-xs"
+            aria-haspopup="dialog"
+            aria-controls={panelId}
+            aria-expanded={isOpen}
+            onClick={() => setIsOpen((current) => !current)}
           >
-            {readiness.isReady ? '保存できます' : `未完了 ${readiness.issues.length}件`}
+            {presentation.summaryLabel}
           </Button>
         ) : null}
       </div>
 
       <p className="sr-only" role="status" aria-live="polite">
-        {readiness.isReady
-          ? '保存条件をすべて満たしました。'
-          : `未完了項目が${readiness.issues.length}件あります。`}
+        {presentation.liveMessage}
       </p>
 
-      {expanded && !readOnly ? (
-        <div className="mt-2 max-h-52 overflow-y-auto rounded border border-white/10 bg-slate-950/70 p-2">
+      <AnchoredDropdownPortal
+        isOpen={isOpen && !readOnly}
+        id={panelId}
+        ariaLabel="テンプレートの未完了項目"
+        anchorRef={rootRef}
+        panelRef={panelRef}
+        fixedZIndex={70}
+        className="w-[min(92vw,32rem)] rounded border border-cyan-300/25 bg-slate-950/95 p-2 shadow-2xl"
+      >
+        <div className="max-h-[min(60dvh,20rem)] overflow-y-auto">
           {readiness.issues.length === 0 ? (
             <p className="text-sm font-semibold text-emerald-200">
               保存条件をすべて満たしました。
@@ -123,7 +172,7 @@ export function AssemblyTemplateCreationGuide({
                   <button
                     type="button"
                     className="min-h-10 w-full rounded border border-white/10 bg-white/5 px-2 py-1 text-left text-xs font-semibold text-amber-100 hover:bg-white/10"
-                    onClick={() => onIssueClick(issue)}
+                    onClick={() => handleIssueClick(issue)}
                   >
                     {issue.message}
                   </button>
@@ -131,7 +180,7 @@ export function AssemblyTemplateCreationGuide({
               ))}
             </ol>
           )}
-          {catalogUnavailable ? (
+          {presentation.catalogUnavailable ? (
             <Button
               type="button"
               variant="ghostOnDark"
@@ -142,7 +191,7 @@ export function AssemblyTemplateCreationGuide({
             </Button>
           ) : null}
         </div>
-      ) : null}
+      </AnchoredDropdownPortal>
     </section>
   );
 }

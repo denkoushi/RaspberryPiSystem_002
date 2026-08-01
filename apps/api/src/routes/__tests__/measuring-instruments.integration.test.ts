@@ -219,6 +219,9 @@ describe('measuring instrument genres integration', () => {
 
   it('stores uploaded genre images under PHOTO_STORAGE_DIR and serves them back', async () => {
     const tempStorageDir = await mkdtemp(path.join(tmpdir(), 'genre-image-storage-'));
+    const previousFileStorageRoot = process.env.FILE_STORAGE_ROOT;
+    const previousPhotoStorageDir = process.env.PHOTO_STORAGE_DIR;
+    process.env.FILE_STORAGE_ROOT = tempStorageDir;
     process.env.PHOTO_STORAGE_DIR = tempStorageDir;
 
     try {
@@ -261,7 +264,10 @@ describe('measuring instrument genres integration', () => {
       expect(fileResponse.statusCode).toBe(200);
       expect(fileResponse.headers['content-type']).toContain('image/png');
     } finally {
-      delete process.env.PHOTO_STORAGE_DIR;
+      if (previousFileStorageRoot == null) delete process.env.FILE_STORAGE_ROOT;
+      else process.env.FILE_STORAGE_ROOT = previousFileStorageRoot;
+      if (previousPhotoStorageDir == null) delete process.env.PHOTO_STORAGE_DIR;
+      else process.env.PHOTO_STORAGE_DIR = previousPhotoStorageDir;
       await rm(tempStorageDir, { recursive: true, force: true });
     }
   });
