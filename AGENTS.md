@@ -13,6 +13,8 @@
 5. 今回の作業に該当する `.cursor/rules/*.mdc`
 6. Codex/Cursor agmsg連携を使う場合は `docs/guides/agmsg-codex-cursor-collaboration.md`
 7. 関連する KB / Runbook / ADR / Plan
+8. DGX API・profile・認証・workload・Hermes／StackChanのDGX利用を変更する場合は、
+   [`DGXSparkControlPlane`のリポジトリ責任分界](https://github.com/denkoushi/DGXSparkControlPlane/blob/main/docs/repository-boundary.md)
 
 ## 本番デプロイの必須ルール（常時適用）
 
@@ -23,6 +25,15 @@
 - 実行後は `scripts/update-all-clients.sh --status <runId>` でPi5・端末別の結果、保守表示の解除、失敗理由と復旧結果を確認して報告する。停止は `--cancel <runId> --reason <理由>` だけを使い、process kill、lock削除、fleet state手編集をしない。
 - TalkPlaza Pi5は構想段階で実機が存在しないため、現時点では `inventory-talkplaza.yml` のplan確認までに留める。
 - 詳細な運用・復旧は `docs/guides/deployment.md` と `docs/runbooks/deploy-status-recovery.md` を現行正本とする。設計経緯は `docs/plans/deployment-foundation-refactor-execplan.md` に残す。Pi5本体故障・停電は単体構成の対象外である。
+
+## DGX Spark Control Planeとの境界（常時適用）
+
+- 本リポジトリは業務キオスク、業務管理画面、業務Pi 5／Pi 4、および業務側DGX API利用を担当する。
+- DGXのLease・Job・排他調停、Private Piの管理画面・Observer・履歴DBは `denkoushi/DGXSparkControlPlane` が正本である。
+- 通常は本リポジトリだけを変更する。DGX互換API、model profile、principal／token、workload識別子、Hermes／StackChanのDGX起動方式を変える場合だけ両リポジトリを確認する。
+- 共同変更はControl Planeへ後方互換を先に追加し、本リポジトリのconsumerを後から更新する。各リポジトリで別branch・別PRとする。
+- 標準fleet deployからPrivate PiのControl API、Dashboard、Observer、Postgres、DGX Arbiterを導入・置換してはならない。既存の専用Hermes／StackChan手順は明示選択時だけ使用し、Control Planeのserviceやinventoryを変更しない。
+- 詳細正本は [`DGXSparkControlPlane/docs/repository-boundary.md`](https://github.com/denkoushi/DGXSparkControlPlane/blob/main/docs/repository-boundary.md) とする。
 
 ## main統合と作業完了の必須監査（常時適用）
 

@@ -2,6 +2,18 @@
 
 本リポジトリは Raspberry Pi 5 サーバー + Raspberry Pi 4 クライアントで構成される持出返却システムのモノレポです。
 
+## 関連リポジトリと責任分界
+
+DGX SparkのLease・排他調停、Private Pi 5の管理ダッシュボード、温度・履歴監視は
+[`denkoushi/DGXSparkControlPlane`](https://github.com/denkoushi/DGXSparkControlPlane)
+（ローカル: `/Users/tsudatakashi/DGXSparkControlPlane`）が正本です。本リポジトリは業務キオスク、
+業務管理画面、業務Pi 5／Pi 4、および業務側DGX API利用を担当します。
+
+通常は片方のリポジトリだけを変更します。DGXの互換API、モデルprofile、認証、workload識別子、
+Hermes／StackChanのDGX起動方式を変える場合だけ、両方を確認して別々のPRで連携します。詳細は
+[リポジトリ責任分界の正本](https://github.com/denkoushi/DGXSparkControlPlane/blob/main/docs/repository-boundary.md)
+を参照してください。
+
 ## ドキュメント
 
 - **[docs/INDEX.md](./docs/INDEX.md)**: 📋 **全ドキュメントの索引**（目的別・対象者別・カテゴリ別）
