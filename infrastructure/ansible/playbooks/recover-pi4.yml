@@ -18,21 +18,6 @@
       - status-agent.timer
       - kiosk-browser.service
       - signage-lite.service
-    tailscale_auth_provider: recovery-oauth
-    # Recovery verification uses the Pi5 public key and standard OpenSSH.
-    # Do not let Tailscale SSH intercept port 22 on the rebuilt kiosk.
-    tailscale_extra_args: --ssh=false
-    tailscale_recovery_oauth_client_id: >-
-      {{
-        hostvars[(groups['server'] | first)].vault_tailscale_recovery_oauth_client_id
-        | default('')
-      }}
-    tailscale_recovery_oauth_client_secret: >-
-      {{
-        hostvars[(groups['server'] | first)].vault_tailscale_recovery_oauth_client_secret
-        | default('')
-      }}
-    tailscale_recovery_oauth_tag: tag:kiosk
   pre_tasks:
     - name: Require recovery coordinator authorization and result path
       ansible.builtin.assert:
@@ -43,7 +28,10 @@
           - repo_version is defined
           - repo_version is match('^[0-9a-f]{40}$')
           - manage_kiosk_browser | default(false) | bool
-          - tailscale_enabled | default(false) | bool
+          - network_mode | default('') == 'local'
+          - not (tailscale_enabled | default(true) | bool)
+          - pi4_recovery_lan_endpoint is defined
+          - ansible_host | string == pi4_recovery_lan_endpoint | string
           - nfc_agent_client_id is defined
           - nfc_agent_client_secret is defined
         fail_msg: >-
@@ -54,7 +42,7 @@
     - role: pi4_recovery_bootstrap
 
   tasks:
-    - name: Recreate shared configuration and join Tailscale
+    - name: Recreate shared configuration for LAN operation
       ansible.builtin.import_role:
         name: common
 
@@ -66,27 +54,23 @@
       ansible.builtin.import_role:
         name: kiosk
 
-    - name: Read new Tailscale status as structured JSON
-      ansible.builtin.command: tailscale status --json
-      register: recovery_tailscale_status
+    - name: Observe global IPv4 addresses on the rebuilt Pi4
+      ansible.builtin.command: ip -o -4 address show scope global
+      register: recovery_lan_addresses
       changed_when: false
-      no_log: true
 
-    - name: Select new Tailscale IPv4 address
+    - name: Select observed global IPv4 addresses
       ansible.builtin.set_fact:
-        recovery_tailscale_ipv4: >-
-          {{
-            ((recovery_tailscale_status.stdout | from_json).Self.TailscaleIPs | default([])
-            | select('match', '^100\\.') | list | first | default(''))
-          }}
-      no_log: true
+        recovery_observed_lan_ipv4: >-
+          {{ recovery_lan_addresses.stdout | regex_findall('inet ([0-9.]+)/') }}
 
-    - name: Require a new Tailscale IPv4 address
+    - name: Require the declared LAN recovery IPv4 on the rebuilt Pi4
       ansible.builtin.assert:
         that:
-          - recovery_tailscale_ipv4 is match('^100\\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\.[0-9]{1,3}\\.[0-9]{1,3}$')
-        fail_msg: Tailscale joined but did not report a valid 100.64.0.0/10 IPv4 address.
-      no_log: true
+          - ansible_host | string in recovery_observed_lan_ipv4
+        fail_msg: >-
+          The rebuilt Pi4 does not own its inventory-declared LAN recovery
+          address. Verify the DHCP reservation or static network assignment.
 
     - name: Write non-secret recovery result on the Pi5 controller
       ansible.builtin.copy:
@@ -95,7 +79,7 @@
           {{
             {
               'target': inventory_hostname,
-              'tailscaleIpv4': recovery_tailscale_ipv4,
+              'lanIpv4': ansible_host | string,
               'releaseSha': repo_version
             } | to_nice_json
           }}

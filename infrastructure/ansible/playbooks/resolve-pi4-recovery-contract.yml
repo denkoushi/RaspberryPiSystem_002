@@ -6,7 +6,6 @@
   become: false
   vars:
     recovery_server_hosts: "{{ groups['server'] | default([]) }}"
-    recovery_oauth_tag: tag:kiosk
   pre_tasks:
     - name: Require a safe controller output path and supported inventory host
       ansible.builtin.assert:
@@ -49,14 +48,13 @@
         content: >-
           {{
             {
-              'schemaVersion': 1,
+              'schemaVersion': 2,
               'target': {
                 'host': inventory_hostname,
                 'inventoryEndpoint': ansible_host | string,
                 'user': ansible_user | string,
                 'statusAgentClientId': status_agent_client_id | string,
                 'recoveryEnabled': pi4_recovery_enabled | default(false) | bool,
-                'tailscaleEnabled': tailscale_enabled | default(false) | bool,
                 'kioskManaged': manage_kiosk_browser | default(false) | bool,
                 'nfcEnabled': (
                   nfc_agent_client_id is defined
@@ -78,15 +76,17 @@
                   hostvars[recovery_server_hosts[0]].status_agent_client_id | string
                 )
               },
-              'tailscaleAuth': {
-                'mode': 'oauth',
+              'recoveryNetwork': {
+                'mode': 'lan',
                 'configured': (
-                  hostvars[recovery_server_hosts[0]].vault_tailscale_recovery_oauth_client_id
-                    | default('') | string | trim | length > 0
-                  and hostvars[recovery_server_hosts[0]].vault_tailscale_recovery_oauth_client_secret
-                    | default('') | string | trim | length > 0
+                  pi4_recovery_lan_endpoint is defined
+                  and pi4_recovery_lan_endpoint | string | trim | length > 0
+                  and local_network is defined
+                  and (local_network | default({})).raspberrypi5_ip is defined
+                  and (local_network | default({})).raspberrypi5_ip | string | trim | length > 0
                 ),
-                'tag': recovery_oauth_tag
+                'targetEndpoint': pi4_recovery_lan_endpoint | default('') | string,
+                'serverEndpoint': (local_network | default({})).raspberrypi5_ip | default('') | string
               }
             } | to_nice_json
           }}

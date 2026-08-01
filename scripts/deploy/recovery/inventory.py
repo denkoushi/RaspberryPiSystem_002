@@ -36,7 +36,6 @@ class ResolvedRecoveryTarget:
     user: str
     status_agent_client_id: str
     recovery_enabled: bool
-    tailscale_enabled: bool
     kiosk_managed: bool
     nfc_enabled: bool
     barcode_enabled: bool
@@ -50,17 +49,18 @@ class ResolvedRecoveryServer:
 
 
 @dataclass(frozen=True)
-class TailscaleAuthReadiness:
+class RecoveryNetworkReadiness:
     mode: str
     configured: bool
-    tag: str
+    target_endpoint: str
+    server_endpoint: str
 
 
 @dataclass(frozen=True)
 class ResolvedRecoveryContract:
     target: ResolvedRecoveryTarget
     server: ResolvedRecoveryServer
-    tailscale_auth: TailscaleAuthReadiness
+    recovery_network: RecoveryNetworkReadiness
 
 
 class RecoveryInventoryResolver(Protocol):
@@ -83,6 +83,17 @@ def _string(values: dict[str, object], key: str, *, field: str | None = None) ->
     return value.strip()
 
 
+def _optional_string(
+    values: dict[str, object], key: str, *, field: str | None = None
+) -> str:
+    value = values.get(key)
+    if not isinstance(value, str):
+        raise RecoveryInventoryError(
+            f'recovery inventory contract field {(field or key)!r} is not a string'
+        )
+    return value.strip()
+
+
 def _boolean(values: dict[str, object], key: str, *, field: str | None = None) -> bool:
     value = values.get(key)
     if not isinstance(value, bool):
@@ -94,12 +105,12 @@ def _boolean(values: dict[str, object], key: str, *, field: str | None = None) -
 
 def parse_recovery_contract(payload: object, target_name: str) -> ResolvedRecoveryContract:
     root = _object(payload, field='root')
-    if root.get('schemaVersion') != 1:
+    if root.get('schemaVersion') != 2:
         raise RecoveryInventoryError('recovery inventory contract has an unsupported schema version')
 
     target_values = _object(root.get('target'), field='target')
     server_values = _object(root.get('server'), field='server')
-    auth_values = _object(root.get('tailscaleAuth'), field='tailscaleAuth')
+    network_values = _object(root.get('recoveryNetwork'), field='recoveryNetwork')
     resolved_host = _string(target_values, 'host', field='target.host')
     if resolved_host != target_name:
         raise RecoveryInventoryError('recovery inventory contract returned an unexpected target')
@@ -115,9 +126,6 @@ def parse_recovery_contract(payload: object, target_name: str) -> ResolvedRecove
         ),
         recovery_enabled=_boolean(
             target_values, 'recoveryEnabled', field='target.recoveryEnabled'
-        ),
-        tailscale_enabled=_boolean(
-            target_values, 'tailscaleEnabled', field='target.tailscaleEnabled'
         ),
         kiosk_managed=_boolean(
             target_values, 'kioskManaged', field='target.kioskManaged'
@@ -138,17 +146,22 @@ def parse_recovery_contract(payload: object, target_name: str) -> ResolvedRecove
             server_values, 'statusAgentClientId', field='server.statusAgentClientId'
         ),
     )
-    tailscale_auth = TailscaleAuthReadiness(
-        mode=_string(auth_values, 'mode', field='tailscaleAuth.mode'),
+    recovery_network = RecoveryNetworkReadiness(
+        mode=_string(network_values, 'mode', field='recoveryNetwork.mode'),
         configured=_boolean(
-            auth_values, 'configured', field='tailscaleAuth.configured'
+            network_values, 'configured', field='recoveryNetwork.configured'
         ),
-        tag=_string(auth_values, 'tag', field='tailscaleAuth.tag'),
+        target_endpoint=_optional_string(
+            network_values, 'targetEndpoint', field='recoveryNetwork.targetEndpoint'
+        ),
+        server_endpoint=_optional_string(
+            network_values, 'serverEndpoint', field='recoveryNetwork.serverEndpoint'
+        ),
     )
     return ResolvedRecoveryContract(
         target=target,
         server=server,
-        tailscale_auth=tailscale_auth,
+        recovery_network=recovery_network,
     )
 
 
