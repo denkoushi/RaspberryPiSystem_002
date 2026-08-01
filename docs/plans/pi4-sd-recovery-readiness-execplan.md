@@ -17,6 +17,7 @@ The Pi5 recovery command must be usable before a Pi4 fails, not merely pass mock
 - [x] (2026-08-01 JST) Ran focused Python discovery, resolver/recovery/verify syntax checks, synthetic verify check mode, 102-template parsing, and `git diff --check` successfully.
 - [x] (2026-08-01 JST) Ran the canonical deploy-contract suite with Node 22.23.1 and pnpm 9.15.9: 955 Python tests, 157 isolated migrations, SQL/index `EXPLAIN (ANALYZE, BUFFERS)`, 20 deploy-status API tests, and all Ansible contracts passed.
 - [x] (2026-08-01 JST) Verified the test-created PostgreSQL container, volume, and network were removed (`cleanup verified: run resources=0`), no temporary-resource delta remained, and the complete pre-existing Docker resource snapshots were unchanged.
+- [x] (2026-08-01 JST) Opened draft PR #1147, fixed the CI-only Vault password-file dependency in the new Ansible tests, and verified every required GitHub check including `deploy-contract` and `ci-required` passed at `f1e1df91`.
 - [x] (2026-08-01 JST) Recorded the remaining production-only work: OAuth credential creation, encrypted Vault update, canonical deployment, Assembly backup configuration, and the blank-SD physical drill.
 
 ## Surprises & Discoveries
@@ -33,6 +34,8 @@ The Pi5 recovery command must be usable before a Pi4 fails, not merely pass mock
   Evidence: 31 focused tests passed; the fake service required three token attempts for 429 then 503 then success, while a 401 stopped after one attempt and malformed key capabilities failed closed.
 - Observation: prepending Homebrew's general binary directory selected a Python without Jinja2 even though the repository's pyenv Python had it.
   Evidence: the first deploy-contract attempt stopped before tests with `ModuleNotFoundError: jinja2`; preserving the existing pyenv Python fixed the missing dependency, and the final required run used an ephemeral npm-provided Node 22.23.1 with pnpm 9.15.9. No Docker test resource was created by the failed attempt.
+- Observation: the first PR `deploy-contract` run exposed that the new Ansible-backed tests inherited the repository's local `.vault-pass` path, which is intentionally absent in CI.
+  Evidence: PR #1147 failed four OAuth tests and one resolver test before executing their assertions; both harnesses now supply a non-secret per-test temporary Vault password file, 36 focused tests passed locally, and the complete required CI suite passed on rerun.
 - Observation: the repository currently contains 157 Prisma migrations, and the deploy-status identity query uses the intended unique API-key index.
   Evidence: isolated `prisma migrate deploy/status` succeeded with zero anomalies; `EXPLAIN (ANALYZE, BUFFERS)` reported `Index Scan using "ClientDevice_apiKey_key"` and the API suite passed 20 tests.
 - Observation: the shared inventory default enables Tailscale SSH, while the recovery Runbook and final verification require Pi5-key standard OpenSSH.
