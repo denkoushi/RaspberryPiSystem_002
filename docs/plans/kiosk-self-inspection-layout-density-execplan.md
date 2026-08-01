@@ -1,6 +1,6 @@
 ---
 title: Kiosk Self-Inspection Layout Density ExecPlan
-status: in_progress
+status: complete
 scope: kiosk self-inspection layout delivery and constrained Pi3 deployment resilience
 date: 2026-08-01
 source_of_truth: this file
@@ -12,9 +12,7 @@ related_docs:
   - docs/knowledge-base/KB-320-kiosk-part-measurement.md
   - docs/runbooks/kiosk-part-measurement.md
 validation: passed_and_deployed
-open_items:
-  - finish and verify merged-main release 20260731-224750-6f0a09 across the production fleet
-  - merge and deploy the remaining PR 1044 Pi5 impact-classification contract
+open_items: []
 ---
 
 # Kiosk Self-Inspection Layout Density
@@ -45,11 +43,11 @@ Operators must be able to see the measurement-point list while entering values a
 - [x] (2026-08-01) Committed and pushed the post-restore hardening as `c118b4ef`; release `20260731-211900-195688` completed successfully with Pi5 and Pi3 verified and Pi3 runtime health confirmed directly.
 - [x] (2026-08-01) Audited the structured production release ledger against `main` and found that the current UI and Pi3 fixes were deployed from this feature branch but had not been submitted as a PR or merged.
 - [x] (2026-08-01) Created PR #1139, passed every required check, merged it as `0132e82f`, and confirmed local `main`, `origin/main`, and the merge-SHA CI were synchronized and successful.
-- [ ] Finish release `20260731-224750-6f0a09`, verify Pi5, all Pi4 kiosks, and Pi3, and prove a repeated plan is a no-op.
+- [x] (2026-08-01) Completed release `20260731-224750-6f0a09`: Pi5, all six Pi4 kiosks, and Pi3 verified merge SHA `0132e82f`; a repeated plan selected zero targets.
 - [x] (2026-08-01) Reassessed PR #1044: four effective behaviors already reached `main` through later commits, while the Pi5 impact classification for the migration validator remained absent.
 - [x] (2026-08-01) Created `fix/pi5-migration-validator-impact` from synchronized `main`, implemented only the missing classification and readiness contracts, and passed 58 focused classifier/registry/readiness tests.
 - [x] (2026-08-01) Passed the complete Node 20 deployment contract suite: 931 Python tests, Web production build, isolated PostgreSQL with all 157 migrations, deploy-status integration, rollback/safety contracts, and all Ansible/profile checks; cleanup proved zero temporary Docker resources.
-- [ ] Merge the follow-up PR, deploy the final `main` to the automatically selected scope, and close this plan with production evidence.
+- [x] (2026-08-01) Merged follow-up PR #1140 as `78b74332`, passed merge-SHA CI and signed release publication, and completed no-op release `20260801-000054-53a73b`; classification selected zero devices because the follow-up changes deployment control and documentation only. Closed superseded PR #1044 with the replacement evidence.
 
 ## Surprises & Discoveries
 
@@ -77,6 +75,8 @@ Operators must be able to see the measurement-point list while entering values a
   Evidence: `main` and `origin/main` both pointed to `9a06ec1a`, while the production fleet was verified at `a8977fe2` or `c118b4ef` and this feature branch was four commits ahead with no PR.
 - Observation: PR #1044 accumulated unrelated historical work, but its final deployment fixes can be evaluated independently by behavior rather than merging the stale branch.
   Evidence: new-table unique-index validation and indirect inventory resolution are present on `main` as `b5e51fed` and `02a3513f`; later SSH failure classification supersedes the raw transport excerpt, while `validate-expand-only-migrations.py` still resolved to non-server `deploy-control`.
+- Observation: The narrow PR #1140 changes the classifier contract but does not itself modify the migration validator or any runtime application component.
+  Evidence: both feature-branch and merged-main `--print-plan` runs classified the change set as `deploy-control` plus `neutral`, selected zero targets, and retained verified production SHA `0132e82f` on every device.
 
 ## Decision Log
 
@@ -169,6 +169,10 @@ The UI and Pi3 remediation commits were pushed. Pi5 and all six Pi4 kiosks first
 
 On Pi3, daemon reload succeeded, all four required units reported `loaded`, the three timers started before the display service, and `signage-lite.service` became active with `failed=0` and `unreachable=0`. Direct post-release checks found lightdm, Signage, all Signage timers, and `status-agent.timer` active; persistent units enabled; repository HEAD `c118b4ef`; `REQUEST_TIMEOUT="30"`; `throttled=0x0`; no OOM or thermal kernel records; and repeated healthy watchdog runs without interactive-authentication errors. Available memory was 104MB with 258MB of 415MB swap in use, so Pi3 remains capacity-constrained but the release and recovery paths now account for that constraint. `/proc/pressure/memory` is not exposed by the installed Pi3 kernel, so memory validation used `free`, resource guards, kernel logs, and observed service convergence.
 
-The later integration audit found that this successful rollout did not complete the repository lifecycle: the deployed commits were still absent from `main`. The plan is reopened until the feature PR is merged, merged `main` is verified across the fleet, and the separately identified PR #1044 omission is resolved.
+The later integration audit found that this successful rollout had not completed the repository lifecycle because the deployed commits were still absent from `main`. PR #1139 corrected that gap and merged as `0132e82f`. Release `20260731-224750-6f0a09` then verified that exact merge SHA on Pi5, all six Pi4 kiosks, and Pi3. The Pi3 release stopped its constrained display runtime during mutation, restored lightdm, waited for all constrained units to load, started timers before Signage, and completed with `ok=81`, `failed=0`, and `unreachable=0`. The repeated merged-main plan selected zero targets.
 
-Plan revision note (2026-08-01): reopened the plan after the main-integration audit exposed that production success had been recorded without the required PR and merge; added explicit integration, redeployment, and historical-omission follow-up work.
+PR #1044 was reassessed behavior by behavior instead of being merged with stale history. Its sole remaining gap was restored on a fresh branch and merged through PR #1140 as `78b74332`. The merge-SHA CI passed deployment contracts and published signed ARM64 API/Web artifacts and a signed release set. Standard release `20260801-000054-53a73b` validated all 157 production migration checksums and completed successfully with zero targets, correctly preserving every device at verified runtime SHA `0132e82f` because the follow-up changed deployment control and documentation only. PR #1044 was then closed as superseded.
+
+Final state: the worktree and `origin/main` were synchronized, both PRs were resolved, the requested UI and Pi3 resilience changes were verified in production, and no open items remain.
+
+Plan revision note (2026-08-01): reopened after the main-integration audit exposed that production success had been recorded without the required PR and merge; closed after merging both replacement PRs, verifying the full fleet at the UI merge SHA, and proving the deployment-control follow-up is a successful no-op.
