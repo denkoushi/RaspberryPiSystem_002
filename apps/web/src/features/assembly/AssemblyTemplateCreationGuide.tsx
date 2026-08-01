@@ -62,6 +62,18 @@ export function AssemblyTemplateHeaderGuide({
     };
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const timer = window.setTimeout(() => {
+      const panel = panelRef.current;
+      const firstControl = panel?.querySelector<HTMLElement>(
+        'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled)'
+      );
+      (firstControl ?? panel)?.focus();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [isOpen]);
+
   const handleStageClick = (stage: AssemblyTemplateReadinessStage) => {
     if (stage === 'review') {
       setIsOpen(true);

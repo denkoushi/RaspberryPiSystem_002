@@ -161,6 +161,7 @@ export function AnchoredDropdownPortal({
       id={id}
       role="dialog"
       aria-label={ariaLabel}
+      tabIndex={-1}
       className={`fixed ${zClass} ${className}`.trim().replace(/\s+/g, ' ')}
       style={style}
     >

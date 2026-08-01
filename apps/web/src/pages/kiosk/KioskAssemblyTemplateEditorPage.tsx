@@ -199,6 +199,12 @@ export function KioskAssemblyTemplateEditorPage() {
   useUnsavedChangesGuard(isDirty && !busy && !readOnly);
 
   useEffect(() => {
+    if (inspectorMode === 'markers' && !markerSettingsOpen) {
+      setInspectorMode('closed');
+    }
+  }, [inspectorMode, markerSettingsOpen]);
+
+  useEffect(() => {
     const primaryDocumentId =
       getPrimaryAssemblyDocumentIdFromSteps(procedureSteps) ??
       getPrimaryAssemblyProcedureDocumentId(procedureItems) ??

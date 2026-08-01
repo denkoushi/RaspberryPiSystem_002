@@ -770,7 +770,8 @@ test('assembly storyboard creates, edits, reuses, reorders and saves crop steps'
   await deleteDialog.getByRole('button', { name: 'すべてから削除' }).click();
   await expect(cropView.getByRole('button', { name: /^丸数字/ })).toHaveCount(2);
 
-  await page.getByRole('button', { name: '手順指示' }).click();
+  await expect(settingsPane).toHaveCount(0);
+  await page.getByRole('button', { name: '手順設定' }).click();
   await page.getByRole('button', { name: '全体を一時表示' }).click();
   const fullPageView = page.getByTestId('assembly-procedure-canvas');
   await expect(fullPageView.getByRole('button', { name: /^丸数字/ })).toHaveCount(2);

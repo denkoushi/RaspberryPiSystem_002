@@ -34,7 +34,21 @@ vi.mock('../../api/client', () => ({
 }));
 
 vi.mock('../../features/assembly/AssemblyProcedureCanvas', () => ({
-  AssemblyProcedureCanvas: () => <div data-testid="assembly-procedure-canvas" />
+  AssemblyProcedureCanvas: ({
+    bolts,
+    onSelectBolt
+  }: {
+    bolts: Array<{ id: string }>;
+    onSelectBolt?: (id: string) => void;
+  }) => (
+    <div data-testid="assembly-procedure-canvas">
+      {bolts[0] && onSelectBolt ? (
+        <button type="button" onClick={() => onSelectBolt(bolts[0]!.id)}>
+          テスト締付マーカーを選択
+        </button>
+      ) : null}
+    </div>
+  )
 }));
 
 const NOW = '2026-07-26T00:00:00.000Z';
@@ -322,6 +336,22 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     expect(await screen.findByTestId('assembly-editor-settings-pane')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '設定を閉じる' }));
     expect(screen.queryByTestId('assembly-editor-settings-pane')).not.toBeInTheDocument();
+  });
+
+  it('closes the marker inspector when page navigation clears its selection', async () => {
+    const source = templateFixture();
+    mocks.getTemplate.mockResolvedValue(source);
+    renderRoute(`/kiosk/assembly/templates/new?sourceTemplateId=${source.id}`);
+    await authenticate();
+    await screen.findByRole('heading', { name: '組立テンプレート新規' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'テスト締付マーカーを選択' }));
+    expect(await screen.findByTestId('assembly-editor-settings-pane')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '次頁' }));
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('assembly-editor-settings-pane')).not.toBeInTheDocument()
+    );
   });
 
   it('suggests a template name, preserves a manual override, and can restore automation', async () => {

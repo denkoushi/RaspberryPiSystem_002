@@ -37,7 +37,9 @@ The observable result is on the kiosk assembly template create route. At 1366 by
 - [x] (2026-08-01 01:57Z) Added and updated focused unit, component, page, and Playwright tests; 331 Web test files with 1,665 tests passed, and the target Playwright file passed 15 of 16 scenarios before its one stale-geometry scenario was corrected and rerun successfully.
 - [x] (2026-08-01 02:12Z) Ran migration, isolated PostgreSQL, SQL, EXPLAIN, full test, lint, build, target Playwright, and cleanup validation successfully.
 - [x] (2026-08-01 02:33Z) Received explicit authorization to continue through production deployment; confirmed the clean feature branch, GitHub authentication, standard rolling-deployment entry point, and recovery contract.
-- [ ] Publish the feature branch, open the PR, complete required CI and review, and merge the effective changes into `origin/main`.
+- [x] (2026-08-01 02:30Z) Published commit `07f94323`, opened PR #1144, and passed required CI including API, Web, E2E, workspace quality, repository policy, CodeQL, and secret scanning.
+- [x] (2026-08-01 02:39Z) Addressed both actionable P2 review findings with marker-inspector dismissal and popover focus-entry regression coverage; Node 24 Web tests passed 1,666 of 1,666, Web lint and build passed, and the target Playwright suite passed 16 of 16.
+- [ ] Push the review fixes, complete the refreshed CI and review audit, and merge the effective changes into `origin/main`.
 - [ ] Run the read-only merged-main deployment plan, execute the standard rolling update, and record fleet SHA and verification evidence.
 
 ## Surprises & Discoveries
@@ -54,6 +56,8 @@ The observable result is on the kiosk assembly template create route. At 1366 by
   Evidence: the first target Playwright run passed 15 of 16 tests. Re-measuring the image after inspector opening made the crop scenario pass and better models the responsive UI.
 - Observation: the first full validation run exposed an existing environment-isolation defect in the measuring-instrument genre image integration test.
   Evidence: the validator sets canonical `FILE_STORAGE_ROOT`, while the test changed only the lower-priority `PHOTO_STORAGE_DIR` and then asserted against that ignored directory. Preserving and setting both variables made the test independent of its caller; the second full run passed all 2,513 API tests.
+- Observation: PR review found two interaction states that focused local tests had not covered: a marker inspector could remain open after its selection disappeared, and the portaled issue dialog did not move keyboard focus into its controls.
+  Evidence: PR #1144 review threads anchored to `KioskAssemblyTemplateEditorPage.tsx` and `AssemblyTemplateCreationGuide.tsx`; the added page and component regressions pass under Node 24.
 
 ## Decision Log
 
@@ -74,6 +78,9 @@ The observable result is on the kiosk assembly template create route. At 1366 by
   Date/Author: 2026-08-01 / Codex
 - Decision: Correct the existing genre-image integration test's storage-root isolation rather than weakening the all-API validation gate.
   Rationale: the failure was deterministic under the validator's safe canonical storage root, and preserving/restoring both environment variables improves test isolation without changing production behavior.
+  Date/Author: 2026-08-01 / Codex
+- Decision: Close marker mode whenever neither a bolt nor check item remains selected, and focus the first enabled control when the issue dialog opens.
+  Rationale: inspector visibility must follow its explicit content validity, while a newly opened portaled dialog must be reachable immediately by keyboard without traversing the editor behind it.
   Date/Author: 2026-08-01 / Codex
 
 ## Outcomes & Retrospective
@@ -160,3 +167,4 @@ Add only Web-internal interfaces: a guide presentation model derived from readin
 
 Revision note (2026-08-01): Created the implementation-ready plan after repository, contract, UI, test, and Docker validation analysis so work can be resumed safely from this file alone. Updated at 01:57Z with implemented milestones, focused test evidence, and the responsive-geometry E2E discovery. Updated at 02:12Z with full isolated validation, test-harness isolation recovery, cleanup evidence, and explicit integration-pending status.
 Updated at 02:33Z after the user explicitly authorized publication, main integration, and production deployment; added the remaining PR, merged-main, rolling-release, and fleet-evidence milestones.
+Updated at 02:39Z with PR #1144 CI evidence, the two review-driven interaction corrections, and their complete Web and Playwright validation; refreshed CI, main integration, and production evidence remain open.

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { AssemblyTemplateHeaderGuide } from './AssemblyTemplateCreationGuide';
@@ -24,7 +24,7 @@ const readiness: AssemblyTemplateReadiness = {
 };
 
 describe('AssemblyTemplateHeaderGuide', () => {
-  it('keeps issues out of layout until requested and restores trigger focus on Escape', () => {
+  it('moves focus into requested issues and restores trigger focus on Escape', async () => {
     render(
       <AssemblyTemplateHeaderGuide
         readiness={readiness}
@@ -39,6 +39,11 @@ describe('AssemblyTemplateHeaderGuide', () => {
     expect(screen.queryByRole('dialog', { name: 'テンプレートの未完了項目' })).not.toBeInTheDocument();
     fireEvent.click(trigger);
     expect(screen.getByRole('dialog', { name: 'テンプレートの未完了項目' })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: '手順パターンを入力してください。' })
+      ).toHaveFocus()
+    );
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByRole('dialog', { name: 'テンプレートの未完了項目' })).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
