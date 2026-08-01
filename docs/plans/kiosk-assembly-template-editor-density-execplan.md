@@ -1,19 +1,18 @@
 ---
 id: kiosk-assembly-template-editor-density
-status: in-progress
+status: complete
 scope: kiosk assembly template editor density and input workflow
 date: 2026-08-01
 source_of_truth: docs/plans/kiosk-assembly-template-editor-density-execplan.md
 related_code:
   - apps/web/src/pages/kiosk/KioskAssemblyTemplateEditorPage.tsx
-  - apps/web/src/components/kiosk/AssemblyTemplateCreationGuide.tsx
+  - apps/web/src/features/assembly/AssemblyTemplateCreationGuide.tsx
 related_docs:
   - docs/decisions/ADR-20260727-assembly-template-guided-creation.md
   - docs/plans/assembly-template-guided-create-execplan.md
 validation:
   - scripts/test/validate-assembly-template-guided-create.sh
-open_items:
-  - Publish the branch, complete required CI and review, merge to main, and deploy the merged SHA with fleet evidence.
+open_items: []
 ---
 
 # Reclaim the assembly template document workspace
@@ -39,8 +38,8 @@ The observable result is on the kiosk assembly template create route. At 1366 by
 - [x] (2026-08-01 02:33Z) Received explicit authorization to continue through production deployment; confirmed the clean feature branch, GitHub authentication, standard rolling-deployment entry point, and recovery contract.
 - [x] (2026-08-01 02:30Z) Published commit `07f94323`, opened PR #1144, and passed required CI including API, Web, E2E, workspace quality, repository policy, CodeQL, and secret scanning.
 - [x] (2026-08-01 02:39Z) Addressed both actionable P2 review findings with marker-inspector dismissal and popover focus-entry regression coverage; Node 24 Web tests passed 1,666 of 1,666, Web lint and build passed, and the target Playwright suite passed 16 of 16.
-- [ ] Push the review fixes, complete the refreshed CI and review audit, and merge the effective changes into `origin/main`.
-- [ ] Run the read-only merged-main deployment plan, execute the standard rolling update, and record fleet SHA and verification evidence.
+- [x] (2026-08-01 02:52Z) Pushed the review fixes, completed refreshed CI and the review audit, and merged PR #1144 into `origin/main` as `12c14c54c2b47b0d4b60f9dadfca0ecce67828ec`.
+- [x] (2026-08-01 03:32Z) Planned and completed standard rolling release `20260801-030357-0e7b57`; Pi5 API/Web claims and all six kiosk Web activation claims are verified, all terminal maintenance windows were cleared, and the same-SHA plan is a warning-free no-op.
 
 ## Surprises & Discoveries
 
@@ -58,6 +57,8 @@ The observable result is on the kiosk assembly template create route. At 1366 by
   Evidence: the validator sets canonical `FILE_STORAGE_ROOT`, while the test changed only the lower-priority `PHOTO_STORAGE_DIR` and then asserted against that ignored directory. Preserving and setting both variables made the test independent of its caller; the second full run passed all 2,513 API tests.
 - Observation: PR review found two interaction states that focused local tests had not covered: a marker inspector could remain open after its selection disappeared, and the portaled issue dialog did not move keyboard focus into its controls.
   Evidence: PR #1144 review threads anchored to `KioskAssemblyTemplateEditorPage.tsx` and `AssemblyTemplateCreationGuide.tsx`; the added page and component regressions pass under Node 24.
+- Observation: a Web-only control-plane release intentionally leaves each kiosk repository at its previously verified SHA while advancing the compiled Web claim to the merged release SHA.
+  Evidence: release `20260801-030357-0e7b57` verified Pi5 API/Web at `12c14c54`, each kiosk `controlPlaneWeb` claim at `12c14c54`, and each kiosk `terminalRepository` claim at `0132e82f`; `mainIntegration.completionEligible` remained true.
 
 ## Decision Log
 
@@ -82,12 +83,15 @@ The observable result is on the kiosk assembly template create route. At 1366 by
 - Decision: Close marker mode whenever neither a bolt nor check item remains selected, and focus the first enabled control when the issue dialog opens.
   Rationale: inspector visibility must follow its explicit content validity, while a newly opened portaled dialog must be reachable immediately by keyboard without traversing the editor behind it.
   Date/Author: 2026-08-01 / Codex
+- Decision: Deploy the merged immutable SHA with the standard rolling orchestrator and accept the run-specific human canary only after the first kiosk completed activation, evidence collection, cleanup, and maintenance clearing.
+  Rationale: this preserves the repository's production safety contract and prevents the user's earlier general deployment authorization from being reused as a canary gate approval.
+  Date/Author: 2026-08-01 / Codex
 
 ## Outcomes & Retrospective
 
-The local feature-branch implementation is complete. The four-stage guide now uses the local header and a non-layout-shifting issue popover; the initial right inspector is closed; optional controls are disclosed on demand; automatic naming and capability-group-first fastener entry reduce repeated input. Public API, Prisma, database, shared DTO, and Excel contracts did not change.
+The implementation and production rollout are complete. The four-stage guide now uses the local header and a non-layout-shifting issue popover; the initial right inspector is closed; optional controls are disclosed on demand; automatic naming and capability-group-first fastener entry reduce repeated input. Public API, Prisma, database, shared DTO, and Excel contracts did not change.
 
-The complete isolated validation passed after correcting one pre-existing test-environment isolation defect. No existing database or Docker resource was touched, and the validator reported zero labeled resource residue. The user subsequently authorized publication, main integration, and production deployment; those operational milestones are now in progress and this plan remains open until merged-main fleet evidence is recorded.
+The complete isolated validation passed after correcting one pre-existing test-environment isolation defect. No existing database or Docker resource was touched, and the validator reported zero labeled resource residue. PR #1144 passed required CI and security checks and was merged to `main`. Standard rolling release `20260801-030357-0e7b57` then deployed merged SHA `12c14c54` to Pi5, completed five minutes of post-switch stability monitoring, activated and independently verified the compiled Web application on all six kiosks, and cleared every maintenance window. The final status reported `success`, no warnings, and `mainIntegration.completionEligible=true`; a repeated plan selected zero targets.
 
 ## Context and Orientation
 
@@ -156,10 +160,26 @@ Final local evidence:
     EXPLAIN fixture count: 20100
     EXPLAIN index: TorqueWrenchCapabilityGroup_idx_fastener_active
     API: 478 files passed, 2 skipped; 2513 tests passed, 7 skipped
-    Web: 331 files passed; 1665 tests passed
+    Web: 331 files passed; 1666 tests passed after review fixes
     lint and shared/API/Web production builds: passed
     Playwright assembly editor: 16 passed at 1366x768, 1920x1080, and 900x900 coverage
     Docker cleanup: container=0, volume=0, network=0 for the validation label
+
+Merged-main and production evidence:
+
+    pull request: #1144 merged
+    merged SHA: 12c14c54c2b47b0d4b60f9dadfca0ecce67828ec
+    merged-main CI: run 30680859669 passed
+    CodeQL: run 30680859663 passed
+    Secret scan: run 30680859660 passed
+    rolling release: 20260801-030357-0e7b57 success
+    Pi5: API and Web claims verified at 12c14c54
+    kiosk Web activation: 6 of 6 success and verified at 12c14c54
+    kiosk repository mutation: none; 6 of 6 retained verified 0132e82f
+    stability monitor: 300537 ms passed
+    maintenance clearing: 6 of 6 terminal-maintenance-clear phases passed
+    final main integration: completionEligible=true, integrationPending=false, issues=[]
+    repeated merged-SHA plan: targets=0, activationTargets=0, verificationTargets=0, warnings=[]
 
 ## Interfaces and Dependencies
 
@@ -168,3 +188,4 @@ Add only Web-internal interfaces: a guide presentation model derived from readin
 Revision note (2026-08-01): Created the implementation-ready plan after repository, contract, UI, test, and Docker validation analysis so work can be resumed safely from this file alone. Updated at 01:57Z with implemented milestones, focused test evidence, and the responsive-geometry E2E discovery. Updated at 02:12Z with full isolated validation, test-harness isolation recovery, cleanup evidence, and explicit integration-pending status.
 Updated at 02:33Z after the user explicitly authorized publication, main integration, and production deployment; added the remaining PR, merged-main, rolling-release, and fleet-evidence milestones.
 Updated at 02:39Z with PR #1144 CI evidence, the two review-driven interaction corrections, and their complete Web and Playwright validation; refreshed CI, main integration, and production evidence remain open.
+Updated at 03:32Z after PR #1144 merge and production release `20260801-030357-0e7b57`; recorded merged-main CI, run-specific canary approval, Pi5 and kiosk claim evidence, maintenance cleanup, main integration eligibility, and the warning-free same-SHA no-op plan, then marked the plan complete.
