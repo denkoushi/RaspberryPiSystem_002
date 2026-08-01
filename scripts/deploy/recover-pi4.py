@@ -18,10 +18,12 @@ import secrets
 import socket
 import subprocess
 import sys
+import tempfile
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Protocol
+from typing import Any, Callable, Iterator, Protocol
 
 SCRIPT_DIRECTORY = Path(__file__).resolve().parent
 if str(SCRIPT_DIRECTORY) not in sys.path:
@@ -35,6 +37,14 @@ from rolling_release.fleet_state import (
 )
 from rolling_release.bootstrap import read_local_server_client_id
 from rolling_release.image_refs import image_matches_release
+from recovery.bootstrap import (
+    BootstrapIdentity,
+    BootstrapIdentityError,
+    BootstrapIdentityVerifier,
+    FINGERPRINT_RE,
+    SshBootstrapIdentityVerifier,
+    canonical_hostname,
+)
 from recovery.inventory import (
     AnsibleRecoveryInventoryResolver,
     RecoveryInventoryError,
@@ -104,7 +114,9 @@ class SubprocessRunner:
 class Target:
     host: str
     user: str
+    current_host: str
     original_host: str
+    previous_ssh_host_key_fingerprint: str | None
     status_agent_client_id: str
     nfc_enabled: bool
     barcode_enabled: bool
@@ -124,25 +136,26 @@ class RecoveryPlan:
     release: Release
     runtime_override_exists: bool
     recovery_network: RecoveryNetworkReadiness
+    bootstrap_identity: BootstrapIdentity
 
     def public_dict(self) -> dict[str, Any]:
         return {
             'target': {
                 'host': self.target.host,
                 'user': self.target.user,
-                'previousEndpoint': self.target.original_host,
+                'previousEndpoint': self.target.current_host,
                 'statusAgentClientId': self.target.status_agent_client_id,
                 'nfcRequired': self.target.nfc_enabled,
                 'barcodeRequired': self.target.barcode_enabled,
             },
             'bootstrapHost': self.bootstrap_host,
+            'bootstrapIdentity': self.bootstrap_identity.public_dict(),
             'release': asdict(self.release),
             'runtimeOverrideExists': self.runtime_override_exists,
             'inventoryResolved': True,
             'recoveryNetwork': {
                 'mode': self.recovery_network.mode,
                 'configured': self.recovery_network.configured,
-                'targetEndpoint': self.recovery_network.target_endpoint,
                 'serverEndpoint': self.recovery_network.server_endpoint,
             },
             'initialOsChecklist': [
@@ -150,7 +163,8 @@ class RecoveryPlan:
                 f'既存端末と同じユーザー名 {self.target.user!r} を設定する。',
                 'Pi5 の公開鍵で SSH を有効化する。',
                 'sudo のパスワード要求を無効化する。',
-                f'既存Pi4のDHCP予約または固定設定でLAN IP {self.bootstrap_host} を維持する。',
+                f'新OSのホスト名を {self.bootstrap_identity.hostname!r} にして、現在のLAN IP {self.bootstrap_host} を確認する。',
+                'planが表示したSSH公開鍵指紋を確認し、runへそのまま渡す。',
                 f'Pi4からPi5のLAN IP {self.recovery_network.server_endpoint} へ到達できることを確認する。',
             ],
         }
@@ -227,6 +241,7 @@ class RecoveryCoordinator:
         server_client_id_reader: Callable[[], str] | None = None,
         inventory_resolver: RecoveryInventoryResolver | None = None,
         network_provider: RecoveryNetworkProvider | None = None,
+        bootstrap_identity_verifier: BootstrapIdentityVerifier | None = None,
     ) -> None:
         self.project = project.resolve()
         self.inventory = inventory.resolve()
@@ -242,6 +257,9 @@ class RecoveryCoordinator:
             runner=self.runner,
         )
         self.network_provider = network_provider or LanRecoveryNetworkProvider()
+        self.bootstrap_identity_verifier = (
+            bootstrap_identity_verifier or SshBootstrapIdentityVerifier(self.runner)
+        )
 
     def _read_device_model(self) -> str:
         try:
@@ -308,18 +326,44 @@ class RecoveryCoordinator:
             raise RecoveryError(str(error)) from error
 
         override = self.load_runtime_override(target_name)
+        current_host = values.inventory_endpoint
         original_host = values.inventory_endpoint
+        previous_fingerprint: str | None = None
         if override is not None:
+            current = override.get('ansible_host')
+            if not isinstance(current, str) or not self.network_provider.is_managed_endpoint(
+                current
+            ):
+                raise RecoveryError(
+                    f'local runtime override for {target_name!r} has no valid current endpoint'
+                )
+            current_host = current
             metadata = override.get('pi4_recovery')
             previous = metadata.get('original_ansible_host') if isinstance(metadata, dict) else None
             if not isinstance(previous, str) or not previous.strip():
                 raise RecoveryError(f'local runtime override for {target_name!r} has no original endpoint')
             original_host = previous
+            stored_fingerprint = (
+                metadata.get('ssh_host_key_fingerprint')
+                if isinstance(metadata, dict)
+                else None
+            )
+            if stored_fingerprint is not None:
+                if not isinstance(stored_fingerprint, str) or not FINGERPRINT_RE.fullmatch(
+                    stored_fingerprint
+                ):
+                    raise RecoveryError(
+                        f'local runtime override for {target_name!r} has an invalid SSH host-key fingerprint'
+                    )
+                previous_fingerprint = stored_fingerprint
+        parse_ipv4(current_host, field='current endpoint')
         parse_ipv4(original_host, field='inventory endpoint')
         return Target(
             host=target_name,
             user=values.user,
+            current_host=current_host,
             original_host=original_host,
+            previous_ssh_host_key_fingerprint=previous_fingerprint,
             status_agent_client_id=values.status_agent_client_id,
             nfc_enabled=values.nfc_enabled,
             barcode_enabled=values.barcode_enabled,
@@ -407,7 +451,9 @@ class RecoveryCoordinator:
         self,
         target_name: str,
         bootstrap_host: str,
+        bootstrap_hostname: str,
         *,
+        expected_bootstrap_fingerprint: str | None = None,
         resolved_contract: ResolvedRecoveryContract | None = None,
     ) -> RecoveryPlan:
         contract = resolved_contract or self.resolve_inventory_contract(target_name)
@@ -420,13 +466,37 @@ class RecoveryCoordinator:
         target, override_exists = self.resolve_target(contract)
         server_host = self.validate_inventory_server_identity(contract)
         release = self.resolve_active_release(server_host)
+        bootstrap_identity = self.verify_bootstrap_identity(
+            bootstrap,
+            target,
+            bootstrap_hostname,
+            expected_bootstrap_fingerprint,
+        )
         return RecoveryPlan(
             target=target,
             bootstrap_host=bootstrap,
             release=release,
             runtime_override_exists=override_exists,
             recovery_network=contract.recovery_network,
+            bootstrap_identity=bootstrap_identity,
         )
+
+    def verify_bootstrap_identity(
+        self,
+        bootstrap_host: str,
+        target: Target,
+        bootstrap_hostname: str,
+        expected_fingerprint: str | None = None,
+    ) -> BootstrapIdentity:
+        try:
+            return self.bootstrap_identity_verifier.verify(
+                bootstrap_host,
+                target.user,
+                bootstrap_hostname,
+                expected_fingerprint,
+            )
+        except BootstrapIdentityError as error:
+            raise RecoveryError(str(error)) from error
 
     def assert_pi5(self) -> None:
         model = self.device_model_reader()
@@ -450,22 +520,56 @@ class RecoveryCoordinator:
         state.transition('preflight')
         return state
 
-    def _ssh_identity(self, host: str, user: str) -> str:
-        output = self.runner.run([
-            'ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', f'{user}@{host}', 'id', '-un',
-        ])
-        return output.strip()
+    @contextmanager
+    def _pinned_known_hosts(self, identity: BootstrapIdentity) -> Iterator[Path]:
+        with tempfile.TemporaryDirectory(
+            prefix='pi4-recovery-pinned-host-'
+        ) as directory:
+            path = Path(directory) / 'known_hosts'
+            path.write_text(identity.known_hosts_entry + '\n', encoding='utf-8')
+            os.chmod(path, 0o600)
+            yield path
 
-    def _run_bootstrap_playbook(self, plan: RecoveryPlan, result_path: Path) -> None:
+    @staticmethod
+    def _ssh_options(known_hosts_path: Path) -> list[str]:
+        return [
+            '-o',
+            'BatchMode=yes',
+            '-o',
+            'ConnectTimeout=15',
+            '-o',
+            f'UserKnownHostsFile={known_hosts_path}',
+            '-o',
+            'StrictHostKeyChecking=yes',
+        ]
+
+    @staticmethod
+    def _ansible_connection_vars(known_hosts_path: Path) -> dict[str, str]:
+        return {
+            'ansible_ssh_common_args': (
+                '-o BatchMode=yes -o ConnectTimeout=15 '
+                f'-o UserKnownHostsFile={known_hosts_path} '
+                '-o StrictHostKeyChecking=yes'
+            )
+        }
+
+    def _run_bootstrap_playbook(
+        self, plan: RecoveryPlan, result_path: Path, known_hosts_path: Path
+    ) -> None:
+        extra_vars: dict[str, object] = {
+            'recovery_authorized': True,
+            'repo_version': plan.release.sha,
+            'ansible_host': plan.bootstrap_host,
+            'network_mode': 'local',
+            'tailscale_enabled': False,
+            'recovery_result_path': str(result_path),
+            'recovery_bootstrap_ipv4': plan.bootstrap_host,
+            **self._ansible_connection_vars(known_hosts_path),
+        }
         self.runner.run([
             'ansible-playbook', '-i', str(self.inventory), str(self.project / 'infrastructure/ansible/playbooks/recover-pi4.yml'),
             '--limit', plan.target.host,
-            '-e', 'recovery_authorized=true',
-            '-e', f'repo_version={plan.release.sha}',
-            '-e', f'ansible_host={plan.bootstrap_host}',
-            '-e', 'network_mode=local',
-            '-e', 'tailscale_enabled=false',
-            '-e', f'recovery_result_path={result_path}',
+            '-e', json.dumps(extra_vars),
         ], capture=False, cwd=self.project / 'infrastructure' / 'ansible')
 
     def _read_result(self, path: Path, plan: RecoveryPlan) -> str:
@@ -493,34 +597,73 @@ class RecoveryCoordinator:
                 'recovered_at': utc_now(),
                 'release_sha': plan.release.sha,
                 'original_ansible_host': plan.target.original_host,
+                'previous_ansible_host': plan.target.current_host,
+                'bootstrap_hostname': plan.bootstrap_identity.hostname,
+                'ssh_host_key_fingerprint': (
+                    plan.bootstrap_identity.ssh_host_key_fingerprint
+                ),
             },
         })
         return path
 
-    def validate_recovered_terminal(self, plan: RecoveryPlan) -> str:
+    def validate_recovered_terminal(
+        self, plan: RecoveryPlan, known_hosts_path: Path
+    ) -> str:
         user = plan.target.user
         endpoint = self.runtime_override_endpoint(plan.target.host)
-        if self._ssh_identity(endpoint, user) != user:
+        identity_output = self.runner.run(
+            [
+                'ssh',
+                *self._ssh_options(known_hosts_path),
+                f'{user}@{endpoint}',
+                'id -un && hostname -s',
+            ]
+        )
+        identity_lines = [
+            line.strip() for line in identity_output.splitlines() if line.strip()
+        ]
+        if len(identity_lines) != 2 or identity_lines[0] != user:
             raise RecoveryError('new LAN endpoint authenticated as an unexpected user')
+        try:
+            observed_hostname = canonical_hostname(identity_lines[1])
+        except BootstrapIdentityError as error:
+            raise RecoveryError('new LAN endpoint reported an invalid hostname') from error
+        if observed_hostname != plan.bootstrap_identity.hostname:
+            raise RecoveryError('new LAN endpoint reported an unexpected hostname')
+        connection_vars = json.dumps(
+            self._ansible_connection_vars(known_hosts_path)
+        )
         self.runner.run(
-            ['ansible', '-i', str(self.inventory), plan.target.host, '-m', 'ping'],
+            [
+                'ansible',
+                '-i',
+                str(self.inventory),
+                plan.target.host,
+                '-m',
+                'ping',
+                '-e',
+                connection_vars,
+            ],
             capture=False,
             cwd=self.project / 'infrastructure' / 'ansible',
         )
         self.runner.run([
             'ansible-playbook', '-i', str(self.inventory), str(self.project / 'infrastructure/ansible/playbooks/recover-pi4-verify.yml'),
-            '--limit', plan.target.host, '-e', 'recovery_authorized=true',
+            '--limit', plan.target.host, '-e', json.dumps({
+                'recovery_authorized': True,
+                **self._ansible_connection_vars(known_hosts_path),
+            }),
         ], capture=False, cwd=self.project / 'infrastructure' / 'ansible')
         observed_sha = self.runner.run([
-            'ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', f'{user}@{endpoint}',
-            'git', '-C', '/opt/RaspberryPiSystem_002', 'rev-parse', 'HEAD',
+            'ssh', *self._ssh_options(known_hosts_path), f'{user}@{endpoint}',
+            'git -C /opt/RaspberryPiSystem_002 rev-parse HEAD',
         ]).strip()
         if observed_sha != plan.release.sha:
             raise RecoveryError('recovered terminal HEAD does not match the active release SHA')
         for service in ('kiosk-browser.service', 'status-agent.timer'):
             self.runner.run([
                 'ansible', '-i', str(self.inventory), plan.target.host, '-b', '-m', 'command',
-                '-a', f'systemctl is-active --quiet {service}',
+                '-a', f'systemctl is-active --quiet {service}', '-e', connection_vars,
             ], cwd=self.project / 'infrastructure' / 'ansible')
         return observed_sha
 
@@ -533,7 +676,15 @@ class RecoveryCoordinator:
             raise RecoveryError(f'local runtime override for {target!r} does not enforce LAN mode')
         return endpoint
 
-    def execute(self, target_name: str, bootstrap_host: str, reason: str, run_id: str | None = None) -> RecoveryState:
+    def execute(
+        self,
+        target_name: str,
+        bootstrap_host: str,
+        bootstrap_hostname: str,
+        bootstrap_host_key: str,
+        reason: str,
+        run_id: str | None = None,
+    ) -> RecoveryState:
         generated_run_id = run_id or f"pi4-recovery-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}"
         if not RUN_ID_RE.fullmatch(generated_run_id):
             raise RecoveryError('run ID must contain only lower-case letters, digits, and hyphens')
@@ -556,6 +707,19 @@ class RecoveryCoordinator:
                 self.assert_pi5()
                 resolved_contract = self.resolve_inventory_contract(target_name)
                 self.validate_inventory_server_identity(resolved_contract)
+                try:
+                    preflight_bootstrap = self.network_provider.validate_bootstrap(
+                        bootstrap_host, resolved_contract
+                    )
+                except RecoveryNetworkError as error:
+                    raise RecoveryError(str(error)) from error
+                preflight_target, _ = self.resolve_target(resolved_contract)
+                self.verify_bootstrap_identity(
+                    preflight_bootstrap,
+                    preflight_target,
+                    bootstrap_hostname,
+                    bootstrap_host_key,
+                )
                 fleet_state = store.read_only()
                 stale_run = fleet_state.get('activeRun')
                 if isinstance(stale_run, dict):
@@ -567,8 +731,24 @@ class RecoveryCoordinator:
                 plan = self.build_plan(
                     target_name,
                     bootstrap_host,
+                    bootstrap_hostname,
+                    expected_bootstrap_fingerprint=bootstrap_host_key,
                     resolved_contract=resolved_contract,
                 )
+                if (
+                    plan.target.previous_ssh_host_key_fingerprint
+                    == plan.bootstrap_identity.ssh_host_key_fingerprint
+                ):
+                    raise RecoveryError(
+                        'bootstrap SSH identity matches the previously managed OS; refusing duplicate recovery'
+                    )
+                if (
+                    plan.target.current_host != plan.bootstrap_host
+                    and self.tcp_reachable(plan.target.current_host, 22)
+                ):
+                    raise RecoveryError(
+                        'previous production endpoint still accepts TCP/22; refusing possible duplicate terminal'
+                    )
                 fleet_state = store.read_only()
                 fleet_state = store.begin_run(
                     generated_run_id,
@@ -592,19 +772,31 @@ class RecoveryCoordinator:
                 # durable fleet run and target evidence are fail-closed.
                 legacy_state = self.create_state(target_name, bootstrap_host, generated_run_id, reason)
                 result_path = self.project / 'logs' / 'recovery' / f'{generated_run_id}-ansible-result.json'
-                legacy_state.transition('preflight-complete', releaseSha=plan.release.sha)
-                if self.tcp_reachable(plan.target.original_host, 22):
-                    raise RecoveryError('previous production endpoint still accepts TCP/22; refusing possible duplicate terminal')
-                if self._ssh_identity(plan.bootstrap_host, plan.target.user) != plan.target.user:
-                    raise RecoveryError('bootstrap host does not authenticate as the target inventory user')
-                legacy_state.transition('bootstrap-configuring')
-                self._run_bootstrap_playbook(plan, result_path)
-                lan_ip = self._read_result(result_path, plan)
-                legacy_state.transition('lan-endpoint-observed', lanIpv4=lan_ip)
-                override_path = self.write_runtime_override(plan, generated_run_id, lan_ip)
-                legacy_state.transition('runtime-endpoint-saved', runtimeOverride=str(override_path))
-                legacy_state.transition('validating')
-                observed_sha = self.validate_recovered_terminal(plan)
+                legacy_state.transition(
+                    'preflight-complete',
+                    releaseSha=plan.release.sha,
+                    bootstrapHostname=plan.bootstrap_identity.hostname,
+                    sshHostKeyFingerprint=(
+                        plan.bootstrap_identity.ssh_host_key_fingerprint
+                    ),
+                )
+                with self._pinned_known_hosts(plan.bootstrap_identity) as known_hosts_path:
+                    legacy_state.transition('bootstrap-configuring')
+                    self._run_bootstrap_playbook(
+                        plan, result_path, known_hosts_path
+                    )
+                    lan_ip = self._read_result(result_path, plan)
+                    legacy_state.transition('lan-endpoint-observed', lanIpv4=lan_ip)
+                    override_path = self.write_runtime_override(
+                        plan, generated_run_id, lan_ip
+                    )
+                    legacy_state.transition(
+                        'runtime-endpoint-saved', runtimeOverride=str(override_path)
+                    )
+                    legacy_state.transition('validating')
+                    observed_sha = self.validate_recovered_terminal(
+                        plan, known_hosts_path
+                    )
                 fleet_state = store.mark_host_verified(
                     plan.target.host,
                     'kiosk',
@@ -666,9 +858,11 @@ def parser() -> argparse.ArgumentParser:
     for name in ('plan', 'run'):
         subcommand = subcommands.add_parser(name)
         subcommand.add_argument('--target', required=True, help='existing Pi4 inventory hostname')
-        subcommand.add_argument('--bootstrap-host', required=True, help='inventory-declared stable LAN IPv4 address for the rebuilt Pi4')
+        subcommand.add_argument('--bootstrap-host', required=True, help='current private-LAN IPv4 address reported for the replacement OS')
+        subcommand.add_argument('--bootstrap-hostname', required=True, help='short hostname configured on the replacement OS')
     run = subcommands.choices['run']
     run.add_argument('--confirm-recovery', action='store_true', help='required acknowledgement for mutating recovery')
+    run.add_argument('--bootstrap-host-key', required=True, help='SHA256 SSH host-key fingerprint returned by plan')
     run.add_argument('--reason', required=True, help='operator incident reference or reason')
     run.add_argument('--run-id', help='optional unique recovery run identifier')
     return command
@@ -679,11 +873,22 @@ def main(argv: list[str] | None = None) -> int:
     coordinator = RecoveryCoordinator(inventory=Path(arguments.inventory))
     try:
         if arguments.command == 'plan':
-            print(json.dumps(coordinator.build_plan(arguments.target, arguments.bootstrap_host).public_dict(), ensure_ascii=False, indent=2))
+            print(json.dumps(coordinator.build_plan(
+                arguments.target,
+                arguments.bootstrap_host,
+                arguments.bootstrap_hostname,
+            ).public_dict(), ensure_ascii=False, indent=2))
             return 0
         if not arguments.confirm_recovery:
             raise RecoveryError('run requires --confirm-recovery')
-        state = coordinator.execute(arguments.target, arguments.bootstrap_host, arguments.reason, arguments.run_id)
+        state = coordinator.execute(
+            arguments.target,
+            arguments.bootstrap_host,
+            arguments.bootstrap_hostname,
+            arguments.bootstrap_host_key,
+            arguments.reason,
+            arguments.run_id,
+        )
         print(json.dumps(state.payload, ensure_ascii=False, indent=2))
         return 0
     except RecoveryError as error:
