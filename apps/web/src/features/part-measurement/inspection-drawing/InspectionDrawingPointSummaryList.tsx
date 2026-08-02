@@ -10,6 +10,7 @@ import {
   inspectionDrawingPointSummaryListSidebarTitleClassName,
   inspectionDrawingPointSummaryListSidebarTwoColumnClassName
 } from './inspectionDrawingKioskUi';
+import { inspectionDrawingSopTargetProps } from './inspectionDrawingSopAnnotations';
 import {
   MEASUREMENT_POINT_INPUT_STATUS_LABEL,
   resolveMeasurementPointInputStatus
@@ -85,6 +86,7 @@ export function InspectionDrawingPointSummaryList({
 
   return (
     <div
+      {...inspectionDrawingSopTargetProps('point-list')}
       className={inspectionDrawingPointSummaryListSidebarSectionClassName}
       data-self-inspection-point-summary-list
     >
@@ -102,6 +104,7 @@ export function InspectionDrawingPointSummaryList({
             return (
               <div key={pt.id} role="listitem" className="min-w-0">
                 <button
+                  {...(selected ? inspectionDrawingSopTargetProps('select-point') : {})}
                   type="button"
                   disabled={disabled}
                   aria-current={selected ? 'true' : undefined}

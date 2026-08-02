@@ -26,6 +26,9 @@ A4 landscape SOP for **検査図面 寸法・公差**. Always-on outer callouts 
 
 - Left **step rail**: numbered instructional list (scrollable for growth)
 - On screen: **step badges only**, anchored to each target’s **bottom-right corner**
+- The bottom-right anchor is measured from the target DOM rectangle in the sheet's
+  prepared production UI state. Missing targets and hand-authored coordinate fallbacks
+  are generation errors.
 - Leaders **hover/focus only** (one at a time); omitted in print
 - Touch/click and keyboard focus select one card until another card is selected. Mouse
   hover temporarily previews a card and returns to the persistent selection on leave.
@@ -53,7 +56,7 @@ A4 landscape SOP for **検査図面 寸法・公差**. Always-on outer callouts 
 
 ## Validation
 
-- Safari: badges on bottom-right of 丸数字 / marker / 基準値 / 公差 / 保存
+- Chromium / Firefox: badges on the DOM-measured bottom-right of 丸数字 / marker / 基準値 / 公差 / 保存
 - Hover shows one leader; leave clears
 - Print preview: one A4 landscape page, no leaders
 

@@ -11,6 +11,7 @@ const INSPECTION_DRAWING_MANUAL: KioskSopManual = Object.freeze({
     { id: 'library-visual-management', label: '図面管理' },
     { id: 'library-template-management', label: 'テンプレート管理' },
     { id: 'edit-basics', label: '編集の基本' },
+    { id: 'edit-visual-source', label: '図面ソース' },
     { id: 'edit-required-point', label: '測定点の必須項目' },
     { id: 'edit-advanced-point', label: '測定点の補助設定' },
     { id: 'edit-point-management', label: '点・引出線管理' },

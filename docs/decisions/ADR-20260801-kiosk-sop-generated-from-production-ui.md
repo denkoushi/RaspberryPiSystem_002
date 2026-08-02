@@ -14,6 +14,8 @@ date: 2026-08-01
 
 - 機能隣接の構造化定義を操作説明の正本とする。任意コードからLLMで説明を推測しない。
 - 固定Playwrightコンテナで本番Reactルートを開き、APIだけを決定的fixtureへ差し替えて画面PNGを生成する。
+- 1シートごとに独立したBrowser contextを作り、その説明に必要な実画面状態をfixture adapterで準備する。別シートの画面状態や背景PNGを再利用しない。
+- 各操作は同じ `data-kiosk-sop-target` を持つ可視DOM要素が正確に1個ある場合だけ生成する。丸数字の座標はDOM矩形の右下角をviewport正規化した値とし、手書き座標・欠落時fallback・要素中央は使用しない。
 - 背景PNG、注釈済みシートPNG、自己完結HTML、ハッシュmanifestをリポジトリへ保存する。
 - 関連ソースと生成物のハッシュが一致しない場合、専用CIジョブを失敗させてマージを止める。
 - ランタイムは `manualId` から生成registryを解決し、任意HTMLを画面側から渡さない。
@@ -29,3 +31,4 @@ date: 2026-08-01
 - [実装ExecPlan](../plans/kiosk-sop-generated-maintenance-execplan.md)
 - [生成済みプレビュー](../design-previews/kiosk-inspection-drawing-edit-existing-sop.html)
 - [ステップレールADR](./ADR-20260728-inspection-drawing-sop-step-rail.md)
+- [semantic target correction ExecPlan](../plans/kiosk-sop-semantic-target-correction-execplan.md)

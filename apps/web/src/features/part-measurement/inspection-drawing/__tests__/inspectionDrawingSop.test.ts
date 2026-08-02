@@ -16,7 +16,7 @@ describe('INSPECTION_DRAWING_SOP_BY_SCREEN', () => {
     });
 
     const manual = getKioskSopManual('inspection-drawing');
-    expect(manual.sheets).toHaveLength(9);
+    expect(manual.sheets).toHaveLength(10);
     expect(manual.sourceHtml).toContain('検査図面を開く');
     expect(manual.sourceHtml).toContain('一覧に戻る');
     expect(manual.sourceHtml).toContain('必須');

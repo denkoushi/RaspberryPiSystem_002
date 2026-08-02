@@ -6,8 +6,16 @@ import { dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { chromium } from 'playwright';
-import { renderKioskSopHtml, validateKioskSopDefinition, validateKioskSopManifest } from '../../packages/kiosk-sop-core/dist/index.js';
+import {
+  computeNormalizedBottomRightAnchor,
+  renderKioskSopHtml,
+  validateKioskSopDefinition,
+  validateKioskSopManifest
+} from '../../packages/kiosk-sop-core/dist/index.js';
 import { sha256, stableJson } from '../../packages/kiosk-sop-core/dist/node.js';
+
+import { assertNoManualTarget, resolveSingleVisibleTarget } from './capture-contract.mjs';
+import { resolveInspectionDrawingCaptureAdapter } from './inspection-drawing-capture-adapter.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, '../..');
@@ -15,10 +23,9 @@ const sourceDefinitionPath = join(repoRoot, 'apps/web/src/features/part-measurem
 const committedRoot = join(repoRoot, 'apps/web/src/generated/kiosk-sop/inspection-drawing');
 const docsPreviewPath = join(repoRoot, 'docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html');
 const mode = process.argv[2] ?? 'generate';
-const skipCapture = process.argv.includes('--skip-capture');
 const outputArgIndex = process.argv.indexOf('--output-root');
 const outputRoot = outputArgIndex >= 0 ? resolve(process.argv[outputArgIndex + 1]) : committedRoot;
-const generatorVersion = '1.0.0';
+const generatorVersion = '1.1.0';
 const chromiumLaunchOptions = {
   headless: true,
   args: [
@@ -30,28 +37,6 @@ const chromiumLaunchOptions = {
   ]
 };
 
-const visualTemplate = {
-  id: 'sop-visual-1', name: '図面71-A61', searchDigits: '7161',
-  drawingImageRelativePath: '/api/storage/part-measurement-drawings/sop-visual-1.svg',
-  isActive: true, createdAt: '2026-07-28T00:00:00.000Z', updatedAt: '2026-07-28T00:00:00.000Z'
-};
-const template = {
-  id: 'sop-template-1', fhincd: 'PART-9000', resourceCd: 'R001', processGroup: 'cutting',
-  templateScope: 'three_key', candidateFhinmei: null, name: '図面71-A61 テンプレート', version: 3,
-  isActive: true, selfInspectionMode: 'fixed_count', selfInspectionFixedCount: 3,
-  selfInspectionSampleSize: 3, visualTemplateId: visualTemplate.id, visualTemplate,
-  siblingGroupId: 'sop-group-1', siblingGroup: {
-    id: 'sop-group-1', displayName: 'PART-9000 切削', fhincd: 'PART-9000', processGroup: 'cutting',
-    activeResourceCds: ['R001', 'R002'], createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-28T00:00:00.000Z'
-  },
-  items: [
-    { id: 'item-1', sortOrder: 0, datumSurface: 'A', measurementPoint: '外径', measurementLabel: '外径', displayMarker: '1', unit: 'mm', allowNegative: true, decimalPlaces: 3, markerXRatio: '0.35', markerYRatio: '0.42', calloutTipXRatio: null, calloutTipYRatio: null, nominalValue: '20', lowerLimit: '19.98', upperLimit: '20.02', depthMode: 'measured', valueKind: 'numeric' },
-    { id: 'item-2', sortOrder: 1, datumSurface: 'B', measurementPoint: '全長', measurementLabel: '全長', displayMarker: '2', unit: 'mm', allowNegative: true, decimalPlaces: 2, markerXRatio: '0.67', markerYRatio: '0.55', calloutTipXRatio: '0.73', calloutTipYRatio: '0.48', nominalValue: '71', lowerLimit: '70.9', upperLimit: '71.1', depthMode: 'measured', valueKind: 'numeric' }
-  ]
-};
-const summaryTemplate = { ...template, itemCount: template.items.length, updatedAt: '2026-07-28T00:00:00.000Z' };
-delete summaryTemplate.items;
-
 async function waitForServer(url, timeoutMs = 60000) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
@@ -59,25 +44,6 @@ async function waitForServer(url, timeoutMs = 60000) {
     await new Promise((done) => setTimeout(done, 250));
   }
   throw new Error(`Timed out waiting for ${url}`);
-}
-
-async function installApiFixtures(page, unexpected) {
-  await page.route((url) => url.pathname.startsWith('/api/'), async (route) => {
-    const path = new URL(route.request().url()).pathname;
-    if (path === '/api/system/deploy-status') return route.fulfill({ json: { isMaintenance: false } });
-    if (path === '/api/kiosk/config') return route.fulfill({ json: { defaultMode: 'tag', clientStatus: null } });
-    if (path === '/api/kiosk/call/targets') return route.fulfill({ json: { selfClientId: 'sop-generator', targets: [] } });
-    if (path === '/api/kiosk/employees') return route.fulfill({ json: { employees: [] } });
-    if (path === '/api/kiosk/production-schedule/resources') return route.fulfill({ json: { resources: ['R001', 'R002', 'R003'], resourceNameMap: { R001: ['旋盤1号'], R002: ['旋盤2号'] } } });
-    if (path === '/api/part-measurement/inspection-drawing/templates') return route.fulfill({ json: { templates: [summaryTemplate] } });
-    if (path === '/api/part-measurement/inspection-drawing/templates/sop-template-1') return route.fulfill({ json: { template } });
-    if (path === '/api/part-measurement/inspection-drawing/measurement-label-settings') return route.fulfill({ json: { settings: [] } });
-    if (path === '/api/part-measurement/visual-templates') return route.fulfill({ json: { visualTemplates: [visualTemplate] } });
-    if (path === '/api/part-measurement/visual-templates/sop-visual-1/ocr') return route.fulfill({ status: 404, json: { message: 'OCR fixtureなし' } });
-    if (path === visualTemplate.drawingImageRelativePath) return route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="600"><rect width="1000" height="600" fill="#f8fafc"/><g stroke="#334155" fill="none" stroke-width="4"><path d="M120 180h700v240H120z"/><circle cx="300" cy="300" r="95"/><circle cx="650" cy="300" r="60"/><path d="M205 300h190M300 205v190M590 300h120"/></g><g fill="#0f172a" font-family="sans-serif" font-size="36"><text x="120" y="130">PART-9000  検査図面</text><text x="240" y="520">φ20 ±0.02</text><text x="610" y="520">71 ±0.10</text></g></svg>' });
-    unexpected.add(`${route.request().method()} ${path}`);
-    return route.fulfill({ status: 404, json: { message: `Unexpected SOP generator API request: ${path}` } });
-  });
 }
 
 async function captureScreens(definition, targetRoot) {
@@ -90,48 +56,101 @@ async function captureScreens(definition, targetRoot) {
     const browser = await chromium.launch(chromiumLaunchOptions);
     try {
       await mkdir(join(targetRoot, 'screens'), { recursive: true });
-      const targetsByScenario = {};
+      const capturesBySheet = {};
       for (const scenario of definition.scenarios) {
-        const unexpected = new Set();
-        const context = await browser.newContext({ viewport: scenario.viewport, deviceScaleFactor: 1, locale: 'ja-JP', timezoneId: 'Asia/Tokyo', reducedMotion: 'reduce' });
-        const page = await context.newPage();
-        await page.addInitScript(() => {
-          localStorage.setItem('kiosk-client-key', JSON.stringify('client-key-raspberrypi4-kiosk1'));
-          Date.now = () => 1785510000000;
-        });
-        await installApiFixtures(page, unexpected);
-        const pageErrors = [];
-        page.on('pageerror', (error) => pageErrors.push(error.message));
-        await page.goto(`http://127.0.0.1:4173${scenario.productionRoute}`, { waitUntil: 'networkidle' });
-        await page.addStyleTag({
-          content: '*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important;border-radius:0!important}'
-        });
-        await page.locator('h1').first().waitFor({ state: 'visible' });
-        await page.evaluate(async () => {
-          await document.fonts.ready;
-          await new Promise((resolveFrame) => requestAnimationFrame(() => requestAnimationFrame(resolveFrame)));
-        });
-        const targetRows = await page.locator('[data-kiosk-sop-target]').evaluateAll((elements) => elements.map((element) => {
-          const rect = element.getBoundingClientRect();
-          return { id: element.getAttribute('data-kiosk-sop-target'), x: (rect.left + rect.width / 2) / window.innerWidth, y: (rect.top + rect.height / 2) / window.innerHeight, visible: rect.width > 0 && rect.height > 0 };
-        }));
-        const coverageErrors = await page.locator('[data-kiosk-sop-coverage]').evaluateAll((boundaries, declaredExclusions) => {
-          const interactiveSelector = 'button,a,input,select,textarea,[role="button"]';
-          return boundaries.flatMap((boundary) => Array.from(boundary.querySelectorAll(interactiveSelector)).flatMap((element) => {
-            if (element.closest('[data-kiosk-sop-target]')) return [];
-            const ignoreId = element.closest('[data-kiosk-sop-ignore-id]')?.getAttribute('data-kiosk-sop-ignore-id');
-            if (ignoreId && declaredExclusions.includes(ignoreId)) return [];
-            return [`${element.tagName.toLowerCase()}${element.getAttribute('aria-label') ? `[aria-label="${element.getAttribute('aria-label')}"]` : ''}`];
-          }));
-        }, definition.exclusions.map(({ id }) => id));
-        if (coverageErrors.length) throw new Error(`Unclassified interactive controls in ${scenario.id}: ${coverageErrors.join(', ')}`);
-        targetsByScenario[scenario.id] = Object.fromEntries(targetRows.filter(({ id, visible }) => id && visible).map(({ id, x, y }) => [id, { x, y }]));
-        await page.screenshot({ path: join(targetRoot, 'screens', `${scenario.screen}.png`), animations: 'disabled' });
-        if (unexpected.size) throw new Error(`Unexpected API requests: ${[...unexpected].join(', ')}`);
-        if (pageErrors.length) throw new Error(`Page errors: ${pageErrors.join('; ')}`);
-        await context.close();
+        const adapter = resolveInspectionDrawingCaptureAdapter(scenario.fixtureId);
+        for (const sheet of scenario.sheets) {
+          adapter.assertSupportedSheet(sheet.id);
+          const unexpected = new Set();
+          const context = await browser.newContext({ viewport: scenario.viewport, deviceScaleFactor: 1, locale: 'ja-JP', timezoneId: 'Asia/Tokyo', reducedMotion: 'reduce' });
+          try {
+            const page = await context.newPage();
+            await page.addInitScript(() => {
+              localStorage.setItem('kiosk-client-key', JSON.stringify('client-key-raspberrypi4-kiosk1'));
+              Date.now = () => 1785510000000;
+              const nativeSetTimeout = window.setTimeout.bind(window);
+              const nativeClearTimeout = window.clearTimeout.bind(window);
+              const trackedTimeouts = new Map();
+              window.setTimeout = (handler, delay = 0, ...args) => {
+                let timeoutId;
+                timeoutId = nativeSetTimeout((...handlerArgs) => {
+                  trackedTimeouts.delete(timeoutId);
+                  if (typeof handler === 'function') handler(...handlerArgs);
+                }, delay, ...args);
+                trackedTimeouts.set(timeoutId, delay);
+                return timeoutId;
+              };
+              window.clearTimeout = (timeoutId) => {
+                trackedTimeouts.delete(timeoutId);
+                nativeClearTimeout(timeoutId);
+              };
+              window.__clearKioskSopTimeoutsByDelay = (delay) => {
+                for (const [timeoutId, timeoutDelay] of trackedTimeouts) {
+                  if (timeoutDelay !== delay) continue;
+                  trackedTimeouts.delete(timeoutId);
+                  nativeClearTimeout(timeoutId);
+                }
+              };
+            });
+            await adapter.installApiFixtures(page, sheet.id, unexpected);
+            const pageErrors = [];
+            page.on('pageerror', (error) => pageErrors.push(error.message));
+            await page.goto(`http://127.0.0.1:4173${scenario.productionRoute}`, { waitUntil: 'networkidle' });
+            await page.addStyleTag({
+              content: '*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important;border-radius:0!important}'
+            });
+            await page.locator('h1').first().waitFor({ state: 'visible' });
+            await adapter.prepareSheet(page, sheet.id);
+            await page.evaluate(async () => {
+              await document.fonts.ready;
+              await new Promise((resolveFrame) => requestAnimationFrame(() => requestAnimationFrame(resolveFrame)));
+            });
+            const targets = {};
+            for (const step of sheet.steps) {
+              const captureContext = { scenarioId: scenario.id, sheetId: sheet.id, targetId: step.targetId };
+              assertNoManualTarget(step, captureContext);
+              const rows = await page.locator(`[data-kiosk-sop-target="${step.targetId}"]`).evaluateAll((elements) => elements.map((element) => {
+                const rect = element.getBoundingClientRect();
+                let styleVisible = true;
+                for (let current = element; current; current = current.parentElement) {
+                  const style = window.getComputedStyle(current);
+                  if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse' || style.opacity === '0') {
+                    styleVisible = false;
+                    break;
+                  }
+                }
+                return {
+                  rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+                  visible: styleVisible && rect.width > 0 && rect.height > 0 && rect.right > 0 && rect.bottom > 0 && rect.left < window.innerWidth && rect.top < window.innerHeight
+                };
+              }));
+              const rect = resolveSingleVisibleTarget(rows, captureContext);
+              try {
+                targets[step.targetId] = computeNormalizedBottomRightAnchor(rect, scenario.viewport);
+              } catch (error) {
+                throw new Error(`${error instanceof Error ? error.message : String(error)} rect=${JSON.stringify(rect)} viewport=${JSON.stringify(scenario.viewport)} (scenario=${scenario.id} sheet=${sheet.id} targetId=${step.targetId})`);
+              }
+            }
+            const coverageErrors = await page.locator('[data-kiosk-sop-coverage]').evaluateAll((boundaries, declaredExclusions) => {
+              const interactiveSelector = 'button,a,input,select,textarea,[role="button"]';
+              return boundaries.flatMap((boundary) => Array.from(boundary.querySelectorAll(interactiveSelector)).flatMap((element) => {
+                if (element.closest('[data-kiosk-sop-target]')) return [];
+                const ignoreId = element.closest('[data-kiosk-sop-ignore-id]')?.getAttribute('data-kiosk-sop-ignore-id');
+                if (ignoreId && declaredExclusions.includes(ignoreId)) return [];
+                return [`${element.tagName.toLowerCase()}${element.getAttribute('aria-label') ? `[aria-label="${element.getAttribute('aria-label')}"]` : ''}`];
+              }));
+            }, definition.exclusions.map(({ id }) => id));
+            if (coverageErrors.length) throw new Error(`Unclassified interactive controls in scenario=${scenario.id} sheet=${sheet.id}: ${coverageErrors.join(', ')}`);
+            await page.screenshot({ path: join(targetRoot, 'screens', `${sheet.id}.png`), animations: 'disabled' });
+            if (unexpected.size) throw new Error(`Unexpected API requests in scenario=${scenario.id} sheet=${sheet.id}: ${[...unexpected].join(', ')}`);
+            if (pageErrors.length) throw new Error(`Page errors in scenario=${scenario.id} sheet=${sheet.id}: ${pageErrors.join('; ')}`);
+            capturesBySheet[sheet.id] = { targets };
+          } finally {
+            await context.close();
+          }
+        }
       }
-      return { browserVersion: browser.version(), targetsByScenario };
+      return { browserVersion: browser.version(), capturesBySheet };
     } finally { await browser.close(); }
   } catch (error) {
     throw new Error(`${error instanceof Error ? error.message : String(error)}\nVite output:\n${serverLog}`);
@@ -198,20 +217,9 @@ async function generate(targetRoot) {
   await mkdir(targetRoot, { recursive: true });
   const sourceText = await readFile(sourceDefinitionPath, 'utf8');
   const source = JSON.parse(sourceText);
-  let browserVersion = 'chromium-unknown';
-  let targetsByScenario = {};
-  if (!skipCapture) {
-    const capture = await captureScreens(source, targetRoot);
-    browserVersion = capture.browserVersion;
-    targetsByScenario = capture.targetsByScenario;
-  }
-  else {
-    await mkdir(join(targetRoot, 'screens'), { recursive: true });
-    for (const scenario of source.scenarios) {
-      const from = join(committedRoot, 'screens', `${scenario.screen}.png`);
-      await writeFile(join(targetRoot, 'screens', `${scenario.screen}.png`), await readFile(from));
-    }
-  }
+  const capture = await captureScreens(source, targetRoot);
+  const browserVersion = capture.browserVersion;
+  const capturesBySheet = capture.capturesBySheet;
   const hydrated = {
     ...source,
     scenarios: await Promise.all(source.scenarios.map(async (scenario) => ({
@@ -220,13 +228,12 @@ async function generate(targetRoot) {
         ...sheet,
         steps: sheet.steps.map((step) => ({
           ...step,
-          target: targetsByScenario[scenario.id]?.[step.targetId] ?? step.target
+          target: capturesBySheet[sheet.id].targets[step.targetId]
         })),
-        screenImageDataUrl: `data:image/png;base64,${(await readFile(join(targetRoot, 'screens', `${scenario.screen}.png`))).toString('base64')}`
+        screenImageDataUrl: `data:image/png;base64,${(await readFile(join(targetRoot, 'screens', `${sheet.id}.png`))).toString('base64')}`
       })))
     })))
   };
-  for (const scenario of hydrated.scenarios) delete scenario.screen;
   const validated = validateKioskSopDefinition(hydrated);
   const html = renderKioskSopHtml(validated);
   await writeFile(join(targetRoot, 'manual.html'), html);

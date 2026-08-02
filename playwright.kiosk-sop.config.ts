@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const externalBaseURL = process.env.KIOSK_SOP_BASE_URL;
+const localBaseURL = 'http://127.0.0.1:4173';
+
 export default defineConfig({
   testDir: './e2e',
   testMatch: 'inspection-drawing-sop-popup.spec.ts',
@@ -9,7 +12,7 @@ export default defineConfig({
   workers: 1,
   reporter: 'line',
   use: {
-    baseURL: 'http://127.0.0.1:4173',
+    baseURL: externalBaseURL ?? localBaseURL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure'
   },
@@ -17,9 +20,9 @@ export default defineConfig({
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'firefox', use: { ...devices['Desktop Firefox'] } }
   ],
-  webServer: {
+  webServer: externalBaseURL ? undefined : {
     command: 'pnpm --filter @raspi-system/web dev --host 127.0.0.1 --port 4173',
-    url: 'http://127.0.0.1:4173',
+    url: localBaseURL,
     reuseExistingServer: false,
     timeout: 180000,
     stdout: 'pipe',

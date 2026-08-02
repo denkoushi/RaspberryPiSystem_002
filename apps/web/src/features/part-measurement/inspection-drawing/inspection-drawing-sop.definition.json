@@ -17,28 +17,70 @@
     "packages/kiosk-sop-core/src/**"
   ],
   "exclusions": [
-    { "id": "viewer-close", "reason": "取説ビューアー共通の閉じる操作" },
-    { "id": "manual-launcher", "reason": "取説を開くための共通操作であり取説本文の対象外" },
-    { "id": "native-file-picker", "reason": "OS標準ファイル選択ダイアログ内の操作" }
+    {
+      "id": "viewer-close",
+      "reason": "取説ビューアー共通の閉じる操作"
+    },
+    {
+      "id": "manual-launcher",
+      "reason": "取説を開くための共通操作であり取説本文の対象外"
+    },
+    {
+      "id": "native-file-picker",
+      "reason": "OS標準ファイル選択ダイアログ内の操作"
+    }
   ],
   "scenarios": [
     {
       "id": "library",
       "productionRoute": "/kiosk/part-measurement/inspection",
       "fixtureId": "inspection-drawing-library-v1",
-      "viewport": { "width": 1280, "height": 800, "deviceScaleFactor": 1 },
-      "screen": "library",
+      "viewport": {
+        "width": 1280,
+        "height": 800,
+        "deviceScaleFactor": 1
+      },
       "sheets": [
         {
           "id": "library-entry-search",
           "title": "一覧を開いて対象を探す",
           "summary": "検査図面へ移動し、数字・品番・図面名・資源で対象を絞ります。",
           "steps": [
-            { "id": "open-inspection-drawing", "targetId": "inspection-navigation", "necessity": "required", "title": "検査図面を開く", "description": "キオスク上部の検査図面を選びます。", "target": { "x": 0.82, "y": 0.035 } },
-            { "id": "search-drawing-digits", "targetId": "drawing-digit-search", "necessity": "optional", "title": "図面番号の数字で検索", "description": "図面名に含まれる数字をテンキーから入力します。", "target": { "x": 0.38, "y": 0.07 } },
-            { "id": "filter-part-number", "targetId": "part-number-filter", "necessity": "optional", "title": "品番で絞る", "description": "品番の一部を入力して候補を減らします。", "target": { "x": 0.53, "y": 0.31 } },
-            { "id": "filter-resource", "targetId": "resource-filter", "necessity": "optional", "title": "資源で絞る", "description": "加工する資源CDを選びます。", "target": { "x": 0.72, "y": 0.31 } },
-            { "id": "reload-library", "targetId": "reload-library", "necessity": "optional", "title": "最新状態を再読込", "description": "登録・改版後に一覧を最新化します。", "target": { "x": 0.95, "y": 0.31 } }
+            {
+              "id": "open-inspection-drawing",
+              "targetId": "inspection-navigation",
+              "necessity": "required",
+              "title": "検査図面を開く",
+              "description": "キオスク上部の検査図面を選びます。"
+            },
+            {
+              "id": "search-drawing-digits",
+              "targetId": "drawing-digit-search",
+              "necessity": "optional",
+              "title": "図面番号の数字で検索",
+              "description": "図面名に含まれる数字をテンキーから入力します。"
+            },
+            {
+              "id": "filter-part-number",
+              "targetId": "part-number-filter",
+              "necessity": "optional",
+              "title": "品番で絞る",
+              "description": "品番の一部を入力して候補を減らします。"
+            },
+            {
+              "id": "filter-resource",
+              "targetId": "resource-filter",
+              "necessity": "optional",
+              "title": "資源で絞る",
+              "description": "加工する資源CDを選びます。"
+            },
+            {
+              "id": "reload-library",
+              "targetId": "reload-library",
+              "necessity": "optional",
+              "title": "最新状態を再読込",
+              "description": "登録・改版後に一覧を最新化します。"
+            }
           ]
         },
         {
@@ -46,10 +88,34 @@
           "title": "表示図面を管理する",
           "summary": "図面画像を登録し、名称変更または図面からテンプレートを作成します。",
           "steps": [
-            { "id": "register-visual", "targetId": "register-visual", "necessity": "optional", "title": "図面を登録", "description": "PNGまたはPDFを表示図面として登録します。", "target": { "x": 0.21, "y": 0.25 } },
-            { "id": "search-visual-name", "targetId": "visual-name-search", "necessity": "optional", "title": "図面名で検索", "description": "登録済み表示図面を名称で絞ります。", "target": { "x": 0.17, "y": 0.34 } },
-            { "id": "rename-visual", "targetId": "rename-visual", "necessity": "optional", "title": "図面名を変更", "description": "現場で識別しやすい名称へ変更します。", "target": { "x": 0.3, "y": 0.5 } },
-            { "id": "create-from-visual", "targetId": "create-from-visual", "necessity": "required", "title": "新規テンプレートを作る", "description": "選んだ図面を使って測定点を登録します。", "target": { "x": 0.22, "y": 0.5 } }
+            {
+              "id": "register-visual",
+              "targetId": "register-visual",
+              "necessity": "optional",
+              "title": "図面を登録",
+              "description": "PNGまたはPDFを表示図面として登録します。"
+            },
+            {
+              "id": "search-visual-name",
+              "targetId": "visual-name-search",
+              "necessity": "optional",
+              "title": "図面名で検索",
+              "description": "登録済み表示図面を名称で絞ります。"
+            },
+            {
+              "id": "rename-visual",
+              "targetId": "rename-visual",
+              "necessity": "optional",
+              "title": "図面名を変更",
+              "description": "現場で識別しやすい名称へ変更します。"
+            },
+            {
+              "id": "create-from-visual",
+              "targetId": "create-from-visual",
+              "necessity": "required",
+              "title": "新規テンプレートを作る",
+              "description": "選んだ図面を使って測定点を登録します。"
+            }
           ]
         },
         {
@@ -57,11 +123,41 @@
           "title": "テンプレートを選択・管理する",
           "summary": "既存版の編集、履歴確認、帳票表示、無効化を行います。",
           "steps": [
-            { "id": "edit-template", "targetId": "edit-template", "necessity": "required", "title": "編集を開く", "description": "対象行の編集を押して現在の有効版を開きます。", "target": { "x": 0.84, "y": 0.53 } },
-            { "id": "open-report", "targetId": "open-report", "necessity": "optional", "title": "帳票を表示", "description": "保存済みテンプレートの印刷用帳票を確認します。", "target": { "x": 0.89, "y": 0.53 } },
-            { "id": "open-history", "targetId": "open-history", "necessity": "optional", "title": "履歴を確認", "description": "過去版と現在の有効版を確認します。", "target": { "x": 0.93, "y": 0.53 } },
-            { "id": "include-inactive", "targetId": "include-inactive", "necessity": "optional", "title": "無効版を含める", "description": "無効化済みテンプレートも一覧に表示します。", "target": { "x": 0.84, "y": 0.31 } },
-            { "id": "retire-template", "targetId": "retire-template", "necessity": "optional", "title": "テンプレートを無効化", "description": "使用を止める有効版だけを無効化します。", "target": { "x": 0.97, "y": 0.53 } }
+            {
+              "id": "edit-template",
+              "targetId": "edit-template",
+              "necessity": "required",
+              "title": "編集を開く",
+              "description": "対象行の編集を押して現在の有効版を開きます。"
+            },
+            {
+              "id": "open-report",
+              "targetId": "open-report",
+              "necessity": "optional",
+              "title": "帳票を表示",
+              "description": "保存済みテンプレートの印刷用帳票を確認します。"
+            },
+            {
+              "id": "open-history",
+              "targetId": "open-history",
+              "necessity": "optional",
+              "title": "履歴を確認",
+              "description": "過去版と現在の有効版を確認します。"
+            },
+            {
+              "id": "include-inactive",
+              "targetId": "include-inactive",
+              "necessity": "optional",
+              "title": "無効版を含める",
+              "description": "無効化済みテンプレートも一覧に表示します。"
+            },
+            {
+              "id": "retire-template",
+              "targetId": "retire-template",
+              "necessity": "optional",
+              "title": "テンプレートを無効化",
+              "description": "使用を止める有効版だけを無効化します。"
+            }
           ]
         }
       ]
@@ -70,19 +166,66 @@
       "id": "edit",
       "productionRoute": "/kiosk/part-measurement/inspection/templates/sop-template-1/edit",
       "fixtureId": "inspection-drawing-edit-v1",
-      "viewport": { "width": 1536, "height": 864, "deviceScaleFactor": 1 },
-      "screen": "edit",
+      "viewport": {
+        "width": 1536,
+        "height": 864,
+        "deviceScaleFactor": 1
+      },
       "sheets": [
         {
           "id": "edit-basics",
           "title": "基本情報と図面を確認する",
           "summary": "改版対象、図面、工程、自主検査条件を確認してから編集します。",
           "steps": [
-            { "id": "confirm-template-meta", "targetId": "template-metadata", "necessity": "required", "title": "対象情報を確認", "description": "品番・工程・資源CD・版が正しいことを確認します。", "target": { "x": 0.32, "y": 0.08 } },
-            { "id": "pick-existing-visual", "targetId": "pick-existing-visual", "necessity": "optional", "title": "登録済み図面を選ぶ", "description": "図面を差し替える場合に既存図面を選びます。", "target": { "x": 0.48, "y": 0.14 } },
-            { "id": "upload-new-visual", "targetId": "upload-new-visual", "necessity": "optional", "title": "新しい図面を選ぶ", "description": "対象の場合、PNGまたはPDFを読み込みます。", "target": { "x": 0.57, "y": 0.14 } },
-            { "id": "set-self-inspection", "targetId": "self-inspection-setting", "necessity": "required", "title": "自主検査条件を確認", "description": "全数または指定数と検査数を設定します。", "target": { "x": 0.67, "y": 0.08 } },
-            { "id": "save-revision", "targetId": "save-revision", "necessity": "required", "title": "改版を保存", "description": "入力条件を満たした後に新しい版として保存します。", "target": { "x": 0.84, "y": 0.08 } }
+            {
+              "id": "confirm-template-meta",
+              "targetId": "template-metadata",
+              "necessity": "required",
+              "title": "対象情報を確認",
+              "description": "品番・工程・資源CD・版が正しいことを確認します。"
+            },
+            {
+              "id": "open-visual-source",
+              "targetId": "open-visual-source",
+              "necessity": "optional",
+              "title": "図面ソースを開く",
+              "description": "図面を差し替える場合に図面ソース選択を開きます。"
+            },
+            {
+              "id": "set-self-inspection",
+              "targetId": "self-inspection-setting",
+              "necessity": "required",
+              "title": "自主検査条件を確認",
+              "description": "全数または指定数と検査数を設定します。"
+            },
+            {
+              "id": "save-revision",
+              "targetId": "save-revision",
+              "necessity": "required",
+              "title": "改版を保存",
+              "description": "入力条件を満たした後に新しい版として保存します。"
+            }
+          ]
+        },
+        {
+          "id": "edit-visual-source",
+          "title": "図面ソースを選ぶ",
+          "summary": "登録済み図面または新しいファイルから使用する図面を選びます。",
+          "steps": [
+            {
+              "id": "pick-existing-visual",
+              "targetId": "pick-existing-visual",
+              "necessity": "optional",
+              "title": "登録済み図面を選ぶ",
+              "description": "図面を差し替える場合に既存図面を選びます。"
+            },
+            {
+              "id": "upload-new-visual",
+              "targetId": "upload-new-visual",
+              "necessity": "optional",
+              "title": "新しい図面を選ぶ",
+              "description": "対象の場合、PNGまたはPDFを読み込みます。"
+            }
           ]
         },
         {
@@ -90,11 +233,41 @@
           "title": "測定点の必須項目を編集する",
           "summary": "点を選び、測定名、公称値、上下公差を入力します。",
           "steps": [
-            { "id": "select-point", "targetId": "select-point", "necessity": "required", "title": "直す点を選ぶ", "description": "図面上の番号または右側の点一覧を選びます。", "target": { "x": 0.45, "y": 0.45 } },
-            { "id": "set-measurement-name", "targetId": "measurement-name", "necessity": "required", "title": "測定名を入力", "description": "測定箇所を識別できる名称にします。", "target": { "x": 0.83, "y": 0.35 } },
-            { "id": "set-nominal", "targetId": "nominal-value", "necessity": "required", "title": "公称値を入力", "description": "図面に記載された基準寸法を入力します。", "target": { "x": 0.83, "y": 0.49 } },
-            { "id": "set-upper-tolerance", "targetId": "upper-tolerance", "necessity": "required", "title": "上公差を入力", "description": "公称値からの上側許容差を入力します。", "target": { "x": 0.91, "y": 0.59 } },
-            { "id": "set-lower-tolerance", "targetId": "lower-tolerance", "necessity": "required", "title": "下公差を入力", "description": "公称値からの下側許容差を入力します。", "target": { "x": 0.78, "y": 0.59 } }
+            {
+              "id": "select-point",
+              "targetId": "select-point",
+              "necessity": "required",
+              "title": "直す点を選ぶ",
+              "description": "図面上の番号または右側の点一覧を選びます。"
+            },
+            {
+              "id": "set-measurement-name",
+              "targetId": "measurement-name",
+              "necessity": "required",
+              "title": "測定名を入力",
+              "description": "測定箇所を識別できる名称にします。"
+            },
+            {
+              "id": "set-nominal",
+              "targetId": "nominal-value",
+              "necessity": "required",
+              "title": "公称値を入力",
+              "description": "図面に記載された基準寸法を入力します。"
+            },
+            {
+              "id": "set-upper-tolerance",
+              "targetId": "upper-tolerance",
+              "necessity": "required",
+              "title": "上公差を入力",
+              "description": "公称値からの上側許容差を入力します。"
+            },
+            {
+              "id": "set-lower-tolerance",
+              "targetId": "lower-tolerance",
+              "necessity": "required",
+              "title": "下公差を入力",
+              "description": "公称値からの下側許容差を入力します。"
+            }
           ]
         },
         {
@@ -102,11 +275,41 @@
           "title": "測定点の補助設定を使う",
           "summary": "必要な点だけ、面・ねじ・幾何公差・OCR候補を設定します。",
           "steps": [
-            { "id": "nudge-point", "targetId": "nudge-point", "necessity": "optional", "title": "点を微調整", "description": "矢印操作で番号位置を少しずつ移動します。", "target": { "x": 0.84, "y": 0.25 } },
-            { "id": "set-depth-mode", "targetId": "depth-mode", "necessity": "optional", "title": "深さ・貫通を指定", "description": "対象の場合、測定深さまたは貫通を選びます。", "target": { "x": 0.82, "y": 0.4 } },
-            { "id": "set-face-thread", "targetId": "face-thread", "necessity": "optional", "title": "面・ねじ情報を指定", "description": "対象の場合、面記号やねじ呼びを設定します。", "target": { "x": 0.91, "y": 0.43 } },
-            { "id": "set-direct-label", "targetId": "direct-label", "necessity": "optional", "title": "表示文字を直接入力", "description": "自動表記で不足する場合だけ直接入力します。", "target": { "x": 0.84, "y": 0.54 } },
-            { "id": "use-ocr-candidate", "targetId": "ocr-candidate", "necessity": "optional", "title": "OCR候補を使う", "description": "図面から抽出された値を確認して適用します。", "target": { "x": 0.87, "y": 0.68 } }
+            {
+              "id": "nudge-point",
+              "targetId": "nudge-point",
+              "necessity": "optional",
+              "title": "点を微調整",
+              "description": "矢印操作で番号位置を少しずつ移動します。"
+            },
+            {
+              "id": "set-depth-mode",
+              "targetId": "depth-mode",
+              "necessity": "optional",
+              "title": "深さ・貫通を指定",
+              "description": "対象の場合、測定深さまたは貫通を選びます。"
+            },
+            {
+              "id": "set-face-thread",
+              "targetId": "face-thread",
+              "necessity": "optional",
+              "title": "面・ねじ情報を指定",
+              "description": "対象の場合、面記号やねじ呼びを設定します。"
+            },
+            {
+              "id": "set-direct-label",
+              "targetId": "direct-label",
+              "necessity": "optional",
+              "title": "表示文字を直接入力",
+              "description": "自動表記で不足する場合だけ直接入力します。"
+            },
+            {
+              "id": "use-ocr-candidate",
+              "targetId": "ocr-candidate",
+              "necessity": "optional",
+              "title": "OCR候補を使う",
+              "description": "図面から抽出された値を確認して適用します。"
+            }
           ]
         },
         {
@@ -114,11 +317,41 @@
           "title": "測定点と引出線を管理する",
           "summary": "点の追加、引出線先端の配置、不要な点の削除を行います。",
           "steps": [
-            { "id": "add-point", "targetId": "add-point", "necessity": "optional", "title": "測定点を追加", "description": "追加モードで図面上の測定位置を押します。", "target": { "x": 0.62, "y": 0.18 } },
-            { "id": "place-callout", "targetId": "place-callout", "necessity": "optional", "title": "引出線の先端を置く", "description": "対象の場合、番号から測定箇所への先端を指定します。", "target": { "x": 0.71, "y": 0.18 } },
-            { "id": "select-point-list", "targetId": "point-list", "necessity": "required", "title": "点一覧で確認", "description": "登録順と入力不足の点を右側一覧で確認します。", "target": { "x": 0.89, "y": 0.79 } },
-            { "id": "delete-one-point", "targetId": "delete-one-point", "necessity": "optional", "title": "選択点を削除", "description": "不要な点だけを削除します。", "target": { "x": 0.8, "y": 0.9 } },
-            { "id": "delete-all-points", "targetId": "delete-all-points", "necessity": "optional", "title": "全点を削除", "description": "図面を作り直す場合だけ全点削除します。", "target": { "x": 0.92, "y": 0.9 } }
+            {
+              "id": "add-point",
+              "targetId": "add-point",
+              "necessity": "optional",
+              "title": "測定点を追加",
+              "description": "追加モードで図面上の測定位置を押します。"
+            },
+            {
+              "id": "place-callout",
+              "targetId": "place-callout",
+              "necessity": "optional",
+              "title": "引出線の先端を置く",
+              "description": "対象の場合、番号から測定箇所への先端を指定します。"
+            },
+            {
+              "id": "select-point-list",
+              "targetId": "point-list",
+              "necessity": "required",
+              "title": "点一覧で確認",
+              "description": "登録順と入力不足の点を右側一覧で確認します。"
+            },
+            {
+              "id": "delete-one-point",
+              "targetId": "delete-one-point",
+              "necessity": "optional",
+              "title": "選択点を削除",
+              "description": "不要な点だけを削除します。"
+            },
+            {
+              "id": "delete-all-points",
+              "targetId": "delete-all-points",
+              "necessity": "optional",
+              "title": "全点を削除",
+              "description": "図面を作り直す場合だけ全点削除します。"
+            }
           ]
         },
         {
@@ -126,11 +359,41 @@
           "title": "入力を試し、帳票を確認する",
           "summary": "保存前のテストとガイド、保存済み帳票を必要に応じて利用します。",
           "steps": [
-            { "id": "open-test-input", "targetId": "test-input", "necessity": "optional", "title": "テスト入力", "description": "測定値入力と合否表示を保存前に確認します。", "target": { "x": 0.73, "y": 0.08 } },
-            { "id": "open-guided-trial", "targetId": "guided-trial", "necessity": "optional", "title": "ガイド試行", "description": "画面案内に沿って測定順を確認します。", "target": { "x": 0.77, "y": 0.08 } },
-            { "id": "zoom-drawing", "targetId": "zoom-drawing", "necessity": "optional", "title": "図面を拡大・縮小", "description": "細部を確認し、表示を全体へ戻せます。", "target": { "x": 0.59, "y": 0.08 } },
-            { "id": "open-saved-report", "targetId": "saved-report", "necessity": "optional", "title": "保存済み帳票", "description": "現在版の印刷レイアウトを確認します。", "target": { "x": 0.88, "y": 0.08 } },
-            { "id": "return-library", "targetId": "return-library", "necessity": "required", "title": "一覧に戻る", "description": "保存状態を確認して検査図面一覧へ戻ります。", "target": { "x": 0.96, "y": 0.08 } }
+            {
+              "id": "open-test-input",
+              "targetId": "test-input",
+              "necessity": "optional",
+              "title": "テスト入力",
+              "description": "測定値入力と合否表示を保存前に確認します。"
+            },
+            {
+              "id": "open-guided-trial",
+              "targetId": "guided-trial",
+              "necessity": "optional",
+              "title": "ガイド試行",
+              "description": "画面案内に沿って測定順を確認します。"
+            },
+            {
+              "id": "zoom-drawing",
+              "targetId": "zoom-drawing",
+              "necessity": "optional",
+              "title": "図面を拡大・縮小",
+              "description": "細部を確認し、表示を全体へ戻せます。"
+            },
+            {
+              "id": "open-saved-report",
+              "targetId": "saved-report",
+              "necessity": "optional",
+              "title": "保存済み帳票",
+              "description": "現在版の印刷レイアウトを確認します。"
+            },
+            {
+              "id": "return-library",
+              "targetId": "return-library",
+              "necessity": "required",
+              "title": "一覧に戻る",
+              "description": "保存状態を確認して検査図面一覧へ戻ります。"
+            }
           ]
         },
         {
@@ -138,11 +401,41 @@
           "title": "資源グループと履歴版を扱う",
           "summary": "兄弟資源をまとめて改版する場合と、履歴版を復帰する場合の操作です。",
           "steps": [
-            { "id": "choose-group-save", "targetId": "group-save", "necessity": "optional", "title": "まとめて改版を選ぶ", "description": "対象の場合、兄弟資源すべてへ同じ改版を反映します。", "target": { "x": 0.35, "y": 0.16 } },
-            { "id": "choose-single-save", "targetId": "single-save", "necessity": "optional", "title": "この資源だけ改版", "description": "対象資源だけを兄弟グループから切り離して改版します。", "target": { "x": 0.48, "y": 0.16 } },
-            { "id": "add-group-resource", "targetId": "add-group-resource", "necessity": "optional", "title": "資源を追加", "description": "対象の場合、同じ図面を使う資源CDを追加します。", "target": { "x": 0.66, "y": 0.16 } },
-            { "id": "activate-history", "targetId": "activate-history", "necessity": "optional", "title": "履歴版を有効化", "description": "履歴画面で対象版を選び、有効版として復帰します。", "target": { "x": 0.79, "y": 0.16 } },
-            { "id": "confirm-save-scope", "targetId": "save-scope-warning", "necessity": "required", "title": "保存範囲を確認", "description": "保存前に対象資源と警告内容を必ず確認します。", "target": { "x": 0.55, "y": 0.21 } }
+            {
+              "id": "choose-group-save",
+              "targetId": "group-save",
+              "necessity": "optional",
+              "title": "まとめて改版を選ぶ",
+              "description": "対象の場合、兄弟資源すべてへ同じ改版を反映します。"
+            },
+            {
+              "id": "choose-single-save",
+              "targetId": "single-save",
+              "necessity": "optional",
+              "title": "この資源だけ改版",
+              "description": "対象資源だけを兄弟グループから切り離して改版します。"
+            },
+            {
+              "id": "add-group-resource",
+              "targetId": "add-group-resource",
+              "necessity": "optional",
+              "title": "資源を追加",
+              "description": "対象の場合、同じ図面を使う資源CDを追加します。"
+            },
+            {
+              "id": "activate-history",
+              "targetId": "activate-history",
+              "necessity": "optional",
+              "title": "履歴版を有効化",
+              "description": "履歴画面で対象版を選び、有効版として復帰します。"
+            },
+            {
+              "id": "confirm-save-scope",
+              "targetId": "save-scope-warning",
+              "necessity": "required",
+              "title": "保存範囲を確認",
+              "description": "保存前に対象資源と警告内容を必ず確認します。"
+            }
           ]
         }
       ]

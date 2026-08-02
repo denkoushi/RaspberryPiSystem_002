@@ -28,7 +28,7 @@ elif [[ "$mode" == "check" ]]; then
   docker run --rm --init --ipc=host --network=none \
     --volume "$preview_path:/workspace/docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html:ro" \
     "$image_tag" \
-    bash -lc 'node scripts/kiosk-sop/generate.mjs check "$@" && pnpm exec playwright test --config=playwright.kiosk-sop.config.ts' bash "$@"
+    bash -lc 'node --test scripts/kiosk-sop/capture-contract.test.mjs && node scripts/kiosk-sop/generate.mjs check "$@" && pnpm exec playwright test --config=playwright.kiosk-sop.config.ts' bash "$@"
 else
   echo "Unknown kiosk SOP mode: $mode" >&2
   exit 2
