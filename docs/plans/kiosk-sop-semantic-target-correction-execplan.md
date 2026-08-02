@@ -60,8 +60,15 @@ cards at Mac and Full HD kiosk sizes.
 - [x] (2026-08-02) Audited the final generated counts, documentation inventory,
   whitespace, staged scope, Docker resources, and locally committed only the intended
   changes with `fix: make kiosk SOP targets fail closed`.
-- [ ] Resolve the cross-architecture generator freshness failure found by PR CI,
-  regenerate with the canonical architecture, and complete merge and deployment.
+- [x] (2026-08-02) Resolved the cross-architecture freshness failure by fixing the
+  generator to `linux/amd64`, regenerated the canonical artifacts, passed PR and main
+  CI, and squash-merged PR 1155 as `a82f0b20091c26c9f58ed011ea28987800f9c4c0`.
+- [ ] Complete the production rollout. Aggregate preflight passed migration, Pi5,
+  external dependencies, and five Kiosks, but stopped before release submission
+  because StoneBase01's intentional barcode-reader maintenance lease expired and the
+  first Pi3 sample was below its read-only memory threshold. Pi3 subsequently reported
+  131 MB available with healthy display services; renew the short StoneBase01 lease,
+  merge it, rerun standard preflight, and finish the rollout.
 
 ## Surprises & Discoveries
 
@@ -106,6 +113,16 @@ cards at Mac and Full HD kiosk sizes.
   each architecture is internally deterministic and geometry is unchanged.
   Evidence: PR 1155 failed only the freshness comparison; running the same check with
   `linux/amd64` on the Mac reproduced the identical eight-file stale list.
+- Observation: Production rollout release candidates `20260802-093200-3d95cb` and
+  `20260802-093422-787f0c` were not submitted, so neither changed a host. The latter
+  passed migration, Pi5 routing/resources, all nine external dependencies in three
+  rounds, and five Kiosks, then stopped on StoneBase01 barcode health and a transient
+  Pi3 memory sample. Read-only follow-up showed the StoneBase01 barcode container up
+  but `/dev/ttyACM0` intentionally absent, while Pi3 had 131 MB available, active
+  signage/lightdm/status/watchdog services, 10.1% `/opt` use, 42.9 C, and no
+  throttling.
+  Evidence: Standard `update-all-clients.sh` aggregate preflight and sanitized
+  read-only host diagnostics on 2026-08-02.
 
 ## Decision Log
 
@@ -136,6 +153,13 @@ cards at Mac and Full HD kiosk sizes.
   manifest. Matching the GitHub runner architecture makes committed pixel artifacts
   reproducible from ARM development hosts as well as CI.
   Date/Author: 2026-08-02 / Codex.
+- Decision: Preserve StoneBase01's enabled barcode-agent and represent the intentional
+  physical disconnect with a short, expiring maintenance lease through
+  2026-08-03 18:45 JST. Keep Pi3's existing `stop_lightdm: true` release behavior and
+  100 MB read-only admission threshold unchanged.
+  Rationale: This records the operator-confirmed temporary condition without disabling
+  safety checks, bypassing the standard planner, or weakening Pi3 resource handling.
+  Date/Author: 2026-08-02 / Product owner and Codex.
 
 ## Outcomes & Retrospective
 
@@ -149,8 +173,9 @@ production Caddy bundle passed 12 tagged Chromium/Firefox cases at 1280x800,
 an up-to-date schema, passed all three isolated API tests, ran the search SQL and both
 normal and forced-index EXPLAIN plans, and removed its container, volume, network, and
 storage directory. Production validation likewise removed its task-specific Caddy
-container, network, and Web image. Push, PR, merge, release, deployment, and physical
-device operation remain intentionally out of scope.
+container, network, and Web image. PR 1155 and exact-main CI completed successfully;
+production rollout is still pending because the fail-closed preflight stopped before
+release submission on the operator-confirmed temporary StoneBase01 disconnect.
 
 ## Context and Orientation
 
