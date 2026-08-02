@@ -32,6 +32,7 @@ import {
   INSPECTION_DRAWING_MEASUREMENT_LABEL_OPTIONS
 } from './inspectionDrawingMeasurementLabelOptions';
 import { InspectionDrawingPointPositionNudge } from './InspectionDrawingPointPositionNudge';
+import { inspectionDrawingSopTargetProps } from './inspectionDrawingSopAnnotations';
 import { buildGeometricTolerancePointPatch } from './markerNumbering';
 import {
   INSPECTION_DRAWING_SURFACE_SIDE_OPTIONS,
@@ -267,6 +268,7 @@ export function InspectionDrawingPointSettingsPanel({
         <span className={inspectionDrawingPointNameInlineLabelClassName}>名称</span>
         <div className={clsx(inspectionDrawingBoundedSelectShellClassName, 'min-w-0 flex-1')}>
           <select
+            {...inspectionDrawingSopTargetProps('measurement-name')}
             value={point.name}
             onChange={(e) => handleNameChange(e.target.value)}
             className={inspectionDrawingBoundedSelectClassName}
@@ -283,7 +285,12 @@ export function InspectionDrawingPointSettingsPanel({
         </div>
       </label>
       {showDepthMode ? (
-        <div className="grid grid-cols-2 gap-1.5" role="group" aria-label="通し切替">
+        <div
+          {...inspectionDrawingSopTargetProps('depth-mode')}
+          className="grid grid-cols-2 gap-1.5"
+          role="group"
+          aria-label="通し切替"
+        >
           <button
             type="button"
             disabled={disabled}
@@ -311,7 +318,10 @@ export function InspectionDrawingPointSettingsPanel({
         </div>
       ) : null}
       <div className={inspectionDrawingPointSettingSingleRowClassName}>
-        <div className="grid grid-cols-[minmax(0,0.85fr)_minmax(0,1fr)_minmax(0,1.45fr)] gap-1.5">
+        <div
+          {...inspectionDrawingSopTargetProps('face-thread')}
+          className="grid grid-cols-[minmax(0,0.85fr)_minmax(0,1fr)_minmax(0,1.45fr)] gap-1.5"
+        >
           <label className="grid min-w-0 gap-1 text-[0.82rem] font-semibold text-white/70">
             面
             <div className={inspectionDrawingBoundedSelectShellClassName}>
@@ -353,6 +363,7 @@ export function InspectionDrawingPointSettingsPanel({
           <label className="grid min-w-0 gap-1 text-[0.82rem] font-semibold text-white/70">
             直接入力
             <Input
+              {...inspectionDrawingSopTargetProps('direct-label')}
               type="text"
               value={supplementText}
               onChange={(e) => onChange({ supplementText: e.target.value })}
@@ -370,7 +381,10 @@ export function InspectionDrawingPointSettingsPanel({
       ) : (
       <div className={inspectionDrawingPointSettingSingleRowClassName}>
         <div className="grid min-w-0 gap-1">
-          <label className={inspectionDrawingPointSettingNominalInlineClassName}>
+          <label
+            className={inspectionDrawingPointSettingNominalInlineClassName}
+            {...(!isGeometricTolerance ? inspectionDrawingSopTargetProps('nominal-value') : {})}
+          >
             <span className="shrink-0 text-[1rem] font-semibold">
               {isGeometricTolerance ? '上限値' : '基準値'}
             </span>
@@ -401,7 +415,10 @@ export function InspectionDrawingPointSettingsPanel({
             </p>
           ) : null}
           {showOcrCandidateRow ? (
-            <div className="flex min-h-8 flex-wrap items-center gap-1 text-[0.8rem] font-semibold">
+            <div
+              {...inspectionDrawingSopTargetProps('ocr-candidate')}
+              className="flex min-h-8 flex-wrap items-center gap-1 text-[0.8rem] font-semibold"
+            >
               {ocrCandidateLoading ? <span className="text-cyan-100/75">OCR確認中</span> : null}
               {!ocrCandidateLoading && ocrCandidateStatus === 'failed' ? (
                 <span className="text-amber-200">OCR失敗</span>
@@ -430,7 +447,10 @@ export function InspectionDrawingPointSettingsPanel({
         </p>
       ) : (
         <div className="grid grid-cols-2 gap-1.5">
-          <label className="grid gap-1 text-[1rem] font-semibold">
+          <label
+            {...inspectionDrawingSopTargetProps('upper-tolerance')}
+            className="grid gap-1 text-[1rem] font-semibold"
+          >
             上限公差
             <ToleranceCandidateInput
               value={point.upperToleranceRaw}
@@ -439,7 +459,10 @@ export function InspectionDrawingPointSettingsPanel({
               disabled={toleranceInputsDisabled}
             />
           </label>
-          <label className="grid gap-1 text-[1rem] font-semibold">
+          <label
+            {...inspectionDrawingSopTargetProps('lower-tolerance')}
+            className="grid gap-1 text-[1rem] font-semibold"
+          >
             下限公差
             <ToleranceCandidateInput
               value={point.lowerToleranceRaw}
@@ -454,6 +477,7 @@ export function InspectionDrawingPointSettingsPanel({
         <div className={onRemove && onRemoveAll ? 'grid grid-cols-2 gap-1.5' : 'grid grid-cols-1'}>
           {onRemove ? (
             <Button
+              {...inspectionDrawingSopTargetProps('delete-one-point')}
               type="button"
               variant="secondary"
               className={inspectionDrawingPointSettingDeleteButtonClassName}
@@ -465,6 +489,7 @@ export function InspectionDrawingPointSettingsPanel({
           ) : null}
           {onRemoveAll ? (
             <Button
+              {...inspectionDrawingSopTargetProps('delete-all-points')}
               type="button"
               variant="secondary"
               className={inspectionDrawingPointSettingDeleteButtonClassName}

@@ -10,6 +10,7 @@ import {
 } from './inspectionDrawingKioskUi';
 import { InspectionDrawingResourceCdChipList } from './InspectionDrawingResourceCdChipList';
 import { activeResourceCdsForTemplate } from './inspectionDrawingResourceCdHelpers';
+import { inspectionDrawingSopTargetProps } from './inspectionDrawingSopAnnotations';
 import {
   INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE,
   kioskInspectionDrawingCreatePathWithSource,
@@ -155,6 +156,7 @@ function TemplateTablePane({
                           data-testid="inspection-template-secondary-actions"
                         >
                           <Link
+                            {...inspectionDrawingSopTargetProps('edit-template')}
                             to={editPath(template.id)}
                             state={linkState}
                             title="編集"
@@ -164,6 +166,7 @@ function TemplateTablePane({
                           </Link>
                           {printPath ? (
                             <Link
+                              {...inspectionDrawingSopTargetProps('open-report')}
                               to={printPath(template.id)}
                               target="_blank"
                               rel="noopener noreferrer"
@@ -184,6 +187,7 @@ function TemplateTablePane({
                             </Link>
                           ) : null}
                           <Button
+                            {...inspectionDrawingSopTargetProps('open-history')}
                             type="button"
                             variant="ghostOnDark"
                             className={inspectionDrawingLibraryRowActionClassName}
@@ -193,6 +197,7 @@ function TemplateTablePane({
                           </Button>
                           {onRetireClick ? (
                             <Button
+                              {...inspectionDrawingSopTargetProps('retire-template')}
                               type="button"
                               variant="ghostOnDark"
                               className={inspectionDrawingLibraryRowActionClassName}

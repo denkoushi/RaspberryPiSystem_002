@@ -102,7 +102,6 @@ export function KioskInspectionDrawingVisualLibrarySection({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
-            {...inspectionDrawingSopTargetProps('register-visual')}
             type="button"
             variant="ghostOnDark"
             className="min-h-11 shrink-0 !px-2 !py-0 text-sm"
@@ -112,6 +111,7 @@ export function KioskInspectionDrawingVisualLibrarySection({
             {loading ? '更新中…' : '再読込'}
           </Button>
           <Button
+            {...inspectionDrawingSopTargetProps('register-visual')}
             type="button"
             variant="ghostOnDark"
             className="min-h-11 shrink-0 !px-2 !py-0 text-sm"

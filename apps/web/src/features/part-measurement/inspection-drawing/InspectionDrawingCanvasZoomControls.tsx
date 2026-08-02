@@ -4,6 +4,7 @@ import {
   inspectionDrawingCanvasZoomButtonClassName,
   inspectionDrawingCanvasZoomControlsClassName
 } from './inspectionDrawingKioskUi';
+import { inspectionDrawingSopTargetProps } from './inspectionDrawingSopAnnotations';
 
 type Props = {
   enabled: boolean;
@@ -27,15 +28,17 @@ export function InspectionDrawingCanvasZoomControls({
   getButtonClassName
 }: Props) {
   return (
-    <ImageCanvasZoomControls
-      enabled={enabled}
-      onZoomIn={onZoomIn}
-      onZoomOut={onZoomOut}
-      onFitToView={onFitToView}
-      onResetZoom={onResetZoom}
-      controlsClassName={inspectionDrawingCanvasZoomControlsClassName}
-      buttonClassName={inspectionDrawingCanvasZoomButtonClassName}
-      getButtonClassName={getButtonClassName}
-    />
+    <div {...inspectionDrawingSopTargetProps('zoom-drawing')}>
+      <ImageCanvasZoomControls
+        enabled={enabled}
+        onZoomIn={onZoomIn}
+        onZoomOut={onZoomOut}
+        onFitToView={onFitToView}
+        onResetZoom={onResetZoom}
+        controlsClassName={inspectionDrawingCanvasZoomControlsClassName}
+        buttonClassName={inspectionDrawingCanvasZoomButtonClassName}
+        getButtonClassName={getButtonClassName}
+      />
+    </div>
   );
 }

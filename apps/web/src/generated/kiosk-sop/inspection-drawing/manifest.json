@@ -1,60 +1,69 @@
 {
   "artifacts": {
-    "manual.html": "f5869406e580bed98c8b2f95a41629526f27a287fc24bea35fe16d7fb929b9e2",
-    "screens/edit.png": "8d64a7e5d4676049dbe29cd486a55d0bb311aa418d1d10fc649a8dfd7d25b7ff",
-    "screens/library.png": "4f87c39244b23970fafbb34cded04b335ec734ec0b3d21b6d669c60ec15a5204",
-    "sheets/edit-advanced-point.png": "8078171170cb9bd0d6220de06ad8587d44de5cd42d7540cfe730d6ad2eb2f8f3",
-    "sheets/edit-basics.png": "e04af909910f924c8c2e3bb6ea6aa7e31e5ed6836d7bd0dd86a1583ecac56b43",
-    "sheets/edit-group-history.png": "6a9e04674c2c802c28557869e8128a48058c786b650a48487a0a79c8243fbdeb",
-    "sheets/edit-point-management.png": "85662336f79dfe6bdb633099ed26d1e8c0d99b83ba916693104572ea4f180851",
-    "sheets/edit-required-point.png": "a63252c754dfba225b60b708ae20adcbef238d9ac6615fe68a0b764fc7f2f129",
-    "sheets/edit-trial-report.png": "cc19c4932c532c2c15c2cba18f29ab499c2e5b6a8b9fd6c2356d539494b85829",
-    "sheets/library-entry-search.png": "92f210d7fc1f19ac2c2f7dc8649ca8389330d83b33a5bf9f20c195ceba308d68",
-    "sheets/library-template-management.png": "599aa92ab776283f0fefcdf6a9e3fe6b46430e21fc4fc7ecfb0c0f1fde2def4a",
-    "sheets/library-visual-management.png": "a7f77f6ec68db7e6ad78da4911ae11f3c2adfd37659b9e8fdc9b4e8141772c2f"
+    "manual.html": "f5e1a116292ba85c14035f1af6c5cac3f45185bf944260e246c199f10185441f",
+    "screens/edit-advanced-point.png": "6a7d6809e782885816ca0fb61198350759ff6c279eb9727109860e60bba1e644",
+    "screens/edit-basics.png": "55a3c548d55c05622463ed1213450a8b794664bcb1ccbda4c1c40545792082a7",
+    "screens/edit-group-history.png": "0bfea29cd5c77f69325886ef0883191dd2ee68d264248cffccffb0ba4da82053",
+    "screens/edit-point-management.png": "55a3c548d55c05622463ed1213450a8b794664bcb1ccbda4c1c40545792082a7",
+    "screens/edit-required-point.png": "55a3c548d55c05622463ed1213450a8b794664bcb1ccbda4c1c40545792082a7",
+    "screens/edit-trial-report.png": "55a3c548d55c05622463ed1213450a8b794664bcb1ccbda4c1c40545792082a7",
+    "screens/edit-visual-source.png": "00b3aea268c4c4e1ce35fc498232295e87b7aa36c7e593443c213da38536c93a",
+    "screens/library-entry-search.png": "a534b9347b793eb02733156d840aa51abc49b711c6e6684fd3b687a749a9a8f6",
+    "screens/library-template-management.png": "a534b9347b793eb02733156d840aa51abc49b711c6e6684fd3b687a749a9a8f6",
+    "screens/library-visual-management.png": "2ea88864bc9a7842e6d15fd52d6997168a6ef24524d073ac4964edc82fc20fa4",
+    "sheets/edit-advanced-point.png": "2caf1cb3d4b1e2b0c92f7d29eed398a8eb9117f7150a2bddc26a9fa6108c5917",
+    "sheets/edit-basics.png": "cdd6e5090d6e615f6923771ebac62e6e1e6d11c49fe1dbb9a263f6a304fba881",
+    "sheets/edit-group-history.png": "6497fb3df15e576f5545bde3041551898c99767784cd45606cf7777479bb8c0f",
+    "sheets/edit-point-management.png": "2933f464d6341247e9e964a80999880f83095757a0a29d6c1b0d2e1cccad3286",
+    "sheets/edit-required-point.png": "5b0a8a8587c1883de44f85e35d98f65308455830e2455a267b503d736869d3f0",
+    "sheets/edit-trial-report.png": "f589fa5f04796e04e4a0f5c5e578a4160ea3ec66cf2e57da75f5f813065e103b",
+    "sheets/edit-visual-source.png": "f477196e04af4253bb4ec68d33e5506edf922fdc46dacabb59c7deeee6a88da8",
+    "sheets/library-entry-search.png": "7d2414ecf13eb5d50d1295a7a936118d8d8783993c832e510d68bd895e642b2a",
+    "sheets/library-template-management.png": "3300ef7b3df5a5b68807a8b7e5049f1f99a5cb4eb4ffb2192ae58553c0b03fe3",
+    "sheets/library-visual-management.png": "348546ac994004b73c8b47b689ed87babddfbf3d8e7519b727edf54ea1c16497"
   },
   "browserVersion": "141.0.7390.37",
-  "definitionSha256": "9833df0e6d69b40bd437d6abaaa4358fe3f69af3cb4c081920b500ab08f1d1d4",
-  "generatorVersion": "1.0.0",
+  "definitionSha256": "9b3db0b5176434acc1f0767f0257df5405c2883b7f7edc37a6bac02dbedef919",
+  "generatorVersion": "1.1.0",
   "geometry": {
     "edit-advanced-point": [
       {
         "id": "nudge-point",
         "target": {
-          "x": 0.84,
-          "y": 0.25
+          "x": 0.9765625,
+          "y": 0.2569444444444444
         },
         "targetId": "nudge-point"
       },
       {
         "id": "set-depth-mode",
         "target": {
-          "x": 0.82,
-          "y": 0.4
+          "x": 0.9765625,
+          "y": 0.44730179398148145
         },
         "targetId": "depth-mode"
       },
       {
         "id": "set-face-thread",
         "target": {
-          "x": 0.91,
-          "y": 0.43
+          "x": 0.9765625,
+          "y": 0.5356083622685185
         },
         "targetId": "face-thread"
       },
       {
         "id": "set-direct-label",
         "target": {
-          "x": 0.84,
-          "y": 0.54
+          "x": 0.9765523274739584,
+          "y": 0.5356083622685185
         },
         "targetId": "direct-label"
       },
       {
         "id": "use-ocr-candidate",
         "target": {
-          "x": 0.87,
-          "y": 0.68
+          "x": 0.9765625,
+          "y": 0.6335358796296297
         },
         "targetId": "ocr-candidate"
       }
@@ -63,40 +72,32 @@
       {
         "id": "confirm-template-meta",
         "target": {
-          "x": 0.32,
-          "y": 0.08
+          "x": 0.7645975748697916,
+          "y": 0.0798611111111111
         },
         "targetId": "template-metadata"
       },
       {
-        "id": "pick-existing-visual",
+        "id": "open-visual-source",
         "target": {
-          "x": 0.48,
-          "y": 0.14
+          "x": 0.9316609700520834,
+          "y": 0.0798611111111111
         },
-        "targetId": "pick-existing-visual"
-      },
-      {
-        "id": "upload-new-visual",
-        "target": {
-          "x": 0.57,
-          "y": 0.14
-        },
-        "targetId": "upload-new-visual"
+        "targetId": "open-visual-source"
       },
       {
         "id": "set-self-inspection",
         "target": {
-          "x": 0.67,
-          "y": 0.08
+          "x": 0.61279296875,
+          "y": 0.0798611111111111
         },
         "targetId": "self-inspection-setting"
       },
       {
         "id": "save-revision",
         "target": {
-          "x": 0.84,
-          "y": 0.08
+          "x": 0.138671875,
+          "y": 0.13310185185185186
         },
         "targetId": "save-revision"
       }
@@ -105,40 +106,40 @@
       {
         "id": "choose-group-save",
         "target": {
-          "x": 0.35,
-          "y": 0.16
+          "x": 0.20374552408854166,
+          "y": 0.2326388888888889
         },
         "targetId": "group-save"
       },
       {
         "id": "choose-single-save",
         "target": {
-          "x": 0.48,
-          "y": 0.16
+          "x": 0.3237406412760417,
+          "y": 0.2326388888888889
         },
         "targetId": "single-save"
       },
       {
         "id": "add-group-resource",
         "target": {
-          "x": 0.66,
-          "y": 0.16
+          "x": 0.7253926595052084,
+          "y": 0.2326388888888889
         },
         "targetId": "add-group-resource"
       },
       {
         "id": "activate-history",
         "target": {
-          "x": 0.79,
-          "y": 0.16
+          "x": 0.15226236979166666,
+          "y": 0.2916666666666667
         },
         "targetId": "activate-history"
       },
       {
         "id": "confirm-save-scope",
         "target": {
-          "x": 0.55,
-          "y": 0.21
+          "x": 0.055338541666666664,
+          "y": 0.22106481481481483
         },
         "targetId": "save-scope-warning"
       }
@@ -147,40 +148,40 @@
       {
         "id": "add-point",
         "target": {
-          "x": 0.62,
-          "y": 0.18
+          "x": 0.8551737467447916,
+          "y": 0.3373480902777778
         },
         "targetId": "add-point"
       },
       {
         "id": "place-callout",
         "target": {
-          "x": 0.71,
-          "y": 0.18
+          "x": 0.880584716796875,
+          "y": 0.3373480902777778
         },
         "targetId": "place-callout"
       },
       {
         "id": "select-point-list",
         "target": {
-          "x": 0.89,
-          "y": 0.79
+          "x": 0.982421875,
+          "y": 0.96875
         },
         "targetId": "point-list"
       },
       {
         "id": "delete-one-point",
         "target": {
-          "x": 0.8,
-          "y": 0.9
+          "x": 0.896484375,
+          "y": 0.7152596932870371
         },
         "targetId": "delete-one-point"
       },
       {
         "id": "delete-all-points",
         "target": {
-          "x": 0.92,
-          "y": 0.9
+          "x": 0.9765625,
+          "y": 0.7152596932870371
         },
         "targetId": "delete-all-points"
       }
@@ -189,40 +190,40 @@
       {
         "id": "select-point",
         "target": {
-          "x": 0.45,
-          "y": 0.45
+          "x": 0.97265625,
+          "y": 0.8159541377314815
         },
         "targetId": "select-point"
       },
       {
         "id": "set-measurement-name",
         "target": {
-          "x": 0.83,
-          "y": 0.35
+          "x": 0.9765625,
+          "y": 0.4010054976851852
         },
         "targetId": "measurement-name"
       },
       {
         "id": "set-nominal",
         "target": {
-          "x": 0.83,
-          "y": 0.49
+          "x": 0.9765625,
+          "y": 0.5455729166666666
         },
         "targetId": "nominal-value"
       },
       {
         "id": "set-upper-tolerance",
         "target": {
-          "x": 0.91,
-          "y": 0.59
+          "x": 0.896484375,
+          "y": 0.6805374710648148
         },
         "targetId": "upper-tolerance"
       },
       {
         "id": "set-lower-tolerance",
         "target": {
-          "x": 0.78,
-          "y": 0.59
+          "x": 0.9765625,
+          "y": 0.6805374710648148
         },
         "targetId": "lower-tolerance"
       }
@@ -231,82 +232,100 @@
       {
         "id": "open-test-input",
         "target": {
-          "x": 0.73,
-          "y": 0.08
+          "x": 0.3575541178385417,
+          "y": 0.13310185185185186
         },
         "targetId": "test-input"
       },
       {
         "id": "open-guided-trial",
         "target": {
-          "x": 0.77,
-          "y": 0.08
+          "x": 0.4364115397135417,
+          "y": 0.13310185185185186
         },
         "targetId": "guided-trial"
       },
       {
         "id": "zoom-drawing",
         "target": {
-          "x": 0.59,
-          "y": 0.08
+          "x": 0.091796875,
+          "y": 0.13078703703703703
         },
         "targetId": "zoom-drawing"
       },
       {
         "id": "open-saved-report",
         "target": {
-          "x": 0.88,
-          "y": 0.08
+          "x": 0.2786966959635417,
+          "y": 0.13541666666666666
         },
         "targetId": "saved-report"
       },
       {
         "id": "return-library",
         "target": {
-          "x": 0.96,
-          "y": 0.08
+          "x": 0.5582377115885416,
+          "y": 0.13541666666666666
         },
         "targetId": "return-library"
+      }
+    ],
+    "edit-visual-source": [
+      {
+        "id": "pick-existing-visual",
+        "target": {
+          "x": 0.7298177083333334,
+          "y": 0.4363425925925926
+        },
+        "targetId": "pick-existing-visual"
+      },
+      {
+        "id": "upload-new-visual",
+        "target": {
+          "x": 0.73046875,
+          "y": 0.22453703703703703
+        },
+        "targetId": "upload-new-visual"
       }
     ],
     "library-entry-search": [
       {
         "id": "open-inspection-drawing",
         "target": {
-          "x": 0.05703125,
-          "y": 0.0675
+          "x": 0.08828125,
+          "y": 0.085
         },
         "targetId": "inspection-navigation"
       },
       {
         "id": "search-drawing-digits",
         "target": {
-          "x": 0.509228515625,
-          "y": 0.0675
+          "x": 0.92392578125,
+          "y": 0.08875
         },
         "targetId": "drawing-digit-search"
       },
       {
         "id": "filter-part-number",
         "target": {
-          "x": 0.1,
-          "y": 0.616328125
+          "x": 0.16875,
+          "y": 0.643828125
         },
         "targetId": "part-number-filter"
       },
       {
         "id": "filter-resource",
         "target": {
-          "x": 0.459375,
-          "y": 0.616328125
+          "x": 0.578125,
+          "y": 0.643828125
         },
         "targetId": "resource-filter"
       },
       {
         "id": "reload-library",
         "target": {
-          "x": 0.872503662109375,
-          "y": 0.616328125
+          "x": 0.90250244140625,
+          "y": 0.643828125
         },
         "targetId": "reload-library"
       }
@@ -315,40 +334,40 @@
       {
         "id": "edit-template",
         "target": {
-          "x": 0.84,
-          "y": 0.53
+          "x": 0.85703125,
+          "y": 0.77607421875
         },
         "targetId": "edit-template"
       },
       {
         "id": "open-report",
         "target": {
-          "x": 0.89,
-          "y": 0.53
+          "x": 0.8833984375,
+          "y": 0.77607421875
         },
         "targetId": "open-report"
       },
       {
         "id": "open-history",
         "target": {
-          "x": 0.93,
-          "y": 0.53
+          "x": 0.9361328125,
+          "y": 0.77607421875
         },
         "targetId": "open-history"
       },
       {
         "id": "include-inactive",
         "target": {
-          "x": 0.7271728515625,
-          "y": 0.616328125
+          "x": 0.75966796875,
+          "y": 0.643828125
         },
         "targetId": "include-inactive"
       },
       {
         "id": "retire-template",
         "target": {
-          "x": 0.97,
-          "y": 0.53
+          "x": 0.9625,
+          "y": 0.77607421875
         },
         "targetId": "retire-template"
       }
@@ -357,38 +376,38 @@
       {
         "id": "register-visual",
         "target": {
-          "x": 0.27335205078125,
-          "y": 0.15375
+          "x": 0.3720458984375,
+          "y": 0.18125
         },
         "targetId": "register-visual"
       },
       {
         "id": "search-visual-name",
         "target": {
-          "x": 0.18897705078125,
-          "y": 0.15375
+          "x": 0.24366455078125,
+          "y": 0.18125
         },
         "targetId": "visual-name-search"
       },
       {
         "id": "rename-visual",
         "target": {
-          "x": 0.94765625,
-          "y": 0.27125
+          "x": 0.9625,
+          "y": 0.29875
         },
         "targetId": "rename-visual"
       },
       {
         "id": "create-from-visual",
         "target": {
-          "x": 0.22,
-          "y": 0.5
+          "x": 0.9296875,
+          "y": 0.29875
         },
         "targetId": "create-from-visual"
       }
     ]
   },
-  "htmlSha256": "f5869406e580bed98c8b2f95a41629526f27a287fc24bea35fe16d7fb929b9e2",
+  "htmlSha256": "f5e1a116292ba85c14035f1af6c5cac3f45185bf944260e246c199f10185441f",
   "schemaVersion": 1,
-  "sourceSha256": "e054ef985c5aaa828a04b18dacc7a8a1153d2167cf25e2476cbfde8ad7efbcd4"
+  "sourceSha256": "97f3dfec68c80bf22a0ec35beb518c95733e5527f815228b3e87ab0d517c2322"
 }

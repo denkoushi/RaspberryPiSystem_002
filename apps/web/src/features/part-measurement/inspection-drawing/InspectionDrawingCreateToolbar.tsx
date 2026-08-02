@@ -11,6 +11,7 @@ import {
   inspectionDrawingKioskDisabledButtonClass,
   inspectionDrawingKioskToggleInactiveClass
 } from './inspectionDrawingKioskUi';
+import { inspectionDrawingSopTargetProps } from './inspectionDrawingSopAnnotations';
 
 import type { PartMeasurementProcessGroup } from '../types';
 import type { ReactNode } from 'react';
@@ -104,6 +105,7 @@ export function InspectionDrawingCreateToolbar({
         ) : null}
 
         <Button
+          {...inspectionDrawingSopTargetProps('save-revision')}
           type="button"
           variant="primary"
           className={inspectionDrawingKioskDisabledButtonClass}
@@ -121,6 +123,7 @@ export function InspectionDrawingCreateToolbar({
 
         {savedPrintPath ? (
           <Link
+            {...inspectionDrawingSopTargetProps('saved-report')}
             to={savedPrintPath}
             target="_blank"
             rel="noopener noreferrer"
@@ -137,6 +140,7 @@ export function InspectionDrawingCreateToolbar({
         className="ml-auto flex shrink-0 items-center gap-2"
       >
         <Button
+          {...inspectionDrawingSopTargetProps('test-input')}
           type="button"
           variant="primary"
           aria-pressed={mode === 'test'}
@@ -147,6 +151,7 @@ export function InspectionDrawingCreateToolbar({
           テスト入力
         </Button>
         <Button
+          {...inspectionDrawingSopTargetProps('guided-trial')}
           type="button"
           variant="primary"
           aria-pressed={mode === 'guidedTrial'}
@@ -160,7 +165,11 @@ export function InspectionDrawingCreateToolbar({
         {supplementalAction}
 
         {returnTo && returnLabel ? (
-          <Link to={returnTo} className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1rem]')}>
+          <Link
+            {...inspectionDrawingSopTargetProps('return-library')}
+            to={returnTo}
+            className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1rem]')}
+          >
             {returnLabel}
           </Link>
         ) : null}

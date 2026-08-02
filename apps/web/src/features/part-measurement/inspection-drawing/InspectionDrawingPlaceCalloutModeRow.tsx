@@ -7,6 +7,7 @@ import {
   inspectionDrawingKioskToggleInactiveClass,
   inspectionDrawingPlaceCalloutModeRowClassName
 } from './inspectionDrawingKioskUi';
+import { inspectionDrawingSopTargetProps } from './inspectionDrawingSopAnnotations';
 
 import type { InspectionDrawingToolbarMode } from './InspectionDrawingCreateToolbar';
 
@@ -54,6 +55,7 @@ export function InspectionDrawingPlaceCalloutModeRow({
       data-testid="inspection-drawing-place-callout-mode-row"
     >
       <Button
+        {...inspectionDrawingSopTargetProps('add-point')}
         type="button"
         variant="primary"
         aria-pressed={placeActive}
@@ -64,6 +66,7 @@ export function InspectionDrawingPlaceCalloutModeRow({
         丸数字
       </Button>
       <Button
+        {...inspectionDrawingSopTargetProps('place-callout')}
         type="button"
         variant="primary"
         aria-pressed={calloutActive}

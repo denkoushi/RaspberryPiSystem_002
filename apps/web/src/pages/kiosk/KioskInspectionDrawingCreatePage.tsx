@@ -57,6 +57,7 @@ import {
   inspectionDrawingCanvasImageUrl,
   inspectionDrawingHasImageSource,
   inspectionDrawingCreateDirtySnapshotsEqual,
+  inspectionDrawingSopTargetProps,
   parseInspectionDrawingSourceTemplateIdFromSearch,
   parseInspectionDrawingVisualTemplateIdFromSearch,
   normalizeUniqueInspectionDrawingResourceCds,
@@ -1375,8 +1376,16 @@ export function KioskInspectionDrawingCreatePage() {
       ) : null}
       {isEditing && template?.siblingGroup ? (
         <div className="flex flex-wrap items-center gap-2 rounded border border-white/15 bg-slate-900/70 px-2 py-1 text-sm text-white">
-          <span className="font-semibold text-slate-300">保存範囲</span>
-          <label className="inline-flex min-h-10 items-center gap-1 rounded border border-white/15 px-2">
+          <span
+            className="font-semibold text-slate-300"
+            {...inspectionDrawingSopTargetProps('save-scope-warning')}
+          >
+            保存範囲
+          </span>
+          <label
+            className="inline-flex min-h-10 items-center gap-1 rounded border border-white/15 px-2"
+            {...inspectionDrawingSopTargetProps('group-save')}
+          >
             <input
               type="radio"
               checked={groupSaveMode === 'group'}
@@ -1385,7 +1394,10 @@ export function KioskInspectionDrawingCreatePage() {
             />
             <span>兄弟テンプレをまとめて改版</span>
           </label>
-          <label className="inline-flex min-h-10 items-center gap-1 rounded border border-white/15 px-2">
+          <label
+            className="inline-flex min-h-10 items-center gap-1 rounded border border-white/15 px-2"
+            {...inspectionDrawingSopTargetProps('single-save')}
+          >
             <input
               type="radio"
               checked={groupSaveMode === 'single'}
@@ -1425,6 +1437,7 @@ export function KioskInspectionDrawingCreatePage() {
             disabled={contentReadOnly || resourceAddBusy || resourceAddCds.length === 0}
             className="min-h-10 px-3 py-1.5"
             onClick={() => void handleAddResourcesToGroup()}
+            {...inspectionDrawingSopTargetProps('add-group-resource')}
           >
             {resourceAddBusy ? '追加中...' : '資源追加'}
           </Button>
@@ -1444,7 +1457,13 @@ export function KioskInspectionDrawingCreatePage() {
       {visualOcrNotice ? <p className="px-1 text-sm font-semibold text-cyan-100/75">{visualOcrNotice}</p> : null}
       {template && readOnly ? (
         <div className="px-1">
-          <Button type="button" variant="primary" disabled={busy} onClick={() => void handleActivate()}>
+          <Button
+            type="button"
+            variant="primary"
+            disabled={busy}
+            onClick={() => void handleActivate()}
+            {...inspectionDrawingSopTargetProps('activate-history')}
+          >
             {busy ? '処理中…' : 'この版を有効化して編集'}
           </Button>
         </div>

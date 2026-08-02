@@ -14,6 +14,7 @@ import {
 } from './inspectionDrawingKioskUi';
 import { InspectionDrawingResourceCdMultiSelect } from './InspectionDrawingResourceCdMultiSelect';
 import { InspectionDrawingResourceCdSelect } from './InspectionDrawingResourceCdSelect';
+import { inspectionDrawingSopTargetProps } from './inspectionDrawingSopAnnotations';
 
 import type { InspectionDrawingCreateMetadataRowProps } from './InspectionDrawingCreateMetadataRow';
 import type { PartMeasurementProcessGroup, SelfInspectionMode } from '../types';
@@ -54,6 +55,7 @@ export function InspectionDrawingCreateMetaChipList({
 
   return (
     <dl
+      {...inspectionDrawingSopTargetProps('template-metadata')}
       data-testid="inspection-drawing-create-meta-row"
       className={inspectionDrawingCreateFlatMetaRowClassName}
     >
@@ -128,7 +130,11 @@ export function InspectionDrawingCreateMetaChipList({
           disabled={contentReadOnly}
         />
       </InspectionDrawingCreateMetaChip>
-      <InspectionDrawingCreateMetaChip term="検査数" controlId={selfInspectionModeFieldId}>
+      <InspectionDrawingCreateMetaChip
+        term="検査数"
+        controlId={selfInspectionModeFieldId}
+        annotationProps={inspectionDrawingSopTargetProps('self-inspection-setting')}
+      >
         <select
           id={selfInspectionModeFieldId}
           className={inspectionDrawingCreateMetaChipSelectClassName}

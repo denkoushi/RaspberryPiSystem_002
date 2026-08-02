@@ -8,6 +8,7 @@ const SOP_SHEETS = [
   'library-visual-management',
   'library-template-management',
   'edit-basics',
+  'edit-visual-source',
   'edit-required-point',
   'edit-advanced-point',
   'edit-point-management',
@@ -96,7 +97,7 @@ for (const viewport of [
   { width: 1536, height: 864 },
   { width: 1920, height: 1080 }
 ] as const) {
-  test(`@production-smoke ${viewport.width}x${viewport.height}: 一覧の取説はオフラインでも生成シートを安全に表示する`, async ({
+  test(`@production-smoke @production-bundle ${viewport.width}x${viewport.height}: 一覧の取説はオフラインでも生成シートを安全に表示する`, async ({
     page,
     context
   }) => {
@@ -172,7 +173,7 @@ for (const viewport of [
   { width: 1536, height: 864 },
   { width: 1920, height: 1080 }
 ] as const) {
-  test(`${viewport.width}x${viewport.height}: 全取説カードの引出線はカード端と丸数字外周を結ぶ`, async ({ page }) => {
+  test(`@production-bundle ${viewport.width}x${viewport.height}: 全取説カードの引出線はカード端と丸数字外周を結ぶ`, async ({ page }) => {
     test.setTimeout(120_000);
     await page.setViewportSize(viewport);
     await installLibraryApiMocks(page);
@@ -251,9 +252,15 @@ for (const viewport of [
           const scale = Math.min(stageRect.width / screenWidth, stageRect.height / screenHeight);
           const imageLeft = stageRect.left + (stageRect.width - screenWidth * scale) / 2;
           const imageTop = stageRect.top + (stageRect.height - screenHeight * scale) / 2;
+          const targetX = Number(pin.dataset.targetX);
+          const targetY = Number(pin.dataset.targetY);
           return {
             startError: Math.hypot(x1 - cardRect.right, y1 - (cardRect.top + cardRect.height / 2)),
             pinBoundaryError: Math.abs(Math.hypot(x2 - pinCenterX, y2 - pinCenterY) - pinRect.width / 2),
+            pinTargetError: Math.hypot(
+              pinCenterX - (imageLeft + screenWidth * scale * targetX),
+              pinCenterY - (imageTop + screenHeight * scale * targetY)
+            ),
             pinInsideImage:
               pinCenterX >= imageLeft && pinCenterX <= imageLeft + screenWidth * scale &&
               pinCenterY >= imageTop && pinCenterY <= imageTop + screenHeight * scale
@@ -261,6 +268,7 @@ for (const viewport of [
         }, step);
         expect(geometry.startError).toBeLessThanOrEqual(2);
         expect(geometry.pinBoundaryError).toBeLessThanOrEqual(2);
+        expect(geometry.pinTargetError).toBeLessThanOrEqual(2);
         expect(geometry.pinInsideImage).toBe(true);
       }
 
@@ -297,6 +305,10 @@ for (const scenario of ['revise', 'fixed_count'] as const) {
     await expect(frame.locator('.sheet[data-sheet="edit-basics"]')).toBeVisible();
     await expect(frame.getByText('対象情報を確認')).toBeVisible();
     await expect(frame.getByText('改版を保存')).toBeVisible();
+
+    await page.getByRole('button', { name: '次の手順' }).click();
+    await expect(frame.locator('.sheet[data-sheet="edit-visual-source"]')).toBeVisible();
+    await expect(frame.getByText('登録済み図面を選ぶ')).toBeVisible();
 
     await page.getByRole('button', { name: '次の手順' }).click();
     await expect(frame.locator('.sheet[data-sheet="edit-required-point"]')).toBeVisible();
