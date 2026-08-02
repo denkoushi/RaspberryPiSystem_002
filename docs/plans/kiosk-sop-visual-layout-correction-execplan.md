@@ -55,7 +55,8 @@ delivery, print size, and production React captures remain unchanged.
 - [x] (2026-08-02 09:31+09:00) Received explicit production deployment approval and
   expanded this plan through commit, pull request, required CI, `origin/main`
   integration, standard rolling deployment, and production evidence.
-- [ ] Commit and push the exact validated scope, then open a pull request to `main`.
+- [x] (2026-08-02 09:34+09:00) Committed and pushed the exact validated scope, then
+  opened Draft PR #1151 to `main`; the initial implementation commit was `d041ec75`.
 - [ ] Confirm required hosted CI at the immutable head SHA and merge the pull request.
 - [ ] Run the read-only standard fleet plan against merged `main`, inspect every target
   and `unknown` reason, then start the standard rolling release.
