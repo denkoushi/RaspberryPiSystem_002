@@ -1,7 +1,7 @@
 ---
 id: plan-kiosk-sop-semantic-target-correction
 title: Correct kiosk SOP semantic target capture
-status: in_progress
+status: completed
 date: 2026-08-02
 source_of_truth: true
 scope: Inspection-drawing SOP target capture, generated sheets, and popup validation
@@ -63,12 +63,15 @@ cards at Mac and Full HD kiosk sizes.
 - [x] (2026-08-02) Resolved the cross-architecture freshness failure by fixing the
   generator to `linux/amd64`, regenerated the canonical artifacts, passed PR and main
   CI, and squash-merged PR 1155 as `a82f0b20091c26c9f58ed011ea28987800f9c4c0`.
-- [ ] Complete the production rollout. Aggregate preflight passed migration, Pi5,
-  external dependencies, and five Kiosks, but stopped before release submission
-  because StoneBase01's intentional barcode-reader maintenance lease expired and the
-  first Pi3 sample was below its read-only memory threshold. Pi3 subsequently reported
-  131 MB available with healthy display services; renew the short StoneBase01 lease,
-  merge it, rerun standard preflight, and finish the rollout.
+- [x] (2026-08-02) Renewed StoneBase01's short barcode-reader maintenance lease in PR
+  1156, passed exact-main release publication, deployed `c32287db7b0f044cec4691f4a791513d7073e52e`
+  to Pi5 and all six Kiosks in run `20260802-100714-d5070b`, and verified the automatic
+  Pi3 rollback after its first apply failure.
+- [x] (2026-08-02) Retried only the restored Pi3 in run
+  `20260802-111116-1bcc81`; its constrained release stopped LightDM and signage,
+  restored both services, authenticated the signage display, and verified the target
+  SHA. The final standard plan reported eight verified hosts, zero targets, zero
+  warnings, and `mainIntegration.completionEligible=true`.
 
 ## Surprises & Discoveries
 
@@ -123,6 +126,19 @@ cards at Mac and Full HD kiosk sizes.
   throttling.
   Evidence: Standard `update-all-clients.sh` aggregate preflight and sanitized
   read-only host diagnostics on 2026-08-02.
+- Observation: The submitted fleet run successfully converged Pi5 and all six Kiosks,
+  but the first constrained Pi3 Ansible apply exited with status 2 after 410 seconds.
+  The coordinator restored Pi3 to `c48cdadb149e821d1179d8d523804e54d2d67f51`,
+  verified `lightdm.service`, `signage-lite.service`, the signage display image, and
+  the old repository claim, cleared maintenance, and removed its rollback runtime
+  artifacts before ending the run as failed.
+  Evidence: Run `20260802-100714-d5070b` terminal rollback evidence and runtime
+  finalization records.
+- Observation: A fresh standard plan after rollback minimized the next run to Pi3
+  alone. The retry took about 9.6 minutes in the constrained Ansible apply, then
+  produced an authenticated signage display proof and the verified target repository
+  claim without changing the seven already-current hosts.
+  Evidence: Run `20260802-111116-1bcc81` and the final zero-target standard plan.
 
 ## Decision Log
 
@@ -160,10 +176,17 @@ cards at Mac and Full HD kiosk sizes.
   Rationale: This records the operator-confirmed temporary condition without disabling
   safety checks, bypassing the standard planner, or weakening Pi3 resource handling.
   Date/Author: 2026-08-02 / Product owner and Codex.
+- Decision: After the first Pi3 apply failure, wait for the coordinator-owned rollback
+  and display recovery to verify completely, then rerun the unmodified standard
+  planner instead of intervening through SSH or changing the Pi3 contract.
+  Rationale: The fail-closed planner excluded the seven verified hosts and admitted
+  only the restored Pi3, preserving rollback authority, service-stop behavior, and
+  fleet evidence while allowing a safe idempotent retry.
+  Date/Author: 2026-08-02 / Codex.
 
 ## Outcomes & Retrospective
 
-The implementation now generates ten independent background captures, ten review
+The implementation generates ten independent background captures, ten review
 PNGs, one self-contained HTML manual, and a manifest containing forty-five unique
 DOM-derived anchors and zero fallback coordinates. Core passed 11 tests; generator
 contract tests passed 4 tests; Web passed 331 files / 1666 tests plus lint and build.
@@ -173,9 +196,19 @@ production Caddy bundle passed 12 tagged Chromium/Firefox cases at 1280x800,
 an up-to-date schema, passed all three isolated API tests, ran the search SQL and both
 normal and forced-index EXPLAIN plans, and removed its container, volume, network, and
 storage directory. Production validation likewise removed its task-specific Caddy
-container, network, and Web image. PR 1155 and exact-main CI completed successfully;
-production rollout is still pending because the fail-closed preflight stopped before
-release submission on the operator-confirmed temporary StoneBase01 disconnect.
+container, network, and Web image. PR 1155 and exact-main CI completed successfully.
+PR 1156 renewed only the short StoneBase01 maintenance lease, and exact-main CI then
+published the signed ARM64 API/Web release set for
+`c32287db7b0f044cec4691f4a791513d7073e52e`.
+
+Production rollout is complete. Run `20260802-100714-d5070b` deployed and verified
+Pi5 and all six Kiosks; its first Pi3 attempt failed closed and proved a complete
+rollback with the display services restored. Run `20260802-111116-1bcc81` then targeted
+only Pi3, stopped LightDM and signage during the constrained apply, restored them,
+verified the target repository SHA, and authenticated the current signage display.
+The final standard plan observed the same target SHA with verified evidence on all
+eight hosts, selected no mutation, activation, or verification targets, emitted no
+warnings, and reported integrated main completion eligibility.
 
 ## Context and Orientation
 
