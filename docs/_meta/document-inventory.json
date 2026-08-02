@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 600,
-    "totalLines": 167620,
-    "totalBytes": 12586078,
+    "totalLines": 167630,
+    "totalBytes": 12586893,
     "withFrontmatter": 271,
     "withStatus": 127,
     "sourceOfTruthDeclared": 89,
@@ -33750,8 +33750,8 @@
     },
     {
       "path": "docs/plans/kiosk-sop-visual-layout-correction-execplan.md",
-      "lineCount": 224,
-      "byteSize": 12157,
+      "lineCount": 234,
+      "byteSize": 12972,
       "hasFrontmatter": true,
       "title": "Correct kiosk SOP leader geometry and responsive screen sizing",
       "status": "in_progress",

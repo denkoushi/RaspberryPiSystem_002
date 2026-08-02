@@ -57,6 +57,11 @@ delivery, print size, and production React captures remain unchanged.
   integration, standard rolling deployment, and production evidence.
 - [x] (2026-08-02 09:34+09:00) Committed and pushed the exact validated scope, then
   opened Draft PR #1151 to `main`; the initial implementation commit was `d041ec75`.
+- [x] (2026-08-02 09:43+09:00) Diagnosed hosted `e2e-tests` failure at PR head
+  `3f9d6f26`: all three geometry cases exhausted the shared 30-second test timeout
+  while competing with the fully parallel suite, although the dedicated serial
+  Chromium/Firefox job passed. With explicit approval, increased only those three test
+  timeouts to 120 seconds without weakening assertions or retries.
 - [ ] Confirm required hosted CI at the immutable head SHA and merge the pull request.
 - [ ] Run the read-only standard fleet plan against merged `main`, inspect every target
   and `unknown` reason, then start the standard rolling release.
@@ -84,6 +89,11 @@ delivery, print size, and production React captures remain unchanged.
   reports the repository's Node >=20.9 engine warning, but migration, API, SQL, and
   EXPLAIN checks all pass.
   Evidence: `bash scripts/kiosk-sop/validate-db-contract.sh` output on 2026-08-02.
+- Observation: The dedicated SOP job passed all 18 serial Chromium/Firefox cases, but
+  the repository-wide fully parallel E2E job exhausted its 30-second per-test limit in
+  all three geometry cases while waiting for a card to remain attached during click.
+  Evidence: GitHub Actions run `30725405256`, job `91436091000`; 67 unrelated tests
+  passed and each failed SOP case reached the same timeout after two retries.
 
 ## Decision Log
 

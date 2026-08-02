@@ -173,6 +173,7 @@ for (const viewport of [
   { width: 1920, height: 1080 }
 ] as const) {
   test(`${viewport.width}x${viewport.height}: 全取説カードの引出線はカード端と丸数字外周を結ぶ`, async ({ page }) => {
+    test.setTimeout(120_000);
     await page.setViewportSize(viewport);
     await installLibraryApiMocks(page);
     await page.goto('/kiosk/part-measurement/inspection', { waitUntil: 'domcontentloaded' });
