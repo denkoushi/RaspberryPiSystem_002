@@ -1,7 +1,7 @@
 ---
 id: plan-kiosk-sop-semantic-target-correction
 title: Correct kiosk SOP semantic target capture
-status: completed
+status: in_progress
 date: 2026-08-02
 source_of_truth: true
 scope: Inspection-drawing SOP target capture, generated sheets, and popup validation
@@ -60,6 +60,8 @@ cards at Mac and Full HD kiosk sizes.
 - [x] (2026-08-02) Audited the final generated counts, documentation inventory,
   whitespace, staged scope, Docker resources, and locally committed only the intended
   changes with `fix: make kiosk SOP targets fail closed`.
+- [ ] Resolve the cross-architecture generator freshness failure found by PR CI,
+  regenerate with the canonical architecture, and complete merge and deployment.
 
 ## Surprises & Discoveries
 
@@ -98,6 +100,12 @@ cards at Mac and Full HD kiosk sizes.
   Evidence: back-to-back generation exposed the race; the capture-only browser context
   now tracks and clears that debounce after the dialog fixture settles, and two
   consecutive forty-five-target generations passed before the final Docker check.
+- Observation: The pinned Playwright image digest is a multi-architecture manifest.
+  Native ARM64 generation on Docker Desktop and AMD64 generation on GitHub Actions
+  produce different PNG rasterization for the three stateful edit sheets, even though
+  each architecture is internally deterministic and geometry is unchanged.
+  Evidence: PR 1155 failed only the freshness comparison; running the same check with
+  `linux/amd64` on the Mac reproduced the identical eight-file stale list.
 
 ## Decision Log
 
@@ -121,6 +129,12 @@ cards at Mac and Full HD kiosk sizes.
   clamping the overflowing child input rectangle.
   Rationale: This preserves the existing business UI while keeping the badge attached
   to a real, fully visible semantic control group.
+  Date/Author: 2026-08-02 / Codex.
+- Decision: Make `linux/amd64` part of the fixed generator contract for both Docker
+  build and run.
+  Rationale: Image digest alone does not select one member of a multi-architecture
+  manifest. Matching the GitHub runner architecture makes committed pixel artifacts
+  reproducible from ARM development hosts as well as CI.
   Date/Author: 2026-08-02 / Codex.
 
 ## Outcomes & Retrospective
