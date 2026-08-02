@@ -78,6 +78,48 @@ module.exports = {
   },
   overrides: [
     {
+      files: ['src/services/part-measurement/self-inspection.service.ts'],
+      rules: {
+        'max-lines': ['error', { max: 350, skipBlankLines: true, skipComments: true }],
+        'max-lines-per-function': [
+          'error',
+          { max: 40, skipBlankLines: true, skipComments: true, IIFEs: true }
+        ],
+        'no-restricted-imports': [
+          'error',
+          {
+            patterns: [
+              {
+                group: ['**/lib/prisma.js', '**/lib/prisma'],
+                message: 'SelfInspectionService facade must delegate database work to use cases.'
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      files: ['src/services/part-measurement/self-inspection/use-cases/**/*.ts'],
+      rules: {
+        'max-lines': ['error', { max: 500, skipBlankLines: true, skipComments: true }],
+        'max-lines-per-function': [
+          'error',
+          { max: 220, skipBlankLines: true, skipComments: true, IIFEs: true }
+        ],
+        'no-restricted-imports': [
+          'error',
+          {
+            patterns: [
+              {
+                group: ['**/self-inspection.service.js', '**/self-inspection.service'],
+                message: 'Self-inspection use cases must not depend on their facade.'
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       files: ['src/**/*.{test,spec}.ts', 'src/**/__tests__/**/*.{ts,tsx}'],
       rules: {
         '@typescript-eslint/no-explicit-any': 'off',
