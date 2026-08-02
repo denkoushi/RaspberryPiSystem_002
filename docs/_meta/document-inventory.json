@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 602,
-    "totalLines": 168113,
-    "totalBytes": 12614396,
+    "totalLines": 168138,
+    "totalBytes": 12616310,
     "withFrontmatter": 273,
     "withStatus": 129,
     "sourceOfTruthDeclared": 91,
@@ -33771,8 +33771,8 @@
     },
     {
       "path": "docs/plans/kiosk-sop-semantic-target-correction-execplan.md",
-      "lineCount": 260,
-      "byteSize": 14547,
+      "lineCount": 285,
+      "byteSize": 16461,
       "hasFrontmatter": true,
       "title": "Correct kiosk SOP semantic target capture",
       "status": "in_progress",
