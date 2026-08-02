@@ -72,6 +72,7 @@ If `EXEC_PLAN.md` must be touched, keep the entry short and limited to current s
 - Gmail CSV / assembly DocumentASM conflict guards (in progress): `docs/plans/gmail-import-conflict-guards-20260725.md`
 - Pi5 API footprint and single-SSD file storage safety (in progress): `docs/plans/pi5-api-image-local-storage-scalability-execplan.md`
 - Cross-repository DGX ownership and deployment boundary: [`DGXSparkControlPlane/docs/repository-boundary.md`](https://github.com/denkoushi/DGXSparkControlPlane/blob/main/docs/repository-boundary.md)
+- Active DGX business-proxy consumer contract (no fleet deploy): [Plan](./plans/dgx-control-plane-business-proxy-consumer-execplan.md)
 
 The index files are navigation only. They must not become narrative logs.
 
