@@ -34,7 +34,7 @@ Success is demonstrated by an isolated PostgreSQL baseline before implementation
 - [x] (2026-08-03 08:25+09:00) Ran final verification with Node 20.20.2: full API tests passed (479 files, 2,515 tests), API build passed, full API lint passed, and `git diff --check` passed. The exact increase over baseline is the new facade test: one file and two tests.
 - [x] (2026-08-03 08:26+09:00) Removed all focused and final temporary Docker resources. Counts returned exactly to 0 containers, 17 volumes, and 3 networks, with no task-labelled resource remaining.
 - [x] (2026-08-03 08:28+09:00) Committed the behavior-preserving extraction locally as `55849360` (`refactor(api): split self-inspection use cases`).
-- [ ] Commit the architecture guard and completed ExecPlan locally. Push, PR, merge, and deployment remain out of scope and require explicit approval.
+- [x] (2026-08-03 08:31+09:00) Committed the architecture guard and completed ExecPlan locally as `5f5b2f27` (`chore(api): enforce self-inspection boundaries`). Push, PR, merge, and deployment remain out of scope and require explicit approval.
 
 ## Surprises & Discoveries
 
@@ -169,5 +169,6 @@ Final verification (2026-08-03, after extraction and boundary enforcement):
 Local implementation commit:
 
     55849360 refactor(api): split self-inspection use cases
+    5f5b2f27 chore(api): enforce self-inspection boundaries
 
 Revision note (2026-08-03): Initial implementation plan created after confirming the clean synchronized baseline and dedicated local branch. Updated after every validation milestone and finalized after full isolated verification.
