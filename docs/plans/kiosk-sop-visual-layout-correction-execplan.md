@@ -1,7 +1,7 @@
 ---
 id: plan-kiosk-sop-visual-layout-correction
 title: Correct kiosk SOP leader geometry and responsive screen sizing
-status: in_progress
+status: completed
 date: 2026-08-02
 source_of_truth: true
 scope: Generated kiosk SOP annotation layout and popup presentation
@@ -62,11 +62,23 @@ delivery, print size, and production React captures remain unchanged.
   while competing with the fully parallel suite, although the dedicated serial
   Chromium/Firefox job passed. With explicit approval, increased only those three test
   timeouts to 120 seconds without weakening assertions or retries.
-- [ ] Confirm required hosted CI at the immutable head SHA and merge the pull request.
-- [ ] Run the read-only standard fleet plan against merged `main`, inspect every target
-  and `unknown` reason, then start the standard rolling release.
-- [ ] Confirm terminal release status, maintenance clearance, per-host production SHA,
-  and a same-SHA no-op plan; record the evidence and leave the worktree clean.
+- [x] (2026-08-02 10:04+09:00) Confirmed every required hosted check at immutable
+  head `0232feb4`, squash-merged PR #1151, and verified merge SHA
+  `c48cdadb149e821d1179d8d523804e54d2d67f51` has the accepted head tree.
+- [x] (2026-08-02 10:06+09:00) Confirmed the `main` push CI and CodeQL runs for
+  `c48cdadb`, then inspected the standard read-only fleet plan. The plan selected Pi5,
+  six kiosks, and Pi3 signage because the classifier change made the release impact
+  conservatively `unknown`.
+- [x] (2026-08-02 11:11+09:00) Ran release `20260802-010629-953429`. Pi5 and all six
+  kiosks reached `c48cdadb` with verified evidence. Pi3 hit a transient 12-second
+  privilege-escalation response timeout at final unit registration, and its sealed
+  manifest rollback restored old SHA `dc48e618`, runtime health, maintenance clearance,
+  authenticated display proof, and verified evidence.
+- [x] (2026-08-02 11:26+09:00) Verified Pi3 memory, swap, disk, temperature,
+  throttling, services, status agent, and watchdog health; replanned to Pi3 only; and
+  completed standard retry release `20260802-021418-a5d15e`. All eight hosts now report
+  `c48cdadb` with verified evidence, no maintenance residue, integrated `main`, and a
+  same-SHA plan with zero targets.
 
 ## Surprises & Discoveries
 
@@ -94,6 +106,20 @@ delivery, print size, and production React captures remain unchanged.
   all three geometry cases while waiting for a card to remain attached during click.
   Evidence: GitHub Actions run `30725405256`, job `91436091000`; 67 unrelated tests
   passed and each failed SOP case reached the same timeout after two retries.
+- Observation: The first full-fleet production run reached the final Pi3 signage unit
+  registration after the application release had otherwise converged, but one
+  `systemctl show` item did not receive the privilege-escalation response within 12
+  seconds. The following items succeeded, and the sealed rollback restored and verified
+  the previous signage runtime.
+  Evidence: release `20260802-010629-953429` journal and status; the failing item was
+  `signage-lite-update.timer`, while rollback repo identity, authenticated display,
+  maintenance clearance, and runtime cleanup all succeeded.
+- Observation: The failure was transient rather than a persistent Pi3 capacity or
+  thermal fault.
+  Evidence: after rollback the Pi3 had 126 MB available memory, 168 MB swap free, 11%
+  `/opt` usage, 44 degrees C, `throttled=0x0`, active display/timers, successful status
+  agent reports, and healthy watchdog image refreshes. The standard Pi3-only retry then
+  completed without a code or configuration change.
 
 ## Decision Log
 
@@ -114,8 +140,7 @@ delivery, print size, and production React captures remain unchanged.
 
 ## Outcomes & Retrospective
 
-The implementation and local validation are complete on
-`fix/kiosk-sop-visual-layout`. Static 1280x720 capture
+The implementation, publication, and production rollout are complete. Static 1280x720 capture
 remains deterministic, while the embedded sheet fills the runtime iframe. All 44 cards
 across nine sheets connect to their matching pin boundary within the two-pixel
 tolerance at 1280x800, 1536x864, and 1920x1080 in Chromium and Firefox. Initial leader
@@ -128,9 +153,17 @@ documentation audit, change-classifier tests, and `git diff --check` passed. Dis
 PostgreSQL validation applied all 157 migrations, reported zero unfinished migrations,
 passed three related API integration tests, and completed SQL and EXPLAIN checks. Its
 container, volume, and network were removed, as were the temporary Web container and
-image. No API contract or database schema changed. Publication, `main` integration,
-and the approved production rollout are now in progress; this plan cannot return to
-`complete` until the four-state SHA audit required by `AGENTS.md` is recorded.
+image. No API contract or database schema changed.
+
+PR #1151 passed the required hosted checks at head `0232feb4` and was squash-merged as
+`c48cdadb149e821d1179d8d523804e54d2d67f51`. Main CI run `30726085017`, CodeQL,
+Gitleaks, API, Web, DB, Docker, E2E, kiosk-SOP, deploy-contract, and ARM64 release-set
+generation succeeded for that exact SHA. The production release used the promoted API
+and Web digests from that run. After the safe Pi3 rollback and successful Pi3-only
+retry, the four-state SHA audit is: accepted PR head `0232feb4`, local `main`
+`c48cdadb`, `origin/main` `c48cdadb`, and every production host `c48cdadb` with verified
+evidence. `mainIntegration.completionEligible` is true and the same-SHA plan has no
+targets.
 
 ## Context and Orientation
 
@@ -215,9 +248,9 @@ successful SQL/EXPLAIN output, followed by zero run-specific Docker resources.
 
 Generation and checks are repeatable. Generated files are replaced only by the
 repository generator. Docker cleanup traps target exact run IDs on success, failure,
-and interruption. There is no schema migration and no production deployment. Before
-any later publication, inspect the complete diff and confirm no unrelated user work is
-present.
+and interruption. There is no schema migration. Production rollback and retry used
+only the standard orchestrator, sealed manifests, run-specific status, and a new
+read-only plan; no lock, fleet state, checkout, or service was changed manually.
 
 ## Artifacts and Notes
 
