@@ -230,6 +230,7 @@ class ClassifyChangesTests(unittest.TestCase):
             "scripts/kiosk-sop/generate.mjs",
             "infrastructure/docker/Dockerfile.kiosk-sop-generator",
             "e2e/inspection-drawing-sop-popup.spec.ts",
+            "playwright.kiosk-sop.config.ts",
             "docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html",
         ):
             with self.subTest(path=path):

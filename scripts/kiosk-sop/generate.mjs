@@ -184,7 +184,12 @@ async function composeSheets(html, definition, targetRoot) {
     await page.setContent(html, { waitUntil: 'load' });
     await mkdir(join(targetRoot, 'sheets'), { recursive: true });
     for (const sheet of definition.scenarios.flatMap(({ sheets }) => sheets)) {
-      await page.locator(`.sheet[data-sheet="${sheet.id}"]`).screenshot({ path: join(targetRoot, 'sheets', `${sheet.id}.png`), animations: 'disabled' });
+      const sheetLocator = page.locator(`.sheet[data-sheet="${sheet.id}"]`);
+      await sheetLocator.waitFor({ state: 'visible' });
+      await page.waitForFunction((sheetId) =>
+        document.querySelector(`.sheet[data-sheet="${sheetId}"]`)?.getAttribute('data-kiosk-sop-layout-ready') === 'true',
+      sheet.id);
+      await sheetLocator.screenshot({ path: join(targetRoot, 'sheets', `${sheet.id}.png`), animations: 'disabled' });
     }
   } finally { await browser.close(); }
 }

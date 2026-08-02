@@ -8,6 +8,7 @@ supersedes:
   - ../decisions/ADR-20260728-inspection-drawing-sop-outer-callouts.md
 related_docs:
   - ../plans/kiosk-inspection-drawing-edit-existing-sop.md
+  - ../plans/kiosk-sop-visual-layout-correction-execplan.md
   - ../design-previews/kiosk-inspection-drawing-edit-existing-sop.html
   - ../plans/kiosk-inspection-drawing-dimension-tolerance-sop-1page.md
   - ../design-previews/kiosk-inspection-drawing-dimension-tolerance-sop-1page.html
@@ -26,8 +27,14 @@ A4 landscape SOP for **検査図面 寸法・公差**. Always-on outer callouts 
 - Left **step rail**: numbered instructional list (scrollable for growth)
 - On screen: **step badges only**, anchored to each target’s **bottom-right corner**
 - Leaders **hover/focus only** (one at a time); omitted in print
+- Touch/click and keyboard focus select one card until another card is selected. Mouse
+  hover temporarily previews a card and returns to the persistent selection on leave.
+- The selected leader is measured from the card's right-center to the target badge
+  boundary after layout; fixed or estimated endpoints are not permitted.
 - No hand illustrations
 - **One target kiosk screen → one A4 landscape sheet** (do not composite multiple screens onto one page)
+- Runtime popup presentation fills the available iframe while retaining a 330-pixel
+  instruction rail. The deterministic and print artifact remains 1280×720.
 
 ## Alternatives
 
@@ -41,6 +48,8 @@ A4 landscape SOP for **検査図面 寸法・公差**. Always-on outer callouts 
 - Scales better: more steps → longer/scrolling rail, not more permanent leaders
 - 構造化定義、実画面PNG、生成manifestが再現元となる
 - Print remains list + badges without interactive leaders
+- Responsive containment must place badges against the rendered image rectangle, not
+  against any letterbox area around it.
 
 ## Validation
 

@@ -21,6 +21,9 @@ describe('buildKioskSopSrcDoc', () => {
     expect(result).toContain('id="kiosk-sop-embed-style"');
     expect(result).toContain('.sheet[data-sheet="library"]');
     expect(result).toContain('id="kiosk-sop-embed-script"');
+    expect(result).toContain('width: 100dvw !important;');
+    expect(result).toContain('height: 100dvh !important;');
+    expect(result).not.toContain('1280px');
     expect(result).toContain("parent.postMessage('raspi:kiosk-sop:close', '*')");
     expect(result).toContain("parent.postMessage('raspi:kiosk-sop:focus-close', '*')");
     expect(result).not.toContain('.sheet[data-sheet="edit"] {\n    display: grid !important;');

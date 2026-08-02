@@ -18,7 +18,7 @@
 
 ### 検査図面 取説の実コード生成・自動保守（2026-08-01 · ローカル実装）
 
-- **本番Reactルートから9シートを決定的生成**: 固定Playwrightコンテナで実画面・注釈済みPNG・自己完結HTML・manifestを生成し、関連実装変更で成果物が古ければCIを停止する。必須は橙実線、任意は控えめなスレート破線。**正本**: [ExecPlan](./plans/kiosk-sop-generated-maintenance-execplan.md) · [ADR](./decisions/ADR-20260801-kiosk-sop-generated-from-production-ui.md) · [Preview](./design-previews/kiosk-inspection-drawing-edit-existing-sop.html)
+- **本番Reactルートから9シートを決定的生成**: 固定Playwrightコンテナで実画面・注釈済みPNG・自己完結HTML・manifestを生成し、関連実装変更で成果物が古ければCIを停止する。必須は橙実線、任意は控えめなスレート破線。**正本**: [ExecPlan](./plans/kiosk-sop-generated-maintenance-execplan.md) · [表示補正Plan](./plans/kiosk-sop-visual-layout-correction-execplan.md) · [ADR](./decisions/ADR-20260801-kiosk-sop-generated-from-production-ui.md) · [Preview](./design-previews/kiosk-inspection-drawing-edit-existing-sop.html)
 - **旧手書きSOP（履歴）**: [Superseded Plan](./plans/kiosk-inspection-drawing-edit-existing-sop.md) · [Viewer ExecPlan](./plans/kiosk-sop-popup-viewer-execplan.md) · [Step-rail ADR](./decisions/ADR-20260728-inspection-drawing-sop-step-rail.md)
 - **レイアウト見本（寸法・公差6手順・単画面）**: [Plan](./plans/kiosk-inspection-drawing-dimension-tolerance-sop-1page.md) · [Preview](./design-previews/kiosk-inspection-drawing-dimension-tolerance-sop-1page.html)
 

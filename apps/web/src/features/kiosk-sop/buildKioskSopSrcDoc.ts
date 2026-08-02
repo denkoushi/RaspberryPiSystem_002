@@ -48,9 +48,10 @@ export function buildKioskSopSrcDoc(sourceHtml: string, sheetId: string): string
   }
   .sheet {
     display: none !important;
-    width: min(100dvw, 177.7778dvh, 1280px) !important;
-    height: auto !important;
+    width: 100dvw !important;
+    height: 100dvh !important;
     max-width: none !important;
+    margin: 0 !important;
     box-shadow: none !important;
   }
   .sheet[data-sheet="${sheetId}"] {

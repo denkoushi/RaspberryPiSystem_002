@@ -38,6 +38,11 @@ describe('kiosk SOP core', () => {
     expect(first).toContain(KIOSK_SOP_TOKENS.required.color);
     expect(first).toContain(KIOSK_SOP_TOKENS.optional.color);
     expect(first).toContain('stroke-dasharray="8 6"');
+    expect(first).toContain('aria-pressed="false"');
+    expect(first).toContain('data-screen-width="1280"');
+    expect(first).toContain('data-target-x="0.8"');
+    expect(first).toContain('data-kiosk-sop-layout-ready');
+    expect(first).not.toContain('x1="18%"');
   });
 
   it('rejects duplicate ids and out-of-range targets', () => {
