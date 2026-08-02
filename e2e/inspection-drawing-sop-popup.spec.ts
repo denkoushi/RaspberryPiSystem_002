@@ -3,6 +3,17 @@ import { expect, test, type Page } from '@playwright/test';
 import { mockKioskLayoutApis } from './helpers/inspectionDrawingCreateHeaderLayout';
 
 const CLIENT_KEY = 'client-key-raspberrypi4-kiosk1';
+const SOP_SHEETS = [
+  'library-entry-search',
+  'library-visual-management',
+  'library-template-management',
+  'edit-basics',
+  'edit-required-point',
+  'edit-advanced-point',
+  'edit-point-management',
+  'edit-trial-report',
+  'edit-group-history'
+] as const;
 
 const visualTemplate = {
   id: 'sop-visual-1',
@@ -82,7 +93,8 @@ test.beforeEach(async ({ page }) => {
 
 for (const viewport of [
   { width: 1280, height: 800 },
-  { width: 1536, height: 864 }
+  { width: 1536, height: 864 },
+  { width: 1920, height: 1080 }
 ] as const) {
   test(`@production-smoke ${viewport.width}x${viewport.height}: 一覧の取説はオフラインでも生成シートを安全に表示する`, async ({
     page,
@@ -131,16 +143,134 @@ for (const viewport of [
       await page.getByRole('button', { name: '次の手順' }).click();
       await expect(frame.locator('.sheet[data-sheet="library-visual-management"]')).toBeVisible();
       await expect(frame.getByText('図面を登録')).toBeVisible();
+      await expect(frame.locator('.sheet[data-sheet="library-visual-management"] .leader-layer line.is-active')).toHaveCount(0);
+
+      await page.getByRole('button', { name: '前の手順' }).click();
+      await expect(frame.locator('.sheet[data-sheet="library-entry-search"]')).toBeVisible();
+      await expect(frame.locator('.sheet[data-sheet="library-entry-search"] .leader-layer line.is-active')).toHaveCount(0);
 
       const closeButton = page.getByRole('button', { name: '閉じる' });
       expect(await closeButton.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
       await closeButton.click();
+      await expect(openButton).toBeFocused();
+
+      await openButton.click();
+      await expect(frame.locator('.sheet[data-sheet="library-entry-search"]')).toBeVisible();
+      await frame.locator('body').press('Escape');
+      await expect(frameElement).toBeHidden();
       await expect(openButton).toBeFocused();
     } finally {
       await context.setOffline(false);
     }
 
     expect(iframeRequests).toEqual([]);
+  });
+}
+
+for (const viewport of [
+  { width: 1280, height: 800 },
+  { width: 1536, height: 864 },
+  { width: 1920, height: 1080 }
+] as const) {
+  test(`${viewport.width}x${viewport.height}: 全取説カードの引出線はカード端と丸数字外周を結ぶ`, async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize(viewport);
+    await installLibraryApiMocks(page);
+    await page.goto('/kiosk/part-measurement/inspection', { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: 'この画面の操作手順を開く' }).click();
+
+    const frameElement = page.getByTestId('kiosk-sop-frame');
+    const frame = page.frameLocator('[data-testid="kiosk-sop-frame"]');
+    for (const [sheetIndex, sheetId] of SOP_SHEETS.entries()) {
+      const sheet = frame.locator(`.sheet[data-sheet="${sheetId}"]`);
+      await expect(sheet).toBeVisible();
+      await expect(sheet).toHaveAttribute('data-kiosk-sop-layout-ready', 'true');
+      await expect(sheet.locator('.leader-layer line.is-active')).toHaveCount(0);
+
+      const layout = await sheet.evaluate((element) => {
+        const sheetRect = element.getBoundingClientRect();
+        const stage = element.querySelector<HTMLElement>('.stage');
+        if (!stage) throw new Error('SOP stage is missing');
+        const stageRect = stage.getBoundingClientRect();
+        const screenWidth = Number(stage.dataset.screenWidth);
+        const screenHeight = Number(stage.dataset.screenHeight);
+        const scale = Math.min(stageRect.width / screenWidth, stageRect.height / screenHeight);
+        const imageWidth = screenWidth * scale;
+        const imageHeight = screenHeight * scale;
+        return {
+          sheetWidth: sheetRect.width,
+          sheetHeight: sheetRect.height,
+          iframeWidth: window.innerWidth,
+          iframeHeight: window.innerHeight,
+          stageWidth: stageRect.width,
+          stageHeight: stageRect.height,
+          imageWidth,
+          imageHeight,
+          overflowX: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          overflowY: document.documentElement.scrollHeight - document.documentElement.clientHeight
+        };
+      });
+      expect(layout.sheetWidth).toBeGreaterThanOrEqual(layout.iframeWidth - 1);
+      expect(layout.sheetHeight).toBeGreaterThanOrEqual(layout.iframeHeight - 1);
+      expect(layout.overflowX).toBeLessThanOrEqual(1);
+      expect(layout.overflowY).toBeLessThanOrEqual(1);
+      if (viewport.width === 1920) {
+        expect(layout.imageWidth / layout.stageWidth).toBeGreaterThanOrEqual(0.9);
+        expect(layout.imageHeight / layout.stageHeight).toBeGreaterThanOrEqual(0.9);
+      }
+
+      const cards = sheet.locator('.step-item');
+      const cardCount = await cards.count();
+      for (let cardIndex = 0; cardIndex < cardCount; cardIndex += 1) {
+        const step = String(cardIndex + 1);
+        const card = cards.nth(cardIndex);
+        await card.click();
+        await sheet.locator('.stage').hover();
+        await expect(card).toHaveAttribute('aria-pressed', 'true');
+        await expect(sheet.locator('.leader-layer line.is-active')).toHaveCount(1);
+
+        const geometry = await sheet.evaluate((element, selectedStep) => {
+          const body = element.querySelector<HTMLElement>('.body');
+          const cardNode = element.querySelector<HTMLElement>(`.step-item[data-step="${selectedStep}"]`);
+          const pin = element.querySelector<HTMLElement>(`.pin[data-pin="${selectedStep}"]`);
+          const line = element.querySelector<SVGLineElement>(`.leader-layer line[data-line="${selectedStep}"]`);
+          const stage = element.querySelector<HTMLElement>('.stage');
+          if (!body || !cardNode || !pin || !line || !stage) throw new Error('SOP geometry node is missing');
+          const bodyRect = body.getBoundingClientRect();
+          const cardRect = cardNode.getBoundingClientRect();
+          const pinRect = pin.getBoundingClientRect();
+          const stageRect = stage.getBoundingClientRect();
+          const x1 = Number(line.getAttribute('x1')) + bodyRect.left;
+          const y1 = Number(line.getAttribute('y1')) + bodyRect.top;
+          const x2 = Number(line.getAttribute('x2')) + bodyRect.left;
+          const y2 = Number(line.getAttribute('y2')) + bodyRect.top;
+          const pinCenterX = pinRect.left + pinRect.width / 2;
+          const pinCenterY = pinRect.top + pinRect.height / 2;
+          const screenWidth = Number(stage.dataset.screenWidth);
+          const screenHeight = Number(stage.dataset.screenHeight);
+          const scale = Math.min(stageRect.width / screenWidth, stageRect.height / screenHeight);
+          const imageLeft = stageRect.left + (stageRect.width - screenWidth * scale) / 2;
+          const imageTop = stageRect.top + (stageRect.height - screenHeight * scale) / 2;
+          return {
+            startError: Math.hypot(x1 - cardRect.right, y1 - (cardRect.top + cardRect.height / 2)),
+            pinBoundaryError: Math.abs(Math.hypot(x2 - pinCenterX, y2 - pinCenterY) - pinRect.width / 2),
+            pinInsideImage:
+              pinCenterX >= imageLeft && pinCenterX <= imageLeft + screenWidth * scale &&
+              pinCenterY >= imageTop && pinCenterY <= imageTop + screenHeight * scale
+          };
+        }, step);
+        expect(geometry.startError).toBeLessThanOrEqual(2);
+        expect(geometry.pinBoundaryError).toBeLessThanOrEqual(2);
+        expect(geometry.pinInsideImage).toBe(true);
+      }
+
+      if (sheetIndex < SOP_SHEETS.length - 1) {
+        await page.getByRole('button', { name: '次の手順' }).click();
+      }
+    }
+
+    await page.getByRole('button', { name: '閉じる' }).click();
+    await expect(frameElement).toHaveCount(0);
   });
 }
 

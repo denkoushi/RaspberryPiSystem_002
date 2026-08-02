@@ -22,6 +22,8 @@ RUN pnpm --filter @raspi-system/shared-types build \
     && pnpm --filter @raspi-system/part-search-core build \
     && pnpm --filter @raspi-system/shelf-layout-core build
 COPY apps/web ./apps/web
+COPY e2e ./e2e
+COPY playwright.kiosk-sop.config.ts ./playwright.kiosk-sop.config.ts
 COPY scripts/kiosk-sop ./scripts/kiosk-sop
 RUN mkdir -p docs/design-previews
 

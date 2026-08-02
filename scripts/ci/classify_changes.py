@@ -156,7 +156,10 @@ def categories_for_path(path: str) -> frozenset[str] | None:
         )
     if _has_prefix(normalized, "infrastructure/docker"):
         return frozenset({"repo_policy", "db_infra", "docker_security"})
-    if normalized == "e2e/inspection-drawing-sop-popup.spec.ts":
+    if normalized in {
+        "e2e/inspection-drawing-sop-popup.spec.ts",
+        "playwright.kiosk-sop.config.ts",
+    }:
         return frozenset({"repo_policy", "e2e", "kiosk_sop"})
     if _has_prefix(normalized, "e2e") or normalized == "playwright.config.ts":
         return frozenset({"repo_policy", "e2e"})
@@ -172,7 +175,7 @@ def codeql_for_path(path: str) -> bool:
         or _has_prefix(normalized, "apps/web")
         or _has_prefix(normalized, "packages")
         or _has_prefix(normalized, "e2e")
-        or normalized == "playwright.config.ts"
+        or normalized in {"playwright.config.ts", "playwright.kiosk-sop.config.ts"}
         or normalized in {
             "package.json",
             "pnpm-lock.yaml",
