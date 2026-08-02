@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 601,
-    "totalLines": 167818,
-    "totalBytes": 12596957,
+    "totalLines": 167846,
+    "totalBytes": 12598885,
     "withFrontmatter": 272,
     "withStatus": 128,
     "sourceOfTruthDeclared": 90,
@@ -32667,8 +32667,8 @@
     },
     {
       "path": "docs/plans/dgx-control-plane-business-proxy-consumer-execplan.md",
-      "lineCount": 154,
-      "byteSize": 7527,
+      "lineCount": 182,
+      "byteSize": 9455,
       "hasFrontmatter": true,
       "title": "DGX Control Plane business proxy consumer contract",
       "status": "in_progress",

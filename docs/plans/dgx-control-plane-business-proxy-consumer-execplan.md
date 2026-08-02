@@ -10,8 +10,9 @@ related_code:
 related_docs:
   - ../runbooks/dgx-system-prod-local-llm.md
   - https://github.com/denkoushi/DGXSparkControlPlane/blob/main/docs/exec-plans/06-business-gateway-proxy.md
+  - https://github.com/denkoushi/DGXSparkControlPlane/blob/main/docs/exec-plans/08-safe-expiry-preemption.md
 validation: Documentation checks and post-cutover compatibility probes
-open_items: DGX-only cutover and real activity verification
+open_items: DGX-only expiry and business-preemption production drills
 ---
 
 # Preserve the business consumer contract through the DGX Arbiter proxy
@@ -34,9 +35,11 @@ non-null last-business-use time after an authenticated heavy request.
 - [x] (2026-08-02 03:05Z) Confirm the business source uses the DGX Tailscale address on port `38081` throughout inference and runtime control.
 - [x] (2026-08-02 03:08Z) Confirm business clients use `X-LLM-Token` and `X-Runtime-Control-Token` and require no code change.
 - [x] (2026-08-02 03:22Z) Merge backward-compatible proxy support into `DGXSparkControlPlane` through PR 14 and successful CI.
-- [ ] Merge this consumer contract note through a separate documentation PR.
-- [ ] Perform the approved DGX-only cutover from the Control Plane repository.
-- [ ] Verify business health, model listing, one real inference, metrics, and private dashboard activity without deploying the business fleet.
+- [x] (2026-08-02 03:28Z) Merge this consumer contract note through a separate documentation PR.
+- [x] (2026-08-02 05:04Z) Perform the approved DGX-only cutover from the Control Plane repository.
+- [x] (2026-08-02 05:04Z) Verify business health, model listing, one real inference, metrics, and private dashboard activity without deploying the business fleet.
+- [x] (2026-08-02 06:46Z) Merge the backward-compatible safe handoff implementation through Control Plane PR 29 and successful CI.
+- [ ] Verify expiry and business preemption on the DGX while keeping the business fleet unchanged.
 
 ## Surprises & Discoveries
 
@@ -51,6 +54,13 @@ non-null last-business-use time after an authenticated heavy request.
   Evidence: `infrastructure/ansible/inventory.yml` and the existing runbooks
   consistently use the same endpoint. The Control Plane proxy forwards these
   routes unchanged and tracks only authenticated heavy POST requests.
+- Observation: the business runtime controller accepts every successful 2xx
+  `/start` response and then polls readiness for up to three minutes, while the
+  individual start request has a 60-second timeout.
+  Evidence: `http-on-demand-local-llm-runtime.controller.ts` checks `res.ok`
+  before entering its existing readiness loop. The Control Plane can therefore
+  acknowledge a private-to-business handoff with HTTP 202 without a consumer
+  code or configuration change.
 
 ## Decision Log
 
@@ -66,13 +76,22 @@ non-null last-business-use time after an authenticated heavy request.
   before effective changes are on `origin/main` and production evidence is
   captured separately.
   Date/Author: 2026-08-02 / Codex.
+- Decision: preserve the existing business runtime caller unchanged when a
+  private Lease is preempted.
+  Rationale: Control Plane PR 29 returns HTTP 202 for `/start`, prevents the
+  legacy gateway from starting business compute during the fixed countdown,
+  and restores business inference before the existing readiness poll succeeds.
+  Direct inference receives temporary HTTP 503 with `Retry-After` instead of
+  competing with the private GPU workload.
+  Date/Author: 2026-08-02 / Codex with operator approval.
 
 ## Outcomes & Retrospective
 
-The consumer audit found no required business application change. The only
-remaining production action is the DGX-local route transition owned by
-`DGXSparkControlPlane`, followed by compatibility and activity checks. Normal
-fleet deployment remains explicitly out of scope.
+The consumer audit found no required business application change. The DGX-local
+route transition and real business-activity verification are complete. The
+remaining production actions are the expiry and business-preemption drills
+owned by `DGXSparkControlPlane`. Normal fleet deployment remains explicitly out
+of scope.
 
 ## Context and Orientation
 
@@ -82,10 +101,13 @@ the verified DGX Tailscale URL on port `38081`. Text and vision inference send
 the public consumer contracts.
 
 The separate repository `denkoushi/DGXSparkControlPlane` owns the DGX Arbiter.
-Its phase 06 implementation moves the old gateway process to
-`127.0.0.1:38080` and runs an Arbiter-aware proxy on the same external
-Tailscale address and port `38081`. This repository neither installs that proxy
-nor changes its state.
+Its phase 06 implementation binds the old gateway process to
+`127.0.0.1:38081` and runs an Arbiter-aware proxy on the same port at the
+verified DGX Tailscale address. Distinct local addresses allow both listeners
+to retain port `38081`. The phase 08 implementation acknowledges business
+`/start` with HTTP 202 during private preemption and starts business inference
+only after the private workload has stopped. This repository neither installs
+those components nor changes their state.
 
 ## Plan of Work
 
@@ -121,8 +143,9 @@ explicit `--limit dgx-spark` guard.
 
 Acceptance requires the documentation PR and Control Plane PR to be present in
 their respective `origin/main` branches. On the DGX, the legacy gateway must be
-loopback-only on `38080` and the proxy must own the verified Tailscale listener
-on `38081`. Existing business probes must return their prior success status.
+loopback-only on `127.0.0.1:38081` and the proxy must own the verified Tailscale
+listener on `38081`. Existing business probes must return their prior success
+status.
 
 One real authenticated inference must cause the private dashboard's business
 activity timestamp to become non-null. Health, model-list, and embedding probes
@@ -138,9 +161,10 @@ not need a compensating deployment.
 
 ## Artifacts and Notes
 
-The backward-compatible producer change is Control Plane PR 14. It passed its
-CI before merge. The live token comparison was performed on the DGX and exposed
-only principal counts and matches, never token values.
+The initial backward-compatible producer change and safe handoff are recorded
+by Control Plane PR 14 and PR 29. Both passed CI before merge. The live token
+comparison was performed on the DGX and exposed only principal counts and
+matches, never token values.
 
 ## Interfaces and Dependencies
 
@@ -152,3 +176,7 @@ or Raspberry Pi service is introduced in this repository.
 
 Revision note (2026-08-02): created to coordinate the producer-first Control
 Plane route change while proving that the business consumer requires no deploy.
+
+Revision note (2026-08-02): recorded the same-port production topology and the
+HTTP 202 safe handoff contract. No consumer code, inventory, secret, or fleet
+deployment changed.
