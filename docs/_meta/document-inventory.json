@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 605,
-    "totalLines": 168660,
-    "totalBytes": 12665326,
+    "totalLines": 168683,
+    "totalBytes": 12667690,
     "withFrontmatter": 273,
     "withStatus": 129,
     "sourceOfTruthDeclared": 91,
@@ -34366,8 +34366,8 @@
     },
     {
       "path": "docs/plans/pi5-blue-green-boundaries-execplan.md",
-      "lineCount": 157,
-      "byteSize": 15454,
+      "lineCount": 180,
+      "byteSize": 17818,
       "hasFrontmatter": false,
       "title": "Decompose the Pi 5 Blue/Green deploy script into enforced modules",
       "status": null,
