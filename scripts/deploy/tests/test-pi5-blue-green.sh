@@ -3,6 +3,14 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 SCRIPT="$ROOT/scripts/deploy/pi5-blue-green.sh"
+MODULE_DIR="$ROOT/scripts/deploy/lib/pi5-blue-green"
+SOURCE_FILES=("$SCRIPT")
+if [[ -d "$MODULE_DIR" ]]; then
+  while IFS= read -r module; do SOURCE_FILES+=("$module"); done < <(
+    find "$MODULE_DIR" -type f -name '*.sh' | sort
+  )
+fi
+ALL_SOURCE="$(cat "${SOURCE_FILES[@]}")"
 TMP="$(mktemp -d)"
 DOCKER_ENV_STUB="$ROOT/infrastructure/docker/.env"
 CREATED_DOCKER_ENV_STUB=0
@@ -16,6 +24,33 @@ trap cleanup EXIT
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 assert_contains() { grep -Fq "$2" <<<"$1" || fail "expected '$2' in output: $1"; }
+extract_function() {
+  python3 - "$1" "${SOURCE_FILES[@]}" <<'PY'
+import pathlib
+import re
+import sys
+
+target = sys.argv[1]
+matches = []
+function_start = re.compile(r'^([A-Za-z_][A-Za-z0-9_]*)\(\) \{$')
+for raw_path in sys.argv[2:]:
+    path = pathlib.Path(raw_path)
+    lines = path.read_text(encoding='utf-8').splitlines(keepends=True)
+    for index, line in enumerate(lines):
+        match = function_start.match(line.rstrip('\n'))
+        if not match or match.group(1) != target:
+            continue
+        end = len(lines)
+        for candidate in range(index + 1, len(lines)):
+            if function_start.match(lines[candidate].rstrip('\n')):
+                end = candidate
+                break
+        matches.append(''.join(lines[index:end]).rstrip() + '\n')
+if len(matches) != 1:
+    raise SystemExit(f'expected exactly one definition for {target}, found {len(matches)}')
+sys.stdout.write(matches[0])
+PY
+}
 state() {
   python3 - "$1" "$2" <<'PY'
 import json, sys
@@ -47,6 +82,21 @@ common=(
   PI5_BLUE_GREEN_STABLE_SECONDS=1
   PI5_BLUE_GREEN_ALERTS_DIR="$TMP/alerts"
 )
+
+# Lock the public CLI surface before functions move out of the entrypoint.
+help_output="$("$SCRIPT" status --help)"
+assert_contains "$help_output" 'Usage: pi5-blue-green.sh <status|bootstrap|prepare|switch|rollback|cleanup|reconcile|monitor>'
+if unknown_output="$("$SCRIPT" unknown-command 2>&1)"; then
+  fail 'unknown command was accepted'
+else
+  [[ "$?" -eq 2 ]] || fail 'unknown command did not return exit code 2'
+fi
+assert_contains "$unknown_output" 'Usage: pi5-blue-green.sh'
+UNINITIALIZED_STATE="$TMP/not-initialized.json"
+uninitialized_status="$(env "${common[@]}" PI5_BLUE_GREEN_STATE_FILE="$UNINITIALIZED_STATE" "$SCRIPT" status)"
+[[ "$uninitialized_status" == '{"state":"not-initialized"}' ]] \
+  || fail "uninitialized status contract changed: $uninitialized_status"
+[[ ! -e "$UNINITIALIZED_STATE" ]] || fail 'status created an uninitialized state file'
 
 STATE1="$TMP/state-one.json"
 out="$(env "${common[@]}" PI5_BLUE_GREEN_STATE_FILE="$STATE1" "$SCRIPT" bootstrap --confirm-bootstrap --allow-legacy-scheduler-handoff --api-image "$OLD_API" --web-image "$OLD_WEB")"
@@ -533,8 +583,8 @@ assert_contains "$out" "legacy API/Web restored after incomplete bootstrap"
 # Recovery authority must precede the first forward migration and inactive
 # slot start for both bootstrap and normal prepare. This order is the SIGKILL
 # takeover boundary; traps cover catchable failures after the durable save.
-bootstrap_body="$(sed -n '/^bootstrap() {/,/^prepare() {/p' "$SCRIPT" | sed '$d')"
-prepare_body="$(sed -n '/^prepare() {/,/^rollback_internal() {/p' "$SCRIPT" | sed '$d')"
+bootstrap_body="$(extract_function bootstrap)"
+prepare_body="$(extract_function prepare)"
 bootstrap_state_line="$(grep -n 'state_save bootstrap-preparing' <<<"$bootstrap_body" | cut -d: -f1)"
 bootstrap_arm_line="$(grep -nE '^[[:space:]]*arm_bootstrap_recovery$' <<<"$bootstrap_body" | cut -d: -f1)"
 bootstrap_migration_line="$(grep -n 'migration_apply_and_verify blue' <<<"$bootstrap_body" | cut -d: -f1)"
@@ -556,7 +606,10 @@ prepare_slot_line="$(grep -n 'slot_up "$candidate" standby' <<<"$prepare_body" |
 # exact tag+image-ID ownership. Container-referenced image IDs fail closed.
 (
   set -euo pipefail
-  eval "$(sed -n '/^persist_current_state() {/,/^seal_active_slot_image_ids() {/p' "$SCRIPT" | sed '$d')"
+  eval "$(extract_function persist_current_state)"
+  eval "$(extract_function run_scoped_image_tag)"
+  eval "$(extract_function retired_image_absent)"
+  eval "$(extract_function cleanup_retired_images)"
   DRY_RUN=0
   retired_sha="$(printf 'a%.0s' {1..40})"
   RETIRED_API_IMAGE="registry/api:${retired_sha}-0123456789ab-$(printf 'b%.0s' {1..64})"
@@ -617,12 +670,12 @@ prepare_slot_line="$(grep -n 'slot_up "$candidate" standby' <<<"$prepare_body" |
 
 STATE_REWRITE="$TMP/state-rewrite.json"
 env "${common[@]}" PI5_BLUE_GREEN_STATE_FILE="$STATE_REWRITE" "$SCRIPT" bootstrap --confirm-bootstrap --allow-legacy-scheduler-handoff --api-image "$OLD_API" --web-image "$OLD_WEB" >/dev/null
-grep -Fq 'refusing compose up (possible rewritten state)' "$SCRIPT" || fail "reconcile identity guard is missing"
-grep -Fq 'legacy_compose_restore' "$SCRIPT" || fail "legacy restore does not use captured images"
-grep -Fq 'ensure_gateway_maintenance' "$SCRIPT" || fail "bootstrap failure path lacks gateway maintenance retention"
-grep -Fq 'spawn_stability_monitor' "$SCRIPT" || fail "reboot/reconcile monitor resume helper is missing"
-switch_body="$(sed -n '/^switch_candidate() {/,/^rollback() {/p' "$SCRIPT")"
-monitor_body="$(sed -n '/^monitor() {/,/^spawn_stability_monitor() {/p' "$SCRIPT")"
+grep -Fq 'refusing compose up (possible rewritten state)' <<<"$ALL_SOURCE" || fail "reconcile identity guard is missing"
+grep -Fq 'legacy_compose_restore' <<<"$ALL_SOURCE" || fail "legacy restore does not use captured images"
+grep -Fq 'ensure_gateway_maintenance' <<<"$ALL_SOURCE" || fail "bootstrap failure path lacks gateway maintenance retention"
+grep -Fq 'spawn_stability_monitor' <<<"$ALL_SOURCE" || fail "reboot/reconcile monitor resume helper is missing"
+switch_body="$(extract_function switch_candidate)"
+monitor_body="$(extract_function monitor)"
 if grep -Fq 'rollback_internal' <<<"$switch_body"; then
   fail "switch executor still decides rollback internally"
 fi
@@ -631,31 +684,31 @@ if grep -Fq 'rollback_internal' <<<"$monitor_body"; then
 fi
 grep -Fq 'switchback-required' <<<"$switch_body$monitor_body" \
   || fail "executor failures do not persist coordinator switchback evidence"
-grep -Fq 'coordinator switchback is required before cleanup' "$SCRIPT" \
+grep -Fq 'coordinator switchback is required before cleanup' <<<"$ALL_SOURCE" \
   || fail "cleanup can finalize a failed stability window without coordinator switchback"
-grep -Fq 'reconcile will not finalize an unverified candidate' "$SCRIPT" \
+grep -Fq 'reconcile will not finalize an unverified candidate' <<<"$ALL_SOURCE" \
   || fail "reconcile can finalize an unverified candidate after reboot"
-grep -Fq 'verify_slot_runtime_config "$slot" >/dev/null && \' "$SCRIPT" \
+grep -Fq 'verify_slot_runtime_config "$slot" >/dev/null && \' <<<"$ALL_SOURCE" \
   || fail "slot readiness does not use the canonical runtime configuration verifier"
-grep -Fq 'runtime_config_digest="$(verify_slot_runtime_config "$ACTIVE_SLOT")"' "$SCRIPT" \
+grep -Fq 'runtime_config_digest="$(verify_slot_runtime_config "$ACTIVE_SLOT")"' <<<"$ALL_SOURCE" \
   || fail "status does not reuse the canonical runtime configuration verifier"
-grep -Fq 'slot_structural_ready "$ACTIVE_SLOT" standby' "$SCRIPT" \
+grep -Fq 'slot_structural_ready "$ACTIVE_SLOT" standby' <<<"$ALL_SOURCE" \
   || fail "prior-release cleanup lacks a structural-only readiness boundary"
-grep -Fq 'verify_migration_plan' "$SCRIPT" || fail "migration plan verification is missing"
-grep -Fq 'verify-migration' "$SCRIPT" || fail "sealed migration evidence is not verified"
-grep -Fq 'verify-resource' "$SCRIPT" || fail "sealed resource evidence is not verified"
-grep -Fq "'imageIds': {'api': maybe(blue_api_id), 'web': maybe(blue_web_id)}" "$SCRIPT" \
+grep -Fq 'verify_migration_plan' <<<"$ALL_SOURCE" || fail "migration plan verification is missing"
+grep -Fq 'verify-migration' <<<"$ALL_SOURCE" || fail "sealed migration evidence is not verified"
+grep -Fq 'verify-resource' <<<"$ALL_SOURCE" || fail "sealed resource evidence is not verified"
+grep -Fq "'imageIds': {'api': maybe(blue_api_id), 'web': maybe(blue_web_id)}" <<<"$ALL_SOURCE" \
   || fail "Blue/Green state does not persist sealed slot image IDs"
-grep -Fq 'verify_durable_release_evidence "$candidate"' "$SCRIPT" \
+grep -Fq 'verify_durable_release_evidence "$candidate"' <<<"$ALL_SOURCE" \
   || fail "switch does not revalidate run-scoped candidate evidence"
-grep -Fq 'migration_gate_verify_applied_ledger' "$SCRIPT" \
+grep -Fq 'migration_gate_verify_applied_ledger' <<<"$ALL_SOURCE" \
   || fail "migration apply does not revalidate the complete post-apply ledger"
-grep -Fq 'math.isfinite(value)' "$SCRIPT" \
+grep -Fq 'math.isfinite(value)' <<<"$ALL_SOURCE" \
   || fail "stability error-rate parsing does not reject non-finite values"
-grep -Fq '0 <= value <= 1' "$SCRIPT" \
+grep -Fq '0 <= value <= 1' <<<"$ALL_SOURCE" \
   || fail "stability error-rate parsing does not enforce a probability range"
 (
-  eval "$(sed -n '/^monitor_checks() {/,/^}/p' "$SCRIPT")"
+  eval "$(extract_function monitor_checks)"
   STRUCTURAL_ONLY=0
   MONITOR_STRUCTURAL_SAMPLE_INTERVAL=15
   ERROR_RATE_URL=
@@ -689,40 +742,40 @@ grep -Fq '0 <= value <= 1' "$SCRIPT" \
   [[ "$STRUCTURAL_CHECKS" -eq 6 && "$RUNTIME_CHECKS" -eq 2 && "$EXTERNAL_CHECKS" -eq 4 ]] \
     || fail "final stability sample did not re-prove structure"
 )
-if grep -Fq 'migration_gate_validate' "$SCRIPT"; then
+if grep -Fq 'migration_gate_validate' <<<"$ALL_SOURCE"; then
   fail "Blue/Green still owns a duplicate Expand-only migration gate"
 fi
-grep -Fq 'finished_at IS NOT NULL AND rolled_back_at IS NULL' "$SCRIPT" \
+grep -Fq 'finished_at IS NOT NULL AND rolled_back_at IS NULL' <<<"$ALL_SOURCE" \
   || fail "migration recovery guard does not restrict checksums to completed, non-rolled-back rows"
 grep -Fq 'validate-expand-only-migrations.py' "$ROOT/scripts/deploy/lib/migration-gate.sh" \
   || fail "migration recovery guard does not use the shared validator"
-grep -Fq "compose_current run --rm --no-deps \"api-\${candidate}\" sh -lc './node_modules/.bin/prisma migrate status'" "$SCRIPT" \
+grep -Fq "compose_current run --rm --no-deps \"api-\${candidate}\" sh -lc './node_modules/.bin/prisma migrate status'" <<<"$ALL_SOURCE" \
   || fail "candidate migration command does not bypass the API default Node command"
-[[ "$(grep -Fc "compose_current run --rm --no-deps \"api-\${candidate}\" sh -lc './node_modules/.bin/prisma migrate status'" "$SCRIPT")" -eq 1 ]] \
+[[ "$(grep -Fc "compose_current run --rm --no-deps \"api-\${candidate}\" sh -lc './node_modules/.bin/prisma migrate status'" <<<"$ALL_SOURCE")" -eq 1 ]] \
   || fail "candidate migration flow must run status only after migrate deploy"
-grep -Fq 'legacy_caddy_config_path()' "$SCRIPT" \
+grep -Fq 'legacy_caddy_config_path()' <<<"$ALL_SOURCE" \
   || fail "legacy active Caddyfile detection is missing"
-grep -Fq '/srv/Caddyfile.local' "$SCRIPT" \
+grep -Fq '/srv/Caddyfile.local' <<<"$ALL_SOURCE" \
   || fail "legacy local-TLS Caddyfile path is not handled"
-grep -Fq '/srv/Caddyfile.production' "$SCRIPT" \
+grep -Fq '/srv/Caddyfile.production' <<<"$ALL_SOURCE" \
   || fail "legacy production Caddyfile path is not handled"
-grep -Fq 'LEGACY_MAINTENANCE_LOCAL_CONFIG' "$SCRIPT" \
+grep -Fq 'LEGACY_MAINTENANCE_LOCAL_CONFIG' <<<"$ALL_SOURCE" \
   || fail "legacy local-TLS maintenance configuration is not selected"
-grep -Fq "'caddyConfigPath': maybe(legacy_caddy_path)" "$SCRIPT" \
+grep -Fq "'caddyConfigPath': maybe(legacy_caddy_path)" <<<"$ALL_SOURCE" \
   || fail "legacy active Caddyfile path is not durable state"
-grep -Fq 'caddy reload --config "$caddy_path" --adapter caddyfile' "$SCRIPT" \
+grep -Fq 'caddy reload --config "$caddy_path" --adapter caddyfile' <<<"$ALL_SOURCE" \
   || fail "legacy Caddy reload does not use the captured active path"
-grep -Fq 'gateway_smoke_url()' "$SCRIPT" \
+grep -Fq 'gateway_smoke_url()' <<<"$ALL_SOURCE" \
   || fail "gateway startup smoke retry helper is missing"
-grep -Fq 'PI5_BLUE_GREEN_GATEWAY_READY_RETRIES' "$SCRIPT" \
+grep -Fq 'PI5_BLUE_GREEN_GATEWAY_READY_RETRIES' <<<"$ALL_SOURCE" \
   || fail "gateway startup retry budget is not configurable"
-grep -Fq 'GATEWAY_READY_RETRIES="${PI5_BLUE_GREEN_GATEWAY_READY_RETRIES:-60}"' "$SCRIPT" \
+grep -Fq 'GATEWAY_READY_RETRIES="${PI5_BLUE_GREEN_GATEWAY_READY_RETRIES:-60}"' <<<"$ALL_SOURCE" \
   || fail "gateway startup retry budget does not cover Pi5 port handoff"
-grep -Fq 'for attempt in $(seq 1 "$GATEWAY_READY_RETRIES")' "$SCRIPT" \
+grep -Fq 'for attempt in $(seq 1 "$GATEWAY_READY_RETRIES")' <<<"$ALL_SOURCE" \
   || fail "gateway startup smoke does not retry before rollback"
-grep -Fq 'docker rm "$LEGACY_WEB_ID"' "$SCRIPT" \
+grep -Fq 'docker rm "$LEGACY_WEB_ID"' <<<"$ALL_SOURCE" \
   || fail "legacy Web container is not removed before gateway port handoff"
-grep -Fq 'compose_current up -d --force-recreate gateway' "$SCRIPT" \
+grep -Fq 'compose_current up -d --force-recreate gateway' <<<"$ALL_SOURCE" \
   || fail "gateway restart can reuse a stale port publication container"
 
 PROD_ENV="$TMP/production.env"
@@ -778,7 +831,7 @@ for caddy_file in \
   grep -Fq 'root * /srv/phase2-maintenance' "$ROOT/$caddy_file" || fail "maintenance asset root is not image-backed in $caddy_file"
 done
 grep -Fq 'COPY infrastructure/docker/maintenance.html ./phase2-maintenance/index.html' "$ROOT/infrastructure/docker/Dockerfile.web" || fail "Web image does not contain the maintenance asset"
-grep -Fq 'restore_legacy_after_phase3_stop' "$SCRIPT" || fail "legacy restore does not release gateway ports first"
+grep -Fq 'restore_legacy_after_phase3_stop' <<<"$ALL_SOURCE" || fail "legacy restore does not release gateway ports first"
 grep -Fq 'pi5-phase3-legacy-guard.sh' "$ROOT/infrastructure/ansible/roles/server/tasks/main.yml" || fail "server role is missing the Phase 3 legacy guard"
 grep -Fq 'name: pi5-blue-green-reconcile.service' "$ROOT/infrastructure/ansible/roles/server/tasks/main.yml" || fail "boot reconcile service is not enabled"
 
@@ -804,15 +857,15 @@ for block in blocks:
 PY
 done
 
-grep -Fq 'ansible-update-bluegreen-' "$SCRIPT" || fail "Blue/Green alerts do not use the deploy-alert routing prefix"
-grep -Fq "'acknowledged': False" "$SCRIPT" || fail "Blue/Green alert payload is missing acknowledgement state"
+grep -Fq 'ansible-update-bluegreen-' <<<"$ALL_SOURCE" || fail "Blue/Green alerts do not use the deploy-alert routing prefix"
+grep -Fq "'acknowledged': False" <<<"$ALL_SOURCE" || fail "Blue/Green alert payload is missing acknowledgement state"
 grep -Fq 'pi5-phase3-legacy-guard.sh' "$ROOT/scripts/deploy/pi5-image-deploy.sh" || fail "Phase 2 script is missing the Phase 3 legacy guard"
 
 VALIDATOR="$ROOT/scripts/deploy/validate-expand-only-migrations.py"
 MIGRATION_GATE="$ROOT/scripts/deploy/lib/migration-gate.sh"
 grep -Fq 'load_candidate_migrations' "$VALIDATOR" \
   || fail "migration validator does not enumerate the candidate commit ledger"
-grep -Fq 'migration_applied_checksums "$candidate" >"$ledger"' "$SCRIPT" \
+grep -Fq 'migration_applied_checksums "$candidate" >"$ledger"' <<<"$ALL_SOURCE" \
   || fail "Blue/Green does not recheck the planned migration ledger before apply"
 
 GATE_REPO="$TMP/migration-gate-repo"
@@ -893,7 +946,10 @@ fi
 # completes without wedging.
 (
   set -euo pipefail
-  eval "$(sed -n '/^legacy_container_absent() {/,/^# Persist the cleanup transaction/p' "$SCRIPT" | sed '$d')"
+  eval "$(extract_function legacy_container_absent)"
+  eval "$(extract_function persist_legacy_cleanup_progress)"
+  eval "$(extract_function remove_legacy_container_once)"
+  eval "$(extract_function cleanup_legacy)"
   CONTAINERS="$TMP/legacy-cleanup-containers"
   SAVES="$TMP/legacy-cleanup-saves"
   mkdir -p "$CONTAINERS"
