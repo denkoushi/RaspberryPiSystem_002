@@ -73,6 +73,7 @@ bash -n scripts/server/deploy.sh
 bash -n scripts/server/deploy-detached.sh
 bash scripts/deploy/tests/test-single-deploy-entrypoint.sh
 bash -n scripts/deploy/pi5-blue-green.sh
+bash -n scripts/deploy/lib/pi5-blue-green/*.sh
 bash -n scripts/deploy/pi5-candidate-build.sh
 bash scripts/deploy/tests/test-verify-phase12-real.sh
 bash scripts/deploy/tests/test-pi5-image-deploy.sh

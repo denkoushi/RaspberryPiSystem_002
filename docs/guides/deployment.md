@@ -2,7 +2,7 @@
 id: deployment-guide
 title: 標準デプロイ手順
 status: active
-last_verified: 2026-08-01
+last_verified: 2026-08-03
 ---
 
 # デプロイメントガイド
@@ -294,6 +294,10 @@ Pi5上のchecksum・展開・disk処理を調べる。転送量が増え続け�
 - legacy Composeや個別container操作
 
 これらはオーケストレーター配下の内部実装または隔離テスト用であり、公開入口ではない。
+`pi5-blue-green.sh`の内部ロジックは
+`scripts/deploy/lib/pi5-blue-green/`のsource専用モジュールへ分割されているが、
+各モジュールも直接実行・sourceしない。entrypointだけが固定順で読み込み、
+排他ロックとcommand dispatchを適用する。
 
 ## 過去記録
 

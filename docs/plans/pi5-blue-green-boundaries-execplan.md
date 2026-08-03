@@ -22,12 +22,12 @@ The change is observable without contacting production: the existing Blue/Green,
 
 - [x] (2026-08-03 13:00+09:00) Confirmed clean synchronized `main` at `f056de7624cd25f8f7ccb17044f9aafb597a7adb` and created `refactor/pi5-blue-green-boundaries`.
 - [x] (2026-08-03 13:00+09:00) Established the pre-change baseline: focused Blue/Green and maintenance contracts passed, coordinator backend passed 12 tests, and the Node 20 standard deploy-contract suite passed 962 Python tests plus all isolated PostgreSQL and Ansible checks.
-- [ ] Add entrypoint/module-aware behavior characterization and commit it with this ExecPlan.
-- [ ] Extract policy and state functions, then run focused contracts.
-- [ ] Extract image/evidence and runtime functions, then run focused contracts.
-- [ ] Extract legacy and migration functions, then run focused contracts.
-- [ ] Extract lifecycle, cleanup/reconcile, and status functions, then run focused contracts.
-- [ ] Add the structural contract to the standard deploy-contract runner and update documentation.
+- [x] (2026-08-03 20:46+09:00) Added entrypoint/module-aware behavior characterization and committed it with this ExecPlan as `9a9c593e`.
+- [x] (2026-08-03 20:51+09:00) Extracted policy and state functions in `aa0d798e`; focused lifecycle, maintenance recovery, and 12 coordinator tests passed.
+- [x] (2026-08-03 20:53+09:00) Extracted image/evidence and runtime functions in `717e8f25`; focused contracts passed.
+- [x] (2026-08-03 20:55+09:00) Extracted legacy and migration functions in `84f883d2`; focused contracts passed.
+- [x] (2026-08-03 20:58+09:00) Extracted lifecycle, cleanup/reconcile, and status functions in `3533c0ea`; the executable entrypoint became 223 lines and focused contracts passed.
+- [x] (2026-08-03 21:01+09:00) Added five structural contracts, module syntax checks in the standard runner, and deployment-guide documentation; focused tests and docs audit passed.
 - [ ] Run final Node 20 deploy contracts, verify disposable Docker cleanup, update this plan, and leave the local branch ready for separate integration approval.
 
 ## Surprises & Discoveries
@@ -37,6 +37,9 @@ The change is observable without contacting production: the existing Blue/Green,
 
 - Observation: Several focused contracts locate function bodies by line ranges in the monolith.
   Evidence: `scripts/deploy/tests/test-pi5-blue-green.sh` extracts `bootstrap`, `prepare`, persistence, monitoring, and cleanup ranges directly from `scripts/deploy/pi5-blue-green.sh`; those tests must become aware of the fixed module set before functions move.
+
+- Observation: No existing function exceeded the 120-line limit once function endings were measured while ignoring embedded Python heredocs.
+  Evidence: The largest resulting function is `state_assert` at 106 physical lines; the entrypoint helper maximum is below the same limit.
 
 ## Decision Log
 
@@ -52,9 +55,13 @@ The change is observable without contacting production: the existing Blue/Green,
   Rationale: The standard contract suite exercises orchestration with mocks and uniquely named isolated PostgreSQL resources; production verification belongs to a later, separately approved standard rollout.
   Date/Author: 2026-08-03 / Codex
 
+- Decision: Keep the existing embedded production safety matrix as comments in `policy.sh`.
+  Rationale: It is review documentation rather than executable dispatch behavior, and moving it out of the entrypoint reduces the entrypoint without changing or discarding the safety checklist.
+  Date/Author: 2026-08-03 / Codex
+
 ## Outcomes & Retrospective
 
-Implementation is in progress. The expected outcome is a small dispatch entrypoint, nine responsibility modules, unchanged deployment behavior, and automated structural enforcement. Push, PR, merge, and production integration remain pending separate approval.
+The mechanical decomposition and focused verification are complete. The entrypoint is 223 lines and all nine modules are between 90 and 333 lines. Five new structure tests enforce module inventory and order, file and function limits, unique definitions, source-only behavior, and supported caller paths. The full standard deployment contract remains the final local acceptance step. Push, PR, merge, and production integration remain pending separate approval.
 
 ## Context and Orientation
 
@@ -121,3 +128,5 @@ The executable interface remains `scripts/deploy/pi5-blue-green.sh` with public 
 The implementation may use Bash, Python's standard library for structural testing, the existing Docker-backed aggregate test, and existing repository helpers only. It must not add packages, modify Compose or Ansible data, or change the callers in `rolling-release.py`, systemd reconciliation, or migration evidence collection.
 
 Revision note (2026-08-03): Initial plan created from the clean synchronized baseline after the complete local deployment contract passed with Node 20.
+
+Revision note (2026-08-03 21:01+09:00): Updated after all nine modules, focused contracts, structural enforcement, and documentation were completed; the full aggregate remains pending.
