@@ -84,5 +84,84 @@ module.exports = {
         ]
       }
     ]
-  }
+  },
+  overrides: [
+    {
+      files: [
+        'src/pages/kiosk/KioskAssemblyTemplateEditorPage.tsx',
+        'src/features/assembly/KioskAssemblyTemplateEditorFeature.tsx'
+      ],
+      rules: {
+        'max-lines': ['error', { max: 180, skipBlankLines: true, skipComments: true }],
+        'no-restricted-imports': [
+          'error',
+          {
+            patterns: [
+              {
+                group: ['**/api/client'],
+                message: '組立テンプレート編集のルート層からAPI clientを直接参照しないでください。'
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      files: ['src/features/assembly/template-editor/AssemblyTemplateEditor*.tsx'],
+      rules: {
+        'max-lines': ['error', { max: 400, skipBlankLines: true, skipComments: true }],
+        'max-lines-per-function': [
+          'error',
+          { max: 220, skipBlankLines: true, skipComments: true }
+        ],
+        'no-restricted-imports': [
+          'error',
+          {
+            paths: [
+              {
+                name: 'react-router-dom',
+                message: '表示部品はルーターに依存せず、ルート層からナビゲーションを受け取ってください。'
+              }
+            ],
+            patterns: [
+              {
+                group: ['../../../api/*', '../../../pages/*'],
+                message: '表示部品からAPI clientまたはpages層への依存は禁止です。'
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      files: [
+        'src/features/assembly/template-editor/useAssemblyTemplate*.ts',
+        'src/features/assembly/template-editor/buildAssemblyTemplateSaveInput.ts'
+      ],
+      rules: {
+        'max-lines': ['error', { max: 500, skipBlankLines: true, skipComments: true }],
+        'max-lines-per-function': [
+          'error',
+          { max: 500, skipBlankLines: true, skipComments: true }
+        ],
+        'no-restricted-imports': [
+          'error',
+          {
+            paths: [
+              {
+                name: 'react-router-dom',
+                message: '編集ロジックはルーターに依存しないでください。'
+              }
+            ],
+            patterns: [
+              {
+                group: ['../../../pages/*'],
+                message: 'template-editorからpages層への逆依存は禁止です。'
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 };
