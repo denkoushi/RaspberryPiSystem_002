@@ -45,6 +45,7 @@ If `EXEC_PLAN.md` must be touched, keep the entry short and limited to current s
 - Active inspection-drawing OCR candidate improvement: `docs/plans/inspection-drawing-ocr-local-candidates.md`
 - Active inspection-drawing OCR RapidOCR local secondary: `docs/plans/inspection-drawing-ocr-rapidocr-local.md`
 - Active self-inspection autosave / callout / template create lock: `docs/plans/self-inspection-autosave-callout-template-lock.md`
+- Active SelfInspectionService use-case boundary refactor: `docs/plans/self-inspection-use-case-boundaries-execplan.md`
 - Active generated kiosk SOP maintenance system (production-route capture, committed images, fail-closed CI): `docs/plans/kiosk-sop-generated-maintenance-execplan.md`
 - Active kiosk SOP leader-geometry and Full HD presentation correction: `docs/plans/kiosk-sop-visual-layout-correction-execplan.md`
 - Active kiosk SOP semantic target correction (10 sheets / 45 DOM anchors): `docs/plans/kiosk-sop-semantic-target-correction-execplan.md`
