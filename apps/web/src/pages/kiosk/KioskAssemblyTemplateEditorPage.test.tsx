@@ -287,6 +287,25 @@ describe('KioskAssemblyTemplateEditorPage', () => {
     );
   });
 
+  it('preserves the authentication failure message and keeps the editor locked', async () => {
+    mocks.verifyPassword.mockResolvedValue({ success: false });
+    renderRoute('/kiosk/assembly/templates/new');
+
+    await authenticate();
+
+    expect(await screen.findByText('パスワードが違います。')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('パスワード')).toHaveValue('2520');
+    expect(screen.queryByTestId('assembly-template-editor-header')).not.toBeInTheDocument();
+  });
+
+  it('preserves the editor data load failure message without exposing the workspace', async () => {
+    mocks.listDocuments.mockRejectedValue(new Error('load failed'));
+    renderRoute('/kiosk/assembly/templates/new');
+
+    expect(await screen.findByText('load failed')).toBeInTheDocument();
+    expect(screen.queryByTestId('assembly-unified-editor-workspace')).not.toBeInTheDocument();
+  });
+
   it('starts blank, does not select the first document, and keeps save disabled after only a machine name is selected', async () => {
     renderRoute('/kiosk/assembly/templates/new');
     await authenticate();
