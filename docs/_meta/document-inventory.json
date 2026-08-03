@@ -15,9 +15,9 @@
     ]
   },
   "summary": {
-    "documentCount": 602,
-    "totalLines": 168171,
-    "totalBytes": 12618624,
+    "documentCount": 604,
+    "totalLines": 168472,
+    "totalBytes": 12646491,
     "withFrontmatter": 273,
     "withStatus": 129,
     "sourceOfTruthDeclared": 91,
@@ -5898,8 +5898,8 @@
     },
     {
       "path": "docs/AI_START_HERE.md",
-      "lineCount": 124,
-      "byteSize": 7826,
+      "lineCount": 125,
+      "byteSize": 7946,
       "hasFrontmatter": true,
       "title": "AI Start Here",
       "status": null,
@@ -33252,6 +33252,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/kiosk-assembly-template-editor-boundaries-execplan.md",
+      "lineCount": 101,
+      "byteSize": 8514,
+      "hasFrontmatter": false,
+      "title": "Decompose KioskAssemblyTemplateEditorPage into enforced feature boundaries",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/kiosk-assembly-template-editor-density-execplan.md",
       "lineCount": 191,
       "byteSize": 21074,
@@ -35387,6 +35402,21 @@
       "source_of_truth": null,
       "localLinks": [],
       "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/self-inspection-use-case-boundaries-execplan.md",
+      "lineCount": 199,
+      "byteSize": 19233,
+      "hasFrontmatter": false,
+      "title": "Decompose SelfInspectionService into enforced use-case boundaries",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
