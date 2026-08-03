@@ -93,6 +93,11 @@ when the repository implementation is ready.
   identity, registration credentials, due-management access, database
   credentials, and administrative network policy while preserving explicit
   development/test fixtures.
+- [x] (2026-08-04 08:06+09:00) Completed the first bootstrap subset: production
+  seed now requires explicit strong administrator credentials and omits
+  synthetic clients; production Web builds no longer synthesize a terminal
+  key; client registration requires explicit authentication, verifies TLS by
+  default, and resolves encrypted inventory through `ansible-inventory`.
 - [ ] Prepare distinct PostgreSQL application and migration roles and prove
   least-privilege behavior in an isolated PostgreSQL 15 instance.
 - [ ] Replace the API host SSH-directory mount with one dedicated read-only
@@ -146,6 +151,13 @@ when the repository implementation is ready.
   only when `ProductionScheduleAccessPasswordConfig` has no row. Deployment
   must therefore prove the shared hashed row exists before code that removes
   the fallback can be activated.
+
+- Observation: after Vault migration, `scripts/register-clients.sh` could no
+  longer read terminal keys correctly because it parsed raw YAML and therefore
+  saw unresolved Jinja references.
+  Evidence: the migrated inventory contains only `vault_*` references. The
+  corrected script consumes `ansible-inventory --list` in memory and stops if
+  decryption or resolution fails; it does not fall back to example devices.
 
 - Observation: the API's complete host SSH directory serves two unrelated
   purposes: Ansible-based terminal backups and configuration backup coverage.
@@ -206,6 +218,13 @@ when the repository implementation is ready.
   Rationale: merging code is reversible, but deploying it without the row
   would lock operators out of assembly, self-inspection, and due-management
   functions that share this credential.
+  Date/Author: 2026-08-04 / Codex.
+
+- Decision: keep deterministic administrator and client fixtures only when
+  the seed policy is non-production; production seed accepts neither missing
+  credentials nor the E2E credential channel.
+  Rationale: CI remains reproducible, while setting `NODE_ENV=production`
+  cannot create the known administrator or synthetic client identities.
   Date/Author: 2026-08-04 / Codex.
 
 ## Outcomes & Retrospective

@@ -86,6 +86,8 @@ class Finding:
 
 def is_external_or_empty(value: str) -> bool:
     normalized = value.strip().rstrip(",")
+    if len(normalized) >= 2 and normalized[0] == normalized[-1] and normalized[0] in {"'", '"'}:
+        normalized = normalized[1:-1].strip()
     return (
         not normalized
         or normalized in {"null", "None", "~", "''", '\"\"'}
@@ -96,6 +98,7 @@ def is_external_or_empty(value: str) -> bool:
         or "lookup(" in normalized
         or "process.env" in normalized
         or "import.meta.env" in normalized
+        or normalized.startswith("env.")
         or normalized.startswith("!vault")
         or normalized.startswith("$(")
         or normalized.startswith("`")
@@ -126,6 +129,7 @@ def candidate_paths(root: Path) -> list[Path]:
         )
     for relative in (
         "apps/api/prisma/seed.ts",
+        "apps/api/src/config/seed-credentials.ts",
         "apps/web/src/config/productionBuildConfig.ts",
         "apps/web/src/lib/client-key/config.ts",
         "scripts/register-clients.sh",

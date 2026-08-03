@@ -22,6 +22,7 @@ import {
 import { buildProductionScheduleFkojunstStatusMailDashboardDefinition } from '../src/services/production-schedule/fkojunst-status-mail-dashboard.definition.js';
 import { buildProductionScheduleOrderSupplementDashboardDefinition } from '../src/services/production-schedule/order-supplement-dashboard.definition.js';
 import { ensureRiggingSlingsInspectionPowerappsDashboard } from '../src/services/rigging/slings-inspection-powerapps-dashboard.definition.js';
+import { resolveSeedCredentialPolicy } from '../src/config/seed-credentials.js';
 
 const prisma = new PrismaClient();
 const seedDir = dirname(fileURLToPath(import.meta.url));
@@ -67,13 +68,9 @@ function parseProductionScheduleResourceMasterCsv(csvText: string): ProductionSc
 }
 
 async function main() {
-  const e2eAdminUsername = process.env.E2E_ADMIN_USERNAME?.trim();
-  const e2eAdminPassword = process.env.E2E_ADMIN_PASSWORD;
-  if ((e2eAdminUsername && !e2eAdminPassword) || (!e2eAdminUsername && e2eAdminPassword)) {
-    throw new Error('E2E_ADMIN_USERNAME and E2E_ADMIN_PASSWORD must be provided together');
-  }
-  const adminUsername = e2eAdminUsername || 'admin';
-  const adminPassword = e2eAdminPassword || 'admin1234';
+  const seedCredentialPolicy = resolveSeedCredentialPolicy();
+  const adminUsername = seedCredentialPolicy.username;
+  const adminPassword = seedCredentialPolicy.password;
 
   // 生産日程（研削工程）: ダッシュボードIDを固定（CI/E2Eで安定させる）
   const productionScheduleDashboardId = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
@@ -126,7 +123,7 @@ async function main() {
     where: { username: adminUsername },
     update: {
       status: UserStatus.ACTIVE,
-      ...(e2eAdminUsername ? { passwordHash, role: UserRole.ADMIN } : {}),
+      ...(seedCredentialPolicy.externallySupplied ? { passwordHash, role: UserRole.ADMIN } : {}),
     },
     create: {
       username: adminUsername,
@@ -208,12 +205,14 @@ async function main() {
     }
   ];
 
-  for (const client of clientDevices) {
-    await prisma.clientDevice.upsert({
-      where: { apiKey: client.apiKey },
-      update: { name: client.name, location: client.location, defaultMode: client.defaultMode },
-      create: client
-    });
+  if (seedCredentialPolicy.seedSyntheticClientDevices) {
+    for (const client of clientDevices) {
+      await prisma.clientDevice.upsert({
+        where: { apiKey: client.apiKey },
+        update: { name: client.name, location: client.location, defaultMode: client.defaultMode },
+        create: client
+      });
+    }
   }
 
   const productionScheduleResourceMasterCsv = await readFile(productionScheduleResourceMasterCsvPath, 'utf8');
@@ -652,8 +651,8 @@ async function main() {
   });
 
   console.log(
-    e2eAdminUsername
-      ? 'Seed data inserted. Test administrator credentials were supplied externally.'
+    seedCredentialPolicy.externallySupplied
+      ? 'Seed data inserted. Administrator credentials were supplied externally.'
       : 'Seed data inserted. Development administrator account was created.'
   );
   console.log('計測機器テストデータ: MI-001（期限切れ）, MI-002（期限間近）, MI-003（正常）');

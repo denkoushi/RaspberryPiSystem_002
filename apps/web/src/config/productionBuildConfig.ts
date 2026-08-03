@@ -46,6 +46,10 @@ export interface ProductionBuildConfig {
   wsBaseUrl: string;
 }
 
+export const resolveProductionDefaultClientKey = (
+  config: Pick<ProductionBuildConfig, 'defaultClientKey' | 'isDevelopment'>
+): string => config.defaultClientKey ?? (config.isDevelopment ? 'client-key-raspberrypi4-kiosk1' : '');
+
 export const readProductionBuildConfig = (
   env: ViteEnvironment = import.meta.env
 ): ProductionBuildConfig => ({

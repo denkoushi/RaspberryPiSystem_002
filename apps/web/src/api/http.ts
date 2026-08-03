@@ -34,15 +34,21 @@ export function setAuthToken(token?: string) {
 }
 
 export function setClientKeyHeader(key?: string) {
-  api.defaults.headers.common['x-client-key'] =
-    key && key.length > 0 ? key : resolveClientKey({ allowDefaultFallback: true }).key;
+  const resolvedKey = key && key.length > 0 ? key : resolveClientKey({ allowDefaultFallback: true }).key;
+  if (resolvedKey.length > 0) {
+    api.defaults.headers.common['x-client-key'] = resolvedKey;
+  } else {
+    delete api.defaults.headers.common['x-client-key'];
+  }
 }
 
 const resetKioskClientKey = () => {
   if (typeof window === 'undefined') return;
   window.localStorage.removeItem('kiosk-client-key');
   const defaultKey = resolveClientKey({ allowDefaultFallback: true }).key;
-  setClientKeyToStorage(defaultKey);
+  if (defaultKey.length > 0) {
+    setClientKeyToStorage(defaultKey);
+  }
   setClientKeyHeader(defaultKey);
 
   // 同一セッションで短時間に401が続いた場合、リロードループを防ぐ。
@@ -74,7 +80,7 @@ if (typeof window !== 'undefined') {
 api.interceptors.request.use((config) => {
   const key = resolveClientKey({ allowDefaultFallback: true }).key;
   config.headers = config.headers ?? {};
-  if (!config.headers['x-client-key']) {
+  if (!config.headers['x-client-key'] && key.length > 0) {
     config.headers['x-client-key'] = key;
   }
   return config;

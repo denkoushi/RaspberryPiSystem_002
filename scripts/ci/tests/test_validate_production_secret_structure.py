@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from validate_production_secret_structure import (  # noqa: E402
     Finding,
+    is_external_or_empty,
     scan,
     validate,
     validate_normal_factory_vault_contract,
@@ -46,6 +47,11 @@ class ProductionSecretStructureTests(unittest.TestCase):
             findings = scan(root)
             baseline = self.write_baseline(root, findings)
             self.assertEqual(validate(root, baseline), [])
+
+    def test_treats_quoted_shell_environment_references_as_external(self) -> None:
+        self.assertTrue(is_external_or_empty('"${ADMIN_ACCESS_TOKEN:-}"'))
+        self.assertTrue(is_external_or_empty('"${ADMIN_ACCESS_TOKEN}"'))
+        self.assertTrue(is_external_or_empty('env.VITE_DEFAULT_CLIENT_KEY || undefined'))
 
     def test_rejects_new_plaintext_without_echoing_value(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
