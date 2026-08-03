@@ -5,7 +5,7 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 This document must be maintained in accordance with `.agent/PLANS.md`.
 
 - id: pi5-blue-green-boundaries-execplan
-- status: in-progress
+- status: local-complete-integration-pending
 - scope: the Pi 5 Blue/Green entrypoint, source-only Bash modules, deploy contracts, and structural enforcement
 - started: 2026-08-03
 - branch: `refactor/pi5-blue-green-boundaries`
@@ -28,7 +28,9 @@ The change is observable without contacting production: the existing Blue/Green,
 - [x] (2026-08-03 20:55+09:00) Extracted legacy and migration functions in `84f883d2`; focused contracts passed.
 - [x] (2026-08-03 20:58+09:00) Extracted lifecycle, cleanup/reconcile, and status functions in `3533c0ea`; the executable entrypoint became 223 lines and focused contracts passed.
 - [x] (2026-08-03 21:01+09:00) Added five structural contracts, module syntax checks in the standard runner, and deployment-guide documentation; focused tests and docs audit passed.
-- [ ] Run final Node 20 deploy contracts, verify disposable Docker cleanup, update this plan, and leave the local branch ready for separate integration approval.
+- [x] (2026-08-03 21:07+09:00) Ran the final Node 20 standard deploy contracts: 967 Python tests, 20 isolated deploy-status API tests, 43 Ansible tests, all shell/Blue-Green/maintenance/migration/fleet contracts, and playbook syntax checks passed.
+- [x] (2026-08-03 21:08+09:00) Verified cleanup and repository quality: Docker remained at 0 containers, 17 volumes, and 3 networks with no task residue; docs audit and `git diff --check` passed.
+- [ ] Integration is intentionally pending separate approval: push the branch, open a PR, pass protected CI, merge to `main`, and perform any standard production rollout only when explicitly authorized.
 
 ## Surprises & Discoveries
 
@@ -40,6 +42,9 @@ The change is observable without contacting production: the existing Blue/Green,
 
 - Observation: No existing function exceeded the 120-line limit once function endings were measured while ignoring embedded Python heredocs.
   Evidence: The largest resulting function is `state_assert` at 106 physical lines; the entrypoint helper maximum is below the same limit.
+
+- Observation: The aggregate test count increased only by the five intended structure tests.
+  Evidence: The baseline aggregate passed 962 Python tests and the final aggregate passed 967; no existing test was removed or skipped.
 
 ## Decision Log
 
@@ -61,7 +66,11 @@ The change is observable without contacting production: the existing Blue/Green,
 
 ## Outcomes & Retrospective
 
-The mechanical decomposition and focused verification are complete. The entrypoint is 223 lines and all nine modules are between 90 and 333 lines. Five new structure tests enforce module inventory and order, file and function limits, unique definitions, source-only behavior, and supported caller paths. The full standard deployment contract remains the final local acceptance step. Push, PR, merge, and production integration remain pending separate approval.
+The local, behavior-preserving decomposition is complete. The entrypoint fell from 2,353 lines to 223 lines and remains executable at the same path. Nine source-only modules are between 90 and 333 lines; the largest function is 106 lines. Five structure tests enforce the module inventory and load order, file and function limits, unique definitions, source-only behavior, and supported caller paths.
+
+The final Node 20 standard deployment contract passed all shell and Blue/Green lifecycle contracts, maintenance recovery, Web routing/build, migration, fleet-state, rollback, release, terminal, isolated PostgreSQL, deploy-status, inventory, and Ansible checks. Its Python discovery count was 967, exactly the 962-test baseline plus five new structure tests. The isolated database applied all 157 migrations and the 20 deploy-status API tests passed. Docker resources returned to their exact starting counts with no named residue.
+
+No API, database schema, migration, Compose definition, Ansible inventory, public command, state contract, host, or production data was changed. Push, PR, merge, and production integration remain intentionally pending separate approval.
 
 ## Context and Orientation
 
@@ -121,6 +130,20 @@ Pre-change evidence at `f056de7624cd25f8f7ccb17044f9aafb597a7adb`:
     Ansible-related contracts: 43 tests passed
     disposable rolling-deploy-status Docker residue: zero
 
+Final local evidence after `a3819c76`:
+
+    pi5-blue-green.sh: 223 physical lines, executable
+    modules: 9 source-only files, 90 to 333 physical lines
+    largest function: state_assert, 106 physical lines
+    structural contracts: 5 passed
+    aggregate Python suite: 967 tests passed
+    deploy-status isolated PostgreSQL: 157 migrations, 20 tests passed
+    Ansible-related contracts: 43 tests passed
+    standard deploy contract: all checks passed with Node v20.20.2
+    Docker before/after: 0 containers, 17 volumes, 3 networks
+    task-labelled Docker residue: zero
+    docs audit and git diff check: passed
+
 ## Interfaces and Dependencies
 
 The executable interface remains `scripts/deploy/pi5-blue-green.sh` with public commands `status`, `bootstrap`, `prepare`, `switch`, `rollback`, `cleanup`, `reconcile`, and `monitor`, plus coordinator helpers `seal-image-ids`, `migration-ledger`, and `restart-monitor`. The nine module filenames and responsibilities are fixed by this plan: `policy.sh`, `state.sh`, `images-evidence.sh`, `runtime.sh`, `legacy.sh`, `migrations.sh`, `lifecycle.sh`, `cleanup-reconcile.sh`, and `status.sh`.
@@ -130,3 +153,5 @@ The implementation may use Bash, Python's standard library for structural testin
 Revision note (2026-08-03): Initial plan created from the clean synchronized baseline after the complete local deployment contract passed with Node 20.
 
 Revision note (2026-08-03 21:01+09:00): Updated after all nine modules, focused contracts, structural enforcement, and documentation were completed; the full aggregate remains pending.
+
+Revision note (2026-08-03 21:08+09:00): Closed local implementation after the full standard contract and zero-residue cleanup passed. Integration remains open because push, PR, merge, and production rollout require separate approval.
