@@ -1,5 +1,14 @@
 import { defineConfig } from 'vitest/config';
 
+const coverageThresholds = process.env.COVERAGE_ENFORCE_THRESHOLDS === 'true'
+  ? {
+      statements: 69,
+      branches: 57,
+      functions: 76,
+      lines: 71,
+    }
+  : undefined;
+
 export default defineConfig({
   test: {
     environment: 'node',
@@ -19,7 +28,8 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov', 'json'],
-      exclude: ['dist/**', 'src/types/**']
+      exclude: ['dist/**', 'src/types/**'],
+      thresholds: coverageThresholds,
     },
     // CI では全テスト名を列挙せず、失敗と遅いテストを中心に表示する。
     reporters: ['default'],

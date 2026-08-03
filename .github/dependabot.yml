@@ -1,0 +1,49 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 5
+    groups:
+      pnpm-workspace:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:15"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: /infrastructure/docker
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:30"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 5
+    groups:
+      production-images:
+        patterns: ["*"]
+
+  - package-ecosystem: pip
+    directory: /clients/torque-agent
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:45"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 5
+    groups:
+      torque-agent:
+        patterns: ["*"]
