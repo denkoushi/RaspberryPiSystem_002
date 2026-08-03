@@ -5,12 +5,13 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 This document must be maintained in accordance with `.agent/PLANS.md`.
 
 - id: pi5-blue-green-boundaries-execplan
-- status: local-complete-integration-pending
+- status: completed
 - scope: the Pi 5 Blue/Green entrypoint, source-only Bash modules, deploy contracts, and structural enforcement
 - started: 2026-08-03
 - branch: `refactor/pi5-blue-green-boundaries`
 - baseline_sha: `f056de7624cd25f8f7ccb17044f9aafb597a7adb`
-- integration: pending separate approval; no push, PR, merge, or production deployment is authorized by this plan
+- merged_sha: `fee56a0a962092cd278177cbbe406918f3509f77`
+- integration: completed by PR #1162; the standard target plan classified the change as deploy-control-only and safely selected no production mutation
 
 ## Purpose / Big Picture
 
@@ -30,7 +31,8 @@ The change is observable without contacting production: the existing Blue/Green,
 - [x] (2026-08-03 21:01+09:00) Added five structural contracts, module syntax checks in the standard runner, and deployment-guide documentation; focused tests and docs audit passed.
 - [x] (2026-08-03 21:07+09:00) Ran the final Node 20 standard deploy contracts: 967 Python tests, 20 isolated deploy-status API tests, 43 Ansible tests, all shell/Blue-Green/maintenance/migration/fleet contracts, and playbook syntax checks passed.
 - [x] (2026-08-03 21:08+09:00) Verified cleanup and repository quality: Docker remained at 0 containers, 17 volumes, and 3 networks with no task residue; docs audit and `git diff --check` passed.
-- [ ] Integration is intentionally pending separate approval: push the branch, open a PR, pass protected CI, merge to `main`, and perform any standard production rollout only when explicitly authorized.
+- [x] (2026-08-03 21:28+09:00) Pushed the approved branch, opened PR #1162, passed all required CI, CodeQL, and secret scanning, and squash-merged it to `main` as `fee56a0a962092cd278177cbbe406918f3509f77`.
+- [x] (2026-08-03 21:30+09:00) Ran the standard `--print-plan` and `--preflight-only` flow. All readiness gates passed, `mainIntegration.completionEligible` was true, and the deploy-control-only classification selected zero mutation, activation, verification, or terminal targets; no release or canary gate was created.
 
 ## Surprises & Discoveries
 
@@ -45,6 +47,9 @@ The change is observable without contacting production: the existing Blue/Green,
 
 - Observation: The aggregate test count increased only by the five intended structure tests.
   Evidence: The baseline aggregate passed 962 Python tests and the final aggregate passed 967; no existing test was removed or skipped.
+
+- Observation: The change-aware release planner correctly treated this refactor as deployment-control code rather than an application release.
+  Evidence: The merged-SHA plan reported components `deploy-control`, `neutral`, and `server-app`, selected no targets, and returned `mainIntegration.completionEligible=true`; the read-only preflight passed every applicable gate with `releaseSubmitted=false`.
 
 ## Decision Log
 
@@ -64,13 +69,17 @@ The change is observable without contacting production: the existing Blue/Green,
   Rationale: It is review documentation rather than executable dispatch behavior, and moving it out of the entrypoint reduces the entrypoint without changing or discarding the safety checklist.
   Date/Author: 2026-08-03 / Codex
 
+- Decision: Accept the standard planner's zero-target result instead of forcing Pi5 or terminal redeployment.
+  Rationale: The merged change modifies deploy-control implementation and tests but not API/Web images, database state, Compose definitions, or terminal runtime. Forcing a host mutation would add risk without validating any changed runtime artifact.
+  Date/Author: 2026-08-03 / Codex
+
 ## Outcomes & Retrospective
 
 The local, behavior-preserving decomposition is complete. The entrypoint fell from 2,353 lines to 223 lines and remains executable at the same path. Nine source-only modules are between 90 and 333 lines; the largest function is 106 lines. Five structure tests enforce the module inventory and load order, file and function limits, unique definitions, source-only behavior, and supported caller paths.
 
 The final Node 20 standard deployment contract passed all shell and Blue/Green lifecycle contracts, maintenance recovery, Web routing/build, migration, fleet-state, rollback, release, terminal, isolated PostgreSQL, deploy-status, inventory, and Ansible checks. Its Python discovery count was 967, exactly the 962-test baseline plus five new structure tests. The isolated database applied all 157 migrations and the 20 deploy-status API tests passed. Docker resources returned to their exact starting counts with no named residue.
 
-No API, database schema, migration, Compose definition, Ansible inventory, public command, state contract, host, or production data was changed. Push, PR, merge, and production integration remain intentionally pending separate approval.
+No API, database schema, migration, Compose definition, Ansible inventory, public command, state contract, host, or production data was changed. PR #1162 passed the protected CI set and was squash-merged as `fee56a0a962092cd278177cbbe406918f3509f77`. The standard merged-SHA plan selected no hosts because the change is deploy-control-only. Its read-only preflight verified source identity, the full production migration ledger, Pi5 authority and resources, external build routes, and interrupted-run recovery. No release unit, fleet mutation, host checkout, service change, or canary approval was created. Repository integration is complete.
 
 ## Context and Orientation
 
@@ -104,7 +113,7 @@ At completion run:
 
     PATH=/opt/homebrew/opt/node@20/bin:$PATH scripts/ci/run-deploy-contracts-local.sh
 
-Record the concise pass counts, file line counts, and Docker before/after evidence in this document. Do not execute `scripts/deploy/pi5-blue-green.sh` against a host and do not invoke `scripts/update-all-clients.sh` during this work.
+Record the concise pass counts, file line counts, and Docker before/after evidence in this document. During implementation, do not execute `scripts/deploy/pi5-blue-green.sh` against a host and do not invoke `scripts/update-all-clients.sh`. After separate integration approval, use only `scripts/update-all-clients.sh --print-plan` and `--preflight-only`; accept a zero-target result rather than bypassing the planner.
 
 ## Validation and Acceptance
 
@@ -144,6 +153,18 @@ Final local evidence after `a3819c76`:
     task-labelled Docker residue: zero
     docs audit and git diff check: passed
 
+Integration evidence:
+
+    pull request: #1162
+    merge SHA: fee56a0a962092cd278177cbbe406918f3509f77
+    protected CI, CodeQL, secret scan: passed
+    merged-SHA plan targets: zero
+    preflight ID: 20260803-122956-941fcd
+    readiness gates: all applicable gates passed
+    releaseSubmitted: false
+    mainIntegration: integrated; completionEligible=true
+    production mutation: none
+
 ## Interfaces and Dependencies
 
 The executable interface remains `scripts/deploy/pi5-blue-green.sh` with public commands `status`, `bootstrap`, `prepare`, `switch`, `rollback`, `cleanup`, `reconcile`, and `monitor`, plus coordinator helpers `seal-image-ids`, `migration-ledger`, and `restart-monitor`. The nine module filenames and responsibilities are fixed by this plan: `policy.sh`, `state.sh`, `images-evidence.sh`, `runtime.sh`, `legacy.sh`, `migrations.sh`, `lifecycle.sh`, `cleanup-reconcile.sh`, and `status.sh`.
@@ -155,3 +176,5 @@ Revision note (2026-08-03): Initial plan created from the clean synchronized bas
 Revision note (2026-08-03 21:01+09:00): Updated after all nine modules, focused contracts, structural enforcement, and documentation were completed; the full aggregate remains pending.
 
 Revision note (2026-08-03 21:08+09:00): Closed local implementation after the full standard contract and zero-residue cleanup passed. Integration remains open because push, PR, merge, and production rollout require separate approval.
+
+Revision note (2026-08-03 21:30+09:00): Marked complete after protected PR integration and the standard merged-SHA planner/preflight proved that no production target or mutation was required.
