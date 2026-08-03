@@ -61,7 +61,18 @@ services:
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/clients/nfc-agent:/app/host/clients/nfc-agent:ro
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/certs:/app/host/certs:ro
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/infrastructure/ansible:/app/host/infrastructure/ansible:ro
-      - ${PI5_SSH_DIR:-/home/denkon5sd02/.ssh}:/root/.ssh:ro
+      - type: bind
+        source: ${BACKUP_SSH_PRIVATE_KEY_HOST_PATH:-/opt/RaspberryPiSystem_002/secrets/backup-ssh/id_ed25519}
+        target: /run/secrets/backup-ssh/id_ed25519
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${BACKUP_SSH_KNOWN_HOSTS_HOST_PATH:-/opt/RaspberryPiSystem_002/secrets/backup-ssh/known_hosts}
+        target: /run/secrets/backup-ssh/known_hosts
+        read_only: true
+        bind:
+          create_host_path: false
       - /sys/class/thermal:/sys/class/thermal:ro
     networks: [pi5]
 

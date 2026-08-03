@@ -6,6 +6,12 @@ import os from 'os';
 import type { BackupTarget } from '../backup-target.interface.js';
 import type { BackupTargetInfo } from '../backup-types.js';
 import { ApiError } from '../../../lib/errors.js';
+import {
+  assertBackupSshAuthorityAvailable,
+  assertRemoteBackupPathAllowed,
+  buildBackupSshAnsibleArgs,
+  resolveBackupSshPaths,
+} from '../backup-ssh-policy.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -13,7 +19,7 @@ const execFileAsync = promisify(execFile);
  * クライアント端末のディレクトリをAnsible経由でtar.gz化してバックアップするターゲット
  *
  * source形式: "hostname:/path/to/directory"
- * 例: "raspberrypi4:/home/tools03/.ssh"
+ * 例: "raspberrypi4:/var/lib/tailscale"
  */
 export class ClientDirectoryBackupTarget implements BackupTarget {
   private readonly clientHost: string;
@@ -29,6 +35,7 @@ export class ClientDirectoryBackupTarget implements BackupTarget {
 
     this.clientHost = parts[0];
     this.remoteDirPath = parts.slice(1).join(':');
+    assertRemoteBackupPathAllowed(this.remoteDirPath);
 
     const projectRoot = process.env.PROJECT_ROOT || '/opt/RaspberryPiSystem_002';
     const ansibleBasePath = process.env.ANSIBLE_BASE_PATH || path.join(projectRoot, 'infrastructure/ansible');
@@ -67,11 +74,14 @@ export class ClientDirectoryBackupTarget implements BackupTarget {
     }
 
     try {
+      const backupSshPaths = resolveBackupSshPaths();
+      await assertBackupSshAuthorityAvailable(backupSshPaths);
       const { stdout, stderr } = await execFileAsync(
         'ansible-playbook',
         [
           '-i', ansibleInventoryPath,
           ansiblePlaybookPath,
+          ...buildBackupSshAnsibleArgs(backupSshPaths),
           '-e', `client_host=${this.clientHost}`,
           '-e', `client_dir_path=${this.remoteDirPath}`,
           '-e', `backup_destination=${backupDestination}`
@@ -109,5 +119,4 @@ export class ClientDirectoryBackupTarget implements BackupTarget {
     }
   }
 }
-
 

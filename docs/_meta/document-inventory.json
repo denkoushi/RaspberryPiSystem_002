@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 607,
-    "totalLines": 169323,
-    "totalBytes": 12710736,
+    "totalLines": 169352,
+    "totalBytes": 12713125,
     "withFrontmatter": 274,
     "withStatus": 130,
     "sourceOfTruthDeclared": 92,
@@ -11614,7 +11614,7 @@
     {
       "path": "docs/api/backup.md",
       "lineCount": 1161,
-      "byteSize": 36077,
+      "byteSize": 36165,
       "hasFrontmatter": false,
       "title": "バックアップAPI",
       "status": null,
@@ -17962,8 +17962,8 @@
     },
     {
       "path": "docs/guides/backup-configuration.md",
-      "lineCount": 797,
-      "byteSize": 31264,
+      "lineCount": 799,
+      "byteSize": 31771,
       "hasFrontmatter": true,
       "title": "バックアップ設定ガイド",
       "status": null,
@@ -35305,8 +35305,8 @@
     },
     {
       "path": "docs/plans/production-secrets-and-runtime-execplan.md",
-      "lineCount": 478,
-      "byteSize": 26111,
+      "lineCount": 505,
+      "byteSize": 27905,
       "hasFrontmatter": true,
       "title": "Remove production credential fallbacks and minimize the Pi5 runtime",
       "status": "in_progress",

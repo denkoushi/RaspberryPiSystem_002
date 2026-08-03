@@ -116,9 +116,19 @@ when the repository implementation is ready.
   using the `postgres` role, a missing password, or the known database password.
   Wiring generated credentials into Vault/Compose and activating roles in the
   production database remain separate approved operational steps.
-- [ ] Replace the API host SSH-directory mount with one dedicated read-only
-  backup key and pinned `known_hosts`, and exclude terminal private keys from
-  backup catalogs.
+- [x] (2026-08-04 08:34+09:00) Replaced the API host SSH-directory mount with
+  one dedicated read-only backup key and pinned `known_hosts`, and excluded
+  terminal private keys from backup catalogs. Missing host files now stop
+  Compose before creating a directory, Ansible uses one explicit identity with
+  strict host-key checking, and `.ssh` targets are rejected by the API boundary.
+- [x] (2026-08-04 08:34+09:00) Passed seven focused API tests, API build and
+  lint, 80 CI contract tests, both production Compose renders, the production
+  configuration audit, and `git diff --check`. No host connection, key
+  generation, backup execution, or production setting change occurred.
+- [x] (2026-08-04 08:36+09:00) Re-ran the complete Node 20 local deployment
+  contract suite after the SSH boundary change: all shell lifecycle contracts,
+  969 Python deployment tests, 43 Ansible contracts, and both isolated
+  PostgreSQL contracts passed. Run-owned Docker resources returned to zero.
 - [ ] Make API/Web containers non-root with dropped capabilities,
   `no-new-privileges`, read-only root filesystems, and enumerated writable
   mounts; prove Chromium, storage, backup, health, and Caddy behavior.
@@ -196,6 +206,14 @@ when the repository implementation is ready.
   backup sources. Least privilege requires both the mount and catalog to
   change together.
 
+- Observation: changing only the recommended catalog would leave manually
+  configured `.ssh` targets executable and changing only Compose would still
+  permit an inventory host to disable host-key checking.
+  Evidence: both client backup target constructors accept arbitrary remote
+  paths, and Ansible inventory variables can provide SSH options. The new API
+  boundary rejects every normalized `.ssh` path and passes strict SSH options
+  as highest-precedence extra variables.
+
 ## Decision Log
 
 - Decision: split repository preparation into independently testable
@@ -218,6 +236,15 @@ when the repository implementation is ready.
   keeps each terminal's credential authority isolated. A shared Pi4 Vault
   would be invisible to the five newer Pi4 hostnames unless loaded through a
   broader group, unnecessarily widening access.
+  Date/Author: 2026-08-04 / Codex.
+
+- Decision: keep backup SSH credentials outside Git and outside the general
+  Ansible tree, mounting only one private-key file and one pinned known_hosts
+  file with `create_host_path: false`.
+  Rationale: repository preparation can enforce the runtime boundary without
+  generating or distributing a production identity. Operational provisioning,
+  authorized-key registration, and removal of existing `.ssh` backup targets
+  remain separately approved changes.
   Date/Author: 2026-08-04 / Codex.
 
 - Decision: exclude TalkPlaza files from all edits in this plan.

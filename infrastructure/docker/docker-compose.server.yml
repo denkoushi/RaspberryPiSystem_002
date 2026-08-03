@@ -115,8 +115,19 @@ services:
       - /opt/RaspberryPiSystem_002/certs:/app/host/certs:ro
       # Ansibleによるクライアント端末バックアップ用にマウント（読み取り専用）
       - /opt/RaspberryPiSystem_002/infrastructure/ansible:/app/host/infrastructure/ansible:ro
-      # AnsibleによるSSH接続用にSSH鍵をマウント（読み取り専用）
-      - /home/denkon5sd02/.ssh:/root/.ssh:ro
+      # 端末バックアップ専用SSH権限。ホストの運用ユーザー ~/.ssh 全体は渡さない。
+      - type: bind
+        source: ${BACKUP_SSH_PRIVATE_KEY_HOST_PATH:-/opt/RaspberryPiSystem_002/secrets/backup-ssh/id_ed25519}
+        target: /run/secrets/backup-ssh/id_ed25519
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${BACKUP_SSH_KNOWN_HOSTS_HOST_PATH:-/opt/RaspberryPiSystem_002/secrets/backup-ssh/known_hosts}
+        target: /run/secrets/backup-ssh/known_hosts
+        read_only: true
+        bind:
+          create_host_path: false
       # CPU温度を取得するために/sys/class/thermalを読み取り専用でマウント
       - /sys/class/thermal:/sys/class/thermal:ro
     # セキュリティ強化: ポートマッピングを削除（Docker内部ネットワークでのみアクセス可能）

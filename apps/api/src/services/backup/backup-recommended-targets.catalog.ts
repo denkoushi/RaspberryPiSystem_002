@@ -23,15 +23,15 @@ const DROPBOX: NonNullable<BackupConfig['targets'][number]['storage']> = {
  * raspberrypi4 は既存環境で多くが個別登録済みのため、推奨カタログには含めない。
  * （未登録なら同パターンのテンプレ / 手動追加で補完可能）
  */
-const PI4_KIOSK_CLIENTS: Array<{ inventoryHost: string; sshHomeUser: string }> = [
-  { inventoryHost: 'raspi4-robodrill01', sshHomeUser: 'tools04' },
-  { inventoryHost: 'raspi4-fjv60-80', sshHomeUser: 'raspi4-fjv60-80' },
-  { inventoryHost: 'raspi4-kensaku-stonebase01', sshHomeUser: 'raspi4-kensaku-stonebase01' },
-  { inventoryHost: 'raspi4-sessaku-01', sshHomeUser: 'raspi4-sessaku-01' },
-  { inventoryHost: 'raspi4-assembly-01', sshHomeUser: 'raspi4-assembly-01' },
+const PI4_KIOSK_CLIENTS: Array<{ inventoryHost: string }> = [
+  { inventoryHost: 'raspi4-robodrill01' },
+  { inventoryHost: 'raspi4-fjv60-80' },
+  { inventoryHost: 'raspi4-kensaku-stonebase01' },
+  { inventoryHost: 'raspi4-sessaku-01' },
+  { inventoryHost: 'raspi4-assembly-01' },
 ];
 
-function kioskClientSpecs(host: string, sshHomeUser: string): RecommendedBackupTargetSpec[] {
+function kioskClientSpecs(host: string): RecommendedBackupTargetSpec[] {
   const base = host.replace(/[^a-z0-9-]/gi, '-');
   return [
     {
@@ -40,18 +40,6 @@ function kioskClientSpecs(host: string, sshHomeUser: string): RecommendedBackupT
       target: {
         kind: 'client-file',
         source: `${host}:/opt/RaspberryPiSystem_002/clients/nfc-agent/.env`,
-        schedule: DEFAULT_SCHEDULE,
-        enabled: true,
-        storage: DROPBOX,
-        retention: DEFAULT_RETENTION,
-      },
-    },
-    {
-      id: `kiosk-${base}-ssh`,
-      message: `キオスク (${host}) の運用ユーザー SSH 設定 (~/.ssh)`,
-      target: {
-        kind: 'client-directory',
-        source: `${host}:/home/${sshHomeUser}/.ssh`,
         schedule: DEFAULT_SCHEDULE,
         enabled: true,
         storage: DROPBOX,
@@ -129,7 +117,7 @@ export function getRecommendedBackupTargetCatalog(): RecommendedBackupTargetSpec
     },
   ];
 
-  const kiosks = PI4_KIOSK_CLIENTS.flatMap((k) => kioskClientSpecs(k.inventoryHost, k.sshHomeUser));
+  const kiosks = PI4_KIOSK_CLIENTS.flatMap((k) => kioskClientSpecs(k.inventoryHost));
 
   return [...server, ...kiosks];
 }

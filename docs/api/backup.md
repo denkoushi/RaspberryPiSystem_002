@@ -968,9 +968,9 @@ CSVデータのバックアップ。データベースからCSV形式でエク�
 
 クライアント端末（Pi3、Pi4など）のディレクトリのバックアップ。Ansibleを使用してディレクトリを`tar.gz`形式でアーカイブして取得します。
 
-**source例**: `raspberrypi3:/var/lib/tailscale`、`raspberrypi4:/home/tools03/.ssh`
+**source例**: `raspberrypi3:/var/lib/tailscale`
 
-**注意**: Pi5自身のディレクトリには使用しないでください。Pi5自身のディレクトリは`directory` kindを使用します。
+**注意**: Pi5自身のディレクトリには使用しないでください。Pi5自身のディレクトリは`directory` kindを使用します。端末の`.ssh`以下は秘密鍵を含むため、`client-file`と`client-directory`のどちらでも拒否されます。
 
 ---
 

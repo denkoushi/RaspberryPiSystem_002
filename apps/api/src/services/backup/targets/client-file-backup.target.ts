@@ -6,6 +6,12 @@ import os from 'os';
 import type { BackupTarget } from '../backup-target.interface.js';
 import type { BackupTargetInfo } from '../backup-types.js';
 import { ApiError } from '../../../lib/errors.js';
+import {
+  assertBackupSshAuthorityAvailable,
+  assertRemoteBackupPathAllowed,
+  buildBackupSshAnsibleArgs,
+  resolveBackupSshPaths,
+} from '../backup-ssh-policy.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -30,6 +36,7 @@ export class ClientFileBackupTarget implements BackupTarget {
 
     this.clientHost = parts[0];
     this.remotePath = parts.slice(1).join(':'); // パスに:が含まれる可能性があるため、最初の:以降を結合
+    assertRemoteBackupPathAllowed(this.remotePath);
 
     // Ansibleのパスを設定
     // Dockerコンテナ内では /app/host/infrastructure/ansible にマウントされている
@@ -76,14 +83,14 @@ export class ClientFileBackupTarget implements BackupTarget {
     }
 
     try {
-      // Dockerコンテナ内からSSH接続する際にSSH鍵がマウントされていない問題を回避するため、
-      // 直接ansible-playbookを実行する（SSH鍵の問題で失敗する可能性が高いが、実際には成功している）
-      // 注意: 実際のテストでは、Ansible Playbookが成功しているため、この方法で動作している
+      const backupSshPaths = resolveBackupSshPaths();
+      await assertBackupSshAuthorityAvailable(backupSshPaths);
       const { stdout, stderr } = await execFileAsync(
         'ansible-playbook',
         [
           '-i', ansibleInventoryPath,
           ansiblePlaybookPath,
+          ...buildBackupSshAnsibleArgs(backupSshPaths),
           '-e', `client_host=${this.clientHost}`,
           '-e', `client_file_path=${this.remotePath}`,
           '-e', `backup_destination=${backupDestination}`

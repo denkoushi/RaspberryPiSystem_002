@@ -65,11 +65,13 @@ sudo journalctl -u backup-verify-quarterly.service -n 200
 
 本ガイドでは、モジュール化されたバックアップ機能の設定方法を説明します。バックアップ機能は設定ファイルベースで動作し、ローカルストレージまたはDropboxへの自動バックアップをサポートします。
 
-## Pi5本番の現在方針（2026-07-12）
+## Pi5本番の現在方針（2026-08-04）
 
 - `/app/storage/pdfs` は `enabled: false`。PDFは中核機能の稼働に必須ではないため、2GB Dropboxの推奨対象から外します。
-- `raspi4-sessaku-01` と `raspi4-assembly-01` のNFCエージェント `.env`、運用ユーザーSSH、Tailscale状態、status-agent設定を `client-file` / `client-directory` の推奨対象として管理します。
+- `raspi4-sessaku-01` と `raspi4-assembly-01` のNFCエージェント `.env`、Tailscale状態、status-agent設定を `client-file` / `client-directory` の推奨対象として管理します。
 - 上記クライアント対象は日次（`0 2 * * *`）、Dropbox、保持14日・最大4世代です。
+- 端末の `.ssh` は秘密鍵を含むためバックアップ対象にできません。復旧時は鍵を再生成し、承認済み公開鍵を再登録します。既存設定に `.ssh` ターゲットがある場合、その削除は本番設定変更として別承認で行います。
+- APIはホスト運用ユーザーの `.ssh` を参照しません。端末バックアップには、読み取り専用の専用鍵と固定 `known_hosts` だけを使用し、ホスト鍵が一致しない接続を拒否します。
 - 実機検証と容量回復の詳細は [バックアップ・リストア関連KB](../knowledge-base/infrastructure/backup-restore.md#backup-restore-20260712) を参照してください。
 
 ## 設定ファイルの場所
