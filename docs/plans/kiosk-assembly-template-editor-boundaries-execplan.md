@@ -10,6 +10,8 @@ This document must be maintained in accordance with `.agent/PLANS.md`.
 - started: 2026-08-03
 - branch: `refactor/kiosk-assembly-template-editor-boundaries`
 - baseline_sha: `4f2f8f85430e58cd59cdbe002d3fc1c709390ac6`
+- merged_sha: `95bb5c552bee5fd89692586d6d164db2d41a53d2`
+- integration: completed by PR #1160 and production releases ending with `20260803-061727-201cae`
 
 ## Purpose / Big Picture
 
@@ -26,6 +28,9 @@ The assembly template editor works and is well tested, but its route page owns d
 - [x] (2026-08-03 11:43+09:00) Completed the guided-create validator: 157 migrations, API and Web full suites, persistence/index checks, lint, build, and all 16 Chromium E2E scenarios passed.
 - [x] (2026-08-03 11:43+09:00) Verified Docker cleanup. Counts returned exactly to 0 containers, 17 volumes, and 3 networks; task-label residue was zero.
 - [x] (2026-08-03 11:51+09:00) Pushed the approved feature branch and opened draft PR #1160 against `main`; no merge or deployment was performed.
+- [x] (2026-08-03) Marked PR #1160 ready and squash-merged it to `main` as `95bb5c552bee5fd89692586d6d164db2d41a53d2` after the required CI, CodeQL, secret scan, and signed release-artifact checks passed.
+- [x] (2026-08-03) Deployed the merged SHA through `scripts/update-all-clients.sh`. Pi 5 completed Blue/Green switching and the five-minute stability gate; all six kiosks completed serial Web activation and verification without changing their repositories.
+- [x] (2026-08-03) Confirmed the final same-SHA plan was a no-op: no mutation, activation, verification, or terminal work remained; all fleet evidence was verified and `mainIntegration.completionEligible` was `true`.
 
 ## Surprises & Discoveries
 
@@ -38,6 +43,9 @@ The assembly template editor works and is well tested, but its route page owns d
 - Observation: The current browser contract suite contains 16 scenarios rather than the 15 estimated during planning.
   Evidence: `assembly-library-editor-ui.spec.ts` passed 16/16 scenarios across 1366x768, 1920x1080, and 900x900 coverage.
 
+- Observation: Operator approval arrived after the 30-minute canary window twice, so the release coordinator failed closed instead of continuing unattended.
+  Evidence: Runs `20260803-031537-cbc7f4` and `20260803-052606-c3d443` ended with `canary-approval-timeout` after their completed targets were verified and maintenance was cleared. Each replacement plan automatically excluded the already verified Pi 5 and kiosks.
+
 ## Decision Log
 
 - Decision: Move existing state transitions mechanically instead of introducing a new global store or state-machine library.
@@ -48,13 +56,19 @@ The assembly template editor works and is well tested, but its route page owns d
   Rationale: Existing kiosk E2E tests depend on both workflow behavior and constrained viewport geometry.
   Date/Author: 2026-08-03 / Codex
 
+- Decision: Integrate and deploy only after separate approval, using the protected PR flow and the single rolling-release entry point.
+  Rationale: Required checks, immutable release artifacts, Blue/Green rollback, the human canary gate, and serial kiosk activation preserve the behavior-only scope in production. Expired approval gates were recovered by replanning, never by bypassing or extending the gate.
+  Date/Author: 2026-08-03 / Codex
+
 ## Outcomes & Retrospective
 
 The behavior-preserving decomposition is complete. The former 1,840-line page is now a one-line compatibility export over a 39-line router adapter. State and commands are split between a 461-line controller, a 484-line marker hook, a 343-line procedure hook, and a 141-line data hook. All view files are below 220 function lines and 400 physical lines. The router is confined to the route adapter; views have no router, API-client, or pages dependency.
 
 The final Web suite increased from 331 files/1,666 tests to 332 files/1,671 tests. The exact delta is the one new save-contract file with three tests and two new page characterizations. No existing test was removed or skipped. The isolated validator passed 479 API files/2,515 tests with the existing two files and seven tests skipped, 332 Web files/1,671 tests, all builds and lint, persistence/index checks with 20,100 fixtures, and 16 Chromium E2E scenarios. Docker resources returned to the exact starting counts with zero labelled residue.
 
-Local implementation commits are `aa36e68a` (`test(web): lock assembly editor behavior`) and `c19c5a85` (`refactor(web): split assembly template editor`). The architecture guard and completion record are held in the final local implementation commit. Draft PR #1160 contains the approved branch. Merge and deployment remain out of scope and require separate approval.
+Local implementation commits are `aa36e68a` (`test(web): lock assembly editor behavior`) and `c19c5a85` (`refactor(web): split assembly template editor`). PR #1160 was squash-merged to `main` as `95bb5c552bee5fd89692586d6d164db2d41a53d2` after all required checks passed.
+
+Production integration is complete. The first release installed and stabilized the exact signed API/Web images on Pi 5 and verified the first kiosk before its approval gate expired. Subsequent replacement runs selected only the remaining stale Web claims. Final run `20260803-061727-201cae` completed successfully, leaving all six kiosk `controlPlaneWeb` claims verified at the merged SHA, all maintenance cleared, and no schema, migration, production data, or kiosk repository change. The final `--print-plan` returned no targets or work, and `mainIntegration.completionEligible` was `true`.
 
 ## Context and Orientation
 
@@ -100,3 +114,15 @@ Final local verification:
     Web/API lint and build: passed
     Docker before/after: 0 containers, 17 volumes, 3 networks
     Task-labelled Docker residue: 0
+
+Integration and production evidence:
+
+    Pull request: #1160
+    Merge SHA: 95bb5c552bee5fd89692586d6d164db2d41a53d2
+    Final successful release: 20260803-061727-201cae
+    Pi 5 API/Web claims: verified at merge SHA
+    Kiosk controlPlaneWeb claims: 6/6 verified at merge SHA
+    Final same-SHA plan: no mutation, activation, verification, or terminal work
+    mainIntegration: integrated; completionEligible=true
+
+Revision note (2026-08-03): Initial implementation plan created from the clean synchronized baseline and maintained through local verification. Closed after separately approved PR integration, protected production rollout, timeout-safe recovery, and final no-op fleet verification.

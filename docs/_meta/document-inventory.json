@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 604,
-    "totalLines": 168473,
-    "totalBytes": 12646679,
+    "totalLines": 168499,
+    "totalBytes": 12649577,
     "withFrontmatter": 273,
     "withStatus": 129,
     "sourceOfTruthDeclared": 91,
@@ -33253,8 +33253,8 @@
     },
     {
       "path": "docs/plans/kiosk-assembly-template-editor-boundaries-execplan.md",
-      "lineCount": 102,
-      "byteSize": 8702,
+      "lineCount": 128,
+      "byteSize": 11600,
       "hasFrontmatter": false,
       "title": "Decompose KioskAssemblyTemplateEditorPage into enforced feature boundaries",
       "status": null,
