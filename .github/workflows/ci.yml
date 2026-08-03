@@ -74,6 +74,12 @@ jobs:
       - name: Test classifier and workflow contracts
         run: python3 -m unittest discover -s scripts/ci/tests -p 'test_*.py'
 
+      - name: Validate dependency exception metadata
+        run: python3 scripts/ci/validate_dependency_exceptions.py
+
+      - name: Validate production secret structure
+        run: python3 scripts/ci/validate_production_secret_structure.py
+
   # Fast feedback shared by API, Web, and shared-package changes.
   workspace-quality:
     name: workspace-quality
@@ -123,7 +129,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(github.event_name == 'pull_request' && '[{"shard":"all","shard_id":"all","coverage":false,"build":true}]' || '[{"shard":"1/3","shard_id":"1-of-3","coverage":true,"build":true},{"shard":"2/3","shard_id":"2-of-3","coverage":true,"build":false},{"shard":"3/3","shard_id":"3-of-3","coverage":true,"build":false}]') }}
+        include: ${{ fromJSON(github.event_name == 'pull_request' && '[{"shard":"all","shard_id":"all","coverage":true,"build":true}]' || '[{"shard":"1/3","shard_id":"1-of-3","coverage":true,"build":true},{"shard":"2/3","shard_id":"2-of-3","coverage":true,"build":false},{"shard":"3/3","shard_id":"3-of-3","coverage":true,"build":false}]') }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -171,7 +177,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
-      - name: Run API tests (PR, no coverage)
+      - name: Run API tests (without coverage)
         if: ${{ !matrix.coverage }}
         run: |
           cd apps/api
@@ -183,7 +189,9 @@ jobs:
           JWT_ACCESS_SECRET: test-access-secret-1234567890
           JWT_REFRESH_SECRET: test-refresh-secret-1234567890
           CAMERA_TYPE: mock
-          PHOTO_STORAGE_DIR: /tmp/test-photo-storage
+          FILE_STORAGE_ROOT: /tmp/test-file-storage
+          PDF_STORAGE_DIR: /tmp/test-file-storage
+          PHOTO_STORAGE_DIR: /tmp/test-file-storage
           BACKUP_STORAGE_DIR: /tmp/test-backups
           NODE_ENV: test
           PERF_RESPONSE_TIME_THRESHOLD_MS: '1800'
@@ -193,17 +201,24 @@ jobs:
         run: |
           cd apps/api
           docker exec postgres-test psql -U postgres -d borrow_return -c "SELECT 1;"
+          shard_args=()
+          if [ "${{ matrix.shard }}" != "all" ]; then
+            shard_args+=("--shard=${{ matrix.shard }}")
+          fi
           BACKUP_CONFIG_PATH=/tmp/test-backup.json PROJECT_ROOT=$(pwd) \
-            pnpm test:coverage -- --shard=${{ matrix.shard }} --fileParallelism=true --maxWorkers=1
+            pnpm test:coverage "${shard_args[@]}" --fileParallelism=true --maxWorkers=1
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
           JWT_ACCESS_SECRET: test-access-secret-1234567890
           JWT_REFRESH_SECRET: test-refresh-secret-1234567890
           CAMERA_TYPE: mock
-          PHOTO_STORAGE_DIR: /tmp/test-photo-storage
+          FILE_STORAGE_ROOT: /tmp/test-file-storage
+          PDF_STORAGE_DIR: /tmp/test-file-storage
+          PHOTO_STORAGE_DIR: /tmp/test-file-storage
           BACKUP_STORAGE_DIR: /tmp/test-backups
           NODE_ENV: test
           PERF_RESPONSE_TIME_THRESHOLD_MS: '1800'
+          COVERAGE_ENFORCE_THRESHOLDS: ${{ matrix.shard == 'all' && 'true' || 'false' }}
 
       - name: Upload API coverage artifact
         if: ${{ always() && matrix.coverage }}
@@ -236,8 +251,8 @@ jobs:
           pnpm --filter @raspi-system/part-search-core build
           pnpm --filter @raspi-system/shelf-layout-core build
 
-      - name: Run Web tests
-        run: pnpm --filter @raspi-system/web test
+      - name: Run Web tests with coverage floor
+        run: pnpm --filter @raspi-system/web test:coverage
 
       - name: Build Web
         run: pnpm --filter @raspi-system/web build
@@ -389,6 +404,12 @@ jobs:
             python-dotenv==1.0.1 \
             uvicorn==0.29.0
 
+      - name: Setup torque-agent test environment
+        run: |
+          python3 -m pip install --user poetry==1.8.5
+          cd clients/torque-agent
+          poetry install --with dev --no-interaction
+
       - name: Validate client scripts and tests
         env:
           PYTHONPATH: clients/haizen-agent:clients/nfc-agent
@@ -399,6 +420,12 @@ jobs:
           bash -n scripts/client/setup-signage.sh
           python3 -m pytest clients/haizen-agent/tests clients/nfc-agent/tests
           python3 -m unittest discover -s clients/status-agent/tests -p 'test_*.py'
+
+      - name: Validate torque-agent
+        run: |
+          cd clients/torque-agent
+          poetry run pytest tests
+          poetry run ruff check torque_agent tests
 
   release-build-contract:
     name: release-build-contract
@@ -769,6 +796,11 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
+      - name: Configure synthetic E2E administrator (smoke)
+        run: |
+          echo "E2E_ADMIN_USERNAME=ci-e2e-admin" >> "$GITHUB_ENV"
+          echo "E2E_ADMIN_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+
       - name: Seed database (smoke)
         run: pnpm --filter @raspi-system/api exec prisma db seed
         env:
@@ -870,6 +902,11 @@ jobs:
         run: pnpm --filter @raspi-system/api exec prisma migrate deploy
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+
+      - name: Configure synthetic E2E administrator
+        run: |
+          echo "E2E_ADMIN_USERNAME=ci-e2e-admin" >> "$GITHUB_ENV"
+          echo "E2E_ADMIN_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
 
       - name: Seed database
         run: pnpm --filter @raspi-system/api exec prisma db seed

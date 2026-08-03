@@ -67,6 +67,14 @@ function parseProductionScheduleResourceMasterCsv(csvText: string): ProductionSc
 }
 
 async function main() {
+  const e2eAdminUsername = process.env.E2E_ADMIN_USERNAME?.trim();
+  const e2eAdminPassword = process.env.E2E_ADMIN_PASSWORD;
+  if ((e2eAdminUsername && !e2eAdminPassword) || (!e2eAdminUsername && e2eAdminPassword)) {
+    throw new Error('E2E_ADMIN_USERNAME and E2E_ADMIN_PASSWORD must be provided together');
+  }
+  const adminUsername = e2eAdminUsername || 'admin';
+  const adminPassword = e2eAdminPassword || 'admin1234';
+
   // 生産日程（研削工程）: ダッシュボードIDを固定（CI/E2Eで安定させる）
   const productionScheduleDashboardId = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
   const productionScheduleGmailSubjectPattern = '生産日程_三島_研削工程';
@@ -113,12 +121,15 @@ async function main() {
     },
   };
 
-  const passwordHash = await bcrypt.hash('admin1234', 10);
+  const passwordHash = await bcrypt.hash(adminPassword, 10);
   await prisma.user.upsert({
-    where: { username: 'admin' },
-    update: { status: UserStatus.ACTIVE },
+    where: { username: adminUsername },
+    update: {
+      status: UserStatus.ACTIVE,
+      ...(e2eAdminUsername ? { passwordHash, role: UserRole.ADMIN } : {}),
+    },
     create: {
-      username: 'admin',
+      username: adminUsername,
       passwordHash,
       role: UserRole.ADMIN,
       status: UserStatus.ACTIVE
@@ -640,7 +651,11 @@ async function main() {
     },
   });
 
-  console.log('Seed data inserted. 管理者アカウント: admin / admin1234');
+  console.log(
+    e2eAdminUsername
+      ? 'Seed data inserted. Test administrator credentials were supplied externally.'
+      : 'Seed data inserted. Development administrator account was created.'
+  );
   console.log('計測機器テストデータ: MI-001（期限切れ）, MI-002（期限間近）, MI-003（正常）');
   console.log('可視化ダッシュボード: 生産スケジュール進捗（デフォルト）');
 }

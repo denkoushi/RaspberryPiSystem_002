@@ -80,15 +80,15 @@ class StagedCiWorkflowTests(unittest.TestCase):
             docker,
         )
 
-    def test_api_uses_one_noncoverage_pr_run_and_three_full_coverage_shards(self) -> None:
+    def test_api_uses_one_thresholded_pr_run_and_three_coverage_shards(self) -> None:
         api = job_block(CI, "api")
-        self.assertIn('"shard":"all","shard_id":"all","coverage":false', api)
+        self.assertIn('"shard":"all","shard_id":"all","coverage":true', api)
         for shard in ("1/3", "2/3", "3/3"):
             self.assertIn(f'"shard":"{shard}"', api)
-        self.assertIn("Run API tests (PR, no coverage)", api)
-        self.assertIn("pnpm test -- --fileParallelism=true --maxWorkers=1", api)
         self.assertIn("Run API tests (coverage shard)", api)
-        self.assertIn("pnpm test:coverage -- --shard=${{ matrix.shard }}", api)
+        self.assertIn('if [ "${{ matrix.shard }}" != "all" ]', api)
+        self.assertIn('pnpm test:coverage "${shard_args[@]}"', api)
+        self.assertIn("COVERAGE_ENFORCE_THRESHOLDS:", api)
 
     def test_fixed_aggregate_requires_success_or_an_exact_skip(self) -> None:
         aggregate = job_block(CI, "ci-required")

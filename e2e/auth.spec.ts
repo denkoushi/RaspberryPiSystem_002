@@ -1,5 +1,15 @@
 import { test, expect } from '@playwright/test';
 
+const e2eAdminUsername = process.env.E2E_ADMIN_USERNAME;
+const e2eAdminPassword = process.env.E2E_ADMIN_PASSWORD;
+
+function requireE2eAdminCredentials(): { username: string; password: string } {
+  if (!e2eAdminUsername || !e2eAdminPassword) {
+    throw new Error('E2E_ADMIN_USERNAME and E2E_ADMIN_PASSWORD are required for authentication E2E tests');
+  }
+  return { username: e2eAdminUsername, password: e2eAdminPassword };
+}
+
 test.describe('認証フロー', () => {
   test('ログイン画面が表示される', async ({ page }) => {
     await page.goto('/login');
@@ -26,45 +36,20 @@ test.describe('認証フロー', () => {
     ).toBeVisible({ timeout: 10000 });
   });
 
-  // 注意: このテストはCI環境ではスキップされます
-  // 理由:
-  // 1. CI環境ではタイミングの問題でログイン後のリダイレクトが不安定
-  // 2. Reactの状態更新の非同期性により、CI環境では`RequireAuth`が`user`を取得する前に
-  //    レンダリングされ、ログイン画面にリダイレクトされてしまう
-  // 3. 認証ロジックは既に`apps/api/src/routes/__tests__/auth.integration.test.ts`で
-  //    統合テストとして実施されている（84テスト中82テストが成功）
-  // 4. 過去の経緯（2025-11-24, 2025-11-25）でも同様の問題が発生し、
-  //    CI環境では有効な範囲のみをテストする方針に変更された
-  //
-  // このテストはローカル環境では実行可能ですが、CI環境ではスキップされます。
-  // 認証機能のテストは統合テストで十分にカバーされています。
-  test.skip(process.env.CI, '有効な認証情報でログインに成功し、管理画面にリダイレクトされる', async ({ page, request }) => {
-    // adminユーザーが存在するか確認
-    const checkResponse = await request.post('http://localhost:8080/api/auth/login', {
-      data: {
-        username: 'admin',
-        password: 'admin1234',
-      },
-    });
-
-    if (checkResponse.status() !== 200) {
-      test.skip();
-      return;
-    }
-
-    // 既存のadminユーザーでログイン
+  test('有効な認証情報でログインに成功し、管理画面にリダイレクトされる', async ({ page }) => {
+    const credentials = requireE2eAdminCredentials();
     await page.goto('/login');
-    await page.getByRole('textbox', { name: /ユーザー名/i }).fill('admin');
-    await page.getByLabel(/パスワード/i).fill('admin1234');
+    await page.getByRole('textbox', { name: /ユーザー名/i }).fill(credentials.username);
+    await page.getByLabel(/パスワード/i).fill(credentials.password);
 
-    // ログインボタンをクリック
+    const loginResponsePromise = page.waitForResponse(
+      (response) => response.url().endsWith('/api/auth/login') && response.request().method() === 'POST'
+    );
     await page.getByRole('button', { name: /ログイン/i }).click();
+    expect((await loginResponsePromise).ok()).toBe(true);
 
-    // ログイン成功を確認：URLが管理画面に遷移することを確認
     await expect(page).toHaveURL(/\/admin/, { timeout: 10000 });
-
-    // 管理画面のヘッダーに「管理コンソール」が表示されることを確認
-    await expect(page.getByText(/管理コンソール/i)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(credentials.username, { exact: true })).toBeVisible({ timeout: 10000 });
   });
 
   test('未認証ユーザーが管理画面にアクセスするとログイン画面にリダイレクトされる', async ({ page }) => {
@@ -72,4 +57,3 @@ test.describe('認証フロー', () => {
     await expect(page).toHaveURL(/\/login/);
   });
 });
-

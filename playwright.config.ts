@@ -56,6 +56,9 @@ export default defineConfig({
         JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET || 'test-refresh-secret-1234567890',
         BACKUP_CONFIG_PATH: process.env.BACKUP_CONFIG_PATH || '/tmp/e2e-backup.json',
         BACKUP_STORAGE_DIR: process.env.BACKUP_STORAGE_DIR || '/tmp/e2e-backups',
+        FILE_STORAGE_ROOT: process.env.FILE_STORAGE_ROOT || '/tmp/e2e-file-storage',
+        PDF_STORAGE_DIR: process.env.PDF_STORAGE_DIR || '/tmp/e2e-file-storage',
+        PHOTO_STORAGE_DIR: process.env.PHOTO_STORAGE_DIR || '/tmp/e2e-file-storage',
       },
     },
     {
