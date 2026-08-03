@@ -5,12 +5,13 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 This document must be maintained in accordance with `.agent/PLANS.md`.
 
 - id: self-inspection-use-case-boundaries-execplan
-- status: implementation_complete; integration_pending (push, PR, merge, and deployment are not approved)
+- status: completed
 - scope: `apps/api/src/services/part-measurement/self-inspection.service.ts` only, plus focused tests and API ESLint enforcement
 - started: 2026-08-03
 - branch: `refactor/self-inspection-use-case-boundaries`
 - baseline_sha: `e3a4e1f6971d9e5502b22352161ecd339f59a5fc`
-- integration_pending: push, pull request, merge, and production deployment all require separate explicit approval
+- merged_sha: `17220db03ea426ea088d2e94912225f485de83c5`
+- integration: completed by PR #1158 and production release `20260803-010318-0e4b53`
 
 ## Purpose / Big Picture
 
@@ -35,6 +36,12 @@ Success is demonstrated by an isolated PostgreSQL baseline before implementation
 - [x] (2026-08-03 08:26+09:00) Removed all focused and final temporary Docker resources. Counts returned exactly to 0 containers, 17 volumes, and 3 networks, with no task-labelled resource remaining.
 - [x] (2026-08-03 08:28+09:00) Committed the behavior-preserving extraction locally as `55849360` (`refactor(api): split self-inspection use cases`).
 - [x] (2026-08-03 08:31+09:00) Committed the architecture guard and completed ExecPlan locally as `5f5b2f27` (`chore(api): enforce self-inspection boundaries`). Push, PR, merge, and deployment remain out of scope and require explicit approval.
+- [x] (2026-08-03 09:36+09:00) Pushed the approved branch and opened draft PR #1158. All PR checks passed, including API tests, workspace quality, CodeQL, and secret scanning.
+- [x] (2026-08-03 09:50+09:00) Marked PR #1158 ready and squash-merged it to `main` as `17220db03ea426ea088d2e94912225f485de83c5`. The exact merge SHA passed the full three-shard API coverage workflow, release image security checks, CodeQL, secret scanning, release gates, and signed release-set publication.
+- [x] (2026-08-03 10:02+09:00) Ran the standard deployment `--print-plan` and `--preflight-only`. The plan selected only Pi 5 for server mutation and six kiosks for Web activation; all seven readiness gates passed and no migration was introduced.
+- [x] (2026-08-03 10:22+09:00) Verified Pi 5 Blue/Green release and five-minute stability monitoring, then approved the successful `raspi4-kensaku-stonebase01` canary through the standard approval gate.
+- [x] (2026-08-03 10:30+09:00) Production release `20260803-010318-0e4b53` completed successfully. Pi 5 API/Web claims and all six kiosk activation targets were verified, maintenance was cleared, and `mainIntegration.completionEligible` became `true`.
+- [x] (2026-08-03 10:31+09:00) Re-ran `--print-plan`; it returned zero mutation, activation, and verification targets with no warnings. Local `main` remained clean and equal to `origin/main`.
 
 ## Surprises & Discoveries
 
@@ -64,13 +71,17 @@ Success is demonstrated by an isolated PostgreSQL baseline before implementation
   Rationale: The user prohibited modification of existing containers and databases. Unique names, labels, random loopback port binding, and exact cleanup avoid collisions and make resource-delta verification possible.
   Date/Author: 2026-08-03 / Codex
 
+- Decision: After separate explicit approval, integrate and deploy only through the repository's protected PR and rolling-release entry points.
+  Rationale: The original implementation boundary prohibited integration. The later approval expanded scope, while PR checks, immutable release artifacts, readiness gates, Blue/Green rollback, a human canary gate, and serial terminal activation preserved the requested safety boundary.
+  Date/Author: 2026-08-03 / Codex
+
 ## Outcomes & Retrospective
 
-The implementation is complete on the local feature branch. `SelfInspectionService` is now a 321-line facade over eight responsibility-focused use-case modules plus a one-line shared constant module. The largest new module is 448 physical lines. The exact 22-method public surface and all existing import sites remain unchanged. A new two-test facade suite proves method-surface and delegation behavior, including reuse of one loan-event service instance.
+The implementation, integration, and production verification are complete. `SelfInspectionService` is now a 321-line facade over eight responsibility-focused use-case modules plus a one-line shared constant module. The largest new module is 448 physical lines. The exact 22-method public surface and all existing import sites remain unchanged. A new two-test facade suite proves method-surface and delegation behavior, including reuse of one loan-event service instance.
 
 Behavioral verification exceeded the baseline without replacing any existing test. Before refactoring, 478 files and 2,513 tests passed. After refactoring, 479 files and 2,515 tests passed; the one-file/two-test increase is solely the new facade contract test. API build, target and full lint, and whitespace validation pass under Node 20.20.2. Disposable Docker resources returned to their exact pre-work counts.
 
-No production connection, schema change, migration, configuration behavior change, UI change, deployment, push, pull request, or merge occurred. Integration to `origin/main` remains pending separate approval.
+PR #1158 was squash-merged as `17220db03ea426ea088d2e94912225f485de83c5` after all required checks passed. Production release `20260803-010318-0e4b53` completed through `scripts/update-all-clients.sh`: Pi 5 used Blue/Green switching and a five-minute stability gate; the canary and the remaining five kiosks completed serial Web activation and verification. No schema or migration changed. The final plan is a no-op, every required release claim is verified, and `mainIntegration.completionEligible` is `true`.
 
 ## Context and Orientation
 
@@ -171,4 +182,18 @@ Local implementation commit:
     55849360 refactor(api): split self-inspection use cases
     5f5b2f27 chore(api): enforce self-inspection boundaries
 
-Revision note (2026-08-03): Initial implementation plan created after confirming the clean synchronized baseline and dedicated local branch. Updated after every validation milestone and finalized after full isolated verification.
+Integration and production evidence:
+
+    Pull request: #1158
+    Merge SHA: 17220db03ea426ea088d2e94912225f485de83c5
+    Main CI run: 30775398638 (passed)
+    CodeQL run: 30775398616 (passed)
+    Secret scan run: 30775398623 (passed)
+    Production run: 20260803-010318-0e4b53 (success)
+    Pi 5 stability monitor: 301.991 seconds, passed
+    Pi 5 API/Web claims: verified at merge SHA
+    Kiosk activation targets: 6/6 success and verified
+    Final target plan: no-op; 0 mutation, 0 activation, 0 verification targets
+    mainIntegration: integrated; completionEligible=true
+
+Revision note (2026-08-03): Initial implementation plan created after confirming the clean synchronized baseline and dedicated local branch. Updated after every validation milestone, finalized after full isolated verification, and closed after separately approved PR integration and production verification.
