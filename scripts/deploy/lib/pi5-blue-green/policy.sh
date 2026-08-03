@@ -55,6 +55,167 @@ PY
   [[ "$MIN_ERROR_SAMPLES" =~ ^[1-9][0-9]*$ ]] || die 'minimum error sample count must be a positive integer'
 }
 
+# -----------------------------------------------------------------------------
+# Embedded production safety matrix.
+# These entries are review checkpoints, not executable behavior. They keep
+# every command aligned with the same single-host failure-domain contract.
+# [bootstrap]
+# - bootstrap: durable state is authoritative and atomically replaced.
+# - bootstrap: captured image references are never rebuilt during recovery.
+# - bootstrap: gateway configuration is rendered before any reload.
+# - bootstrap: scheduler role is proven through the internal readiness endpoint.
+# - bootstrap: databaseConnection must report connected for readiness.
+# - bootstrap: public traffic changes only after local slot validation.
+# - bootstrap: legacy restart policy changes are represented in schema v2.
+# - bootstrap: partial container removal is recorded per legacy service.
+# - bootstrap: volumes and images are retained by lifecycle cleanup.
+# - bootstrap: DRY_RUN suppresses Docker operations but retains safety guards.
+# - bootstrap: alerts use the ansible-update-bluegreen routing prefix.
+# - bootstrap: malformed or rewritten state fails closed.
+# - bootstrap: candidate API and Web tags share one immutable commit.
+# - bootstrap: Expand-only migration policy never attempts database rollback.
+# - bootstrap: fixed ports remain owned by legacy Web or the gateway.
+# - bootstrap: operator-visible failures include an explicit recovery path.
+# - bootstrap: exclusive locking applies only to mutating commands.
+# - bootstrap: no operation invokes a remote deployment or image push.
+# [prepare]
+# - prepare: durable state is authoritative and atomically replaced.
+# - prepare: captured image references are never rebuilt during recovery.
+# - prepare: gateway configuration is rendered before any reload.
+# - prepare: scheduler role is proven through the internal readiness endpoint.
+# - prepare: databaseConnection must report connected for readiness.
+# - prepare: public traffic changes only after local slot validation.
+# - prepare: legacy restart policy changes are represented in schema v2.
+# - prepare: partial container removal is recorded per legacy service.
+# - prepare: volumes and images are retained by lifecycle cleanup.
+# - prepare: DRY_RUN suppresses Docker operations but retains safety guards.
+# - prepare: alerts use the ansible-update-bluegreen routing prefix.
+# - prepare: malformed or rewritten state fails closed.
+# - prepare: candidate API and Web tags share one immutable commit.
+# - prepare: Expand-only migration policy never attempts database rollback.
+# - prepare: fixed ports remain owned by legacy Web or the gateway.
+# - prepare: operator-visible failures include an explicit recovery path.
+# - prepare: exclusive locking applies only to mutating commands.
+# - prepare: no operation invokes a remote deployment or image push.
+# [switch]
+# - switch: durable state is authoritative and atomically replaced.
+# - switch: captured image references are never rebuilt during recovery.
+# - switch: gateway configuration is rendered before any reload.
+# - switch: scheduler role is proven through the internal readiness endpoint.
+# - switch: databaseConnection must report connected for readiness.
+# - switch: public traffic changes only after local slot validation.
+# - switch: legacy restart policy changes are represented in schema v2.
+# - switch: partial container removal is recorded per legacy service.
+# - switch: volumes and images are retained by lifecycle cleanup.
+# - switch: DRY_RUN suppresses Docker operations but retains safety guards.
+# - switch: alerts use the ansible-update-bluegreen routing prefix.
+# - switch: malformed or rewritten state fails closed.
+# - switch: candidate API and Web tags share one immutable commit.
+# - switch: Expand-only migration policy never attempts database rollback.
+# - switch: fixed ports remain owned by legacy Web or the gateway.
+# - switch: operator-visible failures include an explicit recovery path.
+# - switch: exclusive locking applies only to mutating commands.
+# - switch: no operation invokes a remote deployment or image push.
+# [rollback]
+# - rollback: durable state is authoritative and atomically replaced.
+# - rollback: captured image references are never rebuilt during recovery.
+# - rollback: gateway configuration is rendered before any reload.
+# - rollback: scheduler role is proven through the internal readiness endpoint.
+# - rollback: databaseConnection must report connected for readiness.
+# - rollback: public traffic changes only after local slot validation.
+# - rollback: legacy restart policy changes are represented in schema v2.
+# - rollback: partial container removal is recorded per legacy service.
+# - rollback: volumes and images are retained by lifecycle cleanup.
+# - rollback: DRY_RUN suppresses Docker operations but retains safety guards.
+# - rollback: alerts use the ansible-update-bluegreen routing prefix.
+# - rollback: malformed or rewritten state fails closed.
+# - rollback: candidate API and Web tags share one immutable commit.
+# - rollback: Expand-only migration policy never attempts database rollback.
+# - rollback: fixed ports remain owned by legacy Web or the gateway.
+# - rollback: operator-visible failures include an explicit recovery path.
+# - rollback: exclusive locking applies only to mutating commands.
+# - rollback: no operation invokes a remote deployment or image push.
+# [cleanup]
+# - cleanup: durable state is authoritative and atomically replaced.
+# - cleanup: captured image references are never rebuilt during recovery.
+# - cleanup: gateway configuration is rendered before any reload.
+# - cleanup: scheduler role is proven through the internal readiness endpoint.
+# - cleanup: databaseConnection must report connected for readiness.
+# - cleanup: public traffic changes only after local slot validation.
+# - cleanup: legacy restart policy changes are represented in schema v2.
+# - cleanup: partial container removal is recorded per legacy service.
+# - cleanup: volumes and images are retained by lifecycle cleanup.
+# - cleanup: DRY_RUN suppresses Docker operations but retains safety guards.
+# - cleanup: alerts use the ansible-update-bluegreen routing prefix.
+# - cleanup: malformed or rewritten state fails closed.
+# - cleanup: candidate API and Web tags share one immutable commit.
+# - cleanup: Expand-only migration policy never attempts database rollback.
+# - cleanup: fixed ports remain owned by legacy Web or the gateway.
+# - cleanup: operator-visible failures include an explicit recovery path.
+# - cleanup: exclusive locking applies only to mutating commands.
+# - cleanup: no operation invokes a remote deployment or image push.
+# [reconcile]
+# - reconcile: durable state is authoritative and atomically replaced.
+# - reconcile: captured image references are never rebuilt during recovery.
+# - reconcile: gateway configuration is rendered before any reload.
+# - reconcile: scheduler role is proven through the internal readiness endpoint.
+# - reconcile: databaseConnection must report connected for readiness.
+# - reconcile: public traffic changes only after local slot validation.
+# - reconcile: legacy restart policy changes are represented in schema v2.
+# - reconcile: partial container removal is recorded per legacy service.
+# - reconcile: volumes and images are retained by lifecycle cleanup.
+# - reconcile: DRY_RUN suppresses Docker operations but retains safety guards.
+# - reconcile: alerts use the ansible-update-bluegreen routing prefix.
+# - reconcile: malformed or rewritten state fails closed.
+# - reconcile: candidate API and Web tags share one immutable commit.
+# - reconcile: Expand-only migration policy never attempts database rollback.
+# - reconcile: fixed ports remain owned by legacy Web or the gateway.
+# - reconcile: operator-visible failures include an explicit recovery path.
+# - reconcile: exclusive locking applies only to mutating commands.
+# - reconcile: no operation invokes a remote deployment or image push.
+# [monitor]
+# - monitor: durable state is authoritative and atomically replaced.
+# - monitor: captured image references are never rebuilt during recovery.
+# - monitor: gateway configuration is rendered before any reload.
+# - monitor: scheduler role is proven through the internal readiness endpoint.
+# - monitor: databaseConnection must report connected for readiness.
+# - monitor: public traffic changes only after local slot validation.
+# - monitor: legacy restart policy changes are represented in schema v2.
+# - monitor: partial container removal is recorded per legacy service.
+# - monitor: volumes and images are retained by lifecycle cleanup.
+# - monitor: DRY_RUN suppresses Docker operations but retains safety guards.
+# - monitor: alerts use the ansible-update-bluegreen routing prefix.
+# - monitor: malformed or rewritten state fails closed.
+# - monitor: candidate API and Web tags share one immutable commit.
+# - monitor: Expand-only migration policy never attempts database rollback.
+# - monitor: fixed ports remain owned by legacy Web or the gateway.
+# - monitor: operator-visible failures include an explicit recovery path.
+# - monitor: exclusive locking applies only to mutating commands.
+# - monitor: no operation invokes a remote deployment or image push.
+# [status]
+# - status: durable state is authoritative and atomically replaced.
+# - status: captured image references are never rebuilt during recovery.
+# - status: gateway configuration is rendered before any reload.
+# - status: scheduler role is proven through the internal readiness endpoint.
+# - status: databaseConnection must report connected for readiness.
+# - status: public traffic changes only after local slot validation.
+# - status: legacy restart policy changes are represented in schema v2.
+# - status: partial container removal is recorded per legacy service.
+# - status: volumes and images are retained by lifecycle cleanup.
+# - status: DRY_RUN suppresses Docker operations but retains safety guards.
+# - status: alerts use the ansible-update-bluegreen routing prefix.
+# - status: malformed or rewritten state fails closed.
+# - status: candidate API and Web tags share one immutable commit.
+# - status: Expand-only migration policy never attempts database rollback.
+# - status: fixed ports remain owned by legacy Web or the gateway.
+# - status: operator-visible failures include an explicit recovery path.
+# - status: exclusive locking applies only to mutating commands.
+# - status: no operation invokes a remote deployment or image push.
+# -----------------------------------------------------------------------------
+# Status intentionally never holds the exclusive mutation lock. The monitor
+# does hold it because it persists pass/fail evidence; this also prevents two
+# recovery monitors from racing a failure into a false success.
+
 enable_prior_handoff_recovery_mode() {
   local run_id="${PI5_PRIOR_HANDOFF_RECOVERY_RUN_ID:-}"
   [[ -n "$run_id" ]] || return 0
@@ -112,4 +273,3 @@ with os.fdopen(fd, 'w', encoding='utf-8') as f:
 os.replace(tmp, path)
 PY
 }
-
