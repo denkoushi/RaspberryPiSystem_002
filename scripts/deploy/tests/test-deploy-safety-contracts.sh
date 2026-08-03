@@ -255,21 +255,31 @@ command -v ansible-playbook >/dev/null 2>&1 || {
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
+REDACTED_ANSIBLE_DIR="${TMP_DIR}/ansible"
+VAULT_PLACEHOLDERS="${ROOT_DIR}/scripts/ci/fixtures/normal-factory-vault-placeholders.yml"
+python3 "${ROOT_DIR}/scripts/ci/prepare_redacted_ansible_context.py" \
+  --source "${ROOT_DIR}/infrastructure/ansible" \
+  --output "${REDACTED_ANSIBLE_DIR}" >/dev/null
+CONTRACT_MAIN_INVENTORY="${REDACTED_ANSIBLE_DIR}/inventory.yml"
+CONTRACT_TALKPLAZA_INVENTORY="${REDACTED_ANSIBLE_DIR}/inventory-talkplaza.yml"
+CONTRACT_PLAYBOOK="${REDACTED_ANSIBLE_DIR}/playbooks/deploy-staged.yml"
 
 render_inventory_contract() {
   local name="$1"
   local inventory="$2"
-  env -u ANSIBLE_CONFIG ansible-inventory -i "${inventory}" --list \
+  env -u ANSIBLE_CONFIG ansible-inventory -i "${inventory}" \
+    --extra-vars "@${VAULT_PLACEHOLDERS}" --list \
     > "${TMP_DIR}/${name}-inventory.json"
   env -u ANSIBLE_CONFIG \
-    ANSIBLE_ROLES_PATH="${ROOT_DIR}/infrastructure/ansible/roles" \
+    ANSIBLE_ROLES_PATH="${REDACTED_ANSIBLE_DIR}/roles" \
     RELEASE_ORCHESTRATED=1 \
-    ansible-playbook -i "${inventory}" "${PLAYBOOK}" --list-hosts \
+    ansible-playbook -i "${inventory}" "${CONTRACT_PLAYBOOK}" \
+      --extra-vars "@${VAULT_PLACEHOLDERS}" --list-hosts \
     > "${TMP_DIR}/${name}-playbook-hosts.txt"
 }
 
-render_inventory_contract main "${MAIN_INVENTORY}"
-render_inventory_contract talkplaza "${TALKPLAZA_INVENTORY}"
+render_inventory_contract main "${CONTRACT_MAIN_INVENTORY}"
+render_inventory_contract talkplaza "${CONTRACT_TALKPLAZA_INVENTORY}"
 
 GUARD_PLAYBOOK="${TMP_DIR}/orchestration-guard-test.yml"
 python3 - "${GUARD_PLAYBOOK}" "${ORCHESTRATION_GUARD}" <<'PY'

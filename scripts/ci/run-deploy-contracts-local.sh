@@ -90,11 +90,13 @@ echo "[deploy-contract] rollback and release safety contracts"
 bash scripts/deploy/tests/test-deploy-safety-contracts.sh
 
 echo "[deploy-contract] inventories and Ansible playbooks"
-ANSIBLE_DIRECTORY="$ROOT_DIR/infrastructure/ansible"
-sed \
-  's/^vault_password_file = .vault-pass/# vault_password_file = .vault-pass (disabled for contract checks)/' \
-  "$ANSIBLE_DIRECTORY/ansible.cfg" > "$TEMP_DIR/ansible-contract.cfg"
-export ANSIBLE_CONFIG="$TEMP_DIR/ansible-contract.cfg"
+ANSIBLE_SOURCE_DIRECTORY="$ROOT_DIR/infrastructure/ansible"
+ANSIBLE_DIRECTORY="$TEMP_DIR/ansible"
+VAULT_PLACEHOLDERS="$ROOT_DIR/scripts/ci/fixtures/normal-factory-vault-placeholders.yml"
+python3 "$ROOT_DIR/scripts/ci/prepare_redacted_ansible_context.py" \
+  --source "$ANSIBLE_SOURCE_DIRECTORY" \
+  --output "$ANSIBLE_DIRECTORY"
+export ANSIBLE_CONFIG="$ANSIBLE_DIRECTORY/ansible.cfg"
 export ANSIBLE_ROLES_PATH="$ANSIBLE_DIRECTORY/roles"
 READ_ONLY_ANSIBLE_CONFIG="$ANSIBLE_DIRECTORY/ansible-readonly.cfg"
 
@@ -125,17 +127,21 @@ python3 "$ROOT_DIR/scripts/deploy/tests/test_recover_pi4.py"
 for inventory in inventory.yml inventory-talkplaza.yml; do
   output="$TEMP_DIR/${inventory%.yml}.json"
   ANSIBLE_CONFIG="$READ_ONLY_ANSIBLE_CONFIG" \
-    ansible-inventory -i "$inventory" --list > "$output"
+    ansible-inventory -i "$inventory" \
+      --extra-vars "@$VAULT_PLACEHOLDERS" \
+      --list > "$output"
   python3 -m json.tool "$output" >/dev/null
 done
 python3 "$ROOT_DIR/scripts/deploy/terminal_profile_contracts.py" \
   --inventory-json "$TEMP_DIR/inventory.json" \
   --inventory-json "$TEMP_DIR/inventory-talkplaza.json"
 for playbook in "${STATIC_PLAYBOOKS[@]}" "${TERMINAL_PROFILE_PLAYBOOKS[@]}"; do
-  ansible-playbook --syntax-check "$playbook" -i inventory.yml
+  ansible-playbook --syntax-check "$playbook" -i inventory.yml \
+    --extra-vars "@$VAULT_PLACEHOLDERS"
 done
 for playbook in playbooks/deploy-terminal-profile.yml "${TERMINAL_PROFILE_PLAYBOOKS[@]}"; do
-  ansible-playbook --syntax-check "$playbook" -i inventory-talkplaza.yml
+  ansible-playbook --syntax-check "$playbook" -i inventory-talkplaza.yml \
+    --extra-vars "@$VAULT_PLACEHOLDERS"
 done
 ansible-playbook --check \
   -i "$ROOT_DIR/scripts/deploy/tests/fixtures/recovery-check-inventory.yml" \
