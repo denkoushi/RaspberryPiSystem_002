@@ -85,6 +85,7 @@ python3 scripts/deploy/tests/test-client-agent-lifecycle-selection.py
 bash scripts/deploy/tests/test-signage-deploy-maintenance.sh
 bash scripts/deploy/tests/test-deploy-status-postgres-observability.sh
 bash scripts/deploy/tests/test-deploy-status-postgres.sh
+bash scripts/deploy/tests/test-postgres-role-boundaries.sh
 
 echo "[deploy-contract] rollback and release safety contracts"
 bash scripts/deploy/tests/test-deploy-safety-contracts.sh

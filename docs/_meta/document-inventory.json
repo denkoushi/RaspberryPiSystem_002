@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 607,
-    "totalLines": 169300,
-    "totalBytes": 12709312,
+    "totalLines": 169323,
+    "totalBytes": 12710736,
     "withFrontmatter": 274,
     "withStatus": 130,
     "sourceOfTruthDeclared": 92,
@@ -35305,8 +35305,8 @@
     },
     {
       "path": "docs/plans/production-secrets-and-runtime-execplan.md",
-      "lineCount": 455,
-      "byteSize": 24687,
+      "lineCount": 478,
+      "byteSize": 26111,
       "hasFrontmatter": true,
       "title": "Remove production credential fallbacks and minimize the Pi5 runtime",
       "status": "in_progress",

@@ -107,6 +107,15 @@ when the repository implementation is ready.
   contract tests. The run-owned container, volume, and network were removed.
 - [ ] Prepare distinct PostgreSQL application and migration roles and prove
   least-privilege behavior in an isolated PostgreSQL 15 instance.
+- [x] (2026-08-04 08:20+09:00) Added the value-free PostgreSQL role bootstrap
+  and isolated contract. All 157 migrations were transferred to a non-superuser
+  migration owner; the API role could perform business CRUD but could not run
+  DDL, create roles, or modify `_prisma_migrations`. Disposable resources were
+  removed.
+- [x] (2026-08-04 08:20+09:00) Added API startup rejection for production URLs
+  using the `postgres` role, a missing password, or the known database password.
+  Wiring generated credentials into Vault/Compose and activating roles in the
+  production database remain separate approved operational steps.
 - [ ] Replace the API host SSH-directory mount with one dedicated read-only
   backup key and pinned `known_hosts`, and exclude terminal private keys from
   backup catalogs.
@@ -172,6 +181,13 @@ when the repository implementation is ready.
   hash state, emits no hash, and returns `blocked` for missing state and
   `incomplete` for an unavailable database. Unit contracts prove both outcomes
   occur before checkout, fetch, release submission, or migration.
+
+- Observation: PostgreSQL role separation requires ownership migration, not
+  only two connection strings.
+  Evidence: Prisma migration status succeeds as `raspi_migrator` only after
+  public schema tables, sequences, enums, and repository-owned functions are
+  transferred. The isolated contract then proves `raspi_app` retains business
+  CRUD while DDL, role creation, and migration-ledger mutation fail.
 
 - Observation: the API's complete host SSH directory serves two unrelated
   purposes: Ansible-based terminal backups and configuration backup coverage.
@@ -247,6 +263,13 @@ when the repository implementation is ready.
   Rationale: a manual reminder cannot prevent a later release from reintroducing
   lockout. The query is read-only, secret-free, bounded to 20 seconds, and runs
   while the fleet lock is held before any release mutation.
+  Date/Author: 2026-08-04 / Codex.
+
+- Decision: keep PostgreSQL password values out of the role-bootstrap SQL and
+  this repository-preparation commit.
+  Rationale: the SQL accepts psql variables, the contract uses disposable test
+  values, and real credential generation plus production ownership transfer is
+  an operational mutation requiring its own approval and rollback evidence.
   Date/Author: 2026-08-04 / Codex.
 
 ## Outcomes & Retrospective
