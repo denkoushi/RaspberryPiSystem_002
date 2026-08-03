@@ -98,6 +98,13 @@ when the repository implementation is ready.
   synthetic clients; production Web builds no longer synthesize a terminal
   key; client registration requires explicit authentication, verifies TLS by
   default, and resolves encrypted inventory through `ansible-inventory`.
+- [x] (2026-08-04 08:15+09:00) Removed the fixed due-management comparison and
+  made an absent shared hash deny access. Added a read-only standard deployment
+  preflight that blocks before fetch, checkout, release-unit creation, or
+  migration when the shared hash is missing or cannot be verified.
+- [x] (2026-08-04 08:15+09:00) Passed 208 affected API integration tests in a
+  disposable PostgreSQL 15/pgvector instance and 67 deployment-preflight
+  contract tests. The run-owned container, volume, and network were removed.
 - [ ] Prepare distinct PostgreSQL application and migration roles and prove
   least-privilege behavior in an isolated PostgreSQL 15 instance.
 - [ ] Replace the API host SSH-directory mount with one dedicated read-only
@@ -158,6 +165,13 @@ when the repository implementation is ready.
   Evidence: the migrated inventory contains only `vault_*` references. The
   corrected script consumes `ansible-inventory --list` in memory and stops if
   decryption or resolution fails; it does not fall back to example devices.
+
+- Observation: removing the fixed due-management comparison is repository-safe
+  only when every production release is gated on the existing shared hash.
+  Evidence: the new migration preflight queries only existence and non-empty
+  hash state, emits no hash, and returns `blocked` for missing state and
+  `incomplete` for an unavailable database. Unit contracts prove both outcomes
+  occur before checkout, fetch, release submission, or migration.
 
 - Observation: the API's complete host SSH directory serves two unrelated
   purposes: Ansible-based terminal backups and configuration backup coverage.
@@ -225,6 +239,14 @@ when the repository implementation is ready.
   credentials nor the E2E credential channel.
   Rationale: CI remains reproducible, while setting `NODE_ENV=production`
   cannot create the known administrator or synthetic client identities.
+  Date/Author: 2026-08-04 / Codex.
+
+- Decision: make due-management readiness an unconditional part of the
+  production-ledger preflight after this change, rather than an operator-only
+  checklist item.
+  Rationale: a manual reminder cannot prevent a later release from reintroducing
+  lockout. The query is read-only, secret-free, bounded to 20 seconds, and runs
+  while the fleet lock is held before any release mutation.
   Date/Author: 2026-08-04 / Codex.
 
 ## Outcomes & Retrospective

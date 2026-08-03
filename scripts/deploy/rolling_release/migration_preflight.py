@@ -37,6 +37,12 @@ EXPECTED_KEYS = frozenset(
 )
 PROBE_NAME = "migration"
 CAPABILITY = "migration.production-ledger"
+DUE_MANAGEMENT_PASSWORD_QUERY = (
+    'SELECT EXISTS ('
+    'SELECT 1 FROM "ProductionScheduleAccessPasswordConfig" '
+    "WHERE location = 'shared' AND length(\"dueManagementPasswordHash\") > 0"
+    ');'
+)
 
 
 class MigrationPreflightConfigError(ValueError):
@@ -177,11 +183,46 @@ def _default_run(
     )
 
 
+def _due_management_password_configured(
+    project: str = "/opt/RaspberryPiSystem_002",
+) -> bool:
+    compose_file = os.path.join(project, "infrastructure", "docker", "docker-compose.server.yml")
+    result = subprocess.run(
+        [
+            "/usr/bin/docker",
+            "compose",
+            "-f",
+            compose_file,
+            "exec",
+            "-T",
+            "db",
+            "psql",
+            "-U",
+            "postgres",
+            "-d",
+            "borrow_return",
+            "-v",
+            "ON_ERROR_STOP=1",
+            "-tAc",
+            DUE_MANAGEMENT_PASSWORD_QUERY,
+        ],
+        cwd=project,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=20,
+    )
+    if result.returncode != 0:
+        raise RuntimeError("due-management password readiness query failed")
+    return result.stdout.strip() == "t"
+
+
 def execute(
     spec: Mapping[str, Any],
     *,
     run_command: Callable[..., Any] = _default_run,
     server_client_id_reader: Callable[[], str] | None = None,
+    due_management_password_reader: Callable[[], bool] | None = None,
     sleep: Callable[[float], None] = time.sleep,
 ) -> int:
     project = str(spec["project"])
@@ -216,6 +257,30 @@ def execute(
             print("[ERROR] migration preflight Pi5 identity mismatch", file=sys.stderr)
             return _report(
                 EX_CONFIG, issue_code="migration.pi5-identity-mismatch"
+            )
+
+        try:
+            due_management_password_configured = (
+                due_management_password_reader
+                or (lambda: _due_management_password_configured(project))
+            )()
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+            print(
+                f"[ERROR] migration preflight could not verify due-management password readiness: {error}",
+                file=sys.stderr,
+            )
+            return _report(
+                EX_TEMPFAIL,
+                issue_code="migration.due-management-password-readiness-unavailable",
+            )
+        if not due_management_password_configured:
+            print(
+                "[ERROR] migration preflight requires a configured shared due-management password",
+                file=sys.stderr,
+            )
+            return _report(
+                EX_CONFIG,
+                issue_code="migration.due-management-password-unconfigured",
             )
 
         status = run_command(
@@ -309,6 +374,7 @@ def execute(
             EX_OK,
             proofs=(
                 "migration.pi5-identity",
+                "migration.due-management-password-configured",
                 "migration.candidate-object",
                 "migration.production-ledger",
                 "migration.sealed-evidence",

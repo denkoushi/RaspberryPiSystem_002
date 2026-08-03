@@ -57,6 +57,7 @@ class MigrationPreflightTest(unittest.TestCase):
                 self.spec(project),
                 run_command=run,
                 server_client_id_reader=lambda: "raspberrypi5-server",
+                due_management_password_reader=lambda: True,
             )
 
         self.assertEqual(outcome, migration_preflight.EX_CONFIG)
@@ -85,6 +86,7 @@ class MigrationPreflightTest(unittest.TestCase):
                 self.spec(project),
                 run_command=run,
                 server_client_id_reader=lambda: "raspberrypi5-server",
+                due_management_password_reader=lambda: True,
             )
 
             self.assertEqual(outcome, migration_preflight.EX_OK)
@@ -106,6 +108,7 @@ class MigrationPreflightTest(unittest.TestCase):
                     self.spec(project),
                     run_command=lambda *args, **kwargs: calls.append((args, kwargs)),
                     server_client_id_reader=lambda: "raspberrypi5-server",
+                    due_management_password_reader=lambda: True,
                 )
             finally:
                 os.close(descriptor)
@@ -135,6 +138,7 @@ class MigrationPreflightTest(unittest.TestCase):
                 self.spec(project),
                 run_command=run,
                 server_client_id_reader=lambda: "raspberrypi5-server",
+                due_management_password_reader=lambda: True,
                 sleep=sleeps.append,
             )
 
@@ -167,6 +171,7 @@ class MigrationPreflightTest(unittest.TestCase):
                 self.spec(project),
                 run_command=run,
                 server_client_id_reader=lambda: "raspberrypi5-server",
+                due_management_password_reader=lambda: True,
                 sleep=lambda _seconds: None,
             )
 
@@ -176,6 +181,39 @@ class MigrationPreflightTest(unittest.TestCase):
             migration_preflight.GIT_FETCH_ATTEMPTS,
         )
         self.assertFalse(any(command[1:3] == ("cat-file", "-e") for command in calls))
+
+    def test_missing_due_management_password_stops_before_checkout_or_fetch(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Path(temporary).resolve()
+            (project / "logs/deploy").mkdir(parents=True)
+            calls: list[tuple[str, ...]] = []
+
+            outcome = migration_preflight.execute(
+                self.spec(project),
+                run_command=lambda argv, **_options: calls.append(tuple(argv)),
+                server_client_id_reader=lambda: "raspberrypi5-server",
+                due_management_password_reader=lambda: False,
+            )
+
+        self.assertEqual(outcome, migration_preflight.EX_CONFIG)
+        self.assertEqual(calls, [])
+
+    def test_due_management_readiness_failure_is_incomplete(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Path(temporary).resolve()
+            (project / "logs/deploy").mkdir(parents=True)
+
+            def unavailable() -> bool:
+                raise RuntimeError("database unavailable")
+
+            outcome = migration_preflight.execute(
+                self.spec(project),
+                run_command=lambda *_args, **_options: None,
+                server_client_id_reader=lambda: "raspberrypi5-server",
+                due_management_password_reader=unavailable,
+            )
+
+        self.assertEqual(outcome, migration_preflight.EX_TEMPFAIL)
 
 
 if __name__ == "__main__":

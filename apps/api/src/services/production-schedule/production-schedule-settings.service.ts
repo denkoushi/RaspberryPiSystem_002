@@ -12,7 +12,6 @@ import {
 
 const normalizeLocation = (location: string): string => location.trim();
 const normalizeSiteLocation = (location: string): string => resolveSiteKeyFromScopeKey(normalizeLocation(location));
-const LEGACY_DUE_MANAGEMENT_PASSWORD = '2520';
 export const SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION = 'shared';
 const DEFAULT_PROCESSING_TYPE_OPTIONS = [
   { code: '塗装', label: '塗装', priority: 1, enabled: true },
@@ -448,7 +447,7 @@ export async function getDueManagementAccessPasswordSettings(location: string): 
   return {
     location: normalizedLocation,
     configured: Boolean(config),
-    defaultPasswordActive: !config
+    defaultPasswordActive: false
   };
 }
 
@@ -493,7 +492,7 @@ export async function verifyDueManagementAccessPassword(params: {
     select: { dueManagementPasswordHash: true }
   });
   if (!config) {
-    return { success: password === LEGACY_DUE_MANAGEMENT_PASSWORD };
+    return { success: false };
   }
   const success = await bcrypt.compare(password, config.dueManagementPasswordHash);
   return { success };

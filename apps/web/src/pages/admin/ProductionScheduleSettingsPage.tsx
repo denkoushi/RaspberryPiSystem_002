@@ -550,12 +550,12 @@ export function ProductionScheduleSettingsPage() {
       <Card title="納期管理アクセス設定">
         <div className="space-y-4">
           <p className="text-xs font-semibold text-slate-700">
-            キオスクの「納期管理」ボタン押下時に要求するパスワードを設定します（shared共通）。未設定時は初期パスワード「2520」が有効です。
+            キオスクの「納期管理」ボタン押下時に要求するパスワードを設定します（shared共通）。未設定時は保護対象の操作を利用できません。
           </p>
           <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
             <p className="text-xs font-semibold text-slate-700">
               現在状態:{' '}
-              {dueManagementAccessPasswordSettingsQuery.data?.configured ? '設定済み（カスタム）' : '未設定（初期パスワード2520）'}
+              {dueManagementAccessPasswordSettingsQuery.data?.configured ? '設定済み' : '未設定（利用不可）'}
             </p>
           </div>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

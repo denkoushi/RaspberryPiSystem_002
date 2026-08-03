@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../services/production-schedule/constants.js';
+import { configureTestDueManagementAccessPassword } from '../../test/due-management-access-password.js';
 import { createAuthHeader, createTestUser } from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
@@ -204,6 +205,7 @@ describe('self-inspection item invalidation API', () => {
   beforeAll(async () => {
     app = await buildServer();
     await app.ready();
+    await configureTestDueManagementAccessPassword();
   });
 
   afterAll(async () => {

@@ -99,6 +99,7 @@ def is_external_or_empty(value: str) -> bool:
         or "process.env" in normalized
         or "import.meta.env" in normalized
         or normalized.startswith("env.")
+        or re.fullmatch(r"(?:string|number|boolean|unknown|never)(?:\s*\|\s*undefined)?;?", normalized) is not None
         or normalized.startswith("!vault")
         or normalized.startswith("$(")
         or normalized.startswith("`")

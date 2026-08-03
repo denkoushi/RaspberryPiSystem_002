@@ -52,6 +52,7 @@ class ProductionSecretStructureTests(unittest.TestCase):
         self.assertTrue(is_external_or_empty('"${ADMIN_ACCESS_TOKEN:-}"'))
         self.assertTrue(is_external_or_empty('"${ADMIN_ACCESS_TOKEN}"'))
         self.assertTrue(is_external_or_empty('env.VITE_DEFAULT_CLIENT_KEY || undefined'))
+        self.assertTrue(is_external_or_empty('string;'))
 
     def test_rejects_new_plaintext_without_echoing_value(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
