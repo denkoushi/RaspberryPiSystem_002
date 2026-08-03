@@ -37,7 +37,7 @@
     { "id": "flatted@3.3.3", "owner": "platform-maintainers", "reason": "Security-pinned vulnerable selector until direct dependents catch up.", "expiresOn": "2026-10-31" },
     { "id": "picomatch@2.3.1", "owner": "platform-maintainers", "reason": "Security-pinned vulnerable selector until direct dependents catch up.", "expiresOn": "2026-10-31" },
     { "id": "picomatch@4.0.3", "owner": "platform-maintainers", "reason": "Security-pinned vulnerable selector until direct dependents catch up.", "expiresOn": "2026-10-31" },
-    { "id": "brace-expansion@5.0.2", "owner": "platform-maintainers", "reason": "Security-pinned vulnerable selector until direct dependents catch up.", "expiresOn": "2026-10-31" },
+    { "id": "brace-expansion@5.0.2", "owner": "platform-maintainers", "reason": "Security-pinned to the CVE-2026-69152 fixed release until direct dependents catch up.", "expiresOn": "2026-10-31" },
     { "id": "qs", "owner": "platform-maintainers", "reason": "Security-pinned transitive dependency until direct dependents catch up.", "expiresOn": "2026-10-31" },
     { "id": "@remix-run/router", "owner": "platform-maintainers", "reason": "Security-pinned transitive dependency until direct dependents catch up.", "expiresOn": "2026-10-31" },
     { "id": "form-data", "owner": "platform-maintainers", "reason": "Security-pinned transitive dependency until direct dependents catch up.", "expiresOn": "2026-10-31" },
