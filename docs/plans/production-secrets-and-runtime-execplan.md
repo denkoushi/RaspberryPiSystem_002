@@ -29,9 +29,8 @@ validation:
   - Docker Compose and non-root runtime contracts
   - complete local deployment contracts without managed-host connections
 open_items:
-  - remaining production fail-closed and runtime implementation
-  - Draft PR and hosted CI
-  - credential rotation, database role migration, CA rollout, merge, and production deployment require separate evidence and approval gates
+  - merge the read-only encrypted-Vault planning correction and rerun the production plan from synchronized main
+  - credential rotation, database role migration, CA rollout, and production deployment require separate evidence and approval gates
 ---
 
 # Remove production credential fallbacks and minimize the Pi5 runtime
@@ -186,6 +185,24 @@ when the repository implementation is ready.
   environment contracts, and the isolated PostgreSQL application/migration
   role boundary after the workflow correction. Disposable resources returned
   to zero.
+- [x] (2026-08-04 09:57+09:00) PR #1170 passed all hosted checks and merged to
+  `origin/main` as `dbe4542346d8cc63b1690f8c2bb48ff466ba3270`. The synchronized
+  local main was clean before operational read-only planning began.
+- [x] (2026-08-04 10:02+09:00) The first merged-main `--print-plan` stopped
+  locally before any host connection because the dedicated read-only Ansible
+  config still discovered encrypted `host_vars/*/vault.yml` files without a
+  Vault password. Added a failing real-Ansible regression test, then changed
+  the planner to use the existing redacted context boundary in an automatically
+  removed temporary directory.
+- [x] (2026-08-04 10:25+09:00) Made the shared redacted-context helper
+  independent of the caller's working directory after the aggregate contract
+  reproduced the issue. The complete deployment contract then passed: 103
+  Ansible templates, shell and Blue/Green safety contracts, Web production
+  build, 972 deployment Python tests, 43 Ansible contracts, and both isolated
+  PostgreSQL contracts. Temporary labelled Docker resources returned to zero.
+- [ ] Merge the read-only planning correction, synchronize main, rerun
+  `--print-plan`, and present its exact host scope before any approved
+  `--preflight-only` connection.
 
 ## Surprises & Discoveries
 
@@ -289,6 +306,21 @@ when the repository implementation is ready.
   Evidence: normal-factory status and torque agents still contain explicit
   transitional exceptions. The repository deliberately leaves them unchanged
   until the new read-only verification Playbook succeeds on every target.
+
+- Observation: the read-only Ansible configuration removed Vault password
+  discovery but did not prevent Ansible from loading encrypted host Vaults.
+  Evidence: merged-main `--print-plan` exited before host access, and a bounded
+  diagnostic classified Ansible's exit as `vault_secret_missing`. A real
+  encrypted-host-vars regression test reproduced the same failure without
+  emitting the encrypted value or password.
+
+- Observation: a helper imported through the repository namespace can pass
+  unit tests from the repository root yet fail when the contract runner starts
+  it from another working directory.
+  Evidence: the first aggregate run reached the rollback contracts and failed
+  with `ModuleNotFoundError: No module named 'scripts'`; a subprocess test now
+  runs the CLI from a temporary outside-repository directory, and the helper
+  establishes its repository root before importing the shared primitive.
 
 ## Decision Log
 
@@ -396,6 +428,15 @@ when the repository implementation is ready.
   Rationale: the SQL accepts psql variables, the contract uses disposable test
   values, and real credential generation plus production ownership transfer is
   an operational mutation requiring its own approval and rollback evidence.
+  Date/Author: 2026-08-04 / Codex.
+
+- Decision: make production read-only inventory planning consume the same
+  redacted Ansible-tree primitive as CI instead of decrypting Vaults.
+  Rationale: host selection needs addresses, groups, and non-secret release
+  metadata, not credential values. Excluding `host_vars/*/vault.yml` and
+  `.vault-pass` in an automatically deleted temporary copy preserves the
+  no-secret planning boundary and avoids granting `--print-plan` decryption
+  authority.
   Date/Author: 2026-08-04 / Codex.
 
 ## Outcomes & Retrospective
@@ -602,3 +643,11 @@ boundary and separates repository preparation from every production mutation.
 Revision note 2026-08-04: Completed and locally validated the value-preserving
 normal-factory Vault migration and redacted CI Ansible context. Operational
 secret rotation remains outside this repository-only milestone.
+
+Revision note 2026-08-04: Recorded the merged-main read-only planning failure
+and the minimal redacted-context correction required before production
+preflight. No managed host was contacted and no production state changed.
+
+Revision note 2026-08-04: Recorded the cwd-independent helper correction and
+the successful complete local deployment contract. All run-owned Docker
+resources were removed; main integration and production preflight remain open.

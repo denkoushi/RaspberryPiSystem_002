@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -36,7 +37,10 @@ class RedactedAnsibleContextTests(unittest.TestCase):
             self.assertFalse((output / ".vault-pass").exists())
             self.assertFalse((output / "host_vars/test-host/vault.yml").exists())
             self.assertTrue((output / "host_vars/test-host/main.yml").is_file())
-            self.assertIn("disabled in redacted CI context", (output / "ansible.cfg").read_text())
+            self.assertIn(
+                "disabled in redacted read-only context",
+                (output / "ansible.cfg").read_text(),
+            )
 
     def test_refuses_to_overwrite_an_existing_destination(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -51,3 +55,39 @@ class RedactedAnsibleContextTests(unittest.TestCase):
             output.mkdir()
             with self.assertRaisesRegex(RedactedContextError, "must not already exist"):
                 prepare_context(source, output)
+
+    def test_cli_runs_outside_the_repository_working_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "ansible"
+            source.mkdir()
+            (source / "ansible.cfg").write_text(
+                "[defaults]\nvault_password_file = .vault-pass\n",
+                encoding="utf-8",
+            )
+            (source / "inventory.yml").write_text(
+                "all:\n  hosts: {}\n", encoding="utf-8"
+            )
+            output = root / "redacted"
+            working_directory = root / "outside-repository"
+            working_directory.mkdir()
+            script = Path(__file__).resolve().parents[1] / (
+                "prepare_redacted_ansible_context.py"
+            )
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "--source",
+                    str(source),
+                    "--output",
+                    str(output),
+                ],
+                cwd=working_directory,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertTrue((output / "inventory.yml").is_file())
