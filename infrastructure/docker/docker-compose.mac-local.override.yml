@@ -64,7 +64,12 @@ services:
       - ../../infrastructure/docker:/app/host/infrastructure/docker:ro
       - ../../clients/nfc-agent:/app/host/clients/nfc-agent:ro
       - ../../.docker/local/certs:/app/host/certs:ro
-      - ../../infrastructure/ansible:/app/host/infrastructure/ansible:ro
+      - type: bind
+        source: ../../.docker/local/backup-ansible
+        target: /app/backup-ansible
+        read_only: true
+        bind:
+          create_host_path: false
       - type: bind
         source: ../../.docker/local/ssh/id_ed25519
         target: /run/secrets/backup-ssh/id_ed25519

@@ -110,6 +110,7 @@ RUN mkdir -p /app/storage/photos \
   /app/storage/pallet-machine-illustrations \
   /app/storage/csv-dashboards \
   /app/storage/.integrity \
+  && chown -R node:node /app/storage \
   && rm -rf /usr/local/lib/node_modules/npm
 
 FROM api-runtime AS api
@@ -133,6 +134,9 @@ LABEL org.opencontainers.image.revision=${BUILD_COMMIT}
 LABEL org.opencontainers.image.config-hash=${BUILD_CONFIG_HASH}
 
 ENV NODE_ENV=production
+ENV HOME=/tmp/api-home
+ENV XDG_CACHE_HOME=/tmp/api-cache
 ENV DATABASE_URL="postgresql://postgres:postgres@db:5432/borrow_return"
 
+USER node
 CMD ["node", "dist/main.js"]

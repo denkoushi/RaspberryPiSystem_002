@@ -105,6 +105,7 @@ STATIC_PLAYBOOKS=(
   playbooks/deploy.yml
   playbooks/deploy-terminal-profile.yml
   playbooks/server-config-release.yml
+  playbooks/prepare-pi5-runtime-permissions.yml
   playbooks/update-clients.yml
   playbooks/health-check.yml
   playbooks/manage-system-configs.yml

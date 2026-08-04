@@ -477,6 +477,9 @@ CONTAINER_MODULES = {
 RESCUE_TASK_NAME = (
     'Rescue measuring instrument genre images from api container before recreate'
 )
+RUNTIME_PERMISSION_PROBE_NAME = (
+    'Verify existing Pi5 writable trees are ready for the non-root runtime'
+)
 
 def normalized(value):
     return ' '.join(str(value).split())
@@ -668,6 +671,23 @@ def validate_rescue_task(task, module, module_value):
     )
 
 
+def validate_runtime_permission_probe(task, module, module_value):
+    assert module == 'ansible.builtin.shell'
+    shell = str(module_value)
+    assert 'set -euo pipefail' in shell
+    assert 'find "${runtime_path}" -type d' in shell
+    assert 'test -r "${runtime_path}"' in shell
+    assert 'test -w "${runtime_path}"' in shell
+    assert 'test -x "${runtime_path}"' in shell
+    assert task.get('changed_when') is False
+    assert task.get('failed_when') is False
+    assert task.get('become_user') == '{{ ansible_user }}'
+    for forbidden in ('chown', 'chmod', 'docker ', 'systemctl ', 'rm ', 'mv '):
+        assert forbidden not in shell, (
+            f'non-root runtime readiness probe may not mutate state: {forbidden}'
+        )
+
+
 rescue_tasks = []
 reconcile_tasks = []
 observed_reasons = set()
@@ -760,12 +780,23 @@ HOST_CONFIG_ALLOWED_PATHS = {
     '{{ repo_path }}/storage/pallet-machine-illustrations',
     '{{ repo_path }}/storage/csv-dashboards',
     '{{ repo_path }}/storage/.integrity',
+    '{{ repo_path }}/storage',
+    '{{ repo_path }}/alerts',
+    '{{ repo_path }}/power-actions',
+    '{{ repo_path }}/config',
+    '/opt/backups',
+    '/var/log/caddy',
+    '/etc/raspi-backup-ansible',
+    '/etc/raspi-backup-ansible/inventory.yml',
+    '/etc/raspi-backup-ansible/backup-clients.yml',
+    '/etc/raspi-backup-ansible/backup-client-directory.yml',
 }
 HOST_CONFIG_SHELL_TASKS = {
     'Verify exact clean Pi5 release checkout',
     'Validate API .env syntax',
     'Validate Web .env syntax',
     'Validate Docker Compose .env syntax',
+    RUNTIME_PERMISSION_PROBE_NAME,
     RESCUE_TASK_NAME,
 }
 
@@ -849,6 +880,8 @@ def walk_graph_tasks(task_list, source, inherited_full):
                 assert name in HOST_CONFIG_SHELL_TASKS, (
                     f'{source}:{name} adds an unaudited host-config shell action'
                 )
+                if name == RUNTIME_PERMISSION_PROBE_NAME:
+                    validate_runtime_permission_probe(task, module, module_value)
 
             reasons = runtime_reasons(task, module, module_value)
             if reasons and not effective_full:

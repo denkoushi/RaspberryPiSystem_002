@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 607,
-    "totalLines": 169352,
-    "totalBytes": 12713125,
+    "totalLines": 169401,
+    "totalBytes": 12716447,
     "withFrontmatter": 274,
     "withStatus": 130,
     "sourceOfTruthDeclared": 92,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 25,
-    "localLinkCount": 5657,
+    "localLinkCount": 5655,
     "brokenLocalLinkCount": 87,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -17806,7 +17806,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 7,
+      "inboundCount": 6,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -17962,18 +17962,13 @@
     },
     {
       "path": "docs/guides/backup-configuration.md",
-      "lineCount": 799,
-      "byteSize": 31771,
+      "lineCount": 798,
+      "byteSize": 31767,
       "hasFrontmatter": true,
       "title": "バックアップ設定ガイド",
       "status": null,
       "source_of_truth": null,
       "localLinks": [
-        {
-          "href": "./ansible-ssh-architecture.md",
-          "targetPath": "docs/guides/ansible-ssh-architecture.md",
-          "exists": true
-        },
         {
           "href": "./backup-and-restore.md",
           "targetPath": "docs/guides/backup-and-restore.md",
@@ -18011,11 +18006,6 @@
         },
         {
           "href": "../knowledge-base/infrastructure/backup-restore.md#backup-restore-20260712",
-          "targetPath": "docs/knowledge-base/infrastructure/backup-restore.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/infrastructure/backup-restore.md#kb-102-ansibleによるクライアント端末バックアップ機能実装時のansibleとtailscale連携問題",
           "targetPath": "docs/knowledge-base/infrastructure/backup-restore.md",
           "exists": true
         },
@@ -18839,8 +18829,8 @@
     },
     {
       "path": "docs/guides/deployment.md",
-      "lineCount": 312,
-      "byteSize": 27075,
+      "lineCount": 320,
+      "byteSize": 27752,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -30885,7 +30875,7 @@
           "exists": false
         }
       ],
-      "inboundCount": 80,
+      "inboundCount": 79,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -35305,8 +35295,8 @@
     },
     {
       "path": "docs/plans/production-secrets-and-runtime-execplan.md",
-      "lineCount": 505,
-      "byteSize": 27905,
+      "lineCount": 547,
+      "byteSize": 30554,
       "hasFrontmatter": true,
       "title": "Remove production credential fallbacks and minimize the Pi5 runtime",
       "status": "in_progress",

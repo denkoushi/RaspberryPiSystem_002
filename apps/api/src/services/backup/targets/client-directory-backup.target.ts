@@ -37,11 +37,10 @@ export class ClientDirectoryBackupTarget implements BackupTarget {
     this.remoteDirPath = parts.slice(1).join(':');
     assertRemoteBackupPathAllowed(this.remoteDirPath);
 
-    const projectRoot = process.env.PROJECT_ROOT || '/opt/RaspberryPiSystem_002';
-    const ansibleBasePath = process.env.ANSIBLE_BASE_PATH || path.join(projectRoot, 'infrastructure/ansible');
+    const ansibleBasePath = process.env.ANSIBLE_BASE_PATH || '/app/backup-ansible';
 
     this.ansibleInventoryPath = ansibleInventoryPath || path.join(ansibleBasePath, 'inventory.yml');
-    this.ansiblePlaybookPath = ansiblePlaybookPath || path.join(ansibleBasePath, 'playbooks/backup-client-directory.yml');
+    this.ansiblePlaybookPath = ansiblePlaybookPath || path.join(ansibleBasePath, 'backup-client-directory.yml');
   }
 
   get info(): BackupTargetInfo {
@@ -61,17 +60,8 @@ export class ClientDirectoryBackupTarget implements BackupTarget {
     const outputFileName = `${this.clientHost}_${path.basename(this.remoteDirPath)}.tar.gz`;
     const outputFilePath = path.join(backupDestination, outputFileName);
 
-    const containerAnsiblePath = '/app/host/infrastructure/ansible';
-    let ansibleInventoryPath = this.ansibleInventoryPath;
-    let ansiblePlaybookPath = this.ansiblePlaybookPath;
-
-    try {
-      await fs.access(path.join(containerAnsiblePath, 'inventory.yml'));
-      ansibleInventoryPath = path.join(containerAnsiblePath, 'inventory.yml');
-      ansiblePlaybookPath = path.join(containerAnsiblePath, 'playbooks/backup-client-directory.yml');
-    } catch {
-      // ignore
-    }
+    const ansibleInventoryPath = this.ansibleInventoryPath;
+    const ansiblePlaybookPath = this.ansiblePlaybookPath;
 
     try {
       const backupSshPaths = resolveBackupSshPaths();
@@ -119,4 +109,3 @@ export class ClientDirectoryBackupTarget implements BackupTarget {
     }
   }
 }
-

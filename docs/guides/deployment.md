@@ -284,6 +284,14 @@ Pi5上のchecksum・展開・disk処理を調べる。転送量が増え続け�
 
 ## 禁止する迂回経路
 
+Pi5のAPI/Webは非root UID/GID、read-only root filesystem、`cap_drop: ALL`、
+`no-new-privileges`で起動する。書込み可能なのは、APIの永続storage・alerts・
+power-actions・config・backupと`/tmp`、WebのCaddy logと専用tmpfsだけである。
+標準デプロイは既存ディレクトリを非rootユーザーで検査し、不適合ならコンテナ変更前に
+停止する。既存データの再帰的な所有権移行は通常デプロイへ混在させず、別途承認された
+一回限りの保守作業で`prepare-pi5-runtime-permissions.yml`の明示gateを使う。
+このPlaybookを承認なしに直接実行してはならない。
+
 通常更新では次を直接実行しない。
 
 - `ansible-playbook`

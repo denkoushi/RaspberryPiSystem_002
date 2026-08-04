@@ -129,9 +129,30 @@ when the repository implementation is ready.
   contract suite after the SSH boundary change: all shell lifecycle contracts,
   969 Python deployment tests, 43 Ansible contracts, and both isolated
   PostgreSQL contracts passed. Run-owned Docker resources returned to zero.
-- [ ] Make API/Web containers non-root with dropped capabilities,
+- [x] (2026-08-04 08:53+09:00) Made API/Web containers non-root with dropped capabilities,
   `no-new-privileges`, read-only root filesystems, and enumerated writable
-  mounts; prove Chromium, storage, backup, health, and Caddy behavior.
+  mounts. Runtime UID/GID follows the Pi5 operator account, and standard host
+  convergence stops before runtime replacement if existing writable trees are
+  incompatible.
+- [x] (2026-08-04 08:53+09:00) Added an explicit one-time permission migration
+  Playbook. Recursive ownership changes require a dedicated boolean approval;
+  they are not performed by the standard release. Existing `backup.json` is
+  converged to owner-only access for the non-root API.
+- [x] (2026-08-04 08:53+09:00) Built the Web image and proved ordinary Caddy
+  and the Blue/Green slot template run as non-root on a read-only rootfs with
+  all capabilities dropped. An existing bounded API image passed Chromium
+  rendering, Ansible, `pg_dump`, NDL OCR, and RapidOCR probes under the same
+  constraints. All run-owned containers and the temporary Web image were
+  removed.
+- [x] (2026-08-04 08:53+09:00) Replaced the API's general Ansible-tree mount
+  with a root-managed, credential-free client inventory and only two backup
+  Playbooks. This preserves backup operation after Vault encryption without
+  granting the API a Vault password or application credentials.
+- [x] (2026-08-04 09:10+09:00) Re-ran the complete Node 20 deployment contract
+  suite for the container milestone. All lifecycle and safety contracts, 969
+  Python deployment tests, 43 Ansible contracts, redacted Ansible syntax
+  checks (including the gated permission migration), and both isolated
+  PostgreSQL contracts passed. Run-owned Docker resources returned to zero.
 - [ ] Require local CA verification and an explicit `ADMIN_ALLOW_NETS` value,
   with preflight rejection before any production mutation.
 - [ ] Run focused and aggregate tests, audit the entire diff, update this plan,
@@ -214,6 +235,19 @@ when the repository implementation is ready.
   boundary rejects every normalized `.ssh` path and passes strict SSH options
   as highest-precedence extra variables.
 
+- Observation: read-only tmpfs mounts default to root ownership even when the
+  container process is non-root.
+  Evidence: the first isolated Caddy run correctly failed to open its log on a
+  root-owned tmpfs. Explicit UID/GID mount options fixed the boundary, after
+  which both normal and slot Caddy startup succeeded without capabilities.
+
+- Observation: encrypting normal-factory host Vault files makes the general
+  inventory unsuitable for an API process that does not possess the Vault
+  password.
+  Evidence: client backup needs only host aliases, resolved addresses, and SSH
+  users. A generated inventory containing exactly those fields avoids both a
+  backup regression and expansion of API secret authority.
+
 ## Decision Log
 
 - Decision: split repository preparation into independently testable
@@ -245,6 +279,14 @@ when the repository implementation is ready.
   generating or distributing a production identity. Operational provisioning,
   authorized-key registration, and removal of existing `.ssh` backup targets
   remain separately approved changes.
+  Date/Author: 2026-08-04 / Codex.
+
+- Decision: fail the standard release on incompatible writable-tree ownership
+  and keep recursive ownership migration behind a separate explicit gate.
+  Rationale: silently running recursive `chown` during release preparation can
+  add unbounded delay and mixes data mutation with container activation. A
+  separately approved idempotent migration is observable and reversible by
+  applying the prior owner if needed.
   Date/Author: 2026-08-04 / Codex.
 
 - Decision: exclude TalkPlaza files from all edits in this plan.

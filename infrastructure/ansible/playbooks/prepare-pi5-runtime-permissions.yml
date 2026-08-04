@@ -1,0 +1,67 @@
+---
+- name: Prepare existing Pi5 writable data for non-root API and Web containers
+  hosts: server
+  gather_facts: false
+  become: true
+  serial: 1
+  vars:
+    repo_path: /opt/RaspberryPiSystem_002
+    pi5_runtime_permission_migration_approved: false
+
+  pre_tasks:
+    - name: Require explicit one-time permission migration approval
+      ansible.builtin.assert:
+        that:
+          - pi5_runtime_permission_migration_approved | bool
+        fail_msg: >-
+          This playbook recursively changes ownership of existing runtime data.
+          Re-run only after approval with
+          -e pi5_runtime_permission_migration_approved=true.
+
+    - name: Resolve the target runtime UID
+      ansible.builtin.command:
+        argv: [/usr/bin/id, -u, "{{ ansible_user }}"]
+      register: runtime_uid
+      changed_when: false
+
+    - name: Require a non-root target runtime UID
+      ansible.builtin.assert:
+        that:
+          - runtime_uid.stdout is match('^[1-9][0-9]*$')
+        fail_msg: Refusing to prepare runtime data for root.
+
+  tasks:
+    - name: Transfer only enumerated writable trees to the runtime user
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        recurse: true
+      loop:
+        - "{{ repo_path }}/storage"
+        - "{{ repo_path }}/alerts"
+        - "{{ repo_path }}/power-actions"
+        - "{{ repo_path }}/config"
+        - /opt/backups
+        - /var/log/caddy
+      no_log: true
+
+    - name: Verify every runtime directory is usable by the target user
+      ansible.builtin.shell: |
+        set -euo pipefail
+        blocked="$(find {{ item | quote }} -type d \( ! -readable -o ! -writable -o ! -executable \) -print -quit)"
+        test -z "${blocked}"
+      args:
+        executable: /bin/bash
+      become: true
+      become_user: "{{ ansible_user }}"
+      changed_when: false
+      loop:
+        - "{{ repo_path }}/storage"
+        - "{{ repo_path }}/alerts"
+        - "{{ repo_path }}/power-actions"
+        - "{{ repo_path }}/config"
+        - /opt/backups
+        - /var/log/caddy
+      no_log: true

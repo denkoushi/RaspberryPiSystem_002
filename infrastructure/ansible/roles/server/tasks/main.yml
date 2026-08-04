@@ -30,6 +30,111 @@
       - docker_server_ip is defined
     fail_msg: "Docker Compose用SERVER_IPが定義されていません（inventory.ymlを確認してください）"
 
+- name: Resolve the non-root Pi5 runtime UID
+  ansible.builtin.command:
+    argv: [/usr/bin/id, -u, "{{ ansible_user }}"]
+  register: pi5_runtime_uid_probe
+  changed_when: false
+
+- name: Resolve the non-root Pi5 runtime GID
+  ansible.builtin.command:
+    argv: [/usr/bin/id, -g, "{{ ansible_user }}"]
+  register: pi5_runtime_gid_probe
+  changed_when: false
+
+- name: Validate the non-root Pi5 runtime identity
+  ansible.builtin.assert:
+    that:
+      - pi5_runtime_uid_probe.stdout is match('^[1-9][0-9]*$')
+      - pi5_runtime_gid_probe.stdout is match('^[1-9][0-9]*$')
+    fail_msg: The Pi5 API/Web runtime identity must exist and must not be root.
+
+- name: Record the non-root Pi5 runtime identity
+  ansible.builtin.set_fact:
+    pi5_runtime_uid: "{{ pi5_runtime_uid_probe.stdout }}"
+    pi5_runtime_gid: "{{ pi5_runtime_gid_probe.stdout }}"
+
+- name: Ensure enumerated Pi5 writable roots exist for the runtime user
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0750'
+  loop:
+    - "{{ repo_path }}/storage"
+    - "{{ repo_path }}/alerts"
+    - "{{ repo_path }}/power-actions"
+    - "{{ repo_path }}/config"
+    - /opt/backups
+    - /var/log/caddy
+
+- name: Verify existing Pi5 writable trees are ready for the non-root runtime
+  ansible.builtin.shell: |
+    set -euo pipefail
+    for runtime_path in \
+      {{ repo_path | quote }}/storage \
+      {{ repo_path | quote }}/alerts \
+      {{ repo_path | quote }}/power-actions \
+      {{ repo_path | quote }}/config \
+      /opt/backups \
+      /var/log/caddy; do
+      test -d "${runtime_path}"
+      test -r "${runtime_path}" && test -w "${runtime_path}" && test -x "${runtime_path}"
+      blocked="$(find "${runtime_path}" -type d \( ! -readable -o ! -writable -o ! -executable \) -print -quit)"
+      test -z "${blocked}"
+    done
+    test ! -e {{ repo_path | quote }}/config/backup.json || test -r {{ repo_path | quote }}/config/backup.json
+  args:
+    executable: /bin/bash
+  become: true
+  become_user: "{{ ansible_user }}"
+  changed_when: false
+  failed_when: false
+  register: pi5_runtime_write_probe
+  no_log: true
+
+- name: Require non-root Pi5 runtime path readiness
+  ansible.builtin.assert:
+    that:
+      - pi5_runtime_write_probe.rc == 0
+    fail_msg: >-
+      Existing Pi5 runtime data is not writable by the non-root runtime user.
+      Run prepare-pi5-runtime-permissions.yml with its explicit approval gate
+      before retrying the standard release.
+
+- name: Ensure the root-managed backup Ansible boundary exists
+  ansible.builtin.file:
+    path: /etc/raspi-backup-ansible
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Generate the credential-free backup client inventory
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/backup-client-inventory.yml.j2"
+    dest: /etc/raspi-backup-ansible/inventory.yml
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Install the client file backup playbook
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/backup-clients.yml"
+    dest: /etc/raspi-backup-ansible/backup-clients.yml
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Install the client directory backup playbook
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/backup-client-directory.yml"
+    dest: /etc/raspi-backup-ansible/backup-client-directory.yml
+    owner: root
+    group: root
+    mode: '0644'
+
 - name: Include SSH loopback authorized_keys guard (Pi5 self-SSH / ansible preflight)
   ansible.builtin.import_tasks: ssh-loopback-authorized.yml
   when: server_release_mode == 'full'

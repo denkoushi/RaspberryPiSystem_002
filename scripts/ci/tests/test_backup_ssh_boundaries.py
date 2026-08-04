@@ -14,6 +14,9 @@ SSH_POLICY = (
 CATALOG = (
     ROOT / "apps/api/src/services/backup/backup-recommended-targets.catalog.ts"
 ).read_text()
+BACKUP_INVENTORY_TEMPLATE = (
+    ROOT / "infrastructure/ansible/templates/backup-client-inventory.yml.j2"
+).read_text()
 
 
 class BackupSshBoundaryTest(unittest.TestCase):
@@ -24,6 +27,8 @@ class BackupSshBoundaryTest(unittest.TestCase):
             self.assertIn("/run/secrets/backup-ssh/id_ed25519", compose)
             self.assertIn("/run/secrets/backup-ssh/known_hosts", compose)
             self.assertIn("create_host_path: false", compose)
+            self.assertNotIn("/app/host/infrastructure/ansible", compose)
+            self.assertIn("/app/backup-ansible", compose)
 
     def test_backup_transport_pins_hosts_and_one_identity(self):
         for required in (
@@ -38,6 +43,12 @@ class BackupSshBoundaryTest(unittest.TestCase):
     def test_private_ssh_directories_are_not_recommended_backup_targets(self):
         self.assertNotIn("sshHomeUser", CATALOG)
         self.assertNotIn("/.ssh", CATALOG)
+
+    def test_dedicated_inventory_cannot_receive_application_credentials(self):
+        for forbidden in ("vault_", "password", "secret", "api_key", "client_key"):
+            self.assertNotIn(forbidden, BACKUP_INVENTORY_TEMPLATE.lower())
+        for required in ("ansible_host", "ansible_user", "ansible_python_interpreter"):
+            self.assertIn(required, BACKUP_INVENTORY_TEMPLATE)
 
 
 if __name__ == "__main__":

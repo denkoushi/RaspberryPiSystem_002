@@ -528,13 +528,25 @@
             }
           }
         dest: "{{ repo_path }}/config/backup.json"
-        owner: root
-        group: root
-        mode: '0644'
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0600'
       when:
         - '"server" in group_names'
         - not (backup_json_stat.stat.exists | default(false))
       register: backup_json_created
+
+    - name: Restrict backup.json to the non-root API runtime owner
+      ansible.builtin.file:
+        path: "{{ repo_path }}/config/backup.json"
+        state: file
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0600'
+      when:
+        - '"server" in group_names'
+        - (backup_json_stat.stat.exists | default(false)) or (backup_json_created.changed | default(false))
+      no_log: true
 
     - name: Warn about backup.json creation
       ansible.builtin.debug:
@@ -603,4 +615,3 @@
         - '"server" in group_names'
         - docker_env_result.changed | default(false)
       ignore_errors: true
-
