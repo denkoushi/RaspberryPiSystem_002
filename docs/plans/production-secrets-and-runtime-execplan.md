@@ -29,7 +29,7 @@ validation:
   - Docker Compose and non-root runtime contracts
   - complete local deployment contracts without managed-host connections
 open_items:
-  - merge the read-only encrypted-Vault planning correction and rerun the production plan from synchronized main
+  - merge the bounded StoneBase barcode maintenance lease and rerun full-fleet production preflight from synchronized main
   - credential rotation, database role migration, CA rollout, and production deployment require separate evidence and approval gates
 ---
 
@@ -200,7 +200,31 @@ when the repository implementation is ready.
   Ansible templates, shell and Blue/Green safety contracts, Web production
   build, 972 deployment Python tests, 43 Ansible contracts, and both isolated
   PostgreSQL contracts. Temporary labelled Docker resources returned to zero.
-- [ ] Merge the read-only planning correction, synchronize main, rerun
+- [x] (2026-08-04 11:20+09:00) Merged the read-only planning correction as PR
+  #1171 at `ff72a753d9f6f91866b89f3d140bef5675e48ecd`; hosted CI and CodeQL
+  passed. Synchronized main and reran `--print-plan` before the approved
+  production preflight.
+- [x] (2026-08-04 11:45+09:00) With separate approval, bootstrapped the Pi5
+  `ADMIN_ALLOW_NETS` value through the rollback-safe one-time Playbook. The
+  live management source was inside the explicit list and Compose validation
+  passed without restarting a service or submitting a release.
+- [x] (2026-08-04 11:55+09:00) Confirmed the operator-configured shared
+  due-management password by presence of its production hash only. Migration,
+  Pi5 route, candidate-object, resource, and external dependency preflights
+  then passed; no credential value was read or emitted.
+- [x] (2026-08-04 12:20+09:00) Read-only terminal diagnosis proved the
+  StoneBase barcode container and status API healthy while the intentionally
+  detached `/dev/ttyACM0` device remained absent. Pi3 Tailscale, TCP/22, SSH,
+  sudo, and Python probes passed. With separate approval, renewed only the
+  StoneBase barcode maintenance lease through 2026-08-11 02:15Z; ordinary
+  fail-closed device health resumes automatically at expiry.
+- [x] (2026-08-04 12:30+09:00) Validated the bounded lease with 118 focused
+  maintenance, terminal-preflight, adapter, and template tests, real encrypted
+  inventory expansion, docs audit, and the complete Node 20 deployment
+  contract. The aggregate suite passed 972 deployment Python tests, 43 Ansible
+  contracts, Web production build, Blue/Green safety, and both isolated
+  PostgreSQL contracts; run-owned Docker resources returned to zero.
+- [x] Merge the read-only planning correction, synchronize main, rerun
   `--print-plan`, and present its exact host scope before any approved
   `--preflight-only` connection.
 
