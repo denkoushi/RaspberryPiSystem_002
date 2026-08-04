@@ -66,6 +66,11 @@ MUTATIONS = {
         "gateway_image() {",
         "missing_gateway_image() {",
     ),
+    "slot-web-runtime-config": (
+        "scripts/deploy/lib/pi5-blue-green/runtime.sh",
+        'caddy validate --config "$config_path"',
+        "caddy validate --config /srv/Caddyfile.slot",
+    ),
 }
 
 

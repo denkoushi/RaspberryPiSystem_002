@@ -270,6 +270,21 @@ for pair in "$WEB_BLUE:web-blue:api-blue" "$WEB_GREEN:web-green:api-green"; do
     -v "$CADDY_LOG:/var/log/caddy" -e "SLOT_API_UPSTREAM=${upstream}:8080" \
     "$WEB_IMAGE" >/dev/null
 done
+for name in "$WEB_BLUE" "$WEB_GREEN"; do
+  for _ in $(seq 1 30); do
+    docker exec "$name" sh -eu -c '
+      test -n "${SLOT_CADDY_CONFIG_FILE:-}"
+      test -f "$SLOT_CADDY_CONFIG_FILE"
+      caddy validate --config "$SLOT_CADDY_CONFIG_FILE" >/dev/null
+    ' >/dev/null 2>&1 && break
+    sleep 1
+  done
+  docker exec "$name" sh -eu -c '
+    test -n "${SLOT_CADDY_CONFIG_FILE:-}"
+    test -f "$SLOT_CADDY_CONFIG_FILE"
+    caddy validate --config "$SLOT_CADDY_CONFIG_FILE" >/dev/null
+  '
+done
 
 render_gateway() {
   local slot="$1"

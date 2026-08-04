@@ -65,7 +65,9 @@ class Pi5ContainerRuntimeBoundaryTest(unittest.TestCase):
         self.assertRegex(WEB_DOCKERFILE, r"(?m)^USER caddy$")
         self.assertNotIn("setcap", WEB_DOCKERFILE)
         self.assertNotIn("libcap", WEB_DOCKERFILE)
-        self.assertIn("> /tmp/Caddyfile.slot", WEB_DOCKERFILE)
+        self.assertIn("ENV SLOT_CADDY_CONFIG_FILE=/tmp/Caddyfile.slot", WEB_DOCKERFILE)
+        self.assertIn('> \\"$SLOT_CADDY_CONFIG_FILE\\"', WEB_DOCKERFILE)
+        self.assertIn('caddy run --config \\"$SLOT_CADDY_CONFIG_FILE\\"', WEB_DOCKERFILE)
         self.assertIn("caddy run --config /srv/Caddyfile.local.template", WEB_DOCKERFILE)
         self.assertNotIn("envsubst < /srv/Caddyfile.local.template", WEB_DOCKERFILE)
 

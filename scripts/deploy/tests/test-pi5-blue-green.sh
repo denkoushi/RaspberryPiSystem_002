@@ -83,6 +83,82 @@ common=(
   PI5_BLUE_GREEN_ALERTS_DIR="$TMP/alerts"
 )
 
+# The Web image renders its slot configuration into a writable runtime path.
+# Exercise the controller function against a container-provided path so a
+# Dockerfile/controller path drift fails before a release reaches Pi5.
+SLOT_VALIDATE_BIN="$TMP/slot-validate-bin"
+SLOT_VALIDATE_CONFIG="$TMP/runtime-Caddyfile.slot"
+SLOT_VALIDATE_RECORD="$TMP/slot-validate-record"
+mkdir -p "$SLOT_VALIDATE_BIN"
+printf 'slot config\n' >"$SLOT_VALIDATE_CONFIG"
+cat >"$SLOT_VALIDATE_BIN/caddy" <<'SH'
+#!/bin/sh
+set -eu
+[ "$1" = validate ]
+[ "$2" = --config ]
+[ "$3" = "$EXPECTED_SLOT_CONFIG" ]
+[ -f "$3" ]
+printf '%s\n' "$3" >"$SLOT_VALIDATE_RECORD"
+SH
+chmod +x "$SLOT_VALIDATE_BIN/caddy"
+slot_web_validate_function="$(extract_function slot_web_validate)"
+EXPECTED_SLOT_CONFIG="$SLOT_VALIDATE_CONFIG" \
+SLOT_VALIDATE_RECORD="$SLOT_VALIDATE_RECORD" \
+PATH="$SLOT_VALIDATE_BIN:$PATH" \
+bash -euo pipefail -c "
+$slot_web_validate_function
+DRY_RUN=0
+slot_container_id() { printf '%s\\n' candidate-web; }
+docker() {
+  [[ \"\$1\" == exec && \"\$2\" == candidate-web ]]
+  shift 2
+  SLOT_CADDY_CONFIG_FILE=\"\$EXPECTED_SLOT_CONFIG\" \"\$@\"
+}
+slot_web_validate green
+"
+[[ "$(cat "$SLOT_VALIDATE_RECORD")" == "$SLOT_VALIDATE_CONFIG" ]] \
+  || fail "slot Web validation did not use the container-provided runtime config"
+LEGACY_SLOT_VALIDATE_RECORD="$TMP/legacy-slot-validate-record"
+LEGACY_SLOT_VALIDATE_RECORD="$LEGACY_SLOT_VALIDATE_RECORD" \
+bash -euo pipefail -c "
+$slot_web_validate_function
+DRY_RUN=0
+slot_container_id() { printf '%s\\n' legacy-web; }
+docker() {
+  [[ \"\$1\" == exec && \"\$2\" == legacy-web ]]
+  case \"\$3\" in
+    sh)
+      printf ''
+      ;;
+    test)
+      [[ \"\$4\" == -f && \"\$5\" == /srv/Caddyfile.slot ]]
+      ;;
+    caddy)
+      [[ \"\$4\" == validate && \"\$5\" == --config && \"\$6\" == /srv/Caddyfile.slot ]]
+      printf '%s\\n' \"\$6\" >\"\$LEGACY_SLOT_VALIDATE_RECORD\"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+slot_web_validate blue
+"
+[[ "$(cat "$LEGACY_SLOT_VALIDATE_RECORD")" == /srv/Caddyfile.slot ]] \
+  || fail "slot Web validation broke the active legacy image contract"
+slot_up_function="$(extract_function slot_up)"
+bash -euo pipefail -c "
+$slot_up_function
+compose_current() { return 0; }
+verify_slot_runtime_config() { return 0; }
+slot_runtime_ready() { return 0; }
+slot_web_validate() { return 1; }
+if slot_up green standby; then
+  exit 1
+fi
+[[ \"\$SLOT_UP_FAILURE_REASON\" == 'candidate green Web slot configuration is invalid' ]]
+"
+
 # Lock the public CLI surface before functions move out of the entrypoint.
 help_output="$("$SCRIPT" status --help)"
 assert_contains "$help_output" 'Usage: pi5-blue-green.sh <status|bootstrap|prepare|switch|rollback|cleanup|reconcile|monitor>'

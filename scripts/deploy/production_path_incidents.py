@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 from typing import Sequence
 
 
@@ -21,6 +23,7 @@ INCIDENT_IDS = (
     "database-role-wiring",
     "derivative-storage-mount",
     "migration-gateway-image",
+    "slot-web-runtime-config",
 )
 
 
@@ -66,6 +69,62 @@ compose_migration config
     return completed.returncode == 0
 
 
+def slot_web_runtime_config_probe(root: Path) -> bool:
+    runtime = root / "scripts/deploy/lib/pi5-blue-green/runtime.sh"
+    with tempfile.TemporaryDirectory(prefix="slot-web-config-audit-") as raw:
+        temporary = Path(raw)
+        config = temporary / "Caddyfile.slot"
+        binary = temporary / "bin"
+        binary.mkdir()
+        config.write_text("slot config\n", encoding="utf-8")
+        caddy = binary / "caddy"
+        caddy.write_text(
+            """#!/bin/sh
+set -eu
+[ "$1" = validate ]
+[ "$2" = --config ]
+[ "$3" = "$EXPECTED_SLOT_CONFIG" ]
+[ -f "$3" ]
+""",
+            encoding="utf-8",
+        )
+        caddy.chmod(0o755)
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "EXPECTED_SLOT_CONFIG": str(config),
+                "PATH": f"{binary}:{environment['PATH']}",
+            }
+        )
+        completed = subprocess.run(
+            [
+                "bash",
+                "-euo",
+                "pipefail",
+                "-c",
+                r'''
+source "$1"
+DRY_RUN=0
+slot_container_id() { printf '%s\n' candidate-web; }
+docker() {
+  [[ "$1" == exec && "$2" == candidate-web ]]
+  shift 2
+  SLOT_CADDY_CONFIG_FILE="$EXPECTED_SLOT_CONFIG" "$@"
+}
+slot_web_validate green
+''',
+                "slot-web-config-audit",
+                str(runtime),
+            ],
+            cwd=root,
+            env=environment,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return completed.returncode == 0
+
+
 def incident_status(root: Path) -> dict[str, bool]:
     ansible = read(root, "scripts/deploy/rolling_release/backends/ansible.py")
     server_role = read(root, "infrastructure/ansible/roles/server/tasks/main.yml")
@@ -80,6 +139,14 @@ def incident_status(root: Path) -> dict[str, bool]:
     derivative = (
         "part-measurement-drawings-derivatives-storage:"
         "/app/storage/part-measurement-drawings-derivatives"
+    )
+    slot_runtime_contract = all(
+        value in web_dockerfile
+        for value in (
+            "ENV SLOT_CADDY_CONFIG_FILE=/tmp/Caddyfile.slot",
+            '> \\"$SLOT_CADDY_CONFIG_FILE\\"',
+            'caddy run --config \\"$SLOT_CADDY_CONFIG_FILE\\"',
+        )
     )
     return {
         "encrypted-vault-planning": ansible.count(
@@ -118,6 +185,8 @@ def incident_status(root: Path) -> dict[str, bool]:
         "derivative-storage-mount": derivative in phase3
         and "part-measurement-drawings-derivatives-storage:" in phase3,
         "migration-gateway-image": migration_gateway_probe(root),
+        "slot-web-runtime-config": slot_runtime_contract
+        and slot_web_runtime_config_probe(root),
     }
 
 

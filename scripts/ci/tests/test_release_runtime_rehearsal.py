@@ -70,6 +70,8 @@ class ReleaseRuntimeRehearsalTests(unittest.TestCase):
             "CREATE TABLE audit_forbidden",
             "deploy-readiness/internal",
             "leader standby",
+            "SLOT_CADDY_CONFIG_FILE",
+            'caddy validate --config "$SLOT_CADDY_CONFIG_FILE"',
             "net.ipv4.ip_unprivileged_port_start=80",
             "render_gateway blue",
             "render_gateway green",

@@ -8,7 +8,8 @@
     "backup-ssh-bind-authority",
     "database-role-wiring",
     "derivative-storage-mount",
-    "migration-gateway-image"
+    "migration-gateway-image",
+    "slot-web-runtime-config"
   ],
   "requiredPi5Phases": [
     "bootstrap",
@@ -225,14 +226,14 @@
       "id": "pi5-disposable-container-boundary",
       "required": true,
       "routeStages": ["pi5.blue-green-release"],
-      "pi5Phases": ["candidate-build"],
+      "pi5Phases": ["candidate-build", "prepare"],
       "initialState": "run-labelled disposable Docker resources",
       "entrypoint": "production-path isolated Docker rehearsal",
       "executionLevel": "container",
       "expectedTransition": "non-root read-only runtime writes only enumerated namespaces",
       "failureInvariant": "failed startup does not leave labelled resources",
       "testOwner": "scripts/deploy/tests/test_production_path_audit_execution.py::test_disposable_container_runtime_enforces_read_only_storage",
-      "incidents": ["pi5-runtime-permissions", "derivative-storage-mount"]
+      "incidents": ["pi5-runtime-permissions", "derivative-storage-mount", "slot-web-runtime-config"]
     },
     {
       "id": "terminal-pipelining-preflight",
