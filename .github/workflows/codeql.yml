@@ -27,7 +27,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -49,14 +49,14 @@ jobs:
 
       - name: Initialize CodeQL
         if: ${{ steps.classify.outputs.codeql == 'true' }}
-        uses: github/codeql-action/init@v4
+        uses: github/codeql-action/init@v4.37.4
         with:
           languages: javascript-typescript
           build-mode: none
 
       - name: Perform CodeQL Analysis
         if: ${{ steps.classify.outputs.codeql == 'true' }}
-        uses: github/codeql-action/analyze@v4
+        uses: github/codeql-action/analyze@v4.37.4
 
       - name: Record intentional analysis skip
         if: ${{ steps.classify.outputs.codeql != 'true' }}
