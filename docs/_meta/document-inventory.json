@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 607,
-    "totalLines": 169810,
-    "totalBytes": 12744786,
+    "totalLines": 169851,
+    "totalBytes": 12747492,
     "withFrontmatter": 274,
     "withStatus": 130,
     "sourceOfTruthDeclared": 92,
@@ -25,9 +25,9 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 25,
-    "localLinkCount": 5655,
+    "localLinkCount": 5656,
     "brokenLocalLinkCount": 87,
-    "documentsOver1000Lines": 28,
+    "documentsOver1000Lines": 29,
     "documentsOver3000Lines": 6,
     "brokenLocalLinks": [
       {
@@ -5898,8 +5898,8 @@
     },
     {
       "path": "docs/AI_START_HERE.md",
-      "lineCount": 125,
-      "byteSize": 7946,
+      "lineCount": 126,
+      "byteSize": 8111,
       "hasFrontmatter": true,
       "title": "AI Start Here",
       "status": null,
@@ -35295,13 +35295,19 @@
     },
     {
       "path": "docs/plans/production-secrets-and-runtime-execplan.md",
-      "lineCount": 964,
-      "byteSize": 57738,
+      "lineCount": 1004,
+      "byteSize": 60279,
       "hasFrontmatter": true,
       "title": "Remove production credential fallbacks and minimize the Pi5 runtime",
       "status": "in_progress",
       "source_of_truth": "true",
-      "localLinks": [],
+      "localLinks": [
+        {
+          "href": "./standard-release-production-path-audit-execplan.md",
+          "targetPath": "docs/plans/standard-release-production-path-audit-execplan.md",
+          "exists": true
+        }
+      ],
       "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,

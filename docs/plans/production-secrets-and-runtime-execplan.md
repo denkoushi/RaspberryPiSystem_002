@@ -383,6 +383,33 @@ when the repository implementation is ready.
   contracts, Blue/Green and rollback safety, Web production build, and both
   isolated PostgreSQL boundaries. Integration and the production retry remain
   separate gates.
+- [x] (2026-08-04 18:50+09:00) Merged the derivative-storage correction
+  through PR #1177 at `78979c79cd4d120fa741b84cac55a038b75c02dc`.
+  Exact-main CI, CodeQL, secret scanning, three API shards, the signed ARM64
+  API/Web artifacts, and the final release set passed.
+- [x] (2026-08-04 18:58+09:00) Exact-main Pi5-plus-Pi3 preflight
+  `20260804-095723-a1d626` passed all six applicable gates, including the
+  production migration ledger, Pi5 resources and external dependencies, and
+  Pi3 prerequisites.
+- [x] (2026-08-04 19:11+09:00) Started the approved standard release as
+  `20260804-095823-73770f`. Candidate creation, signed artifact promotion, the
+  new derivative-cache volume, and candidate API preparation succeeded. The
+  release then failed closed during inactive-slot migration preparation because
+  `compose_migration` invoked an undefined `gateway_image` helper, leaving the
+  required `PI5_GATEWAY_IMAGE` empty. No migration, traffic switch, or Pi3
+  update occurred; 346 active-API probes reported no error and the failed
+  candidate containers were cleaned.
+- [x] (2026-08-04 19:15+09:00) On branch
+  `fix/pi5-migration-gateway-image-resolution`, added a failing execution
+  contract for both gateway slots and implemented one shared gateway-image
+  resolver for ordinary and migration Compose calls. Focused Blue/Green,
+  structure, and production database-wiring contracts pass. Full local
+  deployment contracts and integration remain open gates.
+- [ ] Production retry is frozen while the complete standard release route is
+  audited under
+  [standard-release-production-path-audit-execplan.md](./standard-release-production-path-audit-execplan.md).
+  The focused gateway correction is part of that audit and will not be
+  released independently.
 
 ## Surprises & Discoveries
 
@@ -751,6 +778,14 @@ minimal mount and host-directory correction now passes the complete local
 deployment contract; integration, exact-main preflight, and another approved
 standard release remain open.
 
+The derivative-storage correction is now integrated, and its candidate API
+preparation succeeded in production. The release exposed a later fail-closed
+regression in the new migration-only Compose wrapper: it referenced an
+undefined gateway-image helper. The active blue slot remained healthy, no
+migration or traffic switch occurred, and Pi3 was untouched. A minimal shared
+gateway-image resolver now passes focused contracts; full validation,
+integration, exact-main preflight, and another standard release remain open.
+
 ## Context and Orientation
 
 Ansible inventory is the tracked description of factory hosts. A Vault file is
@@ -962,3 +997,8 @@ Revision note 2026-08-04: Recorded the approved production role preparation,
 the second fail-closed candidate incident, and the writable derivative-storage
 correction. The live slot and Pi3 were unchanged, and complete local contracts
 pass; integration and production retry remain separate gates.
+
+Revision note 2026-08-04: Recorded the merged derivative-storage correction,
+the third fail-closed rollout incident, and the shared gateway-image resolver.
+The active slot and Pi3 remain unchanged; full validation and integration are
+still open.
