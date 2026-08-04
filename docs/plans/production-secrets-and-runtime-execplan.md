@@ -194,6 +194,12 @@ when the repository implementation is ready.
   Vault password. Added a failing real-Ansible regression test, then changed
   the planner to use the existing redacted context boundary in an automatically
   removed temporary directory.
+- [x] (2026-08-04 10:25+09:00) Made the shared redacted-context helper
+  independent of the caller's working directory after the aggregate contract
+  reproduced the issue. The complete deployment contract then passed: 103
+  Ansible templates, shell and Blue/Green safety contracts, Web production
+  build, 972 deployment Python tests, 43 Ansible contracts, and both isolated
+  PostgreSQL contracts. Temporary labelled Docker resources returned to zero.
 - [ ] Merge the read-only planning correction, synchronize main, rerun
   `--print-plan`, and present its exact host scope before any approved
   `--preflight-only` connection.
@@ -307,6 +313,14 @@ when the repository implementation is ready.
   diagnostic classified Ansible's exit as `vault_secret_missing`. A real
   encrypted-host-vars regression test reproduced the same failure without
   emitting the encrypted value or password.
+
+- Observation: a helper imported through the repository namespace can pass
+  unit tests from the repository root yet fail when the contract runner starts
+  it from another working directory.
+  Evidence: the first aggregate run reached the rollback contracts and failed
+  with `ModuleNotFoundError: No module named 'scripts'`; a subprocess test now
+  runs the CLI from a temporary outside-repository directory, and the helper
+  establishes its repository root before importing the shared primitive.
 
 ## Decision Log
 
@@ -633,3 +647,7 @@ secret rotation remains outside this repository-only milestone.
 Revision note 2026-08-04: Recorded the merged-main read-only planning failure
 and the minimal redacted-context correction required before production
 preflight. No managed host was contacted and no production state changed.
+
+Revision note 2026-08-04: Recorded the cwd-independent helper correction and
+the successful complete local deployment contract. All run-owned Docker
+resources were removed; main integration and production preflight remain open.
