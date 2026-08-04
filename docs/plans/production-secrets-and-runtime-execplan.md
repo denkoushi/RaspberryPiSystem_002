@@ -339,10 +339,20 @@ when the repository implementation is ready.
   isolated PostgreSQL contracts. API build and lint also passed; the
   application role additionally proved `pg_dump` access. Disposable Docker
   resources returned to zero.
-- [ ] Add the three new values to the encrypted Pi5 Vault without printing
-  them, then rerun the real encrypted-inventory and complete local contracts.
-  Push, PR, merge, production role activation, and release retry remain
-  separate gates.
+- [x] (2026-08-04 16:30+09:00) Added the three separately approved database
+  credentials to the encrypted Pi5 Vault without writing plaintext files or
+  printing values. A decrypt-encrypt-decrypt round trip proved that every
+  existing entry was preserved and only the three expected identifiers were
+  added. The real encrypted inventory resolved both role-scoped URLs and the
+  superuser credential as strong; the production-secret structure and focused
+  database-wiring contracts passed.
+- [x] (2026-08-04 16:35+09:00) Reran the complete local deployment contract
+  after the encrypted Vault update. All checks passed, including 104 Ansible
+  templates, 977 Python deployment tests, 43 Ansible contracts, Blue/Green and
+  rollback safety, the Web production build, and both isolated PostgreSQL
+  contracts. Labeled disposable containers, volumes, and networks each
+  returned to zero. Push, PR, merge, production role activation, and release
+  retry remain separate gates.
 
 ## Surprises & Discoveries
 
