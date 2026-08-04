@@ -417,6 +417,12 @@ class TerminalPreflightTest(unittest.TestCase):
         self.assertEqual(envelope["torqueHelperTemplateSource"], torque_helper_source)
         self.assertEqual(envelope["spec"]["host"], "kiosk-a")
 
+    def test_remote_probe_enables_ssh_compression_for_bounded_payload(self):
+        command = terminal_preflight._remote_probe_command(target())
+
+        self.assertIn("Compression=yes", command)
+        self.assertEqual(command.count("Compression=yes"), 1)
+
     def test_remote_probe_streams_source_larger_than_linux_single_argument_limit(self):
         preflight_source = "#" + ("x" * 150_000) + "\n" + """
 import base64

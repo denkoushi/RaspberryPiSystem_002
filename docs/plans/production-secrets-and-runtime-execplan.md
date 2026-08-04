@@ -29,7 +29,7 @@ validation:
   - Docker Compose and non-root runtime contracts
   - complete local deployment contracts without managed-host connections
 open_items:
-  - merge the Pi5 Caddy administrator-allowlist validation hotfix, pass exact-main CI, and restart the approved standard rollout from synchronized main
+  - merge the Pi3 terminal-preflight SSH compression hotfix, pass exact-main CI, and rerun the full-fleet preflight before restarting the approved standard rollout
   - verify the completed release with run status and a no-op print-plan before claiming production completion
   - credential rotation, database role migration, CA rollout, and production deployment require separate evidence and approval gates
 ---
@@ -259,8 +259,26 @@ when the repository implementation is ready.
   Blue/Green and rollback safety, 972 Python deployment tests, 43 Ansible
   contracts, and both isolated PostgreSQL contracts. All run-owned PostgreSQL
   and Web-test Docker resources were removed.
-- [ ] Push the committed hotfix and obtain separate approval for PR, merge,
-  exact-main CI, and production retry.
+- [x] (2026-08-04 13:02+09:00) Merged the Caddy allowlist correction as PR
+  #1173 at `537d93e8de9889012f8595e95ffc980238b76243`. Exact-main CI,
+  CodeQL, secret scanning, ARM64 release images, and release-set generation all
+  passed; local main was synchronized and clean.
+- [x] (2026-08-04 13:20+09:00) The approved full-fleet read-only preflight
+  passed Pi5 authority, all 157 migration checksums, every external dependency,
+  and all six Pi4 terminals, but failed closed three times on the Pi3 terminal
+  SSH transport. No release unit or production mutation was created.
+- [x] (2026-08-04 13:28+09:00) Bounded read-only diagnosis showed that short
+  Pi5-to-Pi3 SSH commands succeed while uncompressed inputs at 512 KiB fail on
+  both Tailscale and LAN paths. The exact 208,116-byte candidate helper set
+  transferred successfully with SSH compression. Added the minimal
+  `Compression=yes` transport option and a focused regression contract on
+  branch `hotfix/pi3-terminal-preflight-ssh-compression`.
+- [x] (2026-08-04 13:36+09:00) The complete local deployment contract passed
+  with the SSH-compression regression included. The run covered Blue/Green,
+  rollback, migration, fleet, Ansible, Caddy, and isolated PostgreSQL
+  contracts; every run-owned Docker resource reported cleanup to zero.
+- [ ] Obtain separate approval for push, PR, merge, exact-main CI, and the
+  production retry.
 
 ## Surprises & Discoveries
 
@@ -395,6 +413,14 @@ when the repository implementation is ready.
   makes the test exercise the production-shaped contract instead of depending
   on an ambient environment variable.
 
+- Observation: the resource-constrained Pi3 can accept short SSH commands but
+  intermittently drops the larger candidate-owned preflight envelope.
+  Evidence: three standard read-only preflights failed only the Pi3 transport;
+  64 KiB transferred, 512 KiB failed through both Tailscale and LAN, and the
+  exact 208,116-byte candidate helper set passed when SSH compression was
+  enabled. Pi3 load was below 1, SSH was active, and Pi5-to-Pi3 Tailscale and
+  TCP/22 reachability were present.
+
 ## Decision Log
 
 - Decision: split repository preparation into independently testable
@@ -521,6 +547,14 @@ when the repository implementation is ready.
   validation container, and leaves slot upstream substitution unchanged.
   Date/Author: 2026-08-04 / Codex.
 
+- Decision: enable OpenSSH compression only on the candidate-owned terminal
+  preflight transport.
+  Rationale: the envelope is source text and compresses well, while the target
+  command, input limit, timeout, authentication, privilege boundary, probe
+  content, and result marker remain unchanged. This avoids a Pi3 service or
+  network configuration mutation and does not weaken any readiness gate.
+  Date/Author: 2026-08-04 / Codex.
+
 ## Outcomes & Retrospective
 
 The first repository milestone is complete locally. All eight normal-factory
@@ -537,13 +571,14 @@ separately approved per-device rotation is completed. Production bootstrap,
 database roles, SSH authority, container privileges, and CA policy remain open
 milestones. No host was contacted and no running service or database changed.
 
-The repository implementation and bounded maintenance lease are now merged,
-but the first production rollout is not complete. Two independent fail-closed
-gates prevented unsafe activation: the approved one-time ownership migration
-resolved the first, while the Caddy placeholder interaction requires the
-current hotfix to reach main and pass exact-main CI before another standard
-release may start. The existing blue slot remained healthy throughout and no
-database migration or terminal activation occurred.
+The repository implementation, bounded maintenance lease, and Caddy correction
+are now merged, but the first production rollout is not complete. The approved
+one-time ownership migration resolved the first fail-closed gate and the Caddy
+correction resolved the second. The subsequent exact-main full-fleet preflight
+correctly withheld release submission because the Pi3 could not reliably
+receive the candidate-owned probe envelope without SSH compression. The
+existing blue slot remained healthy throughout and no database migration or
+terminal activation occurred.
 
 ## Context and Orientation
 
