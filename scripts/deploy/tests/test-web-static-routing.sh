@@ -52,6 +52,13 @@ for config in Caddyfile Caddyfile.production Caddyfile.local.template; do
     --volume "$ROOT/infrastructure/docker/$config:/etc/caddy/Caddyfile:ro" \
     "$CADDY_IMAGE" caddy adapt --config /etc/caddy/Caddyfile >/dev/null
 done
+
+# Caddy owns {$ADMIN_ALLOW_NETS} expansion. A generic envsubst pass would leave
+# braces around the CIDR list and make the production candidate fail validation.
+docker run --rm --label "$RUN_LABEL" \
+  -e ADMIN_ALLOW_NETS="127.0.0.1/32 192.168.10.0/24" \
+  --volume "$ROOT/infrastructure/docker/Caddyfile.local.template:/etc/caddy/Caddyfile:ro" \
+  "$CADDY_IMAGE" caddy adapt --config /etc/caddy/Caddyfile >/dev/null
 sed 's|${SLOT_API_UPSTREAM}|api-slot:8080|g' \
   "$ROOT/infrastructure/docker/Caddyfile.slot.template" \
   | docker run --rm --interactive --label "$RUN_LABEL" \

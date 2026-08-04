@@ -29,7 +29,8 @@ validation:
   - Docker Compose and non-root runtime contracts
   - complete local deployment contracts without managed-host connections
 open_items:
-  - merge the bounded StoneBase barcode maintenance lease and rerun full-fleet production preflight from synchronized main
+  - merge the Pi5 Caddy administrator-allowlist validation hotfix, pass exact-main CI, and restart the approved standard rollout from synchronized main
+  - verify the completed release with run status and a no-op print-plan before claiming production completion
   - credential rotation, database role migration, CA rollout, and production deployment require separate evidence and approval gates
 ---
 
@@ -227,6 +228,39 @@ when the repository implementation is ready.
 - [x] Merge the read-only planning correction, synchronize main, rerun
   `--print-plan`, and present its exact host scope before any approved
   `--preflight-only` connection.
+- [x] (2026-08-04 11:55+09:00) Merged the bounded StoneBase maintenance lease
+  as PR #1172 at `913edf973ea08ff99beaf48fd20c61e1cffcb678`. Exact-main CI,
+  CodeQL, secret scanning, and the approved production `--preflight-only` run
+  passed for Pi5 and all seven terminals without submitting a release.
+- [x] (2026-08-04 12:07+09:00) Started the separately approved standard
+  release. It failed closed during host configuration because existing Pi5
+  storage, config, and backup trees were not recursively writable by the new
+  non-root runtime. No candidate image, migration, slot, gateway, or terminal
+  mutation occurred; the active blue API and database remained healthy.
+- [x] (2026-08-04 12:16+09:00) With separate approval, ran the one-time
+  `prepare-pi5-runtime-permissions.yml` gate. All six enumerated writable roots
+  passed the post-change non-root read/write/execute probe, with no symlinks in
+  the three previously blocked trees.
+- [x] (2026-08-04 12:33+09:00) Retried the standard release. Signed ARM64 API
+  and Web artifacts passed attestation, pull, provenance, and immutable
+  promotion, then candidate preparation failed closed before inactive-slot
+  startup because generic `envsubst` converted Caddy's
+  `{$ADMIN_ALLOW_NETS}` placeholder into invalid `{}`. Runtime health samples
+  recorded zero API errors, traffic never switched, terminals stayed pending,
+  and no run-labelled container, volume, or network remained.
+- [x] (2026-08-04 12:36+09:00) Created
+  `hotfix/pi5-caddy-admin-allowlist-validation` from the exact clean main SHA,
+  removed generic substitution from local-TLS Caddy startup, passed only the
+  Compose-resolved Web allowlist to candidate validation, and added regression
+  coverage. Focused lifecycle, non-root boundary, and real Caddy parser tests
+  pass locally.
+- [x] (2026-08-04 12:47+09:00) Passed the complete Node 20 deployment
+  contract: 103 Ansible templates, Web production build and real Caddy parser,
+  Blue/Green and rollback safety, 972 Python deployment tests, 43 Ansible
+  contracts, and both isolated PostgreSQL contracts. All run-owned PostgreSQL
+  and Web-test Docker resources were removed.
+- [ ] Push the committed hotfix and obtain separate approval for PR, merge,
+  exact-main CI, and production retry.
 
 ## Surprises & Discoveries
 
@@ -346,6 +380,21 @@ when the repository implementation is ready.
   runs the CLI from a temporary outside-repository directory, and the helper
   establishes its repository root before importing the shared primitive.
 
+- Observation: generic POSIX `envsubst` and Caddy's `{$NAME}` environment
+  placeholder syntax are not composable.
+  Evidence: the approved release reached candidate Caddy validation with the
+  required allowlist stored, but `envsubst` consumed `$ADMIN_ALLOW_NETS` first
+  and left literal `{}` at line 33. The same generic substitution existed in
+  the local-TLS runtime command, so bypassing candidate validation would have
+  produced the same startup failure.
+
+- Observation: the Pi5 lifecycle fixture did not contain the now-mandatory
+  administrator allowlist.
+  Evidence: the focused baseline test stopped in Compose interpolation before
+  exercising candidate validation. Adding an explicit non-secret fixture value
+  makes the test exercise the production-shaped contract instead of depending
+  on an ambient environment variable.
+
 ## Decision Log
 
 - Decision: split repository preparation into independently testable
@@ -463,6 +512,15 @@ when the repository implementation is ready.
   authority.
   Date/Author: 2026-08-04 / Codex.
 
+- Decision: let Caddy expand `{$ADMIN_ALLOW_NETS}` itself and remove generic
+  substitution only from the local-TLS branch. Candidate validation resolves
+  the Web service's effective allowlist through `docker compose config` and
+  passes that one non-secret value to the isolated Web container.
+  Rationale: this preserves Caddy's native multi-CIDR token expansion, avoids
+  exposing the API's database and authentication environment to a Web
+  validation container, and leaves slot upstream substitution unchanged.
+  Date/Author: 2026-08-04 / Codex.
+
 ## Outcomes & Retrospective
 
 The first repository milestone is complete locally. All eight normal-factory
@@ -478,6 +536,14 @@ unchanged and therefore must still be treated as previously exposed until the
 separately approved per-device rotation is completed. Production bootstrap,
 database roles, SSH authority, container privileges, and CA policy remain open
 milestones. No host was contacted and no running service or database changed.
+
+The repository implementation and bounded maintenance lease are now merged,
+but the first production rollout is not complete. Two independent fail-closed
+gates prevented unsafe activation: the approved one-time ownership migration
+resolved the first, while the Caddy placeholder interaction requires the
+current hotfix to reach main and pass exact-main CI before another standard
+release may start. The existing blue slot remained healthy throughout and no
+database migration or terminal activation occurred.
 
 ## Context and Orientation
 
@@ -675,3 +741,8 @@ preflight. No managed host was contacted and no production state changed.
 Revision note 2026-08-04: Recorded the cwd-independent helper correction and
 the successful complete local deployment contract. All run-owned Docker
 resources were removed; main integration and production preflight remain open.
+
+Revision note 2026-08-04: Recorded the merged-main preflight, the approved
+one-time Pi5 ownership migration, the fail-closed Caddy candidate incident,
+and the minimal local hotfix. Full local contracts now pass; main integration
+and production retry remain open.

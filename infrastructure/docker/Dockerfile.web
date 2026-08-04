@@ -151,4 +151,4 @@ ENV XDG_DATA_HOME=/data
 # 2. DOMAIN環境変数が設定されている場合 → Caddyfile.production（Let's Encrypt）
 # 3. それ以外 → Caddyfile（HTTPのみ、開発用）
 USER caddy
-CMD ["sh", "-c", "if [ -n \"$GATEWAY_CONFIG_FILE\" ]; then caddy run --config \"$GATEWAY_CONFIG_FILE\"; elif [ -n \"$SLOT_API_UPSTREAM\" ]; then envsubst < /srv/Caddyfile.slot.template > /tmp/Caddyfile.slot && caddy run --config /tmp/Caddyfile.slot; elif [ -n \"$USE_LOCAL_CERTS\" ]; then export NFC_AGENT_HOST=${NFC_AGENT_HOST:-192.168.10.223} && envsubst < /srv/Caddyfile.local.template > /tmp/Caddyfile.local && caddy run --config /tmp/Caddyfile.local; elif [ -n \"$DOMAIN\" ]; then caddy run --config /srv/Caddyfile.production; else caddy run --config /srv/Caddyfile; fi"]
+CMD ["sh", "-c", "if [ -n \"$GATEWAY_CONFIG_FILE\" ]; then caddy run --config \"$GATEWAY_CONFIG_FILE\"; elif [ -n \"$SLOT_API_UPSTREAM\" ]; then envsubst < /srv/Caddyfile.slot.template > /tmp/Caddyfile.slot && caddy run --config /tmp/Caddyfile.slot; elif [ -n \"$USE_LOCAL_CERTS\" ]; then caddy run --config /srv/Caddyfile.local.template; elif [ -n \"$DOMAIN\" ]; then caddy run --config /srv/Caddyfile.production; else caddy run --config /srv/Caddyfile; fi"]
