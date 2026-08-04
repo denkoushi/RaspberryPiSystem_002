@@ -85,6 +85,12 @@ REQUIRED_EXECUTABLES = (
     "/usr/bin/systemctl",
     "/usr/bin/systemd-run",
 )
+BACKUP_SSH_DIRECTORY = "secrets/backup-ssh"
+BACKUP_SSH_PRIVATE_KEY = f"{BACKUP_SSH_DIRECTORY}/id_ed25519"
+BACKUP_SSH_KNOWN_HOSTS = f"{BACKUP_SSH_DIRECTORY}/known_hosts"
+OPENSSH_PRIVATE_KEY_LABEL = b"OPENSSH " + b"PRIVATE KEY"
+OPENSSH_PRIVATE_KEY_BEGIN = b"-----BEGIN " + OPENSSH_PRIVATE_KEY_LABEL + b"-----\n"
+OPENSSH_PRIVATE_KEY_END = b"-----END " + OPENSSH_PRIVATE_KEY_LABEL + b"-----"
 
 
 class RoutePreflightConfigError(ValueError):
@@ -204,6 +210,79 @@ def _memory_available_mb() -> int:
     memory_text = Path("/proc/meminfo").read_text(encoding="utf-8")
     match = re.search(r"^MemAvailable:\s+(\d+)\s+kB$", memory_text, re.MULTILINE)
     return int(match.group(1)) // 1024 if match else 0
+
+
+def _secure_authority_file(path: str, *, maximum_bytes: int) -> bytes | None:
+    """Read one bounded, owner-only authority file without following links."""
+
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError:
+        return None
+    try:
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != os.getuid()
+            or metadata.st_gid != os.getgid()
+            or stat.S_IMODE(metadata.st_mode) != 0o600
+            or metadata.st_size < 1
+            or metadata.st_size > maximum_bytes
+        ):
+            return None
+        payload = os.read(descriptor, maximum_bytes + 1)
+    finally:
+        os.close(descriptor)
+    if len(payload) != metadata.st_size or len(payload) > maximum_bytes:
+        return None
+    return payload
+
+
+def _backup_ssh_authority_issues(project: str) -> list[str]:
+    """Validate the exact host files mounted into candidate API containers."""
+
+    issues: list[str] = []
+    directory = os.path.join(project, BACKUP_SSH_DIRECTORY)
+    try:
+        directory_metadata = os.lstat(directory)
+        directory_valid = (
+            stat.S_ISDIR(directory_metadata.st_mode)
+            and directory_metadata.st_uid == os.getuid()
+            and directory_metadata.st_gid == os.getgid()
+            and stat.S_IMODE(directory_metadata.st_mode) == 0o700
+        )
+    except OSError:
+        directory_valid = False
+    if not directory_valid:
+        issues.append("pi5.backup-ssh-directory")
+
+    private_key = _secure_authority_file(
+        os.path.join(project, BACKUP_SSH_PRIVATE_KEY), maximum_bytes=64 * 1024
+    )
+    if not (
+        private_key is not None
+        and private_key.startswith(OPENSSH_PRIVATE_KEY_BEGIN)
+        and private_key.rstrip().endswith(OPENSSH_PRIVATE_KEY_END)
+    ):
+        issues.append("pi5.backup-ssh-private-key")
+
+    known_hosts = _secure_authority_file(
+        os.path.join(project, BACKUP_SSH_KNOWN_HOSTS), maximum_bytes=1024 * 1024
+    )
+    known_hosts_valid = False
+    if known_hosts is not None and b"\x00" not in known_hosts:
+        try:
+            lines = known_hosts.decode("utf-8").splitlines()
+        except UnicodeError:
+            lines = []
+        known_hosts_valid = any(
+            line and not line.startswith("#") and len(line.split()) >= 3
+            for line in lines
+        )
+    if not known_hosts_valid:
+        issues.append("pi5.backup-ssh-known-hosts")
+    return issues
 
 
 def _probe_external_dependency(dependency_id: str) -> bool:
@@ -426,6 +505,12 @@ def execute(
             except (TypeError, json.JSONDecodeError):
                 valid_inventory = False
         _add(issues, valid_inventory, "pi5.normal-inventory-and-vault")
+
+    backup_ssh_issues = _backup_ssh_authority_issues(project)
+    for issue in backup_ssh_issues:
+        _add(issues, False, issue)
+    if not backup_ssh_issues:
+        proofs.append("pi5.backup-ssh-authority")
 
     docker = run_command(["/usr/bin/docker", "info", "--format", "{{json .ServerVersion}}"], cwd=project) if os.path.isfile("/usr/bin/docker") and os.path.isdir(project) else None
     _add(issues, docker is not None and getattr(docker, "returncode", 1) == 0, "pi5.docker")

@@ -17,6 +17,7 @@ CATALOG = (
 BACKUP_INVENTORY_TEMPLATE = (
     ROOT / "infrastructure/ansible/templates/backup-client-inventory.yml.j2"
 ).read_text()
+GITIGNORE = (ROOT / ".gitignore").read_text()
 
 
 class BackupSshBoundaryTest(unittest.TestCase):
@@ -49,6 +50,9 @@ class BackupSshBoundaryTest(unittest.TestCase):
             self.assertNotIn(forbidden, BACKUP_INVENTORY_TEMPLATE.lower())
         for required in ("ansible_host", "ansible_user", "ansible_python_interpreter"):
             self.assertIn(required, BACKUP_INVENTORY_TEMPLATE)
+
+    def test_host_backup_authority_is_never_tracked(self):
+        self.assertIn("/secrets/backup-ssh/", GITIGNORE.splitlines())
 
 
 if __name__ == "__main__":

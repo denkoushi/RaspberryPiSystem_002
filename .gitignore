@@ -54,6 +54,9 @@ apps/api/alerts/*.json
 # SSL certificates
 certs/
 
+# Pi5 backup-only SSH authority (private runtime material, never tracked)
+/secrets/backup-ssh/
+
 # Runtime configuration (backup.json, etc.)
 /config/
 
