@@ -72,9 +72,16 @@ traffic, or update a terminal.
   deploy contract (988 Python deployment tests plus shell, real PostgreSQL,
   and Ansible checks), all 102 CI contract tests, document audit, and
   `git diff --check` using the repository-required Node 20 runtime.
-- [ ] Push, PR, hosted native-container rehearsal, review, merge, exact-main
-  ARM64 rehearsal, read-only production evidence, and release approval remain
-  separate gates.
+- [x] (2026-08-04 20:37+09:00) Pushed the audit branch and opened draft PR
+  #1178. Its first hosted native-container rehearsal correctly failed before
+  starting an application container because the disposable empty database had
+  no Prisma ledger when role separation ran.
+- [x] (2026-08-04 20:37+09:00) Corrected only the disposable rehearsal's clean
+  database ordering, added an executable ordering contract, replaced the
+  Bash-4-only cleanup read, and passed 103 CI contract tests plus the full
+  native ARM64 rehearsal with five gateway samples and zero resource residue.
+- [ ] Hosted rerun, review, merge, exact-main ARM64 rehearsal, read-only
+  production evidence, and release approval remain separate gates.
 
 ## Surprises & Discoveries
 
@@ -107,6 +114,21 @@ traffic, or update a terminal.
   Evidence: the exact-image harness now applies both the global audit label and
   a UUID-derived run label, removes only exact run resources, and fails if any
   resource with that run label survives.
+
+- Observation: the production role bootstrap intentionally operates on an
+  already migrated database and therefore revokes application access from the
+  existing `_prisma_migrations` table; the new disposable harness initially
+  invoked it against an empty database.
+  Evidence: hosted PR job 91974674212 stopped at line 103 of
+  `postgres-role-bootstrap.sql` with `relation public._prisma_migrations does
+  not exist`, while cleanup still reported all three resource counts at zero.
+
+- Observation: macOS ships Bash 3.2, where `mapfile` is unavailable, so a
+  successful local cleanup emitted an error before collecting any additional
+  run-labelled containers.
+  Evidence: the first corrected local ARM64 rehearsal passed but printed
+  `mapfile: command not found`; the portable read loop removed that error and
+  the repeat rehearsal again reported zero containers, networks, and volumes.
 
 ## Decision Log
 
@@ -141,14 +163,25 @@ traffic, or update a terminal.
   300-second production stability policy.
   Date/Author: 2026-08-04 / Codex.
 
+- Decision: initialize only the disposable empty database with the bootstrap
+  superuser, then transfer ownership with the unchanged production role SQL
+  and run both `migrate deploy` and `migrate status` as `raspi_migrator`.
+  Rationale: this matches the existing real PostgreSQL role-boundary contract,
+  proves the separated migration authority, and does not weaken or reorder any
+  production deployment command.
+  Date/Author: 2026-08-04 / Codex.
+
 ## Outcomes & Retrospective
 
-The local implementation is complete. The active production blue slot remains
-outside this work. The generated local report recorded 39 required scenarios,
-39 passed, zero failed, zero uncovered, and zero container, network, or volume
-residue. Repository completion still requires the hosted PR rehearsal and
-reviewed integration to main, followed by exact-main ARM64 evidence. Production
-deployment remains a later, separately approved operation.
+The local implementation and the first hosted feedback cycle are complete. The
+active production blue slot remains outside this work. The generated local
+report recorded 39 required scenarios, 39 passed, zero failed, zero uncovered,
+and zero container, network, or volume residue. Draft PR #1178 exposed and
+contained an empty-database ordering defect; the corrected native ARM64 replay
+passed locally with zero residue. Repository completion still requires the
+hosted rerun and reviewed integration to main, followed by exact-main ARM64
+evidence. Production deployment remains a later, separately approved
+operation.
 
 ## Context and Orientation
 

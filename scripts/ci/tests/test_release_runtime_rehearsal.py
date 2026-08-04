@@ -81,6 +81,21 @@ class ReleaseRuntimeRehearsalTests(unittest.TestCase):
         self.assertNotIn("scripts/update-all-clients.sh", SCRIPT)
         self.assertNotIn("scripts/deploy/pi5-blue-green.sh", SCRIPT)
 
+    def test_clean_database_is_migrated_before_roles_are_separated(self) -> None:
+        initial_migration = SCRIPT.index(
+            'DATABASE_URL="$BOOTSTRAP_DATABASE_URL" exec ./node_modules/.bin/prisma migrate deploy'
+        )
+        role_bootstrap = SCRIPT.index("postgres-role-bootstrap.sql")
+        separated_migration = SCRIPT.index(
+            'DATABASE_URL="$MIGRATION_DATABASE_URL" exec ./node_modules/.bin/prisma migrate deploy'
+        )
+        separated_status = SCRIPT.index(
+            'DATABASE_URL="$MIGRATION_DATABASE_URL" exec ./node_modules/.bin/prisma migrate status'
+        )
+        self.assertLess(initial_migration, role_bootstrap)
+        self.assertLess(role_bootstrap, separated_migration)
+        self.assertLess(separated_migration, separated_status)
+
     def test_all_disposable_resources_have_global_and_run_labels(self) -> None:
         self.assertIn("com.raspi-system.production-path-audit.run", SCRIPT)
         self.assertIn('docker network create --label "$LABEL" --label "$RUN_LABEL"', SCRIPT)
@@ -88,6 +103,7 @@ class ReleaseRuntimeRehearsalTests(unittest.TestCase):
         self.assertIn('docker ps -aq --filter "label=${RUN_LABEL}"', SCRIPT)
         self.assertIn('docker network ls -q --filter "label=${RUN_LABEL}"', SCRIPT)
         self.assertIn('docker volume ls -q --filter "label=${RUN_LABEL}"', SCRIPT)
+        self.assertNotIn("mapfile", SCRIPT)
         self.assertNotIn('DB_VOLUME="$(new_volume', SCRIPT)
         self.assertNotIn('volume="$(new_volume', SCRIPT)
 

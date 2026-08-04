@@ -62,7 +62,9 @@ cleanup() {
   local -a labelled_containers=()
   set +e
   docker rm -f "${CONTAINERS[@]}" >/dev/null 2>&1
-  mapfile -t labelled_containers < <(docker ps -aq --filter "label=${RUN_LABEL}" 2>/dev/null)
+  while IFS= read -r container; do
+    [[ -n "$container" ]] && labelled_containers+=("$container")
+  done < <(docker ps -aq --filter "label=${RUN_LABEL}" 2>/dev/null)
   if ((${#labelled_containers[@]})); then
     docker rm -f "${labelled_containers[@]}" >/dev/null 2>&1
   fi
@@ -131,6 +133,10 @@ docker exec "$DB_CONTAINER" pg_isready -U postgres -d borrow_return >/dev/null
 
 MIGRATION_PASSWORD='audit-migration-password'
 APP_PASSWORD='audit-application-password'
+BOOTSTRAP_DATABASE_URL='postgresql://postgres:postgres@db:5432/borrow_return'
+docker run --rm --platform "$PLATFORM" --network "$NETWORK" --read-only --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=256m \
+  --label "$LABEL" --label "$RUN_LABEL" -e "BOOTSTRAP_DATABASE_URL=${BOOTSTRAP_DATABASE_URL}" --entrypoint sh "$API_IMAGE" \
+  -lc 'DATABASE_URL="$BOOTSTRAP_DATABASE_URL" exec ./node_modules/.bin/prisma migrate deploy' >/dev/null
 docker exec -i "$DB_CONTAINER" psql -U postgres -d borrow_return \
   -v migration_password="$MIGRATION_PASSWORD" -v app_password="$APP_PASSWORD" \
   -f - <"$ROOT/scripts/deploy/postgres-role-bootstrap.sql" >/dev/null
