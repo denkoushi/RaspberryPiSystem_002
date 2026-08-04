@@ -28,6 +28,23 @@ def spec(
     }
 
 
+def create_backup_ssh_authority(project: Path) -> None:
+    directory = project / "secrets/backup-ssh"
+    directory.mkdir(parents=True)
+    directory.chmod(0o700)
+    private_key = directory / "id_ed25519"
+    private_key_label = "OPENSSH " + "PRIVATE KEY"
+    private_key.write_text(
+        f"-----BEGIN {private_key_label}-----\nfixture\n"
+        f"-----END {private_key_label}-----\n",
+        encoding="utf-8",
+    )
+    private_key.chmod(0o600)
+    known_hosts = directory / "known_hosts"
+    known_hosts.write_text("example ssh-ed25519 fixture\n", encoding="utf-8")
+    known_hosts.chmod(0o600)
+
+
 class RoutePreflightTest(unittest.TestCase):
     def test_parse_rejects_unknown_fields_and_unsafe_inventory(self):
         value = spec("/opt/RaspberryPiSystem_002")
@@ -55,6 +72,7 @@ class RoutePreflightTest(unittest.TestCase):
             lock = project / "logs/deploy/fleet-release-state.lock"
             lock.parent.mkdir(parents=True)
             lock.write_text("", encoding="utf-8")
+            create_backup_ssh_authority(project)
             for name, content in (
                 ("ansible.cfg", "[defaults]\n"),
                 (".vault-pass", "secret\n"),
@@ -97,6 +115,7 @@ class RoutePreflightTest(unittest.TestCase):
             self.assertEqual(report["status"], "passed")
             self.assertEqual(report["issues"], [])
             self.assertIn("pi5.fleet-lock-held", report["proofs"])
+            self.assertIn("pi5.backup-ssh-authority", report["proofs"])
             flattened = "\n".join(" ".join(command) for command in commands)
             for forbidden in ("checkout", "playbook", "systemctl start", "systemctl stop"):
                 self.assertNotIn(forbidden, flattened)
@@ -113,6 +132,7 @@ class RoutePreflightTest(unittest.TestCase):
             lock = project / "logs/deploy/fleet-release-state.lock"
             lock.parent.mkdir(parents=True)
             lock.write_text("", encoding="utf-8")
+            create_backup_ssh_authority(project)
             for name, content in (
                 ("ansible.cfg", "[defaults]\n"),
                 (".vault-pass", "secret\n"),
@@ -211,7 +231,28 @@ class RoutePreflightTest(unittest.TestCase):
             self.assertEqual(report["status"], "blocked")
             self.assertGreater(len(report["issues"]), 5)
             self.assertIn("pi5.fleet-lock", report["issues"])
+            self.assertIn("pi5.backup-ssh-directory", report["issues"])
+            self.assertIn("pi5.backup-ssh-private-key", report["issues"])
+            self.assertIn("pi5.backup-ssh-known-hosts", report["issues"])
             self.assertNotIn("secret must not escape", json.dumps(report))
+
+    def test_backup_ssh_authority_requires_owner_only_regular_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Path(temporary)
+            create_backup_ssh_authority(project)
+
+            self.assertEqual(route_preflight._backup_ssh_authority_issues(temporary), [])
+
+            private_key = project / "secrets/backup-ssh/id_ed25519"
+            private_key.chmod(0o644)
+            known_hosts = project / "secrets/backup-ssh/known_hosts"
+            known_hosts.unlink()
+            known_hosts.symlink_to(private_key)
+
+            self.assertEqual(
+                route_preflight._backup_ssh_authority_issues(temporary),
+                ["pi5.backup-ssh-private-key", "pi5.backup-ssh-known-hosts"],
+            )
 
     def test_readable_active_run_is_reported_for_recovery_without_blocking(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -221,6 +262,7 @@ class RoutePreflightTest(unittest.TestCase):
             lock = project / "logs/deploy/fleet-release-state.lock"
             lock.parent.mkdir(parents=True)
             lock.write_text("", encoding="utf-8")
+            create_backup_ssh_authority(project)
             active_run = "20260719-010203-a1b2c3"
             (project / "logs/deploy/fleet-release-state.json").write_text(
                 json.dumps(

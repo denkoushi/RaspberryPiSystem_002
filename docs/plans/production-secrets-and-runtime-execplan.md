@@ -29,8 +29,8 @@ validation:
   - Docker Compose and non-root runtime contracts
   - complete local deployment contracts without managed-host connections
 open_items:
-  - merge the Pi3 terminal-preflight SSH compression hotfix, pass exact-main CI, and rerun the full-fleet preflight before restarting the approved standard rollout
-  - verify the completed release with run status and a no-op print-plan before claiming production completion
+  - merge the backup-SSH-authority preflight hotfix, pass exact-main CI, and rerun the full-fleet read-only preflight
+  - obtain a separate approval before retrying the standard production rollout, then verify its run status and a no-op print-plan
   - credential rotation, database role migration, CA rollout, and production deployment require separate evidence and approval gates
 ---
 
@@ -277,8 +277,35 @@ when the repository implementation is ready.
   with the SSH-compression regression included. The run covered Blue/Green,
   rollback, migration, fleet, Ansible, Caddy, and isolated PostgreSQL
   contracts; every run-owned Docker resource reported cleanup to zero.
-- [ ] Obtain separate approval for push, PR, merge, exact-main CI, and the
-  production retry.
+- [x] (2026-08-04 13:52+09:00) Merged the Pi3 compression correction as PR
+  #1174 at `c51b6c7e35c500f7fb8d31e67a4caff37d8270ef`. Exact-main CI,
+  CodeQL, secret scanning, ARM64 API/Web images, and the signed release set
+  passed. The approved full-fleet read-only preflight then passed Pi5, all 157
+  migrations, all external dependencies, all six Pi4 terminals, and Pi3.
+- [x] (2026-08-04 14:07+09:00) Started the separately approved standard
+  release as run `20260804-045746-0230ae`. It failed closed during Pi5
+  candidate creation because the new dedicated backup SSH private-key bind
+  source did not exist. No candidate slot, migration, gateway switch, or
+  terminal mutation occurred; the active blue API/Web remained healthy.
+- [x] (2026-08-04 14:20+09:00) Created branch
+  `hotfix/backup-ssh-authority-preflight` from the exact clean main SHA. Added
+  owner/type/mode/content-shape checks for the dedicated key and pinned host
+  file to the Pi5 route preflight, plus exact readiness issue codes and a Git
+  ignore boundary for the runtime-only authority.
+- [x] (2026-08-04 14:24+09:00) Passed 25 focused boundary tests and the
+  complete local deployment contract: Web production build, Blue/Green and
+  rollback safety, 974 deployment Python tests, 43 Ansible contracts, and both
+  isolated PostgreSQL contracts. Run-owned Docker resources returned to zero.
+- [x] (2026-08-04 14:29+09:00) With separate approval, generated one dedicated
+  Ed25519 backup identity on Pi5, pinned only host records independently
+  matched through the existing authenticated route, added its public key to
+  the six configured backup targets one at a time, and proved dedicated-key
+  read-only SSH to every target. The old identity and active containers were
+  retained, no service was restarted, and the production Git worktree stayed
+  clean.
+- [ ] Push and open a Draft PR for the backup-authority preflight correction.
+  Push, PR creation, merge, exact-main CI, read-only production preflight, and
+  the production retry remain separate gates.
 
 ## Surprises & Discoveries
 
@@ -421,6 +448,19 @@ when the repository implementation is ready.
   enabled. Pi3 load was below 1, SSH was active, and Pi5-to-Pi3 Tailscale and
   TCP/22 reachability were present.
 
+- Observation: candidate Compose bind-source validation occurred after the
+  release unit had already started, while the Pi5 route preflight did not
+  inspect the dedicated backup SSH authority.
+  Evidence: run `20260804-045746-0230ae` passed the full read-only preflight and
+  artifact promotion, then failed before candidate creation on the absent
+  private-key bind source. Traffic, migrations, and terminals were unchanged.
+
+- Observation: the default backup authority path is inside the production Git
+  checkout but was not ignored.
+  Evidence: `git check-ignore` initially returned no rule for either mounted
+  file. Creating the approved runtime identity without a narrow ignore rule
+  would have made the production checkout dirty and blocked later releases.
+
 ## Decision Log
 
 - Decision: split repository preparation into independently testable
@@ -555,6 +595,24 @@ when the repository implementation is ready.
   network configuration mutation and does not weaken any readiness gate.
   Date/Author: 2026-08-04 / Codex.
 
+- Decision: make the Pi5 route preflight require the exact dedicated backup
+  SSH directory, private key, and pinned host file before a release unit can be
+  submitted, and ignore only `/secrets/backup-ssh/` at the repository root.
+  Rationale: Compose must never discover a missing bind source after artifact
+  promotion. Exact ownership and modes prevent a permissive or linked file
+  from satisfying the gate, while the narrow ignore rule keeps runtime secret
+  material out of Git without hiding unrelated files.
+  Date/Author: 2026-08-04 / Codex.
+
+- Decision: retain the legacy Pi5 SSH identity while introducing the dedicated
+  backup identity additively, and do not restart the API until exact-main
+  preflight passes.
+  Rationale: each target can be verified independently with the new key while
+  the currently running API keeps its existing recovery path. Removal of the
+  broad legacy mount belongs only after a successful standard deployment and
+  backup verification.
+  Date/Author: 2026-08-04 / Codex.
+
 ## Outcomes & Retrospective
 
 The first repository milestone is complete locally. All eight normal-factory
@@ -579,6 +637,15 @@ correctly withheld release submission because the Pi3 could not reliably
 receive the candidate-owned probe envelope without SSH compression. The
 existing blue slot remained healthy throughout and no database migration or
 terminal activation occurred.
+
+The Pi3 transport correction is now integrated and its full-fleet preflight
+passed. The subsequent standard rollout exposed one additional fail-closed
+gap: backup SSH bind sources were not part of the early route gate. The new
+preflight correction passes all local contracts, and the separately approved
+dedicated identity is staged and verified on all six configured backup targets
+without removing legacy authority or restarting a service. Operational rollout
+is still incomplete until this correction is integrated, exact-main preflight
+passes, and a separately approved standard release succeeds.
 
 ## Context and Orientation
 
