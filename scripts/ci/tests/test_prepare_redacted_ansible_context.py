@@ -36,7 +36,10 @@ class RedactedAnsibleContextTests(unittest.TestCase):
             self.assertFalse((output / ".vault-pass").exists())
             self.assertFalse((output / "host_vars/test-host/vault.yml").exists())
             self.assertTrue((output / "host_vars/test-host/main.yml").is_file())
-            self.assertIn("disabled in redacted CI context", (output / "ansible.cfg").read_text())
+            self.assertIn(
+                "disabled in redacted read-only context",
+                (output / "ansible.cfg").read_text(),
+            )
 
     def test_refuses_to_overwrite_an_existing_destination(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

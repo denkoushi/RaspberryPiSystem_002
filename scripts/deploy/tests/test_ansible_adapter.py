@@ -2146,6 +2146,74 @@ class AnsibleConfigResolutionTest(unittest.TestCase):
 
         self.assertIn('local-test', payload['_meta']['hostvars'])
 
+    @unittest.skipUnless(
+        shutil.which('ansible-inventory') and shutil.which('ansible-vault'),
+        'Ansible executables are required',
+    )
+    def test_read_only_inventory_excludes_encrypted_host_vaults(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ansible_directory = Path(directory) / 'ansible'
+            host_vars = ansible_directory / 'host_vars' / 'local-test'
+            host_vars.mkdir(parents=True)
+            password = ansible_directory / '.vault-pass'
+            password.write_text('test-vault-password\n', encoding='utf-8')
+            (ansible_directory / 'ansible.cfg').write_text(
+                '[defaults]\n'
+                'vault_password_file = .vault-pass\n',
+                encoding='utf-8',
+            )
+            (ansible_directory / 'ansible-readonly.cfg').write_text(
+                '[defaults]\n', encoding='utf-8'
+            )
+            inventory = ansible_directory / 'inventory.yml'
+            inventory.write_text(
+                'all:\n'
+                '  hosts:\n'
+                '    local-test:\n'
+                '      ansible_connection: local\n'
+                '      secret_reference: "{{ vault_probe }}"\n',
+                encoding='utf-8',
+            )
+            (host_vars / 'main.yml').write_text(
+                'safe_probe: retained\n', encoding='utf-8'
+            )
+            encrypted_vars = host_vars / 'vault.yml'
+            encrypted_vars.write_text(
+                'vault_probe: never-render-this-secret\n', encoding='utf-8'
+            )
+            subprocess.run(
+                ['ansible-vault', 'encrypt', str(encrypted_vars)],
+                cwd=ansible_directory,
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+
+            class RealRuntime:
+                ANSIBLE_DIRECTORY = ansible_directory
+
+                @staticmethod
+                def run(command, **kwargs):
+                    completed = subprocess.run(
+                        command,
+                        cwd=kwargs.get('cwd'),
+                        check=True,
+                        text=True,
+                        capture_output=kwargs.get('capture', False),
+                        env=kwargs.get('env'),
+                    )
+                    return completed.stdout if kwargs.get('capture', False) else ''
+
+            payload = ansible.read_only_inventory_json(
+                str(inventory), runtime=RealRuntime()
+            )
+
+        serialized = json.dumps(payload)
+        host = payload['_meta']['hostvars']['local-test']
+        self.assertEqual(host['safe_probe'], 'retained')
+        self.assertNotIn('never-render-this-secret', serialized)
+        self.assertNotIn('vault_probe', host)
+
 
 if __name__ == "__main__":
     unittest.main()

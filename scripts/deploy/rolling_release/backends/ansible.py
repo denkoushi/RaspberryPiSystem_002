@@ -28,6 +28,7 @@ from ..activation import (
     KIOSK_WEB_ACTIVATION_STRATEGY,
     KIOSK_WEB_ACTIVATION_TARGET_UNIT,
 )
+from ..read_only_ansible_context import prepare_context
 
 if TYPE_CHECKING:
     from ..terminal_adapters import TerminalRuntimeManifestContract
@@ -292,8 +293,11 @@ def inventory_json(path: str, *, runtime: Runtime) -> dict[str, Any]:
     )
 
 
-def _read_only_environment(*, runtime: Runtime) -> dict[str, str]:
-    config = Path(runtime.ANSIBLE_DIRECTORY) / _READ_ONLY_CONFIG_NAME
+def _read_only_environment(
+    *, runtime: Runtime, ansible_directory: Path | None = None
+) -> dict[str, str]:
+    directory = ansible_directory or Path(runtime.ANSIBLE_DIRECTORY)
+    config = directory / _READ_ONLY_CONFIG_NAME
     try:
         resolved = config.resolve(strict=True)
     except (FileNotFoundError, OSError):
@@ -314,6 +318,38 @@ def _read_only_environment(*, runtime: Runtime) -> dict[str, str]:
     return environment
 
 
+@contextmanager
+def _read_only_inventory_context(path: str, *, runtime: Runtime):
+    """Hide encrypted host Vaults from inventory-only Ansible commands."""
+
+    source = Path(runtime.ANSIBLE_DIRECTORY).resolve()
+    vault_directory = source / "host_vars"
+    if not any(vault_directory.glob("*/vault.yml")):
+        yield source, path
+        return
+
+    candidate = Path(path)
+    resolved_inventory = (
+        candidate.resolve() if candidate.is_absolute() else (source / candidate).resolve()
+    )
+    try:
+        relative_inventory = resolved_inventory.relative_to(source)
+    except ValueError:
+        raise RuntimeError(
+            "read-only inventory must be located inside the Ansible directory"
+        ) from None
+    if not resolved_inventory.is_file():
+        raise _read_only_inventory_failure()
+
+    with tempfile.TemporaryDirectory(prefix="raspi-read-only-ansible-") as temporary:
+        destination = Path(temporary) / "ansible"
+        try:
+            prepare_context(source, destination)
+        except (OSError, ValueError):
+            raise _read_only_inventory_failure() from None
+        yield destination, str(relative_inventory)
+
+
 def _read_only_inventory_failure() -> RuntimeError:
     return RuntimeError(
         "read-only inventory validation failed; check the inventory YAML and "
@@ -324,13 +360,20 @@ def _read_only_inventory_failure() -> RuntimeError:
 
 
 def _run_read_only_inventory_command(
-    command: list[str], *, runtime: Runtime, zero_match_is_empty: bool = False
+    command: list[str],
+    *,
+    runtime: Runtime,
+    ansible_directory: Path | None = None,
+    zero_match_is_empty: bool = False,
 ) -> str:
-    environment = _read_only_environment(runtime=runtime)
+    directory = ansible_directory or Path(runtime.ANSIBLE_DIRECTORY)
+    environment = _read_only_environment(
+        runtime=runtime, ansible_directory=directory
+    )
     try:
         return runtime.run(
             command,
-            cwd=runtime.ANSIBLE_DIRECTORY,
+            cwd=directory,
             capture=True,
             env=environment,
         )
@@ -359,9 +402,15 @@ def _run_read_only_inventory_command(
 
 
 def read_only_inventory_json(path: str, *, runtime: Runtime) -> dict[str, Any]:
-    raw = _run_read_only_inventory_command(
-        ["ansible-inventory", "-i", path, "--list"], runtime=runtime
-    )
+    with _read_only_inventory_context(path, runtime=runtime) as (
+        ansible_directory,
+        inventory,
+    ):
+        raw = _run_read_only_inventory_command(
+            ["ansible-inventory", "-i", inventory, "--list"],
+            runtime=runtime,
+            ansible_directory=ansible_directory,
+        )
     try:
         value = json.loads(raw)
     except (json.JSONDecodeError, TypeError):
@@ -382,19 +431,24 @@ def read_only_selected_hosts(
 ) -> list[str] | None:
     if not limit:
         return None
-    output = _run_read_only_inventory_command(
-        [
-            "ansible",
-            "-i",
-            path,
-            "server:clients",
-            "--list-hosts",
-            "--limit",
-            limit,
-        ],
-        runtime=runtime,
-        zero_match_is_empty=True,
-    )
+    with _read_only_inventory_context(path, runtime=runtime) as (
+        ansible_directory,
+        inventory,
+    ):
+        output = _run_read_only_inventory_command(
+            [
+                "ansible",
+                "-i",
+                inventory,
+                "server:clients",
+                "--list-hosts",
+                "--limit",
+                limit,
+            ],
+            runtime=runtime,
+            ansible_directory=ansible_directory,
+            zero_match_is_empty=True,
+        )
     return [
         line.strip()
         for line in output.splitlines()
