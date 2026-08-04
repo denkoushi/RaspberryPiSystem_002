@@ -30,6 +30,169 @@ class ProductionPathAuditExecutionTest(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertIn("PASS: pi5 blue/green safety lifecycle", completed.stdout)
 
+    def test_pi5_failure_boundaries_persist_recovery_before_stopping(self) -> None:
+        preparation = r'''
+source "$1"
+source "$2"
+RECORD="$3"
+TOUCH="$4"
+FAILURE="$5"
+ACTIVE_SLOT=blue
+CANDIDATE_SLOT=''
+PREVIOUS_SLOT=''
+BLUE_API_IMAGE=api-old
+BLUE_WEB_IMAGE=web-old
+GREEN_API_IMAGE=''
+GREEN_WEB_IMAGE=''
+BLUE_API_IMAGE_ID="sha256:$(printf '1%.0s' {1..64})"
+BLUE_WEB_IMAGE_ID="sha256:$(printf '2%.0s' {1..64})"
+GREEN_API_IMAGE_ID=''
+GREEN_WEB_IMAGE_ID=''
+API_IMAGE=api-new
+WEB_IMAGE=web-new
+CANDIDATE_API_IMAGE_ID="sha256:$(printf '3%.0s' {1..64})"
+CANDIDATE_WEB_IMAGE_ID="sha256:$(printf '4%.0s' {1..64})"
+GATEWAY_SLOT=blue
+STABLE_UNTIL=''
+MONITOR_ACTIVE_SLOT=''
+MONITOR_ROLLBACK_SLOT=''
+MIGRATION_STATUS=not-checked
+MIGRATION_CHECKED_AT=''
+MIGRATION_APPLIED_AT=''
+RETIRED_API_IMAGE=''
+RETIRED_WEB_IMAGE=''
+RETIRED_API_IMAGE_ID=''
+RETIRED_WEB_IMAGE_ID=''
+DRY_RUN=0
+require_active_state() { :; }
+require_no_stability_window() { :; }
+cleanup_retired_images() { :; }
+secret_guard() { :; }
+resolve_images() { :; }
+validate_resource_evidence() { :; }
+seal_active_slot_image_ids() { :; }
+verify_slot_identity() { :; }
+slot_runtime_ready() { :; }
+other_slot() { printf 'green\n'; }
+slot_api_image() { [[ "$1" == blue ]] && printf '%s\n' "$BLUE_API_IMAGE" || printf '%s\n' "$GREEN_API_IMAGE"; }
+slot_web_image() { [[ "$1" == blue ]] && printf '%s\n' "$BLUE_WEB_IMAGE" || printf '%s\n' "$GREEN_WEB_IMAGE"; }
+slot_api_image_id() { [[ "$1" == blue ]] && printf '%s\n' "$BLUE_API_IMAGE_ID" || printf '%s\n' "$GREEN_API_IMAGE_ID"; }
+slot_web_image_id() { [[ "$1" == blue ]] && printf '%s\n' "$BLUE_WEB_IMAGE_ID" || printf '%s\n' "$GREEN_WEB_IMAGE_ID"; }
+set_slot_image_ids() { GREEN_API_IMAGE_ID="$2"; GREEN_WEB_IMAGE_ID="$3"; }
+run_scoped_image_tag() { return 1; }
+state_save() { printf '%s\n' "$1" >>"$RECORD"; }
+arm_prepare_recovery() { :; }
+lock_cleanup() { :; }
+alert() { :; }
+die() { printf 'die:%s\n' "$*" >>"$RECORD"; exit 91; }
+migration_apply_and_verify() { [[ "$FAILURE" != migration ]]; }
+slot_up() { printf 'slot-up\n' >>"$TOUCH"; [[ "$FAILURE" != health ]]; }
+prepare
+'''
+        switching = r'''
+source "$1"
+RECORD="$2"
+ACTIVE_SLOT=blue
+CANDIDATE_SLOT=green
+PREVIOUS_SLOT=''
+BLUE_API_IMAGE=api-blue
+BLUE_WEB_IMAGE=web-blue
+GREEN_API_IMAGE=api-green
+GREEN_WEB_IMAGE=web-green
+GATEWAY_SLOT=blue
+STABLE_SECONDS=300
+require_active_state() { :; }
+is_slot() { [[ "$1" == blue || "$1" == green ]]; }
+verify_durable_release_evidence() { :; }
+verify_slot_identity() { :; }
+slot_runtime_ready() { :; }
+slot_ready() { :; }
+date() { [[ "$1" == +%s ]] && printf '100\n' || command date "$@"; }
+state_save() { printf '%s\n' "$1" >>"$RECORD"; }
+render_gateway() { :; }
+gateway_config_validate() { :; }
+gateway_reload() { return 1; }
+gateway_points_to() { :; }
+external_smoke() { :; }
+alert() { :; }
+die() { printf 'die:%s\n' "$*" >>"$RECORD"; exit 92; }
+switch_candidate
+'''
+        monitoring = r'''
+source "$1"
+RECORD="$2"
+STATE_FILE="$3"
+: >"$STATE_FILE"
+load_state_context() {
+  ACTIVE_SLOT=green; CANDIDATE_SLOT=blue; PREVIOUS_SLOT=blue
+  BLUE_API_IMAGE=api-blue; BLUE_WEB_IMAGE=web-blue
+  GREEN_API_IMAGE=api-green; GREEN_WEB_IMAGE=web-green
+  GATEWAY_SLOT=green; STABLE_UNTIL=200
+  MONITOR_ACTIVE_SLOT=green; MONITOR_ROLLBACK_SLOT=blue
+}
+state_get() { [[ "$1" == event ]] && printf 'active\n'; }
+is_slot() { [[ "$1" == blue || "$1" == green ]]; }
+date() { [[ "$1" == +%s ]] && printf '100\n' || command date "$@"; }
+monitor_checks() { return 1; }
+state_save() { printf '%s\n' "$1" >>"$RECORD"; }
+alert() { :; }
+MONITOR_STRUCTURAL_SAMPLE_INTERVAL=15
+MONITOR_INTERVAL=0
+if monitor; then exit 93; fi
+'''
+        with tempfile.TemporaryDirectory() as raw:
+            temporary = Path(raw)
+            lifecycle = str(MODULE_DIR / "lifecycle.sh")
+            migrations = str(MODULE_DIR / "migrations.sh")
+            for failure in ("migration", "health"):
+                with self.subTest(failure=failure):
+                    record = temporary / f"{failure}.events"
+                    touched = temporary / f"{failure}.touch"
+                    completed = run(
+                        [
+                            "bash", "-euo", "pipefail", "-c", preparation,
+                            "pi5-failure-audit", lifecycle, migrations,
+                            str(record), str(touched), failure,
+                        ],
+                        cwd=ROOT,
+                    )
+                    self.assertEqual(completed.returncode, 91, completed.stderr)
+                    self.assertEqual(
+                        record.read_text(encoding="utf-8").splitlines()[:2],
+                        ["preparing", "prepare-failed"],
+                    )
+                    self.assertEqual(touched.exists(), failure == "health")
+
+            switch_record = temporary / "switch.events"
+            completed = run(
+                [
+                    "bash", "-euo", "pipefail", "-c", switching,
+                    "pi5-failure-audit", lifecycle, str(switch_record),
+                ],
+                cwd=ROOT,
+            )
+            self.assertEqual(completed.returncode, 92, completed.stderr)
+            self.assertEqual(
+                switch_record.read_text(encoding="utf-8").splitlines()[:2],
+                ["switching", "switch-failed"],
+            )
+
+            monitor_record = temporary / "monitor.events"
+            monitor_state = temporary / "monitor-state.json"
+            completed = run(
+                [
+                    "bash", "-euo", "pipefail", "-c", monitoring,
+                    "pi5-failure-audit", lifecycle, str(monitor_record),
+                    str(monitor_state),
+                ],
+                cwd=ROOT,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertEqual(
+                monitor_record.read_text(encoding="utf-8").splitlines(),
+                ["monitor-failed"],
+            )
+
     def test_migration_compose_executes_for_both_gateway_slots(self) -> None:
         completed = run(
             [

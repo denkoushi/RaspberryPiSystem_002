@@ -443,6 +443,19 @@
       "incidents": []
     },
     {
+      "id": "pi5-mutation-failure-boundaries",
+      "required": true,
+      "routeStages": ["pi5.blue-green-release"],
+      "pi5Phases": ["prepare", "migration-deploy", "switch", "monitor", "rollback"],
+      "initialState": "sealed active slot with injected migration, candidate health, gateway reload, or monitor failure",
+      "entrypoint": "scripts/deploy/pi5-blue-green.sh",
+      "executionLevel": "behavioral",
+      "expectedTransition": "preparing, prepare-failed, switching, switch-failed, or monitor-failed authority is durable before execution stops",
+      "failureInvariant": "migration failure never starts the candidate and post-cutover failures require coordinator-owned switchback",
+      "testOwner": "scripts/deploy/tests/test_production_path_audit_execution.py::test_pi5_failure_boundaries_persist_recovery_before_stopping",
+      "incidents": ["migration-gateway-image"]
+    },
+    {
       "id": "pi5-public-entrypoint-lifecycle",
       "required": true,
       "routeStages": ["pi5.executor-residue-recovery", "pi5.interrupted-recovery", "pi5.blue-green-release"],

@@ -15,12 +15,12 @@
     ]
   },
   "summary": {
-    "documentCount": 607,
-    "totalLines": 169851,
-    "totalBytes": 12747492,
-    "withFrontmatter": 274,
-    "withStatus": 130,
-    "sourceOfTruthDeclared": 92,
+    "documentCount": 608,
+    "totalLines": 170184,
+    "totalBytes": 12764575,
+    "withFrontmatter": 275,
+    "withStatus": 131,
+    "sourceOfTruthDeclared": 93,
     "execPlanReferences": 64,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
@@ -35768,6 +35768,21 @@
           "exists": true
         }
       ],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/standard-release-production-path-audit-execplan.md",
+      "lineCount": 333,
+      "byteSize": 17083,
+      "hasFrontmatter": true,
+      "title": "Standard release production-path execution audit",
+      "status": "in-progress",
+      "source_of_truth": "docs/plans/standard-release-production-path-audit-execplan.md",
+      "localLinks": [],
       "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,

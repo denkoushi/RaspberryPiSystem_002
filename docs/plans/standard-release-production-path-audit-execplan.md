@@ -55,7 +55,7 @@ traffic, or update a terminal.
   `audit/standard-release-production-path` without discarding the five WIP
   files.
 - [x] (2026-08-04 20:34+09:00) Added and validated the machine-readable
-  38-scenario audit matrix and sanitized report. It covers all 25 route stages,
+  39-scenario audit matrix and sanitized report. It covers all 25 route stages,
   all 13 Pi5 phases, and all eight registered historical incidents.
 - [x] (2026-08-04 20:41+09:00) Added full-public-entrypoint behavioral tests,
   real migration Compose invocation for both slot directions, and isolated
@@ -144,8 +144,8 @@ traffic, or update a terminal.
 ## Outcomes & Retrospective
 
 The local implementation is complete. The active production blue slot remains
-outside this work. The generated local report recorded 38 required scenarios,
-38 passed, zero failed, zero uncovered, and zero container, network, or volume
+outside this work. The generated local report recorded 39 required scenarios,
+39 passed, zero failed, zero uncovered, and zero container, network, or volume
 residue. Repository completion still requires the hosted PR rehearsal and
 reviewed integration to main, followed by exact-main ARM64 evidence. Production
 deployment remains a later, separately approved operation.
