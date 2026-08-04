@@ -17,7 +17,6 @@ related_docs:
   - ../knowledge-base/KB-406-pi4-canary-initial-status-and-runtime-recreate.md
 validation: offline behavioral contracts, isolated Docker rehearsal, hosted CI, then read-only exact-main production evidence
 open_items:
-  - rerun the complete local audit after the Pi4 activation and runtime-manifest corrections
   - pass review and required hosted CI for the corrections
   - pass a new exact-main ARM64 rehearsal with the fixed 300-second monitor
   - collect fresh post-merge read-only production and failed-run recovery evidence
@@ -150,6 +149,28 @@ traffic, or update a terminal.
 - [x] (2026-08-05 07:02+09:00) Repeated all 103 CI contract tests and the
   document audit after the browser-harness corrections; both passed, and the
   final local diff remains free of whitespace errors.
+- [x] (2026-08-05 07:48+09:00) Reproduced the remaining hosted `kiosk-sop`
+  failure as CPU-dependent Chromium glyph rasterization. Pinned subpixel font
+  positioning off, bumped the generator contract to 1.2.0, and obtained
+  byte-identical complete artifact trees from three concurrent generations.
+  All five capture contracts, generated-current validation, and all 18
+  production-bundle browser tests pass.
+- [x] (2026-08-05 07:59+09:00) Completed the requested urgent read-only Pi4
+  fleet observation. All six hosts were reachable through Pi5, on the prior
+  SHA, with the kiosk browser and status timer active and Pi5 API health 200.
+  Only StoneBase retained maintenance owned by failed run
+  `20260804-185819-598324`; the other five reported no maintenance. No
+  production state was changed.
+- [x] (2026-08-05 08:06+09:00) Repeated the complete deploy contract from the
+  beginning after the deterministic SOP capture correction. All 991 deployment
+  tests, 11 incident mutations, real Compose recreation, 157 migrations, 20
+  deploy-status API tests, 43 Ansible profile tests, playbook checks, and
+  run-resource cleanup passed; labelled container, network, and volume residue
+  remained zero.
+- [x] (2026-08-05 08:06+09:00) Repeated all 103 CI contract tests and the
+  document audit after the final evidence update; both passed. Reviewed the
+  generated manifest, capture-runtime boundary, contract, KB, and ExecPlan
+  diff, with no whitespace errors.
 - [ ] Complete final local diff review, hosted review and required CI,
   exact-main evidence, and fresh read-only production evidence. Production and
   failed-run recovery remain frozen behind a separate approval.
@@ -236,6 +257,13 @@ traffic, or update a terminal.
   fixture returned 503 for deploy status, and the SOP generator's generic
   heading wait could observe the maintenance heading before the routed DOM.
 
+- Observation: selecting a Linux amd64 Playwright image on an arm64 Mac does
+  not make Chromium's glyph antialiasing byte-identical to native GitHub amd64.
+  Evidence: the remaining hosted diff was visually identical and localized to
+  a handful of antialias pixels in the drawing marker digit `1`; disabling font
+  subpixel positioning then made all artifacts from three concurrent runs
+  byte-identical to the committed set.
+
 ## Decision Log
 
 - Decision: keep one frozen audit branch and one review series for the current
@@ -306,6 +334,14 @@ traffic, or update a terminal.
   Compose implementation metadata. The already-failed production manifest
   cannot be rewritten, so coordinator-owned recovery needs explicit backward
   compatibility rather than a manual state or service repair.
+  Date/Author: 2026-08-05 / Codex.
+
+- Decision: launch the SOP capture browser with
+  `--disable-font-subpixel-positioning`, record generator version 1.2.0, and
+  retain exact byte-for-byte generated-artifact validation.
+  Rationale: the output must be reproducible across native and emulated amd64;
+  tolerating image differences would weaken the fail-closed generated-content
+  contract instead of removing the environmental input.
   Date/Author: 2026-08-05 / Codex.
 
 ## Outcomes & Retrospective
@@ -529,3 +565,7 @@ static contracts did not execute every release phase.
 Revision note 2026-08-04: Reopened the audit after approved exact-main run
 `20260804-122309-7e601d` exposed a Web image/controller runtime path drift
 that the first isolated rehearsal did not execute across the real boundary.
+
+Revision note 2026-08-05: Recorded the native-amd64 SOP rasterization finding,
+its deterministic capture contract, and the read-only six-host Pi4 fleet
+snapshot while retaining failed-run maintenance and the production freeze.

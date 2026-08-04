@@ -14,7 +14,6 @@ related_docs:
   - ../runbooks/deploy-status-recovery.md
 validation: Kiosk layout behavioral test, runtime manifest unit tests, real Compose force-recreate/restore contract, incident mutations, and full deploy contracts
 open_items:
-  - pass the complete local production-path audit from the beginning
   - pass review and required hosted CI
   - pass the exact-main ARM64 300-second rehearsal
   - prepare and obtain separate approval for production recovery
@@ -71,6 +70,20 @@ daemon-selected hostname/runtime defaults. The old digest hashed raw Docker
 inspect configuration, so a faithful recreation was not reproducible across
 the tool update.
 
+A fresh read-only fleet observation on 2026-08-05 used the standard status
+entrypoint and the production Pi5-to-Pi4 SSH route. All six Pi4 hosts were
+powered and reachable, were still on
+`c32287db7b0f044cec4691f4a791513d7073e52e`, had
+`kiosk-browser.service` active and `status-agent.timer` active, and reached the
+Pi5 API health endpoint with HTTP 200. The deploy-status API reported
+maintenance only for `raspi4-kensaku-stonebase01`, with `phase=failed` and
+owner run `20260804-185819-598324`; the other five hosts reported
+`isMaintenance=false`. StoneBase's torque, barcode, and NFC containers were
+also running. Thus the visible maintenance page is retained fail-closed
+authority from the earlier canary failure, not evidence of a new deployment or
+an unavailable host. No maintenance clear, restart, state edit, recovery, or
+deployment was performed during this observation.
+
 ## Root causes
 
 The ready timeout was caused by an unsafe initial render boundary: unknown
@@ -118,8 +131,9 @@ unreproducible digest as current proof.
 
 ## Open items
 
-Production remains frozen. The complete audit must be rerun from the beginning,
-then reviewed, merged, and proven in hosted CI and exact-main ARM64 rehearsal.
+Production remains frozen. The complete local audit has passed from the
+beginning and must now be reviewed and proven in hosted CI and exact-main ARM64
+rehearsal.
 Only after fresh read-only evidence may a separate, explicit recovery plan be
 approved. The failed run must not be repaired manually or used as authority for
 a new rollout.

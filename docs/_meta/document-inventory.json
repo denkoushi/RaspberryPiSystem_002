@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 610,
-    "totalLines": 170644,
-    "totalBytes": 12790454,
+    "totalLines": 170698,
+    "totalBytes": 12793734,
     "withFrontmatter": 277,
     "withStatus": 133,
     "sourceOfTruthDeclared": 95,
@@ -26040,8 +26040,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-406-pi4-canary-initial-status-and-runtime-recreate.md",
-      "lineCount": 125,
-      "byteSize": 6328,
+      "lineCount": 139,
+      "byteSize": 7144,
       "hasFrontmatter": true,
       "title": "Pi4 canary initial deploy-status gate and runtime recreation drift",
       "status": "active",
@@ -35816,8 +35816,8 @@
     },
     {
       "path": "docs/plans/standard-release-production-path-audit-execplan.md",
-      "lineCount": 531,
-      "byteSize": 29880,
+      "lineCount": 571,
+      "byteSize": 32344,
       "hasFrontmatter": true,
       "title": "Standard release production-path execution audit",
       "status": "in-progress",
