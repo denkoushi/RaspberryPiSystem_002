@@ -15,12 +15,12 @@
     ]
   },
   "summary": {
-    "documentCount": 609,
-    "totalLines": 170482,
-    "totalBytes": 12781576,
-    "withFrontmatter": 276,
-    "withStatus": 132,
-    "sourceOfTruthDeclared": 94,
+    "documentCount": 610,
+    "totalLines": 170624,
+    "totalBytes": 12789051,
+    "withFrontmatter": 277,
+    "withStatus": 133,
+    "sourceOfTruthDeclared": 95,
     "execPlanReferences": 64,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
@@ -26039,6 +26039,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/knowledge-base/KB-406-pi4-canary-initial-status-and-runtime-recreate.md",
+      "lineCount": 125,
+      "byteSize": 6328,
+      "hasFrontmatter": true,
+      "title": "Pi4 canary initial deploy-status gate and runtime recreation drift",
+      "status": "active",
+      "source_of_truth": "true",
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md",
       "lineCount": 203,
       "byteSize": 12918,
@@ -35801,8 +35816,8 @@
     },
     {
       "path": "docs/plans/standard-release-production-path-audit-execplan.md",
-      "lineCount": 494,
-      "byteSize": 27330,
+      "lineCount": 511,
+      "byteSize": 28477,
       "hasFrontmatter": true,
       "title": "Standard release production-path execution audit",
       "status": "in-progress",
