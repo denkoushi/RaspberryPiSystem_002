@@ -29,8 +29,8 @@ validation:
   - Docker Compose and non-root runtime contracts
   - complete local deployment contracts without managed-host connections
 open_items:
-  - merge the backup-SSH-authority preflight hotfix, pass exact-main CI, and rerun the full-fleet read-only preflight
-  - obtain a separate approval before retrying the standard production rollout, then verify its run status and a no-op print-plan
+  - complete and locally validate the production application/migration database-role wiring exposed by the safe candidate failure
+  - obtain separate approval before push, merge, production database role activation, or another standard production rollout
   - credential rotation, database role migration, CA rollout, and production deployment require separate evidence and approval gates
 ---
 
@@ -303,9 +303,56 @@ when the repository implementation is ready.
   read-only SSH to every target. The old identity and active containers were
   retained, no service was restarted, and the production Git worktree stayed
   clean.
-- [ ] Push and open a Draft PR for the backup-authority preflight correction.
-  Push, PR creation, merge, exact-main CI, read-only production preflight, and
-  the production retry remain separate gates.
+- [x] (2026-08-04 15:29+09:00) Merged the backup-authority preflight correction
+  through PR #1175 and synchronized a clean main at
+  `a0f522b03f8dd5403dac8fe17308b245bc073758`. Exact-main hosted checks and the
+  signed ARM64 release set passed.
+- [x] (2026-08-04 15:26+09:00) Split the read-only standard preflight into the
+  real transport topology after the broad selector produced a generic Pi3 SSH
+  result. The Pi5-plus-Pi3 scope passed as `20260804-062403-e77f40`; the
+  Pi5-plus-six-Pi4 scope passed as `20260804-062546-84fcdf`. Pi3 is reachable
+  only through Pi5 and its services are intentionally stopped during an actual
+  resource-constrained update.
+- [x] (2026-08-04 15:40+09:00) Started the separately approved Pi5-plus-Pi3
+  standard release as `20260804-062908-6ae178`. It failed closed during
+  candidate API validation before migration, inactive-slot startup, traffic
+  switch, or Pi3 update. The active blue API/Web and database remained healthy,
+  production Git stayed clean, and the diagnostic candidate was removed.
+- [x] (2026-08-04 15:46+09:00) Reproduced the candidate failure without
+  production mutation and classified the effective connection: production
+  Compose forced the known-default `postgres` role while the API correctly
+  required a dedicated non-default role. SELECT-only inspection confirmed the
+  prepared `raspi_app` and `raspi_migrator` roles were not yet activated.
+- [x] (2026-08-04 16:10+09:00) On branch
+  `fix/complete-production-database-role-wiring`, added a failing
+  production wiring contract, then separate ordinary API and ephemeral
+  migration Compose authority without changing the business schema or live
+  database.
+- [x] (2026-08-04 16:14+09:00) Added the separately approved, backup-gated
+  `prepare-pi5-database-roles.yml` operation. It creates `raspi_app` and
+  `raspi_migrator` without rotating the retained `postgres` rollback
+  credential or switching the running API. Its URL-to-SQL renderer is covered
+  by focused unit tests and never writes rendered credential SQL to disk.
+- [x] (2026-08-04 16:16+09:00) Passed the complete local deployment contract:
+  104 Ansible templates, Web production build and Caddy validation, 977 Python
+  deployment tests, 43 Ansible contracts, Blue/Green/rollback safety, and both
+  isolated PostgreSQL contracts. API build and lint also passed; the
+  application role additionally proved `pg_dump` access. Disposable Docker
+  resources returned to zero.
+- [x] (2026-08-04 16:30+09:00) Added the three separately approved database
+  credentials to the encrypted Pi5 Vault without writing plaintext files or
+  printing values. A decrypt-encrypt-decrypt round trip proved that every
+  existing entry was preserved and only the three expected identifiers were
+  added. The real encrypted inventory resolved both role-scoped URLs and the
+  superuser credential as strong; the production-secret structure and focused
+  database-wiring contracts passed.
+- [x] (2026-08-04 16:35+09:00) Reran the complete local deployment contract
+  after the encrypted Vault update. All checks passed, including 104 Ansible
+  templates, 977 Python deployment tests, 43 Ansible contracts, Blue/Green and
+  rollback safety, the Web production build, and both isolated PostgreSQL
+  contracts. Labeled disposable containers, volumes, and networks each
+  returned to zero. Push, PR, merge, production role activation, and release
+  retry remain separate gates.
 
 ## Surprises & Discoveries
 
@@ -461,6 +508,15 @@ when the repository implementation is ready.
   file. Creating the approved runtime identity without a narrow ignore rule
   would have made the production checkout dirty and blocked later releases.
 
+- Observation: database least-privilege enforcement reached production before
+  its configuration and role-activation path.
+  Evidence: the approved run `20260804-062908-6ae178` stopped in the candidate
+  API health check; redacted reproduction classified the runtime role as
+  `postgres` with a known-default password. `docker-compose.server.yml`,
+  `docker-compose.phase3.yml`, and `api.env.j2` still injected the development
+  connection while the API startup boundary rejected it. No migration or
+  traffic switch occurred.
+
 ## Decision Log
 
 - Decision: split repository preparation into independently testable
@@ -567,6 +623,15 @@ when the repository implementation is ready.
   Rationale: the SQL accepts psql variables, the contract uses disposable test
   values, and real credential generation plus production ownership transfer is
   an operational mutation requiring its own approval and rollback evidence.
+  Date/Author: 2026-08-04 / Codex.
+
+- Decision: correct the database-role wiring in a code-only branch and do not
+  retry production until the application and migration roles have been
+  activated through a separately approved rollback-safe operation.
+  Rationale: the runtime API must receive only `APP_DATABASE_URL`; Prisma must
+  receive `MIGRATION_DATABASE_URL` only in an ephemeral migration container;
+  PostgreSQL bootstrap alone receives `POSTGRES_SUPERUSER_PASSWORD`. Mixing
+  role activation with another release retry would make rollback ambiguous.
   Date/Author: 2026-08-04 / Codex.
 
 - Decision: make production read-only inventory planning consume the same
@@ -848,3 +913,8 @@ Revision note 2026-08-04: Recorded the merged-main preflight, the approved
 one-time Pi5 ownership migration, the fail-closed Caddy candidate incident,
 and the minimal local hotfix. Full local contracts now pass; main integration
 and production retry remain open.
+
+Revision note 2026-08-04: Recorded the safe dedicated-database-role candidate
+failure, completed the missing runtime/migration/Ansible wiring, and added the
+backup- and approval-gated production role preparer. Local contracts pass; the
+encrypted Vault values and every production mutation remain separate gates.

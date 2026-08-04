@@ -1,0 +1,134 @@
+---
+- name: Prepare least-privilege PostgreSQL roles without switching the running API
+  hosts: server
+  gather_facts: false
+  become: true
+  serial: 1
+  vars:
+    repo_path: /opt/RaspberryPiSystem_002
+    pi5_database_role_migration_approved: false
+    pi5_database_role_migration_backup_path: ""
+
+  pre_tasks:
+    - name: Require separate database role migration approval
+      ansible.builtin.assert:
+        that:
+          - pi5_database_role_migration_approved | bool
+        fail_msg: >-
+          This playbook changes PostgreSQL role ownership. Re-run only after
+          separate approval with pi5_database_role_migration_approved=true.
+
+    - name: Require dedicated production database inputs
+      ansible.builtin.assert:
+        that:
+          - app_database_url is defined
+          - app_database_url is match('^postgresql://raspi_app:[^@]+@db:5432/borrow_return(?:[?].*)?$')
+          - migration_database_url is defined
+          - migration_database_url is match('^postgresql://raspi_migrator:[^@]+@db:5432/borrow_return(?:[?].*)?$')
+        fail_msg: Dedicated raspi_app and raspi_migrator URLs are required.
+      no_log: true
+
+    - name: Require an explicit backup path beneath the production backup root
+      ansible.builtin.assert:
+        that:
+          - pi5_database_role_migration_backup_path is match('^/opt/backups/.+[.]sql[.]gz$')
+          - "'..' not in pi5_database_role_migration_backup_path.split('/')"
+        fail_msg: >-
+          Supply the exact verified /opt/backups/*.sql.gz artifact selected for
+          this approved migration; the playbook never creates a backup.
+
+    - name: Inspect the approved database backup without following links
+      ansible.builtin.stat:
+        path: "{{ pi5_database_role_migration_backup_path }}"
+        follow: false
+      register: database_role_backup
+
+    - name: Require a recent regular non-empty database backup
+      ansible.builtin.assert:
+        that:
+          - database_role_backup.stat.exists | default(false)
+          - database_role_backup.stat.isreg | default(false)
+          - not (database_role_backup.stat.islnk | default(false))
+          - database_role_backup.stat.size | int > 0
+          - (ansible_date_time.epoch | default(lookup('pipe', 'date +%s')) | int) - (database_role_backup.stat.mtime | int) <= 86400
+        fail_msg: The approved database backup must be regular, non-empty, and no older than 24 hours.
+
+    - name: Verify the approved backup gzip stream
+      ansible.builtin.command:
+        argv: [/usr/bin/gzip, -t, "{{ pi5_database_role_migration_backup_path }}"]
+      changed_when: false
+
+    - name: Require the active database container to be healthy
+      ansible.builtin.shell: |
+        set -euo pipefail
+        cd {{ repo_path | quote }}
+        cid="$(docker compose -f infrastructure/docker/docker-compose.server.yml ps -q db)"
+        test -n "${cid}"
+        test "$(docker inspect -f '{{ '{{' }}.State.Health.Status{{ '}}' }}' "${cid}")" = healthy
+      args:
+        executable: /bin/bash
+      changed_when: false
+
+  tasks:
+    - name: Copy the value-free role bootstrap for this bounded operation
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../../scripts/deploy/postgres-role-bootstrap.sql"
+        dest: /run/raspi-postgres-role-bootstrap.sql
+        owner: root
+        group: root
+        mode: '0400'
+
+    - name: Copy the secret-safe bootstrap renderer for this bounded operation
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../../scripts/deploy/render-postgres-role-bootstrap.py"
+        dest: /run/render-raspi-postgres-role-bootstrap.py
+        owner: root
+        group: root
+        mode: '0500'
+
+    - name: Create roles and transfer ownership without rotating postgres
+      ansible.builtin.shell: |
+        set -euo pipefail
+        cleanup() {
+          rm -f /run/raspi-postgres-role-bootstrap.sql \
+            /run/render-raspi-postgres-role-bootstrap.py
+        }
+        trap cleanup EXIT HUP INT TERM
+        cd {{ repo_path | quote }}
+        APP_DATABASE_URL="$APP_DATABASE_URL" \
+        MIGRATION_DATABASE_URL="$MIGRATION_DATABASE_URL" \
+        /usr/bin/python3 /run/render-raspi-postgres-role-bootstrap.py \
+          /run/raspi-postgres-role-bootstrap.sql \
+          | docker compose -f infrastructure/docker/docker-compose.server.yml \
+              exec -T db psql -X -q -v ON_ERROR_STOP=1 -U postgres -d borrow_return
+      args:
+        executable: /bin/bash
+      environment:
+        APP_DATABASE_URL: "{{ app_database_url }}"
+        MIGRATION_DATABASE_URL: "{{ migration_database_url }}"
+      no_log: true
+
+    - name: Verify least-privilege roles and migrated ownership
+      ansible.builtin.shell: |
+        set -euo pipefail
+        cd {{ repo_path | quote }}
+        result="$(docker compose -f infrastructure/docker/docker-compose.server.yml \
+          exec -T db psql -X -q -v ON_ERROR_STOP=1 -U postgres -d borrow_return -Atc \
+          "SELECT count(*) FROM pg_roles WHERE rolname IN ('raspi_app','raspi_migrator') AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole")"
+        test "${result}" = 2
+        owner="$(docker compose -f infrastructure/docker/docker-compose.server.yml \
+          exec -T db psql -X -q -v ON_ERROR_STOP=1 -U postgres -d borrow_return -Atc \
+          "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname='borrow_return'")"
+        test "${owner}" = raspi_migrator
+      args:
+        executable: /bin/bash
+      changed_when: false
+
+  post_tasks:
+    - name: Remove the transient bootstrap source
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /run/raspi-postgres-role-bootstrap.sql
+        - /run/render-raspi-postgres-role-bootstrap.py

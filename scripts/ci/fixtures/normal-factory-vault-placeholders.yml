@@ -3,6 +3,9 @@
 # policy and are never copied to a managed host.
 vault_api_jwt_access_secret: "ci-redacted-access-secret"
 vault_api_jwt_refresh_secret: "ci-redacted-refresh-secret"
+vault_postgres_superuser_password: "ci-redacted-postgres-password"
+vault_app_database_url: "postgresql://raspi_app:ci-redacted-app-password@db:5432/borrow_return"
+vault_migration_database_url: "postgresql://raspi_migrator:ci-redacted-migration-password@db:5432/borrow_return"
 vault_status_agent_client_key: "ci-redacted-status-agent-key"
 vault_nfc_agent_client_secret: "ci-redacted-nfc-agent-secret"
 vault_signage_client_key: "ci-redacted-signage-client-key"

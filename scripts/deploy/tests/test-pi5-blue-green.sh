@@ -749,9 +749,11 @@ grep -Fq 'finished_at IS NOT NULL AND rolled_back_at IS NULL' <<<"$ALL_SOURCE" \
   || fail "migration recovery guard does not restrict checksums to completed, non-rolled-back rows"
 grep -Fq 'validate-expand-only-migrations.py' "$ROOT/scripts/deploy/lib/migration-gate.sh" \
   || fail "migration recovery guard does not use the shared validator"
-grep -Fq "compose_current run --rm --no-deps \"api-\${candidate}\" sh -lc './node_modules/.bin/prisma migrate status'" <<<"$ALL_SOURCE" \
-  || fail "candidate migration command does not bypass the API default Node command"
-[[ "$(grep -Fc "compose_current run --rm --no-deps \"api-\${candidate}\" sh -lc './node_modules/.bin/prisma migrate status'" <<<"$ALL_SOURCE")" -eq 1 ]] \
+grep -Fq 'compose_migration run --rm --no-deps "api-${candidate}" sh -lc' <<<"$ALL_SOURCE" \
+  || fail "candidate migration command does not use the privileged ephemeral boundary"
+grep -Fq 'DATABASE_URL="$MIGRATION_DATABASE_URL" exec ./node_modules/.bin/prisma migrate status' <<<"$ALL_SOURCE" \
+  || fail "candidate migration status does not select dedicated migration authority"
+[[ "$(grep -Fc 'DATABASE_URL="$MIGRATION_DATABASE_URL" exec ./node_modules/.bin/prisma migrate status' <<<"$ALL_SOURCE")" -eq 1 ]] \
   || fail "candidate migration flow must run status only after migrate deploy"
 grep -Fq 'legacy_caddy_config_path()' <<<"$ALL_SOURCE" \
   || fail "legacy active Caddyfile detection is missing"
@@ -780,8 +782,12 @@ grep -Fq 'compose_current up -d --force-recreate gateway' <<<"$ALL_SOURCE" \
 
 PROD_ENV="$TMP/production.env"
 printf '%s\n' \
+  'ADMIN_ALLOW_NETS=127.0.0.1/32' \
   'JWT_ACCESS_SECRET=production-access-secret-0123456789-abcdefghijklmnopqrstuvwxyz' \
-  'JWT_REFRESH_SECRET=production-refresh-secret-0123456789-abcdefghijklmnopqrstuvwxyz' >"$PROD_ENV"
+  'JWT_REFRESH_SECRET=production-refresh-secret-0123456789-abcdefghijklmnopqrstuvwxyz' \
+  'APP_DATABASE_URL=postgresql://raspi_app:contract-app-password@db:5432/borrow_return' \
+  'POSTGRES_SUPERUSER_PASSWORD_FILE=/tmp/raspi-contract-postgres-password' \
+  'MIGRATION_DATABASE_ENV_FILE=/tmp/raspi-contract-migration.env' >"$PROD_ENV"
 # Compose v2 auto-loads infrastructure/docker/.env; keep a non-secret stub for local/CI.
 if [[ ! -f "$DOCKER_ENV_STUB" ]]; then
   cp "$ROOT/scripts/deploy/tests/fixtures/pi5-compose.env" "$DOCKER_ENV_STUB"
@@ -789,7 +795,8 @@ if [[ ! -f "$DOCKER_ENV_STUB" ]]; then
 fi
 rendered="$(PI5_BLUE_API_IMAGE="$OLD_API" PI5_GREEN_API_IMAGE="$NEW_API" \
   PI5_BLUE_WEB_IMAGE="$OLD_WEB" PI5_GREEN_WEB_IMAGE="$NEW_WEB" PI5_GATEWAY_IMAGE="$NEW_WEB" \
-  PI5_PROJECT_DIR="$ROOT" PI5_ENV_FILE="$PROD_ENV" docker compose -f "$ROOT/infrastructure/docker/docker-compose.phase3.yml" config)"
+  PI5_PROJECT_DIR="$ROOT" PI5_ENV_FILE="$PROD_ENV" docker compose --env-file "$PROD_ENV" \
+  -f "$ROOT/infrastructure/docker/docker-compose.phase3.yml" config)"
 assert_contains "$rendered" 'JWT_ACCESS_SECRET: production-access-secret-0123456789-abcdefghijklmnopqrstuvwxyz'
 assert_contains "$rendered" 'JWT_REFRESH_SECRET: production-refresh-secret-0123456789-abcdefghijklmnopqrstuvwxyz'
 [[ "$(grep -c 'restart: unless-stopped' <<<"$rendered")" -eq 5 ]] || fail "all Phase 3 services must use unless-stopped"
@@ -800,7 +807,7 @@ assert_contains "$rendered" 'JWT_REFRESH_SECRET: production-refresh-secret-01234
 
 legacy_restore_cfg="$(PI5_LEGACY_API_IMAGE="$OLD_API" PI5_LEGACY_WEB_IMAGE="$OLD_WEB" \
   PI5_PROJECT_DIR="$ROOT" PI5_ENV_FILE="$PROD_ENV" \
-  docker compose -f "$ROOT/infrastructure/docker/docker-compose.server.yml" \
+  docker compose --env-file "$PROD_ENV" -f "$ROOT/infrastructure/docker/docker-compose.server.yml" \
   -f "$ROOT/infrastructure/docker/docker-compose.legacy-restore.yml" config)"
 assert_contains "$legacy_restore_cfg" "image: $OLD_API"
 assert_contains "$legacy_restore_cfg" "image: $OLD_WEB"

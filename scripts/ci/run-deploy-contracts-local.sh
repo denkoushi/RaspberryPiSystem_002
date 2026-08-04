@@ -87,6 +87,7 @@ bash scripts/deploy/tests/test-signage-deploy-maintenance.sh
 bash scripts/deploy/tests/test-deploy-status-postgres-observability.sh
 bash scripts/deploy/tests/test-deploy-status-postgres.sh
 bash scripts/deploy/tests/test-postgres-role-boundaries.sh
+bash scripts/deploy/tests/test-production-database-wiring.sh
 
 echo "[deploy-contract] rollback and release safety contracts"
 bash scripts/deploy/tests/test-deploy-safety-contracts.sh
@@ -107,6 +108,7 @@ STATIC_PLAYBOOKS=(
   playbooks/deploy-terminal-profile.yml
   playbooks/server-config-release.yml
   playbooks/prepare-pi5-runtime-permissions.yml
+  playbooks/prepare-pi5-database-roles.yml
   playbooks/prepare-pi5-admin-network-policy.yml
   playbooks/prepare-client-local-ca-trust.yml
   playbooks/activate-pi5-local-ca-certificate.yml

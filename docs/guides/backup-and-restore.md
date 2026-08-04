@@ -209,7 +209,7 @@ PDFの扱い、実機検証結果、Dropbox容量の復旧履歴は [KB: バッ�
 
 | `backup.sh`の処理 | APIの`kind` | APIの`source` |
 |------------------|------------|--------------|
-| データベース（`pg_dump`） | `database` | `postgresql://postgres:...@db:5432/borrow_return` |
+| データベース（`pg_dump`） | `database` | 実行中APIの`raspi_app`接続（値は表示しない） |
 | 環境変数ファイル（`.env`） | `file` | `/opt/RaspberryPiSystem_002/apps/api/.env` など |
 | 写真ディレクトリ（`tar.gz`） | `image` | `photo-storage`（`tar.gz`形式で保存、リストア時に自動展開） |
 | CSVデータ（従業員・アイテム） | `csv` | `employees`, `items` |

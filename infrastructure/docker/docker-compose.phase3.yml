@@ -29,7 +29,7 @@ services:
       - ../../apps/api/.env.example
       - ${PI5_ENV_FILE:-.env}
     environment: &api-environment
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/borrow_return
+      DATABASE_URL: ${APP_DATABASE_URL:?APP_DATABASE_URL is required}
       PHOTO_STORAGE_DIR: /app/storage
       PDF_STORAGE_DIR: /app/storage
       SIGNAGE_RENDER_DIR: /app/storage/signage-rendered

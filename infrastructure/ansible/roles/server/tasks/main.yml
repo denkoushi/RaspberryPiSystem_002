@@ -14,8 +14,16 @@
 - name: Validate required API variables
   ansible.builtin.assert:
     that:
-      - api_database_url is defined
-    fail_msg: "API環境変数（DATABASE_URL）が定義されていません（inventory.ymlを確認してください）"
+      - postgres_superuser_password is defined
+      - postgres_superuser_password | length >= 16
+      - app_database_url is defined
+      - app_database_url is match('^postgresql://raspi_app:[^@]+@db:5432/borrow_return(?:[?].*)?$')
+      - migration_database_url is defined
+      - migration_database_url is match('^postgresql://raspi_migrator:[^@]+@db:5432/borrow_return(?:[?].*)?$')
+    fail_msg: >-
+      Dedicated PostgreSQL superuser, application, and migration inputs are
+      required and must use the fixed production roles and Docker endpoint.
+  no_log: true
 
 - name: Validate required Web variables
   ansible.builtin.assert:
@@ -29,6 +37,32 @@
     that:
       - docker_server_ip is defined
     fail_msg: "Docker Compose用SERVER_IPが定義されていません（inventory.ymlを確認してください）"
+
+- name: Ensure the root-managed PostgreSQL authority directory exists
+  ansible.builtin.file:
+    path: /etc/raspi-database
+    state: directory
+    owner: root
+    group: "{{ ansible_user }}"
+    mode: '0750'
+
+- name: Deploy the PostgreSQL bootstrap password file
+  ansible.builtin.copy:
+    content: "{{ postgres_superuser_password }}\n"
+    dest: /etc/raspi-database/postgres-superuser-password
+    owner: root
+    group: root
+    mode: '0400'
+  no_log: true
+
+- name: Deploy the ephemeral Prisma migration environment
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/migration.env.j2"
+    dest: /etc/raspi-database/migration.env
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0600'
+  no_log: true
 
 - name: Resolve the non-root Pi5 runtime UID
   ansible.builtin.command:
@@ -819,7 +853,11 @@
       ansible.builtin.shell: |
         set -euo pipefail
         cd {{ repo_path }}
-        docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate deploy
+        docker compose --env-file infrastructure/docker/.env \
+          -f infrastructure/docker/docker-compose.server.yml \
+          -f infrastructure/docker/docker-compose.server.migration.yml \
+          run --rm --no-deps api sh -lc \
+          'DATABASE_URL="$MIGRATION_DATABASE_URL" exec pnpm prisma migrate deploy'
       args:
         executable: /bin/bash
       register: prisma_migrate_deploy_result
@@ -832,7 +870,11 @@
       ansible.builtin.shell: |
         set -euo pipefail
         cd {{ repo_path }}
-        docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate status
+        docker compose --env-file infrastructure/docker/.env \
+          -f infrastructure/docker/docker-compose.server.yml \
+          -f infrastructure/docker/docker-compose.server.migration.yml \
+          run --rm --no-deps api sh -lc \
+          'DATABASE_URL="$MIGRATION_DATABASE_URL" exec pnpm prisma migrate status'
       args:
         executable: /bin/bash
       register: prisma_migrate_status_result
