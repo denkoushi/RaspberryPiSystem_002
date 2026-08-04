@@ -146,9 +146,10 @@ LABEL org.opencontainers.image.config-hash=${BUILD_CONFIG_HASH}
 ENV HOME=/tmp/caddy-home
 ENV XDG_CONFIG_HOME=/config
 ENV XDG_DATA_HOME=/data
+ENV SLOT_CADDY_CONFIG_FILE=/tmp/Caddyfile.slot
 # Caddyfileの選択ロジック:
 # 1. USE_LOCAL_CERTS環境変数が設定されている場合 → Caddyfile.local（自己署名証明書）
 # 2. DOMAIN環境変数が設定されている場合 → Caddyfile.production（Let's Encrypt）
 # 3. それ以外 → Caddyfile（HTTPのみ、開発用）
 USER caddy
-CMD ["sh", "-c", "if [ -n \"$GATEWAY_CONFIG_FILE\" ]; then caddy run --config \"$GATEWAY_CONFIG_FILE\"; elif [ -n \"$SLOT_API_UPSTREAM\" ]; then envsubst < /srv/Caddyfile.slot.template > /tmp/Caddyfile.slot && caddy run --config /tmp/Caddyfile.slot; elif [ -n \"$USE_LOCAL_CERTS\" ]; then caddy run --config /srv/Caddyfile.local.template; elif [ -n \"$DOMAIN\" ]; then caddy run --config /srv/Caddyfile.production; else caddy run --config /srv/Caddyfile; fi"]
+CMD ["sh", "-c", "if [ -n \"$GATEWAY_CONFIG_FILE\" ]; then caddy run --config \"$GATEWAY_CONFIG_FILE\"; elif [ -n \"$SLOT_API_UPSTREAM\" ]; then envsubst < /srv/Caddyfile.slot.template > \"$SLOT_CADDY_CONFIG_FILE\" && caddy run --config \"$SLOT_CADDY_CONFIG_FILE\"; elif [ -n \"$USE_LOCAL_CERTS\" ]; then caddy run --config /srv/Caddyfile.local.template; elif [ -n \"$DOMAIN\" ]; then caddy run --config /srv/Caddyfile.production; else caddy run --config /srv/Caddyfile; fi"]

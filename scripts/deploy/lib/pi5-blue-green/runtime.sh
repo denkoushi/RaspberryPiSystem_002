@@ -323,10 +323,14 @@ slot_runtime_ready() {
 }
 
 slot_web_validate() {
-  local slot="$1" cid
+  local slot="$1" cid config_path
   [[ "$DRY_RUN" == 1 ]] && return 0
   cid="$(slot_container_id "web-${slot}")"; [[ -n "$cid" ]] || return 1
-  docker exec "$cid" caddy validate --config /srv/Caddyfile.slot >/dev/null
+  config_path="$(docker exec "$cid" sh -eu -c 'printf %s "${SLOT_CADDY_CONFIG_FILE:-}"')" \
+    || return 1
+  [[ -n "$config_path" ]] || config_path=/srv/Caddyfile.slot
+  docker exec "$cid" test -f "$config_path" || return 1
+  docker exec "$cid" caddy validate --config "$config_path" >/dev/null
 }
 
 slot_structural_ready() {
@@ -342,8 +346,15 @@ slot_ready() {
 
 slot_up() {
   local slot="$1" role="$2"
+  SLOT_UP_FAILURE_REASON="candidate ${slot} Compose startup failed"
   compose_current up -d "api-${slot}" "web-${slot}" || return 1
-  slot_ready "$slot" "$role"
+  SLOT_UP_FAILURE_REASON="candidate ${slot} runtime configuration is invalid"
+  verify_slot_runtime_config "$slot" >/dev/null || return 1
+  SLOT_UP_FAILURE_REASON="candidate ${slot} API is not a healthy scheduler ${role}"
+  slot_runtime_ready "$slot" "$role" || return 1
+  SLOT_UP_FAILURE_REASON="candidate ${slot} Web slot configuration is invalid"
+  slot_web_validate "$slot" || return 1
+  SLOT_UP_FAILURE_REASON=""
 }
 
 legacy_service_id() { legacy_compose ps -q "$1" 2>/dev/null || true; }

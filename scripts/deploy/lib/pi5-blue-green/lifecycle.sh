@@ -104,7 +104,7 @@ prepare() {
   migration_apply_and_verify "$candidate" "$(slot_api_image "$ACTIVE_SLOT")" "$ACTIVE_SLOT" \
     || { MIGRATION_STATUS=failed; prepare_failure 'candidate migration or compatibility failed'; }
   slot_up "$candidate" standby \
-    || prepare_failure "candidate ${candidate} is not a healthy scheduler standby"
+    || prepare_failure "${SLOT_UP_FAILURE_REASON:-candidate ${candidate} did not become ready}"
   state_save prepared "$ACTIVE_SLOT" "$CANDIDATE_SLOT" "$PREVIOUS_SLOT" "$BLUE_API_IMAGE" "$BLUE_WEB_IMAGE" "$GREEN_API_IMAGE" "$GREEN_WEB_IMAGE" application "$ACTIVE_SLOT" '' '' '' '' candidate-prepared
   disarm_prepare_recovery
   log "candidate prepared in ${candidate} slot"
@@ -297,4 +297,3 @@ spawn_stability_monitor() {
   nohup sh -c "sleep 1; exec '$SCRIPT_PATH' monitor" >>"${STATE_FILE}.monitor.log" 2>&1 &
   log "stability monitor (re)started until ${STABLE_UNTIL}"
 }
-
