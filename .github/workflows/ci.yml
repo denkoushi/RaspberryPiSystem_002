@@ -306,13 +306,30 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
+      - name: Generate isolated production-mode database credentials
+        run: |
+          CI_APP_DB_PASSWORD="$(openssl rand -hex 24)"
+          CI_MIGRATION_DB_PASSWORD="$(openssl rand -hex 24)"
+          echo "::add-mask::$CI_APP_DB_PASSWORD"
+          echo "::add-mask::$CI_MIGRATION_DB_PASSWORD"
+          echo "CI_APP_DB_PASSWORD=$CI_APP_DB_PASSWORD" >> "$GITHUB_ENV"
+          echo "CI_MIGRATION_DB_PASSWORD=$CI_MIGRATION_DB_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Prepare least-privilege roles for production-mode API
+        run: |
+          docker exec -i postgres-test psql -U postgres -d borrow_return \
+            -v migration_password="$CI_MIGRATION_DB_PASSWORD" \
+            -v app_password="$CI_APP_DB_PASSWORD" \
+            -f - < scripts/deploy/postgres-role-bootstrap.sql
+
       - name: Build API
         run: pnpm --filter @raspi-system/api build
 
       - name: Start API server for monitoring tests
         run: |
           cd apps/api
-          NODE_ENV=production pnpm start > /tmp/api-server.log 2>&1 &
+          DATABASE_URL="postgresql://raspi_app:${CI_APP_DB_PASSWORD}@localhost:5432/borrow_return" \
+            NODE_ENV=production pnpm start > /tmp/api-server.log 2>&1 &
           API_PID=$!
           echo "API_PID=$API_PID" >> "$GITHUB_ENV"
           timeout=30
@@ -326,7 +343,6 @@ jobs:
             elapsed=$((elapsed + 1))
           done
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
           JWT_ACCESS_SECRET: ci-prod-access-secret-0123456789-abcdefghijklmnopqrstuvwxyz
           JWT_REFRESH_SECRET: ci-prod-refresh-secret-0123456789-abcdefghijklmnopqrstuvwxyz
           PORT: 8080

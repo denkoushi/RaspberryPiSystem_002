@@ -30,6 +30,19 @@ class CiSecurityBaselineContracts(unittest.TestCase):
         self.assertIn("validate_dependency_exceptions.py", workflow)
         self.assertIn("validate_production_secret_structure.py", workflow)
 
+    def test_db_infra_production_api_uses_the_dedicated_application_role(self) -> None:
+        workflow = self.read(".github/workflows/ci.yml")
+        bootstrap = workflow.index(
+            "Prepare least-privilege roles for production-mode API"
+        )
+        start = workflow.index("Start API server for monitoring tests")
+        cleanup = workflow.index("Cleanup DB/infra services")
+        self.assertLess(bootstrap, start)
+        start_block = workflow[start:cleanup]
+        self.assertIn("scripts/deploy/postgres-role-bootstrap.sql", workflow)
+        self.assertIn("postgresql://raspi_app:${CI_APP_DB_PASSWORD}", start_block)
+        self.assertNotIn("postgresql://postgres:postgres", start_block)
+
     def test_coverage_floors_match_measured_baselines(self) -> None:
         api = self.read("apps/api/vitest.config.ts")
         web = self.read("apps/web/vite.config.ts")

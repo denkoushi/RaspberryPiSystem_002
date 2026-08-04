@@ -177,6 +177,15 @@ when the repository implementation is ready.
   run-owned Docker resources.
 - [ ] Push or prepare a Draft PR. Push, PR creation, merge, and operational
   rollout remain unapproved.
+- [x] (2026-08-04 09:45+09:00) Opened Draft PR #1170. Its first `db-infra`
+  run exposed a CI-only mismatch: the production-mode API probe still used
+  `postgres/postgres`, so the new fail-closed validation correctly rejected
+  startup. Updated that job to bootstrap the existing least-privilege roles,
+  generate masked per-run credentials, and start the API as `raspi_app`.
+- [x] (2026-08-04 09:46+09:00) Passed all 94 CI structure tests, 13 API
+  environment contracts, and the isolated PostgreSQL application/migration
+  role boundary after the workflow correction. Disposable resources returned
+  to zero.
 
 ## Surprises & Discoveries
 
