@@ -14,13 +14,14 @@ related_docs:
   - ../guides/deployment.md
   - ../runbooks/deploy-status-recovery.md
   - ./production-secrets-and-runtime-execplan.md
+  - ../knowledge-base/KB-406-pi4-canary-initial-status-and-runtime-recreate.md
 validation: offline behavioral contracts, isolated Docker rehearsal, hosted CI, then read-only exact-main production evidence
 open_items:
-  - rerun the complete local audit after the slot Web runtime correction
-  - pass review and required hosted CI for the correction
+  - rerun the complete local audit after the Pi4 activation and runtime-manifest corrections
+  - pass review and required hosted CI for the corrections
   - pass a new exact-main ARM64 rehearsal with the fixed 300-second monitor
-  - collect fresh post-merge read-only production evidence
-  - obtain separate approval before a new standard production release
+  - collect fresh post-merge read-only production and failed-run recovery evidence
+  - obtain separate approval for production recovery and any later standard release
 ---
 
 # Audit the complete standard release before another production attempt
@@ -104,8 +105,30 @@ traffic, or update a terminal.
   API/Web images then passed the native blue/green rehearsal with both
   generated Caddy files validated, five gateway samples over 10 seconds, and
   zero container, network, or volume residue.
-- [ ] Review, merge, exact-main evidence, fresh read-only production evidence,
-  and a new release approval remain separate gates. Production stays frozen.
+- [x] (2026-08-05 04:26+09:00) Reviewed and merged PR #1179, passed its
+  exact-main ARM64 rehearsal and read-only admission, then started separately
+  approved standard run `20260804-185819-598324`. Pi5 completed switch,
+  300-second monitor, and cleanup, but the Pi4 canary ready claim timed out and
+  rollback verification remained fail-closed.
+- [x] (2026-08-05 04:55+09:00) Completed read-only failure diagnosis. API logs
+  contained 391 successful deploy-status GETs and zero POSTs; Firefox recorded
+  one exact cache-busted activation attempt from a password-prompt route; all
+  three restored agents matched every sealed field except the raw Docker
+  runtime-config digest.
+- [x] (2026-08-05 05:10+09:00) Added the initial deploy-status render gate,
+  reproducible runtime manifest schema 3 with schema 2 recovery compatibility,
+  11-incident mutations, and a real Compose capture/force-recreate/drift/
+  restore test. Focused Kiosk, runtime, mutation, and Docker tests pass with
+  zero run-labelled residue.
+- [x] (2026-08-05 05:36+09:00) Repeated the complete local audit from the
+  beginning. The deploy contract passed 991 deployment tests, all 11 incident
+  mutations, the real Compose recreation test, all 157 PostgreSQL migrations,
+  deploy-status API contracts, 43 Ansible profile tests, playbook checks, and
+  zero run-labelled Docker residue. All 103 CI contract tests, document audit,
+  and `git diff --check` also passed.
+- [ ] Complete final local diff review, hosted review and required CI,
+  exact-main evidence, and fresh read-only production evidence. Production and
+  failed-run recovery remain frozen behind a separate approval.
 
 ## Surprises & Discoveries
 
@@ -161,6 +184,20 @@ traffic, or update a terminal.
   `slot_web_validate` alone requested the removed
   `/srv/Caddyfile.slot`. The existing image test checked only the Dockerfile
   side of the boundary.
+
+- Observation: a cache-busted kiosk navigation is not sufficient activation
+  evidence when the fresh document can mount a blocking child route before
+  its first deploy-status response.
+  Evidence: Firefox stored one exact activation attempt on the self-inspection
+  approval route, the API recorded 391 successful deploy-status GETs and zero
+  POSTs, and that route opens a synchronous password prompt on first mount.
+
+- Observation: raw Docker inspect data is not reproducible runtime evidence
+  across a Compose or Engine update.
+  Evidence: all three canary agents matched image, environment, security,
+  mounts, restart, running state, and Compose identity after rollback, while
+  only `runtimeConfigSha256` differed. Recreated Compose 5.1.1 containers had
+  generated labels and daemon defaults absent from the older baseline.
 
 ## Decision Log
 
@@ -218,23 +255,41 @@ traffic, or update a terminal.
   bypass the coordinator-owned `prepare-failed` recovery boundary.
   Date/Author: 2026-08-04 / Codex.
 
+- Decision: treat undefined initial kiosk deploy status as fail-closed and do
+  not mount routed business content until the first status response exists.
+  Rationale: deployment authority must be established before child effects;
+  otherwise a synchronous prompt can prevent both maintenance display and the
+  exact-SHA ready claim.
+  Date/Author: 2026-08-05 / Codex.
+
+- Decision: version the reproducible runtime contract as manifest schema 3 and
+  retain a bounded schema 2 recovery reader that still compares every
+  separately sealed field.
+  Rationale: new captures must reject functional drift without hashing
+  Compose implementation metadata. The already-failed production manifest
+  cannot be rewritten, so coordinator-owned recovery needs explicit backward
+  compatibility rather than a manual state or service repair.
+  Date/Author: 2026-08-05 / Codex.
+
 ## Outcomes & Retrospective
 
-The first audit series completed review, main integration, exact-main ARM64
-evidence, and read-only production admission. The separately approved
-production run then exposed a cross-boundary omission: the Web image and
-Blue/Green controller disagreed about the generated slot configuration path.
-The failure was fail-closed before traffic switch and terminal rollout, and
-active blue stayed healthy, but migration state is recorded as applied and the
-green candidate remains owned by the failed run.
+The first audit series and the slot Web correction completed review, main
+integration, exact-main ARM64 evidence, and read-only production admission.
+The next separately approved run proved the entire Pi5 route, including the
+fixed 300-second monitor, but exposed two later Pi4 canary boundaries. A fresh
+kiosk document could mount a blocking business route before learning deploy
+status, and rollback compared a recreated container with non-reproducible raw
+Docker metadata. Both failures remained fail-closed: later terminals were not
+started and the canary retained maintenance and recovery authority.
 
-The correction now has complete local proof and the incident registry has nine
-faults. The repeated audit reports 39 required scenarios, 39 passed, zero
-failed, zero uncovered, and zero Docker resource residue. This outcome still
-invalidates completion of the original audit despite its prior green report.
-Repository and production completion remain open until the correction is
-reviewed, integrated to main, rehearsed as exact ARM64 for 300 seconds,
-observed read-only in production, and separately approved for a new run.
+The registry now contains 11 incidents. The complete local audit has repeated
+successfully from the beginning: 991 deployment tests, all incident mutants,
+real Compose recreation, all 157 migrations, deploy-status API contracts, 43
+Ansible contracts, 103 CI contracts, documentation audit, and diff checks all
+pass, with zero run-labelled Docker residue. This is not audit completion.
+Hosted review, required CI, exact-main ARM64 rehearsal, and fresh read-only
+production evidence still remain. Recovery of failed run
+`20260804-185819-598324` and any later release remain separate approval gates.
 
 ## Context and Orientation
 
@@ -261,9 +316,16 @@ evidence passed, standard run `20260804-122309-7e601d` reached a later
 candidate boundary. It promoted both signed images and recorded migration as
 applied, then failed because the Web image rendered `/tmp/Caddyfile.slot` and
 the controller validated `/srv/Caddyfile.slot`. Traffic stayed on blue, all
-terminals stayed pending, and the green candidate is intentionally preserved
-for coordinator-owned recovery. The incident source of truth is
+terminals stayed pending, and the green candidate was preserved until the next
+approved standard run reconciled it. The incident source of truth is
 `docs/knowledge-base/KB-405-pi5-slot-web-runtime-config-drift.md`.
+
+Standard run `20260804-185819-598324` reconciled that residue and completed the
+Pi5 switch, monitor, and cleanup, then failed at its first Pi4 canary. The
+canary file baseline was restored, but maintenance and recovery authority are
+retained because ready activation and runtime rollback verification did not
+complete. `docs/knowledge-base/KB-406-pi4-canary-initial-status-and-runtime-recreate.md`
+contains the read-only evidence and the two current corrections.
 
 ## Plan of Work
 

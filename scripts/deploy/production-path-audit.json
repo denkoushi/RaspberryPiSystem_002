@@ -9,7 +9,9 @@
     "database-role-wiring",
     "derivative-storage-mount",
     "migration-gateway-image",
-    "slot-web-runtime-config"
+    "slot-web-runtime-config",
+    "kiosk-initial-deploy-status-gate",
+    "terminal-runtime-recreate-metadata"
   ],
   "requiredPi5Phases": [
     "bootstrap",
@@ -259,7 +261,7 @@
       "expectedTransition": "sealed rollback manifest exists before apply",
       "failureInvariant": "capture failure precedes terminal mutation",
       "testOwner": "scripts/deploy/tests/test_fleet_coordinator_transitions.py::test_manifest_capture_failure_precedes_every_terminal_mutation",
-      "incidents": []
+      "incidents": ["terminal-runtime-recreate-metadata"]
     },
     {
       "id": "terminal-notice",
@@ -311,7 +313,7 @@
       "expectedTransition": "exact activation unit is reconciled",
       "failureInvariant": "uncertain response retains maintenance and authority",
       "testOwner": "scripts/deploy/tests/test_fleet_coordinator_transitions.py::test_uncertain_kiosk_web_activation_retains_maintenance_without_rollback",
-      "incidents": []
+      "incidents": ["kiosk-initial-deploy-status-gate"]
     },
     {
       "id": "terminal-ready-claims",
@@ -324,7 +326,7 @@
       "expectedTransition": "typed claims and independent health are verified",
       "failureInvariant": "post-playbook agent death is detected",
       "testOwner": "scripts/deploy/tests/test_fleet_coordinator_transitions.py::test_kiosk_agent_death_after_playbook_is_caught_by_final_observation",
-      "incidents": []
+      "incidents": ["kiosk-initial-deploy-status-gate"]
     },
     {
       "id": "terminal-finalize",
@@ -350,7 +352,7 @@
       "expectedTransition": "exact prior runtime is restored and rebound",
       "failureInvariant": "unverifiable rollback remains unknown",
       "testOwner": "scripts/deploy/tests/test_fleet_coordinator_transitions.py::test_unverifiable_rollback_remains_unknown",
-      "incidents": []
+      "incidents": ["terminal-runtime-recreate-metadata"]
     },
     {
       "id": "pi5-canary-approval",
@@ -540,7 +542,10 @@
         "backup-ssh-bind-authority",
         "database-role-wiring",
         "derivative-storage-mount",
-        "migration-gateway-image"
+        "migration-gateway-image",
+        "slot-web-runtime-config",
+        "kiosk-initial-deploy-status-gate",
+        "terminal-runtime-recreate-metadata"
       ]
     }
   ]

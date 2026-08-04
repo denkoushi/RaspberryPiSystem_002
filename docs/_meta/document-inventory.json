@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 609,
-    "totalLines": 170419,
-    "totalBytes": 12777267,
+    "totalLines": 170482,
+    "totalBytes": 12781576,
     "withFrontmatter": 276,
     "withStatus": 132,
     "sourceOfTruthDeclared": 94,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 25,
-    "localLinkCount": 5657,
+    "localLinkCount": 5658,
     "brokenLocalLinkCount": 87,
     "documentsOver1000Lines": 29,
     "documentsOver3000Lines": 6,
@@ -27572,8 +27572,8 @@
     },
     {
       "path": "docs/knowledge-base/index.md",
-      "lineCount": 871,
-      "byteSize": 262873,
+      "lineCount": 872,
+      "byteSize": 263196,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - 索引",
       "status": null,
@@ -30137,6 +30137,11 @@
         {
           "href": "./KB-405-pi5-slot-web-runtime-config-drift.md",
           "targetPath": "docs/knowledge-base/KB-405-pi5-slot-web-runtime-config-drift.md",
+          "exists": true
+        },
+        {
+          "href": "./KB-406-pi4-canary-initial-status-and-runtime-recreate.md",
+          "targetPath": "docs/knowledge-base/KB-406-pi4-canary-initial-status-and-runtime-recreate.md",
           "exists": true
         },
         {
@@ -35796,8 +35801,8 @@
     },
     {
       "path": "docs/plans/standard-release-production-path-audit-execplan.md",
-      "lineCount": 432,
-      "byteSize": 23344,
+      "lineCount": 494,
+      "byteSize": 27330,
       "hasFrontmatter": true,
       "title": "Standard release production-path execution audit",
       "status": "in-progress",

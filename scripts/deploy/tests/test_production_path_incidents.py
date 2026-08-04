@@ -23,6 +23,8 @@ FILES = (
     "infrastructure/docker/docker-compose.phase3.migration.yml",
     "scripts/deploy/lib/pi5-blue-green/images-evidence.sh",
     "scripts/deploy/lib/pi5-blue-green/runtime.sh",
+    "scripts/deploy/terminal-runtime-manifest.py",
+    "apps/web/src/layouts/KioskLayout.tsx",
 )
 
 MUTATIONS = {
@@ -70,6 +72,16 @@ MUTATIONS = {
         "scripts/deploy/lib/pi5-blue-green/runtime.sh",
         'caddy validate --config "$config_path"',
         "caddy validate --config /srv/Caddyfile.slot",
+    ),
+    "kiosk-initial-deploy-status-gate": (
+        "apps/web/src/layouts/KioskLayout.tsx",
+        "deployStatus === undefined || deployStatus.isMaintenance",
+        "deployStatus?.isMaintenance",
+    ),
+    "terminal-runtime-recreate-metadata": (
+        "scripts/deploy/terminal-runtime-manifest.py",
+        'if not key.startswith("com.docker.compose.")',
+        'if key != "com.docker.compose.version"',
     ),
 }
 
