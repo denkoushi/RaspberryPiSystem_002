@@ -1,13 +1,20 @@
 # shellcheck shell=bash
 # Source-only Compose, gateway, slot identity, readiness, and smoke helpers.
 
+gateway_image() {
+  local gateway
+  gateway="$(slot_web_image "${GATEWAY_SLOT:-blue}")"
+  [[ -n "$gateway" ]] || gateway="${BLUE_WEB_IMAGE:-${WEB_IMAGE:-unused-web}}"
+  printf '%s\n' "$gateway"
+}
+
 compose_current() {
   local ba="$BLUE_API_IMAGE" ga="$GREEN_API_IMAGE" bw="$BLUE_WEB_IMAGE" gw="$GREEN_WEB_IMAGE" gateway
   [[ -n "$ba" ]] || ba="${API_IMAGE:-unused-api}"
   [[ -n "$ga" ]] || ga="$ba"
   [[ -n "$bw" ]] || bw="${WEB_IMAGE:-unused-web}"
   [[ -n "$gw" ]] || gw="$bw"
-  gateway="$(slot_web_image "${GATEWAY_SLOT:-blue}")"; [[ -n "$gateway" ]] || gateway="$bw"
+  gateway="$(gateway_image)"
   if [[ "$DRY_RUN" == 1 ]]; then
     printf 'DRY-RUN: docker compose -p %q -f %q' "$COMPOSE_PROJECT" "$PHASE3_COMPOSE"; printf ' %q' "$@"; printf '\n'
     return 0
