@@ -1,8 +1,7 @@
 # `vault.yml` を ansible-vault で暗号化する際のサンプル値です。
 # 実環境用の値に置き換えてから暗号化してください。
 
-vault_status_agent_client_key: "client-key-raspberrypi4-kiosk1"
-vault_nfc_agent_client_secret: "client-key-raspberrypi4-kiosk1"
+vault_status_agent_client_key: "REPLACE_WITH_UNIQUE_STATUS_AGENT_KEY"
+vault_nfc_agent_client_secret: "REPLACE_WITH_UNIQUE_NFC_AGENT_SECRET"
 # Tailscale preauth key (reusable, tagged推奨)
-vault_tailscale_auth_key: ""
-
+vault_tailscale_auth_key: "REPLACE_WITH_TAILSCALE_PREAUTH_KEY"

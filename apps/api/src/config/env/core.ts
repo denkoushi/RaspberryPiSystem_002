@@ -19,6 +19,19 @@ export const isWeakSecret = (secret: string): boolean => {
   return WEAK_SECRET_PATTERNS.some((pattern) => normalized.includes(pattern));
 };
 
+export const isUnsafeProductionDatabaseUrl = (rawUrl: string): boolean => {
+  try {
+    const parsed = new URL(rawUrl);
+    const protocol = parsed.protocol.toLowerCase();
+    if (protocol !== 'postgresql:' && protocol !== 'postgres:') return true;
+    const username = decodeURIComponent(parsed.username).trim().toLowerCase();
+    const password = decodeURIComponent(parsed.password).trim().toLowerCase();
+    return !username || username === 'postgres' || !password || password === 'postgres';
+  } catch {
+    return true;
+  }
+};
+
 export const coreEnvShape = {
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().default(8080),

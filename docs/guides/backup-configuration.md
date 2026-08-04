@@ -65,11 +65,14 @@ sudo journalctl -u backup-verify-quarterly.service -n 200
 
 本ガイドでは、モジュール化されたバックアップ機能の設定方法を説明します。バックアップ機能は設定ファイルベースで動作し、ローカルストレージまたはDropboxへの自動バックアップをサポートします。
 
-## Pi5本番の現在方針（2026-07-12）
+## Pi5本番の現在方針（2026-08-04）
 
 - `/app/storage/pdfs` は `enabled: false`。PDFは中核機能の稼働に必須ではないため、2GB Dropboxの推奨対象から外します。
-- `raspi4-sessaku-01` と `raspi4-assembly-01` のNFCエージェント `.env`、運用ユーザーSSH、Tailscale状態、status-agent設定を `client-file` / `client-directory` の推奨対象として管理します。
+- `raspi4-sessaku-01` と `raspi4-assembly-01` のNFCエージェント `.env`、Tailscale状態、status-agent設定を `client-file` / `client-directory` の推奨対象として管理します。
 - 上記クライアント対象は日次（`0 2 * * *`）、Dropbox、保持14日・最大4世代です。
+- 端末の `.ssh` は秘密鍵を含むためバックアップ対象にできません。復旧時は鍵を再生成し、承認済み公開鍵を再登録します。既存設定に `.ssh` ターゲットがある場合、その削除は本番設定変更として別承認で行います。
+- APIはホスト運用ユーザーの `.ssh` を参照しません。端末バックアップには、読み取り専用の専用鍵と固定 `known_hosts` だけを使用し、ホスト鍵が一致しない接続を拒否します。
+- APIは通常のAnsible inventoryやVaultパスワードも参照しません。通常inventoryから接続先とユーザーだけを抽出したroot管理の専用inventoryと、2本のバックアップPlaybookだけをread-onlyで使用します。
 - 実機検証と容量回復の詳細は [バックアップ・リストア関連KB](../knowledge-base/infrastructure/backup-restore.md#backup-restore-20260712) を参照してください。
 
 ## 設定ファイルの場所
@@ -311,18 +314,16 @@ Pi5本番で中核機能の環境再構築に必要な永続・一次ファイ�
 
 **前提条件**:
 - AnsibleがPi5（サーバー）にインストールされていること（Dockerコンテナ内にインストール済み）
-- Ansible inventory（`infrastructure/ansible/inventory.yml`）にクライアント端末が登録されていること
-- Pi5からクライアント端末へのSSH接続が可能であること（パスワード認証またはSSH鍵認証）
-- SSH鍵がDockerコンテナ内にマウントされていること（`docker-compose.server.yml`で`/home/denkon5sd02/.ssh:/root/.ssh:ro`をマウント）
-- `group_vars/all.yml`の`network_mode`が正しく設定されていること（`local`または`tailscale`）
+- 通常inventoryにクライアント端末が登録され、標準デプロイが資格情報を含まない `/etc/raspi-backup-ansible/inventory.yml` を生成済みであること
+- バックアップ専用SSH公開鍵が対象端末へ承認済み権限で登録され、専用秘密鍵と固定`known_hosts`だけがAPIへread-only mountされていること
+- パスワード認証、ホスト鍵の自動受理、通常inventoryのVault復号をバックアップ処理へ追加しないこと
 
 **AnsibleとTailscale連携の注意事項**:
 
-- **変数展開の仕組み**:
-  - Ansible Playbookは`hosts: "{{ client_host }}"`で実行されるため、`inventory.yml`の変数が正しく展開される
-  - `network_mode: "tailscale"`の場合、`kiosk_ip`は`tailscale_network.raspberrypi4_ip`に解決される
-  - `network_mode: "local"`の場合、`kiosk_ip`は`local_network.raspberrypi4_ip`に解決される
-  - 詳細は [Ansible SSH接続アーキテクチャの説明](./ansible-ssh-architecture.md) と [KB-102](../knowledge-base/infrastructure/backup-restore.md#kb-102-ansibleによるクライアント端末バックアップ機能実装時のansibleとtailscale連携問題) を参照
+- **接続先の解決**:
+  - 標準デプロイ時に、通常inventoryで解決済みの`ansible_host`と`ansible_user`だけを専用inventoryへ転記する
+  - APIコンテナ内では専用inventoryを正本とし、Vault参照、端末API鍵、becomeパスワードを含めない
+  - SSH接続時はAPIが専用鍵、`IdentitiesOnly=yes`、`StrictHostKeyChecking=yes`、固定`known_hosts`を強制する
 
 - **エラーハンドリング**:
   - ファイルが存在しない場合、404エラーが返される

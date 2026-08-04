@@ -38,6 +38,14 @@ services:
       args:
         INSTALL_PLAYWRIGHT_CHROMIUM: ${INSTALL_PLAYWRIGHT_CHROMIUM:-true}
     restart: always
+    user: "${API_RUNTIME_UID:-1000}:${API_RUNTIME_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,mode=1777,size=1g
+    init: true
     # Pi4 screens depend on this API while Pi5 builds the next release.
     cpu_shares: 4096
     depends_on:
@@ -113,10 +121,26 @@ services:
       - /opt/RaspberryPiSystem_002/clients/nfc-agent:/app/host/clients/nfc-agent:ro
       # 証明書ファイルのバックアップ用にマウント（読み取り専用）
       - /opt/RaspberryPiSystem_002/certs:/app/host/certs:ro
-      # Ansibleによるクライアント端末バックアップ用にマウント（読み取り専用）
-      - /opt/RaspberryPiSystem_002/infrastructure/ansible:/app/host/infrastructure/ansible:ro
-      # AnsibleによるSSH接続用にSSH鍵をマウント（読み取り専用）
-      - /home/denkon5sd02/.ssh:/root/.ssh:ro
+      # 資格情報を含まない端末バックアップ専用Ansible境界
+      - type: bind
+        source: /etc/raspi-backup-ansible
+        target: /app/backup-ansible
+        read_only: true
+        bind:
+          create_host_path: false
+      # 端末バックアップ専用SSH権限。ホストの運用ユーザー ~/.ssh 全体は渡さない。
+      - type: bind
+        source: ${BACKUP_SSH_PRIVATE_KEY_HOST_PATH:-/opt/RaspberryPiSystem_002/secrets/backup-ssh/id_ed25519}
+        target: /run/secrets/backup-ssh/id_ed25519
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${BACKUP_SSH_KNOWN_HOSTS_HOST_PATH:-/opt/RaspberryPiSystem_002/secrets/backup-ssh/known_hosts}
+        target: /run/secrets/backup-ssh/known_hosts
+        read_only: true
+        bind:
+          create_host_path: false
       # CPU温度を取得するために/sys/class/thermalを読み取り専用でマウント
       - /sys/class/thermal:/sys/class/thermal:ro
     # セキュリティ強化: ポートマッピングを削除（Docker内部ネットワークでのみアクセス可能）
@@ -157,6 +181,18 @@ services:
         VITE_KIOSK_LEADERBOARD_BOARD_CLIENT_PERF_LOG: ${VITE_KIOSK_LEADERBOARD_BOARD_CLIENT_PERF_LOG:-false}
         VITE_RELEASE_SHA: ${VITE_RELEASE_SHA:-}
     restart: always
+    user: "${WEB_RUNTIME_UID:-1000}:${WEB_RUNTIME_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: "80"
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,mode=1777,size=64m
+      - /config:rw,nosuid,nodev,mode=0700,uid=${WEB_RUNTIME_UID:-1000},gid=${WEB_RUNTIME_GID:-1000},size=16m
+      - /data:rw,nosuid,nodev,mode=0700,uid=${WEB_RUNTIME_UID:-1000},gid=${WEB_RUNTIME_GID:-1000},size=64m
+    init: true
     cpu_shares: 2048
     depends_on:
       api:
@@ -174,7 +210,7 @@ services:
       # ラズパイ4のIPアドレスを設定（例: 192.168.128.102）
       NFC_AGENT_HOST: ${NFC_AGENT_HOST:-192.168.10.224}
       # 管理画面へのアクセスを許可するネットワーク（CIDRの空白区切りリスト）
-      ADMIN_ALLOW_NETS: ${ADMIN_ALLOW_NETS:-"192.168.10.0/24 192.168.128.0/24 100.64.0.0/10 127.0.0.1/32"}
+      ADMIN_ALLOW_NETS: ${ADMIN_ALLOW_NETS:?ADMIN_ALLOW_NETS is required}
     ports:
       - "80:80"
       - "443:443"

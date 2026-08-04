@@ -5,7 +5,12 @@ import { z } from 'zod';
 import { parseInferenceProvidersJsonQuiet } from '../services/inference/config/inference-providers-json.schema.js';
 import { collectLocalLlmProviderAlignmentIssues } from '../services/inference/config/local-llm-env-alignment.js';
 import { alertsEnvShape } from './env/alerts.js';
-import { coreEnvShape, isWeakSecret, SECRET_MIN_LENGTH } from './env/core.js';
+import {
+  coreEnvShape,
+  isUnsafeProductionDatabaseUrl,
+  isWeakSecret,
+  SECRET_MIN_LENGTH,
+} from './env/core.js';
 import { dgxResourceEnvShape } from './env/dgx-resource.js';
 import { inferenceEnvShape } from './env/inference.js';
 import { ingestTuningEnvShape } from './env/ingest-tuning.js';
@@ -97,6 +102,14 @@ const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['JWT_REFRESH_SECRET'],
         message: `JWT_REFRESH_SECRET must be a strong secret (min ${SECRET_MIN_LENGTH} chars, no weak patterns) in production`,
+      });
+    }
+
+    if (isUnsafeProductionDatabaseUrl(value.DATABASE_URL)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['DATABASE_URL'],
+        message: 'DATABASE_URL must use a dedicated non-postgres role and a non-default password in production',
       });
     }
   });

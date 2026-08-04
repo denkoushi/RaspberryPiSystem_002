@@ -284,6 +284,28 @@ Pi5上のchecksum・展開・disk処理を調べる。転送量が増え続け�
 
 ## 禁止する迂回経路
 
+Pi5のAPI/Webは非root UID/GID、read-only root filesystem、`cap_drop: ALL`、
+`no-new-privileges`で起動する。書込み可能なのは、APIの永続storage・alerts・
+power-actions・config・backupと`/tmp`、WebのCaddy logと専用tmpfsだけである。
+標準デプロイは既存ディレクトリを非rootユーザーで検査し、不適合ならコンテナ変更前に
+停止する。既存データの再帰的な所有権移行は通常デプロイへ混在させず、別途承認された
+一回限りの保守作業で`prepare-pi5-runtime-permissions.yml`の明示gateを使う。
+このPlaybookを承認なしに直接実行してはならない。
+
+管理画面の許可ネットワークは暗黙の既定値を持たない。初回だけ、現在のSSH接続元を
+含むCIDRを確認したうえで、別途承認された
+`prepare-pi5-admin-network-policy.yml`を使ってDocker `.env`へ設定する。以後の
+標準preflightは、明示値がない場合、CIDRが過大・不正な場合、または実行中の管理元が
+許可範囲外の場合に、checkoutやサービス変更より前で停止する。
+
+ローカルCA移行は次の3ゲートを混ぜない。最初に
+`prepare-client-local-ca-trust.yml`で公開CA証明書をPi5を含む各hostへ1台ずつOS trust storeへ配布し、
+次に`activate-pi5-local-ca-certificate.yml`でCA署名済みPi5証明書を配置する。標準経路で
+Pi5を更新した後、`verify-client-local-tls.yml`が全端末でホスト名・証明書検証付きhealthを
+成功させてから、別PRでagentの検証スキップとbrowserの証明書例外を解除する。
+3つのPlaybookは通常工場専用かつ明示承認必須で、TalkPlazaには使用しない。CA秘密鍵、
+Pi5秘密鍵、証明書ファイルはリポジトリへ置かない。
+
 通常更新では次を直接実行しない。
 
 - `ansible-playbook`

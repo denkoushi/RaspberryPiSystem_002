@@ -52,8 +52,22 @@ describe('env secret policy', () => {
     process.env.NODE_ENV = 'production';
     process.env.JWT_ACCESS_SECRET = 'prod-access-secret-0123456789-abcdefghijklmnopqrstuvwxyz';
     process.env.JWT_REFRESH_SECRET = 'prod-refresh-secret-0123456789-abcdefghijklmnopqrstuvwxyz';
+    process.env.DATABASE_URL = 'postgresql://raspi_app:strong-database-password@db:5432/borrow_return';
 
     await expect(loadEnvModule()).resolves.toBeDefined();
+  });
+
+  it.each([
+    'postgresql://postgres:postgres@db:5432/borrow_return',
+    'postgresql://postgres:strong-password@db:5432/borrow_return',
+    'postgresql://raspi_app:@db:5432/borrow_return',
+  ])('rejects an unsafe production database URL without echoing it (%s)', async (databaseUrl) => {
+    process.env.NODE_ENV = 'production';
+    process.env.JWT_ACCESS_SECRET = 'prod-access-secret-0123456789-abcdefghijklmnopqrstuvwxyz';
+    process.env.JWT_REFRESH_SECRET = 'prod-refresh-secret-0123456789-abcdefghijklmnopqrstuvwxyz';
+    process.env.DATABASE_URL = databaseUrl;
+
+    await expect(loadEnvModule()).rejects.toThrow(/DATABASE_URL.*dedicated non-postgres role/i);
   });
 
   it('fails when INFERENCE_PROVIDERS_JSON primary sharedToken mismatches LOCAL_LLM_SHARED_TOKEN', async () => {

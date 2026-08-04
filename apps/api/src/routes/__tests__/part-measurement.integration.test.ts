@@ -17,6 +17,7 @@ import {
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../services/production-schedule/constants.js';
 import { SelfInspectionService } from '../../services/part-measurement/self-inspection.service.js';
 import { getPartMeasurementDrawingOcrService } from '../../services/part-measurement/part-measurement-drawing-ocr.service.js';
+import { configureTestDueManagementAccessPassword } from '../../test/due-management-access-password.js';
 import { createAuthHeader, createTestClientDevice, createTestEmployee, createTestMeasuringInstrumentWithTag, createTestUser } from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
@@ -310,6 +311,7 @@ describe('part-measurement templates API', () => {
 
   beforeEach(async () => {
     await cleanPartMeasurementTables();
+    await configureTestDueManagementAccessPassword();
     const admin = await createTestUser('ADMIN');
     adminToken = admin.token;
     const manager = await createTestUser('MANAGER');
@@ -5050,6 +5052,7 @@ describe('part-measurement drawing PDF import', () => {
 
   beforeEach(async () => {
     await cleanPartMeasurementTables();
+    await configureTestDueManagementAccessPassword();
     const admin = await createTestUser('ADMIN');
     adminToken = admin.token;
   });
@@ -5194,6 +5197,7 @@ describe('part-measurement visual template cleanup DELETE', () => {
 
   beforeEach(async () => {
     await cleanPartMeasurementTables();
+    await configureTestDueManagementAccessPassword();
     const admin = await createTestUser('ADMIN');
     adminToken = admin.token;
   });

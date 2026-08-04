@@ -2,6 +2,14 @@ services:
   api-blue:
     image: ${PI5_BLUE_API_IMAGE:?PI5_BLUE_API_IMAGE is required}
     restart: unless-stopped
+    user: "${API_RUNTIME_UID:-1000}:${API_RUNTIME_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,mode=1777,size=1g
+    init: true
     # Preserve Pi4-facing API capacity while candidate build work competes for
     # Pi5 CPU. Shares are relative and do not reserve idle CPU.
     cpu_shares: 4096
@@ -60,14 +68,38 @@ services:
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/infrastructure/docker:/app/host/infrastructure/docker:ro
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/clients/nfc-agent:/app/host/clients/nfc-agent:ro
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/certs:/app/host/certs:ro
-      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/infrastructure/ansible:/app/host/infrastructure/ansible:ro
-      - ${PI5_SSH_DIR:-/home/denkon5sd02/.ssh}:/root/.ssh:ro
+      - type: bind
+        source: /etc/raspi-backup-ansible
+        target: /app/backup-ansible
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${BACKUP_SSH_PRIVATE_KEY_HOST_PATH:-/opt/RaspberryPiSystem_002/secrets/backup-ssh/id_ed25519}
+        target: /run/secrets/backup-ssh/id_ed25519
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${BACKUP_SSH_KNOWN_HOSTS_HOST_PATH:-/opt/RaspberryPiSystem_002/secrets/backup-ssh/known_hosts}
+        target: /run/secrets/backup-ssh/known_hosts
+        read_only: true
+        bind:
+          create_host_path: false
       - /sys/class/thermal:/sys/class/thermal:ro
     networks: [pi5]
 
   api-green:
     image: ${PI5_GREEN_API_IMAGE:?PI5_GREEN_API_IMAGE is required}
     restart: unless-stopped
+    user: "${API_RUNTIME_UID:-1000}:${API_RUNTIME_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,mode=1777,size=1g
+    init: true
     cpu_shares: 4096
     healthcheck:
       test:
@@ -91,11 +123,23 @@ services:
   web-blue:
     image: ${PI5_BLUE_WEB_IMAGE:?PI5_BLUE_WEB_IMAGE is required}
     restart: unless-stopped
+    user: "${WEB_RUNTIME_UID:-1000}:${WEB_RUNTIME_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: "80"
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,mode=1777,size=64m
+      - /config:rw,nosuid,nodev,mode=0700,uid=${WEB_RUNTIME_UID:-1000},gid=${WEB_RUNTIME_GID:-1000},size=16m
+      - /data:rw,nosuid,nodev,mode=0700,uid=${WEB_RUNTIME_UID:-1000},gid=${WEB_RUNTIME_GID:-1000},size=64m
+    init: true
     cpu_shares: 2048
     environment: &web-environment
       SLOT_API_UPSTREAM: api-blue:8080
       NFC_AGENT_HOST: ${NFC_AGENT_HOST:-192.168.10.224}
-      ADMIN_ALLOW_NETS: ${ADMIN_ALLOW_NETS:-"192.168.10.0/24 192.168.128.0/24 100.64.0.0/10 127.0.0.1/32"}
+      ADMIN_ALLOW_NETS: ${ADMIN_ALLOW_NETS:?ADMIN_ALLOW_NETS is required}
     volumes: &web-volumes
       - thumbnail-storage:/srv/storage/thumbnails:ro
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/certs:/srv/certs:ro
@@ -105,6 +149,18 @@ services:
   web-green:
     image: ${PI5_GREEN_WEB_IMAGE:?PI5_GREEN_WEB_IMAGE is required}
     restart: unless-stopped
+    user: "${WEB_RUNTIME_UID:-1000}:${WEB_RUNTIME_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: "80"
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,mode=1777,size=64m
+      - /config:rw,nosuid,nodev,mode=0700,uid=${WEB_RUNTIME_UID:-1000},gid=${WEB_RUNTIME_GID:-1000},size=16m
+      - /data:rw,nosuid,nodev,mode=0700,uid=${WEB_RUNTIME_UID:-1000},gid=${WEB_RUNTIME_GID:-1000},size=64m
+    init: true
     cpu_shares: 2048
     environment:
       <<: *web-environment
@@ -115,11 +171,23 @@ services:
   gateway:
     image: ${PI5_GATEWAY_IMAGE:?PI5_GATEWAY_IMAGE is required}
     restart: unless-stopped
+    user: "${WEB_RUNTIME_UID:-1000}:${WEB_RUNTIME_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: "80"
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,mode=1777,size=64m
+      - /config:rw,nosuid,nodev,mode=0700,uid=${WEB_RUNTIME_UID:-1000},gid=${WEB_RUNTIME_GID:-1000},size=16m
+      - /data:rw,nosuid,nodev,mode=0700,uid=${WEB_RUNTIME_UID:-1000},gid=${WEB_RUNTIME_GID:-1000},size=64m
+    init: true
     cpu_shares: 2048
     environment:
       GATEWAY_CONFIG_FILE: /srv/bluegreen/Caddyfile
     volumes:
-      - ${PI5_BLUE_GREEN_CONFIG_DIR:-/opt/RaspberryPiSystem_002/logs/deploy/bluegreen}:/srv/bluegreen
+      - ${PI5_BLUE_GREEN_CONFIG_DIR:-/opt/RaspberryPiSystem_002/logs/deploy/bluegreen}:/srv/bluegreen:ro
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/certs:/srv/certs:ro
       - ${PI5_CADDY_LOG_DIR:-/var/log/caddy}:/var/log/caddy
     ports:

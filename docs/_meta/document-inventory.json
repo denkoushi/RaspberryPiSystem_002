@@ -15,17 +15,17 @@
     ]
   },
   "summary": {
-    "documentCount": 606,
-    "totalLines": 168845,
-    "totalBytes": 12684625,
-    "withFrontmatter": 273,
-    "withStatus": 129,
-    "sourceOfTruthDeclared": 91,
+    "documentCount": 607,
+    "totalLines": 169479,
+    "totalBytes": 12721671,
+    "withFrontmatter": 274,
+    "withStatus": 130,
+    "sourceOfTruthDeclared": 92,
     "execPlanReferences": 64,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 25,
-    "localLinkCount": 5657,
+    "localLinkCount": 5655,
     "brokenLocalLinkCount": 87,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -11614,7 +11614,7 @@
     {
       "path": "docs/api/backup.md",
       "lineCount": 1161,
-      "byteSize": 36077,
+      "byteSize": 36165,
       "hasFrontmatter": false,
       "title": "バックアップAPI",
       "status": null,
@@ -17806,7 +17806,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 7,
+      "inboundCount": 6,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -17962,18 +17962,13 @@
     },
     {
       "path": "docs/guides/backup-configuration.md",
-      "lineCount": 797,
-      "byteSize": 31264,
+      "lineCount": 798,
+      "byteSize": 31767,
       "hasFrontmatter": true,
       "title": "バックアップ設定ガイド",
       "status": null,
       "source_of_truth": null,
       "localLinks": [
-        {
-          "href": "./ansible-ssh-architecture.md",
-          "targetPath": "docs/guides/ansible-ssh-architecture.md",
-          "exists": true
-        },
         {
           "href": "./backup-and-restore.md",
           "targetPath": "docs/guides/backup-and-restore.md",
@@ -18011,11 +18006,6 @@
         },
         {
           "href": "../knowledge-base/infrastructure/backup-restore.md#backup-restore-20260712",
-          "targetPath": "docs/knowledge-base/infrastructure/backup-restore.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/infrastructure/backup-restore.md#kb-102-ansibleによるクライアント端末バックアップ機能実装時のansibleとtailscale連携問題",
           "targetPath": "docs/knowledge-base/infrastructure/backup-restore.md",
           "exists": true
         },
@@ -18839,8 +18829,8 @@
     },
     {
       "path": "docs/guides/deployment.md",
-      "lineCount": 312,
-      "byteSize": 27075,
+      "lineCount": 334,
+      "byteSize": 28926,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -21161,7 +21151,7 @@
     {
       "path": "docs/guides/status-agent.md",
       "lineCount": 223,
-      "byteSize": 9712,
+      "byteSize": 9784,
       "hasFrontmatter": false,
       "title": "🛰️ status-agent セットアップガイド",
       "status": null,
@@ -30885,7 +30875,7 @@
           "exists": false
         }
       ],
-      "inboundCount": 80,
+      "inboundCount": 79,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -35304,6 +35294,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/production-secrets-and-runtime-execplan.md",
+      "lineCount": 604,
+      "byteSize": 34117,
+      "hasFrontmatter": true,
+      "title": "Remove production credential fallbacks and minimize the Pi5 runtime",
+      "status": "in_progress",
+      "source_of_truth": "true",
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/rolling-terminal-bluegreen-deploy.md",
       "lineCount": 14,
       "byteSize": 864,
@@ -38241,8 +38246,8 @@
     },
     {
       "path": "docs/runbooks/security-hardening-remediation.md",
-      "lineCount": 86,
-      "byteSize": 6792,
+      "lineCount": 93,
+      "byteSize": 7258,
       "hasFrontmatter": false,
       "title": "Runbook: Security hardening remediation (Batch C — operator actions)",
       "status": null,
@@ -39300,7 +39305,7 @@
     {
       "path": "docs/security/phase9-10-specifications.md",
       "lineCount": 656,
-      "byteSize": 25313,
+      "byteSize": 25262,
       "hasFrontmatter": false,
       "title": "Phase 9/10 セキュリティ機能詳細仕様書",
       "status": null,

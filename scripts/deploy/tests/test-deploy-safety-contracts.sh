@@ -255,21 +255,31 @@ command -v ansible-playbook >/dev/null 2>&1 || {
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
+REDACTED_ANSIBLE_DIR="${TMP_DIR}/ansible"
+VAULT_PLACEHOLDERS="${ROOT_DIR}/scripts/ci/fixtures/normal-factory-vault-placeholders.yml"
+python3 "${ROOT_DIR}/scripts/ci/prepare_redacted_ansible_context.py" \
+  --source "${ROOT_DIR}/infrastructure/ansible" \
+  --output "${REDACTED_ANSIBLE_DIR}" >/dev/null
+CONTRACT_MAIN_INVENTORY="${REDACTED_ANSIBLE_DIR}/inventory.yml"
+CONTRACT_TALKPLAZA_INVENTORY="${REDACTED_ANSIBLE_DIR}/inventory-talkplaza.yml"
+CONTRACT_PLAYBOOK="${REDACTED_ANSIBLE_DIR}/playbooks/deploy-staged.yml"
 
 render_inventory_contract() {
   local name="$1"
   local inventory="$2"
-  env -u ANSIBLE_CONFIG ansible-inventory -i "${inventory}" --list \
+  env -u ANSIBLE_CONFIG ansible-inventory -i "${inventory}" \
+    --extra-vars "@${VAULT_PLACEHOLDERS}" --list \
     > "${TMP_DIR}/${name}-inventory.json"
   env -u ANSIBLE_CONFIG \
-    ANSIBLE_ROLES_PATH="${ROOT_DIR}/infrastructure/ansible/roles" \
+    ANSIBLE_ROLES_PATH="${REDACTED_ANSIBLE_DIR}/roles" \
     RELEASE_ORCHESTRATED=1 \
-    ansible-playbook -i "${inventory}" "${PLAYBOOK}" --list-hosts \
+    ansible-playbook -i "${inventory}" "${CONTRACT_PLAYBOOK}" \
+      --extra-vars "@${VAULT_PLACEHOLDERS}" --list-hosts \
     > "${TMP_DIR}/${name}-playbook-hosts.txt"
 }
 
-render_inventory_contract main "${MAIN_INVENTORY}"
-render_inventory_contract talkplaza "${TALKPLAZA_INVENTORY}"
+render_inventory_contract main "${CONTRACT_MAIN_INVENTORY}"
+render_inventory_contract talkplaza "${CONTRACT_TALKPLAZA_INVENTORY}"
 
 GUARD_PLAYBOOK="${TMP_DIR}/orchestration-guard-test.yml"
 python3 - "${GUARD_PLAYBOOK}" "${ORCHESTRATION_GUARD}" <<'PY'
@@ -467,6 +477,9 @@ CONTAINER_MODULES = {
 RESCUE_TASK_NAME = (
     'Rescue measuring instrument genre images from api container before recreate'
 )
+RUNTIME_PERMISSION_PROBE_NAME = (
+    'Verify existing Pi5 writable trees are ready for the non-root runtime'
+)
 
 def normalized(value):
     return ' '.join(str(value).split())
@@ -658,6 +671,23 @@ def validate_rescue_task(task, module, module_value):
     )
 
 
+def validate_runtime_permission_probe(task, module, module_value):
+    assert module == 'ansible.builtin.shell'
+    shell = str(module_value)
+    assert 'set -euo pipefail' in shell
+    assert 'find "${runtime_path}" -type d' in shell
+    assert 'test -r "${runtime_path}"' in shell
+    assert 'test -w "${runtime_path}"' in shell
+    assert 'test -x "${runtime_path}"' in shell
+    assert task.get('changed_when') is False
+    assert task.get('failed_when') is False
+    assert task.get('become_user') == '{{ ansible_user }}'
+    for forbidden in ('chown', 'chmod', 'docker ', 'systemctl ', 'rm ', 'mv '):
+        assert forbidden not in shell, (
+            f'non-root runtime readiness probe may not mutate state: {forbidden}'
+        )
+
+
 rescue_tasks = []
 reconcile_tasks = []
 observed_reasons = set()
@@ -750,12 +780,23 @@ HOST_CONFIG_ALLOWED_PATHS = {
     '{{ repo_path }}/storage/pallet-machine-illustrations',
     '{{ repo_path }}/storage/csv-dashboards',
     '{{ repo_path }}/storage/.integrity',
+    '{{ repo_path }}/storage',
+    '{{ repo_path }}/alerts',
+    '{{ repo_path }}/power-actions',
+    '{{ repo_path }}/config',
+    '/opt/backups',
+    '/var/log/caddy',
+    '/etc/raspi-backup-ansible',
+    '/etc/raspi-backup-ansible/inventory.yml',
+    '/etc/raspi-backup-ansible/backup-clients.yml',
+    '/etc/raspi-backup-ansible/backup-client-directory.yml',
 }
 HOST_CONFIG_SHELL_TASKS = {
     'Verify exact clean Pi5 release checkout',
     'Validate API .env syntax',
     'Validate Web .env syntax',
     'Validate Docker Compose .env syntax',
+    RUNTIME_PERMISSION_PROBE_NAME,
     RESCUE_TASK_NAME,
 }
 
@@ -839,6 +880,8 @@ def walk_graph_tasks(task_list, source, inherited_full):
                 assert name in HOST_CONFIG_SHELL_TASKS, (
                     f'{source}:{name} adds an unaudited host-config shell action'
                 )
+                if name == RUNTIME_PERMISSION_PROBE_NAME:
+                    validate_runtime_permission_probe(task, module, module_value)
 
             reasons = runtime_reasons(task, module, module_value)
             if reasons and not effective_full:

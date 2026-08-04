@@ -2,9 +2,9 @@
 # 以下の値を実環境のシークレットで上書きし、`mv vault.yml.example vault.yml`
 # したあとに ansible-vault で暗号化してください。
 
-vault_api_jwt_access_secret: "change-me-access"
-vault_api_jwt_refresh_secret: "change-me-refresh"
-vault_status_agent_client_key: "client-key-raspberrypi5-server"
+vault_api_jwt_access_secret: "REPLACE_WITH_STRONG_ACCESS_SECRET"
+vault_api_jwt_refresh_secret: "REPLACE_WITH_STRONG_REFRESH_SECRET"
+vault_status_agent_client_key: "REPLACE_WITH_UNIQUE_STATUS_AGENT_KEY"
 vault_api_local_llm_shared_token: ""
 # オンデマンド起停（DGX system-prod）。空なら API は shared トークンを制御ヘッダにも流用
 vault_api_local_llm_runtime_control_token: ""

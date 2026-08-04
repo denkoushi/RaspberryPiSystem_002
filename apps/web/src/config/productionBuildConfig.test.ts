@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { readProductionBuildConfig } from './productionBuildConfig';
+import { readProductionBuildConfig, resolveProductionDefaultClientKey } from './productionBuildConfig';
 
 describe('productionBuildConfig', () => {
   it('uses the registry-generated production defaults when a build value is absent', () => {
@@ -39,5 +39,23 @@ describe('productionBuildConfig', () => {
 
     expect(config.leaderboardTerminalCacheEnabled).toBe(false);
     expect(config.apiTimeoutMs).toBe(45_000);
+  });
+
+  it('does not synthesize a client key for a production build', () => {
+    expect(
+      resolveProductionDefaultClientKey({ isDevelopment: false, defaultClientKey: undefined })
+    ).toBe('');
+    expect(
+      resolveProductionDefaultClientKey({
+        isDevelopment: false,
+        defaultClientKey: 'client-key-explicit-build-value',
+      })
+    ).toBe('client-key-explicit-build-value');
+  });
+
+  it('keeps the deterministic client key only for development', () => {
+    expect(
+      resolveProductionDefaultClientKey({ isDevelopment: true, defaultClientKey: undefined })
+    ).toBe('client-key-raspberrypi4-kiosk1');
   });
 });

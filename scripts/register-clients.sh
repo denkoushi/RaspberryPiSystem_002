@@ -16,22 +16,19 @@ if [ -n "${SERVER_IP:-}" ]; then
 fi
 API_BASE_URL="${API_BASE_URL:-${DEFAULT_API_BASE_URL}}"
 
-# 自己署名証明書（ローカルCA含む）環境ではTLS検証エラーになりやすいため、
-# https経由時はデフォルトで -k を有効化する（必要なら CURL_INSECURE=0 で無効化）
-CURL_INSECURE="${CURL_INSECURE:-}"
-if [[ "${API_BASE_URL}" == https://* ]]; then
-  CURL_INSECURE="${CURL_INSECURE:-1}"
-else
-  CURL_INSECURE="${CURL_INSECURE:-0}"
-fi
+# TLS verification is the default. CURL_INSECURE=1 is an explicit emergency
+# override and must never be placed in tracked production configuration.
+CURL_INSECURE="${CURL_INSECURE:-0}"
 
 curl_common_opts=()
 if [[ "${CURL_INSECURE}" == "1" ]]; then
+  echo "[WARN] TLS certificate verification is explicitly disabled for this run." >&2
   curl_common_opts+=(-k)
 fi
 
-ADMIN_USERNAME="${ADMIN_USERNAME:-admin}"
-ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin1234}"
+ADMIN_ACCESS_TOKEN="${ADMIN_ACCESS_TOKEN:-}"
+ADMIN_USERNAME="${ADMIN_USERNAME:-}"
+ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"
 DRY_RUN="${DRY_RUN:-0}"
 REGISTER_CLIENT_HOST="${REGISTER_CLIENT_HOST:-}"
 
@@ -73,11 +70,21 @@ if is_truthy "${DRY_RUN}"; then
   TOKEN=""
   echo "[INFO] DRY_RUN is enabled. API login is skipped."
 else
-  # ログインしてトークンを取得
-  echo "[INFO] Logging in to API..."
-  TOKEN=$(curl -sS "${curl_common_opts[@]}" -X POST "${API_BASE_URL}/auth/login" \
-    -H "Content-Type: application/json" \
-    -d "{\"username\":\"${ADMIN_USERNAME}\",\"password\":\"${ADMIN_PASSWORD}\"}" | jq -r '.accessToken')
+  if [ -n "${ADMIN_ACCESS_TOKEN}" ]; then
+    TOKEN="${ADMIN_ACCESS_TOKEN}"
+    echo "[INFO] Using the explicitly supplied administrator access token."
+  else
+    if [ -z "${ADMIN_USERNAME}" ] || [ -z "${ADMIN_PASSWORD}" ]; then
+      echo "[ERROR] Set ADMIN_ACCESS_TOKEN or both ADMIN_USERNAME and ADMIN_PASSWORD." >&2
+      exit 1
+    fi
+    echo "[INFO] Logging in to API..."
+    login_payload="$(jq -cn --arg username "${ADMIN_USERNAME}" --arg password "${ADMIN_PASSWORD}" \
+      '{username: $username, password: $password}')"
+    TOKEN=$(curl -sS "${curl_common_opts[@]}" -X POST "${API_BASE_URL}/auth/login" \
+      -H "Content-Type: application/json" \
+      -d "${login_payload}" | jq -r '.accessToken')
+  fi
 
   if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
     echo "[ERROR] Failed to get access token"
@@ -149,47 +156,25 @@ inventory_path="${PROJECT_ROOT}/infrastructure/ansible/inventory.yml"
 
 read_hosts_from_inventory() {
   local path="$1"
-  python3 - <<'PY' "$path"
+  local resolved_inventory
+  if ! command -v ansible-inventory >/dev/null 2>&1; then
+    echo '{"error":"ansible_inventory_missing"}'
+    return 2
+  fi
+  if ! resolved_inventory="$(ansible-inventory -i "${path}" --list 2>/dev/null)"; then
+    echo '{"error":"inventory_resolution_failed"}'
+    return 2
+  fi
+  python3 /dev/fd/3 3<<'PY' <<<"${resolved_inventory}"
 import json
 import sys
 
-path = sys.argv[1]
-
-try:
-    import yaml  # type: ignore
-except Exception as e:
-    print(json.dumps({"error": "pyyaml_missing", "message": str(e), "path": path}, ensure_ascii=False))
-    sys.exit(2)
-
-with open(path, encoding="utf-8") as f:
-    inv = yaml.safe_load(f) or {}
-
-def walk_hosts(node):
-    if not isinstance(node, dict):
-        return
-
-    # inventoryの典型構造: {hosts: {...}} / {children: {...}}
-    hosts = node.get("hosts") if isinstance(node, dict) else None
-    if isinstance(hosts, dict):
-        for host_name, host_vars in hosts.items():
-            if not isinstance(host_vars, dict):
-                host_vars = {}
-            yield host_name, host_vars
-
-    children = node.get("children") if isinstance(node, dict) else None
-    if isinstance(children, dict):
-        for _, child in children.items():
-            yield from walk_hosts(child)
-
-all_node = inv.get("all", {})
-
-seen = set()
+inv = json.load(sys.stdin)
+hostvars = inv.get("_meta", {}).get("hostvars", {})
 items = []
-for host_name, host_vars in walk_hosts(all_node):
-    if host_name in seen:
+for host_name, host_vars in hostvars.items():
+    if not isinstance(host_vars, dict):
         continue
-    seen.add(host_name)
-
     client_id = host_vars.get("status_agent_client_id")
     client_key = host_vars.get("status_agent_client_key")
     location = host_vars.get("status_agent_location") or ""
@@ -218,9 +203,9 @@ if [ -f "${inventory_path}" ]; then
   echo "[INFO] Reading device information from inventory.yml..."
   inventory_jsonl="$(read_hosts_from_inventory "${inventory_path}" || true)"
 
-  if echo "${inventory_jsonl}" | jq -e 'select(.error=="pyyaml_missing")' >/dev/null 2>&1; then
-    echo "[WARN] Could not parse inventory.yml with python/yaml. Falling back to manual registration." >&2
-    inventory_jsonl=""
+  if echo "${inventory_jsonl}" | jq -e 'select(.error)' >/dev/null 2>&1; then
+    echo "[ERROR] Could not resolve inventory.yml with ansible-inventory." >&2
+    exit 1
   fi
 
   if [ -n "${inventory_jsonl}" ]; then
@@ -248,18 +233,16 @@ if [ -f "${inventory_path}" ]; then
       echo "[ERROR] Could not select REGISTER_CLIENT_HOST because inventory parsing returned no hosts: ${REGISTER_CLIENT_HOST}" >&2
       exit 1
     fi
-    echo "[WARN] No status-agent hosts found in inventory.yml (or parse failed). Registering example entries." >&2
-    register_client "raspberrypi4" "client-key-raspberrypi4-kiosk1" "ラズパイ4 - キオスク1"
-    register_client "raspberrypi3" "client-key-raspberrypi3-signage1" "ラズパイ3 - サイネージ1"
+    echo "[ERROR] No resolved status-agent hosts were found in inventory.yml." >&2
+    exit 1
   fi
 else
   if [ -n "${REGISTER_CLIENT_HOST}" ]; then
     echo "[ERROR] inventory.yml not found; cannot select REGISTER_CLIENT_HOST=${REGISTER_CLIENT_HOST}" >&2
     exit 1
   fi
-  echo "[WARN] inventory.yml not found. Registering example entries." >&2
-  register_client "raspberrypi4" "client-key-raspberrypi4-kiosk1" "ラズパイ4 - キオスク1"
-  register_client "raspberrypi3" "client-key-raspberrypi3-signage1" "ラズパイ3 - サイネージ1"
+  echo "[ERROR] inventory.yml not found." >&2
+  exit 1
 fi
 
 echo "[INFO] Client registration completed"

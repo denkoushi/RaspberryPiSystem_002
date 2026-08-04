@@ -27,6 +27,55 @@ QUOTED_FALLBACK = re.compile(
     r"(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*=.*?(?:\?\?|\|\|)\s*(['\"])(?P<value>.*?)\2"
 )
 
+NORMAL_FACTORY_VAULT_PATHS = (
+    "infrastructure/ansible/host_vars/raspberrypi3/vault.yml",
+    "infrastructure/ansible/host_vars/raspberrypi4/vault.yml",
+    "infrastructure/ansible/host_vars/raspberrypi5/vault.yml",
+    "infrastructure/ansible/host_vars/raspi4-robodrill01/vault.yml",
+    "infrastructure/ansible/host_vars/raspi4-fjv60-80/vault.yml",
+    "infrastructure/ansible/host_vars/raspi4-kensaku-stonebase01/vault.yml",
+    "infrastructure/ansible/host_vars/raspi4-sessaku-01/vault.yml",
+    "infrastructure/ansible/host_vars/raspi4-assembly-01/vault.yml",
+)
+REQUIRED_INVENTORY_REFERENCES = {
+    "raspberrypi5": {
+        "api_jwt_access_secret": "vault_api_jwt_access_secret",
+        "api_jwt_refresh_secret": "vault_api_jwt_refresh_secret",
+        "status_agent_client_key": "vault_status_agent_client_key",
+    },
+    "raspberrypi4": {
+        "status_agent_client_key": "vault_status_agent_client_key",
+        "nfc_agent_client_secret": "vault_nfc_agent_client_secret",
+    },
+    "raspi4-robodrill01": {
+        "status_agent_client_key": "vault_raspi4_robodrill01_status_agent_client_key",
+        "nfc_agent_client_secret": "vault_raspi4_robodrill01_nfc_agent_client_secret",
+    },
+    "raspi4-fjv60-80": {
+        "status_agent_client_key": "vault_raspi4_fjv60_80_status_agent_client_key",
+        "nfc_agent_client_secret": "vault_raspi4_fjv60_80_nfc_agent_client_secret",
+    },
+    "raspi4-kensaku-stonebase01": {
+        "status_agent_client_key": "vault_raspi4_kensaku_stonebase01_status_agent_client_key",
+        "nfc_agent_client_secret": "vault_raspi4_kensaku_stonebase01_nfc_agent_client_secret",
+        "torque_agent_client_key": "vault_raspi4_kensaku_stonebase01_torque_agent_client_key",
+    },
+    "raspi4-sessaku-01": {
+        "status_agent_client_key": "vault_raspi4_sessaku_01_status_agent_client_key",
+        "nfc_agent_client_secret": "vault_raspi4_sessaku_01_nfc_agent_client_secret",
+    },
+    "raspi4-assembly-01": {
+        "status_agent_client_key": "vault_raspi4_assembly_01_status_agent_client_key",
+        "nfc_agent_client_secret": "vault_raspi4_assembly_01_nfc_agent_client_secret",
+        "torque_agent_client_key": "vault_raspi4_assembly_01_torque_agent_client_key",
+    },
+    "raspberrypi3": {
+        "status_agent_client_key": "vault_status_agent_client_key",
+        "signage_client_key": "vault_signage_client_key",
+    },
+}
+ANSIBLE_VAULT_HEADER = b"$ANSIBLE_VAULT;"
+
 
 @dataclass(frozen=True, order=True)
 class Finding:
@@ -37,6 +86,8 @@ class Finding:
 
 def is_external_or_empty(value: str) -> bool:
     normalized = value.strip().rstrip(",")
+    if len(normalized) >= 2 and normalized[0] == normalized[-1] and normalized[0] in {"'", '"'}:
+        normalized = normalized[1:-1].strip()
     return (
         not normalized
         or normalized in {"null", "None", "~", "''", '\"\"'}
@@ -47,6 +98,8 @@ def is_external_or_empty(value: str) -> bool:
         or "lookup(" in normalized
         or "process.env" in normalized
         or "import.meta.env" in normalized
+        or normalized.startswith("env.")
+        or re.fullmatch(r"(?:string|number|boolean|unknown|never)(?:\s*\|\s*undefined)?;?", normalized) is not None
         or normalized.startswith("!vault")
         or normalized.startswith("$(")
         or normalized.startswith("`")
@@ -77,6 +130,7 @@ def candidate_paths(root: Path) -> list[Path]:
         )
     for relative in (
         "apps/api/prisma/seed.ts",
+        "apps/api/src/config/seed-credentials.ts",
         "apps/web/src/config/productionBuildConfig.ts",
         "apps/web/src/lib/client-key/config.ts",
         "scripts/register-clients.sh",
@@ -163,6 +217,102 @@ def validate(root: Path, baseline: Path) -> list[str]:
     return errors
 
 
+def git_tracked_paths(root: Path) -> set[str]:
+    if not (root / ".git").exists():
+        return set()
+    output = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=root,
+        check=True,
+        stdout=subprocess.PIPE,
+    ).stdout
+    return {item.decode("utf-8") for item in output.split(b"\0") if item}
+
+
+def inventory_assignments(
+    text: str,
+    relevant_hosts: set[str] | None = None,
+) -> dict[tuple[str, str], str]:
+    assignments: dict[tuple[str, str], str] = {}
+    current_host: str | None = None
+    current_indent = -1
+    host_pattern = re.compile(r"^(?P<indent>\s+)(?P<host>[A-Za-z0-9_.-]+):\s*(?:#.*)?$")
+    property_pattern = re.compile(
+        r"^(?P<indent>\s+)(?P<name>[A-Za-z_][A-Za-z0-9_]*):\s*(?P<value>.*?)\s*$"
+    )
+    selected_hosts = relevant_hosts or set(REQUIRED_INVENTORY_REFERENCES)
+    for line in text.splitlines():
+        host_match = host_pattern.match(line)
+        if host_match:
+            candidate = host_match.group("host")
+            indent = len(host_match.group("indent"))
+            if candidate in selected_hosts:
+                current_host = candidate
+                current_indent = indent
+            elif current_host is not None and indent <= current_indent:
+                current_host = None
+                current_indent = -1
+        property_match = property_pattern.match(line)
+        if (
+            current_host is not None
+            and property_match
+            and len(property_match.group("indent")) == current_indent + 2
+        ):
+            assignments[(current_host, property_match.group("name"))] = property_match.group("value")
+    return assignments
+
+
+def is_exact_vault_reference(value: str, identifier: str) -> bool:
+    normalized = value.strip()
+    if len(normalized) >= 2 and normalized[0] == normalized[-1] and normalized[0] in {"'", '"'}:
+        normalized = normalized[1:-1].strip()
+    return normalized == f"{{{{ {identifier} }}}}"
+
+
+def validate_normal_factory_vault_contract(
+    root: Path,
+    *,
+    vault_paths: tuple[str, ...] = NORMAL_FACTORY_VAULT_PATHS,
+    required_references: dict[str, dict[str, str]] = REQUIRED_INVENTORY_REFERENCES,
+    tracked_paths: set[str] | None = None,
+) -> list[str]:
+    errors: list[str] = []
+    tracked = git_tracked_paths(root) if tracked_paths is None else tracked_paths
+    for relative in vault_paths:
+        path = root / relative
+        if relative not in tracked:
+            errors.append(f"{relative}: normal-factory Vault ciphertext must be tracked")
+            continue
+        if not path.is_file() or path.is_symlink():
+            errors.append(f"{relative}: normal-factory Vault must be a regular file")
+            continue
+        if not path.read_bytes().startswith(ANSIBLE_VAULT_HEADER):
+            errors.append(f"{relative}: normal-factory Vault must be Ansible Vault ciphertext")
+
+    vault_password_path = "infrastructure/ansible/.vault-pass"
+    if vault_password_path in tracked:
+        errors.append(f"{vault_password_path}: Vault password must never be tracked")
+
+    inventory = root / "infrastructure/ansible/inventory.yml"
+    if not inventory.is_file():
+        errors.append("infrastructure/ansible/inventory.yml: required inventory is missing")
+        return errors
+    assignments = inventory_assignments(
+        inventory.read_text(encoding="utf-8"),
+        set(required_references),
+    )
+    for host, expected in required_references.items():
+        for name, reference in expected.items():
+            value = assignments.get((host, name))
+            if value is None:
+                errors.append(f"infrastructure/ansible/inventory.yml: {host}.{name} is missing")
+            elif not is_exact_vault_reference(value, reference):
+                errors.append(
+                    f"infrastructure/ansible/inventory.yml: {host}.{name} must use required Vault reference {reference}"
+                )
+    return errors
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, default=Path.cwd())
@@ -177,6 +327,7 @@ def main() -> int:
     baseline = args.baseline or root / "security/production-secret-baseline.json"
     try:
         errors = validate(root, baseline)
+        errors.extend(validate_normal_factory_vault_contract(root))
     except (OSError, ValueError, json.JSONDecodeError) as error:
         errors = [str(error)]
     if errors:

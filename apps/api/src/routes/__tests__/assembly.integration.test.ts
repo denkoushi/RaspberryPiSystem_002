@@ -15,6 +15,7 @@ import {
 import { normalizeMachineNameForCompare } from '../../services/production-schedule/machine-name-compare.js';
 import { resetMachineNameFseibanMatchCaches } from '../../services/production-schedule/machine-name-fseiban-match.service.js';
 import { SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION } from '../../services/production-schedule/production-schedule-settings.service.js';
+import { configureTestDueManagementAccessPassword } from '../../test/due-management-access-password.js';
 import { createAuthHeader, createTestClientDevice, createTestEmployee, createTestUser } from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
@@ -277,6 +278,7 @@ describe('assembly torque management API', () => {
   beforeEach(async () => {
     resetMachineNameFseibanMatchCaches();
     await cleanAssemblyTables();
+    await configureTestDueManagementAccessPassword();
     await cleanAssemblySeibanSearchFixtures();
   });
 

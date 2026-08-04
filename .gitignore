@@ -17,6 +17,17 @@ infrastructure/docker/.env
 infrastructure/ansible/.vault-pass
 infrastructure/ansible/group_vars/**/vault.yml
 infrastructure/ansible/host_vars/**/vault.yml
+# Normal-factory host Vault ciphertext is intentionally tracked. The exact
+# allowlist prevents newly added hosts or plaintext Vault files from becoming
+# tracked without review. `.vault-pass` remains ignored above.
+!infrastructure/ansible/host_vars/raspberrypi3/vault.yml
+!infrastructure/ansible/host_vars/raspberrypi4/vault.yml
+!infrastructure/ansible/host_vars/raspberrypi5/vault.yml
+!infrastructure/ansible/host_vars/raspi4-robodrill01/vault.yml
+!infrastructure/ansible/host_vars/raspi4-fjv60-80/vault.yml
+!infrastructure/ansible/host_vars/raspi4-kensaku-stonebase01/vault.yml
+!infrastructure/ansible/host_vars/raspi4-sessaku-01/vault.yml
+!infrastructure/ansible/host_vars/raspi4-assembly-01/vault.yml
 # Pi5-only endpoint selected after a Pi4 SD recovery.  It overrides the static
 # inventory address without committing changing Tailscale IPs.
 infrastructure/ansible/host_vars/**/recovery-runtime.yml

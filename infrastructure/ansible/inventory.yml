@@ -29,8 +29,8 @@ all:
           alerts_slack_webhook_support: "{{ vault_alerts_slack_webhook_support | default('') }}"
           # API環境変数
           api_database_url: "postgresql://postgres:postgres@db:5432/borrow_return"
-          api_jwt_access_secret: "{{ vault_api_jwt_access_secret | default('change-me-in-production') }}"
-          api_jwt_refresh_secret: "{{ vault_api_jwt_refresh_secret | default('change-me-in-production') }}"
+          api_jwt_access_secret: "{{ vault_api_jwt_access_secret }}"
+          api_jwt_refresh_secret: "{{ vault_api_jwt_refresh_secret }}"
           api_local_llm_base_url: "http://100.118.82.72:38081"
           api_local_llm_shared_token: "{{ vault_api_local_llm_shared_token | default('') }}"
           api_local_llm_model: "system-prod-primary"
@@ -115,7 +115,7 @@ all:
           status_agent_client_id: raspberrypi5-server
           status_agent_location: "ラズパイ5 - サーバー"
           status_agent_tls_skip_verify: "1"
-          status_agent_client_key: "{{ vault_status_agent_client_key | default('client-key-raspberrypi5-server') }}"
+          status_agent_client_key: "{{ vault_status_agent_client_key }}"
           status_agent_api_base_url: "{{ api_base_url }}"
     clients:
       # clientsは子グループ（kiosk/signage）に分割して管理する。
@@ -139,7 +139,7 @@ all:
               tailscale_enabled: true
               ansible_command_timeout: 600
               status_agent_client_id: raspberrypi4-kiosk1
-              status_agent_client_key: "{{ vault_status_agent_client_key | default('client-key-raspberrypi4-kiosk1') }}"
+              status_agent_client_key: "{{ vault_status_agent_client_key }}"
               status_agent_location: "第2工場 - kensakuMain"
               kiosk_url: "{{ kiosk_full_url }}?clientKey={{ status_agent_client_key }}"
               # kiosk-browser.serviceを管理対象にする
@@ -164,7 +164,7 @@ all:
               # NFCエージェント環境変数
               nfc_agent_api_base_url: "{{ api_base_url }}"
               nfc_agent_client_id: "raspberrypi4-kiosk1"
-              nfc_agent_client_secret: "{{ vault_nfc_agent_client_secret | default('client-key-raspberrypi4-kiosk1') }}"
+              nfc_agent_client_secret: "{{ vault_nfc_agent_client_secret }}"
             raspi4-robodrill01:
               # RoboDrill01 キオスク（Pi4増設）
               # NOTE: group_vars/all.yml の local_network / tailscale_network に raspi4_robodrill01_ip を追加済み
@@ -179,8 +179,8 @@ all:
               tailscale_enabled: true
               ansible_command_timeout: 600
               status_agent_client_id: raspi4-robodrill01-kiosk1
-              # 登録スクリプト（scripts/register-clients.sh）でそのまま使えるよう、キーは文字列で固定する
-              status_agent_client_key: "client-key-raspi4-robodrill01-kiosk1"
+              # 端末固有キーはexact-host Vaultからのみ解決し、inventoryへ平文を戻さない
+              status_agent_client_key: "{{ vault_raspi4_robodrill01_status_agent_client_key }}"
               status_agent_location: "第2工場 - RoboDrill01"
               kiosk_url: "{{ kiosk_full_url }}?clientKey={{ status_agent_client_key }}"
               manage_kiosk_browser: true
@@ -202,7 +202,7 @@ all:
                 - /usr/bin/systemctl restart status-agent.timer
               nfc_agent_api_base_url: "{{ api_base_url }}"
               nfc_agent_client_id: "raspi4-robodrill01-kiosk1"
-              nfc_agent_client_secret: "client-key-raspi4-robodrill01-kiosk1"
+              nfc_agent_client_secret: "{{ vault_raspi4_robodrill01_nfc_agent_client_secret }}"
             raspi4-fjv60-80:
               # FJV60/80 キオスク（Pi4 3台目）
               # NOTE: group_vars/all.yml の local_network / tailscale_network に raspi4_fjv60_80_ip を定義
@@ -216,7 +216,7 @@ all:
               tailscale_enabled: true
               ansible_command_timeout: 600
               status_agent_client_id: raspi4-fjv60-80-kiosk1
-              status_agent_client_key: "client-key-raspi4-fjv60-80-kiosk1"
+              status_agent_client_key: "{{ vault_raspi4_fjv60_80_status_agent_client_key }}"
               status_agent_location: "第2工場 - FJV60/80"
               kiosk_url: "{{ kiosk_full_url }}?clientKey={{ status_agent_client_key }}"
               manage_kiosk_browser: true
@@ -238,7 +238,7 @@ all:
                 - /usr/bin/systemctl restart status-agent.timer
               nfc_agent_api_base_url: "{{ api_base_url }}"
               nfc_agent_client_id: "raspi4-fjv60-80-kiosk1"
-              nfc_agent_client_secret: "client-key-raspi4-fjv60-80-kiosk1"
+              nfc_agent_client_secret: "{{ vault_raspi4_fjv60_80_nfc_agent_client_secret }}"
             raspi4-kensaku-stonebase01:
               # Kensaku StoneBase01 キオスク（Pi4 4台目）
               # NOTE: Pi5 から LAN 直が無い場合は新 Pi4 で Tailscale 参加後、group_vars/all.yml の tailscale_network に 100.x を追加
@@ -252,7 +252,7 @@ all:
               tailscale_enabled: true
               ansible_command_timeout: 600
               status_agent_client_id: raspi4-kensaku-stonebase01-kiosk1
-              status_agent_client_key: "client-key-raspi4-kensaku-stonebase01-kiosk1"
+              status_agent_client_key: "{{ vault_raspi4_kensaku_stonebase01_status_agent_client_key }}"
               status_agent_location: "第2工場 - StoneBase01"
               kiosk_url: "{{ kiosk_full_url }}?clientKey={{ status_agent_client_key }}"
               manage_kiosk_browser: true
@@ -274,7 +274,7 @@ all:
                 - /usr/bin/systemctl restart status-agent.timer
               nfc_agent_api_base_url: "{{ api_base_url }}"
               nfc_agent_client_id: "raspi4-kensaku-stonebase01-kiosk1"
-              nfc_agent_client_secret: "client-key-raspi4-kensaku-stonebase01-kiosk1"
+              nfc_agent_client_secret: "{{ vault_raspi4_kensaku_stonebase01_nfc_agent_client_secret }}"
               # USB シリアル(CDC ACM)バーコードリーダー → localhost WebSocket（profile=barcode）
               barcode_agent_enabled: true
               barcode_agent_serial_device: "/dev/ttyACM0"
@@ -291,7 +291,7 @@ all:
               torque_agent_enabled: true
               torque_connection_lease_enabled: true
               torque_agent_api_base_url: "{{ server_base_url }}"
-              torque_agent_client_key: "{{ status_agent_client_key }}"
+              torque_agent_client_key: "{{ vault_raspi4_kensaku_stonebase01_torque_agent_client_key }}"
               # Pi5 currently presents a self-signed Caddy certificate. This exception is scoped to StoneBase.
               torque_agent_tls_verify_mode: "insecure"
               torque_agent_browser_origins:
@@ -321,7 +321,7 @@ all:
               tailscale_enabled: true
               ansible_command_timeout: 600
               status_agent_client_id: raspi4-sessaku-01-kiosk1
-              status_agent_client_key: "client-key-raspi4-sessaku-01-kiosk1"
+              status_agent_client_key: "{{ vault_raspi4_sessaku_01_status_agent_client_key }}"
               status_agent_location: "第2工場 - Sessaku-01"
               kiosk_url: "{{ kiosk_full_url }}?clientKey={{ status_agent_client_key }}"
               manage_kiosk_browser: true
@@ -343,7 +343,7 @@ all:
                 - /usr/bin/systemctl restart status-agent.timer
               nfc_agent_api_base_url: "{{ api_base_url }}"
               nfc_agent_client_id: "raspi4-sessaku-01-kiosk1"
-              nfc_agent_client_secret: "client-key-raspi4-sessaku-01-kiosk1"
+              nfc_agent_client_secret: "{{ vault_raspi4_sessaku_01_nfc_agent_client_secret }}"
             raspi4-assembly-01:
               # Assembly-01 キオスク（Pi4 6台目）
               # NOTE: Tailscale IP 登録前は local_network にフォールバックする
@@ -359,7 +359,7 @@ all:
               tailscale_auth_key: "{{ hostvars['raspberrypi5'].vault_tailscale_auth_key | default('') }}"
               ansible_command_timeout: 600
               status_agent_client_id: raspi4-assembly-01-kiosk1
-              status_agent_client_key: "client-key-raspi4-assembly-01-kiosk1"
+              status_agent_client_key: "{{ vault_raspi4_assembly_01_status_agent_client_key }}"
               status_agent_location: "第2工場 - Assembly-01"
               kiosk_initial_route: "assembly"
               kiosk_url: "{{ kiosk_full_url }}?clientKey={{ status_agent_client_key }}"
@@ -382,12 +382,12 @@ all:
                 - /usr/bin/systemctl restart status-agent.timer
               nfc_agent_api_base_url: "{{ api_base_url }}"
               nfc_agent_client_id: "raspi4-assembly-01-kiosk1"
-              nfc_agent_client_secret: "client-key-raspi4-assembly-01-kiosk1"
+              nfc_agent_client_secret: "{{ vault_raspi4_assembly_01_nfc_agent_client_secret }}"
               # Release A installs the fail-closed lease path. Pairing remains a manual Release B gate.
               torque_agent_enabled: true
               torque_connection_lease_enabled: true
               torque_agent_api_base_url: "{{ server_base_url }}"
-              torque_agent_client_key: "{{ status_agent_client_key }}"
+              torque_agent_client_key: "{{ vault_raspi4_assembly_01_torque_agent_client_key }}"
               torque_agent_tls_verify_mode: "insecure"
               torque_agent_browser_origins:
                 - "{{ server_base_url }}"
@@ -415,12 +415,12 @@ all:
               # デバイスタイプ: Pi3（メモリ416MB、lightdm停止が必要）
               device_type: "pi3"
               status_agent_client_id: raspberrypi3-signage1
-              status_agent_client_key: "{{ vault_status_agent_client_key | default('client-key-raspberrypi3-signage1') }}"
+              status_agent_client_key: "{{ vault_status_agent_client_key }}"
               status_agent_location: "第2工場 - signageMakoRoom"
               # 低メモリ時のTLS handshake遅延を通常の10秒より長く許容する
               status_agent_request_timeout: "30"
               signage_server_url: "{{ server_base_url }}"
-              signage_client_key: "{{ vault_signage_client_key | default('client-key-raspberrypi3-signage1') }}"
+              signage_client_key: "{{ vault_signage_client_key }}"
               # signage-lite.serviceを管理対象にする
               manage_signage_lite: true
               # このホストで再起動するサービスリスト

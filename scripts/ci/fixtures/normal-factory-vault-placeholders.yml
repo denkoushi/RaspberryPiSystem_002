@@ -1,0 +1,20 @@
+---
+# CI-only structural values. These are not accepted by production secret
+# policy and are never copied to a managed host.
+vault_api_jwt_access_secret: "ci-redacted-access-secret"
+vault_api_jwt_refresh_secret: "ci-redacted-refresh-secret"
+vault_status_agent_client_key: "ci-redacted-status-agent-key"
+vault_nfc_agent_client_secret: "ci-redacted-nfc-agent-secret"
+vault_signage_client_key: "ci-redacted-signage-client-key"
+vault_raspi4_robodrill01_status_agent_client_key: "ci-redacted-status-agent-key"
+vault_raspi4_robodrill01_nfc_agent_client_secret: "ci-redacted-nfc-agent-secret"
+vault_raspi4_fjv60_80_status_agent_client_key: "ci-redacted-status-agent-key"
+vault_raspi4_fjv60_80_nfc_agent_client_secret: "ci-redacted-nfc-agent-secret"
+vault_raspi4_kensaku_stonebase01_status_agent_client_key: "ci-redacted-status-agent-key"
+vault_raspi4_kensaku_stonebase01_nfc_agent_client_secret: "ci-redacted-nfc-agent-secret"
+vault_raspi4_kensaku_stonebase01_torque_agent_client_key: "ci-redacted-torque-agent-key"
+vault_raspi4_sessaku_01_status_agent_client_key: "ci-redacted-status-agent-key"
+vault_raspi4_sessaku_01_nfc_agent_client_secret: "ci-redacted-nfc-agent-secret"
+vault_raspi4_assembly_01_status_agent_client_key: "ci-redacted-status-agent-key"
+vault_raspi4_assembly_01_nfc_agent_client_secret: "ci-redacted-nfc-agent-secret"
+vault_raspi4_assembly_01_torque_agent_client_key: "ci-redacted-torque-agent-key"

@@ -37,36 +37,46 @@ done
 
 TEMP_OUTPUT="$(mktemp "${TMPDIR:-/tmp}/release-build-contract.XXXXXX")"
 CANONICAL_OUTPUT="${TEMP_OUTPUT}.canonical"
-VAULT_PASSWORD_FILE="$(mktemp "${TMPDIR:-/tmp}/release-build-contract-vault.XXXXXX")"
+REDACTED_CONTEXT_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/release-build-contract-ansible.XXXXXX")"
+REDACTED_ANSIBLE_DIR="${REDACTED_CONTEXT_ROOT}/ansible"
+VAULT_PLACEHOLDERS="${ROOT}/scripts/ci/fixtures/normal-factory-vault-placeholders.yml"
 cleanup() {
   local rc=$?
   [[ -z "$TEMP_OUTPUT" ]] || rm -f "$TEMP_OUTPUT"
   [[ -z "$CANONICAL_OUTPUT" ]] || rm -f "$CANONICAL_OUTPUT"
-  [[ -z "$VAULT_PASSWORD_FILE" ]] || rm -f "$VAULT_PASSWORD_FILE"
+  [[ -z "$REDACTED_CONTEXT_ROOT" ]] || rm -rf "$REDACTED_CONTEXT_ROOT"
   trap - EXIT
   exit "$rc"
 }
 trap cleanup EXIT INT TERM
 chmod 600 "$TEMP_OUTPUT"
-chmod 600 "$VAULT_PASSWORD_FILE"
-printf '%s\n' 'release-contract-has-no-vault-inputs' >"$VAULT_PASSWORD_FILE"
+python3 "${ROOT}/scripts/ci/prepare_redacted_ansible_context.py" \
+  --source "${ROOT}/infrastructure/ansible" \
+  --output "${REDACTED_ANSIBLE_DIR}" >/dev/null
+INVENTORY_BASENAME="$(basename "$INVENTORY")"
+REDACTED_INVENTORY="${REDACTED_ANSIBLE_DIR}/${INVENTORY_BASENAME}"
+[[ -f "$REDACTED_INVENTORY" && ! -L "$REDACTED_INVENTORY" ]] || {
+  echo "release build contract inventory is outside the canonical Ansible context" >&2
+  exit 78
+}
 
-ANSIBLE_CONFIG="${ROOT}/infrastructure/ansible/ansible.cfg" \
+ANSIBLE_CONFIG="${REDACTED_ANSIBLE_DIR}/ansible.cfg" \
 ANSIBLE_LOCAL_TEMP="${ANSIBLE_LOCAL_TEMP:-${TMPDIR:-/tmp}/ansible-local-release-contract}" \
 ANSIBLE_REMOTE_TEMP="${ANSIBLE_REMOTE_TEMP:-${TMPDIR:-/tmp}/ansible-remote-release-contract}" \
-ANSIBLE_VAULT_PASSWORD_FILE="$VAULT_PASSWORD_FILE" \
 RELEASE_BUILD_CONTRACT_SHA="$SHA" \
 RELEASE_BUILD_CONTRACT_OUTPUT="$TEMP_OUTPUT" \
   ansible-playbook \
-    -i "$INVENTORY" \
-    "${ROOT}/infrastructure/ansible/playbooks/render-release-build-contract.yml" \
+    -i "$REDACTED_INVENTORY" \
+    "${REDACTED_ANSIBLE_DIR}/playbooks/render-release-build-contract.yml" \
+    --extra-vars "@$VAULT_PLACEHOLDERS" \
     --limit raspberrypi5 >/dev/null
 
 python3 "${ROOT}/scripts/deploy/release_build_contract.py" validate \
   --release-sha "$SHA" <"$TEMP_OUTPUT" >"$CANONICAL_OUTPUT"
 mv "$CANONICAL_OUTPUT" "$OUTPUT"
 chmod 600 "$OUTPUT"
-rm -f "$VAULT_PASSWORD_FILE"
+rm -rf "$REDACTED_CONTEXT_ROOT"
 TEMP_OUTPUT=""
 CANONICAL_OUTPUT=""
-VAULT_PASSWORD_FILE=""
+REDACTED_CONTEXT_ROOT=""
+REDACTED_ANSIBLE_DIR=""

@@ -1,0 +1,13 @@
+---
+# Generated for the API's read-only terminal backup transport.
+# Do not add application credentials, Vault references, SSH options, or privilege-escalation data.
+all:
+  children:
+    backup_clients:
+      hosts:
+{% for backup_host in (groups['clients'] | default([]) | sort) %}
+        {{ backup_host | to_json }}:
+          ansible_host: {{ hostvars[backup_host].ansible_host | default(backup_host) | to_json }}
+          ansible_user: {{ hostvars[backup_host].ansible_user | to_json }}
+          ansible_python_interpreter: /usr/bin/python3
+{% endfor %}

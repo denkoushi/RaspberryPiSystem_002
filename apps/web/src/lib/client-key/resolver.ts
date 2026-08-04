@@ -18,6 +18,9 @@ const detectEnvironment = (userAgent: string): EnvironmentKind => {
 };
 
 const getRecommendedDefaultClientKey = (userAgent: string, pathname: string): string => {
+  if (!CLIENT_KEY_CONFIG.implicitDevelopmentDefaults) {
+    return CLIENT_KEY_CONFIG.defaultsByEnvironment.linuxArm;
+  }
   const env = detectEnvironment(userAgent);
   if (env === 'mac') return CLIENT_KEY_CONFIG.defaultsByEnvironment.mac;
   if (isKioskPath(pathname)) return CLIENT_KEY_CONFIG.defaultsByEnvironment.linuxArm;
@@ -34,6 +37,9 @@ const normalizeProvidedKey = (provided?: string): string | null => {
 };
 
 const applyCrossDeviceCorrection = (resolvedKey: string, userAgent: string, pathname: string): string => {
+  if (!CLIENT_KEY_CONFIG.implicitDevelopmentDefaults) {
+    return resolvedKey;
+  }
   const env = detectEnvironment(userAgent);
   const isPi4Key = resolvedKey === CLIENT_KEY_CONFIG.pi4Key;
 
@@ -84,7 +90,9 @@ export function ensureClientKeyStorageInitialized(): void {
   const existing = getClientKeyFromStorage();
   if (!existing) {
     const defaultKey = getRecommendedDefaultClientKey(navigator.userAgent, window.location.pathname);
-    setClientKeyToStorage(defaultKey);
+    if (defaultKey.length > 0) {
+      setClientKeyToStorage(defaultKey);
+    }
     return;
   }
 

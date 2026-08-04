@@ -13,6 +13,7 @@ import { buildMaxProductNoWinnerCondition } from '../../services/production-sche
 import { computeLeaderboardShellFillerBudget } from '../../services/production-schedule/leaderboard/leaderboard-shell-filler-budget.js';
 import { reconcileStaleProductionScheduleOrderAssignments } from '../../services/production-schedule/order-assignment/order-assignment-reconciliation.service.js';
 import * as productionScheduleQueryService from '../../services/production-schedule/production-schedule-query.service.js';
+import { configureTestDueManagementAccessPassword } from '../../test/due-management-access-password.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
@@ -101,6 +102,7 @@ describe('Kiosk Production Schedule API', () => {
     await prisma.productionScheduleFkojunstStatus.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleFkojunstMailStatus.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleAccessPasswordConfig.deleteMany();
+    await configureTestDueManagementAccessPassword();
     await prisma.dueManagementOutcomeEvent.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.dueManagementOperatorDecisionEvent.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.dueManagementProposalEvent.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
@@ -3746,7 +3748,7 @@ describe('Kiosk Production Schedule API', () => {
     expect(part?.processingType).toBe('LSLH');
   });
 
-  it('verifies due-management access password (default/shared)', async () => {
+  it('verifies the configured shared due-management access password', async () => {
     const okRes = await app.inject({
       method: 'POST',
       url: '/api/kiosk/production-schedule/due-management/verify-access-password',
@@ -3764,6 +3766,16 @@ describe('Kiosk Production Schedule API', () => {
     });
     expect(ngRes.statusCode).toBe(200);
     expect((ngRes.json() as { success: boolean }).success).toBe(false);
+
+    await prisma.productionScheduleAccessPasswordConfig.deleteMany();
+    const unconfiguredRes = await app.inject({
+      method: 'POST',
+      url: '/api/kiosk/production-schedule/due-management/verify-access-password',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { password: '2520' }
+    });
+    expect(unconfiguredRes.statusCode).toBe(200);
+    expect((unconfiguredRes.json() as { success: boolean }).success).toBe(false);
   });
 
   it('saves and returns row processing type (PUT processing, GET includes processingType)', async () => {

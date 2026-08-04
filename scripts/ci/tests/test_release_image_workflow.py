@@ -198,9 +198,12 @@ class ReleaseImageWorkflowTests(unittest.TestCase):
         )
         self.assertNotIn("prune", PULL_PROGRESS_VALIDATOR)
 
-    def test_contract_renderer_removes_its_temporary_vault_password(self) -> None:
-        remove_index = CONTRACT_RENDERER.rindex('rm -f "$VAULT_PASSWORD_FILE"')
-        clear_index = CONTRACT_RENDERER.index('VAULT_PASSWORD_FILE=""')
+    def test_contract_renderer_uses_and_removes_redacted_ansible_context(self) -> None:
+        self.assertIn("prepare_redacted_ansible_context.py", CONTRACT_RENDERER)
+        self.assertIn("normal-factory-vault-placeholders.yml", CONTRACT_RENDERER)
+        self.assertNotIn("ANSIBLE_VAULT_PASSWORD_FILE", CONTRACT_RENDERER)
+        remove_index = CONTRACT_RENDERER.rindex('rm -rf "$REDACTED_CONTEXT_ROOT"')
+        clear_index = CONTRACT_RENDERER.index('REDACTED_CONTEXT_ROOT=""')
         self.assertLess(remove_index, clear_index)
 
     def test_api_runtime_boundary_precedes_application_source_and_provenance(self) -> None:
