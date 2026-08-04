@@ -16,10 +16,11 @@ related_docs:
   - ./production-secrets-and-runtime-execplan.md
 validation: offline behavioral contracts, isolated Docker rehearsal, hosted CI, then read-only exact-main production evidence
 open_items:
-  - pass the PR native-container rehearsal and required review
-  - pass the exact-main ARM64 rehearsal with the fixed 300-second monitor
-  - collect the post-merge read-only production evidence
-  - obtain separate approval before any production release
+  - rerun the complete local audit after the slot Web runtime correction
+  - pass review and required hosted CI for the correction
+  - pass a new exact-main ARM64 rehearsal with the fixed 300-second monitor
+  - collect fresh post-merge read-only production evidence
+  - obtain separate approval before a new standard production release
 ---
 
 # Audit the complete standard release before another production attempt
@@ -80,8 +81,31 @@ traffic, or update a terminal.
   database ordering, added an executable ordering contract, replaced the
   Bash-4-only cleanup read, and passed 103 CI contract tests plus the full
   native ARM64 rehearsal with five gateway samples and zero resource residue.
-- [ ] Hosted rerun, review, merge, exact-main ARM64 rehearsal, read-only
-  production evidence, and release approval remain separate gates.
+- [x] (2026-08-04 21:55+09:00) Passed hosted review and required CI, merged PR
+  #1178 as exact main `43654229dc4c25d9b7162f5e77d3efc7b62f5835`, passed
+  the exact ARM64 300-second rehearsal with 149 samples and zero Docker
+  residue, and collected the read-only production evidence.
+- [x] (2026-08-04 22:23+09:00) Obtained separate release approval and started
+  standard run `20260804-122309-7e601d`. Artifact promotion succeeded, but
+  candidate prepare stopped fail-closed before traffic switch because the Web
+  image generated `/tmp/Caddyfile.slot` while the controller validated the
+  obsolete `/srv/Caddyfile.slot` path.
+- [x] (2026-08-04 22:49+09:00) Confirmed read-only that blue remained healthy,
+  green API was a connected scheduler standby, and the generic scheduler error
+  hid a Web validation failure. Added a shared container runtime config
+  contract, exact-image Web validation, phase-specific failure reason, and a
+  ninth incident mutation. Focused tests pass.
+- [x] (2026-08-04, post-failure rerun) Repeated the complete local audit from
+  the beginning after adding backward compatibility for the currently active
+  old Web image. The deploy contract passed 989 deployment tests, all nine
+  incident mutations, real PostgreSQL migrations, 20 deploy-status tests, 43
+  Ansible profile tests, playbook checks, and zero audit residue. All 103 CI
+  contract tests, document audit, and `git diff --check` passed. Fresh ARM64
+  API/Web images then passed the native blue/green rehearsal with both
+  generated Caddy files validated, five gateway samples over 10 seconds, and
+  zero container, network, or volume residue.
+- [ ] Review, merge, exact-main evidence, fresh read-only production evidence,
+  and a new release approval remain separate gates. Production stays frozen.
 
 ## Surprises & Discoveries
 
@@ -130,6 +154,14 @@ traffic, or update a terminal.
   `mapfile: command not found`; the portable read loop removed that error and
   the repeat rehearsal again reported zero containers, networks, and volumes.
 
+- Observation: the exact-image rehearsal proved both Web slots served traffic
+  but did not execute the controller's post-start Caddy validation command.
+  Evidence: production green Web served `/tmp/Caddyfile.slot`, green API
+  reported `ready=true` and `standby`, while
+  `slot_web_validate` alone requested the removed
+  `/srv/Caddyfile.slot`. The existing image test checked only the Dockerfile
+  side of the boundary.
+
 ## Decision Log
 
 - Decision: keep one frozen audit branch and one review series for the current
@@ -171,17 +203,38 @@ traffic, or update a terminal.
   production deployment command.
   Date/Author: 2026-08-04 / Codex.
 
+- Decision: make `SLOT_CADDY_CONFIG_FILE` an image-published runtime contract
+  and have the controller validate the path from the running container.
+  Rationale: runtime startup and post-start validation must not independently
+  own a writable path. The controller retains `/srv/Caddyfile.slot` only when
+  the active pre-contract image has no published variable, so the first old to
+  new switch remains possible. The exact-image rehearsal requires the new
+  contract for blue and green.
+  Date/Author: 2026-08-04 / Codex.
+
+- Decision: retain the failed run and green candidate as durable recovery
+  evidence until a later approved standard run reconciles it.
+  Rationale: direct Docker cleanup or an internal Blue/Green command would
+  bypass the coordinator-owned `prepare-failed` recovery boundary.
+  Date/Author: 2026-08-04 / Codex.
+
 ## Outcomes & Retrospective
 
-The local implementation and the first hosted feedback cycle are complete. The
-active production blue slot remains outside this work. The generated local
-report recorded 39 required scenarios, 39 passed, zero failed, zero uncovered,
-and zero container, network, or volume residue. Draft PR #1178 exposed and
-contained an empty-database ordering defect; the corrected native ARM64 replay
-passed locally with zero residue. Repository completion still requires the
-hosted rerun and reviewed integration to main, followed by exact-main ARM64
-evidence. Production deployment remains a later, separately approved
-operation.
+The first audit series completed review, main integration, exact-main ARM64
+evidence, and read-only production admission. The separately approved
+production run then exposed a cross-boundary omission: the Web image and
+Blue/Green controller disagreed about the generated slot configuration path.
+The failure was fail-closed before traffic switch and terminal rollout, and
+active blue stayed healthy, but migration state is recorded as applied and the
+green candidate remains owned by the failed run.
+
+The correction now has complete local proof and the incident registry has nine
+faults. The repeated audit reports 39 required scenarios, 39 passed, zero
+failed, zero uncovered, and zero Docker resource residue. This outcome still
+invalidates completion of the original audit despite its prior green report.
+Repository and production completion remain open until the correction is
+reviewed, integrated to main, rehearsed as exact ARM64 for 300 seconds,
+observed read-only in production, and separately approved for a new run.
 
 ## Context and Orientation
 
@@ -202,11 +255,15 @@ containers. A past-incident mutant is a temporary copy in which one known fix
 is removed; the audit must reject that copy, proving that the regression test
 would catch the original defect.
 
-The last production run, `20260804-095823-73770f`, failed before migration,
-traffic switching, and Pi3 work because the migration Compose wrapper called
-an undefined `gateway_image` helper. The active blue API remained healthy and
-the candidate was cleaned. The working tree contains that focused correction
-and generated documentation inventory updates. They must be preserved.
+The earlier production run `20260804-095823-73770f` found the undefined
+`gateway_image` helper and motivated this audit. After PR #1178 and exact-main
+evidence passed, standard run `20260804-122309-7e601d` reached a later
+candidate boundary. It promoted both signed images and recorded migration as
+applied, then failed because the Web image rendered `/tmp/Caddyfile.slot` and
+the controller validated `/srv/Caddyfile.slot`. Traffic stayed on blue, all
+terminals stayed pending, and the green candidate is intentionally preserved
+for coordinator-owned recovery. The incident source of truth is
+`docs/knowledge-base/KB-405-pi5-slot-web-runtime-config-drift.md`.
 
 ## Plan of Work
 
@@ -303,6 +360,11 @@ post-switch health failure must produce verified rollback evidence; repeated
 cleanup and reconcile calls must normalize state without deleting persistent
 data.
 
+The `slot-web-runtime-config` mutant must fail when the controller is changed
+back to `/srv/Caddyfile.slot`. Both exact Web containers must expose a
+non-empty `SLOT_CADDY_CONFIG_FILE`, contain that generated file, and pass
+`caddy validate` against it before gateway switching.
+
 The container rehearsal must start the API under the production non-root,
 read-only filesystem with every required writable namespace, use the
 application role for normal requests, use the migrator only in the ephemeral
@@ -364,3 +426,7 @@ and the fixed 300-second stability policy remain unchanged.
 Revision note 2026-08-04: Created the frozen production-path audit after three
 successively later candidate failures demonstrated that existing dry-run and
 static contracts did not execute every release phase.
+
+Revision note 2026-08-04: Reopened the audit after approved exact-main run
+`20260804-122309-7e601d` exposed a Web image/controller runtime path drift
+that the first isolated rehearsal did not execute across the real boundary.
