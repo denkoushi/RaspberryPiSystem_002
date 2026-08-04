@@ -126,6 +126,16 @@ traffic, or update a terminal.
   deploy-status API contracts, 43 Ansible profile tests, playbook checks, and
   zero run-labelled Docker residue. All 103 CI contract tests, document audit,
   and `git diff --check` also passed.
+- [x] (2026-08-05 06:13+09:00) Published draft PR #1180 as three reviewable
+  commits. Hosted `docker-security (api)` then failed closed on newly published
+  `CVE-2026-18446` because the root override still pinned production dependency
+  `fast-uri` 3.1.4. Updated the single override and lockfile to patched 3.1.5;
+  frozen install, API build, all 103 CI contracts, and CI-equivalent Trivy scan
+  now pass with zero HIGH or CRITICAL findings in tracked lockfiles.
+- [x] (2026-08-05 06:22+09:00) Repeated the complete deploy contract after the
+  dependency correction. All 991 deployment tests, 11 incident mutations, real
+  Compose recreation, 157 migrations, 20 deploy-status API tests, 43 Ansible
+  contracts, playbook checks, and run-resource cleanup passed again.
 - [ ] Complete final local diff review, hosted review and required CI,
   exact-main evidence, and fresh read-only production evidence. Production and
   failed-run recovery remain frozen behind a separate approval.
@@ -198,6 +208,13 @@ traffic, or update a terminal.
   mounts, restart, running state, and Compose identity after rollback, while
   only `runtimeConfigSha256` differed. Recreated Compose 5.1.1 containers had
   generated labels and daemon defaults absent from the older baseline.
+
+- Observation: hosted vulnerability data can invalidate an otherwise unchanged
+  production dependency override after the complete local deployment audit has
+  passed.
+  Evidence: PR #1180's first `docker-security (api)` run detected
+  `CVE-2026-18446` in explicitly pinned `fast-uri` 3.1.4. The corrected 3.1.5
+  lockfile is clean under a freshly updated local Trivy database.
 
 ## Decision Log
 
