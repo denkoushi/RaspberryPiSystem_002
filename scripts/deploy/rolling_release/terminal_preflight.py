@@ -1616,6 +1616,8 @@ def _remote_probe_command(target: Mapping[str, Any]) -> list[str]:
     return [
         "/usr/bin/ssh",
         "-o",
+        "Compression=yes",
+        "-o",
         "BatchMode=yes",
         "-o",
         "ConnectTimeout=12",
