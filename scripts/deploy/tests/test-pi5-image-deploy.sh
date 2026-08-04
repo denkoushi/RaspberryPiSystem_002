@@ -48,6 +48,11 @@ output="$(env "${common_env[@]}" "$SCRIPT" prepare --ref "$sha" --run-id run-ima
   --resource-evidence "$TMP/resource-evidence.json")"
 assert_contains "$output" "candidate prepared"
 assert_contains "$output" "VITE_RELEASE_SHA=$sha"
+assert_contains "$output" "ADMIN_ALLOW_NETS=127.0.0.1/32"
+assert_contains "$output" "caddy validate --config /srv/Caddyfile.local.template"
+if grep -Fq 'envsubst < /srv/Caddyfile.local.template' <<<"$output"; then
+  fail "candidate validation still corrupts Caddy-native environment placeholders"
+fi
 [[ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["event"])' "$TMP/state.json")" == prepared ]] || fail "state is not prepared"
 [[ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["runId"])' "$TMP/state.json")" == run-image-test ]] || fail "state is not bound to the run"
 [[ -s "$TMP/resource-evidence.json" ]] || fail "resource evidence was not written"
@@ -758,6 +763,10 @@ if grep -Eq 'pi5-api-candidate-.*\$\$' "$SCRIPT"; then
   fail 'candidate validation identity still depends on the shell PID'
 fi
 prepare_body="$(sed -n '/^prepare() {/,/^}/p' "$SCRIPT")"
+grep -Fq 'admin_allow_nets="$(resolved_web_admin_allow_nets)"' <<<"$prepare_body" \
+  || fail 'candidate validation does not resolve the Web administrator allowlist'
+grep -Fq -- '-e "ADMIN_ALLOW_NETS=${admin_allow_nets}"' <<<"$prepare_body" \
+  || fail 'candidate validation does not pass only the resolved administrator allowlist'
 [[ "$(grep -n 'reconcile_candidate_build_residue' <<<"$prepare_body" | cut -d: -f1)" \
   -lt "$(grep -n 'prepared_images_are_exact' <<<"$prepare_body" | cut -d: -f1)" ]] \
   || fail 'candidate residue takeover does not precede the image reuse/no-op path'

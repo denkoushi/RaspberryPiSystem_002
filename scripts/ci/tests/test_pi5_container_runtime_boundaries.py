@@ -66,7 +66,8 @@ class Pi5ContainerRuntimeBoundaryTest(unittest.TestCase):
         self.assertNotIn("setcap", WEB_DOCKERFILE)
         self.assertNotIn("libcap", WEB_DOCKERFILE)
         self.assertIn("> /tmp/Caddyfile.slot", WEB_DOCKERFILE)
-        self.assertIn("> /tmp/Caddyfile.local", WEB_DOCKERFILE)
+        self.assertIn("caddy run --config /srv/Caddyfile.local.template", WEB_DOCKERFILE)
+        self.assertNotIn("envsubst < /srv/Caddyfile.local.template", WEB_DOCKERFILE)
 
     def test_permission_migration_is_explicit_and_normal_release_fails_closed(self):
         self.assertIn("Verify existing Pi5 writable trees are ready", SERVER_ROLE)

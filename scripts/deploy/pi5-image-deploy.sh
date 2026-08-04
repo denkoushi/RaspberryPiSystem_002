@@ -130,6 +130,22 @@ compose() {
     docker compose --env-file "$ENV_FILE" "${compose_files[@]}" "$@"
 }
 
+resolved_web_admin_allow_nets() {
+  VITE_RELEASE_SHA="${REF:-}" PI5_API_IMAGE=unused-api PI5_WEB_IMAGE=unused-web \
+    docker compose --env-file "$ENV_FILE" -f "$BASE_COMPOSE" -f "$PHASE2_COMPOSE" \
+      config --format json |
+    python3 -c '
+import json
+import sys
+
+payload = json.load(sys.stdin)
+value = payload.get("services", {}).get("web", {}).get("environment", {}).get("ADMIN_ALLOW_NETS")
+if not isinstance(value, str) or not value.strip() or "\0" in value or "\n" in value or "\r" in value:
+    raise SystemExit("resolved Web ADMIN_ALLOW_NETS is missing or malformed")
+sys.stdout.write(value)
+'
+}
+
 safe_git() {
   env -i \
     HOME=/nonexistent \
@@ -1009,6 +1025,7 @@ prepare() {
   require_sha
   resource_guard
   local tag api web candidate_output candidate_reported_id build_mode api_id web_id maximum config_hash promotion_rc
+  local admin_allow_nets
   local -a api_build_args=() web_build_args=()
   seal_effective_build_args
   config_hash="$SEALED_CONFIG_HASH"
@@ -1058,9 +1075,12 @@ prepare() {
   # must never leave an earlier run's load evidence looking current.
   rm -f "$RESOURCE_EVIDENCE_FILE"
   run env VITE_RELEASE_SHA="$REF" PI5_API_IMAGE="$api" PI5_WEB_IMAGE="$web" docker compose --env-file "$ENV_FILE" -f "$BASE_COMPOSE" -f "$PHASE2_COMPOSE" config --quiet
+  admin_allow_nets="$(resolved_web_admin_allow_nets)" \
+    || die 'could not resolve the Web administrator allowlist for Caddy validation'
   run docker run --rm \
+    -e "ADMIN_ALLOW_NETS=${admin_allow_nets}" \
     -v "$PROJECT_DIR/certs:/srv/certs:ro" \
-    "$web" sh -ec 'envsubst < /srv/Caddyfile.local.template > /tmp/Caddyfile && caddy validate --config /tmp/Caddyfile'
+    "$web" caddy validate --config /srv/Caddyfile.local.template
   run docker run --rm \
     -v "$PROJECT_DIR/certs:/srv/certs:ro" \
     "$web" caddy validate --config /srv/Caddyfile.maintenance.local
