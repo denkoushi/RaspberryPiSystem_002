@@ -72,8 +72,10 @@ migration_apply_and_verify() {
     # The API image has `node dist/main.js` as its default command.  Use an
     # explicit shell and the installed Prisma binary so Compose does not try to
     # execute `npx` through that Node command during bootstrap/prepare.
-    compose_current run --rm --no-deps "api-${candidate}" sh -lc './node_modules/.bin/prisma migrate deploy' || return 1
-    compose_current run --rm --no-deps "api-${candidate}" sh -lc './node_modules/.bin/prisma migrate status' || return 1
+    compose_migration run --rm --no-deps "api-${candidate}" sh -lc \
+      'DATABASE_URL="$MIGRATION_DATABASE_URL" exec ./node_modules/.bin/prisma migrate deploy' || return 1
+    compose_migration run --rm --no-deps "api-${candidate}" sh -lc \
+      'DATABASE_URL="$MIGRATION_DATABASE_URL" exec ./node_modules/.bin/prisma migrate status' || return 1
     applied_ledger="$(mktemp "${TMPDIR:-/tmp}/pi5-blue-green-applied.XXXXXX")" || return 1
     chmod 600 "$applied_ledger"
     if ! migration_applied_checksums "$candidate" >"$applied_ledger" \
@@ -163,4 +165,3 @@ require_active_state() { load_state_context; is_slot "$ACTIVE_SLOT" || die 'acti
 require_no_stability_window() {
   if [[ "$STABLE_UNTIL" =~ ^[0-9]+$ && $(date +%s) -lt STABLE_UNTIL ]]; then die 'stability window is active; rollback or wait before prepare'; fi
 }
-

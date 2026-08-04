@@ -12,17 +12,18 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
-    env_file:
-      - .env
     environment:
       POSTGRES_DB: borrow_return
       POSTGRES_USER: postgres
-      # セキュリティ強化: 環境変数からパスワードを取得（デフォルト値は開発環境用）
-      # 本番環境では強力なパスワードを環境変数で設定すること
-      # infrastructure/docker/.envファイルにPOSTGRES_PASSWORDを設定
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres-superuser-password
     volumes:
       - db-data:/var/lib/postgresql/data
+      - type: bind
+        source: ${POSTGRES_SUPERUSER_PASSWORD_FILE:?POSTGRES_SUPERUSER_PASSWORD_FILE is required}
+        target: /run/secrets/postgres-superuser-password
+        read_only: true
+        bind:
+          create_host_path: false
     # セキュリティ強化: ポートマッピングを削除（Docker内部ネットワークでのみアクセス可能）
     # APIコンテナからは `db:5432` でアクセス可能
     # ローカル開発時のみポートを公開
@@ -67,10 +68,10 @@ services:
       - ../../apps/api/.env.example
       - .env
     environment:
-      # セキュリティ強化: 環境変数からデータベースURLを構築（パスワードは環境変数から取得）
-      # 本番環境では強力なパスワードを環境変数で設定すること
-      # infrastructure/docker/.envファイルにPOSTGRES_PASSWORDを設定
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/borrow_return
+      # Ordinary API containers receive only the least-privilege application
+      # URL. Migration and superuser authority live in host-only files and are
+      # added only to an ephemeral migration container.
+      DATABASE_URL: ${APP_DATABASE_URL:?APP_DATABASE_URL is required}
       FILE_STORAGE_ROOT: /app/storage
       PHOTO_STORAGE_DIR: /app/storage
       PDF_STORAGE_DIR: /app/storage

@@ -80,6 +80,10 @@ DELETE FROM "ClientDevice" WHERE id = 'role-contract-client';
 ROLLBACK;
 SQL
 
+docker exec -e PGPASSWORD="$APP_PASSWORD" "$CONTAINER" \
+  pg_dump -h 127.0.0.1 -U raspi_app -d borrow_return \
+  --format=plain --no-owner --no-privileges >/dev/null
+
 if psql "$APP_DATABASE_URL" -X -q -v ON_ERROR_STOP=1 \
   -c 'CREATE TABLE role_contract_forbidden (id integer);' >/dev/null 2>&1; then
   echo '[ERROR] application role unexpectedly created a table' >&2

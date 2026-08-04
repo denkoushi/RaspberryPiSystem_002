@@ -25,10 +25,16 @@ The code-level fixes in KB-393 (Batch A/B) are **deployed to production** (PR #9
 
 ## C-2. PostgreSQL password (Critical)
 
-- Files: `docker-compose.server.yml` (`POSTGRES_PASSWORD:-postgres`, `DATABASE_URL`), `infrastructure/ansible/inventory.yml`, `templates/api.env.j2`.
-- Action: generate a strong password in Ansible vault; set `POSTGRES_PASSWORD`, `DATABASE_URL` from vault; drop the `:-postgres` default so an unset value fails startup rather than falling back.
-- Rotation order: set new password on DB role → update API env → restart API → verify. (Changing `POSTGRES_PASSWORD` env alone does NOT change an existing volume's password; run `ALTER ROLE postgres WITH PASSWORD ...` on the running DB.)
-- Verify: API `/api/system/health` DB check green; kiosk borrow works.
+- Repository preparation separates `raspi_app`, `raspi_migrator`, and the DB
+  bootstrap credential. Runtime API receives only `raspi_app`; Prisma runs in
+  an ephemeral migration container; known defaults fail closed.
+- Operational order: verify a backup no older than 24 hours → separately
+  approve and run `prepare-pi5-database-roles.yml` → standard release → verify
+  API and kiosk operations → rotate the retained `postgres` rollback credential
+  only after the release is stable.
+- Never place migration or bootstrap authority in the ordinary API environment.
+- Verify: API health, representative kiosk read/write, backup `pg_dump`, Prisma
+  status, and rejection of DDL/migration-ledger writes by `raspi_app`.
 
 ## C-3. NFC agent reboot/poweroff + bind address (Critical)
 

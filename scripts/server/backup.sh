@@ -71,10 +71,10 @@ get_database_url() {
   fi
   
   if [ -z "${db_url}" ]; then
-    # デフォルト値
-    db_url="postgresql://postgres:postgres@db:5432/borrow_return"
+    echo "エラー: バックアップ用DATABASE_URLが明示設定されていません。" >&2
+    return 1
   fi
-  
+
   echo "${db_url}"
 }
 

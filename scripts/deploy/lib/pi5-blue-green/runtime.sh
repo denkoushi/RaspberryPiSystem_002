@@ -19,6 +19,15 @@ compose_current() {
     docker compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" -f "$PHASE3_COMPOSE" "$@"
 }
 
+compose_migration() {
+  PI5_PROJECT_DIR="$PROJECT_DIR" PI5_ENV_FILE="$ENV_FILE" PI5_BLUE_GREEN_CONFIG_DIR="$CONFIG_DIR" \
+  PI5_BLUE_API_IMAGE="$BLUE_API_IMAGE" PI5_BLUE_WEB_IMAGE="$BLUE_WEB_IMAGE" \
+  PI5_GREEN_API_IMAGE="$GREEN_API_IMAGE" PI5_GREEN_WEB_IMAGE="$GREEN_WEB_IMAGE" \
+  PI5_GATEWAY_IMAGE="$(gateway_image)" \
+    docker compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" \
+      -f "$PHASE3_COMPOSE" -f "$PHASE3_MIGRATION_COMPOSE" "$@"
+}
+
 legacy_compose() {
   [[ "$DRY_RUN" == 1 ]] && { printf 'DRY-RUN: legacy compose'; printf ' %q' "$@"; printf '\n'; return 0; }
   [[ -f "$ENV_FILE" ]] || die "Compose environment file is missing: $ENV_FILE"

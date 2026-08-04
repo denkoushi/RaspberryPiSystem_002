@@ -10,8 +10,16 @@
     - name: Validate required API variables
       ansible.builtin.assert:
         that:
-          - api_database_url is defined
-        fail_msg: "API環境変数（DATABASE_URL）が定義されていません（inventory.ymlを確認してください）"
+          - postgres_superuser_password is defined
+          - postgres_superuser_password | length >= 16
+          - app_database_url is defined
+          - app_database_url is match('^postgresql://raspi_app:[^@]+@db:5432/borrow_return(?:[?].*)?$')
+          - migration_database_url is defined
+          - migration_database_url is match('^postgresql://raspi_migrator:[^@]+@db:5432/borrow_return(?:[?].*)?$')
+        fail_msg: >-
+          Dedicated PostgreSQL superuser, application, and migration inputs
+          are required and must use the fixed production roles and endpoint.
+        no_log: true
       when: '"server" in group_names'
 
     - name: Validate required Web variables
@@ -28,6 +36,35 @@
           - docker_server_ip is defined
         fail_msg: "Docker Compose用SERVER_IPが定義されていません（inventory.ymlを確認してください）"
       when: '"server" in group_names'
+
+    - name: Ensure the root-managed PostgreSQL authority directory exists
+      ansible.builtin.file:
+        path: /etc/raspi-database
+        state: directory
+        owner: root
+        group: "{{ ansible_user }}"
+        mode: '0750'
+      when: '"server" in group_names'
+
+    - name: Deploy the PostgreSQL bootstrap password file
+      ansible.builtin.copy:
+        content: "{{ postgres_superuser_password }}\n"
+        dest: /etc/raspi-database/postgres-superuser-password
+        owner: root
+        group: root
+        mode: '0400'
+      when: '"server" in group_names'
+      no_log: true
+
+    - name: Deploy the ephemeral Prisma migration environment
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/migration.env.j2"
+        dest: /etc/raspi-database/migration.env
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0600'
+      when: '"server" in group_names'
+      no_log: true
 
     - name: Validate required NFC agent variables
       ansible.builtin.assert:

@@ -28,7 +28,9 @@ all:
           alerts_slack_webhook_security: "{{ vault_alerts_slack_webhook_security | default('') }}"
           alerts_slack_webhook_support: "{{ vault_alerts_slack_webhook_support | default('') }}"
           # API環境変数
-          api_database_url: "postgresql://postgres:postgres@db:5432/borrow_return"
+          postgres_superuser_password: "{{ vault_postgres_superuser_password }}"
+          app_database_url: "{{ vault_app_database_url }}"
+          migration_database_url: "{{ vault_migration_database_url }}"
           api_jwt_access_secret: "{{ vault_api_jwt_access_secret }}"
           api_jwt_refresh_secret: "{{ vault_api_jwt_refresh_secret }}"
           api_local_llm_base_url: "http://100.118.82.72:38081"

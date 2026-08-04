@@ -41,6 +41,9 @@ REQUIRED_INVENTORY_REFERENCES = {
     "raspberrypi5": {
         "api_jwt_access_secret": "vault_api_jwt_access_secret",
         "api_jwt_refresh_secret": "vault_api_jwt_refresh_secret",
+        "postgres_superuser_password": "vault_postgres_superuser_password",
+        "app_database_url": "vault_app_database_url",
+        "migration_database_url": "vault_migration_database_url",
         "status_agent_client_key": "vault_status_agent_client_key",
     },
     "raspberrypi4": {
