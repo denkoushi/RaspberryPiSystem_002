@@ -9,6 +9,9 @@ MAC_OVERRIDE = (
     ROOT / "infrastructure/docker/docker-compose.mac-local.override.yml"
 ).read_text()
 API_ENV = (ROOT / "infrastructure/ansible/templates/api.env.j2").read_text()
+SERVER_ROLE = (
+    ROOT / "infrastructure/ansible/roles/server/tasks/main.yml"
+).read_text()
 
 
 class FileStorageContractTest(unittest.TestCase):
@@ -21,6 +24,11 @@ class FileStorageContractTest(unittest.TestCase):
             "file-integrity-storage:/app/storage/.integrity", SERVER_COMPOSE
         )
         self.assertIn(
+            "part-measurement-drawings-derivatives-storage:"
+            "/app/storage/part-measurement-drawings-derivatives",
+            SERVER_COMPOSE,
+        )
+        self.assertIn(
             "device: /opt/RaspberryPiSystem_002/storage/csv-dashboards",
             SERVER_COMPOSE,
         )
@@ -28,13 +36,25 @@ class FileStorageContractTest(unittest.TestCase):
             "device: /opt/RaspberryPiSystem_002/storage/.integrity",
             SERVER_COMPOSE,
         )
+        self.assertIn(
+            "device: /opt/RaspberryPiSystem_002/storage/"
+            "part-measurement-drawings-derivatives",
+            SERVER_COMPOSE,
+        )
 
     def test_blue_green_and_mac_overlays_keep_the_same_storage_boundaries(self):
         for value in (
             "csv-dashboard-storage:/app/storage/csv-dashboards",
             "file-integrity-storage:/app/storage/.integrity",
+            "part-measurement-drawings-derivatives-storage:"
+            "/app/storage/part-measurement-drawings-derivatives",
         ):
             self.assertIn(value, PHASE3_COMPOSE)
+        self.assertIn(
+            "name: ${PI5_VOLUME_PREFIX:-docker}_"
+            "part-measurement-drawings-derivatives-storage",
+            PHASE3_COMPOSE,
+        )
         self.assertIn(
             "../../.docker/local/storage/csv-dashboards:/app/storage/csv-dashboards",
             MAC_OVERRIDE,
@@ -42,6 +62,17 @@ class FileStorageContractTest(unittest.TestCase):
         self.assertIn(
             "../../.docker/local/storage/.integrity:/app/storage/.integrity",
             MAC_OVERRIDE,
+        )
+        self.assertIn(
+            "../../.docker/local/storage/part-measurement-drawings-derivatives:"
+            "/app/storage/part-measurement-drawings-derivatives",
+            MAC_OVERRIDE,
+        )
+
+    def test_ansible_creates_the_derivative_cache_bind_source(self):
+        self.assertIn(
+            '"{{ repo_path }}/storage/part-measurement-drawings-derivatives"',
+            SERVER_ROLE,
         )
 
     def test_ansible_environment_uses_one_canonical_root_and_consistent_aliases(self):

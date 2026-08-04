@@ -97,6 +97,7 @@
     mode: '0750'
   loop:
     - "{{ repo_path }}/storage"
+    - "{{ repo_path }}/storage/part-measurement-drawings-derivatives"
     - "{{ repo_path }}/alerts"
     - "{{ repo_path }}/power-actions"
     - "{{ repo_path }}/config"
