@@ -35,9 +35,9 @@
   },
   "packageManager": "pnpm@9.15.9",
   "devDependencies": {
-    "@playwright/test": "^1.56.1",
+    "@playwright/test": "^1.62.1",
     "husky": "^9.1.7",
-    "playwright": "^1.56.1"
+    "playwright": "^1.62.1"
   },
   "pnpm": {
     "overrides": {
@@ -58,6 +58,6 @@
     }
   },
   "dependencies": {
-    "node-cron": "^3.0.3"
+    "node-cron": "^4.6.0"
   }
 }
