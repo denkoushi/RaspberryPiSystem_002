@@ -136,6 +136,20 @@ traffic, or update a terminal.
   dependency correction. All 991 deployment tests, 11 incident mutations, real
   Compose recreation, 157 migrations, 20 deploy-status API tests, 43 Ansible
   contracts, playbook checks, and run-resource cleanup passed again.
+- [x] (2026-08-05 06:54+09:00) The next hosted run exposed two test-evidence
+  boundaries after the initial deploy-status gate: runtime-recovery E2E had no
+  non-maintenance status fixture, and the Kiosk SOP generator treated the
+  fail-closed placeholder as the routed page. Added the explicit E2E authority
+  and fixture-specific routed-DOM readiness. Runtime-recovery passed 2/2; the
+  generated SOP is current and all 18 production-bundle browser tests pass.
+- [x] (2026-08-05 07:00+09:00) Repeated the complete deploy contract after the
+  browser-harness corrections. All 991 deployment tests, 11 incident
+  mutations, the real Compose recreation test, all 157 PostgreSQL migrations,
+  20 deploy-status API tests, 43 Ansible profile tests, playbook checks, and
+  zero run-labelled Docker residue passed again.
+- [x] (2026-08-05 07:02+09:00) Repeated all 103 CI contract tests and the
+  document audit after the browser-harness corrections; both passed, and the
+  final local diff remains free of whitespace errors.
 - [ ] Complete final local diff review, hosted review and required CI,
   exact-main evidence, and fresh read-only production evidence. Production and
   failed-run recovery remain frozen behind a separate approval.
@@ -215,6 +229,12 @@ traffic, or update a terminal.
   Evidence: PR #1180's first `docker-security (api)` run detected
   `CVE-2026-18446` in explicitly pinned `fast-uri` 3.1.4. The corrected 3.1.5
   lockfile is clean under a freshly updated local Trivy database.
+
+- Observation: test harnesses that isolate application APIs must model the
+  initial deployment authority now that routed kiosk content is fail-closed.
+  Evidence: runtime-recovery correctly stayed on maintenance when its catch-all
+  fixture returned 503 for deploy status, and the SOP generator's generic
+  heading wait could observe the maintenance heading before the routed DOM.
 
 ## Decision Log
 

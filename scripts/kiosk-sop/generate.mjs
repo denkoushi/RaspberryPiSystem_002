@@ -99,6 +99,11 @@ async function captureScreens(definition, targetRoot) {
             await page.addStyleTag({
               content: '*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important;border-radius:0!important}'
             });
+            // KioskLayout intentionally renders the maintenance screen until
+            // the initial deploy-status authority is known. Do not mistake
+            // that fail-closed placeholder for the routed SOP page.
+            await page.getByRole('heading', { name: 'メンテナンス中', exact: true }).waitFor({ state: 'hidden' });
+            await adapter.waitForPageReady(page, sheet.id);
             await page.locator('h1').first().waitFor({ state: 'visible' });
             await adapter.prepareSheet(page, sheet.id);
             await page.evaluate(async () => {

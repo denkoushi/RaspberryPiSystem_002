@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 610,
-    "totalLines": 170624,
-    "totalBytes": 12789051,
+    "totalLines": 170644,
+    "totalBytes": 12790454,
     "withFrontmatter": 277,
     "withStatus": 133,
     "sourceOfTruthDeclared": 95,
@@ -35816,8 +35816,8 @@
     },
     {
       "path": "docs/plans/standard-release-production-path-audit-execplan.md",
-      "lineCount": 511,
-      "byteSize": 28477,
+      "lineCount": 531,
+      "byteSize": 29880,
       "hasFrontmatter": true,
       "title": "Standard release production-path execution audit",
       "status": "in-progress",
