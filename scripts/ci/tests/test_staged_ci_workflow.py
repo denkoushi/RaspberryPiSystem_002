@@ -62,6 +62,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
             "docker_api",
             "docker_web",
             "release_pair",
+            "runtime_rehearsal",
             "docker_matrix",
         }:
             self.assertIn(f"      {output}: ${{{{ steps.classify.outputs.{output} }}}}", classifier)
@@ -100,10 +101,12 @@ class StagedCiWorkflowTests(unittest.TestCase):
             "web",
             "db-infra",
             "deploy-contract",
+            "container-runtime-rehearsal",
             "client",
             "release-build-contract",
             "release-api-image",
             "release-web-image",
+            "release-runtime-rehearsal",
             "docker-security",
             "e2e-smoke",
             "e2e-tests",
@@ -120,11 +123,12 @@ class StagedCiWorkflowTests(unittest.TestCase):
         contract = job_block(CI, "release-build-contract")
         api = job_block(CI, "release-api-image")
         web = job_block(CI, "release-web-image")
+        rehearsal = job_block(CI, "release-runtime-rehearsal")
         gates = job_block(CI, "release-gates")
         release_set = job_block(CI, "release-set")
         docker = job_block(CI, "docker-security")
 
-        for block in (contract, api, web, gates, release_set):
+        for block in (contract, api, web, rehearsal, gates, release_set):
             self.assertIn("github.event_name == 'push'", block)
             self.assertIn("github.ref == 'refs/heads/main'", block)
             self.assertIn(
@@ -155,6 +159,9 @@ class StagedCiWorkflowTests(unittest.TestCase):
             web,
         )
         self.assertIn('"linux/arm64"', RELEASE_IMAGE_BUILDER)
+        self.assertIn("runs-on: ubuntu-24.04-arm", rehearsal)
+        self.assertIn("--sha \"$GITHUB_SHA\"", rehearsal)
+        self.assertNotIn("--stable-seconds", rehearsal)
         self.assertIn("!(\n          github.event_name == 'push'", docker)
         self.assertIn("always() &&", gates)
         self.assertIn("--required codeql", gates)
@@ -165,6 +172,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
             "release-build-contract",
             "release-api-image",
             "release-web-image",
+            "release-runtime-rehearsal",
             "release-gates",
         ):
             self.assertIn(

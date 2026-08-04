@@ -186,6 +186,7 @@ class ClassifyChangesTests(unittest.TestCase):
                 "docker_api=false",
                 "docker_web=false",
                 "release_pair=true",
+                "runtime_rehearsal=true",
                 'docker_matrix=[{"dockerfile":"./infrastructure/docker/Dockerfile.api","image":"api","tag":"raspisys-api:ci"},{"dockerfile":"./infrastructure/docker/Dockerfile.web","image":"web","tag":"raspisys-web:ci"}]',
             ],
         )
@@ -221,6 +222,31 @@ class ClassifyChangesTests(unittest.TestCase):
 
         self.assertFalse(
             self.classify(Change("M", "docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html"))["releasePair"]
+        )
+
+    def test_runtime_rehearsal_follows_release_runtime_and_fails_closed(self) -> None:
+        for path in (
+            "apps/api/src/main.ts",
+            "apps/web/src/main.tsx",
+            "apps/api/prisma/migrations/20260804000000_audit/migration.sql",
+            "infrastructure/docker/docker-compose.phase3.yml",
+            "infrastructure/ansible/playbooks/server-config-release.yml",
+            "scripts/deploy/pi5-blue-green.sh",
+            "scripts/server/deploy.sh",
+        ):
+            with self.subTest(path=path):
+                self.assertTrue(
+                    self.classify(Change("M", path))["runtimeRehearsal"]
+                )
+        self.assertFalse(
+            self.classify(Change("M", "docs/guides/deployment.md"))[
+                "runtimeRehearsal"
+            ]
+        )
+        self.assertTrue(
+            self.classify(Change("M", "unknown-runtime-surface/file"))[
+                "runtimeRehearsal"
+            ]
         )
 
     def test_kiosk_sop_inputs_select_fail_closed_generation(self) -> None:
