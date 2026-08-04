@@ -81,6 +81,7 @@ bash scripts/deploy/tests/test-verify-phase12-real.sh
 bash scripts/deploy/tests/test-pi5-image-deploy.sh
 bash scripts/deploy/tests/test-pi5-blue-green.sh
 bash scripts/deploy/tests/test-pi5-blue-green-maintenance-container.sh
+bash scripts/deploy/tests/test-terminal-runtime-manifest-docker.sh
 bash scripts/deploy/tests/test-web-static-routing.sh
 python3 -m unittest discover -s scripts/deploy/tests -p 'test_*.py'
 python3 scripts/deploy/production_path_audit.py validate
