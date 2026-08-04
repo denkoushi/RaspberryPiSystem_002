@@ -71,6 +71,7 @@ class ClassifiedChange:
     codeql: bool
     docker_images: frozenset[str]
     release_pair: bool
+    runtime_rehearsal: bool
     fail_closed_reason: str | None = None
 
 
@@ -256,6 +257,7 @@ def classify_change(change: Change) -> ClassifiedChange:
             codeql=True,
             docker_images=frozenset({"api", "web"}),
             release_pair=True,
+            runtime_rehearsal=True,
             fail_closed_reason=f"{status_kind.lower()} change requires the full suite",
         )
     if status_kind not in {"A", "M"}:
@@ -265,6 +267,7 @@ def classify_change(change: Change) -> ClassifiedChange:
             codeql=True,
             docker_images=frozenset({"api", "web"}),
             release_pair=True,
+            runtime_rehearsal=True,
             fail_closed_reason=f"unsupported git status {change.status!r}",
         )
 
@@ -276,6 +279,7 @@ def classify_change(change: Change) -> ClassifiedChange:
             codeql=True,
             docker_images=frozenset({"api", "web"}),
             release_pair=True,
+            runtime_rehearsal=True,
             fail_closed_reason=f"unknown path {change.path!r}",
         )
     if categories == FULL_SUITE:
@@ -285,14 +289,17 @@ def classify_change(change: Change) -> ClassifiedChange:
             codeql=True,
             docker_images=frozenset({"api", "web"}),
             release_pair=True,
+            runtime_rehearsal=True,
             fail_closed_reason=f"global CI configuration path {change.path!r}",
         )
+    release_pair = release_pair_for_path(change.path)
     return ClassifiedChange(
         change=change,
         categories=categories,
         codeql=codeql_for_path(change.path),
         docker_images=docker_images_for_path(change.path),
-        release_pair=release_pair_for_path(change.path),
+        release_pair=release_pair,
+        runtime_rehearsal=release_pair,
     )
 
 
@@ -304,12 +311,14 @@ def classify_changes(
     codeql = False
     docker_images: set[str] = set()
     release_pair = False
+    runtime_rehearsal = False
     reasons: list[str] = []
     for item in classified:
         selected.update(item.categories)
         codeql = codeql or item.codeql
         docker_images.update(item.docker_images)
         release_pair = release_pair or item.release_pair
+        runtime_rehearsal = runtime_rehearsal or item.runtime_rehearsal
         if item.fail_closed_reason:
             reasons.append(item.fail_closed_reason)
 
@@ -318,11 +327,12 @@ def classify_changes(
         codeql = True
         docker_images.update({"api", "web"})
         release_pair = True
+        runtime_rehearsal = True
         reasons.append(force_full_reason)
 
     matrix_images = sorted(docker_images) or ["api", "web"]
     return {
-        "schemaVersion": 3,
+        "schemaVersion": 4,
         "mode": "enforced",
         "fileCount": len(classified),
         "fullSuite": selected == set(FULL_SUITE),
@@ -330,6 +340,7 @@ def classify_changes(
         "dockerApi": "api" in docker_images,
         "dockerWeb": "web" in docker_images,
         "releasePair": release_pair,
+        "runtimeRehearsal": runtime_rehearsal,
         "dockerMatrix": [DOCKER_MATRIX_ITEMS[image] for image in matrix_images],
         "categories": {category: category in selected for category in CATEGORIES},
         "failClosedReasons": reasons,
@@ -346,6 +357,7 @@ def classify_changes(
                 "codeql": item.codeql,
                 "dockerImages": sorted(item.docker_images),
                 "releasePair": item.release_pair,
+                "runtimeRehearsal": item.runtime_rehearsal,
                 **(
                     {"failClosedReason": item.fail_closed_reason}
                     if item.fail_closed_reason
@@ -400,6 +412,7 @@ def render_markdown(result: dict[str, object]) -> str:
         f"Docker API image: **{'yes' if result['dockerApi'] else 'no'}**  ",
         f"Docker Web image: **{'yes' if result['dockerWeb'] else 'no'}**",
         f"ARM64 release pair: **{'yes' if result['releasePair'] else 'no'}**",
+        f"Isolated runtime rehearsal: **{'yes' if result['runtimeRehearsal'] else 'no'}**",
         "",
         "| Category | Selected |",
         "| --- | --- |",
@@ -427,6 +440,9 @@ def render_github_output(result: dict[str, object]) -> str:
     lines.append(f"docker_api={'true' if result['dockerApi'] else 'false'}")
     lines.append(f"docker_web={'true' if result['dockerWeb'] else 'false'}")
     lines.append(f"release_pair={'true' if result['releasePair'] else 'false'}")
+    lines.append(
+        f"runtime_rehearsal={'true' if result['runtimeRehearsal'] else 'false'}"
+    )
     lines.append(
         "docker_matrix="
         + json.dumps(result["dockerMatrix"], separators=(",", ":"), sort_keys=True)

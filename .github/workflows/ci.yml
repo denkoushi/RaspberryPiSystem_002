@@ -38,6 +38,7 @@ jobs:
       docker_api: ${{ steps.classify.outputs.docker_api }}
       docker_web: ${{ steps.classify.outputs.docker_web }}
       release_pair: ${{ steps.classify.outputs.release_pair }}
+      runtime_rehearsal: ${{ steps.classify.outputs.runtime_rehearsal }}
       docker_matrix: ${{ steps.classify.outputs.docker_matrix }}
       full_suite: ${{ steps.classify.outputs.full_suite }}
     steps:
@@ -400,7 +401,66 @@ jobs:
           key: ansible-collections-${{ runner.os }}-community-general-v1
 
       - name: Validate deploy contracts
+        env:
+          PRODUCTION_PATH_AUDIT_OUTPUT: ${{ runner.temp }}/production-path-audit-report.json
         run: bash scripts/ci/run-deploy-contracts-local.sh --install-collections
+
+      - name: Upload production-path audit evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: production-path-audit-${{ github.sha }}
+          path: ${{ runner.temp }}/production-path-audit-report.json
+          if-no-files-found: error
+          retention-days: 14
+
+  container-runtime-rehearsal:
+    name: container-runtime-rehearsal
+    needs: change-classification
+    if: >-
+      ${{
+        needs.change-classification.outputs.runtime_rehearsal == 'true' &&
+        !(github.event_name == 'push' && github.ref == 'refs/heads/main')
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact candidate source
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build native production API and Web images
+        env:
+          API_IMAGE: raspi-runtime-audit-api:${{ github.sha }}
+          WEB_IMAGE: raspi-runtime-audit-web:${{ github.sha }}
+        run: |
+          set -euo pipefail
+          docker buildx build --load --platform linux/amd64 \
+            --build-arg "BUILD_COMMIT=$GITHUB_SHA" \
+            --build-arg BUILD_CONFIG_HASH=production-path-audit \
+            --tag "$API_IMAGE" \
+            --file infrastructure/docker/Dockerfile.api .
+          docker buildx build --load --platform linux/amd64 \
+            --build-arg "BUILD_COMMIT=$GITHUB_SHA" \
+            --build-arg BUILD_CONFIG_HASH=production-path-audit \
+            --build-arg "VITE_RELEASE_SHA=$GITHUB_SHA" \
+            --tag "$WEB_IMAGE" \
+            --file infrastructure/docker/Dockerfile.web .
+
+      - name: Run isolated native runtime rehearsal
+        env:
+          API_IMAGE: raspi-runtime-audit-api:${{ github.sha }}
+          WEB_IMAGE: raspi-runtime-audit-web:${{ github.sha }}
+        run: >-
+          bash scripts/ci/rehearse-release-runtime.sh
+          --api-image "$API_IMAGE"
+          --web-image "$WEB_IMAGE"
+          --sha "$GITHUB_SHA"
+          --platform linux/amd64
+          --skip-pull
+          --stable-seconds 10
 
   client:
     name: client
@@ -673,6 +733,47 @@ jobs:
           exit-code: '1'
           scanners: 'vuln'
           trivyignores: '.trivyignore'
+
+  release-runtime-rehearsal:
+    name: release-runtime-rehearsal
+    needs:
+      - change-classification
+      - release-api-image
+      - release-web-image
+    if: >-
+      ${{
+        always() &&
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main' &&
+        needs.change-classification.outputs.release_pair == 'true' &&
+        needs['release-api-image'].result == 'success' &&
+        needs['release-web-image'].result == 'success'
+      }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout exact main source
+        uses: actions/checkout@v6
+
+      - name: Log in to GHCR for exact digest rehearsal
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Rehearse exact ARM64 release pair with fixed stability hold
+        env:
+          API_IMAGE: ${{ needs['release-api-image'].outputs.repository }}@${{ needs['release-api-image'].outputs.digest }}
+          WEB_IMAGE: ${{ needs['release-web-image'].outputs.repository }}@${{ needs['release-web-image'].outputs.digest }}
+        run: >-
+          bash scripts/ci/rehearse-release-runtime.sh
+          --api-image "$API_IMAGE"
+          --web-image "$WEB_IMAGE"
+          --sha "$GITHUB_SHA"
 
   docker-security:
     name: docker-security (${{ matrix.image }})
@@ -973,10 +1074,12 @@ jobs:
       - web
       - db-infra
       - deploy-contract
+      - container-runtime-rehearsal
       - client
       - release-build-contract
       - release-api-image
       - release-web-image
+      - release-runtime-rehearsal
       - docker-security
       - e2e-smoke
       - e2e-tests
@@ -1001,12 +1104,15 @@ jobs:
           DB_INFRA_RESULT: ${{ needs['db-infra'].result }}
           DEPLOY_CONTRACT_SELECTED: ${{ needs['change-classification'].outputs.deploy_contract }}
           DEPLOY_CONTRACT_RESULT: ${{ needs['deploy-contract'].result }}
+          CONTAINER_RUNTIME_REHEARSAL_SELECTED: ${{ needs['change-classification'].outputs.runtime_rehearsal == 'true' && !(github.event_name == 'push' && github.ref == 'refs/heads/main') }}
+          CONTAINER_RUNTIME_REHEARSAL_RESULT: ${{ needs['container-runtime-rehearsal'].result }}
           CLIENT_SELECTED: ${{ needs['change-classification'].outputs.client }}
           CLIENT_RESULT: ${{ needs.client.result }}
           RELEASE_PAIR_SELECTED: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs['change-classification'].outputs.release_pair == 'true' }}
           RELEASE_BUILD_CONTRACT_RESULT: ${{ needs['release-build-contract'].result }}
           RELEASE_API_RESULT: ${{ needs['release-api-image'].result }}
           RELEASE_WEB_RESULT: ${{ needs['release-web-image'].result }}
+          RELEASE_RUNTIME_REHEARSAL_RESULT: ${{ needs['release-runtime-rehearsal'].result }}
           DOCKER_SECURITY_SELECTED: ${{ needs['change-classification'].outputs.docker_security == 'true' && !(github.event_name == 'push' && github.ref == 'refs/heads/main' && needs['change-classification'].outputs.release_pair == 'true') }}
           DOCKER_SECURITY_RESULT: ${{ needs['docker-security'].result }}
           E2E_SELECTED: ${{ needs['change-classification'].outputs.e2e }}
@@ -1023,10 +1129,12 @@ jobs:
             "web=$WEB_SELECTED:$WEB_RESULT" \
             "db-infra=$DB_INFRA_SELECTED:$DB_INFRA_RESULT" \
             "deploy-contract=$DEPLOY_CONTRACT_SELECTED:$DEPLOY_CONTRACT_RESULT" \
+            "container-runtime-rehearsal=$CONTAINER_RUNTIME_REHEARSAL_SELECTED:$CONTAINER_RUNTIME_REHEARSAL_RESULT" \
             "client=$CLIENT_SELECTED:$CLIENT_RESULT" \
             "release-build-contract=$RELEASE_PAIR_SELECTED:$RELEASE_BUILD_CONTRACT_RESULT" \
             "release-api-image=$RELEASE_PAIR_SELECTED:$RELEASE_API_RESULT" \
             "release-web-image=$RELEASE_PAIR_SELECTED:$RELEASE_WEB_RESULT" \
+            "release-runtime-rehearsal=$RELEASE_PAIR_SELECTED:$RELEASE_RUNTIME_REHEARSAL_RESULT" \
             "docker-security=$DOCKER_SECURITY_SELECTED:$DOCKER_SECURITY_RESULT" \
             "e2e-smoke=$E2E_SELECTED:$E2E_SMOKE" \
             "e2e-tests=$E2E_SELECTED:$E2E_TESTS" \
@@ -1072,6 +1180,7 @@ jobs:
       - release-build-contract
       - release-api-image
       - release-web-image
+      - release-runtime-rehearsal
       - release-gates
     if: >-
       ${{
@@ -1082,6 +1191,7 @@ jobs:
         needs['release-build-contract'].result == 'success' &&
         needs['release-api-image'].result == 'success' &&
         needs['release-web-image'].result == 'success' &&
+        needs['release-runtime-rehearsal'].result == 'success' &&
         needs['release-gates'].result == 'success'
       }}
     runs-on: ubuntu-latest
