@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -24,6 +25,8 @@ INCIDENT_IDS = (
     "derivative-storage-mount",
     "migration-gateway-image",
     "slot-web-runtime-config",
+    "kiosk-initial-deploy-status-gate",
+    "terminal-runtime-recreate-metadata",
 )
 
 
@@ -125,6 +128,74 @@ slot_web_validate green
         return completed.returncode == 0
 
 
+def terminal_runtime_recreate_probe(root: Path) -> bool:
+    path = root / "scripts/deploy/terminal-runtime-manifest.py"
+    spec = importlib.util.spec_from_file_location(
+        "production_incident_terminal_runtime_manifest", path
+    )
+    if spec is None or spec.loader is None:
+        return False
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    baseline_config = {
+        "Env": ["AUDIT_VALUE=stable"],
+        "Image": "agent:latest",
+        "Hostname": "0123456789ab",
+        "WorkingDir": "/app/agent",
+        "Healthcheck": None,
+        "ExposedPorts": None,
+        "Labels": {
+            "com.docker.compose.project": "docker",
+            "com.docker.compose.service": "nfc-agent",
+            "com.docker.compose.version": "2.20.0",
+            "com.docker.compose.config-hash": "old-hash",
+        },
+    }
+    recreated_config = {
+        **baseline_config,
+        "Hostname": "terminal-host",
+        "Labels": {
+            **baseline_config["Labels"],
+            "com.docker.compose.version": "5.1.1",
+            "com.docker.compose.config-hash": "new-hash",
+            "com.docker.compose.image": "sha256:" + "a" * 64,
+            "com.docker.compose.replace": "nfc-agent-1",
+        },
+    }
+    baseline_host = {
+        "LogConfig": {"Type": "json-file", "Config": {}},
+        "CgroupnsMode": "",
+        "IpcMode": "",
+        "Runtime": "",
+        "ShmSize": 0,
+    }
+    recreated_host = {
+        **baseline_host,
+        "CgroupnsMode": "private",
+        "IpcMode": "private",
+        "Runtime": "runc",
+        "ShmSize": 67_108_864,
+    }
+    return (
+        module.MANIFEST_VERSION >= 3
+        and 2 in module.LEGACY_MANIFEST_VERSIONS
+        and module.RUNTIME_CONFIG_VERSION == 2
+        and module._functional_runtime_digest(
+            baseline_config,
+            baseline_host,
+            container_id="0" * 64,
+            require_supported_capture=False,
+        )
+        == module._functional_runtime_digest(
+            recreated_config,
+            recreated_host,
+            container_id="1" * 64,
+            require_supported_capture=False,
+        )
+    )
+
+
 def incident_status(root: Path) -> dict[str, bool]:
     ansible = read(root, "scripts/deploy/rolling_release/backends/ansible.py")
     server_role = read(root, "infrastructure/ansible/roles/server/tasks/main.yml")
@@ -132,6 +203,7 @@ def incident_status(root: Path) -> dict[str, bool]:
     terminal_preflight = read(root, "scripts/deploy/rolling_release/terminal_preflight.py")
     phase3 = read(root, "infrastructure/docker/docker-compose.phase3.yml")
     migration = read(root, "infrastructure/docker/docker-compose.phase3.migration.yml")
+    kiosk_layout = read(root, "apps/web/src/layouts/KioskLayout.tsx")
     local_tls_direct = (
         'elif [ -n \\"$USE_LOCAL_CERTS\\" ]; then caddy run --config '
         '/srv/Caddyfile.local.template'
@@ -187,6 +259,10 @@ def incident_status(root: Path) -> dict[str, bool]:
         "migration-gateway-image": migration_gateway_probe(root),
         "slot-web-runtime-config": slot_runtime_contract
         and slot_web_runtime_config_probe(root),
+        "kiosk-initial-deploy-status-gate": (
+            "deployStatus === undefined || deployStatus.isMaintenance" in kiosk_layout
+        ),
+        "terminal-runtime-recreate-metadata": terminal_runtime_recreate_probe(root),
     }
 
 

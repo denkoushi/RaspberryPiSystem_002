@@ -12,6 +12,15 @@ function isTargetLazyChunk(route: Route): boolean {
 
 async function isolateApi(page: Page): Promise<void> {
   await page.route('**/api/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/system/deploy-status') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ isMaintenance: false })
+      });
+      return;
+    }
     await route.fulfill({
       status: 503,
       contentType: 'application/json',

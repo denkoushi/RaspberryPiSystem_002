@@ -193,8 +193,12 @@ export function KioskLayout() {
     deployVerificationId
   ]);
 
-  // メンテナンス中はメンテナンス画面を表示
-  if (deployStatus?.isMaintenance) {
+  // A fresh document has no query cache yet. Mounting the routed page before
+  // the first deploy-status response can let a synchronous browser dialog in
+  // that page (for example window.prompt) block the event loop before this
+  // layout can observe a verifying release and acknowledge it. Keep the
+  // application route fail-closed until the deployment authority is known.
+  if (deployStatus === undefined || deployStatus.isMaintenance) {
     return <KioskMaintenanceScreen />;
   }
 

@@ -146,7 +146,7 @@ async function prepareSheet(page, sheetId) {
   }
 }
 
-function createAdapter(supportedSheets) {
+function createAdapter(supportedSheets, readyTargetId) {
   const assertSupportedSheet = (sheetId) => {
     if (!supportedSheets.has(sheetId)) {
       throw new Error(`Unregistered inspection-drawing SOP sheet: ${sheetId}`);
@@ -154,6 +154,10 @@ function createAdapter(supportedSheets) {
   };
   return Object.freeze({
     assertSupportedSheet,
+    async waitForPageReady(page, sheetId) {
+      assertSupportedSheet(sheetId);
+      await page.locator(`[data-kiosk-sop-target="${readyTargetId}"]`).waitFor({ state: 'visible' });
+    },
     async installApiFixtures(page, sheetId, unexpectedRequests) {
       assertSupportedSheet(sheetId);
       return installApiFixtures(page, sheetId, unexpectedRequests);
@@ -166,8 +170,8 @@ function createAdapter(supportedSheets) {
 }
 
 const adapters = new Map([
-  ['inspection-drawing-library-v1', createAdapter(librarySheets)],
-  ['inspection-drawing-edit-v1', createAdapter(editSheets)]
+  ['inspection-drawing-library-v1', createAdapter(librarySheets, 'inspection-navigation')],
+  ['inspection-drawing-edit-v1', createAdapter(editSheets, 'template-metadata')]
 ]);
 
 export function resolveInspectionDrawingCaptureAdapter(fixtureId) {

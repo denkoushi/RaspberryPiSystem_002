@@ -15,6 +15,7 @@ import {
 import { sha256, stableJson } from '../../packages/kiosk-sop-core/dist/node.js';
 
 import { assertNoManualTarget, resolveSingleVisibleTarget } from './capture-contract.mjs';
+import { chromiumLaunchOptions, generatorVersion } from './capture-runtime.mjs';
 import { resolveInspectionDrawingCaptureAdapter } from './inspection-drawing-capture-adapter.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -25,18 +26,6 @@ const docsPreviewPath = join(repoRoot, 'docs/design-previews/kiosk-inspection-dr
 const mode = process.argv[2] ?? 'generate';
 const outputArgIndex = process.argv.indexOf('--output-root');
 const outputRoot = outputArgIndex >= 0 ? resolve(process.argv[outputArgIndex + 1]) : committedRoot;
-const generatorVersion = '1.1.0';
-const chromiumLaunchOptions = {
-  headless: true,
-  args: [
-    '--disable-gpu',
-    '--disable-skia-runtime-opts',
-    '--disable-lcd-text',
-    '--font-render-hinting=none',
-    '--force-color-profile=srgb'
-  ]
-};
-
 async function waitForServer(url, timeoutMs = 60000) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
@@ -99,6 +88,11 @@ async function captureScreens(definition, targetRoot) {
             await page.addStyleTag({
               content: '*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important;border-radius:0!important}'
             });
+            // KioskLayout intentionally renders the maintenance screen until
+            // the initial deploy-status authority is known. Do not mistake
+            // that fail-closed placeholder for the routed SOP page.
+            await page.getByRole('heading', { name: 'メンテナンス中', exact: true }).waitFor({ state: 'hidden' });
+            await adapter.waitForPageReady(page, sheet.id);
             await page.locator('h1').first().waitFor({ state: 'visible' });
             await adapter.prepareSheet(page, sheet.id);
             await page.evaluate(async () => {

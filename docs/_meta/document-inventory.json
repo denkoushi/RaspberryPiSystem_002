@@ -15,17 +15,17 @@
     ]
   },
   "summary": {
-    "documentCount": 609,
-    "totalLines": 170419,
-    "totalBytes": 12777267,
-    "withFrontmatter": 276,
-    "withStatus": 132,
-    "sourceOfTruthDeclared": 94,
+    "documentCount": 610,
+    "totalLines": 170698,
+    "totalBytes": 12793734,
+    "withFrontmatter": 277,
+    "withStatus": 133,
+    "sourceOfTruthDeclared": 95,
     "execPlanReferences": 64,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 25,
-    "localLinkCount": 5657,
+    "localLinkCount": 5658,
     "brokenLocalLinkCount": 87,
     "documentsOver1000Lines": 29,
     "documentsOver3000Lines": 6,
@@ -26039,6 +26039,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/knowledge-base/KB-406-pi4-canary-initial-status-and-runtime-recreate.md",
+      "lineCount": 139,
+      "byteSize": 7144,
+      "hasFrontmatter": true,
+      "title": "Pi4 canary initial deploy-status gate and runtime recreation drift",
+      "status": "active",
+      "source_of_truth": "true",
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md",
       "lineCount": 203,
       "byteSize": 12918,
@@ -27572,8 +27587,8 @@
     },
     {
       "path": "docs/knowledge-base/index.md",
-      "lineCount": 871,
-      "byteSize": 262873,
+      "lineCount": 872,
+      "byteSize": 263196,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - 索引",
       "status": null,
@@ -30137,6 +30152,11 @@
         {
           "href": "./KB-405-pi5-slot-web-runtime-config-drift.md",
           "targetPath": "docs/knowledge-base/KB-405-pi5-slot-web-runtime-config-drift.md",
+          "exists": true
+        },
+        {
+          "href": "./KB-406-pi4-canary-initial-status-and-runtime-recreate.md",
+          "targetPath": "docs/knowledge-base/KB-406-pi4-canary-initial-status-and-runtime-recreate.md",
           "exists": true
         },
         {
@@ -35796,8 +35816,8 @@
     },
     {
       "path": "docs/plans/standard-release-production-path-audit-execplan.md",
-      "lineCount": 432,
-      "byteSize": 23344,
+      "lineCount": 571,
+      "byteSize": 32344,
       "hasFrontmatter": true,
       "title": "Standard release production-path execution audit",
       "status": "in-progress",

@@ -24,7 +24,7 @@ class ProductionPathAuditTest(unittest.TestCase):
         validated = AUDIT.validate_matrix(self.matrix)
         self.assertEqual(validated["routeStageCount"], 25)
         self.assertEqual(validated["pi5PhaseCount"], 13)
-        self.assertEqual(validated["incidentCount"], 9)
+        self.assertEqual(validated["incidentCount"], 11)
         self.assertEqual(validated["uncovered"], [])
 
     def test_missing_route_or_incident_fails_closed(self) -> None:

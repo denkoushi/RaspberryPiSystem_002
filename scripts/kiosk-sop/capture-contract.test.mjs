@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { assertNoManualTarget, resolveSingleVisibleTarget } from './capture-contract.mjs';
+import { chromiumLaunchOptions, generatorVersion } from './capture-runtime.mjs';
 import { resolveInspectionDrawingCaptureAdapter } from './inspection-drawing-capture-adapter.mjs';
 
 const context = { scenarioId: 'edit', sheetId: 'edit-basics', targetId: 'save-revision' };
@@ -33,4 +34,12 @@ test('rejects unregistered fixture and sheet identifiers', () => {
     () => resolveInspectionDrawingCaptureAdapter('inspection-drawing-library-v1').assertSupportedSheet('edit-basics'),
     /Unregistered.*sheet/
   );
+});
+
+test('pins CPU-independent Chromium text rasterization', () => {
+  assert.equal(generatorVersion, '1.2.0');
+  assert.ok(chromiumLaunchOptions.args.includes('--disable-skia-runtime-opts'));
+  assert.ok(chromiumLaunchOptions.args.includes('--disable-lcd-text'));
+  assert.ok(chromiumLaunchOptions.args.includes('--disable-font-subpixel-positioning'));
+  assert.ok(chromiumLaunchOptions.args.includes('--font-render-hinting=none'));
 });

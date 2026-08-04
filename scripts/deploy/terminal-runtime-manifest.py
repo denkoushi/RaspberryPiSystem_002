@@ -28,7 +28,10 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 
-MANIFEST_VERSION = 2
+MANIFEST_VERSION = 3
+LEGACY_MANIFEST_VERSIONS = frozenset({2})
+RUNTIME_CONFIG_VERSION = 2
+LEGACY_RUNTIME_CONFIG_VERSION = 1
 RECEIPT_VERSION = 1
 MARKER_PREFIX = "TERMINAL_RUNTIME_MANIFEST_RESULT:"
 ERROR_MARKER_PREFIX = "TERMINAL_RUNTIME_MANIFEST_ERROR:"
@@ -1127,6 +1130,103 @@ def _require_supported_capture_runtime(
             )
 
 
+def _reproducible_runtime_contract(
+    container_config: Any, host_config: Any
+) -> dict[str, Any]:
+    if not isinstance(container_config, dict) or not isinstance(host_config, dict):
+        raise RuntimeManifestError("Docker functional runtime config is malformed")
+    # Docker and Compose add implementation metadata and daemon-selected
+    # defaults to inspect output. Those values are not a reproducible service
+    # contract: they can change across a package upgrade even when the same
+    # sealed Compose model recreates an equivalent container. Hash only fields
+    # that the current allowlisted agent Compose contract can intentionally
+    # control and that are not already sealed separately below.
+    labels = container_config.get("Labels")
+    if labels is not None and not isinstance(labels, dict):
+        raise RuntimeManifestError("Docker functional runtime labels are malformed")
+    custom_labels = {
+        key: value
+        for key, value in (labels or {}).items()
+        if not key.startswith("com.docker.compose.")
+    }
+    config = {
+        key: container_config.get(key)
+        for key in (
+            "WorkingDir",
+            "Healthcheck",
+            "ExposedPorts",
+            "StopSignal",
+            "StopTimeout",
+            "Shell",
+        )
+    }
+    config["Labels"] = custom_labels
+
+    host_defaults = {
+        "CgroupnsMode": {None, "", "private"},
+        "IpcMode": {None, "", "private"},
+        "Runtime": {None, "", "runc"},
+        "ShmSize": {None, 0, 67_108_864},
+    }
+    host = {
+        key: None if host_config.get(key) in defaults else host_config.get(key)
+        for key, defaults in host_defaults.items()
+    }
+    for key in (
+        "LogConfig",
+        "PortBindings",
+        "ExtraHosts",
+        "Dns",
+        "DnsOptions",
+        "DnsSearch",
+        "Links",
+        "VolumesFrom",
+        "GroupAdd",
+        "Tmpfs",
+        "Sysctls",
+        "Ulimits",
+        "AutoRemove",
+        "PublishAllPorts",
+        "VolumeDriver",
+        "Cgroup",
+        "OomScoreAdj",
+        "PidMode",
+        "UTSMode",
+        "UsernsMode",
+        "Isolation",
+        "CpuShares",
+        "Memory",
+        "NanoCpus",
+        "CgroupParent",
+        "BlkioWeight",
+        "BlkioWeightDevice",
+        "BlkioDeviceReadBps",
+        "BlkioDeviceWriteBps",
+        "BlkioDeviceReadIOps",
+        "BlkioDeviceWriteIOps",
+        "CpuPeriod",
+        "CpuQuota",
+        "CpuRealtimePeriod",
+        "CpuRealtimeRuntime",
+        "CpusetCpus",
+        "CpusetMems",
+        "DeviceCgroupRules",
+        "DeviceRequests",
+        "MemoryReservation",
+        "MemorySwap",
+        "MemorySwappiness",
+        "OomKillDisable",
+        "PidsLimit",
+        "MaskedPaths",
+        "ReadonlyPaths",
+    ):
+        host[key] = host_config.get(key)
+    return _normalise_bounded_json(
+        {"containerConfig": config, "hostConfig": host},
+        label="Docker functional runtime config",
+    )
+
+
 def _functional_runtime_digest(
     container_config: Any,
     host_config: Any,
@@ -1137,27 +1237,9 @@ def _functional_runtime_digest(
     if not isinstance(container_config, dict) or not isinstance(host_config, dict):
         raise RuntimeManifestError("Docker functional runtime config is malformed")
     environment_digest = _runtime_environment_digest(container_config.get("Env"))
-    config = dict(container_config)
-    config.pop("Env", None)
-    config.pop("Image", None)
-    hostname = config.get("Hostname")
-    if (
-        isinstance(hostname, str)
-        and len(hostname) == 12
-        and container_id.startswith(hostname)
-    ):
-        config["Hostname"] = "<docker-generated>"
-    labels = config.get("Labels")
-    if isinstance(labels, dict):
-        labels = dict(labels)
-        labels.pop("com.docker.compose.version", None)
-        config["Labels"] = labels
     if require_supported_capture:
-        _require_supported_capture_runtime(config, host_config)
-    functional = _normalise_bounded_json(
-        {"containerConfig": config, "hostConfig": dict(host_config)},
-        label="Docker functional runtime config",
-    )
+        _require_supported_capture_runtime(container_config, host_config)
+    functional = _reproducible_runtime_contract(container_config, host_config)
     return (
         environment_digest,
         hashlib.sha256(
@@ -1355,6 +1437,7 @@ def _capture_docker_record(
             "runtimeSecuritySha256": None,
             "runtimeEnvironmentSha256": None,
             "runtimeConfigSha256": None,
+            "runtimeConfigVersion": RUNTIME_CONFIG_VERSION,
             "rollbackTag": None,
         }
     inspected = _inspect_container(
@@ -1377,12 +1460,18 @@ def _capture_docker_record(
         "runtimeSecuritySha256": inspected["runtimeSecuritySha256"],
         "runtimeEnvironmentSha256": inspected["runtimeEnvironmentSha256"],
         "runtimeConfigSha256": inspected["runtimeConfigSha256"],
+        "runtimeConfigVersion": RUNTIME_CONFIG_VERSION,
         "rollbackTag": _rollback_tag(run_id, host, safe_service),
     }
 
 
 def _validate_docker_record(
-    value: Any, *, run_id: str, host: str, require_paths: bool
+    value: Any,
+    *,
+    run_id: str,
+    host: str,
+    require_paths: bool,
+    manifest_version: int,
 ) -> dict[str, Any]:
     expected_keys = {
         "service",
@@ -1398,8 +1487,20 @@ def _validate_docker_record(
         "runtimeConfigSha256",
         "rollbackTag",
     }
+    if manifest_version == MANIFEST_VERSION:
+        expected_keys.add("runtimeConfigVersion")
     if not isinstance(value, dict) or set(value) != expected_keys:
         raise RuntimeManifestError("Docker record fields are malformed")
+    runtime_config_version = value.get(
+        "runtimeConfigVersion", LEGACY_RUNTIME_CONFIG_VERSION
+    )
+    expected_runtime_config_version = (
+        RUNTIME_CONFIG_VERSION
+        if manifest_version == MANIFEST_VERSION
+        else LEGACY_RUNTIME_CONFIG_VERSION
+    )
+    if runtime_config_version != expected_runtime_config_version:
+        raise RuntimeManifestError("Docker functional runtime version is unsupported")
     service = _validate_service(value.get("service"))
     state = value.get("state")
     compose = _validate_compose_context(value.get("compose"), require_files=require_paths)
@@ -1430,6 +1531,7 @@ def _validate_docker_record(
             "runtimeSecuritySha256": None,
             "runtimeEnvironmentSha256": None,
             "runtimeConfigSha256": None,
+            "runtimeConfigVersion": runtime_config_version,
             "rollbackTag": None,
         }
     if state != "present" or type(value.get("running")) is not bool:
@@ -1471,6 +1573,7 @@ def _validate_docker_record(
         "runtimeSecuritySha256": runtime_security_sha256,
         "runtimeEnvironmentSha256": runtime_environment_sha256,
         "runtimeConfigSha256": runtime_config_sha256,
+        "runtimeConfigVersion": runtime_config_version,
         "rollbackTag": rollback_tag,
     }
 
@@ -1488,7 +1591,8 @@ def _validate_manifest(
         "manifestSha256",
     }:
         raise RuntimeManifestError("runtime manifest fields are malformed")
-    if value.get("version") != MANIFEST_VERSION:
+    manifest_version = value.get("version")
+    if manifest_version not in {MANIFEST_VERSION, *LEGACY_MANIFEST_VERSIONS}:
         raise RuntimeManifestError("runtime manifest version is unsupported")
     if value.get("runId") != context.run_id or value.get("host") != context.host:
         raise RuntimeManifestError("runtime manifest identity does not match its path")
@@ -1513,6 +1617,7 @@ def _validate_manifest(
             run_id=context.run_id,
             host=context.host,
             require_paths=require_paths,
+            manifest_version=manifest_version,
         )
         for item in raw_docker
     ]
@@ -2195,10 +2300,18 @@ def _docker_record_matches(record: Mapping[str, Any]) -> bool:
             "mounts",
             "runtimeSecuritySha256",
             "runtimeEnvironmentSha256",
-            "runtimeConfigSha256",
             "compose",
         )
     }
+    # Version-two manifests used a hash of raw Docker inspect output. That
+    # digest included Compose-generated labels, automatic hostnames, and
+    # daemon defaults, so a faithful force recreation after a Compose/Engine
+    # update cannot reproduce it. Preserve fail-closed checks for every
+    # separately sealed field, while accepting that legacy digest only as
+    # historical evidence. New manifests use the reproducible contract and
+    # require its exact digest.
+    if record["runtimeConfigVersion"] == RUNTIME_CONFIG_VERSION:
+        expected["runtimeConfigSha256"] = record["runtimeConfigSha256"]
     actual_comparable = {key: actual[key] for key in expected}
     if actual_comparable != expected:
         return False
