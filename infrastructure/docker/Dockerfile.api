@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:20-bookworm-slim AS workspace
+FROM node:26-bookworm-slim AS workspace
 WORKDIR /app
 ENV NODE_OPTIONS=--max-old-space-size=4096
 
@@ -44,7 +44,7 @@ WORKDIR /app/apps/api
 RUN nice -n 10 pnpm prisma generate
 RUN nice -n 10 pnpm run build
 
-FROM node:20-bookworm-slim AS api-runtime
+FROM node:26-bookworm-slim AS api-runtime
 WORKDIR /app
 ARG NDLOCR_LITE_COMMIT=89f815899f0e85d236a1a90e75da012ca932dc7b
 # Bump the date to invalidate the cached apt layer; otherwise the CI build
