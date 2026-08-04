@@ -1,0 +1,180 @@
+---
+- name: Stage a CA-signed certificate for the normal-factory Pi5
+  hosts: server
+  gather_facts: false
+  become: true
+  serial: 1
+  vars:
+    repo_path: /opt/RaspberryPiSystem_002
+    pi5_certificate_path: "{{ repo_path }}/certs/cert.pem"
+    pi5_private_key_path: "{{ repo_path }}/certs/key.pem"
+
+  pre_tasks:
+    - name: Refuse TalkPlaza and require explicit certificate activation approval
+      ansible.builtin.assert:
+        that:
+          - "'talkplaza' not in group_names"
+          - normal_factory_local_ca_certificate_activation_approved | default(false) | bool
+          - local_ca_certificate_source | default('') | length > 0
+          - pi5_leaf_certificate_source | default('') | length > 0
+          - pi5_leaf_private_key_source | default('') | length > 0
+          - local_ca_certificate_sha256 | default('') is match('^[0-9a-f]{64}$')
+          - pi5_leaf_certificate_sha256 | default('') is match('^[0-9a-f]{64}$')
+        fail_msg: >-
+          This playbook is normal-factory only and requires separately approved
+          CA, leaf certificate, private-key sources, and the leaf digest.
+
+    - name: Inspect the controller certificate inputs
+      ansible.builtin.stat:
+        path: "{{ item.path }}"
+        checksum_algorithm: "{{ item.checksum_algorithm }}"
+      loop:
+        - {path: "{{ local_ca_certificate_source }}", checksum_algorithm: sha256}
+        - {path: "{{ pi5_leaf_certificate_source }}", checksum_algorithm: sha256}
+        - {path: "{{ pi5_leaf_private_key_source }}", checksum_algorithm: sha1}
+      loop_control:
+        label: "{{ item.path | basename }}"
+      delegate_to: localhost
+      become: false
+      register: pi5_certificate_inputs
+      no_log: true
+
+    - name: Require regular non-linked controller certificate inputs
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists | default(false)
+          - item.stat.isreg | default(false)
+          - not (item.stat.islnk | default(false))
+      loop: "{{ pi5_certificate_inputs.results }}"
+      no_log: true
+
+    - name: Require the approved CA and leaf certificate digests
+      ansible.builtin.assert:
+        that:
+          - pi5_certificate_inputs.results[0].stat.checksum == local_ca_certificate_sha256
+          - pi5_certificate_inputs.results[1].stat.checksum == pi5_leaf_certificate_sha256
+
+    - name: Require the leaf certificate to remain valid for at least 30 days
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - x509
+          - -in
+          - "{{ pi5_leaf_certificate_source }}"
+          - -noout
+          - -checkend
+          - '2592000'
+      delegate_to: localhost
+      become: false
+      changed_when: false
+
+    - name: Verify the leaf certificate chain and server IP on the controller
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - verify
+          - -purpose
+          - sslserver
+          - -verify_ip
+          - "{{ server_ip }}"
+          - -CAfile
+          - "{{ local_ca_certificate_source }}"
+          - "{{ pi5_leaf_certificate_source }}"
+      delegate_to: localhost
+      become: false
+      changed_when: false
+
+    - name: Read the leaf certificate public modulus
+      ansible.builtin.command:
+        argv: [openssl, x509, -in, "{{ pi5_leaf_certificate_source }}", -noout, -modulus]
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      register: pi5_leaf_modulus
+      no_log: true
+
+    - name: Read the leaf private-key public modulus
+      ansible.builtin.command:
+        argv: [openssl, rsa, -in, "{{ pi5_leaf_private_key_source }}", -noout, -modulus]
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      register: pi5_key_modulus
+      no_log: true
+
+    - name: Require the approved private key to match the leaf certificate
+      ansible.builtin.assert:
+        that:
+          - pi5_leaf_modulus.stdout == pi5_key_modulus.stdout
+      no_log: true
+
+    - name: Capture the current Pi5 certificate and key for rollback
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - "{{ pi5_certificate_path }}"
+        - "{{ pi5_private_key_path }}"
+      register: pi5_certificate_before
+      no_log: true
+
+  tasks:
+    - name: Stage and validate the CA-signed Pi5 certificate
+      block:
+        - name: Install the approved leaf certificate
+          ansible.builtin.copy:
+            src: "{{ pi5_leaf_certificate_source }}"
+            dest: "{{ pi5_certificate_path }}"
+            owner: "{{ ansible_user }}"
+            group: "{{ ansible_user }}"
+            mode: '0644'
+
+        - name: Install the approved leaf private key
+          ansible.builtin.copy:
+            src: "{{ pi5_leaf_private_key_source }}"
+            dest: "{{ pi5_private_key_path }}"
+            owner: "{{ ansible_user }}"
+            group: "{{ ansible_user }}"
+            mode: '0600'
+          no_log: true
+
+        - name: Validate Caddy against the staged certificate without reloading it
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/docker
+              - compose
+              - --env-file
+              - "{{ repo_path }}/infrastructure/docker/.env"
+              - -f
+              - "{{ repo_path }}/infrastructure/docker/docker-compose.server.yml"
+              - exec
+              - -T
+              - web
+              - caddy
+              - validate
+              - --config
+              - /etc/caddy/Caddyfile
+          args:
+            chdir: "{{ repo_path }}"
+          changed_when: false
+      rescue:
+        - name: Restore the previous Pi5 certificate
+          ansible.builtin.copy:
+            content: "{{ pi5_certificate_before.results[0].content | b64decode }}"
+            dest: "{{ pi5_certificate_path }}"
+            owner: "{{ ansible_user }}"
+            group: "{{ ansible_user }}"
+            mode: '0644'
+          no_log: true
+
+        - name: Restore the previous Pi5 private key
+          ansible.builtin.copy:
+            content: "{{ pi5_certificate_before.results[1].content | b64decode }}"
+            dest: "{{ pi5_private_key_path }}"
+            owner: "{{ ansible_user }}"
+            group: "{{ ansible_user }}"
+            mode: '0600'
+          no_log: true
+
+        - name: Stop after restoring the previous Pi5 certificate pair
+          ansible.builtin.fail:
+            msg: Certificate staging failed; the previous Pi5 certificate pair was restored.

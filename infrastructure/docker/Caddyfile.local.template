@@ -27,6 +27,13 @@
     }
   }
 
+  # 管理画面へのIP制限。ADMIN_ALLOW_NETS は標準リリース前に明示設定する。
+  @admin_protect {
+    path /admin*
+    not remote_ip {$ADMIN_ALLOW_NETS}
+  }
+  respond @admin_protect "Forbidden" 403
+
   # 公開URLは維持しつつ、APIでSHA-256整合性を確認して配信する。
   handle /storage/thumbnails/* {
     uri replace /storage/thumbnails/ /api/storage/thumbnails/

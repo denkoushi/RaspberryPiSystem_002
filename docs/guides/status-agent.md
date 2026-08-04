@@ -125,7 +125,7 @@ findmnt -no OPTIONS /
 | 症状 | 対策 |
 | --- | --- |
 | `CLIENT_KEY_REQUIRED` | 設定ファイルの `CLIENT_KEY` がサーバーに登録されているか確認 |
-| TLS 証明書エラー | 一時的に `TLS_SKIP_VERIFY=1` を設定（社内ネットワーク限定） |
+| TLS 証明書エラー | CA配布、証明書SAN、端末時刻を確認する。`TLS_SKIP_VERIFY=1`は移行中の既存設定に限り、新規の恒久対処にはしない |
 | CPU 温度が `null` | `TEMPERATURE_FILE` で thermal パスを明示 |
 | systemd が失敗する | `journalctl -u status-agent.service -xe` で詳細を確認 |
 | `/admin/clients` にSDヘルスログが出ない | Pi4 kioskの `/etc/raspi-status-agent.conf` で `STORAGE_HEALTH_ENABLED=1` か確認。通常は1時間ごとのため、即時確認は `--dry-run` を使う |
@@ -148,7 +148,7 @@ cat > ~/.status-agent.conf << 'EOF'
 API_BASE_URL=https://100.106.158.2/api
 CLIENT_ID=mac-kiosk-1
 CLIENT_KEY=<サーバーに登録済みのクライアントキー>
-TLS_SKIP_VERIFY=1
+TLS_SKIP_VERIFY=0
 LOCATION=開発環境
 REQUEST_TIMEOUT=10
 EOF

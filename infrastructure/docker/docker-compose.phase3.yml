@@ -139,7 +139,7 @@ services:
     environment: &web-environment
       SLOT_API_UPSTREAM: api-blue:8080
       NFC_AGENT_HOST: ${NFC_AGENT_HOST:-192.168.10.224}
-      ADMIN_ALLOW_NETS: ${ADMIN_ALLOW_NETS:-"192.168.10.0/24 192.168.128.0/24 100.64.0.0/10 127.0.0.1/32"}
+      ADMIN_ALLOW_NETS: ${ADMIN_ALLOW_NETS:?ADMIN_ALLOW_NETS is required}
     volumes: &web-volumes
       - thumbnail-storage:/srv/storage/thumbnails:ro
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/certs:/srv/certs:ro

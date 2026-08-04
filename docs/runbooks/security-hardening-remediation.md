@@ -62,15 +62,22 @@ The code-level fixes in KB-393 (Batch A/B) are **deployed to production** (PR #9
 
 ## C-7. Admin IP allowlist on local TLS (High)
 
-- File: `infrastructure/docker/Caddyfile.local.template` (missing `@admin_protect` present in `Caddyfile.production`).
-- Action: add `@admin_protect` + `ADMIN_ALLOW_NETS` (operator's LAN CIDR) to the local template.
-- Risk: wrong CIDR locks admins out of `/admin`. Confirm the site LAN CIDR first.
+- Repository preparation complete: local/production/Blue-Green Caddy use the same
+  `@admin_protect`, Compose has no fallback, and standard preflight verifies the
+  current management source before mutation.
+- Operational action still gated: run the separately approved
+  `prepare-pi5-admin-network-policy.yml` once before deploying the new contract.
+- Risk: wrong CIDR locks admins out of `/admin`; the preparer rejects a list that
+  omits its live SSH source and restores the previous `.env` if Compose validation fails.
 
 ## C-8. TLS verify defaults (High/Medium)
 
 - Files: `clients/haizen-agent/haizen_agent/config.py` (default `insecure`), `raspi-haizen-agent.conf.j2`, `inventory*.yml` (`status_agent_tls_skip_verify`), `scripts/register-clients.sh` (`CURL_INSECURE`).
 - Action: distribute an internal CA (or pin), flip defaults to `system`/verify. Stage per site.
 - Risk: verification failures if CA not yet distributed. Distribute CA before flipping.
+- Repository preparation: CA trust distribution, Pi5 certificate staging, and
+  verified read-only health are separate normal-factory-only approval gates.
+  TLS exception removal remains intentionally blocked until all-host evidence exists.
 
 ## C-9. Query-string API keys / metrics / backup-health (Medium)
 

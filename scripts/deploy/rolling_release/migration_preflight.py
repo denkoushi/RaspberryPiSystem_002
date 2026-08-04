@@ -9,6 +9,7 @@ unit, checkout, migration, image build, or service transition can start first.
 from __future__ import annotations
 
 import fcntl
+import ipaddress
 import json
 import os
 import re
@@ -217,12 +218,66 @@ def _due_management_password_configured(
     return result.stdout.strip() == "t"
 
 
+def _admin_network_policy_ready(
+    project: str = "/opt/RaspberryPiSystem_002",
+) -> bool:
+    path = os.path.join(project, "infrastructure", "docker", ".env")
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags)
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise OSError("Docker environment is not a regular file")
+        payload = os.read(descriptor, 262145)
+    finally:
+        os.close(descriptor)
+    if len(payload) > 262144:
+        raise OSError("Docker environment is too large")
+
+    values = []
+    for line in payload.decode("utf-8").splitlines():
+        match = re.fullmatch(r"[ \t]*ADMIN_ALLOW_NETS[ \t]*=[ \t]*(.*?)[ \t]*", line)
+        if match is None:
+            continue
+        value = match.group(1)
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+            value = value[1:-1]
+        values.append(value)
+    if len(values) != 1:
+        return False
+
+    raw_networks = values[0].split()
+    if not 1 <= len(raw_networks) <= 16:
+        return False
+    try:
+        networks = [ipaddress.ip_network(item, strict=True) for item in raw_networks]
+    except ValueError:
+        return False
+    if any(
+        (network.version == 4 and network.prefixlen < 8)
+        or (network.version == 6 and network.prefixlen < 32)
+        for network in networks
+    ):
+        return False
+
+    connection = os.environ.get("SSH_CONNECTION", "").split()
+    if len(connection) != 4:
+        raise OSError("management source is unavailable")
+    try:
+        source = ipaddress.ip_address(connection[0])
+    except ValueError as error:
+        raise OSError("management source is malformed") from error
+    return any(
+        source.version == network.version and source in network for network in networks
+    )
+
+
 def execute(
     spec: Mapping[str, Any],
     *,
     run_command: Callable[..., Any] = _default_run,
     server_client_id_reader: Callable[[], str] | None = None,
     due_management_password_reader: Callable[[], bool] | None = None,
+    admin_network_policy_reader: Callable[[], bool] | None = None,
     sleep: Callable[[float], None] = time.sleep,
 ) -> int:
     project = str(spec["project"])
@@ -257,6 +312,30 @@ def execute(
             print("[ERROR] migration preflight Pi5 identity mismatch", file=sys.stderr)
             return _report(
                 EX_CONFIG, issue_code="migration.pi5-identity-mismatch"
+            )
+
+        try:
+            admin_network_policy_ready = (
+                admin_network_policy_reader
+                or (lambda: _admin_network_policy_ready(project))
+            )()
+        except (OSError, UnicodeError) as error:
+            print(
+                f"[ERROR] migration preflight could not verify administrator network policy: {error}",
+                file=sys.stderr,
+            )
+            return _report(
+                EX_TEMPFAIL,
+                issue_code="migration.admin-network-policy-readiness-unavailable",
+            )
+        if not admin_network_policy_ready:
+            print(
+                "[ERROR] migration preflight requires an explicit administrator allowlist containing the management source",
+                file=sys.stderr,
+            )
+            return _report(
+                EX_CONFIG,
+                issue_code="migration.admin-network-policy-unconfigured",
             )
 
         try:
@@ -374,6 +453,7 @@ def execute(
             EX_OK,
             proofs=(
                 "migration.pi5-identity",
+                "migration.admin-network-policy-configured",
                 "migration.due-management-password-configured",
                 "migration.candidate-object",
                 "migration.production-ledger",

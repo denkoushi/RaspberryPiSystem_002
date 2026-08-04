@@ -14,6 +14,11 @@ SERVER_ROLE = (
 PERMISSION_MIGRATION = (
     ROOT / "infrastructure/ansible/playbooks/prepare-pi5-runtime-permissions.yml"
 ).read_text()
+ADMIN_POLICY_MIGRATION = (
+    ROOT / "infrastructure/ansible/playbooks/prepare-pi5-admin-network-policy.yml"
+).read_text()
+LOCAL_CADDY = (ROOT / "infrastructure/docker/Caddyfile.local.template").read_text()
+PRODUCTION_CADDY = (ROOT / "infrastructure/docker/Caddyfile.production").read_text()
 
 
 def service(compose: str, name: str) -> str:
@@ -71,6 +76,28 @@ class Pi5ContainerRuntimeBoundaryTest(unittest.TestCase):
         for path in ("storage", "alerts", "power-actions", "config", "/opt/backups", "/var/log/caddy"):
             self.assertIn(path, SERVER_ROLE)
             self.assertIn(path, PERMISSION_MIGRATION)
+
+    def test_admin_routes_require_an_explicit_allowlist_in_every_runtime(self):
+        for compose in (SERVER, PHASE3):
+            self.assertIn(
+                "ADMIN_ALLOW_NETS: ${ADMIN_ALLOW_NETS:?ADMIN_ALLOW_NETS is required}",
+                compose,
+            )
+            self.assertNotIn("ADMIN_ALLOW_NETS:-", compose)
+        for caddy in (LOCAL_CADDY, PRODUCTION_CADDY):
+            self.assertIn("not remote_ip {$ADMIN_ALLOW_NETS}", caddy)
+            self.assertIn('respond @admin_protect "Forbidden" 403', caddy)
+            self.assertNotIn("{$ADMIN_ALLOW_NETS:", caddy)
+
+    def test_admin_policy_bootstrap_is_separately_approved_and_rollback_safe(self):
+        self.assertIn(
+            "pi5_admin_network_policy_migration_approved | default(false) | bool",
+            ADMIN_POLICY_MIGRATION,
+        )
+        self.assertIn("SSH_CONNECTION", ADMIN_POLICY_MIGRATION)
+        self.assertIn("management source is outside", ADMIN_POLICY_MIGRATION)
+        self.assertIn("Capture the Docker environment for rollback", ADMIN_POLICY_MIGRATION)
+        self.assertIn("Restore the Docker environment", ADMIN_POLICY_MIGRATION)
 
 
 if __name__ == "__main__":

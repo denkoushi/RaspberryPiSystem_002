@@ -153,10 +153,30 @@ when the repository implementation is ready.
   Python deployment tests, 43 Ansible contracts, redacted Ansible syntax
   checks (including the gated permission migration), and both isolated
   PostgreSQL contracts passed. Run-owned Docker resources returned to zero.
+- [x] (2026-08-04 09:18+09:00) Removed the Caddy administrator-network
+  fallback from production, local, and Blue/Green runtime definitions. Added
+  a separately approved one-time policy preparer and a remote read-only
+  preflight that rejects missing, malformed, overbroad, or management-source-
+  excluding CIDRs before fetch, checkout, or service mutation.
+- [x] (2026-08-04 09:20+09:00) Added normal-factory-only, separately approved
+  stages for CA trust distribution and CA-signed Pi5 certificate placement,
+  plus a read-only client probe that retains hostname and certificate
+  verification. The stages checksum inputs and restore prior files on failure;
+  none were run against a managed host.
+- [x] (2026-08-04 09:34+09:00) Passed 93 CI structure tests, 971 deployment
+  Python tests, all shell and Blue/Green safety contracts, 43 Ansible
+  contracts, syntax checks for all gated policy/CA Playbooks, and both
+  isolated PostgreSQL contracts. Disposable Docker resources returned to zero.
 - [ ] Require local CA verification and an explicit `ADMIN_ALLOW_NETS` value,
-  with preflight rejection before any production mutation.
-- [ ] Run focused and aggregate tests, audit the entire diff, update this plan,
-  and prepare a Draft PR. Merge and operational rollout remain unapproved.
+  with preflight rejection before any production mutation. Repository controls
+  are prepared; this remains open until CA distribution, Pi5 certificate
+  activation, all-client verification, and the evidence-gated removal of the
+  current normal-factory TLS exceptions are separately approved and completed.
+- [x] (2026-08-04 09:35+09:00) Ran focused and aggregate tests, audited the
+  complete local diff, updated this plan, and left the worktree free of
+  run-owned Docker resources.
+- [ ] Push or prepare a Draft PR. Push, PR creation, merge, and operational
+  rollout remain unapproved.
 
 ## Surprises & Discoveries
 
@@ -248,6 +268,19 @@ when the repository implementation is ready.
   users. A generated inventory containing exactly those fields avoids both a
   backup regression and expansion of API secret authority.
 
+- Observation: the local Caddy template had no `/admin*` network matcher while
+  production Caddy and Compose silently supplied a broad default.
+  Evidence: local runtime would expose the administrator SPA to every source
+  reaching port 443, and a missing Compose variable was indistinguishable from
+  an intentional allowlist. All runtimes now consume one required value.
+
+- Observation: flipping agent TLS flags in the repository before CA trust and
+  a SAN-bearing Pi5 certificate exist would turn a security fix into a fleet
+  outage.
+  Evidence: normal-factory status and torque agents still contain explicit
+  transitional exceptions. The repository deliberately leaves them unchanged
+  until the new read-only verification Playbook succeeds on every target.
+
 ## Decision Log
 
 - Decision: split repository preparation into independently testable
@@ -287,6 +320,21 @@ when the repository implementation is ready.
   add unbounded delay and mixes data mutation with container activation. A
   separately approved idempotent migration is observable and reversible by
   applying the prior owner if needed.
+  Date/Author: 2026-08-04 / Codex.
+
+- Decision: bootstrap `ADMIN_ALLOW_NETS` through one explicit rollback-safe
+  Playbook, then make every ordinary release prove the stored allowlist still
+  contains its live SSH management source.
+  Rationale: the candidate release cannot safely create the prerequisite after
+  its own preflight, and a static list cannot prove that the current operator
+  will retain access.
+  Date/Author: 2026-08-04 / Codex.
+
+- Decision: keep CA trust, server-certificate placement, runtime restart, and
+  client verification as distinct operational gates; remove TLS exceptions
+  only in a later evidence-backed repository change.
+  Rationale: every intermediate stage preserves the current connection path
+  and has a narrow rollback boundary. TalkPlaza remains outside the workflow.
   Date/Author: 2026-08-04 / Codex.
 
 - Decision: exclude TalkPlaza files from all edits in this plan.

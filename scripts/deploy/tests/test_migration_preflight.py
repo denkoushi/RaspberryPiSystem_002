@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from scripts.deploy.rolling_release import migration_preflight
 
@@ -57,6 +58,7 @@ class MigrationPreflightTest(unittest.TestCase):
                 self.spec(project),
                 run_command=run,
                 server_client_id_reader=lambda: "raspberrypi5-server",
+                admin_network_policy_reader=lambda: True,
                 due_management_password_reader=lambda: True,
             )
 
@@ -86,6 +88,7 @@ class MigrationPreflightTest(unittest.TestCase):
                 self.spec(project),
                 run_command=run,
                 server_client_id_reader=lambda: "raspberrypi5-server",
+                admin_network_policy_reader=lambda: True,
                 due_management_password_reader=lambda: True,
             )
 
@@ -108,6 +111,7 @@ class MigrationPreflightTest(unittest.TestCase):
                     self.spec(project),
                     run_command=lambda *args, **kwargs: calls.append((args, kwargs)),
                     server_client_id_reader=lambda: "raspberrypi5-server",
+                    admin_network_policy_reader=lambda: True,
                     due_management_password_reader=lambda: True,
                 )
             finally:
@@ -138,6 +142,7 @@ class MigrationPreflightTest(unittest.TestCase):
                 self.spec(project),
                 run_command=run,
                 server_client_id_reader=lambda: "raspberrypi5-server",
+                admin_network_policy_reader=lambda: True,
                 due_management_password_reader=lambda: True,
                 sleep=sleeps.append,
             )
@@ -171,6 +176,7 @@ class MigrationPreflightTest(unittest.TestCase):
                 self.spec(project),
                 run_command=run,
                 server_client_id_reader=lambda: "raspberrypi5-server",
+                admin_network_policy_reader=lambda: True,
                 due_management_password_reader=lambda: True,
                 sleep=lambda _seconds: None,
             )
@@ -192,11 +198,66 @@ class MigrationPreflightTest(unittest.TestCase):
                 self.spec(project),
                 run_command=lambda argv, **_options: calls.append(tuple(argv)),
                 server_client_id_reader=lambda: "raspberrypi5-server",
+                admin_network_policy_reader=lambda: True,
                 due_management_password_reader=lambda: False,
             )
 
         self.assertEqual(outcome, migration_preflight.EX_CONFIG)
         self.assertEqual(calls, [])
+
+    def test_admin_network_policy_requires_explicit_cidr_and_management_source(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Path(temporary).resolve()
+            environment = project / "infrastructure/docker/.env"
+            environment.parent.mkdir(parents=True)
+
+            environment.write_text(
+                'ADMIN_ALLOW_NETS="100.64.0.0/10 192.168.10.0/24"\n',
+                encoding="utf-8",
+            )
+            with patch.dict(
+                os.environ,
+                {"SSH_CONNECTION": "100.101.2.3 50000 100.106.158.2 22"},
+            ):
+                self.assertTrue(
+                    migration_preflight._admin_network_policy_ready(str(project))
+                )
+
+            with patch.dict(
+                os.environ,
+                {"SSH_CONNECTION": "172.16.0.5 50000 100.106.158.2 22"},
+            ):
+                self.assertFalse(
+                    migration_preflight._admin_network_policy_ready(str(project))
+                )
+
+            environment.write_text('ADMIN_ALLOW_NETS="0.0.0.0/0"\n', encoding="utf-8")
+            with patch.dict(
+                os.environ,
+                {"SSH_CONNECTION": "100.101.2.3 50000 100.106.158.2 22"},
+            ):
+                self.assertFalse(
+                    migration_preflight._admin_network_policy_ready(str(project))
+                )
+
+    def test_missing_admin_network_policy_stops_before_database_or_fetch(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Path(temporary).resolve()
+            (project / "logs/deploy").mkdir(parents=True)
+            calls: list[tuple[str, ...]] = []
+            database_checks: list[bool] = []
+
+            outcome = migration_preflight.execute(
+                self.spec(project),
+                run_command=lambda argv, **_options: calls.append(tuple(argv)),
+                server_client_id_reader=lambda: "raspberrypi5-server",
+                admin_network_policy_reader=lambda: False,
+                due_management_password_reader=lambda: database_checks.append(True) or True,
+            )
+
+        self.assertEqual(outcome, migration_preflight.EX_CONFIG)
+        self.assertEqual(calls, [])
+        self.assertEqual(database_checks, [])
 
     def test_due_management_readiness_failure_is_incomplete(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -210,6 +271,7 @@ class MigrationPreflightTest(unittest.TestCase):
                 self.spec(project),
                 run_command=lambda *_args, **_options: None,
                 server_client_id_reader=lambda: "raspberrypi5-server",
+                admin_network_policy_reader=lambda: True,
                 due_management_password_reader=unavailable,
             )
 

@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 607,
-    "totalLines": 169401,
-    "totalBytes": 12716447,
+    "totalLines": 169470,
+    "totalBytes": 12721060,
     "withFrontmatter": 274,
     "withStatus": 130,
     "sourceOfTruthDeclared": 92,
@@ -18829,8 +18829,8 @@
     },
     {
       "path": "docs/guides/deployment.md",
-      "lineCount": 320,
-      "byteSize": 27752,
+      "lineCount": 334,
+      "byteSize": 28926,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -21151,7 +21151,7 @@
     {
       "path": "docs/guides/status-agent.md",
       "lineCount": 223,
-      "byteSize": 9712,
+      "byteSize": 9784,
       "hasFrontmatter": false,
       "title": "🛰️ status-agent セットアップガイド",
       "status": null,
@@ -35295,8 +35295,8 @@
     },
     {
       "path": "docs/plans/production-secrets-and-runtime-execplan.md",
-      "lineCount": 547,
-      "byteSize": 30554,
+      "lineCount": 595,
+      "byteSize": 33506,
       "hasFrontmatter": true,
       "title": "Remove production credential fallbacks and minimize the Pi5 runtime",
       "status": "in_progress",
@@ -38246,8 +38246,8 @@
     },
     {
       "path": "docs/runbooks/security-hardening-remediation.md",
-      "lineCount": 86,
-      "byteSize": 6792,
+      "lineCount": 93,
+      "byteSize": 7258,
       "hasFrontmatter": false,
       "title": "Runbook: Security hardening remediation (Batch C — operator actions)",
       "status": null,
@@ -39305,7 +39305,7 @@
     {
       "path": "docs/security/phase9-10-specifications.md",
       "lineCount": 656,
-      "byteSize": 25313,
+      "byteSize": 25262,
       "hasFrontmatter": false,
       "title": "Phase 9/10 セキュリティ機能詳細仕様書",
       "status": null,

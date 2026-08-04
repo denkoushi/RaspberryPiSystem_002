@@ -63,6 +63,7 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 cd "$ROOT_DIR"
+export ADMIN_ALLOW_NETS="${ADMIN_ALLOW_NETS:-127.0.0.1/32}"
 
 echo "[deploy-contract] parse all Ansible Jinja templates"
 python3 scripts/ci/ansible_template_contracts.py
@@ -106,6 +107,10 @@ STATIC_PLAYBOOKS=(
   playbooks/deploy-terminal-profile.yml
   playbooks/server-config-release.yml
   playbooks/prepare-pi5-runtime-permissions.yml
+  playbooks/prepare-pi5-admin-network-policy.yml
+  playbooks/prepare-client-local-ca-trust.yml
+  playbooks/activate-pi5-local-ca-certificate.yml
+  playbooks/verify-client-local-tls.yml
   playbooks/update-clients.yml
   playbooks/health-check.yml
   playbooks/manage-system-configs.yml
