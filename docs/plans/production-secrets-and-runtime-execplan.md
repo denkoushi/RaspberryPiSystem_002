@@ -353,6 +353,36 @@ when the repository implementation is ready.
   contracts. Labeled disposable containers, volumes, and networks each
   returned to zero. Push, PR, merge, production role activation, and release
   retry remain separate gates.
+- [x] (2026-08-04 17:45+09:00) After separate approval, created and validated
+  the fresh production backup
+  `db_backup_database_role_preparation_20260804_174409.sql.gz`, then ran the
+  backup-gated role preparer. It created the non-privileged `raspi_app` and
+  `raspi_migrator` roles, transferred database ownership to the migrator,
+  proved the intended application and migration boundaries, and left the
+  healthy active API on its retained rollback credential.
+- [x] (2026-08-04 17:54+09:00) The standard read-only preflights passed in the
+  real transport scopes: Pi5-plus-Pi3 as `20260804-085218-2a0b3f` and
+  Pi5-plus-six-Pi4 as `20260804-085321-801036`.
+- [x] (2026-08-04 18:12+09:00) Started the separately approved Pi5-plus-Pi3
+  standard release as `20260804-085935-a750aa`. Signed API/Web artifact
+  verification and server configuration succeeded, and 287 active-API probes
+  reported no error. The release then failed closed while validating the
+  candidate API, before migration, traffic switch, or Pi3 update. The active
+  blue API/Web and database remained healthy.
+- [x] (2026-08-04 18:18+09:00) Reproduced the candidate startup in an isolated,
+  unrouted diagnostic container and found an exact read-only-filesystem error:
+  the API initializes `part-measurement-drawings-derivatives`, but production
+  Compose had no writable volume for that namespace. The diagnostic container
+  was removed; the signed candidate images remained available for inspection.
+- [x] (2026-08-04 18:27+09:00) On branch
+  `fix/pi5-drawing-derivative-storage-mount`, added the missing bind-backed
+  production volume, Blue/Green external-volume mapping, Mac development mount,
+  and Ansible host-directory preparation. New storage-contract tests failed
+  before the fix and pass afterward. The complete local deployment contract
+  passes with 104 Ansible templates, 977 Python deployment tests, 43 Ansible
+  contracts, Blue/Green and rollback safety, Web production build, and both
+  isolated PostgreSQL boundaries. Integration and the production retry remain
+  separate gates.
 
 ## Surprises & Discoveries
 
@@ -712,6 +742,15 @@ without removing legacy authority or restarting a service. Operational rollout
 is still incomplete until this correction is integrated, exact-main preflight
 passes, and a separately approved standard release succeeds.
 
+The database-role preparer has now completed against a fresh validated backup,
+and the role-scoped boundaries pass in production without switching the active
+rollback slot. The next standard release reached signed candidate startup but
+failed closed because one API cache namespace lacked a writable production
+volume. The active blue slot remained healthy and Pi3 was untouched. The
+minimal mount and host-directory correction now passes the complete local
+deployment contract; integration, exact-main preflight, and another approved
+standard release remain open.
+
 ## Context and Orientation
 
 Ansible inventory is the tracked description of factory hosts. A Vault file is
@@ -918,3 +957,8 @@ Revision note 2026-08-04: Recorded the safe dedicated-database-role candidate
 failure, completed the missing runtime/migration/Ansible wiring, and added the
 backup- and approval-gated production role preparer. Local contracts pass; the
 encrypted Vault values and every production mutation remain separate gates.
+
+Revision note 2026-08-04: Recorded the approved production role preparation,
+the second fail-closed candidate incident, and the writable derivative-storage
+correction. The live slot and Pi3 were unchanged, and complete local contracts
+pass; integration and production retry remain separate gates.

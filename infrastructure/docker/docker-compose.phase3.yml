@@ -54,6 +54,7 @@ services:
       - pdf-pages-storage:/app/storage/pdf-pages
       - signage-rendered-storage:/app/storage/signage-rendered
       - part-measurement-drawings-storage:/app/storage/part-measurement-drawings
+      - part-measurement-drawings-derivatives-storage:/app/storage/part-measurement-drawings-derivatives
       - assembly-procedure-images-storage:/app/storage/assembly-procedure-images
       - measuring-instrument-genres-storage:/app/storage/measuring-instrument-genres
       - pallet-machine-illustrations-storage:/app/storage/pallet-machine-illustrations
@@ -219,6 +220,9 @@ volumes:
   part-measurement-drawings-storage:
     external: true
     name: ${PI5_VOLUME_PREFIX:-docker}_part-measurement-drawings-storage
+  part-measurement-drawings-derivatives-storage:
+    external: true
+    name: ${PI5_VOLUME_PREFIX:-docker}_part-measurement-drawings-derivatives-storage
   assembly-procedure-images-storage:
     external: true
     name: ${PI5_VOLUME_PREFIX:-docker}_assembly-procedure-images-storage
