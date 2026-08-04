@@ -63,6 +63,20 @@ describe('KioskLayout deploy status handling', () => {
     vi.stubEnv('VITE_RELEASE_SHA', BUNDLE_RELEASE_SHA);
   });
 
+  it('does not mount kiosk content before the initial deploy status is known', () => {
+    const { rerender } = render(
+      <MemoryRouter initialEntries={['/kiosk']}><KioskLayout /></MemoryRouter>
+    );
+
+    expect(screen.getByText('maintenance-screen')).toBeInTheDocument();
+    expect(screen.queryByText('normal-kiosk-content')).not.toBeInTheDocument();
+
+    deployStatus = { isMaintenance: false };
+    rerender(<MemoryRouter initialEntries={['/kiosk']}><KioskLayout /></MemoryRouter>);
+
+    expect(screen.getByText('normal-kiosk-content')).toBeInTheDocument();
+  });
+
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
