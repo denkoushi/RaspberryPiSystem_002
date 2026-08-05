@@ -1024,6 +1024,34 @@ print("TERMINAL_PREFLIGHT_RESULT:" + encoded)
             "blob",
         )
 
+    def test_signage_candidate_contract_owns_dedicated_sealed_executor(self):
+        selected = {
+            **target("signage-a"),
+            "profile": "signage",
+            "user": "signageras3",
+            "manageKioskBrowser": False,
+            "manageSignage": True,
+            "nfcEnabled": False,
+            "runtimeManifestContract": adapter_for_profile(
+                "signage", runtime=None
+            ).runtime_manifest_contract.as_preflight_payload(),
+        }
+        artifacts = dict(terminal_preflight._candidate_artifact_contract([selected]))
+
+        self.assertEqual(
+            artifacts[
+                "infrastructure/ansible/playbooks/deploy-signage-staged.yml"
+            ],
+            "blob",
+        )
+        self.assertEqual(
+            artifacts[
+                "infrastructure/ansible/roles/signage/tasks/"
+                "release-preparation.yml"
+            ],
+            "blob",
+        )
+
         required_directories: list[str] = []
 
         def record_directory(_issues, path, _code, **_requirements):

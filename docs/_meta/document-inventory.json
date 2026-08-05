@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 612,
-    "totalLines": 170962,
-    "totalBytes": 12823879,
+    "totalLines": 170986,
+    "totalBytes": 12828323,
     "withFrontmatter": 279,
     "withStatus": 135,
     "sourceOfTruthDeclared": 97,
@@ -26055,8 +26055,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-407-pi3-direct-git-fetch-transport.md",
-      "lineCount": 53,
-      "byteSize": 4961,
+      "lineCount": 54,
+      "byteSize": 5153,
       "hasFrontmatter": true,
       "title": "Pi3 direct Git fetch exposed an external transport dependency during maintenance",
       "status": "active",
@@ -34351,8 +34351,8 @@
     },
     {
       "path": "docs/plans/pi3-staged-source-transfer-execplan.md",
-      "lineCount": 165,
-      "byteSize": 21724,
+      "lineCount": 188,
+      "byteSize": 25976,
       "hasFrontmatter": true,
       "title": "Seal Pi3 release source on Pi5 and transfer it over the existing SSH Ansible route",
       "status": "in-progress",
@@ -34363,12 +34363,12 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 116,
+          "line": 135,
           "length": 1108
         },
         {
-          "line": 118,
-          "length": 1145
+          "line": 137,
+          "length": 1132
         }
       ],
       "referencesExecPlan": false

@@ -194,17 +194,6 @@
   until: git_full_result.rc == 0
   when: terminal_release_mode | default('full') == 'full'
 
-- name: Require sealed staged source for the Pi3 signage release
-  ansible.builtin.assert:
-    that:
-      - terminal_staged_source is defined
-    fail_msg: >-
-      Pi3 signage release-only execution requires the coordinator-sealed local
-      bundle; external Git fetch is not an allowed fallback.
-  when:
-    - terminal_release_mode | default('full') == 'release-only'
-    - "'signage' in group_names"
-
 - name: Fetch and reset existing terminal repository to immutable release
   ansible.builtin.shell: |
     set -euo pipefail
@@ -272,50 +261,7 @@
   retries: 3
   delay: 10
   until: git_release_result.rc == 0
-  when:
-    - terminal_release_mode | default('full') == 'release-only'
-    - terminal_staged_source is not defined
-
-- name: Validate the coordinator-sealed Pi3 source reference
-  ansible.builtin.assert:
-    that:
-      - "'signage' in group_names"
-      - terminal_staged_source.keys() | list | sort == ['candidateSha', 'finalPath', 'host', 'previousSha', 'runId', 'schemaVersion', 'sha256', 'size']
-      - terminal_staged_source.schemaVersion == 1
-      - terminal_staged_source.runId is match('^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$')
-      - terminal_staged_source.host == inventory_hostname
-      - terminal_staged_source.previousSha == repo_prev_head_release_result.stdout
-      - terminal_staged_source.candidateSha == repo_version
-      - terminal_staged_source.sha256 is match('^[0-9a-f]{64}$')
-      - terminal_staged_source.size | int > 0
-      - terminal_staged_source.size | int <= 67108864
-      - terminal_staged_source.finalPath == '/var/tmp/raspi-pi3-source-' ~ terminal_staged_source.runId ~ '.bundle'
-    fail_msg: >-
-      Pi3 staged source must bind the exact run, host, previous SHA, candidate
-      SHA, fixed path, bounded size, and SHA-256 before local import.
-  when:
-    - terminal_release_mode | default('full') == 'release-only'
-    - terminal_staged_source is defined
-
-- name: Import and reset Pi3 repository from the verified local bundle
-  ansible.builtin.script:
-    cmd: >-
-      {{ playbook_dir }}/../../../scripts/deploy/terminal-source-bundle.py
-      consume
-      --repository {{ repo_path | quote }}
-      --run-id {{ terminal_staged_source.runId | quote }}
-      --host {{ terminal_staged_source.host | quote }}
-      --previous-sha {{ terminal_staged_source.previousSha | quote }}
-      --candidate-sha {{ terminal_staged_source.candidateSha | quote }}
-      --sha256 {{ terminal_staged_source.sha256 | quote }}
-      --size {{ terminal_staged_source.size | string | quote }}
-      --ansible-marker
-  become_user: "{{ ansible_user }}"
-  register: git_staged_release_result
-  changed_when: true
-  when:
-    - terminal_release_mode | default('full') == 'release-only'
-    - terminal_staged_source is defined
+  when: terminal_release_mode | default('full') == 'release-only'
 
 - name: Select repository synchronization result
   ansible.builtin.set_fact:
@@ -327,9 +273,7 @@
       }}
     git_result: >-
       {{
-        (git_staged_release_result
-        if terminal_staged_source is defined
-        else git_release_result)
+        git_release_result
         if terminal_release_mode | default('full') == 'release-only'
         else git_full_result
       }}

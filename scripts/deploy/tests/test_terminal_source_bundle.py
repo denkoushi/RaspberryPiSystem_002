@@ -205,19 +205,32 @@ class TerminalSourceBundleTest(unittest.TestCase):
 
     def test_execution_contract_forbids_remote_protocol_and_pi3_fallback(self):
         helper = SCRIPT.read_text(encoding="utf-8")
-        role = (
+        signage_preparation = (
+            PROJECT
+            / "infrastructure/ansible/roles/signage/tasks/release-preparation.yml"
+        ).read_text(encoding="utf-8")
+        common = (
             PROJECT / "infrastructure/ansible/roles/common/tasks/main.yml"
         ).read_text(encoding="utf-8")
-        require = role.index("Require sealed staged source for the Pi3 signage release")
-        remote_fetch = role.index(
-            "Fetch and reset existing terminal repository to immutable release"
+        playbook = (
+            PROJECT / "infrastructure/ansible/playbooks/deploy-signage-staged.yml"
+        ).read_text(encoding="utf-8")
+        require = signage_preparation.index(
+            "Validate sealed signage release mutation profile"
         )
-        local_import = role.index(
+        clean_check = signage_preparation.index(
+            "Verify signage repository is clean and capture current HEAD"
+        )
+        local_import = signage_preparation.index(
             "Import and reset Pi3 repository from the verified local bundle"
         )
-        self.assertLess(require, remote_fetch)
-        self.assertLess(remote_fetch, local_import)
-        self.assertIn("terminal_staged_source is not defined", role[remote_fetch:local_import])
+        self.assertLess(require, clean_check)
+        self.assertLess(clean_check, local_import)
+        self.assertNotIn("git fetch", signage_preparation)
+        self.assertNotIn("origin", signage_preparation)
+        self.assertIn("git fetch --no-tags origin", common)
+        self.assertNotIn("terminal_staged_source", common)
+        self.assertIn("tasks_from: release-preparation", playbook)
         self.assertIn('"protocol.allow=never"', helper)
         self.assertIn('"protocol.file.allow=always"', helper)
         consume = helper[helper.index("def consume(") : helper.index("def cleanup(")]

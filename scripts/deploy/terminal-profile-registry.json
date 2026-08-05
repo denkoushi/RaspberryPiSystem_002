@@ -79,7 +79,7 @@
       "rolloutOrder": 20,
       "impactComponent": "signage-role",
       "adapterId": "signage-systemd",
-      "playbook": "playbooks/deploy-staged.yml",
+      "playbook": "playbooks/deploy-signage-staged.yml",
       "noticeSeconds": 0,
       "canaryGroup": "signage_canary",
       "approvalPolicy": "health-only",
@@ -207,6 +207,7 @@
     {"match": "exact", "path": "infrastructure/ansible/templates/barcode-agent.env.j2", "component": "barcode-agent"},
     {"match": "exact", "path": "infrastructure/ansible/templates/torque-agent.env.j2", "component": "torque-agent"},
     {"match": "exact", "path": "infrastructure/ansible/tasks/preflight-signage.yml", "component": "signage-role"},
+    {"match": "exact", "path": "infrastructure/ansible/playbooks/deploy-signage-staged.yml", "component": "signage-role"},
     {"match": "prefix", "path": "infrastructure/ansible/playbooks/", "component": "global"},
     {"match": "prefix", "path": "infrastructure/ansible/group_vars/", "component": "global"},
     {"match": "prefix", "path": "infrastructure/ansible/inventory", "component": "global"}

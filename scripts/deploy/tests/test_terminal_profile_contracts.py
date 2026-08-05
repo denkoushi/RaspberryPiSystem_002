@@ -73,7 +73,11 @@ class TerminalProfileContractTest(unittest.TestCase):
         validate_core_independence(registry)
 
         self.assertEqual(
-            registry_playbooks(registry), ("playbooks/deploy-staged.yml",)
+            registry_playbooks(registry),
+            (
+                "playbooks/deploy-staged.yml",
+                "playbooks/deploy-signage-staged.yml",
+            ),
         )
 
     def test_synthetic_profile_uses_shared_playbook_and_inventory_only(self):

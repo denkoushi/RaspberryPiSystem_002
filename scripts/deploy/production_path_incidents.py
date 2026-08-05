@@ -202,7 +202,9 @@ def incident_status(root: Path) -> dict[str, bool]:
     server_role = read(root, "infrastructure/ansible/roles/server/tasks/main.yml")
     web_dockerfile = read(root, "infrastructure/docker/Dockerfile.web")
     terminal_preflight = read(root, "scripts/deploy/rolling_release/terminal_preflight.py")
-    common_role = read(root, "infrastructure/ansible/roles/common/tasks/main.yml")
+    signage_release_preparation = read(
+        root, "infrastructure/ansible/roles/signage/tasks/release-preparation.yml"
+    )
     source_bundle = read(root, "scripts/deploy/terminal-source-bundle.py")
     phase3 = read(root, "infrastructure/docker/docker-compose.phase3.yml")
     migration = read(root, "infrastructure/docker/docker-compose.phase3.migration.yml")
@@ -223,11 +225,11 @@ def incident_status(root: Path) -> dict[str, bool]:
             'caddy run --config \\"$SLOT_CADDY_CONFIG_FILE\\"',
         )
     )
-    pi3_stage_requirement = common_role.find(
-        "Require sealed staged source for the Pi3 signage release"
+    pi3_stage_requirement = signage_release_preparation.find(
+        "Validate sealed signage release mutation profile"
     )
-    terminal_fetch = common_role.find(
-        "Fetch and reset existing terminal repository to immutable release"
+    terminal_bundle_import = signage_release_preparation.find(
+        "Import and reset Pi3 repository from the verified local bundle"
     )
     source_consume = source_bundle.find("def consume(")
     source_cleanup = source_bundle.find("def cleanup(")
@@ -251,8 +253,10 @@ def incident_status(root: Path) -> dict[str, bool]:
             and ansible.count('compression = "-o Compression=yes"') == 1
         ),
         "pi3-external-source-authority": (
-            0 <= pi3_stage_requirement < terminal_fetch
-            and "terminal_staged_source is not defined" in common_role
+            0 <= pi3_stage_requirement < terminal_bundle_import
+            and "terminal_staged_source is defined" in signage_release_preparation
+            and "External Git fetch is" in signage_release_preparation
+            and "not an allowed fallback." in signage_release_preparation
             and '"protocol.allow=never"' in source_bundle
             and '"protocol.file.allow=always"' in source_bundle
             and 0 <= source_consume < source_cleanup

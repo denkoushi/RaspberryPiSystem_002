@@ -147,6 +147,22 @@ class ClassifyDeployImpactTest(unittest.TestCase):
         self.assertEqual(result['components'], ['signage-role'])
         self.assertEqual(result['affectedProfiles'], ['signage'])
 
+    def test_sealed_signage_executor_does_not_expand_to_kiosk(self):
+        result = impact.classify(
+            [
+                'infrastructure/ansible/playbooks/deploy-signage-staged.yml',
+                'infrastructure/ansible/roles/signage/tasks/release-preparation.yml',
+                'scripts/deploy/terminal-profile-registry.json',
+                'scripts/deploy/rolling_release/terminal_preflight.py',
+            ]
+        )
+        self.assertFalse(result['server'])
+        self.assertFalse(result['kiosk'])
+        self.assertTrue(result['signage'])
+        self.assertFalse(result['migration'])
+        self.assertEqual(result['components'], ['deploy-control', 'signage-role'])
+        self.assertEqual(result['affectedProfiles'], ['signage'])
+
     def test_deploy_control_files_do_not_manufacture_runtime_work(self):
         result = impact.classify(
             [
@@ -366,9 +382,10 @@ class ClassifyDeployImpactTest(unittest.TestCase):
         payload['componentProfiles']['global'].append('synthetic-fourth')
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            playbook = root / 'infrastructure/ansible/playbooks/deploy-staged.yml'
-            playbook.parent.mkdir(parents=True)
-            playbook.write_text('---\n', encoding='utf-8')
+            playbook_root = root / 'infrastructure/ansible/playbooks'
+            playbook_root.mkdir(parents=True)
+            for name in ('deploy-staged.yml', 'deploy-signage-staged.yml'):
+                (playbook_root / name).write_text('---\n', encoding='utf-8')
             registry_path = root / 'registry.json'
             registry_path.write_text(json.dumps(payload), encoding='utf-8')
             registry = impact.load_registry(registry_path, repository_root=root)

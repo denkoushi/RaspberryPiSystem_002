@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 MAIN_INVENTORY="${ROOT_DIR}/infrastructure/ansible/inventory.yml"
 TALKPLAZA_INVENTORY="${ROOT_DIR}/infrastructure/ansible/inventory-talkplaza.yml"
 PLAYBOOK="${ROOT_DIR}/infrastructure/ansible/playbooks/deploy-staged.yml"
+SIGNAGE_PLAYBOOK="${ROOT_DIR}/infrastructure/ansible/playbooks/deploy-signage-staged.yml"
 SERVER_CONFIG_PLAYBOOK="${ROOT_DIR}/infrastructure/ansible/playbooks/server-config-release.yml"
 LEGACY_DEPLOY_PLAYBOOK="${ROOT_DIR}/infrastructure/ansible/playbooks/deploy.yml"
 STANDALONE_ROLLBACK_PLAYBOOK="${ROOT_DIR}/infrastructure/ansible/playbooks/rollback.yml"
@@ -26,6 +27,7 @@ TERMINAL_PREFLIGHT="${ROOT_DIR}/scripts/deploy/rolling_release/terminal_prefligh
 TERMINAL_AGENT_HEALTH="${ROOT_DIR}/scripts/deploy/terminal-agent-health-probe.py"
 KIOSK_FIREFOX_TASKS="${ROOT_DIR}/infrastructure/ansible/roles/kiosk/tasks/firefox-chrome.yml"
 SIGNAGE_TASKS="${ROOT_DIR}/infrastructure/ansible/roles/signage/tasks/main.yml"
+SIGNAGE_RELEASE_PREPARATION="${ROOT_DIR}/infrastructure/ansible/roles/signage/tasks/release-preparation.yml"
 SIGNAGE_WATCHDOG_TEMPLATE="${ROOT_DIR}/infrastructure/ansible/roles/signage/templates/signage-lite-watchdog.sh.j2"
 STATUS_AGENT_CONFIG_TEMPLATE="${ROOT_DIR}/infrastructure/ansible/templates/status-agent.conf.j2"
 KIOSK_LAUNCH_TEMPLATE="${ROOT_DIR}/infrastructure/ansible/templates/kiosk-launch.sh.j2"
@@ -125,7 +127,7 @@ if grep -Eq 'status_code:[[:space:]]*\[[^]]*401|until:.*401|failed_when:[[:space
   exit 1
 fi
 
-python3 - "${SIGNAGE_TASKS}" "${PLAYBOOK}" "${SIGNAGE_WATCHDOG_TEMPLATE}" \
+python3 - "${SIGNAGE_TASKS}" "${SIGNAGE_PLAYBOOK}" "${SIGNAGE_WATCHDOG_TEMPLATE}" \
   "${STATUS_AGENT_CONFIG_TEMPLATE}" "${MAIN_INVENTORY}" <<'PY'
 import sys
 from pathlib import Path
@@ -263,6 +265,7 @@ python3 "${ROOT_DIR}/scripts/ci/prepare_redacted_ansible_context.py" \
 CONTRACT_MAIN_INVENTORY="${REDACTED_ANSIBLE_DIR}/inventory.yml"
 CONTRACT_TALKPLAZA_INVENTORY="${REDACTED_ANSIBLE_DIR}/inventory-talkplaza.yml"
 CONTRACT_PLAYBOOK="${REDACTED_ANSIBLE_DIR}/playbooks/deploy-staged.yml"
+CONTRACT_SIGNAGE_PLAYBOOK="${REDACTED_ANSIBLE_DIR}/playbooks/deploy-signage-staged.yml"
 
 render_inventory_contract() {
   local name="$1"
@@ -276,6 +279,12 @@ render_inventory_contract() {
     ansible-playbook -i "${inventory}" "${CONTRACT_PLAYBOOK}" \
       --extra-vars "@${VAULT_PLACEHOLDERS}" --list-hosts \
     > "${TMP_DIR}/${name}-playbook-hosts.txt"
+  env -u ANSIBLE_CONFIG \
+    ANSIBLE_ROLES_PATH="${REDACTED_ANSIBLE_DIR}/roles" \
+    RELEASE_ORCHESTRATED=1 \
+    ansible-playbook -i "${inventory}" "${CONTRACT_SIGNAGE_PLAYBOOK}" \
+      --extra-vars "@${VAULT_PLACEHOLDERS}" --list-hosts \
+    > "${TMP_DIR}/${name}-signage-playbook-hosts.txt"
 }
 
 render_inventory_contract main "${CONTRACT_MAIN_INVENTORY}"
@@ -1022,7 +1031,9 @@ assert 'legacy API health' in runtime_reasons(
 )
 PY
 
-python3 - "${PLAYBOOK}" "${ROOT_DIR}/infrastructure/ansible" "${ROOT_DIR}" <<'PY'
+python3 - "${PLAYBOOK}" "${SIGNAGE_PLAYBOOK}" \
+  "${ROOT_DIR}/infrastructure/ansible" "${ROOT_DIR}" <<'PY'
+import copy
 import re
 import sys
 from pathlib import Path
@@ -1030,8 +1041,9 @@ from pathlib import Path
 import yaml
 
 playbook_path = Path(sys.argv[1]).resolve()
-ansible_root = Path(sys.argv[2]).resolve()
-repository_root = Path(sys.argv[3]).resolve()
+signage_playbook_path = Path(sys.argv[2]).resolve()
+ansible_root = Path(sys.argv[3]).resolve()
+repository_root = Path(sys.argv[4]).resolve()
 roles_root = ansible_root / 'roles'
 playbooks_root = ansible_root / 'playbooks'
 
@@ -1183,6 +1195,12 @@ def role_name(value):
     return None
 
 
+def role_tasks_from(value):
+    if isinstance(value, dict):
+        return value.get('tasks_from', 'main')
+    return 'main'
+
+
 def task_target(value):
     if isinstance(value, str):
         return value
@@ -1250,7 +1268,11 @@ def audit_tasks(tasks, source, inherited_full):
                 assert isinstance(role, str) and re.fullmatch(r'[A-Za-z0-9_.-]+', role), (
                     f'{source}:{name}: uninspectable role import {role!r}'
                 )
-                main = (roles_root / role / 'tasks/main.yml').resolve()
+                tasks_from = role_tasks_from(value)
+                assert isinstance(tasks_from, str) and re.fullmatch(
+                    r'[A-Za-z0-9_.-]+', tasks_from
+                ), f'{source}:{name}: uninspectable role task entry {tasks_from!r}'
+                main = (roles_root / role / f'tasks/{tasks_from}.yml').resolve()
                 main.relative_to(ansible_root)
                 assert main.is_file(), f'{source}:{name}: role missing {role}'
                 audit_file(main, effective_full)
@@ -1370,7 +1392,8 @@ def audit_tasks(tasks, source, inherited_full):
                     and '--seal-maintenance-image' not in payload
                 )
                 approved_pi3_source = (
-                    source.resolve() == (roles_root / 'common/tasks/main.yml').resolve()
+                    source.resolve()
+                    == (roles_root / 'signage/tasks/release-preparation.yml').resolve()
                     and name == 'Import and reset Pi3 repository from the verified local bundle'
                     and 'scripts/deploy/terminal-source-bundle.py consume' in payload
                     and '--repository' in payload
@@ -1417,6 +1440,43 @@ for group in ('kiosk', 'signage'):
     )
     for section in ('pre_tasks', 'tasks', 'post_tasks', 'handlers'):
         audit_tasks(plays[group].get(section) or [], playbook_path, False)
+
+signage_document = yaml.safe_load(
+    signage_playbook_path.read_text(encoding='utf-8')
+) or []
+assert len(signage_document) == 1
+signage_release = signage_document[0]
+assert signage_release.get('hosts') == 'signage'
+dedicated_tasks = copy.deepcopy(signage_release.get('tasks') or [])
+for task in dedicated_tasks:
+    role = task.get('ansible.builtin.import_role')
+    if isinstance(role, dict):
+        role.pop('allow_duplicates', None)
+assert dedicated_tasks == plays['signage'].get('tasks'), (
+    'dedicated signage executor changed the established runtime task body'
+)
+assert signage_release.get('handlers') == plays['signage'].get('handlers'), (
+    'dedicated signage executor changed the established handler body'
+)
+assert signage_release.get('post_tasks') == plays['signage'].get('post_tasks'), (
+    'dedicated signage executor changed the established GUI restore body'
+)
+signage_pre_tasks = signage_release.get('pre_tasks') or []
+signage_pre_names = [task.get('name') for task in signage_pre_tasks]
+signage_guard_index = signage_pre_names.index(
+    'Require terminal release-only mode before signage preparation'
+)
+signage_display_index = signage_pre_names.index(
+    'Require an active display manager before signage release'
+)
+signage_source_index = signage_pre_names.index(
+    'Apply coordinator-sealed signage repository source'
+)
+assert signage_guard_index < signage_display_index < signage_source_index, (
+    'signage: release and display preflights must precede sealed source mutation'
+)
+for section in ('pre_tasks', 'tasks', 'post_tasks', 'handlers'):
+    audit_tasks(signage_release.get(section) or [], signage_playbook_path, False)
 
 common_text = (roles_root / 'common/tasks/main.yml').read_text(encoding='utf-8')
 assert 'Remove unnecessary documentation directory' not in common_text
@@ -1520,6 +1580,7 @@ required_scanned = {
     (roles_root / 'kiosk/tasks/main.yml').resolve(),
     (roles_root / 'kiosk/tasks/security.yml').resolve(),
     (roles_root / 'signage/tasks/main.yml').resolve(),
+    (roles_root / 'signage/tasks/release-preparation.yml').resolve(),
     (ansible_root / 'tasks/preflight-terminal-display.yml').resolve(),
     (ansible_root / 'tasks/preflight-signage.yml').resolve(),
     (ansible_root / 'tasks/preflight-tailscale.yml').resolve(),
