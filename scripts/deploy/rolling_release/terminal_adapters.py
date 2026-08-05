@@ -147,14 +147,23 @@ class TerminalAdapter:
         )
 
     def rollback_paths(self, user: str, home: str, run_id: str) -> tuple[str, ...]:
-        del run_id
         dynamic = (
             f"/etc/sudoers.d/{user}",
             f"/etc/sudoers.d/{user}-client-services",
         )
         return tuple(
-            dict.fromkeys((*self.profile.adapter_options.rollback_paths, *dynamic))
+            dict.fromkeys(
+                (
+                    *self.profile.adapter_options.rollback_paths,
+                    *dynamic,
+                    *self.run_scoped_rollback_paths(run_id),
+                )
+            )
         )
+
+    def run_scoped_rollback_paths(self, run_id: str) -> tuple[str, ...]:
+        del run_id
+        return ()
 
     def prepare_repository(self, inventory: str, host: str) -> dict[str, Any]:
         return self.runtime.prepare_terminal_repository(inventory, host)
@@ -885,16 +894,14 @@ class SignageSystemdAdapter(TerminalAdapter):
             staged_source["size"],
         )
 
-    def rollback_paths(self, user: str, home: str, run_id: str) -> tuple[str, ...]:
-        base = super().rollback_paths(user, home, run_id)
-        prestage_paths = (
+    def run_scoped_rollback_paths(self, run_id: str) -> tuple[str, ...]:
+        return (
             f"/run/signage/release-{run_id}-maintenance.svg",
             f"/run/signage/release-{run_id}-maintenance.jpg",
             f"/run/signage/release-{run_id}-maintenance.sha256",
             f"/var/tmp/raspi-pi3-source-{run_id}.bundle.tmp",
             f"/var/tmp/raspi-pi3-source-{run_id}.bundle",
         )
-        return tuple(dict.fromkeys((*base, *prestage_paths)))
 
     @property
     def restart_on_restore_units(self) -> tuple[str, ...]:

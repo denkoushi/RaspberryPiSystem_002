@@ -14,6 +14,7 @@ if str(DEPLOY_DIR) not in sys.path:
 
 from rolling_release import coordinator  # noqa: E402
 from rolling_release import readiness_policy  # noqa: E402
+from rolling_release.adapter_registry import adapter_for_profile  # noqa: E402
 from rolling_release.activation import ActivationUncertainError  # noqa: E402
 from rolling_release.cancellation import CancellationRequested  # noqa: E402
 from rolling_release.release_claims import (  # noqa: E402
@@ -704,6 +705,17 @@ class FakeRuntime:
             target["rollbackRuntimeHealth"] = rollback_runtime_health(
                 target_spec.get("terminalType")
             )
+            if target_spec.get("terminalType") == "signage":
+                cleanup_paths = adapter_for_profile(
+                    "signage", runtime=None
+                ).run_scoped_rollback_paths(_run_id)
+                target["stagedSourceCleanup"] = {
+                    "state": "clean",
+                    "residue": False,
+                    "authority": "rollback-manifest",
+                    "manifestSha256": "d" * 64,
+                    "paths": list(cleanup_paths),
+                }
         return self.rollback_ok
 
     def preflight_terminal_rollback(
@@ -2636,6 +2648,104 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         )
         self.assertIn("maintenanceClearedAt", target)
         self.assertEqual(runtime.fleet["fleet"]["kiosk-a"]["evidence"], "unknown")
+
+    def test_rollback_display_failure_preserves_partial_proof_and_still_cleans(self):
+        terminal = {
+            "host": "signage-a",
+            "role": "signage",
+            "terminalType": "signage",
+            "clientId": "s1",
+        }
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", OLD_SHA),
+                "signage-a": host_record("signage", OLD_SHA),
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan={
+                "pi5Required": False,
+                "hosts": [
+                    decision("pi5", "server", targeted=False),
+                    decision("signage-a", "signage"),
+                ],
+            },
+            targets=[terminal],
+        )
+        runtime.playbook_error = RuntimeError("deploy failed")
+        runtime.signage_refresh_error = RuntimeError("runtime proof failed")
+
+        with self.assertRaisesRegex(RuntimeError, "rollout stopped"):
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            )
+
+        set_failed = runtime.events.index(
+            "status:set-phase:--run-id:run-1:--client:s1:--phase:failed"
+        )
+        remove = runtime.events.index(
+            "status:remove-client:--run-id:run-1:--client:s1"
+        )
+        refresh = runtime.events.index("signage:refresh:signage-a:run-1")
+        cleanup = runtime.events.index(
+            "manifest:cleanup:signage-a:run-1:restored"
+        )
+        self.assertLess(set_failed, remove)
+        self.assertLess(remove, refresh)
+        self.assertLess(refresh, cleanup)
+        target = runtime.states[-1].target("signage-a")
+        self.assertNotIn("rollbackPhaseError", target)
+        self.assertEqual(target["rollbackProofs"]["repository"]["state"], "verified")
+        self.assertEqual(target["rollbackProofs"]["runtime"]["state"], "verified")
+        self.assertEqual(target["rollbackProofs"]["display"]["state"], "unknown")
+        self.assertEqual(target["rollbackProofs"]["cleanup"]["state"], "verified")
+        self.assertIn("runtime proof failed", target["rollbackEvidence"])
+        self.assertIn("runtimeCleanup", target)
+        self.assertEqual(target["stagedSourceCleanup"]["state"], "clean")
+        self.assertIn("maintenanceClearedAt", target)
+        self.assertEqual(runtime.fleet["fleet"]["signage-a"]["evidence"], "unknown")
+
+    def test_rollback_observation_failure_still_records_cleanup_receipt(self):
+        terminal = {
+            "host": "kiosk-a",
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "a",
+        }
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", OLD_SHA),
+                "kiosk-a": host_record("kiosk", OLD_SHA),
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan={
+                "pi5Required": False,
+                "hosts": [
+                    decision("pi5", "server", targeted=False),
+                    decision("kiosk-a", "kiosk"),
+                ],
+            },
+            targets=[terminal],
+        )
+        runtime.playbook_error = RuntimeError("deploy failed")
+        runtime.terminal_observation_error = RuntimeError("probe lost")
+        runtime.terminal_observation_failures = 1
+
+        with self.assertRaisesRegex(RuntimeError, "rollout stopped"):
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            )
+
+        self.assertIn(
+            "manifest:cleanup:kiosk-a:run-1:restored", runtime.events
+        )
+        target = runtime.states[-1].target("kiosk-a")
+        self.assertEqual(target["rollbackProofs"]["repository"]["state"], "restored")
+        self.assertEqual(target["rollbackProofs"]["runtime"]["state"], "verified")
+        self.assertEqual(target["rollbackProofs"]["display"]["state"], "unknown")
+        self.assertEqual(target["rollbackProofs"]["cleanup"]["state"], "verified")
+        self.assertIn("probe lost", target["rollbackEvidence"])
+        self.assertIn("runtimeCleanup", target)
+        self.assertNotIn("maintenanceClearedAt", target)
 
     def test_pi5_host_config_failure_stops_before_candidate_and_terminals(self):
         terminal = {

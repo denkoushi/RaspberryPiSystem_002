@@ -2439,6 +2439,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
 
                 # Rollback wins over cancellation and is never interrupted.
                 rollback_reconciled = False
+                rollback_failure_phase_recorded = False
                 try:
                     with _measure_phase(
                         state, runtime, "terminal-rollback", host=host
@@ -2450,7 +2451,24 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                     rollback_ok = False
                     target["rollback"] = f"failed: {rollback_error}"
                 if rollback_ok:
+                    target["rollbackProofs"] = {
+                        "repository": {"state": "restored"},
+                        "runtime": {"state": "restored"},
+                        "display": {"state": "pending"},
+                        "cleanup": {"state": "pending"},
+                    }
+                    state.save()
                     try:
+                        runtime.state_command(
+                            "set-phase",
+                            "--run-id",
+                            args.run_id,
+                            "--client",
+                            target_spec["clientId"],
+                            "--phase",
+                            "failed",
+                        )
+                        rollback_failure_phase_recorded = True
                         rollback_runtime_health = target.get(
                             "rollbackRuntimeHealth"
                         )
@@ -2472,6 +2490,11 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                             expected_sha=rollback_ready_sha,
                             rollback=True,
                         )
+                        target["rollbackProofs"]["runtime"] = {
+                            "state": "verified",
+                            "outcome": "restored",
+                        }
+                        state.save()
                         rollback_capability = _activation_capability_proof(
                             runtime, target, args.run_id, rollback=True
                         )
@@ -2496,6 +2519,11 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                             raise RuntimeError(
                                 f"rollback HEAD does not match previous release: {host}"
                             )
+                        target["rollbackProofs"]["repository"] = {
+                            "state": "verified",
+                            "currentSha": rollback_observation["currentSha"],
+                        }
+                        state.save()
                         rollback_claims = _terminal_observed_release_claims(
                             runtime=runtime,
                             adapter=adapter,
@@ -2537,27 +2565,59 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                             adapter.clear_maintenance(target_spec, args.run_id)
                         target["maintenanceClearedAt"] = runtime.utc_now()
                         state.save()
-                        _finalize_terminal_display(
-                            runtime=runtime,
-                            state=state,
-                            inventory=inventory,
-                            run_id=args.run_id,
-                            target_spec=target_spec,
-                            adapter=adapter,
-                            target=target,
-                            observation=rollback_observation,
-                        )
-                        with _measure_phase(
-                            state, runtime, "terminal-rollback-cleanup", host=host
-                        ):
-                            target["runtimeCleanup"] = adapter.cleanup(
-                                inventory,
-                                target_spec,
-                                target,
-                                args.run_id,
-                                "restored",
+                        rollback_proof_failures = []
+                        try:
+                            _finalize_terminal_display(
+                                runtime=runtime,
+                                state=state,
+                                inventory=inventory,
+                                run_id=args.run_id,
+                                target_spec=target_spec,
+                                adapter=adapter,
+                                target=target,
+                                observation=rollback_observation,
+                            )
+                            target["rollbackProofs"]["display"] = {
+                                "state": "verified"
+                            }
+                        except Exception as display_error:
+                            target["rollbackProofs"]["display"] = {
+                                "state": "unknown"
+                            }
+                            rollback_proof_failures.append(
+                                f"display: {display_error}"
                             )
                         state.save()
+                        try:
+                            with _measure_phase(
+                                state,
+                                runtime,
+                                "terminal-rollback-cleanup",
+                                host=host,
+                            ):
+                                target["runtimeCleanup"] = adapter.cleanup(
+                                    inventory,
+                                    target_spec,
+                                    target,
+                                    args.run_id,
+                                    "restored",
+                                )
+                            target["rollbackProofs"]["cleanup"] = {
+                                "state": "verified"
+                            }
+                        except Exception as cleanup_error:
+                            target["rollbackProofs"]["cleanup"] = {
+                                "state": "unknown"
+                            }
+                            rollback_proof_failures.append(
+                                f"cleanup: {cleanup_error}"
+                            )
+                        state.save()
+                        if rollback_proof_failures:
+                            raise RuntimeError(
+                                "rollback proof incomplete: "
+                                + "; ".join(rollback_proof_failures)
+                            )
                         fleet_state = runtime.fleet_mark_verified(
                             host,
                             role,
@@ -2583,21 +2643,52 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                         state.payload["fleetGeneration"] = fleet_state["generation"]
                         rollback_reconciled = True
                     except Exception as rollback_evidence_error:
+                        proof_error = str(rollback_evidence_error)
+                        rollback_proofs = target["rollbackProofs"]
+                        if rollback_proofs["display"]["state"] == "pending":
+                            rollback_proofs["display"] = {"state": "unknown"}
                         target["rollbackEvidence"] = (
-                            f"unknown: {rollback_evidence_error}"
+                            f"unknown: {proof_error}"
                         )
-                        try:
-                            runtime.state_command(
-                                "set-phase",
-                                "--run-id",
-                                args.run_id,
-                                "--client",
-                                target_spec["clientId"],
-                                "--phase",
-                                "failed",
-                            )
-                        except Exception as phase_error:
-                            target["rollbackPhaseError"] = str(phase_error)
+                        if not rollback_failure_phase_recorded:
+                            try:
+                                runtime.state_command(
+                                    "set-phase",
+                                    "--run-id",
+                                    args.run_id,
+                                    "--client",
+                                    target_spec["clientId"],
+                                    "--phase",
+                                    "failed",
+                                )
+                            except Exception as phase_error:
+                                target["rollbackPhaseError"] = str(phase_error)
+                        if rollback_proofs["cleanup"]["state"] == "pending":
+                            try:
+                                with _measure_phase(
+                                    state,
+                                    runtime,
+                                    "terminal-rollback-cleanup",
+                                    host=host,
+                                ):
+                                    target["runtimeCleanup"] = adapter.cleanup(
+                                        inventory,
+                                        target_spec,
+                                        target,
+                                        args.run_id,
+                                        "restored",
+                                    )
+                                rollback_proofs["cleanup"] = {
+                                    "state": "verified"
+                                }
+                            except Exception as cleanup_error:
+                                rollback_proofs["cleanup"] = {
+                                    "state": "unknown"
+                                }
+                                target["rollbackEvidence"] += (
+                                    f"; cleanup: {cleanup_error}"
+                                )
+                        state.save()
                 else:
                     try:
                         runtime.state_command(

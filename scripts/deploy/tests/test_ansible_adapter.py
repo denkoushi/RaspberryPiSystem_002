@@ -758,7 +758,8 @@ class RollbackManifestAdapterTest(unittest.TestCase):
             },
         }
 
-    def _restore_result(self):
+    def _restore_result(self, *, absent_destinations=()):
+        destinations = ["/etc/one", "/etc/two", *absent_destinations]
         return {
             "restored": True,
             "manifest": (
@@ -766,8 +767,9 @@ class RollbackManifestAdapterTest(unittest.TestCase):
                 f"{self.RUN_ID}/{self.HOST}/manifest.json"
             ),
             "manifestSha256": self.DIGEST,
-            "count": 2,
-            "destinations": ["/etc/one", "/etc/two"],
+            "count": len(destinations),
+            "destinations": destinations,
+            "absentDestinations": list(absent_destinations),
             "repository": {
                 "path": "/opt/RaspberryPiSystem_002",
                 "head": self.PREVIOUS_SHA,
@@ -882,13 +884,20 @@ class RollbackManifestAdapterTest(unittest.TestCase):
 
     def test_signage_rollback_uses_the_exact_signage_runtime_manifest(self):
         target = self._rollback_target()
+        cleanup_paths = ansible.adapter_for_profile(
+            "signage", runtime=None
+        ).run_scoped_rollback_paths(
+            self.RUN_ID
+        )
+        restore_result = self._restore_result(absent_destinations=cleanup_paths)
+        target["rollbackManifest"]["count"] = restore_result["count"]
         units, docker_services = ansible._terminal_runtime_contract("signage")
         target["rollbackManifest"]["runtime"]["unitCount"] = len(units)
         target["rollbackManifest"]["runtime"]["dockerCount"] = len(
             docker_services
         )
         runtime = Runtime([
-            manifest_marker(self._restore_result()),
+            manifest_marker(restore_result),
             self.PREVIOUS_SHA + "\n",
             runtime_marker(self._runtime_restore_result("signage")),
         ])
@@ -902,6 +911,44 @@ class RollbackManifestAdapterTest(unittest.TestCase):
             )
         )
         self.assertIn("terminal-runtime-manifest.py", runtime.calls[2][0][-1])
+        self.assertEqual(
+            target["stagedSourceCleanup"],
+            {
+                "state": "clean",
+                "residue": False,
+                "authority": "rollback-manifest",
+                "manifestSha256": self.DIGEST,
+                "paths": list(cleanup_paths),
+            },
+        )
+
+    def test_signage_rollback_rejects_incomplete_run_artifact_absence_proof(self):
+        target = self._rollback_target()
+        cleanup_paths = ansible.adapter_for_profile(
+            "signage", runtime=None
+        ).run_scoped_rollback_paths(
+            self.RUN_ID
+        )
+        incomplete = cleanup_paths[:1]
+        restore_result = self._restore_result(absent_destinations=incomplete)
+        target["rollbackManifest"]["count"] = restore_result["count"]
+        units, docker_services = ansible._terminal_runtime_contract("signage")
+        target["rollbackManifest"]["runtime"]["unitCount"] = len(units)
+        target["rollbackManifest"]["runtime"]["dockerCount"] = len(
+            docker_services
+        )
+        runtime = Runtime(manifest_marker(restore_result))
+
+        self.assertFalse(
+            ansible.rollback_terminal(
+                "inventory.yml",
+                {"host": self.HOST, "terminalType": "signage"},
+                target,
+                self.RUN_ID,
+                runtime=runtime,
+            )
+        )
+        self.assertIn("run artifact absence proof", target["rollback"])
 
     def test_rollback_rejects_tampered_reference_without_remote_mutation(self):
         for field in ("file", "runtime"):
@@ -1248,6 +1295,7 @@ class ServerConfigManifestAdapterTest(unittest.TestCase):
             "manifestSha256": reference["manifestSha256"],
             "count": reference["count"],
             "destinations": list(ansible._SERVER_CONFIG_PATHS),
+            "absentDestinations": [],
             "repository": None,
         }
 
@@ -1363,6 +1411,7 @@ class ServerConfigConvergenceTest(unittest.TestCase):
             "manifestSha256": manifest["manifestSha256"],
             "count": manifest["count"],
             "destinations": list(ansible._SERVER_CONFIG_PATHS),
+            "absentDestinations": [],
             "repository": None,
         }
 

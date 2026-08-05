@@ -30,6 +30,19 @@ MAX_BUNDLE_BYTES = 64 * 1024 * 1024
 FREE_SPACE_MARGIN_BYTES = 64 * 1024 * 1024
 HASH_CHUNK_BYTES = 1024 * 1024
 COMMAND_TIMEOUT_SECONDS = 180
+MAX_GIT_ERROR_CHARS = 1024
+GIT_OPERATIONS = (
+    "repository-git-dir",
+    "repository-head",
+    "repository-status",
+    "repository-index-flags",
+    "repository-unmerged-index",
+    "bundle-verify",
+    "bundle-list-heads",
+    "bundle-fetch",
+    "bundle-fetch-head",
+    "repository-reset",
+)
 
 
 class SourceBundleError(RuntimeError):
@@ -88,12 +101,30 @@ def _git_environment() -> dict[str, str]:
     return environment
 
 
+def _sanitized_git_stderr(stderr: bytes, arguments: Sequence[str]) -> str:
+    value = stderr.decode("utf-8", errors="replace")
+    for argument in sorted(
+        (item for item in arguments if item), key=len, reverse=True
+    ):
+        value = value.replace(argument, "[redacted]")
+    value = re.sub(r"(?:https?|ssh|git|file)://\S+", "[redacted]", value)
+    value = re.sub(
+        r"(?i)\b(?:authorization|bearer|token|password|passwd)\b[\s:=]+\S+",
+        "[redacted]",
+        value,
+    )
+    value = " ".join(value.split())
+    return value or "unavailable"
+
+
 def _run_git(
     repository: Path,
     arguments: Sequence[str],
     *,
-    capture_stderr: bool = False,
+    operation: str,
 ) -> bytes:
+    if operation not in GIT_OPERATIONS:
+        raise SourceBundleError("local bundle Git operation is not registered")
     try:
         completed = subprocess.run(
             [
@@ -118,18 +149,27 @@ def _run_git(
             ],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE if capture_stderr else subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             env=_git_environment(),
             timeout=COMMAND_TIMEOUT_SECONDS,
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as error:
-        raise SourceBundleError("local bundle Git command could not complete") from error
+        raise SourceBundleError(
+            "local bundle Git operation failed "
+            f"(operation={operation}, rc=unavailable, stderr=unavailable)"
+        ) from error
     if completed.returncode != 0:
-        raise SourceBundleError("local bundle Git validation failed")
+        prefix = (
+            "local bundle Git operation failed "
+            f"(operation={operation}, rc={completed.returncode}, stderr="
+        )
+        detail = _sanitized_git_stderr(completed.stderr, arguments)
+        available = max(0, MAX_GIT_ERROR_CHARS - len(prefix) - 1)
+        raise SourceBundleError(f"{prefix}{detail[:available]})")
     if len(completed.stdout) > MAX_BUNDLE_BYTES:
         raise SourceBundleError("local bundle Git output exceeded its safety bound")
-    if capture_stderr and len(completed.stderr) > MAX_BUNDLE_BYTES:
+    if len(completed.stderr) > MAX_BUNDLE_BYTES:
         raise SourceBundleError("local bundle Git error output exceeded its safety bound")
     return completed.stdout
 
@@ -149,14 +189,22 @@ def _repository_path(value: Path) -> Path:
     repository = Path(os.path.realpath(value))
     if repository != value:
         raise SourceBundleError("repository path must not contain symlinks")
-    absolute_git = _run_git(repository, ["rev-parse", "--absolute-git-dir"])
+    absolute_git = _run_git(
+        repository,
+        ["rev-parse", "--absolute-git-dir"],
+        operation="repository-git-dir",
+    )
     if Path(os.path.realpath(absolute_git.decode("utf-8").strip())) != repository / ".git":
         raise SourceBundleError("repository Git directory is unexpected")
     return repository
 
 
 def _head(repository: Path) -> str:
-    raw = _run_git(repository, ["rev-parse", "--verify", "HEAD^{commit}"])
+    raw = _run_git(
+        repository,
+        ["rev-parse", "--verify", "HEAD^{commit}"],
+        operation="repository-head",
+    )
     try:
         value = raw.decode("ascii", errors="strict").strip()
     except UnicodeDecodeError as error:
@@ -170,15 +218,25 @@ def _require_clean(repository: Path, expected_head: str) -> None:
     if _head(repository) != expected_head:
         raise SourceBundleError("repository HEAD does not match the sealed previous SHA")
     status = _run_git(
-        repository, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]
+        repository,
+        ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+        operation="repository-status",
     )
     if status:
         raise SourceBundleError("repository is not clean")
-    flags = _run_git(repository, ["ls-files", "-v", "-z"])
+    flags = _run_git(
+        repository,
+        ["ls-files", "-v", "-z"],
+        operation="repository-index-flags",
+    )
     records = [record for record in flags.split(b"\0") if record]
     if any(not record.startswith(b"H ") for record in records):
         raise SourceBundleError("repository index has unsafe flags")
-    if _run_git(repository, ["ls-files", "-u", "-z"]):
+    if _run_git(
+        repository,
+        ["ls-files", "-u", "-z"],
+        operation="repository-unmerged-index",
+    ):
         raise SourceBundleError("repository index has unmerged entries")
 
 
@@ -221,8 +279,16 @@ def _require_bundle_contract(
 ) -> None:
     _require_clean(repository, previous_sha)
     _require_bundle_file(bundle, size=size, sha256=sha256)
-    _run_git(repository, ["bundle", "verify", os.fspath(bundle)], capture_stderr=True)
-    heads = _run_git(repository, ["bundle", "list-heads", os.fspath(bundle)])
+    _run_git(
+        repository,
+        ["bundle", "verify", os.fspath(bundle)],
+        operation="bundle-verify",
+    )
+    heads = _run_git(
+        repository,
+        ["bundle", "list-heads", os.fspath(bundle)],
+        operation="bundle-list-heads",
+    )
     try:
         head_lines = heads.decode("ascii", errors="strict").splitlines()
     except UnicodeDecodeError as error:
@@ -339,14 +405,24 @@ def consume(args: argparse.Namespace) -> dict[str, Any]:
         size=args.size,
         sha256=args.sha256,
     )
-    _run_git(repository, ["fetch", "--no-tags", os.fspath(final), "HEAD"])
+    _run_git(
+        repository,
+        ["fetch", "--no-tags", os.fspath(final), "HEAD"],
+        operation="bundle-fetch",
+    )
     fetched = _run_git(
-        repository, ["rev-parse", "--verify", "FETCH_HEAD^{commit}"]
+        repository,
+        ["rev-parse", "--verify", "FETCH_HEAD^{commit}"],
+        operation="bundle-fetch-head",
     ).decode("ascii", errors="strict").strip()
     if fetched != args.candidate_sha:
         raise SourceBundleError("imported bundle did not resolve the candidate SHA")
     _require_clean(repository, args.previous_sha)
-    _run_git(repository, ["reset", "--hard", args.candidate_sha])
+    _run_git(
+        repository,
+        ["reset", "--hard", args.candidate_sha],
+        operation="repository-reset",
+    )
     _require_clean(repository, args.candidate_sha)
     final.unlink()
     return _result(args, "consumed", finalPath=os.fspath(final), residue=False)

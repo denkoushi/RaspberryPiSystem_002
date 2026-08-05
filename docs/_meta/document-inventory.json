@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 612,
-    "totalLines": 170986,
-    "totalBytes": 12828323,
+    "totalLines": 170997,
+    "totalBytes": 12829847,
     "withFrontmatter": 279,
     "withStatus": 135,
     "sourceOfTruthDeclared": 97,
@@ -34351,8 +34351,8 @@
     },
     {
       "path": "docs/plans/pi3-staged-source-transfer-execplan.md",
-      "lineCount": 188,
-      "byteSize": 25976,
+      "lineCount": 199,
+      "byteSize": 27500,
       "hasFrontmatter": true,
       "title": "Seal Pi3 release source on Pi5 and transfer it over the existing SSH Ansible route",
       "status": "in-progress",
@@ -34363,11 +34363,11 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 135,
+          "line": 146,
           "length": 1108
         },
         {
-          "line": 137,
+          "line": 148,
           "length": 1132
         }
       ],
