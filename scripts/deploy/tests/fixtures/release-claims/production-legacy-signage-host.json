@@ -1,0 +1,20 @@
+{
+  "role": "signage",
+  "desiredSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "currentSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "previousSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "evidence": "verified",
+  "verifiedAt": "2026-08-05T10:15:00Z",
+  "lastRunId": "20260805-100752-cd038c",
+  "releaseClaims": {
+    "terminalRepository": {
+      "expectedIdentity": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "observedIdentity": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "authority": "signage-ready",
+      "verificationId": "11111111111111111111111111111111",
+      "state": "verified",
+      "observedAt": "2026-08-05T10:14:59Z",
+      "lastRunId": "20260805-100752-cd038c"
+    }
+  }
+}

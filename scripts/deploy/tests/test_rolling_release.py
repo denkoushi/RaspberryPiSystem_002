@@ -25,6 +25,7 @@ TARGET_SHA = 'a' * 40
 BASE_SHA = 'b' * 40
 FORWARD_VERIFICATION_ID = '1' * 32
 ROLLBACK_VERIFICATION_ID = '2' * 32
+CLAIM_FIXTURES = Path(__file__).parent / 'fixtures' / 'release-claims'
 
 
 def _artifact_identity(source_sha):
@@ -48,7 +49,7 @@ def _sealed_source_reference(_inventory, host, candidate_sha, previous_sha, run_
     }
 
 
-def _verified_fleet_record(role, sha=BASE_SHA):
+def _verified_fleet_record(role, sha=BASE_SHA, *, typed=False):
     record = {
         'role': role,
         'desiredSha': sha,
@@ -66,6 +67,27 @@ def _verified_fleet_record(role, sha=BASE_SHA):
             'configDigest': 'sha256:' + 'c' * 64,
             'migrationDigest': 'sha256:' + 'd' * 64,
         })
+    elif role == 'kiosk' and typed:
+        record['releaseClaims'] = {
+            'controlPlaneWeb': {
+                'expectedIdentity': sha,
+                'observedIdentity': sha,
+                'authority': 'kiosk-compiled-web-ready',
+                'verificationId': FORWARD_VERIFICATION_ID,
+                'state': 'verified',
+                'observedAt': '2026-07-12T00:00:00Z',
+                'lastRunId': 'prior-run',
+            },
+            'terminalRepository': {
+                'expectedIdentity': sha,
+                'observedIdentity': sha,
+                'authority': 'terminal-repository-probe',
+                'verificationId': None,
+                'state': 'verified',
+                'observedAt': '2026-07-12T00:00:00Z',
+                'lastRunId': 'prior-run',
+            },
+        }
     elif role == 'signage':
         record['releaseClaims'] = {
             'signageReleaseArtifact': {
@@ -2369,6 +2391,116 @@ class PrintPlanShadowTest(unittest.TestCase):
         self.assertEqual(
             terminal_probe['hosts'], ['kiosk-canary', 'kiosk-b']
         )
+
+    def test_production_legacy_signage_claim_keeps_full_plan_pi3_only(self):
+        pi4_hosts = [
+            'raspi4-kensaku-stonebase01',
+            'raspberrypi4',
+            'raspi4-robodrill01',
+            'raspi4-fjv60-80',
+            'raspi4-sessaku-01',
+            'raspi4-assembly-01',
+        ]
+        inventory_data = {
+            'server': {'hosts': ['raspberrypi5']},
+            'clients': {'children': ['kiosk', 'signage']},
+            'kiosk': {'hosts': pi4_hosts},
+            'signage': {'hosts': ['raspberrypi3']},
+            'kiosk_canary': {'hosts': ['raspi4-kensaku-stonebase01']},
+            'signage_canary': {'hosts': ['raspberrypi3']},
+            '_meta': {'hostvars': {
+                'raspberrypi5': {
+                    'status_agent_client_id': 'raspberrypi5-server',
+                },
+                **{
+                    host: {
+                        'manage_kiosk_browser': True,
+                        'status_agent_client_id': f'{host}-kiosk1',
+                    }
+                    for host in pi4_hosts
+                },
+                'raspberrypi3': {
+                    'status_agent_client_id': 'raspberrypi3-signage1',
+                },
+            }},
+        }
+        legacy_signage = json.loads(
+            (CLAIM_FIXTURES / 'production-legacy-signage-host.json').read_text(
+                encoding='utf-8'
+            )
+        )
+        raw_fleet = {
+            'generation': 42,
+            'activeRun': None,
+            'lastRun': None,
+            'fleet': {
+                'raspberrypi5': _verified_fleet_record('server', BASE_SHA),
+                **{
+                    host: _verified_fleet_record('kiosk', BASE_SHA, typed=True)
+                    for host in pi4_hosts
+                },
+                'raspberrypi3': legacy_signage,
+            },
+        }
+        fleet_state = MODULE.parse_fleet_state_json(json.dumps(raw_fleet))
+        classification = {
+            'server': False,
+            'kiosk': False,
+            'signage': True,
+            'migration': False,
+            'paths': ['scripts/deploy/rolling_release/release_claims.py'],
+            'components': ['signage-role'],
+        }
+        args = MODULE.normalize_arguments(MODULE.parser().parse_args([
+            'main', 'infrastructure/ansible/inventory.yml', '--print-plan',
+        ]))
+
+        with patch.object(MODULE, 'resolve_release_sha', return_value=(TARGET_SHA, [])), \
+                patch.object(MODULE, '_git_is_ancestor', return_value=True), \
+                patch.object(MODULE, 'validate_print_plan_checkout'), \
+                patch.object(MODULE, 'canonical_print_plan_inventory', return_value='inventory.yml'), \
+                patch.object(
+                    MODULE,
+                    'validate_print_plan_server_identity',
+                    return_value={
+                        'host': 'raspberrypi5',
+                        'clientId': 'raspberrypi5-server',
+                    },
+                ), \
+                patch.object(MODULE, 'classify_release_impact', return_value=(classification, [])), \
+                patch.object(MODULE, 'read_only_inventory_json', return_value=inventory_data), \
+                patch.object(MODULE, 'read_only_selected_hosts', return_value=None), \
+                patch.object(
+                    MODULE,
+                    'signage_release_artifact_identity',
+                    side_effect=_artifact_identity,
+                ), \
+                patch.object(MODULE, 'read_plan_fleet_release_state', return_value=(fleet_state, [])), \
+                patch('builtins.print') as printed:
+            self.assertEqual(MODULE.local_run(args), 0)
+
+        plan = json.loads(printed.call_args.args[0])
+        self.assertIsNone(plan['limit'])
+        self.assertEqual(plan['targetHosts'], ['raspberrypi3'])
+        self.assertEqual(
+            [target['host'] for target in plan['mutationTargets']],
+            ['raspberrypi3'],
+        )
+        self.assertEqual(
+            [target['host'] for target in plan['verificationTargets']],
+            ['raspberrypi3'],
+        )
+        self.assertEqual(plan['activationTargets'], [])
+        self.assertEqual(
+            set(plan['excludedHosts']), {'raspberrypi5', *pi4_hosts}
+        )
+        self.assertEqual(plan['affectedProfiles'], ['signage'])
+        self.assertEqual(plan['classificationComponents'], ['signage-role'])
+        self.assertNotIn('global', plan['classificationComponents'])
+        self.assertNotIn('unknown', plan['classificationComponents'])
+        self.assertEqual(plan['warnings'], [])
+        self.assertEqual(plan['mainIntegration']['productionSha'], BASE_SHA)
+        self.assertTrue(plan['mainIntegration']['completionEligible'])
 
     def test_print_plan_remote_state_uses_the_shared_server_transport(self):
         transport = Mock()
