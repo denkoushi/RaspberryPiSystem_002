@@ -1553,7 +1553,8 @@ class CanaryHoldTest(unittest.TestCase):
         played = played if played is not None else []
 
         def playbook(
-            _inventory, host, _sha, _run_id, rollback=False, staged_source=None
+            _inventory, host, _sha, _run_id, rollback=False, playbook=None,
+            staged_source=None
         ):
             played.append(host)
 
@@ -1623,7 +1624,8 @@ class CanaryHoldTest(unittest.TestCase):
         played = []
 
         def playbook(
-            _inventory, host, _sha, _run_id, rollback=False, staged_source=None
+            _inventory, host, _sha, _run_id, rollback=False, playbook=None,
+            staged_source=None
         ):
             played.append(host)
 
@@ -1679,7 +1681,8 @@ class CanaryHoldTest(unittest.TestCase):
             run_directory = Path(temporary)
 
             def playbook(
-                _inventory, host, _sha, _run_id, rollback=False, staged_source=None
+                _inventory, host, _sha, _run_id, rollback=False, playbook=None,
+                staged_source=None
             ):
                 played.append(host)
                 control = run_directory / 'run-1.control.json'
@@ -1730,7 +1733,8 @@ class CanaryHoldTest(unittest.TestCase):
             run_directory = Path(temporary)
 
             def playbook(
-                _inventory, _host, _sha, _run_id, rollback=False, staged_source=None
+                _inventory, _host, _sha, _run_id, rollback=False, playbook=None,
+                staged_source=None
             ):
                 (run_directory / 'run-1.control.json').write_text(
                     json.dumps({
@@ -2686,7 +2690,8 @@ class AutoMinimizeTest(unittest.TestCase):
         played = []
 
         def playbook(
-            _inventory, host, _sha, _run_id, rollback=False, staged_source=None
+            _inventory, host, _sha, _run_id, rollback=False, playbook=None,
+            staged_source=None
         ):
             played.append(host)
 

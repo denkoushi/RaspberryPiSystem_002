@@ -19,7 +19,7 @@ FILES = (
     "infrastructure/ansible/roles/server/tasks/main.yml",
     "infrastructure/docker/Dockerfile.web",
     "scripts/deploy/rolling_release/terminal_preflight.py",
-    "infrastructure/ansible/roles/common/tasks/main.yml",
+    "infrastructure/ansible/roles/signage/tasks/release-preparation.yml",
     "scripts/deploy/terminal-source-bundle.py",
     "infrastructure/docker/docker-compose.phase3.yml",
     "infrastructure/docker/docker-compose.phase3.migration.yml",
