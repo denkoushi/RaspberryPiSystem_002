@@ -15,16 +15,16 @@
     ]
   },
   "summary": {
-    "documentCount": 610,
-    "totalLines": 170739,
-    "totalBytes": 12796270,
-    "withFrontmatter": 277,
-    "withStatus": 133,
-    "sourceOfTruthDeclared": 95,
+    "documentCount": 612,
+    "totalLines": 170962,
+    "totalBytes": 12823879,
+    "withFrontmatter": 279,
+    "withStatus": 135,
+    "sourceOfTruthDeclared": 97,
     "execPlanReferences": 64,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
-    "longLineDocuments": 25,
+    "longLineDocuments": 26,
     "localLinkCount": 5658,
     "brokenLocalLinkCount": 87,
     "documentsOver1000Lines": 29,
@@ -5898,8 +5898,8 @@
     },
     {
       "path": "docs/AI_START_HERE.md",
-      "lineCount": 126,
-      "byteSize": 8111,
+      "lineCount": 127,
+      "byteSize": 8240,
       "hasFrontmatter": true,
       "title": "AI Start Here",
       "status": null,
@@ -18829,8 +18829,8 @@
     },
     {
       "path": "docs/guides/deployment.md",
-      "lineCount": 334,
-      "byteSize": 28926,
+      "lineCount": 336,
+      "byteSize": 29635,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -26048,6 +26048,21 @@
       "source_of_truth": "true",
       "localLinks": [],
       "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/knowledge-base/KB-407-pi3-direct-git-fetch-transport.md",
+      "lineCount": 53,
+      "byteSize": 4961,
+      "hasFrontmatter": true,
+      "title": "Pi3 direct Git fetch exposed an external transport dependency during maintenance",
+      "status": "active",
+      "source_of_truth": "true",
+      "localLinks": [],
+      "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -34335,6 +34350,30 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/pi3-staged-source-transfer-execplan.md",
+      "lineCount": 165,
+      "byteSize": 21724,
+      "hasFrontmatter": true,
+      "title": "Seal Pi3 release source on Pi5 and transfer it over the existing SSH Ansible route",
+      "status": "in-progress",
+      "source_of_truth": "docs/plans/pi3-staged-source-transfer-execplan.md",
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [
+        {
+          "line": 116,
+          "length": 1108
+        },
+        {
+          "line": 118,
+          "length": 1145
+        }
+      ],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/pi4-sd-recovery-bootstrap.md",
       "lineCount": 143,
       "byteSize": 8173,
@@ -35816,8 +35855,8 @@
     },
     {
       "path": "docs/plans/standard-release-production-path-audit-execplan.md",
-      "lineCount": 612,
-      "byteSize": 34880,
+      "lineCount": 614,
+      "byteSize": 34966,
       "hasFrontmatter": true,
       "title": "Standard release production-path execution audit",
       "status": "in-progress",

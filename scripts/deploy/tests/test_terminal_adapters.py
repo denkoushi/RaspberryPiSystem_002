@@ -76,9 +76,26 @@ class Runtime:
             "pcscdRequired": "nfc-agent" in selected,
         }
 
-    def apply_terminal_profile(self, inventory, host, revision, run_id, profile):
+    def apply_terminal_profile(
+        self,
+        inventory,
+        host,
+        revision,
+        run_id,
+        profile,
+        *,
+        staged_source=None,
+    ):
         self.calls.append(
-            ("apply", inventory, host, revision, run_id, profile.playbook)
+            (
+                "apply",
+                inventory,
+                host,
+                revision,
+                run_id,
+                profile.playbook,
+                staged_source,
+            )
         )
 
     def rollback_terminal(self, inventory, target_spec, _target, run_id):

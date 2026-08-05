@@ -56,8 +56,9 @@ traffic, or update a terminal.
   `audit/standard-release-production-path` without discarding the five WIP
   files.
 - [x] (2026-08-04 20:34+09:00) Added and validated the machine-readable
-  39-scenario audit matrix and sanitized report. It covers all 25 route stages,
-  all 13 Pi5 phases, and all eight registered historical incidents.
+  39-scenario audit matrix and sanitized report. The Pi3 staged-source follow-up
+  extends the current matrix to 40 scenarios and 26 route stages while
+  preserving coverage of all 13 Pi5 phases and 12 registered incidents.
 - [x] (2026-08-04 20:41+09:00) Added full-public-entrypoint behavioral tests,
   real migration Compose invocation for both slot directions, and isolated
   mutation tests that reintroduce every registered historical incident.
@@ -178,7 +179,8 @@ traffic, or update a terminal.
 ## Surprises & Discoveries
 
 - Observation: the existing route registry assigns a rehearsal test to every
-  one of its 25 stages, but the Pi5 release is represented as one coarse stage.
+  one of its 26 current stages, but the Pi5 release is represented as one
+  coarse stage.
   Evidence: `pi5.blue-green-release` points to a coordinator unit test while
   the shell lifecycle test runs with `PI5_BLUE_GREEN_DRY_RUN=1`.
 

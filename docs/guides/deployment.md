@@ -233,6 +233,8 @@ Pi5が対象の場合は、host設定、Expand-only migration、candidate image�
 
 端末manifest取得は、SSH account identity、file manifest、runtime manifestを候補SHA所有の一つのbundleで検査・取得する。file/runtimeは別々のroot、digest、復元権限のままであり、一方だけ成功した場合や応答を失った場合は成功扱いにしない。Generic Kioskの最終証跡も、Git HEAD、systemd、status identity、各agentの安定性判定を候補SHA所有の一つのbundleで確認する。これらのbundleはpipeliningを使わず、検査内容と必須条件を減らさない。cleanupとrollbackは従来のAnsible transportとsealed manifestだけを使う。
 
+低資源Pi3のrelease sourceは、repository baselineとrollback manifest封印後、通知・maintenanceより前にPi5でexact SHAのGit bundleを作成し、既存Ansible SSH経路で圧縮転送する。容量、SHA-256、Git prerequisite、run、host、旧SHA、候補SHAをPi3上で検証し、run固有pathへatomic promoteできた場合だけmaintenanceへ進む。maintenance後は検証済みlocal bundleからimport/resetするだけとし、GitHubや外部Git protocolへfallbackしない。stage失敗時はrepository、service、表示を変更せず、run固有pathをcleanupして停止する。この契約はSignage Pi3 profileだけに適用し、Pi4の搬送経路は変更しない。
+
 ## 成功の確認
 
 `--status RUN_ID` で次を確認する。

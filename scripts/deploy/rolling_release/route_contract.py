@@ -197,6 +197,16 @@ ROUTE_STAGES: tuple[RouteStage, ...] = (
         "terminal-capture-before-after-faults",
     ),
     RouteStage(
+        "terminal.pi3-source-stage",
+        "terminal",
+        "mutation",
+        ("stage_candidate_source", "cleanup_candidate_source"),
+        "terminal.pi3-read-only-baseline-sealed-manifest-capacity-and-exact-source",
+        "stop-before-notice-and-maintenance-after-run-scoped-cleanup",
+        "signage-systemd-adapter",
+        "pi3-source-stage-before-after-faults",
+    ),
+    RouteStage(
         "terminal.notice",
         "terminal",
         "mutation",

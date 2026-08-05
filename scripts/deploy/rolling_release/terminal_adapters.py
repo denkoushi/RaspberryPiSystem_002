@@ -97,6 +97,7 @@ class TerminalAdapter:
 
     adapter_id: ClassVar[str]
     supported_health_probe_ids: ClassVar[frozenset[str]]
+    staged_source_required: ClassVar[bool] = False
 
     def validate(self) -> None:
         probes = set(self.profile.adapter_options.health_probe_ids)
@@ -157,6 +158,26 @@ class TerminalAdapter:
 
     def prepare_repository(self, inventory: str, host: str) -> dict[str, Any]:
         return self.runtime.prepare_terminal_repository(inventory, host)
+
+    def stage_candidate_source(
+        self,
+        inventory: str,
+        host: str,
+        revision: str,
+        previous_sha: str,
+        run_id: str,
+    ) -> dict[str, Any] | None:
+        del inventory, host, revision, previous_sha, run_id
+        return None
+
+    def cleanup_candidate_source(
+        self,
+        inventory: str,
+        host: str,
+        staged_source: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        del inventory, host, staged_source
+        return None
 
     def capture_manifest(
         self,
@@ -228,12 +249,23 @@ class TerminalAdapter:
         host: str,
         revision: str,
         run_id: str,
+        *,
+        staged_source: dict[str, Any] | None = None,
     ) -> None:
         apply_profile = getattr(self.runtime, "apply_terminal_profile", None)
         if callable(apply_profile):
-            apply_profile(inventory, host, revision, run_id, self.profile)
+            apply_profile(
+                inventory,
+                host,
+                revision,
+                run_id,
+                self.profile,
+                staged_source=staged_source,
+            )
             return
         # Test and old injected runtimes retain the legacy executor shape.
+        if staged_source is not None:
+            raise RuntimeError("staged terminal source requires the profile executor")
         self.runtime.playbook(inventory, host, revision, run_id)
 
     def activate(
@@ -805,6 +837,7 @@ class SignageSystemdAdapter(TerminalAdapter):
     """Signage compatibility adapter with controller-owned visual proof."""
 
     adapter_id = "signage-systemd"
+    staged_source_required = True
     supported_health_probe_ids = frozenset(
         {"display-manager", "status-agent", "signage-endpoint", "ready-sha"}
     )
@@ -817,12 +850,49 @@ class SignageSystemdAdapter(TerminalAdapter):
             return ClaimAuthority.SIGNAGE_READY
         return super().release_claim_authority(kind)
 
+    def prepare_repository(self, inventory: str, host: str) -> dict[str, Any]:
+        return self.runtime.prepare_terminal_repository(
+            inventory, host, strict_read_only=True
+        )
+
+    def stage_candidate_source(
+        self,
+        inventory: str,
+        host: str,
+        revision: str,
+        previous_sha: str,
+        run_id: str,
+    ) -> dict[str, Any]:
+        return self.runtime.stage_terminal_candidate_source(
+            inventory, host, revision, previous_sha, run_id
+        )
+
+    def cleanup_candidate_source(
+        self,
+        inventory: str,
+        host: str,
+        staged_source: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        if staged_source is None:
+            return None
+        return self.runtime.cleanup_terminal_candidate_source(
+            inventory,
+            host,
+            staged_source["candidateSha"],
+            staged_source["previousSha"],
+            staged_source["runId"],
+            staged_source["sha256"],
+            staged_source["size"],
+        )
+
     def rollback_paths(self, user: str, home: str, run_id: str) -> tuple[str, ...]:
         base = super().rollback_paths(user, home, run_id)
         prestage_paths = (
             f"/run/signage/release-{run_id}-maintenance.svg",
             f"/run/signage/release-{run_id}-maintenance.jpg",
             f"/run/signage/release-{run_id}-maintenance.sha256",
+            f"/var/tmp/raspi-pi3-source-{run_id}.bundle.tmp",
+            f"/var/tmp/raspi-pi3-source-{run_id}.bundle",
         )
         return tuple(dict.fromkeys((*base, *prestage_paths)))
 

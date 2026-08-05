@@ -20,6 +20,7 @@ INCIDENT_IDS = (
     "pi5-runtime-permissions",
     "caddy-allowlist-expansion",
     "pi3-ssh-compression",
+    "pi3-external-source-authority",
     "backup-ssh-bind-authority",
     "database-role-wiring",
     "derivative-storage-mount",
@@ -201,6 +202,8 @@ def incident_status(root: Path) -> dict[str, bool]:
     server_role = read(root, "infrastructure/ansible/roles/server/tasks/main.yml")
     web_dockerfile = read(root, "infrastructure/docker/Dockerfile.web")
     terminal_preflight = read(root, "scripts/deploy/rolling_release/terminal_preflight.py")
+    common_role = read(root, "infrastructure/ansible/roles/common/tasks/main.yml")
+    source_bundle = read(root, "scripts/deploy/terminal-source-bundle.py")
     phase3 = read(root, "infrastructure/docker/docker-compose.phase3.yml")
     migration = read(root, "infrastructure/docker/docker-compose.phase3.migration.yml")
     kiosk_layout = read(root, "apps/web/src/layouts/KioskLayout.tsx")
@@ -220,6 +223,14 @@ def incident_status(root: Path) -> dict[str, bool]:
             'caddy run --config \\"$SLOT_CADDY_CONFIG_FILE\\"',
         )
     )
+    pi3_stage_requirement = common_role.find(
+        "Require sealed staged source for the Pi3 signage release"
+    )
+    terminal_fetch = common_role.find(
+        "Fetch and reset existing terminal repository to immutable release"
+    )
+    source_consume = source_bundle.find("def consume(")
+    source_cleanup = source_bundle.find("def cleanup(")
     return {
         "encrypted-vault-planning": ansible.count(
             "_read_only_inventory_context(path, runtime=runtime)"
@@ -235,7 +246,18 @@ def incident_status(root: Path) -> dict[str, bool]:
         ),
         "caddy-allowlist-expansion": local_tls_direct in web_dockerfile
         and "envsubst < /srv/Caddyfile.local.template" not in web_dockerfile,
-        "pi3-ssh-compression": terminal_preflight.count('"Compression=yes"') == 1,
+        "pi3-ssh-compression": (
+            terminal_preflight.count('"Compression=yes"') == 1
+            and ansible.count('compression = "-o Compression=yes"') == 1
+        ),
+        "pi3-external-source-authority": (
+            0 <= pi3_stage_requirement < terminal_fetch
+            and "terminal_staged_source is not defined" in common_role
+            and '"protocol.allow=never"' in source_bundle
+            and '"protocol.file.allow=always"' in source_bundle
+            and 0 <= source_consume < source_cleanup
+            and "origin" not in source_bundle[source_consume:source_cleanup]
+        ),
         "backup-ssh-bind-authority": all(
             value in phase3
             for value in (
