@@ -398,6 +398,39 @@ def adapt_deployed_legacy_host_record(
     return adapted
 
 
+def is_signage_artifact_bootstrap_fallback(
+    record: Mapping[str, Any], *, host: str
+) -> bool:
+    """Identify only the normalized Pi3 fallback used for first artifact install."""
+
+    if (
+        host != LEGACY_SIGNAGE_HOST
+        or not isinstance(record, Mapping)
+        or record.get("role") != "signage"
+        or record.get("evidence") != "verified"
+    ):
+        return False
+    raw_claims = record.get("releaseClaims")
+    if not isinstance(raw_claims, Mapping) or set(raw_claims) != {
+        ClaimKind.TERMINAL_REPOSITORY.value
+    }:
+        return False
+    try:
+        claims = validate_release_claims(raw_claims)
+        validate_host_claim_compatibility(record, claims)
+    except ReleaseClaimError:
+        return False
+    repository = claims[ClaimKind.TERMINAL_REPOSITORY.value]
+    return bool(
+        repository["authority"]
+        == ClaimAuthority.TERMINAL_REPOSITORY_PROBE.value
+        and repository["state"] == ClaimState.VERIFIED.value
+        and repository["expectedIdentity"] == record.get("currentSha")
+        and repository["observedIdentity"] == record.get("currentSha")
+        and repository["lastRunId"] == record.get("lastRunId")
+    )
+
+
 def project_legacy_host_claims(record: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     """Project only evidence the legacy host record already proved directly.
 
