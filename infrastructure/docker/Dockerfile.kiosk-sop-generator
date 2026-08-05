@@ -9,6 +9,7 @@ ENV CI=true \
 
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+COPY infrastructure/docker/Dockerfile.kiosk-sop-generator infrastructure/docker/Dockerfile.kiosk-sop-generator
 COPY apps/web/package.json apps/web/package.json
 COPY packages/shared-types/package.json packages/shared-types/package.json
 COPY packages/kiosk-sop-core/package.json packages/kiosk-sop-core/package.json
@@ -25,6 +26,8 @@ COPY apps/web ./apps/web
 COPY e2e ./e2e
 COPY playwright.kiosk-sop.config.ts ./playwright.kiosk-sop.config.ts
 COPY scripts/kiosk-sop ./scripts/kiosk-sop
+COPY scripts/ci/kiosk-sop-artifact-contract.mjs scripts/ci/kiosk-sop-artifact-contract.mjs
+COPY scripts/ci/kiosk-sop-artifact-contract.test.mjs scripts/ci/kiosk-sop-artifact-contract.test.mjs
 RUN mkdir -p docs/design-previews
 
 CMD ["node", "scripts/kiosk-sop/generate.mjs", "check"]

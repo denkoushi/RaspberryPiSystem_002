@@ -23,6 +23,12 @@ const repoRoot = resolve(scriptDir, '../..');
 const sourceDefinitionPath = join(repoRoot, 'apps/web/src/features/part-measurement/inspection-drawing/inspection-drawing-sop.definition.json');
 const committedRoot = join(repoRoot, 'apps/web/src/generated/kiosk-sop/inspection-drawing');
 const docsPreviewPath = join(repoRoot, 'docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html');
+const generatorRuntimeInputs = Object.freeze([
+  'infrastructure/docker/Dockerfile.kiosk-sop-generator',
+  'package.json',
+  'pnpm-lock.yaml',
+  'pnpm-workspace.yaml'
+]);
 const mode = process.argv[2] ?? 'generate';
 const outputArgIndex = process.argv.indexOf('--output-root');
 const outputRoot = outputArgIndex >= 0 ? resolve(process.argv[outputArgIndex + 1]) : committedRoot;
@@ -115,12 +121,23 @@ async function captureScreens(definition, targetRoot) {
                 }
                 return {
                   rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
-                  visible: styleVisible && rect.width > 0 && rect.height > 0 && rect.right > 0 && rect.bottom > 0 && rect.left < window.innerWidth && rect.top < window.innerHeight
+                  visible: styleVisible && rect.width > 0 && rect.height > 0 && rect.right > 0 && rect.bottom > 0 && rect.left < window.innerWidth && rect.top < window.innerHeight,
+                  semantics: {
+                    tagName: element.tagName.toLowerCase(),
+                    role: element.getAttribute('role'),
+                    text: (element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement
+                      ? element.value
+                      : element.innerText || element.textContent || '').replace(/\s+/g, ' ').trim(),
+                    ariaLabel: element.getAttribute('aria-label')
+                  }
                 };
               }));
               const rect = resolveSingleVisibleTarget(rows, captureContext);
               try {
-                targets[step.targetId] = computeNormalizedBottomRightAnchor(rect, scenario.viewport);
+                targets[step.targetId] = {
+                  target: computeNormalizedBottomRightAnchor(rect, scenario.viewport),
+                  semantics: rows[0].semantics
+                };
               } catch (error) {
                 throw new Error(`${error instanceof Error ? error.message : String(error)} rect=${JSON.stringify(rect)} viewport=${JSON.stringify(scenario.viewport)} (scenario=${scenario.id} sheet=${sheet.id} targetId=${step.targetId})`);
               }
@@ -183,7 +200,7 @@ async function sourceDigest(definition) {
     if (entry.isDirectory()) files.push(...await listFiles(repoRoot, root)); else files.push(root);
   }
   const patterns = definition.supplementalWatchGlobs.map(globRegex);
-  const selected = new Set(definition.entrySources);
+  const selected = new Set([...definition.entrySources, ...generatorRuntimeInputs]);
   for (const file of files) if (patterns.some((pattern) => pattern.test(file))) selected.add(file);
   const chunks = [];
   for (const file of [...selected].sort()) chunks.push(`${file}\0${await readFile(join(repoRoot, file), 'utf8')}\0`);
@@ -222,7 +239,7 @@ async function generate(targetRoot) {
         ...sheet,
         steps: sheet.steps.map((step) => ({
           ...step,
-          target: capturesBySheet[sheet.id].targets[step.targetId]
+          target: capturesBySheet[sheet.id].targets[step.targetId].target
         })),
         screenImageDataUrl: `data:image/png;base64,${(await readFile(join(targetRoot, 'screens', `${sheet.id}.png`))).toString('base64')}`
       })))
@@ -241,7 +258,12 @@ async function generate(targetRoot) {
     definitionSha256: sha256(stableJson(source)),
     sourceSha256: await sourceDigest(source),
     htmlSha256: sha256(html),
-    geometry: Object.fromEntries(validated.scenarios.flatMap(({ sheets }) => sheets).map((sheet) => [sheet.id, sheet.steps.map(({ id, targetId, target }) => ({ id, targetId, target }))])),
+    geometry: Object.fromEntries(validated.scenarios.flatMap(({ sheets }) => sheets).map((sheet) => [sheet.id, sheet.steps.map(({ id, targetId, target }) => ({
+      id,
+      targetId,
+      target,
+      semantics: capturesBySheet[sheet.id].targets[targetId].semantics
+    }))])),
     artifacts
   });
   await writeFile(join(targetRoot, 'manifest.json'), stableJson(manifest));

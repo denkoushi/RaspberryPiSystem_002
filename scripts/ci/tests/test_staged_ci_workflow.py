@@ -16,6 +16,9 @@ DEPLOY_CONTRACT_RUNNER = (
 RELEASE_IMAGE_BUILDER = (
     ROOT / "scripts/ci/build_release_image.py"
 ).read_text(encoding="utf-8")
+KIOSK_SOP_CONTRACT_RUNNER = (
+    ROOT / "scripts/ci/run-kiosk-sop-artifact-contract.sh"
+).read_text(encoding="utf-8")
 
 
 def job_block(text: str, job: str) -> str:
@@ -233,6 +236,26 @@ class StagedCiWorkflowTests(unittest.TestCase):
             "ansible-playbook --syntax-check playbooks/deploy-staged.yml",
             DEPLOY_CONTRACT_RUNNER,
         )
+
+    def test_kiosk_sop_failure_diagnostics_capture_the_actual_candidate(self) -> None:
+        kiosk = job_block(CI, "kiosk-sop")
+        self.assertIn("if: always()", kiosk)
+        self.assertIn("KIOSK_SOP_DIAGNOSTICS_DIR", kiosk)
+        self.assertIn("path: ${{ runner.temp }}/kiosk-sop-diagnostics-", kiosk)
+        self.assertIn("run-kiosk-sop-artifact-contract.sh", kiosk)
+        self.assertIn("artifact-tree-diff.txt", KIOSK_SOP_CONTRACT_RUNNER)
+        self.assertLess(
+            KIOSK_SOP_CONTRACT_RUNNER.index('mkdir -p "$diagnostics_dir/candidate"'),
+            KIOSK_SOP_CONTRACT_RUNNER.index("docker build"),
+        )
+        trap = KIOSK_SOP_CONTRACT_RUNNER.index("trap capture_tree_diff EXIT")
+        for stage in (
+            "node --test",
+            "generate.mjs generate",
+            "kiosk-sop-artifact-contract.mjs verify",
+            "pnpm exec playwright test",
+        ):
+            self.assertLess(trap, KIOSK_SOP_CONTRACT_RUNNER.index(stage))
 
 
 if __name__ == "__main__":

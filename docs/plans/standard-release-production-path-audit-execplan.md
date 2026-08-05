@@ -545,6 +545,39 @@ The exact scenario count may exceed 25 because the single high-level Pi5 route
 has multiple internal phases and failure states. The acceptance invariant is
 zero uncovered required IDs, not a fixed total count.
 
+The kiosk SOP freshness gate treats renderer bytes and content authority as
+separate contracts. PR run `30958990109` passed on a `centralus` native-amd64
+runner, while exact-main run `30960222046` failed first in `westus3` and then
+failed again on a different `centralus` runner. The successful PR merge ref
+and the main merge commit have the identical Git tree
+`e60b7c14d9b666c582c152060c6e9c937310de34`; all failures named only the
+manifest/manual and the advanced-point screen/sheet derived from one raster
+difference. This is classified as a renderer false positive, not stale SOP
+content.
+
+Cross-runner validation remains exact for generator version, browser version,
+definition and source/input digests, DOM target tag/role/text/aria label,
+normalized target geometry, normalized manual HTML, file lists, and every
+manifest-to-artifact hash. PNG comparison alone uses pixelmatch threshold
+`0.2`, excludes classified antialias pixels, and permits at most `0.005` of an
+image's pixels to differ. The 0.5% ceiling is above the archived native-versus-
+emulated renderer observation (about 0.287% at threshold 0.2) but below the
+material mutation fixture (1%). Text, DOM target, geometry, dimensions,
+missing image, source digest, and artifact tampering mutations are separately
+required to fail, so the visual allowance cannot authorize stale inputs or
+semantic changes. CI retains the actual generated candidate, the JSON report,
+the candidate tree diff, and per-image diff PNGs. This follow-up does not pass
+generated artifacts into the release image build and does not change that
+trust boundary.
+
+Local follow-up evidence on 2026-08-05 passed the complete deploy-contract
+runner (991 route and lifecycle tests, 25 required routes, 13 Pi5 phases, 11
+incident reinjections, 157 disposable PostgreSQL migrations, and zero
+run-labelled resource residue), 104 CI contract unit tests, the 10 kiosk SOP
+capture/visual mutation tests, and all 18 production popup browser tests. The
+final local generated candidate had no semantic, integrity, geometry, HTML, or
+visual mismatch. Hosted native-runner evidence remains a separate PR gate.
+
 ## Interfaces and Dependencies
 
 `scripts/deploy/production-path-audit.json` is internal data with
@@ -569,3 +602,11 @@ that the first isolated rehearsal did not execute across the real boundary.
 Revision note 2026-08-05: Recorded the native-amd64 SOP rasterization finding,
 its deterministic capture contract, and the read-only six-host Pi4 fleet
 snapshot while retaining failed-run maintenance and the production freeze.
+
+Revision note 2026-08-05: Reclassified cross-runner kiosk SOP PNG byte drift as
+a renderer false positive, replaced raw-byte freshness with exact semantic and
+integrity checks plus a bounded visual contract, and kept release-image inputs
+unchanged.
+
+Revision note 2026-08-05: Recorded the successful full local follow-up audit;
+native GitHub runner repetition and exact-main evidence remain pending.

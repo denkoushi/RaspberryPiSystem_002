@@ -1,4 +1,4 @@
-export const generatorVersion = '1.2.0';
+export const generatorVersion = '1.3.0';
 
 export const chromiumLaunchOptions = Object.freeze({
   headless: true,

@@ -76,10 +76,22 @@ export function validateKioskSopManifest(manifest: KioskSopManifest): KioskSopMa
     if (rows.length === 0) throw new Error(`Manifest sheet geometry is empty: ${sheetId}`);
     assertUnique(rows.map(({ id }) => id), `manifest step id in ${sheetId}`);
     assertUnique(rows.map(({ targetId }) => targetId), `manifest target id in ${sheetId}`);
-    rows.forEach(({ id, targetId, target }) => {
+    rows.forEach(({ id, targetId, target, semantics }) => {
       assertId(id, 'manifest step id');
       assertId(targetId, 'manifest target id');
       assertTarget(target, id);
+      if (!semantics || !/^[a-z][a-z0-9-]*$/.test(semantics.tagName)) {
+        throw new Error(`Manifest DOM tagName is invalid: ${sheetId}/${targetId}`);
+      }
+      if (semantics.role !== null && typeof semantics.role !== 'string') {
+        throw new Error(`Manifest DOM role is invalid: ${sheetId}/${targetId}`);
+      }
+      if (typeof semantics.text !== 'string') {
+        throw new Error(`Manifest DOM text is invalid: ${sheetId}/${targetId}`);
+      }
+      if (semantics.ariaLabel !== null && typeof semantics.ariaLabel !== 'string') {
+        throw new Error(`Manifest DOM ariaLabel is invalid: ${sheetId}/${targetId}`);
+      }
     });
   }
   if (Object.keys(manifest.artifacts).length === 0) throw new Error('Manifest artifacts are required.');
