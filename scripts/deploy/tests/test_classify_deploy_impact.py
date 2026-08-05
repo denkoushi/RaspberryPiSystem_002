@@ -168,6 +168,7 @@ class ClassifyDeployImpactTest(unittest.TestCase):
             [
                 '.gitignore',
                 'infrastructure/ansible/ansible-readonly.cfg',
+                'infrastructure/ansible/callback_plugins/rolling_release_timing.py',
                 'scripts/update-all-clients.sh',
                 'scripts/deploy/classify-deploy-impact.py',
                 'scripts/deploy/recover-pi4.py',

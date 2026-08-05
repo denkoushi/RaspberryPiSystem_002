@@ -32,7 +32,7 @@ from .release_claims import (
     validate_claim_identity,
 )
 from .release_warnings import record_observer_warning
-from . import readiness_policy, telemetry
+from . import readiness_policy, safe_diagnostics, telemetry
 from .terminal_adapters import TerminalAdapter
 
 
@@ -100,7 +100,21 @@ def _collect_ansible_timing(state: Any, runtime: Any, run_id: str) -> None:
     if not callable(collector):
         return
     try:
-        state.payload.setdefault("telemetry", {})["ansible"] = collector(run_id)
+        collected = collector(run_id)
+        diagnostics = collected.get("diagnostics") if isinstance(collected, dict) else None
+        validated: list[dict[str, Any]] = []
+        if isinstance(diagnostics, list) and diagnostics:
+            validated = [
+                diagnostic
+                for diagnostic in diagnostics[:100]
+                if safe_diagnostics.valid_projected_diagnostic(diagnostic, run_id)
+            ]
+            if validated:
+                state.payload["failureDiagnostics"] = validated
+        if isinstance(collected, dict):
+            collected = dict(collected)
+            collected["diagnostics"] = validated
+        state.payload.setdefault("telemetry", {})["ansible"] = collected
     except Exception as error:
         state.payload.setdefault("telemetry", {})["ansible"] = {
             "state": "unavailable", "error": type(error).__name__,

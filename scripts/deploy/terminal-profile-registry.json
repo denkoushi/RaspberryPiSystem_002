@@ -161,6 +161,7 @@
 
     {"match": "exact", "path": ".gitignore", "component": "deploy-control"},
     {"match": "exact", "path": "infrastructure/ansible/ansible-readonly.cfg", "component": "deploy-control"},
+    {"match": "exact", "path": "infrastructure/ansible/callback_plugins/rolling_release_timing.py", "component": "deploy-control"},
     {"match": "exact", "path": "scripts/update-all-clients.sh", "component": "deploy-control"},
     {"match": "exact", "path": "scripts/deploy/validate-expand-only-migrations.py", "component": "pi5-control"},
     {"match": "exact", "path": "scripts/deploy/production_config_contract.py", "component": "server-app"},
