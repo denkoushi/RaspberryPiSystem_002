@@ -2393,6 +2393,7 @@ class PrintPlanShadowTest(unittest.TestCase):
         )
 
     def test_production_legacy_signage_claim_keeps_full_plan_pi3_only(self):
+        current_fleet_sha = 'e' * 40
         pi4_hosts = [
             'raspi4-kensaku-stonebase01',
             'raspberrypi4',
@@ -2434,16 +2435,20 @@ class PrintPlanShadowTest(unittest.TestCase):
             'activeRun': None,
             'lastRun': None,
             'fleet': {
-                'raspberrypi5': _verified_fleet_record('server', BASE_SHA),
+                'raspberrypi5': _verified_fleet_record(
+                    'server', current_fleet_sha
+                ),
                 **{
-                    host: _verified_fleet_record('kiosk', BASE_SHA, typed=True)
+                    host: _verified_fleet_record(
+                        'kiosk', current_fleet_sha, typed=True
+                    )
                     for host in pi4_hosts
                 },
                 'raspberrypi3': legacy_signage,
             },
         }
         fleet_state = MODULE.parse_fleet_state_json(json.dumps(raw_fleet))
-        classification = {
+        signage_classification = {
             'server': False,
             'kiosk': False,
             'signage': True,
@@ -2451,6 +2456,24 @@ class PrintPlanShadowTest(unittest.TestCase):
             'paths': ['scripts/deploy/rolling_release/release_claims.py'],
             'components': ['signage-role'],
         }
+        broad_legacy_classification = {
+            'server': True,
+            'kiosk': True,
+            'signage': True,
+            'migration': False,
+            'paths': ['apps/api/legacy-change.ts', 'unknown-legacy-path'],
+            'components': ['global', 'server-app', 'unknown'],
+            'affectedProfiles': ['kiosk', 'signage'],
+        }
+        legacy_sha = legacy_signage['currentSha']
+
+        def classify_baseline(_sha, release_marker):
+            base = release_marker['sha']
+            if base == legacy_sha:
+                return broad_legacy_classification, []
+            self.assertEqual(base, current_fleet_sha)
+            return signage_classification, []
+
         args = MODULE.normalize_arguments(MODULE.parser().parse_args([
             'main', 'infrastructure/ansible/inventory.yml', '--print-plan',
         ]))
@@ -2467,7 +2490,11 @@ class PrintPlanShadowTest(unittest.TestCase):
                         'clientId': 'raspberrypi5-server',
                     },
                 ), \
-                patch.object(MODULE, 'classify_release_impact', return_value=(classification, [])), \
+                patch.object(
+                    MODULE,
+                    'classify_release_impact',
+                    side_effect=classify_baseline,
+                ) as classified, \
                 patch.object(MODULE, 'read_only_inventory_json', return_value=inventory_data), \
                 patch.object(MODULE, 'read_only_selected_hosts', return_value=None), \
                 patch.object(
@@ -2498,9 +2525,71 @@ class PrintPlanShadowTest(unittest.TestCase):
         self.assertEqual(plan['classificationComponents'], ['signage-role'])
         self.assertNotIn('global', plan['classificationComponents'])
         self.assertNotIn('unknown', plan['classificationComponents'])
+        self.assertEqual(
+            [call.args[1]['sha'] for call in classified.call_args_list],
+            [current_fleet_sha],
+        )
         self.assertEqual(plan['warnings'], [])
-        self.assertEqual(plan['mainIntegration']['productionSha'], BASE_SHA)
+        self.assertIsNone(plan['mainIntegration']['productionSha'])
+        self.assertEqual(
+            set(plan['mainIntegration']['productionShas']),
+            {current_fleet_sha, legacy_sha},
+        )
         self.assertTrue(plan['mainIntegration']['completionEligible'])
+
+    def test_signage_bootstrap_does_not_override_artifact_or_shared_sha(self):
+        broad_classification = {
+            'server': True,
+            'kiosk': True,
+            'signage': True,
+            'migration': False,
+            'paths': ['unknown-legacy-path'],
+            'components': ['global', 'unknown'],
+            'affectedProfiles': ['kiosk', 'signage'],
+        }
+        fixture = json.loads(
+            (CLAIM_FIXTURES / 'production-legacy-signage-host.json').read_text(
+                encoding='utf-8'
+            )
+        )
+        legacy_sha = fixture['currentSha']
+        parsed = MODULE.parse_fleet_state_json(json.dumps({
+            'generation': 42,
+            'activeRun': None,
+            'lastRun': None,
+            'fleet': {'raspberrypi3': fixture},
+        }))
+        cases = {
+            'artifact-claim': {
+                'fleet': {
+                    'raspberrypi3': _verified_fleet_record(
+                        'signage', legacy_sha
+                    ),
+                },
+            },
+            'shared-sha': {
+                'fleet': {
+                    **parsed['fleet'],
+                    'raspberrypi4': _verified_fleet_record(
+                        'kiosk', legacy_sha, typed=True
+                    ),
+                },
+            },
+        }
+
+        for name, fleet_state in cases.items():
+            with self.subTest(name=name), patch.object(
+                MODULE,
+                'classify_release_impact',
+                return_value=(broad_classification, []),
+            ) as classified:
+                classifications, warnings = MODULE.classify_fleet_baselines(
+                    TARGET_SHA, fleet_state
+                )
+
+            self.assertEqual(classifications[legacy_sha], broad_classification)
+            classified.assert_called_once_with(TARGET_SHA, {'sha': legacy_sha})
+            self.assertEqual(warnings, [])
 
     def test_print_plan_remote_state_uses_the_shared_server_transport(self):
         transport = Mock()

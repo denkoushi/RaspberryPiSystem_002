@@ -51,6 +51,7 @@ from rolling_release.fleet_state import (
     empty_fleet_state,
     parse_fleet_state_json,
 )
+from rolling_release.release_claims import is_signage_artifact_bootstrap_fallback
 from rolling_release.errors import CanaryApprovalTimeout
 from rolling_release.lock import (
     validate_inherited_fleet_lock,
@@ -1378,17 +1379,36 @@ def classify_fleet_baselines(
     fleet = fleet_state.get("fleet") if isinstance(fleet_state, dict) else {}
     if not isinstance(fleet, dict):
         return classifications, ["fleet evidence is malformed"]
+    baselines: dict[str, list[tuple[str, dict[str, Any]]]] = {}
     for host, record in fleet.items():
         if not isinstance(record, dict) or record.get("evidence") != "verified":
             continue
         current = record.get("currentSha")
         if not isinstance(current, str) or not FULL_SHA_RE.fullmatch(current):
             continue
-        if current in classifications:
+        baselines.setdefault(current, []).append((host, record))
+    for current, records in baselines.items():
+        if all(
+            is_signage_artifact_bootstrap_fallback(record, host=host)
+            for host, record in records
+        ):
+            classifications[current] = {
+                "server": False,
+                "kiosk": False,
+                "signage": True,
+                "migration": False,
+                "affectedProfiles": ["signage"],
+                "paths": [],
+                "components": ["signage-role"],
+            }
             continue
         classification, current_warnings = classify_release_impact(sha, {"sha": current})
         classifications[current] = classification
-        warnings.extend(f"{host}: {warning}" for warning in current_warnings)
+        warnings.extend(
+            f"{host}: {warning}"
+            for host, _record in records
+            for warning in current_warnings
+        )
     return classifications, warnings
 
 
