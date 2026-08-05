@@ -27,6 +27,19 @@ FORWARD_VERIFICATION_ID = '1' * 32
 ROLLBACK_VERIFICATION_ID = '2' * 32
 
 
+def _sealed_source_reference(_inventory, host, candidate_sha, previous_sha, run_id):
+    return {
+        'schemaVersion': 1,
+        'runId': run_id,
+        'host': host,
+        'previousSha': previous_sha,
+        'candidateSha': candidate_sha,
+        'sha256': 'c' * 64,
+        'size': 1,
+        'finalPath': f'/var/tmp/raspi-pi3-source-{run_id}.bundle',
+    }
+
+
 def _verified_fleet_record(role, sha=BASE_SHA):
     record = {
         'role': role,
@@ -1539,7 +1552,9 @@ class CanaryHoldTest(unittest.TestCase):
     def _run_remote(self, targets, *, wait_for_canary_approval, args=None, played=None):
         played = played if played is not None else []
 
-        def playbook(_inventory, host, _sha, _run_id, rollback=False):
+        def playbook(
+            _inventory, host, _sha, _run_id, rollback=False, staged_source=None
+        ):
             played.append(host)
 
         with tempfile.TemporaryDirectory() as temporary:
@@ -1554,6 +1569,7 @@ class CanaryHoldTest(unittest.TestCase):
                     patch.object(MODULE, 'wait_for_canary_approval', side_effect=wait_for_canary_approval), \
                     patch.object(MODULE, 'state_command'), \
                     patch.object(MODULE, 'prestage_signage_maintenance'), \
+                    patch.object(MODULE, 'stage_terminal_candidate_source', side_effect=_sealed_source_reference), \
                     patch.object(MODULE, 'playbook', side_effect=playbook), \
                     patch.object(MODULE, 'utc_now', return_value='2026-07-12T00:00:00Z'):
                 result = MODULE._remote_run(args or self._args())
@@ -1606,7 +1622,9 @@ class CanaryHoldTest(unittest.TestCase):
 
         played = []
 
-        def playbook(_inventory, host, _sha, _run_id, rollback=False):
+        def playbook(
+            _inventory, host, _sha, _run_id, rollback=False, staged_source=None
+        ):
             played.append(host)
 
         with tempfile.TemporaryDirectory() as temporary:
@@ -1660,7 +1678,9 @@ class CanaryHoldTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             run_directory = Path(temporary)
 
-            def playbook(_inventory, host, _sha, _run_id, rollback=False):
+            def playbook(
+                _inventory, host, _sha, _run_id, rollback=False, staged_source=None
+            ):
                 played.append(host)
                 control = run_directory / 'run-1.control.json'
                 control.write_text(
@@ -1684,6 +1704,7 @@ class CanaryHoldTest(unittest.TestCase):
                     patch.object(MODULE, 'wait_for_ack', return_value=True), \
                     patch.object(MODULE, 'state_command') as state_command, \
                     patch.object(MODULE, 'prestage_signage_maintenance'), \
+                    patch.object(MODULE, 'stage_terminal_candidate_source', side_effect=_sealed_source_reference), \
                     patch.object(MODULE, 'playbook', side_effect=playbook), \
                     patch.object(MODULE, 'utc_now', return_value='2026-07-12T00:00:00Z'):
                 result = MODULE._remote_run(self._args())
@@ -1708,7 +1729,9 @@ class CanaryHoldTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             run_directory = Path(temporary)
 
-            def playbook(_inventory, _host, _sha, _run_id, rollback=False):
+            def playbook(
+                _inventory, _host, _sha, _run_id, rollback=False, staged_source=None
+            ):
                 (run_directory / 'run-1.control.json').write_text(
                     json.dumps({
                         'version': 1,
@@ -1734,6 +1757,7 @@ class CanaryHoldTest(unittest.TestCase):
                     patch.object(MODULE, 'wait_for_ack', return_value=True), \
                     patch.object(MODULE, 'state_command', side_effect=state_command), \
                     patch.object(MODULE, 'prestage_signage_maintenance'), \
+                    patch.object(MODULE, 'stage_terminal_candidate_source', side_effect=_sealed_source_reference), \
                     patch.object(MODULE, 'playbook', side_effect=playbook), \
                     patch.object(MODULE, 'utc_now', return_value='2026-07-12T00:00:00Z'):
                 result = MODULE._remote_run(self._args())
@@ -2661,7 +2685,9 @@ class AutoMinimizeTest(unittest.TestCase):
         inventory = inventory if inventory is not None else self.INVENTORY
         played = []
 
-        def playbook(_inventory, host, _sha, _run_id, rollback=False):
+        def playbook(
+            _inventory, host, _sha, _run_id, rollback=False, staged_source=None
+        ):
             played.append(host)
 
         with tempfile.TemporaryDirectory() as temporary:
@@ -2675,6 +2701,7 @@ class AutoMinimizeTest(unittest.TestCase):
                     patch.object(MODULE, 'wait_for_ack', return_value=True), \
                     patch.object(MODULE, 'state_command'), \
                     patch.object(MODULE, 'prestage_signage_maintenance'), \
+                    patch.object(MODULE, 'stage_terminal_candidate_source', side_effect=_sealed_source_reference), \
                     patch.object(MODULE, 'playbook', side_effect=playbook), \
                     patch.object(MODULE, 'utc_now', return_value='2026-07-12T00:00:00Z'):
                 result = MODULE._remote_run(args or self._args())

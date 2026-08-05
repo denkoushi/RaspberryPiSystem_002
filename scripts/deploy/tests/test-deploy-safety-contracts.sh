@@ -1369,7 +1369,19 @@ def audit_tasks(tasks, source, inherited_full):
                     and '--refresh-image' not in payload
                     and '--seal-maintenance-image' not in payload
                 )
-                assert approved_diagnostic or approved_signage_proof, (
+                approved_pi3_source = (
+                    source.resolve() == (roles_root / 'common/tasks/main.yml').resolve()
+                    and name == 'Import and reset Pi3 repository from the verified local bundle'
+                    and 'scripts/deploy/terminal-source-bundle.py consume' in payload
+                    and '--repository' in payload
+                    and '--previous-sha' in payload
+                    and '--candidate-sha' in payload
+                    and '--sha256' in payload
+                    and '--size' in payload
+                    and 'origin' not in payload
+                    and 'http' not in payload.lower()
+                )
+                assert approved_diagnostic or approved_signage_proof or approved_pi3_source, (
                     f'{source}:{name}: opaque script execution is release-reachable'
                 )
 

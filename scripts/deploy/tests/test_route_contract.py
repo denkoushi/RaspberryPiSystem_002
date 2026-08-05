@@ -69,6 +69,10 @@ REHEARSAL_TESTS = {
         "scripts/deploy/tests/test_fleet_coordinator_transitions.py",
         "test_manifest_capture_failure_precedes_every_terminal_mutation",
     ),
+    "pi3-source-stage-before-after-faults": (
+        "scripts/deploy/tests/test_fleet_coordinator_transitions.py",
+        "test_pi3_source_stage_before_after_faults_leave_runtime_unchanged",
+    ),
     "notice-before-after-faults": (
         "scripts/deploy/tests/test_fleet_coordinator_transitions.py",
         "test_pre_mutation_recovery_removes_notice_on_either_side_of_notice_put",

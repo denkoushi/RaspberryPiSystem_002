@@ -19,6 +19,8 @@ FILES = (
     "infrastructure/ansible/roles/server/tasks/main.yml",
     "infrastructure/docker/Dockerfile.web",
     "scripts/deploy/rolling_release/terminal_preflight.py",
+    "infrastructure/ansible/roles/common/tasks/main.yml",
+    "scripts/deploy/terminal-source-bundle.py",
     "infrastructure/docker/docker-compose.phase3.yml",
     "infrastructure/docker/docker-compose.phase3.migration.yml",
     "scripts/deploy/lib/pi5-blue-green/images-evidence.sh",
@@ -44,9 +46,14 @@ MUTATIONS = {
         'elif [ -n \\"$USE_LOCAL_CERTS\\" ]; then envsubst < /srv/Caddyfile.local.template > /tmp/Caddyfile.local && caddy run --config /tmp/Caddyfile.local',
     ),
     "pi3-ssh-compression": (
-        "scripts/deploy/rolling_release/terminal_preflight.py",
-        '"Compression=yes"',
-        '"Compression=no"',
+        "scripts/deploy/rolling_release/backends/ansible.py",
+        'compression = "-o Compression=yes"',
+        'compression = "-o Compression=no"',
+    ),
+    "pi3-external-source-authority": (
+        "scripts/deploy/terminal-source-bundle.py",
+        '"protocol.allow=never"',
+        '"protocol.allow=always"',
     ),
     "backup-ssh-bind-authority": (
         "infrastructure/docker/docker-compose.phase3.yml",

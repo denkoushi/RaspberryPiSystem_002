@@ -311,6 +311,23 @@ class TerminalRepositoryBaselineAdapterTest(unittest.TestCase):
                 )
                 self.assertTrue(options["capture"])
 
+    def test_strict_read_only_baseline_is_explicitly_scoped(self):
+        result = {
+            "head": "a" * 40,
+            "repairedLegacyDocs": False,
+            "count": 0,
+        }
+        runtime = Runtime(baseline_marker(result))
+
+        ansible.prepare_terminal_repository(
+            "inventory.yml",
+            "signage-a",
+            runtime=runtime,
+            strict_read_only=True,
+        )
+
+        self.assertIn("--strict-read-only", runtime.calls[0][0][-1])
+
     def test_malformed_or_disagreeing_result_fails_closed(self):
         bad_results = (
             {"head": "main", "repairedLegacyDocs": False, "count": 0},
@@ -1503,6 +1520,32 @@ class TerminalReleasePlaybookTest(unittest.TestCase):
         self.assertEqual(options["env"]["ANSIBLE_PIPELINING"], "true")
         self.assertEqual(options["env"]["ANSIBLE_SSH_PIPELINING"], "true")
 
+    def test_signage_playbook_receives_one_exact_staged_source_reference(self):
+        reference = {
+            "schemaVersion": 1,
+            "runId": "run-123",
+            "host": "signage-a",
+            "previousSha": "b" * 40,
+            "candidateSha": "a" * 40,
+            "sha256": "c" * 64,
+            "size": 3430416,
+            "finalPath": "/var/tmp/raspi-pi3-source-run-123.bundle",
+        }
+        runtime = Runtime("")
+
+        ansible.playbook(
+            "inventory.yml",
+            "signage-a",
+            "a" * 40,
+            "run-123",
+            staged_source=reference,
+            runtime=runtime,
+        )
+
+        command = runtime.calls[0][0]
+        encoded = command[command.index("-e", command.index("-e") + 1) + 1]
+        self.assertEqual(json.loads(encoded), {"terminal_staged_source": reference})
+
     def test_terminal_playbook_rejects_legacy_rollback_mode_without_execution(self):
         runtime = Runtime("")
         with self.assertRaisesRegex(ValueError, "sealed manifest"):
@@ -1516,6 +1559,76 @@ class TerminalReleasePlaybookTest(unittest.TestCase):
             )
         self.assertEqual(runtime.calls, [])
 
+
+class TerminalSourceStageAdapterTest(unittest.TestCase):
+    def test_stage_creates_exact_bundle_and_uses_compressed_ssh_copy(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Path(temporary) / "project"
+            project.mkdir()
+
+            def git(*arguments: str) -> str:
+                return subprocess.run(
+                    ["git", *arguments],
+                    cwd=project,
+                    check=True,
+                    text=True,
+                    capture_output=True,
+                ).stdout.strip()
+
+            git("init")
+            git("config", "user.email", "pi3-source-test@example.invalid")
+            git("config", "user.name", "Pi3 Source Test")
+            source = project / "source.txt"
+            source.write_text("previous\n", encoding="utf-8")
+            git("add", "source.txt")
+            git("commit", "-m", "previous")
+            previous = git("rev-parse", "HEAD")
+            source.write_text("candidate\n", encoding="utf-8")
+            git("commit", "-am", "candidate")
+            revision = git("rev-parse", "HEAD")
+
+            runtime = Runtime("")
+            runtime.PROJECT = project
+
+            def source_action(_inventory, _user, action, reference, **_kwargs):
+                states = {
+                    "preflight": "empty",
+                    "promote": "ready",
+                    "verify": "ready",
+                }
+                return {**reference, "state": states[action]}
+
+            with mock.patch.object(
+                ansible,
+                "_remote_identity",
+                return_value=("signageras3", "/home/signageras3"),
+            ), mock.patch.object(
+                ansible, "_run_terminal_source_helper", side_effect=source_action
+            ):
+                reference = ansible.stage_terminal_candidate_source(
+                    "inventory.yml",
+                    "raspberrypi3",
+                    revision,
+                    previous,
+                    "run-123",
+                    runtime=runtime,
+                )
+
+            self.assertEqual(reference["candidateSha"], revision)
+            self.assertEqual(reference["previousSha"], previous)
+            self.assertLessEqual(reference["size"], 64 * 1024 * 1024)
+            copy_command, options = runtime.calls[0]
+            self.assertEqual(
+                copy_command[0:5],
+                ["ansible", "-i", "inventory.yml", "raspberrypi3", "-b"],
+            )
+            self.assertEqual(copy_command[5:7], ["-m", "copy"])
+            self.assertIn("mode=0600", copy_command[-1])
+            self.assertIn("owner=signageras3", copy_command[-1])
+            self.assertNotIn("group=", copy_command[-1])
+            self.assertIn(
+                "-o Compression=yes", options["env"]["ANSIBLE_SSH_COMMON_ARGS"]
+            )
 
 class SignageMaintenancePrestageTest(unittest.TestCase):
     def test_prestage_is_runtime_only_and_requires_existing_renderer(self):

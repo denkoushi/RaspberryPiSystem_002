@@ -53,6 +53,10 @@ _REPOSITORY_BASELINE_MARKER_RE = re.compile(
     r"TERMINAL_REPOSITORY_BASELINE_RESULT:"
     r"([A-Za-z0-9_-]+={0,2})(?![A-Za-z0-9_=-])"
 )
+_TERMINAL_SOURCE_BUNDLE_MARKER_RE = re.compile(
+    r"TERMINAL_SOURCE_BUNDLE_RESULT:"
+    r"([A-Za-z0-9_-]+={0,2})(?![A-Za-z0-9_=-])"
+)
 _RUNTIME_MANIFEST_MARKER_RE = re.compile(
     r"TERMINAL_RUNTIME_MANIFEST_RESULT:"
     r"([A-Za-z0-9_-]+={0,2})(?![A-Za-z0-9_=-])"
@@ -90,6 +94,7 @@ _TERMINAL_MANIFEST_CAPTURE_ERROR_MARKER_RE = re.compile(
     r"([A-Za-z0-9_-]+={0,2})(?![A-Za-z0-9_=-])"
 )
 _MAX_MARKER_BYTES = 2 * 1024 * 1024
+_MAX_TERMINAL_SOURCE_BUNDLE_BYTES = 64 * 1024 * 1024
 _READ_ONLY_CONFIG_NAME = "ansible-readonly.cfg"
 _READ_ONLY_ENVIRONMENT_REMOVALS = (
     "ANSIBLE_INVENTORY",
@@ -110,6 +115,18 @@ def _terminal_apply_environment() -> dict[str, str]:
     environment = os.environ.copy()
     environment["ANSIBLE_PIPELINING"] = "true"
     environment["ANSIBLE_SSH_PIPELINING"] = "true"
+    return environment
+
+
+def _terminal_source_environment() -> dict[str, str]:
+    """Use the accepted SSH executor with compression for Pi3 source bytes."""
+
+    environment = _terminal_apply_environment()
+    existing = environment.get("ANSIBLE_SSH_COMMON_ARGS", "").strip()
+    compression = "-o Compression=yes"
+    environment["ANSIBLE_SSH_COMMON_ARGS"] = " ".join(
+        value for value in (existing, compression) if value
+    )
     return environment
 
 
@@ -1557,21 +1574,26 @@ def prestage_signage_maintenance(
 
 
 def prepare_terminal_repository(
-    inventory: str, host: str, *, runtime: Runtime
+    inventory: str,
+    host: str,
+    *,
+    runtime: Runtime,
+    strict_read_only: bool = False,
 ) -> dict[str, Any]:
     """Return one clean HEAD, repairing only the exact legacy docs deletion."""
 
     if not isinstance(host, str) or _HOST_RE.fullmatch(host) is None:
         raise ValueError("terminal host is malformed")
     source = runtime.PROJECT / "scripts/deploy/terminal-repository-baseline.py"
-    action = shlex.join(
-        [
-            str(source),
-            "--repository",
-            _TERMINAL_REPOSITORY,
-            "--ansible-marker",
-        ]
-    )
+    arguments = [
+        str(source),
+        "--repository",
+        _TERMINAL_REPOSITORY,
+        "--ansible-marker",
+    ]
+    if strict_read_only:
+        arguments.append("--strict-read-only")
+    action = shlex.join(arguments)
     output = runtime.run(
         [
             "ansible",
@@ -1604,6 +1626,335 @@ def prepare_terminal_repository(
     ):
         raise RuntimeError(f"terminal repository baseline result is invalid: {host}")
     return {"head": head, "repairedLegacyDocs": repaired, "count": count}
+
+
+def _terminal_source_marker(output: str) -> dict[str, Any]:
+    return _strict_result_marker(
+        output,
+        pattern=_TERMINAL_SOURCE_BUNDLE_MARKER_RE,
+        prefix="TERMINAL_SOURCE_BUNDLE_RESULT:",
+        label="terminal source bundle result",
+        max_bytes=65536,
+    )
+
+
+def _terminal_source_paths(run_id: str) -> tuple[str, str]:
+    if not isinstance(run_id, str) or _RUN_ID_RE.fullmatch(run_id) is None:
+        raise ValueError("run ID is malformed")
+    final_path = f"/var/tmp/raspi-pi3-source-{run_id}.bundle"
+    return f"{final_path}.tmp", final_path
+
+
+def _validated_terminal_source_reference(value: dict[str, Any]) -> dict[str, Any]:
+    required = {
+        "schemaVersion",
+        "runId",
+        "host",
+        "previousSha",
+        "candidateSha",
+        "sha256",
+        "size",
+        "finalPath",
+    }
+    if not isinstance(value, dict) or set(value) != required:
+        raise ValueError("terminal source reference is malformed")
+    _validated_run_and_sha(value["runId"], value["previousSha"])
+    _temporary_path, final_path = _terminal_source_paths(value["runId"])
+    if (
+        value["schemaVersion"] != 1
+        or not isinstance(value["host"], str)
+        or _HOST_RE.fullmatch(value["host"]) is None
+        or not isinstance(value["candidateSha"], str)
+        or _FULL_SHA_RE.fullmatch(value["candidateSha"]) is None
+        or not isinstance(value["sha256"], str)
+        or _SHA256_RE.fullmatch(value["sha256"]) is None
+        or isinstance(value["size"], bool)
+        or not isinstance(value["size"], int)
+        or not 1 <= value["size"] <= _MAX_TERMINAL_SOURCE_BUNDLE_BYTES
+        or value["finalPath"] != final_path
+    ):
+        raise ValueError("terminal source reference is malformed")
+    return value
+
+
+def _terminal_source_arguments(action: str, reference: dict[str, Any]) -> list[str]:
+    if action not in {"preflight", "promote", "verify", "cleanup"}:
+        raise ValueError("terminal source action is unsupported")
+    reference = _validated_terminal_source_reference(reference)
+    return [
+        action,
+        "--repository",
+        _TERMINAL_REPOSITORY,
+        "--run-id",
+        reference["runId"],
+        "--host",
+        reference["host"],
+        "--previous-sha",
+        reference["previousSha"],
+        "--candidate-sha",
+        reference["candidateSha"],
+        "--sha256",
+        reference["sha256"],
+        "--size",
+        str(reference["size"]),
+        "--ansible-marker",
+    ]
+
+
+def _run_terminal_source_helper(
+    inventory: str,
+    remote_user: str,
+    action: str,
+    reference: dict[str, Any],
+    *,
+    runtime: Runtime,
+) -> dict[str, Any]:
+    reference = _validated_terminal_source_reference(reference)
+    source = runtime.PROJECT / "scripts/deploy/terminal-source-bundle.py"
+    output = runtime.run(
+        [
+            "ansible",
+            "-i",
+            inventory,
+            reference["host"],
+            "-b",
+            "--become-user",
+            remote_user,
+            "-m",
+            "script",
+            "-a",
+            shlex.join(
+                [str(source), *_terminal_source_arguments(action, reference)]
+            ),
+        ],
+        cwd=runtime.ANSIBLE_DIRECTORY,
+        capture=True,
+        env=_terminal_source_environment(),
+    )
+    result = _terminal_source_marker(output)
+    if any(result.get(key) != value for key, value in reference.items() if key != "finalPath"):
+        raise RuntimeError("terminal source bundle binding is invalid")
+    return result
+
+
+def _local_git(
+    project: Path, arguments: list[str], *, capture_stderr: bool = False
+) -> str:
+    environment = {
+        key: value for key, value in os.environ.items() if not key.startswith("GIT_")
+    }
+    environment.update(
+        {
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_TERMINAL_PROMPT": "0",
+            "LC_ALL": "C",
+        }
+    )
+    try:
+        completed = subprocess.run(
+            [
+                "git",
+                "-c",
+                "core.fsmonitor=false",
+                "-c",
+                "core.ignorestat=false",
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-c",
+                "maintenance.auto=false",
+                "-C",
+                os.fspath(project),
+                *arguments,
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE if capture_stderr else subprocess.DEVNULL,
+            text=True,
+            env=environment,
+            timeout=180,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise RuntimeError("Pi5 terminal source Git command could not complete") from error
+    if completed.returncode != 0:
+        raise RuntimeError("Pi5 terminal source Git command failed")
+    if len(completed.stdout.encode("utf-8")) > _MAX_TERMINAL_SOURCE_BUNDLE_BYTES:
+        raise RuntimeError("Pi5 terminal source Git output exceeded its safety bound")
+    if capture_stderr and len(completed.stderr.encode("utf-8")) > _MAX_TERMINAL_SOURCE_BUNDLE_BYTES:
+        raise RuntimeError("Pi5 terminal source Git error output exceeded its safety bound")
+    return completed.stdout
+
+
+def stage_terminal_candidate_source(
+    inventory: str,
+    host: str,
+    revision: str,
+    previous_sha: str,
+    run_id: str,
+    *,
+    runtime: Runtime,
+) -> dict[str, Any]:
+    """Seal and stage one Pi3 candidate before notice or maintenance."""
+
+    _validated_run_and_sha(run_id, previous_sha)
+    if not isinstance(host, str) or _HOST_RE.fullmatch(host) is None:
+        raise ValueError("terminal host is malformed")
+    if not isinstance(revision, str) or _FULL_SHA_RE.fullmatch(revision) is None:
+        raise ValueError("candidate release SHA is malformed")
+    if revision == previous_sha:
+        raise ValueError("unchanged terminal source must not be staged")
+    project = Path(runtime.PROJECT).resolve(strict=True)
+    if _local_git(project, ["rev-parse", "--verify", "HEAD^{commit}"]).strip() != revision:
+        raise RuntimeError("Pi5 checkout does not match the exact candidate SHA")
+    _local_git(project, ["cat-file", "-e", f"{previous_sha}^{{commit}}"])
+    remote_user, _remote_home = _remote_identity(inventory, host, runtime=runtime)
+
+    with tempfile.TemporaryDirectory(prefix="raspi-pi3-source-") as temporary_directory:
+        bundle = Path(temporary_directory) / "candidate.bundle"
+        _local_git(
+            project,
+            ["bundle", "create", os.fspath(bundle), "HEAD", f"^{previous_sha}"],
+        )
+        size = bundle.stat().st_size
+        if not 1 <= size <= _MAX_TERMINAL_SOURCE_BUNDLE_BYTES:
+            raise RuntimeError("Pi5 terminal source bundle exceeds its fixed size bound")
+        digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
+        _local_git(project, ["bundle", "verify", os.fspath(bundle)], capture_stderr=True)
+        heads = _local_git(project, ["bundle", "list-heads", os.fspath(bundle)]).splitlines()
+        if heads != [f"{revision} HEAD"]:
+            raise RuntimeError("Pi5 terminal source bundle has an unexpected head")
+        _temporary_path, final_path = _terminal_source_paths(run_id)
+        reference = {
+            "schemaVersion": 1,
+            "runId": run_id,
+            "host": host,
+            "previousSha": previous_sha,
+            "candidateSha": revision,
+            "sha256": digest,
+            "size": size,
+            "finalPath": final_path,
+        }
+        try:
+            preflight = _run_terminal_source_helper(
+                inventory, remote_user, "preflight", reference, runtime=runtime
+            )
+            state = preflight["state"]
+            if state not in {"empty", "temporary-ready", "ready"}:
+                raise RuntimeError("terminal source bundle state is invalid")
+            temporary_path, _final_path = _terminal_source_paths(run_id)
+            if state == "empty":
+                runtime.run(
+                    [
+                        "ansible",
+                        "-i",
+                        inventory,
+                        host,
+                        "-b",
+                        "-m",
+                        "copy",
+                        "-a",
+                        shlex.join(
+                            [
+                                f"src={bundle}",
+                                f"dest={temporary_path}",
+                                f"owner={remote_user}",
+                                "mode=0600",
+                                "force=true",
+                            ]
+                        ),
+                    ],
+                    cwd=runtime.ANSIBLE_DIRECTORY,
+                    env=_terminal_source_environment(),
+                )
+                state = "temporary-ready"
+            if state == "temporary-ready":
+                promoted = _run_terminal_source_helper(
+                    inventory,
+                    remote_user,
+                    "promote",
+                    reference,
+                    runtime=runtime,
+                )
+                if promoted.get("state") != "ready":
+                    raise RuntimeError("terminal source bundle state is invalid")
+            verified = _run_terminal_source_helper(
+                inventory,
+                remote_user,
+                "verify",
+                reference,
+                runtime=runtime,
+            )
+            if verified.get("state") != "ready":
+                raise RuntimeError("terminal source bundle state is invalid")
+        except Exception as stage_error:
+            # A lost promote response may still have produced the exact final
+            # bytes.  Read them once before classifying the operation failed.
+            try:
+                reconciled = _run_terminal_source_helper(
+                    inventory,
+                    remote_user,
+                    "verify",
+                    reference,
+                    runtime=runtime,
+                )
+                if reconciled.get("state") != "ready":
+                    raise RuntimeError("terminal source bundle state is invalid")
+            except Exception:
+                try:
+                    cleanup_terminal_candidate_source(
+                        inventory,
+                        host,
+                        revision,
+                        previous_sha,
+                        run_id,
+                        digest,
+                        size,
+                        runtime=runtime,
+                    )
+                except Exception as cleanup_error:
+                    raise RuntimeError(
+                        "Pi3 source staging failed and run-scoped cleanup is unverified"
+                    ) from cleanup_error
+                raise stage_error
+
+    return reference
+
+
+def cleanup_terminal_candidate_source(
+    inventory: str,
+    host: str,
+    revision: str,
+    previous_sha: str,
+    run_id: str,
+    sha256: str,
+    size: int,
+    *,
+    runtime: Runtime,
+) -> dict[str, Any]:
+    remote_user, _remote_home = _remote_identity(inventory, host, runtime=runtime)
+    _temporary_path, final_path = _terminal_source_paths(run_id)
+    reference = {
+        "schemaVersion": 1,
+        "runId": run_id,
+        "host": host,
+        "previousSha": previous_sha,
+        "candidateSha": revision,
+        "sha256": sha256,
+        "size": size,
+        "finalPath": final_path,
+    }
+    result = _run_terminal_source_helper(
+        inventory,
+        remote_user,
+        "cleanup",
+        reference,
+        runtime=runtime,
+    )
+    if result.get("state") != "clean" or result.get("residue") is not False:
+        raise RuntimeError("terminal source cleanup left residue")
+    return result
 
 
 def remote_previous_sha(inventory: str, host: str, *, runtime: Runtime) -> str:
@@ -2392,6 +2743,7 @@ def playbook(
     *,
     rollback: bool = False,
     playbook: str = "playbooks/deploy-staged.yml",
+    staged_source: dict[str, Any] | None = None,
     runtime: Runtime,
 ) -> None:
     if rollback:
@@ -2413,6 +2765,24 @@ def playbook(
         "release_orchestrated=true release_rollback=false "
         "terminal_release_mode=release-only"
     )
+    staged_extra: list[str] = []
+    if staged_source is not None:
+        staged_source = _validated_terminal_source_reference(staged_source)
+        if (
+            staged_source.get("runId") != run_id
+            or staged_source.get("host") != host
+            or staged_source.get("candidateSha") != revision
+        ):
+            raise ValueError("terminal staged source reference is malformed")
+        staged_extra = [
+            "-e",
+            json.dumps(
+                {"terminal_staged_source": staged_source},
+                ensure_ascii=True,
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+        ]
     if (
         not isinstance(playbook, str)
         or not playbook.startswith("playbooks/")
@@ -2432,6 +2802,7 @@ def playbook(
             host,
             "-e",
             extra,
+            *staged_extra,
         ],
         cwd=runtime.ANSIBLE_DIRECTORY,
         env=environment,

@@ -194,13 +194,18 @@ def _require_exact_legacy_deletion(
         )
 
 
-def prepare(repository_path: Path) -> dict[str, Any]:
+def prepare(
+    repository_path: Path, *, allow_legacy_docs_repair: bool = True
+) -> dict[str, Any]:
     repository = _repository_path(repository_path)
     before_head = _head(repository)
     _require_plain_index(repository)
     entries = _status_entries(repository)
     if not entries:
         return {"head": before_head, "repairedLegacyDocs": False, "count": 0}
+
+    if not allow_legacy_docs_repair:
+        raise BaselineError("repository is not clean")
 
     tracked_docs = _tracked_docs(repository, before_head)
     _require_exact_legacy_deletion(repository, tracked_docs)
@@ -230,9 +235,17 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repository", type=Path, required=True)
     parser.add_argument("--ansible-marker", action="store_true")
+    parser.add_argument(
+        "--strict-read-only",
+        action="store_true",
+        help="reject every dirty state without performing the legacy docs repair",
+    )
     args = parser.parse_args(argv)
     try:
-        result = prepare(args.repository)
+        result = prepare(
+            args.repository,
+            allow_legacy_docs_repair=not args.strict_read_only,
+        )
     except (BaselineError, OSError) as error:
         print(f"terminal repository baseline failed: {error}", file=sys.stderr)
         return 1

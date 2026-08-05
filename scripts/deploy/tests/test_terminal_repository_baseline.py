@@ -109,6 +109,17 @@ class TerminalRepositoryBaselineTest(unittest.TestCase):
             "odd path\n",
         )
 
+    def test_strict_read_only_rejects_legacy_deletion_without_repair(self):
+        repository = self.repository()
+        self.delete_all_docs(repository)
+        before = self.status_bytes(repository)
+
+        with self.assertRaisesRegex(MODULE.BaselineError, "not clean"):
+            MODULE.prepare(repository, allow_legacy_docs_repair=False)
+
+        self.assertEqual(self.status_bytes(repository), before)
+        self.assertFalse((repository / "docs").exists())
+
     def test_every_non_exact_dirty_state_is_rejected_without_repair(self):
         scenarios = (
             "partial-docs",

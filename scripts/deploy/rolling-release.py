@@ -824,9 +824,49 @@ def preflight_terminal_ansible_pipelining(inventory: str, host: str) -> None:
     )
 
 
-def prepare_terminal_repository(inventory: str, host: str) -> dict[str, Any]:
+def prepare_terminal_repository(
+    inventory: str, host: str, *, strict_read_only: bool = False
+) -> dict[str, Any]:
     return ansible_backend.prepare_terminal_repository(
-        inventory, host, runtime=_runtime()
+        inventory, host, runtime=_runtime(), strict_read_only=strict_read_only
+    )
+
+
+def stage_terminal_candidate_source(
+    inventory: str,
+    host: str,
+    revision: str,
+    previous_sha: str,
+    run_id: str,
+) -> dict[str, Any]:
+    return ansible_backend.stage_terminal_candidate_source(
+        inventory,
+        host,
+        revision,
+        previous_sha,
+        run_id,
+        runtime=_runtime(),
+    )
+
+
+def cleanup_terminal_candidate_source(
+    inventory: str,
+    host: str,
+    revision: str,
+    previous_sha: str,
+    run_id: str,
+    sha256: str,
+    size: int,
+) -> dict[str, Any]:
+    return ansible_backend.cleanup_terminal_candidate_source(
+        inventory,
+        host,
+        revision,
+        previous_sha,
+        run_id,
+        sha256,
+        size,
+        runtime=_runtime(),
     )
 
 
@@ -960,6 +1000,7 @@ def playbook(
     *,
     rollback: bool = False,
     playbook: str = "playbooks/deploy-staged.yml",
+    staged_source: dict[str, Any] | None = None,
 ) -> None:
     return ansible_backend.playbook(
         inventory,
@@ -968,6 +1009,7 @@ def playbook(
         run_id,
         rollback=rollback,
         playbook=playbook,
+        staged_source=staged_source,
         runtime=_runtime(),
     )
 
@@ -978,13 +1020,31 @@ def apply_terminal_profile(
     revision: str,
     run_id: str,
     profile: TerminalProfile,
+    *,
+    staged_source: dict[str, Any] | None = None,
 ) -> None:
     """Apply only the strictly validated playbook selected by a profile."""
 
+    staged_arguments = (
+        {"staged_source": staged_source} if staged_source is not None else {}
+    )
     if profile.playbook == "playbooks/deploy-staged.yml":
-        playbook(inventory, host, revision, run_id)
+        playbook(
+            inventory,
+            host,
+            revision,
+            run_id,
+            **staged_arguments,
+        )
     else:
-        playbook(inventory, host, revision, run_id, playbook=profile.playbook)
+        playbook(
+            inventory,
+            host,
+            revision,
+            run_id,
+            playbook=profile.playbook,
+            **staged_arguments,
+        )
 
 
 def rollback_terminal(

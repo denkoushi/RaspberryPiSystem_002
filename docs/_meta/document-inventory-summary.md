@@ -11,16 +11,16 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 
 | Metric | Count |
 |--------|------:|
-| Documents | 610 |
-| Total lines | 170739 |
-| Total bytes | 12796270 |
-| With frontmatter | 277 |
-| With status | 133 |
-| source_of_truth declared | 95 |
+| Documents | 612 |
+| Total lines | 170962 |
+| Total bytes | 12823879 |
+| With frontmatter | 279 |
+| With status | 135 |
+| source_of_truth declared | 97 |
 | References to EXEC_PLAN.md | 64 |
 | Question-mark corruption documents | 1 |
 | Replacement-character documents | 1 |
-| Long-line documents | 25 |
+| Long-line documents | 26 |
 | Local links | 5658 |
 | Broken local links | 87 |
 | Documents over 1,000 lines | 29 |
@@ -87,10 +87,10 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/plans/deployment-foundation-refactor-execplan.md` (99:1226, 893:1025, 899:1002)
 - `docs/plans/dgx-spark-local-llm-migration-execplan.md` (38:1075)
 - `docs/plans/kiosk-assembly-torque-management-mvp.md` (135:1006)
+- `docs/plans/pi3-staged-source-transfer-execplan.md` (116:1108, 118:1145)
 - `docs/plans/pi5-minimal-downtime-phase2.md` (130:1083)
 - `docs/plans/solid-refactor-phase3-execplan-202607.md` (28:1154, 30:1151)
 - `docs/plans/solid-refactor-phase4-execplan-202607.md` (30:1179, 31:1213, 32:1328)
-- `docs/plans/solid-refactor-phase5-execplan-202607.md` (31:1231, 32:1107, 95:1206)
 
 ## Broken Local Links
 

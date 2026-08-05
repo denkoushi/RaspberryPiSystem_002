@@ -225,6 +225,9 @@ class FakeRuntime:
         self.terminal_pipelining_preflight_error = None
         self.manifest_capture_error = None
         self.repository_baseline_result = None
+        self.repository_baseline_strict = []
+        self.source_stage_error = None
+        self.source_cleanup_error = None
         self.runtime_cleanup_error = None
         self.pi5_reconcile_error = None
         self.prestage_error = None
@@ -495,12 +498,48 @@ class FakeRuntime:
         if self.terminal_pipelining_preflight_error is not None:
             raise self.terminal_pipelining_preflight_error
 
-    def prepare_terminal_repository(self, _inventory, host):
+    def prepare_terminal_repository(
+        self, _inventory, host, *, strict_read_only=False
+    ):
         self.events.append(f"terminal:baseline:{host}")
+        self.repository_baseline_strict.append((host, strict_read_only))
         return copy.deepcopy(
             self.repository_baseline_result
             or {"head": OLD_SHA, "repairedLegacyDocs": False, "count": 0}
         )
+
+    def stage_terminal_candidate_source(
+        self, _inventory, host, revision, previous_sha, run_id
+    ):
+        self.events.append(f"source:stage:{host}")
+        if self.source_stage_error is not None:
+            self.events.append(f"source:internal-cleanup:{host}:{run_id}")
+            raise self.source_stage_error
+        return {
+            "schemaVersion": 1,
+            "runId": run_id,
+            "host": host,
+            "previousSha": previous_sha,
+            "candidateSha": revision,
+            "sha256": "a" * 64,
+            "size": 1024,
+            "finalPath": f"/var/tmp/raspi-pi3-source-{run_id}.bundle",
+        }
+
+    def cleanup_terminal_candidate_source(
+        self,
+        _inventory,
+        host,
+        _revision,
+        _previous_sha,
+        run_id,
+        _sha256,
+        _size,
+    ):
+        self.events.append(f"source:cleanup:{host}:{run_id}")
+        if self.source_cleanup_error is not None:
+            raise self.source_cleanup_error
+        return {"state": "clean", "residue": False}
 
     def capture_terminal_manifest(
         self, _inventory, target_spec, run_id, previous_sha
@@ -598,6 +637,22 @@ class FakeRuntime:
         if self.playbook_error is not None:
             raise self.playbook_error
         self.deployed_sha[host] = sha
+
+    def apply_terminal_profile(
+        self,
+        inventory,
+        host,
+        revision,
+        run_id,
+        profile,
+        *,
+        staged_source=None,
+    ):
+        if profile.id == "signage" and staged_source is None:
+            raise AssertionError("signage apply lacks staged source")
+        if profile.id != "signage" and staged_source is not None:
+            raise AssertionError("non-signage apply received staged source")
+        self.playbook(inventory, host, revision, run_id)
 
     def activate_kiosk_web(self, _inventory, target_spec, _target, run_id):
         host = target_spec["host"]
@@ -1734,6 +1789,9 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         self.assertLess(cleanup, finish)
         self.assertNotIn("rollback:kiosk-a", runtime.events)
         self.assertNotIn("playbook:kiosk-a", runtime.events)
+        self.assertFalse(
+            any(event.startswith("source:stage:") for event in runtime.events)
+        )
         self.assertNotIn(
             "status:put:--run-id:run-1:--clients:a:--terminal-type:kiosk",
             runtime.events,
@@ -1745,6 +1803,80 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             {"outcome": "committed", "verifiedSha": OLD_SHA},
         )
         self.assertIn("runtimeCleanup", target)
+
+    def test_pi3_source_stage_before_after_faults_leave_runtime_unchanged(self):
+        terminal = {
+            "host": "signage-a",
+            "role": "signage",
+            "terminalType": "signage",
+            "clientId": "s1",
+        }
+
+        def build_runtime():
+            return FakeRuntime(
+                fleet={
+                    "pi5": host_record("server", OLD_SHA),
+                    "signage-a": host_record("signage", OLD_SHA),
+                },
+                hosts=[{"host": "pi5", "role": "server"}, terminal],
+                plan={
+                    "pi5Required": False,
+                    "hosts": [
+                        decision("pi5", "server", targeted=False),
+                        decision("signage-a", "signage"),
+                    ],
+                },
+                targets=[terminal],
+            )
+
+        with self.subTest(boundary="during-stage"):
+            runtime = build_runtime()
+            runtime.source_stage_error = RuntimeError("source transfer failed")
+            with self.assertRaisesRegex(RuntimeError, "source transfer failed"):
+                coordinator.execute(
+                    args(), runtime=runtime, token=FakeToken(runtime.events)
+                )
+            self.assertIn("source:stage:signage-a", runtime.events)
+            self.assertIn(
+                "source:internal-cleanup:signage-a:run-1", runtime.events
+            )
+            self.assertNotIn("playbook:signage-a", runtime.events)
+            self.assertFalse(
+                any(event.startswith("status:put:") for event in runtime.events)
+            )
+            target = runtime.states[-1].target("signage-a")
+            self.assertNotIn("maintenanceStartedAt", target)
+            self.assertEqual(
+                runtime.repository_baseline_strict, [("signage-a", True)]
+            )
+
+        with self.subTest(boundary="after-stage"):
+            runtime = build_runtime()
+            result = coordinator.execute(
+                args(),
+                runtime=runtime,
+                token=FakeToken(
+                    runtime.events, cancel_at="after-source-stage:signage-a"
+                ),
+            )
+            self.assertEqual(result, 130)
+            stage = runtime.events.index("source:stage:signage-a")
+            cleanup = runtime.events.index("source:cleanup:signage-a:run-1")
+            runtime_cleanup = runtime.events.index(
+                "manifest:cleanup:signage-a:run-1:committed"
+            )
+            self.assertLess(stage, cleanup)
+            self.assertLess(cleanup, runtime_cleanup)
+            self.assertNotIn("playbook:signage-a", runtime.events)
+            self.assertFalse(
+                any(event.startswith("status:put:") for event in runtime.events)
+            )
+            target = runtime.states[-1].target("signage-a")
+            self.assertNotIn("maintenanceStartedAt", target)
+            self.assertEqual(
+                target["stagedSourceCleanup"],
+                {"state": "clean", "residue": False},
+            )
 
     def test_signage_prestage_failure_restores_the_sealed_manifest(self):
         terminal = {

@@ -2088,6 +2088,27 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                 raise
             state.save()
             try:
+                if (
+                    target.get("mutationRequired") is True
+                    and adapter.staged_source_required
+                ):
+                    # Pi3 source bytes are sealed, capacity-checked, compressed,
+                    # transferred, and remotely verified before any display,
+                    # service, maintenance, or repository mutation.
+                    with _measure_phase(
+                        state, runtime, "terminal-source-stage", host=host
+                    ):
+                        staged_source = adapter.stage_candidate_source(
+                            inventory,
+                            host,
+                            target["desiredSha"],
+                            target["previousSha"],
+                            args.run_id,
+                        )
+                    if staged_source is not None:
+                        target["stagedSource"] = staged_source
+                        state.save()
+                    token.checkpoint(f"after-source-stage:{host}")
                 if adapter.should_issue_notice(
                     emergency_override=args.emergency_override
                 ):
@@ -2106,6 +2127,24 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                     state.save()
                 token.checkpoint(f"after-notice:{host}")
             except Exception as pre_mutation_error:
+                try:
+                    source_cleanup = adapter.cleanup_candidate_source(
+                        inventory,
+                        host,
+                        target.get("stagedSource"),
+                    )
+                    if source_cleanup is not None:
+                        target["stagedSourceCleanup"] = source_cleanup
+                        state.save()
+                except Exception as source_cleanup_error:
+                    interrupted_recovery_pending = True
+                    target["stagedSourceCleanupFailure"] = str(source_cleanup_error)
+                    target["state"] = "failed"
+                    target["completedAt"] = runtime.utc_now()
+                    state.save()
+                    raise RuntimeError(
+                        f"terminal pre-mutation source cleanup failed for {host}"
+                    ) from source_cleanup_error
                 # Runtime capture can retain run-scoped Docker image tags even
                 # though no terminal release mutation has begun. Seal and
                 # durably clean that lifecycle before propagating notice
@@ -2208,7 +2247,11 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                         state, runtime, "terminal-ansible-apply", host=host
                     ):
                         adapter.apply(
-                            inventory, host, target["desiredSha"], args.run_id
+                            inventory,
+                            host,
+                            target["desiredSha"],
+                            args.run_id,
+                            staged_source=target.get("stagedSource"),
                         )
                 if target.get("activationRequired") is True:
                     activation_mode = target.get("activationMode")
