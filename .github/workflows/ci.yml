@@ -946,8 +946,6 @@ jobs:
     needs: change-classification
     if: ${{ needs.change-classification.outputs.kiosk_sop == 'true' }}
     runs-on: ubuntu-24.04
-    env:
-      KIOSK_SOP_DIAGNOSTICS_DIR: ${{ runner.temp }}/kiosk-sop-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -955,6 +953,8 @@ jobs:
           fetch-depth: 0
 
       - name: Verify semantic freshness, integrity, geometry, and visual contract
+        env:
+          KIOSK_SOP_DIAGNOSTICS_DIR: ${{ runner.temp }}/kiosk-sop-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
         run: bash scripts/ci/run-kiosk-sop-artifact-contract.sh
 
       - name: Upload generated candidate, visual report, and diff diagnostics
@@ -962,7 +962,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: kiosk-sop-diagnostics-${{ github.sha }}-${{ github.run_attempt }}
-          path: ${{ env.KIOSK_SOP_DIAGNOSTICS_DIR }}/
+          path: ${{ runner.temp }}/kiosk-sop-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}/
           retention-days: 7
 
   e2e-tests:

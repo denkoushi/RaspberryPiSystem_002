@@ -241,6 +241,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
         kiosk = job_block(CI, "kiosk-sop")
         self.assertIn("if: always()", kiosk)
         self.assertIn("KIOSK_SOP_DIAGNOSTICS_DIR", kiosk)
+        self.assertIn("path: ${{ runner.temp }}/kiosk-sop-diagnostics-", kiosk)
         self.assertIn("run-kiosk-sop-artifact-contract.sh", kiosk)
         self.assertIn("artifact-tree-diff.txt", KIOSK_SOP_CONTRACT_RUNNER)
         self.assertLess(
