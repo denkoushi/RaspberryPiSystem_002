@@ -3053,6 +3053,87 @@ class RollingReleaseKernelLockTest(unittest.TestCase):
             with self.assertRaises(OSError):
                 os.fstat(fleet_descriptor)
 
+    def test_remote_failure_durably_terminalizes_raw_ledger_before_status_overlay(self):
+        run_id = "run-durable-failure"
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Path(temporary)
+            run_directory = project / "logs/deploy/release-runs"
+            fleet_lock_path = project / "logs/deploy/fleet-release-state.lock"
+            fleet_lock_path.parent.mkdir(parents=True)
+            fleet_descriptor = os.open(
+                fleet_lock_path, os.O_RDWR | os.O_CREAT, 0o600
+            )
+            fcntl.flock(fleet_descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            environment = {
+                "ROLLING_RELEASE_FLEET_LOCK_FD": str(fleet_descriptor),
+                "ROLLING_RELEASE_FLEET_LOCK_PATH": str(fleet_lock_path),
+                "ROLLING_RELEASE_CONTROL_FILE": str(
+                    run_directory / f"{run_id}.control.json"
+                ),
+                "ROLLING_RELEASE_UNIT": f"raspi-release-{run_id}.service",
+                "ROLLING_RELEASE_PROTOCOL": "2",
+                "INVOCATION_ID": "a" * 32,
+            }
+            store = MODULE.RunStateStore(run_directory)
+            store.create_state(
+                run_id,
+                {
+                    "version": 1,
+                    "runId": run_id,
+                    "state": "running",
+                    "phase": "rolling-back",
+                    "targets": [{
+                        "host": "raspberrypi3",
+                        "state": "failed",
+                        "repositoryRollbackEvidence": "verified",
+                        "runtimeRollbackEvidence": "unknown",
+                        "displayRollbackEvidence": "verified",
+                        "stagedSourceCleanup": {"state": "clean"},
+                    }],
+                },
+            )
+            args = argparse.Namespace(run_id=run_id)
+            with patch.object(MODULE, "PROJECT", project), \
+                    patch.object(MODULE, "RUN_DIRECTORY", run_directory), \
+                    patch.dict(MODULE.os.environ, environment, clear=True), \
+                    patch.object(
+                        MODULE.systemd_backend,
+                        "validate_current_execution_identity",
+                    ), \
+                    patch.object(
+                        MODULE,
+                        "_remote_run",
+                        side_effect=RuntimeError(
+                            "https://operator:secret@example.invalid/private.git"
+                        ),
+                    ):
+                with self.assertRaises(RuntimeError):
+                    MODULE.remote_run(args)
+
+            raw = store.read_state(run_id)
+            self.assertEqual(raw["state"], "failed")
+            self.assertEqual(raw["phase"], "completed")
+            self.assertEqual(raw["exitCode"], 1)
+            self.assertIn("completedAt", raw)
+            self.assertEqual(
+                raw["targets"][0]["repositoryRollbackEvidence"], "verified"
+            )
+            self.assertEqual(
+                raw["targets"][0]["runtimeRollbackEvidence"], "unknown"
+            )
+            self.assertEqual(
+                raw["targets"][0]["displayRollbackEvidence"], "verified"
+            )
+            self.assertEqual(
+                raw["targets"][0]["stagedSourceCleanup"], {"state": "clean"}
+            )
+            encoded = json.dumps(raw)
+            self.assertNotIn("operator", encoded)
+            self.assertNotIn("secret", encoded)
+            self.assertNotIn("private.git", encoded)
+            with self.assertRaises(OSError):
+                os.fstat(fleet_descriptor)
+
 
 class RollingReleaseCancellationTest(unittest.TestCase):
     def test_cancel_is_a_cooperative_public_operation(self):

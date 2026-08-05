@@ -1643,6 +1643,21 @@ def _remote_run(args: argparse.Namespace) -> int:
         _ACTIVE_CANCELLATION_TOKEN = previous
 
 
+def _durably_finish_incomplete_remote_failure(run_id: str) -> None:
+    """Persist a generic terminal record without copying an exception payload."""
+
+    store = RunStateStore(RUN_DIRECTORY, clock=utc_now)
+    current = store.read_state(run_id)
+    if current is None or current.get("state") in TERMINAL_STATES:
+        return
+    changes: dict[str, Any] = {"phase": "completed"}
+    if not isinstance(current.get("failure"), str) or not current["failure"]:
+        changes["failure"] = (
+            "release coordinator terminated before durable terminal finalization"
+        )
+    store.finish_state(run_id, "failed", changes=changes)
+
+
 def remote_run(args: argparse.Namespace) -> int:
     global _ACTIVE_FLEET_LEASE
     fleet_lease = validate_inherited_fleet_lock(PROJECT)
@@ -1659,7 +1674,11 @@ def remote_run(args: argparse.Namespace) -> int:
             raise RuntimeError("systemd invocation identity is missing or malformed")
         systemd_backend.validate_current_execution_identity(args.run_id, invocation_id)
         token_from_environment(PROJECT, args.run_id)
-        return _remote_run(args)
+        try:
+            return _remote_run(args)
+        except BaseException:
+            _durably_finish_incomplete_remote_failure(args.run_id)
+            raise
     finally:
         _ACTIVE_FLEET_LEASE = previous_fleet_lease
         fleet_lease.release()

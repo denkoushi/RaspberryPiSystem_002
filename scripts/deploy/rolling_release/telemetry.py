@@ -11,8 +11,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
+from . import safe_diagnostics
+
 _OUTCOMES = frozenset({"ok", "changed", "skipped", "failed", "unreachable"})
 _MAX_EVENTS = 10_000
+_MAX_DIAGNOSTICS = 100
 _MAX_BYTES = 10 * 1024 * 1024
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$")
 
@@ -98,8 +101,23 @@ def environment(project: Path, run_id: str, host: str, scope: str) -> dict[str, 
 
 
 def _valid_event(event: Any, run_id: str) -> bool:
-    return (
+    allowed_fields = {
+        "schemaVersion",
+        "runId",
+        "scope",
+        "host",
+        "play",
+        "task",
+        "outcome",
+        "startedAt",
+        "endedAt",
+        "durationMs",
+    }
+    if isinstance(event, dict) and "diagnostic" in event:
+        allowed_fields.add("diagnostic")
+    valid = (
         isinstance(event, dict)
+        and set(event) == allowed_fields
         and event.get("schemaVersion") == 1
         and event.get("runId") == run_id
         and isinstance(event.get("scope"), str)
@@ -111,6 +129,18 @@ def _valid_event(event: Any, run_id: str) -> bool:
         and isinstance(event.get("endedAt"), str)
         and isinstance(event.get("durationMs"), int)
         and 0 <= event["durationMs"] <= 24 * 60 * 60 * 1000
+    )
+    if not valid:
+        return False
+    for field in ("scope", "host", "play", "task"):
+        if not safe_diagnostics.valid_binding_text(
+            event.get(field), allow_empty=field == "play"
+        ):
+            return False
+    diagnostic = event.get("diagnostic")
+    return diagnostic is None or (
+        event.get("outcome") == "failed"
+        and safe_diagnostics.valid_diagnostic(diagnostic)
     )
 
 
@@ -149,7 +179,20 @@ def collect(project: Path, run_id: str) -> dict[str, Any]:
         record["durationMs"] += event["durationMs"]
         record["outcomes"][event["outcome"]] = record["outcomes"].get(event["outcome"], 0) + 1
     tasks = sorted(grouped.values(), key=lambda item: item["durationMs"], reverse=True)
-    payload = {"schemaVersion": 1, "runId": run_id, "eventCount": len(events), "tasks": tasks}
+    diagnostics = [
+        safe_diagnostics.project_event(event, run_id)
+        for event in events
+        if "diagnostic" in event
+    ]
+    if len(diagnostics) > _MAX_DIAGNOSTICS:
+        raise ValueError("timing artifact exceeds diagnostic limit")
+    payload = {
+        "schemaVersion": 1,
+        "runId": run_id,
+        "eventCount": len(events),
+        "tasks": tasks,
+        "diagnostics": diagnostics,
+    }
     summary_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{summary_path.name}.", suffix=".tmp", dir=summary_path.parent)
     try:
@@ -166,4 +209,11 @@ def collect(project: Path, run_id: str) -> dict[str, Any]:
             os.close(descriptor)
         if os.path.exists(temporary_name):
             os.unlink(temporary_name)
-    return {"state": "collected", "rawPath": str(raw), "summaryPath": str(summary_path), "eventCount": len(events), "slowTasks": tasks[:20]}
+    return {
+        "state": "collected",
+        "rawPath": str(raw),
+        "summaryPath": str(summary_path),
+        "eventCount": len(events),
+        "slowTasks": tasks[:20],
+        "diagnostics": diagnostics,
+    }
