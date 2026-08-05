@@ -1562,49 +1562,73 @@ class TerminalReleasePlaybookTest(unittest.TestCase):
 
 class TerminalSourceStageAdapterTest(unittest.TestCase):
     def test_stage_creates_exact_bundle_and_uses_compressed_ssh_copy(self):
-        runtime = Runtime("")
-        runtime.PROJECT = PROJECT
-        revision = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=PROJECT,
-            check=True,
-            text=True,
-            capture_output=True,
-        ).stdout.strip()
-        previous = "c32287db7b0f044cec4691f4a791513d7073e52e"
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Path(temporary) / "project"
+            project.mkdir()
 
-        def source_action(_inventory, _user, action, reference, **_kwargs):
-            states = {
-                "preflight": "empty",
-                "promote": "ready",
-                "verify": "ready",
-            }
-            return {**reference, "state": states[action]}
+            def git(*arguments: str) -> str:
+                return subprocess.run(
+                    ["git", *arguments],
+                    cwd=project,
+                    check=True,
+                    text=True,
+                    capture_output=True,
+                ).stdout.strip()
 
-        with mock.patch.object(
-            ansible, "_remote_identity", return_value=("signageras3", "/home/signageras3")
-        ), mock.patch.object(
-            ansible, "_run_terminal_source_helper", side_effect=source_action
-        ):
-            reference = ansible.stage_terminal_candidate_source(
-                "inventory.yml",
-                "raspberrypi3",
-                revision,
-                previous,
-                "run-123",
-                runtime=runtime,
+            git("init")
+            git("config", "user.email", "pi3-source-test@example.invalid")
+            git("config", "user.name", "Pi3 Source Test")
+            source = project / "source.txt"
+            source.write_text("previous\n", encoding="utf-8")
+            git("add", "source.txt")
+            git("commit", "-m", "previous")
+            previous = git("rev-parse", "HEAD")
+            source.write_text("candidate\n", encoding="utf-8")
+            git("commit", "-am", "candidate")
+            revision = git("rev-parse", "HEAD")
+
+            runtime = Runtime("")
+            runtime.PROJECT = project
+
+            def source_action(_inventory, _user, action, reference, **_kwargs):
+                states = {
+                    "preflight": "empty",
+                    "promote": "ready",
+                    "verify": "ready",
+                }
+                return {**reference, "state": states[action]}
+
+            with mock.patch.object(
+                ansible,
+                "_remote_identity",
+                return_value=("signageras3", "/home/signageras3"),
+            ), mock.patch.object(
+                ansible, "_run_terminal_source_helper", side_effect=source_action
+            ):
+                reference = ansible.stage_terminal_candidate_source(
+                    "inventory.yml",
+                    "raspberrypi3",
+                    revision,
+                    previous,
+                    "run-123",
+                    runtime=runtime,
+                )
+
+            self.assertEqual(reference["candidateSha"], revision)
+            self.assertEqual(reference["previousSha"], previous)
+            self.assertLessEqual(reference["size"], 64 * 1024 * 1024)
+            copy_command, options = runtime.calls[0]
+            self.assertEqual(
+                copy_command[0:5],
+                ["ansible", "-i", "inventory.yml", "raspberrypi3", "-b"],
             )
-
-        self.assertEqual(reference["candidateSha"], revision)
-        self.assertEqual(reference["previousSha"], previous)
-        self.assertLessEqual(reference["size"], 64 * 1024 * 1024)
-        copy_command, options = runtime.calls[0]
-        self.assertEqual(copy_command[0:5], ["ansible", "-i", "inventory.yml", "raspberrypi3", "-b"])
-        self.assertEqual(copy_command[5:7], ["-m", "copy"])
-        self.assertIn("mode=0600", copy_command[-1])
-        self.assertIn("owner=signageras3", copy_command[-1])
-        self.assertNotIn("group=", copy_command[-1])
-        self.assertIn("-o Compression=yes", options["env"]["ANSIBLE_SSH_COMMON_ARGS"])
+            self.assertEqual(copy_command[5:7], ["-m", "copy"])
+            self.assertIn("mode=0600", copy_command[-1])
+            self.assertIn("owner=signageras3", copy_command[-1])
+            self.assertNotIn("group=", copy_command[-1])
+            self.assertIn(
+                "-o Compression=yes", options["env"]["ANSIBLE_SSH_COMMON_ARGS"]
+            )
 
 class SignageMaintenancePrestageTest(unittest.TestCase):
     def test_prestage_is_runtime_only_and_requires_existing_renderer(self):
