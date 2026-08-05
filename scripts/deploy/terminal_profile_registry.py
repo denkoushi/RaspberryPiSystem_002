@@ -88,7 +88,7 @@ _ADAPTER_OPTION_KEYS = frozenset(
 )
 _READY_AUTHORITIES = frozenset({"control-plane", "terminal"})
 _TERMINAL_PROFILE_CLAIM_KINDS = frozenset(
-    {"controlPlaneWeb", "terminalRepository"}
+    {"controlPlaneWeb", "terminalRepository", "signageReleaseArtifact"}
 )
 _ACTIVATION_STRATEGY_IDS = frozenset({"kiosk-web-activation-v1"})
 _PATH_MAPPING_KEYS = frozenset({"match", "path", "component"})
@@ -452,9 +452,12 @@ def _parse_adapter_options(value: Any, *, profile_id: str) -> AdapterOptions:
         raise RegistryError(
             f"terminal profile {profile_id} requiredClaims cannot be empty"
         )
-    if "terminalRepository" not in required_claims:
+    identity_claim = (
+        "signageReleaseArtifact" if profile_id == "signage" else "terminalRepository"
+    )
+    if identity_claim not in required_claims:
         raise RegistryError(
-            f"terminal profile {profile_id} must require terminalRepository"
+            f"terminal profile {profile_id} must require {identity_claim}"
         )
     activation_strategy_id = item["activationStrategyId"]
     if activation_strategy_id is not None and (
@@ -474,7 +477,7 @@ def _parse_adapter_options(value: Any, *, profile_id: str) -> AdapterOptions:
     ready_claim = (
         "controlPlaneWeb"
         if ready_authority == "control-plane"
-        else "terminalRepository"
+        else identity_claim
     )
     if ready_claim not in required_claims:
         raise RegistryError(

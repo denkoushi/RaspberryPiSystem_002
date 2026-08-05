@@ -118,6 +118,7 @@
           "/usr/local/bin/signage-display.sh",
           "/usr/local/bin/signage-stop.sh",
           "/usr/local/bin/signage-lite-watchdog.sh",
+          "/usr/local/bin/raspi-signage-status-agent.pyz",
           "/etc/systemd/system/signage-lite.service",
           "/etc/systemd/system/signage-lite-update.service",
           "/etc/systemd/system/signage-lite-update.timer",
@@ -139,7 +140,7 @@
         ],
         "readyAuthority": "terminal",
         "requiredClaims": [
-          "terminalRepository"
+          "signageReleaseArtifact"
         ],
         "activationStrategyId": null
       }

@@ -832,6 +832,18 @@ def prepare_terminal_repository(
     )
 
 
+def prepare_signage_release_identity(inventory: str, host: str) -> dict[str, Any]:
+    return ansible_backend.prepare_signage_release_identity(
+        inventory, host, runtime=_runtime()
+    )
+
+
+def signage_release_artifact_identity(revision: str) -> str:
+    return ansible_backend.signage_release_artifact_identity(
+        revision, runtime=_runtime()
+    )
+
+
 def stage_terminal_candidate_source(
     inventory: str,
     host: str,
@@ -852,20 +864,12 @@ def stage_terminal_candidate_source(
 def cleanup_terminal_candidate_source(
     inventory: str,
     host: str,
-    revision: str,
-    previous_sha: str,
-    run_id: str,
-    sha256: str,
-    size: int,
+    reference: dict[str, Any],
 ) -> dict[str, Any]:
     return ansible_backend.cleanup_terminal_candidate_source(
         inventory,
         host,
-        revision,
-        previous_sha,
-        run_id,
-        sha256,
-        size,
+        reference,
         runtime=_runtime(),
     )
 
@@ -917,6 +921,7 @@ def probe_terminal_release_evidence(
     *,
     expected_agents: list[str] | tuple[str, ...] | None = None,
     check_status_agent_result: bool = True,
+    signage_artifact: bool = False,
 ) -> dict[str, Any]:
     return ansible_backend.probe_terminal_release_evidence(
         inventory,
@@ -925,6 +930,7 @@ def probe_terminal_release_evidence(
         services,
         expected_agents=expected_agents,
         check_status_agent_result=check_status_agent_result,
+        signage_artifact=signage_artifact,
         runtime=_runtime(),
     )
 
@@ -1440,6 +1446,13 @@ def build_fleet_scope(
                 decision["targeted"] = False
                 decision["targetReason"] = "outside explicit --limit"
 
+    release_claim_identities = (
+        {
+            sha: signage_release_artifact_identity(sha)
+        }
+        if any(host.get("role") == "signage" for host in all_hosts)
+        else {}
+    )
     plan = release_planner.build_fleet_plan_payload(
         release_sha=sha,
         decisions=decisions,
@@ -1453,6 +1466,7 @@ def build_fleet_scope(
         verification_only_execution_enabled=VERIFICATION_ONLY_EXECUTION_ENABLED,
         claim_scope_hosts=selected,
         executor_preflight_passed=executor_preflight_passed,
+        release_claim_identities=release_claim_identities,
     )
     target_by_host = {target["host"]: target for target in all_hosts}
     if TYPED_TARGET_PLANNING_ENABLED and (

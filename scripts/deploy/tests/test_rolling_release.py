@@ -27,16 +27,24 @@ FORWARD_VERIFICATION_ID = '1' * 32
 ROLLBACK_VERIFICATION_ID = '2' * 32
 
 
+def _artifact_identity(source_sha):
+    return f"git:{source_sha}@sha256:{'c' * 64}"
+
+
 def _sealed_source_reference(_inventory, host, candidate_sha, previous_sha, run_id):
     return {
         'schemaVersion': 1,
         'runId': run_id,
         'host': host,
         'previousSha': previous_sha,
-        'candidateSha': candidate_sha,
-        'sha256': 'c' * 64,
+        'profile': 'signage',
+        'sourceSha': candidate_sha,
+        'artifactSha256': 'c' * 64,
+        'pathManifestSha256': 'd' * 64,
+        'pathCount': 4,
         'size': 1,
-        'finalPath': f'/var/tmp/raspi-pi3-source-{run_id}.bundle',
+        'finalPath': f'/var/tmp/raspi-pi3-signage-{run_id}.pyz',
+        'installPath': '/usr/local/bin/raspi-signage-status-agent.pyz',
     }
 
 
@@ -58,6 +66,18 @@ def _verified_fleet_record(role, sha=BASE_SHA):
             'configDigest': 'sha256:' + 'c' * 64,
             'migrationDigest': 'sha256:' + 'd' * 64,
         })
+    elif role == 'signage':
+        record['releaseClaims'] = {
+            'signageReleaseArtifact': {
+                'expectedIdentity': _artifact_identity(sha),
+                'observedIdentity': _artifact_identity(sha),
+                'authority': 'signage-ready',
+                'verificationId': FORWARD_VERIFICATION_ID,
+                'state': 'verified',
+                'observedAt': '2026-07-12T00:00:00Z',
+                'lastRunId': 'prior-run',
+            }
+        }
     return record
 
 
@@ -116,6 +136,9 @@ def fleet_execution_contract(targets, classification, inventory):
             executor_preflight_passed=kwargs.get(
                 'executor_preflight_passed', False
             ),
+            release_claim_identities={
+                kwargs['sha']: _artifact_identity(kwargs['sha'])
+            },
         )
         target_hosts = {
             decision['host']
@@ -231,8 +254,13 @@ def fleet_execution_contract(targets, classification, inventory):
             patch.object(
                 MODULE,
                 'observe_terminal_evidence',
-                side_effect=lambda _inventory, _host, _role, client_id: {
+                side_effect=lambda _inventory, _host, role, client_id: {
                     'currentSha': TARGET_SHA,
+                    'releaseArtifactIdentity': (
+                        _artifact_identity(TARGET_SHA)
+                        if role == 'signage'
+                        else None
+                    ),
                     'services': ['required.service'],
                     'authenticatedEndpoint': True,
                     'statusClientId': client_id,
@@ -1565,6 +1593,22 @@ class CanaryHoldTest(unittest.TestCase):
                     patch.object(MODULE, 'selected_hosts', return_value=None), \
                     fleet_execution_contract(targets, self.TERMINAL_CLASSIFICATION, {}), \
                     patch.object(MODULE, 'remote_previous_sha', return_value=BASE_SHA), \
+                    patch.object(
+                        MODULE,
+                        'prepare_signage_release_identity',
+                        return_value={
+                            'head': BASE_SHA,
+                            'artifactState': 'absent',
+                            'artifactIdentity': None,
+                            'artifactSha256': None,
+                            'legacyRepositorySha': BASE_SHA,
+                        },
+                    ), \
+                    patch.object(
+                        MODULE,
+                        'signage_release_artifact_identity',
+                        side_effect=_artifact_identity,
+                    ), \
                     patch.object(MODULE, 'should_issue_terminal_notice', return_value=False), \
                     patch.object(MODULE, 'wait_for_ack', return_value=True), \
                     patch.object(MODULE, 'wait_for_canary_approval', side_effect=wait_for_canary_approval), \
@@ -1636,6 +1680,22 @@ class CanaryHoldTest(unittest.TestCase):
                     patch.object(MODULE, 'selected_hosts', return_value=None), \
                     fleet_execution_contract(targets, self.TERMINAL_CLASSIFICATION, {}), \
                     patch.object(MODULE, 'remote_previous_sha', return_value=BASE_SHA), \
+                    patch.object(
+                        MODULE,
+                        'prepare_signage_release_identity',
+                        return_value={
+                            'head': BASE_SHA,
+                            'artifactState': 'installed',
+                            'artifactIdentity': _artifact_identity(BASE_SHA),
+                            'artifactSha256': 'c' * 64,
+                            'legacyRepositorySha': BASE_SHA,
+                        },
+                    ), \
+                    patch.object(
+                        MODULE,
+                        'signage_release_artifact_identity',
+                        side_effect=_artifact_identity,
+                    ), \
                     patch.object(MODULE, 'should_issue_terminal_notice', return_value=False), \
                     patch.object(MODULE, 'wait_for_ack', return_value=True), \
                     patch.object(MODULE, 'wait_for_canary_approval', side_effect=wait_for_canary_approval), \
@@ -1703,6 +1763,22 @@ class CanaryHoldTest(unittest.TestCase):
                     patch.object(MODULE, 'selected_hosts', return_value=None), \
                     fleet_execution_contract(targets, self.TERMINAL_CLASSIFICATION, {}), \
                     patch.object(MODULE, 'remote_previous_sha', return_value=BASE_SHA), \
+                    patch.object(
+                        MODULE,
+                        'prepare_signage_release_identity',
+                        return_value={
+                            'head': BASE_SHA,
+                            'artifactState': 'installed',
+                            'artifactIdentity': _artifact_identity(BASE_SHA),
+                            'artifactSha256': 'c' * 64,
+                            'legacyRepositorySha': BASE_SHA,
+                        },
+                    ), \
+                    patch.object(
+                        MODULE,
+                        'signage_release_artifact_identity',
+                        side_effect=_artifact_identity,
+                    ), \
                     patch.object(MODULE, 'should_issue_terminal_notice', return_value=False), \
                     patch.object(MODULE, 'wait_for_ack', return_value=True), \
                     patch.object(MODULE, 'state_command') as state_command, \
@@ -1757,6 +1833,22 @@ class CanaryHoldTest(unittest.TestCase):
                     patch.object(MODULE, 'selected_hosts', return_value=None), \
                     fleet_execution_contract(targets, self.TERMINAL_CLASSIFICATION, {}), \
                     patch.object(MODULE, 'remote_previous_sha', return_value=BASE_SHA), \
+                    patch.object(
+                        MODULE,
+                        'prepare_signage_release_identity',
+                        return_value={
+                            'head': BASE_SHA,
+                            'artifactState': 'installed',
+                            'artifactIdentity': _artifact_identity(BASE_SHA),
+                            'artifactSha256': 'c' * 64,
+                            'legacyRepositorySha': BASE_SHA,
+                        },
+                    ), \
+                    patch.object(
+                        MODULE,
+                        'signage_release_artifact_identity',
+                        side_effect=_artifact_identity,
+                    ), \
                     patch.object(MODULE, 'should_issue_terminal_notice', return_value=False), \
                     patch.object(MODULE, 'wait_for_ack', return_value=True), \
                     patch.object(MODULE, 'state_command', side_effect=state_command), \
@@ -2099,6 +2191,11 @@ class PrintPlanShadowTest(unittest.TestCase):
                 patch.object(MODULE, 'canonical_print_plan_inventory', return_value='inventory.yml'), \
                 patch.object(MODULE, 'read_only_inventory_json', return_value=inventory_data), \
                 patch.object(MODULE, 'read_only_selected_hosts', return_value=None), \
+                patch.object(
+                    MODULE,
+                    'signage_release_artifact_identity',
+                    side_effect=_artifact_identity,
+                ), \
                 patch.object(
                     MODULE,
                     'validate_print_plan_server_identity',
@@ -2702,6 +2799,22 @@ class AutoMinimizeTest(unittest.TestCase):
                     patch.object(MODULE, 'selected_hosts', return_value=None), \
                     fleet_execution_contract(targets, classification, inventory) as ensure, \
                     patch.object(MODULE, 'remote_previous_sha', return_value=BASE_SHA), \
+                    patch.object(
+                        MODULE,
+                        'prepare_signage_release_identity',
+                        return_value={
+                            'head': BASE_SHA,
+                            'artifactState': 'absent',
+                            'artifactIdentity': None,
+                            'artifactSha256': None,
+                            'legacyRepositorySha': BASE_SHA,
+                        },
+                    ), \
+                    patch.object(
+                        MODULE,
+                        'signage_release_artifact_identity',
+                        side_effect=_artifact_identity,
+                    ), \
                     patch.object(MODULE, 'should_issue_terminal_notice', return_value=False), \
                     patch.object(MODULE, 'wait_for_ack', return_value=True), \
                     patch.object(MODULE, 'state_command'), \
@@ -2861,6 +2974,11 @@ class AutoMinimizeTest(unittest.TestCase):
                 patch.object(MODULE, 'classify_release_impact', return_value=(classification, [])), \
                 patch.object(MODULE, 'read_only_inventory_json', return_value=self.INVENTORY), \
                 patch.object(MODULE, 'read_only_selected_hosts', return_value=None), \
+                patch.object(
+                    MODULE,
+                    'signage_release_artifact_identity',
+                    side_effect=_artifact_identity,
+                ), \
                 patch.object(
                     MODULE,
                     'read_plan_fleet_release_state',

@@ -153,11 +153,11 @@ class GenericTerminalAdapterTest(unittest.TestCase):
             "terminal-repository-probe",
         )
         self.assertEqual(
-            signage.ready_claim_kind(), ClaimKind.TERMINAL_REPOSITORY
+            signage.ready_claim_kind(), ClaimKind.SIGNAGE_RELEASE_ARTIFACT
         )
         self.assertEqual(
             signage.release_claim_authority(
-                ClaimKind.TERMINAL_REPOSITORY
+                ClaimKind.SIGNAGE_RELEASE_ARTIFACT
             ).value,
             "signage-ready",
         )

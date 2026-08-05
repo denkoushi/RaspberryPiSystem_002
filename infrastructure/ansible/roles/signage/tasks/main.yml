@@ -134,6 +134,26 @@
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
 
+- name: Deploy signage artifact status-agent service
+  ansible.builtin.template:
+    src: status-agent-artifact.service.j2
+    dest: /etc/systemd/system/status-agent.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: systemd-reload
+  when: terminal_release_mode | default('full') == 'release-only'
+
+- name: Deploy signage artifact status-agent timer
+  ansible.builtin.template:
+    src: status-agent-artifact.timer.j2
+    dest: /etc/systemd/system/status-agent.timer
+    owner: root
+    group: root
+    mode: '0644'
+  notify: systemd-reload
+  when: terminal_release_mode | default('full') == 'release-only'
+
 - name: Deploy signage-lite.service
   ansible.builtin.template:
     src: signage-lite.service.j2

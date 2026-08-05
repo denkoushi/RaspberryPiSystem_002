@@ -391,10 +391,14 @@ class RollbackManifestAdapterTest(unittest.TestCase):
             "manifestSha256": self.DIGEST,
             "count": len(paths),
             "destinations": paths,
-            "repository": {
-                "path": "/opt/RaspberryPiSystem_002",
-                "head": self.PREVIOUS_SHA,
-            },
+            "repository": (
+                None
+                if terminal_type == "signage"
+                else {
+                    "path": "/opt/RaspberryPiSystem_002",
+                    "head": self.PREVIOUS_SHA,
+                }
+            ),
         }
 
     def _runtime_capture_result(self, terminal_type="kiosk"):
@@ -1575,10 +1579,14 @@ class TerminalReleasePlaybookTest(unittest.TestCase):
             "runId": "run-123",
             "host": "signage-a",
             "previousSha": "b" * 40,
-            "candidateSha": "a" * 40,
-            "sha256": "c" * 64,
-            "size": 3430416,
-            "finalPath": "/var/tmp/raspi-pi3-source-run-123.bundle",
+            "profile": "signage",
+            "sourceSha": "a" * 40,
+            "artifactSha256": "c" * 64,
+            "pathManifestSha256": "d" * 64,
+            "pathCount": 4,
+            "size": 40960,
+            "finalPath": "/var/tmp/raspi-pi3-signage-run-123.pyz",
+            "installPath": "/usr/local/bin/raspi-signage-status-agent.pyz",
         }
         runtime = Runtime("")
 
@@ -1627,12 +1635,28 @@ class TerminalSourceStageAdapterTest(unittest.TestCase):
             git("init")
             git("config", "user.email", "pi3-source-test@example.invalid")
             git("config", "user.name", "Pi3 Source Test")
-            source = project / "source.txt"
-            source.write_text("previous\n", encoding="utf-8")
-            git("add", "source.txt")
+            artifact_sources = (
+                "scripts/deploy/signage-release-artifact.py",
+                "scripts/deploy/terminal-profile-registry.json",
+                "clients/status-agent/status-agent.py",
+                "clients/status-agent/status-agent.service",
+                "clients/status-agent/status-agent.timer",
+                "clients/status-agent/storage_health.py",
+                "clients/status-agent/terminal_agent_health.py",
+                "scripts/deploy/rolling_release/terminal_device_maintenance.py",
+            )
+            for relative in artifact_sources:
+                destination = project / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(PROJECT / relative, destination)
+            source = project / "clients/status-agent/status-agent.py"
+            git("add", ".")
             git("commit", "-m", "previous")
             previous = git("rev-parse", "HEAD")
-            source.write_text("candidate\n", encoding="utf-8")
+            source.write_text(
+                source.read_text(encoding="utf-8") + "\n# candidate\n",
+                encoding="utf-8",
+            )
             git("commit", "-am", "candidate")
             revision = git("rev-parse", "HEAD")
 
@@ -1663,9 +1687,10 @@ class TerminalSourceStageAdapterTest(unittest.TestCase):
                     runtime=runtime,
                 )
 
-            self.assertEqual(reference["candidateSha"], revision)
+            self.assertEqual(reference["sourceSha"], revision)
             self.assertEqual(reference["previousSha"], previous)
-            self.assertLessEqual(reference["size"], 64 * 1024 * 1024)
+            self.assertEqual(reference["profile"], "signage")
+            self.assertLessEqual(reference["size"], 1024 * 1024)
             copy_command, options = runtime.calls[0]
             self.assertEqual(
                 copy_command[0:5],

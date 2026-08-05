@@ -24,9 +24,21 @@ except ImportError:
     from scripts.deploy.terminal_profile_registry import load_registry
 
 try:
-    from rolling_release.release_claims import ClaimKind, release_claims_for_host
+    from rolling_release.release_claims import (
+        ClaimKind,
+        claim_requires_sealed_identity,
+        claim_source_sha,
+        release_claims_for_host,
+        validate_claim_identity,
+    )
 except ImportError:
-    from .release_claims import ClaimKind, release_claims_for_host
+    from .release_claims import (
+        ClaimKind,
+        claim_requires_sealed_identity,
+        claim_source_sha,
+        release_claims_for_host,
+        validate_claim_identity,
+    )
 
 
 Target = dict[str, str]
@@ -75,9 +87,29 @@ def _expected_claim_identity(
     decision: dict[str, Any],
     *,
     control_plane_web_sha: str,
+    release_claim_identities: dict[str, str],
+    existing_claims: dict[str, dict[str, Any]],
 ) -> str:
     if kind is ClaimKind.CONTROL_PLANE_WEB and decision['role'] != 'server':
         return control_plane_web_sha
+    if claim_requires_sealed_identity(kind):
+        source_sha = decision['desiredSha']
+        identity = release_claim_identities.get(source_sha)
+        if identity is None:
+            existing = existing_claims.get(kind.value)
+            if (
+                isinstance(existing, dict)
+                and existing.get('state') == 'verified'
+                and existing.get('expectedIdentity')
+                == existing.get('observedIdentity')
+            ):
+                identity = existing.get('observedIdentity')
+        if not isinstance(identity, str):
+            raise ValueError('sealed profile identity is unavailable')
+        validate_claim_identity(kind, identity, field='sealed profile identity')
+        if claim_source_sha(kind, identity) != source_sha:
+            raise ValueError('sealed profile identity does not match desired SHA')
+        return identity
     return decision['desiredSha']
 
 
@@ -159,6 +191,7 @@ def build_target_architecture(
     activation_execution_enabled: bool,
     verification_only_execution_enabled: bool,
     claim_scope_hosts: Iterable[str] | None,
+    release_claim_identities: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Build ordered action sets without executing or selecting a transport.
 
@@ -178,6 +211,11 @@ def build_target_architecture(
     ):
         raise ValueError('claim_scope_hosts contains a malformed host')
     records = fleet_records if isinstance(fleet_records, dict) else {}
+    identities = (
+        dict(release_claim_identities)
+        if isinstance(release_claim_identities, dict)
+        else {}
+    )
     server = next(
         (decision for decision in decisions if decision['role'] == 'server'),
         None,
@@ -209,6 +247,8 @@ def build_target_architecture(
                     kind,
                     decision,
                     control_plane_web_sha=control_plane_web_sha,
+                    release_claim_identities=identities,
+                    existing_claims=claims,
                 ),
                 claims=claims,
             )
@@ -219,7 +259,21 @@ def build_target_architecture(
             for requirement in requirements
             if requirement['status'] != 'current'
         ]
-        mutation_required = bool(decision['targeted'])
+        legacy_repository = claims.get(ClaimKind.TERMINAL_REPOSITORY.value)
+        legacy_profile_fallback = bool(
+            typed_target_planning
+            and any(
+                claim_requires_sealed_identity(ClaimKind(requirement['kind']))
+                and requirement['status'] != 'current'
+                for requirement in requirements
+            )
+            and isinstance(legacy_repository, dict)
+            and legacy_repository.get('state') == 'verified'
+            and legacy_repository.get('expectedIdentity')
+            == legacy_repository.get('observedIdentity')
+            == decision['desiredSha']
+        )
+        mutation_required = bool(decision['targeted'] or legacy_profile_fallback)
         activation_required = bool(
             typed_target_planning
             and activation_strategy_id is not None
@@ -255,7 +309,14 @@ def build_target_architecture(
         }
         if mutation_required:
             mutation_targets.append(
-                _target_entry(work, reason=decision['targetReason'])
+                _target_entry(
+                    work,
+                    reason=(
+                        decision['targetReason']
+                        if decision['targeted']
+                        else 'verified legacy profile fallback requires sealed artifact migration'
+                    ),
+                )
             )
         if activation_required:
             web_status = next(
@@ -335,6 +396,7 @@ def build_fleet_plan_payload(
     verification_only_execution_enabled: bool = False,
     claim_scope_hosts: Iterable[str] | None = None,
     executor_preflight_passed: bool = False,
+    release_claim_identities: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Compose the fleet-aware public and persisted planning snapshot.
 
@@ -401,6 +463,7 @@ def build_fleet_plan_payload(
         activation_execution_enabled=activation_execution_enabled,
         verification_only_execution_enabled=verification_only_execution_enabled,
         claim_scope_hosts=claim_scope_hosts,
+        release_claim_identities=release_claim_identities,
     )
     canary_candidates = (
         [

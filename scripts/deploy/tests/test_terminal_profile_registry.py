@@ -58,7 +58,7 @@ class TerminalProfileRegistryTest(unittest.TestCase):
         self.assertEqual(signage.approval_policy, "health-only")
         self.assertEqual(
             signage.adapter_options.required_claims,
-            ("terminalRepository",),
+            ("signageReleaseArtifact",),
         )
         self.assertIsNone(signage.adapter_options.activation_strategy_id)
         self.assertEqual(
@@ -347,6 +347,10 @@ class TerminalProfileRegistryTest(unittest.TestCase):
                 payload["terminalProfiles"][1][field] = payload[
                     "terminalProfiles"
                 ][0][field]
+                if field == "id":
+                    payload["terminalProfiles"][1]["adapterOptions"] = copy.deepcopy(
+                        payload["terminalProfiles"][0]["adapterOptions"]
+                    )
                 with self.assertRaisesRegex(RegistryError, "must be unique"):
                     self.load_payload(payload)
 

@@ -29,6 +29,7 @@ from .release_claims import (
     ReleaseClaim,
     release_claims_for_host,
     validate_release_claims,
+    validate_claim_identity,
 )
 from .release_warnings import record_observer_warning
 from . import readiness_policy, telemetry
@@ -227,6 +228,8 @@ def _seed_unverified_hosts(
                 observed_sha=current_sha,
                 run_id=run_id,
                 observed_at=runtime.utc_now(),
+                adapter=adapter,
+                observation=observation,
             )
             required_claims = (
                 {ClaimKind.CONTROL_PLANE_API, ClaimKind.CONTROL_PLANE_WEB}
@@ -310,7 +313,7 @@ def _claim_record(
             if observed is not None and observed == expected
             else ClaimState.UNKNOWN
         ),
-        observed_at=observed_at,
+        observed_at=observed_at if observed is not None else None,
         last_run_id=run_id,
     ).to_record()
 
@@ -329,21 +332,42 @@ def _require_verified_release_claims(
 
 
 def _direct_release_claims(
-    *, role: str, expected_sha: str, observed_sha: str, run_id: str, observed_at: str
+    *,
+    role: str,
+    expected_sha: str,
+    observed_sha: str,
+    run_id: str,
+    observed_at: str,
+    adapter: TerminalAdapter | None = None,
+    observation: dict[str, Any] | None = None,
 ) -> dict[str, dict[str, Any]]:
-    kinds = (
-        (
+    if role == "server":
+        kinds = (
             (ClaimKind.CONTROL_PLANE_API, ClaimAuthority.PI5_API_IMAGE),
             (ClaimKind.CONTROL_PLANE_WEB, ClaimAuthority.PI5_WEB_IMAGE),
         )
-        if role == "server"
-        else (
+    else:
+        if adapter is None or observation is None:
+            raise RuntimeError("terminal seed adapter is unavailable")
+        kind = adapter.direct_claim_kind()
+        kinds = (
             (
-                ClaimKind.TERMINAL_REPOSITORY,
-                ClaimAuthority.TERMINAL_REPOSITORY_PROBE,
+                kind,
+                adapter.direct_claim_authority(kind),
             ),
         )
-    )
+        identity = adapter.observed_claim_identity(
+            kind, observation, {}, release_key="unused"
+        )
+        if not isinstance(identity, str):
+            raise RuntimeError("terminal seed identity is unavailable")
+        validate_claim_identity(
+            kind,
+            identity,
+            field="terminal seed identity",
+        )
+        expected_sha = identity
+        observed_sha = identity
     return {
         kind.value: _claim_record(
             kind=kind,
@@ -356,6 +380,34 @@ def _direct_release_claims(
         )
         for kind, authority in kinds
     }
+
+
+def _profile_baseline_release_claims(
+    *,
+    adapter: TerminalAdapter,
+    target: dict[str, Any],
+    observation: dict[str, Any],
+    run_id: str,
+    observed_at: str,
+) -> dict[str, dict[str, Any]]:
+    spec = adapter.baseline_claim_spec(
+        target, observation, verification_id=None
+    )
+    kind = spec.get("kind")
+    if not isinstance(kind, ClaimKind):
+        raise RuntimeError("profile baseline claim kind is malformed")
+    claims = {
+        kind.value: _claim_record(
+            kind=kind,
+            expected=spec.get("expected"),
+            observed=spec.get("observed"),
+            authority=spec.get("authority"),
+            verification_id=spec.get("verificationId"),
+            observed_at=observed_at,
+            run_id=run_id,
+        )
+    }
+    return _require_verified_release_claims(claims, {kind})
 
 
 def _pending_server_release_claims(
@@ -417,10 +469,17 @@ def _claim_requirements(
         if (
             kind in seen
             or not isinstance(expected, str)
-            or FULL_SHA_RE.fullmatch(expected) is None
             or value["status"] not in {"current", "missing", "stale-or-unverified"}
         ):
             raise RuntimeError("terminal claim requirement identity is malformed")
+        try:
+            validate_claim_identity(
+                kind, expected, field="terminal claim requirement identity"
+            )
+        except ValueError as error:
+            raise RuntimeError(
+                "terminal claim requirement identity is malformed"
+            ) from error
         seen.add(kind)
         requirements.append({"kind": kind.value, "expectedIdentity": expected})
     required_kinds = {
@@ -475,6 +534,7 @@ def _pending_terminal_release_claims(
 
 def _pending_interrupted_recovery_release_claims(
     *,
+    runtime: Any,
     adapter: TerminalAdapter,
     record: dict[str, Any],
     desired_sha: str,
@@ -503,7 +563,9 @@ def _pending_interrupted_recovery_release_claims(
     rebound["claimRequirements"] = [
         {
             "kind": requirement["kind"],
-            "expectedIdentity": desired_sha,
+            "expectedIdentity": adapter.expected_claim_identity(
+                runtime, desired_sha, ClaimKind(requirement["kind"])
+            ),
             "status": "stale-or-unverified",
         }
         for requirement in requirements
@@ -557,6 +619,24 @@ def _terminal_observed_release_claims(
         "rollbackReadyVerificationId" if rollback else "readyVerificationId"
     )
     timestamp = runtime.utc_now()
+    if rollback and adapter.owns_profile_release_identity():
+        claims = _profile_baseline_release_claims(
+            adapter=adapter,
+            target=target,
+            observation=observation,
+            run_id=run_id,
+            observed_at=timestamp,
+        )
+        kind = next(iter(claims))
+        if kind == adapter.ready_claim_kind().value:
+            claim = dict(claims[kind])
+            claim["authority"] = adapter.release_claim_authority(
+                adapter.ready_claim_kind()
+            ).value
+            claim["verificationId"] = target.get(verification_key)
+            claims[kind] = claim
+            claims = validate_release_claims(claims)
+        return claims
     claims: dict[str, dict[str, Any]] = {}
     for requirement in requirements:
         kind = ClaimKind(requirement["kind"])
@@ -566,7 +646,9 @@ def _terminal_observed_release_claims(
             if not isinstance(expected, str) or FULL_SHA_RE.fullmatch(expected) is None:
                 raise RuntimeError("rollback repository claim identity is unavailable")
         if kind is ready_kind:
-            observed = target.get(release_key)
+            observed = adapter.observed_claim_identity(
+                kind, observation, target, release_key=release_key
+            )
             verification_id = target.get(verification_key)
         elif kind is ClaimKind.TERMINAL_REPOSITORY:
             observed = observation.get("currentSha")
@@ -1048,7 +1130,8 @@ def _recover_interrupted_terminals(
             raise RuntimeError(
                 f"interrupted terminal rollback authority is malformed: {host}"
             )
-        record = dict(prior_target)
+        adapter = _terminal_adapter(runtime, target_spec["terminalType"])
+        record = adapter.normalize_interrupted_record(dict(prior_target))
         record["rollbackAuthorityRunId"] = authority_run_id
         recovery_records.append(record)
         work_items.append(
@@ -1215,6 +1298,7 @@ def _recover_interrupted_terminals(
         # A failure on this host must not erase verified evidence for later,
         # untouched terminals in the same abandoned run.
         recovery_claims = _pending_interrupted_recovery_release_claims(
+            runtime=runtime,
             adapter=adapter,
             record=record,
             desired_sha=desired_sha,
@@ -1405,16 +1489,35 @@ def _recover_interrupted_terminals(
                 record["noticeClearedAt"] = runtime.utc_now()
                 state.save()
 
-        observation = adapter.observe(
-            inventory,
-            host,
-            target_spec["clientId"],
-            runtime_health=record.get("rollbackRuntimeHealth"),
+        prior_finalization = prior_target.get("runtimeFinalization")
+        observing_baseline = (
+            maintenance_needs_cleanup
+            or not prior_target.get("maintenanceStartedAt")
+            or (
+                isinstance(prior_finalization, dict)
+                and prior_finalization.get("outcome") == "restored"
+            )
         )
+        if observing_baseline:
+            observation = adapter.observe_rollback(
+                inventory,
+                host,
+                target_spec["clientId"],
+                record,
+                runtime_health=record.get("rollbackRuntimeHealth"),
+            )
+        else:
+            observation = adapter.observe(
+                inventory,
+                host,
+                target_spec["clientId"],
+                runtime_health=record.get("rollbackRuntimeHealth"),
+            )
         if observation.get("currentSha") != expected_sha:
             raise RuntimeError(
                 f"interrupted terminal recovery HEAD does not match: {host}"
             )
+        baseline_claims_complete = False
         if maintenance_needs_cleanup:
             recovered_claims = _terminal_observed_release_claims(
                 runtime=runtime,
@@ -1424,40 +1527,71 @@ def _recover_interrupted_terminals(
                 run_id=authority_run_id,
                 rollback=True,
             )
+            baseline_claims_complete = adapter.owns_profile_release_identity()
         elif "releaseClaims" in record and prior_target.get(
             "maintenanceClearedAt"
         ):
-            recovered_claims = validate_release_claims(record["releaseClaims"])
-            requirements = _claim_requirements(record, adapter)
-            if requirements is not None:
-                recovered_claims = _require_verified_release_claims(
-                    recovered_claims,
-                    {ClaimKind(value["kind"]) for value in requirements},
-                )
-            repository_claim = recovered_claims.get(
-                ClaimKind.TERMINAL_REPOSITORY.value
-            )
             if (
-                not isinstance(repository_claim, dict)
-                or repository_claim.get("state") != ClaimState.VERIFIED.value
-                or repository_claim.get("observedIdentity") != expected_sha
+                adapter.owns_profile_release_identity()
+                and isinstance(prior_finalization, dict)
+                and prior_finalization.get("outcome") == "restored"
             ):
-                raise RuntimeError(
-                    f"interrupted terminal release claims do not match: {host}"
+                recovered_claims = _profile_baseline_release_claims(
+                    adapter=adapter,
+                    target=record,
+                    observation=observation,
+                    run_id=run_id,
+                    observed_at=runtime.utc_now(),
                 )
+                baseline_claims_complete = True
+            else:
+                recovered_claims = validate_release_claims(record["releaseClaims"])
+                requirements = _claim_requirements(record, adapter)
+                if requirements is not None:
+                    recovered_claims = _require_verified_release_claims(
+                        recovered_claims,
+                        {ClaimKind(value["kind"]) for value in requirements},
+                    )
+                ready_kind = adapter.ready_claim_kind()
+                identity_kind = ready_kind or ClaimKind.TERMINAL_REPOSITORY
+                identity_claim = recovered_claims.get(identity_kind.value)
+                observed_identity = adapter.observed_claim_identity(
+                    identity_kind,
+                    observation,
+                    record,
+                    release_key="readyReleaseSha",
+                )
+                if (
+                    not isinstance(identity_claim, dict)
+                    or identity_claim.get("state") != ClaimState.VERIFIED.value
+                    or identity_claim.get("observedIdentity") != observed_identity
+                ):
+                    raise RuntimeError(
+                        f"interrupted terminal release claims do not match: {host}"
+                    )
         else:
-            recovered_claims = _premaintenance_recovery_claims(
-                record=record,
-                expected_sha=expected_sha,
-                run_id=run_id,
-                observed_at=runtime.utc_now(),
-            )
+            if adapter.owns_profile_release_identity():
+                recovered_claims = _profile_baseline_release_claims(
+                    adapter=adapter,
+                    target=record,
+                    observation=observation,
+                    run_id=run_id,
+                    observed_at=runtime.utc_now(),
+                )
+                baseline_claims_complete = True
+            else:
+                recovered_claims = _premaintenance_recovery_claims(
+                    record=record,
+                    expected_sha=expected_sha,
+                    run_id=run_id,
+                    observed_at=runtime.utc_now(),
+                )
         requirements = _claim_requirements(record, adapter)
-        claims_complete = requirements is None
+        claims_complete = requirements is None or baseline_claims_complete
         if recovered_claims is not None:
             record["releaseClaims"] = recovered_claims
             observation["releaseClaims"] = recovered_claims
-            if requirements is not None:
+            if requirements is not None and not baseline_claims_complete:
                 try:
                     _require_verified_release_claims(
                         recovered_claims,
@@ -2104,8 +2238,12 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                             target["desiredSha"],
                             target["previousSha"],
                             args.run_id,
-                        )
+                    )
                     if staged_source is not None:
+                        requirements = _claim_requirements(target, adapter) or []
+                        adapter.validate_staged_claim_identity(
+                            requirements, staged_source
+                        )
                         target["stagedSource"] = staged_source
                         state.save()
                     token.checkpoint(f"after-source-stage:{host}")
@@ -2506,10 +2644,11 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                         with _measure_phase(
                             state, runtime, "terminal-rollback-evidence", host=host
                         ):
-                            rollback_observation = adapter.observe(
+                            rollback_observation = adapter.observe_rollback(
                                 inventory,
                                 host,
                                 target_spec["clientId"],
+                                target,
                                 runtime_health=rollback_runtime_health,
                             )
                         if (
