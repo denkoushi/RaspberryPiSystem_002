@@ -195,10 +195,11 @@ class RollbackManifestTest(unittest.TestCase):
         self.assertIsNone(entry["mode"])
         missing.write_text("created by failed deploy\n", encoding="utf-8")
 
-        self.restore()
+        restored = self.restore()
 
         self.assertFalse(missing.exists())
         self.assertEqual(unrelated.read_text(encoding="utf-8"), "keep\n")
+        self.assertEqual(restored["absentDestinations"], [str(missing)])
 
     def test_absent_file_under_absent_parent_can_be_sealed_before_onboarding(self):
         missing = self.filesystem_root / "home" / "new-user" / ".config" / "new.conf"

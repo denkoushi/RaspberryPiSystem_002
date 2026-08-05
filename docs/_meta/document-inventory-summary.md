@@ -12,8 +12,8 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Metric | Count |
 |--------|------:|
 | Documents | 612 |
-| Total lines | 170986 |
-| Total bytes | 12828323 |
+| Total lines | 170997 |
+| Total bytes | 12829847 |
 | With frontmatter | 279 |
 | With status | 135 |
 | source_of_truth declared | 97 |
@@ -87,7 +87,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/plans/deployment-foundation-refactor-execplan.md` (99:1226, 893:1025, 899:1002)
 - `docs/plans/dgx-spark-local-llm-migration-execplan.md` (38:1075)
 - `docs/plans/kiosk-assembly-torque-management-mvp.md` (135:1006)
-- `docs/plans/pi3-staged-source-transfer-execplan.md` (135:1108, 137:1132)
+- `docs/plans/pi3-staged-source-transfer-execplan.md` (146:1108, 148:1132)
 - `docs/plans/pi5-minimal-downtime-phase2.md` (130:1083)
 - `docs/plans/solid-refactor-phase3-execplan-202607.md` (28:1154, 30:1151)
 - `docs/plans/solid-refactor-phase4-execplan-202607.md` (30:1179, 31:1213, 32:1328)

@@ -16,10 +16,10 @@ related_docs:
   - docs/plans/standard-release-production-path-audit-execplan.md
   - docs/plans/deploy-speed-phase-b-execplan.md
   - docs/knowledge-base/KB-401-deploy-release-identity-runtime-audit.md
-validation: isolated reproduction, focused boundary and rollback audit, and Ansible safety contracts passed; clean hosted full CI pending
+validation: incident reproduction and 144 focused rollback, manifest, adapter, and coordinator contracts passed; clean hosted full CI pending
 open_items:
-  - conditionally approved production retry remains gated on exact-main plan and preflight
-  - main integration and exact-main verification remain pending
+  - publish and merge the incident hardening follow-up only after clean hosted CI
+  - rerun exact-main plan and preflight, then stop for separate production retry approval
 ---
 
 # Seal Pi3 release source on Pi5 and transfer it over the existing SSH Ansible route
@@ -51,6 +51,9 @@ This is not a resurrection of the frozen StoneBase local executor. Ansible still
 - [x] (2026-08-05 14:42+09:00) Passed focused Pi3 bundle/adapter/coordinator/route tests, Ansible template parsing for 104 templates, lifecycle and deployment safety contracts, Python compilation, documentation audit, and diff inspection.
 - [x] (2026-08-05 14:50+09:00) Passed the complete local deploy-contract source: 1,002 Python tests, 40/40 required production-path scenarios, 26 route stages, 13 Pi5 phases, 12/12 past-incident probes, 157 disposable PostgreSQL migrations, application/migrator role separation, all Ansible syntax checks, and zero run-labelled container/network/volume residue.
 - [ ] Publish a focused follow-up PR and classify all hosted CI results before proposing any merge gate.
+- [x] (2026-08-05 18:05+09:00) Completed the read-only incident audit for run `20260805-084150-ccf8e8`: rollback restored the old SHA and runtime, but the exact failed bundle was not retained and the Git helper suppressed the failing subcommand, return code, and safe stderr.
+- [x] (2026-08-05 18:15+09:00) Added fixed Git operation labels plus bounded sanitized failure context, with failure injection for every registered Git operation and no argv, URL, or credential persistence.
+- [x] (2026-08-05 18:30+09:00) Added explicit absent-path restore evidence and separated repository, runtime, display, and cleanup rollback proofs. Failure phase is recorded before maintenance removal, and cleanup receipt collection continues after runtime or display proof failure. All 144 affected product contracts pass; three unrelated local Ansible-shim checks remain delegated to clean hosted CI.
 
 ## Surprises & Discoveries
 
@@ -116,9 +119,17 @@ This is not a resurrection of the frozen StoneBase local executor. Ansible still
   Rationale: mode `0600` grants no group access, while assuming that the SSH account has an identically named group is unnecessary transport coupling. The Ansible copy remains become-owned, fixed-path, and bound to the resolved inventory user.
   Date/Author: 2026-08-05 / Codex.
 
+- Decision: Do not guess which Git subcommand caused the production import failure; expose only a fixed operation label, return code, and bounded sanitized stderr for the next failure.
+  Rationale: the exact failed bundle was not retained, while an equivalent offline bundle passed every Git check. Adding fetch, retry, or transport behavior without the missing evidence would be speculative.
+  Date/Author: 2026-08-05 / Codex.
+
+- Decision: Treat manifest restore, runtime/display verification, and cleanup receipt as separate rollback proofs.
+  Rationale: a secondary proof failure must keep aggregate rollback evidence unknown without hiding already verified restoration or preventing idempotent cleanup and its receipt from being recorded.
+  Date/Author: 2026-08-05 / Codex.
+
 ## Outcomes & Retrospective
 
-The Pi3-only route stages and consumes a digest-bound local bundle before and during the existing maintenance boundary, while Pi4 retains its former executor and common-role fetch path. The first merged version incorrectly placed the Pi3 branch in the global common role; the follow-up boundary separation is locally focused-test complete and awaits the required aggregate contracts, PR, hosted CI, merge, exact-main verification, and conditionally approved standard production retry. No production mutation, retry, SSH write, service operation, manual Git command, or new run occurred during the separation work.
+The Pi3-only route and its signage-owned boundary are merged. The incident hardening now preserves actionable Git failure context and independent rollback proofs without changing bundle transport, retry policy, or release scope. It awaits the focused follow-up PR, hosted aggregate contracts, merge, and exact-main read-only gates. Production retry remains a separate approval; no production connection or mutation occurred during this hardening work.
 
 ## Context and Orientation
 

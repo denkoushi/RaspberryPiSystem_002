@@ -2642,6 +2642,7 @@ def restore_server_config_manifest(
             "manifestSha256",
             "count",
             "destinations",
+            "absentDestinations",
             "repository",
         }
         or result.get("restored") is not True
@@ -2649,6 +2650,13 @@ def restore_server_config_manifest(
         or result.get("manifestSha256") != reference["manifestSha256"]
         or result.get("count") != reference["count"]
         or result.get("destinations") != list(_SERVER_CONFIG_PATHS)
+        or not isinstance(result.get("absentDestinations"), list)
+        or any(
+            destination not in _SERVER_CONFIG_PATHS
+            for destination in result["absentDestinations"]
+        )
+        or len(set(result["absentDestinations"]))
+        != len(result["absentDestinations"])
         or result.get("repository") is not None
     ):
         raise RuntimeError(f"server config rollback restore result is invalid: {host}")
@@ -3028,6 +3036,7 @@ def rollback_terminal(
             runtime=runtime,
         )
         destinations = result.get("destinations")
+        absent_destinations = result.get("absentDestinations")
         if (
             set(result)
             != {
@@ -3036,6 +3045,7 @@ def rollback_terminal(
                 "manifestSha256",
                 "count",
                 "destinations",
+                "absentDestinations",
                 "repository",
             }
             or result.get("restored") is not True
@@ -3051,10 +3061,32 @@ def rollback_terminal(
                 for destination in destinations
             )
             or len(set(destinations)) != count
+            or not isinstance(absent_destinations, list)
+            or any(
+                not isinstance(destination, str)
+                or destination not in destinations
+                for destination in absent_destinations
+            )
+            or len(set(absent_destinations)) != len(absent_destinations)
             or result.get("repository")
             != {"path": _TERMINAL_REPOSITORY, "head": previous_sha}
         ):
             raise RuntimeError("terminal rollback restore result is invalid")
+        run_scoped_paths = adapter_for_profile(
+            terminal_type, runtime=None
+        ).run_scoped_rollback_paths(run_id)
+        if run_scoped_paths:
+            if not set(run_scoped_paths).issubset(absent_destinations):
+                raise RuntimeError(
+                    "terminal rollback run artifact absence proof is incomplete"
+                )
+            target["stagedSourceCleanup"] = {
+                "state": "clean",
+                "residue": False,
+                "authority": "rollback-manifest",
+                "manifestSha256": digest,
+                "paths": list(run_scoped_paths),
+            }
         if remote_previous_sha(inventory, host, runtime=runtime) != previous_sha:
             raise RuntimeError("terminal repository HEAD was not restored")
         runtime_result = _run_runtime_manifest_helper(
