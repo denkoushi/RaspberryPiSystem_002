@@ -319,7 +319,7 @@ def validate_release_claims(
     return claims
 
 
-def adapt_legacy_signage_host_record(
+def adapt_deployed_legacy_host_record(
     record: Mapping[str, Any], *, host: str
 ) -> dict[str, Any]:
     """Adapt the one deployed pre-artifact signage claim without trusting it.

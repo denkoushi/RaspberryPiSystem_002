@@ -28,7 +28,7 @@ from .image_refs import image_matches_release
 from .activation import validate_activation_capabilities
 from .release_claims import (
     ReleaseClaimError,
-    adapt_legacy_signage_host_record,
+    adapt_deployed_legacy_host_record,
     validate_host_claim_compatibility,
     validate_release_claims,
 )
@@ -326,7 +326,7 @@ def validate_fleet_state(payload: Any) -> dict[str, Any]:
         if not isinstance(host, str):
             raise FleetStateCorruptError("fleet host names must be strings")
         try:
-            record = adapt_legacy_signage_host_record(record, host=host)
+            record = adapt_deployed_legacy_host_record(record, host=host)
         except ReleaseClaimError as error:
             raise FleetStateCorruptError(
                 f"fleet.{host}.releaseClaims is malformed: {error}"
