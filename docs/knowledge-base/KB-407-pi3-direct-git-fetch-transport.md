@@ -9,7 +9,8 @@ related_code:
   - scripts/deploy/terminal-source-bundle.py
   - scripts/deploy/rolling_release/backends/ansible.py
   - scripts/deploy/rolling_release/coordinator.py
-  - infrastructure/ansible/roles/common/tasks/main.yml
+  - infrastructure/ansible/playbooks/deploy-signage-staged.yml
+  - infrastructure/ansible/roles/signage/tasks/release-preparation.yml
 related_docs:
   - ../plans/pi3-staged-source-transfer-execplan.md
   - ../plans/standard-release-production-path-audit-execplan.md
@@ -39,7 +40,7 @@ The existing coordinator, signage profile, remote Ansible executor, immutable SH
 
 After the strict read-only Pi3 baseline and rollback manifest capture, but before notice or maintenance, Pi5 checks capacity and sends the bundle through the existing SSH Ansible route with `Compression=yes`. Transfer uses a run-scoped temporary file, owner-only mode, digest and Git prerequisite validation, then atomic rename. A failure cleans only those manifest-owned paths and stops before display, service, repository, notice, or maintenance mutation.
 
-After maintenance begins, the Pi3 helper accepts only the verified local bundle. Git is configured with all protocols denied except the local file protocol, the bundle must expose exactly the candidate as `HEAD`, and the repository must still equal the clean sealed previous SHA. The helper imports the local object, resets to the exact candidate, re-verifies the clean HEAD, and removes the bundle. The signage playbook fails before the legacy fetch task if staged source is missing. Pi4 keeps its existing path; this change does not generalize transport across all terminals.
+After maintenance begins, the Pi3 helper accepts only the verified local bundle. Git is configured with all protocols denied except the local file protocol, the bundle must expose exactly the candidate as `HEAD`, and the repository must still equal the clean sealed previous SHA. The helper imports the local object, resets to the exact candidate, re-verifies the clean HEAD, and removes the bundle. The registry-selected signage playbook requires the staged source and has no legacy fetch task. The common role remains identical to the deployed baseline, so Pi4 keeps its existing path; this change does not generalize transport across all terminals or weaken global impact classification.
 
 ## Validation and prevention
 

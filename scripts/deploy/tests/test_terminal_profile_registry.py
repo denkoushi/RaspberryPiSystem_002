@@ -20,9 +20,10 @@ class TerminalProfileRegistryTest(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         root = Path(temporary.name)
-        playbook = root / "infrastructure/ansible/playbooks/deploy-staged.yml"
-        playbook.parent.mkdir(parents=True)
-        playbook.write_text("---\n", encoding="utf-8")
+        playbook_root = root / "infrastructure/ansible/playbooks"
+        playbook_root.mkdir(parents=True)
+        for name in ("deploy-staged.yml", "deploy-signage-staged.yml"):
+            (playbook_root / name).write_text("---\n", encoding="utf-8")
         registry_path = root / "registry.json"
         registry_path.write_text(
             json.dumps(self.payload if payload is None else payload),
@@ -40,6 +41,7 @@ class TerminalProfileRegistryTest(unittest.TestCase):
         kiosk = registry.profile("kiosk")
         signage = registry.profile("signage")
         self.assertEqual(kiosk.adapter_id, "generic-systemd")
+        self.assertEqual(kiosk.playbook, "playbooks/deploy-staged.yml")
         self.assertEqual(kiosk.notice_seconds, 60)
         self.assertEqual(kiosk.approval_policy, "human")
         self.assertEqual(
@@ -51,6 +53,7 @@ class TerminalProfileRegistryTest(unittest.TestCase):
             "kiosk-web-activation-v1",
         )
         self.assertEqual(signage.adapter_id, "signage-systemd")
+        self.assertEqual(signage.playbook, "playbooks/deploy-signage-staged.yml")
         self.assertEqual(signage.notice_seconds, 0)
         self.assertEqual(signage.approval_policy, "health-only")
         self.assertEqual(
@@ -107,6 +110,12 @@ class TerminalProfileRegistryTest(unittest.TestCase):
         self.assertEqual(
             registry.component_for("infrastructure/ansible/roles/common/tasks/main.yml"),
             "global",
+        )
+        self.assertEqual(
+            registry.component_for(
+                "infrastructure/ansible/playbooks/deploy-signage-staged.yml"
+            ),
+            "signage-role",
         )
         self.assertEqual(
             registry.client_agent_ids,

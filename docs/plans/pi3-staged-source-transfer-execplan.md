@@ -9,16 +9,17 @@ related_code:
   - scripts/deploy/rolling_release/coordinator.py
   - scripts/deploy/rolling_release/backends/ansible.py
   - scripts/deploy/rolling_release/route_contract.py
-  - infrastructure/ansible/roles/common/tasks/main.yml
+  - infrastructure/ansible/playbooks/deploy-signage-staged.yml
+  - infrastructure/ansible/roles/signage/tasks/release-preparation.yml
 related_docs:
   - docs/guides/deployment.md
   - docs/plans/standard-release-production-path-audit-execplan.md
   - docs/plans/deploy-speed-phase-b-execplan.md
   - docs/knowledge-base/KB-401-deploy-release-identity-runtime-audit.md
-validation: isolated reproduction, focused rollback audit, and aggregate deploy contracts passed; hosted CI pending
+validation: isolated reproduction, focused boundary and rollback audit, and Ansible safety contracts passed; clean hosted full CI pending
 open_items:
-  - production retry remains a separate explicit approval gate
-  - main integration and exact-main verification remain separate gates
+  - conditionally approved production retry remains gated on exact-main plan and preflight
+  - main integration and exact-main verification remain pending
 ---
 
 # Seal Pi3 release source on Pi5 and transfer it over the existing SSH Ansible route
@@ -29,7 +30,7 @@ This ExecPlan is a living document. Maintain its `Progress`, `Surprises & Discov
 
 The low-resource Pi3 must not depend on a fresh external Git HTTPS transfer after it has entered maintenance. The existing coordinator, terminal profile, SSH Ansible execution, immutable candidate SHA, ready evidence, and sealed rollback authority remain unchanged. Pi5 will instead construct a minimal Git bundle from its already verified exact candidate checkout, bind that bundle to the run, host, previous SHA, candidate SHA, and SHA-256 digest, and transfer it through the existing compressed SSH Ansible route. The Pi3 will validate and apply that staged bundle before resetting to the immutable candidate SHA; it will not select a branch or fetch release source from a remote network.
 
-This is not a resurrection of the frozen StoneBase local executor. Ansible still executes remotely from Pi5, the coordinator remains the sole release authority, the normal terminal playbook remains the mutation entry point, and the existing sealed manifest remains the only rollback authority. Pi5, all six Pi4 terminals, and the restored Pi3 production state are not modified by this work.
+This is not a resurrection of the frozen StoneBase local executor. Ansible still executes remotely from Pi5, the coordinator remains the sole release authority, the profile-selected signage playbook remains inside that executor, and the existing sealed manifest remains the only rollback authority. Pi5, all six Pi4 terminals, and the restored Pi3 production state are not modified by this work.
 
 ## Progress
 
@@ -43,6 +44,10 @@ This is not a resurrection of the frozen StoneBase local executor. Ansible still
 - [x] (2026-08-05 16:20+09:00) Implemented Pi3-only staged source creation and compressed Ansible transfer, with a typed digest-bound reference, strict read-only signage baseline, pre-maintenance capacity/verification gate, atomic promotion, and manifest-owned paths.
 - [x] (2026-08-05 16:25+09:00) Replaced only the Pi3 common-role remote fetch boundary with exact local-bundle validation and import; the Pi4 path remains unchanged. Fixed the first review draft so the Pi3 staged-source assertion runs before the legacy remote-fetch task.
 - [x] (2026-08-05 16:32+09:00) Added route ownership, before/after stage fault tests, residue/idempotency tests, a 64-MiB fail-closed artifact ceiling, and an execution contract that forbids remote protocols during consume.
+- [x] (2026-08-05 20:05+09:00) Re-evaluated release impact after exact-main planning exposed that the Pi3-only branch lived in the global common role. Restored `roles/common/tasks/main.yml` byte-for-byte to the deployed baseline and moved the sealed source boundary to a registry-selected signage playbook and signage-owned release preparation. Worktree classification is now `deploy-control + signage-role + neutral`, with no `global`, `unknown`, or kiosk profile impact.
+- [x] (2026-08-05 20:25+09:00) Passed 104 focused profile, bundle, preflight, adapter, and classification tests plus the recursive Ansible deployment safety contract. The dedicated playbook preserves the existing signage tasks, handlers, and GUI restoration sequence; only repository preparation is replaced.
+- [x] (2026-08-05 20:40+09:00) Stopped repeated local full audits and completed the requested lightweight toolchain preflight: Node `v24.14.0`, project pnpm `9.15.9`, `CI=true`, frozen-lockfile override parity, and pyenv Ansible shims matched; Git and lockfile digests remained stable; Docker residual was zero.
+- [ ] Run the full deployment audit once in the official GitHub deploy-contract job. Local full-audit evidence is invalid because an earlier bundled-pnpm attempt reduced the ignored `node_modules` tree; it will not be repaired or reused for acceptance.
 - [x] (2026-08-05 14:42+09:00) Passed focused Pi3 bundle/adapter/coordinator/route tests, Ansible template parsing for 104 templates, lifecycle and deployment safety contracts, Python compilation, documentation audit, and diff inspection.
 - [x] (2026-08-05 14:50+09:00) Passed the complete local deploy-contract source: 1,002 Python tests, 40/40 required production-path scenarios, 26 route stages, 13 Pi5 phases, 12/12 past-incident probes, 157 disposable PostgreSQL migrations, application/migrator role separation, all Ansible syntax checks, and zero run-labelled container/network/volume residue.
 - [ ] Publish a focused follow-up PR and classify all hosted CI results before proposing any merge gate.
@@ -66,6 +71,12 @@ This is not a resurrection of the frozen StoneBase local executor. Ansible still
 
 - Observation: the fixed 64-MiB ceiling is deliberately capacity policy, not an estimate of current use.
   Evidence: the exact failed-run-to-main delta is 3,430,416 bytes, so the ceiling is about 18.7 times the observed artifact. The Pi3 preflight requires the artifact's two-copy allowance plus a fixed 64-MiB free-space margin. A future larger candidate must fail closed and receive a separate review rather than silently raise the bound.
+
+- Observation: runtime `when` guards do not narrow release impact when Pi3 code is stored in the common role.
+  Evidence: the exact-main standard plan correctly classified `infrastructure/ansible/roles/common/tasks/main.yml` as `global` and selected every Pi4, even though the new tasks were signage-guarded. Restoring that file to the deployed baseline and placing the boundary under `roles/signage/` removes the global path without weakening the classifier.
+
+- Observation: local Node and pnpm must be selected independently.
+  Evidence: the shell defaulted to Node 18, while the Codex bundle supplied Node 24 and a newer pnpm that did not honor this repository's pnpm 9 override contract. The newer pnpm began recreating the ignored `node_modules` directory before failing. The clean GitHub job uses the repository-declared pnpm 9.15.9, Node 20, `CI=true`, and `pnpm install --frozen-lockfile`.
 
 ## Decision Log
 
@@ -93,17 +104,25 @@ This is not a resurrection of the frozen StoneBase local executor. Ansible still
   Rationale: those changes can mask the trigger but do not correct candidate-source authority.
   Date/Author: 2026-08-05 / Codex.
 
+- Decision: Use the existing profile playbook selector for a dedicated signage release playbook and keep the common role identical to the deployed baseline.
+  Rationale: the common role is correctly global because every Pi4 and Pi3 imports it. A signage-owned preparation file preserves the local-bundle and rollback contracts while leaving the Pi4 executor and fetch behavior unchanged; no content-sensitive classifier exception or `--limit` bypass is needed.
+  Date/Author: 2026-08-05 / Codex.
+
+- Decision: Do not repair or reuse the locally altered dependency tree for the release-blocking full audit; use the official clean GitHub deploy-contract job once.
+  Rationale: focused Python, YAML, and Ansible safety evidence is valid, but a full audit after an unintended dependency-tree recreation would mix toolchain recovery with product validation. Clean checkout plus the repository's frozen install is the authoritative reproducible path.
+  Date/Author: 2026-08-05 / Codex.
+
 - Decision: Require only the effective file owner and mode `0600`, not a matching primary group name.
   Rationale: mode `0600` grants no group access, while assuming that the SSH account has an identically named group is unnecessary transport coupling. The Ansible copy remains become-owned, fixed-path, and bound to the resolved inventory user.
   Date/Author: 2026-08-05 / Codex.
 
 ## Outcomes & Retrospective
 
-The local implementation and validation gates are complete. The Pi3-only route stages and consumes a digest-bound local bundle before and during the existing maintenance boundary, while Pi4 retains its former executor call shape. The complete deploy-contract source passed with 40/40 required scenarios and zero disposable Docker residue. No production mutation, retry, SSH write, service operation, manual Git command, or new run occurred. Add the fixed commit, PR, hosted CI evidence, and remaining merge gate after publication.
+The Pi3-only route stages and consumes a digest-bound local bundle before and during the existing maintenance boundary, while Pi4 retains its former executor and common-role fetch path. The first merged version incorrectly placed the Pi3 branch in the global common role; the follow-up boundary separation is locally focused-test complete and awaits the required aggregate contracts, PR, hosted CI, merge, exact-main verification, and conditionally approved standard production retry. No production mutation, retry, SSH write, service operation, manual Git command, or new run occurred during the separation work.
 
 ## Context and Orientation
 
-`scripts/update-all-clients.sh` is the only public production entry point. The immutable Pi5 release unit runs `scripts/deploy/rolling_release/coordinator.py`, which owns terminal ordering, maintenance, evidence, and rollback. The signage profile in `scripts/deploy/terminal-profile-registry.json` selects `infrastructure/ansible/deploy-staged.yml`. That playbook imports `roles/common/tasks/main.yml`, where the current exact-SHA repository mutation executes `git fetch` against the terminal's configured origin before validation and reset.
+`scripts/update-all-clients.sh` is the only public production entry point. The immutable Pi5 release unit runs `scripts/deploy/rolling_release/coordinator.py`, which owns terminal ordering, maintenance, evidence, and rollback. The signage profile in `scripts/deploy/terminal-profile-registry.json` selects `infrastructure/ansible/playbooks/deploy-signage-staged.yml`; the kiosk profile continues to select `deploy-staged.yml` and the common role. The signage playbook imports `roles/signage/tasks/release-preparation.yml`, which requires and consumes the coordinator-sealed local source without a remote-fetch fallback.
 
 The coordinator's order is important: it prepares the repository baseline, captures a sealed manifest, delivers notice, enters maintenance, invokes the terminal playbook, waits for typed ready evidence, and finalizes or rolls back. Staged source must fit inside that existing ordering. A source file may not be transferred before its rollback path is sealed, and no success may be inferred from transfer or playbook exit alone.
 
@@ -115,7 +134,7 @@ First, build an isolated contract around incremental Git bundles. In temporary r
 
 Second, add a narrow Pi3 staging boundary to the current runtime/adapter path. For signage, repository baseline observation is strictly read-only and never performs the legacy docs repair. After that baseline and the rollback manifest are sealed, but before notice or maintenance, the Pi5-side code validates the exact local candidate checkout, creates the bundle in a private temporary directory, verifies it locally, calculates SHA-256, and checks both controller and Pi3 capacity against a fixed artifact-size ceiling and required free-space margin. It sends the bundle to a deterministic run-scoped Pi3 temporary path through the existing Ansible inventory with explicit `Compression=yes`, verifies the received bytes and Git prerequisites, and atomically renames them to the final path. The transfer returns a typed, secret-free reference only after the remote file is regular, owned by the resolved SSH user with mode `0600`, digest-correct, and bound to the expected run, host, previous SHA, and candidate SHA. Generic Pi4 adapters do not expose this staging operation and keep their current behavior.
 
-Third, include both deterministic temporary and final staged paths in the signage rollback path set before manifest capture. Stage before notice and maintenance. If creation, capacity checking, transfer, or verification fails, reconcile the exact run-bound paths, remove any staging residue, and stop without touching the display, services, or repository. Pass the validated reference as fixed Ansible extra variables only after staging succeeds. In the common role, use the current remote-fetch mutation only when no staged reference is present. With a staged reference, validate the file and digest, run `git bundle verify`, require exactly the intended candidate head and available prerequisites, import from the local bundle, recheck the unchanged previous checkout and clean tree, reset to the exact candidate, prove the clean final SHA, and remove the bundle. The staged Pi3 branch is contractually forbidden from invoking `origin`, GitHub, or any other external remote after maintenance begins. A failure during import/reset remains fatal and routes through the existing sealed rollback; forward success also proves no run bundle remains.
+Third, include both deterministic temporary and final staged paths in the signage rollback path set before manifest capture. Stage before notice and maintenance. If creation, capacity checking, transfer, or verification fails, reconcile the exact run-bound paths, remove any staging residue, and stop without touching the display, services, or repository. Pass the validated reference as fixed Ansible extra variables only after staging succeeds. The registry-selected signage playbook validates the file and digest, runs `git bundle verify`, requires exactly the intended candidate head and available prerequisites, imports from the local bundle, rechecks the unchanged previous checkout and clean tree, resets to the exact candidate, proves the clean final SHA, and removes the bundle. The common role remains unchanged for Pi4 and full provisioning. The staged Pi3 branch is contractually forbidden from invoking `origin`, GitHub, or any other external remote after maintenance begins. A failure during import/reset remains fatal and routes through the existing sealed rollback; forward success also proves no run bundle remains.
 
 Fourth, extend the route contract and coordinator rehearsals. Inject failure immediately before and after bundle creation, capacity checking, transfer, atomic promotion, remote verification, playbook consumption, source removal, and ambiguous response loss. Prove that pre-maintenance staging failure leaves display, service, and repository state byte-for-byte/logically unchanged; no repository mutation occurs without a valid staged reference; an import/reset failure keeps evidence unknown until rollback; the sealed manifest removes residue; maintenance follows existing rules; and a later plan cannot consume a prior run's bundle. Prove the Pi4 route is unchanged and the Pi3 path cannot invoke the Git remote while in maintenance.
 
@@ -130,13 +149,13 @@ Work only in this local checkout and branch:
 
 Run isolated bundle experiments and focused tests without inventory hosts or network access. Expected evidence is that valid Pi3 source bytes come only from a digest-bound local bundle, every binding or corruption mutation fails before reset, and the existing Pi4 test fixtures still call their former remote-fetch path.
 
-Run the repository-selected deployment contract after focused acceptance:
+On a clean dependency tree, the repository-selected deployment contract is:
 
     bash scripts/deploy/tests/test-deploy-safety-contracts.sh
-    scripts/ci/run-deploy-contracts-local.sh
+    CI=true scripts/ci/run-deploy-contracts-local.sh
     node scripts/docs/audit-docs.mjs
 
-Do not run `scripts/update-all-clients.sh`, SSH to a production host, invoke Ansible with a production inventory, clear maintenance, restart a service, or create a production run. A production retry is explicitly outside this plan.
+For this follow-up, run the full command through the official GitHub deploy-contract job because the current local ignored dependency tree is no longer an admissible input. Do not repair it as part of this task. Do not run `scripts/update-all-clients.sh`, SSH to a production host, invoke Ansible with a production inventory, clear maintenance, restart a service, or create a production run until the PR, main integration, exact-main, and standard production preflight gates pass.
 
 ## Validation and Acceptance
 
@@ -147,8 +166,8 @@ Acceptance requires all of the following:
 3. Pi3 source transfer uses explicit SSH compression, temporary-plus-atomic-final run-scoped paths, and the existing rollback manifest; all staging validation finishes before maintenance.
 4. Before/after and response-loss rehearsals prove a staging failure changes no display/service/repository state, one rollback authority owns later failures, unknown evidence handling is retained, and source residue is zero.
 5. Pi4 behavior, terminal ready claims, immutable final SHA, and coordinator sequencing remain unchanged.
-6. Focused tests, required full deployment contracts, documentation audit, and diff inspection pass locally.
-7. The follow-up PR's required CI passes on one fixed head. Main integration, exact-main verification, and production retry remain unperformed and separately gated.
+6. Focused tests, documentation audit, and diff inspection pass locally, while the official clean hosted deploy-contract performs the one release-blocking full audit.
+7. The follow-up PR's required CI passes on one fixed head. Main integration, exact-main verification, and the conditionally approved production retry remain separately gated.
 
 ## Idempotence and Recovery
 
@@ -162,4 +181,8 @@ The durable incident evidence is summarized here without secrets or raw producti
 
 ## Interfaces and Dependencies
 
-The implementation should expose one typed staged-source reference containing schema version, run ID, inventory host, previous SHA, candidate SHA, remote path, byte length, and SHA-256. The terminal adapter/runtime gains one staging boundary used only by the signage profile. The existing Ansible playbook entry remains the executor and receives fixed extra variables derived from that validated reference. No new operator flag, profile-selected executor, external service, package dependency, or production credential is introduced.
+The implementation exposes one typed staged-source reference containing schema version, run ID, inventory host, previous SHA, candidate SHA, remote path, byte length, and SHA-256. The terminal adapter/runtime gains one staging boundary used only by the signage profile. The existing profile registry selects a signage-owned Ansible playbook, which receives fixed extra variables derived from that validated reference. This does not add a new executor or authority: the same coordinator invokes the same Ansible backend and owns the same manifest rollback. No new operator flag, external service, package dependency, or production credential is introduced.
+
+## Revision Note
+
+Updated on 2026-08-05 to record the common-role impact correction, the dedicated signage playbook boundary, focused validation, and the decision to obtain the full audit only from the official clean GitHub CI environment after the local ignored dependency tree became inadmissible.

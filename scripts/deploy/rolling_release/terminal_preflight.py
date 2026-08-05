@@ -80,7 +80,12 @@ _PROFILE_CANDIDATE_ARTIFACTS = {
         ("infrastructure/ansible/roles/client/tasks/main.yml", "blob"),
     ),
     "signage": (
+        ("infrastructure/ansible/playbooks/deploy-signage-staged.yml", "blob"),
         ("infrastructure/ansible/roles/signage/tasks/main.yml", "blob"),
+        (
+            "infrastructure/ansible/roles/signage/tasks/release-preparation.yml",
+            "blob",
+        ),
     ),
 }
 _FEATURE_CANDIDATE_ARTIFACTS = {
