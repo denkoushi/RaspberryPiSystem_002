@@ -1394,13 +1394,17 @@ def audit_tasks(tasks, source, inherited_full):
                 approved_pi3_source = (
                     source.resolve()
                     == (roles_root / 'signage/tasks/release-preparation.yml').resolve()
-                    and name == 'Import and reset Pi3 repository from the verified local bundle'
-                    and 'scripts/deploy/terminal-source-bundle.py consume' in payload
-                    and '--repository' in payload
-                    and '--previous-sha' in payload
-                    and '--candidate-sha' in payload
-                    and '--sha256' in payload
+                    and name == 'Install the verified local signage artifact atomically'
+                    and 'scripts/deploy/signage-release-artifact.py consume' in payload
+                    and '--profile' in payload
+                    and '--source-sha' in payload
+                    and '--artifact-sha256' in payload
+                    and '--path-manifest-sha256' in payload
+                    and '--path-count' in payload
                     and '--size' in payload
+                    and '--repository' not in payload
+                    and '--previous-sha' not in payload
+                    and '--candidate-sha' not in payload
                     and 'origin' not in payload
                     and 'http' not in payload.lower()
                 )

@@ -311,6 +311,57 @@ class TerminalAdapter:
     def ready_claim_kind(self) -> ClaimKind | None:
         return None
 
+    def owns_profile_release_identity(self) -> bool:
+        return False
+
+    def expected_claim_identity(
+        self, runtime: Any, desired_sha: str, kind: ClaimKind
+    ) -> str:
+        del runtime, kind
+        return desired_sha
+
+    def direct_claim_authority(self, kind: ClaimKind) -> ClaimAuthority:
+        return self.release_claim_authority(kind)
+
+    def direct_claim_kind(self) -> ClaimKind:
+        return ClaimKind.TERMINAL_REPOSITORY
+
+    def observed_claim_identity(
+        self,
+        kind: ClaimKind,
+        observation: dict[str, Any],
+        target: dict[str, Any],
+        *,
+        release_key: str,
+    ) -> str | None:
+        if kind is self.ready_claim_kind():
+            return target.get(release_key)
+        if kind is ClaimKind.TERMINAL_REPOSITORY:
+            return observation.get("currentSha")
+        raise RuntimeError(f"terminal ready path cannot observe {kind.value}")
+
+    def normalize_interrupted_record(
+        self, record: dict[str, Any]
+    ) -> dict[str, Any]:
+        return record
+
+    def baseline_claim_spec(
+        self,
+        target: dict[str, Any],
+        observation: dict[str, Any],
+        *,
+        verification_id: str | None,
+    ) -> dict[str, Any]:
+        del target, observation, verification_id
+        raise RuntimeError("profile does not own a baseline release identity")
+
+    def validate_staged_claim_identity(
+        self,
+        requirements: list[dict[str, str]],
+        staged_source: dict[str, Any],
+    ) -> None:
+        del requirements, staged_source
+
     def release_claim_authority(self, kind: ClaimKind) -> ClaimAuthority:
         if kind is ClaimKind.TERMINAL_REPOSITORY:
             return ClaimAuthority.TERMINAL_REPOSITORY_PROBE
@@ -377,6 +428,20 @@ class TerminalAdapter:
             self.profile.id,
             client_id,
             runtime_health=runtime_health,
+        )
+
+    def observe_rollback(
+        self,
+        inventory: str,
+        host: str,
+        client_id: str,
+        target: dict[str, Any],
+        *,
+        runtime_health: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        del target
+        return self.observe(
+            inventory, host, client_id, runtime_health=runtime_health
         )
 
     def _active_units(self) -> tuple[str, ...]:
@@ -852,16 +917,245 @@ class SignageSystemdAdapter(TerminalAdapter):
     )
 
     def ready_claim_kind(self) -> ClaimKind | None:
-        return ClaimKind.TERMINAL_REPOSITORY
+        return ClaimKind.SIGNAGE_RELEASE_ARTIFACT
+
+    def owns_profile_release_identity(self) -> bool:
+        return True
+
+    def expected_claim_identity(
+        self, runtime: Any, desired_sha: str, kind: ClaimKind
+    ) -> str:
+        if kind is not ClaimKind.SIGNAGE_RELEASE_ARTIFACT:
+            return super().expected_claim_identity(runtime, desired_sha, kind)
+        return runtime.signage_release_artifact_identity(desired_sha)
+
+    def direct_claim_authority(self, kind: ClaimKind) -> ClaimAuthority:
+        if kind is ClaimKind.SIGNAGE_RELEASE_ARTIFACT:
+            return ClaimAuthority.SIGNAGE_ARTIFACT_PROBE
+        return super().direct_claim_authority(kind)
+
+    def direct_claim_kind(self) -> ClaimKind:
+        return ClaimKind.SIGNAGE_RELEASE_ARTIFACT
+
+    def observed_claim_identity(
+        self,
+        kind: ClaimKind,
+        observation: dict[str, Any],
+        target: dict[str, Any],
+        *,
+        release_key: str,
+    ) -> str | None:
+        if kind is ClaimKind.SIGNAGE_RELEASE_ARTIFACT:
+            return observation.get("releaseArtifactIdentity")
+        return super().observed_claim_identity(
+            kind, observation, target, release_key=release_key
+        )
+
+    def normalize_interrupted_record(
+        self, record: dict[str, Any]
+    ) -> dict[str, Any]:
+        if "repositoryBaseline" in record:
+            return record
+        requirements = record.get("claimRequirements")
+        kinds = {
+            value.get("kind")
+            for value in requirements or []
+            if isinstance(value, dict)
+        }
+        previous_sha = record.get("previousSha")
+        if (
+            (requirements is None or kinds == {ClaimKind.TERMINAL_REPOSITORY.value})
+            and isinstance(previous_sha, str)
+            and FULL_SHA_RE.fullmatch(previous_sha) is not None
+        ):
+            return {
+                **record,
+                "repositoryBaseline": {
+                    "head": previous_sha,
+                    "artifactState": "absent",
+                    "artifactIdentity": None,
+                    "artifactSha256": None,
+                    "legacyRepositorySha": previous_sha,
+                },
+            }
+        return record
+
+    def baseline_claim_spec(
+        self,
+        target: dict[str, Any],
+        observation: dict[str, Any],
+        *,
+        verification_id: str | None,
+    ) -> dict[str, Any]:
+        baseline = target.get("repositoryBaseline")
+        previous_sha = target.get("previousSha")
+        if (
+            not isinstance(baseline, dict)
+            or not isinstance(previous_sha, str)
+            or FULL_SHA_RE.fullmatch(previous_sha) is None
+        ):
+            raise RuntimeError("profile artifact rollback baseline is unavailable")
+        if baseline.get("artifactState") == "absent":
+            if (
+                baseline.get("artifactIdentity") is not None
+                or baseline.get("artifactSha256") is not None
+                or baseline.get("legacyRepositorySha") != previous_sha
+            ):
+                raise RuntimeError("legacy profile rollback baseline is malformed")
+            return {
+                "kind": ClaimKind.TERMINAL_REPOSITORY,
+                "expected": previous_sha,
+                "observed": observation.get("currentSha"),
+                "authority": ClaimAuthority.TERMINAL_REPOSITORY_PROBE,
+                "verificationId": None,
+            }
+        if baseline.get("artifactState") != "installed":
+            raise RuntimeError("profile artifact rollback baseline is malformed")
+        identity = baseline.get("artifactIdentity")
+        if (
+            not isinstance(identity, str)
+            or not identity.startswith(f"git:{previous_sha}@sha256:")
+        ):
+            raise RuntimeError("profile artifact rollback identity is malformed")
+        return {
+            "kind": ClaimKind.SIGNAGE_RELEASE_ARTIFACT,
+            "expected": identity,
+            "observed": observation.get("releaseArtifactIdentity"),
+            "authority": (
+                ClaimAuthority.SIGNAGE_READY
+                if verification_id is not None
+                else ClaimAuthority.SIGNAGE_ARTIFACT_PROBE
+            ),
+            "verificationId": verification_id,
+        }
+
+    def validate_staged_claim_identity(
+        self,
+        requirements: list[dict[str, str]],
+        staged_source: dict[str, Any],
+    ) -> None:
+        requirement = next(
+            (
+                value
+                for value in requirements
+                if value["kind"] == ClaimKind.SIGNAGE_RELEASE_ARTIFACT.value
+            ),
+            None,
+        )
+        if requirement is None:
+            return
+        actual = (
+            f"git:{staged_source.get('sourceSha')}@sha256:"
+            f"{staged_source.get('artifactSha256')}"
+        )
+        if actual != requirement["expectedIdentity"]:
+            raise RuntimeError(
+                "staged profile artifact disagrees with the planned claim"
+            )
 
     def release_claim_authority(self, kind: ClaimKind) -> ClaimAuthority:
-        if kind is ClaimKind.TERMINAL_REPOSITORY:
+        if kind is ClaimKind.SIGNAGE_RELEASE_ARTIFACT:
             return ClaimAuthority.SIGNAGE_READY
         return super().release_claim_authority(kind)
 
     def prepare_repository(self, inventory: str, host: str) -> dict[str, Any]:
-        return self.runtime.prepare_terminal_repository(
-            inventory, host, strict_read_only=True
+        return self.runtime.prepare_signage_release_identity(inventory, host)
+
+    def observe_direct(
+        self,
+        inventory: str,
+        host: str,
+        client_id: str,
+        *,
+        runtime_health: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return self._observe_signage_direct(
+            inventory,
+            host,
+            client_id,
+            runtime_health=runtime_health,
+            artifact_required=True,
+        )
+
+    def _observe_signage_direct(
+        self,
+        inventory: str,
+        host: str,
+        client_id: str,
+        *,
+        runtime_health: dict[str, Any] | None,
+        artifact_required: bool,
+    ) -> dict[str, Any]:
+        services = list(self._active_units())
+        if runtime_health is not None:
+            restored_units, restored_agents = self._validated_runtime_health(runtime_health)
+            if restored_agents:
+                raise RuntimeError("signage runtime cannot contain kiosk agents")
+            services = list(restored_units)
+        result = self.runtime.probe_terminal_release_evidence(
+            inventory,
+            host,
+            client_id,
+            services,
+            expected_agents=(),
+            check_status_agent_result=(
+                "status-agent" in self.profile.adapter_options.health_probe_ids
+            ),
+            signage_artifact=artifact_required,
+        )
+        expected_keys = {
+            "currentSha", "services", "oneshotServices", "authenticatedEndpoint",
+            "statusClientId", "agentContainers", "authenticatedAgentEndpoints",
+            "pcscdRequired",
+        }
+        if artifact_required:
+            expected_keys.update({"artifactSha256", "releaseArtifactIdentity"})
+        if (
+            not isinstance(result, dict)
+            or set(result) != expected_keys
+            or result.get("services") != services
+            or result.get("authenticatedEndpoint") is not True
+            or result.get("statusClientId") != client_id
+            or FULL_SHA_RE.fullmatch(str(result.get("currentSha") or "")) is None
+            or result.get("agentContainers") != []
+            or result.get("authenticatedAgentEndpoints") != []
+            or result.get("pcscdRequired") is not False
+        ):
+            raise RuntimeError(f"signage release evidence is malformed: {host}")
+        if artifact_required and (
+            SHA256_RE.fullmatch(str(result.get("artifactSha256") or "")) is None
+            or result.get("releaseArtifactIdentity")
+            != f"git:{result.get('currentSha')}@sha256:{result.get('artifactSha256')}"
+        ):
+            raise RuntimeError(f"signage artifact evidence is malformed: {host}")
+        self.extend_health_evidence(inventory, host, result)
+        return result
+
+    def observe_rollback(
+        self,
+        inventory: str,
+        host: str,
+        client_id: str,
+        target: dict[str, Any],
+        *,
+        runtime_health: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        baseline = target.get("repositoryBaseline")
+        if not isinstance(baseline, dict):
+            raise RuntimeError("signage rollback baseline is unavailable")
+        artifact_state = baseline.get("artifactState")
+        if artifact_state == "installed":
+            artifact_required = True
+        elif artifact_state == "absent":
+            artifact_required = False
+        else:
+            raise RuntimeError("signage rollback baseline is malformed")
+        return self._observe_signage_direct(
+            inventory,
+            host,
+            client_id,
+            runtime_health=runtime_health,
+            artifact_required=artifact_required,
         )
 
     def stage_candidate_source(
@@ -887,11 +1181,7 @@ class SignageSystemdAdapter(TerminalAdapter):
         return self.runtime.cleanup_terminal_candidate_source(
             inventory,
             host,
-            staged_source["candidateSha"],
-            staged_source["previousSha"],
-            staged_source["runId"],
-            staged_source["sha256"],
-            staged_source["size"],
+            staged_source,
         )
 
     def run_scoped_rollback_paths(self, run_id: str) -> tuple[str, ...]:
@@ -899,8 +1189,8 @@ class SignageSystemdAdapter(TerminalAdapter):
             f"/run/signage/release-{run_id}-maintenance.svg",
             f"/run/signage/release-{run_id}-maintenance.jpg",
             f"/run/signage/release-{run_id}-maintenance.sha256",
-            f"/var/tmp/raspi-pi3-source-{run_id}.bundle.tmp",
-            f"/var/tmp/raspi-pi3-source-{run_id}.bundle",
+            f"/var/tmp/raspi-pi3-signage-{run_id}.pyz.tmp",
+            f"/var/tmp/raspi-pi3-signage-{run_id}.pyz",
         )
 
     @property

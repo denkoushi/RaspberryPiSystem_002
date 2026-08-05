@@ -179,7 +179,7 @@ class RunStateStoreTest(unittest.TestCase):
                     'currentSha': SHA_A,
                     'releaseClaims': {
                         'terminalRepository': terminal_claim(
-                            authority='signage-ready',
+                            authority='terminal-repository-probe',
                             verificationId=VERIFICATION_ID.upper(),
                         )
                     },

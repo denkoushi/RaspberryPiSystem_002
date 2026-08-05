@@ -20,7 +20,7 @@ FILES = (
     "infrastructure/docker/Dockerfile.web",
     "scripts/deploy/rolling_release/terminal_preflight.py",
     "infrastructure/ansible/roles/signage/tasks/release-preparation.yml",
-    "scripts/deploy/terminal-source-bundle.py",
+    "scripts/deploy/signage-release-artifact.py",
     "infrastructure/docker/docker-compose.phase3.yml",
     "infrastructure/docker/docker-compose.phase3.migration.yml",
     "scripts/deploy/lib/pi5-blue-green/images-evidence.sh",
@@ -51,9 +51,9 @@ MUTATIONS = {
         'compression = "-o Compression=no"',
     ),
     "pi3-external-source-authority": (
-        "scripts/deploy/terminal-source-bundle.py",
-        '"protocol.allow=never"',
-        '"protocol.allow=always"',
+        "scripts/deploy/signage-release-artifact.py",
+        "import runpy",
+        "import subprocess",
     ),
     "backup-ssh-bind-authority": (
         "infrastructure/docker/docker-compose.phase3.yml",

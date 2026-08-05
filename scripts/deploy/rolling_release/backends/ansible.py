@@ -8,6 +8,7 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -53,9 +54,8 @@ _REPOSITORY_BASELINE_MARKER_RE = re.compile(
     r"TERMINAL_REPOSITORY_BASELINE_RESULT:"
     r"([A-Za-z0-9_-]+={0,2})(?![A-Za-z0-9_=-])"
 )
-_TERMINAL_SOURCE_BUNDLE_MARKER_RE = re.compile(
-    r"TERMINAL_SOURCE_BUNDLE_RESULT:"
-    r"([A-Za-z0-9_-]+={0,2})(?![A-Za-z0-9_=-])"
+_SIGNAGE_ARTIFACT_MARKER_RE = re.compile(
+    r"SIGNAGE_RELEASE_ARTIFACT_RESULT:([A-Za-z0-9_-]+={0,2})"
 )
 _RUNTIME_MANIFEST_MARKER_RE = re.compile(
     r"TERMINAL_RUNTIME_MANIFEST_RESULT:"
@@ -95,6 +95,7 @@ _TERMINAL_MANIFEST_CAPTURE_ERROR_MARKER_RE = re.compile(
 )
 _MAX_MARKER_BYTES = 2 * 1024 * 1024
 _MAX_TERMINAL_SOURCE_BUNDLE_BYTES = 64 * 1024 * 1024
+_MAX_SIGNAGE_ARTIFACT_BYTES = 1024 * 1024
 _READ_ONLY_CONFIG_NAME = "ansible-readonly.cfg"
 _READ_ONLY_ENVIRONMENT_REMOVALS = (
     "ANSIBLE_INVENTORY",
@@ -185,6 +186,7 @@ def _release_timing_environment(
     environment["ANSIBLE_CALLBACKS_ENABLED"] = ",".join(enabled)
 
 _TERMINAL_REPOSITORY = "/opt/RaspberryPiSystem_002"
+_SIGNAGE_ARTIFACT_INSTALL = "/usr/local/bin/raspi-signage-status-agent.pyz"
 _ROLLBACK_MANIFEST_ROOT = "/var/lib/raspi-release/rollback-manifests"
 _RUNTIME_MANIFEST_ROOT = "/var/lib/raspi-release/rollback-runtime"
 _KIOSK_WEB_ACTIVATION_UNIT_RE = re.compile(
@@ -264,6 +266,7 @@ _SIGNAGE_TERMINAL_PATHS = (
     "/usr/local/bin/signage-display.sh",
     "/usr/local/bin/signage-stop.sh",
     "/usr/local/bin/signage-lite-watchdog.sh",
+    "/usr/local/bin/raspi-signage-status-agent.pyz",
     "/etc/systemd/system/signage-lite.service",
     "/etc/systemd/system/signage-lite-update.service",
     "/etc/systemd/system/signage-lite-update.timer",
@@ -1268,12 +1271,12 @@ def capture_terminal_manifest(
         run_id,
         "--host",
         host,
-        "--repository",
-        _TERMINAL_REPOSITORY,
-        "--expected-head",
-        previous_sha,
         "--ansible-marker",
     ]
+    if terminal_type != "signage":
+        arguments.extend(
+            ("--repository", _TERMINAL_REPOSITORY, "--expected-head", previous_sha)
+        )
     for path in path_templates:
         arguments.extend(("--path-template", path))
     for unit in units:
@@ -1390,7 +1393,11 @@ def capture_terminal_manifest(
         or result.get("count") != len(paths)
         or result.get("destinations") != paths
         or repository
-        != {"path": _TERMINAL_REPOSITORY, "head": previous_sha}
+        != (
+            None
+            if terminal_type == "signage"
+            else {"path": _TERMINAL_REPOSITORY, "head": previous_sha}
+        )
     ):
         raise RuntimeError(f"rollback manifest capture result is invalid: {host}")
     runtime_result = envelope.get("runtimeManifest")
@@ -1628,12 +1635,65 @@ def prepare_terminal_repository(
     return {"head": head, "repairedLegacyDocs": repaired, "count": count}
 
 
+def prepare_signage_release_identity(
+    inventory: str, host: str, *, runtime: Runtime
+) -> dict[str, Any]:
+    """Observe the profile artifact, falling back only to an absent legacy state."""
+
+    if not isinstance(host, str) or _HOST_RE.fullmatch(host) is None:
+        raise ValueError("terminal host is malformed")
+    source = runtime.PROJECT / "scripts/deploy/signage-release-artifact.py"
+    output = runtime.run(
+        [
+            "ansible", "-i", inventory, host, "-m", "script", "-a",
+            f"{source} baseline --ansible-marker",
+        ],
+        cwd=runtime.ANSIBLE_DIRECTORY,
+        capture=True,
+    )
+    result = _terminal_source_marker(output)
+    if result == {"schemaVersion": 1, "state": "absent", "profile": "signage"}:
+        legacy = prepare_terminal_repository(
+            inventory, host, runtime=runtime, strict_read_only=True
+        )
+        return {
+            "head": legacy["head"],
+            "artifactState": "absent",
+            "artifactIdentity": None,
+            "artifactSha256": None,
+            "legacyRepositorySha": legacy["head"],
+        }
+    required = {
+        "schemaVersion", "state", "profile", "sourceSha",
+        "artifactSha256", "identity",
+    }
+    if (
+        not isinstance(result, dict)
+        or set(result) != required
+        or result.get("schemaVersion") != 1
+        or result.get("state") != "installed"
+        or result.get("profile") != "signage"
+        or _FULL_SHA_RE.fullmatch(str(result.get("sourceSha") or "")) is None
+        or _SHA256_RE.fullmatch(str(result.get("artifactSha256") or "")) is None
+        or result.get("identity")
+        != f"git:{result.get('sourceSha')}@sha256:{result.get('artifactSha256')}"
+    ):
+        raise RuntimeError(f"signage release identity is malformed: {host}")
+    return {
+        "head": result["sourceSha"],
+        "artifactState": "installed",
+        "artifactIdentity": result["identity"],
+        "artifactSha256": result["artifactSha256"],
+        "legacyRepositorySha": None,
+    }
+
+
 def _terminal_source_marker(output: str) -> dict[str, Any]:
     return _strict_result_marker(
         output,
-        pattern=_TERMINAL_SOURCE_BUNDLE_MARKER_RE,
-        prefix="TERMINAL_SOURCE_BUNDLE_RESULT:",
-        label="terminal source bundle result",
+        pattern=_SIGNAGE_ARTIFACT_MARKER_RE,
+        prefix="SIGNAGE_RELEASE_ARTIFACT_RESULT:",
+        label="signage release artifact result",
         max_bytes=65536,
     )
 
@@ -1641,7 +1701,7 @@ def _terminal_source_marker(output: str) -> dict[str, Any]:
 def _terminal_source_paths(run_id: str) -> tuple[str, str]:
     if not isinstance(run_id, str) or _RUN_ID_RE.fullmatch(run_id) is None:
         raise ValueError("run ID is malformed")
-    final_path = f"/var/tmp/raspi-pi3-source-{run_id}.bundle"
+    final_path = f"/var/tmp/raspi-pi3-signage-{run_id}.pyz"
     return f"{final_path}.tmp", final_path
 
 
@@ -1650,11 +1710,15 @@ def _validated_terminal_source_reference(value: dict[str, Any]) -> dict[str, Any
         "schemaVersion",
         "runId",
         "host",
+        "profile",
         "previousSha",
-        "candidateSha",
-        "sha256",
+        "sourceSha",
+        "artifactSha256",
+        "pathManifestSha256",
+        "pathCount",
         "size",
         "finalPath",
+        "installPath",
     }
     if not isinstance(value, dict) or set(value) != required:
         raise ValueError("terminal source reference is malformed")
@@ -1664,14 +1728,21 @@ def _validated_terminal_source_reference(value: dict[str, Any]) -> dict[str, Any
         value["schemaVersion"] != 1
         or not isinstance(value["host"], str)
         or _HOST_RE.fullmatch(value["host"]) is None
-        or not isinstance(value["candidateSha"], str)
-        or _FULL_SHA_RE.fullmatch(value["candidateSha"]) is None
-        or not isinstance(value["sha256"], str)
-        or _SHA256_RE.fullmatch(value["sha256"]) is None
+        or value["profile"] != "signage"
+        or not isinstance(value["sourceSha"], str)
+        or _FULL_SHA_RE.fullmatch(value["sourceSha"]) is None
+        or not isinstance(value["artifactSha256"], str)
+        or _SHA256_RE.fullmatch(value["artifactSha256"]) is None
+        or not isinstance(value["pathManifestSha256"], str)
+        or _SHA256_RE.fullmatch(value["pathManifestSha256"]) is None
+        or isinstance(value["pathCount"], bool)
+        or not isinstance(value["pathCount"], int)
+        or not 1 <= value["pathCount"] <= 32
         or isinstance(value["size"], bool)
         or not isinstance(value["size"], int)
-        or not 1 <= value["size"] <= _MAX_TERMINAL_SOURCE_BUNDLE_BYTES
+        or not 1 <= value["size"] <= _MAX_SIGNAGE_ARTIFACT_BYTES
         or value["finalPath"] != final_path
+        or value["installPath"] != _SIGNAGE_ARTIFACT_INSTALL
     ):
         raise ValueError("terminal source reference is malformed")
     return value
@@ -1683,18 +1754,22 @@ def _terminal_source_arguments(action: str, reference: dict[str, Any]) -> list[s
     reference = _validated_terminal_source_reference(reference)
     return [
         action,
-        "--repository",
-        _TERMINAL_REPOSITORY,
+        "--schema-version",
+        "1",
+        "--profile",
+        reference["profile"],
         "--run-id",
         reference["runId"],
         "--host",
         reference["host"],
-        "--previous-sha",
-        reference["previousSha"],
-        "--candidate-sha",
-        reference["candidateSha"],
-        "--sha256",
-        reference["sha256"],
+        "--source-sha",
+        reference["sourceSha"],
+        "--artifact-sha256",
+        reference["artifactSha256"],
+        "--path-manifest-sha256",
+        reference["pathManifestSha256"],
+        "--path-count",
+        str(reference["pathCount"]),
         "--size",
         str(reference["size"]),
         "--ansible-marker",
@@ -1710,7 +1785,7 @@ def _run_terminal_source_helper(
     runtime: Runtime,
 ) -> dict[str, Any]:
     reference = _validated_terminal_source_reference(reference)
-    source = runtime.PROJECT / "scripts/deploy/terminal-source-bundle.py"
+    source = runtime.PROJECT / "scripts/deploy/signage-release-artifact.py"
     output = runtime.run(
         [
             "ansible",
@@ -1732,8 +1807,12 @@ def _run_terminal_source_helper(
         env=_terminal_source_environment(),
     )
     result = _terminal_source_marker(output)
-    if any(result.get(key) != value for key, value in reference.items() if key != "finalPath"):
-        raise RuntimeError("terminal source bundle binding is invalid")
+    if any(
+        result.get(key) != value
+        for key, value in reference.items()
+        if key not in {"previousSha", "finalPath"}
+    ):
+        raise RuntimeError("signage release artifact binding is invalid")
     return result
 
 
@@ -1787,6 +1866,37 @@ def _local_git(
     return completed.stdout
 
 
+def build_signage_release_artifact(
+    revision: str, output: Path, *, runtime: Runtime
+) -> dict[str, Any]:
+    """Build the exact profile artifact outside the pure planning boundary."""
+
+    if not isinstance(revision, str) or _FULL_SHA_RE.fullmatch(revision) is None:
+        raise ValueError("candidate release SHA is malformed")
+    project = Path(runtime.PROJECT).resolve(strict=True)
+    if _local_git(project, ["rev-parse", "--verify", "HEAD^{commit}"]).strip() != revision:
+        raise RuntimeError("Pi5 checkout does not match the exact candidate SHA")
+    source = project / "scripts/deploy/signage-release-artifact.py"
+    spec = importlib.util.spec_from_file_location("_signage_release_artifact", source)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("signage release artifact builder is unavailable")
+    artifact_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(artifact_module)
+    return artifact_module.build_artifact(
+        project, output, candidate_sha=revision, profile_id="signage"
+    )
+
+
+def signage_release_artifact_identity(
+    revision: str, *, runtime: Runtime
+) -> str:
+    with tempfile.TemporaryDirectory(prefix="raspi-signage-identity-") as temporary:
+        reference = build_signage_release_artifact(
+            revision, Path(temporary) / "candidate.pyz", runtime=runtime
+        )
+    return f"git:{revision}@sha256:{reference['artifactSha256']}"
+
+
 def stage_terminal_candidate_source(
     inventory: str,
     host: str,
@@ -1805,35 +1915,19 @@ def stage_terminal_candidate_source(
         raise ValueError("candidate release SHA is malformed")
     if revision == previous_sha:
         raise ValueError("unchanged terminal source must not be staged")
-    project = Path(runtime.PROJECT).resolve(strict=True)
-    if _local_git(project, ["rev-parse", "--verify", "HEAD^{commit}"]).strip() != revision:
-        raise RuntimeError("Pi5 checkout does not match the exact candidate SHA")
-    _local_git(project, ["cat-file", "-e", f"{previous_sha}^{{commit}}"])
     remote_user, _remote_home = _remote_identity(inventory, host, runtime=runtime)
 
     with tempfile.TemporaryDirectory(prefix="raspi-pi3-source-") as temporary_directory:
-        bundle = Path(temporary_directory) / "candidate.bundle"
-        _local_git(
-            project,
-            ["bundle", "create", os.fspath(bundle), "HEAD", f"^{previous_sha}"],
+        artifact_path = Path(temporary_directory) / "candidate.pyz"
+        built = build_signage_release_artifact(
+            revision, artifact_path, runtime=runtime
         )
-        size = bundle.stat().st_size
-        if not 1 <= size <= _MAX_TERMINAL_SOURCE_BUNDLE_BYTES:
-            raise RuntimeError("Pi5 terminal source bundle exceeds its fixed size bound")
-        digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
-        _local_git(project, ["bundle", "verify", os.fspath(bundle)], capture_stderr=True)
-        heads = _local_git(project, ["bundle", "list-heads", os.fspath(bundle)]).splitlines()
-        if heads != [f"{revision} HEAD"]:
-            raise RuntimeError("Pi5 terminal source bundle has an unexpected head")
         _temporary_path, final_path = _terminal_source_paths(run_id)
         reference = {
-            "schemaVersion": 1,
+            **built,
             "runId": run_id,
             "host": host,
             "previousSha": previous_sha,
-            "candidateSha": revision,
-            "sha256": digest,
-            "size": size,
             "finalPath": final_path,
         }
         try:
@@ -1857,7 +1951,7 @@ def stage_terminal_candidate_source(
                         "-a",
                         shlex.join(
                             [
-                                f"src={bundle}",
+                                f"src={artifact_path}",
                                 f"dest={temporary_path}",
                                 f"owner={remote_user}",
                                 "mode=0600",
@@ -1906,11 +2000,7 @@ def stage_terminal_candidate_source(
                     cleanup_terminal_candidate_source(
                         inventory,
                         host,
-                        revision,
-                        previous_sha,
-                        run_id,
-                        digest,
-                        size,
+                        reference,
                         runtime=runtime,
                     )
                 except Exception as cleanup_error:
@@ -1925,26 +2015,14 @@ def stage_terminal_candidate_source(
 def cleanup_terminal_candidate_source(
     inventory: str,
     host: str,
-    revision: str,
-    previous_sha: str,
-    run_id: str,
-    sha256: str,
-    size: int,
+    reference: dict[str, Any],
     *,
     runtime: Runtime,
 ) -> dict[str, Any]:
     remote_user, _remote_home = _remote_identity(inventory, host, runtime=runtime)
-    _temporary_path, final_path = _terminal_source_paths(run_id)
-    reference = {
-        "schemaVersion": 1,
-        "runId": run_id,
-        "host": host,
-        "previousSha": previous_sha,
-        "candidateSha": revision,
-        "sha256": sha256,
-        "size": size,
-        "finalPath": final_path,
-    }
+    reference = _validated_terminal_source_reference(reference)
+    if reference["host"] != host:
+        raise ValueError("signage artifact cleanup host is malformed")
     result = _run_terminal_source_helper(
         inventory,
         remote_user,
@@ -2296,6 +2374,7 @@ def probe_terminal_release_evidence(
     *,
     expected_agents: list[str] | tuple[str, ...] | None = None,
     check_status_agent_result: bool = True,
+    signage_artifact: bool = False,
     runtime: Runtime,
 ) -> dict[str, Any]:
     """Collect Git, systemd, identity, and agent proof in one SSH call."""
@@ -2335,6 +2414,10 @@ def probe_terminal_release_evidence(
         arguments.extend(("--service", service))
     if check_status_agent_result:
         arguments.append("--check-status-agent-result")
+    if signage_artifact:
+        if agent_specs:
+            raise ValueError("signage artifact evidence cannot request kiosk agents")
+        arguments.append("--signage-artifact")
     for agent, port, require_pcscd in agent_specs:
         arguments.extend(
             (
@@ -2384,18 +2467,16 @@ def probe_terminal_release_evidence(
     expected_oneshot = ["status-agent.service"] if check_status_agent_result else []
     expected_agent_names = [agent for agent, _port, _pcsc in agent_specs]
     endpoints = value.get("authenticatedAgentEndpoints")
+    expected_keys = {
+        "version", "currentSha", "activeSystemdUnits", "oneshotServices",
+        "identity", "agentContainers", "authenticatedAgentEndpoints",
+        "pcscdRequired",
+    }
+    if signage_artifact:
+        expected_keys.update({"artifactSha256", "releaseArtifactIdentity"})
     if (
         set(value)
-        != {
-            "version",
-            "currentSha",
-            "activeSystemdUnits",
-            "oneshotServices",
-            "identity",
-            "agentContainers",
-            "authenticatedAgentEndpoints",
-            "pcscdRequired",
-        }
+        != expected_keys
         or value.get("version") != 1
         or not isinstance(value.get("currentSha"), str)
         or _FULL_SHA_RE.fullmatch(value["currentSha"]) is None
@@ -2432,6 +2513,17 @@ def probe_terminal_release_evidence(
         "authenticatedAgentEndpoints": endpoints,
         "pcscdRequired": value["pcscdRequired"],
     }
+    if signage_artifact:
+        digest = value.get("artifactSha256")
+        artifact_identity = value.get("releaseArtifactIdentity")
+        if (
+            not isinstance(digest, str)
+            or _SHA256_RE.fullmatch(digest) is None
+            or artifact_identity != f"git:{value['currentSha']}@sha256:{digest}"
+        ):
+            raise RuntimeError(f"signage artifact evidence is malformed: {host}")
+        result["artifactSha256"] = digest
+        result["releaseArtifactIdentity"] = artifact_identity
     if maintained:
         result["maintenanceAgents"] = maintained
     return result
@@ -2779,7 +2871,7 @@ def playbook(
         if (
             staged_source.get("runId") != run_id
             or staged_source.get("host") != host
-            or staged_source.get("candidateSha") != revision
+            or staged_source.get("sourceSha") != revision
         ):
             raise ValueError("terminal staged source reference is malformed")
         staged_extra = [

@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import importlib
 import json
 import os
 import re
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +28,7 @@ AGENT_RE = re.compile(r"^(nfc-agent|barcode-agent|torque-agent):(auto|[0-9]{1,5}
 MARKER_PREFIX = "TERMINAL_RELEASE_EVIDENCE_RESULT:"
 REPOSITORY = Path("/opt/RaspberryPiSystem_002")
 COMPOSE_FILE = REPOSITORY / "infrastructure/docker/docker-compose.client.yml"
+SIGNAGE_ARTIFACT = Path("/usr/local/bin/raspi-signage-status-agent.pyz")
 
 
 class EvidenceError(RuntimeError):
@@ -70,6 +73,27 @@ def _current_sha(repository: Path) -> str:
     return sha
 
 
+def _signage_artifact_identity(path: Path) -> tuple[str, str, str]:
+    try:
+        metadata = path.stat(follow_symlinks=False)
+        if not path.is_file() or path.is_symlink() or metadata.st_size > 1024 * 1024:
+            raise EvidenceError("signage artifact is unsafe")
+        payload = path.read_bytes()
+        with zipfile.ZipFile(path) as archive:
+            manifest = json.loads(archive.read("SIGNAGE-RELEASE.json").decode("utf-8"))
+    except (OSError, UnicodeError, ValueError, KeyError, zipfile.BadZipFile) as error:
+        raise EvidenceError("signage artifact identity is unavailable") from error
+    source_sha = manifest.get("sourceSha") if isinstance(manifest, dict) else None
+    digest = hashlib.sha256(payload).hexdigest()
+    if (
+        not isinstance(source_sha, str)
+        or FULL_SHA_RE.fullmatch(source_sha) is None
+        or manifest.get("profile") != "signage"
+    ):
+        raise EvidenceError("signage artifact identity is malformed")
+    return source_sha, digest, f"git:{source_sha}@sha256:{digest}"
+
+
 def _parse_agent_spec(value: str) -> tuple[str, int | None, bool]:
     match = AGENT_RE.fullmatch(value)
     if match is None:
@@ -93,6 +117,7 @@ def collect(
     maintenance_agents: list[str] | None = None,
     repository: Path = REPOSITORY,
     compose_file: Path = COMPOSE_FILE,
+    signage_artifact: bool = False,
 ) -> dict[str, Any]:
     if (
         not services
@@ -111,7 +136,12 @@ def collect(
     ):
         raise EvidenceError("terminal maintenance agent proof request is malformed")
 
-    current_sha = _current_sha(repository)
+    if signage_artifact:
+        current_sha, artifact_digest, artifact_identity = _signage_artifact_identity(
+            SIGNAGE_ARTIFACT
+        )
+    else:
+        current_sha = _current_sha(repository)
     for service in services:
         _run(["systemctl", "is-active", "--quiet", service])
 
@@ -153,7 +183,7 @@ def collect(
             raise EvidenceError("terminal agent proof returned a different port")
         endpoints.append({"agent": agent, "port": proven_port})
 
-    return {
+    result = {
         "version": 1,
         "currentSha": current_sha,
         "activeSystemdUnits": services,
@@ -163,6 +193,10 @@ def collect(
         "authenticatedAgentEndpoints": endpoints,
         "pcscdRequired": "nfc-agent" in agent_names,
     }
+    if signage_artifact:
+        result["artifactSha256"] = artifact_digest
+        result["releaseArtifactIdentity"] = artifact_identity
+    return result
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -174,6 +208,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--maintenance-agent", action="append", default=[])
     parser.add_argument("--repository", type=Path, default=REPOSITORY)
     parser.add_argument("--compose-file", type=Path, default=COMPOSE_FILE)
+    parser.add_argument("--signage-artifact", action="store_true")
     parser.add_argument("--ansible-marker", action="store_true")
     args = parser.parse_args(argv)
     try:
@@ -185,6 +220,7 @@ def main(argv: list[str] | None = None) -> int:
             maintenance_agents=args.maintenance_agent,
             repository=args.repository,
             compose_file=args.compose_file,
+            signage_artifact=args.signage_artifact,
         )
     except Exception:
         # Identity probe failures may carry endpoint or secret-adjacent context.

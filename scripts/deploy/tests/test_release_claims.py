@@ -37,6 +37,34 @@ def claim_record(**overrides):
 
 
 class ReleaseClaimTest(unittest.TestCase):
+    def test_signage_artifact_identity_binds_source_sha_and_digest(self):
+        identity = "git:" + ("a" * 40) + "@sha256:" + ("b" * 64)
+        claim = ReleaseClaim(
+            kind=ClaimKind.SIGNAGE_RELEASE_ARTIFACT,
+            expected_identity=identity,
+            observed_identity=identity,
+            authority=ClaimAuthority.SIGNAGE_READY,
+            verification_id="c" * 32,
+            state=ClaimState.VERIFIED,
+            observed_at="2026-08-05T00:00:00Z",
+            last_run_id="run-123",
+        )
+        self.assertEqual(claim.to_record()["observedIdentity"], identity)
+
+        for malformed in ("a" * 40, "sha256:" + ("b" * 64), identity + "x"):
+            with self.subTest(malformed=malformed):
+                with self.assertRaises(ReleaseClaimError):
+                    ReleaseClaim(
+                        kind=ClaimKind.SIGNAGE_RELEASE_ARTIFACT,
+                        expected_identity=malformed,
+                        observed_identity=None,
+                        authority=ClaimAuthority.SIGNAGE_READY,
+                        verification_id=None,
+                        state=ClaimState.UNKNOWN,
+                        observed_at=None,
+                        last_run_id="run-123",
+                    )
+
     def test_closed_kind_domain_authority_and_state_sets_are_stable(self):
         self.assertEqual(
             {kind.value for kind in ClaimKind},
@@ -44,12 +72,14 @@ class ReleaseClaimTest(unittest.TestCase):
                 "controlPlaneApi",
                 "controlPlaneWeb",
                 "terminalRepository",
+                "signageReleaseArtifact",
                 "localArtifact",
                 "runtime",
             },
         )
         self.assertEqual(
-            {domain.value for domain in IdentityDomain}, {"gitSha", "sha256"}
+            {domain.value for domain in IdentityDomain},
+            {"gitSha", "sha256", "signageArtifact"},
         )
         self.assertEqual(
             {state.value for state in ClaimState}, {"unknown", "verified"}
@@ -99,18 +129,21 @@ class ReleaseClaimTest(unittest.TestCase):
         self.assertEqual(artifact.identity_domain, IdentityDomain.SHA256)
 
     def test_ack_observations_require_exact_verification_ids(self):
+        identity = "git:" + SHA_A + "@" + DIGEST_A
         base = claim_record(
+            expectedIdentity=identity,
+            observedIdentity=identity,
             authority=ClaimAuthority.SIGNAGE_READY.value,
             verificationId=VERIFICATION_ID,
         )
-        ReleaseClaim.from_record(ClaimKind.TERMINAL_REPOSITORY, base)
+        ReleaseClaim.from_record(ClaimKind.SIGNAGE_RELEASE_ARTIFACT, base)
 
         for verification_id in (None, "C" * 32, "c" * 31):
             with self.subTest(verification_id=verification_id), self.assertRaisesRegex(
                 ReleaseClaimError, "verificationId"
             ):
                 ReleaseClaim.from_record(
-                    ClaimKind.TERMINAL_REPOSITORY,
+                    ClaimKind.SIGNAGE_RELEASE_ARTIFACT,
                     {**base, "verificationId": verification_id},
                 )
 
@@ -121,7 +154,7 @@ class ReleaseClaimTest(unittest.TestCase):
             "verificationId": None,
             "state": "unknown",
         }
-        ReleaseClaim.from_record(ClaimKind.TERMINAL_REPOSITORY, pending)
+        ReleaseClaim.from_record(ClaimKind.SIGNAGE_RELEASE_ARTIFACT, pending)
 
     def test_non_ack_authority_rejects_a_verification_id(self):
         with self.assertRaisesRegex(ReleaseClaimError, "non-ACK"):

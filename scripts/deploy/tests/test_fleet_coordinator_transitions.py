@@ -18,6 +18,8 @@ from rolling_release.adapter_registry import adapter_for_profile  # noqa: E402
 from rolling_release.activation import ActivationUncertainError  # noqa: E402
 from rolling_release.cancellation import CancellationRequested  # noqa: E402
 from rolling_release.release_claims import (  # noqa: E402
+    ClaimAuthority,
+    ClaimKind,
     validate_host_claim_compatibility,
 )
 from rolling_release.terminal_adapters import GenericSystemdAdapter  # noqa: E402
@@ -28,6 +30,9 @@ OLD_SHA = "1" * 40
 NEW_SHA = "2" * 40
 FORWARD_VERIFICATION_ID = "a" * 32
 ROLLBACK_VERIFICATION_ID = "b" * 32
+ARTIFACT_DIGEST = "9" * 64
+NEW_ARTIFACT_IDENTITY = f"git:{NEW_SHA}@sha256:{ARTIFACT_DIGEST}"
+OLD_ARTIFACT_IDENTITY = f"git:{OLD_SHA}@sha256:{ARTIFACT_DIGEST}"
 UNSET = object()
 
 
@@ -226,6 +231,7 @@ class FakeRuntime:
         self.terminal_pipelining_preflight_error = None
         self.manifest_capture_error = None
         self.repository_baseline_result = None
+        self.signage_release_baseline_result = None
         self.repository_baseline_strict = []
         self.source_stage_error = None
         self.source_cleanup_error = None
@@ -448,12 +454,22 @@ class FakeRuntime:
             if any(event == f"rollback:{host}" for event in self.events)
             else self.deployed_sha.get(host, NEW_SHA)
         )
-        return {
+        result = {
             "currentSha": current,
             "services": ["required.service"],
             "authenticatedEndpoint": True,
             "statusClientId": client_id,
         }
+        if _role == "signage":
+            result.update(
+                {
+                    "artifactSha256": ARTIFACT_DIGEST,
+                    "releaseArtifactIdentity": (
+                        f"git:{current}@sha256:{ARTIFACT_DIGEST}"
+                    ),
+                }
+            )
+        return result
 
     def capture_server_config_manifest(self, _inventory, host, run_id):
         self.events.append(f"pi5:config-capture:{host}:{run_id}")
@@ -509,6 +525,23 @@ class FakeRuntime:
             or {"head": OLD_SHA, "repairedLegacyDocs": False, "count": 0}
         )
 
+    def prepare_signage_release_identity(self, _inventory, host):
+        self.events.append(f"signage:baseline:{host}")
+        self.repository_baseline_strict.append((host, True))
+        return copy.deepcopy(
+            self.signage_release_baseline_result
+            or {
+                "head": OLD_SHA,
+                "artifactState": "absent",
+                "artifactIdentity": None,
+                "artifactSha256": None,
+                "legacyRepositorySha": OLD_SHA,
+            }
+        )
+
+    def signage_release_artifact_identity(self, revision):
+        return f"git:{revision}@sha256:{ARTIFACT_DIGEST}"
+
     def stage_terminal_candidate_source(
         self, _inventory, host, revision, previous_sha, run_id
     ):
@@ -521,26 +554,86 @@ class FakeRuntime:
             "runId": run_id,
             "host": host,
             "previousSha": previous_sha,
-            "candidateSha": revision,
-            "sha256": "a" * 64,
+            "profile": "signage",
+            "sourceSha": revision,
+            "artifactSha256": ARTIFACT_DIGEST,
+            "pathManifestSha256": "7" * 64,
+            "pathCount": 6,
             "size": 1024,
-            "finalPath": f"/var/tmp/raspi-pi3-source-{run_id}.bundle",
+            "finalPath": f"/var/tmp/raspi-pi3-signage-{run_id}.pyz",
+            "installPath": "/usr/local/bin/raspi-signage-status-agent.pyz",
         }
 
     def cleanup_terminal_candidate_source(
         self,
         _inventory,
         host,
-        _revision,
-        _previous_sha,
-        run_id,
-        _sha256,
-        _size,
+        reference,
     ):
+        run_id = reference["runId"]
         self.events.append(f"source:cleanup:{host}:{run_id}")
         if self.source_cleanup_error is not None:
             raise self.source_cleanup_error
         return {"state": "clean", "residue": False}
+
+    def probe_terminal_release_evidence(
+        self,
+        _inventory,
+        host,
+        client_id,
+        services,
+        *,
+        expected_agents=(),
+        check_status_agent_result=True,
+        signage_artifact=False,
+    ):
+        del check_status_agent_result
+        self.events.append(f"observe:terminal:{host}")
+        self.observed_runtime_health.append((host, None))
+        if (
+            self.terminal_observation_error is not None
+            and self.terminal_observation_failures is not None
+            and self.terminal_observation_failures > 0
+        ):
+            self.terminal_observation_failures -= 1
+            raise self.terminal_observation_error
+        if (
+            self.terminal_observation_error is not None
+            and self.terminal_observation_failures is None
+        ):
+            raise self.terminal_observation_error
+        current = OLD_SHA if any(
+            event == f"rollback:{host}" for event in self.events
+        ) else self.deployed_sha.get(host, NEW_SHA)
+        result = {
+            "currentSha": current,
+            "services": services,
+            "oneshotServices": ["status-agent.service"],
+            "authenticatedEndpoint": True,
+            "statusClientId": client_id,
+            "agentContainers": list(expected_agents),
+            "authenticatedAgentEndpoints": [],
+            "pcscdRequired": False,
+        }
+        if signage_artifact:
+            baseline = self.signage_release_baseline_result or {}
+            identity = (
+                baseline.get("artifactIdentity")
+                if any(event == f"rollback:{host}" for event in self.events)
+                else f"git:{current}@sha256:{ARTIFACT_DIGEST}"
+            )
+            if not isinstance(identity, str):
+                raise RuntimeError("signage artifact is absent")
+            result["artifactSha256"] = identity.rsplit(":", 1)[1]
+            result["releaseArtifactIdentity"] = identity
+        return result
+
+    def probe_signage_endpoints(self, _inventory, host):
+        self.events.append(f"signage:endpoints:{host}")
+        return {
+            "signageEndpointAuthenticated": True,
+            "signageImageSha256": "e" * 64,
+        }
 
     def capture_terminal_manifest(
         self, _inventory, target_spec, run_id, previous_sha
@@ -1412,10 +1505,10 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         self.assertEqual(failures, [])
         record = state["fleet"][host["host"]]
         self.assertEqual(record["evidence"], "verified")
-        claim = record["releaseClaims"]["terminalRepository"]
-        self.assertEqual(claim["authority"], "terminal-repository-probe")
-        self.assertEqual(claim["expectedIdentity"], NEW_SHA)
-        self.assertEqual(claim["observedIdentity"], NEW_SHA)
+        claim = record["releaseClaims"]["signageReleaseArtifact"]
+        self.assertEqual(claim["authority"], "signage-artifact-probe")
+        self.assertEqual(claim["expectedIdentity"], NEW_ARTIFACT_IDENTITY)
+        self.assertEqual(claim["observedIdentity"], NEW_ARTIFACT_IDENTITY)
         self.assertEqual(claim["state"], "verified")
 
     def test_kiosk_seed_stays_unknown_until_the_browser_claim_is_verified(self):
@@ -1921,8 +2014,8 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
                         "activationMode": None,
                         "claimRequirements": [
                             {
-                                "kind": "terminalRepository",
-                                "expectedIdentity": NEW_SHA,
+                                "kind": "signageReleaseArtifact",
+                                "expectedIdentity": NEW_ARTIFACT_IDENTITY,
                                 "status": "stale-or-unverified",
                             }
                         ],
@@ -1975,6 +2068,82 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         self.assertLess(remove, refresh)
         self.assertLess(refresh, cleanup)
 
+    def test_signage_rollback_claim_restores_absent_or_previous_artifact_identity(self):
+        runtime = FakeRuntime(fleet={}, hosts=[], plan={}, targets=[])
+        adapter = adapter_for_profile("signage", runtime=runtime)
+        base_target = {
+            "previousSha": OLD_SHA,
+            "rollbackReadyReleaseSha": OLD_SHA,
+            "rollbackReadyVerificationId": ROLLBACK_VERIFICATION_ID,
+            "claimRequirements": [
+                {
+                    "kind": "signageReleaseArtifact",
+                    "expectedIdentity": NEW_ARTIFACT_IDENTITY,
+                    "status": "stale-or-unverified",
+                }
+            ],
+        }
+        cases = (
+            (
+                {
+                    "head": OLD_SHA,
+                    "artifactState": "absent",
+                    "artifactIdentity": None,
+                    "artifactSha256": None,
+                    "legacyRepositorySha": OLD_SHA,
+                },
+                {"currentSha": OLD_SHA},
+                "terminalRepository",
+                OLD_SHA,
+            ),
+            (
+                {
+                    "head": OLD_SHA,
+                    "artifactState": "installed",
+                    "artifactIdentity": OLD_ARTIFACT_IDENTITY,
+                    "artifactSha256": ARTIFACT_DIGEST,
+                    "legacyRepositorySha": None,
+                },
+                {
+                    "currentSha": OLD_SHA,
+                    "artifactSha256": ARTIFACT_DIGEST,
+                    "releaseArtifactIdentity": OLD_ARTIFACT_IDENTITY,
+                },
+                "signageReleaseArtifact",
+                OLD_ARTIFACT_IDENTITY,
+            ),
+        )
+        for baseline, observation, expected_kind, expected_identity in cases:
+            with self.subTest(state=baseline["artifactState"]):
+                claims = coordinator._terminal_observed_release_claims(
+                    runtime=runtime,
+                    adapter=adapter,
+                    target={**base_target, "repositoryBaseline": baseline},
+                    observation=observation,
+                    run_id="run-1",
+                    rollback=True,
+                )
+                self.assertEqual(set(claims or {}), {expected_kind})
+                claim = (claims or {})[expected_kind]
+                self.assertEqual(claim["expectedIdentity"], expected_identity)
+                self.assertEqual(claim["observedIdentity"], expected_identity)
+                self.assertEqual(claim["state"], "verified")
+
+    def test_unobserved_artifact_claim_never_retains_an_observation_time(self):
+        claim = coordinator._claim_record(
+            kind=ClaimKind.SIGNAGE_RELEASE_ARTIFACT,
+            expected=NEW_ARTIFACT_IDENTITY,
+            observed=None,
+            authority=ClaimAuthority.SIGNAGE_READY,
+            verification_id=None,
+            observed_at="2026-07-15T00:00:00Z",
+            run_id="run-1",
+        )
+
+        self.assertEqual(claim["state"], "unknown")
+        self.assertIsNone(claim["observedIdentity"])
+        self.assertIsNone(claim["observedAt"])
+
     def test_signage_forward_refreshes_after_remove_before_fleet_promotion(self):
         terminal = {
             "host": "signage-a",
@@ -2006,8 +2175,8 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
                         "activationMode": None,
                         "claimRequirements": [
                             {
-                                "kind": "terminalRepository",
-                                "expectedIdentity": NEW_SHA,
+                                "kind": "signageReleaseArtifact",
+                                "expectedIdentity": NEW_ARTIFACT_IDENTITY,
                                 "status": "stale-or-unverified",
                             }
                         ],
@@ -2038,11 +2207,11 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         target = runtime.states[-1].target("signage-a")
         self.assertTrue(target["signageDisplayProof"]["maintenanceArtifactReplaced"])
         claim = runtime.fleet["fleet"]["signage-a"]["releaseClaims"][
-            "terminalRepository"
+            "signageReleaseArtifact"
         ]
         self.assertEqual(claim["authority"], "signage-ready")
-        self.assertEqual(claim["expectedIdentity"], NEW_SHA)
-        self.assertEqual(claim["observedIdentity"], NEW_SHA)
+        self.assertEqual(claim["expectedIdentity"], NEW_ARTIFACT_IDENTITY)
+        self.assertEqual(claim["observedIdentity"], NEW_ARTIFACT_IDENTITY)
         self.assertEqual(claim["verificationId"], FORWARD_VERIFICATION_ID)
 
     def test_signage_verification_only_skips_ansible_and_promotes_ready_claim(self):
@@ -2054,8 +2223,12 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         }
         signage = host_record("signage", NEW_SHA)
         signage["releaseClaims"] = {
-            "terminalRepository": {
-                **verified_claim(NEW_SHA, "terminal-repository-probe"),
+            "signageReleaseArtifact": {
+                **verified_claim(
+                    NEW_ARTIFACT_IDENTITY,
+                    "signage-ready",
+                    verification_id=FORWARD_VERIFICATION_ID,
+                ),
                 "state": "unknown",
             }
         }
@@ -2083,8 +2256,8 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
                         "activationMode": None,
                         "claimRequirements": [
                             {
-                                "kind": "terminalRepository",
-                                "expectedIdentity": NEW_SHA,
+                                "kind": "signageReleaseArtifact",
+                                "expectedIdentity": NEW_ARTIFACT_IDENTITY,
                                 "status": "stale-or-unverified",
                             }
                         ],
@@ -2127,7 +2300,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             runtime.events,
         )
         claim = runtime.fleet["fleet"][terminal["host"]]["releaseClaims"][
-            "terminalRepository"
+            "signageReleaseArtifact"
         ]
         self.assertEqual(claim["authority"], "signage-ready")
         self.assertEqual(claim["state"], "verified")
@@ -2295,8 +2468,8 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
                             "activationMode": None,
                             "claimRequirements": [
                                 {
-                                    "kind": "terminalRepository",
-                                    "expectedIdentity": NEW_SHA,
+                                    "kind": "signageReleaseArtifact",
+                                    "expectedIdentity": NEW_ARTIFACT_IDENTITY,
                                     "status": "stale-or-unverified",
                                 }
                             ],
@@ -2460,14 +2633,20 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
                 recovered = runtime.fleet["fleet"]["signage-a"]
                 self.assertEqual(recovered["evidence"], "verified")
                 self.assertEqual(recovered["lastRunId"], "recovery-run")
-                claim = recovered["releaseClaims"]["terminalRepository"]
+                claim_kind = (
+                    "signageReleaseArtifact"
+                    if recovered["currentSha"] == NEW_SHA
+                    else "terminalRepository"
+                )
+                claim = recovered["releaseClaims"][claim_kind]
                 self.assertEqual(claim["state"], "verified")
-                self.assertEqual(
-                    claim["expectedIdentity"], recovered["currentSha"]
+                expected_identity = (
+                    NEW_ARTIFACT_IDENTITY
+                    if claim_kind == "signageReleaseArtifact"
+                    else recovered["currentSha"]
                 )
-                self.assertEqual(
-                    claim["observedIdentity"], recovered["currentSha"]
-                )
+                self.assertEqual(claim["expectedIdentity"], expected_identity)
+                self.assertEqual(claim["observedIdentity"], expected_identity)
                 self.assertIsNone(runtime.fleet["activeRun"])
 
     def test_terminal_only_kiosk_acks_the_verified_web_release(self):
@@ -4204,8 +4383,8 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             "clientId": "s1",
         }
         prior_claims = {
-            "terminalRepository": {
-                "expectedIdentity": OLD_SHA,
+            "signageReleaseArtifact": {
+                "expectedIdentity": OLD_ARTIFACT_IDENTITY,
                 "observedIdentity": None,
                 "authority": "signage-ready",
                 "verificationId": None,
@@ -4301,11 +4480,18 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
                     "activationMode": None,
                     "claimRequirements": [
                         {
-                            "kind": "terminalRepository",
-                            "expectedIdentity": OLD_SHA,
+                            "kind": "signageReleaseArtifact",
+                            "expectedIdentity": OLD_ARTIFACT_IDENTITY,
                             "status": "stale-or-unverified",
                         }
                     ],
+                    "repositoryBaseline": {
+                        "head": OLD_SHA,
+                        "artifactState": "installed",
+                        "artifactIdentity": OLD_ARTIFACT_IDENTITY,
+                        "artifactSha256": ARTIFACT_DIGEST,
+                        "legacyRepositorySha": None,
+                    },
                     "releaseClaims": copy.deepcopy(prior_claims),
                 }
             ],
@@ -4318,8 +4504,11 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             0,
         )
 
-        rebound = runtime.unknown_claim_transitions[0]["terminalRepository"]
-        self.assertEqual(rebound["expectedIdentity"], NEW_SHA)
+        rebound = runtime.unknown_claim_transitions[0]["signageReleaseArtifact"]
+        self.assertEqual(
+            rebound["expectedIdentity"],
+            NEW_ARTIFACT_IDENTITY,
+        )
         self.assertIsNone(rebound["observedIdentity"])
         self.assertEqual(rebound["state"], "unknown")
         self.assertEqual(rebound["lastRunId"], "run-1")

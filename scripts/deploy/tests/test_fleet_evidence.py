@@ -62,6 +62,7 @@ class TerminalRuntime:
         *,
         expected_agents=None,
         check_status_agent_result=True,
+        signage_artifact=False,
     ):
         self.calls.append(
             (
@@ -72,11 +73,12 @@ class TerminalRuntime:
                 list(services),
                 expected_agents,
                 check_status_agent_result,
+                signage_artifact,
             )
         )
         if self.failure is not None:
             raise self.failure
-        return {
+        result = {
             "currentSha": self.sha,
             "services": list(services),
             "oneshotServices": (
@@ -84,12 +86,18 @@ class TerminalRuntime:
             ),
             "authenticatedEndpoint": True,
             "statusClientId": client_id,
-            "agentContainers": ["nfc-agent"],
-            "authenticatedAgentEndpoints": [
+            "agentContainers": [] if signage_artifact else ["nfc-agent"],
+            "authenticatedAgentEndpoints": [] if signage_artifact else [
                 {"agent": "nfc-agent", "port": 7071}
             ],
-            "pcscdRequired": True,
+            "pcscdRequired": not signage_artifact,
         }
+        if signage_artifact:
+            result.update({
+                "artifactSha256": "d" * 64,
+                "releaseArtifactIdentity": f"git:{self.sha}@sha256:{'d' * 64}",
+            })
+        return result
 
 
 class TerminalEvidenceTest(unittest.TestCase):
@@ -124,6 +132,7 @@ class TerminalEvidenceTest(unittest.TestCase):
                     ],
                     None,
                     True,
+                    False,
                 )
             ],
         )
@@ -145,10 +154,12 @@ class TerminalEvidenceTest(unittest.TestCase):
                 "status-agent.timer",
             ],
         )
-        commands = [call[1] for call in runtime.calls if call[0] == "run"]
+        release_evidence = next(
+            call for call in runtime.calls if call[0] == "release-evidence"
+        )
         self.assertEqual(
-            [command[-1] for command in commands[:-1]],
-            [f"systemctl is-active --quiet {service}" for service in observed["services"]],
+            release_evidence[4],
+            observed["services"],
         )
         self.assertTrue(observed["signageEndpointAuthenticated"])
         self.assertEqual(observed["signageImageSha256"], "b" * 64)

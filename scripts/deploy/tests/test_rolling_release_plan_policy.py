@@ -34,6 +34,10 @@ RUN_ID = '20260715-000000-a1b2c3'
 DIGEST = 'sha256:' + ('c' * 64)
 
 
+def signage_artifact_identity(source_sha):
+    return f"git:{source_sha}@sha256:{'e' * 64}"
+
+
 def classification(**overrides):
     value = {
         'server': False,
@@ -65,6 +69,19 @@ def verified_record(role, *, current=CURRENT_SHA, desired=None, run_scoped=False
             'configDigest': DIGEST,
             'migrationDigest': DIGEST,
         })
+    elif role == 'signage':
+        identity = signage_artifact_identity(current)
+        value['releaseClaims'] = {
+            'signageReleaseArtifact': {
+                'expectedIdentity': identity,
+                'observedIdentity': identity,
+                'authority': 'signage-artifact-probe',
+                'verificationId': None,
+                'state': 'verified',
+                'observedAt': VERIFIED_AT,
+                'lastRunId': RUN_ID,
+            }
+        }
     return value
 
 
@@ -1159,12 +1176,94 @@ class ReleasePlannerTest(unittest.TestCase):
             canary_hold_policy=Mock(),
             fleet_records=records,
             typed_target_planning=True,
+            release_claim_identities={
+                RELEASE_SHA: signage_artifact_identity(RELEASE_SHA)
+            },
         )
         self.assertEqual(verification_only['activationTargets'], [])
         self.assertEqual(
             [target['host'] for target in verification_only['verificationTargets']],
             ['signage-a'],
         )
+
+    def test_signage_artifact_current_legacy_absent_and_unknown_have_distinct_work(self):
+        current_decision = {
+            'host': 'signage-a',
+            'role': 'signage',
+            'desiredSha': CURRENT_SHA,
+            'currentSha': CURRENT_SHA,
+            'evidence': 'verified',
+            'targetReason': 'verified; no signage-impacting changes',
+            'targeted': False,
+        }
+        current_record = verified_record('signage')
+        current = PLANNER.build_target_architecture(
+            decisions=[current_decision],
+            fleet_records={'signage-a': current_record},
+            typed_target_planning=True,
+            activation_execution_enabled=True,
+            verification_only_execution_enabled=True,
+            claim_scope_hosts=None,
+        )
+        self.assertEqual(current['terminalWork'], [])
+
+        legacy_record = verified_record('signage')
+        legacy_record['releaseClaims'] = {
+            'terminalRepository': self._verified_claim(
+                'terminalRepository',
+                CURRENT_SHA,
+                'terminal-repository-probe',
+            )
+        }
+        legacy = PLANNER.build_target_architecture(
+            decisions=[current_decision],
+            fleet_records={'signage-a': legacy_record},
+            typed_target_planning=True,
+            activation_execution_enabled=True,
+            verification_only_execution_enabled=True,
+            claim_scope_hosts=None,
+            release_claim_identities={
+                CURRENT_SHA: signage_artifact_identity(CURRENT_SHA)
+            },
+        )
+        self.assertEqual(
+            [target['host'] for target in legacy['mutationTargets']],
+            ['signage-a'],
+        )
+        self.assertEqual(
+            legacy['mutationTargets'][0]['reason'],
+            'verified legacy profile fallback requires sealed artifact migration',
+        )
+
+        unknown_decision = {
+            **current_decision,
+            'desiredSha': RELEASE_SHA,
+            'currentSha': None,
+            'evidence': 'unknown',
+            'targetReason': 'evidence unknown',
+            'targeted': True,
+        }
+        unknown = PLANNER.build_target_architecture(
+            decisions=[unknown_decision],
+            fleet_records={'signage-a': {
+                **verified_record('signage'),
+                'currentSha': None,
+                'evidence': 'unknown',
+                'releaseClaims': {},
+            }},
+            typed_target_planning=True,
+            activation_execution_enabled=True,
+            verification_only_execution_enabled=True,
+            claim_scope_hosts=None,
+            release_claim_identities={
+                RELEASE_SHA: signage_artifact_identity(RELEASE_SHA)
+            },
+        )
+        self.assertEqual(
+            [target['host'] for target in unknown['mutationTargets']],
+            ['signage-a'],
+        )
+        self.assertEqual(unknown['mutationTargets'][0]['reason'], 'evidence unknown')
 
     def test_terminal_only_mutation_preserves_current_web_consumer_claim(self):
         decisions = [
@@ -1319,6 +1418,9 @@ class ReleasePlannerTest(unittest.TestCase):
             full_fleet=False,
             limit='',
             canary_hold_policy=canary_hold,
+            release_claim_identities={
+                CURRENT_SHA: signage_artifact_identity(CURRENT_SHA)
+            },
         )
 
         canary_hold.assert_called_once_with(

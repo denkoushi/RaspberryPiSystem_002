@@ -22,6 +22,9 @@ from .image_refs import image_matches_release
 
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+SIGNAGE_ARTIFACT_RE = re.compile(
+    r"^git:[0-9a-f]{40}@sha256:[0-9a-f]{64}$"
+)
 VERIFICATION_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$")
 UTC_TIMESTAMP_RE = re.compile(
@@ -37,6 +40,7 @@ class ClaimKind(str, Enum):
     CONTROL_PLANE_API = "controlPlaneApi"
     CONTROL_PLANE_WEB = "controlPlaneWeb"
     TERMINAL_REPOSITORY = "terminalRepository"
+    SIGNAGE_RELEASE_ARTIFACT = "signageReleaseArtifact"
     LOCAL_ARTIFACT = "localArtifact"
     RUNTIME = "runtime"
 
@@ -44,6 +48,7 @@ class ClaimKind(str, Enum):
 class IdentityDomain(str, Enum):
     GIT_SHA = "gitSha"
     SHA256 = "sha256"
+    SIGNAGE_ARTIFACT = "signageArtifact"
 
 
 class ClaimAuthority(str, Enum):
@@ -52,6 +57,7 @@ class ClaimAuthority(str, Enum):
     KIOSK_COMPILED_WEB_READY = "kiosk-compiled-web-ready"
     TERMINAL_REPOSITORY_PROBE = "terminal-repository-probe"
     SIGNAGE_READY = "signage-ready"
+    SIGNAGE_ARTIFACT_PROBE = "signage-artifact-probe"
     LOCAL_RUNNER_READY = "local-runner-ready"
     LOCAL_RUNTIME_PREFLIGHT = "local-runtime-preflight"
 
@@ -77,6 +83,7 @@ _IDENTITY_DOMAIN_BY_KIND = {
     ClaimKind.CONTROL_PLANE_API: IdentityDomain.GIT_SHA,
     ClaimKind.CONTROL_PLANE_WEB: IdentityDomain.GIT_SHA,
     ClaimKind.TERMINAL_REPOSITORY: IdentityDomain.GIT_SHA,
+    ClaimKind.SIGNAGE_RELEASE_ARTIFACT: IdentityDomain.SIGNAGE_ARTIFACT,
     ClaimKind.LOCAL_ARTIFACT: IdentityDomain.SHA256,
     ClaimKind.RUNTIME: IdentityDomain.SHA256,
 }
@@ -90,7 +97,12 @@ _KINDS_BY_AUTHORITY = {
     ClaimAuthority.TERMINAL_REPOSITORY_PROBE: frozenset(
         {ClaimKind.TERMINAL_REPOSITORY}
     ),
-    ClaimAuthority.SIGNAGE_READY: frozenset({ClaimKind.TERMINAL_REPOSITORY}),
+    ClaimAuthority.SIGNAGE_READY: frozenset(
+        {ClaimKind.SIGNAGE_RELEASE_ARTIFACT}
+    ),
+    ClaimAuthority.SIGNAGE_ARTIFACT_PROBE: frozenset(
+        {ClaimKind.SIGNAGE_RELEASE_ARTIFACT}
+    ),
     ClaimAuthority.LOCAL_RUNNER_READY: frozenset({ClaimKind.LOCAL_ARTIFACT}),
     ClaimAuthority.LOCAL_RUNTIME_PREFLIGHT: frozenset({ClaimKind.RUNTIME}),
 }
@@ -112,15 +124,45 @@ def _enum_value(enum_type: type[Enum], value: Any, *, field: str) -> Enum:
 
 
 def _validate_identity(value: Any, domain: IdentityDomain, *, field: str) -> str:
-    pattern = FULL_SHA_RE if domain is IdentityDomain.GIT_SHA else DIGEST_RE
+    pattern = (
+        FULL_SHA_RE
+        if domain is IdentityDomain.GIT_SHA
+        else SIGNAGE_ARTIFACT_RE
+        if domain is IdentityDomain.SIGNAGE_ARTIFACT
+        else DIGEST_RE
+    )
     if not isinstance(value, str) or pattern.fullmatch(value) is None:
         expected = (
             "a full lowercase Git SHA"
             if domain is IdentityDomain.GIT_SHA
+            else "an exact Git SHA and sha256 artifact digest"
+            if domain is IdentityDomain.SIGNAGE_ARTIFACT
             else "a full sha256 digest"
         )
         raise ReleaseClaimError(f"{field} must be {expected}")
     return value
+
+
+def validate_claim_identity(kind: ClaimKind | str, value: Any, *, field: str) -> str:
+    selected = _enum_value(ClaimKind, kind, field="claim kind")
+    return _validate_identity(value, _IDENTITY_DOMAIN_BY_KIND[selected], field=field)
+
+
+def claim_requires_sealed_identity(kind: ClaimKind | str) -> bool:
+    selected = _enum_value(ClaimKind, kind, field="claim kind")
+    return _IDENTITY_DOMAIN_BY_KIND[selected] is IdentityDomain.SIGNAGE_ARTIFACT
+
+
+def claim_source_sha(kind: ClaimKind | str, identity: Any) -> str:
+    selected = _enum_value(ClaimKind, kind, field="claim kind")
+    validated = validate_claim_identity(
+        selected, identity, field=f"{selected.value} identity"
+    )
+    if _IDENTITY_DOMAIN_BY_KIND[selected] is IdentityDomain.SIGNAGE_ARTIFACT:
+        return validated[4:44]
+    if _IDENTITY_DOMAIN_BY_KIND[selected] is IdentityDomain.GIT_SHA:
+        return validated
+    raise ReleaseClaimError("claim identity does not contain a source SHA")
 
 
 def _validate_timestamp(value: Any, *, field: str) -> str:

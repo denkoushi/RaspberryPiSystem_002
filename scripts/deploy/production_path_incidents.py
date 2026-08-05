@@ -205,7 +205,7 @@ def incident_status(root: Path) -> dict[str, bool]:
     signage_release_preparation = read(
         root, "infrastructure/ansible/roles/signage/tasks/release-preparation.yml"
     )
-    source_bundle = read(root, "scripts/deploy/terminal-source-bundle.py")
+    signage_artifact = read(root, "scripts/deploy/signage-release-artifact.py")
     phase3 = read(root, "infrastructure/docker/docker-compose.phase3.yml")
     migration = read(root, "infrastructure/docker/docker-compose.phase3.migration.yml")
     kiosk_layout = read(root, "apps/web/src/layouts/KioskLayout.tsx")
@@ -226,13 +226,13 @@ def incident_status(root: Path) -> dict[str, bool]:
         )
     )
     pi3_stage_requirement = signage_release_preparation.find(
-        "Validate sealed signage release mutation profile"
+        "Validate sealed signage release artifact profile"
     )
-    terminal_bundle_import = signage_release_preparation.find(
-        "Import and reset Pi3 repository from the verified local bundle"
+    signage_artifact_install = signage_release_preparation.find(
+        "Install the verified local signage artifact atomically"
     )
-    source_consume = source_bundle.find("def consume(")
-    source_cleanup = source_bundle.find("def cleanup(")
+    artifact_consume = signage_artifact.find("def consume(")
+    artifact_cleanup = signage_artifact.find("def cleanup(")
     return {
         "encrypted-vault-planning": ansible.count(
             "_read_only_inventory_context(path, runtime=runtime)"
@@ -253,14 +253,24 @@ def incident_status(root: Path) -> dict[str, bool]:
             and ansible.count('compression = "-o Compression=yes"') == 1
         ),
         "pi3-external-source-authority": (
-            0 <= pi3_stage_requirement < terminal_bundle_import
+            0 <= pi3_stage_requirement < signage_artifact_install
             and "terminal_staged_source is defined" in signage_release_preparation
-            and "External Git fetch is" in signage_release_preparation
-            and "not an allowed fallback." in signage_release_preparation
-            and '"protocol.allow=never"' in source_bundle
-            and '"protocol.file.allow=always"' in source_bundle
-            and 0 <= source_consume < source_cleanup
-            and "origin" not in source_bundle[source_consume:source_cleanup]
+            and "origin" not in signage_release_preparation
+            and "git fetch" not in signage_release_preparation
+            and "--repository" not in signage_release_preparation
+            and all(
+                token not in signage_artifact
+                for token in (
+                    "import socket",
+                    "import subprocess",
+                    "import urllib",
+                    "http://",
+                    "https://",
+                )
+            )
+            and 0 <= artifact_consume < artifact_cleanup
+            and "origin" not in signage_artifact[artifact_consume:artifact_cleanup]
+            and "http" not in signage_artifact[artifact_consume:artifact_cleanup].lower()
         ),
         "backup-ssh-bind-authority": all(
             value in phase3

@@ -78,6 +78,25 @@ def terminal_claim(
     }
 
 
+def artifact_claim(
+    source_sha,
+    *,
+    observed=False,
+    verification_id=None,
+    state="unknown",
+):
+    identity = f"git:{source_sha}@sha256:{'e' * 64}"
+    return {
+        "expectedIdentity": identity,
+        "observedIdentity": identity if observed else None,
+        "authority": "signage-ready",
+        "verificationId": verification_id,
+        "state": state,
+        "observedAt": "2026-07-15T00:00:00Z" if observed else None,
+        "lastRunId": RUN_ID,
+    }
+
+
 class FleetStateStoreTest(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -232,9 +251,7 @@ class FleetStateStoreTest(unittest.TestCase):
     def test_unknown_and_verified_transitions_persist_explicit_release_claims(self):
         state = self.begin()
         pending = {
-            "terminalRepository": terminal_claim(
-                SHA_B, authority="signage-ready"
-            )
+            "signageReleaseArtifact": artifact_claim(SHA_B)
         }
         state = self.store.mark_host_unknown(
             "signage-a",
@@ -249,10 +266,9 @@ class FleetStateStoreTest(unittest.TestCase):
         )
 
         verified = {
-            "terminalRepository": terminal_claim(
+            "signageReleaseArtifact": artifact_claim(
                 SHA_B,
-                observed_sha=SHA_B,
-                authority="signage-ready",
+                observed=True,
                 verification_id="d" * 32,
                 state="verified",
             )
@@ -282,10 +298,9 @@ class FleetStateStoreTest(unittest.TestCase):
                 RUN_ID,
                 expected_generation=state["generation"],
                 release_claims={
-                    "terminalRepository": terminal_claim(
+                    "signageReleaseArtifact": artifact_claim(
                         SHA_B,
-                        observed_sha=SHA_B,
-                        authority="signage-ready",
+                        observed=True,
                         verification_id=None,
                     )
                 },
@@ -442,8 +457,7 @@ class FleetStateStoreTest(unittest.TestCase):
             "terminalRepository": terminal_claim(
                 SHA_A,
                 observed_sha=SHA_A,
-                authority="signage-ready",
-                verification_id="d" * 32,
+                authority="terminal-repository-probe",
                 state="verified",
             )
         }
@@ -481,8 +495,7 @@ class FleetStateStoreTest(unittest.TestCase):
                     "terminalRepository": terminal_claim(
                         SHA_C,
                         observed_sha=SHA_C,
-                        authority="signage-ready",
-                        verification_id="e" * 32,
+                        authority="terminal-repository-probe",
                         state="verified",
                     )
                 },

@@ -276,7 +276,7 @@ ROUTE_STAGES: tuple[RouteStage, ...] = (
         "terminal.rollback",
         "terminal",
         "mutation",
-        ("preflight_rollback", "rollback"),
+        ("preflight_rollback", "rollback", "observe_rollback"),
         "terminal.sealed-rollback-preflight-and-typed-claim-rebind",
         "retain-maintenance-and-unknown",
         "terminal-adapter",

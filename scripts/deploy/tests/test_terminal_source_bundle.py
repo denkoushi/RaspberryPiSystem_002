@@ -238,6 +238,9 @@ class TerminalSourceBundleTest(unittest.TestCase):
 
     def test_execution_contract_forbids_remote_protocol_and_pi3_fallback(self):
         helper = SCRIPT.read_text(encoding="utf-8")
+        artifact_helper = (
+            PROJECT / "scripts/deploy/signage-release-artifact.py"
+        ).read_text(encoding="utf-8")
         signage_preparation = (
             PROJECT
             / "infrastructure/ansible/roles/signage/tasks/release-preparation.yml"
@@ -249,26 +252,27 @@ class TerminalSourceBundleTest(unittest.TestCase):
             PROJECT / "infrastructure/ansible/playbooks/deploy-signage-staged.yml"
         ).read_text(encoding="utf-8")
         require = signage_preparation.index(
-            "Validate sealed signage release mutation profile"
-        )
-        clean_check = signage_preparation.index(
-            "Verify signage repository is clean and capture current HEAD"
+            "Validate sealed signage release artifact profile"
         )
         local_import = signage_preparation.index(
-            "Import and reset Pi3 repository from the verified local bundle"
+            "Install the verified local signage artifact atomically"
         )
-        self.assertLess(require, clean_check)
-        self.assertLess(clean_check, local_import)
+        self.assertLess(require, local_import)
         self.assertNotIn("git fetch", signage_preparation)
         self.assertNotIn("origin", signage_preparation)
+        self.assertNotIn("--repository", signage_preparation)
         self.assertIn("git fetch --no-tags origin", common)
         self.assertNotIn("terminal_staged_source", common)
         self.assertIn("tasks_from: release-preparation", playbook)
         self.assertIn('"protocol.allow=never"', helper)
         self.assertIn('"protocol.file.allow=always"', helper)
-        consume = helper[helper.index("def consume(") : helper.index("def cleanup(")]
+        consume = artifact_helper[
+            artifact_helper.index("def consume(") : artifact_helper.index("def cleanup(")
+        ]
         self.assertNotIn("origin", consume)
         self.assertNotIn("http", consume.lower())
+        for token in ("import socket", "import subprocess", "import urllib"):
+            self.assertNotIn(token, artifact_helper)
 
 
 if __name__ == "__main__":
