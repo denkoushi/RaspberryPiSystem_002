@@ -100,7 +100,12 @@ describe('kiosk SOP core', () => {
       sourceSha256: digest,
       htmlSha256: digest,
       geometry: {
-        first: [{ id: 'required-step', targetId: 'save', target: { x: .8, y: .1 } }]
+        first: [{
+          id: 'required-step',
+          targetId: 'save',
+          target: { x: .8, y: .1 },
+          semantics: { tagName: 'button', role: null, text: '保存', ariaLabel: null }
+        }]
       },
       artifacts: { 'screens/main.png': digest }
     };

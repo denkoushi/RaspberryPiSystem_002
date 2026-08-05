@@ -37,7 +37,7 @@ test('rejects unregistered fixture and sheet identifiers', () => {
 });
 
 test('pins CPU-independent Chromium text rasterization', () => {
-  assert.equal(generatorVersion, '1.2.0');
+  assert.equal(generatorVersion, '1.3.0');
   assert.ok(chromiumLaunchOptions.args.includes('--disable-skia-runtime-opts'));
   assert.ok(chromiumLaunchOptions.args.includes('--disable-lcd-text'));
   assert.ok(chromiumLaunchOptions.args.includes('--disable-font-subpixel-positioning'));

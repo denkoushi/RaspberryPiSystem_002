@@ -24,11 +24,17 @@
   },
   "browserVersion": "141.0.7390.37",
   "definitionSha256": "9b3db0b5176434acc1f0767f0257df5405c2883b7f7edc37a6bac02dbedef919",
-  "generatorVersion": "1.2.0",
+  "generatorVersion": "1.3.0",
   "geometry": {
     "edit-advanced-point": [
       {
         "id": "nudge-point",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "div",
+          "text": "↑ ↓ ← →"
+        },
         "target": {
           "x": 0.9765625,
           "y": 0.2569444444444444
@@ -37,6 +43,12 @@
       },
       {
         "id": "set-depth-mode",
+        "semantics": {
+          "ariaLabel": "通し切替",
+          "role": "group",
+          "tagName": "div",
+          "text": "測定 通し"
+        },
         "target": {
           "x": 0.9765625,
           "y": 0.44730179398148145
@@ -45,6 +57,12 @@
       },
       {
         "id": "set-face-thread",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "div",
+          "text": "面 面なし 正面 背面 両面 呼び径 呼び径なし M3 M3.5 M4 M4.5 M5 M6 M7 M8 M9 M10 M11 M12 M14 M16 M18 M20 M22 M24 M27 M30 管用 直接入力"
+        },
         "target": {
           "x": 0.9765625,
           "y": 0.5356083622685185
@@ -53,6 +71,12 @@
       },
       {
         "id": "set-direct-label",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "input",
+          "text": ""
+        },
         "target": {
           "x": 0.9765523274739584,
           "y": 0.5356083622685185
@@ -61,6 +85,12 @@
       },
       {
         "id": "use-ocr-candidate",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "div",
+          "text": "12"
+        },
         "target": {
           "x": 0.9765625,
           "y": 0.6335358796296297
@@ -71,6 +101,12 @@
     "edit-basics": [
       {
         "id": "confirm-template-meta",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "dl",
+          "text": "品番 PART-9000 資源 R001（旋盤1号） 工程 切削 研削 テンプレ 検査数 全数 抜き取り1個 最初と最後 指定数 指定数"
+        },
         "target": {
           "x": 0.7645975748697916,
           "y": 0.0798611111111111
@@ -79,6 +115,12 @@
       },
       {
         "id": "open-visual-source",
+        "semantics": {
+          "ariaLabel": "図面ソースを選択",
+          "role": null,
+          "tagName": "button",
+          "text": "既存: 図面71-A61"
+        },
         "target": {
           "x": 0.9316609700520834,
           "y": 0.0798611111111111
@@ -87,6 +129,12 @@
       },
       {
         "id": "set-self-inspection",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "div",
+          "text": "検査数 全数 抜き取り1個 最初と最後 指定数"
+        },
         "target": {
           "x": 0.61279296875,
           "y": 0.0798611111111111
@@ -95,6 +143,12 @@
       },
       {
         "id": "save-revision",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "保存"
+        },
         "target": {
           "x": 0.138671875,
           "y": 0.13310185185185186
@@ -105,6 +159,12 @@
     "edit-group-history": [
       {
         "id": "choose-group-save",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "label",
+          "text": "兄弟テンプレをまとめて改版"
+        },
         "target": {
           "x": 0.20374552408854166,
           "y": 0.2326388888888889
@@ -113,6 +173,12 @@
       },
       {
         "id": "choose-single-save",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "label",
+          "text": "この資源だけ個別改版"
+        },
         "target": {
           "x": 0.3237406412760417,
           "y": 0.2326388888888889
@@ -121,6 +187,12 @@
       },
       {
         "id": "add-group-resource",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "資源追加"
+        },
         "target": {
           "x": 0.7253926595052084,
           "y": 0.2326388888888889
@@ -129,6 +201,12 @@
       },
       {
         "id": "activate-history",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "この版を有効化して編集"
+        },
         "target": {
           "x": 0.15226236979166666,
           "y": 0.2916666666666667
@@ -137,6 +215,12 @@
       },
       {
         "id": "confirm-save-scope",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "span",
+          "text": "保存範囲"
+        },
         "target": {
           "x": 0.055338541666666664,
           "y": 0.22106481481481483
@@ -147,6 +231,12 @@
     "edit-point-management": [
       {
         "id": "add-point",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "丸数字"
+        },
         "target": {
           "x": 0.8551737467447916,
           "y": 0.3373480902777778
@@ -155,6 +245,12 @@
       },
       {
         "id": "place-callout",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "矢視"
+        },
         "target": {
           "x": 0.880584716796875,
           "y": 0.3373480902777778
@@ -163,6 +259,12 @@
       },
       {
         "id": "select-point-list",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "div",
+          "text": "測定点一覧 No.1外径 基準 20·上限 0.02·下限 -0.02 No.2全長指 基準 71·上限 0.1·下限 -0.1 No.3ネジ穴深さ 基準 12·上限 0.1·下限 -0.1"
+        },
         "target": {
           "x": 0.982421875,
           "y": 0.96875
@@ -171,6 +273,12 @@
       },
       {
         "id": "delete-one-point",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "一点削除"
+        },
         "target": {
           "x": 0.896484375,
           "y": 0.7152596932870371
@@ -179,6 +287,12 @@
       },
       {
         "id": "delete-all-points",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "全削除"
+        },
         "target": {
           "x": 0.9765625,
           "y": 0.7152596932870371
@@ -189,6 +303,12 @@
     "edit-required-point": [
       {
         "id": "select-point",
+        "semantics": {
+          "ariaLabel": "測定点 No.1 外径 を選択",
+          "role": null,
+          "tagName": "button",
+          "text": "No.1外径 基準 20·上限 0.02·下限 -0.02"
+        },
         "target": {
           "x": 0.97265625,
           "y": 0.8159541377314815
@@ -197,6 +317,12 @@
       },
       {
         "id": "set-measurement-name",
+        "semantics": {
+          "ariaLabel": "名称",
+          "role": null,
+          "tagName": "select",
+          "text": "外径"
+        },
         "target": {
           "x": 0.9765625,
           "y": 0.4010054976851852
@@ -205,6 +331,12 @@
       },
       {
         "id": "set-nominal",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "label",
+          "text": "基準値"
+        },
         "target": {
           "x": 0.9765625,
           "y": 0.5455729166666666
@@ -213,6 +345,12 @@
       },
       {
         "id": "set-upper-tolerance",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "label",
+          "text": "上限公差"
+        },
         "target": {
           "x": 0.896484375,
           "y": 0.6805374710648148
@@ -221,6 +359,12 @@
       },
       {
         "id": "set-lower-tolerance",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "label",
+          "text": "下限公差"
+        },
         "target": {
           "x": 0.9765625,
           "y": 0.6805374710648148
@@ -231,6 +375,12 @@
     "edit-trial-report": [
       {
         "id": "open-test-input",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "テスト入力"
+        },
         "target": {
           "x": 0.3575541178385417,
           "y": 0.13310185185185186
@@ -239,6 +389,12 @@
       },
       {
         "id": "open-guided-trial",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "ガイド試行"
+        },
         "target": {
           "x": 0.4364115397135417,
           "y": 0.13310185185185186
@@ -247,6 +403,12 @@
       },
       {
         "id": "zoom-drawing",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "div",
+          "text": "− ＋ □"
+        },
         "target": {
           "x": 0.091796875,
           "y": 0.13078703703703703
@@ -255,6 +417,12 @@
       },
       {
         "id": "open-saved-report",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "a",
+          "text": "保存済み帳票"
+        },
         "target": {
           "x": 0.2786966959635417,
           "y": 0.13541666666666666
@@ -263,6 +431,12 @@
       },
       {
         "id": "return-library",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "a",
+          "text": "一覧へ戻る"
+        },
         "target": {
           "x": 0.5582377115885416,
           "y": 0.13541666666666666
@@ -273,6 +447,12 @@
     "edit-visual-source": [
       {
         "id": "pick-existing-visual",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "図面71-A61 選択中"
+        },
         "target": {
           "x": 0.7298177083333334,
           "y": 0.4363425925925926
@@ -281,6 +461,12 @@
       },
       {
         "id": "upload-new-visual",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "input",
+          "text": ""
+        },
         "target": {
           "x": 0.73046875,
           "y": 0.22453703703703703
@@ -291,6 +477,12 @@
     "library-entry-search": [
       {
         "id": "open-inspection-drawing",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "div",
+          "text": "検査図面"
+        },
         "target": {
           "x": 0.08828125,
           "y": 0.085
@@ -299,6 +491,12 @@
       },
       {
         "id": "search-drawing-digits",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "div",
+          "text": "7 8 9 4 5 6 1 2 3 0 リセット"
+        },
         "target": {
           "x": 0.92392578125,
           "y": 0.08875
@@ -307,6 +505,12 @@
       },
       {
         "id": "filter-part-number",
+        "semantics": {
+          "ariaLabel": "品番",
+          "role": null,
+          "tagName": "input",
+          "text": ""
+        },
         "target": {
           "x": 0.16875,
           "y": 0.643828125
@@ -315,6 +519,12 @@
       },
       {
         "id": "filter-resource",
+        "semantics": {
+          "ariaLabel": "資源CD",
+          "role": null,
+          "tagName": "select",
+          "text": ""
+        },
         "target": {
           "x": 0.578125,
           "y": 0.643828125
@@ -323,6 +533,12 @@
       },
       {
         "id": "reload-library",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "再読込"
+        },
         "target": {
           "x": 0.90250244140625,
           "y": 0.643828125
@@ -333,6 +549,12 @@
     "library-template-management": [
       {
         "id": "edit-template",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "a",
+          "text": "編集"
+        },
         "target": {
           "x": 0.85703125,
           "y": 0.77607421875
@@ -341,6 +563,12 @@
       },
       {
         "id": "open-report",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "a",
+          "text": "帳票"
+        },
         "target": {
           "x": 0.8833984375,
           "y": 0.77607421875
@@ -349,6 +577,12 @@
       },
       {
         "id": "open-history",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "履歴"
+        },
         "target": {
           "x": 0.9361328125,
           "y": 0.77607421875
@@ -357,6 +591,12 @@
       },
       {
         "id": "include-inactive",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "無効ON"
+        },
         "target": {
           "x": 0.75966796875,
           "y": 0.643828125
@@ -365,6 +605,12 @@
       },
       {
         "id": "retire-template",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "無効"
+        },
         "target": {
           "x": 0.9625,
           "y": 0.77607421875
@@ -375,6 +621,12 @@
     "library-visual-management": [
       {
         "id": "register-visual",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "図面を登録"
+        },
         "target": {
           "x": 0.3720458984375,
           "y": 0.18125
@@ -383,6 +635,12 @@
       },
       {
         "id": "search-visual-name",
+        "semantics": {
+          "ariaLabel": "図面名で検索",
+          "role": null,
+          "tagName": "input",
+          "text": ""
+        },
         "target": {
           "x": 0.24366455078125,
           "y": 0.18125
@@ -391,6 +649,12 @@
       },
       {
         "id": "rename-visual",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "名称"
+        },
         "target": {
           "x": 0.9625,
           "y": 0.29875
@@ -399,6 +663,12 @@
       },
       {
         "id": "create-from-visual",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "a",
+          "text": "新規"
+        },
         "target": {
           "x": 0.9296875,
           "y": 0.29875
@@ -409,5 +679,5 @@
   },
   "htmlSha256": "f1297a6c2222680a5dedab12bab0e9a173043198889147c04a14fef6d81e26b1",
   "schemaVersion": 1,
-  "sourceSha256": "ec8726795b7c3b0dc9536ce67cf31eaff9819f28d2455adb1b7b8cfebf526698"
+  "sourceSha256": "1580c35d508692ee7a0296aff86c571f69d86514c7ba9f74802248f7a67a6efd"
 }

@@ -58,6 +58,16 @@ export type KioskSopManifest = Readonly<{
   definitionSha256: string;
   sourceSha256: string;
   htmlSha256: string;
-  geometry: Readonly<Record<string, readonly Readonly<{ id: string; targetId: string; target: KioskSopTarget }>[]>>;
+  geometry: Readonly<Record<string, readonly Readonly<{
+    id: string;
+    targetId: string;
+    target: KioskSopTarget;
+    semantics: Readonly<{
+      tagName: string;
+      role: string | null;
+      text: string;
+      ariaLabel: string | null;
+    }>;
+  }>[]>>;
   artifacts: Readonly<Record<string, string>>;
 }>;
