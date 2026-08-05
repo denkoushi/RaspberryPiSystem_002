@@ -22,6 +22,7 @@ trap 'rm -rf "${TMP_DIR}"' EXIT
 FIXTURE_REPO="${TMP_DIR}/repo"
 FIXTURE_BIN="${TMP_DIR}/bin"
 RENDERED_SCRIPT="${TMP_DIR}/signage-update.sh"
+FIXTURE_ARTIFACT="${TMP_DIR}/raspi-signage-status-agent.pyz"
 CURL_ARGV_LOG="${TMP_DIR}/curl-argv.log"
 ACK_LOG="${TMP_DIR}/ack.log"
 mkdir -p "${FIXTURE_REPO}" "${FIXTURE_BIN}"
@@ -39,18 +40,32 @@ if [[ "${MISMATCHED_SHA}" == "${EXPECTED_SHA}" ]]; then
 fi
 VERIFICATION_ID="$(printf 'd%.0s' {1..32})"
 
-python3 - "${TEMPLATE}" "${RENDERED_SCRIPT}" "${FIXTURE_REPO}" <<'PY'
+python3 - "${FIXTURE_ARTIFACT}" "${EXPECTED_SHA}" <<'PY'
 import sys
 from pathlib import Path
 
-source, destination, repository = sys.argv[1:]
+destination, source_sha = sys.argv[1:]
+Path(destination).write_text(
+    "import json\n"
+    "print(json.dumps({\"sourceSha\": " + repr(source_sha) + "}))\n",
+    encoding="utf-8",
+)
+PY
+
+python3 - "${TEMPLATE}" "${RENDERED_SCRIPT}" "${FIXTURE_ARTIFACT}" <<'PY'
+import sys
+from pathlib import Path
+
+source, destination, artifact = sys.argv[1:]
 text = Path(source).read_text(encoding="utf-8")
 replacements = {
     "{{ signage_server_url | default('https://192.168.128.131') }}": "https://fixture.invalid",
     "{{ signage_client_key | default('') }}": "fixture-image-secret",
     "{{ status_agent_client_id | default('') }}": "talkplaza-signage01",
     "{{ status_agent_client_key | default('') }}": "fixture-status-secret",
-    "{{ repo_path | default('/opt/RaspberryPiSystem_002') }}": repository,
+    'RELEASE_ARTIFACT="/usr/local/bin/raspi-signage-status-agent.pyz"': (
+        f'RELEASE_ARTIFACT="{artifact}"'
+    ),
     """{% if signage_allow_insecure_tls | default(true) %}
 CURL_OPTIONS=(-sS -f -k)
 {% else %}
@@ -179,7 +194,7 @@ run_case unauthorized
 grep -Fq 'Image updated successfully' "${TMP_DIR}/unauthorized.out"
 
 # A valid verifying response preserves the maintenance ACK, but a different
-# immutable HEAD must never produce a ready ACK.
+# immutable artifact source SHA must never produce a ready ACK.
 run_case mismatch
 grep -Fq '"phase":"maintenance"' "${ACK_LOG}"
 if grep -Fq '"phase":"ready"' "${ACK_LOG}"; then
@@ -187,7 +202,7 @@ if grep -Fq '"phase":"ready"' "${ACK_LOG}"; then
   exit 1
 fi
 
-# A matching local HEAD is insufficient without the exact 32-character
+# A matching local artifact source SHA is insufficient without the exact 32-character
 # lowercase verification challenge from the active cycle.
 for mode in missing-verification malformed-verification; do
   run_case "${mode}"
@@ -198,7 +213,7 @@ for mode in missing-verification malformed-verification; do
   fi
 done
 
-# Only the exact lowercase 40-character local HEAD and active verification ID
+# Only the exact lowercase 40-character artifact source SHA and active verification ID
 # can be acknowledged ready.
 run_case match
 grep -Fq '"phase":"maintenance"' "${ACK_LOG}"
