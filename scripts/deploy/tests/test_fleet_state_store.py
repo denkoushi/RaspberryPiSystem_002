@@ -29,6 +29,7 @@ from rolling_release.fleet_state import (  # noqa: E402
     FleetStateStore,
     StaleFleetGenerationError,
     empty_fleet_state,
+    parse_fleet_state_json,
 )
 from terminal_profile_registry import load_registry  # noqa: E402
 
@@ -165,6 +166,100 @@ class FleetStateStoreTest(unittest.TestCase):
             FleetStateCorruptError, "disagrees with legacy desiredSha"
         ):
             self.store.read_only()
+
+    def test_known_production_signage_claim_is_adapted_read_only_and_idempotently(self):
+        fixture = CLAIM_FIXTURES / "production-legacy-signage-host.json"
+        legacy_record = json.loads(fixture.read_text(encoding="utf-8"))
+        payload = {
+            "generation": 42,
+            "activeRun": None,
+            "lastRun": None,
+            "fleet": {"raspberrypi3": legacy_record},
+        }
+        raw = json.dumps(payload, sort_keys=True)
+
+        migrated = parse_fleet_state_json(raw)
+        claim = migrated["fleet"]["raspberrypi3"]["releaseClaims"][
+            "terminalRepository"
+        ]
+
+        self.assertEqual(claim["authority"], "terminal-repository-probe")
+        self.assertIsNone(claim["verificationId"])
+        self.assertEqual(claim["observedIdentity"], SHA_B)
+        self.assertEqual(parse_fleet_state_json(json.dumps(migrated)), migrated)
+        self.assertEqual(json.loads(raw), payload)
+
+    def test_legacy_signage_claim_adapter_rejects_binding_or_schema_drift(self):
+        fixture = CLAIM_FIXTURES / "production-legacy-signage-host.json"
+        legacy_record = json.loads(fixture.read_text(encoding="utf-8"))
+        cases = {
+            "host": ("signage-spare", legacy_record),
+            "profile": (
+                "raspberrypi3",
+                {**legacy_record, "role": "kiosk"},
+            ),
+            "run": (
+                "raspberrypi3",
+                {
+                    **legacy_record,
+                    "releaseClaims": {
+                        "terminalRepository": {
+                            **legacy_record["releaseClaims"]["terminalRepository"],
+                            "lastRunId": "different-run",
+                        }
+                    },
+                },
+            ),
+            "sha": (
+                "raspberrypi3",
+                {
+                    **legacy_record,
+                    "releaseClaims": {
+                        "terminalRepository": {
+                            **legacy_record["releaseClaims"]["terminalRepository"],
+                            "observedIdentity": SHA_C,
+                        }
+                    },
+                },
+            ),
+            "authority": (
+                "raspberrypi3",
+                {
+                    **legacy_record,
+                    "releaseClaims": {
+                        "terminalRepository": {
+                            **legacy_record["releaseClaims"]["terminalRepository"],
+                            "authority": "kiosk-compiled-web-ready",
+                        }
+                    },
+                },
+            ),
+            "schema": (
+                "raspberrypi3",
+                {
+                    **legacy_record,
+                    "releaseClaims": {
+                        "terminalRepository": {
+                            **legacy_record["releaseClaims"]["terminalRepository"],
+                            "legacy": True,
+                        }
+                    },
+                },
+            ),
+        }
+
+        for name, (host, record) in cases.items():
+            with self.subTest(name=name), self.assertRaises(FleetStateCorruptError):
+                parse_fleet_state_json(
+                    json.dumps(
+                        {
+                            "generation": 42,
+                            "activeRun": None,
+                            "lastRun": None,
+                            "fleet": {host: record},
+                        }
+                    )
+                )
 
     def test_begin_run_creates_generation_checked_active_summary(self):
         state = self.begin()

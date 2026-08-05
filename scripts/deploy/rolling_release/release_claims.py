@@ -30,6 +30,7 @@ RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$")
 UTC_TIMESTAMP_RE = re.compile(
     r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
 )
+LEGACY_SIGNAGE_HOST = "raspberrypi3"
 
 
 class ReleaseClaimError(ValueError):
@@ -316,6 +317,85 @@ def validate_release_claims(
         claim = ReleaseClaim.from_record(kind, raw_claim)
         claims[kind.value] = claim.to_record()
     return claims
+
+
+def adapt_legacy_signage_host_record(
+    record: Mapping[str, Any], *, host: str
+) -> dict[str, Any]:
+    """Adapt the one deployed pre-artifact signage claim without trusting it.
+
+    The previous signage profile used the ACK authority ``signage-ready`` for
+    ``terminalRepository``.  The sealed-artifact profile deliberately removed
+    that authority pairing.  Accept only the production-observed, verified
+    rollback shape for the registered Pi3 host and project it to repository
+    probe evidence.  The caller owns only this deep copy; read-only state files
+    remain byte-for-byte unchanged.
+    """
+
+    if not isinstance(record, Mapping):
+        raise ReleaseClaimError("host record must be an object")
+    adapted = copy.deepcopy(dict(record))
+    claims = adapted.get("releaseClaims")
+    if not isinstance(claims, Mapping):
+        return adapted
+    legacy = claims.get(ClaimKind.TERMINAL_REPOSITORY.value)
+    if not isinstance(legacy, Mapping) or legacy.get("authority") != (
+        ClaimAuthority.SIGNAGE_READY.value
+    ):
+        return adapted
+
+    if host != LEGACY_SIGNAGE_HOST:
+        raise ReleaseClaimError("legacy signage claim host is unsupported")
+    if adapted.get("role") != "signage":
+        raise ReleaseClaimError("legacy signage claim profile is unsupported")
+    if set(claims) != {ClaimKind.TERMINAL_REPOSITORY.value}:
+        raise ReleaseClaimError("legacy signage claim set is unsupported")
+    legacy_record = copy.deepcopy(dict(legacy))
+    if set(legacy_record) != CLAIM_FIELDS:
+        raise ReleaseClaimError("legacy signage claim fields do not match the schema")
+    if adapted.get("evidence") != "verified" or legacy_record.get("state") != (
+        ClaimState.VERIFIED.value
+    ):
+        raise ReleaseClaimError("legacy signage claim must be verified")
+
+    current_sha = adapted.get("currentSha")
+    if not isinstance(current_sha, str) or FULL_SHA_RE.fullmatch(current_sha) is None:
+        raise ReleaseClaimError("legacy signage currentSha must be a full Git SHA")
+    if (
+        legacy_record.get("expectedIdentity") != current_sha
+        or legacy_record.get("observedIdentity") != current_sha
+    ):
+        raise ReleaseClaimError("legacy signage claim disagrees with currentSha")
+    desired_sha = adapted.get("desiredSha")
+    previous_sha = adapted.get("previousSha")
+    if desired_sha != current_sha and previous_sha != current_sha:
+        raise ReleaseClaimError("legacy signage claim lacks rollback SHA binding")
+
+    last_run_id = adapted.get("lastRunId")
+    if (
+        not isinstance(last_run_id, str)
+        or RUN_ID_RE.fullmatch(last_run_id) is None
+        or legacy_record.get("lastRunId") != last_run_id
+    ):
+        raise ReleaseClaimError("legacy signage claim run binding is invalid")
+    verified_at = adapted.get("verifiedAt")
+    _validate_timestamp(verified_at, field="legacy signage verifiedAt")
+    _validate_timestamp(
+        legacy_record.get("observedAt"), field="legacy signage observedAt"
+    )
+    verification_id = legacy_record.get("verificationId")
+    if (
+        not isinstance(verification_id, str)
+        or VERIFICATION_ID_RE.fullmatch(verification_id) is None
+    ):
+        raise ReleaseClaimError("legacy signage claim verificationId is invalid")
+
+    legacy_record["authority"] = ClaimAuthority.TERMINAL_REPOSITORY_PROBE.value
+    legacy_record["verificationId"] = None
+    adapted["releaseClaims"] = {
+        ClaimKind.TERMINAL_REPOSITORY.value: legacy_record
+    }
+    return adapted
 
 
 def project_legacy_host_claims(record: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
