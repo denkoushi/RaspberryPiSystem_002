@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 DEPLOY_DIR = Path(__file__).resolve().parents[1]
@@ -95,6 +96,38 @@ class TerminalSourceBundleTest(unittest.TestCase):
         }
         values.update(overrides)
         return argparse.Namespace(**values)
+
+    def test_each_git_operation_reports_only_bounded_sanitized_failure_context(self):
+        secret_url = "https://operator:super-secret@example.invalid/private.git"
+        arbitrary_argument = "arbitrary-argv-must-not-be-recorded"
+        noisy_stderr = (
+            f"fatal: unable to access {secret_url}: bearer ghp_secretvalue "
+            + ("x" * 4096)
+        ).encode("utf-8")
+        completed = subprocess.CompletedProcess(
+            args=["git"], returncode=17, stdout=b"", stderr=noisy_stderr
+        )
+
+        for operation in source_bundle.GIT_OPERATIONS:
+            with self.subTest(operation=operation):
+                with mock.patch.object(
+                    source_bundle.subprocess, "run", return_value=completed
+                ):
+                    with self.assertRaises(source_bundle.SourceBundleError) as raised:
+                        source_bundle._run_git(
+                            self.terminal,
+                            [arbitrary_argument, secret_url],
+                            operation=operation,
+                        )
+                message = str(raised.exception)
+                self.assertIn(f"operation={operation}", message)
+                self.assertIn("rc=17", message)
+                self.assertIn("[redacted]", message)
+                self.assertNotIn(arbitrary_argument, message)
+                self.assertNotIn("operator", message)
+                self.assertNotIn("super-secret", message)
+                self.assertNotIn("ghp_secretvalue", message)
+                self.assertLessEqual(len(message), source_bundle.MAX_GIT_ERROR_CHARS)
 
     def test_candidate_absent_checkout_imports_only_the_verified_local_bundle(self):
         with self.assertRaises(subprocess.CalledProcessError):
