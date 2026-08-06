@@ -85,6 +85,37 @@ class ClassifyChangesTests(unittest.TestCase):
         self.assertEqual(self.selected(e2e), {"repo_policy", "e2e"})
         self.assertTrue(e2e["codeql"])
 
+    def test_signage_artifact_inputs_select_only_the_focused_contract(self) -> None:
+        for path in (
+            "clients/status-agent/status-agent.py",
+            "clients/status-agent/storage_health.py",
+            "clients/status-agent/terminal_agent_health.py",
+            "scripts/deploy/rolling_release/terminal_device_maintenance.py",
+            "scripts/deploy/signage-release-artifact.py",
+            "scripts/deploy/signage-distribution-artifact.py",
+            "scripts/deploy/tests/test_signage_distribution_artifact.py",
+            "infrastructure/ansible/roles/signage/templates/signage-update.sh.j2",
+            "infrastructure/docker/Dockerfile.signage-release",
+        ):
+            with self.subTest(path=path):
+                result = self.classify(Change("M", path))
+                self.assertTrue(result["categories"]["signage_artifact"])
+                if path != "scripts/deploy/rolling_release/terminal_device_maintenance.py":
+                    self.assertFalse(result["releasePair"])
+                    self.assertFalse(result["dockerApi"])
+                    self.assertFalse(result["dockerWeb"])
+
+        for path in (
+            "clients/nfc-agent/nfc_agent/main.py",
+            "scripts/deploy/pi5-blue-green.sh",
+            "infrastructure/ansible/roles/server/tasks/main.yml",
+            "infrastructure/docker/Dockerfile.api",
+            "apps/web/src/main.tsx",
+        ):
+            with self.subTest(path=path):
+                result = self.classify(Change("M", path))
+                self.assertFalse(result["categories"]["signage_artifact"])
+
     def test_web_build_configuration_selects_only_web_image_contracts(self) -> None:
         for path in (
             "infrastructure/ansible/group_vars/server/web-build.yml",
@@ -181,6 +212,7 @@ class ClassifyChangesTests(unittest.TestCase):
                 "e2e=false",
                 "kiosk_sop=false",
                 "docker_security=false",
+                "signage_artifact=false",
                 "full_suite=false",
                 "codeql=true",
                 "docker_api=false",

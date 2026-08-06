@@ -34,6 +34,7 @@ jobs:
       e2e: ${{ steps.classify.outputs.e2e }}
       kiosk_sop: ${{ steps.classify.outputs.kiosk_sop }}
       docker_security: ${{ steps.classify.outputs.docker_security }}
+      signage_artifact: ${{ steps.classify.outputs.signage_artifact }}
       codeql: ${{ steps.classify.outputs.codeql }}
       docker_api: ${{ steps.classify.outputs.docker_api }}
       docker_web: ${{ steps.classify.outputs.docker_web }}
@@ -502,6 +503,76 @@ jobs:
           cd clients/torque-agent
           poetry run pytest tests
           poetry run ruff check torque_agent tests
+
+  signage-artifact-contract:
+    name: signage-artifact-contract
+    needs: change-classification
+    if: ${{ needs.change-classification.outputs.signage_artifact == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact candidate source
+        uses: actions/checkout@v6
+
+      - name: Run real Signage artifact contracts
+        run: python3 -m unittest scripts.deploy.tests.test_signage_distribution_artifact
+
+      - name: Build twice and verify the exact candidate artifact
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy/signage-distribution-artifact.py build \
+            --root . \
+            --source-sha "$GITHUB_SHA" \
+            --output signage-release.tar \
+            --descriptor signage-release-descriptor.json
+          python3 scripts/deploy/signage-distribution-artifact.py build \
+            --root . \
+            --source-sha "$GITHUB_SHA" \
+            --output "$RUNNER_TEMP/signage-release-second.tar" \
+            --descriptor "$RUNNER_TEMP/signage-release-second.json"
+          cmp signage-release.tar "$RUNNER_TEMP/signage-release-second.tar"
+          cmp signage-release-descriptor.json "$RUNNER_TEMP/signage-release-second.json"
+          python3 scripts/deploy/signage-distribution-artifact.py verify \
+            --artifact signage-release.tar \
+            --descriptor signage-release-descriptor.json \
+            --expected-source-sha "$GITHUB_SHA"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build exact Signage artifact image without publication
+        run: |
+          set -euo pipefail
+          artifact_sha="$(python3 -c 'import json; print(json.load(open("signage-release-descriptor.json"))["artifactSha256"])')"
+          manifest_sha="$(python3 -c 'import json; print(json.load(open("signage-release-descriptor.json"))["manifestSha256"])')"
+          docker buildx build --load --platform linux/amd64 \
+            --file infrastructure/docker/Dockerfile.signage-release \
+            --tag "raspisys-pi3-signage-contract:$GITHUB_SHA" \
+            --build-arg "BUILD_COMMIT=$GITHUB_SHA" \
+            --build-arg "ARTIFACT_SHA256=$artifact_sha" \
+            --build-arg "MANIFEST_SHA256=$manifest_sha" .
+
+      - name: Security scan exact Signage artifact image
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          scan-type: 'image'
+          image-ref: raspisys-pi3-signage-contract:${{ github.sha }}
+          ignore-unfixed: true
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+          scanners: 'vuln,secret'
+          trivyignores: '.trivyignore'
+
+      - name: Upload the verified and scanned Signage artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: pi3-signage-release-${{ github.sha }}
+          path: |
+            signage-release.tar
+            signage-release-descriptor.json
+          if-no-files-found: error
+          retention-days: 7
 
   release-build-contract:
     name: release-build-contract
@@ -1084,6 +1155,7 @@ jobs:
       - e2e-smoke
       - e2e-tests
       - kiosk-sop
+      - signage-artifact-contract
     runs-on: ubuntu-latest
     steps:
       - name: Checkout aggregate validator
@@ -1120,6 +1192,8 @@ jobs:
           E2E_TESTS: ${{ needs['e2e-tests'].result }}
           KIOSK_SOP_SELECTED: ${{ needs['change-classification'].outputs.kiosk_sop }}
           KIOSK_SOP_RESULT: ${{ needs['kiosk-sop'].result }}
+          SIGNAGE_ARTIFACT_SELECTED: ${{ needs['change-classification'].outputs.signage_artifact }}
+          SIGNAGE_ARTIFACT_RESULT: ${{ needs['signage-artifact-contract'].result }}
         run: |
           python3 scripts/ci/validate_required_results.py \
             --classification-result "$CHANGE_CLASSIFICATION" \
@@ -1138,7 +1212,140 @@ jobs:
             "docker-security=$DOCKER_SECURITY_SELECTED:$DOCKER_SECURITY_RESULT" \
             "e2e-smoke=$E2E_SELECTED:$E2E_SMOKE" \
             "e2e-tests=$E2E_SELECTED:$E2E_TESTS" \
-            "kiosk-sop=$KIOSK_SOP_SELECTED:$KIOSK_SOP_RESULT"
+            "kiosk-sop=$KIOSK_SOP_SELECTED:$KIOSK_SOP_RESULT" \
+            "signage-artifact-contract=$SIGNAGE_ARTIFACT_SELECTED:$SIGNAGE_ARTIFACT_RESULT"
+
+  signage-artifact-gates:
+    name: signage-artifact-gates
+    needs:
+      - change-classification
+      - ci-required
+    if: >-
+      ${{
+        always() &&
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main' &&
+        needs.change-classification.outputs.signage_artifact == 'true' &&
+        needs['ci-required'].result == 'success'
+      }}
+    runs-on: ubuntu-latest
+    permissions:
+      checks: read
+      contents: read
+    steps:
+      - name: Checkout exact-main Signage publication gate
+        uses: actions/checkout@v6
+
+      - name: Require fixed external checks on the exact SHA
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 scripts/ci/wait_for_release_checks.py \
+            --repository "$GITHUB_REPOSITORY" \
+            --sha "$GITHUB_SHA" \
+            --required codeql \
+            --required gitleaks \
+            --timeout 1800 \
+            --interval 10
+
+  signage-artifact-publish:
+    name: signage-artifact-publish
+    needs:
+      - change-classification
+      - signage-artifact-contract
+      - signage-artifact-gates
+    if: >-
+      ${{
+        always() &&
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main' &&
+        needs.change-classification.outputs.signage_artifact == 'true' &&
+        needs['signage-artifact-contract'].result == 'success' &&
+        needs['signage-artifact-gates'].result == 'success'
+      }}
+    runs-on: ubuntu-latest
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+      packages: write
+    steps:
+      - name: Checkout exact main source
+        uses: actions/checkout@v6
+
+      - name: Download the verified and scanned Signage artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: pi3-signage-release-${{ github.sha }}
+          path: .
+
+      - name: Verify exact-main Signage artifact identity
+        id: identity
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy/signage-distribution-artifact.py verify \
+            --artifact signage-release.tar \
+            --descriptor signage-release-descriptor.json \
+            --expected-source-sha "$GITHUB_SHA"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          descriptor = json.loads(Path("signage-release-descriptor.json").read_text())
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"artifact_sha256={descriptor['artifactSha256']}\n")
+              output.write(f"manifest_sha256={descriptor['manifestSha256']}\n")
+          predicate = {
+              "artifactKind": descriptor["artifactKind"],
+              "artifactSha256": descriptor["artifactSha256"],
+              "manifestSha256": descriptor["manifestSha256"],
+              "schemaVersion": descriptor["schemaVersion"],
+              "sourceSha": descriptor["sourceSha"],
+          }
+          Path("signage-release-attestation.json").write_text(
+              json.dumps(predicate, sort_keys=True, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Log in to GHCR for signed Signage publication
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Publish exact-main Signage artifact as immutable OCI image
+        id: publish
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: infrastructure/docker/Dockerfile.signage-release
+          platforms: linux/arm/v7
+          push: true
+          tags: ghcr.io/denkoushi/raspisys-pi3-signage:${{ github.sha }}
+          build-args: |
+            BUILD_COMMIT=${{ github.sha }}
+            ARTIFACT_SHA256=${{ steps.identity.outputs.artifact_sha256 }}
+            MANIFEST_SHA256=${{ steps.identity.outputs.manifest_sha256 }}
+          provenance: mode=max
+          sbom: true
+
+      - name: Verify the published exact OCI digest exists
+        env:
+          IMAGE_REFERENCE: ghcr.io/denkoushi/raspisys-pi3-signage@${{ steps.publish.outputs.digest }}
+        run: docker buildx imagetools inspect "$IMAGE_REFERENCE"
+
+      - name: Attest source, artifact, and manifest identities
+        uses: actions/attest@v4
+        with:
+          subject-name: ghcr.io/denkoushi/raspisys-pi3-signage
+          subject-digest: ${{ steps.publish.outputs.digest }}
+          predicate-type: https://github.com/denkoushi/RaspberryPiSystem_002/attestations/pi3-signage-release/v1
+          predicate-path: signage-release-attestation.json
+          push-to-registry: true
 
   release-gates:
     name: release-gates

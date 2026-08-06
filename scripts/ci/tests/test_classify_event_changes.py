@@ -60,6 +60,7 @@ class ClassifyEventChangesTests(unittest.TestCase):
                 "e2e": False,
                 "kiosk_sop": False,
                 "docker_security": False,
+                "signage_artifact": False,
             },
         )
         self.assertFalse(result["codeql"])
