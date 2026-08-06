@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import base64
 import binascii
 import gzip
@@ -35,8 +36,101 @@ PREDICATE_TYPE = (
     "https://github.com/denkoushi/RaspberryPiSystem_002/"
     "attestations/pi3-signage-release/v1"
 )
+STATEMENT_TYPE = "https://in-toto.io/Statement/v1"
 SOURCE_REPOSITORY = "denkoushi/RaspberryPiSystem_002"
-SIGNER_WORKFLOW = "denkoushi/RaspberryPiSystem_002/.github/workflows/ci.yml"
+SIGNER_IDENTITY = (
+    "https://github.com/denkoushi/RaspberryPiSystem_002/"
+    ".github/workflows/ci.yml@refs/heads/main"
+)
+OIDC_ISSUER = "https://token.actions.githubusercontent.com"
+CERTIFICATE_ISSUER = "CN=sigstore-intermediate,O=sigstore.dev"
+GH_VERSION = "2.96.0"
+TRUSTED_ROOT_SHA256 = "3c2cc7f357dc064ec527fdcd78da6e9245c21a381e1abaa0f2b62b186bcac1a1"
+_TRUSTED_ROOT_B64 = (
+    "eyJtZWRpYVR5cGUiOiJhcHBsaWNhdGlvbi92bmQuZGV2LnNpZ3N0b3JlLnRydXN0ZWRyb290K2pzb247dmVyc2lvbj0wLjEi"
+    "LCJ0bG9ncyI6W3siYmFzZVVybCI6Imh0dHBzOi8vcmVrb3Iuc2lnc3RvcmUuZGV2IiwiaGFzaEFsZ29yaXRobSI6IlNIQTJf"
+    "MjU2IiwicHVibGljS2V5Ijp7InJhd0J5dGVzIjoiTUZrd0V3WUhLb1pJemowQ0FRWUlLb1pJemowREFRY0RRZ0FFMkcyWSsy"
+    "dGFiZFRWNUJjR2lCSXgwYTlmQUZ3cmtCYm1MU0d0a3M0TDNxWDZ5WVkwenVmQm5oQzhVci9peTU1R2hXUC85QS9iWTJMaEMz"
+    "ME05K1JZdHc9PSIsImtleURldGFpbHMiOiJQS0lYX0VDRFNBX1AyNTZfU0hBXzI1NiIsInZhbGlkRm9yIjp7InN0YXJ0Ijoi"
+    "MjAyMS0wMS0xMlQxMTo1MzoyN1oifX0sImxvZ0lkIjp7ImtleUlkIjoid05JOWF0UUdseitWV2ZPNkxSeWdINFFVZlkvOFc0"
+    "UkZ3aVQ1aTVXUmdCMD0ifX0seyJiYXNlVXJsIjoiaHR0cHM6Ly9sb2cyMDI1LTEucmVrb3Iuc2lnc3RvcmUuZGV2IiwiaGFz"
+    "aEFsZ29yaXRobSI6IlNIQTJfMjU2IiwicHVibGljS2V5Ijp7InJhd0J5dGVzIjoiTUNvd0JRWURLMlZ3QXlFQXQ4cmxwMWtu"
+    "R3dqZmJjWEFZUFlBa24wWGlMejF4OE80dDBZa0VoaWUyNDQ9Iiwia2V5RGV0YWlscyI6IlBLSVhfRUQyNTUxOSIsInZhbGlk"
+    "Rm9yIjp7InN0YXJ0IjoiMjAyNS0wOS0yM1QwMDowMDowMFoifX0sImxvZ0lkIjp7ImtleUlkIjoienhHWkZWdmQwRkVtalI4"
+    "V3JGd01kY0FKOXZ0YVkvUVhmNDRZMXdVZVA2QT0ifX1dLCJjZXJ0aWZpY2F0ZUF1dGhvcml0aWVzIjpbeyJzdWJqZWN0Ijp7"
+    "Im9yZ2FuaXphdGlvbiI6InNpZ3N0b3JlLmRldiIsImNvbW1vbk5hbWUiOiJzaWdzdG9yZSJ9LCJ1cmkiOiJodHRwczovL2Z1"
+    "bGNpby5zaWdzdG9yZS5kZXYiLCJjZXJ0Q2hhaW4iOnsiY2VydGlmaWNhdGVzIjpbeyJyYXdCeXRlcyI6Ik1JSUIrRENDQVg2"
+    "Z0F3SUJBZ0lUTlZrRFpvQ2lvZlBEc3k3ZGZtNmdlTGJ1aHpBS0JnZ3Foa2pPUFFRREF6QXFNUlV3RXdZRFZRUUtFd3h6YVdk"
+    "emRHOXlaUzVrWlhZeEVUQVBCZ05WQkFNVENITnBaM04wYjNKbE1CNFhEVEl4TURNd056QXpNakF5T1ZvWERUTXhNREl5TXpB"
+    "ek1qQXlPVm93S2pFVk1CTUdBMVVFQ2hNTWMybG5jM1J2Y21VdVpHVjJNUkV3RHdZRFZRUURFd2h6YVdkemRHOXlaVEIyTUJB"
+    "R0J5cUdTTTQ5QWdFR0JTdUJCQUFpQTJJQUJMU3lBN0lpNWsrcE5POFpFV1kweWxlbVdEb3dPa05hM2tMK0daRTVaNUdXZWhM"
+    "OS9BOWJSTkEzUmJyc1o1aTBKY2FzdGFSTDdTcDVmcC9qRDVkeHFjL1VkVFZubHZTMTZhbisyWWZzd2UvUXVMb2xSVUNyY09F"
+    "MisyaUE1K3R6ZDZObU1HUXdEZ1lEVlIwUEFRSC9CQVFEQWdFR01CSUdBMVVkRXdFQi93UUlNQVlCQWY4Q0FRRXdIUVlEVlIw"
+    "T0JCWUVGTWpGSFFCQm1pUXBNbEVrNncydVN1MUtCdFBzTUI4R0ExVWRJd1FZTUJhQUZNakZIUUJCbWlRcE1sRWs2dzJ1U3Ux"
+    "S0J0UHNNQW9HQ0NxR1NNNDlCQU1EQTJnQU1HVUNNSDhsaVdKZk11aTZ2WFhCaGpEZ1k0TXdzbG1OL1RKeFZlLzgzV3JGb213"
+    "bU5mMDU2eTFYNDhGOWM0bTNhM296WEFJeEFLalJheTUvYWovanNLS0dJa21RYXRqSTh1dXBIci8rQ3hGdmFKV21wWXFOa0xE"
+    "R1JVKzlvcnpoNWhJMlJyY3VhUT09In1dfSwidmFsaWRGb3IiOnsic3RhcnQiOiIyMDIxLTAzLTA3VDAzOjIwOjI5WiIsImVu"
+    "ZCI6IjIwMjItMTItMzFUMjM6NTk6NTkuOTk5WiJ9fSx7InN1YmplY3QiOnsib3JnYW5pemF0aW9uIjoic2lnc3RvcmUuZGV2"
+    "IiwiY29tbW9uTmFtZSI6InNpZ3N0b3JlIn0sInVyaSI6Imh0dHBzOi8vZnVsY2lvLnNpZ3N0b3JlLmRldiIsImNlcnRDaGFp"
+    "biI6eyJjZXJ0aWZpY2F0ZXMiOlt7InJhd0J5dGVzIjoiTUlJQ0dqQ0NBYUdnQXdJQkFnSVVBTG5WaVZmblUwYnJKYXNtUmtI"
+    "cm4vVW5mYVF3Q2dZSUtvWkl6ajBFQXdNd0tqRVZNQk1HQTFVRUNoTU1jMmxuYzNSdmNtVXVaR1YyTVJFd0R3WURWUVFERXdo"
+    "emFXZHpkRzl5WlRBZUZ3MHlNakEwTVRNeU1EQTJNVFZhRncwek1URXdNRFV4TXpVMk5UaGFNRGN4RlRBVEJnTlZCQW9UREhO"
+    "cFozTjBiM0psTG1SbGRqRWVNQndHQTFVRUF4TVZjMmxuYzNSdmNtVXRhVzUwWlhKdFpXUnBZWFJsTUhZd0VBWUhLb1pJemow"
+    "Q0FRWUZLNEVFQUNJRFlnQUU4UlZTL3lzSCtOT3Z1RFp5UEladGlsZ1VGOU5sYXJZcEFkOUhQMXZCQkgxVTVDVjc3TFNTN3Mw"
+    "WmlING5FN0h2N3B0UzZMdnZSL1NUazc5OExWZ016TGxKNEhlSWZGM3RIU2FleExjWXBTQVNyMWtTME4vUmdCSnovOWpXQ2lY"
+    "bm8zc3dlVEFPQmdOVkhROEJBZjhFQkFNQ0FRWXdFd1lEVlIwbEJBd3dDZ1lJS3dZQkJRVUhBd013RWdZRFZSMFRBUUgvQkFn"
+    "d0JnRUIvd0lCQURBZEJnTlZIUTRFRmdRVTM5UHB6MVlrRVpiNXFOanBLRldpeGk0WVpEOHdId1lEVlIwakJCZ3dGb0FVV01B"
+    "ZVg1RkZwV2FwZXN5UW9aTWkwQ3JGeGZvd0NnWUlLb1pJemowRUF3TURad0F3WkFJd1BDc1FLNERZaVpZRFBJYURpNUhGS25m"
+    "eFh4NkFTU1ZtRVJmc3luWUJpWDJYNlNKUm5aVTg0LzlEWmRuRnZ2eG1BakJPdDZRcEJsYzRKLzBEeHZrVENxcGNsdnppTDZC"
+    "Q0NQbmpkbElCM1B1M0J4c1BteWdVWTdJaTJ6YmRDZGxpaW93PSJ9LHsicmF3Qnl0ZXMiOiJNSUlCOXpDQ0FYeWdBd0lCQWdJ"
+    "VUFMWk5BUEZkeEhQd2plRGxvRHd5WUNoQU8vNHdDZ1lJS29aSXpqMEVBd013S2pFVk1CTUdBMVVFQ2hNTWMybG5jM1J2Y21V"
+    "dVpHVjJNUkV3RHdZRFZRUURFd2h6YVdkemRHOXlaVEFlRncweU1URXdNRGN4TXpVMk5UbGFGdzB6TVRFd01EVXhNelUyTlRo"
+    "YU1Db3hGVEFUQmdOVkJBb1RESE5wWjNOMGIzSmxMbVJsZGpFUk1BOEdBMVVFQXhNSWMybG5jM1J2Y21Vd2RqQVFCZ2NxaGtq"
+    "T1BRSUJCZ1VyZ1FRQUlnTmlBQVQ3WGVGVDRyYjNQUUd3UzRJYWp0TGszL09sbnBnYW5nYUJjbFlwc1lCcjVpKzR5bkIwN2Nl"
+    "YjNMUDBPSU9aZHhleFg2OWM1aVZ1eUpSUStIejA1eWkrVUYzdUJXQWxIcGlTNXNoMCtIMkdIRTdTWHJrMUVDNW0xVHIxOUw5"
+    "Z2c5MmpZekJoTUE0R0ExVWREd0VCL3dRRUF3SUJCakFQQmdOVkhSTUJBZjhFQlRBREFRSC9NQjBHQTFVZERnUVdCQlJZd0I1"
+    "ZmtVV2xacWw2ekpDaGt5TFFLc1hGK2pBZkJnTlZIU01FR0RBV2dCUll3QjVma1VXbFpxbDZ6SkNoa3lMUUtzWEYrakFLQmdn"
+    "cWhrak9QUVFEQXdOcEFEQm1BakVBajFuSGVYWnArMTNOV0JOYStFRHNEUDhHMVdXZzF0Q01XUC9XSFBxcGFWbzBqaHN3ZU5G"
+    "WmdTczBlRTd3WUk0cUFqRUEyV0I5b3Q5OHNJa29GM3ZaWWRkMy9WdFdCNWI5VE5NZWE3SXgvc3RKNVRmY0xMZUFCTEU0Qk5K"
+    "T3NRNHZuQkhKIn1dfSwidmFsaWRGb3IiOnsic3RhcnQiOiIyMDIyLTA0LTEzVDIwOjA2OjE1WiJ9fV0sImN0bG9ncyI6W3si"
+    "YmFzZVVybCI6Imh0dHBzOi8vY3RmZS5zaWdzdG9yZS5kZXYvdGVzdCIsImhhc2hBbGdvcml0aG0iOiJTSEEyXzI1NiIsInB1"
+    "YmxpY0tleSI6eyJyYXdCeXRlcyI6Ik1Ga3dFd1lIS29aSXpqMENBUVlJS29aSXpqMERBUWNEUWdBRWJmd1IrUkp1ZFhzY2dS"
+    "QlJwS1gxWEZEeTNQeXVkRHh6L1NmblJpMWZUOGVrcGZCZDJPMXVvejdqcjNaOG5LenhBNjlFVVErZUZDRkkzemV1YlBXVTd3"
+    "PT0iLCJrZXlEZXRhaWxzIjoiUEtJWF9FQ0RTQV9QMjU2X1NIQV8yNTYiLCJ2YWxpZEZvciI6eyJzdGFydCI6IjIwMjEtMDMt"
+    "MTRUMDA6MDA6MDBaIiwiZW5kIjoiMjAyMi0xMC0zMVQyMzo1OTo1OS45OTlaIn19LCJsb2dJZCI6eyJrZXlJZCI6IkNHQ1M4"
+    "Q2hTLzJoRjBkRnJKNFNjUldjWXJCWTl3empTYmVhOElnWTJiM0k9In19LHsiYmFzZVVybCI6Imh0dHBzOi8vY3RmZS5zaWdz"
+    "dG9yZS5kZXYvMjAyMiIsImhhc2hBbGdvcml0aG0iOiJTSEEyXzI1NiIsInB1YmxpY0tleSI6eyJyYXdCeXRlcyI6Ik1Ga3dF"
+    "d1lIS29aSXpqMENBUVlJS29aSXpqMERBUWNEUWdBRWlQU2xGaTBDbUZUZkVqQ1VxRjlIdUNFY1lYTktBYVlhbElKbUJaOHl5"
+    "ZXpQalRxaHhyS0JwTW5hb2NWdExKQkkxZU0zdVhuUXpRR0FKZEo0Z3M5Rnl3PT0iLCJrZXlEZXRhaWxzIjoiUEtJWF9FQ0RT"
+    "QV9QMjU2X1NIQV8yNTYiLCJ2YWxpZEZvciI6eyJzdGFydCI6IjIwMjItMTAtMjBUMDA6MDA6MDBaIn19LCJsb2dJZCI6eyJr"
+    "ZXlJZCI6IjNUMHdhc2JIRVRKakdSNGNtV2MzQXFKS1hyamVQSzMvaDRweWdDOHA3bzQ9In19XSwidGltZXN0YW1wQXV0aG9y"
+    "aXRpZXMiOlt7InN1YmplY3QiOnsib3JnYW5pemF0aW9uIjoic2lnc3RvcmUuZGV2IiwiY29tbW9uTmFtZSI6InNpZ3N0b3Jl"
+    "LXRzYS1zZWxmc2lnbmVkIn0sInVyaSI6Imh0dHBzOi8vdGltZXN0YW1wLnNpZ3N0b3JlLmRldi9hcGkvdjEvdGltZXN0YW1w"
+    "IiwiY2VydENoYWluIjp7ImNlcnRpZmljYXRlcyI6W3sicmF3Qnl0ZXMiOiJNSUlDRURDQ0FaYWdBd0lCQWdJVU9oTlVMd3lR"
+    "WWU2OHdVTXZ5NHFPaXlvaml3d3dDZ1lJS29aSXpqMEVBd013T1RFVk1CTUdBMVVFQ2hNTWMybG5jM1J2Y21VdVpHVjJNU0F3"
+    "SGdZRFZRUURFeGR6YVdkemRHOXlaUzEwYzJFdGMyVnNabk5wWjI1bFpEQWVGdzB5TlRBME1EZ3dOalU1TkROYUZ3MHpOVEEw"
+    "TURZd05qVTVORE5hTUM0eEZUQVRCZ05WQkFvVERITnBaM04wYjNKbExtUmxkakVWTUJNR0ExVUVBeE1NYzJsbmMzUnZjbVV0"
+    "ZEhOaE1IWXdFQVlIS29aSXpqMENBUVlGSzRFRUFDSURZZ0FFNHJhMlo4aEtOaWcyVDlrRmpDQVRvR0czMGpreStXUXYzQnpM"
+    "K21LdmgxU0tOUi9Vd3V3c2ZOQ2c0c3J5b1lBZDhFNmlzb3ZWQTNNNGFvTmRtOVFEaTUwWjhuVEV5dnFnZkRQdFRJd1hJdGZp"
+    "Vy9BRmYxVjd1d2tia0FvajB4eGNvMm93YURBT0JnTlZIUThCQWY4RUJBTUNCNEF3SFFZRFZSME9CQllFRkluOWVVT0h6OUJs"
+    "UnNNQ1JzY3NjMXQ5dE9zRE1COEdBMVVkSXdRWU1CYUFGSmpzQWU5L3UxSC8xSlVlYjRxSW1GTUhpYzYvTUJZR0ExVWRKUUVC"
+    "L3dRTU1Bb0dDQ3NHQVFVRkJ3TUlNQW9HQ0NxR1NNNDlCQU1EQTJnQU1HVUNNRHRwc1YvNkthTzBxeUYvVU1zWDJhU1VYS1FG"
+    "ZG9HVHB0UUdjMGZ0cTFjc3VsSFBHRzZkc215TU5kM0pCK0czRVFJeEFPYWp2QmNqcEptS2I0TnYrMlRhb2o4VWM1K2I2aWg2"
+    "RlhDQ0tyYVNxdXBlMDd6cXN3TWNYSlRlMWNFeHZIdnZsdz09In0seyJyYXdCeXRlcyI6Ik1JSUI5ekNDQVh5Z0F3SUJBZ0lV"
+    "VjdmMEdMRE9vRXpJaDhMWFNXODBPSmlVcDE0d0NnWUlLb1pJemowRUF3TXdPVEVWTUJNR0ExVUVDaE1NYzJsbmMzUnZjbVV1"
+    "WkdWMk1TQXdIZ1lEVlFRREV4ZHphV2R6ZEc5eVpTMTBjMkV0YzJWc1puTnBaMjVsWkRBZUZ3MHlOVEEwTURnd05qVTVORE5h"
+    "Rncwek5UQTBNRFl3TmpVNU5ETmFNRGt4RlRBVEJnTlZCQW9UREhOcFozTjBiM0psTG1SbGRqRWdNQjRHQTFVRUF4TVhjMmxu"
+    "YzNSdmNtVXRkSE5oTFhObGJHWnphV2R1WldRd2RqQVFCZ2NxaGtqT1BRSUJCZ1VyZ1FRQUlnTmlBQVFVUU50ZlJUL291M1lB"
+    "VGE2d0Iva0tUZTcwY2ZKd3lSSUJvdk1udDhSY0pwaC9DT0U4MnV5UzZGbXBwTExMMVZCUEdjUGZwUVBZSk5Yeld3aThpY3do"
+    "S1E2Vy9RZTJoM29lYkJiMkZIcHdOSkRxbytUTWFDL3RkZmt2L0VsSkI3MmpSVEJETUE0R0ExVWREd0VCL3dRRUF3SUJCakFT"
+    "QmdOVkhSTUJBZjhFQ0RBR0FRSC9BZ0VBTUIwR0ExVWREZ1FXQkJTWTdBSHZmN3RSLzlTVkhtK0tpSmhUQjRuT3Z6QUtCZ2dx"
+    "aGtqT1BRUURBd05wQURCbUFqRUF3R0VHcmZHWlIxY2VuMVI4L0RUVk1JOTQzTHNzWm1KUnREcC9pN1NmR0htR1JQNmdSYnVq"
+    "OXZPSzNiNjdaMFFRQWpFQXVUMkg2NzNMUUVhSFRjeVFTWnJrcDRtWDdXd2ttRitzVmJrWVk1bVhOK1JNSDEzS1VFSEhPcUFT"
+    "YWVtWVdLL0UifV19LCJ2YWxpZEZvciI6eyJzdGFydCI6IjIwMjUtMDctMDRUMDA6MDA6MDBaIn19XX0K"
+)
+TRUSTED_ROOT_BYTES = base64.b64decode(_TRUSTED_ROOT_B64, validate=True)
+if hashlib.sha256(TRUSTED_ROOT_BYTES).hexdigest() != TRUSTED_ROOT_SHA256:
+    raise RuntimeError("embedded Signage attestation trusted root is corrupt")
 DEFAULT_STAGING_ROOT = Path("/var/tmp/raspisystem-signage-stage")
 DEFAULT_CONFIG_PATH = Path("/etc/raspi-release/artifact-promotion.json")
 ARTIFACT_NAME = "signage-release.tar"
@@ -346,7 +440,8 @@ def verify_attestation_statement(
     }
     if (
         not isinstance(statement, Mapping)
-        or set(statement) != {"subject", "predicateType", "predicate"}
+        or set(statement) != {"_type", "subject", "predicateType", "predicate"}
+        or statement.get("_type") != STATEMENT_TYPE
         or statement.get("subject") != [expected_subject]
         or statement.get("predicateType") != PREDICATE_TYPE
         or statement.get("predicate") != expected_predicate
@@ -1477,11 +1572,18 @@ class GhcrAcquisition:
 
 
 class GhAttestor:
-    """Invoke the existing pinned verifier and return its one verified statement."""
+    """Run the one pinned GitHub/Sigstore verification contract."""
 
-    def __init__(self, config: Mapping[str, str], *, gh: str | None = None) -> None:
+    def __init__(
+        self,
+        config: Mapping[str, str],
+        *,
+        gh: str | None = None,
+        bundle: Path | None = None,
+    ) -> None:
         self.token = config.get("token", "")
         self.gh = gh or shutil.which("gh") or ""
+        self.bundle = bundle
 
     def verify(
         self, artifact_ref: str, exact_reference: str, source_sha: str
@@ -1493,20 +1595,62 @@ class GhAttestor:
                 "GitHub attestation verifier is unavailable",
             )
         with tempfile.TemporaryDirectory(prefix="signage-stage-gh-") as directory:
+            trusted_root = Path(directory) / "sigstore-public-good-trusted-root.json"
+            trusted_root.write_bytes(TRUSTED_ROOT_BYTES)
+            trusted_root.chmod(0o600)
             environment = os.environ.copy()
             environment["GH_CONFIG_DIR"] = directory
             environment["GH_TOKEN"] = self.token or "public-oci-attestation-verification"
             environment.pop("GITHUB_TOKEN", None)
+            try:
+                version_result = subprocess.run(
+                    [self.gh, "--version"],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                    env=environment,
+                    timeout=30,
+                    check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired) as error:
+                raise StageError(
+                    "attestation-verification", "attestation", "incomplete",
+                    "GitHub attestation verifier version could not be checked",
+                ) from error
+            first_line = version_result.stdout.splitlines()[0] if version_result.stdout else ""
+            version_match = re.fullmatch(
+                r"(?:gh version )?([0-9]+\.[0-9]+\.[0-9]+)(?: \([^\n]+\))?",
+                first_line,
+            )
+            if (
+                version_result.returncode != 0
+                or version_match is None
+                or version_match.group(1) != GH_VERSION
+            ):
+                raise StageError(
+                    "attestation-verification", "attestation", "blocked",
+                    "Signage attestation verifier does not match the pinned version",
+                )
+            bundle_arguments = (
+                ["--bundle", os.fspath(self.bundle)]
+                if self.bundle is not None
+                else ["--bundle-from-oci"]
+            )
             command = [
                 self.gh,
                 "attestation",
                 "verify",
                 f"oci://{exact_reference}",
-                "--bundle-from-oci",
+                *bundle_arguments,
+                "--custom-trusted-root",
+                os.fspath(trusted_root),
                 "--repo",
                 SOURCE_REPOSITORY,
-                "--signer-workflow",
-                SIGNER_WORKFLOW,
+                "--cert-identity",
+                SIGNER_IDENTITY,
+                "--cert-oidc-issuer",
+                OIDC_ISSUER,
                 "--source-digest",
                 source_sha,
                 "--source-ref",
@@ -1545,18 +1689,45 @@ class GhAttestor:
             code="attestation-verification",
             stage_name="attestation",
         )
-        statements = [
-            item.get("verificationResult", {}).get("statement")
+        results = [
+            item["verificationResult"]
             for item in value
             if isinstance(item, Mapping)
             and isinstance(item.get("verificationResult"), Mapping)
         ] if isinstance(value, list) else []
-        if len(statements) != 1 or not isinstance(statements[0], Mapping):
+        if len(results) != 1:
             raise StageError(
                 "attestation-verification", "attestation", "blocked",
                 "verified Signage attestation statement is ambiguous",
             )
-        return statements[0]
+        result = results[0]
+        statement = result.get("statement")
+        signature = result.get("signature")
+        certificate = signature.get("certificate") if isinstance(signature, Mapping) else None
+        expected_certificate = {
+            "certificateIssuer": CERTIFICATE_ISSUER,
+            "subjectAlternativeName": SIGNER_IDENTITY,
+            "issuer": OIDC_ISSUER,
+            "githubWorkflowSHA": source_sha,
+            "githubWorkflowRepository": SOURCE_REPOSITORY,
+            "githubWorkflowRef": "refs/heads/main",
+            "buildSignerURI": SIGNER_IDENTITY,
+            "runnerEnvironment": "github-hosted",
+            "sourceRepositoryURI": f"https://github.com/{SOURCE_REPOSITORY}",
+            "sourceRepositoryDigest": source_sha,
+            "sourceRepositoryRef": "refs/heads/main",
+            "sourceRepositoryOwnerURI": "https://github.com/denkoushi",
+        }
+        if (
+            not isinstance(statement, Mapping)
+            or not isinstance(certificate, Mapping)
+            or any(certificate.get(key) != expected for key, expected in expected_certificate.items())
+        ):
+            raise StageError(
+                "attestation-verification", "attestation", "blocked",
+                "verified Signage attestation identity does not match the pinned policy",
+            )
+        return statement
 
 
 def _source_text() -> str:
@@ -1902,8 +2073,84 @@ def execute_preflight(spec: Mapping[str, Any]) -> tuple[int, dict[str, Any]]:
     return code, report
 
 
+def verify_published_attestation(argv: Sequence[str]) -> int:
+    """Verify one already-published exact Signage OCI without acquiring it."""
+
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--exact-reference", required=True)
+    parser.add_argument("--source-sha", required=True)
+    parser.add_argument("--artifact-sha256", required=True)
+    parser.add_argument("--manifest-sha256", required=True)
+    parser.add_argument("--gh")
+    args = parser.parse_args(list(argv))
+    if (
+        FULL_SHA_RE.fullmatch(args.source_sha) is None
+        or SHA256_RE.fullmatch(args.artifact_sha256) is None
+        or SHA256_RE.fullmatch(args.manifest_sha256) is None
+        or not args.exact_reference.startswith(f"{ARTIFACT_REPOSITORY}@sha256:")
+        or SHA256_RE.fullmatch(args.exact_reference.rsplit("@sha256:", 1)[-1]) is None
+    ):
+        raise StageError(
+            "request-validation", "attestation", "blocked",
+            "published Signage attestation identity is malformed",
+        )
+    statement = GhAttestor(
+        {"token": os.environ.get("GH_TOKEN", "")}, gh=args.gh
+    ).verify(
+        f"{ARTIFACT_REPOSITORY}:{args.source_sha}",
+        args.exact_reference,
+        args.source_sha,
+    )
+    descriptor = {
+        "sourceSha": args.source_sha,
+        "artifactSha256": args.artifact_sha256,
+        "manifestSha256": args.manifest_sha256,
+    }
+    verify_attestation_statement(
+        statement, exact_reference=args.exact_reference, descriptor=descriptor
+    )
+    result = {
+        "operation": "pi3-signage-attestation-verification",
+        "status": "passed",
+        "verifier": {"name": "gh", "version": GH_VERSION},
+        "policy": {
+            "trustedRootSha256": TRUSTED_ROOT_SHA256,
+            "repository": SOURCE_REPOSITORY,
+            "signerIdentity": SIGNER_IDENTITY,
+            "oidcIssuer": OIDC_ISSUER,
+            "predicateType": PREDICATE_TYPE,
+        },
+        "identity": {
+            "exactReference": args.exact_reference,
+            **descriptor,
+        },
+    }
+    print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments[:1] == ["--verify-published-attestation"]:
+        try:
+            return verify_published_attestation(arguments[1:])
+        except StageError as error:
+            print(
+                json.dumps(
+                    {
+                        "operation": "pi3-signage-attestation-verification",
+                        "status": error.status,
+                        "failure": {
+                            "code": error.code,
+                            "stage": error.stage,
+                            "message": str(error),
+                        },
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            )
+            return 78 if error.status == "blocked" else 70
     if len(arguments) != 1:
         report = _failure(
             _empty_report("", None, "", DEFAULT_STAGING_ROOT, False),

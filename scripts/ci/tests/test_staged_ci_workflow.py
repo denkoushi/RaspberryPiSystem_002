@@ -135,6 +135,8 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("signage-distribution-artifact.py verify", contract)
         self.assertIn("Security scan exact Signage artifact image", contract)
         self.assertIn("actions/upload-artifact@v6", contract)
+        self.assertIn("gh version 2.96.0", contract)
+        self.assertIn("ProductionAttestationBoundary", contract)
         for forbidden in ("packages: write", "attestations: write", "id-token: write"):
             self.assertNotIn(forbidden, contract)
 
@@ -154,6 +156,11 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("ghcr.io/denkoushi/raspisys-pi3-signage:${{ github.sha }}", publish)
         self.assertIn("predicate-path: signage-release-attestation.json", publish)
         self.assertIn("push-to-registry: true", publish)
+        self.assertIn("gh version 2.96.0", publish)
+        self.assertIn("--verify-published-attestation", publish)
+        self.assertIn("${{ steps.publish.outputs.digest }}", publish)
+        self.assertIn("${{ steps.identity.outputs.artifact_sha256 }}", publish)
+        self.assertIn("${{ steps.identity.outputs.manifest_sha256 }}", publish)
         self.assertEqual(release_set.count("uses: actions/attest@v4"), 3)
 
     def test_main_release_pair_is_native_arm64_scanned_and_attested(self) -> None:

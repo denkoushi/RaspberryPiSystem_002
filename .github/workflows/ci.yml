@@ -515,8 +515,27 @@ jobs:
       - name: Checkout exact candidate source
         uses: actions/checkout@v6
 
+      - name: Install the exact Signage attestation verifier
+        env:
+          SIGNAGE_GH_VERSION: 2.96.0
+          SIGNAGE_GH_ARCHIVE_SHA256: 83d5c2ccad5498f58bf6368acb1ab32588cf43ab3a4b1c301bf36328b1c8bd60
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/gh_${SIGNAGE_GH_VERSION}_linux_amd64.tar.gz"
+          curl --fail --location --silent --show-error \
+            "https://github.com/cli/cli/releases/download/v${SIGNAGE_GH_VERSION}/gh_${SIGNAGE_GH_VERSION}_linux_amd64.tar.gz" \
+            --output "$archive"
+          echo "${SIGNAGE_GH_ARCHIVE_SHA256}  $archive" | sha256sum --check --strict
+          tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP"
+          signage_gh="$RUNNER_TEMP/gh_${SIGNAGE_GH_VERSION}_linux_amd64/bin/gh"
+          test "$("$signage_gh" --version | sed -n '1p')" = "gh version 2.96.0 (2026-07-02)"
+          echo "SIGNAGE_GH=$signage_gh" >> "$GITHUB_ENV"
+
       - name: Run real Signage artifact contracts
-        run: python3 -m unittest scripts.deploy.tests.test_signage_distribution_artifact
+        run: |
+          python3 -m unittest scripts.deploy.tests.test_signage_distribution_artifact
+          python3 -m unittest \
+            scripts.deploy.tests.test_signage_artifact_stage.ProductionAttestationBoundary
 
       - name: Build twice and verify the exact candidate artifact
         run: |
@@ -1279,6 +1298,22 @@ jobs:
           name: pi3-signage-release-${{ github.sha }}
           path: .
 
+      - name: Install the exact Signage attestation verifier
+        env:
+          SIGNAGE_GH_VERSION: 2.96.0
+          SIGNAGE_GH_ARCHIVE_SHA256: 83d5c2ccad5498f58bf6368acb1ab32588cf43ab3a4b1c301bf36328b1c8bd60
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/gh_${SIGNAGE_GH_VERSION}_linux_amd64.tar.gz"
+          curl --fail --location --silent --show-error \
+            "https://github.com/cli/cli/releases/download/v${SIGNAGE_GH_VERSION}/gh_${SIGNAGE_GH_VERSION}_linux_amd64.tar.gz" \
+            --output "$archive"
+          echo "${SIGNAGE_GH_ARCHIVE_SHA256}  $archive" | sha256sum --check --strict
+          tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP"
+          signage_gh="$RUNNER_TEMP/gh_${SIGNAGE_GH_VERSION}_linux_amd64/bin/gh"
+          test "$("$signage_gh" --version | sed -n '1p')" = "gh version 2.96.0 (2026-07-02)"
+          echo "SIGNAGE_GH=$signage_gh" >> "$GITHUB_ENV"
+
       - name: Verify exact-main Signage artifact identity
         id: identity
         run: |
@@ -1346,6 +1381,19 @@ jobs:
           predicate-type: https://github.com/denkoushi/RaspberryPiSystem_002/attestations/pi3-signage-release/v1
           predicate-path: signage-release-attestation.json
           push-to-registry: true
+
+      - name: Production-equivalent verification of the published attestation
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy/rolling_release/signage_artifact_stage.py \
+            --verify-published-attestation \
+            --gh "$SIGNAGE_GH" \
+            --exact-reference "ghcr.io/denkoushi/raspisys-pi3-signage@${{ steps.publish.outputs.digest }}" \
+            --source-sha "$GITHUB_SHA" \
+            --artifact-sha256 "${{ steps.identity.outputs.artifact_sha256 }}" \
+            --manifest-sha256 "${{ steps.identity.outputs.manifest_sha256 }}"
 
   release-gates:
     name: release-gates
