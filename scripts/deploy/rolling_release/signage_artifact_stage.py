@@ -81,6 +81,36 @@ class Acquisition(Protocol):
     def acquire(self, artifact_ref: str, directory: Path) -> Mapping[str, Any]: ...
 
 
+class DigestPinnedAcquisition:
+    """Reject mutable-tag drift before the first target-side operation."""
+
+    def __init__(self, acquisition: Acquisition, expected_digest: str) -> None:
+        if (
+            not isinstance(expected_digest, str)
+            or not expected_digest.startswith("sha256:")
+            or SHA256_RE.fullmatch(expected_digest.removeprefix("sha256:")) is None
+        ):
+            raise StageError(
+                "request-validation",
+                "request",
+                "blocked",
+                "expected OCI digest is malformed",
+            )
+        self.acquisition = acquisition
+        self.expected_digest = expected_digest
+
+    def acquire(self, artifact_ref: str, directory: Path) -> Mapping[str, Any]:
+        result = self.acquisition.acquire(artifact_ref, directory)
+        if not isinstance(result, Mapping) or result.get("ociDigest") != self.expected_digest:
+            raise StageError(
+                "oci-digest-mismatch",
+                "acquisition",
+                "blocked",
+                "resolved OCI digest does not match the exact preflight input",
+            )
+        return result
+
+
 class Attestor(Protocol):
     def verify(
         self, artifact_ref: str, exact_reference: str, source_sha: str
@@ -1801,14 +1831,22 @@ def parse_preflight_spec(raw: str) -> dict[str, Any]:
         raise StageError(
             "request-validation", "request", "blocked", "preflight stage request is malformed"
         ) from error
-    expected = {
+    common = {
         "version", "mode", "artifactRef", "runId", "stagingRoot", "retain", "target", "configPath"
     }
+    mode = value.get("mode") if isinstance(value, dict) else None
+    expected = (
+        common
+        if mode == "preflight"
+        else common | {"expectedOciDigest"}
+        if mode == "artifact-preflight"
+        else set()
+    )
     if (
         not isinstance(value, dict)
         or set(value) != expected
         or value.get("version") != SCHEMA_VERSION
-        or value.get("mode") != "preflight"
+        or mode not in {"preflight", "artifact-preflight"}
         or value.get("retain") is not False
         or value.get("stagingRoot") != os.fspath(DEFAULT_STAGING_ROOT)
         or value.get("configPath") != os.fspath(DEFAULT_CONFIG_PATH)
@@ -1819,19 +1857,37 @@ def parse_preflight_spec(raw: str) -> dict[str, Any]:
     _artifact_source_sha(value["artifactRef"])
     _validated_run_id(value["runId"])
     _validated_target(value["target"])
+    if mode == "artifact-preflight":
+        digest = value.get("expectedOciDigest")
+        if (
+            not isinstance(digest, str)
+            or not digest.startswith("sha256:")
+            or SHA256_RE.fullmatch(digest.removeprefix("sha256:")) is None
+        ):
+            raise StageError(
+                "request-validation",
+                "request",
+                "blocked",
+                "exact OCI digest is malformed",
+            )
     return value
 
 
 def execute_preflight(spec: Mapping[str, Any]) -> tuple[int, dict[str, Any]]:
     config = load_registry_config(Path(spec["configPath"]))
     verifier_source = _verifier_source()
+    acquisition: Acquisition = GhcrAcquisition(config)
+    if spec.get("mode") == "artifact-preflight":
+        acquisition = DigestPinnedAcquisition(
+            acquisition, str(spec["expectedOciDigest"])
+        )
     report = acquire_and_stage(
         spec["artifactRef"],
         spec["target"],
         spec["runId"],
         Path(spec["stagingRoot"]),
         False,
-        acquisition=GhcrAcquisition(config),
+        acquisition=acquisition,
         attestor=GhAttestor(config),
         transport=SshTargetTransport(
             spec["target"],

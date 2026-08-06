@@ -415,6 +415,64 @@ class SystemdBackend:
             self.build_signage_artifact_stage_command(spec, target)
         )
 
+    def build_pi3_signage_artifact_preflight_command(
+        self,
+        *,
+        source_sha: str,
+        oci_digest: str,
+        preflight_id: str,
+        target: dict[str, object],
+    ) -> tuple[str, ...]:
+        """Build the explicit non-Deploy, digest-pinned Pi3 stage proof."""
+
+        selected = {
+            key: target.get(key)
+            for key in ('host', 'profile', 'address', 'user', 'port')
+        }
+        payload = {
+            'version': 1,
+            'mode': 'artifact-preflight',
+            'artifactRef': f'{signage_artifact_stage.ARTIFACT_REPOSITORY}:{source_sha}',
+            'expectedOciDigest': oci_digest,
+            'runId': preflight_id,
+            'stagingRoot': str(signage_artifact_stage.DEFAULT_STAGING_ROOT),
+            'retain': False,
+            'target': selected,
+            'configPath': str(signage_artifact_stage.DEFAULT_CONFIG_PATH),
+        }
+        serialized = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(',', ':'),
+        )
+        signage_artifact_stage.parse_preflight_spec(serialized)
+        return (
+            REMOTE_PYTHON,
+            '-c',
+            SIGNAGE_ARTIFACT_STAGE_LOADER,
+            _encode_argument(self.signage_artifact_stage_source),
+            _encode_argument(self.distribution_verifier_source),
+            _encode_argument(serialized),
+        )
+
+    def preflight_pi3_signage_artifact(
+        self,
+        *,
+        source_sha: str,
+        oci_digest: str,
+        preflight_id: str,
+        target: dict[str, object],
+    ) -> CommandResult:
+        return self.transport.run(
+            self.build_pi3_signage_artifact_preflight_command(
+                source_sha=source_sha,
+                oci_digest=oci_digest,
+                preflight_id=preflight_id,
+                target=target,
+            )
+        )
+
     def build_route_preflight_command(
         self,
         spec: LaunchSpec,

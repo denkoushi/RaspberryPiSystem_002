@@ -27,6 +27,7 @@ from scripts.deploy.rolling_release.models import LaunchSpec
 
 RUN_ID = '20260715-123456-a1b2c3'
 SHA = 'a' * 40
+OCI_DIGEST = 'sha256:' + 'd' * 64
 
 
 class FakeRunner:
@@ -181,6 +182,39 @@ class SystemdBackendTest(unittest.TestCase):
         self.assertEqual(
             payload['artifactRef'],
             f'ghcr.io/denkoushi/raspisys-pi3-signage:{SHA}',
+        )
+        self.assertEqual(payload['runId'], RUN_ID)
+        self.assertFalse(payload['retain'])
+        self.assertEqual(payload['target'], target)
+
+    def test_dedicated_signage_artifact_preflight_is_digest_pinned_and_has_no_launch_spec(self):
+        backend, runner = self.backend()
+        target = {
+            'host': 'raspberrypi3',
+            'profile': 'signage',
+            'address': '100.64.0.3',
+            'user': 'pi',
+            'port': 22,
+        }
+
+        backend.preflight_pi3_signage_artifact(
+            source_sha=SHA,
+            oci_digest=OCI_DIGEST,
+            preflight_id=RUN_ID,
+            target=target,
+        )
+
+        remote = self.remote_argv(runner)
+        self.assertEqual(
+            remote[:3],
+            ['/usr/bin/python3', '-c', backend_module.SIGNAGE_ARTIFACT_STAGE_LOADER],
+        )
+        payload = json.loads(base64.b64decode(remote[-1]).decode('utf-8'))
+        self.assertEqual(payload['mode'], 'artifact-preflight')
+        self.assertEqual(payload['expectedOciDigest'], OCI_DIGEST)
+        self.assertEqual(
+            payload['artifactRef'],
+            f'{backend_module.signage_artifact_stage.ARTIFACT_REPOSITORY}:{SHA}',
         )
         self.assertEqual(payload['runId'], RUN_ID)
         self.assertFalse(payload['retain'])
