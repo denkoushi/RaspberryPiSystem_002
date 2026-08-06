@@ -1869,7 +1869,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         )
 
         with self.assertRaisesRegex(
-            RuntimeError, "locked Pi3 Signage release scope"
+            RuntimeError, "locked Pi3 artifact release scope"
         ):
             coordinator.execute(
                 args(

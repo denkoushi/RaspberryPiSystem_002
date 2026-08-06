@@ -32,16 +32,13 @@ from .release_claims import (
     validate_claim_identity,
 )
 from .release_warnings import record_observer_warning
-from . import readiness_policy, safe_diagnostics, telemetry
+from . import pi3_artifact_scope, readiness_policy, safe_diagnostics, telemetry
 from .terminal_adapters import TerminalAdapter
 
 
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$")
-OCI_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
-PI3_SIGNAGE_SCOPE = "pi3-signage-artifact"
-PI3_SIGNAGE_REPOSITORY = "ghcr.io/denkoushi/raspisys-pi3-signage"
 
 
 def _require_executable_target_architecture(plan: dict[str, Any]) -> None:
@@ -765,95 +762,6 @@ def _terminal_run_targets(
             record["desiredRelease"] = dict(plan.get("desiredRelease") or {})
         result.append(record)
     return result
-
-
-def _validate_pi3_signage_scope_plan(
-    plan: dict[str, Any],
-    targets: list[dict[str, str]],
-    *,
-    release_scope: str,
-    source_sha: str,
-    oci_digest: str | None,
-    coordinator_host: str,
-    signage_host: str,
-) -> dict[str, Any]:
-    """Fail closed before a scoped plan can create foreign execution work."""
-
-    desired = plan.get("desiredRelease")
-    expected_fields = {
-        "releaseScope",
-        "sourceSha",
-        "exactReference",
-        "ociDigest",
-        "artifactSha256",
-        "manifestSha256",
-        "payloadDigest",
-        "claimIdentity",
-    }
-    if (
-        release_scope != PI3_SIGNAGE_SCOPE
-        or not isinstance(oci_digest, str)
-        or OCI_DIGEST_RE.fullmatch(oci_digest) is None
-        or plan.get("releaseScope") != release_scope
-        or not isinstance(desired, dict)
-        or set(desired) != expected_fields
-        or desired.get("releaseScope") != release_scope
-        or desired.get("sourceSha") != source_sha
-        or desired.get("ociDigest") != oci_digest
-        or desired.get("exactReference")
-        != f"{PI3_SIGNAGE_REPOSITORY}@{oci_digest}"
-        or any(
-            not isinstance(desired.get(field), str)
-            or SHA256_RE.fullmatch(desired[field]) is None
-            for field in ("artifactSha256", "manifestSha256", "payloadDigest")
-        )
-        or desired.get("claimIdentity")
-        != f"git:{source_sha}@sha256:{desired.get('artifactSha256')}"
-    ):
-        raise RuntimeError("locked Pi3 Signage release authority is inconsistent")
-
-    hosts = plan.get("hosts")
-    coordinator = plan.get("coordinator")
-    if (
-        plan.get("pi5Required") is not False
-        or not isinstance(hosts, list)
-        or len(hosts) != 2
-        or {
-            (item.get("host"), item.get("role"))
-            for item in hosts
-            if isinstance(item, dict)
-        }
-        != {(coordinator_host, "server"), (signage_host, "signage")}
-        or coordinator
-        != {
-            "host": coordinator_host,
-            "role": "acquisition-relay",
-            "runtimeMutationRequired": False,
-        }
-    ):
-        raise RuntimeError("locked Pi3 Signage release scope is inconsistent")
-
-    for field in (
-        "terminalWork",
-        "mutationTargets",
-        "activationTargets",
-        "verificationTargets",
-        "terminalTargets",
-    ):
-        work = plan.get(field)
-        if not isinstance(work, list) or any(
-            not isinstance(item, dict)
-            or item.get("host") != signage_host
-            or item.get("role") != "signage"
-            for item in work
-        ):
-            raise RuntimeError("locked Pi3 Signage release scope generated foreign work")
-    if any(
-        target.get("host") != signage_host or target.get("role") != "signage"
-        for target in targets
-    ):
-        raise RuntimeError("locked Pi3 Signage release scope generated foreign targets")
-    return dict(desired)
 
 
 def _durable_completed_terminal_sha(
@@ -1907,14 +1815,8 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
     fleet_finished = False
     interrupted_recovery_pending = False
     admission = None
-    requested_release_sha = getattr(args, "signage_source_sha", None)
-    release_sha = (
-        requested_release_sha
-        if isinstance(requested_release_sha, str)
-        and FULL_SHA_RE.fullmatch(requested_release_sha) is not None
-        and getattr(args, "release_scope", None) is not None
-        else args.sha
-    )
+    scope_request = pi3_artifact_scope.request_from_args(args)
+    release_sha = scope_request.source_sha if scope_request is not None else args.sha
     if hasattr(args, "readiness_admission_json"):
         raw_admission = getattr(args, "readiness_admission_json")
         if not isinstance(raw_admission, str) or not raw_admission:
@@ -1970,26 +1872,8 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
         if args.limit and selected == []:
             raise RuntimeError(f"--limit selected no hosts: {args.limit}")
         all_hosts = runtime.release_hosts(inventory_data)
-        release_scope = getattr(args, "release_scope", None)
-        scoped_hosts = all_hosts
-        if release_scope == PI3_SIGNAGE_SCOPE:
-            if (
-                not isinstance(requested_release_sha, str)
-                or FULL_SHA_RE.fullmatch(requested_release_sha) is None
-            ):
-                raise RuntimeError(
-                    "Pi3 Signage release scope source SHA is not authoritative"
-                )
-            scoped_hosts = [
-                target for target in all_hosts if target.get("role") == "signage"
-            ]
-            if (
-                len(scoped_hosts) != 1
-                or scoped_hosts[0].get("clientId") != "raspberrypi3-signage1"
-            ):
-                raise RuntimeError(
-                    "Pi3 Signage release scope target CLIENT_ID is not authoritative"
-                )
+        release_scope = scope_request.scope if scope_request is not None else None
+        scoped_hosts = pi3_artifact_scope.target_hosts(scope_request, all_hosts)
 
         # A hard-killed prior run can leave run-labelled validation workload
         # or a paused terminal scheduler even when fleet evidence
@@ -2026,7 +1910,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             "releaseSha": release_sha,
             "releaseScope": release_scope,
             "requestedSignageOciDigest": getattr(
-                args, "signage_oci_digest", None
+                scope_request, "oci_digest", None
             ),
             "unitName": runtime.os.environ.get("ROLLING_RELEASE_UNIT"),
             "runner": "systemd-run",
@@ -2099,36 +1983,18 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             "reverify_selected": bool(getattr(args, "reverify_selected", False)),
             "executor_preflight_passed": True,
         }
-        if release_scope is not None:
-            planning_options.update(
-                {
-                    "release_scope": release_scope,
-                    "signage_oci_digest": getattr(
-                        args, "signage_oci_digest", None
-                    ),
-                    "signage_artifact_sha256": getattr(
-                        args, "signage_artifact_sha256", None
-                    ),
-                    "signage_manifest_sha256": getattr(
-                        args, "signage_manifest_sha256", None
-                    ),
-                    "signage_payload_digest": getattr(
-                        args, "signage_payload_digest", None
-                    ),
-                }
-            )
+        if scope_request is not None:
+            planning_options.update(scope_request.planning_options())
         plan, targets, _classifications, plan_warnings = (
             runtime.build_fleet_scope(**planning_options)
         )
-        if release_scope is not None:
-            desired_release = _validate_pi3_signage_scope_plan(
+        if scope_request is not None:
+            desired_release = pi3_artifact_scope.validate_locked_plan(
                 plan,
                 targets,
-                release_scope=release_scope,
-                source_sha=release_sha,
-                oci_digest=getattr(args, "signage_oci_digest", None),
+                scope_request,
                 coordinator_host=identity["host"],
-                signage_host=scoped_hosts[0]["host"],
+                target_host=scoped_hosts[0]["host"],
             )
             state.payload["desiredRelease"] = dict(desired_release)
         if plan_warnings:

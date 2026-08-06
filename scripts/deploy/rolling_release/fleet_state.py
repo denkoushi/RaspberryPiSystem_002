@@ -32,6 +32,7 @@ from .release_claims import (
     validate_host_claim_compatibility,
     validate_release_claims,
 )
+from .pi3_artifact_scope import RELEASE_SCOPE as PI3_ARTIFACT_RELEASE_SCOPE
 
 
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -66,7 +67,7 @@ SERVER_HOST_FIELDS = frozenset(
 OPTIONAL_HOST_FIELDS = frozenset({"releaseClaims", "activationCapabilities"})
 EVIDENCE_VALUES = frozenset({"unknown", "verified"})
 TERMINAL_RUN_STATUSES = frozenset({"success", "failed", "cancelled", "interrupted"})
-RUN_KINDS = frozenset({"release", "pi4-recovery", "pi3-signage-artifact"})
+RUN_KINDS = frozenset({"release", "pi4-recovery", PI3_ARTIFACT_RELEASE_SCOPE})
 _UNSET = object()
 
 
