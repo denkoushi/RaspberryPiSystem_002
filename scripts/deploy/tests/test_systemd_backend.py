@@ -101,6 +101,8 @@ class SystemdBackendTest(unittest.TestCase):
             migration_preflight_source='TRUSTED_MIGRATION_PREFLIGHT_SOURCE',
             route_preflight_source='TRUSTED_ROUTE_PREFLIGHT_SOURCE',
             terminal_preflight_source='TRUSTED_TERMINAL_PREFLIGHT_SOURCE',
+            signage_artifact_stage_source='TRUSTED_SIGNAGE_STAGE_SOURCE',
+            distribution_verifier_source='TRUSTED_DISTRIBUTION_VERIFIER_SOURCE',
         ), runner
 
     def remote_argv(self, runner):
@@ -152,6 +154,37 @@ class SystemdBackendTest(unittest.TestCase):
         payload = bootstrap.parse_spec(base64.b64decode(remote[-1]).decode('utf-8'))
         self.assertTrue(payload['fullFleet'])
         self.assertIn('--full-fleet', bootstrap.remote_arguments(payload))
+
+    def test_signage_stage_embeds_exact_source_and_retain_false_request(self):
+        backend, runner = self.backend()
+        target = {
+            'host': 'raspberrypi3',
+            'profile': 'signage',
+            'address': '100.64.0.3',
+            'user': 'pi',
+            'port': 22,
+        }
+
+        backend.preflight_signage_artifact_stage(self.spec(), target)
+
+        remote = self.remote_argv(runner)
+        self.assertEqual(remote[:3], ['/usr/bin/python3', '-c', backend_module.SIGNAGE_ARTIFACT_STAGE_LOADER])
+        self.assertEqual(
+            base64.b64decode(remote[-3]).decode('utf-8'),
+            'TRUSTED_SIGNAGE_STAGE_SOURCE',
+        )
+        self.assertEqual(
+            base64.b64decode(remote[-2]).decode('utf-8'),
+            'TRUSTED_DISTRIBUTION_VERIFIER_SOURCE',
+        )
+        payload = json.loads(base64.b64decode(remote[-1]).decode('utf-8'))
+        self.assertEqual(
+            payload['artifactRef'],
+            f'ghcr.io/denkoushi/raspisys-pi3-signage:{SHA}',
+        )
+        self.assertEqual(payload['runId'], RUN_ID)
+        self.assertFalse(payload['retain'])
+        self.assertEqual(payload['target'], target)
 
     def test_selected_reverification_survives_the_systemd_bootstrap_contract(self):
         backend, runner = self.backend()

@@ -23,6 +23,7 @@ from .models import LaunchSpec, validate_lookup_run_id
 from .planner import executor_selection
 from .policy import server_identity
 from . import readiness_policy
+from . import signage_artifact_stage
 from .reconcile import reconcile_status
 from .route_contract import ROUTE_STAGES
 from .route_preflight import (
@@ -957,6 +958,98 @@ def _launch(args: Any, *, runtime: Any) -> int:
         terminal_count=len(terminal_preflight_targets),
         planning_snapshot=planning_snapshot,
     )
+    if getattr(args, "preflight_only", False) and preflight_code == 0:
+        signage_targets = [
+            target
+            for target in terminal_preflight_targets
+            if target.get("profile") == "signage"
+        ]
+        if signage_targets:
+            artifact_ref = (
+                f"{signage_artifact_stage.ARTIFACT_REPOSITORY}:{spec.sha}"
+            )
+            if len(signage_targets) != 1:
+                stage_report = signage_artifact_stage._failure(
+                    signage_artifact_stage._empty_report(
+                        artifact_ref,
+                        {"host": "pi3-signage"},
+                        spec.run_id,
+                        signage_artifact_stage.DEFAULT_STAGING_ROOT,
+                        False,
+                    ),
+                    signage_artifact_stage.StageError(
+                        "request-validation",
+                        "request",
+                        "blocked",
+                        "Pi3 Signage preflight requires exactly one target",
+                    ),
+                )
+            else:
+                target = signage_targets[0]
+                result = systemd.preflight_signage_artifact_stage(spec, target)
+                try:
+                    stage_report = signage_artifact_stage.parse_stage_report(
+                        result.stdout,
+                        run_id=spec.run_id,
+                        host=str(target["host"]),
+                        retain=False,
+                    )
+                except signage_artifact_stage.StageError as error:
+                    stage_report = signage_artifact_stage._failure(
+                        signage_artifact_stage._empty_report(
+                            artifact_ref,
+                            target,
+                            spec.run_id,
+                            signage_artifact_stage.DEFAULT_STAGING_ROOT,
+                            False,
+                        ),
+                        error,
+                    )
+                expected_returncode = {
+                    "passed": 0,
+                    "blocked": EX_CONFIG,
+                    "incomplete": EX_SOFTWARE,
+                }[stage_report["status"]]
+                if result.returncode != expected_returncode:
+                    stage_report = signage_artifact_stage._failure(
+                        signage_artifact_stage._empty_report(
+                            artifact_ref,
+                            target,
+                            spec.run_id,
+                            signage_artifact_stage.DEFAULT_STAGING_ROOT,
+                            False,
+                        ),
+                        signage_artifact_stage.StageError(
+                            "stage-report",
+                            "report",
+                            "incomplete",
+                            "Stage 2 report disagrees with its process status",
+                        ),
+                    )
+            preflight_report["signageArtifactStage"] = stage_report
+            stage_status = stage_report["status"]
+            preflight_report["probes"].append(
+                {
+                    "probe": "signage-artifact-stage",
+                    "status": stage_status,
+                    "exitCode": {
+                        "passed": 0,
+                        "blocked": EX_CONFIG,
+                        "incomplete": EX_SOFTWARE,
+                    }[stage_status],
+                    "issues": (
+                        []
+                        if stage_status == "passed"
+                        else [stage_report["failure"]["code"]]
+                    ),
+                }
+            )
+            if stage_status != "passed":
+                preflight_code = (
+                    EX_CONFIG if stage_status == "blocked" else EX_SOFTWARE
+                )
+                preflight_report["status"] = stage_status
+                preflight_report["readinessAdmission"] = None
     if getattr(args, "preflight_only", False):
         print(json.dumps(preflight_report, ensure_ascii=False, sort_keys=True))
         return preflight_code

@@ -94,6 +94,8 @@ class ClassifyChangesTests(unittest.TestCase):
             "scripts/deploy/signage-release-artifact.py",
             "scripts/deploy/signage-distribution-artifact.py",
             "scripts/deploy/tests/test_signage_distribution_artifact.py",
+            "scripts/deploy/rolling_release/signage_artifact_stage.py",
+            "scripts/deploy/tests/test_signage_artifact_stage.py",
             "infrastructure/ansible/roles/signage/templates/signage-update.sh.j2",
             "infrastructure/docker/Dockerfile.signage-release",
         ):
