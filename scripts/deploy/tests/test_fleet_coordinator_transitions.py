@@ -1,4 +1,5 @@
 import argparse
+import base64
 import copy
 import json
 import sys
@@ -13,8 +14,11 @@ if str(DEPLOY_DIR) not in sys.path:
     sys.path.insert(0, str(DEPLOY_DIR))
 
 from rolling_release import coordinator  # noqa: E402
+from rolling_release import planner as release_planner  # noqa: E402
+from rolling_release import policy as release_policy  # noqa: E402
 from rolling_release import readiness_policy  # noqa: E402
 from rolling_release.adapter_registry import adapter_for_profile  # noqa: E402
+from rolling_release.backends import ansible as ansible_backend  # noqa: E402
 from rolling_release.activation import ActivationUncertainError  # noqa: E402
 from rolling_release.cancellation import CancellationRequested  # noqa: E402
 from rolling_release.errors import (  # noqa: E402
@@ -37,6 +41,454 @@ ARTIFACT_DIGEST = "9" * 64
 NEW_ARTIFACT_IDENTITY = f"git:{NEW_SHA}@sha256:{ARTIFACT_DIGEST}"
 OLD_ARTIFACT_IDENTITY = f"git:{OLD_SHA}@sha256:{ARTIFACT_DIGEST}"
 UNSET = object()
+PRODUCTION_SIGNAGE_SCENARIOS = {
+    "first-artifact-deploy": (
+        "test_production_signage_first_artifact_deploy_transaction",
+        {1, 2, 4, 8, 9, 10, 11, 12, 13},
+    ),
+    "historical-active-run-recovery": (
+        "test_production_signage_historical_active_run_recovery_transaction",
+        {2, 3, 4, 5, 6, 7, 8, 13},
+    ),
+    "rollback-to-legacy": (
+        "test_production_signage_post_mutation_rollback_to_legacy_transaction",
+        {4, 8, 9, 10, 11, 13},
+    ),
+    "rollback-to-artifact": (
+        "test_production_signage_post_mutation_rollback_to_previous_artifact_transaction",
+        {4, 8, 9, 10, 11, 13},
+    ),
+}
+
+
+def _result_marker(prefix, value):
+    encoded = base64.urlsafe_b64encode(
+        json.dumps(value, sort_keys=True).encode("utf-8")
+    ).decode("ascii")
+    return prefix + encoded
+
+
+class ProductionSignageFixture:
+    """One production-shaped authority for the four Pi3 transactions."""
+
+    host = "raspberrypi3"
+    client_id = "raspberrypi3-signage1"
+    file_digest = (
+        "e3a8456179fa30d952ac3eff3022652fc38bc54979e642637d44f222a03d4f36"
+    )
+    runtime_digest = (
+        "34243d39b555fc489f61d48fc78cde1456932e60338fd7baeaece15401852562"
+    )
+    pi4_hosts = (
+        "raspi4-kensaku-stonebase01",
+        "raspberrypi4",
+        "raspi4-robodrill01",
+        "raspi4-fjv60-80",
+        "raspi4-sessaku-01",
+        "raspi4-assembly-01",
+    )
+
+    def terminal(self):
+        return {
+            "host": self.host,
+            "role": "signage",
+            "terminalType": "signage",
+            "clientId": self.client_id,
+        }
+
+    def inventory(self):
+        return {
+            "server": {"hosts": ["pi5"]},
+            "clients": {"children": ["kiosk", "signage"]},
+            "kiosk": {"hosts": list(self.pi4_hosts)},
+            "signage": {"hosts": [self.host]},
+            "kiosk_canary": {"hosts": [self.pi4_hosts[0]]},
+            "signage_canary": {"hosts": [self.host]},
+            "_meta": {
+                "hostvars": {
+                    "pi5": {"status_agent_client_id": "raspberrypi5-server"},
+                    **{
+                        host: {
+                            "manage_kiosk_browser": True,
+                            "status_agent_client_id": f"{host}-kiosk1",
+                        }
+                        for host in self.pi4_hosts
+                    },
+                    self.host: {"status_agent_client_id": self.client_id},
+                }
+            },
+        }
+
+    def file_paths(self, run_id):
+        paths = ansible_backend._terminal_manifest_paths(
+            "signage", "signageras3", "/home/signageras3", run_id
+        )
+        if len(paths) != 40:
+            raise AssertionError("production signage manifest is not 40 paths")
+        return paths
+
+    def manifest_reference(self, run_id):
+        units, docker_services = ansible_backend._terminal_runtime_contract(
+            "signage"
+        )
+        return {
+            "path": (
+                "/var/lib/raspi-release/rollback-manifests/"
+                f"{run_id}/{self.host}/manifest.json"
+            ),
+            "manifestSha256": self.file_digest,
+            "count": len(self.file_paths(run_id)),
+            "runtime": {
+                "path": (
+                    "/var/lib/raspi-release/rollback-runtime/"
+                    f"{run_id}/{self.host}/manifest.json"
+                ),
+                "manifestSha256": self.runtime_digest,
+                "unitCount": len(units),
+                "dockerCount": len(docker_services),
+            },
+        }
+
+    def capture_envelope(self, run_id):
+        reference = self.manifest_reference(run_id)
+        paths = self.file_paths(run_id)
+        return {
+            "version": 1,
+            "remoteUser": "signageras3",
+            "remoteHome": "/home/signageras3",
+            "fileManifest": {
+                "captured": True,
+                "manifest": reference["path"],
+                "manifestSha256": reference["manifestSha256"],
+                "count": len(paths),
+                "destinations": paths,
+                "repository": None,
+            },
+            "runtimeManifest": {
+                "captured": True,
+                "manifest": reference["runtime"]["path"],
+                "manifestSha256": reference["runtime"]["manifestSha256"],
+                "unitCount": reference["runtime"]["unitCount"],
+                "dockerCount": reference["runtime"]["dockerCount"],
+                "rollbackTags": [],
+            },
+        }
+
+    def file_preflight(self, run_id):
+        reference = self.manifest_reference(run_id)
+        return {
+            "ready": True,
+            "manifest": reference["path"],
+            "manifestSha256": reference["manifestSha256"],
+            "count": reference["count"],
+            "repository": None,
+            "issues": [],
+        }
+
+    def file_restore(self, run_id):
+        reference = self.manifest_reference(run_id)
+        paths = self.file_paths(run_id)
+        run_paths = list(
+            adapter_for_profile(
+                "signage", runtime=None
+            ).run_scoped_rollback_paths(run_id)
+        )
+        return {
+            "restored": True,
+            "manifest": reference["path"],
+            "manifestSha256": reference["manifestSha256"],
+            "count": len(paths),
+            "destinations": paths,
+            "absentDestinations": run_paths,
+            "repository": None,
+        }
+
+    def runtime_preflight(self, run_id):
+        reference = self.manifest_reference(run_id)["runtime"]
+        return {
+            "ready": True,
+            "manifestSha256": reference["manifestSha256"],
+            "unitCount": reference["unitCount"],
+            "dockerCount": reference["dockerCount"],
+            "runtimeHealth": rollback_runtime_health("signage"),
+            "restoredReceipt": False,
+            "requiresRuntimeReconciliation": True,
+            "issues": [],
+        }
+
+    def runtime_restore(self, run_id):
+        reference = self.manifest_reference(run_id)["runtime"]
+        return {
+            "restored": True,
+            "manifestSha256": reference["manifestSha256"],
+            "unitCount": reference["unitCount"],
+            "dockerCount": reference["dockerCount"],
+            "runtimeHealth": rollback_runtime_health("signage"),
+        }
+
+    def baseline(self, artifact_state="absent"):
+        if artifact_state == "absent":
+            return {
+                "head": OLD_SHA,
+                "artifactState": "absent",
+                "artifactIdentity": None,
+                "artifactSha256": None,
+                "legacyRepositorySha": OLD_SHA,
+            }
+        if artifact_state == "installed":
+            return {
+                "head": OLD_SHA,
+                "artifactState": "installed",
+                "artifactIdentity": OLD_ARTIFACT_IDENTITY,
+                "artifactSha256": ARTIFACT_DIGEST,
+                "legacyRepositorySha": None,
+            }
+        raise AssertionError("unsupported production signage baseline")
+
+    def kiosk_record(self):
+        record = host_record("kiosk", OLD_SHA)
+        record["releaseClaims"] = {
+            "controlPlaneWeb": verified_claim(
+                OLD_SHA,
+                "kiosk-compiled-web-ready",
+                verification_id=FORWARD_VERIFICATION_ID,
+            ),
+            "terminalRepository": verified_claim(
+                OLD_SHA, "terminal-repository-probe"
+            ),
+        }
+        return record
+
+    def scope(self, fleet_state):
+        inventory = self.inventory()
+        terminals = release_policy.release_targets(inventory)
+        targets = [
+            {"host": "pi5", "role": "server"},
+            *[
+                {**target, "role": target["terminalType"]}
+                for target in terminals
+            ],
+        ]
+        classification = {
+            "server": False,
+            "kiosk": False,
+            "signage": True,
+            "migration": False,
+            "affectedProfiles": ["signage"],
+            "paths": [],
+            "components": ["signage-role"],
+        }
+        classifications = {
+            record["currentSha"]: classification
+            for record in (fleet_state.get("fleet") or {}).values()
+            if isinstance(record, dict)
+            and record.get("evidence") == "verified"
+            and isinstance(record.get("currentSha"), str)
+        }
+        decisions = release_policy.plan_target_decisions(
+            targets,
+            fleet_state.get("fleet") or {},
+            NEW_SHA,
+            classifications,
+            inventory,
+        )
+        plan = release_planner.build_fleet_plan_payload(
+            release_sha=NEW_SHA,
+            decisions=decisions,
+            full_fleet=False,
+            limit="",
+            canary_hold_policy=lambda *_args, **_kwargs: False,
+            fleet_records=fleet_state.get("fleet") or {},
+            typed_target_planning=True,
+            activation_execution_enabled=True,
+            verification_only_execution_enabled=True,
+            executor_preflight_passed=True,
+            release_claim_identities={NEW_SHA: NEW_ARTIFACT_IDENTITY},
+        )
+        terminal_by_host = {
+            target["host"]: target
+            for target in targets
+            if target["role"] != "server"
+        }
+        executable = {
+            work["host"]
+            for work in plan["terminalWork"]
+            if work["mutationRequired"]
+            or work["activationRequired"]
+            or work["verificationRequired"]
+        }
+        terminal_targets = [
+            terminal_by_host[decision["host"]]
+            for decision in decisions
+            if decision["host"] in executable and decision["role"] != "server"
+        ]
+        plan["terminalTargets"] = terminal_targets
+        plan["affectedProfiles"] = ["signage"]
+        plan["classificationComponents"] = ["signage-role"]
+        return plan, terminal_targets, classifications, []
+
+    def runtime(self, *, artifact_state="absent"):
+        terminal = self.terminal()
+        fleet_records = {
+            "pi5": host_record("server", OLD_SHA),
+            **{
+                host: self.kiosk_record()
+                for host in self.pi4_hosts
+            },
+            self.host: host_record("signage", OLD_SHA),
+        }
+        plan, targets, _classifications, _warnings = self.scope(
+            {"fleet": fleet_records}
+        )
+        runtime = FakeRuntime(
+            fleet=fleet_records,
+            hosts=[
+                {"host": "pi5", "role": "server"},
+                *[
+                    {
+                        "host": host,
+                        "role": "kiosk",
+                        "terminalType": "kiosk",
+                        "clientId": f"{host}-kiosk1",
+                    }
+                    for host in self.pi4_hosts
+                ],
+                terminal,
+            ],
+            plan=plan,
+            targets=targets,
+        )
+        runtime.signage_release_baseline_result = self.baseline(artifact_state)
+        runtime.inventory_json = lambda _inventory: self.inventory()
+        runtime.build_fleet_scope = lambda **keywords: self.scope(
+            keywords["fleet_state"]
+        )
+        return runtime
+
+
+class ProductionSignageTransport:
+    """Isolate Ansible transport while preserving every structured boundary."""
+
+    PROJECT = DEPLOY_DIR.parents[1]
+    ANSIBLE_DIRECTORY = Path("/ansible")
+
+    def __init__(self, fixture, events):
+        self.fixture = fixture
+        self.events = events
+        self.calls = []
+
+    @staticmethod
+    def _option(action, name):
+        values = action.split()
+        return values[values.index(name) + 1]
+
+    def run(self, command, **kwargs):
+        self.calls.append((command, kwargs))
+        action = command[-1]
+        run_id = self._option(action, "--run-id")
+        if "--file-root" in action and "--runtime-root" in action:
+            self.events.append(f"producer:capture:{run_id}")
+            return _result_marker(
+                "TERMINAL_MANIFEST_CAPTURE_RESULT:",
+                self.fixture.capture_envelope(run_id),
+            )
+        if "terminal-ready-probe.py" in action:
+            self.events.append(f"producer:ready:{run_id}")
+            if "--identity-mode" not in action:
+                raise RuntimeError("signage ready identity mode is absent")
+            mode = self._option(action, "--identity-mode")
+            if mode == "artifact":
+                if (
+                    "--repo" in action
+                    or self._option(action, "--artifact-sha256")
+                    != ARTIFACT_DIGEST
+                    or self._option(action, "--artifact-path")
+                    != "/usr/local/bin/raspi-signage-status-agent.pyz"
+                ):
+                    raise RuntimeError("signage artifact ready binding is invalid")
+            elif mode == "legacy-repository":
+                if (
+                    "--artifact-path" in action
+                    or "--artifact-sha256" in action
+                    or self._option(action, "--repo")
+                    != "/opt/RaspberryPiSystem_002"
+                ):
+                    raise RuntimeError("legacy signage ready binding is invalid")
+            else:
+                raise RuntimeError("signage ready identity mode is invalid")
+            self.events.append(f"producer:ready-mode:{run_id}:{mode}")
+            return "TERMINAL_READY_OK:" + self._option(action, "--release-sha")
+        is_runtime = "/rollback-runtime" in action
+        if "preflight-restore" in action:
+            self.events.append(
+                f"producer:{'runtime' if is_runtime else 'file'}-preflight:{run_id}"
+            )
+            value = (
+                self.fixture.runtime_preflight(run_id)
+                if is_runtime
+                else self.fixture.file_preflight(run_id)
+            )
+            prefix = (
+                "TERMINAL_RUNTIME_MANIFEST_RESULT:"
+                if is_runtime
+                else "ROLLBACK_MANIFEST_RESULT:"
+            )
+            return _result_marker(prefix, value)
+        if " restore " in f" {action} ":
+            self.events.append(
+                f"producer:{'runtime' if is_runtime else 'file'}-restore:{run_id}"
+            )
+            value = (
+                self.fixture.runtime_restore(run_id)
+                if is_runtime
+                else self.fixture.file_restore(run_id)
+            )
+            prefix = (
+                "TERMINAL_RUNTIME_MANIFEST_RESULT:"
+                if is_runtime
+                else "ROLLBACK_MANIFEST_RESULT:"
+            )
+            return _result_marker(prefix, value)
+        raise AssertionError(f"unexpected production transport command: {action}")
+
+
+def bind_production_signage_boundaries(runtime, fixture):
+    transport = ProductionSignageTransport(fixture, runtime.events)
+
+    def capture(inventory, target_spec, run_id, previous_sha):
+        runtime.events.append(
+            f"manifest:capture:{target_spec['host']}:{previous_sha}"
+        )
+        return ansible_backend.capture_terminal_manifest(
+            inventory,
+            target_spec,
+            run_id,
+            previous_sha,
+            runtime=transport,
+        )
+
+    def preflight(inventory, target_spec, target, run_id):
+        runtime.events.append(f"rollback:preflight:{target_spec['host']}")
+        return ansible_backend.preflight_terminal_rollback(
+            inventory, target_spec, target, run_id, runtime=transport
+        )
+
+    def rollback(inventory, target_spec, target, run_id):
+        runtime.events.append(f"rollback:{target_spec['host']}")
+        return ansible_backend.rollback_terminal(
+            inventory, target_spec, target, run_id, runtime=transport
+        )
+
+    def prove_ready(*arguments, **keywords):
+        return ansible_backend.prove_signage_ready(
+            *arguments, runtime=transport, **keywords
+        )
+
+    runtime.capture_terminal_manifest = capture
+    runtime.preflight_terminal_rollback = preflight
+    runtime.rollback_terminal = rollback
+    runtime.prove_signage_ready = prove_ready
+    return transport
 
 
 def host_record(role, sha):
@@ -672,7 +1124,15 @@ class FakeRuntime:
         client_id,
         release_sha,
         verification_id,
+        *,
+        identity_mode,
+        artifact_sha256=None,
     ):
+        if identity_mode == "artifact":
+            if artifact_sha256 != ARTIFACT_DIGEST:
+                raise AssertionError("signage artifact ready digest is not exact")
+        elif identity_mode != "legacy-repository" or artifact_sha256 is not None:
+            raise AssertionError("signage ready identity mode is malformed")
         self.events.append(
             "signage:ready-proof:"
             f"{host}:{run_id}:{client_id}:{release_sha}:{verification_id}"
@@ -892,6 +1352,183 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
                 else {}
             ),
         }
+
+    def test_production_signage_transaction_matrix_covers_all_13_boundaries(self):
+        covered = set()
+        for _scenario, (test_name, boundaries) in (
+            PRODUCTION_SIGNAGE_SCENARIOS.items()
+        ):
+            self.assertTrue(hasattr(type(self), test_name), test_name)
+            self.assertTrue(boundaries)
+            self.assertTrue(boundaries <= set(range(1, 14)))
+            covered.update(boundaries)
+        self.assertEqual(covered, set(range(1, 14)))
+
+    def test_production_signage_first_artifact_deploy_transaction(self):
+        fixture = ProductionSignageFixture()
+        runtime = fixture.runtime(artifact_state="absent")
+        bind_production_signage_boundaries(runtime, fixture)
+
+        self.assertEqual(
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            ),
+            0,
+        )
+
+        capture = runtime.events.index("producer:capture:run-1")
+        maintenance = runtime.events.index(
+            "status:put:--run-id:run-1:--clients:raspberrypi3-signage1:"
+            "--terminal-type:signage"
+        )
+        apply = runtime.events.index("playbook:raspberrypi3")
+        ready = runtime.events.index("producer:ready:run-1")
+        finish = runtime.events.index("fleet:finish:success")
+        self.assertLess(capture, maintenance)
+        self.assertLess(maintenance, apply)
+        self.assertLess(apply, ready)
+        self.assertLess(ready, finish)
+        claim = runtime.fleet["fleet"][fixture.host]["releaseClaims"][
+            "signageReleaseArtifact"
+        ]
+        self.assertEqual(claim["expectedIdentity"], NEW_ARTIFACT_IDENTITY)
+        self.assertEqual(claim["observedIdentity"], NEW_ARTIFACT_IDENTITY)
+        self.assertIsNone(runtime.fleet["activeRun"])
+
+    def test_production_signage_historical_active_run_recovery_transaction(self):
+        fixture = ProductionSignageFixture()
+        runtime = fixture.runtime(artifact_state="absent")
+        bind_production_signage_boundaries(runtime, fixture)
+        authority_run_id = "20260806-013842-e81a9a"
+        record = runtime.fleet["fleet"][fixture.host]
+        record.update(
+            {
+                "currentSha": None,
+                "previousSha": OLD_SHA,
+                "evidence": "unknown",
+                "verifiedAt": None,
+                "lastRunId": authority_run_id,
+            }
+        )
+        runtime.abandoned_run_id = authority_run_id
+        runtime.deployed_sha[fixture.host] = OLD_SHA
+        runtime.prior_runs[authority_run_id] = {
+            "version": 1,
+            "runId": authority_run_id,
+            "state": "failed",
+            "phase": "completed",
+            "targets": [
+                {
+                    **fixture.terminal(),
+                    "desiredSha": NEW_SHA,
+                    "previousSha": OLD_SHA,
+                    "currentSha": None,
+                    "evidence": "unknown",
+                    "state": "pending",
+                    "repositoryBaseline": fixture.baseline("absent"),
+                    "claimRequirements": [
+                        {
+                            "kind": "signageReleaseArtifact",
+                            "expectedIdentity": NEW_ARTIFACT_IDENTITY,
+                            "status": "missing",
+                        }
+                    ],
+                }
+            ],
+        }
+        original_scope = runtime.build_fleet_scope
+
+        def replan(**keywords):
+            runtime.events.append("scope:replan")
+            recovered = keywords["fleet_state"]["fleet"][fixture.host]
+            self.assertEqual(recovered["evidence"], "verified")
+            self.assertEqual(recovered["currentSha"], OLD_SHA)
+            self.assertEqual(
+                set(recovered["releaseClaims"]), {"terminalRepository"}
+            )
+            return original_scope(**keywords)
+
+        runtime.build_fleet_scope = replan
+
+        self.assertEqual(
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            ),
+            0,
+        )
+
+        recapture = runtime.events.index(f"producer:capture:{authority_run_id}")
+        file_preflight = runtime.events.index(
+            f"producer:file-preflight:{authority_run_id}"
+        )
+        runtime_preflight = runtime.events.index(
+            f"producer:runtime-preflight:{authority_run_id}"
+        )
+        replan_index = runtime.events.index("scope:replan")
+        maintenance = runtime.events.index(
+            "status:put:--run-id:run-1:--clients:raspberrypi3-signage1:"
+            "--terminal-type:signage"
+        )
+        self.assertLess(recapture, file_preflight)
+        self.assertLess(file_preflight, runtime_preflight)
+        self.assertLess(runtime_preflight, replan_index)
+        self.assertLess(replan_index, maintenance)
+        self.assertIsNone(runtime.fleet["activeRun"])
+
+    def test_production_signage_post_mutation_rollback_to_legacy_transaction(self):
+        fixture = ProductionSignageFixture()
+        runtime = fixture.runtime(artifact_state="absent")
+        bind_production_signage_boundaries(runtime, fixture)
+        runtime.playbook_error = RuntimeError("production apply failure")
+
+        with self.assertRaisesRegex(RuntimeError, "rollout stopped"):
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            )
+
+        capture = runtime.events.index("producer:capture:run-1")
+        maintenance = runtime.events.index(
+            "status:put:--run-id:run-1:--clients:raspberrypi3-signage1:"
+            "--terminal-type:signage"
+        )
+        restore = runtime.events.index("producer:file-restore:run-1")
+        ready = runtime.events.index("producer:ready:run-1")
+        self.assertLess(capture, maintenance)
+        self.assertLess(maintenance, restore)
+        self.assertLess(restore, ready)
+        self.assertIn(
+            "producer:ready-mode:run-1:legacy-repository", runtime.events
+        )
+        target = runtime.states[-1].target(fixture.host)
+        self.assertEqual(target["rollbackEvidence"], "verified")
+        self.assertEqual(
+            set(runtime.fleet["fleet"][fixture.host]["releaseClaims"]),
+            {"terminalRepository"},
+        )
+
+    def test_production_signage_post_mutation_rollback_to_previous_artifact_transaction(self):
+        fixture = ProductionSignageFixture()
+        runtime = fixture.runtime(artifact_state="installed")
+        bind_production_signage_boundaries(runtime, fixture)
+        runtime.playbook_error = RuntimeError("production apply failure")
+
+        with self.assertRaisesRegex(RuntimeError, "rollout stopped"):
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            )
+
+        self.assertIn("producer:file-restore:run-1", runtime.events)
+        self.assertIn("producer:runtime-restore:run-1", runtime.events)
+        self.assertIn("producer:ready:run-1", runtime.events)
+        self.assertIn("producer:ready-mode:run-1:artifact", runtime.events)
+        target = runtime.states[-1].target(fixture.host)
+        self.assertEqual(target["rollbackEvidence"], "verified")
+        claim = runtime.fleet["fleet"][fixture.host]["releaseClaims"][
+            "signageReleaseArtifact"
+        ]
+        self.assertEqual(claim["expectedIdentity"], OLD_ARTIFACT_IDENTITY)
+        self.assertEqual(claim["observedIdentity"], OLD_ARTIFACT_IDENTITY)
+        self.assertEqual(claim["verificationId"], ROLLBACK_VERIFICATION_ID)
 
     def _admission_payload(self, plan):
         registry = readiness_policy.load_registry()
@@ -2132,6 +2769,29 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
                 self.assertEqual(claim["observedIdentity"], expected_identity)
                 self.assertEqual(claim["state"], "verified")
 
+    def test_signage_ready_proof_rejects_unknown_or_malformed_rollback_identity(self):
+        runtime = FakeRuntime(fleet={}, hosts=[], plan={}, targets=[])
+        adapter = adapter_for_profile("signage", runtime=runtime)
+        malformed = (
+            {**ProductionSignageFixture().baseline("absent"), "legacyRepositorySha": None},
+            {**ProductionSignageFixture().baseline("installed"), "artifactSha256": "bad"},
+            {**ProductionSignageFixture().baseline("absent"), "artifactState": "unknown"},
+        )
+        for baseline in malformed:
+            with self.subTest(baseline=baseline), self.assertRaises(RuntimeError):
+                adapter.prove_ready(
+                    "inventory.yml",
+                    ProductionSignageFixture().terminal(),
+                    "run-1",
+                    OLD_SHA,
+                    ROLLBACK_VERIFICATION_ID,
+                    {"repositoryBaseline": baseline},
+                    rollback=True,
+                )
+        self.assertFalse(
+            any(event.startswith("signage:ready-proof:") for event in runtime.events)
+        )
+
     def test_unobserved_artifact_claim_never_retains_an_observation_time(self):
         claim = coordinator._claim_record(
             kind=ClaimKind.SIGNAGE_RELEASE_ARTIFACT,
@@ -2367,6 +3027,29 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             hosts=[{"host": "pi5", "role": "server"}, terminal],
             plan={
                 "pi5Required": False,
+                "activationExecutionEnabled": True,
+                "verificationOnlyExecutionEnabled": True,
+                "mutationTargets": [{"host": terminal["host"]}],
+                "activationTargets": [],
+                "verificationTargets": [{"host": terminal["host"]}],
+                "terminalWork": [
+                    {
+                        "host": terminal["host"],
+                        "role": "signage",
+                        "mutationRequired": True,
+                        "activationRequired": False,
+                        "verificationRequired": True,
+                        "activationStrategyId": None,
+                        "activationMode": None,
+                        "claimRequirements": [
+                            {
+                                "kind": "signageReleaseArtifact",
+                                "expectedIdentity": NEW_ARTIFACT_IDENTITY,
+                                "status": "stale-or-unverified",
+                            }
+                        ],
+                    }
+                ],
                 "hosts": [
                     decision("pi5", "server", targeted=False),
                     decision("signage-a", "signage"),

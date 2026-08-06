@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import os
+import stat
 import subprocess
 import tempfile
 import unittest
 import urllib.error
 import urllib.request
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -56,6 +59,25 @@ class Opener:
 
 
 class TerminalReadyProbeTest(unittest.TestCase):
+    def probe_legacy(
+        self,
+        run_id,
+        release_sha,
+        verification_id,
+        expected_client_id,
+        repo,
+        config_path,
+    ):
+        return PROBE.probe(
+            run_id,
+            release_sha,
+            verification_id,
+            expected_client_id,
+            identity_mode="legacy-repository",
+            repo=repo,
+            config_path=config_path,
+        )
+
     def config(self, root: Path, **overrides: str) -> Path:
         values = {
             "API_BASE_URL": "https://pi5.example/api",
@@ -95,6 +117,41 @@ class TerminalReadyProbeTest(unittest.TestCase):
             capture_output=True,
         ).stdout.strip()
         return repo, sha
+
+    def artifact(self, root: Path, source_sha: str) -> tuple[Path, str]:
+        path = root / "raspi-signage-status-agent.pyz"
+        manifest = {
+            "schemaVersion": 1,
+            "profile": "signage",
+            "sourceSha": source_sha,
+            "installPath": PROBE.SIGNAGE_ARTIFACT_PATH.as_posix(),
+            "pathCount": 1,
+            "pathManifestSha256": "d" * 64,
+            "pythonRequires": ">=3.10",
+            "sources": [
+                {
+                    "path": "clients/status-agent/status_agent.py",
+                    "sha256": "e" * 64,
+                    "size": 1,
+                }
+            ],
+        }
+        with zipfile.ZipFile(path, "w") as archive:
+            for name, payload in (
+                ("__main__.py", b"pass\n"),
+                (
+                    PROBE.SIGNAGE_ARTIFACT_MANIFEST,
+                    json.dumps(
+                        manifest, sort_keys=True, separators=(",", ":")
+                    ).encode("utf-8"),
+                ),
+                ("status_agent.py", b"pass\n"),
+            ):
+                entry = zipfile.ZipInfo(name, (1980, 1, 1, 0, 0, 0))
+                entry.create_system = 3
+                entry.external_attr = (stat.S_IFREG | 0o644) << 16
+                archive.writestr(entry, payload)
+        return path, hashlib.sha256(path.read_bytes()).hexdigest()
 
     @staticmethod
     def acknowledgement(release_sha: str) -> dict[str, object]:
@@ -153,7 +210,7 @@ class TerminalReadyProbeTest(unittest.TestCase):
             with patch.object(
                 PROBE.urllib.request, "build_opener", return_value=opener
             ):
-                result = PROBE.probe(
+                result = self.probe_legacy(
                     RUN_ID,
                     release_sha,
                     VERIFICATION_ID,
@@ -182,6 +239,57 @@ class TerminalReadyProbeTest(unittest.TestCase):
         )
         self.assertEqual(arguments, {"timeout": 10.0})
 
+    def test_probe_checks_exact_signage_artifact_without_reading_repository(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            config = self.config(root)
+            artifact, digest = self.artifact(root, RELEASE_SHA)
+            opener = Opener(Response(self.acknowledgement(RELEASE_SHA)))
+            with patch.object(
+                PROBE.urllib.request, "build_opener", return_value=opener
+            ), patch.object(PROBE, "_local_head") as local_head:
+                result = PROBE.probe(
+                    RUN_ID,
+                    RELEASE_SHA,
+                    VERIFICATION_ID,
+                    "terminal-a",
+                    identity_mode="artifact",
+                    artifact_path=artifact,
+                    artifact_sha256=digest,
+                    config_path=config,
+                )
+
+        self.assertEqual(result, self.acknowledgement(RELEASE_SHA))
+        local_head.assert_not_called()
+
+    def test_artifact_identity_mismatch_fails_before_network(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            config = self.config(root)
+            artifact, digest = self.artifact(root, RELEASE_SHA)
+            for release_sha, artifact_sha256 in (
+                (OTHER_SHA, digest),
+                (RELEASE_SHA, "f" * 64),
+            ):
+                with self.subTest(
+                    release_sha=release_sha,
+                    artifact_sha256=artifact_sha256,
+                ), patch.object(
+                    PROBE.urllib.request, "build_opener"
+                ) as build_opener:
+                    with self.assertRaises(RuntimeError):
+                        PROBE.probe(
+                            RUN_ID,
+                            release_sha,
+                            VERIFICATION_ID,
+                            "terminal-a",
+                            identity_mode="artifact",
+                            artifact_path=artifact,
+                            artifact_sha256=artifact_sha256,
+                            config_path=config,
+                        )
+                    build_opener.assert_not_called()
+
     def test_head_mismatch_fails_before_any_network_request(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -189,7 +297,7 @@ class TerminalReadyProbeTest(unittest.TestCase):
             repo, _release_sha = self.repo(root)
             with patch.object(PROBE.urllib.request, "build_opener") as build_opener:
                 with self.assertRaises(RuntimeError):
-                    PROBE.probe(
+                    self.probe_legacy(
                         RUN_ID,
                         OTHER_SHA,
                         VERIFICATION_ID,
@@ -221,7 +329,7 @@ class TerminalReadyProbeTest(unittest.TestCase):
                     return_value=Opener(Response(payload)),
                 ):
                     with self.assertRaises(RuntimeError):
-                        PROBE.probe(
+                        self.probe_legacy(
                             RUN_ID,
                             release_sha,
                             VERIFICATION_ID,
@@ -254,7 +362,7 @@ class TerminalReadyProbeTest(unittest.TestCase):
                 with self.subTest(index=index):
                     config = self.config(root, **overrides)
                     with self.assertRaises((ValueError, RuntimeError)):
-                        PROBE.probe(
+                        self.probe_legacy(
                             run_id,
                             sha,
                             verification_id,
@@ -273,7 +381,7 @@ class TerminalReadyProbeTest(unittest.TestCase):
                 PROBE.urllib.request, "build_opener", return_value=opener
             ):
                 with self.assertRaises(RuntimeError):
-                    PROBE.probe(
+                    self.probe_legacy(
                         RUN_ID,
                         release_sha,
                         VERIFICATION_ID,
@@ -316,6 +424,8 @@ class TerminalReadyProbeTest(unittest.TestCase):
                 VERIFICATION_ID,
                 "--expected-client-id",
                 "terminal-a",
+                "--identity-mode",
+                "legacy-repository",
                 "--repo",
                 str(repo),
                 "--config",

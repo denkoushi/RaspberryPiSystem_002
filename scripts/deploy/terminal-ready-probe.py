@@ -8,16 +8,19 @@ exception details so credentials cannot leak through deployment logs.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import re
 import shlex
 import ssl
+import stat
 import subprocess
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +31,14 @@ FULL_RELEASE_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 VERIFICATION_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 CLIENT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 MAX_RESPONSE_BYTES = 64 * 1024
+MAX_ARTIFACT_BYTES = 1024 * 1024
+MAX_ARTIFACT_ENTRIES = 34
+MAX_ARTIFACT_ENTRY_BYTES = 512 * 1024
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+SIGNAGE_ARTIFACT_PATH = Path(
+    "/usr/local/bin/raspi-signage-status-agent.pyz"
+)
+SIGNAGE_ARTIFACT_MANIFEST = "SIGNAGE-RELEASE.json"
 
 
 class _RejectRedirect(urllib.request.HTTPRedirectHandler):
@@ -153,12 +164,78 @@ def _local_head(repo: Path) -> str:
     return head
 
 
+def _signage_artifact_identity(path: Path) -> tuple[str, str]:
+    try:
+        metadata = path.lstat()
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_size <= 0
+            or metadata.st_size > MAX_ARTIFACT_BYTES
+        ):
+            raise RuntimeError("installed signage artifact is unsafe")
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        with zipfile.ZipFile(path) as archive:
+            names = archive.namelist()
+            if (
+                len(names) != len(set(names))
+                or len(names) > MAX_ARTIFACT_ENTRIES
+                or SIGNAGE_ARTIFACT_MANIFEST not in names
+                or any(
+                    not name
+                    or name.startswith("/")
+                    or ".." in Path(name).parts
+                    for name in names
+                )
+            ):
+                raise RuntimeError("installed signage artifact archive is unsafe")
+            for entry in archive.infolist():
+                mode = entry.external_attr >> 16
+                if (
+                    not stat.S_ISREG(mode)
+                    or entry.file_size > MAX_ARTIFACT_ENTRY_BYTES
+                ):
+                    raise RuntimeError(
+                        "installed signage artifact entry is unsafe"
+                    )
+            manifest = json.loads(
+                archive.read(SIGNAGE_ARTIFACT_MANIFEST).decode("utf-8")
+            )
+    except (OSError, UnicodeError, zipfile.BadZipFile, json.JSONDecodeError) as error:
+        raise RuntimeError("installed signage artifact cannot be verified") from error
+    if (
+        not isinstance(manifest, dict)
+        or set(manifest)
+        != {
+            "schemaVersion",
+            "profile",
+            "sourceSha",
+            "installPath",
+            "pathCount",
+            "pathManifestSha256",
+            "pythonRequires",
+            "sources",
+        }
+        or manifest.get("schemaVersion") != 1
+        or manifest.get("profile") != "signage"
+        or FULL_RELEASE_SHA_RE.fullmatch(str(manifest.get("sourceSha") or ""))
+        is None
+        or manifest.get("installPath") != SIGNAGE_ARTIFACT_PATH.as_posix()
+        or manifest.get("pythonRequires") != ">=3.10"
+    ):
+        raise RuntimeError("installed signage artifact identity is malformed")
+    return manifest["sourceSha"], digest
+
+
 def probe(
     run_id: str,
     release_sha: str,
     verification_id: str,
     expected_client_id: str,
-    repo: Path,
+    *,
+    identity_mode: str,
+    repo: Path | None = None,
+    artifact_path: Path | None = None,
+    artifact_sha256: str | None = None,
     config_path: Path = CONFIG_PATH,
 ) -> dict[str, Any]:
     if RUN_ID_RE.fullmatch(run_id) is None:
@@ -173,8 +250,26 @@ def probe(
     config = _read_config(config_path)
     if config["CLIENT_ID"] != expected_client_id:
         raise RuntimeError("local client identity does not match inventory")
-    if _local_head(repo) != release_sha:
-        raise RuntimeError("terminal repository HEAD does not match the release")
+    if identity_mode == "legacy-repository":
+        if repo is None or artifact_path is not None or artifact_sha256 is not None:
+            raise ValueError("legacy repository ready identity is malformed")
+        if _local_head(repo) != release_sha:
+            raise RuntimeError("terminal repository HEAD does not match the release")
+    elif identity_mode == "artifact":
+        if (
+            repo is not None
+            or artifact_path is None
+            or not isinstance(artifact_sha256, str)
+            or SHA256_RE.fullmatch(artifact_sha256) is None
+        ):
+            raise ValueError("signage artifact ready identity is malformed")
+        source_sha, digest = _signage_artifact_identity(artifact_path)
+        if source_sha != release_sha or digest != artifact_sha256:
+            raise RuntimeError(
+                "installed signage artifact does not match the release"
+            )
+    else:
+        raise ValueError("ready identity mode is malformed")
 
     expected = {
         "acknowledged": True,
@@ -230,7 +325,14 @@ def main() -> int:
     parser.add_argument("--release-sha", required=True)
     parser.add_argument("--verification-id", required=True)
     parser.add_argument("--expected-client-id", required=True)
-    parser.add_argument("--repo", required=True, type=Path)
+    parser.add_argument(
+        "--identity-mode",
+        required=True,
+        choices=("artifact", "legacy-repository"),
+    )
+    parser.add_argument("--repo", type=Path)
+    parser.add_argument("--artifact-path", type=Path)
+    parser.add_argument("--artifact-sha256")
     parser.add_argument("--config", type=Path, default=CONFIG_PATH)
     args = parser.parse_args()
     try:
@@ -239,8 +341,11 @@ def main() -> int:
             args.release_sha,
             args.verification_id,
             args.expected_client_id,
-            args.repo,
-            args.config,
+            identity_mode=args.identity_mode,
+            repo=args.repo,
+            artifact_path=args.artifact_path,
+            artifact_sha256=args.artifact_sha256,
+            config_path=args.config,
         )
     except Exception:
         # Never print exception details: HTTP/config errors can contain endpoint
