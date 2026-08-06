@@ -116,6 +116,47 @@ def _bounded_int(
     return candidate
 
 
+def _memory_required_mb(values: Mapping[str, Any]) -> int:
+    if "memory_required_mb" in values:
+        return _bounded_int(
+            values.get("memory_required_mb"),
+            name="memory_required_mb",
+            default=0,
+            minimum=1,
+            maximum=65536,
+        )
+
+    defaults = values.get("device_type_defaults")
+    if defaults is None:
+        return 120
+    if not isinstance(defaults, Mapping):
+        raise TerminalPreflightContractError(
+            "device_type_defaults memory_required_mb is malformed"
+        )
+
+    device_type = values.get("device_type")
+    if device_type is not None and not isinstance(device_type, str):
+        raise TerminalPreflightContractError(
+            "device_type memory_required_mb is malformed"
+        )
+    selected = defaults.get(device_type) if isinstance(device_type, str) else None
+    if selected is None:
+        selected = defaults.get("default")
+    if selected is None:
+        return 120
+    if not isinstance(selected, Mapping) or "memory_required_mb" not in selected:
+        raise TerminalPreflightContractError(
+            "device_type_defaults memory_required_mb is malformed"
+        )
+    return _bounded_int(
+        selected.get("memory_required_mb"),
+        name="memory_required_mb",
+        default=0,
+        minimum=1,
+        maximum=65536,
+    )
+
+
 def _torque_contract_valid(values: Mapping[str, Any]) -> bool:
     if not all(
         _nonempty(values.get(key))
@@ -281,13 +322,7 @@ def build_target_contracts(
                 "repoPath": _safe_path(
                     values.get("repo_path"), name="repo_path", default="/opt/RaspberryPiSystem_002"
                 ),
-                "memoryRequiredMb": _bounded_int(
-                    values.get("memory_required_mb"),
-                    name="memory_required_mb",
-                    default=120,
-                    minimum=1,
-                    maximum=65536,
-                ),
+                "memoryRequiredMb": _memory_required_mb(values),
                 "tailscaleEnabled": _boolean(values.get("tailscale_enabled")),
                 "servicesToRestart": _restart_units(values),
                 "manageKioskBrowser": manage_kiosk,

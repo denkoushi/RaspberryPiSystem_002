@@ -848,6 +848,100 @@ print("TERMINAL_PREFLIGHT_RESULT:" + encoded)
         with self.assertRaisesRegex(TerminalPreflightContractError, "memory_required_mb"):
             build_target_contracts(inventory, [{"host": "kiosk-a", "role": "kiosk"}])
 
+    def test_contract_builder_resolves_pi3_device_type_memory_default(self):
+        inventory = {
+            "_meta": {
+                "hostvars": {
+                    "raspberrypi3": {
+                        "ansible_host": "100.64.0.30",
+                        "ansible_user": "signageras3",
+                        "device_type": "pi3",
+                        "device_type_defaults": {
+                            "pi3": {"memory_required_mb": 100},
+                            "default": {"memory_required_mb": 120},
+                        },
+                    }
+                }
+            }
+        }
+
+        contracts = build_target_contracts(
+            inventory, [{"host": "raspberrypi3", "role": "signage"}]
+        )
+
+        self.assertEqual(contracts[0]["memoryRequiredMb"], 100)
+
+    def test_contract_builder_prefers_explicit_memory_threshold(self):
+        inventory = {
+            "_meta": {
+                "hostvars": {
+                    "raspberrypi3": {
+                        "ansible_host": "100.64.0.30",
+                        "ansible_user": "signageras3",
+                        "device_type": "pi3",
+                        "memory_required_mb": 140,
+                        "device_type_defaults": {
+                            "pi3": {"memory_required_mb": 100},
+                            "default": {"memory_required_mb": 120},
+                        },
+                    }
+                }
+            }
+        }
+
+        contracts = build_target_contracts(
+            inventory, [{"host": "raspberrypi3", "role": "signage"}]
+        )
+
+        self.assertEqual(contracts[0]["memoryRequiredMb"], 140)
+
+    def test_contract_builder_uses_existing_default_for_unknown_device_type(self):
+        inventory = {
+            "_meta": {
+                "hostvars": {
+                    "kiosk-a": {
+                        "ansible_host": "100.64.0.10",
+                        "ansible_user": "kiosk-a",
+                        "device_type": "future-device",
+                        "device_type_defaults": {
+                            "pi3": {"memory_required_mb": 100},
+                            "default": {"memory_required_mb": 120},
+                        },
+                    }
+                }
+            }
+        }
+
+        contracts = build_target_contracts(
+            inventory, [{"host": "kiosk-a", "role": "kiosk"}]
+        )
+
+        self.assertEqual(contracts[0]["memoryRequiredMb"], 120)
+
+    def test_contract_builder_rejects_malformed_device_type_memory_default(self):
+        inventory = {
+            "_meta": {
+                "hostvars": {
+                    "raspberrypi3": {
+                        "ansible_host": "100.64.0.30",
+                        "ansible_user": "signageras3",
+                        "device_type": "pi3",
+                        "device_type_defaults": {
+                            "pi3": {"memory_required_mb": "100"},
+                            "default": {"memory_required_mb": 120},
+                        },
+                    }
+                }
+            }
+        }
+
+        with self.assertRaisesRegex(
+            TerminalPreflightContractError, "memory_required_mb"
+        ):
+            build_target_contracts(
+                inventory, [{"host": "raspberrypi3", "role": "signage"}]
+            )
+
     def test_parser_rejects_invalid_numeric_address(self):
         with self.assertRaisesRegex(
             terminal_preflight.TerminalPreflightConfigError, "address"
