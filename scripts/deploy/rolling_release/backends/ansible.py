@@ -2577,6 +2577,8 @@ def prove_signage_ready(
     release_sha: str,
     verification_id: str,
     *,
+    identity_mode: str,
+    artifact_sha256: str | None = None,
     runtime: Runtime,
 ) -> None:
     """Run the controller-owned, release-bound ACK proof on a signage host."""
@@ -2594,6 +2596,31 @@ def prove_signage_ready(
         or _VERIFICATION_ID_RE.fullmatch(verification_id) is None
     ):
         raise ValueError("verification ID is malformed")
+    if identity_mode not in {"artifact", "legacy-repository"}:
+        raise ValueError("signage ready identity mode is malformed")
+    if identity_mode == "artifact":
+        if (
+            not isinstance(artifact_sha256, str)
+            or _SHA256_RE.fullmatch(artifact_sha256) is None
+        ):
+            raise ValueError("signage ready artifact digest is malformed")
+        identity_arguments = [
+            "--identity-mode",
+            "artifact",
+            "--artifact-path",
+            "/usr/local/bin/raspi-signage-status-agent.pyz",
+            "--artifact-sha256",
+            artifact_sha256,
+        ]
+    else:
+        if artifact_sha256 is not None:
+            raise ValueError("legacy signage ready identity cannot carry a digest")
+        identity_arguments = [
+            "--identity-mode",
+            "legacy-repository",
+            "--repo",
+            _TERMINAL_REPOSITORY,
+        ]
     source = runtime.PROJECT / "scripts/deploy/terminal-ready-probe.py"
     action = shlex.join(
         [
@@ -2606,8 +2633,7 @@ def prove_signage_ready(
             verification_id,
             "--expected-client-id",
             client_id,
-            "--repo",
-            _TERMINAL_REPOSITORY,
+            *identity_arguments,
         ]
     )
     output = runtime.run(
@@ -3023,7 +3049,14 @@ def preflight_terminal_rollback(
             or file_result.get("manifestSha256") != authority["manifestSha256"]
             or file_result.get("count") != authority["count"]
             or file_result.get("repository")
-            != {"path": _TERMINAL_REPOSITORY, "head": authority["previousSha"]}
+            != (
+                None
+                if authority["terminalType"] == "signage"
+                else {
+                    "path": _TERMINAL_REPOSITORY,
+                    "head": authority["previousSha"],
+                }
+            )
             or not isinstance(file_result.get("issues"), list)
             or any(
                 not isinstance(issue, str) or not issue
@@ -3175,7 +3208,11 @@ def rollback_terminal(
             )
             or len(set(absent_destinations)) != len(absent_destinations)
             or result.get("repository")
-            != {"path": _TERMINAL_REPOSITORY, "head": previous_sha}
+            != (
+                None
+                if terminal_type == "signage"
+                else {"path": _TERMINAL_REPOSITORY, "head": previous_sha}
+            )
         ):
             raise RuntimeError("terminal rollback restore result is invalid")
         run_scoped_paths = adapter_for_profile(
@@ -3193,7 +3230,9 @@ def rollback_terminal(
                 "manifestSha256": digest,
                 "paths": list(run_scoped_paths),
             }
-        if remote_previous_sha(inventory, host, runtime=runtime) != previous_sha:
+        if terminal_type != "signage" and (
+            remote_previous_sha(inventory, host, runtime=runtime) != previous_sha
+        ):
             raise RuntimeError("terminal repository HEAD was not restored")
         runtime_result = _run_runtime_manifest_helper(
             inventory,

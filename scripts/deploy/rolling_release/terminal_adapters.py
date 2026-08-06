@@ -407,8 +407,11 @@ class TerminalAdapter:
         run_id: str,
         release_sha: str,
         verification_id: str,
+        target: dict[str, Any],
+        *,
+        rollback: bool,
     ) -> None:
-        del inventory, target_spec, run_id, release_sha, verification_id
+        del inventory, target_spec, run_id, release_sha, verification_id, target, rollback
 
     def observe(
         self,
@@ -1249,7 +1252,67 @@ class SignageSystemdAdapter(TerminalAdapter):
         run_id: str,
         release_sha: str,
         verification_id: str,
+        target: dict[str, Any],
+        *,
+        rollback: bool,
     ) -> None:
+        artifact_sha256: str | None = None
+        if rollback:
+            baseline = target.get("repositoryBaseline")
+            if not isinstance(baseline, dict) or set(baseline) != {
+                "head",
+                "artifactState",
+                "artifactIdentity",
+                "artifactSha256",
+                "legacyRepositorySha",
+            }:
+                raise RuntimeError("signage rollback ready baseline is malformed")
+            if baseline.get("artifactState") == "absent":
+                if (
+                    baseline.get("head") != release_sha
+                    or baseline.get("legacyRepositorySha") != release_sha
+                    or baseline.get("artifactIdentity") is not None
+                    or baseline.get("artifactSha256") is not None
+                ):
+                    raise RuntimeError(
+                        "legacy signage rollback ready identity is malformed"
+                    )
+                identity_mode = "legacy-repository"
+            elif baseline.get("artifactState") == "installed":
+                artifact_sha256 = baseline.get("artifactSha256")
+                if (
+                    baseline.get("head") != release_sha
+                    or baseline.get("legacyRepositorySha") is not None
+                    or not isinstance(artifact_sha256, str)
+                    or SHA256_RE.fullmatch(artifact_sha256) is None
+                    or baseline.get("artifactIdentity")
+                    != f"git:{release_sha}@sha256:{artifact_sha256}"
+                ):
+                    raise RuntimeError(
+                        "installed signage rollback ready identity is malformed"
+                    )
+                identity_mode = "artifact"
+            else:
+                raise RuntimeError("signage rollback ready state is unknown")
+        else:
+            requirements = target.get("claimRequirements")
+            matches = [
+                value
+                for value in requirements or []
+                if isinstance(value, dict)
+                and value.get("kind")
+                == ClaimKind.SIGNAGE_RELEASE_ARTIFACT.value
+            ]
+            if len(matches) != 1:
+                raise RuntimeError("signage forward ready identity is unavailable")
+            expected = matches[0].get("expectedIdentity")
+            prefix = f"git:{release_sha}@sha256:"
+            if not isinstance(expected, str) or not expected.startswith(prefix):
+                raise RuntimeError("signage forward ready identity is malformed")
+            artifact_sha256 = expected[len(prefix) :]
+            if SHA256_RE.fullmatch(artifact_sha256) is None:
+                raise RuntimeError("signage forward ready digest is malformed")
+            identity_mode = "artifact"
         self.runtime.prove_signage_ready(
             inventory,
             target_spec["host"],
@@ -1257,6 +1320,8 @@ class SignageSystemdAdapter(TerminalAdapter):
             target_spec["clientId"],
             release_sha,
             verification_id,
+            identity_mode=identity_mode,
+            artifact_sha256=artifact_sha256,
         )
 
     def finalize_after_maintenance(

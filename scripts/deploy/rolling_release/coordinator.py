@@ -920,6 +920,8 @@ def _verify_terminal_ready(
         run_id,
         expected_sha,
         verification_id,
+        target,
+        rollback=rollback,
     )
     wait_options = {
         "phase": "ready",

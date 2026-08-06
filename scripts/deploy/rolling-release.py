@@ -951,6 +951,9 @@ def prove_signage_ready(
     client_id: str,
     release_sha: str,
     verification_id: str,
+    *,
+    identity_mode: str,
+    artifact_sha256: str | None = None,
 ) -> None:
     return ansible_backend.prove_signage_ready(
         inventory,
@@ -959,6 +962,8 @@ def prove_signage_ready(
         client_id,
         release_sha,
         verification_id,
+        identity_mode=identity_mode,
+        artifact_sha256=artifact_sha256,
         runtime=_runtime(),
     )
 

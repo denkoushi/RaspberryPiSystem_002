@@ -927,6 +927,7 @@ class RollbackManifestAdapterTest(unittest.TestCase):
             self.RUN_ID
         )
         restore_result = self._restore_result(absent_destinations=cleanup_paths)
+        restore_result["repository"] = None
         target["rollbackManifest"]["count"] = restore_result["count"]
         units, docker_services = ansible._terminal_runtime_contract("signage")
         target["rollbackManifest"]["runtime"]["unitCount"] = len(units)
@@ -935,7 +936,6 @@ class RollbackManifestAdapterTest(unittest.TestCase):
         )
         runtime = Runtime([
             manifest_marker(restore_result),
-            self.PREVIOUS_SHA + "\n",
             runtime_marker(self._runtime_restore_result("signage")),
         ])
         self.assertTrue(
@@ -947,7 +947,10 @@ class RollbackManifestAdapterTest(unittest.TestCase):
                 runtime=runtime,
             )
         )
-        self.assertIn("terminal-runtime-manifest.py", runtime.calls[2][0][-1])
+        self.assertIn("terminal-runtime-manifest.py", runtime.calls[1][0][-1])
+        self.assertFalse(
+            any("rev-parse HEAD" in call[0][-1] for call in runtime.calls)
+        )
         self.assertEqual(
             target["stagedSourceCleanup"],
             {
@@ -968,6 +971,7 @@ class RollbackManifestAdapterTest(unittest.TestCase):
         )
         incomplete = cleanup_paths[:1]
         restore_result = self._restore_result(absent_destinations=incomplete)
+        restore_result["repository"] = None
         target["rollbackManifest"]["count"] = restore_result["count"]
         units, docker_services = ansible._terminal_runtime_contract("signage")
         target["rollbackManifest"]["runtime"]["unitCount"] = len(units)
@@ -2206,6 +2210,8 @@ class TerminalHealthAdapterTest(unittest.TestCase):
             "terminal-a",
             sha,
             verification_id,
+            identity_mode="artifact",
+            artifact_sha256="c" * 64,
             runtime=runtime,
         )
         command, options = runtime.calls[0]
@@ -2218,7 +2224,13 @@ class TerminalHealthAdapterTest(unittest.TestCase):
         self.assertIn(f"--release-sha {sha}", action)
         self.assertIn(f"--verification-id {verification_id}", action)
         self.assertIn("--expected-client-id terminal-a", action)
-        self.assertIn("--repo /opt/RaspberryPiSystem_002", action)
+        self.assertIn("--identity-mode artifact", action)
+        self.assertIn(
+            "--artifact-path /usr/local/bin/raspi-signage-status-agent.pyz",
+            action,
+        )
+        self.assertIn(f"--artifact-sha256 {'c' * 64}", action)
+        self.assertNotIn("--repo", action)
         self.assertNotIn("CLIENT_KEY", action)
         self.assertNotIn("client-key", action)
         self.assertEqual(options["cwd"], runtime.ANSIBLE_DIRECTORY)
@@ -2236,6 +2248,8 @@ class TerminalHealthAdapterTest(unittest.TestCase):
                         "terminal-a",
                         sha,
                         "b" * 32,
+                        identity_mode="artifact",
+                        artifact_sha256="c" * 64,
                         runtime=Runtime(output),
                     )
 
@@ -2258,6 +2272,8 @@ class TerminalHealthAdapterTest(unittest.TestCase):
                         client_id,
                         sha,
                         verification_id,
+                        identity_mode="artifact",
+                        artifact_sha256="c" * 64,
                         runtime=runtime,
                     )
                 self.assertEqual(runtime.calls, [])
