@@ -253,6 +253,45 @@ class SystemdBackendTest(unittest.TestCase):
         self.assertFalse(payload['retain'])
         self.assertEqual(payload['target'], target)
 
+    def test_typed_signage_preflight_consumes_the_locked_exact_reference(self):
+        backend, runner = self.backend()
+        source_sha = 'b' * 40
+        locked_release = {
+            'releaseScope': 'pi3-signage-artifact',
+            'sourceSha': source_sha,
+            'exactReference': (
+                f'{backend_module.signage_artifact_stage.ARTIFACT_REPOSITORY}'
+                f'@{OCI_DIGEST}'
+            ),
+            'ociDigest': OCI_DIGEST,
+            'artifactSha256': 'c' * 64,
+            'manifestSha256': 'e' * 64,
+            'payloadDigest': 'f' * 64,
+            'claimIdentity': f'git:{source_sha}@sha256:{"c" * 64}',
+        }
+        target = {
+            'host': 'raspberrypi3',
+            'profile': 'signage',
+            'address': '100.64.0.3',
+            'user': 'pi',
+            'port': 22,
+        }
+
+        backend.preflight_signage_artifact_stage(
+            self.spec(),
+            target,
+            release_authority=locked_release,
+        )
+
+        remote = self.remote_argv(runner)
+        payload = json.loads(base64.b64decode(remote[-1]).decode('utf-8'))
+        self.assertEqual(
+            payload['artifactRef'],
+            locked_release['exactReference'],
+        )
+        self.assertEqual(payload['releaseAuthority'], locked_release)
+        self.assertNotIn(f':{self.spec().sha}', payload['artifactRef'])
+
     def test_selected_reverification_survives_the_systemd_bootstrap_contract(self):
         backend, runner = self.backend()
 
