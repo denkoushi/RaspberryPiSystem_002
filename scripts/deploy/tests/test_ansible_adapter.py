@@ -14,6 +14,9 @@ from pathlib import Path
 from unittest import mock
 
 from scripts.deploy.rolling_release.backends import ansible
+from scripts.deploy.rolling_release.errors import (
+    TerminalManifestCapturePreMutationError,
+)
 
 
 PROJECT = Path(__file__).resolve().parents[3]
@@ -520,6 +523,8 @@ class RollbackManifestAdapterTest(unittest.TestCase):
             )
 
         action = runtime.calls[0][0][-1]
+        self.assertNotIn("--repository", action)
+        self.assertNotIn("--expected-head", action)
         self.assertIn(
             f"--path-template /run/signage/release-{self.RUN_ID}-maintenance.svg", action
         )
@@ -711,6 +716,34 @@ class RollbackManifestAdapterTest(unittest.TestCase):
             )
 
         self.assertNotIn(secret, str(raised.exception))
+        self.assertIs(type(raised.exception), RuntimeError)
+
+    def test_capture_identity_failure_is_typed_as_pre_mutation(self):
+        safe = terminal_manifest_capture_error(
+            {
+                "version": 1,
+                "stage": "identity",
+                "code": "identity.account",
+                "message": "terminal SSH account identity is malformed",
+            }
+        )
+        error = subprocess.CalledProcessError(
+            1, ["ansible"], output=safe, stderr="DO-NOT-LEAK"
+        )
+        runtime = Runtime(error)
+        runtime.PROJECT = PROJECT
+
+        with self.assertRaises(TerminalManifestCapturePreMutationError) as raised:
+            ansible.capture_terminal_manifest(
+                "inventory.yml",
+                {"host": self.HOST, "terminalType": "signage"},
+                self.RUN_ID,
+                self.PREVIOUS_SHA,
+                runtime=runtime,
+            )
+
+        self.assertIn("identity/identity.account", str(raised.exception))
+        self.assertNotIn("DO-NOT-LEAK", str(raised.exception))
 
     def test_capture_response_loss_stays_failed_without_reconstructing_authority(self):
         secret = "REMOTE-CAPTURE-MAY-HAVE-COMPLETED"

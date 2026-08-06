@@ -120,7 +120,16 @@ def capture_all(
         raise CaptureEnvelopeError(
             "identity", "identity.changed", "terminal SSH account home changed"
         )
-    if FULL_SHA_RE.fullmatch(args.expected_head or "") is None:
+    if (args.repository is None) != (args.expected_head is None):
+        raise CaptureEnvelopeError(
+            "identity",
+            "identity.repository-binding",
+            "repository rollback authority is incomplete",
+        )
+    if (
+        args.expected_head is not None
+        and FULL_SHA_RE.fullmatch(args.expected_head) is None
+    ):
         raise CaptureEnvelopeError(
             "file", "file.expected-head", "terminal expected HEAD is malformed"
         )
@@ -177,8 +186,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--runtime-root", type=Path, required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--host", required=True)
-    parser.add_argument("--repository", type=Path, required=True)
-    parser.add_argument("--expected-head", required=True)
+    parser.add_argument("--repository", type=Path)
+    parser.add_argument("--expected-head")
     parser.add_argument("--path-template", action="append", default=[])
     parser.add_argument("--path", action="append", default=[])
     parser.add_argument("--unit", action="append", default=[])
@@ -207,11 +216,22 @@ def _elevated_arguments(args: argparse.Namespace, user: str, home: str) -> list[
         args.run_id,
         "--host",
         args.host,
-        "--repository",
-        str(args.repository),
-        "--expected-head",
-        args.expected_head,
     ]
+    if (args.repository is None) != (args.expected_head is None):
+        raise CaptureEnvelopeError(
+            "identity",
+            "identity.repository-binding",
+            "repository rollback authority is incomplete",
+        )
+    if args.repository is not None and args.expected_head is not None:
+        arguments.extend(
+            (
+                "--repository",
+                str(args.repository),
+                "--expected-head",
+                args.expected_head,
+            )
+        )
     for path in concrete_paths:
         arguments.extend(("--path", path))
     for unit in args.unit:

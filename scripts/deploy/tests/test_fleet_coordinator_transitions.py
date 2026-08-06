@@ -17,6 +17,9 @@ from rolling_release import readiness_policy  # noqa: E402
 from rolling_release.adapter_registry import adapter_for_profile  # noqa: E402
 from rolling_release.activation import ActivationUncertainError  # noqa: E402
 from rolling_release.cancellation import CancellationRequested  # noqa: E402
+from rolling_release.errors import (  # noqa: E402
+    TerminalManifestCapturePreMutationError,
+)
 from rolling_release.release_claims import (  # noqa: E402
     ClaimAuthority,
     ClaimKind,
@@ -2144,75 +2147,118 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         self.assertIsNone(claim["observedIdentity"])
         self.assertIsNone(claim["observedAt"])
 
-    def test_signage_forward_refreshes_after_remove_before_fleet_promotion(self):
+    def test_signage_artifact_transaction_commits_or_fails_before_maintenance(self):
         terminal = {
             "host": "signage-a",
             "role": "signage",
             "terminalType": "signage",
             "clientId": "s1",
         }
-        runtime = FakeRuntime(
-            fleet={
-                "pi5": host_record("server", OLD_SHA),
-                "signage-a": host_record("signage", OLD_SHA),
-            },
-            hosts=[{"host": "pi5", "role": "server"}, terminal],
-            plan={
-                "pi5Required": False,
-                "activationExecutionEnabled": True,
-                "verificationOnlyExecutionEnabled": True,
-                "mutationTargets": [{"host": terminal["host"]}],
-                "activationTargets": [],
-                "verificationTargets": [{"host": terminal["host"]}],
-                "terminalWork": [
-                    {
-                        "host": terminal["host"],
-                        "role": "signage",
-                        "mutationRequired": True,
-                        "activationRequired": False,
-                        "verificationRequired": True,
-                        "activationStrategyId": None,
-                        "activationMode": None,
-                        "claimRequirements": [
-                            {
-                                "kind": "signageReleaseArtifact",
-                                "expectedIdentity": NEW_ARTIFACT_IDENTITY,
-                                "status": "stale-or-unverified",
-                            }
-                        ],
-                    }
-                ],
-                "hosts": [
-                    decision("pi5", "server", targeted=False),
-                    decision("signage-a", "signage"),
-                ],
-            },
-            targets=[terminal],
-        )
 
-        self.assertEqual(
-            coordinator.execute(
-                args(), runtime=runtime, token=FakeToken(runtime.events)
-            ),
-            0,
-        )
+        def make_runtime():
+            return FakeRuntime(
+                fleet={
+                    "pi5": host_record("server", OLD_SHA),
+                    "signage-a": host_record("signage", OLD_SHA),
+                },
+                hosts=[{"host": "pi5", "role": "server"}, terminal],
+                plan={
+                    "pi5Required": False,
+                    "activationExecutionEnabled": True,
+                    "verificationOnlyExecutionEnabled": True,
+                    "mutationTargets": [{"host": terminal["host"]}],
+                    "activationTargets": [],
+                    "verificationTargets": [{"host": terminal["host"]}],
+                    "terminalWork": [
+                        {
+                            "host": terminal["host"],
+                            "role": "signage",
+                            "mutationRequired": True,
+                            "activationRequired": False,
+                            "verificationRequired": True,
+                            "activationStrategyId": None,
+                            "activationMode": None,
+                            "claimRequirements": [
+                                {
+                                    "kind": "signageReleaseArtifact",
+                                    "expectedIdentity": NEW_ARTIFACT_IDENTITY,
+                                    "status": "stale-or-unverified",
+                                }
+                            ],
+                        }
+                    ],
+                    "hosts": [
+                        decision("pi5", "server", targeted=False),
+                        decision("signage-a", "signage"),
+                    ],
+                },
+                targets=[terminal],
+            )
 
-        remove = runtime.events.index(
-            "status:remove-client:--run-id:run-1:--client:s1"
-        )
-        refresh = runtime.events.index("signage:refresh:signage-a:run-1")
-        promote = runtime.events.index(f"fleet:verified:signage-a:{NEW_SHA}")
-        self.assertLess(remove, refresh)
-        self.assertLess(refresh, promote)
-        target = runtime.states[-1].target("signage-a")
-        self.assertTrue(target["signageDisplayProof"]["maintenanceArtifactReplaced"])
-        claim = runtime.fleet["fleet"]["signage-a"]["releaseClaims"][
-            "signageReleaseArtifact"
-        ]
-        self.assertEqual(claim["authority"], "signage-ready")
-        self.assertEqual(claim["expectedIdentity"], NEW_ARTIFACT_IDENTITY)
-        self.assertEqual(claim["observedIdentity"], NEW_ARTIFACT_IDENTITY)
-        self.assertEqual(claim["verificationId"], FORWARD_VERIFICATION_ID)
+        with self.subTest(outcome="success"):
+            runtime = make_runtime()
+            self.assertEqual(
+                coordinator.execute(
+                    args(), runtime=runtime, token=FakeToken(runtime.events)
+                ),
+                0,
+            )
+
+            capture = runtime.events.index(
+                f"manifest:capture:signage-a:{OLD_SHA}"
+            )
+            maintenance = runtime.events.index(
+                "status:put:--run-id:run-1:--clients:s1:--terminal-type:signage"
+            )
+            apply = runtime.events.index("playbook:signage-a")
+            remove = runtime.events.index(
+                "status:remove-client:--run-id:run-1:--client:s1"
+            )
+            refresh = runtime.events.index("signage:refresh:signage-a:run-1")
+            promote = runtime.events.index(f"fleet:verified:signage-a:{NEW_SHA}")
+            finish = runtime.events.index("fleet:finish:success")
+            self.assertLess(capture, maintenance)
+            self.assertLess(maintenance, apply)
+            self.assertLess(apply, remove)
+            self.assertLess(remove, refresh)
+            self.assertLess(refresh, promote)
+            self.assertLess(promote, finish)
+            target = runtime.states[-1].target("signage-a")
+            self.assertTrue(
+                target["signageDisplayProof"]["maintenanceArtifactReplaced"]
+            )
+            claim = runtime.fleet["fleet"]["signage-a"]["releaseClaims"][
+                "signageReleaseArtifact"
+            ]
+            self.assertEqual(claim["authority"], "signage-ready")
+            self.assertEqual(claim["expectedIdentity"], NEW_ARTIFACT_IDENTITY)
+            self.assertEqual(claim["observedIdentity"], NEW_ARTIFACT_IDENTITY)
+            self.assertEqual(claim["verificationId"], FORWARD_VERIFICATION_ID)
+            self.assertIsNone(runtime.fleet["activeRun"])
+            self.assertEqual(runtime.fleet["lastRun"]["status"], "success")
+
+        with self.subTest(outcome="safe-capture-failure"):
+            runtime = make_runtime()
+            runtime.manifest_capture_error = TerminalManifestCapturePreMutationError(
+                "terminal manifest capture identity/account: terminal account is unavailable"
+            )
+            with self.assertRaises(TerminalManifestCapturePreMutationError):
+                coordinator.execute(
+                    args(), runtime=runtime, token=FakeToken(runtime.events)
+                )
+
+            self.assertFalse(
+                any(event.startswith("status:") for event in runtime.events)
+            )
+            self.assertNotIn("source:stage:signage-a", runtime.events)
+            self.assertNotIn("playbook:signage-a", runtime.events)
+            target = runtime.states[-1].target("signage-a")
+            self.assertNotIn("maintenanceStartedAt", target)
+            self.assertNotIn("rollbackManifest", target)
+            self.assertEqual(runtime.states[-1].payload["state"], "failed")
+            self.assertEqual(runtime.states[-1].payload["phase"], "completed")
+            self.assertIsNone(runtime.fleet["activeRun"])
+            self.assertEqual(runtime.fleet["lastRun"]["status"], "failed")
 
     def test_signage_verification_only_skips_ansible_and_promotes_ready_claim(self):
         terminal = {

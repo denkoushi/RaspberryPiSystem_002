@@ -29,6 +29,7 @@ from ..activation import (
     KIOSK_WEB_ACTIVATION_STRATEGY,
     KIOSK_WEB_ACTIVATION_TARGET_UNIT,
 )
+from ..errors import TerminalManifestCapturePreMutationError
 from ..read_only_ansible_context import prepare_context
 
 if TYPE_CHECKING:
@@ -573,6 +574,22 @@ def _terminal_manifest_capture_error(output: str) -> dict[str, str]:
     ):
         raise RuntimeError("terminal manifest capture error marker is malformed")
     return value
+
+
+def _terminal_manifest_capture_failure(evidence: dict[str, str]) -> RuntimeError:
+    message = (
+        "terminal manifest capture "
+        f"{evidence['stage']}/{evidence['code']}: {evidence['message']}"
+    )
+    if (
+        evidence["stage"] == "identity"
+        and evidence["code"] != "capture.internal"
+    ) or (
+        evidence["stage"] == "file"
+        and evidence["code"] == "file.expected-head"
+    ):
+        return TerminalManifestCapturePreMutationError(message)
+    return RuntimeError(message)
 
 
 def _manifest_marker(output: str) -> dict[str, Any]:
@@ -1341,10 +1358,7 @@ def capture_terminal_manifest(
                 raise RuntimeError(
                     f"terminal manifest capture failed without safe evidence: {host}"
                 ) from None
-            raise RuntimeError(
-                "terminal manifest capture "
-                f"{evidence['stage']}/{evidence['code']}: {evidence['message']}"
-            ) from None
+            raise _terminal_manifest_capture_failure(evidence) from None
     envelope = _strict_result_marker(
         output,
         pattern=_TERMINAL_MANIFEST_CAPTURE_MARKER_RE,

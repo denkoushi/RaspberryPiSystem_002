@@ -21,7 +21,7 @@ from .activation import (
     WEB_CONSUMER_STEADY_STATE_MODE,
 )
 from .cancellation import CancellationRequested, CancellationToken
-from .errors import CanaryApprovalTimeout
+from .errors import CanaryApprovalTimeout, TerminalManifestCapturePreMutationError
 from .release_claims import (
     ClaimAuthority,
     ClaimKind,
@@ -2228,9 +2228,13 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                     )
             except Exception as capture_error:
                 # The remote helper may have sealed state even if result
-                # delivery failed. Keep this run active so the next
-                # coordinator retries the exact run identity before planning.
-                interrupted_recovery_pending = True
+                # delivery failed. Keep only uncertain captures active so the
+                # next coordinator retries the exact run identity before
+                # planning. A typed pre-mutation failure carries proof that no
+                # remote manifest authority exists and can finish normally.
+                interrupted_recovery_pending = not isinstance(
+                    capture_error, TerminalManifestCapturePreMutationError
+                )
                 target["manifestCaptureFailure"] = str(capture_error)
                 state.save()
                 raise
