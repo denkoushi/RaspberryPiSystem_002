@@ -58,6 +58,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
             "docker-security": "docker_security",
             "e2e-smoke": "e2e",
             "e2e-tests": "e2e",
+            "signage-artifact-contract": "signage_artifact",
         }
         classifier = job_block(CI, "change-classification")
         for output in set(categories.values()) | {
@@ -113,6 +114,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
             "docker-security",
             "e2e-smoke",
             "e2e-tests",
+            "signage-artifact-contract",
         ):
             self.assertIn(f"      - {dependency}\n", aggregate)
         self.assertIn("uses: actions/checkout@v6", aggregate)
@@ -121,6 +123,38 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertNotIn("lint-build-unit", CI)
         self.assertNotIn("api-db-and-infra", CI)
         self.assertNotIn("security-docker", CI)
+
+    def test_signage_artifact_is_read_only_on_pr_and_main_only_for_publication(self) -> None:
+        contract = job_block(CI, "signage-artifact-contract")
+        gates = job_block(CI, "signage-artifact-gates")
+        publish = job_block(CI, "signage-artifact-publish")
+        release_set = job_block(CI, "release-set")
+
+        self.assertIn("permissions:\n      contents: read", contract)
+        self.assertIn("signage-distribution-artifact.py build", contract)
+        self.assertIn("signage-distribution-artifact.py verify", contract)
+        self.assertIn("Security scan exact Signage artifact image", contract)
+        self.assertIn("actions/upload-artifact@v6", contract)
+        for forbidden in ("packages: write", "attestations: write", "id-token: write"):
+            self.assertNotIn(forbidden, contract)
+
+        for block in (gates, publish):
+            self.assertIn("github.event_name == 'push'", block)
+            self.assertIn("github.ref == 'refs/heads/main'", block)
+            self.assertIn(
+                "needs.change-classification.outputs.signage_artifact == 'true'",
+                block,
+            )
+        self.assertIn("--required codeql", gates)
+        self.assertIn("--required gitleaks", gates)
+        self.assertIn("packages: write", publish)
+        self.assertIn("attestations: write", publish)
+        self.assertIn("id-token: write", publish)
+        self.assertIn("actions/download-artifact@v7", publish)
+        self.assertIn("ghcr.io/denkoushi/raspisys-pi3-signage:${{ github.sha }}", publish)
+        self.assertIn("predicate-path: signage-release-attestation.json", publish)
+        self.assertIn("push-to-registry: true", publish)
+        self.assertEqual(release_set.count("uses: actions/attest@v4"), 3)
 
     def test_main_release_pair_is_native_arm64_scanned_and_attested(self) -> None:
         contract = job_block(CI, "release-build-contract")

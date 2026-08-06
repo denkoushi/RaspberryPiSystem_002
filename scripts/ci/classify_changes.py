@@ -28,6 +28,7 @@ CATEGORIES = (
     "e2e",
     "kiosk_sop",
     "docker_security",
+    "signage_artifact",
 )
 FULL_SUITE = frozenset(CATEGORIES)
 DOCKER_MATRIX_ITEMS = {
@@ -83,7 +84,7 @@ def _normalize_path(path: str) -> str:
     return PurePosixPath(path).as_posix().removeprefix("./")
 
 
-def categories_for_path(path: str) -> frozenset[str] | None:
+def _base_categories_for_path(path: str) -> frozenset[str] | None:
     """Return categories for a known path, or ``None`` for an unknown path."""
     normalized = _normalize_path(path)
 
@@ -168,6 +169,47 @@ def categories_for_path(path: str) -> frozenset[str] | None:
     return None
 
 
+def signage_artifact_for_path(path: str) -> bool:
+    """Return whether a path changes the complete Pi3 Signage artifact."""
+    normalized = _normalize_path(path)
+    return (
+        normalized
+        in {
+            "clients/status-agent/status-agent.py",
+            "clients/status-agent/storage_health.py",
+            "clients/status-agent/terminal_agent_health.py",
+            "clients/status-agent/status-agent.service",
+            "clients/status-agent/status-agent.timer",
+            "scripts/deploy/rolling_release/terminal_device_maintenance.py",
+            "scripts/deploy/terminal-profile-registry.json",
+            "scripts/deploy/signage-release-artifact.py",
+            "scripts/deploy/signage-distribution-artifact.py",
+            "scripts/deploy/tests/test_signage_distribution_artifact.py",
+            "infrastructure/docker/Dockerfile.signage-release",
+        }
+        or _has_prefix(
+            normalized, "infrastructure/ansible/roles/signage/templates"
+        )
+    )
+
+
+def _signage_artifact_exclusive_path(path: str) -> bool:
+    normalized = _normalize_path(path)
+    return signage_artifact_for_path(normalized) and normalized not in {
+        "scripts/deploy/rolling_release/terminal_device_maintenance.py",
+        "scripts/deploy/terminal-profile-registry.json",
+    }
+
+
+def categories_for_path(path: str) -> frozenset[str] | None:
+    categories = _base_categories_for_path(path)
+    if categories is None or categories == FULL_SUITE:
+        return categories
+    if signage_artifact_for_path(path):
+        return categories | {"signage_artifact"}
+    return categories
+
+
 def codeql_for_path(path: str) -> bool:
     """Return whether a known path can change JavaScript/TypeScript analysis."""
     normalized = _normalize_path(path)
@@ -193,6 +235,8 @@ def codeql_for_path(path: str) -> bool:
 def docker_images_for_path(path: str) -> frozenset[str]:
     """Return Docker images whose filesystem may change for a known path."""
     normalized = _normalize_path(path)
+    if _signage_artifact_exclusive_path(normalized):
+        return frozenset()
     if normalized in {
         "scripts/deploy/production_config_contract.py",
         "infrastructure/ansible/group_vars/server/web-build.yml",
@@ -227,6 +271,8 @@ def release_pair_for_path(path: str) -> bool:
     """
 
     normalized = _normalize_path(path)
+    if _signage_artifact_exclusive_path(normalized):
+        return False
     if normalized in GLOBAL_PATHS:
         return True
     if any(
@@ -332,7 +378,7 @@ def classify_changes(
 
     matrix_images = sorted(docker_images) or ["api", "web"]
     return {
-        "schemaVersion": 4,
+        "schemaVersion": 5,
         "mode": "enforced",
         "fileCount": len(classified),
         "fullSuite": selected == set(FULL_SUITE),
