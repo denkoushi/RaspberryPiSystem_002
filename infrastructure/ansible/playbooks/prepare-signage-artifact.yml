@@ -1,0 +1,88 @@
+---
+# Render only the seven host-bound Stage 1 payloads into the already verified,
+# run-scoped Stage 2 staging tree.  Activation is owned by the target helper;
+# this playbook never touches live paths, systemd, maintenance, or current.
+- name: Prepare one verified Pi3 Signage artifact candidate
+  hosts: signage
+  gather_facts: false
+  become: true
+  serial: 1
+  order: inventory
+
+  pre_tasks:
+    - name: Require canonical rolling release context
+      ansible.builtin.import_tasks: "../tasks/assert-release-orchestration.yml"
+
+    - name: Require terminal release-only mode before candidate rendering
+      ansible.builtin.import_tasks: "../tasks/assert-terminal-release-mode.yml"
+
+    - name: Validate sealed Signage artifact stage authority
+      ansible.builtin.assert:
+        that:
+          - terminal_signage_artifact_stage is mapping
+          - terminal_signage_artifact_stage.keys() | sort == signage_stage_keys | sort
+          - terminal_signage_artifact_stage.schemaVersion == 1
+          - terminal_signage_artifact_stage.host == inventory_hostname
+          - terminal_signage_artifact_stage.runId is match('^[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$')
+          - terminal_signage_artifact_stage.sourceSha is match('^[0-9a-f]{40}$')
+          - terminal_signage_artifact_stage.artifactSha256 is match('^[0-9a-f]{64}$')
+          - terminal_signage_artifact_stage.manifestSha256 is match('^[0-9a-f]{64}$')
+          - terminal_signage_artifact_stage.payloadDigest is match('^[0-9a-f]{64}$')
+          - terminal_signage_artifact_stage.ociDigest is match('^sha256:[0-9a-f]{64}$')
+          - terminal_signage_artifact_stage.readyPath == '/var/tmp/raspisystem-signage-stage/' ~ terminal_signage_artifact_stage.runId ~ '/ready'
+          - terminal_signage_artifact_stage.renderedRoot == '/var/tmp/raspisystem-signage-stage/' ~ terminal_signage_artifact_stage.runId ~ '/rendered'
+        fail_msg: Signage artifact stage authority is malformed
+      vars:
+        signage_stage_keys:
+          - artifactSha256
+          - host
+          - manifestSha256
+          - ociDigest
+          - payloadDigest
+          - readyPath
+          - renderedRoot
+          - runId
+          - schemaVersion
+          - sourceSha
+
+    - name: Prove the rendered candidate path is initially absent
+      ansible.builtin.stat:
+        path: "{{ terminal_signage_artifact_stage.renderedRoot }}"
+        follow: false
+      register: signage_rendered_root
+
+    - name: Refuse a colliding rendered candidate path
+      ansible.builtin.assert:
+        that:
+          - not signage_rendered_root.stat.exists
+        fail_msg: Signage rendered candidate path already exists
+
+  tasks:
+    - name: Create the fixed rendered payload directories
+      ansible.builtin.file:
+        path: "{{ terminal_signage_artifact_stage.renderedRoot }}/{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+      loop:
+        - bin
+        - systemd
+        - tmpfiles
+
+    - name: Render the fixed host-bound Signage payload allowlist
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../roles/signage/templates/{{ item.template }}"
+        dest: "{{ terminal_signage_artifact_stage.renderedRoot }}/{{ item.path }}"
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+      loop:
+        - {template: signage-display.sh.j2, path: bin/signage-display.sh, mode: '0755'}
+        - {template: signage-update.sh.j2, path: bin/signage-update.sh, mode: '0755'}
+        - {template: signage-lite-update.service.j2, path: systemd/signage-lite-update.service, mode: '0644'}
+        - {template: signage-lite-update.timer.j2, path: systemd/signage-lite-update.timer, mode: '0644'}
+        - {template: signage-lite-watchdog.service.j2, path: systemd/signage-lite-watchdog.service, mode: '0644'}
+        - {template: signage-lite.service.j2, path: systemd/signage-lite.service, mode: '0644'}
+        - {template: signage-lite.tmpfiles.conf.j2, path: tmpfiles/signage-lite.conf, mode: '0644'}
+      no_log: true

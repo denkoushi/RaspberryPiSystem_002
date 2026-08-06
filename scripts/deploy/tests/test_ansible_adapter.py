@@ -69,6 +69,129 @@ def runtime_error_marker(value):
     return f"TERMINAL_RUNTIME_MANIFEST_ERROR:{encoded}"
 
 
+def activation_marker(result, *, ok=True, failure=None):
+    encoded = base64.urlsafe_b64encode(
+        json.dumps(
+            {"ok": ok, "result": result, "failure": failure},
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).decode("ascii")
+    return f"SIGNAGE_ARTIFACT_ACTIVATION_RESULT:{encoded}"
+
+
+class SignageStage3BackendTest(unittest.TestCase):
+    def test_capture_runs_the_bundled_target_helper_and_returns_one_baseline(self):
+        health = {
+            "activeSystemdUnits": ["lightdm.service"],
+            "displaySha256": "a" * 64,
+        }
+        baseline = {
+            "schemaVersion": 1,
+            "kind": "signage-artifact-baseline",
+            "pointerWasPresent": False,
+            "previousRelease": "legacy-" + "b" * 64,
+            "previousReleaseKind": "legacy",
+            "previousReleaseManifestSha256": "c" * 64,
+            "previousSourceSha": "d" * 40,
+            "previousArtifactSha256": None,
+            "legacyRepositorySha": "d" * 40,
+            "runtimeHealth": health,
+            "runtime": {"manifestSha256": "e" * 64, "unitCount": 1, "dockerCount": 0},
+            "requireRootOwner": True,
+        }
+        runtime = Runtime(activation_marker(baseline))
+        runtime.PROJECT = PROJECT
+
+        result = ansible.capture_signage_artifact_baseline(
+            "inventory.yml",
+            {"host": "raspberrypi3", "terminalType": "signage"},
+            "20260806-120000-abc123",
+            "d" * 40,
+            runtime=runtime,
+        )
+
+        self.assertEqual(result, baseline)
+        command = runtime.calls[0][0]
+        self.assertEqual(command[:7], [
+            "ansible", "-i", "inventory.yml", "raspberrypi3", "-b", "-m", "script"
+        ])
+        self.assertIn(" capture ", f" {command[-1]} ")
+
+    def test_candidate_stage_reuses_retain_true_stage2_core_before_prepare(self):
+        source_sha = "a" * 40
+        previous_sha = "b" * 40
+        run_id = "20260806-120000-abc123"
+        artifact = {
+            "sourceSha": source_sha,
+            "artifactSha256": "c" * 64,
+            "manifestSha256": "d" * 64,
+            "payloadDigest": "e" * 64,
+            "ociDigest": "sha256:" + "f" * 64,
+        }
+        report = {
+            "status": "passed",
+            "retain": True,
+            "artifact": artifact,
+            "staging": {
+                "runPath": f"/var/tmp/raspisystem-signage-stage/{run_id}",
+                "readyPath": f"/var/tmp/raspisystem-signage-stage/{run_id}/ready",
+            },
+        }
+        candidate = {
+            "schemaVersion": 1,
+            "sourceSha": source_sha,
+            "artifactSha256": artifact["artifactSha256"],
+            "manifestSha256": artifact["manifestSha256"],
+            "payloadDigest": artifact["payloadDigest"],
+            "ociDigest": artifact["ociDigest"],
+            "release": artifact["artifactSha256"],
+            "releaseKind": "artifact",
+            "releaseManifestSha256": "1" * 64,
+        }
+        runtime = Runtime("")
+        runtime.PROJECT = PROJECT
+        target = {
+            "host": "raspberrypi3",
+            "profile": "signage",
+            "address": "127.0.0.1",
+            "user": "signageras3",
+            "port": 22,
+        }
+        sentinel = object()
+        with mock.patch.object(
+            ansible, "_signage_stage_target", return_value=target
+        ), mock.patch.object(
+            ansible.signage_artifact_stage, "load_registry_config", return_value={}
+        ), mock.patch.object(
+            ansible.signage_artifact_stage, "GhcrAcquisition", return_value=sentinel
+        ), mock.patch.object(
+            ansible.signage_artifact_stage, "GhAttestor", return_value=sentinel
+        ), mock.patch.object(
+            ansible.signage_artifact_stage, "SshTargetTransport", return_value=sentinel
+        ), mock.patch.object(
+            ansible.signage_artifact_stage, "acquire_and_stage", return_value=report
+        ) as acquire, mock.patch.object(
+            ansible, "_render_signage_artifact_candidate"
+        ) as render, mock.patch.object(
+            ansible, "_run_signage_activation_helper", return_value=candidate
+        ) as helper:
+            result = ansible.stage_signage_artifact_candidate(
+                "inventory.yml",
+                "raspberrypi3",
+                source_sha,
+                previous_sha,
+                run_id,
+                runtime=runtime,
+            )
+
+        self.assertEqual(result["release"], artifact["artifactSha256"])
+        self.assertEqual(result["stageRunPath"], report["staging"]["runPath"])
+        self.assertIs(acquire.call_args.args[4], True)
+        render.assert_called_once()
+        self.assertEqual(helper.call_args.args[2], "prepare")
+
+
 def terminal_manifest_capture_marker(
     file_result, runtime_result, *, user="tools03", home="/home/tools03"
 ):
@@ -2226,7 +2349,7 @@ class TerminalHealthAdapterTest(unittest.TestCase):
         self.assertIn("--expected-client-id terminal-a", action)
         self.assertIn("--identity-mode artifact", action)
         self.assertIn(
-            "--artifact-path /usr/local/bin/raspi-signage-status-agent.pyz",
+            "--artifact-path /opt/raspisystem-signage/current/SIGNAGE-RELEASE.json",
             action,
         )
         self.assertIn(f"--artifact-sha256 {'c' * 64}", action)

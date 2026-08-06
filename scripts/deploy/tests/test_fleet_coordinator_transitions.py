@@ -403,7 +403,7 @@ class ProductionSignageTransport:
                     or self._option(action, "--artifact-sha256")
                     != ARTIFACT_DIGEST
                     or self._option(action, "--artifact-path")
-                    != "/usr/local/bin/raspi-signage-status-agent.pyz"
+                    != "/opt/raspisystem-signage/current/SIGNAGE-RELEASE.json"
                 ):
                     raise RuntimeError("signage artifact ready binding is invalid")
             elif mode == "legacy-repository":
@@ -997,6 +997,132 @@ class FakeRuntime:
     def signage_release_artifact_identity(self, revision):
         return f"git:{revision}@sha256:{ARTIFACT_DIGEST}"
 
+    def capture_signage_artifact_baseline(
+        self, _inventory, target_spec, run_id, previous_sha
+    ):
+        if self.manifest_capture_error is not None:
+            raise self.manifest_capture_error
+        self.events.append(f"stage3:capture:{target_spec['host']}:{run_id}")
+        installed = (
+            isinstance(self.signage_release_baseline_result, dict)
+            and self.signage_release_baseline_result.get("artifactState") == "installed"
+        )
+        health = rollback_runtime_health("signage")
+        return {
+            "schemaVersion": 1,
+            "kind": "signage-artifact-baseline",
+            "pointerWasPresent": installed,
+            "previousRelease": ARTIFACT_DIGEST if installed else "legacy-" + "8" * 64,
+            "previousReleaseKind": "artifact" if installed else "legacy",
+            "previousReleaseManifestSha256": "6" * 64,
+            "previousSourceSha": previous_sha,
+            "previousArtifactSha256": ARTIFACT_DIGEST if installed else None,
+            "legacyRepositorySha": None if installed else previous_sha,
+            "runtimeHealth": health,
+            "runtime": {
+                "manifestSha256": "5" * 64,
+                "unitCount": len(health["activeSystemdUnits"]),
+                "dockerCount": 0,
+            },
+            "requireRootOwner": True,
+        }
+
+    def stage_signage_artifact_candidate(
+        self, _inventory, host, revision, previous_sha, run_id
+    ):
+        self.events.append(f"stage3:stage:{host}:{run_id}")
+        if self.source_stage_error is not None:
+            self.events.append(f"stage3:internal-cleanup:{host}:{run_id}")
+            raise self.source_stage_error
+        return {
+            "schemaVersion": 1,
+            "runId": run_id,
+            "host": host,
+            "previousSha": previous_sha,
+            "sourceSha": revision,
+            "artifactSha256": ARTIFACT_DIGEST,
+            "manifestSha256": "7" * 64,
+            "payloadDigest": "6" * 64,
+            "ociDigest": "sha256:" + "5" * 64,
+            "release": ARTIFACT_DIGEST,
+            "releaseKind": "artifact",
+            "releaseManifestSha256": "4" * 64,
+            "stageRunPath": f"/var/tmp/raspisystem-signage-stage/{run_id}",
+            "readyPath": f"/var/tmp/raspisystem-signage-stage/{run_id}/ready",
+        }
+
+    def cleanup_signage_artifact_candidate(self, _inventory, host, reference):
+        self.events.append(f"stage3:candidate-cleanup:{host}:{reference['runId']}")
+        if self.source_cleanup_error is not None:
+            raise self.source_cleanup_error
+        return {
+            "schemaVersion": 1,
+            "status": "passed",
+            "removedPaths": [reference["stageRunPath"]],
+            "stageResidue": False,
+            "currentRelease": None,
+        }
+
+    def apply_signage_artifact_candidate(
+        self, _inventory, host, revision, run_id, reference, baseline
+    ):
+        if baseline.get("kind") != "signage-artifact-baseline":
+            raise AssertionError("stage3 apply lacks pointer baseline")
+        if reference.get("runId") != run_id:
+            raise AssertionError("stage3 apply lacks staged identity")
+        self.events.append(f"playbook:{host}")
+        if self.playbook_error is not None:
+            raise self.playbook_error
+        self.deployed_sha[host] = revision
+
+    def preflight_signage_artifact_rollback(
+        self, _inventory, target_spec, target, run_id
+    ):
+        host = target_spec["host"]
+        self.events.append(f"stage3:rollback-preflight:{host}:{run_id}")
+        selected = self.rollback_preflight_by_host.get(host)
+        if isinstance(selected, Exception):
+            raise selected
+        if selected is not None:
+            return copy.deepcopy(selected)
+        return {
+            "ready": True,
+            "issues": [],
+            "runtimeHealth": copy.deepcopy(target["rollbackManifest"]["runtimeHealth"]),
+            "fileManifestReady": True,
+            "runtimeManifestReady": True,
+            "restoredReceipt": False,
+            "requiresRuntimeReconciliation": False,
+        }
+
+    def rollback_signage_artifact(self, _inventory, target_spec, target, run_id):
+        host = target_spec["host"]
+        self.events.append(f"stage3:rollback:{host}:{run_id}")
+        if not self.rollback_ok:
+            target["rollback"] = "failed: injected rollback failure"
+            return False
+        target["rollbackRuntimeHealth"] = copy.deepcopy(
+            target["rollbackManifest"]["runtimeHealth"]
+        )
+        target["rollback"] = "success"
+        self.deployed_sha[host] = target["previousSha"]
+        return True
+
+    def cleanup_signage_artifact_release(
+        self, _inventory, target_spec, target, run_id, outcome
+    ):
+        host = target_spec["host"]
+        self.events.append(f"stage3:cleanup:{host}:{run_id}:{outcome}")
+        if self.runtime_cleanup_error is not None:
+            raise self.runtime_cleanup_error
+        return {
+            "cleaned": True,
+            "alreadyClean": False,
+            "manifestSha256": target["rollbackManifest"]["runtime"]["manifestSha256"],
+            "tagCount": 0,
+            "outcome": outcome,
+        }
+
     def stage_terminal_candidate_source(
         self, _inventory, host, revision, previous_sha, run_id
     ):
@@ -1368,6 +1494,12 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         fixture = ProductionSignageFixture()
         runtime = fixture.runtime(artifact_state="absent")
         bind_production_signage_boundaries(runtime, fixture)
+        non_pi3_before = copy.deepcopy(
+            {
+                host: runtime.fleet["fleet"][host]
+                for host in ("pi5", *fixture.pi4_hosts)
+            }
+        )
 
         self.assertEqual(
             coordinator.execute(
@@ -1376,7 +1508,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             0,
         )
 
-        capture = runtime.events.index("producer:capture:run-1")
+        capture = runtime.events.index("stage3:capture:raspberrypi3:run-1")
         maintenance = runtime.events.index(
             "status:put:--run-id:run-1:--clients:raspberrypi3-signage1:"
             "--terminal-type:signage"
@@ -1394,6 +1526,13 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         self.assertEqual(claim["expectedIdentity"], NEW_ARTIFACT_IDENTITY)
         self.assertEqual(claim["observedIdentity"], NEW_ARTIFACT_IDENTITY)
         self.assertIsNone(runtime.fleet["activeRun"])
+        self.assertEqual(
+            non_pi3_before,
+            {
+                host: runtime.fleet["fleet"][host]
+                for host in ("pi5", *fixture.pi4_hosts)
+            },
+        )
 
     def test_production_signage_historical_active_run_recovery_transaction(self):
         fixture = ProductionSignageFixture()
@@ -1486,12 +1625,12 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
                 args(), runtime=runtime, token=FakeToken(runtime.events)
             )
 
-        capture = runtime.events.index("producer:capture:run-1")
+        capture = runtime.events.index("stage3:capture:raspberrypi3:run-1")
         maintenance = runtime.events.index(
             "status:put:--run-id:run-1:--clients:raspberrypi3-signage1:"
             "--terminal-type:signage"
         )
-        restore = runtime.events.index("producer:file-restore:run-1")
+        restore = runtime.events.index("stage3:rollback:raspberrypi3:run-1")
         ready = runtime.events.index("producer:ready:run-1")
         self.assertLess(capture, maintenance)
         self.assertLess(maintenance, restore)
@@ -1510,6 +1649,12 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         fixture = ProductionSignageFixture()
         runtime = fixture.runtime(artifact_state="installed")
         bind_production_signage_boundaries(runtime, fixture)
+        non_pi3_before = copy.deepcopy(
+            {
+                host: runtime.fleet["fleet"][host]
+                for host in ("pi5", *fixture.pi4_hosts)
+            }
+        )
         runtime.playbook_error = RuntimeError("production apply failure")
 
         with self.assertRaisesRegex(RuntimeError, "rollout stopped"):
@@ -1517,8 +1662,10 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
                 args(), runtime=runtime, token=FakeToken(runtime.events)
             )
 
-        self.assertIn("producer:file-restore:run-1", runtime.events)
-        self.assertIn("producer:runtime-restore:run-1", runtime.events)
+        self.assertIn("stage3:rollback:raspberrypi3:run-1", runtime.events)
+        self.assertIn(
+            "stage3:cleanup:raspberrypi3:run-1:restored", runtime.events
+        )
         self.assertIn("producer:ready:run-1", runtime.events)
         self.assertIn("producer:ready-mode:run-1:artifact", runtime.events)
         target = runtime.states[-1].target(fixture.host)
@@ -1529,6 +1676,38 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         self.assertEqual(claim["expectedIdentity"], OLD_ARTIFACT_IDENTITY)
         self.assertEqual(claim["observedIdentity"], OLD_ARTIFACT_IDENTITY)
         self.assertEqual(claim["verificationId"], ROLLBACK_VERIFICATION_ID)
+        self.assertEqual(
+            non_pi3_before,
+            {
+                host: runtime.fleet["fleet"][host]
+                for host in ("pi5", *fixture.pi4_hosts)
+            },
+        )
+
+    def test_production_signage_unverified_pointer_rollback_retains_authority(self):
+        fixture = ProductionSignageFixture()
+        runtime = fixture.runtime(artifact_state="installed")
+        bind_production_signage_boundaries(runtime, fixture)
+        runtime.playbook_error = RuntimeError("post-switch health failed")
+        runtime.rollback_ok = False
+
+        with self.assertRaisesRegex(RuntimeError, "rollout stopped"):
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            )
+
+        self.assertIn("stage3:rollback:raspberrypi3:run-1", runtime.events)
+        self.assertEqual(runtime.fleet["activeRun"]["runId"], "run-1")
+        self.assertNotIn(
+            "status:remove-client:--run-id:run-1:--client:raspberrypi3-signage1",
+            runtime.events,
+        )
+        self.assertFalse(
+            any(event.startswith("stage3:cleanup:raspberrypi3") for event in runtime.events)
+        )
+        target = runtime.states[-1].target(fixture.host)
+        self.assertEqual(target["state"], "failed")
+        self.assertIn("injected rollback failure", target["rollback"])
 
     def _admission_payload(self, plan):
         registry = readiness_policy.load_registry()
@@ -2581,9 +2760,9 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
                 coordinator.execute(
                     args(), runtime=runtime, token=FakeToken(runtime.events)
                 )
-            self.assertIn("source:stage:signage-a", runtime.events)
+            self.assertIn("stage3:stage:signage-a:run-1", runtime.events)
             self.assertIn(
-                "source:internal-cleanup:signage-a:run-1", runtime.events
+                "stage3:internal-cleanup:signage-a:run-1", runtime.events
             )
             self.assertNotIn("playbook:signage-a", runtime.events)
             self.assertFalse(
@@ -2605,10 +2784,12 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
                 ),
             )
             self.assertEqual(result, 130)
-            stage = runtime.events.index("source:stage:signage-a")
-            cleanup = runtime.events.index("source:cleanup:signage-a:run-1")
+            stage = runtime.events.index("stage3:stage:signage-a:run-1")
+            cleanup = runtime.events.index(
+                "stage3:candidate-cleanup:signage-a:run-1"
+            )
             runtime_cleanup = runtime.events.index(
-                "manifest:cleanup:signage-a:run-1:committed"
+                "stage3:cleanup:signage-a:run-1:committed"
             )
             self.assertLess(stage, cleanup)
             self.assertLess(cleanup, runtime_cleanup)
@@ -2618,10 +2799,8 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             )
             target = runtime.states[-1].target("signage-a")
             self.assertNotIn("maintenanceStartedAt", target)
-            self.assertEqual(
-                target["stagedSourceCleanup"],
-                {"state": "clean", "residue": False},
-            )
+            self.assertEqual(target["stagedSourceCleanup"]["status"], "passed")
+            self.assertIs(target["stagedSourceCleanup"]["stageResidue"], False)
 
     def test_signage_prestage_failure_restores_the_sealed_manifest(self):
         terminal = {
@@ -2676,12 +2855,12 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             )
 
         self.assertLess(
-            runtime.events.index(f"manifest:capture:signage-a:{OLD_SHA}"),
+            runtime.events.index("stage3:capture:signage-a:run-1"),
             runtime.events.index("signage:prestage"),
         )
         self.assertLess(
             runtime.events.index("signage:prestage"),
-            runtime.events.index("rollback:signage-a"),
+            runtime.events.index("stage3:rollback:signage-a:run-1"),
         )
         self.assertNotIn("playbook:signage-a", runtime.events)
         self.assertIn(
@@ -2691,7 +2870,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         )
         self.assertLess(
             runtime.events.index(
-                "manifest:cleanup:signage-a:run-1:restored"
+                "stage3:cleanup:signage-a:run-1:restored"
             ),
             runtime.events.index(f"fleet:verified:signage-a:{OLD_SHA}"),
         )
@@ -2703,7 +2882,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         )
         refresh = runtime.events.index("signage:refresh:signage-a:run-1")
         cleanup = runtime.events.index(
-            "manifest:cleanup:signage-a:run-1:restored"
+            "stage3:cleanup:signage-a:run-1:restored"
         )
         self.assertLess(remove, refresh)
         self.assertLess(refresh, cleanup)
@@ -2865,7 +3044,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             )
 
             capture = runtime.events.index(
-                f"manifest:capture:signage-a:{OLD_SHA}"
+                "stage3:capture:signage-a:run-1"
             )
             maintenance = runtime.events.index(
                 "status:put:--run-id:run-1:--clients:s1:--terminal-type:signage"
@@ -2910,7 +3089,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             self.assertFalse(
                 any(event.startswith("status:") for event in runtime.events)
             )
-            self.assertNotIn("source:stage:signage-a", runtime.events)
+            self.assertNotIn("stage3:stage:signage-a:run-1", runtime.events)
             self.assertNotIn("playbook:signage-a", runtime.events)
             target = runtime.states[-1].target("signage-a")
             self.assertNotIn("maintenanceStartedAt", target)
@@ -3074,7 +3253,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
                 for event in runtime.events
             )
         )
-        self.assertNotIn("rollback:signage-a", runtime.events)
+        self.assertNotIn("stage3:rollback:signage-a:run-1", runtime.events)
         target = runtime.states[-1].target("signage-a")
         self.assertEqual(target["evidence"], "unknown")
         self.assertIn("signage image key rejected", target["finalizationFailure"])
@@ -3595,7 +3774,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         )
         refresh = runtime.events.index("signage:refresh:signage-a:run-1")
         cleanup = runtime.events.index(
-            "manifest:cleanup:signage-a:run-1:restored"
+            "stage3:cleanup:signage-a:run-1:restored"
         )
         self.assertLess(set_failed, remove)
         self.assertLess(remove, refresh)
@@ -3608,7 +3787,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         self.assertEqual(target["rollbackProofs"]["cleanup"]["state"], "verified")
         self.assertIn("runtime proof failed", target["rollbackEvidence"])
         self.assertIn("runtimeCleanup", target)
-        self.assertEqual(target["stagedSourceCleanup"]["state"], "clean")
+        self.assertEqual(target["runtimeCleanup"]["outcome"], "restored")
         self.assertIn("maintenanceClearedAt", target)
         self.assertEqual(runtime.fleet["fleet"]["signage-a"]["evidence"], "unknown")
 
@@ -5727,7 +5906,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
                 for event in runtime.events
             )
         )
-        self.assertNotIn("rollback:signage-a", runtime.events)
+        self.assertNotIn("stage3:rollback:signage-a:run-1", runtime.events)
         audit = runtime.states[-1].payload["interruptedRecoveryPreflight"]
         self.assertEqual(audit["state"], "failed")
         self.assertEqual(len(audit["issues"]), 3)

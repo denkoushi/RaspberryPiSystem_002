@@ -875,6 +875,117 @@ def cleanup_terminal_candidate_source(
     )
 
 
+def capture_signage_artifact_baseline(
+    inventory: str,
+    target_spec: dict[str, str],
+    run_id: str,
+    previous_sha: str,
+) -> dict[str, Any]:
+    return ansible_backend.capture_signage_artifact_baseline(
+        inventory,
+        target_spec,
+        run_id,
+        previous_sha,
+        runtime=_runtime(),
+    )
+
+
+def stage_signage_artifact_candidate(
+    inventory: str,
+    host: str,
+    revision: str,
+    previous_sha: str,
+    run_id: str,
+) -> dict[str, Any]:
+    return ansible_backend.stage_signage_artifact_candidate(
+        inventory,
+        host,
+        revision,
+        previous_sha,
+        run_id,
+        runtime=_runtime(),
+    )
+
+
+def cleanup_signage_artifact_candidate(
+    inventory: str,
+    host: str,
+    reference: dict[str, Any],
+) -> dict[str, Any]:
+    return ansible_backend.cleanup_signage_artifact_candidate(
+        inventory,
+        host,
+        reference,
+        runtime=_runtime(),
+    )
+
+
+def apply_signage_artifact_candidate(
+    inventory: str,
+    host: str,
+    revision: str,
+    run_id: str,
+    reference: dict[str, Any],
+    baseline: dict[str, Any],
+) -> None:
+    return ansible_backend.apply_signage_artifact_candidate(
+        inventory,
+        host,
+        revision,
+        run_id,
+        reference,
+        baseline,
+        runtime=_runtime(),
+    )
+
+
+def preflight_signage_artifact_rollback(
+    inventory: str,
+    target_spec: dict[str, str],
+    target: dict[str, Any],
+    run_id: str,
+) -> dict[str, Any]:
+    return ansible_backend.preflight_signage_artifact_rollback(
+        inventory,
+        target_spec,
+        target,
+        run_id,
+        runtime=_runtime(),
+    )
+
+
+def rollback_signage_artifact(
+    inventory: str,
+    target_spec: dict[str, str],
+    target: dict[str, Any],
+    run_id: str,
+) -> bool:
+    return ansible_backend.rollback_signage_artifact(
+        inventory,
+        target_spec,
+        target,
+        run_id,
+        runtime=_runtime(),
+    )
+
+
+def cleanup_signage_artifact_release(
+    inventory: str,
+    target_spec: dict[str, str],
+    target: dict[str, Any],
+    run_id: str,
+    outcome: str,
+) -> dict[str, Any]:
+    return ansible_backend.cleanup_signage_artifact_release(
+        inventory,
+        target_spec,
+        target,
+        run_id,
+        outcome,
+        runtime=_runtime(),
+    )
+
+
 def capture_terminal_manifest(
     inventory: str,
     target_spec: dict[str, str],

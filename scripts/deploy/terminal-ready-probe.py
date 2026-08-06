@@ -20,7 +20,6 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -31,14 +30,11 @@ FULL_RELEASE_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 VERIFICATION_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 CLIENT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 MAX_RESPONSE_BYTES = 64 * 1024
-MAX_ARTIFACT_BYTES = 1024 * 1024
-MAX_ARTIFACT_ENTRIES = 34
-MAX_ARTIFACT_ENTRY_BYTES = 512 * 1024
+MAX_ARTIFACT_BYTES = 256 * 1024
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 SIGNAGE_ARTIFACT_PATH = Path(
-    "/usr/local/bin/raspi-signage-status-agent.pyz"
+    "/opt/raspisystem-signage/current/SIGNAGE-RELEASE.json"
 )
-SIGNAGE_ARTIFACT_MANIFEST = "SIGNAGE-RELEASE.json"
 
 
 class _RejectRedirect(urllib.request.HTTPRedirectHandler):
@@ -169,61 +165,41 @@ def _signage_artifact_identity(path: Path) -> tuple[str, str]:
         metadata = path.lstat()
         if (
             not stat.S_ISREG(metadata.st_mode)
+            or stat.S_ISLNK(metadata.st_mode)
             or metadata.st_size <= 0
             or metadata.st_size > MAX_ARTIFACT_BYTES
         ):
             raise RuntimeError("installed signage artifact is unsafe")
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()
-        with zipfile.ZipFile(path) as archive:
-            names = archive.namelist()
-            if (
-                len(names) != len(set(names))
-                or len(names) > MAX_ARTIFACT_ENTRIES
-                or SIGNAGE_ARTIFACT_MANIFEST not in names
-                or any(
-                    not name
-                    or name.startswith("/")
-                    or ".." in Path(name).parts
-                    for name in names
-                )
-            ):
-                raise RuntimeError("installed signage artifact archive is unsafe")
-            for entry in archive.infolist():
-                mode = entry.external_attr >> 16
-                if (
-                    not stat.S_ISREG(mode)
-                    or entry.file_size > MAX_ARTIFACT_ENTRY_BYTES
-                ):
-                    raise RuntimeError(
-                        "installed signage artifact entry is unsafe"
-                    )
-            manifest = json.loads(
-                archive.read(SIGNAGE_ARTIFACT_MANIFEST).decode("utf-8")
-            )
-    except (OSError, UnicodeError, zipfile.BadZipFile, json.JSONDecodeError) as error:
+        payload = path.read_bytes()
+        manifest = json.loads(payload.decode("utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise RuntimeError("installed signage artifact cannot be verified") from error
     if (
         not isinstance(manifest, dict)
         or set(manifest)
         != {
-            "schemaVersion",
-            "profile",
-            "sourceSha",
-            "installPath",
-            "pathCount",
-            "pathManifestSha256",
-            "pythonRequires",
-            "sources",
+            "artifactSha256", "files", "legacyRepositorySha", "manifestSha256",
+            "ociDigest", "payloadDigest", "releaseKind", "schemaVersion", "sourceSha",
         }
+        or payload
+        != (
+            json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n"
+        ).encode("utf-8")
         or manifest.get("schemaVersion") != 1
-        or manifest.get("profile") != "signage"
+        or manifest.get("releaseKind") != "artifact"
         or FULL_RELEASE_SHA_RE.fullmatch(str(manifest.get("sourceSha") or ""))
         is None
-        or manifest.get("installPath") != SIGNAGE_ARTIFACT_PATH.as_posix()
-        or manifest.get("pythonRequires") != ">=3.10"
+        or SHA256_RE.fullmatch(str(manifest.get("artifactSha256") or "")) is None
+        or SHA256_RE.fullmatch(str(manifest.get("manifestSha256") or "")) is None
+        or SHA256_RE.fullmatch(str(manifest.get("payloadDigest") or "")) is None
+        or not isinstance(manifest.get("ociDigest"), str)
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", manifest["ociDigest"]) is None
+        or manifest.get("legacyRepositorySha") is not None
+        or not isinstance(manifest.get("files"), list)
+        or len(manifest["files"]) != 16
     ):
         raise RuntimeError("installed signage artifact identity is malformed")
-    return manifest["sourceSha"], digest
+    return manifest["sourceSha"], manifest["artifactSha256"]
 
 
 def probe(

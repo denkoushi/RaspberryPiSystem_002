@@ -1466,7 +1466,7 @@ def _recover_interrupted_terminals(
                 # Capture is idempotent for this exact abandoned run. This
                 # recovers a lost capture result without accepting a partial
                 # or different baseline.
-                record["rollbackManifest"] = adapter.capture_manifest(
+                record["rollbackManifest"] = adapter.capture_historical_manifest(
                     inventory,
                     target_spec,
                     authority_run_id,
@@ -2410,6 +2410,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                             target["desiredSha"],
                             args.run_id,
                             staged_source=target.get("stagedSource"),
+                            target=target,
                         )
                 if target.get("activationRequired") is True:
                     activation_mode = target.get("activationMode")

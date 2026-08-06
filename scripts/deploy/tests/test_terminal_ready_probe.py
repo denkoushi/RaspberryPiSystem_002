@@ -1,16 +1,13 @@
 from __future__ import annotations
 
 import importlib.util
-import hashlib
 import json
 import os
-import stat
 import subprocess
 import tempfile
 import unittest
 import urllib.error
 import urllib.request
-import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -119,39 +116,24 @@ class TerminalReadyProbeTest(unittest.TestCase):
         return repo, sha
 
     def artifact(self, root: Path, source_sha: str) -> tuple[Path, str]:
-        path = root / "raspi-signage-status-agent.pyz"
+        path = root / "SIGNAGE-RELEASE.json"
+        digest = "d" * 64
         manifest = {
+            "artifactSha256": digest,
+            "files": [{"path": f"payload-{index}"} for index in range(16)],
+            "legacyRepositorySha": None,
+            "manifestSha256": "e" * 64,
+            "ociDigest": "sha256:" + "f" * 64,
+            "payloadDigest": "1" * 64,
+            "releaseKind": "artifact",
             "schemaVersion": 1,
-            "profile": "signage",
             "sourceSha": source_sha,
-            "installPath": PROBE.SIGNAGE_ARTIFACT_PATH.as_posix(),
-            "pathCount": 1,
-            "pathManifestSha256": "d" * 64,
-            "pythonRequires": ">=3.10",
-            "sources": [
-                {
-                    "path": "clients/status-agent/status_agent.py",
-                    "sha256": "e" * 64,
-                    "size": 1,
-                }
-            ],
         }
-        with zipfile.ZipFile(path, "w") as archive:
-            for name, payload in (
-                ("__main__.py", b"pass\n"),
-                (
-                    PROBE.SIGNAGE_ARTIFACT_MANIFEST,
-                    json.dumps(
-                        manifest, sort_keys=True, separators=(",", ":")
-                    ).encode("utf-8"),
-                ),
-                ("status_agent.py", b"pass\n"),
-            ):
-                entry = zipfile.ZipInfo(name, (1980, 1, 1, 0, 0, 0))
-                entry.create_system = 3
-                entry.external_attr = (stat.S_IFREG | 0o644) << 16
-                archive.writestr(entry, payload)
-        return path, hashlib.sha256(path.read_bytes()).hexdigest()
+        path.write_text(
+            json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )
+        return path, digest
 
     @staticmethod
     def acknowledgement(release_sha: str) -> dict[str, object]:

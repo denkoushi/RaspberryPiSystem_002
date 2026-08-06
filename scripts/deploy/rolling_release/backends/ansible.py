@@ -14,6 +14,7 @@ import os
 import re
 import shlex
 import subprocess
+import sys
 import tempfile
 import time
 import zipapp
@@ -24,6 +25,8 @@ from typing import TYPE_CHECKING, Any, Protocol
 from ..adapter_registry import adapter_for_profile
 from .. import telemetry
 from .. import terminal_device_maintenance
+from .. import signage_artifact_stage
+from .. import signage_artifact_activation
 from ..activation import (
     ActivationUncertainError,
     KIOSK_WEB_ACTIVATION_STRATEGY,
@@ -57,6 +60,10 @@ _REPOSITORY_BASELINE_MARKER_RE = re.compile(
 )
 _SIGNAGE_ARTIFACT_MARKER_RE = re.compile(
     r"SIGNAGE_RELEASE_ARTIFACT_RESULT:([A-Za-z0-9_-]+={0,2})"
+)
+_SIGNAGE_ACTIVATION_MARKER_RE = re.compile(
+    r"SIGNAGE_ARTIFACT_ACTIVATION_RESULT:"
+    r"([A-Za-z0-9_-]+={0,2})(?![A-Za-z0-9_=-])"
 )
 _RUNTIME_MANIFEST_MARKER_RE = re.compile(
     r"TERMINAL_RUNTIME_MANIFEST_RESULT:"
@@ -1656,16 +1663,9 @@ def prepare_signage_release_identity(
 
     if not isinstance(host, str) or _HOST_RE.fullmatch(host) is None:
         raise ValueError("terminal host is malformed")
-    source = runtime.PROJECT / "scripts/deploy/signage-release-artifact.py"
-    output = runtime.run(
-        [
-            "ansible", "-i", inventory, host, "-m", "script", "-a",
-            f"{source} baseline --ansible-marker",
-        ],
-        cwd=runtime.ANSIBLE_DIRECTORY,
-        capture=True,
+    result = _run_signage_activation_helper(
+        inventory, host, "baseline", {}, runtime=runtime
     )
-    result = _terminal_source_marker(output)
     if result == {"schemaVersion": 1, "state": "absent", "profile": "signage"}:
         legacy = prepare_terminal_repository(
             inventory, host, runtime=runtime, strict_read_only=True
@@ -1676,6 +1676,26 @@ def prepare_signage_release_identity(
             "artifactIdentity": None,
             "artifactSha256": None,
             "legacyRepositorySha": legacy["head"],
+        }
+    if result == {
+        "schemaVersion": 1,
+        "state": "legacy",
+        "profile": "signage",
+        "sourceSha": result.get("sourceSha"),
+        "legacyRepositorySha": result.get("legacyRepositorySha"),
+    }:
+        source_sha = result["sourceSha"]
+        if (
+            _FULL_SHA_RE.fullmatch(str(source_sha)) is None
+            or result["legacyRepositorySha"] != source_sha
+        ):
+            raise RuntimeError(f"signage legacy release identity is malformed: {host}")
+        return {
+            "head": source_sha,
+            "artifactState": "absent",
+            "artifactIdentity": None,
+            "artifactSha256": None,
+            "legacyRepositorySha": source_sha,
         }
     required = {
         "schemaVersion", "state", "profile", "sourceSha",
@@ -1710,6 +1730,489 @@ def _terminal_source_marker(output: str) -> dict[str, Any]:
         label="signage release artifact result",
         max_bytes=65536,
     )
+
+
+def _signage_activation_marker(output: str) -> dict[str, Any]:
+    value = _strict_result_marker(
+        output,
+        pattern=_SIGNAGE_ACTIVATION_MARKER_RE,
+        prefix="SIGNAGE_ARTIFACT_ACTIVATION_RESULT:",
+        label="signage artifact activation result",
+        max_bytes=1024 * 1024,
+    )
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"ok", "result", "failure"}
+        or type(value.get("ok")) is not bool
+    ):
+        raise RuntimeError("signage artifact activation result is malformed")
+    return value
+
+
+def _run_signage_activation_helper(
+    inventory: str,
+    host: str,
+    action: str,
+    request: dict[str, Any],
+    *,
+    runtime: Runtime,
+) -> dict[str, Any]:
+    if not isinstance(host, str) or _HOST_RE.fullmatch(host) is None:
+        raise ValueError("Signage activation host is malformed")
+    encoded = base64.urlsafe_b64encode(
+        json.dumps(
+            request,
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).decode("ascii")
+    with _bundled_script(
+        runtime,
+        main=(
+            "scripts/deploy/rolling_release/"
+            "signage_artifact_activation.py"
+        ),
+        modules={
+            "signage_distribution_artifact.py": (
+                "scripts/deploy/signage-distribution-artifact.py"
+            ),
+        },
+    ) as source:
+        output = ""
+        try:
+            output = runtime.run(
+                [
+                    "ansible",
+                    "-i",
+                    inventory,
+                    host,
+                    "-b",
+                    "-m",
+                    "script",
+                    "-a",
+                    shlex.join(
+                        [str(source), action, "--request", encoded]
+                    ),
+                ],
+                cwd=runtime.ANSIBLE_DIRECTORY,
+                capture=True,
+                env=_terminal_source_environment(),
+            )
+        except subprocess.CalledProcessError as error:
+            output = "\n".join(
+                value
+                for value in (error.stdout, error.stderr)
+                if isinstance(value, str)
+            )
+        envelope = _signage_activation_marker(output)
+    if envelope["ok"] is not True or not isinstance(envelope.get("result"), dict):
+        failure = envelope.get("failure")
+        code = failure.get("code") if isinstance(failure, dict) else "unknown"
+        switched = failure.get("switched") if isinstance(failure, dict) else None
+        raise RuntimeError(
+            f"Signage artifact activation failed: {code}; switched={switched}"
+        )
+    return envelope["result"]
+
+
+def _signage_candidate_reference(value: Any) -> dict[str, Any]:
+    keys = {
+        "artifactSha256",
+        "manifestSha256",
+        "ociDigest",
+        "payloadDigest",
+        "release",
+        "releaseKind",
+        "releaseManifestSha256",
+        "schemaVersion",
+        "sourceSha",
+    }
+    if not isinstance(value, dict) or not keys <= set(value):
+        raise RuntimeError("Signage artifact candidate reference is malformed")
+    return {key: value[key] for key in sorted(keys)}
+
+
+def _stage3_signage_manifest(value: Any) -> dict[str, Any]:
+    if (
+        not isinstance(value, dict)
+        or value.get("schemaVersion") != 1
+        or value.get("kind") != "signage-artifact-baseline"
+        or not isinstance(value.get("runtimeHealth"), dict)
+        or not isinstance(value.get("runtime"), dict)
+    ):
+        raise RuntimeError("Signage artifact rollback baseline is malformed")
+    return value
+
+
+def _signage_stage_target(
+    inventory: str, host: str, *, runtime: Runtime
+) -> dict[str, Any]:
+    value = inventory_json(inventory, runtime=runtime)
+    variables = (value.get("_meta") or {}).get("hostvars", {}).get(host)
+    if not isinstance(variables, dict):
+        raise RuntimeError("Signage artifact target is absent from inventory")
+    target = {
+        "host": host,
+        "profile": "signage",
+        "address": variables.get("ansible_host"),
+        "user": variables.get("ansible_user"),
+        "port": variables.get("ansible_port", 22),
+    }
+    signage_artifact_stage._validated_target(target)
+    return target
+
+
+def capture_signage_artifact_baseline(
+    inventory: str,
+    target_spec: dict[str, str],
+    run_id: str,
+    previous_sha: str,
+    *,
+    runtime: Runtime,
+) -> dict[str, Any]:
+    host, terminal_type = _validated_terminal_spec(target_spec)
+    if terminal_type != "signage":
+        raise ValueError("Signage artifact baseline requires the signage profile")
+    _validated_run_and_sha(run_id, previous_sha)
+    result = _run_signage_activation_helper(
+        inventory,
+        host,
+        "capture",
+        {"legacyRepositorySha": previous_sha},
+        runtime=runtime,
+    )
+    return _stage3_signage_manifest(result)
+
+
+def _render_signage_artifact_candidate(
+    inventory: str,
+    host: str,
+    revision: str,
+    run_id: str,
+    value: dict[str, Any],
+    *,
+    runtime: Runtime,
+) -> None:
+    environment = _terminal_apply_environment()
+    environment.update(
+        {
+            "ANSIBLE_REPO_VERSION": revision,
+            "RUN_ID": run_id,
+            "RELEASE_ORCHESTRATED": "1",
+        }
+    )
+    runtime.run(
+        [
+            "ansible-playbook",
+            "-i",
+            inventory,
+            str(
+                runtime.ANSIBLE_DIRECTORY
+                / "playbooks/prepare-signage-artifact.yml"
+            ),
+            "--limit",
+            host,
+            "-e",
+            "release_orchestrated=true terminal_release_mode=release-only",
+            "-e",
+            json.dumps(
+                {"terminal_signage_artifact_stage": value},
+                ensure_ascii=True,
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+        ],
+        cwd=runtime.ANSIBLE_DIRECTORY,
+        env=environment,
+    )
+
+
+def stage_signage_artifact_candidate(
+    inventory: str,
+    host: str,
+    revision: str,
+    previous_sha: str,
+    run_id: str,
+    *,
+    runtime: Runtime,
+) -> dict[str, Any]:
+    _validated_run_and_sha(run_id, previous_sha)
+    if _FULL_SHA_RE.fullmatch(revision) is None or revision == previous_sha:
+        raise ValueError("Signage candidate source SHA is invalid")
+    if signage_artifact_stage.RUN_ID_RE.fullmatch(run_id) is None:
+        raise ValueError("Signage artifact run ID is invalid")
+    target = _signage_stage_target(inventory, host, runtime=runtime)
+    verifier_source = (
+        Path(runtime.PROJECT)
+        .joinpath("scripts/deploy/signage-distribution-artifact.py")
+        .read_text(encoding="utf-8")
+    )
+    config = signage_artifact_stage.load_registry_config()
+    report = signage_artifact_stage.acquire_and_stage(
+        f"{signage_artifact_stage.ARTIFACT_REPOSITORY}:{revision}",
+        target,
+        run_id,
+        signage_artifact_stage.DEFAULT_STAGING_ROOT,
+        True,
+        acquisition=signage_artifact_stage.GhcrAcquisition(config),
+        attestor=signage_artifact_stage.GhAttestor(config),
+        transport=signage_artifact_stage.SshTargetTransport(
+            target,
+            stage_source=(
+                Path(runtime.PROJECT)
+                .joinpath(
+                    "scripts/deploy/rolling_release/"
+                    "signage_artifact_stage.py"
+                )
+                .read_text(encoding="utf-8")
+            ),
+            verifier_source=verifier_source,
+        ),
+        verifier_source=verifier_source,
+    )
+    if report.get("status") != "passed" or report.get("retain") is not True:
+        failure = report.get("failure")
+        code = failure.get("code") if isinstance(failure, dict) else "unknown"
+        raise RuntimeError(f"Signage artifact staging failed: {code}")
+    artifact = report["artifact"]
+    staging = report["staging"]
+    ready = Path(staging["readyPath"])
+    rendered = Path(staging["runPath"]) / "rendered"
+    prepare_spec = {
+        "schemaVersion": 1,
+        "host": host,
+        "runId": run_id,
+        "sourceSha": revision,
+        "readyPath": os.fspath(ready),
+        "renderedRoot": os.fspath(rendered),
+        "artifactSha256": artifact["artifactSha256"],
+        "manifestSha256": artifact["manifestSha256"],
+        "payloadDigest": artifact["payloadDigest"],
+        "ociDigest": artifact["ociDigest"],
+    }
+    candidate: dict[str, Any] | None = None
+    try:
+        _render_signage_artifact_candidate(
+            inventory, host, revision, run_id, prepare_spec, runtime=runtime
+        )
+        candidate = _run_signage_activation_helper(
+            inventory,
+            host,
+            "prepare",
+            {
+                "artifact": os.fspath(
+                    ready / signage_artifact_stage.ARTIFACT_NAME
+                ),
+                "descriptor": os.fspath(
+                    ready / signage_artifact_stage.DESCRIPTOR_NAME
+                ),
+                "renderedRoot": os.fspath(rendered),
+                "ociDigest": artifact["ociDigest"],
+            },
+            runtime=runtime,
+        )
+        reference = {
+            **_signage_candidate_reference(candidate),
+            "host": host,
+            "runId": run_id,
+            "previousSha": previous_sha,
+            "stageRunPath": staging["runPath"],
+            "readyPath": staging["readyPath"],
+        }
+        if (
+            reference["sourceSha"] != revision
+            or reference["artifactSha256"] != artifact["artifactSha256"]
+            or reference["manifestSha256"] != artifact["manifestSha256"]
+            or reference["payloadDigest"] != artifact["payloadDigest"]
+            or reference["ociDigest"] != artifact["ociDigest"]
+        ):
+            raise RuntimeError("Prepared Signage release identity changed")
+        return reference
+    except Exception as stage_error:
+        try:
+            if candidate is None:
+                cleanup = _run_signage_activation_helper(
+                    inventory,
+                    host,
+                    "cleanup-stage",
+                    {"stageRunPath": staging["runPath"]},
+                    runtime=runtime,
+                )
+            else:
+                cleanup = _run_signage_activation_helper(
+                    inventory,
+                    host,
+                    "cleanup",
+                    {
+                        "candidate": _signage_candidate_reference(candidate),
+                        "keepCurrent": False,
+                        "stageRunPath": staging["runPath"],
+                    },
+                    runtime=runtime,
+                )
+            if (
+                cleanup.get("status") != "passed"
+                or cleanup.get("stageResidue") is not False
+            ):
+                raise RuntimeError("cleanup receipt is incomplete")
+        except Exception as cleanup_error:
+            raise RuntimeError(
+                "Signage candidate preparation failed and cleanup was not proven"
+            ) from cleanup_error
+        raise stage_error
+
+
+def cleanup_signage_artifact_candidate(
+    inventory: str,
+    host: str,
+    reference: dict[str, Any],
+    *,
+    runtime: Runtime,
+) -> dict[str, Any]:
+    candidate = _signage_candidate_reference(reference)
+    return _run_signage_activation_helper(
+        inventory,
+        host,
+        "cleanup",
+        {
+            "candidate": candidate,
+            "keepCurrent": False,
+            "stageRunPath": reference["stageRunPath"],
+        },
+        runtime=runtime,
+    )
+
+
+def apply_signage_artifact_candidate(
+    inventory: str,
+    host: str,
+    revision: str,
+    run_id: str,
+    reference: dict[str, Any],
+    baseline: dict[str, Any],
+    *,
+    runtime: Runtime,
+) -> None:
+    if reference.get("sourceSha") != revision or reference.get("runId") != run_id:
+        raise ValueError("Signage artifact apply reference is malformed")
+    _run_signage_activation_helper(
+        inventory,
+        host,
+        "activate",
+        {
+            "baseline": _stage3_signage_manifest(baseline),
+            "candidate": _signage_candidate_reference(reference),
+        },
+        runtime=runtime,
+    )
+
+
+def preflight_signage_artifact_rollback(
+    inventory: str,
+    target_spec: dict[str, str],
+    target: dict[str, Any],
+    run_id: str,
+    *,
+    runtime: Runtime,
+) -> dict[str, Any]:
+    host, terminal_type = _validated_terminal_spec(target_spec)
+    if terminal_type != "signage" or target.get("stagedSource", {}).get("runId") != run_id:
+        raise ValueError("Signage rollback preflight authority is malformed")
+    result = _run_signage_activation_helper(
+        inventory,
+        host,
+        "preflight",
+        {
+            "baseline": _stage3_signage_manifest(target.get("rollbackManifest")),
+            "candidate": _signage_candidate_reference(target.get("stagedSource")),
+        },
+        runtime=runtime,
+    )
+    if result.get("ready") is not True or result.get("issues") != []:
+        raise RuntimeError("Signage rollback preflight is not ready")
+    return {
+        "ready": True,
+        "issues": [],
+        "runtimeHealth": result["runtimeHealth"],
+        "fileManifestReady": True,
+        "runtimeManifestReady": True,
+        "restoredReceipt": False,
+        "requiresRuntimeReconciliation": False,
+    }
+
+
+def rollback_signage_artifact(
+    inventory: str,
+    target_spec: dict[str, str],
+    target: dict[str, Any],
+    run_id: str,
+    *,
+    runtime: Runtime,
+) -> bool:
+    try:
+        host, terminal_type = _validated_terminal_spec(target_spec)
+        if terminal_type != "signage":
+            raise ValueError("Signage rollback profile is invalid")
+        baseline = _stage3_signage_manifest(target.get("rollbackManifest"))
+        result = _run_signage_activation_helper(
+            inventory,
+            host,
+            "rollback",
+            {
+                "baseline": baseline,
+                "candidate": _signage_candidate_reference(
+                    target.get("stagedSource")
+                ),
+            },
+            runtime=runtime,
+        )
+        if result.get("state") != "verified":
+            raise RuntimeError("Signage pointer rollback was not verified")
+        target["rollbackRuntimeHealth"] = baseline["runtimeHealth"]
+        target["rollback"] = "success"
+        return True
+    except Exception as error:
+        target["rollback"] = f"failed: {error}"
+        return False
+
+
+def cleanup_signage_artifact_release(
+    inventory: str,
+    target_spec: dict[str, str],
+    target: dict[str, Any],
+    run_id: str,
+    outcome: str,
+    *,
+    runtime: Runtime,
+) -> dict[str, Any]:
+    host, terminal_type = _validated_terminal_spec(target_spec)
+    if terminal_type != "signage" or outcome not in {"committed", "restored"}:
+        raise ValueError("Signage artifact cleanup authority is malformed")
+    baseline = _stage3_signage_manifest(target.get("rollbackManifest"))
+    reference = target.get("stagedSource")
+    if not isinstance(reference, dict) or reference.get("runId") != run_id:
+        raise RuntimeError("Signage staged release cleanup reference is malformed")
+    result = _run_signage_activation_helper(
+        inventory,
+        host,
+        "cleanup",
+        {
+            "candidate": _signage_candidate_reference(reference),
+            "keepCurrent": outcome == "committed",
+            "stageRunPath": reference["stageRunPath"],
+        },
+        runtime=runtime,
+    )
+    if result.get("status") != "passed" or result.get("stageResidue") is not False:
+        raise RuntimeError("Signage artifact cleanup did not prove zero residue")
+    return {
+        "cleaned": True,
+        "alreadyClean": not bool(result.get("removedPaths")),
+        "manifestSha256": baseline["runtime"]["manifestSha256"],
+        "tagCount": 0,
+        "outcome": outcome,
+    }
 
 
 def _terminal_source_paths(run_id: str) -> tuple[str, str]:
@@ -1904,10 +2407,31 @@ def build_signage_release_artifact(
 def signage_release_artifact_identity(
     revision: str, *, runtime: Runtime
 ) -> str:
+    if not isinstance(revision, str) or _FULL_SHA_RE.fullmatch(revision) is None:
+        raise ValueError("candidate release SHA is malformed")
+    project = Path(runtime.PROJECT).resolve(strict=True)
+    if _local_git(project, ["rev-parse", "--verify", "HEAD^{commit}"]).strip() != revision:
+        raise RuntimeError("Pi5 checkout does not match the exact candidate SHA")
+    if _local_git(project, ["status", "--porcelain", "--untracked-files=no"]).strip():
+        raise RuntimeError("Pi5 checkout has tracked changes")
     with tempfile.TemporaryDirectory(prefix="raspi-signage-identity-") as temporary:
-        reference = build_signage_release_artifact(
-            revision, Path(temporary) / "candidate.pyz", runtime=runtime
-        )
+        source = project / "scripts/deploy/signage-distribution-artifact.py"
+        name = "_signage_distribution_identity_builder"
+        spec = importlib.util.spec_from_file_location(name, source)
+        if spec is None or spec.loader is None:
+            raise RuntimeError("signage distribution artifact builder is unavailable")
+        artifact_module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = artifact_module
+        try:
+            spec.loader.exec_module(artifact_module)
+            reference = artifact_module.build_artifact(
+                project,
+                Path(temporary) / "signage-release.tar",
+                Path(temporary) / "signage-release.descriptor.json",
+                source_sha=revision,
+            )
+        finally:
+            sys.modules.pop(name, None)
     return f"git:{revision}@sha256:{reference['artifactSha256']}"
 
 
@@ -2608,7 +3132,7 @@ def prove_signage_ready(
             "--identity-mode",
             "artifact",
             "--artifact-path",
-            "/usr/local/bin/raspi-signage-status-agent.pyz",
+            "/opt/raspisystem-signage/current/SIGNAGE-RELEASE.json",
             "--artifact-sha256",
             artifact_sha256,
         ]

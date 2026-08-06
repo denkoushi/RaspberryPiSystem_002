@@ -5,7 +5,9 @@ import base64
 import contextlib
 import io
 import json
+import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
@@ -16,6 +18,63 @@ SHA = "a" * 40
 
 
 class TerminalReleaseEvidenceTest(unittest.TestCase):
+    def test_signage_evidence_reads_the_distribution_release_manifest(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            manifest = Path(temporary) / "SIGNAGE-RELEASE.json"
+            artifact_digest = "b" * 64
+            value = {
+                "artifactSha256": artifact_digest,
+                "files": [{"path": f"payload-{index}"} for index in range(16)],
+                "legacyRepositorySha": None,
+                "manifestSha256": "c" * 64,
+                "ociDigest": "sha256:" + "d" * 64,
+                "payloadDigest": "e" * 64,
+                "releaseKind": "artifact",
+                "schemaVersion": 1,
+                "sourceSha": SHA,
+            }
+            manifest.write_text(
+                json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n",
+                encoding="utf-8",
+            )
+            identity = SimpleNamespace(
+                probe=mock.Mock(
+                    return_value={"authenticated": True, "statusClientId": "tools03"}
+                )
+            )
+            health = SimpleNamespace(
+                _validate_arguments=mock.Mock(), _stable_probe=mock.Mock()
+            )
+
+            def import_module(name):
+                return {
+                    "terminal_identity_probe": identity,
+                    "terminal_agent_health_probe": health,
+                }[name]
+
+            with mock.patch.object(
+                evidence, "SIGNAGE_ARTIFACT", manifest
+            ), mock.patch.object(
+                evidence, "_run", return_value="success\n"
+            ), mock.patch.object(
+                evidence.importlib, "import_module", side_effect=import_module
+            ), mock.patch.object(evidence, "_current_sha") as current_sha:
+                result = evidence.collect(
+                    expected_client_id="tools03",
+                    services=["lightdm.service"],
+                    check_status_agent_result=False,
+                    agent_specs=[],
+                    signage_artifact=True,
+                )
+
+        self.assertEqual(result["currentSha"], SHA)
+        self.assertEqual(result["artifactSha256"], artifact_digest)
+        self.assertEqual(
+            result["releaseArtifactIdentity"],
+            f"git:{SHA}@sha256:{artifact_digest}",
+        )
+        current_sha.assert_not_called()
+
     def test_collect_composes_the_existing_proofs_without_weakening_them(self):
         commands: list[list[str]] = []
         health_arguments = []
