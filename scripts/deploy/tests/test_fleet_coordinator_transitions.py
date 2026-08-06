@@ -35,9 +35,14 @@ from terminal_profile_registry import load_registry  # noqa: E402
 
 OLD_SHA = "1" * 40
 NEW_SHA = "2" * 40
+ORCHESTRATOR_SHA = "3" * 40
 FORWARD_VERIFICATION_ID = "a" * 32
 ROLLBACK_VERIFICATION_ID = "b" * 32
 ARTIFACT_DIGEST = "9" * 64
+MANIFEST_DIGEST = "7" * 64
+PAYLOAD_DIGEST = "6" * 64
+OCI_DIGEST = "sha256:" + "5" * 64
+PI3_SIGNAGE_SCOPE = "pi3-signage-artifact"
 NEW_ARTIFACT_IDENTITY = f"git:{NEW_SHA}@sha256:{ARTIFACT_DIGEST}"
 OLD_ARTIFACT_IDENTITY = f"git:{OLD_SHA}@sha256:{ARTIFACT_DIGEST}"
 UNSET = object()
@@ -327,6 +332,41 @@ class ProductionSignageFixture:
         plan["classificationComponents"] = ["signage-role"]
         return plan, terminal_targets, classifications, []
 
+    def scoped_release_authority(self):
+        return {
+            "releaseScope": PI3_SIGNAGE_SCOPE,
+            "sourceSha": NEW_SHA,
+            "exactReference": (
+                f"{ansible_backend.signage_artifact_stage.ARTIFACT_REPOSITORY}"
+                f"@{OCI_DIGEST}"
+            ),
+            "ociDigest": OCI_DIGEST,
+            "artifactSha256": ARTIFACT_DIGEST,
+            "manifestSha256": MANIFEST_DIGEST,
+            "payloadDigest": PAYLOAD_DIGEST,
+            "claimIdentity": NEW_ARTIFACT_IDENTITY,
+        }
+
+    def typed_scope(self, fleet_state):
+        plan, targets, _classifications, _warnings = self.scope(fleet_state)
+        plan["hosts"] = [
+            decision
+            for decision in plan["hosts"]
+            if decision["role"] in {"server", "signage"}
+        ]
+        plan.update(
+            {
+                "releaseScope": PI3_SIGNAGE_SCOPE,
+                "desiredRelease": self.scoped_release_authority(),
+                "coordinator": {
+                    "host": "pi5",
+                    "role": "acquisition-relay",
+                    "runtimeMutationRequired": False,
+                },
+            }
+        )
+        return plan, targets, {}, []
+
     def runtime(self, *, artifact_state="absent"):
         terminal = self.terminal()
         fleet_records = {
@@ -363,6 +403,30 @@ class ProductionSignageFixture:
         runtime.build_fleet_scope = lambda **keywords: self.scope(
             keywords["fleet_state"]
         )
+        return runtime
+
+    def typed_runtime(self, *, artifact_state="absent"):
+        runtime = self.runtime(artifact_state=artifact_state)
+        runtime.plan, runtime.targets, _classifications, _warnings = (
+            self.typed_scope(runtime.fleet)
+        )
+
+        def build_scope(**keywords):
+            if (
+                keywords.get("release_scope") != PI3_SIGNAGE_SCOPE
+                or keywords.get("signage_oci_digest") != OCI_DIGEST
+                or keywords.get("sha") != NEW_SHA
+                or keywords.get("signage_artifact_sha256") != ARTIFACT_DIGEST
+                or keywords.get("signage_manifest_sha256") != MANIFEST_DIGEST
+                or keywords.get("signage_payload_digest") != PAYLOAD_DIGEST
+                or keywords.get("selected") is not None
+                or keywords.get("limit") != ""
+                or keywords.get("full_fleet") is not False
+            ):
+                raise AssertionError("typed Signage scope input changed")
+            return self.typed_scope(keywords["fleet_state"])
+
+        runtime.build_fleet_scope = build_scope
         return runtime
 
 
@@ -701,6 +765,7 @@ class FakeRuntime:
         self.observed_runtime_health = []
         self.activation_error = None
         self.activation_reconciliation_state = "succeeded"
+        self.staged_release_override = {}
 
     def _snapshot(self):
         return copy.deepcopy(self.fleet)
@@ -709,12 +774,15 @@ class FakeRuntime:
         self.fleet["generation"] += 1
         return self._snapshot()
 
-    def fleet_begin_run(self, run_id, sha, inventory):
+    def fleet_begin_run(
+        self, run_id, sha, inventory, *, release_scope=None
+    ):
         self.events.append("fleet:begin")
         self.fleet["activeRun"] = {
             "runId": run_id,
             "desiredSha": sha,
             "inventory": inventory,
+            **({"kind": release_scope} if release_scope is not None else {}),
         }
         return self._bump(), self.abandoned_run_id
 
@@ -1028,28 +1096,41 @@ class FakeRuntime:
         }
 
     def stage_signage_artifact_candidate(
-        self, _inventory, host, revision, previous_sha, run_id
+        self,
+        _inventory,
+        host,
+        revision,
+        previous_sha,
+        run_id,
+        *,
+        release_authority=None,
     ):
         self.events.append(f"stage3:stage:{host}:{run_id}")
         if self.source_stage_error is not None:
             self.events.append(f"stage3:internal-cleanup:{host}:{run_id}")
             raise self.source_stage_error
-        return {
+        reference = {
             "schemaVersion": 1,
             "runId": run_id,
             "host": host,
             "previousSha": previous_sha,
             "sourceSha": revision,
             "artifactSha256": ARTIFACT_DIGEST,
-            "manifestSha256": "7" * 64,
-            "payloadDigest": "6" * 64,
-            "ociDigest": "sha256:" + "5" * 64,
+            "manifestSha256": MANIFEST_DIGEST,
+            "payloadDigest": PAYLOAD_DIGEST,
+            "ociDigest": OCI_DIGEST,
             "release": ARTIFACT_DIGEST,
             "releaseKind": "artifact",
             "releaseManifestSha256": "4" * 64,
             "stageRunPath": f"/var/tmp/raspisystem-signage-stage/{run_id}",
             "readyPath": f"/var/tmp/raspisystem-signage-stage/{run_id}/ready",
         }
+        reference.update(self.staged_release_override)
+        if release_authority is not None:
+            self.events.append(f"stage3:scoped-authority:{host}:{run_id}")
+            if release_authority.get("releaseScope") != PI3_SIGNAGE_SCOPE:
+                raise AssertionError("typed Signage stage lacks release authority")
+        return reference
 
     def cleanup_signage_artifact_candidate(self, _inventory, host, reference):
         self.events.append(f"stage3:candidate-cleanup:{host}:{reference['runId']}")
@@ -1458,7 +1539,14 @@ def args(**overrides):
         "full_fleet": False,
         "reverify_selected": False,
         "expected_server_client_id": "raspberrypi5-server",
+        "release_scope": None,
+        "signage_oci_digest": None,
     }
+    if overrides.get("release_scope") == PI3_SIGNAGE_SCOPE:
+        overrides.setdefault("signage_source_sha", NEW_SHA)
+        overrides.setdefault("signage_artifact_sha256", ARTIFACT_DIGEST)
+        overrides.setdefault("signage_manifest_sha256", MANIFEST_DIGEST)
+        overrides.setdefault("signage_payload_digest", PAYLOAD_DIGEST)
     values.update(overrides)
     return argparse.Namespace(**values)
 
@@ -1492,7 +1580,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
 
     def test_production_signage_first_artifact_deploy_transaction(self):
         fixture = ProductionSignageFixture()
-        runtime = fixture.runtime(artifact_state="absent")
+        runtime = fixture.typed_runtime(artifact_state="absent")
         bind_production_signage_boundaries(runtime, fixture)
         non_pi3_before = copy.deepcopy(
             {
@@ -1503,7 +1591,13 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
 
         self.assertEqual(
             coordinator.execute(
-                args(), runtime=runtime, token=FakeToken(runtime.events)
+                args(
+                    sha=ORCHESTRATOR_SHA,
+                    release_scope=PI3_SIGNAGE_SCOPE,
+                    signage_oci_digest=OCI_DIGEST,
+                ),
+                runtime=runtime,
+                token=FakeToken(runtime.events),
             ),
             0,
         )
@@ -1526,6 +1620,24 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         self.assertEqual(claim["expectedIdentity"], NEW_ARTIFACT_IDENTITY)
         self.assertEqual(claim["observedIdentity"], NEW_ARTIFACT_IDENTITY)
         self.assertIsNone(runtime.fleet["activeRun"])
+        self.assertIn(
+            "stage3:scoped-authority:raspberrypi3:run-1", runtime.events
+        )
+        self.assertNotIn("pi5:reconcile-candidate", runtime.events)
+        self.assertFalse(
+            any(
+                event.startswith(("observe:server:", "pi5:config-", "pi5:ensure"))
+                for event in runtime.events
+            )
+        )
+        state = runtime.states[-1].payload
+        self.assertEqual(state["releaseScope"], PI3_SIGNAGE_SCOPE)
+        self.assertEqual(state["releaseSha"], NEW_SHA)
+        self.assertEqual(state["orchestratorSha"], ORCHESTRATOR_SHA)
+        self.assertEqual(
+            state["desiredRelease"], fixture.scoped_release_authority()
+        )
+        self.assertEqual([target["host"] for target in state["targets"]], [fixture.host])
         self.assertEqual(
             non_pi3_before,
             {
@@ -1536,7 +1648,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
 
     def test_production_signage_historical_active_run_recovery_transaction(self):
         fixture = ProductionSignageFixture()
-        runtime = fixture.runtime(artifact_state="absent")
+        runtime = fixture.typed_runtime(artifact_state="absent")
         bind_production_signage_boundaries(runtime, fixture)
         authority_run_id = "20260806-013842-e81a9a"
         record = runtime.fleet["fleet"][fixture.host]
@@ -1591,7 +1703,12 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
 
         self.assertEqual(
             coordinator.execute(
-                args(), runtime=runtime, token=FakeToken(runtime.events)
+                args(
+                    release_scope=PI3_SIGNAGE_SCOPE,
+                    signage_oci_digest=OCI_DIGEST,
+                ),
+                runtime=runtime,
+                token=FakeToken(runtime.events),
             ),
             0,
         )
@@ -1616,13 +1733,18 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
 
     def test_production_signage_post_mutation_rollback_to_legacy_transaction(self):
         fixture = ProductionSignageFixture()
-        runtime = fixture.runtime(artifact_state="absent")
+        runtime = fixture.typed_runtime(artifact_state="absent")
         bind_production_signage_boundaries(runtime, fixture)
         runtime.playbook_error = RuntimeError("production apply failure")
 
         with self.assertRaisesRegex(RuntimeError, "rollout stopped"):
             coordinator.execute(
-                args(), runtime=runtime, token=FakeToken(runtime.events)
+                args(
+                    release_scope=PI3_SIGNAGE_SCOPE,
+                    signage_oci_digest=OCI_DIGEST,
+                ),
+                runtime=runtime,
+                token=FakeToken(runtime.events),
             )
 
         capture = runtime.events.index("stage3:capture:raspberrypi3:run-1")
@@ -1647,7 +1769,7 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
 
     def test_production_signage_post_mutation_rollback_to_previous_artifact_transaction(self):
         fixture = ProductionSignageFixture()
-        runtime = fixture.runtime(artifact_state="installed")
+        runtime = fixture.typed_runtime(artifact_state="installed")
         bind_production_signage_boundaries(runtime, fixture)
         non_pi3_before = copy.deepcopy(
             {
@@ -1659,7 +1781,12 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "rollout stopped"):
             coordinator.execute(
-                args(), runtime=runtime, token=FakeToken(runtime.events)
+                args(
+                    release_scope=PI3_SIGNAGE_SCOPE,
+                    signage_oci_digest=OCI_DIGEST,
+                ),
+                runtime=runtime,
+                token=FakeToken(runtime.events),
             )
 
         self.assertIn("stage3:rollback:raspberrypi3:run-1", runtime.events)
@@ -1676,6 +1803,98 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         self.assertEqual(claim["expectedIdentity"], OLD_ARTIFACT_IDENTITY)
         self.assertEqual(claim["observedIdentity"], OLD_ARTIFACT_IDENTITY)
         self.assertEqual(claim["verificationId"], ROLLBACK_VERIFICATION_ID)
+        self.assertEqual(
+            non_pi3_before,
+            {
+                host: runtime.fleet["fleet"][host]
+                for host in ("pi5", *fixture.pi4_hosts)
+            },
+        )
+
+    def test_scoped_signage_staged_identity_mismatch_fails_before_maintenance(self):
+        fixture = ProductionSignageFixture()
+        runtime = fixture.typed_runtime(artifact_state="absent")
+        bind_production_signage_boundaries(runtime, fixture)
+        runtime.staged_release_override = {"manifestSha256": "0" * 64}
+        non_pi3_before = copy.deepcopy(
+            {
+                host: runtime.fleet["fleet"][host]
+                for host in ("pi5", *fixture.pi4_hosts)
+            }
+        )
+
+        with self.assertRaisesRegex(
+            RuntimeError, "scoped release authority"
+        ):
+            coordinator.execute(
+                args(
+                    release_scope=PI3_SIGNAGE_SCOPE,
+                    signage_oci_digest=OCI_DIGEST,
+                ),
+                runtime=runtime,
+                token=FakeToken(runtime.events),
+            )
+
+        self.assertIn("stage3:candidate-cleanup:raspberrypi3:run-1", runtime.events)
+        self.assertFalse(
+            any(event.startswith("status:put:") for event in runtime.events)
+        )
+        self.assertNotIn("playbook:raspberrypi3", runtime.events)
+        self.assertEqual(
+            non_pi3_before,
+            {
+                host: runtime.fleet["fleet"][host]
+                for host in ("pi5", *fixture.pi4_hosts)
+            },
+        )
+
+    def test_scoped_signage_rejects_foreign_locked_work_before_device_mutation(self):
+        fixture = ProductionSignageFixture()
+        runtime = fixture.typed_runtime(artifact_state="absent")
+        original_scope = runtime.build_fleet_scope
+
+        def foreign_scope(**keywords):
+            plan, targets, classifications, warnings = original_scope(**keywords)
+            plan["hosts"].append(
+                decision(fixture.pi4_hosts[0], "kiosk", targeted=False)
+            )
+            return plan, targets, classifications, warnings
+
+        runtime.build_fleet_scope = foreign_scope
+        non_pi3_before = copy.deepcopy(
+            {
+                host: runtime.fleet["fleet"][host]
+                for host in ("pi5", *fixture.pi4_hosts)
+            }
+        )
+
+        with self.assertRaisesRegex(
+            RuntimeError, "locked Pi3 Signage release scope"
+        ):
+            coordinator.execute(
+                args(
+                    release_scope=PI3_SIGNAGE_SCOPE,
+                    signage_oci_digest=OCI_DIGEST,
+                ),
+                runtime=runtime,
+                token=FakeToken(runtime.events),
+            )
+
+        self.assertFalse(
+            any(
+                event.startswith(
+                    (
+                        "terminal:pipelining-preflight:",
+                        "stage3:",
+                        "status:",
+                        "playbook:",
+                        "observe:server:",
+                        "pi5:config-",
+                    )
+                )
+                for event in runtime.events
+            )
+        )
         self.assertEqual(
             non_pi3_before,
             {

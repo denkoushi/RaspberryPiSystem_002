@@ -1936,6 +1936,7 @@ def stage_signage_artifact_candidate(
     run_id: str,
     *,
     runtime: Runtime,
+    release_authority: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     _validated_run_and_sha(run_id, previous_sha)
     if _FULL_SHA_RE.fullmatch(revision) is None or revision == previous_sha:
@@ -1949,13 +1950,46 @@ def stage_signage_artifact_candidate(
         .read_text(encoding="utf-8")
     )
     config = signage_artifact_stage.load_registry_config()
+    acquisition: signage_artifact_stage.Acquisition = (
+        signage_artifact_stage.GhcrAcquisition(config)
+    )
+    if release_authority is not None:
+        expected_fields = {
+            "releaseScope",
+            "sourceSha",
+            "exactReference",
+            "ociDigest",
+            "artifactSha256",
+            "manifestSha256",
+            "payloadDigest",
+            "claimIdentity",
+        }
+        if (
+            set(release_authority) != expected_fields
+            or release_authority.get("releaseScope") != "pi3-signage-artifact"
+            or release_authority.get("sourceSha") != revision
+            or release_authority.get("exactReference")
+            != (
+                f"{signage_artifact_stage.ARTIFACT_REPOSITORY}"
+                f"@{release_authority.get('ociDigest')}"
+            )
+            or release_authority.get("claimIdentity")
+            != (
+                f"git:{revision}@sha256:"
+                f"{release_authority.get('artifactSha256')}"
+            )
+        ):
+            raise ValueError("Signage scoped release authority is malformed")
+        acquisition = signage_artifact_stage.DigestPinnedAcquisition(
+            acquisition, str(release_authority["ociDigest"])
+        )
     report = signage_artifact_stage.acquire_and_stage(
         f"{signage_artifact_stage.ARTIFACT_REPOSITORY}:{revision}",
         target,
         run_id,
         signage_artifact_stage.DEFAULT_STAGING_ROOT,
         True,
-        acquisition=signage_artifact_stage.GhcrAcquisition(config),
+        acquisition=acquisition,
         attestor=signage_artifact_stage.GhAttestor(config),
         transport=signage_artifact_stage.SshTargetTransport(
             target,
@@ -1976,6 +2010,17 @@ def stage_signage_artifact_candidate(
         code = failure.get("code") if isinstance(failure, dict) else "unknown"
         raise RuntimeError(f"Signage artifact staging failed: {code}")
     artifact = report["artifact"]
+    if release_authority is not None and any(
+        artifact.get(field) != release_authority.get(field)
+        for field in (
+            "sourceSha",
+            "ociDigest",
+            "artifactSha256",
+            "manifestSha256",
+            "payloadDigest",
+        )
+    ):
+        raise RuntimeError("Signage staged artifact authority changed")
     staging = report["staging"]
     ready = Path(staging["readyPath"])
     rendered = Path(staging["runPath"]) / "rendered"

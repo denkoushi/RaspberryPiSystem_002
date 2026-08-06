@@ -66,7 +66,7 @@ SERVER_HOST_FIELDS = frozenset(
 OPTIONAL_HOST_FIELDS = frozenset({"releaseClaims", "activationCapabilities"})
 EVIDENCE_VALUES = frozenset({"unknown", "verified"})
 TERMINAL_RUN_STATUSES = frozenset({"success", "failed", "cancelled", "interrupted"})
-RUN_KINDS = frozenset({"release", "pi4-recovery"})
+RUN_KINDS = frozenset({"release", "pi4-recovery", "pi3-signage-artifact"})
 _UNSET = object()
 
 

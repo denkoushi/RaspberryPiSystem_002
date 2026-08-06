@@ -158,14 +158,37 @@ class SignageStage3BackendTest(unittest.TestCase):
             "user": "signageras3",
             "port": 22,
         }
+        release_authority = {
+            "releaseScope": "pi3-signage-artifact",
+            "sourceSha": source_sha,
+            "exactReference": (
+                f"{ansible.signage_artifact_stage.ARTIFACT_REPOSITORY}"
+                f"@{artifact['ociDigest']}"
+            ),
+            "ociDigest": artifact["ociDigest"],
+            "artifactSha256": artifact["artifactSha256"],
+            "manifestSha256": artifact["manifestSha256"],
+            "payloadDigest": artifact["payloadDigest"],
+            "claimIdentity": (
+                f"git:{source_sha}@sha256:{artifact['artifactSha256']}"
+            ),
+        }
+        base_acquisition = object()
+        pinned_acquisition = object()
         sentinel = object()
         with mock.patch.object(
             ansible, "_signage_stage_target", return_value=target
         ), mock.patch.object(
             ansible.signage_artifact_stage, "load_registry_config", return_value={}
         ), mock.patch.object(
-            ansible.signage_artifact_stage, "GhcrAcquisition", return_value=sentinel
+            ansible.signage_artifact_stage,
+            "GhcrAcquisition",
+            return_value=base_acquisition,
         ), mock.patch.object(
+            ansible.signage_artifact_stage,
+            "DigestPinnedAcquisition",
+            return_value=pinned_acquisition,
+        ) as pin_digest, mock.patch.object(
             ansible.signage_artifact_stage, "GhAttestor", return_value=sentinel
         ), mock.patch.object(
             ansible.signage_artifact_stage, "SshTargetTransport", return_value=sentinel
@@ -183,11 +206,14 @@ class SignageStage3BackendTest(unittest.TestCase):
                 previous_sha,
                 run_id,
                 runtime=runtime,
+                release_authority=release_authority,
             )
 
         self.assertEqual(result["release"], artifact["artifactSha256"])
         self.assertEqual(result["stageRunPath"], report["staging"]["runPath"])
         self.assertIs(acquire.call_args.args[4], True)
+        pin_digest.assert_called_once_with(base_acquisition, artifact["ociDigest"])
+        self.assertIs(acquire.call_args.kwargs["acquisition"], pinned_acquisition)
         render.assert_called_once()
         self.assertEqual(helper.call_args.args[2], "prepare")
 
