@@ -190,7 +190,11 @@ ROUTE_STAGES: tuple[RouteStage, ...] = (
         "terminal.baseline-and-manifest",
         "terminal",
         "mutation",
-        ("prepare_repository", "capture_manifest"),
+        (
+            "prepare_repository",
+            "capture_manifest",
+            "capture_historical_manifest",
+        ),
         "terminal.rollback-authority-ready",
         "retain-run-manifest",
         "terminal-adapter",

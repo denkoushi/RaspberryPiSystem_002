@@ -199,6 +199,19 @@ class TerminalAdapter:
             inventory, target_spec, run_id, previous_sha
         )
 
+    def capture_historical_manifest(
+        self,
+        inventory: str,
+        target_spec: dict[str, str],
+        run_id: str,
+        previous_sha: str,
+    ) -> dict[str, Any]:
+        """Recapture an interrupted run with its original manifest contract."""
+
+        return self.capture_manifest(
+            inventory, target_spec, run_id, previous_sha
+        )
+
     def should_issue_notice(self, *, emergency_override: bool) -> bool:
         return self.runtime.should_issue_terminal_notice(
             terminal_type=self.profile.id,
@@ -260,7 +273,9 @@ class TerminalAdapter:
         run_id: str,
         *,
         staged_source: dict[str, Any] | None = None,
+        target: dict[str, Any] | None = None,
     ) -> None:
+        del target
         apply_profile = getattr(self.runtime, "apply_terminal_profile", None)
         if callable(apply_profile):
             apply_profile(
@@ -1064,6 +1079,41 @@ class SignageSystemdAdapter(TerminalAdapter):
     def prepare_repository(self, inventory: str, host: str) -> dict[str, Any]:
         return self.runtime.prepare_signage_release_identity(inventory, host)
 
+    @staticmethod
+    def _uses_stage3_manifest(target: dict[str, Any]) -> bool:
+        manifest = target.get("rollbackManifest")
+        return (
+            isinstance(manifest, dict)
+            and manifest.get("schemaVersion") == 1
+            and manifest.get("kind") == "signage-artifact-baseline"
+        )
+
+    def capture_manifest(
+        self,
+        inventory: str,
+        target_spec: dict[str, str],
+        run_id: str,
+        previous_sha: str,
+    ) -> dict[str, Any]:
+        """Seal only the Signage pointer/runtime baseline for new runs."""
+
+        return self.runtime.capture_signage_artifact_baseline(
+            inventory, target_spec, run_id, previous_sha
+        )
+
+    def capture_historical_manifest(
+        self,
+        inventory: str,
+        target_spec: dict[str, str],
+        run_id: str,
+        previous_sha: str,
+    ) -> dict[str, Any]:
+        """Keep abandoned pre-Stage-3 runs on the historical reader."""
+
+        return super().capture_manifest(
+            inventory, target_spec, run_id, previous_sha
+        )
+
     def observe_direct(
         self,
         inventory: str,
@@ -1169,7 +1219,7 @@ class SignageSystemdAdapter(TerminalAdapter):
         previous_sha: str,
         run_id: str,
     ) -> dict[str, Any]:
-        return self.runtime.stage_terminal_candidate_source(
+        return self.runtime.stage_signage_artifact_candidate(
             inventory, host, revision, previous_sha, run_id
         )
 
@@ -1181,10 +1231,77 @@ class SignageSystemdAdapter(TerminalAdapter):
     ) -> dict[str, Any] | None:
         if staged_source is None:
             return None
-        return self.runtime.cleanup_terminal_candidate_source(
+        return self.runtime.cleanup_signage_artifact_candidate(
             inventory,
             host,
             staged_source,
+        )
+
+    def apply(
+        self,
+        inventory: str,
+        host: str,
+        revision: str,
+        run_id: str,
+        *,
+        staged_source: dict[str, Any] | None = None,
+        target: dict[str, Any] | None = None,
+    ) -> None:
+        if staged_source is None:
+            raise RuntimeError("Signage artifact candidate is unavailable")
+        if target is None or not self._uses_stage3_manifest(target):
+            raise RuntimeError("Signage artifact rollback baseline is unavailable")
+        self.runtime.apply_signage_artifact_candidate(
+            inventory,
+            host,
+            revision,
+            run_id,
+            staged_source,
+            target["rollbackManifest"],
+        )
+
+    def rollback(
+        self,
+        inventory: str,
+        target_spec: dict[str, str],
+        target: dict[str, Any],
+        run_id: str,
+    ) -> bool:
+        if not self._uses_stage3_manifest(target):
+            return super().rollback(inventory, target_spec, target, run_id)
+        return self.runtime.rollback_signage_artifact(
+            inventory, target_spec, target, run_id
+        )
+
+    def preflight_rollback(
+        self,
+        inventory: str,
+        target_spec: dict[str, str],
+        target: dict[str, Any],
+        run_id: str,
+    ) -> dict[str, Any]:
+        if not self._uses_stage3_manifest(target):
+            return super().preflight_rollback(
+                inventory, target_spec, target, run_id
+            )
+        return self.runtime.preflight_signage_artifact_rollback(
+            inventory, target_spec, target, run_id
+        )
+
+    def cleanup(
+        self,
+        inventory: str,
+        target_spec: dict[str, str],
+        target: dict[str, Any],
+        run_id: str,
+        outcome: str,
+    ) -> dict[str, Any]:
+        if not self._uses_stage3_manifest(target):
+            return super().cleanup(
+                inventory, target_spec, target, run_id, outcome
+            )
+        return self.runtime.cleanup_signage_artifact_release(
+            inventory, target_spec, target, run_id, outcome
         )
 
     def run_scoped_rollback_paths(self, run_id: str) -> tuple[str, ...]:

@@ -49,6 +49,89 @@ def _sealed_source_reference(_inventory, host, candidate_sha, previous_sha, run_
     }
 
 
+def _stage3_baseline(_inventory, _target, _run_id, previous_sha):
+    runtime_health = {
+        'activeSystemdUnits': [
+            'lightdm.service',
+            'status-agent.timer',
+            'signage-lite.service',
+            'signage-lite-update.timer',
+            'signage-lite-watchdog.timer',
+            'signage-daily-reboot.timer',
+        ],
+        'displaySha256': 'e' * 64,
+    }
+    return {
+        'schemaVersion': 1,
+        'kind': 'signage-artifact-baseline',
+        'pointerWasPresent': False,
+        'previousRelease': 'legacy-' + 'f' * 64,
+        'previousReleaseKind': 'legacy',
+        'previousReleaseManifestSha256': '1' * 64,
+        'previousSourceSha': previous_sha,
+        'previousArtifactSha256': None,
+        'legacyRepositorySha': previous_sha,
+        'runtimeHealth': runtime_health,
+        'runtime': {
+            'manifestSha256': '2' * 64,
+            'unitCount': len(runtime_health['activeSystemdUnits']),
+            'dockerCount': 0,
+        },
+        'requireRootOwner': True,
+    }
+
+
+def _stage3_source_reference(_inventory, host, candidate_sha, previous_sha, run_id):
+    return {
+        'schemaVersion': 1,
+        'runId': run_id,
+        'host': host,
+        'previousSha': previous_sha,
+        'sourceSha': candidate_sha,
+        'artifactSha256': 'c' * 64,
+        'manifestSha256': 'd' * 64,
+        'payloadDigest': 'e' * 64,
+        'ociDigest': 'sha256:' + 'f' * 64,
+        'release': 'c' * 64,
+        'releaseKind': 'artifact',
+        'releaseManifestSha256': '3' * 64,
+        'stageRunPath': f'/var/tmp/raspisystem-signage-stage/{run_id}',
+        'readyPath': f'/var/tmp/raspisystem-signage-stage/{run_id}/ready',
+    }
+
+
+def _stage3_installed_baseline(inventory, target, run_id, previous_sha):
+    value = _stage3_baseline(inventory, target, run_id, previous_sha)
+    value.update({
+        'pointerWasPresent': True,
+        'previousRelease': 'c' * 64,
+        'previousReleaseKind': 'artifact',
+        'previousArtifactSha256': 'c' * 64,
+        'legacyRepositorySha': None,
+    })
+    return value
+
+
+def _stage3_candidate_cleanup(_inventory, _host, reference):
+    return {
+        'schemaVersion': 1,
+        'status': 'passed',
+        'removedPaths': [reference['stageRunPath']],
+        'stageResidue': False,
+        'currentRelease': None,
+    }
+
+
+def _stage3_release_cleanup(_inventory, _target, target, _run_id, outcome):
+    return {
+        'cleaned': True,
+        'alreadyClean': False,
+        'manifestSha256': target['rollbackManifest']['runtime']['manifestSha256'],
+        'tagCount': 0,
+        'outcome': outcome,
+    }
+
+
 def _verified_fleet_record(role, sha=BASE_SHA, *, typed=False):
     record = {
         'role': role,
@@ -1608,6 +1691,30 @@ class CanaryHoldTest(unittest.TestCase):
         ):
             played.append(host)
 
+        def apply_signage(
+            inventory, host, revision, run_id, reference, baseline
+        ):
+            del reference, baseline
+            playbook(inventory, host, revision, run_id)
+
+        def candidate_cleanup(_inventory, _host, reference):
+            return {
+                'schemaVersion': 1,
+                'status': 'passed',
+                'removedPaths': [reference['stageRunPath']],
+                'stageResidue': False,
+                'currentRelease': None,
+            }
+
+        def release_cleanup(_inventory, _target, target, _run_id, outcome):
+            return {
+                'cleaned': True,
+                'alreadyClean': False,
+                'manifestSha256': target['rollbackManifest']['runtime']['manifestSha256'],
+                'tagCount': 0,
+                'outcome': outcome,
+            }
+
         with tempfile.TemporaryDirectory() as temporary:
             run_directory = Path(temporary)
             with patch.object(MODULE, 'RUN_DIRECTORY', run_directory), \
@@ -1636,7 +1743,11 @@ class CanaryHoldTest(unittest.TestCase):
                     patch.object(MODULE, 'wait_for_canary_approval', side_effect=wait_for_canary_approval), \
                     patch.object(MODULE, 'state_command'), \
                     patch.object(MODULE, 'prestage_signage_maintenance'), \
-                    patch.object(MODULE, 'stage_terminal_candidate_source', side_effect=_sealed_source_reference), \
+                    patch.object(MODULE, 'capture_signage_artifact_baseline', side_effect=_stage3_baseline), \
+                    patch.object(MODULE, 'stage_signage_artifact_candidate', side_effect=_stage3_source_reference), \
+                    patch.object(MODULE, 'cleanup_signage_artifact_candidate', side_effect=candidate_cleanup), \
+                    patch.object(MODULE, 'apply_signage_artifact_candidate', side_effect=apply_signage), \
+                    patch.object(MODULE, 'cleanup_signage_artifact_release', side_effect=release_cleanup), \
                     patch.object(MODULE, 'playbook', side_effect=playbook), \
                     patch.object(MODULE, 'utc_now', return_value='2026-07-12T00:00:00Z'):
                 result = MODULE._remote_run(args or self._args())
@@ -1780,6 +1891,10 @@ class CanaryHoldTest(unittest.TestCase):
                     encoding='utf-8',
                 )
 
+            def apply_signage(inventory, host, revision, run_id, reference, baseline):
+                del reference, baseline
+                playbook(inventory, host, revision, run_id)
+
             with patch.object(MODULE, 'RUN_DIRECTORY', run_directory), \
                     patch.object(MODULE, 'inventory_json', return_value={}), \
                     patch.object(MODULE, 'selected_hosts', return_value=None), \
@@ -1805,7 +1920,11 @@ class CanaryHoldTest(unittest.TestCase):
                     patch.object(MODULE, 'wait_for_ack', return_value=True), \
                     patch.object(MODULE, 'state_command') as state_command, \
                     patch.object(MODULE, 'prestage_signage_maintenance'), \
-                    patch.object(MODULE, 'stage_terminal_candidate_source', side_effect=_sealed_source_reference), \
+                    patch.object(MODULE, 'capture_signage_artifact_baseline', side_effect=_stage3_installed_baseline), \
+                    patch.object(MODULE, 'stage_signage_artifact_candidate', side_effect=_stage3_source_reference), \
+                    patch.object(MODULE, 'cleanup_signage_artifact_candidate', side_effect=_stage3_candidate_cleanup), \
+                    patch.object(MODULE, 'apply_signage_artifact_candidate', side_effect=apply_signage), \
+                    patch.object(MODULE, 'cleanup_signage_artifact_release', side_effect=_stage3_release_cleanup), \
                     patch.object(MODULE, 'playbook', side_effect=playbook), \
                     patch.object(MODULE, 'utc_now', return_value='2026-07-12T00:00:00Z'):
                 result = MODULE._remote_run(self._args())
@@ -1850,6 +1969,10 @@ class CanaryHoldTest(unittest.TestCase):
                 if arguments[0] == 'remove-run':
                     raise RuntimeError('deploy-status cleanup unavailable')
 
+            def apply_signage(inventory, host, revision, run_id, reference, baseline):
+                del reference, baseline
+                playbook(inventory, host, revision, run_id)
+
             with patch.object(MODULE, 'RUN_DIRECTORY', run_directory), \
                     patch.object(MODULE, 'inventory_json', return_value={}), \
                     patch.object(MODULE, 'selected_hosts', return_value=None), \
@@ -1875,7 +1998,11 @@ class CanaryHoldTest(unittest.TestCase):
                     patch.object(MODULE, 'wait_for_ack', return_value=True), \
                     patch.object(MODULE, 'state_command', side_effect=state_command), \
                     patch.object(MODULE, 'prestage_signage_maintenance'), \
-                    patch.object(MODULE, 'stage_terminal_candidate_source', side_effect=_sealed_source_reference), \
+                    patch.object(MODULE, 'capture_signage_artifact_baseline', side_effect=_stage3_installed_baseline), \
+                    patch.object(MODULE, 'stage_signage_artifact_candidate', side_effect=_stage3_source_reference), \
+                    patch.object(MODULE, 'cleanup_signage_artifact_candidate', side_effect=_stage3_candidate_cleanup), \
+                    patch.object(MODULE, 'apply_signage_artifact_candidate', side_effect=apply_signage), \
+                    patch.object(MODULE, 'cleanup_signage_artifact_release', side_effect=_stage3_release_cleanup), \
                     patch.object(MODULE, 'playbook', side_effect=playbook), \
                     patch.object(MODULE, 'utc_now', return_value='2026-07-12T00:00:00Z'):
                 result = MODULE._remote_run(self._args())
@@ -3013,6 +3140,30 @@ class AutoMinimizeTest(unittest.TestCase):
         ):
             played.append(host)
 
+        def apply_signage(
+            inventory, host, revision, run_id, reference, baseline
+        ):
+            del reference, baseline
+            playbook(inventory, host, revision, run_id)
+
+        def candidate_cleanup(_inventory, _host, reference):
+            return {
+                'schemaVersion': 1,
+                'status': 'passed',
+                'removedPaths': [reference['stageRunPath']],
+                'stageResidue': False,
+                'currentRelease': None,
+            }
+
+        def release_cleanup(_inventory, _target, target, _run_id, outcome):
+            return {
+                'cleaned': True,
+                'alreadyClean': False,
+                'manifestSha256': target['rollbackManifest']['runtime']['manifestSha256'],
+                'tagCount': 0,
+                'outcome': outcome,
+            }
+
         with tempfile.TemporaryDirectory() as temporary:
             run_directory = Path(temporary)
             with patch.object(MODULE, 'RUN_DIRECTORY', run_directory), \
@@ -3040,7 +3191,11 @@ class AutoMinimizeTest(unittest.TestCase):
                     patch.object(MODULE, 'wait_for_ack', return_value=True), \
                     patch.object(MODULE, 'state_command'), \
                     patch.object(MODULE, 'prestage_signage_maintenance'), \
-                    patch.object(MODULE, 'stage_terminal_candidate_source', side_effect=_sealed_source_reference), \
+                    patch.object(MODULE, 'capture_signage_artifact_baseline', side_effect=_stage3_baseline), \
+                    patch.object(MODULE, 'stage_signage_artifact_candidate', side_effect=_stage3_source_reference), \
+                    patch.object(MODULE, 'cleanup_signage_artifact_candidate', side_effect=candidate_cleanup), \
+                    patch.object(MODULE, 'apply_signage_artifact_candidate', side_effect=apply_signage), \
+                    patch.object(MODULE, 'cleanup_signage_artifact_release', side_effect=release_cleanup), \
                     patch.object(MODULE, 'playbook', side_effect=playbook), \
                     patch.object(MODULE, 'utc_now', return_value='2026-07-12T00:00:00Z'):
                 result = MODULE._remote_run(args or self._args())

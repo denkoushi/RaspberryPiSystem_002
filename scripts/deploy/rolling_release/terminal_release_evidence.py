@@ -8,14 +8,13 @@ from __future__ import annotations
 
 import argparse
 import base64
-import hashlib
 import importlib
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
-import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +27,11 @@ AGENT_RE = re.compile(r"^(nfc-agent|barcode-agent|torque-agent):(auto|[0-9]{1,5}
 MARKER_PREFIX = "TERMINAL_RELEASE_EVIDENCE_RESULT:"
 REPOSITORY = Path("/opt/RaspberryPiSystem_002")
 COMPOSE_FILE = REPOSITORY / "infrastructure/docker/docker-compose.client.yml"
-SIGNAGE_ARTIFACT = Path("/usr/local/bin/raspi-signage-status-agent.pyz")
+SIGNAGE_ARTIFACT = Path(
+    "/opt/raspisystem-signage/current/SIGNAGE-RELEASE.json"
+)
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+OCI_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 class EvidenceError(RuntimeError):
@@ -75,20 +78,41 @@ def _current_sha(repository: Path) -> str:
 
 def _signage_artifact_identity(path: Path) -> tuple[str, str, str]:
     try:
-        metadata = path.stat(follow_symlinks=False)
-        if not path.is_file() or path.is_symlink() or metadata.st_size > 1024 * 1024:
+        metadata = path.lstat()
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or stat.S_ISLNK(metadata.st_mode)
+            or metadata.st_size <= 0
+            or metadata.st_size > 256 * 1024
+        ):
             raise EvidenceError("signage artifact is unsafe")
         payload = path.read_bytes()
-        with zipfile.ZipFile(path) as archive:
-            manifest = json.loads(archive.read("SIGNAGE-RELEASE.json").decode("utf-8"))
-    except (OSError, UnicodeError, ValueError, KeyError, zipfile.BadZipFile) as error:
+        manifest = json.loads(payload.decode("utf-8"))
+    except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as error:
         raise EvidenceError("signage artifact identity is unavailable") from error
     source_sha = manifest.get("sourceSha") if isinstance(manifest, dict) else None
-    digest = hashlib.sha256(payload).hexdigest()
+    digest = manifest.get("artifactSha256") if isinstance(manifest, dict) else None
     if (
-        not isinstance(source_sha, str)
+        not isinstance(manifest, dict)
+        or set(manifest) != {
+            "artifactSha256", "files", "legacyRepositorySha", "manifestSha256",
+            "ociDigest", "payloadDigest", "releaseKind", "schemaVersion", "sourceSha",
+        }
+        or payload != (
+            json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n"
+        ).encode("utf-8")
+        or not isinstance(source_sha, str)
         or FULL_SHA_RE.fullmatch(source_sha) is None
-        or manifest.get("profile") != "signage"
+        or not isinstance(digest, str)
+        or SHA256_RE.fullmatch(digest) is None
+        or SHA256_RE.fullmatch(str(manifest.get("manifestSha256") or "")) is None
+        or SHA256_RE.fullmatch(str(manifest.get("payloadDigest") or "")) is None
+        or OCI_DIGEST_RE.fullmatch(str(manifest.get("ociDigest") or "")) is None
+        or manifest.get("schemaVersion") != 1
+        or manifest.get("releaseKind") != "artifact"
+        or manifest.get("legacyRepositorySha") is not None
+        or not isinstance(manifest.get("files"), list)
+        or len(manifest["files"]) != 16
     ):
         raise EvidenceError("signage artifact identity is malformed")
     return source_sha, digest, f"git:{source_sha}@sha256:{digest}"

@@ -187,6 +187,8 @@ def signage_artifact_for_path(path: str) -> bool:
             "scripts/deploy/tests/test_signage_distribution_artifact.py",
             "scripts/deploy/rolling_release/signage_artifact_stage.py",
             "scripts/deploy/tests/test_signage_artifact_stage.py",
+            "scripts/deploy/rolling_release/signage_artifact_activation.py",
+            "scripts/deploy/tests/test_signage_artifact_activation.py",
             "infrastructure/docker/Dockerfile.signage-release",
         }
         or _has_prefix(

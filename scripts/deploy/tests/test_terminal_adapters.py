@@ -11,6 +11,7 @@ from scripts.deploy.rolling_release import adapter_registry
 from scripts.deploy.rolling_release.release_claims import ClaimKind
 from scripts.deploy.rolling_release.terminal_adapters import (
     GenericSystemdAdapter,
+    SignageSystemdAdapter,
     TerminalAdapter,
 )
 
@@ -101,6 +102,70 @@ class Runtime:
     def rollback_terminal(self, inventory, target_spec, _target, run_id):
         self.calls.append(("rollback", inventory, target_spec["host"], run_id))
         return True
+
+
+class Stage3SignageRuntime(Runtime):
+    def capture_signage_artifact_baseline(
+        self, inventory, target_spec, run_id, previous_sha
+    ):
+        self.calls.append(("stage3-capture", inventory, target_spec["host"], run_id))
+        return {
+            "schemaVersion": 1,
+            "kind": "signage-artifact-baseline",
+            "runtimeHealth": {
+                "activeSystemdUnits": ["lightdm.service", "signage-lite.service"],
+                "displaySha256": "a" * 64,
+            },
+        }
+
+    def stage_signage_artifact_candidate(
+        self, inventory, host, revision, previous_sha, run_id
+    ):
+        self.calls.append(("stage3-stage", inventory, host, revision, run_id))
+        return {
+            "schemaVersion": 1,
+            "sourceSha": revision,
+            "artifactSha256": "c" * 64,
+        }
+
+    def cleanup_signage_artifact_candidate(self, inventory, host, reference):
+        self.calls.append(("stage3-candidate-cleanup", inventory, host))
+        return {"status": "passed", "stageResidue": False}
+
+    def apply_signage_artifact_candidate(
+        self, inventory, host, revision, run_id, staged_source, baseline
+    ):
+        self.calls.append(("stage3-apply", inventory, host, revision, run_id))
+
+    def rollback_signage_artifact(
+        self, inventory, target_spec, target, run_id
+    ):
+        self.calls.append(("stage3-rollback", inventory, target_spec["host"], run_id))
+        target["rollbackRuntimeHealth"] = target["rollbackManifest"]["runtimeHealth"]
+        target["rollback"] = "success"
+        return True
+
+    def preflight_signage_artifact_rollback(
+        self, inventory, target_spec, target, run_id
+    ):
+        self.calls.append(("stage3-rollback-preflight", inventory, target_spec["host"], run_id))
+        return {
+            "ready": True,
+            "issues": [],
+            "runtimeHealth": target["rollbackManifest"]["runtimeHealth"],
+        }
+
+    def cleanup_signage_artifact_release(
+        self, inventory, target_spec, target, run_id, outcome
+    ):
+        self.calls.append(("stage3-cleanup", inventory, target_spec["host"], outcome))
+        return {
+            "cleaned": True,
+            "alreadyClean": False,
+            "manifestSha256": "d" * 64,
+            "tagCount": 0,
+            "outcome": outcome,
+        }
 
 
 def synthetic_profile(**overrides):
@@ -233,6 +298,70 @@ class GenericTerminalAdapterTest(unittest.TestCase):
         )
         self.assertIn(
             ("rollback", "inventory.yml", "inspection-a", "run-1"), runtime.calls
+        )
+
+    def test_signage_stage3_uses_artifact_pointer_boundaries(self):
+        runtime = Stage3SignageRuntime()
+        adapter = SignageSystemdAdapter(load_registry().profile("signage"), runtime)
+        target_spec = {"host": "raspberrypi3", "terminalType": "signage"}
+        manifest = adapter.capture_manifest(
+            "inventory.yml", target_spec, "run-1", OLD_SHA
+        )
+        staged = adapter.stage_candidate_source(
+            "inventory.yml", "raspberrypi3", NEW_SHA, OLD_SHA, "run-1"
+        )
+        adapter.apply(
+            "inventory.yml",
+            "raspberrypi3",
+            NEW_SHA,
+            "run-1",
+            staged_source=staged,
+            target={"rollbackManifest": manifest},
+        )
+        target = {
+            "previousSha": OLD_SHA,
+            "desiredSha": NEW_SHA,
+            "rollbackManifest": manifest,
+            "stagedSource": staged,
+        }
+        self.assertTrue(
+            adapter.rollback("inventory.yml", target_spec, target, "run-1")
+        )
+        self.assertTrue(
+            adapter.preflight_rollback(
+                "inventory.yml", target_spec, target, "run-1"
+            )["ready"]
+        )
+        adapter.cleanup(
+            "inventory.yml", target_spec, target, "run-1", "restored"
+        )
+        self.assertEqual(
+            [call[0] for call in runtime.calls if call[0].startswith("stage3")],
+            [
+                "stage3-capture",
+                "stage3-stage",
+                "stage3-apply",
+                "stage3-rollback",
+                "stage3-rollback-preflight",
+                "stage3-cleanup",
+            ],
+        )
+
+    def test_signage_historical_manifest_keeps_legacy_reader(self):
+        runtime = Stage3SignageRuntime()
+        adapter = SignageSystemdAdapter(load_registry().profile("signage"), runtime)
+        target_spec = {"host": "raspberrypi3", "terminalType": "signage"}
+        target = {
+            "previousSha": OLD_SHA,
+            "desiredSha": NEW_SHA,
+            "rollbackManifest": {"path": "/legacy/manifest"},
+        }
+        self.assertTrue(
+            adapter.rollback("inventory.yml", target_spec, target, "historical-run")
+        )
+        self.assertIn(
+            ("rollback", "inventory.yml", "raspberrypi3", "historical-run"),
+            runtime.calls,
         )
 
     def test_unique_adapter_is_added_only_to_registry_mapping(self):
