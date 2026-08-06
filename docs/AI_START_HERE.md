@@ -68,6 +68,7 @@ If `EXEC_PLAN.md` must be touched, keep the entry short and limited to current s
 - Standard release production-path execution audit (production frozen; no production authorization): `docs/plans/standard-release-production-path-audit-execplan.md`
 - Pi3 staged source transport follow-up (production retry separately gated): `docs/plans/pi3-staged-source-transfer-execplan.md`
 - Pi3 immutable signage distribution artifact Stage 1 (CI build/publication only; no terminal or production authorization): `docs/plans/pi3-signage-distribution-artifact-execplan.md`
+- Pi3 attested Signage artifact Stage 2 (preflight acquisition/staging/cleanup only; no activation or production Deploy): `docs/plans/pi3-signage-artifact-staging-execplan.md`
 - Pi4 SD-card recovery production readiness (implementation; no production authorization): `docs/plans/pi4-sd-recovery-readiness-execplan.md`
 - StoneBase Local executor integration (pending; not a canonical device route): `docs/plans/stonebase-local-executor-freeze.md`
 - Normal SSH deployment gate audit and first stabilization (in progress; no hardware authorization): `docs/plans/normal-ssh-deploy-gate-audit-20260722.md`

@@ -8,7 +8,13 @@ import re
 from pathlib import Path, PurePosixPath
 from typing import Iterable
 
-from .. import bootstrap, migration_preflight, route_preflight, terminal_preflight
+from .. import (
+    bootstrap,
+    migration_preflight,
+    route_preflight,
+    signage_artifact_stage,
+    terminal_preflight,
+)
 from ..models import LaunchSpec, UnitObservation, unit_name_for, validate_lookup_run_id
 from .command import CommandResult, SshTransport, SubprocessRunner
 
@@ -45,6 +51,17 @@ ROUTE_PREFLIGHT_LOADER = (
     "sys.argv=['route-preflight',base64.b64decode(payload).decode('utf-8')];"
     "exec(compile(base64.b64decode(source),'<route-preflight>','exec'),"
     "{'__name__':'__main__'})"
+)
+SIGNAGE_ARTIFACT_STAGE_LOADER = (
+    "import base64,sys;stage,verifier,payload=sys.argv[1:];"
+    "stage_source=base64.b64decode(stage).decode('utf-8');"
+    "verifier_source=base64.b64decode(verifier).decode('utf-8');"
+    "request=base64.b64decode(payload).decode('utf-8');"
+    "ns={'__name__':'_embedded_signage_stage',"
+    "'EMBEDDED_SIGNAGE_STAGE_SOURCE':stage_source,"
+    "'EMBEDDED_DISTRIBUTION_VERIFIER_SOURCE':verifier_source};"
+    "exec(compile(stage_source,'<signage-artifact-stage>','exec'),ns);"
+    "raise SystemExit(ns['main']([request]))"
 )
 _USER_RE = re.compile(r'^[a-z_][a-z0-9_-]{0,30}$')
 SHOW_PROPERTIES = (
@@ -83,6 +100,20 @@ def _load_route_preflight_source() -> str:
     source_path = Path(route_preflight.__file__ or '')
     if not source_path.is_file():
         raise RuntimeError('standalone route preflight source is unavailable')
+    return source_path.read_text(encoding='utf-8')
+
+
+def _load_signage_artifact_stage_source() -> str:
+    source_path = Path(signage_artifact_stage.__file__ or '')
+    if not source_path.is_file():
+        raise RuntimeError('standalone Signage artifact stage source is unavailable')
+    return source_path.read_text(encoding='utf-8')
+
+
+def _load_distribution_verifier_source() -> str:
+    source_path = Path(__file__).resolve().parents[2] / 'signage-distribution-artifact.py'
+    if not source_path.is_file():
+        raise RuntimeError('Stage 1 Signage artifact verifier source is unavailable')
     return source_path.read_text(encoding='utf-8')
 
 
@@ -158,6 +189,8 @@ class SystemdBackend:
         migration_preflight_source: str | None = None,
         terminal_preflight_source: str | None = None,
         route_preflight_source: str | None = None,
+        signage_artifact_stage_source: str | None = None,
+        distribution_verifier_source: str | None = None,
     ) -> None:
         project = str(remote_project)
         if (
@@ -205,6 +238,20 @@ class SystemdBackend:
         )
         if not self.route_preflight_source.strip():
             raise ValueError('route preflight source must not be empty')
+        self.signage_artifact_stage_source = (
+            signage_artifact_stage_source
+            if signage_artifact_stage_source is not None
+            else _load_signage_artifact_stage_source()
+        )
+        if not self.signage_artifact_stage_source.strip():
+            raise ValueError('Signage artifact stage source must not be empty')
+        self.distribution_verifier_source = (
+            distribution_verifier_source
+            if distribution_verifier_source is not None
+            else _load_distribution_verifier_source()
+        )
+        if not self.distribution_verifier_source.strip():
+            raise ValueError('Signage distribution verifier source must not be empty')
 
     def release_state_path(self, run_id: str) -> PurePosixPath:
         validate_lookup_run_id(run_id)
@@ -324,6 +371,49 @@ class SystemdBackend:
         self, spec: LaunchSpec, targets: list[dict[str, object]]
     ) -> CommandResult:
         return self.transport.run(self.build_terminal_preflight_command(spec, targets))
+
+    def build_signage_artifact_stage_command(
+        self, spec: LaunchSpec, target: dict[str, object]
+    ) -> tuple[str, ...]:
+        """Build the Pi3-only disposable artifact stage proof."""
+
+        spec.validate()
+        selected = {
+            key: target.get(key)
+            for key in ('host', 'profile', 'address', 'user', 'port')
+        }
+        payload = {
+            'version': 1,
+            'mode': 'preflight',
+            'artifactRef': f'{signage_artifact_stage.ARTIFACT_REPOSITORY}:{spec.sha}',
+            'runId': spec.run_id,
+            'stagingRoot': str(signage_artifact_stage.DEFAULT_STAGING_ROOT),
+            'retain': False,
+            'target': selected,
+            'configPath': str(signage_artifact_stage.DEFAULT_CONFIG_PATH),
+        }
+        serialized = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(',', ':'),
+        )
+        signage_artifact_stage.parse_preflight_spec(serialized)
+        return (
+            REMOTE_PYTHON,
+            '-c',
+            SIGNAGE_ARTIFACT_STAGE_LOADER,
+            _encode_argument(self.signage_artifact_stage_source),
+            _encode_argument(self.distribution_verifier_source),
+            _encode_argument(serialized),
+        )
+
+    def preflight_signage_artifact_stage(
+        self, spec: LaunchSpec, target: dict[str, object]
+    ) -> CommandResult:
+        return self.transport.run(
+            self.build_signage_artifact_stage_command(spec, target)
+        )
 
     def build_route_preflight_command(
         self,

@@ -126,7 +126,7 @@ def release_args(
     )
 
 
-def terminal_passed_result(*hosts: str) -> CommandResult:
+def terminal_passed_result(*hosts: str, profile: str = "kiosk") -> CommandResult:
     return CommandResult(
         ("terminal-preflight",),
         0,
@@ -142,7 +142,7 @@ def terminal_passed_result(*hosts: str) -> CommandResult:
                 "targets": [
                     {
                         "host": host,
-                        "profile": "kiosk",
+                        "profile": profile,
                         "status": "passed",
                         "issues": [],
                     }
@@ -179,6 +179,68 @@ def route_passed_result(*, external: bool = False) -> CommandResult:
     )
 
 
+def signage_stage_result(*, status="passed", code=0) -> CommandResult:
+    root = str(application.signage_artifact_stage.DEFAULT_STAGING_ROOT)
+    run_path = f"{root}/{RUN_ID}"
+    artifact_digest = "b" * 64
+    checked_paths = [
+        f"{run_path}/incoming/signage-release.tar",
+        f"{run_path}/incoming/signage-release-descriptor.json",
+        f"{run_path}/ready/signage-release.tar",
+        f"{run_path}/ready/signage-release-descriptor.json",
+        f"{run_path}/incoming",
+        f"{run_path}/ready",
+        run_path,
+        root,
+    ]
+    report = {
+        "schemaVersion": 1,
+        "operation": "pi3-signage-acquire-and-stage",
+        "status": status,
+        "retain": False,
+        "runId": RUN_ID,
+        "host": "raspberrypi3",
+        "artifact": {
+            "reference": f"ghcr.io/denkoushi/raspisys-pi3-signage:{SHA}",
+            "exactReference": "ghcr.io/denkoushi/raspisys-pi3-signage@sha256:" + "c" * 64,
+            "ociDigest": "sha256:" + "c" * 64,
+            "sourceSha": SHA,
+            "artifactSha256": artifact_digest,
+            "manifestSha256": "d" * 64,
+            "payloadDigest": "e" * 64,
+        },
+        "staging": {
+            "root": root,
+            "runPath": run_path,
+            "temporaryPath": f"{run_path}/incoming",
+            "readyPath": f"{run_path}/ready",
+        },
+        "lifecycle": ["acquired", "attested"],
+        "cleanupReceipt": (
+            {
+                "schemaVersion": 1,
+                "runId": RUN_ID,
+                "host": "raspberrypi3",
+                "artifactDigest": artifact_digest,
+                "stagingPath": run_path,
+                "checkedPaths": checked_paths,
+                "removedPaths": [f"{run_path}/ready", run_path],
+                "residuePaths": [],
+                "residue": False,
+                "status": "passed",
+            }
+            if status == "passed"
+            else None
+        ),
+        "failure": (
+            None
+            if status == "passed"
+            else {"stage": "attestation", "code": "attestation-verification"}
+        ),
+    }
+    return CommandResult(("signage-artifact-stage",), code, stdout=json.dumps(report))
+
+
 class FakeSystemd:
     def __init__(
         self,
@@ -186,6 +248,7 @@ class FakeSystemd:
         preflight_result=None,
         terminal_preflight_result=None,
         route_preflight_result=None,
+        signage_artifact_stage_result=None,
     ):
         self.start_result = start_result or CommandResult(("systemd-run",), 0)
         self.preflight_result = preflight_result or CommandResult(
@@ -217,6 +280,9 @@ class FakeSystemd:
                 '"metrics":{},"externalDependencies":{"required":[],"rounds":3,"successes":{}}}'
             ),
         )
+        self.signage_artifact_stage_result = (
+            signage_artifact_stage_result or signage_stage_result()
+        )
         self.events = []
         self.start_specs = []
         self.route_external_dependencies = []
@@ -235,6 +301,10 @@ class FakeSystemd:
             tuple(required_external_dependencies)
         )
         return self.route_preflight_result
+
+    def preflight_signage_artifact_stage(self, spec, target):
+        self.events.append(("signage-artifact-stage", spec.run_id, target["host"]))
+        return self.signage_artifact_stage_result
 
     def start(self, spec, *, wait):
         self.start_specs.append(spec)
@@ -791,6 +861,256 @@ class ReleaseApplicationTest(unittest.TestCase):
                 ("route-preflight", RUN_ID),
             ],
         )
+        self.assertNotIn("signageArtifactStage", payload)
+
+    def test_signage_preflight_only_stages_once_with_retain_false_and_receipt(self):
+        systemd = FakeSystemd(
+            terminal_preflight_result=terminal_passed_result(
+                "raspberrypi3", profile="signage"
+            )
+        )
+        control = FakeControl()
+        work = {
+            "host": "raspberrypi3",
+            "role": "signage",
+            "mutationRequired": True,
+            "activationRequired": False,
+            "verificationRequired": True,
+            "activationStrategyId": None,
+            "activationMode": None,
+            "claimRequirements": [{"kind": "signageReleaseArtifact"}],
+        }
+        snapshot = {
+            **Runtime.build_print_plan("main", "inventory.yml", ""),
+            "classificationComponents": ["signage-role"],
+            "terminalWork": [work],
+        }
+        runtime = type(
+            "SignageRuntime",
+            (Runtime,),
+            {"build_print_plan": staticmethod(lambda *_args, **_kwargs: snapshot)},
+        )
+        target = {
+            "host": "raspberrypi3",
+            "profile": "signage",
+            "address": "100.64.0.3",
+            "user": "pi",
+            "port": 22,
+        }
+        pi4_state = b'{"host":"raspberrypi4","state":"verified"}'
+        pi5_events = ("identity", "route-preflight")
+        with patch.object(
+            application, "_require_clean_worktree"
+        ), patch.object(
+            application, "_remote_inventory", return_value="inventory.yml"
+        ), patch.object(
+            application, "new_run_id", return_value=RUN_ID
+        ), patch.object(
+            application, "build_backends", return_value=(systemd, control)
+        ), patch.object(
+            application,
+            "validate_remote_server_identity",
+            return_value={"host": "raspberrypi5", "clientId": "raspberrypi5-server"},
+        ), patch.object(
+            application, "build_target_contracts", return_value=[target]
+        ), patch(
+            "sys.stdout", new_callable=io.StringIO
+        ) as stdout:
+            outcome = application.launch(
+                release_args(preflight_only=True), runtime=runtime
+            )
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(outcome, 0)
+        self.assertEqual(payload["signageArtifactStage"]["status"], "passed")
+        self.assertFalse(payload["signageArtifactStage"]["retain"])
+        self.assertIs(
+            payload["signageArtifactStage"]["cleanupReceipt"]["residue"], False
+        )
+        self.assertEqual(
+            [event for event in systemd.events if event[0] == "signage-artifact-stage"],
+            [("signage-artifact-stage", RUN_ID, "raspberrypi3")],
+        )
+        self.assertNotIn("start", [event[0] for event in systemd.events])
+        self.assertEqual(pi4_state, b'{"host":"raspberrypi4","state":"verified"}')
+        self.assertEqual(pi5_events, ("identity", "route-preflight"))
+
+    def test_normal_signage_launch_and_failed_preflight_never_stage(self):
+        work = {
+            "host": "raspberrypi3",
+            "role": "signage",
+            "mutationRequired": True,
+            "activationRequired": False,
+            "verificationRequired": True,
+            "activationStrategyId": None,
+            "activationMode": None,
+            "claimRequirements": [{"kind": "signageReleaseArtifact"}],
+        }
+        snapshot = {
+            **Runtime.build_print_plan("main", "inventory.yml", ""),
+            "classificationComponents": ["signage-role"],
+            "terminalWork": [work],
+        }
+        runtime = type(
+            "SignageRuntimeNoStage",
+            (Runtime,),
+            {"build_print_plan": staticmethod(lambda *_args, **_kwargs: snapshot)},
+        )
+        target = {
+            "host": "raspberrypi3",
+            "profile": "signage",
+            "address": "100.64.0.3",
+            "user": "pi",
+            "port": 22,
+        }
+        for preflight_only, terminal_result in (
+            (False, terminal_passed_result("raspberrypi3", profile="signage")),
+            (
+                True,
+                CommandResult(
+                    ("terminal-preflight",),
+                    78,
+                    stdout=json.dumps(
+                        {
+                            "version": 2,
+                            "probe": "terminal",
+                            "capability": "terminal.selected-prerequisites",
+                            "status": "blocked",
+                            "proofs": [],
+                            "issues": [
+                                {
+                                    "code": "terminal.signage.runtime",
+                                    "host": "raspberrypi3",
+                                    "capability": "terminal.selected-prerequisites",
+                                }
+                            ],
+                            "warnings": [],
+                            "targets": [
+                                {
+                                    "host": "raspberrypi3",
+                                    "profile": "signage",
+                                    "status": "blocked",
+                                    "issues": ["terminal.signage.runtime"],
+                                }
+                            ],
+                        }
+                    ),
+                ),
+            ),
+        ):
+            with self.subTest(preflight_only=preflight_only):
+                systemd = FakeSystemd(terminal_preflight_result=terminal_result)
+                control = FakeControl()
+                with patch.object(
+                    application, "_require_clean_worktree"
+                ), patch.object(
+                    application, "_remote_inventory", return_value="inventory.yml"
+                ), patch.object(
+                    application, "new_run_id", return_value=RUN_ID
+                ), patch.object(
+                    application, "build_backends", return_value=(systemd, control)
+                ), patch.object(
+                    application,
+                    "validate_remote_server_identity",
+                    return_value={"host": "raspberrypi5", "clientId": "raspberrypi5-server"},
+                ), patch.object(
+                    application, "build_target_contracts", return_value=[target]
+                ), patch.object(
+                    application,
+                    "observe",
+                    return_value={"runId": RUN_ID, "state": "success"},
+                ), patch(
+                    "sys.stdout", new_callable=io.StringIO
+                ) as stdout:
+                    outcome = application.launch(
+                        release_args(preflight_only=preflight_only), runtime=runtime
+                    )
+                self.assertNotIn(
+                    "signage-artifact-stage", [event[0] for event in systemd.events]
+                )
+                if preflight_only:
+                    self.assertEqual(outcome, 78)
+                    payload = json.loads(stdout.getvalue())
+                    self.assertIn("terminal.signage.runtime", json.dumps(payload))
+                    self.assertNotIn("signageArtifactStage", payload)
+
+    def test_signage_stage_failure_is_structured_and_blocks_submission(self):
+        systemd = FakeSystemd(
+            terminal_preflight_result=terminal_passed_result(
+                "raspberrypi3", profile="signage"
+            ),
+            signage_artifact_stage_result=signage_stage_result(
+                status="blocked", code=78
+            ),
+        )
+        control = FakeControl()
+        snapshot = {
+            **Runtime.build_print_plan("main", "inventory.yml", ""),
+            "classificationComponents": ["signage-role"],
+            "terminalWork": [
+                {
+                    "host": "raspberrypi3",
+                    "role": "signage",
+                    "mutationRequired": True,
+                    "activationRequired": False,
+                    "verificationRequired": True,
+                    "activationStrategyId": None,
+                    "activationMode": None,
+                    "claimRequirements": [{"kind": "signageReleaseArtifact"}],
+                }
+            ],
+        }
+        runtime = type(
+            "BlockedSignageRuntime",
+            (Runtime,),
+            {"build_print_plan": staticmethod(lambda *_args, **_kwargs: snapshot)},
+        )
+        target = {
+            "host": "raspberrypi3",
+            "profile": "signage",
+            "address": "100.64.0.3",
+            "user": "pi",
+            "port": 22,
+        }
+        with patch.object(
+            application, "_require_clean_worktree"
+        ), patch.object(
+            application, "_remote_inventory", return_value="inventory.yml"
+        ), patch.object(
+            application, "new_run_id", return_value=RUN_ID
+        ), patch.object(
+            application, "build_backends", return_value=(systemd, control)
+        ), patch.object(
+            application,
+            "validate_remote_server_identity",
+            return_value={"host": "raspberrypi5", "clientId": "raspberrypi5-server"},
+        ), patch.object(
+            application, "build_target_contracts", return_value=[target]
+        ), patch(
+            "sys.stdout", new_callable=io.StringIO
+        ) as stdout:
+            outcome = application.launch(
+                release_args(preflight_only=True), runtime=runtime
+            )
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(outcome, 78)
+        self.assertEqual(payload["status"], "blocked")
+        self.assertIsNone(payload["readinessAdmission"])
+        self.assertEqual(
+            payload["signageArtifactStage"]["failure"],
+            {"stage": "attestation", "code": "attestation-verification"},
+        )
+        self.assertIn(
+            {
+                "probe": "signage-artifact-stage",
+                "status": "blocked",
+                "exitCode": 78,
+                "issues": ["attestation-verification"],
+            },
+            payload["probes"],
+        )
+        self.assertNotIn("start", [event[0] for event in systemd.events])
 
     def test_preflight_only_returns_json_when_local_preparation_fails(self):
         with patch.object(
