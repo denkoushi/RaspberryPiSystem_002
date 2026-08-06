@@ -245,6 +245,65 @@ class SignageArtifactStageE2E(unittest.TestCase):
             ["prepare", "copy:signage-release.tar", "copy:signage-release-descriptor.json", "verify-temporary", "promote", "verify-ready", "cleanup"],
         )
 
+    def test_digest_pinned_acquisition_rejects_tag_drift_before_target_prepare(self):
+        acquisition = FixtureAcquisition(
+            self.source_artifact,
+            self.source_descriptor,
+            digest="sha256:" + "e" * 64,
+        )
+        transport = self.transport()
+
+        report = self.execute(
+            retain=False,
+            acquisition=stage.DigestPinnedAcquisition(acquisition, OCI_DIGEST),
+            transport=transport,
+        )
+
+        self.assertEqual(report["status"], "blocked")
+        self.assertEqual(report["failure"]["stage"], "acquisition")
+        self.assertEqual(report["failure"]["code"], "oci-digest-mismatch")
+        self.assertEqual(transport.events, [])
+        self.assertFalse((self.stage_root / RUN_ID).exists())
+
+    def test_digest_pinned_acquisition_uses_the_real_zero_residue_lifecycle(self):
+        acquisition = stage.DigestPinnedAcquisition(
+            FixtureAcquisition(self.source_artifact, self.source_descriptor),
+            OCI_DIGEST,
+        )
+        transport = self.transport()
+
+        report = self.execute(
+            retain=False,
+            acquisition=acquisition,
+            transport=transport,
+        )
+
+        self.assertEqual(report["status"], "passed")
+        self.assertEqual(report["artifact"]["ociDigest"], OCI_DIGEST)
+        self.assertEqual(report["lifecycle"][-1], "cleaned")
+        self.assertFalse(report["cleanupReceipt"]["residue"])
+        self.assertFalse((self.stage_root / RUN_ID).exists())
+
+    def test_dedicated_preflight_spec_requires_an_exact_oci_digest(self):
+        payload = {
+            "version": 1,
+            "mode": "artifact-preflight",
+            "artifactRef": ARTIFACT_REF,
+            "expectedOciDigest": OCI_DIGEST,
+            "runId": RUN_ID,
+            "stagingRoot": str(stage.DEFAULT_STAGING_ROOT),
+            "retain": False,
+            "target": self.target,
+            "configPath": str(stage.DEFAULT_CONFIG_PATH),
+        }
+
+        parsed = stage.parse_preflight_spec(json.dumps(payload))
+
+        self.assertEqual(parsed, payload)
+        payload["expectedOciDigest"] = "sha256:" + "z" * 64
+        with self.assertRaisesRegex(stage.StageError, "digest"):
+            stage.parse_preflight_spec(json.dumps(payload))
+
     def test_retain_true_leaves_the_same_verified_ready_bytes(self):
         transport = self.transport()
 
