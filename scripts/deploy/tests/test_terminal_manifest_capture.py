@@ -115,6 +115,56 @@ class TerminalManifestCaptureTest(unittest.TestCase):
             ],
         )
 
+    def test_signage_capture_seals_file_and_runtime_without_repository_authority(self):
+        file_result = {"manifestSha256": "b" * 64, "authority": "file"}
+        runtime_result = {"manifestSha256": "c" * 64, "authority": "runtime"}
+        rollback = SimpleNamespace(capture_set=mock.Mock(return_value=file_result))
+        runtime = SimpleNamespace(capture=mock.Mock(return_value=runtime_result))
+        geteuid, getpwnam = self._root_identity()
+
+        with geteuid, getpwnam:
+            result = capture.capture_all(
+                arguments(repository=None, expected_head=None),
+                rollback_module=rollback,
+                runtime_module=runtime,
+            )
+
+        self.assertEqual(result["fileManifest"], file_result)
+        self.assertEqual(result["runtimeManifest"], runtime_result)
+        rollback.capture_set.assert_called_once_with(
+            root=Path("/var/lib/raspi-release/rollback-manifests"),
+            run_id="run-123",
+            host="kiosk-a",
+            paths=["/etc/example", "/home/tools03/.config/example"],
+            repository=None,
+            expected_head=None,
+        )
+
+    def test_signage_elevated_reexec_does_not_invent_repository_arguments(self):
+        args = arguments(
+            elevated=False,
+            remote_user=None,
+            remote_home=None,
+            repository=None,
+            expected_head=None,
+            path=[],
+            path_template=["@REMOTE_HOME@/.config/example"],
+        )
+        command = capture._elevated_arguments(
+            args, "signageras3", "/home/signageras3"
+        )
+
+        self.assertNotIn("--repository", command)
+        self.assertNotIn("--expected-head", command)
+        self.assertIn("/home/signageras3/.config/example", command)
+
+    def test_repository_rollback_authority_must_be_present_as_an_exact_pair(self):
+        geteuid, getpwnam = self._root_identity()
+        with geteuid, getpwnam, self.assertRaisesRegex(
+            capture.CaptureEnvelopeError, "rollback authority is incomplete"
+        ):
+            capture.capture_all(arguments(expected_head=None))
+
     def test_partial_success_is_fail_closed_and_retry_reuses_same_authorities(self):
         file_result = {"manifestSha256": "b" * 64, "authority": "file"}
         runtime_result = {"manifestSha256": "c" * 64, "authority": "runtime"}
