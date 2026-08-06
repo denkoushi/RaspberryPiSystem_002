@@ -295,6 +295,7 @@ class SignageArtifactStageE2E(unittest.TestCase):
         attestor: FixtureAttestor | None = None,
         transport=None,
         run_id: str = RUN_ID,
+        release_authority: dict[str, object] | None = None,
     ) -> dict[str, object]:
         acquisition = acquisition or FixtureAcquisition(
             self.source_artifact, self.source_descriptor
@@ -313,6 +314,7 @@ class SignageArtifactStageE2E(unittest.TestCase):
             transport=transport or self.transport(),
             verifier_source=VERIFIER_SOURCE,
             controller_root=self.controller,
+            release_authority=release_authority,
         )
 
     def test_retain_false_runs_real_transfer_verify_promote_cleanup_and_zero_residue(self):
@@ -390,6 +392,69 @@ class SignageArtifactStageE2E(unittest.TestCase):
         self.assertEqual(report["lifecycle"][-1], "cleaned")
         self.assertFalse(report["cleanupReceipt"]["residue"])
         self.assertFalse((self.stage_root / RUN_ID).exists())
+
+    def test_locked_release_mismatch_blocks_before_target_prepare(self):
+        locked_release = {
+            "releaseScope": "pi3-signage-artifact",
+            "sourceSha": SOURCE_SHA,
+            "exactReference": (
+                "ghcr.io/denkoushi/raspisys-pi3-signage@" + OCI_DIGEST
+            ),
+            "ociDigest": OCI_DIGEST,
+            "artifactSha256": self.descriptor["artifactSha256"],
+            "manifestSha256": self.descriptor["manifestSha256"],
+            "payloadDigest": self.descriptor["payloadDigest"],
+            "claimIdentity": (
+                f"git:{SOURCE_SHA}@sha256:{self.descriptor['artifactSha256']}"
+            ),
+        }
+        replacements = {
+            "sourceSha": "a" * 40,
+            "artifactSha256": "a" * 64,
+            "manifestSha256": "a" * 64,
+            "payloadDigest": "a" * 64,
+        }
+
+        for index, (field, replacement) in enumerate(replacements.items()):
+            with self.subTest(field=field):
+                transport = self.transport()
+                report = self.execute(
+                    retain=False,
+                    transport=transport,
+                    run_id=f"20260806-1700{index:02d}-abcdef",
+                    release_authority={**locked_release, field: replacement},
+                )
+
+                self.assertEqual(report["status"], "blocked")
+                self.assertEqual(
+                    report["failure"]["code"], "release-authority-mismatch"
+                )
+                self.assertEqual(transport.events, [])
+
+        transport = self.transport()
+        wrong_exact = "ghcr.io/denkoushi/raspisys-pi3-signage@sha256:" + "a" * 64
+        report = stage.acquire_and_stage(
+            wrong_exact,
+            self.target,
+            "20260806-170010-abcdef",
+            self.stage_root,
+            False,
+            acquisition=FixtureAcquisition(
+                self.source_artifact, self.source_descriptor
+            ),
+            attestor=FixtureAttestor(attestation_statement(self.descriptor)),
+            transport=transport,
+            verifier_source=VERIFIER_SOURCE,
+            controller_root=self.controller,
+            release_authority={
+                **locked_release,
+                "exactReference": wrong_exact,
+                "ociDigest": "sha256:" + "a" * 64,
+            },
+        )
+        self.assertEqual(report["status"], "blocked")
+        self.assertEqual(report["failure"]["code"], "release-authority-mismatch")
+        self.assertEqual(transport.events, [])
 
     def test_dedicated_preflight_spec_requires_an_exact_oci_digest(self):
         payload = {
@@ -659,6 +724,9 @@ class GhcrAcquisitionContract(unittest.TestCase):
             f"https://ghcr.io/v2/denkoushi/raspisys-pi3-signage/manifests/{SOURCE_SHA}": FakeHttpResponse(
                 index, {"Docker-Content-Digest": index_digest}
             ),
+            f"https://ghcr.io/v2/denkoushi/raspisys-pi3-signage/manifests/{index_digest}": FakeHttpResponse(
+                index, {"Docker-Content-Digest": index_digest}
+            ),
             f"https://ghcr.io/v2/denkoushi/raspisys-pi3-signage/manifests/{manifest_digest}": FakeHttpResponse(
                 manifest, {"Docker-Content-Digest": manifest_digest}
             ),
@@ -698,6 +766,24 @@ class GhcrAcquisitionContract(unittest.TestCase):
         self.assertEqual(
             Path(result["descriptorPath"]).read_bytes(),
             self.descriptor_path.read_bytes(),
+        )
+
+    def test_exact_reference_is_the_registry_selector(self):
+        opener, index_digest = self.fixture()
+        destination = self.root / "download-exact"
+        destination.mkdir()
+        acquisition = stage.GhcrAcquisition(
+            {"username": "denkoushi", "token": "fixture-token"},
+            opener=opener,
+        )
+
+        result = acquisition.acquire(
+            f"{stage.ARTIFACT_REPOSITORY}@{index_digest}", destination
+        )
+
+        self.assertEqual(result["ociDigest"], index_digest)
+        self.assertEqual(
+            Path(result["artifactPath"]).read_bytes(), self.artifact.read_bytes()
         )
 
     def test_layer_digest_mismatch_is_rejected_before_target_transfer(self):

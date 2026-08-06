@@ -373,7 +373,11 @@ class SystemdBackend:
         return self.transport.run(self.build_terminal_preflight_command(spec, targets))
 
     def build_signage_artifact_stage_command(
-        self, spec: LaunchSpec, target: dict[str, object]
+        self,
+        spec: LaunchSpec,
+        target: dict[str, object],
+        *,
+        release_authority: dict[str, object] | None = None,
     ) -> tuple[str, ...]:
         """Build the Pi3-only disposable artifact stage proof."""
 
@@ -382,16 +386,24 @@ class SystemdBackend:
             key: target.get(key)
             for key in ('host', 'profile', 'address', 'user', 'port')
         }
+        artifact_ref = f'{signage_artifact_stage.ARTIFACT_REPOSITORY}:{spec.sha}'
+        if release_authority is not None:
+            locked = signage_artifact_stage._validated_release_authority(
+                release_authority
+            )
+            artifact_ref = str(locked['exactReference'])
         payload = {
             'version': 1,
             'mode': 'preflight',
-            'artifactRef': f'{signage_artifact_stage.ARTIFACT_REPOSITORY}:{spec.sha}',
+            'artifactRef': artifact_ref,
             'runId': spec.run_id,
             'stagingRoot': str(signage_artifact_stage.DEFAULT_STAGING_ROOT),
             'retain': False,
             'target': selected,
             'configPath': str(signage_artifact_stage.DEFAULT_CONFIG_PATH),
         }
+        if release_authority is not None:
+            payload['releaseAuthority'] = locked
         serialized = json.dumps(
             payload,
             ensure_ascii=False,
@@ -409,10 +421,16 @@ class SystemdBackend:
         )
 
     def preflight_signage_artifact_stage(
-        self, spec: LaunchSpec, target: dict[str, object]
+        self,
+        spec: LaunchSpec,
+        target: dict[str, object],
+        *,
+        release_authority: dict[str, object] | None = None,
     ) -> CommandResult:
         return self.transport.run(
-            self.build_signage_artifact_stage_command(spec, target)
+            self.build_signage_artifact_stage_command(
+                spec, target, release_authority=release_authority
+            )
         )
 
     def build_pi3_signage_artifact_preflight_command(

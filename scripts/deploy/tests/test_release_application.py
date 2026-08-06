@@ -17,6 +17,11 @@ from scripts.deploy.rolling_release.backends.command import CommandResult
 
 RUN_ID = "20260715-123456-a1b2c3"
 SHA = "a" * 40
+SIGNAGE_SOURCE_SHA = "b" * 40
+SIGNAGE_OCI_DIGEST = "sha256:" + "c" * 64
+SIGNAGE_ARTIFACT_SHA256 = "d" * 64
+SIGNAGE_MANIFEST_SHA256 = "e" * 64
+SIGNAGE_PAYLOAD_DIGEST = "f" * 64
 MAIN_INTEGRATION = {
     "version": 1,
     "status": "integrated",
@@ -110,6 +115,7 @@ def release_args(
     preflight_only=False,
     limit="",
     reverify_selected=False,
+    release_scope=None,
 ):
     return argparse.Namespace(
         branch="main",
@@ -123,6 +129,22 @@ def release_args(
         reverify_selected=reverify_selected,
         detach=detach,
         preflight_only=preflight_only,
+        release_scope=release_scope,
+        signage_oci_digest=(
+            SIGNAGE_OCI_DIGEST if release_scope is not None else None
+        ),
+        signage_source_sha=(
+            SIGNAGE_SOURCE_SHA if release_scope is not None else None
+        ),
+        signage_artifact_sha256=(
+            SIGNAGE_ARTIFACT_SHA256 if release_scope is not None else None
+        ),
+        signage_manifest_sha256=(
+            SIGNAGE_MANIFEST_SHA256 if release_scope is not None else None
+        ),
+        signage_payload_digest=(
+            SIGNAGE_PAYLOAD_DIGEST if release_scope is not None else None
+        ),
     )
 
 
@@ -179,10 +201,18 @@ def route_passed_result(*, external: bool = False) -> CommandResult:
     )
 
 
-def signage_stage_result(*, status="passed", code=0) -> CommandResult:
+def signage_stage_result(
+    *,
+    status="passed",
+    code=0,
+    source_sha=SHA,
+    oci_digest="sha256:" + "c" * 64,
+    artifact_digest="b" * 64,
+    manifest_digest="d" * 64,
+    payload_digest="e" * 64,
+) -> CommandResult:
     root = str(application.signage_artifact_stage.DEFAULT_STAGING_ROOT)
     run_path = f"{root}/{RUN_ID}"
-    artifact_digest = "b" * 64
     checked_paths = [
         f"{run_path}/incoming/signage-release.tar",
         f"{run_path}/incoming/signage-release-descriptor.json",
@@ -201,13 +231,13 @@ def signage_stage_result(*, status="passed", code=0) -> CommandResult:
         "runId": RUN_ID,
         "host": "raspberrypi3",
         "artifact": {
-            "reference": f"ghcr.io/denkoushi/raspisys-pi3-signage:{SHA}",
-            "exactReference": "ghcr.io/denkoushi/raspisys-pi3-signage@sha256:" + "c" * 64,
-            "ociDigest": "sha256:" + "c" * 64,
-            "sourceSha": SHA,
+            "reference": f"ghcr.io/denkoushi/raspisys-pi3-signage:{source_sha}",
+            "exactReference": f"ghcr.io/denkoushi/raspisys-pi3-signage@{oci_digest}",
+            "ociDigest": oci_digest,
+            "sourceSha": source_sha,
             "artifactSha256": artifact_digest,
-            "manifestSha256": "d" * 64,
-            "payloadDigest": "e" * 64,
+            "manifestSha256": manifest_digest,
+            "payloadDigest": payload_digest,
         },
         "staging": {
             "root": root,
@@ -302,8 +332,13 @@ class FakeSystemd:
         )
         return self.route_preflight_result
 
-    def preflight_signage_artifact_stage(self, spec, target):
-        self.events.append(("signage-artifact-stage", spec.run_id, target["host"]))
+    def preflight_signage_artifact_stage(
+        self, spec, target, *, release_authority=None
+    ):
+        event = ("signage-artifact-stage", spec.run_id, target["host"])
+        if release_authority is not None:
+            event = (*event, release_authority)
+        self.events.append(event)
         return self.signage_artifact_stage_result
 
     def start(self, spec, *, wait):
@@ -1110,6 +1145,150 @@ class ReleaseApplicationTest(unittest.TestCase):
             },
             payload["probes"],
         )
+        self.assertNotIn("start", [event[0] for event in systemd.events])
+
+    def test_typed_preflight_passes_locked_exact_reference_to_stage2(self):
+        desired_release = {
+            "releaseScope": "pi3-signage-artifact",
+            "sourceSha": SIGNAGE_SOURCE_SHA,
+            "exactReference": (
+                "ghcr.io/denkoushi/raspisys-pi3-signage@"
+                + SIGNAGE_OCI_DIGEST
+            ),
+            "ociDigest": SIGNAGE_OCI_DIGEST,
+            "artifactSha256": SIGNAGE_ARTIFACT_SHA256,
+            "manifestSha256": SIGNAGE_MANIFEST_SHA256,
+            "payloadDigest": SIGNAGE_PAYLOAD_DIGEST,
+            "claimIdentity": (
+                f"git:{SIGNAGE_SOURCE_SHA}@sha256:{SIGNAGE_ARTIFACT_SHA256}"
+            ),
+        }
+        target_work = {
+            "host": "raspberrypi3",
+            "role": "signage",
+            "requiredClaims": ["signageReleaseArtifact"],
+            "claimRequirements": [],
+            "reason": "explicit Pi3 Signage artifact release scope",
+        }
+        snapshot = {
+            "sha": SHA,
+            "releaseScope": "pi3-signage-artifact",
+            "desiredRelease": desired_release,
+            "classificationComponents": ["signage-role"],
+            "pi5Required": False,
+            "fullFleet": False,
+            "reverifySelected": False,
+            "typedTargetPlanningEnabled": True,
+            "activationExecutionEnabled": True,
+            "verificationOnlyExecutionEnabled": True,
+            "hosts": [
+                {"host": "raspberrypi5", "role": "server"},
+                {"host": "raspberrypi3", "role": "signage"},
+            ],
+            "coordinator": {
+                "host": "raspberrypi5",
+                "role": "acquisition-relay",
+                "runtimeMutationRequired": False,
+            },
+            "mutationTargets": [target_work],
+            "activationTargets": [],
+            "verificationTargets": [target_work],
+            "terminalTargets": [
+                {
+                    "host": "raspberrypi3",
+                    "role": "signage",
+                    "clientId": "raspberrypi3-signage1",
+                }
+            ],
+            "terminalWork": [
+                {
+                    "host": "raspberrypi3",
+                    "role": "signage",
+                    "mutationRequired": True,
+                    "activationRequired": False,
+                    "verificationRequired": True,
+                    "activationStrategyId": None,
+                    "activationMode": None,
+                    "claimRequirements": [],
+                }
+            ],
+            "mainIntegration": dict(MAIN_INTEGRATION),
+        }
+        inventory = {
+            "server": {"hosts": ["raspberrypi5"]},
+            "clients": {"children": ["signage"]},
+            "kiosk": {"hosts": []},
+            "signage": {"hosts": ["raspberrypi3"]},
+            "kiosk_canary": {"hosts": []},
+            "signage_canary": {"hosts": ["raspberrypi3"]},
+            "_meta": {
+                "hostvars": {
+                    "raspberrypi5": {
+                        "status_agent_client_id": "raspberrypi5-server"
+                    },
+                    "raspberrypi3": {
+                        "status_agent_client_id": "raspberrypi3-signage1"
+                    },
+                }
+            },
+        }
+        runtime = type(
+            "TypedScopeRuntime",
+            (Runtime,),
+            {
+                "read_only_inventory_json": staticmethod(lambda _inventory: inventory),
+                "build_print_plan": staticmethod(
+                    lambda *_args, **_kwargs: snapshot
+                ),
+            },
+        )
+        systemd = FakeSystemd(
+            terminal_preflight_result=terminal_passed_result(
+                "raspberrypi3", profile="signage"
+            ),
+            signage_artifact_stage_result=signage_stage_result(
+                source_sha=SIGNAGE_SOURCE_SHA,
+                oci_digest=SIGNAGE_OCI_DIGEST,
+                artifact_digest=SIGNAGE_ARTIFACT_SHA256,
+                manifest_digest=SIGNAGE_MANIFEST_SHA256,
+                payload_digest=SIGNAGE_PAYLOAD_DIGEST,
+            ),
+        )
+        target = {
+            "host": "raspberrypi3",
+            "profile": "signage",
+            "address": "100.64.0.3",
+            "user": "pi",
+            "port": 22,
+        }
+        with patch.object(
+            application, "_require_clean_worktree"
+        ), patch.object(
+            application, "_remote_inventory", return_value="inventory.yml"
+        ), patch.object(
+            application, "new_run_id", return_value=RUN_ID
+        ), patch.object(
+            application, "build_backends", return_value=(systemd, FakeControl())
+        ), patch.object(
+            application,
+            "validate_remote_server_identity",
+            return_value={"host": "raspberrypi5", "clientId": "raspberrypi5-server"},
+        ), patch.object(
+            application, "build_target_contracts", return_value=[target]
+        ), patch("sys.stdout", new_callable=io.StringIO):
+            outcome = application.launch(
+                release_args(
+                    preflight_only=True,
+                    release_scope="pi3-signage-artifact",
+                ),
+                runtime=runtime,
+            )
+
+        self.assertEqual(outcome, 0)
+        stage_event = next(
+            event for event in systemd.events if event[0] == "signage-artifact-stage"
+        )
+        self.assertEqual(stage_event[3], desired_release)
         self.assertNotIn("start", [event[0] for event in systemd.events])
 
     def test_preflight_only_returns_json_when_local_preparation_fails(self):

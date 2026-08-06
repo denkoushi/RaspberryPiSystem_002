@@ -23,6 +23,7 @@ from .models import LaunchSpec, validate_lookup_run_id
 from .planner import executor_selection
 from .policy import server_identity
 from . import readiness_policy
+from . import pi3_artifact_scope
 from . import signage_artifact_stage
 from .reconcile import reconcile_status
 from .route_contract import ROUTE_STAGES
@@ -846,19 +847,10 @@ def _launch(args: Any, *, runtime: Any) -> int:
     # Validate the complete target-tree topology before the identity probe
     # opens SSH or a transient systemd unit can reach remote checkout/state.
     all_release_hosts = runtime.release_hosts(inventory_data)
-    selected_release_hosts = all_release_hosts
-    if getattr(args, "release_scope", None) == "pi3-signage-artifact":
-        selected_release_hosts = [
-            target for target in all_release_hosts if target.get("role") == "signage"
-        ]
-        if (
-            len(selected_release_hosts) != 1
-            or selected_release_hosts[0].get("clientId")
-            != "raspberrypi3-signage1"
-        ):
-            raise RuntimeError(
-                "Pi3 Signage release scope target CLIENT_ID is not authoritative"
-            )
+    scope_request = pi3_artifact_scope.request_from_args(args)
+    selected_release_hosts = pi3_artifact_scope.target_hosts(
+        scope_request, all_release_hosts
+    )
     if args.limit:
         selected = runtime.read_only_selected_hosts(
             str(runtime.ANSIBLE_DIRECTORY / remote_inventory), args.limit
@@ -894,6 +886,15 @@ def _launch(args: Any, *, runtime: Any) -> int:
     )
     if planning_snapshot.get("sha") != sha:
         raise RuntimeError("preflight planning SHA changed during launch")
+    locked_release_authority = None
+    if scope_request is not None:
+        locked_release_authority = pi3_artifact_scope.validate_locked_plan(
+            planning_snapshot,
+            selected_release_hosts,
+            scope_request,
+            coordinator_host=identity["host"],
+            target_host=selected_release_hosts[0]["host"],
+        )
     main_integration = planning_snapshot.get("mainIntegration")
     if not isinstance(main_integration, dict):
         raise RuntimeError("preflight planning did not produce main-integration evidence")
@@ -999,7 +1000,9 @@ def _launch(args: Any, *, runtime: Any) -> int:
         ]
         if signage_targets:
             artifact_ref = (
-                f"{signage_artifact_stage.ARTIFACT_REPOSITORY}:{spec.sha}"
+                locked_release_authority["exactReference"]
+                if locked_release_authority is not None
+                else f"{signage_artifact_stage.ARTIFACT_REPOSITORY}:{spec.sha}"
             )
             if len(signage_targets) != 1:
                 stage_report = signage_artifact_stage._failure(
@@ -1019,7 +1022,14 @@ def _launch(args: Any, *, runtime: Any) -> int:
                 )
             else:
                 target = signage_targets[0]
-                result = systemd.preflight_signage_artifact_stage(spec, target)
+                if locked_release_authority is None:
+                    result = systemd.preflight_signage_artifact_stage(spec, target)
+                else:
+                    result = systemd.preflight_signage_artifact_stage(
+                        spec,
+                        target,
+                        release_authority=locked_release_authority,
+                    )
                 try:
                     stage_report = signage_artifact_stage.parse_stage_report(
                         result.stdout,

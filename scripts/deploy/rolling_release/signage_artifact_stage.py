@@ -143,6 +143,9 @@ USER_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
 ARTIFACT_REF_RE = re.compile(
     r"^ghcr\.io/denkoushi/raspisys-pi3-signage:([0-9a-f]{40})$"
 )
+ARTIFACT_EXACT_REF_RE = re.compile(
+    r"^ghcr\.io/denkoushi/raspisys-pi3-signage@(sha256:[0-9a-f]{64})$"
+)
 MAX_OCI_DOCUMENT_BYTES = 2 * 1024 * 1024
 MAX_OCI_LAYER_BYTES = 16 * 1024 * 1024
 MAX_ATTESTATION_BYTES = 4 * 1024 * 1024
@@ -293,6 +296,57 @@ def _artifact_source_sha(artifact_ref: str) -> str:
     return match.group(1)
 
 
+def _validated_release_authority(value: Mapping[str, Any]) -> dict[str, Any]:
+    expected = {
+        "releaseScope",
+        "sourceSha",
+        "exactReference",
+        "ociDigest",
+        "artifactSha256",
+        "manifestSha256",
+        "payloadDigest",
+        "claimIdentity",
+    }
+    if not isinstance(value, Mapping) or set(value) != expected:
+        raise StageError(
+            "release-authority-mismatch",
+            "request",
+            "blocked",
+            "locked Signage release authority is malformed",
+        )
+    source_sha = value.get("sourceSha")
+    exact_reference = value.get("exactReference")
+    oci_digest = value.get("ociDigest")
+    artifact_sha256 = value.get("artifactSha256")
+    if (
+        value.get("releaseScope") != "pi3-signage-artifact"
+        or not isinstance(source_sha, str)
+        or FULL_SHA_RE.fullmatch(source_sha) is None
+        or not isinstance(exact_reference, str)
+        or ARTIFACT_EXACT_REF_RE.fullmatch(exact_reference) is None
+        or not isinstance(oci_digest, str)
+        or exact_reference != f"{ARTIFACT_REPOSITORY}@{oci_digest}"
+        or not isinstance(artifact_sha256, str)
+        or any(
+            not isinstance(digest, str) or SHA256_RE.fullmatch(digest) is None
+            for digest in (
+                artifact_sha256,
+                value.get("manifestSha256"),
+                value.get("payloadDigest"),
+            )
+        )
+        or value.get("claimIdentity")
+        != f"git:{source_sha}@sha256:{artifact_sha256}"
+    ):
+        raise StageError(
+            "release-authority-mismatch",
+            "request",
+            "blocked",
+            "locked Signage release authority is inconsistent",
+        )
+    return dict(value)
+
+
 def _validated_target(value: Mapping[str, Any]) -> dict[str, Any]:
     expected = {"host", "profile", "address", "user", "port"}
     if not isinstance(value, Mapping) or set(value) != expected:
@@ -413,6 +467,16 @@ def _exact_reference(artifact_ref: str, digest: str) -> str:
         raise StageError(
             "oci-resolution", "acquisition", "incomplete", "exact OCI digest is malformed"
         )
+    exact_match = ARTIFACT_EXACT_REF_RE.fullmatch(artifact_ref)
+    if exact_match is not None:
+        if exact_match.group(1) != digest:
+            raise StageError(
+                "release-authority-mismatch",
+                "acquisition",
+                "blocked",
+                "exact Signage reference resolved to a different digest",
+            )
+        return artifact_ref
     repository = artifact_ref.rsplit(":", 1)[0]
     if repository != ARTIFACT_REPOSITORY:
         raise StageError(
@@ -1098,6 +1162,7 @@ def acquire_and_stage(
     transport: TargetTransport,
     verifier_source: str,
     controller_root: Path | None = None,
+    release_authority: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Execute the one Stage 2 lifecycle and always return a secret-free report."""
 
@@ -1105,7 +1170,22 @@ def acquire_and_stage(
     request: dict[str, Any] | None = None
     prepared = False
     try:
-        source_sha = _artifact_source_sha(artifact_ref)
+        locked_release = (
+            _validated_release_authority(release_authority)
+            if release_authority is not None
+            else None
+        )
+        if locked_release is not None:
+            if artifact_ref != locked_release["exactReference"]:
+                raise StageError(
+                    "release-authority-mismatch",
+                    "request",
+                    "blocked",
+                    "Stage 2 did not receive the locked exact reference",
+                )
+            source_sha = locked_release["sourceSha"]
+        else:
+            source_sha = _artifact_source_sha(artifact_ref)
         validated_target = _validated_target(target)
         validated_run = _validated_run_id(run_id)
         if type(retain) is not bool:
@@ -1156,6 +1236,16 @@ def acquire_and_stage(
                         "acquired OCI payload path is unsafe",
                     )
             exact_reference = _exact_reference(artifact_ref, acquired["ociDigest"])
+            if (
+                locked_release is not None
+                and acquired["ociDigest"] != locked_release["ociDigest"]
+            ):
+                raise StageError(
+                    "release-authority-mismatch",
+                    "acquisition",
+                    "blocked",
+                    "acquired OCI does not match the locked Signage release",
+                )
             report["lifecycle"].append("acquired")
 
             verifier = _load_verifier(verifier_source)
@@ -1177,6 +1267,21 @@ def acquire_and_stage(
             descriptor, _manifest = _verify_artifact(
                 artifact_path, descriptor_path, source_sha, verifier_source
             )
+            if locked_release is not None and any(
+                descriptor.get(field) != locked_release[field]
+                for field in (
+                    "sourceSha",
+                    "artifactSha256",
+                    "manifestSha256",
+                    "payloadDigest",
+                )
+            ):
+                raise StageError(
+                    "release-authority-mismatch",
+                    "controller-verification",
+                    "blocked",
+                    "verified descriptor does not match the locked Signage release",
+                )
             report["lifecycle"].append("controller-verified")
             report["artifact"] = {
                 "reference": artifact_ref,
@@ -1513,8 +1618,17 @@ class GhcrAcquisition:
             ) from error
 
     def acquire(self, artifact_ref: str, directory: Path) -> Mapping[str, Any]:
-        source_sha = _artifact_source_sha(artifact_ref)
-        index, exact_digest, _raw = self._manifest(source_sha)
+        exact_match = (
+            ARTIFACT_EXACT_REF_RE.fullmatch(artifact_ref)
+            if isinstance(artifact_ref, str)
+            else None
+        )
+        selector = (
+            exact_match.group(1)
+            if exact_match is not None
+            else _artifact_source_sha(artifact_ref)
+        )
+        index, exact_digest, _raw = self._manifest(selector)
         media_type = index.get("mediaType")
         if media_type not in self._INDEX_MEDIA_TYPES:
             raise StageError(
@@ -2006,16 +2120,17 @@ def parse_preflight_spec(raw: str) -> dict[str, Any]:
         "version", "mode", "artifactRef", "runId", "stagingRoot", "retain", "target", "configPath"
     }
     mode = value.get("mode") if isinstance(value, dict) else None
+    fields = set(value) if isinstance(value, dict) else set()
     expected = (
-        common
+        fields in {frozenset(common), frozenset(common | {"releaseAuthority"})}
         if mode == "preflight"
-        else common | {"expectedOciDigest"}
+        else fields == common | {"expectedOciDigest"}
         if mode == "artifact-preflight"
-        else set()
+        else False
     )
     if (
         not isinstance(value, dict)
-        or set(value) != expected
+        or not expected
         or value.get("version") != SCHEMA_VERSION
         or mode not in {"preflight", "artifact-preflight"}
         or value.get("retain") is not False
@@ -2025,7 +2140,18 @@ def parse_preflight_spec(raw: str) -> dict[str, Any]:
         raise StageError(
             "request-validation", "request", "blocked", "preflight stage fields are invalid"
         )
-    _artifact_source_sha(value["artifactRef"])
+    release_authority = value.get("releaseAuthority")
+    if release_authority is None:
+        _artifact_source_sha(value["artifactRef"])
+    else:
+        locked = _validated_release_authority(release_authority)
+        if value["artifactRef"] != locked["exactReference"]:
+            raise StageError(
+                "release-authority-mismatch",
+                "request",
+                "blocked",
+                "preflight request changed the locked exact reference",
+            )
     _validated_run_id(value["runId"])
     _validated_target(value["target"])
     if mode == "artifact-preflight":
@@ -2066,6 +2192,7 @@ def execute_preflight(spec: Mapping[str, Any]) -> tuple[int, dict[str, Any]]:
             verifier_source=verifier_source,
         ),
         verifier_source=verifier_source,
+        release_authority=spec.get("releaseAuthority"),
     )
     code = 0 if report["status"] == "passed" else (
         78 if report["status"] == "blocked" else 70
