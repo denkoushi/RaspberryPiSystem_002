@@ -2871,6 +2871,73 @@ class FleetScopeLimitTest(unittest.TestCase):
         },
     }
 
+    def test_pi3_signage_scope_is_selected_before_global_classification(self):
+        inventory = json.loads(json.dumps(self.INVENTORY))
+        inventory['clients']['children'].append('signage')
+        inventory['signage']['hosts'] = ['raspberrypi3']
+        inventory['signage_canary']['hosts'] = ['raspberrypi3']
+        inventory['_meta']['hostvars']['raspberrypi3'] = {
+            'status_agent_client_id': 'raspberrypi3-signage1',
+        }
+        fleet = json.loads(json.dumps(self.FLEET))
+        fleet['fleet']['raspberrypi3'] = _verified_fleet_record('signage')
+        oci_digest = 'sha256:' + 'f' * 64
+
+        with patch.object(
+            MODULE,
+            'classify_release_impact',
+            side_effect=AssertionError('scoped planning must not classify Git history'),
+        ):
+            plan, targets, classifications, warnings = MODULE.build_fleet_scope(
+                sha=TARGET_SHA,
+                inventory_data=inventory,
+                fleet_state=fleet,
+                selected=None,
+                limit='',
+                full_fleet=False,
+                release_scope='pi3-signage-artifact',
+                signage_oci_digest=oci_digest,
+                signage_artifact_sha256='c' * 64,
+                signage_manifest_sha256='d' * 64,
+                signage_payload_digest='e' * 64,
+            )
+
+        self.assertEqual(plan['releaseScope'], 'pi3-signage-artifact')
+        self.assertEqual(plan['targetHosts'], ['raspberrypi3'])
+        self.assertEqual(
+            [target['host'] for target in plan['mutationTargets']],
+            ['raspberrypi3'],
+        )
+        self.assertEqual([target['host'] for target in targets], ['raspberrypi3'])
+        self.assertNotIn('kiosk-a', json.dumps(plan, sort_keys=True))
+        self.assertNotIn('kiosk-b', json.dumps(plan, sort_keys=True))
+        self.assertFalse(plan['pi5Required'])
+        self.assertEqual(
+            plan['coordinator'],
+            {
+                'host': 'raspberrypi5',
+                'role': 'acquisition-relay',
+                'runtimeMutationRequired': False,
+            },
+        )
+        self.assertEqual(
+            plan['desiredRelease'],
+            {
+                'releaseScope': 'pi3-signage-artifact',
+                'sourceSha': TARGET_SHA,
+                'exactReference': (
+                    'ghcr.io/denkoushi/raspisys-pi3-signage@' + oci_digest
+                ),
+                'ociDigest': oci_digest,
+                'artifactSha256': 'c' * 64,
+                'manifestSha256': 'd' * 64,
+                'payloadDigest': 'e' * 64,
+                'claimIdentity': _artifact_identity(TARGET_SHA),
+            },
+        )
+        self.assertEqual(classifications, {})
+        self.assertEqual(warnings, [])
+
     def test_limit_cannot_exclude_a_required_pi5_change(self):
         classification = {
             'server': True,

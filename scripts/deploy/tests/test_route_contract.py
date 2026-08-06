@@ -208,6 +208,7 @@ class RouteContractTest(unittest.TestCase):
             "normalize_interrupted_record",
             "baseline_claim_spec",
             "validate_staged_claim_identity",
+            "validate_staged_release_authority",
             "release_claim_authority",
             "should_issue_notice",
         }

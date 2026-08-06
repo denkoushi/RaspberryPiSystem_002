@@ -7,6 +7,8 @@ import re
 
 DEFAULT_CANARY_HOLD_TIMEOUT = 1800
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$")
+OCI_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+PI3_SIGNAGE_ARTIFACT_SCOPE = "pi3-signage-artifact"
 
 
 class UsageError(RuntimeError):
@@ -44,6 +46,15 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--detach", action="store_true")
     value.add_argument("--full-fleet", action="store_true")
     value.add_argument("--reverify-selected", action="store_true")
+    value.add_argument(
+        "--release-scope",
+        choices=(PI3_SIGNAGE_ARTIFACT_SCOPE,),
+    )
+    value.add_argument("--signage-oci-digest")
+    value.add_argument("--signage-source-sha")
+    value.add_argument("--signage-artifact-sha256")
+    value.add_argument("--signage-manifest-sha256")
+    value.add_argument("--signage-payload-digest")
     value.add_argument("--follow", action="store_true", help=argparse.SUPPRESS)
     value.add_argument("--foreground", action="store_true", help=argparse.SUPPRESS)
     value.add_argument("--profile", action="store_true", help=argparse.SUPPRESS)
@@ -138,6 +149,21 @@ def normalize_arguments(args: argparse.Namespace) -> argparse.Namespace:
                 ("--skip-canary-hold", args.skip_canary_hold),
                 ("--full-fleet", args.full_fleet),
                 ("--reverify-selected", args.reverify_selected),
+                ("--release-scope", args.release_scope is not None),
+                ("--signage-oci-digest", args.signage_oci_digest is not None),
+                ("--signage-source-sha", args.signage_source_sha is not None),
+                (
+                    "--signage-artifact-sha256",
+                    args.signage_artifact_sha256 is not None,
+                ),
+                (
+                    "--signage-manifest-sha256",
+                    args.signage_manifest_sha256 is not None,
+                ),
+                (
+                    "--signage-payload-digest",
+                    args.signage_payload_digest is not None,
+                ),
                 (
                     "--canary-hold-timeout",
                     args.canary_hold_timeout is not None,
@@ -183,6 +209,58 @@ def normalize_arguments(args: argparse.Namespace) -> argparse.Namespace:
         raise UsageError("--full-fleet cannot be combined with --limit")
     if args.reverify_selected and not args.limit:
         raise UsageError("--reverify-selected requires --limit PATTERN")
+    if args.release_scope == PI3_SIGNAGE_ARTIFACT_SCOPE:
+        identity = {
+            "--signage-source-sha": args.signage_source_sha,
+            "--signage-artifact-sha256": args.signage_artifact_sha256,
+            "--signage-manifest-sha256": args.signage_manifest_sha256,
+            "--signage-payload-digest": args.signage_payload_digest,
+        }
+        if (
+            not isinstance(args.signage_oci_digest, str)
+            or OCI_DIGEST_RE.fullmatch(args.signage_oci_digest) is None
+            or not isinstance(args.signage_source_sha, str)
+            or re.fullmatch(r"[0-9a-f]{40}", args.signage_source_sha) is None
+            or any(
+                not isinstance(value, str)
+                or re.fullmatch(r"[0-9a-f]{64}", value) is None
+                for option, value in identity.items()
+                if option != "--signage-source-sha"
+            )
+        ):
+            raise UsageError(
+                "--release-scope pi3-signage-artifact requires exact Signage "
+                "source, OCI, artifact, manifest, and payload identities"
+            )
+        incompatible = next(
+            (
+                option
+                for option, selected in (
+                    ("--limit", bool(args.limit)),
+                    ("--full-fleet", args.full_fleet),
+                    ("--reverify-selected", args.reverify_selected),
+                )
+                if selected
+            ),
+            None,
+        )
+        if incompatible is not None:
+            raise UsageError(
+                f"--release-scope pi3-signage-artifact cannot be combined with {incompatible}"
+            )
+    elif any(
+        value is not None
+        for value in (
+            args.signage_oci_digest,
+            args.signage_source_sha,
+            args.signage_artifact_sha256,
+            args.signage_manifest_sha256,
+            args.signage_payload_digest,
+        )
+    ):
+        raise UsageError(
+            "Signage release identity requires --release-scope pi3-signage-artifact"
+        )
     if args.print_plan and (args.emergency_override or args.skip_canary_hold):
         raise UsageError("--print-plan cannot be combined with execution override options")
     if args.print_plan and args.canary_hold_timeout != DEFAULT_CANARY_HOLD_TIMEOUT:

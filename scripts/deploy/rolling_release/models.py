@@ -13,6 +13,8 @@ from .readiness_policy import parse_admission
 NEW_RUN_ID_RE = re.compile(r'^[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$')
 SAFE_RUN_ID_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$')
 FULL_SHA_RE = re.compile(r'^[0-9a-f]{40}$')
+OCI_DIGEST_RE = re.compile(r'^sha256:[0-9a-f]{64}$')
+PI3_SIGNAGE_ARTIFACT_SCOPE = 'pi3-signage-artifact'
 UNIT_PREFIX = 'raspi-release-'
 UNIT_SUFFIX = '.service'
 _FORBIDDEN_REF_CHARACTERS = frozenset(' ~^:?*[\\')
@@ -95,6 +97,12 @@ class LaunchSpec:
     full_fleet: bool = False
     reverify_selected: bool = False
     readiness_admission: dict[str, Any] | None = None
+    release_scope: str | None = None
+    signage_oci_digest: str | None = None
+    signage_source_sha: str | None = None
+    signage_artifact_sha256: str | None = None
+    signage_manifest_sha256: str | None = None
+    signage_payload_digest: str | None = None
 
     @property
     def unit_name(self) -> str:
@@ -137,6 +145,38 @@ class LaunchSpec:
             raise ValueError('skip canary hold requires emergency override and a reason')
         if self.readiness_admission is not None:
             parse_admission(self.readiness_admission)
+        if self.release_scope == PI3_SIGNAGE_ARTIFACT_SCOPE:
+            if (
+                not isinstance(self.signage_oci_digest, str)
+                or OCI_DIGEST_RE.fullmatch(self.signage_oci_digest) is None
+                or not isinstance(self.signage_source_sha, str)
+                or FULL_SHA_RE.fullmatch(self.signage_source_sha) is None
+                or any(
+                    not isinstance(value, str)
+                    or re.fullmatch(r'[0-9a-f]{64}', value) is None
+                    for value in (
+                        self.signage_artifact_sha256,
+                        self.signage_manifest_sha256,
+                        self.signage_payload_digest,
+                    )
+                )
+            ):
+                raise ValueError('Pi3 Signage release scope requires exact artifact identity')
+            if self.limit or self.full_fleet or self.reverify_selected:
+                raise ValueError('Pi3 Signage release scope cannot use fleet narrowing flags')
+        elif self.release_scope is not None:
+            raise ValueError('release scope is unsupported')
+        elif any(
+            value is not None
+            for value in (
+                self.signage_oci_digest,
+                self.signage_source_sha,
+                self.signage_artifact_sha256,
+                self.signage_manifest_sha256,
+                self.signage_payload_digest,
+            )
+        ):
+            raise ValueError('Signage OCI digest requires the Pi3 Signage release scope')
         return self
 
     def bootstrap_payload(self, remote_project: str) -> dict[str, Any]:
@@ -162,6 +202,12 @@ class LaunchSpec:
             'fullFleet': self.full_fleet,
             'reverifySelected': self.reverify_selected,
             'readinessAdmission': self.readiness_admission,
+            'releaseScope': self.release_scope,
+            'signageOciDigest': self.signage_oci_digest,
+            'signageSourceSha': self.signage_source_sha,
+            'signageArtifactSha256': self.signage_artifact_sha256,
+            'signageManifestSha256': self.signage_manifest_sha256,
+            'signagePayloadDigest': self.signage_payload_digest,
         }
 
 

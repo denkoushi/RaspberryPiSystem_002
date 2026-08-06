@@ -175,9 +175,21 @@ class TerminalAdapter:
         revision: str,
         previous_sha: str,
         run_id: str,
+        *,
+        release_authority: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         del inventory, host, revision, previous_sha, run_id
+        if release_authority is not None:
+            raise RuntimeError("release authority is unsupported for this profile")
         return None
+
+    def validate_staged_release_authority(
+        self,
+        release_authority: dict[str, Any],
+        staged_source: dict[str, Any],
+    ) -> None:
+        del release_authority, staged_source
+        raise RuntimeError("staged release authority is unsupported for this profile")
 
     def cleanup_candidate_source(
         self,
@@ -1218,10 +1230,38 @@ class SignageSystemdAdapter(TerminalAdapter):
         revision: str,
         previous_sha: str,
         run_id: str,
+        *,
+        release_authority: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        arguments = (inventory, host, revision, previous_sha, run_id)
+        if release_authority is None:
+            return self.runtime.stage_signage_artifact_candidate(*arguments)
         return self.runtime.stage_signage_artifact_candidate(
-            inventory, host, revision, previous_sha, run_id
+            *arguments, release_authority=release_authority
         )
+
+    def validate_staged_release_authority(
+        self,
+        release_authority: dict[str, Any],
+        staged_source: dict[str, Any],
+    ) -> None:
+        fields = {
+            "sourceSha": "sourceSha",
+            "ociDigest": "ociDigest",
+            "artifactSha256": "artifactSha256",
+            "manifestSha256": "manifestSha256",
+            "payloadDigest": "payloadDigest",
+        }
+        if (
+            release_authority.get("releaseScope") != "pi3-signage-artifact"
+            or any(
+                release_authority.get(expected) != staged_source.get(actual)
+                for expected, actual in fields.items()
+            )
+        ):
+            raise RuntimeError(
+                "staged Signage artifact disagrees with scoped release authority"
+            )
 
     def cleanup_candidate_source(
         self,

@@ -156,6 +156,39 @@ class SystemdBackendTest(unittest.TestCase):
         self.assertTrue(payload['fullFleet'])
         self.assertIn('--full-fleet', bootstrap.remote_arguments(payload))
 
+    def test_pi3_signage_scope_authority_survives_bootstrap(self):
+        backend, runner = self.backend()
+
+        backend.start(
+            self.spec(
+                release_scope='pi3-signage-artifact',
+                signage_oci_digest=OCI_DIGEST,
+                signage_source_sha=SHA,
+                signage_artifact_sha256='a' * 64,
+                signage_manifest_sha256='b' * 64,
+                signage_payload_digest='c' * 64,
+            ),
+            wait=False,
+        )
+
+        remote = self.remote_argv(runner)
+        payload = bootstrap.parse_spec(base64.b64decode(remote[-1]).decode('utf-8'))
+        self.assertEqual(payload['releaseScope'], 'pi3-signage-artifact')
+        self.assertEqual(payload['signageOciDigest'], OCI_DIGEST)
+        self.assertEqual(payload['signageSourceSha'], SHA)
+        self.assertEqual(payload['signageArtifactSha256'], 'a' * 64)
+        self.assertEqual(payload['signageManifestSha256'], 'b' * 64)
+        self.assertEqual(payload['signagePayloadDigest'], 'c' * 64)
+        arguments = bootstrap.remote_arguments(payload)
+        self.assertEqual(
+            arguments[arguments.index('--release-scope') + 1],
+            'pi3-signage-artifact',
+        )
+        self.assertEqual(
+            arguments[arguments.index('--signage-oci-digest') + 1],
+            OCI_DIGEST,
+        )
+
     def test_signage_stage_embeds_exact_source_and_retain_false_request(self):
         backend, runner = self.backend()
         target = {

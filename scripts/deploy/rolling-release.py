@@ -51,7 +51,11 @@ from rolling_release.fleet_state import (
     empty_fleet_state,
     parse_fleet_state_json,
 )
-from rolling_release.release_claims import is_signage_artifact_bootstrap_fallback
+from rolling_release.release_claims import (
+    ClaimKind,
+    is_signage_artifact_bootstrap_fallback,
+    release_claims_for_host,
+)
 from rolling_release.errors import CanaryApprovalTimeout
 from rolling_release.lock import (
     validate_inherited_fleet_lock,
@@ -76,6 +80,7 @@ FLEET_RELEASE_LOCK = PROJECT / "logs/deploy/fleet-release-state.lock"
 OPERATOR_CANARY_APPROVAL_CLIENT = "operator-canary-approval"
 DEFAULT_CANARY_HOLD_TIMEOUT = release_cli.DEFAULT_CANARY_HOLD_TIMEOUT
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 VERIFICATION_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 CLEANUP_LOCK_CONFLICT = "another Pi5 Blue/Green operation is running"
 CLEANUP_LOCK_RETRY_TIMEOUT = 30
@@ -248,7 +253,13 @@ def read_plan_fleet_release_state() -> tuple[dict[str, Any], list[str]]:
     ]
 
 
-def fleet_begin_run(run_id: str, desired_sha: str, inventory: str) -> tuple[dict[str, Any], str | None]:
+def fleet_begin_run(
+    run_id: str,
+    desired_sha: str,
+    inventory: str,
+    *,
+    release_scope: str | None = None,
+) -> tuple[dict[str, Any], str | None]:
     store = _fleet_store()
     state = store.read_only()
     abandoned: str | None = None
@@ -267,7 +278,7 @@ def fleet_begin_run(run_id: str, desired_sha: str, inventory: str) -> tuple[dict
         desired_sha,
         inventory,
         expected_generation=state["generation"],
-        kind="release",
+        kind=release_scope or "release",
         lease=_fleet_lease(),
     )
     return state, abandoned
@@ -896,6 +907,8 @@ def stage_signage_artifact_candidate(
     revision: str,
     previous_sha: str,
     run_id: str,
+    *,
+    release_authority: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return ansible_backend.stage_signage_artifact_candidate(
         inventory,
@@ -904,6 +917,7 @@ def stage_signage_artifact_candidate(
         previous_sha,
         run_id,
         runtime=_runtime(),
+        release_authority=release_authority,
     )
 
 
@@ -1538,7 +1552,28 @@ def build_fleet_scope(
     full_fleet: bool,
     reverify_selected: bool = False,
     executor_preflight_passed: bool = False,
+    release_scope: str | None = None,
+    signage_oci_digest: str | None = None,
+    signage_artifact_sha256: str | None = None,
+    signage_manifest_sha256: str | None = None,
+    signage_payload_digest: str | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, str]], dict[str, dict[str, Any] | None], list[str]]:
+    if release_scope is not None:
+        return _build_pi3_signage_artifact_scope(
+            sha=sha,
+            inventory_data=inventory_data,
+            fleet_state=fleet_state,
+            selected=selected,
+            limit=limit,
+            full_fleet=full_fleet,
+            reverify_selected=reverify_selected,
+            executor_preflight_passed=executor_preflight_passed,
+            release_scope=release_scope,
+            signage_oci_digest=signage_oci_digest,
+            signage_artifact_sha256=signage_artifact_sha256,
+            signage_manifest_sha256=signage_manifest_sha256,
+            signage_payload_digest=signage_payload_digest,
+        )
     all_hosts = release_hosts(inventory_data)
     classifications, warnings = classify_fleet_baselines(sha, fleet_state)
     if reverify_selected and selected is None:
@@ -1686,6 +1721,180 @@ def build_fleet_scope(
     return plan, terminal_targets, classifications, warnings
 
 
+def _build_pi3_signage_artifact_scope(
+    *,
+    sha: str,
+    inventory_data: dict[str, Any],
+    fleet_state: dict[str, Any],
+    selected: list[str] | None,
+    limit: str,
+    full_fleet: bool,
+    reverify_selected: bool,
+    executor_preflight_passed: bool,
+    release_scope: str,
+    signage_oci_digest: str | None,
+    signage_artifact_sha256: str | None,
+    signage_manifest_sha256: str | None,
+    signage_payload_digest: str | None,
+) -> tuple[dict[str, Any], list[dict[str, str]], dict[str, dict[str, Any] | None], list[str]]:
+    """Build the one closed Pi3 artifact scope before Git-impact planning."""
+
+    if release_scope != release_cli.PI3_SIGNAGE_ARTIFACT_SCOPE:
+        raise RuntimeError("release scope is unsupported")
+    if selected is not None or limit or full_fleet or reverify_selected:
+        raise RuntimeError("Pi3 Signage release scope cannot use a generic host filter")
+    if (
+        not isinstance(signage_oci_digest, str)
+        or release_cli.OCI_DIGEST_RE.fullmatch(signage_oci_digest) is None
+    ):
+        raise RuntimeError("Pi3 Signage release scope requires an exact OCI digest")
+
+    all_hosts = release_hosts(inventory_data)
+    servers = [target for target in all_hosts if target.get("role") == "server"]
+    signage = [target for target in all_hosts if target.get("role") == "signage"]
+    if len(servers) != 1 or len(signage) != 1:
+        raise RuntimeError("Pi3 Signage release scope requires one coordinator and one target")
+    target = signage[0]
+    if target.get("clientId") != "raspberrypi3-signage1":
+        raise RuntimeError("Pi3 Signage release scope target CLIENT_ID is not authoritative")
+
+    identity = {
+        "artifactSha256": signage_artifact_sha256,
+        "manifestSha256": signage_manifest_sha256,
+        "payloadDigest": signage_payload_digest,
+    }
+    if any(
+        not isinstance(value, str) or SHA256_RE.fullmatch(value) is None
+        for value in identity.values()
+    ):
+        raise RuntimeError("Pi3 Signage artifact identity is malformed")
+    claim_identity = f"git:{sha}@sha256:{identity['artifactSha256']}"
+    desired_release = {
+        "releaseScope": release_scope,
+        "sourceSha": sha,
+        "exactReference": (
+            f"{systemd_backend.signage_artifact_stage.ARTIFACT_REPOSITORY}"
+            f"@{signage_oci_digest}"
+        ),
+        "ociDigest": signage_oci_digest,
+        **identity,
+        "claimIdentity": claim_identity,
+    }
+
+    records = fleet_state.get("fleet") if isinstance(fleet_state, dict) else {}
+    records = records if isinstance(records, dict) else {}
+    server = servers[0]
+    server_record = records.get(server["host"])
+    server_current = (
+        server_record.get("currentSha")
+        if isinstance(server_record, dict)
+        and isinstance(server_record.get("currentSha"), str)
+        and FULL_SHA_RE.fullmatch(server_record["currentSha"])
+        else None
+    )
+    server_evidence = (
+        "verified"
+        if isinstance(server_record, dict)
+        and server_record.get("role") == "server"
+        and server_record.get("evidence") == "verified"
+        and server_current is not None
+        else "unknown"
+    )
+
+    target_record = records.get(target["host"])
+    target_current = (
+        target_record.get("currentSha")
+        if isinstance(target_record, dict)
+        and isinstance(target_record.get("currentSha"), str)
+        and FULL_SHA_RE.fullmatch(target_record["currentSha"])
+        else None
+    )
+    claims = (
+        release_claims_for_host(target_record)
+        if isinstance(target_record, dict)
+        else {}
+    )
+    artifact_claim = claims.get(ClaimKind.SIGNAGE_RELEASE_ARTIFACT.value)
+    claim_current = bool(
+        isinstance(artifact_claim, dict)
+        and artifact_claim.get("state") == "verified"
+        and artifact_claim.get("expectedIdentity") == claim_identity
+        and artifact_claim.get("observedIdentity") == claim_identity
+    )
+    decisions = [
+        {
+            "host": server["host"],
+            "role": "server",
+            "desiredSha": server_current or sha,
+            "currentSha": server_current,
+            "evidence": server_evidence,
+            "targetReason": "Pi5 coordinator only; runtime mutation is outside release scope",
+            "targeted": False,
+        },
+        {
+            "host": target["host"],
+            "role": "signage",
+            "desiredSha": sha,
+            "currentSha": target_current,
+            "evidence": (
+                "verified"
+                if isinstance(target_record, dict)
+                and target_record.get("evidence") == "verified"
+                else "unknown"
+            ),
+            "targetReason": (
+                "verified exact Pi3 Signage artifact"
+                if claim_current
+                else "explicit Pi3 Signage artifact release scope"
+            ),
+            "targeted": not claim_current,
+        },
+    ]
+    plan = release_planner.build_fleet_plan_payload(
+        release_sha=sha,
+        decisions=decisions,
+        full_fleet=False,
+        limit="",
+        canary_hold_policy=should_hold_after_canary,
+        fleet_records=records,
+        typed_target_planning=TYPED_TARGET_PLANNING_ENABLED,
+        activation_execution_enabled=ACTIVATION_EXECUTION_ENABLED,
+        verification_only_execution_enabled=VERIFICATION_ONLY_EXECUTION_ENABLED,
+        claim_scope_hosts=[target["host"]],
+        executor_preflight_passed=executor_preflight_passed,
+        release_claim_identities={sha: claim_identity},
+    )
+    executable = {
+        work["host"]
+        for work in plan["terminalWork"]
+        if work["mutationRequired"]
+        or work["activationRequired"]
+        or work["verificationRequired"]
+    }
+    terminal_targets = [target] if target["host"] in executable else []
+    plan.update(
+        {
+            "releaseScope": release_scope,
+            "desiredRelease": desired_release,
+            "coordinator": {
+                "host": server["host"],
+                "role": "acquisition-relay",
+                "runtimeMutationRequired": False,
+            },
+            "terminalTargets": terminal_targets,
+            "affectedProfiles": ["signage"],
+            "classificationComponents": ["signage-role"],
+        }
+    )
+    if (
+        any(item.get("role") != "signage" for item in plan["mutationTargets"])
+        or any(item.get("host") != target["host"] for item in plan["terminalWork"])
+        or any(item.get("host") != target["host"] for item in terminal_targets)
+    ):
+        raise RuntimeError("Pi3 Signage release scope generated foreign work")
+    return plan, terminal_targets, {}, []
+
+
 def build_print_plan(
     branch: str,
     inventory: str,
@@ -1693,6 +1902,12 @@ def build_print_plan(
     *,
     full_fleet: bool = False,
     reverify_selected: bool = False,
+    release_scope: str | None = None,
+    signage_oci_digest: str | None = None,
+    signage_source_sha: str | None = None,
+    signage_artifact_sha256: str | None = None,
+    signage_manifest_sha256: str | None = None,
+    signage_payload_digest: str | None = None,
 ) -> dict[str, Any]:
     warnings: list[str] = []
     sha, current_warnings = resolve_release_sha(branch)
@@ -1723,14 +1938,22 @@ def build_print_plan(
         # useful and safe by widening to the complete unknown fleet.  The
         # kernel fleet lock prevents a concurrent launch from reaching Git.
         fleet_state = empty_fleet_state()
+    scope_sha = signage_source_sha if release_scope is not None else sha
+    if not isinstance(scope_sha, str) or FULL_SHA_RE.fullmatch(scope_sha) is None:
+        raise RuntimeError("Pi3 Signage artifact source SHA is malformed")
     scope, _terminal_targets, classifications, scope_warnings = build_fleet_scope(
-        sha=sha,
+        sha=scope_sha,
         inventory_data=inventory_data,
         fleet_state=fleet_state,
         selected=selected,
         limit=limit,
         full_fleet=full_fleet,
         reverify_selected=reverify_selected,
+        release_scope=release_scope,
+        signage_oci_digest=signage_oci_digest,
+        signage_artifact_sha256=signage_artifact_sha256,
+        signage_manifest_sha256=signage_manifest_sha256,
+        signage_payload_digest=signage_payload_digest,
     )
     warnings.extend(scope_warnings)
     server_record = next(
@@ -1844,6 +2067,12 @@ def local_run(args: argparse.Namespace) -> int:
                     args.limit or "",
                     full_fleet=args.full_fleet,
                     reverify_selected=args.reverify_selected,
+                    release_scope=args.release_scope,
+                    signage_oci_digest=args.signage_oci_digest,
+                    signage_source_sha=args.signage_source_sha,
+                    signage_artifact_sha256=args.signage_artifact_sha256,
+                    signage_manifest_sha256=args.signage_manifest_sha256,
+                    signage_payload_digest=args.signage_payload_digest,
                 ),
                 ensure_ascii=False,
             )

@@ -32,7 +32,7 @@ from .release_claims import (
     validate_claim_identity,
 )
 from .release_warnings import record_observer_warning
-from . import readiness_policy, safe_diagnostics, telemetry
+from . import pi3_artifact_scope, readiness_policy, safe_diagnostics, telemetry
 from .terminal_adapters import TerminalAdapter
 
 
@@ -747,18 +747,20 @@ def _terminal_run_targets(
                 "claimRequirements": [],
             }
         )
-        result.append(
-            {
-                **target,
-                "role": decision["role"],
-                "desiredSha": decision["desiredSha"],
-                "currentSha": decision["currentSha"],
-                "evidence": decision["evidence"],
-                "targetReason": decision["targetReason"],
-                **action_fields,
-                "state": "pending",
-            }
-        )
+        record = {
+            **target,
+            "role": decision["role"],
+            "desiredSha": decision["desiredSha"],
+            "currentSha": decision["currentSha"],
+            "evidence": decision["evidence"],
+            "targetReason": decision["targetReason"],
+            **action_fields,
+            "state": "pending",
+        }
+        if plan.get("releaseScope") is not None:
+            record["releaseScope"] = plan.get("releaseScope")
+            record["desiredRelease"] = dict(plan.get("desiredRelease") or {})
+        result.append(record)
     return result
 
 
@@ -1813,6 +1815,8 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
     fleet_finished = False
     interrupted_recovery_pending = False
     admission = None
+    scope_request = pi3_artifact_scope.request_from_args(args)
+    release_sha = scope_request.source_sha if scope_request is not None else args.sha
     if hasattr(args, "readiness_admission_json"):
         raw_admission = getattr(args, "readiness_admission_json")
         if not isinstance(raw_admission, str) or not raw_admission:
@@ -1868,19 +1872,30 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
         if args.limit and selected == []:
             raise RuntimeError(f"--limit selected no hosts: {args.limit}")
         all_hosts = runtime.release_hosts(inventory_data)
+        release_scope = scope_request.scope if scope_request is not None else None
+        scoped_hosts = pi3_artifact_scope.target_hosts(scope_request, all_hosts)
 
         # A hard-killed prior run can leave run-labelled validation workload
         # or a paused terminal scheduler even when fleet evidence
         # would otherwise produce a no-op plan.  Reconcile that executor-owned
         # residue before cancellation, evidence seeding, or a new active-run
         # record can hide the abandoned authority.
-        runtime.reconcile_pi5_candidate_workload()
+        if release_scope is None:
+            runtime.reconcile_pi5_candidate_workload()
 
         # This is the first durable write.  Any lock-orphaned active run is
         # recorded as interrupted before the new active run is installed.
-        fleet_state, abandoned_run_id = runtime.fleet_begin_run(
-            args.run_id, args.sha, args.inventory
-        )
+        if release_scope is None:
+            fleet_state, abandoned_run_id = runtime.fleet_begin_run(
+                args.run_id, release_sha, args.inventory
+            )
+        else:
+            fleet_state, abandoned_run_id = runtime.fleet_begin_run(
+                args.run_id,
+                release_sha,
+                args.inventory,
+                release_scope=release_scope,
+            )
         fleet_started = True
         token.checkpoint("coordinator-start")
 
@@ -1892,7 +1907,11 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             "limitHosts": args.limit or "",
             "fullFleet": bool(getattr(args, "full_fleet", False)),
             "reverifySelected": bool(getattr(args, "reverify_selected", False)),
-            "releaseSha": args.sha,
+            "releaseSha": release_sha,
+            "releaseScope": release_scope,
+            "requestedSignageOciDigest": getattr(
+                scope_request, "oci_digest", None
+            ),
             "unitName": runtime.os.environ.get("ROLLING_RELEASE_UNIT"),
             "runner": "systemd-run",
             "startedAt": runtime.utc_now(),
@@ -1901,6 +1920,8 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             "targets": [],
             "fleetGeneration": fleet_state["generation"],
         }
+        if release_scope is not None:
+            initial["orchestratorSha"] = args.sha
         if admission is not None:
             initial["readinessAdmission"] = {
                 **admission.as_payload(),
@@ -1917,14 +1938,15 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
         # more environment files without reaching its durable commit record.
         # Restore that exact run manifest before terminal recovery, evidence
         # seeding, or no-op planning can accept the partial config as current.
-        _recover_interrupted_server_config(
-            runtime=runtime,
-            state=state,
-            inventory=inventory,
-            inventory_name=args.inventory,
-            server_host=identity["host"],
-            abandoned_run_id=abandoned_run_id,
-        )
+        if release_scope is None:
+            _recover_interrupted_server_config(
+                runtime=runtime,
+                state=state,
+                inventory=inventory,
+                inventory_name=args.inventory,
+                server_host=identity["host"],
+                abandoned_run_id=abandoned_run_id,
+            )
 
         # A process crash can leave a terminal between checkout and health.
         # Reconcile its old, sealed authority before evidence seeding or a new
@@ -1934,7 +1956,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             state=state,
             inventory=inventory,
             run_id=args.run_id,
-            desired_sha=args.sha,
+            desired_sha=release_sha,
             abandoned_run_id=abandoned_run_id,
             all_hosts=all_hosts,
             fleet_state=fleet_state,
@@ -1942,25 +1964,39 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
         interrupted_recovery_pending = False
 
         fleet_state, seed_failures = _seed_unverified_hosts(
-            all_hosts,
+            scoped_hosts,
             fleet_state,
             inventory=inventory,
             run_id=args.run_id,
-            desired_sha=args.sha,
+            desired_sha=release_sha,
             abandoned_run_id=abandoned_run_id,
             runtime=runtime,
             token=token,
         )
-        plan, targets, _classifications, plan_warnings = runtime.build_fleet_scope(
-            sha=args.sha,
-            inventory_data=inventory_data,
-            fleet_state=fleet_state,
-            selected=selected,
-            limit=args.limit,
-            full_fleet=bool(getattr(args, "full_fleet", False)),
-            reverify_selected=bool(getattr(args, "reverify_selected", False)),
-            executor_preflight_passed=True,
+        planning_options = {
+            "sha": release_sha,
+            "inventory_data": inventory_data,
+            "fleet_state": fleet_state,
+            "selected": selected,
+            "limit": args.limit,
+            "full_fleet": bool(getattr(args, "full_fleet", False)),
+            "reverify_selected": bool(getattr(args, "reverify_selected", False)),
+            "executor_preflight_passed": True,
+        }
+        if scope_request is not None:
+            planning_options.update(scope_request.planning_options())
+        plan, targets, _classifications, plan_warnings = (
+            runtime.build_fleet_scope(**planning_options)
         )
+        if scope_request is not None:
+            desired_release = pi3_artifact_scope.validate_locked_plan(
+                plan,
+                targets,
+                scope_request,
+                coordinator_host=identity["host"],
+                target_host=scoped_hosts[0]["host"],
+            )
+            state.payload["desiredRelease"] = dict(desired_release)
         if plan_warnings:
             plan["warnings"] = list(plan_warnings)
         if seed_failures:
@@ -2252,20 +2288,33 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                     with _measure_phase(
                         state, runtime, "terminal-source-stage", host=host
                     ):
+                        stage_options = (
+                            {"release_authority": target.get("desiredRelease")}
+                            if target.get("releaseScope") is not None
+                            else {}
+                        )
                         staged_source = adapter.stage_candidate_source(
                             inventory,
                             host,
                             target["desiredSha"],
                             target["previousSha"],
                             args.run_id,
-                    )
+                            **stage_options,
+                        )
                     if staged_source is not None:
+                        # Retained Stage 2 bytes exist before either identity
+                        # check runs.  Persist their exact cleanup authority so
+                        # every fail-closed validation path can remove them.
+                        target["stagedSource"] = staged_source
+                        state.save()
                         requirements = _claim_requirements(target, adapter) or []
                         adapter.validate_staged_claim_identity(
                             requirements, staged_source
                         )
-                        target["stagedSource"] = staged_source
-                        state.save()
+                        if target.get("releaseScope") is not None:
+                            adapter.validate_staged_release_authority(
+                                target.get("desiredRelease") or {}, staged_source
+                            )
                     token.checkpoint(f"after-source-stage:{host}")
                 if adapter.should_issue_notice(
                     emergency_override=args.emergency_override
@@ -3045,7 +3094,8 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                     "limitHosts": args.limit or "",
                     "fullFleet": bool(getattr(args, "full_fleet", False)),
                     "reverifySelected": bool(getattr(args, "reverify_selected", False)),
-                    "releaseSha": args.sha,
+                    "releaseSha": release_sha,
+                    "releaseScope": getattr(args, "release_scope", None),
                     "unitName": runtime.os.environ.get("ROLLING_RELEASE_UNIT"),
                     "runner": "systemd-run",
                     "startedAt": runtime.utc_now(),

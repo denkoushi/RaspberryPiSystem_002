@@ -838,7 +838,8 @@ def _launch(args: Any, *, runtime: Any) -> int:
     if not runtime.FULL_SHA_RE.fullmatch(sha):
         raise RuntimeError("origin branch did not resolve to an immutable SHA")
     require_checkout_sha(sha, runtime=runtime)
-    validate_candidate_migrations(sha, runtime=runtime)
+    if getattr(args, "release_scope", None) is None:
+        validate_candidate_migrations(sha, runtime=runtime)
     inventory_data = runtime.read_only_inventory_json(
         str(runtime.ANSIBLE_DIRECTORY / remote_inventory)
     )
@@ -846,6 +847,18 @@ def _launch(args: Any, *, runtime: Any) -> int:
     # opens SSH or a transient systemd unit can reach remote checkout/state.
     all_release_hosts = runtime.release_hosts(inventory_data)
     selected_release_hosts = all_release_hosts
+    if getattr(args, "release_scope", None) == "pi3-signage-artifact":
+        selected_release_hosts = [
+            target for target in all_release_hosts if target.get("role") == "signage"
+        ]
+        if (
+            len(selected_release_hosts) != 1
+            or selected_release_hosts[0].get("clientId")
+            != "raspberrypi3-signage1"
+        ):
+            raise RuntimeError(
+                "Pi3 Signage release scope target CLIENT_ID is not authoritative"
+            )
     if args.limit:
         selected = runtime.read_only_selected_hosts(
             str(runtime.ANSIBLE_DIRECTORY / remote_inventory), args.limit
@@ -858,12 +871,26 @@ def _launch(args: Any, *, runtime: Any) -> int:
     build_print_plan = getattr(runtime, "build_print_plan", None)
     if not callable(build_print_plan):
         raise RuntimeError("read-only target planning is unavailable")
+    planning_options = {
+        "full_fleet": args.full_fleet,
+        "reverify_selected": args.reverify_selected,
+    }
+    if getattr(args, "release_scope", None) is not None:
+        planning_options.update(
+            {
+                "release_scope": args.release_scope,
+                "signage_oci_digest": args.signage_oci_digest,
+                "signage_source_sha": args.signage_source_sha,
+                "signage_artifact_sha256": args.signage_artifact_sha256,
+                "signage_manifest_sha256": args.signage_manifest_sha256,
+                "signage_payload_digest": args.signage_payload_digest,
+            }
+        )
     planning_snapshot = build_print_plan(
         args.branch,
         args.inventory,
         args.limit,
-        full_fleet=args.full_fleet,
-        reverify_selected=args.reverify_selected,
+        **planning_options,
     )
     if planning_snapshot.get("sha") != sha:
         raise RuntimeError("preflight planning SHA changed during launch")
@@ -917,6 +944,12 @@ def _launch(args: Any, *, runtime: Any) -> int:
         skip_canary_hold=args.skip_canary_hold,
         full_fleet=args.full_fleet,
         reverify_selected=args.reverify_selected,
+        release_scope=getattr(args, "release_scope", None),
+        signage_oci_digest=getattr(args, "signage_oci_digest", None),
+        signage_source_sha=getattr(args, "signage_source_sha", None),
+        signage_artifact_sha256=getattr(args, "signage_artifact_sha256", None),
+        signage_manifest_sha256=getattr(args, "signage_manifest_sha256", None),
+        signage_payload_digest=getattr(args, "signage_payload_digest", None),
     ).validate()
     systemd, control = build_backends(runtime)
     requested_capabilities = {

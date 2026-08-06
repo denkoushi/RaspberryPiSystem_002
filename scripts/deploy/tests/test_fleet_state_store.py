@@ -280,6 +280,24 @@ class FleetStateStoreTest(unittest.TestCase):
         self.assertEqual(stat.S_IMODE(self.state_path.stat().st_mode), 0o600)
         self.assertEqual(stat.S_IMODE(self.lock_path.stat().st_mode), 0o600)
 
+    def test_pi3_signage_scope_uses_the_existing_run_authority(self):
+        state = self.store.begin_run(
+            RUN_ID,
+            SHA_A,
+            INVENTORY,
+            expected_generation=0,
+            kind="pi3-signage-artifact",
+        )
+
+        self.assertEqual(state["activeRun"]["kind"], "pi3-signage-artifact")
+        state = self.store.finish_run(
+            RUN_ID,
+            "success",
+            expected_generation=state["generation"],
+        )
+        self.assertIsNone(state["activeRun"])
+        self.assertEqual(state["lastRun"]["kind"], "pi3-signage-artifact")
+
     def test_begin_rejects_active_run_and_wrong_run_transitions(self):
         self.begin()
         with self.assertRaisesRegex(FleetRunConflictError, RUN_ID):

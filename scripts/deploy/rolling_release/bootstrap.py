@@ -34,6 +34,8 @@ PROTOCOL_VALUE = "raspi-rolling-release-v2\n"
 ALLOWED_PRECHECK_UNTRACKED = frozenset({'?? power-actions/'})
 NEW_RUN_ID_RE = re.compile(r'^[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$')
 FULL_SHA_RE = re.compile(r'^[0-9a-f]{40}$')
+OCI_DIGEST_RE = re.compile(r'^sha256:[0-9a-f]{64}$')
+PI3_SIGNAGE_ARTIFACT_SCOPE = 'pi3-signage-artifact'
 UNIT_PREFIX = 'raspi-release-'
 UNIT_SUFFIX = '.service'
 EXPECTED_KEYS = frozenset({
@@ -53,6 +55,12 @@ EXPECTED_KEYS = frozenset({
     'fullFleet',
     'reverifySelected',
     'readinessAdmission',
+    'releaseScope',
+    'signageOciDigest',
+    'signageSourceSha',
+    'signageArtifactSha256',
+    'signageManifestSha256',
+    'signagePayloadDigest',
 })
 FORBIDDEN_REF_CHARACTERS = frozenset(' ~^:?*[\\')
 
@@ -162,6 +170,40 @@ def parse_spec(raw: str) -> dict[str, Any]:
         raise BootstrapConfigError('fullFleet cannot be combined with limit')
     if payload['reverifySelected'] and not payload['limit']:
         raise BootstrapConfigError('reverifySelected requires limit')
+    release_scope = payload.get('releaseScope')
+    signage_oci_digest = payload.get('signageOciDigest')
+    signage_source_sha = payload.get('signageSourceSha')
+    signage_digests = (
+        payload.get('signageArtifactSha256'),
+        payload.get('signageManifestSha256'),
+        payload.get('signagePayloadDigest'),
+    )
+    if release_scope == PI3_SIGNAGE_ARTIFACT_SCOPE:
+        if (
+            not isinstance(signage_oci_digest, str)
+            or OCI_DIGEST_RE.fullmatch(signage_oci_digest) is None
+            or not isinstance(signage_source_sha, str)
+            or FULL_SHA_RE.fullmatch(signage_source_sha) is None
+            or any(
+                not isinstance(value, str)
+                or re.fullmatch(r'[0-9a-f]{64}', value) is None
+                for value in signage_digests
+            )
+        ):
+            raise BootstrapConfigError(
+                'Pi3 Signage release scope requires exact artifact identity'
+            )
+        if payload['limit'] or payload['fullFleet'] or payload['reverifySelected']:
+            raise BootstrapConfigError(
+                'Pi3 Signage release scope cannot use fleet narrowing flags'
+            )
+    elif release_scope is not None:
+        raise BootstrapConfigError('releaseScope is unsupported')
+    elif any(
+        value is not None
+        for value in (signage_oci_digest, signage_source_sha, *signage_digests)
+    ):
+        raise BootstrapConfigError('Signage release identity requires releaseScope')
     reason = payload.get('reason')
     if reason is not None:
         if not isinstance(reason, str) or '\x00' in reason or len(reason) > 1000:
@@ -335,6 +377,21 @@ def remote_arguments(spec: Mapping[str, Any]) -> list[str]:
         arguments.append('--full-fleet')
     if spec['reverifySelected']:
         arguments.append('--reverify-selected')
+    if spec['releaseScope'] is not None:
+        arguments.extend(['--release-scope', str(spec['releaseScope'])])
+        arguments.extend(
+            ['--signage-oci-digest', str(spec['signageOciDigest'])]
+        )
+        arguments.extend(['--signage-source-sha', str(spec['signageSourceSha'])])
+        arguments.extend(
+            ['--signage-artifact-sha256', str(spec['signageArtifactSha256'])]
+        )
+        arguments.extend(
+            ['--signage-manifest-sha256', str(spec['signageManifestSha256'])]
+        )
+        arguments.extend(
+            ['--signage-payload-digest', str(spec['signagePayloadDigest'])]
+        )
     if spec['readinessAdmission'] is not None:
         arguments.extend(
             [

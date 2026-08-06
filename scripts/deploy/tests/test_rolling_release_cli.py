@@ -12,11 +12,66 @@ if str(DEPLOY_DIRECTORY) not in sys.path:
 from rolling_release.cli import UsageError, normalize_arguments, parser
 
 
+OCI_DIGEST = "sha256:" + "d" * 64
+SOURCE_SHA = "a" * 40
+ARTIFACT_SHA256 = "b" * 64
+MANIFEST_SHA256 = "c" * 64
+PAYLOAD_DIGEST = "e" * 64
+
+
 def parse(*arguments: str):
     return normalize_arguments(parser().parse_args(list(arguments)))
 
 
 class RollingReleaseCliContractTest(unittest.TestCase):
+    def test_pi3_signage_release_scope_is_explicit_and_digest_pinned(self):
+        args = parse(
+            "main",
+            "infrastructure/ansible/inventory.yml",
+            "--release-scope",
+            "pi3-signage-artifact",
+            "--signage-oci-digest",
+            OCI_DIGEST,
+            "--signage-source-sha",
+            SOURCE_SHA,
+            "--signage-artifact-sha256",
+            ARTIFACT_SHA256,
+            "--signage-manifest-sha256",
+            MANIFEST_SHA256,
+            "--signage-payload-digest",
+            PAYLOAD_DIGEST,
+            "--print-plan",
+        )
+        self.assertEqual(args.release_scope, "pi3-signage-artifact")
+        self.assertEqual(args.signage_oci_digest, OCI_DIGEST)
+        self.assertEqual(args.signage_source_sha, SOURCE_SHA)
+        self.assertEqual(args.signage_artifact_sha256, ARTIFACT_SHA256)
+        self.assertEqual(args.signage_manifest_sha256, MANIFEST_SHA256)
+        self.assertEqual(args.signage_payload_digest, PAYLOAD_DIGEST)
+
+        for extra in (
+            (),
+            ("--limit", "raspberrypi3"),
+            ("--full-fleet",),
+            ("--reverify-selected",),
+        ):
+            with self.subTest(extra=extra), self.assertRaises(UsageError):
+                parse(
+                    "main",
+                    "infrastructure/ansible/inventory.yml",
+                    "--release-scope",
+                    "pi3-signage-artifact",
+                    *extra,
+                )
+
+        with self.assertRaises(UsageError):
+            parse(
+                "main",
+                "infrastructure/ansible/inventory.yml",
+                "--signage-oci-digest",
+                OCI_DIGEST,
+            )
+
     def test_retained_release_and_control_commands(self):
         release = parse(
             "main",
