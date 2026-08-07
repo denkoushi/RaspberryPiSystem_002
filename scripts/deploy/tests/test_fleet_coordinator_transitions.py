@@ -5086,6 +5086,71 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             runtime.observed_runtime_health,
         )
 
+    def test_recovery_only_finishes_held_run_before_new_release_planning(self):
+        terminal = {
+            "host": "kiosk-a",
+            "role": "kiosk",
+            "terminalType": "kiosk",
+            "clientId": "a",
+        }
+        interrupted = host_record("kiosk", OLD_SHA)
+        interrupted.update(
+            {
+                "desiredSha": NEW_SHA,
+                "currentSha": None,
+                "previousSha": OLD_SHA,
+                "evidence": "unknown",
+                "verifiedAt": None,
+                "lastRunId": "crashed-run",
+            }
+        )
+        runtime = FakeRuntime(
+            fleet={
+                "pi5": host_record("server", NEW_SHA),
+                "kiosk-a": interrupted,
+            },
+            hosts=[{"host": "pi5", "role": "server"}, terminal],
+            plan={
+                "pi5Required": False,
+                "hosts": [
+                    decision("pi5", "server", current=NEW_SHA, targeted=False),
+                    decision("kiosk-a", "kiosk", targeted=False),
+                ],
+            },
+            targets=[],
+        )
+        runtime.os.environ["ROLLING_RELEASE_RECOVERY_ONLY"] = "1"
+        runtime.abandoned_run_id = "crashed-run"
+        runtime.prior_runs["crashed-run"] = {
+            "version": 1,
+            "runId": "crashed-run",
+            "state": "running",
+            "targets": [
+                {
+                    **terminal,
+                    "desiredSha": NEW_SHA,
+                    "previousSha": OLD_SHA,
+                    "currentSha": None,
+                    "evidence": "unknown",
+                    "state": "deploying",
+                    "maintenanceStartedAt": "2026-07-14T23:59:00Z",
+                    "rollbackManifest": rollback_manifest(
+                        "crashed-run", "kiosk-a"
+                    ),
+                }
+            ],
+        }
+
+        self.assertEqual(
+            coordinator.execute(
+                args(), runtime=runtime, token=FakeToken(runtime.events)
+            ),
+            0,
+        )
+        self.assertIsNone(runtime.fleet["activeRun"])
+        self.assertIn("fleet:finish:success", runtime.events)
+        self.assertNotIn("scope:replan", runtime.events)
+
     def test_interrupted_signage_recovery_refreshes_after_remove_before_promotion(self):
         terminal = {
             "host": "signage-a",

@@ -278,6 +278,7 @@ class FakeSystemd:
         preflight_result=None,
         terminal_preflight_result=None,
         route_preflight_result=None,
+        route_preflight_results=None,
         signage_artifact_stage_result=None,
     ):
         self.start_result = start_result or CommandResult(("systemd-run",), 0)
@@ -310,6 +311,7 @@ class FakeSystemd:
                 '"metrics":{},"externalDependencies":{"required":[],"rounds":3,"successes":{}}}'
             ),
         )
+        self.route_preflight_results = list(route_preflight_results or ())
         self.signage_artifact_stage_result = (
             signage_artifact_stage_result or signage_stage_result()
         )
@@ -330,6 +332,8 @@ class FakeSystemd:
         self.route_external_dependencies.append(
             tuple(required_external_dependencies)
         )
+        if self.route_preflight_results:
+            return self.route_preflight_results.pop(0)
         return self.route_preflight_result
 
     def preflight_signage_artifact_stage(
@@ -344,6 +348,10 @@ class FakeSystemd:
     def start(self, spec, *, wait):
         self.start_specs.append(spec)
         self.events.append(("start", spec.run_id, wait))
+        return self.start_result
+
+    def start_recovery(self, spec, *, wait=True):
+        self.events.append(("recovery", spec.run_id, wait))
         return self.start_result
 
     def signal_cancel(self, run_id):
@@ -836,6 +844,126 @@ class ReleaseApplicationTest(unittest.TestCase):
             systemd.route_external_dependencies,
             [application.BUILD_EXTERNAL_DEPENDENCY_IDS],
         )
+
+    def test_recovery_admission_runs_only_recovery_before_normal_release(self):
+        systemd = FakeSystemd(
+            route_preflight_result=CommandResult(
+                ("route-preflight",),
+                78,
+                stdout=json.dumps(
+                    {
+                        "version": 2,
+                        "probe": "route",
+                        "status": "blocked",
+                        "proofs": [],
+                        "issues": ["pi5.interrupted-run-authority"],
+                        "warnings": [],
+                        "recoveryAdmission": {
+                            "status": "passed",
+                            "runId": RUN_ID,
+                            "state": "failed",
+                            "releaseScope": None,
+                            "targets": [],
+                            "sealedBaseline": True,
+                        },
+                        "metrics": {},
+                        "externalDependencies": {
+                            "required": [],
+                            "rounds": 3,
+                            "successes": {},
+                        },
+                    }
+                ),
+            )
+        )
+        control = FakeControl()
+        with patch.object(application, "_require_clean_worktree"), patch.object(
+            application, "_remote_inventory", return_value="inventory.yml"
+        ), patch.object(application, "new_run_id", return_value=RUN_ID), patch.object(
+            application, "build_backends", return_value=(systemd, control)
+        ), patch.object(
+            application,
+            "validate_remote_server_identity",
+            return_value={"host": "raspberrypi5", "clientId": "raspberrypi5-server"},
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError, "recovery completed; rerun standard preflight"
+            ):
+                application.launch(release_args(), runtime=Runtime)
+
+        self.assertIn("recovery", [event[0] for event in systemd.events])
+        self.assertNotIn("start", [event[0] for event in systemd.events])
+
+    def test_preflight_recovery_rechecks_readiness_before_stage(self):
+        recovery_route = CommandResult(
+            ("route-preflight",),
+            78,
+            stdout=json.dumps(
+                {
+                    "version": 2,
+                    "probe": "route",
+                    "status": "blocked",
+                    "proofs": [],
+                    "issues": ["pi5.interrupted-run-authority"],
+                    "warnings": ["pi5.interrupted-run-recovery-required"],
+                    "recoveryAdmission": {
+                        "status": "passed",
+                        "runId": RUN_ID,
+                        "state": "failed",
+                        "releaseScope": None,
+                        "targets": [],
+                        "sealedBaseline": True,
+                    },
+                    "metrics": {},
+                    "externalDependencies": {
+                        "required": list(application.BUILD_EXTERNAL_DEPENDENCY_IDS),
+                        "rounds": 3,
+                        "successes": {
+                            dependency: 3
+                            for dependency in application.BUILD_EXTERNAL_DEPENDENCY_IDS
+                        },
+                    },
+                }
+            ),
+        )
+        systemd = FakeSystemd(route_preflight_results=[recovery_route])
+        control = FakeControl()
+        patches = (
+            patch.object(application, "_require_clean_worktree"),
+            patch.object(application, "_remote_inventory", return_value="inventory.yml"),
+            patch.object(application, "new_run_id", return_value=RUN_ID),
+            patch.object(application, "build_backends", return_value=(systemd, control)),
+            patch.object(
+                application,
+                "validate_remote_server_identity",
+                return_value={
+                    "host": "raspberrypi5",
+                    "clientId": "raspberrypi5-server",
+                },
+            ),
+        )
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patch(
+            "sys.stdout", new_callable=io.StringIO
+        ) as stdout:
+            outcome = application.launch(
+                release_args(preflight_only=True), runtime=Runtime
+            )
+
+        self.assertEqual(outcome, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["status"], "passed")
+        self.assertFalse(payload["releaseSubmitted"])
+        self.assertEqual(
+            [event[0] for event in systemd.events],
+            [
+                "migration-preflight",
+                "route-preflight",
+                "recovery",
+                "migration-preflight",
+                "route-preflight",
+            ],
+        )
+        self.assertNotIn("start", [event[0] for event in systemd.events])
 
     def test_preflight_only_never_submits_a_release_unit(self):
         systemd = FakeSystemd()

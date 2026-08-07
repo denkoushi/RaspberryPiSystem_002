@@ -128,6 +128,16 @@ class SystemdBackendTest(unittest.TestCase):
             remote,
         )
         self.assertIn('--property=Type=exec', remote)
+
+    def test_recovery_start_sets_only_recovery_environment_boundary(self):
+        backend, runner = self.backend()
+
+        result = backend.start_recovery(self.spec(), wait=True)
+
+        self.assertEqual(result.returncode, 0)
+        remote = self.remote_argv(runner)
+        self.assertIn('--setenv=ROLLING_RELEASE_RECOVERY_ONLY=1', remote)
+        self.assertNotIn('--recovery-only', remote)
         self.assertIn('--property=KillMode=control-group', remote)
         self.assertIn('--property=Restart=no', remote)
         self.assertIn('--property=UMask=0077', remote)

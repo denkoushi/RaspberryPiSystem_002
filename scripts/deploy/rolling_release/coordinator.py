@@ -1814,6 +1814,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
     fleet_started = False
     fleet_finished = False
     interrupted_recovery_pending = False
+    recovery_only = runtime.os.environ.get("ROLLING_RELEASE_RECOVERY_ONLY") == "1"
     admission = None
     scope_request = pi3_artifact_scope.request_from_args(args)
     release_sha = scope_request.source_sha if scope_request is not None else args.sha
@@ -1962,6 +1963,21 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             fleet_state=fleet_state,
         )
         interrupted_recovery_pending = False
+
+        if recovery_only:
+            recovery = state.payload.get("interruptedRecovery")
+            if (
+                abandoned_run_id is None
+                or not isinstance(recovery, dict)
+                or not isinstance(recovery.get("targets"), list)
+                or not recovery["targets"]
+            ):
+                raise RuntimeError(
+                    "recovery-only execution found no recoverable interrupted authority"
+                )
+            state.payload["recoveryOnly"] = True
+            state.payload["recoveryCompletedAt"] = runtime.utc_now()
+            return save_success()
 
         fleet_state, seed_failures = _seed_unverified_hosts(
             scoped_hosts,
