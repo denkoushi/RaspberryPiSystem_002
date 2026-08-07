@@ -2,14 +2,14 @@
 id: deployment-guide
 title: 標準デプロイ手順
 status: active
-last_verified: 2026-08-03
+last_verified: 2026-08-08
 ---
 
 # デプロイメントガイド
 
-通常の本番更新は、リポジトリ直下の `scripts/update-all-clients.sh` だけを入口にする。Pi5、Kiosk、Signageを個別に直接更新しない。オーケストレーターが差分、実機証跡、依存関係から対象と順序を決める。
+通常の更新は、リポジトリ直下の `scripts/update-all-clients.sh` だけを入口にする。Pi5、Kiosk、Signageを個別に直接更新しない。operatorが対象を明示し、wrapperは標準Ansible playbookへその対象を渡す。
 
-> **Foundation注記（2026-08-07）:** `playbooks/deploy-release-standard.yml` と `release_pi5` / `release_kiosk` / `release_signage` rolesは、Ansible中心の次期経路をローカル・CIで検証するために追加されている。現時点では通常入口から呼ばれず、operator向け本番手順ではない。PR 2のcanonical切替と、実機canary・時間計測・rollback確認は、それぞれ別の明示承認を必要とする。
+> **PR 2注記（2026-08-08）:** canonical wrapperは標準Ansible routeを起動する。旧rolling-release実装はcanary後のPR 3までrepositoryに残るが、通常入口からは呼ばれない。本書は操作契約を示すだけであり、実機canary・時間計測・production実行は別の明示承認を必要とする。
 
 このfoundationで固定した境界は次のとおりである。
 
@@ -17,31 +17,26 @@ last_verified: 2026-08-03
 - Pi4: exact `--limit`と`serial: 1`で一台ずつ、image pull完了後に`--no-build`で変更serviceだけを切り替える。他hostは停止しない。
 - Pi3: controllerから完成tarを転送し、端末で代表SHA-256を一度確認する。固定allowlistを検証してrun-scoped tempへ展開・read-only化後、digest名へatomic renameする。端末固有値はimmutable release外のenv/drop-inに置き、Pi3からGit、GHCR、外部HTTPへ接続しない。
 
-### 標準更新入口（ローリング・端末別メンテナンス）
+### 標準更新入口
 
 公開CLIは次のとおり。
 
 ```text
-scripts/update-all-clients.sh <branch> <inventory> [--limit PATTERN] [--reverify-selected] [--full-fleet] [--detach]
-scripts/update-all-clients.sh <branch> <inventory> --print-plan
-scripts/update-all-clients.sh <branch> <inventory> --preflight-only [--limit PATTERN] [--reverify-selected]
-scripts/update-all-clients.sh --status RUN_ID
-scripts/update-all-clients.sh --approve RUN_ID
-scripts/update-all-clients.sh --cancel RUN_ID --reason TEXT
+scripts/update-all-clients.sh <branch> <inventory> --limit PATTERN [--detach]
+scripts/update-all-clients.sh <branch> <inventory> --full-fleet [--detach]
+scripts/update-all-clients.sh <branch> <inventory> --print-plan [--limit PATTERN]
+scripts/update-all-clients.sh --status RUN_ID [--inventory INVENTORY]
 ```
 
-- 引数なしの通常実行は完了まで待つ。
-- `--detach` は開始後に `runId` を返す。状態は `--status` で確認する。
-- `--dry-run` は `--print-plan` の互換aliasとして使える。
-- `--preflight-only` はmigration、Pi5実行経路、実作業計画に含まれる端末だけの全前提条件を一括検査する診断コマンドである。release run、systemd unit、fleet state、maintenance、checkout、service変更は作成・実行しない。`--full-fleet` と `--limit PATTERN --reverify-selected` もread-only計画のまま検査できる。通常実行は同じ検査をrelease unit作成の直前に必ず実施するため、通常手順で事前に実行する必要はない。
-- `human` profileのカナリア待機は `--status RUN_ID` の
-  `actionRequired.type=canary-approval` を確認し、表示されたrun固有コマンドで
-  現在のgateだけを明示承認する。監視中は30秒以内の間隔でstatusを確認し、
-  `actionRequired`が出た時点で人へ判断を依頼する。事前のDeploy承認を流用した
-  自動承認はしない。複数profileでは順番に承認する。
-- 安定化時間を省略できるのは、緊急時に `--emergency-override --reason TEXT` を併用した場合だけである。
+- mutationにはexact `--limit`または明示的な`--full-fleet`が必須である。暗黙の全fleet更新は行わない。
+- 引数なしの通常実行はsystemd unitの終了まで待つ。`--detach`は`runId`を返し、`--status`はsystemd statusとjournalだけを読む。
+- `--print-plan`は`ansible-inventory`と`ansible-playbook --list-hosts/--list-tasks`だけを実行し、選択host、profile、release SHA、GHCR tag、順序を表示する。remote state、過去run、claimsは読まない。
+- `--approve`、`--cancel`、`--preflight-only`、`--release-scope`、Signageの複数digest/claim引数は新経路ではunsupportedである。
+- Pi5で公開release-setからAPI/Web digestを解決し、Pi3は公開image labelから完成tarのSHA-256を一つだけ得る。Ansibleがprepare、switch、health、rescue rollbackを所有する。
 
-## 対象の決まり方
+## 旧経路参考: 対象の決まり方
+
+ここから下はPR 3までコードとして残す旧rolling-release経路の説明であり、canonical操作ではない。新しい運用判断やコマンドの根拠にしない。
 
 標準実行は対象を自動で最小化する。ただし、安全を優先して次の規則を適用する。
 
@@ -93,7 +88,7 @@ pullのtimeoutまたは通信不能は`unavailable`としてローカルbuildへ
 
 判断の正本は `logs/deploy/fleet-release-state.json` である。手で編集しない。
 
-## 実行前確認
+## 旧経路参考: 実行前確認
 
 1. 対象branchまたは不変SHAを確定する。
 2. deployment/profile/agentへ変更がある場合、下記のローカル正本コマンドを完走する。
@@ -201,7 +196,7 @@ SQLを未適用migrationとしてExpand-only検査する。この例外はreposi
 停止する。`prisma migrate resolve`、台帳編集、適用済みmigrationの修正で迂回
 してはならない。
 
-## Linux/Pi端末Typeを追加する
+## 旧経路参考: Linux/Pi端末Typeを追加する
 
 端末Typeは端末名、hostname、Raspberry Piの型、hardware `device_type` から推測しない。`scripts/deploy/terminal-profile-registry.json` の安全なprofile IDと、inventoryでそのhostが所属する一つのprofile groupがidentityである。中身の構造はprofileが選ぶadapterとplaybookで決まる。
 
@@ -212,7 +207,7 @@ SQLを未適用migrationとしてExpand-only検査する。この例外はreposi
 5. ローカル正本コマンドとCIの `deploy-contract` を通す。registryからadapter、group、canary、playbookを動的に読み、`serial: 1`、orchestration guard、rollback ownership、coreのType非依存を検証する。profileごとのworkflow job追加は不要である。
 6. production登録に架空Typeを置かない。実製品変更の `--print-plan` を確認し、通常のhuman canary承認またはhealth-only証跡を使って最初の実機証明を行う。
 
-## 通常実行
+## 旧経路参考: 通常実行
 
 承認されたinventoryに対して実行する。
 
@@ -243,7 +238,7 @@ Pi5が対象の場合は、host設定、Expand-only migration、candidate image�
 
 低資源Pi3のrelease sourceは、repository baselineとrollback manifest封印後、通知・maintenanceより前にPi5でexact SHAのGit bundleを作成し、既存Ansible SSH経路で圧縮転送する。容量、SHA-256、Git prerequisite、run、host、旧SHA、候補SHAをPi3上で検証し、run固有pathへatomic promoteできた場合だけmaintenanceへ進む。maintenance後は検証済みlocal bundleからimport/resetするだけとし、GitHubや外部Git protocolへfallbackしない。stage失敗時はrepository、service、表示を変更せず、run固有pathをcleanupして停止する。この契約はSignage Pi3 profileだけに適用し、Pi4の搬送経路は変更しない。
 
-## 成功の確認
+## 旧経路参考: 成功の確認
 
 `--status RUN_ID` で次を確認する。
 
@@ -260,7 +255,7 @@ Pi5が対象の場合は、host設定、Expand-only migration、candidate image�
 
 同じSHAでもう一度 `--print-plan` し、標準planがno-opになることを確認する。
 
-## 中止と復旧
+## 旧経路参考: 中止と復旧
 
 停止が必要な場合は協調cancelを使う。
 
@@ -292,7 +287,7 @@ Pi5上のchecksum・展開・disk処理を調べる。転送量が増え続け�
 1,800秒以内にrun固有の人承認が届かなかったことを示す。残り端末へ進まず、
 新しい実行は原因確認と`--print-plan`から始める。
 
-## 禁止する迂回経路
+## 旧経路参考: 禁止する迂回経路
 
 Pi5のAPI/Webは非root UID/GID、read-only root filesystem、`cap_drop: ALL`、
 `no-new-privileges`で起動する。書込み可能なのは、APIの永続storage・alerts・
@@ -331,7 +326,7 @@ Pi5秘密鍵、証明書ファイルはリポジトリへ置かない。
 各モジュールも直接実行・sourceしない。entrypointだけが固定順で読み込み、
 排他ロックとcommand dispatchを適用する。
 
-## 過去記録
+## 旧経路参考: 過去記録
 
 現行手順ではないデプロイ実績は月別archiveへ移した。
 

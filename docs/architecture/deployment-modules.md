@@ -2,19 +2,21 @@
 id: deployment-modules
 title: デプロイ基盤アーキテクチャ
 status: active
-last_verified: 2026-08-07
+last_verified: 2026-08-08
 ---
 
 # デプロイ基盤アーキテクチャ
 
 デプロイ基盤は、公開入口を一つ、release判断を一つ、rollback責任者を一つにする。通常運用の入口は `scripts/update-all-clients.sh` だけである。
 
-## Ansible標準化foundation（非canonical）
+## Ansible標準route（canonical）
 
-`deploy-release-standard.yml` は、今後のcanonical切替に先立って追加した直接検証可能な経路である。このfoundationでは `scripts/update-all-clients.sh` から呼ばれず、本番操作にも使用しない。依存方向は `playbook -> profile role -> standard tools / existing Blue/Green lifecycle` の一方向であり、rolling-release coordinator、fleet state、readiness policy、claimsへ逆参照しない。
+`scripts/update-all-clients.sh` は目的別launcherへ引数をそのまま渡し、launcherは対象SHA、CI公開物、inventory、標準Ansible argvを直線的に解決してPi5のtransient systemd unitを起動する。依存方向は `wrapper -> launcher -> systemd -> playbook -> profile role -> standard tools / existing Blue/Green lifecycle` の一方向であり、rolling-release coordinator、fleet state、readiness policy、claimsへ逆参照しない。
 
 ```text
 GitHub Actions artifact
+  -> update-all-clients.sh -> standard-ansible-release.py
+  -> Pi5 transient systemd unit
   -> deploy-release-standard.yml
   -> release_pi5 | release_kiosk | release_signage
   -> prepare while live
@@ -26,6 +28,8 @@ GitHub Actions artifact
 
 | ファイル | 責務 | 依存先・入力 | 出力・副作用 | テスト境界 |
 |---|---|---|---|---|
+| `scripts/update-all-clients.sh` | 引数を変更せず目的別launcherへexec | operator argv | process置換 | 10行以下、strict exec contract |
+| `scripts/deploy/standard-ansible-release.py` | parser、SHA/CI公開値解決、Ansible argv、既存systemd primitiveへの送信 | Git、inventory、GHCR、Ansible、SSH/systemd | Pi5 unit起動またはread-only plan/status | parser、target guard、argv、plan、detach/status、global flock contract |
 | `playbooks/deploy-release-standard.yml` | Pi5→Pi4→Pi3の順、group、`serial: 1`を宣言 | inventory、exact SHA、profile変数 | 選択hostのrole起動 | syntax、list-hosts、順序contract |
 | `roles/release_pi5/defaults/main.yml` | Pi5の安定pathと時間budgetの既定値 | なし | 変数だけ、副作用なし | YAML/Jinja parse |
 | `roles/release_pi5/tasks/main.yml` | prepare→switch→health→rescue rollback→cleanup | 同roleのtask files | block/rescueの結果 | Ansible構造contract |
@@ -67,11 +71,13 @@ GitHub Actions artifact
 | `scripts/ci/classify_changes.py` | 新role/CI artifact変更をdeploy jobへ分類 | Git diff paths | CI job matrix | classifier unit test |
 | `scripts/ci/run-deploy-contracts-local.sh` | 新route contractを既存local正本へ追加 | local tools、unique Docker resources | test result、run資源cleanup | self-run、残存0確認 |
 
-profile roleをさらに共通moduleへ分割しない理由は、共有できる行数よりartifact・停止対象・rollback意味の差が大きく、共通化が新たな汎用Deploy frameworkになるためである。既存Blue/Green shell modulesも、実績あるslot境界を保つため内部再分割しない。新経路からsealed evidence引数を渡さず、既存canonical経路の互換部分だけを残す。
+launcherをapplication/domain/adapterへ分割しない理由は、標準Ansible routeを一度起動するだけの直線的な入口であり、再利用可能な業務状態遷移を所有しないためである。profile roleをさらに共通moduleへ分割しない理由は、共有できる行数よりartifact・停止対象・rollback意味の差が大きく、共通化が新たな汎用Deploy frameworkになるためである。既存Blue/Green shell modulesも、実績あるslot境界を保つため内部再分割しない。
 
 Pi4/Pi3の`prepare.yml`をさらに細分化しない理由は、それぞれが「通常表示中に完了する一つの順序付きprepare」であり、pull/transfer→検証→stage→previous取得の順序そのものが停止時間と中断耐性のcontractだからである。task includeを増やして順序を複数fileへ隠すより、profile内の一つの宣言列としてcontract test可能にする。業務状態遷移、health、rollback、cleanupはすでに別fileへ分離済みである。
 
-## 全体フロー
+## 旧経路参考: 全体フロー
+
+以下はPR 3までrepositoryに残す旧rolling-release実装の構造であり、canonical wrapperからは到達しない。
 
 ```text
 operator
@@ -87,7 +93,7 @@ operator
 
 controllerは対象branchを不変SHAへ解決し、remote bootstrapを開始する。remote側はcheckoutより前にkernel `flock`を非待機で取得する。後発runはGitやstateを変更せず失敗する。lock取得後にだけ対象SHAをcheckoutし、transient systemd unit内でPython coordinatorへ `exec` する。
 
-## モジュール境界
+## 旧経路参考: モジュール境界
 
 - `scripts/update-all-clients.sh`: 引数を変更せずPythonへ渡す薄い公開wrapper。
 - `scripts/deploy/rolling-release.py`: remote bootstrapとremote-runの境界。
@@ -105,7 +111,7 @@ controllerは対象branchを不変SHAへ解決し、remote bootstrapを開始す
 
 adapterは実行方法を隠蔽するが、release判断やrollback方針を決めない。coordinatorだけが次phaseへ進むか、止めるか、rollbackするかを決める。
 
-## 永続状態
+## 旧経路参考: 永続状態
 
 `logs/deploy/fleet-release-state.json` がrelease判断の唯一の正本である。
 
@@ -128,7 +134,7 @@ Pi5はさらにactive slot、API/Web image、config digest、migration digestを
 
 各runのstatusとcontrol requestは、per-run lockで保護した現行形式だけを使う。`--status` はsystemd unitとこのstateを照合する。実体が確認できない成功記録はfleet evidenceへ昇格しない。
 
-## evidenceと対象最小化
+## 旧経路参考: evidenceと対象最小化
 
 除外根拠に使えるのは `evidence=verified` だけである。目標SHAと実行中SHAが一致しても、実機検証が欠けるhostは除外しない。
 
@@ -139,7 +145,7 @@ Pi5はさらにactive slot、API/Web image、config digest、migration digestを
 
 `--print-plan` はstateを作成・更新しない。
 
-## Pi5 executor
+## 旧経路参考: Pi5 executor
 
 Pi5処理は次の責務に分かれる。
 
@@ -150,7 +156,7 @@ Pi5処理は次の責務に分かれる。
 
 candidate build後のload evidenceは最終検証で再利用する。databaseはrollbackせず、旧API互換を保つmigrationだけを許可する。API/Web image、config digest、migration digestが揃わない限りPi5を成功扱いにしない。
 
-## Terminal executor
+## 旧経路参考: Terminal executor
 
 端末はregistryの `rolloutOrder`、profile内canary、inventory順で一台ずつ処理する。通知秒数と `human` / `health-only` approvalはprofileが明示する。現在のKioskは60秒通知とhuman gate、Signageは通知なしとhealth-onlyであり、既存順序を保持する。
 
@@ -165,19 +171,19 @@ candidate build後のload evidenceは最終検証で再利用する。database�
 
 `ready` ACKはreleaseSha一致を必須とする。HTTP 401や確認失敗を成功扱いにせず、maintenanceは一致確認後だけ解除する。
 
-## rollback
+## 旧経路参考: rollback
 
 rollback責任者はcoordinatorだけである。変更前にrun専用manifestへsource、destination、checksum、repository/runtime情報を記録し、そのmanifestだけを復元する。Ansible内部の推測rollbackや最新ファイル探索は行わない。
 
 失敗時は後続hostへ進まず、rollback結果を記録する。復元の検証に失敗したhostは `unknown` とし、次の標準planから消さない。
 
-## cancelと再起動
+## 旧経路参考: cancelと再起動
 
 cancelはcontrol stateへ理由付き要求を書き、coordinatorがphase境界で処理する。cancel経路はfetchやcheckoutをしない。crashまたはreboot後はsystemd unit、run state、fleet state、manifest証跡を照合し、成功を推測しない。
 
 processのkill、lock削除、state手編集は運用手順に含めない。
 
-## 公開契約
+## 旧経路参考: 公開契約
 
 ```text
 update-all-clients.sh <branch> <inventory> [--limit PATTERN] [--full-fleet] [--detach]

@@ -2,13 +2,12 @@
 id: ansible-deploy-standardization
 title: Standardize Pi release execution around Ansible
 status: in_progress
-scope: additive foundation route; the current canonical wrapper remains unchanged
+scope: PR 1 foundation merged; PR 2 canonical wrapper cutover in progress
 date: 2026-08-07
 source_of_truth: docs/plans/ansible-deploy-standardization-execplan.md
 validation: local static, unit, Ansible, Docker, and disposable PostgreSQL tests only
 open_items:
-  - merge and hosted CI for the foundation route
-  - separately approved canonical cutover after the foundation merge
+  - local and hosted CI for the canonical wrapper cutover
   - separately approved hardware canary before legacy removal
 ---
 
@@ -59,8 +58,21 @@ contract tests. No command in this plan is authorized to contact a Pi.
   fixed allowlist without rehashing payloads, remove write permission, and
   atomically rename to the digest path. Cleanup removes only the temporary
   directory.
-- [ ] Merge and hosted CI remain integration-pending. Canonical cutover and
-  hardware work are outside this foundation branch.
+- [x] (2026-08-08 00:00Z) PR 1 merged as
+  `93204d6751f6dc658f40d35214344eebbe78a040`; hosted CI and exact-SHA artifact
+  publication succeeded.
+- [x] (2026-08-08 00:00Z) Preserved the original two-file WIP and created
+  `refactor/ansible-deploy-standardization-cutover` from the PR 1 merge SHA in
+  a separate clean worktree.
+- [x] (2026-08-08 00:00Z) Replaced the canonical wrapper target with one thin,
+  purpose-specific launcher and added focused parser, target, argv, plan,
+  systemd status/detach, and legacy-lock contention contracts.
+- [x] (2026-08-08 01:06Z) Completed the final local contract on Node 24.3.0,
+  pnpm 9.15.9, and `CI=1`: 1,135 Python tests passed with one skip, both
+  inventories and all Ansible checks passed, and disposable PostgreSQL and
+  Docker resources were removed.
+- [ ] Complete independent diff review, Draft PR, and hosted CI. Hardware work
+  and legacy removal remain outside PR 2.
 
 ## Surprises & Discoveries
 
@@ -143,6 +155,14 @@ contract tests. No command in this plan is authorized to contact a Pi.
   This proves the temporary tree is safe without creating per-file runtime
   identities or a new artifact manager.
   Date/Author: 2026-08-07 / Codex and user.
+
+- Decision: keep the PR 2 launcher as one linear production file and reuse the
+  existing transient systemd command and global kernel lock directly.
+  Rationale: parser, published artifact resolution, argv construction, and one
+  Ansible exec do not justify recreating application/domain/adapter layers.
+  Using `logs/deploy/fleet-release-state.lock` also prevents concurrent old and
+  new routes while the old implementation remains in the repository.
+  Date/Author: 2026-08-08 / Codex and user.
 
 ## Outcomes & Retrospective
 
@@ -229,8 +249,8 @@ cannot regress.
 
 ## Concrete Steps
 
-All commands run in
-`/Users/tsudatakashi/RaspberryPiSystem_002-deploy-standardization-foundation`.
+PR 2 commands run in
+`/Users/tsudatakashi/RaspberryPiSystem_002-deploy-standardization-cutover`.
 Do not run `scripts/update-all-clients.sh`, production preflight, SSH, cleanup,
 or rollback commands.
 
@@ -294,6 +314,14 @@ remaining `rolling-deploy-status-*`, `postgres-role-contract-*`, or
 `runtime-audit-*` container, volume, or network. The current diff, including
 untracked files, is 2,591 additions and 122 deletions. The rejected 169-line
 derived builder is absent; `signage-distribution-artifact.py` is the sole builder.
+
+PR 2 local evidence on 2026-08-08: 38 focused Python contracts and the strict
+shell entrypoint contract passed. The final full runner passed 1,135 Python
+tests with one skip, applied and verified all 157 Prisma migrations in its
+disposable PostgreSQL instance, ran 20 deploy-status API tests, checked both
+inventory paths and all Ansible playbooks, and reported zero remaining
+run-scoped container, volume, or network resources. No SSH or managed-host
+operation was performed.
 
 ## Interfaces and Dependencies
 

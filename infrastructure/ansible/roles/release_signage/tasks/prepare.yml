@@ -45,8 +45,8 @@
       if [[ -n "${container}" ]]; then docker rm -f "${container}" >/dev/null 2>&1 || true; fi
     }
     trap cleanup EXIT
-    docker image pull "${image}"
-    container="$(docker create "${image}")"
+    docker image pull --platform linux/arm/v7 "${image}"
+    container="$(docker create "${image}" /signage-release.tar)"
     docker cp "${container}:/signage-release.tar" "${output}"
     chmod 0600 "${output}"
   args:
