@@ -74,6 +74,32 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertIn("docker\n      - image\n      - pull", prepare)
         self.assertIn("up -d --no-build", switch)
 
+    def test_pi4_removes_only_this_run_backups_after_verified_outcome(self) -> None:
+        cleanup_path = ANSIBLE / "roles/release_kiosk/tasks/cleanup.yml"
+        cleanup_tasks = yaml.safe_load(cleanup_path.read_text(encoding="utf-8"))
+        backup_cleanup = next(
+            task
+            for task in cleanup_tasks
+            if task["name"] == "Remove this run's Pi4 file backups after a verified outcome"
+        )
+        self.assertEqual(
+            backup_cleanup["ansible.builtin.file"],
+            {"path": "{{ item.backup_file }}", "state": "absent"},
+        )
+        self.assertEqual(
+            backup_cleanup["loop"],
+            "{{ release_kiosk_install.results | default([]) }}",
+        )
+        self.assertEqual(
+            backup_cleanup["when"],
+            [
+                "item.changed | default(false) | bool",
+                "item.backup_file is defined",
+                "release_kiosk_healthy | default(false) | bool or release_kiosk_rolled_back | default(false) | bool",
+            ],
+        )
+        self.assertTrue(backup_cleanup["no_log"])
+
     def test_pi3_has_one_target_hash_and_no_target_network_fetch(self) -> None:
         signage = role_text("release_signage")
         prepare = (

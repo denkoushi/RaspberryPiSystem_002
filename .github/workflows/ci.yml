@@ -505,7 +505,7 @@ jobs:
           poetry run ruff check torque_agent tests
 
   pi4-agent-image-contract:
-    name: pi4-agent-image-contract (${{ matrix.service }})
+    name: pi4-agent-image-contract (${{ matrix.service }}, ${{ matrix.platform }})
     needs: change-classification
     if: ${{ needs.change-classification.outputs.client == 'true' }}
     runs-on: ubuntu-latest
@@ -516,30 +516,54 @@ jobs:
           - service: nfc-agent
             image: raspisys-nfc-agent-contract
             dockerfile: infrastructure/docker/Dockerfile.nfc-agent
+            platform: linux/arm64
+            platform_tag: linux-arm64
+          - service: nfc-agent
+            image: raspisys-nfc-agent-contract
+            dockerfile: infrastructure/docker/Dockerfile.nfc-agent
+            platform: linux/arm/v7
+            platform_tag: linux-arm-v7
           - service: barcode-agent
             image: raspisys-barcode-agent-contract
             dockerfile: infrastructure/docker/Dockerfile.barcode-agent
+            platform: linux/arm64
+            platform_tag: linux-arm64
+          - service: barcode-agent
+            image: raspisys-barcode-agent-contract
+            dockerfile: infrastructure/docker/Dockerfile.barcode-agent
+            platform: linux/arm/v7
+            platform_tag: linux-arm-v7
           - service: torque-agent
             image: raspisys-torque-agent-contract
             dockerfile: infrastructure/docker/Dockerfile.torque-agent
+            platform: linux/arm64
+            platform_tag: linux-arm64
+          - service: torque-agent
+            image: raspisys-torque-agent-contract
+            dockerfile: infrastructure/docker/Dockerfile.torque-agent
+            platform: linux/arm/v7
+            platform_tag: linux-arm-v7
     steps:
       - name: Checkout exact candidate source
         uses: actions/checkout@v6
+
+      - name: Set up QEMU for the selected Pi4 platform
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
       - name: Build the Pi4 agent image contract
         run: |
-          docker buildx build --load --platform linux/amd64 \
+          docker buildx build --load --platform "${{ matrix.platform }}" \
             --file "${{ matrix.dockerfile }}" \
-            --tag "${{ matrix.image }}:${GITHUB_SHA}" .
+            --tag "${{ matrix.image }}:${GITHUB_SHA}-${{ matrix.platform_tag }}" .
 
       - name: Scan the Pi4 agent image contract
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
           scan-type: image
-          image-ref: ${{ matrix.image }}:${{ github.sha }}
+          image-ref: ${{ matrix.image }}:${{ github.sha }}-${{ matrix.platform_tag }}
           ignore-unfixed: true
           severity: HIGH,CRITICAL
           exit-code: '1'
