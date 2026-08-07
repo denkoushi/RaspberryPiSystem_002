@@ -14,13 +14,15 @@ RUN poetry config virtualenvs.create false \
 COPY clients/torque-agent/README.md ./README.md
 COPY clients/torque-agent/torque_agent ./torque_agent
 RUN poetry build --format wheel \
-  && /opt/venv/bin/pip install --no-deps dist/*.whl
+  && /opt/venv/bin/pip install --no-deps dist/*.whl \
+  && python -m pip uninstall --yes pip setuptools wheel
 
 FROM python:3.11-slim AS runtime
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PATH="/opt/venv/bin:$PATH"
+RUN python -m pip uninstall --yes pip setuptools wheel
 COPY --from=builder /opt/venv /opt/venv
 COPY clients/torque-agent ./torque-agent
 WORKDIR /app/torque-agent

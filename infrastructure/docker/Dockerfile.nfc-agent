@@ -1,13 +1,28 @@
 # syntax=docker/dockerfile:1
-FROM python:3.11-slim
-WORKDIR /app
+FROM python:3.11-slim AS builder
+WORKDIR /build
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    pcscd pcsc-tools libpcsclite-dev build-essential swig && rm -rf /var/lib/apt/lists/*
-COPY clients/nfc-agent/pyproject.toml ./pyproject.toml
-RUN pip install poetry && poetry config virtualenvs.create false && \
-    poetry install --without dev --no-root
+    libpcsclite-dev build-essential swig && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir poetry
+RUN python -m venv /opt/venv
+ENV VIRTUAL_ENV="/opt/venv"
+ENV PATH="/opt/venv/bin:$PATH"
+COPY clients/nfc-agent/pyproject.toml clients/nfc-agent/poetry.lock ./
+RUN poetry config virtualenvs.create false \
+    && poetry install --only main --no-root --no-interaction \
+    && python -m pip uninstall --yes pip setuptools wheel
+
+FROM python:3.11-slim AS runtime
+WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PATH="/opt/venv/bin:$PATH"
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pcscd pcsc-tools libpcsclite1 && rm -rf /var/lib/apt/lists/* \
+    && python -m pip uninstall --yes pip setuptools wheel
+COPY --from=builder /opt/venv /opt/venv
 COPY clients/nfc-agent ./nfc-agent
 WORKDIR /app/nfc-agent
 CMD ["python", "-m", "nfc_agent"]
