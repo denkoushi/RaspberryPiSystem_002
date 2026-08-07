@@ -1,0 +1,7 @@
+---
+- name: Run Pi3 Signage release health checks
+  ansible.builtin.import_tasks: health_checks.yml
+
+- name: Record verified Pi3 Signage health
+  ansible.builtin.set_fact:
+    release_signage_healthy: true

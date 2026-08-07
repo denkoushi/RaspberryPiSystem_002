@@ -1,0 +1,35 @@
+---
+- name: Monitor the switched Pi5 slot through the stability window
+  ansible.builtin.command:
+    argv:
+      - "{{ release_pi5_project_dir }}/scripts/deploy/pi5-blue-green.sh"
+      - monitor
+  changed_when: false
+
+- name: Verify the public Pi5 API after the traffic switch
+  ansible.builtin.uri:
+    url: https://127.0.0.1/api/system/health
+    method: GET
+    validate_certs: false
+    status_code: 200
+    timeout: 10
+  register: release_pi5_api_health
+  retries: 3
+  delay: 2
+  until: release_pi5_api_health.status == 200
+
+- name: Verify the public Pi5 Web endpoint after the traffic switch
+  ansible.builtin.uri:
+    url: https://127.0.0.1/
+    method: GET
+    validate_certs: false
+    status_code: 200
+    timeout: 10
+  register: release_pi5_web_health
+  retries: 3
+  delay: 2
+  until: release_pi5_web_health.status == 200
+
+- name: Record verified Pi5 health
+  ansible.builtin.set_fact:
+    release_pi5_healthy: true

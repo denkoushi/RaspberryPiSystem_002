@@ -9,6 +9,14 @@ last_verified: 2026-08-03
 
 通常の本番更新は、リポジトリ直下の `scripts/update-all-clients.sh` だけを入口にする。Pi5、Kiosk、Signageを個別に直接更新しない。オーケストレーターが差分、実機証跡、依存関係から対象と順序を決める。
 
+> **Foundation注記（2026-08-07）:** `playbooks/deploy-release-standard.yml` と `release_pi5` / `release_kiosk` / `release_signage` rolesは、Ansible中心の次期経路をローカル・CIで検証するために追加されている。現時点では通常入口から呼ばれず、operator向け本番手順ではない。PR 2のcanonical切替と、実機canary・時間計測・rollback確認は、それぞれ別の明示承認を必要とする。
+
+このfoundationで固定した境界は次のとおりである。
+
+- Pi5: 稼働中にCI image、資源、migrationをAnsibleが直接確認し、既存Blue/Greenのslot lifecycleだけを利用する。sealed evidence、TTL、過去runを通常Deployの入力にしない。
+- Pi4: exact `--limit`と`serial: 1`で一台ずつ、image pull完了後に`--no-build`で変更serviceだけを切り替える。他hostは停止しない。
+- Pi3: controllerから完成tarを転送し、端末で代表SHA-256を一度確認する。固定allowlistを検証してrun-scoped tempへ展開・read-only化後、digest名へatomic renameする。端末固有値はimmutable release外のenv/drop-inに置き、Pi3からGit、GHCR、外部HTTPへ接続しない。
+
 ### 標準更新入口（ローリング・端末別メンテナンス）
 
 公開CLIは次のとおり。

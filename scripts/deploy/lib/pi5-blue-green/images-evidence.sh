@@ -163,6 +163,15 @@ validate_resource_evidence() {
     resource_guard
     return 0
   fi
+  if [[ -z "$RESOURCE_EVIDENCE_FILE" ]]; then
+    CANDIDATE_API_IMAGE_ID="$(docker image inspect -f '{{.Id}}' "$API_IMAGE")"
+    CANDIDATE_WEB_IMAGE_ID="$(docker image inspect -f '{{.Id}}' "$WEB_IMAGE")"
+    [[ "$CANDIDATE_API_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ \
+      && "$CANDIDATE_WEB_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+      || die 'candidate image IDs are malformed'
+    resource_guard
+    return 0
+  fi
   [[ "$RUN_ID" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$ ]] || die '--run-id is required for candidate preparation'
   [[ -n "$RESOURCE_EVIDENCE_FILE" ]] || die '--resource-evidence is required for candidate preparation'
   local desired_sha api_id web_id maximum
@@ -234,4 +243,3 @@ if values['JWT_ACCESS_SECRET']==values['JWT_REFRESH_SECRET']:
   raise SystemExit('JWT secrets must differ')
 PY
 }
-

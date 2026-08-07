@@ -1,0 +1,35 @@
+---
+# Additive Ansible-first release route. The canonical wrapper does not invoke
+# this playbook until the separately reviewed cutover milestone.
+- name: Prepare and switch the Pi5 control plane
+  hosts: server
+  gather_facts: false
+  become: true
+  serial: 1
+  order: inventory
+  tags:
+    - pi5
+  roles:
+    - role: release_pi5
+
+- name: Update Pi4 kiosks one target at a time
+  hosts: kiosk
+  gather_facts: false
+  become: true
+  serial: 1
+  order: inventory
+  tags:
+    - pi4
+  roles:
+    - role: release_kiosk
+
+- name: Switch the prepared Pi3 Signage artifact
+  hosts: signage
+  gather_facts: false
+  become: true
+  serial: 1
+  order: inventory
+  tags:
+    - pi3
+  roles:
+    - role: release_signage

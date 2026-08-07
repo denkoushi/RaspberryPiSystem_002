@@ -1,0 +1,4 @@
+[Service]
+User={{ ansible_user }}
+EnvironmentFile=/etc/raspisystem-signage/runtime.env
+Environment=XAUTHORITY=/home/{{ ansible_user }}/.Xauthority

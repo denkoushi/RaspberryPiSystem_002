@@ -1,0 +1,19 @@
+---
+- name: Prepare, switch, and finalize one Pi3 Signage release
+  block:
+    - name: Prepare the Pi3 artifact while the normal signage remains visible
+      ansible.builtin.import_tasks: prepare.yml
+
+    - name: Switch and verify the Pi3 Signage artifact
+      block:
+        - name: Switch Pi3 Signage to the prepared release
+          ansible.builtin.import_tasks: switch.yml
+
+        - name: Verify Pi3 Signage health
+          ansible.builtin.import_tasks: health.yml
+      rescue:
+        - name: Restore the previous Pi3 Signage release
+          ansible.builtin.import_tasks: rollback.yml
+  always:
+    - name: Remove Pi3 run-scoped staging data
+      ansible.builtin.import_tasks: cleanup.yml

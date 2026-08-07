@@ -7,9 +7,10 @@ Wants=graphical.target
 
 [Service]
 Type=simple
-User={{ ansible_user }}
+User=raspisystem-signage-unconfigured
+EnvironmentFile=/etc/raspisystem-signage/runtime.env
 Environment=DISPLAY=:0
-Environment=XAUTHORITY=/home/{{ ansible_user }}/.Xauthority
+Environment=XAUTHORITY=/nonexistent/.Xauthority
 
 # DISPLAYが利用可能になるまで待機（最大30秒）
 ExecStartPre=/bin/bash -c 'for i in {1..30}; do [ -n "$DISPLAY" ] && xset q >/dev/null 2>&1 && break || sleep 1; done'
@@ -32,4 +33,3 @@ StandardError=journal
 
 [Install]
 WantedBy=graphical.target
-

@@ -29,7 +29,11 @@ REPO_PATH="{{ repo_path | default('/opt/RaspberryPiSystem_002') }}"
 
 # Pi5 上の Web SPA 更新を Pi4 Firefox に届ける（clientKey だけでは URL が不変でキャッシュされ得る）
 KIOSK_TARGET_URL="{{ kiosk_url }}"
-if APP_REF="$(git -C "${REPO_PATH}" rev-parse --short HEAD 2>/dev/null)"; then
+APP_REF="{{ kiosk_release_sha | default('') }}"
+if [[ -z "${APP_REF}" ]]; then
+  APP_REF="$(git -C "${REPO_PATH}" rev-parse --short HEAD 2>/dev/null || true)"
+fi
+if [[ -n "${APP_REF}" ]]; then
   if [[ "${KIOSK_TARGET_URL}" == *'?'* ]]; then
     KIOSK_TARGET_URL="${KIOSK_TARGET_URL}&_appRef=${APP_REF}"
   else

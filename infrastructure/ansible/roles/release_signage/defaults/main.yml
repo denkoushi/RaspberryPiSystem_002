@@ -1,0 +1,40 @@
+---
+release_sha: ""
+release_run_id: ""
+release_signage_artifact_image: "ghcr.io/denkoushi/raspisys-pi3-signage:{{ release_sha }}"
+release_signage_artifact_path: ""
+release_signage_artifact_sha256: ""
+release_signage_controller_root: /var/lib/raspi-release/signage-artifacts
+release_signage_root: /opt/raspisystem-signage
+release_signage_stage_root: /var/tmp/raspisystem-signage-stage
+release_signage_config_root: /etc/raspisystem-signage
+release_signage_services:
+  - status-agent.timer
+  - signage-lite-update.timer
+  - signage-lite-watchdog.timer
+  - signage-daily-reboot.timer
+  - signage-lite.service
+release_signage_stop_services:
+  - status-agent.timer
+  - signage-lite-update.timer
+  - signage-lite-watchdog.timer
+  - signage-daily-reboot.timer
+  - signage-lite-update.service
+  - signage-lite-watchdog.service
+  - signage-lite.service
+release_signage_payloads:
+  - {path: bin/raspi-signage-status-agent.pyz, dest: /usr/local/bin/raspi-signage-status-agent.pyz}
+  - {path: bin/signage-display.sh, dest: /usr/local/bin/signage-display.sh}
+  - {path: bin/signage-lite-watchdog.sh, dest: /usr/local/bin/signage-lite-watchdog.sh}
+  - {path: bin/signage-stop.sh, dest: /usr/local/bin/signage-stop.sh}
+  - {path: bin/signage-update.sh, dest: /usr/local/bin/signage-update.sh}
+  - {path: share/signage-maintenance.svg, dest: /usr/local/share/signage-maintenance.svg}
+  - {path: systemd/signage-daily-reboot.service, dest: /etc/systemd/system/signage-daily-reboot.service}
+  - {path: systemd/signage-daily-reboot.timer, dest: /etc/systemd/system/signage-daily-reboot.timer}
+  - {path: systemd/signage-lite-update.service, dest: /etc/systemd/system/signage-lite-update.service}
+  - {path: systemd/signage-lite-update.timer, dest: /etc/systemd/system/signage-lite-update.timer}
+  - {path: systemd/signage-lite-watchdog.service, dest: /etc/systemd/system/signage-lite-watchdog.service}
+  - {path: systemd/signage-lite-watchdog.timer, dest: /etc/systemd/system/signage-lite-watchdog.timer}
+  - {path: systemd/signage-lite.service, dest: /etc/systemd/system/signage-lite.service}
+  - {path: systemd/status-agent.service, dest: /etc/systemd/system/status-agent.service}
+  - {path: systemd/status-agent.timer, dest: /etc/systemd/system/status-agent.timer}

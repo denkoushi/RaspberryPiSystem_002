@@ -1,0 +1,51 @@
+services:
+{% if 'nfc-agent' in release_kiosk_services %}
+  nfc-agent:
+    image: {{ release_kiosk_compose_images['nfc-agent'] | to_json }}
+    network_mode: host
+    privileged: true
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+    env_file:
+      - {{ (release_kiosk_project_dir ~ '/clients/nfc-agent/.env') | to_json }}
+    volumes:
+      - nfc-agent-data:/data
+      - /run/pcscd:/run/pcscd:ro
+    restart: unless-stopped
+{% endif %}
+{% if 'barcode-agent' in release_kiosk_services %}
+  barcode-agent:
+    image: {{ release_kiosk_compose_images['barcode-agent'] | to_json }}
+    network_mode: host
+    privileged: true
+    env_file:
+      - {{ (release_kiosk_project_dir ~ '/clients/barcode-agent/.env') | to_json }}
+    restart: unless-stopped
+{% endif %}
+{% if 'torque-agent' in release_kiosk_services %}
+  torque-agent:
+    image: {{ release_kiosk_compose_images['torque-agent'] | to_json }}
+    network_mode: host
+    privileged: true
+    env_file:
+      - {{ (release_kiosk_project_dir ~ '/clients/torque-agent/.env') | to_json }}
+    volumes:
+      - torque-agent-data:/data
+      - /dev/input:/dev/input
+      - /run/torque-bluetooth-guard:/run/torque-bluetooth-guard
+    healthcheck:
+      test: [CMD, python, -c, "import json,urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:7073/health', timeout=3)); assert data.get('ok') is True"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+{% endif %}
+
+volumes:
+{% if 'nfc-agent' in release_kiosk_services %}
+  nfc-agent-data:
+{% endif %}
+{% if 'torque-agent' in release_kiosk_services %}
+  torque-agent-data:
+{% endif %}

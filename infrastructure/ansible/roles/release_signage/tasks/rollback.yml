@@ -1,0 +1,55 @@
+---
+- name: Stop Pi3 units before restoring the previous release
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+  loop: "{{ release_signage_stop_services + ['lightdm.service'] }}"
+  when: release_signage_switch_attempted | default(false) | bool
+
+- name: Atomically restore Pi3 current from previous
+  ansible.builtin.shell: |
+    set -euo pipefail
+    root={{ release_signage_root | quote }}
+    target="$(readlink -f "${root}/previous")"
+    [[ "${target}" == "${root}/releases/"* ]]
+    temporary="${root}/.current-${RANDOM}-$$"
+    ln -s "${target}" "${temporary}"
+    mv -Tf "${temporary}" "${root}/current"
+  args:
+    executable: /bin/bash
+  when: release_signage_switch_attempted | default(false) | bool
+  changed_when: true
+
+- name: Reload restored Pi3 systemd units
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: release_signage_switch_attempted | default(false) | bool
+
+- name: Start the restored Pi3 display manager
+  ansible.builtin.systemd:
+    name: lightdm.service
+    state: started
+  when: release_signage_switch_attempted | default(false) | bool
+
+- name: Start restored Pi3 Signage services
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: started
+  loop: "{{ release_signage_services }}"
+  when: release_signage_switch_attempted | default(false) | bool
+
+- name: Verify the complete restored Pi3 runtime
+  ansible.builtin.import_tasks: health_checks.yml
+  when: release_signage_switch_attempted | default(false) | bool
+
+- name: Record completed Pi3 rollback
+  ansible.builtin.set_fact:
+    release_signage_rolled_back: true
+  when: release_signage_switch_attempted | default(false) | bool
+
+- name: Fail the release after verified Pi3 rollback
+  ansible.builtin.fail:
+    msg: >-
+      Pi3 Signage candidate failed health verification;
+      {{ 'previous was restored' if release_signage_switch_attempted | default(false) | bool
+         else 'no switch was performed' }}.

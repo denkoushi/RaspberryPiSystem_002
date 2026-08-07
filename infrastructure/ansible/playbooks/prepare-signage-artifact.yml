@@ -1,7 +1,7 @@
 ---
-# Render only the seven host-bound Stage 1 payloads into the already verified,
-# run-scoped Stage 2 staging tree.  Activation is owned by the target helper;
-# this playbook never touches live paths, systemd, maintenance, or current.
+# The artifact is host-neutral and immutable. Host settings are managed outside
+# the release tree by the Signage role, so this compatibility entrypoint only
+# validates the old coordinator hand-off and never creates rendered payloads.
 - name: Prepare one verified Pi3 Signage artifact candidate
   hosts: signage
   gather_facts: false
@@ -58,31 +58,6 @@
         fail_msg: Signage rendered candidate path already exists
 
   tasks:
-    - name: Create the fixed rendered payload directories
-      ansible.builtin.file:
-        path: "{{ terminal_signage_artifact_stage.renderedRoot }}/{{ item }}"
-        state: directory
-        owner: root
-        group: root
-        mode: '0700'
-      loop:
-        - bin
-        - systemd
-        - tmpfiles
-
-    - name: Render the fixed host-bound Signage payload allowlist
-      ansible.builtin.template:
-        src: "{{ playbook_dir }}/../roles/signage/templates/{{ item.template }}"
-        dest: "{{ terminal_signage_artifact_stage.renderedRoot }}/{{ item.path }}"
-        owner: root
-        group: root
-        mode: "{{ item.mode }}"
-      loop:
-        - {template: signage-display.sh.j2, path: bin/signage-display.sh, mode: '0755'}
-        - {template: signage-update.sh.j2, path: bin/signage-update.sh, mode: '0755'}
-        - {template: signage-lite-update.service.j2, path: systemd/signage-lite-update.service, mode: '0644'}
-        - {template: signage-lite-update.timer.j2, path: systemd/signage-lite-update.timer, mode: '0644'}
-        - {template: signage-lite-watchdog.service.j2, path: systemd/signage-lite-watchdog.service, mode: '0644'}
-        - {template: signage-lite.service.j2, path: systemd/signage-lite.service, mode: '0644'}
-        - {template: signage-lite.tmpfiles.conf.j2, path: tmpfiles/signage-lite.conf, mode: '0644'}
-      no_log: true
+    - name: Confirm the immutable artifact requires no host-bound rendering
+      ansible.builtin.debug:
+        msg: Host-specific Signage settings are external to the immutable artifact.

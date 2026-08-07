@@ -56,6 +56,13 @@ GLOBAL_PATHS = frozenset(
         "turbo.json",
     }
 )
+PI4_AGENT_DOCKERFILES = frozenset(
+    {
+        "infrastructure/docker/Dockerfile.nfc-agent",
+        "infrastructure/docker/Dockerfile.barcode-agent",
+        "infrastructure/docker/Dockerfile.torque-agent",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -145,6 +152,8 @@ def _base_categories_for_path(path: str) -> frozenset[str] | None:
 
     if normalized == "infrastructure/docker/Dockerfile.kiosk-sop-generator":
         return frozenset({"repo_policy", "kiosk_sop", "docker_security"})
+    if normalized in PI4_AGENT_DOCKERFILES:
+        return frozenset({"repo_policy", "client", "docker_security"})
     if normalized == "infrastructure/docker/Dockerfile.web" or (
         _has_prefix(normalized, "infrastructure/docker")
         and PurePosixPath(normalized).name.startswith("Caddyfile")
@@ -239,6 +248,8 @@ def codeql_for_path(path: str) -> bool:
 def docker_images_for_path(path: str) -> frozenset[str]:
     """Return Docker images whose filesystem may change for a known path."""
     normalized = _normalize_path(path)
+    if normalized in PI4_AGENT_DOCKERFILES:
+        return frozenset()
     if _signage_artifact_exclusive_path(normalized):
         return frozenset()
     if normalized in {
@@ -275,6 +286,8 @@ def release_pair_for_path(path: str) -> bool:
     """
 
     normalized = _normalize_path(path)
+    if normalized in PI4_AGENT_DOCKERFILES:
+        return False
     if _signage_artifact_exclusive_path(normalized):
         return False
     if normalized in GLOBAL_PATHS:

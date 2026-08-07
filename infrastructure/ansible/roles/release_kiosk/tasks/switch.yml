@@ -1,0 +1,52 @@
+---
+- name: Create stable Pi4 release directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - /etc/raspi-release
+    - /usr/local/lib/raspi-status-agent
+
+- name: Mark the Pi4 switch boundary
+  ansible.builtin.set_fact:
+    release_kiosk_switch_attempted: true
+
+- name: Install the staged Pi4 release files with standard backups
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+    backup: true
+  loop: "{{ release_kiosk_files }}"
+  register: release_kiosk_install
+  no_log: true
+
+- name: Reload Pi4 systemd units after the staged file switch
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Recreate only enabled Pi4 agents from pre-pulled images
+  ansible.builtin.command: >-
+    docker compose --project-name {{ release_kiosk_compose_project | quote }}
+    -f /etc/raspi-release/client-compose.yml
+    up -d --no-build {{ release_kiosk_services | join(' ') }}
+  register: release_kiosk_compose_switch
+  changed_when: true
+
+- name: Restart the kiosk browser to apply the exact release SHA
+  ansible.builtin.systemd:
+    name: kiosk-browser.service
+    state: restarted
+    enabled: true
+
+- name: Ensure the status-agent timer uses the staged implementation
+  ansible.builtin.systemd:
+    name: status-agent.timer
+    state: restarted
+    enabled: true

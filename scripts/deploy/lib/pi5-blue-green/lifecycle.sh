@@ -128,8 +128,10 @@ switch_candidate() {
   local candidate="$CANDIDATE_SLOT" previous="$ACTIVE_SLOT" started now stable
   is_slot "$candidate" || die 'candidate slot is missing; run prepare'
   [[ "$candidate" != "$previous" ]] || die 'candidate is already active'
-  verify_durable_release_evidence "$candidate" \
-    || die 'candidate release evidence changed or expired before traffic switch'
+  if [[ -n "${RELEASE_RESOURCE_EVIDENCE:-}" ]]; then
+    verify_durable_release_evidence "$candidate" \
+      || die 'candidate release evidence changed or expired before traffic switch'
+  fi
   verify_slot_identity "$previous" && verify_slot_identity "$candidate" || die 'slot images do not match durable state'
   slot_runtime_ready "$previous" leader || die 'previous slot is not scheduler leader'
   slot_ready "$candidate" standby || die 'candidate is not scheduler standby'

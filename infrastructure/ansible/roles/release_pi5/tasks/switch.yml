@@ -1,0 +1,16 @@
+---
+- name: Mark the Pi5 traffic switch boundary
+  ansible.builtin.set_fact:
+    release_pi5_switch_attempted: true
+
+- name: Atomically switch Pi5 traffic to the candidate slot
+  ansible.builtin.command:
+    argv:
+      - "{{ release_pi5_project_dir }}/scripts/deploy/pi5-blue-green.sh"
+      - switch
+  register: release_pi5_switch
+  changed_when: true
+
+- name: Record the completed Pi5 traffic switch
+  ansible.builtin.set_fact:
+    release_pi5_switched: true

@@ -647,24 +647,25 @@ def prepare_candidate(
         for record in artifact_manifest["files"]
         if record["templated"] is True
     }
-    try:
-        rendered_metadata = rendered_root.lstat()
-        rendered_entries = list(rendered_root.rglob("*"))
-    except OSError as error:
-        raise ActivationError(
-            "render-verification", "Rendered Signage root is unavailable"
-        ) from error
     rendered_files: set[str] = set()
-    if not stat.S_ISDIR(rendered_metadata.st_mode) or stat.S_ISLNK(rendered_metadata.st_mode):
-        raise ActivationError("render-verification", "Rendered Signage root is unsafe")
-    for entry in rendered_entries:
-        metadata = entry.lstat()
-        if stat.S_ISLNK(metadata.st_mode) or not (
-            stat.S_ISDIR(metadata.st_mode) or stat.S_ISREG(metadata.st_mode)
-        ):
-            raise ActivationError("render-verification", "Rendered Signage tree is unsafe")
-        if stat.S_ISREG(metadata.st_mode):
-            rendered_files.add(entry.relative_to(rendered_root).as_posix())
+    if expected_rendered:
+        try:
+            rendered_metadata = rendered_root.lstat()
+            rendered_entries = list(rendered_root.rglob("*"))
+        except OSError as error:
+            raise ActivationError(
+                "render-verification", "Rendered Signage root is unavailable"
+            ) from error
+        if not stat.S_ISDIR(rendered_metadata.st_mode) or stat.S_ISLNK(rendered_metadata.st_mode):
+            raise ActivationError("render-verification", "Rendered Signage root is unsafe")
+        for entry in rendered_entries:
+            metadata = entry.lstat()
+            if stat.S_ISLNK(metadata.st_mode) or not (
+                stat.S_ISDIR(metadata.st_mode) or stat.S_ISREG(metadata.st_mode)
+            ):
+                raise ActivationError("render-verification", "Rendered Signage tree is unsafe")
+            if stat.S_ISREG(metadata.st_mode):
+                rendered_files.add(entry.relative_to(rendered_root).as_posix())
     if rendered_files != expected_rendered:
         raise ActivationError(
             "render-verification", "Rendered Signage payload allowlist changed"

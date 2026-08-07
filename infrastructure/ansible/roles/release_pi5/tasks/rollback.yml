@@ -1,0 +1,27 @@
+---
+- name: Roll back Pi5 when traffic switching was attempted
+  ansible.builtin.command:
+    argv:
+      - "{{ release_pi5_project_dir }}/scripts/deploy/pi5-blue-green.sh"
+      - rollback
+      - --reason
+      - ansible-standard-release-health-failed
+  when: release_pi5_switch_attempted | default(false) | bool
+  changed_when: true
+
+- name: Verify the restored Pi5 API
+  ansible.builtin.uri:
+    url: https://127.0.0.1/api/system/health
+    method: GET
+    validate_certs: false
+    status_code: 200
+    timeout: 10
+  register: release_pi5_rollback_health
+  retries: 3
+  delay: 2
+  until: release_pi5_rollback_health.status == 200
+  when: release_pi5_switch_attempted | default(false) | bool
+
+- name: Fail the release after verified Pi5 rollback
+  ansible.builtin.fail:
+    msg: Pi5 candidate failed health verification; the previous slot was restored.
