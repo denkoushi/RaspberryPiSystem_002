@@ -260,9 +260,15 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("push-to-registry: true", release_set)
         self.assertNotIn("pull_request", release_set)
 
-    def test_security_workflows_keep_fixed_required_names(self) -> None:
+    def test_security_workflows_separate_required_and_audit_names(self) -> None:
         self.assertIn("  codeql:\n    name: codeql", CODEQL)
-        self.assertIn("  gitleaks:\n    name: gitleaks", GITLEAKS)
+        self.assertIn(
+            "    name: >-\n"
+            "      ${{ (github.event_name == 'schedule' ||\n"
+            "          github.event_name == 'workflow_dispatch') &&\n"
+            "          'gitleaks-audit' || 'gitleaks' }}",
+            GITLEAKS,
+        )
         codeql = job_block(CODEQL, "codeql")
         self.assertIn("scripts/ci/classify_event_changes.py", codeql)
         self.assertIn(
