@@ -553,6 +553,7 @@ def _pending_interrupted_recovery_release_claims(
     record: dict[str, Any],
     desired_sha: str,
     run_id: str,
+    locked_release: dict[str, Any] | None = None,
 ) -> dict[str, dict[str, Any]] | None:
     """Rebind forward claims without changing the sealed recovery authority.
 
@@ -572,13 +573,19 @@ def _pending_interrupted_recovery_release_claims(
         raise RuntimeError(
             "interrupted typed release claims require claim requirements"
         )
+    # A typed profile's locked artifact identity is already sealed in the
+    # interrupted record.  It must not be recomputed from the Pi5 checkout;
+    # that checkout is authoritative only for the orchestrator source SHA.
     rebound = dict(record)
     rebound["desiredSha"] = desired_sha
     rebound["claimRequirements"] = [
         {
             "kind": requirement["kind"],
             "expectedIdentity": adapter.expected_claim_identity(
-                runtime, desired_sha, ClaimKind(requirement["kind"])
+                runtime,
+                desired_sha,
+                ClaimKind(requirement["kind"]),
+                locked_release=locked_release,
             ),
             "status": "stale-or-unverified",
         }
@@ -1057,6 +1064,7 @@ def _recover_interrupted_terminals(
     abandoned_run_id: str | None,
     all_hosts: list[dict[str, str]],
     fleet_state: dict[str, Any],
+    scope_request: pi3_artifact_scope.ScopeRequest | None = None,
 ) -> dict[str, Any]:
     """Reconcile an orphaned run before a partial host becomes a baseline.
 
@@ -1121,7 +1129,14 @@ def _recover_interrupted_terminals(
 
     recovery_records: list[dict[str, Any]] = []
     work_items: list[
-        tuple[str, dict[str, Any], dict[str, str], dict[str, Any], str]
+        tuple[
+            str,
+            dict[str, Any],
+            dict[str, str],
+            dict[str, Any],
+            str,
+            dict[str, Any] | None,
+        ]
     ] = []
     for host, fleet_record in affected:
         target_spec = terminal_specs[host]
@@ -1149,11 +1164,27 @@ def _recover_interrupted_terminals(
                 f"interrupted terminal rollback authority is malformed: {host}"
             )
         adapter = _terminal_adapter(runtime, target_spec["terminalType"])
+        locked_release = None
+        if prior_target.get("releaseScope") == pi3_artifact_scope.RELEASE_SCOPE:
+            if scope_request is None:
+                raise RuntimeError(
+                    "interrupted typed release recovery lacks locked scope"
+                )
+            locked_release = pi3_artifact_scope.validate_locked_release(
+                prior_target.get("desiredRelease"), scope_request
+            )
         record = adapter.normalize_interrupted_record(dict(prior_target))
         record["rollbackAuthorityRunId"] = authority_run_id
         recovery_records.append(record)
         work_items.append(
-            (host, fleet_record, target_spec, record, authority_run_id)
+            (
+                host,
+                fleet_record,
+                target_spec,
+                record,
+                authority_run_id,
+                locked_release,
+            )
         )
 
     state.payload["phase"] = "recovering-interrupted-run"
@@ -1171,7 +1202,14 @@ def _recover_interrupted_terminals(
     durable_completed_shas: dict[str, str] = {}
     preflight_records: list[dict[str, Any]] = []
     preflight_issues: list[str] = []
-    for host, _fleet_record, target_spec, record, authority_run_id in work_items:
+    for (
+        host,
+        _fleet_record,
+        target_spec,
+        record,
+        authority_run_id,
+        _locked_release,
+    ) in work_items:
         adapter = _terminal_adapter(runtime, target_spec["terminalType"])
         durable_completed_sha = _durable_completed_terminal_sha(
             record, host=host
@@ -1274,7 +1312,14 @@ def _recover_interrupted_terminals(
         )
 
     current_state = fleet_state
-    for host, fleet_record, target_spec, record, authority_run_id in work_items:
+    for (
+        host,
+        fleet_record,
+        target_spec,
+        record,
+        authority_run_id,
+        locked_release,
+    ) in work_items:
         adapter = _terminal_adapter(runtime, target_spec["terminalType"])
         prior_target = record
 
@@ -1321,6 +1366,7 @@ def _recover_interrupted_terminals(
             record=record,
             desired_sha=desired_sha,
             run_id=run_id,
+            locked_release=locked_release,
         )
         if recovery_claims is None:
             current_state = runtime.fleet_mark_unknown(
@@ -1961,6 +2007,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             abandoned_run_id=abandoned_run_id,
             all_hosts=all_hosts,
             fleet_state=fleet_state,
+            scope_request=scope_request,
         )
         interrupted_recovery_pending = False
 

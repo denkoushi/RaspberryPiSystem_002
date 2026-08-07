@@ -1844,6 +1844,113 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         self.assertEqual(recovery["recovery"], "pre-mutation-live-verified")
         self.assertNotIn("stagedSource", recovery)
 
+    def test_typed_recovery_uses_locked_release_claim_without_checkout_source_sha(self):
+        fixture = ProductionSignageFixture()
+        runtime = fixture.typed_runtime(artifact_state="absent")
+        authority_run_id = "20260807-081145-a123f0"
+        record = runtime.fleet["fleet"][fixture.host]
+        record.update(
+            {
+                "currentSha": None,
+                "previousSha": OLD_SHA,
+                "evidence": "unknown",
+                "verifiedAt": None,
+                "lastRunId": authority_run_id,
+            }
+        )
+        runtime.abandoned_run_id = authority_run_id
+        runtime.deployed_sha[fixture.host] = OLD_SHA
+        runtime.os.environ["ROLLING_RELEASE_RECOVERY_ONLY"] = "1"
+
+        def fail_if_checkout_identity_is_recomputed(_revision):
+            raise AssertionError(
+                "recovery must not reinterpret source SHA as checkout SHA"
+            )
+
+        runtime.signage_release_artifact_identity = (
+            fail_if_checkout_identity_is_recomputed
+        )
+        runtime.prior_runs[authority_run_id] = {
+            "version": 1,
+            "runId": authority_run_id,
+            "state": "failed",
+            "phase": "completed",
+            "targets": [
+                {
+                    **fixture.terminal(),
+                    "desiredSha": NEW_SHA,
+                    "previousSha": OLD_SHA,
+                    "currentSha": None,
+                    "evidence": "unknown",
+                    "state": "failed",
+                    "releaseScope": PI3_SIGNAGE_SCOPE,
+                    "desiredRelease": fixture.scoped_release_authority(),
+                    "releaseClaims": {
+                        "signageReleaseArtifact": {
+                            "authority": "signage-ready",
+                            "expectedIdentity": NEW_ARTIFACT_IDENTITY,
+                            "observedIdentity": None,
+                            "state": "unknown",
+                            "lastRunId": authority_run_id,
+                            "observedAt": None,
+                            "verificationId": None,
+                        }
+                    },
+                    "repositoryBaseline": fixture.baseline("absent"),
+                    "rollbackManifest": {
+                        "schemaVersion": 1,
+                        "kind": "signage-artifact-baseline",
+                        "pointerWasPresent": False,
+                        "previousRelease": "legacy-" + "8" * 64,
+                        "previousReleaseKind": "legacy",
+                        "previousReleaseManifestSha256": "6" * 64,
+                        "previousSourceSha": OLD_SHA,
+                        "previousArtifactSha256": None,
+                        "legacyRepositorySha": OLD_SHA,
+                        "runtimeHealth": rollback_runtime_health("signage"),
+                        "runtime": {
+                            "manifestSha256": "5" * 64,
+                            "unitCount": len(
+                                rollback_runtime_health("signage")[
+                                    "activeSystemdUnits"
+                                ]
+                            ),
+                            "dockerCount": 0,
+                        },
+                        "requireRootOwner": True,
+                    },
+                    "runtimeFinalization": {
+                        "outcome": "committed",
+                        "verifiedSha": OLD_SHA,
+                    },
+                    "claimRequirements": [
+                        {
+                            "kind": "signageReleaseArtifact",
+                            "expectedIdentity": NEW_ARTIFACT_IDENTITY,
+                            "status": "stale-or-unverified",
+                        }
+                    ],
+                }
+            ],
+        }
+
+        self.assertEqual(
+            coordinator.execute(
+                args(
+                    sha=ORCHESTRATOR_SHA,
+                    release_scope=PI3_SIGNAGE_SCOPE,
+                    signage_oci_digest=OCI_DIGEST,
+                ),
+                runtime=runtime,
+                token=FakeToken(runtime.events),
+            ),
+            0,
+        )
+        self.assertIsNone(runtime.fleet["activeRun"])
+        self.assertIn("fleet:finish:success", runtime.events)
+        self.assertNotIn("playbook:raspberrypi3", runtime.events)
+        self.assertNotIn("signage:prestage", runtime.events)
+
     def test_production_signage_post_mutation_rollback_to_legacy_transaction(self):
         fixture = ProductionSignageFixture()
         runtime = fixture.typed_runtime(artifact_state="absent")
