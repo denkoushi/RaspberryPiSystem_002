@@ -2176,19 +2176,35 @@ def preflight_signage_artifact_rollback(
     runtime: Runtime,
 ) -> dict[str, Any]:
     host, terminal_type = _validated_terminal_spec(target_spec)
-    if terminal_type != "signage" or target.get("stagedSource", {}).get("runId") != run_id:
+    if terminal_type != "signage":
+        raise ValueError("Signage rollback preflight authority is malformed")
+    baseline = _stage3_signage_manifest(target.get("rollbackManifest"))
+    reference = target.get("stagedSource")
+    if reference is None:
+        if target.get("maintenanceStartedAt"):
+            raise ValueError("Signage rollback preflight authority is malformed")
+        request = {"baseline": baseline}
+        expected_candidate = None
+    elif isinstance(reference, dict) and reference.get("runId") == run_id:
+        candidate = _signage_candidate_reference(reference)
+        request = {"baseline": baseline, "candidate": candidate}
+        expected_candidate = candidate["release"]
+    else:
         raise ValueError("Signage rollback preflight authority is malformed")
     result = _run_signage_activation_helper(
         inventory,
         host,
         "preflight",
-        {
-            "baseline": _stage3_signage_manifest(target.get("rollbackManifest")),
-            "candidate": _signage_candidate_reference(target.get("stagedSource")),
-        },
+        request,
         runtime=runtime,
     )
-    if result.get("ready") is not True or result.get("issues") != []:
+    if (
+        result.get("ready") is not True
+        or result.get("issues") != []
+        or result.get("previousRelease") != baseline["previousRelease"]
+        or result.get("candidateRelease") != expected_candidate
+        or result.get("runtimeHealth") != baseline["runtimeHealth"]
+    ):
         raise RuntimeError("Signage rollback preflight is not ready")
     return {
         "ready": True,
@@ -2246,31 +2262,56 @@ def cleanup_signage_artifact_release(
     runtime: Runtime,
 ) -> dict[str, Any]:
     host, terminal_type = _validated_terminal_spec(target_spec)
-    if terminal_type != "signage" or outcome not in {"committed", "restored"}:
+    if (
+        terminal_type != "signage"
+        or outcome not in {"committed", "restored"}
+        or not isinstance(run_id, str)
+        or _RUN_ID_RE.fullmatch(run_id) is None
+    ):
         raise ValueError("Signage artifact cleanup authority is malformed")
     baseline = _stage3_signage_manifest(target.get("rollbackManifest"))
     reference = target.get("stagedSource")
-    if not isinstance(reference, dict) or reference.get("runId") != run_id:
+    if reference is None:
+        if target.get("maintenanceStartedAt") or outcome != "committed":
+            raise RuntimeError("Signage staged release cleanup reference is malformed")
+        action = "cleanup-stage"
+        request = {
+            "stageRunPath": os.fspath(
+                signage_artifact_stage.DEFAULT_STAGING_ROOT / run_id
+            )
+        }
+    elif isinstance(reference, dict) and reference.get("runId") == run_id:
+        action = "cleanup"
+        request = {
+            "candidate": _signage_candidate_reference(reference),
+            "keepCurrent": outcome == "committed",
+            "stageRunPath": reference["stageRunPath"],
+        }
+    else:
         raise RuntimeError("Signage staged release cleanup reference is malformed")
     result = _run_signage_activation_helper(
         inventory,
         host,
-        "cleanup",
-        {
-            "candidate": _signage_candidate_reference(reference),
-            "keepCurrent": outcome == "committed",
-            "stageRunPath": reference["stageRunPath"],
-        },
+        action,
+        request,
         runtime=runtime,
     )
-    if result.get("status") != "passed" or result.get("stageResidue") is not False:
+    removed_paths = result.get("removedPaths")
+    if (
+        result.get("schemaVersion") != 1
+        or result.get("status") != "passed"
+        or result.get("stageResidue") is not False
+        or not isinstance(removed_paths, list)
+        or any(not isinstance(path, str) for path in removed_paths)
+    ):
         raise RuntimeError("Signage artifact cleanup did not prove zero residue")
     return {
         "cleaned": True,
-        "alreadyClean": not bool(result.get("removedPaths")),
+        "alreadyClean": not bool(removed_paths),
         "manifestSha256": baseline["runtime"]["manifestSha256"],
         "tagCount": 0,
         "outcome": outcome,
+        "stageCleanup": result,
     }
 
 

@@ -91,12 +91,13 @@ def activation_marker(result, *, ok=True, failure=None):
 
 
 class SignageStage3BackendTest(unittest.TestCase):
-    def test_capture_runs_the_bundled_target_helper_and_returns_one_baseline(self):
+    @staticmethod
+    def _baseline():
         health = {
             "activeSystemdUnits": ["lightdm.service"],
             "displaySha256": "a" * 64,
         }
-        baseline = {
+        return {
             "schemaVersion": 1,
             "kind": "signage-artifact-baseline",
             "pointerWasPresent": False,
@@ -107,9 +108,16 @@ class SignageStage3BackendTest(unittest.TestCase):
             "previousArtifactSha256": None,
             "legacyRepositorySha": "d" * 40,
             "runtimeHealth": health,
-            "runtime": {"manifestSha256": "e" * 64, "unitCount": 1, "dockerCount": 0},
+            "runtime": {
+                "manifestSha256": "e" * 64,
+                "unitCount": 1,
+                "dockerCount": 0,
+            },
             "requireRootOwner": True,
         }
+
+    def test_capture_runs_the_bundled_target_helper_and_returns_one_baseline(self):
+        baseline = self._baseline()
         runtime = Runtime(activation_marker(baseline))
         runtime.PROJECT = PROJECT
 
@@ -226,6 +234,145 @@ class SignageStage3BackendTest(unittest.TestCase):
         self.assertIs(acquire.call_args.kwargs["acquisition"], pinned_acquisition)
         render.assert_called_once()
         self.assertEqual(helper.call_args.args[2], "prepare")
+
+    def test_candidate_absent_cleanup_uses_the_run_scoped_stage_authority(self):
+        run_id = "20260807-061324-7f6c72"
+        cleanup = {
+            "schemaVersion": 1,
+            "status": "passed",
+            "removedPaths": [],
+            "stageResidue": False,
+            "currentRelease": None,
+        }
+        runtime = Runtime("")
+        runtime.PROJECT = PROJECT
+        target = {"rollbackManifest": self._baseline()}
+
+        with mock.patch.object(
+            ansible,
+            "_run_signage_activation_helper",
+            return_value=cleanup,
+        ) as helper:
+            result = ansible.cleanup_signage_artifact_release(
+                "inventory.yml",
+                {"host": "raspberrypi3", "terminalType": "signage"},
+                target,
+                run_id,
+                "committed",
+                runtime=runtime,
+            )
+
+        self.assertEqual(helper.call_args.args[2], "cleanup-stage")
+        self.assertEqual(
+            helper.call_args.args[3],
+            {
+                "stageRunPath": (
+                    "/var/tmp/raspisystem-signage-stage/"
+                    "20260807-061324-7f6c72"
+                )
+            },
+        )
+        self.assertEqual(result["stageCleanup"], cleanup)
+
+    def test_candidate_absent_recovery_preflights_the_sealed_baseline(self):
+        run_id = "20260807-061324-7f6c72"
+        baseline = self._baseline()
+        response = {
+            "ready": True,
+            "issues": [],
+            "previousRelease": baseline["previousRelease"],
+            "candidateRelease": None,
+            "runtimeHealth": baseline["runtimeHealth"],
+        }
+        runtime = Runtime("")
+        runtime.PROJECT = PROJECT
+        target = {"rollbackManifest": baseline}
+
+        with mock.patch.object(
+            ansible,
+            "_run_signage_activation_helper",
+            return_value=response,
+        ) as helper:
+            result = ansible.preflight_signage_artifact_rollback(
+                "inventory.yml",
+                {"host": "raspberrypi3", "terminalType": "signage"},
+                target,
+                run_id,
+                runtime=runtime,
+            )
+
+        self.assertEqual(helper.call_args.args[2], "preflight")
+        self.assertEqual(helper.call_args.args[3], {"baseline": baseline})
+        self.assertEqual(result["runtimeHealth"], baseline["runtimeHealth"])
+
+    def test_candidate_absent_authority_rejects_post_mutation_and_stale_states(self):
+        run_id = "20260807-061324-7f6c72"
+        runtime = Runtime("")
+        runtime.PROJECT = PROJECT
+        target_spec = {"host": "raspberrypi3", "terminalType": "signage"}
+        cases = (
+            (
+                "missing-after-maintenance",
+                {
+                    "rollbackManifest": self._baseline(),
+                    "maintenanceStartedAt": "2026-08-07T06:13:30Z",
+                },
+                "committed",
+            ),
+            (
+                "missing-restored",
+                {"rollbackManifest": self._baseline()},
+                "restored",
+            ),
+            (
+                "stale-run",
+                {
+                    "rollbackManifest": self._baseline(),
+                    "stagedSource": {"runId": "20260807-000000-aaaaaa"},
+                },
+                "committed",
+            ),
+        )
+
+        for name, target, outcome in cases:
+            with self.subTest(name=name), mock.patch.object(
+                ansible, "_run_signage_activation_helper"
+            ) as helper:
+                with self.assertRaisesRegex(
+                    (ValueError, RuntimeError), "authority|reference"
+                ):
+                    ansible.cleanup_signage_artifact_release(
+                        "inventory.yml",
+                        target_spec,
+                        target,
+                        run_id,
+                        outcome,
+                        runtime=runtime,
+                    )
+                helper.assert_not_called()
+
+    def test_candidate_absent_cleanup_requires_zero_residue_receipt(self):
+        runtime = Runtime("")
+        runtime.PROJECT = PROJECT
+        with mock.patch.object(
+            ansible,
+            "_run_signage_activation_helper",
+            return_value={
+                "schemaVersion": 1,
+                "status": "incomplete",
+                "removedPaths": [],
+                "stageResidue": True,
+            },
+        ):
+            with self.assertRaisesRegex(RuntimeError, "zero residue"):
+                ansible.cleanup_signage_artifact_release(
+                    "inventory.yml",
+                    {"host": "raspberrypi3", "terminalType": "signage"},
+                    {"rollbackManifest": self._baseline()},
+                    "20260807-061324-7f6c72",
+                    "committed",
+                    runtime=runtime,
+                )
 
 
 def terminal_manifest_capture_marker(

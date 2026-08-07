@@ -803,6 +803,34 @@ def _validate_candidate(release_root: Path, candidate: Mapping[str, Any], *, req
     return release
 
 
+def preflight_release(
+    *,
+    release_root: Path,
+    baseline: Mapping[str, Any],
+    candidate: Mapping[str, Any] | None,
+    require_root_owner: bool = True,
+) -> dict[str, Any]:
+    """Verify the sealed rollback baseline and an optional prepared candidate."""
+
+    previous = _validate_baseline(release_root, baseline)
+    desired = (
+        _validate_candidate(
+            release_root,
+            candidate,
+            require_root_owner=require_root_owner,
+        )
+        if candidate is not None
+        else None
+    )
+    return {
+        "ready": True,
+        "issues": [],
+        "previousRelease": previous["release"],
+        "candidateRelease": desired["release"] if desired is not None else None,
+        "runtimeHealth": baseline["runtimeHealth"],
+    }
+
+
 def probe_current(
     *, system_root: Path, release_root: Path, require_root_owner: bool = True
 ) -> dict[str, Any]:
@@ -1082,21 +1110,13 @@ def dispatch(action: str, request: Mapping[str, Any]) -> dict[str, Any]:
             raise ActivationError("request-validation", "Baseline request is malformed")
         return probe_baseline(system_root=root, release_root=release_root)
     if action == "preflight":
-        if set(request) != {"baseline", "candidate"}:
+        if set(request) not in ({"baseline"}, {"baseline", "candidate"}):
             raise ActivationError("request-validation", "Preflight request is malformed")
-        previous = _validate_baseline(release_root, request["baseline"])
-        candidate = _validate_candidate(
-            release_root,
-            request["candidate"],
-            require_root_owner=True,
+        return preflight_release(
+            release_root=release_root,
+            baseline=request["baseline"],
+            candidate=request.get("candidate"),
         )
-        return {
-            "ready": True,
-            "issues": [],
-            "previousRelease": previous["release"],
-            "candidateRelease": candidate["release"],
-            "runtimeHealth": request["baseline"]["runtimeHealth"],
-        }
     if action == "activate":
         if set(request) != {"baseline", "candidate"}:
             raise ActivationError("request-validation", "Activate request is malformed")
