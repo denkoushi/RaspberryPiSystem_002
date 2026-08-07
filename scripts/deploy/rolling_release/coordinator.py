@@ -2011,7 +2011,7 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
             try:
                 locked_registry = readiness_policy.load_registry()
                 # The admission envelope seals the orchestrator checkout SHA.
-                # A typed Signage plan deliberately uses its release source
+                # A typed artifact release deliberately uses its release source
                 # SHA for artifact authority, so do not compare those two
                 # independent authorities as if they were one field.  The
                 # locked typed release identity was already validated above;
