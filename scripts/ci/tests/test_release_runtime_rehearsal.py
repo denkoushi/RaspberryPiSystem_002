@@ -137,9 +137,12 @@ class ReleaseRuntimeRehearsalTests(unittest.TestCase):
             "needs.change-classification.outputs.runtime_rehearsal == 'true'",
             candidate_rehearsal,
         )
+        self.assertIn("runs-on: ubuntu-24.04-arm", candidate_rehearsal)
+        self.assertIn("fetch-depth: 0", candidate_rehearsal)
+        self.assertIn("python3 -m pip install --user ansible-core", candidate_rehearsal)
         self.assertIn("Dockerfile.api", candidate_rehearsal)
         self.assertIn("Dockerfile.web", candidate_rehearsal)
-        self.assertIn("--platform linux/amd64", candidate_rehearsal)
+        self.assertIn("--platform linux/arm64", candidate_rehearsal)
         self.assertIn("--skip-pull", candidate_rehearsal)
         self.assertIn("--stable-seconds 10", candidate_rehearsal)
         self.assertIn("runs-on: ubuntu-24.04-arm", rehearsal)
@@ -160,6 +163,24 @@ class ReleaseRuntimeRehearsalTests(unittest.TestCase):
             "needs['release-runtime-rehearsal'].result == 'success'",
             release_set,
         )
+
+    def test_evaluation_rehearsal_runs_one_exact_fresh_candidate_lifecycle(self) -> None:
+        for required in (
+            "git merge-base HEAD origin/main",
+            "render-release-build-contract.sh",
+            "release_build_contract.py\" hash",
+            "ghcr.io/denkoushi/raspisys-api:${BASE_SHA}-${BASE_CONFIG_HASH:0:16}",
+            "ghcr.io/denkoushi/raspisys-web:${BASE_SHA}-${BASE_CONFIG_HASH:0:16}",
+            "verify-pi5-standard-candidate.yml",
+            "release_pi5_candidate_compose_argv",
+            "release_pi5_candidate_migration_argv",
+            "fresh lifecycle passed",
+            "stabilitySeconds=300",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, SCRIPT)
+        self.assertNotIn("registry:2", SCRIPT)
+        self.assertNotIn("skip-pull", SCRIPT[SCRIPT.index("FAILURE_STAGE='standard-candidate-fresh-lifecycle'") :])
 
 
 if __name__ == "__main__":

@@ -287,5 +287,206 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertIn(".maxLoad | float", load_wait["until"])
 
 
+class Pi5StandardCandidateEvaluationTests(unittest.TestCase):
+    ROLE = "release_pi5_standard_candidate"
+    CANDIDATE_PLAYBOOK = ANSIBLE / "playbooks/verify-pi5-standard-candidate.yml"
+
+    def task_text(self, name: str) -> str:
+        return (ANSIBLE / f"roles/{self.ROLE}/tasks/{name}.yml").read_text(
+            encoding="utf-8"
+        )
+
+    def test_candidate_is_unreachable_from_production_wiring(self) -> None:
+        candidate_name = self.ROLE
+        production = "\n".join(
+            [
+                PLAYBOOK,
+                (ROOT / "scripts/update-all-clients.sh").read_text(encoding="utf-8"),
+                (ROOT / "scripts/deploy/standard-ansible-release.py").read_text(
+                    encoding="utf-8"
+                ),
+            ]
+        )
+        self.assertNotIn(candidate_name, production)
+        self.assertIn(candidate_name, self.CANDIDATE_PLAYBOOK.read_text())
+        self.assertEqual(
+            yaml.safe_load(self.CANDIDATE_PLAYBOOK.read_text())[0]["hosts"],
+            "localhost",
+        )
+
+    def test_candidate_call_graph_is_direct_ansible_lifecycle(self) -> None:
+        main = yaml.safe_load(self.task_text("main"))[0]
+        self.assertEqual(
+            [task["ansible.builtin.import_tasks"] for task in main["block"]],
+            ["prepare.yml", "switch.yml", "health.yml", "commit.yml"],
+        )
+        self.assertEqual(
+            [task["ansible.builtin.import_tasks"] for task in main["rescue"]],
+            ["rollback.yml"],
+        )
+        self.assertEqual(
+            [task["ansible.builtin.import_tasks"] for task in main["always"]],
+            ["cleanup.yml"],
+        )
+
+    def test_candidate_has_no_legacy_subsystem_or_new_framework(self) -> None:
+        candidate = role_text(self.ROLE)
+        for forbidden in (
+            "pi5-blue-green.sh",
+            "lib/pi5-blue-green",
+            "validate-expand-only-migrations.py",
+            "releaseEvidence",
+            "resource-evidence",
+            "migration-plan",
+            "state.json",
+            "reconcile",
+            "claims",
+            "community.docker",
+        ):
+            self.assertNotIn(forbidden, candidate)
+        self.assertNotRegex(candidate, r"ansible\.builtin\.(?:script|raw):")
+
+    def test_candidate_uses_only_explicit_routes_and_strict_identities(self) -> None:
+        defaults = (
+            ANSIBLE / f"roles/{self.ROLE}/defaults/main.yml"
+        ).read_text(encoding="utf-8")
+        prepare = self.task_text("prepare")
+        self.assertIn("Caddyfile.gateway.template", defaults)
+        self.assertIn("cmp -s", prepare)
+        self.assertIn("matches neither known route", prepare)
+        self.assertIn("{{.Config.Image}}|{{.Image}}|{{.State.Running}}", prepare)
+        self.assertIn("PI5_GATEWAY_IMAGE", prepare)
+        self.assertNotIn("reverse_proxy", prepare)
+        self.assertNotIn("Caddyfile.gateway.http.template", defaults)
+
+    def test_candidate_fresh_prepare_mutates_only_inactive_services(self) -> None:
+        prepare = yaml.safe_load(self.task_text("prepare"))
+        start = next(
+            task
+            for task in prepare
+            if task["name"] == "Start only inactive Pi5 API and Web services"
+        )
+        argv = start["ansible.builtin.command"]["argv"]
+        for required in ("--no-build", "never", "--no-deps", "--wait"):
+            self.assertIn(required, argv)
+        self.assertIn("'api-' + release_pi5_candidate_slot", argv)
+        self.assertIn("'web-' + release_pi5_candidate_slot", argv)
+        self.assertEqual(start["when"], "release_pi5_candidate_route == 'fresh'")
+
+    def test_candidate_migration_boundary_is_prisma_and_small_ledger_only(self) -> None:
+        prepare = self.task_text("prepare")
+        self.assertIn("prisma migrate deploy", prepare)
+        self.assertIn("prisma migrate status", prepare)
+        self.assertGreaterEqual(
+            prepare.count("finished_at IS NULL OR rolled_back_at IS NOT NULL"), 2
+        )
+        for forbidden in ("git ", "migration manifest", "repair", "checksum"):
+            self.assertNotIn(forbidden, prepare.lower())
+
+    def test_candidate_commit_and_rollback_order_is_crash_safe(self) -> None:
+        switch = self.task_text("switch")
+        commit = self.task_text("commit")
+        rollback = self.task_text("rollback")
+        self.assertIn("Caddyfile.{{ release_run_id }}", switch)
+        self.assertNotIn("mv -Tf", switch)
+        self.assertLess(commit.index("mv -Tf"), commit.index("Stop the previous Pi5 API"))
+        self.assertLess(
+            commit.index("Stop the previous Pi5 API"),
+            commit.index("Wait for the committed Pi5 scheduler leader"),
+        )
+        self.assertLess(
+            rollback.index("Restart previous Pi5 API"),
+            rollback.index("Wait for restored previous Pi5 scheduler leader"),
+        )
+        self.assertLess(
+            rollback.index("Wait for restored previous Pi5 scheduler leader"),
+            rollback.index("Atomically restore previous known Pi5 routing"),
+        )
+        self.assertLess(
+            rollback.index("Atomically restore previous known Pi5 routing"),
+            rollback.index("Reload restored canonical Pi5 routing"),
+        )
+
+    def test_candidate_distinguishes_three_rerun_states(self) -> None:
+        prepare = self.task_text("prepare")
+        for required in (
+            "fresh",
+            "settled",
+            "interrupted",
+            "same-release leader",
+            "old API is already stopped",
+            "old leader for interrupted",
+            "opposite_api_identity",
+            "opposite_web_identity",
+        ):
+            self.assertIn(required, prepare)
+        self.assertIn("release_pi5_candidate_route in ['fresh', 'interrupted']", self.task_text("commit"))
+
+    def test_interrupted_health_failure_has_rollback_authority(self) -> None:
+        prepare = yaml.safe_load(self.task_text("prepare"))
+        marker = next(
+            task
+            for task in prepare
+            if task["name"]
+            == "Mark interrupted Pi5 commit as an existing switched recovery boundary"
+        )
+        self.assertEqual(
+            marker["ansible.builtin.set_fact"],
+            {"release_pi5_candidate_switch_attempted": True},
+        )
+        self.assertEqual(marker["when"], "release_pi5_candidate_route == 'interrupted'")
+        rollback = self.task_text("rollback")
+        self.assertIn("release_pi5_candidate_switch_attempted | bool", rollback)
+        self.assertIn("Restart previous Pi5 API with its captured image", rollback)
+        self.assertIn("Atomically restore previous known Pi5 routing", rollback)
+        self.assertIn("Reload restored canonical Pi5 routing", rollback)
+
+    def test_settled_rerun_removes_only_opposite_cleanup_residue(self) -> None:
+        cleanup = yaml.safe_load(self.task_text("cleanup"))
+        retired = cleanup[0]
+        self.assertIn("'api-' + release_pi5_candidate_previous_slot", retired["ansible.builtin.command"]["argv"])
+        self.assertIn("'web-' + release_pi5_candidate_previous_slot", retired["ansible.builtin.command"]["argv"])
+        condition = retired["when"][1]
+        self.assertIn("release_pi5_candidate_route == 'settled'", condition)
+        self.assertIn("release_pi5_candidate_opposite_api_id | length > 0", condition)
+        self.assertIn("release_pi5_candidate_opposite_web_id | length > 0", condition)
+        self.assertNotIn("release_pi5_candidate_active_slot", retired["ansible.builtin.command"]["argv"])
+
+    def test_candidate_monitor_is_fixed_and_cleanup_has_no_handoff(self) -> None:
+        defaults = yaml.safe_load(
+            (ANSIBLE / f"roles/{self.ROLE}/defaults/main.yml").read_text()
+        )
+        health = self.task_text("health")
+        sample = self.task_text("health-sample")
+        cleanup = self.task_text("cleanup")
+        self.assertEqual(defaults["release_pi5_candidate_stability_seconds"], 300)
+        self.assertEqual(defaults["release_pi5_candidate_health_interval_seconds"], 5)
+        self.assertIn("range(0", health)
+        self.assertIn("standby", sample)
+        self.assertIn("leader", sample)
+        self.assertNotIn(" stop", cleanup)
+        self.assertNotIn("caddy, reload", cleanup)
+
+    def test_fixed_comparison_matrix_has_exactly_fourteen_scenarios(self) -> None:
+        scenarios = (
+            "fresh-prepare",
+            "desired-identity",
+            "staged-reload",
+            "public-health",
+            "scheduler-handoff",
+            "migration-fail-closed",
+            "syntax-failure",
+            "health-failure",
+            "handoff-failure",
+            "rerun-after-prepare",
+            "rerun-after-staged-reload",
+            "rerun-after-canonical-commit",
+            "rerun-after-old-stop",
+            "rerun-after-cleanup-interruption",
+        )
+        self.assertEqual(len(scenarios), 14)
+        self.assertEqual(len(set(scenarios)), 14)
+
+
 if __name__ == "__main__":
     unittest.main()

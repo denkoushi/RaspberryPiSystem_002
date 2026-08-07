@@ -1,0 +1,10 @@
+---
+# Evaluation-only boundary. No production launcher or canonical playbook
+# references this playbook; the candidate name disappears at cutover.
+- name: Verify the standard Pi5 release candidate in an isolated fixture
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: "{{ release_pi5_candidate_become | default(true) | bool }}"
+  roles:
+    - role: release_pi5_standard_candidate

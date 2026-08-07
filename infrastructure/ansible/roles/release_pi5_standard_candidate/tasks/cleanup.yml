@@ -1,0 +1,32 @@
+---
+- name: Remove previous Pi5 slot only after committed healthy handoff
+  ansible.builtin.command:
+    argv: "{{ release_pi5_candidate_compose_argv + ['rm', '-f', '-s', 'api-' + release_pi5_candidate_previous_slot, 'web-' + release_pi5_candidate_previous_slot] }}"
+  environment: "{{ release_pi5_candidate_compose_environment }}"
+  changed_when: true
+  when:
+    - release_pi5_candidate_healthy | bool
+    - >-
+      release_pi5_candidate_route in ['fresh', 'interrupted']
+      or (release_pi5_candidate_route == 'settled'
+          and (release_pi5_candidate_opposite_api_id | length > 0
+               or release_pi5_candidate_opposite_web_id | length > 0))
+
+- name: Remove failed Pi5 candidate only after verified rollback
+  ansible.builtin.command:
+    argv: "{{ release_pi5_candidate_compose_argv + ['rm', '-f', '-s', 'api-' + release_pi5_candidate_slot, 'web-' + release_pi5_candidate_slot] }}"
+  environment: "{{ release_pi5_candidate_compose_environment }}"
+  changed_when: true
+  when: release_pi5_candidate_rolled_back | bool
+
+- name: Remove staged Pi5 route after a verified outcome
+  ansible.builtin.file:
+    path: "{{ release_pi5_candidate_staged_config }}"
+    state: absent
+  when: release_pi5_candidate_healthy | bool or release_pi5_candidate_rolled_back | bool
+
+- name: Remove private Pi5 candidate run files after a verified outcome
+  ansible.builtin.file:
+    path: "{{ release_pi5_candidate_run_dir }}"
+    state: absent
+  when: release_pi5_candidate_healthy | bool or release_pi5_candidate_rolled_back | bool

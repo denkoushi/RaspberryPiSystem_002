@@ -1,0 +1,21 @@
+---
+- name: Stage the fresh Pi5 candidate route beside canonical Caddyfile
+  ansible.builtin.copy:
+    src: "{{ release_pi5_candidate_blue_config if release_pi5_candidate_slot == 'blue' else release_pi5_candidate_green_config }}"
+    dest: "{{ release_pi5_candidate_staged_config }}"
+    remote_src: true
+    mode: '0644'
+
+- name: Validate the staged Pi5 candidate route
+  ansible.builtin.command:
+    argv: [docker, exec, "{{ release_pi5_candidate_gateway_id }}", caddy, validate, --config, "/srv/bluegreen/Caddyfile.{{ release_run_id }}"]
+  changed_when: false
+
+- name: Mark the Pi5 staged reload boundary
+  ansible.builtin.set_fact:
+    release_pi5_candidate_switch_attempted: true
+
+- name: Reload Caddy directly from the staged Pi5 candidate route
+  ansible.builtin.command:
+    argv: [docker, exec, "{{ release_pi5_candidate_gateway_id }}", caddy, reload, --config, "/srv/bluegreen/Caddyfile.{{ release_run_id }}"]
+  changed_when: true
