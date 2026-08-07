@@ -15,6 +15,8 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
+import yaml
+
 from scripts.deploy.rolling_release import bootstrap
 
 
@@ -36,6 +38,63 @@ def completed(command: list[str], stdout: str = "", returncode: int = 0) -> subp
 
 
 class StandardAnsibleReleaseTests(unittest.TestCase):
+    def test_server_connection_uses_concrete_deploy_executor_host(self) -> None:
+        inventory = {
+            "server": {"hosts": ["raspberrypi5"]},
+            "_meta": {
+                "hostvars": {
+                    "raspberrypi5": {
+                        "ansible_host": "{{ server_ip }}",
+                        "deploy_executor_host": "100.106.158.2",
+                        "ansible_user": "denkon5sd02",
+                    }
+                }
+            },
+        }
+
+        host, user, port = MODULE.server_connection(inventory)
+
+        self.assertEqual((host, user, port), ("100.106.158.2", "denkon5sd02", 22))
+        self.assertEqual(
+            MODULE.ssh_argv(host, user, port, ["true"])[-2],
+            "denkon5sd02@100.106.158.2",
+        )
+
+    def test_server_connection_rejects_missing_or_unresolved_executor_host(self) -> None:
+        for host in (
+            None,
+            "",
+            " 100.106.158.2",
+            "100.106.158.2 ",
+            "100.106. 158.2",
+            "{{ server_ip }}",
+        ):
+            with self.subTest(host=host), self.assertRaisesRegex(
+                MODULE.UsageError, "unresolved or malformed"
+            ):
+                MODULE.server_connection(
+                    {
+                        "server": {"hosts": ["raspberrypi5"]},
+                        "_meta": {
+                            "hostvars": {
+                                "raspberrypi5": {
+                                    "deploy_executor_host": host,
+                                    "ansible_user": "denkon5sd02",
+                                }
+                            }
+                        },
+                    }
+                )
+
+    def test_production_inventory_has_concrete_deploy_executor_host(self) -> None:
+        inventory = yaml.safe_load(
+            (ROOT / MODULE.DEFAULT_INVENTORY).read_text(encoding="utf-8")
+        )
+        pi5 = inventory["all"]["children"]["server"]["hosts"]["raspberrypi5"]
+
+        self.assertEqual(pi5["ansible_host"], "{{ server_ip }}")
+        self.assertEqual(pi5["deploy_executor_host"], "100.106.158.2")
+
     def test_parser_rejects_legacy_admission_and_implicit_mutation(self) -> None:
         with self.assertRaisesRegex(MODULE.UsageError, "unsupported"):
             MODULE.parse_arguments(["main", MODULE.DEFAULT_INVENTORY, "--approve", RUN_ID])
@@ -223,7 +282,14 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         args = argparse.Namespace(inventory=MODULE.DEFAULT_INVENTORY, status=RUN_ID)
         inventory = {
             "server": {"hosts": ["pi5"]},
-            "_meta": {"hostvars": {"pi5": {"ansible_host": "pi5.local", "ansible_user": "pi"}}},
+            "_meta": {
+                "hostvars": {
+                    "pi5": {
+                        "deploy_executor_host": "100.106.158.2",
+                        "ansible_user": "pi",
+                    }
+                }
+            },
         }
         calls: list[list[str]] = []
 
@@ -241,6 +307,7 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         payload = json.loads(output.getvalue())
         self.assertEqual(payload["status"]["Result"], "success")
         self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0][-2], "pi@100.106.158.2")
         self.assertIn("systemctl show", calls[0][-1])
         self.assertIn("journalctl", calls[1][-1])
 
@@ -248,7 +315,14 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         args = argparse.Namespace(inventory=MODULE.DEFAULT_INVENTORY, status=RUN_ID)
         inventory = {
             "server": {"hosts": ["pi5"]},
-            "_meta": {"hostvars": {"pi5": {"ansible_host": "pi5.local", "ansible_user": "pi"}}},
+            "_meta": {
+                "hostvars": {
+                    "pi5": {
+                        "deploy_executor_host": "100.106.158.2",
+                        "ansible_user": "pi",
+                    }
+                }
+            },
         }
         responses = [
             completed([], "LoadState=not-found\nActiveState=inactive\nResult=\n"),
@@ -271,7 +345,7 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             "kiosk": {"hosts": ["pi4-b"]},
             "_meta": {
                 "hostvars": {
-                    "pi5": {"ansible_host": "pi5.local", "ansible_user": "pi"},
+                    "pi5": {"deploy_executor_host": "100.106.158.2", "ansible_user": "pi"},
                     "pi4-b": {},
                 }
             },
@@ -280,12 +354,18 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             "kiosk": {"hosts": ["pi4-b"]},
             "_meta": {"hostvars": {"pi4-b": {}}},
         }
+        calls: list[list[str]] = []
+
+        def fake_run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+            calls.append(command)
+            return completed(command)
+
         with mock.patch.object(MODULE, "parse_arguments", return_value=args), mock.patch.object(
             MODULE, "inventory_path", return_value=(Path("inventory.yml"), relative)
         ), mock.patch.object(MODULE, "resolve_sha", return_value=SHA), mock.patch.object(
             MODULE, "inventory_document", side_effect=[complete, selected]
         ), mock.patch.object(MODULE, "new_run_id", return_value=RUN_ID), mock.patch.object(
-            MODULE, "run", return_value=completed(["ssh"])
+            MODULE, "run", side_effect=fake_run
         ), redirect_stdout(io.StringIO()) as output:
             self.assertEqual(MODULE.main([]), 0)
 
@@ -294,6 +374,7 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             payload["statusCommand"],
             f"scripts/update-all-clients.sh --status {RUN_ID} --inventory '{relative}'",
         )
+        self.assertEqual(calls[0][-2], "pi@100.106.158.2")
 
 
 if __name__ == "__main__":
