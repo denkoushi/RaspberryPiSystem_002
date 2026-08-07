@@ -68,6 +68,20 @@ class ProductionSecretStructureTests(unittest.TestCase):
             self.assertIn("new_api_key", rendered)
             self.assertNotIn(injected, rendered)
 
+    def test_excludes_shared_read_only_placeholder_from_production_secret_scan(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            placeholder = root / (
+                "infrastructure/ansible/normal-factory-vault-placeholders.yml"
+            )
+            placeholder.parent.mkdir(parents=True)
+            placeholder.write_text(
+                "vault_api_jwt_access_secret: ci-redacted-access-secret\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(scan(root), {})
+
     def test_accepts_tracked_ciphertext_and_exact_inventory_reference(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

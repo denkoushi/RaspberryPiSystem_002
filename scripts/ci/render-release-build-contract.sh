@@ -39,7 +39,7 @@ TEMP_OUTPUT="$(mktemp "${TMPDIR:-/tmp}/release-build-contract.XXXXXX")"
 CANONICAL_OUTPUT="${TEMP_OUTPUT}.canonical"
 REDACTED_CONTEXT_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/release-build-contract-ansible.XXXXXX")"
 REDACTED_ANSIBLE_DIR="${REDACTED_CONTEXT_ROOT}/ansible"
-VAULT_PLACEHOLDERS="${ROOT}/scripts/ci/fixtures/normal-factory-vault-placeholders.yml"
+VAULT_PLACEHOLDERS="${ROOT}/infrastructure/ansible/normal-factory-vault-placeholders.yml"
 cleanup() {
   local rc=$?
   [[ -z "$TEMP_OUTPUT" ]] || rm -f "$TEMP_OUTPUT"

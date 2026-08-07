@@ -7,6 +7,9 @@ import shutil
 from pathlib import Path
 
 
+READ_ONLY_PLACEHOLDER_FILENAME = "normal-factory-vault-placeholders.yml"
+
+
 class RedactedContextError(ValueError):
     pass
 
@@ -21,6 +24,17 @@ def _ignore_sensitive_files(directory: str, names: list[str]) -> set[str]:
     return ignored
 
 
+def read_only_placeholder_file(root: Path) -> Path:
+    """Return the shared non-secret placeholder file or fail closed."""
+
+    candidate = root / READ_ONLY_PLACEHOLDER_FILENAME
+    if candidate.is_symlink() or not candidate.is_file():
+        raise RedactedContextError(
+            "read-only placeholder fixture is missing or not a regular file"
+        )
+    return candidate
+
+
 def prepare_context(source: Path, destination: Path) -> None:
     """Copy the Ansible tree while excluding Vaults and their password file."""
 
@@ -28,6 +42,7 @@ def prepare_context(source: Path, destination: Path) -> None:
     destination = destination.resolve()
     if not source.is_dir() or source.is_symlink():
         raise RedactedContextError("Ansible source must be a regular directory")
+    read_only_placeholder_file(source)
     if destination.exists():
         raise RedactedContextError("redacted Ansible destination must not already exist")
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -37,6 +52,7 @@ def prepare_context(source: Path, destination: Path) -> None:
         raise RedactedContextError("Vault password entered the redacted context")
     if any((destination / "host_vars").glob("*/vault.yml")):
         raise RedactedContextError("host Vault entered the redacted context")
+    read_only_placeholder_file(destination)
 
     config = destination / "ansible.cfg"
     content = config.read_text(encoding="utf-8")

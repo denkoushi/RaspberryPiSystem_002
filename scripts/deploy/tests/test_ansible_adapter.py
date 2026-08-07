@@ -17,9 +17,19 @@ from scripts.deploy.rolling_release.backends import ansible
 from scripts.deploy.rolling_release.errors import (
     TerminalManifestCapturePreMutationError,
 )
+from scripts.deploy.rolling_release.read_only_ansible_context import (
+    READ_ONLY_PLACEHOLDER_FILENAME,
+    prepare_context,
+)
 
 
 PROJECT = Path(__file__).resolve().parents[3]
+
+
+def ansible_test_environment(directory: Path) -> dict[str, str]:
+    environment = os.environ.copy()
+    environment['ANSIBLE_LOCAL_TEMP'] = str(directory)
+    return environment
 
 
 class Runtime:
@@ -345,6 +355,9 @@ class ReadOnlyInventoryAdapterTest(unittest.TestCase):
     def _runtime(self, directory, result):
         config = Path(directory) / 'ansible-readonly.cfg'
         config.write_text('[defaults]\n', encoding='utf-8')
+        (Path(directory) / READ_ONLY_PLACEHOLDER_FILENAME).write_text(
+            '{}\n', encoding='utf-8'
+        )
         runtime = Runtime(result)
         runtime.ANSIBLE_DIRECTORY = Path(directory)
         return runtime, config
@@ -366,7 +379,14 @@ class ReadOnlyInventoryAdapterTest(unittest.TestCase):
 
         self.assertEqual(value, {'server': {'hosts': []}})
         command, options = runtime.calls[0]
-        self.assertEqual(command, ['ansible-inventory', '-i', 'inventory.yml', '--list'])
+        self.assertEqual(
+            command,
+            [
+                'ansible-inventory', '-i', 'inventory.yml', '--list',
+                '--extra-vars',
+                f'@{config.parent.resolve() / READ_ONLY_PLACEHOLDER_FILENAME}',
+            ],
+        )
         self.assertEqual(options['env']['ANSIBLE_CONFIG'], str(config.resolve()))
         for name in poisoned:
             if name != 'ANSIBLE_CONFIG':
@@ -389,6 +409,52 @@ class ReadOnlyInventoryAdapterTest(unittest.TestCase):
 
         self.assertNotIn(secret, str(raised.exception))
         self.assertNotIn(secret, repr(raised.exception))
+
+    @unittest.skipUnless(
+        shutil.which('ansible-inventory'),
+        'ansible-inventory is required',
+    )
+    def test_real_inventory_and_selected_hosts_use_shared_placeholders(self):
+        with tempfile.TemporaryDirectory() as directory:
+            redacted = Path(directory) / 'ansible'
+            prepare_context(PROJECT / 'infrastructure/ansible', redacted)
+
+            class RealRuntime:
+                ANSIBLE_DIRECTORY = redacted
+
+                @staticmethod
+                def run(command, **kwargs):
+                    environment = (kwargs.get('env') or os.environ).copy()
+                    environment['ANSIBLE_LOCAL_TEMP'] = str(redacted)
+                    completed = subprocess.run(
+                        command,
+                        cwd=kwargs.get('cwd'),
+                        check=True,
+                        text=True,
+                        capture_output=kwargs.get('capture', False),
+                        env=environment,
+                    )
+                    return completed.stdout if kwargs.get('capture', False) else ''
+
+            payload = ansible.read_only_inventory_json(
+                'inventory.yml', runtime=RealRuntime()
+            )
+            selected = ansible.read_only_selected_hosts(
+                'inventory.yml', 'raspberrypi3', runtime=RealRuntime()
+            )
+
+        self.assertIn('raspberrypi3', payload['_meta']['hostvars'])
+        self.assertEqual(selected, ['raspberrypi3'])
+
+    def test_missing_read_only_placeholders_fails_before_ansible(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime, _config = self._runtime(directory, '{}')
+            (Path(directory) / READ_ONLY_PLACEHOLDER_FILENAME).unlink()
+            with self.assertRaisesRegex(RuntimeError, 'placeholder'):
+                ansible.read_only_inventory_json(
+                    'inventory.yml', runtime=runtime
+                )
+        self.assertEqual(runtime.calls, [])
 
     def test_missing_config_fails_before_ansible(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -2458,6 +2524,7 @@ class AnsibleConfigResolutionTest(unittest.TestCase):
                 check=True,
                 text=True,
                 capture_output=True,
+                env=ansible_test_environment(ansible_directory),
             )
             inventory = ansible_directory / 'inventory.yml'
             inventory.write_text(
@@ -2470,13 +2537,15 @@ class AnsibleConfigResolutionTest(unittest.TestCase):
 
                 @staticmethod
                 def run(command, **kwargs):
+                    environment = (kwargs.get('env') or os.environ).copy()
+                    environment['ANSIBLE_LOCAL_TEMP'] = str(ansible_directory)
                     completed = subprocess.run(
                         command,
                         cwd=kwargs.get('cwd'),
                         check=True,
                         text=True,
                         capture_output=kwargs.get('capture', False),
-                        env=kwargs.get('env'),
+                        env=environment,
                     )
                     return completed.stdout if kwargs.get('capture', False) else ''
 
@@ -2496,6 +2565,9 @@ class AnsibleConfigResolutionTest(unittest.TestCase):
                 'vault_password_file = .vault-pass\n',
                 encoding='utf-8',
             )
+            (ansible_directory / READ_ONLY_PLACEHOLDER_FILENAME).write_text(
+                'vault_probe: ci-redacted\n', encoding='utf-8'
+            )
             (ansible_directory / 'ansible-readonly.cfg').write_text(
                 '[defaults]\n', encoding='utf-8'
             )
@@ -2510,16 +2582,18 @@ class AnsibleConfigResolutionTest(unittest.TestCase):
 
                 @staticmethod
                 def run(command, **kwargs):
-                    environment = os.environ.copy()
-                    environment.pop('ANSIBLE_CONFIG', None)
-                    environment.pop('ANSIBLE_VAULT_PASSWORD_FILE', None)
+                    environment = (kwargs.get('env') or os.environ).copy()
+                    if not kwargs.get('env'):
+                        environment.pop('ANSIBLE_CONFIG', None)
+                        environment.pop('ANSIBLE_VAULT_PASSWORD_FILE', None)
+                    environment['ANSIBLE_LOCAL_TEMP'] = str(ansible_directory)
                     completed = subprocess.run(
                         command,
                         cwd=kwargs.get('cwd'),
                         check=True,
                         text=True,
                         capture_output=kwargs.get('capture', False),
-                        env=kwargs.get('env', environment),
+                        env=environment,
                     )
                     return completed.stdout if kwargs.get('capture', False) else ''
 
@@ -2550,6 +2624,9 @@ class AnsibleConfigResolutionTest(unittest.TestCase):
             (ansible_directory / 'ansible-readonly.cfg').write_text(
                 '[defaults]\n', encoding='utf-8'
             )
+            (ansible_directory / READ_ONLY_PLACEHOLDER_FILENAME).write_text(
+                'vault_probe: ci-redacted\n', encoding='utf-8'
+            )
             inventory = ansible_directory / 'inventory.yml'
             inventory.write_text(
                 'all:\n'
@@ -2572,6 +2649,7 @@ class AnsibleConfigResolutionTest(unittest.TestCase):
                 check=True,
                 text=True,
                 capture_output=True,
+                env=ansible_test_environment(ansible_directory),
             )
 
             class RealRuntime:
@@ -2579,13 +2657,15 @@ class AnsibleConfigResolutionTest(unittest.TestCase):
 
                 @staticmethod
                 def run(command, **kwargs):
+                    environment = (kwargs.get('env') or os.environ).copy()
+                    environment['ANSIBLE_LOCAL_TEMP'] = str(ansible_directory)
                     completed = subprocess.run(
                         command,
                         cwd=kwargs.get('cwd'),
                         check=True,
                         text=True,
                         capture_output=kwargs.get('capture', False),
-                        env=kwargs.get('env'),
+                        env=environment,
                     )
                     return completed.stdout if kwargs.get('capture', False) else ''
 
@@ -2596,8 +2676,8 @@ class AnsibleConfigResolutionTest(unittest.TestCase):
         serialized = json.dumps(payload)
         host = payload['_meta']['hostvars']['local-test']
         self.assertEqual(host['safe_probe'], 'retained')
+        self.assertEqual(host['vault_probe'], 'ci-redacted')
         self.assertNotIn('never-render-this-secret', serialized)
-        self.assertNotIn('vault_probe', host)
 
 
 if __name__ == "__main__":
