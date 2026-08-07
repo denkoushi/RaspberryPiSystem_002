@@ -37,6 +37,9 @@
     - "{{ release_pi5_api_image }}"
     - "{{ release_pi5_web_image }}"
   register: release_pi5_pull
+  retries: 3
+  delay: 10
+  until: release_pi5_pull is succeeded
   changed_when: >-
     'Downloaded newer image' in release_pi5_pull.stdout
     or 'Pull complete' in release_pi5_pull.stdout
