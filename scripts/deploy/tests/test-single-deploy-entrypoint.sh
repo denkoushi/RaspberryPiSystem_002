@@ -12,7 +12,7 @@ fail() {
 
 WRAPPER="${ROOT}/scripts/update-all-clients.sh"
 test "$(wc -l < "${WRAPPER}" | tr -d ' ')" -le 10 || fail "public wrapper contains coordinator logic"
-grep -Eq '^exec python3 .*scripts/deploy/rolling-release\.py" "\$@"$' "${WRAPPER}" \
+grep -Eq '^exec python3 .*scripts/deploy/standard-ansible-release\.py" "\$@"$' "${WRAPPER}" \
   || fail "public wrapper is not an argument-preserving strict exec"
 if grep -q 'ROLLING_RELEASE_V2' "${WRAPPER}"; then
   fail "hidden coordinator selector remains in the public wrapper"
@@ -29,11 +29,12 @@ if grep -R -E -q \
 fi
 
 set +e
-wrapper_output="$("${WRAPPER}" main infrastructure/ansible/inventory.yml --job 2>&1)"
+wrapper_output="$("${WRAPPER}" main infrastructure/ansible/inventory.yml --approve run-id 2>&1)"
 wrapper_status=$?
 set -e
 test "${wrapper_status}" -eq 2 || fail "retired public option did not exit 2"
-grep -q -- '--detach' <<<"${wrapper_output}" || fail "retired option did not print its replacement"
+grep -q -- 'unsupported by the standard Ansible route' <<<"${wrapper_output}" \
+  || fail "retired option did not identify the standard route boundary"
 
 SPY_DIR="${TMP_DIR}/spy"
 mkdir -p "${SPY_DIR}"

@@ -113,11 +113,33 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         target_section = prepare.split(
             "- name: Select the controller-local Pi3 artifact", 1
         )[1]
+        controller_section = prepare.split(
+            "- name: Extract the complete Pi3 artifact from GHCR on the controller",
+            1,
+        )[1].split("- name: Select the controller-local Pi3 artifact", 1)[0]
+        self.assertIn(
+            'docker image pull --platform linux/arm/v7 "${image}"',
+            controller_section,
+        )
         for forbidden in ("git fetch", "git clone", "docker image pull", "curl ", "wget "):
             self.assertNotIn(forbidden, target_section)
         self.assertIn("/current", switch)
         self.assertIn("/previous", switch)
         self.assertGreaterEqual(switch.count("mv -Tf"), 2)
+
+    def test_pi3_scratch_artifact_create_has_an_explicit_command(self) -> None:
+        prepare_tasks = yaml.safe_load(
+            (ANSIBLE / "roles/release_signage/tasks/prepare.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        extraction = next(
+            task
+            for task in prepare_tasks
+            if task["name"] == "Extract the complete Pi3 artifact from GHCR on the controller"
+        )
+        shell = extraction["ansible.builtin.shell"]
+        self.assertIn('docker create "${image}" /signage-release.tar', shell)
 
     def test_pi3_does_not_rewrite_the_verified_candidate_tree(self) -> None:
         prepare = (
