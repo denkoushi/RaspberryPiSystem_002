@@ -109,6 +109,25 @@ class ReleaseRuntimeRehearsalTests(unittest.TestCase):
         self.assertNotIn('DB_VOLUME="$(new_volume', SCRIPT)
         self.assertNotIn('volume="$(new_volume', SCRIPT)
 
+    def test_failure_diagnostic_reports_stage_line_and_status_without_command_data(self) -> None:
+        self.assertIn("trap 'report_failure \"$LINENO\"' ERR", SCRIPT)
+        self.assertIn(
+            "[ERROR] release-runtime-audit failure stage=%s line=%s status=%s",
+            SCRIPT,
+        )
+        for stage in (
+            "FAILURE_STAGE='image-validation'",
+            "FAILURE_STAGE='database-readiness'",
+            "FAILURE_STAGE='migration-and-role-bootstrap'",
+            "FAILURE_STAGE='compose-and-storage-validation'",
+            "FAILURE_STAGE='api-health-and-scheduler'",
+            "FAILURE_STAGE='web-health'",
+            "FAILURE_STAGE='gateway-and-stability'",
+        ):
+            with self.subTest(stage=stage):
+                self.assertIn(stage, SCRIPT)
+        self.assertNotIn("BASH_COMMAND", SCRIPT)
+
     def test_main_release_set_waits_for_exact_runtime_rehearsal(self) -> None:
         candidate_rehearsal = job_block("container-runtime-rehearsal")
         rehearsal = job_block("release-runtime-rehearsal")
