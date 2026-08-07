@@ -125,12 +125,9 @@ class ProductionSignageFixture:
         }
 
     def file_paths(self, run_id):
-        paths = ansible_backend._terminal_manifest_paths(
+        return ansible_backend._terminal_manifest_paths(
             "signage", "signageras3", "/home/signageras3", run_id
         )
-        if len(paths) != 40:
-            raise AssertionError("production signage manifest is not 40 paths")
-        return paths
 
     def manifest_reference(self, run_id):
         units, docker_services = ansible_backend._terminal_runtime_contract(

@@ -1,0 +1,29 @@
+---
+- name: Remove an incomplete run-scoped Pi3 extraction directory
+  ansible.builtin.file:
+    path: "{{ release_signage_candidate_temp }}"
+    state: absent
+  when: release_signage_candidate_temp is defined
+
+- name: Remove the Pi3 run-scoped transferred artifact
+  ansible.builtin.file:
+    path: "{{ release_signage_remote_stage }}"
+    state: absent
+  when:
+    - release_signage_remote_stage is defined
+    - >-
+      release_signage_healthy | default(false) | bool
+      or release_signage_rolled_back | default(false) | bool
+
+- name: Remove the controller run-scoped Signage artifact
+  ansible.builtin.file:
+    path: "{{ release_signage_controller_dir }}"
+    state: absent
+  delegate_to: localhost
+  run_once: true
+  when:
+    - release_signage_controller_dir is defined
+    - release_signage_artifact_path | length == 0
+    - >-
+      release_signage_healthy | default(false) | bool
+      or release_signage_rolled_back | default(false) | bool

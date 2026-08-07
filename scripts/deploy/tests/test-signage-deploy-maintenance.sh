@@ -6,9 +6,10 @@ SVG="$ROOT/infrastructure/ansible/roles/signage/templates/signage-maintenance.sv
 grep -Fq 'DEPLOY_STATUS_URL=' "$TEMPLATE"
 grep -Fq 'acknowledge_maintenance' "$TEMPLATE"
 grep -Fq 'acknowledge_ready_if_matching' "$TEMPLATE"
-grep -Fq 'STATUS_CLIENT_ID="{{ status_agent_client_id' "$TEMPLATE"
-grep -Fq 'STATUS_CLIENT_KEY="{{ status_agent_client_key' "$TEMPLATE"
-grep -Fq 'IMAGE_CLIENT_KEY="{{ signage_client_key' "$TEMPLATE"
+grep -Fq 'source /etc/raspisystem-signage/runtime.env' "$TEMPLATE"
+grep -Fq 'STATUS_CLIENT_ID="${SIGNAGE_STATUS_CLIENT_ID}"' "$TEMPLATE"
+grep -Fq 'STATUS_CLIENT_KEY="${SIGNAGE_STATUS_CLIENT_KEY}"' "$TEMPLATE"
+grep -Fq 'IMAGE_CLIENT_KEY="${SIGNAGE_IMAGE_CLIENT_KEY}"' "$TEMPLATE"
 grep -Fq 'curl "${CURL_OPTIONS[@]}" --header @-' "$TEMPLATE"
 if grep -Eq -- '-H[[:space:]]+"?x-client-key:' "$TEMPLATE"; then
   echo 'signage credentials must not be placed in curl argv' >&2
@@ -23,6 +24,7 @@ FIXTURE_REPO="${TMP_DIR}/repo"
 FIXTURE_BIN="${TMP_DIR}/bin"
 RENDERED_SCRIPT="${TMP_DIR}/signage-update.sh"
 FIXTURE_ARTIFACT="${TMP_DIR}/raspi-signage-status-agent.pyz"
+RUNTIME_ENV="${TMP_DIR}/runtime.env"
 CURL_ARGV_LOG="${TMP_DIR}/curl-argv.log"
 ACK_LOG="${TMP_DIR}/ack.log"
 mkdir -p "${FIXTURE_REPO}" "${FIXTURE_BIN}"
@@ -52,25 +54,17 @@ Path(destination).write_text(
 )
 PY
 
-python3 - "${TEMPLATE}" "${RENDERED_SCRIPT}" "${FIXTURE_ARTIFACT}" <<'PY'
+python3 - "${TEMPLATE}" "${RENDERED_SCRIPT}" "${FIXTURE_ARTIFACT}" "${RUNTIME_ENV}" <<'PY'
 import sys
 from pathlib import Path
 
-source, destination, artifact = sys.argv[1:]
+source, destination, artifact, runtime_env = sys.argv[1:]
 text = Path(source).read_text(encoding="utf-8")
 replacements = {
-    "{{ signage_server_url | default('https://192.168.128.131') }}": "https://fixture.invalid",
-    "{{ signage_client_key | default('') }}": "fixture-image-secret",
-    "{{ status_agent_client_id | default('') }}": "talkplaza-signage01",
-    "{{ status_agent_client_key | default('') }}": "fixture-status-secret",
+    "source /etc/raspisystem-signage/runtime.env": f"source {runtime_env!r}",
     'RELEASE_ARTIFACT="/usr/local/bin/raspi-signage-status-agent.pyz"': (
         f'RELEASE_ARTIFACT="{artifact}"'
     ),
-    """{% if signage_allow_insecure_tls | default(true) %}
-CURL_OPTIONS=(-sS -f -k)
-{% else %}
-CURL_OPTIONS=(-sS -f)
-{% endif %}""": "CURL_OPTIONS=(-sS -f -k)",
 }
 for old, new in replacements.items():
     if old not in text:
@@ -81,6 +75,14 @@ if "{{" in text or "{%" in text:
 Path(destination).write_text(text, encoding="utf-8")
 PY
 chmod +x "${RENDERED_SCRIPT}"
+
+cat > "${RUNTIME_ENV}" <<'EOF'
+SIGNAGE_SERVER_URL=https://fixture.invalid
+SIGNAGE_IMAGE_CLIENT_KEY=fixture-image-secret
+SIGNAGE_STATUS_CLIENT_ID=talkplaza-signage01
+SIGNAGE_STATUS_CLIENT_KEY=fixture-status-secret
+SIGNAGE_ALLOW_INSECURE_TLS=1
+EOF
 
 cat > "${FIXTURE_BIN}/curl" <<'SH'
 #!/usr/bin/env bash

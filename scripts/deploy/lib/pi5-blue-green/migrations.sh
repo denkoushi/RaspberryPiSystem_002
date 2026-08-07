@@ -41,8 +41,6 @@ verify_migration_plan() {
     MIGRATION_APPLIED_AT=''
     return 0
   fi
-  [[ "$RUN_ID" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$ ]] || die '--run-id is required for migration verification'
-  [[ -n "$MIGRATION_PLAN_FILE" ]] || die '--migration-plan is required for migration verification'
   candidate_ref="$(image_commit "$candidate_image")" || die 'candidate image tag is not an immutable commit/config tag'
   base_ref="$(image_commit "$base_image")" || die 'live compatibility image is not bound to an immutable base commit'
   ledger="$(mktemp "${TMPDIR:-/tmp}/pi5-blue-green-ledger.XXXXXX")"
@@ -51,15 +49,21 @@ verify_migration_plan() {
     rm -f "$ledger"
     die 'could not re-read the applied migration ledger'
   fi
-  if ! plan_data="$(python3 "$RELEASE_EVIDENCE_HELPER" verify-migration \
-    --path "$MIGRATION_PLAN_FILE" --run-id "$RUN_ID" --sha "$candidate_ref" --ledger "$ledger")"; then
-    rm -f "$ledger"
-    die 'migration plan is stale, tampered, or the applied ledger changed'
+  if [[ -n "$MIGRATION_PLAN_FILE" ]]; then
+    [[ "$RUN_ID" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$ ]] \
+      || die '--run-id is required with --migration-plan'
+    if ! plan_data="$(python3 "$RELEASE_EVIDENCE_HELPER" verify-migration \
+      --path "$MIGRATION_PLAN_FILE" --run-id "$RUN_ID" --sha "$candidate_ref" --ledger "$ledger")"; then
+      rm -f "$ledger"
+      die 'migration plan is stale, tampered, or the applied ledger changed'
+    fi
+    MIGRATION_BASE_COMMIT="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["baseSha"])' <<<"$plan_data")"
+    [[ "$MIGRATION_BASE_COMMIT" == "$base_ref" ]] \
+      || die 'migration plan base no longer matches the live compatibility image'
+  else
+    MIGRATION_BASE_COMMIT="$base_ref"
   fi
   rm -f "$ledger"
-  MIGRATION_BASE_COMMIT="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["baseSha"])' <<<"$plan_data")"
-  [[ "$MIGRATION_BASE_COMMIT" == "$base_ref" ]] \
-    || die 'migration plan base no longer matches the live compatibility image'
   MIGRATION_CANDIDATE_COMMIT="$candidate_ref"
   MIGRATION_STATUS=checked; MIGRATION_CHECKED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"; MIGRATION_APPLIED_AT=''
 }

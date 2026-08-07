@@ -1113,6 +1113,11 @@ ALLOWED_RELEASE_FILE_DESTINATIONS = {
     '/usr/local/bin/ibus-kiosk-init.sh',
     '{{ ibus_process_owner_script_path }}',
     '/etc/tmpfiles.d/signage-lite.conf',
+    '/etc/raspisystem-signage/runtime.env',
+    '/etc/systemd/system/signage-lite.service.d/10-runtime.conf',
+    '/etc/systemd/system/signage-lite-update.service.d/10-runtime.conf',
+    '/etc/systemd/system/signage-lite-update.timer.d/10-runtime.conf',
+    '/etc/systemd/system/signage-lite-watchdog.service.d/10-runtime.conf',
     '/usr/local/share/signage-maintenance.svg',
     '/usr/local/bin/signage-update.sh',
     '/usr/local/bin/signage-display.sh',
@@ -1125,6 +1130,14 @@ ALLOWED_RELEASE_FILE_DESTINATIONS = {
     '/etc/systemd/system/signage-lite-watchdog.timer',
     '/etc/systemd/system/signage-daily-reboot.service',
     '/etc/systemd/system/signage-daily-reboot.timer',
+}
+
+ALLOWED_RELEASE_DIRECTORIES = {
+    '/etc/raspisystem-signage',
+    '/etc/systemd/system/signage-lite.service.d',
+    '/etc/systemd/system/signage-lite-update.service.d',
+    '/etc/systemd/system/signage-lite-update.timer.d',
+    '/etc/systemd/system/signage-lite-watchdog.service.d',
 }
 
 MUTATING_SHELL = re.compile(
@@ -1334,15 +1347,18 @@ def audit_tasks(tasks, source, inherited_full):
             if module in FILE_MODULES:
                 dest = destination(value)
                 if module.endswith('file') and isinstance(value, dict):
-                    assert value.get('state', 'file') != 'directory', (
-                        f'{source}:{name}: release may not create/change directories'
-                    )
+                    if value.get('state', 'file') == 'directory':
+                        assert dest in ALLOWED_RELEASE_DIRECTORIES, (
+                            f'{source}:{name}: release may not create/change directories'
+                        )
                     assert not value.get('recurse', False), (
                         f'{source}:{name}: recursive ownership is release-reachable'
                     )
                 assert isinstance(dest, str), f'{source}:{name}: file destination is dynamic'
                 release_destinations.add(dest)
-                assert dest in ALLOWED_RELEASE_FILE_DESTINATIONS, (
+                assert dest in (
+                    ALLOWED_RELEASE_FILE_DESTINATIONS | ALLOWED_RELEASE_DIRECTORIES
+                ), (
                     f'{source}:{name}: destination is not manifest-backed: {dest}'
                 )
 
@@ -1584,6 +1600,7 @@ required_scanned = {
     (roles_root / 'kiosk/tasks/main.yml').resolve(),
     (roles_root / 'kiosk/tasks/security.yml').resolve(),
     (roles_root / 'signage/tasks/main.yml').resolve(),
+    (roles_root / 'signage/tasks/runtime-config.yml').resolve(),
     (roles_root / 'signage/tasks/release-preparation.yml').resolve(),
     (ansible_root / 'tasks/preflight-terminal-display.yml').resolve(),
     (ansible_root / 'tasks/preflight-signage.yml').resolve(),

@@ -85,6 +85,22 @@ class ClassifyChangesTests(unittest.TestCase):
         self.assertEqual(self.selected(e2e), {"repo_policy", "e2e"})
         self.assertTrue(e2e["codeql"])
 
+    def test_pi4_agent_dockerfiles_select_client_image_contracts_only(self) -> None:
+        for path in (
+            "infrastructure/docker/Dockerfile.nfc-agent",
+            "infrastructure/docker/Dockerfile.barcode-agent",
+            "infrastructure/docker/Dockerfile.torque-agent",
+        ):
+            with self.subTest(path=path):
+                result = self.classify(Change("M", path))
+                self.assertEqual(
+                    self.selected(result),
+                    {"repo_policy", "client", "docker_security"},
+                )
+                self.assertFalse(result["dockerApi"])
+                self.assertFalse(result["dockerWeb"])
+                self.assertFalse(result["releasePair"])
+
     def test_signage_artifact_inputs_select_only_the_focused_contract(self) -> None:
         for path in (
             "clients/status-agent/status-agent.py",

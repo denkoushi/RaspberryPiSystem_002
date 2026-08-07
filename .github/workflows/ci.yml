@@ -504,6 +504,72 @@ jobs:
           poetry run pytest tests
           poetry run ruff check torque_agent tests
 
+  pi4-agent-image-contract:
+    name: pi4-agent-image-contract (${{ matrix.service }}, ${{ matrix.platform }})
+    needs: change-classification
+    if: ${{ needs.change-classification.outputs.client == 'true' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: nfc-agent
+            image: raspisys-nfc-agent-contract
+            dockerfile: infrastructure/docker/Dockerfile.nfc-agent
+            platform: linux/arm64
+            platform_tag: linux-arm64
+          - service: nfc-agent
+            image: raspisys-nfc-agent-contract
+            dockerfile: infrastructure/docker/Dockerfile.nfc-agent
+            platform: linux/arm/v7
+            platform_tag: linux-arm-v7
+          - service: barcode-agent
+            image: raspisys-barcode-agent-contract
+            dockerfile: infrastructure/docker/Dockerfile.barcode-agent
+            platform: linux/arm64
+            platform_tag: linux-arm64
+          - service: barcode-agent
+            image: raspisys-barcode-agent-contract
+            dockerfile: infrastructure/docker/Dockerfile.barcode-agent
+            platform: linux/arm/v7
+            platform_tag: linux-arm-v7
+          - service: torque-agent
+            image: raspisys-torque-agent-contract
+            dockerfile: infrastructure/docker/Dockerfile.torque-agent
+            platform: linux/arm64
+            platform_tag: linux-arm64
+          - service: torque-agent
+            image: raspisys-torque-agent-contract
+            dockerfile: infrastructure/docker/Dockerfile.torque-agent
+            platform: linux/arm/v7
+            platform_tag: linux-arm-v7
+    steps:
+      - name: Checkout exact candidate source
+        uses: actions/checkout@v6
+
+      - name: Set up QEMU for the selected Pi4 platform
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build the Pi4 agent image contract
+        run: |
+          docker buildx build --load --platform "${{ matrix.platform }}" \
+            --file "${{ matrix.dockerfile }}" \
+            --tag "${{ matrix.image }}:${GITHUB_SHA}-${{ matrix.platform_tag }}" .
+
+      - name: Scan the Pi4 agent image contract
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          scan-type: image
+          image-ref: ${{ matrix.image }}:${{ github.sha }}-${{ matrix.platform_tag }}
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          scanners: vuln,secret
+          trivyignores: .trivyignore
+
   signage-artifact-contract:
     name: signage-artifact-contract
     needs: change-classification
@@ -1166,6 +1232,7 @@ jobs:
       - deploy-contract
       - container-runtime-rehearsal
       - client
+      - pi4-agent-image-contract
       - release-build-contract
       - release-api-image
       - release-web-image
@@ -1199,6 +1266,7 @@ jobs:
           CONTAINER_RUNTIME_REHEARSAL_RESULT: ${{ needs['container-runtime-rehearsal'].result }}
           CLIENT_SELECTED: ${{ needs['change-classification'].outputs.client }}
           CLIENT_RESULT: ${{ needs.client.result }}
+          PI4_AGENT_IMAGE_RESULT: ${{ needs['pi4-agent-image-contract'].result }}
           RELEASE_PAIR_SELECTED: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs['change-classification'].outputs.release_pair == 'true' }}
           RELEASE_BUILD_CONTRACT_RESULT: ${{ needs['release-build-contract'].result }}
           RELEASE_API_RESULT: ${{ needs['release-api-image'].result }}
@@ -1224,6 +1292,7 @@ jobs:
             "deploy-contract=$DEPLOY_CONTRACT_SELECTED:$DEPLOY_CONTRACT_RESULT" \
             "container-runtime-rehearsal=$CONTAINER_RUNTIME_REHEARSAL_SELECTED:$CONTAINER_RUNTIME_REHEARSAL_RESULT" \
             "client=$CLIENT_SELECTED:$CLIENT_RESULT" \
+            "pi4-agent-image-contract=$CLIENT_SELECTED:$PI4_AGENT_IMAGE_RESULT" \
             "release-build-contract=$RELEASE_PAIR_SELECTED:$RELEASE_BUILD_CONTRACT_RESULT" \
             "release-api-image=$RELEASE_PAIR_SELECTED:$RELEASE_API_RESULT" \
             "release-web-image=$RELEASE_PAIR_SELECTED:$RELEASE_WEB_RESULT" \
@@ -1233,6 +1302,65 @@ jobs:
             "e2e-tests=$E2E_SELECTED:$E2E_TESTS" \
             "kiosk-sop=$KIOSK_SOP_SELECTED:$KIOSK_SOP_RESULT" \
             "signage-artifact-contract=$SIGNAGE_ARTIFACT_SELECTED:$SIGNAGE_ARTIFACT_RESULT"
+
+  pi4-agent-images-publish:
+    name: pi4-agent-images-publish (${{ matrix.service }})
+    needs:
+      - change-classification
+      - ci-required
+    if: >-
+      ${{
+        always() &&
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main' &&
+        needs['ci-required'].result == 'success'
+      }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: nfc-agent
+            repository: ghcr.io/denkoushi/raspisys-nfc-agent
+            dockerfile: infrastructure/docker/Dockerfile.nfc-agent
+          - service: barcode-agent
+            repository: ghcr.io/denkoushi/raspisys-barcode-agent
+            dockerfile: infrastructure/docker/Dockerfile.barcode-agent
+          - service: torque-agent
+            repository: ghcr.io/denkoushi/raspisys-torque-agent
+            dockerfile: infrastructure/docker/Dockerfile.torque-agent
+    steps:
+      - name: Checkout exact main source
+        uses: actions/checkout@v6
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up QEMU for Pi4 platforms
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Publish the exact-SHA multi-platform Pi4 agent image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/arm64,linux/arm/v7
+          push: true
+          tags: ${{ matrix.repository }}:${{ github.sha }}
+          cache-from: type=gha,scope=pi4-${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=pi4-${{ matrix.service }}
+          provenance: mode=min
+          sbom: true
 
   signage-artifact-gates:
     name: signage-artifact-gates

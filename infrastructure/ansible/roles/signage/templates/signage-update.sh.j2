@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SERVER_URL="{{ signage_server_url | default('https://192.168.128.131') }}"
-IMAGE_CLIENT_KEY="{{ signage_client_key | default('') }}"
-STATUS_CLIENT_ID="{{ status_agent_client_id | default('') }}"
-STATUS_CLIENT_KEY="{{ status_agent_client_key | default('') }}"
+source /etc/raspisystem-signage/runtime.env
+SERVER_URL="${SIGNAGE_SERVER_URL}"
+IMAGE_CLIENT_KEY="${SIGNAGE_IMAGE_CLIENT_KEY}"
+STATUS_CLIENT_ID="${SIGNAGE_STATUS_CLIENT_ID}"
+STATUS_CLIENT_KEY="${SIGNAGE_STATUS_CLIENT_KEY}"
 RELEASE_ARTIFACT="/usr/local/bin/raspi-signage-status-agent.pyz"
 IMAGE_URL="${SERVER_URL%/}/api/signage/current-image"
 DEPLOY_STATUS_URL="${SERVER_URL%/}/api/system/deploy-status"
@@ -13,11 +14,10 @@ CACHE_DIR="${SIGNAGE_CACHE_DIR:-/run/signage}"
 CURRENT_IMAGE="${CACHE_DIR}/current.jpg"
 TEMP_IMAGE="${CACHE_DIR}/current.tmp.jpg"
 MAINTENANCE_SVG="${SIGNAGE_MAINTENANCE_SVG:-/usr/local/share/signage-maintenance.svg}"
-{% if signage_allow_insecure_tls | default(true) %}
-CURL_OPTIONS=(-sS -f -k)
-{% else %}
 CURL_OPTIONS=(-sS -f)
-{% endif %}
+if [[ "${SIGNAGE_ALLOW_INSECURE_TLS:-0}" == 1 ]]; then
+  CURL_OPTIONS+=(-k)
+fi
 
 curl_with_client_key() {
   local client_key="$1"

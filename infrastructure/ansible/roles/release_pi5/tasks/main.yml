@@ -1,0 +1,19 @@
+---
+- name: Prepare, switch, and finalize one Pi5 release
+  block:
+    - name: Prepare the Pi5 candidate while the active slot serves traffic
+      ansible.builtin.import_tasks: prepare.yml
+
+    - name: Switch and verify the Pi5 candidate
+      block:
+        - name: Switch Pi5 traffic to the prepared candidate
+          ansible.builtin.import_tasks: switch.yml
+
+        - name: Verify Pi5 health and stability
+          ansible.builtin.import_tasks: health.yml
+      rescue:
+        - name: Roll Pi5 traffic back to the previous slot
+          ansible.builtin.import_tasks: rollback.yml
+  always:
+    - name: Finalize the Pi5 candidate lifecycle
+      ansible.builtin.import_tasks: cleanup.yml

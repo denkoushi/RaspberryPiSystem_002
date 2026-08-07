@@ -55,6 +55,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
             "db-infra": "db_infra",
             "deploy-contract": "deploy_contract",
             "client": "client",
+            "pi4-agent-image-contract": "client",
             "docker-security": "docker_security",
             "e2e-smoke": "e2e",
             "e2e-tests": "e2e",
@@ -107,6 +108,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
             "deploy-contract",
             "container-runtime-rehearsal",
             "client",
+            "pi4-agent-image-contract",
             "release-build-contract",
             "release-api-image",
             "release-web-image",
@@ -120,9 +122,38 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("uses: actions/checkout@v6", aggregate)
         self.assertIn("scripts/ci/validate_required_results.py", aggregate)
         self.assertIn('"api=$API_SELECTED:$API_RESULT"', aggregate)
+        self.assertIn(
+            '"pi4-agent-image-contract=$CLIENT_SELECTED:$PI4_AGENT_IMAGE_RESULT"',
+            aggregate,
+        )
         self.assertNotIn("lint-build-unit", CI)
         self.assertNotIn("api-db-and-infra", CI)
         self.assertNotIn("security-docker", CI)
+
+    def test_pi4_agents_are_contract_built_and_published_for_both_pi_platforms(self) -> None:
+        contract = job_block(CI, "pi4-agent-image-contract")
+        publish = job_block(CI, "pi4-agent-images-publish")
+        for service in ("nfc-agent", "barcode-agent", "torque-agent"):
+            self.assertEqual(contract.count(f"service: {service}"), 2)
+            self.assertIn(f"service: {service}", publish)
+            self.assertIn(f"raspisys-{service}", publish)
+        self.assertEqual(contract.count("platform: linux/arm64"), 3)
+        self.assertEqual(contract.count("platform: linux/arm/v7"), 3)
+        self.assertIn('docker buildx build --load --platform "${{ matrix.platform }}"', contract)
+        self.assertIn("${GITHUB_SHA}-${{ matrix.platform_tag }}", contract)
+        self.assertIn("docker/setup-qemu-action@v4", contract)
+        self.assertIn("aquasecurity/trivy-action", contract)
+        self.assertIn("ignore-unfixed: true", contract)
+        self.assertIn("severity: HIGH,CRITICAL", contract)
+        self.assertIn("exit-code: '1'", contract)
+        self.assertIn("scanners: vuln,secret", contract)
+        self.assertNotIn("linux/amd64", contract)
+        self.assertNotIn("packages: write", contract)
+        self.assertIn("github.event_name == 'push'", publish)
+        self.assertIn("github.ref == 'refs/heads/main'", publish)
+        self.assertIn("platforms: linux/arm64,linux/arm/v7", publish)
+        self.assertIn("packages: write", publish)
+        self.assertIn("docker/setup-qemu-action@v4", publish)
 
     def test_signage_artifact_is_read_only_on_pr_and_main_only_for_publication(self) -> None:
         contract = job_block(CI, "signage-artifact-contract")

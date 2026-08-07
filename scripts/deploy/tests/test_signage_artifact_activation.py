@@ -77,6 +77,7 @@ class Stage3Fixture(unittest.TestCase):
         self.system_root = self.root / "system"
         self.release_root = self.root / "releases-root"
         self.rendered = self.root / "rendered"
+        self.rendered.mkdir()
         self.artifact = self.root / "signage-release.tar"
         self.descriptor = self.root / "signage-release-descriptor.json"
         self.distribution = _distribution_module()
@@ -463,9 +464,7 @@ class SignageArtifactActivationE2E(Stage3Fixture):
         self.assertEqual(manifest["ociDigest"], OCI_DIGEST)
         self.assertEqual(manifest["artifactSha256"], candidate["artifactSha256"])
         self.assertEqual(len(manifest["files"]), 16)
-        self.assertEqual(
-            len([item for item in manifest["files"] if item["templated"]]), 7
-        )
+        self.assertFalse(any(item["templated"] for item in manifest["files"]))
         self.assertTrue(
             all("renderedSha256" in item and "sourceSha256" in item for item in manifest["files"])
         )

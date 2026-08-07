@@ -27,6 +27,7 @@ _ROLLBACK_PATH_RE = re.compile(r"^/[A-Za-z0-9._/@:+,=%-]+$")
 _ALLOWED_ROLLBACK_PATHS = frozenset(
     {
         "/etc/NetworkManager/NetworkManager.conf",
+        "/etc/raspisystem-signage",
         "/etc/raspi-haizen-agent.conf",
         "/etc/raspi-status-agent.conf",
         "/etc/udev/rules.d/90-torque-bluetooth-adapter.rules",
@@ -36,6 +37,7 @@ _ALLOWED_ROLLBACK_PATHS = frozenset(
 )
 _ALLOWED_ROLLBACK_PREFIXES = (
     "/etc/polkit-1/rules.d/",
+    "/etc/raspisystem-signage/",
     "/etc/systemd/system/",
     "/etc/tmpfiles.d/",
     "/opt/RaspberryPiSystem_002/",

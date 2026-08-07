@@ -1,0 +1,24 @@
+---
+- name: Verify Pi3 display and Signage units
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - "{{ item }}"
+  loop: "{{ ['lightdm.service'] + release_signage_services }}"
+  changed_when: false
+  retries: 5
+  delay: 3
+  register: release_signage_unit_health
+  until: release_signage_unit_health.rc == 0
+
+- name: Verify authenticated Pi3 Signage endpoints
+  ansible.builtin.script:
+    cmd: >-
+      {{ playbook_dir }}/../../../scripts/deploy/signage-runtime-proof.py
+      --check-endpoints
+  register: release_signage_endpoint_health
+  changed_when: false
+  retries: 3
+  delay: 3
+  until: release_signage_endpoint_health.rc == 0

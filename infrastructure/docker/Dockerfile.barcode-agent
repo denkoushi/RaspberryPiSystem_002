@@ -1,13 +1,26 @@
 # syntax=docker/dockerfile:1
-FROM python:3.11-slim
-WORKDIR /app
+FROM python:3.11-slim AS builder
+WORKDIR /build
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential && rm -rf /var/lib/apt/lists/*
-COPY clients/barcode-agent/pyproject.toml ./pyproject.toml
-RUN pip install poetry && poetry config virtualenvs.create false && \
-    poetry install --without dev --no-root
+    build-essential libffi-dev && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir poetry
+RUN python -m venv /opt/venv
+ENV VIRTUAL_ENV="/opt/venv"
+ENV PATH="/opt/venv/bin:$PATH"
+COPY clients/barcode-agent/pyproject.toml clients/barcode-agent/poetry.lock ./
+RUN poetry config virtualenvs.create false \
+    && poetry install --only main --no-root --no-interaction \
+    && python -m pip uninstall --yes pip setuptools wheel
+
+FROM python:3.11-slim AS runtime
+WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PATH="/opt/venv/bin:$PATH"
+RUN python -m pip uninstall --yes pip setuptools wheel
+COPY --from=builder /opt/venv /opt/venv
 COPY clients/barcode-agent ./barcode-agent
 WORKDIR /app/barcode-agent
 CMD ["python", "-m", "barcode_agent"]

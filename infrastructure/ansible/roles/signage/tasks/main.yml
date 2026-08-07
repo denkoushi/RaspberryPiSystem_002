@@ -2,6 +2,9 @@
 # Full provisioning quiesces only the unit files that already exist in
 # prestage-signage-runtime.yml. This role can therefore create a fresh unit set.
 
+- name: Prepare host-specific Signage runtime configuration outside the release tree
+  ansible.builtin.import_tasks: runtime-config.yml
+
 - name: Stop signage runtime temporarily for release
   ansible.builtin.systemd:
     name: "{{ item }}"
@@ -45,14 +48,6 @@
   when:
     - terminal_release_mode | default('full') == 'full'
     - signage_lite_client_deps_enabled | default(false) | bool
-
-- name: Install tmpfiles configuration for /run/signage
-  ansible.builtin.template:
-    src: signage-lite.tmpfiles.conf.j2
-    dest: /etc/tmpfiles.d/signage-lite.conf
-    owner: root
-    group: root
-    mode: '0644'
 
 - name: Install renderer for the signage maintenance screen
   ansible.builtin.apt:

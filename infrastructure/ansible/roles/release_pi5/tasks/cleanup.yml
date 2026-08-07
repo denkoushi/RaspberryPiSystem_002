@@ -1,0 +1,16 @@
+---
+- name: Retire the previous Pi5 slot after verified stability
+  ansible.builtin.command:
+    argv:
+      - "{{ release_pi5_project_dir }}/scripts/deploy/pi5-blue-green.sh"
+      - cleanup
+  when: release_pi5_healthy | default(false) | bool
+  changed_when: true
+
+- name: Remove run-scoped Pi5 planning files
+  ansible.builtin.file:
+    path: "{{ release_pi5_run_dir }}"
+    state: absent
+  when:
+    - release_pi5_run_dir is defined
+    - release_pi5_healthy | default(false) | bool

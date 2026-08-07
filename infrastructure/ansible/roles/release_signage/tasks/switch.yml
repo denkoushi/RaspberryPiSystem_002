@@ -1,0 +1,66 @@
+---
+- name: Mark the Pi3 switch boundary
+  ansible.builtin.set_fact:
+    release_signage_switch_attempted: true
+  when: release_signage_switch_required | bool
+
+- name: Stop only the Pi3 display and Signage units
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+  loop: "{{ release_signage_stop_services + ['lightdm.service'] }}"
+  when: release_signage_switch_required | bool
+
+- name: Atomically record the previous Pi3 release
+  ansible.builtin.shell: |
+    set -euo pipefail
+    root={{ release_signage_root | quote }}
+    target={{ release_signage_previous_target | quote }}
+    temporary="${root}/.previous-${RANDOM}-$$"
+    ln -s "${target}" "${temporary}"
+    mv -Tf "${temporary}" "${root}/previous"
+  args:
+    executable: /bin/bash
+  changed_when: true
+  when: release_signage_switch_required | bool
+
+- name: Atomically switch Pi3 current to the prepared candidate
+  ansible.builtin.shell: |
+    set -euo pipefail
+    root={{ release_signage_root | quote }}
+    target={{ release_signage_candidate | quote }}
+    temporary="${root}/.current-${RANDOM}-$$"
+    ln -s "${target}" "${temporary}"
+    mv -Tf "${temporary}" "${root}/current"
+  args:
+    executable: /bin/bash
+  changed_when: true
+  when: release_signage_switch_required | bool
+
+- name: Reload Pi3 systemd units after the atomic switch
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: release_signage_switch_required | bool
+
+- name: Recreate the Pi3 runtime directory
+  ansible.builtin.command:
+    argv:
+      - systemd-tmpfiles
+      - --create
+      - /etc/tmpfiles.d/signage-lite.conf
+  changed_when: false
+  when: release_signage_switch_required | bool
+
+- name: Start the Pi3 display manager
+  ansible.builtin.systemd:
+    name: lightdm.service
+    state: started
+  when: release_signage_switch_required | bool
+
+- name: Start the switched Pi3 Signage services
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+  loop: "{{ release_signage_services }}"
+  when: release_signage_switch_required | bool

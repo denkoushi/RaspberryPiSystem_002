@@ -1,0 +1,38 @@
+---
+- name: Remove Pi4 rollback image tags after a verified outcome
+  ansible.builtin.command:
+    argv:
+      - docker
+      - image
+      - rm
+      - "{{ release_kiosk_rollback_images[item] }}"
+  loop: "{{ release_kiosk_services | default([]) }}"
+  register: release_kiosk_rollback_tag_cleanup
+  changed_when: release_kiosk_rollback_tag_cleanup.rc == 0
+  failed_when: false
+  when: >-
+    release_kiosk_healthy | default(false) | bool
+    or release_kiosk_rolled_back | default(false) | bool
+
+- name: Remove this run's Pi4 file backups after a verified outcome
+  ansible.builtin.file:
+    path: "{{ item.backup_file }}"
+    state: absent
+  loop: "{{ release_kiosk_install.results | default([]) }}"
+  no_log: true
+  when:
+    - item.changed | default(false) | bool
+    - item.backup_file is defined
+    - >-
+      release_kiosk_healthy | default(false) | bool
+      or release_kiosk_rolled_back | default(false) | bool
+
+- name: Remove the Pi4 run-scoped staging directory
+  ansible.builtin.file:
+    path: "{{ release_kiosk_run_dir }}"
+    state: absent
+  when:
+    - release_kiosk_run_dir is defined
+    - >-
+      release_kiosk_healthy | default(false) | bool
+      or release_kiosk_rolled_back | default(false) | bool

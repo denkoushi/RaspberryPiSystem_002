@@ -1,0 +1,320 @@
+---
+- name: Validate the Pi3 Signage release contract
+  ansible.builtin.assert:
+    that:
+      - release_sha is match('^[0-9a-f]{40}$')
+      - release_run_id is match('^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$')
+      - release_signage_artifact_sha256 is match('^[0-9a-f]{64}$')
+      - release_signage_artifact_path | length > 0 or release_sha in release_signage_artifact_image
+      - "'signage' in group_names"
+    fail_msg: >-
+      Pi3 Signage requires one exact source SHA, a safe run ID, one final tar
+      SHA-256, and either a controller-local tar or a SHA-bound GHCR image.
+
+- name: Define controller and Pi3 staging paths
+  ansible.builtin.set_fact:
+    release_signage_controller_dir: "{{ release_signage_controller_root }}/{{ release_run_id }}"
+    release_signage_controller_tar: "{{ release_signage_controller_root }}/{{ release_run_id }}/signage-release.tar"
+    release_signage_remote_stage: "{{ release_signage_stage_root }}/{{ release_run_id }}"
+    release_signage_remote_tar: "{{ release_signage_stage_root }}/{{ release_run_id }}/signage-release.tar"
+    release_signage_candidate: "{{ release_signage_root }}/releases/{{ release_signage_artifact_sha256 }}"
+    release_signage_candidate_temp: >-
+      {{ release_signage_root }}/releases/.{{ release_signage_artifact_sha256 }}-{{ release_run_id }}
+    release_signage_switch_attempted: false
+    release_signage_healthy: false
+    release_signage_rolled_back: false
+
+- name: Create the private controller artifact directory
+  ansible.builtin.file:
+    path: "{{ release_signage_controller_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+  delegate_to: localhost
+  run_once: true
+  when: release_signage_artifact_path | length == 0
+
+- name: Extract the complete Pi3 artifact from GHCR on the controller
+  ansible.builtin.shell: |
+    set -euo pipefail
+    image={{ release_signage_artifact_image | quote }}
+    output={{ release_signage_controller_tar | quote }}
+    container=""
+    cleanup() {
+      if [[ -n "${container}" ]]; then docker rm -f "${container}" >/dev/null 2>&1 || true; fi
+    }
+    trap cleanup EXIT
+    docker image pull "${image}"
+    container="$(docker create "${image}")"
+    docker cp "${container}:/signage-release.tar" "${output}"
+    chmod 0600 "${output}"
+  args:
+    executable: /bin/bash
+  delegate_to: localhost
+  run_once: true
+  changed_when: true
+  when: release_signage_artifact_path | length == 0
+
+- name: Select the controller-local Pi3 artifact
+  ansible.builtin.set_fact:
+    release_signage_selected_artifact: >-
+      {{
+        release_signage_artifact_path
+        if release_signage_artifact_path | length > 0
+        else release_signage_controller_tar
+      }}
+
+- name: Create the Pi3 run-scoped staging directory
+  ansible.builtin.file:
+    path: "{{ release_signage_remote_stage }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+
+- name: Transfer the complete Pi3 artifact before stopping the display
+  ansible.builtin.copy:
+    src: "{{ release_signage_selected_artifact }}"
+    dest: "{{ release_signage_remote_tar }}"
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Verify the one representative Pi3 artifact SHA-256
+  ansible.builtin.command:
+    argv:
+      - sha256sum
+      - "{{ release_signage_remote_tar }}"
+  register: release_signage_artifact_hash
+  changed_when: false
+
+- name: Require the Pi3 artifact bytes to match the one expected SHA-256
+  ansible.builtin.assert:
+    that:
+      - release_signage_artifact_hash.stdout.split()[0] == release_signage_artifact_sha256
+    fail_msg: The staged Pi3 artifact does not match its representative SHA-256.
+
+- name: Validate the fixed Pi3 payload allowlist before extraction
+  ansible.builtin.script:
+    cmd: >-
+      {{ playbook_dir }}/../../../scripts/deploy/signage-distribution-artifact.py
+      validate-layout
+      --artifact {{ release_signage_remote_tar | quote }}
+  changed_when: false
+
+- name: Create the Pi3 release roots
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - "{{ release_signage_root }}"
+    - "{{ release_signage_root }}/releases"
+
+- name: Inspect the current Pi3 release link
+  ansible.builtin.stat:
+    path: "{{ release_signage_root }}/current"
+    follow: false
+  register: release_signage_current_link
+
+- name: Reject a non-link Pi3 current path
+  ansible.builtin.assert:
+    that:
+      - not release_signage_current_link.stat.exists or release_signage_current_link.stat.islnk
+    fail_msg: "{{ release_signage_root }}/current must be absent or a symbolic link."
+
+- name: Define the one-time Pi3 legacy release path
+  ansible.builtin.set_fact:
+    release_signage_legacy: "{{ release_signage_root }}/releases/legacy-{{ release_run_id }}"
+  when: not release_signage_current_link.stat.exists
+
+- name: Create directories for the one-time Pi3 legacy snapshot
+  ansible.builtin.file:
+    path: "{{ release_signage_legacy }}/{{ item.path | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop: "{{ release_signage_payloads }}"
+  when: not release_signage_current_link.stat.exists
+
+- name: Capture the currently installed Pi3 runtime once
+  ansible.builtin.copy:
+    src: "{{ item.dest }}"
+    dest: "{{ release_signage_legacy }}/{{ item.path }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: preserve
+  loop: "{{ release_signage_payloads }}"
+  when: not release_signage_current_link.stat.exists
+
+- name: Initialize the Pi3 current link to the captured legacy runtime
+  ansible.builtin.shell: |
+    set -euo pipefail
+    root={{ release_signage_root | quote }}
+    target={{ release_signage_legacy | quote }}
+    temporary="${root}/.current-${RANDOM}-$$"
+    ln -s "${target}" "${temporary}"
+    mv -Tf "${temporary}" "${root}/current"
+  args:
+    executable: /bin/bash
+  when: not release_signage_current_link.stat.exists
+  changed_when: true
+
+- name: Install stable Pi3 facades that follow the current release
+  ansible.builtin.file:
+    src: "{{ release_signage_root }}/current/{{ item.path }}"
+    dest: "{{ item.dest }}"
+    state: link
+    force: true
+    follow: false
+  loop: "{{ release_signage_payloads }}"
+
+- name: Inspect the candidate Pi3 release directory
+  ansible.builtin.stat:
+    path: "{{ release_signage_candidate }}"
+    follow: false
+  register: release_signage_candidate_stat
+
+- name: Refuse an unsafe Pi3 candidate path
+  ansible.builtin.assert:
+    that:
+      - not release_signage_candidate_stat.stat.exists or release_signage_candidate_stat.stat.isdir
+      - not release_signage_candidate_stat.stat.exists or not release_signage_candidate_stat.stat.islnk
+    fail_msg: The digest-named Pi3 release path is not a safe directory.
+
+- name: Remove an incomplete run-scoped Pi3 extraction directory
+  ansible.builtin.file:
+    path: "{{ release_signage_candidate_temp }}"
+    state: absent
+  when: not release_signage_candidate_stat.stat.exists
+
+- name: Create the run-scoped Pi3 extraction directory
+  ansible.builtin.file:
+    path: "{{ release_signage_candidate_temp }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  when: not release_signage_candidate_stat.stat.exists
+
+- name: Expand the complete Pi3 artifact while the old display stays active
+  ansible.builtin.unarchive:
+    src: "{{ release_signage_remote_tar }}"
+    dest: "{{ release_signage_candidate_temp }}"
+    remote_src: true
+    owner: root
+    group: root
+  when: not release_signage_candidate_stat.stat.exists
+
+- name: Validate the extracted Pi3 tree against the fixed payload allowlist
+  ansible.builtin.script:
+    cmd: >-
+      {{ playbook_dir }}/../../../scripts/deploy/signage-distribution-artifact.py
+      validate-tree
+      --directory {{ release_signage_candidate_temp | quote }}
+  when: not release_signage_candidate_stat.stat.exists
+  changed_when: false
+
+- name: Make the expanded Pi3 release tree immutable
+  ansible.builtin.command:
+    argv:
+      - chmod
+      - -R
+      - a-w
+      - "{{ release_signage_candidate_temp }}"
+  when: not release_signage_candidate_stat.stat.exists
+  changed_when: true
+
+- name: Atomically publish the complete Pi3 candidate directory
+  ansible.builtin.command:
+    argv:
+      - mv
+      - -T
+      - "{{ release_signage_candidate_temp }}"
+      - "{{ release_signage_candidate }}"
+  when: not release_signage_candidate_stat.stat.exists
+  changed_when: true
+
+- name: Create the external Pi3 host configuration directory
+  ansible.builtin.file:
+    path: "{{ release_signage_config_root }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+
+- name: Render Pi3 host settings outside the immutable release tree
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../roles/signage/templates/signage-runtime.env.j2"
+    dest: "{{ release_signage_config_root }}/runtime.env"
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+
+- name: Create Pi3 systemd drop-in directories outside the release tree
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}.d"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - signage-lite.service
+    - signage-lite-update.service
+    - signage-lite-update.timer
+    - signage-lite-watchdog.service
+
+- name: Render Pi3 service identity drop-ins outside the release tree
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../roles/signage/templates/signage-service-runtime.conf.j2"
+    dest: "/etc/systemd/system/{{ item }}.d/10-runtime.conf"
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - signage-lite.service
+    - signage-lite-update.service
+    - signage-lite-watchdog.service
+
+- name: Render the Pi3 update interval drop-in outside the release tree
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../roles/signage/templates/signage-update-timer-runtime.conf.j2"
+    dest: /etc/systemd/system/signage-lite-update.timer.d/10-runtime.conf
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Render Pi3 tmpfiles ownership outside the release tree
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../roles/signage/templates/signage-runtime.tmpfiles.j2"
+    dest: /etc/tmpfiles.d/signage-lite.conf
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Read the active Pi3 release target before switching
+  ansible.builtin.command:
+    argv:
+      - readlink
+      - -f
+      - "{{ release_signage_root }}/current"
+  register: release_signage_previous_target_result
+  changed_when: false
+
+- name: Record the active Pi3 release target for rollback
+  ansible.builtin.set_fact:
+    release_signage_previous_target: "{{ release_signage_previous_target_result.stdout }}"
+    release_signage_switch_required: >-
+      {{ release_signage_previous_target_result.stdout != release_signage_candidate }}
+
+- name: Require the active Pi3 target to remain below the release root
+  ansible.builtin.assert:
+    that:
+      - release_signage_previous_target.startswith(release_signage_root ~ '/releases/')
+    fail_msg: Pi3 current does not identify a release below the managed root.

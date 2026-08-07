@@ -57,21 +57,21 @@ _EXPECTED_PAYLOAD_SPECS = (
         False,
         0o755,
     ),
-    PayloadSpec("bin/signage-display.sh", "/usr/local/bin/signage-display.sh", "infrastructure/ansible/roles/signage/templates/signage-display.sh.j2", "runtime-script", True, 0o755),
+    PayloadSpec("bin/signage-display.sh", "/usr/local/bin/signage-display.sh", "infrastructure/ansible/roles/signage/templates/signage-display.sh.j2", "runtime-script", False, 0o755),
     PayloadSpec("bin/signage-lite-watchdog.sh", "/usr/local/bin/signage-lite-watchdog.sh", "infrastructure/ansible/roles/signage/templates/signage-lite-watchdog.sh.j2", "runtime-script", False, 0o755),
     PayloadSpec("bin/signage-stop.sh", "/usr/local/bin/signage-stop.sh", "infrastructure/ansible/roles/signage/templates/signage-stop.sh.j2", "runtime-script", False, 0o755),
-    PayloadSpec("bin/signage-update.sh", "/usr/local/bin/signage-update.sh", "infrastructure/ansible/roles/signage/templates/signage-update.sh.j2", "runtime-script", True, 0o755),
+    PayloadSpec("bin/signage-update.sh", "/usr/local/bin/signage-update.sh", "infrastructure/ansible/roles/signage/templates/signage-update.sh.j2", "runtime-script", False, 0o755),
     PayloadSpec("share/signage-maintenance.svg", "/usr/local/share/signage-maintenance.svg", "infrastructure/ansible/roles/signage/templates/signage-maintenance.svg.j2", "static-asset", False, 0o644),
     PayloadSpec("systemd/signage-daily-reboot.service", "/etc/systemd/system/signage-daily-reboot.service", "infrastructure/ansible/roles/signage/templates/signage-daily-reboot.service.j2", "systemd-unit", False, 0o644),
     PayloadSpec("systemd/signage-daily-reboot.timer", "/etc/systemd/system/signage-daily-reboot.timer", "infrastructure/ansible/roles/signage/templates/signage-daily-reboot.timer.j2", "systemd-unit", False, 0o644),
-    PayloadSpec("systemd/signage-lite-update.service", "/etc/systemd/system/signage-lite-update.service", "infrastructure/ansible/roles/signage/templates/signage-lite-update.service.j2", "systemd-unit", True, 0o644),
-    PayloadSpec("systemd/signage-lite-update.timer", "/etc/systemd/system/signage-lite-update.timer", "infrastructure/ansible/roles/signage/templates/signage-lite-update.timer.j2", "systemd-unit", True, 0o644),
-    PayloadSpec("systemd/signage-lite-watchdog.service", "/etc/systemd/system/signage-lite-watchdog.service", "infrastructure/ansible/roles/signage/templates/signage-lite-watchdog.service.j2", "systemd-unit", True, 0o644),
+    PayloadSpec("systemd/signage-lite-update.service", "/etc/systemd/system/signage-lite-update.service", "infrastructure/ansible/roles/signage/templates/signage-lite-update.service.j2", "systemd-unit", False, 0o644),
+    PayloadSpec("systemd/signage-lite-update.timer", "/etc/systemd/system/signage-lite-update.timer", "infrastructure/ansible/roles/signage/templates/signage-lite-update.timer.j2", "systemd-unit", False, 0o644),
+    PayloadSpec("systemd/signage-lite-watchdog.service", "/etc/systemd/system/signage-lite-watchdog.service", "infrastructure/ansible/roles/signage/templates/signage-lite-watchdog.service.j2", "systemd-unit", False, 0o644),
     PayloadSpec("systemd/signage-lite-watchdog.timer", "/etc/systemd/system/signage-lite-watchdog.timer", "infrastructure/ansible/roles/signage/templates/signage-lite-watchdog.timer.j2", "systemd-unit", False, 0o644),
-    PayloadSpec("systemd/signage-lite.service", "/etc/systemd/system/signage-lite.service", "infrastructure/ansible/roles/signage/templates/signage-lite.service.j2", "systemd-unit", True, 0o644),
+    PayloadSpec("systemd/signage-lite.service", "/etc/systemd/system/signage-lite.service", "infrastructure/ansible/roles/signage/templates/signage-lite.service.j2", "systemd-unit", False, 0o644),
     PayloadSpec("systemd/status-agent.service", "/etc/systemd/system/status-agent.service", "infrastructure/ansible/roles/signage/templates/status-agent-artifact.service.j2", "systemd-unit", False, 0o644),
     PayloadSpec("systemd/status-agent.timer", "/etc/systemd/system/status-agent.timer", "infrastructure/ansible/roles/signage/templates/status-agent-artifact.timer.j2", "systemd-unit", False, 0o644),
-    PayloadSpec("tmpfiles/signage-lite.conf", "/etc/tmpfiles.d/signage-lite.conf", "infrastructure/ansible/roles/signage/templates/signage-lite.tmpfiles.conf.j2", "tmpfiles-config", True, 0o644),
+    PayloadSpec("tmpfiles/signage-lite.conf", "/etc/tmpfiles.d/signage-lite.conf", "infrastructure/ansible/roles/signage/templates/signage-lite.tmpfiles.conf.j2", "tmpfiles-config", False, 0o644),
 )
 PAYLOAD_SPECS = _EXPECTED_PAYLOAD_SPECS
 
@@ -362,6 +362,128 @@ def _validate_status_agent(payload: bytes, source_sha: str) -> None:
         raise ArtifactError("embedded status-agent source identity does not match")
 
 
+def validate_layout(artifact: Path) -> dict[str, Any]:
+    """Validate the fixed payload allowlist and safe tar structure without a descriptor."""
+    try:
+        metadata = artifact.lstat()
+    except FileNotFoundError as error:
+        raise ArtifactError("distribution artifact is missing") from error
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or artifact.is_symlink()
+        or not 1 <= metadata.st_size <= MAX_ARTIFACT_BYTES
+    ):
+        raise ArtifactError("distribution artifact must be one bounded regular file")
+    try:
+        with tarfile.open(artifact, "r:") as archive:
+            members = archive.getmembers()
+            names = [member.name for member in members]
+            expected = {MANIFEST_NAME, *(spec.archive_path for spec in PAYLOAD_SPECS)}
+            if (
+                names != sorted(names)
+                or len(names) != len(set(names))
+                or set(names) != expected
+            ):
+                raise ArtifactError("artifact member order or fixed allowlist is invalid")
+            payloads: dict[str, bytes] = {}
+            modes: dict[str, int] = {}
+            for member in members:
+                _validate_member(member)
+                extracted = archive.extractfile(member)
+                if extracted is None:
+                    raise ArtifactError("artifact member cannot be read")
+                payloads[member.name] = extracted.read()
+                modes[member.name] = stat.S_IMODE(member.mode)
+    except (OSError, tarfile.TarError) as error:
+        raise ArtifactError("distribution artifact tar is malformed") from error
+
+    try:
+        manifest = json.loads(payloads[MANIFEST_NAME].decode("utf-8"))
+    except (KeyError, UnicodeError, json.JSONDecodeError) as error:
+        raise ArtifactError("artifact manifest is malformed") from error
+    if (
+        not isinstance(manifest, dict)
+        or manifest.get("schemaVersion") != SCHEMA_VERSION
+        or manifest.get("artifactKind") != ARTIFACT_KIND
+        or FULL_SHA_RE.fullmatch(str(manifest.get("sourceSha"))) is None
+        or not isinstance(manifest.get("files"), list)
+    ):
+        raise ArtifactError("artifact manifest layout is invalid")
+    expected_by_path = {spec.archive_path: spec for spec in PAYLOAD_SPECS}
+    records = manifest["files"]
+    if {record.get("path") for record in records if isinstance(record, dict)} != set(expected_by_path):
+        raise ArtifactError("artifact manifest payload allowlist is invalid")
+    for record in records:
+        if not isinstance(record, dict):
+            raise ArtifactError("artifact manifest file record is malformed")
+        spec = expected_by_path[record["path"]]
+        if (
+            record.get("installPath") != spec.install_path
+            or record.get("mode") != f"{spec.mode:04o}"
+            or record.get("sourcePath") != spec.source_path
+            or record.get("templated") is not spec.templated
+            or record.get("size") != len(payloads[spec.archive_path])
+            or modes[spec.archive_path] != spec.mode
+        ):
+            raise ArtifactError(f"artifact payload layout changed: {spec.archive_path}")
+    _validate_status_agent(
+        payloads[_EXPECTED_PAYLOAD_SPECS[0].archive_path], manifest["sourceSha"]
+    )
+    return {
+        "artifactKind": ARTIFACT_KIND,
+        "fileCount": len(PAYLOAD_SPECS),
+        "sourceSha": manifest["sourceSha"],
+    }
+
+
+def validate_tree(directory: Path) -> dict[str, Any]:
+    """Validate one extracted tree against the same fixed payload allowlist."""
+    try:
+        root_metadata = directory.lstat()
+    except FileNotFoundError as error:
+        raise ArtifactError("extracted artifact tree is missing") from error
+    if not stat.S_ISDIR(root_metadata.st_mode) or directory.is_symlink():
+        raise ArtifactError("extracted artifact tree must be one real directory")
+
+    expected_modes = {
+        MANIFEST_NAME: 0o644,
+        **{spec.archive_path: spec.mode for spec in PAYLOAD_SPECS},
+    }
+    expected_directories = {
+        parent.as_posix()
+        for path in expected_modes
+        for parent in Path(path).parents
+        if parent.as_posix() != "."
+    }
+    actual_files: dict[str, os.stat_result] = {}
+    actual_directories: set[str] = set()
+    for current, directories, files in os.walk(directory, followlinks=False):
+        current_path = Path(current)
+        for name in directories:
+            path = current_path / name
+            metadata = path.lstat()
+            if not stat.S_ISDIR(metadata.st_mode) or path.is_symlink():
+                raise ArtifactError("extracted artifact contains an unsafe directory")
+            actual_directories.add(path.relative_to(directory).as_posix())
+        for name in files:
+            path = current_path / name
+            metadata = path.lstat()
+            if not stat.S_ISREG(metadata.st_mode) or path.is_symlink():
+                raise ArtifactError("extracted artifact contains a non-regular payload")
+            actual_files[path.relative_to(directory).as_posix()] = metadata
+
+    if actual_directories != expected_directories or set(actual_files) != set(expected_modes):
+        raise ArtifactError("extracted artifact differs from the fixed Signage allowlist")
+    for path, expected_mode in expected_modes.items():
+        metadata = actual_files[path]
+        if (
+            stat.S_IMODE(metadata.st_mode) != expected_mode
+            or not 1 <= metadata.st_size <= MAX_FILE_BYTES
+        ):
+            raise ArtifactError(f"extracted artifact metadata is unsafe: {path}")
+    return {"artifactKind": ARTIFACT_KIND, "fileCount": len(PAYLOAD_SPECS)}
+
+
 def verify_artifact(
     artifact: Path,
     descriptor: Path,
@@ -464,6 +586,10 @@ def _parser() -> argparse.ArgumentParser:
     build.add_argument("--output", type=Path, required=True)
     build.add_argument("--descriptor", type=Path, required=True)
     build.add_argument("--source-sha", required=True)
+    layout = subparsers.add_parser("validate-layout")
+    layout.add_argument("--artifact", type=Path, required=True)
+    tree = subparsers.add_parser("validate-tree")
+    tree.add_argument("--directory", type=Path, required=True)
     for action in ("verify", "inspect"):
         command = subparsers.add_parser(action)
         command.add_argument("--artifact", type=Path, required=True)
@@ -482,6 +608,10 @@ def main(argv: list[str] | None = None) -> int:
                 args.descriptor,
                 source_sha=args.source_sha,
             )
+        elif args.action == "validate-layout":
+            result = validate_layout(args.artifact)
+        elif args.action == "validate-tree":
+            result = validate_tree(args.directory)
         else:
             verified = verify_artifact(
                 args.artifact,

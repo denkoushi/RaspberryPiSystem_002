@@ -1,0 +1,19 @@
+---
+- name: Prepare, switch, and finalize one Pi4 kiosk release
+  block:
+    - name: Prepare the Pi4 candidate while the kiosk remains visible
+      ansible.builtin.import_tasks: prepare.yml
+
+    - name: Switch and verify one Pi4 kiosk
+      block:
+        - name: Switch the selected Pi4 kiosk to prepared artifacts
+          ansible.builtin.import_tasks: switch.yml
+
+        - name: Verify the selected Pi4 kiosk
+          ansible.builtin.import_tasks: health.yml
+      rescue:
+        - name: Restore the selected Pi4 kiosk
+          ansible.builtin.import_tasks: rollback.yml
+  always:
+    - name: Remove run-scoped Pi4 preparation data
+      ansible.builtin.import_tasks: cleanup.yml

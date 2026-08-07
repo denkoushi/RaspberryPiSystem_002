@@ -1,0 +1,13 @@
+[Unit]
+Description=Raspberry Pi Status Agent
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=STATUS_AGENT_CONFIG=/etc/raspi-status-agent.conf
+ExecStart=/usr/bin/env python3 /usr/local/lib/raspi-status-agent/status-agent.py
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

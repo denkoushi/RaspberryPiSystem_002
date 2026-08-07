@@ -1,0 +1,57 @@
+---
+- name: Restore backed-up Pi4 release files
+  ansible.builtin.copy:
+    src: "{{ item.backup_file }}"
+    dest: "{{ item.item.dest }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "{{ item.item.mode }}"
+  loop: "{{ release_kiosk_install.results | default([]) }}"
+  when:
+    - item.changed | default(false) | bool
+    - item.backup_file is defined
+  no_log: true
+
+- name: Remove newly introduced Pi4 files without a backup
+  ansible.builtin.file:
+    path: "{{ item.item.dest }}"
+    state: absent
+  loop: "{{ release_kiosk_install.results | default([]) }}"
+  when:
+    - item.changed | default(false) | bool
+    - item.backup_file is not defined
+  no_log: true
+
+- name: Reload restored Pi4 systemd units
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restore Pi4 agents from the captured image tags
+  ansible.builtin.command: >-
+    docker compose --project-name {{ release_kiosk_compose_project | quote }}
+    -f {{ release_kiosk_rollback_compose | quote }}
+    up -d --no-build {{ release_kiosk_services | join(' ') }}
+  when: release_kiosk_switch_attempted | default(false) | bool
+  changed_when: true
+
+- name: Restart restored Pi4 display and status units
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: restarted
+  loop:
+    - kiosk-browser.service
+    - status-agent.timer
+
+- name: Verify the complete restored Pi4 runtime
+  ansible.builtin.import_tasks: health_checks.yml
+
+- name: Record completed Pi4 rollback
+  ansible.builtin.set_fact:
+    release_kiosk_rolled_back: true
+
+- name: Fail the release after verified Pi4 rollback
+  ansible.builtin.fail:
+    msg: >-
+      Pi4 candidate failed health verification on {{ inventory_hostname }};
+      previous files and agent images were restored.

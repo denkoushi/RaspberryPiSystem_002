@@ -57,6 +57,9 @@ class SignageDistributionArtifactTest(unittest.TestCase):
             self.assertEqual(verified["manifest"]["sourceSha"], self.SOURCE_SHA)
             self.assertEqual(verified["manifest"]["artifactKind"], "pi3-signage-release")
             self.assertEqual(len(verified["manifest"]["files"]), 16)
+            self.assertFalse(
+                any(record["templated"] for record in verified["manifest"]["files"])
+            )
 
             with tarfile.open(first, "r:") as archive:
                 members = archive.getmembers()
@@ -82,6 +85,8 @@ class SignageDistributionArtifactTest(unittest.TestCase):
                         extracted.read(),
                         (PROJECT / spec.source_path).read_bytes(),
                     )
+                    self.assertNotIn(b"{{", (PROJECT / spec.source_path).read_bytes())
+                    self.assertNotIn(b"{%", (PROJECT / spec.source_path).read_bytes())
 
             records = {item["path"]: item for item in verified["manifest"]["files"]}
             self.assertEqual(
@@ -116,6 +121,32 @@ class SignageDistributionArtifactTest(unittest.TestCase):
                 text=True,
             )
             self.assertEqual(json.loads(identity.stdout)["sourceSha"], self.SOURCE_SHA)
+
+    def test_extracted_tree_uses_the_fixed_allowlist_without_rehashing(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            artifact, _descriptor, _result = self.build(root)
+            candidate = root / "candidate"
+            candidate.mkdir()
+            with tarfile.open(artifact, "r:") as archive:
+                archive.extractall(candidate)
+
+            self.assertEqual(
+                distribution.validate_tree(candidate),
+                {"artifactKind": "pi3-signage-release", "fileCount": 16},
+            )
+
+            unexpected = candidate / "unexpected"
+            unexpected.write_text("not allowlisted", encoding="utf-8")
+            with self.assertRaises(distribution.ArtifactError):
+                distribution.validate_tree(candidate)
+            unexpected.unlink()
+
+            payload = candidate / distribution.PAYLOAD_SPECS[0].archive_path
+            payload.unlink()
+            payload.symlink_to("outside")
+            with self.assertRaises(distribution.ArtifactError):
+                distribution.validate_tree(candidate)
 
     def test_cli_build_and_verify_use_the_same_real_boundary(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -221,6 +252,95 @@ class SignageDistributionArtifactTest(unittest.TestCase):
             self._descriptor_for_changed_tar(descriptor, payload_tampered, payload_descriptor)
             with self.assertRaises(distribution.ArtifactError):
                 distribution.verify_artifact(payload_tampered, payload_descriptor)
+
+    def test_layout_validation_rejects_unsafe_or_incomplete_archives(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            artifact, _descriptor, _result = self.build(root)
+            with tarfile.open(artifact, "r:") as archive:
+                entries = []
+                for member in archive.getmembers():
+                    extracted = archive.extractfile(member)
+                    assert extracted is not None
+                    entries.append((member, extracted.read()))
+
+            payload_name = distribution.PAYLOAD_SPECS[0].archive_path
+            payload_index = next(
+                index for index, (member, _payload) in enumerate(entries)
+                if member.name == payload_name
+            )
+
+            def write_variant(name, transform):
+                output = root / f"{name}.tar"
+                with output.open("wb") as handle:
+                    with tarfile.open(
+                        fileobj=handle, mode="w", format=tarfile.USTAR_FORMAT
+                    ) as archive:
+                        for index, (member, payload) in enumerate(entries):
+                            transformed = transform(index, member, payload)
+                            if transformed is None:
+                                continue
+                            info, content = transformed
+                            archive.addfile(info, io.BytesIO(content))
+                return output
+
+            def regular_info(member, payload, *, path=None):
+                info = tarfile.TarInfo(path or member.name)
+                info.size = len(payload)
+                info.mode = stat.S_IMODE(member.mode)
+                info.mtime = 0
+                info.uid = info.gid = 0
+                info.uname = info.gname = ""
+                return info
+
+            variants = {
+                "traversal": write_variant(
+                    "traversal",
+                    lambda index, member, payload: (
+                        regular_info(member, payload, path="../escape")
+                        if index == payload_index else regular_info(member, payload),
+                        payload,
+                    ),
+                ),
+                "oversized": write_variant(
+                    "oversized",
+                    lambda index, member, payload: (
+                        regular_info(
+                            member,
+                            b"x" * (distribution.MAX_FILE_BYTES + 1)
+                            if index == payload_index else payload,
+                        ),
+                        b"x" * (distribution.MAX_FILE_BYTES + 1)
+                        if index == payload_index else payload,
+                    ),
+                ),
+                "missing": write_variant(
+                    "missing",
+                    lambda index, member, payload: None
+                    if index == payload_index else (regular_info(member, payload), payload),
+                ),
+            }
+            symlink_archive = root / "symlink.tar"
+            with symlink_archive.open("wb") as handle:
+                with tarfile.open(fileobj=handle, mode="w", format=tarfile.USTAR_FORMAT) as archive:
+                    for index, (member, payload) in enumerate(entries):
+                        if index == payload_index:
+                            info = tarfile.TarInfo(member.name)
+                            info.type = tarfile.SYMTYPE
+                            info.linkname = "target"
+                            info.mode = stat.S_IMODE(member.mode)
+                            info.mtime = 0
+                            info.uid = info.gid = 0
+                            info.uname = info.gname = ""
+                            archive.addfile(info)
+                        else:
+                            info = regular_info(member, payload)
+                            archive.addfile(info, io.BytesIO(payload))
+            variants["symlink"] = symlink_archive
+
+            for name, unsafe in variants.items():
+                with self.subTest(name=name), self.assertRaises(distribution.ArtifactError):
+                    distribution.validate_layout(unsafe)
 
     def _descriptor_for_changed_tar(
         self,
