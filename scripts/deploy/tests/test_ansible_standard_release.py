@@ -243,6 +243,18 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertLess(load_index, migration_index)
         self.assertLess(migration_index, candidate_index)
 
+        pull = prepare_tasks[pull_index]
+        self.assertEqual(
+            pull["loop"],
+            ["{{ release_pi5_api_image }}", "{{ release_pi5_web_image }}"],
+        )
+        self.assertEqual(pull["register"], "release_pi5_pull")
+        self.assertEqual(pull["retries"], 3)
+        self.assertEqual(pull["delay"], 10)
+        self.assertEqual(pull["until"], "release_pi5_pull is succeeded")
+        self.assertNotIn("ignore_errors", pull)
+        self.assertNotIn("failed_when", pull)
+
         capacity = prepare_tasks[capacity_index]
         self.assertEqual(
             capacity["ansible.builtin.assert"]["that"],
