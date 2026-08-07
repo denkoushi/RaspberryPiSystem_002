@@ -4,7 +4,7 @@ WORKDIR /build
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpcsclite-dev build-essential swig && rm -rf /var/lib/apt/lists/*
+    libpcsclite-dev libffi-dev build-essential swig && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir poetry
 RUN python -m venv /opt/venv
 ENV VIRTUAL_ENV="/opt/venv"
