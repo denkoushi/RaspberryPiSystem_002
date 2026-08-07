@@ -37,6 +37,43 @@ class ScopeRequest:
         }
 
 
+LOCKED_RELEASE_FIELDS = frozenset(
+    {
+        "releaseScope",
+        "sourceSha",
+        "exactReference",
+        "ociDigest",
+        "artifactSha256",
+        "manifestSha256",
+        "payloadDigest",
+        "claimIdentity",
+    }
+)
+
+
+def validate_locked_release(
+    desired: Any, request: ScopeRequest
+) -> dict[str, Any]:
+    """Validate one persisted typed release against the current request."""
+
+    if (
+        not isinstance(desired, dict)
+        or set(desired) != LOCKED_RELEASE_FIELDS
+        or desired.get("releaseScope") != request.scope
+        or desired.get("sourceSha") != request.source_sha
+        or desired.get("ociDigest") != request.oci_digest
+        or desired.get("exactReference")
+        != f"{ARTIFACT_REPOSITORY}@{request.oci_digest}"
+        or desired.get("artifactSha256") != request.artifact_sha256
+        or desired.get("manifestSha256") != request.manifest_sha256
+        or desired.get("payloadDigest") != request.payload_digest
+        or desired.get("claimIdentity")
+        != f"git:{request.source_sha}@sha256:{request.artifact_sha256}"
+    ):
+        raise RuntimeError("locked Pi3 artifact release authority is inconsistent")
+    return dict(desired)
+
+
 def request_from_args(args: Any) -> ScopeRequest | None:
     scope = getattr(args, "release_scope", None)
     if scope is None:
@@ -89,31 +126,8 @@ def validate_locked_plan(
     """Reject identity drift or foreign work before device mutation."""
 
     desired = plan.get("desiredRelease")
-    expected_fields = {
-        "releaseScope",
-        "sourceSha",
-        "exactReference",
-        "ociDigest",
-        "artifactSha256",
-        "manifestSha256",
-        "payloadDigest",
-        "claimIdentity",
-    }
-    if (
-        plan.get("releaseScope") != request.scope
-        or not isinstance(desired, dict)
-        or set(desired) != expected_fields
-        or desired.get("releaseScope") != request.scope
-        or desired.get("sourceSha") != request.source_sha
-        or desired.get("ociDigest") != request.oci_digest
-        or desired.get("exactReference")
-        != f"{ARTIFACT_REPOSITORY}@{request.oci_digest}"
-        or desired.get("artifactSha256") != request.artifact_sha256
-        or desired.get("manifestSha256") != request.manifest_sha256
-        or desired.get("payloadDigest") != request.payload_digest
-        or desired.get("claimIdentity")
-        != f"git:{request.source_sha}@sha256:{request.artifact_sha256}"
-    ):
+    validate_locked_release(desired, request)
+    if plan.get("releaseScope") != request.scope:
         raise RuntimeError("locked Pi3 artifact release authority is inconsistent")
 
     hosts = plan.get("hosts")

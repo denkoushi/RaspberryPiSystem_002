@@ -342,9 +342,14 @@ class TerminalAdapter:
         return False
 
     def expected_claim_identity(
-        self, runtime: Any, desired_sha: str, kind: ClaimKind
+        self,
+        runtime: Any,
+        desired_sha: str,
+        kind: ClaimKind,
+        *,
+        locked_release: dict[str, Any] | None = None,
     ) -> str:
-        del runtime, kind
+        del runtime, kind, locked_release
         return desired_sha
 
     def direct_claim_authority(self, kind: ClaimKind) -> ClaimAuthority:
@@ -953,10 +958,35 @@ class SignageSystemdAdapter(TerminalAdapter):
         return True
 
     def expected_claim_identity(
-        self, runtime: Any, desired_sha: str, kind: ClaimKind
+        self,
+        runtime: Any,
+        desired_sha: str,
+        kind: ClaimKind,
+        *,
+        locked_release: dict[str, Any] | None = None,
     ) -> str:
         if kind is not ClaimKind.SIGNAGE_RELEASE_ARTIFACT:
-            return super().expected_claim_identity(runtime, desired_sha, kind)
+            return super().expected_claim_identity(
+                runtime,
+                desired_sha,
+                kind,
+                locked_release=locked_release,
+            )
+        if locked_release is not None:
+            claim_identity = locked_release.get("claimIdentity")
+            artifact_sha = locked_release.get("artifactSha256")
+            source_sha = locked_release.get("sourceSha")
+            if (
+                not isinstance(claim_identity, str)
+                or not isinstance(artifact_sha, str)
+                or SHA256_RE.fullmatch(artifact_sha) is None
+                or source_sha != desired_sha
+                or claim_identity != f"git:{source_sha}@sha256:{artifact_sha}"
+            ):
+                raise RuntimeError(
+                    "locked Signage artifact claim identity is inconsistent"
+                )
+            return claim_identity
         return runtime.signage_release_artifact_identity(desired_sha)
 
     def direct_claim_authority(self, kind: ClaimKind) -> ClaimAuthority:
