@@ -37,6 +37,9 @@ NORMAL_FACTORY_VAULT_PATHS = (
     "infrastructure/ansible/host_vars/raspi4-sessaku-01/vault.yml",
     "infrastructure/ansible/host_vars/raspi4-assembly-01/vault.yml",
 )
+READ_ONLY_PLACEHOLDER_PATH = (
+    "infrastructure/ansible/normal-factory-vault-placeholders.yml"
+)
 REQUIRED_INVENTORY_REFERENCES = {
     "raspberrypi5": {
         "api_jwt_access_secret": "vault_api_jwt_access_secret",
@@ -183,6 +186,8 @@ def scan_file(root: Path, path: Path) -> list[Finding]:
 def scan(root: Path) -> collections.Counter[Finding]:
     findings: collections.Counter[Finding] = collections.Counter()
     for path in candidate_paths(root):
+        if path.relative_to(root).as_posix() == READ_ONLY_PLACEHOLDER_PATH:
+            continue
         findings.update(scan_file(root, path))
     return findings
 
