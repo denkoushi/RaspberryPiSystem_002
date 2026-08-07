@@ -40,6 +40,14 @@ if [[ "${GITHUB_EVENT_NAME:-}" == push && "${GITHUB_REF:-}" == refs/heads/main ]
   fi
 fi
 
+FAILURE_STAGE='run-setup'
+report_failure() {
+  local status=$? line="$1"
+  printf '[ERROR] release-runtime-audit failure stage=%s line=%s status=%s\n' \
+    "$FAILURE_STAGE" "$line" "$status" >&2
+  return "$status"
+}
+
 RUN_SUFFIX="$(python3 -c 'import uuid; print(uuid.uuid4().hex[:12])')"
 RUN_ID="raspi-release-runtime-audit-${RUN_SUFFIX}"
 LABEL_KEY='com.raspi-system.production-path-audit'
@@ -86,7 +94,9 @@ cleanup() {
   exit "$status"
 }
 trap cleanup EXIT INT TERM
+trap 'report_failure "$LINENO"' ERR
 
+FAILURE_STAGE='image-validation'
 if ((PULL_IMAGES)); then
   docker pull --platform "$PLATFORM" "$API_IMAGE" >/dev/null
   docker pull --platform "$PLATFORM" "$WEB_IMAGE" >/dev/null
@@ -105,6 +115,7 @@ done
 
 docker network create --label "$LABEL" --label "$RUN_LABEL" "$NETWORK" >/dev/null
 
+FAILURE_STAGE='database-readiness'
 new_volume() {
   local purpose="$1"
   NEW_VOLUME="${RUN_ID}-${purpose}"
@@ -131,6 +142,7 @@ for _ in $(seq 1 60); do
 done
 docker exec "$DB_CONTAINER" pg_isready -U postgres -d borrow_return >/dev/null
 
+FAILURE_STAGE='migration-and-role-bootstrap'
 MIGRATION_PASSWORD='audit-migration-password'
 APP_PASSWORD='audit-application-password'
 BOOTSTRAP_DATABASE_URL='postgresql://postgres:postgres@db:5432/borrow_return'
@@ -151,6 +163,7 @@ docker run --rm --platform "$PLATFORM" --network "$NETWORK" --read-only --tmpfs 
 
 COMPOSE_ENV="$TEMP_DIR/compose.env"
 MIGRATION_ENV="$TEMP_DIR/migration.env"
+FAILURE_STAGE='compose-and-storage-validation'
 printf 'MIGRATION_DATABASE_URL=%s\n' "$MIGRATION_URL" >"$MIGRATION_ENV"
 cat >"$COMPOSE_ENV" <<EOF
 ADMIN_ALLOW_NETS=127.0.0.1/32
@@ -233,6 +246,7 @@ API_ENV=(
   -e BACKUP_STORAGE_DIR=/opt/backups -e PI5_SCHEDULER_LEADER_ENABLED=1
   -e PI5_SCHEDULER_LEASE_FILE=/app/alerts/.pi5-scheduler-leader
 )
+FAILURE_STAGE='api-health-and-scheduler'
 for pair in "$API_BLUE:api-blue" "$API_GREEN:api-green"; do
   name="${pair%%:*}" alias="${pair#*:}"
   docker run -d --platform "$PLATFORM" --name "$name" --network "$NETWORK" --network-alias "$alias" \
@@ -259,6 +273,7 @@ done
 [[ "$(printf '%s\n' "${SCHEDULER_ROLES[@]}" | sort | tr '\n' ' ')" == 'leader standby ' ]] \
   || { echo '[ERROR] exact API pair did not elect one scheduler leader and one standby' >&2; exit 1; }
 
+FAILURE_STAGE='web-health'
 for pair in "$WEB_BLUE:web-blue:api-blue" "$WEB_GREEN:web-green:api-green"; do
   name="${pair%%:*}" rest="${pair#*:}" alias="${rest%%:*}" upstream="${rest#*:}"
   docker run -d --platform "$PLATFORM" --name "$name" --network "$NETWORK" --network-alias "$alias" \
@@ -286,6 +301,7 @@ for name in "$WEB_BLUE" "$WEB_GREEN"; do
   '
 done
 
+FAILURE_STAGE='gateway-and-stability'
 render_gateway() {
   local slot="$1"
   python3 - "$ROOT/infrastructure/docker/Caddyfile.gateway.http.template" \
