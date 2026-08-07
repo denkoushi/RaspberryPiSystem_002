@@ -2020,6 +2020,115 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             runtime.events.index("activation:submit:kiosk-a:run-1"),
         )
 
+    def test_typed_signage_admission_keeps_orchestrator_sha_separate_from_release_source(self):
+        fixture = ProductionSignageFixture()
+        runtime = fixture.typed_runtime(artifact_state="absent")
+        bind_production_signage_boundaries(runtime, fixture)
+        admission_plan = copy.deepcopy(runtime.plan)
+        admission_plan["sha"] = ORCHESTRATOR_SHA
+        admission = self._admission_payload(admission_plan)
+
+        self.assertEqual(
+            coordinator.execute(
+                args(
+                    sha=ORCHESTRATOR_SHA,
+                    release_scope=PI3_SIGNAGE_SCOPE,
+                    signage_oci_digest=OCI_DIGEST,
+                    readiness_admission_json=json.dumps(admission),
+                ),
+                runtime=runtime,
+                token=FakeToken(runtime.events),
+            ),
+            0,
+        )
+        saved = runtime.states[-1].payload["readinessAdmission"]
+        self.assertEqual(saved["scopeMatch"], "passed")
+        self.assertEqual(saved["sha"], ORCHESTRATOR_SHA)
+        self.assertEqual(
+            runtime.states[-1].payload["desiredRelease"],
+            fixture.scoped_release_authority(),
+        )
+
+    def test_typed_signage_admission_rejects_orchestrator_sha_change(self):
+        fixture = ProductionSignageFixture()
+        runtime = fixture.typed_runtime(artifact_state="absent")
+        admission_plan = copy.deepcopy(runtime.plan)
+        admission_plan["sha"] = ORCHESTRATOR_SHA
+        admission = self._admission_payload(admission_plan)
+
+        with self.assertRaisesRegex(
+            RuntimeError, "readiness admission does not match release SHA"
+        ):
+            coordinator.execute(
+                args(
+                    sha="4" * 40,
+                    release_scope=PI3_SIGNAGE_SCOPE,
+                    signage_oci_digest=OCI_DIGEST,
+                    readiness_admission_json=json.dumps(admission),
+                ),
+                runtime=runtime,
+                token=FakeToken(runtime.events),
+            )
+        self.assertFalse(
+            any(
+                event.startswith(
+                    ("fleet:", "stage3:", "status:", "playbook:")
+                )
+                for event in runtime.events
+            )
+        )
+
+    def test_typed_signage_identity_mismatch_is_rejected_before_mutation(self):
+        fields = (
+            "sourceSha",
+            "ociDigest",
+            "artifactSha256",
+            "manifestSha256",
+            "payloadDigest",
+        )
+        for field in fields:
+            with self.subTest(field=field):
+                fixture = ProductionSignageFixture()
+                runtime = fixture.typed_runtime(artifact_state="absent")
+                original_scope = runtime.build_fleet_scope
+
+                def mismatched_scope(*, field=field, **keywords):
+                    plan, targets, classifications, warnings = original_scope(
+                        **keywords
+                    )
+                    plan["desiredRelease"][field] = (
+                        "4" * 40
+                        if field == "sourceSha"
+                        else ("sha256:" + "4" * 64 if field == "ociDigest" else "4" * 64)
+                    )
+                    return plan, targets, classifications, warnings
+
+                runtime.build_fleet_scope = mismatched_scope
+                with self.assertRaisesRegex(
+                    RuntimeError, "locked Pi3 artifact release authority"
+                ):
+                    coordinator.execute(
+                        args(
+                            release_scope=PI3_SIGNAGE_SCOPE,
+                            signage_oci_digest=OCI_DIGEST,
+                        ),
+                        runtime=runtime,
+                        token=FakeToken(runtime.events),
+                    )
+                self.assertFalse(
+                    any(
+                        event.startswith(
+                            (
+                                "terminal:",
+                                "stage3:",
+                                "status:",
+                                "playbook:",
+                            )
+                        )
+                        for event in runtime.events
+                    )
+                )
+
     def test_locked_plan_scope_expansion_stops_before_candidate_mutation(self):
         runtime = self._kiosk_web_activation_runtime()
         runtime.plan = self._readiness_plan(runtime)

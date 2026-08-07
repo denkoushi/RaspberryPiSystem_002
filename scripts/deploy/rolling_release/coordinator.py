@@ -2010,9 +2010,19 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
         if admission is not None:
             try:
                 locked_registry = readiness_policy.load_registry()
+                # The admission envelope seals the orchestrator checkout SHA.
+                # A typed artifact release deliberately uses its release source
+                # SHA for artifact authority, so do not compare those two
+                # independent authorities as if they were one field.  The
+                # locked typed release identity was already validated above;
+                # this selection only rechecks the admission's orchestrator
+                # scope against the current plan shape.
+                readiness_plan = plan
+                if scope_request is not None:
+                    readiness_plan = {**plan, "sha": args.sha}
                 locked_selection = readiness_policy.select_readiness(
                     locked_registry,
-                    readiness_policy.facts_from_plan(plan),
+                    readiness_policy.facts_from_plan(readiness_plan),
                 )
                 admission_issues = readiness_policy.compare_admission(
                     admission, locked_selection
