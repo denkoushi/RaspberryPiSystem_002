@@ -64,34 +64,46 @@
       - release_pi5_image_ids.results[1].stdout is match('^sha256:[0-9a-f]{64}$')
     fail_msg: Pi5 candidate images did not resolve to immutable Docker image IDs.
 
-- name: Read current Pi5 resources while traffic stays live
+- name: Read current Pi5 memory and disk while traffic stays live
   ansible.builtin.shell: |
     set -euo pipefail
     memory_mb="$(awk '/MemAvailable:/ {print int($2 / 1024)}' /proc/meminfo)"
     disk_gb="$(df -Pk "{{ release_pi5_project_dir }}" | awk 'NR == 2 {print int($4 / 1024 / 1024)}')"
+    printf '{"memoryMb":%s,"diskGb":%s}\n' "${memory_mb}" "${disk_gb}"
+  args:
+    executable: /bin/bash
+  register: release_pi5_capacity_sample
+  changed_when: false
+
+- name: Parse the current Pi5 memory and disk values
+  ansible.builtin.set_fact:
+    release_pi5_capacity: "{{ release_pi5_capacity_sample.stdout | from_json }}"
+
+- name: Require enough Pi5 memory and disk for inactive-slot preparation
+  ansible.builtin.assert:
+    that:
+      - release_pi5_capacity.memoryMb | int >= release_pi5_min_memory_mb | int
+      - release_pi5_capacity.diskGb | int >= release_pi5_min_disk_gb | int
+    fail_msg: >-
+      Pi5 lacks the current memory or disk headroom required to prepare an
+      inactive candidate while the active slot remains live.
+
+- name: Wait for Pi5 load to settle after image preparation
+  ansible.builtin.shell: |
+    set -euo pipefail
     cpu_count="$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc)"
     max_load="$(awk "BEGIN {printf \"%.2f\", ${cpu_count} * 0.75}")"
     load="$(cut -d' ' -f1 /proc/loadavg)"
-    printf '{"memoryMb":%s,"diskGb":%s,"maxLoad":%s,"load":%s}\n' \
-      "${memory_mb}" "${disk_gb}" "${max_load}" "${load}"
+    printf '{"load":%s,"maxLoad":%s}\n' "${load}" "${max_load}"
   args:
     executable: /bin/bash
-  register: release_pi5_resource_sample
+  register: release_pi5_load_sample
   changed_when: false
-
-- name: Parse the current Pi5 resource values
-  ansible.builtin.set_fact:
-    release_pi5_resources: "{{ release_pi5_resource_sample.stdout | from_json }}"
-
-- name: Require enough Pi5 capacity for inactive-slot preparation
-  ansible.builtin.assert:
-    that:
-      - release_pi5_resources.memoryMb | int >= release_pi5_min_memory_mb | int
-      - release_pi5_resources.diskGb | int >= release_pi5_min_disk_gb | int
-      - release_pi5_resources.load | float < release_pi5_resources.maxLoad | float
-    fail_msg: >-
-      Pi5 lacks the current memory, disk, or CPU headroom required to prepare
-      an inactive candidate while the active slot remains live.
+  retries: 30
+  delay: 10
+  until: >-
+    (release_pi5_load_sample.stdout | from_json).load | float
+    < (release_pi5_load_sample.stdout | from_json).maxLoad | float
 
 - name: Check the live Prisma ledger against the candidate source directly
   ansible.builtin.shell: |

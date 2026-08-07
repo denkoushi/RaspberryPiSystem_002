@@ -221,7 +221,58 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, pi5)
         self.assertIn("validate-expand-only-migrations.py", pi5)
-        self.assertIn("Require enough Pi5 capacity", pi5)
+        self.assertIn("Require enough Pi5 memory and disk", pi5)
+
+    def test_pi5_waits_for_post_pull_load_before_candidate_mutation(self) -> None:
+        prepare_path = ANSIBLE / "roles/release_pi5/tasks/prepare.yml"
+        prepare_tasks = yaml.safe_load(prepare_path.read_text(encoding="utf-8"))
+        names = [task["name"] for task in prepare_tasks]
+        pull_index = names.index(
+            "Pull immutable Pi5 candidate images while the active slot is live"
+        )
+        capacity_index = names.index(
+            "Require enough Pi5 memory and disk for inactive-slot preparation"
+        )
+        load_index = names.index("Wait for Pi5 load to settle after image preparation")
+        migration_index = names.index(
+            "Check the live Prisma ledger against the candidate source directly"
+        )
+        candidate_index = names.index("Prepare and validate the inactive Pi5 slot")
+        self.assertLess(pull_index, capacity_index)
+        self.assertLess(capacity_index, load_index)
+        self.assertLess(load_index, migration_index)
+        self.assertLess(migration_index, candidate_index)
+
+        capacity = prepare_tasks[capacity_index]
+        self.assertEqual(
+            capacity["ansible.builtin.assert"]["that"],
+            [
+                "release_pi5_capacity.memoryMb | int >= release_pi5_min_memory_mb | int",
+                "release_pi5_capacity.diskGb | int >= release_pi5_min_disk_gb | int",
+            ],
+        )
+        self.assertNotIn("retries", capacity)
+        self.assertNotIn("delay", capacity)
+        self.assertNotIn("until", capacity)
+
+        load_wait = prepare_tasks[load_index]
+        self.assertEqual(load_wait["retries"], 30)
+        self.assertEqual(load_wait["delay"], 10)
+        self.assertEqual(load_wait["retries"] * load_wait["delay"], 300)
+        self.assertEqual(load_wait["register"], "release_pi5_load_sample")
+        self.assertNotIn("ignore_errors", load_wait)
+        self.assertNotIn("failed_when", load_wait)
+        self.assertNotIn("no_log", load_wait)
+        load_shell = load_wait["ansible.builtin.shell"]
+        self.assertIn("/proc/loadavg", load_shell)
+        self.assertIn("_NPROCESSORS_ONLN", load_shell)
+        self.assertIn("* 0.75", load_shell)
+        self.assertIn("{\"load\":%s,\"maxLoad\":%s}", load_shell)
+        self.assertNotIn("MemAvailable", load_shell)
+        self.assertNotIn("df -", load_shell)
+        self.assertIn("release_pi5_load_sample.stdout", load_wait["until"])
+        self.assertIn(".load | float", load_wait["until"])
+        self.assertIn(".maxLoad | float", load_wait["until"])
 
 
 if __name__ == "__main__":
