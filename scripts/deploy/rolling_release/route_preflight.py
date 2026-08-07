@@ -24,6 +24,11 @@ EX_OK = 0
 EX_SOFTWARE = 70
 EX_CONFIG = 78
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+EXACT_REFERENCE_RE = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,255}@sha256:[0-9a-f]{64}$"
+)
 RUN_ID_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$")
 VERSION_1_KEYS = frozenset(
     {
@@ -401,10 +406,120 @@ def _active_run_id(value: Any) -> str | None:
             started_at,
         )
         is None
-        or (kind is not None and kind not in {"release", "pi4-recovery"})
+        or (
+            kind is not None
+            and kind not in {"release", "pi4-recovery", "pi3-signage-artifact"}
+        )
     ):
         return None
     return run_id
+
+
+def _recovery_admission(
+    authority: Mapping[str, Any], *, run_id: str, kind: str | None
+) -> dict[str, Any] | None:
+    """Prove a terminal authority is safe for coordinator-only recovery.
+
+    This is deliberately narrower than ordinary route readability.  A typed
+    held run must be durably terminal, retain its sealed rollback manifest,
+    and contain exactly the profile-owned target that the coordinator can
+    recover.  The coordinator remains the mutation and finalization owner.
+    """
+
+    if (
+        authority.get("runId") != run_id
+        or authority.get("state") not in {"failed", "interrupted"}
+        or authority.get("phase") != "completed"
+        or not isinstance(authority.get("failure"), str)
+        or not authority["failure"]
+    ):
+        return None
+    targets = authority.get("targets")
+    if not isinstance(targets, list) or not targets:
+        return None
+    safe_targets: list[dict[str, str]] = []
+    for target in targets:
+        if not isinstance(target, dict):
+            return None
+        host = target.get("host")
+        role = target.get("role")
+        terminal_type = target.get("terminalType")
+        client_id = target.get("clientId")
+        rollback_run = target.get("rollbackAuthorityRunId", run_id)
+        if (
+            not all(
+                isinstance(value, str) and value
+                for value in (host, role, terminal_type, client_id)
+            )
+            or not isinstance(rollback_run, str)
+            or rollback_run != run_id
+            or not isinstance(target.get("rollbackManifest"), dict)
+        ):
+            return None
+        safe_targets.append(
+            {
+                "host": host,
+                "role": role,
+                "terminalType": terminal_type,
+                "clientId": client_id,
+            }
+        )
+    if len({target["host"] for target in safe_targets}) != len(safe_targets):
+        return None
+    scope = authority.get("releaseScope")
+    if kind == "pi3-signage-artifact" or scope == "pi3-signage-artifact":
+        if (
+            kind != "pi3-signage-artifact"
+            or scope != "pi3-signage-artifact"
+            or len(safe_targets) != 1
+            or safe_targets[0]["role"] != "signage"
+            or safe_targets[0]["terminalType"] != "signage"
+            or safe_targets[0]["clientId"] != "raspberrypi3-signage1"
+        ):
+            return None
+        desired = authority.get("desiredRelease")
+        if (
+            not isinstance(desired, dict)
+            or not isinstance(desired.get("sourceSha"), str)
+            or FULL_SHA_RE.fullmatch(desired["sourceSha"]) is None
+            or not isinstance(desired.get("ociDigest"), str)
+            or DIGEST_RE.fullmatch(desired["ociDigest"]) is None
+            or not all(
+                isinstance(desired.get(key), str)
+                and SHA256_RE.fullmatch(desired[key]) is not None
+                for key in ("artifactSha256", "manifestSha256", "payloadDigest")
+            )
+            or not isinstance(desired.get("exactReference"), str)
+            or EXACT_REFERENCE_RE.fullmatch(desired["exactReference"]) is None
+            or desired["exactReference"].rsplit("@", 1)[1]
+            != desired["ociDigest"]
+        ):
+            return None
+    return {
+        "status": "passed",
+        "runId": run_id,
+        "state": authority["state"],
+        "releaseScope": scope,
+        "targets": [target["host"] for target in safe_targets],
+        "sealedBaseline": True,
+        **(
+            {
+                "desiredRelease": {
+                    key: authority["desiredRelease"][key]
+                    for key in (
+                        "sourceSha",
+                        "exactReference",
+                        "ociDigest",
+                        "artifactSha256",
+                        "manifestSha256",
+                        "payloadDigest",
+                    )
+                }
+            }
+            if scope == "pi3-signage-artifact"
+            else {}
+        ),
+    }
 
 
 def execute(
@@ -422,6 +537,7 @@ def execute(
     issues: list[str] = []
     proofs: list[str] = []
     warnings: list[str] = []
+    recovery_admission: dict[str, Any] | None = None
     fleet_lock_descriptor: int | None = None
     required_external_dependencies = tuple(
         str(value) for value in spec.get("requiredExternalDependencies", [])
@@ -552,6 +668,11 @@ def execute(
             if active_run is not None:
                 active_run_id = _active_run_id(active_run)
                 valid_active_run = active_run_id is not None
+                active_kind = (
+                    active_run.get("kind")
+                    if isinstance(active_run, dict)
+                    else None
+                )
                 run_path = os.path.join(
                     project,
                     "logs",
@@ -560,6 +681,7 @@ def execute(
                     f"{active_run_id}.json" if active_run_id is not None else "invalid",
                 )
                 readable_authority = False
+                authority: dict[str, Any] | None = None
                 if valid_active_run and os.path.exists(run_path):
                     try:
                         authority = _safe_json_document(run_path)
@@ -569,14 +691,29 @@ def execute(
                         )
                     except OSError:
                         readable_authority = False
-                _add(
-                    issues,
-                    valid_active_run and readable_authority,
-                    "pi5.interrupted-run-authority",
-                )
                 if valid_active_run and readable_authority:
-                    proofs.append("pi5.interrupted-run-authority-readable")
-                    warnings.append("pi5.interrupted-run-recovery-required")
+                    admission = _recovery_admission(
+                        authority or {}, run_id=active_run_id, kind=active_kind
+                    )
+                    if admission is not None:
+                        proofs.append("pi5.interrupted-run-recovery-admitted")
+                        warnings.append("pi5.interrupted-run-recovery-required")
+                        recovery_admission = admission
+                    elif authority and authority.get("state") is None:
+                        # Preserve the historical readable-authority contract
+                        # for old records whose detailed state predates the
+                        # strict admission envelope.
+                        proofs.append("pi5.interrupted-run-authority-readable")
+                        warnings.append("pi5.interrupted-run-recovery-required")
+                        recovery_admission = None
+                    else:
+                        _add(issues, False, "pi5.interrupted-run-authority")
+                else:
+                    _add(
+                        issues,
+                        False,
+                        "pi5.interrupted-run-authority",
+                    )
         except (OSError, json.JSONDecodeError, UnicodeError):
             _add(issues, False, "pi5.fleet-state-readable")
     else:
@@ -624,6 +761,8 @@ def execute(
             "successes": external_successes,
         },
     }
+    if recovery_admission is not None:
+        report["recoveryAdmission"] = recovery_admission
     if fleet_lock_descriptor is not None:
         os.close(fleet_lock_descriptor)
     return (EX_OK if not issues else EX_CONFIG), report

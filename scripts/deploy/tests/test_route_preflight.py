@@ -321,6 +321,190 @@ class RoutePreflightTest(unittest.TestCase):
                 "pi5.interrupted-run-authority-readable", report["proofs"]
             )
 
+    def test_typed_failed_run_requires_strict_recovery_admission(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Path(temporary)
+            lock = project / "logs/deploy/fleet-release-state.lock"
+            lock.parent.mkdir(parents=True)
+            lock.write_text("", encoding="utf-8")
+            create_backup_ssh_authority(project)
+            active_run = "20260807-010203-a1b2c3"
+            (project / "logs/deploy/fleet-release-state.json").write_text(
+                json.dumps(
+                    {
+                        "activeRun": {
+                            "runId": active_run,
+                            "status": "running",
+                            "desiredSha": "a" * 40,
+                            "inventory": "inventory.yml",
+                            "startedAt": "2026-08-07T01:02:03Z",
+                            "kind": "pi3-signage-artifact",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            run_path = project / f"logs/deploy/release-runs/{active_run}.json"
+            run_path.parent.mkdir(parents=True)
+            run_path.write_text(
+                json.dumps(
+                    {
+                        "runId": active_run,
+                        "state": "failed",
+                        "phase": "completed",
+                        "failure": "terminal pre-mutation cleanup failed",
+                        "releaseScope": "pi3-signage-artifact",
+                        "desiredRelease": {
+                            "sourceSha": "b" * 40,
+                            "exactReference": "ghcr.io/example/signage@sha256:" + "c" * 64,
+                            "ociDigest": "sha256:" + "c" * 64,
+                            "artifactSha256": "d" * 64,
+                            "manifestSha256": "e" * 64,
+                            "payloadDigest": "f" * 64,
+                        },
+                        "targets": [
+                            {
+                                "host": "raspberrypi3",
+                                "role": "signage",
+                                "terminalType": "signage",
+                                "clientId": "raspberrypi3-signage1",
+                                "rollbackAuthorityRunId": active_run,
+                                "rollbackManifest": {"schemaVersion": 1},
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            for name in ("ansible.cfg", ".vault-pass", "inventory.yml"):
+                ansible = project / "infrastructure/ansible"
+                ansible.mkdir(parents=True, exist_ok=True)
+                (ansible / name).write_text("{}\n", encoding="utf-8")
+
+            def run(argv, **_kwargs):
+                if "status" in argv:
+                    return SimpleNamespace(returncode=0, stdout="", stderr="")
+                if "show" in argv:
+                    return SimpleNamespace(
+                        returncode=0,
+                        stdout="raspi-rolling-release-v2\n",
+                        stderr="",
+                    )
+                if "ansible-inventory" in argv[0]:
+                    return SimpleNamespace(returncode=0, stdout="{}", stderr="")
+                return SimpleNamespace(returncode=0, stdout="ok\n", stderr="")
+
+            real_isfile = route_preflight.os.path.isfile
+            with patch.object(
+                route_preflight.os.path,
+                "isfile",
+                side_effect=lambda path: str(path).startswith("/usr/bin/")
+                or real_isfile(path),
+            ), patch.object(route_preflight.os, "access", return_value=True):
+                code, report = route_preflight.execute(
+                    spec(str(project)),
+                    run_command=run,
+                    client_id_reader=lambda: "raspberrypi5-server",
+                    disk_free_reader=lambda _path: 8192,
+                    memory_available_reader=lambda: 2048,
+                )
+
+            self.assertEqual(code, 0)
+            self.assertIn("pi5.interrupted-run-recovery-admitted", report["proofs"])
+            self.assertEqual(
+                report["recoveryAdmission"]["releaseScope"],
+                "pi3-signage-artifact",
+            )
+            self.assertEqual(
+                report["recoveryAdmission"]["targets"], ["raspberrypi3"]
+            )
+
+    def test_typed_failed_run_without_sealed_baseline_stays_blocked(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Path(temporary)
+            lock = project / "logs/deploy/fleet-release-state.lock"
+            lock.parent.mkdir(parents=True)
+            lock.write_text("", encoding="utf-8")
+            (project / "logs/deploy/fleet-release-state.json").write_text(
+                json.dumps(
+                    {
+                        "activeRun": {
+                            "runId": "20260807-010203-a1b2c3",
+                            "status": "running",
+                            "desiredSha": "a" * 40,
+                            "inventory": "inventory.yml",
+                            "startedAt": "2026-08-07T01:02:03Z",
+                            "kind": "pi3-signage-artifact",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            run_path = project / "logs/deploy/release-runs/20260807-010203-a1b2c3.json"
+            run_path.parent.mkdir(parents=True)
+            run_path.write_text(
+                json.dumps(
+                    {
+                        "runId": "20260807-010203-a1b2c3",
+                        "state": "failed",
+                        "phase": "completed",
+                        "failure": "failed",
+                        "releaseScope": "pi3-signage-artifact",
+                        "targets": [{"host": "raspberrypi3", "role": "signage"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch.object(route_preflight.os.path, "isfile", return_value=False):
+                code, report = route_preflight.execute(
+                    spec(str(project)),
+                    run_command=lambda *_args, **_kwargs: SimpleNamespace(
+                        returncode=1, stdout="", stderr=""
+                    ),
+                    client_id_reader=lambda: "raspberrypi5-server",
+                    disk_free_reader=lambda _path: 8192,
+                    memory_available_reader=lambda: 2048,
+                )
+
+            self.assertEqual(code, 78)
+            self.assertIn("pi5.interrupted-run-authority", report["issues"])
+            self.assertNotIn("recoveryAdmission", report)
+
+    def test_typed_recovery_admission_requires_matching_digest_reference(self):
+        authority = {
+            "runId": "20260807-010203-a1b2c3",
+            "state": "failed",
+            "phase": "completed",
+            "failure": "terminal pre-mutation cleanup failed",
+            "releaseScope": "pi3-signage-artifact",
+            "desiredRelease": {
+                "sourceSha": "b" * 40,
+                "exactReference": "ghcr.io/example/signage@sha256:" + "d" * 64,
+                "ociDigest": "sha256:" + "c" * 64,
+                "artifactSha256": "d" * 64,
+                "manifestSha256": "e" * 64,
+                "payloadDigest": "f" * 64,
+            },
+            "targets": [
+                {
+                    "host": "raspberrypi3",
+                    "role": "signage",
+                    "terminalType": "signage",
+                    "clientId": "raspberrypi3-signage1",
+                    "rollbackAuthorityRunId": "20260807-010203-a1b2c3",
+                    "rollbackManifest": {"schemaVersion": 1},
+                }
+            ],
+        }
+
+        self.assertIsNone(
+            route_preflight._recovery_admission(
+                authority,
+                run_id="20260807-010203-a1b2c3",
+                kind="pi3-signage-artifact",
+            )
+        )
+
     def test_current_active_run_summary_must_match_its_authority(self):
         with tempfile.TemporaryDirectory() as temporary:
             project = Path(temporary)

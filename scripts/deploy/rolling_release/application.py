@@ -433,6 +433,8 @@ def _probe_record(name: str, result: Any, *, structured: bool = False) -> dict[s
             record["host"] = payload["host"]
         if isinstance(payload.get("targets"), list):
             record["targets"] = payload["targets"][:100]
+        if name == "route" and isinstance(payload.get("recoveryAdmission"), dict):
+            record["recoveryAdmission"] = dict(payload["recoveryAdmission"])
         if name == "terminal":
             targets = payload.get("targets")
             valid_targets = isinstance(targets, list) and len(targets) <= 100
@@ -577,6 +579,52 @@ def _probe_record(name: str, result: Any, *, structured: bool = False) -> dict[s
     return record
 
 
+def _valid_recovery_admission(
+    route_record: dict[str, Any] | None,
+    planning_snapshot: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Accept only a route proof that matches this release's target scope."""
+
+    admission = route_record.get("recoveryAdmission") if route_record else None
+    if (
+        not isinstance(admission, dict)
+        or admission.get("status") != "passed"
+        or admission.get("sealedBaseline") is not True
+        or not isinstance(admission.get("runId"), str)
+        or not isinstance(admission.get("targets"), list)
+        or any(not isinstance(host, str) for host in admission["targets"])
+    ):
+        return None
+    expected_hosts = [
+        work.get("host")
+        for work in planning_snapshot.get("terminalWork", [])
+        if isinstance(work, dict) and isinstance(work.get("host"), str)
+    ]
+    if sorted(admission["targets"]) != sorted(expected_hosts):
+        return None
+    scope = planning_snapshot.get("releaseScope")
+    if admission.get("releaseScope") != scope:
+        return None
+    if scope == "pi3-signage-artifact":
+        expected_release = planning_snapshot.get("desiredRelease")
+        if (
+            not isinstance(expected_release, dict)
+            or admission.get("desiredRelease") != {
+                key: expected_release.get(key)
+                for key in (
+                    "sourceSha",
+                    "exactReference",
+                    "ociDigest",
+                    "artifactSha256",
+                    "manifestSha256",
+                    "payloadDigest",
+                )
+            }
+        ):
+            return None
+    return admission
+
+
 def _preflight_report(
     spec: LaunchSpec,
     *,
@@ -663,6 +711,7 @@ def _preflight_report(
             evidence_for("migration.production-ledger", "migration")
         )
     route_record = records.get("route")
+    recovery_admission = _valid_recovery_admission(route_record, planning_snapshot)
     route_status = (
         str(route_record["status"]) if route_record is not None else "incomplete"
     )
@@ -681,6 +730,10 @@ def _preflight_report(
             value
             for value in route_issues
             if not value.startswith("pi5.external-tls:")
+            and not (
+                value == "pi5.interrupted-run-authority"
+                and recovery_admission is not None
+            )
         )
         evidence.append(
             readiness_policy.ProbeEvidence(
@@ -823,11 +876,14 @@ def _preflight_report(
             registry, decision
         ),
         "readinessAdmission": admission,
+        **({"recoveryAdmission": recovery_admission} if recovery_admission else {}),
         "probes": list(records.values()),
     }
 
 
-def _launch(args: Any, *, runtime: Any) -> int:
+def _launch(
+    args: Any, *, runtime: Any, recovery_attempted: bool = False
+) -> int:
     _require_clean_worktree(runtime=runtime)
     remote_inventory = _remote_inventory(args.inventory, runtime=runtime)
     runtime.run(["git", "-C", str(runtime.PROJECT), "fetch", "origin", args.branch])
@@ -992,6 +1048,48 @@ def _launch(args: Any, *, runtime: Any) -> int:
         terminal_count=len(terminal_preflight_targets),
         planning_snapshot=planning_snapshot,
     )
+    recovery_admission = preflight_report.get("recoveryAdmission")
+    if recovery_admission is not None and preflight_code == 0:
+        if recovery_attempted:
+            preflight_report["status"] = "blocked"
+            preflight_report["readinessAdmission"] = None
+            preflight_report["probes"].append(
+                {
+                    "probe": "interrupted-recovery",
+                    "status": "blocked",
+                    "exitCode": EX_CONFIG,
+                    "issues": ["pi5.interrupted-run-recovery-incomplete"],
+                }
+            )
+            if getattr(args, "preflight_only", False):
+                print(json.dumps(preflight_report, ensure_ascii=False, sort_keys=True))
+                return EX_CONFIG
+            raise RuntimeError("interrupted-run recovery did not release its authority")
+        admission_payload = preflight_report.get("readinessAdmission")
+        if not isinstance(admission_payload, dict):
+            raise RuntimeError("recovery admission lacks readiness evidence")
+        recovery_spec = replace(spec, readiness_admission=admission_payload).validate()
+        start_recovery = getattr(systemd, "start_recovery", None)
+        if not callable(start_recovery):
+            raise RuntimeError("recovery admission has no standard recovery executor")
+        recovery_result = start_recovery(recovery_spec, wait=True)
+        if recovery_result.returncode != 0:
+            preflight_report["status"] = "incomplete"
+            preflight_report["readinessAdmission"] = None
+            preflight_report["recovery"] = {
+                "status": "failed",
+                "exitCode": recovery_result.returncode,
+                "issues": ["pi5.interrupted-run-recovery-failed"],
+            }
+            if getattr(args, "preflight_only", False):
+                print(json.dumps(preflight_report, ensure_ascii=False, sort_keys=True))
+                return EX_SOFTWARE
+            raise RuntimeError("interrupted-run recovery failed before release planning")
+        if getattr(args, "preflight_only", False):
+            return _launch(args, runtime=runtime, recovery_attempted=True)
+        raise RuntimeError(
+            "interrupted-run recovery completed; rerun standard preflight before release"
+        )
     if getattr(args, "preflight_only", False) and preflight_code == 0:
         signage_targets = [
             target

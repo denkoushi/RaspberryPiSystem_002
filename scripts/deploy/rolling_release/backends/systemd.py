@@ -261,9 +261,17 @@ class SystemdBackend:
         validate_lookup_run_id(run_id)
         return self.remote_project / 'logs/deploy/release-runs' / f'{run_id}.control.json'
 
-    def build_start_command(self, spec: LaunchSpec, *, wait: bool) -> tuple[str, ...]:
+    def build_start_command(
+        self,
+        spec: LaunchSpec,
+        *,
+        wait: bool,
+        recovery_only: bool = False,
+    ) -> tuple[str, ...]:
         if type(wait) is not bool:
             raise TypeError('wait must be boolean')
+        if type(recovery_only) is not bool:
+            raise TypeError('recovery_only must be boolean')
         spec.validate()
         payload = spec.bootstrap_payload(str(self.remote_project))
         serialized_payload = json.dumps(
@@ -291,6 +299,8 @@ class SystemdBackend:
             '--property=StandardOutput=journal',
             '--property=StandardError=journal',
         ]
+        if recovery_only:
+            command.append('--setenv=ROLLING_RELEASE_RECOVERY_ONLY=1')
         if wait:
             command.append('--wait')
         command.extend([
@@ -306,6 +316,12 @@ class SystemdBackend:
     def start(self, spec: LaunchSpec, *, wait: bool) -> CommandResult:
         """Submit the unit; foreground uses systemd-run's service wait contract."""
         return self.transport.run(self.build_start_command(spec, wait=wait))
+
+    def start_recovery(self, spec: LaunchSpec, *, wait: bool = True) -> CommandResult:
+        """Run only the sealed interrupted-run recovery transaction."""
+        return self.transport.run(
+            self.build_start_command(spec, wait=wait, recovery_only=True)
+        )
 
     def build_migration_preflight_command(self, spec: LaunchSpec) -> tuple[str, ...]:
         """Build the read-only gate that must pass before a release unit exists."""
