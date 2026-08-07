@@ -171,6 +171,40 @@ class ReleaseImageWorkflowTests(unittest.TestCase):
             "failed",
         )
 
+    def test_audit_gitleaks_check_does_not_shadow_release_check(self) -> None:
+        payload = {
+            "check_runs": [
+                {
+                    "name": "gitleaks-audit",
+                    "head_sha": SHA,
+                    "status": "completed",
+                    "conclusion": "failure",
+                },
+                {
+                    "name": "gitleaks",
+                    "head_sha": SHA,
+                    "status": "completed",
+                    "conclusion": "success",
+                },
+                {
+                    "name": "codeql",
+                    "head_sha": SHA,
+                    "status": "completed",
+                    "conclusion": "success",
+                },
+            ]
+        }
+
+        state, observed = evaluate_check_runs(payload, ("codeql", "gitleaks"), SHA)
+        self.assertEqual(state, "success")
+        self.assertEqual(observed, {"codeql": "success", "gitleaks": "success"})
+
+        payload["check_runs"][1]["conclusion"] = "failure"
+        self.assertEqual(
+            evaluate_check_runs(payload, ("codeql", "gitleaks"), SHA)[0],
+            "failed",
+        )
+
     def test_local_docker_validation_is_loopback_scoped_and_cleanup_owned(self) -> None:
         self.assertIn("--network host", DOCKER_VALIDATOR)
         self.assertIn(
