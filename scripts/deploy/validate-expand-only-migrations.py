@@ -412,6 +412,8 @@ def _run_git(repository: pathlib.Path, arguments: list[str]) -> bytes:
             [
                 "/usr/bin/git",
                 "-c",
+                f"safe.directory={repository}",
+                "-c",
                 "core.fsmonitor=false",
                 "-c",
                 "core.ignorestat=false",

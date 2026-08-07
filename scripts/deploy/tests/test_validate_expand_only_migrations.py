@@ -11,6 +11,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 VALIDATOR_PATH = ROOT / "scripts/deploy/validate-expand-only-migrations.py"
@@ -246,6 +247,39 @@ class RepositoryGateTests(unittest.TestCase):
             applied or {},
             allow_declared_unapplied_repairs=allow_repairs,
         )
+
+    def test_git_trusts_only_the_exact_repository_per_invocation(self) -> None:
+        completed = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout=b"expected\n", stderr=b""
+        )
+        with mock.patch.object(
+            validator.subprocess, "run", return_value=completed
+        ) as run:
+            output = validator._run_git(self.repo.path, ["rev-parse", "HEAD"])
+
+        self.assertEqual(b"expected\n", output)
+        command = run.call_args.args[0]
+        safe_directories = [
+            command[index + 1]
+            for index, argument in enumerate(command[:-1])
+            if argument == "-c" and command[index + 1].startswith("safe.directory=")
+        ]
+        self.assertEqual(
+            [f"safe.directory={self.repo.path}"],
+            safe_directories,
+        )
+        self.assertNotIn("safe.directory=*", command)
+        self.assertFalse(
+            any(
+                value.startswith("safe.directory=")
+                and value != f"safe.directory={self.repo.path}"
+                for value in command
+            )
+        )
+        environment = run.call_args.kwargs["env"]
+        self.assertEqual("/nonexistent", environment["HOME"])
+        self.assertEqual("/dev/null", environment["GIT_CONFIG_GLOBAL"])
+        self.assertEqual("1", environment["GIT_CONFIG_NOSYSTEM"])
 
     def test_restored_applied_migration_accepts_dml_when_checksum_matches(self) -> None:
         base = self.repo.commit("base")
