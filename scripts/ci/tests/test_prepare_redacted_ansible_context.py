@@ -13,6 +13,9 @@ from prepare_redacted_ansible_context import (  # noqa: E402
     RedactedContextError,
     prepare_context,
 )
+from scripts.deploy.rolling_release.read_only_ansible_context import (  # noqa: E402
+    READ_ONLY_PLACEHOLDER_FILENAME,
+)
 
 
 class RedactedAnsibleContextTests(unittest.TestCase):
@@ -22,6 +25,9 @@ class RedactedAnsibleContextTests(unittest.TestCase):
             source = root / "ansible"
             host_vars = source / "host_vars/test-host"
             host_vars.mkdir(parents=True)
+            (source / READ_ONLY_PLACEHOLDER_FILENAME).write_text(
+                "vault_probe: ci-redacted\n", encoding="utf-8"
+            )
             (source / ".vault-pass").write_text("never-copy-this\n", encoding="utf-8")
             (source / "ansible.cfg").write_text(
                 "[defaults]\nvault_password_file = .vault-pass\n",
@@ -37,6 +43,10 @@ class RedactedAnsibleContextTests(unittest.TestCase):
             self.assertFalse((output / ".vault-pass").exists())
             self.assertFalse((output / "host_vars/test-host/vault.yml").exists())
             self.assertTrue((output / "host_vars/test-host/main.yml").is_file())
+            self.assertEqual(
+                (output / READ_ONLY_PLACEHOLDER_FILENAME).read_text(),
+                "vault_probe: ci-redacted\n",
+            )
             self.assertIn(
                 "disabled in redacted read-only context",
                 (output / "ansible.cfg").read_text(),
@@ -47,6 +57,9 @@ class RedactedAnsibleContextTests(unittest.TestCase):
             root = Path(directory)
             source = root / "ansible"
             source.mkdir()
+            (source / READ_ONLY_PLACEHOLDER_FILENAME).write_text(
+                "vault_probe: ci-redacted\n", encoding="utf-8"
+            )
             (source / "ansible.cfg").write_text(
                 "[defaults]\nvault_password_file = .vault-pass\n",
                 encoding="utf-8",
@@ -61,6 +74,9 @@ class RedactedAnsibleContextTests(unittest.TestCase):
             root = Path(directory)
             source = root / "ansible"
             source.mkdir()
+            (source / READ_ONLY_PLACEHOLDER_FILENAME).write_text(
+                "vault_probe: ci-redacted\n", encoding="utf-8"
+            )
             (source / "ansible.cfg").write_text(
                 "[defaults]\nvault_password_file = .vault-pass\n",
                 encoding="utf-8",
@@ -91,3 +107,38 @@ class RedactedAnsibleContextTests(unittest.TestCase):
 
             self.assertEqual(completed.returncode, 0, completed.stderr)
             self.assertTrue((output / "inventory.yml").is_file())
+
+    def test_missing_placeholder_fails_closed_before_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "ansible"
+            source.mkdir()
+            (source / "ansible.cfg").write_text(
+                "[defaults]\nvault_password_file = .vault-pass\n",
+                encoding="utf-8",
+            )
+            output = root / "redacted"
+
+            with self.assertRaisesRegex(RedactedContextError, "placeholder"):
+                prepare_context(source, output)
+
+            self.assertFalse(output.exists())
+
+    def test_symlink_placeholder_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "ansible"
+            source.mkdir()
+            (source / "ansible.cfg").write_text(
+                "[defaults]\nvault_password_file = .vault-pass\n",
+                encoding="utf-8",
+            )
+            target = root / "outside-placeholder.yml"
+            target.write_text("vault_probe: ci-redacted\n", encoding="utf-8")
+            (source / READ_ONLY_PLACEHOLDER_FILENAME).symlink_to(target)
+            output = root / "redacted"
+
+            with self.assertRaisesRegex(RedactedContextError, "placeholder"):
+                prepare_context(source, output)
+
+            self.assertFalse(output.exists())

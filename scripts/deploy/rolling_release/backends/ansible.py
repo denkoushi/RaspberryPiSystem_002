@@ -33,7 +33,10 @@ from ..activation import (
     KIOSK_WEB_ACTIVATION_TARGET_UNIT,
 )
 from ..errors import TerminalManifestCapturePreMutationError
-from ..read_only_ansible_context import prepare_context
+from ..read_only_ansible_context import (
+    prepare_context,
+    read_only_placeholder_file,
+)
 
 if TYPE_CHECKING:
     from ..terminal_adapters import TerminalRuntimeManifestContract
@@ -398,6 +401,17 @@ def _run_read_only_inventory_command(
     environment = _read_only_environment(
         runtime=runtime, ansible_directory=directory
     )
+    try:
+        placeholder_file = read_only_placeholder_file(directory)
+    except (OSError, ValueError):
+        raise RuntimeError(
+            "read-only placeholder fixture is missing or invalid"
+        ) from None
+    command = [
+        *command,
+        "--extra-vars",
+        f"@{placeholder_file}",
+    ]
     try:
         return runtime.run(
             command,

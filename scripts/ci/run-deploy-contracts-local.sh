@@ -102,7 +102,7 @@ bash scripts/deploy/tests/test-deploy-safety-contracts.sh
 echo "[deploy-contract] inventories and Ansible playbooks"
 ANSIBLE_SOURCE_DIRECTORY="$ROOT_DIR/infrastructure/ansible"
 ANSIBLE_DIRECTORY="$TEMP_DIR/ansible"
-VAULT_PLACEHOLDERS="$ROOT_DIR/scripts/ci/fixtures/normal-factory-vault-placeholders.yml"
+VAULT_PLACEHOLDERS="$ROOT_DIR/infrastructure/ansible/normal-factory-vault-placeholders.yml"
 python3 "$ROOT_DIR/scripts/ci/prepare_redacted_ansible_context.py" \
   --source "$ANSIBLE_SOURCE_DIRECTORY" \
   --output "$ANSIBLE_DIRECTORY"

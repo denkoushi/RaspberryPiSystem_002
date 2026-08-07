@@ -258,7 +258,7 @@ command -v ansible-playbook >/dev/null 2>&1 || {
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 REDACTED_ANSIBLE_DIR="${TMP_DIR}/ansible"
-VAULT_PLACEHOLDERS="${ROOT_DIR}/scripts/ci/fixtures/normal-factory-vault-placeholders.yml"
+VAULT_PLACEHOLDERS="${ROOT_DIR}/infrastructure/ansible/normal-factory-vault-placeholders.yml"
 python3 "${ROOT_DIR}/scripts/ci/prepare_redacted_ansible_context.py" \
   --source "${ROOT_DIR}/infrastructure/ansible" \
   --output "${REDACTED_ANSIBLE_DIR}" >/dev/null
