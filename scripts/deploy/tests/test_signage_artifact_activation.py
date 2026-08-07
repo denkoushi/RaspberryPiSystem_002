@@ -132,6 +132,22 @@ class Stage3Fixture(unittest.TestCase):
 
 
 class SignageArtifactActivationE2E(Stage3Fixture):
+    def test_candidate_absent_preflight_validates_the_sealed_legacy_baseline(self) -> None:
+        baseline = self.capture()
+
+        result = activation.preflight_release(
+            release_root=self.release_root,
+            baseline=baseline,
+            candidate=None,
+            require_root_owner=False,
+        )
+
+        self.assertTrue(result["ready"])
+        self.assertEqual(result["issues"], [])
+        self.assertEqual(result["previousRelease"], baseline["previousRelease"])
+        self.assertIsNone(result["candidateRelease"])
+        self.assertEqual(result["runtimeHealth"], baseline["runtimeHealth"])
+
     def test_stage2_retain_true_feeds_the_same_verified_bytes_to_activation(self) -> None:
         class Acquisition:
             def __init__(self, owner: "SignageArtifactActivationE2E") -> None:

@@ -1196,12 +1196,21 @@ class FakeRuntime:
         self.events.append(f"stage3:cleanup:{host}:{run_id}:{outcome}")
         if self.runtime_cleanup_error is not None:
             raise self.runtime_cleanup_error
+        if target.get("stagedSource") is None:
+            self.events.append(f"stage3:cleanup-stage:{host}:{run_id}")
         return {
             "cleaned": True,
             "alreadyClean": False,
             "manifestSha256": target["rollbackManifest"]["runtime"]["manifestSha256"],
             "tagCount": 0,
             "outcome": outcome,
+            "stageCleanup": {
+                "schemaVersion": 1,
+                "status": "passed",
+                "removedPaths": [],
+                "stageResidue": False,
+                "currentRelease": None,
+            },
         }
 
     def stage_terminal_candidate_source(
@@ -1730,6 +1739,110 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
         self.assertLess(runtime_preflight, replan_index)
         self.assertLess(replan_index, maintenance)
         self.assertIsNone(runtime.fleet["activeRun"])
+
+    def test_production_signage_recovers_candidate_absent_cleanup_authority(self):
+        fixture = ProductionSignageFixture()
+        runtime = fixture.typed_runtime(artifact_state="absent")
+        authority_run_id = "20260807-061324-7f6c72"
+        record = runtime.fleet["fleet"][fixture.host]
+        record.update(
+            {
+                "currentSha": None,
+                "previousSha": OLD_SHA,
+                "evidence": "unknown",
+                "verifiedAt": None,
+                "lastRunId": authority_run_id,
+            }
+        )
+        runtime.abandoned_run_id = authority_run_id
+        runtime.deployed_sha[fixture.host] = OLD_SHA
+        runtime_health = rollback_runtime_health("signage")
+        runtime.prior_runs[authority_run_id] = {
+            "version": 1,
+            "runId": authority_run_id,
+            "state": "failed",
+            "phase": "completed",
+            "targets": [
+                {
+                    **fixture.terminal(),
+                    "desiredSha": NEW_SHA,
+                    "previousSha": OLD_SHA,
+                    "currentSha": None,
+                    "evidence": "unknown",
+                    "state": "failed",
+                    "repositoryBaseline": fixture.baseline("absent"),
+                    "rollbackManifest": {
+                        "schemaVersion": 1,
+                        "kind": "signage-artifact-baseline",
+                        "pointerWasPresent": False,
+                        "previousRelease": "legacy-" + "8" * 64,
+                        "previousReleaseKind": "legacy",
+                        "previousReleaseManifestSha256": "6" * 64,
+                        "previousSourceSha": OLD_SHA,
+                        "previousArtifactSha256": None,
+                        "legacyRepositorySha": OLD_SHA,
+                        "runtimeHealth": runtime_health,
+                        "runtime": {
+                            "manifestSha256": "5" * 64,
+                            "unitCount": len(runtime_health["activeSystemdUnits"]),
+                            "dockerCount": 0,
+                        },
+                        "requireRootOwner": True,
+                    },
+                    "runtimeFinalization": {
+                        "outcome": "committed",
+                        "verifiedSha": OLD_SHA,
+                    },
+                    "runtimeCleanupFailure": (
+                        "Signage staged release cleanup reference is malformed"
+                    ),
+                    "claimRequirements": [
+                        {
+                            "kind": "signageReleaseArtifact",
+                            "expectedIdentity": NEW_ARTIFACT_IDENTITY,
+                            "status": "missing",
+                        }
+                    ],
+                }
+            ],
+        }
+        original_scope = runtime.build_fleet_scope
+
+        def replan(**keywords):
+            runtime.events.append("scope:replan")
+            return original_scope(**keywords)
+
+        runtime.build_fleet_scope = replan
+
+        self.assertEqual(
+            coordinator.execute(
+                args(
+                    release_scope=PI3_SIGNAGE_SCOPE,
+                    signage_oci_digest=OCI_DIGEST,
+                ),
+                runtime=runtime,
+                token=FakeToken(runtime.events),
+            ),
+            0,
+        )
+
+        preflight = runtime.events.index(
+            f"stage3:rollback-preflight:{fixture.host}:{authority_run_id}"
+        )
+        cleanup = runtime.events.index(
+            f"stage3:cleanup:{fixture.host}:{authority_run_id}:committed"
+        )
+        cleanup_stage = runtime.events.index(
+            f"stage3:cleanup-stage:{fixture.host}:{authority_run_id}"
+        )
+        replan = runtime.events.index("scope:replan")
+        self.assertLess(preflight, cleanup)
+        self.assertLess(cleanup, cleanup_stage)
+        self.assertLess(cleanup_stage, replan)
+        self.assertIsNone(runtime.fleet["activeRun"])
+        recovery = runtime.states[-1].payload["interruptedRecovery"]["targets"][0]
+        self.assertEqual(recovery["recovery"], "pre-mutation-live-verified")
+        self.assertNotIn("stagedSource", recovery)
 
     def test_production_signage_post_mutation_rollback_to_legacy_transaction(self):
         fixture = ProductionSignageFixture()
@@ -3098,9 +3211,28 @@ class FleetCoordinatorTransitionTest(unittest.TestCase):
             )
             target = runtime.states[-1].target("signage-a")
             self.assertNotIn("maintenanceStartedAt", target)
+            self.assertEqual(target["preMutationFailure"], "source transfer failed")
+            self.assertIsNone(runtime.fleet["activeRun"])
             self.assertEqual(
                 runtime.repository_baseline_strict, [("signage-a", True)]
             )
+
+        with self.subTest(boundary="during-stage-cleanup-incomplete"):
+            runtime = build_runtime()
+            runtime.source_stage_error = RuntimeError("source transfer failed")
+            runtime.runtime_cleanup_error = RuntimeError("cleanup receipt incomplete")
+            with self.assertRaisesRegex(
+                RuntimeError, "terminal pre-mutation cleanup failed"
+            ):
+                coordinator.execute(
+                    args(), runtime=runtime, token=FakeToken(runtime.events)
+                )
+            target = runtime.states[-1].target("signage-a")
+            self.assertEqual(target["preMutationFailure"], "source transfer failed")
+            self.assertEqual(
+                target["runtimeCleanupFailure"], "cleanup receipt incomplete"
+            )
+            self.assertEqual(runtime.fleet["activeRun"]["runId"], "run-1")
 
         with self.subTest(boundary="after-stage"):
             runtime = build_runtime()

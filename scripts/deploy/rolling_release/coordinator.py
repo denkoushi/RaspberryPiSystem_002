@@ -2344,6 +2344,11 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                     state.save()
                 token.checkpoint(f"after-notice:{host}")
             except Exception as pre_mutation_error:
+                # Preserve the first failure before any cleanup attempt.  A
+                # fail-closed cleanup error must not erase the boundary that
+                # made cleanup necessary.
+                target["preMutationFailure"] = str(pre_mutation_error)
+                state.save()
                 try:
                     source_cleanup = adapter.cleanup_candidate_source(
                         inventory,
@@ -2379,7 +2384,6 @@ def execute(args: Any, *, runtime: Any, token: CancellationToken) -> int:
                         args.run_id,
                         "committed",
                     )
-                    target["preMutationFailure"] = str(pre_mutation_error)
                     state.save()
                 except Exception as cleanup_error:
                     interrupted_recovery_pending = True
