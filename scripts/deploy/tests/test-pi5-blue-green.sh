@@ -83,6 +83,43 @@ common=(
   PI5_BLUE_GREEN_ALERTS_DIR="$TMP/alerts"
 )
 
+# The standard route deliberately omits sealed resource evidence. It must
+# clear any authority loaded from an older durable state before even the
+# dry-run shortcut returns, while an explicitly supplied legacy authority
+# remains owned by the existing verification path.
+validate_resource_evidence_function="$(extract_function validate_resource_evidence)"
+bash -euo pipefail -c "
+$validate_resource_evidence_function
+DRY_RUN=1
+PI5_BLUE_GREEN_TEST_ALLOW_MISSING_RELEASE_EVIDENCE=1
+RESOURCE_EVIDENCE_FILE=''
+RELEASE_RUN_ID=expired-run
+RELEASE_DESIRED_SHA=$(printf 'a%.0s' {1..40})
+RELEASE_RESOURCE_EVIDENCE=/expired/resource-evidence.json
+RELEASE_RESOURCE_EVIDENCE_SHA256=sha256:$(printf 'b%.0s' {1..64})
+resource_guard() { :; }
+validate_resource_evidence
+[[ -z \"\$RELEASE_RUN_ID\" && -z \"\$RELEASE_DESIRED_SHA\" \
+  && -z \"\$RELEASE_RESOURCE_EVIDENCE\" \
+  && -z \"\$RELEASE_RESOURCE_EVIDENCE_SHA256\" ]]
+"
+EXPLICIT_RESOURCE_EVIDENCE="$TMP/explicit-resource-evidence.json"
+printf '{}\n' >"$EXPLICIT_RESOURCE_EVIDENCE"
+bash -euo pipefail -c "
+$validate_resource_evidence_function
+DRY_RUN=1
+PI5_BLUE_GREEN_TEST_ALLOW_MISSING_RELEASE_EVIDENCE=1
+RESOURCE_EVIDENCE_FILE='$EXPLICIT_RESOURCE_EVIDENCE'
+RELEASE_RUN_ID=explicit-run
+RELEASE_DESIRED_SHA=$(printf 'c%.0s' {1..40})
+RELEASE_RESOURCE_EVIDENCE='$EXPLICIT_RESOURCE_EVIDENCE'
+RELEASE_RESOURCE_EVIDENCE_SHA256=sha256:$(printf 'd%.0s' {1..64})
+resource_guard() { :; }
+validate_resource_evidence
+[[ \"\$RELEASE_RUN_ID\" == explicit-run \
+  && \"\$RELEASE_RESOURCE_EVIDENCE\" == '$EXPLICIT_RESOURCE_EVIDENCE' ]]
+"
+
 # The Web image renders its slot configuration into a writable runtime path.
 # Exercise the controller function against a container-provided path so a
 # Dockerfile/controller path drift fails before a release reaches Pi5.
@@ -217,6 +254,49 @@ sleep 2
 out="$(env "${common[@]}" PI5_BLUE_GREEN_STATE_FILE="$STATE1" "$SCRIPT" cleanup)"
 assert_contains "$out" "cleaned"
 [[ "$(state "$STATE1" previousSlot)" == "" ]] || fail "cleanup left previousSlot set"
+
+# A standard prepare must not inherit an expired sealed-evidence authority
+# from the last legacy deployment. The prepared state is the boundary used by
+# the separate switch invocation, so absence here proves switch cannot rebind
+# itself to the old verifier.
+STATE_STANDARD_EVIDENCE="$TMP/state-standard-evidence.json"
+EXPIRED_RESOURCE_EVIDENCE="$TMP/expired-resource-evidence.json"
+cp "$STATE1" "$STATE_STANDARD_EVIDENCE"
+python3 - "$STATE_STANDARD_EVIDENCE" "$EXPIRED_RESOURCE_EVIDENCE" <<'PY'
+import json
+import pathlib
+import sys
+
+state_path = pathlib.Path(sys.argv[1])
+evidence_path = pathlib.Path(sys.argv[2])
+evidence_path.write_text(
+    json.dumps({
+        "kind": "candidate-resource",
+        "createdAtEpoch": 1,
+        "expiresAtEpoch": 2,
+    }) + "\n",
+    encoding="utf-8",
+)
+state = json.loads(state_path.read_text(encoding="utf-8"))
+state["releaseEvidence"] = {
+    "runId": "expired-run",
+    "desiredSha": "a" * 40,
+    "resourceEvidence": {
+        "path": str(evidence_path),
+        "sha256": "sha256:" + "b" * 64,
+    },
+}
+state_path.write_text(json.dumps(state) + "\n", encoding="utf-8")
+PY
+out="$(env "${common[@]}" PI5_BLUE_GREEN_STATE_FILE="$STATE_STANDARD_EVIDENCE" \
+  "$SCRIPT" prepare --api-image "$OLD_API" --web-image "$OLD_WEB")"
+assert_contains "$out" "candidate prepared"
+[[ "$(state "$STATE_STANDARD_EVIDENCE" event)" == prepared ]] \
+  || fail "standard prepare did not reach prepared state"
+[[ "$(state "$STATE_STANDARD_EVIDENCE" releaseEvidence)" == "" ]] \
+  || fail "standard prepare retained legacy releaseEvidence"
+out="$(env "${common[@]}" PI5_BLUE_GREEN_STATE_FILE="$STATE_STANDARD_EVIDENCE" "$SCRIPT" switch)"
+assert_contains "$out" "switch completed"
 
 out="$(env "${common[@]}" PI5_BLUE_GREEN_STATE_FILE="$STATE1" "$SCRIPT" reconcile)"
 assert_contains "$out" "reconciled"

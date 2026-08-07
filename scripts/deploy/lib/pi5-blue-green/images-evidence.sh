@@ -159,6 +159,12 @@ resource_guard() {
 }
 
 validate_resource_evidence() {
+  if [[ -z "$RESOURCE_EVIDENCE_FILE" ]]; then
+    RELEASE_RUN_ID=''
+    RELEASE_DESIRED_SHA=''
+    RELEASE_RESOURCE_EVIDENCE=''
+    RELEASE_RESOURCE_EVIDENCE_SHA256=''
+  fi
   if [[ "$DRY_RUN" == 1 && "${PI5_BLUE_GREEN_TEST_ALLOW_MISSING_RELEASE_EVIDENCE:-0}" == 1 ]]; then
     resource_guard
     return 0
