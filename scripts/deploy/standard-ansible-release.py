@@ -172,8 +172,18 @@ def server_connection(document: dict[str, Any]) -> tuple[str, str, int]:
     if not isinstance(hosts, list) or len(hosts) != 1:
         raise UsageError("inventory must contain exactly one Pi5 server executor")
     values = document.get("_meta", {}).get("hostvars", {}).get(hosts[0], {})
-    host, user, port = values.get("ansible_host"), values.get("ansible_user"), values.get("ansible_port", 22)
-    if not isinstance(host, str) or not host or not isinstance(user, str) or not SAFE_USER.fullmatch(user):
+    host = values.get("deploy_executor_host")
+    user, port = values.get("ansible_user"), values.get("ansible_port", 22)
+    if (
+        not isinstance(host, str)
+        or not host
+        or host != host.strip()
+        or any(character.isspace() for character in host)
+        or "{" in host
+        or "}" in host
+        or not isinstance(user, str)
+        or not SAFE_USER.fullmatch(user)
+    ):
         raise UsageError("Pi5 SSH identity is unresolved or malformed")
     if not isinstance(port, int) or not 1 <= port <= 65535:
         raise UsageError("Pi5 SSH port is malformed")

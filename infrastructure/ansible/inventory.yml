@@ -4,6 +4,7 @@ all:
       hosts:
         raspberrypi5:
           ansible_host: "{{ server_ip }}"
+          deploy_executor_host: 100.106.158.2
           ansible_user: denkon5sd02
           ansible_python_interpreter: /usr/bin/python3
           ansible_command_timeout: 900
