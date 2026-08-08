@@ -81,7 +81,6 @@ class ReleaseRuntimeRehearsalTests(unittest.TestCase):
                 self.assertIn(required, SCRIPT)
         self.assertIn("STABLE_SECONDS=300", SCRIPT)
         self.assertNotIn("scripts/update-all-clients.sh", SCRIPT)
-        self.assertNotIn("scripts/deploy/pi5-blue-green.sh", SCRIPT)
 
     def test_clean_database_is_migrated_before_roles_are_separated(self) -> None:
         initial_migration = SCRIPT.index(

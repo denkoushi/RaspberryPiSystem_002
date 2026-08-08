@@ -402,18 +402,7 @@ jobs:
           key: ansible-collections-${{ runner.os }}-community-general-v1
 
       - name: Validate deploy contracts
-        env:
-          PRODUCTION_PATH_AUDIT_OUTPUT: ${{ runner.temp }}/production-path-audit-report.json
         run: bash scripts/ci/run-deploy-contracts-local.sh --install-collections
-
-      - name: Upload production-path audit evidence
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: production-path-audit-${{ github.sha }}
-          path: ${{ runner.temp }}/production-path-audit-report.json
-          if-no-files-found: error
-          retention-days: 14
 
   container-runtime-rehearsal:
     name: container-runtime-rehearsal

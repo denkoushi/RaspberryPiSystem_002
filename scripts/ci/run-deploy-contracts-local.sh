@@ -57,7 +57,6 @@ elif ! ansible-galaxy collection list community.general 2>/dev/null \
 fi
 
 TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/raspi-deploy-contracts.XXXXXX")"
-PRODUCTION_PATH_AUDIT_OUTPUT="${PRODUCTION_PATH_AUDIT_OUTPUT:-${TEMP_DIR}/production-path-audit-report.json}"
 cleanup() {
   rm -rf "$TEMP_DIR"
 }
@@ -74,21 +73,9 @@ bash -n scripts/update-all-clients.sh
 bash -n scripts/server/deploy.sh
 bash -n scripts/server/deploy-detached.sh
 bash scripts/deploy/tests/test-single-deploy-entrypoint.sh
-bash -n scripts/deploy/pi5-blue-green.sh
-bash -n scripts/deploy/lib/pi5-blue-green/*.sh
-bash -n scripts/deploy/pi5-candidate-build.sh
-bash scripts/deploy/tests/test-verify-phase12-real.sh
-bash scripts/deploy/tests/test-pi5-image-deploy.sh
-bash scripts/deploy/tests/test-pi5-blue-green.sh
-bash scripts/deploy/tests/test-pi5-blue-green-maintenance-container.sh
 bash scripts/deploy/tests/test-terminal-runtime-manifest-docker.sh
 bash scripts/deploy/tests/test-web-static-routing.sh
 python3 -m unittest discover -s scripts/deploy/tests -p 'test_*.py'
-python3 scripts/deploy/production_path_audit.py validate
-python3 scripts/deploy/production_path_incidents.py
-python3 scripts/deploy/production_path_audit.py run \
-  --output "$PRODUCTION_PATH_AUDIT_OUTPUT"
-python3 -m json.tool "$PRODUCTION_PATH_AUDIT_OUTPUT" >/dev/null
 python3 scripts/deploy/tests/test-client-agent-lifecycle-selection.py
 bash scripts/deploy/tests/test-signage-deploy-maintenance.sh
 bash scripts/deploy/tests/test-deploy-status-postgres-observability.sh
@@ -129,12 +116,6 @@ STATIC_PLAYBOOKS=(
   playbooks/restart-services.yml
   playbooks/ping.yml
 )
-TERMINAL_PROFILE_PLAYBOOKS=()
-while IFS= read -r playbook; do
-  [[ -n "$playbook" ]] && TERMINAL_PROFILE_PLAYBOOKS+=("$playbook")
-done < <(
-  python3 "$ROOT_DIR/scripts/deploy/terminal_profile_contracts.py" --list-playbooks
-)
 
 cd "$ANSIBLE_DIRECTORY"
 for inventory in inventory.yml inventory-talkplaza.yml; do
@@ -145,14 +126,11 @@ for inventory in inventory.yml inventory-talkplaza.yml; do
       --list > "$output"
   python3 -m json.tool "$output" >/dev/null
 done
-python3 "$ROOT_DIR/scripts/deploy/terminal_profile_contracts.py" \
-  --inventory-json "$TEMP_DIR/inventory.json" \
-  --inventory-json "$TEMP_DIR/inventory-talkplaza.json"
-for playbook in "${STATIC_PLAYBOOKS[@]}" "${TERMINAL_PROFILE_PLAYBOOKS[@]}"; do
+for playbook in "${STATIC_PLAYBOOKS[@]}"; do
   ansible-playbook --syntax-check "$playbook" -i inventory.yml \
     --extra-vars "@$VAULT_PLACEHOLDERS"
 done
-for playbook in playbooks/deploy-terminal-profile.yml "${TERMINAL_PROFILE_PLAYBOOKS[@]}"; do
+for playbook in playbooks/deploy-terminal-profile.yml; do
   ansible-playbook --syntax-check "$playbook" -i inventory-talkplaza.yml \
     --extra-vars "@$VAULT_PLACEHOLDERS"
 done

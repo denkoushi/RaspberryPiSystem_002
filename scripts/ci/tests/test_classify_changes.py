@@ -66,7 +66,9 @@ class ClassifyChangesTests(unittest.TestCase):
         )
 
     def test_deploy_client_docker_and_e2e_paths(self) -> None:
-        deploy = self.classify(Change("M", "scripts/deploy/rolling-release.py"))
+        deploy = self.classify(
+            Change("M", "scripts/deploy/standard-ansible-release.py")
+        )
         self.assertEqual(self.selected(deploy), {"repo_policy", "deploy_contract"})
 
         client = self.classify(Change("M", "clients/nfc-agent/nfc_agent/main.py"))
@@ -127,7 +129,6 @@ class ClassifyChangesTests(unittest.TestCase):
 
         for path in (
             "clients/nfc-agent/nfc_agent/main.py",
-            "scripts/deploy/pi5-blue-green.sh",
             "infrastructure/ansible/roles/server/tasks/main.yml",
             "infrastructure/docker/Dockerfile.api",
             "apps/web/src/main.tsx",
@@ -283,7 +284,7 @@ class ClassifyChangesTests(unittest.TestCase):
             "apps/api/prisma/migrations/20260804000000_audit/migration.sql",
             "infrastructure/docker/docker-compose.phase3.yml",
             "infrastructure/ansible/playbooks/server-config-release.yml",
-            "scripts/deploy/pi5-blue-green.sh",
+            "scripts/deploy/standard-ansible-release.py",
             "scripts/server/deploy.sh",
         ):
             with self.subTest(path=path):
