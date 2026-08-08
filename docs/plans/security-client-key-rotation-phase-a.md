@@ -1,6 +1,6 @@
 ---
 id: security-client-key-rotation-phase-a
-status: in_progress
+status: completed
 scope: Remove current Pi3 signage credential coupling and make the scheduled secret audit actionable without adding a rotation framework.
 date: 2026-08-09
 source_of_truth: this plan
@@ -40,7 +40,7 @@ The user-visible proof is that the focused renderer test passes without an API k
 - [x] (2026-08-09) Focused renderer test passed after generating existing Prisma/workspace clients; the two Web tests, three shell syntax checks, three missing-environment fail-closed checks, docs audit, and diff check passed.
 - [x] (2026-08-09) Completed the read-only Vault, database-reference, and existing-operator-path rotation preparation. The audit is limited to the three handoff fields; no credential was generated, edited, revoked, or deployed in Phase A.
 - [x] (2026-08-09) Completed the focused API/Web/script checks, docs audit, whitespace check, redacted current-tree scan, and the workflow-pinned v8.24.3 full-history Gitleaks scan. The official scheduled baseline contains the five supplied findings; after the four exact suppressions, the active Pi3 fingerprint remains unsuppressed. The pinned full-history scan reports three findings: the active Pi3 fingerprint plus two command/configuration-specific NFC fixture findings; they remain unchanged per scope.
-- [ ] Self-review, split into two or three reviewable commits, push, create a Draft PR, and monitor hosted CI, CodeQL, and Gitleaks to terminal. Do not merge.
+- [x] (2026-08-09) Completed self-review in three implementation/publish commits, pushed the branch, and opened PR #1225. The PR is Ready/Open/MERGEABLE with 24 files; Secret scan, CodeQL, and CI are green, and the review/thread/comment gate has no actionable findings. This documentation finalization is a fourth, docs-only commit; merge remains a separate approval gate.
 
 ## Surprises & Discoveries
 
@@ -73,7 +73,7 @@ The user-visible proof is that the focused renderer test passes without an API k
 
 ## Outcomes & Retrospective
 
-This section remains open until the branch-range/full-history scan and final self-review finish. At completion it will record the exact commits, final redacted findings, test results, and the separate Phase B handoff.
+Phase A implementation, publication, and review gate are complete. PR #1225 is Ready/Open/MERGEABLE with the three existing commits plus this documentation finalization commit, within the same 24-file boundary. Secret scan, CodeQL, and CI are green; no actionable review thread or comment remains. No secret generation, Vault edit, database mutation, SSH, production rotation, or production deployment occurred. Phase B rotation and Phase C historical suppression remain separate, unstarted approvals.
 
 ## Context and Orientation
 
@@ -148,7 +148,7 @@ Acceptance requires all of the following:
 - `.gitleaksignore`, if added, contains exactly the four supplied false-positive fingerprints and no active Pi3 credential fingerprint, path-wide exception, or regex-wide exception.
 - The full-history redacted scan has no unexpected findings. The active Pi3 credential is still reported until Phase B; the four supplied false positives are suppressed exactly.
 - Focused API/Web/script tests, relevant contracts, docs audit, and `git diff --check` pass. No test or command contacts managed hosts.
-- The final worktree is clean and the local branch equals `origin/security/externalize-client-keys`. A Draft PR exists with hosted CI, CodeQL, and Gitleaks at terminal success or the repository’s allowed skip/neutral state. This Phase A PR is not merged.
+- The final worktree is clean and the local branch equals `origin/security/externalize-client-keys`. PR #1225 is Ready/Open and remains unmerged, with hosted CI, CodeQL, and Secret scan at terminal success or the repository’s allowed skip/neutral state.
 - The final report records the exact commits, changed-file boundary, redacted scan summary, read-only Vault/DB findings, and a short Phase B rotation handoff. It explicitly states that no secret generation, Vault edit, DB mutation, SSH, or production deployment occurred.
 
 ## Idempotence and Recovery
@@ -157,7 +157,7 @@ All source edits are ordinary tracked-file changes and can be reapplied only aft
 
 ## Artifacts and Notes
 
-The authoritative artifacts are this plan, the focused test, the two or three commits, the Draft PR, and the hosted check runs. Reports must contain only redacted values and rule/file/line metadata. Never place a credential in chat, a commit message, a PR title/body, a test output, a shell trace, or this plan.
+The authoritative artifacts are this plan, the focused test, the three implementation/publish commits plus this docs-only finalization commit, PR #1225, and the hosted check runs. Reports must contain only redacted values and rule/file/line metadata. Never place a credential in chat, a commit message, a PR title/body, a test output, a shell trace, or this plan.
 
 ## Interfaces and Dependencies
 

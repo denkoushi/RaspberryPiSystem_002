@@ -15,12 +15,12 @@
     ]
   },
   "summary": {
-    "documentCount": 614,
-    "totalLines": 171252,
-    "totalBytes": 12844019,
-    "withFrontmatter": 281,
-    "withStatus": 137,
-    "sourceOfTruthDeclared": 99,
+    "documentCount": 615,
+    "totalLines": 171422,
+    "totalBytes": 12864536,
+    "withFrontmatter": 282,
+    "withStatus": 138,
+    "sourceOfTruthDeclared": 100,
     "execPlanReferences": 64,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
@@ -20778,7 +20778,7 @@
     {
       "path": "docs/guides/signage-layout-config-verification-results.md",
       "lineCount": 164,
-      "byteSize": 6356,
+      "byteSize": 6359,
       "hasFrontmatter": false,
       "title": "サイネージレイアウト設定の実機検証結果",
       "status": null,
@@ -20809,7 +20809,7 @@
     {
       "path": "docs/guides/signage-layout-config-verification.md",
       "lineCount": 180,
-      "byteSize": 7172,
+      "byteSize": 7175,
       "hasFrontmatter": false,
       "title": "サイネージレイアウト設定の実機検証手順",
       "status": null,
@@ -35359,6 +35359,21 @@
         }
       ],
       "inboundCount": 3,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/security-client-key-rotation-phase-a.md",
+      "lineCount": 170,
+      "byteSize": 20511,
+      "hasFrontmatter": true,
+      "title": "Phase A: Externalize client credentials and remove signage renderer coupling",
+      "status": "completed",
+      "source_of_truth": "this plan",
+      "localLinks": [],
+      "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
