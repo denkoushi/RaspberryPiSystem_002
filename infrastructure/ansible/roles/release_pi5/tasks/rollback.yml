@@ -13,6 +13,7 @@
     - name: Resolve restored previous Pi5 API container
       ansible.builtin.command:
         argv: "{{ release_pi5_compose_argv + ['ps', '-q', 'api-' + release_pi5_previous_slot] }}"
+      environment: "{{ release_pi5_compose_environment }}"
       register: release_pi5_restored_api
       changed_when: false
       when: >-

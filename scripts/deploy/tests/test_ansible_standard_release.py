@@ -423,6 +423,37 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
         ]
         self.assertTrue(required_images.issubset(exact_environment))
 
+    def test_every_pi5_compose_command_uses_the_complete_environment(self) -> None:
+        task_root = ANSIBLE / f"roles/{self.ROLE}/tasks"
+        compose_tasks = []
+        for path in sorted(task_root.glob("*.yml")):
+            pending = list(yaml.safe_load(path.read_text(encoding="utf-8")) or [])
+            while pending:
+                task = pending.pop(0)
+                for section in ("block", "rescue", "always"):
+                    pending.extend(task.get(section, []))
+                argv = task.get("ansible.builtin.command", {}).get("argv", "")
+                argv_text = str(argv)
+                if (
+                    "release_pi5_compose_argv" in argv_text
+                    or "release_pi5_migration_argv" in argv_text
+                    or (isinstance(argv, list) and argv[:2] == ["docker", "compose"])
+                ):
+                    compose_tasks.append((path.name, task))
+
+        self.assertTrue(compose_tasks)
+        for path_name, task in compose_tasks:
+            with self.subTest(path=path_name, task=task["name"]):
+                expected_environment = (
+                    "{{ release_pi5_compose_environment | default({}) }}"
+                    if path_name == "cleanup.yml"
+                    else "{{ release_pi5_compose_environment }}"
+                )
+                self.assertEqual(
+                    task.get("environment"),
+                    expected_environment,
+                )
+
     def test_pi5_fresh_prepare_mutates_only_inactive_services(self) -> None:
         prepare = yaml.safe_load(self.task_text("prepare"))
         start = next(
