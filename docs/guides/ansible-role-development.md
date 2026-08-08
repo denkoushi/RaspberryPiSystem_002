@@ -233,7 +233,7 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-
 scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi4
 ```
 
-ここではコマンドを実行しない。標準route確認だけでは、callerのない `camera` roleやinventory変数は適用されません。
+明示承認前はmutationコマンドを実行しない。標準route確認だけでは、callerのない `camera` roleやinventory変数は適用されません。
 
 ## 既存ロールの修正手順
 

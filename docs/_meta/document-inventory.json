@@ -17,7 +17,7 @@
   "summary": {
     "documentCount": 614,
     "totalLines": 171256,
-    "totalBytes": 12843961,
+    "totalBytes": 12843975,
     "withFrontmatter": 281,
     "withStatus": 137,
     "sourceOfTruthDeclared": 99,
@@ -17693,7 +17693,7 @@
     {
       "path": "docs/guides/ansible-role-development.md",
       "lineCount": 413,
-      "byteSize": 15075,
+      "byteSize": 15089,
       "hasFrontmatter": true,
       "title": "Ansibleロール開発ガイド",
       "status": null,
