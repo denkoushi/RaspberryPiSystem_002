@@ -132,9 +132,9 @@ logs/
 
 **実装例**:
 ```bash
-# バックアップから復旧
-ansible-playbook -i infrastructure/ansible/inventory.yml \
-  infrastructure/ansible/playbooks/rollback.yml
+# 標準routeのread-only planを再確認
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
+  --print-plan --limit PATTERN
 
 # または、Ansibleで再デプロイ
 ansible-playbook -i infrastructure/ansible/inventory.yml \
@@ -185,4 +185,3 @@ git clean -fd
 ## 更新履歴
 
 - 2025-12-01: 初版作成
-

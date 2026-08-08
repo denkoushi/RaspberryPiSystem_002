@@ -12,8 +12,8 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Metric | Count |
 |--------|------:|
 | Documents | 614 |
-| Total lines | 171880 |
-| Total bytes | 12884144 |
+| Total lines | 171356 |
+| Total bytes | 12843345 |
 | With frontmatter | 281 |
 | With status | 137 |
 | source_of_truth declared | 99 |
@@ -21,8 +21,8 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Question-mark corruption documents | 1 |
 | Replacement-character documents | 1 |
 | Long-line documents | 26 |
-| Local links | 5655 |
-| Broken local links | 87 |
+| Local links | 5634 |
+| Broken local links | 88 |
 | Documents over 1,000 lines | 29 |
 | Documents over 3,000 lines | 6 |
 
@@ -40,7 +40,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | `docs/archive/architecture/deployment-modules-legacy-through-2026-07.md` | 2522 | 128149 |
 | `docs/knowledge-base/infrastructure/backup-restore.md` | 2208 | 137917 |
 | `docs/knowledge-base/infrastructure/signage.md` | 2196 | 188323 |
-| `docs/INDEX.md` | 2009 | 347314 |
+| `docs/INDEX.md` | 2009 | 347252 |
 | `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1935 | 213513 |
 | `docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md` | 1654 | 153539 |
 | `docs/archive/deployments/legacy-operator-guide-through-2026-07.md` | 1600 | 108028 |
@@ -101,6 +101,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/architecture/overview.md` -> `./client-device-integration.md` (docs/architecture/client-device-integration.md)
 - `docs/architecture/overview.md` -> `./database.md` (docs/architecture/database.md)
 - `docs/architecture/overview.md` -> `./modules.md` (docs/architecture/modules.md)
+- `docs/archive/architecture/deployment-modules-legacy-through-2026-07.md` -> `../../../infrastructure/ansible/playbooks/deploy.yml` (infrastructure/ansible/playbooks/deploy.yml)
 - `docs/guides/ansible-best-practices.md` -> `../plans/ansible-hardening-stabilization-plan.md` (docs/plans/ansible-hardening-stabilization-plan.md)
 - `docs/guides/ansible-best-practices.md` -> `../plans/ansible-progress-summary.md` (docs/plans/ansible-progress-summary.md)
 - `docs/guides/ansible-managed-files.md` -> `../plans/ansible-hardening-stabilization-plan.md` (docs/plans/ansible-hardening-stabilization-plan.md)
@@ -143,4 +144,3 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/knowledge-base/infrastructure/backup-restore.md` -> `../api/backup.md` (docs/knowledge-base/api/backup.md)
 - `docs/knowledge-base/infrastructure/backup-restore.md` -> `../guides/ansible-ssh-architecture.md` (docs/knowledge-base/guides/ansible-ssh-architecture.md)
 - `docs/knowledge-base/infrastructure/backup-restore.md` -> `../guides/backup-and-restore.md` (docs/knowledge-base/guides/backup-and-restore.md)
-- `docs/knowledge-base/infrastructure/backup-restore.md` -> `../guides/backup-configuration.md` (docs/knowledge-base/guides/backup-configuration.md)

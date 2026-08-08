@@ -42,12 +42,12 @@ infrastructure/ansible/
 ├── templates/                # テンプレートファイル（.j2）
 ├── tasks/                    # 再利用可能なタスクファイル
 └── playbooks/
-    └── deploy.yml           # メインプレイブック
+    └── deploy-release-standard.yml # 標準release playbook
 ```
 
 ### ロールの実行順序
 
-`playbooks/deploy.yml`では、以下の順序でロールが実行されます：
+`playbooks/deploy-release-standard.yml`では、以下の順序でロールが実行されます：
 
 1. **`common`** (pre_tasks): 全ホスト共通の前処理
 2. **`server`** (tasks): サーバーホストのみ
@@ -180,12 +180,12 @@ FRAME_RATE="{{ camera_frame_rate | default('30') }}"
   - `inventory.yml`で`manage_camera: true`を設定すると、このロールが適用される。
 ```
 
-### ステップ6: `deploy.yml`への追加
+### ステップ6: 標準release playbookへの追加
 
-`playbooks/deploy.yml`の`tasks`セクションに、新しいロールを追加します。
+`playbooks/deploy-release-standard.yml`の対象profileに、新しいロールを追加します。
 
 ```yaml
-# playbooks/deploy.yml
+# playbooks/deploy-release-standard.yml
 tasks:
   - name: Execute deployment with automatic rollback
     block:
@@ -218,16 +218,16 @@ clients:
 
 ```bash
 # 構文チェック
-ansible-playbook -i inventory.yml playbooks/deploy.yml --syntax-check
+ansible-playbook -i inventory.yml playbooks/deploy-release-standard.yml --syntax-check
 
 # タスク一覧の確認
-ansible-playbook -i inventory.yml playbooks/deploy.yml --list-tasks
+ansible-playbook -i inventory.yml playbooks/deploy-release-standard.yml --list-tasks
 
 # ドライラン（変更内容の確認）
-ansible-playbook -i inventory.yml playbooks/deploy.yml --limit raspberrypi4 --check
+ansible-playbook -i inventory.yml playbooks/deploy-release-standard.yml --list-tasks --limit raspberrypi4
 
 # 実際の実行
-ansible-playbook -i inventory.yml playbooks/deploy.yml --limit raspberrypi4
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi4
 ```
 
 ## 既存ロールの修正手順
@@ -432,7 +432,7 @@ manage_kiosk_browser: false
 ### 4. `deploy.yml`への追加
 
 ```yaml
-# playbooks/deploy.yml
+# playbooks/deploy-release-standard.yml
 tasks:
   - name: Apply kiosk-specific deployment tasks
     ansible.builtin.import_role:
@@ -498,4 +498,3 @@ The task includes an option with an undefined variable
 2. **テストと検証**: 構文チェック、ドライラン、実機テストを実施
 3. **ドキュメント更新**: `README.md`と`INDEX.md`を更新
 4. **コミットとプッシュ**: 変更をコミットしてリモートにプッシュ
-

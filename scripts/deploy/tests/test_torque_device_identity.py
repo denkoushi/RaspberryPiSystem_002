@@ -144,23 +144,5 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
             tasks,
         )
 
-    def test_device_identity_files_are_in_the_sealed_rollback_contract(self) -> None:
-        backend = (ROOT / "scripts/deploy/rolling_release/backends/ansible.py").read_text()
-        registry = (ROOT / "scripts/deploy/terminal-profile-registry.json").read_text()
-        safety = (ROOT / "scripts/deploy/tests/test-deploy-safety-contracts.sh").read_text()
-
-        for destination in (
-            "/usr/local/libexec/torque-bluetooth-adapter",
-            "/usr/local/libexec/torque-bluetooth-guard",
-            "/etc/systemd/system/torque-bluetooth-adapter@.service",
-            "/etc/systemd/system/torque-bluetooth-guard.service",
-            "/etc/udev/rules.d/90-torque-bluetooth-adapter.rules",
-            "/etc/udev/rules.d/99-torque-wrench-hid.rules",
-        ):
-            self.assertIn(destination, backend)
-            self.assertIn(destination, registry)
-            self.assertIn(destination, safety)
-
-
 if __name__ == "__main__":
     unittest.main()

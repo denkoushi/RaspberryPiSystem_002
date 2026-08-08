@@ -1,8 +1,8 @@
-"""Strict, data-only terminal deployment profile registry.
+"""Strict reader for terminal deployment impact and client-agent metadata.
 
-The registry selects identifiers and repository-owned assets.  It is not an
-extension language: commands, shell fragments, Python import paths, and
-arbitrary adapter options are deliberately absent from the schema.
+The registry contains static identifiers and repository mappings only. Runtime
+execution policy, claims, adapters, rollout plans, and rollback state are not
+represented here.
 """
 from __future__ import annotations
 
@@ -13,86 +13,12 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REGISTRY_PATH = Path(__file__).with_name("terminal-profile-registry.json")
 _SAFE_ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,62}$")
-_SAFE_GROUP_RE = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
 _SAFE_COMPONENT_RE = re.compile(r"^[a-z][a-z0-9-]{0,62}$")
-_SYSTEMD_UNIT_RE = re.compile(
-    r"^[A-Za-z0-9][A-Za-z0-9_.@:-]{0,126}"
-    r"\.(?:service|timer|socket|path|target|mount)$"
-)
-_ROLLBACK_PATH_RE = re.compile(r"^/[A-Za-z0-9._/@:+,=%-]+$")
-_ALLOWED_ROLLBACK_PATHS = frozenset(
-    {
-        "/etc/NetworkManager/NetworkManager.conf",
-        "/etc/raspisystem-signage",
-        "/etc/raspi-haizen-agent.conf",
-        "/etc/raspi-status-agent.conf",
-        "/etc/udev/rules.d/90-torque-bluetooth-adapter.rules",
-        "/etc/udev/rules.d/99-torque-wrench-hid.rules",
-        "/usr/bin/chromium-browser",
-    }
-)
-_ALLOWED_ROLLBACK_PREFIXES = (
-    "/etc/polkit-1/rules.d/",
-    "/etc/raspisystem-signage/",
-    "/etc/systemd/system/",
-    "/etc/tmpfiles.d/",
-    "/opt/RaspberryPiSystem_002/",
-    "/run/signage/",
-    "/run/systemd/system/",
-    "/usr/local/",
-    "/var/spool/cron/",
-)
-_APPROVAL_POLICIES = frozenset({"human", "health-only"})
 _PATH_MATCHES = frozenset({"exact", "prefix"})
-_RESERVED_PROFILE_IDS = frozenset({"server", "pi5", "unknown"})
-_RESERVED_INVENTORY_GROUPS = frozenset({"all", "clients", "server", "ungrouped"})
-_TOP_LEVEL_KEYS = frozenset(
-    {
-        "schemaVersion",
-        "pi5ControlPlane",
-        "terminalProfiles",
-        "pathMappings",
-        "componentProfiles",
-        "componentHostSelectors",
-        "clientAgents",
-    }
-)
-_CONTROL_PLANE_KEYS = frozenset(
-    {"id", "inventoryGroup", "adapterId", "requiredHostCount"}
-)
-_PROFILE_KEYS = frozenset(
-    {
-        "id",
-        "inventoryGroup",
-        "rolloutOrder",
-        "impactComponent",
-        "adapterId",
-        "playbook",
-        "noticeSeconds",
-        "canaryGroup",
-        "approvalPolicy",
-        "adapterOptions",
-    }
-)
-_ADAPTER_OPTION_KEYS = frozenset(
-    {
-        "systemdUnits",
-        "rollbackPaths",
-        "healthProbeIds",
-        "readyAuthority",
-        "requiredClaims",
-        "activationStrategyId",
-    }
-)
-_READY_AUTHORITIES = frozenset({"control-plane", "terminal"})
-_TERMINAL_PROFILE_CLAIM_KINDS = frozenset(
-    {"controlPlaneWeb", "terminalRepository", "signageReleaseArtifact"}
-)
-_ACTIVATION_STRATEGY_IDS = frozenset({"kiosk-web-activation-v1"})
 _PATH_MAPPING_KEYS = frozenset({"match", "path", "component"})
 _COMPONENT_HOST_SELECTOR_KEYS = frozenset({"hostVar", "match"})
 _COMPONENT_HOST_SELECTOR_MATCHES = frozenset({"true", "non-empty-string"})
@@ -114,42 +40,25 @@ _CLIENT_AGENT_KEYS = frozenset(
         "hostSelector",
     }
 )
+_TOP_LEVEL_KEYS = frozenset(
+    {
+        "schemaVersion",
+        "terminalProfiles",
+        "pathMappings",
+        "componentProfiles",
+        "componentHostSelectors",
+        "clientAgents",
+    }
+)
 
 
 class RegistryError(ValueError):
-    """Raised when registry data violates the executable safety contract."""
-
-
-@dataclass(frozen=True)
-class Pi5ControlPlane:
-    id: str
-    inventory_group: str
-    adapter_id: str
-    required_host_count: int
-
-
-@dataclass(frozen=True)
-class AdapterOptions:
-    systemd_units: tuple[str, ...]
-    rollback_paths: tuple[str, ...]
-    health_probe_ids: tuple[str, ...]
-    ready_authority: str
-    required_claims: tuple[str, ...]
-    activation_strategy_id: str | None
+    """Raised when registry data violates the static data contract."""
 
 
 @dataclass(frozen=True)
 class TerminalProfile:
     id: str
-    inventory_group: str
-    rollout_order: int
-    impact_component: str
-    adapter_id: str
-    playbook: str
-    notice_seconds: int
-    canary_group: str
-    approval_policy: str
-    adapter_options: AdapterOptions
 
 
 @dataclass(frozen=True)
@@ -197,7 +106,6 @@ class ClientAgentContract:
 @dataclass(frozen=True)
 class TerminalProfileRegistry:
     schema_version: int
-    pi5_control_plane: Pi5ControlPlane
     profiles: tuple[TerminalProfile, ...]
     path_mappings: tuple[PathMapping, ...]
     component_profiles: tuple[tuple[str, tuple[str, ...]], ...]
@@ -218,12 +126,6 @@ class TerminalProfileRegistry:
                 return agent
         raise KeyError(agent_id)
 
-    def profile(self, profile_id: str) -> TerminalProfile:
-        for profile in self.profiles:
-            if profile.id == profile_id:
-                return profile
-        raise KeyError(profile_id)
-
     def component_for(self, repository_path: str) -> str:
         if not isinstance(repository_path, str) or not repository_path:
             return "unknown"
@@ -241,17 +143,7 @@ class TerminalProfileRegistry:
             affected.update(component_profiles.get(component, ()))
         return [profile.id for profile in self.profiles if profile.id in affected]
 
-    def components_apply_to_host(
-        self,
-        components: set[str],
-        host_vars: Any,
-    ) -> bool:
-        """Return whether profile-impacting components apply to one inventory host.
-
-        Components without an explicit selector remain profile-wide. Missing or
-        malformed host metadata fails closed. When every component is optional,
-        at least one selector must match the host.
-        """
+    def components_apply_to_host(self, components: set[str], host_vars: Any) -> bool:
         if not components:
             return False
         selectors = {
@@ -300,23 +192,11 @@ def _safe_identifier(value: Any, *, name: str) -> str:
     return value
 
 
-def _safe_group(value: Any, *, name: str) -> str:
-    if not isinstance(value, str) or _SAFE_GROUP_RE.fullmatch(value) is None:
-        raise RegistryError(f"{name} must be a safe inventory group")
-    return value
-
-
 def _safe_component(value: Any, *, name: str) -> str:
     if not isinstance(value, str) or _SAFE_COMPONENT_RE.fullmatch(value) is None:
         raise RegistryError(f"{name} must be a safe component identifier")
     if value == "unknown":
         raise RegistryError(f"{name} cannot redefine the implicit unknown component")
-    return value
-
-
-def _safe_release_claim_kind(value: Any, *, name: str) -> str:
-    if not isinstance(value, str) or value not in _TERMINAL_PROFILE_CLAIM_KINDS:
-        raise RegistryError(f"{name} must be a terminal profile claim kind")
     return value
 
 
@@ -341,33 +221,6 @@ def _unique_string_list(
     return result
 
 
-def _safe_unit(value: Any, *, name: str) -> str:
-    if (
-        not isinstance(value, str)
-        or ".." in value
-        or _SYSTEMD_UNIT_RE.fullmatch(value) is None
-    ):
-        raise RegistryError(f"{name} must be a safe explicit systemd unit")
-    return value
-
-
-def _safe_rollback_path(value: Any, *, name: str) -> str:
-    if (
-        not isinstance(value, str)
-        or len(value) > 512
-        or value.endswith("/")
-        or _ROLLBACK_PATH_RE.fullmatch(value) is None
-        or PurePosixPath(value).as_posix() != value
-        or ".." in PurePosixPath(value).parts
-        or (
-            value not in _ALLOWED_ROLLBACK_PATHS
-            and not value.startswith(_ALLOWED_ROLLBACK_PREFIXES)
-        )
-    ):
-        raise RegistryError(f"{name} must be a normalized allowlisted absolute path")
-    return value
-
-
 def _safe_repository_path(value: Any, *, name: str, exact: bool) -> str:
     if not isinstance(value, str) or not value or len(value) > 512:
         raise RegistryError(f"{name} must be a bounded repository path")
@@ -387,203 +240,15 @@ def _safe_repository_path(value: Any, *, name: str, exact: bool) -> str:
     return value
 
 
-def _validated_playbook(value: Any, *, repository_root: Path, name: str) -> str:
-    path = _safe_repository_path(value, name=name, exact=True)
-    parsed = PurePosixPath(path)
-    if parsed.suffix not in {".yml", ".yaml"}:
-        raise RegistryError(f"{name} must be an Ansible YAML playbook")
-    ansible_root = (repository_root / "infrastructure/ansible").resolve()
-    candidate = (ansible_root / Path(*parsed.parts)).resolve()
-    if not candidate.is_relative_to(ansible_root) or not candidate.is_file():
-        raise RegistryError(f"{name} must exist below the Ansible root")
-    return path
-
-
-def _parse_control_plane(value: Any) -> Pi5ControlPlane:
-    item = _strict_object(
-        value, name="pi5ControlPlane", keys=_CONTROL_PLANE_KEYS
-    )
-    control_plane = Pi5ControlPlane(
-        id=_safe_identifier(item["id"], name="pi5ControlPlane.id"),
-        inventory_group=_safe_group(
-            item["inventoryGroup"], name="pi5ControlPlane.inventoryGroup"
-        ),
-        adapter_id=_safe_identifier(
-            item["adapterId"], name="pi5ControlPlane.adapterId"
-        ),
-        required_host_count=_bounded_int(
-            item["requiredHostCount"],
-            name="pi5ControlPlane.requiredHostCount",
-            minimum=1,
-            maximum=1,
-        ),
-    )
-    if (
-        control_plane.id != "pi5"
-        or control_plane.inventory_group != "server"
-        or control_plane.adapter_id != "pi5-blue-green"
-    ):
-        raise RegistryError(
-            "pi5ControlPlane must use id pi5, server group, and pi5-blue-green adapter"
-        )
-    return control_plane
-
-
-def _parse_adapter_options(value: Any, *, profile_id: str) -> AdapterOptions:
-    item = _strict_object(
-        value,
-        name=f"terminal profile {profile_id} adapterOptions",
-        keys=_ADAPTER_OPTION_KEYS,
-    )
-    ready_authority = item["readyAuthority"]
-    if (
-        not isinstance(ready_authority, str)
-        or ready_authority not in _READY_AUTHORITIES
-    ):
-        raise RegistryError(
-            f"terminal profile {profile_id} readyAuthority must be "
-            "control-plane or terminal"
-        )
-    required_claims = _unique_string_list(
-        item["requiredClaims"],
-        name=f"terminal profile {profile_id} requiredClaims",
-        maximum=len(_TERMINAL_PROFILE_CLAIM_KINDS),
-        validator=_safe_release_claim_kind,
-    )
-    if not required_claims:
-        raise RegistryError(
-            f"terminal profile {profile_id} requiredClaims cannot be empty"
-        )
-    identity_claim = (
-        "signageReleaseArtifact" if profile_id == "signage" else "terminalRepository"
-    )
-    if identity_claim not in required_claims:
-        raise RegistryError(
-            f"terminal profile {profile_id} must require {identity_claim}"
-        )
-    activation_strategy_id = item["activationStrategyId"]
-    if activation_strategy_id is not None and (
-        not isinstance(activation_strategy_id, str)
-        or activation_strategy_id not in _ACTIVATION_STRATEGY_IDS
-    ):
-        raise RegistryError(
-            f"terminal profile {profile_id} activationStrategyId is unsupported"
-        )
-    if (
-        activation_strategy_id is not None
-        and "controlPlaneWeb" not in required_claims
-    ):
-        raise RegistryError(
-            f"terminal profile {profile_id} Web activation requires controlPlaneWeb"
-        )
-    ready_claim = (
-        "controlPlaneWeb"
-        if ready_authority == "control-plane"
-        else identity_claim
-    )
-    if ready_claim not in required_claims:
-        raise RegistryError(
-            f"terminal profile {profile_id} readyAuthority is not represented "
-            "by requiredClaims"
-        )
-    return AdapterOptions(
-        systemd_units=_unique_string_list(
-            item["systemdUnits"],
-            name=f"terminal profile {profile_id} systemdUnits",
-            maximum=64,
-            validator=_safe_unit,
-        ),
-        rollback_paths=_unique_string_list(
-            item["rollbackPaths"],
-            name=f"terminal profile {profile_id} rollbackPaths",
-            maximum=256,
-            validator=_safe_rollback_path,
-        ),
-        health_probe_ids=_unique_string_list(
-            item["healthProbeIds"],
-            name=f"terminal profile {profile_id} healthProbeIds",
-            maximum=32,
-            validator=_safe_identifier,
-        ),
-        ready_authority=ready_authority,
-        required_claims=required_claims,
-        activation_strategy_id=activation_strategy_id,
-    )
-
-
-def _parse_profile(
-    value: Any, *, index: int, repository_root: Path
-) -> TerminalProfile:
-    item = _strict_object(
-        value, name=f"terminalProfiles[{index}]", keys=_PROFILE_KEYS
-    )
-    profile_id = _safe_identifier(
-        item["id"], name=f"terminalProfiles[{index}].id"
-    )
-    if profile_id in _RESERVED_PROFILE_IDS:
-        raise RegistryError(f"terminal profile id is reserved: {profile_id}")
-    inventory_group = _safe_group(
-        item["inventoryGroup"],
-        name=f"terminal profile {profile_id} inventoryGroup",
-    )
-    if inventory_group in _RESERVED_INVENTORY_GROUPS:
-        raise RegistryError(
-            f"terminal profile inventory group is reserved: {inventory_group}"
-        )
-    canary_group = _safe_group(
-        item["canaryGroup"], name=f"terminal profile {profile_id} canaryGroup"
-    )
-    if canary_group in _RESERVED_INVENTORY_GROUPS or canary_group == inventory_group:
-        raise RegistryError(
-            f"terminal profile {profile_id} canaryGroup must be a distinct non-reserved group"
-    )
-    approval_policy = item["approvalPolicy"]
-    if (
-        not isinstance(approval_policy, str)
-        or approval_policy not in _APPROVAL_POLICIES
-    ):
-        raise RegistryError(
-            f"terminal profile {profile_id} approvalPolicy must be human or health-only"
-        )
+def _parse_profile(value: Any, *, index: int) -> TerminalProfile:
+    item = _strict_object(value, name=f"terminalProfiles[{index}]", keys=frozenset({"id"}))
     return TerminalProfile(
-        id=profile_id,
-        inventory_group=inventory_group,
-        rollout_order=_bounded_int(
-            item["rolloutOrder"],
-            name=f"terminal profile {profile_id} rolloutOrder",
-            minimum=1,
-            maximum=10_000,
-        ),
-        impact_component=_safe_component(
-            item["impactComponent"],
-            name=f"terminal profile {profile_id} impactComponent",
-        ),
-        adapter_id=_safe_identifier(
-            item["adapterId"], name=f"terminal profile {profile_id} adapterId"
-        ),
-        playbook=_validated_playbook(
-            item["playbook"],
-            repository_root=repository_root,
-            name=f"terminal profile {profile_id} playbook",
-        ),
-        notice_seconds=_bounded_int(
-            item["noticeSeconds"],
-            name=f"terminal profile {profile_id} noticeSeconds",
-            minimum=0,
-            maximum=3_600,
-        ),
-        canary_group=canary_group,
-        approval_policy=approval_policy,
-        adapter_options=_parse_adapter_options(
-            item["adapterOptions"], profile_id=profile_id
-        ),
+        id=_safe_identifier(item["id"], name=f"terminalProfiles[{index}].id")
     )
 
 
 def _parse_path_mapping(value: Any, *, index: int) -> PathMapping:
-    item = _strict_object(
-        value, name=f"pathMappings[{index}]", keys=_PATH_MAPPING_KEYS
-    )
+    item = _strict_object(value, name=f"pathMappings[{index}]", keys=_PATH_MAPPING_KEYS)
     match = item["match"]
     if not isinstance(match, str) or match not in _PATH_MATCHES:
         raise RegistryError(f"pathMappings[{index}].match must be exact or prefix")
@@ -634,8 +299,7 @@ def _parse_component_host_selectors(
         component = _safe_component(
             raw_component, name="componentHostSelectors key"
         )
-        profiles = component_profiles.get(component)
-        if not profiles:
+        if not component_profiles.get(component):
             raise RegistryError(
                 f"componentHostSelectors.{component} must reference a terminal component"
             )
@@ -645,28 +309,22 @@ def _parse_component_host_selectors(
             keys=_COMPONENT_HOST_SELECTOR_KEYS,
         )
         host_var = selector["hostVar"]
-        if not isinstance(host_var, str) or not _SAFE_HOST_VAR_RE.fullmatch(host_var):
+        match = selector["match"]
+        if not isinstance(host_var, str) or _SAFE_HOST_VAR_RE.fullmatch(host_var) is None:
             raise RegistryError(
                 f"componentHostSelectors.{component}.hostVar is invalid"
             )
-        match = selector["match"]
         if not isinstance(match, str) or match not in _COMPONENT_HOST_SELECTOR_MATCHES:
             raise RegistryError(
                 f"componentHostSelectors.{component}.match is invalid"
             )
         selectors.append(
-            ComponentHostSelector(
-                component=component,
-                host_var=host_var,
-                match=match,
-            )
+            ComponentHostSelector(component=component, host_var=host_var, match=match)
         )
     return tuple(sorted(selectors, key=lambda item: item.component))
 
 
 def _parse_client_agents(value: Any) -> tuple[ClientAgentContract, ...]:
-    """Parse inert agent metadata; executable consumers stay independently sealed."""
-
     if not isinstance(value, dict) or not value or len(value) > 64:
         raise RegistryError("clientAgents must be a non-empty bounded object")
     agents: list[ClientAgentContract] = []
@@ -678,12 +336,20 @@ def _parse_client_agents(value: Any) -> tuple[ClientAgentContract, ...]:
         compose_service = _safe_identifier(
             item["composeService"], name=f"clientAgents.{agent_id}.composeService"
         )
-        runtime_env_path = _safe_rollback_path(
-            item["runtimeEnvPath"], name=f"clientAgents.{agent_id}.runtimeEnvPath"
-        )
-        if not runtime_env_path.endswith("/.env"):
+        runtime_env_path = item["runtimeEnvPath"]
+        parsed_runtime_path = PurePosixPath(runtime_env_path) if isinstance(runtime_env_path, str) else None
+        if (
+            not isinstance(runtime_env_path, str)
+            or len(runtime_env_path) > 512
+            or not runtime_env_path.startswith("/")
+            or runtime_env_path.endswith("/")
+            or parsed_runtime_path is None
+            or parsed_runtime_path.as_posix() != runtime_env_path
+            or ".." in parsed_runtime_path.parts
+            or not runtime_env_path.endswith("/.env")
+        ):
             raise RegistryError(
-                f"clientAgents.{agent_id}.runtimeEnvPath must name an .env file"
+                f"clientAgents.{agent_id}.runtimeEnvPath must name a normalized absolute .env file"
             )
         env_template = _safe_repository_path(
             item["envTemplate"],
@@ -768,9 +434,9 @@ def load_registry(
     *,
     repository_root: Path | str = PROJECT_ROOT,
 ) -> TerminalProfileRegistry:
-    """Load and validate one registry without executing repository content."""
+    """Load and validate the static registry without executing repository content."""
+    del repository_root
     path = Path(registry_path)
-    root = Path(repository_root).resolve()
     try:
         raw = path.read_bytes()
     except OSError as exc:
@@ -785,48 +451,20 @@ def load_registry(
         )
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise RegistryError("terminal profile registry is not valid UTF-8 JSON") from exc
-    top = _strict_object(
-        payload, name="terminal profile registry", keys=_TOP_LEVEL_KEYS
-    )
+    top = _strict_object(payload, name="terminal profile registry", keys=_TOP_LEVEL_KEYS)
     schema_version = _bounded_int(
-        top["schemaVersion"],
-        name="schemaVersion",
-        minimum=SCHEMA_VERSION,
-        maximum=SCHEMA_VERSION,
+        top["schemaVersion"], name="schemaVersion", minimum=SCHEMA_VERSION, maximum=SCHEMA_VERSION
     )
-    control_plane = _parse_control_plane(top["pi5ControlPlane"])
-
     raw_profiles = top["terminalProfiles"]
-    if (
-        not isinstance(raw_profiles, list)
-        or not raw_profiles
-        or len(raw_profiles) > 64
-    ):
+    if not isinstance(raw_profiles, list) or not raw_profiles or len(raw_profiles) > 64:
         raise RegistryError("terminalProfiles must contain from 1 to 64 profiles")
-    profiles = tuple(
-        sorted(
-            (
-                _parse_profile(item, index=index, repository_root=root)
-                for index, item in enumerate(raw_profiles)
-            ),
-            key=lambda profile: (profile.rollout_order, profile.id),
-        )
-    )
-    for name, values in (
-        ("profile ids", [profile.id for profile in profiles]),
-        ("inventory groups", [profile.inventory_group for profile in profiles]),
-        ("canary groups", [profile.canary_group for profile in profiles]),
-        ("rollout orders", [profile.rollout_order for profile in profiles]),
-    ):
-        if len(values) != len(set(values)):
-            raise RegistryError(f"terminal profile {name} must be unique")
+    profiles = tuple(_parse_profile(item, index=index) for index, item in enumerate(raw_profiles))
+    profile_ids = {profile.id for profile in profiles}
+    if len(profile_ids) != len(profiles):
+        raise RegistryError("terminal profile ids must be unique")
 
     raw_path_mappings = top["pathMappings"]
-    if (
-        not isinstance(raw_path_mappings, list)
-        or not raw_path_mappings
-        or len(raw_path_mappings) > 512
-    ):
+    if not isinstance(raw_path_mappings, list) or not raw_path_mappings or len(raw_path_mappings) > 512:
         raise RegistryError("pathMappings must contain from 1 to 512 mappings")
     path_mappings = tuple(
         _parse_path_mapping(item, index=index)
@@ -842,14 +480,12 @@ def load_registry(
                     f"pathMappings[{index}] is shadowed by an earlier prefix mapping"
                 )
 
-    profile_ids = {profile.id for profile in profiles}
     component_profiles = _parse_component_profiles(
         top["componentProfiles"], profile_ids=profile_ids
     )
     component_map = dict(component_profiles)
     component_host_selectors = _parse_component_host_selectors(
-        top["componentHostSelectors"],
-        component_profiles=component_map,
+        top["componentHostSelectors"], component_profiles=component_map
     )
     client_agents = _parse_client_agents(top["clientAgents"])
     mapped_components = {mapping.component for mapping in path_mappings}
@@ -859,15 +495,6 @@ def load_registry(
             "pathMappings reference components absent from componentProfiles: "
             + ", ".join(missing_components)
         )
-    for profile in profiles:
-        if profile.impact_component not in mapped_components:
-            raise RegistryError(
-                f"terminal profile {profile.id} impactComponent has no path mapping"
-            )
-        if profile.id not in component_map.get(profile.impact_component, ()):
-            raise RegistryError(
-                f"terminal profile {profile.id} impactComponent does not target itself"
-            )
     for non_runtime_component in ("neutral", "deploy-control"):
         if component_map.get(non_runtime_component) != ():
             raise RegistryError(
@@ -883,15 +510,13 @@ def load_registry(
             raise RegistryError(
                 f"clientAgents.{agent.id}.component must target a terminal profile"
             )
-        selector = selectors_by_component.get(agent.component)
-        if selector != agent.host_selector:
+        if selectors_by_component.get(agent.component) != agent.host_selector:
             raise RegistryError(
                 f"clientAgents.{agent.id}.hostSelector must match componentHostSelectors"
             )
 
     return TerminalProfileRegistry(
         schema_version=schema_version,
-        pi5_control_plane=control_plane,
         profiles=profiles,
         path_mappings=path_mappings,
         component_profiles=component_profiles,

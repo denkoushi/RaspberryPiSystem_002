@@ -653,9 +653,8 @@ docker compose -f infrastructure/docker/docker-compose.server.yml logs api | gre
 
 1. **Ansibleでの一括更新**: 新規クライアントもAnsibleで更新できることを確認
    ```bash
-   # Raspberry Pi 5で実行
-   ansible-playbook -i infrastructure/ansible/inventory.yml \
-     infrastructure/ansible/playbooks/update-clients.yml \
+   # Raspberry Pi 5で実行。対象を必ず明示する。
+   scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
      --limit <ホスト名>
    ```
 

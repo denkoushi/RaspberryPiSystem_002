@@ -1,8 +1,0 @@
----
-- name: Reject retired standalone terminal rollback
-  hosts: clients
-  gather_facts: false
-  become: true
-
-  tasks:
-    - ansible.builtin.include_tasks: "../tasks/rollback-configs.yml"

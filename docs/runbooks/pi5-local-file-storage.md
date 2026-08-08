@@ -90,8 +90,8 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
   config
 ```
 
-所有者、mount、SSD状態に異常がある場合は、原因を直してから標準deploy
-coordinatorで再検証する。container内へ一時保存して運用を継続しない。
+所有者、mount、SSD状態に異常がある場合は、原因を直してから標準Ansible
+routeで再検証する。container内へ一時保存して運用を継続しない。
 
 ## rolloutとrollback
 

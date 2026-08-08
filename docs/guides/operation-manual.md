@@ -255,8 +255,7 @@ cat logs/ansible-update-YYYYMMDD-HHMMSS.log
 
 ```bash
 cd /opt/RaspberryPiSystem_002
-ansible-playbook -i infrastructure/ansible/inventory.yml \
-  infrastructure/ansible/playbooks/update-clients.yml \
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
   --limit raspberrypi3
 ```
 
@@ -266,9 +265,8 @@ ansible-playbook -i infrastructure/ansible/inventory.yml \
 
 ```bash
 cd /opt/RaspberryPiSystem_002
-ansible-playbook -i infrastructure/ansible/inventory.yml \
-  infrastructure/ansible/playbooks/update-clients.yml \
-  --check
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
+  --print-plan --limit raspberrypi3
 ```
 
 ### 更新頻度の推奨

@@ -24,7 +24,7 @@ GitHub Actions artifact
        failure -> profile rollback -> rollback health
 ```
 
-各profileは同じ小さな制御構造を明示するが、artifact、service、health、rollback規則は共有しない。動的adapter registryや新しいstate machineは設けない。
+各profileは同じ小さな制御構造を明示するが、artifact、service、health、rollback規則は共有しない。実行時の制御情報をregistryへ持ち込まない。
 
 | ファイル | 責務 | 依存先・入力 | 出力・副作用 | テスト境界 |
 |---|---|---|---|---|
@@ -61,9 +61,8 @@ GitHub Actions artifact
 | `roles/signage/templates/signage-runtime.tmpfiles.j2` | `/run/signage`所有者 | inventory user | external tmpfiles file | fixed destination contract |
 | `roles/signage/templates/signage-service-runtime.conf.j2` | systemd User/Groupとenv参照 | inventory user | external service drop-in | fixed destination contract |
 | `roles/signage/templates/signage-update-timer-runtime.conf.j2` | host別更新間隔 | inventory interval | external timer drop-in | Jinja parse |
-| `playbooks/prepare-signage-artifact.yml` | Pi3 artifact preparationの構文と入力契約を検証 | artifact stage mapping | candidate treeを書かない | zero-render compatibility test |
 | `scripts/deploy/signage-distribution-artifact.py` | 固定16-file allowlistで決定的tarを生成しtar/treeを検証 | host-neutral canonical source | CI artifact、検証結果JSON | reproducibility、traversal/link/size/missing/tree rejection |
-| `rolling_release/signage_artifact_activation.py` | host-neutral artifactを既存signage経路へ渡す共有境界 | tar manifest、render set | activation input | activation unit test |
+| `scripts/deploy/rolling_release/signage_artifact_stage.py` | CIで公開済みSignage artifactのattestationとdigestを検証 | GHCR attestation、release identity | 検証済みstage input | attestation、digest、atomic stage contract |
 | `.github/workflows/ci.yml` | Pi4 agent native contract buildとARM64/ARMv7 main-SHA publish | Buildx、GHCR、Trivy | main時だけpackage publish | staged workflow contract |
 | `scripts/ci/classify_changes.py` | 新role/CI artifact変更をdeploy jobへ分類 | Git diff paths | CI job matrix | classifier unit test |
 | `scripts/ci/run-deploy-contracts-local.sh` | 新route contractを既存local正本へ追加 | local tools、unique Docker resources | test result、run資源cleanup | self-run、残存0確認 |

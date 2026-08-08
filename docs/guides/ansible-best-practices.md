@@ -74,13 +74,13 @@ update-frequency: medium
 **原則**: エラー時に自動的にロールバックできる仕組みを用意する
 
 **実装**:
-- `infrastructure/ansible/playbooks/rollback.yml`でロールバックを実行
+- `release_pi5`、`release_kiosk`、`release_signage` roleのrescueでロールバックを実行
 - 最新のバックアップから設定ファイルを復旧
 
 **使用方法**:
 ```bash
-ansible-playbook -i infrastructure/ansible/inventory.yml \
-  infrastructure/ansible/playbooks/rollback.yml
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
+  --print-plan --limit PATTERN
 ```
 
 ### 5. エラーハンドリングの徹底
@@ -210,9 +210,8 @@ ssh signageras3@<pi3_ip> 'free -m'
 ssh denkon5sd02@<pi5_ip> 'pkill -9 -f ansible-playbook; pkill -9 -f AnsiballZ'
 
 # 4. デプロイ実行
-cd /opt/RaspberryPiSystem_002/infrastructure/ansible
-ANSIBLE_ROLES_PATH=/opt/RaspberryPiSystem_002/infrastructure/ansible/roles \
-  ansible-playbook -i inventory.yml playbooks/deploy.yml --limit raspberrypi3
+cd /opt/RaspberryPiSystem_002
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi3
 
 # 5. デプロイ完了後、サービスを再起動
 ssh signageras3@<pi3_ip> 'sudo systemctl start signage-lite.service signage-lite-update.timer'
@@ -354,4 +353,3 @@ src: /opt/RaspberryPiSystem_002/infrastructure/ansible/templates/template.j2
 
 - 2025-12-06: デプロイ前のリソース確保セクションを追加（KB-086参照）
 - 2025-12-01: 初版作成
-
