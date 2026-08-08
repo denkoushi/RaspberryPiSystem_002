@@ -85,6 +85,7 @@ bash scripts/deploy/tests/test-production-database-wiring.sh
 
 echo "[deploy-contract] rollback and release safety contracts"
 bash scripts/deploy/tests/test-deploy-safety-contracts.sh
+bash scripts/deploy/tests/test-verify-phase12-real.sh
 
 echo "[deploy-contract] inventories and Ansible playbooks"
 ANSIBLE_SOURCE_DIRECTORY="$ROOT_DIR/infrastructure/ansible"
