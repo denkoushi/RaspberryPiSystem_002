@@ -369,6 +369,60 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
         self.assertNotIn("reverse_proxy", prepare)
         self.assertNotIn("Caddyfile.gateway.http.template", defaults)
 
+    def test_pi5_first_compose_command_has_complete_image_interpolation(self) -> None:
+        prepare = yaml.safe_load(self.task_text("prepare"))
+        names = [task["name"] for task in prepare]
+        discovery_index = names.index(
+            "Read the running Pi5 gateway image before the first Compose command"
+        )
+        environment_index = names.index(
+            "Define complete Pi5 Compose interpolation before the first Compose command"
+        )
+        compose_index = names.index(
+            "Resolve active and opposite Pi5 Compose container IDs"
+        )
+        exact_index = names.index("Define exact slot-specific Compose images")
+        self.assertLess(discovery_index, environment_index)
+        self.assertLess(environment_index, compose_index)
+        self.assertLess(compose_index, exact_index)
+
+        discovery_argv = prepare[discovery_index]["ansible.builtin.command"]["argv"]
+        self.assertEqual(discovery_argv[:2], ["docker", "ps"])
+        self.assertNotIn("compose", discovery_argv)
+        self.assertIn(
+            "label=com.docker.compose.service=gateway",
+            discovery_argv,
+        )
+
+        required_images = {
+            "PI5_BLUE_API_IMAGE",
+            "PI5_GREEN_API_IMAGE",
+            "PI5_BLUE_WEB_IMAGE",
+            "PI5_GREEN_WEB_IMAGE",
+            "PI5_GATEWAY_IMAGE",
+        }
+        initial_environment = prepare[environment_index]["ansible.builtin.set_fact"][
+            "release_pi5_compose_environment"
+        ]
+        self.assertTrue(required_images.issubset(initial_environment))
+        self.assertIn("release_pi5_gateway_discovery", initial_environment["PI5_GATEWAY_IMAGE"])
+
+        first_compose = next(
+            task
+            for task in prepare
+            if "release_pi5_compose_argv"
+            in str(task.get("ansible.builtin.command", {}).get("argv", ""))
+        )
+        self.assertIs(first_compose, prepare[compose_index])
+        self.assertEqual(
+            first_compose["environment"],
+            "{{ release_pi5_compose_environment }}",
+        )
+        exact_environment = prepare[exact_index]["ansible.builtin.set_fact"][
+            "release_pi5_compose_environment"
+        ]
+        self.assertTrue(required_images.issubset(exact_environment))
+
     def test_pi5_fresh_prepare_mutates_only_inactive_services(self) -> None:
         prepare = yaml.safe_load(self.task_text("prepare"))
         start = next(
