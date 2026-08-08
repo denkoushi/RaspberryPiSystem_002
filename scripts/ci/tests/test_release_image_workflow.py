@@ -270,6 +270,25 @@ class ReleaseImageWorkflowTests(unittest.TestCase):
         self.assertNotIn("COPY --from=build", runtime_definition)
         self.assertNotIn("BUILD_COMMIT", runtime_definition)
 
+    def test_api_build_copies_only_required_runtime_scripts(self) -> None:
+        required_scripts = (
+            "COPY scripts/deploy/deploy-status-state.py "
+            "./scripts/deploy/deploy-status-state.py",
+            "COPY scripts/part-measurement/drawing-local-rapidocr-worker.py "
+            "./scripts/part-measurement/drawing-local-rapidocr-worker.py",
+            "COPY scripts/server/add-cert-backup-target.mjs "
+            "./scripts/server/add-cert-backup-target.mjs",
+        )
+        for instruction in required_scripts:
+            self.assertIn(instruction, API_DOCKERFILE)
+
+        self.assertNotIn("COPY scripts ./scripts", API_DOCKERFILE)
+        final_scripts = API_DOCKERFILE.index(
+            "COPY --from=build /app/scripts ./scripts"
+        )
+        provenance = API_DOCKERFILE.index("ARG BUILD_COMMIT=unknown")
+        self.assertLess(final_scripts, provenance)
+
     def test_api_runtime_uses_only_required_production_dependencies(self) -> None:
         runtime_boundary = API_DOCKERFILE.index("FROM api-runtime AS api")
         runtime_stage = API_DOCKERFILE.index(
