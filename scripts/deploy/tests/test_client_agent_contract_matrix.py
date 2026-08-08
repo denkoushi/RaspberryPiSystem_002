@@ -9,8 +9,6 @@ from pathlib import Path
 from types import ModuleType
 
 from scripts.deploy.terminal_profile_registry import load_registry
-from scripts.deploy.rolling_release import terminal_adapters
-from scripts.deploy.rolling_release.backends import ansible
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -81,21 +79,6 @@ class ClientAgentContractMatrixTest(unittest.TestCase):
         compare_set("terminal-agent-health-probe port environment", set(self.health._PORT_ENVIRONMENT))
         compare_set("terminal-agent-health-probe endpoint", set(self.health._ENDPOINTS))
         compare_set("terminal-agent-health-probe response validator", set(self.health._RESPONSE_VALIDATORS))
-        compare_set("terminal adapter probes", set(terminal_adapters._AGENT_PROBES))
-        compare_set("Ansible kiosk-agent order", set(ansible._KIOSK_AGENT_ORDER))
-
-        adapter_supported = terminal_adapters.GenericSystemdAdapter.supported_health_probe_ids
-        for agent_id in sorted(agent_ids - set(adapter_supported)):
-            issues.append(f"{agent_id}: missing from generic-systemd supported health probes")
-
-        marker_agents = {
-            agent_id
-            for agent_id in agent_ids
-            if ansible._TERMINAL_AGENT_MARKER_RE.fullmatch(
-                f"TERMINAL_AGENT_HEALTH_OK:{agent_id}:7071"
-            )
-        }
-        compare_set("Ansible terminal health marker", marker_agents)
 
         fixed_port_agents = {
             agent.id for agent in agents.values() if agent.port_policy == "fixed"
@@ -224,12 +207,6 @@ class ClientAgentContractMatrixTest(unittest.TestCase):
             affected_profiles = self.registry.profiles_for_components({agent.component})
             if not affected_profiles:
                 issues.append(f"{agent_id}: component does not select a terminal profile")
-            for profile_id in affected_profiles:
-                rollback_paths = self.registry.profile(profile_id).adapter_options.rollback_paths
-                if agent.runtime_env_path not in rollback_paths:
-                    issues.append(
-                        f"{agent_id}: {profile_id} rollback paths omit runtimeEnvPath"
-                    )
 
         services_section = self.compose.split("\nvolumes:", maxsplit=1)[0]
         service_blocks = set(

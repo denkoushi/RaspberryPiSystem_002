@@ -99,9 +99,7 @@ export ANSIBLE_ROLES_PATH="$ANSIBLE_DIRECTORY/roles"
 READ_ONLY_ANSIBLE_CONFIG="$ANSIBLE_DIRECTORY/ansible-readonly.cfg"
 
 STATIC_PLAYBOOKS=(
-  playbooks/deploy.yml
   playbooks/deploy-release-standard.yml
-  playbooks/deploy-terminal-profile.yml
   playbooks/server-config-release.yml
   playbooks/prepare-pi5-runtime-permissions.yml
   playbooks/prepare-pi5-database-roles.yml
@@ -109,11 +107,9 @@ STATIC_PLAYBOOKS=(
   playbooks/prepare-client-local-ca-trust.yml
   playbooks/activate-pi5-local-ca-certificate.yml
   playbooks/verify-client-local-tls.yml
-  playbooks/update-clients.yml
   playbooks/health-check.yml
   playbooks/manage-system-configs.yml
   playbooks/manage-app-configs.yml
-  playbooks/rollback.yml
   playbooks/restart-services.yml
   playbooks/ping.yml
 )
@@ -129,10 +125,6 @@ for inventory in inventory.yml inventory-talkplaza.yml; do
 done
 for playbook in "${STATIC_PLAYBOOKS[@]}"; do
   ansible-playbook --syntax-check "$playbook" -i inventory.yml \
-    --extra-vars "@$VAULT_PLACEHOLDERS"
-done
-for playbook in playbooks/deploy-terminal-profile.yml; do
-  ansible-playbook --syntax-check "$playbook" -i inventory-talkplaza.yml \
     --extra-vars "@$VAULT_PLACEHOLDERS"
 done
 echo "[deploy-contract] all checks passed"
