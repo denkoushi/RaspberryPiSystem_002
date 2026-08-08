@@ -21,8 +21,8 @@
 - ユーザーの「Deploy」「デプロイ」「本番反映」は、**標準ローリング更新**を意味する。通常のアプリ更新は必ず `scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml` を使う。
 - 実機へ接続する前に、対象ブランチまたは不変SHAと、その対象のCI成功を確認する。対象が会話・PR・依頼から一意に決まらない場合は推測せず質問する。本番実行にはユーザーの明示承認が必要であり、同じ作業中に既に承認済みなら再確認しない。
 - 通常更新では `scripts/update-all-clients.sh` と標準Ansible経路だけを使う。実行経路は `scripts/deploy/standard-ansible-release.py` → `infrastructure/ansible/playbooks/deploy-release-standard.yml` → `release_pi5` / `release_kiosk` / `release_signage` とし、対象選択はPi5・Pi4・Pi3のinventoryとroleに委ねる。
-- 最初に `scripts/update-all-clients.sh <branch> <inventory> --print-plan` を実行し、対象理由と `unknown` hostを確認する。標準では検証済み同一SHAだけを除外し、根拠不明hostは必ず対象に含める。全台を明示的に再検証するときだけ `--full-fleet` を使う。
-- 実行後は標準Ansibleの結果と既存のhealth／rollback契約を確認し、Pi5・端末別の結果、失敗理由と復旧結果を報告する。process kill、lock削除、fleet state手編集は行わない。
+- 最初に `scripts/update-all-clients.sh <branch> <inventory> --print-plan` を実行し、選択host、profile、roleとAnsibleの`list-hosts`／`list-tasks`を確認する。mutation例では必ず `--limit PATTERN` または `--full-fleet` を明示する。
+- 実行後は標準Ansibleの結果と既存のhealth／rollback契約を確認し、Pi5・端末別の結果、失敗理由と復旧結果を報告する。process killや、lock・run情報・migration台帳などの運用情報の手編集は行わない。
 - TalkPlaza Pi5は構想段階で実機が存在しないため、現時点では `inventory-talkplaza.yml` のplan確認までに留める。
 - 詳細な運用・復旧は `docs/guides/deployment.md` と `docs/runbooks/deploy-status-recovery.md` を現行正本とする。設計経緯は `docs/plans/deployment-foundation-refactor-execplan.md` に残す。Pi5本体故障・停電は単体構成の対象外である。
 
@@ -37,9 +37,9 @@
 
 ## main統合と作業完了の必須監査（常時適用）
 
-- 実装、PR、リリース、デプロイを含む作業は、終了前に次の4状態をSHA付きで別々に確認する: (1) worktreeがclean、(2) ローカルbranchと対応するorigin branchが一致、(3) 有効な変更とデプロイ対象SHAが`origin/main`へ統合済み、(4) fleet各hostの本番実行SHAと検証証跡。
-- `scripts/update-all-clients.sh` の `--print-plan`、通常実行結果、`--status` にある `mainIntegration` を確認する。`completionEligible` が `true` でない場合、実機検証が成功していてもリポジトリ作業を「完了」「main反映済み」と報告してはならない。
-- feature branchからの承認済み先行検証は許可する。この場合、releaseの`success`と作業完了を区別し、`integrationPending=true`としてPR作成、必須CI、main merge、必要なmain再検証を未完了項目に残す。
+- 実装、PR、リリース、デプロイを含む作業は、終了前にGit/GitHub現物で次を確認する: worktreeがclean、ローカルbranchと対応するorigin branchが一致、PRがmerge済み、main CIがgreen。
+- 実機Deployを実施した作業だけ、標準Ansibleのrun ID、status、recap、health、rollback結果を別に確認する。実機Deployを実施していない場合は、その事実を明示する。
+- feature branchで先行検証した場合はrelease成功とmain統合を分け、PR、CI、mergeが未完了の状態として扱う。
 - staleまたは廃止branchを機械的に全mergeしない。有効な変更が別PR・別commitでmainへ到達した場合は、置換根拠を記録して元PRをsupersededとして扱う。
 
 ## ExecPlan（複雑な作業の必須手順）
