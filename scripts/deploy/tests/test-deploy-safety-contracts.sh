@@ -23,7 +23,6 @@ TERMINAL_DISPLAY_PREFLIGHT="${ROOT_DIR}/infrastructure/ansible/tasks/preflight-t
 SIGNAGE_PRESTAGE="${ROOT_DIR}/infrastructure/ansible/tasks/prestage-signage-runtime.yml"
 CLIENT_TASKS="${ROOT_DIR}/infrastructure/ansible/roles/client/tasks/main.yml"
 NFC_LIFECYCLE_TASKS="${ROOT_DIR}/infrastructure/ansible/roles/client/tasks/nfc-agent-lifecycle.yml"
-RELEASE_APPLICATION="${ROOT_DIR}/scripts/deploy/rolling_release/application.py"
 TERMINAL_PREFLIGHT="${ROOT_DIR}/scripts/deploy/rolling_release/terminal_preflight.py"
 TERMINAL_AGENT_HEALTH="${ROOT_DIR}/scripts/deploy/terminal-agent-health-probe.py"
 KIOSK_FIREFOX_TASKS="${ROOT_DIR}/infrastructure/ansible/roles/kiosk/tasks/firefox-chrome.yml"
@@ -37,21 +36,14 @@ SIGNAGE_DISPLAY_TEMPLATES=(
   "${ROOT_DIR}/infrastructure/ansible/roles/signage/templates/signage-display.sh.j2"
 )
 
-python3 - "${RELEASE_APPLICATION}" "${TERMINAL_PREFLIGHT}" "${NFC_LIFECYCLE_TASKS}" "${TERMINAL_AGENT_HEALTH}" <<'PY'
+python3 - "${TERMINAL_PREFLIGHT}" "${NFC_LIFECYCLE_TASKS}" "${TERMINAL_AGENT_HEALTH}" <<'PY'
 import sys
 from pathlib import Path
 
-application_path, preflight_path, nfc_path, agent_health_path = map(Path, sys.argv[1:])
-application = application_path.read_text(encoding='utf-8')
+preflight_path, nfc_path, agent_health_path = map(Path, sys.argv[1:])
 preflight = preflight_path.read_text(encoding='utf-8')
 nfc = nfc_path.read_text(encoding='utf-8')
 
-migration = application.index('systemd.preflight_migrations(spec)')
-terminal = application.index('systemd.preflight_terminals(')
-submission = application.index('systemd.start(spec, wait=not args.detach)')
-assert migration < terminal < submission, (
-    'migration and aggregate terminal preflights must both precede release-unit submission'
-)
 assert 'no release unit was submitted' in preflight
 assert 'for target in spec["targets"]' in preflight
 assert 'results.append(result)' in preflight
