@@ -221,11 +221,19 @@ ansible-playbook -i inventory.yml playbooks/deploy-release-standard.yml --list-t
 # ドライラン（変更内容の確認）
 ansible-playbook -i inventory.yml playbooks/deploy-release-standard.yml --list-tasks --limit raspberrypi4
 
-# 実際の実行
+# 必須の事前確認
 scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan --limit raspberrypi4
 ```
 
-上記の標準route確認だけでは、callerのない `camera` roleやinventory変数は適用されません。
+`--print-plan`では、選択host、profile、role、対象SHAとCI成功を確認する。
+その確認、対象branch/SHAのCI成功、明示承認がそろった後だけ、同じscopeで実際の実行を行う。
+
+```bash
+# 実際の実行（文書例。明示承認後のみ）
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi4
+```
+
+ここではコマンドを実行しない。標準route確認だけでは、callerのない `camera` roleやinventory変数は適用されません。
 
 ## 既存ロールの修正手順
 
@@ -337,29 +345,15 @@ when: manage_camera | bool
 
 標準routeでサービス再起動を伴う変更は、対象 `release_*` roleの既存taskとrollback境界に合わせます。
 `roles/client`を標準playbookが直接実行する前提で処理を追加しません。
-
-```yaml
-# 対象profile roleの既存task
-- name: Restart required services
-  ansible.builtin.include_tasks: "{{ playbook_dir }}/../tasks/restart-client-service.yml"
-  loop: "{{ services_to_restart }}"
-  loop_control:
-    loop_var: service_name
-```
+`release_*` roleの `switch.yml` が必要なserviceをrestartし、失敗時は同じprofileの `rollback.yml` が
+復元後のservice再起動とhealth再確認を担当する。共有restart helperをこのガイドから追加しない。
 
 ### 6. バックアップの考慮
 
 システム設定ファイルを変更する場合は、対象 `release_*` roleが持つ既存のprepare/rollback境界を確認します。
 `roles/common`の処理が標準routeで自動実行されるとは仮定しません。
-
-```yaml
-# 対象profile roleの既存契約を確認する
-backup_service_files:
-  - status-agent.service
-  - kiosk-browser.service
-  - signage-lite.service
-  - new-service.service  # 追加
-```
+たとえば `release_kiosk` は `switch.yml` の `copy: backup: true` でinstall結果をregisterし、
+`rollback.yml` がそのbackup fileを復元する。このprofile契約を使い、未使用のbackup変数リストを追加しない。
 
 ## 標準routeのprofile roleを確認する
 
