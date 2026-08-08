@@ -33,6 +33,7 @@ MAX_ARTIFACT_BYTES = 1024 * 1024
 MAX_SOURCE_PATHS = 32
 MAX_SOURCE_BYTES = 512 * 1024
 MIN_FREE_SPACE_BYTES = 4 * 1024 * 1024
+STATUS_AGENT_UNITS = ("status-agent.service", "status-agent.timer")
 MARKER_PREFIX = "SIGNAGE_RELEASE_ARTIFACT_RESULT:"
 HASH_CHUNK_BYTES = 1024 * 1024
 ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
@@ -67,28 +68,11 @@ def _regular_source(root: Path, relative: str) -> Path:
 def _profile_units(root: Path, profile_id: str) -> tuple[str, ...]:
     if PROFILE_RE.fullmatch(profile_id) is None:
         raise ArtifactError("artifact profile is malformed")
-    registry_path = _regular_source(
-        root, "scripts/deploy/terminal-profile-registry.json"
-    )
-    try:
-        registry = json.loads(registry_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as error:
-        raise ArtifactError("terminal profile registry is malformed") from error
-    profiles = registry.get("terminalProfiles") if isinstance(registry, dict) else None
-    matches = [
-        value for value in profiles or []
-        if isinstance(value, dict) and value.get("id") == profile_id
-    ]
-    if len(matches) != 1:
+    if profile_id != "signage":
         raise ArtifactError("artifact profile is unavailable")
-    options = matches[0].get("adapterOptions")
-    units = options.get("systemdUnits") if isinstance(options, dict) else None
-    if not isinstance(units, list) or any(not isinstance(unit, str) for unit in units):
-        raise ArtifactError("artifact profile systemd contract is malformed")
-    selected = tuple(sorted(unit for unit in units if unit.startswith("status-agent.")))
-    if selected != ("status-agent.service", "status-agent.timer"):
-        raise ArtifactError("signage status-agent unit contract is incomplete")
-    return selected
+    for unit in STATUS_AGENT_UNITS:
+        _regular_source(root, f"clients/status-agent/{unit}")
+    return STATUS_AGENT_UNITS
 
 
 def _entrypoint_from_service(root: Path, relative: str) -> str:
