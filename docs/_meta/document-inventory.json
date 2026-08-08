@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 614,
-    "totalLines": 171356,
-    "totalBytes": 12843345,
+    "totalLines": 171247,
+    "totalBytes": 12842524,
     "withFrontmatter": 281,
     "withStatus": 137,
     "sourceOfTruthDeclared": 99,
@@ -17692,8 +17692,8 @@
     },
     {
       "path": "docs/guides/ansible-role-development.md",
-      "lineCount": 500,
-      "byteSize": 14870,
+      "lineCount": 419,
+      "byteSize": 14610,
       "hasFrontmatter": true,
       "title": "Ansibleロール開発ガイド",
       "status": null,
@@ -37022,8 +37022,8 @@
     },
     {
       "path": "docs/runbooks/kiosk-ime-diagnosis.md",
-      "lineCount": 119,
-      "byteSize": 5268,
+      "lineCount": 91,
+      "byteSize": 4707,
       "hasFrontmatter": true,
       "title": "Runbook: キオスク備考欄 日本語入力不具合の診断",
       "status": null,

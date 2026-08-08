@@ -14,15 +14,17 @@ update-frequency: medium
 
 ## 概要
 
-本ガイドでは、Raspberry Pi System 002のAnsibleロール構造に沿って、新規ロールの追加や既存ロールの修正を行う方法を説明します。
+本ガイドでは、Raspberry Pi System 002のAnsibleロールを修正するときに確認すべき境界を説明します。
+標準release routeの実行順序と受入条件は、`deploy-release-standard.yml` と各profile roleを正本とします。
 
-Phase 9（ロール化）により、システムは以下の5つのロールに分割されています：
+標準routeが実行するprofile roleは次の3つです。
 
-- **`common`**: 全ホスト共通処理（リポジトリ同期、バックアップ）
-- **`server`**: サーバー専用処理（Docker Compose、API/Web環境変数）
-- **`client`**: クライアント共通処理（status-agent、polkit、サービス再起動）
-- **`kiosk`**: キオスク固有処理（kiosk-launch、kiosk-browser）
-- **`signage`**: サイネージ固有処理（signage-lite管理、依存インストール）
+- **`release_pi5`**: Pi5のprepare、switch、health、失敗時rollback
+- **`release_kiosk`**: Pi4のprepare、switch、health、失敗時rollback
+- **`release_signage`**: Pi3のprepare、switch、health、失敗時rollback
+
+`common`、`server`、`client`、`kiosk`、`signage` は標準playbookが直接実行するroleではありません。
+それらの既存callerを修正する場合は、標準routeの実行対象だと仮定せず、実際のcallerと受入契約を先に確認します。
 
 ## ロール構造の理解
 
@@ -47,15 +49,20 @@ infrastructure/ansible/
 
 ### ロールの実行順序
 
-`playbooks/deploy-release-standard.yml`では、以下の順序でロールが実行されます：
+`playbooks/deploy-release-standard.yml`はhost profileごとにserial 1で次の3 playを実行します。
 
-1. **`common`** (pre_tasks): 全ホスト共通の前処理
-2. **`server`** (tasks): サーバーホストのみ
-3. **`client`** (tasks): クライアントホストのみ
-4. **`kiosk`** (tasks): クライアントホストで`manage_kiosk_browser=true`の場合
-5. **`signage`** (tasks): クライアントホストで`manage_signage_lite=true`の場合
+1. **`release_pi5`**: Pi5のprepare → switch → health。失敗時はroleのrollback境界を確認する。
+2. **`release_kiosk`**: Pi4のprepare → switch → health。失敗時はroleのrollback境界を確認する。
+3. **`release_signage`**: Pi3のprepare → switch → health。失敗時はroleのrollback境界を確認する。
 
-## 新規ロールの追加手順
+標準playbookに `common`、`server`、`client`、`kiosk`、`signage` をimportする前提や、
+それらへ新しいroleを直接追加する前提は置きません。
+
+## 新規ロールの追加手順（標準routeへの追加ではない）
+
+以下は、標準routeとは別に実在するcallerがある場合の一般的なrole構造例です。
+inventory変数を追加するだけで標準playbookにroleが接続されるわけではなく、
+この `camera` 例を標準routeの実行結果として扱ってはいけません。
 
 ### ステップ1: ロールスケルトンの作成
 
@@ -177,27 +184,15 @@ FRAME_RATE="{{ camera_frame_rate | default('30') }}"
   - `repo_path`（テンプレート配置元）
 
 使用例:
-  - `inventory.yml`で`manage_camera: true`を設定すると、このロールが適用される。
+  - 実在するcallerが `manage_camera` を読む場合だけ、そのcallerの契約に従って設定する。
 ```
 
 ### ステップ6: 標準release playbookへの追加
 
-`playbooks/deploy-release-standard.yml`の対象profileに、新しいロールを追加します。
-
-```yaml
-# playbooks/deploy-release-standard.yml
-tasks:
-  - name: Execute deployment with automatic rollback
-    block:
-      # ... 既存のロール ...
-      
-      - name: Apply camera-specific deployment tasks
-        ansible.builtin.import_role:
-          name: camera
-        when:
-          - '"server" not in group_names'
-          - manage_camera | default(false) | bool
-```
+標準playbookへ `camera` のような新しいroleを直接追加する手順はありません。
+標準routeの実行境界は `release_pi5`、`release_kiosk`、`release_signage` に固定されています。
+新しい処理が必要な場合は、まず既存profile roleのprepare、switch、health、rollbackのどこが所有するかを確認し、
+その判断と実装を別の明示的な変更として扱います。このガイドの例だけで標準routeへ処理が追加されるとはみなしません。
 
 ### ステップ7: インベントリ変数の設定
 
@@ -227,40 +222,33 @@ ansible-playbook -i inventory.yml playbooks/deploy-release-standard.yml --list-t
 ansible-playbook -i inventory.yml playbooks/deploy-release-standard.yml --list-tasks --limit raspberrypi4
 
 # 実際の実行
-scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi4
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan --limit raspberrypi4
 ```
+
+上記の標準route確認だけでは、callerのない `camera` roleやinventory変数は適用されません。
 
 ## 既存ロールの修正手順
 
 ### ステップ1: 修正対象の特定
 
-どのロールを修正するか決定します：
+どのprofile roleを修正するか決定します：
 
-- **共通処理**: `common`ロール
-- **サーバー処理**: `server`ロール
-- **クライアント共通処理**: `client`ロール
-- **キオスク固有処理**: `kiosk`ロール
-- **サイネージ固有処理**: `signage`ロール
+- **Pi5**: `release_pi5`
+- **Pi4**: `release_kiosk`
+- **Pi3**: `release_signage`
+
+`common`、`server`、`client`、`kiosk`、`signage` の修正は、標準routeがそれらを直接実行するとは仮定せず、
+そのファイルを実際に呼ぶcallerの契約を確認してから行います。
 
 ### ステップ2: タスクの追加・修正
 
-`roles/<role-name>/tasks/main.yml`を編集します。
-
-**例: `client`ロールに新しいサービスを追加する場合**
+`roles/release_<profile>/tasks/` の既存prepare、switch、health、rollback taskを確認してから編集します。
+標準routeの新しい処理を別roleへ移して、呼出しを推測で増やしてはいけません。
 
 ```yaml
-# roles/client/tasks/main.yml
+# roles/release_kiosk/tasks/health.yml
 ---
-# ... 既存のタスク ...
-
-- name: Deploy new service configuration
-  ansible.builtin.template:
-    src: "{{ playbook_dir }}/../templates/new-service.conf.j2"
-    dest: /etc/new-service.conf
-    owner: root
-    group: root
-    mode: '0644'
-  when: manage_new_service | default(false) | bool
+# 既存のhealth契約とrollback境界を壊さない範囲で修正する
 ```
 
 ### ステップ3: 変数の追加
@@ -268,12 +256,9 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit 
 必要に応じて`defaults/main.yml`に変数を追加します。
 
 ```yaml
-# roles/client/defaults/main.yml
+# roles/release_kiosk/defaults/main.yml
 ---
-# ... 既存の変数 ...
-
-# 新サービスの管理フラグ
-manage_new_service: false
+# 既存profileが所有する変数だけを追加・修正する
 ```
 
 ### ステップ4: テストと検証
@@ -350,10 +335,11 @@ when: manage_camera | bool
 
 ### 5. サービス再起動の統一
 
-クライアントのサービス再起動は、`roles/client`の`restart-client-service.yml`を使用します。
+標準routeでサービス再起動を伴う変更は、対象 `release_*` roleの既存taskとrollback境界に合わせます。
+`roles/client`を標準playbookが直接実行する前提で処理を追加しません。
 
 ```yaml
-# roles/client/tasks/main.yml
+# 対象profile roleの既存task
 - name: Restart required services
   ansible.builtin.include_tasks: "{{ playbook_dir }}/../tasks/restart-client-service.yml"
   loop: "{{ services_to_restart }}"
@@ -363,10 +349,11 @@ when: manage_camera | bool
 
 ### 6. バックアップの考慮
 
-システム設定ファイルを変更する場合は、`roles/common`のバックアップ機能を活用します。
+システム設定ファイルを変更する場合は、対象 `release_*` roleが持つ既存のprepare/rollback境界を確認します。
+`roles/common`の処理が標準routeで自動実行されるとは仮定しません。
 
 ```yaml
-# roles/common/tasks/main.yml で自動的にバックアップされる
+# 対象profile roleの既存契約を確認する
 backup_service_files:
   - status-agent.service
   - kiosk-browser.service
@@ -374,84 +361,16 @@ backup_service_files:
   - new-service.service  # 追加
 ```
 
-## 実例: `kiosk`ロールの追加
+## 標準routeのprofile roleを確認する
 
-Phase 9で実装された`kiosk`ロールを例に、ロール追加の流れを説明します。
+標準playbookへ既存の `kiosk` roleを追加する例はありません。変更前に、対象profileのroleと実行境界を確認します。
 
-### 1. ロールスケルトンの作成
+- Pi5: `release_pi5` のprepare、switch、health、rollback
+- Pi4: `release_kiosk` のprepare、switch、health、rollback
+- Pi3: `release_signage` のprepare、switch、health、rollback
 
-```bash
-mkdir -p infrastructure/ansible/roles/kiosk/{defaults,handlers,tasks}
-touch infrastructure/ansible/roles/kiosk/{defaults,handlers,tasks}/main.yml
-touch infrastructure/ansible/roles/kiosk/README.md
-```
-
-### 2. デフォルト変数の定義
-
-```yaml
-# roles/kiosk/defaults/main.yml
----
-# キオスクブラウザ管理を有効にするフラグ
-manage_kiosk_browser: false
-```
-
-### 3. タスクの実装
-
-```yaml
-# roles/kiosk/tasks/main.yml
----
-- name: Deploy kiosk-launch script
-  ansible.builtin.template:
-    src: "{{ playbook_dir }}/../templates/kiosk-launch.sh.j2"
-    dest: /usr/local/bin/kiosk-launch.sh
-    owner: root
-    group: root
-    mode: '0755'
-  when: manage_kiosk_browser | default(false) | bool
-
-- name: Deploy kiosk-browser.service
-  ansible.builtin.template:
-    src: "{{ playbook_dir }}/../templates/kiosk-browser.service.j2"
-    dest: /etc/systemd/system/kiosk-browser.service
-    owner: root
-    group: root
-    mode: '0644'
-  when: manage_kiosk_browser | default(false) | bool
-
-- name: Verify kiosk UI is reachable
-  ansible.builtin.uri:
-    url: "{{ kiosk_url }}"
-    method: GET
-    validate_certs: false
-    status_code: 200
-  when:
-    - kiosk_url is defined
-    - manage_kiosk_browser | default(false) | bool
-```
-
-### 4. `deploy.yml`への追加
-
-```yaml
-# playbooks/deploy-release-standard.yml
-tasks:
-  - name: Apply kiosk-specific deployment tasks
-    ansible.builtin.import_role:
-      name: kiosk
-    when:
-      - '"server" not in group_names'
-      - manage_kiosk_browser | default(false) | bool
-```
-
-### 5. インベントリ変数の設定
-
-```yaml
-# inventory.yml
-clients:
-  hosts:
-    raspberrypi4:
-      manage_kiosk_browser: true
-      kiosk_url: "https://192.168.10.230/kiosk"
-```
+タスク一覧と対象hostは、標準playbookに対するAnsibleのsyntax/list-hosts/list-tasksで確認します。
+実行時は標準launcherの選択scopeを使い、個別の旧playbookや未確認のrole呼出しを追加しません。
 
 ## トラブルシューティング
 
@@ -481,9 +400,9 @@ The task includes an option with an undefined variable
 ### ロールが実行されない
 
 **確認事項**:
-- `deploy.yml`にロールが追加されているか
-- `when`条件が正しいか（`manage_<role-name>`が`true`になっているか）
-- インベントリ変数が正しく設定されているか
+- `deploy-release-standard.yml`の対象profile roleが意図したhostに含まれるか
+- profile roleのprepare、switch、health、rollback taskが対象をカバーするか
+- `--list-hosts` / `--list-tasks` とinventory変数が一致しているか
 
 ## 関連ドキュメント
 
@@ -494,7 +413,7 @@ The task includes an option with an undefined variable
 
 ## 次のステップ
 
-1. **ロールの実装**: 上記の手順に従って新規ロールを追加
-2. **テストと検証**: 構文チェック、ドライラン、実機テストを実施
-3. **ドキュメント更新**: `README.md`と`INDEX.md`を更新
-4. **コミットとプッシュ**: 変更をコミットしてリモートにプッシュ
+1. **callerの確認**: 対象profile roleと標準playbookの実行境界を確認
+2. **テストと検証**: 構文チェック、list-hosts、list-tasks、CI契約を実施
+3. **ドキュメント更新**: 実際の標準routeと一致する範囲だけを更新
+4. **コミットとプッシュ**: 差分境界を確認してリモートにプッシュ
