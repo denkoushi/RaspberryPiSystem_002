@@ -1,6 +1,0 @@
----
-- name: Sample Pi5 public and scheduler health for the fixed window
-  ansible.builtin.include_tasks: health-sample.yml
-  loop: "{{ range(0, release_pi5_candidate_stability_seconds | int // release_pi5_candidate_health_interval_seconds | int) | list }}"
-  loop_control:
-    label: "sample {{ item | int + 1 }}"

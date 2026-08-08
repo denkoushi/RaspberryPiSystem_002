@@ -1,27 +1,93 @@
 ---
-- name: Roll back Pi5 when traffic switching was attempted
-  ansible.builtin.command:
-    argv:
-      - "{{ release_pi5_project_dir }}/scripts/deploy/pi5-blue-green.sh"
-      - rollback
-      - --reason
-      - ansible-standard-release-health-failed
-  when: release_pi5_switch_attempted | default(false) | bool
-  changed_when: true
+- name: Restore the previous Pi5 scheduler and route
+  block:
+    - name: Restart previous Pi5 API with its captured image
+      ansible.builtin.command:
+        argv: "{{ release_pi5_compose_argv + ['up', '-d', '--no-build', '--pull', 'never', '--no-deps', '--wait', '--wait-timeout', release_pi5_compose_wait_seconds | string, 'api-' + release_pi5_previous_slot] }}"
+      environment: "{{ release_pi5_compose_environment }}"
+      changed_when: true
+      when: >-
+        release_pi5_switch_attempted | default(false) | bool
+        or release_pi5_handoff_attempted | default(false) | bool
 
-- name: Verify the restored Pi5 API
-  ansible.builtin.uri:
-    url: https://127.0.0.1/api/system/health
-    method: GET
-    validate_certs: false
-    status_code: 200
-    timeout: 10
-  register: release_pi5_rollback_health
-  retries: 3
-  delay: 2
-  until: release_pi5_rollback_health.status == 200
-  when: release_pi5_switch_attempted | default(false) | bool
+    - name: Resolve restored previous Pi5 API container
+      ansible.builtin.command:
+        argv: "{{ release_pi5_compose_argv + ['ps', '-q', 'api-' + release_pi5_previous_slot] }}"
+      register: release_pi5_restored_api
+      changed_when: false
+      when: >-
+        release_pi5_switch_attempted | default(false) | bool
+        or release_pi5_handoff_attempted | default(false) | bool
 
-- name: Fail the release after verified Pi5 rollback
+    - name: Wait for restored previous Pi5 scheduler leader
+      ansible.builtin.command:
+        argv: [docker, exec, "{{ release_pi5_restored_api.stdout }}", node, -e, "{{ release_pi5_leader_script }}"]
+      vars:
+        release_pi5_leader_script: >-
+          fetch('http://127.0.0.1:8080/api/system/deploy-readiness/internal').then(async r=>{const b=await
+          r.json();const s=b.scheduler||{};process.exit(r.ok&&b.ready===true&&b.database==='ready'&&s.enabled===true&&
+          s.role==='leader'&&s.databaseConnection==='connected'?0:1)}).catch(()=>process.exit(1))
+      register: release_pi5_restored_leader
+      retries: 30
+      delay: 2
+      until: release_pi5_restored_leader is succeeded
+      changed_when: false
+      when: >-
+        release_pi5_switch_attempted | default(false) | bool
+        or release_pi5_handoff_attempted | default(false) | bool
+
+    - name: Atomically restore previous known Pi5 routing
+      ansible.builtin.shell: |
+        set -euo pipefail
+        destination={{ (release_pi5_gateway_config_dir + '/Caddyfile') | quote }}
+        temporary="${destination}.rollback.{{ release_run_id }}"
+        cp {{ release_pi5_previous_config | quote }} "${temporary}"
+        chmod 0644 "${temporary}"
+        mv -Tf "${temporary}" "${destination}"
+      args:
+        executable: /bin/bash
+      changed_when: true
+      when: >-
+        release_pi5_switch_attempted | default(false) | bool
+        or release_pi5_handoff_attempted | default(false) | bool
+
+    - name: Reload restored canonical Pi5 routing
+      ansible.builtin.command:
+        argv: [docker, exec, "{{ release_pi5_gateway_id }}", caddy, reload, --config, /srv/bluegreen/Caddyfile]
+      changed_when: true
+      when: >-
+        release_pi5_switch_attempted | default(false) | bool
+        or release_pi5_handoff_attempted | default(false) | bool
+
+    - name: Verify restored Pi5 public API
+      ansible.builtin.uri:
+        url: "{{ release_pi5_api_health_url }}"
+        validate_certs: "{{ release_pi5_validate_certs }}"
+        status_code: 200
+      when: >-
+        release_pi5_switch_attempted | default(false) | bool
+        or release_pi5_handoff_attempted | default(false) | bool
+
+    - name: Verify restored Pi5 public Web
+      ansible.builtin.uri:
+        url: "{{ release_pi5_web_health_url }}"
+        validate_certs: "{{ release_pi5_validate_certs }}"
+        status_code: 200
+      when: >-
+        release_pi5_switch_attempted | default(false) | bool
+        or release_pi5_handoff_attempted | default(false) | bool
+
+    - name: Record verified Pi5 candidate rollback
+      ansible.builtin.set_fact:
+        release_pi5_rolled_back: true
+      when: >-
+        release_pi5_switch_attempted | default(false) | bool
+        or release_pi5_handoff_attempted | default(false) | bool
+  rescue:
+    - name: Fail when Pi5 candidate rollback is incomplete
+      ansible.builtin.fail:
+        msg: Standard Pi5 candidate failed and automatic rollback did not restore route, leader, API, and Web.
+
+- name: Preserve the original Pi5 candidate failure after rollback
   ansible.builtin.fail:
-    msg: Pi5 candidate failed health verification; the previous slot was restored.
+    msg: Standard Pi5 candidate failed; automatic rollback restored the previous route and scheduler when required.

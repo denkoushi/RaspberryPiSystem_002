@@ -961,17 +961,8 @@ rescue_source, rescue_task, rescue_entries = rescue_tasks[0]
 assert len(rescue_entries) == 1
 validate_rescue_task(rescue_task, *rescue_entries[0])
 
-assert len(reconcile_tasks) == 1
-reconcile_source, reconcile_task = reconcile_tasks[0]
-reconcile = reconcile_task.get('ansible.builtin.systemd')
-assert isinstance(reconcile, dict), f'{reconcile_source}: reconcile must use systemd'
-assert reconcile.get('name') == 'pi5-blue-green-reconcile.service'
-assert reconcile.get('enabled') is True
-assert 'state' not in reconcile, (
-    'full provisioning may enable reconcile for boot, but must not start/restart it'
-)
-assert has_full_guard(reconcile_task), (
-    'host-config-only must not mutate the reconcile unit'
+assert len(reconcile_tasks) == 0, (
+    'server provisioning must not reintroduce the retired Pi5 reconcile unit'
 )
 
 required_reasons = {

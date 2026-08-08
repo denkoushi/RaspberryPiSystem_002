@@ -996,7 +996,7 @@ done
 grep -Fq 'COPY infrastructure/docker/maintenance.html ./phase2-maintenance/index.html' "$ROOT/infrastructure/docker/Dockerfile.web" || fail "Web image does not contain the maintenance asset"
 grep -Fq 'restore_legacy_after_phase3_stop' <<<"$ALL_SOURCE" || fail "legacy restore does not release gateway ports first"
 grep -Fq 'pi5-phase3-legacy-guard.sh' "$ROOT/infrastructure/ansible/roles/server/tasks/main.yml" || fail "server role is missing the Phase 3 legacy guard"
-grep -Fq 'name: pi5-blue-green-reconcile.service' "$ROOT/infrastructure/ansible/roles/server/tasks/main.yml" || fail "boot reconcile service is not enabled"
+! grep -Fq 'name: pi5-blue-green-reconcile.service' "$ROOT/infrastructure/ansible/roles/server/tasks/main.yml" || fail "retired boot reconcile service is still enabled"
 
 for caddy_file in \
   infrastructure/docker/Caddyfile.gateway.template \

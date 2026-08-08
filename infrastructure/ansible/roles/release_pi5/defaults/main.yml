@@ -5,6 +5,41 @@ release_pi5_api_image: ""
 release_pi5_web_image: ""
 release_pi5_project_dir: /opt/RaspberryPiSystem_002
 release_pi5_run_root: /var/lib/raspi-release/standard
+release_pi5_compose_project: bluegreen
+release_pi5_env_file: "{{ release_pi5_project_dir }}/infrastructure/docker/.env"
+release_pi5_compose_file: "{{ release_pi5_project_dir }}/infrastructure/docker/docker-compose.phase3.yml"
+release_pi5_migration_compose_file: "{{ release_pi5_project_dir }}/infrastructure/docker/docker-compose.phase3.migration.yml"
+release_pi5_compose_argv:
+  - docker
+  - compose
+  - -p
+  - "{{ release_pi5_compose_project }}"
+  - --env-file
+  - "{{ release_pi5_env_file }}"
+  - -f
+  - "{{ release_pi5_compose_file }}"
+release_pi5_migration_argv:
+  - docker
+  - compose
+  - -p
+  - "{{ release_pi5_compose_project }}"
+  - --env-file
+  - "{{ release_pi5_env_file }}"
+  - -f
+  - "{{ release_pi5_compose_file }}"
+  - -f
+  - "{{ release_pi5_migration_compose_file }}"
+release_pi5_gateway_config_dir: "{{ release_pi5_project_dir }}/logs/deploy/bluegreen"
+# Reuse the established explicit TLS source. Tests may pass the existing HTTP
+# template explicitly; the role never infers a mode from Caddyfile contents.
+release_pi5_gateway_template: "{{ release_pi5_project_dir }}/infrastructure/docker/Caddyfile.gateway.template"
+release_pi5_api_health_url: https://127.0.0.1/api/system/health
+release_pi5_web_health_url: https://127.0.0.1/
+release_pi5_validate_certs: false
 release_pi5_min_memory_mb: 768
 release_pi5_min_disk_gb: 10
 release_pi5_stability_seconds: 300
+release_pi5_health_interval_seconds: 5
+release_pi5_compose_wait_seconds: 180
+release_pi5_load_retries: 30
+release_pi5_load_delay: 10

@@ -1,8 +1,8 @@
 ---
-# Additive Ansible-first release route. The canonical wrapper does not invoke
-# this playbook until the separately reviewed cutover milestone.
+# Canonical Ansible-first release route invoked by the standard launcher.
 - name: Prepare and switch the Pi5 control plane
   hosts: server
+  connection: local
   gather_facts: false
   become: true
   serial: 1

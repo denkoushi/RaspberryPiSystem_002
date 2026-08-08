@@ -989,39 +989,6 @@
   when: server_release_mode == 'full'
 
 
-- name: Resolve deploy user groups for Blue/Green reconcile Docker access
-  ansible.builtin.command:
-    cmd: "id -nG {{ ansible_user }}"
-  register: pi5_bluegreen_deploy_user_groups
-  changed_when: false
-  check_mode: false
-  when: server_release_mode == 'full'
-
-- name: Assert deploy user is in the docker group for Blue/Green reconcile
-  ansible.builtin.assert:
-    that:
-      - "'docker' in pi5_bluegreen_deploy_user_groups.stdout.split()"
-    fail_msg: >-
-      Blue/Green reconcile runs as {{ ansible_user }} with SupplementaryGroups=docker.
-      Add {{ ansible_user }} to the docker group before enabling pi5-blue-green-reconcile.service.
-  when: server_release_mode == 'full'
-
-- name: Deploy Pi5 Blue/Green boot reconciliation service
-  ansible.builtin.template:
-    src: "{{ playbook_dir }}/../templates/pi5-blue-green-reconcile.service.j2"
-    dest: /etc/systemd/system/pi5-blue-green-reconcile.service
-    owner: root
-    group: root
-    mode: '0644'
-  when: server_release_mode == 'full'
-
-- name: Enable Pi5 Blue/Green boot reconciliation service
-  ansible.builtin.systemd:
-    name: pi5-blue-green-reconcile.service
-    enabled: true
-    daemon_reload: true
-  when: server_release_mode == 'full'
-
 - name: Deploy Pi5 power dispatcher script
   ansible.builtin.template:
     src: "{{ playbook_dir }}/../templates/pi5-power-dispatcher.sh.j2"

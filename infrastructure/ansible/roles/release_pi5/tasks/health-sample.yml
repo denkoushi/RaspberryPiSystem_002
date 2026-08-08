@@ -1,51 +1,51 @@
 ---
 - name: Verify Pi5 public API sample
   ansible.builtin.uri:
-    url: "{{ release_pi5_candidate_api_health_url }}"
-    validate_certs: "{{ release_pi5_candidate_validate_certs }}"
+    url: "{{ release_pi5_api_health_url }}"
+    validate_certs: "{{ release_pi5_validate_certs }}"
     status_code: 200
     timeout: 10
 
 - name: Verify Pi5 public Web sample
   ansible.builtin.uri:
-    url: "{{ release_pi5_candidate_web_health_url }}"
-    validate_certs: "{{ release_pi5_candidate_validate_certs }}"
+    url: "{{ release_pi5_web_health_url }}"
+    validate_certs: "{{ release_pi5_validate_certs }}"
     status_code: 200
     timeout: 10
 
 - name: Verify settled Pi5 scheduler leader sample
   ansible.builtin.command:
-    argv: [docker, exec, "{{ release_pi5_candidate_api_id }}", node, -e, "{{ release_pi5_candidate_leader_script }}"]
+    argv: [docker, exec, "{{ release_pi5_api_id }}", node, -e, "{{ release_pi5_leader_script }}"]
   vars:
-    release_pi5_candidate_leader_script: >-
+    release_pi5_leader_script: >-
       fetch('http://127.0.0.1:8080/api/system/deploy-readiness/internal').then(async r=>{const b=await
       r.json();const s=b.scheduler||{};process.exit(r.ok&&b.ready===true&&b.database==='ready'&&s.enabled===true&&
       s.role==='leader'&&s.databaseConnection==='connected'?0:1)}).catch(()=>process.exit(1))
   changed_when: false
-  when: release_pi5_candidate_route == 'settled'
+  when: release_pi5_route == 'settled'
 
 - name: Verify candidate Pi5 scheduler standby sample
   ansible.builtin.command:
-    argv: [docker, exec, "{{ release_pi5_candidate_api_id }}", node, -e, "{{ release_pi5_candidate_standby_script }}"]
+    argv: [docker, exec, "{{ release_pi5_api_id }}", node, -e, "{{ release_pi5_standby_script }}"]
   vars:
-    release_pi5_candidate_standby_script: >-
+    release_pi5_standby_script: >-
       fetch('http://127.0.0.1:8080/api/system/deploy-readiness/internal').then(async r=>{const b=await
       r.json();const s=b.scheduler||{};process.exit(r.ok&&b.ready===true&&b.database==='ready'&&s.enabled===true&&
       s.role==='standby'&&s.databaseConnection==='connected'?0:1)}).catch(()=>process.exit(1))
   changed_when: false
-  when: release_pi5_candidate_route in ['fresh', 'interrupted']
+  when: release_pi5_route in ['fresh', 'interrupted']
 
 - name: Verify previous Pi5 scheduler leader sample
   ansible.builtin.command:
-    argv: [docker, exec, "{{ release_pi5_candidate_opposite_api_id if release_pi5_candidate_route == 'interrupted' else release_pi5_candidate_active_api_id }}", node, -e, "{{ release_pi5_candidate_leader_script }}"]
+    argv: [docker, exec, "{{ release_pi5_opposite_api_id if release_pi5_route == 'interrupted' else release_pi5_active_api_id }}", node, -e, "{{ release_pi5_leader_script }}"]
   vars:
-    release_pi5_candidate_leader_script: >-
+    release_pi5_leader_script: >-
       fetch('http://127.0.0.1:8080/api/system/deploy-readiness/internal').then(async r=>{const b=await
       r.json();const s=b.scheduler||{};process.exit(r.ok&&b.ready===true&&b.database==='ready'&&s.enabled===true&&
       s.role==='leader'&&s.databaseConnection==='connected'?0:1)}).catch(()=>process.exit(1))
   changed_when: false
-  when: release_pi5_candidate_route in ['fresh', 'interrupted']
+  when: release_pi5_route in ['fresh', 'interrupted']
 
 - name: Hold the Pi5 health sample interval
   ansible.builtin.pause:
-    seconds: "{{ release_pi5_candidate_health_interval_seconds }}"
+    seconds: "{{ release_pi5_health_interval_seconds }}"
