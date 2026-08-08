@@ -2,91 +2,51 @@
 id: deploy-status-recovery
 title: デプロイ停止・復旧Runbook
 status: active
-last_verified: 2026-07-29
+last_verified: 2026-08-08
 ---
 
 # デプロイ停止・復旧Runbook
 
-このRunbookは、標準オーケストレーターのrunが停止、失敗、または長時間進まない場合に使う。復旧の正本はrun state、fleet state、systemd unitであり、手作業で状態を作り替えない。
+このRunbookは、canonical standard Ansible routeの実行が停止、失敗、または長時間進まない場合に使う。入口は `scripts/update-all-clients.sh`、実行経路は `standard-ansible-release.py` → `deploy-release-standard.yml` → profile roleで固定する。
 
 ## 1. 状態を確認する
 
 ```bash
-scripts/update-all-clients.sh --status RUN_ID
+scripts/update-all-clients.sh --status RUN_ID --inventory infrastructure/ansible/inventory.yml
 ```
 
-確認項目:
+次を読み取り専用で確認する。
 
-- runのphaseと `success|failed|cancelled|interrupted`
-- hostごとのdesired/current SHA、evidence、対象理由
-- 実行中または失敗したhost
-- rollback結果とmaintenance状態
-- `actionRequired`の有無。`type=canary-approval`ならrun ID、canary、
-  `expiresAt`、`remainingSeconds`、表示された承認コマンド
+- systemd unitの終了状態とjournalの最初の失敗
+- 対象SHA、inventory、対象host
+- `deploy-release-standard.yml` のplay順序と実行role
+- `release_pi5`、`release_kiosk`、`release_signage` のhealth/rollback結果
+- Ansible recapのfailed/unreachable
 
-statusが進行中なら、同じinventoryへ別runを重ねない。
-監視は30秒以内の間隔で行い、`actionRequired`が出たら人へ承認判断を依頼する。
-事前承認を流用せず、承認された場合だけ同じobjectに表示されたrun固有コマンドを
-実行する。期限切れ後や別runへ承認を送らない。
+実行中のrunへ別のmutationを重ねない。既存runの終了結果を確認してから次を判断する。
 
-## 2. 安全に中止する
+## 2. 失敗後の再実行
 
-停止が必要なら、理由付きの協調cancelを要求する。
-
-```bash
-scripts/update-all-clients.sh --cancel RUN_ID --reason "中止理由"
-scripts/update-all-clients.sh --status RUN_ID
-```
-
-オーケストレーターはphase境界でcancelを検知し、必要なmanifest rollbackと状態記録を行う。cancel後も `--status` でterminal stateまで確認する。
-
-## 3. 再開判断
-
-失敗またはinterruptedのhostは `unknown` へ落ち、次の標準planに必ず含まれる。原因を修正し、対象SHAのCI成功を確認してからread-only planを出す。
+原因を修正し、対象SHAのCI成功を確認したうえでread-only planを作る。
 
 ```bash
 scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan
 ```
 
-planの対象理由を確認し、inventory単位の明示承認後に新しいrunとして実行する。前runのprocessへattachしたり、途中phaseだけを手で再開したりしない。
+planの対象hostとroleを確認し、明示承認後にcanonical entrypointから新しいrunを開始する。途中taskだけの再開、個別hostへの直接Ansible、SSH先のcheckoutは行わない。
 
-## 4. 復旧できたことを確認する
+## 3. 復旧できたことを確認する
 
-新しいrunの完了後、次を確認する。
-
-- 全対象hostが `verified`
-- Pi5のimage/config/migration digestが一致
-- Kiosk bundle ACKまたはSignage repo SHAが目標SHAと一致
-- 必須serviceと認証済みendpointが正常
-- maintenance表示の残留なし
-- 同一SHAの標準planがno-op
+- 全対象roleが正常終了し、failed/unreachableが0である。
+- Pi5は `release_pi5` のmigration、API/Web health、rollback結果が整合している。
+- Pi4は `release_kiosk` のenabled agent healthとservice確認が成功している。
+- Pi3は `release_signage` のartifact SHA、atomic activation、service healthが成功している。
+- 共有application smokeが必要な場合だけ `scripts/deploy/verify-phase12-real.sh` を実行する。
 
 ## 禁止事項
 
-次は行わない。
-
-- coordinatorやremote unitのprocessを強制終了する
-- lockファイルを削除する
-- `logs/deploy/fleet-release-state.json` やrun stateを手編集する
-- SSH先でfetch/checkoutして辻褄を合わせる
-- 個別のAnsible playbookや内部deploy scriptを直接実行する
+- 個別container、gateway、serviceを操作して成功状態を作る
+- SSH先でfetch/checkoutする
 - databaseをdown migrationする
-- maintenance状態を手で成功扱いへ変更する
-
-lockはkernelがprocess終了・再起動時に解放する。残って見える通常ファイルはlockの所有を意味しないため削除しない。
-
-## 読み取り専用の追加確認
-
-原因調査では、status出力、CI log、systemd journal、serviceのactive状態、認証済みhealth endpointを読み取る。変更操作が必要になった場合は、原因、対象inventory、実行内容を整理し、新しい明示承認を得る。
-
-成果物取得timeoutは`artifactPromotion`の`reasonCode`、`stage`、
-`elapsedSeconds`、`timeoutSeconds`で処理を特定する。pullの可用性timeoutは
-ローカルbuildへ戻るが、`integrity-failure`はfallbackしない。
-`failureCode=canary-approval-timeout`では成功済みcanaryを自動rollbackせず、
-残り端末が未実行でmaintenanceが解除済みであることをstatusから確認する。
-
-Pi5本体の故障・停電は単体構成の対象外である。ハードウェア復旧後もfleet evidenceは自動的に信用せず、`unknown` として標準ワークフローで再検証する。
-
-Pi3 Signageが`unknown`の場合は、標準planを迂回する前に、Pi5経由で可用メモリ、zram swap、`/opt`使用率、温度・throttling、`status-agent.service`の結果、Signage watchdogのjournalを読み取る。`device_type_defaults.pi3.stop_lightdm=true`はrelease-only適用中の一時停止として使い、通常表示中のlightdmを恒久停止しない。watchdogの自己復旧はinventoryで許可された`sudo -n /usr/bin/systemctl`の限定コマンドだけを使用する。
-
-通常手順は [デプロイメントガイド](../guides/deployment.md)、Pi5固有の診断観点は [Pi5 Blue/Green Runbook](./pi5-blue-green-deploy.md) を参照する。
+- internal deploy scriptや個別Ansible playbookを直接実行する
+- lock、run情報、migration台帳を手で編集または削除する

@@ -3,7 +3,7 @@ set -uo pipefail
 
 # Phase12向け: 実機検証チェックを一括実行する
 # - APIヘルス/deploy-status/納期管理API群
-# - location scope fallback監視
+# - application HTTP/API smoke
 # - auto-tuning (ログ未検出時はPUT auto-generate=200を代替)
 # - Pi3/Pi4サービス確認
 
@@ -324,75 +324,8 @@ else
   log_fail "manual-order-overview API" "v1/v2 いずれの形にも一致しません"
 fi
 
-echo ""
-echo "--- Pi5 remote checks ---"
-BACKUP_INFO="$(ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "${PI5_USER}@${PI5_IP}" "ls -lh /opt/RaspberryPiSystem_002/config/backup.json 2>&1" || true)"
-if printf "%s" "${BACKUP_INFO}" | grep -Eq 'backup\.json'; then
-  log_pass "backup.json 存在確認"
-else
-  log_fail "backup.json 存在確認" "${BACKUP_INFO}"
-fi
-
-PI5_ACTIVE_API_CONTAINERS="$(
-  ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "${PI5_USER}@${PI5_IP}" \
-    'docker ps --filter "name=^/bluegreen-api-(blue|green)-1$" --format "{{.Names}}"' \
-    2>/dev/null || true
-)"
-PI5_ACTIVE_API_COUNT="$(
-  printf "%s\n" "${PI5_ACTIVE_API_CONTAINERS}" |
-    sed "/^$/d" |
-    wc -l |
-    tr -d "[:space:]"
-)"
-
-if [ "${PI5_ACTIVE_API_COUNT}" = "1" ]; then
-  MIGRATE_STATUS="$(
-    ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "${PI5_USER}@${PI5_IP}" \
-      "docker exec '${PI5_ACTIVE_API_CONTAINERS}' pnpm prisma migrate status 2>&1" || true
-  )"
-elif [ "${PI5_ACTIVE_API_COUNT}" = "0" ]; then
-  MIGRATE_STATUS="$(
-    ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "${PI5_USER}@${PI5_IP}" \
-      "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate status 2>&1" || true
-  )"
-else
-  MIGRATE_STATUS="Unable to select one active Pi5 API container: ${PI5_ACTIVE_API_CONTAINERS}"
-fi
-check_contains "マイグレーション状態" "${MIGRATE_STATUS}" 'Database schema is up to date!'
-
-if [ "${PI5_ACTIVE_API_COUNT}" = "1" ]; then
-  API_LOGS_10M_COMMAND="docker logs --since=10m '${PI5_ACTIVE_API_CONTAINERS}'"
-  API_LOGS_ALL_COMMAND="docker logs '${PI5_ACTIVE_API_CONTAINERS}'"
-else
-  API_LOGS_10M_COMMAND="cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml logs --since=10m api"
-  API_LOGS_ALL_COMMAND="cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml logs api"
-fi
-
-FALLBACK_COUNT_RAW="$(ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "${PI5_USER}@${PI5_IP}" "${API_LOGS_10M_COMMAND} 2>/dev/null | grep -c 'Resource category policy resolved via default fallback' || true" 2>&1 || true)"
-FALLBACK_COUNT="$(printf "%s" "${FALLBACK_COUNT_RAW}" | tr -dc '0-9')"
-if [ -z "${FALLBACK_COUNT}" ]; then
-  log_warn "location scope fallback監視" "件数取得に失敗: ${FALLBACK_COUNT_RAW}"
-else
-  if [ "${FALLBACK_COUNT}" -eq 0 ]; then
-    log_pass "location scope fallback監視（件数=0）"
-  else
-    log_warn "location scope fallback監視（件数=${FALLBACK_COUNT}）" "増加傾向は手動で確認してください"
-  fi
-fi
-
 AUTO_GENERATE_CODE="$(curl -sk -o /dev/null -w "%{http_code}" -X PUT "${BASE_URL}/api/kiosk/production-schedule/due-management/global-rank/auto-generate" -H "x-client-key: ${CLIENT_KEY_PI4}" -H "Content-Type: application/json" -d '{}' 2>&1 || true)"
 check_http_code "PUT global-rank/auto-generate" "${AUTO_GENERATE_CODE}" "200"
-
-SCHEDULER_LOG_COUNT_RAW="$(ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "${PI5_USER}@${PI5_IP}" "${API_LOGS_ALL_COMMAND} 2>/dev/null | grep -c 'Due management auto-tuning scheduler started' || true" 2>&1 || true)"
-SCHEDULER_LOG_COUNT="$(printf "%s" "${SCHEDULER_LOG_COUNT_RAW}" | tr -dc '0-9')"
-if [ -z "${SCHEDULER_LOG_COUNT}" ]; then
-  log_warn "auto-tuning schedulerログ確認" "ログ件数取得に失敗: ${SCHEDULER_LOG_COUNT_RAW}"
-elif [ "${SCHEDULER_LOG_COUNT}" -gt 0 ]; then
-  log_pass "auto-tuning schedulerログ確認（件数=${SCHEDULER_LOG_COUNT}）"
-else
-  log_warn "auto-tuning schedulerログ確認（件数=0）" "ログローテーションの可能性あり。PUT auto-generate=200を代替判定とする"
-fi
-
 echo ""
 echo "--- Pi3/Pi4 service checks ---"
 PI4_STATUS="$(ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "${PI5_USER}@${PI5_IP}" "ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no ${PI4_USER}@${PI4_IP} 'systemctl is-active kiosk-browser.service status-agent.timer' 2>&1" || true)"
