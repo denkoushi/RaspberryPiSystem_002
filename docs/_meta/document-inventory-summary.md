@@ -12,8 +12,8 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Metric | Count |
 |--------|------:|
 | Documents | 614 |
-| Total lines | 171256 |
-| Total bytes | 12843975 |
+| Total lines | 171252 |
+| Total bytes | 12844019 |
 | With frontmatter | 281 |
 | With status | 137 |
 | source_of_truth declared | 99 |
@@ -39,11 +39,11 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | `docs/archive/deployments/2026-05.md` | 2571 | 499357 |
 | `docs/archive/architecture/deployment-modules-legacy-through-2026-07.md` | 2522 | 128149 |
 | `docs/knowledge-base/infrastructure/backup-restore.md` | 2208 | 137917 |
-| `docs/knowledge-base/infrastructure/signage.md` | 2196 | 188323 |
+| `docs/knowledge-base/infrastructure/signage.md` | 2196 | 188373 |
 | `docs/INDEX.md` | 2009 | 347252 |
 | `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1935 | 213513 |
 | `docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md` | 1654 | 153539 |
-| `docs/archive/deployments/legacy-operator-guide-through-2026-07.md` | 1600 | 108028 |
+| `docs/archive/deployments/legacy-operator-guide-through-2026-07.md` | 1600 | 108031 |
 | `docs/runbooks/kiosk-part-measurement.md` | 1487 | 124259 |
 
 ## EXEC_PLAN References
