@@ -20,9 +20,9 @@
 
 - ユーザーの「Deploy」「デプロイ」「本番反映」は、**標準ローリング更新**を意味する。通常のアプリ更新は必ず `scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml` を使う。
 - 実機へ接続する前に、対象ブランチまたは不変SHAと、その対象のCI成功を確認する。対象が会話・PR・依頼から一意に決まらない場合は推測せず質問する。本番実行にはユーザーの明示承認が必要であり、同じ作業中に既に承認済みなら再確認しない。
-- 通常更新で `ansible-playbook` の直接実行、SSHでの個別更新、`scripts/server/deploy*.sh`、legacy Compose、Phase 2 `pi5-image-deploy.sh`、`pi5-blue-green.sh` を直接使わない。オーケストレーターがPi5のBlue/Green切替要否と、Pi4カナリア→残Pi4→Pi3の一台ずつ更新を決める。
+- 通常更新では `scripts/update-all-clients.sh` と標準Ansible経路だけを使う。実行経路は `scripts/deploy/standard-ansible-release.py` → `infrastructure/ansible/playbooks/deploy-release-standard.yml` → `release_pi5` / `release_kiosk` / `release_signage` とし、対象選択はPi5・Pi4・Pi3のinventoryとroleに委ねる。
 - 最初に `scripts/update-all-clients.sh <branch> <inventory> --print-plan` を実行し、対象理由と `unknown` hostを確認する。標準では検証済み同一SHAだけを除外し、根拠不明hostは必ず対象に含める。全台を明示的に再検証するときだけ `--full-fleet` を使う。
-- 実行後は `scripts/update-all-clients.sh --status <runId>` でPi5・端末別の結果、保守表示の解除、失敗理由と復旧結果を確認して報告する。停止は `--cancel <runId> --reason <理由>` だけを使い、process kill、lock削除、fleet state手編集をしない。
+- 実行後は標準Ansibleの結果と既存のhealth／rollback契約を確認し、Pi5・端末別の結果、失敗理由と復旧結果を報告する。process kill、lock削除、fleet state手編集は行わない。
 - TalkPlaza Pi5は構想段階で実機が存在しないため、現時点では `inventory-talkplaza.yml` のplan確認までに留める。
 - 詳細な運用・復旧は `docs/guides/deployment.md` と `docs/runbooks/deploy-status-recovery.md` を現行正本とする。設計経緯は `docs/plans/deployment-foundation-refactor-execplan.md` に残す。Pi5本体故障・停電は単体構成の対象外である。
 
