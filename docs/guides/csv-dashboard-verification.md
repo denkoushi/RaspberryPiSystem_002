@@ -139,7 +139,7 @@ date,name,value
 curl -k https://100.106.158.2/api/signage/content | jq '{contentType, layoutConfig, csvDashboardsById}'
 
 # サイネージ画像確認
-curl -k -H 'x-client-key: client-key-raspberrypi3-signage1' https://100.106.158.2/api/signage/current-image -o /tmp/signage-test.jpg && file /tmp/signage-test.jpg
+curl -k -H "x-client-key: $PI3_SIGNAGE_CLIENT_KEY" https://100.106.158.2/api/signage/current-image -o /tmp/signage-test.jpg && file /tmp/signage-test.jpg
 ```
 
 **期待される結果**:

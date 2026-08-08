@@ -105,7 +105,7 @@ eligible のみ集約、**表示優先度ソート後**に **2000** 件 cap
 **Context**:
 
 - 端末: inventory **`raspberrypi3`** · Tailscale **`raspberrypi-2`** · **`100.105.224.86`** · **`tag:signage`**
-- クライアントキー: **`client-key-raspberrypi3-signage1`**
+- クライアントキー: **Ansible Vault-managed Pi3 signage client key**
 - 表示経路: Pi3 の **`signage-lite`**（`feh` 全画面）が Pi5 の **`GET /api/signage/current-image`**（`x-client-key`）から JPEG を取得（[signage-lite.md](../../modules/signage/signage-lite.md)）
 - ネットワーク: `group_vars/all.yml` の **`network_mode: tailscale`**。Pi5 は通常 **`192.168.10.230`**（`local_network`）、Pi3 は **`192.168.128.152`**（別サブネット）。**Pi5 → Pi3 の LAN ping/SSH は不通**（tailnet または同一 10.x 上の direct が前提）
 
@@ -115,7 +115,7 @@ eligible のみ集約、**表示優先度ソート後**に **2000** 件 cap
 2. Pi3 本体は **電源 ON**（ユーザー認識: 「Pi3 は起動している」）
 3. Tailscale 管理画面: **`raspberrypi-2` · Expired 23 hours ago**（Key expiry）
 4. Pi5 から: `tailscale ping 100.105.224.86` → **`peer's node key has expired`** または **timeout** · Ansible **`UNREACHABLE`**
-5. Pi5 側 API: `curl -k -H 'x-client-key: client-key-raspberrypi3-signage1' https://127.0.0.1/api/signage/current-image` → **HTTP 200**（約 190KB JPEG）— **サーバ・スケジュールは正常**
+5. Pi5 側 API: secure operator environmentで事前設定した `$PI3_SIGNAGE_CLIENT_KEY` を使い `https://127.0.0.1/api/signage/current-image` を確認 → **HTTP 200**（約 190KB JPEG）— **サーバ・スケジュールは正常**
 
 **Investigation**:
 
@@ -606,7 +606,7 @@ sudo systemctl restart signage-lite.service
 - **結論**: サイネージ正常表示を確認
 
 **トラブルシューティング（CI/デプロイ）**:
-- **getOrCreateTestClientDevice**: `signage.integration.test.ts` で `createTestClientDevice('client-key-raspberrypi3-signage1')` の P2002（apiKey 重複）対策として `getOrCreateTestClientDevice` を追加。既存レコードがあれば取得、なければ作成。
+- **getOrCreateTestClientDevice**: `signage.integration.test.ts` で非本番の `test-signage-client-key` を使い、P2002（apiKey 重複）対策として `getOrCreateTestClientDevice` を追加。既存レコードがあれば取得、なければ作成。
 - **raspberrypi4 unreachable=1**: デプロイ時に Pi4 がオフラインの場合、`unreachable=1` が発生するが、Pi5/Pi3 は正常デプロイ可能。`tailscale status` で到達不可端末を先に切り分け、`--limit` で到達可能ホストのみデプロイする運用（KB-281 参照）。
 
 **関連ファイル**:
@@ -665,16 +665,16 @@ sudo systemctl restart signage-lite.service
 
 **有効だった対策**: 
 - ✅ **解決済み**（2026-01-03）:
-  1. `getClientSystemMetricsText()`を実装し、Pi3の`ClientDevice`を特定（`apiKey: 'client-key-raspberrypi3-signage1'`）
-  2. `ClientDevice.statusClientId`から`ClientStatus`を取得し、Pi3の温度を取得
+  1. `getClientSystemMetricsText()`を実装し、既存の`ClientStatus.clientId: 'raspberrypi3-signage1'`からPi3の状態を取得
+  2. `ClientStatus.clientId`に既存のPi3 status-agent client idを指定して、Pi3の温度を取得
   3. `buildSplitScreenSvg`と`buildToolsScreenSvg`に温度表示を追加
-  4. フォールバック: Pi3の`ClientDevice`が見つからない場合はPi5の温度を表示
+  4. フォールバック: 対応する`ClientStatus`が見つからない場合はPi5の温度を表示
   5. 左ペインのタイトルを「工具管理データ」→「持出中アイテム」に変更
   6. Pi3側の処理は一切変更不要（サーバー側のみの変更）
 
 **学んだこと**:
 - サイネージ画像はPi5側のサーバーでレンダリングされるため、Pi3へのデプロイは不要
-- `ClientDevice.statusClientId`を使用することで、`x-client-key`なしでもPi3を特定できる
+- `ClientStatus.clientId`を使用することで、`x-client-key`なしでもPi3を特定できる
 - サーバー側レンダリングの利点: Pi3のリソースを消費せずに機能を追加できる
 
 **解決状況**: ✅ **解決済み**（2026-01-03）

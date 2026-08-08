@@ -1,0 +1,4 @@
+c2821a3bd0734ac9cbdd9e87cb121aba9a148426:scripts/private-pi5-hermes/README.md:discord-client-id:49
+6c98aa88211aacac737c43f116e1d51f8c7c0887:infrastructure/ansible/inventory.yml:generic-api-key:37
+9986b0d1ebeae13c0124357f2916427867e2784a:apps/api/src/services/imports/csv-import-scheduler.ts:dropbox-api-token:564
+82be30211c42788e496f4e197d2944e30896789f:EXEC_PLAN.md:curl-auth-header:322

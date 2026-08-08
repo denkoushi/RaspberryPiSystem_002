@@ -15,12 +15,12 @@
     ]
   },
   "summary": {
-    "documentCount": 614,
-    "totalLines": 171256,
-    "totalBytes": 12843975,
-    "withFrontmatter": 281,
-    "withStatus": 137,
-    "sourceOfTruthDeclared": 99,
+    "documentCount": 615,
+    "totalLines": 171422,
+    "totalBytes": 12864536,
+    "withFrontmatter": 282,
+    "withStatus": 138,
+    "sourceOfTruthDeclared": 100,
     "execPlanReferences": 64,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
@@ -14041,7 +14041,7 @@
     {
       "path": "docs/archive/deployments/legacy-operator-guide-through-2026-07.md",
       "lineCount": 1600,
-      "byteSize": 108028,
+      "byteSize": 108031,
       "hasFrontmatter": true,
       "title": "旧デプロイ運用ガイド（2026-07以前）",
       "status": "historical",
@@ -17769,8 +17769,8 @@
     },
     {
       "path": "docs/guides/api-key-policy.md",
-      "lineCount": 145,
-      "byteSize": 6789,
+      "lineCount": 144,
+      "byteSize": 6792,
       "hasFrontmatter": true,
       "title": "APIキー統一の方針とフィルタリングロジック",
       "status": null,
@@ -18512,7 +18512,7 @@
     {
       "path": "docs/guides/csv-dashboard-verification.md",
       "lineCount": 315,
-      "byteSize": 13525,
+      "byteSize": 13516,
       "hasFrontmatter": false,
       "title": "CSVダッシュボード可視化機能の実機検証手順",
       "status": null,
@@ -20777,8 +20777,8 @@
     },
     {
       "path": "docs/guides/signage-layout-config-verification-results.md",
-      "lineCount": 165,
-      "byteSize": 6363,
+      "lineCount": 164,
+      "byteSize": 6359,
       "hasFrontmatter": false,
       "title": "サイネージレイアウト設定の実機検証結果",
       "status": null,
@@ -20808,8 +20808,8 @@
     },
     {
       "path": "docs/guides/signage-layout-config-verification.md",
-      "lineCount": 181,
-      "byteSize": 7179,
+      "lineCount": 180,
+      "byteSize": 7175,
       "hasFrontmatter": false,
       "title": "サイネージレイアウト設定の実機検証手順",
       "status": null,
@@ -21236,7 +21236,7 @@
     {
       "path": "docs/guides/verification-checklist.md",
       "lineCount": 1149,
-      "byteSize": 97092,
+      "byteSize": 97115,
       "hasFrontmatter": false,
       "title": "検証チェックリスト",
       "status": null,
@@ -21672,7 +21672,7 @@
     {
       "path": "docs/guides/webrtc-verification.md",
       "lineCount": 553,
-      "byteSize": 27235,
+      "byteSize": 27241,
       "hasFrontmatter": false,
       "title": "WebRTCビデオ通話機能 実機検証手順",
       "status": null,
@@ -31048,7 +31048,7 @@
     {
       "path": "docs/knowledge-base/infrastructure/signage.md",
       "lineCount": 2196,
-      "byteSize": 188323,
+      "byteSize": 188373,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - サイネージ関連",
       "status": null,
@@ -31287,7 +31287,7 @@
     {
       "path": "docs/knowledge-base/kiosk-input-protection-investigation.md",
       "lineCount": 206,
-      "byteSize": 10390,
+      "byteSize": 10400,
       "hasFrontmatter": false,
       "title": "KB-225: キオスク入力フィールド保護ルールの実装と実機検証",
       "status": null,
@@ -31769,8 +31769,8 @@
     },
     {
       "path": "docs/modules/signage/signage-lite.md",
-      "lineCount": 306,
-      "byteSize": 17044,
+      "lineCount": 305,
+      "byteSize": 17034,
       "hasFrontmatter": true,
       "title": "デジタルサイネージ軽量モード計画",
       "status": null,
@@ -35365,6 +35365,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/security-client-key-rotation-phase-a.md",
+      "lineCount": 170,
+      "byteSize": 20511,
+      "hasFrontmatter": true,
+      "title": "Phase A: Externalize client credentials and remove signage renderer coupling",
+      "status": "completed",
+      "source_of_truth": "this plan",
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/security-hardening-execplan.md",
       "lineCount": 804,
       "byteSize": 55230,
@@ -37811,7 +37826,7 @@
     {
       "path": "docs/runbooks/pi3-signage-tailscale-recovery.md",
       "lineCount": 152,
-      "byteSize": 5289,
+      "byteSize": 5271,
       "hasFrontmatter": false,
       "title": "Pi3 サイネージ復旧 Runbook（Tailscale / signage-lite）",
       "status": null,

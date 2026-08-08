@@ -549,7 +549,7 @@ curl http://localhost:7071/api/agent/status
 
 ### 補足（2026-06-04）: Pi3 サイネージ非表示と Tailscale Key expiry
 
-**事象**: 現場で **デスクトップのみ**・Pi5 から Pi3 SSH 不可・管理画面 `raspberrypi-2` **Expired**。Pi5 の `GET /api/signage/current-image`（`client-key-raspberrypi3-signage1`）は **200**（サーバ正常）。
+**事象**: 現場で **デスクトップのみ**・Pi5 から Pi3 SSH 不可・管理画面 `raspberrypi-2` **Expired**。Pi5 の `GET /api/signage/current-image`（Vault-managed Pi3 signage client key） は **200**（サーバ正常）。
 
 **原因**: Tailscale **Key expiry**（定期失効は製品仕様）により Pi3 が tailnet から外れ、JPEG 取得経路（`https://100.106.158.2`）が断たれる。Pi5（`192.168.10.x`）と Pi3 工場 LAN（`192.168.128.x`）は **直結しない**。
 
