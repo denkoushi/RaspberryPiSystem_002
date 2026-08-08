@@ -46,10 +46,6 @@
 
 - **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
 
-### 復旧（2026-07-13 · Pi4 SDカード故障）
-
-- **Pi5によるPi4再構成（LAN方式）**: [Runbook](./runbooks/pi4-sd-recovery.md) · [ADR](./decisions/ADR-20260713-pi4-sd-recovery-bootstrap.md) · [ExecPlan](./plans/pi4-sd-recovery-lan-provider-execplan.md)
-
 ### 最新アップデート（2026-07-17 · 組立トルクレンチ締付トレーサビリティ · ローカル実装済・実機parser待ち）
 
 - **共用トルクレンチの複数端末排他接続（2026-07-22）**: Pi5/PostgreSQLリース、世代fence、外付けBluetoothガード、明示的な使用開始・終了・現物引継ぎをRelease AとしてPi5・StoneBase・Assembly-01へ配備済み。通常移動と非重複の現物引継ぎは実機確認済みで、二段階確認の連続入力インターロック是正と逆方向受入を継続中。enforcementは未有効。**正本**: [ExecPlan](./plans/assembly-torque-wrench-connection-lease-execplan.md) · [Runbook](./runbooks/assembly-torque-agent.md) · [ADR](./decisions/ADR-20260722-assembly-torque-wrench-connection-lease.md)

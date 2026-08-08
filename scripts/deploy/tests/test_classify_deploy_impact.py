@@ -171,7 +171,6 @@ class ClassifyDeployImpactTest(unittest.TestCase):
                 'infrastructure/ansible/callback_plugins/rolling_release_timing.py',
                 'scripts/update-all-clients.sh',
                 'scripts/deploy/classify-deploy-impact.py',
-                'scripts/deploy/recover-pi4.py',
                 'scripts/deploy/rollback-manifest.py',
                 'scripts/deploy/rolling-release.py',
                 'scripts/deploy/terminal-profile-registry.json',

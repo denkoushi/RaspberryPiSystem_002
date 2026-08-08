@@ -128,9 +128,6 @@ STATIC_PLAYBOOKS=(
   playbooks/rollback.yml
   playbooks/restart-services.yml
   playbooks/ping.yml
-  playbooks/resolve-pi4-recovery-contract.yml
-  playbooks/recover-pi4.yml
-  playbooks/recover-pi4-verify.yml
 )
 TERMINAL_PROFILE_PLAYBOOKS=()
 while IFS= read -r playbook; do
@@ -140,7 +137,6 @@ done < <(
 )
 
 cd "$ANSIBLE_DIRECTORY"
-python3 "$ROOT_DIR/scripts/deploy/tests/test_recover_pi4.py"
 for inventory in inventory.yml inventory-talkplaza.yml; do
   output="$TEMP_DIR/${inventory%.yml}.json"
   ANSIBLE_CONFIG="$READ_ONLY_ANSIBLE_CONFIG" \
@@ -160,9 +156,4 @@ for playbook in playbooks/deploy-terminal-profile.yml "${TERMINAL_PROFILE_PLAYBO
   ansible-playbook --syntax-check "$playbook" -i inventory-talkplaza.yml \
     --extra-vars "@$VAULT_PLACEHOLDERS"
 done
-ansible-playbook --check \
-  -i "$ROOT_DIR/scripts/deploy/tests/fixtures/recovery-check-inventory.yml" \
-  playbooks/recover-pi4-verify.yml \
-  -e recovery_authorized=true
-
 echo "[deploy-contract] all checks passed"

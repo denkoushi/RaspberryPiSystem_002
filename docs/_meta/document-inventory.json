@@ -15,17 +15,17 @@
     ]
   },
   "summary": {
-    "documentCount": 612,
-    "totalLines": 170997,
-    "totalBytes": 12829847,
-    "withFrontmatter": 279,
-    "withStatus": 135,
-    "sourceOfTruthDeclared": 97,
+    "documentCount": 614,
+    "totalLines": 171880,
+    "totalBytes": 12884144,
+    "withFrontmatter": 281,
+    "withStatus": 137,
+    "sourceOfTruthDeclared": 99,
     "execPlanReferences": 64,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 26,
-    "localLinkCount": 5658,
+    "localLinkCount": 5655,
     "brokenLocalLinkCount": 87,
     "documentsOver1000Lines": 29,
     "documentsOver3000Lines": 6,
@@ -5898,8 +5898,8 @@
     },
     {
       "path": "docs/AI_START_HERE.md",
-      "lineCount": 127,
-      "byteSize": 8240,
+      "lineCount": 129,
+      "byteSize": 8599,
       "hasFrontmatter": true,
       "title": "AI Start Here",
       "status": null,
@@ -5919,8 +5919,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 2013,
-      "byteSize": 347584,
+      "lineCount": 2009,
+      "byteSize": 347314,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -6804,11 +6804,6 @@
         {
           "href": "./decisions/ADR-20260712-deploy-target-minimization-canary-hold.md",
           "targetPath": "docs/decisions/ADR-20260712-deploy-target-minimization-canary-hold.md",
-          "exists": true
-        },
-        {
-          "href": "./decisions/ADR-20260713-pi4-sd-recovery-bootstrap.md",
-          "targetPath": "docs/decisions/ADR-20260713-pi4-sd-recovery-bootstrap.md",
           "exists": true
         },
         {
@@ -10557,11 +10552,6 @@
           "exists": true
         },
         {
-          "href": "./plans/pi4-sd-recovery-lan-provider-execplan.md",
-          "targetPath": "docs/plans/pi4-sd-recovery-lan-provider-execplan.md",
-          "exists": true
-        },
-        {
           "href": "./plans/pi5-api-image-local-storage-scalability-execplan.md",
           "targetPath": "docs/plans/pi5-api-image-local-storage-scalability-execplan.md",
           "exists": true
@@ -11002,11 +10992,6 @@
           "exists": true
         },
         {
-          "href": "./runbooks/pi4-sd-recovery.md",
-          "targetPath": "docs/runbooks/pi4-sd-recovery.md",
-          "exists": true
-        },
-        {
           "href": "./runbooks/pi5-blue-green-deploy.md",
           "targetPath": "docs/runbooks/pi5-blue-green-deploy.md",
           "exists": true
@@ -11267,95 +11252,95 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 293,
+          "line": 289,
           "length": 1132
         },
         {
-          "line": 309,
+          "line": 305,
           "length": 1242
         },
         {
-          "line": 313,
+          "line": 309,
           "length": 1022
         },
         {
-          "line": 327,
+          "line": 323,
           "length": 1065
         },
         {
-          "line": 375,
+          "line": 371,
           "length": 1165
         },
         {
-          "line": 381,
+          "line": 377,
           "length": 1458
         },
         {
-          "line": 393,
+          "line": 389,
           "length": 1083
         },
         {
-          "line": 407,
+          "line": 403,
           "length": 1398
         },
         {
-          "line": 409,
+          "line": 405,
           "length": 1133
         },
         {
-          "line": 413,
+          "line": 409,
           "length": 1399
         },
         {
-          "line": 415,
+          "line": 411,
           "length": 1008
         },
         {
-          "line": 421,
+          "line": 417,
           "length": 1059
         },
         {
-          "line": 429,
+          "line": 425,
           "length": 1129
         },
         {
-          "line": 433,
+          "line": 429,
           "length": 1135
         },
         {
-          "line": 437,
+          "line": 433,
           "length": 1117
         },
         {
-          "line": 552,
+          "line": 548,
           "length": 1013
         },
         {
-          "line": 738,
+          "line": 734,
           "length": 2038
         },
         {
-          "line": 754,
+          "line": 750,
           "length": 1496
         },
         {
-          "line": 760,
+          "line": 756,
           "length": 1177
         },
         {
-          "line": 1102,
+          "line": 1098,
           "length": 1449
         },
         {
-          "line": 1138,
+          "line": 1134,
           "length": 1136
         },
         {
-          "line": 1140,
+          "line": 1136,
           "length": 1239
         },
         {
-          "line": 1176,
+          "line": 1172,
           "length": 1004
         }
       ],
@@ -11801,8 +11786,8 @@
     },
     {
       "path": "docs/architecture/deployment-modules.md",
-      "lineCount": 128,
-      "byteSize": 6957,
+      "lineCount": 196,
+      "byteSize": 17010,
       "hasFrontmatter": true,
       "title": "デプロイ基盤アーキテクチャ",
       "status": "active",
@@ -16653,7 +16638,7 @@
       "status": "accepted",
       "source_of_truth": "true",
       "localLinks": [],
-      "inboundCount": 1,
+      "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -18475,8 +18460,8 @@
     },
     {
       "path": "docs/guides/client-initial-setup.md",
-      "lineCount": 685,
-      "byteSize": 25306,
+      "lineCount": 675,
+      "byteSize": 24388,
       "hasFrontmatter": true,
       "title": "新規クライアント端末の初期設定手順",
       "status": null,
@@ -18829,8 +18814,8 @@
     },
     {
       "path": "docs/guides/deployment.md",
-      "lineCount": 336,
-      "byteSize": 29635,
+      "lineCount": 339,
+      "byteSize": 30418,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -32147,6 +32132,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/ansible-deploy-standardization-execplan.md",
+      "lineCount": 340,
+      "byteSize": 18079,
+      "hasFrontmatter": true,
+      "title": "Standardize Pi release execution around Ansible",
+      "status": "in_progress",
+      "source_of_truth": "docs/plans/ansible-deploy-standardization-execplan.md",
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/ansible-improvement-plan.md",
       "lineCount": 644,
       "byteSize": 27079,
@@ -34350,6 +34350,36 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/pi3-signage-artifact-staging-execplan.md",
+      "lineCount": 303,
+      "byteSize": 15717,
+      "hasFrontmatter": true,
+      "title": "Stage one attested Pi3 signage artifact through the production-shaped preflight path",
+      "status": "in_progress",
+      "source_of_truth": "true",
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/pi3-signage-distribution-artifact-execplan.md",
+      "lineCount": 334,
+      "byteSize": 17594,
+      "hasFrontmatter": true,
+      "title": "Build and attest one immutable Pi3 signage distribution artifact",
+      "status": "in_progress",
+      "source_of_truth": "true",
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/pi3-staged-source-transfer-execplan.md",
       "lineCount": 199,
       "byteSize": 27500,
@@ -34412,7 +34442,7 @@
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
-      "inboundCount": 1,
+      "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -37826,7 +37856,7 @@
     {
       "path": "docs/runbooks/photo-tool-similarity-gallery.md",
       "lineCount": 102,
-      "byteSize": 9849,
+      "byteSize": 9780,
       "hasFrontmatter": false,
       "title": "Runbook: 写真持出 GOOD 類似ギャラリー（埋め込み・バックフィル・シャドー観測）",
       "status": null,
@@ -37915,21 +37945,6 @@
         }
       ],
       "inboundCount": 8,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/runbooks/pi4-sd-recovery.md",
-      "lineCount": 153,
-      "byteSize": 7031,
-      "hasFrontmatter": true,
-      "title": "Pi4 SD-card recovery through Pi5 over the managed LAN",
-      "status": "accepted",
-      "source_of_truth": "docs/runbooks/pi4-sd-recovery.md",
-      "localLinks": [],
-      "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
