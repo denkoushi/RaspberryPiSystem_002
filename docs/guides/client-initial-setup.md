@@ -16,16 +16,6 @@ update-frequency: medium
 
 本ドキュメントでは、新規のRaspberry Piクライアント端末（Raspberry Pi 3/4/Zero2W）をシステムに追加する際の初期設定手順を説明します。
 
-**既存Pi4のSDカード故障からの復旧**は新規端末追加ではありません。Pi5で
-[`pi4-sd-recovery.md`](../runbooks/pi4-sd-recovery.md) を使用してください。SDへ
-Raspberry Pi OS Desktop (64-bit) とWi-Fiを書き込む際に、対象端末と同じユーザー名、
-新しい短いホスト名、Pi5公開鍵によるSSH、sudoパスワード不要もImagerで設定します。
-起動後は、古いInventory端末名、新OSのホスト名、現在のプライベートLAN IPv4を
-Pi5の復旧コマンドへ渡します。新IPは旧IPと同じでなくて構いません。`plan`が確認した
-SSH公開鍵指紋を`run`へ渡し、全接続で同じOSを固定します。復旧ではTailscaleへ
-参加させず、旧SDのTailscale/SSH状態をコピーしないでください。以下のTailscale手順は
-新規端末追加向けであり、SD復旧には適用しません。
-
 **Zero 2 W をヘッドレスの棚番エッジ（キオスク UI なし・status-agent 中心）として載せる場合**は、[Zero 2 W 棚番エッジ Runbook](../runbooks/zero2w-tanaban-edge-setup.md) を先に参照してください（`inventory.yml` に自宅端末を載せず、インベントリ断片 + 専用 playbook で Pi 5 から適用する流れ）。
 
 ## 前提条件
