@@ -29,7 +29,11 @@ FROM workspace AS build
 
 COPY apps/api ./apps/api
 COPY packages ./packages
-COPY scripts ./scripts
+# Keep the runtime script boundary explicit so deploy tests and fixtures do not
+# invalidate or enter the API image.
+COPY scripts/deploy/deploy-status-state.py ./scripts/deploy/deploy-status-state.py
+COPY scripts/part-measurement/drawing-local-rapidocr-worker.py ./scripts/part-measurement/drawing-local-rapidocr-worker.py
+COPY scripts/server/add-cert-backup-target.mjs ./scripts/server/add-cert-backup-target.mjs
 
 WORKDIR /app/packages/shared-types
 RUN nice -n 10 pnpm build
