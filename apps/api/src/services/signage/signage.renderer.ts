@@ -1449,24 +1449,13 @@ export class SignageRenderer {
 
   /**
    * Pi3のサイネージ端末の温度・CPU負荷を取得（ClientStatusから）
-   * Pi3のClientDeviceを特定して、そのstatusClientIdでClientStatusを取得
+   * inventoryのstatus_agent_client_idに対応するClientStatusから取得
    */
   private async getClientSystemMetricsText(): Promise<string | null> {
     try {
-      // Pi3のサイネージ端末を特定（apiKeyが'client-key-raspberrypi3-signage1'のもの）
-      const pi3Client = await prisma.clientDevice.findUnique({
-        where: { apiKey: 'client-key-raspberrypi3-signage1' }
-      }) as { statusClientId?: string | null } | null;
-
-      if (!pi3Client || !pi3Client.statusClientId) {
-        // Pi3のClientDeviceが見つからない、またはstatusClientIdが設定されていない場合は
-        // Pi5サーバー自身の温度を表示（フォールバック）
-        return await this.getSystemMetricsText();
-      }
-
       // ClientStatusからPi3の温度・CPU負荷を取得
       const clientStatus = await prisma.clientStatus.findUnique({
-        where: { clientId: pi3Client.statusClientId }
+        where: { clientId: 'raspberrypi3-signage1' }
       });
 
       if (!clientStatus) {
@@ -1546,4 +1535,3 @@ export class SignageRenderer {
     }
   }
 }
-
