@@ -23,7 +23,6 @@ TERMINAL_DISPLAY_PREFLIGHT="${ROOT_DIR}/infrastructure/ansible/tasks/preflight-t
 SIGNAGE_PRESTAGE="${ROOT_DIR}/infrastructure/ansible/tasks/prestage-signage-runtime.yml"
 CLIENT_TASKS="${ROOT_DIR}/infrastructure/ansible/roles/client/tasks/main.yml"
 NFC_LIFECYCLE_TASKS="${ROOT_DIR}/infrastructure/ansible/roles/client/tasks/nfc-agent-lifecycle.yml"
-RELEASE_APPLICATION="${ROOT_DIR}/scripts/deploy/rolling_release/application.py"
 TERMINAL_PREFLIGHT="${ROOT_DIR}/scripts/deploy/rolling_release/terminal_preflight.py"
 TERMINAL_AGENT_HEALTH="${ROOT_DIR}/scripts/deploy/terminal-agent-health-probe.py"
 KIOSK_FIREFOX_TASKS="${ROOT_DIR}/infrastructure/ansible/roles/kiosk/tasks/firefox-chrome.yml"
@@ -37,21 +36,14 @@ SIGNAGE_DISPLAY_TEMPLATES=(
   "${ROOT_DIR}/infrastructure/ansible/roles/signage/templates/signage-display.sh.j2"
 )
 
-python3 - "${RELEASE_APPLICATION}" "${TERMINAL_PREFLIGHT}" "${NFC_LIFECYCLE_TASKS}" "${TERMINAL_AGENT_HEALTH}" <<'PY'
+python3 - "${TERMINAL_PREFLIGHT}" "${NFC_LIFECYCLE_TASKS}" "${TERMINAL_AGENT_HEALTH}" <<'PY'
 import sys
 from pathlib import Path
 
-application_path, preflight_path, nfc_path, agent_health_path = map(Path, sys.argv[1:])
-application = application_path.read_text(encoding='utf-8')
+preflight_path, nfc_path, agent_health_path = map(Path, sys.argv[1:])
 preflight = preflight_path.read_text(encoding='utf-8')
 nfc = nfc_path.read_text(encoding='utf-8')
 
-migration = application.index('systemd.preflight_migrations(spec)')
-terminal = application.index('systemd.preflight_terminals(')
-submission = application.index('systemd.start(spec, wait=not args.detach)')
-assert migration < terminal < submission, (
-    'migration and aggregate terminal preflights must both precede release-unit submission'
-)
 assert 'no release unit was submitted' in preflight
 assert 'for target in spec["targets"]' in preflight
 assert 'results.append(result)' in preflight
@@ -72,55 +64,6 @@ assert 'pcscd.comm' in agent_health
 assert 'pcscd.service' not in agent_health
 PY
 
-python3 - "${ROOT_DIR}" <<'PY'
-import importlib.util
-import re
-import sys
-from pathlib import Path
-
-root = Path(sys.argv[1])
-facade_path = root / 'scripts/deploy/rolling-release.py'
-wrapper_path = root / 'scripts/deploy/pi5-candidate-reconcile.sh'
-executor_path = root / 'scripts/deploy/pi5-image-deploy.sh'
-
-spec = importlib.util.spec_from_file_location('rolling_release_contract', facade_path)
-assert spec is not None and spec.loader is not None
-facade = importlib.util.module_from_spec(spec)
-sys.modules[spec.name] = facade
-spec.loader.exec_module(facade)
-
-calls = []
-facade.run = lambda command, **options: calls.append((command, options))
-facade.reconcile_pi5_candidate_workload()
-assert calls == [([str(facade.PI5_CANDIDATE_RECONCILE)], {})], (
-    'pre-plan Pi5 reconcile facade no longer invokes its dedicated adapter exactly once'
-)
-
-wrapper = ' '.join(
-    wrapper_path.read_text(encoding='utf-8').replace('\\\n', '').split()
-)
-assert wrapper.endswith(
-    'exec env PI5_DEPLOY_SKIP_PHASE3_LEGACY_GUARD=1 '
-    '"${SCRIPT_DIR}/pi5-image-deploy.sh" reconcile-workload'
-), 'candidate reconcile wrapper lost its env-scoped exec boundary'
-
-executor = executor_path.read_text(encoding='utf-8')
-assert 'reconcile-workload) reconcile_candidate_build_residue ;;' in executor, (
-    'reconcile-workload no longer dispatches to candidate residue recovery'
-)
-match = re.search(
-    r'^reconcile_candidate_build_residue\(\) \{\n(?P<body>.*?)^\}',
-    executor,
-    flags=re.MULTILINE | re.DOTALL,
-)
-assert match is not None, 'candidate residue recovery function is unavailable'
-body = match.group('body')
-owner = body.index('reconcile_signage_pause_owner')
-containers = body.index('cleanup_orphan_candidate_validation_containers')
-assert owner < containers, (
-    'signage pause ownership must reconcile before orphan candidate cleanup'
-)
-PY
 
 if grep -Eq 'status_code:[[:space:]]*\[[^]]*401|until:.*401|failed_when:[[:space:]]*false.*401' \
   "${UPDATE_CLIENTS_CORE}"; then

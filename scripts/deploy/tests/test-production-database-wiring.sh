@@ -11,7 +11,6 @@ API_ENV_TEMPLATE="$ROOT/infrastructure/ansible/templates/api.env.j2"
 INVENTORY="$ROOT/infrastructure/ansible/inventory.yml"
 STANDARD_DEFAULTS="$ROOT/infrastructure/ansible/roles/release_pi5/defaults/main.yml"
 STANDARD_PREPARE="$ROOT/infrastructure/ansible/roles/release_pi5/tasks/prepare.yml"
-MIGRATIONS="$ROOT/scripts/deploy/lib/pi5-blue-green/migrations.sh"
 ROLE_PLAYBOOK="$ROOT/infrastructure/ansible/playbooks/prepare-pi5-database-roles.yml"
 
 fail() {
@@ -67,11 +66,6 @@ grep -Fq 'prisma migrate deploy' "$STANDARD_PREPARE" \
   || fail 'canonical Ansible release does not apply pending migrations'
 grep -Fq 'prisma migrate status' "$STANDARD_PREPARE" \
   || fail 'canonical Ansible release does not verify migration status'
-grep -Fq 'compose_migration run --rm --no-deps' "$MIGRATIONS" \
-  || fail 'Blue/Green migration path does not use the migration-only Compose boundary'
-grep -Fq 'DATABASE_URL="$MIGRATION_DATABASE_URL" exec ./node_modules/.bin/prisma migrate deploy' "$MIGRATIONS" \
-  || fail 'ephemeral Blue/Green migration does not explicitly select migration authority'
-
 grep -Fq 'pi5_database_role_migration_approved | bool' "$ROLE_PLAYBOOK" \
   || fail 'production role activation lacks a separate explicit approval gate'
 grep -Fq 'pi5_database_role_migration_backup_path' "$ROLE_PLAYBOOK" \

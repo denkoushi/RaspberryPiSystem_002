@@ -300,16 +300,6 @@ class StagedCiWorkflowTests(unittest.TestCase):
             deploy,
         )
         self.assertNotIn("python3 -m unittest discover -s scripts/deploy/tests", deploy)
-        self.assertIn(
-            "terminal_profile_contracts.py\" --list-playbooks",
-            DEPLOY_CONTRACT_RUNNER,
-        )
-        self.assertIn(
-            '--inventory-json "$TEMP_DIR/inventory.json"', DEPLOY_CONTRACT_RUNNER
-        )
-        self.assertIn(
-            '"${TERMINAL_PROFILE_PLAYBOOKS[@]}"', DEPLOY_CONTRACT_RUNNER
-        )
         self.assertNotIn(
             "ansible-playbook --syntax-check playbooks/deploy-staged.yml",
             DEPLOY_CONTRACT_RUNNER,

@@ -17,9 +17,6 @@ from unittest import mock
 
 import yaml
 
-from scripts.deploy.rolling_release import bootstrap
-
-
 ROOT = Path(__file__).resolve().parents[3]
 DEPLOY = ROOT / "scripts/deploy"
 SCRIPT = DEPLOY / "standard-ansible-release.py"
@@ -272,7 +269,7 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
                     ],
                     check=False,
                 )
-                self.assertEqual(contender.returncode, bootstrap.EX_TEMPFAIL)
+                self.assertEqual(contender.returncode, 75)
                 self.assertFalse(marker.exists())
             finally:
                 fcntl.flock(descriptor, fcntl.LOCK_UN)

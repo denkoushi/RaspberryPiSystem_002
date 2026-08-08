@@ -65,8 +65,7 @@ return updateSomething({ locationKey });
 
 ## 運用チェック
 
-- 実機検証時は `./scripts/deploy/verify-phase12-real.sh` を使い、`global-rank` と fallback監視を含めて確認する。
-- `Due management auto-tuning scheduler` ログが見つからない場合は、`PUT /global-rank/auto-generate` の `200` を代替正常判定にする（ログローテーション考慮）。
+- 実機検証時は `./scripts/deploy/verify-phase12-real.sh` を使い、`global-rank` と関連APIのHTTP smokeを確認する。
 
 ## 関連
 
