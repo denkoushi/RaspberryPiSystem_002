@@ -24,19 +24,17 @@ category: runbooks
 
 ## 診断の実行方法
 
-### 方法1: デプロイ時に自動実行（推奨）
+標準のPi4経路は `scripts/update-all-clients.sh` から
+`standard-ansible-release.py`、`deploy-release-standard.yml`、`release_kiosk`へ進む。
+`release_kiosk`は `infrastructure/ansible/roles/kiosk` をimportしないため、
+このRunbookのIME診断タスクや `roles/kiosk/tasks/firefox-chrome.yml` のFirefox profile customizationを
+デプロイ時に自動実行しない。標準routeの実行結果にIME診断出力が含まれるとは判断しない。
 
-kiosk ロールが適用されるデプロイ時に、診断タスクが自動的に実行される。Ansible の出力に診断結果が含まれる。
+一方、inventoryの `kiosk_browser_engine` / `kiosk_browser_mode` は標準routeの入力である。
+`release_kiosk` は `kiosk-launch.sh.j2` をrenderし、`switch.yml` でlauncherをbackup付きでinstallして
+`kiosk-browser.service` をrestartするため、ブラウザengine選択自体は標準releaseで反映される。
 
-```bash
-# 例: Pi5 から raspi4-robodrill01 にデプロイ
-cd /opt/RaspberryPiSystem_002
-scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit "raspi4-robodrill01"
-```
-
-出力内の `Run IME diagnostic script on kiosk host` と `Display IME diagnostic output` タスクの結果を確認する。
-
-### 方法2: 手動で SSH 経由で実行
+### 現行の診断経路: 手動で SSH 経由で実行
 
 Pi4 キオスク端末に SSH 接続し、診断スクリプトを実行する。
 
@@ -72,12 +70,10 @@ ssh tools04@<PI4_IP> "bash /tmp/diagnose-ime.sh"
 
 ## 再発時の対処（KB-287 解決済み）
 
-日本語入力がスムーズにできない場合、`ibus_owner_mode` / `ibus_disable_competing_autostart` が未設定の可能性がある。`inventory.yml` の該当 Pi4 ホストに以下を追加し、デプロイで反映する。
-
-```yaml
-ibus_owner_mode: "single-owner"
-ibus_disable_competing_autostart: true
-```
+`ibus_owner_mode` / `ibus_disable_competing_autostart` などのinventory値を変更しても、
+standard routeが `roles/kiosk` のIME診断・Firefox profile customizationを実行するわけではない。
+このRunbookでは、`update-all-clients.sh` の実行だけでその診断やFirefox設定が反映されるとは案内しない。
+まず上記の手動SSH診断で現物状態を確認し、設定の所有callerが確認できない変更は行わない。
 
 詳細は [KB-287](../knowledge-base/frontend.md#kb-287-キオスク備考欄の日本語入力不具合ibus-ui-ウィンドウ出現で入力不安定) を参照。
 
@@ -85,32 +81,23 @@ ibus_disable_competing_autostart: true
 
 診断結果を [KB-investigation-kiosk-schedule-regression-20260301.md](../knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md) の「診断結果の記録」セクションに記入する。
 
-## Firefox切替（raspi4-robodrill01限定）検証手順
+## ブラウザengine選択の確認とrollback
 
-本Runbookは IME 切り分けを主目的としつつ、`raspi4-robodrill01` だけ Firefox に切り替える検証手順を併記する。
-
-1. Pi5 から `kiosk` ロールを対象端末だけに適用する。
+承認済みのstandard release後、既存のengine選択を次のread-only確認で検証する。
 
 ```bash
-cd /opt/RaspberryPiSystem_002
-scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit "raspi4-robodrill01"
+ssh tools04@<PI4_IP> 'systemctl is-active kiosk-browser.service'
+ssh tools04@<PI4_IP> 'ps -ef | awk "/firefox|chromium/ {print; c++; if (c>=10) exit}"'
 ```
 
-2. サービス状態と実行ブラウザを確認する。
+実機では、備考欄の日本語入力、候補ウィンドウ、生産スケジュール表示、NFC、電源操作を確認する。
 
-```bash
-ssh tools04@100.123.1.113 'systemctl is-active kiosk-browser.service'
-ssh tools04@100.123.1.113 'ps -ef | awk "/firefox|chromium/ {print; c++; if (c>=10) exit}"'
-```
+standard healthが失敗した場合、`release_kiosk` のrollbackはinstall結果のbackup fileを復元し、
+新規ファイルを除去したうえでagent composeと `kiosk-browser.service` / `status-agent.timer` を再起動し、
+health checksを再実行する。inventoryのengine選択を意図的に戻す場合も、host上で手編集せず、
+次回の明示承認済みstandard releaseで同じ対象scopeに反映する。
 
-3. 実機画面で以下を確認する。
-   - 備考欄で日本語入力モードへ切替できる
-   - 候補ウィンドウが入力を妨げない
-   - 生産スケジュール表示・NFC・電源操作が維持される
-
-4. 問題発生時はロールバックする（inventory の host_vars で戻す）。
-   - `kiosk_browser_engine: chromium`
-   - `kiosk_browser_mode: app-like`
+なお、`roles/kiosk/tasks/firefox-chrome.yml` のFirefox profile customizationはstandard routeでは適用されない。
 
 ## 関連ドキュメント
 
