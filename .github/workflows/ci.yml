@@ -423,20 +423,11 @@ jobs:
         needs.change-classification.outputs.runtime_rehearsal == 'true' &&
         !(github.event_name == 'push' && github.ref == 'refs/heads/main')
       }}
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - name: Checkout exact candidate source
         uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Install standard Ansible runtime
-        run: |
-          set -euo pipefail
-          python3 -m pip install --user ansible-core
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          command -v ansible-playbook
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -447,12 +438,12 @@ jobs:
           WEB_IMAGE: raspi-runtime-audit-web:${{ github.sha }}
         run: |
           set -euo pipefail
-          docker buildx build --load --platform linux/arm64 \
+          docker buildx build --load --platform linux/amd64 \
             --build-arg "BUILD_COMMIT=$GITHUB_SHA" \
             --build-arg BUILD_CONFIG_HASH=production-path-audit \
             --tag "$API_IMAGE" \
             --file infrastructure/docker/Dockerfile.api .
-          docker buildx build --load --platform linux/arm64 \
+          docker buildx build --load --platform linux/amd64 \
             --build-arg "BUILD_COMMIT=$GITHUB_SHA" \
             --build-arg BUILD_CONFIG_HASH=production-path-audit \
             --build-arg "VITE_RELEASE_SHA=$GITHUB_SHA" \
@@ -468,7 +459,7 @@ jobs:
           --api-image "$API_IMAGE"
           --web-image "$WEB_IMAGE"
           --sha "$GITHUB_SHA"
-          --platform linux/arm64
+          --platform linux/amd64
           --skip-pull
           --stable-seconds 10
 

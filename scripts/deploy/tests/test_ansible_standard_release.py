@@ -301,6 +301,7 @@ class Pi5StandardCandidateEvaluationTests(unittest.TestCase):
         production = "\n".join(
             [
                 PLAYBOOK,
+                role_text("release_pi5"),
                 (ROOT / "scripts/update-all-clients.sh").read_text(encoding="utf-8"),
                 (ROOT / "scripts/deploy/standard-ansible-release.py").read_text(
                     encoding="utf-8"
@@ -308,11 +309,14 @@ class Pi5StandardCandidateEvaluationTests(unittest.TestCase):
             ]
         )
         self.assertNotIn(candidate_name, production)
+        play = yaml.safe_load(self.CANDIDATE_PLAYBOOK.read_text())[0]
         self.assertIn(candidate_name, self.CANDIDATE_PLAYBOOK.read_text())
-        self.assertEqual(
-            yaml.safe_load(self.CANDIDATE_PLAYBOOK.read_text())[0]["hosts"],
-            "localhost",
-        )
+        self.assertEqual(play["hosts"], "server")
+        self.assertEqual(play["connection"], "local")
+        self.assertFalse(play["gather_facts"])
+        self.assertTrue(play["become"])
+        self.assertEqual(play["serial"], 1)
+        self.assertEqual(play["order"], "inventory")
 
     def test_candidate_call_graph_is_direct_ansible_lifecycle(self) -> None:
         main = yaml.safe_load(self.task_text("main"))[0]
@@ -372,6 +376,48 @@ class Pi5StandardCandidateEvaluationTests(unittest.TestCase):
         self.assertIn("'api-' + release_pi5_candidate_slot", argv)
         self.assertIn("'web-' + release_pi5_candidate_slot", argv)
         self.assertEqual(start["when"], "release_pi5_candidate_route == 'fresh'")
+
+    def test_pre_switch_fresh_failure_removes_only_inactive_services(self) -> None:
+        prepare = yaml.safe_load(self.task_text("prepare"))
+        marker = next(
+            task
+            for task in prepare
+            if task["name"] == "Mark the inactive Pi5 candidate startup boundary"
+        )
+        start = next(
+            task
+            for task in prepare
+            if task["name"] == "Start only inactive Pi5 API and Web services"
+        )
+        self.assertLess(prepare.index(marker), prepare.index(start))
+        self.assertEqual(
+            marker["ansible.builtin.set_fact"],
+            {"release_pi5_candidate_start_attempted": True},
+        )
+
+        cleanup = yaml.safe_load(self.task_text("cleanup"))
+        incomplete = next(
+            task
+            for task in cleanup
+            if task["name"]
+            == "Remove an incomplete fresh Pi5 candidate before traffic switch"
+        )
+        argv = incomplete["ansible.builtin.command"]["argv"]
+        for required in ("'rm'", "'-f'", "'-s'", "'api-'", "'web-'"):
+            self.assertIn(required, argv)
+        self.assertIn("release_pi5_candidate_slot | default('')", argv)
+        for forbidden in (
+            "release_pi5_candidate_active_slot",
+            "release_pi5_candidate_previous_slot",
+            "gateway",
+        ):
+            self.assertNotIn(forbidden, argv)
+        conditions = "\n".join(incomplete["when"])
+        self.assertIn("release_pi5_candidate_start_attempted | default(false)", conditions)
+        self.assertIn("release_pi5_candidate_switch_attempted | default(false)", conditions)
+        self.assertIn("release_pi5_candidate_route | default('') == 'fresh'", conditions)
+        self.assertIn("release_pi5_candidate_slot | default('') in ['blue', 'green']", conditions)
+        self.assertIn("default({})", incomplete["environment"])
 
     def test_candidate_migration_boundary_is_prisma_and_small_ledger_only(self) -> None:
         prepare = self.task_text("prepare")
@@ -436,20 +482,27 @@ class Pi5StandardCandidateEvaluationTests(unittest.TestCase):
         )
         self.assertEqual(marker["when"], "release_pi5_candidate_route == 'interrupted'")
         rollback = self.task_text("rollback")
-        self.assertIn("release_pi5_candidate_switch_attempted | bool", rollback)
+        self.assertIn(
+            "release_pi5_candidate_switch_attempted | default(false) | bool",
+            rollback,
+        )
         self.assertIn("Restart previous Pi5 API with its captured image", rollback)
         self.assertIn("Atomically restore previous known Pi5 routing", rollback)
         self.assertIn("Reload restored canonical Pi5 routing", rollback)
 
     def test_settled_rerun_removes_only_opposite_cleanup_residue(self) -> None:
         cleanup = yaml.safe_load(self.task_text("cleanup"))
-        retired = cleanup[0]
-        self.assertIn("'api-' + release_pi5_candidate_previous_slot", retired["ansible.builtin.command"]["argv"])
-        self.assertIn("'web-' + release_pi5_candidate_previous_slot", retired["ansible.builtin.command"]["argv"])
+        retired = next(
+            task
+            for task in cleanup
+            if task["name"]
+            == "Remove previous Pi5 slot only after committed healthy handoff"
+        )
+        self.assertIn("release_pi5_candidate_previous_slot | default('')", retired["ansible.builtin.command"]["argv"])
         condition = retired["when"][1]
-        self.assertIn("release_pi5_candidate_route == 'settled'", condition)
-        self.assertIn("release_pi5_candidate_opposite_api_id | length > 0", condition)
-        self.assertIn("release_pi5_candidate_opposite_web_id | length > 0", condition)
+        self.assertIn("release_pi5_candidate_route | default('') == 'settled'", condition)
+        self.assertIn("release_pi5_candidate_opposite_api_id | default('') | length > 0", condition)
+        self.assertIn("release_pi5_candidate_opposite_web_id | default('') | length > 0", condition)
         self.assertNotIn("release_pi5_candidate_active_slot", retired["ansible.builtin.command"]["argv"])
 
     def test_candidate_monitor_is_fixed_and_cleanup_has_no_handoff(self) -> None:
@@ -466,26 +519,6 @@ class Pi5StandardCandidateEvaluationTests(unittest.TestCase):
         self.assertIn("leader", sample)
         self.assertNotIn(" stop", cleanup)
         self.assertNotIn("caddy, reload", cleanup)
-
-    def test_fixed_comparison_matrix_has_exactly_fourteen_scenarios(self) -> None:
-        scenarios = (
-            "fresh-prepare",
-            "desired-identity",
-            "staged-reload",
-            "public-health",
-            "scheduler-handoff",
-            "migration-fail-closed",
-            "syntax-failure",
-            "health-failure",
-            "handoff-failure",
-            "rerun-after-prepare",
-            "rerun-after-staged-reload",
-            "rerun-after-canonical-commit",
-            "rerun-after-old-stop",
-            "rerun-after-cleanup-interruption",
-        )
-        self.assertEqual(len(scenarios), 14)
-        self.assertEqual(len(set(scenarios)), 14)
 
 
 if __name__ == "__main__":

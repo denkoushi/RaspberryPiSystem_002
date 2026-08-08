@@ -6,14 +6,18 @@
         argv: "{{ release_pi5_candidate_compose_argv + ['up', '-d', '--no-build', '--pull', 'never', '--no-deps', '--wait', '--wait-timeout', release_pi5_candidate_compose_wait_seconds | string, 'api-' + release_pi5_candidate_previous_slot] }}"
       environment: "{{ release_pi5_candidate_compose_environment }}"
       changed_when: true
-      when: release_pi5_candidate_switch_attempted | bool or release_pi5_candidate_handoff_attempted | bool
+      when: >-
+        release_pi5_candidate_switch_attempted | default(false) | bool
+        or release_pi5_candidate_handoff_attempted | default(false) | bool
 
     - name: Resolve restored previous Pi5 API container
       ansible.builtin.command:
         argv: "{{ release_pi5_candidate_compose_argv + ['ps', '-q', 'api-' + release_pi5_candidate_previous_slot] }}"
       register: release_pi5_candidate_restored_api
       changed_when: false
-      when: release_pi5_candidate_switch_attempted | bool or release_pi5_candidate_handoff_attempted | bool
+      when: >-
+        release_pi5_candidate_switch_attempted | default(false) | bool
+        or release_pi5_candidate_handoff_attempted | default(false) | bool
 
     - name: Wait for restored previous Pi5 scheduler leader
       ansible.builtin.command:
@@ -28,7 +32,9 @@
       delay: 2
       until: release_pi5_candidate_restored_leader is succeeded
       changed_when: false
-      when: release_pi5_candidate_switch_attempted | bool or release_pi5_candidate_handoff_attempted | bool
+      when: >-
+        release_pi5_candidate_switch_attempted | default(false) | bool
+        or release_pi5_candidate_handoff_attempted | default(false) | bool
 
     - name: Atomically restore previous known Pi5 routing
       ansible.builtin.shell: |
@@ -41,32 +47,42 @@
       args:
         executable: /bin/bash
       changed_when: true
-      when: release_pi5_candidate_switch_attempted | bool or release_pi5_candidate_handoff_attempted | bool
+      when: >-
+        release_pi5_candidate_switch_attempted | default(false) | bool
+        or release_pi5_candidate_handoff_attempted | default(false) | bool
 
     - name: Reload restored canonical Pi5 routing
       ansible.builtin.command:
         argv: [docker, exec, "{{ release_pi5_candidate_gateway_id }}", caddy, reload, --config, /srv/bluegreen/Caddyfile]
       changed_when: true
-      when: release_pi5_candidate_switch_attempted | bool or release_pi5_candidate_handoff_attempted | bool
+      when: >-
+        release_pi5_candidate_switch_attempted | default(false) | bool
+        or release_pi5_candidate_handoff_attempted | default(false) | bool
 
     - name: Verify restored Pi5 public API
       ansible.builtin.uri:
         url: "{{ release_pi5_candidate_api_health_url }}"
         validate_certs: "{{ release_pi5_candidate_validate_certs }}"
         status_code: 200
-      when: release_pi5_candidate_switch_attempted | bool or release_pi5_candidate_handoff_attempted | bool
+      when: >-
+        release_pi5_candidate_switch_attempted | default(false) | bool
+        or release_pi5_candidate_handoff_attempted | default(false) | bool
 
     - name: Verify restored Pi5 public Web
       ansible.builtin.uri:
         url: "{{ release_pi5_candidate_web_health_url }}"
         validate_certs: "{{ release_pi5_candidate_validate_certs }}"
         status_code: 200
-      when: release_pi5_candidate_switch_attempted | bool or release_pi5_candidate_handoff_attempted | bool
+      when: >-
+        release_pi5_candidate_switch_attempted | default(false) | bool
+        or release_pi5_candidate_handoff_attempted | default(false) | bool
 
     - name: Record verified Pi5 candidate rollback
       ansible.builtin.set_fact:
         release_pi5_candidate_rolled_back: true
-      when: release_pi5_candidate_switch_attempted | bool or release_pi5_candidate_handoff_attempted | bool
+      when: >-
+        release_pi5_candidate_switch_attempted | default(false) | bool
+        or release_pi5_candidate_handoff_attempted | default(false) | bool
   rescue:
     - name: Fail when Pi5 candidate rollback is incomplete
       ansible.builtin.fail:

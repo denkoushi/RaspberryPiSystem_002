@@ -20,6 +20,7 @@
     release_pi5_candidate_staged_config: "{{ release_pi5_candidate_gateway_config_dir }}/Caddyfile.{{ release_run_id }}"
     release_pi5_candidate_switch_attempted: false
     release_pi5_candidate_handoff_attempted: false
+    release_pi5_candidate_start_attempted: false
     release_pi5_candidate_healthy: false
     release_pi5_candidate_rolled_back: false
 
@@ -327,6 +328,11 @@
 - name: Require clean Prisma ledger after deploy
   ansible.builtin.assert:
     that: [release_pi5_candidate_ledger_after.stdout | trim == '0']
+  when: release_pi5_candidate_route == 'fresh'
+
+- name: Mark the inactive Pi5 candidate startup boundary
+  ansible.builtin.set_fact:
+    release_pi5_candidate_start_attempted: true
   when: release_pi5_candidate_route == 'fresh'
 
 - name: Start only inactive Pi5 API and Web services
