@@ -45,7 +45,7 @@ describe('SignagePreviewPage', () => {
     mockUseSignageScheduleEditorClients.mockReset();
     mockUseSignageScheduleEditorClients.mockReturnValue({
       data: [
-        makeClient('1', 'Pi3', 'client-key-raspberrypi3-signage1', '工場A'),
+        makeClient('1', 'Pi3', 'test-signage-client-key', '工場A'),
         makeClient('2', 'Kiosk', 'client-key-raspberrypi4-kiosk1', '工場B'),
         makeClient('3', 'Tablet', 'client-key-android-signage-1', '工場C'),
       ],
@@ -82,14 +82,14 @@ describe('SignagePreviewPage', () => {
     render(<SignagePreviewPage />);
 
     fireEvent.change(screen.getByLabelText('プレビューする端末'), {
-      target: { value: 'client-key-raspberrypi3-signage1' },
+      target: { value: 'test-signage-client-key' },
     });
     fireEvent.change(screen.getByLabelText('プレビューする端末'), {
       target: { value: 'client-key-android-signage-1' },
     });
 
     await waitFor(() => expect(mockApiGet).toHaveBeenCalledTimes(2));
-    expect(mockApiGet.mock.calls[0][1].params.toString()).toContain('key=client-key-raspberrypi3-signage1');
+    expect(mockApiGet.mock.calls[0][1].params.toString()).toContain('key=test-signage-client-key');
     expect(mockApiGet.mock.calls[1][1].params.toString()).toContain('key=client-key-android-signage-1');
 
     first.resolve({ data: new Blob(['old']) });

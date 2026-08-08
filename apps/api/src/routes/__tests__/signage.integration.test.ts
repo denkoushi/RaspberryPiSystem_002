@@ -698,7 +698,7 @@ describe('GET /api/signage/current-image with layoutConfig', () => {
   beforeEach(async () => {
     const admin = await createTestUser('ADMIN');
     adminToken = admin.token;
-    clientDevice = await getOrCreateTestClientDevice('client-key-raspberrypi3-signage1');
+    clientDevice = await getOrCreateTestClientDevice('test-signage-client-key');
   });
 
   afterAll(async () => {

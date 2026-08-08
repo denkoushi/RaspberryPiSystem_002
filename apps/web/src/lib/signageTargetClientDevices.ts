@@ -3,7 +3,7 @@ import type { ClientDevice } from '../api/client';
 /**
  * サイネージ表示端末の候補判定。
  * ClientDevice に種別が無いため、運用上の apiKey 慣習で絞る。
- * 例: `client-key-raspberrypi3-signage1`、型落ち Android 用の `client-key-...-android-signage-161`（いずれも `signage` を含む）
+ * 例: `client-key-...-signage-...`、型落ち Android 用の `client-key-...-android-signage-161`（いずれも `signage` を含む）
  * 将来 DB に deviceRole が入ればここを adapter 差し替えで拡張する。
  */
 export function isSignageDisplayClientDevice(client: ClientDevice): boolean {

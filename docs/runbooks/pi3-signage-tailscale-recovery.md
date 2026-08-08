@@ -31,7 +31,7 @@ tailscale status | grep raspberrypi-2
 
 # サーバ側 JPEG（Pi3 キー）
 curl -k -s -o /dev/null -w "HTTP %{http_code}\n" \
-  -H "x-client-key: client-key-raspberrypi3-signage1" \
+  -H "x-client-key: $PI3_SIGNAGE_CLIENT_KEY" \
   https://127.0.0.1/api/signage/current-image
 
 # Ansible（リポジトリ on Pi5）
@@ -77,7 +77,7 @@ sudo tailscale up --advertise-tags=tag:signage --reset
 tailscale ping -c 2 100.106.158.2
 
 curl -k -s -o /tmp/t.jpg -w "HTTP %{http_code}\n" \
-  -H "x-client-key: client-key-raspberrypi3-signage1" \
+  -H "x-client-key: $PI3_SIGNAGE_CLIENT_KEY" \
   "https://100.106.158.2/api/signage/current-image"
 
 sudo /usr/local/bin/signage-update.sh

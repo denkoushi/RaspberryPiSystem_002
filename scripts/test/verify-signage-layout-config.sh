@@ -6,7 +6,7 @@ set -euo pipefail
 PI5_HOST="denkon5sd02@100.106.158.2"
 PI3_HOST="signageras3@100.105.224.86"
 BASE_URL="https://100.106.158.2"
-CLIENT_KEY="client-key-raspberrypi3-signage1"
+CLIENT_KEY="${PI3_SIGNAGE_CLIENT_KEY:?PI3_SIGNAGE_CLIENT_KEY must be set}"
 
 echo "=========================================="
 echo "サイネージレイアウト設定の実機検証"
@@ -56,4 +56,3 @@ echo "次のステップ:"
 echo "1. 管理コンソール（$BASE_URL/admin/signage/schedules）で新形式のスケジュールを作成"
 echo "2. Pi3のサイネージ画面で表示を確認"
 echo "3. レガシー形式のスケジュールが正しく変換されて表示されることを確認"
-

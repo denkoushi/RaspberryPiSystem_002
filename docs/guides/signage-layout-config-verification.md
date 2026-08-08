@@ -138,7 +138,7 @@ ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'systemctl is-acti
 
 1. **APIのサイネージ画像を確認**:
    ```bash
-   ssh denkon5sd02@100.106.158.2 "curl -k -s -H 'x-client-key: client-key-raspberrypi3-signage1' https://100.106.158.2/api/signage/current-image -o /tmp/test-signage.jpg && file /tmp/test-signage.jpg"
+   ssh denkon5sd02@100.106.158.2 "curl -k -s -H \"x-client-key: \$PI3_SIGNAGE_CLIENT_KEY\" https://100.106.158.2/api/signage/current-image -o /tmp/test-signage.jpg && file /tmp/test-signage.jpg"
    ```
 
 2. **Pi3の画像ファイルを確認**:
@@ -178,4 +178,3 @@ ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'systemctl is-acti
 - [サイネージモジュール仕様](../modules/signage/README.md)
 - [KB-150: サイネージレイアウトとコンテンツの疎結合化実装完了](../knowledge-base/infrastructure/signage.md#kb-150-サイネージレイアウトとコンテンツの疎結合化実装完了)
 - [デプロイガイド](./deployment.md)
-
