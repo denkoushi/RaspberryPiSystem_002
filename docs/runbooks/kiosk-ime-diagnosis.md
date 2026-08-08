@@ -30,8 +30,8 @@ kiosk ロールが適用されるデプロイ時に、診断タスクが自動�
 
 ```bash
 # 例: Pi5 から raspi4-robodrill01 にデプロイ
-cd /opt/RaspberryPiSystem_002/infrastructure/ansible
-ansible-playbook -i inventory.yml playbooks/deploy-staged.yml --limit "server:raspi4-robodrill01"
+cd /opt/RaspberryPiSystem_002
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit "raspi4-robodrill01"
 ```
 
 出力内の `Run IME diagnostic script on kiosk host` と `Display IME diagnostic output` タスクの結果を確認する。
@@ -92,8 +92,8 @@ ibus_disable_competing_autostart: true
 1. Pi5 から `kiosk` ロールを対象端末だけに適用する。
 
 ```bash
-cd /opt/RaspberryPiSystem_002/infrastructure/ansible
-ansible-playbook -i inventory.yml playbooks/deploy-staged.yml --limit "raspi4-robodrill01"
+cd /opt/RaspberryPiSystem_002
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit "raspi4-robodrill01"
 ```
 
 2. サービス状態と実行ブラウザを確認する。

@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 614,
-    "totalLines": 171880,
-    "totalBytes": 12884144,
+    "totalLines": 171356,
+    "totalBytes": 12843345,
     "withFrontmatter": 281,
     "withStatus": 137,
     "sourceOfTruthDeclared": 99,
@@ -25,8 +25,8 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 26,
-    "localLinkCount": 5655,
-    "brokenLocalLinkCount": 87,
+    "localLinkCount": 5634,
+    "brokenLocalLinkCount": 88,
     "documentsOver1000Lines": 29,
     "documentsOver3000Lines": 6,
     "brokenLocalLinks": [
@@ -64,6 +64,11 @@
         "sourcePath": "docs/architecture/overview.md",
         "href": "./modules.md",
         "targetPath": "docs/architecture/modules.md"
+      },
+      {
+        "sourcePath": "docs/archive/architecture/deployment-modules-legacy-through-2026-07.md",
+        "href": "../../../infrastructure/ansible/playbooks/deploy.yml",
+        "targetPath": "infrastructure/ansible/playbooks/deploy.yml"
       },
       {
         "sourcePath": "docs/guides/ansible-best-practices.md",
@@ -606,7 +611,7 @@
     {
       "path": "AGENTS.md",
       "lineCount": 104,
-      "byteSize": 9035,
+      "byteSize": 8632,
       "hasFrontmatter": false,
       "title": "AI Agent Entry Point",
       "status": null,
@@ -5920,7 +5925,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 2009,
-      "byteSize": 347314,
+      "byteSize": 347252,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -6812,11 +6817,6 @@
           "exists": true
         },
         {
-          "href": "./decisions/ADR-20260716-terminal-profile-registry-adapter-boundary.md",
-          "targetPath": "docs/decisions/ADR-20260716-terminal-profile-registry-adapter-boundary.md",
-          "exists": true
-        },
-        {
           "href": "./decisions/ADR-20260717-assembly-torque-wrench-traceability.md",
           "targetPath": "docs/decisions/ADR-20260717-assembly-torque-wrench-traceability.md",
           "exists": true
@@ -7223,11 +7223,6 @@
         },
         {
           "href": "./guides/deployment.md",
-          "targetPath": "docs/guides/deployment.md",
-          "exists": true
-        },
-        {
-          "href": "./guides/deployment.md#linuxpi端末typeを追加する",
           "targetPath": "docs/guides/deployment.md",
           "exists": true
         },
@@ -10717,11 +10712,6 @@
           "exists": true
         },
         {
-          "href": "./plans/terminal-profile-registry-execplan.md",
-          "targetPath": "docs/plans/terminal-profile-registry-execplan.md",
-          "exists": true
-        },
-        {
           "href": "./plans/tool-management-debug-execplan.md",
           "targetPath": "docs/plans/tool-management-debug-execplan.md",
           "exists": true
@@ -11786,8 +11776,8 @@
     },
     {
       "path": "docs/architecture/deployment-modules.md",
-      "lineCount": 196,
-      "byteSize": 17010,
+      "lineCount": 89,
+      "byteSize": 10621,
       "hasFrontmatter": true,
       "title": "デプロイ基盤アーキテクチャ",
       "status": "active",
@@ -11796,26 +11786,6 @@
         {
           "href": "../archive/architecture/deployment-modules-legacy-through-2026-07.md",
           "targetPath": "docs/archive/architecture/deployment-modules-legacy-through-2026-07.md",
-          "exists": true
-        },
-        {
-          "href": "../decisions/ADR-20260716-terminal-profile-registry-adapter-boundary.md",
-          "targetPath": "docs/decisions/ADR-20260716-terminal-profile-registry-adapter-boundary.md",
-          "exists": true
-        },
-        {
-          "href": "../guides/deployment.md",
-          "targetPath": "docs/guides/deployment.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/terminal-profile-registry-execplan.md",
-          "targetPath": "docs/plans/terminal-profile-registry-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../runbooks/deploy-status-recovery.md",
-          "targetPath": "docs/runbooks/deploy-status-recovery.md",
           "exists": true
         }
       ],
@@ -12030,7 +12000,7 @@
         {
           "href": "../../../infrastructure/ansible/playbooks/deploy.yml",
           "targetPath": "infrastructure/ansible/playbooks/deploy.yml",
-          "exists": true
+          "exists": false
         }
       ],
       "inboundCount": 1,
@@ -12350,7 +12320,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 2,
+      "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [
@@ -13481,7 +13451,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 188,
+      "inboundCount": 187,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [
@@ -13806,7 +13776,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 58,
+      "inboundCount": 57,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -14062,7 +14032,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 39,
+      "inboundCount": 38,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -14408,7 +14378,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 18,
+      "inboundCount": 17,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -14550,7 +14520,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 1,
+      "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -16668,7 +16638,7 @@
       "status": "accepted",
       "source_of_truth": "true",
       "localLinks": [],
-      "inboundCount": 2,
+      "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -16933,7 +16903,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 3,
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -16948,7 +16918,7 @@
       "status": "accepted",
       "source_of_truth": "true",
       "localLinks": [],
-      "inboundCount": 3,
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -17040,7 +17010,7 @@
       "status": "accepted",
       "source_of_truth": "true",
       "localLinks": [],
-      "inboundCount": 3,
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -17619,8 +17589,8 @@
     },
     {
       "path": "docs/guides/ansible-best-practices.md",
-      "lineCount": 357,
-      "byteSize": 9814,
+      "lineCount": 355,
+      "byteSize": 9744,
       "hasFrontmatter": true,
       "title": "Ansibleベストプラクティス",
       "status": null,
@@ -17660,8 +17630,8 @@
     },
     {
       "path": "docs/guides/ansible-error-handling.md",
-      "lineCount": 214,
-      "byteSize": 5605,
+      "lineCount": 211,
+      "byteSize": 5628,
       "hasFrontmatter": true,
       "title": "Ansibleエラーハンドリングガイド",
       "status": null,
@@ -17691,8 +17661,8 @@
     },
     {
       "path": "docs/guides/ansible-managed-files.md",
-      "lineCount": 240,
-      "byteSize": 8529,
+      "lineCount": 239,
+      "byteSize": 8561,
       "hasFrontmatter": true,
       "title": "Ansibleで管理すべき設定ファイル一覧",
       "status": null,
@@ -17722,8 +17692,8 @@
     },
     {
       "path": "docs/guides/ansible-role-development.md",
-      "lineCount": 501,
-      "byteSize": 14727,
+      "lineCount": 500,
+      "byteSize": 14870,
       "hasFrontmatter": true,
       "title": "Ansibleロール開発ガイド",
       "status": null,
@@ -18460,8 +18430,8 @@
     },
     {
       "path": "docs/guides/client-initial-setup.md",
-      "lineCount": 675,
-      "byteSize": 24388,
+      "lineCount": 674,
+      "byteSize": 24377,
       "hasFrontmatter": true,
       "title": "新規クライアント端末の初期設定手順",
       "status": null,
@@ -18814,80 +18784,20 @@
     },
     {
       "path": "docs/guides/deployment.md",
-      "lineCount": 339,
-      "byteSize": 30418,
+      "lineCount": 90,
+      "byteSize": 5795,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
       "source_of_truth": null,
       "localLinks": [
         {
-          "href": "../archive/deployments/2026-04.md",
-          "targetPath": "docs/archive/deployments/2026-04.md",
-          "exists": true
-        },
-        {
-          "href": "../archive/deployments/2026-05.md",
-          "targetPath": "docs/archive/deployments/2026-05.md",
-          "exists": true
-        },
-        {
-          "href": "../archive/deployments/2026-06.md",
-          "targetPath": "docs/archive/deployments/2026-06.md",
-          "exists": true
-        },
-        {
-          "href": "../archive/deployments/2026-07.md",
-          "targetPath": "docs/archive/deployments/2026-07.md",
-          "exists": true
-        },
-        {
-          "href": "../archive/deployments/legacy-operator-guide-through-2026-07.md",
-          "targetPath": "docs/archive/deployments/legacy-operator-guide-through-2026-07.md",
-          "exists": true
-        },
-        {
-          "href": "../decisions/ADR-20260728-attested-arm64-release-artifact-promotion.md",
-          "targetPath": "docs/decisions/ADR-20260728-attested-arm64-release-artifact-promotion.md",
-          "exists": true
-        },
-        {
-          "href": "../decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md",
-          "targetPath": "docs/decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md",
-          "exists": true
-        },
-        {
-          "href": "../decisions/ADR-20260730-bounded-api-runtime-artifact.md",
-          "targetPath": "docs/decisions/ADR-20260730-bounded-api-runtime-artifact.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-403-production-config-contract-and-nfc-health.md",
-          "targetPath": "docs/knowledge-base/KB-403-production-config-contract-and-nfc-health.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-404-pi5-ghcr-api-image-pull-timeout.md",
-          "targetPath": "docs/knowledge-base/KB-404-pi5-ghcr-api-image-pull-timeout.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/deployment-foundation-refactor-execplan.md",
-          "targetPath": "docs/plans/deployment-foundation-refactor-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/rolling-terminal-bluegreen-deploy.md",
-          "targetPath": "docs/plans/rolling-terminal-bluegreen-deploy.md",
-          "exists": true
-        },
-        {
           "href": "../runbooks/deploy-status-recovery.md",
           "targetPath": "docs/runbooks/deploy-status-recovery.md",
           "exists": true
         }
       ],
-      "inboundCount": 198,
+      "inboundCount": 196,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -19317,8 +19227,8 @@
     },
     {
       "path": "docs/guides/git-clean-safety.md",
-      "lineCount": 188,
-      "byteSize": 5351,
+      "lineCount": 187,
+      "byteSize": 5358,
       "hasFrontmatter": true,
       "title": "git cleanの安全な使用方法",
       "status": null,
@@ -19612,8 +19522,8 @@
     },
     {
       "path": "docs/guides/location-scope-naming.md",
-      "lineCount": 75,
-      "byteSize": 3386,
+      "lineCount": 74,
+      "byteSize": 3188,
       "hasFrontmatter": true,
       "title": "Location Scope 命名規約ガイド",
       "status": null,
@@ -19915,8 +19825,8 @@
     },
     {
       "path": "docs/guides/operation-manual.md",
-      "lineCount": 849,
-      "byteSize": 26090,
+      "lineCount": 847,
+      "byteSize": 26034,
       "hasFrontmatter": true,
       "title": "運用マニュアル",
       "status": null,
@@ -20512,8 +20422,8 @@
     },
     {
       "path": "docs/guides/pi3-deployment-verification.md",
-      "lineCount": 192,
-      "byteSize": 8711,
+      "lineCount": 189,
+      "byteSize": 8456,
       "hasFrontmatter": true,
       "title": "Pi3デプロイ検証手順",
       "status": null,
@@ -20641,8 +20551,8 @@
     },
     {
       "path": "docs/guides/quick-start-deployment.md",
-      "lineCount": 53,
-      "byteSize": 2085,
+      "lineCount": 36,
+      "byteSize": 1783,
       "hasFrontmatter": true,
       "title": "デプロイ・クイックスタート",
       "status": "active",
@@ -20991,8 +20901,8 @@
     },
     {
       "path": "docs/guides/slack-webhook-setup-step-by-step.md",
-      "lineCount": 247,
-      "byteSize": 7601,
+      "lineCount": 246,
+      "byteSize": 7515,
       "hasFrontmatter": false,
       "title": "Slack通知設定 ステップバイステップガイド",
       "status": null,
@@ -25987,7 +25897,7 @@
       "status": "implementation-complete-publication-pending",
       "source_of_truth": "true",
       "localLinks": [],
-      "inboundCount": 4,
+      "inboundCount": 3,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -26002,7 +25912,7 @@
       "status": "mitigated",
       "source_of_truth": "true",
       "localLinks": [],
-      "inboundCount": 4,
+      "inboundCount": 3,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -32683,7 +32593,7 @@
       "status": "in-progress",
       "source_of_truth": "docs/plans/deployment-foundation-refactor-execplan.md",
       "localLinks": [],
-      "inboundCount": 4,
+      "inboundCount": 3,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [
@@ -35448,7 +35358,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 4,
+      "inboundCount": 3,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -35937,7 +35847,7 @@
       "status": "active",
       "source_of_truth": "docs/plans/terminal-profile-registry-execplan.md",
       "localLinks": [],
-      "inboundCount": 2,
+      "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -36485,7 +36395,7 @@
     {
       "path": "docs/runbooks/client-agent-addition.md",
       "lineCount": 51,
-      "byteSize": 4639,
+      "byteSize": 4594,
       "hasFrontmatter": true,
       "title": "Client Docker Agent Addition Runbook",
       "status": "active",
@@ -36499,25 +36409,14 @@
     },
     {
       "path": "docs/runbooks/deploy-status-recovery.md",
-      "lineCount": 92,
-      "byteSize": 4667,
+      "lineCount": 52,
+      "byteSize": 2259,
       "hasFrontmatter": true,
       "title": "デプロイ停止・復旧Runbook",
       "status": "active",
       "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../guides/deployment.md",
-          "targetPath": "docs/guides/deployment.md",
-          "exists": true
-        },
-        {
-          "href": "./pi5-blue-green-deploy.md",
-          "targetPath": "docs/runbooks/pi5-blue-green-deploy.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 29,
+      "localLinks": [],
+      "inboundCount": 27,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -37124,7 +37023,7 @@
     {
       "path": "docs/runbooks/kiosk-ime-diagnosis.md",
       "lineCount": 119,
-      "byteSize": 5301,
+      "byteSize": 5268,
       "hasFrontmatter": true,
       "title": "Runbook: キオスク備考欄 日本語入力不具合の診断",
       "status": null,
@@ -37694,7 +37593,7 @@
     {
       "path": "docs/runbooks/mobile-placement-smartphone.md",
       "lineCount": 181,
-      "byteSize": 45827,
+      "byteSize": 45823,
       "hasFrontmatter": false,
       "title": "配膳スマホ（Android）セットアップ・検証 Runbook",
       "status": null,
@@ -37952,24 +37851,13 @@
     },
     {
       "path": "docs/runbooks/pi5-blue-green-deploy.md",
-      "lineCount": 83,
-      "byteSize": 3602,
+      "lineCount": 48,
+      "byteSize": 2494,
       "hasFrontmatter": true,
-      "title": "Pi5 Blue/Green診断Runbook",
+      "title": "Pi5標準Ansible診断Runbook",
       "status": "active",
       "source_of_truth": "docs/runbooks/pi5-blue-green-deploy.md",
-      "localLinks": [
-        {
-          "href": "../archive/runbooks/pi5-blue-green-deploy-legacy-2026-07.md",
-          "targetPath": "docs/archive/runbooks/pi5-blue-green-deploy-legacy-2026-07.md",
-          "exists": true
-        },
-        {
-          "href": "./deploy-status-recovery.md",
-          "targetPath": "docs/runbooks/deploy-status-recovery.md",
-          "exists": true
-        }
-      ],
+      "localLinks": [],
       "inboundCount": 4,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
@@ -37979,7 +37867,7 @@
     {
       "path": "docs/runbooks/pi5-local-file-storage.md",
       "lineCount": 108,
-      "byteSize": 5182,
+      "byteSize": 5177,
       "hasFrontmatter": true,
       "title": "Pi5単一SSD・業務ファイル保存Runbook",
       "status": "active",
@@ -37993,13 +37881,24 @@
     },
     {
       "path": "docs/runbooks/pi5-minimal-downtime-deploy.md",
-      "lineCount": 74,
-      "byteSize": 5741,
+      "lineCount": 14,
+      "byteSize": 795,
       "hasFrontmatter": true,
-      "title": "Pi5 minimal-downtime deployment runbook",
-      "status": "draft",
-      "source_of_truth": "docs/runbooks/pi5-minimal-downtime-deploy.md",
-      "localLinks": [],
+      "title": "Pi5標準Ansible移行ノート",
+      "status": "superseded",
+      "source_of_truth": "docs/guides/deployment.md",
+      "localLinks": [
+        {
+          "href": "../guides/deployment.md",
+          "targetPath": "docs/guides/deployment.md",
+          "exists": true
+        },
+        {
+          "href": "./pi5-blue-green-deploy.md",
+          "targetPath": "docs/runbooks/pi5-blue-green-deploy.md",
+          "exists": true
+        }
+      ],
       "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,

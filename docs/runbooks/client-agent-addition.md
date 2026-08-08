@@ -26,7 +26,7 @@ superseded_by: null
 
 Pi4/端末で動く新しい Docker agent を、設定配布だけ、health だけ、rollback だけが先行する半配線状態にしないための手順である。実機への反映手順ではない。通常のリリース承認、対象選定、メンテナンス、rollback 判断は既存のデプロイ Runbook に従う。
 
-このチェックリストの正本データは `scripts/deploy/terminal-profile-registry.json` の `clientAgents` である。配布先で自己完結して実行される runtime helper の allowlist は、互換性を保つため当面は直接この registry を import しない。代わりに `test_client_agent_contract_matrix.py` が両者の完全一致を fail-closed で確認する。
+このチェックリストの正本データは `scripts/deploy/terminal-profile-registry.json` の `clientAgents` である。配布先で自己完結して実行される runtime bundle は既存の明示的なallowlistを使い、`test_client_agent_contract_matrix.py` がCompose、Ansible、health probeとの一致をfail-closedで確認する。
 
 ## Addition Sequence
 

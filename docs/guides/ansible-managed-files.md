@@ -66,7 +66,7 @@ polkit.addRule(function(action, subject) {
 | **説明** | status-agent systemdサービス定義 |
 | **管理方法** | Ansibleコピー |
 | **ソース** | `clients/status-agent/status-agent.service` |
-| **プレイブック** | `infrastructure/ansible/playbooks/update-clients.yml` |
+| **プレイブック** | `infrastructure/ansible/playbooks/deploy-release-standard.yml` |
 | **状態** | ✅ 管理済み |
 
 #### 3. status-agent systemdタイマー
@@ -77,7 +77,7 @@ polkit.addRule(function(action, subject) {
 | **説明** | status-agent systemdタイマー定義 |
 | **管理方法** | Ansibleコピー |
 | **ソース** | `clients/status-agent/status-agent.timer` |
-| **プレイブック** | `infrastructure/ansible/playbooks/update-clients.yml` |
+| **プレイブック** | `infrastructure/ansible/playbooks/deploy-release-standard.yml` |
 | **状態** | ✅ 管理済み |
 
 #### 4. status-agent設定ファイル
@@ -88,7 +88,7 @@ polkit.addRule(function(action, subject) {
 | **説明** | status-agent設定ファイル |
 | **管理方法** | Ansibleテンプレート |
 | **テンプレート** | `infrastructure/ansible/templates/status-agent.conf.j2` |
-| **プレイブック** | `infrastructure/ansible/playbooks/deploy.yml` |
+| **プレイブック** | `infrastructure/ansible/playbooks/deploy-release-standard.yml` |
 | **状態** | ✅ 管理済み |
 
 ### 中優先度（推奨管理）
@@ -210,8 +210,8 @@ ansible-playbook -i infrastructure/ansible/inventory.yml \
 
 2. **バックアップから復旧**:
    ```bash
-   ansible-playbook -i infrastructure/ansible/inventory.yml \
-     infrastructure/ansible/playbooks/rollback.yml
+   scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
+     --print-plan --limit PATTERN
    ```
 
 ### 設定ファイルが更新されない場合
@@ -237,4 +237,3 @@ ansible-playbook -i infrastructure/ansible/inventory.yml \
 ## 更新履歴
 
 - 2025-12-01: 初版作成
-

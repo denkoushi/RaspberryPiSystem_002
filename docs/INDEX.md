@@ -62,9 +62,9 @@
 
 - **製番・機種・S/N・進捗を個体カードで統一表示**: `着手前` はロット内S/Nを個別カード化、`仕掛中` / `完了・承認` も同一の閉じた1.5行カードへ統一。上部に登録ロット・仕掛中・承認待ちKPI、カード内の状態ラベルは廃止。右ロット登録とAPI/DBは不変。**正本**: [Plan](./plans/kiosk-assembly-home-unit-cards.md) · [ADR Decision 8](./decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md) · [Preview](./design-previews/kiosk-assembly-home-unit-cards-preview.html)
 
-### Terminal Profile Registry / adapter（2026-07-16 · 実装済）
+### Terminal profile static data（2026-08-08 · 現行）
 
-- **Linux/Pi端末TypeのRegistry + adapter汎用化**: 既存CLI・fleet state・Kiosk/Signage挙動を維持し、新Type追加をregistry/inventoryまたはadapterへ閉じ込める。**正本**: [ADR](./decisions/ADR-20260716-terminal-profile-registry-adapter-boundary.md) · [Architecture](./architecture/deployment-modules.md) · [Guide](./guides/deployment.md#linuxpi端末typeを追加する) · [ExecPlan](./plans/terminal-profile-registry-execplan.md)
+- **Pi3/Pi4の静的な影響分類とclient agent契約**: `terminal-profile-registry.json` はprofile ID、path mapping、component mapping、host selector、clientAgentsだけを保持する。配布と切替の実行は標準Ansible routeが所有する。**正本**: [Architecture](./architecture/deployment-modules.md) · [Guide](./guides/deployment.md) · [Runbook](./runbooks/client-agent-addition.md)
 
 ### 計画（2026-07-12 · デプロイ対象最小化 / カナリア・ホールド · 実装済・本番 shadow 評価待ち）
 
