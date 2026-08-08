@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import re
 import unittest
 from pathlib import Path
 
@@ -25,6 +24,7 @@ def role_text(role: str) -> str:
 
 class StandardReleaseAnsibleTests(unittest.TestCase):
     def test_top_level_route_is_explicit_and_serial(self) -> None:
+        plays = yaml.safe_load(PLAYBOOK)
         self.assertEqual(PLAYBOOK.count("  serial: 1\n"), 3)
         self.assertLess(PLAYBOOK.index("role: release_pi5"), PLAYBOOK.index("role: release_kiosk"))
         self.assertLess(
@@ -33,9 +33,13 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         )
         self.assertNotIn("terminal-profile-registry", PLAYBOOK)
         self.assertNotIn("rolling_release", PLAYBOOK)
+        self.assertEqual(plays[0]["hosts"], "server")
+        self.assertEqual(plays[0]["connection"], "local")
+        self.assertNotIn("connection", plays[1])
+        self.assertNotIn("connection", plays[2])
 
-    def test_every_profile_uses_prepare_block_rescue_always(self) -> None:
-        for role in ("release_pi5", "release_kiosk", "release_signage"):
+    def test_pi4_and_pi3_use_prepare_block_rescue_always(self) -> None:
+        for role in ("release_kiosk", "release_signage"):
             main_path = (
                 ANSIBLE / "roles" / role / "tasks/main.yml"
             )
@@ -201,18 +205,12 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, route)
 
-    def test_pi5_reuses_blue_green_under_ansible_rollback(self) -> None:
-        pi5 = role_text("release_pi5")
-        for command in ("prepare", "switch", "monitor", "rollback", "cleanup"):
-            self.assertRegex(
-                pi5,
-                rf"pi5-blue-green\.sh[\s\S]{{0,180}}- {re.escape(command)}",
-            )
-        self.assertIn("validate-expand-only-migrations.py", pi5)
-
-    def test_pi5_standard_route_has_no_sealed_release_evidence(self) -> None:
+    def test_pi5_standard_route_has_no_custom_subsystem_or_sealed_evidence(self) -> None:
         pi5 = role_text("release_pi5")
         for forbidden in (
+            "pi5-blue-green.sh",
+            "lib/pi5-blue-green",
+            "validate-expand-only-migrations.py",
             "pi5-release-evidence.py",
             "resource-evidence",
             "migration-plan",
@@ -220,24 +218,22 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
             "--migration-plan",
         ):
             self.assertNotIn(forbidden, pi5)
-        self.assertIn("validate-expand-only-migrations.py", pi5)
-        self.assertIn("Require enough Pi5 memory and disk", pi5)
+        self.assertIn("prisma migrate deploy", pi5)
+        self.assertIn("Require Pi5 memory and disk headroom immediately", pi5)
 
     def test_pi5_waits_for_post_pull_load_before_candidate_mutation(self) -> None:
         prepare_path = ANSIBLE / "roles/release_pi5/tasks/prepare.yml"
         prepare_tasks = yaml.safe_load(prepare_path.read_text(encoding="utf-8"))
         names = [task["name"] for task in prepare_tasks]
         pull_index = names.index(
-            "Pull immutable Pi5 candidate images while the active slot is live"
+            "Pull immutable Pi5 candidate images while active traffic remains live"
         )
         capacity_index = names.index(
-            "Require enough Pi5 memory and disk for inactive-slot preparation"
+            "Require Pi5 memory and disk headroom immediately"
         )
-        load_index = names.index("Wait for Pi5 load to settle after image preparation")
-        migration_index = names.index(
-            "Check the live Prisma ledger against the candidate source directly"
-        )
-        candidate_index = names.index("Prepare and validate the inactive Pi5 slot")
+        load_index = names.index("Wait bounded time for post-pull Pi5 load to settle")
+        migration_index = names.index("Reject unfinished or rolled-back Prisma ledger before deploy")
+        candidate_index = names.index("Start only inactive Pi5 API and Web services")
         self.assertLess(pull_index, capacity_index)
         self.assertLess(capacity_index, load_index)
         self.assertLess(load_index, migration_index)
@@ -259,8 +255,8 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertEqual(
             capacity["ansible.builtin.assert"]["that"],
             [
-                "release_pi5_capacity.memoryMb | int >= release_pi5_min_memory_mb | int",
-                "release_pi5_capacity.diskGb | int >= release_pi5_min_disk_gb | int",
+                "(release_pi5_capacity.stdout | from_json).memoryMb | int >= release_pi5_min_memory_mb | int",
+                "(release_pi5_capacity.stdout | from_json).diskGb | int >= release_pi5_min_disk_gb | int",
             ],
         )
         self.assertNotIn("retries", capacity)
@@ -268,10 +264,9 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertNotIn("until", capacity)
 
         load_wait = prepare_tasks[load_index]
-        self.assertEqual(load_wait["retries"], 30)
-        self.assertEqual(load_wait["delay"], 10)
-        self.assertEqual(load_wait["retries"] * load_wait["delay"], 300)
-        self.assertEqual(load_wait["register"], "release_pi5_load_sample")
+        self.assertEqual(load_wait["retries"], "{{ release_pi5_load_retries }}")
+        self.assertEqual(load_wait["delay"], "{{ release_pi5_load_delay }}")
+        self.assertEqual(load_wait["register"], "release_pi5_load")
         self.assertNotIn("ignore_errors", load_wait)
         self.assertNotIn("failed_when", load_wait)
         self.assertNotIn("no_log", load_wait)
@@ -282,9 +277,254 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertIn("{\"load\":%s,\"maxLoad\":%s}", load_shell)
         self.assertNotIn("MemAvailable", load_shell)
         self.assertNotIn("df -", load_shell)
-        self.assertIn("release_pi5_load_sample.stdout", load_wait["until"])
+        self.assertIn("release_pi5_load.stdout", load_wait["until"])
         self.assertIn(".load | float", load_wait["until"])
         self.assertIn(".maxLoad | float", load_wait["until"])
+
+
+class Pi5CanonicalStandardRouteTests(unittest.TestCase):
+    ROLE = "release_pi5"
+
+    def task_text(self, name: str) -> str:
+        return (ANSIBLE / f"roles/{self.ROLE}/tasks/{name}.yml").read_text(
+            encoding="utf-8"
+        )
+
+    def test_canonical_launcher_has_one_pi5_standard_route(self) -> None:
+        launcher = (ROOT / "scripts/deploy/standard-ansible-release.py").read_text(
+            encoding="utf-8"
+        )
+        wrapper = (ROOT / "scripts/update-all-clients.sh").read_text(encoding="utf-8")
+        play = yaml.safe_load(PLAYBOOK)[0]
+        self.assertIn('PLAYBOOK = ANSIBLE / "playbooks/deploy-release-standard.yml"', launcher)
+        self.assertIn("standard-ansible-release.py", wrapper)
+        self.assertEqual(play["roles"], [{"role": "release_pi5"}])
+        self.assertEqual(play["hosts"], "server")
+        self.assertEqual(play["connection"], "local")
+        self.assertFalse(play["gather_facts"])
+        self.assertTrue(play["become"])
+        self.assertEqual(play["serial"], 1)
+        self.assertEqual(play["order"], "inventory")
+        self.assertFalse((ANSIBLE / "playbooks/verify-pi5-standard-candidate.yml").exists())
+        self.assertFalse((ANSIBLE / "roles/release_pi5_standard_candidate").exists())
+        server = (ANSIBLE / "roles/server/tasks/main.yml").read_text(encoding="utf-8")
+        self.assertNotIn("pi5-blue-green-reconcile.service", server)
+        self.assertFalse(
+            (ANSIBLE / "templates/pi5-blue-green-reconcile.service.j2").exists()
+        )
+
+    def test_pi5_call_graph_is_direct_ansible_lifecycle(self) -> None:
+        main = yaml.safe_load(self.task_text("main"))[0]
+        self.assertEqual(
+            [task["ansible.builtin.import_tasks"] for task in main["block"]],
+            ["prepare.yml", "switch.yml", "health.yml", "commit.yml"],
+        )
+        self.assertEqual(
+            [task["ansible.builtin.import_tasks"] for task in main["rescue"]],
+            ["rollback.yml"],
+        )
+        self.assertEqual(
+            [task["ansible.builtin.import_tasks"] for task in main["always"]],
+            ["cleanup.yml"],
+        )
+
+    def test_pi5_has_no_legacy_subsystem_or_new_framework(self) -> None:
+        candidate = role_text(self.ROLE)
+        defaults = yaml.safe_load(
+            (ANSIBLE / f"roles/{self.ROLE}/defaults/main.yml").read_text()
+        )
+        canonical = "\n".join((PLAYBOOK, candidate)).lower()
+        self.assertEqual(defaults["release_pi5_run_root"], "/var/lib/raspi-release/standard")
+        for identifier in (
+            "evaluation-only",
+            "standard-candidate",
+            "release_pi5_standard_candidate",
+        ):
+            self.assertNotIn(identifier, canonical)
+        for forbidden in (
+            "pi5-blue-green.sh",
+            "lib/pi5-blue-green",
+            "validate-expand-only-migrations.py",
+            "releaseEvidence",
+            "resource-evidence",
+            "migration-plan",
+            "state.json",
+            "reconcile",
+            "claims",
+            "community.docker",
+        ):
+            self.assertNotIn(forbidden, candidate)
+        self.assertNotRegex(candidate, r"ansible\.builtin\.(?:script|raw):")
+
+    def test_pi5_uses_only_explicit_routes_and_strict_identities(self) -> None:
+        defaults = (
+            ANSIBLE / f"roles/{self.ROLE}/defaults/main.yml"
+        ).read_text(encoding="utf-8")
+        prepare = self.task_text("prepare")
+        self.assertIn("Caddyfile.gateway.template", defaults)
+        self.assertIn("cmp -s", prepare)
+        self.assertIn("matches neither known route", prepare)
+        self.assertIn("{{.Config.Image}}|{{.Image}}|{{.State.Running}}", prepare)
+        self.assertIn("PI5_GATEWAY_IMAGE", prepare)
+        self.assertNotIn("reverse_proxy", prepare)
+        self.assertNotIn("Caddyfile.gateway.http.template", defaults)
+
+    def test_pi5_fresh_prepare_mutates_only_inactive_services(self) -> None:
+        prepare = yaml.safe_load(self.task_text("prepare"))
+        start = next(
+            task
+            for task in prepare
+            if task["name"] == "Start only inactive Pi5 API and Web services"
+        )
+        argv = start["ansible.builtin.command"]["argv"]
+        for required in ("--no-build", "never", "--no-deps", "--wait"):
+            self.assertIn(required, argv)
+        self.assertIn("'api-' + release_pi5_slot", argv)
+        self.assertIn("'web-' + release_pi5_slot", argv)
+        self.assertEqual(start["when"], "release_pi5_route == 'fresh'")
+
+    def test_pre_switch_fresh_failure_removes_only_inactive_services(self) -> None:
+        prepare = yaml.safe_load(self.task_text("prepare"))
+        marker = next(
+            task
+            for task in prepare
+            if task["name"] == "Mark the inactive Pi5 candidate startup boundary"
+        )
+        start = next(
+            task
+            for task in prepare
+            if task["name"] == "Start only inactive Pi5 API and Web services"
+        )
+        self.assertLess(prepare.index(marker), prepare.index(start))
+        self.assertEqual(
+            marker["ansible.builtin.set_fact"],
+            {"release_pi5_start_attempted": True},
+        )
+
+        cleanup = yaml.safe_load(self.task_text("cleanup"))
+        incomplete = next(
+            task
+            for task in cleanup
+            if task["name"]
+            == "Remove an incomplete fresh Pi5 candidate before traffic switch"
+        )
+        argv = incomplete["ansible.builtin.command"]["argv"]
+        for required in ("'rm'", "'-f'", "'-s'", "'api-'", "'web-'"):
+            self.assertIn(required, argv)
+        self.assertIn("release_pi5_slot | default('')", argv)
+        for forbidden in (
+            "release_pi5_active_slot",
+            "release_pi5_previous_slot",
+            "gateway",
+        ):
+            self.assertNotIn(forbidden, argv)
+        conditions = "\n".join(incomplete["when"])
+        self.assertIn("release_pi5_start_attempted | default(false)", conditions)
+        self.assertIn("release_pi5_switch_attempted | default(false)", conditions)
+        self.assertIn("release_pi5_route | default('') == 'fresh'", conditions)
+        self.assertIn("release_pi5_slot | default('') in ['blue', 'green']", conditions)
+        self.assertIn("default({})", incomplete["environment"])
+
+    def test_pi5_migration_boundary_is_prisma_and_small_ledger_only(self) -> None:
+        prepare = self.task_text("prepare")
+        self.assertIn("prisma migrate deploy", prepare)
+        self.assertIn("prisma migrate status", prepare)
+        self.assertGreaterEqual(
+            prepare.count("finished_at IS NULL OR rolled_back_at IS NOT NULL"), 2
+        )
+        for forbidden in ("git ", "migration manifest", "repair", "checksum"):
+            self.assertNotIn(forbidden, prepare.lower())
+
+    def test_pi5_commit_and_rollback_order_is_crash_safe(self) -> None:
+        switch = self.task_text("switch")
+        commit = self.task_text("commit")
+        rollback = self.task_text("rollback")
+        self.assertIn("Caddyfile.{{ release_run_id }}", switch)
+        self.assertNotIn("mv -Tf", switch)
+        self.assertLess(commit.index("mv -Tf"), commit.index("Stop the previous Pi5 API"))
+        self.assertLess(
+            commit.index("Stop the previous Pi5 API"),
+            commit.index("Wait for the committed Pi5 scheduler leader"),
+        )
+        self.assertLess(
+            rollback.index("Restart previous Pi5 API"),
+            rollback.index("Wait for restored previous Pi5 scheduler leader"),
+        )
+        self.assertLess(
+            rollback.index("Wait for restored previous Pi5 scheduler leader"),
+            rollback.index("Atomically restore previous known Pi5 routing"),
+        )
+        self.assertLess(
+            rollback.index("Atomically restore previous known Pi5 routing"),
+            rollback.index("Reload restored canonical Pi5 routing"),
+        )
+
+    def test_pi5_distinguishes_three_rerun_states(self) -> None:
+        prepare = self.task_text("prepare")
+        for required in (
+            "fresh",
+            "settled",
+            "interrupted",
+            "same-release leader",
+            "old API is already stopped",
+            "old leader for interrupted",
+            "opposite_api_identity",
+            "opposite_web_identity",
+        ):
+            self.assertIn(required, prepare)
+        self.assertIn("release_pi5_route in ['fresh', 'interrupted']", self.task_text("commit"))
+
+    def test_interrupted_health_failure_has_rollback_authority(self) -> None:
+        prepare = yaml.safe_load(self.task_text("prepare"))
+        marker = next(
+            task
+            for task in prepare
+            if task["name"]
+            == "Mark interrupted Pi5 commit as an existing switched recovery boundary"
+        )
+        self.assertEqual(
+            marker["ansible.builtin.set_fact"],
+            {"release_pi5_switch_attempted": True},
+        )
+        self.assertEqual(marker["when"], "release_pi5_route == 'interrupted'")
+        rollback = self.task_text("rollback")
+        self.assertIn(
+            "release_pi5_switch_attempted | default(false) | bool",
+            rollback,
+        )
+        self.assertIn("Restart previous Pi5 API with its captured image", rollback)
+        self.assertIn("Atomically restore previous known Pi5 routing", rollback)
+        self.assertIn("Reload restored canonical Pi5 routing", rollback)
+
+    def test_settled_rerun_removes_only_opposite_cleanup_residue(self) -> None:
+        cleanup = yaml.safe_load(self.task_text("cleanup"))
+        retired = next(
+            task
+            for task in cleanup
+            if task["name"]
+            == "Remove previous Pi5 slot only after committed healthy handoff"
+        )
+        self.assertIn("release_pi5_previous_slot | default('')", retired["ansible.builtin.command"]["argv"])
+        condition = retired["when"][1]
+        self.assertIn("release_pi5_route | default('') == 'settled'", condition)
+        self.assertIn("release_pi5_opposite_api_id | default('') | length > 0", condition)
+        self.assertIn("release_pi5_opposite_web_id | default('') | length > 0", condition)
+        self.assertNotIn("release_pi5_active_slot", retired["ansible.builtin.command"]["argv"])
+
+    def test_pi5_monitor_is_fixed_and_cleanup_has_no_handoff(self) -> None:
+        defaults = yaml.safe_load(
+            (ANSIBLE / f"roles/{self.ROLE}/defaults/main.yml").read_text()
+        )
+        health = self.task_text("health")
+        sample = self.task_text("health-sample")
+        cleanup = self.task_text("cleanup")
+        self.assertEqual(defaults["release_pi5_stability_seconds"], 300)
+        self.assertEqual(defaults["release_pi5_health_interval_seconds"], 5)
+        self.assertIn("range(0", health)
+        self.assertIn("standby", sample)
+        self.assertIn("leader", sample)
+        self.assertNotIn(" stop", cleanup)
+        self.assertNotIn("caddy, reload", cleanup)
 
 
 if __name__ == "__main__":

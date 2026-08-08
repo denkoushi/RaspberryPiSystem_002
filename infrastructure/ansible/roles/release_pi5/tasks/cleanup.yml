@@ -1,16 +1,49 @@
 ---
-- name: Retire the previous Pi5 slot after verified stability
+- name: Remove an incomplete fresh Pi5 candidate before traffic switch
   ansible.builtin.command:
-    argv:
-      - "{{ release_pi5_project_dir }}/scripts/deploy/pi5-blue-green.sh"
-      - cleanup
-  when: release_pi5_healthy | default(false) | bool
+    argv: "{{ (release_pi5_compose_argv | default([])) + ['rm', '-f', '-s', 'api-' + (release_pi5_slot | default('')), 'web-' + (release_pi5_slot | default(''))] }}"
+  environment: "{{ release_pi5_compose_environment | default({}) }}"
   changed_when: true
+  when:
+    - release_pi5_start_attempted | default(false) | bool
+    - not (release_pi5_switch_attempted | default(false) | bool)
+    - not (release_pi5_healthy | default(false) | bool)
+    - not (release_pi5_rolled_back | default(false) | bool)
+    - release_pi5_route | default('') == 'fresh'
+    - release_pi5_slot | default('') in ['blue', 'green']
 
-- name: Remove run-scoped Pi5 planning files
+- name: Remove previous Pi5 slot only after committed healthy handoff
+  ansible.builtin.command:
+    argv: "{{ (release_pi5_compose_argv | default([])) + ['rm', '-f', '-s', 'api-' + (release_pi5_previous_slot | default('')), 'web-' + (release_pi5_previous_slot | default(''))] }}"
+  environment: "{{ release_pi5_compose_environment | default({}) }}"
+  changed_when: true
+  when:
+    - release_pi5_healthy | default(false) | bool
+    - >-
+      release_pi5_route | default('') in ['fresh', 'interrupted']
+      or (release_pi5_route | default('') == 'settled'
+          and (release_pi5_opposite_api_id | default('') | length > 0
+               or release_pi5_opposite_web_id | default('') | length > 0))
+
+- name: Remove failed Pi5 candidate only after verified rollback
+  ansible.builtin.command:
+    argv: "{{ (release_pi5_compose_argv | default([])) + ['rm', '-f', '-s', 'api-' + (release_pi5_slot | default('')), 'web-' + (release_pi5_slot | default(''))] }}"
+  environment: "{{ release_pi5_compose_environment | default({}) }}"
+  changed_when: true
+  when: release_pi5_rolled_back | default(false) | bool
+
+- name: Remove staged Pi5 route after a verified outcome
+  ansible.builtin.file:
+    path: "{{ release_pi5_staged_config }}"
+    state: absent
+  when: >-
+    release_pi5_healthy | default(false) | bool
+    or release_pi5_rolled_back | default(false) | bool
+
+- name: Remove private Pi5 candidate run files after a verified outcome
   ansible.builtin.file:
     path: "{{ release_pi5_run_dir }}"
     state: absent
-  when:
-    - release_pi5_run_dir is defined
-    - release_pi5_healthy | default(false) | bool
+  when: >-
+    release_pi5_healthy | default(false) | bool
+    or release_pi5_rolled_back | default(false) | bool

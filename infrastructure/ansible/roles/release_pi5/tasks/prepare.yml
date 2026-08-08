@@ -1,5 +1,5 @@
 ---
-- name: Validate the Pi5 release contract
+- name: Validate the isolated Pi5 candidate inputs
   ansible.builtin.assert:
     that:
       - release_sha is match('^[0-9a-f]{40}$')
@@ -7,35 +7,36 @@
       - release_sha in release_pi5_api_image
       - release_sha in release_pi5_web_image
       - release_pi5_api_image != release_pi5_web_image
-    fail_msg: >-
-      Pi5 requires one full release SHA, a safe run ID, and distinct immutable
-      API/Web image references containing that SHA.
+      - release_pi5_stability_seconds | int >= 1
+      - release_pi5_health_interval_seconds | int >= 1
+      - release_pi5_stability_seconds | int % release_pi5_health_interval_seconds | int == 0
+    fail_msg: Standard Pi5 candidate inputs are incomplete or mutable.
 
-- name: Define the Pi5 run-scoped paths
+- name: Define Pi5 candidate paths and initial outcome
   ansible.builtin.set_fact:
     release_pi5_run_dir: "{{ release_pi5_run_root }}/{{ release_run_id }}"
+    release_pi5_blue_config: "{{ release_pi5_run_root }}/{{ release_run_id }}/Caddyfile.blue"
+    release_pi5_green_config: "{{ release_pi5_run_root }}/{{ release_run_id }}/Caddyfile.green"
+    release_pi5_staged_config: "{{ release_pi5_gateway_config_dir }}/Caddyfile.{{ release_run_id }}"
     release_pi5_switch_attempted: false
-    release_pi5_switched: false
+    release_pi5_handoff_attempted: false
+    release_pi5_start_attempted: false
     release_pi5_healthy: false
+    release_pi5_rolled_back: false
 
-- name: Create the private Pi5 run directory
+- name: Create private Pi5 candidate directories
   ansible.builtin.file:
-    path: "{{ release_pi5_run_dir }}"
+    path: "{{ item.path }}"
     state: directory
-    owner: root
-    group: root
-    mode: '0700'
-
-- name: Pull immutable Pi5 candidate images while the active slot is live
-  ansible.builtin.command:
-    argv:
-      - docker
-      - image
-      - pull
-      - "{{ item }}"
+    mode: "{{ item.mode }}"
   loop:
-    - "{{ release_pi5_api_image }}"
-    - "{{ release_pi5_web_image }}"
+    - { path: "{{ release_pi5_run_dir }}", mode: '0700' }
+    - { path: "{{ release_pi5_gateway_config_dir }}", mode: '0755' }
+
+- name: Pull immutable Pi5 candidate images while active traffic remains live
+  ansible.builtin.command:
+    argv: [docker, image, pull, "{{ item }}"]
+  loop: ["{{ release_pi5_api_image }}", "{{ release_pi5_web_image }}"]
   register: release_pi5_pull
   retries: 3
   delay: 10
@@ -44,54 +45,37 @@
     'Downloaded newer image' in release_pi5_pull.stdout
     or 'Pull complete' in release_pi5_pull.stdout
 
-- name: Read immutable Pi5 candidate image IDs
+- name: Resolve desired Pi5 image IDs
   ansible.builtin.command:
-    argv:
-      - docker
-      - image
-      - inspect
-      - --format
-      - "{{ '{{.Id}}' }}"
-      - "{{ item }}"
-  loop:
-    - "{{ release_pi5_api_image }}"
-    - "{{ release_pi5_web_image }}"
-  register: release_pi5_image_ids
+    argv: [docker, image, inspect, --format, "{{ '{{.Id}}' }}", "{{ item }}"]
+  loop: ["{{ release_pi5_api_image }}", "{{ release_pi5_web_image }}"]
+  register: release_pi5_desired_ids
   changed_when: false
 
-- name: Require valid Pi5 image IDs
+- name: Require immutable desired Pi5 image IDs
   ansible.builtin.assert:
     that:
-      - release_pi5_image_ids.results | length == 2
-      - release_pi5_image_ids.results[0].stdout is match('^sha256:[0-9a-f]{64}$')
-      - release_pi5_image_ids.results[1].stdout is match('^sha256:[0-9a-f]{64}$')
-    fail_msg: Pi5 candidate images did not resolve to immutable Docker image IDs.
+      - release_pi5_desired_ids.results[0].stdout is match('^sha256:[0-9a-f]{64}$')
+      - release_pi5_desired_ids.results[1].stdout is match('^sha256:[0-9a-f]{64}$')
 
-- name: Read current Pi5 memory and disk while traffic stays live
+- name: Read Pi5 memory and disk while traffic remains live
   ansible.builtin.shell: |
     set -euo pipefail
     memory_mb="$(awk '/MemAvailable:/ {print int($2 / 1024)}' /proc/meminfo)"
-    disk_gb="$(df -Pk "{{ release_pi5_project_dir }}" | awk 'NR == 2 {print int($4 / 1024 / 1024)}')"
+    disk_gb="$(df -Pk {{ release_pi5_project_dir | quote }} | awk 'NR == 2 {print int($4 / 1024 / 1024)}')"
     printf '{"memoryMb":%s,"diskGb":%s}\n' "${memory_mb}" "${disk_gb}"
   args:
     executable: /bin/bash
-  register: release_pi5_capacity_sample
+  register: release_pi5_capacity
   changed_when: false
 
-- name: Parse the current Pi5 memory and disk values
-  ansible.builtin.set_fact:
-    release_pi5_capacity: "{{ release_pi5_capacity_sample.stdout | from_json }}"
-
-- name: Require enough Pi5 memory and disk for inactive-slot preparation
+- name: Require Pi5 memory and disk headroom immediately
   ansible.builtin.assert:
     that:
-      - release_pi5_capacity.memoryMb | int >= release_pi5_min_memory_mb | int
-      - release_pi5_capacity.diskGb | int >= release_pi5_min_disk_gb | int
-    fail_msg: >-
-      Pi5 lacks the current memory or disk headroom required to prepare an
-      inactive candidate while the active slot remains live.
+      - (release_pi5_capacity.stdout | from_json).memoryMb | int >= release_pi5_min_memory_mb | int
+      - (release_pi5_capacity.stdout | from_json).diskGb | int >= release_pi5_min_disk_gb | int
 
-- name: Wait for Pi5 load to settle after image preparation
+- name: Wait bounded time for post-pull Pi5 load to settle
   ansible.builtin.shell: |
     set -euo pipefail
     cpu_count="$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc)"
@@ -100,63 +84,295 @@
     printf '{"load":%s,"maxLoad":%s}\n' "${load}" "${max_load}"
   args:
     executable: /bin/bash
-  register: release_pi5_load_sample
-  changed_when: false
-  retries: 30
-  delay: 10
+  register: release_pi5_load
+  retries: "{{ release_pi5_load_retries }}"
+  delay: "{{ release_pi5_load_delay }}"
   until: >-
-    (release_pi5_load_sample.stdout | from_json).load | float
-    < (release_pi5_load_sample.stdout | from_json).maxLoad | float
+    (release_pi5_load.stdout | from_json).load | float
+    < (release_pi5_load.stdout | from_json).maxLoad | float
+  changed_when: false
 
-- name: Check the live Prisma ledger against the candidate source directly
+- name: Render the two known Pi5 routes from the explicit source template
+  ansible.builtin.copy:
+    src: "{{ release_pi5_gateway_template }}"
+    dest: "{{ item.path }}"
+    remote_src: true
+    mode: '0600'
+  loop:
+    - { slot: blue, path: "{{ release_pi5_blue_config }}" }
+    - { slot: green, path: "{{ release_pi5_green_config }}" }
+
+- name: Bind known Pi5 routes to exact slot upstreams
+  ansible.builtin.replace:
+    path: "{{ item.0.path }}"
+    regexp: "{{ item.1.pattern }}"
+    replace: "{{ item.1.value | replace('__SLOT__', item.0.slot) }}"
+  loop: "{{ query('nested', release_pi5_routes, release_pi5_route_replacements) }}"
+  vars:
+    release_pi5_routes:
+      - { slot: blue, path: "{{ release_pi5_blue_config }}" }
+      - { slot: green, path: "{{ release_pi5_green_config }}" }
+    release_pi5_route_replacements:
+      - { pattern: __BLUE_GREEN_API_UPSTREAM__, value: 'api-__SLOT__:8080' }
+      - { pattern: __BLUE_GREEN_WEB_UPSTREAM__, value: 'web-__SLOT__:80' }
+
+- name: Derive the canonical Pi5 slot from exactly two known routes
   ansible.builtin.shell: |
     set -euo pipefail
-    project={{ release_pi5_project_dir | quote }}
-    state="${project}/logs/deploy/pi5-blue-green-state.json"
-    ledger="$(mktemp "${TMPDIR:-/tmp}/pi5-standard-ledger.XXXXXX")"
-    trap 'rm -f "${ledger}"' EXIT
-    active="$(python3 - "${state}" <<'PY'
-    import json, sys
-    with open(sys.argv[1], encoding="utf-8") as stream:
-        slot = json.load(stream).get("activeSlot")
-    if slot not in {"blue", "green"}:
-        raise SystemExit("Blue/Green state has no active slot")
-    print(slot)
-    PY
-    )"
-    container="$(docker ps -q \
-      --filter "label=com.docker.compose.project=bluegreen" \
-      --filter "label=com.docker.compose.service=api-${active}")"
-    [[ -n "${container}" ]]
-    base_image="$(docker inspect -f '{{ '{{.Config.Image}}' }}' "${container}")"
-    base_sha="$(python3 - "${base_image}" <<'PY'
-    import re, sys
-    matches = re.findall(r"(?<![0-9a-f])([0-9a-f]{40})(?![0-9a-f])", sys.argv[1].lower())
-    if len(matches) != 1:
-        raise SystemExit("active image has no unique source SHA")
-    print(matches[0])
-    PY
-    )"
-    docker exec "${container}" sh -lc \
-      'PGCONNECT_TIMEOUT=10 psql "$DATABASE_URL" -X -q -v ON_ERROR_STOP=1 -AtF "|" -c "SELECT migration_name, checksum FROM \"_prisma_migrations\" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name"' \
-      >"${ledger}"
-    python3 "${project}/scripts/deploy/validate-expand-only-migrations.py" \
-      --applied-checksums "${ledger}" \
-      --repository "${project}" \
-      --base-ref "${base_sha}" \
-      --candidate-ref {{ release_sha | quote }} \
-      --migration-root apps/api/prisma/migrations
+    current={{ (release_pi5_gateway_config_dir + '/Caddyfile') | quote }}
+    if cmp -s "${current}" {{ release_pi5_blue_config | quote }}; then printf 'blue\n'
+    elif cmp -s "${current}" {{ release_pi5_green_config | quote }}; then printf 'green\n'
+    else echo 'canonical Caddyfile matches neither known route' >&2; exit 1
+    fi
   args:
     executable: /bin/bash
+  register: release_pi5_canonical_slot
   changed_when: false
 
-- name: Prepare and validate the inactive Pi5 slot
+- name: Define canonical and opposite Pi5 slots
+  ansible.builtin.set_fact:
+    release_pi5_active_slot: "{{ release_pi5_canonical_slot.stdout }}"
+    release_pi5_opposite_slot: "{{ 'green' if release_pi5_canonical_slot.stdout == 'blue' else 'blue' }}"
+
+- name: Resolve active and opposite Pi5 Compose container IDs
   ansible.builtin.command:
-    argv:
-      - "{{ release_pi5_project_dir }}/scripts/deploy/pi5-blue-green.sh"
-      - prepare
-      - --api-image
-      - "{{ release_pi5_api_image }}"
-      - --web-image
-      - "{{ release_pi5_web_image }}"
+    argv: "{{ release_pi5_compose_argv + ['ps', '-a', '-q', item.service] }}"
+  loop:
+    - { service: "api-{{ release_pi5_active_slot }}" }
+    - { service: "web-{{ release_pi5_active_slot }}" }
+    - { service: "api-{{ release_pi5_opposite_slot }}" }
+    - { service: "web-{{ release_pi5_opposite_slot }}" }
+    - { service: gateway }
+  register: release_pi5_container_ids
+  changed_when: false
+
+- name: Index Pi5 Compose container IDs
+  ansible.builtin.set_fact:
+    release_pi5_active_api_id: "{{ release_pi5_container_ids.results[0].stdout }}"
+    release_pi5_active_web_id: "{{ release_pi5_container_ids.results[1].stdout }}"
+    release_pi5_opposite_api_id: "{{ release_pi5_container_ids.results[2].stdout }}"
+    release_pi5_opposite_web_id: "{{ release_pi5_container_ids.results[3].stdout }}"
+    release_pi5_gateway_id: "{{ release_pi5_container_ids.results[4].stdout }}"
+
+- name: Require active Pi5 and gateway container identities
+  ansible.builtin.assert:
+    that:
+      - release_pi5_active_api_id is match('^[0-9a-f]{12,64}$')
+      - release_pi5_active_web_id is match('^[0-9a-f]{12,64}$')
+      - release_pi5_gateway_id is match('^[0-9a-f]{12,64}$')
+
+- name: Inspect Pi5 container image and running identities
+  ansible.builtin.command:
+    argv: [docker, inspect, --format, "{{ '{{.Config.Image}}|{{.Image}}|{{.State.Running}}' }}", "{{ item }}"]
+  loop:
+    - "{{ release_pi5_active_api_id }}"
+    - "{{ release_pi5_active_web_id }}"
+    - "{{ release_pi5_gateway_id }}"
+    - "{{ release_pi5_opposite_api_id }}"
+    - "{{ release_pi5_opposite_web_id }}"
+  register: release_pi5_container_identity
+  changed_when: false
+  when: item | length > 0
+
+- name: Index strict Pi5 image identities
+  ansible.builtin.set_fact:
+    release_pi5_active_api_identity: "{{ release_pi5_container_identity.results[0].stdout }}"
+    release_pi5_active_web_identity: "{{ release_pi5_container_identity.results[1].stdout }}"
+    release_pi5_gateway_identity: "{{ release_pi5_container_identity.results[2].stdout }}"
+    release_pi5_opposite_api_identity: "{{ release_pi5_container_identity.results[3].stdout | default('absent') }}"
+    release_pi5_opposite_web_identity: "{{ release_pi5_container_identity.results[4].stdout | default('absent') }}"
+
+- name: Require strict running active and gateway identities
+  ansible.builtin.assert:
+    that:
+      - release_pi5_active_api_identity is match('^.+\|sha256:[0-9a-f]{64}\|true$')
+      - release_pi5_active_web_identity is match('^.+\|sha256:[0-9a-f]{64}\|true$')
+      - release_pi5_gateway_identity is match('^.+\|sha256:[0-9a-f]{64}\|true$')
+
+- name: Detect whether canonical Pi5 images are the desired release
+  ansible.builtin.set_fact:
+    release_pi5_same_release: >-
+      {{ release_pi5_active_api_identity.split('|')[1] == release_pi5_desired_ids.results[0].stdout
+         and release_pi5_active_web_identity.split('|')[1] == release_pi5_desired_ids.results[1].stdout }}
+
+- name: Read the canonical same-release scheduler role
+  ansible.builtin.command:
+    argv: [docker, exec, "{{ release_pi5_active_api_id }}", node, -e, "{{ release_pi5_scheduler_role_script }}"]
+  vars:
+    release_pi5_scheduler_role_script: >-
+      fetch('http://127.0.0.1:8080/api/system/deploy-readiness/internal').then(async r=>{const b=await
+      r.json();const s=b.scheduler||{};if(!r.ok||b.ready!==true||b.database!=='ready'||s.enabled!==true||
+      !['leader','standby'].includes(s.role)||s.databaseConnection!=='connected')process.exit(1);console.log(s.role)}).catch(()=>process.exit(1))
+  register: release_pi5_active_scheduler
+  changed_when: false
+  when: release_pi5_same_release | bool
+
+- name: Wait for same-release leader when the old API is already stopped
+  ansible.builtin.command:
+    argv: [docker, exec, "{{ release_pi5_active_api_id }}", node, -e, "{{ release_pi5_leader_script }}"]
+  vars:
+    release_pi5_leader_script: >-
+      fetch('http://127.0.0.1:8080/api/system/deploy-readiness/internal').then(async r=>{const b=await
+      r.json();const s=b.scheduler||{};process.exit(r.ok&&b.ready===true&&b.database==='ready'&&s.enabled===true&&
+      s.role==='leader'&&s.databaseConnection==='connected'?0:1)}).catch(()=>process.exit(1))
+  register: release_pi5_settled_wait
+  retries: 30
+  delay: 2
+  until: release_pi5_settled_wait is succeeded
+  changed_when: false
+  when:
+    - release_pi5_same_release | bool
+    - release_pi5_active_scheduler.stdout == 'standby'
+    - not release_pi5_opposite_api_identity.endswith('|true')
+
+- name: Require complete old image authority for interrupted commit
+  ansible.builtin.assert:
+    that:
+      - release_pi5_opposite_api_identity is match('^.+\|sha256:[0-9a-f]{64}\|true$')
+      - release_pi5_opposite_web_identity is match('^.+\|sha256:[0-9a-f]{64}\|(true|false)$')
+  when:
+    - release_pi5_same_release | bool
+    - release_pi5_active_scheduler.stdout == 'standby'
+    - release_pi5_opposite_api_identity.endswith('|true')
+
+- name: Verify old leader for interrupted Pi5 commit
+  ansible.builtin.command:
+    argv: [docker, exec, "{{ release_pi5_opposite_api_id }}", node, -e, "{{ release_pi5_leader_script }}"]
+  vars:
+    release_pi5_leader_script: >-
+      fetch('http://127.0.0.1:8080/api/system/deploy-readiness/internal').then(async r=>{const b=await
+      r.json();const s=b.scheduler||{};process.exit(r.ok&&b.ready===true&&b.database==='ready'&&s.enabled===true&&
+      s.role==='leader'&&s.databaseConnection==='connected'?0:1)}).catch(()=>process.exit(1))
+  changed_when: false
+  when:
+    - release_pi5_same_release | bool
+    - release_pi5_active_scheduler.stdout == 'standby'
+    - release_pi5_opposite_api_identity.endswith('|true')
+
+- name: Classify fresh settled or interrupted Pi5 route
+  ansible.builtin.set_fact:
+    release_pi5_route: >-
+      {%- if not release_pi5_same_release | bool -%}fresh
+      {%- elif release_pi5_active_scheduler.stdout == 'leader' or
+              (release_pi5_settled_wait is defined and not (release_pi5_settled_wait.skipped | default(false))) -%}settled
+      {%- else -%}interrupted
+      {%- endif -%}
+    release_pi5_slot: "{{ release_pi5_active_slot if release_pi5_same_release | bool else release_pi5_opposite_slot }}"
+    release_pi5_previous_slot: "{{ release_pi5_opposite_slot if release_pi5_same_release | bool else release_pi5_active_slot }}"
+    release_pi5_previous_config: "{{ release_pi5_blue_config if (release_pi5_opposite_slot if release_pi5_same_release | bool else release_pi5_active_slot) == 'blue' else release_pi5_green_config }}"
+
+- name: Mark interrupted Pi5 commit as an existing switched recovery boundary
+  ansible.builtin.set_fact:
+    release_pi5_switch_attempted: true
+  when: release_pi5_route == 'interrupted'
+
+- name: Define exact slot-specific Compose images
+  ansible.builtin.set_fact:
+    release_pi5_compose_environment:
+      PI5_PROJECT_DIR: "{{ release_pi5_project_dir }}"
+      PI5_ENV_FILE: "{{ release_pi5_env_file }}"
+      PI5_BLUE_GREEN_CONFIG_DIR: "{{ release_pi5_gateway_config_dir }}"
+      PI5_BLUE_API_IMAGE: "{{ release_pi5_active_api_identity.split('|')[0] if release_pi5_active_slot == 'blue' else (release_pi5_opposite_api_identity.split('|')[0] if release_pi5_same_release | bool else release_pi5_api_image) }}"
+      PI5_GREEN_API_IMAGE: "{{ release_pi5_active_api_identity.split('|')[0] if release_pi5_active_slot == 'green' else (release_pi5_opposite_api_identity.split('|')[0] if release_pi5_same_release | bool else release_pi5_api_image) }}"
+      PI5_BLUE_WEB_IMAGE: "{{ release_pi5_active_web_identity.split('|')[0] if release_pi5_active_slot == 'blue' else (release_pi5_opposite_web_identity.split('|')[0] if release_pi5_same_release | bool else release_pi5_web_image) }}"
+      PI5_GREEN_WEB_IMAGE: "{{ release_pi5_active_web_identity.split('|')[0] if release_pi5_active_slot == 'green' else (release_pi5_opposite_web_identity.split('|')[0] if release_pi5_same_release | bool else release_pi5_web_image) }}"
+      PI5_GATEWAY_IMAGE: "{{ release_pi5_gateway_identity.split('|')[0] }}"
+
+- name: Reject unfinished or rolled-back Prisma ledger before deploy
+  ansible.builtin.command:
+    argv: "{{ release_pi5_migration_argv + ['run', '--rm', '--no-deps', 'api-' + release_pi5_slot, 'sh', '-lc', release_pi5_ledger_command] }}"
+  vars:
+    release_pi5_ledger_command: >-
+      PGCONNECT_TIMEOUT=10 psql "$MIGRATION_DATABASE_URL" -X -q -v ON_ERROR_STOP=1 -At
+      -c 'SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NULL OR rolled_back_at IS NOT NULL'
+  environment: "{{ release_pi5_compose_environment }}"
+  register: release_pi5_ledger_before
+  changed_when: false
+  when: release_pi5_route == 'fresh'
+
+- name: Require clean Prisma ledger before deploy
+  ansible.builtin.assert:
+    that: [release_pi5_ledger_before.stdout | trim == '0']
+  when: release_pi5_route == 'fresh'
+
+- name: Apply Prisma migrations with the standard production command
+  ansible.builtin.command:
+    argv: "{{ release_pi5_migration_argv + ['run', '--rm', '--no-deps', 'api-' + release_pi5_slot, 'sh', '-lc', release_pi5_prisma_deploy_command] }}"
+  vars:
+    release_pi5_prisma_deploy_command: 'DATABASE_URL="$MIGRATION_DATABASE_URL" exec ./node_modules/.bin/prisma migrate deploy'
+  environment: "{{ release_pi5_compose_environment }}"
   changed_when: true
+  when: release_pi5_route == 'fresh'
+
+- name: Verify Prisma migration status
+  ansible.builtin.command:
+    argv: "{{ release_pi5_migration_argv + ['run', '--rm', '--no-deps', 'api-' + release_pi5_slot, 'sh', '-lc', release_pi5_prisma_status_command] }}"
+  vars:
+    release_pi5_prisma_status_command: 'DATABASE_URL="$MIGRATION_DATABASE_URL" exec ./node_modules/.bin/prisma migrate status'
+  environment: "{{ release_pi5_compose_environment }}"
+  changed_when: false
+  when: release_pi5_route == 'fresh'
+
+- name: Recheck Prisma ledger after deploy
+  ansible.builtin.command:
+    argv: "{{ release_pi5_migration_argv + ['run', '--rm', '--no-deps', 'api-' + release_pi5_slot, 'sh', '-lc', release_pi5_ledger_command] }}"
+  vars:
+    release_pi5_ledger_command: >-
+      PGCONNECT_TIMEOUT=10 psql "$MIGRATION_DATABASE_URL" -X -q -v ON_ERROR_STOP=1 -At
+      -c 'SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NULL OR rolled_back_at IS NOT NULL'
+  environment: "{{ release_pi5_compose_environment }}"
+  register: release_pi5_ledger_after
+  changed_when: false
+  when: release_pi5_route == 'fresh'
+
+- name: Require clean Prisma ledger after deploy
+  ansible.builtin.assert:
+    that: [release_pi5_ledger_after.stdout | trim == '0']
+  when: release_pi5_route == 'fresh'
+
+- name: Mark the inactive Pi5 candidate startup boundary
+  ansible.builtin.set_fact:
+    release_pi5_start_attempted: true
+  when: release_pi5_route == 'fresh'
+
+- name: Start only inactive Pi5 API and Web services
+  ansible.builtin.command:
+    argv: "{{ release_pi5_compose_argv + ['up', '-d', '--no-build', '--pull', 'never', '--no-deps', '--wait', '--wait-timeout', release_pi5_compose_wait_seconds | string, 'api-' + release_pi5_slot, 'web-' + release_pi5_slot] }}"
+  environment: "{{ release_pi5_compose_environment }}"
+  changed_when: true
+  when: release_pi5_route == 'fresh'
+
+- name: Resolve fresh Pi5 candidate container IDs
+  ansible.builtin.command:
+    argv: "{{ release_pi5_compose_argv + ['ps', '-q', item + '-' + release_pi5_slot] }}"
+  loop: [api, web]
+  register: release_pi5_fresh_ids
+  changed_when: false
+  when: release_pi5_route == 'fresh'
+
+- name: Record fresh Pi5 candidate container IDs
+  ansible.builtin.set_fact:
+    release_pi5_api_id: "{{ release_pi5_fresh_ids.results[0].stdout }}"
+    release_pi5_web_id: "{{ release_pi5_fresh_ids.results[1].stdout }}"
+  when: release_pi5_route == 'fresh'
+
+- name: Record same-release Pi5 candidate container IDs
+  ansible.builtin.set_fact:
+    release_pi5_api_id: "{{ release_pi5_active_api_id }}"
+    release_pi5_web_id: "{{ release_pi5_active_web_id }}"
+  when: release_pi5_route != 'fresh'
+
+- name: Verify fresh Pi5 candidate scheduler standby
+  ansible.builtin.command:
+    argv: [docker, exec, "{{ release_pi5_api_id }}", node, -e, "{{ release_pi5_standby_script }}"]
+  vars:
+    release_pi5_standby_script: >-
+      fetch('http://127.0.0.1:8080/api/system/deploy-readiness/internal').then(async r=>{const b=await
+      r.json();const s=b.scheduler||{};process.exit(r.ok&&b.ready===true&&b.database==='ready'&&s.enabled===true&&
+      s.role==='standby'&&s.databaseConnection==='connected'?0:1)}).catch(()=>process.exit(1))
+  register: release_pi5_standby
+  retries: 30
+  delay: 2
+  until: release_pi5_standby is succeeded
+  changed_when: false
+  when: release_pi5_route == 'fresh'

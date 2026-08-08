@@ -1,0 +1,44 @@
+---
+- name: Atomically commit fresh Pi5 candidate routing after stability
+  ansible.builtin.shell: |
+    set -euo pipefail
+    destination={{ (release_pi5_gateway_config_dir + '/Caddyfile') | quote }}
+    temporary="${destination}.commit.{{ release_run_id }}"
+    cp {{ release_pi5_staged_config | quote }} "${temporary}"
+    chmod 0644 "${temporary}"
+    mv -Tf "${temporary}" "${destination}"
+  args:
+    executable: /bin/bash
+  changed_when: true
+  when: release_pi5_route == 'fresh'
+
+- name: Mark the Pi5 scheduler handoff boundary
+  ansible.builtin.set_fact:
+    release_pi5_handoff_attempted: true
+  when: release_pi5_route in ['fresh', 'interrupted']
+
+- name: Stop the previous Pi5 API after canonical routing commit
+  ansible.builtin.command:
+    argv: "{{ release_pi5_compose_argv + ['stop', 'api-' + release_pi5_previous_slot] }}"
+  environment: "{{ release_pi5_compose_environment }}"
+  changed_when: true
+  when: release_pi5_route in ['fresh', 'interrupted']
+
+- name: Wait for the committed Pi5 scheduler leader
+  ansible.builtin.command:
+    argv: [docker, exec, "{{ release_pi5_api_id }}", node, -e, "{{ release_pi5_leader_script }}"]
+  vars:
+    release_pi5_leader_script: >-
+      fetch('http://127.0.0.1:8080/api/system/deploy-readiness/internal').then(async r=>{const b=await
+      r.json();const s=b.scheduler||{};process.exit(r.ok&&b.ready===true&&b.database==='ready'&&s.enabled===true&&
+      s.role==='leader'&&s.databaseConnection==='connected'?0:1)}).catch(()=>process.exit(1))
+  register: release_pi5_new_leader
+  retries: 30
+  delay: 2
+  until: release_pi5_new_leader is succeeded
+  changed_when: false
+  when: release_pi5_route in ['fresh', 'interrupted']
+
+- name: Record healthy Pi5 candidate outcome
+  ansible.builtin.set_fact:
+    release_pi5_healthy: true

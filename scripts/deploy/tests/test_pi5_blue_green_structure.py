@@ -181,10 +181,6 @@ class Pi5BlueGreenStructureTest(unittest.TestCase):
         evidence = (
             ROOT / "scripts/deploy/pi5-live-migration-evidence.sh"
         ).read_text(encoding="utf-8")
-        reconcile = (
-            ROOT
-            / "infrastructure/ansible/templates/pi5-blue-green-reconcile.service.j2"
-        ).read_text(encoding="utf-8")
         self.assertIn(
             'PHASE3 = PROJECT / "scripts/deploy/pi5-blue-green.sh"', rolling
         )
@@ -195,7 +191,12 @@ class Pi5BlueGreenStructureTest(unittest.TestCase):
             evidence,
         )
         self.assertIn('"$PHASE3" migration-ledger', evidence)
-        self.assertIn("/scripts/deploy/pi5-blue-green.sh reconcile", reconcile)
+        self.assertFalse(
+            (
+                ROOT
+                / "infrastructure/ansible/templates/pi5-blue-green-reconcile.service.j2"
+            ).exists()
+        )
         for path in self.module_paths():
             self.assertNotIn(str(path.relative_to(ROOT)), rolling + backend + evidence)
 
