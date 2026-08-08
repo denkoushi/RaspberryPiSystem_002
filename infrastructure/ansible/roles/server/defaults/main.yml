@@ -1,9 +1,5 @@
 ---
 repo_path: /opt/RaspberryPiSystem_002
-# api_healthcheck_urlはgroup_vars/all.ymlで定義（リポジトリ更新前に変数が読み込まれるため）
-pi5_minimal_downtime_deploy_enabled: false
-pi5_blue_green_deploy_enabled: false
-# The rolling-release coordinator converges host configuration first, then
-# owns candidate build, migration, and Blue/Green switching itself.  Keep the
-# historical full role behavior for non-coordinator playbooks.
+# Both modes provision host and configuration state only. API/Web release,
+# migration, traffic switching, health, and rollback belong to release_pi5.
 server_release_mode: full

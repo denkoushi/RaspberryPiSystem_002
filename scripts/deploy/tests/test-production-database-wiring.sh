@@ -9,7 +9,8 @@ PHASE3_MIGRATION="$ROOT/infrastructure/docker/docker-compose.phase3.migration.ym
 DOCKER_ENV_TEMPLATE="$ROOT/infrastructure/ansible/templates/docker.env.j2"
 API_ENV_TEMPLATE="$ROOT/infrastructure/ansible/templates/api.env.j2"
 INVENTORY="$ROOT/infrastructure/ansible/inventory.yml"
-SERVER_TASKS="$ROOT/infrastructure/ansible/roles/server/tasks/main.yml"
+STANDARD_DEFAULTS="$ROOT/infrastructure/ansible/roles/release_pi5/defaults/main.yml"
+STANDARD_PREPARE="$ROOT/infrastructure/ansible/roles/release_pi5/tasks/prepare.yml"
 MIGRATIONS="$ROOT/scripts/deploy/lib/pi5-blue-green/migrations.sh"
 ROLE_PLAYBOOK="$ROOT/infrastructure/ansible/playbooks/prepare-pi5-database-roles.yml"
 
@@ -58,8 +59,14 @@ grep -Fq 'app_database_url: "{{ vault_app_database_url }}"' "$INVENTORY" \
 grep -Fq 'migration_database_url: "{{ vault_migration_database_url }}"' "$INVENTORY" \
   || fail 'normal-factory inventory does not require the Vault migration URL'
 
-grep -Fq 'docker-compose.server.migration.yml' "$SERVER_TASKS" \
-  || fail 'legacy Ansible migration path does not apply the migration-only override'
+grep -Fq 'docker-compose.phase3.migration.yml' "$STANDARD_DEFAULTS" \
+  || fail 'canonical Ansible release does not select the migration-only override'
+grep -Fq 'release_pi5_migration_argv' "$STANDARD_PREPARE" \
+  || fail 'canonical Ansible release does not use its migration-only Compose boundary'
+grep -Fq 'prisma migrate deploy' "$STANDARD_PREPARE" \
+  || fail 'canonical Ansible release does not apply pending migrations'
+grep -Fq 'prisma migrate status' "$STANDARD_PREPARE" \
+  || fail 'canonical Ansible release does not verify migration status'
 grep -Fq 'compose_migration run --rm --no-deps' "$MIGRATIONS" \
   || fail 'Blue/Green migration path does not use the migration-only Compose boundary'
 grep -Fq 'DATABASE_URL="$MIGRATION_DATABASE_URL" exec ./node_modules/.bin/prisma migrate deploy' "$MIGRATIONS" \

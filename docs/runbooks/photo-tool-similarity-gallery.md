@@ -28,7 +28,7 @@
 
 その他の数値・閾値は inventory の `default(...)` か j2 の `default` で既定化済み。変更する場合は vault または host_vars で上書き。
 
-**デプロイ後検証**: `roles/server` が `PHOTO_TOOL_EMBEDDING_ENABLED=true` のとき、API コンテナに `PHOTO_TOOL_EMBEDDING_URL` と `PHOTO_TOOL_EMBEDDING_MODEL_ID` が入っていることを検証する（`.env` 更新時）。
+**反映手順**: `roles/server` で`.env`を配置した後、canonical `deploy-release-standard.yml`の`release_pi5`でAPI/Webをreleaseし、API healthを確認する。
 
 ## 2. 既存 GOOD のバックフィル
 

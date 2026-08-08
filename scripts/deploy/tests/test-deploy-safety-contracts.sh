@@ -16,6 +16,7 @@ TERMINAL_RELEASE_GUARD="${ROOT_DIR}/infrastructure/ansible/tasks/assert-terminal
 SERVER_DEFAULTS="${ROOT_DIR}/infrastructure/ansible/roles/server/defaults/main.yml"
 SERVER_TASKS="${ROOT_DIR}/infrastructure/ansible/roles/server/tasks/main.yml"
 SERVER_HANDLERS="${ROOT_DIR}/infrastructure/ansible/roles/server/handlers/main.yml"
+MANAGE_APP_CONFIGS="${ROOT_DIR}/infrastructure/ansible/playbooks/manage-app-configs.yml"
 UPDATE_CLIENTS_CORE="${ROOT_DIR}/infrastructure/ansible/tasks/update-clients-core.yml"
 RESTART_CLIENT_SERVICE="${ROOT_DIR}/infrastructure/ansible/tasks/restart-client-service.yml"
 TERMINAL_DISPLAY_PREFLIGHT="${ROOT_DIR}/infrastructure/ansible/tasks/preflight-terminal-display.yml"
@@ -411,14 +412,15 @@ assert talkplaza['signage']['hosts'] == ['talkplaza-signage01']
 PY
 
 python3 - "${SERVER_DEFAULTS}" "${SERVER_TASKS}" "${SERVER_HANDLERS}" \
-  "${SERVER_CONFIG_PLAYBOOK}" "${ROOT_DIR}/infrastructure/ansible" <<'PY'
+  "${SERVER_CONFIG_PLAYBOOK}" "${ROOT_DIR}/infrastructure/ansible" \
+  "${MANAGE_APP_CONFIGS}" <<'PY'
 import re
 import sys
 from pathlib import Path
 
 import yaml
 
-defaults_path, tasks_path, handlers_path, playbook_path, ansible_root = map(
+defaults_path, tasks_path, handlers_path, playbook_path, ansible_root, manage_path = map(
     Path, sys.argv[1:]
 )
 ansible_root = ansible_root.resolve()
@@ -427,11 +429,26 @@ tasks = tasks_path.read_text(encoding='utf-8')
 
 assert re.search(r'^server_release_mode:\s*full\s*$', defaults, re.MULTILINE)
 assert "server_release_mode in ['full', 'host-config-only']" in tasks
-assert 'Reject retired Ansible-owned Pi5 release executors' in tasks
 assert 'pi5-image-deploy.sh' not in tasks
 assert 'pi5-candidate-build.sh' not in tasks
 assert 'pi5-blue-green.sh prepare' not in tasks
 assert 'pi5-blue-green.sh switch' not in tasks
+assert 'pi5-phase3-legacy-guard.sh' not in tasks
+assert 'docker compose' not in tasks
+assert 'prisma migrate' not in tasks
+
+handlers = handlers_path.read_text(encoding='utf-8')
+manage = manage_path.read_text(encoding='utf-8')
+for text in (handlers, manage):
+    assert 'pi5-phase3-legacy-guard.sh' not in text
+    assert 'docker compose' not in text
+for retired_handler in (
+    'restart api',
+    'restart web',
+    'restart docker compose services',
+):
+    assert retired_handler not in handlers
+    assert f'notify: {retired_handler}' not in manage
 
 tasks_dir = tasks_path.parent.resolve()
 task_paths = {path.resolve() for path in tasks_dir.glob('*.yml')}
@@ -483,9 +500,6 @@ CONTAINER_MODULES = {
     'podman_container',
     'podman_image',
 }
-RESCUE_TASK_NAME = (
-    'Rescue measuring instrument genre images from api container before recreate'
-)
 RUNTIME_PERMISSION_PROBE_NAME = (
     'Verify existing Pi5 writable trees are ready for the non-root runtime'
 )
@@ -630,56 +644,6 @@ def import_target(value):
     return None
 
 
-def validate_rescue_task(task, module, module_value):
-    assert module == 'ansible.builtin.shell', (
-        'genre-image rescue must remain one auditable shell task'
-    )
-    conditions = when_items(task)
-    assert len(conditions) == 1, (
-        'host-config-only rescue must be an independent OR, not an ANDed when item'
-    )
-    condition = normalized(conditions[0])
-    assert re.match(
-        r"^\(?\s*server_release_mode\s*==\s*['\"]host-config-only['\"]\s*\)?\s+or\s+",
-        condition,
-    ), f'host-config-only must be the independent first OR branch: {condition}'
-    for trigger in (
-        'force_docker_rebuild',
-        'server_docker_build_needed',
-        'docker_env_result.changed',
-    ):
-        assert trigger in condition, f'full-mode rescue trigger missing: {trigger}'
-
-    shell = str(module_value)
-    assert 'set -euo pipefail' in shell
-    assert re.search(
-        r'\bdocker\s+compose\b[^\n]*\bps\s+(?:-a\b|--all\b)', shell
-    ), (
-        'genre-image rescue must inspect stopped outgoing api containers with ps -a'
-    )
-    assert re.search(r'\bdocker\s+cp\s+["\']?\$\{API_CID\}:', shell), (
-        'genre-image rescue must copy only from the outgoing container to the host'
-    )
-    assert '|| true' not in shell and '|| echo' not in shell
-    assert task.get('failed_when') is not False
-    assert not task.get('ignore_errors', False)
-
-    dangerous_compose = re.compile(
-        r'\bdocker\s+compose\b[^\n]*\b(?:up|down|build|start|restart|stop|kill|rm|create|run|exec|pull|push)\b',
-        re.IGNORECASE,
-    )
-    dangerous_docker = re.compile(
-        r'\bdocker\s+(?!compose\b)(?:run|start|restart|stop|kill|rm|create|build|load|import|pull|push|tag|commit|update|rename)\b',
-        re.IGNORECASE,
-    )
-    assert not dangerous_compose.search(shell), (
-        'genre-image rescue must not mutate Compose runtime state'
-    )
-    assert not dangerous_docker.search(shell), (
-        'genre-image rescue must not mutate Docker runtime state'
-    )
-
-
 def validate_runtime_permission_probe(task, module, module_value):
     assert module == 'ansible.builtin.shell'
     shell = str(module_value)
@@ -697,7 +661,6 @@ def validate_runtime_permission_probe(task, module, module_value):
         )
 
 
-rescue_tasks = []
 reconcile_tasks = []
 observed_reasons = set()
 scanned_paths = set()
@@ -724,8 +687,6 @@ def walk_tasks(task_list, source, inherited_full):
         name = task.get('name', '<unnamed>')
         entries = module_entries(task)
 
-        if name == RESCUE_TASK_NAME:
-            rescue_tasks.append((source, task, entries))
         if name == 'Enable Pi5 Blue/Green boot reconciliation service':
             reconcile_tasks.append((source, task))
 
@@ -733,13 +694,10 @@ def walk_tasks(task_list, source, inherited_full):
             reasons = runtime_reasons(task, module, module_value)
             observed_reasons.update(reasons)
             if reasons and not effective_full:
-                if name == RESCUE_TASK_NAME:
-                    validate_rescue_task(task, module, module_value)
-                else:
-                    raise AssertionError(
-                        f'{source}:{name} lacks an effective full-mode guard '
-                        f'for {sorted(reasons)}'
-                    )
+                raise AssertionError(
+                    f'{source}:{name} lacks an effective full-mode guard '
+                    f'for {sorted(reasons)}'
+                )
 
             if module in IMPORT_MODULES:
                 target = import_target(module_value)
@@ -806,7 +764,6 @@ HOST_CONFIG_SHELL_TASKS = {
     'Validate Web .env syntax',
     'Validate Docker Compose .env syntax',
     RUNTIME_PERMISSION_PROBE_NAME,
-    RESCUE_TASK_NAME,
 }
 
 
@@ -894,13 +851,10 @@ def walk_graph_tasks(task_list, source, inherited_full):
 
             reasons = runtime_reasons(task, module, module_value)
             if reasons and not effective_full:
-                if name == RESCUE_TASK_NAME:
-                    validate_rescue_task(task, module, module_value)
-                else:
-                    raise AssertionError(
-                        f'{source}:{name} lacks an effective full-mode guard '
-                        f'in the server play graph for {sorted(reasons)}'
-                    )
+                raise AssertionError(
+                    f'{source}:{name} lacks an effective full-mode guard '
+                    f'in the server play graph for {sorted(reasons)}'
+                )
 
         for section in ('block', 'rescue', 'always'):
             if section in task:
@@ -954,18 +908,11 @@ for required in (
 assert scanned_paths >= task_paths | {handlers_path.resolve()}, (
     'every server task file and the handler file must be audited'
 )
-assert len(rescue_tasks) == 1, (
-    f'expected exactly one exact-name genre-image rescue, found {len(rescue_tasks)}'
-)
-rescue_source, rescue_task, rescue_entries = rescue_tasks[0]
-assert len(rescue_entries) == 1
-validate_rescue_task(rescue_task, *rescue_entries[0])
-
 assert len(reconcile_tasks) == 0, (
     'server provisioning must not reintroduce the retired Pi5 reconcile unit'
 )
 
-required_reasons = {
+retired_reasons = {
     'Docker Compose lifecycle',
     'Docker lifecycle',
     'deploy script entrypoint',
@@ -973,8 +920,9 @@ required_reasons = {
     'legacy API health',
     'legacy API environment verification',
 }
-assert required_reasons <= observed_reasons, (
-    f'runtime detector did not exercise: {sorted(required_reasons - observed_reasons)}'
+assert retired_reasons.isdisjoint(observed_reasons), (
+    f'server provisioning still reaches retired runtime behavior: '
+    f'{sorted(retired_reasons & observed_reasons)}'
 )
 
 # Keep classifier coverage fail-closed for future entrypoint and import shapes.
