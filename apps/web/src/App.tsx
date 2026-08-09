@@ -141,6 +141,11 @@ const KioskAssemblyWorkSessionPage = lazy(() =>
     default: module.KioskAssemblyWorkSessionPage
   }))
 );
+const KioskAssemblyTrainingPage = lazy(() =>
+  import('./pages/kiosk/KioskAssemblyTrainingPage').then((module) => ({
+    default: module.KioskAssemblyTrainingPage
+  }))
+);
 const KioskSelfInspectionSessionPage = lazy(() =>
   import('./pages/kiosk/KioskSelfInspectionSessionPage').then((module) => ({
     default: module.KioskSelfInspectionSessionPage
@@ -191,6 +196,7 @@ function App() {
           <Route path="/kiosk/pallet-visualization" element={<KioskPalletVisualizationPage />} />
           <Route path="/kiosk/documents" element={<KioskDocumentsPage />} />
           <Route path="/kiosk/assembly" element={<KioskAssemblyHomePage />} />
+          <Route path="/kiosk/assembly/training" element={lazyRouteElement(<KioskAssemblyTrainingPage />)} />
           <Route path="/kiosk/assembly/library" element={<KioskAssemblyPage />} />
           <Route
             path="/kiosk/assembly/procedure-order-settings"

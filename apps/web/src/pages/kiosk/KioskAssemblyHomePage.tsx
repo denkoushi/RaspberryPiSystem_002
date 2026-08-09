@@ -20,6 +20,7 @@ import {
   AssemblyWipPane,
   buildAssemblyLotWorkIds,
   createAssemblyRequestId,
+  KIOSK_ASSEMBLY_TRAINING_PATH,
   kioskAssemblyLibraryPath,
   kioskAssemblyRecordApprovalPath,
   kioskAssemblyTraceabilityPath,
@@ -407,6 +408,12 @@ export function KioskAssemblyHomePage() {
           </div>
         </div>
         <nav className="flex flex-wrap items-center gap-2" aria-label="組立メニュー">
+          <Link
+            to={KIOSK_ASSEMBLY_TRAINING_PATH}
+            className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1.02rem]')}
+          >
+            訓練
+          </Link>
           <Link
             to={kioskAssemblyLibraryPath({ focus: 'procedures' })}
             className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1.02rem]')}

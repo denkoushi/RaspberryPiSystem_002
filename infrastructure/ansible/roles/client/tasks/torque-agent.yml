@@ -14,6 +14,7 @@
       - torque_agent_hid_devices | length > 0
       - torque_agent_hid_devices | map(attribute='path') | select('match', '^/dev/input/by-id/') | list | length == torque_agent_hid_devices | length
       - torque_agent_hid_devices | map(attribute='parserProfile') | select('equalto', 'cem3-btla-hogp-v1') | list | length == torque_agent_hid_devices | length
+      - torque_agent_hid_devices | map(attribute='serialNumber') | select('match', '^[A-Za-z0-9._-]{1,120}$') | list | length == torque_agent_hid_devices | length
       - torque_agent_tls_verify_mode | default('system') in ['system', 'insecure']
       - torque_agent_bluetooth_adapter.usb_vendor_id | default('') is match('^[0-9a-f]{4}$')
       - torque_agent_bluetooth_adapter.usb_product_id | default('') is match('^[0-9a-f]{4}$')

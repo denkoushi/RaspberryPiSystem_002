@@ -59,6 +59,7 @@ If `EXEC_PLAN.md` must be touched, keep the entry short and limited to current s
 - Active DGX ComfyUI Phase 1 follow-up: `docs/plans/dgx-comfyui-single-image-edit-workflow.md`
 - Active assembly torque-wrench traceability: `docs/plans/assembly-torque-wrench-traceability-execplan.md`
 - Active fleet-wide assembly torque-wrench connection lease: `docs/plans/assembly-torque-wrench-connection-lease-execplan.md`
+- Active assembly digital torque-wrench training: `docs/plans/assembly-torque-training-execplan.md` · cutover `docs/runbooks/torque-usage-lease-cutover.md`
 - Active assembly torque display latency: `docs/plans/assembly-torque-display-latency-execplan.md`
 - Active assembly template editor density: `docs/plans/kiosk-assembly-template-editor-density-execplan.md`
 - Deploy speed Phase B (SSH path, production-validated): `docs/plans/deploy-speed-phase-b-execplan.md`

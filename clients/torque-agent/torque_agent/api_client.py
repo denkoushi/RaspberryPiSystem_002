@@ -39,8 +39,13 @@ class HttpxTorqueRecordApi:
     async def post(self, session_id: str, event_id: str, payload: dict[str, object]) -> httpx.Response:
         body = dict(payload)
         body["sourceEventKey"] = event_id
+        target_kind = body.pop("targetKind", "assembly")
+        if target_kind == "training":
+            path = f"{self._api_base_url}/api/torque-training/sessions/{session_id}/attempts/from-agent"
+        else:
+            path = f"{self._api_base_url}/api/assembly/work-sessions/{session_id}/record-torque"
         return await self._client.post(
-            f"{self._api_base_url}/api/assembly/work-sessions/{session_id}/record-torque",
+            path,
             headers={"x-client-key": self._client_key},
             json=body,
         )

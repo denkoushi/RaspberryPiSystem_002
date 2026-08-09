@@ -29,6 +29,7 @@ def _http_origin(value: str, label: str) -> str:
 class HidDeviceConfig:
     path: Path
     parser_profile: str
+    serial_number: str | None = None
 
 
 @dataclass(frozen=True)
@@ -71,7 +72,10 @@ class AgentConfig:
                 validate_device_path(path)
             except CaptureSafetyError as error:
                 raise ValueError(f"Only explicit torque-wrench /dev/input/by-id devices are allowed: {path}") from error
-            devices.append(HidDeviceConfig(path=path, parser_profile=str(row["parserProfile"])))
+            serial_number = row.get("serialNumber")
+            if serial_number is not None and (not isinstance(serial_number, str) or not serial_number.strip()):
+                raise ValueError("TORQUE_HID_DEVICES_JSON serialNumber must be a non-empty string when provided")
+            devices.append(HidDeviceConfig(path=path, parser_profile=str(row["parserProfile"]), serial_number=serial_number.strip() if isinstance(serial_number, str) else None))
         tls_verify_mode = os.environ.get("TORQUE_TLS_VERIFY_MODE", "system").strip().lower()
         if tls_verify_mode not in {"system", "insecure"}:
             raise ValueError("TORQUE_TLS_VERIFY_MODE must be either system or insecure")

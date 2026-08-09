@@ -24,8 +24,8 @@ describe('torque wrench traceability API', () => {
   });
 
   beforeEach(async () => {
-    await prisma.torqueWrenchConnectionLeaseHistory.deleteMany({});
-    await prisma.torqueWrenchConnectionLease.deleteMany({});
+    await prisma.torqueWrenchUsageLeaseHistory.deleteMany({});
+    await prisma.torqueWrenchUsageLease.deleteMany({});
     await prisma.assemblyTorqueRecord.deleteMany({});
     await prisma.assemblyTorqueWrenchConfirmation.deleteMany({});
     await prisma.assemblyWorkSessionOperatorAccess.deleteMany({});
@@ -665,7 +665,7 @@ describe('torque wrench traceability API', () => {
       leaseId: firstLease.leaseId,
       generation: firstLease.generation
     });
-    expect(await prisma.torqueWrenchConnectionLeaseHistory.findMany({
+    expect(await prisma.torqueWrenchUsageLeaseHistory.findMany({
       where: { torqueWrenchProfileId: profile.id },
       orderBy: { createdAt: 'asc' },
       select: { action: true, generation: true, adoptedConfirmationId: true }
@@ -902,7 +902,7 @@ describe('torque wrench traceability API', () => {
       generation: number;
     };
     expect(firstLease.generation).toBe(1);
-    expect(await prisma.torqueWrenchConnectionLease.findUniqueOrThrow({
+    expect(await prisma.torqueWrenchUsageLease.findUniqueOrThrow({
       where: { torqueWrenchProfileId: profile.id },
       select: { adoptedConfirmationId: true }
     })).toEqual({ adoptedConfirmationId: winner.confirmation.id });
@@ -971,7 +971,7 @@ describe('torque wrench traceability API', () => {
       torqueWrenchProfileId: profile.id,
       physicalDisplayConfirmed: true
     });
-    const firstLeaseRow = await prisma.torqueWrenchConnectionLease.findUniqueOrThrow({
+    const firstLeaseRow = await prisma.torqueWrenchUsageLease.findUniqueOrThrow({
       where: { torqueWrenchProfileId: profile.id },
       select: { acquiredAt: true }
     });
@@ -997,7 +997,7 @@ describe('torque wrench traceability API', () => {
     });
     expect(takeover.statusCode).toBe(200);
     expect(takeover.json().lease).toMatchObject({ state: 'handoff_wait', generation: 2 });
-    expect(await prisma.torqueWrenchConnectionLease.findUniqueOrThrow({
+    expect(await prisma.torqueWrenchUsageLease.findUniqueOrThrow({
       where: { torqueWrenchProfileId: profile.id },
       select: { adoptedConfirmationId: true }
     })).toEqual({ adoptedConfirmationId: loser.confirmation.id });
@@ -1138,7 +1138,7 @@ describe('torque wrench traceability API', () => {
       data: { clientDeviceId: winner.client.id }
     });
 
-    await prisma.torqueWrenchConnectionLease.update({
+    await prisma.torqueWrenchUsageLease.update({
       where: { torqueWrenchProfileId: profile.id },
       data: { expiresAt: new Date(Date.now() - 1_000), connectAfter: new Date(Date.now() - 1_000) }
     });
@@ -1193,7 +1193,7 @@ describe('torque wrench traceability API', () => {
     const staleSettingConfirmation = await acquire(winner, 'stale-setting-confirmation');
     expect(staleSettingConfirmation.statusCode).toBe(409);
     expect(staleSettingConfirmation.json().errorCode).toBe('CONFIRMATION_REQUIRED');
-    expect(await prisma.torqueWrenchConnectionLeaseHistory.findMany({
+    expect(await prisma.torqueWrenchUsageLeaseHistory.findMany({
       where: { torqueWrenchProfileId: profile.id },
       orderBy: { createdAt: 'asc' },
       select: { action: true, generation: true }

@@ -20,6 +20,7 @@ export type TorqueAgentLeaseStatus = {
   bluetoothPowered: boolean;
   hidExclusive: boolean;
   lastError: string | null;
+  wrenchSerialNumbers?: string[];
 };
 
 type TorqueAgentBindingPayload = {
@@ -27,6 +28,7 @@ type TorqueAgentBindingPayload = {
   currentTemplateBoltId: string | null;
   confirmationId: string | null;
   torqueWrenchProfileId: string | null;
+  targetKind?: 'assembly' | 'training';
 };
 
 type TorqueAgentLeaseAcquirePayload = {
@@ -35,6 +37,7 @@ type TorqueAgentLeaseAcquirePayload = {
   confirmationId: string;
   torqueWrenchProfileId: string;
   requestId: string;
+  targetKind?: 'assembly' | 'training';
 };
 
 type TorqueAgentLeaseTakeoverPayload = TorqueAgentLeaseAcquirePayload & {
@@ -94,4 +97,21 @@ export function releaseTorqueAgentLease(
   keepalive = false
 ): Promise<TorqueAgentLeaseStatus> {
   return postTorqueAgent('/lease/release', { reason }, keepalive);
+}
+
+export function acquireTorqueAgentTrainingLease(payload: {
+  sessionId: string;
+  confirmationId: string;
+  torqueWrenchProfileId: string;
+  requestId: string;
+}): Promise<TorqueAgentLeaseStatus> {
+  return postTorqueAgent('/lease/acquire', { ...payload, currentTemplateBoltId: null, targetKind: 'training' });
+}
+
+export function heartbeatTorqueAgentTraining(payload: {
+  sessionId: string;
+  confirmationId: string | null;
+  torqueWrenchProfileId: string | null;
+}): Promise<TorqueAgentLeaseStatus> {
+  return heartbeatTorqueAgent({ ...payload, currentTemplateBoltId: null, targetKind: 'training' });
 }

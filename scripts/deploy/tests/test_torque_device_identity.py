@@ -99,6 +99,7 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
             'usb_product_id: "0604"',
             'path: "/dev/input/by-id/bluetooth-TOHNICHI_702902S-event-kbd"',
             'parserProfile: "cem3-btla-hogp-v1"',
+            'serialNumber: "702902S"',
         ):
             self.assertIn(fragment, host)
         self.assertIsNone(re.search(r"/dev/input/event[0-9]+", host))
@@ -110,6 +111,7 @@ class TorqueDeviceIdentityContractTests(unittest.TestCase):
             "torque_agent_bluetooth_adapter.usb_vendor_id",
             "torque_agent_hid_links",
             "cem3-btla-hogp-v1",
+            "serialNumber",
             "torque_agent_tls_verify_mode",
             "90-torque-bluetooth-adapter.rules",
             "99-torque-wrench-hid.rules",

@@ -25,6 +25,7 @@ import { registerPartMeasurementRoutes } from './part-measurement/index.js';
 import { registerMobilePlacementRoutes } from './mobile-placement/index.js';
 import { registerLoanReportRoutes } from './reports/loan-report.js';
 import { registerTorqueWrenchRoutes } from './torque-wrenches/index.js';
+import { registerTorqueTrainingRoutes } from './torque-training/index.js';
 
 /**
  * すべてのルートを登録
@@ -39,6 +40,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       await registerAuthRoutes(subApp);
       await registerAssemblyRoutes(subApp);
       await registerTorqueWrenchRoutes(subApp);
+      await registerTorqueTrainingRoutes(subApp);
 
       // ツール管理モジュール（パス: /api/tools/*）
       await registerToolsRoutes(subApp);
