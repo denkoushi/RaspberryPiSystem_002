@@ -1,5 +1,7 @@
 # KB-320: キオスク部品測定（テンプレ不一致・候補・スキャン）
 
+自主検査の個体単位確定・検査員ゲートの詳細は [KB-408](./KB-408-self-inspection-per-entry-inspector-gate.md) を参照。
+
 ## Context
 
 キオスク `/kiosk/part-measurement` および API `/api/part-measurement/*` の初導入時に起きやすい事象のメモ。

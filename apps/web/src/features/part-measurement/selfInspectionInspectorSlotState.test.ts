@@ -27,4 +27,3 @@ describe('self inspection inspector slot presentation', () => {
     expect(resolveFirstInspectorUsableEntryIndex(states)).toBe(3);
   });
 });
-

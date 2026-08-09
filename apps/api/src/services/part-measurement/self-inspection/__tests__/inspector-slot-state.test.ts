@@ -87,4 +87,3 @@ describe('inspector slot state', () => {
     expect(result.map((slot) => slot.entryIndex)).toEqual(expected);
   });
 });
-

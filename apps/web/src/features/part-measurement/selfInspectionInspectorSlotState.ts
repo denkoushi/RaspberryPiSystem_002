@@ -25,7 +25,6 @@ export function inspectorSlotStateForEntry(
     entryIndex
   };
 }
-
 export function presentSelfInspectionInspectorSlotState(
   state: SelfInspectionInspectorSlotStateDto,
   entryLabel = `${state.entryIndex + 1}件目`
@@ -77,4 +76,3 @@ export function resolveFirstInspectorUsableEntryIndex(
     usable.find((state) => state.inspectorState === inspectorState)?.entryIndex ?? null;
   return firstByPriority('not_started') ?? firstByPriority('in_progress') ?? firstByPriority('complete');
 }
-
