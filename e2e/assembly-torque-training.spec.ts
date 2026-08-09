@@ -150,7 +150,7 @@ test('NFCから5回完了、本人情報消去、ADMIN設定復帰を確認す�
     if (path.includes('/admin/torque-training/programs') && request.method() === 'GET') return route.fulfill({ json: { programs: [program] } });
     if (path.includes('/admin/torque-training/results') && request.method() === 'GET') return route.fulfill({ json: { results: [] } });
     if (path === '/api/torque-wrench-capability-groups') return route.fulfill({ json: { capabilityGroups: [] } });
-    if (path === '/api/torque-wrenches') return route.fulfill({ json: { wrenches: [] } });
+    if (path === '/api/torque-wrenches') return route.fulfill({ json: { torqueWrenches: [] } });
     if (path === '/api/auth/login' && request.method() === 'POST') return route.fulfill({ json: { accessToken: 'e2e-admin-token', refreshToken: 'e2e-refresh-token', user: { id: 'admin-e2e', username: 'admin', role: 'ADMIN', status: 'ACTIVE' } } });
     return route.fulfill({ json: {} });
   });
