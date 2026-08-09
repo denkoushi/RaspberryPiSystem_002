@@ -56,13 +56,6 @@ GLOBAL_PATHS = frozenset(
         "turbo.json",
     }
 )
-PI4_AGENT_DOCKERFILES = frozenset(
-    {
-        "infrastructure/docker/Dockerfile.nfc-agent",
-        "infrastructure/docker/Dockerfile.barcode-agent",
-        "infrastructure/docker/Dockerfile.torque-agent",
-    }
-)
 
 
 @dataclass(frozen=True)
@@ -78,9 +71,48 @@ class ClassifiedChange:
     categories: frozenset[str]
     codeql: bool
     docker_images: frozenset[str]
+    pi4_agent_services: frozenset[str]
     release_pair: bool
     runtime_rehearsal: bool
     fail_closed_reason: str | None = None
+
+
+@dataclass(frozen=True)
+class Pi4AgentArtifact:
+    service: str
+    dockerfile: str
+    owned_prefixes: tuple[str, ...]
+
+
+PI4_AGENT_ARTIFACTS = (
+    Pi4AgentArtifact(
+        service="nfc-agent",
+        dockerfile="infrastructure/docker/Dockerfile.nfc-agent",
+        owned_prefixes=("clients/nfc-agent",),
+    ),
+    Pi4AgentArtifact(
+        service="barcode-agent",
+        dockerfile="infrastructure/docker/Dockerfile.barcode-agent",
+        owned_prefixes=("clients/barcode-agent",),
+    ),
+    Pi4AgentArtifact(
+        service="torque-agent",
+        dockerfile="infrastructure/docker/Dockerfile.torque-agent",
+        owned_prefixes=("clients/torque-agent",),
+    ),
+)
+PI4_AGENT_PLATFORMS = (
+    ("linux/arm64", "linux-arm64"),
+    ("linux/arm/v7", "linux-arm-v7"),
+)
+PI4_AGENT_SERVICE_NAMES = frozenset(
+    artifact.service for artifact in PI4_AGENT_ARTIFACTS
+)
+PI4_AGENT_DOCKERFILES = frozenset(
+    artifact.dockerfile for artifact in PI4_AGENT_ARTIFACTS
+)
+PI4_AGENT_SHARED_INPUTS = frozenset({".dockerignore", ".trivyignore"})
+POLICY_PATHS = frozenset({".gitleaksignore"})
 
 
 def _has_prefix(path: str, prefix: str) -> bool:
@@ -89,6 +121,41 @@ def _has_prefix(path: str, prefix: str) -> bool:
 
 def _normalize_path(path: str) -> str:
     return PurePosixPath(path).as_posix().removeprefix("./")
+
+
+def pi4_agent_services_for_path(path: str) -> frozenset[str]:
+    """Return Pi4 image contracts owning a repository path."""
+    normalized = _normalize_path(path)
+    if normalized in PI4_AGENT_SHARED_INPUTS:
+        return PI4_AGENT_SERVICE_NAMES
+
+    return frozenset(
+        artifact.service
+        for artifact in PI4_AGENT_ARTIFACTS
+        if normalized == artifact.dockerfile
+        or any(_has_prefix(normalized, prefix) for prefix in artifact.owned_prefixes)
+    )
+
+
+def pi4_agent_matrix_for_services(
+    services: Iterable[str],
+) -> list[dict[str, str]]:
+    selected = set(services)
+    matrix: list[dict[str, str]] = []
+    for artifact in PI4_AGENT_ARTIFACTS:
+        if artifact.service not in selected:
+            continue
+        for platform, platform_tag in PI4_AGENT_PLATFORMS:
+            matrix.append(
+                {
+                    "service": artifact.service,
+                    "image": f"raspisys-{artifact.service}-contract",
+                    "dockerfile": artifact.dockerfile,
+                    "platform": platform,
+                    "platform_tag": platform_tag,
+                }
+            )
+    return matrix
 
 
 def _base_categories_for_path(path: str) -> frozenset[str] | None:
@@ -107,6 +174,12 @@ def _base_categories_for_path(path: str) -> frozenset[str] | None:
         return FULL_SUITE
     if normalized in GLOBAL_PATHS:
         return FULL_SUITE
+
+    if normalized in POLICY_PATHS:
+        return frozenset({"repo_policy"})
+
+    if normalized.startswith("scripts/test/verify-signage"):
+        return frozenset({"repo_policy"})
 
     if normalized == "docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html":
         return frozenset({"repo_policy", "kiosk_sop"})
@@ -182,7 +255,8 @@ def signage_artifact_for_path(path: str) -> bool:
     """Return whether a path changes the complete Pi3 Signage artifact."""
     normalized = _normalize_path(path)
     return (
-        normalized
+        normalized.startswith("scripts/test/verify-signage")
+        or normalized
         in {
             "clients/status-agent/status-agent.py",
             "clients/status-agent/storage_health.py",
@@ -317,6 +391,7 @@ def classify_change(change: Change) -> ClassifiedChange:
             categories=FULL_SUITE,
             codeql=True,
             docker_images=frozenset({"api", "web"}),
+            pi4_agent_services=PI4_AGENT_SERVICE_NAMES,
             release_pair=True,
             runtime_rehearsal=True,
             fail_closed_reason=f"{status_kind.lower()} change requires the full suite",
@@ -327,6 +402,7 @@ def classify_change(change: Change) -> ClassifiedChange:
             categories=FULL_SUITE,
             codeql=True,
             docker_images=frozenset({"api", "web"}),
+            pi4_agent_services=PI4_AGENT_SERVICE_NAMES,
             release_pair=True,
             runtime_rehearsal=True,
             fail_closed_reason=f"unsupported git status {change.status!r}",
@@ -339,6 +415,7 @@ def classify_change(change: Change) -> ClassifiedChange:
             categories=FULL_SUITE,
             codeql=True,
             docker_images=frozenset({"api", "web"}),
+            pi4_agent_services=PI4_AGENT_SERVICE_NAMES,
             release_pair=True,
             runtime_rehearsal=True,
             fail_closed_reason=f"unknown path {change.path!r}",
@@ -349,6 +426,7 @@ def classify_change(change: Change) -> ClassifiedChange:
             categories=categories,
             codeql=True,
             docker_images=frozenset({"api", "web"}),
+            pi4_agent_services=PI4_AGENT_SERVICE_NAMES,
             release_pair=True,
             runtime_rehearsal=True,
             fail_closed_reason=f"global CI configuration path {change.path!r}",
@@ -359,6 +437,7 @@ def classify_change(change: Change) -> ClassifiedChange:
         categories=categories,
         codeql=codeql_for_path(change.path),
         docker_images=docker_images_for_path(change.path),
+        pi4_agent_services=pi4_agent_services_for_path(change.path),
         release_pair=release_pair,
         runtime_rehearsal=release_pair,
     )
@@ -371,6 +450,7 @@ def classify_changes(
     selected: set[str] = set()
     codeql = False
     docker_images: set[str] = set()
+    pi4_agent_services: set[str] = set()
     release_pair = False
     runtime_rehearsal = False
     reasons: list[str] = []
@@ -378,6 +458,7 @@ def classify_changes(
         selected.update(item.categories)
         codeql = codeql or item.codeql
         docker_images.update(item.docker_images)
+        pi4_agent_services.update(item.pi4_agent_services)
         release_pair = release_pair or item.release_pair
         runtime_rehearsal = runtime_rehearsal or item.runtime_rehearsal
         if item.fail_closed_reason:
@@ -387,13 +468,14 @@ def classify_changes(
         selected.update(FULL_SUITE)
         codeql = True
         docker_images.update({"api", "web"})
+        pi4_agent_services.update(PI4_AGENT_SERVICE_NAMES)
         release_pair = True
         runtime_rehearsal = True
         reasons.append(force_full_reason)
 
     matrix_images = sorted(docker_images) or ["api", "web"]
     return {
-        "schemaVersion": 5,
+        "schemaVersion": 6,
         "mode": "enforced",
         "fileCount": len(classified),
         "fullSuite": selected == set(FULL_SUITE),
@@ -402,6 +484,7 @@ def classify_changes(
         "dockerWeb": "web" in docker_images,
         "releasePair": release_pair,
         "runtimeRehearsal": runtime_rehearsal,
+        "pi4AgentMatrix": pi4_agent_matrix_for_services(pi4_agent_services),
         "dockerMatrix": [DOCKER_MATRIX_ITEMS[image] for image in matrix_images],
         "categories": {category: category in selected for category in CATEGORIES},
         "failClosedReasons": reasons,
@@ -417,6 +500,7 @@ def classify_changes(
                 "categories": sorted(item.categories),
                 "codeql": item.codeql,
                 "dockerImages": sorted(item.docker_images),
+                "pi4AgentServices": sorted(item.pi4_agent_services),
                 "releasePair": item.release_pair,
                 "runtimeRehearsal": item.runtime_rehearsal,
                 **(
@@ -472,6 +556,7 @@ def render_markdown(result: dict[str, object]) -> str:
         f"CodeQL analysis: **{'yes' if result['codeql'] else 'no'}**  ",
         f"Docker API image: **{'yes' if result['dockerApi'] else 'no'}**  ",
         f"Docker Web image: **{'yes' if result['dockerWeb'] else 'no'}**",
+        f"Pi4 agent image contracts: **{len(result['pi4AgentMatrix'])}**",
         f"ARM64 release pair: **{'yes' if result['releasePair'] else 'no'}**",
         f"Isolated runtime rehearsal: **{'yes' if result['runtimeRehearsal'] else 'no'}**",
         "",
@@ -507,6 +592,12 @@ def render_github_output(result: dict[str, object]) -> str:
     lines.append(
         "docker_matrix="
         + json.dumps(result["dockerMatrix"], separators=(",", ":"), sort_keys=True)
+    )
+    lines.append(
+        "pi4_agent_matrix="
+        + json.dumps(
+            result["pi4AgentMatrix"], separators=(",", ":"), sort_keys=True
+        )
     )
     return "\n".join(lines) + "\n"
 

@@ -27,6 +27,11 @@ class ClassifyChangesTests(unittest.TestCase):
         assert isinstance(categories, dict)
         return {name for name, enabled in categories.items() if enabled}
 
+    def pi4_services(self, result: dict[str, object]) -> set[str]:
+        matrix = result["pi4AgentMatrix"]
+        assert isinstance(matrix, list)
+        return {item["service"] for item in matrix}
+
     def test_docs_and_root_markdown_select_repo_policy_only(self) -> None:
         result = self.classify(
             Change("M", "docs/guides/deployment.md"),
@@ -39,6 +44,25 @@ class ClassifyChangesTests(unittest.TestCase):
         self.assertFalse(result["dockerApi"])
         self.assertFalse(result["dockerWeb"])
         self.assertFalse(result["releasePair"])
+        self.assertEqual(result["pi4AgentMatrix"], [])
+
+    def test_security_ignore_and_signage_test_paths_are_known(self) -> None:
+        gitleaks = self.classify(Change("M", ".gitleaksignore"))
+        self.assertEqual(self.selected(gitleaks), {"repo_policy"})
+        self.assertFalse(gitleaks["fullSuite"])
+        self.assertEqual(gitleaks["pi4AgentMatrix"], [])
+
+        for path in (
+            "scripts/test/verify-signage-display.sh",
+            "scripts/test/verify-signage-layout-config.sh",
+        ):
+            with self.subTest(path=path):
+                result = self.classify(Change("M", path))
+                self.assertEqual(
+                    self.selected(result), {"repo_policy", "signage_artifact"}
+                )
+                self.assertFalse(result["releasePair"])
+                self.assertEqual(result["pi4AgentMatrix"], [])
 
     def test_api_web_shared_and_migration_paths(self) -> None:
         api = self.classify(Change("M", "apps/api/src/main.ts"))
@@ -88,11 +112,12 @@ class ClassifyChangesTests(unittest.TestCase):
         self.assertTrue(e2e["codeql"])
 
     def test_pi4_agent_dockerfiles_select_client_image_contracts_only(self) -> None:
-        for path in (
-            "infrastructure/docker/Dockerfile.nfc-agent",
-            "infrastructure/docker/Dockerfile.barcode-agent",
-            "infrastructure/docker/Dockerfile.torque-agent",
-        ):
+        expected = {
+            "infrastructure/docker/Dockerfile.nfc-agent": "nfc-agent",
+            "infrastructure/docker/Dockerfile.barcode-agent": "barcode-agent",
+            "infrastructure/docker/Dockerfile.torque-agent": "torque-agent",
+        }
+        for path, service in expected.items():
             with self.subTest(path=path):
                 result = self.classify(Change("M", path))
                 self.assertEqual(
@@ -102,6 +127,27 @@ class ClassifyChangesTests(unittest.TestCase):
                 self.assertFalse(result["dockerApi"])
                 self.assertFalse(result["dockerWeb"])
                 self.assertFalse(result["releasePair"])
+                self.assertEqual(self.pi4_services(result), {service})
+                self.assertEqual(len(result["pi4AgentMatrix"]), 2)
+
+    def test_pi4_agent_source_and_non_image_client_paths_select_affected_services(self) -> None:
+        expected = {
+            "clients/nfc-agent/nfc_agent/main.py": "nfc-agent",
+            "clients/barcode-agent/barcode_agent/main.py": "barcode-agent",
+            "clients/torque-agent/torque_agent/main.py": "torque-agent",
+        }
+        for path, service in expected.items():
+            with self.subTest(path=path):
+                result = self.classify(Change("M", path))
+                self.assertEqual(self.pi4_services(result), {service})
+                self.assertEqual(
+                    {item["platform"] for item in result["pi4AgentMatrix"]},
+                    {"linux/arm64", "linux/arm/v7"},
+                )
+
+        status = self.classify(Change("M", "clients/status-agent/status-agent.py"))
+        self.assertTrue(status["categories"]["client"])
+        self.assertEqual(status["pi4AgentMatrix"], [])
 
     def test_signage_artifact_inputs_select_only_the_focused_contract(self) -> None:
         for path in (
@@ -178,6 +224,12 @@ class ClassifyChangesTests(unittest.TestCase):
         self.assertTrue(dockerignore["codeql"])
         self.assertTrue(dockerignore["dockerApi"])
         self.assertTrue(dockerignore["dockerWeb"])
+        self.assertEqual(self.pi4_services(dockerignore), {
+            "nfc-agent",
+            "barcode-agent",
+            "torque-agent",
+        })
+        self.assertEqual(len(dockerignore["pi4AgentMatrix"]), 6)
 
     def test_workflow_unknown_delete_and_rename_fail_closed(self) -> None:
         cases = (
@@ -197,6 +249,7 @@ class ClassifyChangesTests(unittest.TestCase):
                 self.assertTrue(result["dockerWeb"])
                 self.assertTrue(result["releasePair"])
                 self.assertTrue(result["failClosedReasons"])
+                self.assertEqual(len(result["pi4AgentMatrix"]), 6)
 
     def test_name_status_parser_preserves_rename_source_and_destination(self) -> None:
         parsed = parse_name_status_z(
@@ -239,10 +292,12 @@ class ClassifyChangesTests(unittest.TestCase):
                 "release_pair=true",
                 "runtime_rehearsal=true",
                 'docker_matrix=[{"dockerfile":"./infrastructure/docker/Dockerfile.api","image":"api","tag":"raspisys-api:ci"},{"dockerfile":"./infrastructure/docker/Dockerfile.web","image":"web","tag":"raspisys-web:ci"}]',
+                "pi4_agent_matrix=[]",
             ],
         )
         markdown = render_markdown(result)
         self.assertIn("Change classification (enforced)", markdown)
+        self.assertIn("Pi4 agent image contracts: **0**", markdown)
         self.assertNotIn("informational", markdown)
 
     def test_malformed_name_status_input_is_rejected(self) -> None:

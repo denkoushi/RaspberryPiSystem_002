@@ -55,7 +55,6 @@ class StagedCiWorkflowTests(unittest.TestCase):
             "db-infra": "db_infra",
             "deploy-contract": "deploy_contract",
             "client": "client",
-            "pi4-agent-image-contract": "client",
             "docker-security": "docker_security",
             "e2e-smoke": "e2e",
             "e2e-tests": "e2e",
@@ -69,6 +68,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
             "release_pair",
             "runtime_rehearsal",
             "docker_matrix",
+            "pi4_agent_matrix",
         }:
             self.assertIn(f"      {output}: ${{{{ steps.classify.outputs.{output} }}}}", classifier)
         for job, output in categories.items():
@@ -78,6 +78,12 @@ class StagedCiWorkflowTests(unittest.TestCase):
                 f"needs.change-classification.outputs.{output} == 'true'",
                 block,
             )
+
+        pi4 = job_block(CI, "pi4-agent-image-contract")
+        self.assertIn(
+            "needs.change-classification.outputs.pi4_agent_matrix != '[]'",
+            pi4,
+        )
 
     def test_docker_security_matrix_selects_api_and_web_independently(self) -> None:
         docker = job_block(CI, "docker-security")
@@ -123,7 +129,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("scripts/ci/validate_required_results.py", aggregate)
         self.assertIn('"api=$API_SELECTED:$API_RESULT"', aggregate)
         self.assertIn(
-            '"pi4-agent-image-contract=$CLIENT_SELECTED:$PI4_AGENT_IMAGE_RESULT"',
+            '"pi4-agent-image-contract=$PI4_AGENT_SELECTED:$PI4_AGENT_IMAGE_RESULT"',
             aggregate,
         )
         self.assertNotIn("lint-build-unit", CI)
@@ -134,14 +140,23 @@ class StagedCiWorkflowTests(unittest.TestCase):
         contract = job_block(CI, "pi4-agent-image-contract")
         publish = job_block(CI, "pi4-agent-images-publish")
         for service in ("nfc-agent", "barcode-agent", "torque-agent"):
-            self.assertEqual(contract.count(f"service: {service}"), 2)
             self.assertIn(f"service: {service}", publish)
             self.assertIn(f"raspisys-{service}", publish)
-        self.assertEqual(contract.count("platform: linux/arm64"), 3)
-        self.assertEqual(contract.count("platform: linux/arm/v7"), 3)
-        self.assertIn('docker buildx build --load --platform "${{ matrix.platform }}"', contract)
-        self.assertIn("${GITHUB_SHA}-${{ matrix.platform_tag }}", contract)
+        self.assertIn(
+            "fromJSON(needs.change-classification.outputs.pi4_agent_matrix)",
+            contract,
+        )
+        self.assertIn("uses: docker/build-push-action@v7", contract)
+        self.assertIn("platforms: ${{ matrix.platform }}", contract)
+        self.assertIn("load: true", contract)
+        self.assertIn("${{ github.sha }}-${{ matrix.platform_tag }}", contract)
         self.assertIn("docker/setup-qemu-action@v4", contract)
+        self.assertIn(
+            "scope=pi4-agent-${{ matrix.service }}-${{ matrix.platform_tag }}",
+            contract,
+        )
+        self.assertIn("scope=pi4-${{ matrix.service }}", contract)
+        self.assertIn("ignore-error=true", contract)
         self.assertIn("aquasecurity/trivy-action", contract)
         self.assertIn("ignore-unfixed: true", contract)
         self.assertIn("severity: HIGH,CRITICAL", contract)

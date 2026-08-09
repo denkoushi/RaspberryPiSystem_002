@@ -41,6 +41,7 @@ jobs:
       release_pair: ${{ steps.classify.outputs.release_pair }}
       runtime_rehearsal: ${{ steps.classify.outputs.runtime_rehearsal }}
       docker_matrix: ${{ steps.classify.outputs.docker_matrix }}
+      pi4_agent_matrix: ${{ steps.classify.outputs.pi4_agent_matrix }}
       full_suite: ${{ steps.classify.outputs.full_suite }}
     steps:
       - name: Checkout code with history
@@ -496,42 +497,12 @@ jobs:
   pi4-agent-image-contract:
     name: pi4-agent-image-contract (${{ matrix.service }}, ${{ matrix.platform }})
     needs: change-classification
-    if: ${{ needs.change-classification.outputs.client == 'true' }}
+    if: ${{ needs.change-classification.outputs.pi4_agent_matrix != '[]' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - service: nfc-agent
-            image: raspisys-nfc-agent-contract
-            dockerfile: infrastructure/docker/Dockerfile.nfc-agent
-            platform: linux/arm64
-            platform_tag: linux-arm64
-          - service: nfc-agent
-            image: raspisys-nfc-agent-contract
-            dockerfile: infrastructure/docker/Dockerfile.nfc-agent
-            platform: linux/arm/v7
-            platform_tag: linux-arm-v7
-          - service: barcode-agent
-            image: raspisys-barcode-agent-contract
-            dockerfile: infrastructure/docker/Dockerfile.barcode-agent
-            platform: linux/arm64
-            platform_tag: linux-arm64
-          - service: barcode-agent
-            image: raspisys-barcode-agent-contract
-            dockerfile: infrastructure/docker/Dockerfile.barcode-agent
-            platform: linux/arm/v7
-            platform_tag: linux-arm-v7
-          - service: torque-agent
-            image: raspisys-torque-agent-contract
-            dockerfile: infrastructure/docker/Dockerfile.torque-agent
-            platform: linux/arm64
-            platform_tag: linux-arm64
-          - service: torque-agent
-            image: raspisys-torque-agent-contract
-            dockerfile: infrastructure/docker/Dockerfile.torque-agent
-            platform: linux/arm/v7
-            platform_tag: linux-arm-v7
+        include: ${{ fromJSON(needs.change-classification.outputs.pi4_agent_matrix) }}
     steps:
       - name: Checkout exact candidate source
         uses: actions/checkout@v6
@@ -543,10 +514,18 @@ jobs:
         uses: docker/setup-buildx-action@v4
 
       - name: Build the Pi4 agent image contract
-        run: |
-          docker buildx build --load --platform "${{ matrix.platform }}" \
-            --file "${{ matrix.dockerfile }}" \
-            --tag "${{ matrix.image }}:${GITHUB_SHA}-${{ matrix.platform_tag }}" .
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: ${{ matrix.platform }}
+          push: false
+          load: true
+          tags: ${{ matrix.image }}:${{ github.sha }}-${{ matrix.platform_tag }}
+          cache-from: |
+            type=gha,scope=pi4-agent-${{ matrix.service }}-${{ matrix.platform_tag }}
+            type=gha,scope=pi4-${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=pi4-agent-${{ matrix.service }}-${{ matrix.platform_tag }},ignore-error=true
 
       - name: Scan the Pi4 agent image contract
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
@@ -1255,6 +1234,7 @@ jobs:
           CONTAINER_RUNTIME_REHEARSAL_RESULT: ${{ needs['container-runtime-rehearsal'].result }}
           CLIENT_SELECTED: ${{ needs['change-classification'].outputs.client }}
           CLIENT_RESULT: ${{ needs.client.result }}
+          PI4_AGENT_SELECTED: ${{ needs['change-classification'].outputs.pi4_agent_matrix != '[]' }}
           PI4_AGENT_IMAGE_RESULT: ${{ needs['pi4-agent-image-contract'].result }}
           RELEASE_PAIR_SELECTED: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs['change-classification'].outputs.release_pair == 'true' }}
           RELEASE_BUILD_CONTRACT_RESULT: ${{ needs['release-build-contract'].result }}
@@ -1281,7 +1261,7 @@ jobs:
             "deploy-contract=$DEPLOY_CONTRACT_SELECTED:$DEPLOY_CONTRACT_RESULT" \
             "container-runtime-rehearsal=$CONTAINER_RUNTIME_REHEARSAL_SELECTED:$CONTAINER_RUNTIME_REHEARSAL_RESULT" \
             "client=$CLIENT_SELECTED:$CLIENT_RESULT" \
-            "pi4-agent-image-contract=$CLIENT_SELECTED:$PI4_AGENT_IMAGE_RESULT" \
+            "pi4-agent-image-contract=$PI4_AGENT_SELECTED:$PI4_AGENT_IMAGE_RESULT" \
             "release-build-contract=$RELEASE_PAIR_SELECTED:$RELEASE_BUILD_CONTRACT_RESULT" \
             "release-api-image=$RELEASE_PAIR_SELECTED:$RELEASE_API_RESULT" \
             "release-web-image=$RELEASE_PAIR_SELECTED:$RELEASE_WEB_RESULT" \
