@@ -82,4 +82,22 @@ describe('SelfInspectionInspectorJudgementPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '最終NG' }));
     expect(onSelect).toHaveBeenCalledWith('item-1', 'FINAL_NG');
   });
+
+  it('disables judgement controls while the operator slot is unconfirmed', () => {
+    render(
+      <SelfInspectionInspectorJudgementPanel
+        values={[values[0]!]}
+        templateItems={templateItems}
+        selectedByItemId={{ 'item-1': 'FINAL_OK' }}
+        isSaving={false}
+        disabled
+        onSelect={() => undefined}
+        onSave={() => undefined}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: '最終OK' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '最終NG' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '最終判定を保存' })).toBeDisabled();
+  });
 });
