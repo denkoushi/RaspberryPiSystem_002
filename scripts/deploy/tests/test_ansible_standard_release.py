@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -137,8 +138,12 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         removal_index = names.index(
             "Remove newly introduced Pi4 files without a backup"
         )
+        restore_index = names.index("Restore backed-up Pi4 release files")
+        reload_index = names.index("Reload restored Pi4 systemd units")
+        self.assertLess(restore_index, removal_index)
+        self.assertLess(removal_index, reload_index)
+        self.assertLess(reload_index, prerequisite_index)
         self.assertLess(prerequisite_index, compose_index)
-        self.assertLess(compose_index, removal_index)
         self.assertIn("/etc/raspi-status-agent.conf", " ".join(
             (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
                 encoding="utf-8"
@@ -170,6 +175,54 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
             task for task in health if task["name"] == "Verify the Pi4 barcode agent"
         )
         self.assertEqual(barcode_health["when"], "'barcode-agent' in release_kiosk_services")
+
+    def test_pi4_rollback_image_capture_uses_unique_compose_labels(self) -> None:
+        prepare_tasks = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        capture = next(
+            task
+            for task in prepare_tasks
+            if task["name"] == "Capture current Pi4 agent images as temporary rollback tags"
+        )
+        shell = capture["ansible.builtin.shell"]
+        self.assertNotIn("docker compose", shell)
+        self.assertNotIn("release_kiosk_existing_compose", shell)
+        self.assertIn(
+            "label=com.docker.compose.project={{ release_kiosk_compose_project }}",
+            shell,
+        )
+        self.assertIn(
+            "label=com.docker.compose.service={{ item }}",
+            shell,
+        )
+        self.assertIn('container_count="$(printf', shell)
+        self.assertIn('[[ "${container_count}" -eq 1 ]]', shell)
+        self.assertIn("docker inspect --format", shell)
+        self.assertRegex(shell, r"\[\[ \"\$\{image_id\}\" =~ \^sha256:\[0-9a-f\]\{64\}\$ \]\]")
+        self.assertIn("docker image tag", shell)
+        formatter = next(
+            line for line in shell.splitlines() if line.strip().startswith("image_format=")
+        )
+        generated = subprocess.run(
+            ["/bin/bash", "-c", f"{formatter}; printf '%s' \"$image_format\""],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(generated.stdout, "{{.Image}}")
+        self.assertEqual(capture["register"], "release_kiosk_rollback_capture")
+        self.assertFalse(capture["failed_when"])
+        capture_index = next(
+            index
+            for index, task in enumerate(prepare_tasks)
+            if task["name"] == "Capture current Pi4 agent images as temporary rollback tags"
+        )
+        record = prepare_tasks[capture_index + 1]
+        self.assertEqual(record["name"], "Record Pi4 rollback tags created by this run")
+        self.assertIn("selectattr('rc', 'equalto', 0)", record["ansible.builtin.set_fact"]["release_kiosk_captured_services"])
 
     def test_top_level_route_is_explicit_and_serial(self) -> None:
         plays = yaml.safe_load(PLAYBOOK)
@@ -247,10 +300,44 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
             [
                 "item.changed | default(false) | bool",
                 "item.backup_file is defined",
-                "release_kiosk_healthy | default(false) | bool or release_kiosk_rolled_back | default(false) | bool",
+                "release_kiosk_healthy | default(false) | bool or release_kiosk_rolled_back | default(false) | bool or not (release_kiosk_switch_attempted | default(false) | bool)",
             ],
         )
         self.assertTrue(backup_cleanup["no_log"])
+
+    def test_pi4_cleanup_covers_success_pre_switch_failure_and_preserves_failed_rollback(self) -> None:
+        cleanup_tasks = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/cleanup.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        tag_cleanup = cleanup_tasks[0]
+        stage_cleanup = cleanup_tasks[-1]
+        expected_pre_switch = "not (release_kiosk_switch_attempted | default(false) | bool)"
+        self.assertIn("release_kiosk_healthy | default(false) | bool", tag_cleanup["when"])
+        self.assertIn("release_kiosk_rolled_back | default(false) | bool", tag_cleanup["when"])
+        self.assertIn(expected_pre_switch, tag_cleanup["when"])
+        self.assertIn(expected_pre_switch, " ".join(stage_cleanup["when"]))
+        self.assertEqual(tag_cleanup["loop"], "{{ release_kiosk_captured_services | default([]) }}")
+
+        rollback = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/rollback.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        names = [task["name"] for task in rollback]
+        removal_index = names.index("Remove newly introduced Pi4 files without a backup")
+        restore_index = names.index("Restore backed-up Pi4 release files")
+        reload_index = names.index("Reload restored Pi4 systemd units")
+        prerequisite_index = names.index("Verify rollback prerequisites before agent compose restore")
+        compose_index = names.index("Restore Pi4 agents from the captured image tags")
+        health_index = names.index("Verify the complete restored Pi4 runtime")
+        self.assertLess(restore_index, removal_index)
+        self.assertLess(removal_index, reload_index)
+        self.assertLess(reload_index, prerequisite_index)
+        self.assertLess(prerequisite_index, compose_index)
+        self.assertLess(removal_index, compose_index)
+        self.assertLess(compose_index, health_index)
 
     def test_pi3_has_one_target_hash_and_no_target_network_fetch(self) -> None:
         signage = role_text("release_signage")

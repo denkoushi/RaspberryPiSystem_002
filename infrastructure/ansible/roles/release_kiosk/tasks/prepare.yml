@@ -78,16 +78,43 @@
 - name: Capture current Pi4 agent images as temporary rollback tags
   ansible.builtin.shell: |
     set -euo pipefail
-    container_id="$(docker compose --project-name {{ release_kiosk_compose_project | quote }} \
-      -f {{ release_kiosk_existing_compose | quote }} ps -q {{ item | quote }})"
-    [[ -n "${container_id}" ]]
-    image_id="$(docker inspect --format '{{ '{{.Image}}' }}' "${container_id}")"
+    container_ids="$(docker ps \
+      --filter "label=com.docker.compose.project={{ release_kiosk_compose_project }}" \
+      --filter "label=com.docker.compose.service={{ item }}" \
+      --quiet)"
+    container_count="$(printf '%s\n' "${container_ids}" | sed '/^$/d' | wc -l | tr -d ' ')"
+    [[ "${container_count}" -eq 1 ]]
+    container_id="${container_ids}"
+    image_format=$'\173\173.Image\175\175'
+    image_id="$(docker inspect --format "${image_format}" "${container_id}")"
     [[ "${image_id}" =~ ^sha256:[0-9a-f]{64}$ ]]
     docker image tag "${image_id}" {{ release_kiosk_rollback_images[item] | quote }}
   args:
     executable: /bin/bash
   loop: "{{ release_kiosk_services }}"
+  register: release_kiosk_rollback_capture
+  failed_when: false
   changed_when: true
+
+- name: Record Pi4 rollback tags created by this run
+  ansible.builtin.set_fact:
+    release_kiosk_captured_services: >-
+      {{
+        release_kiosk_rollback_capture.results
+        | selectattr('rc', 'equalto', 0)
+        | map(attribute='item')
+        | list
+      }}
+
+- name: Require every enabled Pi4 agent image capture to succeed
+  ansible.builtin.assert:
+    that:
+      - >-
+        (release_kiosk_captured_services | length)
+        == (release_kiosk_services | length)
+    fail_msg: >-
+      Pi4 rollback image capture did not produce exactly one valid image for
+      every enabled service; refusing to continue before the switch boundary.
 
 - name: Pull enabled Pi4 images while the normal kiosk remains active
   ansible.builtin.command:
