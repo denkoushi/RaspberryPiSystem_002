@@ -37,7 +37,13 @@ import {
   selfInspectionEntryPageForEntryIndex,
   selfInspectionEntrySlotsForPage
 } from '../../features/part-measurement/selfInspectionEntryDraft';
+import { SelfInspectionEntrySlotSelector } from '../../features/part-measurement/SelfInspectionEntrySlotSelector';
 import { SelfInspectionInspectorJudgementPanel } from '../../features/part-measurement/SelfInspectionInspectorJudgementPanel';
+import {
+  inspectorSlotStateForEntry,
+  presentSelfInspectionInspectorSlotState,
+  resolveFirstInspectorUsableEntryIndex
+} from '../../features/part-measurement/selfInspectionInspectorSlotState';
 import { SelfInspectionKioskButton } from '../../features/part-measurement/SelfInspectionKioskButton';
 import { selfInspectionModeDisplayLabel } from '../../features/part-measurement/selfInspectionModeDisplayLabel';
 import { SelfInspectionNfcRegistrationPanel } from '../../features/part-measurement/SelfInspectionNfcRegistrationPanel';
@@ -246,12 +252,22 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
   const latestSessionRef = useRef(session);
   latestSessionRef.current = session;
   const requiredEntryCount = session ? resolveSelfInspectionRequiredEntryCount(session) : 0;
+  const inspectorSlotStates = isInspectorMode ? session?.inspectorSlotStates : undefined;
+  const selectedInspectorSlotState = isInspectorMode
+    ? inspectorSlotStateForEntry(inspectorSlotStates, selectedEntryIndex)
+    : null;
+  const selectedInspectorSlotBlocked =
+    isInspectorMode && selectedInspectorSlotState?.operatorState !== 'confirmed';
+  const selectedInspectorSlotNotice =
+    isInspectorMode && selectedInspectorSlotState
+      ? presentSelfInspectionInspectorSlotState(selectedInspectorSlotState, `${selectedEntryIndex + 1}件目`).label
+      : null;
   const isSessionIdentityReady = Boolean(session && resolvedSessionId && session.id === resolvedSessionId);
   const isSessionReadOnly = Boolean(session?.completedAt || session?.entryCountBlockedReason);
   const measurementActorLabel = isInspectorMode ? '検査員' : '測定者';
   const handleInstrumentTagResolvedForPreUseInspection = useCallback(
     (instrument: { tagUid: string }) => {
-      if (!session || isSessionReadOnly) return false;
+      if (!session || isSessionReadOnly || selectedInspectorSlotBlocked) return false;
       const params = new URLSearchParams({
         tagUid: instrument.tagUid,
         selfInspectionSessionId: session.id,
@@ -268,6 +284,7 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
       isSessionReadOnly,
       navigate,
       selectedEntryIndex,
+      selectedInspectorSlotBlocked,
       session
     ]
   );
@@ -592,6 +609,16 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
     () => (session ? selfInspectionEntrySlotsForPage(session, entryIndexPage) : []),
     [session, entryIndexPage]
   );
+  useEffect(() => {
+    if (!isInspectorMode || !session || !isSessionIdentityReady || !inspectorSlotStates) return;
+    const selectedState = inspectorSlotStateForEntry(inspectorSlotStates, selectedEntryIndex);
+    if (selectedState.operatorState === 'confirmed') return;
+    const nextEntryIndex = resolveFirstInspectorUsableEntryIndex(inspectorSlotStates);
+    if (nextEntryIndex == null || nextEntryIndex === selectedEntryIndex) return;
+    setSelectedEntryIndex(nextEntryIndex);
+    setEntryIndexPage(selfInspectionEntryPageForEntryIndex(session, nextEntryIndex));
+    setActionError(null);
+  }, [inspectorSlotStates, isInspectorMode, isSessionIdentityReady, selectedEntryIndex, session]);
   const selectedSlotLabel = useMemo(() => {
     if (!session) return '';
     const slot = visibleEntrySlots.find((s) => s.entryIndex === selectedEntryIndex);
@@ -634,6 +661,7 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
   );
   const entryRegistrationReady =
     sessionEmployeeGateReady &&
+    !selectedInspectorSlotBlocked &&
     (!requireMeasuringInstrumentTag ||
       Boolean(registration.measuringInstrumentTagUid || selectedSavedEntry?.measuringInstrumentId));
   const selectedInspectorEntry =
@@ -649,6 +677,7 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
   );
   const selectedInspectorJudgements = inspectorJudgementsByEntryIndex[selectedEntryIndex] ?? {};
   const canSaveInspectorJudgements =
+    !selectedInspectorSlotBlocked &&
     pendingInspectorJudgementValues.length > 0 &&
     pendingInspectorJudgementValues.every((value) => {
       const status = selectedInspectorJudgements[value.templateItemId] ?? value.judgementStatus;
@@ -785,7 +814,11 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
   }, [draftValuesByEntryIndex, hasUnsavedRegistrationDrafts, savedDraftByEntryIndex, session]);
 
   const isSessionInputLocked =
-    isSessionReadOnly || isCompletingSession || isEntryFocusFetching || !sessionEmployeeGateReady;
+    isSessionReadOnly ||
+    isCompletingSession ||
+    isEntryFocusFetching ||
+    !sessionEmployeeGateReady ||
+    selectedInspectorSlotBlocked;
 
   const resetDestructiveDescriptionText = hasUnsavedDraftChangesForReset
     ? '入力値と参照図面を初期化し、最新の有効検査図面でやり直します。未保存の入力またはNFC読み取りがあります。リセットすると破棄されます。'
@@ -974,7 +1007,7 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
   };
 
   const saveInspectorJudgements = async () => {
-    if (!session || !selectedInspectorEntry || !canSaveInspectorJudgements) return;
+    if (!session || !selectedInspectorEntry || selectedInspectorSlotBlocked || !canSaveInspectorJudgements) return;
     setActionError(null);
     try {
       await saveInspectorJudgementsMutation.mutateAsync({
@@ -1238,70 +1271,56 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
             messagePlacement="external"
           />
 
-          <div className="shrink-0 rounded border border-white/15 bg-slate-800/70 p-2">
-            <div className="flex min-w-0 items-center justify-between gap-2">
-              <div className="flex min-w-0 items-center gap-1">
-                <p className="shrink-0 text-sm font-semibold text-white/80">
-                  入力件（{selectedSlotLabel} / {requiredEntryCount}）
-                </p>
-                {!isInspectorMode && sessionEmployeeGateReady ? (
-                  <SelfInspectionAutosaveBadge
-                    status={draftAutosaveStatus}
-                    savedAtLabel={draftAutosaveAtLabel}
-                  />
+          <SelfInspectionEntrySlotSelector
+            slots={visibleEntrySlots}
+            selectedEntryIndex={selectedEntryIndex}
+            isInspectorMode={isInspectorMode}
+            sessionEmployeeGateReady={sessionEmployeeGateReady}
+            inspectorSlotStates={inspectorSlotStates}
+            selectedSlotNotice={selectedInspectorSlotNotice}
+            autosaveBadge={
+              !isInspectorMode && sessionEmployeeGateReady ? (
+                <SelfInspectionAutosaveBadge
+                  status={draftAutosaveStatus}
+                  savedAtLabel={draftAutosaveAtLabel}
+                />
+              ) : null
+            }
+            headerRight={
+              <>
+                <span className="text-xs text-white/70">{selectedSlotLabel} / {requiredEntryCount}</span>
+                {entryPageCount > 1 ? (
+                  <div className="flex items-center gap-2 text-xs text-white/70">
+                    <SelfInspectionKioskButton
+                      type="button"
+                      size="compact"
+                      disabled={entryIndexPage <= 0}
+                      onClick={() => setEntryIndexPage((page) => Math.max(0, page - 1))}
+                    >
+                      前へ
+                    </SelfInspectionKioskButton>
+                    <span>{entryIndexPage + 1} / {entryPageCount}</span>
+                    <SelfInspectionKioskButton
+                      type="button"
+                      size="compact"
+                      disabled={entryIndexPage >= entryPageCount - 1}
+                      onClick={() => setEntryIndexPage((page) => Math.min(entryPageCount - 1, page + 1))}
+                    >
+                      次へ
+                    </SelfInspectionKioskButton>
+                  </div>
                 ) : null}
-              </div>
-              {entryPageCount > 1 ? (
-                <div className="flex items-center gap-2 text-xs text-white/70">
-                  <SelfInspectionKioskButton
-                    type="button"
-                    size="compact"
-                    disabled={entryIndexPage <= 0}
-                    onClick={() => setEntryIndexPage((page) => Math.max(0, page - 1))}
-                  >
-                    前へ
-                  </SelfInspectionKioskButton>
-                  <span>
-                    {entryIndexPage + 1} / {entryPageCount}
-                  </span>
-                  <SelfInspectionKioskButton
-                    type="button"
-                    size="compact"
-                    disabled={entryIndexPage >= entryPageCount - 1}
-                    onClick={() => setEntryIndexPage((page) => Math.min(entryPageCount - 1, page + 1))}
-                  >
-                    次へ
-                  </SelfInspectionKioskButton>
-                </div>
-              ) : null}
-            </div>
-            <div className="mt-1 flex flex-wrap gap-1" data-self-inspection-entry-slots>
-              {visibleEntrySlots.map((slot) => {
-                const isSelected = slot.entryIndex === selectedEntryIndex;
-                return (
-                  <SelfInspectionKioskButton
-                    key={`${slot.entrySlotKind}-${slot.entryIndex}`}
-                    type="button"
-                    size="entryDense"
-                    pressed={isSelected}
-                    disabled={!sessionEmployeeGateReady}
-                    aria-label={isSelected ? `${slot.entrySlotLabel}（選択中）` : slot.entrySlotLabel}
-                    onPointerDownCapture={consumeNextBlurGuideAdvance}
-                    onPointerDown={consumeNextBlurGuideAdvance}
-                    onClick={() => {
-                      if (!sessionEmployeeGateReady) return;
-                      handleUserEntrySelect(slot.entryIndex);
-                      setSelectedEntryIndex(slot.entryIndex);
-                      setEntryIndexPage(selfInspectionEntryPageForEntryIndex(session, slot.entryIndex));
-                      setActionError(null);
-                    }}
-                  >
-                    {slot.entrySlotLabel}
-                  </SelfInspectionKioskButton>
-                );
-              })}
-            </div>
-          </div>
+              </>
+            }
+            onRefresh={() => void sessionQuery.refetch()}
+            onPointerDownCapture={consumeNextBlurGuideAdvance}
+            onSelect={(entryIndex) => {
+              handleUserEntrySelect(entryIndex);
+              setSelectedEntryIndex(entryIndex);
+              setEntryIndexPage(selfInspectionEntryPageForEntryIndex(session, entryIndex));
+              setActionError(null);
+            }}
+          />
 
           <div className="shrink-0">
             <InspectionDrawingValuePanel
@@ -1363,6 +1382,7 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
                 templateItems={session.template.items}
                 selectedByItemId={selectedInspectorJudgements}
                 isSaving={isSavingEntry}
+                disabled={selectedInspectorSlotBlocked}
                 onSelect={(templateItemId, status) => {
                   setInspectorJudgementsByEntryIndex((previous) => ({
                     ...previous,

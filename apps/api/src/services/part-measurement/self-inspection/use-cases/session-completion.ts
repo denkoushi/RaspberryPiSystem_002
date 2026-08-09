@@ -26,7 +26,10 @@ import {
 export async function completeSelfInspectionSession(sessionId: string) {
   const sessionInclude = {
     template: { include: partMeasurementTemplateFullInclude },
-    entries: { where: confirmedWhere, select: { entryIndex: true } },
+    entries: {
+      where: confirmedWhere,
+      select: { entryIndex: true, persistenceStatus: true }
+    },
     inspectorEntries: {
       select: {
         entryIndex: true,
@@ -87,6 +90,7 @@ export async function completeSelfInspectionSession(sessionId: string) {
           itemIds: existing.template.items.map((item) => item.id)
         },
         plannedQuantity: existing.plannedQuantity,
+        operatorEntries: existing.entries,
         inspectorEntries: existing.inspectorEntries
       });
       if (inspectorCompletion.state !== 'complete') {

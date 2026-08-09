@@ -77,17 +77,22 @@ function TablePane({ rows, onCandidateSelect, onInvalidate }: Props) {
                 </td>
                 <td className="px-2 py-1.5">
                   <div className={kioskDenseTableRowActionsClassName} data-testid="self-inspection-row-actions">
-                    {row.action.kind === 'link' ? (
+                    {row.kind === 'session' ? row.actions.map((action) => (
                       <Link
-                        to={row.action.href}
+                        key={`${action.href}:${action.label}`}
+                        to={action.href}
                         className={buttonClassName(
-                          'primary',
-                          clsx(kioskButtonPrimaryClassName, kioskDenseTableRowActionStructureClassName, 'text-sm')
+                          action.tone === 'primary' ? 'primary' : 'ghostOnDark',
+                          clsx(
+                            action.tone === 'primary' ? kioskButtonPrimaryClassName : undefined,
+                            kioskDenseTableRowActionStructureClassName,
+                            'text-sm'
+                          )
                         )}
                       >
-                        {row.action.label}
+                        {action.label}
                       </Link>
-                    ) : (
+                    )) : (
                       <button
                         type="button"
                         className={clsx(
@@ -102,17 +107,6 @@ function TablePane({ rows, onCandidateSelect, onInvalidate }: Props) {
                         {row.action.label}
                       </button>
                     )}
-                    {row.kind === 'session' && row.recordViewAction ? (
-                      <Link
-                        to={row.recordViewAction.href}
-                        className={buttonClassName(
-                          'ghostOnDark',
-                          clsx(kioskDenseTableRowActionStructureClassName, 'text-sm')
-                        )}
-                      >
-                        {row.recordViewAction.label}
-                      </Link>
-                    ) : null}
                     <button
                       type="button"
                       className={clsx(

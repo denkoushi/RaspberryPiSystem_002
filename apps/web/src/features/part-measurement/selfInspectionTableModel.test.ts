@@ -79,21 +79,27 @@ describe('self-inspection workflow actions', () => {
     const session = makeSelfInspectionSessionDetailForTest({
       items: [makeSelfInspectionTemplateItemForTest({ id: 'p1', sortOrder: 0 })]
     });
+    session.completedEntryCount = 1;
     session.recordApprovalRequiredAt = session.startedAt;
     session.inspectorRemeasurementRequiredAt = session.startedAt;
     session.inspectorMeasurementState = 'complete';
     session.decisionWorkflow = 'INSPECTOR_FINAL_JUDGEMENT';
 
     const row = presentSelfInspectionSessionRow(session);
-    expect(row.action).toEqual({
-      kind: 'link',
-      href: kioskSelfInspectionInspectorSessionPath(session.id),
-      label: '検査員測定'
-    });
-    expect(row.recordViewAction).toEqual({
-      href: `${KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH}?sessionId=${session.id}`,
-      label: '記録確認'
-    });
+    expect(row.actions).toEqual([
+      {
+        kind: 'link',
+        href: kioskSelfInspectionInspectorSessionPath(session.id),
+        label: '検査員測定',
+        tone: 'primary'
+      },
+      {
+        kind: 'link',
+        href: `${KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH}?sessionId=${session.id}`,
+        label: '記録確認',
+        tone: 'secondary'
+      }
+    ]);
     expect(row.statusLabel).toBe('最終判定待ち');
   });
 
@@ -101,15 +107,36 @@ describe('self-inspection workflow actions', () => {
     const session = makeSelfInspectionSessionDetailForTest({
       items: [makeSelfInspectionTemplateItemForTest({ id: 'p1', sortOrder: 0 })]
     });
+    session.completedEntryCount = 1;
     session.recordApprovalRequiredAt = session.startedAt;
     session.inspectorRemeasurementRequiredAt = session.startedAt;
     session.inspectorMeasurementState = 'complete';
     session.decisionWorkflow = 'LEGACY_RECORD_APPROVAL';
 
-    expect(presentSelfInspectionSessionRow(session).action).toEqual({
-      kind: 'link',
-      href: KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH,
-      label: '記録確認'
+    expect(presentSelfInspectionSessionRow(session).actions).toEqual([
+      {
+        kind: 'link',
+        href: KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH,
+        label: '記録確認',
+        tone: 'secondary'
+      }
+    ]);
+  });
+
+  it('shows operator resume and inspector measurement together while a lot is partially confirmed', () => {
+    const session = makeSelfInspectionSessionDetailForTest({
+      expectedEntryCount: 5,
+      items: [makeSelfInspectionTemplateItemForTest({ id: 'p1', sortOrder: 0 })]
     });
+    session.completedEntryCount = 2;
+    session.recordApprovalRequiredAt = session.startedAt;
+    session.inspectorRemeasurementRequiredAt = session.startedAt;
+    session.inspectorMeasurementState = 'in_progress';
+    session.inspectorCompletedRequiredEntryCount = 1;
+    session.inspectorRequiredEntryCount = 5;
+
+    const row = presentSelfInspectionSessionRow(session);
+    expect(row.progressLine).toContain('作業者 2/5件 / 検査員 1/5件');
+    expect(row.actions.map((action) => action.label)).toEqual(['再開', '検査員測定', '記録確認']);
   });
 });

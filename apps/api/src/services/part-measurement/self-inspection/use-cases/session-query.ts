@@ -207,6 +207,7 @@ export async function getSelfInspectionSessionDetail(
     completedAt: session.completedAt,
     template: { ...templateConfig, itemIds: session.template.items.map((item) => item.id) },
     plannedQuantity: session.plannedQuantity,
+    operatorEntries: session.entries,
     inspectorEntries: session.inspectorEntries
   });
   return {
@@ -358,6 +359,7 @@ export async function getInspectorMeasurementSessionDetail(
     completedAt: session.completedAt,
     template: { ...templateConfig, itemIds: session.template.items.map((item) => item.id) },
     plannedQuantity: session.plannedQuantity,
+    operatorEntries: session.entries,
     inspectorEntries: session.inspectorEntries
   });
   return {
@@ -402,6 +404,7 @@ export async function getInspectorMeasurementSessionDetail(
     inspectorCompletedRequiredEntryCount: inspectorMeasurement.completedRequiredEntryCount,
     inspectorMissingRequiredEntryCount: inspectorMeasurement.missingRequiredEntryCount,
     inspectorIncompleteValueEntryCount: inspectorMeasurement.incompleteValueEntryCount,
+    inspectorSlotStates: inspectorMeasurement.slotStates,
     recordApproval: serializeRecordApproval(session.recordApproval),
     updatedAt: session.updatedAt.toISOString(),
     template: session.template,

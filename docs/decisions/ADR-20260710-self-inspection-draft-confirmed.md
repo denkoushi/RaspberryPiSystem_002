@@ -31,6 +31,7 @@ Operators lose in-progress measurements on refresh. Confirm must remain strict (
 - **Amendment (2026-07-11)**: draft upsert on an existing CONFIRMED entry is a **no-op** (no demotion). Autosave must not target confirmed entries. WIP **list** includes sessions with any lot entry (DRAFT or CONFIRMED) as `in_progress`; WIP **progress counts** remain CONFIRMED-only. Details: [Plan](../plans/self-inspection-confirm-guard-wip-draft.md).
 - **Amendment (2026-07-27)**: each measurement page requires a short-lived, session/mode/client-bound NFC actor authentication. The authentication ID is held only in page memory and is required by draft, confirm, inspector-entry, and pre-use mutations. Entry ownership snapshots remain immutable; later operations are recorded separately in the operation audit.
 - Pipe-inspection items may use an explicit `JUDGEMENT` value kind. These items accept only `PASS` / `FAIL` (shown as OK / NG) and never accept a numeric value. Numeric items continue to reject judgement values.
+- **Amendment (2026-08-09)**: inspector measurement, inspector instrument pre-use, and inspector final judgement require the paired operator entry to be `CONFIRMED`. Operator edits are locked only for an `entryIndex` that already has an inspector entry; other required slots may continue in parallel. See [KB-408](../knowledge-base/KB-408-self-inspection-per-entry-inspector-gate.md).
 
 ## Alternatives
 
@@ -46,6 +47,7 @@ Operators lose in-progress measurements on refresh. Confirm must remain strict (
 - A reload or session/mode change requires NFC re-authentication
 - Measurement authorship and subsequent operating actor are independently auditable
 - Numeric tolerance and OK/NG judgement values remain type-separated end to end
+- Inspector eligibility is evaluated per required slot, not per lot. A slot with complete-looking values but `DRAFT` persistence remains incomplete.
 
 ## Validation
 
