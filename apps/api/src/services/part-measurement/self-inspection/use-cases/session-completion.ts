@@ -26,7 +26,10 @@ import {
 export async function completeSelfInspectionSession(sessionId: string) {
   const sessionInclude = {
     template: { include: partMeasurementTemplateFullInclude },
-    entries: { where: confirmedWhere, select: { entryIndex: true } },
+    entries: {
+      where: confirmedWhere,
+      select: { entryIndex: true, persistenceStatus: true }
+    },
     inspectorEntries: {
       select: {
         entryIndex: true,
