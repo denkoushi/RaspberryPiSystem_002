@@ -326,6 +326,7 @@ export function serializeSessionSummary(
       itemIds: session.template.items.map((item) => item.id)
     },
     plannedQuantity: session.plannedQuantity,
+    operatorEntries: 'entries' in session ? session.entries : [],
     inspectorEntries: 'inspectorEntries' in session ? session.inspectorEntries : []
   });
   return {
@@ -543,6 +544,11 @@ export function buildRecordApprovalReadiness(
       session.inspectorEntries.map((entry) => [entry.entryIndex, entry])
     );
     for (const slot of requiredSlots) {
+      const operatorEntry = entriesByIndex.get(slot.entryIndex);
+      if (!operatorEntry || !isConfirmed(operatorEntry.persistenceStatus)) {
+        inspectorMissingRequiredEntryCount += 1;
+        continue;
+      }
       const inspectorEntry = inspectorEntriesByIndex.get(slot.entryIndex);
       if (!inspectorEntry) {
         inspectorMissingRequiredEntryCount += 1;
@@ -694,7 +700,7 @@ export function serializeRecordApprovalEntryDetail(
         registrationPolicy
       )
     : false;
-  const state = !entry || hasMissingValue
+  const state = !entry || !isConfirmed(entry.persistenceStatus) || hasMissingValue
     ? 'input_incomplete'
     : !registrationComplete
       ? 'registration_incomplete'

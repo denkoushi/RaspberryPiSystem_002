@@ -20,6 +20,7 @@ type Props = {
   templateItems: TemplateItem[];
   selectedByItemId: Record<string, SelfInspectionFinalJudgement>;
   isSaving: boolean;
+  disabled?: boolean;
   onSelect: (templateItemId: string, status: SelfInspectionFinalJudgement) => void;
   onSave: () => void;
 };
@@ -29,6 +30,7 @@ export function SelfInspectionInspectorJudgementPanel({
   templateItems,
   selectedByItemId,
   isSaving,
+  disabled = false,
   onSelect,
   onSave
 }: Props) {
@@ -73,7 +75,7 @@ export function SelfInspectionInspectorJudgementPanel({
                     size="actionCompact"
                     tone={status === 'FINAL_OK' ? 'success' : 'danger'}
                     pressed={selectedStatus === status}
-                    disabled={isSaving}
+                    disabled={disabled || isSaving}
                     onClick={() => onSelect(value.templateItemId, status)}
                   >
                     {status === 'FINAL_OK' ? '最終OK' : '最終NG'}
@@ -87,8 +89,8 @@ export function SelfInspectionInspectorJudgementPanel({
       <SelfInspectionKioskButton
         type="button"
         size="actionCompact"
-        disabled={!canSave || isSaving}
-        highlighted={canSave && !isSaving}
+        disabled={!canSave || disabled || isSaving}
+        highlighted={canSave && !disabled && !isSaving}
         onClick={onSave}
       >
         最終判定を保存

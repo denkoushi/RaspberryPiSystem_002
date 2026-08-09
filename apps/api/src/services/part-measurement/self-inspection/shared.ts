@@ -11,7 +11,6 @@ import { resolveProductionSchedulePlannedQuantity } from '../../production-sched
 import { partMeasurementTemplateFullInclude } from '../part-measurement-template-include.js';
 import {
   isSessionCompletionReady,
-  listRequiredEntrySlots,
   tryResolveExpectedEntryCount,
   type SelfInspectionTemplateConfig,
   SELF_INSPECTION_MAX_EXPECTED_ENTRY_COUNT
@@ -233,82 +232,8 @@ export type NormalizedMeasurementValue = {
   approvalComment: string | null;
 };
 
-export type InspectorEntryValueCompletionSource = {
-  entryIndex: number;
-  values: Array<{
-    templateItemId: string;
-    inspectorValue: Prisma.Decimal | null;
-    inspectorJudgementResult: InspectionResult | null;
-  }>;
-};
-
-export function buildInspectorMeasurementCompletion(input: {
-  inspectorRemeasurementRequiredAt?: Date | null;
-  recordApproval?: unknown | null;
-  completedAt?: Date | null;
-  template: SelfInspectionTemplateConfig & { itemIds?: string[] };
-  plannedQuantity: number;
-  inspectorEntries?: InspectorEntryValueCompletionSource[];
-}): {
-  state: SelfInspectionInspectorMeasurementState;
-  requiredEntryCount: number;
-  completedRequiredEntryCount: number;
-  missingRequiredEntryCount: number;
-  incompleteValueEntryCount: number;
-} {
-  const requiredSlots = listRequiredEntrySlots(input.template, input.plannedQuantity);
-  const requiredItemIds = input.template.itemIds ?? [];
-  if (!input.inspectorRemeasurementRequiredAt || input.recordApproval || input.completedAt) {
-    return {
-      state: 'not_required',
-      requiredEntryCount: requiredSlots.length,
-      completedRequiredEntryCount: 0,
-      missingRequiredEntryCount: 0,
-      incompleteValueEntryCount: 0
-    };
-  }
-
-  const entriesByIndex = new Map(
-    (input.inspectorEntries ?? []).map((entry) => [entry.entryIndex, entry])
-  );
-  let completedRequiredEntryCount = 0;
-  let missingRequiredEntryCount = 0;
-  let incompleteValueEntryCount = 0;
-
-  for (const slot of requiredSlots) {
-    const entry = entriesByIndex.get(slot.entryIndex);
-    if (!entry) {
-      missingRequiredEntryCount += 1;
-      continue;
-    }
-    completedRequiredEntryCount += 1;
-    const valuesByItemId = new Map(entry.values.map((value) => [value.templateItemId, value]));
-    const hasMissingValue = requiredItemIds.some((itemId) => {
-      const value = valuesByItemId.get(itemId);
-      return value?.inspectorValue == null && value?.inspectorJudgementResult == null;
-    });
-    if (hasMissingValue) {
-      incompleteValueEntryCount += 1;
-    }
-  }
-
-  const state =
-    missingRequiredEntryCount === 0 &&
-    incompleteValueEntryCount === 0 &&
-    requiredSlots.length > 0
-      ? 'complete'
-      : completedRequiredEntryCount > 0
-        ? 'in_progress'
-        : 'pending';
-
-  return {
-    state,
-    requiredEntryCount: requiredSlots.length,
-    completedRequiredEntryCount,
-    missingRequiredEntryCount,
-    incompleteValueEntryCount
-  };
-}
+export type { InspectorEntryValueCompletionSource } from './inspector-slot-state.js';
+export { buildInspectorMeasurementCompletion } from './inspector-slot-state.js';
 
 export function resolveStatus(input: {
   completedEntryCount: number;

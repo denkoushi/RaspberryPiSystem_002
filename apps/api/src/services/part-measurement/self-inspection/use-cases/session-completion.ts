@@ -87,6 +87,7 @@ export async function completeSelfInspectionSession(sessionId: string) {
           itemIds: existing.template.items.map((item) => item.id)
         },
         plannedQuantity: existing.plannedQuantity,
+        operatorEntries: existing.entries,
         inspectorEntries: existing.inspectorEntries
       });
       if (inspectorCompletion.state !== 'complete') {

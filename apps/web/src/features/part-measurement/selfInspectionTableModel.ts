@@ -54,8 +54,12 @@ type SelfInspectionTableRowBase = {
 export type SelfInspectionTableRow =
   | (SelfInspectionTableRowBase & {
       kind: 'session';
-      action: { kind: 'link'; href: string; label: string };
-      recordViewAction?: { href: string; label: string };
+      actions: Array<{
+        kind: 'link';
+        href: string;
+        label: string;
+        tone: 'primary' | 'secondary';
+      }>;
     })
   | (SelfInspectionTableRowBase & {
       kind: 'candidate';
@@ -132,13 +136,59 @@ export function presentSelfInspectionSessionRow(
     !session.completedAt;
   const inspectorComplete =
     Boolean(session.inspectorRemeasurementRequiredAt) && inspectorState === 'complete';
-  const action = inspectorActive
-    ? { kind: 'link' as const, href: kioskSelfInspectionInspectorSessionPath(session.id), label: '検査員測定' }
-    : inspectorComplete &&
-        session.recordApprovalRequiredAt &&
-        session.decisionWorkflow === 'LEGACY_RECORD_APPROVAL'
-      ? { kind: 'link' as const, href: KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH, label: '記録確認' }
-      : { kind: 'link' as const, href: kioskSelfInspectionSessionPath(session.id), label: '再開' };
+  const operatorIncomplete = session.completedEntryCount < session.requiredEntryCount;
+  const actions: Extract<SelfInspectionTableRow, { kind: 'session' }>['actions'] = [];
+  if (operatorIncomplete) {
+    actions.push({
+      kind: 'link',
+      href: kioskSelfInspectionSessionPath(session.id),
+      label: '再開',
+      tone: inspectorActive && session.completedEntryCount > 0 ? 'secondary' : 'primary'
+    });
+  }
+  if (inspectorActive && session.completedEntryCount > 0) {
+    actions.push({
+      kind: 'link',
+      href: kioskSelfInspectionInspectorSessionPath(session.id),
+      label: '検査員測定',
+      tone: operatorIncomplete ? 'secondary' : 'primary'
+    });
+  }
+  const hasLegacyRecordApprovalAction =
+    inspectorComplete &&
+    Boolean(session.recordApprovalRequiredAt) &&
+    session.decisionWorkflow === 'LEGACY_RECORD_APPROVAL';
+  const hasFinalJudgementRecordAction =
+    Boolean(session.recordApprovalRequiredAt) &&
+    session.decisionWorkflow === 'INSPECTOR_FINAL_JUDGEMENT';
+  if (actions.length === 0 && !session.completedAt && !hasLegacyRecordApprovalAction && !hasFinalJudgementRecordAction) {
+    actions.push({
+      kind: 'link',
+      href: kioskSelfInspectionSessionPath(session.id),
+      label: '再開',
+      tone: 'primary'
+    });
+  }
+  if (
+    inspectorComplete &&
+    session.recordApprovalRequiredAt &&
+    session.decisionWorkflow === 'LEGACY_RECORD_APPROVAL'
+  ) {
+    actions.push({
+      kind: 'link',
+      href: KIOSK_SELF_INSPECTION_RECORD_APPROVALS_PATH,
+      label: '記録確認',
+      tone: 'secondary'
+    });
+  }
+  if (session.recordApprovalRequiredAt && session.decisionWorkflow === 'INSPECTOR_FINAL_JUDGEMENT') {
+    actions.push({
+      kind: 'link',
+      href: kioskSelfInspectionRecordConfirmationPath(session.id),
+      label: '記録確認',
+      tone: 'secondary'
+    });
+  }
   const card = presentSelfInspectionWipCard({
     productNo: session.productNo,
     fhincd: session.fhincd,
@@ -166,18 +216,10 @@ export function presentSelfInspectionSessionRow(
     detailLine: `製番 ${session.fseiban || '—'} / 品番 ${session.fhincd || '—'} ${session.fhinmei || ''}`.trim(),
     progressLine:
       inspectorActive || inspectorComplete
-        ? `氏名 ${card.participantNamesLine} / 指示数 ${session.plannedQuantity} / 検査員 ${session.inspectorCompletedRequiredEntryCount}/${session.inspectorRequiredEntryCount} 件`
+        ? `氏名 ${card.participantNamesLine} / 指示数 ${session.plannedQuantity} / 作業者 ${session.completedEntryCount}/${session.requiredEntryCount}件 / 検査員 ${session.inspectorCompletedRequiredEntryCount}/${session.inspectorRequiredEntryCount}件`
         : `氏名 ${card.participantNamesLine} / 指示数 ${session.plannedQuantity} / 進捗 ${card.progressLine}`,
     invalidationTarget: { kind: 'session', sessionId: session.id },
-    action,
-    recordViewAction:
-      session.recordApprovalRequiredAt &&
-      session.decisionWorkflow === 'INSPECTOR_FINAL_JUDGEMENT'
-        ? {
-            href: kioskSelfInspectionRecordConfirmationPath(session.id),
-            label: '記録確認'
-          }
-        : undefined
+    actions
   };
 }
 

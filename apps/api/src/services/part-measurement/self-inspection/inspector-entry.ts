@@ -18,6 +18,7 @@ import {
   validateMeasurementPayload
 } from './mutation-guards.js';
 import { resolveInspectorRegistrationForSave } from './entry-registration.js';
+import { assertOperatorEntryConfirmedForInspector } from './inspector-entry-eligibility.js';
 import {
   appendMeasurementOperation,
   requireMeasurementActorAuthentication
@@ -86,6 +87,7 @@ export async function saveInspectorEntry(
     if (!operatorEntry) {
       throw new ApiError(409, 'オペレータの測定値が未登録のため検査員再測定できません');
     }
+    assertOperatorEntryConfirmedForInspector(operatorEntry);
     if (!operatorEntry.createdByEmployeeId) {
       throw new ApiError(409, 'オペレータの測定者が未登録のため検査員再測定できません');
     }
@@ -250,6 +252,16 @@ export async function saveInspectorJudgements(
       }
     });
     if (!entry) throw new ApiError(404, '検査員再測定入力が見つかりません');
+    const operatorEntry = await tx.selfInspectionLotEntry.findUnique({
+      where: {
+        sessionId_entryIndex: {
+          sessionId,
+          entryIndex: entry.entryIndex
+        }
+      },
+      select: { entryIndex: true, persistenceStatus: true }
+    });
+    assertOperatorEntryConfirmedForInspector(operatorEntry);
 
     const pendingValues = entry.values.filter(
       (value) => value.operatorMeasurementValue?.reviewStatus === 'PENDING'

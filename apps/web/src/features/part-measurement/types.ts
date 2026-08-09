@@ -603,8 +603,16 @@ export type SelfInspectionSessionDetailDto = SelfInspectionSessionSummaryDto & {
   /** 測定値は含まない（大量件数対策）。値は focusedEntry を参照 */
   entries: SelfInspectionLotEntryDto[];
   operatorEntries?: SelfInspectionLotEntryDto[];
+  /** 検査員画面で表示する、作業者確定・検査員測定の個体別状態 */
+  inspectorSlotStates?: SelfInspectionInspectorSlotStateDto[];
   /** `entryIndex` クエリ指定時のみ、当該入力件の測定値 */
   focusedEntry?: SelfInspectionLotEntryDto | null;
+};
+
+export type SelfInspectionInspectorSlotStateDto = {
+  entryIndex: number;
+  operatorState: 'missing' | 'draft' | 'confirmed';
+  inspectorState: 'not_started' | 'in_progress' | 'complete';
 };
 
 export type PartMeasurementTemplateCandidateDto = {

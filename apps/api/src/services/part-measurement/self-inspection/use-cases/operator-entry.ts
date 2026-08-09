@@ -31,13 +31,13 @@ import {
   requireMeasurementActorAuthentication
 } from '../measurement-actor-authentication.js';
 import {
-  assertInspectorRemeasurementNotStarted,
   assertLotEntryValuesMatchPayload,
   assertSessionEntryCountWritable,
   loadSessionForMutation,
   lockSessionRow,
   validateMeasurementPayload
 } from '../mutation-guards.js';
+import { assertOperatorEntryNotLockedByInspector } from '../operator-entry-inspector-lock.js';
 import { assertSelfInspectionEntryRegistrationTagUids } from '../../self-inspection-registration-tag-validation.js';
 import {
   assertEntryUnmodifiedSince,
@@ -72,12 +72,12 @@ export async function createSelfInspectionEntry(
       clientDeviceId: input.clientDeviceId
     });
     assertSessionEntryCountWritable(session);
-    await assertInspectorRemeasurementNotStarted(tx, sessionId);
     const registrationPolicy = await getSelfInspectionRegistrationPolicy(tx);
     input.createdByEmployeeId = actor.employeeId;
     input.createdByEmployeeNameSnapshot = actor.employeeNameSnapshot;
     const templateConfig = templateConfigFromTemplate(session.template);
     assertEntryIndexAllowed(templateConfig, session.plannedQuantity, entryIndex);
+    await assertOperatorEntryNotLockedByInspector(tx, sessionId, entryIndex);
     const slotKind = inferEntrySlotKindForIndex(templateConfig, session.plannedQuantity, entryIndex);
 
     const existingAtIndex = await tx.selfInspectionLotEntry.findUnique({
@@ -238,13 +238,13 @@ export async function updateSelfInspectionEntry(
       clientDeviceId: input.clientDeviceId
     });
     assertSessionEntryCountWritable(session);
-    await assertInspectorRemeasurementNotStarted(tx, sessionId);
     const registrationPolicy = await getSelfInspectionRegistrationPolicy(tx);
     const existingEntry = await tx.selfInspectionLotEntry.findFirst({
       where: { id: entryId, sessionId },
       include: { values: true, instrumentUsages: true }
     });
     if (!existingEntry) throw new ApiError(404, '自主検査入力が見つかりません');
+    await assertOperatorEntryNotLockedByInspector(tx, sessionId, existingEntry.entryIndex);
     assertEntryUnmodifiedSince(input.ifUnmodifiedSince, existingEntry.updatedAt);
     const registrationPatch = await resolveRegistrationPatchForUpdate(
       existingEntry,
@@ -324,9 +324,9 @@ export async function upsertSelfInspectionDraftEntry(
       clientDeviceId: input.clientDeviceId
     });
     assertSessionEntryCountWritable(session);
-    await assertInspectorRemeasurementNotStarted(tx, sessionId);
     const templateConfig = templateConfigFromTemplate(session.template);
     assertEntryIndexAllowed(templateConfig, session.plannedQuantity, entryIndex);
+    await assertOperatorEntryNotLockedByInspector(tx, sessionId, entryIndex);
     const slotKind = inferEntrySlotKindForIndex(templateConfig, session.plannedQuantity, entryIndex);
     const values = validateDraftMeasurementPayload(session.template, input.values ?? []);
     const existingEntry = await tx.selfInspectionLotEntry.findUnique({

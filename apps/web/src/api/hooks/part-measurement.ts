@@ -224,6 +224,7 @@ export function useCreateSelfInspectionEntry() {
       createSelfInspectionEntry(sessionId, body),
     onSuccess: (entry, variables) => {
       patchSelfInspectionSessionCachesAfterEntrySave(queryClient, variables.sessionId, entry);
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-inspector-session', variables.sessionId] });
       void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
     }
   });
@@ -241,6 +242,7 @@ export function useUpsertSelfInspectionDraftEntry() {
     }) => upsertSelfInspectionDraftEntry(sessionId, body),
     onSuccess: (entry, variables) => {
       patchSelfInspectionSessionCachesAfterEntrySave(queryClient, variables.sessionId, entry);
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-inspector-session', variables.sessionId] });
     }
   });
 }
@@ -259,6 +261,7 @@ export function useUpdateSelfInspectionEntry() {
     }) => updateSelfInspectionEntry(sessionId, entryId, body),
     onSuccess: (entry, variables) => {
       patchSelfInspectionSessionCachesAfterEntrySave(queryClient, variables.sessionId, entry);
+      void queryClient.invalidateQueries({ queryKey: ['self-inspection-inspector-session', variables.sessionId] });
       void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
     }
   });

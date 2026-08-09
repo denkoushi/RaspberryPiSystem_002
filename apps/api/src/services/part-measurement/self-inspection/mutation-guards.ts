@@ -290,18 +290,6 @@ export async function assertAllInspectorEntriesHaveRegistration(
   }
 }
 
-export async function assertInspectorRemeasurementNotStarted(
-  db: Prisma.TransactionClient,
-  sessionId: string
-): Promise<void> {
-  const inspectorEntryCount = await db.selfInspectionInspectorEntry.count({
-    where: { sessionId }
-  });
-  if (inspectorEntryCount > 0) {
-    throw new ApiError(409, '検査員の再測定が開始済みのためオペレータ測定値は変更できません');
-  }
-}
-
 export function assertLotEntryValuesMatchPayload(
   existing: Prisma.SelfInspectionLotEntryGetPayload<{ include: { values: true } }>,
   normalized: NormalizedMeasurementValue[]
