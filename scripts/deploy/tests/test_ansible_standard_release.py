@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import os
 import re
+import shutil
 import subprocess
+import tempfile
+import threading
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import yaml
@@ -25,6 +30,135 @@ def role_text(role: str) -> str:
 
 
 class StandardReleaseAnsibleTests(unittest.TestCase):
+    def test_candidate_status_agent_runtime_closure_executes(self) -> None:
+        prepare_tasks = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        runtime_declarations = []
+        source_prefix = "{{ playbook_dir }}/../../../"
+        for task in prepare_tasks:
+            copy_task = task.get("ansible.builtin.copy")
+            if not isinstance(copy_task, dict):
+                continue
+            source = str(copy_task.get("src", ""))
+            destination = str(copy_task.get("dest", ""))
+            if (
+                "{{ release_kiosk_stage_dir }}/" not in destination
+                or not source.endswith(".py")
+            ):
+                continue
+            self.assertTrue(source.startswith(source_prefix), source)
+            runtime_declarations.append(
+                (
+                    ROOT / source[len(source_prefix) :],
+                    Path(destination.rsplit("/", 1)[-1]),
+                )
+            )
+
+        self.assertTrue(runtime_declarations)
+        prepare_text = (
+            ANSIBLE / "roles/release_kiosk/tasks/prepare.yml"
+        ).read_text(encoding="utf-8")
+        for source_path, destination_name in runtime_declarations:
+            self.assertTrue(source_path.is_file(), source_path)
+            self.assertIn(
+                f"/usr/local/lib/raspi-status-agent/{destination_name}",
+                prepare_text,
+            )
+
+        with tempfile.TemporaryDirectory() as temporary_root:
+            temporary_path = Path(temporary_root)
+            runtime_path = temporary_path / "usr/local/lib/raspi-status-agent"
+            runtime_path.mkdir(parents=True)
+            for source_path, destination_name in runtime_declarations:
+                shutil.copy2(source_path, runtime_path / destination_name)
+
+            config_path = temporary_path / "status-agent.conf"
+            config_lines = [
+                "API_BASE_URL=__API_BASE_URL__",
+                "CLIENT_ID=fixture-status-agent",
+                "CLIENT_KEY=fixture-key",
+                "LOG_FILE=",
+                "REQUEST_TIMEOUT=3",
+                "STORAGE_HEALTH_ENABLED=0",
+                "STORAGE_HEALTH_STATE_FILE="
+                + str(temporary_path / "storage-health-state"),
+                "TERMINAL_AGENT_HEALTH_NFC_ENABLED=0",
+                "TERMINAL_AGENT_HEALTH_BARCODE_ENABLED=0",
+                "TERMINAL_AGENT_HEALTH_TORQUE_ENABLED=0",
+                "TERMINAL_AGENT_MAINTENANCE_LEASES_JSON={}",
+                "TERMINAL_AGENT_HEALTH_STATE_FILE="
+                + str(temporary_path / "terminal-agent-health-state.json"),
+                "STATUS_AGENT_LOG_SUCCESS=0",
+            ]
+
+            class StatusHandler(BaseHTTPRequestHandler):
+                received = False
+
+                def do_POST(self) -> None:  # noqa: N802
+                    length = int(self.headers.get("Content-Length", "0"))
+                    self.rfile.read(length)
+                    type(self).received = True
+                    self.send_response(200)
+                    self.end_headers()
+
+                def log_message(self, *_args: object) -> None:
+                    return
+
+            server = None
+            command = [
+                "/usr/bin/env",
+                "python3",
+                "-c",
+                (
+                    "import runpy, sys; "
+                    "sys.path.insert(0, str(__import__('pathlib').Path(sys.argv[1]).parent)); "
+                    "module = runpy.run_path(sys.argv[1], run_name='status_agent_candidate'); "
+                    "module['main'].__globals__['build_payload'] = lambda config, force_storage_health=False: {'logs': []}; "
+                    "module['main'].__globals__['post_payload'] = lambda config, payload: None; "
+                    "sys.argv = [sys.argv[0]]; "
+                    "sys.exit(module['main']())"
+                ),
+                str(runtime_path / "status-agent.py"),
+            ]
+            if Path("/proc/stat").is_file():
+                server = ThreadingHTTPServer(("127.0.0.1", 0), StatusHandler)
+                config_lines[0] = (
+                    f"API_BASE_URL=http://127.0.0.1:{server.server_port}/api"
+                )
+                command = ["/usr/bin/env", "python3", str(runtime_path / "status-agent.py")]
+                server_thread = threading.Thread(
+                    target=server.serve_forever, daemon=True
+                )
+                server_thread.start()
+            config_path.write_text("\n".join(config_lines), encoding="utf-8")
+            environment = os.environ.copy()
+            environment["STATUS_AGENT_CONFIG"] = str(config_path)
+            try:
+                result = subprocess.run(
+                    command,
+                    env=environment,
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                    check=False,
+                )
+            finally:
+                if server is not None:
+                    server.shutdown()
+                    server.server_close()
+                    server_thread.join(timeout=2)
+
+        self.assertEqual(
+            result.returncode,
+            0,
+            msg=f"stdout={result.stdout}\nstderr={result.stderr}",
+        )
+        if server is not None:
+            self.assertTrue(StatusHandler.received)
+
     def test_release_launcher_uses_shared_firefox_resolution(self) -> None:
         prepare = (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
             encoding="utf-8"
