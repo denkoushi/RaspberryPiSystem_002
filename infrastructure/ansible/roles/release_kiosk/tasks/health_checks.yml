@@ -9,6 +9,39 @@
     - lightdm.service
     - kiosk-browser.service
     - status-agent.timer
+  register: release_kiosk_display_health
+  retries: 10
+  delay: 2
+  until: release_kiosk_display_health is succeeded
+  changed_when: false
+
+- name: Verify the Pi4 status-agent configuration is present
+  ansible.builtin.command:
+    argv:
+      - test
+      - -s
+      - /etc/raspi-status-agent.conf
+  register: release_kiosk_status_agent_config_health
+  retries: 5
+  delay: 3
+  until: release_kiosk_status_agent_config_health.rc == 0
+  changed_when: false
+
+- name: Verify the Pi4 status-agent service is loaded and healthy
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - show
+      - status-agent.service
+      - --property=LoadState,Result,ExecMainStatus
+  register: release_kiosk_status_agent_service_health
+  retries: 5
+  delay: 3
+  until:
+    - release_kiosk_status_agent_service_health.rc == 0
+    - "'LoadState=loaded' in release_kiosk_status_agent_service_health.stdout_lines"
+    - "'Result=success' in release_kiosk_status_agent_service_health.stdout_lines"
+    - "'ExecMainStatus=0' in release_kiosk_status_agent_service_health.stdout_lines"
   changed_when: false
 
 - name: Verify the Pi4 NFC agent

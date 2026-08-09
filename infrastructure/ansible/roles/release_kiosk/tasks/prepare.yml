@@ -30,6 +30,22 @@
       - release_kiosk_services | length > 0
     fail_msg: The selected kiosk has no CI-built agent service enabled.
 
+- name: Reuse kiosk role browser executable resolution for release staging
+  ansible.builtin.include_role:
+    name: kiosk
+    tasks_from: resolve-browser
+  when: manage_kiosk_browser | default(false) | bool
+
+- name: Define files required by rollback runtime
+  ansible.builtin.set_fact:
+    release_kiosk_rollback_prerequisites: >-
+      {{
+        ['/etc/raspi-status-agent.conf']
+        + ([release_kiosk_project_dir ~ '/clients/nfc-agent/.env'] if 'nfc-agent' in release_kiosk_services else [])
+        + ([release_kiosk_project_dir ~ '/clients/barcode-agent/.env'] if 'barcode-agent' in release_kiosk_services else [])
+        + ([release_kiosk_project_dir ~ '/clients/torque-agent/.env'] if 'torque-agent' in release_kiosk_services else [])
+      }}
+
 - name: Define Pi4 run-scoped paths
   ansible.builtin.set_fact:
     release_kiosk_run_dir: "{{ release_kiosk_run_root }}/{{ release_run_id }}/{{ inventory_hostname }}"

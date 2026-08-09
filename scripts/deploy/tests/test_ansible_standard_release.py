@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 
 import yaml
-
+from jinja2 import Environment, StrictUndefined
 
 ROOT = Path(__file__).resolve().parents[3]
 ANSIBLE = ROOT / "infrastructure/ansible"
@@ -23,6 +24,153 @@ def role_text(role: str) -> str:
 
 
 class StandardReleaseAnsibleTests(unittest.TestCase):
+    def test_release_launcher_uses_shared_firefox_resolution(self) -> None:
+        prepare = (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
+            encoding="utf-8"
+        )
+        resolver = (ANSIBLE / "roles/kiosk/tasks/resolve-browser.yml").read_text(
+            encoding="utf-8"
+        )
+        launcher = (ANSIBLE / "templates/kiosk-launch.sh.j2").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("name: kiosk", prepare)
+        self.assertIn("tasks_from: resolve-browser", prepare)
+        self.assertIn("kiosk_browser_firefox_binary", resolver)
+        self.assertIn("kiosk_browser_exec_path", resolver)
+
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["bool"] = lambda value: str(value).lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        environment.filters["regex_replace"] = lambda value, pattern, replacement: re.sub(
+            pattern, replacement, value
+        )
+        rendered = environment.from_string(launcher).render(
+            ansible_user="kiosk",
+            kiosk_url="https://server.example/kiosk",
+            kiosk_browser_engine="firefox",
+            kiosk_browser_exec_path="/usr/bin/firefox",
+            kiosk_release_sha="a" * 40,
+        )
+        self.assertIn('BROWSER_BIN="/usr/bin/firefox"', rendered)
+        self.assertNotIn('BROWSER_BIN="/usr/bin/chromium-browser"', rendered)
+
+    def test_display_health_wait_is_bounded_and_fails_after_timeout(self) -> None:
+        health = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/health_checks.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        display = health[0]
+        self.assertEqual(display["name"], "Verify Pi4 display services")
+        self.assertEqual(display["retries"], 10)
+        self.assertEqual(display["delay"], 2)
+        self.assertEqual(display["until"], "release_kiosk_display_health is succeeded")
+        self.assertGreater(display["retries"], 0)
+        self.assertGreater(display["delay"], 0)
+        status_service = health[2]
+        self.assertEqual(
+            status_service["name"],
+            "Verify the Pi4 status-agent service is loaded and healthy",
+        )
+        status_until = " ".join(status_service["until"])
+        self.assertIn("'LoadState=loaded'", status_until)
+        self.assertIn("'Result=success'", status_until)
+        self.assertIn("'ExecMainStatus=0'", status_until)
+
+    def test_switch_and_rollback_run_status_agent_before_timer_and_health(self) -> None:
+        switch = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/switch.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        switch_names = [task["name"] for task in switch]
+        switch_run_index = switch_names.index(
+            "Run the staged status-agent service once before its timer"
+        )
+        switch_timer_index = switch_names.index(
+            "Ensure the status-agent timer uses the staged implementation"
+        )
+        self.assertLess(switch_run_index, switch_timer_index)
+        self.assertEqual(
+            switch[switch_run_index]["ansible.builtin.systemd"],
+            {"name": "status-agent.service", "state": "started"},
+        )
+
+        rollback = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/rollback.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        rollback_names = [task["name"] for task in rollback]
+        rollback_run_index = rollback_names.index(
+            "Run the restored status-agent service once before its timer"
+        )
+        rollback_timer_index = rollback_names.index(
+            "Restart restored Pi4 status-agent timer"
+        )
+        rollback_health_index = rollback_names.index(
+            "Verify the complete restored Pi4 runtime"
+        )
+        self.assertLess(rollback_run_index, rollback_timer_index)
+        self.assertLess(rollback_timer_index, rollback_health_index)
+        self.assertEqual(
+            rollback[rollback_run_index]["ansible.builtin.systemd"],
+            {"name": "status-agent.service", "state": "started"},
+        )
+
+    def test_rollback_restores_prerequisites_before_compose_and_deletion(self) -> None:
+        rollback_path = ANSIBLE / "roles/release_kiosk/tasks/rollback.yml"
+        tasks = yaml.safe_load(rollback_path.read_text(encoding="utf-8"))
+        names = [task["name"] for task in tasks]
+        prerequisite_index = names.index(
+            "Verify rollback prerequisites before agent compose restore"
+        )
+        compose_index = names.index(
+            "Restore Pi4 agents from the captured image tags"
+        )
+        removal_index = names.index(
+            "Remove newly introduced Pi4 files without a backup"
+        )
+        self.assertLess(prerequisite_index, compose_index)
+        self.assertLess(compose_index, removal_index)
+        self.assertIn("/etc/raspi-status-agent.conf", " ".join(
+            (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
+                encoding="utf-8"
+            ).splitlines()
+        ))
+        removal = tasks[removal_index]
+        self.assertIn(
+            "item.item.dest not in (release_kiosk_rollback_prerequisites | default([]))",
+            removal["when"],
+        )
+
+    def test_disabled_agent_is_not_a_rollback_health_requirement(self) -> None:
+        prepare = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        health = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/health_checks.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        service_selection = next(
+            task for task in prepare if task["name"] == "Select only agents enabled for this Pi4"
+        )
+        selection = service_selection["ansible.builtin.set_fact"]["release_kiosk_services"]
+        self.assertIn("barcode_agent_enabled | default(false) | bool", selection)
+        barcode_health = next(
+            task for task in health if task["name"] == "Verify the Pi4 barcode agent"
+        )
+        self.assertEqual(barcode_health["when"], "'barcode-agent' in release_kiosk_services")
+
     def test_top_level_route_is_explicit_and_serial(self) -> None:
         plays = yaml.safe_load(PLAYBOOK)
         self.assertEqual(PLAYBOOK.count("  serial: 1\n"), 3)
