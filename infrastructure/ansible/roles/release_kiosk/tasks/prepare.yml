@@ -166,6 +166,30 @@
     group: root
     mode: '0755'
 
+- name: Stage the status-agent storage health module
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../../clients/status-agent/storage_health.py"
+    dest: "{{ release_kiosk_stage_dir }}/storage_health.py"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Stage the status-agent terminal health module
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../../clients/status-agent/terminal_agent_health.py"
+    dest: "{{ release_kiosk_stage_dir }}/terminal_agent_health.py"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Stage the status-agent terminal maintenance module
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../../scripts/deploy/rolling_release/terminal_device_maintenance.py"
+    dest: "{{ release_kiosk_stage_dir }}/terminal_device_maintenance.py"
+    owner: root
+    group: root
+    mode: '0644'
+
 - name: Stage the standard status-agent service
   ansible.builtin.template:
     src: status-agent.service.j2
@@ -237,6 +261,9 @@
         [
           {'src': release_kiosk_stage_dir ~ '/status-agent.conf', 'dest': '/etc/raspi-status-agent.conf', 'mode': '0600'},
           {'src': release_kiosk_stage_dir ~ '/status-agent.py', 'dest': '/usr/local/lib/raspi-status-agent/status-agent.py', 'mode': '0755'},
+          {'src': release_kiosk_stage_dir ~ '/storage_health.py', 'dest': '/usr/local/lib/raspi-status-agent/storage_health.py', 'mode': '0644'},
+          {'src': release_kiosk_stage_dir ~ '/terminal_agent_health.py', 'dest': '/usr/local/lib/raspi-status-agent/terminal_agent_health.py', 'mode': '0644'},
+          {'src': release_kiosk_stage_dir ~ '/terminal_device_maintenance.py', 'dest': '/usr/local/lib/raspi-status-agent/terminal_device_maintenance.py', 'mode': '0644'},
           {'src': release_kiosk_stage_dir ~ '/status-agent.service', 'dest': '/etc/systemd/system/status-agent.service', 'mode': '0644'},
           {'src': release_kiosk_stage_dir ~ '/status-agent.timer', 'dest': '/etc/systemd/system/status-agent.timer', 'mode': '0644'},
           {'src': release_kiosk_stage_dir ~ '/kiosk-launch.sh', 'dest': '/usr/local/bin/kiosk-launch.sh', 'mode': '0755'},
