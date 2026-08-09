@@ -45,6 +45,11 @@
     state: restarted
     enabled: true
 
+- name: Run the staged status-agent service once before its timer
+  ansible.builtin.systemd:
+    name: status-agent.service
+    state: started
+
 - name: Ensure the status-agent timer uses the staged implementation
   ansible.builtin.systemd:
     name: status-agent.timer

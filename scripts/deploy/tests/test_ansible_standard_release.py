@@ -79,8 +79,50 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
             "Verify the Pi4 status-agent service is loaded and healthy",
         )
         status_until = " ".join(status_service["until"])
-        self.assertIn("stdout_lines[1] == 'success'", status_until)
-        self.assertIn("stdout_lines[2] == '0'", status_until)
+        self.assertIn("'LoadState=loaded'", status_until)
+        self.assertIn("'Result=success'", status_until)
+        self.assertIn("'ExecMainStatus=0'", status_until)
+
+    def test_switch_and_rollback_run_status_agent_before_timer_and_health(self) -> None:
+        switch = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/switch.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        switch_names = [task["name"] for task in switch]
+        switch_run_index = switch_names.index(
+            "Run the staged status-agent service once before its timer"
+        )
+        switch_timer_index = switch_names.index(
+            "Ensure the status-agent timer uses the staged implementation"
+        )
+        self.assertLess(switch_run_index, switch_timer_index)
+        self.assertEqual(
+            switch[switch_run_index]["ansible.builtin.systemd"],
+            {"name": "status-agent.service", "state": "started"},
+        )
+
+        rollback = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/rollback.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        rollback_names = [task["name"] for task in rollback]
+        rollback_run_index = rollback_names.index(
+            "Run the restored status-agent service once before its timer"
+        )
+        rollback_timer_index = rollback_names.index(
+            "Restart restored Pi4 status-agent timer"
+        )
+        rollback_health_index = rollback_names.index(
+            "Verify the complete restored Pi4 runtime"
+        )
+        self.assertLess(rollback_run_index, rollback_timer_index)
+        self.assertLess(rollback_timer_index, rollback_health_index)
+        self.assertEqual(
+            rollback[rollback_run_index]["ansible.builtin.systemd"],
+            {"name": "status-agent.service", "state": "started"},
+        )
 
     def test_rollback_restores_prerequisites_before_compose_and_deletion(self) -> None:
         rollback_path = ANSIBLE / "roles/release_kiosk/tasks/rollback.yml"

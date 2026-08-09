@@ -40,13 +40,20 @@
   when: release_kiosk_switch_attempted | default(false) | bool
   changed_when: true
 
-- name: Restart restored Pi4 display and status units
+- name: Restart restored Pi4 display unit
   ansible.builtin.systemd:
-    name: "{{ item }}"
+    name: kiosk-browser.service
     state: restarted
-  loop:
-    - kiosk-browser.service
-    - status-agent.timer
+
+- name: Run the restored status-agent service once before its timer
+  ansible.builtin.systemd:
+    name: status-agent.service
+    state: started
+
+- name: Restart restored Pi4 status-agent timer
+  ansible.builtin.systemd:
+    name: status-agent.timer
+    state: restarted
 
 - name: Remove newly introduced Pi4 files without a backup
   ansible.builtin.file:
