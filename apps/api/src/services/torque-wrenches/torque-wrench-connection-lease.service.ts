@@ -31,9 +31,9 @@ const leaseInclude = {
   ownerClientDevice: {
     select: { id: true, name: true, location: true }
   }
-} satisfies Prisma.TorqueWrenchConnectionLeaseInclude;
+} satisfies Prisma.TorqueWrenchUsageLeaseInclude;
 
-export type ConnectionLeaseRow = Prisma.TorqueWrenchConnectionLeaseGetPayload<{
+export type ConnectionLeaseRow = Prisma.TorqueWrenchUsageLeaseGetPayload<{
   include: typeof leaseInclude;
 }>;
 
@@ -78,7 +78,7 @@ function ownerSnapshot(row: ConnectionLeaseRow, includePrivateIdentity: boolean)
     ...(includePrivateIdentity
       ? {
           clientDeviceId: row.ownerClientDeviceId,
-          sessionId: row.ownerSessionId
+          sessionId: row.ownerAssemblySessionId ?? undefined
         }
       : {})
   };
@@ -102,7 +102,11 @@ export function serializeConnectionLease(
 
   const expired = row.expiresAt.getTime() <= now.getTime();
   const released = row.releasedAt !== null;
-  const isOwner = row.ownerClientDeviceId === requesterClientDeviceId;
+  // The connection-lease API is the assembly view of the shared lease union.
+  // A training lease held by the same physical kiosk must remain private to
+  // training: client-device equality alone must never expose its token or
+  // report it as assembly-owned.
+  const isOwner = row.ownerKind === 'ASSEMBLY' && row.ownerClientDeviceId === requesterClientDeviceId;
   const waiting = isOwner && !released && !expired && row.connectAfter.getTime() > now.getTime();
   const state = released
     ? 'available'
@@ -263,20 +267,18 @@ async function appendHistory(
     reason?: string | null;
   }
 ): Promise<void> {
-  await tx.torqueWrenchConnectionLeaseHistory.create({
+  await tx.torqueWrenchUsageLeaseHistory.create({
     data: {
       torqueWrenchProfileId: input.profileId,
       leaseId: input.leaseId,
       generation: input.generation,
       action: input.action,
-      adoptedConfirmationId: input.adoptedConfirmationId ?? null,
+      ownerKind: 'ASSEMBLY',
       ownerClientDeviceId: input.ownerClientDeviceId,
       ownerClientDeviceName: input.ownerClientDeviceName,
-      ownerSessionId: input.ownerSessionId,
-      previousClientDeviceId: input.previous?.ownerClientDeviceId ?? null,
-      previousClientDeviceName: input.previous?.ownerClientDevice.name ?? null,
-      previousSessionId: input.previous?.ownerSessionId ?? null,
-      reason: input.reason?.trim().slice(0, 500) || null
+      ownerTargetId: input.ownerSessionId,
+      adoptedConfirmationId: input.adoptedConfirmationId ?? null,
+      reason: input.reason?.trim().slice(0, 500) || null,
     }
   });
 }
@@ -288,7 +290,7 @@ function assertLeaseToken(row: ConnectionLeaseRow | null, input: LeaseTokenInput
   if (row.ownerClientDeviceId !== input.clientDeviceId) {
     throw new ApiError(409, 'この端末はトルクレンチ接続権を所有していません', undefined, 'TORQUE_WRENCH_LEASE_OWNER_MISMATCH');
   }
-  if (row.ownerSessionId !== input.sessionId) {
+  if (row.ownerAssemblySessionId !== input.sessionId) {
     throw new ApiError(409, 'トルクレンチ接続権は別の作業セッションに割り当てられています', undefined, 'TORQUE_WRENCH_LEASE_SESSION_MISMATCH');
   }
   return row;
@@ -307,7 +309,7 @@ export class TorqueWrenchConnectionLeaseService {
       select: { id: true }
     });
     if (!profile) throw new ApiError(404, '物理トルクレンチが見つかりません');
-    const row = await prisma.torqueWrenchConnectionLease.findUnique({
+    const row = await prisma.torqueWrenchUsageLease.findUnique({
       where: { torqueWrenchProfileId },
       include: leaseInclude
     });
@@ -332,7 +334,7 @@ export class TorqueWrenchConnectionLeaseService {
       await lockTorqueWrenchProfile(tx, input.torqueWrenchProfileId);
       const session = await lockAssemblySession(tx, input.sessionId);
       const now = new Date();
-      const existing = await tx.torqueWrenchConnectionLease.findUnique({
+      const existing = await tx.torqueWrenchUsageLease.findUnique({
         where: { torqueWrenchProfileId: input.torqueWrenchProfileId },
         include: leaseInclude
       });
@@ -348,9 +350,9 @@ export class TorqueWrenchConnectionLeaseService {
       if (existing && !releasedOrExpired(existing, now)) {
         if (
           existing.ownerClientDeviceId === input.clientDeviceId &&
-          existing.ownerSessionId === input.sessionId
+          existing.ownerAssemblySessionId === input.sessionId
         ) {
-          const renewed = await tx.torqueWrenchConnectionLease.update({
+          const renewed = await tx.torqueWrenchUsageLease.update({
             where: { torqueWrenchProfileId: input.torqueWrenchProfileId },
             data: {
               requestId: input.requestId,
@@ -395,16 +397,17 @@ export class TorqueWrenchConnectionLeaseService {
         : existing && existing.expiresAt.getTime() <= now.getTime() && existing.releasedAt === null
           ? 'EXPIRED_ACQUIRED'
           : 'ACQUIRED';
-      const row = await tx.torqueWrenchConnectionLease.upsert({
+      const row = await tx.torqueWrenchUsageLease.upsert({
         where: { torqueWrenchProfileId: input.torqueWrenchProfileId },
         create: {
           torqueWrenchProfileId: input.torqueWrenchProfileId,
           leaseId,
           generation,
           requestId: input.requestId,
+          ownerKind: 'ASSEMBLY',
           adoptedConfirmationId: input.confirmationId,
           ownerClientDeviceId: input.clientDeviceId,
-          ownerSessionId: input.sessionId,
+          ownerAssemblySessionId: input.sessionId,
           acquiredAt: now,
           renewedAt: now,
           expiresAt: expiryFrom(now),
@@ -414,9 +417,11 @@ export class TorqueWrenchConnectionLeaseService {
           leaseId,
           generation,
           requestId: input.requestId,
+          ownerKind: 'ASSEMBLY',
           adoptedConfirmationId: input.confirmationId,
           ownerClientDeviceId: input.clientDeviceId,
-          ownerSessionId: input.sessionId,
+          ownerAssemblySessionId: input.sessionId,
+          ownerTrainingSessionId: null,
           acquiredAt: now,
           renewedAt: now,
           expiresAt: expiryFrom(now),
@@ -446,7 +451,7 @@ export class TorqueWrenchConnectionLeaseService {
     return runAssemblyTransaction(async (tx) => {
       await lockTorqueWrenchProfile(tx, input.torqueWrenchProfileId);
       const now = new Date();
-      const existing = await tx.torqueWrenchConnectionLease.findUnique({
+      const existing = await tx.torqueWrenchUsageLease.findUnique({
         where: { torqueWrenchProfileId: input.torqueWrenchProfileId },
         include: leaseInclude
       });
@@ -454,7 +459,7 @@ export class TorqueWrenchConnectionLeaseService {
       if (row.releasedAt || row.expiresAt.getTime() <= now.getTime()) {
         throw new ApiError(409, 'トルクレンチ接続権の有効期限が切れました', undefined, 'TORQUE_WRENCH_LEASE_EXPIRED');
       }
-      const renewed = await tx.torqueWrenchConnectionLease.update({
+      const renewed = await tx.torqueWrenchUsageLease.update({
         where: { torqueWrenchProfileId: input.torqueWrenchProfileId },
         data: { renewedAt: now, expiresAt: expiryFrom(now) },
         include: leaseInclude
@@ -467,7 +472,7 @@ export class TorqueWrenchConnectionLeaseService {
     return runAssemblyTransaction(async (tx) => {
       await lockTorqueWrenchProfile(tx, input.torqueWrenchProfileId);
       const now = new Date();
-      const existing = await tx.torqueWrenchConnectionLease.findUnique({
+      const existing = await tx.torqueWrenchUsageLease.findUnique({
         where: { torqueWrenchProfileId: input.torqueWrenchProfileId },
         include: leaseInclude
       });
@@ -475,7 +480,7 @@ export class TorqueWrenchConnectionLeaseService {
       if (row.releasedAt) {
         return serializeConnectionLease(input.torqueWrenchProfileId, row, input.clientDeviceId, now);
       }
-      const released = await tx.torqueWrenchConnectionLease.update({
+      const released = await tx.torqueWrenchUsageLease.update({
         where: { torqueWrenchProfileId: input.torqueWrenchProfileId },
         data: {
           releasedAt: now,
@@ -491,7 +496,7 @@ export class TorqueWrenchConnectionLeaseService {
         adoptedConfirmationId: row.adoptedConfirmationId,
         ownerClientDeviceId: row.ownerClientDeviceId,
         ownerClientDeviceName: row.ownerClientDevice.name,
-        ownerSessionId: row.ownerSessionId,
+        ownerSessionId: row.ownerAssemblySessionId ?? '',
         reason: input.reason ?? 'CLIENT_RELEASE'
       });
       return serializeConnectionLease(input.torqueWrenchProfileId, released, input.clientDeviceId, now);

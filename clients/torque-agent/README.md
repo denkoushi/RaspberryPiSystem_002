@@ -62,7 +62,7 @@ poetry run torque-capture capture \
 
 - `TORQUE_API_BASE_URL`: Pi5 APIのorigin。末尾`/api`は付けない
 - `TORQUE_CLIENT_KEY`: このキオスク端末として登録済みのクライアントキー
-- `TORQUE_HID_DEVICES_JSON`: `/dev/input/by-id/*`と承認済みparser profileの配列
+- `TORQUE_HID_DEVICES_JSON`: `/dev/input/by-id/*`、承認済みparser profile、物理レンチ製造番号（`serialNumber`）の配列。training画面の自動照合に使うため、各機器に必須
 - `TORQUE_QUEUE_PATH`: outboxとローカル監査を持つSQLiteファイル
 - `TORQUE_LOCAL_PORT`: loopback heartbeat/healthポート。標準は7073
 - `TORQUE_HEARTBEAT_TTL_SECONDS`: 作業画面bindingの有効秒数

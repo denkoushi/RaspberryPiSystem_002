@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Literal
 
 import uvicorn
 from fastapi import FastAPI
@@ -27,14 +28,16 @@ class HeartbeatBody(BaseModel):
     currentTemplateBoltId: str | None
     confirmationId: str | None
     torqueWrenchProfileId: str | None
+    targetKind: Literal["assembly", "training"] = "assembly"
 
 
 class LeaseAcquireBody(BaseModel):
     sessionId: str
-    currentTemplateBoltId: str
+    currentTemplateBoltId: str | None = None
     confirmationId: str
     torqueWrenchProfileId: str
     requestId: str
+    targetKind: Literal["assembly", "training"] = "assembly"
 
 
 class LeaseTakeoverBody(LeaseAcquireBody):
@@ -80,8 +83,10 @@ def create_app(
 
     @app.get("/health")
     async def health() -> dict[str, object]:
+        configured_serials = [device.serial_number for device in config.devices if device.serial_number]
         return {
             **lease_manager.snapshot(),
+            "wrenchSerialNumbers": configured_serials,
             "queuedEvents": queue.count(),
             "localAuditEvents": queue.local_error_count(),
         }
@@ -93,6 +98,7 @@ def create_app(
             current_template_bolt_id=body.currentTemplateBoltId,
             confirmation_id=body.confirmationId,
             profile_id=body.torqueWrenchProfileId,
+            target_kind=body.targetKind,
         )
 
     @app.post("/lease/acquire")
@@ -103,6 +109,7 @@ def create_app(
             current_template_bolt_id=body.currentTemplateBoltId,
             confirmation_id=body.confirmationId,
             request_id=body.requestId,
+            target_kind=body.targetKind,
         )
 
     @app.post("/lease/takeover")
@@ -117,6 +124,7 @@ def create_app(
             request_id=body.requestId,
             takeover=True,
             reason=body.reason,
+            target_kind=body.targetKind,
         )
 
     @app.post("/lease/release")

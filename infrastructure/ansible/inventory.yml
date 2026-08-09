@@ -305,6 +305,7 @@ all:
               torque_agent_hid_devices:
                 - path: "/dev/input/by-id/bluetooth-TOHNICHI_702902S-event-kbd"
                   parserProfile: "cem3-btla-hogp-v1"
+                  serialNumber: "702902S"
             raspi4-sessaku-01:
               # Sessaku-01 キオスク（Pi4 5台目）
               # NOTE: 通常運用は Tailscale、初期セットアップ時のみ local_network にフォールバックする
@@ -398,6 +399,7 @@ all:
               torque_agent_hid_devices:
                 - path: "/dev/input/by-id/bluetooth-TOHNICHI_702902S-event-kbd"
                   parserProfile: "cem3-btla-hogp-v1"
+                  serialNumber: "702902S"
         signage:
           hosts:
             raspberrypi3:

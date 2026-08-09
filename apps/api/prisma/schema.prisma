@@ -130,6 +130,8 @@ model Employee {
   selfInspectionRecordApprovals       SelfInspectionRecordApproval[]      @relation("SelfInspectionRecordApprover")
   assemblyWorkSessionRecordApprovals  AssemblyWorkSessionApproval[]       @relation("AssemblyWorkSessionRecordApprover")
   assemblyWorkSessionOperatorAccesses AssemblyWorkSessionOperatorAccess[]
+  torqueTrainingSessions              TorqueTrainingSession[]
+  torqueTrainingConfirmations         TorqueTrainingWrenchConfirmation[]
 }
 
 model Item {
@@ -282,6 +284,11 @@ model TorqueWrenchProfile {
   confirmations                     AssemblyTorqueWrenchConfirmation[]
   connectionLease                   TorqueWrenchConnectionLease?
   connectionLeaseHistory            TorqueWrenchConnectionLeaseHistory[]
+  trainingProgramWrenches            TorqueTrainingProgramWrench[]
+  trainingWrenchConfirmations        TorqueTrainingWrenchConfirmation[]
+  trainingAttempts                   TorqueTrainingAttempt[]
+  usageLease                         TorqueWrenchUsageLease?
+  usageLeaseHistory                  TorqueWrenchUsageLeaseHistory[]
 
   @@index([modelId], map: "TorqueWrenchProfile_idx_model")
 }
@@ -298,6 +305,7 @@ model TorqueWrenchCapabilityGroup {
   createdAt       DateTime                           @default(now())
   updatedAt       DateTime                           @updatedAt
   models          TorqueWrenchCapabilityGroupModel[]
+  trainingProgramVersions TorqueTrainingProgramVersion[]
 
   @@index([nominalDiameter, boltLengthMm, material, strengthClass, isActive], map: "TorqueWrenchCapabilityGroup_idx_fastener_active")
 }
@@ -331,6 +339,8 @@ model TorqueWrenchSettingHistory {
   createdAt             DateTime                           @default(now())
   torqueWrenchProfile   TorqueWrenchProfile                @relation(fields: [torqueWrenchProfileId], references: [id], onDelete: Restrict)
   confirmations         AssemblyTorqueWrenchConfirmation[]
+  trainingConfirmations TorqueTrainingWrenchConfirmation[]
+  trainingAttempts      TorqueTrainingAttempt[]
 
   @@index([torqueWrenchProfileId, effectiveAt(sort: Desc), createdAt(sort: Desc)], map: "TorqueWrenchSettingHistory_idx_profile_effective")
 }
@@ -445,6 +455,10 @@ model ClientDevice {
   haizenScanEvents                    HaizenScanEvent[]
   haizenCurrentPlacements             HaizenCurrentPlacement[]            @relation("HaizenCurrentLastDevice")
   torqueWrenchConnectionLeases        TorqueWrenchConnectionLease[]
+  torqueTrainingSessions              TorqueTrainingSession[]
+  torqueWrenchUsageLeases             TorqueWrenchUsageLease[]
+  torqueTrainingConfirmations         TorqueTrainingWrenchConfirmation[]
+  torqueTrainingAttempts              TorqueTrainingAttempt[]
 
   @@index([statusClientId])
 }
@@ -2224,6 +2238,24 @@ enum AssemblyTorqueRecordJudgement {
   IGNORED
 }
 
+enum TorqueTrainingSessionStatus {
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum TorqueTrainingAttemptJudgement {
+  OK
+  UNDER
+  OVER
+  IGNORED
+}
+
+enum TorqueUsageOwnerKind {
+  ASSEMBLY
+  TRAINING
+}
+
 enum AssemblyProcedureDocumentStatus {
   DRAFT
   PUBLISHED
@@ -2820,6 +2852,7 @@ model AssemblyWorkSession {
   operatorAccesses             AssemblyWorkSessionOperatorAccess[]
   torqueWrenchConfirmations    AssemblyTorqueWrenchConfirmation[]
   torqueWrenchConnectionLeases TorqueWrenchConnectionLease[]
+  torqueWrenchUsageLeases      TorqueWrenchUsageLease[] @relation("TorqueUsageLeaseAssemblySession")
 
   @@index([status, updatedAt], map: "AssemblyWorkSession_idx_status_updated")
   @@index([productNo, status], map: "AssemblyWorkSession_idx_product_status")
@@ -2986,6 +3019,212 @@ model AssemblyTorqueRecord {
   @@index([torqueWrenchProfileId, deviceMemoryCounter, recordedAt], map: "AssemblyTorqueRecord_idx_profile_memory_recorded")
   @@index([confirmationId], map: "AssemblyTorqueRecord_idx_confirmation")
   @@index([settingHistoryId], map: "AssemblyTorqueRecord_idx_setting")
+}
+
+/// 訓練メニューの安定ID。変更は版を増やし、この行は停止状態だけを持つ。
+model TorqueTrainingProgram {
+  id                String                         @id @default(uuid())
+  code              String                         @unique
+  currentVersion    Int                            @default(1)
+  isActive          Boolean                        @default(true)
+  deactivatedAt     DateTime?
+  deactivationReason String?
+  createdAt         DateTime                       @default(now())
+  updatedAt         DateTime                       @updatedAt
+  versions          TorqueTrainingProgramVersion[]
+
+  @@index([isActive, updatedAt], map: "TorqueTrainingProgram_idx_active_updated")
+}
+
+/// 訓練条件の不変版。fingerprintが同じ版だけを成長集計で束ねる。
+model TorqueTrainingProgramVersion {
+  id                  String                         @id @default(uuid())
+  programId           String
+  version             Int
+  displayName         String
+  nominalDiameter     String
+  boltLengthMm        Decimal                        @db.Decimal(10, 3)
+  material            String
+  strengthClass       String
+  capabilityGroupId   String
+  nominalTorque       Decimal                        @db.Decimal(18, 6)
+  lowerLimit          Decimal                        @db.Decimal(18, 6)
+  upperLimit          Decimal                        @db.Decimal(18, 6)
+  unit                String
+  jigConditionCode    String
+  conditionFingerprint String
+  attemptCount        Int                            @default(5)
+  createdAt           DateTime                       @default(now())
+  program             TorqueTrainingProgram          @relation(fields: [programId], references: [id], onDelete: Restrict)
+  capabilityGroup     TorqueWrenchCapabilityGroup   @relation(fields: [capabilityGroupId], references: [id], onDelete: Restrict)
+  wrenches            TorqueTrainingProgramWrench[]
+  sessions            TorqueTrainingSession[]
+
+  @@unique([programId, version], map: "TorqueTrainingProgramVersion_unique_program_version")
+  @@index([programId, conditionFingerprint, createdAt], map: "TorqueTrainingProgramVersion_idx_program_fingerprint")
+  @@index([conditionFingerprint], map: "TorqueTrainingProgramVersion_idx_fingerprint")
+}
+
+/// 訓練版に割り当てる物理レンチ。
+model TorqueTrainingProgramWrench {
+  programVersionId    String
+  torqueWrenchProfileId String
+  createdAt           DateTime                       @default(now())
+  programVersion      TorqueTrainingProgramVersion  @relation(fields: [programVersionId], references: [id], onDelete: Cascade)
+  torqueWrenchProfile TorqueWrenchProfile            @relation(fields: [torqueWrenchProfileId], references: [id], onDelete: Restrict)
+
+  @@id([programVersionId, torqueWrenchProfileId])
+  @@index([torqueWrenchProfileId], map: "TorqueTrainingProgramWrench_idx_profile")
+}
+
+/// 訓練1回分。5回の入力と集計対象外理由を保持する。
+model TorqueTrainingSession {
+  id                       String                       @id @default(uuid())
+  requestId                String                       @unique
+  programVersionId         String
+  employeeId               String
+  employeeCodeSnapshot     String
+  employeeNameSnapshot     String
+  clientDeviceId           String
+  clientDeviceNameSnapshot String
+  conditionFingerprint     String
+  status                   TorqueTrainingSessionStatus @default(IN_PROGRESS)
+  targetAttemptCount       Int                          @default(5)
+  activeEmployeeKey        String?
+  activeClientKey          String?
+  startedAt                DateTime                     @default(now())
+  completedAt              DateTime?
+  cancelledAt              DateTime?
+  cancelReason             String?
+  excludedAt               DateTime?
+  exclusionReason          String?
+  excludedByUserId         String?
+  excludedByUsername       String?
+  createdAt                DateTime                     @default(now())
+  updatedAt                DateTime                     @updatedAt
+  programVersion           TorqueTrainingProgramVersion @relation(fields: [programVersionId], references: [id], onDelete: Restrict)
+  employee                 Employee                     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  clientDevice             ClientDevice                 @relation(fields: [clientDeviceId], references: [id], onDelete: Restrict)
+  confirmations            TorqueTrainingWrenchConfirmation[]
+  attempts                 TorqueTrainingAttempt[]
+  usageLeases              TorqueWrenchUsageLease[]      @relation("TorqueUsageLeaseTrainingSession")
+
+  @@unique([employeeId, activeEmployeeKey], map: "TorqueTrainingSession_unique_employee_active_key")
+  @@unique([clientDeviceId, activeClientKey], map: "TorqueTrainingSession_unique_client_active_key")
+  @@index([employeeId, conditionFingerprint, completedAt(sort: Desc)], map: "TorqueTrainingSession_idx_employee_fingerprint_completed")
+  @@index([clientDeviceId, status], map: "TorqueTrainingSession_idx_client_status")
+  @@index([programVersionId, status, completedAt(sort: Desc)], map: "TorqueTrainingSession_idx_version_status_completed")
+}
+
+/// 訓練開始時の物理レンチ確認。
+model TorqueTrainingWrenchConfirmation {
+  id                       String                       @id @default(uuid())
+  sessionId                String
+  torqueWrenchProfileId    String
+  settingHistoryId         String
+  conditionFingerprint     String
+  employeeId               String
+  employeeNameSnapshot     String
+  clientDeviceId           String
+  clientDeviceNameSnapshot String
+  confirmedAt              DateTime                     @default(now())
+  session                  TorqueTrainingSession        @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  torqueWrenchProfile      TorqueWrenchProfile           @relation(fields: [torqueWrenchProfileId], references: [id], onDelete: Restrict)
+  settingHistory           TorqueWrenchSettingHistory    @relation(fields: [settingHistoryId], references: [id], onDelete: Restrict)
+  employee                 Employee                     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  clientDevice             ClientDevice                 @relation(fields: [clientDeviceId], references: [id], onDelete: Restrict)
+
+  @@index([sessionId, confirmedAt(sort: Desc)], map: "TorqueTrainingWrenchConfirmation_idx_session_confirmed")
+  @@index([torqueWrenchProfileId, confirmedAt(sort: Desc)], map: "TorqueTrainingWrenchConfirmation_idx_profile_confirmed")
+}
+
+/// torque-agent入力の受信記録。source event冪等性も同じ表で保証する。
+model TorqueTrainingAttempt {
+  id                           String                          @id @default(uuid())
+  sessionId                   String
+  attemptNo                   Int?
+  value                       Decimal?                        @db.Decimal(18, 6)
+  inputUnit                   String?
+  valueNm                     Decimal?                        @db.Decimal(18, 6)
+  nominalTorqueSnapshot       Decimal?                        @db.Decimal(18, 6)
+  lowerLimitSnapshot          Decimal?                        @db.Decimal(18, 6)
+  upperLimitSnapshot          Decimal?                        @db.Decimal(18, 6)
+  deviationNm                 Decimal?                        @db.Decimal(18, 6)
+  deviationPercent            Decimal?                        @db.Decimal(18, 6)
+  absoluteDeviationPercent    Decimal?                        @db.Decimal(18, 6)
+  judgement                   TorqueTrainingAttemptJudgement
+  accepted                    Boolean                         @default(false)
+  ignoredReason               String?
+  torqueWrenchProfileId       String?
+  settingHistoryId            String?
+  serialNumberSnapshot        String?
+  manufacturerSnapshot        String?
+  modelNumberSnapshot         String?
+  sourceClientDeviceId        String
+  sourceEventKey              String
+  connectionLeaseId           String?
+  connectionLeaseGeneration   Int?
+  deviceRecordedAt            DateTime?
+  deviceMemoryCounter        String?
+  deviceJudgement             String?
+  recordedAt                  DateTime                        @default(now())
+  createdAt                   DateTime                        @default(now())
+  session                     TorqueTrainingSession           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  torqueWrenchProfile         TorqueWrenchProfile?             @relation(fields: [torqueWrenchProfileId], references: [id], onDelete: Restrict)
+  settingHistory              TorqueWrenchSettingHistory?      @relation(fields: [settingHistoryId], references: [id], onDelete: Restrict)
+  sourceClientDevice          ClientDevice                    @relation(fields: [sourceClientDeviceId], references: [id], onDelete: Restrict)
+
+  @@unique([sourceClientDeviceId, sourceEventKey], map: "TorqueTrainingAttempt_unique_source_event")
+  @@unique([sessionId, attemptNo], map: "TorqueTrainingAttempt_unique_attempt")
+  @@index([sessionId, recordedAt], map: "TorqueTrainingAttempt_idx_session_recorded")
+  @@index([sessionId, accepted, attemptNo], map: "TorqueTrainingAttempt_idx_session_accepted")
+}
+
+/// assembly/training共通の物理レンチcurrent lease。切替後の唯一の正本。
+model TorqueWrenchUsageLease {
+  torqueWrenchProfileId  String              @id
+  leaseId                String              @unique
+  generation             Int
+  requestId              String
+  ownerKind              TorqueUsageOwnerKind
+  ownerAssemblySessionId String?
+  ownerTrainingSessionId String?
+  adoptedConfirmationId  String?
+  ownerClientDeviceId    String
+  acquiredAt             DateTime            @default(now())
+  renewedAt              DateTime            @default(now())
+  expiresAt              DateTime
+  connectAfter           DateTime
+  releasedAt             DateTime?
+  releaseReason          String?
+  updatedAt              DateTime            @updatedAt
+  torqueWrenchProfile    TorqueWrenchProfile @relation(fields: [torqueWrenchProfileId], references: [id], onDelete: Restrict)
+  ownerClientDevice      ClientDevice        @relation(fields: [ownerClientDeviceId], references: [id], onDelete: Cascade)
+  ownerAssemblySession   AssemblyWorkSession? @relation("TorqueUsageLeaseAssemblySession", fields: [ownerAssemblySessionId], references: [id], onDelete: Cascade)
+  ownerTrainingSession   TorqueTrainingSession? @relation("TorqueUsageLeaseTrainingSession", fields: [ownerTrainingSessionId], references: [id], onDelete: Cascade)
+
+  @@index([ownerClientDeviceId, expiresAt], map: "TorqueWrenchUsageLease_idx_owner_expiry")
+  @@index([expiresAt], map: "TorqueWrenchUsageLease_idx_expiry")
+}
+
+/// usage leaseの最小監査履歴。将来汎用イベント化しない。
+model TorqueWrenchUsageLeaseHistory {
+  id                    String              @id @default(uuid())
+  torqueWrenchProfileId String
+  leaseId               String
+  generation            Int
+  ownerKind             TorqueUsageOwnerKind
+  ownerTargetId         String
+  ownerClientDeviceId   String
+  ownerClientDeviceName String
+  action                String
+  adoptedConfirmationId String?
+  reason                String?
+  createdAt             DateTime            @default(now())
+  torqueWrenchProfile   TorqueWrenchProfile @relation(fields: [torqueWrenchProfileId], references: [id], onDelete: Restrict)
+
+  @@index([torqueWrenchProfileId, createdAt], map: "TorqueWrenchUsageLeaseHistory_idx_profile_time")
+  @@index([leaseId], map: "TorqueWrenchUsageLeaseHistory_idx_lease")
 }
 
 /// Pi5-authoritative current connection owner for one physical torque wrench.

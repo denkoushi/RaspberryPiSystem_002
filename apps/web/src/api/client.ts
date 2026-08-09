@@ -25,6 +25,7 @@ export * from './domains/kiosk-documents';
 export * from './domains/csv-visualization';
 export * from './domains/assembly';
 export * from './domains/torque-wrenches';
+export * from './domains/torque-training';
 
 // Compatibility re-exports: feature types (do not add new ones)
 export type {

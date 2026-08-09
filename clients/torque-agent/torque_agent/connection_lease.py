@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 
@@ -72,6 +72,7 @@ class LocalLease:
     state: str
     expires_at: float
     connect_after: float
+    target_kind: Literal["assembly", "training"] = "assembly"
 
 
 class ConnectionLeaseManager:
@@ -200,6 +201,7 @@ class ConnectionLeaseManager:
             and binding.torque_wrench_profile_id == lease.profile_id
             and binding.connection_lease_id == lease.lease_id
             and binding.connection_lease_generation == lease.generation
+            and binding.target_kind == lease.target_kind
         )
 
     def _reconcile_activation(self) -> None:
@@ -220,6 +222,7 @@ class ConnectionLeaseManager:
         session_id: str,
         confirmation_id: str,
         lease: dict[str, Any],
+        target_kind: Literal["assembly", "training"] = "assembly",
     ) -> LocalLease:
         lease_id = lease.get("leaseId")
         generation = lease.get("generation")
@@ -234,6 +237,7 @@ class ConnectionLeaseManager:
             state=str(lease.get("state", "owned_by_self")),
             expires_at=_parse_timestamp(lease.get("expiresAt")),
             connect_after=_parse_timestamp(lease.get("connectAfter")),
+            target_kind=target_kind,
         )
 
     async def acquire(
@@ -241,26 +245,30 @@ class ConnectionLeaseManager:
         *,
         profile_id: str,
         session_id: str,
-        current_template_bolt_id: str,
+        current_template_bolt_id: str | None,
         confirmation_id: str,
         request_id: str,
         takeover: bool = False,
         reason: str | None = None,
+        target_kind: Literal["assembly", "training"] = "assembly",
     ) -> dict[str, object]:
         async with self._lock:
             self._clear_local(None)
             endpoint = "takeover" if takeover else "acquire"
+            lease_prefix = "usage-lease" if target_kind == "training" else "connection-lease"
             payload: dict[str, object] = {
                 "sessionId": session_id,
                 "confirmationId": confirmation_id,
                 "requestId": request_id,
             }
+            if target_kind == "assembly":
+                payload["currentTemplateBoltId"] = current_template_bolt_id or ""
             if takeover:
                 payload.update({"physicalWrenchPresent": True, "reason": reason or "physical wrench present"})
             try:
                 status, body = await self._api.request(
                     "POST",
-                    f"/api/torque-wrenches/{profile_id}/connection-lease/{endpoint}",
+                    f"/api/torque-wrenches/{profile_id}/{lease_prefix}/{endpoint}",
                     payload,
                 )
             except (httpx.TimeoutException, httpx.NetworkError) as error:
@@ -282,7 +290,7 @@ class ConnectionLeaseManager:
                 self._last_error = "INVALID_LEASE_RESPONSE"
                 return self.snapshot()
             try:
-                lease = self._lease_from_response(profile_id, session_id, confirmation_id, lease_body)
+                lease = self._lease_from_response(profile_id, session_id, confirmation_id, lease_body, target_kind)
             except ValueError as error:
                 self._last_error = str(error)
                 return self.snapshot()
@@ -294,11 +302,12 @@ class ConnectionLeaseManager:
             self._bindings.update(
                 WorkBinding(
                     session_id=session_id,
-                    current_template_bolt_id=current_template_bolt_id,
+                    current_template_bolt_id=current_template_bolt_id or "",
                     confirmation_id=confirmation_id,
                     torque_wrench_profile_id=profile_id,
                     connection_lease_id=lease.lease_id,
                     connection_lease_generation=lease.generation,
+                    target_kind=target_kind,
                 )
             )
             self._reconcile_activation()
@@ -311,10 +320,11 @@ class ConnectionLeaseManager:
         current_template_bolt_id: str | None,
         confirmation_id: str | None,
         profile_id: str | None,
+        target_kind: Literal["assembly", "training"] = "assembly",
     ) -> dict[str, object]:
         async with self._lock:
             lease = self._lease
-            if not current_template_bolt_id or not confirmation_id or not profile_id:
+            if (target_kind == "assembly" and not current_template_bolt_id) or not confirmation_id or not profile_id:
                 released = self._clear_local("BROWSER_DISARMED")
                 if released:
                     await self._release_remote(released, "BROWSER_DISARMED")
@@ -324,11 +334,12 @@ class ConnectionLeaseManager:
             self._bindings.update(
                 WorkBinding(
                     session_id=session_id,
-                    current_template_bolt_id=current_template_bolt_id,
+                    current_template_bolt_id=current_template_bolt_id or "",
                     confirmation_id=confirmation_id,
                     torque_wrench_profile_id=profile_id,
                     connection_lease_id=lease.lease_id,
                     connection_lease_generation=lease.generation,
+                    target_kind=target_kind,
                 )
             )
             self._reconcile_activation()
@@ -336,9 +347,10 @@ class ConnectionLeaseManager:
 
     async def _release_remote(self, lease: LocalLease, reason: str) -> None:
         try:
+            lease_prefix = "usage-lease" if lease.target_kind == "training" else "connection-lease"
             status, body = await self._api.request(
                 "POST",
-                f"/api/torque-wrenches/{lease.profile_id}/connection-lease/release",
+                f"/api/torque-wrenches/{lease.profile_id}/{lease_prefix}/release",
                 {
                     "sessionId": lease.session_id,
                     "leaseId": lease.lease_id,
@@ -379,7 +391,7 @@ class ConnectionLeaseManager:
             try:
                 status, body = await self._api.request(
                     "POST",
-                    f"/api/torque-wrenches/{lease.profile_id}/connection-lease/renew",
+                    f"/api/torque-wrenches/{lease.profile_id}/{('usage-lease' if lease.target_kind == 'training' else 'connection-lease')}/renew",
                     {
                         "sessionId": lease.session_id,
                         "leaseId": lease.lease_id,
@@ -402,6 +414,7 @@ class ConnectionLeaseManager:
                 lease.session_id,
                 lease.confirmation_id,
                 lease_body,
+                lease.target_kind,
             )
             self._public_lease = lease_body
             self._last_error = None

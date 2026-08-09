@@ -89,28 +89,38 @@ class TorqueEventIngestor:
             LOGGER.warning("Retained malformed HID input from %s: %s", device_path, error)
             return
 
+        payload: dict[str, object] = {
+            "confirmationId": binding.confirmation_id,
+            "serialNumber": parsed.serial_number,
+            "value": parsed.value,
+            "unit": parsed.unit,
+            "deviceRecordedAt": parsed.device_recorded_at,
+            "deviceMemoryCounter": parsed.memory_counter,
+            "deviceJudgement": parsed.device_judgement,
+            "connectionLeaseId": binding.connection_lease_id,
+            "connectionLeaseGeneration": binding.connection_lease_generation,
+        }
+        if binding.target_kind == "training":
+            # Training accepts the agent DTO only; raw HID text stays in the
+            # existing local audit path and is not promoted to a generic event
+            # ledger or persisted in the training attempt table.
+            payload["targetKind"] = "training"
+        else:
+            payload = {
+                "expectedTemplateBoltId": binding.current_template_bolt_id,
+                **payload,
+                "rawPayload": {
+                    "rawText": parsed.raw_text,
+                    "devicePath": str(device_path),
+                    "parserProfile": parser_profile,
+                },
+            }
         inserted = self._queue.enqueue(
             event_id,
             {
                 "sessionId": binding.session_id,
                 "capturedAt": captured_at,
-                "payload": {
-                    "expectedTemplateBoltId": binding.current_template_bolt_id,
-                    "confirmationId": binding.confirmation_id,
-                    "serialNumber": parsed.serial_number,
-                    "value": parsed.value,
-                    "unit": parsed.unit,
-                    "deviceRecordedAt": parsed.device_recorded_at,
-                    "deviceMemoryCounter": parsed.memory_counter,
-                    "deviceJudgement": parsed.device_judgement,
-                    "connectionLeaseId": binding.connection_lease_id,
-                    "connectionLeaseGeneration": binding.connection_lease_generation,
-                    "rawPayload": {
-                        "rawText": parsed.raw_text,
-                        "devicePath": str(device_path),
-                        "parserProfile": parser_profile,
-                    },
-                },
+                "payload": payload,
             },
         )
         if inserted:
