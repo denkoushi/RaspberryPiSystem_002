@@ -13,6 +13,17 @@
     - item.backup_file is defined
   no_log: true
 
+- name: Remove newly introduced Pi4 files without a backup
+  ansible.builtin.file:
+    path: "{{ item.item.dest }}"
+    state: absent
+  loop: "{{ release_kiosk_install.results | default([]) }}"
+  when:
+    - item.changed | default(false) | bool
+    - item.backup_file is not defined
+    - item.item.dest not in (release_kiosk_rollback_prerequisites | default([]))
+  no_log: true
+
 - name: Reload restored Pi4 systemd units
   ansible.builtin.systemd:
     daemon_reload: true
@@ -54,17 +65,6 @@
   ansible.builtin.systemd:
     name: status-agent.timer
     state: restarted
-
-- name: Remove newly introduced Pi4 files without a backup
-  ansible.builtin.file:
-    path: "{{ item.item.dest }}"
-    state: absent
-  loop: "{{ release_kiosk_install.results | default([]) }}"
-  when:
-    - item.changed | default(false) | bool
-    - item.backup_file is not defined
-    - item.item.dest not in (release_kiosk_rollback_prerequisites | default([]))
-  no_log: true
 
 - name: Verify the complete restored Pi4 runtime
   ansible.builtin.import_tasks: health_checks.yml
