@@ -34,13 +34,13 @@ scripts/update-all-clients.sh --status RUN_ID [--inventory INVENTORY]
 - CLIの未文書化されたmutation/control引数はfail-closedで拒否される。
 - Pi5で公開release-setからAPI/Web digestを解決し、Pi3は公開image labelから完成tarのSHA-256を一つだけ得る。Ansibleがprepare、switch、health、rescue rollbackを所有する。
 
-運用者はSSHのユーザー名・ホスト名・ポートを手入力しない。wrapperがinventoryのPi5 executor (`deploy_executor_host`、`ansible_user`、`ansible_port`) を解決し、Pi5上の標準Ansible/Vault設定を使用する。解決できない、credentialが存在しない、またはinventoryが想定外なら実行せず停止する。credentialのコピー、権限変更、今回限りの一時symlinkは標準手順にしない。
+運用者はSSHのユーザー名・ホスト名・ポートを手入力しない。wrapperがinventoryのPi5 executor (`deploy_executor_host`、`ansible_user`、`ansible_port`) を解決し、Pi5上の標準Ansible/Vault設定を使用する。clean worktreeを開始する時点で、標準運用が指定するcredential pathの存在だけを内容非参照で確認する。解決できない、pathが存在しない、credentialが利用できない、またはinventoryが想定外なら実行せず停止し、CI再実行・依存導入・symlink発明へ進まない。credentialのコピー、権限変更、今回限りの一時symlinkは標準手順にしない。
 
 wrapperの出力は次の契約で扱う。
 
 - `--print-plan`のJSONで `releaseSha`、`inventory`、`limit`/`fullFleet`、`executionOrder[].profile`、`executionOrder[].hosts`、`executionOrder[].images` を記録する。対象host・profile・image tagがCIの成功したrelease artifact manifestと一致しない場合は停止する。
 - mutationのJSONで返された `runId` と `statusCommand` だけを後続操作へ渡す。別のrun IDを作らず、別のDeployを起動しない。
-- `--status RUN_ID`のJSONに含まれるsystemd statusとjournalを、実行状態・Ansible recap・health・rollbackの一次証拠として読む。手書きの監視shellや独自の終了判定を追加しない。
+- `--status RUN_ID`のJSONに含まれるsystemdのraw fields（`ActiveState`、`SubState`、`Result`、`ExecMainStatus`）とjournalを、実行状態・Ansible recap・health・rollbackの一次証拠として読む。systemd oneshotの正常完了は実績上 `ActiveState=active`、`SubState=exited`、`Result=success`、`ExecMainStatus=0` である。`active`/`inactive`だけでDeploy中・完了を判定しない。`SubState=running`等の非終端なら「実行中」、`SubState=exited`かつ上記Result/ExecMainStatusとrecapが合格なら「完了」、runを開始していなければ「未実行」と報告し、raw fieldsを併記する。手書きの監視shellや独自の終了判定を追加しない。
 
 ## 事故を防ぐ標準順序
 
@@ -65,8 +65,8 @@ wrapperの出力は次の契約で扱う。
    scripts/update-all-clients.sh --status RUN_ID --inventory infrastructure/ansible/inventory.yml
    ```
 
-6. **影響相応の非破壊post-checkを行う**: roleのhealth/rollback結果をまず確認する。追加のapplication smokeは変更影響がある場合または明示要求時だけ実施し、Pi4確認が必要なら既存のPi5→Pi4 inventory/executor経路に限定する。Mac→Pi4直SSH、物理screen captureの追加、DB/Vault操作、Pi4 agent image再配布は行わない。
-7. **cleanupとfinal auditを行う**: 一時credential、symlink、検証process、Docker資源を残さず、対象worktreeがcleanであること、元repoの保護WIPが不変であること、現在Deployが`active`でないことを報告する。
+6. **影響相応の非破壊post-checkを行う**: roleのhealth/rollback結果をまず確認する。`scripts/deploy/verify-phase12-real.sh`全体はglobal-rank auto-generate等のPOST/PUTを含むため、非破壊post-checkとして無条件実行しない。非破壊の承認がある場合だけ、既存スクリプト内で明示されたGET/service-only部分を使う。標準経路で分離できない項目は未確認として停止し、Pi4確認が必要なら既存のPi5→Pi4 inventory/executor経路に限定する。Mac→Pi4直SSH、物理screen captureの追加、DB/Vault操作、Pi4 agent image再配布は行わない。
+7. **cleanupとfinal auditを行う**: 一時credential、symlink、検証process、Docker資源を残さず、対象worktreeがcleanであること、元repoの保護WIPが不変であること、runのsystemdが終端状態であることを報告する。
 
 ## 標準経路の責務
 
@@ -91,7 +91,7 @@ scripts/update-all-clients.sh
 
 1. 対象branchが指す40文字SHAをCIの成功結果と照合し、inventoryを確定する。公開CLIはbranchを受け取り、plan出力の`releaseSha`で実値を確認する。
 2. 対象SHAのrequired CI、CodeQL、gitleaksと、対象profileのrelease artifact manifest/digestが成功・存在することを確認する。
-3. Deploy専用のclean worktreeを使い、保護対象の未コミットWIPを含めない。元repoのWIPをcheckout、stash、reset、clean、編集で動かさない。
+3. Deploy専用のclean worktreeを使い、保護対象の未コミットWIPを含めない。開始時に標準credential pathの存在だけを内容非参照で確認し、無ければ即停止する。元repoのWIPをcheckout、stash、reset、clean、編集で動かさない。
 4. read-onlyの対象確認を実行する。
 
 ```bash
@@ -107,7 +107,7 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit 
 scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --full-fleet
 ```
 
-非同期実行は `--detach` でrun IDを受け取り、`--status RUN_ID` でsystemd unitとjournalの終了状態を読み取る。Pi5、Pi4、Pi3を個別のSSH、container、Ansible playbook、旧deploy scriptで操作しない。
+非同期実行は `--detach` でrun IDを受け取り、`--status RUN_ID` でsystemd unitとjournalのraw fieldsを読み取る。正常完了は `ActiveState=active`、`SubState=exited`、`Result=success`、`ExecMainStatus=0`、Ansible recap合格が揃った状態であり、`active`/`inactive`単独では判定しない。Pi5、Pi4、Pi3を個別のSSH、container、Ansible playbook、旧deploy scriptで操作しない。
 
 実行結果では、Ansible recapのfailed/unreachableが0であること、各roleのhealth確認が成功したこと、対象SHAが一致したことを確認する。Pi5のmigrationとrollback判定は `release_pi5` の結果を正本とし、DBを手で巻き戻さない。
 
@@ -118,14 +118,14 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --full-f
 次のいずれかに該当したら、Deployを開始・再起動せずに停止する。
 
 - exact SHA、required CI、artifact manifest/digest、planの対象host/profile/imageが一致しない。
-- inventoryからexecutorまたは標準credentialを解決できない、別runがactive、またはrollbackの一次証拠がない。
+- inventoryからexecutorまたは標準credentialを解決できない、別runが非終端、またはrollbackの一次証拠がない。
 - `--status`のjournalで失敗原因が未確定、対象scopeがplanから変化、または成功済みCIの反復でしか説明できない。
 
-完了は、返却されたrunのsystemdが終端で、`Result=success`、Ansibleのfailed/unreachableが0、対象SHA/artifact digest/rollback結果が一致し、必要な非破壊post-checkとcleanup/final auditが完了した時だけとする。報告にはrun ID、現在Deploy中か（`active`/`inactive`）、対象SHA、影響したprofile、未確認項目を含める。Deployを開始していない場合も「未実行」と明記する。
+完了は、返却されたrunのsystemdが `SubState=exited`、`Result=success`、`ExecMainStatus=0` で、Ansibleのfailed/unreachableが0、対象SHA/artifact digest/rollback結果が一致し、必要な非破壊post-checkとcleanup/final auditが完了した時だけとする。報告にはrun ID、判定（「実行中」/「完了」/「未実行」）、`ActiveState`/`SubState`/`Result`/`ExecMainStatus`のraw fields、対象SHA、影響したprofile、未確認項目を含める。
 
 ## 共有application smoke
 
-`scripts/deploy/verify-phase12-real.sh` はAPI、deploy-status、signage、kiosk applicationのHTTP smokeとPi3/Pi4の共有service確認に限定する。Pi5のmigration、container discovery、runtime log判定は行わず、Deployの成功判定を重複実装しない。
+`scripts/deploy/verify-phase12-real.sh` はGETだけでなくglobal-rank auto-generate等のPOST/PUTを含む混在スクリプトである。全体を非破壊post-checkとして無条件実行せず、非破壊承認時に既存の明示GET/service-only部分だけを使う。標準経路で安全に分離できない場合は未確認として停止する。Pi5のmigration、container discovery、runtime log判定を追加せず、Deployの成功判定を重複実装しない。
 
 ## 失敗時
 
