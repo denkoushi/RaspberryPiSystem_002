@@ -23,6 +23,8 @@ export * from './assemblyWorkActionPresentation';
 export * from './AssemblyProcedureLibrarySection';
 export * from './AssemblyProcedureRenameModal';
 export * from './AssemblyProcedureUploadModal';
+export * from './AssemblyProcedurePreviewDialog';
+export * from './AssemblyProcedureGmailImportConfirmDialog';
 export * from './AssemblyWipPane';
 export * from './AssemblyWorkSessionHeader';
 export * from './AssemblyTemplateHistoryDialog';

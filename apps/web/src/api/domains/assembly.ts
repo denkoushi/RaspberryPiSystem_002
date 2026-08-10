@@ -121,6 +121,16 @@ export async function uploadAssemblyProcedureDocument(input: { name: string; fil
   return data.document;
 }
 
+export async function previewAssemblyProcedureDocument(file: File): Promise<Blob> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const { data } = await api.post<Blob>('/assembly/procedure-documents/preview', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    responseType: 'blob'
+  });
+  return data;
+}
+
 export async function ingestAssemblyProcedureDocumentsFromGmail() {
   const { data } = await api.post<{ result: AssemblyProcedureGmailImportResultDto }>(
     '/assembly/procedure-documents/ingest-gmail',

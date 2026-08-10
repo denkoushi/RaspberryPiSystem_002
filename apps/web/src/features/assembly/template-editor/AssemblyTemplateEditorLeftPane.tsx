@@ -43,7 +43,8 @@ export function AssemblyTemplateEditorLeftPane() {
     setLeftPaneTab,
     setMachineNamePickerOpen,
     templateName,
-    templateNameAutomatic
+    templateNameAutomatic,
+    templateId
   } = useAssemblyTemplateEditor();
   return procedurePaneOpen ? (
     <aside className="flex min-h-[32rem] flex-col overflow-hidden rounded border border-white/15 bg-slate-900/70 xl:min-h-0">
@@ -100,6 +101,7 @@ export function AssemblyTemplateEditorLeftPane() {
             templateName={templateName}
             modelCode={modelCode}
             machineNameSelectionRequired={machineNameSelectionRequired}
+            identityLocked={Boolean(templateId)}
             procedurePattern={procedurePattern}
             templateNameAutomatic={templateNameAutomatic}
             busy={busy}

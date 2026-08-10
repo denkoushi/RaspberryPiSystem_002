@@ -11,6 +11,7 @@ paths = [
   '''\.spec\.ts$''',
   '''integration\.test\.ts$''',
   '''docs/''',
+  '''apps/web/src/generated/kiosk-sop/.*/manifest\.json$''',
 ]
 regexes = [
   '''test-access-secret''',

@@ -5,7 +5,8 @@ repo_root="$(git rev-parse --show-toplevel)"
 image_tag="raspisys-kiosk-sop-generator:playwright-1.56.1"
 generator_platform="linux/amd64"
 dockerfile="$repo_root/infrastructure/docker/Dockerfile.kiosk-sop-generator"
-preview_path="$repo_root/docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html"
+inspection_preview_path="$repo_root/docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html"
+assembly_preview_path="$repo_root/docs/design-previews/kiosk-assembly-procedure-template-sop.html"
 temporary_diagnostics="false"
 
 if [[ -n "${KIOSK_SOP_DIAGNOSTICS_DIR:-}" ]]; then
@@ -19,7 +20,10 @@ fi
 mkdir -p "$diagnostics_dir/candidate"
 diff -qr \
   "$repo_root/apps/web/src/generated/kiosk-sop/inspection-drawing" \
-  "$diagnostics_dir/candidate" > "$diagnostics_dir/artifact-tree-diff.txt" || true
+  "$diagnostics_dir/candidate/inspection-drawing" > "$diagnostics_dir/inspection-artifact-tree-diff.txt" || true
+diff -qr \
+  "$repo_root/apps/web/src/generated/kiosk-sop/assembly-procedure-template" \
+  "$diagnostics_dir/candidate/assembly-procedure-template" > "$diagnostics_dir/assembly-artifact-tree-diff.txt" || true
 
 cleanup() {
   if [[ "$temporary_diagnostics" == "true" ]]; then
@@ -32,7 +36,8 @@ docker build --platform "$generator_platform" --file "$dockerfile" --tag "$image
 
 docker run --rm --init --ipc=host --network=none --platform "$generator_platform" \
   --volume "$diagnostics_dir:/diagnostics" \
-  --volume "$preview_path:/workspace/docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html:ro" \
+  --volume "$inspection_preview_path:/workspace/docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html:ro" \
+  --volume "$assembly_preview_path:/workspace/docs/design-previews/kiosk-assembly-procedure-template-sop.html:ro" \
   "$image_tag" \
   bash -lc '
     set -euo pipefail
@@ -41,7 +46,10 @@ docker run --rm --init --ipc=host --network=none --platform "$generator_platform
       mkdir -p /diagnostics/candidate
       diff -qr \
         /workspace/apps/web/src/generated/kiosk-sop/inspection-drawing \
-        /diagnostics/candidate > /diagnostics/artifact-tree-diff.txt || true
+        /diagnostics/candidate/inspection-drawing > /diagnostics/inspection-artifact-tree-diff.txt || true
+      diff -qr \
+        /workspace/apps/web/src/generated/kiosk-sop/assembly-procedure-template \
+        /diagnostics/candidate/assembly-procedure-template > /diagnostics/assembly-artifact-tree-diff.txt || true
     }
     trap capture_tree_diff EXIT
 
@@ -49,8 +57,13 @@ docker run --rm --init --ipc=host --network=none --platform "$generator_platform
     node scripts/kiosk-sop/generate.mjs generate --output-root /diagnostics/candidate
     node scripts/ci/kiosk-sop-artifact-contract.mjs verify \
       --expected-root /workspace/apps/web/src/generated/kiosk-sop/inspection-drawing \
-      --actual-root /diagnostics/candidate \
+      --actual-root /diagnostics/candidate/inspection-drawing \
       --preview /workspace/docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html \
-      --diagnostics-root /diagnostics
+      --diagnostics-root /diagnostics/inspection
+    node scripts/ci/kiosk-sop-artifact-contract.mjs verify \
+      --expected-root /workspace/apps/web/src/generated/kiosk-sop/assembly-procedure-template \
+      --actual-root /diagnostics/candidate/assembly-procedure-template \
+      --preview /workspace/docs/design-previews/kiosk-assembly-procedure-template-sop.html \
+      --diagnostics-root /diagnostics/assembly
     pnpm exec playwright test --config=playwright.kiosk-sop.config.ts
   '

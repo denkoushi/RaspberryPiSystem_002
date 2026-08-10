@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 1,
+  "id": "assembly-procedure-template",
+  "title": "組立 手順書・テンプレート取説",
+  "entrySources": [
+    "apps/web/src/pages/kiosk/KioskAssemblyPage.tsx",
+    "apps/web/src/features/assembly/AssemblyProcedureLibrarySection.tsx",
+    "apps/web/src/features/assembly/template-editor/AssemblyTemplateEditorAuthGate.tsx",
+    "apps/web/src/features/assembly/template-editor/AssemblyTemplateEditorHeader.tsx"
+  ],
+  "supplementalWatchGlobs": [
+    "apps/web/src/features/assembly/**",
+    "apps/web/src/features/kiosk-sop/**",
+    "apps/web/src/components/ui/**",
+    "apps/web/src/layouts/KioskLayout.tsx",
+    "apps/web/src/index.css",
+    "apps/web/tailwind.config.*",
+    "scripts/kiosk-sop/**",
+    "packages/kiosk-sop-core/src/**"
+  ],
+  "exclusions": [
+    { "id": "viewer-close", "reason": "取説ビューアー共通の閉じる操作" },
+    { "id": "manual-launcher", "reason": "取説を開く共通操作" },
+    { "id": "native-file-picker", "reason": "OS標準ファイル選択ダイアログ" }
+  ],
+  "scenarios": [
+    {
+      "id": "assembly-library",
+      "productionRoute": "/kiosk/assembly/library",
+      "fixtureId": "assembly-library-v1",
+      "viewport": { "width": 1366, "height": 768, "deviceScaleFactor": 1 },
+      "sheets": [
+        {
+          "id": "assembly-overview",
+          "title": "管理画面と全体の流れ",
+          "summary": "手順書を準備・公開してからテンプレートを新規作成・改版します。",
+          "steps": [
+            { "id": "register-file", "targetId": "assembly-library-refresh", "necessity": "required", "title": "管理画面を確認", "description": "一覧を再読込し、手順書を準備・公開してからテンプレートへ進みます。" }
+          ]
+        },
+        {
+          "id": "assembly-file-register",
+          "title": "ファイル選択・事前プレビュー・下書き登録",
+          "summary": "「ファイルから登録」を開き、ファイル・先頭ページを確認して下書き登録します。",
+          "steps": [
+            { "id": "preview-file", "targetId": "assembly-procedure-preview-file", "necessity": "required", "title": "ファイルと先頭ページを確認", "description": "登録モーダルでファイルを選択し、先頭ページのプレビューを確認して下書き登録へ進みます。" }
+          ]
+        },
+        {
+          "id": "assembly-gmail-publish",
+          "title": "Gmail取込・全ページ確認・公開",
+          "summary": "Gmailの対象添付は下書きとして取り込み、全ページを確認して公開します。",
+          "steps": [
+            { "id": "gmail-import", "targetId": "assembly-gmail-confirm", "necessity": "required", "title": "下書き取込を確認", "description": "Gmailの対象添付を下書き登録する確認ダイアログで承認します。" }
+          ]
+        },
+        {
+          "id": "assembly-revision",
+          "title": "改版・複製・履歴・無効化",
+          "summary": "画面へ戻り、パスワードを入力して認証→基本情報を済ませます。改版は同じ機種名・手順パターンに固定し、別系統は複製して新規にします。",
+          "steps": [
+            { "id": "revise-template", "targetId": "assembly-template-revise", "necessity": "required", "title": "改版を開始", "description": "有効版の改版を開きます。識別子は変更できません。" },
+            { "id": "duplicate-template", "targetId": "assembly-template-duplicate", "necessity": "optional", "title": "複製して新規", "description": "別の機種名や手順パターンにしたい場合は複製します。" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "assembly-editor",
+      "productionRoute": "/kiosk/assembly/templates/new?procedureDocumentId=sop-procedure-1",
+      "fixtureId": "assembly-editor-v1",
+      "viewport": { "width": 1366, "height": 768, "deviceScaleFactor": 1 },
+      "sheets": [
+        {
+          "id": "assembly-template-auth-basics",
+          "title": "テンプレート新規作成・認証・基本情報",
+          "summary": "画面へ戻り、パスワードを入力して認証→基本情報の順に機種名・手順パターン・テンプレート名を入力します。",
+          "steps": [
+            { "id": "model-code", "targetId": "assembly-editor-model-code", "necessity": "required", "title": "機種名を入力", "description": "機種名を選択または入力します。" }
+          ]
+        },
+        {
+          "id": "assembly-template-procedure",
+          "title": "文書・表示ステップ・切抜き",
+          "summary": "画面へ戻り、パスワードを入力して認証→基本情報を済ませてから、文書追加・全体追加・矩形追加を行います。",
+          "steps": [
+            { "id": "document-add", "targetId": "assembly-editor-document-add", "necessity": "required", "title": "文書を追加", "description": "公開済み手順書を文書順へ追加します。" },
+            { "id": "step-add-full", "targetId": "assembly-editor-step-add-full", "necessity": "required", "title": "全体を追加", "description": "選択ページ全体を表示ステップに追加します。" },
+            { "id": "step-add-crop", "targetId": "assembly-editor-step-add-crop", "necessity": "required", "title": "矩形を追加", "description": "ページの範囲を切り抜く表示ステップを追加します。" }
+          ]
+        },
+        {
+          "id": "assembly-template-markers",
+          "title": "工程・締結／チェックマーカー・条件設定",
+          "summary": "画面へ戻り、パスワードを入力して認証→基本情報を済ませてから、工程・締結・チェックを操作します。",
+          "steps": [
+            { "id": "area-add", "targetId": "assembly-editor-area-add", "necessity": "required", "title": "工程を追加", "description": "工程を追加し、工程情報を入力します。" },
+            { "id": "marker-bolt", "targetId": "assembly-editor-marker-bolt", "necessity": "required", "title": "締結を選ぶ", "description": "締結マーカーを選び、図面上へ配置します。" },
+            { "id": "marker-check", "targetId": "assembly-editor-marker-check", "necessity": "required", "title": "チェックを選ぶ", "description": "チェックマーカーを選び、図面上へ配置します。" }
+          ]
+        },
+        {
+          "id": "assembly-template-save",
+          "title": "未完了確認・途中復元・保存完了",
+          "summary": "画面へ戻り、パスワードを入力して認証→基本情報を済ませ、未保存内容を復元・破棄して保存完了を確認します。",
+          "steps": [
+            { "id": "save-template", "targetId": "assembly-editor-save", "necessity": "required", "title": "完成して保存", "description": "未完了確認を済ませて保存します。保存後は一覧で版番号を確認できます。" }
+          ]
+        }
+      ]
+    }
+  ]
+}

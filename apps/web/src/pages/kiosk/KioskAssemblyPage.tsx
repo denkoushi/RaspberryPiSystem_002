@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import {
   ingestAssemblyProcedureDocumentsFromGmail,
   listAssemblyTemplateSummaries,
+  publishAssemblyProcedureDocument,
   retireAssemblyTemplate
 } from '../../api/client';
 import { KioskFilterCombobox } from '../../components/kiosk/KioskFilterCombobox';
@@ -11,15 +12,19 @@ import { Button, buttonClassName } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import {
   AssemblyProcedureLibrarySection,
+  AssemblyProcedureGmailImportConfirmDialog,
+  AssemblyProcedurePreviewDialog,
   AssemblyProcedureUploadModal,
   AssemblyTemplateHistoryDialog,
   AssemblyTemplateLibraryTable,
   KIOSK_ASSEMBLY_HOME_PATH,
+  kioskAssemblyTemplateNewPath,
   parseAssemblyLibrarySearch,
   readAssemblyApiErrorMessage,
   useAssemblyLibraryFilterOptions,
   useAssemblyTemplateLibrary
 } from '../../features/assembly';
+import { KioskSopLauncher } from '../../features/kiosk-sop';
 
 import type { AssemblyProcedureDocumentDto, AssemblyTemplateSummaryDto } from '../../features/assembly/types';
 
@@ -35,9 +40,12 @@ function pickRepresentative(group: AssemblyTemplateSummaryDto[]): AssemblyTempla
 
 export function KioskAssemblyPage() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [message, setMessage] = useState<string | null>(null);
+  const [procedureMessage, setProcedureMessage] = useState<string | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [gmailImportBusy, setGmailImportBusy] = useState(false);
+  const [gmailConfirmOpen, setGmailConfirmOpen] = useState(false);
   const [gmailImportMessage, setGmailImportMessage] = useState<string | null>(null);
   const [libraryRefreshToken, setLibraryRefreshToken] = useState(0);
   const [templateRefreshToken, setTemplateRefreshToken] = useState(0);
@@ -45,6 +53,8 @@ export function KioskAssemblyPage() {
   const [historyTitle, setHistoryTitle] = useState('');
   const [historyOpen, setHistoryOpen] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
+  const [procedurePreview, setProcedurePreview] = useState<AssemblyProcedureDocumentDto | null>(null);
+  const [highlightedTemplateId, setHighlightedTemplateId] = useState<string | null>(null);
   const templateLibrary = useAssemblyTemplateLibrary({ refreshToken: templateRefreshToken });
   const { filters, templates, setModelCode } = templateLibrary;
   const modelCodeOptions = useAssemblyLibraryFilterOptions({
@@ -66,6 +76,20 @@ export function KioskAssemblyPage() {
       focus === 'procedures' ? 'assembly-procedure-library-heading' : 'assembly-template-pane-heading';
     document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [location.search, setModelCode]);
+
+  useEffect(() => {
+    const saved = (location.state as { assemblyTemplateSaved?: {
+      id: string;
+      modelCode: string;
+      procedurePattern: string;
+      version: number;
+    } } | null)?.assemblyTemplateSaved;
+    if (!saved) return;
+    setModelCode(saved.modelCode);
+    setHighlightedTemplateId(saved.id);
+    setMessage(`テンプレート ${saved.modelCode} / ${saved.procedurePattern} v${saved.version} を保存しました。`);
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [location.pathname, location.search, location.state, navigate, setModelCode]);
 
   const groupedTemplates = useMemo(() => {
     const map = new Map<string, AssemblyTemplateSummaryDto[]>();
@@ -100,18 +124,33 @@ export function KioskAssemblyPage() {
     setUploadOpen(false);
     setLibraryRefreshToken((token) => token + 1);
     const pageCount = document.pages?.length ?? (document.imageRelativePath ? 1 : 0);
-    setMessage(
+    setProcedureMessage(
       `手順書「${document.name}」を${pageCount}ページ登録しました（下書き）。公開すると使用開始できます。`
     );
+    setProcedurePreview(document);
   }, []);
 
   const handleLibraryChanged = useCallback((nextMessage: string) => {
-    setMessage(nextMessage);
+    setProcedureMessage(nextMessage);
     setLibraryRefreshToken((token) => token + 1);
     setTemplateRefreshToken((token) => token + 1);
   }, []);
 
+  const handleProcedurePublish = useCallback(async (document: AssemblyProcedureDocumentDto) => {
+    const published = await publishAssemblyProcedureDocument(document.id);
+    setProcedureMessage(`手順書「${published.name}」を公開しました。内容確認済みです。`);
+    setLibraryRefreshToken((token) => token + 1);
+    setTemplateRefreshToken((token) => token + 1);
+    return published;
+  }, []);
+
+  const handleCreateTemplateFromProcedure = useCallback((document: AssemblyProcedureDocumentDto) => {
+    setProcedurePreview(null);
+    navigate(kioskAssemblyTemplateNewPath({ procedureDocumentId: document.id }));
+  }, [navigate]);
+
   const handleGmailImport = useCallback(async () => {
+    setGmailConfirmOpen(false);
     setGmailImportBusy(true);
     setGmailImportMessage(null);
     try {
@@ -190,8 +229,14 @@ export function KioskAssemblyPage() {
       <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-white/15 bg-slate-900/70 p-2">
         <div className="min-w-0">
           <h1 className="text-[1.35rem] font-bold leading-tight">組立 手順書/テンプレート管理</h1>
+          <p className="mt-1 text-sm font-semibold text-white/60">①手順書を準備・公開 -&gt; ②テンプレートを新規作成・改版</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <KioskSopLauncher
+            manualId="assembly-procedure-template"
+            initialSheetId="assembly-overview"
+            className="min-h-11"
+          />
           <Link
             to={KIOSK_ASSEMBLY_HOME_PATH}
             className={buttonClassName('ghostOnDark', 'inline-flex min-h-11 items-center text-[1.02rem]')}
@@ -202,15 +247,30 @@ export function KioskAssemblyPage() {
       </div>
 
       <AssemblyProcedureUploadModal isOpen={uploadOpen} onClose={() => setUploadOpen(false)} onSuccess={handleUploadSuccess} />
+      <AssemblyProcedurePreviewDialog
+        document={procedurePreview}
+        isOpen={procedurePreview != null}
+        onClose={() => setProcedurePreview(null)}
+        onPublish={handleProcedurePublish}
+        onCreateTemplate={handleCreateTemplateFromProcedure}
+      />
+      <AssemblyProcedureGmailImportConfirmDialog
+        isOpen={gmailConfirmOpen}
+        busy={gmailImportBusy}
+        onConfirm={() => void handleGmailImport()}
+        onCancel={() => setGmailConfirmOpen(false)}
+      />
 
       <div className="grid min-h-0 flex-1 grid-cols-1 items-stretch gap-2 overflow-auto 2xl:grid-cols-[33rem_minmax(0,1fr)] 2xl:overflow-hidden">
         <AssemblyProcedureLibrarySection
           refreshToken={libraryRefreshToken}
           onRegisterClick={() => setUploadOpen(true)}
-          onImportClick={() => void handleGmailImport()}
+          onImportClick={() => setGmailConfirmOpen(true)}
           importing={gmailImportBusy}
           importMessage={gmailImportMessage}
+          statusMessage={procedureMessage}
           onChanged={handleLibraryChanged}
+          onPreviewClick={(document) => setProcedurePreview(document)}
         />
 
         <section
@@ -271,7 +331,7 @@ export function KioskAssemblyPage() {
                 checked={filters.includeInactive}
                 onChange={(event) => templateLibrary.setIncludeInactive(event.target.checked)}
               />
-              旧版含む
+              無効化済みも表示
             </label>
             <Button
               type="button"
@@ -313,6 +373,7 @@ export function KioskAssemblyPage() {
               onHistoryClick={(key) => void handleHistoryClick(key)}
               lineageGroupKey={lineageGroupKey}
               onRetireClick={(template) => void handleRetireTemplate(template)}
+              highlightedTemplateId={highlightedTemplateId}
             />
           </div>
         </section>

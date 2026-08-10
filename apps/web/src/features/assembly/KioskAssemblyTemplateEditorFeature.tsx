@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import {
-  kioskAssemblyTemplateEditPath,
+  kioskAssemblyLibraryPath,
   parseAssemblyTemplateNewSearch
 } from './assemblyRoutes';
 import { AssemblyTemplateEditorProvider } from './template-editor/AssemblyTemplateEditorContext';
@@ -18,8 +18,18 @@ export function KioskAssemblyTemplateEditorPage() {
     [location.search]
   );
   const controller = useAssemblyTemplateEditorController({
-    onSaved: (savedId) =>
-      navigate(kioskAssemblyTemplateEditPath(savedId), { replace: true }),
+    onSaved: (saved) =>
+      navigate(kioskAssemblyLibraryPath({ focus: 'templates', modelCode: saved.modelCode }), {
+        replace: true,
+        state: {
+          assemblyTemplateSaved: {
+            id: saved.id,
+            modelCode: saved.modelCode,
+            procedurePattern: saved.procedurePattern,
+            version: saved.version
+          }
+        }
+      }),
     query,
     templateId
   });

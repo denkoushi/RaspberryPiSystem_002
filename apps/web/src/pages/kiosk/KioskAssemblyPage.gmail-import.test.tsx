@@ -29,10 +29,21 @@ vi.mock('../../features/assembly', () => ({
       {props.importMessage ? <p>{props.importMessage}</p> : null}
     </section>
   ),
+  AssemblyProcedureGmailImportConfirmDialog: (props: {
+    isOpen: boolean;
+    onConfirm: () => void;
+  }) =>
+    props.isOpen ? (
+      <button type="button" onClick={props.onConfirm}>
+        Gmailから取り込む
+      </button>
+    ) : null,
+  AssemblyProcedurePreviewDialog: () => null,
   AssemblyProcedureUploadModal: () => null,
   AssemblyTemplateHistoryDialog: () => null,
   AssemblyTemplateLibraryTable: () => null,
   KIOSK_ASSEMBLY_HOME_PATH: '/kiosk/assembly',
+  kioskAssemblyTemplateNewPath: () => '/kiosk/assembly/templates/new',
   parseAssemblyLibrarySearch: () => ({}),
   readAssemblyApiErrorMessage: (error: unknown, fallback: string) => {
     const message = (error as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
@@ -102,6 +113,11 @@ function renderPage() {
   );
 }
 
+function startGmailImport() {
+  fireEvent.click(screen.getByRole('button', { name: '取込' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Gmailから取り込む' }));
+}
+
 describe('KioskAssemblyPage Gmail procedure import', () => {
   beforeEach(() => {
     ingestMock.mockReset();
@@ -116,7 +132,7 @@ describe('KioskAssemblyPage Gmail procedure import', () => {
     );
     renderPage();
 
-    fireEvent.click(screen.getByRole('button', { name: '取込' }));
+    startGmailImport();
     expect(screen.getByRole('button', { name: '取込中…' })).toBeDisabled();
 
     resolveImport(importResult({ imported: 1 }));
@@ -128,7 +144,7 @@ describe('KioskAssemblyPage Gmail procedure import', () => {
     ingestMock.mockResolvedValueOnce(importResult());
     renderPage();
 
-    fireEvent.click(screen.getByRole('button', { name: '取込' }));
+    startGmailImport();
 
     await screen.findByText(/Gmail取込: 新規0件、重複0件、失敗0件/);
     expect(screen.getByTestId('procedure-refresh-token')).toHaveTextContent('0');
@@ -146,7 +162,7 @@ describe('KioskAssemblyPage Gmail procedure import', () => {
     });
     renderPage();
 
-    fireEvent.click(screen.getByRole('button', { name: '取込' }));
+    startGmailImport();
 
     expect(
       await screen.findByText('CSV自動取込中です。少し待ってから再実行してください。')
@@ -173,7 +189,7 @@ describe('KioskAssemblyPage Gmail procedure import', () => {
     );
     renderPage();
 
-    fireEvent.click(screen.getByRole('button', { name: '取込' }));
+    startGmailImport();
 
     expect(
       await screen.findByText(/壊れた手順書\.pdf: PDF ファイルの形式が不正です/)

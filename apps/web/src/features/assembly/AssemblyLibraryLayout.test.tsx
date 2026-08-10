@@ -20,7 +20,7 @@ const document = {
 };
 
 describe('assembly library two-row layout', () => {
-  it('places procedure metadata on row one and the name/actions on row two without wrapping actions', () => {
+  it('places procedure metadata on row one and the name/actions on row two', () => {
     render(
       <MemoryRouter>
         <AssemblyProcedureLibrarySection
@@ -32,8 +32,8 @@ describe('assembly library two-row layout', () => {
     const table = screen.getByRole('table', { name: '手順書ライブラリ' });
     expect(within(table).getAllByRole('row')).toHaveLength(3);
     expect(within(table).getByText(document.name)).toBeInTheDocument();
-    const newButton = within(table).getByRole('link', { name: '新規' });
-    expect(newButton.parentElement).toHaveClass('flex-nowrap');
+    const newButton = within(table).getByRole('link', { name: 'テンプレート新規作成' });
+    expect(newButton.parentElement).toHaveClass('flex-wrap');
     expect(screen.getByRole('combobox', { name: '手順書名で検索' })).toBeInTheDocument();
   });
 
@@ -81,8 +81,8 @@ describe('assembly library two-row layout', () => {
       </MemoryRouter>
     );
 
-    const register = screen.getByRole('button', { name: '登録' });
-    const importButton = screen.getByRole('button', { name: '取込' });
+    const register = screen.getByRole('button', { name: 'ファイルから登録' });
+    const importButton = screen.getByRole('button', { name: 'Gmailから取り込む' });
     expect(register.nextElementSibling).toBe(importButton);
     fireEvent.click(importButton);
     expect(onImportClick).toHaveBeenCalledTimes(1);

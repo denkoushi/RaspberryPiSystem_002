@@ -18,18 +18,22 @@ import {
 import { evaluateAssemblyTemplateReadiness } from '../assemblyTemplateReadiness';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
+
 import { buildAssemblyTemplateSaveInput } from './buildAssemblyTemplateSaveInput';
 import { useAssemblyTemplateEditorData } from './useAssemblyTemplateEditorData';
+import { useAssemblyTemplateEditorRecovery } from './useAssemblyTemplateEditorRecovery';
 import { useAssemblyTemplateMarkerDraft } from './useAssemblyTemplateMarkerDraft';
 import { useAssemblyTemplateProcedureDraft } from './useAssemblyTemplateProcedureDraft';
 
 import type {
   AssemblyProcedureStepDraft
 } from '../assemblyProcedureStepDraft';
+import type { AssemblyTemplateEditorRecoveryDraft } from '../assemblyTemplateEditorRecovery';
 import type {
   AssemblyTemplateReadinessIssue,
   AssemblyTemplateReadinessStage
 } from '../assemblyTemplateReadiness';
+import type { AssemblyTemplateDto } from '../types';
 
 type EditorQuery = {
   procedureDocumentId?: string | null;
@@ -37,7 +41,7 @@ type EditorQuery = {
 };
 
 export function useAssemblyTemplateEditorController(input: {
-  onSaved: (templateId: string) => void;
+  onSaved: (template: AssemblyTemplateDto) => void;
   query: EditorQuery;
   templateId?: string;
 }) {
@@ -103,7 +107,7 @@ export function useAssemblyTemplateEditorController(input: {
         setModelCode(data.loadedTemplate.modelCode);
         setProcedurePattern(data.loadedTemplate.procedurePattern);
       } else {
-        setTemplateName(`${data.loadedTemplate.name} 雛形`);
+        setTemplateName(`${data.loadedTemplate.name} 複製`);
         setTemplateNameMode('manual');
         setModelCode('');
         setProcedurePattern(data.loadedTemplate.procedurePattern);
@@ -160,6 +164,53 @@ export function useAssemblyTemplateEditorController(input: {
 
   const isDirty = baselineSnapshot != null && baselineSnapshot !== draftSnapshot;
   useUnsavedChangesGuard(isDirty && !busy && !readOnly);
+
+  const recoveryDraft = useMemo<AssemblyTemplateEditorRecoveryDraft>(
+    () => ({
+      templateName,
+      modelCode,
+      procedurePattern,
+      procedureItems: procedure.procedureItems,
+      procedureSteps: procedure.procedureSteps,
+      areas: marker.areas,
+      checkItems: marker.checkItems
+    }),
+    [
+      marker.areas,
+      marker.checkItems,
+      modelCode,
+      procedure.procedureItems,
+      procedure.procedureSteps,
+      procedurePattern,
+      templateName
+    ]
+  );
+  const accessGranted = readOnly || accessPassword != null;
+  const recovery = useAssemblyTemplateEditorRecovery({
+    accessGranted,
+    initialized,
+    readOnly,
+    isDirty,
+    mode: input.templateId ? 'revise' : 'new',
+    templateId: input.templateId,
+    isActive: data.loadedTemplate?.isActive ?? true,
+    sourceTemplateId: input.query.sourceTemplateId,
+    procedureDocumentId: input.query.procedureDocumentId,
+    baseUpdatedAt: data.loadedTemplate?.updatedAt ?? null,
+    draft: recoveryDraft,
+    restoreDraft: (draft) => {
+      setTemplateName(draft.templateName);
+      setTemplateNameMode('manual');
+      setModelCode(draft.modelCode);
+      setProcedurePattern(draft.procedurePattern);
+      procedure.dispatchProcedureItems({ type: 'replace', items: draft.procedureItems });
+      procedure.dispatchSteps({ type: 'replace', steps: draft.procedureSteps });
+      marker.replaceDraft(draft.areas, draft.checkItems);
+      setMessage('途中内容を復元しました。内容を確認して保存してください。');
+    },
+    onStorageError: () =>
+      setMessage('途中復元を保存できませんでした。この画面の編集は続行できます。')
+  });
 
   const markerSettingsOpen = Boolean(marker.selectedBolt || marker.selectedCheckItem);
   useEffect(() => {
@@ -366,7 +417,8 @@ export function useAssemblyTemplateEditorController(input: {
         ? await reviseAssemblyTemplate(input.templateId, result.payload)
         : await createAssemblyTemplate(result.payload);
       setBaselineSnapshot(draftSnapshot);
-      input.onSaved(saved.id);
+      recovery.clear();
+      input.onSaved(saved);
     } catch (error: unknown) {
       setMessage(
         readAssemblyApiErrorMessage(
@@ -383,7 +435,7 @@ export function useAssemblyTemplateEditorController(input: {
     ...data,
     ...procedure,
     ...marker,
-    accessGranted: readOnly || accessPassword != null,
+    accessGranted,
     addCurrentCropStep: (crop: NonNullable<AssemblyProcedureStepDraft['crop']>) => {
       marker.setPlacementAction('place');
       procedure.addCurrentCropStep(crop);
@@ -425,6 +477,9 @@ export function useAssemblyTemplateEditorController(input: {
     procedurePattern,
     readOnly,
     readiness,
+    recoveryPending: recovery.pending,
+    restoreRecovery: recovery.restore,
+    discardRecovery: recovery.discard,
     reloadCapabilityCatalog: data.reloadCapabilityCatalog,
     removeProcedureItem: (localId: string) =>
       procedure.removeDocument(localId, marker.allStepMarkers),

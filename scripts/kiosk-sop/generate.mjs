@@ -16,22 +16,38 @@ import { sha256, stableJson } from '../../packages/kiosk-sop-core/dist/node.js';
 
 import { assertNoManualTarget, resolveSingleVisibleTarget } from './capture-contract.mjs';
 import { chromiumLaunchOptions, generatorVersion } from './capture-runtime.mjs';
+import { resolveAssemblyCaptureAdapter } from './assembly-capture-adapter.mjs';
 import { resolveInspectionDrawingCaptureAdapter } from './inspection-drawing-capture-adapter.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, '../..');
-const sourceDefinitionPath = join(repoRoot, 'apps/web/src/features/part-measurement/inspection-drawing/inspection-drawing-sop.definition.json');
-const committedRoot = join(repoRoot, 'apps/web/src/generated/kiosk-sop/inspection-drawing');
-const docsPreviewPath = join(repoRoot, 'docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html');
 const generatorRuntimeInputs = Object.freeze([
   'infrastructure/docker/Dockerfile.kiosk-sop-generator',
   'package.json',
   'pnpm-lock.yaml',
   'pnpm-workspace.yaml'
 ]);
+const manualDescriptors = Object.freeze({
+  'inspection-drawing': Object.freeze({
+    sourceDefinitionPath: join(repoRoot, 'apps/web/src/features/part-measurement/inspection-drawing/inspection-drawing-sop.definition.json'),
+    committedRoot: join(repoRoot, 'apps/web/src/generated/kiosk-sop/inspection-drawing'),
+    docsPreviewPath: join(repoRoot, 'docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html'),
+    resolveAdapter: resolveInspectionDrawingCaptureAdapter
+  }),
+  'assembly-procedure-template': Object.freeze({
+    sourceDefinitionPath: join(repoRoot, 'apps/web/src/features/assembly/assembly-procedure-template-sop.definition.json'),
+    committedRoot: join(repoRoot, 'apps/web/src/generated/kiosk-sop/assembly-procedure-template'),
+    docsPreviewPath: join(repoRoot, 'docs/design-previews/kiosk-assembly-procedure-template-sop.html'),
+    resolveAdapter: resolveAssemblyCaptureAdapter
+  })
+});
 const mode = process.argv[2] ?? 'generate';
 const outputArgIndex = process.argv.indexOf('--output-root');
-const outputRoot = outputArgIndex >= 0 ? resolve(process.argv[outputArgIndex + 1]) : committedRoot;
+const requestedManualId = process.argv.includes('--manual')
+  ? process.argv[process.argv.indexOf('--manual') + 1]
+  : null;
+const allManuals = process.argv.includes('--all') || requestedManualId == null;
+const outputRoot = outputArgIndex >= 0 ? resolve(process.argv[outputArgIndex + 1]) : resolve(repoRoot, 'apps/web/src/generated/kiosk-sop');
 async function waitForServer(url, timeoutMs = 60000) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
@@ -41,8 +57,8 @@ async function waitForServer(url, timeoutMs = 60000) {
   throw new Error(`Timed out waiting for ${url}`);
 }
 
-async function captureScreens(definition, targetRoot) {
-  const server = spawn('pnpm', ['--filter', '@raspi-system/web', 'dev', '--host', '127.0.0.1', '--port', '4173'], { cwd: repoRoot, env: { ...process.env, VITE_KIOSK_SOP_POPUP_ENABLED: 'true' }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+async function captureScreens(definition, targetRoot, resolveAdapter) {
+  const server = spawn('corepack', ['pnpm', '--filter', '@raspi-system/web', 'dev', '--host', '127.0.0.1', '--port', '4173'], { cwd: repoRoot, env: { ...process.env, VITE_KIOSK_SOP_POPUP_ENABLED: 'true' }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
   let serverLog = '';
   server.stdout.on('data', (chunk) => { serverLog += chunk; });
   server.stderr.on('data', (chunk) => { serverLog += chunk; });
@@ -53,7 +69,7 @@ async function captureScreens(definition, targetRoot) {
       await mkdir(join(targetRoot, 'screens'), { recursive: true });
       const capturesBySheet = {};
       for (const scenario of definition.scenarios) {
-        const adapter = resolveInspectionDrawingCaptureAdapter(scenario.fixtureId);
+        const adapter = resolveAdapter(scenario.fixtureId);
         for (const sheet of scenario.sheets) {
           adapter.assertSupportedSheet(sheet.id);
           const unexpected = new Set();
@@ -167,7 +183,9 @@ async function captureScreens(definition, targetRoot) {
     throw new Error(`${error instanceof Error ? error.message : String(error)}\nVite output:\n${serverLog}`);
   } finally {
     if (server.pid) {
-      try { process.kill(-server.pid, 'SIGTERM'); } catch { server.kill('SIGTERM'); }
+      try { process.kill(-server.pid, 'SIGTERM'); } catch { /* already exited */ }
+      try { process.kill(-server.pid, 'SIGKILL'); } catch { /* already exited */ }
+      try { server.kill('SIGKILL'); } catch { /* already exited */ }
     }
   }
 }
@@ -224,11 +242,11 @@ async function composeSheets(html, definition, targetRoot) {
   } finally { await browser.close(); }
 }
 
-async function generate(targetRoot) {
+async function generateManual(manual, targetRoot) {
   await mkdir(targetRoot, { recursive: true });
-  const sourceText = await readFile(sourceDefinitionPath, 'utf8');
+  const sourceText = await readFile(manual.sourceDefinitionPath, 'utf8');
   const source = JSON.parse(sourceText);
-  const capture = await captureScreens(source, targetRoot);
+  const capture = await captureScreens(source, targetRoot, manual.resolveAdapter);
   const browserVersion = capture.browserVersion;
   const capturesBySheet = capture.capturesBySheet;
   const hydrated = {
@@ -279,19 +297,27 @@ async function compareTrees(expected, actual) {
   if (changed.length) throw new Error(`Generated kiosk SOP is stale: ${changed.join(', ')}. Run pnpm kiosk-sop:generate --all.`);
 }
 
-if (mode === 'generate') {
-  const html = await generate(outputRoot);
-  if (outputRoot === committedRoot) await writeFile(docsPreviewPath, html);
-  console.log(`Generated inspection-drawing SOP in ${relative(repoRoot, outputRoot)}`);
-} else if (mode === 'check') {
-  const temp = await mkdtemp(join(tmpdir(), 'kiosk-sop-check-'));
-  try {
-    await generate(temp);
-    await compareTrees(committedRoot, temp);
-    const html = await readFile(join(temp, 'manual.html'));
-    if (sha256(html) !== sha256(await readFile(docsPreviewPath))) throw new Error('Documentation preview is stale.');
-    console.log('Generated kiosk SOP is current.');
-  } finally { await rm(temp, { recursive: true, force: true }); }
-} else {
-  throw new Error(`Unknown mode: ${mode}`);
+const selectedManualIds = allManuals ? Object.keys(manualDescriptors) : [requestedManualId];
+for (const manualId of selectedManualIds) {
+  const manual = manualDescriptors[manualId];
+  if (!manual) throw new Error(`Unknown kiosk SOP manual: ${manualId}`);
+  if (mode === 'generate') {
+    const targetRoot = outputArgIndex >= 0
+      ? (allManuals ? join(outputRoot, manualId) : outputRoot)
+      : manual.committedRoot;
+    const html = await generateManual(manual, targetRoot);
+    if (targetRoot === manual.committedRoot) await writeFile(manual.docsPreviewPath, html);
+    console.log(`Generated ${manualId} SOP in ${relative(repoRoot, targetRoot)}`);
+  } else if (mode === 'check') {
+    const temp = await mkdtemp(join(tmpdir(), `kiosk-sop-check-${manualId}-`));
+    try {
+      await generateManual(manual, temp);
+      await compareTrees(manual.committedRoot, temp);
+      const html = await readFile(join(temp, 'manual.html'));
+      if (sha256(html) !== sha256(await readFile(manual.docsPreviewPath))) throw new Error(`Documentation preview is stale for ${manualId}.`);
+      console.log(`Generated ${manualId} kiosk SOP is current.`);
+    } finally { await rm(temp, { recursive: true, force: true }); }
+  } else {
+    throw new Error(`Unknown mode: ${mode}`);
+  }
 }

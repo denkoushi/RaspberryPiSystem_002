@@ -1,4 +1,5 @@
 import { Button, buttonClassName } from '../../../components/ui/Button';
+import { KioskSopLauncher } from '../../kiosk-sop';
 import {
   KIOSK_ASSEMBLY_LIBRARY_PATH,
   kioskAssemblyTemplateNewPath
@@ -67,8 +68,14 @@ export function AssemblyTemplateEditorHeader() {
       onRetryCapabilityCatalog={reloadCapabilityCatalog}
     />
     <div className="col-start-2 row-start-1 flex items-center justify-end gap-1 xl:col-start-3">
+      <KioskSopLauncher
+        manualId="assembly-procedure-template"
+        initialSheetId={templateId ? 'assembly-revision' : 'assembly-template-auth-basics'}
+        className="min-h-10"
+      />
       <Button
         type="button"
+        data-kiosk-sop-target="assembly-editor-help"
         variant="ghostOnDark"
         className="min-h-10 whitespace-nowrap !px-2 text-xs"
         aria-expanded={procedurePaneOpen}
@@ -112,13 +119,14 @@ export function AssemblyTemplateEditorHeader() {
             'ghostOnDark',
             'inline-flex min-h-10 items-center whitespace-nowrap !px-2 text-xs'
           ),
-          children: '雛形'
+          children: '複製して新規'
         })
       ) : null}
       <Button
         type="button"
         variant="primary"
         className="min-h-10 whitespace-nowrap !px-2 text-sm"
+        data-kiosk-sop-target="assembly-editor-save"
         disabled={busy || readOnly || !readiness.isReady}
         onClick={() => void saveTemplate()}
       >

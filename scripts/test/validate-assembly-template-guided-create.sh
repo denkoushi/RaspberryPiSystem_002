@@ -16,7 +16,12 @@ cleanup() {
   local cleanup_status=0
   set +e
   if [[ -n "$vite_pid" ]]; then
-    kill "$vite_pid" >/dev/null 2>&1
+    for _ in 1 2 3; do
+      child_pids="$(pgrep -P "$vite_pid" 2>/dev/null || true)"
+      [[ -z "$child_pids" ]] || kill $child_pids >/dev/null 2>&1
+      kill "$vite_pid" >/dev/null 2>&1
+      sleep 0.2
+    done
     wait "$vite_pid" >/dev/null 2>&1
   fi
   docker rm -f "$container_name" >/dev/null 2>&1
@@ -239,6 +244,7 @@ curl -fsS "http://127.0.0.1:${vite_port}" >/dev/null
   PLAYWRIGHT_BASE_URL="http://127.0.0.1:${vite_port}" \
   "$node24" node_modules/@playwright/test/cli.js test \
     e2e/assembly-library-editor-ui.spec.ts \
+    e2e/assembly-sop-popup.spec.ts \
     --project=chromium \
     --workers=1 \
     --reporter=line
