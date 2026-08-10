@@ -170,6 +170,10 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertNotIn("packages: write", contract)
         self.assertIn("github.event_name == 'push'", publish)
         self.assertIn("github.ref == 'refs/heads/main'", publish)
+        self.assertIn(
+            "needs.change-classification.outputs.pi4_agent_matrix != '[]'",
+            publish,
+        )
         self.assertIn("platforms: linux/arm64,linux/arm/v7", publish)
         self.assertIn("packages: write", publish)
         self.assertIn("docker/setup-qemu-action@v4", publish)
