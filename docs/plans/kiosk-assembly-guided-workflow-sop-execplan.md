@@ -34,6 +34,7 @@
 - 全体validator結果: API 486 files / 2542 passed / 7 skipped、Web 336 files / 1682 passed、Web build成功、migration 158件適用、能力グループfixture 20,100件、`EXPLAIN (ANALYZE, BUFFERS)`で `TorqueWrenchCapabilityGroup_idx_fastener_active` を確認。
 - focused E2E: 一本道（preview→下書き→全ページ→公開→テンプレート新規→保存完了）2本、途中復元／破棄1本、組立SOP popup 1本を再実行し、全て合格。SOP popupでは管理画面・新規認証前後・改版認証前の初期sheet、移動、Escape、focus復帰、iframe sandbox、外部通信0を確認。
 - SOPはhostで組立manualの連続checkを2回通した後、指定canonical Docker経路 `corepack pnpm kiosk-sop:generate` → `corepack pnpm kiosk-sop:check`（内部で`generate --all`/`check --all`）を完走。checkはinspection/assemblyの両manual、capture contract、既存inspection popupの18ケースを含め全て合格した。Docker generateで検査図面に発生した差分は`manifest.json`の`sourceSha256` 1行だけで、screen/manual/sheets/geometryはバイト不変。sourceShaは共通generator/script変更を反映する必要差分として記録し、視覚artifactは変更していない。組立側の生成HTML、screens、sheets、manifestはcurrent。
+- PR CIの初回runでは、生成器ではなく単一manual前提のCIラッパーが`--all`出力ルートを誤読して失敗したため、`run-kiosk-sop-artifact-contract.sh`をinspection/assemblyの個別検証へ最小修正した。修正後の同じcanonical Docker契約（capture contract、両manualのsemantic/integrity/geometry/visual、既存inspection popup 18ケース）はローカルで合格し、head `5b519d24` のCIでは他の必須job（API、Web、E2E、Docker、runtime、agent image等）も合格した。
 - 1366x768、1920x1080、900x900の既存multi-viewport/editor E2Eを含む画面境界を維持した。
 - Dockerは一時PostgreSQLのみを使用し、migration SQL、API契約、競合409／識別子変更400、active状態不変、fixture／EXPLAINを検証。EXIT/INT/TERM後のcontainer、volume、network、storage、Vite process、4173 listenerは残存0。
 - 生成manifestのSHA-256は秘密値ではないため、gitleaksの生成artifact allowlistへ限定パスを追加し、CI false positiveを抑止する。
@@ -48,7 +49,7 @@
 | Recovery | `assemblyTemplateEditorRecovery.ts`, `assemblyTemplateEditorRecoveryStorage.ts`, `useAssemblyTemplateEditorRecovery.ts`, `AssemblyTemplateRecoveryDialog.tsx` | pure schema/key/compatibility → storage I/O → React debounce/decision UI | pure unit tests, recovery E2E |
 | API rule | `assembly-template.service.ts`, `assembly.integration.test.ts` | route → service → existing transaction; rejects cross-lineage revise before persistence | API integration + SQL invariants |
 | SOP | registry/types, assembly definition/adapter, `generate.mjs`, generated assembly artifacts | registry → descriptor/fixture adapter → existing kiosk-sop-core renderer; no new framework | core tests, capture contract, assembly popup E2E, manual check |
-| Documentation/validation | ExecPlan, ADR, `validate-assembly-template-guided-create.sh`, E2E specs | records decisions and reproducible disposable validation | diff/status/resource residue checks |
+| Documentation/validation | ExecPlan, ADR, `validate-assembly-template-guided-create.sh`, `scripts/ci/run-kiosk-sop-artifact-contract.sh`, E2E specs | records decisions and reproducible disposable validation; CI wrapper verifies each generated manual | diff/status/resource residue checks |
 | CI secret scanning | `.gitleaks.toml` | generated SOP manifest hashes are non-secret deterministic artifacts | gitleaks path allowlist |
 
 ## Recovery and Safety
@@ -73,6 +74,7 @@
 
 - APIの一般 `tsc --noEmit -p tsconfig.json` は、既存tsconfigが `prisma`/`scripts` を `src` rootDirへ含める構成のためrootDirエラーになる。既存canonical build設定 `tsconfig.build.json`で型検査・buildを実行し、設定自体は変更しなかった。
 - host直接実行ではfont/browser差によりinspectionのscreen/manualがstaleになったが、承認済みcanonical Docker経路で判定し、Dockerでは視覚artifact差分なし・manifest sourceShaのみとなった。以後SOP判定はDocker経路を使用する。
+- CIの`kiosk-sop` jobは旧単一manualラッパーで`/diagnostics/candidate/manifest.json`を探していた。生成器やartifactの不整合ではないことをログで確認し、ラッパーを2つのdescriptor出力へ合わせた。修正後のローカルCI契約は18 popup testsを含め合格した。
 
 ## Outcomes
 
