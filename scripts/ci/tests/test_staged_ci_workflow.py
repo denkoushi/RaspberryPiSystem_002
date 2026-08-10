@@ -45,6 +45,10 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn('--base-sha "$BASE_SHA"', classifier)
         self.assertIn('--head-sha "$HEAD_SHA"', classifier)
         self.assertNotIn("collect_changed_files.py", classifier)
+        self.assertIn("types: [opened, synchronize, reopened, edited]", CI)
+        self.assertIn("--format json > \"$RUNNER_TEMP/ci-classification.json\"", classifier)
+        self.assertIn("scripts/ci/validate_deploy_impact.py", classifier)
+        self.assertIn('github.event_name == \'pull_request\'', classifier)
 
     def test_classifier_outputs_drive_every_conditional_job(self) -> None:
         categories = {
