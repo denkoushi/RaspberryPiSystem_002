@@ -15,8 +15,7 @@ related_docs:
   - ../plans/risk-based-four-stage-quality-gates-execplan.md
   - ../guides/ci-branch-protection.md
 validation: pure contract fixtures, current schemaVersion 6 event fixtures, and existing deployment contracts
-open_items:
-  - hosted PR validation requires explicit GitHub authorization
+open_items: []
 ---
 
 # ADR-20260810: Risk-based Deploy impact declaration as a lightweight PR contract
@@ -62,6 +61,18 @@ the classification job before expensive conditional jobs start, while
 over-reporting preserves all automatic checks. The table is documentation plus
 a pure contract; it does not add a ruleset, production mutation, secret value,
 database migration, or bespoke Deploy control plane.
+
+## Completion evidence
+
+- PR #1232 passed with head `d2e73a67a7860b89c377ab1048c24c68c6be6011` and
+  merged into main as `eeb27ca0db6d3908936d1f33518901167e30cc32`.
+- PR CI `31343451376`, main CI `31344178115`, CodeQL `31344178134`, and
+  Secret scan `31344178120` passed. Release/runtime/security gates also
+  passed, including release-set subject digest
+  `sha256:f6693b24a28edcbda1c2c93b8046f914aebc1446828daadb913241e3bd956835`.
+- No ruleset mutation, production Deploy, SSH, DB/Vault operation, or real
+  device operation was performed. Production verification is `N/A` because
+  this contract has no production runtime target.
 
 ## Alternatives considered
 

@@ -1,7 +1,7 @@
 ---
 id: risk-based-four-stage-quality-gates
 title: Risk-based four-stage quality gates and Deploy impact contract
-status: in-progress
+status: completed
 scope: pull-request Deploy impact declaration, registry-backed risk classification, and change-aware CI contract
 date: 2026-08-10
 source_of_truth: docs/plans/risk-based-four-stage-quality-gates-execplan.md
@@ -16,9 +16,7 @@ related_docs:
   - docs/guides/ci-branch-protection.md
   - docs/guides/deployment.md
 validation: focused contract tests, complete deployment contracts, isolated PostgreSQL/EXPLAIN checks, documentation audit, and hosted PR validation
-open_items:
-  - hosted PR validation requires explicit GitHub authorization
-  - production deployment is out of scope because this change has no production runtime target
+open_items: []
 ---
 
 # Risk-based four-stage quality gates
@@ -53,7 +51,7 @@ Pi5, Pi4, or Pi3.
 | Required files/artifacts | Python standard library modules, existing registry, PR template, workflow and docs |
 | Database | `no` — no schema, query, migration, or production data change |
 | Secrets/config delivery | `no` — validation accepts only secret-free declarations |
-| Success evidence | Contract tests, schemaVersion 6 classifier input, full deploy-contract runner, docs audit |
+| Success evidence | Contract tests, schemaVersion 6 classifier input, full deploy-contract runner, docs audit, hosted PR/main evidence below |
 | Rollback/cleanup | Revert the feature commit; local test-owned Docker resources must be zero |
 | Production verification | `N/A` — no production runtime target or authorization |
 
@@ -85,7 +83,7 @@ from this worktree.
 - [x] (2026-08-10) Added tests, guide/ADR/rule/index updates, and regenerated document inventory.
 - [x] (2026-08-10) Completed local Python suites, Node dependency install, documentation audit, and the complete isolated deployment contract suite.
 - [x] (2026-08-10) Fixed the PR-audit NO-GO: the red case was `package.json`/`pnpm-lock.yaml` accepted as docs; focused fixtures now require `unknown` and 18 contract tests are green.
-- [ ] Obtain hosted PR evidence after explicit GitHub authorization.
+- [x] (2026-08-10) Recorded hosted PR #1232 and main-branch evidence: PR head `d2e73a67a7860b89c377ab1048c24c68c6be6011`, merge/main SHA `eeb27ca0db6d3908936d1f33518901167e30cc32`, PR CI `31343451376`, main CI `31344178115`, CodeQL `31344178134`, Secret scan `31344178120`, and release-set subject digest `sha256:f6693b24a28edcbda1c2c93b8046f914aebc1446828daadb913241e3bd956835`.
 
 ## Surprises & Discoveries
 
@@ -144,7 +142,7 @@ The focused suite must prove missing tables, malformed rows, unjustified N/A val
 
 The canonical `scripts/ci/run-deploy-contracts-local.sh` remains the only complete local deployment check. It owns an isolated UUID-named PostgreSQL container, volume, and network, runs migration, SQL, role-boundary, and `EXPLAIN (ANALYZE, BUFFERS)` checks, and must verify cleanup after success or failure. Existing database and containers are never used.
 
-No production SSH, real-device mutation, database migration, GitHub ruleset mutation, merge, or release is authorized by this plan. If implementation or hosted validation fails, retain the branch and repair through focused tests; do not bypass the fixed checks.
+No production SSH, real-device mutation, database migration, or GitHub ruleset mutation was performed. The authorized PR merge and hosted release/runtime checks completed as recorded below; production verification remains `N/A` because this change has no production runtime target.
 
 ## Outcomes & Retrospective
 
@@ -181,11 +179,16 @@ No production SSH, real-device mutation, database migration, GitHub ruleset muta
   rollback, and cleanup. Existing Docker containers/volumes/networks were
   preserved; test-owned resources ended at zero.
 
-The implementation meets the local acceptance goal. Hosted PR checks,
-main-branch merge, ruleset changes, and production verification remain open by
-authorization boundary, not by a code failure. The main lesson is to reuse the
-current classifier and static registry at one narrow boundary; a second Deploy
-engine would have increased risk without adding evidence.
+The implementation meets the local and hosted acceptance goals. PR #1232
+passed its PR CI (`31343451376`), CodeQL, and Secret scan, then merged with
+head `d2e73a67a7860b89c377ab1048c24c68c6be6011` into main as
+`eeb27ca0db6d3908936d1f33518901167e30cc32`. Main CI (`31344178115`), CodeQL
+(`31344178134`), Secret scan (`31344178120`), release/runtime gates, and the
+recorded release-set subject digest all completed successfully. No ruleset was
+changed, and production verification is `N/A` because no production runtime
+target was in scope. The main lesson is to reuse the current classifier and
+static registry at one narrow boundary; a second Deploy engine would have
+increased risk without adding evidence.
 
 ## Milestones
 
@@ -195,10 +198,11 @@ original worktree and this plan records the no-target Deploy impact. Milestone
 target mapping, and exit-code behavior pass focused fixtures. Milestone 3 is
 complete when the PR template and `change-classification` connection reject
 under-declaration while allowing safe over-declaration and body edits.
-Milestone 4 is complete locally when Python suites, the Node workspace,
-documentation inventory, the isolated PostgreSQL/EXPLAIN and Ansible contracts,
-runtime rehearsal, rollback, and cleanup all pass. Hosted PR evidence is a
-separate final milestone requiring authorization and remains open.
+Milestone 4 is complete: Python suites, the Node workspace, documentation
+inventory, isolated PostgreSQL/EXPLAIN and Ansible contracts, runtime
+rehearsal, rollback, cleanup, hosted PR validation, and the authorized main
+merge all passed. Production verification is `N/A` because no production
+runtime target was in scope.
 
 ## Context and Orientation
 
@@ -279,13 +283,14 @@ The current change shape is expected to infer `unknown`, `ci, deploy, docs,
 unknown`, and no runtime target; this is intentionally safer than the former
 docs fallback because the change contains full-suite CI/deploy paths.
 
-The full local runner must end with successful PostgreSQL integration,
-Ansible, runtime, rollback, and cleanup messages. `git diff --check` and the
-document audit must succeed. A hosted PR run, if separately authorized, must
-show `change-classification` rejecting an unfilled template and accepting a
-completed table on `pull_request.edited`; the existing required check names
-must remain unchanged. Merge, ruleset modification, SSH, real-device checks,
-and production Deploy are explicitly outside this implementation.
+The full local runner ended with successful PostgreSQL integration, Ansible,
+runtime, rollback, and cleanup messages. `git diff --check` and the document
+audit succeeded. Hosted PR #1232 showed the completed Deploy impact contract
+and passed the existing required checks; its head merged into main as
+`eeb27ca0db6d3908936d1f33518901167e30cc32`, with main CI, CodeQL, Secret scan,
+and release/runtime/security gates passing. Ruleset modification, SSH,
+real-device checks, and production Deploy were not performed; production
+verification is `N/A`.
 
 ## Idempotence and Recovery
 
@@ -302,8 +307,9 @@ cleaned, or edited.
 The important artifacts are the nine-row PR template, the pure contract and
 thin validator, the registry helper, the current classifier JSON fixture, the
 ADR, the CI guide, the Cursor rule, the index, and the generated inventory.
-The branch is intentionally left uncommitted for review in this task; no PR,
-GitHub ruleset, merge, release, or production artifact was created.
+The implementation was reviewed and merged through PR #1232. No GitHub
+ruleset mutation, production Deploy, SSH, database/Vault operation, or
+real-device operation was performed.
 
 ## Interfaces and Dependencies
 
@@ -329,9 +335,8 @@ registry mapping boundary, and the existing full deployment contract boundary.
 
 2026-08-10: corrected the plan after re-auditing current `origin/main`: the
 retired Deploy CLI and execution closure are not restored, the old schema
-assumption is removed, the validator consumes schemaVersion 6 directly, and
-the plan now records the completed local evidence plus the remaining hosted
-authorization boundary. A PR-before audit then found the empty-surface docs
+assumption is removed, and the validator consumes schemaVersion 6 directly. A
+PR-before audit then found the empty-surface docs
 fallback incorrectly accepted package metadata; the implementation now limits
 docs to explicit documentation paths and fails other full-suite/uncertain
 inputs closed as `unknown`. A second audit confirmed that `.cursor/`, `.agent/`,
@@ -340,3 +345,6 @@ surface remains docs but risk is unknown. CI (133 tests), focused contract
 surface remains docs but risk is unknown. CI (134 tests), focused contract
 tests (18), diff check, and docs audit were rerun; Postgres/Ansible contracts
 were intentionally not repeated because the fix is pure classification logic.
+After authorization, PR #1232 and the main-branch hosted evidence were
+recorded above, the plan was marked completed, and production verification was
+closed as `N/A`.
