@@ -8,6 +8,7 @@ type ConfirmDialogProps = {
   confirmLabel?: string;
   cancelLabel?: string;
   tone?: 'danger' | 'primary';
+  confirmTarget?: string;
   onConfirm: () => void;
   onCancel: () => void;
 };
@@ -19,6 +20,7 @@ export function ConfirmDialog({
   confirmLabel = 'OK',
   cancelLabel = 'キャンセル',
   tone = 'primary',
+  confirmTarget,
   onConfirm,
   onCancel
 }: ConfirmDialogProps) {
@@ -41,6 +43,7 @@ export function ConfirmDialog({
         </Button>
         <Button
           type="button"
+          data-kiosk-sop-target={confirmTarget}
           onClick={onConfirm}
           className={tone === 'danger' ? 'flex-1 bg-red-600 text-white hover:bg-red-700' : 'flex-1'}
         >

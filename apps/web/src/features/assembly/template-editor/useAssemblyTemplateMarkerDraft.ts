@@ -383,6 +383,14 @@ export function useAssemblyTemplateMarkerDraft(input: MarkerDraftInput) {
     pendingAreaDelete,
     pendingMarkerDelete,
     placementAction,
+    replaceDraft: (nextAreas: AssemblyDraftArea[], nextCheckItems: AssemblyDraftCheckItem[]) => {
+      const safeAreas = nextAreas.length > 0 ? nextAreas : [emptyAssemblyArea()];
+      setAreas(safeAreas);
+      setCheckItems(nextCheckItems);
+      setSelectedAreaId(safeAreas[0]?.id ?? '');
+      setSelectedBoltId(null);
+      setSelectedCheckItemId(null);
+    },
     placeOnSelectedCropAt: (xRatio: number, yRatio: number) => {
       if (input.readOnly || !input.selectedStep?.crop) return;
       const point = assemblyProcedureViewPointToSourcePoint(

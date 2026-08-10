@@ -17,6 +17,7 @@ type Props = {
   onHistoryClick: (lineageGroupKey: string) => void;
   lineageGroupKey: (template: AssemblyTemplateSummaryDto) => string;
   onRetireClick: (template: AssemblyTemplateSummaryDto) => void;
+  highlightedTemplateId?: string | null;
 };
 
 type PaneProps = Props & {
@@ -35,7 +36,8 @@ function TemplateTablePane({
   startIndex,
   onHistoryClick,
   lineageGroupKey,
-  onRetireClick
+  onRetireClick,
+  highlightedTemplateId
 }: PaneProps) {
   return (
     <div className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded border border-white/10 bg-slate-950/35">
@@ -59,7 +61,10 @@ function TemplateTablePane({
           <tbody>
             {templates.map((template) => (
               <Fragment key={template.id}>
-                <tr className="border-t border-white/10 first:border-t-0">
+                <tr
+                  className={`border-t border-white/10 first:border-t-0 ${highlightedTemplateId === template.id ? 'bg-emerald-500/15' : ''}`}
+                  data-template-id={template.id}
+                >
                   <td className="truncate px-2 pb-0.5 pt-1.5 font-bold text-white" title={template.modelCode}>
                     {template.modelCode}
                   </td>
@@ -70,7 +75,7 @@ function TemplateTablePane({
                     {template.procedureDocumentName}
                   </td>
                 </tr>
-                <tr className="border-b border-white/10 last:border-b-0">
+                <tr className={`border-b border-white/10 last:border-b-0 ${highlightedTemplateId === template.id ? 'bg-emerald-500/15 ring-1 ring-inset ring-emerald-300/70' : ''}`}>
                   <td colSpan={3} className="px-2 pb-1 pt-0 text-[0.68rem] text-white/55">
                     <div className="flex min-w-0 items-center gap-1 overflow-hidden">
                       <span className="min-w-0 truncate font-semibold text-white/75" title={template.name}>{template.name}</span>
@@ -81,29 +86,31 @@ function TemplateTablePane({
                       <span className="shrink-0">工程 {template.areaCount}</span>
                       <span className="shrink-0">締付 {template.boltCount}</span>
                       <span className="shrink-0">更新 {formatAssemblyTimestamp(template.updatedAt)}</span>
-                      <div className="ml-auto flex w-[10.5rem] shrink-0 justify-end gap-0.5">
+                      <div className="ml-auto flex max-w-[22rem] shrink-0 flex-wrap justify-end gap-1">
                         <Link
                           to={kioskAssemblyTemplateEditPath(template.id)}
+                          data-kiosk-sop-target="assembly-template-revise"
                           className={buttonClassName(
                             'secondary',
-                            'inline-flex min-h-5 min-w-[1.8rem] shrink-0 items-center rounded !px-1 !py-0 text-[0.58rem] leading-none'
+                            'inline-flex min-h-11 shrink-0 items-center rounded !px-2 !py-0 text-[0.75rem] leading-tight'
                           )}
                         >
-                          編集
+                          {template.isActive ? '改版' : '表示'}
                         </Link>
                         <Link
                           to={kioskAssemblyTemplateNewPath({ sourceTemplateId: template.id })}
+                          data-kiosk-sop-target="assembly-template-duplicate"
                           className={buttonClassName(
                             'ghostOnDark',
-                            'inline-flex min-h-5 min-w-[1.8rem] shrink-0 items-center rounded !px-1 !py-0 text-[0.58rem] leading-none'
+                            'inline-flex min-h-11 shrink-0 items-center rounded !px-2 !py-0 text-[0.75rem] leading-tight'
                           )}
                         >
-                          雛形
+                          複製して新規
                         </Link>
                         <Button
                           type="button"
                           variant="ghostOnDark"
-                          className="min-h-5 min-w-[1.8rem] shrink-0 rounded !px-1 !py-0 text-[0.58rem] leading-none"
+                          className="min-h-11 shrink-0 rounded !px-2 !py-0 text-[0.75rem] leading-tight"
                           onClick={() => onHistoryClick(lineageGroupKey(template))}
                         >
                           履歴
@@ -111,7 +118,7 @@ function TemplateTablePane({
                         <Button
                           type="button"
                           variant="ghostOnDark"
-                          className="min-h-5 min-w-[1.8rem] shrink-0 rounded !px-1 !py-0 text-[0.58rem] leading-none"
+                          className="min-h-11 shrink-0 rounded !px-2 !py-0 text-[0.75rem] leading-tight"
                           disabled={!template.isActive}
                           onClick={() => onRetireClick(template)}
                         >
@@ -136,7 +143,8 @@ export function AssemblyTemplateLibraryTable({
   emptyMessage = '条件に合う組立テンプレートはありません。',
   onHistoryClick,
   lineageGroupKey,
-  onRetireClick
+  onRetireClick,
+  highlightedTemplateId
 }: Props) {
   if (templates.length === 0) {
     return (
@@ -162,6 +170,7 @@ export function AssemblyTemplateLibraryTable({
         onHistoryClick={onHistoryClick}
         lineageGroupKey={lineageGroupKey}
         onRetireClick={onRetireClick}
+        highlightedTemplateId={highlightedTemplateId}
       />
       {secondTemplates.length > 0 ? (
         <TemplateTablePane
@@ -171,8 +180,9 @@ export function AssemblyTemplateLibraryTable({
           busy={busy}
           emptyMessage={emptyMessage}
           onHistoryClick={onHistoryClick}
-          lineageGroupKey={lineageGroupKey}
-          onRetireClick={onRetireClick}
+        lineageGroupKey={lineageGroupKey}
+        onRetireClick={onRetireClick}
+        highlightedTemplateId={highlightedTemplateId}
         />
       ) : null}
     </div>

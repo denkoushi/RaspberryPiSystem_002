@@ -853,6 +853,17 @@ export class AssemblyTemplateService {
   async revise(id: string, input: Partial<AssemblyTemplateUpsertInput>): Promise<AssemblyTemplateDetail> {
     const source = await this.getById(id, { includeInactive: true });
     if (!source) throw new ApiError(404, 'テンプレートが見つかりません');
+    const sourceModelCode = normalizeKey(source.modelCode, '型番/FHINCD').slice(0, 120);
+    const sourceProcedurePattern = normalizeKey(source.procedurePattern, '手順パターン').slice(0, 120);
+    if (input.modelCode != null && normalizeKey(input.modelCode, '型番/FHINCD').slice(0, 120) !== sourceModelCode) {
+      throw new ApiError(400, '改版では機種名を変更できません。「複製して新規」を使用してください');
+    }
+    if (
+      input.procedurePattern != null &&
+      normalizeKey(input.procedurePattern, '手順パターン').slice(0, 120) !== sourceProcedurePattern
+    ) {
+      throw new ApiError(400, '改版では手順パターンを変更できません。「複製して新規」を使用してください');
+    }
     const areas =
       input.areas ??
       source.areas.map((area) => ({

@@ -143,6 +143,111 @@ async function mockKioskApis(
   });
 }
 
+async function mockGuidedWorkflowApis(page: Page): Promise<void> {
+  const image = '<svg xmlns="http://www.w3.org/2000/svg" width="900" height="540"><rect width="900" height="540" fill="#e2e8f0"/><rect x="40" y="40" width="820" height="460" fill="#fff" stroke="#0f172a" stroke-width="6"/><text x="80" y="130" font-size="34" font-family="sans-serif" font-weight="700">組立手順書</text><path d="M100 340h260l100-120 150 180 170-160" fill="none" stroke="#0891b2" stroke-width="16"/></svg>';
+  const imageUrl = `data:image/svg+xml,${encodeURIComponent(image)}`;
+  const now = '2026-08-01T00:00:00.000Z';
+  let procedureDocument: Record<string, unknown> = {
+    id: 'guided-procedure-document',
+    name: 'guided-procedure-document',
+    imageRelativePath: imageUrl,
+    status: 'draft',
+    publishedAt: null,
+    isActive: true,
+    pages: [{ pageIndex: 0, imageRelativePath: imageUrl }],
+    activeTemplateCount: 0,
+    totalTemplateCount: 0,
+    createdAt: now,
+    updatedAt: now
+  };
+  let template: Record<string, unknown> | null = null;
+
+  await page.route('**/api/**', async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith('/src/api/')) {
+      await route.continue();
+      return;
+    }
+    if (path === '/api/system/deploy-status') {
+      await route.fulfill({ json: { isMaintenance: false } });
+      return;
+    }
+    if (path === '/api/kiosk/config') {
+      await route.fulfill({ json: { defaultMode: 'tag', clientStatus: null } });
+      return;
+    }
+    if (path === '/api/kiosk/call/targets') {
+      await route.fulfill({ json: { selfClientId: 'assembly-guided-e2e', targets: [] } });
+      return;
+    }
+    if (path === '/api/kiosk/employees') {
+      await route.fulfill({ json: { employees: [] } });
+      return;
+    }
+    if (path === '/api/assembly/procedure-documents/preview') {
+      await route.fulfill({ contentType: 'image/svg+xml', body: image });
+      return;
+    }
+    if (path === '/api/assembly/procedure-documents' && request.method() === 'POST') {
+      procedureDocument = { ...procedureDocument, name: 'guided-procedure-document', updatedAt: now };
+      await route.fulfill({ json: { document: procedureDocument } });
+      return;
+    }
+    if (path === '/api/assembly/procedure-documents/summary') {
+      await route.fulfill({ json: { documents: [{ ...procedureDocument, activeTemplateCount: template ? 1 : 0, totalTemplateCount: template ? 1 : 0 }] } });
+      return;
+    }
+    if (path.endsWith('/publish') && path.includes('/assembly/procedure-documents/')) {
+      procedureDocument = { ...procedureDocument, status: 'published', publishedAt: now, updatedAt: now };
+      await route.fulfill({ json: { document: procedureDocument } });
+      return;
+    }
+    if (path === '/api/assembly/templates/summary') {
+      await route.fulfill({ json: { templates: template ? [template] : [] } });
+      return;
+    }
+    if (path === '/api/assembly/templates' && request.method() === 'POST') {
+      const body = request.postDataJSON() as Record<string, unknown>;
+      template = {
+        id: 'guided-saved-template',
+        modelCode: body.modelCode,
+        procedurePattern: body.procedurePattern,
+        name: body.name,
+        version: 1,
+        isActive: true,
+        procedureDocumentId: procedureDocument.id,
+        procedureDocumentName: procedureDocument.name,
+        procedureItemCount: 1,
+        usesLegacyProcedureSequence: false,
+        areaCount: 1,
+        boltCount: 1,
+        createdAt: now,
+        updatedAt: now
+      };
+      await route.fulfill({ json: { template } });
+      return;
+    }
+    if (path === '/api/assembly/library/filter-options') {
+      await route.fulfill({ json: { options: [] } });
+      return;
+    }
+    if (path === '/api/assembly/machine-name-candidates') {
+      await route.fulfill({ json: { candidates: ['L300KP'], hasMore: false } });
+      return;
+    }
+    if (path === '/api/kiosk/assembly/templates/verify-access-password') {
+      await route.fulfill({ json: { success: true } });
+      return;
+    }
+    if (path === '/api/torque-wrench-capability-groups/compatible' || path === '/api/torque-wrench-capability-groups') {
+      await route.fulfill({ json: { capabilityGroups: [guidedCreateCapabilityGroup] } });
+      return;
+    }
+    await route.fulfill({ json: {} });
+  });
+}
+
 async function calloutLineGeometry(line: Locator) {
   return line.evaluate((element) => ({
     x1: Number(element.getAttribute('x1')),
@@ -153,13 +258,16 @@ async function calloutLineGeometry(line: Locator) {
 }
 
 async function selectAssemblyMachineName(page: Page, machineName = 'L300KP'): Promise<void> {
-  const pane = page.locator('#assembly-procedure-pane');
-  if (await pane.count() === 0) {
-    await page.getByRole('button', { name: /文書\/工程/ }).click();
+  const machinePicker = page.getByRole('button', { name: '機種名を選ぶ' });
+  if (await machinePicker.count() === 0) {
+    const panelToggle = page.getByRole('button', { name: /文書[\/・]工程/ }).first();
+    if (await panelToggle.count() > 0) await panelToggle.click();
   }
   if (await page.getByRole('button', { name: '機種名を選ぶ' }).count() === 0) {
-    await page.getByRole('button', { name: '文書・工程', exact: true }).click();
-    await page.getByText('基本設定', { exact: true }).click();
+    const tab = page.getByRole('button', { name: '文書・工程', exact: true });
+    if (await tab.count() > 0) await tab.click();
+    const basics = page.getByText('基本設定', { exact: true });
+    if (await basics.count() > 0) await basics.click();
   }
   await page.getByRole('button', { name: '機種名を選ぶ' }).click();
   const dialog = page.getByRole('dialog', { name: '機種名を選択' });
@@ -580,6 +688,82 @@ test('direct new assembly-template URL does not select a document implicitly', a
   await expect(page.getByText('統合エディター 主手順書')).toHaveCount(0);
   await expect(page.getByTestId('assembly-procedure-canvas')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
+});
+
+test('guided assembly workflow moves from preview to publish, create, save, and highlighted library row', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await mockGuidedWorkflowApis(page);
+  await page.goto('/kiosk/assembly/library', { waitUntil: 'networkidle' });
+
+  await page.getByRole('button', { name: 'ファイルから登録' }).click();
+  const uploadDialog = page.getByRole('dialog', { name: '手順書を登録' });
+  await expect(uploadDialog).toBeVisible();
+  await uploadDialog.locator('input[type="file"]').setInputFiles({
+    name: 'guided-procedure.svg',
+    mimeType: 'image/svg+xml',
+    buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="900" height="540"><rect width="900" height="540" fill="#fff"/></svg>')
+  });
+  await uploadDialog.getByRole('button', { name: '先頭ページを確認' }).click();
+  await expect(uploadDialog.getByAltText('手順書の先頭ページプレビュー')).toBeVisible();
+  await uploadDialog.getByRole('button', { name: '下書きとして登録' }).click();
+
+  const previewDialog = page.getByRole('dialog', { name: /手順書の内容確認/ });
+  await expect(previewDialog).toBeVisible();
+  await expect(previewDialog.getByText('1ページ目')).toBeVisible();
+  await previewDialog.getByRole('button', { name: '確認して公開' }).click();
+  await expect(previewDialog.getByRole('button', { name: 'この手順書でテンプレートを新規作成' })).toBeVisible();
+  await previewDialog.getByRole('button', { name: 'この手順書でテンプレートを新規作成' }).click();
+
+  await expect(page).toHaveURL(/\/kiosk\/assembly\/templates\/new\?procedureDocumentId=guided-procedure-document/);
+  await page.getByPlaceholder('パスワード').fill('2520');
+  await page.getByRole('button', { name: '認証' }).click();
+  await selectAssemblyMachineName(page);
+  await fillAssemblyTemplateStructure(page);
+  const canvas = page.getByTestId('assembly-procedure-canvas');
+  const image = canvas.locator('img').last();
+  await expect(image).toBeVisible();
+  const imageBox = await image.boundingBox();
+  expect(imageBox).not.toBeNull();
+  await page.mouse.click(imageBox!.x + imageBox!.width * 0.5, imageBox!.y + imageBox!.height * 0.5);
+  await fillSelectedAssemblyBolt(page);
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+
+  await expect(page).toHaveURL(/\/kiosk\/assembly\/library\?focus=templates&modelCode=L300KP/);
+  await expect(page.getByText('テンプレート L300KP \/ 標準 v1 を保存しました。')).toBeVisible();
+  const highlighted = page.locator('[data-template-id="guided-saved-template"]');
+  await expect(highlighted).toBeVisible();
+  await expect(highlighted).toHaveClass(/bg-emerald-500/);
+});
+
+test('assembly editor restores and discards debounced browser recovery', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await mockKioskApis(page);
+  const editorUrl = '/kiosk/assembly/templates/new?procedureDocumentId=procedure-primary';
+  await page.goto(editorUrl, { waitUntil: 'networkidle' });
+  await page.getByPlaceholder('パスワード').fill('2520');
+  await page.getByRole('button', { name: '認証' }).click();
+  await selectAssemblyMachineName(page);
+  const pattern = page.locator('#assembly-template-procedure-pattern');
+  await pattern.fill('復元対象');
+  await page.waitForTimeout(1_000);
+  const recoveryKey = await page.evaluate(() => Object.keys(localStorage).find((key) => key.includes('assembly-template-editor-recovery:v1')));
+  expect(recoveryKey).toBeTruthy();
+
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.getByPlaceholder('パスワード').fill('2520');
+  await page.getByRole('button', { name: '認証' }).click();
+  const recoveryDialog = page.getByRole('dialog', { name: '途中内容を復元しますか？' });
+  await expect(recoveryDialog).toBeVisible();
+  await recoveryDialog.getByRole('button', { name: '途中内容を復元' }).click();
+  await expect(page.locator('#assembly-template-procedure-pattern')).toHaveValue('復元対象');
+
+  await page.locator('#assembly-template-procedure-pattern').fill('破棄対象');
+  await page.waitForTimeout(1_000);
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.getByPlaceholder('パスワード').fill('2520');
+  await page.getByRole('button', { name: '認証' }).click();
+  await page.getByRole('dialog', { name: '途中内容を復元しますか？' }).getByRole('button', { name: '破棄' }).click();
+  await expect.poll(() => page.evaluate(() => Object.keys(localStorage).some((key) => key.includes('assembly-template-editor-recovery:v1')))).toBe(false);
 });
 
 test('unified assembly editor stacks panels and keeps touch targets usable on a narrow viewport', async ({ page }) => {

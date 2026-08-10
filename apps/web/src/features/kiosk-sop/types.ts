@@ -10,4 +10,4 @@ export type KioskSopManual = Readonly<{
   sheets: readonly KioskSopSheetDescriptor[];
 }>;
 
-export type KioskSopManualId = 'inspection-drawing';
+export type KioskSopManualId = 'inspection-drawing' | 'assembly-procedure-template';

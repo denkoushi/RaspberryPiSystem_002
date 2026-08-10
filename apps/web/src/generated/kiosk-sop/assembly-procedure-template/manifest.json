@@ -1,0 +1,227 @@
+{
+  "artifacts": {
+    "manual.html": "2980956c94c41cd58d4708a2dbf92d7d58990b5a9530c3dedabd805513e2bd8f",
+    "screens/assembly-file-register.png": "db8ca4d2e85f7681a0471ff3ef3ea96131b37fcba5bbdca93d081af67c51530c",
+    "screens/assembly-gmail-publish.png": "58bb2d31d744fdeb0402fb93f1a414a58d6aebd5b164acdde98a2a353a19a277",
+    "screens/assembly-overview.png": "9b39641bdb80736dcce4ccd1c1f714f8bb0214d8f292e3a388103d8e7686b124",
+    "screens/assembly-revision.png": "9b39641bdb80736dcce4ccd1c1f714f8bb0214d8f292e3a388103d8e7686b124",
+    "screens/assembly-template-auth-basics.png": "760abfd9812fbbbff209f4b912bd0a04a39f8cc3a6eb17429b205070725a0848",
+    "screens/assembly-template-markers.png": "2e7a879592a3d52cc86910f9d6ada98bb428f74e5d064ea784056a1f45d5c9c1",
+    "screens/assembly-template-procedure.png": "760abfd9812fbbbff209f4b912bd0a04a39f8cc3a6eb17429b205070725a0848",
+    "screens/assembly-template-save.png": "760abfd9812fbbbff209f4b912bd0a04a39f8cc3a6eb17429b205070725a0848",
+    "sheets/assembly-file-register.png": "da3f83767aec8cad6d068b1d95a6dfcd5cf0ecc8f9454643c5dc9cc949d5c7d2",
+    "sheets/assembly-gmail-publish.png": "fd33f0e3bca4e101b3adc724e8fee5871a21910f8b17a81258062df4c094715e",
+    "sheets/assembly-overview.png": "3932507b06791afce70549d94d037d9d42cb7d023cd5d96adffba09650464182",
+    "sheets/assembly-revision.png": "adcb0b2ff71dc413eb35f87ecf819ceda701e4f2c10aba1e32add21a3c7e86aa",
+    "sheets/assembly-template-auth-basics.png": "9ae59986c1ca3a1a16b06b30906bdcab1c138bca39a22592e57f1bc7ab8954b2",
+    "sheets/assembly-template-markers.png": "a854d74efbe4be58b62158e44399d2639c8019db77393a32a480f63df8e627ae",
+    "sheets/assembly-template-procedure.png": "e512baeedf25d3e524caae1a49636efc779c453030f5f091055b654789637de0",
+    "sheets/assembly-template-save.png": "ce48781485a9be6833a1c54944a56b6475570c97392e20a05fd83e5ece30fe4f"
+  },
+  "browserVersion": "141.0.7390.37",
+  "definitionSha256": "3275c787dd35061d7d59417c3b8f4214e6704cc1eff2aedd215053bf045982f0",
+  "generatorVersion": "1.3.0",
+  "geometry": {
+    "assembly-file-register": [
+      {
+        "id": "preview-file",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "先頭ページを確認"
+        },
+        "target": {
+          "x": 0.537998718887262,
+          "y": 0.9161783854166666
+        },
+        "targetId": "assembly-procedure-preview-file"
+      }
+    ],
+    "assembly-gmail-publish": [
+      {
+        "id": "gmail-import",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "Gmailから取り込む"
+        },
+        "target": {
+          "x": 0.650805270863836,
+          "y": 0.23697916666666666
+        },
+        "targetId": "assembly-gmail-confirm"
+      }
+    ],
+    "assembly-overview": [
+      {
+        "id": "register-file",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "再読込"
+        },
+        "target": {
+          "x": 0.3056597730600293,
+          "y": 0.19529215494791666
+        },
+        "targetId": "assembly-library-refresh"
+      }
+    ],
+    "assembly-revision": [
+      {
+        "id": "revise-template",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "a",
+          "text": "改版"
+        },
+        "target": {
+          "x": 0.8282851390922401,
+          "y": 0.8270060221354166
+        },
+        "targetId": "assembly-template-revise"
+      },
+      {
+        "id": "duplicate-template",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "a",
+          "text": "複製して新規"
+        },
+        "target": {
+          "x": 0.8975109809663251,
+          "y": 0.8270060221354166
+        },
+        "targetId": "assembly-template-duplicate"
+      }
+    ],
+    "assembly-template-auth-basics": [
+      {
+        "id": "model-code",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "機種名を選ぶ"
+        },
+        "target": {
+          "x": 0.18448023426061494,
+          "y": 0.60888671875
+        },
+        "targetId": "assembly-editor-model-code"
+      }
+    ],
+    "assembly-template-markers": [
+      {
+        "id": "area-add",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "追加"
+        },
+        "target": {
+          "x": 0.19765739385065886,
+          "y": 0.7625325520833334
+        },
+        "targetId": "assembly-editor-area-add"
+      },
+      {
+        "id": "marker-bolt",
+        "semantics": {
+          "ariaLabel": "締結マーカー",
+          "role": null,
+          "tagName": "button",
+          "text": "締結"
+        },
+        "target": {
+          "x": 0.7583272327964861,
+          "y": 0.17838541666666666
+        },
+        "targetId": "assembly-editor-marker-bolt"
+      },
+      {
+        "id": "marker-check",
+        "semantics": {
+          "ariaLabel": "チェックマーカー",
+          "role": null,
+          "tagName": "button",
+          "text": "チェック"
+        },
+        "target": {
+          "x": 0.8103953147877013,
+          "y": 0.17838541666666666
+        },
+        "targetId": "assembly-editor-marker-check"
+      }
+    ],
+    "assembly-template-procedure": [
+      {
+        "id": "document-add",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "文書追加"
+        },
+        "target": {
+          "x": 0.19765739385065886,
+          "y": 0.2569173177083333
+        },
+        "targetId": "assembly-editor-document-add"
+      },
+      {
+        "id": "step-add-full",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "全体追加"
+        },
+        "target": {
+          "x": 0.6236273792093704,
+          "y": 0.18098958333333334
+        },
+        "targetId": "assembly-editor-step-add-full"
+      },
+      {
+        "id": "step-add-crop",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "矩形追加"
+        },
+        "target": {
+          "x": 0.674871888726208,
+          "y": 0.18098958333333334
+        },
+        "targetId": "assembly-editor-step-add-crop"
+      }
+    ],
+    "assembly-template-save": [
+      {
+        "id": "save-template",
+        "semantics": {
+          "ariaLabel": null,
+          "role": null,
+          "tagName": "button",
+          "text": "保存"
+        },
+        "target": {
+          "x": 0.9758418740849195,
+          "y": 0.09375
+        },
+        "targetId": "assembly-editor-save"
+      }
+    ]
+  },
+  "htmlSha256": "2980956c94c41cd58d4708a2dbf92d7d58990b5a9530c3dedabd805513e2bd8f",
+  "schemaVersion": 1,
+  "sourceSha256": "b2c733ed8fea857126d65f6021c4b05d7b93185da86cc92f1f7bb9d77eaadf69"
+}

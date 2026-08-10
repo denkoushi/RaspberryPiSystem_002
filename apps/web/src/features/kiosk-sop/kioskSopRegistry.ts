@@ -1,3 +1,4 @@
+import assemblyProcedureTemplateSopHtml from '../../generated/kiosk-sop/assembly-procedure-template/manual.html?raw';
 import inspectionDrawingSopHtml from '../../generated/kiosk-sop/inspection-drawing/manual.html?raw';
 
 import type { KioskSopManual, KioskSopManualId } from './types';
@@ -20,8 +21,25 @@ const INSPECTION_DRAWING_MANUAL: KioskSopManual = Object.freeze({
   ])
 });
 
+const ASSEMBLY_PROCEDURE_TEMPLATE_MANUAL: KioskSopManual = Object.freeze({
+  id: 'assembly-procedure-template',
+  title: '組立 手順書・テンプレート取説',
+  sourceHtml: assemblyProcedureTemplateSopHtml,
+  sheets: Object.freeze([
+    { id: 'assembly-overview', label: '管理画面と全体の流れ' },
+    { id: 'assembly-file-register', label: 'ファイル登録・事前プレビュー' },
+    { id: 'assembly-gmail-publish', label: 'Gmail取込・公開' },
+    { id: 'assembly-template-auth-basics', label: 'テンプレート新規作成・認証・基本情報' },
+    { id: 'assembly-template-procedure', label: '文書・表示ステップ・切抜き' },
+    { id: 'assembly-template-markers', label: '工程・締結／チェック' },
+    { id: 'assembly-template-save', label: '復元・保存完了' },
+    { id: 'assembly-revision', label: '改版・複製・履歴' }
+  ])
+});
+
 const MANUALS: Readonly<Record<KioskSopManualId, KioskSopManual>> = Object.freeze({
-  'inspection-drawing': INSPECTION_DRAWING_MANUAL
+  'inspection-drawing': INSPECTION_DRAWING_MANUAL,
+  'assembly-procedure-template': ASSEMBLY_PROCEDURE_TEMPLATE_MANUAL
 });
 
 export function getKioskSopManual(manualId: KioskSopManualId): KioskSopManual {

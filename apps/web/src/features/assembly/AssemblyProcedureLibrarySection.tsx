@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 
 import {
   deleteAssemblyProcedureDocument,
-  publishAssemblyProcedureDocument,
   unpublishAssemblyProcedureDocument
 } from '../../api/client';
 import { KioskFilterCombobox, type KioskFilterOption } from '../../components/kiosk/KioskFilterCombobox';
@@ -32,7 +31,9 @@ type Props = {
   onImportClick?: () => void;
   importing?: boolean;
   importMessage?: string | null;
+  statusMessage?: string | null;
   onChanged?: (message: string) => void;
+  onPreviewClick?: (document: AssemblyProcedureDocumentSummaryDto) => void;
   previewDocuments?: AssemblyProcedureDocumentSummaryDto[];
 };
 
@@ -42,7 +43,9 @@ export function AssemblyProcedureLibrarySection({
   onImportClick,
   importing = false,
   importMessage,
+  statusMessage,
   onChanged,
+  onPreviewClick,
   previewDocuments
 }: Props) {
   const isPreview = previewDocuments != null;
@@ -83,21 +86,6 @@ export function AssemblyProcedureLibrarySection({
     setRenameTarget(null);
     onChanged?.(`手順書名を変更しました: ${document.name}`);
     reload();
-  };
-
-  const handlePublish = async (document: AssemblyProcedureDocumentSummaryDto) => {
-    if (isPreview) return;
-    setBusyDocumentId(document.id);
-    setActionError(null);
-    try {
-      await publishAssemblyProcedureDocument(document.id);
-      onChanged?.(`手順書「${document.name}」を公開しました。テンプレート・表示順で使用できます。`);
-      reload();
-    } catch (e: unknown) {
-      setActionError(readAssemblyApiErrorMessage(e, '公開に失敗しました。'));
-    } finally {
-      setBusyDocumentId(null);
-    }
   };
 
   const handleUnpublish = async (document: AssemblyProcedureDocumentSummaryDto) => {
@@ -157,6 +145,7 @@ export function AssemblyProcedureLibrarySection({
         </div>
         <Button
           type="button"
+          data-kiosk-sop-target="assembly-library-refresh"
           variant="ghostOnDark"
           className="min-h-9 shrink-0 !px-2 !py-0 text-[0.86rem]"
           disabled={loading}
@@ -166,32 +155,35 @@ export function AssemblyProcedureLibrarySection({
         </Button>
         <Button
           type="button"
+          data-kiosk-sop-target="assembly-file-register"
           variant="ghostOnDark"
-          className="min-h-9 shrink-0 !px-2 !py-0 text-[0.86rem]"
+          className="min-h-11 shrink-0 !px-2 !py-0 text-[0.86rem]"
           onClick={onRegisterClick}
         >
-          登録
+          ファイルから登録
         </Button>
         {onImportClick ? (
           <Button
             type="button"
+            data-kiosk-sop-target="assembly-gmail-import"
             variant="ghostOnDark"
-            className="min-h-9 shrink-0 !px-2 !py-0 text-[0.86rem]"
+            className="min-h-11 shrink-0 !px-2 !py-0 text-[0.86rem]"
             disabled={importing}
             onClick={onImportClick}
           >
-            {importing ? '取込中…' : '取込'}
+            {importing ? '取込中…' : 'Gmailから取り込む'}
           </Button>
         ) : null}
       </div>
 
       <p className="px-1 text-[0.78rem] font-semibold text-white/55">
-        インポート後は下書きです。「公開」してからテンプレート・表示順設定で使用してください。
+        まず内容を確認し、公開した手順書からテンプレートを新規作成します。ファイル登録とGmail取込は下書きで保存されます。
       </p>
 
       {importMessage ? (
         <p className="px-1 text-[0.9rem] font-semibold text-amber-100">{importMessage}</p>
       ) : null}
+      {statusMessage ? <p className="px-1 text-[0.9rem] font-semibold text-emerald-100">{statusMessage}</p> : null}
 
       {error ?? actionError ?? apiFilterOptions.error ? (
         <p className="text-[0.98rem] font-semibold text-amber-200">
@@ -252,33 +244,23 @@ export function AssemblyProcedureLibrarySection({
                           <span className="min-w-0 flex-1 truncate font-bold text-white" title={document.name}>
                             {document.name}
                           </span>
-                          <div className="ml-auto flex shrink-0 flex-nowrap justify-end gap-1">
-                        {!isPublished ? (
-                          <Button
-                            type="button"
-                            variant="primary"
-                            className="min-h-6 shrink-0 rounded !px-1.5 !py-0 text-[0.68rem] leading-none"
-                            disabled={isPreview || busy}
-                            onClick={() => void handlePublish(document)}
-                          >
-                            公開
-                          </Button>
-                        ) : (
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            className="min-h-6 shrink-0 rounded !px-1.5 !py-0 text-[0.68rem] leading-none"
-                            disabled={isPreview || busy}
-                            onClick={() => void handleUnpublish(document)}
-                          >
-                            公開取消
-                          </Button>
-                        )}
+                          <div className="ml-auto flex min-w-0 shrink-0 flex-wrap justify-end gap-1">
+                        <Button
+                          type="button"
+                          data-kiosk-sop-target="assembly-procedure-preview"
+                          variant={isPublished ? 'secondary' : 'primary'}
+                          className="min-h-11 shrink-0 rounded !px-2 !py-0 text-[0.75rem] leading-tight"
+                          disabled={isPreview || busy}
+                          onClick={() => onPreviewClick?.(document)}
+                        >
+                          {isPublished ? '内容確認' : '内容確認・公開'}
+                        </Button>
                         <Link
                           to={kioskAssemblyTemplateNewPath({ procedureDocumentId: document.id })}
+                          data-kiosk-sop-target="assembly-template-new"
                           className={buttonClassName(
                             'primary',
-                            `inline-flex min-h-6 shrink-0 items-center rounded !px-1.5 !py-0 text-[0.68rem] leading-none ${!isPublished ? 'pointer-events-none opacity-40' : ''}`
+                            `inline-flex min-h-11 shrink-0 items-center rounded !px-2 !py-0 text-[0.75rem] leading-tight ${!isPublished ? 'pointer-events-none opacity-40' : ''}`
                           )}
                           aria-disabled={!isPublished}
                           title={!isPublished ? '公開後にテンプレート作成できます' : '新規テンプレート'}
@@ -286,21 +268,32 @@ export function AssemblyProcedureLibrarySection({
                             if (!isPublished) event.preventDefault();
                           }}
                         >
-                          新規
+                          テンプレート新規作成
                         </Link>
+                        {!isPublished ? null : (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="min-h-11 shrink-0 rounded !px-2 !py-0 text-[0.75rem] leading-tight"
+                            disabled={isPreview || busy}
+                            onClick={() => void handleUnpublish(document)}
+                          >
+                            公開取消
+                          </Button>
+                        )}
                         <Button
                           type="button"
                           variant="secondary"
-                          className="min-h-6 shrink-0 rounded !px-1.5 !py-0 text-[0.68rem] leading-none"
+                          className="min-h-11 shrink-0 rounded !px-2 !py-0 text-[0.75rem] leading-tight"
                           disabled={isPreview || busy}
                           onClick={() => setRenameTarget(document)}
                         >
-                          名称
+                          名前変更
                         </Button>
                         <Button
                           type="button"
                           variant="danger"
-                          className="min-h-6 shrink-0 rounded !px-1.5 !py-0 text-[0.68rem] leading-none"
+                          className="min-h-11 shrink-0 rounded !px-2 !py-0 text-[0.75rem] leading-tight"
                           disabled={isPreview || busy || document.totalTemplateCount > 0}
                           title={document.totalTemplateCount > 0 ? 'テンプレートで使用中のため削除できません' : '削除'}
                           onClick={() => void handleDelete(document)}

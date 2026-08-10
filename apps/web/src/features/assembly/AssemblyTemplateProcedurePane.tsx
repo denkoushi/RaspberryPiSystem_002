@@ -18,6 +18,7 @@ type Props = {
   templateName: string;
   modelCode: string;
   machineNameSelectionRequired: boolean;
+  identityLocked: boolean;
   procedurePattern: string;
   templateNameAutomatic: boolean;
   busy: boolean;
@@ -49,6 +50,7 @@ export function AssemblyTemplateProcedurePane({
   templateName,
   modelCode,
   machineNameSelectionRequired,
+  identityLocked,
   procedurePattern,
   templateNameAutomatic,
   busy,
@@ -109,6 +111,7 @@ export function AssemblyTemplateProcedurePane({
           type="button"
           variant="ghostOnDark"
           className="min-h-11 !px-2 !py-1 text-xs"
+          data-kiosk-sop-target="assembly-editor-document-add"
           disabled={busy || readOnly || items.length >= 50}
           onClick={onOpenDocumentLibrary}
         >
@@ -208,6 +211,7 @@ export function AssemblyTemplateProcedurePane({
                 </div>
                 <Button
                   id="assembly-template-model-code"
+                  data-kiosk-sop-target="assembly-editor-model-code"
                   type="button"
                   variant={modelCode ? 'secondary' : 'primary'}
                   className="mt-2 min-h-11 w-full"
@@ -223,12 +227,18 @@ export function AssemblyTemplateProcedurePane({
               機種名
               <Input
                 id="assembly-template-model-code"
+                data-kiosk-sop-target="assembly-editor-model-code"
                 className="min-h-11"
                 value={modelCode}
                 maxLength={120}
-                disabled={busy || readOnly}
+                disabled={busy || readOnly || identityLocked}
                 onChange={(event) => onModelCodeChange(event.target.value)}
               />
+              {identityLocked ? (
+                <span className="text-[0.65rem] font-normal text-amber-200">
+                  改版では機種名を固定しています。別系統は「複製して新規」を使ってください。
+                </span>
+              ) : null}
             </label>
           )}
           <label className="grid gap-1 text-xs font-semibold text-white/70">
@@ -238,17 +248,24 @@ export function AssemblyTemplateProcedurePane({
             </span>
             <Input
               id="assembly-template-procedure-pattern"
+              data-kiosk-sop-target="assembly-editor-procedure-pattern"
               className="min-h-11"
               value={procedurePattern}
               maxLength={120}
-              disabled={busy || readOnly}
+              disabled={busy || readOnly || identityLocked}
               onChange={(event) => onProcedurePatternChange(event.target.value)}
             />
+            {identityLocked ? (
+              <span className="text-[0.65rem] font-normal text-amber-200">
+                改版では手順パターンを固定しています。別系統は「複製して新規」を使ってください。
+              </span>
+            ) : null}
           </label>
           <label className="grid gap-1 text-xs font-semibold text-white/70">
             テンプレート名
             <Input
               id="assembly-template-name"
+              data-kiosk-sop-target="assembly-editor-template-name"
               className="min-h-11"
               value={templateName}
               maxLength={200}
@@ -338,6 +355,7 @@ export function AssemblyTemplateProcedurePane({
           type="button"
           variant="ghostOnDark"
           className="min-h-11 !px-2 !py-1 text-xs"
+          data-kiosk-sop-target="assembly-editor-area-add"
           disabled={busy || readOnly}
           onClick={onAddArea}
         >

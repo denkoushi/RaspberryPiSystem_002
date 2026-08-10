@@ -1,5 +1,6 @@
 import { Button, buttonClassName } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
+import { KioskSopLauncher } from '../../kiosk-sop';
 import { KIOSK_ASSEMBLY_LIBRARY_PATH } from '../assemblyRoutes';
 
 import {
@@ -41,6 +42,11 @@ export function AssemblyTemplateEditorAuthGate() {
                 文書順・工程・マーカーを編集する前にパスワードを入力してください。
               </p>
             </div>
+            <KioskSopLauncher
+              manualId="assembly-procedure-template"
+              initialSheetId={templateId ? 'assembly-revision' : 'assembly-template-auth-basics'}
+              className="min-h-11"
+            />
             {renderLink({
               to: KIOSK_ASSEMBLY_LIBRARY_PATH,
               className: buttonClassName(
@@ -52,6 +58,7 @@ export function AssemblyTemplateEditorAuthGate() {
           </div>
           <div className="mt-4 grid max-w-md grid-cols-[1fr_auto] gap-2">
             <Input
+              data-kiosk-sop-target="assembly-editor-password"
               value={passwordInput}
               type="password"
               inputMode="numeric"
@@ -66,6 +73,7 @@ export function AssemblyTemplateEditorAuthGate() {
             />
             <Button
               type="button"
+              data-kiosk-sop-target="assembly-editor-authenticate"
               variant="primary"
               className="min-h-12"
               disabled={!passwordInput || busy}

@@ -402,6 +402,20 @@ describe('assembly torque management API', () => {
         where: { modelCode: { startsWith: 'GUIDED-', not: 'GUIDED-VALID' } }
       })
     ).toBe(0);
+
+    const changedPattern = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/templates/${createdId}/revise`,
+      headers,
+      payload: { procedurePattern: '別パターン' }
+    });
+    expect(changedPattern.statusCode).toBe(400);
+    expect(
+      await prisma.assemblyTemplate.findUnique({
+        where: { id: createdId },
+        select: { isActive: true, version: true }
+      })
+    ).toEqual({ isActive: true, version: 1 });
   });
 
   it('同一作業セッションの同時取消は1件だけ成功する', async () => {
@@ -2775,7 +2789,7 @@ describe('assembly torque management API', () => {
     });
     expect(activeTemplate?._count.procedureItems).toBe(2);
 
-    const [movedLineage, staleMovedLineage] = await Promise.all([
+    const [movedLineage, secondMovedLineage] = await Promise.all([
       app.inject({
         method: 'POST',
         url: `/api/assembly/templates/${activeTemplate!.id}/revise`,
@@ -2789,13 +2803,13 @@ describe('assembly torque management API', () => {
         payload: { modelCode: 'UNIFIED-LOCK-MOVED-B' }
       })
     ]);
-    expect([movedLineage.statusCode, staleMovedLineage.statusCode].sort()).toEqual([200, 409]);
+    expect([movedLineage.statusCode, secondMovedLineage.statusCode].sort()).toEqual([400, 400]);
     expect(
       await prisma.assemblyTemplate.findUnique({
         where: { id: activeTemplate!.id },
         select: { isActive: true }
       })
-    ).toEqual({ isActive: false });
+    ).toEqual({ isActive: true });
     expect(
       await prisma.assemblyTemplate.count({
         where: {
@@ -2803,7 +2817,7 @@ describe('assembly torque management API', () => {
           isActive: true
         }
       })
-    ).toBe(1);
+    ).toBe(0);
   });
 
   it('reads the retained legacy sequence internally for an unversioned work session', async () => {

@@ -62,6 +62,7 @@ If `EXEC_PLAN.md` must be touched, keep the entry short and limited to current s
 - Active assembly digital torque-wrench training: `docs/plans/assembly-torque-training-execplan.md` · cutover `docs/runbooks/torque-usage-lease-cutover.md`
 - Active assembly torque display latency: `docs/plans/assembly-torque-display-latency-execplan.md`
 - Active assembly template editor density: `docs/plans/kiosk-assembly-template-editor-density-execplan.md`
+- Assembly procedure/template guided workflow: `docs/plans/kiosk-assembly-guided-workflow-sop-execplan.md` · [ADR-20260810](./decisions/ADR-20260810-assembly-guided-workflow.md)
 - Deploy speed Phase B (SSH path, production-validated): `docs/plans/deploy-speed-phase-b-execplan.md`
 - Deploy workflow safe shortening Phase 1 (implementation; no production authorization): `docs/plans/deploy-workflow-safe-shortening-execplan.md`
 - Deploy workflow safe shortening Phase 2 (attested ARM64 artifact promotion; no production authorization): `docs/plans/deploy-workflow-artifact-promotion-execplan.md`

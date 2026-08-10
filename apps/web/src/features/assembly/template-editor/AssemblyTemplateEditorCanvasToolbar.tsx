@@ -75,6 +75,7 @@ export function AssemblyTemplateEditorCanvasToolbar() {
         type="button"
         variant="ghostOnDark"
         className="min-h-10 !px-2 !py-1 text-xs"
+        data-kiosk-sop-target="assembly-editor-step-add-full"
         disabled={readOnly || !selectedPage || procedureSteps.length >= 300}
         onClick={addCurrentFullPageStep}
       >
@@ -84,6 +85,7 @@ export function AssemblyTemplateEditorCanvasToolbar() {
         type="button"
         variant={placementAction === 'crop' ? 'primary' : 'ghostOnDark'}
         className="min-h-10 !px-2 !py-1 text-xs"
+        data-kiosk-sop-target="assembly-editor-step-add-crop"
         disabled={readOnly || !selectedPage || procedureSteps.length >= 300}
         aria-pressed={placementAction === 'crop'}
         onClick={() => {
@@ -112,6 +114,7 @@ export function AssemblyTemplateEditorCanvasToolbar() {
       <Button
         type="button"
         aria-label="締結マーカー"
+        data-kiosk-sop-target="assembly-editor-marker-bolt"
         aria-pressed={markerMode === 'bolt'}
         variant={markerMode === 'bolt' ? 'primary' : 'ghostOnDark'}
         className="min-h-9 !px-2 !py-1 text-xs"
@@ -126,6 +129,7 @@ export function AssemblyTemplateEditorCanvasToolbar() {
       <Button
         type="button"
         aria-label="チェックマーカー"
+        data-kiosk-sop-target="assembly-editor-marker-check"
         aria-pressed={markerMode === 'check'}
         variant={markerMode === 'check' ? 'primary' : 'ghostOnDark'}
         className="min-h-9 !px-2 !py-1 text-xs"
