@@ -18,6 +18,14 @@ PRと安全な`push main`では、`repo-policy`、`workspace-quality`、`api`、
 
 基準SHA欠落、ゼロSHA、非ancestor、未知path、rename、copy、delete、workflow、action、CI classifier変更はfail-closedでfull suiteになります。`merge_group`、`workflow_dispatch`、毎日02:30 JSTのscheduleも従来どおりfull suiteです。PRのAPI testはcoverageなしで全件を1回実行し、full-suite eventではcoverage付き3 shardを実行します。判断の正本は[ADR-20260728](../decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md)です。
 
+### PR Deploy影響表（4段階品質ゲート）
+
+PRには`.github/pull_request_template.md`のmarker内に、Risk、Target machines、Changed surfaces、Required files/artifacts、Database、Secrets/config delivery、Success evidence、Rollback/cleanup、Production verificationの9行を記入します。これは意図と証拠を残す軽量な契約で、CI jobの選択権限は既存の`classify_event_changes.py`（schemaVersion 6）だけが持ちます。
+
+Riskは`docs`、`ui-logic`、`api-agent-config`、`db-auth-systemd-deploy`、`unknown`の閉じた順序です。`docs/`、README/Markdown、`.cursor/`、`.agent/`、PR templateなど明示的な文書pathだけをsurface `docs`とします。ただし現行classifierが`.cursor/`、`.agent/`、PR templateへ`unknown path`を付ける場合、riskは`unknown`です。package metadata、lockfile、未分類path、または文書以外のfull-suite根拠も`unknown`へfail-closedします。DB、認証、systemd、Ansible、Docker、Deployの既知pathは該当surfaceへ導出します。対象機は既存registryのprofileからPi5/Pi4/Pi3へ導出し、対象機やsurfaceを多く申告することは許可しますが、少なく申告することはできません。`N/A`、`none`、`no`には理由を添え、秘密値は書きません。DB変更を`no`とする申告、placeholder、行不足、表の重複は`change-classification`で失敗します。
+
+PR本文だけを直した場合も`pull_request.edited`で再検証されます。push、merge group、schedule、manual runでは本文契約を再検証せず、既存のfail-closed自動分類を使います。詳細な責務分離と、退役済みDeploy CLIを復活させない判断は[ADR-20260810](../decisions/ADR-20260810-risk-based-deploy-impact-contract.md)、実施記録は[ExecPlan](../plans/risk-based-four-stage-quality-gates-execplan.md)を正本とします。
+
 ### `main`のARM64 release成果物
 
 API/Webのproduction imageへ影響する安全な`push main`では、通常checkと並行してnative ARM64 runnerがAPIとWebを一組でbuildし、GHCRへdigest固定でpushします。`ci-required`、`codeql`、`gitleaks`が同じSHAで成功した後だけ、両digest・build設定hash・source SHAを結ぶrelease setを発行して3成果物をattestします。PR、merge queue、手動実行、scheduleにはpackage write／attestation権限を与えません。

@@ -10,6 +10,7 @@
 
 ### Deployワークフロー安全短縮 Phase 1–2（2026-07-29 · Phase 2実装済み）
 
+- **リスクベース4段階品質ゲート**: PR Deploy影響表と不足申告validatorを既存schemaVersion 6分類へ軽量接続。**正本**: [ExecPlan](./plans/risk-based-four-stage-quality-gates-execplan.md) · [ADR](./decisions/ADR-20260810-risk-based-deploy-impact-contract.md) · [CI Guide](./guides/ci-branch-protection.md#pr-deploy影響表4段階品質ゲート)
 - **本番設定漏れと端末周辺機器のfail-closed化**: 全`VITE_*`経路の型付きCI監査、NFC readiness、NFC／Barcode／Torqueの1分監視とSlack通知。**正本**: [ExecPlan](./plans/fail-closed-production-config-and-terminal-health-execplan.md) · [ADR](./decisions/ADR-20260729-fail-closed-production-config-and-terminal-health.md) · [KB-403](./knowledge-base/KB-403-production-config-contract-and-nfc-health.md)
 - **安全ゲートを維持したCI／対象分類／build cache短縮**: 安全なmain pushだけを変更認識型にし、Pi5 Web設定を`server-app`として所有、Kioskは再読込のみ・Pi3は対象外とする。**正本**: [ExecPlan](./plans/deploy-workflow-safe-shortening-execplan.md) · [ADR](./decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md) · [CI Guide](./guides/ci-branch-protection.md) · [Deploy Guide](./guides/deployment.md)
 - **署名済みARM64 API/Web pairの事前buildとPi5昇格**: exact main SHAと設定hashへ結合し、欠落時は既存local build、整合性不一致は停止する。共有既定OFF・本番Pi5だけ明示ON。**正本**: [ExecPlan](./plans/deploy-workflow-artifact-promotion-execplan.md) · [ADR](./decisions/ADR-20260728-attested-arm64-release-artifact-promotion.md)

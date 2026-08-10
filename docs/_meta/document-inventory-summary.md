@@ -11,17 +11,17 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 
 | Metric | Count |
 |--------|------:|
-| Documents | 615 |
-| Total lines | 171422 |
-| Total bytes | 12864536 |
-| With frontmatter | 282 |
-| With status | 138 |
-| source_of_truth declared | 100 |
+| Documents | 620 |
+| Total lines | 171704 |
+| Total bytes | 12895649 |
+| With frontmatter | 283 |
+| With status | 139 |
+| source_of_truth declared | 101 |
 | References to EXEC_PLAN.md | 64 |
 | Question-mark corruption documents | 1 |
 | Replacement-character documents | 1 |
 | Long-line documents | 26 |
-| Local links | 5634 |
+| Local links | 5645 |
 | Broken local links | 88 |
 | Documents over 1,000 lines | 29 |
 | Documents over 3,000 lines | 6 |
@@ -40,11 +40,11 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | `docs/archive/architecture/deployment-modules-legacy-through-2026-07.md` | 2522 | 128149 |
 | `docs/knowledge-base/infrastructure/backup-restore.md` | 2208 | 137917 |
 | `docs/knowledge-base/infrastructure/signage.md` | 2196 | 188373 |
-| `docs/INDEX.md` | 2009 | 347252 |
-| `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1935 | 213513 |
+| `docs/INDEX.md` | 2010 | 347631 |
+| `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1937 | 213657 |
 | `docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md` | 1654 | 153539 |
 | `docs/archive/deployments/legacy-operator-guide-through-2026-07.md` | 1600 | 108031 |
-| `docs/runbooks/kiosk-part-measurement.md` | 1487 | 124259 |
+| `docs/runbooks/kiosk-part-measurement.md` | 1497 | 125488 |
 
 ## EXEC_PLAN References
 
@@ -72,7 +72,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 ## Long-Line Documents
 
 - `EXEC_PLAN.md` (23:1093, 31:1026, 44:1017)
-- `docs/INDEX.md` (289:1132, 305:1242, 309:1022)
+- `docs/INDEX.md` (290:1132, 306:1242, 310:1022)
 - `docs/archive/deployments/2026-04.md` (83:1066)
 - `docs/archive/deployments/2026-05.md` (815:25090, 1642:1257, 2471:1119)
 - `docs/decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md` (47:1010)
@@ -80,7 +80,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/guides/verification-checklist.md` (623:1641)
 - `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` (214:1414, 216:1048, 225:1224)
 - `docs/knowledge-base/KB-313-kiosk-documents.md` (137:1274, 157:1178)
-- `docs/knowledge-base/KB-320-kiosk-part-measurement.md` (1804:1045, 1811:1213)
+- `docs/knowledge-base/KB-320-kiosk-part-measurement.md` (1806:1045, 1813:1213)
 - `docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md` (13:1164, 295:1220, 297:1290)
 - `docs/knowledge-base/infrastructure/signage.md` (23:1023, 29:1221, 349:1060)
 - `docs/plans/assembly-torque-wrench-traceability-execplan.md` (10:1434, 447:1055)

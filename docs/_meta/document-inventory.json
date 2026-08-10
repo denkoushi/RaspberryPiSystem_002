@@ -15,17 +15,17 @@
     ]
   },
   "summary": {
-    "documentCount": 615,
-    "totalLines": 171422,
-    "totalBytes": 12864536,
-    "withFrontmatter": 282,
-    "withStatus": 138,
-    "sourceOfTruthDeclared": 100,
+    "documentCount": 620,
+    "totalLines": 171704,
+    "totalBytes": 12895649,
+    "withFrontmatter": 283,
+    "withStatus": 139,
+    "sourceOfTruthDeclared": 101,
     "execPlanReferences": 64,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 26,
-    "localLinkCount": 5634,
+    "localLinkCount": 5645,
     "brokenLocalLinkCount": 88,
     "documentsOver1000Lines": 29,
     "documentsOver3000Lines": 6,
@@ -535,8 +535,8 @@
     },
     {
       "path": ".cursor/rules/10-quality-ci-and-tests.mdc",
-      "lineCount": 36,
-      "byteSize": 1425,
+      "lineCount": 37,
+      "byteSize": 1599,
       "hasFrontmatter": true,
       "title": "品質: CI/テスト（Auto Attached）",
       "status": null,
@@ -5903,13 +5903,18 @@
     },
     {
       "path": "docs/AI_START_HERE.md",
-      "lineCount": 129,
-      "byteSize": 8599,
+      "lineCount": 131,
+      "byteSize": 8973,
       "hasFrontmatter": true,
       "title": "AI Start Here",
       "status": null,
       "source_of_truth": null,
       "localLinks": [
+        {
+          "href": "./knowledge-base/KB-408-self-inspection-per-entry-inspector-gate.md",
+          "targetPath": "docs/knowledge-base/KB-408-self-inspection-per-entry-inspector-gate.md",
+          "exists": true
+        },
         {
           "href": "./plans/dgx-control-plane-business-proxy-consumer-execplan.md",
           "targetPath": "docs/plans/dgx-control-plane-business-proxy-consumer-execplan.md",
@@ -5924,8 +5929,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 2009,
-      "byteSize": 347252,
+      "lineCount": 2010,
+      "byteSize": 347631,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -6902,6 +6907,11 @@
           "exists": true
         },
         {
+          "href": "./decisions/ADR-20260810-risk-based-deploy-impact-contract.md",
+          "targetPath": "docs/decisions/ADR-20260810-risk-based-deploy-impact-contract.md",
+          "exists": true
+        },
+        {
           "href": "./design-previews/kiosk-assembly-home-table-dense-3col-preview.html",
           "targetPath": "docs/design-previews/kiosk-assembly-home-table-dense-3col-preview.html",
           "exists": true
@@ -7183,6 +7193,11 @@
         },
         {
           "href": "./guides/ci-branch-protection.md",
+          "targetPath": "docs/guides/ci-branch-protection.md",
+          "exists": true
+        },
+        {
+          "href": "./guides/ci-branch-protection.md#pr-deploy影響表4段階品質ゲート",
           "targetPath": "docs/guides/ci-branch-protection.md",
           "exists": true
         },
@@ -10637,6 +10652,11 @@
           "exists": true
         },
         {
+          "href": "./plans/risk-based-four-stage-quality-gates-execplan.md",
+          "targetPath": "docs/plans/risk-based-four-stage-quality-gates-execplan.md",
+          "exists": true
+        },
+        {
           "href": "./plans/rolling-terminal-bluegreen-deploy.md",
           "targetPath": "docs/plans/rolling-terminal-bluegreen-deploy.md",
           "exists": true
@@ -11242,95 +11262,95 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 289,
+          "line": 290,
           "length": 1132
         },
         {
-          "line": 305,
+          "line": 306,
           "length": 1242
         },
         {
-          "line": 309,
+          "line": 310,
           "length": 1022
         },
         {
-          "line": 323,
+          "line": 324,
           "length": 1065
         },
         {
-          "line": 371,
+          "line": 372,
           "length": 1165
         },
         {
-          "line": 377,
+          "line": 378,
           "length": 1458
         },
         {
-          "line": 389,
+          "line": 390,
           "length": 1083
         },
         {
-          "line": 403,
+          "line": 404,
           "length": 1398
         },
         {
-          "line": 405,
+          "line": 406,
           "length": 1133
         },
         {
-          "line": 409,
+          "line": 410,
           "length": 1399
         },
         {
-          "line": 411,
+          "line": 412,
           "length": 1008
         },
         {
-          "line": 417,
+          "line": 418,
           "length": 1059
         },
         {
-          "line": 425,
+          "line": 426,
           "length": 1129
         },
         {
-          "line": 429,
+          "line": 430,
           "length": 1135
         },
         {
-          "line": 433,
+          "line": 434,
           "length": 1117
         },
         {
-          "line": 548,
+          "line": 549,
           "length": 1013
         },
         {
-          "line": 734,
+          "line": 735,
           "length": 2038
         },
         {
-          "line": 750,
+          "line": 751,
           "length": 1496
         },
         {
-          "line": 756,
+          "line": 757,
           "length": 1177
         },
         {
-          "line": 1098,
+          "line": 1099,
           "length": 1449
         },
         {
-          "line": 1134,
+          "line": 1135,
           "length": 1136
         },
         {
-          "line": 1136,
+          "line": 1137,
           "length": 1239
         },
         {
-          "line": 1172,
+          "line": 1173,
           "length": 1004
         }
       ],
@@ -16534,13 +16554,18 @@
     },
     {
       "path": "docs/decisions/ADR-20260710-self-inspection-draft-confirmed.md",
-      "lineCount": 53,
-      "byteSize": 3150,
+      "lineCount": 55,
+      "byteSize": 3684,
       "hasFrontmatter": true,
       "title": "Self-inspection entry DRAFT vs CONFIRMED persistence",
       "status": "accepted",
       "source_of_truth": "true",
       "localLinks": [
+        {
+          "href": "../knowledge-base/KB-408-self-inspection-per-entry-inspector-gate.md",
+          "targetPath": "docs/knowledge-base/KB-408-self-inspection-per-entry-inspector-gate.md",
+          "exists": true
+        },
         {
           "href": "../plans/self-inspection-confirm-guard-wip-draft.md",
           "targetPath": "docs/plans/self-inspection-confirm-guard-wip-draft.md",
@@ -17092,6 +17117,21 @@
         }
       ],
       "inboundCount": 4,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/decisions/ADR-20260809-assembly-torque-training-boundaries.md",
+      "lineCount": 20,
+      "byteSize": 1776,
+      "hasFrontmatter": false,
+      "title": "ADR-20260809 Assembly torque training boundaries",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -18323,8 +18363,8 @@
     },
     {
       "path": "docs/guides/ci-branch-protection.md",
-      "lineCount": 129,
-      "byteSize": 6845,
+      "lineCount": 137,
+      "byteSize": 8772,
       "hasFrontmatter": false,
       "title": "段階型CIと`main` rulesetガイド",
       "status": null,
@@ -18339,9 +18379,19 @@
           "href": "../decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md",
           "targetPath": "docs/decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md",
           "exists": true
+        },
+        {
+          "href": "../decisions/ADR-20260810-risk-based-deploy-impact-contract.md",
+          "targetPath": "docs/decisions/ADR-20260810-risk-based-deploy-impact-contract.md",
+          "exists": true
+        },
+        {
+          "href": "../plans/risk-based-four-stage-quality-gates-execplan.md",
+          "targetPath": "docs/plans/risk-based-four-stage-quality-gates-execplan.md",
+          "exists": true
         }
       ],
-      "inboundCount": 3,
+      "inboundCount": 4,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -22597,8 +22647,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-320-kiosk-part-measurement.md",
-      "lineCount": 1935,
-      "byteSize": 213513,
+      "lineCount": 1937,
+      "byteSize": 213657,
       "hasFrontmatter": false,
       "title": "KB-320: キオスク部品測定（テンプレ不一致・候補・スキャン）",
       "status": null,
@@ -22840,6 +22890,11 @@
           "exists": true
         },
         {
+          "href": "./KB-408-self-inspection-per-entry-inspector-gate.md",
+          "targetPath": "docs/knowledge-base/KB-408-self-inspection-per-entry-inspector-gate.md",
+          "exists": true
+        },
+        {
           "href": "../plans/inspection-drawing-create-layout-and-return-nav.md",
           "targetPath": "docs/plans/inspection-drawing-create-layout-and-return-nav.md",
           "exists": true
@@ -22990,11 +23045,11 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 1804,
+          "line": 1806,
           "length": 1045
         },
         {
-          "line": 1811,
+          "line": 1813,
           "length": 1213
         }
       ],
@@ -25964,6 +26019,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/knowledge-base/KB-408-self-inspection-per-entry-inspector-gate.md",
+      "lineCount": 47,
+      "byteSize": 3577,
+      "hasFrontmatter": true,
+      "title": "Self-inspection per-entry operator confirmation and inspector gate",
+      "status": "accepted",
+      "source_of_truth": "true",
+      "localLinks": [],
+      "inboundCount": 5,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md",
       "lineCount": 203,
       "byteSize": 12918,
@@ -27498,7 +27568,7 @@
     {
       "path": "docs/knowledge-base/index.md",
       "lineCount": 872,
-      "byteSize": 263196,
+      "byteSize": 263303,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - 索引",
       "status": null,
@@ -30070,6 +30140,11 @@
           "exists": true
         },
         {
+          "href": "./KB-408-self-inspection-per-entry-inspector-gate.md",
+          "targetPath": "docs/knowledge-base/KB-408-self-inspection-per-entry-inspector-gate.md",
+          "exists": true
+        },
+        {
           "href": "./KB-investigation-kiosk-ime-and-power-regression.md",
           "targetPath": "docs/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md",
           "exists": true
@@ -32254,6 +32329,21 @@
       "byteSize": 7024,
       "hasFrontmatter": false,
       "title": "Assembly torque display latency",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/assembly-torque-training-execplan.md",
+      "lineCount": 35,
+      "byteSize": 4719,
+      "hasFrontmatter": false,
+      "title": "Assembly torque training",
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
@@ -35483,6 +35573,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/self-inspection-per-entry-inspector-gate-execplan.md",
+      "lineCount": 107,
+      "byteSize": 13318,
+      "hasFrontmatter": false,
+      "title": "Self-inspection per-entry operator confirmation and inspector gate",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/self-inspection-use-case-boundaries-execplan.md",
       "lineCount": 199,
       "byteSize": 19233,
@@ -37088,8 +37193,8 @@
     },
     {
       "path": "docs/runbooks/kiosk-part-measurement.md",
-      "lineCount": 1487,
-      "byteSize": 124259,
+      "lineCount": 1497,
+      "byteSize": 125488,
       "hasFrontmatter": false,
       "title": "キオスク: 部品測定記録（part-measurement）",
       "status": null,
@@ -37416,6 +37521,11 @@
           "exists": true
         },
         {
+          "href": "../knowledge-base/KB-408-self-inspection-per-entry-inspector-gate.md",
+          "targetPath": "docs/knowledge-base/KB-408-self-inspection-per-entry-inspector-gate.md",
+          "exists": true
+        },
+        {
           "href": "../plans/inspection-drawing-create-layout-and-return-nav.md",
           "targetPath": "docs/plans/inspection-drawing-create-layout-and-return-nav.md",
           "exists": true
@@ -37438,6 +37548,11 @@
         {
           "href": "../plans/self-inspection-confirm-guard-wip-draft.md",
           "targetPath": "docs/plans/self-inspection-confirm-guard-wip-draft.md",
+          "exists": true
+        },
+        {
+          "href": "../plans/self-inspection-per-entry-inspector-gate-execplan.md",
+          "targetPath": "docs/plans/self-inspection-per-entry-inspector-gate-execplan.md",
           "exists": true
         },
         {
@@ -38426,6 +38541,21 @@
         }
       ],
       "inboundCount": 4,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/runbooks/torque-usage-lease-cutover.md",
+      "lineCount": 47,
+      "byteSize": 2855,
+      "hasFrontmatter": false,
+      "title": "Torque usage lease cutover",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
