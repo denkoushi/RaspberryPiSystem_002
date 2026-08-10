@@ -36,6 +36,7 @@
 - SOPはhostで組立manualの連続checkを2回通した後、指定canonical Docker経路 `corepack pnpm kiosk-sop:generate` → `corepack pnpm kiosk-sop:check`（内部で`generate --all`/`check --all`）を完走。checkはinspection/assemblyの両manual、capture contract、既存inspection popupの18ケースを含め全て合格した。Docker generateで検査図面に発生した差分は`manifest.json`の`sourceSha256` 1行だけで、screen/manual/sheets/geometryはバイト不変。sourceShaは共通generator/script変更を反映する必要差分として記録し、視覚artifactは変更していない。組立側の生成HTML、screens、sheets、manifestはcurrent。
 - 1366x768、1920x1080、900x900の既存multi-viewport/editor E2Eを含む画面境界を維持した。
 - Dockerは一時PostgreSQLのみを使用し、migration SQL、API契約、競合409／識別子変更400、active状態不変、fixture／EXPLAINを検証。EXIT/INT/TERM後のcontainer、volume、network、storage、Vite process、4173 listenerは残存0。
+- 生成manifestのSHA-256は秘密値ではないため、gitleaksの生成artifact allowlistへ限定パスを追加し、CI false positiveを抑止する。
 
 ## Changed-file responsibilities and test boundaries
 
@@ -48,6 +49,7 @@
 | API rule | `assembly-template.service.ts`, `assembly.integration.test.ts` | route → service → existing transaction; rejects cross-lineage revise before persistence | API integration + SQL invariants |
 | SOP | registry/types, assembly definition/adapter, `generate.mjs`, generated assembly artifacts | registry → descriptor/fixture adapter → existing kiosk-sop-core renderer; no new framework | core tests, capture contract, assembly popup E2E, manual check |
 | Documentation/validation | ExecPlan, ADR, `validate-assembly-template-guided-create.sh`, E2E specs | records decisions and reproducible disposable validation | diff/status/resource residue checks |
+| CI secret scanning | `.gitleaks.toml` | generated SOP manifest hashes are non-secret deterministic artifacts | gitleaks path allowlist |
 
 ## Recovery and Safety
 
