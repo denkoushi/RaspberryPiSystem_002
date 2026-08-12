@@ -15,9 +15,9 @@
     ]
   },
   "summary": {
-    "documentCount": 622,
-    "totalLines": 172138,
-    "totalBytes": 12921496,
+    "documentCount": 624,
+    "totalLines": 172187,
+    "totalBytes": 12932472,
     "withFrontmatter": 285,
     "withStatus": 141,
     "sourceOfTruthDeclared": 103,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 26,
-    "localLinkCount": 5645,
+    "localLinkCount": 5639,
     "brokenLocalLinkCount": 88,
     "documentsOver1000Lines": 29,
     "documentsOver3000Lines": 6,
@@ -535,10 +535,10 @@
     },
     {
       "path": ".cursor/rules/10-quality-ci-and-tests.mdc",
-      "lineCount": 37,
-      "byteSize": 1599,
+      "lineCount": 55,
+      "byteSize": 3876,
       "hasFrontmatter": true,
-      "title": "品質: CI/テスト（Auto Attached）",
+      "title": "品質: 上限のある検証",
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
@@ -550,10 +550,10 @@
     },
     {
       "path": ".cursor/rules/11-debugging-playbook.mdc",
-      "lineCount": 27,
-      "byteSize": 1090,
+      "lineCount": 29,
+      "byteSize": 1942,
       "hasFrontmatter": true,
-      "title": "デバッグ: プレイブック（Auto Attached）",
+      "title": "デバッグ: 証拠と停止条件",
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
@@ -610,34 +610,13 @@
     },
     {
       "path": "AGENTS.md",
-      "lineCount": 104,
-      "byteSize": 8632,
+      "lineCount": 53,
+      "byteSize": 4572,
       "hasFrontmatter": false,
       "title": "AI Agent Entry Point",
       "status": null,
       "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "./docs/AI_START_HERE.md",
-          "targetPath": "docs/AI_START_HERE.md",
-          "exists": true
-        },
-        {
-          "href": "./docs/guides/development.md#cursor-状態db復旧後の-agent-作業2026-06-06",
-          "targetPath": "docs/guides/development.md",
-          "exists": true
-        },
-        {
-          "href": "./docs/INDEX.md",
-          "targetPath": "docs/INDEX.md",
-          "exists": true
-        },
-        {
-          "href": "./docs/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md",
-          "targetPath": "docs/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md",
-          "exists": true
-        }
-      ],
+      "localLinks": [],
       "inboundCount": 5,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
@@ -5903,25 +5882,14 @@
     },
     {
       "path": "docs/AI_START_HERE.md",
-      "lineCount": 131,
-      "byteSize": 8973,
+      "lineCount": 57,
+      "byteSize": 2881,
       "hasFrontmatter": true,
       "title": "AI Start Here",
       "status": null,
       "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "./knowledge-base/KB-408-self-inspection-per-entry-inspector-gate.md",
-          "targetPath": "docs/knowledge-base/KB-408-self-inspection-per-entry-inspector-gate.md",
-          "exists": true
-        },
-        {
-          "href": "./plans/dgx-control-plane-business-proxy-consumer-execplan.md",
-          "targetPath": "docs/plans/dgx-control-plane-business-proxy-consumer-execplan.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 5,
+      "localLinks": [],
+      "inboundCount": 4,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -11257,7 +11225,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 13,
+      "inboundCount": 12,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [
@@ -17138,6 +17106,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/decisions/ADR-20260810-assembly-guided-workflow.md",
+      "lineCount": 25,
+      "byteSize": 1635,
+      "hasFrontmatter": false,
+      "title": "ADR-20260810: Assembly procedure and template guided workflow",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/decisions/ADR-20260810-risk-based-deploy-impact-contract.md",
       "lineCount": 84,
       "byteSize": 4148,
@@ -18849,8 +18832,8 @@
     },
     {
       "path": "docs/guides/deployment.md",
-      "lineCount": 90,
-      "byteSize": 5795,
+      "lineCount": 138,
+      "byteSize": 12782,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -18953,7 +18936,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 16,
+      "inboundCount": 15,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -25511,7 +25494,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 9,
+      "inboundCount": 8,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -26042,7 +26025,7 @@
       "status": "accepted",
       "source_of_truth": "true",
       "localLinks": [],
-      "inboundCount": 5,
+      "inboundCount": 4,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -32749,7 +32732,7 @@
       "status": "in_progress",
       "source_of_truth": "docs/plans/dgx-control-plane-business-proxy-consumer-execplan.md",
       "localLinks": [],
-      "inboundCount": 1,
+      "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -33275,6 +33258,21 @@
           "exists": true
         }
       ],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/kiosk-assembly-guided-workflow-sop-execplan.md",
+      "lineCount": 81,
+      "byteSize": 9377,
+      "hasFrontmatter": false,
+      "title": "組立手順書・テンプレート作成導線 UIUX改善 ExecPlan",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
       "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
