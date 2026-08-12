@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import hashlib
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -731,12 +733,128 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         prepare = self.task_text("prepare")
         self.assertIn("Caddyfile.gateway.template", defaults)
+        self.assertIn("Caddyfile.gateway.pre-backup-boundary.template", defaults)
         self.assertIn("cmp -s", prepare)
-        self.assertIn("matches neither known route", prepare)
+        self.assertIn("must match exactly one known route", prepare)
+        self.assertIn("match_count != 1", prepare)
         self.assertIn("{{.Config.Image}}|{{.Image}}|{{.State.Running}}", prepare)
         self.assertIn("PI5_GATEWAY_IMAGE", prepare)
         self.assertNotIn("reverse_proxy", prepare)
         self.assertNotIn("Caddyfile.gateway.http.template", defaults)
+
+    def test_pi5_accepts_only_exact_new_or_frozen_legacy_routes(self) -> None:
+        prepare_tasks = yaml.safe_load(self.task_text("prepare"))
+        derive = next(
+            task
+            for task in prepare_tasks
+            if task["name"]
+            == "Derive the canonical Pi5 generation and slot from exact known routes"
+        )
+        script = derive["ansible.builtin.shell"]
+        legacy_template = (
+            ANSIBLE
+            / "roles/release_pi5/files/Caddyfile.gateway.pre-backup-boundary.template"
+        ).read_text(encoding="utf-8")
+        self.assertEqual(
+            hashlib.sha256(legacy_template.encode()).hexdigest(),
+            "c83629ab61b5ab7bd3e0bd38ce28d832a3928662b5c883396715866bfb709d7f",
+        )
+        new_template = (
+            ROOT / "infrastructure/docker/Caddyfile.gateway.template"
+        ).read_text(encoding="utf-8")
+
+        def render(template: str, slot: str) -> str:
+            return template.replace(
+                "__BLUE_GREEN_API_UPSTREAM__", f"api-{slot}:8080"
+            ).replace("__BLUE_GREEN_WEB_UPSTREAM__", f"web-{slot}:80")
+
+        candidates = {
+            "new|blue": render(new_template, "blue"),
+            "new|green": render(new_template, "green"),
+            "legacy|blue": render(legacy_template, "blue"),
+            "legacy|green": render(legacy_template, "green"),
+        }
+        self.assertEqual(len(set(candidates.values())), 4)
+        expected_order = ["new|blue", "new|green", "legacy|blue", "legacy|green"]
+        self.assertEqual(
+            sorted(expected_order, key=lambda item: script.index(f"match='{item}'")),
+            expected_order,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = {name: root / name.replace("|", "-") for name in candidates}
+            for name, content in candidates.items():
+                paths[name].write_text(content, encoding="utf-8")
+            current = root / "Caddyfile"
+            substitutions = {
+                "{{ (release_pi5_gateway_config_dir + '/Caddyfile') | quote }}": current,
+                "{{ release_pi5_blue_config | quote }}": paths["new|blue"],
+                "{{ release_pi5_green_config | quote }}": paths["new|green"],
+                "{{ release_pi5_legacy_blue_config | quote }}": paths["legacy|blue"],
+                "{{ release_pi5_legacy_green_config | quote }}": paths["legacy|green"],
+            }
+            executable = script
+            for expression, path in substitutions.items():
+                executable = executable.replace(expression, shlex.quote(str(path)))
+
+            for expected, content in candidates.items():
+                with self.subTest(expected=expected):
+                    current.write_text(content, encoding="utf-8")
+                    result = subprocess.run(
+                        ["/bin/bash", "-c", executable],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout, f"{expected}\n")
+
+            current.write_text("unknown\n", encoding="utf-8")
+            unknown = subprocess.run(
+                ["/bin/bash", "-c", executable],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(unknown.returncode, 0)
+            self.assertEqual(unknown.stdout, "")
+
+            paths["legacy|blue"].write_text(candidates["new|blue"], encoding="utf-8")
+            current.write_text(candidates["new|blue"], encoding="utf-8")
+            ambiguous = subprocess.run(
+                ["/bin/bash", "-c", executable],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(ambiguous.returncode, 0)
+            self.assertEqual(ambiguous.stdout, "")
+
+    def test_pi5_legacy_route_changes_only_the_known_rollback_source(self) -> None:
+        prepare_tasks = yaml.safe_load(self.task_text("prepare"))
+        names = [task["name"] for task in prepare_tasks]
+        derive_index = names.index(
+            "Derive the canonical Pi5 generation and slot from exact known routes"
+        )
+        compose_index = names.index("Resolve active and opposite Pi5 Compose container IDs")
+        migration_index = names.index("Apply Prisma migrations with the standard production command")
+        self.assertLess(derive_index, compose_index)
+        self.assertLess(derive_index, migration_index)
+
+        select = next(
+            task
+            for task in prepare_tasks
+            if task["name"] == "Select the exact known Pi5 rollback route"
+        )["ansible.builtin.set_fact"]["release_pi5_previous_config"]
+        self.assertIn("release_pi5_canonical_generation == 'legacy'", select)
+        self.assertIn("release_pi5_legacy_blue_config", select)
+        self.assertIn("release_pi5_legacy_green_config", select)
+        self.assertIn("release_pi5_blue_config", select)
+        self.assertIn("release_pi5_green_config", select)
+
+        rollback = self.task_text("rollback")
+        self.assertIn("cp {{ release_pi5_previous_config | quote }}", rollback)
 
     def test_pi5_first_compose_command_has_complete_image_interpolation(self) -> None:
         prepare = yaml.safe_load(self.task_text("prepare"))

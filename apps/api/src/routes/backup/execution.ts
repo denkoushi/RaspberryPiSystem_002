@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
+import { isLoopbackAddress } from '../../lib/loopback-address.js';
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 import type { BackupConfig } from '../../services/backup/backup-config.js';
 import {
@@ -35,8 +36,8 @@ export async function registerBackupExecutionRoutes(app: FastifyInstance): Promi
     config: { rateLimit: false },
   }, async (request, reply) => {
     // localhostからのアクセスのみ許可
-    const remoteAddress = request.socket.remoteAddress || request.ip;
-    if (remoteAddress !== '127.0.0.1' && remoteAddress !== '::1' && !remoteAddress?.startsWith('172.')) {
+    const remoteAddress = request.socket.remoteAddress;
+    if (!isLoopbackAddress(remoteAddress)) {
       throw new ApiError(403, 'Internal backup endpoint is only accessible from localhost');
     }
 
@@ -45,8 +46,18 @@ export async function registerBackupExecutionRoutes(app: FastifyInstance): Promi
     // 設定ファイルを読み込む
     const config = await BackupConfigLoader.load();
 
-    // 設定ファイルから対象を検索（対象ごとのストレージ設定を取得するため）
-    const targetConfig = findBackupTargetConfig(config, body.kind, body.source);
+    // backup.jsonを読めない場合の既定値は、内部実行の認可入力には使わない。
+    if (BackupConfigLoader.isFallbackConfig(config)) {
+      throw new ApiError(403, 'Internal backup target is not enabled');
+    }
+
+    // 内部経路は設定済みかつ有効な完全一致ターゲットだけを実行する。
+    const targetConfig = config.targets.find(
+      (target) => target.kind === body.kind && target.source === body.source && target.enabled
+    );
+    if (!targetConfig) {
+      throw new ApiError(403, 'Internal backup target is not enabled');
+    }
 
     // ストレージプロバイダーを作成（Factoryパターンを使用）
     const protocol = Array.isArray(request.headers['x-forwarded-proto'])
