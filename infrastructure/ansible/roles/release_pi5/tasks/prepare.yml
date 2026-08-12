@@ -17,6 +17,8 @@
     release_pi5_run_dir: "{{ release_pi5_run_root }}/{{ release_run_id }}"
     release_pi5_blue_config: "{{ release_pi5_run_root }}/{{ release_run_id }}/Caddyfile.blue"
     release_pi5_green_config: "{{ release_pi5_run_root }}/{{ release_run_id }}/Caddyfile.green"
+    release_pi5_legacy_blue_config: "{{ release_pi5_run_root }}/{{ release_run_id }}/Caddyfile.legacy-blue"
+    release_pi5_legacy_green_config: "{{ release_pi5_run_root }}/{{ release_run_id }}/Caddyfile.legacy-green"
     release_pi5_staged_config: "{{ release_pi5_gateway_config_dir }}/Caddyfile.{{ release_run_id }}"
     release_pi5_switch_attempted: false
     release_pi5_handoff_attempted: false
@@ -102,6 +104,16 @@
     - { slot: blue, path: "{{ release_pi5_blue_config }}" }
     - { slot: green, path: "{{ release_pi5_green_config }}" }
 
+- name: Render the two exact legacy Pi5 routes for the bounded Caddy migration
+  ansible.builtin.copy:
+    src: "{{ release_pi5_legacy_gateway_template }}"
+    dest: "{{ item.path }}"
+    remote_src: true
+    mode: '0600'
+  loop:
+    - { slot: blue, path: "{{ release_pi5_legacy_blue_config }}" }
+    - { slot: green, path: "{{ release_pi5_legacy_green_config }}" }
+
 - name: Bind known Pi5 routes to exact slot upstreams
   ansible.builtin.replace:
     path: "{{ item.0.path }}"
@@ -112,27 +124,37 @@
     release_pi5_routes:
       - { slot: blue, path: "{{ release_pi5_blue_config }}" }
       - { slot: green, path: "{{ release_pi5_green_config }}" }
+      - { slot: blue, path: "{{ release_pi5_legacy_blue_config }}" }
+      - { slot: green, path: "{{ release_pi5_legacy_green_config }}" }
     release_pi5_route_replacements:
       - { pattern: __BLUE_GREEN_API_UPSTREAM__, value: 'api-__SLOT__:8080' }
       - { pattern: __BLUE_GREEN_WEB_UPSTREAM__, value: 'web-__SLOT__:80' }
 
-- name: Derive the canonical Pi5 slot from exactly two known routes
+- name: Derive the canonical Pi5 generation and slot from exact known routes
   ansible.builtin.shell: |
     set -euo pipefail
     current={{ (release_pi5_gateway_config_dir + '/Caddyfile') | quote }}
-    if cmp -s "${current}" {{ release_pi5_blue_config | quote }}; then printf 'blue\n'
-    elif cmp -s "${current}" {{ release_pi5_green_config | quote }}; then printf 'green\n'
-    else echo 'canonical Caddyfile matches neither known route' >&2; exit 1
+    match=''
+    match_count=0
+    if cmp -s "${current}" {{ release_pi5_blue_config | quote }}; then match='new|blue'; match_count=$((match_count + 1)); fi
+    if cmp -s "${current}" {{ release_pi5_green_config | quote }}; then match='new|green'; match_count=$((match_count + 1)); fi
+    if cmp -s "${current}" {{ release_pi5_legacy_blue_config | quote }}; then match='legacy|blue'; match_count=$((match_count + 1)); fi
+    if cmp -s "${current}" {{ release_pi5_legacy_green_config | quote }}; then match='legacy|green'; match_count=$((match_count + 1)); fi
+    if (( match_count != 1 )); then
+      echo 'canonical Caddyfile must match exactly one known route' >&2
+      exit 1
     fi
+    printf '%s\n' "${match}"
   args:
     executable: /bin/bash
-  register: release_pi5_canonical_slot
+  register: release_pi5_canonical_route
   changed_when: false
 
 - name: Define canonical and opposite Pi5 slots
   ansible.builtin.set_fact:
-    release_pi5_active_slot: "{{ release_pi5_canonical_slot.stdout }}"
-    release_pi5_opposite_slot: "{{ 'green' if release_pi5_canonical_slot.stdout == 'blue' else 'blue' }}"
+    release_pi5_canonical_generation: "{{ release_pi5_canonical_route.stdout.split('|')[0] }}"
+    release_pi5_active_slot: "{{ release_pi5_canonical_route.stdout.split('|')[1] }}"
+    release_pi5_opposite_slot: "{{ 'green' if release_pi5_canonical_route.stdout.split('|')[1] == 'blue' else 'blue' }}"
 
 - name: Read the running Pi5 gateway image before the first Compose command
   ansible.builtin.command:
@@ -291,7 +313,13 @@
       {%- endif -%}
     release_pi5_slot: "{{ release_pi5_active_slot if release_pi5_same_release | bool else release_pi5_opposite_slot }}"
     release_pi5_previous_slot: "{{ release_pi5_opposite_slot if release_pi5_same_release | bool else release_pi5_active_slot }}"
-    release_pi5_previous_config: "{{ release_pi5_blue_config if (release_pi5_opposite_slot if release_pi5_same_release | bool else release_pi5_active_slot) == 'blue' else release_pi5_green_config }}"
+
+- name: Select the exact known Pi5 rollback route
+  ansible.builtin.set_fact:
+    release_pi5_previous_config: >-
+      {{ (release_pi5_legacy_blue_config if release_pi5_previous_slot == 'blue' else release_pi5_legacy_green_config)
+         if release_pi5_canonical_generation == 'legacy'
+         else (release_pi5_blue_config if release_pi5_previous_slot == 'blue' else release_pi5_green_config) }}
 
 - name: Mark interrupted Pi5 commit as an existing switched recovery boundary
   ansible.builtin.set_fact:

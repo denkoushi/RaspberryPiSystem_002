@@ -220,3 +220,57 @@ describe('BackupConfigLoader.checkHealth recommended targets', () => {
   });
 });
 
+describe('BackupConfigLoader fallback marker', () => {
+  let workDir: string;
+  let configPath: string;
+
+  afterEach(async () => {
+    delete process.env.BACKUP_CONFIG_PATH;
+    await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
+  });
+
+  async function loadFrom(content?: string): Promise<boolean> {
+    workDir = tmpDir();
+    configPath = path.join(workDir, 'backup.json');
+    await fs.mkdir(workDir, { recursive: true });
+    if (content !== undefined) {
+      await fs.writeFile(configPath, content, 'utf-8');
+    }
+    process.env.BACKUP_CONFIG_PATH = configPath;
+    BackupConfigLoader.setConfigPath(configPath);
+    const config = await BackupConfigLoader.load();
+    return BackupConfigLoader.isFallbackConfig(config);
+  }
+
+  it('marks a missing backup.json fallback', async () => {
+    await expect(loadFrom()).resolves.toBe(true);
+  });
+
+  it('marks a malformed JSON fallback', async () => {
+    await expect(loadFrom('{')).resolves.toBe(true);
+  });
+
+  it('marks a schema-invalid fallback', async () => {
+    await expect(loadFrom(JSON.stringify({ storage: {}, targets: 'invalid' }))).resolves.toBe(true);
+  });
+
+  it('marks a backup.json read failure fallback', async () => {
+    workDir = tmpDir();
+    configPath = path.join(workDir, 'backup.json');
+    await fs.mkdir(configPath, { recursive: true });
+    process.env.BACKUP_CONFIG_PATH = configPath;
+    BackupConfigLoader.setConfigPath(configPath);
+
+    const config = await BackupConfigLoader.load();
+
+    expect(BackupConfigLoader.isFallbackConfig(config)).toBe(true);
+  });
+
+  it('does not mark a valid backup.json as fallback', async () => {
+    const valid = {
+      storage: { provider: 'local', options: { basePath: '/tmp/test-backups' } },
+      targets: [{ kind: 'file', source: '/tmp/source.txt', enabled: true }],
+    };
+    await expect(loadFrom(JSON.stringify(valid))).resolves.toBe(false);
+  });
+});

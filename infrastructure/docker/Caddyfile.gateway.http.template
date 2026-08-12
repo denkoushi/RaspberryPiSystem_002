@@ -4,20 +4,24 @@
 }
 
 :80 {
+  @internal_backup_api path /api/backup/internal /api/backup/internal/*
   @internal_deploy_readiness path /api/system/deploy-readiness/internal
-  respond @internal_deploy_readiness 404
-
   @api {
     path /api/* /ws/*
   }
-  reverse_proxy @api __BLUE_GREEN_API_UPSTREAM__ {
-    transport http {
-      versions 1.1
+
+  route {
+    respond @internal_backup_api 404
+    respond @internal_deploy_readiness 404
+    reverse_proxy @api __BLUE_GREEN_API_UPSTREAM__ {
+      transport http {
+        versions 1.1
+      }
     }
-  }
-  reverse_proxy __BLUE_GREEN_WEB_UPSTREAM__ {
-    transport http {
-      versions 1.1
+    reverse_proxy __BLUE_GREEN_WEB_UPSTREAM__ {
+      transport http {
+        versions 1.1
+      }
     }
   }
 }

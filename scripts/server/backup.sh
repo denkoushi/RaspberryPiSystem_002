@@ -17,16 +17,53 @@ set -e
 BACKUP_DIR="/opt/backups"
 PROJECT_DIR="/opt/RaspberryPiSystem_002"
 COMPOSE_FILE="${PROJECT_DIR}/infrastructure/docker/docker-compose.server.yml"
-API_URL="https://localhost/api"
+API_COMPOSE_FILE="${PROJECT_DIR}/infrastructure/docker/docker-compose.phase3.yml"
+API_COMPOSE_PROJECT="bluegreen"
+API_ENV_FILE="${PROJECT_DIR}/infrastructure/docker/.env"
+ACTIVE_GATEWAY_CONFIG="${PROJECT_DIR}/logs/deploy/bluegreen/Caddyfile"
+ACTIVE_API_RESOLVER="${PROJECT_DIR}/scripts/server/resolve-active-backup-api.py"
+INTERNAL_BACKUP_CLI="/app/host/apps/api/scripts/backup-internal-cli.mjs"
 DATE=$(date +%Y%m%d_%H%M%S)
 RETENTION_DAYS=30
+
+resolve_active_api_service() {
+  python3 "${ACTIVE_API_RESOLVER}" "${ACTIVE_GATEWAY_CONFIG}"
+}
+
+run_in_active_api() {
+  PI5_BLUE_API_IMAGE=unused:latest \
+  PI5_GREEN_API_IMAGE=unused:latest \
+  PI5_BLUE_WEB_IMAGE=unused:latest \
+  PI5_GREEN_WEB_IMAGE=unused:latest \
+  PI5_GATEWAY_IMAGE=unused:latest \
+  PI5_ENV_FILE="${API_ENV_FILE}" \
+    docker compose \
+      -p "${API_COMPOSE_PROJECT}" \
+      --env-file "${API_ENV_FILE}" \
+      -f "${API_COMPOSE_FILE}" \
+      exec -T "${ACTIVE_API_SERVICE}" "$@"
+}
+
+if ! ACTIVE_API_SERVICE=$(resolve_active_api_service); then
+  echo "エラー: 稼働中のAPIスロットを一意に確認できません。" >&2
+  exit 1
+fi
+case "${ACTIVE_API_SERVICE}" in
+  api-blue|api-green) ;;
+  *)
+    echo "エラー: 許可されていないAPIスロットです。" >&2
+    exit 1
+    ;;
+esac
 
 # バックアップディレクトリを作成
 mkdir -p "${BACKUP_DIR}"
 
-# APIが利用可能か確認
+# APIが利用可能か確認（公開Caddyを経由しない）
 check_api_available() {
-  if ! curl -k -f -s "${API_URL}/system/health" > /dev/null 2>&1; then
+  if ! run_in_active_api node -e \
+    "fetch('http://127.0.0.1:8080/api/system/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" \
+    > /dev/null 2>&1; then
     echo "警告: APIが利用できません。ローカルバックアップのみ実行します。"
     return 1
   fi
@@ -38,16 +75,17 @@ backup_via_api() {
   local kind="$1"
   local source="$2"
   local label="${3:-}"
-  
-  local metadata="{}"
+  local response
+  local -a cli_args=(node "${INTERNAL_BACKUP_CLI}" --kind "${kind}" --source "${source}")
   if [ -n "${label}" ]; then
-    metadata="{\"label\":\"${label}\"}"
+    cli_args+=(--label "${label}")
   fi
-  
-  local response=$(curl -k -s -X POST "${API_URL}/backup/internal" \
-    -H "Content-Type: application/json" \
-    -d "{\"kind\":\"${kind}\",\"source\":\"${source}\",\"metadata\":${metadata}}" 2>&1)
-  
+
+  if ! response=$(run_in_active_api "${cli_args[@]}" 2>&1); then
+    echo "❌ ${kind}バックアップ失敗（API経由）: ${response}"
+    return 1
+  fi
+
   if echo "${response}" | grep -q '"success":true'; then
     echo "✅ ${kind}バックアップ成功（API経由）"
     echo "${response}" | grep -o '"path":"[^"]*"' | head -1 | cut -d'"' -f4 || true
