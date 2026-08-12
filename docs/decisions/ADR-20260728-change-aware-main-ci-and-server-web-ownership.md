@@ -6,6 +6,9 @@ date: 2026-07-28
 source_of_truth: true
 scope: GitHub Actions change selection and deployment ownership for Pi5 Web build inputs
 related_code:
+  - .github/workflows/ci.yml
+  - .github/workflows/codeql.yml
+  - .github/workflows/gitleaks.yml
   - scripts/ci/classify_event_changes.py
   - scripts/ci/classify_changes.py
   - scripts/deploy/terminal-profile-registry.json
@@ -48,6 +51,13 @@ Missing or zero SHAs, non-ancestor history, rename, copy, delete, unknown
 paths, workflow changes, and classifier errors remain fail-closed to the full
 suite.
 
+The 2026-08-13 amendment assigns source validation to pull requests and merge
+queues. An exact `push main` uses the classification only to choose immutable
+artifacts to build, scan, rehearse, sign, and publish. It does not repeat the
+component tests, CodeQL analysis, or Gitleaks range that passed before merge.
+The fixed checks still exist on main so release gates and ruleset names remain
+stable.
+
 CI and CodeQL use one event-classification module. The fixed required checks
 remain `ci-required`, `codeql`, and `gitleaks`. A proven docs-only change keeps
 those checks successful while omitting CodeQL analysis and unselected
@@ -60,17 +70,16 @@ Pi5 Web environment templates, and the server role receive ordered
 roles, broad or unknown paths, and `.dockerignore` retain their wider
 fail-closed meaning.
 
-No release safety timing or execution policy changes. The 60-second notice,
-human canary approval, serial terminal processing, Pi5 five-minute stability
-monitor, rollback, immutable API/Web candidate pairing, and same-SHA proof
-remain intact.
+Release artifact identity, serial terminal processing, rollback, immutable
+API/Web candidate pairing, and same-SHA proof remain intact. Runtime sampling
+is bounded separately by the artifact-promotion decision and deployment guide.
 
 ## Consequences
 
-Safe docs-only main pushes and Web build-setting changes avoid unrelated
-hosted jobs. A Web build-setting deployment plans Pi5 mutation plus Kiosk
-activation and independent verification, without Pi4 Ansible mutation or Pi3
-work.
+Main pushes avoid repeating review jobs and spend time only on selected
+production artifacts. A Web build-setting deployment plans Pi5 mutation plus
+Kiosk activation and independent verification, without Pi4 Ansible mutation
+or Pi3 work.
 
 Path ownership and event handling are safety-critical registries. New or
 ambiguous paths widen work until tests and an explicit ownership decision are
@@ -78,8 +87,9 @@ added. This favors a small false-positive cost over a false-negative release.
 
 ## Alternatives Considered
 
-Keeping all main pushes full was rejected because an exact, validated
-before/head range is available. Matching individual feature-flag names was
+Keeping all main pushes full and repeating successful PR tests was rejected
+because protected-main publication consumes reviewed content and needs proof
+of the exact artifacts, not a second copy of the same source checks. Matching individual feature-flag names was
 rejected because it would couple release planning to products instead of
 ownership. Parallel terminal rollout, runtime flags, and promoting CI-built
 images were deferred because each changes rollback or evidence boundaries.

@@ -5,7 +5,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 API_IMAGE=""
 WEB_IMAGE=""
 SHA=""
-STABLE_SECONDS=300
+STABLE_SECONDS=40
+STABILITY_SAMPLES=5
 PLATFORM=linux/arm64
 PULL_IMAGES=1
 
@@ -21,7 +22,7 @@ while (($#)); do
     --platform) PLATFORM="${2:-}"; shift 2 ;;
     --skip-pull) PULL_IMAGES=0; shift ;;
     # This is an isolated CI harness, not a production controller. Main CI
-    # omits this option and therefore always proves the fixed 300-second hold.
+    # omits this option and therefore always proves five bounded samples.
     --stable-seconds) STABLE_SECONDS="${2:-}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; exit 2 ;;
@@ -30,12 +31,13 @@ done
 
 [[ -n "$API_IMAGE" && -n "$WEB_IMAGE" ]] || { usage >&2; exit 2; }
 [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo '[ERROR] release SHA is malformed' >&2; exit 78; }
-[[ "$STABLE_SECONDS" =~ ^[1-9][0-9]*$ ]] || { echo '[ERROR] stability duration is invalid' >&2; exit 78; }
+[[ "$STABLE_SECONDS" =~ ^[1-9][0-9]*$ && "$STABLE_SECONDS" -ge $((STABILITY_SAMPLES - 1)) ]] \
+  || { echo '[ERROR] stability duration is invalid' >&2; exit 78; }
 [[ "$PLATFORM" == linux/arm64 || "$PLATFORM" == linux/amd64 ]] \
   || { echo '[ERROR] rehearsal platform must be linux/arm64 or linux/amd64' >&2; exit 78; }
 if [[ "${GITHUB_EVENT_NAME:-}" == push && "${GITHUB_REF:-}" == refs/heads/main ]]; then
-  if [[ "$STABLE_SECONDS" != 300 || "$PLATFORM" != linux/arm64 || "$PULL_IMAGES" != 1 ]]; then
-    echo '[ERROR] exact-main release rehearsal requires pulled ARM64 digests and the fixed 300-second hold' >&2
+  if [[ "$STABLE_SECONDS" != 40 || "$PLATFORM" != linux/arm64 || "$PULL_IMAGES" != 1 ]]; then
+    echo '[ERROR] exact-main release rehearsal requires pulled ARM64 digests and five bounded samples' >&2
     exit 78
   fi
 fi
@@ -334,15 +336,17 @@ curl -fsS --max-time 5 "http://127.0.0.1:${GATEWAY_PORT}/" >/dev/null
 
 render_gateway green
 docker exec "$GATEWAY" caddy reload --config /srv/bluegreen/Caddyfile >/dev/null
-started="$(date +%s)"
 samples=0
-while (( $(date +%s) - started < STABLE_SECONDS )); do
+sample_interval=$(((STABLE_SECONDS + STABILITY_SAMPLES - 2) / (STABILITY_SAMPLES - 1)))
+while ((samples < STABILITY_SAMPLES)); do
   curl -fsS --max-time 5 "http://127.0.0.1:${GATEWAY_PORT}/api/system/health" >/dev/null
   curl -fsS --max-time 5 "http://127.0.0.1:${GATEWAY_PORT}/" >/dev/null
   samples=$((samples + 1))
-  sleep 2
+  if ((samples < STABILITY_SAMPLES)); then
+    sleep "$sample_interval"
+  fi
 done
-((samples > 0))
+[[ "$samples" -eq "$STABILITY_SAMPLES" ]]
 
 if docker exec -e PGPASSWORD="$APP_PASSWORD" "$DB_CONTAINER" \
   psql -h 127.0.0.1 -U raspi_app -d borrow_return -v ON_ERROR_STOP=1 \

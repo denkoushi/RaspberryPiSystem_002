@@ -14,9 +14,9 @@
 
 ## 段階型CI
 
-PRと安全な`push main`では、`repo-policy`、`workspace-quality`、`api`、`web`、`db-infra`、`deploy-contract`、`client`、`e2e-smoke`、`e2e-tests`、`docker-security`から必要なものを並列実行します。PRはmerge-base、`push main`はGitHub eventの`before -> head`を使います。docsとroot Markdownだけの変更は`repo-policy`だけで、固定`codeql` jobは成功したまま解析処理を省略します。Docker securityはAPI/Webを個別選択します。
+PRでは、`repo-policy`、`workspace-quality`、`api`、`web`、`db-infra`、`deploy-contract`、`client`、`e2e-smoke`、`e2e-tests`、`docker-security`から必要なものをmerge-baseで分類して並列実行します。`merge_group`、`workflow_dispatch`、毎日02:30 JSTのscheduleはfull review suiteです。docsとroot Markdownだけの変更は`repo-policy`だけで、固定`codeql` jobは成功したまま解析処理を省略します。Docker securityはAPI/Webを個別選択します。
 
-基準SHA欠落、ゼロSHA、非ancestor、未知path、rename、copy、delete、workflow、action、CI classifier変更はfail-closedでfull suiteになります。`merge_group`、`workflow_dispatch`、毎日02:30 JSTのscheduleも従来どおりfull suiteです。PRのAPI testはcoverageなしで全件を1回実行し、full-suite eventではcoverage付き3 shardを実行します。判断の正本は[ADR-20260728](../decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md)です。
+基準SHA欠落、ゼロSHA、非ancestor、未知path、rename、copy、delete、workflow、action、CI classifier変更はfail-closedでfull suiteになります。PRのAPI testはcoverageなしで全件を1回実行し、full-suite eventではcoverage付き3 shardを実行します。`push main`はGitHub eventの`before -> head`で配布成果物だけを選択し、PRで成功済みのsource test、CodeQL解析、Gitleaks scanを繰り返しません。判断の正本は[ADR-20260728](../decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md)です。
 
 ### PR Deploy影響表（4段階品質ゲート）
 
@@ -28,7 +28,7 @@ PR本文だけを直した場合も`pull_request.edited`で再検証されます
 
 ### `main`のARM64 release成果物
 
-API/Webのproduction imageへ影響する安全な`push main`では、通常checkと並行してnative ARM64 runnerがAPIとWebを一組でbuildし、GHCRへdigest固定でpushします。`ci-required`、`codeql`、`gitleaks`が同じSHAで成功した後だけ、両digest・build設定hash・source SHAを結ぶrelease setを発行して3成果物をattestします。PR、merge queue、手動実行、scheduleにはpackage write／attestation権限を与えません。
+API/Webのproduction imageへ影響する安全な`push main`では、native ARM64 runnerがAPIとWebを一組でbuildし、GHCRへdigest固定でpushして、その配布対象digestをscan・runtime rehearsalします。`ci-required`、`codeql`、`gitleaks`は固定check名を保ちながらmainではsource validationを再実行せず、同じSHAの成果物検査が成功した後だけ、両digest・build設定hash・source SHAを結ぶrelease setを発行して3成果物をattestします。Pi4/Signageもmainでは公開する正確な成果物のbuild・scanだけを行います。PR、merge queue、手動実行、scheduleにはpackage write／attestation権限を与えません。
 
 release setはCI成功の代替ではなく、成功済み成果物のproduction移送契約です。fixed required check名は変更しません。詳細は[ARM64成果物昇格ADR](../decisions/ADR-20260728-attested-arm64-release-artifact-promotion.md)を参照してください。
 
@@ -40,61 +40,11 @@ representative PRで`ci-required`、`codeql`、`gitleaks`が成功した後に�
 
 設定値と確認方法の短い一覧は[`.github/BRANCH_PROTECTION_SETUP.md`](../../.github/BRANCH_PROTECTION_SETUP.md)を参照してください。このrepositoryには`develop` branchがないため、対象は`main`だけです。
 
-## テストの安定化対策
+## bounded validation policy
 
-CI必須化を実施する前に、テストの安定化も重要です。
+失敗したtestを理由なく再実行しません。まず最初の失敗logから原因を特定し、関連する修正を加えた場合だけ、そのtestを1回再実行します。networkやrunner障害を示す具体的な証拠がある場合も再実行は1回までです。無関係なsuiteへ範囲を広げたり、成功済みPR testをmainやローカルで繰り返したりしません。
 
-### 1. タイムアウトの適切な設定
-
-CI環境では、ローカル環境より処理が遅い可能性があるため、タイムアウトを長めに設定します。
-
-**例**:
-```typescript
-// 大規模CSV処理のテスト
-const maxTime = process.env.CI ? 60000 : 30000; // CIでは60秒、ローカルでは30秒
-expect(processingTime).toBeLessThan(maxTime);
-```
-
-### 2. リトライロジックの実装
-
-不安定なテストにはリトライロジックを実装します。
-
-**例**:
-```yaml
-# .github/workflows/ci.yml
-- name: Run tests with retry
-  run: |
-    pnpm test --reporter=verbose || {
-      echo "Tests failed, retrying..."
-      pnpm test --reporter=verbose || exit 1
-    }
-```
-
-### 3. テストの独立性
-
-各テストが独立して実行可能であることを確認します。
-
-- テスト間で状態を共有しない
-- 各テストで必要なデータをセットアップする
-- テスト後にクリーンアップする
-
-## 監視とアラート
-
-### CIテストの監視項目
-
-以下の項目を監視します：
-
-1. **成功率**: CIテストの成功率を追跡
-2. **実行時間**: テスト実行時間を監視し、異常に長いテストを特定
-3. **失敗原因**: 失敗したテストの原因を分析
-4. **スルー状況**: CIテストのスルーが検出された場合にアラート
-
-### アラート条件
-
-以下の条件でアラートを発火します：
-
-- CIテストが3回連続で失敗した場合
-- CIテストのスルーが検出された場合（ブランチ保護ルールが適切に設定されていれば発生しない）
+testは状態を共有せず、必要なdataを自身で用意し、終了時にcleanupします。timeoutは処理の実測上限から設定し、flaky testを長いtimeoutや自動retryで隠しません。`ci-required`の選択結果とskip結果が一致しない場合はfail-closedです。
 
 ## トラブルシューティング
 
@@ -102,9 +52,9 @@ expect(processingTime).toBeLessThan(maxTime);
 
 **対策**:
 1. テストのログを確認して原因を特定
-2. タイムアウトを適切に設定
-3. リトライロジックを実装
-4. テストの独立性を確認
+2. テストの独立性、clock、network、共有stateを確認
+3. 原因を修正し、関連testだけを1回再実行
+4. 原因不明のままretryや全suite実行を追加しない
 
 ### 問題: rulesetが機能しない
 
@@ -130,6 +80,7 @@ expect(processingTime).toBeLessThan(maxTime);
 
 ## 更新履歴
 
+- 2026-08-13: PRをsource validation、mainを正確な配布成果物のbuild/scan/sign/publishへ分離し、無条件retryを廃止
 - 2026-07-28: exact main SHAのnative ARM64 API/Web pair、digest scan、attested release setを追加
 - 2026-07-28: 安全な`push main`を変更認識型へ変更し、CodeQL解析とAPI/Web Docker選択を分離
 - 2026-07-16: 段階型CI、固定`ci-required`、default-branch ruleset契約へ更新

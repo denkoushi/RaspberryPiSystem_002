@@ -7,9 +7,10 @@
       - release_sha in release_pi5_api_image
       - release_sha in release_pi5_web_image
       - release_pi5_api_image != release_pi5_web_image
-      - release_pi5_stability_seconds | int >= 1
+      - release_pi5_health_sample_count | int >= 3
+      - release_pi5_health_sample_count | int <= 5
       - release_pi5_health_interval_seconds | int >= 1
-      - release_pi5_stability_seconds | int % release_pi5_health_interval_seconds | int == 0
+      - ((release_pi5_health_sample_count | int) - 1) * (release_pi5_health_interval_seconds | int) <= 60
     fail_msg: Standard Pi5 candidate inputs are incomplete or mutable.
 
 - name: Define Pi5 candidate paths and initial outcome

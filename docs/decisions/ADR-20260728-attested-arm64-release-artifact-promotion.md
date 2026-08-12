@@ -40,8 +40,8 @@ production candidate.
 
 The existing release contract treats API and Web as one candidate pair. It
 also requires exact source and configuration identity before Blue/Green
-preparation, followed by health checks, traffic switch, a five-minute stability
-monitor, and rollback evidence.
+preparation, followed by health checks, traffic switch, a stability monitor,
+and rollback evidence.
 
 ## Decision
 
@@ -58,6 +58,12 @@ CI publishes and attests one release-set OCI image. Its strict schema binds:
 - Linux ARM64;
 - the exact allowlisted API and Web repositories and digests; and
 - the producing workflow run and attempt.
+
+The 2026-08-13 amendment bounds both the exact-main runtime rehearsal and the
+Pi5 post-switch monitor to five consecutive samples, ten seconds apart (a
+40-second observation span). Any failed sample still triggers the existing
+failure or rollback path. More samples or a longer fixed hold require concrete
+production evidence; they are not added as generic assurance.
 
 Pi5 promotion is an opt-in adapter before the accepted local builder. It uses a
 run-scoped Docker authentication directory, verifies GitHub attestations and

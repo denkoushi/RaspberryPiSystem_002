@@ -27,11 +27,13 @@ jobs:
 
     steps:
       - name: Checkout repository
+        if: ${{ github.event_name != 'push' }}
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Classify changes
+        if: ${{ github.event_name != 'push' }}
         id: classify
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -48,16 +50,16 @@ jobs:
             --markdown-file "$GITHUB_STEP_SUMMARY"
 
       - name: Initialize CodeQL
-        if: ${{ steps.classify.outputs.codeql == 'true' }}
+        if: ${{ github.event_name != 'push' && steps.classify.outputs.codeql == 'true' }}
         uses: github/codeql-action/init@v4
         with:
           languages: javascript-typescript
           build-mode: none
 
       - name: Perform CodeQL Analysis
-        if: ${{ steps.classify.outputs.codeql == 'true' }}
+        if: ${{ github.event_name != 'push' && steps.classify.outputs.codeql == 'true' }}
         uses: github/codeql-action/analyze@v4
 
       - name: Record intentional analysis skip
-        if: ${{ steps.classify.outputs.codeql != 'true' }}
-        run: echo "No JavaScript/TypeScript-impacting changes; the fixed codeql check succeeds without analysis." >> "$GITHUB_STEP_SUMMARY"
+        if: ${{ github.event_name == 'push' || steps.classify.outputs.codeql != 'true' }}
+        run: echo "Analysis was either completed for the reviewed change or intentionally skipped for exact main publication." >> "$GITHUB_STEP_SUMMARY"

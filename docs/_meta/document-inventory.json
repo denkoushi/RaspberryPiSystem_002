@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 624,
-    "totalLines": 172187,
-    "totalBytes": 12932472,
+    "totalLines": 172159,
+    "totalBytes": 12934153,
     "withFrontmatter": 285,
     "withStatus": 141,
     "sourceOfTruthDeclared": 103,
@@ -16676,7 +16676,7 @@
     {
       "path": "docs/decisions/ADR-20260721-deploy-release-identity-and-activation.md",
       "lineCount": 285,
-      "byteSize": 13858,
+      "byteSize": 13863,
       "hasFrontmatter": true,
       "title": "Typed release claims and separate activation targets",
       "status": "accepted-offline-implementation-live-rollout-blocked",
@@ -16883,8 +16883,8 @@
     },
     {
       "path": "docs/decisions/ADR-20260728-attested-arm64-release-artifact-promotion.md",
-      "lineCount": 135,
-      "byteSize": 6781,
+      "lineCount": 141,
+      "byteSize": 7138,
       "hasFrontmatter": true,
       "title": "Attested ARM64 API/Web release artifact promotion",
       "status": "accepted",
@@ -16904,8 +16904,8 @@
     },
     {
       "path": "docs/decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md",
-      "lineCount": 85,
-      "byteSize": 3837,
+      "lineCount": 95,
+      "byteSize": 4451,
       "hasFrontmatter": true,
       "title": "Change-aware main CI and Pi5-owned Web build configuration",
       "status": "accepted",
@@ -16981,8 +16981,8 @@
     },
     {
       "path": "docs/decisions/ADR-20260729-fail-closed-production-config-and-terminal-health.md",
-      "lineCount": 104,
-      "byteSize": 5431,
+      "lineCount": 105,
+      "byteSize": 5489,
       "hasFrontmatter": true,
       "title": "Fail closed on production configuration and terminal peripheral health",
       "status": "accepted-for-implementation",
@@ -16996,8 +16996,8 @@
     },
     {
       "path": "docs/decisions/ADR-20260730-bounded-api-runtime-artifact.md",
-      "lineCount": 101,
-      "byteSize": 5197,
+      "lineCount": 102,
+      "byteSize": 5276,
       "hasFrontmatter": true,
       "title": "Bound and reuse the Pi5 API runtime artifact before service extraction",
       "status": "accepted",
@@ -18361,8 +18361,8 @@
     },
     {
       "path": "docs/guides/ci-branch-protection.md",
-      "lineCount": 137,
-      "byteSize": 8772,
+      "lineCount": 88,
+      "byteSize": 8313,
       "hasFrontmatter": false,
       "title": "段階型CIと`main` rulesetガイド",
       "status": null,
@@ -18832,8 +18832,8 @@
     },
     {
       "path": "docs/guides/deployment.md",
-      "lineCount": 138,
-      "byteSize": 12782,
+      "lineCount": 141,
+      "byteSize": 13806,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -25974,7 +25974,7 @@
     {
       "path": "docs/knowledge-base/KB-405-pi5-slot-web-runtime-config-drift.md",
       "lineCount": 135,
-      "byteSize": 6105,
+      "byteSize": 6107,
       "hasFrontmatter": true,
       "title": "Pi5 slot Web runtime configuration path drift",
       "status": "active",
@@ -25989,7 +25989,7 @@
     {
       "path": "docs/knowledge-base/KB-406-pi4-canary-initial-status-and-runtime-recreate.md",
       "lineCount": 139,
-      "byteSize": 7144,
+      "byteSize": 7145,
       "hasFrontmatter": true,
       "title": "Pi4 canary initial deploy-status gate and runtime recreation drift",
       "status": "active",

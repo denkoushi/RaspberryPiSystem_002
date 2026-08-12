@@ -75,9 +75,10 @@ failure becomes visible through the existing operations Slack route within two
 timer observations.
 
 This change does not add a public API, DTO, Prisma field, migration, automatic
-queue deletion, automatic recovery, or automatic canary approval. The
-sixty-second notice, serialized terminals, human canary, five-minute Pi5
-monitor, and rollback contracts remain unchanged.
+queue deletion, automatic recovery, or automatic canary approval. At this
+decision's adoption, the notice, serialized terminals, canary, Pi5 monitor,
+and rollback contracts were unchanged; the monitor's current bound is owned by
+the deployment guide.
 
 An inventory-enabled peripheral may be intentionally detached under a narrow,
 host-specific maintenance lease. The lease is not a second enable switch: it

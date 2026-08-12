@@ -49,3 +49,4 @@
 - name: Hold the Pi5 health sample interval
   ansible.builtin.pause:
     seconds: "{{ release_pi5_health_interval_seconds }}"
+  when: (item | int) + 1 < (release_pi5_health_sample_count | int)

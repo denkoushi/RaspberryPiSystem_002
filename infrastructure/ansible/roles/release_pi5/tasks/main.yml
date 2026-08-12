@@ -8,7 +8,7 @@
       ansible.builtin.import_tasks: switch.yml
       when: release_pi5_route == 'fresh'
 
-    - name: Verify the fixed Pi5 stability window
+    - name: Verify the bounded Pi5 stability samples
       ansible.builtin.import_tasks: health.yml
 
     - name: Commit the Pi5 scheduler handoff

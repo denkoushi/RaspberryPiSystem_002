@@ -196,7 +196,7 @@ route coverage.
 The existing safety sequence remains authoritative and is generalized as:
 
     source and aggregate preflight
-      -> Pi5 mutation and five-minute stability when required
+      -> Pi5 mutation and bounded stability sampling when required
       -> terminal manifest seal when terminal mutation or activation needs it
       -> 60-second notice and maintenance ACK for Kiosk work
       -> terminal mutation, if required

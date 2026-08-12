@@ -38,8 +38,8 @@ release_pi5_web_health_url: https://127.0.0.1/
 release_pi5_validate_certs: false
 release_pi5_min_memory_mb: 768
 release_pi5_min_disk_gb: 10
-release_pi5_stability_seconds: 300
-release_pi5_health_interval_seconds: 5
+release_pi5_health_sample_count: 5
+release_pi5_health_interval_seconds: 10
 release_pi5_compose_wait_seconds: 180
 release_pi5_load_retries: 30
 release_pi5_load_delay: 10
