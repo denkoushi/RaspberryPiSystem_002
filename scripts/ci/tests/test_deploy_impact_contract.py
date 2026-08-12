@@ -71,7 +71,11 @@ class DeployImpactContractTests(unittest.TestCase):
         self.assertEqual(result.inferred_surfaces, frozenset({"docs"}))
 
     def test_explicit_documentation_paths_are_docs(self) -> None:
-        known_docs = ("docs/guide.md", "README.md")
+        known_docs = (
+            "docs/guide.md",
+            "README.md",
+            ".cursor/rules/10-quality-ci-and-tests.mdc",
+        )
         for path in known_docs:
             with self.subTest(path=path):
                 result = assess(
@@ -83,7 +87,6 @@ class DeployImpactContractTests(unittest.TestCase):
 
     def test_classifier_fail_closed_document_paths_have_unknown_risk(self) -> None:
         for path in (
-            ".cursor/rules/10-quality-ci-and-tests.mdc",
             ".agent/PLANS.md",
             ".github/pull_request_template.md",
         ):
