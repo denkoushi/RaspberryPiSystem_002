@@ -178,6 +178,9 @@ def _base_categories_for_path(path: str) -> frozenset[str] | None:
     if normalized in POLICY_PATHS:
         return frozenset({"repo_policy"})
 
+    if _has_prefix(normalized, ".cursor/rules"):
+        return frozenset({"repo_policy"})
+
     if normalized.startswith("scripts/test/verify-signage"):
         return frozenset({"repo_policy"})
 

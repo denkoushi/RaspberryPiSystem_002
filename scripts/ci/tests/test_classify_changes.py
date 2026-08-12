@@ -46,6 +46,19 @@ class ClassifyChangesTests(unittest.TestCase):
         self.assertFalse(result["releasePair"])
         self.assertEqual(result["pi4AgentMatrix"], [])
 
+    def test_agent_rules_select_repo_policy_only(self) -> None:
+        result = self.classify(
+            Change("M", ".cursor/rules/10-quality-ci-and-tests.mdc"),
+            Change("M", ".cursor/rules/11-debugging-playbook.mdc"),
+        )
+        self.assertEqual(self.selected(result), {"repo_policy"})
+        self.assertFalse(result["fullSuite"])
+        self.assertFalse(result["codeql"])
+        self.assertFalse(result["dockerApi"])
+        self.assertFalse(result["dockerWeb"])
+        self.assertFalse(result["releasePair"])
+        self.assertEqual(result["pi4AgentMatrix"], [])
+
     def test_security_ignore_and_signage_test_paths_are_known(self) -> None:
         gitleaks = self.classify(Change("M", ".gitleaksignore"))
         self.assertEqual(self.selected(gitleaks), {"repo_policy"})
