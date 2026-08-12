@@ -18,12 +18,6 @@ GATEWAY_TEMPLATES = (
     ROOT / "infrastructure/docker/Caddyfile.gateway.maintenance.template",
     ROOT / "infrastructure/docker/Caddyfile.gateway.maintenance.http.template",
 )
-LEGACY_GATEWAY_TEMPLATE = (
-    ROOT
-    / "infrastructure/ansible/roles/release_pi5/files/Caddyfile.gateway.pre-backup-boundary.template"
-)
-
-
 class ActiveBackupApiResolverTests(unittest.TestCase):
     def run_resolver(self, content: str) -> subprocess.CompletedProcess[str]:
         with tempfile.TemporaryDirectory() as directory:
@@ -36,10 +30,10 @@ class ActiveBackupApiResolverTests(unittest.TestCase):
                 text=True,
             )
 
-    def render_gateway(self, slot: str, template_path: pathlib.Path | None = None) -> str:
-        template = (
-            template_path or ROOT / "infrastructure/docker/Caddyfile.gateway.template"
-        ).read_text(encoding="utf-8")
+    def render_gateway(self, slot: str) -> str:
+        template = (ROOT / "infrastructure/docker/Caddyfile.gateway.template").read_text(
+            encoding="utf-8"
+        )
         return template.replace("__BLUE_GREEN_API_UPSTREAM__", f"api-{slot}:8080").replace(
             "__BLUE_GREEN_WEB_UPSTREAM__", f"web-{slot}:80"
         )
@@ -49,16 +43,12 @@ class ActiveBackupApiResolverTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(result.stdout, "")
 
-    def test_resolves_new_and_legacy_role_rendered_blue_and_green_routes(self) -> None:
-        for generation, template in (
-            ("new", ROOT / "infrastructure/docker/Caddyfile.gateway.template"),
-            ("legacy", LEGACY_GATEWAY_TEMPLATE),
-        ):
-            for slot in ("blue", "green"):
-                with self.subTest(generation=generation, slot=slot):
-                    result = self.run_resolver(self.render_gateway(slot, template))
-                    self.assertEqual(result.returncode, 0, result.stderr)
-                    self.assertEqual(result.stdout, f"api-{slot}\n")
+    def test_resolves_role_rendered_blue_and_green_routes(self) -> None:
+        for slot in ("blue", "green"):
+            with self.subTest(slot=slot):
+                result = self.run_resolver(self.render_gateway(slot))
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, f"api-{slot}\n")
 
     def test_rejects_none(self) -> None:
         self.assert_failure_without_output("reverse_proxy web-blue:80 {\n}\n")
