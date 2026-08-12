@@ -196,6 +196,30 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
                 (("pi4", ("pi4",)),),
             )
 
+    def test_production_optional_host_expressions_are_supported(self) -> None:
+        inventory = yaml.safe_load(
+            (ROOT / MODULE.DEFAULT_INVENTORY).read_text(encoding="utf-8")
+        )
+        all_vars = yaml.safe_load(
+            (ROOT / "infrastructure/ansible/group_vars/all.yml").read_text(encoding="utf-8")
+        )
+        optional_groups = inventory["all"]["children"]["clients"]["children"]
+
+        for group in ("kiosk", "signage"):
+            for host, host_values in optional_groups[group]["hosts"].items():
+                with self.subTest(host=host):
+                    document = {
+                        "_meta": {
+                            "hostvars": {
+                                host: {**all_vars, **(host_values or {})},
+                            }
+                        }
+                    }
+                    address, port = MODULE.optional_host_endpoint(document, host)
+                    self.assertNotIn("{{", address)
+                    self.assertIn(address, all_vars["tailscale_network"].values())
+                    self.assertEqual(port, 22)
+
     def test_standard_route_excludes_offline_optional_profiles_before_artifact_pull(self) -> None:
         args = argparse.Namespace(
             inventory=MODULE.DEFAULT_INVENTORY,

@@ -34,6 +34,15 @@ PROFILES = ("pi5", "pi4", "pi3")
 PROFILE_GROUP = {"pi5": "server", "pi4": "kiosk", "pi3": "signage"}
 OPTIONAL_HOST_CONNECT_TIMEOUT_SECONDS = 3.0
 SAFE_INVENTORY_HOST = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,252}$")
+OPTIONAL_ADDRESS_ALIASES = {
+    "kiosk_ip": "raspberrypi4_ip",
+    "signage_ip": "raspberrypi3_ip",
+}
+OPTIONAL_ADDRESS_ALIAS = re.compile(r"^\{\{\s*(kiosk_ip|signage_ip)\s*\}\}$")
+OPTIONAL_NETWORK_ADDRESS = re.compile(
+    r"^\{\{\s*current_network\.([A-Za-z0-9_]+)\s*\|\s*"
+    r"default\(local_network\.\1\)\s*\}\}$"
+)
 RETIRED = {
     "--approve", "--cancel", "--preflight-only", "--release-scope",
     "--signage-oci-digest", "--signage-source-sha",
@@ -170,9 +179,32 @@ def selected_profiles(document: dict[str, Any]) -> tuple[tuple[str, tuple[str, .
     return tuple(result)
 
 
+def resolve_optional_host_address(values: dict[str, Any], address: str) -> str:
+    alias = OPTIONAL_ADDRESS_ALIAS.fullmatch(address)
+    network = OPTIONAL_NETWORK_ADDRESS.fullmatch(address)
+    if not alias and not network:
+        return address
+
+    key = OPTIONAL_ADDRESS_ALIASES[alias.group(1)] if alias else network.group(1)
+    mode = values.get("network_mode")
+    local = values.get("local_network")
+    tailscale = values.get("tailscale_network")
+    if (
+        mode not in ("local", "tailscale")
+        or not isinstance(local, dict)
+        or not isinstance(tailscale, dict)
+    ):
+        return address
+    selected = local if mode == "local" else tailscale
+    candidate = selected.get(key, local.get(key))
+    return candidate if isinstance(candidate, str) else address
+
+
 def optional_host_endpoint(document: dict[str, Any], host: str) -> tuple[str, int]:
     values = document.get("_meta", {}).get("hostvars", {}).get(host, {})
     address = values.get("ansible_host", host)
+    if isinstance(address, str):
+        address = resolve_optional_host_address(values, address)
     port = values.get("ansible_port", 22)
     if (
         not SAFE_INVENTORY_HOST.fullmatch(host)
