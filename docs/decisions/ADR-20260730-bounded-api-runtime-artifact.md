@@ -88,9 +88,10 @@ passed the release API image and release-set gates. The separately approved
 production pull is still required before claiming the network-timeout issue is
 resolved.
 
-No HTTP API, database, migration, Compose runtime service, Blue/Green pair,
-terminal order, canary, five-minute monitor, or rollback behavior changes.
-Main merge and production verification remain separately authorized.
+At this decision's adoption, no HTTP API, database, migration, Compose runtime
+service, Blue/Green pair, terminal order, canary, monitor, or rollback behavior
+changed. The monitor's current bound is owned by the deployment guide. Main
+merge and production verification remain separately authorized.
 
 ## Alternatives Considered
 

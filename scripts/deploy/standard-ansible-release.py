@@ -8,6 +8,7 @@ import os
 import re
 import secrets
 import shlex
+import socket
 import subprocess
 import sys
 import tempfile
@@ -31,6 +32,8 @@ SAFE_BRANCH = re.compile(r"^(?![-./])(?!.*(?:\.\.|//|@\{|\.lock(?:/|$)))[A-Za-z0
 SAFE_USER = re.compile(r"^[a-z_][a-z0-9_-]{0,30}$")
 PROFILES = ("pi5", "pi4", "pi3")
 PROFILE_GROUP = {"pi5": "server", "pi4": "kiosk", "pi3": "signage"}
+OPTIONAL_HOST_CONNECT_TIMEOUT_SECONDS = 3.0
+SAFE_INVENTORY_HOST = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,252}$")
 RETIRED = {
     "--approve", "--cancel", "--preflight-only", "--release-scope",
     "--signage-oci-digest", "--signage-source-sha",
@@ -167,6 +170,68 @@ def selected_profiles(document: dict[str, Any]) -> tuple[tuple[str, tuple[str, .
     return tuple(result)
 
 
+def optional_host_endpoint(document: dict[str, Any], host: str) -> tuple[str, int]:
+    values = document.get("_meta", {}).get("hostvars", {}).get(host, {})
+    address = values.get("ansible_host", host)
+    port = values.get("ansible_port", 22)
+    if (
+        not SAFE_INVENTORY_HOST.fullmatch(host)
+        or not isinstance(address, str)
+        or not address
+        or address != address.strip()
+        or any(character.isspace() for character in address)
+        or "{" in address
+        or "}" in address
+    ):
+        raise UsageError(f"optional host {host!r} has an unresolved SSH address")
+    if isinstance(port, str) and port.isdecimal():
+        port = int(port)
+    if not isinstance(port, int) or not 1 <= port <= 65535:
+        raise UsageError(f"optional host {host!r} has a malformed SSH port")
+    return address, port
+
+
+def preflight_optional_hosts(
+    document: dict[str, Any],
+    selection: tuple[tuple[str, tuple[str, ...]], ...],
+    *,
+    connector: Any = socket.create_connection,
+) -> tuple[tuple[tuple[str, tuple[str, ...]], ...], tuple[dict[str, str], ...]]:
+    """Keep Pi5 mandatory and probe each optional terminal exactly once."""
+    reachable: list[tuple[str, tuple[str, ...]]] = []
+    excluded: list[dict[str, str]] = []
+    for profile, hosts in selection:
+        if profile == "pi5":
+            reachable.append((profile, hosts))
+            continue
+        profile_hosts: list[str] = []
+        for host in hosts:
+            address, port = optional_host_endpoint(document, host)
+            try:
+                connection = connector(
+                    (address, port), timeout=OPTIONAL_HOST_CONNECT_TIMEOUT_SECONDS
+                )
+            except OSError:
+                excluded.append(
+                    {"host": host, "profile": profile, "reason": "tcp-unreachable"}
+                )
+            else:
+                connection.close()
+                profile_hosts.append(host)
+        if profile_hosts:
+            reachable.append((profile, tuple(profile_hosts)))
+    return tuple(reachable), tuple(excluded)
+
+
+def exact_host_limit(
+    selection: tuple[tuple[str, tuple[str, ...]], ...]
+) -> str:
+    hosts = [host for _profile, members in selection for host in members]
+    if not hosts or any(not SAFE_INVENTORY_HOST.fullmatch(host) for host in hosts):
+        raise UsageError("reachable target selection is empty or malformed")
+    return ":".join(hosts)
+
+
 def server_connection(document: dict[str, Any]) -> tuple[str, str, int]:
     hosts = document.get("server", {}).get("hosts", [])
     if not isinstance(hosts, list) or len(hosts) != 1:
@@ -296,11 +361,37 @@ def execute_standard_route(args: argparse.Namespace) -> int:
     inventory, relative = inventory_path(args.inventory)
     if run(["git", "rev-parse", "HEAD"]).stdout.strip() != args.sha:
         raise RuntimeError("remote checkout does not match the release SHA")
-    profiles = tuple(args.profiles.split(","))
+    declared_profiles = tuple(args.profiles.split(","))
+    selected = inventory_document(inventory, args.limit) if args.limit else inventory_document(inventory)
+    requested_selection = selected_profiles(selected)
+    if tuple(profile for profile, _hosts in requested_selection) != declared_profiles:
+        raise RuntimeError("remote target profiles differ from the sealed launch request")
+    reachable_selection, excluded = preflight_optional_hosts(
+        selected, requested_selection
+    )
+    print(
+        json.dumps(
+            {
+                "event": "optional-host-preflight",
+                "reachable": [
+                    {"profile": profile, "hosts": list(hosts)}
+                    for profile, hosts in reachable_selection
+                ],
+                "excluded": list(excluded),
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        ),
+        flush=True,
+    )
+    if not reachable_selection:
+        raise RuntimeError("all selected optional hosts are offline; no mutation was run")
+    profiles = tuple(profile for profile, _hosts in reachable_selection)
+    effective_limit = exact_host_limit(reachable_selection)
     api, web = release_set_images(args.sha, inventory) if "pi5" in profiles else (f"unused:{args.sha}", f"unused-web:{args.sha}")
     signage, signage_sha = signage_identity(args.sha) if "pi3" in profiles else (f"unused-signage:{args.sha}", "0" * 64)
     variables = {"release_sha": args.sha, "release_run_id": args.run_id, "release_pi5_api_image": api, "release_pi5_web_image": web, "release_signage_artifact_image": signage, "release_signage_artifact_sha256": signage_sha}
-    command = ansible_argv(relative, args.limit, profiles, variables)
+    command = ansible_argv(relative, effective_limit, profiles, variables)
     os.execvpe(command[0], command, ansible_environment())
     return 1
 

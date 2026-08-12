@@ -15,7 +15,7 @@ related_docs:
 validation: Kiosk layout behavioral test, runtime manifest unit tests, real Compose force-recreate/restore contract, incident mutations, and full deploy contracts
 open_items:
   - pass review and required hosted CI
-  - pass the exact-main ARM64 300-second rehearsal
+  - pass the exact-main ARM64 five-sample rehearsal
   - prepare and obtain separate approval for production recovery
 ---
 

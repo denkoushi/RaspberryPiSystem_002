@@ -130,6 +130,130 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             (("pi4", ("pi4-b", "pi4-a")),),
         )
 
+    def test_optional_preflight_probes_each_terminal_once_and_keeps_pi5_required(self) -> None:
+        inventory = {
+            "server": {"hosts": ["pi5"]},
+            "kiosk": {"hosts": ["pi4-online", "pi4-offline"]},
+            "signage": {"hosts": ["pi3-offline"]},
+            "_meta": {
+                "hostvars": {
+                    "pi5": {},
+                    "pi4-online": {"ansible_host": "100.64.0.4", "ansible_port": "22"},
+                    "pi4-offline": {"ansible_host": "100.64.0.5"},
+                    "pi3-offline": {"ansible_host": "100.64.0.3"},
+                }
+            },
+        }
+        calls: list[tuple[tuple[str, int], float]] = []
+
+        class Connection:
+            def close(self) -> None:
+                pass
+
+        def connect(endpoint: tuple[str, int], *, timeout: float) -> Connection:
+            calls.append((endpoint, timeout))
+            if endpoint[0] != "100.64.0.4":
+                raise TimeoutError
+            return Connection()
+
+        reachable, excluded = MODULE.preflight_optional_hosts(
+            inventory,
+            (
+                ("pi5", ("pi5",)),
+                ("pi4", ("pi4-online", "pi4-offline")),
+                ("pi3", ("pi3-offline",)),
+            ),
+            connector=connect,
+        )
+
+        self.assertEqual(
+            reachable,
+            (("pi5", ("pi5",)), ("pi4", ("pi4-online",))),
+        )
+        self.assertEqual(
+            excluded,
+            (
+                {"host": "pi4-offline", "profile": "pi4", "reason": "tcp-unreachable"},
+                {"host": "pi3-offline", "profile": "pi3", "reason": "tcp-unreachable"},
+            ),
+        )
+        self.assertEqual(
+            [endpoint[0] for endpoint, _timeout in calls],
+            ["100.64.0.4", "100.64.0.5", "100.64.0.3"],
+        )
+        self.assertTrue(
+            all(
+                timeout == MODULE.OPTIONAL_HOST_CONNECT_TIMEOUT_SECONDS
+                for _endpoint, timeout in calls
+            )
+        )
+        self.assertEqual(MODULE.exact_host_limit(reachable), "pi5:pi4-online")
+
+    def test_optional_preflight_rejects_unresolved_addresses(self) -> None:
+        with self.assertRaisesRegex(MODULE.UsageError, "unresolved SSH address"):
+            MODULE.preflight_optional_hosts(
+                {"_meta": {"hostvars": {"pi4": {"ansible_host": "{{ missing }}"}}}},
+                (("pi4", ("pi4",)),),
+            )
+
+    def test_standard_route_excludes_offline_optional_profiles_before_artifact_pull(self) -> None:
+        args = argparse.Namespace(
+            inventory=MODULE.DEFAULT_INVENTORY,
+            sha=SHA,
+            run_id=RUN_ID,
+            profiles="pi5,pi4,pi3",
+            limit="",
+            full_fleet=True,
+        )
+        inventory = {
+            "server": {"hosts": ["pi5"]},
+            "kiosk": {"hosts": ["pi4-online"]},
+            "signage": {"hosts": ["pi3-offline"]},
+            "_meta": {
+                "hostvars": {
+                    "pi5": {},
+                    "pi4-online": {},
+                    "pi3-offline": {},
+                }
+            },
+        }
+        reachable = (("pi5", ("pi5",)), ("pi4", ("pi4-online",)))
+        excluded = (
+            {
+                "host": "pi3-offline",
+                "profile": "pi3",
+                "reason": "tcp-unreachable",
+            },
+        )
+
+        with mock.patch.object(
+            MODULE,
+            "inventory_path",
+            return_value=(Path("inventory.yml"), MODULE.DEFAULT_INVENTORY),
+        ), mock.patch.object(
+            MODULE, "inventory_document", return_value=inventory
+        ), mock.patch.object(
+            MODULE, "run", return_value=completed(["git"], f"{SHA}\n")
+        ), mock.patch.object(
+            MODULE, "preflight_optional_hosts", return_value=(reachable, excluded)
+        ), mock.patch.object(
+            MODULE,
+            "release_set_images",
+            return_value=(f"api:{SHA}", f"web:{SHA}"),
+        ), mock.patch.object(
+            MODULE, "signage_identity"
+        ) as signage_identity, mock.patch.object(
+            MODULE.os, "execvpe"
+        ) as execvpe, redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(MODULE.execute_standard_route(args), 1)
+
+        signage_identity.assert_not_called()
+        command = execvpe.call_args.args[1]
+        self.assertEqual(command[command.index("--tags") + 1], "pi5,pi4")
+        self.assertEqual(command[-2:], ["--limit", "pi5:pi4-online"])
+        event = json.loads(output.getvalue())
+        self.assertEqual(event["excluded"], list(excluded))
+
     def test_ansible_argv_is_exact_and_contains_no_legacy_inputs(self) -> None:
         variables = {
             "release_sha": SHA,

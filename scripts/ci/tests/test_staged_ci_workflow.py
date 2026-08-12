@@ -96,6 +96,50 @@ class StagedCiWorkflowTests(unittest.TestCase):
             docker,
         )
 
+    def test_review_jobs_do_not_repeat_on_exact_main_push(self) -> None:
+        review_jobs = (
+            "repo-policy",
+            "workspace-quality",
+            "api",
+            "web",
+            "db-infra",
+            "deploy-contract",
+            "container-runtime-rehearsal",
+            "client",
+            "pi4-agent-image-contract",
+            "docker-security",
+            "e2e-smoke",
+            "e2e-tests",
+            "kiosk-sop",
+        )
+        for job in review_jobs:
+            with self.subTest(job=job):
+                self.assertIn(
+                    "github.event_name != 'push'",
+                    job_block(CI, job),
+                )
+
+        aggregate = job_block(CI, "ci-required")
+        for selector in (
+            "REPO_POLICY_SELECTED",
+            "WORKSPACE_QUALITY_SELECTED",
+            "API_SELECTED",
+            "WEB_SELECTED",
+            "DB_INFRA_SELECTED",
+            "DEPLOY_CONTRACT_SELECTED",
+            "CONTAINER_RUNTIME_REHEARSAL_SELECTED",
+            "CLIENT_SELECTED",
+            "PI4_AGENT_SELECTED",
+            "DOCKER_SECURITY_SELECTED",
+            "E2E_SELECTED",
+            "KIOSK_SOP_SELECTED",
+        ):
+            with self.subTest(selector=selector):
+                line = next(
+                    value for value in aggregate.splitlines() if selector in value
+                )
+                self.assertIn("github.event_name != 'push'", line)
+
     def test_api_uses_one_thresholded_pr_run_and_three_coverage_shards(self) -> None:
         api = job_block(CI, "api")
         self.assertIn('"shard":"all","shard_id":"all","coverage":true', api)
@@ -177,6 +221,15 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("platforms: linux/arm64,linux/arm/v7", publish)
         self.assertIn("packages: write", publish)
         self.assertIn("docker/setup-qemu-action@v4", publish)
+        self.assertIn("id: publish", publish)
+        self.assertEqual(
+            publish.count(
+                "image-ref: ${{ matrix.repository }}@${{ steps.publish.outputs.digest }}"
+            ),
+            2,
+        )
+        self.assertIn("TRIVY_PLATFORM: linux/arm64", publish)
+        self.assertIn("TRIVY_PLATFORM: linux/arm/v7", publish)
 
     def test_signage_artifact_is_read_only_on_pr_and_main_only_for_publication(self) -> None:
         contract = job_block(CI, "signage-artifact-contract")
@@ -187,6 +240,8 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("permissions:\n      contents: read", contract)
         self.assertIn("signage-distribution-artifact.py build", contract)
         self.assertIn("signage-distribution-artifact.py verify", contract)
+        self.assertIn("Require deterministic Signage artifact bytes", contract)
+        self.assertIn("if: ${{ github.event_name != 'push' }}", contract)
         self.assertIn("Security scan exact Signage artifact image", contract)
         self.assertIn("actions/upload-artifact@v6", contract)
         self.assertIn("gh version 2.96.0", contract)
@@ -260,7 +315,8 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("runs-on: ubuntu-24.04-arm", rehearsal)
         self.assertIn("--sha \"$GITHUB_SHA\"", rehearsal)
         self.assertNotIn("--stable-seconds", rehearsal)
-        self.assertIn("!(\n          github.event_name == 'push'", docker)
+        self.assertIn("github.event_name != 'push'", docker)
+        self.assertNotIn("Security scan API source filesystem", api)
         self.assertIn("always() &&", gates)
         self.assertIn("--required codeql", gates)
         self.assertIn("--required gitleaks", gates)
@@ -295,15 +351,20 @@ class StagedCiWorkflowTests(unittest.TestCase):
         codeql = job_block(CODEQL, "codeql")
         self.assertIn("scripts/ci/classify_event_changes.py", codeql)
         self.assertIn(
-            "steps.classify.outputs.codeql == 'true'",
+            "github.event_name != 'push' && steps.classify.outputs.codeql == 'true'",
             codeql,
         )
+        self.assertIn("github.event_name == 'push' ||", codeql)
         self.assertIn("Record intentional analysis skip", codeql)
 
     def test_manual_gitleaks_scans_only_the_cumulative_main_branch_range(self) -> None:
         block = job_block(GITLEAKS, "gitleaks")
-        self.assertIn("if: github.event_name != 'workflow_dispatch'", block)
+        self.assertIn(
+            "if: github.event_name != 'workflow_dispatch' && github.event_name != 'push'",
+            block,
+        )
         self.assertIn("if: github.event_name == 'workflow_dispatch'", block)
+        self.assertIn("Record exact-main publication skip", block)
         self.assertIn(
             "git fetch --no-tags --force origin main:refs/remotes/origin/main",
             block,

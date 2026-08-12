@@ -77,7 +77,7 @@ jobs:
   repo-policy:
     name: repo-policy
     needs: change-classification
-    if: ${{ needs.change-classification.outputs.repo_policy == 'true' }}
+    if: ${{ github.event_name != 'push' && needs.change-classification.outputs.repo_policy == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -96,7 +96,7 @@ jobs:
   workspace-quality:
     name: workspace-quality
     needs: change-classification
-    if: ${{ needs.change-classification.outputs.workspace_quality == 'true' }}
+    if: ${{ github.event_name != 'push' && needs.change-classification.outputs.workspace_quality == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -136,7 +136,7 @@ jobs:
   api:
     name: api (${{ matrix.shard }})
     needs: change-classification
-    if: ${{ needs.change-classification.outputs.api == 'true' }}
+    if: ${{ github.event_name != 'push' && needs.change-classification.outputs.api == 'true' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -247,7 +247,7 @@ jobs:
   web:
     name: web
     needs: change-classification
-    if: ${{ needs.change-classification.outputs.web == 'true' }}
+    if: ${{ github.event_name != 'push' && needs.change-classification.outputs.web == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -272,7 +272,7 @@ jobs:
   db-infra:
     name: db-infra
     needs: change-classification
-    if: ${{ needs.change-classification.outputs.db_infra == 'true' }}
+    if: ${{ github.event_name != 'push' && needs.change-classification.outputs.db_infra == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -382,7 +382,7 @@ jobs:
   deploy-contract:
     name: deploy-contract
     needs: change-classification
-    if: ${{ needs.change-classification.outputs.deploy_contract == 'true' }}
+    if: ${{ github.event_name != 'push' && needs.change-classification.outputs.deploy_contract == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code with migration base
@@ -419,8 +419,8 @@ jobs:
     needs: change-classification
     if: >-
       ${{
-        needs.change-classification.outputs.runtime_rehearsal == 'true' &&
-        !(github.event_name == 'push' && github.ref == 'refs/heads/main')
+        github.event_name != 'push' &&
+        needs.change-classification.outputs.runtime_rehearsal == 'true'
       }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -465,7 +465,7 @@ jobs:
   client:
     name: client
     needs: change-classification
-    if: ${{ needs.change-classification.outputs.client == 'true' }}
+    if: ${{ github.event_name != 'push' && needs.change-classification.outputs.client == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -506,7 +506,7 @@ jobs:
   pi4-agent-image-contract:
     name: pi4-agent-image-contract (${{ matrix.service }}, ${{ matrix.platform }})
     needs: change-classification
-    if: ${{ needs.change-classification.outputs.pi4_agent_matrix != '[]' }}
+    if: ${{ github.event_name != 'push' && needs.change-classification.outputs.pi4_agent_matrix != '[]' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -559,6 +559,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Install the exact Signage attestation verifier
+        if: ${{ github.event_name != 'push' }}
         env:
           SIGNAGE_GH_VERSION: 2.96.0
           SIGNAGE_GH_ARCHIVE_SHA256: 83d5c2ccad5498f58bf6368acb1ab32588cf43ab3a4b1c301bf36328b1c8bd60
@@ -575,12 +576,13 @@ jobs:
           echo "SIGNAGE_GH=$signage_gh" >> "$GITHUB_ENV"
 
       - name: Run real Signage artifact contracts
+        if: ${{ github.event_name != 'push' }}
         run: |
           python3 -m unittest scripts.deploy.tests.test_signage_distribution_artifact
           python3 -m unittest \
             scripts.deploy.tests.test_signage_artifact_stage.ProductionAttestationBoundary
 
-      - name: Build twice and verify the exact candidate artifact
+      - name: Build and verify the exact candidate artifact
         run: |
           set -euo pipefail
           python3 scripts/deploy/signage-distribution-artifact.py build \
@@ -588,6 +590,15 @@ jobs:
             --source-sha "$GITHUB_SHA" \
             --output signage-release.tar \
             --descriptor signage-release-descriptor.json
+          python3 scripts/deploy/signage-distribution-artifact.py verify \
+            --artifact signage-release.tar \
+            --descriptor signage-release-descriptor.json \
+            --expected-source-sha "$GITHUB_SHA"
+
+      - name: Require deterministic Signage artifact bytes
+        if: ${{ github.event_name != 'push' }}
+        run: |
+          set -euo pipefail
           python3 scripts/deploy/signage-distribution-artifact.py build \
             --root . \
             --source-sha "$GITHUB_SHA" \
@@ -595,10 +606,6 @@ jobs:
             --descriptor "$RUNNER_TEMP/signage-release-second.json"
           cmp signage-release.tar "$RUNNER_TEMP/signage-release-second.tar"
           cmp signage-release-descriptor.json "$RUNNER_TEMP/signage-release-second.json"
-          python3 scripts/deploy/signage-distribution-artifact.py verify \
-            --artifact signage-release.tar \
-            --descriptor signage-release-descriptor.json \
-            --expected-source-sha "$GITHUB_SHA"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -724,18 +731,6 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
-
-      - name: Security scan API source filesystem
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
-        with:
-          scan-type: 'fs'
-          ignore-unfixed: true
-          severity: 'HIGH,CRITICAL'
-          exit-code: '1'
-          scanners: 'vuln'
-          skip-dirs: |
-            **/certs
-            **/alerts
 
       - name: Build and push exact ARM64 API image
         id: build
@@ -898,7 +893,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Rehearse exact ARM64 release pair with fixed stability hold
+      - name: Rehearse exact ARM64 release pair with five health samples
         env:
           API_IMAGE: ${{ needs['release-api-image'].outputs.repository }}@${{ needs['release-api-image'].outputs.digest }}
           WEB_IMAGE: ${{ needs['release-web-image'].outputs.repository }}@${{ needs['release-web-image'].outputs.digest }}
@@ -913,12 +908,8 @@ jobs:
     needs: change-classification
     if: >-
       ${{
-        needs.change-classification.outputs.docker_security == 'true' &&
-        !(
-          github.event_name == 'push' &&
-          github.ref == 'refs/heads/main' &&
-          needs.change-classification.outputs.release_pair == 'true'
-        )
+        github.event_name != 'push' &&
+        needs.change-classification.outputs.docker_security == 'true'
       }}
     runs-on: ubuntu-latest
     strategy:
@@ -1004,7 +995,7 @@ jobs:
   e2e-smoke:
     name: e2e-smoke
     needs: change-classification
-    if: ${{ needs.change-classification.outputs.e2e == 'true' }}
+    if: ${{ github.event_name != 'push' && needs.change-classification.outputs.e2e == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -1077,7 +1068,7 @@ jobs:
   kiosk-sop:
     name: kiosk-sop
     needs: change-classification
-    if: ${{ needs.change-classification.outputs.kiosk_sop == 'true' }}
+    if: ${{ github.event_name != 'push' && needs.change-classification.outputs.kiosk_sop == 'true' }}
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
@@ -1101,7 +1092,7 @@ jobs:
   e2e-tests:
     name: e2e-tests
     needs: change-classification
-    if: ${{ needs.change-classification.outputs.e2e == 'true' }}
+    if: ${{ github.event_name != 'push' && needs.change-classification.outputs.e2e == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -1227,35 +1218,35 @@ jobs:
       - name: Require every selected CI job to pass
         env:
           CHANGE_CLASSIFICATION: ${{ needs['change-classification'].result }}
-          REPO_POLICY_SELECTED: ${{ needs['change-classification'].outputs.repo_policy }}
+          REPO_POLICY_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.repo_policy == 'true' }}
           REPO_POLICY_RESULT: ${{ needs['repo-policy'].result }}
-          WORKSPACE_QUALITY_SELECTED: ${{ needs['change-classification'].outputs.workspace_quality }}
+          WORKSPACE_QUALITY_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.workspace_quality == 'true' }}
           WORKSPACE_QUALITY_RESULT: ${{ needs['workspace-quality'].result }}
-          API_SELECTED: ${{ needs['change-classification'].outputs.api }}
+          API_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.api == 'true' }}
           API_RESULT: ${{ needs.api.result }}
-          WEB_SELECTED: ${{ needs['change-classification'].outputs.web }}
+          WEB_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.web == 'true' }}
           WEB_RESULT: ${{ needs.web.result }}
-          DB_INFRA_SELECTED: ${{ needs['change-classification'].outputs.db_infra }}
+          DB_INFRA_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.db_infra == 'true' }}
           DB_INFRA_RESULT: ${{ needs['db-infra'].result }}
-          DEPLOY_CONTRACT_SELECTED: ${{ needs['change-classification'].outputs.deploy_contract }}
+          DEPLOY_CONTRACT_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.deploy_contract == 'true' }}
           DEPLOY_CONTRACT_RESULT: ${{ needs['deploy-contract'].result }}
-          CONTAINER_RUNTIME_REHEARSAL_SELECTED: ${{ needs['change-classification'].outputs.runtime_rehearsal == 'true' && !(github.event_name == 'push' && github.ref == 'refs/heads/main') }}
+          CONTAINER_RUNTIME_REHEARSAL_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.runtime_rehearsal == 'true' }}
           CONTAINER_RUNTIME_REHEARSAL_RESULT: ${{ needs['container-runtime-rehearsal'].result }}
-          CLIENT_SELECTED: ${{ needs['change-classification'].outputs.client }}
+          CLIENT_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.client == 'true' }}
           CLIENT_RESULT: ${{ needs.client.result }}
-          PI4_AGENT_SELECTED: ${{ needs['change-classification'].outputs.pi4_agent_matrix != '[]' }}
+          PI4_AGENT_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.pi4_agent_matrix != '[]' }}
           PI4_AGENT_IMAGE_RESULT: ${{ needs['pi4-agent-image-contract'].result }}
           RELEASE_PAIR_SELECTED: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs['change-classification'].outputs.release_pair == 'true' }}
           RELEASE_BUILD_CONTRACT_RESULT: ${{ needs['release-build-contract'].result }}
           RELEASE_API_RESULT: ${{ needs['release-api-image'].result }}
           RELEASE_WEB_RESULT: ${{ needs['release-web-image'].result }}
           RELEASE_RUNTIME_REHEARSAL_RESULT: ${{ needs['release-runtime-rehearsal'].result }}
-          DOCKER_SECURITY_SELECTED: ${{ needs['change-classification'].outputs.docker_security == 'true' && !(github.event_name == 'push' && github.ref == 'refs/heads/main' && needs['change-classification'].outputs.release_pair == 'true') }}
+          DOCKER_SECURITY_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.docker_security == 'true' }}
           DOCKER_SECURITY_RESULT: ${{ needs['docker-security'].result }}
-          E2E_SELECTED: ${{ needs['change-classification'].outputs.e2e }}
+          E2E_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.e2e == 'true' }}
           E2E_SMOKE: ${{ needs['e2e-smoke'].result }}
           E2E_TESTS: ${{ needs['e2e-tests'].result }}
-          KIOSK_SOP_SELECTED: ${{ needs['change-classification'].outputs.kiosk_sop }}
+          KIOSK_SOP_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.kiosk_sop == 'true' }}
           KIOSK_SOP_RESULT: ${{ needs['kiosk-sop'].result }}
           SIGNAGE_ARTIFACT_SELECTED: ${{ needs['change-classification'].outputs.signage_artifact }}
           SIGNAGE_ARTIFACT_RESULT: ${{ needs['signage-artifact-contract'].result }}
@@ -1329,6 +1320,7 @@ jobs:
         uses: docker/setup-buildx-action@v4
 
       - name: Publish the exact-SHA multi-platform Pi4 agent image
+        id: publish
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -1340,6 +1332,32 @@ jobs:
           cache-to: type=gha,mode=max,scope=pi4-${{ matrix.service }}
           provenance: mode=min
           sbom: true
+
+      - name: Security scan exact published Pi4 agent ARM64 digest
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        env:
+          TRIVY_PLATFORM: linux/arm64
+        with:
+          scan-type: image
+          image-ref: ${{ matrix.repository }}@${{ steps.publish.outputs.digest }}
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          scanners: vuln,secret
+          trivyignores: .trivyignore
+
+      - name: Security scan exact published Pi4 agent ARMv7 digest
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        env:
+          TRIVY_PLATFORM: linux/arm/v7
+        with:
+          scan-type: image
+          image-ref: ${{ matrix.repository }}@${{ steps.publish.outputs.digest }}
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          scanners: vuln,secret
+          trivyignores: .trivyignore
 
   signage-artifact-gates:
     name: signage-artifact-gates

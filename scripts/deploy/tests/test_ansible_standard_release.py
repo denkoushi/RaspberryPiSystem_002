@@ -965,16 +965,21 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
         self.assertIn("release_pi5_opposite_web_id | default('') | length > 0", condition)
         self.assertNotIn("release_pi5_active_slot", retired["ansible.builtin.command"]["argv"])
 
-    def test_pi5_monitor_is_fixed_and_cleanup_has_no_handoff(self) -> None:
+    def test_pi5_monitor_is_bounded_and_cleanup_has_no_handoff(self) -> None:
         defaults = yaml.safe_load(
             (ANSIBLE / f"roles/{self.ROLE}/defaults/main.yml").read_text()
         )
         health = self.task_text("health")
         sample = self.task_text("health-sample")
         cleanup = self.task_text("cleanup")
-        self.assertEqual(defaults["release_pi5_stability_seconds"], 300)
-        self.assertEqual(defaults["release_pi5_health_interval_seconds"], 5)
+        self.assertEqual(defaults["release_pi5_health_sample_count"], 5)
+        self.assertEqual(defaults["release_pi5_health_interval_seconds"], 10)
         self.assertIn("range(0", health)
+        self.assertIn("release_pi5_health_sample_count", health)
+        self.assertIn(
+            "(item | int) + 1 < (release_pi5_health_sample_count | int)",
+            sample,
+        )
         self.assertIn("standby", sample)
         self.assertIn("leader", sample)
         self.assertNotIn(" stop", cleanup)

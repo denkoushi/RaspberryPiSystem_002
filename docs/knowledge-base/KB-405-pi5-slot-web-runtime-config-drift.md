@@ -17,7 +17,7 @@ validation: behavioral controller contract, historical-fault mutation, exact-ima
 open_items:
   - pass the complete local audit from the beginning
   - pass review and required hosted CI
-  - pass the exact-main ARM64 300-second rehearsal
+  - pass the exact-main ARM64 five-sample rehearsal
   - obtain separate approval before a new standard production run
 ---
 
@@ -123,7 +123,7 @@ validation pass locally. The complete deploy contract also passes, including
 audit residue. Fresh locally built ARM64 API/Web images pass the isolated
 blue/green rehearsal with both generated Caddy files validated, five gateway
 samples over 10 seconds, and zero container, network, or volume residue.
-Hosted review, exact-main 300-second rehearsal, and fresh read-only production
+Hosted review, exact-main five-sample rehearsal, and fresh read-only production
 admission remain required.
 
 ## Open Items

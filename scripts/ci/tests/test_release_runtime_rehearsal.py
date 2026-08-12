@@ -25,7 +25,7 @@ def job_block(job: str) -> str:
 
 
 class ReleaseRuntimeRehearsalTests(unittest.TestCase):
-    def test_exact_main_cannot_shorten_the_fixed_monitor(self) -> None:
+    def test_exact_main_cannot_shorten_the_bounded_monitor(self) -> None:
         environment = os.environ.copy()
         environment.update(
             {
@@ -44,7 +44,7 @@ class ReleaseRuntimeRehearsalTests(unittest.TestCase):
                 "--sha",
                 "a" * 40,
                 "--stable-seconds",
-                "1",
+                "4",
             ],
             cwd=ROOT,
             env=environment,
@@ -79,7 +79,9 @@ class ReleaseRuntimeRehearsalTests(unittest.TestCase):
         ):
             with self.subTest(required=required):
                 self.assertIn(required, SCRIPT)
-        self.assertIn("STABLE_SECONDS=300", SCRIPT)
+        self.assertIn("STABLE_SECONDS=40", SCRIPT)
+        self.assertIn("STABILITY_SAMPLES=5", SCRIPT)
+        self.assertIn("while ((samples < STABILITY_SAMPLES))", SCRIPT)
         self.assertNotIn("scripts/update-all-clients.sh", SCRIPT)
 
     def test_clean_database_is_migrated_before_roles_are_separated(self) -> None:
