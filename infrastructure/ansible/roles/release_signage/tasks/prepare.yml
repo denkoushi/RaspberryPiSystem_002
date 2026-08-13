@@ -159,26 +159,49 @@
     release_signage_legacy: "{{ release_signage_root }}/releases/legacy-{{ release_run_id }}"
   when: not release_signage_current_link.stat.exists
 
+- name: Remove an incomplete one-time Pi3 legacy snapshot
+  ansible.builtin.file:
+    path: "{{ release_signage_legacy }}"
+    state: absent
+  when: not release_signage_current_link.stat.exists
+
+- name: Inspect currently installed Pi3 payloads
+  ansible.builtin.stat:
+    path: "{{ item.dest }}"
+    follow: false
+  loop: "{{ release_signage_payloads }}"
+  register: release_signage_legacy_payload_stats
+  when: not release_signage_current_link.stat.exists
+
+- name: Require existing Pi3 legacy payloads to be regular files
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (item.stat.exists | default(false) | bool)
+        or item.stat.isreg | default(false) | bool
+    fail_msg: "{{ item.item.dest }} must be absent or a regular file before migration."
+  loop: "{{ release_signage_legacy_payload_stats.results | default([]) }}"
+
 - name: Create directories for the one-time Pi3 legacy snapshot
   ansible.builtin.file:
-    path: "{{ release_signage_legacy }}/{{ item.path | dirname }}"
+    path: "{{ release_signage_legacy }}/{{ item.item.path | dirname }}"
     state: directory
     owner: root
     group: root
     mode: '0755'
-  loop: "{{ release_signage_payloads }}"
-  when: not release_signage_current_link.stat.exists
+  loop: "{{ release_signage_legacy_payload_stats.results | default([]) }}"
+  when: item.stat.exists | default(false) | bool
 
 - name: Capture the currently installed Pi3 runtime once
   ansible.builtin.copy:
-    src: "{{ item.dest }}"
-    dest: "{{ release_signage_legacy }}/{{ item.path }}"
+    src: "{{ item.item.dest }}"
+    dest: "{{ release_signage_legacy }}/{{ item.item.path }}"
     remote_src: true
     owner: root
     group: root
     mode: preserve
-  loop: "{{ release_signage_payloads }}"
-  when: not release_signage_current_link.stat.exists
+  loop: "{{ release_signage_legacy_payload_stats.results | default([]) }}"
+  when: item.stat.exists | default(false) | bool
 
 - name: Initialize the Pi3 current link to the captured legacy runtime
   ansible.builtin.shell: |
