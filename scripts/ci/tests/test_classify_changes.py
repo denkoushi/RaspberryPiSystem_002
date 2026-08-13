@@ -227,6 +227,26 @@ class ClassifyChangesTests(unittest.TestCase):
                 result = self.classify(Change("M", path))
                 self.assertFalse(result["categories"]["signage_artifact"])
 
+    def test_signage_release_only_inputs_skip_unrelated_release_checks(self) -> None:
+        for path in (
+            "scripts/deploy/signage-runtime-proof.py",
+            "scripts/deploy/tests/test_signage_runtime_proof.py",
+            "scripts/deploy/tests/test-signage-deploy-maintenance.sh",
+            "infrastructure/ansible/roles/signage/templates/signage-display.sh.j2",
+        ):
+            with self.subTest(path=path):
+                result = self.classify(Change("M", path))
+                self.assertEqual(
+                    self.selected(result),
+                    {"repo_policy", "deploy_contract", "signage_artifact"},
+                )
+                self.assertFalse(result["categories"]["db_infra"])
+                self.assertFalse(result["dockerApi"])
+                self.assertFalse(result["dockerWeb"])
+                self.assertFalse(result["releasePair"])
+                self.assertFalse(result["runtimeRehearsal"])
+                self.assertEqual(result["pi4AgentMatrix"], [])
+
     def test_web_build_configuration_selects_only_web_image_contracts(self) -> None:
         for path in (
             "infrastructure/ansible/group_vars/server/web-build.yml",

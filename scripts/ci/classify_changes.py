@@ -128,6 +128,14 @@ COMPLETE_FLEET_ARTIFACT_PATHS = CI_CLASSIFIER_CONTRACT_PATHS | frozenset(
     }
 )
 SIGNAGE_RELEASE_CONTROL_PREFIX = "infrastructure/ansible/roles/release_signage"
+SIGNAGE_ARTIFACT_TEMPLATE_PREFIX = "infrastructure/ansible/roles/signage/templates"
+SIGNAGE_RELEASE_ONLY_PATHS = frozenset(
+    {
+        "scripts/deploy/signage-runtime-proof.py",
+        "scripts/deploy/tests/test_signage_runtime_proof.py",
+        "scripts/deploy/tests/test-signage-deploy-maintenance.sh",
+    }
+)
 DEPLOY_CONTRACT_ONLY_PATHS = frozenset(
     {"scripts/deploy/tests/test_ansible_standard_release.py"}
 )
@@ -244,7 +252,11 @@ def _base_categories_for_path(path: str) -> frozenset[str] | None:
         return frozenset(
             {"repo_policy", "web", "deploy_contract", "docker_security"}
         )
-    if _has_prefix(normalized, SIGNAGE_RELEASE_CONTROL_PREFIX):
+    if (
+        normalized in SIGNAGE_RELEASE_ONLY_PATHS
+        or _has_prefix(normalized, SIGNAGE_ARTIFACT_TEMPLATE_PREFIX)
+        or _has_prefix(normalized, SIGNAGE_RELEASE_CONTROL_PREFIX)
+    ):
         return frozenset({"repo_policy", "deploy_contract"})
     if _has_prefix(normalized, "infrastructure/ansible"):
         return frozenset({"repo_policy", "db_infra", "deploy_contract"})
@@ -302,9 +314,8 @@ def signage_artifact_for_path(path: str) -> bool:
             "scripts/deploy/tests/test_signage_artifact_stage.py",
             "infrastructure/docker/Dockerfile.signage-release",
         }
-        or _has_prefix(
-            normalized, "infrastructure/ansible/roles/signage/templates"
-        )
+        or normalized in SIGNAGE_RELEASE_ONLY_PATHS
+        or _has_prefix(normalized, SIGNAGE_ARTIFACT_TEMPLATE_PREFIX)
         or _has_prefix(normalized, SIGNAGE_RELEASE_CONTROL_PREFIX)
     )
 
