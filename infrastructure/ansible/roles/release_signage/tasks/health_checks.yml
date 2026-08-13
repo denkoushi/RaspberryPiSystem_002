@@ -7,9 +7,9 @@
       - "{{ item }}"
   loop: "{{ ['lightdm.service'] + release_signage_services }}"
   changed_when: false
-  # A cold Pi3 display can need the full 30-second ExecStartPre wait and one
-  # bounded restart before X is ready.
-  retries: 13
+  # Keep the slow Pi3 readiness window bounded to roughly one minute,
+  # including Ansible connection overhead.
+  retries: 7
   delay: 5
   register: release_signage_unit_health
   until: release_signage_unit_health.rc == 0
