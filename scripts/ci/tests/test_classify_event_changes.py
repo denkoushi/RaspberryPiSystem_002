@@ -96,6 +96,28 @@ class ClassifyEventChangesTests(unittest.TestCase):
                 self.assertEqual(len(main_push["pi4AgentMatrix"]), 6)
                 self.assertFalse(main_push["fullSuite"])
 
+    def test_signage_release_control_publishes_only_the_pi3_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repo = self.new_repo(directory)
+            base = self.commit_file(repo, "README.md", "base\n", "base")
+            head = self.commit_file(
+                repo,
+                "infrastructure/ansible/roles/release_signage/tasks/prepare.yml",
+                "changed\n",
+                "change",
+            )
+
+            pull_request = classify_event(repo, "pull_request", base, head)
+            main_push = classify_event(repo, "push", base, head)
+
+        for result in (pull_request, main_push):
+            self.assertTrue(result["categories"]["signage_artifact"])
+            self.assertTrue(result["categories"]["deploy_contract"])
+            self.assertFalse(result["categories"]["db_infra"])
+            self.assertFalse(result["releasePair"])
+            self.assertFalse(result["runtimeRehearsal"])
+            self.assertEqual(result["pi4AgentMatrix"], [])
+
     def test_manual_schedule_merge_group_and_unstable_push_fail_closed(self) -> None:
         for event in ("workflow_dispatch", "schedule", "merge_group"):
             with self.subTest(event=event):

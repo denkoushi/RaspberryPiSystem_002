@@ -3,8 +3,8 @@
   ansible.builtin.systemd:
     name: "{{ item }}"
     state: stopped
-  loop: "{{ release_signage_stop_services + ['lightdm.service'] }}"
-  when: release_signage_switch_attempted | default(false) | bool
+  loop: "{{ ['lightdm.service'] + release_signage_stop_services }}"
+  when: release_signage_services_stopped | default(false) | bool
 
 - name: Atomically restore Pi3 current from previous
   ansible.builtin.shell: |
@@ -23,33 +23,34 @@
 - name: Reload restored Pi3 systemd units
   ansible.builtin.systemd:
     daemon_reload: true
-  when: release_signage_switch_attempted | default(false) | bool
+  when: release_signage_services_stopped | default(false) | bool
 
 - name: Start the restored Pi3 display manager
   ansible.builtin.systemd:
     name: lightdm.service
     state: started
-  when: release_signage_switch_attempted | default(false) | bool
+  when: release_signage_services_stopped | default(false) | bool
 
 - name: Start restored Pi3 Signage services
   ansible.builtin.systemd:
     name: "{{ item }}"
     state: started
   loop: "{{ release_signage_services }}"
-  when: release_signage_switch_attempted | default(false) | bool
+  when: release_signage_services_stopped | default(false) | bool
 
 - name: Verify the complete restored Pi3 runtime
   ansible.builtin.import_tasks: health_checks.yml
-  when: release_signage_switch_attempted | default(false) | bool
+  when: release_signage_services_stopped | default(false) | bool
 
 - name: Record completed Pi3 rollback
   ansible.builtin.set_fact:
     release_signage_rolled_back: true
-  when: release_signage_switch_attempted | default(false) | bool
+  when: release_signage_services_stopped | default(false) | bool
 
 - name: Fail the release after verified Pi3 rollback
   ansible.builtin.fail:
     msg: >-
-      Pi3 Signage candidate failed health verification;
-      {{ 'previous was restored' if release_signage_switch_attempted | default(false) | bool
-         else 'no switch was performed' }}.
+      Pi3 Signage deployment failed;
+      {{ 'previous release was restored' if release_signage_switch_attempted | default(false) | bool
+         else ('existing release was restarted' if release_signage_services_stopped | default(false) | bool
+         else 'services were not stopped') }}.
