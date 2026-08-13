@@ -14,11 +14,14 @@ release_signage_services:
   - signage-lite-watchdog.timer
   - signage-daily-reboot.timer
   - signage-lite.service
+# Pi3 is Signage-only. Do not add Pi4 NFC, barcode, torque, or kiosk agents here.
 release_signage_stop_services:
   - status-agent.timer
+  - status-agent.service
   - signage-lite-update.timer
   - signage-lite-watchdog.timer
   - signage-daily-reboot.timer
+  - signage-daily-reboot.service
   - signage-lite-update.service
   - signage-lite-watchdog.service
   - signage-lite.service

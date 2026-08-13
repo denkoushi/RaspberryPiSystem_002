@@ -13,26 +13,38 @@
 
 - name: Define controller and Pi3 staging paths
   ansible.builtin.set_fact:
-    release_signage_controller_dir: "{{ release_signage_controller_root }}/{{ release_run_id }}"
-    release_signage_controller_tar: "{{ release_signage_controller_root }}/{{ release_run_id }}/signage-release.tar"
     release_signage_remote_stage: "{{ release_signage_stage_root }}/{{ release_run_id }}"
     release_signage_remote_tar: "{{ release_signage_stage_root }}/{{ release_run_id }}/signage-release.tar"
     release_signage_candidate: "{{ release_signage_root }}/releases/{{ release_signage_artifact_sha256 }}"
     release_signage_candidate_temp: >-
       {{ release_signage_root }}/releases/.{{ release_signage_artifact_sha256 }}-{{ release_run_id }}
     release_signage_switch_attempted: false
+    release_signage_services_stopped: false
     release_signage_healthy: false
     release_signage_rolled_back: false
 
-- name: Create the private controller artifact directory
+- name: Remove deprecated root-owned controller artifact staging
   ansible.builtin.file:
-    path: "{{ release_signage_controller_dir }}"
-    state: directory
-    owner: root
-    group: root
-    mode: '0700'
+    path: "{{ release_signage_controller_root }}"
+    state: absent
   delegate_to: localhost
   run_once: true
+  when: release_signage_artifact_path | length == 0
+
+- name: Create a private controller artifact directory for the launcher user
+  ansible.builtin.tempfile:
+    state: directory
+    prefix: "raspi-signage-{{ release_run_id }}-"
+  register: release_signage_controller_temp
+  delegate_to: localhost
+  run_once: true
+  become: false
+  when: release_signage_artifact_path | length == 0
+
+- name: Define the launcher-readable controller artifact path
+  ansible.builtin.set_fact:
+    release_signage_controller_dir: "{{ release_signage_controller_temp.path }}"
+    release_signage_controller_tar: "{{ release_signage_controller_temp.path }}/signage-release.tar"
   when: release_signage_artifact_path | length == 0
 
 - name: Extract the complete Pi3 artifact from GHCR on the controller
@@ -53,6 +65,7 @@
     executable: /bin/bash
   delegate_to: localhost
   run_once: true
+  become: false
   changed_when: true
   when: release_signage_artifact_path | length == 0
 
@@ -65,6 +78,21 @@
         else release_signage_controller_tar
       }}
 
+- name: Mark the Pi3 resource-release boundary
+  ansible.builtin.set_fact:
+    release_signage_services_stopped: true
+
+- name: Stop only the Pi3 display and Signage units before transfer
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+  loop: "{{ ['lightdm.service'] + release_signage_stop_services }}"
+
+- name: Reset the dedicated Pi3 artifact staging root
+  ansible.builtin.file:
+    path: "{{ release_signage_stage_root }}"
+    state: absent
+
 - name: Create the Pi3 run-scoped staging directory
   ansible.builtin.file:
     path: "{{ release_signage_remote_stage }}"
@@ -73,7 +101,7 @@
     group: root
     mode: '0700'
 
-- name: Transfer the complete Pi3 artifact before stopping the display
+- name: Transfer the complete Pi3 artifact after releasing display resources
   ansible.builtin.copy:
     src: "{{ release_signage_selected_artifact }}"
     dest: "{{ release_signage_remote_tar }}"
@@ -202,7 +230,7 @@
     mode: '0755'
   when: not release_signage_candidate_stat.stat.exists
 
-- name: Expand the complete Pi3 artifact while the old display stays active
+- name: Expand the complete Pi3 artifact while display services remain stopped
   ansible.builtin.unarchive:
     src: "{{ release_signage_remote_tar }}"
     dest: "{{ release_signage_candidate_temp }}"

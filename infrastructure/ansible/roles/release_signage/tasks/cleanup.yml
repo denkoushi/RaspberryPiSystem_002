@@ -14,6 +14,7 @@
     - >-
       release_signage_healthy | default(false) | bool
       or release_signage_rolled_back | default(false) | bool
+      or not (release_signage_services_stopped | default(false) | bool)
 
 - name: Remove the controller run-scoped Signage artifact
   ansible.builtin.file:
@@ -23,7 +24,9 @@
   run_once: true
   when:
     - release_signage_controller_dir is defined
+    - release_signage_controller_dir | length > 0
     - release_signage_artifact_path | length == 0
     - >-
       release_signage_healthy | default(false) | bool
       or release_signage_rolled_back | default(false) | bool
+      or not (release_signage_services_stopped | default(false) | bool)

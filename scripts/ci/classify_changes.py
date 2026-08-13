@@ -127,6 +127,10 @@ COMPLETE_FLEET_ARTIFACT_PATHS = CI_CLASSIFIER_CONTRACT_PATHS | frozenset(
         "scripts/update-all-clients.sh",
     }
 )
+SIGNAGE_RELEASE_CONTROL_PREFIX = "infrastructure/ansible/roles/release_signage"
+DEPLOY_CONTRACT_ONLY_PATHS = frozenset(
+    {"scripts/deploy/tests/test_ansible_standard_release.py"}
+)
 
 
 def _has_prefix(path: str, prefix: str) -> bool:
@@ -240,6 +244,8 @@ def _base_categories_for_path(path: str) -> frozenset[str] | None:
         return frozenset(
             {"repo_policy", "web", "deploy_contract", "docker_security"}
         )
+    if _has_prefix(normalized, SIGNAGE_RELEASE_CONTROL_PREFIX):
+        return frozenset({"repo_policy", "deploy_contract"})
     if _has_prefix(normalized, "infrastructure/ansible"):
         return frozenset({"repo_policy", "db_infra", "deploy_contract"})
     if _has_prefix(normalized, "scripts/deploy") or normalized == "scripts/update-all-clients.sh":
@@ -299,6 +305,7 @@ def signage_artifact_for_path(path: str) -> bool:
         or _has_prefix(
             normalized, "infrastructure/ansible/roles/signage/templates"
         )
+        or _has_prefix(normalized, SIGNAGE_RELEASE_CONTROL_PREFIX)
     )
 
 
@@ -382,6 +389,8 @@ def release_pair_for_path(path: str) -> bool:
     """
 
     normalized = _normalize_path(path)
+    if normalized in DEPLOY_CONTRACT_ONLY_PATHS:
+        return False
     if normalized in PI4_AGENT_DOCKERFILES:
         return False
     if _signage_artifact_exclusive_path(normalized):

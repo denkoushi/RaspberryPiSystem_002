@@ -375,10 +375,11 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
 
     def test_pi4_and_pi3_use_prepare_block_rescue_always(self) -> None:
         for role in ("release_kiosk", "release_signage"):
-            main_path = (
-                ANSIBLE / "roles" / role / "tasks/main.yml"
+            main = yaml.safe_load(
+                (ANSIBLE / f"roles/{role}/tasks/main.yml").read_text(
+                    encoding="utf-8"
+                )
             )
-            main = yaml.safe_load(main_path.read_text(encoding="utf-8"))
             with self.subTest(role=role):
                 self.assertEqual(len(main), 1)
                 outer = main[0]
@@ -386,19 +387,86 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
                     outer["block"][0]["ansible.builtin.import_tasks"],
                     "prepare.yml",
                 )
-                switch_health = outer["block"][1]
+                if role == "release_kiosk":
+                    switch_health = outer["block"][1]
+                    self.assertEqual(
+                        [
+                            task["ansible.builtin.import_tasks"]
+                            for task in switch_health["block"]
+                        ],
+                        ["switch.yml", "health.yml"],
+                    )
+                    rescue = switch_health["rescue"]
+                else:
+                    self.assertEqual(
+                        [
+                            task["ansible.builtin.import_tasks"]
+                            for task in outer["block"]
+                        ],
+                        ["prepare.yml", "switch.yml", "health.yml"],
+                    )
+                    rescue = outer["rescue"]
                 self.assertEqual(
-                    [task["ansible.builtin.import_tasks"] for task in switch_health["block"]],
-                    ["switch.yml", "health.yml"],
-                )
-                self.assertEqual(
-                    [task["ansible.builtin.import_tasks"] for task in switch_health["rescue"]],
+                    [task["ansible.builtin.import_tasks"] for task in rescue],
                     ["rollback.yml"],
                 )
                 self.assertEqual(
-                    [task["ansible.builtin.import_tasks"] for task in outer["always"]],
+                    [
+                        task["ansible.builtin.import_tasks"]
+                        for task in outer["always"]
+                    ],
                     ["cleanup.yml"],
                 )
+
+    def test_pi3_recovers_failures_after_stopping_before_transfer(self) -> None:
+        prepare_tasks = yaml.safe_load(
+            (ANSIBLE / "roles/release_signage/tasks/prepare.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        names = [task["name"] for task in prepare_tasks]
+        stop_index = names.index(
+            "Stop only the Pi3 display and Signage units before transfer"
+        )
+        self.assertLess(
+            stop_index,
+            names.index(
+                "Transfer the complete Pi3 artifact after releasing display resources"
+            ),
+        )
+        self.assertLess(
+            stop_index,
+            names.index(
+                "Expand the complete Pi3 artifact while display services remain stopped"
+            ),
+        )
+
+        controller_temp = next(
+            task
+            for task in prepare_tasks
+            if task["name"]
+            == "Create a private controller artifact directory for the launcher user"
+        )
+        extraction = next(
+            task
+            for task in prepare_tasks
+            if task["name"]
+            == "Extract the complete Pi3 artifact from GHCR on the controller"
+        )
+        self.assertFalse(controller_temp["become"])
+        self.assertFalse(extraction["become"])
+
+    def test_pi3_release_contains_only_signage_runtime_services(self) -> None:
+        signage = role_text("release_signage")
+        for forbidden in (
+            "nfc-agent",
+            "barcode-agent",
+            "torque-agent",
+            "docker compose",
+        ):
+            self.assertNotIn(forbidden, signage)
+        self.assertIn("signage-lite.service", signage)
+        self.assertIn("lightdm.service", signage)
 
     def test_pi4_builds_are_outside_the_terminal_route(self) -> None:
         kiosk = role_text("release_kiosk")

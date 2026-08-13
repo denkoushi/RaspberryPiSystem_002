@@ -108,6 +108,15 @@ class ClassifyChangesTests(unittest.TestCase):
         )
         self.assertEqual(self.selected(deploy), {"repo_policy", "deploy_contract"})
 
+        deploy_test = self.classify(
+            Change("M", "scripts/deploy/tests/test_ansible_standard_release.py")
+        )
+        self.assertEqual(
+            self.selected(deploy_test), {"repo_policy", "deploy_contract"}
+        )
+        self.assertFalse(deploy_test["releasePair"])
+        self.assertFalse(deploy_test["runtimeRehearsal"])
+
         client = self.classify(Change("M", "clients/nfc-agent/nfc_agent/main.py"))
         self.assertEqual(self.selected(client), {"repo_policy", "client"})
 
@@ -187,6 +196,7 @@ class ClassifyChangesTests(unittest.TestCase):
             "scripts/deploy/rolling_release/signage_artifact_stage.py",
             "scripts/deploy/tests/test_signage_artifact_stage.py",
             "infrastructure/ansible/roles/signage/templates/signage-update.sh.j2",
+            "infrastructure/ansible/roles/release_signage/tasks/prepare.yml",
             "infrastructure/docker/Dockerfile.signage-release",
         ):
             with self.subTest(path=path):
@@ -196,6 +206,16 @@ class ClassifyChangesTests(unittest.TestCase):
                     self.assertFalse(result["releasePair"])
                     self.assertFalse(result["dockerApi"])
                     self.assertFalse(result["dockerWeb"])
+
+        release_control = self.classify(
+            Change("M", "infrastructure/ansible/roles/release_signage/tasks/prepare.yml")
+        )
+        self.assertEqual(
+            self.selected(release_control),
+            {"repo_policy", "deploy_contract", "signage_artifact"},
+        )
+        self.assertFalse(release_control["runtimeRehearsal"])
+        self.assertEqual(release_control["pi4AgentMatrix"], [])
 
         for path in (
             "clients/nfc-agent/nfc_agent/main.py",
