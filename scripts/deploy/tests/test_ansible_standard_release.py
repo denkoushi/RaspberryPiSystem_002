@@ -522,7 +522,7 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
             for task in health_tasks
             if task["name"] == "Verify authenticated Pi3 Signage endpoints"
         )
-        self.assertEqual(unit_health["retries"], 13)
+        self.assertEqual(unit_health["retries"], 7)
         self.assertEqual(unit_health["delay"], 5)
         endpoint_command = endpoint_health["ansible.builtin.script"]["cmd"]
         self.assertIn("--runtime-env", endpoint_command)

@@ -2,11 +2,20 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 TEMPLATE="$ROOT/infrastructure/ansible/roles/signage/templates/signage-update.sh.j2"
+DISPLAY_TEMPLATE="$ROOT/infrastructure/ansible/roles/signage/templates/signage-display.sh.j2"
+SERVICE_TEMPLATE="$ROOT/infrastructure/ansible/roles/signage/templates/signage-lite.service.j2"
+UPDATE_SERVICE_TEMPLATE="$ROOT/infrastructure/ansible/roles/signage/templates/signage-lite-update.service.j2"
 SVG="$ROOT/infrastructure/ansible/roles/signage/templates/signage-maintenance.svg.j2"
 grep -Fq 'DEPLOY_STATUS_URL=' "$TEMPLATE"
 grep -Fq 'acknowledge_maintenance' "$TEMPLATE"
 grep -Fq 'acknowledge_ready_if_matching' "$TEMPLATE"
-grep -Fq 'source /etc/raspisystem-signage/runtime.env' "$TEMPLATE"
+if grep -Fq 'source /etc/raspisystem-signage/runtime.env' \
+    "$TEMPLATE" "$DISPLAY_TEMPLATE"; then
+  echo 'non-root Signage scripts must use the systemd-provided environment' >&2
+  exit 1
+fi
+grep -Fq 'EnvironmentFile=/etc/raspisystem-signage/runtime.env' "$SERVICE_TEMPLATE"
+grep -Fq 'EnvironmentFile=/etc/raspisystem-signage/runtime.env' "$UPDATE_SERVICE_TEMPLATE"
 grep -Fq 'STATUS_CLIENT_ID="${SIGNAGE_STATUS_CLIENT_ID}"' "$TEMPLATE"
 grep -Fq 'STATUS_CLIENT_KEY="${SIGNAGE_STATUS_CLIENT_KEY}"' "$TEMPLATE"
 grep -Fq 'IMAGE_CLIENT_KEY="${SIGNAGE_IMAGE_CLIENT_KEY}"' "$TEMPLATE"
@@ -54,14 +63,13 @@ Path(destination).write_text(
 )
 PY
 
-python3 - "${TEMPLATE}" "${RENDERED_SCRIPT}" "${FIXTURE_ARTIFACT}" "${RUNTIME_ENV}" <<'PY'
+python3 - "${TEMPLATE}" "${RENDERED_SCRIPT}" "${FIXTURE_ARTIFACT}" <<'PY'
 import sys
 from pathlib import Path
 
-source, destination, artifact, runtime_env = sys.argv[1:]
+source, destination, artifact = sys.argv[1:]
 text = Path(source).read_text(encoding="utf-8")
 replacements = {
-    "source /etc/raspisystem-signage/runtime.env": f"source {runtime_env!r}",
     'RELEASE_ARTIFACT="/usr/local/bin/raspi-signage-status-agent.pyz"': (
         f'RELEASE_ARTIFACT="{artifact}"'
     ),
@@ -83,6 +91,9 @@ SIGNAGE_STATUS_CLIENT_ID=talkplaza-signage01
 SIGNAGE_STATUS_CLIENT_KEY=fixture-status-secret
 SIGNAGE_ALLOW_INSECURE_TLS=1
 EOF
+set -a
+source "${RUNTIME_ENV}"
+set +a
 
 cat > "${FIXTURE_BIN}/curl" <<'SH'
 #!/usr/bin/env bash
