@@ -76,6 +76,26 @@ class ClassifyEventChangesTests(unittest.TestCase):
         self.assertTrue(result["codeql"])
         self.assertFalse(result["fullSuite"])
 
+    def test_main_push_completes_artifacts_without_expanding_pr_checks(self) -> None:
+        cases = (
+            "scripts/deploy/standard-ansible-release.py",
+            "scripts/ci/classify_changes.py",
+        )
+        for path in cases:
+            with self.subTest(path=path), tempfile.TemporaryDirectory() as directory:
+                repo = self.new_repo(directory)
+                base = self.commit_file(repo, "README.md", "base\n", "base")
+                head = self.commit_file(repo, path, "changed\n", "change")
+
+                pull_request = classify_event(repo, "pull_request", base, head)
+                main_push = classify_event(repo, "push", base, head)
+
+                self.assertFalse(pull_request["categories"]["signage_artifact"])
+                self.assertEqual(pull_request["pi4AgentMatrix"], [])
+                self.assertTrue(main_push["categories"]["signage_artifact"])
+                self.assertEqual(len(main_push["pi4AgentMatrix"]), 6)
+                self.assertFalse(main_push["fullSuite"])
+
     def test_manual_schedule_merge_group_and_unstable_push_fail_closed(self) -> None:
         for event in ("workflow_dispatch", "schedule", "merge_group"):
             with self.subTest(event=event):
