@@ -506,6 +506,28 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertIn("signage-lite.service", signage)
         self.assertIn("lightdm.service", signage)
 
+    def test_pi3_health_uses_bounded_cold_display_wait_and_runtime_env(self) -> None:
+        health_tasks = yaml.safe_load(
+            (ANSIBLE / "roles/release_signage/tasks/health_checks.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        unit_health = next(
+            task
+            for task in health_tasks
+            if task["name"] == "Verify Pi3 display and Signage units"
+        )
+        endpoint_health = next(
+            task
+            for task in health_tasks
+            if task["name"] == "Verify authenticated Pi3 Signage endpoints"
+        )
+        self.assertEqual(unit_health["retries"], 13)
+        self.assertEqual(unit_health["delay"], 5)
+        endpoint_command = endpoint_health["ansible.builtin.script"]["cmd"]
+        self.assertIn("--runtime-env", endpoint_command)
+        self.assertIn("release_signage_config_root", endpoint_command)
+
     def test_pi4_builds_are_outside_the_terminal_route(self) -> None:
         kiosk = role_text("release_kiosk")
         prepare = (
