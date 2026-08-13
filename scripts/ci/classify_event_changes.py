@@ -10,10 +10,13 @@ from pathlib import Path
 from typing import Sequence
 
 from classify_changes import (
+    PI4_AGENT_SERVICE_NAMES,
     classify_changes,
     parse_name_status_z,
+    pi4_agent_matrix_for_services,
     render_github_output,
     render_markdown,
+    requires_complete_fleet_artifacts,
 )
 from collect_changed_files import DiffBaseError, collect_changed_files
 
@@ -43,7 +46,17 @@ def classify_event(
         return classify_changes(
             [], force_full_reason=f"stable diff base is unavailable: {error}"
         )
-    return classify_changes(changes)
+    result = classify_changes(changes)
+    if event_name == "push" and any(
+        requires_complete_fleet_artifacts(change.path) for change in changes
+    ):
+        categories = result["categories"]
+        assert isinstance(categories, dict)
+        categories["signage_artifact"] = True
+        result["pi4AgentMatrix"] = pi4_agent_matrix_for_services(
+            PI4_AGENT_SERVICE_NAMES
+        )
+    return result
 
 
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:

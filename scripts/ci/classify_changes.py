@@ -113,6 +113,20 @@ PI4_AGENT_DOCKERFILES = frozenset(
 )
 PI4_AGENT_SHARED_INPUTS = frozenset({".dockerignore", ".trivyignore"})
 POLICY_PATHS = frozenset({".gitleaksignore"})
+CI_CLASSIFIER_CONTRACT_PATHS = frozenset(
+    {
+        "scripts/ci/classify_changes.py",
+        "scripts/ci/classify_event_changes.py",
+        "scripts/ci/tests/test_classify_changes.py",
+        "scripts/ci/tests/test_classify_event_changes.py",
+    }
+)
+COMPLETE_FLEET_ARTIFACT_PATHS = CI_CLASSIFIER_CONTRACT_PATHS | frozenset(
+    {
+        "scripts/deploy/standard-ansible-release.py",
+        "scripts/update-all-clients.sh",
+    }
+)
 
 
 def _has_prefix(path: str, prefix: str) -> bool:
@@ -121,6 +135,11 @@ def _has_prefix(path: str, prefix: str) -> bool:
 
 def _normalize_path(path: str) -> str:
     return PurePosixPath(path).as_posix().removeprefix("./")
+
+
+def requires_complete_fleet_artifacts(path: str) -> bool:
+    """Return whether main must publish one exact-SHA artifact set for every profile."""
+    return _normalize_path(path) in COMPLETE_FLEET_ARTIFACT_PATHS
 
 
 def pi4_agent_services_for_path(path: str) -> frozenset[str]:
@@ -166,6 +185,8 @@ def _base_categories_for_path(path: str) -> frozenset[str] | None:
         ".github/actions/"
     ):
         return FULL_SUITE
+    if normalized in CI_CLASSIFIER_CONTRACT_PATHS:
+        return frozenset({"repo_policy"})
     if normalized == "scripts/deploy/production_config_contract.py":
         return frozenset(
             {"repo_policy", "web", "deploy_contract", "docker_security"}
@@ -442,7 +463,10 @@ def classify_change(change: Change) -> ClassifiedChange:
         docker_images=docker_images_for_path(change.path),
         pi4_agent_services=pi4_agent_services_for_path(change.path),
         release_pair=release_pair,
-        runtime_rehearsal=release_pair,
+        runtime_rehearsal=(
+            release_pair
+            and _normalize_path(change.path) not in CI_CLASSIFIER_CONTRACT_PATHS
+        ),
     )
 
 

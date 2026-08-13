@@ -124,6 +124,19 @@ class ClassifyChangesTests(unittest.TestCase):
         self.assertEqual(self.selected(e2e), {"repo_policy", "e2e"})
         self.assertTrue(e2e["codeql"])
 
+    def test_classifier_contract_uses_only_focused_policy_validation(self) -> None:
+        result = self.classify(
+            Change("M", "scripts/ci/classify_changes.py"),
+            Change("M", "scripts/ci/tests/test_classify_changes.py"),
+        )
+
+        self.assertEqual(self.selected(result), {"repo_policy"})
+        self.assertFalse(result["fullSuite"])
+        self.assertTrue(result["codeql"])
+        self.assertTrue(result["releasePair"])
+        self.assertFalse(result["runtimeRehearsal"])
+        self.assertEqual(result["pi4AgentMatrix"], [])
+
     def test_pi4_agent_dockerfiles_select_client_image_contracts_only(self) -> None:
         expected = {
             "infrastructure/docker/Dockerfile.nfc-agent": "nfc-agent",
