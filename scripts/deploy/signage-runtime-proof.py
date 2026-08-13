@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Controller-owned signage endpoint and displayed-image proof.
 
-The signage credential is read from the already-installed update script on the
-terminal.  It is never accepted as an argument, placed in a child-process
-argument vector, or emitted in the result marker.
+The signage credential is read from a sealed terminal-local configuration file.
+It is never accepted as an argument, placed in a child-process argument vector,
+or emitted in the result marker.
 """
 from __future__ import annotations
 
@@ -25,6 +25,7 @@ from typing import Any
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _ASSIGNMENT_RE = re.compile(r'^([A-Z][A-Z0-9_]*)="([^"\\\r\n]*)"$')
+_RUNTIME_ASSIGNMENT_RE = re.compile(r"^([A-Z][A-Z0-9_]*)=(.+)$")
 _MAX_SCRIPT_BYTES = 256 * 1024
 _MAX_STATUS_BYTES = 64 * 1024
 _MAX_IMAGE_BYTES = 32 * 1024 * 1024
@@ -127,15 +128,9 @@ def _tls_is_insecure(text: str) -> bool:
     return supported[value]
 
 
-def _configuration(path: Path) -> tuple[str, str, bool]:
-    text = _decode_script(path)
-    values = _literal_assignments(text)
-    server_url = values.get("SERVER_URL")
-    image_key = values.get("IMAGE_CLIENT_KEY")
-    legacy_key = values.get("CLIENT_KEY")
-    if image_key is not None and legacy_key is not None and image_key != legacy_key:
-        raise ProofError("installed signage image credentials disagree")
-    client_key = image_key if image_key is not None else legacy_key
+def _validated_configuration(
+    server_url: object, client_key: object, insecure_tls: object
+) -> tuple[str, str, bool]:
     if not isinstance(server_url, str) or not server_url:
         raise ProofError("installed signage server URL is unavailable")
     if not isinstance(client_key, str) or not client_key:
@@ -156,7 +151,58 @@ def _configuration(path: Path) -> tuple[str, str, bool]:
     canonical_url = urllib.parse.urlunsplit(
         (parsed.scheme, parsed.netloc, "", "", "")
     )
-    return canonical_url, client_key, _tls_is_insecure(text)
+    if not isinstance(insecure_tls, bool):
+        raise ProofError("installed signage TLS policy is unavailable")
+    return canonical_url, client_key, insecure_tls
+
+
+def _configuration(path: Path) -> tuple[str, str, bool]:
+    text = _decode_script(path)
+    values = _literal_assignments(text)
+    image_key = values.get("IMAGE_CLIENT_KEY")
+    legacy_key = values.get("CLIENT_KEY")
+    if image_key is not None and legacy_key is not None and image_key != legacy_key:
+        raise ProofError("installed signage image credentials disagree")
+    client_key = image_key if image_key is not None else legacy_key
+    return _validated_configuration(
+        values.get("SERVER_URL"), client_key, _tls_is_insecure(text)
+    )
+
+
+def _runtime_configuration(path: Path) -> tuple[str, str, bool]:
+    text = _decode_script(path)
+    values: dict[str, object] = {}
+    interesting = {
+        "SIGNAGE_SERVER_URL",
+        "SIGNAGE_IMAGE_CLIENT_KEY",
+        "SIGNAGE_ALLOW_INSECURE_TLS",
+    }
+    for line in text.splitlines():
+        if not any(line.startswith(name + "=") for name in interesting):
+            continue
+        match = _RUNTIME_ASSIGNMENT_RE.fullmatch(line)
+        if match is None or match.group(1) not in interesting:
+            raise ProofError("installed signage runtime assignment is unsafe")
+        name, encoded = match.groups()
+        if name in values:
+            raise ProofError("installed signage runtime has duplicate assignments")
+        if name == "SIGNAGE_ALLOW_INSECURE_TLS":
+            if encoded not in {"0", "1"}:
+                raise ProofError("installed signage TLS policy is unsupported")
+            values[name] = encoded == "1"
+            continue
+        try:
+            value = json.loads(encoded)
+        except json.JSONDecodeError as error:
+            raise ProofError("installed signage runtime value is malformed") from error
+        if not isinstance(value, str):
+            raise ProofError("installed signage runtime value is malformed")
+        values[name] = value
+    return _validated_configuration(
+        values.get("SIGNAGE_SERVER_URL"),
+        values.get("SIGNAGE_IMAGE_CLIENT_KEY"),
+        values.get("SIGNAGE_ALLOW_INSECURE_TLS"),
+    )
 
 
 def _opener(insecure_tls: bool) -> urllib.request.OpenerDirector:
@@ -202,8 +248,11 @@ def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def _prove_endpoints(script: Path) -> bytes:
-    server_url, client_key, insecure_tls = _configuration(script)
+def _prove_endpoints(script: Path, runtime_env: Path | None = None) -> bytes:
+    if runtime_env is None:
+        server_url, client_key, insecure_tls = _configuration(script)
+    else:
+        server_url, client_key, insecure_tls = _runtime_configuration(runtime_env)
     opener = _opener(insecure_tls)
     status_body, status_type = _request(
         opener,
@@ -421,6 +470,7 @@ def _replace_current(cache: Path, image: bytes) -> str:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config-script", type=Path, default=_DEFAULT_SCRIPT)
+    parser.add_argument("--runtime-env", type=Path)
     parser.add_argument("--cache-dir", type=Path, default=_DEFAULT_CACHE)
     parser.add_argument("--run-id")
     mode = parser.add_mutually_exclusive_group(required=True)
@@ -443,7 +493,7 @@ def main() -> int:
             if args.ansible_marker:
                 print(f"SIGNAGE_MAINTENANCE_SEALED:{digest}")
             return 0
-        image = _prove_endpoints(args.config_script)
+        image = _prove_endpoints(args.config_script, args.runtime_env)
         digest = hashlib.sha256(image).hexdigest()
         if args.refresh_image:
             if args.run_id is None:

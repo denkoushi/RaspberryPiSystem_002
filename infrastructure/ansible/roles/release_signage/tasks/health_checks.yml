@@ -7,8 +7,10 @@
       - "{{ item }}"
   loop: "{{ ['lightdm.service'] + release_signage_services }}"
   changed_when: false
-  retries: 5
-  delay: 3
+  # A cold Pi3 display can need the full 30-second ExecStartPre wait and one
+  # bounded restart before X is ready.
+  retries: 13
+  delay: 5
   register: release_signage_unit_health
   until: release_signage_unit_health.rc == 0
 
@@ -17,6 +19,7 @@
     cmd: >-
       {{ playbook_dir }}/../../../scripts/deploy/signage-runtime-proof.py
       --check-endpoints
+      --runtime-env {{ release_signage_config_root }}/runtime.env
   register: release_signage_endpoint_health
   changed_when: false
   retries: 3
