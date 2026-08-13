@@ -456,6 +456,44 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertFalse(controller_temp["become"])
         self.assertFalse(extraction["become"])
 
+        legacy_cleanup = next(
+            task
+            for task in prepare_tasks
+            if task["name"] == "Remove an incomplete one-time Pi3 legacy snapshot"
+        )
+        legacy_stat = next(
+            task
+            for task in prepare_tasks
+            if task["name"] == "Inspect currently installed Pi3 payloads"
+        )
+        legacy_copy = next(
+            task
+            for task in prepare_tasks
+            if task["name"] == "Capture the currently installed Pi3 runtime once"
+        )
+        legacy_assert = next(
+            task
+            for task in prepare_tasks
+            if task["name"]
+            == "Require existing Pi3 legacy payloads to be regular files"
+        )
+        self.assertEqual(
+            legacy_cleanup["ansible.builtin.file"],
+            {"path": "{{ release_signage_legacy }}", "state": "absent"},
+        )
+        self.assertFalse(legacy_stat["ansible.builtin.stat"]["follow"])
+        self.assertIn(
+            "item.stat.isreg | default(false) | bool",
+            legacy_assert["ansible.builtin.assert"]["that"][0],
+        )
+        self.assertEqual(
+            legacy_copy["loop"],
+            "{{ release_signage_legacy_payload_stats.results | default([]) }}",
+        )
+        self.assertEqual(
+            legacy_copy["when"], "item.stat.exists | default(false) | bool"
+        )
+
     def test_pi3_release_contains_only_signage_runtime_services(self) -> None:
         signage = role_text("release_signage")
         for forbidden in (
