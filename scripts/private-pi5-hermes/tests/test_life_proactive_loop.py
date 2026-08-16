@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT))
 
 from lib.life_pilot_policy import LifePilotPolicy  # noqa: E402
 from lib.life_proactive_loop import (  # noqa: E402
+    MORNING_MESSAGE_MAX_CHARS,
     build_followup_checkin_message,
     build_proactive_checkin_message,
     build_proactive_components,
@@ -73,6 +74,14 @@ class FakeSender:
 
     def __call__(self, channel_id: str, content: str) -> DiscordSendResult:
         self.calls.append((channel_id, content))
+        return DiscordSendResult(ok=True, status_code=200)
+
+
+class FailOnceSender(FakeSender):
+    def __call__(self, channel_id: str, content: str) -> DiscordSendResult:
+        self.calls.append((channel_id, content))
+        if len(self.calls) == 1:
+            return DiscordSendResult(ok=False, status_code=503, error="temporary")
         return DiscordSendResult(ok=True, status_code=200)
 
 
@@ -143,13 +152,12 @@ class LifeProactiveLoopTests(unittest.TestCase):
             message = build_proactive_checkin_message("morning", root, now=now)
 
             self.assertIn("おはようございます", message)
-            self.assertIn("今日まず見るなら", message)
-            self.assertIn("[1] これをやる", message)
-            self.assertIn("[2] 夕方にもう一度", message)
-            self.assertIn("[3] 今日は外す", message)
-            self.assertIn("ボタンで返信できます", message)
-            self.assertIn("/life-reply 1", message)
+            self.assertIn("無理のない範囲でひとつだけ", message)
+            self.assertIn("【今日はこちらから】", message)
+            self.assertIn("返信は下のボタンからどうぞ", message)
+            self.assertIn("/life-reply 1・2・3", message)
             self.assertNotIn("boundary=local-only/no-tools", message)
+            self.assertLessEqual(len(message), MORNING_MESSAGE_MAX_CHARS)
 
     def test_morning_checkin_skips_empty_candidate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -198,8 +206,8 @@ class LifeProactiveLoopTests(unittest.TestCase):
 
             message = build_proactive_checkin_message("morning", root, now=now)
 
-            self.assertIn("今日まず見るなら:\n燃えるごみを出す", message)
-            self.assertIn("ほか:\n- ラズパイシステムのデモ準備", message)
+            self.assertIn("【今日はこちらから】\n燃えるごみを出す", message)
+            self.assertIn("ほかにも1件ありますが、まずはこれだけで大丈夫です。", message)
 
     def test_morning_checkin_softens_when_recent_notes_look_tired(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -252,7 +260,7 @@ class LifeProactiveLoopTests(unittest.TestCase):
             )
 
             self.assertIn("前に後回しにしたものを、もう一度だけ出します。", message)
-            self.assertIn("今日まず見るなら:\n風呂洗い", message)
+            self.assertIn("【今日はこちらから】\n風呂洗い", message)
             checkins = [
                 json.loads(line)
                 for line in (root / "proactive" / "checkins.jsonl")
@@ -331,7 +339,7 @@ class LifeProactiveLoopTests(unittest.TestCase):
 
             self.assertIn("補足:", message)
             self.assertIn("今日のメモ: 今日は少し眠い。買い物リストを見直す。", message)
-            self.assertIn("今日まず見るなら:\nObsidian新着を見返す", message)
+            self.assertIn("【今日はこちらから】\nObsidian新着を見返す", message)
             self.assertIn("今日は軽く1つだけ見ます", message)
             checkin = json.loads(
                 (root / "proactive" / "checkins.jsonl")
@@ -370,7 +378,7 @@ class LifeProactiveLoopTests(unittest.TestCase):
 
             self.assertIn("補足:", message)
             self.assertIn("Xリンク: あとで読みたいX投稿", message)
-            self.assertIn("今日まず見るなら:\n共有メモを見返す", message)
+            self.assertIn("【今日はこちらから】\n共有メモを見返す", message)
             checkin = json.loads(
                 (root / "proactive" / "checkins.jsonl")
                 .read_text(encoding="utf-8")
@@ -401,7 +409,45 @@ class LifeProactiveLoopTests(unittest.TestCase):
 
             self.assertIn("補足:", message)
             self.assertIn("画像: screenshot-shopping", message)
-            self.assertIn("今日まず見るなら:\nObsidian新着画像を確認: screenshot-shopping", message)
+            self.assertIn("【今日はこちらから】\nObsidian新着画像を確認: screenshot-shopping", message)
+
+    def test_morning_checkin_stays_within_one_iphone_screen_with_long_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            now = datetime(2026, 6, 6, 7, 30, tzinfo=timezone(timedelta(hours=9)))
+            for index in range(8):
+                _write_reminder(
+                    root,
+                    {
+                        "createdAt": now.isoformat(timespec="seconds"),
+                        "status": "pending",
+                        "text": f"長い未処理項目 {index + 1} " + "あ" * 300,
+                    },
+                )
+            _write_obsidian_note(
+                root,
+                "00_Inbox/long.md",
+                "# 長いメモ\n\n" + "気になる内容" * 100,
+                now - timedelta(minutes=1),
+            )
+            _write_discord_inbox(
+                root,
+                {
+                    "createdAt": (now - timedelta(minutes=2)).isoformat(timespec="seconds"),
+                    "source": "discord",
+                    "status": "new",
+                    "text": "あとで読む " + "長い共有内容" * 100,
+                    "urls": [],
+                    "attachments": [],
+                    "untrusted": True,
+                },
+            )
+
+            message = build_proactive_checkin_message("morning", root, now=now)
+
+            self.assertLessEqual(len(message), MORNING_MESSAGE_MAX_CHARS)
+            self.assertIn("【今日はこちらから】", message)
+            self.assertIn("返信は下のボタンからどうぞ", message)
 
     def test_obsidian_sensitive_lines_are_not_shown_in_morning_checkin(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -484,6 +530,42 @@ class LifeProactiveLoopTests(unittest.TestCase):
             ]
             self.assertEqual(checkins[0]["status"], "pending_reply")
             self.assertEqual(checkins[0]["channelId"], "channel-1")
+
+    def test_morning_dispatch_retries_after_send_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            now = datetime(2026, 6, 6, 7, 30, tzinfo=timezone(timedelta(hours=9)))
+            sender = FailOnceSender()
+            _write_basic_reminder(root, now)
+
+            failed = dispatch_proactive_checkin(
+                root,
+                "morning",
+                now=now,
+                sender=sender,
+                channel_id="channel-1",
+                user_id="user-1",
+            )
+            retried = dispatch_proactive_checkin(
+                root,
+                "morning",
+                now=now + timedelta(minutes=1),
+                sender=sender,
+                channel_id="channel-1",
+                user_id="user-1",
+            )
+
+            self.assertFalse(failed.ok)
+            self.assertEqual(failed.failed, 1)
+            self.assertTrue(retried.ok)
+            self.assertEqual(retried.sent, 1)
+            self.assertEqual(len(sender.calls), 2)
+            checkin = json.loads(
+                (root / "proactive" / "checkins.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()[0]
+            )
+            self.assertEqual(checkin["status"], "pending_reply")
 
     def test_remembered_context_can_be_used_for_dispatch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

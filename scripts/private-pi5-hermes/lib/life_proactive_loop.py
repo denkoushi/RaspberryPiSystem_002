@@ -96,6 +96,7 @@ except ImportError:
 
 
 CHECKIN_MODES = {"morning", "evening", "followup"}
+MORNING_MESSAGE_MAX_CHARS = 400
 
 LOW_ENERGY_KEYWORDS = (
     "疲れ",
@@ -461,6 +462,72 @@ def _morning_briefing_line(context: dict[str, Any]) -> str:
     return "今日は1つだけ確認します。"
 
 
+def _append_morning_optional(
+    sections: list[str],
+    block: str,
+    *,
+    opening: str,
+    closing: str,
+) -> None:
+    clean = str(block or "").strip()
+    if not clean:
+        return
+    candidate = [opening, *sections, clean, closing]
+    if len("\n\n".join(candidate)) <= MORNING_MESSAGE_MAX_CHARS:
+        sections.append(clean)
+
+
+def _build_morning_message(
+    briefing: str,
+    candidate_text: str,
+    *,
+    remaining_count: int = 0,
+    source_detail: str = "",
+    debug_line: str = "",
+) -> str:
+    opening = "\n".join(
+        [
+            "おはようございます。",
+            "今朝も、無理のない範囲でひとつだけ整えましょう。",
+            "",
+            "【確認できたこと】",
+            _clip_line(briefing, 100),
+            "",
+            "【今日はこちらから】",
+            _clip_line(candidate_text, 100),
+        ]
+    )
+    closing = (
+        "返信は下のボタンからどうぞ。\n"
+        "表示されない時だけ /life-reply 1・2・3 または文章。"
+    )
+    sections: list[str] = []
+    if source_detail:
+        _append_morning_optional(
+            sections,
+            f"補足: {_clip_line(source_detail, 110)}",
+            opening=opening,
+            closing=closing,
+        )
+    if remaining_count > 0:
+        _append_morning_optional(
+            sections,
+            f"ほかにも{remaining_count}件ありますが、まずはこれだけで大丈夫です。",
+            opening=opening,
+            closing=closing,
+        )
+    _append_morning_optional(
+        sections,
+        debug_line,
+        opening=opening,
+        closing=closing,
+    )
+    message = "\n\n".join([opening, *sections, closing]).strip()
+    if len(message) > MORNING_MESSAGE_MAX_CHARS:
+        raise ValueError("morning check-in exceeded its message limit")
+    return message
+
+
 def _choose_morning_candidate(
     reminders: list[dict[str, Any]],
     entries: list[tuple[str, str]],
@@ -520,25 +587,18 @@ def _remaining_candidate_lines(
     return "\n".join(lines)
 
 
-def _remaining_candidate_lines_optional(
+def _remaining_candidate_count(
     reminders: list[dict[str, Any]],
     candidate_text: str,
     now: datetime,
-    *,
-    limit: int = 3,
-) -> str:
+) -> int:
     ordered = _scheduled_for_day(reminders, now) + _unscheduled(reminders) + _scheduled_next(reminders, now)
-    lines: list[str] = []
     seen: set[str] = set()
     for item in ordered:
         text = _candidate_text(item)
-        if not text or text == candidate_text or text in seen:
-            continue
-        seen.add(text)
-        lines.append(f"- {text}")
-        if len(lines) >= limit:
-            break
-    return "\n".join(lines)
+        if text and text != candidate_text:
+            seen.add(text)
+    return len(seen)
 
 
 def _reminder_lines(items: list[dict[str, Any]], empty: str, limit: int = 4) -> str:
@@ -639,26 +699,20 @@ def build_proactive_checkin_message(
         candidate_text = candidate["text"]
         if not _checkin_candidate_is_dispatchable(mode, candidate):
             return ""
-        lines = [
-            "おはようございます。今日の確認です。",
-            "",
-            _morning_briefing_line(context),
-            "",
-            "今日まず見るなら:",
-            candidate_text,
-        ]
-        remaining = _remaining_candidate_lines_optional(reminders, candidate_text, current, limit=3)
-        if remaining:
-            lines.extend(["", "ほか:", remaining])
+        remaining_count = _remaining_candidate_count(reminders, candidate_text, current)
+        source_detail = ""
         if candidate.get("source") == "obsidian_inbox":
-            lines.extend(["", "補足:", format_obsidian_inbox_lines(obsidian_items, limit=3)])
+            source_detail = format_obsidian_inbox_lines(obsidian_items, limit=1)
         if candidate.get("source") == "discord_inbox":
-            lines.extend(["", "補足:", format_discord_inbox_lines(discord_items, limit=3)])
-        lines.extend(["", "返信:", _format_options(mode)])
+            source_detail = format_discord_inbox_lines(discord_items, limit=1)
         debug_line = _optional_debug_line(checkin=mode, boundary="local-only/no-tools")
-        if debug_line:
-            lines.extend(["", debug_line])
-        return "\n".join(lines).strip()
+        return _build_morning_message(
+            _morning_briefing_line(context),
+            candidate_text,
+            remaining_count=remaining_count,
+            source_detail=source_detail,
+            debug_line=debug_line,
+        )
 
     today_key = _date_key(current)
     today_entries = [entry for entry in entries if entry[0].startswith(today_key)]
