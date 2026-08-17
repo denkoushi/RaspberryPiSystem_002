@@ -18,6 +18,7 @@ import { Button } from '../../components/ui/Button';
 import { useAuth } from '../../contexts/AuthContext';
 import { TorqueTrainingAdminDialog } from '../../features/assembly/torque-training/TorqueTrainingAdminDialog';
 import { useTorqueTrainingAdminController } from '../../features/assembly/torque-training/useTorqueTrainingAdminController';
+import { useTorqueTrainingCompletion } from '../../features/assembly/torque-training/useTorqueTrainingCompletion';
 import { acquireTorqueAgentTrainingLease, getTorqueAgentHealth, releaseTorqueAgentLease } from '../../features/assembly/torqueAgentClient';
 import { useTorqueTrainingAgentHeartbeat } from '../../features/assembly/useTorqueTrainingAgentHeartbeat';
 import { useNfcStream } from '../../hooks/useNfcStream';
@@ -125,9 +126,7 @@ export function KioskAssemblyTrainingPage() {
     return () => window.clearInterval(timer);
   }, [session]);
 
-  useEffect(() => {
-    if (session?.status !== 'COMPLETED' || !lease) return;
-    void releaseTorqueAgentLease('TRAINING_COMPLETED');
+  const handleTrainingCompleted = useCallback(() => {
     setLease(null);
     setOperator(null);
     setSelectedVersionId('');
@@ -136,7 +135,15 @@ export function KioskAssemblyTrainingPage() {
     setTrainingWrenchConnection(null);
     setAgentHeartbeatError(null);
     setMessage('訓練が完了しました。次の作業者はNFCタグを読み取ってください。');
-  }, [lease, session?.status]);
+  }, []);
+
+  useTorqueTrainingCompletion({
+    sessionId: session?.id ?? null,
+    status: session?.status ?? null,
+    hasLocalLease: lease !== null,
+    releaseLocalLease: releaseTorqueAgentLease,
+    onCompleted: handleTrainingCompleted
+  });
 
   useEffect(() => {
     if (!session || session.status !== 'IN_PROGRESS' || lease) return;
