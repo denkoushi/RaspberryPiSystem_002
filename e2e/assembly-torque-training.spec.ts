@@ -197,6 +197,9 @@ test('NFCから5回完了、本人情報消去、ADMIN設定復帰を確認す�
     if (path === '/api/torque-training/operator-context') return route.fulfill({ json: { employee: { id: employeeId, employeeCode: 'E2E001', displayName: 'E2E 作業者' }, currentSession: null, metrics: [] } });
     if (path === '/api/torque-training/sessions' && request.method() === 'POST') return route.fulfill({ status: 201, json: { session: session() } });
     if (path.endsWith(`/sessions/${session().id}`) && request.method() === 'GET') {
+      if (agentAcquired && trainingHeartbeats >= 5) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
       return route.fulfill({ json: { session: session(agentAcquired && trainingHeartbeats >= 5 ? 'COMPLETED' : 'IN_PROGRESS') } });
     }
     if (path.endsWith('/wrench-confirmations') && request.method() === 'POST') return route.fulfill({ status: 201, json: { confirmation: { id: '88888888-8888-4888-8888-888888888888', torqueWrenchProfileId: profileId, serialNumber: '702902S', settingHistoryId: '99999999-9999-4999-8999-999999999999' } } });
@@ -226,6 +229,19 @@ test('NFCから5回完了、本人情報消去、ADMIN設定復帰を確認す�
     if (path === '/heartbeat') {
       trainingHeartbeats += 1;
       trainingHeartbeatPayloads.push(route.request().postDataJSON() as Record<string, unknown>);
+      if (trainingHeartbeats >= 5) {
+        return route.fulfill({ headers, json: {
+          ok: true,
+          ready: false,
+          owner: null,
+          leaseOwned: false,
+          bound: false,
+          state: 'available',
+          bluetoothPowered: false,
+          hidExclusive: false,
+          lastError: null
+        } });
+      }
       return route.fulfill({ headers, json: {
         ok: true,
         ready: true,
