@@ -73,26 +73,27 @@ const adminResult: MockAdminResult = {
   }
 };
 
-function session(status: 'IN_PROGRESS' | 'COMPLETED' = 'IN_PROGRESS') {
-  const attempts = status === 'COMPLETED'
-    ? Array.from({ length: 5 }, (_, index) => ({
-        id: `attempt-${index + 1}`,
-        attemptNo: index + 1,
-        value: '10',
-        inputUnit: 'N-m',
-        valueNm: '10',
-        nominalTorque: '10',
-        lowerLimit: '9',
-        upperLimit: '11',
-        deviationNm: '0',
-        deviationPercent: '0',
-        absoluteDeviationPercent: '0',
-        judgement: 'OK',
-        accepted: true,
-        ignoredReason: null,
-        recordedAt: '2026-08-09T00:00:00.000Z'
-      }))
-    : [];
+function session(
+  status: 'IN_PROGRESS' | 'COMPLETED' = 'IN_PROGRESS',
+  attemptCount = status === 'COMPLETED' ? 5 : 0
+) {
+  const attempts = Array.from({ length: attemptCount }, (_, index) => ({
+    id: `attempt-${index + 1}`,
+    attemptNo: index + 1,
+    value: '10',
+    inputUnit: 'N-m',
+    valueNm: '10',
+    nominalTorque: '10',
+    lowerLimit: '9',
+    upperLimit: '11',
+    deviationNm: '0',
+    deviationPercent: '0',
+    absoluteDeviationPercent: '0',
+    judgement: 'OK',
+    accepted: true,
+    ignoredReason: null,
+    recordedAt: '2026-08-09T00:00:00.000Z'
+  }));
   return {
     id: '77777777-7777-4777-8777-777777777777',
     requestId: 'training-e2e-request',
@@ -104,7 +105,7 @@ function session(status: 'IN_PROGRESS' | 'COMPLETED' = 'IN_PROGRESS') {
     targetAttemptCount: 5,
     program: { ...version, code: program.code },
     attempts,
-    hasWrenchConfirmation: status !== 'IN_PROGRESS',
+    hasWrenchConfirmation: attemptCount > 0 || status !== 'IN_PROGRESS',
     startedAt: '2026-08-09T00:00:00.000Z',
     completedAt: status === 'COMPLETED' ? '2026-08-09T00:05:00.000Z' : null,
     cancelledAt: null,
@@ -117,11 +118,13 @@ function session(status: 'IN_PROGRESS' | 'COMPLETED' = 'IN_PROGRESS') {
 async function installMockNfc(page: Page): Promise<void> {
   await page.addInitScript(() => {
     type MockSocket = {
+      url: string;
       readyState: number;
       onmessage: ((event: MessageEvent<string>) => void) | null;
     };
     type TestWindow = Window & {
       __emitTrainingNfc?: (uid: string) => void;
+      __emitTorqueTrainingCommitted?: (sessionId: string, sourceEventKey: string) => void;
       __trainingNfcReady?: boolean;
     };
     const sockets: MockSocket[] = [];
@@ -129,12 +132,14 @@ async function installMockNfc(page: Page): Promise<void> {
       static readonly CONNECTING = 0;
       static readonly OPEN = 1;
       static readonly CLOSED = 3;
+      readonly url: string;
       readyState = MockWebSocket.CONNECTING;
       onopen: (() => void) | null = null;
       onmessage: ((event: MessageEvent<string>) => void) | null = null;
       onclose: (() => void) | null = null;
       onerror: (() => void) | null = null;
-      constructor() {
+      constructor(url: string | URL) {
+        this.url = String(url);
         sockets.push(this);
         window.setTimeout(() => {
           this.readyState = MockWebSocket.OPEN;
@@ -155,11 +160,33 @@ async function installMockNfc(page: Page): Promise<void> {
         if (socket.readyState === MockWebSocket.OPEN) socket.onmessage?.(new MessageEvent('message', { data: payload }));
       }
     };
+    (window as TestWindow).__emitTorqueTrainingCommitted = (sessionId, sourceEventKey) => {
+      const payload = JSON.stringify({
+        type: 'torqueRecordCommitted',
+        sessionId,
+        sourceEventKey,
+        acknowledgedAt: new Date().toISOString()
+      });
+      for (const socket of sockets) {
+        if (socket.url === 'ws://127.0.0.1:7073/stream' && socket.readyState === MockWebSocket.OPEN) {
+          socket.onmessage?.(new MessageEvent('message', { data: payload }));
+        }
+      }
+    };
   });
 }
 
 async function emitNfc(page: Page, uid: string): Promise<void> {
   await page.evaluate((value) => (window as Window & { __emitTrainingNfc?: (nextUid: string) => void }).__emitTrainingNfc?.(value), uid);
+}
+
+async function emitTorqueTrainingCommitted(page: Page, sessionId: string, sourceEventKey: string): Promise<void> {
+  await page.evaluate(
+    ([nextSessionId, nextSourceEventKey]) => (
+      window as Window & { __emitTorqueTrainingCommitted?: (id: string, eventKey: string) => void }
+    ).__emitTorqueTrainingCommitted?.(nextSessionId, nextSourceEventKey),
+    [sessionId, sourceEventKey]
+  );
 }
 
 async function expectNoHorizontalOverflow(page: Page): Promise<void> {
@@ -176,6 +203,8 @@ test.use({ userAgent: LINUX_KIOSK_USER_AGENT });
 test('NFCから5回完了、本人情報消去、ADMIN設定復帰を確認する', async ({ page }) => {
   let agentAcquired = false;
   let trainingHeartbeats = 0;
+  let trainingSessionGets = 0;
+  let committedAttemptCount = 0;
   const trainingHeartbeatPayloads: Array<Record<string, unknown>> = [];
   let adminResults = [adminResult];
   await installMockNfc(page);
@@ -197,10 +226,9 @@ test('NFCから5回完了、本人情報消去、ADMIN設定復帰を確認す�
     if (path === '/api/torque-training/operator-context') return route.fulfill({ json: { employee: { id: employeeId, employeeCode: 'E2E001', displayName: 'E2E 作業者' }, currentSession: null, metrics: [] } });
     if (path === '/api/torque-training/sessions' && request.method() === 'POST') return route.fulfill({ status: 201, json: { session: session() } });
     if (path.endsWith(`/sessions/${session().id}`) && request.method() === 'GET') {
-      if (agentAcquired && trainingHeartbeats >= 5) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
-      return route.fulfill({ json: { session: session(agentAcquired && trainingHeartbeats >= 5 ? 'COMPLETED' : 'IN_PROGRESS') } });
+      trainingSessionGets += 1;
+      const status = committedAttemptCount >= 5 ? 'COMPLETED' : 'IN_PROGRESS';
+      return route.fulfill({ json: { session: session(status, committedAttemptCount) } });
     }
     if (path.endsWith('/wrench-confirmations') && request.method() === 'POST') return route.fulfill({ status: 201, json: { confirmation: { id: '88888888-8888-4888-8888-888888888888', torqueWrenchProfileId: profileId, serialNumber: '702902S', settingHistoryId: '99999999-9999-4999-8999-999999999999' } } });
     if (path.includes('/admin/torque-training/programs') && request.method() === 'GET') return route.fulfill({ json: { programs: [program] } });
@@ -279,9 +307,13 @@ test('NFCから5回完了、本人情報消去、ADMIN設定復帰を確認す�
   await expectMaxWidth(page.getByTestId('torque-training-wrench-connection'), 512);
   const attemptHistory = page.getByRole('region', { name: '訓練試行履歴' });
   await expectMaxWidth(attemptHistory, 512);
-  await expect(attemptHistory.getByTestId('torque-training-attempt-1')).toContainText('10 Nm', { timeout: 15_000 });
-  await expect(attemptHistory.getByTestId('torque-training-attempt-1')).toContainText('OK', { timeout: 15_000 });
-  expect(trainingHeartbeats).toBeGreaterThanOrEqual(5);
+  await expect.poll(() => trainingHeartbeats, { timeout: 15_000 }).toBeGreaterThanOrEqual(5);
+  const sessionGetsBeforeFallback = trainingSessionGets;
+  await expect.poll(() => trainingSessionGets, { timeout: 3_000 }).toBeGreaterThan(sessionGetsBeforeFallback);
+  committedAttemptCount = 1;
+  await emitTorqueTrainingCommitted(page, session().id, 'training-source-event-1');
+  await expect(attemptHistory.getByTestId('torque-training-attempt-1')).toContainText('10 Nm', { timeout: 1_000 });
+  await expect(attemptHistory.getByTestId('torque-training-attempt-1')).toContainText('OK', { timeout: 1_000 });
   expect(trainingHeartbeatPayloads.slice(0, 5)).toHaveLength(5);
   for (const payload of trainingHeartbeatPayloads.slice(0, 5)) {
     expect(payload).toEqual({
@@ -292,6 +324,8 @@ test('NFCから5回完了、本人情報消去、ADMIN設定復帰を確認す�
       targetKind: 'training'
     });
   }
+  committedAttemptCount = 5;
+  await emitTorqueTrainingCommitted(page, session().id, 'training-source-event-5');
   await expect(page.getByText('訓練が完了しました。次の作業者はNFCタグを読み取ってください。')).toBeVisible();
   await expect(page.getByText('E2E 作業者', { exact: true })).toHaveCount(0);
 
