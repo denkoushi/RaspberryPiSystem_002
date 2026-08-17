@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { buttonClassName } from '../../components/ui/Button';
 
 import { KIOSK_ASSEMBLY_HOME_PATH } from './assemblyRoutes';
+import { AssemblySessionStatusNotice } from './AssemblySessionStatusNotice';
 
 export type AssemblyWorkSessionHeaderProps = {
   productNo: string;
@@ -36,16 +37,7 @@ export function AssemblyWorkSessionHeader({
           {productNo} / {modelCode} / {procedurePattern}
         </p>
       </div>
-      <div
-        className="min-w-0 truncate rounded border border-white/10 bg-slate-950/65 px-3 py-2 text-sm font-semibold text-amber-200"
-        role="status"
-        aria-live="polite"
-        aria-atomic="true"
-        data-testid="assembly-work-session-status"
-        title={statusMessage ?? undefined}
-      >
-        {statusMessage ?? ' '}
-      </div>
+      <AssemblySessionStatusNotice message={statusMessage} />
       <div className="flex min-w-0 items-center gap-x-2 whitespace-nowrap text-xs text-white/60">
         <span className="shrink-0">{procedureModeLabel}</span>
         <span className="min-w-0 truncate" title={currentPositionLabel}>

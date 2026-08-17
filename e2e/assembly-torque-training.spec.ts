@@ -259,18 +259,28 @@ test('NFCから5回完了、本人情報消去、ADMIN設定復帰を確認す�
 
   await page.goto('/kiosk/assembly/training', { waitUntil: 'networkidle' });
   await expect.poll(() => page.evaluate(() => Boolean((window as Window & { __trainingNfcReady?: boolean }).__trainingNfcReady))).toBe(true);
+  await expectMaxWidth(page.getByTestId('torque-training-preparation'), 576);
+  await expectMaxWidth(page.getByTestId('torque-training-nfc-guide'), 448);
   await emitNfc(page, 'NFC-E2E-TRAINING');
   await expect(page.getByText('E2E 作業者', { exact: true })).toBeVisible();
+  await expectMaxWidth(page.getByTestId('torque-training-operator-card'), 384);
   const trainingMenu = page.getByLabel('対象ボルト・訓練メニュー');
   await expectMaxWidth(trainingMenu, 576);
+  await expect(page.getByTestId('assembly-work-session-status')).toHaveAttribute('role', 'status');
   await expectNoHorizontalOverflow(page);
   await trainingMenu.selectOption(versionId);
   await page.getByRole('button', { name: '訓練を開始' }).click();
   await expect(page.getByText('締付中は目標値を隠し、入力後に結果を表示します。')).toBeVisible();
+  await expectMaxWidth(page.getByTestId('torque-training-target-summary'), 448);
   await expect(page.getByText(/目標 10 Nm/)).toHaveCount(0);
   await expect(page.getByText('torque-agent自動検出: 702902S')).toBeVisible();
+  await expectMaxWidth(page.getByTestId('torque-training-wrench-detection'), 448);
   await page.getByRole('button', { name: '検出レンチを確認して接続' }).click();
-  await expect(page.getByText(/実測 10 Nm \/ 目標 10 Nm/).first()).toBeVisible({ timeout: 15_000 });
+  await expectMaxWidth(page.getByTestId('torque-training-wrench-connection'), 512);
+  const attemptHistory = page.getByRole('region', { name: '訓練試行履歴' });
+  await expectMaxWidth(attemptHistory, 512);
+  await expect(attemptHistory.getByTestId('torque-training-attempt-1')).toContainText('10 Nm', { timeout: 15_000 });
+  await expect(attemptHistory.getByTestId('torque-training-attempt-1')).toContainText('OK', { timeout: 15_000 });
   expect(trainingHeartbeats).toBeGreaterThanOrEqual(5);
   expect(trainingHeartbeatPayloads.slice(0, 5)).toHaveLength(5);
   for (const payload of trainingHeartbeatPayloads.slice(0, 5)) {
