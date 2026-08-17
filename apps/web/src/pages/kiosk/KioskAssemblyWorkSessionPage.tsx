@@ -34,6 +34,7 @@ import {
   sessionCheckItemsToCanvas,
   takeoverTorqueAgentLease,
   templateToCanvasBolts,
+  TorqueResultHistoryRow,
   useAssemblyWorkProcedureSequence,
   useTorqueRecordLiveRefresh
 } from '../../features/assembly';
@@ -784,20 +785,14 @@ export function KioskAssemblyWorkSessionPage() {
           <h3 className="mt-3 shrink-0 text-sm font-bold">履歴</h3>
           <div className="mt-2 min-h-32 flex-1 overflow-y-auto rounded border border-white/10">
             {session.torqueRecords.slice().reverse().map((record) => (
-              <div key={record.id} className="grid min-h-[4.5rem] grid-cols-[1fr_5.5rem_5.5rem] items-center gap-2 border-b border-white/10 px-3 py-2 text-xs">
-                <div>
-                  <div className="font-semibold">丸数字 {record.markerNo}{record.serialNumberSnapshot ? ` / ${record.serialNumberSnapshot}` : ''}</div>
-                  <div className="text-white/50">{new Date(record.recordedAt).toLocaleString()}</div>
-                </div>
-                <div className="text-2xl font-bold tabular-nums">{record.value ?? '-'}</div>
-                <div className={
-                  record.judgement === 'ignored'
-                    ? 'text-sm font-semibold text-slate-300'
-                    : `text-2xl font-bold tabular-nums ${record.judgement === 'ok' ? 'text-emerald-300' : 'text-rose-300'}`
-                }>
-                  {record.judgement.toUpperCase()}
-                </div>
-              </div>
+              <TorqueResultHistoryRow
+                key={record.id}
+                locationLabel={`丸数字 ${record.markerNo}${record.serialNumberSnapshot ? ` / ${record.serialNumberSnapshot}` : ''}`}
+                recordedAt={record.recordedAt}
+                valueLabel={record.value ?? '-'}
+                resultLabel={record.judgement.toUpperCase()}
+                resultTone={record.judgement === 'ignored' ? 'neutral' : record.judgement === 'ok' ? 'success' : 'failure'}
+              />
             ))}
           </div>
         </section>

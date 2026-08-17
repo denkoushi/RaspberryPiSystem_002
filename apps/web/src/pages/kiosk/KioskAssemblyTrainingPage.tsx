@@ -9,6 +9,7 @@ import {
   listTorqueTrainingPrograms,
   resolveTorqueTrainingOperator,
   startTorqueTrainingSession,
+  type TorqueTrainingAttemptApi,
   type TorqueTrainingOperatorContextApi,
   type TorqueTrainingProgramApi,
   type TorqueTrainingSessionApi
@@ -16,6 +17,11 @@ import {
 import { getApiErrorMessage } from '../../api/errors';
 import { Button } from '../../components/ui/Button';
 import { useAuth } from '../../contexts/AuthContext';
+import {
+  AssemblySessionStatusNotice,
+  TorqueTrainingAttemptHistory,
+  type TorqueTrainingAttemptHistoryItem
+} from '../../features/assembly';
 import { TorqueTrainingAdminDialog } from '../../features/assembly/torque-training/TorqueTrainingAdminDialog';
 import { useTorqueTrainingAdminController } from '../../features/assembly/torque-training/useTorqueTrainingAdminController';
 import { useTorqueTrainingCompletion } from '../../features/assembly/torque-training/useTorqueTrainingCompletion';
@@ -25,6 +31,26 @@ import { useNfcStream } from '../../hooks/useNfcStream';
 
 function requestId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`;
+}
+
+function trainingAttemptPresentation(judgement: TorqueTrainingAttemptApi['judgement']): Pick<TorqueTrainingAttemptHistoryItem, 'resultLabel' | 'resultTone'> {
+  if (judgement === 'OK') return { resultLabel: 'OK', resultTone: 'success' };
+  if (judgement === 'UNDER') return { resultLabel: '弱い', resultTone: 'failure' };
+  if (judgement === 'OVER') return { resultLabel: '強い', resultTone: 'failure' };
+  return { resultLabel: '記録外', resultTone: 'neutral' };
+}
+
+function toTrainingAttemptHistoryItem(attempt: TorqueTrainingAttemptApi, attemptNo: number): TorqueTrainingAttemptHistoryItem {
+  return {
+    key: attempt.id,
+    attemptNo,
+    recordedAt: attempt.recordedAt,
+    valueLabel: attempt.valueNm ? `${attempt.valueNm} Nm` : '-',
+    ...trainingAttemptPresentation(attempt.judgement),
+    details: attempt.nominalTorque
+      ? `目標 ${attempt.nominalTorque} Nm / 差 ${attempt.deviationPercent ?? '-'}%`
+      : null
+  };
 }
 
 export function KioskAssemblyTrainingPage() {
@@ -237,38 +263,57 @@ export function KioskAssemblyTrainingPage() {
     setMessage('NFCタグを読み取って訓練者を確認してください。');
   };
 
+  const visibleError = agentHeartbeatError ?? agentHeartbeat.error ?? error;
+  const regularAttemptIds = new Set<string>();
+  const trainingAttemptItems: Array<TorqueTrainingAttemptHistoryItem | null> = session
+    ? Array.from({ length: session.targetAttemptCount }, (_, index) => {
+        const attempt = session.attempts.find((item) => item.attemptNo === index + 1);
+        if (!attempt) return null;
+        regularAttemptIds.add(attempt.id);
+        return toTrainingAttemptHistoryItem(attempt, index + 1);
+      })
+    : [];
+  const outOfSequenceAttemptItems = session
+    ? session.attempts
+      .filter((attempt) => !regularAttemptIds.has(attempt.id))
+      .map((attempt) => ({ ...toTrainingAttemptHistoryItem(attempt, 0), attemptNo: null }))
+    : [];
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto bg-slate-800 p-3 text-white">
-      <header className="flex flex-wrap items-center justify-between gap-2 rounded border border-white/15 bg-slate-900/80 p-3">
+      <header className="grid min-h-[58px] grid-cols-1 items-center gap-2 rounded border border-white/15 bg-slate-900/80 p-3 sm:grid-cols-[minmax(0,auto)_minmax(10rem,1fr)_auto]">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-cyan-300">Kiosk / Assembly</p>
           <h1 className="text-2xl font-bold">締付トルク訓練</h1>
         </div>
+        <AssemblySessionStatusNotice
+          message={visibleError ?? message}
+          tone={visibleError ? 'error' : 'default'}
+        />
         <div className="flex gap-2">
           <Button variant="ghostOnDark" onClick={openSettings}>設定</Button>
           <Button variant="ghostOnDark" onClick={() => navigate('/kiosk/assembly')}>組立へ戻る</Button>
         </div>
       </header>
-      {message ? <p className="rounded border border-cyan-300/20 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100">{message}</p> : null}
-      {(agentHeartbeatError ?? agentHeartbeat.error ?? error) ? <p className="rounded border border-red-300/30 bg-red-500/10 px-3 py-2 text-sm text-red-100" role="alert">{agentHeartbeatError ?? agentHeartbeat.error ?? error}</p> : null}
 
       <main className="grid min-h-0 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <section className="space-y-3 rounded border border-white/10 bg-slate-900/70 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-lg font-bold">訓練の準備</h2>
-            {operator ? <Button variant="ghostOnDark" onClick={() => void resetOperator()}>別の作業者</Button> : null}
-          </div>
-          {operator ? (
-            <div className="rounded border border-emerald-300/30 bg-emerald-500/10 p-3">
-              <p className="font-semibold">{operator.employee.displayName}</p>
-              <p className="text-sm text-emerald-100/80">社員コード: {operator.employee.employeeCode}</p>
+          <div className="w-full max-w-xl space-y-3" data-testid="torque-training-preparation">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-lg font-bold">訓練の準備</h2>
+              {operator ? <Button variant="ghostOnDark" onClick={() => void resetOperator()}>別の作業者</Button> : null}
             </div>
-          ) : (
-            <p className="rounded border border-white/10 bg-white/5 p-3 text-sm text-white/70">NFCリーダーに本人のタグをかざしてください。</p>
-          )}
+            {operator ? (
+              <div className="w-full max-w-sm rounded border border-emerald-300/30 bg-emerald-500/10 p-3" data-testid="torque-training-operator-card">
+                <p className="font-semibold">{operator.employee.displayName}</p>
+                <p className="text-sm text-emerald-100/80">社員コード: {operator.employee.employeeCode}</p>
+              </div>
+            ) : (
+              <p className="w-full max-w-md rounded border border-white/10 bg-white/5 p-3 text-sm text-white/70" data-testid="torque-training-nfc-guide">NFCリーダーに本人のタグをかざしてください。</p>
+            )}
 
-          {!session ? (
-            <div className="w-full max-w-xl space-y-2">
+            {!session ? (
+              <div className="w-full space-y-2">
               <label className="block text-sm font-semibold" htmlFor="training-program">対象ボルト・訓練メニュー</label>
               <select id="training-program" className="min-h-11 w-full rounded border border-white/20 bg-slate-800 px-3 text-white" value={selectedVersionId} onChange={(event) => setSelectedVersionId(event.target.value)} disabled={!operator || busy}>
                 <option value="">選択してください</option>
@@ -278,38 +323,37 @@ export function KioskAssemblyTrainingPage() {
               </select>
               {selectedVersion ? <p className="text-sm text-white/70">対象: {selectedVersion.nominalDiameter} / {selectedVersion.displayName}。締付条件は入力後に表示します。</p> : null}
               <Button onClick={() => void start()} disabled={!operator || !selectedVersionId || busy}>{busy ? '処理中...' : '訓練を開始'}</Button>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="rounded border border-white/10 bg-white/5 p-3">
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="w-full max-w-md rounded border border-white/10 bg-white/5 p-3" data-testid="torque-training-target-summary">
                 <p className="text-sm text-white/70">対象: {session.program.displayName} / {session.program.nominalDiameter}</p>
                 <p className="text-sm text-white/50">締付中は目標値を隠し、入力後に結果を表示します。</p>
-              </div>
-              {!lease ? (
-                <div className="space-y-2">
+                </div>
+                {!lease ? (
+                  <div className="w-full max-w-md space-y-2" data-testid="torque-training-wrench-detection">
                   <p className="text-sm font-semibold">使用するdigitalトルクレンチ</p>
                   <p className="rounded border border-white/10 bg-white/5 p-3 text-sm">torque-agent自動検出: {agentWrenchSerial ?? '未特定'}</p>
                   <Button onClick={() => void confirmAndAcquire()} disabled={!selectedProfileId || busy}>{busy ? '確認中...' : '検出レンチを確認して接続'}</Button>
-                </div>
-              ) : (
-                <div className="rounded border border-emerald-300/30 bg-emerald-500/10 p-4">
+                  </div>
+                ) : (
+                  <div className="w-full max-w-lg rounded border border-emerald-300/30 bg-emerald-500/10 p-4" data-testid="torque-training-wrench-connection">
                   <p className="font-bold text-emerald-100">{agentHeartbeat.status === 'healthy' ? '接続準備完了' : 'Bluetooth接続待ち'}</p>
                   <p className="mt-1 text-sm text-emerald-100/80">{agentHeartbeat.status === 'healthy' ? '5回締付けてください。結果はdigitalトルクレンチから自動記録されます。' : '青いランプが点灯し、接続準備完了になるまで締付けないでください。'}</p>
                   <p className="mt-2 text-sm">進捗: {session.attempts.filter((attempt) => attempt.accepted).length} / {session.targetAttemptCount}</p>
-                </div>
-              )}
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-5" aria-label="訓練試行進捗">
-                {Array.from({ length: 5 }, (_, index) => {
-                  const attempt = session.attempts.find((item) => item.attemptNo === index + 1);
-                  return <div key={index} className={`rounded border p-2 text-center text-sm ${attempt ? 'border-emerald-300/40 bg-emerald-500/10' : 'border-white/10 bg-white/5'}`}>{attempt ? (attempt.judgement === 'OK' ? 'OK' : attempt.judgement === 'UNDER' ? '弱い' : '強い') : `${index + 1}回目`}</div>;
-                })}
+                  </div>
+                )}
+                <TorqueTrainingAttemptHistory
+                  items={trainingAttemptItems}
+                  recordedCount={session.attempts.filter((attempt) => attempt.accepted).length}
+                  outOfSequenceItems={outOfSequenceAttemptItems}
+                />
               </div>
-              {session.attempts.length > 0 ? <div className="space-y-2">{session.attempts.map((attempt) => <div key={attempt.id} className="rounded border border-white/10 bg-slate-800/70 p-3 text-sm"><span className="font-semibold">{attempt.attemptNo ?? '記録外'}回目: {attempt.judgement === 'OK' ? 'OK' : attempt.judgement === 'UNDER' ? '弱い' : attempt.judgement === 'OVER' ? '強い' : '記録外'}</span>{attempt.valueNm && attempt.nominalTorque ? <span className="ml-2 text-white/70">実測 {attempt.valueNm} Nm / 目標 {attempt.nominalTorque} Nm / 差 {attempt.deviationPercent}%</span> : null}</div>)}</div> : null}
-            </div>
-          )}
+            )}
+          </div>
         </section>
 
-        <aside className="space-y-3 rounded border border-white/10 bg-slate-900/70 p-4">
+        <aside className="w-full max-w-lg space-y-3 rounded border border-white/10 bg-slate-900/70 p-4 xl:max-w-none">
           <h2 className="text-lg font-bold">成長度合い</h2>
           {operator?.metrics.length ? operator.metrics.map((metric) => {
             return <div key={metric.conditionFingerprint} className="rounded border border-white/10 bg-white/5 p-3"><p className="truncate text-xs text-white/50" title={metric.conditionFingerprint}>条件 {metric.conditionFingerprint.slice(0, 12)}…（同一条件の直近10回）</p><p className="mt-1 text-sm">合格率 <strong>{Math.round(metric.passRate * 100)}%</strong></p><p className="text-sm">平均絶対誤差 <strong>{metric.meanAbsoluteErrorPercent.toFixed(1)}%</strong></p><p className="text-sm">ばらつき（母標準偏差） <strong>{metric.variationPercent.toFixed(1)}%</strong></p><div className="mt-2 h-28" aria-label="同一条件の直近10回合格率"><ResponsiveContainer width="100%" height="100%"><LineChart data={[...metric.sessions].reverse()}><XAxis dataKey="completedAt" hide /><YAxis domain={[0, 1]} hide /><Tooltip formatter={(value) => `${Math.round(Number(value) * 100)}%`} /><Line type="monotone" dataKey="passRate" stroke="#6ee7b7" strokeWidth={2} dot={{ r: 2 }} /></LineChart></ResponsiveContainer></div></div>;
