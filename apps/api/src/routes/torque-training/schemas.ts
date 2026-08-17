@@ -63,7 +63,9 @@ export const trainingLeaseTokenSchema = z.object({
 export const trainingAgentAttemptSchema = z.object({
   sourceEventKey: z.string().trim().min(1).max(160),
   confirmationId: id,
-  torqueWrenchProfileId: id,
+  // Legacy torque-agent outbox rows predate this field. The service derives
+  // it only from the session-scoped wrench confirmation when omitted.
+  torqueWrenchProfileId: id.optional(),
   serialNumber: z.string().trim().min(1).max(120),
   value: z.union([z.string().trim().min(1), z.number().finite()]),
   unit: z.string().trim().min(1).max(40),

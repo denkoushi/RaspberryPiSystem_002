@@ -105,6 +105,7 @@ class TorqueEventIngestor:
             # existing local audit path and is not promoted to a generic event
             # ledger or persisted in the training attempt table.
             payload["targetKind"] = "training"
+            payload["torqueWrenchProfileId"] = binding.torque_wrench_profile_id
         else:
             payload = {
                 "expectedTemplateBoltId": binding.current_template_bolt_id,

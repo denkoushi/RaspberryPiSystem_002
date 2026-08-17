@@ -239,6 +239,86 @@ describe('torque training API concurrency boundary', () => {
     expect(await prisma.torqueWrenchUsageLease.findUniqueOrThrow({ where: { torqueWrenchProfileId: profile.id } })).toMatchObject({ releasedAt: expect.any(Date), generation: 1 });
   });
 
+  it('acknowledges legacy stale events and accepts new events with the profile ID', async () => {
+    const { employee, client, profile, version } = await fixture();
+    const headers = { 'x-client-key': client.apiKey, 'content-type': 'application/json' };
+    const started = await app.inject({
+      method: 'POST',
+      url: '/api/torque-training/sessions',
+      headers,
+      payload: { uid: employee.nfcTagUid, programVersionId: version.id, requestId: 'legacy-agent-request' }
+    });
+    expect(started.statusCode).toBe(201);
+    const sessionId = started.json().session.id as string;
+    const confirmation = await app.inject({
+      method: 'POST',
+      url: `/api/torque-training/sessions/${sessionId}/wrench-confirmations`,
+      headers,
+      payload: { uid: employee.nfcTagUid, torqueWrenchProfileId: profile.id }
+    });
+    expect(confirmation.statusCode).toBe(201);
+    const confirmationId = confirmation.json().confirmation.id as string;
+    const lease = await app.inject({
+      method: 'POST',
+      url: `/api/torque-wrenches/${profile.id}/usage-lease/acquire`,
+      headers,
+      payload: { sessionId, confirmationId, requestId: 'legacy-agent-lease' }
+    });
+    expect(lease.statusCode).toBe(200);
+    const leaseBody = lease.json().lease as { leaseId: string; generation: number };
+
+    // This is the shape emitted by an older queued outbox row: the profile ID
+    // is absent and the old lease token is no longer valid. It must be
+    // persisted as an ignored audit row and acknowledged so the queue can
+    // continue to the next event.
+    const legacyResponse = await app.inject({
+      method: 'POST',
+      url: `/api/torque-training/sessions/${sessionId}/attempts/from-agent`,
+      headers,
+      payload: {
+        sourceEventKey: 'legacy-agent-event',
+        confirmationId,
+        serialNumber: profile.serialNumber,
+        value: 10,
+        unit: 'N-m',
+        connectionLeaseId: randomUUID(),
+        connectionLeaseGeneration: leaseBody.generation
+      }
+    });
+    expect(legacyResponse.statusCode).toBe(200);
+    expect(legacyResponse.json()).toMatchObject({
+      duplicate: false,
+      attempt: { accepted: false, attemptNo: null, ignoredReason: 'LEASE_TOKEN_INVALID' }
+    });
+    await expect(prisma.torqueTrainingAttempt.findUniqueOrThrow({
+      where: { sourceClientDeviceId_sourceEventKey: { sourceClientDeviceId: client.id, sourceEventKey: 'legacy-agent-event' } }
+    })).resolves.toMatchObject({ torqueWrenchProfileId: profile.id, accepted: false, ignoredReason: 'LEASE_TOKEN_INVALID' });
+
+    const currentResponse = await app.inject({
+      method: 'POST',
+      url: `/api/torque-training/sessions/${sessionId}/attempts/from-agent`,
+      headers,
+      payload: {
+        sourceEventKey: 'current-agent-event',
+        confirmationId,
+        torqueWrenchProfileId: profile.id,
+        serialNumber: profile.serialNumber,
+        value: 10,
+        unit: 'N-m',
+        connectionLeaseId: leaseBody.leaseId,
+        connectionLeaseGeneration: leaseBody.generation
+      }
+    });
+    expect(currentResponse.statusCode).toBe(200);
+    expect(currentResponse.json()).toMatchObject({
+      duplicate: false,
+      attempt: { accepted: true, attemptNo: 1, ignoredReason: null }
+    });
+    await expect(prisma.torqueTrainingAttempt.findUniqueOrThrow({
+      where: { sourceClientDeviceId_sourceEventKey: { sourceClientDeviceId: client.id, sourceEventKey: 'current-agent-event' } }
+    })).resolves.toMatchObject({ torqueWrenchProfileId: profile.id, accepted: true });
+  });
+
   it('writes a release history row when an in-progress training session is cancelled', async () => {
     const { employee, client, profile, version } = await fixture();
     const headers = { 'x-client-key': client.apiKey, 'content-type': 'application/json' };

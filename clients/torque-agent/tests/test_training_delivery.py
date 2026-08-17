@@ -27,6 +27,7 @@ def test_training_binding_uses_agent_dto_without_assembly_or_raw_payload(tmp_pat
     asyncio.run(ingestor.on_line(device, 'FIXTURE|serial=SN|value=10|unit=N-m|memory=7'))
     payload = queue.pending()[0][1]['payload']
     assert payload['targetKind'] == 'training'
+    assert payload['torqueWrenchProfileId'] == 'profile'
     assert 'expectedTemplateBoltId' not in payload
     assert 'rawPayload' not in payload
 
@@ -34,6 +35,8 @@ def test_training_binding_uses_agent_dto_without_assembly_or_raw_payload(tmp_pat
 def test_training_outbox_routes_to_training_attempt_endpoint(tmp_path: Path, monkeypatch) -> None:
     captured = {}
     queue = QueueStore(tmp_path / 'outbox.sqlite3')
+    # Legacy training rows may not have the newly required profile field. The
+    # sender must still deserialize and replay them without rewriting the row.
     queue.enqueue('event-1', {'sessionId': 'training-session', 'payload': {'targetKind': 'training', 'confirmationId': 'c', 'serialNumber': 'SN', 'value': 10, 'unit': 'N-m'}})
 
     class Response:
@@ -61,4 +64,10 @@ def test_training_outbox_routes_to_training_attempt_endpoint(tmp_path: Path, mon
     monkeypatch.setattr('torque_agent.api_client.httpx.AsyncClient', Client)
     assert asyncio.run(OutboxSender('http://server', 'client', queue).send_once()) is True
     assert captured['url'].endswith('/api/torque-training/sessions/training-session/attempts/from-agent')
-    assert captured['json']['sourceEventKey'] == 'event-1'
+    assert captured['json'] == {
+        'confirmationId': 'c',
+        'serialNumber': 'SN',
+        'value': 10,
+        'unit': 'N-m',
+        'sourceEventKey': 'event-1',
+    }

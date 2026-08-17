@@ -46,7 +46,7 @@ export type AgentTrainingAttemptInput = {
   clientDeviceId: string;
   sourceEventKey: string;
   confirmationId: string;
-  torqueWrenchProfileId: string;
+  torqueWrenchProfileId?: string;
   serialNumber: string;
   value: number | string;
   unit: string;
@@ -660,13 +660,22 @@ export class TorqueTrainingService {
       const session = await tx.torqueTrainingSession.findUnique({ where: { id: input.sessionId }, include: { programVersion: true } });
       if (!session || session.clientDeviceId !== input.clientDeviceId) throw new ApiError(404, '訓練セッションが見つかりません');
       if (session.status !== 'IN_PROGRESS') throw new ApiError(409, '訓練セッションは完了済みです', undefined, 'TRAINING_SESSION_STATE_CONFLICT');
-      const confirmation = await tx.torqueTrainingWrenchConfirmation.findFirst({ where: { id: input.confirmationId, sessionId: input.sessionId, torqueWrenchProfileId: input.torqueWrenchProfileId } });
-      const lease = await tx.torqueWrenchUsageLease.findUnique({ where: { torqueWrenchProfileId: input.torqueWrenchProfileId } });
-      const base = { sessionId: input.sessionId, sourceClientDeviceId: input.clientDeviceId, sourceEventKey: input.sourceEventKey, torqueWrenchProfileId: input.torqueWrenchProfileId, connectionLeaseId: input.connectionLeaseId ?? null, connectionLeaseGeneration: input.connectionLeaseGeneration ?? null, deviceRecordedAt: input.deviceRecordedAt ?? null, deviceMemoryCounter: input.deviceMemoryCounter ?? null, deviceJudgement: input.deviceJudgement ?? null };
+      const confirmationIdentity = await tx.torqueTrainingWrenchConfirmation.findFirst({
+        where: { id: input.confirmationId, sessionId: input.sessionId, clientDeviceId: input.clientDeviceId },
+        select: { torqueWrenchProfileId: true }
+      });
+      const resolvedProfileId = input.torqueWrenchProfileId ?? confirmationIdentity?.torqueWrenchProfileId;
+      if (!resolvedProfileId) throw new ApiError(400, 'torqueWrenchProfileIdまたは有効なレンチ確認が必要です', undefined, 'TRAINING_PROFILE_REQUIRED');
+      // Legacy outbox rows omit the profile ID. Derive it only from the same
+      // session/device confirmation; an explicit mismatching ID is never
+      // replaced and therefore remains a confirmation-required event.
+      const confirmation = confirmationIdentity?.torqueWrenchProfileId === resolvedProfileId ? confirmationIdentity : null;
+      const lease = await tx.torqueWrenchUsageLease.findUnique({ where: { torqueWrenchProfileId: resolvedProfileId } });
+      const base = { sessionId: input.sessionId, sourceClientDeviceId: input.clientDeviceId, sourceEventKey: input.sourceEventKey, torqueWrenchProfileId: resolvedProfileId, connectionLeaseId: input.connectionLeaseId ?? null, connectionLeaseGeneration: input.connectionLeaseGeneration ?? null, deviceRecordedAt: input.deviceRecordedAt ?? null, deviceMemoryCounter: input.deviceMemoryCounter ?? null, deviceJudgement: input.deviceJudgement ?? null };
       const ignored = async (reason: string) => tx.torqueTrainingAttempt.create({ data: { ...base, judgement: 'IGNORED', accepted: false, ignoredReason: reason } });
       if (!confirmation) return { attempt: serializeAttempt(await ignored('CONFIRMATION_REQUIRED')), duplicate: false };
       if (!lease || lease.releasedAt || lease.expiresAt <= new Date() || lease.ownerKind !== 'TRAINING' || lease.ownerTrainingSessionId !== input.sessionId || lease.ownerClientDeviceId !== input.clientDeviceId || lease.leaseId !== input.connectionLeaseId || lease.generation !== input.connectionLeaseGeneration) return { attempt: serializeAttempt(await ignored('LEASE_TOKEN_INVALID')), duplicate: false };
-      const profile = await tx.torqueWrenchProfile.findUnique({ where: { id: input.torqueWrenchProfileId }, include: profileEligibilityInclude });
+      const profile = await tx.torqueWrenchProfile.findUnique({ where: { id: resolvedProfileId }, include: profileEligibilityInclude });
       if (!profile || profile.serialNumber !== input.serialNumber) return { attempt: serializeAttempt(await ignored('SERIAL_NUMBER_MISMATCH')), duplicate: false };
       const setting = profile.settingHistories[0];
       if (!setting) return { attempt: serializeAttempt(await ignored('SETTING_HISTORY_MISSING')), duplicate: false };
@@ -686,13 +695,13 @@ export class TorqueTrainingService {
         // appends the minimal lease history entry.
         await tx.$queryRaw(Prisma.sql`
           SELECT "id" FROM "TorqueWrenchProfile"
-          WHERE "id" = ${input.torqueWrenchProfileId}
+          WHERE "id" = ${resolvedProfileId}
           FOR UPDATE
         `);
-        const completionLease = await tx.torqueWrenchUsageLease.findUnique({ where: { torqueWrenchProfileId: input.torqueWrenchProfileId } });
+        const completionLease = await tx.torqueWrenchUsageLease.findUnique({ where: { torqueWrenchProfileId: resolvedProfileId } });
         if (completionLease && completionLease.ownerKind === 'TRAINING' && completionLease.ownerTrainingSessionId === input.sessionId && completionLease.ownerClientDeviceId === input.clientDeviceId && completionLease.leaseId === input.connectionLeaseId && completionLease.generation === input.connectionLeaseGeneration && completionLease.releasedAt === null) {
           const completionReason = 'TRAINING_COMPLETED';
-          await tx.torqueWrenchUsageLease.update({ where: { torqueWrenchProfileId: input.torqueWrenchProfileId }, data: { releasedAt: new Date(), releaseReason: completionReason } });
+          await tx.torqueWrenchUsageLease.update({ where: { torqueWrenchProfileId: resolvedProfileId }, data: { releasedAt: new Date(), releaseReason: completionReason } });
           await appendTrainingLeaseHistory(tx, { profileId: completionLease.torqueWrenchProfileId, leaseId: completionLease.leaseId, generation: completionLease.generation, sessionId: input.sessionId, clientDeviceId: input.clientDeviceId, action: 'RELEASE', reason: completionReason, adoptedConfirmationId: completionLease.adoptedConfirmationId });
         }
       }
