@@ -19,6 +19,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { TorqueTrainingAdminDialog } from '../../features/assembly/torque-training/TorqueTrainingAdminDialog';
 import { useTorqueTrainingAdminController } from '../../features/assembly/torque-training/useTorqueTrainingAdminController';
 import { acquireTorqueAgentTrainingLease, getTorqueAgentHealth, releaseTorqueAgentLease } from '../../features/assembly/torqueAgentClient';
+import { useTorqueTrainingAgentHeartbeat } from '../../features/assembly/useTorqueTrainingAgentHeartbeat';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
 function requestId(prefix: string): string {
@@ -37,10 +38,16 @@ export function KioskAssemblyTrainingPage() {
   const [selectedProfileId, setSelectedProfileId] = useState('');
   const [agentWrenchSerial, setAgentWrenchSerial] = useState<string | null>(null);
   const [lease, setLease] = useState<{ active: true } | null>(null);
+  const [trainingWrenchConnection, setTrainingWrenchConnection] = useState<{
+    sessionId: string;
+    confirmationId: string;
+    profileId: string;
+  } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('NFCタグを読み取って訓練者を確認してください。');
   const [error, setError] = useState<string | null>(null);
+  const [agentHeartbeatError, setAgentHeartbeatError] = useState<string | null>(null);
   const leaseRef = useRef(false);
   const sessionRef = useRef<TorqueTrainingSessionApi | null>(null);
   const operatorRef = useRef<TorqueTrainingOperatorContextApi | null>(null);
@@ -53,6 +60,22 @@ export function KioskAssemblyTrainingPage() {
     if (current?.status === 'IN_PROGRESS') void cancelTorqueTrainingSession(current.id, '訓練画面離脱').catch(() => undefined);
     if (leaseRef.current) void releaseTorqueAgentLease('TRAINING_PAGE_LEAVE').catch(() => undefined);
   }, []);
+
+  const handleAgentHeartbeatLost = useCallback((heartbeatError: string) => {
+    setLease(null);
+    setTrainingWrenchConnection(null);
+    setSelectedProfileId('');
+    setAgentHeartbeatError(heartbeatError);
+    setMessage('レンチ接続が切れました。検出レンチを確認して接続し直してください。');
+  }, []);
+
+  const agentHeartbeat = useTorqueTrainingAgentHeartbeat({
+    enabled: Boolean(session && session.status === 'IN_PROGRESS' && lease && trainingWrenchConnection),
+    sessionId: trainingWrenchConnection?.sessionId ?? null,
+    confirmationId: trainingWrenchConnection?.confirmationId ?? null,
+    torqueWrenchProfileId: trainingWrenchConnection?.profileId ?? null,
+    onLost: handleAgentHeartbeatLost
+  });
 
   const loadPrograms = useCallback(async () => {
     try {
@@ -110,6 +133,8 @@ export function KioskAssemblyTrainingPage() {
     setSelectedVersionId('');
     setSelectedProfileId('');
     setAgentWrenchSerial(null);
+    setTrainingWrenchConnection(null);
+    setAgentHeartbeatError(null);
     setMessage('訓練が完了しました。次の作業者はNFCタグを読み取ってください。');
   }, [lease, session?.status]);
 
@@ -165,9 +190,11 @@ export function KioskAssemblyTrainingPage() {
         requestId: requestId('training-agent-lease')
       });
       if (!agentStatus.leaseOwned) throw new Error(agentStatus.lastError ?? 'Pi3 torque-agentへ接続できませんでした。');
+      setAgentHeartbeatError(null);
+      setTrainingWrenchConnection({ sessionId: session.id, confirmationId: confirmation.id, profileId: selectedProfileId });
       setLease({ active: true });
       setSession(await getTorqueTrainingSession(session.id));
-      setMessage('レンチ接続を確認しました。締付けを開始してください。目標値は入力後に表示されます。');
+      setMessage('レンチ接続を確認しました。画面の接続準備状態を確認してください。');
     } catch (cause) {
       setError(getApiErrorMessage(cause, 'レンチを接続できませんでした。'));
     } finally {
@@ -198,6 +225,8 @@ export function KioskAssemblyTrainingPage() {
     setSelectedVersionId('');
     setSelectedProfileId('');
     setLease(null);
+    setTrainingWrenchConnection(null);
+    setAgentHeartbeatError(null);
     setMessage('NFCタグを読み取って訓練者を確認してください。');
   };
 
@@ -214,7 +243,7 @@ export function KioskAssemblyTrainingPage() {
         </div>
       </header>
       {message ? <p className="rounded border border-cyan-300/20 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100">{message}</p> : null}
-      {error ? <p className="rounded border border-red-300/30 bg-red-500/10 px-3 py-2 text-sm text-red-100" role="alert">{error}</p> : null}
+      {(agentHeartbeatError ?? agentHeartbeat.error ?? error) ? <p className="rounded border border-red-300/30 bg-red-500/10 px-3 py-2 text-sm text-red-100" role="alert">{agentHeartbeatError ?? agentHeartbeat.error ?? error}</p> : null}
 
       <main className="grid min-h-0 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <section className="space-y-3 rounded border border-white/10 bg-slate-900/70 p-4">
@@ -257,8 +286,8 @@ export function KioskAssemblyTrainingPage() {
                 </div>
               ) : (
                 <div className="rounded border border-emerald-300/30 bg-emerald-500/10 p-4">
-                  <p className="font-bold text-emerald-100">接続準備完了</p>
-                  <p className="mt-1 text-sm text-emerald-100/80">5回締付けてください。結果はdigitalトルクレンチから自動記録されます。</p>
+                  <p className="font-bold text-emerald-100">{agentHeartbeat.status === 'healthy' ? '接続準備完了' : 'Bluetooth接続待ち'}</p>
+                  <p className="mt-1 text-sm text-emerald-100/80">{agentHeartbeat.status === 'healthy' ? '5回締付けてください。結果はdigitalトルクレンチから自動記録されます。' : '青いランプが点灯し、接続準備完了になるまで締付けないでください。'}</p>
                   <p className="mt-2 text-sm">進捗: {session.attempts.filter((attempt) => attempt.accepted).length} / {session.targetAttemptCount}</p>
                 </div>
               )}

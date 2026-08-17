@@ -175,6 +175,8 @@ test.use({ userAgent: LINUX_KIOSK_USER_AGENT });
 
 test('NFCから5回完了、本人情報消去、ADMIN設定復帰を確認する', async ({ page }) => {
   let agentAcquired = false;
+  let trainingHeartbeats = 0;
+  const trainingHeartbeatPayloads: Array<Record<string, unknown>> = [];
   let adminResults = [adminResult];
   await installMockNfc(page);
   await page.setViewportSize({ width: 1920, height: 1080 });
@@ -194,7 +196,9 @@ test('NFCから5回完了、本人情報消去、ADMIN設定復帰を確認す�
     if (path === '/api/torque-training/programs' && request.method() === 'GET') return route.fulfill({ json: { programs: [program] } });
     if (path === '/api/torque-training/operator-context') return route.fulfill({ json: { employee: { id: employeeId, employeeCode: 'E2E001', displayName: 'E2E 作業者' }, currentSession: null, metrics: [] } });
     if (path === '/api/torque-training/sessions' && request.method() === 'POST') return route.fulfill({ status: 201, json: { session: session() } });
-    if (path.endsWith(`/sessions/${session().id}`) && request.method() === 'GET') return route.fulfill({ json: { session: session(agentAcquired ? 'COMPLETED' : 'IN_PROGRESS') } });
+    if (path.endsWith(`/sessions/${session().id}`) && request.method() === 'GET') {
+      return route.fulfill({ json: { session: session(agentAcquired && trainingHeartbeats >= 5 ? 'COMPLETED' : 'IN_PROGRESS') } });
+    }
     if (path.endsWith('/wrench-confirmations') && request.method() === 'POST') return route.fulfill({ status: 201, json: { confirmation: { id: '88888888-8888-4888-8888-888888888888', torqueWrenchProfileId: profileId, serialNumber: '702902S', settingHistoryId: '99999999-9999-4999-8999-999999999999' } } });
     if (path.includes('/admin/torque-training/programs') && request.method() === 'GET') return route.fulfill({ json: { programs: [program] } });
     if (path.includes('/admin/torque-training/results') && request.method() === 'GET') return route.fulfill({ json: { results: adminResults } });
@@ -219,6 +223,21 @@ test('NFCから5回完了、本人情報消去、ADMIN設定復帰を確認す�
       agentAcquired = true;
       return route.fulfill({ headers, json: { ok: true, ready: true, leaseOwned: true, state: 'owned_by_self', lastError: null } });
     }
+    if (path === '/heartbeat') {
+      trainingHeartbeats += 1;
+      trainingHeartbeatPayloads.push(route.request().postDataJSON() as Record<string, unknown>);
+      return route.fulfill({ headers, json: {
+        ok: true,
+        ready: true,
+        owner: null,
+        leaseOwned: agentAcquired,
+        bound: agentAcquired,
+        state: agentAcquired ? 'owned_by_self' : 'available',
+        bluetoothPowered: true,
+        hidExclusive: true,
+        lastError: null
+      } });
+    }
     return route.fulfill({ headers, json: { ok: true, ready: true, leaseOwned: false, state: 'available', lastError: null } });
   });
 
@@ -235,7 +254,18 @@ test('NFCから5回完了、本人情報消去、ADMIN設定復帰を確認す�
   await expect(page.getByText(/目標 10 Nm/)).toHaveCount(0);
   await expect(page.getByText('torque-agent自動検出: 702902S')).toBeVisible();
   await page.getByRole('button', { name: '検出レンチを確認して接続' }).click();
-  await expect(page.getByText(/実測 10 Nm \/ 目標 10 Nm/).first()).toBeVisible();
+  await expect(page.getByText(/実測 10 Nm \/ 目標 10 Nm/).first()).toBeVisible({ timeout: 15_000 });
+  expect(trainingHeartbeats).toBeGreaterThanOrEqual(5);
+  expect(trainingHeartbeatPayloads.slice(0, 5)).toHaveLength(5);
+  for (const payload of trainingHeartbeatPayloads.slice(0, 5)) {
+    expect(payload).toEqual({
+      sessionId: session().id,
+      confirmationId: '88888888-8888-4888-8888-888888888888',
+      torqueWrenchProfileId: profileId,
+      currentTemplateBoltId: null,
+      targetKind: 'training'
+    });
+  }
   await expect(page.getByText('訓練が完了しました。次の作業者はNFCタグを読み取ってください。')).toBeVisible();
   await expect(page.getByText('E2E 作業者', { exact: true })).toHaveCount(0);
 
