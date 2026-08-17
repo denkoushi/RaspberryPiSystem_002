@@ -73,7 +73,7 @@ RUN if [ -n "$VITE_RELEASE_SHA" ] && ! printf '%s' "$VITE_RELEASE_SHA" | grep -E
     && cd apps/web \
     && GOMAXPROCS=1 VITE_RELEASE_SHA="$VITE_RELEASE_SHA" nice -n 10 pnpm run build
 
-FROM golang:1.26.5-alpine AS caddy-build
+FROM golang:1.26.6-alpine AS caddy-build
 WORKDIR /src
 ARG TARGETOS=linux
 ARG TARGETARCH
