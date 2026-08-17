@@ -5,51 +5,21 @@ import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'rec
 import {
   confirmTorqueTrainingWrench,
   cancelTorqueTrainingSession,
-  createTorqueTrainingProgram,
-  deactivateTorqueTrainingProgram,
-  excludeTorqueTrainingResult,
   getTorqueTrainingSession,
-  listTorqueTrainingAdminPrograms,
-  listTorqueTrainingAdminResults,
   listTorqueTrainingPrograms,
-  listTorqueWrenchCapabilityGroups,
-  listTorqueWrenches,
-  reviseTorqueTrainingProgram,
   resolveTorqueTrainingOperator,
   startTorqueTrainingSession,
-  type TorqueTrainingAdminResultApi,
   type TorqueTrainingOperatorContextApi,
   type TorqueTrainingProgramApi,
-  type TorqueTrainingSessionApi,
-  type TorqueWrenchCapabilityGroupApi,
-  type TorqueWrenchProfileApi
+  type TorqueTrainingSessionApi
 } from '../../api/client';
 import { getApiErrorMessage } from '../../api/errors';
 import { Button } from '../../components/ui/Button';
-import { Input } from '../../components/ui/Input';
 import { useAuth } from '../../contexts/AuthContext';
+import { TorqueTrainingAdminDialog } from '../../features/assembly/torque-training/TorqueTrainingAdminDialog';
+import { useTorqueTrainingAdminController } from '../../features/assembly/torque-training/useTorqueTrainingAdminController';
 import { acquireTorqueAgentTrainingLease, getTorqueAgentHealth, releaseTorqueAgentLease } from '../../features/assembly/torqueAgentClient';
 import { useNfcStream } from '../../hooks/useNfcStream';
-
-type ProgramForm = {
-  code: string;
-  displayName: string;
-  nominalDiameter: string;
-  boltLengthMm: string;
-  material: string;
-  strengthClass: string;
-  capabilityGroupId: string;
-  nominalTorque: string;
-  lowerLimit: string;
-  upperLimit: string;
-  unit: string;
-  jigConditionCode: string;
-  torqueWrenchProfileIds: string[];
-};
-
-const EMPTY_PROGRAM_FORM: ProgramForm = {
-  code: '', displayName: '', nominalDiameter: '', boltLengthMm: '', material: '', strengthClass: '', capabilityGroupId: '', nominalTorque: '', lowerLimit: '', upperLimit: '', unit: 'N-m', jigConditionCode: '', torqueWrenchProfileIds: []
-};
 
 function requestId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`;
@@ -68,16 +38,6 @@ export function KioskAssemblyTrainingPage() {
   const [agentWrenchSerial, setAgentWrenchSerial] = useState<string | null>(null);
   const [lease, setLease] = useState<{ active: true } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [adminPrograms, setAdminPrograms] = useState<TorqueTrainingProgramApi[]>([]);
-  const [adminResults, setAdminResults] = useState<TorqueTrainingAdminResultApi[]>([]);
-  const [adminTab, setAdminTab] = useState<'programs' | 'results'>('programs');
-  const [programForm, setProgramForm] = useState<ProgramForm>(EMPTY_PROGRAM_FORM);
-  const [revisionProgramId, setRevisionProgramId] = useState('');
-  const [capabilityGroups, setCapabilityGroups] = useState<TorqueWrenchCapabilityGroupApi[]>([]);
-  const [wrenchProfiles, setWrenchProfiles] = useState<TorqueWrenchProfileApi[]>([]);
-  const [resultQuery, setResultQuery] = useState('');
-  const [exclusionReasons, setExclusionReasons] = useState<Record<string, string>>({});
-  const [adminBusy, setAdminBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('NFCタグを読み取って訓練者を確認してください。');
   const [error, setError] = useState<string | null>(null);
@@ -101,6 +61,11 @@ export function KioskAssemblyTrainingPage() {
       setError(getApiErrorMessage(cause, '訓練メニューを読み込めませんでした。'));
     }
   }, []);
+
+  const adminController = useTorqueTrainingAdminController({
+    isOpen: settingsOpen,
+    onProgramsChanged: loadPrograms
+  });
 
   useEffect(() => {
     void loadPrograms();
@@ -210,85 +175,12 @@ export function KioskAssemblyTrainingPage() {
     }
   };
 
-  const openSettings = async () => {
+  const openSettings = () => {
     if (user?.role !== 'ADMIN') {
       navigate('/login', { state: { from: { pathname: location.pathname, search: location.search, hash: location.hash }, forceLogin: true } });
       return;
     }
-    setSettingsOpen((open) => !open);
-    if (!settingsOpen) {
-      try {
-        const [nextPrograms, nextResults, groups, profiles] = await Promise.all([listTorqueTrainingAdminPrograms(), listTorqueTrainingAdminResults(), listTorqueWrenchCapabilityGroups(true), listTorqueWrenches(true)]);
-        setAdminPrograms(nextPrograms);
-        setAdminResults(nextResults);
-        setCapabilityGroups(groups);
-        setWrenchProfiles(profiles);
-      } catch (cause) {
-        setError(getApiErrorMessage(cause, '管理情報を読み込めませんでした。'));
-      }
-    }
-  };
-
-  const updateProgramForm = (key: keyof ProgramForm, value: string | string[]) => setProgramForm((current) => ({ ...current, [key]: value }));
-
-  const submitProgram = async (revision: boolean) => {
-    setAdminBusy(true);
-    setError(null);
-    try {
-      const payload = {
-        ...programForm,
-        boltLengthMm: Number(programForm.boltLengthMm),
-        nominalTorque: Number(programForm.nominalTorque),
-        lowerLimit: Number(programForm.lowerLimit),
-        upperLimit: Number(programForm.upperLimit)
-      };
-      if (revision) {
-        if (!revisionProgramId) throw new Error('版を追加するメニューを選択してください。');
-        const { code, ...revisionPayload } = payload;
-        void code;
-        await reviseTorqueTrainingProgram(revisionProgramId, revisionPayload);
-      } else {
-        await createTorqueTrainingProgram(payload);
-      }
-      setProgramForm(EMPTY_PROGRAM_FORM);
-      setAdminPrograms(await listTorqueTrainingAdminPrograms());
-      await loadPrograms();
-      setMessage(revision ? '新しい訓練メニュー版を追加しました。' : '訓練メニューを追加しました。');
-    } catch (cause) {
-      setError(getApiErrorMessage(cause, '訓練メニューを保存できませんでした。'));
-    } finally {
-      setAdminBusy(false);
-    }
-  };
-
-  const deactivate = async (programId: string) => {
-    const reason = window.prompt('停止理由を入力してください。');
-    if (!reason) return;
-    setAdminBusy(true);
-    try {
-      await deactivateTorqueTrainingProgram(programId, reason);
-      setAdminPrograms(await listTorqueTrainingAdminPrograms());
-      await loadPrograms();
-    } catch (cause) {
-      setError(getApiErrorMessage(cause, '訓練メニューを停止できませんでした。'));
-    } finally {
-      setAdminBusy(false);
-    }
-  };
-
-  const excludeResult = async (sessionId: string) => {
-    const reason = exclusionReasons[sessionId]?.trim();
-    if (!reason) return;
-    setAdminBusy(true);
-    try {
-      await excludeTorqueTrainingResult(sessionId, reason);
-      setAdminResults(await listTorqueTrainingAdminResults());
-      setExclusionReasons((current) => ({ ...current, [sessionId]: '' }));
-    } catch (cause) {
-      setError(getApiErrorMessage(cause, '実績を集計対象外にできませんでした。'));
-    } finally {
-      setAdminBusy(false);
-    }
+    setSettingsOpen(true);
   };
 
   const resetOperator = async () => {
@@ -340,7 +232,7 @@ export function KioskAssemblyTrainingPage() {
           )}
 
           {!session ? (
-            <div className="space-y-2">
+            <div className="w-full max-w-xl space-y-2">
               <label className="block text-sm font-semibold" htmlFor="training-program">対象ボルト・訓練メニュー</label>
               <select id="training-program" className="min-h-11 w-full rounded border border-white/20 bg-slate-800 px-3 text-white" value={selectedVersionId} onChange={(event) => setSelectedVersionId(event.target.value)} disabled={!operator || busy}>
                 <option value="">選択してください</option>
@@ -389,42 +281,11 @@ export function KioskAssemblyTrainingPage() {
         </aside>
       </main>
 
-      {settingsOpen ? (
-        <section className="rounded border border-amber-300/30 bg-amber-500/10 p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-bold">訓練設定（ADMIN）</h2>
-            <Button variant="ghostOnDark" onClick={() => setSettingsOpen(false)}>閉じる</Button>
-          </div>
-          <div className="mb-3 flex gap-2" role="tablist" aria-label="訓練管理">
-            <Button variant={adminTab === 'programs' ? 'primary' : 'ghostOnDark'} onClick={() => setAdminTab('programs')}>訓練メニュー</Button>
-            <Button variant={adminTab === 'results' ? 'primary' : 'ghostOnDark'} onClick={() => setAdminTab('results')}>訓練実績</Button>
-          </div>
-          {adminTab === 'programs' ? (
-            <div className="space-y-4">
-              <div className="grid gap-2 md:grid-cols-2">
-                <div className="space-y-2 rounded border border-white/10 bg-slate-900/60 p-3">
-                  <h3 className="font-semibold">メニュー追加・新版作成</h3>
-                  <div className="grid grid-cols-2 gap-2">
-                    {(['code', 'displayName', 'nominalDiameter', 'boltLengthMm', 'material', 'strengthClass', 'nominalTorque', 'lowerLimit', 'upperLimit', 'unit', 'jigConditionCode'] as const).map((field) => (
-                      <Input key={field} placeholder={field} value={programForm[field]} onChange={(event) => updateProgramForm(field, event.target.value)} />
-                    ))}
-                  </div>
-                  <select className="min-h-10 w-full rounded border border-white/20 bg-slate-800 px-2 text-white" value={programForm.capabilityGroupId} onChange={(event) => updateProgramForm('capabilityGroupId', event.target.value)}>
-                    <option value="">能力グループ</option>{capabilityGroups.map((group) => <option key={group.id} value={group.id}>{group.name}（{group.nominalDiameter}）</option>)}
-                  </select>
-                  <select multiple className="min-h-20 w-full rounded border border-white/20 bg-slate-800 px-2 text-white" value={programForm.torqueWrenchProfileIds} onChange={(event) => updateProgramForm('torqueWrenchProfileIds', [...event.target.selectedOptions].map((option) => option.value))}>
-                    {wrenchProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.serialNumber}</option>)}
-                  </select>
-                  <div className="flex flex-wrap gap-2"><Button disabled={adminBusy} onClick={() => void submitProgram(false)}>メニューを追加</Button><select className="rounded border border-white/20 bg-slate-800 px-2 text-white" value={revisionProgramId} onChange={(event) => setRevisionProgramId(event.target.value)}><option value="">新版対象</option>{adminPrograms.filter((program) => program.isActive).map((program) => <option key={program.id} value={program.id}>{program.code}</option>)}</select><Button disabled={adminBusy || !revisionProgramId} onClick={() => void submitProgram(true)}>新版を追加</Button></div>
-                </div>
-                <div className="space-y-2 rounded border border-white/10 bg-slate-900/60 p-3"><h3 className="font-semibold">利用停止</h3>{adminPrograms.map((program) => <div key={program.id} className="flex items-center justify-between gap-2 text-sm"><span>{program.code} / v{program.currentVersion}（{program.isActive ? '利用中' : '停止'}）</span>{program.isActive ? <Button variant="danger" disabled={adminBusy} onClick={() => void deactivate(program.id)}>停止</Button> : null}</div>)}</div>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-3"><Input placeholder="氏名・社員コード・メニューで検索" value={resultQuery} onChange={(event) => setResultQuery(event.target.value)} />{adminResults.filter((result) => `${result.employeeName} ${result.employeeCode} ${result.programCode}`.toLowerCase().includes(resultQuery.toLowerCase())).map((result) => <div key={result.id} className="rounded border border-white/10 bg-slate-900/60 p-3 text-sm"><p>{result.employeeName}（{result.employeeCode}） / {result.programCode} v{result.programVersion} / {result.completedAt ? new Date(result.completedAt).toLocaleString() : result.status}</p><p>合格率 {Math.round(result.metrics.passRate * 100)}% / 平均絶対誤差 {result.metrics.meanAbsoluteErrorPercent.toFixed(1)}% / ばらつき {result.metrics.variationPercent.toFixed(1)}%</p>{result.excludedAt ? <p className="text-amber-200">集計対象外: {result.exclusionReason}</p> : <div className="mt-2 flex gap-2"><Input placeholder="除外理由" value={exclusionReasons[result.id] ?? ''} onChange={(event) => setExclusionReasons((current) => ({ ...current, [result.id]: event.target.value }))} /><Button variant="danger" disabled={adminBusy || !exclusionReasons[result.id]?.trim()} onClick={() => void excludeResult(result.id)}>集計対象外</Button></div>}</div>)}</div>
-          )}
-        </section>
-      ) : null}
+      <TorqueTrainingAdminDialog
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        controller={adminController}
+      />
     </div>
   );
 }

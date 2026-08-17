@@ -35,6 +35,44 @@ const program = {
   versions: [version]
 };
 
+type MockAdminResult = {
+  id: string;
+  employeeCode: string;
+  employeeName: string;
+  programCode: string;
+  programVersion: number;
+  conditionFingerprint: string;
+  status: string;
+  excludedAt: string | null;
+  exclusionReason: string | null;
+  completedAt: string | null;
+  metrics: {
+    attemptCount: number;
+    passRate: number;
+    meanAbsoluteErrorPercent: number;
+    variationPercent: number;
+  };
+};
+
+const adminResult: MockAdminResult = {
+  id: '77777777-7777-4777-8777-777777777777',
+  employeeCode: 'E2E001',
+  employeeName: 'E2E 作業者',
+  programCode: program.code,
+  programVersion: 1,
+  conditionFingerprint: fingerprint,
+  status: 'COMPLETED',
+  excludedAt: null,
+  exclusionReason: null,
+  completedAt: '2026-08-09T00:05:00.000Z',
+  metrics: {
+    attemptCount: 5,
+    passRate: 1,
+    meanAbsoluteErrorPercent: 0,
+    variationPercent: 0
+  }
+};
+
 function session(status: 'IN_PROGRESS' | 'COMPLETED' = 'IN_PROGRESS') {
   const attempts = status === 'COMPLETED'
     ? Array.from({ length: 5 }, (_, index) => ({
@@ -124,11 +162,22 @@ async function emitNfc(page: Page, uid: string): Promise<void> {
   await page.evaluate((value) => (window as Window & { __emitTrainingNfc?: (nextUid: string) => void }).__emitTrainingNfc?.(value), uid);
 }
 
+async function expectNoHorizontalOverflow(page: Page): Promise<void> {
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+}
+
+async function expectMaxWidth(locator: ReturnType<Page['locator']>, maxWidth: number): Promise<void> {
+  const width = await locator.evaluate((element) => element.getBoundingClientRect().width);
+  expect(width).toBeLessThanOrEqual(maxWidth + 1);
+}
+
 test.use({ userAgent: LINUX_KIOSK_USER_AGENT });
 
 test('NFCから5回完了、本人情報消去、ADMIN設定復帰を確認する', async ({ page }) => {
   let agentAcquired = false;
+  let adminResults = [adminResult];
   await installMockNfc(page);
+  await page.setViewportSize({ width: 1920, height: 1080 });
   await page.addInitScript(() => {
     window.localStorage.setItem('factory-auth', JSON.stringify({
       token: 'existing-viewer-token',
@@ -148,7 +197,15 @@ test('NFCから5回完了、本人情報消去、ADMIN設定復帰を確認す�
     if (path.endsWith(`/sessions/${session().id}`) && request.method() === 'GET') return route.fulfill({ json: { session: session(agentAcquired ? 'COMPLETED' : 'IN_PROGRESS') } });
     if (path.endsWith('/wrench-confirmations') && request.method() === 'POST') return route.fulfill({ status: 201, json: { confirmation: { id: '88888888-8888-4888-8888-888888888888', torqueWrenchProfileId: profileId, serialNumber: '702902S', settingHistoryId: '99999999-9999-4999-8999-999999999999' } } });
     if (path.includes('/admin/torque-training/programs') && request.method() === 'GET') return route.fulfill({ json: { programs: [program] } });
-    if (path.includes('/admin/torque-training/results') && request.method() === 'GET') return route.fulfill({ json: { results: [] } });
+    if (path.includes('/admin/torque-training/results') && request.method() === 'GET') return route.fulfill({ json: { results: adminResults } });
+    if (path.includes('/admin/torque-training/sessions/') && path.endsWith('/exclude') && request.method() === 'POST') {
+      const sessionId = path.split('/').at(-2);
+      const body = request.postDataJSON() as { reason?: string };
+      adminResults = adminResults.map((result) => result.id === sessionId
+        ? { ...result, excludedAt: '2026-08-09T00:06:00.000Z', exclusionReason: body.reason ?? null }
+        : result);
+      return route.fulfill({ json: { id: sessionId, excludedAt: '2026-08-09T00:06:00.000Z', exclusionReason: body.reason ?? null } });
+    }
     if (path === '/api/torque-wrench-capability-groups') return route.fulfill({ json: { capabilityGroups: [] } });
     if (path === '/api/torque-wrenches') return route.fulfill({ json: { torqueWrenches: [] } });
     if (path === '/api/auth/login' && request.method() === 'POST') return route.fulfill({ json: { accessToken: 'e2e-admin-token', refreshToken: 'e2e-refresh-token', user: { id: 'admin-e2e', username: 'admin', role: 'ADMIN', status: 'ACTIVE' } } });
@@ -169,7 +226,10 @@ test('NFCから5回完了、本人情報消去、ADMIN設定復帰を確認す�
   await expect.poll(() => page.evaluate(() => Boolean((window as Window & { __trainingNfcReady?: boolean }).__trainingNfcReady))).toBe(true);
   await emitNfc(page, 'NFC-E2E-TRAINING');
   await expect(page.getByText('E2E 作業者', { exact: true })).toBeVisible();
-  await page.getByLabel('対象ボルト・訓練メニュー').selectOption(versionId);
+  const trainingMenu = page.getByLabel('対象ボルト・訓練メニュー');
+  await expectMaxWidth(trainingMenu, 576);
+  await expectNoHorizontalOverflow(page);
+  await trainingMenu.selectOption(versionId);
   await page.getByRole('button', { name: '訓練を開始' }).click();
   await expect(page.getByText('締付中は目標値を隠し、入力後に結果を表示します。')).toBeVisible();
   await expect(page.getByText(/目標 10 Nm/)).toHaveCount(0);
@@ -185,7 +245,55 @@ test('NFCから5回完了、本人情報消去、ADMIN設定復帰を確認す�
   await page.getByLabel('パスワード').fill('password');
   await page.getByRole('button', { name: 'ログイン' }).click();
   await expect(page).toHaveURL(/\/kiosk\/assembly\/training/);
-  await page.getByRole('button', { name: '設定' }).click();
-  await expect(page.getByRole('button', { name: '訓練メニュー' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '訓練実績' })).toBeVisible();
+  const settingsButton = page.getByRole('button', { name: '設定' });
+  await settingsButton.click();
+
+  const settingsDialog = page.getByRole('dialog').last();
+  await expect(settingsDialog).toBeVisible();
+  await expect(settingsDialog).toHaveAttribute('aria-modal', 'true');
+  await expect(settingsDialog).toHaveCSS('z-index', '80');
+  const settingsPanel = settingsDialog.locator(':scope > div').first();
+  await expect(settingsPanel).toHaveCSS('background-color', 'rgb(2, 6, 23)');
+  await expectMaxWidth(settingsPanel, 768);
+  await expectNoHorizontalOverflow(page);
+
+  await expect(settingsDialog.getByRole('tab', { name: '訓練メニュー' })).toBeVisible();
+  await expect(settingsDialog.getByRole('tab', { name: '訓練実績' })).toBeVisible();
+
+  // Settings must be a deliberate modal flow: clicking the backdrop cannot
+  // discard an in-progress configuration, while Escape is an explicit close.
+  await page.mouse.click(2, 2);
+  await expect(settingsDialog).toBeVisible();
+
+  await settingsDialog.getByRole('tab', { name: '訓練実績' }).click();
+  const resultSearch = settingsDialog.getByPlaceholder('氏名・社員コード・メニューで検索');
+  await expect(resultSearch).toBeVisible();
+  await expectMaxWidth(resultSearch, 448);
+  const exclusionReason = settingsDialog.getByPlaceholder('除外理由');
+  await expect(exclusionReason).toBeVisible();
+  await expectMaxWidth(exclusionReason, 384);
+  await expect(settingsDialog.getByText('E2E 作業者', { exact: false })).toBeVisible();
+  await resultSearch.fill('TRAINING-E2E');
+  await expect(settingsDialog.getByText('E2E 作業者', { exact: false })).toBeVisible();
+  await resultSearch.fill('no-such-training-result');
+  await expect(settingsDialog.getByPlaceholder('除外理由')).toHaveCount(0);
+  await resultSearch.fill('');
+  await expect(settingsDialog.getByPlaceholder('除外理由')).toBeVisible();
+
+  await page.keyboard.press('Escape');
+  await expect(settingsDialog).toBeHidden();
+  await expect(settingsButton).toBeFocused();
+
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await expectMaxWidth(page.getByLabel('対象ボルト・訓練メニュー'), 576);
+  await settingsButton.click();
+  const compactSettingsDialog = page.getByRole('dialog').last();
+  await expect(compactSettingsDialog).toBeVisible();
+  await expect(compactSettingsDialog).toHaveCSS('z-index', '80');
+  const compactSettingsPanel = compactSettingsDialog.locator(':scope > div').first();
+  await expect(compactSettingsPanel).toHaveCSS('background-color', 'rgb(2, 6, 23)');
+  await expectMaxWidth(compactSettingsPanel, 768);
+  await expectNoHorizontalOverflow(page);
+  await page.keyboard.press('Escape');
+  await expect(compactSettingsDialog).toBeHidden();
 });
