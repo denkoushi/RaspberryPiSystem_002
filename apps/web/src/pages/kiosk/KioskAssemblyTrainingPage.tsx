@@ -20,7 +20,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import {
   AssemblySessionStatusNotice,
   TorqueTrainingAttemptHistory,
-  type TorqueTrainingAttemptHistoryItem
+  type TorqueTrainingAttemptHistoryItem,
+  useTorqueRecordLiveRefresh
 } from '../../features/assembly';
 import { TorqueTrainingAdminDialog } from '../../features/assembly/torque-training/TorqueTrainingAdminDialog';
 import { useTorqueTrainingAdminController } from '../../features/assembly/torque-training/useTorqueTrainingAdminController';
@@ -32,6 +33,8 @@ import { useNfcStream } from '../../hooks/useNfcStream';
 function requestId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`;
 }
+
+const NO_KNOWN_TRAINING_SOURCE_EVENT_KEYS: ReadonlySet<string> = new Set();
 
 function trainingAttemptPresentation(judgement: TorqueTrainingAttemptApi['judgement']): Pick<TorqueTrainingAttemptHistoryItem, 'resultLabel' | 'resultTone'> {
   if (judgement === 'OK') return { resultLabel: 'OK', resultTone: 'success' };
@@ -144,13 +147,14 @@ export function KioskAssemblyTrainingPage() {
     [programs, selectedVersionId]
   );
 
-  useEffect(() => {
-    if (!session || session.status !== 'IN_PROGRESS') return;
-    const timer = window.setInterval(() => {
-      void getTorqueTrainingSession(session.id).then(setSession).catch(() => undefined);
-    }, 2000);
-    return () => window.clearInterval(timer);
-  }, [session]);
+  useTorqueRecordLiveRefresh({
+    enabled: Boolean(session?.id && session.status === 'IN_PROGRESS'),
+    sessionId: session?.id ?? null,
+    knownSourceEventKeys: NO_KNOWN_TRAINING_SOURCE_EVENT_KEYS,
+    loadSession: getTorqueTrainingSession,
+    onSessionLoaded: setSession,
+    pollIntervalMs: 2000
+  });
 
   const handleTrainingCompleted = useCallback(() => {
     setLease(null);
