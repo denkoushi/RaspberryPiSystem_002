@@ -333,6 +333,54 @@ describe('torque training API concurrency boundary', () => {
     expect(await prisma.torqueWrenchUsageLeaseHistory.findFirst({ where: { torqueWrenchProfileId: profile.id, action: 'RELEASE', reason: 'TRAINING_CANCELLED' } })).not.toBeNull();
   });
 
+  it('keeps the training lease connectAfter deadline stable across renewals', async () => {
+    const { employee, client, profile, version } = await fixture();
+    const headers = { 'x-client-key': client.apiKey, 'content-type': 'application/json' };
+    const started = await app.inject({
+      method: 'POST',
+      url: '/api/torque-training/sessions',
+      headers,
+      payload: { uid: employee.nfcTagUid, programVersionId: version.id, requestId: 'renew-connect-after-request' }
+    });
+    expect(started.statusCode).toBe(201);
+    const sessionId = started.json().session.id as string;
+    const confirmation = await app.inject({
+      method: 'POST',
+      url: `/api/torque-training/sessions/${sessionId}/wrench-confirmations`,
+      headers,
+      payload: { uid: employee.nfcTagUid, torqueWrenchProfileId: profile.id }
+    });
+    expect(confirmation.statusCode).toBe(201);
+    const confirmationId = confirmation.json().confirmation.id as string;
+    const acquired = await app.inject({
+      method: 'POST',
+      url: `/api/torque-wrenches/${profile.id}/usage-lease/acquire`,
+      headers,
+      payload: { sessionId, confirmationId, requestId: 'renew-connect-after-lease' }
+    });
+    expect(acquired.statusCode).toBe(200);
+    const acquiredLease = acquired.json().lease as { leaseId: string; generation: number; connectAfter: string; expiresAt: string };
+    const before = await prisma.torqueWrenchUsageLease.findUniqueOrThrow({ where: { torqueWrenchProfileId: profile.id } });
+
+    const renewed = await app.inject({
+      method: 'POST',
+      url: `/api/torque-wrenches/${profile.id}/usage-lease/renew`,
+      headers,
+      payload: { sessionId, leaseId: acquiredLease.leaseId, generation: acquiredLease.generation }
+    });
+    expect(renewed.statusCode).toBe(200);
+    expect(renewed.json().lease).toMatchObject({
+      leaseId: acquiredLease.leaseId,
+      generation: acquiredLease.generation,
+      connectAfter: acquiredLease.connectAfter
+    });
+    expect(new Date(renewed.json().lease.expiresAt).getTime()).toBeGreaterThan(new Date(acquiredLease.expiresAt).getTime());
+
+    const after = await prisma.torqueWrenchUsageLease.findUniqueOrThrow({ where: { torqueWrenchProfileId: profile.id } });
+    expect(after.connectAfter).toEqual(before.connectAfter);
+    expect(after.expiresAt.getTime()).toBeGreaterThan(before.expiresAt.getTime());
+  });
+
   it('keeps assembly and training owners exclusive, even when they share a client device', async () => {
     const { employee, client, profile, version } = await fixture();
     const headers = { 'x-client-key': client.apiKey, 'content-type': 'application/json' };
