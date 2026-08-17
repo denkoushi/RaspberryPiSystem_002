@@ -641,10 +641,15 @@ export class TorqueTrainingService {
       },
       data: { renewedAt: now, expiresAt }
       });
-      return { updated, expiresAt };
+      const renewed = await tx.torqueWrenchUsageLease.findUnique({
+        where: { torqueWrenchProfileId: input.profileId },
+        select: { connectAfter: true }
+      });
+      return { updated, expiresAt, connectAfter: renewed?.connectAfter };
     });
     if (result.updated.count !== 1) throw new ApiError(409, '有効な訓練リースがありません', undefined, 'TORQUE_WRENCH_LEASE_EXPIRED');
-    return { leaseId: input.leaseId, generation: input.generation, expiresAt: result.expiresAt.toISOString(), connectAfter: new Date().toISOString() };
+    if (!result.connectAfter) throw new ApiError(409, '有効な訓練リースがありません', undefined, 'TORQUE_WRENCH_LEASE_EXPIRED');
+    return { leaseId: input.leaseId, generation: input.generation, expiresAt: result.expiresAt.toISOString(), connectAfter: result.connectAfter.toISOString() };
   }
 
   async recordAgentAttempt(input: AgentTrainingAttemptInput) {
