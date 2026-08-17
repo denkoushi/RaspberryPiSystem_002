@@ -6,6 +6,7 @@ import { useTorqueTrainingAdminController } from './useTorqueTrainingAdminContro
 import type {
   TorqueTrainingAdminResultApi,
   TorqueTrainingProgramApi,
+  TorqueTrainingProgramVersionApi,
   TorqueWrenchCapabilityGroupApi,
   TorqueWrenchProfileApi
 } from '../../../api/client';
@@ -31,6 +32,27 @@ const program = (overrides: Partial<TorqueTrainingProgramApi> = {}) => ({
   versions: [],
   ...overrides
 }) as TorqueTrainingProgramApi;
+
+const version = (
+  overrides: Partial<TorqueTrainingProgramVersionApi> = {}
+): TorqueTrainingProgramVersionApi => ({
+  id: 'version-1',
+  version: 1,
+  displayName: 'M8 training',
+  nominalDiameter: 'M8',
+  boltLengthMm: '25',
+  material: 'SUS304',
+  strengthClass: 'A2-70',
+  capabilityGroupId: 'group-1',
+  nominalTorque: '12.5',
+  lowerLimit: '10',
+  upperLimit: '15',
+  unit: 'N-m',
+  jigConditionCode: 'JIG-A',
+  conditionFingerprint: 'fingerprint-v1',
+  torqueWrenchProfiles: [{ id: 'wrench-1', serialNumber: 'TW-001' }],
+  ...overrides
+});
 
 const result = (overrides: Partial<TorqueTrainingAdminResultApi> = {}) => ({
   id: 'session-1',
@@ -126,8 +148,72 @@ describe('useTorqueTrainingAdminController', () => {
     expect(hook.current.message).toBe('訓練メニューを追加しました。');
   });
 
+  it('prefills the current version for a revision and clears the form when selection is cleared', async () => {
+    const currentProgram = program({
+      currentVersion: 2,
+      versions: [
+        version({ id: 'version-1', version: 1, displayName: '旧版' }),
+        version({
+          id: 'version-2',
+          version: 2,
+          displayName: '新版',
+          boltLengthMm: '30',
+          capabilityGroupId: 'group-2',
+          nominalTorque: '20',
+          torqueWrenchProfiles: [{ id: 'wrench-2', serialNumber: 'TW-002' }]
+        })
+      ]
+    });
+    apiMocks.listTorqueTrainingAdminPrograms.mockResolvedValueOnce([currentProgram]);
+
+    const { result: hook } = renderHook(() => useTorqueTrainingAdminController({ isOpen: true }));
+    await waitFor(() => expect(hook.current.adminPrograms).toEqual([currentProgram]));
+
+    act(() => hook.current.selectRevisionProgram('program-1'));
+
+    expect(hook.current.revisionProgramId).toBe('program-1');
+    expect(hook.current.programForm).toEqual({
+      code: 'M8-001',
+      displayName: '新版',
+      nominalDiameter: 'M8',
+      boltLengthMm: '30',
+      material: 'SUS304',
+      strengthClass: 'A2-70',
+      capabilityGroupId: 'group-2',
+      nominalTorque: '20',
+      lowerLimit: '10',
+      upperLimit: '15',
+      unit: 'N-m',
+      jigConditionCode: 'JIG-A',
+      torqueWrenchProfileIds: ['wrench-2']
+    });
+
+    act(() => hook.current.selectRevisionProgram(''));
+
+    expect(hook.current.revisionProgramId).toBe('');
+    expect(hook.current.programForm).toEqual({
+      code: '',
+      displayName: '',
+      nominalDiameter: '',
+      boltLengthMm: '',
+      material: '',
+      strengthClass: '',
+      capabilityGroupId: '',
+      nominalTorque: '',
+      lowerLimit: '',
+      upperLimit: '',
+      unit: 'N-m',
+      jigConditionCode: '',
+      torqueWrenchProfileIds: []
+    });
+  });
+
   it('requires a revision target and omits code from a revision payload', async () => {
-    const { result: hook } = renderHook(() => useTorqueTrainingAdminController({ isOpen: false }));
+    apiMocks.listTorqueTrainingAdminPrograms.mockResolvedValueOnce([
+      program({ versions: [version()] })
+    ]);
+    const { result: hook } = renderHook(() => useTorqueTrainingAdminController({ isOpen: true }));
+    await waitFor(() => expect(hook.current.adminPrograms).toHaveLength(1));
 
     await act(async () => {
       await hook.current.submitProgram(true);
@@ -136,7 +222,7 @@ describe('useTorqueTrainingAdminController', () => {
     expect(hook.current.error).toBe('版を追加するメニューを選択してください。');
 
     act(() => {
-      hook.current.setRevisionProgramId('program-1');
+      hook.current.selectRevisionProgram('program-1');
       hook.current.updateProgramForm('code', 'IGNORED-CODE');
       hook.current.updateProgramForm('nominalTorque', '21');
     });
@@ -149,6 +235,39 @@ describe('useTorqueTrainingAdminController', () => {
       expect.objectContaining({ nominalTorque: 21 })
     );
     expect(apiMocks.reviseTorqueTrainingProgram.mock.calls[0][1]).not.toHaveProperty('code');
+  });
+
+  it('does not enable revision for an inactive, unknown, or versionless target', async () => {
+    apiMocks.listTorqueTrainingAdminPrograms.mockResolvedValueOnce([
+      program({ id: 'inactive-program', isActive: false, versions: [version()] }),
+      program({ id: 'versionless-program', versions: [] })
+    ]);
+    const { result: hook } = renderHook(() => useTorqueTrainingAdminController({ isOpen: true }));
+    await waitFor(() => expect(hook.current.adminPrograms).toHaveLength(2));
+
+    act(() => hook.current.selectRevisionProgram('inactive-program'));
+    expect(hook.current.revisionProgramId).toBe('');
+
+    act(() => hook.current.selectRevisionProgram('versionless-program'));
+    expect(hook.current.revisionProgramId).toBe('');
+
+    act(() => hook.current.selectRevisionProgram('unknown-program'));
+    expect(hook.current.revisionProgramId).toBe('');
+    expect(hook.current.programForm).toEqual({
+      code: '',
+      displayName: '',
+      nominalDiameter: '',
+      boltLengthMm: '',
+      material: '',
+      strengthClass: '',
+      capabilityGroupId: '',
+      nominalTorque: '',
+      lowerLimit: '',
+      upperLimit: '',
+      unit: 'N-m',
+      jigConditionCode: '',
+      torqueWrenchProfileIds: []
+    });
   });
 
   it('deactivates with a trimmed reason and notifies the normal selector', async () => {

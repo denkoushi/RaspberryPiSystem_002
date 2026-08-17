@@ -20,6 +20,7 @@ import {
   EMPTY_TORQUE_TRAINING_PROGRAM_FORM,
   torqueTrainingProgramFormToPayload,
   torqueTrainingProgramFormToRevisionPayload,
+  torqueTrainingProgramVersionToForm,
   type TorqueTrainingProgramForm
 } from './torqueTrainingProgramForm';
 
@@ -43,7 +44,7 @@ export type TorqueTrainingAdminController = {
   programForm: TorqueTrainingProgramForm;
   updateProgramForm: (key: keyof TorqueTrainingProgramForm, value: string | string[]) => void;
   revisionProgramId: string;
-  setRevisionProgramId: Dispatch<SetStateAction<string>>;
+  selectRevisionProgram: (programId: string) => void;
   resultQuery: string;
   setResultQuery: Dispatch<SetStateAction<string>>;
   exclusionReasons: Record<string, string>;
@@ -125,6 +126,42 @@ export function useTorqueTrainingAdminController({
       setProgramForm((current) => ({ ...current, [key]: value } as TorqueTrainingProgramForm));
     },
     []
+  );
+
+  const selectRevisionProgram = useCallback(
+    (programId: string) => {
+      if (!programId) {
+        setRevisionProgramId('');
+        setProgramForm(EMPTY_TORQUE_TRAINING_PROGRAM_FORM);
+        return;
+      }
+
+      const program = adminPrograms.find((candidate) => candidate.id === programId);
+      if (!program?.isActive) {
+        setRevisionProgramId('');
+        setProgramForm(EMPTY_TORQUE_TRAINING_PROGRAM_FORM);
+        return;
+      }
+      const currentVersion = program?.versions.find(
+        (version) => version.version === program.currentVersion
+      );
+      const latestVersion =
+        currentVersion ??
+        program?.versions.reduce<TorqueTrainingProgramApi['versions'][number] | undefined>(
+          (latest, version) => (!latest || version.version > latest.version ? version : latest),
+          undefined
+        );
+
+      if (!latestVersion) {
+        setRevisionProgramId('');
+        setProgramForm(EMPTY_TORQUE_TRAINING_PROGRAM_FORM);
+        return;
+      }
+
+      setRevisionProgramId(programId);
+      setProgramForm(torqueTrainingProgramVersionToForm(program.code, latestVersion));
+    },
+    [adminPrograms]
   );
 
   const setExclusionReason = useCallback((sessionId: string, reason: string) => {
@@ -244,7 +281,7 @@ export function useTorqueTrainingAdminController({
     programForm,
     updateProgramForm,
     revisionProgramId,
-    setRevisionProgramId,
+    selectRevisionProgram,
     resultQuery,
     setResultQuery,
     exclusionReasons,

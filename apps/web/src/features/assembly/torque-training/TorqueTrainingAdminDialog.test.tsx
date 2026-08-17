@@ -76,7 +76,7 @@ const makeController = (): TorqueTrainingAdminController =>
     message: null,
     setAdminTab: vi.fn(),
     updateProgramForm: vi.fn(),
-    setRevisionProgramId: vi.fn(),
+    selectRevisionProgram: vi.fn(),
     setResultQuery: vi.fn(),
     setExclusionReason: vi.fn(),
     submitProgram: vi.fn().mockResolvedValue(undefined),
@@ -147,5 +147,25 @@ describe('TorqueTrainingAdminDialog', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('保存できませんでした。');
     fireEvent.click(screen.getByRole('button', { name: '集計対象外' }));
     expect(controller.excludeResult).toHaveBeenCalledWith('session-1');
+  });
+
+  it('delegates revision selection and protects the existing code during a revision', () => {
+    const controller = makeController();
+    const view = render(<TorqueTrainingAdminDialog isOpen onClose={vi.fn()} controller={controller} />);
+
+    const revisionSelect = screen.getByRole('combobox', { name: '新版対象' });
+    fireEvent.change(revisionSelect, { target: { value: 'program-1' } });
+    fireEvent.change(revisionSelect, { target: { value: '' } });
+
+    expect(controller.selectRevisionProgram).toHaveBeenNthCalledWith(1, 'program-1');
+    expect(controller.selectRevisionProgram).toHaveBeenNthCalledWith(2, '');
+
+    controller.revisionProgramId = 'program-1';
+    controller.programForm.code = 'M10';
+    view.rerender(<TorqueTrainingAdminDialog isOpen onClose={vi.fn()} controller={controller} />);
+
+    expect(screen.getByRole('textbox', { name: /メニューコード/ })).toBeDisabled();
+    expect(screen.getByText('新版作成では既存のメニューコードを引き継ぎます。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'メニューを追加' })).toBeDisabled();
   });
 });

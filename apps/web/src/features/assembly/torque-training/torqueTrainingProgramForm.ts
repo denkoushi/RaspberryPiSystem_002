@@ -1,4 +1,7 @@
-import type { TorqueTrainingProgramWritePayload } from '../../../api/client';
+import type {
+  TorqueTrainingProgramVersionApi,
+  TorqueTrainingProgramWritePayload
+} from '../../../api/client';
 
 /**
  * Values used while editing a torque-training program in the admin UI.
@@ -39,6 +42,33 @@ export const EMPTY_TORQUE_TRAINING_PROGRAM_FORM: TorqueTrainingProgramForm = {
   jigConditionCode: '',
   torqueWrenchProfileIds: []
 };
+
+/**
+ * Convert the latest persisted version into the editable revision form.
+ *
+ * The API keeps numeric values as strings in a version response, matching the
+ * form's representation and avoiding an unnecessary parse/format round trip.
+ */
+export function torqueTrainingProgramVersionToForm(
+  programCode: string,
+  version: TorqueTrainingProgramVersionApi
+): TorqueTrainingProgramForm {
+  return {
+    code: programCode,
+    displayName: version.displayName,
+    nominalDiameter: version.nominalDiameter,
+    boltLengthMm: version.boltLengthMm,
+    material: version.material,
+    strengthClass: version.strengthClass,
+    capabilityGroupId: version.capabilityGroupId,
+    nominalTorque: version.nominalTorque,
+    lowerLimit: version.lowerLimit,
+    upperLimit: version.upperLimit,
+    unit: version.unit,
+    jigConditionCode: version.jigConditionCode,
+    torqueWrenchProfileIds: version.torqueWrenchProfiles.map((profile) => profile.id)
+  };
+}
 
 /** Convert the editable form representation into the existing API payload. */
 export function torqueTrainingProgramFormToPayload(
