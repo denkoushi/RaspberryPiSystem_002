@@ -60,13 +60,15 @@ async function requestTorqueAgent(
 function postTorqueAgent(
   path: string,
   payload: object,
-  keepalive = false
+  keepalive = false,
+  signal?: AbortSignal
 ): Promise<TorqueAgentLeaseStatus> {
   return requestTorqueAgent(path, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(payload),
-    keepalive
+    keepalive,
+    signal
   });
 }
 
@@ -75,9 +77,10 @@ export function getTorqueAgentHealth(): Promise<TorqueAgentLeaseStatus> {
 }
 
 export function heartbeatTorqueAgent(
-  payload: TorqueAgentBindingPayload
+  payload: TorqueAgentBindingPayload,
+  signal?: AbortSignal
 ): Promise<TorqueAgentLeaseStatus> {
-  return postTorqueAgent('/heartbeat', payload);
+  return postTorqueAgent('/heartbeat', payload, false, signal);
 }
 
 export function acquireTorqueAgentLease(
@@ -112,6 +115,6 @@ export function heartbeatTorqueAgentTraining(payload: {
   sessionId: string;
   confirmationId: string | null;
   torqueWrenchProfileId: string | null;
-}): Promise<TorqueAgentLeaseStatus> {
-  return heartbeatTorqueAgent({ ...payload, currentTemplateBoltId: null, targetKind: 'training' });
+}, signal?: AbortSignal): Promise<TorqueAgentLeaseStatus> {
+  return heartbeatTorqueAgent({ ...payload, currentTemplateBoltId: null, targetKind: 'training' }, signal);
 }
