@@ -26,6 +26,7 @@ export type TorqueTrainingProgramVersionApi = {
   boltLengthMm: string;
   material: string;
   strengthClass: string;
+  capabilityGroupId: string;
   nominalTorque: string;
   lowerLimit: string;
   upperLimit: string;

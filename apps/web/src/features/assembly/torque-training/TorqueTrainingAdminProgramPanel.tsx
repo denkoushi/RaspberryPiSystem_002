@@ -45,6 +45,7 @@ type Props = {
 
 export function TorqueTrainingAdminProgramPanel({ controller }: Props) {
   const { programForm } = controller;
+  const isRevision = Boolean(controller.revisionProgramId);
 
   const requestDeactivation = (programId: string) => {
     const reason = window.prompt('停止理由を入力してください。');
@@ -72,8 +73,15 @@ export function TorqueTrainingAdminProgramPanel({ controller }: Props) {
                 inputMode={inputMode}
                 placeholder={key}
                 value={programForm[key]}
+                disabled={key === 'code' && isRevision}
+                aria-describedby={key === 'code' && isRevision ? 'torque-training-admin-code-help' : undefined}
                 onChange={(event) => controller.updateProgramForm(key, event.target.value)}
               />
+              {key === 'code' && isRevision ? (
+                <span id="torque-training-admin-code-help" className="block text-xs text-white/55">
+                  新版作成では既存のメニューコードを引き継ぎます。
+                </span>
+              ) : null}
             </label>
           ))}
 
@@ -127,7 +135,7 @@ export function TorqueTrainingAdminProgramPanel({ controller }: Props) {
         <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
-            disabled={controller.adminBusy}
+            disabled={controller.adminBusy || isRevision}
             onClick={() => void controller.submitProgram(false)}
           >
             メニューを追加
@@ -138,7 +146,7 @@ export function TorqueTrainingAdminProgramPanel({ controller }: Props) {
               id="torque-training-admin-revision-program"
               className={`${selectClassName} w-full max-w-xs`}
               value={controller.revisionProgramId}
-              onChange={(event) => controller.setRevisionProgramId(event.target.value)}
+              onChange={(event) => controller.selectRevisionProgram(event.target.value)}
             >
               <option value="">新版対象を選択</option>
               {controller.adminPrograms
