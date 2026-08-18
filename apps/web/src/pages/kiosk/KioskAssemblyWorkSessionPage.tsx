@@ -18,37 +18,32 @@ import {
   AssemblyProcedureSequenceViewer,
   AssemblyOperatorNfcDialog,
   AssemblyWorkSessionHeader,
-  acquireTorqueAgentLease,
   currentAssemblyArea,
   currentAssemblyBolt,
   createAssemblyRequestId,
-  getTorqueAgentHealth,
-  heartbeatTorqueAgent,
   KIOSK_ASSEMBLY_HOME_PATH,
   latestStatusByBolt,
   readAssemblyApiErrorMessage,
-  releaseTorqueAgentLease,
   resolveAssemblyWorkActionPresentation,
-  resolveTorqueConnectionPresentation,
   resolveAssemblyCheckSummary,
   sessionCheckItemsToCanvas,
-  takeoverTorqueAgentLease,
   templateToCanvasBolts,
   TorqueResultHistoryRow,
   useAssemblyWorkProcedureSequence,
   useTorqueRecordLiveRefresh
 } from '../../features/assembly';
 import { kioskFlowButtonClass } from '../../features/kiosk/kioskFlowButtonTheme';
+import {
+  TorqueWrenchTakeoverPanel,
+  resolveTorqueWrenchConnectionPresentation,
+  useTorqueWrenchConnection
+} from '../../features/torque-wrench-connection';
 
 import type { TorqueWrenchProfileApi } from '../../api/domains/torque-wrenches';
 import type {
-  TorqueAgentLeaseStatus,
-  TorqueAgentReachability,
   TorqueConfirmationLookupState
 } from '../../features/assembly';
 import type { AssemblyProcedureSequencePageDto, AssemblyWorkSessionDto } from '../../features/assembly/types';
-
-const TAKEOVER_CONFIRMATION_ARM_DELAY_MS = 1200;
 
 export function KioskAssemblyWorkSessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -74,15 +69,19 @@ export function KioskAssemblyWorkSessionPage() {
   const [confirmation, setConfirmation] = useState<{ id: string; torqueWrenchProfileId: string; settingHistoryId: string } | null>(null);
   const [confirmationReused, setConfirmationReused] = useState(false);
   const [confirmationLookupState, setConfirmationLookupState] = useState<TorqueConfirmationLookupState>('idle');
-  const [agentReachability, setAgentReachability] = useState<TorqueAgentReachability>('unknown');
-  const [agentStatus, setAgentStatus] = useState<TorqueAgentLeaseStatus | null>(null);
-  const [takeoverConfirmationVisible, setTakeoverConfirmationVisible] = useState(false);
-  const [takeoverConfirmationArmed, setTakeoverConfirmationArmed] = useState(false);
-  const [takeoverPhysicalPresenceConfirmed, setTakeoverPhysicalPresenceConfirmed] = useState(false);
   const operatorAuthorized = Boolean(
     session && (session.status !== 'in_progress' || authorizedSessionId === session.id)
   );
   const sessionActive = Boolean(operatorAuthorized && session?.status === 'in_progress');
+  const traceabilityRequired = session?.template.traceabilityMode === 'REQUIRED';
+  const torqueConnection = useTorqueWrenchConnection({
+    enabled: Boolean(sessionActive && traceabilityRequired),
+    targetKind: 'assembly',
+    sessionId: session?.id ?? null,
+    currentTemplateBoltId: session?.currentBoltId ?? null,
+    confirmationId: confirmation?.id ?? null,
+    torqueWrenchProfileId: confirmation?.torqueWrenchProfileId ?? null
+  });
   const {
     state: procedureSequenceState,
     retry: retryProcedureSequence
@@ -96,27 +95,6 @@ export function KioskAssemblyWorkSessionPage() {
     setAuthorizedSessionId(sessionId ?? null);
     navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
   }, [incomingAccessGrant, location.pathname, location.search, navigate, sessionId]);
-
-  const closeTakeoverConfirmation = useCallback(() => {
-    setTakeoverConfirmationVisible(false);
-    setTakeoverConfirmationArmed(false);
-    setTakeoverPhysicalPresenceConfirmed(false);
-  }, []);
-
-  const openTakeoverConfirmation = useCallback(() => {
-    setTakeoverConfirmationArmed(false);
-    setTakeoverPhysicalPresenceConfirmed(false);
-    setTakeoverConfirmationVisible(true);
-  }, []);
-
-  useEffect(() => {
-    if (!takeoverConfirmationVisible) return;
-    const timer = window.setTimeout(
-      () => setTakeoverConfirmationArmed(true),
-      TAKEOVER_CONFIRMATION_ARM_DELAY_MS
-    );
-    return () => window.clearTimeout(timer);
-  }, [takeoverConfirmationVisible]);
 
   useEffect(() => {
     if (!sessionId) {
@@ -146,7 +124,6 @@ export function KioskAssemblyWorkSessionPage() {
   const checkSummary = useMemo(() => (session ? resolveAssemblyCheckSummary(session) : null), [session]);
   const currentArea = session ? currentAssemblyArea(session) : null;
   const currentBolt = session ? currentAssemblyBolt(session) : null;
-  const traceabilityRequired = session?.template.traceabilityMode === 'REQUIRED';
   const allBoltsComplete = session
     ? session.template.areas.every((area) => area.bolts.every((bolt) => statusByBolt.get(bolt.id) === 'ok'))
     : false;
@@ -182,9 +159,6 @@ export function KioskAssemblyWorkSessionPage() {
     setConfirmationLookupState('loading');
     setConfirmation(null);
     setConfirmationReused(false);
-    setAgentReachability('unknown');
-    setAgentStatus(null);
-    closeTakeoverConfirmation();
     void Promise.all([
       listCompatibleTorqueWrenchesForSession(session.id),
       listCurrentTorqueWrenchConfirmations(session.id)
@@ -216,46 +190,7 @@ export function KioskAssemblyWorkSessionPage() {
     return () => {
       cancelled = true;
     };
-  }, [closeTakeoverConfirmation, session?.currentBoltId, session?.id, sessionActive, traceabilityRequired]);
-
-  useEffect(() => {
-    if (!sessionActive || !session?.id || !traceabilityRequired) return;
-    let cancelled = false;
-    const pollAgent = async () => {
-      try {
-        const isPreConfirmationHealth = Boolean(session.currentBoltId && !confirmation);
-        const status = isPreConfirmationHealth
-          ? await getTorqueAgentHealth()
-          : await heartbeatTorqueAgent({
-              sessionId: session.id,
-              currentTemplateBoltId: session.currentBoltId,
-              confirmationId: confirmation?.id ?? null,
-              torqueWrenchProfileId: confirmation?.torqueWrenchProfileId ?? null
-            });
-        if (!cancelled) {
-          setAgentReachability('reachable');
-          setAgentStatus(isPreConfirmationHealth ? null : status);
-        }
-      } catch {
-        if (!cancelled) {
-          setAgentReachability('unreachable');
-        }
-      }
-    };
-    void pollAgent();
-    const timer = window.setInterval(() => void pollAgent(), 2000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [confirmation, session?.currentBoltId, session?.id, sessionActive, traceabilityRequired]);
-
-  useEffect(() => {
-    if (!sessionActive || !traceabilityRequired) return;
-    return () => {
-      void releaseTorqueAgentLease('PAGE_LEFT', true).catch(() => undefined);
-    };
-  }, [sessionActive, traceabilityRequired]);
+  }, [session?.currentBoltId, session?.id, sessionActive, traceabilityRequired]);
 
   const activePageRef = useMemo(() => {
     if (!currentSequencePage) return null;
@@ -339,57 +274,17 @@ export function KioskAssemblyWorkSessionPage() {
   const startUsingWrench = () =>
     runBusy(async () => {
       if (!session?.currentBoltId || !confirmation) throw new Error('先に現物確認を完了してください。');
-      try {
-        const status = await acquireTorqueAgentLease({
-          sessionId: session.id,
-          currentTemplateBoltId: session.currentBoltId,
-          confirmationId: confirmation.id,
-          torqueWrenchProfileId: confirmation.torqueWrenchProfileId,
-          requestId: globalThis.crypto?.randomUUID?.() ?? `lease-${Date.now()}`
-        });
-        setAgentReachability('reachable');
-        setAgentStatus(status);
-        closeTakeoverConfirmation();
-      } catch (error) {
-        setAgentReachability('unreachable');
-        throw error;
-      }
+      await torqueConnection.acquire(globalThis.crypto?.randomUUID?.() ?? `lease-${Date.now()}`);
     });
 
   const takeoverWrench = () =>
     runBusy(async () => {
       if (!session?.currentBoltId || !confirmation) throw new Error('先に現物確認を完了してください。');
-      if (!takeoverConfirmationArmed || !takeoverPhysicalPresenceConfirmed) {
-        throw new Error('レンチ本体が手元にあることを確認してください。');
-      }
-      try {
-        const status = await takeoverTorqueAgentLease({
-          sessionId: session.id,
-          currentTemplateBoltId: session.currentBoltId,
-          confirmationId: confirmation.id,
-          torqueWrenchProfileId: confirmation.torqueWrenchProfileId,
-          requestId: globalThis.crypto?.randomUUID?.() ?? `takeover-${Date.now()}`,
-          physicalWrenchPresent: true,
-          reason: '作業者が現物を手元で二段階確認'
-        });
-        setAgentReachability('reachable');
-        setAgentStatus(status);
-        closeTakeoverConfirmation();
-      } catch (error) {
-        setAgentReachability('unreachable');
-        throw error;
-      }
+      await torqueConnection.takeover('作業者が現物を手元で二段階確認');
     });
 
   const stopUsingWrench = async (reason = 'OPERATOR_RELEASE') => {
-    try {
-      const status = await releaseTorqueAgentLease(reason);
-      setAgentReachability('reachable');
-      setAgentStatus(status);
-      closeTakeoverConfirmation();
-    } catch {
-      setAgentReachability('unreachable');
-    }
+    await torqueConnection.release(reason);
   };
 
   const toggleCheckItem = (checkItemId: string) =>
@@ -491,12 +386,14 @@ export function KioskAssemblyWorkSessionPage() {
     checkSummary && checkSummary.requiredTotal > 0
       ? `必須 ${checkSummary.requiredCompleted}/${checkSummary.requiredTotal}`
       : null;
-  const torqueConnectionPresentation = resolveTorqueConnectionPresentation({
+  const torqueConnectionPresentation = resolveTorqueWrenchConnectionPresentation({
+    state: torqueConnection.state,
     currentTemplateBoltId: session.currentBoltId,
     confirmationLookupState,
     hasConfirmation: Boolean(confirmation),
-    reachability: agentReachability,
-    status: agentStatus
+    reachability: torqueConnection.reachability,
+    status: torqueConnection.status,
+    error: torqueConnection.error
   });
   const visibleMessage = torqueConnectionPresentation.connectionMessage ?? message;
   const torqueValueValid = torqueValue.trim().length > 0 && Number.isFinite(Number(torqueValue));
@@ -510,8 +407,8 @@ export function KioskAssemblyWorkSessionPage() {
     torqueValueValid,
     selectedProfileId,
     hasConfirmation: Boolean(confirmation),
-    leaseOwned: Boolean(agentStatus?.leaseOwned),
-    ownedByOther: agentStatus?.state === 'owned_by_other'
+    leaseOwned: torqueConnection.leaseOwned,
+    ownedByOther: torqueConnection.state === 'owned_by_other'
   });
 
   return (
@@ -615,7 +512,7 @@ export function KioskAssemblyWorkSessionPage() {
             <div className="mt-2 grid grid-cols-2 gap-2 rounded border border-cyan-300/25 bg-cyan-950/20 p-2">
               <div className="col-span-2 flex items-center justify-between gap-3 text-sm">
                 <span className="font-semibold">トルクレンチ接続</span>
-                <span className={agentStatus?.ready ? 'text-emerald-300' : 'text-amber-200'}>
+                <span className={torqueConnection.ready ? 'text-emerald-300' : 'text-amber-200'}>
                   {torqueConnectionPresentation.stateLabel}
                 </span>
               </div>
@@ -637,7 +534,7 @@ export function KioskAssemblyWorkSessionPage() {
               >
                 {confirmation ? '現物確認済み' : '製造番号と現物設定を確認'}
               </button>
-              {confirmation && !agentStatus?.leaseOwned && agentStatus?.state !== 'owned_by_other' ? (
+              {confirmation && !torqueConnection.leaseOwned && torqueConnection.state !== 'owned_by_other' ? (
                 <button
                   type="button"
                   className={kioskFlowButtonClass(actionPresentation.startUsingWrench)}
@@ -647,7 +544,7 @@ export function KioskAssemblyWorkSessionPage() {
                   このレンチを使用開始
                 </button>
               ) : null}
-              {agentStatus?.leaseOwned ? (
+              {torqueConnection.leaseOwned ? (
                 <button
                   type="button"
                   className={kioskFlowButtonClass(actionPresentation.stopUsingWrench)}
@@ -657,65 +554,18 @@ export function KioskAssemblyWorkSessionPage() {
                   使用終了
                 </button>
               ) : null}
-              {agentStatus?.state === 'owned_by_other' ? (
-                <div className="col-span-2 grid gap-2 rounded border border-amber-300/30 bg-amber-950/30 p-3 text-sm">
-                  <div className="font-semibold text-amber-100">
-                    {agentStatus.owner?.clientDeviceName ?? '別端末'}
-                    {agentStatus.owner?.clientDeviceLocation ? `（${agentStatus.owner.clientDeviceLocation}）` : ''} が使用中
-                  </div>
-                  {!takeoverConfirmationVisible ? (
-                    <button
-                      type="button"
-                      className={kioskFlowButtonClass({ disabled: busy })}
-                      disabled={busy}
-                      onClick={openTakeoverConfirmation}
-                    >
-                      現物が手元にあるため引き継ぐ
-                    </button>
-                  ) : (
-                    <div className="grid gap-3 rounded border border-amber-200/25 bg-slate-950/70 p-3">
-                      <p className="text-xs font-semibold text-amber-100">レンチ本体がこの端末の前にあることを、もう一度確認してください。</p>
-                      <label className="flex min-h-12 items-center gap-3 rounded border border-white/15 bg-slate-900 px-3 py-2 text-sm font-semibold text-white">
-                        <input
-                          type="checkbox"
-                          className="h-5 w-5 shrink-0 accent-amber-400"
-                          checked={takeoverPhysicalPresenceConfirmed}
-                          disabled={busy || !takeoverConfirmationArmed}
-                          onChange={(event) => setTakeoverPhysicalPresenceConfirmed(event.target.checked)}
-                        />
-                        <span>レンチ本体がこの端末の前にあることを確認しました</span>
-                      </label>
-                      <p className="text-xs text-white/65" aria-live="polite">
-                        {takeoverConfirmationArmed
-                          ? '確認欄にチェックしてから、接続権の引継ぎを実行してください。'
-                          : '誤操作防止のため、確認欄が有効になるまで少しお待ちください。'}
-                      </p>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          className={kioskFlowButtonClass({ disabled: busy })}
-                          disabled={busy}
-                          onClick={closeTakeoverConfirmation}
-                        >
-                          やめる
-                        </button>
-                        <Button
-                          type="button"
-                          variant="danger"
-                          disabled={busy || !takeoverConfirmationArmed || !takeoverPhysicalPresenceConfirmed}
-                          onClick={takeoverWrench}
-                        >
-                          確認して接続権を引き継ぐ
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </div>
+              {torqueConnection.state === 'owned_by_other' ? (
+                <TorqueWrenchTakeoverPanel
+                  owner={torqueConnection.status?.owner ?? null}
+                  targetKind="assembly"
+                  busy={busy || torqueConnection.busy}
+                  onTakeover={takeoverWrench}
+                />
               ) : null}
               <div className="col-span-2 rounded bg-slate-950/70 px-3 py-2 text-center text-sm font-semibold">
                 {!confirmation
                   ? '現物確認後に使用開始してください'
-                  : agentStatus?.ready
+                  : torqueConnection.ready
                     ? '入力待機中'
                     : confirmationReused
                       ? '同じ締付条件の現物確認を引継ぎ済み・使用開始が必要です'

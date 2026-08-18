@@ -163,10 +163,14 @@ export type TorqueWrenchConnectionLeaseState =
   | 'handoff_wait'
   | 'expired';
 
+/** The two business workflows that may own one physical wrench. */
+export type TorqueWrenchLeaseOwnerKind = 'ASSEMBLY' | 'TRAINING';
+
 export interface TorqueWrenchConnectionLeaseStatusDto {
   torqueWrenchProfileId: string;
   state: TorqueWrenchConnectionLeaseState;
   owner: {
+    ownerKind: TorqueWrenchLeaseOwnerKind;
     clientDeviceName: string;
     clientDeviceLocation: string | null;
     clientDeviceId?: string;

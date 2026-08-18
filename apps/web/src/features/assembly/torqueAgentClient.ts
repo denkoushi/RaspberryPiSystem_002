@@ -1,105 +1,96 @@
-export type TorqueAgentLeaseState =
-  | 'available'
-  | 'owned_by_self'
-  | 'owned_by_other'
-  | 'handoff_wait'
-  | 'expired'
-  | 'communication_lost'
-  | 'fenced';
+/**
+ * Compatibility facade for existing assembly imports.
+ * New code should consume `features/torque-wrench-connection` directly.
+ */
 
-export type TorqueAgentLeaseStatus = {
-  ok: boolean;
-  ready: boolean;
-  state: TorqueAgentLeaseState;
-  owner: {
-    clientDeviceName: string;
-    clientDeviceLocation: string | null;
-  } | null;
-  bound: boolean;
-  leaseOwned: boolean;
-  bluetoothPowered: boolean;
-  hidExclusive: boolean;
-  lastError: string | null;
-  wrenchSerialNumbers?: string[];
+import {
+  localhostTorqueWrenchTransport,
+  TORQUE_AGENT_STREAM_URL
+} from '../torque-wrench-connection';
+
+export {
+  TORQUE_AGENT_STREAM_URL,
+  localhostTorqueWrenchTransport
 };
 
-type TorqueAgentBindingPayload = {
-  sessionId: string;
-  currentTemplateBoltId: string | null;
-  confirmationId: string | null;
-  torqueWrenchProfileId: string | null;
-  targetKind?: 'assembly' | 'training';
-};
+export type {
+  TorqueAgentLeaseStatus,
+  TorqueAgentWireLeaseState as TorqueAgentLeaseState,
+  TorqueWrenchConnectionBinding,
+  TorqueWrenchConnectionOwner,
+  TorqueWrenchConnectionTargetKind,
+  TorqueWrenchConnectionTransport,
+  TorqueWrenchLocalLeaseToken
+} from '../torque-wrench-connection';
 
-type TorqueAgentLeaseAcquirePayload = {
-  sessionId: string;
-  currentTemplateBoltId: string;
-  confirmationId: string;
-  torqueWrenchProfileId: string;
-  requestId: string;
-  targetKind?: 'assembly' | 'training';
-};
+import type {
+  TorqueAgentLeaseStatus,
+  TorqueWrenchConnectionTargetKind,
+  TorqueWrenchLocalLeaseToken
+} from '../torque-wrench-connection';
 
-type TorqueAgentLeaseTakeoverPayload = TorqueAgentLeaseAcquirePayload & {
-  physicalWrenchPresent: true;
-  reason: string;
-};
-
-const TORQUE_AGENT_ORIGIN = 'http://127.0.0.1:7073';
-export const TORQUE_AGENT_STREAM_URL = `${TORQUE_AGENT_ORIGIN.replace(/^http/, 'ws')}/stream`;
-
-async function requestTorqueAgent(
-  path: string,
-  init?: RequestInit
-): Promise<TorqueAgentLeaseStatus> {
-  const response = await fetch(`${TORQUE_AGENT_ORIGIN}${path}`, init);
-  if (!response.ok) throw new Error(`torque-agent ${response.status}`);
-  return response.json() as Promise<TorqueAgentLeaseStatus>;
-}
-
-function postTorqueAgent(
-  path: string,
-  payload: object,
-  keepalive = false,
-  signal?: AbortSignal
-): Promise<TorqueAgentLeaseStatus> {
-  return requestTorqueAgent(path, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(payload),
-    keepalive,
-    signal
-  });
-}
-
-export function getTorqueAgentHealth(): Promise<TorqueAgentLeaseStatus> {
-  return requestTorqueAgent('/health');
+export function getTorqueAgentHealth(signal?: AbortSignal): Promise<TorqueAgentLeaseStatus> {
+  return localhostTorqueWrenchTransport.health(signal);
 }
 
 export function heartbeatTorqueAgent(
-  payload: TorqueAgentBindingPayload,
+  payload: {
+    sessionId: string;
+    currentTemplateBoltId: string | null;
+    confirmationId: string | null;
+    torqueWrenchProfileId: string | null;
+    targetKind?: TorqueWrenchConnectionTargetKind;
+  },
   signal?: AbortSignal
 ): Promise<TorqueAgentLeaseStatus> {
-  return postTorqueAgent('/heartbeat', payload, false, signal);
+  return localhostTorqueWrenchTransport.heartbeat({
+    sessionId: payload.sessionId,
+    currentTemplateBoltId: payload.currentTemplateBoltId,
+    confirmationId: payload.confirmationId ?? '',
+    torqueWrenchProfileId: payload.torqueWrenchProfileId ?? '',
+    targetKind: payload.targetKind ?? 'assembly'
+  }, signal);
+}
+export function acquireTorqueAgentLease(payload: {
+  sessionId: string;
+  currentTemplateBoltId: string | null;
+  confirmationId: string;
+  torqueWrenchProfileId: string;
+  requestId: string;
+  targetKind?: TorqueWrenchConnectionTargetKind;
+}): Promise<TorqueAgentLeaseStatus> {
+  return localhostTorqueWrenchTransport.acquire({ ...payload, targetKind: payload.targetKind ?? 'assembly' });
 }
 
-export function acquireTorqueAgentLease(
-  payload: TorqueAgentLeaseAcquirePayload
-): Promise<TorqueAgentLeaseStatus> {
-  return postTorqueAgent('/lease/acquire', payload);
+export function takeoverTorqueAgentLease(payload: {
+  sessionId: string;
+  currentTemplateBoltId: string | null;
+  confirmationId: string;
+  torqueWrenchProfileId: string;
+  requestId: string;
+  physicalWrenchPresent: true;
+  reason: string;
+  targetKind?: TorqueWrenchConnectionTargetKind;
+}): Promise<TorqueAgentLeaseStatus> {
+  return localhostTorqueWrenchTransport.takeover({ ...payload, targetKind: payload.targetKind ?? 'assembly' });
 }
 
-export function takeoverTorqueAgentLease(
-  payload: TorqueAgentLeaseTakeoverPayload
-): Promise<TorqueAgentLeaseStatus> {
-  return postTorqueAgent('/lease/takeover', payload);
-}
-
+/** Legacy release signature retained for existing completion flows. */
 export function releaseTorqueAgentLease(
   reason: string,
+  token: TorqueWrenchLocalLeaseToken,
   keepalive = false
 ): Promise<TorqueAgentLeaseStatus> {
-  return postTorqueAgent('/lease/release', { reason }, keepalive);
+  return localhostTorqueWrenchTransport.release({ reason, keepalive, token });
+}
+
+/** Exact-token variant used by the shared connection controller. */
+export function releaseTorqueAgentLeaseExact(request: {
+  reason: string;
+  token: TorqueWrenchLocalLeaseToken;
+  keepalive?: boolean;
+}): Promise<TorqueAgentLeaseStatus> {
+  return localhostTorqueWrenchTransport.release(request);
 }
 
 export function acquireTorqueAgentTrainingLease(payload: {
@@ -108,7 +99,26 @@ export function acquireTorqueAgentTrainingLease(payload: {
   torqueWrenchProfileId: string;
   requestId: string;
 }): Promise<TorqueAgentLeaseStatus> {
-  return postTorqueAgent('/lease/acquire', { ...payload, currentTemplateBoltId: null, targetKind: 'training' });
+  return localhostTorqueWrenchTransport.acquire({
+    ...payload,
+    currentTemplateBoltId: null,
+    targetKind: 'training'
+  });
+}
+
+export function takeoverTorqueAgentTrainingLease(payload: {
+  sessionId: string;
+  confirmationId: string;
+  torqueWrenchProfileId: string;
+  requestId: string;
+  physicalWrenchPresent: true;
+  reason: string;
+}): Promise<TorqueAgentLeaseStatus> {
+  return localhostTorqueWrenchTransport.takeover({
+    ...payload,
+    currentTemplateBoltId: null,
+    targetKind: 'training'
+  });
 }
 
 export function heartbeatTorqueAgentTraining(payload: {
@@ -116,5 +126,11 @@ export function heartbeatTorqueAgentTraining(payload: {
   confirmationId: string | null;
   torqueWrenchProfileId: string | null;
 }, signal?: AbortSignal): Promise<TorqueAgentLeaseStatus> {
-  return heartbeatTorqueAgent({ ...payload, currentTemplateBoltId: null, targetKind: 'training' }, signal);
+  return localhostTorqueWrenchTransport.heartbeat({
+    ...payload,
+    currentTemplateBoltId: null,
+    confirmationId: payload.confirmationId ?? '',
+    torqueWrenchProfileId: payload.torqueWrenchProfileId ?? '',
+    targetKind: 'training'
+  }, signal);
 }

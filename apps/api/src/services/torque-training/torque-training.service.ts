@@ -1,11 +1,14 @@
-import { randomUUID } from 'node:crypto';
-
 import { Prisma, type TorqueTrainingAttemptJudgement } from '@prisma/client';
 
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { resolveActiveAssemblyOperatorNfcUid } from '../assembly/assembly-operator-nfc-resolve.service.js';
 import { runTrainingTransaction } from './torque-training.transaction.js';
+import {
+  TorqueTrainingLeaseService,
+  type TrainingLeaseAcquireInput,
+  type TrainingLeaseTokenInput
+} from './torque-training-lease.service.js';
 import {
   candidateFromProfile,
   capabilityGroupEligibilityInclude,
@@ -19,9 +22,6 @@ import {
   trainingConditionFingerprint,
   type TrainingConditionInput
 } from './torque-training.policy.js';
-
-const LEASE_TTL_MS = 8_000;
-const HANDOFF_GRACE_MS = 1_000;
 
 type Client = { id: string; name: string; location?: string | null };
 
@@ -69,82 +69,6 @@ const trainingSessionInclude = {
   attempts: true,
   confirmations: true
 } as const;
-
-async function appendTrainingLeaseHistory(
-  tx: Prisma.TransactionClient,
-  input: {
-    profileId: string;
-    leaseId: string;
-    generation: number;
-    sessionId: string;
-    clientDeviceId: string;
-    action: string;
-    reason: string;
-    adoptedConfirmationId?: string | null;
-  }
-): Promise<void> {
-  const client = await tx.clientDevice.findUnique({
-    where: { id: input.clientDeviceId },
-    select: { name: true }
-  });
-  await tx.torqueWrenchUsageLeaseHistory.create({
-    data: {
-      torqueWrenchProfileId: input.profileId,
-      leaseId: input.leaseId,
-      generation: input.generation,
-      ownerKind: 'TRAINING',
-      ownerTargetId: input.sessionId,
-      ownerClientDeviceId: input.clientDeviceId,
-      ownerClientDeviceName: client?.name ?? 'kiosk',
-      action: input.action,
-      adoptedConfirmationId: input.adoptedConfirmationId ?? null,
-      reason: input.reason.trim().slice(0, 500)
-    }
-  });
-}
-
-async function releaseTrainingLeasesForSession(
-  tx: Prisma.TransactionClient,
-  sessionId: string,
-  clientDeviceId: string,
-  reason: string
-): Promise<void> {
-  const candidates = await tx.torqueWrenchUsageLease.findMany({
-    where: {
-      ownerKind: 'TRAINING',
-      ownerTrainingSessionId: sessionId,
-      ownerClientDeviceId: clientDeviceId,
-      releasedAt: null
-    },
-    select: { torqueWrenchProfileId: true }
-  });
-  for (const candidate of candidates) {
-    await tx.$queryRaw(Prisma.sql`
-      SELECT "id" FROM "TorqueWrenchProfile"
-      WHERE "id" = ${candidate.torqueWrenchProfileId}
-      FOR UPDATE
-    `);
-    const row = await tx.torqueWrenchUsageLease.findUnique({
-      where: { torqueWrenchProfileId: candidate.torqueWrenchProfileId }
-    });
-    if (!row || row.releasedAt || row.ownerKind !== 'TRAINING' || row.ownerTrainingSessionId !== sessionId || row.ownerClientDeviceId !== clientDeviceId) continue;
-    const releasedAt = new Date();
-    await tx.torqueWrenchUsageLease.update({
-      where: { torqueWrenchProfileId: candidate.torqueWrenchProfileId },
-      data: { releasedAt, releaseReason: reason.trim().slice(0, 500) }
-    });
-    await appendTrainingLeaseHistory(tx, {
-      profileId: row.torqueWrenchProfileId,
-      leaseId: row.leaseId,
-      generation: row.generation,
-      sessionId,
-      clientDeviceId,
-      action: 'RELEASE',
-      reason,
-      adoptedConfirmationId: row.adoptedConfirmationId
-    });
-  }
-}
 
 function decimal(value: Prisma.Decimal.Value): Prisma.Decimal {
   return new Prisma.Decimal(value);
@@ -277,6 +201,10 @@ function normalizeProgramInput(input: TrainingProgramInput) {
 }
 
 export class TorqueTrainingService {
+  constructor(
+    private readonly leaseService = new TorqueTrainingLeaseService()
+  ) {}
+
   async listPrograms(includeInactive = false) {
     const programs = await prisma.torqueTrainingProgram.findMany({
       where: includeInactive ? undefined : { isActive: true },
@@ -564,92 +492,16 @@ export class TorqueTrainingService {
     });
   }
 
-  async acquireTrainingLease(input: { sessionId: string; profileId: string; confirmationId: string; clientDeviceId: string; requestId: string; takeover?: boolean; reason?: string }) {
-    return runTrainingTransaction(async (tx) => {
-      const session = await tx.torqueTrainingSession.findUnique({ where: { id: input.sessionId } });
-      if (!session || session.clientDeviceId !== input.clientDeviceId || session.status !== 'IN_PROGRESS') throw new ApiError(409, '訓練セッションが接続可能な状態ではありません');
-      const confirmation = await tx.torqueTrainingWrenchConfirmation.findFirst({ where: { id: input.confirmationId, sessionId: input.sessionId, torqueWrenchProfileId: input.profileId } });
-      if (!confirmation) throw new ApiError(409, 'レンチ確認が必要です', undefined, 'CONFIRMATION_REQUIRED');
-      // The profile row is the stable lock key. A missing lease row cannot be
-      // locked by SELECT FOR UPDATE, so serialize creation on the profile.
-      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "TorqueWrenchProfile" WHERE "id" = ${input.profileId} FOR UPDATE`);
-      const now = new Date();
-      const current = await tx.torqueWrenchUsageLease.findUnique({ where: { torqueWrenchProfileId: input.profileId } });
-      const active = current && !current.releasedAt && current.expiresAt > now;
-      const sameOwner = active && current.ownerKind === 'TRAINING' && current.ownerTrainingSessionId === input.sessionId && current.ownerClientDeviceId === input.clientDeviceId;
-      if (sameOwner && current.requestId === input.requestId) return { leaseId: current.leaseId, generation: current.generation, expiresAt: current.expiresAt.toISOString(), connectAfter: current.connectAfter.toISOString() };
-      if (active && !sameOwner && !input.takeover) throw new ApiError(409, 'このレンチは他の端末で使用中です', undefined, 'TORQUE_WRENCH_LEASE_HELD');
-      const generation = sameOwner ? current.generation : (current?.generation ?? 0) + 1;
-      const leaseId = sameOwner ? current.leaseId : randomUUID();
-      const connectAfter = input.takeover && active ? new Date(current.expiresAt.getTime() + HANDOFF_GRACE_MS) : now;
-      const lease = await tx.torqueWrenchUsageLease.upsert({
-        where: { torqueWrenchProfileId: input.profileId },
-        create: { torqueWrenchProfileId: input.profileId, leaseId, generation, requestId: input.requestId, ownerKind: 'TRAINING', ownerAssemblySessionId: null, ownerTrainingSessionId: input.sessionId, ownerClientDeviceId: input.clientDeviceId, adoptedConfirmationId: input.confirmationId, expiresAt: new Date(now.getTime() + LEASE_TTL_MS), connectAfter },
-        update: { leaseId, generation, requestId: input.requestId, ownerKind: 'TRAINING', ownerAssemblySessionId: null, ownerTrainingSessionId: input.sessionId, ownerClientDeviceId: input.clientDeviceId, adoptedConfirmationId: input.confirmationId, acquiredAt: now, renewedAt: now, expiresAt: new Date(now.getTime() + LEASE_TTL_MS), connectAfter, releasedAt: null, releaseReason: null }
-      });
-      const client = await tx.clientDevice.findUnique({ where: { id: input.clientDeviceId }, select: { name: true } });
-      await tx.torqueWrenchUsageLeaseHistory.create({ data: { torqueWrenchProfileId: input.profileId, leaseId: lease.leaseId, generation: lease.generation, ownerKind: 'TRAINING', ownerTargetId: input.sessionId, ownerClientDeviceId: input.clientDeviceId, ownerClientDeviceName: client?.name ?? 'kiosk', action: input.takeover ? 'TAKEN_OVER' : sameOwner ? 'RENEWED' : 'ACQUIRE', adoptedConfirmationId: input.confirmationId, reason: input.reason?.trim() || null } });
-      return { leaseId: lease.leaseId, generation: lease.generation, expiresAt: lease.expiresAt.toISOString(), connectAfter: lease.connectAfter.toISOString() };
-    });
+  async acquireTrainingLease(input: TrainingLeaseAcquireInput) {
+    return this.leaseService.acquire(input);
   }
 
-  async releaseTrainingLease(input: { sessionId: string; profileId: string; clientDeviceId: string; leaseId: string; generation: number; reason?: string | null }) {
-    await runTrainingTransaction(async (tx) => {
-      await tx.$queryRaw(Prisma.sql`
-        SELECT "id" FROM "TorqueWrenchProfile"
-        WHERE "id" = ${input.profileId}
-        FOR UPDATE
-      `);
-      const now = new Date();
-      const row = await tx.torqueWrenchUsageLease.findUnique({ where: { torqueWrenchProfileId: input.profileId } });
-      if (!row || row.leaseId !== input.leaseId || row.generation !== input.generation || row.ownerKind !== 'TRAINING' || row.ownerTrainingSessionId !== input.sessionId || row.ownerClientDeviceId !== input.clientDeviceId) {
-        throw new ApiError(409, '有効な訓練リースがありません', undefined, 'LEASE_TOKEN_INVALID');
-      }
-      if (row.releasedAt) throw new ApiError(409, '訓練リースはすでに解放されています', undefined, 'LEASE_TOKEN_INVALID');
-      const reason = input.reason?.trim() || 'CLIENT_RELEASE';
-      await tx.torqueWrenchUsageLease.update({
-        where: { torqueWrenchProfileId: input.profileId },
-        data: { releasedAt: now, releaseReason: reason }
-      });
-      await appendTrainingLeaseHistory(tx, {
-        profileId: row.torqueWrenchProfileId,
-        leaseId: row.leaseId,
-        generation: row.generation,
-        sessionId: input.sessionId,
-        clientDeviceId: input.clientDeviceId,
-        action: 'RELEASE',
-        reason
-      });
-    });
-    return { released: true };
+  async releaseTrainingLease(input: TrainingLeaseTokenInput) {
+    return this.leaseService.release(input);
   }
 
-  async renewTrainingLease(input: { sessionId: string; profileId: string; clientDeviceId: string; leaseId: string; generation: number }) {
-    const result = await runTrainingTransaction(async (tx) => {
-      const now = new Date();
-      const expiresAt = new Date(now.getTime() + LEASE_TTL_MS);
-      const updated = await tx.torqueWrenchUsageLease.updateMany({
-      where: {
-        torqueWrenchProfileId: input.profileId,
-        leaseId: input.leaseId,
-        generation: input.generation,
-        ownerKind: 'TRAINING',
-        ownerTrainingSessionId: input.sessionId,
-        ownerClientDeviceId: input.clientDeviceId,
-        releasedAt: null,
-        expiresAt: { gt: now }
-      },
-      data: { renewedAt: now, expiresAt }
-      });
-      const renewed = await tx.torqueWrenchUsageLease.findUnique({
-        where: { torqueWrenchProfileId: input.profileId },
-        select: { connectAfter: true }
-      });
-      return { updated, expiresAt, connectAfter: renewed?.connectAfter };
-    });
-    if (result.updated.count !== 1) throw new ApiError(409, '有効な訓練リースがありません', undefined, 'TORQUE_WRENCH_LEASE_EXPIRED');
-    if (!result.connectAfter) throw new ApiError(409, '有効な訓練リースがありません', undefined, 'TORQUE_WRENCH_LEASE_EXPIRED');
-    return { leaseId: input.leaseId, generation: input.generation, expiresAt: result.expiresAt.toISOString(), connectAfter: result.connectAfter.toISOString() };
+  async renewTrainingLease(input: TrainingLeaseTokenInput) {
+    return this.leaseService.renew(input);
   }
 
   async recordAgentAttempt(input: AgentTrainingAttemptInput) {
@@ -675,11 +527,17 @@ export class TorqueTrainingService {
       // session/device confirmation; an explicit mismatching ID is never
       // replaced and therefore remains a confirmation-required event.
       const confirmation = confirmationIdentity?.torqueWrenchProfileId === resolvedProfileId ? confirmationIdentity : null;
-      const lease = await tx.torqueWrenchUsageLease.findUnique({ where: { torqueWrenchProfileId: resolvedProfileId } });
       const base = { sessionId: input.sessionId, sourceClientDeviceId: input.clientDeviceId, sourceEventKey: input.sourceEventKey, torqueWrenchProfileId: resolvedProfileId, connectionLeaseId: input.connectionLeaseId ?? null, connectionLeaseGeneration: input.connectionLeaseGeneration ?? null, deviceRecordedAt: input.deviceRecordedAt ?? null, deviceMemoryCounter: input.deviceMemoryCounter ?? null, deviceJudgement: input.deviceJudgement ?? null };
       const ignored = async (reason: string) => tx.torqueTrainingAttempt.create({ data: { ...base, judgement: 'IGNORED', accepted: false, ignoredReason: reason } });
       if (!confirmation) return { attempt: serializeAttempt(await ignored('CONFIRMATION_REQUIRED')), duplicate: false };
-      if (!lease || lease.releasedAt || lease.expiresAt <= new Date() || lease.ownerKind !== 'TRAINING' || lease.ownerTrainingSessionId !== input.sessionId || lease.ownerClientDeviceId !== input.clientDeviceId || lease.leaseId !== input.connectionLeaseId || lease.generation !== input.connectionLeaseGeneration) return { attempt: serializeAttempt(await ignored('LEASE_TOKEN_INVALID')), duplicate: false };
+      const leaseValid = await this.leaseService.isCurrentForAttempt(tx, {
+        sessionId: input.sessionId,
+        profileId: resolvedProfileId,
+        clientDeviceId: input.clientDeviceId,
+        leaseId: input.connectionLeaseId,
+        generation: input.connectionLeaseGeneration
+      });
+      if (!leaseValid) return { attempt: serializeAttempt(await ignored('LEASE_TOKEN_INVALID')), duplicate: false };
       const profile = await tx.torqueWrenchProfile.findUnique({ where: { id: resolvedProfileId }, include: profileEligibilityInclude });
       if (!profile || profile.serialNumber !== input.serialNumber) return { attempt: serializeAttempt(await ignored('SERIAL_NUMBER_MISMATCH')), duplicate: false };
       const setting = profile.settingHistories[0];
@@ -698,16 +556,16 @@ export class TorqueTrainingService {
         // Completion is authoritative even if the browser disappears. The
         // same token-fenced transaction releases the physical wrench and
         // appends the minimal lease history entry.
-        await tx.$queryRaw(Prisma.sql`
-          SELECT "id" FROM "TorqueWrenchProfile"
-          WHERE "id" = ${resolvedProfileId}
-          FOR UPDATE
-        `);
-        const completionLease = await tx.torqueWrenchUsageLease.findUnique({ where: { torqueWrenchProfileId: resolvedProfileId } });
-        if (completionLease && completionLease.ownerKind === 'TRAINING' && completionLease.ownerTrainingSessionId === input.sessionId && completionLease.ownerClientDeviceId === input.clientDeviceId && completionLease.leaseId === input.connectionLeaseId && completionLease.generation === input.connectionLeaseGeneration && completionLease.releasedAt === null) {
-          const completionReason = 'TRAINING_COMPLETED';
-          await tx.torqueWrenchUsageLease.update({ where: { torqueWrenchProfileId: resolvedProfileId }, data: { releasedAt: new Date(), releaseReason: completionReason } });
-          await appendTrainingLeaseHistory(tx, { profileId: completionLease.torqueWrenchProfileId, leaseId: completionLease.leaseId, generation: completionLease.generation, sessionId: input.sessionId, clientDeviceId: input.clientDeviceId, action: 'RELEASE', reason: completionReason, adoptedConfirmationId: completionLease.adoptedConfirmationId });
+        const completionGeneration = input.connectionLeaseGeneration;
+        if (input.connectionLeaseId && typeof completionGeneration === 'number' && Number.isInteger(completionGeneration)) {
+          await this.leaseService.releaseExactInTransaction(tx, {
+            sessionId: input.sessionId,
+            profileId: resolvedProfileId,
+            clientDeviceId: input.clientDeviceId,
+            leaseId: input.connectionLeaseId,
+            generation: completionGeneration,
+            reason: 'TRAINING_COMPLETED'
+          }, 'TRAINING_COMPLETED');
         }
       }
       return { attempt: serializeAttempt(attempt), duplicate: false };
@@ -720,7 +578,7 @@ export class TorqueTrainingService {
       if (locked.length === 0) throw new ApiError(404, '訓練セッションが見つかりません');
       const result = await tx.torqueTrainingSession.updateMany({ where: { id: sessionId, clientDeviceId, status: 'IN_PROGRESS' }, data: { status: 'CANCELLED', cancelledAt: new Date(), cancelReason: reason.trim(), activeEmployeeKey: null, activeClientKey: null } });
       if (result.count !== 1) throw new ApiError(409, '訓練セッションを取消できません');
-      await releaseTrainingLeasesForSession(tx, sessionId, clientDeviceId, 'TRAINING_CANCELLED');
+      await this.leaseService.releaseForSession(tx, sessionId, clientDeviceId, 'TRAINING_CANCELLED');
     });
     return { cancelled: true };
   }

@@ -46,6 +46,11 @@ class LeaseTakeoverBody(LeaseAcquireBody):
 
 
 class LeaseReleaseBody(BaseModel):
+    targetKind: Literal["assembly", "training"]
+    sessionId: str
+    torqueWrenchProfileId: str
+    leaseId: str
+    generation: int
     reason: str = "CLIENT_RELEASE"
 
 
@@ -129,7 +134,14 @@ def create_app(
 
     @app.post("/lease/release")
     async def release(body: LeaseReleaseBody) -> dict[str, object]:
-        return await lease_manager.release(body.reason)
+        return await lease_manager.release(
+            body.reason,
+            target_kind=body.targetKind,
+            session_id=body.sessionId,
+            profile_id=body.torqueWrenchProfileId,
+            lease_id=body.leaseId,
+            generation=body.generation,
+        )
 
     return app
 

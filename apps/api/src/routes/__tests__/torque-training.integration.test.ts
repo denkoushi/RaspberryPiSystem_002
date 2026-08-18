@@ -476,6 +476,14 @@ describe('torque training API concurrency boundary', () => {
     });
     expect(trainingWhileAssembly.statusCode).toBe(409);
     expect(trainingWhileAssembly.json().errorCode).toBe('TORQUE_WRENCH_LEASE_HELD');
+    expect(trainingWhileAssembly.json().details.lease).toMatchObject({
+      state: 'owned_by_other',
+      owner: { ownerKind: 'ASSEMBLY', clientDeviceName: expect.any(String) }
+    });
+    expect(trainingWhileAssembly.json().details.lease).not.toHaveProperty('leaseId');
+    expect(trainingWhileAssembly.json().details.lease).not.toHaveProperty('generation');
+    expect(trainingWhileAssembly.json().details.lease.owner).not.toHaveProperty('clientDeviceId');
+    expect(trainingWhileAssembly.json().details.lease.owner).not.toHaveProperty('sessionId');
 
     const releaseAssembly = await app.inject({
       method: 'POST',
@@ -528,8 +536,11 @@ describe('torque training API concurrency boundary', () => {
       headers,
       payload: { sessionId: assemblySession.id, ...assemblyLease, reason: 'stale release' }
     });
-    expect(staleAssemblyRelease.statusCode).toBe(409);
-    expect(staleAssemblyRelease.json().errorCode).toBe('TORQUE_WRENCH_LEASE_FENCED');
+    expect(staleAssemblyRelease.statusCode).toBe(200);
+    expect(staleAssemblyRelease.json().result).toBe('stale_noop');
+    expect(staleAssemblyRelease.json().lease).toMatchObject({ state: 'owned_by_other' });
+    expect(staleAssemblyRelease.json().lease).not.toHaveProperty('leaseId');
+    expect(staleAssemblyRelease.json().lease).not.toHaveProperty('generation');
     expect(await prisma.torqueWrenchUsageLease.count({ where: { torqueWrenchProfileId: profile.id } })).toBe(1);
     expect((await prisma.torqueWrenchUsageLease.findUniqueOrThrow({ where: { torqueWrenchProfileId: profile.id } })).leaseId).toBe(trainingLease.leaseId);
   });
