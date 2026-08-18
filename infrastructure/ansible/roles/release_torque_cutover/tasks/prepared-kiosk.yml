@@ -1,0 +1,28 @@
+---
+- name: Prepare this torque kiosk without stopping its services
+  block:
+    - name: Reuse the standard kiosk candidate preparation
+      ansible.builtin.include_role:
+        name: release_kiosk
+        tasks_from: prepare
+
+    - name: Record this kiosk's PREPARED boundary
+      ansible.builtin.set_fact:
+        release_torque_host_result: >-
+          {{
+            release_torque_host_result | default({})
+            | combine({'prepared': true})
+          }}
+  rescue:
+    - name: Record this kiosk's failed PREPARED boundary
+      ansible.builtin.set_fact:
+        release_torque_host_result: >-
+          {{
+            release_torque_host_result | default({})
+            | combine({'prepared': false})
+          }}
+
+    - name: Clean only this run's failed kiosk preparation
+      ansible.builtin.include_role:
+        name: release_kiosk
+        tasks_from: cleanup

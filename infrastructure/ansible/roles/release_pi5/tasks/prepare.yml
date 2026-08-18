@@ -45,6 +45,18 @@
   changed_when: >-
     'Downloaded newer image' in release_pi5_pull.stdout
     or 'Pull complete' in release_pi5_pull.stdout
+  when: >-
+    not (release_torque_cutover | default(false) | bool)
+    or not (release_pi5_prefetched | default(false) | bool)
+
+- name: Require the pre-quiesce Pi5 candidate identity for torque cutover
+  ansible.builtin.assert:
+    that:
+      - release_pi5_prefetched | default(false) | bool
+      - release_pi5_prefetched_run_id == release_run_id
+      - release_pi5_prefetched_api_image == release_pi5_api_image
+      - release_pi5_prefetched_web_image == release_pi5_web_image
+  when: release_torque_cutover | default(false) | bool
 
 - name: Resolve desired Pi5 image IDs
   ansible.builtin.command:

@@ -71,7 +71,8 @@ for path in (server_defaults_path, server_handlers_path, manage_app_path, common
 
 plays = yaml.safe_load(standard_path.read_text(encoding="utf-8")) or []
 assert [play.get("hosts") for play in plays] == [
-    "kiosk", "server", "kiosk", "kiosk", "signage"
+    "server", "kiosk", "kiosk", "server", "kiosk", "kiosk", "server",
+    "server", "kiosk", "kiosk", "signage"
 ]
 assert [play.get("serial") for play in plays if "serial" in play] == [1, 1, 1]
 role_plays = [play for play in plays if play.get("roles")]
@@ -81,7 +82,16 @@ assert [play.get("roles", [{}])[0].get("role") for play in role_plays] == [
     "release_signage",
 ]
 cutover_plays = [play for play in plays if "torque-cutover" in play.get("tags", [])]
-assert [play.get("hosts") for play in cutover_plays] == ["kiosk", "kiosk"]
+assert [play.get("hosts") for play in cutover_plays] == [
+    "server", "kiosk", "kiosk", "server", "kiosk", "kiosk", "server", "kiosk"
+]
+cutover_names = [play.get("name") for play in cutover_plays]
+assert cutover_names.index("Aggregate PREPARED before any torque endpoint stops") < cutover_names.index(
+    "Quiesce all selected torque ownership endpoints before the API changes"
+)
+assert cutover_names.index("Finalize QUIESCED before changing the control plane") < [
+    play.get("name") for play in plays
+].index("Prepare and switch the Pi5 control plane")
 PY
 
 echo "deploy safety contract tests passed"

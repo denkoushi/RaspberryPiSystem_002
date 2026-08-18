@@ -1,0 +1,28 @@
+---
+- name: Initialize the shared QUIESCED result
+  ansible.builtin.set_fact:
+    release_torque_all_quiesced: true
+  run_once: true
+  delegate_to: "{{ groups['server'] | first }}"
+  delegate_facts: true
+
+- name: Fold every selected kiosk into the shared QUIESCED result
+  ansible.builtin.set_fact:
+    release_torque_all_quiesced: >-
+      {{
+        hostvars[groups['server'] | first].release_torque_all_quiesced | bool
+        and (hostvars[item].release_torque_host_result.quiesced | default(false) | bool)
+      }}
+  loop: "{{ release_torque_cutover_hosts }}"
+  run_once: true
+  delegate_to: "{{ groups['server'] | first }}"
+  delegate_facts: true
+
+- name: Restore every reachable kiosk to its previous stopped image after quiesce failure
+  ansible.builtin.include_tasks: fail-closed.yml
+  when: >-
+    not (
+      hostvars[groups['server'] | first].release_torque_all_quiesced
+      | default(false)
+      | bool
+    )

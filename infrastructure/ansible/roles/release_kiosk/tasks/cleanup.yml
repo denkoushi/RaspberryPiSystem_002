@@ -1,4 +1,23 @@
 ---
+- name: Remove only newly pulled unused Pi4 candidates before any switch
+  ansible.builtin.command:
+    argv: [docker, image, rm, "{{ item.item }}"]
+  loop: "{{ release_kiosk_pull.results | default([]) }}"
+  register: release_kiosk_candidate_cleanup
+  changed_when: release_kiosk_candidate_cleanup.rc == 0
+  failed_when: false
+  when:
+    - item.changed | default(false) | bool
+    - not (release_kiosk_switch_attempted | default(false) | bool)
+
+- name: Require every removable Pi4 candidate cleanup to succeed
+  ansible.builtin.assert:
+    that:
+      - item.rc == 0
+    fail_msg: "Unused Pi4 candidate cleanup failed: {{ item.item.item }}"
+  loop: "{{ release_kiosk_candidate_cleanup.results | default([]) }}"
+  when: not (item.skipped | default(false) | bool)
+
 - name: Remove Pi4 rollback image tags after a verified outcome
   ansible.builtin.command:
     argv:

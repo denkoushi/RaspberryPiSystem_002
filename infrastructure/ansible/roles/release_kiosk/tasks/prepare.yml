@@ -6,11 +6,18 @@
       - release_run_id is match('^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$')
       - release_sha in release_kiosk_nfc_image
       - release_sha in release_kiosk_barcode_image
-      - release_sha in release_kiosk_torque_image
+      - >-
+        (release_torque_cutover | default(false) | bool
+          and release_kiosk_torque_image is match('^ghcr\\.io/denkoushi/raspisys-torque-agent@sha256:[0-9a-f]{64}$'))
+        or (not (release_torque_cutover | default(false) | bool)
+          and release_sha in release_kiosk_torque_image)
+      - >-
+        not (release_torque_cutover | default(false) | bool)
+        or release_torque_protocol_version | default(0) | int == 1
       - "'kiosk' in group_names"
     fail_msg: >-
-      Pi4 release requires an exact SHA, safe run ID, SHA-bound OCI images,
-      and an inventory host in the kiosk group.
+      Pi4 release requires an exact SHA, safe run ID, immutable OCI images,
+      the supported torque protocol when selected, and an inventory host in the kiosk group.
 
 - name: Select agents enabled for this Pi4
   ansible.builtin.set_fact:
@@ -134,6 +141,33 @@
       Pi4 rollback image capture did not produce exactly one valid image for
       every enabled service; refusing to continue before the switch boundary.
 
+- name: Verify captured rollback image identities are locally recoverable
+  ansible.builtin.command:
+    argv: [docker, image, inspect, --format, "{{ '{{.Id}}|{{.Os}}|{{.Architecture}}' }}", "{{ release_kiosk_rollback_images[item] }}"]
+  loop: "{{ release_kiosk_services }}"
+  register: release_kiosk_rollback_identity
+  changed_when: false
+
+- name: Require immutable Linux rollback image IDs
+  ansible.builtin.assert:
+    that:
+      - item.stdout is match('^sha256:[0-9a-f]{64}\\|linux\\|(arm64|arm)$')
+  loop: "{{ release_kiosk_rollback_identity.results }}"
+
+- name: Read Pi4 disk headroom before pulling candidates
+  ansible.builtin.shell: |
+    set -euo pipefail
+    df -Pk {{ release_kiosk_project_dir | quote }} | awk 'NR == 2 {print int($4 / 1024 / 1024)}'
+  args:
+    executable: /bin/bash
+  register: release_kiosk_prefetch_disk
+  changed_when: false
+
+- name: Require Pi4 pre-pull disk headroom
+  ansible.builtin.assert:
+    that:
+      - release_kiosk_prefetch_disk.stdout | int >= release_kiosk_min_disk_gb | int
+
 - name: Pull enabled Pi4 images while the normal kiosk remains active
   ansible.builtin.command:
     argv:
@@ -146,6 +180,31 @@
   changed_when: >-
     'Downloaded newer image' in release_kiosk_pull.stdout
     or 'Pull complete' in release_kiosk_pull.stdout
+
+- name: Inspect exact local Pi4 candidate identities
+  ansible.builtin.command:
+    argv: [docker, image, inspect, --format, "{{ '{{.Id}}|{{.Os}}|{{.Architecture}}|{{json .RepoDigests}}' }}", "{{ release_kiosk_candidate_images[item] }}"]
+  loop: "{{ release_kiosk_services }}"
+  register: release_kiosk_candidate_identity
+  changed_when: false
+
+- name: Read the selected Pi4 kernel architecture
+  ansible.builtin.command: uname -m
+  register: release_kiosk_kernel_architecture
+  changed_when: false
+
+- name: Require the manifest-bound torque candidate and host architecture
+  ansible.builtin.assert:
+    that:
+      - item.stdout is match('^sha256:[0-9a-f]{64}\\|linux\\|(arm64|arm)\\|\\[.+@sha256:[0-9a-f]{64}.*\\]$')
+      - release_kiosk_candidate_images[item.item].split('@')[1] in item.stdout
+      - >-
+        (release_kiosk_kernel_architecture.stdout | trim == 'aarch64'
+          and '|linux|arm64|' in item.stdout)
+        or (release_kiosk_kernel_architecture.stdout | trim is match('^armv7')
+          and '|linux|arm|' in item.stdout)
+  loop: "{{ release_kiosk_candidate_identity.results }}"
+  when: release_torque_cutover | default(false) | bool
 
 - name: Render the candidate Pi4 Compose file without build directives
   ansible.builtin.template:
@@ -292,3 +351,9 @@
         + ([{'src': release_kiosk_stage_dir ~ '/barcode-agent.env', 'dest': release_kiosk_project_dir ~ '/clients/barcode-agent/.env', 'mode': '0600'}] if 'barcode-agent' in release_kiosk_services else [])
         + ([{'src': release_kiosk_stage_dir ~ '/torque-agent.env', 'dest': release_kiosk_project_dir ~ '/clients/torque-agent/.env', 'mode': '0600'}] if 'torque-agent' in release_kiosk_services else [])
       }}
+
+- name: Seal this run's prepared kiosk identity
+  ansible.builtin.set_fact:
+    release_kiosk_prepared: true
+    release_kiosk_prepared_run_id: "{{ release_run_id }}"
+    release_kiosk_prepared_torque_image: "{{ release_kiosk_torque_image }}"

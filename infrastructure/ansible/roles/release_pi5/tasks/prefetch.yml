@@ -1,0 +1,75 @@
+---
+- name: Validate Pi5 component staging inputs
+  ansible.builtin.assert:
+    that:
+      - release_torque_cutover | default(false) | bool
+      - release_torque_protocol_version | default(0) | int == 1
+      - release_pi5_api_image is match('^ghcr\\.io/denkoushi/raspisys-api:[0-9a-f]{40}-[0-9a-f]{16}@sha256:[0-9a-f]{64}$')
+      - release_pi5_web_image is match('^ghcr\\.io/denkoushi/raspisys-web:[0-9a-f]{40}-[0-9a-f]{16}@sha256:[0-9a-f]{64}$')
+    fail_msg: Pi5 PREPARED requires exact release-set v2 API/Web digests and torque protocol v1.
+
+- name: Read Pi5 disk headroom before pulling candidates
+  ansible.builtin.shell: |
+    set -euo pipefail
+    df -Pk {{ release_pi5_project_dir | quote }} | awk 'NR == 2 {print int($4 / 1024 / 1024)}'
+  args:
+    executable: /bin/bash
+  register: release_pi5_prefetch_disk
+  changed_when: false
+
+- name: Require Pi5 pre-pull disk headroom
+  ansible.builtin.assert:
+    that:
+      - release_pi5_prefetch_disk.stdout | int >= release_pi5_min_disk_gb | int
+
+- name: Pull exact Pi5 candidates without starting containers
+  ansible.builtin.command:
+    argv: [docker, image, pull, "{{ item }}"]
+  loop: ["{{ release_pi5_api_image }}", "{{ release_pi5_web_image }}"]
+  register: release_pi5_prefetch_pull
+  retries: 3
+  delay: 10
+  until: release_pi5_prefetch_pull is succeeded
+  changed_when: >-
+    'Downloaded newer image' in release_pi5_prefetch_pull.stdout
+    or 'Pull complete' in release_pi5_prefetch_pull.stdout
+
+- name: Verify local Pi5 candidate IDs and architecture
+  ansible.builtin.command:
+    argv: [docker, image, inspect, --format, "{{ '{{.Id}}|{{.Os}}|{{.Architecture}}|{{json .RepoDigests}}' }}", "{{ item }}"]
+  loop: ["{{ release_pi5_api_image }}", "{{ release_pi5_web_image }}"]
+  register: release_pi5_prefetch_identity
+  changed_when: false
+
+- name: Require exact ARM64 Pi5 candidates on this host
+  ansible.builtin.assert:
+    that:
+      - item.stdout is match('^sha256:[0-9a-f]{64}\\|linux\\|arm64\\|\\[.+@sha256:[0-9a-f]{64}.*\\]$')
+      - item.item.split('@')[1] in item.stdout
+  loop: "{{ release_pi5_prefetch_identity.results }}"
+
+- name: Capture running Pi5 API/Web image IDs before kiosk quiesce
+  ansible.builtin.shell: |
+    set -euo pipefail
+    docker ps \
+      --filter 'label=com.docker.compose.project={{ release_pi5_compose_project }}' \
+      --format '{{ '{{.Label "com.docker.compose.service"}}|{{.Image}}|{{.ID}}' }}' \
+      | awk -F'|' '$1 ~ /^(api|web)-(blue|green)$/ {print}'
+  args:
+    executable: /bin/bash
+  register: release_pi5_prefetch_running
+  changed_when: false
+
+- name: Require recoverable running Pi5 API and Web images
+  ansible.builtin.assert:
+    that:
+      - release_pi5_prefetch_running.stdout_lines | select('match', '^api-(blue|green)\\|.+\\|[0-9a-f]{12,64}$') | list | length >= 1
+      - release_pi5_prefetch_running.stdout_lines | select('match', '^web-(blue|green)\\|.+\\|[0-9a-f]{12,64}$') | list | length >= 1
+
+- name: Record completed Pi5 PREPARED identity
+  ansible.builtin.set_fact:
+    release_pi5_prefetched: true
+    release_pi5_prefetched_run_id: "{{ release_run_id }}"
+    release_pi5_prefetched_api_image: "{{ release_pi5_api_image }}"
+    release_pi5_prefetched_web_image: "{{ release_pi5_web_image }}"
+    release_pi5_previous_runtime: "{{ release_pi5_prefetch_running.stdout_lines }}"
