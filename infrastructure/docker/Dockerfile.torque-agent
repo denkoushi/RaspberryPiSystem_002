@@ -22,6 +22,23 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PATH="/opt/venv/bin:$PATH"
+RUN apt-get update \
+  && apt-get install -y --only-upgrade --no-install-recommends \
+    bsdutils \
+    libblkid1 \
+    liblastlog2-2 \
+    libmount1 \
+    libsmartcols1 \
+    libuuid1 \
+    login \
+    mount \
+    util-linux \
+  && for package in bsdutils libblkid1 liblastlog2-2 libmount1 libsmartcols1 libuuid1 login mount util-linux; do \
+    version="$(dpkg-query -W -f='${Version}' "$package")"; \
+    dpkg --compare-versions "$version" ge '2.41.5-0+deb13u1' \
+      || { echo "$package remains below the CVE-2026-53615 fixed version: $version" >&2; exit 1; }; \
+  done \
+  && rm -rf /var/lib/apt/lists/*
 RUN python -m pip uninstall --yes pip setuptools wheel
 COPY --from=builder /opt/venv /opt/venv
 COPY clients/torque-agent ./torque-agent
