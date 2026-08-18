@@ -74,6 +74,7 @@ class ClassifiedChange:
     pi4_agent_services: frozenset[str]
     release_pair: bool
     runtime_rehearsal: bool
+    torque_composition: bool
     fail_closed_reason: str | None = None
 
 
@@ -138,6 +139,30 @@ SIGNAGE_RELEASE_ONLY_PATHS = frozenset(
 )
 DEPLOY_CONTRACT_ONLY_PATHS = frozenset(
     {"scripts/deploy/tests/test_ansible_standard_release.py"}
+)
+TORQUE_COMPOSITION_PATHS = frozenset(
+    {
+        ".github/workflows/ci.yml",
+        "scripts/deploy/release_artifact_contract.py",
+        "scripts/deploy/torque_component_adoption.py",
+        "scripts/deploy/standard-ansible-release.py",
+        "scripts/update-all-clients.sh",
+        "infrastructure/ansible/playbooks/deploy-release-standard.yml",
+        "infrastructure/ansible/inventory.yml",
+        "infrastructure/docker/Dockerfile.torque-agent",
+    }
+)
+TORQUE_COMPOSITION_PREFIXES = (
+    "packages/shared-types/src/torque-wrenches",
+    "apps/api/src/routes/torque-wrenches",
+    "apps/api/src/routes/torque-training",
+    "apps/api/src/services/torque-wrenches",
+    "apps/api/src/services/torque-training",
+    "apps/web/src/features/torque-wrench-connection",
+    "clients/torque-agent",
+    "infrastructure/ansible/roles/release_pi5",
+    "infrastructure/ansible/roles/release_kiosk",
+    "infrastructure/ansible/roles/release_torque_cutover",
 )
 
 
@@ -402,6 +427,13 @@ def release_pair_for_path(path: str) -> bool:
     normalized = _normalize_path(path)
     if normalized in DEPLOY_CONTRACT_ONLY_PATHS:
         return False
+    if normalized == "infrastructure/docker/Dockerfile.torque-agent" or _has_prefix(
+        normalized, "clients/torque-agent"
+    ):
+        # A new torque composition still needs an API/Web pair for its exact,
+        # rehearsal-bound three-component tuple. Unrelated Pi4 agents remain
+        # independent of the normal v1 release pair.
+        return True
     if normalized in PI4_AGENT_DOCKERFILES:
         return False
     if _signage_artifact_exclusive_path(normalized):
@@ -427,6 +459,14 @@ def release_pair_for_path(path: str) -> bool:
     return False
 
 
+def torque_composition_for_path(path: str) -> bool:
+    """Return whether a change requires a newly verified torque v2 composition."""
+    normalized = _normalize_path(path)
+    return normalized in TORQUE_COMPOSITION_PATHS or any(
+        _has_prefix(normalized, prefix) for prefix in TORQUE_COMPOSITION_PREFIXES
+    )
+
+
 def classify_change(change: Change) -> ClassifiedChange:
     status_kind = change.status[:1]
     if status_kind in {"D", "R", "C"}:
@@ -438,6 +478,7 @@ def classify_change(change: Change) -> ClassifiedChange:
             pi4_agent_services=PI4_AGENT_SERVICE_NAMES,
             release_pair=True,
             runtime_rehearsal=True,
+            torque_composition=True,
             fail_closed_reason=f"{status_kind.lower()} change requires the full suite",
         )
     if status_kind not in {"A", "M"}:
@@ -449,6 +490,7 @@ def classify_change(change: Change) -> ClassifiedChange:
             pi4_agent_services=PI4_AGENT_SERVICE_NAMES,
             release_pair=True,
             runtime_rehearsal=True,
+            torque_composition=True,
             fail_closed_reason=f"unsupported git status {change.status!r}",
         )
 
@@ -462,6 +504,7 @@ def classify_change(change: Change) -> ClassifiedChange:
             pi4_agent_services=PI4_AGENT_SERVICE_NAMES,
             release_pair=True,
             runtime_rehearsal=True,
+            torque_composition=True,
             fail_closed_reason=f"unknown path {change.path!r}",
         )
     if categories == FULL_SUITE:
@@ -473,6 +516,7 @@ def classify_change(change: Change) -> ClassifiedChange:
             pi4_agent_services=PI4_AGENT_SERVICE_NAMES,
             release_pair=True,
             runtime_rehearsal=True,
+            torque_composition=torque_composition_for_path(change.path),
             fail_closed_reason=f"global CI configuration path {change.path!r}",
         )
     release_pair = release_pair_for_path(change.path)
@@ -487,6 +531,7 @@ def classify_change(change: Change) -> ClassifiedChange:
             release_pair
             and _normalize_path(change.path) not in CI_CLASSIFIER_CONTRACT_PATHS
         ),
+        torque_composition=torque_composition_for_path(change.path),
     )
 
 
@@ -500,6 +545,7 @@ def classify_changes(
     pi4_agent_services: set[str] = set()
     release_pair = False
     runtime_rehearsal = False
+    torque_composition = False
     reasons: list[str] = []
     for item in classified:
         selected.update(item.categories)
@@ -508,6 +554,7 @@ def classify_changes(
         pi4_agent_services.update(item.pi4_agent_services)
         release_pair = release_pair or item.release_pair
         runtime_rehearsal = runtime_rehearsal or item.runtime_rehearsal
+        torque_composition = torque_composition or item.torque_composition
         if item.fail_closed_reason:
             reasons.append(item.fail_closed_reason)
 
@@ -518,6 +565,7 @@ def classify_changes(
         pi4_agent_services.update(PI4_AGENT_SERVICE_NAMES)
         release_pair = True
         runtime_rehearsal = True
+        torque_composition = True
         reasons.append(force_full_reason)
 
     matrix_images = sorted(docker_images) or ["api", "web"]
@@ -531,6 +579,7 @@ def classify_changes(
         "dockerWeb": "web" in docker_images,
         "releasePair": release_pair,
         "runtimeRehearsal": runtime_rehearsal,
+        "torqueComposition": torque_composition,
         "pi4AgentMatrix": pi4_agent_matrix_for_services(pi4_agent_services),
         "dockerMatrix": [DOCKER_MATRIX_ITEMS[image] for image in matrix_images],
         "categories": {category: category in selected for category in CATEGORIES},
@@ -550,6 +599,7 @@ def classify_changes(
                 "pi4AgentServices": sorted(item.pi4_agent_services),
                 "releasePair": item.release_pair,
                 "runtimeRehearsal": item.runtime_rehearsal,
+                "torqueComposition": item.torque_composition,
                 **(
                     {"failClosedReason": item.fail_closed_reason}
                     if item.fail_closed_reason
@@ -606,6 +656,7 @@ def render_markdown(result: dict[str, object]) -> str:
         f"Pi4 agent image contracts: **{len(result['pi4AgentMatrix'])}**",
         f"ARM64 release pair: **{'yes' if result['releasePair'] else 'no'}**",
         f"Isolated runtime rehearsal: **{'yes' if result['runtimeRehearsal'] else 'no'}**",
+        f"Torque v2 composition: **{'yes' if result['torqueComposition'] else 'no'}**",
         "",
         "| Category | Selected |",
         "| --- | --- |",
@@ -635,6 +686,9 @@ def render_github_output(result: dict[str, object]) -> str:
     lines.append(f"release_pair={'true' if result['releasePair'] else 'false'}")
     lines.append(
         f"runtime_rehearsal={'true' if result['runtimeRehearsal'] else 'false'}"
+    )
+    lines.append(
+        f"torque_composition={'true' if result['torqueComposition'] else 'false'}"
     )
     lines.append(
         "docker_matrix="

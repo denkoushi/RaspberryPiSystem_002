@@ -161,7 +161,7 @@ class ClassifyChangesTests(unittest.TestCase):
                 )
                 self.assertFalse(result["dockerApi"])
                 self.assertFalse(result["dockerWeb"])
-                self.assertFalse(result["releasePair"])
+                self.assertEqual(result["releasePair"], service == "torque-agent")
                 self.assertEqual(self.pi4_services(result), {service})
                 self.assertEqual(len(result["pi4AgentMatrix"]), 2)
 
@@ -284,6 +284,7 @@ class ClassifyChangesTests(unittest.TestCase):
             {"repo_policy", "db_infra", "deploy_contract"},
         )
         self.assertTrue(inventory["releasePair"])
+        self.assertTrue(inventory["torqueComposition"])
 
         dockerignore = self.classify(Change("M", ".dockerignore"))
         self.assertTrue(dockerignore["fullSuite"])
@@ -357,6 +358,7 @@ class ClassifyChangesTests(unittest.TestCase):
                 "docker_web=false",
                 "release_pair=true",
                 "runtime_rehearsal=true",
+                "torque_composition=false",
                 'docker_matrix=[{"dockerfile":"./infrastructure/docker/Dockerfile.api","image":"api","tag":"raspisys-api:ci"},{"dockerfile":"./infrastructure/docker/Dockerfile.web","image":"web","tag":"raspisys-web:ci"}]',
                 "pi4_agent_matrix=[]",
             ],
@@ -420,6 +422,52 @@ class ClassifyChangesTests(unittest.TestCase):
                 "runtimeRehearsal"
             ]
         )
+
+    def test_torque_composition_is_bounded_to_cutover_contract_surfaces(self) -> None:
+        for path in (
+            ".github/workflows/ci.yml",
+            "scripts/deploy/release_artifact_contract.py",
+            "scripts/deploy/standard-ansible-release.py",
+            "infrastructure/ansible/roles/release_torque_cutover/tasks/finalize.yml",
+            "apps/api/src/services/torque-wrenches/torque-wrench-usage-lease.coordinator.ts",
+            "apps/web/src/features/torque-wrench-connection/useTorqueWrenchConnection.ts",
+            "clients/torque-agent/torque_agent/connection_lease.py",
+            "infrastructure/ansible/inventory.yml",
+        ):
+            with self.subTest(path=path):
+                self.assertTrue(
+                    self.classify(Change("M", path))["torqueComposition"]
+                )
+
+        for path in (
+            "apps/api/src/routes/items.ts",
+            "apps/web/src/pages/HomePage.tsx",
+            ".github/workflows/codeql.yml",
+            "docs/guides/deployment.md",
+        ):
+            with self.subTest(path=path):
+                self.assertFalse(
+                    self.classify(Change("M", path))["torqueComposition"]
+                )
+
+    def test_torque_agent_change_publishes_complete_v2_tuple(self) -> None:
+        for path in (
+            "clients/torque-agent/torque_agent/connection_lease.py",
+            "infrastructure/docker/Dockerfile.torque-agent",
+        ):
+            with self.subTest(path=path):
+                result = self.classify(Change("M", path))
+                self.assertTrue(result["torqueComposition"])
+                self.assertTrue(result["releasePair"])
+
+        for path in (
+            "clients/nfc-agent/nfc_agent/main.py",
+            "infrastructure/docker/Dockerfile.barcode-agent",
+        ):
+            with self.subTest(path=path):
+                result = self.classify(Change("M", path))
+                self.assertFalse(result["torqueComposition"])
+                self.assertFalse(result["releasePair"])
 
     def test_kiosk_sop_inputs_select_fail_closed_generation(self) -> None:
         for path in (
