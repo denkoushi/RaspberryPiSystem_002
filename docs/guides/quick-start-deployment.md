@@ -31,6 +31,15 @@ scripts/update-all-clients.sh --status RUN_ID
 
 `--status RUN_ID`で標準Ansibleの結果を確認し、失敗時は[デプロイ停止・復旧Runbook](../runbooks/deploy-status-recovery.md)に従う。
 
+トルクレンチ所有権のAPI/Webと既設2端末を同時に切り替える場合だけ、対象を固定した専用モードを使う。
+
+```bash
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --torque-cutover --print-plan --limit 'raspberrypi5:raspi4-kensaku-stonebase01:raspi4-assembly-01'
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --torque-cutover --limit 'raspberrypi5:raspi4-kensaku-stonebase01:raspi4-assembly-01' --detach
+```
+
+このモードは旧2台をOFFにしてからPi5を更新し、検証済みtorque-agentだけを2台へ停止状態で配置する。両台の成功後だけagentとbrowserを再開し、NFC/barcodeは現在の稼働versionを維持する。
+
 TalkPlaza Pi5は実機が存在しないため、現時点はローカルのinventory解析、profile contract、playbook syntax-checkだけを行う。公開 `--print-plan`、SSH、実機デプロイは行わない。コマンドは [デプロイメントガイド](./deployment.md#実行前確認) に記載する。
 
 直接のAnsible実行、SSH先checkout、手動container操作、lockの手編集は行わない。詳細は [デプロイメントガイド](./deployment.md)を参照する。

@@ -30,6 +30,14 @@ scripts/update-all-clients.sh <branch> <inventory> --print-plan [--limit PATTERN
 scripts/update-all-clients.sh --status RUN_ID [--inventory INVENTORY]
 ```
 
+トルクレンチ所有権契約をAPI/Webと2台の既設agentへ同時に切り替える場合だけ、次の限定モードを使う。
+
+```text
+scripts/update-all-clients.sh <branch> <inventory> --torque-cutover --limit raspberrypi5:raspi4-kensaku-stonebase01:raspi4-assembly-01 [--detach]
+```
+
+`--torque-cutover`はこの2台とPi5の完全一致を要求し、全fleetや一部端末では実行できない。2台のbrowser、旧torque-agent、guard intentを停止して外付けBluetooth OFFを確認し、8秒leaseに対して9秒待ってからPi5を更新する。Pi4では明示allowlistの`torque-agent`だけをpull・停止状態で配置し、NFC/barcodeの稼働imageと環境を変更しない。両台の配置が成功した後だけagentを起動し、healthとBluetooth OFFを確認してからbrowserを再開する。Pi5またはPi4の途中失敗では再開せずOFFを維持し、切替を試みたPi4は既存rollback imageへ停止状態で戻す。
+
 - mutationにはexact `--limit`または明示的な`--full-fleet`が必須である。暗黙の全fleet更新は行わない。
 - 引数なしの通常実行はsystemd unitの終了まで待つ。`--detach`は`runId`を返し、`--status`はsystemd statusとjournalだけを読む。
 - `--print-plan`は`ansible-inventory`と`ansible-playbook --list-hosts/--list-tasks`だけを実行し、選択host、profile、release SHA、GHCR tag、順序を表示する。remote hostやruntimeは変更しない。
@@ -94,7 +102,7 @@ scripts/update-all-clients.sh
 
 1. 対象branchが指す40文字SHAをCIの成功結果と照合し、inventoryを確定する。公開CLIはbranchを受け取り、plan出力の`releaseSha`で実値を確認する。
 2. 対象SHAのrequired CI、CodeQL、gitleaksと、対象profileのrelease artifact manifest/digestが成功・存在することを確認する。
-3. Deploy専用のclean worktreeを使い、保護対象の未コミットWIPを含めない。開始時に標準credential pathの存在だけを内容非参照で確認し、無ければ即停止する。元repoのWIPをcheckout、stash、reset、clean、編集で動かさない。
+3. Deploy専用のclean worktreeを使い、保護対象の未コミットWIPを含めない。開始時に標準credential pathの存在だけを内容非参照で確認し、無ければ即停止する。credentialがprimary worktreeの既存標準pathにだけ存在する場合は、Ansible標準の`ANSIBLE_VAULT_PASSWORD_FILE`でその既存ファイルを読み取り参照する。秘密のコピー、symlink、新規保存は行わない。元repoのWIPをcheckout、stash、reset、clean、編集で動かさない。
 4. read-onlyの対象確認を実行する。
 
 ```bash

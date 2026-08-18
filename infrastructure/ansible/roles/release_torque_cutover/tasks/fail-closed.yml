@@ -1,0 +1,49 @@
+---
+- name: Stop kiosk ownership after an aggregate cutover failure
+  ansible.builtin.systemd:
+    name: kiosk-browser.service
+    state: stopped
+  failed_when: false
+
+- name: Stop the staged torque candidate after an aggregate failure
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - --project-name
+      - docker
+      - -f
+      - "{{ release_kiosk_candidate_compose }}"
+      - stop
+      - torque-agent
+  changed_when: true
+  failed_when: false
+
+- name: Remove aggregate failure guard intent
+  ansible.builtin.file:
+    path: /run/torque-bluetooth-guard/intent.json
+    state: absent
+
+- name: Restart the fail-closed guard after aggregate failure
+  ansible.builtin.systemd:
+    name: torque-bluetooth-guard.service
+    state: restarted
+
+- name: Verify aggregate failure leaves Bluetooth OFF
+  ansible.builtin.command: /usr/local/libexec/torque-bluetooth-adapter --status
+  register: release_torque_failure_bluetooth
+  changed_when: false
+  failed_when: (release_torque_failure_bluetooth.stdout | from_json).powered | bool
+
+- name: Restore this run's known previous torque image without starting it
+  ansible.builtin.include_role:
+    name: release_kiosk
+    tasks_from: rollback
+  vars:
+    release_kiosk_rollback_terminal_failure: false
+  when: not (release_kiosk_rolled_back | default(false) | bool)
+
+- name: Remove failed aggregate cutover preparation data
+  ansible.builtin.include_role:
+    name: release_kiosk
+    tasks_from: cleanup

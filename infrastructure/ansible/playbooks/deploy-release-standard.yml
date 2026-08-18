@@ -1,11 +1,25 @@
 ---
 # Canonical Ansible-first release route invoked by the standard launcher.
+- name: Quiesce both torque ownership endpoints before the API changes
+  hosts: kiosk
+  gather_facts: false
+  become: true
+  any_errors_fatal: true
+  tags:
+    - torque-cutover
+  tasks:
+    - name: Stop the old torque runtime and prove Bluetooth is OFF
+      ansible.builtin.include_role:
+        name: release_torque_cutover
+        tasks_from: quiesce
+
 - name: Prepare and switch the Pi5 control plane
   hosts: server
   connection: local
   gather_facts: false
   become: true
   serial: 1
+  any_errors_fatal: "{{ release_torque_cutover | default(false) | bool }}"
   order: inventory
   tags:
     - pi5
@@ -17,11 +31,25 @@
   gather_facts: false
   become: true
   serial: 1
+  max_fail_percentage: "{{ 100 if (release_torque_cutover | default(false) | bool) else 0 }}"
   order: inventory
   tags:
     - pi4
   roles:
     - role: release_kiosk
+
+- name: Aggregate both torque candidates before ownership resumes
+  hosts: kiosk
+  gather_facts: false
+  become: true
+  any_errors_fatal: true
+  tags:
+    - torque-cutover
+  tasks:
+    - name: Cross the stage, agent-health, and browser-resume boundaries together
+      ansible.builtin.include_role:
+        name: release_torque_cutover
+        tasks_from: finalize
 
 - name: Switch the prepared Pi3 Signage artifact
   hosts: signage

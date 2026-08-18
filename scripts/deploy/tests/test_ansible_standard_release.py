@@ -301,14 +301,14 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
             )
         )
         service_selection = next(
-            task for task in prepare if task["name"] == "Select only agents enabled for this Pi4"
+            task for task in prepare if task["name"] == "Select agents enabled for this Pi4"
         )
-        selection = service_selection["ansible.builtin.set_fact"]["release_kiosk_services"]
+        selection = service_selection["ansible.builtin.set_fact"]["release_kiosk_enabled_services"]
         self.assertIn("barcode_agent_enabled | default(false) | bool", selection)
         barcode_health = next(
             task for task in health if task["name"] == "Verify the Pi4 barcode agent"
         )
-        self.assertEqual(barcode_health["when"], "'barcode-agent' in release_kiosk_services")
+        self.assertIn("release_kiosk_enabled_services", barcode_health["when"])
 
     def test_pi4_rollback_image_capture_uses_unique_compose_labels(self) -> None:
         prepare_tasks = yaml.safe_load(
@@ -368,10 +368,112 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         )
         self.assertNotIn("terminal-profile-registry", PLAYBOOK)
         self.assertNotIn("rolling_release", PLAYBOOK)
-        self.assertEqual(plays[0]["hosts"], "server")
-        self.assertEqual(plays[0]["connection"], "local")
-        self.assertNotIn("connection", plays[1])
-        self.assertNotIn("connection", plays[2])
+        self.assertEqual(plays[0]["hosts"], "kiosk")
+        self.assertIn("torque-cutover", plays[0]["tags"])
+        self.assertEqual(plays[1]["hosts"], "server")
+        self.assertEqual(plays[1]["connection"], "local")
+        self.assertEqual(plays[2]["hosts"], "kiosk")
+        self.assertEqual(plays[3]["hosts"], "kiosk")
+        self.assertIn("torque-cutover", plays[3]["tags"])
+        self.assertEqual(plays[4]["hosts"], "signage")
+
+    def test_torque_cutover_is_quiesce_pi5_stage_then_resume(self) -> None:
+        plays = yaml.safe_load(PLAYBOOK)
+        self.assertEqual(
+            [play["name"] for play in plays[:4]],
+            [
+                "Quiesce both torque ownership endpoints before the API changes",
+                "Prepare and switch the Pi5 control plane",
+                "Update Pi4 kiosks one target at a time",
+                "Aggregate both torque candidates before ownership resumes",
+            ],
+        )
+        quiesce = role_text("release_torque_cutover")
+        self.assertIn("state: stopped", quiesce)
+        self.assertIn("intent.json", quiesce)
+        self.assertIn("seconds: 9", quiesce)
+        self.assertIn("torque-bluetooth-adapter --status", quiesce)
+        self.assertIn("release_kiosk_candidate_compose", quiesce)
+        self.assertIn("release_torque_all_staged", quiesce)
+        self.assertIn("release_torque_all_agents_ready", quiesce)
+        self.assertIn("release_torque_all_browsers_ready", quiesce)
+        self.assertNotIn("nfc-agent", quiesce)
+        self.assertNotIn("barcode-agent", quiesce)
+
+    def test_torque_allowlist_stages_stopped_candidate_and_preserves_other_agents(self) -> None:
+        prepare = (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
+            encoding="utf-8"
+        )
+        switch = (ANSIBLE / "roles/release_kiosk/tasks/switch.yml").read_text(
+            encoding="utf-8"
+        )
+        rollback = (ANSIBLE / "roles/release_kiosk/tasks/rollback.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("release_kiosk_service_allowlist", prepare)
+        self.assertIn("intersect(release_kiosk_service_allowlist)", prepare)
+        self.assertIn("create --force-recreate --no-build torque-agent", switch)
+        self.assertIn("not (release_torque_cutover", switch)
+        self.assertIn("create --force-recreate --no-build", rollback)
+        self.assertIn("without restarting torque ownership", rollback)
+
+    def test_serial_stage_failure_still_reaches_shared_no_browser_boundary(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inventory = root / "inventory.yml"
+            playbook = root / "playbook.yml"
+            inventory.write_text(
+                "all:\n  children:\n    kiosk:\n      hosts:\n        kiosk-a:\n          ansible_connection: local\n        kiosk-b:\n          ansible_connection: local\n",
+                encoding="utf-8",
+            )
+            playbook.write_text(
+                """---
+- hosts: kiosk
+  gather_facts: false
+  serial: 1
+  max_fail_percentage: 100
+  tasks:
+    - ansible.builtin.set_fact:
+        simulated_stage: false
+    - block:
+        - ansible.builtin.set_fact:
+            simulated_stage: true
+          when: inventory_hostname == 'kiosk-a'
+        - ansible.builtin.fail:
+            msg: simulated second-host stage failure
+          when: inventory_hostname == 'kiosk-b'
+      rescue:
+        - ansible.builtin.set_fact:
+            simulated_stage: false
+- hosts: kiosk
+  gather_facts: false
+  tasks:
+    - ansible.builtin.set_fact:
+        simulated_all_staged: >-
+          {{ groups['kiosk'] | map('extract', hostvars, 'simulated_stage') | select('equalto', true) | list | length == groups['kiosk'] | length }}
+    - ansible.builtin.debug:
+        msg: "AGGREGATE={{ simulated_all_staged }} host={{ inventory_hostname }}"
+    - ansible.builtin.debug:
+        msg: BROWSER_START_MUST_NOT_APPEAR
+      when: simulated_all_staged | bool
+    - ansible.builtin.fail:
+        msg: aggregate failure after both hosts observed the boundary
+      when: not (simulated_all_staged | bool)
+""",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                ["ansible-playbook", "-i", str(inventory), str(playbook)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        output = result.stdout + result.stderr
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("AGGREGATE=False host=kiosk-a", output)
+        self.assertIn("AGGREGATE=False host=kiosk-b", output)
+        self.assertNotIn('"msg": "BROWSER_START_MUST_NOT_APPEAR"', output)
 
     def test_pi4_and_pi3_use_prepare_block_rescue_always(self) -> None:
         for role in ("release_kiosk", "release_signage"):
@@ -393,6 +495,7 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
                         [
                             task["ansible.builtin.import_tasks"]
                             for task in switch_health["block"]
+                            if "ansible.builtin.import_tasks" in task
                         ],
                         ["switch.yml", "health.yml"],
                     )
@@ -417,6 +520,8 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
                     ],
                     ["cleanup.yml"],
                 )
+                if role == "release_kiosk":
+                    self.assertIn("release_torque_cutover", outer["always"][0]["when"])
 
     def test_pi3_recovers_failures_after_stopping_before_transfer(self) -> None:
         prepare_tasks = yaml.safe_load(
@@ -792,7 +897,7 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
             encoding="utf-8"
         )
         wrapper = (ROOT / "scripts/update-all-clients.sh").read_text(encoding="utf-8")
-        play = yaml.safe_load(PLAYBOOK)[0]
+        play = yaml.safe_load(PLAYBOOK)[1]
         self.assertIn('PLAYBOOK = ANSIBLE / "playbooks/deploy-release-standard.yml"', launcher)
         self.assertIn("standard-ansible-release.py", wrapper)
         self.assertEqual(play["roles"], [{"role": "release_pi5"}])

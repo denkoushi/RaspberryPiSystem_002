@@ -31,6 +31,15 @@
   ansible.builtin.systemd:
     daemon_reload: true
 
+- name: Stage the torque candidate without starting ownership
+  ansible.builtin.command: >-
+    docker compose --project-name {{ release_kiosk_compose_project | quote }}
+    -f {{ release_kiosk_candidate_compose | quote }}
+    create --force-recreate --no-build torque-agent
+  register: release_kiosk_compose_switch
+  changed_when: true
+  when: release_torque_cutover | default(false) | bool
+
 - name: Recreate only enabled Pi4 agents from pre-pulled images
   ansible.builtin.command: >-
     docker compose --project-name {{ release_kiosk_compose_project | quote }}
@@ -38,12 +47,14 @@
     up -d --no-build {{ release_kiosk_services | join(' ') }}
   register: release_kiosk_compose_switch
   changed_when: true
+  when: not (release_torque_cutover | default(false) | bool)
 
 - name: Restart the kiosk browser to apply the exact release SHA
   ansible.builtin.systemd:
     name: kiosk-browser.service
     state: restarted
     enabled: true
+  when: not (release_torque_cutover | default(false) | bool)
 
 - name: Run the staged status-agent service once before its timer
   ansible.builtin.systemd:

@@ -112,6 +112,60 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
                 ]
             )
 
+    def test_torque_cutover_requires_exact_limit_and_two_capable_kiosks(self) -> None:
+        for scope in ([], ["--full-fleet"]):
+            with self.subTest(scope=scope), self.assertRaisesRegex(
+                MODULE.UsageError, "exact --limit"
+            ):
+                MODULE.parse_arguments(
+                    ["main", MODULE.DEFAULT_INVENTORY, "--torque-cutover", *scope]
+                )
+
+        args = MODULE.parse_arguments(
+            [
+                "main",
+                MODULE.DEFAULT_INVENTORY,
+                "--torque-cutover",
+                "--limit",
+                "raspberrypi5:raspi4-kensaku-stonebase01:raspi4-assembly-01",
+            ]
+        )
+        self.assertTrue(args.torque_cutover)
+
+        document = {
+            "server": {"hosts": ["raspberrypi5"]},
+            "kiosk": {
+                "hosts": [
+                    "raspi4-kensaku-stonebase01",
+                    "raspi4-assembly-01",
+                ]
+            },
+            "_meta": {
+                "hostvars": {
+                    "raspberrypi5": {},
+                    "raspi4-kensaku-stonebase01": {"torque_agent_enabled": True},
+                    "raspi4-assembly-01": {"torque_agent_enabled": True},
+                }
+            },
+        }
+        selection = MODULE.selected_profiles(document)
+        MODULE.validate_torque_cutover_selection(document, selection)
+
+        document["_meta"]["hostvars"]["raspi4-assembly-01"]["torque_agent_enabled"] = False
+        with self.assertRaisesRegex(MODULE.UsageError, "StoneBase and Assembly-01"):
+            MODULE.validate_torque_cutover_selection(document, selection)
+
+    def test_torque_cutover_image_plan_excludes_unverified_agents(self) -> None:
+        images = MODULE.image_plan(
+            SHA,
+            ("pi5", "pi4"),
+            "b" * 64,
+            torque_cutover=True,
+        )
+        self.assertEqual(images["pi4"], [f"ghcr.io/denkoushi/raspisys-torque-agent:{SHA}"])
+        self.assertNotIn("nfc-agent", " ".join(images["pi4"]))
+        self.assertNotIn("barcode-agent", " ".join(images["pi4"]))
+
     def test_target_selection_rejects_empty_and_unsupported_hosts(self) -> None:
         with self.assertRaisesRegex(MODULE.UsageError, "matched no hosts"):
             MODULE.selected_profiles({"_meta": {"hostvars": {}}})

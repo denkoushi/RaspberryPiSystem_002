@@ -12,9 +12,9 @@
       Pi4 release requires an exact SHA, safe run ID, SHA-bound OCI images,
       and an inventory host in the kiosk group.
 
-- name: Select only agents enabled for this Pi4
+- name: Select agents enabled for this Pi4
   ansible.builtin.set_fact:
-    release_kiosk_services: >-
+    release_kiosk_enabled_services: >-
       {{
         (['nfc-agent'] if (nfc_agent_client_id | default('') | string | length > 0) else [])
         + (['barcode-agent'] if (barcode_agent_enabled | default(false) | bool) else [])
@@ -23,6 +23,23 @@
     release_kiosk_switch_attempted: false
     release_kiosk_healthy: false
     release_kiosk_rolled_back: false
+    release_kiosk_stage_succeeded: false
+
+- name: Validate an optional bounded Pi4 service allowlist
+  ansible.builtin.assert:
+    that:
+      - release_kiosk_service_allowlist | default([]) | difference(['nfc-agent', 'barcode-agent', 'torque-agent']) | length == 0
+      - release_kiosk_service_allowlist | default([]) | difference(release_kiosk_enabled_services) | length == 0
+    fail_msg: The Pi4 service allowlist must contain only agents enabled on the selected kiosk.
+
+- name: Select only enabled agents requested by this release
+  ansible.builtin.set_fact:
+    release_kiosk_services: >-
+      {{
+        release_kiosk_enabled_services
+        if (release_kiosk_service_allowlist | default([]) | length == 0)
+        else release_kiosk_enabled_services | intersect(release_kiosk_service_allowlist)
+      }}
 
 - name: Require at least one enabled Pi4 agent
   ansible.builtin.assert:
@@ -268,8 +285,8 @@
           {'src': release_kiosk_stage_dir ~ '/status-agent.timer', 'dest': '/etc/systemd/system/status-agent.timer', 'mode': '0644'},
           {'src': release_kiosk_stage_dir ~ '/kiosk-launch.sh', 'dest': '/usr/local/bin/kiosk-launch.sh', 'mode': '0755'},
           {'src': release_kiosk_stage_dir ~ '/kiosk-browser.service', 'dest': '/etc/systemd/system/kiosk-browser.service', 'mode': '0644'},
-          {'src': release_kiosk_candidate_compose, 'dest': '/etc/raspi-release/client-compose.yml', 'mode': '0600'}
-        ]
+          ]
+        + ([{'src': release_kiosk_candidate_compose, 'dest': '/etc/raspi-release/client-compose.yml', 'mode': '0600'}] if not (release_torque_cutover | default(false) | bool) else [])
         + ([{'src': release_kiosk_stage_dir ~ '/nfc-agent.env', 'dest': release_kiosk_project_dir ~ '/clients/nfc-agent/.env', 'mode': '0600'}] if 'nfc-agent' in release_kiosk_services else [])
         + ([{'src': release_kiosk_stage_dir ~ '/barcode-agent.env', 'dest': release_kiosk_project_dir ~ '/clients/barcode-agent/.env', 'mode': '0600'}] if 'barcode-agent' in release_kiosk_services else [])
         + ([{'src': release_kiosk_stage_dir ~ '/torque-agent.env', 'dest': release_kiosk_project_dir ~ '/clients/torque-agent/.env', 'mode': '0600'}] if 'torque-agent' in release_kiosk_services else [])

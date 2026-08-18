@@ -5,10 +5,11 @@
       - systemctl
       - is-active
       - "{{ item }}"
-  loop:
-    - lightdm.service
-    - kiosk-browser.service
-    - status-agent.timer
+  loop: >-
+    {{
+      ['lightdm.service', 'status-agent.timer']
+      + ([] if (release_torque_cutover | default(false) | bool) else ['kiosk-browser.service'])
+    }}
   register: release_kiosk_display_health
   retries: 10
   delay: 2
@@ -54,7 +55,7 @@
   retries: 5
   delay: 3
   until: release_kiosk_nfc_health.status == 200
-  when: "'nfc-agent' in release_kiosk_services"
+  when: "'nfc-agent' in (release_kiosk_enabled_services | default(release_kiosk_services))"
 
 - name: Verify the Pi4 barcode agent
   ansible.builtin.uri:
@@ -66,7 +67,7 @@
   retries: 5
   delay: 3
   until: release_kiosk_barcode_health.status == 200
-  when: "'barcode-agent' in release_kiosk_services"
+  when: "'barcode-agent' in (release_kiosk_enabled_services | default(release_kiosk_services))"
 
 - name: Verify the Pi4 torque agent
   ansible.builtin.uri:
@@ -78,7 +79,9 @@
   retries: 5
   delay: 3
   until: release_kiosk_torque_health.status == 200
-  when: "'torque-agent' in release_kiosk_services"
+  when:
+    - "'torque-agent' in release_kiosk_services"
+    - not (release_torque_cutover | default(false) | bool)
 
 - name: Verify the kiosk Web endpoint
   ansible.builtin.uri:
