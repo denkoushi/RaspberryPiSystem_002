@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -377,6 +378,7 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         shell = capture["ansible.builtin.shell"]
         self.assertNotIn("docker compose", shell)
         self.assertNotIn("release_kiosk_existing_compose", shell)
+        self.assertIn("docker ps --all", shell)
         self.assertIn(
             "label=com.docker.compose.project={{ release_kiosk_compose_project }}",
             shell,
@@ -409,7 +411,148 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         )
         record = prepare_tasks[capture_index + 1]
         self.assertEqual(record["name"], "Record Pi4 rollback tags created by this run")
+        self.assertIn("selectattr('rc', 'defined')", record["ansible.builtin.set_fact"]["release_kiosk_captured_services"])
         self.assertIn("selectattr('rc', 'equalto', 0)", record["ansible.builtin.set_fact"]["release_kiosk_captured_services"])
+
+    def test_pi4_rollback_capture_result_fixtures(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            playbook = Path(directory) / "capture-results.yml"
+            playbook.write_text(
+                """---
+- hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    capture_cases:
+      - name: one-success
+        services: [torque-agent]
+        results:
+          - {item: torque-agent, rc: 0}
+        expected: [torque-agent]
+        complete: true
+      - name: two-success
+        services: [torque-agent, nfc-agent]
+        results:
+          - {item: torque-agent, rc: 0}
+          - {item: nfc-agent, rc: 0}
+        expected: [torque-agent, nfc-agent]
+        complete: true
+      - name: one-failure
+        services: [torque-agent, nfc-agent]
+        results:
+          - {item: torque-agent, rc: 0}
+          - {item: nfc-agent, rc: 1}
+        expected: [torque-agent]
+        complete: false
+      - name: one-disconnected
+        services: [torque-agent, nfc-agent]
+        results:
+          - {item: torque-agent, rc: 0}
+          - {item: nfc-agent, unreachable: true}
+        expected: [torque-agent]
+        complete: false
+  tasks:
+    - ansible.builtin.set_fact:
+        captured: >-
+          {{ item.results
+             | selectattr('rc', 'defined')
+             | selectattr('rc', 'equalto', 0)
+             | map(attribute='item')
+             | list }}
+      loop: "{{ capture_cases }}"
+      register: captures
+    - ansible.builtin.assert:
+        that:
+          - item.ansible_facts.captured == item.item.expected
+          - >-
+            ((item.ansible_facts.captured | length) == (item.item.services | length))
+            == item.item.complete
+      loop: "{{ captures.results }}"
+""",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                ["ansible-playbook", str(playbook)],
+                cwd=ROOT,
+                env={
+                    key: value
+                    for key, value in os.environ.items()
+                    if key != "ANSIBLE_CONFIG"
+                },
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_pi4_rollback_capture_finds_a_stopped_existing_container(self) -> None:
+        prepare_tasks = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        capture = next(
+            task
+            for task in prepare_tasks
+            if task["name"] == "Capture current Pi4 agent images as temporary rollback tags"
+        )
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["quote"] = shlex.quote
+        command = environment.from_string(capture["ansible.builtin.shell"]).render(
+            release_kiosk_compose_project="clients",
+            item="torque-agent",
+            release_kiosk_rollback_images={
+                "torque-agent": "raspi-standard-rollback:test-torque-agent"
+            },
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            temporary = Path(directory)
+            docker = temporary / "docker"
+            calls = temporary / "calls"
+            docker.write_text(
+                """#!/bin/bash
+set -euo pipefail
+printf '%s\\n' "$*" >> "$DOCKER_CALLS"
+case "$1" in
+  ps)
+    [[ " $* " == *" --all "* ]]
+    printf '%s\\n' stopped-torque-container
+    ;;
+  inspect)
+    printf 'sha256:%064d\\n' 0
+    ;;
+  image)
+    [[ "$2" == tag ]]
+    ;;
+  *) exit 64 ;;
+esac
+""",
+                encoding="utf-8",
+            )
+            docker.chmod(0o755)
+            result = subprocess.run(
+                ["/bin/bash", "-c", command],
+                cwd=ROOT,
+                env={
+                    **os.environ,
+                    "PATH": f"{temporary}:{os.environ.get('PATH', '')}",
+                    "DOCKER_CALLS": str(calls),
+                },
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            call_log = calls.read_text(encoding="utf-8")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("ps --all", call_log)
+        self.assertIn("inspect --format {{.Image}} stopped-torque-container", call_log)
+        self.assertIn(
+            "image tag sha256:" + "0" * 64 + " raspi-standard-rollback:test-torque-agent",
+            call_log,
+        )
 
     def test_top_level_route_is_explicit_and_serial(self) -> None:
         plays = yaml.safe_load(PLAYBOOK)
